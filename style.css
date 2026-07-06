@@ -3481,6 +3481,10 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-slice-key { font-size: .72em; padding: 1px 8px; border-radius: 20px; background: var(--sd-pre); color: var(--sd-accent); }
 .sd-reader-slice-key.on { background: var(--sd-accent); color: var(--sd-primary-text); }
 .sd-reader-slice-salvaged { color: #e0a020; font-size: .82em; flex: 0 0 auto; }
+.sd-reader-migrate-row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--sd-hairline, #ddd); border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
+.sd-reader-migrate-row:hover { border-color: var(--sd-accent); }
+.sd-reader-migrate-info { display: flex; flex-direction: column; gap: 2px; font-size: .9em; }
+.sd-reader-migrate-when { font-size: .78em; color: var(--sd-muted, #888); }
 .sd-reader-slice-syn { font-size: .74em; margin: 4px 0 2px; line-height: 1.5; color: var(--sd-accent); }
 .sd-reader-slice-syn i { margin-right: 4px; opacity: .7; }
 .sd-reader-slice-syn .sd-muted { margin-left: 1px; }

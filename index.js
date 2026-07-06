@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.26';
+const VERSION = '1.7.27';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -8326,6 +8326,119 @@ async function coreadClearAllSlices() {
   await coreadRefreshContainer();   // 无切片→容器随之禁用
 }
 
+/* ── 跨聊天迁移：把本书在「其他 ST 聊天」里的伴读对话+切片复制到当前聊天 ──
+   同设备内操作(对话桶都在本机 IndexedDB)。复制而非移动——源聊天保持不动(双存)。
+   迁移后在当前聊天绑定世界书重写所有切片 Lore 条目 + 重建容器，确保新聊天里召回/注入生效。 */
+
+// 列出本书在其他聊天的可迁移会话（排除当前聊天·按更新时间新→旧）。返回 [{bucket, chatKey, rec}]。
+async function coreadListMigratableChats(bookId) {
+  const out = [];
+  try {
+    const curBucket = coreadDialogBucket(bookId);
+    const keys = await blobStore.listReaderChatKeys();
+    const suffix = `::${bookId}`;
+    for (const k of keys) {
+      const key = String(k);
+      if (!key.endsWith(suffix) || key === curBucket) continue;
+      let rec = null;
+      try { rec = await blobStore.getReaderChat(key); } catch (_) {}
+      if (!rec || !Array.isArray(rec.messages) || !rec.messages.length) continue;   // 空会话不列
+      out.push({ bucket: key, chatKey: key.slice(0, -suffix.length), rec });
+    }
+  } catch (_) {}
+  out.sort((a, b) => (Number(b.rec?.updatedAt) || 0) - (Number(a.rec?.updatedAt) || 0));
+  return out;
+}
+
+// 执行迁移：把源桶的会话复制进当前 readerDialog，落盘 + 重写 Lore + 重建容器。
+async function coreadMigrateFromChat(sourceRec) {
+  if (!sourceRec) return { ok: false, reason: '源会话为空' };
+  const bookId = readerDialog.bookId;
+  const meta = coreadBookMeta(bookId) || {};
+  // 复制会话到当前 readerDialog（覆盖当前·已在弹窗二次确认）
+  readerDialog.messages = Array.isArray(sourceRec.messages) ? clone(sourceRec.messages) : [];
+  readerDialog.summaries = Array.isArray(sourceRec.summaries) ? clone(sourceRec.summaries) : [];
+  readerDialog.slices = Array.isArray(sourceRec.slices) ? clone(sourceRec.slices) : [];
+  readerDialog.cursor = Number(sourceRec.cursor) || readerDialog.messages.length;
+  coreadEchoTtl.clear();
+  // 在当前聊天绑定世界书重写每条切片的 Lore（loreUid 用同串·写进当前 book 即生效）
+  let wrote = 0;
+  try {
+    const book = await getOrCreateChatBook();
+    if (book) {
+      for (const s of readerDialog.slices) {
+        const uidStr = s.loreUid || `coread::${bookId}::${s.id}`;
+        try {
+          const fin = await writeWorldEntry({
+            book, uid: uidStr,
+            comment: `${coreadLorePrefix(meta.title)} ${s.compressed ? '合并' : '#' + (s.batch || '?')}`,
+            content: s.summary, keys: s.keywords, order: 50, enable: true,
+          });
+          s.loreUid = fin || uidStr;
+          wrote++;
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+  await coreadSaveDialog();
+  await coreadRefreshContainer(meta);
+  return { ok: true, messages: readerDialog.messages.length, slices: readerDialog.slices.length, wrote };
+}
+
+// 迁移入口：弹选择器列出本书在其他聊天的会话→选一个→二次确认（当前会话会被覆盖）→执行。
+async function coreadOpenMigrateDialog() {
+  const bookId = readerDialog.bookId;
+  if (!bookId) { toast('请先在阅读器里打开一本书。', 'warning'); return; }
+  const list = await coreadListMigratableChats(bookId);
+  if (!list.length) { toast('没有找到这本书在其他聊天的伴读记录。', 'info'); return; }
+  const context = ctx();
+  const Popup = context.Popup;
+  const rows = list.map((item, i) => {
+    const r = item.rec || {};
+    const charName = r.names?.char || '书友';
+    const msgN = (r.messages || []).length;
+    const sliceN = (r.slices || []).length;
+    const when = r.updatedAt ? new Date(r.updatedAt).toLocaleString() : '';
+    return `<label class="sd-reader-migrate-row">
+      <input type="radio" name="sd-reader-migrate-pick" value="${i}"${i === 0 ? ' checked' : ''}>
+      <span class="sd-reader-migrate-info">
+        <b>${htmlEscape(charName)}</b>　<span class="sd-muted">${msgN} 条对话 · ${sliceN} 条记忆</span>
+        <span class="sd-reader-migrate-when">${htmlEscape(when)}</span>
+      </span>
+    </label>`;
+  }).join('');
+  const inner = `<div class="sd-reader-migrate-dialog" style="text-align:left">
+    <p style="margin:0 0 6px;font-weight:600">从其他聊天迁移伴读记忆</p>
+    <p style="margin:0 0 10px;color:var(--sd-muted,#888);font-size:.85em">选择一个来源会话，其对话与记忆切片将<b>复制</b>到当前聊天（来源保持不动）。当前聊天已有的这本书的伴读会话会被覆盖。</p>
+    ${rows}
+  </div>`;
+  if (!Popup || !context.POPUP_TYPE) { toast('当前环境不支持弹窗选择。', 'error'); return; }
+  const wrap = document.createElement('div');
+  wrap.innerHTML = inner;
+  let picked = -1;
+  try {
+    const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '迁移', cancelButton: '取消' });
+    const res = await popup.show();
+    if (res !== true && String(res) !== '1') return;
+    const sel = wrap.querySelector('input[name="sd-reader-migrate-pick"]:checked');
+    picked = sel ? Number(sel.value) : -1;
+  } catch (_) { return; }
+  if (picked < 0 || !list[picked]) return;
+  // 二次确认覆盖
+  const cur = (readerDialog.messages || []).length;
+  if (cur > 0 && !await confirmDialog('确认覆盖', `当前聊天这本书已有 ${cur} 条伴读对话，迁移会覆盖它们，是否继续？`)) return;
+  const r = await coreadMigrateFromChat(list[picked].rec);
+  if (r.ok) {
+    toast(`已迁移：${r.messages} 条对话、${r.slices} 条记忆（写入世界书 ${r.wrote} 条）。`, 'success');
+    // 补渲对话流 + 重渲记忆 tab
+    const body = document.querySelector('#sd-reader-portal .sd-reader-dtab-chat');
+    if (body) { body.innerHTML = renderReaderDialogMessages(); scrollDialogToBottom(); }
+    rerenderMore?.();
+  } else {
+    toast(`迁移失败：${r.reason || '未知错误'}`, 'error');
+  }
+}
+
 // Chat Lore 写入自检：写一条带 coread:: 前缀的测试条目再清理，验证世界书写入通道。控制台 await qmTestLoreWrite() 或点记忆 tab 底部按钮。
 async function coreadTestLoreWrite() {
   const testBookId = 'test_' + Date.now();
@@ -9840,6 +9953,7 @@ function renderMemRecordsTab(m) {
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-layer-group"></i> 记忆切片（${slices.length}）</div>
       <div class="sd-reader-slices">${sliceList}</div>
       <div class="sd-reader-mactions">
+        <button type="button" class="sd-reader-mbtn sd-reader-slice-migrate" title="把这本书在其他 ST 聊天里的伴读对话与记忆复制到当前聊天"><i class="fa-solid fa-right-left"></i>从其他聊天迁移</button>
         <button type="button" class="sd-reader-mbtn sd-reader-slice-clear"${slices.length ? '' : ' disabled'}><i class="fa-solid fa-trash-can"></i>清空全部</button>
       </div>
     </div>
@@ -10675,6 +10789,7 @@ function bindReaderStageEvents(stageRoot) {
       });
       return;
     }
+    if (e.target.closest('.sd-reader-slice-migrate')) { coreadOpenMigrateDialog(); return; }
     // 测试按钮：Chat Lore 写入测试（P1·等用户测完稳定后再改 UID 命名空间）
     if (e.target.closest('.sd-reader-test-lore')) {
       coreadTestLoreWrite();
