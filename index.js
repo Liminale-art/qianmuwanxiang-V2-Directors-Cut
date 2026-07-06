@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.21';
+const VERSION = '1.7.22';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -7710,6 +7710,7 @@ async function buildCompanionContext(bookId, recallQuery = '') {
   const mem = coreadMemory();
   if (recallQuery && (mem.recallCount || 0) > 0) {
     const hits = coreadRecallSlices(recallQuery, mem.recallCount);
+    coreadEchoTick(hits);   // 真实注入路径：衰减旧回响 + 登记本轮命中（防下轮闪断）
     if (hits.length) {
       recallCount = hits.length;
       seg.push(`【你们以前聊过的（记忆·供你保持连贯·别照搬原话）】\n${hits.map((h, i) => `${i + 1}. ${h.slice.summary}`).join('\n')}`);
@@ -7792,7 +7793,7 @@ function coreadBuildDistillPrompt(m, meta, names, progressHint) {
     : '记录我对角色/情节的看法、对后续的猜测、被触动的点、疑问。';
   const anchor = progressHint ? `（${progressHint}）` : '';
   const dateRule = progressHint ? '\n- 本段对话/阅读发生于上述括号内标注的时间，请在总结开头自然带出该年月日与读至进度。' : '';
-  return `你是伴读记忆整理助手。下面是「${names.user}」在伴读《${meta.title || '未命名'}》${anchor}时与书友「${names.char}」的一段讨论这本书的对话。请站在「${names.user}」的视角把这段对话蒸馏成记忆，供日后回顾与主线剧情引用。\n\n【整理要求】\n${itemText}${dateRule}\n\n【底线】务必只输出纯 JSON（{"summary":..., "keywords":[...]}），不要代码块标记、不要任何额外解释文字。`;
+  return `你是伴读记忆整理助手。下面是「${names.user}」在伴读《${meta.title || '未命名'}》${anchor}时与书友「${names.char}」的一段讨论这本书的对话。请站在「${names.user}」的视角把这段对话蒸馏成记忆，供日后回顾与主线剧情引用。\n\n【整理要求】\n${itemText}${dateRule}\n\n【底线】务必只输出纯 JSON：{"summary": "第三人称客观记忆正文", "keywords": ["高辨识度检索关键词"], "synonyms": {"标准词": ["别称/简称/指代词"]}}。\n- synonyms：为 keywords 里的关键人物 / 概念补上本段出现过的别称、简称、指代（如外号、全名与简称的对应、「他 / 她」在此处具体指谁），用于提升日后检索命中；没有可补的就给空对象 {}，不要硬凑。\n不要代码块标记、不要任何额外解释文字。`;
 }
 
 // 阅读进度锚点提示（读到哪·供总结定位）。
@@ -7827,7 +7828,22 @@ async function coreadDistillSegment(segMsgs, m, meta, names) {
   if (!summary) return null;
   let keywords = uniqueClean((Array.isArray(parsed.keywords) ? parsed.keywords : []).map((k) => String(k || '').trim()).filter(Boolean)).slice(0, 8);
   if (!keywords.length) keywords = [meta.title || '伴读'];
-  return { summary, keywords };
+  const synonyms = coreadNormalizeSynonyms(parsed.synonyms);   // 软字段·失败降级为 {}·绝不让蒸馏整条失败
+  return { summary, keywords, synonyms };
+}
+
+// 把模型吐的 synonyms 归一成 { 标准词: [别称...] }。容错各种脏格式（非对象/值非数组/空串），失败一律降级为 {}。
+function coreadNormalizeSynonyms(raw) {
+  const out = {};
+  if (!isPlainObject(raw)) return out;
+  for (const [canon, aliases] of Object.entries(raw)) {
+    const key = String(canon || '').trim();
+    if (!key) continue;
+    const list = Array.isArray(aliases) ? aliases : [aliases];
+    const clean = uniqueClean(list.map((a) => String(a || '').trim()).filter((a) => a && a !== key)).slice(0, 8);
+    if (clean.length) out[key] = clean;
+  }
+  return out;
 }
 
 // 下一个批次号（切片全局递增·删除/重排不复用旧号靠 renumber 规整）。
@@ -7861,7 +7877,7 @@ async function coreadDistillRange(fromIdx, toIdx, m, meta, names) {
     }
   } catch (e) { console.warn(`[${MODULE_NAME}] distill write lore failed`, e); }
   readerDialog.slices = Array.isArray(readerDialog.slices) ? readerDialog.slices : [];
-  readerDialog.slices.push({ id: sliceId, batch, loreUid: finalUid || loreUid, summary: res.summary, keywords: res.keywords, coveredFrom: fromIdx, coveredTo: toIdx, ts: Date.now() });
+  readerDialog.slices.push({ id: sliceId, batch, loreUid: finalUid || loreUid, summary: res.summary, keywords: res.keywords, synonyms: res.synonyms || {}, coveredFrom: fromIdx, coveredTo: toIdx, ts: Date.now() });
   return 1;
 }
 
@@ -7960,6 +7976,8 @@ async function coreadCompressSlices(lo, hi) {
     if (summary.length > cap) summary = summary.slice(0, cap);
     let keywords = uniqueClean((Array.isArray(parsed.keywords) ? parsed.keywords : []).map((k) => String(k || '').trim()).filter(Boolean)).slice(0, 8);
     if (!keywords.length) keywords = inRange.flatMap((s) => s.keywords || []).slice(0, 6);
+    // 合并子切片的同义词表（并集·压缩不重新问模型也不丢别称知识）
+    const synonyms = coreadMergeSynonyms(inRange.map((s) => s.synonyms));
     // 删掉被压缩的旧切片(连 Lore)，插入一条合并切片
     const book = await getOrCreateChatBook().catch(() => '');
     for (const s of inRange) { if (s.loreUid && book) { try { await deleteWorldEntry(book, s.loreUid); } catch (_) {} } }
@@ -7982,7 +8000,7 @@ async function coreadCompressSlices(lo, hi) {
     }
     const rangeIds = new Set(inRange.map((s) => s.id));
     readerDialog.slices = (readerDialog.slices || []).filter((s) => !rangeIds.has(s.id));
-    readerDialog.slices.push({ id: sliceId, batch: 0, loreUid: finalUid || loreUid, summary, keywords, coveredFrom, coveredTo, ts: Date.now(), compressed: true });
+    readerDialog.slices.push({ id: sliceId, batch: 0, loreUid: finalUid || loreUid, summary, keywords, synonyms, coveredFrom, coveredTo, ts: Date.now(), compressed: true });
     coreadRenumberSlices();
     await coreadSaveDialog();
     return { ok: true };
@@ -8005,7 +8023,7 @@ async function coreadRegenSlice(sliceId) {
   try {
     const res = await coreadDistillSegment(seg, m, meta, names);
     if (!res) return { ok: false, reason: '该切片对应的对话已不存在或模型无返回' };
-    slice.summary = res.summary; slice.keywords = res.keywords; slice.ts = Date.now();
+    slice.summary = res.summary; slice.keywords = res.keywords; slice.synonyms = res.synonyms || {}; slice.ts = Date.now();
     try { const book = await getOrCreateChatBook(); if (book && slice.loreUid) await writeWorldEntry({ book, uid: slice.loreUid, content: res.summary, keys: res.keywords }); } catch (_) {}
     await coreadSaveDialog();
     return { ok: true, slice };
@@ -8034,21 +8052,131 @@ async function coreadDeleteSlice(sliceId) {
     try { const book = await getOrCreateChatBook(); if (book) await deleteWorldEntry(book, slice.loreUid); } catch (_) {}
   }
   readerDialog.slices.splice(idx, 1);
+  coreadEchoTtl.delete(sliceId);   // 顺带清回响，避免孤儿加分
   await coreadSaveDialog();
 }
 
 // 关键词召回：对给定「查询文本」在本书切片里做关键词命中，按命中数×新近度排序取前 n。
 // 返回 [{slice, hits:[命中的关键词]}]。零算力·纯本地字符串包含（与 ST 原生引擎判定同源思路）。
+/* ── 关键词召回内核（纯 JS·零算力·借鉴成熟项目的 BM25 + 中文 bigram 切词思路自研）──
+   文档 = 关键词(权重高) + 同义词 + 总结正文；查询 = 近期对话。
+   同义词归一：查询与文档都把「别称→标准词」替换后再切词，解决中文指代/简称漏召回。
+   回响粘性：近期被真实注入过的切片获得额外加分，避免记忆闪进闪出（tick 只在注入路径发生）。 */
+
+// CJK 感知切词：汉字出 1-gram + 2-gram（无空格语言靠 bigram 抓词），拉丁/数字整词。全部小写。
+function coreadTokenize(text) {
+  const s = String(text || '').toLowerCase();
+  const tokens = [];
+  const latin = s.match(/[a-z0-9]+/g);
+  if (latin) tokens.push(...latin);
+  const cjk = s.match(/[一-鿿㐀-䶿]+/g) || [];
+  for (const run of cjk) {
+    for (let i = 0; i < run.length; i++) {
+      tokens.push(run[i]);                                   // 1-gram
+      if (i + 1 < run.length) tokens.push(run.slice(i, i + 2)); // 2-gram
+    }
+  }
+  return tokens;
+}
+
+// 合并多张同义词表为并集 { 标准词: [别称...] }。
+function coreadMergeSynonyms(list) {
+  const out = {};
+  for (const syn of (list || [])) {
+    if (!isPlainObject(syn)) continue;
+    for (const [canon, aliases] of Object.entries(syn)) {
+      const cur = out[canon] || [];
+      out[canon] = uniqueClean([...cur, ...(Array.isArray(aliases) ? aliases : [])]);
+    }
+  }
+  return out;
+}
+
+// 用一张 { 标准词: [别称...] } 词典，把文本里出现的别称替换成标准词（长别称优先·避免子串误替）。
+function coreadApplySynonyms(text, dict) {
+  let s = String(text || '');
+  if (!dict || !Object.keys(dict).length) return s;
+  const pairs = [];
+  for (const [canon, aliases] of Object.entries(dict)) {
+    for (const a of (aliases || [])) if (a && a !== canon) pairs.push([a, canon]);
+  }
+  pairs.sort((x, y) => y[0].length - x[0].length);   // 长别称先替
+  for (const [alias, canon] of pairs) {
+    if (!alias) continue;
+    s = s.split(alias).join(canon);
+  }
+  return s;
+}
+
+// 回响池：sliceId → 剩余存活回合。仅 buildCompanionContext 真实注入时 tick（衰减+登记），UI 预览只读不写。
+const coreadEchoTtl = new Map();
+const COREAD_ECHO_LIFE = 2;      // 被召回后再存活 2 回合
+const COREAD_ECHO_BONUS = 0.6;   // 回响加分（相对 BM25 原始分的偏置·防闪烁不喧宾夺主）
+
+// 召回打分：BM25(k1=1.5,b=0.75) over 切片文档 + 同义词归一 + 回响加分。
+// 返回 [{ slice, hits, score }]，hits 保留「查询命中的原始关键词」供可视化高亮。n 为返回上限。
 function coreadRecallSlices(queryText, n) {
   const slices = readerDialog.slices || [];
   if (!slices.length) return [];
-  const q = String(queryText || '');
+
+  // 全局同义词词典（所有切片并集）——查询与每篇文档统一用它归一。
+  const globalDict = coreadMergeSynonyms(slices.map((s) => s.synonyms));
+  const qNorm = coreadApplySynonyms(queryText, globalDict);
+  const qTokens = coreadTokenize(qNorm);
+  if (!qTokens.length) return [];
+  const qSet = new Set(qTokens);
+
+  // 构建每篇文档的词频（关键词×3、同义词标准词×2、正文×1 加权拼接后切词）。
+  const docs = slices.map((s) => {
+    const kwText = (s.keywords || []).join(' ');
+    const canonText = Object.keys(s.synonyms || {}).join(' ');
+    const weighted = `${kwText} ${kwText} ${kwText} ${canonText} ${canonText} ${coreadApplySynonyms(s.summary, globalDict)}`;
+    const toks = coreadTokenize(weighted);
+    const tf = new Map();
+    for (const t of toks) tf.set(t, (tf.get(t) || 0) + 1);
+    return { tf, len: toks.length };
+  });
+  const N = docs.length;
+  const avgdl = docs.reduce((a, d) => a + d.len, 0) / N || 1;
+  // df 只需对查询里出现的 token 统计。
+  const df = new Map();
+  for (const t of qSet) {
+    let c = 0;
+    for (const d of docs) if (d.tf.has(t)) c++;
+    df.set(t, c);
+  }
+  const k1 = 1.5, b = 0.75;
   const scored = slices.map((s, i) => {
-    const hits = (s.keywords || []).filter((k) => k && q.includes(k));
-    return { slice: s, hits, recency: i };   // i 越大越新
-  }).filter((x) => x.hits.length);
-  scored.sort((a, b) => (b.hits.length - a.hits.length) || (b.recency - a.recency));
+    const d = docs[i];
+    let score = 0;
+    for (const t of qSet) {
+      const f = d.tf.get(t) || 0;
+      if (!f) continue;
+      const n_q = df.get(t) || 0;
+      const idf = Math.log(1 + (N - n_q + 0.5) / (n_q + 0.5));
+      score += idf * (f * (k1 + 1)) / (f + k1 * (1 - b + b * d.len / avgdl));
+    }
+    if (coreadEchoTtl.has(s.id)) score += COREAD_ECHO_BONUS;   // 回响粘性
+    // hits：查询里实际出现的原始关键词（归一后比对·供 UI 高亮与「命中数」显示）
+    const hits = (s.keywords || []).filter((k) => {
+      const kt = coreadTokenize(coreadApplySynonyms(k, globalDict));
+      return kt.length && kt.every((x) => qSet.has(x));
+    });
+    return { slice: s, hits, score, recency: i };
+  }).filter((x) => x.score > 0);
+  scored.sort((a, b2) => (b2.score - a.score) || (b2.recency - a.recency));
   return scored.slice(0, Math.max(0, n));
+}
+
+// 注入路径专用：先把上一轮的回响全体衰减，再登记本轮实际注入的切片。UI 预览调 coreadRecallSlices 不碰它。
+function coreadEchoTick(injectedSlices) {
+  for (const [id, ttl] of [...coreadEchoTtl.entries()]) {
+    if (ttl <= 1) coreadEchoTtl.delete(id);
+    else coreadEchoTtl.set(id, ttl - 1);
+  }
+  for (const h of (injectedSlices || [])) {
+    if (h?.slice?.id) coreadEchoTtl.set(h.slice.id, COREAD_ECHO_LIFE);
+  }
 }
 
 // 一键删除本「聊天×书」的全部伴读记忆（清 Lore 条目 + 清镜像 + 重置 cursor）。
@@ -8059,6 +8187,7 @@ async function coreadClearAllSlices() {
     if (book) { for (const s of slices) { if (s.loreUid) await deleteWorldEntry(book, s.loreUid); } }
   } catch (e) { console.warn(`[${MODULE_NAME}] clear slices failed`, e); }
   readerDialog.slices = [];
+  coreadEchoTtl.clear();   // 切片全清，回响池随之清空
   readerDialog.cursor = (readerDialog.messages || []).length;   // 已聊的都视作「不再总结」，避免立刻又重蒸
   await coreadSaveDialog();
 }
@@ -9451,6 +9580,7 @@ function renderMemRecordsTab(m) {
           <textarea class="sd-reader-mtextarea sd-reader-slice-edit" data-id="${htmlEscape(s.id)}" rows="3">${htmlEscape(s.summary || '')}</textarea>
           <label class="sd-reader-mlab">关键词（逗号分隔）</label>
           <input class="sd-reader-minput sd-reader-slice-keys-edit" data-id="${htmlEscape(s.id)}" value="${htmlEscape((s.keywords || []).join(', '))}">
+          ${Object.keys(s.synonyms || {}).length ? `<div class="sd-reader-slice-syn"><i class="fa-solid fa-arrows-left-right-to-line"></i> ${Object.entries(s.synonyms).map(([c, al]) => `${htmlEscape(c)}<span class="sd-muted">≈${htmlEscape((al || []).join('/'))}</span>`).join('　')}</div>` : ''}
           <div class="sd-reader-slice-foot">
             <span class="sd-muted">${s.ts ? new Date(s.ts).toLocaleString() : ''}${s.loreUid ? '' : ' · 未写入世界书'}</span>
             <span class="sd-reader-slice-acts">
@@ -9567,7 +9697,7 @@ function renderMemInjectTab(m) {
       <div class="sd-reader-injrow">
         <span class="sd-reader-slice-batch">#${batchOf(h.slice)}</span>
         <span class="sd-reader-injrow-keys">${(h.slice.keywords || []).map((k) => `<span class="sd-reader-slice-key ${scanText.includes(k) ? 'on' : ''}">${htmlEscape(k)}</span>`).join('')}</span>
-        <span class="sd-reader-injrow-score">命中 ${h.hits.length}</span>
+        <span class="sd-reader-injrow-score">命中 ${h.hits.length} · 分 ${(h.score || 0).toFixed(2)}</span>
       </div>`).join('')
     : '<div class="sd-reader-mempty">无候选。</div>';
 
