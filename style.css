@@ -3495,6 +3495,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-injslice-full { font-size: .82em; color: var(--sd-text); line-height: 1.55; }
 .sd-reader-injslice-keys { display: flex; flex-wrap: wrap; gap: 4px; }
 .sd-reader-injslice-tag { font-size: .68em; padding: 1px 8px; border-radius: 20px; background: #4caf7d; color: #fff; flex: 0 0 auto; }
+.sd-reader-injslice-tag.recent { background: var(--sd-accent); }
 /* 召回候选紧凑行 */
 .sd-reader-injrows { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
 .sd-reader-injrow { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 7px; background: var(--sd-glass-weak); }

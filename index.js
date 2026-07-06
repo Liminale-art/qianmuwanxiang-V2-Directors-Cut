@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.22';
+const VERSION = '1.7.23';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -489,7 +489,8 @@ const DEFAULT_SETTINGS = Object.freeze({
       autoDistill: true,            // 自动蒸馏总开关
       distillEvery: 20,             // 每积累 N 条新的双方对话气泡触发一次自动蒸馏（用户已定：按气泡数计）
       // 召回/注入（1C·用户已定：召回数与单切片字数留自定义·按切片数控不硬控 token）
-      recallCount: 2,               // 每次注入的记忆切片数（默认2·约600字·用户可改）
+      recallCount: 2,               // 每次「检索命中」注入的记忆切片数（默认2·用户可改）
+      recentInject: 1,              // 近景保底：最近 N 条切片无条件注入（不参与检索·防漏掉刚聊的·默认1·0=关）
       sliceMaxChars: 300,           // 单条切片总结的字数上限（默认300·松紧刚好）
       rerankTopN: 4,                // 开重排档时召回候选重排后保留数（用户可改）
     },
@@ -7332,6 +7333,8 @@ function coreadMemory() {
   if (!Number.isFinite(m.distillEvery)) m.distillEvery = 20;
   if (!Number.isFinite(m.recallCount)) m.recallCount = 2;
   m.recallCount = Math.max(0, Math.round(m.recallCount));
+  if (!Number.isFinite(m.recentInject)) m.recentInject = 1;
+  m.recentInject = Math.max(0, Math.round(m.recentInject));
   if (!Number.isFinite(m.sliceMaxChars)) m.sliceMaxChars = 300;
   m.sliceMaxChars = Math.max(50, Math.round(m.sliceMaxChars));
   if (!Number.isFinite(m.rerankTopN)) m.rerankTopN = 4;
@@ -7708,12 +7711,17 @@ async function buildCompanionContext(bookId, recallQuery = '') {
   // 记忆召回（关键词档·零算力）：本轮查询命中的历史切片，让书友记得你们以前聊过的想法
   let recallCount = 0;
   const mem = coreadMemory();
-  if (recallQuery && (mem.recallCount || 0) > 0) {
-    const hits = coreadRecallSlices(recallQuery, mem.recallCount);
-    coreadEchoTick(hits);   // 真实注入路径：衰减旧回响 + 登记本轮命中（防下轮闪断）
-    if (hits.length) {
-      recallCount = hits.length;
-      seg.push(`【你们以前聊过的（记忆·供你保持连贯·别照搬原话）】\n${hits.map((h, i) => `${i + 1}. ${h.slice.summary}`).join('\n')}`);
+  if (recallQuery && ((mem.recallCount || 0) > 0 || (mem.recentInject || 0) > 0)) {
+    // 近景保底：最近 N 条无条件带上，且从检索候选剔除（防重复）
+    const recent = coreadRecentSlices(mem.recentInject || 0);
+    const excludeIds = new Set(recent.map((h) => h.slice.id));
+    const hits = (mem.recallCount || 0) > 0 ? coreadRecallSlices(recallQuery, mem.recallCount, excludeIds) : [];
+    coreadEchoTick(hits);   // 真实注入路径：衰减旧回响 + 登记本轮检索命中（近景每轮都带·无需回响）
+    // 组装顺序：近景在前（最近的先），检索命中在后
+    const all = [...recent, ...hits];
+    if (all.length) {
+      recallCount = all.length;
+      seg.push(`【你们以前聊过的（记忆·供你保持连贯·别照搬原话）】\n${all.map((h, i) => `${i + 1}. ${h.slice.summary}`).join('\n')}`);
     }
   }
   seg.push(`【当前读到的段落（你与书友的共同视野·止于此处）】\n${win.visibleText || '（尚未开始阅读）'}`);
@@ -8113,10 +8121,20 @@ const coreadEchoTtl = new Map();
 const COREAD_ECHO_LIFE = 2;      // 被召回后再存活 2 回合
 const COREAD_ECHO_BONUS = 0.6;   // 回响加分（相对 BM25 原始分的偏置·防闪烁不喧宾夺主）
 
+// 取近景切片：按「覆盖到的最末对话下标」降序取最近 n 条（真·最近讨论·压缩切片也按其覆盖尾算）。返回 [{slice}] 与检索结果同构。
+function coreadRecentSlices(n) {
+  if (n <= 0) return [];
+  const slices = (readerDialog.slices || []).slice()
+    .sort((a, b) => (Number(b.coveredTo) || 0) - (Number(a.coveredTo) || 0));
+  return slices.slice(0, n).map((s) => ({ slice: s, hits: s.keywords || [], score: null, recent: true }));
+}
+
 // 召回打分：BM25(k1=1.5,b=0.75) over 切片文档 + 同义词归一 + 回响加分。
 // 返回 [{ slice, hits, score }]，hits 保留「查询命中的原始关键词」供可视化高亮。n 为返回上限。
-function coreadRecallSlices(queryText, n) {
-  const slices = readerDialog.slices || [];
+// excludeIds：近景已固定注入的切片 id 集合，从检索候选剔除防重复。
+function coreadRecallSlices(queryText, n, excludeIds) {
+  let slices = readerDialog.slices || [];
+  if (excludeIds && excludeIds.size) slices = slices.filter((s) => !excludeIds.has(s.id));
   if (!slices.length) return [];
 
   // 全局同义词词典（所有切片并集）——查询与每篇文档统一用它归一。
@@ -9677,19 +9695,23 @@ function renderMemInjectTab(m) {
   const msgs = readerDialog.messages || [];
   const recentTxt = msgs.slice(-8).map((x) => x.text || '').join(' ');
   const scanText = recentTxt || '（还没有对话）';
-  const recall = coreadRecallSlices(scanText, Math.max(slices.length, 1));   // 全量算命中（候选池）
-  const injected = recall.slice(0, m.recallCount || 2);   // 实际注入=命中里按新近取前 recallCount
+  // 镜像 buildCompanionContext 的实际注入逻辑：近景保底(剔出检索池) + 检索命中
+  const recent = coreadRecentSlices(m.recentInject || 0);
+  const excludeIds = new Set(recent.map((h) => h.slice.id));
+  const recall = coreadRecallSlices(scanText, Math.max(slices.length, 1), excludeIds);   // 全量算命中（候选池·已排除近景）
+  const hits = recall.slice(0, m.recallCount || 0);   // 实际注入的检索部分
+  const injected = [...recent, ...hits];              // 实际注入 = 近景 + 检索
 
   const batchOf = (s) => s.compressed ? '合并' : (s.batch || '?');
-  // ① 实际注入：显完整总结全文
+  // ① 实际注入：显完整总结全文（近景标「近景」·检索标「检索」）
   const injCards = injected.length
     ? injected.map((h) => `
       <div class="sd-reader-injslice inj">
-        <div class="sd-reader-injslice-head"><span class="sd-reader-slice-batch">#${batchOf(h.slice)}</span><span class="sd-reader-injslice-tag">注入</span></div>
+        <div class="sd-reader-injslice-head"><span class="sd-reader-slice-batch">#${batchOf(h.slice)}</span><span class="sd-reader-injslice-tag${h.recent ? ' recent' : ''}">${h.recent ? '近景' : '检索'}</span></div>
         <div class="sd-reader-injslice-full">${htmlEscape(h.slice.summary || '')}</div>
         <div class="sd-reader-injslice-keys">${(h.slice.keywords || []).map((k) => `<span class="sd-reader-slice-key ${scanText.includes(k) ? 'on' : ''}">${htmlEscape(k)}</span>`).join('')}</div>
       </div>`).join('')
-    : '<div class="sd-reader-mempty">本轮无命中切片（对话里没出现任何切片关键词）。</div>';
+    : '<div class="sd-reader-mempty">本轮无注入切片（近景关闭且无检索命中）。</div>';
 
   // ② 召回候选：只显编号+关键词+命中数（紧凑）
   const candRows = recall.length
@@ -9716,7 +9738,8 @@ function renderMemInjectTab(m) {
     </div>
     <div class="sd-reader-mcard">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-sliders"></i> 注入设置</div>
-      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">每次注入切片数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-recall" min="0" step="1" value="${m.recallCount}"></div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">检索命中注入数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-recall" min="0" step="1" value="${m.recallCount}"></div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">近景保底条数<i class="fa-solid fa-circle-info" title="最近 N 条切片无条件注入·不参与检索·防漏掉刚聊的内容·0=关"></i></span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-recent" min="0" step="1" value="${m.recentInject}"></div>
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">重排后保留数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-reranktop" min="1" step="1" value="${m.rerankTopN}"></div>
     </div>
     <div class="sd-reader-mcard">
@@ -10516,6 +10539,7 @@ function bindReaderStageEvents(stageRoot) {
     // 自动/手动总结数值 + 注入设置（数字框·不重渲）
     if (e.target.closest('.sd-reader-distill-every')) { m.distillEvery = Math.max(2, Number(e.target.value) || 20); saveSettings(); return; }
     if (e.target.closest('.sd-reader-inj-recall')) { m.recallCount = Math.max(0, Number(e.target.value) || 0); saveSettings(); return; }
+    if (e.target.closest('.sd-reader-inj-recent')) { m.recentInject = Math.max(0, Number(e.target.value) || 0); saveSettings(); return; }
     if (e.target.closest('.sd-reader-inj-reranktop')) { m.rerankTopN = Math.max(1, Number(e.target.value) || 4); saveSettings(); return; }
     const map = [
       ['.sd-reader-vector-apiurl', 'vectorApiUrl'], ['.sd-reader-vector-apikey', 'vectorApiKey'],
