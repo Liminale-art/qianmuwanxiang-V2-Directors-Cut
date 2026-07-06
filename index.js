@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.25';
+const VERSION = '1.7.26';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -8439,6 +8439,30 @@ async function coreadLoadDialog(bookId) {
   // 若对话抽屉正开在对话 tab，载入后补渲消息
   const body = document.querySelector('#sd-reader-portal .sd-reader-dtab-chat');
   if (body) { body.innerHTML = renderReaderDialogMessages(); scrollDialogToBottom(); }
+  coreadSweepOrphanLore();   // 懒清扫：本聊天世界书里指向「已删书」的孤儿伴读条目（每聊天每会话一次）
+}
+
+// 清扫当前聊天绑定世界书里指向「书目已不存在」的伴读条目（uid=coread::bookId::*·bookId 不在书库）。
+// 每聊天每会话跑一次即可（切聊天才可能碰到别的聊天残留）。静默进行，不打扰。
+const coreadSweptChats = new Set();
+async function coreadSweepOrphanLore() {
+  try {
+    const chatKey = getChatKey();
+    if (!chatKey || coreadSweptChats.has(chatKey)) return;
+    coreadSweptChats.add(chatKey);
+    const book = await getOrCreateChatBook();
+    if (!book) return;
+    const liveIds = new Set((coread().books || []).map((b) => b.id));
+    const entries = await getWorldBookEntries(book);
+    let cleaned = 0;
+    for (const e of (entries || [])) {
+      const u = String(e?.uid ?? '');
+      if (!u.startsWith('coread::')) continue;
+      const bId = u.split('::')[1] || '';
+      if (bId && !liveIds.has(bId)) { try { await deleteWorldEntry(book, u); cleaned++; } catch (_) {} }
+    }
+    if (cleaned) console.info(`[${MODULE_NAME}] 清扫孤儿伴读记忆条目 ${cleaned} 条（原书已删）`);
+  } catch (_) {}
 }
 
 // 持久化当前会话（防抖交给 IndexedDB 本身足够快·每轮收发后调）
@@ -8977,16 +9001,49 @@ async function coreadTriggerImport(refillBookId = '') {
   input.click();
 }
 
+/* 删书连带清理该书的伴读记忆，避免「管不了又继续污染主线」的孤儿：
+   ① 对话桶(IndexedDB *::bookId·所有聊天)——删书后再也打不开，纯废数据。
+   ② 当前聊天绑定世界书里 uid 前缀 coread::bookId:: 的切片 + 容器条目——否则会继续注入主线。
+   其他聊天世界书里的同书条目无法在此触及(需切到那聊天)，靠切聊天时的懒清扫兜底。返回 {buckets, loreEntries} 计数。 */
+async function coreadPurgeBookMemory(bookId) {
+  let buckets = 0, loreEntries = 0;
+  // ① 对话桶：匹配 `${任意chatKey}::${bookId}`（按 ::bookId 结尾判定·bookId 全局唯一）
+  try {
+    const keys = await blobStore.listReaderChatKeys();
+    const suffix = `::${bookId}`;
+    for (const k of keys) {
+      if (String(k).endsWith(suffix)) { try { await blobStore.deleteReaderChat(k); buckets++; } catch (_) {} }
+    }
+  } catch (_) {}
+  // ② 当前聊天绑定世界书里该书的切片 + 容器条目（按 uid 前缀）
+  try {
+    const book = await getOrCreateChatBook();
+    if (book) {
+      const entries = await getWorldBookEntries(book);
+      const prefix = `coread::${bookId}::`;
+      for (const e of (entries || [])) {
+        const u = String(e?.uid ?? '');
+        if (u.startsWith(prefix)) { try { await deleteWorldEntry(book, u); loreEntries++; } catch (_) {} }
+      }
+    }
+  } catch (_) {}
+  return { buckets, loreEntries };
+}
+
 async function coreadDeleteBook(bookId) {
   const meta = coreadBookMeta(bookId);
   if (!meta) return;
+  // 删当前打开的书 → 先卸载阅读器 portal，避免 readerView / readerDialog 悬空
+  if (readerView?.bookId === bookId) unmountReaderPortal();
+  // 若删的正是当前会话的书，清掉内存镜像防其 autosave 复活桶
+  if (readerDialog?.bookId === bookId) { readerDialog = { bucket: '', bookId: '', messages: [], summaries: [], slices: [], cursor: 0, loaded: false }; coreadEchoTtl.clear(); }
   coread().books = coread().books.filter((b) => b.id !== bookId);
   saveSettings();
   try { await blobStore.deleteBook(bookId); } catch (_) {}
   try { await blobStore.deleteReaderImages(bookId); } catch (_) {}
-  // 删当前打开的书 → 卸载阅读器 portal 避免 readerView 悬空
-  if (readerView?.bookId === bookId) unmountReaderPortal();
-  toast(`已删除《${meta.title}》。`, 'info');
+  const purged = await coreadPurgeBookMemory(bookId);   // 连带清对话桶 + Lore 记忆条目
+  const extra = purged.loreEntries || purged.buckets ? `（并清理了 ${purged.loreEntries} 条记忆条目、${purged.buckets} 个会话）` : '';
+  toast(`已删除《${meta.title}》${extra}。`, 'info');
 }
 
 /* ── 进入/退出阅读器 ───────────────────────────────────── */
@@ -10162,7 +10219,7 @@ function bindLibraryViewEvents(root) {
     e.stopPropagation();
     const id = el.dataset.book;
     const b = coreadBookMeta(id);
-    if (b && await confirmDialog(`确定删除《${b.title}》？`, '正文与阅读进度都会清除（不影响已写入聊天世界书的伴读记忆）。')) {
+    if (b && await confirmDialog(`确定删除《${b.title}》？`, '正文、阅读进度，以及这本书的伴读对话与记忆条目都会一并清除，不可恢复。')) {
       await coreadDeleteBook(id); renderModal();
     }
   }));
@@ -10192,7 +10249,7 @@ function bindLibraryViewEvents(root) {
     if (!checks.length) return;
     const ids = checks.map((c) => c.dataset.book);
     const titles = ids.map((id) => coreadBookMeta(id)?.title || id).join('、');
-    if (await confirmDialog(`确定删除 ${ids.length} 本书？`, `《${titles}》\n\n正文与阅读进度都会清除（不影响已写入聊天世界书的伴读记忆）。`)) {
+    if (await confirmDialog(`确定删除 ${ids.length} 本书？`, `《${titles}》\n\n正文、阅读进度，以及这些书的伴读对话与记忆条目都会一并清除，不可恢复。`)) {
       for (const id of ids) await coreadDeleteBook(id);
       renderModal();
     }
