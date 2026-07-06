@@ -1,0 +1,35 @@
+# 仅追踪「插件运行所需」文件。本地参考资料、IDE 配置、临时产物一律忽略。
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器 / IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# 临时 / 草稿
+.new_parsed.json
+*.tmp
+*.bak
+*~
+
+# 本地参考文档（不进仓·按 1B 决策仅本地留存）
+minimax相关说明
+minimax细节想法
+minimax_single_tts_v1_2.json
+关于千幕.md
+schema.md
+吱吱新增剧场
+千幕小剧场修订版本
+
+# Node / 包管理（即便目前不用，预防误产）
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# 日志
+*.log

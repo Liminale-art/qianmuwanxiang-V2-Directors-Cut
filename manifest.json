@@ -1,0 +1,21 @@
+{
+  "display_name": "千幕万象",
+  "loading_order": 20,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Liminale",
+  "version": "1.7.21",
+  "homePage": "https://github.com/liminale1525/story-director.git",
+  "auto_update": true,
+  "minimum_client_version": "1.12.0",
+  "generate_interceptor": "qianmuDirectorInterceptor",
+  "hooks": {
+    "activate": "onActivate",
+    "enable": "onEnable",
+    "disable": "onDisable",
+    "update": "onUpdate",
+    "delete": "onDelete"
+  }
+}
