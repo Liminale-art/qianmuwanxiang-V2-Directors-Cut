@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.23';
+const VERSION = '1.7.24';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -492,6 +492,10 @@ const DEFAULT_SETTINGS = Object.freeze({
       recallCount: 2,               // 每次「检索命中」注入的记忆切片数（默认2·用户可改）
       recentInject: 1,              // 近景保底：最近 N 条切片无条件注入（不参与检索·防漏掉刚聊的·默认1·0=关）
       sliceMaxChars: 300,           // 单条切片总结的字数上限（默认300·松紧刚好）
+      // 反哺主线·共读记忆常驻容器：把最近 N 条切片总结「原样」拼成一条常驻世界书条目，每轮注入主线，
+      // 让主线角色知道你们共读讨论过什么。切片总结原本什么样就注入什么样·不二次改写·不加解读前缀（防歧义）。
+      containerEnabled: false,      // 常驻容器总开关（默认关·用户开·反哺主线是可选增强）
+      containerCount: 3,            // 容器纳入最近 N 条切片总结（默认3）
       rerankTopN: 4,                // 开重排档时召回候选重排后保留数（用户可改）
     },
   },
@@ -1465,6 +1469,8 @@ async function writeWorldEntry(opts = {}) {
   if (Array.isArray(opts.keys) && opts.keys.length) await set('key', opts.keys.map(escapeSlashValue).join(','));
   if (opts.order != null) await set('order', Number(opts.order));
   if (opts.position != null) await set('position', Number(opts.position));
+  if (opts.constant != null) await set('constant', opts.constant ? 1 : 0);   // 常驻(蓝灯)=每轮无条件注入·不依赖关键词触发
+  if (opts.enable) await set('disable', 0);   // 复用固定 uid 的条目(如容器)重建时须复位禁用位·否则曾禁用过就注入不出来
   if (opts.vectorized != null) await set('vectorized', opts.vectorized ? 1 : 0);
   if (opts.group != null) await set('group', escapeSlashValue(opts.group));
   return uid;
@@ -7335,6 +7341,9 @@ function coreadMemory() {
   m.recallCount = Math.max(0, Math.round(m.recallCount));
   if (!Number.isFinite(m.recentInject)) m.recentInject = 1;
   m.recentInject = Math.max(0, Math.round(m.recentInject));
+  m.containerEnabled = !!m.containerEnabled;
+  if (!Number.isFinite(m.containerCount)) m.containerCount = 3;
+  m.containerCount = Math.max(1, Math.round(m.containerCount));
   if (!Number.isFinite(m.sliceMaxChars)) m.sliceMaxChars = 300;
   m.sliceMaxChars = Math.max(50, Math.round(m.sliceMaxChars));
   if (!Number.isFinite(m.rerankTopN)) m.rerankTopN = 4;
@@ -7907,6 +7916,7 @@ async function coreadDistill(manual = false) {
     if (!made) return { ok: false, reason: '模型没有返回有效总结' };
     readerDialog.cursor = msgs.length;
     await coreadSaveDialog();
+    await coreadRefreshContainer(meta);   // 切片有变→重建共读记忆容器
     return { ok: true, made };
   } catch (e) {
     console.warn(`[${MODULE_NAME}] distill failed`, e);
@@ -7949,6 +7959,7 @@ async function coreadManualSummarize(fromIdx, toIdx) {
     // cursor 推进到「已覆盖的最大位置+1」（区间末尾与原 cursor 取大·别回退已总结进度）
     readerDialog.cursor = Math.max(to + 1, Number(readerDialog.cursor) || 0);
     await coreadSaveDialog();
+    await coreadRefreshContainer(meta);   // 切片有变→重建共读记忆容器
     return { ok: true, made, mode: overlapped ? 'resummarize' : 'incremental' };
   } catch (e) {
     return { ok: false, reason: e?.message === 'INVALID_API_SETTINGS' ? 'API 未配置' : (e?.message || '总结失败'), mode: 'incremental' };
@@ -8011,6 +8022,7 @@ async function coreadCompressSlices(lo, hi) {
     readerDialog.slices.push({ id: sliceId, batch: 0, loreUid: finalUid || loreUid, summary, keywords, synonyms, coveredFrom, coveredTo, ts: Date.now(), compressed: true });
     coreadRenumberSlices();
     await coreadSaveDialog();
+    await coreadRefreshContainer(meta);   // 切片有变→重建共读记忆容器
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: e?.message || '压缩失败' };
@@ -8034,6 +8046,7 @@ async function coreadRegenSlice(sliceId) {
     slice.summary = res.summary; slice.keywords = res.keywords; slice.synonyms = res.synonyms || {}; slice.ts = Date.now();
     try { const book = await getOrCreateChatBook(); if (book && slice.loreUid) await writeWorldEntry({ book, uid: slice.loreUid, content: res.summary, keys: res.keywords }); } catch (_) {}
     await coreadSaveDialog();
+    await coreadRefreshContainer(meta);   // 切片内容有变→重建共读记忆容器
     return { ok: true, slice };
   } catch (e) {
     return { ok: false, reason: e?.message || '重新生成失败' };
@@ -8049,6 +8062,7 @@ async function coreadSaveSliceEdit(sliceId, summary, keywordsStr) {
   slice.ts = Date.now();
   try { const book = await getOrCreateChatBook(); if (book && slice.loreUid) await writeWorldEntry({ book, uid: slice.loreUid, content: slice.summary, keys: slice.keywords }); } catch (_) {}
   await coreadSaveDialog();
+  await coreadRefreshContainer();   // 切片内容有变→重建共读记忆容器
 }
 
 // 删除单条切片（连同 Lore 条目）。
@@ -8062,6 +8076,7 @@ async function coreadDeleteSlice(sliceId) {
   readerDialog.slices.splice(idx, 1);
   coreadEchoTtl.delete(sliceId);   // 顺带清回响，避免孤儿加分
   await coreadSaveDialog();
+  await coreadRefreshContainer();   // 切片有变→重建共读记忆容器
 }
 
 // 关键词召回：对给定「查询文本」在本书切片里做关键词命中，按命中数×新近度排序取前 n。
@@ -8197,6 +8212,53 @@ function coreadEchoTick(injectedSlices) {
   }
 }
 
+/* ── 反哺主线·共读记忆常驻容器 ──
+   把最近 N 条切片的 summary「原样」拼成一条常驻(constant)世界书条目，每轮无条件注入主线，
+   让主线角色知道你们共读时讨论/总结过什么。切片总结原本什么样就注入什么样，不二次改写、不加解读前缀。
+   容器 uid 固定 coread::bookId::__container，随切片增删改重建；关键词触发的逐切片条目照旧并存。 */
+function coreadContainerUid(bookId) {
+  return `coread::${bookId || readerDialog.bookId || 'unknown'}::__container`;
+}
+
+// 组织容器正文：最近 containerCount 条切片总结原文，按阅读顺序（coveredFrom 升序）编号列出。
+function coreadBuildContainerContent(meta) {
+  const m = coreadMemory();
+  const n = Math.max(1, m.containerCount || 3);
+  // 取最近 N 条（按覆盖尾降序取新），再按阅读顺序（覆盖头升序）排列，读起来自然
+  const recent = (readerDialog.slices || []).slice()
+    .sort((a, b) => (Number(b.coveredTo) || 0) - (Number(a.coveredTo) || 0))
+    .slice(0, n)
+    .sort((a, b) => (Number(a.coveredFrom) || 0) - (Number(b.coveredFrom) || 0));
+  if (!recent.length) return '';
+  const title = `${meta?.title || '本书'}`;
+  const lines = recent.map((s, i) => `${i + 1}. ${String(s.summary || '').trim()}`).join('\n');
+  // 标题忠实说明这是共读讨论与总结记忆——不歧义化，不框定为「谁的想法」
+  return `【共读讨论与总结记忆·《${title}》】\n（以下为共读过程中的对话总结，供你了解彼此聊过的内容）\n${lines}`;
+}
+
+// 重建/清理容器条目。切片增删改、设置变更后调用。开关关或无切片则禁用条目。
+async function coreadRefreshContainer(metaArg) {
+  const m = coreadMemory();
+  let book = '';
+  try { book = await getOrCreateChatBook(); } catch (_) {}
+  if (!book) return;
+  const bookId = readerDialog.bookId || 'unknown';
+  const cUid = coreadContainerUid(bookId);
+  const meta = metaArg || coreadBookMeta(bookId) || {};
+  const content = m.containerEnabled ? coreadBuildContainerContent(meta) : '';
+  try {
+    if (!content) { await deleteWorldEntry(book, cUid); return; }   // 关或空→禁用（deleteWorldEntry 是清空+禁用）
+    await writeWorldEntry({
+      book, uid: cUid,
+      comment: `${coreadLorePrefix(meta.title)} 共读记忆`,
+      content,
+      order: 45,           // 略高于逐切片(50 数字小=更靠前)——容器先行，逐切片补充
+      constant: true,      // 常驻蓝灯·每轮注入·不依赖关键词
+      enable: true,        // 复位禁用位（曾 toggle 关过→再开须重新启用）
+    });
+  } catch (e) { console.warn(`[${MODULE_NAME}] refresh container failed`, e); }
+}
+
 // 一键删除本「聊天×书」的全部伴读记忆（清 Lore 条目 + 清镜像 + 重置 cursor）。
 async function coreadClearAllSlices() {
   const slices = readerDialog.slices || [];
@@ -8208,6 +8270,7 @@ async function coreadClearAllSlices() {
   coreadEchoTtl.clear();   // 切片全清，回响池随之清空
   readerDialog.cursor = (readerDialog.messages || []).length;   // 已聊的都视作「不再总结」，避免立刻又重蒸
   await coreadSaveDialog();
+  await coreadRefreshContainer();   // 无切片→容器随之禁用
 }
 
 // Chat Lore 写入自检：写一条带 coread:: 前缀的测试条目再清理，验证世界书写入通道。控制台 await qmTestLoreWrite() 或点记忆 tab 底部按钮。
@@ -9743,6 +9806,15 @@ function renderMemInjectTab(m) {
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">重排后保留数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-reranktop" min="1" step="1" value="${m.rerankTopN}"></div>
     </div>
     <div class="sd-reader-mcard">
+      <div class="sd-reader-mcard-head"><i class="fa-solid fa-arrow-right-arrow-left"></i> 反哺主线（共读记忆常驻）</div>
+      <div class="sd-reader-mhint">开启后，把最近若干条共读讨论总结拼成一条<b>常驻</b>世界书条目，每轮无条件注入主线，让主线角色知道你们共读时聊过什么。切片总结原样注入，不二次改写。</div>
+      <div class="sd-reader-mrow">
+        <span class="sd-reader-mrow-lab">开启反哺主线</span>
+        ${renderMemSwitch('sd-reader-container-toggle', m.containerEnabled)}
+      </div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">容器纳入最近条数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-container-count" min="1" step="1" value="${m.containerCount}"${m.containerEnabled ? '' : ' disabled'}></div>
+    </div>
+    <div class="sd-reader-mcard">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-magnifying-glass"></i> 本次召回候选（${recall.length}）</div>
       <div class="sd-reader-scanbox">${htmlEscape(scanText.slice(-240))}</div>
       <div class="sd-reader-injrows">${candRows}</div>
@@ -10508,6 +10580,7 @@ function bindReaderStageEvents(stageRoot) {
     if (e.target.closest('.sd-reader-vector-en')) { m.vectorEnabled = e.target.checked; saveSettings(); return; }
     if (e.target.closest('.sd-reader-rerank-en')) { m.rerankEnabled = e.target.checked; saveSettings(); return; }
     if (e.target.closest('.sd-reader-autodistill-en')) { m.autoDistill = e.target.checked; saveSettings(); return; }
+    if (e.target.closest('.sd-reader-container-toggle')) { m.containerEnabled = e.target.checked; saveSettings(); coreadRefreshContainer(); rerenderMore(); return; }
     // 模型下拉选中 → 直接落库（向量/重排/总结通用）
     const modelPick = e.target.closest('.sd-reader-mem-modelpick');
     if (modelPick) {
@@ -10541,6 +10614,7 @@ function bindReaderStageEvents(stageRoot) {
     if (e.target.closest('.sd-reader-inj-recall')) { m.recallCount = Math.max(0, Number(e.target.value) || 0); saveSettings(); return; }
     if (e.target.closest('.sd-reader-inj-recent')) { m.recentInject = Math.max(0, Number(e.target.value) || 0); saveSettings(); return; }
     if (e.target.closest('.sd-reader-inj-reranktop')) { m.rerankTopN = Math.max(1, Number(e.target.value) || 4); saveSettings(); return; }
+    if (e.target.closest('.sd-reader-container-count')) { m.containerCount = Math.max(1, Number(e.target.value) || 3); saveSettings(); coreadRefreshContainer(); return; }
     const map = [
       ['.sd-reader-vector-apiurl', 'vectorApiUrl'], ['.sd-reader-vector-apikey', 'vectorApiKey'],
       ['.sd-reader-rerank-apiurl', 'rerankApiUrl'], ['.sd-reader-rerank-apikey', 'rerankApiKey'],
