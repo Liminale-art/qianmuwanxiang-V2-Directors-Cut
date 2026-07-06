@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.24';
+const VERSION = '1.7.25';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -7828,25 +7828,74 @@ function coreadDateHint() {
   } catch (_) { return ''; }
 }
 
-// 蒸馏单段对话 → {summary, keywords}（纯模型调用+解析·不写盘）。失败抛错/返回 null。
+/* 蒸馏单段对话 → {summary, keywords, synonyms}。四道闸（越靠后越贵）保证「绝不整条失败」：
+   闸1 宽松解析：extractJson 已处理代码围栏/尾逗号/缺逗号/截断修复。
+   闸2 本地修复：字段缺失填默认、类型强转、软字段(keywords/synonyms)降级，能本地补的不回灌模型。
+   闸3 局部重问：仅当 summary 解析不出来才重试（最多 COREAD_DISTILL_RETRY 次·追加更硬的纯 JSON 提醒）。
+   闸4 保底落地：仍失败→从原始文本抢救出 summary（正则抠 summary 字段 / 退化为去壳纯文本），keywords 兜底书名。
+   永不返回 null（除非整段无有效对话）。 */
+const COREAD_DISTILL_RETRY = 2;
+
 async function coreadDistillSegment(segMsgs, m, meta, names) {
   const seg = (segMsgs || []).filter((x) => String(x.text || '').trim());
   if (!seg.length) return null;
   let transcript = seg.map((x) => `${x.role === 'user' ? names.user : names.char}：${x.text}`).join('\n');
-  // 上下文字数上限（0=不限）：超限保留最近部分（尾），防溢出——替代旧自动分批
   const ctxCap = Number(m.summaryContextChars) || 0;
   if (ctxCap > 0 && transcript.length > ctxCap) transcript = '……（较早内容略）\n' + transcript.slice(-ctxCap);
-  // 阅读时间锚点：开「记录阅读时间」才带——记录阅读与对话的年月日 + 读至进度（默认关）
   const dateHint = m.readDateInSummary ? [coreadDateHint(), coreadProgressHint(meta)].filter(Boolean).join(' · ') : '';
   const sysPrompt = coreadBuildDistillPrompt(m, meta, names, dateHint);
-  const raw = await callCoreadModel(sysPrompt, `【对话】\n${transcript}`);
-  const parsed = extractJson(String(raw || '')) || {};
-  const summary = String(parsed.summary || '').trim();   // 不再按 sliceMaxChars 截断（字数由提示词约束·防裁切内容）
+
+  let lastRaw = '';
+  for (let attempt = 0; attempt <= COREAD_DISTILL_RETRY; attempt++) {
+    // 闸3：重试轮在 user 侧追加更硬的纯 JSON 提醒（不改可见的系统提示词）
+    const userMsg = attempt === 0
+      ? `【对话】\n${transcript}`
+      : `【对话】\n${transcript}\n\n【重要】上一次输出无法解析为 JSON。请严格只输出形如 {"summary":"...","keywords":["..."],"synonyms":{}} 的纯 JSON，不要任何解释、不要代码块标记。`;
+    const raw = String(await callCoreadModel(sysPrompt, userMsg) || '');
+    lastRaw = raw;
+    // 闸1 宽松解析
+    let parsed = null;
+    try { parsed = extractJson(raw); } catch (_) { parsed = null; }
+    // 闸2 本地修复
+    const built = parsed ? coreadBuildSliceFromParsed(parsed, meta) : null;
+    if (built) return built;
+    // summary 抠不出来 → 进入下一轮重问（闸3）
+  }
+  // 闸4 保底落地：从最后一次原始文本抢救
+  const salvaged = coreadSalvageSummary(lastRaw);
+  if (salvaged) {
+    console.warn(`[${MODULE_NAME}] 蒸馏解析多次失败，已保底落地（关键词可能缺失）`);
+    return { summary: salvaged, keywords: [meta.title || '伴读'], synonyms: {}, salvaged: true };
+  }
+  return null;   // 连保底文本都没有（模型完全空返回）
+}
+
+// 闸2：从已解析对象组装切片，字段缺失/类型错都本地修复；summary 实在抠不出返回 null 触发重问。
+function coreadBuildSliceFromParsed(parsed, meta) {
+  if (!isPlainObject(parsed)) return null;
+  const summary = String(parsed.summary || '').trim();
   if (!summary) return null;
-  let keywords = uniqueClean((Array.isArray(parsed.keywords) ? parsed.keywords : []).map((k) => String(k || '').trim()).filter(Boolean)).slice(0, 8);
-  if (!keywords.length) keywords = [meta.title || '伴读'];
-  const synonyms = coreadNormalizeSynonyms(parsed.synonyms);   // 软字段·失败降级为 {}·绝不让蒸馏整条失败
+  let keywords = uniqueClean((Array.isArray(parsed.keywords) ? parsed.keywords : [])
+    .map((k) => String(k || '').trim()).filter(Boolean)).slice(0, 8);
+  if (!keywords.length) keywords = [meta.title || '伴读'];   // 软字段降级：关键词缺失不重问，兜底书名
+  const synonyms = coreadNormalizeSynonyms(parsed.synonyms);  // 软字段降级为 {}
   return { summary, keywords, synonyms };
+}
+
+// 闸4：从无法解析的原始文本里抢救 summary——先正则抠 "summary":"..."，抠不到就去壳当纯文本。
+function coreadSalvageSummary(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return '';
+  // ① 正则抠 summary 字段值（容忍其余部分是坏 JSON）
+  const mMatch = text.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (mMatch) {
+    try { return JSON.parse(`"${mMatch[1]}"`).trim(); } catch (_) { return mMatch[1].replace(/\\"/g, '"').trim(); }
+  }
+  // ② 退化为纯文本：去代码围栏与最外层花括号残片
+  const stripped = text.replace(/^```(?:json)?/i, '').replace(/```$/g, '').replace(/^[{\[]+|[}\]]+$/g, '').trim();
+  // 若剩下的还像个键值残骸（含 "keywords" 等），说明是坏 JSON 而非散文，放弃保底
+  if (/"(summary|keywords|synonyms)"\s*:/.test(stripped)) return '';
+  return stripped.slice(0, 2000);   // 当作模型直接吐了散文总结
 }
 
 // 把模型吐的 synonyms 归一成 { 标准词: [别称...] }。容错各种脏格式（非对象/值非数组/空串），失败一律降级为 {}。
@@ -7894,7 +7943,7 @@ async function coreadDistillRange(fromIdx, toIdx, m, meta, names) {
     }
   } catch (e) { console.warn(`[${MODULE_NAME}] distill write lore failed`, e); }
   readerDialog.slices = Array.isArray(readerDialog.slices) ? readerDialog.slices : [];
-  readerDialog.slices.push({ id: sliceId, batch, loreUid: finalUid || loreUid, summary: res.summary, keywords: res.keywords, synonyms: res.synonyms || {}, coveredFrom: fromIdx, coveredTo: toIdx, ts: Date.now() });
+  readerDialog.slices.push({ id: sliceId, batch, loreUid: finalUid || loreUid, summary: res.summary, keywords: res.keywords, synonyms: res.synonyms || {}, coveredFrom: fromIdx, coveredTo: toIdx, ts: Date.now(), ...(res.salvaged ? { salvaged: true } : {}) });
   return 1;
 }
 
@@ -7987,13 +8036,15 @@ async function coreadCompressSlices(lo, hi) {
     inRange.sort((a, b) => (Number(a.batch) || 0) - (Number(b.batch) || 0));
     const merged = inRange.map((s, i) => `${i + 1}. ${s.summary}`).join('\n');
     const sysPrompt = `你是伴读记忆整理助手。下面是「${names.user}」伴读《${meta.title || ''}》时的多条历史记忆，请把它们压缩合并成一条更凝练的记忆，保留关键人物/情节/态度变化，去除重复。只输出纯 JSON：{"summary":"不超过${Math.max(m.sliceMaxChars, 400)}字的第三人称合并总结","keywords":["3-8个检索关键词"]}`;
-    const raw = await callCoreadModel(sysPrompt, `【多条历史记忆】\n${merged}`);
-    const parsed = extractJson(String(raw || '')) || {};
-    let summary = String(parsed.summary || '').trim();
+    const raw = String(await callCoreadModel(sysPrompt, `【多条历史记忆】\n${merged}`) || '');
+    let parsed = null;
+    try { parsed = extractJson(raw); } catch (_) { parsed = null; }
+    // 宽松解析失败→保底抢救 summary（压缩是手动操作·抢救不出才报失败让用户重试·绝不误删旧切片）
+    let summary = String((isPlainObject(parsed) && parsed.summary) || '').trim() || coreadSalvageSummary(raw);
     if (!summary) return { ok: false, reason: '模型没有返回有效结果' };
     const cap = Math.max(m.sliceMaxChars, 400);
     if (summary.length > cap) summary = summary.slice(0, cap);
-    let keywords = uniqueClean((Array.isArray(parsed.keywords) ? parsed.keywords : []).map((k) => String(k || '').trim()).filter(Boolean)).slice(0, 8);
+    let keywords = uniqueClean((isPlainObject(parsed) && Array.isArray(parsed.keywords) ? parsed.keywords : []).map((k) => String(k || '').trim()).filter(Boolean)).slice(0, 8);
     if (!keywords.length) keywords = inRange.flatMap((s) => s.keywords || []).slice(0, 6);
     // 合并子切片的同义词表（并集·压缩不重新问模型也不丢别称知识）
     const synonyms = coreadMergeSynonyms(inRange.map((s) => s.synonyms));
@@ -8044,6 +8095,7 @@ async function coreadRegenSlice(sliceId) {
     const res = await coreadDistillSegment(seg, m, meta, names);
     if (!res) return { ok: false, reason: '该切片对应的对话已不存在或模型无返回' };
     slice.summary = res.summary; slice.keywords = res.keywords; slice.synonyms = res.synonyms || {}; slice.ts = Date.now();
+    if (res.salvaged) slice.salvaged = true; else delete slice.salvaged;   // 重生成成功即摘掉保底标记
     try { const book = await getOrCreateChatBook(); if (book && slice.loreUid) await writeWorldEntry({ book, uid: slice.loreUid, content: res.summary, keys: res.keywords }); } catch (_) {}
     await coreadSaveDialog();
     await coreadRefreshContainer(meta);   // 切片内容有变→重建共读记忆容器
@@ -8060,6 +8112,7 @@ async function coreadSaveSliceEdit(sliceId, summary, keywordsStr) {
   slice.summary = String(summary || '').trim();
   slice.keywords = uniqueClean(String(keywordsStr || '').split(/[,，、\s]+/).map((k) => k.trim()).filter(Boolean)).slice(0, 8);
   slice.ts = Date.now();
+  delete slice.salvaged;   // 用户手动编辑过即视为已修正
   try { const book = await getOrCreateChatBook(); if (book && slice.loreUid) await writeWorldEntry({ book, uid: slice.loreUid, content: slice.summary, keys: slice.keywords }); } catch (_) {}
   await coreadSaveDialog();
   await coreadRefreshContainer();   // 切片内容有变→重建共读记忆容器
@@ -9655,6 +9708,7 @@ function renderMemRecordsTab(m) {
       <details class="sd-reader-slice" data-id="${htmlEscape(s.id)}" data-acc="slice-${htmlEscape(s.id)}">
         <summary class="sd-reader-slice-sum">
           <span class="sd-reader-slice-batch">#${s.compressed ? '合并' : (s.batch || '?')}</span>
+          ${s.salvaged ? '<span class="sd-reader-slice-salvaged" title="解析多次失败·已保底落地为纯文本·关键词可能缺失·建议重新生成或手动补关键词"><i class="fa-solid fa-triangle-exclamation"></i></span>' : ''}
           <span class="sd-reader-slice-peek">${htmlEscape((s.summary || '').slice(0, 40))}${(s.summary || '').length > 40 ? '…' : ''}</span>
         </summary>
         <div class="sd-reader-slice-detail">

@@ -3480,6 +3480,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-slice-keys { display: flex; flex-wrap: wrap; gap: 4px; }
 .sd-reader-slice-key { font-size: .72em; padding: 1px 8px; border-radius: 20px; background: var(--sd-pre); color: var(--sd-accent); }
 .sd-reader-slice-key.on { background: var(--sd-accent); color: var(--sd-primary-text); }
+.sd-reader-slice-salvaged { color: #e0a020; font-size: .82em; flex: 0 0 auto; }
 .sd-reader-slice-syn { font-size: .74em; margin: 4px 0 2px; line-height: 1.5; color: var(--sd-accent); }
 .sd-reader-slice-syn i { margin-right: 4px; opacity: .7; }
 .sd-reader-slice-syn .sd-muted { margin-left: 1px; }
