@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.27';
+const VERSION = '1.7.28';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -7724,7 +7724,7 @@ async function buildCompanionContext(bookId, recallQuery = '') {
     // 近景保底：最近 N 条无条件带上，且从检索候选剔除（防重复）
     const recent = coreadRecentSlices(mem.recentInject || 0);
     const excludeIds = new Set(recent.map((h) => h.slice.id));
-    const hits = (mem.recallCount || 0) > 0 ? coreadRecallSlices(recallQuery, mem.recallCount, excludeIds) : [];
+    const hits = (mem.recallCount || 0) > 0 ? await coreadRetrieveHits(recallQuery, mem.recallCount, excludeIds, mem) : [];
     coreadEchoTick(hits);   // 真实注入路径：衰减旧回响 + 登记本轮检索命中（近景每轮都带·无需回响）
     // 组装顺序：近景在前（最近的先），检索命中在后
     const all = [...recent, ...hits];
@@ -8265,6 +8265,169 @@ function coreadEchoTick(injectedSlices) {
   }
 }
 
+/* ── 向量档（可选·自定义 embedding 直连 + 本地余弦 + 与 BM25 用 RRF 融合·借鉴成熟项目直连思路）──
+   直连用户填的 embeddings 接口拿裸向量（浏览器直连·已验硅基流动放行 CORS），本地算余弦。
+   向量按 bucket 存独立 IndexedDB store（不塞每轮对话记录），内容指纹增量：切片文本没变就复用旧向量不重算。 */
+
+// 切片的向量指纹：summary + keywords 的轻量 hash，变了才需重算向量。
+function coreadSliceFingerprint(s) {
+  const text = `${s.summary || ''}${(s.keywords || []).join(',')}`;
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) >>> 0;
+  return `${text.length}_${h.toString(36)}`;
+}
+
+// 直连 embeddings 接口取向量。texts=字符串数组，返回等长向量数组（失败抛错）。Bearer→非Bearer 回退。
+async function coreadEmbed(texts, m) {
+  const list = (texts || []).map((t) => String(t || '')).filter((t) => t.length);
+  if (!list.length) return [];
+  const rawUrl = String(m.vectorApiUrl || '').trim();
+  const key = m.vectorApiKey || '';
+  const model = m.vectorModel || '';
+  if (!rawUrl || !key || !model) throw new Error('向量接口未配置（URL/Key/模型）');
+  let ep = rawUrl.replace(/\/+$/, '');
+  if (!/\/embeddings$/i.test(ep)) ep = /\/v1$/i.test(ep) ? `${ep}/embeddings` : `${ep}/v1/embeddings`;
+  const call = async (auth) => fetch(ep, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: auth },
+    body: JSON.stringify({ model, input: list }),
+  });
+  let res = await call(`Bearer ${key}`);
+  if (!res.ok && (res.status === 401 || res.status === 403)) res = await call(String(key));
+  if (!res.ok) { const t = await res.text().catch(() => ''); throw new Error(`embeddings HTTP ${res.status}${t ? ` · ${t.slice(0, 100)}` : ''}`); }
+  const data = await res.json();
+  const arr = Array.isArray(data?.data) ? data.data : [];
+  // 按 index 归位（有些接口乱序返回）
+  const out = new Array(list.length);
+  arr.forEach((d, i) => { const idx = Number.isInteger(d?.index) ? d.index : i; out[idx] = d?.embedding || null; });
+  return out;
+}
+
+// 余弦相似度（两定长向量）。
+function coreadCosine(a, b) {
+  if (!a || !b || a.length !== b.length) return 0;
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+  const den = Math.sqrt(na) * Math.sqrt(nb);
+  return den ? dot / den : 0;
+}
+
+// 确保当前切片都有最新向量（内容指纹增量·只对新增/变更的切片调 embedding）。返回 { vecs, changed }。
+let coreadVecCache = null;   // { bucket, dim, model, vecs:{id:[]}, fps:{id:fp} }
+async function coreadEnsureVectors(m) {
+  const bucket = readerDialog.bucket;
+  const slices = readerDialog.slices || [];
+  if (!bucket || !slices.length) return null;
+  // 载入持久化缓存（换 bucket / 换模型则重置）
+  if (!coreadVecCache || coreadVecCache.bucket !== bucket || coreadVecCache.model !== m.vectorModel) {
+    let rec = null;
+    try { rec = await blobStore.getReaderVectors(bucket); } catch (_) {}
+    coreadVecCache = (rec && rec.model === m.vectorModel && isPlainObject(rec.vecs))
+      ? { bucket, dim: rec.dim || 0, model: m.vectorModel, vecs: rec.vecs, fps: isPlainObject(rec.fps) ? rec.fps : {} }
+      : { bucket, dim: 0, model: m.vectorModel, vecs: {}, fps: {} };
+  }
+  const cache = coreadVecCache;
+  // 找需要（重）算的切片：无向量 或 指纹变了
+  const need = [];
+  for (const s of slices) {
+    const fp = coreadSliceFingerprint(s);
+    if (!cache.vecs[s.id] || cache.fps[s.id] !== fp) need.push({ s, fp });
+  }
+  if (need.length) {
+    const vs = await coreadEmbed(need.map((x) => `${x.s.summary || ''}\n${(x.s.keywords || []).join(' ')}`), m);
+    need.forEach((x, i) => { if (vs[i]) { cache.vecs[x.s.id] = vs[i]; cache.fps[x.s.id] = x.fp; if (!cache.dim) cache.dim = vs[i].length; } });
+    // 清理已删切片的残留向量
+    const liveIds = new Set(slices.map((s) => s.id));
+    for (const id of Object.keys(cache.vecs)) if (!liveIds.has(id)) { delete cache.vecs[id]; delete cache.fps[id]; }
+    try { await blobStore.putReaderVectors(bucket, { dim: cache.dim, model: cache.model, vecs: cache.vecs, fps: cache.fps }); } catch (_) {}
+  }
+  return cache;
+}
+
+// 向量召回：对查询算向量，与各切片向量算余弦，返回 [{slice, vscore}] 降序（仅 vscore>0）。异步。
+async function coreadVectorRecall(queryText, m) {
+  const cache = await coreadEnsureVectors(m);
+  if (!cache) return [];
+  const q = String(queryText || '').trim();
+  if (!q) return [];
+  const [qvec] = await coreadEmbed([q], m);
+  if (!qvec) return [];
+  const slices = readerDialog.slices || [];
+  const scored = slices.map((s) => ({ slice: s, vscore: cache.vecs[s.id] ? coreadCosine(qvec, cache.vecs[s.id]) : 0 }))
+    .filter((x) => x.vscore > 0);
+  scored.sort((a, b) => b.vscore - a.vscore);
+  return scored;
+}
+
+// RRF 融合两个排名列表（各自已降序）。key=切片 id。返回融合降序 [{slice, rrf, bm25, vscore}]。k=60 经验值。
+function coreadRRF(bm25List, vecList, k = 60) {
+  const rankOf = (list) => { const mm = new Map(); list.forEach((h, i) => mm.set(h.slice.id, i)); return mm; };
+  const rb = rankOf(bm25List), rv = rankOf(vecList);
+  const byId = new Map();
+  const add = (h) => { if (!byId.has(h.slice.id)) byId.set(h.slice.id, { slice: h.slice, bm25: null, vscore: null }); };
+  bm25List.forEach(add); vecList.forEach(add);
+  bm25List.forEach((h) => { byId.get(h.slice.id).bm25 = h.score; });
+  vecList.forEach((h) => { byId.get(h.slice.id).vscore = h.vscore; });
+  const out = [];
+  for (const [id, o] of byId) {
+    let rrf = 0;
+    if (rb.has(id)) rrf += 1 / (k + rb.get(id) + 1);
+    if (rv.has(id)) rrf += 1 / (k + rv.get(id) + 1);
+    out.push({ ...o, rrf });
+  }
+  out.sort((a, b) => b.rrf - a.rrf);
+  return out;
+}
+
+// 可选 rerank：调重排接口对候选二次打分，取前 topN。失败回退原候选。cands=[{slice}]。
+async function coreadRerank(queryText, cands, m) {
+  const rawUrl = String(m.rerankApiUrl || '').trim();
+  const key = m.rerankApiKey || '';
+  const model = m.rerankModel || '';
+  if (!rawUrl || !key || !model || !cands.length) return cands;
+  let ep = rawUrl.replace(/\/+$/, '');
+  if (!/\/rerank(ing)?$/i.test(ep)) ep = /\/v1$/i.test(ep) ? `${ep}/rerank` : `${ep}/v1/rerank`;
+  const docs = cands.map((h) => String(h.slice.summary || ''));
+  const call = async (auth) => fetch(ep, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: auth },
+    body: JSON.stringify({ model, query: String(queryText || ''), documents: docs, top_n: Math.min(cands.length, Math.max(1, m.rerankTopN || 4)) }),
+  });
+  try {
+    let res = await call(`Bearer ${key}`);
+    if (!res.ok && (res.status === 401 || res.status === 403)) res = await call(String(key));
+    if (!res.ok) return cands;
+    const data = await res.json();
+    const results = Array.isArray(data?.results) ? data.results : [];
+    if (!results.length) return cands;
+    // results: [{index, relevance_score}] → 按 index 映回候选
+    return results
+      .filter((r) => Number.isInteger(r?.index) && cands[r.index])
+      .map((r) => ({ ...cands[r.index], rerank: r.relevance_score }));
+  } catch (_) { return cands; }
+}
+
+/* 检索编排：向量档关→纯 BM25（同步内核·零算力）；向量档开→BM25 + 向量 RRF 融合（→可选 rerank）。
+   任一异步档失败（网络/未配置）都静默回退到 BM25，绝不让召回中断对话。返回前 n 条 [{slice,...}]。 */
+async function coreadRetrieveHits(queryText, n, excludeIds, m) {
+  const bm25 = coreadRecallSlices(queryText, Math.max(n * 3, n), excludeIds);   // 多取些作融合候选池
+  if (!m.vectorEnabled) return bm25.slice(0, n);
+  let vec = [];
+  try {
+    vec = (await coreadVectorRecall(queryText, m)).filter((h) => !excludeIds || !excludeIds.has(h.slice.id));
+  } catch (e) { console.warn(`[${MODULE_NAME}] 向量召回失败，回退 BM25`, e); return bm25.slice(0, n); }
+  let fused = coreadRRF(bm25, vec.slice(0, Math.max(n * 3, n)));   // rank 融合·免量纲
+  if (m.rerankEnabled) {
+    try {
+      const topForRerank = fused.slice(0, Math.max(n * 2, n));
+      const reranked = await coreadRerank(queryText, topForRerank, m);
+      if (reranked && reranked.length) fused = reranked;
+    } catch (e) { console.warn(`[${MODULE_NAME}] 重排失败，用融合结果`, e); }
+  }
+  // hits 需带 hits 数组供 echo/可视化——RRF/rerank 结果补一个空 hits 兜底
+  return fused.slice(0, n).map((h) => ({ slice: h.slice, hits: h.slice.keywords || [], score: h.rrf ?? h.rerank ?? 0, ...h }));
+}
+
 /* ── 反哺主线·共读记忆常驻容器 ──
    把最近 N 条切片的 summary「原样」拼成一条常驻(constant)世界书条目，每轮无条件注入主线，
    让主线角色知道你们共读时讨论/总结过什么。切片总结原本什么样就注入什么样，不二次改写、不加解读前缀。
@@ -8321,6 +8484,8 @@ async function coreadClearAllSlices() {
   } catch (e) { console.warn(`[${MODULE_NAME}] clear slices failed`, e); }
   readerDialog.slices = [];
   coreadEchoTtl.clear();   // 切片全清，回响池随之清空
+  coreadVecCache = null;   // 向量缓存随之作废
+  try { if (readerDialog.bucket) await blobStore.deleteReaderVectors(readerDialog.bucket); } catch (_) {}
   readerDialog.cursor = (readerDialog.messages || []).length;   // 已聊的都视作「不再总结」，避免立刻又重蒸
   await coreadSaveDialog();
   await coreadRefreshContainer();   // 无切片→容器随之禁用
@@ -8361,6 +8526,7 @@ async function coreadMigrateFromChat(sourceRec) {
   readerDialog.slices = Array.isArray(sourceRec.slices) ? clone(sourceRec.slices) : [];
   readerDialog.cursor = Number(sourceRec.cursor) || readerDialog.messages.length;
   coreadEchoTtl.clear();
+  coreadVecCache = null;   // 迁入新切片→向量缓存作废，下次召回按需重算
   // 在当前聊天绑定世界书重写每条切片的 Lore（loreUid 用同串·写进当前 book 即生效）
   let wrote = 0;
   try {
@@ -9125,7 +9291,10 @@ async function coreadPurgeBookMemory(bookId) {
     const keys = await blobStore.listReaderChatKeys();
     const suffix = `::${bookId}`;
     for (const k of keys) {
-      if (String(k).endsWith(suffix)) { try { await blobStore.deleteReaderChat(k); buckets++; } catch (_) {} }
+      if (String(k).endsWith(suffix)) {
+        try { await blobStore.deleteReaderChat(k); buckets++; } catch (_) {}
+        try { await blobStore.deleteReaderVectors(k); } catch (_) {}   // 连带清该桶向量
+      }
     }
   } catch (_) {}
   // ② 当前聊天绑定世界书里该书的切片 + 容器条目（按 uid 前缀）
@@ -10013,11 +10182,11 @@ function renderMemInjectTab(m) {
 
   // ③ 重排 / ④ 向量：档位说明（实际调用逻辑 1C-2 接·此处显状态与占位）
   const rerankBody = m.rerankEnabled
-    ? `<div class="sd-reader-mempty">重排已启用。实际重排调用逻辑将在下一步接入，届时这里按重排分数显示 前 ${m.rerankTopN} 条（编号+关键词+分数）。</div>`
-    : `<div class="sd-reader-mempty">未启用重排。开启后：召回候选 → 重排接口二次打分 → 取前 ${m.rerankTopN} 条。</div>`;
+    ? `<div class="sd-reader-mempty">重排已启用。每轮生成前对「BM25+向量」融合候选调重排接口二次打分，取前 ${m.rerankTopN} 条注入。上方候选为 BM25 预览，实际注入以生成时融合+重排结果为准。</div>`
+    : `<div class="sd-reader-mempty">未启用重排。开启后：融合候选 → 重排接口二次打分 → 取前 ${m.rerankTopN} 条。需在下方填重排接口。</div>`;
   const vectorBody = m.vectorEnabled
-    ? `<div class="sd-reader-mempty">向量检索已启用。实际 embedding 召回逻辑将在下一步接入，届时这里显示向量选定切片（编号+关键词+相似度）。</div>`
-    : `<div class="sd-reader-mempty">未启用向量检索。开启后用 embedding 语义召回，替代/补充关键词命中。</div>`;
+    ? `<div class="sd-reader-mempty">向量检索已启用。每轮生成前直连你配置的 embedding 接口取向量，与 BM25 用 RRF 融合语义召回（失败自动回退纯 BM25）。上方候选为 BM25 预览，实际注入以生成时融合结果为准。</div>`
+    : `<div class="sd-reader-mempty">未启用向量检索。开启后用你配置的 embedding 接口做语义召回，与 BM25 关键词档融合（互补：关键词精准 + 向量抓语义近似）。</div>`;
 
   return `
     <div class="sd-reader-mcard">
