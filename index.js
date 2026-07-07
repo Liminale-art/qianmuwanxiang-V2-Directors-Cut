@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.33';
+const VERSION = '1.7.34';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -488,6 +488,9 @@ const DEFAULT_SETTINGS = Object.freeze({
       readDateInSummary: false,     // 总结时是否记录「阅读/对话的年月日」（默认关·用户按需开）
       autoDistill: true,            // 自动蒸馏总开关
       distillEvery: 30,             // 每积累 N 条新的双方对话气泡触发一次自动蒸馏（用户已定：按气泡数计·默认30）
+      // 正文伴读切片：把「已读正文」直接蒸成情节记忆·不依赖对话（解「读了但没短对话/想结合主线聊书」）
+      autoDistillText: false,       // 按阅读进度自动蒸正文切片（默认关·手动为主·用户按需开）
+      distillTextEvery: 8000,       // 每往后读 N 字触发一次正文切片自动蒸馏（默认8000·仅 autoDistillText 开时生效）
       // 召回/注入（1C·用户已定：召回数与单切片字数留自定义·按切片数控不硬控 token）
       recallCount: 2,               // 每次「检索命中」注入的记忆切片数（默认2·用户可改）
       recentInject: 1,              // 近景切片注入数：最近 N 条切片无条件注入（不参与检索·防漏掉刚聊的·默认1·0=关）
@@ -7426,6 +7429,9 @@ function coreadMemory() {
   if (!Number.isFinite(m.rerankTopN)) m.rerankTopN = 4;
   m.rerankTopN = Math.max(1, Math.round(m.rerankTopN));
   m.autoDistill = !!m.autoDistill;   // 自动总结默认关（用户手动开）
+  m.autoDistillText = !!m.autoDistillText;
+  if (!Number.isFinite(m.distillTextEvery)) m.distillTextEvery = 8000;
+  m.distillTextEvery = Math.max(1000, Math.round(m.distillTextEvery));
   // 条目式总结提示词：空则填内置默认；归一每条字段（builtin 标记不可删·可改·可恢复默认）
   if (!Array.isArray(m.summaryItems) || !m.summaryItems.length) m.summaryItems = clone(DEFAULT_SUMMARY_ITEMS);
   m.summaryItems = m.summaryItems
@@ -8059,8 +8065,123 @@ async function coreadDistillRange(fromIdx, toIdx, m, meta, names) {
   return { made: 1, batch, wrote: !!finalUid, writeErr, salvaged: !!res.salvaged };
 }
 
-// 自动/增量蒸馏：cursor..末尾未覆盖对话。manual=true 忽略阈值立即蒸（自动分批·可能出多条）。
-let coreadDistilling = false;
+/* ── 切片来源（src 字段）──
+   'dialog'（默认·省略）＝共读对话蒸馏；'text'＝正文伴读切片（把已读正文直接蒸成情节记忆·不依赖对话）；
+   'mainline'＝主线联动蒸馏（圈选主线里聊到书的片段沉淀为共读切片）。三者同池、同召回，UI 按 src 打标签。 */
+
+// 通用切片落地：写世界书(keyless+tag) + 推入镜像。res={summary,keywords,synonyms,salvaged}。返回 {ok, wrote, batch}。
+async function coreadPersistSlice(res, meta, extra = {}) {
+  const batch = coreadNextBatch();
+  const sliceId = uid('slice');
+  const bookId = readerDialog.bookId || 'unknown';
+  const loreUid = `coread::${bookId}::${sliceId}`;
+  let finalUid = '';
+  try {
+    const book = await coreadTargetBook();
+    if (book) {
+      const srcTag = extra.src === 'text' ? '正文' : (extra.src === 'mainline' ? '主线' : `#${batch}`);
+      finalUid = await writeWorldEntry({
+        book, tag: loreUid,
+        comment: `${coreadLorePrefix(meta.title)} ${srcTag}`,
+        content: res.summary, clearKeys: true, order: 50,
+      });
+    }
+  } catch (e) { console.warn(`[${MODULE_NAME}] persist slice failed`, e); }
+  readerDialog.slices = Array.isArray(readerDialog.slices) ? readerDialog.slices : [];
+  readerDialog.slices.push({
+    id: sliceId, batch, loreUid: finalUid || loreUid,
+    summary: res.summary, keywords: res.keywords, synonyms: res.synonyms || {},
+    ts: Date.now(), ...(res.salvaged ? { salvaged: true } : {}), ...extra,
+  });
+  return { ok: true, wrote: !!finalUid, batch };
+}
+
+// 蒸馏任意文本段（非对话）→ {summary,keywords,synonyms}。复用四道闸，只换系统提示词。用于正文伴读切片 / 主线联动。
+async function coreadDistillText(bodyText, sysPrompt, m) {
+  let text = String(bodyText || '').trim();
+  if (!text) return null;
+  const ctxCap = Number(m.summaryContextChars) || 0;
+  if (ctxCap > 0 && text.length > ctxCap) text = '……（较早内容略）\n' + text.slice(-ctxCap);
+  let lastRaw = '';
+  for (let attempt = 0; attempt <= COREAD_DISTILL_RETRY; attempt++) {
+    const userMsg = attempt === 0
+      ? `【待整理内容】\n${text}`
+      : `【待整理内容】\n${text}\n\n【重要】上一次输出无法解析为 JSON。请严格只输出 {"summary":"...","keywords":["..."],"synonyms":{}} 的纯 JSON，不要解释、不要代码块标记。`;
+    let raw = '';
+    try { raw = String(await callCoreadModel(sysPrompt, userMsg) || ''); }
+    catch (err) {
+      if (coreadIsTransientError(err) && attempt < COREAD_DISTILL_RETRY) { toast(`伴读记忆：总结遇到临时问题，正在自动重试（${attempt + 2}/${COREAD_DISTILL_RETRY + 1}）…`, 'warning'); continue; }
+      throw err;
+    }
+    lastRaw = raw;
+    let parsed = null;
+    try { parsed = extractJson(raw); } catch (_) { parsed = null; }
+    const built = parsed ? coreadBuildSliceFromParsed(parsed, { title: '伴读' }) : null;
+    if (built) return built;
+    if (attempt < COREAD_DISTILL_RETRY) toast(`伴读记忆：输出格式异常，正在重新生成（${attempt + 2}/${COREAD_DISTILL_RETRY + 1}）…`, 'info');
+  }
+  const salvaged = coreadSalvageSummary(lastRaw);
+  return salvaged ? { summary: salvaged, keywords: ['伴读'], synonyms: {}, salvaged: true } : null;
+}
+
+// ── 正文伴读切片：把「已读正文」蒸成第三人称情节记忆·不依赖对话 ──
+// 覆盖范围锚点用绝对读位 readPos（coveredTo 记正文偏移·避免与对话切片的消息索引混淆·靠 src 区分语义）。
+async function coreadDistillReadText(m) {
+  const id = readerView?.bookId || readerDialog.bookId;
+  const meta = coreadBookMeta(id);
+  if (!meta) return { ok: false, reason: '未打开书目' };
+  // 取正文：当前打开走内存缓存，否则回落 IndexedDB
+  let chapters = null, chapterIndex = 0, scrollRatio = 0;
+  if (readerContentCache && readerContentCache.bookId === id) {
+    chapters = readerContentCache.chapters; chapterIndex = readerView?.chapterIndex || 0; scrollRatio = readerView?.scrollRatio || 0;
+  } else {
+    let rec = null; try { rec = await blobStore.getBook(id); } catch (_) {}
+    if (!rec || !Array.isArray(rec.chapters)) return { ok: false, reason: '取不到正文' };
+    chapters = rec.chapters; chapterIndex = meta.lastChapterIndex || 0; scrollRatio = meta.lastScrollRatio || 0;
+  }
+  // 覆盖「上次正文切片读位 → 当前读位」这段新读正文（首次则从头）。读位用全文绝对偏移。
+  const cp = coreadCompanion();
+  const full = chapters.map((ch) => String(ch?.content || '')).join('');
+  const win = computeVisibleWindow(chapters, chapterIndex, scrollRatio, 100, full.length);   // percent=100 拿到 readPos/totalLen
+  const readPos = win.readPos;
+  const lastTextTo = (readerDialog.slices || []).filter((s) => s.src === 'text').reduce((mx, s) => Math.max(mx, Number(s.coveredTo) || 0), 0);
+  if (readPos <= lastTextTo + 20) return { ok: false, reason: '没有新读的正文可总结（先往后读一些）' };
+  let body = full.slice(lastTextTo, readPos);
+  const cap = Math.max(Number(m.summaryContextChars) || 0, 30000) || body.length;
+  if (body.length > cap) body = '……（较早内容略）\n' + body.slice(-cap);
+  const dateHint = m.readDateInSummary ? [coreadDateHint(), coreadProgressHint(meta)].filter(Boolean).join(' · ') : '';
+  const anchor = dateHint ? `（${dateHint}）` : '';
+  const sysPrompt = `你是伴读记忆整理助手。下面是《${meta.title || '未命名'}》${anchor}中「读者刚读过」的一段正文原文。请把它蒸馏成第三人称客观的情节记忆，供日后回顾与主线剧情引用。\n\n【整理要求】\n1. 只记正文中确实发生的情节、人物、场景、关键转折，全程第三人称客观陈述，不加评论、不作书评。\n2. 专名（人名/地名/作品内概念）沿用原文完整表述，不缩写、不意译。\n3. 篇幅控制在 200 至 300 字。行文禁用破折号（——）。\n\n【底线】只输出纯 JSON：{"summary":"第三人称情节记忆正文","keywords":["高辨识度检索词·优先人名/事件/概念"],"synonyms":{"标准词":["别称/指代"]}}。没有可补的别称就给 {}。不要代码块标记、不要额外解释。`;
+  let res;
+  try { res = await coreadDistillText(body, sysPrompt, m); }
+  catch (e) { return { ok: false, reason: coreadExplainError(e) }; }
+  if (!res) return { ok: false, reason: '模型没有返回有效总结' };
+  await coreadPersistSlice(res, meta, { src: 'text', coveredFrom: lastTextTo, coveredTo: readPos });
+  await coreadSaveDialog();
+  await coreadRefreshContainer();
+  return { ok: true, salvaged: !!res.salvaged };
+}
+
+// ── 主线联动蒸馏：把「圈选的主线消息」蒸成共读切片 ──
+// 只收圈选的、且排除千幕/审片注入的楼层（extra.qianmu_injected），职责限「聊到书的片段」，不与记忆插件的全剧情总结撞车。
+async function coreadDistillMainline(pickedTexts, m) {
+  const id = readerView?.bookId || readerDialog.bookId;
+  const meta = coreadBookMeta(id) || { title: '' };
+  const names = { char: companionCharName(), user: getPersonaName() || '我' };
+  const body = (pickedTexts || []).filter((t) => String(t || '').trim()).join('\n\n');
+  if (!body.trim()) return { ok: false, reason: '没有选中可总结的主线消息' };
+  const sysPrompt = `你是伴读记忆整理助手。下面是主线剧情里「${names.user}」与「${names.char}」聊到《${meta.title || '这本书'}》的片段。请把其中与这本书相关的讨论、观点、引用蒸馏成第三人称客观的共读记忆，供日后回顾与延续。\n\n【整理要求】\n1. 只提取与《${meta.title || '这本书'}》相关的内容（对书的讨论、引用、联想、观点碰撞）；与书无关的剧情不记。\n2. 全程第三人称客观陈述，专名沿用原文，篇幅 150 至 250 字。行文禁用破折号（——）。\n\n【底线】只输出纯 JSON：{"summary":"第三人称共读记忆正文","keywords":["高辨识度检索词"],"synonyms":{}}。不要代码块标记、不要额外解释。`;
+  let res;
+  try { res = await coreadDistillText(body, sysPrompt, m); }
+  catch (e) { return { ok: false, reason: coreadExplainError(e) }; }
+  if (!res) return { ok: false, reason: '模型没有返回有效总结' };
+  await coreadPersistSlice(res, meta, { src: 'mainline' });
+  await coreadSaveDialog();
+  await coreadRefreshContainer();
+  return { ok: true, salvaged: !!res.salvaged };
+}
+
+
 async function coreadDistill(manual = false) {
   if (coreadDistilling) return { ok: false, reason: '正在总结中' };
   const m = coreadMemory();
@@ -8846,6 +8967,53 @@ async function coreadOpenArchiveDialog() {
     toast(`已绑定 ${store.coreadBound.length} 个伴读档案到当前聊天。`, 'success');
     rerenderMore?.();
   } catch (_) {}
+}
+
+// 主线联动圈选弹窗：列出主线近期消息（排除千幕/审片注入楼层），勾选「聊到书的片段」→蒸成共读切片。
+async function coreadOpenMainlinePickDialog() {
+  const context = ctx();
+  const Popup = context.Popup;
+  if (!Popup || !context.POPUP_TYPE) { toast('当前环境不支持弹窗。', 'error'); return; }
+  if (!(readerView?.bookId || readerDialog.bookId)) { toast('请先在阅读器里打开一本书（主线联动需知道是哪本书）。', 'warning'); return; }
+  const chat = Array.isArray(context.chat) ? context.chat : [];
+  // 取最近 40 楼·排除千幕/审片注入的 System 楼（防把注入内容当素材·避免与记忆插件撞车）
+  const items = [];
+  for (let i = chat.length - 1; i >= 0 && items.length < 40; i--) {
+    const mm = chat[i];
+    if (!mm || mm.extra?.qianmu_injected) continue;
+    const text = cleanContextText(mm.mes || '');
+    if (text) items.push({ idx: i, name: mm.name || (mm.is_user ? '我' : '角色'), isUser: !!mm.is_user, text });
+  }
+  items.reverse();
+  if (!items.length) { toast('主线里没有可选的消息。', 'info'); return; }
+  const rows = items.map((it) => `<label class="sd-reader-migrate-row">
+      <input type="checkbox" class="sd-reader-mlpick" value="${it.idx}">
+      <span class="sd-reader-migrate-info">
+        <b>${htmlEscape(it.name)}</b>${it.isUser ? '<span class="sd-muted">（我）</span>' : ''}
+        <span class="sd-muted">${htmlEscape(it.text.slice(0, 60))}${it.text.length > 60 ? '…' : ''}</span>
+      </span>
+    </label>`).join('');
+  const inner = `<div class="sd-reader-migrate-dialog" style="text-align:left">
+    <p style="margin:0 0 6px;font-weight:600">从主线圈选「聊到书的片段」</p>
+    <p style="margin:0 0 10px;color:var(--sd-muted,#888);font-size:.85em">勾选主线里与这本书相关的讨论/引用，蒸成一条共读记忆切片，进召回池与伴读对话接续。只提取书相关内容，与记忆插件的全剧情总结互不冲突。</p>
+    ${rows}
+  </div>`;
+  const wrap = document.createElement('div');
+  wrap.innerHTML = inner;
+  let picked = [];
+  try {
+    const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '总结选中', cancelButton: '取消' });
+    const res = await popup.show();
+    if (res !== true && String(res) !== '1') return;
+    const idxs = new Set([...wrap.querySelectorAll('.sd-reader-mlpick:checked')].map((el) => Number(el.value)));
+    picked = items.filter((it) => idxs.has(it.idx)).map((it) => `${it.name}：${it.text}`);
+  } catch (_) { return; }
+  if (!picked.length) { toast('没有选中任何消息。', 'info'); return; }
+  toast('伴读记忆：正在从主线片段总结…', 'info');
+  const m = coreadMemory();
+  const r = await coreadDistillMainline(picked, m);
+  if (r?.ok) { toast(`已从主线生成 1 条共读切片${r.salvaged ? '（关键词档降级保底）' : ''}。`, 'success'); rerenderMore?.(); }
+  else toast(r?.reason || '主线总结失败。', 'warning');
 }
 
 // Chat Lore 写入自检：写一条带 coread:: 前缀的测试条目再清理，验证世界书写入通道。控制台 await qmTestLoreWrite() 或点记忆 tab 底部按钮。
@@ -9700,9 +9868,27 @@ function coreadSaveProgress() {
     readerView.sessionStart = nowMs();
   }
   saveSettings();
+  coreadMaybeAutoDistillText();   // 按阅读进度自动蒸正文切片（内部有开关+字数阈值+在飞守卫）
 }
 
-/* ── 全屏 portal（覆盖整个 ST 页面，逃离模态 backdrop-filter 形成的包含块） ── */
+// 阅读进度前进到阈值时自动蒸一条正文切片（非阻塞·失败静默·不打断阅读）。
+let coreadAutoTextInFlight = false;
+async function coreadMaybeAutoDistillText() {
+  const m = coreadMemory();
+  if (!m.autoDistillText || coreadAutoTextInFlight) return;
+  if (!readerView || !readerContentCache) return;
+  const id = readerView.bookId;
+  if (readerDialog.bookId !== id) return;   // 镜像未对上当前书（切书瞬间）·跳过
+  try {
+    const full = readerContentCache.chapters.map((ch) => String(ch?.content || '')).join('');
+    const win = computeVisibleWindow(readerContentCache.chapters, readerView.chapterIndex, readerView.scrollRatio || 0, 100, full.length);
+    const lastTo = (readerDialog.slices || []).filter((s) => s.src === 'text').reduce((mx, s) => Math.max(mx, Number(s.coveredTo) || 0), 0);
+    if (win.readPos - lastTo < Math.max(1000, m.distillTextEvery || 8000)) return;   // 新读不足阈值
+    coreadAutoTextInFlight = true;
+    const r = await coreadDistillReadText(m);
+    if (r?.ok) { toast('伴读记忆：已按阅读进度自动总结一段正文。', 'info'); if (coreadMemory().moreTab === 'records') rerenderMoreIfOpen?.(); }
+  } catch (_) {} finally { coreadAutoTextInFlight = false; }
+}
 
 function unmountReaderPortal() {
   // 释放所有图片 objectURL 防内存泄漏
@@ -10358,6 +10544,7 @@ function renderMemRecordsTab(m) {
       <details class="sd-reader-slice" data-id="${htmlEscape(s.id)}" data-acc="slice-${htmlEscape(s.id)}">
         <summary class="sd-reader-slice-sum">
           <span class="sd-reader-slice-batch">#${s.compressed ? '合并' : (s.batch || '?')}</span>
+          ${s.src === 'text' ? '<span class="sd-reader-slice-src src-text">正文</span>' : (s.src === 'mainline' ? '<span class="sd-reader-slice-src src-mainline">主线</span>' : '')}
           ${s.salvaged ? '<span class="sd-reader-slice-salvaged" title="解析多次失败·已保底落地为纯文本·关键词可能缺失·建议重新生成或手动补关键词"><i class="fa-solid fa-triangle-exclamation"></i></span>' : ''}
           <span class="sd-reader-slice-peek">${htmlEscape((s.summary || '').slice(0, 40))}${(s.summary || '').length > 40 ? '…' : ''}</span>
         </summary>
@@ -10428,6 +10615,19 @@ function renderMemRecordsTab(m) {
       </div>
       <div class="sd-reader-mhint">指定条数区间蒸成一条切片。区间与已总结范围重叠＝重新总结并覆盖那些切片；否则新增。</div>
       ${batchRows ? `<div class="sd-reader-batchtable">${batchRows}</div>` : ''}
+    </div>
+    <div class="sd-reader-mcard">
+      <div class="sd-reader-mcard-head"><i class="fa-solid fa-book-open-reader"></i> 正文伴读 / 主线联动</div>
+      <div class="sd-reader-mhint">不依赖对话也能长记忆：<b>正文伴读</b>把你<b>已读的正文</b>直接蒸成情节记忆（读了但没聊、或想结合主线聊书时用）；<b>主线联动</b>把主线里聊到这本书的片段沉淀为共读切片。都进同一召回池反哺主线。</div>
+      <div class="sd-reader-mactions">
+        <button type="button" class="sd-reader-mbtn sd-reader-distill-text"><i class="fa-solid fa-feather"></i>总结已读正文</button>
+        <button type="button" class="sd-reader-mbtn sd-reader-distill-mainline"><i class="fa-solid fa-comments"></i>从主线圈选总结</button>
+      </div>
+      <div class="sd-reader-mrow">
+        <span class="sd-reader-mrow-lab">按阅读进度自动总结正文</span>
+        ${renderMemSwitch('sd-reader-autotext-en', m.autoDistillText)}
+      </div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">每往后读多少字自动总结</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-distill-textevery" min="1000" step="500" value="${m.distillTextEvery}"${m.autoDistillText ? '' : ' disabled'}></div>
     </div>
     <div class="sd-reader-mcard">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-box-archive"></i> 伴读档案 <span class="sd-reader-inj-tag">${boundN} 已绑定</span></div>
@@ -11235,6 +11435,22 @@ function bindReaderStageEvents(stageRoot) {
     }
     if (e.target.closest('.sd-reader-sumitem-export')) { coreadExportSummaryItems(); return; }
     if (e.target.closest('.sd-reader-sumitem-import')) { coreadImportSummaryItems(); return; }
+    // 正文伴读切片：把已读正文蒸成情节记忆
+    if (e.target.closest('.sd-reader-distill-text')) {
+      const btn = e.target.closest('.sd-reader-distill-text');
+      const icon = btn.querySelector('i'); const prev = icon?.className;
+      btn.disabled = true; if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+      toast('伴读记忆：正在总结已读正文…', 'info');
+      coreadDistillReadText(m).then((r) => {
+        if (r?.ok) toast(`已从正文生成 1 条情节记忆切片${r.salvaged ? '（关键词档降级保底）' : ''}。`, 'success');
+        else toast(r?.reason || '正文总结失败。', 'warning');
+        rerenderMore();
+      }).catch((err) => toast(`正文总结失败：${coreadExplainError(err)}`, 'error'))
+        .finally(() => { btn.disabled = false; if (icon && prev) icon.className = prev; });
+      return;
+    }
+    // 主线联动：圈选主线消息蒸成共读切片
+    if (e.target.closest('.sd-reader-distill-mainline')) { coreadOpenMainlinePickDialog(); return; }
     // 手动总结（起止两条数·区间蒸一条切片；与已总结范围重叠则覆盖那些切片）
     if (e.target.closest('.sd-reader-manual-go')) {
       const btn = e.target.closest('.sd-reader-manual-go');
@@ -11319,6 +11535,7 @@ function bindReaderStageEvents(stageRoot) {
     if (e.target.closest('.sd-reader-vector-en')) { m.vectorEnabled = e.target.checked; saveSettings(); return; }
     if (e.target.closest('.sd-reader-rerank-en')) { m.rerankEnabled = e.target.checked; saveSettings(); return; }
     if (e.target.closest('.sd-reader-autodistill-en')) { m.autoDistill = e.target.checked; saveSettings(); return; }
+    if (e.target.closest('.sd-reader-autotext-en')) { m.autoDistillText = e.target.checked; saveSettings(); rerenderMore(); return; }
     if (e.target.closest('.sd-reader-mainline-toggle')) { m.mainlineFeedback = e.target.checked; saveSettings(); coreadInvalidatePool(); rerenderMore(); return; }
     if (e.target.closest('.sd-reader-storagemode')) { m.storageMode = e.target.value === 'shared' ? 'shared' : 'dedicated'; saveSettings(); return; }
     // 模型下拉选中 → 直接落库（向量/重排/总结通用）
@@ -11350,7 +11567,8 @@ function bindReaderStageEvents(stageRoot) {
     if (e.target.closest('.sd-reader-sum-maxtok')) { m.summaryMaxTokens = Math.max(0, Math.round(Number(e.target.value) || 0)); saveSettings(); return; }
     if (e.target.closest('.sd-reader-sum-ctx')) { m.summaryContextChars = Math.max(0, Math.round(Number(e.target.value) || 0)); saveSettings(); return; }
     // 自动/手动总结数值 + 注入设置（数字框·不重渲）
-    if (e.target.closest('.sd-reader-distill-every')) { m.distillEvery = Math.max(2, Number(e.target.value) || 20); saveSettings(); return; }
+    if (e.target.closest('.sd-reader-distill-every')) { m.distillEvery = Math.max(2, Number(e.target.value) || 30); saveSettings(); return; }
+    if (e.target.closest('.sd-reader-distill-textevery')) { m.distillTextEvery = Math.max(1000, Number(e.target.value) || 8000); saveSettings(); return; }
     if (e.target.closest('.sd-reader-inj-recall')) { m.recallCount = Math.max(0, Number(e.target.value) || 0); saveSettings(); return; }
     if (e.target.closest('.sd-reader-inj-recent')) { m.recentInject = Math.max(0, Number(e.target.value) || 0); saveSettings(); return; }
     if (e.target.closest('.sd-reader-inj-reranktop')) { m.rerankTopN = Math.max(1, Number(e.target.value) || 4); saveSettings(); return; }
