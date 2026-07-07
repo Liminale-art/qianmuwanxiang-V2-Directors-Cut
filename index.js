@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.38';
+const VERSION = '1.7.39';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -9158,8 +9158,13 @@ async function coreadSelfTest() {
       m.storageMode = mode;
       let book = '';
       try { book = await coreadTargetBook(); } catch (_) {}
-      log(!!book, `模式「${mode}」取得目标世界书`, book || '空');
-      if (!book) continue;
+      // shared 模式需打开聊天才有聊天绑定世界书（/getchatbook 无聊天时返回空）——非 bug，标「跳过」而非「失败」
+      if (!book) {
+        if (mode === 'shared') { console.log(`· 模式「shared」跳过：未打开聊天（shared 写入需活跃聊天的绑定世界书）`); continue; }
+        log(false, `模式「${mode}」取得目标世界书`, '空');
+        continue;
+      }
+      log(true, `模式「${mode}」取得目标世界书`, book);
       let uid = '';
       try {
         uid = await writeWorldEntry({ book, tag: testUid, comment: '[千幕伴读] 自检探针', content: '自检探针内容。', clearKeys: true, order: 50 });
