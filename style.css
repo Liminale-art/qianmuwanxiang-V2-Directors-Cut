@@ -3469,6 +3469,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-batchrow-count { color: var(--sd-muted); margin-left: auto; flex: 0 0 auto; }
 /* 卡头计数小标签（实际注入 / 召回候选） */
 .sd-reader-inj-tag { font-size: .68em; padding: 1px 9px; border-radius: 20px; background: var(--sd-accent); color: var(--sd-primary-text); font-style: normal; font-variant-numeric: tabular-nums; }
+.sd-reader-inj-tag.on { background: var(--sd-good, #3fae6b); }
 /* 切片：折叠 details */
 .sd-reader-slices { display: flex; flex-direction: column; gap: 6px; }
 .sd-reader-slice { border: 1px solid var(--sd-hairline); border-radius: 10px; background: var(--sd-glass-weak); overflow: hidden; }

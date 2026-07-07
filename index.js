@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.32';
+const VERSION = '1.7.33';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -487,7 +487,7 @@ const DEFAULT_SETTINGS = Object.freeze({
       summaryItems: [],             // 条目式总结提示词 [{id,builtin,order,title,text}]·空则归一器填内置默认
       readDateInSummary: false,     // 总结时是否记录「阅读/对话的年月日」（默认关·用户按需开）
       autoDistill: true,            // 自动蒸馏总开关
-      distillEvery: 20,             // 每积累 N 条新的双方对话气泡触发一次自动蒸馏（用户已定：按气泡数计）
+      distillEvery: 30,             // 每积累 N 条新的双方对话气泡触发一次自动蒸馏（用户已定：按气泡数计·默认30）
       // 召回/注入（1C·用户已定：召回数与单切片字数留自定义·按切片数控不硬控 token）
       recallCount: 2,               // 每次「检索命中」注入的记忆切片数（默认2·用户可改）
       recentInject: 1,              // 近景切片注入数：最近 N 条切片无条件注入（不参与检索·防漏掉刚聊的·默认1·0=关）
@@ -1482,22 +1482,28 @@ function escapeSlashValue(s) {
   return String(s ?? '').replace(/\|/g, '\\|').replace(/\r?\n+/g, ' ').trim();
 }
 
-// 向指定世界书写入/更新一条目。opts: { book, uid?, comment?, content?, keys?:[], order?, position?, vectorized?, group? }
-// 传 uid 则更新该条，否则新建（ST 填默认值）。dedup（uid 映射）由调用方管理，本函数不做模糊查重以免误改别条。
-// 返回 uid 字符串（失败为 ''）。
+// 向指定世界书写入/更新一条目。opts: { book, uid?, tag?, comment?, content?, keys?:[], order?, position?, vectorized?, group? }
+// uid 必须是 ST 世界书条目的「整数 UID」——传整数 uid＝更新该条；uid 为空或非整数＝新建（/createentry 由 ST 分配整数 UID）。
+// tag＝调用方的「逻辑标识」（如 coread::bookId::sliceId），写进 comment 尾部的 ⟨…⟩ 机器标记，供按册清扫/purge 匹配（因 UID 是整数无法承载命名空间）。
+// 返回整数 uid 字符串（失败为 ''）。⚠️ 曾误传逻辑串作 uid 导致 setentryfield 全失败——现统一：新建拿整数、逻辑标识入 comment。
 async function writeWorldEntry(opts = {}) {
   const book = String(opts.book || '').trim();
   if (!book) return '';
   const fileArg = `file="${book.replace(/"/g, '')}"`;
   let uid = String(opts.uid ?? '').trim();
-  if (!uid) {
+  const isIntUid = /^\d+$/.test(uid);   // ST 世界书 UID 为整数；非整数（空或逻辑串）一律走新建
+  if (!isIntUid) {
     const keyArg = Array.isArray(opts.keys) && opts.keys.length
       ? `key=${opts.keys.map(escapeSlashValue).join(',')}` : '';
     uid = String(await runSlash(`/createentry ${fileArg} ${keyArg}`.trim()) || '').trim();
     if (!uid) return '';
   }
   const set = (field, val) => runSlash(`/setentryfield ${fileArg} uid=${uid} field=${field} ${val}`);
-  if (opts.comment != null) await set('comment', escapeSlashValue(opts.comment));
+  // comment：人读标签 + 逻辑标识机器标记 ⟨tag⟩（purge/sweep 按 ⟨coread::bookId:: 前缀匹配）
+  const commentText = (opts.comment != null || opts.tag)
+    ? `${opts.comment != null ? opts.comment : ''}${opts.tag ? ` ⟨${opts.tag}⟩` : ''}`.trim()
+    : null;
+  if (commentText != null) await set('comment', escapeSlashValue(commentText));
   if (opts.content != null) await set('content', escapeSlashValue(opts.content));
   if (Array.isArray(opts.keys) && opts.keys.length) await set('key', opts.keys.map(escapeSlashValue).join(','));
   else if (opts.clearKeys) await set('key', '');   // 走A：伴读切片改「仅存储不触发」·清空关键词·召回统一走内核·杜绝与拦截器双重注入
@@ -1518,6 +1524,16 @@ async function deleteWorldEntry(book, uid) {
   await runSlash(`/setentryfield file="${b.replace(/"/g, '')}" uid=${u} field=content `);   // 先清空内容
   await runSlash(`/setentryfield file="${b.replace(/"/g, '')}" uid=${u} field=disable 1`);   // 再禁用（ST 无标准删条斜杠，禁用即不参与召回）
   return true;
+}
+
+// 从世界书条目里解出伴读逻辑标识 coread::bookId::sliceId。
+// 兼容两代：新条目＝逻辑标识写在 comment 的 ⟨…⟩ 机器标记里（UID 为整数）；旧条目＝uid 本身就是逻辑串。
+function coreadEntryLogicalId(entry) {
+  const u = String(entry?.uid ?? '');
+  if (u.startsWith('coread::')) return u;   // 旧条目：uid 即逻辑标识
+  const c = String(entry?.comment ?? '');
+  const mm = c.match(/⟨(coread::[^⟩]+)⟩/);
+  return mm ? mm[1] : '';
 }
 
 // 临时验证钩子（1A-1）：在 ST 控制台执行 await qmTestWorldWrite() 应能往当前聊天 Chat Lore 写入一条「千幕伴读·测试」。
@@ -7386,7 +7402,7 @@ function coreadMemory() {
   for (const k of ['vectorModels', 'rerankModels', 'summaryModels', 'vectorProfiles', 'rerankProfiles', 'summaryProfiles']) {
     if (!Array.isArray(m[k])) m[k] = [];
   }
-  if (!Number.isFinite(m.distillEvery)) m.distillEvery = 20;
+  if (!Number.isFinite(m.distillEvery)) m.distillEvery = 30;
   if (!Number.isFinite(m.recallCount)) m.recallCount = 2;
   m.recallCount = Math.max(0, Math.round(m.recallCount));
   if (!Number.isFinite(m.recentInject)) m.recentInject = 1;
@@ -7430,7 +7446,7 @@ function coreadMemory() {
 // ① 硬格式=标准输出结构(时间/进度锚点·客观第三人称·重要原话保留·深谈vs随口区分·专名保留)；② 记录侧重维度。
 // 注意：真正不可破坏的 JSON 输出契约由蒸馏代码在末尾强制追加，此处提示词只管「写什么/怎么写」，用户改坏也不影响解析。
 const DEFAULT_SUMMARY_ITEMS = [
-  { id: 'sum-format', builtin: true, order: 0, title: '总结要求与输出格式', text: '将读者与书友的共读对话，蒸馏为可复用的客观记忆文本，全程以第三人称事实陈述呈现，不加入主观评判。\n\n【核心规则】\n1. 身份边界严格隔离：对话方为现实中的「读者」「书友」，书籍角色仅为讨论对象。严禁将读者/书友的评论、推测、感想等同于书中角色的实际言行；书中角色不视为对话参与者。\n2. 内容记录规范：① 专名保留——人名、地名、作品名、专有概念沿用原文完整表述，不缩写、不泛化、不意译；② 原话摘引——对话中的核心论断、关键观点、原文摘句以双引号直引，句数按需适配总篇幅；③ 变化标注——态度转向、认知更新、共识达成等关键转变统一以「原状态 → 新状态」格式标注。\n3. 详略尺度控制：深度对谈（剧情分析、人物解读、观点交锋）完整记录核心逻辑与结论；闲聊寒暄、过渡性表述仅记核心意图与结论；不遗漏影响后续共读理解的关键信息。正文篇幅控制在 200–300 字。\n\n【输出要求】\n输出为纯 JSON，不含额外说明：{"summary": "符合上述要求的第三人称客观记忆正文", "keywords": ["3–10 个高辨识度检索关键词，优先人名 / 核心事件 / 关键概念 / 核心情节点，保障召回精准"]}' },
+  { id: 'sum-format', builtin: true, order: 0, title: '总结要求与输出格式', text: '将读者与书友的共读对话，蒸馏为可复用的客观记忆文本，全程以第三人称事实陈述呈现，不加入主观评判。\n\n【核心规则】\n1. 身份边界严格隔离：对话方为现实中的「读者」「书友」，书籍角色仅为讨论对象。严禁将读者/书友的评论、推测、感想等同于书中角色的实际言行；书中角色不视为对话参与者。\n2. 内容记录规范：① 专名保留，人名、地名、作品名、专有概念沿用原文完整表述，不缩写、不泛化、不意译；② 原话摘引，对话中的核心论断、关键观点、原文摘句以双引号直引，句数按需适配总篇幅；③ 变化标注，态度转向、认知更新、共识达成等关键转变统一以「原状态 变为 新状态」格式标注。\n3. 详略尺度控制：深度对谈（剧情分析、人物解读、观点交锋）完整记录核心逻辑与结论；闲聊寒暄、过渡性表述仅记核心意图与结论；不遗漏影响后续共读理解的关键信息。正文篇幅控制在 200 至 300 字。\n4. 行文禁用破折号（——），不以破折号补充说明或制造停顿；改用逗号、句号或直接陈述。\n\n【输出要求】\n输出为纯 JSON，不含额外说明：{"summary": "符合上述要求的第三人称客观记忆正文", "keywords": ["3 至 10 个高辨识度检索关键词，优先人名 / 核心事件 / 关键概念 / 核心情节点，保障召回精准"]}' },
 ];
 
 // 向量/重排接口的通用测试连接 + 拉取模型（OpenAI 兼容 /v1/models、/v1/embeddings、rerank）。
@@ -8029,7 +8045,7 @@ async function coreadDistillRange(fromIdx, toIdx, m, meta, names) {
     if (!book) writeErr = '未能取得/创建伴读世界书';
     else {
       finalUid = await writeWorldEntry({
-        book, uid: loreUid,
+        book, tag: loreUid,   // 逻辑标识入 comment ⟨…⟩·供 purge/sweep 按册匹配（UID 由 ST 分配整数）
         comment: `${coreadLorePrefix(meta.title)} #${batch}`,
         content: res.summary,
         clearKeys: true,   // 走A：keyless 仅存储·召回走内核（BM25/向量用镜像里的 keywords·非世界书关键词触发）
@@ -8164,7 +8180,7 @@ async function coreadCompressSlices(lo, hi) {
     if (book) {
       try {
         finalUid = await writeWorldEntry({
-          book, uid: loreUid,
+          book, tag: loreUid,   // 逻辑标识入 comment ⟨…⟩
           comment: `${coreadLorePrefix(meta.title)} 合并`,
           content: summary,
           clearKeys: true,   // 走A：keyless 仅存储
@@ -8721,10 +8737,11 @@ async function coreadMigrateFromChat(sourceRec) {
     const book = await coreadTargetBook();
     if (book) {
       for (const s of readerDialog.slices) {
-        const uidStr = s.loreUid || `coread::${bookId}::${s.id}`;
+        const logical = `coread::${bookId}::${s.id}`;   // 逻辑标识（按册·稳定）
+        const uidStr = s.loreUid || logical;
         try {
           const fin = await writeWorldEntry({
-            book, uid: uidStr,
+            book, uid: uidStr, tag: logical,   // uid 为整数则原地更新·否则新建；逻辑标识始终入 comment ⟨…⟩
             comment: `${coreadLorePrefix(meta.title)} ${s.compressed ? '合并' : '#' + (s.batch || '?')}`,
             content: s.summary, clearKeys: true, order: 50, enable: true,   // 走A：keyless 仅存储
           });
@@ -8888,16 +8905,17 @@ async function coreadSelfTest() {
       if (!book) continue;
       let uid = '';
       try {
-        uid = await writeWorldEntry({ book, uid: testUid, comment: '[千幕伴读] 自检探针', content: '自检探针内容。', clearKeys: true, order: 50 });
+        uid = await writeWorldEntry({ book, tag: testUid, comment: '[千幕伴读] 自检探针', content: '自检探针内容。', clearKeys: true, order: 50 });
       } catch (e) { log(false, `模式「${mode}」写入`, e?.message || String(e)); }
       if (uid) {
-        // 回读校验 keyless
+        log(/^\d+$/.test(uid), `模式「${mode}」写入返回整数 UID`, `uid=${uid}`);
+        // 回读校验：按 comment 里的逻辑标识 ⟨…⟩ 找回（UID 是 ST 分配的整数）
         let entry = null;
-        try { entry = (await getWorldBookEntries(book) || []).find((x) => String(x?.uid ?? '') === testUid); } catch (_) {}
+        try { entry = (await getWorldBookEntries(book) || []).find((x) => coreadEntryLogicalId(x) === testUid); } catch (_) {}
         const keys = entry ? (entry.key || entry.keys || []) : [];
-        log(!!entry, `模式「${mode}」回读探针`, entry ? '存在' : '未找到');
+        log(!!entry, `模式「${mode}」回读探针（按逻辑标识）`, entry ? '存在' : '未找到');
         log(Array.isArray(keys) && keys.length === 0, `模式「${mode}」探针 keyless（无关键词触发）`, `keys=${JSON.stringify(keys)}`);
-        try { await deleteWorldEntry(book, testUid); log(true, `模式「${mode}」清理探针`); } catch (_) { log(false, `模式「${mode}」清理探针`); }
+        try { await deleteWorldEntry(book, uid); log(true, `模式「${mode}」清理探针`); } catch (_) { log(false, `模式「${mode}」清理探针`); }
       }
     }
 
@@ -9028,9 +9046,10 @@ async function coreadSweepOrphanLore() {
       const entries = await getWorldBookEntries(book);
       for (const e of (entries || [])) {
         const u = String(e?.uid ?? '');
-        if (!u.startsWith('coread::')) continue;
-        const bId = u.split('::')[1] || '';
-        if (bId && !liveIds.has(bId)) { try { await deleteWorldEntry(book, u); cleaned++; } catch (_) {} }
+        const tag = coreadEntryLogicalId(e);
+        if (!tag.startsWith('coread::')) continue;
+        const bId = tag.split('::')[1] || '';
+        if (bId && !liveIds.has(bId)) { try { await deleteWorldEntry(book, String(e?.uid ?? tag)); cleaned++; } catch (_) {} }
       }
     }
     if (cleaned) console.info(`[${MODULE_NAME}] 清扫孤儿伴读记忆条目 ${cleaned} 条（原书已删）`);
@@ -9598,8 +9617,8 @@ async function coreadPurgeBookMemory(bookId) {
     try {
       const entries = await getWorldBookEntries(book);
       for (const e of (entries || [])) {
-        const u = String(e?.uid ?? '');
-        if (u.startsWith(prefix)) { try { await deleteWorldEntry(book, u); loreEntries++; } catch (_) {} }
+        const tag = coreadEntryLogicalId(e);   // 兼容新(comment ⟨…⟩)/旧(uid 即标识)
+        if (tag.startsWith(prefix)) { try { await deleteWorldEntry(book, String(e?.uid ?? tag)); loreEntries++; } catch (_) {} }
       }
     } catch (_) {}
   }
@@ -10297,24 +10316,19 @@ function renderCompanionMoreBody() {
 
 // 记忆记录 tab：①总结提示词(条目式·内置硬格式+自定义) ②自动/手动总结设置 ③切片列表(折叠·可编辑) ④切片二次总结。
 function renderMemRecordsTab(m) {
-  // 可视化：当前世界书与千幕条目统计（务实方案·命名空间隔离提示）
-  const sliceCount = (readerDialog.slices || []).length;
   const boundN = coreadBoundBuckets().length;
-  const modeDesc = m.storageMode === 'shared'
-    ? '当前聊天绑定的世界书（与记忆插件共存·命名空间隔离）'
-    : '独立「千幕伴读」世界书（零冲突·专存伴读切片）';
-  let bookInfo = '';
-  try {
-    bookInfo = `<div class="sd-reader-mcard" style="background:var(--sd-surface);border-left:3px solid var(--smartOrange);">
-      <div class="sd-reader-mhint" style="margin:0;line-height:1.6;">
-        <b>📚 记忆存储方式</b><br>
-        当前写入模式：<b>${modeDesc}</b>（可在「注入」页切换）。<br>
-        • 切片以 <code>coread::</code> 为 UID 前缀、<code>[千幕伴读]</code> 为注释标记，一律「仅存储不触发」（keyless）。<br>
-        • 召回统一走千幕内核（BM25/向量·用切片镜像里的关键词），与其它记忆插件的关键词触发<b>互不冲突</b>。<br>
-        • 当前已记录 <b>${sliceCount}</b> 条共读记忆切片（下方列表仅显示千幕的切片，不含其他插件条目）。
+  // 记忆写入位置卡（从「注入」页移来·作记录页首卡）：写入位置四字不换行·下拉占比收窄·去小字注释
+  const storageCard = `
+    <div class="sd-reader-mcard">
+      <div class="sd-reader-mcard-head"><i class="fa-solid fa-database"></i> 记忆写入位置</div>
+      <div class="sd-reader-mrow">
+        <span class="sd-reader-mrow-lab" style="white-space:nowrap">写入位置</span>
+        <select class="sd-reader-minput sd-reader-storagemode" style="flex:0 0 auto;max-width:60%">
+          <option value="dedicated"${m.storageMode !== 'shared' ? ' selected' : ''}>没装记忆插件：建立千幕伴读世界书</option>
+          <option value="shared"${m.storageMode === 'shared' ? ' selected' : ''}>装了记忆插件：写入同本世界书</option>
+        </select>
       </div>
     </div>`;
-  } catch (_) {}
 
   const items = (m.summaryItems || []).slice().sort((a, b) => a.order - b.order);
   let customIdx = 0;
@@ -10373,7 +10387,7 @@ function renderMemRecordsTab(m) {
     </div>`).join('');
 
   return `
-    ${bookInfo}
+    ${storageCard}
     <div class="sd-reader-mcard">
       <div class="sd-reader-mcard-head">
         <i class="fa-solid fa-pen-nib"></i> 总结提示词
@@ -10417,7 +10431,7 @@ function renderMemRecordsTab(m) {
     </div>
     <div class="sd-reader-mcard">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-box-archive"></i> 伴读档案 <span class="sd-reader-inj-tag">${boundN} 已绑定</span></div>
-      <div class="sd-reader-mhint">把<b>其它聊天/其它书</b>的旧伴读档案绑定到当前聊天，其记忆切片即加入反哺主线与伴读对话的召回池（各带来源书名·批次号各归各档·不物理合并）。当前正读的书自动在池内。</div>
+      <div class="sd-reader-mhint">把其它伴读档案绑定到当前聊天。</div>
       <div class="sd-reader-mactions">
         <button type="button" class="sd-reader-mbtn sd-reader-arch-manage"><i class="fa-solid fa-link"></i>管理绑定档案</button>
       </div>
@@ -10503,13 +10517,10 @@ function renderMemInjectTab(m) {
     ? `<div class="sd-reader-dictcloud">${dictPairs.map(([c, al]) => `<span class="sd-reader-dict-tag">${htmlEscape(c)}<em>≈${htmlEscape((al || []).join(' / '))}</em></span>`).join('')}</div>`
     : '<div class="sd-reader-mempty">词典为空。蒸馏切片时模型会为关键人物 / 概念补上别称、指代，逐步长出词典。</div>';
 
-  // ③ 重排 / ④ 向量：档位说明（实际调用逻辑 1C-2 接·此处显状态与占位）
-  const rerankBody = m.rerankEnabled
-    ? `<div class="sd-reader-mempty">重排已启用。每轮生成前对「BM25+向量」融合候选调重排接口二次打分，取前 ${m.rerankTopN} 条注入。上方候选为 BM25 预览，实际注入以生成时融合+重排结果为准。</div>`
-    : `<div class="sd-reader-mempty">未启用重排。开启后：融合候选 → 重排接口二次打分 → 取前 ${m.rerankTopN} 条。需在下方填重排接口。</div>`;
-  const vectorBody = m.vectorEnabled
-    ? `<div class="sd-reader-mempty">向量检索已启用。每轮生成前直连你配置的 embedding 接口取向量，与 BM25 用 RRF 融合语义召回（失败自动回退纯 BM25）。上方候选为 BM25 预览，实际注入以生成时融合结果为准。</div>`
-    : `<div class="sd-reader-mempty">未启用向量检索。开启后用你配置的 embedding 接口做语义召回，与 BM25 关键词档融合（互补：关键词精准 + 向量抓语义近似）。</div>`;
+  // ③ 重排 / ④ 向量：只显状态（已启用 / 未启用），去长注释
+  const statusPill = (on) => `<div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">状态</span><span class="sd-reader-inj-tag${on ? ' on' : ''}">${on ? '已启用' : '未启用'}</span></div>`;
+  const rerankBody = statusPill(m.rerankEnabled);
+  const vectorBody = statusPill(m.vectorEnabled);
 
   return `
     <div class="sd-reader-mcard">
@@ -10519,31 +10530,19 @@ function renderMemInjectTab(m) {
     <div class="sd-reader-mcard">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-sliders"></i> 注入设置</div>
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">检索命中注入数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-recall" min="0" step="1" value="${m.recallCount}"></div>
-      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">近景切片注入数<i class="fa-solid fa-circle-info" title="伴读对话：最近 N 条切片无条件注入·不参与检索·防漏掉刚聊的内容·0=关"></i></span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-recent" min="0" step="1" value="${m.recentInject}"></div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">近景切片注入数<i class="fa-solid fa-circle-info" title="伴读对话：最近N条切片无条件注入 0=关"></i></span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-recent" min="0" step="1" value="${m.recentInject}"></div>
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">重排后保留数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-reranktop" min="1" step="1" value="${m.rerankTopN}"></div>
     </div>
     <div class="sd-reader-mcard">
-      <div class="sd-reader-mcard-head"><i class="fa-solid fa-arrow-right-arrow-left"></i> 反哺主线（共享切片池）</div>
-      <div class="sd-reader-mhint">开启后，<b>主线</b>生成时用与伴读对话<b>同一份切片池、同一套召回</b>，按主线当下语境智能召回相关共读记忆注入。理念：两人共读的思想碰撞与智识贯穿反哺主线叙事，主线与伴读记忆<b>接续、互为整体</b>——不是「让角色知道你读了什么」的状态汇报。切片池 = 本聊天读过的书 + 你在<b>伴读档案</b>里绑定的旧档案。</div>
+      <div class="sd-reader-mcard-head"><i class="fa-solid fa-arrow-right-arrow-left"></i> 主线联动</div>
+      <div class="sd-reader-mhint">开启后，<b>主线</b>生成时用与伴读对话<b>同一份切片池、同一套召回</b>，按主线当下语境智能召回相关共读记忆注入。理念：两人共读的思想碰撞与智识贯穿反哺主线叙事，主线与伴读记忆<b>接续、互为整体</b>。切片池 = 本聊天读过的书 + 你在<b>伴读档案</b>里绑定的旧档案。</div>
       <div class="sd-reader-mrow">
-        <span class="sd-reader-mrow-lab">开启反哺主线</span>
+        <span class="sd-reader-mrow-lab">开启主线联动</span>
         ${renderMemSwitch('sd-reader-mainline-toggle', m.mainlineFeedback)}
       </div>
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">检索命中注入数<i class="fa-solid fa-circle-info" title="主线：按当下语境召回的切片数"></i></span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-recall" min="0" step="1" value="${m.mainlineRecall}"${m.mainlineFeedback ? '' : ' disabled'}></div>
-      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">近景切片注入数<i class="fa-solid fa-circle-info" title="主线：最近 N 条切片无条件注入·0=关"></i></span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-recent" min="0" step="1" value="${m.mainlineRecent}"${m.mainlineFeedback ? '' : ' disabled'}></div>
-      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">注入深度<i class="fa-solid fa-circle-info" title="插入主线上下文的倒数第 N 层·越小越靠近最新对话"></i></span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-depth" min="0" step="1" value="${m.mainlineDepth}"${m.mainlineFeedback ? '' : ' disabled'}></div>
-    </div>
-    <div class="sd-reader-mcard">
-      <div class="sd-reader-mcard-head"><i class="fa-solid fa-database"></i> 记忆写入模式</div>
-      <div class="sd-reader-mhint">决定伴读切片总结写进哪本世界书。切片一律「仅存储不触发」（keyless），召回统一走千幕内核，与其它记忆插件<b>互不冲突</b>。</div>
-      <div class="sd-reader-mrow">
-        <span class="sd-reader-mrow-lab">写入位置</span>
-        <select class="sd-reader-minput sd-reader-storagemode">
-          <option value="dedicated"${m.storageMode !== 'shared' ? ' selected' : ''}>独立世界书（未装记忆插件推荐·零冲突）</option>
-          <option value="shared"${m.storageMode === 'shared' ? ' selected' : ''}>当前聊天绑定世界书（与记忆插件共存）</option>
-        </select>
-      </div>
-      <div class="sd-reader-mhint sd-muted">${m.storageMode === 'shared' ? '写入当前聊天绑定的世界书，与记忆插件同处一本、命名空间隔离（coread:: 前缀）。' : '新建「千幕伴读」独立世界书专存伴读切片，不碰任何现有世界书。'}</div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">近景切片注入数<i class="fa-solid fa-circle-info" title="主线：最近N条切片无条件注入 0=关"></i></span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-recent" min="0" step="1" value="${m.mainlineRecent}"${m.mainlineFeedback ? '' : ' disabled'}></div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">注入深度</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-depth" min="0" step="1" value="${m.mainlineDepth}"${m.mainlineFeedback ? '' : ' disabled'}></div>
     </div>
     <div class="sd-reader-mcard">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-magnifying-glass"></i> 本次召回候选（${recall.length}）</div>
@@ -10553,7 +10552,6 @@ function renderMemInjectTab(m) {
     </div>
     <div class="sd-reader-mcard">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-book-bookmark"></i> 检索词典 <span class="sd-reader-inj-tag">${dictPairs.length}</span></div>
-      <div class="sd-reader-mhint">蒸馏时模型为关键人物 / 概念补的别称、指代。BM25 召回会把这些别称归一到标准词，让「小艾」也能命中「艾伦」。</div>
       ${dictBody}
     </div>
     <div class="sd-reader-mcard">
