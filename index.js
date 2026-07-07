@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.30';
+const VERSION = '1.7.31';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -10216,25 +10216,43 @@ function renderMemInjectTab(m) {
   const injected = [...recent, ...hits];              // 实际注入 = 近景 + 检索
 
   const batchOf = (s) => s.compressed ? '合并' : (s.batch || '?');
+  // 锚定词高亮：用召回内核算出的真实 hits（已过同义词归一），非裸字符串匹配。近景切片是无条件注入·不算锚定·不高亮。
+  const kwTags = (h) => {
+    const anchorSet = new Set(h.recent ? [] : (h.hits || []));
+    return (h.slice.keywords || []).map((k) => `<span class="sd-reader-slice-key ${anchorSet.has(k) ? 'on' : ''}">${htmlEscape(k)}</span>`).join('');
+  };
   // ① 实际注入：显完整总结全文（近景标「近景」·检索标「检索」）
   const injCards = injected.length
     ? injected.map((h) => `
       <div class="sd-reader-injslice inj">
         <div class="sd-reader-injslice-head"><span class="sd-reader-slice-batch">#${batchOf(h.slice)}</span><span class="sd-reader-injslice-tag${h.recent ? ' recent' : ''}">${h.recent ? '近景' : '检索'}</span></div>
         <div class="sd-reader-injslice-full">${htmlEscape(h.slice.summary || '')}</div>
-        <div class="sd-reader-injslice-keys">${(h.slice.keywords || []).map((k) => `<span class="sd-reader-slice-key ${scanText.includes(k) ? 'on' : ''}">${htmlEscape(k)}</span>`).join('')}</div>
+        <div class="sd-reader-injslice-keys">${kwTags(h)}</div>
       </div>`).join('')
     : '<div class="sd-reader-mempty">本轮无注入切片（近景关闭且无检索命中）。</div>';
 
-  // ② 召回候选：只显编号+关键词+命中数（紧凑）
+  // ② 召回候选：编号 + 关键词（锚定词点亮）+ 命中数 + 分数
   const candRows = recall.length
     ? recall.map((h) => `
       <div class="sd-reader-injrow">
         <span class="sd-reader-slice-batch">#${batchOf(h.slice)}</span>
-        <span class="sd-reader-injrow-keys">${(h.slice.keywords || []).map((k) => `<span class="sd-reader-slice-key ${scanText.includes(k) ? 'on' : ''}">${htmlEscape(k)}</span>`).join('')}</span>
+        <span class="sd-reader-injrow-keys">${kwTags(h)}</span>
         <span class="sd-reader-injrow-score">命中 ${h.hits.length} · 分 ${(h.score || 0).toFixed(2)}</span>
       </div>`).join('')
     : '<div class="sd-reader-mempty">无候选。</div>';
+
+  // 本轮锚定词（跨候选去重·同义词归一后真实命中的关键词）——一眼看清「为什么召回了这些」。
+  const roundAnchors = uniqueClean(recall.flatMap((h) => h.hits || []));
+  const anchorBar = roundAnchors.length
+    ? `<div class="sd-reader-anchorbar"><span class="sd-reader-anchorbar-lab">本轮锚定</span>${roundAnchors.map((k) => `<span class="sd-reader-slice-key on">${htmlEscape(k)}</span>`).join('')}</div>`
+    : '<div class="sd-reader-anchorbar sd-muted">本轮无锚定词（近期对话未命中任何切片关键词）。</div>';
+
+  // 全局检索词典（所有切片同义词并集·标签云）——BM25 归一用的别称→标准词映射。
+  const globalDict = coreadMergeSynonyms(slices.map((s) => s.synonyms));
+  const dictPairs = Object.entries(globalDict);
+  const dictBody = dictPairs.length
+    ? `<div class="sd-reader-dictcloud">${dictPairs.map(([c, al]) => `<span class="sd-reader-dict-tag">${htmlEscape(c)}<em>≈${htmlEscape((al || []).join(' / '))}</em></span>`).join('')}</div>`
+    : '<div class="sd-reader-mempty">词典为空。蒸馏切片时模型会为关键人物 / 概念补上别称、指代，逐步长出词典。</div>';
 
   // ③ 重排 / ④ 向量：档位说明（实际调用逻辑 1C-2 接·此处显状态与占位）
   const rerankBody = m.rerankEnabled
@@ -10267,7 +10285,13 @@ function renderMemInjectTab(m) {
     <div class="sd-reader-mcard">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-magnifying-glass"></i> 本次召回候选（${recall.length}）</div>
       <div class="sd-reader-scanbox">${htmlEscape(scanText.slice(-240))}</div>
+      ${anchorBar}
       <div class="sd-reader-injrows">${candRows}</div>
+    </div>
+    <div class="sd-reader-mcard">
+      <div class="sd-reader-mcard-head"><i class="fa-solid fa-book-bookmark"></i> 检索词典 <span class="sd-reader-inj-tag">${dictPairs.length}</span></div>
+      <div class="sd-reader-mhint">蒸馏时模型为关键人物 / 概念补的别称、指代。BM25 召回会把这些别称归一到标准词，让「小艾」也能命中「艾伦」。</div>
+      ${dictBody}
     </div>
     <div class="sd-reader-mcard">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-arrow-down-wide-short"></i> 重排结果</div>

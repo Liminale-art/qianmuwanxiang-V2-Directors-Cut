@@ -3507,6 +3507,16 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-injrow-keys { flex: 1; display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
 .sd-reader-injrow-score { font-size: .72em; color: var(--sd-muted); flex: 0 0 auto; }
 
+/* 本轮锚定词栏 */
+.sd-reader-anchorbar { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: 8px 0 6px; font-size: .78em; }
+.sd-reader-anchorbar-lab { color: var(--sd-muted); flex: 0 0 auto; margin-right: 2px; }
+.sd-reader-anchorbar.sd-muted { color: var(--sd-muted); }
+
+/* 全局检索词典·标签云 */
+.sd-reader-dictcloud { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.sd-reader-dict-tag { font-size: .76em; padding: 3px 9px; border-radius: 20px; background: var(--sd-pre); color: var(--sd-accent); line-height: 1.4; }
+.sd-reader-dict-tag em { font-style: normal; color: var(--sd-muted); margin-left: 3px; }
+
 .sd-reader-setup-row { display: flex; flex-direction: column; gap: 6px; }
 
 .sd-reader-setup-row { display: flex; flex-direction: column; gap: 6px; }
