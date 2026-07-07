@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.29';
+const VERSION = '1.7.30';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -7836,6 +7836,27 @@ function coreadDateHint() {
    永不返回 null（除非整段无有效对话）。 */
 const COREAD_DISTILL_RETRY = 2;
 
+// 错误分类：瞬时错（网络抖动/限流/服务端错）值得重试；永久错（未配置/鉴权/请求非法）重试也没用，直接抛出显因。
+// 返回 true = 瞬时可重试。
+function coreadIsTransientError(err) {
+  const msg = String(err?.message || err || '');
+  if (/INVALID_API_SETTINGS|missing/i.test(msg)) return false;           // 未配置
+  if (/HTTP\s*4(0[013]|29)/.test(msg)) return /HTTP\s*429/.test(msg);    // 400/401/403 永久；429 限流可重试
+  if (/HTTP\s*4\d\d/.test(msg)) return false;                            // 其它 4xx 客户端错，不重试
+  if (/HTTP\s*5\d\d/.test(msg)) return true;                             // 5xx 服务端错，重试
+  if (/Failed to fetch|NetworkError|timeout|ECONNRESET|network|aborted/i.test(msg)) return true;  // 网络类
+  return true;   // 未知错默认给一次重试机会（保守偏重试·总结失败代价低）
+}
+
+// 把永久错的原始 message 翻译成用户能懂的短原因。
+function coreadExplainError(err) {
+  const msg = String(err?.message || err || '');
+  if (/INVALID_API_SETTINGS|missing/i.test(msg)) return '总结 API 未配置（需填 URL/Key/模型，或确认 SillyTavern 连接可用）';
+  if (/HTTP\s*401|HTTP\s*403/.test(msg)) return 'API 鉴权失败（Key 错误或无权限）';
+  if (/HTTP\s*400/.test(msg)) return 'API 请求非法（模型名或参数有误）';
+  return msg || '未知错误';
+}
+
 async function coreadDistillSegment(segMsgs, m, meta, names) {
   const seg = (segMsgs || []).filter((x) => String(x.text || '').trim());
   if (!seg.length) return null;
@@ -7851,7 +7872,17 @@ async function coreadDistillSegment(segMsgs, m, meta, names) {
     const userMsg = attempt === 0
       ? `【对话】\n${transcript}`
       : `【对话】\n${transcript}\n\n【重要】上一次输出无法解析为 JSON。请严格只输出形如 {"summary":"...","keywords":["..."],"synonyms":{}} 的纯 JSON，不要任何解释、不要代码块标记。`;
-    const raw = String(await callCoreadModel(sysPrompt, userMsg) || '');
+    let raw = '';
+    try {
+      raw = String(await callCoreadModel(sysPrompt, userMsg) || '');
+    } catch (err) {
+      // 瞬时错（网络/限流/5xx）→ 还有重试机会就自动再试一次；否则/永久错→抛出显因
+      if (coreadIsTransientError(err) && attempt < COREAD_DISTILL_RETRY) {
+        toast(`伴读记忆：总结遇到临时问题，正在自动重试（${attempt + 2}/${COREAD_DISTILL_RETRY + 1}）…`, 'warning');
+        continue;
+      }
+      throw err;   // 永久错或重试用尽 → 交外层显因
+    }
     lastRaw = raw;
     // 闸1 宽松解析
     let parsed = null;
@@ -7859,7 +7890,8 @@ async function coreadDistillSegment(segMsgs, m, meta, names) {
     // 闸2 本地修复
     const built = parsed ? coreadBuildSliceFromParsed(parsed, meta) : null;
     if (built) return built;
-    // summary 抠不出来 → 进入下一轮重问（闸3）
+    // summary 抠不出来 → 进入下一轮重问（闸3·格式重试提示，与网络重试区分）
+    if (attempt < COREAD_DISTILL_RETRY) toast(`伴读记忆：输出格式异常，正在重新生成（${attempt + 2}/${COREAD_DISTILL_RETRY + 1}）…`, 'info');
   }
   // 闸4 保底落地：从最后一次原始文本抢救
   const salvaged = coreadSalvageSummary(lastRaw);
@@ -7978,7 +8010,7 @@ async function coreadDistill(manual = false) {
     return { ok: true, made: r.made };
   } catch (e) {
     console.warn(`[${MODULE_NAME}] distill failed`, e);
-    const reason = e?.message === 'INVALID_API_SETTINGS' ? 'API 未配置' : (e?.message || '总结失败');
+    const reason = coreadExplainError(e);
     toast(`伴读记忆：第 ${nextBatch} 批总结失败（${reason}）。`, 'error');
     return { ok: false, reason };
   } finally {
@@ -8022,7 +8054,7 @@ async function coreadManualSummarize(fromIdx, toIdx) {
     await coreadRefreshContainer(meta);   // 切片有变→重建共读记忆容器
     return { ok: true, made: r.made, wrote: r.wrote, writeErr: r.writeErr, salvaged: r.salvaged, mode: overlapped ? 'resummarize' : 'incremental' };
   } catch (e) {
-    return { ok: false, reason: e?.message === 'INVALID_API_SETTINGS' ? 'API 未配置' : (e?.message || '总结失败'), mode: 'incremental' };
+    return { ok: false, reason: coreadExplainError(e), mode: 'incremental' };
   } finally {
     coreadDistilling = false;
   }
