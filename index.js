@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.34';
+const VERSION = '1.7.35';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -504,6 +504,9 @@ const DEFAULT_SETTINGS = Object.freeze({
       mainlineDepth: 2,             // 反哺主线注入深度（插入主线上下文的倒数第 N 层·默认2）
       storageMode: 'dedicated',     // 记忆写入模式：'dedicated'=新建「千幕伴读」独立世界书(零冲突) | 'shared'=写入当前聊天绑定世界书(与记忆插件共存)
       rerankTopN: 4,                // 开重排档时召回候选重排后保留数（用户可改）
+      // 词典册（手动别称词典·全局·可编辑·空也能建）：[{id,name,pairs:{标准词:[别称...]}}]。
+      // 绑定到聊天(chatStore.coreadDictBound)后并入召回归一——主线与伴读对话走同一召回路径·天然共有。
+      dictBooks: [],
     },
   },
 });
@@ -7424,6 +7427,13 @@ function coreadMemory() {
   if (!Number.isFinite(m.mainlineDepth)) m.mainlineDepth = 2;
   m.mainlineDepth = Math.max(0, Math.min(20, Math.round(m.mainlineDepth)));
   if (!['dedicated', 'shared'].includes(m.storageMode)) m.storageMode = 'dedicated';
+  // 词典册归一：数组·每册 {id,name,pairs}·pairs 值归一为数组
+  if (!Array.isArray(m.dictBooks)) m.dictBooks = [];
+  m.dictBooks = m.dictBooks.filter(isPlainObject).map((d) => ({
+    id: String(d.id || uid('dict')),
+    name: String(d.name || '未命名词典').slice(0, 40),
+    pairs: coreadNormalizeSynonyms(d.pairs),
+  }));
   if (!Number.isFinite(m.sliceMaxChars)) m.sliceMaxChars = 300;
   m.sliceMaxChars = Math.max(50, Math.round(m.sliceMaxChars));
   if (!Number.isFinite(m.rerankTopN)) m.rerankTopN = 4;
@@ -7854,6 +7864,27 @@ function coreadLorePrefix(bookTitle) {
   return `${COREAD_LORE_PREFIX}·${String(bookTitle || '未命名').slice(0, 40)}`;
 }
 
+// 本聊天里这本书的「书籍序号」（第几本读的·1-based·稳定）。存 chatStore.coreadBookSeq={bookId:seq}·首见分配下一号。
+function coreadBookSeqInChat(bookId) {
+  const store = getChatStore();
+  if (!isPlainObject(store.coreadBookSeq)) store.coreadBookSeq = {};
+  const map = store.coreadBookSeq;
+  if (!map[bookId]) {
+    const next = Object.values(map).reduce((mx, v) => Math.max(mx, Number(v) || 0), 0) + 1;
+    map[bookId] = next;
+    saveMetadata();
+  }
+  return map[bookId];
+}
+
+// 世界书 comment：千幕伴读·角色名·<编号/正文/主线/合并>·书名(书序)。让「按聊天整体管理」一眼可辨来源。
+function coreadLoreComment(meta, label) {
+  const char = companionCharName() || '书友';
+  const seq = coreadBookSeqInChat(readerDialog.bookId || meta?.id || 'unknown');
+  const title = String(meta?.title || '未命名').slice(0, 30);
+  return `${COREAD_LORE_PREFIX}·${char}·${label}·${title}(${seq})`;
+}
+
 // 蒸馏走哪套 API：总结卡自成一套连接（自定义 URL/Key/模型·与向量/重排同构）——
 // ① 总结卡填了 URL+Key+模型 → 直连该接口（叠加温度/最大输出/流式）；
 // ② 否则回落跟随 SillyTavern generateRaw（gen-params 由 ST 自身接管，无法覆盖）。
@@ -8052,7 +8083,7 @@ async function coreadDistillRange(fromIdx, toIdx, m, meta, names) {
     else {
       finalUid = await writeWorldEntry({
         book, tag: loreUid,   // 逻辑标识入 comment ⟨…⟩·供 purge/sweep 按册匹配（UID 由 ST 分配整数）
-        comment: `${coreadLorePrefix(meta.title)} #${batch}`,
+        comment: coreadLoreComment(meta, `#${batch}`),
         content: res.summary,
         clearKeys: true,   // 走A：keyless 仅存储·召回走内核（BM25/向量用镜像里的 keywords·非世界书关键词触发）
         order: 50,   // 高优先级（比 Memory 插件通常的 100 更优先注入）
@@ -8082,7 +8113,7 @@ async function coreadPersistSlice(res, meta, extra = {}) {
       const srcTag = extra.src === 'text' ? '正文' : (extra.src === 'mainline' ? '主线' : `#${batch}`);
       finalUid = await writeWorldEntry({
         book, tag: loreUid,
-        comment: `${coreadLorePrefix(meta.title)} ${srcTag}`,
+        comment: coreadLoreComment(meta, srcTag),
         content: res.summary, clearKeys: true, order: 50,
       });
     }
@@ -8302,7 +8333,7 @@ async function coreadCompressSlices(lo, hi) {
       try {
         finalUid = await writeWorldEntry({
           book, tag: loreUid,   // 逻辑标识入 comment ⟨…⟩
-          comment: `${coreadLorePrefix(meta.title)} 合并`,
+          comment: coreadLoreComment(meta, '合并'),
           content: summary,
           clearKeys: true,   // 走A：keyless 仅存储
           order: 50,
@@ -8449,8 +8480,8 @@ function coreadRecallSlices(queryText, n, excludeIds, pool) {
   if (excludeIds && excludeIds.size) slices = slices.filter((s) => !excludeIds.has(s.id));
   if (!slices.length) return [];
 
-  // 全局同义词词典（所有切片并集）——查询与每篇文档统一用它归一。
-  const globalDict = coreadMergeSynonyms(slices.map((s) => s.synonyms));
+  // 生效词典＝绑定词典册 + 所有切片 synonyms 并集（主线/伴读共用）——查询与每篇文档统一用它归一。
+  const globalDict = coreadActiveDict(slices);
   const qNorm = coreadApplySynonyms(queryText, globalDict);
   const qTokens = coreadTokenize(qNorm);
   if (!qTokens.length) return [];
@@ -8699,6 +8730,55 @@ function coreadBoundBuckets() {
   return store.coreadBound;
 }
 
+// 本聊天绑定的词典册 id 列表（存 chatStore·主线与伴读对话共有）。
+function coreadBoundDicts() {
+  const store = getChatStore();
+  if (!Array.isArray(store.coreadDictBound)) store.coreadDictBound = [];
+  return store.coreadDictBound;
+}
+
+// 生效检索词典：本聊天绑定的词典册 pairs + 切片自带 synonyms 并集。召回归一与可视化统一走它。
+// companion 与 mainline 都经 coreadRecallSlices→此函数，故词典册天然被两条路径共享。
+function coreadActiveDict(slices) {
+  const m = coreadMemory();
+  const bound = new Set(coreadBoundDicts());
+  const dictPairsList = (m.dictBooks || []).filter((d) => bound.has(d.id)).map((d) => d.pairs);
+  const slicePairsList = (slices || []).map((s) => s.synonyms);
+  return coreadMergeSynonyms([...dictPairsList, ...slicePairsList]);
+}
+
+// 解析词册 textarea：每行「标准词: 别称1, 别称2」→ 归一后的 {标准词:[别称...]}。
+function coreadParseDictText(text) {
+  const pairs = {};
+  for (const line of String(text || '').split(/\n/)) {
+    const idx = line.search(/[:：]/);
+    if (idx < 0) continue;
+    const canon = line.slice(0, idx).trim();
+    if (!canon) continue;
+    pairs[canon] = line.slice(idx + 1).split(/[,，、]/).map((a) => a.trim()).filter(Boolean);
+  }
+  return coreadNormalizeSynonyms(pairs);
+}
+
+// 从 DOM 收编所有词册（名称 + 词条 textarea）落回 m.dictBooks 并保存。返回册数。
+function coreadCommitDictBooksFromDom(root) {
+  if (!root) return 0;
+  const m = coreadMemory();
+  let n = 0;
+  root.querySelectorAll('.sd-reader-dictbook').forEach((el) => {
+    const book = (m.dictBooks || []).find((d) => d.id === el.dataset.id);
+    if (!book) return;
+    const name = el.querySelector('.sd-reader-dictbook-name')?.value;
+    const pairsText = el.querySelector('.sd-reader-dictbook-pairs')?.value;
+    if (name != null) book.name = String(name).slice(0, 40) || '未命名词典';
+    if (pairsText != null) book.pairs = coreadParseDictText(pairsText);
+    n++;
+  });
+  saveSettings();
+  coreadInvalidatePool();
+  return n;
+}
+
 // 反哺主线切片池：合并「本聊天读过的所有书」+「绑定的旧档案」的切片（各带来源书名标签），按 bucket+id 去重。
 // 异步（读 IndexedDB）·带缓存（签名＝聊天+桶集合+本会话切片数变化即失效·蒸馏后自动重建）。
 let coreadPoolCache = null;   // { sig, pool:[{...slice, __src, __srcTitle}] }
@@ -8861,9 +8941,10 @@ async function coreadMigrateFromChat(sourceRec) {
         const logical = `coread::${bookId}::${s.id}`;   // 逻辑标识（按册·稳定）
         const uidStr = s.loreUid || logical;
         try {
+          const label = s.src === 'text' ? '正文' : (s.src === 'mainline' ? '主线' : (s.compressed ? '合并' : `#${s.batch || '?'}`));
           const fin = await writeWorldEntry({
             book, uid: uidStr, tag: logical,   // uid 为整数则原地更新·否则新建；逻辑标识始终入 comment ⟨…⟩
-            comment: `${coreadLorePrefix(meta.title)} ${s.compressed ? '合并' : '#' + (s.batch || '?')}`,
+            comment: coreadLoreComment(meta, label),
             content: s.summary, clearKeys: true, order: 50, enable: true,   // 走A：keyless 仅存储
           });
           s.loreUid = fin || uidStr;
@@ -10503,6 +10584,11 @@ function renderCompanionMoreBody() {
 // 记忆记录 tab：①总结提示词(条目式·内置硬格式+自定义) ②自动/手动总结设置 ③切片列表(折叠·可编辑) ④切片二次总结。
 function renderMemRecordsTab(m) {
   const boundN = coreadBoundBuckets().length;
+  // 当前书在本聊天的「书序」标签——让「按聊天整体记忆」的框架一眼可见（世界书 comment 也用此式：角色·编号·书名(书序)）
+  const curBook = coreadBookMeta(readerDialog.bookId);
+  const curBookLabel = (curBook && readerDialog.bookId)
+    ? `<span class="sd-reader-inj-tag" style="margin-left:6px">《${htmlEscape(curBook.title || '未命名')}》(${coreadBookSeqInChat(readerDialog.bookId)})</span>`
+    : '';
   // 记忆写入位置卡（从「注入」页移来·作记录页首卡）：写入位置四字不换行·下拉占比收窄·去小字注释
   const storageCard = `
     <div class="sd-reader-mcard">
@@ -10637,7 +10723,7 @@ function renderMemRecordsTab(m) {
       </div>
     </div>
     <div class="sd-reader-mcard">
-      <div class="sd-reader-mcard-head"><i class="fa-solid fa-layer-group"></i> 记忆切片（${slices.length}）</div>
+      <div class="sd-reader-mcard-head"><i class="fa-solid fa-layer-group"></i> 记忆切片（${slices.length}）${curBookLabel}</div>
       <div class="sd-reader-slices">${sliceList}</div>
       <div class="sd-reader-mactions">
         <button type="button" class="sd-reader-mbtn sd-reader-slice-migrate" title="把这本书在其他 ST 聊天里的伴读对话与记忆复制到当前聊天"><i class="fa-solid fa-right-left"></i>从其他聊天迁移</button>
@@ -10710,12 +10796,34 @@ function renderMemInjectTab(m) {
     ? `<div class="sd-reader-anchorbar"><span class="sd-reader-anchorbar-lab">本轮锚定</span>${roundAnchors.map((k) => `<span class="sd-reader-slice-key on">${htmlEscape(k)}</span>`).join('')}</div>`
     : '<div class="sd-reader-anchorbar sd-muted">本轮无锚定词（近期对话未命中任何切片关键词）。</div>';
 
-  // 全局检索词典（所有切片同义词并集·标签云）——BM25 归一用的别称→标准词映射。
-  const globalDict = coreadMergeSynonyms(slices.map((s) => s.synonyms));
+  // 生效词典（绑定词册 + 切片 synonyms 并集·主线/伴读共用）——标签云只读预览。
+  const globalDict = coreadActiveDict(slices);
   const dictPairs = Object.entries(globalDict);
-  const dictBody = dictPairs.length
+  const dictCloud = dictPairs.length
     ? `<div class="sd-reader-dictcloud">${dictPairs.map(([c, al]) => `<span class="sd-reader-dict-tag">${htmlEscape(c)}<em>≈${htmlEscape((al || []).join(' / '))}</em></span>`).join('')}</div>`
-    : '<div class="sd-reader-mempty">词典为空。蒸馏切片时模型会为关键人物 / 概念补上别称、指代，逐步长出词典。</div>';
+    : '<div class="sd-reader-mempty">词典为空。蒸馏切片时模型会为关键人物/概念补别称；也可在下方手动建词册。</div>';
+  // 词典册编辑区：每册 = 名称 + 绑定勾选 + 词条 textarea（每行「标准词: 别称1, 别称2」）+ 删除
+  const boundDicts = new Set(coreadBoundDicts());
+  const dictBooks = (m.dictBooks || []);
+  const dictBooksBody = dictBooks.map((d) => {
+    const text = Object.entries(d.pairs || {}).map(([c, al]) => `${c}: ${(al || []).join(', ')}`).join('\n');
+    return `<div class="sd-reader-dictbook" data-id="${htmlEscape(d.id)}">
+      <div class="sd-reader-dictbook-head">
+        <input class="sd-reader-minput sd-reader-dictbook-name" data-id="${htmlEscape(d.id)}" value="${htmlEscape(d.name)}" placeholder="词册名">
+        <label class="sd-reader-dictbind" title="绑定后并入本聊天召回（主线+伴读共用）"><input type="checkbox" class="sd-reader-dictbook-bind" data-id="${htmlEscape(d.id)}"${boundDicts.has(d.id) ? ' checked' : ''}> 绑定此聊天</label>
+        <button type="button" class="sd-reader-mbtn sd-reader-dictbook-del" data-id="${htmlEscape(d.id)}" title="删除词册"><i class="fa-solid fa-trash"></i></button>
+      </div>
+      <textarea class="sd-reader-mtextarea sd-reader-dictbook-pairs" data-id="${htmlEscape(d.id)}" rows="3" placeholder="每行一条：标准词: 别称1, 别称2">${htmlEscape(text)}</textarea>
+    </div>`;
+  }).join('');
+  const dictBody = `
+    ${dictCloud}
+    <div class="sd-reader-dictbooks">${dictBooksBody}</div>
+    <div class="sd-reader-mactions">
+      <button type="button" class="sd-reader-mbtn sd-reader-dictbook-add"><i class="fa-solid fa-plus"></i>新建词册</button>
+      <button type="button" class="sd-reader-mbtn sd-reader-dictbook-save"><i class="fa-solid fa-floppy-disk"></i>保存词典</button>
+      <button type="button" class="sd-reader-mbtn sd-reader-dictbook-savebind"><i class="fa-solid fa-link"></i>保存并绑定至此聊天</button>
+    </div>`;
 
   // ③ 重排 / ④ 向量：只显状态（已启用 / 未启用），去长注释
   const statusPill = (on) => `<div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">状态</span><span class="sd-reader-inj-tag${on ? ' on' : ''}">${on ? '已启用' : '未启用'}</span></div>`;
@@ -11518,6 +11626,31 @@ function bindReaderStageEvents(stageRoot) {
     }
     if (e.target.closest('.sd-reader-slice-migrate')) { coreadOpenMigrateDialog(); return; }
     if (e.target.closest('.sd-reader-arch-manage')) { coreadOpenArchiveDialog(); return; }
+    // 词典册：新建 / 删除 / 保存 / 保存并绑定
+    if (e.target.closest('.sd-reader-dictbook-add')) {
+      coreadCommitDictBooksFromDom(morePage);   // 先保住已编辑的再加新册（防丢输入）
+      m.dictBooks.push({ id: uid('dict'), name: `词典${(m.dictBooks.length || 0) + 1}`, pairs: {} });
+      saveSettings(); rerenderMore(); return;
+    }
+    const dictDel = e.target.closest('.sd-reader-dictbook-del');
+    if (dictDel) {
+      const id = dictDel.dataset.id;
+      m.dictBooks = (m.dictBooks || []).filter((d) => d.id !== id);
+      const store = getChatStore();
+      store.coreadDictBound = coreadBoundDicts().filter((x) => x !== id);   // 连带解绑
+      saveSettings(); saveMetadata(); coreadInvalidatePool(); rerenderMore(); return;
+    }
+    if (e.target.closest('.sd-reader-dictbook-save')) {
+      const n = coreadCommitDictBooksFromDom(morePage);
+      toast(`已保存 ${n} 个词册。`, 'success'); rerenderMore(); return;
+    }
+    if (e.target.closest('.sd-reader-dictbook-savebind')) {
+      coreadCommitDictBooksFromDom(morePage);
+      const store = getChatStore();
+      store.coreadDictBound = (m.dictBooks || []).map((d) => d.id);   // 全部绑定至此聊天
+      saveMetadata(); coreadInvalidatePool();
+      toast(`已保存并绑定 ${store.coreadDictBound.length} 个词册至此聊天。`, 'success'); rerenderMore(); return;
+    }
     // 测试按钮：综合自检（两模式 + keyless + 切片池 + 召回）/ Chat Lore 写入
     if (e.target.closest('.sd-reader-test-selftest')) { coreadSelfTest(); return; }
     if (e.target.closest('.sd-reader-test-lore')) {
@@ -11536,6 +11669,17 @@ function bindReaderStageEvents(stageRoot) {
     if (e.target.closest('.sd-reader-rerank-en')) { m.rerankEnabled = e.target.checked; saveSettings(); return; }
     if (e.target.closest('.sd-reader-autodistill-en')) { m.autoDistill = e.target.checked; saveSettings(); return; }
     if (e.target.closest('.sd-reader-autotext-en')) { m.autoDistillText = e.target.checked; saveSettings(); rerenderMore(); return; }
+    const dictBind = e.target.closest('.sd-reader-dictbook-bind');
+    if (dictBind) {
+      coreadCommitDictBooksFromDom(morePage);   // 保住 textarea 编辑（勾选会触发 change·但不重渲·稳）
+      const id = dictBind.dataset.id; const store = getChatStore();
+      const list = coreadBoundDicts();
+      const i = list.indexOf(id);
+      if (dictBind.checked && i < 0) list.push(id);
+      if (!dictBind.checked && i >= 0) list.splice(i, 1);
+      store.coreadDictBound = list; saveMetadata(); coreadInvalidatePool();
+      return;
+    }
     if (e.target.closest('.sd-reader-mainline-toggle')) { m.mainlineFeedback = e.target.checked; saveSettings(); coreadInvalidatePool(); rerenderMore(); return; }
     if (e.target.closest('.sd-reader-storagemode')) { m.storageMode = e.target.value === 'shared' ? 'shared' : 'dedicated'; saveSettings(); return; }
     // 模型下拉选中 → 直接落库（向量/重排/总结通用）

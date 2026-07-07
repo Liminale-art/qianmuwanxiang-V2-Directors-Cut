@@ -3473,6 +3473,11 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-slice-src { font-size: .62em; padding: 1px 6px; border-radius: 10px; font-style: normal; vertical-align: middle; }
 .sd-reader-slice-src.src-text { background: color-mix(in srgb, var(--sd-accent) 25%, transparent); color: var(--sd-accent); }
 .sd-reader-slice-src.src-mainline { background: color-mix(in srgb, var(--sd-good, #3fae6b) 25%, transparent); color: var(--sd-good, #3fae6b); }
+.sd-reader-dictbooks { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.sd-reader-dictbook { border: 1px solid var(--sd-hairline); border-radius: 8px; padding: 6px 8px; }
+.sd-reader-dictbook-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.sd-reader-dictbook-head .sd-reader-dictbook-name { flex: 1 1 auto; }
+.sd-reader-dictbind { font-size: .78em; white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
 /* 切片：折叠 details */
 .sd-reader-slices { display: flex; flex-direction: column; gap: 6px; }
 .sd-reader-slice { border: 1px solid var(--sd-hairline); border-radius: 10px; background: var(--sd-glass-weak); overflow: hidden; }
