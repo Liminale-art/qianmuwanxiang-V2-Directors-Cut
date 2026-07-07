@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.37';
+const VERSION = '1.7.38';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -1544,7 +1544,8 @@ async function deleteWorldEntry(book, uid) {
 function coreadEntryLogicalId(entry) {
   const u = String(entry?.uid ?? '');
   if (u.startsWith('coread::')) return u;   // 旧条目：uid 即逻辑标识
-  const c = String(entry?.comment ?? '');
+  // 备注字段名各读取源不一（ST 原生 comment / TavernHelper name / 别名 title·memo）——都扫一遍取 ⟨…⟩ 标记
+  const c = `${entry?.comment ?? ''}\n${entry?.name ?? ''}\n${entry?.title ?? ''}\n${entry?.memo ?? ''}`;
   const mm = c.match(/⟨(coread::[^⟩]+)⟩/);
   return mm ? mm[1] : '';
 }
@@ -9178,6 +9179,8 @@ async function coreadSelfTest() {
         }
         const entry = byTag || byUid;
         const keys = entry ? (entry.key || entry.keys || []) : [];
+        // 诊断：把回读到的条目原样打印（看真实字段名——comment/name/title/memo 哪个承载备注）
+        if (byUid) console.log(`[自检] 模式「${mode}」回读原始条目：`, JSON.parse(JSON.stringify(byUid)));
         if (byTag) log(true, `模式「${mode}」回读探针（按逻辑标识）`, '存在');
         else if (byUid) log(false, `模式「${mode}」回读探针`, `条目在(uid=${uid})但 comment 逻辑标识丢失→comment 落字异常。comment="${String(byUid.comment || '').slice(0, 60)}"`);
         else log(false, `模式「${mode}」回读探针`, `条目读不到（uid=${uid} 已返回）→世界书读回延迟/未持久。不影响召回：召回读 IndexedDB 镜像，与世界书副本无关`);
