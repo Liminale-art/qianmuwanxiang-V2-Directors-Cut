@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.35';
+const VERSION = '1.7.36';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -9158,12 +9158,23 @@ async function coreadSelfTest() {
       } catch (e) { log(false, `模式「${mode}」写入`, e?.message || String(e)); }
       if (uid) {
         log(/^\d+$/.test(uid), `模式「${mode}」写入返回整数 UID`, `uid=${uid}`);
-        // 回读校验：按 comment 里的逻辑标识 ⟨…⟩ 找回（UID 是 ST 分配的整数）
-        let entry = null;
-        try { entry = (await getWorldBookEntries(book) || []).find((x) => coreadEntryLogicalId(x) === testUid); } catch (_) {}
+        // 回读校验：ST 世界书写入异步落定，需短暂 settle + 一次重试。分辨两种失败：
+        //   条目整体读不到＝写入未持久/读回延迟；条目在但按 comment 标识找不到＝comment 解析/落字问题。
+        let byTag = null, byUid = null;
+        for (let tryN = 0; tryN < 2 && !byTag; tryN++) {
+          await new Promise((r) => setTimeout(r, 350));
+          try {
+            const all = await getWorldBookEntries(book) || [];
+            byUid = all.find((x) => String(x?.uid ?? '') === String(uid)) || byUid;
+            byTag = all.find((x) => coreadEntryLogicalId(x) === testUid);
+          } catch (_) {}
+        }
+        const entry = byTag || byUid;
         const keys = entry ? (entry.key || entry.keys || []) : [];
-        log(!!entry, `模式「${mode}」回读探针（按逻辑标识）`, entry ? '存在' : '未找到');
-        log(Array.isArray(keys) && keys.length === 0, `模式「${mode}」探针 keyless（无关键词触发）`, `keys=${JSON.stringify(keys)}`);
+        if (byTag) log(true, `模式「${mode}」回读探针（按逻辑标识）`, '存在');
+        else if (byUid) log(false, `模式「${mode}」回读探针`, `条目在(uid=${uid})但 comment 逻辑标识丢失→comment 落字异常。comment="${String(byUid.comment || '').slice(0, 60)}"`);
+        else log(false, `模式「${mode}」回读探针`, `条目读不到（uid=${uid} 已返回）→世界书读回延迟/未持久。不影响召回：召回读 IndexedDB 镜像，与世界书副本无关`);
+        if (entry) log(Array.isArray(keys) && keys.length === 0, `模式「${mode}」探针 keyless（无关键词触发）`, `keys=${JSON.stringify(keys)}`);
         try { await deleteWorldEntry(book, uid); log(true, `模式「${mode}」清理探针`); } catch (_) { log(false, `模式「${mode}」清理探针`); }
       }
     }
