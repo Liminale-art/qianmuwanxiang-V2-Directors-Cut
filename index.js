@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.28';
+const VERSION = '1.7.29';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -7923,16 +7923,18 @@ async function coreadDistillRange(fromIdx, toIdx, m, meta, names) {
   const msgs = readerDialog.messages || [];
   const segMsgs = msgs.slice(fromIdx, toIdx + 1);
   const res = await coreadDistillSegment(segMsgs, m, meta, names);
-  if (!res) return 0;
+  if (!res) return { made: 0 };
   const batch = coreadNextBatch();
   const sliceId = uid('slice');
   const bookId = readerDialog.bookId || 'unknown';
   // UID 命名空间隔离：coread::bookId::sliceId（务实方案·与 Memory 插件等共存同一本世界书但可区分）
   const loreUid = `coread::${bookId}::${sliceId}`;
   let finalUid = '';
+  let writeErr = '';
   try {
     const book = await getOrCreateChatBook();
-    if (book) {
+    if (!book) writeErr = '未能取得/创建聊天世界书';
+    else {
       finalUid = await writeWorldEntry({
         book, uid: loreUid,
         comment: `${coreadLorePrefix(meta.title)} #${batch}`,
@@ -7940,11 +7942,12 @@ async function coreadDistillRange(fromIdx, toIdx, m, meta, names) {
         keys: res.keywords,
         order: 50,   // 高优先级（比 Memory 插件通常的 100 更优先注入）
       });
+      if (!finalUid) writeErr = '世界书写入返回空 UID';
     }
-  } catch (e) { console.warn(`[${MODULE_NAME}] distill write lore failed`, e); }
+  } catch (e) { writeErr = e?.message || String(e); console.warn(`[${MODULE_NAME}] distill write lore failed`, e); }
   readerDialog.slices = Array.isArray(readerDialog.slices) ? readerDialog.slices : [];
   readerDialog.slices.push({ id: sliceId, batch, loreUid: finalUid || loreUid, summary: res.summary, keywords: res.keywords, synonyms: res.synonyms || {}, coveredFrom: fromIdx, coveredTo: toIdx, ts: Date.now(), ...(res.salvaged ? { salvaged: true } : {}) });
-  return 1;
+  return { made: 1, batch, wrote: !!finalUid, writeErr, salvaged: !!res.salvaged };
 }
 
 // 自动/增量蒸馏：cursor..末尾未覆盖对话。manual=true 忽略阈值立即蒸（自动分批·可能出多条）。
@@ -7958,18 +7961,26 @@ async function coreadDistill(manual = false) {
   if (!pending.length) return { ok: false, reason: '没有新的对话可总结' };
   if (!manual && pending.length < Math.max(2, Number(m.distillEvery) || 20)) return { ok: false, reason: 'not-enough' };
   coreadDistilling = true;
+  const nextBatch = coreadNextBatch();
+  toast(`伴读记忆：正在总结第 ${nextBatch} 批对话…`, 'info');
   try {
     const meta = coreadBookMeta(readerDialog.bookId) || {};
     const names = { char: companionCharName(), user: getPersonaName() || '我' };
-    const made = await coreadDistillRange(from, msgs.length - 1, m, meta, names);
-    if (!made) return { ok: false, reason: '模型没有返回有效总结' };
+    const r = await coreadDistillRange(from, msgs.length - 1, m, meta, names);
+    if (!r.made) { toast('伴读记忆：模型没有返回有效总结，稍后重试。', 'warning'); return { ok: false, reason: '模型没有返回有效总结' }; }
     readerDialog.cursor = msgs.length;
     await coreadSaveDialog();
     await coreadRefreshContainer(meta);   // 切片有变→重建共读记忆容器
-    return { ok: true, made };
+    // 注入(写世界书)成功沉默；失败弹原因。salvaged 提示降级保底。
+    if (!r.wrote) toast(`伴读记忆：第 ${r.batch} 批已生成，但写入世界书失败（${r.writeErr || '未知原因'}），本条召回可能不生效。`, 'error');
+    else if (r.salvaged) toast(`伴读记忆：第 ${r.batch} 批已总结（关键词档降级保底）。`, 'warning');
+    else toast(`伴读记忆：第 ${r.batch} 批已总结 ✓`, 'success');
+    return { ok: true, made: r.made };
   } catch (e) {
     console.warn(`[${MODULE_NAME}] distill failed`, e);
-    return { ok: false, reason: e?.message === 'INVALID_API_SETTINGS' ? 'API 未配置' : (e?.message || '总结失败') };
+    const reason = e?.message === 'INVALID_API_SETTINGS' ? 'API 未配置' : (e?.message || '总结失败');
+    toast(`伴读记忆：第 ${nextBatch} 批总结失败（${reason}）。`, 'error');
+    return { ok: false, reason };
   } finally {
     coreadDistilling = false;
   }
@@ -8002,14 +8013,14 @@ async function coreadManualSummarize(fromIdx, toIdx) {
       } else kept.push(s);
     }
     readerDialog.slices = kept;
-    const made = await coreadDistillRange(from, to, m, meta, names);
-    if (!made) return { ok: false, reason: '模型没有返回有效总结', mode: overlapped ? 'resummarize' : 'incremental' };
+    const r = await coreadDistillRange(from, to, m, meta, names);
+    if (!r.made) return { ok: false, reason: '模型没有返回有效总结', mode: overlapped ? 'resummarize' : 'incremental' };
     coreadRenumberSlices();
     // cursor 推进到「已覆盖的最大位置+1」（区间末尾与原 cursor 取大·别回退已总结进度）
     readerDialog.cursor = Math.max(to + 1, Number(readerDialog.cursor) || 0);
     await coreadSaveDialog();
     await coreadRefreshContainer(meta);   // 切片有变→重建共读记忆容器
-    return { ok: true, made, mode: overlapped ? 'resummarize' : 'incremental' };
+    return { ok: true, made: r.made, wrote: r.wrote, writeErr: r.writeErr, salvaged: r.salvaged, mode: overlapped ? 'resummarize' : 'incremental' };
   } catch (e) {
     return { ok: false, reason: e?.message === 'INVALID_API_SETTINGS' ? 'API 未配置' : (e?.message || '总结失败'), mode: 'incremental' };
   } finally {
@@ -8379,12 +8390,16 @@ function coreadRRF(bm25List, vecList, k = 60) {
   return out;
 }
 
-// 可选 rerank：调重排接口对候选二次打分，取前 topN。失败回退原候选。cands=[{slice}]。
+// 向量/重排失败提示去重标志（存上次错因·同因不刷屏·恢复即清并提示一次）。
+let coreadVecErrShown = '';
+let coreadRerankErrShown = '';
+
+// 可选 rerank：调重排接口对候选二次打分，取前 topN。未配置→静默返回原候选；配置了但调用失败→抛错（供上层提示）。cands=[{slice}]。
 async function coreadRerank(queryText, cands, m) {
   const rawUrl = String(m.rerankApiUrl || '').trim();
   const key = m.rerankApiKey || '';
   const model = m.rerankModel || '';
-  if (!rawUrl || !key || !model || !cands.length) return cands;
+  if (!rawUrl || !key || !model || !cands.length) return cands;   // 未配置=不视作错误，静默用融合结果
   let ep = rawUrl.replace(/\/+$/, '');
   if (!/\/rerank(ing)?$/i.test(ep)) ep = /\/v1$/i.test(ep) ? `${ep}/rerank` : `${ep}/v1/rerank`;
   const docs = cands.map((h) => String(h.slice.summary || ''));
@@ -8393,18 +8408,16 @@ async function coreadRerank(queryText, cands, m) {
     headers: { 'Content-Type': 'application/json', Authorization: auth },
     body: JSON.stringify({ model, query: String(queryText || ''), documents: docs, top_n: Math.min(cands.length, Math.max(1, m.rerankTopN || 4)) }),
   });
-  try {
-    let res = await call(`Bearer ${key}`);
-    if (!res.ok && (res.status === 401 || res.status === 403)) res = await call(String(key));
-    if (!res.ok) return cands;
-    const data = await res.json();
-    const results = Array.isArray(data?.results) ? data.results : [];
-    if (!results.length) return cands;
-    // results: [{index, relevance_score}] → 按 index 映回候选
-    return results
-      .filter((r) => Number.isInteger(r?.index) && cands[r.index])
-      .map((r) => ({ ...cands[r.index], rerank: r.relevance_score }));
-  } catch (_) { return cands; }
+  let res = await call(`Bearer ${key}`);
+  if (!res.ok && (res.status === 401 || res.status === 403)) res = await call(String(key));
+  if (!res.ok) { const t = await res.text().catch(() => ''); throw new Error(`rerank HTTP ${res.status}${t ? ` · ${t.slice(0, 80)}` : ''}`); }
+  const data = await res.json();
+  const results = Array.isArray(data?.results) ? data.results : [];
+  if (!results.length) return cands;   // 空结果不算错，用融合
+  // results: [{index, relevance_score}] → 按 index 映回候选
+  return results
+    .filter((r) => Number.isInteger(r?.index) && cands[r.index])
+    .map((r) => ({ ...cands[r.index], rerank: r.relevance_score }));
 }
 
 /* 检索编排：向量档关→纯 BM25（同步内核·零算力）；向量档开→BM25 + 向量 RRF 融合（→可选 rerank）。
@@ -8415,14 +8428,25 @@ async function coreadRetrieveHits(queryText, n, excludeIds, m) {
   let vec = [];
   try {
     vec = (await coreadVectorRecall(queryText, m)).filter((h) => !excludeIds || !excludeIds.has(h.slice.id));
-  } catch (e) { console.warn(`[${MODULE_NAME}] 向量召回失败，回退 BM25`, e); return bm25.slice(0, n); }
+    if (coreadVecErrShown) { toast('伴读记忆：向量检索已恢复正常。', 'success'); coreadVecErrShown = ''; }   // 恢复即提示一次
+  } catch (e) {
+    const msg = e?.message || String(e);
+    if (coreadVecErrShown !== msg) { toast(`伴读记忆：向量检索失败（${msg}），已回退关键词召回。`, 'error'); coreadVecErrShown = msg; }   // 去重·同因不重复刷屏
+    console.warn(`[${MODULE_NAME}] 向量召回失败，回退 BM25`, e);
+    return bm25.slice(0, n);
+  }
   let fused = coreadRRF(bm25, vec.slice(0, Math.max(n * 3, n)));   // rank 融合·免量纲
   if (m.rerankEnabled) {
     try {
       const topForRerank = fused.slice(0, Math.max(n * 2, n));
       const reranked = await coreadRerank(queryText, topForRerank, m);
       if (reranked && reranked.length) fused = reranked;
-    } catch (e) { console.warn(`[${MODULE_NAME}] 重排失败，用融合结果`, e); }
+      if (coreadRerankErrShown) { toast('伴读记忆：重排已恢复正常。', 'success'); coreadRerankErrShown = ''; }
+    } catch (e) {
+      const msg = e?.message || String(e);
+      if (coreadRerankErrShown !== msg) { toast(`伴读记忆：重排失败（${msg}），已用融合结果。`, 'warning'); coreadRerankErrShown = msg; }
+      console.warn(`[${MODULE_NAME}] 重排失败，用融合结果`, e);
+    }
   }
   // hits 需带 hits 数组供 echo/可视化——RRF/rerank 结果补一个空 hits 兜底
   return fused.slice(0, n).map((h) => ({ slice: h.slice, hits: h.slice.keywords || [], score: h.rrf ?? h.rerank ?? 0, ...h }));
@@ -10909,7 +10933,8 @@ function bindReaderStageEvents(stageRoot) {
         const icon = btn.querySelector('i'); const prev = icon?.className;
         btn.disabled = true; if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
         coreadManualSummarize(fromIdx, toIdx).then((r) => {
-          if (r?.ok) toast(`${r.mode === 'resummarize' ? '已重新总结' : '已总结'}出 ${r.made} 条切片。`, 'success');
+          if (r?.ok && !r.wrote) toast(`已生成切片，但写入世界书失败（${r.writeErr || '未知原因'}），召回可能不生效。`, 'error');
+          else if (r?.ok) toast(`${r.mode === 'resummarize' ? '已重新总结' : '已总结'}出 ${r.made} 条切片${r.salvaged ? '（关键词档降级保底）' : ''}。`, 'success');
           else toast(r?.reason || '总结失败。', 'warning');
           rerenderMore();
         }).finally(() => { btn.disabled = false; if (icon && prev) icon.className = prev; });
