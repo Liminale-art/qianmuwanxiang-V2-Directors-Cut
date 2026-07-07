@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.36';
+const VERSION = '1.7.37';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -1488,6 +1488,12 @@ function escapeSlashValue(s) {
   return String(s ?? '').replace(/\|/g, '\\|').replace(/\r?\n+/g, ' ').trim();
 }
 
+// STscript 未命名尾参（如 /setentryfield 的值）遇空格会被截断，只取首个 token → 带空格的 comment/content 落字为空。
+// 故字符串值须用双引号包裹成单个 token（内部双引号转义）。数值字段（order/constant 等）不加引号。
+function quoteSlashValue(s) {
+  return `"${escapeSlashValue(s).replace(/"/g, '\\"')}"`;
+}
+
 // 向指定世界书写入/更新一条目。opts: { book, uid?, tag?, comment?, content?, keys?:[], order?, position?, vectorized?, group? }
 // uid 必须是 ST 世界书条目的「整数 UID」——传整数 uid＝更新该条；uid 为空或非整数＝新建（/createentry 由 ST 分配整数 UID）。
 // tag＝调用方的「逻辑标识」（如 coread::bookId::sliceId），写进 comment 尾部的 ⟨…⟩ 机器标记，供按册清扫/purge 匹配（因 UID 是整数无法承载命名空间）。
@@ -1509,16 +1515,17 @@ async function writeWorldEntry(opts = {}) {
   const commentText = (opts.comment != null || opts.tag)
     ? `${opts.comment != null ? opts.comment : ''}${opts.tag ? ` ⟨${opts.tag}⟩` : ''}`.trim()
     : null;
-  if (commentText != null) await set('comment', escapeSlashValue(commentText));
-  if (opts.content != null) await set('content', escapeSlashValue(opts.content));
-  if (Array.isArray(opts.keys) && opts.keys.length) await set('key', opts.keys.map(escapeSlashValue).join(','));
-  else if (opts.clearKeys) await set('key', '');   // 走A：伴读切片改「仅存储不触发」·清空关键词·召回统一走内核·杜绝与拦截器双重注入
+  // 字符串值一律引号包裹（含空格的 comment/content 不加引号会被 STscript 截断为空）
+  if (commentText != null) await set('comment', quoteSlashValue(commentText));
+  if (opts.content != null) await set('content', quoteSlashValue(opts.content));
+  if (Array.isArray(opts.keys) && opts.keys.length) await set('key', quoteSlashValue(opts.keys.map(escapeSlashValue).join(',')));
+  else if (opts.clearKeys) await set('key', '""');   // 走A：清空关键词（空串也须引号成 token）·召回统一走内核·杜绝与拦截器双重注入
   if (opts.order != null) await set('order', Number(opts.order));
   if (opts.position != null) await set('position', Number(opts.position));
   if (opts.constant != null) await set('constant', opts.constant ? 1 : 0);   // 常驻(蓝灯)=每轮无条件注入·不依赖关键词触发
   if (opts.enable) await set('disable', 0);   // 复用固定 uid 的条目(如容器)重建时须复位禁用位·否则曾禁用过就注入不出来
   if (opts.vectorized != null) await set('vectorized', opts.vectorized ? 1 : 0);
-  if (opts.group != null) await set('group', escapeSlashValue(opts.group));
+  if (opts.group != null) await set('group', quoteSlashValue(opts.group));
   return uid;
 }
 
@@ -1527,7 +1534,7 @@ async function deleteWorldEntry(book, uid) {
   const b = String(book || '').trim();
   const u = String(uid ?? '').trim();
   if (!b || !u) return false;
-  await runSlash(`/setentryfield file="${b.replace(/"/g, '')}" uid=${u} field=content `);   // 先清空内容
+  await runSlash(`/setentryfield file="${b.replace(/"/g, '')}" uid=${u} field=content ""`);   // 先清空内容（空串须引号成 token）
   await runSlash(`/setentryfield file="${b.replace(/"/g, '')}" uid=${u} field=disable 1`);   // 再禁用（ST 无标准删条斜杠，禁用即不参与召回）
   return true;
 }
