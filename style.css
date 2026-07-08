@@ -3375,6 +3375,12 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-mcard { background: var(--sd-glass-weak); border: 1px solid var(--sd-hairline); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
 .sd-reader-mcard-head { display: flex; align-items: center; gap: 8px; font-size: .94em; font-weight: 600; color: var(--sd-text); }
 .sd-reader-mcard-head i { color: var(--sd-accent); }
+/* 可折叠卡片：mcard 作 details 时，head 作 summary（去默认三角·加自绘 chevron·点击整条头折叠） */
+details.sd-reader-mcard > summary.sd-reader-mcard-head { cursor: pointer; list-style: none; user-select: none; }
+details.sd-reader-mcard > summary.sd-reader-mcard-head::-webkit-details-marker { display: none; }
+details.sd-reader-mcard > summary.sd-reader-mcard-head::after { content: '\f078'; font-family: 'Font Awesome 6 Free'; font-weight: 900; margin-left: auto; font-size: .8em; color: var(--sd-muted); transition: transform .2s ease; }
+details.sd-reader-mcard[open] > summary.sd-reader-mcard-head::after { transform: rotate(180deg); }
+details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { margin-left: 0; }
 .sd-reader-mswitch { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: .78em; color: var(--sd-muted); font-weight: 400; cursor: pointer; }
 /* 单选（跟随 ST / 自定义） */
 .sd-reader-mradio { display: flex; flex-direction: column; gap: 6px; }
@@ -3478,6 +3484,20 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-dictbook-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .sd-reader-dictbook-head .sd-reader-dictbook-name { flex: 1 1 auto; }
 .sd-reader-dictbind { font-size: .78em; white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
+/* 词典新UI：下拉选择器 + 列式词条 */
+.sd-reader-dict-selector { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.sd-reader-dict-booksel { flex: 1 1 auto; min-width: 180px; }
+.sd-reader-dict-book-acts { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.sd-reader-dict-rows { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; margin-bottom: 10px; }
+.sd-reader-dict-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--sd-hairline); border-radius: 8px; background: var(--sd-glass-weak); }
+.sd-reader-dict-row-readonly { opacity: .85; }
+.sd-reader-dict-canon { font-weight: 600; font-size: .88em; color: var(--sd-text); flex: 0 0 auto; min-width: 80px; }
+.sd-reader-dict-aliases { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 auto; }
+.sd-reader-dict-alias { font-size: .74em; padding: 2px 9px; border-radius: 20px; background: var(--sd-pre); color: var(--sd-accent); line-height: 1.4; }
+.sd-reader-dict-row-acts { display: flex; gap: 5px; flex: 0 0 auto; }
+.sd-reader-dict-row-acts button { padding: 4px 8px; font-size: .8em; }
+.sd-reader-dictentry-dialog { font-size: .92em; }
+.sd-reader-de-preview { display: flex; flex-wrap: wrap; gap: 4px; min-height: 28px; padding: 6px 8px; border: 1px dashed var(--sd-hairline); border-radius: 6px; background: var(--sd-glass-weak); }
 /* 切片：折叠 details */
 .sd-reader-slices { display: flex; flex-direction: column; gap: 6px; }
 .sd-reader-slice { border: 1px solid var(--sd-hairline); border-radius: 10px; background: var(--sd-glass-weak); overflow: hidden; }
@@ -3492,7 +3512,8 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-slice-salvaged { color: #e0a020; font-size: .82em; flex: 0 0 auto; }
 .sd-reader-migrate-row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--sd-hairline, #ddd); border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
 .sd-reader-migrate-row:hover { border-color: var(--sd-accent); }
-.sd-reader-migrate-info { display: flex; flex-direction: column; gap: 2px; font-size: .9em; }
+.sd-reader-migrate-info { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: .9em; flex: 1; min-width: 0; }
+.sd-reader-migrate-floor { font-size: .82em; color: var(--sd-accent); font-weight: 700; flex: 0 0 auto; opacity: .85; }
 .sd-reader-migrate-when { font-size: .78em; color: var(--sd-muted, #888); }
 .sd-reader-slice-syn { font-size: .74em; margin: 4px 0 2px; line-height: 1.5; color: var(--sd-accent); }
 .sd-reader-slice-syn i { margin-right: 4px; opacity: .7; }
