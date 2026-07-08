@@ -7709,25 +7709,34 @@ function coreadDeleteMemProfile(kind, id) {
 let rerenderMoreIfOpen = () => {};
 
 // 伴读世界书「书」级选中（独立于主线）。
+// 伴读世界书选择按聊天存储（getChatStore），与预设分开——预设全局可沿用·世界书随聊天绑定关系各不同。
+function coreadChatCompanionWb() {
+  const store = getChatStore();
+  if (!isPlainObject(store.coreadCompanionWb)) store.coreadCompanionWb = { worldBooks: [], worldItems: {} };
+  if (!Array.isArray(store.coreadCompanionWb.worldBooks)) store.coreadCompanionWb.worldBooks = [];
+  if (!isPlainObject(store.coreadCompanionWb.worldItems)) store.coreadCompanionWb.worldItems = {};
+  return store.coreadCompanionWb;
+}
+
 function coreadToggleCompanionWorldBook(name, selected) {
   if (!name) return;
-  const cp = coreadCompanion();
-  const i = cp.worldBooks.indexOf(name);
+  const wb = coreadChatCompanionWb();
+  const i = wb.worldBooks.indexOf(name);
   const want = typeof selected === 'boolean' ? selected : i < 0;
-  if (want && i < 0) cp.worldBooks.push(name);
-  else if (!want && i >= 0) cp.worldBooks.splice(i, 1);
-  saveSettings();
+  if (want && i < 0) wb.worldBooks.push(name);
+  else if (!want && i >= 0) wb.worldBooks.splice(i, 1);
+  saveMetadata();   // 世界书选择按聊天存 chatStore，用 saveMetadata 而非 saveSettings
 }
 function isCompanionWorldItemSelected(book, itemId, fallbackEnabled) {
-  const store = coreadCompanion().worldItems[book];
+  const store = coreadChatCompanionWb().worldItems[book];
   if (store && typeof store[itemId] === 'boolean') return store[itemId];
   return fallbackEnabled !== false;
 }
 function setCompanionWorldItemSelected(book, itemId, selected) {
-  const cp = coreadCompanion();
-  if (!isPlainObject(cp.worldItems[book])) cp.worldItems[book] = {};
-  cp.worldItems[book][itemId] = !!selected;
-  saveSettings();
+  const wb = coreadChatCompanionWb();
+  if (!isPlainObject(wb.worldItems[book])) wb.worldItems[book] = {};
+  wb.worldItems[book][itemId] = !!selected;
+  saveMetadata();   // 同上：按聊天存
 }
 
 // 扫描世界书（复用主线 refreshWorldBooks→contextScanCache，含条目数据），扫完重渲设定浮层。
@@ -7870,9 +7879,9 @@ async function buildCompanionContext(bookId, recallQuery = '') {
     }
   }
 
-  // ── 取材：世界书条目（伴读独立勾选）──
+  // ── 取材：世界书条目（伴读独立勾选·选择按聊天存储）──
   const worldBlocks = [];
-  for (const wbName of (cp.worldBooks || [])) {
+  for (const wbName of (coreadChatCompanionWb().worldBooks || [])) {
     const entries = contextScanCache.worldBooks?.[wbName] || [];
     for (const [index, item] of (entries || []).entries()) {
       const itemId = getContextItemId(item, index);
@@ -11530,12 +11539,13 @@ function renderMemInjectTab(m) {
 // 人设走「千幕已有取材注入逻辑」一种方式，无需在此重复勾选；轨道A 的对话记忆条数挪到 1C 蒸馏设置(短信体按条算·100-200 触发总结·此处版面不放)。
 function renderCompanionSetupBody() {
   const cp = coreadCompanion();
+  const wb = coreadChatCompanionWb();   // 世界书选择按聊天存·从 chatStore 读
   const stChar = getCharacterName() || '未选择';
   const stUser = getPersonaName() || '未选择';
   // 复用主线扫描缓存（点「扫描」会 refreshWorldBooks 填充 contextScanCache·与取材同源）
   const boundNames = contextScanCache.boundWorldBookNames || detectBoundWorldBookNames();
   const allNames = uniqueClean([...boundNames, ...(contextScanCache.worldBookNames || [])]).filter(Boolean);
-  const cpSelected = cp.worldBooks.filter((n) => allNames.includes(n));
+  const cpSelected = wb.worldBooks.filter((n) => allNames.includes(n));
   if (companionWorldView && !allNames.includes(companionWorldView)) companionWorldView = '';
   const viewName = companionWorldView || cpSelected[cpSelected.length - 1] || '';
   const bookRows = allNames.map((name) => `
@@ -12101,7 +12111,8 @@ function bindReaderStageEvents(stageRoot) {
     if (!setupOverlay) return;
     // 首次渲染前：把 view 预设到最后一个选中项，避免"有选中但显示暂无条目"（需点一次才读到）
     const cp = coreadCompanion();
-    if (!companionWorldView && cp.worldBooks.length) companionWorldView = cp.worldBooks[cp.worldBooks.length - 1];
+    const wb = coreadChatCompanionWb();
+    if (!companionWorldView && wb.worldBooks.length) companionWorldView = wb.worldBooks[wb.worldBooks.length - 1];
     if (!companionPresetView && cp.presets.length) companionPresetView = cp.presets[cp.presets.length - 1];
     rerenderSetup();
     setupOverlay.hidden = false;
@@ -13922,6 +13933,7 @@ function bindEvents() {
     ttsExtractAutoScanned = false;   // 切聊天：配音「人设参照」也重新按新聊天补扫一次
     ttsLineCache.clear();      // 切聊天：旧消息台词缓存失效
     coreadInvalidatePool();    // 切聊天：反哺主线切片池随新聊天的绑定档案重算
+    companionWorldView = '';   // 切聊天：世界书已按聊天分存，查看视图回到未选·避免跨聊天残留
     renderFloatButton();
     renderInputMenuEntry();
     await applyDirectorInjection();
