@@ -7,14 +7,18 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.42';
+const VERSION = '1.8.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
 // 推正式库前：VISIBLE 保持 true、ENABLED 置 false；推开发库：两者皆 true。tab 路由/portal 据 ENABLED 门控。
 const COREAD_VISIBLE = true;
 const COREAD_ENABLED = true;
+// COREAD_MEMORY_ENABLED —— 伴读「记忆模块」子闸。伴读对话本体可用、但记忆模块（脑图标浮层：蒸馏/召回/向量/注入）单独锁。
+// 开发库=true(能进·自测)，正式库=false(伴读开放但记忆锁·脑图标点击弹「烙饼中」)。推正式库前置 false。
+const COREAD_MEMORY_ENABLED = true;
 const COREAD_TEASER = '伴读 · 小火慢炖中……';   // 正式版点击图标时的预告文案
+const COREAD_MEMORY_TEASER = '伴读记忆 · 烙饼中……';   // 记忆模块锁定时点脑图标的预告文案
 const SETTINGS_PANEL_ID = 'story-director-settings';
 const MODAL_ID = 'story-director-modal';
 const FLOAT_ID = 'story-director-float';
@@ -10291,6 +10295,7 @@ async function coreadImportFormatDialog() {
         <li><b>TXT</b> — 纯文本（自动识别编码与章节）</li>
       </ul>
       <p style="margin:8px 0 0;color:var(--sd-muted,#888);font-size:.8em">MOBI 若为较新的 HUFF/CDIC 压缩或 AZW3 容器可能无法解析，建议转成 EPUB。</p>
+      <p style="margin:6px 0 0;color:var(--sd-muted,#888);font-size:.8em">可以看漫画，但暂未做识图适配（人话：不能伴读）。</p>
     </div>`;
   if (Popup && context.POPUP_TYPE) {
     const wrap = document.createElement('div');
@@ -10505,6 +10510,12 @@ async function coreadMaybeAutoDistillText() {
   } catch (_) {} finally { coreadAutoTextInFlight = false; }
 }
 
+// 阅读器选区监听句柄（document 级·portal 每次重建都会重绑·此处存旧句柄以便先摘再挂·防泄漏）
+let readerSelChangeHandler = null;
+function detachReaderSelListener() {
+  if (readerSelChangeHandler) { try { document.removeEventListener('selectionchange', readerSelChangeHandler); } catch (_) {} readerSelChangeHandler = null; }
+}
+
 function unmountReaderPortal() {
   // 释放所有图片 objectURL 防内存泄漏
   for (const url of inlineImageUrls.values()) {
@@ -10512,6 +10523,7 @@ function unmountReaderPortal() {
   }
   inlineImageUrls.clear();
   inlineImageSmall.clear();
+  detachReaderSelListener();
   document.getElementById('sd-reader-portal')?.remove();
 }
 
@@ -10892,8 +10904,9 @@ function buildReaderStage() {
             <button class="sd-reader-dtab ${dTab === 'voice' ? 'active' : ''}" data-dtab="voice"><i class="fa-solid fa-comment-dots"></i> 语音条</button>
           </div>
           <div class="sd-reader-dialog-head-btns">
-            <button class="sd-reader-dialog-setup" title="伴读设定（书友 / 取材 / 上下文）"><i class="fa-solid fa-gear"></i></button>
-            <button class="sd-reader-dialog-pin ${readerView.dialogPinned ? 'active' : ''}" title="固定对话框（固定后正文照常滚动）"><i class="fa-solid fa-thumbtack"></i></button>
+            <button class="sd-reader-dialog-apiconf" title="对话 API"><i class="fa-solid fa-plug"></i></button>
+            <button class="sd-reader-dialog-setup" title="伴读设定"><i class="fa-solid fa-gear"></i></button>
+            <button class="sd-reader-dialog-pin ${readerView.dialogPinned ? 'active' : ''}" title="固定对话框"><i class="fa-solid fa-thumbtack"></i></button>
           </div>
         </div>
         <div class="sd-reader-dialog-body sd-reader-dtab-chat"${dTab === 'chat' ? '' : ' hidden'}>${renderReaderDialogMessages()}</div>
@@ -10901,8 +10914,8 @@ function buildReaderStage() {
         <div class="sd-reader-dialog-input"${dTab === 'chat' ? '' : ' hidden'}>
           <button class="sd-reader-inbtn sd-reader-dialog-more" title="伴读记忆"><i class="fa-solid fa-brain"></i></button>
           <textarea class="sd-reader-dialog-ta" placeholder="和「${htmlEscape(companionCharName())}」聊两句……" rows="1"></textarea>
-          <button class="sd-reader-inbtn sd-reader-dialog-send" title="发送（把这句加进对话，可连发）"><i class="fa-solid fa-arrow-up"></i></button>
-          <button class="sd-reader-inbtn sd-reader-dialog-gen" title="让书友回复（合并你本轮所有消息）"><i class="fa-solid fa-paper-plane"></i></button>
+          <button class="sd-reader-inbtn sd-reader-dialog-send" title="发送"><i class="fa-solid fa-arrow-up"></i></button>
+          <button class="sd-reader-inbtn sd-reader-dialog-gen" title="让书友回复"><i class="fa-solid fa-paper-plane"></i></button>
         </div>
       </div>
 
@@ -10970,6 +10983,17 @@ function buildReaderStage() {
           <div class="sd-reader-setup-body">${renderCompanionSetupBody()}</div>
           <div class="sd-reader-noteedit-actions">
             <button class="sd-btn sd-reader-setup-close">完成</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 对话 API 临时面板（1.8.0·正式版记忆模块锁定时，对话 API 单独在此设·与伴读记忆里那套逻辑/拉取一致） -->
+      <div class="sd-reader-setupoverlay sd-reader-apioverlay" hidden>
+        <div class="sd-reader-setupoverlay-card">
+          <div class="sd-reader-noteoverlay-head"><i class="fa-solid fa-plug"></i> 对话 API</div>
+          <div class="sd-reader-setup-body sd-reader-apiconf-body">${renderDialogApiPanel()}</div>
+          <div class="sd-reader-noteedit-actions">
+            <button class="sd-btn sd-reader-apiconf-close">完成</button>
           </div>
         </div>
       </div>
@@ -11052,6 +11076,37 @@ function renderSummaryApiCard(m) {
         <label class="sd-reader-mlab-inline">上下文<input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-sum-ctx" min="0" step="10000" value="${m.summaryContextChars}" placeholder="0=不限"></label>
       </div>
       ${renderMemApiActions('summary')}
+    </div>`;
+}
+
+// 对话 API 临时面板内容：正式版记忆模块锁定时，对话 API 单独在此暴露。
+// 功能与伴读记忆「API 设置」tab 里的「对话 API」卡完全一致：跟随 ST / 千幕自定义预设，可拉取/新建/删除预设。
+function renderDialogApiPanel() {
+  const m = coreadMemory();
+  const ext = m.dialogProvider === 'external';
+  const profiles = Array.isArray(settings.apiProfiles) ? settings.apiProfiles : [];
+  let backend = '', model = '';
+  try {
+    const c = ctx();
+    backend = c?.mainApi || c?.chatCompletionSettings?.chat_completion_source || '';
+    model = (typeof c?.getChatCompletionModel === 'function' ? c.getChatCompletionModel() : '') || c?.onlineStatus || '';
+  } catch (_) {}
+  const connLine = (backend || model)
+    ? `当前连接：${htmlEscape([backend, model].filter(Boolean).join(' · '))}`
+    : '当前连接：跟随 SillyTavern（酒馆里选的那套）';
+  return `
+    <div class="sd-reader-mcard" style="border:none;padding:0;background:transparent">
+      <div class="sd-reader-mradio">
+        <label class="sd-reader-mradio-opt ${!ext ? 'active' : ''}"><input type="radio" name="sd-reader-dialogprov-tmp" value="sillytavern"${!ext ? ' checked' : ''}><span>跟随 SillyTavern 当前连接</span></label>
+        <label class="sd-reader-mradio-opt ${ext ? 'active' : ''}"><input type="radio" name="sd-reader-dialogprov-tmp" value="external"${ext ? ' checked' : ''}><span>千幕自定义预设</span></label>
+      </div>
+      ${ext
+        ? `<label class="sd-reader-mlab">选择预设</label>
+           <select class="sd-reader-minput sd-reader-dialog-profile-tmp">
+             <option value="">跟随当前 API 设置</option>
+             ${profiles.map((p) => `<option value="${htmlEscape(p.id)}" ${p.id === m.dialogApiProfileId ? 'selected' : ''}>${htmlEscape(p.name || p.model || '未命名API')}</option>`).join('')}
+           </select>`
+        : `<div class="sd-reader-more-conn">${connLine}</div>`}
     </div>`;
 }
 
@@ -11534,7 +11589,7 @@ function renderCompanionSetupBody() {
     </div>
     <div class="sd-reader-setup-row">
       <div class="sd-reader-setup-numrow">
-        <label class="sd-reader-setup-lab"><input type="checkbox" class="sd-reader-setup-chatctx-en"${cp.chatCtxEnabled ? ' checked' : ''}> 参考正文上下文层数</label>
+        <label class="sd-reader-setup-lab"><input type="checkbox" class="sd-reader-setup-chatctx-en"${cp.chatCtxEnabled ? ' checked' : ''}> 参考上下文层数</label>
         <input type="number" class="sd-reader-setup-num sd-reader-setup-chatctx-floors" min="1" step="1" value="${cp.chatCtxFloors}"${cp.chatCtxEnabled ? '' : ' disabled'}>
       </div>
     </div>
@@ -12068,12 +12123,27 @@ function bindReaderStageEvents(stageRoot) {
   }, true);
   q('.sd-reader-dialog-setup')?.addEventListener('click', (e) => { e.stopPropagation(); openSetup(); });
   setupOverlay?.addEventListener('click', (e) => { if (e.target === e.currentTarget) closeSetup(); });
+
+  // ── 对话 API 临时面板（1.8.0·记忆模块锁定期间对话 API 单独在此设·复用伴读记忆同套逻辑/拉取） ──
+  const apiOverlay = q('.sd-reader-apioverlay');
+  const rerenderApiPanel = () => { const body = apiOverlay?.querySelector('.sd-reader-apiconf-body'); if (body) body.innerHTML = renderDialogApiPanel(); };
+  q('.sd-reader-dialog-apiconf')?.addEventListener('click', (e) => { e.stopPropagation(); if (!apiOverlay) return; rerenderApiPanel(); apiOverlay.hidden = false; });
+  q('.sd-reader-apiconf-close')?.addEventListener('click', () => { if (apiOverlay) apiOverlay.hidden = true; });
+  apiOverlay?.addEventListener('click', (e) => { if (e.target === e.currentTarget) apiOverlay.hidden = true; });
+  // 面板内交互：对话提供方单选 + 预设下拉（与伴读记忆 API 页同 class·同落库逻辑）
+  apiOverlay?.addEventListener('change', (e) => {
+    const m = coreadMemory();
+    const prov = e.target.closest('input[name="sd-reader-dialogprov-tmp"]');
+    if (prov) { m.dialogProvider = prov.value === 'external' ? 'external' : 'sillytavern'; saveSettings(); rerenderApiPanel(); return; }
+    if (e.target.closest('.sd-reader-dialog-profile-tmp')) { m.dialogApiProfileId = e.target.value || ''; saveSettings(); return; }
+  });
   // 伴读记忆全屏页（输入框左侧入口·占满 stage·三 tab）
   const morePage = q('.sd-reader-morepage');
   const rerenderMore = () => { const body = morePage?.querySelector('.sd-reader-more-body'); if (body) body.innerHTML = renderCompanionMoreBody(); };
   rerenderMoreIfOpen = () => { if (morePage && !morePage.hidden) rerenderMore(); };
   q('.sd-reader-dialog-more')?.addEventListener('click', (e) => {
     e.stopPropagation();
+    if (!COREAD_MEMORY_ENABLED) { toast(COREAD_MEMORY_TEASER, 'info'); return; }   // 正式版：记忆模块锁定·脑图标点击弹预告
     if (!morePage) return;
     rerenderMore();   // 每次打开取最新连接现状
     morePage.hidden = false;
@@ -12574,16 +12644,35 @@ function bindReaderStageEvents(stageRoot) {
         tools.style.left = `${left}px`; tools.style.top = `${Math.max(8, top)}px`;
       });
     };
-    // 选中正文 → 父级
+    // 选中正文 → 父级。移动端长按选字往往只触发 selectionchange（不必有 touchend/mouseup 落在正文上），
+    // 故三路监听（selectionchange 兜底 + touchend/mouseup 提速）合流到一个去抖的 onSelect，避免移动端选完不弹窗。
     const onSelect = () => {
       const sel = window.getSelection?.();
-      const text = sel ? String(sel).trim() : '';
+      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+      let range;
+      try { range = sel.getRangeAt(0); } catch (_) { return; }
+      // 选区必须落在阅读正文里（避开工具浮窗自身/其它面板，防点浮窗按钮时误判空选区收栏）
+      const anchorEl = range.startContainer?.nodeType === 1 ? range.startContainer : range.startContainer?.parentElement;
+      if (anchorEl && anchorEl.closest('.sd-reader-hltools')) return;
+      if (anchorEl && !anchorEl.closest('.sd-reader-body')) return;
+      const text = String(sel).trim();
       if (!text) return;
       pendingText = text; pendingMark = '';
-      try { showTools(sel.getRangeAt(0).getBoundingClientRect(), 'main'); } catch (_) {}
+      // getClientRects 末段更贴合多行选区尾部；退回 getBoundingClientRect
+      const rects = range.getClientRects();
+      const rect = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
+      try { showTools(rect, 'main'); } catch (_) {}
     };
-    bodyEl.addEventListener('mouseup', () => setTimeout(onSelect, 0));
-    bodyEl.addEventListener('touchend', () => setTimeout(onSelect, 0));
+    let selDebounce = null;
+    const scheduleSelect = (delay) => { if (selDebounce) clearTimeout(selDebounce); selDebounce = setTimeout(onSelect, delay); };
+    bodyEl.addEventListener('mouseup', () => scheduleSelect(30));
+    bodyEl.addEventListener('touchend', () => scheduleSelect(120));
+    // selectionchange 挂 document（移动端选择把手拖动只在此触发）·先摘旧句柄防 portal 重建泄漏
+    detachReaderSelListener();
+    readerSelChangeHandler = () => scheduleSelect(140);
+    document.addEventListener('selectionchange', readerSelChangeHandler);
+    // 按下工具浮窗时阻止默认——避免手指/鼠标落到浮窗上时浏览器清掉选区（downstream click 仍照常派发）
+    tools.addEventListener('pointerdown', (e) => { e.preventDefault(); });
     // 父级：划线 → 展开样式级；笔记 → 建划线(荧光默认)并即开笔记
     lvMain.querySelector('[data-act="highlight"]').onclick = () => showLevel('styles');
     lvMain.querySelector('[data-act="note"]').onclick = () => {
