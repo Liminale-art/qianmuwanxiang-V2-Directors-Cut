@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.7.41';
+const VERSION = '1.7.42';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -503,7 +503,7 @@ const DEFAULT_SETTINGS = Object.freeze({
       mainlineRecent: 1,            // 反哺主线·近景切片注入数（最近 N 条无条件·默认1·0=关）
       mainlineDepth: 2,             // 反哺主线注入深度（插入主线上下文的倒数第 N 层·默认2）
       mainlinePickLimit: 50,        // 主线圈选对话框显示的最大楼层数（默认50·可调）
-      mainlineTagRule: 'content',   // 主线选择的标签提取规则：默认提取 <content> 标签内文（正文/剧情），空=整条原文；可自定义标签名
+      mainlineTagRules: [{ name: 'content', action: 'extract' }],   // 主线选择标签规则（数组·同取材 tab 结构）：[{name,action:'extract'|'remove'}]。默认提取 <content> 内文；空数组=整条原文
       storageMode: 'dedicated',     // 记忆写入模式：'dedicated'=新建「千幕伴读」独立世界书(零冲突) | 'shared'=写入当前聊天绑定世界书(与记忆插件共存)
       rerankTopN: 4,                // 开重排档时召回候选重排后保留数（用户可改）
       // 词典册（手动别称词典·全局·可编辑·空也能建）：[{id,name,pairs:{标准词:[别称...]}}]。
@@ -514,6 +514,9 @@ const DEFAULT_SETTINGS = Object.freeze({
       distillTextPrompt: '',
       // 主线选择总结提示词（从主线选择此书相关消息蒸馏时用）·空则沿用伴读总结提示词（summaryItems 拼出的整理要求）。
       mainlineSummaryPrompt: '',
+      // 总结提示词预设：整套（伴读条目 + 蒸馏书籍 + 主线选择）打包保存/切换。[{id,name,items,distillTextPrompt,mainlineSummaryPrompt}]
+      summaryPresets: [],
+      summaryPresetSel: '',   // 当前选中的预设 ID（重渲后固定显示）
     },
   },
 });
@@ -7444,7 +7447,22 @@ function coreadMemory() {
   if (!Number.isFinite(m.mainlineDepth)) m.mainlineDepth = 2;
   m.mainlineDepth = Math.max(0, Math.min(20, Math.round(m.mainlineDepth)));
   if (!['dedicated', 'shared'].includes(m.storageMode)) m.storageMode = 'dedicated';
-  if (typeof m.mainlineTagRule !== 'string') m.mainlineTagRule = 'content';
+  // 主线选择标签规则（数组·同取材结构）。迁移旧的字符串字段 mainlineTagRule → 数组。
+  if (!Array.isArray(m.mainlineTagRules)) {
+    if (typeof m.mainlineTagRule === 'string' && m.mainlineTagRule.trim()) {
+      // 旧串迁移：逗号分隔·!前缀=remove·其余=extract
+      m.mainlineTagRules = m.mainlineTagRule.split(/[,，]/).map((s) => s.trim()).filter(Boolean).map((r) => (
+        r.startsWith('!') ? { name: r.slice(1).replace(/^<|>$/g, ''), action: 'remove' } : { name: r.replace(/^<|>$/g, ''), action: 'extract' }
+      )).filter((r) => r.name);
+    } else {
+      m.mainlineTagRules = [{ name: 'content', action: 'extract' }];
+    }
+  }
+  m.mainlineTagRules = m.mainlineTagRules.filter(isPlainObject).map((r) => ({
+    name: String(r.name || '').trim().replace(/^<|>$/g, ''),
+    action: r.action === 'extract' ? 'extract' : 'remove',
+  })).filter((r) => r.name);
+  delete m.mainlineTagRule;   // 清理旧字段
   // 词典册归一：数组·每册 {id,name,pairs}·pairs 值归一为数组
   if (!Array.isArray(m.dictBooks)) m.dictBooks = [];
   m.dictBooks = m.dictBooks.filter(isPlainObject).map((d) => ({
@@ -7481,6 +7499,16 @@ function coreadMemory() {
   // 书籍蒸馏提示词：空串＝用内置默认（DEFAULT_DISTILL_TEXT_PROMPT），非空＝用户自定义
   if (typeof m.distillTextPrompt !== 'string') m.distillTextPrompt = '';
   if (typeof m.mainlineSummaryPrompt !== 'string') m.mainlineSummaryPrompt = '';
+  // 总结提示词预设：整套（伴读条目 items + 蒸馏书籍 distillTextPrompt + 主线选择 mainlineSummaryPrompt）打包
+  if (!Array.isArray(m.summaryPresets)) m.summaryPresets = [];
+  m.summaryPresets = m.summaryPresets.map((p) => ({
+    id: String(p.id || uid('spreset')),
+    name: String(p.name || '未命名预设'),
+    items: Array.isArray(p.items) ? p.items : [],
+    distillTextPrompt: String(p.distillTextPrompt || ''),
+    mainlineSummaryPrompt: String(p.mainlineSummaryPrompt || ''),
+  }));
+  if (typeof m.summaryPresetSel !== 'string') m.summaryPresetSel = '';
   return m;
 }
 
@@ -7888,6 +7916,8 @@ async function buildCompanionContext(bookId, recallQuery = '') {
       recallCount = all.length;
       seg.push(`【你们以前聊过的（记忆·供你保持连贯·别照搬原话）】\n${all.map((h, i) => `${i + 1}. ${h.slice.summary}`).join('\n')}`);
     }
+    // #7：登记「最近一次真实注入」——注入状态页只回放此记录，不做实时预览。
+    coreadRecordInjection('companion', all, recallQuery);
   }
   seg.push(`【当前读到的段落（你与书友的共同视野·止于此处）】\n${win.visibleText || '（尚未开始阅读）'}`);
 
@@ -7960,9 +7990,10 @@ function summaryConn() {
   return null;
 }
 
-async function callCoreadModel(systemPrompt, userPrompt) {
+async function callCoreadModel(systemPrompt, userPrompt, opts = {}) {
   const m = coreadMemory();
   const conn = summaryConn();
+  const signal = opts.signal;   // 可选 AbortSignal：停止按钮触发时中断在途请求
   if (conn) {
     const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }];
     // custom_url 传「API 根」（含 /v1），后端自拼 /chat/completions——与 /status 拉模型同约定，避免路径重复
@@ -7971,11 +8002,11 @@ async function callCoreadModel(systemPrompt, userPrompt) {
     try {
       let authHeader = `Authorization: Bearer ${conn.apiKey}`;
       try {
-        return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: m.summaryTemperature, maxTokens: m.summaryMaxTokens || 0 });
+        return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: m.summaryTemperature, maxTokens: m.summaryMaxTokens || 0, signal });
       } catch (err) {
         if (/HTTP\s*(401|403)/.test(String(err?.message || ''))) {
           authHeader = `Authorization: ${conn.apiKey}`;
-          return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: m.summaryTemperature, maxTokens: m.summaryMaxTokens || 0 });
+          return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: m.summaryTemperature, maxTokens: m.summaryMaxTokens || 0, signal });
         }
         throw err;
       }
@@ -7983,10 +8014,12 @@ async function callCoreadModel(systemPrompt, userPrompt) {
       // 后端代理不可用（老版 ST / 端点缺失）才回落浏览器直连——支持 CORS 的接口仍能用
       if (/ST backend proxy failed|Failed to fetch|NetworkError/i.test(String(proxyErr?.message || ''))) {
         const onDelta = m.summaryStream ? (() => {}) : null;
+        const ac = new AbortController();
+        if (signal) { if (signal.aborted) ac.abort(); else signal.addEventListener('abort', () => ac.abort(), { once: true }); }
         return await callExternalApi(messages, onDelta, {
           apiUrl: conn.apiUrl, apiKey: conn.apiKey, model: conn.model,
           temperature: m.summaryTemperature, maxTokens: m.summaryMaxTokens || undefined, stream: m.summaryStream,
-        }, new AbortController());
+        }, ac);
       }
       throw proxyErr;
     }
@@ -8030,6 +8063,8 @@ function coreadDateHint() {
    永不返回 null（除非整段无有效对话）。 */
 const COREAD_DISTILL_RETRY = 2;
 let coreadDistilling = false;   // 蒸馏/总结互斥闸（防并发重入·手动+自动+全书共用一把锁）
+let coreadDistillAbort = false;   // 蒸馏全书中止旗标（用户点「停止」时置真·逐段循环检查后收尾）
+let coreadDistillCtl = null;   // 单次蒸馏（蒸馏已读内容）的 AbortController·「停止」时 abort() 真·掐断在途请求
 
 // 错误分类：瞬时错（网络抖动/限流/服务端错）值得重试；永久错（未配置/鉴权/请求非法）重试也没用，直接抛出显因。
 // 返回 true = 瞬时可重试。
@@ -8209,18 +8244,19 @@ async function coreadPersistSlice(res, meta, extra = {}) {
 }
 
 // 蒸馏任意文本段（非对话）→ {summary,keywords,synonyms}。复用四道闸，只换系统提示词。用于正文伴读切片 / 主线联动。
-async function coreadDistillText(bodyText, sysPrompt, m) {
+async function coreadDistillText(bodyText, sysPrompt, m, opts = {}) {
   let text = String(bodyText || '').trim();
   if (!text) return null;
   const ctxCap = Number(m.summaryContextChars) || 0;
   if (ctxCap > 0 && text.length > ctxCap) text = '……（较早内容略）\n' + text.slice(-ctxCap);
   let lastRaw = '';
   for (let attempt = 0; attempt <= COREAD_DISTILL_RETRY; attempt++) {
+    if (opts.signal?.aborted) throw new DOMException('用户已停止', 'AbortError');
     const userMsg = attempt === 0
       ? `【待整理内容】\n${text}`
       : `【待整理内容】\n${text}\n\n【重要】上一次输出无法解析为 JSON。请严格只输出 {"summary":"...","keywords":["..."],"synonyms":{}} 的纯 JSON，不要解释、不要代码块标记。`;
     let raw = '';
-    try { raw = String(await callCoreadModel(sysPrompt, userMsg) || ''); }
+    try { raw = String(await callCoreadModel(sysPrompt, userMsg, { signal: opts.signal }) || ''); }
     catch (err) {
       if (coreadIsTransientError(err) && attempt < COREAD_DISTILL_RETRY) { toast(`伴读记忆：总结遇到临时问题，正在自动重试（${attempt + 2}/${COREAD_DISTILL_RETRY + 1}）…`, 'warning'); continue; }
       throw err;
@@ -8239,6 +8275,9 @@ async function coreadDistillText(bodyText, sysPrompt, m) {
 // ── 正文伴读切片：把「已读正文」蒸成第三人称情节记忆·不依赖对话 ──
 // 覆盖范围锚点用绝对读位 readPos（coveredTo 记正文偏移·避免与对话切片的消息索引混淆·靠 src 区分语义）。
 async function coreadDistillReadText(m) {
+  if (coreadDistilling) return { ok: false, reason: '正在处理中' };
+  coreadDistilling = true;
+  coreadDistillAbort = false;
   try {
     const id = readerView?.bookId || readerDialog.bookId;
     const meta = coreadBookMeta(id);
@@ -8267,9 +8306,14 @@ async function coreadDistillReadText(m) {
     // 整理要求：用户在「蒸馏提示词」卡片自定义→用其覆盖，否则回落内置默认（按文体/题材对症下药）
     const rule = String(m.distillTextPrompt || '').trim() || DEFAULT_DISTILL_TEXT_PROMPT;
     const sysPrompt = `你是伴读记忆整理助手。下面是《${meta.title || '未命名'}》${anchor}中「读者刚读过」的一段正文原文。请把它蒸馏成第三人称客观的情节记忆，供日后回顾与主线剧情引用。\n\n【整理要求】\n${rule}\n\n【底线】只输出纯 JSON：{"summary":"第三人称情节记忆正文","keywords":["高辨识度检索词·优先人名/事件/概念"],"synonyms":{"标准词":["别称/指代"]}}。没有可补的别称就给 {}。不要代码块标记、不要额外解释。`;
+    coreadDistillCtl = new AbortController();
     let res;
-    try { res = await coreadDistillText(body, sysPrompt, m); }
-    catch (e) { return { ok: false, reason: coreadExplainError(e) }; }
+    try { res = await coreadDistillText(body, sysPrompt, m, { signal: coreadDistillCtl.signal }); }
+    catch (e) {
+      if (coreadDistillAbort || /abort/i.test(String(e?.name || e?.message || ''))) return { ok: false, aborted: true, reason: '已停止' };
+      return { ok: false, reason: coreadExplainError(e) };
+    }
+    if (coreadDistillAbort) return { ok: false, aborted: true, reason: '已停止' };
     if (!res) return { ok: false, reason: '模型没有返回有效总结' };
     await coreadPersistSlice(res, meta, { src: 'text', coveredFrom: lastTextTo, coveredTo: readPos });
     await coreadSaveDialog();
@@ -8278,6 +8322,9 @@ async function coreadDistillReadText(m) {
   } catch (err) {
     console.error('[coreadDistillReadText] Unexpected error:', err);
     return { ok: false, reason: `内部错误：${err?.message || String(err).slice(0, 60)}` };
+  } finally {
+    coreadDistilling = false;
+    coreadDistillCtl = null;
   }
 }
 
@@ -8285,6 +8332,9 @@ async function coreadDistillReadText(m) {
 // 从头到尾逐段（每段 chunkSize 字），已有切片覆盖的段可选跳过（skipExisting=true·默认 false 全部重蒸）。
 // 进度逐条 toast·整体统计成功/失败。
 async function coreadDistillFullBook(m, skipExisting = false) {
+  if (coreadDistilling) return { ok: false, reason: '正在处理中' };
+  coreadDistilling = true;
+  coreadDistillAbort = false;
   try {
     const id = readerView?.bookId || readerDialog.bookId;
     const meta = coreadBookMeta(id);
@@ -8306,8 +8356,10 @@ async function coreadDistillFullBook(m, skipExisting = false) {
     const chunks = [];
     for (let i = 0; i < full.length; i += chunkSize) { chunks.push({ from: i, to: Math.min(i + chunkSize, full.length) }); }
     toast(`蒸馏全书：共 ${chunks.length} 段，开始逐段处理…`, 'info');
-    let ok = 0, fail = 0;
+    let ok = 0, fail = 0, aborted = false;
     for (let ci = 0; ci < chunks.length; ci++) {
+      // 用户中途按「停止」：保留已生成的切片，剩余段不再处理
+      if (coreadDistillAbort) { aborted = true; break; }
       const { from, to } = chunks[ci];
       // 跳过已有切片完整覆盖的段（skipExisting=true 时）
       if (skipExisting && (readerDialog.slices || []).some((s) => s.src === 'text' && Number(s.coveredFrom) <= from && Number(s.coveredTo) >= to)) {
@@ -8316,18 +8368,34 @@ async function coreadDistillFullBook(m, skipExisting = false) {
       const body = full.slice(from, to);
       const sysPrompt = `你是伴读记忆整理助手。下面是《${meta.title || '未命名'}》第 ${ci + 1}/${chunks.length} 段正文原文。请把它蒸馏成第三人称客观的情节记忆，供日后回顾与主线剧情引用。\n\n【整理要求】\n${rule}\n\n【底线】只输出纯 JSON：{"summary":"第三人称情节记忆正文","keywords":["高辨识度检索词"],"synonyms":{}}。不要代码块标记、不要额外解释。`;
       let res = null;
-      try { res = await coreadDistillText(body, sysPrompt, m); } catch (e) { fail++; console.warn(`[coreadDistillFullBook] 第${ci + 1}段失败`, e); continue; }
+      coreadDistillCtl = new AbortController();
+      try { res = await coreadDistillText(body, sysPrompt, m, { signal: coreadDistillCtl.signal }); }
+      catch (e) {
+        if (coreadDistillAbort || /abort/i.test(String(e?.name || e?.message || ''))) { aborted = true; break; }
+        fail++; console.warn(`[coreadDistillFullBook] 第${ci + 1}段失败`, e); continue;
+      }
+      if (coreadDistillAbort) { aborted = true; break; }
       if (!res) { fail++; continue; }
       await coreadPersistSlice(res, meta, { src: 'text', coveredFrom: from, coveredTo: to });
       ok++;
       if ((ci + 1) % 3 === 0 || ci === chunks.length - 1) toast(`蒸馏全书：${ci + 1}/${chunks.length} 段完成…`, 'info');
     }
     await coreadSaveDialog(); await coreadRefreshContainer();
-    return { ok: true, made: ok, failed: fail };
+    return { ok: true, made: ok, failed: fail, aborted };
   } catch (err) {
     console.error('[coreadDistillFullBook] Unexpected error:', err);
     return { ok: false, reason: `内部错误：${err?.message || String(err).slice(0, 60)}` };
+  } finally {
+    coreadDistilling = false;
+    coreadDistillAbort = false;
+    coreadDistillCtl = null;
   }
+}
+
+// 用户按「停止」：置中止旗标 + abort 在途请求（正文蒸馏/蒸馏全书共用）。已生成的切片保留。
+function coreadStopDistill() {
+  coreadDistillAbort = true;
+  try { coreadDistillCtl?.abort(); } catch (_) {}
 }
 
 // ── 主线联动蒸馏：把「圈选的主线消息」蒸成共读切片 ──
@@ -8681,6 +8749,25 @@ function coreadEchoTick(injectedSlices) {
   }
 }
 
+// #7：登记「最近一次真实注入」——注入状态页只回放此记录，绝不做实时预览。
+// channel = 'companion'（伴读对话）| 'mainline'（主线联动）。空注入也如实记空（区别于「从未注入」）。
+// 只存切片 id/来源等轻快照，全文靠 id 回查——切片被编辑后回看到的是最新文本，不留陈旧副本。
+function coreadRecordInjection(channel, all, query) {
+  readerDialog.lastInjected = {
+    channel,
+    bookId: readerDialog.bookId || '',
+    query: String(query || '').slice(-240),
+    items: (all || []).map((h) => ({
+      id: h.slice.id,
+      batch: h.slice.batch,
+      compressed: !!h.slice.compressed,
+      src: h.slice.src || 'dialog',
+      recent: !!h.recent,
+      hits: (h.hits || []).slice(),
+    })),
+  };
+}
+
 /* ── 向量档（可选·自定义 embedding 直连 + 本地余弦 + 与 BM25 用 RRF 融合·借鉴成熟项目直连思路）──
    直连用户填的 embeddings 接口拿裸向量（浏览器直连·已验硅基流动放行 CORS），本地算余弦。
    向量按 bucket 存独立 IndexedDB store（不塞每轮对话记录），内容指纹增量：切片文本没变就复用旧向量不重算。 */
@@ -8999,6 +9086,8 @@ async function coreadBuildMainlineInjection() {
   const hits = ((m.mainlineRecall || 0) > 0 && query)
     ? await coreadRetrieveHits(query, m.mainlineRecall, excludeIds, m, pool) : [];
   const all = [...recent, ...hits];
+  // 记录本轮「主线联动」真实注入（供注入状态页回看·非预览）。空注入也如实记空。
+  coreadRecordInjection('mainline', all, query);
   if (!all.length) return '';
   // 跨多本书时标注书名，单书则省略（读起来干净）
   const multi = new Set(all.map((h) => h.slice.__srcTitle || '')).size > 1;
@@ -9205,12 +9294,25 @@ async function coreadOpenArchiveDialog() {
     <p style="margin:0 0 6px;font-weight:600">伴读档案（绑定到当前主线+对话）</p>
     <p style="margin:0 0 10px;color:var(--sd-muted,#888);font-size:.85em">勾选的旧档案，其记忆切片会加入<b>反哺主线</b>与伴读对话的召回池（批次号各归各档·不物理合并·带来源书名标签）。当前正在读的这本书自动在池内，无需勾选。</p>
     ${rows}
+    <div class="sd-reader-arch-secondary">
+      <button type="button" class="sd-reader-textbtn sd-reader-arch-migrate"><i class="fa-solid fa-arrow-right-arrow-left"></i> 从其他聊天迁移这本书</button>
+      <span class="sd-muted" style="font-size:.78em">迁移＝把这本书在别的聊天里的对话+切片<b>复制</b>进当前聊天（覆盖当前·会真正合入），区别于上面的「绑定」（只借召回不合并）。</span>
+    </div>
   </div>`;
   const wrap = document.createElement('div');
   wrap.innerHTML = inner;
+  // 次级操作：迁移入口收进档案弹窗（与绑定并列·语义各异·见小字）。点了先关本弹窗再开迁移弹窗。
+  let goMigrate = false;
+  wrap.querySelector('.sd-reader-arch-migrate')?.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    goMigrate = true;
+    const closeBtn = document.querySelector('.popup .popup-button-cancel, .popup .menu_button.popup-button-cancel');
+    if (closeBtn) closeBtn.click();
+  });
   try {
     const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '保存绑定', cancelButton: '取消' });
     const res = await popup.show();
+    if (goMigrate) { await coreadOpenMigrateDialog(); return; }
     if (res !== true && String(res) !== '1') return;
     const checked = new Set([...wrap.querySelectorAll('.sd-reader-arch-pick:checked')].map((el) => Number(el.value)));
     const store = getChatStore();
@@ -9222,38 +9324,37 @@ async function coreadOpenArchiveDialog() {
   } catch (_) {}
 }
 
-// 标签规则：从主线消息里「按字段提取」或「屏蔽字段」再喂给蒸馏。
-// 规则串以逗号分隔·每条：`标签名`＝只保留 <标签>…</标签> 内的内容；`!标签名`＝剔除 <标签>…</标签> 整段。
-// 例：`content` 只取正文；`!think,!status` 剔掉思维链与状态栏。空规则＝原文不动。
-// 匹配大小写不敏感·允许标签带属性（<content foo="bar">）。提取类多条＝并集拼接；无匹配则回退原文（提取）/原文（屏蔽已剔除）。
-function coreadApplyTagRule(text, rule) {
-  const src = String(text || '');
-  const spec = String(rule || '').trim();
-  if (!spec) return src;
-  const rules = spec.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
-  if (!rules.length) return src;
-  const extractTags = rules.filter((r) => !r.startsWith('!')).map((r) => r.replace(/^[<]|[>]$/g, ''));
-  const blockTags = rules.filter((r) => r.startsWith('!')).map((r) => r.slice(1).replace(/^[<]|[>]$/g, '')).filter(Boolean);
-  let out = src;
-  // 先剔除屏蔽标签整段
-  for (const tag of blockTags) {
-    const re = new RegExp(`<${escapeRegExp(tag)}(\\s[^>]*)?>[\\s\\S]*?</${escapeRegExp(tag)}>`, 'gi');
-    out = out.replace(re, '');
-  }
-  // 再做提取（若指定了提取标签）
-  if (extractTags.length) {
-    const picked = [];
-    for (const tag of extractTags) {
-      if (!tag) continue;
-      const re = new RegExp(`<${escapeRegExp(tag)}(?:\\s[^>]*)?>([\\s\\S]*?)</${escapeRegExp(tag)}>`, 'gi');
-      let mm;
-      while ((mm = re.exec(out)) !== null) { if (mm[1] != null) picked.push(mm[1].trim()); }
+// 主线标签规则：与取材 tab 的上下文处理同源——对「原始消息 HTML」按规则数组处理。
+// rules = [{name, action:'extract'|'remove'}]（与 settings.contextOptions.tagRules 同结构）。
+// extract＝只保留这些标签内的内容（多条并集）；remove＝剔除这些标签整段。有 extract 时以 extract 为准。
+// 最后统一剥掉残留 HTML 标签、注释、脚本样式（镜像 cleanContextText 收尾），得到干净文本。
+// 关键：必须喂「原始 mm.mes」而非 cleanContextText 的结果（后者已剥光标签，规则无从匹配）。
+function coreadCleanWithTagRules(rawMes, rules) {
+  let value = String(rawMes || '');
+  value = value.replace(/<!--[\s\S]*?-->/g, '');
+  const list = (Array.isArray(rules) ? rules : []).map((r) => ({
+    name: String(r?.name || '').trim().replace(/^<|>$/g, ''),
+    action: r?.action === 'extract' ? 'extract' : 'remove',
+  })).filter((r) => r.name);
+  const extractRules = list.filter((r) => r.action === 'extract');
+  if (extractRules.length) {
+    const extracted = [];
+    for (const rule of extractRules) {
+      const reg = new RegExp(`<${escapeRegExp(rule.name)}\\b[^>]*>([\\s\\S]*?)<\\/${escapeRegExp(rule.name)}>`, 'gi');
+      let match;
+      while ((match = reg.exec(value)) !== null) extracted.push(match[1].trim());
     }
-    if (picked.length) return picked.join('\n').trim();
-    // 提取无命中→回退到（已剔除屏蔽标签的）原文，避免圈到空
-    return out.trim();
+    // 提取无命中→回退整条原文剥标签（避免圈到空·与取材一致的稳妥回退）
+    value = extracted.length ? extracted.join('\n\n') : value;
+  } else {
+    for (const rule of list) {
+      const reg = new RegExp(`<${escapeRegExp(rule.name)}\\b[^>]*>[\\s\\S]*?<\\/${escapeRegExp(rule.name)}>`, 'gi');
+      value = value.replace(reg, '');
+    }
   }
-  return out.trim();
+  value = value.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '');
+  value = value.replace(/<[^>]+>/g, '');
+  return value.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 // 主线联动圈选弹窗：列出主线近期消息（排除千幕/审片注入楼层），勾选「聊到书的片段」→蒸成共读切片。
@@ -9265,52 +9366,86 @@ async function coreadOpenMainlinePickDialog() {
   const chat = Array.isArray(context.chat) ? context.chat : [];
   const m = coreadMemory();
   const limit = Math.max(10, Math.min(200, Number(m.mainlinePickLimit) || 50));
-  const tagRule = String(m.mainlineTagRule || '').trim();
+  const tagRules = Array.isArray(m.mainlineTagRules) ? m.mainlineTagRules.filter((r) => r && r.name) : [];
   // 取最近 N 楼（可自定义·默认50）·排除千幕/审片注入的 System 楼（防把注入内容当素材·避免与记忆插件撞车）
-  // 从当前楼层往前排（列表最新在上），每条存原文 raw + 应用标签规则后的 filtered。
+  // 从当前楼层往前排（列表最新在上）。标签规则作用于「原始 mm.mes」（含 HTML）·再剥壳·与取材 tab 同源逻辑（不能先 cleanContextText·否则标签早被剥光）。
   const items = [];
   for (let i = chat.length - 1; i >= 0 && items.length < limit; i--) {
     const mm = chat[i];
     if (!mm || mm.extra?.qianmu_injected) continue;
-    const raw = cleanContextText(mm.mes || '');
-    if (!raw) continue;
-    const filtered = coreadApplyTagRule(raw, tagRule);
-    items.push({ idx: i, floor: i + 1, name: mm.name || (mm.is_user ? '我' : '角色'), isUser: !!mm.is_user, raw, filtered });
+    const rawMes = String(mm.mes || '');
+    if (!rawMes.trim()) continue;
+    const filtered = coreadCleanWithTagRules(rawMes, tagRules);   // 应用规则于原始 HTML→剥壳
+    items.push({ idx: i, floor: i + 1, name: mm.name || (mm.is_user ? '我' : '角色'), isUser: !!mm.is_user, filtered });
   }
   // 从当前楼层开始排（最新在上·不再 reverse）
   if (!items.length) { toast('主线里没有可选的消息。', 'info'); return; }
   const rows = items.map((it) => {
-    const oneLine = (it.filtered || it.raw).replace(/\s+/g, ' ').trim();
+    const oneLine = (it.filtered || '').replace(/\s+/g, ' ').trim();
     const peek = oneLine.slice(0, 48) + (oneLine.length > 48 ? '…' : '');
     return `<details class="sd-reader-mlrow">
       <summary class="sd-reader-mlrow-sum">
         <input type="checkbox" class="sd-reader-mlpick" value="${it.idx}" onclick="event.stopPropagation()">
         <b class="sd-reader-mlrow-name">${htmlEscape(it.name)}</b>${it.isUser ? '<span class="sd-muted">（我）</span>' : ''}
-        <span class="sd-reader-mlrow-peek">${htmlEscape(peek)}</span>
+        <span class="sd-reader-mlrow-peek">${htmlEscape(peek || '（应用标签规则后为空）')}</span>
         <span class="sd-reader-migrate-floor"># ${it.floor}</span>
       </summary>
-      <pre class="sd-reader-mlrow-body">${htmlEscape(it.filtered || it.raw || '（应用标签规则后为空）')}</pre>
+      <pre class="sd-reader-mlrow-body">${htmlEscape(it.filtered || '（应用标签规则后为空）')}</pre>
     </details>`;
   }).join('');
-  const ruleField = `<div class="sd-reader-mlrule">
-    <label class="sd-reader-mlrule-lab">标签规则</label>
-    <input class="sd-reader-minput sd-reader-mlrule-input" value="${htmlEscape(tagRule)}" placeholder="如 content＝只取此标签内文；!think＝屏蔽此标签">
-    <button type="button" class="sd-reader-textbtn sd-reader-mlrule-apply">应用</button>
-  </div>`;
-  const inner = `<div class="sd-reader-migrate-dialog sd-reader-mldialog" style="text-align:left">
+  // 标签规则区：取材同款行（标签名 + 屏蔽/提取 + 删除）+ 添加按钮
+  const ruleRows = (tagRules.length ? tagRules : [{ name: '', action: 'remove' }]).map((r, idx) => `
+    <div class="sd-reader-mlrule-row">
+      <input class="sd-reader-minput sd-reader-mltag-name" data-idx="${idx}" placeholder="标签名，如 content" value="${htmlEscape(r.name || '')}">
+      <select class="sd-reader-minput sd-reader-mltag-action" data-idx="${idx}">
+        <option value="remove"${r.action !== 'extract' ? ' selected' : ''}>屏蔽</option>
+        <option value="extract"${r.action === 'extract' ? ' selected' : ''}>提取</option>
+      </select>
+      <button type="button" class="sd-reader-mbtn sd-reader-mltag-del" data-idx="${idx}" title="删除"><i class="fa-solid fa-xmark"></i></button>
+    </div>`).join('');
+  const ruleField = `<details class="sd-reader-mlrule-wrap"${tagRules.length ? '' : ''}>
+    <summary class="sd-reader-mlrule-head"><i class="fa-solid fa-filter"></i> 标签规则<span class="sd-muted">（提取＝只取该标签内文·屏蔽＝剔除整段·空＝整条原文）</span></summary>
+    <div class="sd-reader-mlrule-rows">${ruleRows}</div>
+    <div class="sd-reader-mlrule-acts">
+      <button type="button" class="sd-reader-mbtn sd-reader-mltag-add"><i class="fa-solid fa-plus"></i>添加标签</button>
+      <button type="button" class="sd-reader-textbtn sd-reader-mlrule-apply">应用规则</button>
+    </div>
+  </details>`;
+  const inner = `<div class="sd-reader-mldialog" style="text-align:left">
     <p style="margin:0 0 8px;font-weight:600">从主线选择此书伴读相关并总结</p>
     ${ruleField}
     <div class="sd-reader-mllist">${rows}</div>
   </div>`;
   const wrap = document.createElement('div');
   wrap.innerHTML = inner;
+  // 从 DOM 收编标签规则行→数组（供「应用」与「添加/删除」共用）
+  const collectRules = () => [...wrap.querySelectorAll('.sd-reader-mlrule-row')].map((row) => ({
+    name: String(row.querySelector('.sd-reader-mltag-name')?.value || '').trim().replace(/^<|>$/g, ''),
+    action: row.querySelector('.sd-reader-mltag-action')?.value === 'extract' ? 'extract' : 'remove',
+  })).filter((r) => r.name);
   let picked = [];
   let reapply = false;
   try {
-    const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '总结选中', cancelButton: '取消' });
-    // 标签规则「应用」：存新规则→关弹窗→重入（用新规则重算 filtered·所见即所得）
+    const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '总结选中', cancelButton: '取消', wide: true, large: true });
+    // 添加标签行（就地追加·不关弹窗）
+    wrap.querySelector('.sd-reader-mltag-add')?.addEventListener('click', () => {
+      const rows2 = wrap.querySelector('.sd-reader-mlrule-rows');
+      const idx = wrap.querySelectorAll('.sd-reader-mlrule-row').length;
+      const div = document.createElement('div');
+      div.className = 'sd-reader-mlrule-row';
+      div.innerHTML = `<input class="sd-reader-minput sd-reader-mltag-name" data-idx="${idx}" placeholder="标签名，如 content" value="">
+        <select class="sd-reader-minput sd-reader-mltag-action" data-idx="${idx}"><option value="remove" selected>屏蔽</option><option value="extract">提取</option></select>
+        <button type="button" class="sd-reader-mbtn sd-reader-mltag-del" data-idx="${idx}" title="删除"><i class="fa-solid fa-xmark"></i></button>`;
+      rows2?.appendChild(div);
+    });
+    // 删除标签行
+    wrap.querySelector('.sd-reader-mlrule-rows')?.addEventListener('click', (ev) => {
+      const del = ev.target.closest('.sd-reader-mltag-del');
+      if (del) del.closest('.sd-reader-mlrule-row')?.remove();
+    });
+    // 标签规则「应用」：存新规则→关弹窗→重入（用新规则重算·所见即所得）
     wrap.querySelector('.sd-reader-mlrule-apply')?.addEventListener('click', () => {
-      m.mainlineTagRule = String(wrap.querySelector('.sd-reader-mlrule-input')?.value || '').trim();
+      m.mainlineTagRules = collectRules();
       saveSettings();
       reapply = true;
       try { popup.completeCancelled ? popup.completeCancelled() : popup.complete?.(false); } catch (_) {}
@@ -9345,18 +9480,21 @@ async function coreadOpenSliceManagerDialog() {
     const slices = (readerDialog.slices || []).slice().sort((a, b) => (Number(b.batch) || 0) - (Number(a.batch) || 0));
     if (!slices.length) return '<div class="sd-reader-mempty">还没有记忆切片。</div>';
     return slices.map((s) => {
-      const srcTag = s.src === 'text' ? '<span class="sd-reader-slice-src src-text">正文</span>'
-        : (s.src === 'mainline' ? '<span class="sd-reader-slice-src src-mainline">主线</span>' : '<span class="sd-reader-slice-src">对话</span>');
-      const vecTag = m.vectorEnabled ? `<span class="sd-reader-inj-tag${vecIds.has(s.id) ? ' on' : ''}">${vecIds.has(s.id) ? '已向量化' : '未向量化'}</span>` : '';
+      // 来源标签：书籍(正文蒸馏) / 主线(主线选择) / 对谈(伴读对话)——与注入页同一套配色·横向排。
+      const srcLab = s.src === 'text' ? '书籍' : (s.src === 'mainline' ? '主线' : '对谈');
+      const srcCls = s.src === 'text' ? 'src-text' : (s.src === 'mainline' ? 'src-mainline' : 'src-dialog');
+      const srcTag = `<span class="sd-reader-src-badge ${srcCls}">${srcLab}</span>`;
+      const vecTag = m.vectorEnabled ? `<span class="sd-reader-src-badge ${vecIds.has(s.id) ? 'vec-on' : 'vec-off'}">${vecIds.has(s.id) ? '已向量' : '未向量'}</span>` : '';
       const cover = s.src === 'dialog' && Number.isFinite(Number(s.coveredFrom))
         ? `<span class="sd-muted">楼 ${(Number(s.coveredFrom) || 0) + 1}–${(Number(s.coveredTo) || 0) + 1}</span>` : '';
       const keys = (s.keywords || []).map((k) => `<span class="sd-reader-slice-key">${htmlEscape(k)}</span>`).join('');
       return `<details class="sd-reader-sm-row" data-id="${htmlEscape(s.id)}">
         <summary class="sd-reader-sm-sum">
-          <span class="sd-reader-slice-batch">#${s.compressed ? '合并' : (s.batch || '?')}</span>
-          ${srcTag}
+          <span class="sd-reader-sm-tags">
+            <span class="sd-reader-slice-batch">#${s.compressed ? '合并' : (s.batch || '?')}</span>
+            ${srcTag}${vecTag}
+          </span>
           <span class="sd-reader-sm-peek">${htmlEscape((s.summary || '').slice(0, 44))}${(s.summary || '').length > 44 ? '…' : ''}</span>
-          ${vecTag}
         </summary>
         <div class="sd-reader-sm-detail">
           <div class="sd-reader-sm-meta">${cover} ${s.ts ? `<span class="sd-muted">${new Date(s.ts).toLocaleString()}</span>` : ''}${s.loreUid ? '' : ' <span class="sd-muted">· 未写入世界书</span>'}</div>
@@ -9575,6 +9713,59 @@ function coreadImportSummaryItems() {
     toast(`已导入 ${arr.length} 条提示词${hasExtra ? '（含两块）' : ''}。`, 'success');
   });
   input.click();
+}
+
+// 总结提示词预设：把当前三块（伴读条目 + 蒸馏书籍 + 主线选择）整套打包命名保存，可切换/删除。
+// 预设只存内容快照，套用时整套覆盖当前——切换不同书籍/文体的总结风格用。
+async function coreadSaveSummaryPreset() {
+  const m = coreadMemory();
+  const name = await coreadPromptText('存为预设', '给这套总结提示词起个名（如「小说·细节流」「论文·观点流」）：', '');
+  if (name == null) return;
+  const nm = String(name).trim();
+  if (!nm) { toast('预设名不能为空。', 'warning'); return; }
+  const snapshot = {
+    id: uid('sumpre'),
+    name: nm,
+    items: (m.summaryItems || []).map((it) => ({ builtin: !!it.builtin, order: it.order, title: it.title, text: it.text })),
+    distillTextPrompt: m.distillTextPrompt || '',
+    mainlineSummaryPrompt: m.mainlineSummaryPrompt || '',
+  };
+  // 同名覆盖（避免堆重名），否则新增
+  const exist = (m.summaryPresets || []).find((p) => p.name === nm);
+  if (exist) { exist.items = snapshot.items; exist.distillTextPrompt = snapshot.distillTextPrompt; exist.mainlineSummaryPrompt = snapshot.mainlineSummaryPrompt; m.summaryPresetSel = exist.id; }
+  else { m.summaryPresets = [...(m.summaryPresets || []), snapshot]; m.summaryPresetSel = snapshot.id; }
+  saveSettings(); rerenderMoreIfOpen();
+  toast(`已${exist ? '覆盖' : '保存'}预设「${nm}」。`, 'success');
+}
+
+// 套用预设：整套覆盖当前三块内容（带确认·避免误覆盖手改）。
+async function coreadApplySummaryPreset(id) {
+  const m = coreadMemory();
+  const p = (m.summaryPresets || []).find((x) => x.id === id);
+  if (!p) { m.summaryPresetSel = ''; saveSettings(); rerenderMoreIfOpen(); return; }
+  if (!await confirmDialog('套用预设', `将用预设「${p.name}」整套覆盖当前的总结提示词（伴读条目 + 蒸馏书籍 + 主线选择），确定？`)) {
+    // 用户取消：下拉选择回退到当前实际选中项
+    rerenderMoreIfOpen(); return;
+  }
+  m.summaryItems = (p.items || []).map((it, i) => ({ id: uid('sum'), builtin: !!it.builtin, order: i, title: String(it.title || '未命名提示词'), text: String(it.text || '') }));
+  m.distillTextPrompt = String(p.distillTextPrompt || '');
+  m.mainlineSummaryPrompt = String(p.mainlineSummaryPrompt || '');
+  m.summaryPresetSel = id;
+  saveSettings(); rerenderMoreIfOpen();
+  toast(`已套用预设「${p.name}」。`, 'success');
+}
+
+// 删除选中预设（不动当前编辑中的三块内容·只删预设槽）。
+async function coreadDeleteSummaryPreset() {
+  const m = coreadMemory();
+  const id = m.summaryPresetSel;
+  const p = (m.summaryPresets || []).find((x) => x.id === id);
+  if (!p) { toast('请先在下拉里选中要删除的预设。', 'warning'); return; }
+  if (!await confirmDialog('删除预设', `删除预设「${p.name}」？当前编辑中的提示词不受影响。`)) return;
+  m.summaryPresets = (m.summaryPresets || []).filter((x) => x.id !== id);
+  m.summaryPresetSel = '';
+  saveSettings(); rerenderMoreIfOpen();
+  toast('已删除预设。', 'info');
 }
 
 /* ============================================================
@@ -10968,34 +11159,12 @@ function renderMemRecordsTab(m) {
   const cursor = Number(readerDialog.cursor) || 0;
   const pendingN = Math.max(0, msgsLen - cursor);
   const lastBatch = slices.reduce((mx, s) => Math.max(mx, Number(s.batch) || 0), 0);
-  const sliceList = slices.length
-    ? slices.map((s) => `
-      <details class="sd-reader-slice" data-id="${htmlEscape(s.id)}" data-acc="slice-${htmlEscape(s.id)}">
-        <summary class="sd-reader-slice-sum">
-          <span class="sd-reader-slice-batch">#${s.compressed ? '合并' : (s.batch || '?')}</span>
-          ${s.src === 'text' ? '<span class="sd-reader-slice-src src-text">正文</span>' : (s.src === 'mainline' ? '<span class="sd-reader-slice-src src-mainline">主线</span>' : '')}
-          ${s.salvaged ? '<span class="sd-reader-slice-salvaged" title="解析多次失败·已保底落地为纯文本·关键词可能缺失·建议重新生成或手动补关键词"><i class="fa-solid fa-triangle-exclamation"></i></span>' : ''}
-          <span class="sd-reader-slice-peek">${htmlEscape((s.summary || '').slice(0, 40))}${(s.summary || '').length > 40 ? '…' : ''}</span>
-        </summary>
-        <div class="sd-reader-slice-detail">
-          <textarea class="sd-reader-mtextarea sd-reader-slice-edit" data-id="${htmlEscape(s.id)}" rows="3">${htmlEscape(s.summary || '')}</textarea>
-          <label class="sd-reader-mlab">关键词（逗号分隔）</label>
-          <input class="sd-reader-minput sd-reader-slice-keys-edit" data-id="${htmlEscape(s.id)}" value="${htmlEscape((s.keywords || []).join(', '))}">
-          ${Object.keys(s.synonyms || {}).length ? `<div class="sd-reader-slice-syn"><i class="fa-solid fa-arrows-left-right-to-line"></i> ${Object.entries(s.synonyms).map(([c, al]) => `${htmlEscape(c)}<span class="sd-muted">≈${htmlEscape((al || []).join('/'))}</span>`).join('　')}</div>` : ''}
-          <div class="sd-reader-slice-foot">
-            <span class="sd-muted">${s.ts ? new Date(s.ts).toLocaleString() : ''}${s.loreUid ? '' : ' · 未写入世界书'}</span>
-            <span class="sd-reader-slice-acts">
-              <button type="button" class="sd-reader-mbtn sd-reader-slice-save" data-id="${htmlEscape(s.id)}" title="保存编辑"><i class="fa-solid fa-check"></i></button>
-              <button type="button" class="sd-reader-mbtn sd-reader-slice-regen" data-id="${htmlEscape(s.id)}" title="重新生成"><i class="fa-solid fa-rotate"></i></button>
-              <button type="button" class="sd-reader-mbtn sd-reader-slice-del" data-id="${htmlEscape(s.id)}" title="删除"><i class="fa-solid fa-trash"></i></button>
-            </span>
-          </div>
-        </div>
-      </details>`).join('')
-    : '<div class="sd-reader-mempty">还没有记忆切片。</div>';
+  // 切片列表已移入「管理切片」弹窗（coreadOpenSliceManagerDialog）·此处不再内联展示
 
-  // 手动总结「批次参考表」：序号=批次号·起始=首条对话序号·条数=覆盖对话数（参考用户图2·据实际需求设计）
-  const batchRows = slices.slice().sort((a, b) => (Number(a.batch) || 0) - (Number(b.batch) || 0)).map((s) => `
+  // 手动总结「批次参考表」：仅统计「对话切片」（src=dialog·coveredFrom/To 是对话消息索引）。
+  // 正文/主线切片的 coveredFrom/To 存的是正文字节偏移·语义不同·混入会算出「2025 条」这类假数（#6 bug）。
+  const dialogSlices = slices.filter((s) => !s.src || s.src === 'dialog');
+  const batchRows = dialogSlices.slice().sort((a, b) => (Number(a.batch) || 0) - (Number(b.batch) || 0)).map((s) => `
     <div class="sd-reader-batchrow">
       <span class="sd-reader-batchrow-no">#${s.compressed ? '合并' : (s.batch || '?')}</span>
       <span class="sd-reader-batchrow-start">起始 ${(Number(s.coveredFrom) || 0) + 1}</span>
@@ -11014,27 +11183,40 @@ function renderMemRecordsTab(m) {
           <button type="button" class="sd-reader-mbtn sd-reader-sumitem-export" title="导出（含三块）"><i class="fa-solid fa-file-export"></i></button>
         </span>
       </div>
+      <div class="sd-reader-promptpreset">
+        <select class="sd-reader-minput sd-reader-sumpreset-sel">
+          <option value="">（当前编辑中·未套用预设）</option>
+          ${(m.summaryPresets || []).map((p) => `<option value="${htmlEscape(p.id)}"${m.summaryPresetSel === p.id ? ' selected' : ''}>${htmlEscape(p.name)}</option>`).join('')}
+        </select>
+        <button type="button" class="sd-reader-mbtn sd-reader-sumpreset-save" title="把当前三块提示词存为预设"><i class="fa-solid fa-floppy-disk"></i>存为预设</button>
+        <button type="button" class="sd-reader-mbtn sd-reader-sumpreset-del"${m.summaryPresetSel ? '' : ' disabled'} title="删除选中预设"><i class="fa-solid fa-trash"></i></button>
+      </div>
       <div class="sd-reader-promptblock-lab"><i class="fa-solid fa-comments"></i> 伴读总结提示词</div>
       <div class="sd-reader-sumitems">${promptItems}</div>
-      <div class="sd-reader-promptblock-lab">
-        <i class="fa-solid fa-flask-vial"></i> 蒸馏书籍提示词
-        <span class="sd-reader-promptblock-acts">
-          <button type="button" class="sd-reader-mbtn sd-reader-distillprompt-save" title="保存"><i class="fa-solid fa-check"></i></button>
-          <button type="button" class="sd-reader-mbtn sd-reader-distillprompt-restore" title="恢复默认"><i class="fa-solid fa-rotate-left"></i></button>
-        </span>
-      </div>
-      <textarea class="sd-reader-mtextarea sd-reader-distillprompt-text" rows="5" placeholder="留空则用内置默认整理要求。不同文体题材精炼方式不同，可按在读书籍调整（如议论文重观点、小说重情节转折）。">${htmlEscape(m.distillTextPrompt || '')}</textarea>
-      <div class="sd-reader-promptblock-lab">
-        <i class="fa-solid fa-arrow-right-arrow-left"></i> 主线选择总结提示词
-        <span class="sd-reader-promptblock-acts">
-          <button type="button" class="sd-reader-mbtn sd-reader-mainlineprompt-save" title="保存"><i class="fa-solid fa-check"></i></button>
-          <button type="button" class="sd-reader-mbtn sd-reader-mainlineprompt-restore" title="恢复默认"><i class="fa-solid fa-rotate-left"></i></button>
-        </span>
-      </div>
-      <textarea class="sd-reader-mtextarea sd-reader-mainlineprompt-text" rows="4" placeholder="留空则沿用上方「伴读总结提示词」。用于从主线选择与本书相关的片段做总结。">${htmlEscape(m.mainlineSummaryPrompt || '')}</textarea>
+      <details class="sd-reader-promptblock">
+        <summary class="sd-reader-promptblock-lab">
+          <i class="fa-solid fa-flask-vial"></i> 蒸馏书籍提示词
+          <span class="sd-reader-promptblock-acts">
+            <button type="button" class="sd-reader-mbtn sd-reader-distillprompt-save" title="保存"><i class="fa-solid fa-check"></i></button>
+            <button type="button" class="sd-reader-mbtn sd-reader-distillprompt-restore" title="恢复默认"><i class="fa-solid fa-rotate-left"></i></button>
+          </span>
+        </summary>
+        <textarea class="sd-reader-mtextarea sd-reader-distillprompt-text" rows="5" placeholder="留空则用内置默认整理要求。不同文体题材精炼方式不同，可按在读书籍调整（如议论文重观点、小说重情节转折）。">${htmlEscape(m.distillTextPrompt || '')}</textarea>
+      </details>
+      <details class="sd-reader-promptblock">
+        <summary class="sd-reader-promptblock-lab">
+          <i class="fa-solid fa-arrow-right-arrow-left"></i> 主线选择总结提示词
+          <span class="sd-reader-promptblock-acts">
+            <button type="button" class="sd-reader-mbtn sd-reader-mainlineprompt-save" title="保存"><i class="fa-solid fa-check"></i></button>
+            <button type="button" class="sd-reader-mbtn sd-reader-mainlineprompt-restore" title="恢复默认"><i class="fa-solid fa-rotate-left"></i></button>
+          </span>
+        </summary>
+        <textarea class="sd-reader-mtextarea sd-reader-mainlineprompt-text" rows="4" placeholder="留空则沿用上方「伴读总结提示词」。用于从主线选择与本书相关的片段做总结。">${htmlEscape(m.mainlineSummaryPrompt || '')}</textarea>
+      </details>
     </div>
     <div class="sd-reader-mcard">
-      <div class="sd-reader-mcard-head"><i class="fa-solid fa-robot"></i> 自动总结</div>
+      <div class="sd-reader-mcard-head"><i class="fa-solid fa-robot"></i> 伴读对话·自动总结</div>
+      <div class="sd-reader-mhint">仅针对你与书友的<b>伴读对话</b>。与上方「书籍蒸馏」互不相干。</div>
       <div class="sd-reader-mrow">
         <span class="sd-reader-mrow-lab">自动总结</span>
         ${renderMemSwitch('sd-reader-autodistill-en', m.autoDistill)}
@@ -11050,7 +11232,7 @@ function renderMemRecordsTab(m) {
       <div class="sd-reader-mstate">已总结到第 <b>${cursor}</b> 条对话（共 ${msgsLen} 条）· 最新批次 <b>#${lastBatch || '—'}</b> · 待总结 <b>${pendingN}</b> 条</div>
     </div>
     <div class="sd-reader-mcard">
-      <div class="sd-reader-mcard-head"><i class="fa-solid fa-list-ol"></i> 手动总结</div>
+      <div class="sd-reader-mcard-head"><i class="fa-solid fa-list-ol"></i> 伴读对话·手动总结</div>
       <div class="sd-reader-mrow sd-reader-mrow-resum">
         <span class="sd-reader-mrow-lab">第</span>
         <input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-manual-from" min="1" max="${msgsLen}" value="${Math.min(cursor + 1, msgsLen) || 1}">
@@ -11084,15 +11266,14 @@ function renderMemRecordsTab(m) {
         <button type="button" class="sd-reader-mbtn sd-reader-arch-manage"><i class="fa-solid fa-link"></i>管理绑定档案</button>
       </div>
     </div>
-    <details class="sd-reader-mcard">
-      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-layer-group"></i> 记忆切片（${slices.length}）${curBookLabel}</summary>
+    <div class="sd-reader-mcard">
+      <div class="sd-reader-mcard-head"><i class="fa-solid fa-layer-group"></i> 记忆切片 <span class="sd-reader-inj-tag">${slices.length}</span>${curBookLabel}</div>
+      <div class="sd-reader-mhint">查看、编辑、重构、删除切片都在「管理切片」里进行。</div>
       <div class="sd-reader-mactions">
         <button type="button" class="sd-reader-mbtn sd-reader-slice-manage"${slices.length ? '' : ' disabled'}><i class="fa-solid fa-table-list"></i>管理切片</button>
-        <button type="button" class="sd-reader-mbtn sd-reader-slice-migrate" title="把这本书在其他 ST 聊天里的伴读对话与记忆复制到当前聊天"><i class="fa-solid fa-right-left"></i>从其他聊天迁移</button>
         <button type="button" class="sd-reader-mbtn sd-reader-slice-clear"${slices.length ? '' : ' disabled'}><i class="fa-solid fa-trash-can"></i>清空全部</button>
       </div>
-      <div class="sd-reader-slices">${sliceList}</div>
-    </details>
+    </div>
     <div class="sd-reader-mcard">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-compress"></i> 对切片进行总结</div>
       <div class="sd-reader-mrow sd-reader-mrow-resum">
@@ -11120,34 +11301,51 @@ function renderMemInjectTab(m) {
   const msgs = readerDialog.messages || [];
   const recentTxt = msgs.slice(-8).map((x) => x.text || '').join(' ');
   const scanText = recentTxt || '（还没有对话）';
-  // 镜像 buildCompanionContext 的实际注入逻辑：近景保底(剔出检索池) + 检索命中
+  // 「召回管线」预览：镜像 buildCompanionContext 的召回逻辑（近景保底剔出检索池 + 检索命中）算候选池。
+  // 注意：这里是「如果现在生成会召回什么」的预览，不等于实际注入（实际注入见下方 lastInjected 回放）。
   const recent = coreadRecentSlices(m.recentInject || 0);
   const excludeIds = new Set(recent.map((h) => h.slice.id));
   const recall = coreadRecallSlices(scanText, Math.max(slices.length, 1), excludeIds);   // 全量算命中（候选池·已排除近景）
-  const hits = recall.slice(0, m.recallCount || 0);   // 实际注入的检索部分
-  const injected = [...recent, ...hits];              // 实际注入 = 近景 + 检索
+
+  // #7 实际注入：只回放「最近一次真实生成时确实注入的切片」（readerDialog.lastInjected），绝不用当前语境预览。
+  // 存的是切片 id 快照·此处按 id 回查当前切片拿最新全文（切片被编辑过则显示新文本·未找到＝已删则跳过）。
+  const byId = new Map(slices.map((s) => [s.id, s]));
+  const li = readerDialog.lastInjected;
+  const injected = (li && Array.isArray(li.items))
+    ? li.items.map((it) => {
+        const s = byId.get(it.id);
+        return s ? { slice: s, recent: !!it.recent, hits: it.hits || [] } : null;
+      }).filter(Boolean)
+    : [];
+  const liChannelLabel = li ? (li.channel === 'mainline' ? '主线联动' : '伴读对话') : '';
 
   const batchOf = (s) => s.compressed ? '合并' : (s.batch || '?');
+  // 切片来源标签：书籍(正文蒸馏) / 主线(主线选择) / 对谈(伴读对话·默认)。用于区分「书籍内角色情节」与「书友讨论」，防左右脑互搏。
+  const srcLabel = (src) => src === 'text' ? '书籍' : (src === 'mainline' ? '主线' : '对谈');
+  const srcCls = (src) => src === 'text' ? 'src-text' : (src === 'mainline' ? 'src-mainline' : 'src-dialog');
   // 锚定词高亮：用召回内核算出的真实 hits（已过同义词归一），非裸字符串匹配。近景切片是无条件注入·不算锚定·不高亮。
   const kwTags = (h) => {
     const anchorSet = new Set(h.recent ? [] : (h.hits || []));
     return (h.slice.keywords || []).map((k) => `<span class="sd-reader-slice-key ${anchorSet.has(k) ? 'on' : ''}">${htmlEscape(k)}</span>`).join('');
   };
-  // ① 实际注入：显完整总结全文（近景标「近景」·检索标「检索」）
+  // 切片来源徽标 HTML（书籍/主线/对谈·同色系区分）
+  const srcBadge = (s) => `<span class="sd-reader-src-badge ${srcCls(s.src)}">${srcLabel(s.src)}</span>`;
+  // ① 实际注入：显完整总结全文（书籍/对谈/主线来源徽标 + 近景/检索通道标）
   const injCards = injected.length
     ? injected.map((h) => `
       <div class="sd-reader-injslice inj">
-        <div class="sd-reader-injslice-head"><span class="sd-reader-slice-batch">#${batchOf(h.slice)}</span><span class="sd-reader-injslice-tag${h.recent ? ' recent' : ''}">${h.recent ? '近景' : '检索'}</span></div>
+        <div class="sd-reader-injslice-head"><span class="sd-reader-slice-batch">#${batchOf(h.slice)}</span>${srcBadge(h.slice)}<span class="sd-reader-injslice-tag${h.recent ? ' recent' : ''}">${h.recent ? '近景' : '检索'}</span></div>
         <div class="sd-reader-injslice-full">${htmlEscape(h.slice.summary || '')}</div>
         <div class="sd-reader-injslice-keys">${kwTags(h)}</div>
       </div>`).join('')
-    : '<div class="sd-reader-mempty">本轮无注入切片（近景关闭且无检索命中）。</div>';
+    : '<div class="sd-reader-mempty">尚无真实注入记录。与书友聊上一句、或触发一次主线联动后，这里会回放那次实际带入模型的切片。</div>';
 
-  // ② 召回候选：编号 + 关键词（锚定词点亮）+ 命中数 + 分数
+  // ② 召回候选：编号 + 来源徽标 + 关键词（锚定词点亮）+ 命中数 + 分数
   const candRows = recall.length
     ? recall.map((h) => `
       <div class="sd-reader-injrow">
         <span class="sd-reader-slice-batch">#${batchOf(h.slice)}</span>
+        ${srcBadge(h.slice)}
         <span class="sd-reader-injrow-keys">${kwTags(h)}</span>
         <span class="sd-reader-injrow-score">命中 ${h.hits.length} · 分 ${(h.score || 0).toFixed(2)}</span>
       </div>`).join('')
@@ -11214,7 +11412,8 @@ function renderMemInjectTab(m) {
 
   return `
     <details class="sd-reader-mcard" open>
-      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-syringe"></i> 实际注入 <span class="sd-reader-inj-tag">${injected.length} 条</span></summary>
+      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-syringe"></i> 实际注入 <span class="sd-reader-inj-tag">${injected.length} 条</span>${li ? `<span class="sd-reader-inj-tag">最近一次·${liChannelLabel}</span>` : ''}</summary>
+      <div class="sd-reader-mhint">回放<b>最近一次真实生成</b>时确实带入模型的切片，不是预览。书籍/对谈/主线徽标区分「书里的角色情节」与「书友的讨论」，避免混淆。</div>
       <div class="sd-reader-injslices">${injCards}</div>
     </details>
     <div class="sd-reader-mcard">
@@ -11234,22 +11433,36 @@ function renderMemInjectTab(m) {
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">近景切片注入数<i class="fa-solid fa-circle-info" title="主线：最近N条切片无条件注入 0=关"></i></span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-recent" min="0" step="1" value="${m.mainlineRecent}"${m.mainlineFeedback ? '' : ' disabled'}></div>
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">注入深度</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-depth" min="0" step="1" value="${m.mainlineDepth}"${m.mainlineFeedback ? '' : ' disabled'}></div>
     </div>
-    <details class="sd-reader-mcard">
-      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-magnifying-glass"></i> 本次召回候选（${recall.length}）</summary>
-      <div class="sd-reader-scanbox">${htmlEscape(scanText.slice(-240))}</div>
-      ${anchorBar}
-      <div class="sd-reader-injrows">${candRows}</div>
-    </details>
     <details class="sd-reader-mcard" open>
       <summary class="sd-reader-mcard-head"><i class="fa-solid fa-book-bookmark"></i> 检索词典 <span class="sd-reader-inj-tag">${dictPairs.length}</span></summary>
       ${dictBody}
     </details>
-    <div class="sd-reader-mcard">
-      <div class="sd-reader-mcard-head"><i class="fa-solid fa-arrow-down-wide-short"></i> 重排结果 <span class="sd-reader-inj-tag${m.rerankEnabled ? ' on' : ''}">${m.rerankEnabled ? '已启用' : '未启用'}</span></div>
-    </div>
-    <div class="sd-reader-mcard">
-      <div class="sd-reader-mcard-head"><i class="fa-solid fa-vector-square"></i> 向量选定 <span class="sd-reader-inj-tag${m.vectorEnabled ? ' on' : ''}">${m.vectorEnabled ? '已启用' : '未启用'}</span></div>
-    </div>`;
+    <details class="sd-reader-mcard">
+      <summary class="sd-reader-mcard-head">
+        <i class="fa-solid fa-diagram-project"></i> 召回管线
+        <span class="sd-reader-inj-tag${m.vectorEnabled ? ' on' : ''}">向量${m.vectorEnabled ? '开' : '关'}</span>
+        <span class="sd-reader-inj-tag${m.rerankEnabled ? ' on' : ''}">重排${m.rerankEnabled ? '开' : '关'}</span>
+      </summary>
+      <div class="sd-reader-mhint">「如果<b>现在</b>生成会召回什么」的预览。按管线顺序：语境扫描 → 关键词/向量召回 → 重排精排 → 候选。真正注入了哪些以上方「实际注入」为准。</div>
+      <div class="sd-reader-pipe-step">
+        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-magnifying-glass"></i> ① 语境扫描（近期对话末240字）</div>
+        <div class="sd-reader-scanbox">${htmlEscape(scanText.slice(-240))}</div>
+      </div>
+      <div class="sd-reader-pipe-step">
+        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-anchor"></i> ② 锚定词（同义词归一后命中的关键词）</div>
+        ${anchorBar}
+      </div>
+      <div class="sd-reader-pipe-step">
+        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-vector-square"></i> ③ 向量召回 <span class="sd-reader-inj-tag${m.vectorEnabled ? ' on' : ''}">${m.vectorEnabled ? '已启用·与关键词 RRF 融合' : '未启用'}</span></div>
+      </div>
+      <div class="sd-reader-pipe-step">
+        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-arrow-down-wide-short"></i> ④ 重排精排 <span class="sd-reader-inj-tag${m.rerankEnabled ? ' on' : ''}">${m.rerankEnabled ? `已启用·保留前 ${m.rerankTopN}` : '未启用'}</span></div>
+      </div>
+      <div class="sd-reader-pipe-step">
+        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-list-check"></i> ⑤ 召回候选（${recall.length}）</div>
+        <div class="sd-reader-injrows">${candRows}</div>
+      </div>
+    </details>`;
 }
 
 // 伴读设定浮层内容：身份直显(标签·联动 ST 当前)+世界书取材式选择(书/条目独立)+可见正文范围。
@@ -11394,7 +11607,7 @@ function renderCompanionSetupBody() {
     </div>
     <div class="sd-reader-setup-row">
       <div class="sd-reader-setup-numrow">
-        <label class="sd-reader-setup-lab">语音条缓存上限（条·独立于配音）</label>
+        <label class="sd-reader-setup-lab">语音条缓存上限</label>
         <input type="number" class="sd-reader-setup-num sd-reader-setup-voicelimit" min="10" step="10" value="${coread().voiceCacheLimit || 100}">
       </div>
     </div>`;
@@ -11905,6 +12118,9 @@ function bindReaderStageEvents(stageRoot) {
       });
       return;
     }
+    // 总结提示词预设：存为预设 / 删除选中预设（切换在 change 事件里处理）
+    if (e.target.closest('.sd-reader-sumpreset-save')) { coreadSaveSummaryPreset(); return; }
+    if (e.target.closest('.sd-reader-sumpreset-del')) { coreadDeleteSummaryPreset(); return; }
     // 蒸馏书籍提示词：保存 / 恢复默认（单块·独立于伴读总结条目）
     if (e.target.closest('.sd-reader-distillprompt-save')) {
       const ta = morePage.querySelector('.sd-reader-distillprompt-text');
@@ -11945,33 +12161,52 @@ function bindReaderStageEvents(stageRoot) {
     }
     if (e.target.closest('.sd-reader-sumitem-export')) { coreadExportSummaryItems(); return; }
     if (e.target.closest('.sd-reader-sumitem-import')) { coreadImportSummaryItems(); return; }
-    // 正文伴读切片：把已读正文蒸成情节记忆
+    // 书籍蒸馏两按钮共用「生成中」状态：活跃按钮变红「停止」，兄弟按钮灰色禁用；完成/停止后共同复原。
+    // — 检查「停止」点击 —
+    if (e.target.closest('.sd-reader-distill-stop')) { coreadStopDistill(); return; }
+    // — 蒸馏已读内容 —
     if (e.target.closest('.sd-reader-distill-text')) {
-      const btn = e.target.closest('.sd-reader-distill-text');
-      const icon = btn.querySelector('i'); const prev = icon?.className;
-      btn.disabled = true; if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
-      toast('伴读记忆：正在总结已读正文…', 'info');
+      if (coreadDistilling) return;   // 另一按钮正在运行时点击无效（按钮应已被禁用，双保险）
+      const card = e.target.closest('.sd-reader-mcard');
+      const btnText = card?.querySelector('.sd-reader-distill-text');
+      const btnBook = card?.querySelector('.sd-reader-distill-fullbook');
+      // 进入生成态：活跃变红「停止」，兄弟禁用
+      if (btnText) { btnText.textContent = '停止'; btnText.classList.add('sd-reader-distill-stop', 'sd-btn-danger'); }
+      if (btnBook) btnBook.disabled = true;
       coreadDistillReadText(m).then((r) => {
-        if (r?.ok) toast(`已从正文生成 1 条情节记忆切片${r.salvaged ? '（关键词档降级保底）' : ''}。`, 'success');
+        if (r?.aborted) toast('已停止蒸馏。', 'info');
+        else if (r?.ok) toast(`已从正文生成 1 条情节记忆切片${r.salvaged ? '（关键词档降级保底）' : ''}。`, 'success');
         else toast(r?.reason || '正文总结失败。', 'warning');
         rerenderMore();
       }).catch((err) => toast(`正文总结失败：${coreadExplainError(err)}`, 'error'))
-        .finally(() => { btn.disabled = false; if (icon && prev) icon.className = prev; });
+        .finally(() => {
+          // 无论结果如何：重渲自然复原按钮文字/状态（rerenderMore 已触发），再多保一道
+          if (btnText) { btnText.textContent = '蒸馏已阅读内容'; btnText.classList.remove('sd-reader-distill-stop', 'sd-btn-danger'); btnText.disabled = false; }
+          if (btnBook) btnBook.disabled = false;
+        });
       return;
     }
-    // 蒸馏全书：把整本书分块蒸成多条情节记忆（长篇一次性建库·可续跑）
+    // — 蒸馏全书 —
     if (e.target.closest('.sd-reader-distill-fullbook')) {
-      const btn = e.target.closest('.sd-reader-distill-fullbook');
-      const icon = btn.querySelector('i'); const prev = icon?.className;
+      if (coreadDistilling) return;
+      const card = e.target.closest('.sd-reader-mcard');
+      const btnText = card?.querySelector('.sd-reader-distill-text');
+      const btnBook = card?.querySelector('.sd-reader-distill-fullbook');
       confirmDialog('蒸馏全书', '将把整本书按段落分块，逐块蒸成情节记忆切片。长篇会消耗较多总结额度，且耗时较长。确定？').then((yes) => {
         if (!yes) return;
-        btn.disabled = true; if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+        // 进入生成态：蒸馏全书按钮变红「停止」，另一按钮禁用
+        if (btnBook) { btnBook.textContent = '停止'; btnBook.classList.add('sd-reader-distill-stop', 'sd-btn-danger'); }
+        if (btnText) btnText.disabled = true;
         coreadDistillFullBook(m, false).then((r) => {
-          if (r?.ok) toast(`蒸馏全书完成：新增 ${r.made} 条切片${r.failed ? `（${r.failed} 段失败已跳过）` : ''}。`, 'success');
+          if (r?.aborted) toast(`已停止蒸馏全书（已完成 ${r.made} 段）。`, 'info');
+          else if (r?.ok) toast(`蒸馏全书完成：新增 ${r.made} 条切片${r.failed ? `（${r.failed} 段失败已跳过）` : ''}。`, 'success');
           else toast(r?.reason || '蒸馏全书失败。', 'warning');
           rerenderMore();
         }).catch((err) => toast(`蒸馏全书失败：${coreadExplainError(err)}`, 'error'))
-          .finally(() => { btn.disabled = false; if (icon && prev) icon.className = prev; });
+          .finally(() => {
+            if (btnBook) { btnBook.textContent = '蒸馏全书'; btnBook.classList.remove('sd-reader-distill-stop', 'sd-btn-danger'); btnBook.disabled = false; }
+            if (btnText) btnText.disabled = false;
+          });
       });
       return;
     }
@@ -12144,7 +12379,19 @@ function bindReaderStageEvents(stageRoot) {
     if (e.target.closest('.sd-reader-sum-stream')) { m.summaryStream = e.target.checked; saveSettings(); return; }
     if (e.target.closest('.sd-reader-readdate-en')) { m.readDateInSummary = e.target.checked; saveSettings(); return; }
     if (e.target.closest('.sd-reader-dialog-profile')) { m.dialogApiProfileId = e.target.value || ''; saveSettings(); return; }
-    if (e.target.closest('.sd-reader-vector-en')) { m.vectorEnabled = e.target.checked; saveSettings(); return; }
+    if (e.target.closest('.sd-reader-vector-en')) {
+      m.vectorEnabled = e.target.checked; saveSettings();
+      // 开启即自动向量化现有切片（指纹增量·已算的复用·不重复消耗）。静默失败回退关键词召回。
+      if (m.vectorEnabled && (readerDialog.slices || []).length) {
+        toast('向量检索：正在向量化现有切片…', 'info');
+        coreadEnsureVectors(m).then((c) => {
+          if (c) toast(`向量检索已就绪（${Object.keys(c.vecs || {}).length} 条切片）。`, 'success');
+          else toast('向量化未完成（接口未配置或无切片），已回退关键词召回。', 'warning');
+          rerenderMore();
+        }).catch((err) => { toast(`向量化失败：${coreadExplainError(err)}，已回退关键词召回。`, 'warning'); rerenderMore(); });
+      }
+      return;
+    }
     if (e.target.closest('.sd-reader-rerank-en')) { m.rerankEnabled = e.target.checked; saveSettings(); return; }
     if (e.target.closest('.sd-reader-autodistill-en')) { m.autoDistill = e.target.checked; saveSettings(); return; }
     if (e.target.closest('.sd-reader-autotext-en')) { m.autoDistillText = e.target.checked; saveSettings(); rerenderMore(); return; }
@@ -12152,6 +12399,13 @@ function bindReaderStageEvents(stageRoot) {
     if (e.target.closest('.sd-reader-dict-booksel')) {
       coreadCurrentDictId = e.target.value || '';
       rerenderMore(); return;
+    }
+    // 总结提示词预设下拉：选中即套用（空值＝回到「当前编辑中」不套用）
+    if (e.target.closest('.sd-reader-sumpreset-sel')) {
+      const id = e.target.value || '';
+      if (id) coreadApplySummaryPreset(id);
+      else { m.summaryPresetSel = ''; saveSettings(); rerenderMore(); }
+      return;
     }
     if (e.target.closest('.sd-reader-mainline-toggle')) { m.mainlineFeedback = e.target.checked; saveSettings(); coreadInvalidatePool(); rerenderMore(); return; }
     if (e.target.closest('.sd-reader-storagemode')) { m.storageMode = e.target.value === 'shared' ? 'shared' : 'dedicated'; saveSettings(); return; }

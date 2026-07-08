@@ -3479,12 +3479,37 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-slice-src { font-size: .62em; padding: 1px 6px; border-radius: 10px; font-style: normal; vertical-align: middle; }
 .sd-reader-slice-src.src-text { background: color-mix(in srgb, var(--sd-accent) 25%, transparent); color: var(--sd-accent); }
 .sd-reader-slice-src.src-mainline { background: color-mix(in srgb, var(--sd-good, #3fae6b) 25%, transparent); color: var(--sd-good, #3fae6b); }
+/* 切片来源徽标（书籍/主线/对谈·区分书内角色情节 vs 书友讨论·防左右脑互搏） */
+.sd-reader-src-badge { font-size: .66em; padding: 1px 8px; border-radius: 20px; font-style: normal; font-weight: 600; white-space: nowrap; flex: 0 0 auto; }
+.sd-reader-src-badge.src-dialog { background: color-mix(in srgb, var(--sd-accent) 18%, transparent); color: var(--sd-accent); }
+.sd-reader-src-badge.src-text { background: color-mix(in srgb, #d0872e 22%, transparent); color: #d0872e; }
+.sd-reader-src-badge.src-mainline { background: color-mix(in srgb, var(--sd-good, #3fae6b) 22%, transparent); color: var(--sd-good, #3fae6b); }
+/* 召回管线（原「召回候选/重排/向量」三卡合并·按管线顺序分步展示） */
+.sd-reader-pipe-step { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--sd-hairline); }
+.sd-reader-pipe-step:first-of-type { margin-top: 6px; padding-top: 0; border-top: none; }
+.sd-reader-pipe-lab { display: flex; align-items: center; gap: 6px; font-size: .8em; font-weight: 600; color: var(--sd-text); margin-bottom: 6px; }
+.sd-reader-pipe-lab i { opacity: .75; color: var(--sd-accent); }
+/* 危险态按钮（书籍蒸馏「停止」）：红底醒目 */
+.sd-btn-danger { background: color-mix(in srgb, #d64545 82%, transparent) !important; color: #fff !important; border-color: #d64545 !important; }
 /* 提示词分块标签（伴读总结 / 蒸馏书籍 / 主线选择总结 三块并入一卡） */
 .sd-reader-promptblock-lab { display: flex; align-items: center; gap: 6px; font-size: .82em; font-weight: 600; color: var(--sd-accent); margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--sd-hairline); }
 .sd-reader-promptblock-lab:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
 .sd-reader-promptblock-lab i { opacity: .8; }
 .sd-reader-promptblock-acts { margin-left: auto; display: inline-flex; gap: 4px; }
 .sd-reader-promptblock-acts .sd-reader-mbtn { padding: 3px 8px; font-size: .9em; }
+/* 蒸馏书籍 / 主线选择总结：可折叠块（details·默认折叠） */
+.sd-reader-promptblock { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--sd-hairline); }
+.sd-reader-promptblock > summary { list-style: none; cursor: pointer; margin-top: 0; padding-top: 0; border-top: none; }
+.sd-reader-promptblock > summary::-webkit-details-marker { display: none; }
+.sd-reader-promptblock > summary::before { content: '\f105'; font-family: 'Font Awesome 6 Free'; font-weight: 900; margin-right: 4px; opacity: .6; transition: transform .15s; }
+.sd-reader-promptblock[open] > summary::before { transform: rotate(90deg); }
+.sd-reader-promptblock > textarea { margin-top: 8px; }
+/* 总结提示词预设行（下拉 + 存为预设 + 删除） */
+.sd-reader-promptpreset { display: flex; align-items: center; gap: 6px; margin: 4px 0 10px; }
+.sd-reader-promptpreset .sd-reader-sumpreset-sel { flex: 1 1 auto; min-width: 0; }
+.sd-reader-promptpreset .sd-reader-mbtn { flex: 0 0 auto; padding: 4px 9px; font-size: .82em; display: inline-flex; align-items: center; gap: 4px; }
+/* 停止按钮（书籍蒸馏生成中态） */
+.sd-btn-danger { background: color-mix(in srgb, var(--sd-bad, #d9534f) 82%, transparent) !important; color: #fff !important; border-color: var(--sd-bad, #d9534f) !important; }
 .sd-reader-dictbooks { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .sd-reader-dictbook { border: 1px solid var(--sd-hairline); border-radius: 8px; padding: 6px 8px; }
 .sd-reader-dictbook-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
@@ -3521,12 +3546,21 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-migrate-info { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: .9em; flex: 1; min-width: 0; }
 .sd-reader-migrate-floor { font-size: .82em; color: var(--sd-accent); font-weight: 700; flex: 0 0 auto; opacity: .85; }
 .sd-reader-migrate-when { font-size: .78em; color: var(--sd-muted, #888); }
-/* 主线选择弹窗：标签规则 + 可折叠 CMD 风格行 */
-.sd-reader-mldialog { max-height: 70vh; display: flex; flex-direction: column; }
-.sd-reader-mlrule { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex: 0 0 auto; }
-.sd-reader-mlrule-lab { font-size: .8em; color: var(--sd-muted); white-space: nowrap; flex: 0 0 auto; }
-.sd-reader-mlrule-input { flex: 1 1 auto; min-width: 120px; }
-.sd-reader-mllist { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1 1 auto; max-height: 52vh; padding-right: 4px; }
+/* 档案弹窗次级操作：迁移入口（与绑定并列·语义各异） */
+.sd-reader-arch-secondary { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--sd-hairline); }
+.sd-reader-arch-secondary .sd-reader-textbtn { align-self: flex-start; }
+/* 主线选择弹窗：标签规则（取材同款行）+ 可折叠 CMD 风格行 */
+.sd-reader-mldialog { display: flex; flex-direction: column; min-height: 320px; }
+.sd-reader-mlrule-wrap { border: 1px solid var(--sd-hairline); border-radius: 8px; margin-bottom: 10px; flex: 0 0 auto; }
+.sd-reader-mlrule-head { display: flex; align-items: center; gap: 6px; padding: 7px 10px; cursor: pointer; font-size: .85em; font-weight: 600; list-style: none; }
+.sd-reader-mlrule-head::-webkit-details-marker { display: none; }
+.sd-reader-mlrule-head .sd-muted { font-weight: 400; font-size: .9em; margin-left: 4px; }
+.sd-reader-mlrule-rows { display: flex; flex-direction: column; gap: 5px; padding: 4px 10px 6px; }
+.sd-reader-mlrule-row { display: flex; align-items: center; gap: 6px; }
+.sd-reader-mlrule-row .sd-reader-minput:first-child { flex: 1 1 auto; }
+.sd-reader-mlrule-row .sd-reader-minput:nth-child(2) { flex: 0 0 80px; }
+.sd-reader-mlrule-acts { display: flex; align-items: center; gap: 6px; padding: 4px 10px 8px; }
+.sd-reader-mllist { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1 1 auto; min-height: 0; max-height: 62vh; padding-right: 4px; }
 .sd-reader-mlrow { border: 1px solid var(--sd-hairline); border-radius: 8px; background: var(--sd-glass-weak); overflow: hidden; }
 .sd-reader-mlrow-sum { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; list-style: none; }
 .sd-reader-mlrow-sum::-webkit-details-marker { display: none; }
@@ -3540,6 +3574,10 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-sm-sum { display: flex; align-items: center; gap: 8px; padding: 9px 11px; cursor: pointer; list-style: none; }
 .sd-reader-sm-sum::-webkit-details-marker { display: none; }
 .sd-reader-sm-peek { font-size: .82em; color: var(--sd-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; }
+/* 切片管理：标签横向成排（批次号 + 来源徽标 + 向量状态徽标），不再竖排 */
+.sd-reader-sm-tags { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; flex-wrap: nowrap; }
+.sd-reader-src-badge.vec-on { background: color-mix(in srgb, var(--sd-good, #3fae6b) 25%, transparent); color: var(--sd-good, #3fae6b); }
+.sd-reader-src-badge.vec-off { background: var(--sd-pre); color: var(--sd-muted, #888); }
 .sd-reader-sm-detail { padding: 0 11px 11px; display: flex; flex-direction: column; gap: 6px; }
 .sd-reader-sm-meta { font-size: .74em; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .sd-reader-sm-acts { display: flex; gap: 8px; justify-content: flex-end; }
