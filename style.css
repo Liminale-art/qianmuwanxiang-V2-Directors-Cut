@@ -2946,19 +2946,21 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 .sd-reader-sort-toggle { flex: 0 0 auto; }
 .sd-reader-sort-icononly { width: 36px; padding: 0; }
 .sd-reader-sort-cur { font-size: .92em; opacity: .9; }
-/* 导入：超大圆形 FAB，浮于书架右下角最上层 */
-#sd-reader-portal .sd-reader-import-fab {
+/* 导入：超大圆形 FAB，浮于书架右下角最上层。书架渲染在主模态内(#story-director-modal)·选择器须匹配此上下文，
+   否则会退回 .sd-btn 的胶囊态变成矩形。同时提权压过 ST 主题对 i/.fa-solid 的高优先级 color。 */
+#story-director-modal .sd-reader-import-fab {
   position: fixed; right: 26px; bottom: 26px; z-index: 20;
   width: 58px; height: 58px; border-radius: 50%; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--sd-accent); color: var(--sd-primary-text); border: none;
+  min-height: 0; box-shadow: 0 4px 14px rgba(0,0,0,.22);
   font-size: 1.5em; cursor: pointer;
   transition: transform .16s, filter .16s;
 }
-#sd-reader-portal .sd-reader-import-fab:hover { transform: translateY(-2px) scale(1.04); filter: brightness(1.06); }
-#sd-reader-portal .sd-reader-import-fab:active { transform: scale(.96); }
+#story-director-modal .sd-reader-import-fab:hover { transform: translateY(-2px) scale(1.04); filter: brightness(1.06); }
+#story-director-modal .sd-reader-import-fab:active { transform: scale(.96); }
 /* ST主题直接对 i / .fa-solid 设高优先级 color 会导致加号颜色跑偏·此处双保险锁住FAB内图标 */
-#sd-reader-portal .sd-reader-import-fab i { color: var(--sd-primary-text, #fff) !important; }
+#story-director-modal .sd-reader-import-fab i { color: var(--sd-primary-text, #fff) !important; }
 .sd-reader-sort-menu {
   position: absolute; top: calc(100% + 6px); left: 0; z-index: 30;
   width: max-content; min-width: 108px; padding: 6px;
@@ -3247,8 +3249,9 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-dtab:hover { color: var(--sd-text); }
 .sd-reader-dtab.active { color: var(--sd-accent); background: var(--sd-glass-weak); }
 .sd-reader-dialog-head-btns { display: flex; align-items: center; gap: 2px; }
-.sd-reader-dialog-setup { background: transparent; border: 0; color: var(--sd-muted); cursor: pointer; padding: 4px 8px; border-radius: 8px; }
-.sd-reader-dialog-setup:hover { color: var(--sd-text); background: var(--sd-glass-weak); }
+/* 头部图标钮统一风格（对话API插头 / 设定齿轮 同款·无框透明底·hover 淡底） */
+.sd-reader-dialog-apiconf, .sd-reader-dialog-setup { background: transparent; border: 0; color: var(--sd-muted); cursor: pointer; padding: 4px 8px; border-radius: 8px; }
+.sd-reader-dialog-apiconf:hover, .sd-reader-dialog-setup:hover { color: var(--sd-text); background: var(--sd-glass-weak); }
 .sd-reader-dialog-pin { background: transparent; border: 0; color: var(--sd-muted); cursor: pointer; padding: 4px 8px; border-radius: 8px; transform: rotate(38deg); }
 .sd-reader-dialog-pin:hover { color: var(--sd-text); background: var(--sd-glass-weak); }
 .sd-reader-dialog-pin.active { color: var(--sd-accent); transform: rotate(0deg); }

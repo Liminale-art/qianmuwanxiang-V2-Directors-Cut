@@ -7,7 +7,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.8.0';
+const VERSION = '1.8.1';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -10079,6 +10079,16 @@ function coreadStopDialog() {
   try { dialogAbort?.abort(); } catch (_) {}
   dialogBusy = false;
   dialogAbort = null;
+  // 清占位：等模型时的空 friend 气泡（渲染成三点动态）+ 逐条浮现时插入的 typing 气泡。
+  // 停止后 token 已自增·原 catch/finally 的 token 相等判定不成立不会清·故此处主动清，暂停即消失（不必重开对话框）。
+  const hadPlaceholder = (readerDialog.messages || []).some((m) => m.role === 'friend' && !String(m.text || '').trim());
+  readerDialog.messages = (readerDialog.messages || []).filter((m) => !(m.role === 'friend' && !String(m.text || '').trim()));
+  const body = document.querySelector('#sd-reader-portal .sd-reader-dtab-chat');
+  if (body) {
+    body.querySelectorAll('.sd-reader-typing').forEach((el) => el.remove());   // 移除逐条浮现的 typing 气泡
+    if (hadPlaceholder) { body.innerHTML = renderReaderDialogMessages(); scrollDialogToBottom(); }   // 有占位才整渲·抹掉三点空气泡
+  }
+  if (hadPlaceholder) coreadSaveDialog();
   coreadSyncDialogButtons();
 }
 
@@ -11605,8 +11615,11 @@ function renderCompanionSetupBody() {
     </div>
     <div class="sd-reader-setup-row">
       <div class="sd-reader-setup-numrow">
-        <label class="sd-reader-setup-lab"><input type="checkbox" class="sd-reader-setup-chatctx-en"${cp.chatCtxEnabled ? ' checked' : ''}> 参考上下文层数</label>
-        <input type="number" class="sd-reader-setup-num sd-reader-setup-chatctx-floors" min="1" step="1" value="${cp.chatCtxFloors}"${cp.chatCtxEnabled ? '' : ' disabled'}>
+        <label class="sd-reader-setup-lab">参考上下文层数</label>
+        <div class="sd-reader-setup-numgroup">
+          ${renderMemSwitch('sd-reader-setup-chatctx-en', cp.chatCtxEnabled)}
+          <input type="number" class="sd-reader-setup-num sd-reader-setup-chatctx-floors" min="1" step="1" value="${cp.chatCtxFloors}"${cp.chatCtxEnabled ? '' : ' disabled'}>
+        </div>
       </div>
     </div>
     <div class="sd-reader-setup-row">
@@ -12923,10 +12936,20 @@ async function coreadExportData() {
     } catch (_) {}
     books.push({ meta, fullText: rec?.fullText || '', chapters: rec?.chapters || [], sig: rec?.sig || '', coverB64 });
   }
+  // 伴读对话 + 记忆切片：存 IndexedDB reader_chats（bucketKey=chatKey::bookId·含 messages/slices/cursor/names）。
+  // 全量导出所有 bucket——换端后对话与蒸馏出的记忆切片可整体复原（语音条文本随 messages 走·音频可重生成）。
+  const chats = [];
+  try {
+    for (const key of await blobStore.listReaderChatKeys()) {
+      const rec = await blobStore.getReaderChat(key);
+      if (rec) chats.push({ key, rec });
+    }
+  } catch (e) { console.warn(`[${MODULE_NAME}] export chats failed`, e); }
   const payload = {
-    type: 'qianmu-coread', version: 1, exportedAt: new Date().toISOString(),
+    type: 'qianmu-coread', version: 2, exportedAt: new Date().toISOString(),
     prefs: { ...coread(), books: undefined },   // 偏好（不含书目，书目随 books 走）
     books,
+    chats,
   };
   delete payload.prefs.books;
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
@@ -12951,7 +12974,8 @@ function coreadImportData() {
       if (data.type !== 'qianmu-coread' || !Array.isArray(data.books)) throw new Error('格式不符');
     } catch (_) { toast('导入失败：不是有效的千幕阅读数据文件。', 'error'); return; }
     if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地存储，无法导入。', 'error'); return; }
-    if (!await confirmDialog('导入阅读数据', `将导入 ${data.books.length} 本书的正文、笔记与阅读进度。同 id 的书会被覆盖，是否继续？`)) return;
+    const chatN = Array.isArray(data.chats) ? data.chats.length : 0;
+    if (!await confirmDialog('导入阅读数据', `将导入 ${data.books.length} 本书的正文、笔记与阅读进度${chatN ? `，以及 ${chatN} 段伴读对话与记忆切片` : ''}。同 id 的书 / 同会话会被覆盖，是否继续？`)) return;
     let ok = 0;
     for (const b of data.books) {
       if (!b?.meta?.id) continue;
@@ -12963,6 +12987,14 @@ function coreadImportData() {
         ok++;
       } catch (e) { console.warn(`[${MODULE_NAME}] import book failed`, e); }
     }
+    // 伴读对话 + 记忆切片（reader_chats·按 bucketKey=chatKey::bookId 覆盖式还原·v2 新增）
+    let chatOk = 0;
+    if (Array.isArray(data.chats)) {
+      for (const c of data.chats) {
+        if (!c?.key || !isPlainObject(c.rec)) continue;
+        try { await blobStore.putReaderChat(c.key, c.rec); chatOk++; } catch (e) { console.warn(`[${MODULE_NAME}] import chat failed`, e); }
+      }
+    }
     // 偏好并入（保留本机书目，不被覆盖）
     if (isPlainObject(data.prefs)) {
       for (const k of Object.keys(data.prefs)) {
@@ -12971,7 +13003,7 @@ function coreadImportData() {
       }
     }
     saveSettings();
-    toast(`已导入 ${ok} 本书。`, 'success');
+    toast(`已导入 ${ok} 本书${chatOk ? ` · ${chatOk} 段伴读对话` : ''}。`, 'success');
     renderModal();
   });
   input.click();
