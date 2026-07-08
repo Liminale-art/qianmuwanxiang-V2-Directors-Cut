@@ -3286,12 +3286,12 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 @keyframes sd-reader-typing-dot { 0%, 60%, 100% { opacity: .28; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
 /* 编辑态：气泡脱离 82% 窄列，展开成宽松编辑框（占满抽屉宽·底色收敛为输入框态·舒适可读可改） */
 .sd-reader-msg-editing { align-items: stretch; }
-.sd-reader-msg-editing .sd-reader-msg-bubble { max-width: 100%; width: 100%; box-sizing: border-box; background: var(--sd-input-bg); color: var(--sd-text); border: 1px solid var(--sd-border); border-radius: 12px; padding: 11px 13px; }
+.sd-reader-msg-editing .sd-reader-msg-bubble { max-width: 100%; width: 100%; box-sizing: border-box; background: var(--sd-input-bg); color: var(--sd-text); border: 1px solid var(--sd-border); border-radius: 12px; padding: 8px 10px; }
 /* 内联编辑框：字号/行距继承气泡（呈现一致）·透明底融进编辑框·无额外描边·自动撑高 */
 .sd-reader-msg-bubble .sd-reader-msg-edit-ta { display: block; width: 100%; box-sizing: border-box; background: transparent; color: inherit; border: 0; outline: none; font: inherit; font-size: .9em; line-height: 1.65; resize: none; padding: 0; min-height: 1.65em; }
-/* 编辑态确认/取消：小圆图标钮（✕ / ✓）·紧贴编辑框右下·不再占整行大按钮 */
-.sd-reader-msg-edit-actions { margin-top: 8px; display: flex; gap: 8px; justify-content: flex-end; }
-.sd-reader-msg-edit-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 999px; border: 1px solid var(--sd-border); background: var(--sd-glass-weak); color: var(--sd-muted); cursor: pointer; font-size: .82em; transition: background .16s, color .16s; }
+/* 编辑确认/取消：紧贴文本框右下·间距收紧减少视觉留白 */
+.sd-reader-msg-edit-actions { margin-top: 4px; display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+.sd-reader-msg-edit-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 999px; border: 1px solid var(--sd-border); background: var(--sd-glass-weak); color: var(--sd-muted); cursor: pointer; font-size: .78em; transition: background .16s, color .16s; }
 .sd-reader-msg-edit-btn:hover { background: var(--sd-glass); }
 .sd-reader-msg-edit-cancel:hover { color: var(--sd-danger, #c0554e); }
 .sd-reader-msg-edit-ok { background: var(--sd-accent); color: var(--sd-primary-text); border-color: transparent; }

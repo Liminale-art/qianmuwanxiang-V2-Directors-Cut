@@ -9875,6 +9875,12 @@ function renderReaderDialogMessages() {
   const batch = lastFriendBatchRange(msgs);   // 最新 friend 批：仅其末尾气泡显「重新生成」（整批重生成）
   return msgs.map((m, idx) => {
     const who = m.role === 'user' ? 'user' : 'friend';
+    // 空 friend 气泡＝生成占位（等模型返回/流式未落字）：渲成三点「正在输入」动态，且不挂操作钮。
+    if (who === 'friend' && !String(m.text || '').trim()) {
+      return `<div class="sd-reader-msg sd-reader-msg-friend" data-msg="${htmlEscape(m.id)}">
+        <div class="sd-reader-msg-bubble sd-reader-typing-bubble"><span></span><span></span><span></span></div>
+      </div>`;
+    }
     // 重roll 只挂在「最新 friend 批」的最后一条上（点它＝整批一起重生成）
     const showReroll = who === 'friend' && batch && idx === batch.end;
     const actions = `<div class="sd-reader-msg-actions">
