@@ -3479,6 +3479,12 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-slice-src { font-size: .62em; padding: 1px 6px; border-radius: 10px; font-style: normal; vertical-align: middle; }
 .sd-reader-slice-src.src-text { background: color-mix(in srgb, var(--sd-accent) 25%, transparent); color: var(--sd-accent); }
 .sd-reader-slice-src.src-mainline { background: color-mix(in srgb, var(--sd-good, #3fae6b) 25%, transparent); color: var(--sd-good, #3fae6b); }
+/* 提示词分块标签（伴读总结 / 蒸馏书籍 / 主线选择总结 三块并入一卡） */
+.sd-reader-promptblock-lab { display: flex; align-items: center; gap: 6px; font-size: .82em; font-weight: 600; color: var(--sd-accent); margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--sd-hairline); }
+.sd-reader-promptblock-lab:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
+.sd-reader-promptblock-lab i { opacity: .8; }
+.sd-reader-promptblock-acts { margin-left: auto; display: inline-flex; gap: 4px; }
+.sd-reader-promptblock-acts .sd-reader-mbtn { padding: 3px 8px; font-size: .9em; }
 .sd-reader-dictbooks { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .sd-reader-dictbook { border: 1px solid var(--sd-hairline); border-radius: 8px; padding: 6px 8px; }
 .sd-reader-dictbook-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
@@ -3515,6 +3521,28 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-migrate-info { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: .9em; flex: 1; min-width: 0; }
 .sd-reader-migrate-floor { font-size: .82em; color: var(--sd-accent); font-weight: 700; flex: 0 0 auto; opacity: .85; }
 .sd-reader-migrate-when { font-size: .78em; color: var(--sd-muted, #888); }
+/* 主线选择弹窗：标签规则 + 可折叠 CMD 风格行 */
+.sd-reader-mldialog { max-height: 70vh; display: flex; flex-direction: column; }
+.sd-reader-mlrule { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex: 0 0 auto; }
+.sd-reader-mlrule-lab { font-size: .8em; color: var(--sd-muted); white-space: nowrap; flex: 0 0 auto; }
+.sd-reader-mlrule-input { flex: 1 1 auto; min-width: 120px; }
+.sd-reader-mllist { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1 1 auto; max-height: 52vh; padding-right: 4px; }
+.sd-reader-mlrow { border: 1px solid var(--sd-hairline); border-radius: 8px; background: var(--sd-glass-weak); overflow: hidden; }
+.sd-reader-mlrow-sum { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; list-style: none; }
+.sd-reader-mlrow-sum::-webkit-details-marker { display: none; }
+.sd-reader-mlrow-name { font-size: .84em; flex: 0 0 auto; }
+.sd-reader-mlrow-peek { font-size: .82em; color: var(--sd-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; }
+.sd-reader-mlrow-body { margin: 0; padding: 8px 12px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .76em; line-height: 1.6; color: var(--sd-text); white-space: pre-wrap; word-break: break-word; background: var(--sd-input-bg); border-top: 1px solid var(--sd-hairline); max-height: 240px; overflow-y: auto; }
+/* 切片管理弹窗：滚动列表 + 可折叠行 */
+.sd-reader-sm-dialog { max-height: 72vh; display: flex; flex-direction: column; }
+.sd-reader-sm-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1 1 auto; max-height: 58vh; padding-right: 4px; }
+.sd-reader-sm-row { border: 1px solid var(--sd-hairline); border-radius: 9px; background: var(--sd-glass-weak); overflow: hidden; }
+.sd-reader-sm-sum { display: flex; align-items: center; gap: 8px; padding: 9px 11px; cursor: pointer; list-style: none; }
+.sd-reader-sm-sum::-webkit-details-marker { display: none; }
+.sd-reader-sm-peek { font-size: .82em; color: var(--sd-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; }
+.sd-reader-sm-detail { padding: 0 11px 11px; display: flex; flex-direction: column; gap: 6px; }
+.sd-reader-sm-meta { font-size: .74em; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.sd-reader-sm-acts { display: flex; gap: 8px; justify-content: flex-end; }
 .sd-reader-slice-syn { font-size: .74em; margin: 4px 0 2px; line-height: 1.5; color: var(--sd-accent); }
 .sd-reader-slice-syn i { margin-right: 4px; opacity: .7; }
 .sd-reader-slice-syn .sd-muted { margin-left: 1px; }
