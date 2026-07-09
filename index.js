@@ -8042,6 +8042,59 @@ async function callCoreadModel(systemPrompt, userPrompt, opts = {}) {
   return await callSillyTavernModel(userPrompt, systemPrompt, null, { stream_response: m.summaryStream });
 }
 
+// 伴读对话走哪套 API：设定里「对话 API」= 千幕自定义预设 + 选中了有效 profile 时直连该预设，否则回落 ST 主 API。
+// 与蒸馏 summaryConn 同构（只是数据源从「总结卡自填字段」换成「apiProfiles 预设 id」）。
+function dialogApiConn() {
+  const m = coreadMemory();
+  if (m.dialogProvider !== 'external') return null;
+  const id = m.dialogApiProfileId || '';
+  if (!id) return null;
+  const profile = (Array.isArray(settings.apiProfiles) ? settings.apiProfiles : []).find((p) => p.id === id);
+  if (!profile) return null;
+  const base = normalizeUrl(profile.apiUrl);
+  if (!(base && profile.apiKey && profile.model)) return null;
+  return { apiUrl: profile.apiUrl, apiKey: profile.apiKey, model: profile.model, temperature: profile.temperature };
+}
+
+// 对话生成的统一分发：external 预设优先走 ST 后端代理（绕 CORS），失败再回落浏览器直连（支持流式）；否则 ST generateRaw。
+// onDelta：流式回调，只在浏览器直连路径生效（ST 后端代理端点不支持流式；ST generateRaw 走 STREAM_TOKEN_RECEIVED 事件）。
+// controller：调用方持有的 AbortController，用于「停止生成」按钮中断在途请求。
+async function callCoreadDialogModel(systemPrompt, userPrompt, opts = {}) {
+  const conn = dialogApiConn();
+  const onDelta = opts.onDelta || null;
+  const controller = opts.controller || null;
+  const signal = controller?.signal;
+  if (conn) {
+    const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }];
+    const genUrl = String(conn.apiUrl || '').trim().replace(/\/+$/, '');
+    // 首选 ST 后端代理生成（火山方舟等直连会被浏览器 CORS 拦）：先试标准 Bearer，401/403 再试裸 Key
+    try {
+      let authHeader = `Authorization: Bearer ${conn.apiKey}`;
+      try {
+        return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: conn.temperature, signal });
+      } catch (err) {
+        if (/HTTP\s*(401|403)/.test(String(err?.message || ''))) {
+          authHeader = `Authorization: ${conn.apiKey}`;
+          return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: conn.temperature, signal });
+        }
+        throw err;
+      }
+    } catch (proxyErr) {
+      // 后端代理不可用（老版 ST / 端点缺失 / 网络错误）才回落浏览器直连——支持 CORS 的接口仍能用
+      if (/ST backend proxy failed|Failed to fetch|NetworkError|HTTP\s*(404|501)/i.test(String(proxyErr?.message || ''))) {
+        const ac = controller || new AbortController();
+        return await callExternalApi(messages, onDelta, {
+          apiUrl: conn.apiUrl, apiKey: conn.apiKey, model: conn.model,
+          temperature: conn.temperature, stream: !!settings.streamEnabled,
+        }, ac);
+      }
+      throw proxyErr;
+    }
+  }
+  // 默认：跟随 ST 当前连接（generateRaw 走 STREAM_TOKEN_RECEIVED 尽力预览）
+  return await callSillyTavernModel(userPrompt, systemPrompt, onDelta);
+}
+
 // 拼总结提示词：全部条目（含内置格式+JSON 契约+用户自定义）按 order 拼；末尾仅补一句「纯 JSON」硬提醒兜底解析（不再重述格式/字数，交给可见的内置条掌管）。
 function coreadBuildDistillPrompt(m, meta, names, progressHint) {
   const items = (m.summaryItems || []).slice().sort((a, b) => a.order - b.order);
@@ -10014,7 +10067,7 @@ async function coreadGenerateReply(isReroll = false) {
     const onDelta = settings.streamEnabled
       ? (acc) => { if (token !== dialogGenToken) return; const b = friendBubble(); if (b) { b.textContent = stripDialogQuotes(acc); scrollDialogToBottom(); } }
       : null;
-    const reply = await callSillyTavernModel(userPrompt, assembled.systemPrompt, onDelta);
+    const reply = await callCoreadDialogModel(assembled.systemPrompt, userPrompt, { onDelta, controller: dialogAbort });
     if (token !== dialogGenToken) return;   // 已切书/关阅读/停止 → 丢弃
     const finalText = stripDialogQuotes(String(reply || '').trim()) || '（书友没有回应）';
     // 拆句成多条气泡（按句号/问号/感叹号/省略号/分号/换行 拆），每句再去引号
