@@ -21,12 +21,13 @@ try {
   });
   assert.equal(await doubao.blob.text(), 'doubao-audio');
   assert.equal(doubao.blob.type, 'audio/ogg');
-  assert.equal(request.url, 'https://tts-proxy.example/api/v3/tts/unidirectional');
-  assert.equal(request.init.headers['X-Api-Key'], 'doubao-key');
-  assert.equal(request.init.headers['X-Api-Resource-Id'], 'seed-tts-2.0');
-  const doubaoBody = JSON.parse(request.init.body);
+  assert.equal(request.url, '/api/plugins/qianmu-tts/doubao/synthesize');
+  const proxyRequest = JSON.parse(request.init.body);
+  assert.equal(proxyRequest.apiKey, 'doubao-key');
+  const doubaoBody = proxyRequest.request;
   assert.equal(doubaoBody.req_params.speaker, 'voice-db');
   assert.equal(doubaoBody.req_params.audio_params.speech_rate, 20);
+  assert.equal(doubaoBody.req_params.audio_params.sample_rate, 24000);
   assert.equal(doubaoBody.req_params.text, '等一下，再走');
   assert.deepEqual(JSON.parse(doubaoBody.req_params.additions).context_texts, ['用悲伤克制的语气演绎']);
 
@@ -38,6 +39,7 @@ try {
   };
   const legacy = await synthesizeDoubao({
     appId: 'app-id', accessKey: 'access-key',
+    proxyBase: 'https://stale-proxy.example',
     endpoint: 'https://openspeech.bytedance.com/api/v3/tts/unidirectional/sse',
     text: '旧凭证', voiceId: 'voice', model: 'seed-tts-2.0',
   });
@@ -47,9 +49,10 @@ try {
   assert.equal(request.init.headers['X-Api-Access-Key'], 'access-key');
   assert.ok(!Object.prototype.hasOwnProperty.call(request.init.headers, 'X-Api-App-Id'));
 
+  globalThis.fetch = async () => new Response('Not Found', { status: 404 });
   await assert.rejects(
-    () => synthesizeDoubao({ apiKey: 'api-only', text: '浏览器直连', voiceId: 'voice', model: 'seed-tts-2.0' }),
-    /新版 API Key 无法从浏览器直连/,
+    () => synthesizeDoubao({ authMode: 'apiKey', apiKey: 'api-only', text: '本机中转', voiceId: 'voice', model: 'seed-tts-2.0' }),
+    /未检测到千幕豆包服务端插件/,
   );
 
   globalThis.fetch = async (url, init) => {

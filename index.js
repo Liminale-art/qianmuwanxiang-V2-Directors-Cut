@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.9.2';
+const VERSION = '1.10.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -4426,14 +4426,18 @@ function renderTtsProviderConnection(provider, p) {
       </details>`;
   }
   if (provider.id === 'doubao') {
+    const authMode = p.authMode === 'legacy' ? 'legacy' : 'apiKey';
     return `
-      <label>App ID</label><input class="text_pole sd-tts-app-id" value="${htmlEscape(p.appId || '')}" placeholder="火山引擎语音 App ID">
-      <label>Access Key</label><input class="text_pole sd-tts-access-key" type="password" value="${htmlEscape(p.accessKey || '')}" placeholder="火山引擎语音 Access Key">
-      <details class="sd-plain-fold"><summary>新版 API Key（仅反代）</summary>
-        <input class="text_pole sd-tts-key" type="password" placeholder="API Key" aria-label="新版 API Key" value="${htmlEscape(p.apiKey || '')}">
-        <label>接口地址</label><input class="text_pole sd-tts-endpoint" value="${htmlEscape(p.endpoint || '')}">
-        <label>TTS 反代地址</label><input class="text_pole sd-tts-proxy" value="${htmlEscape(p.proxyBase || '')}" placeholder="反代地址">
-      </details>
+      <label>接入方式</label><select class="text_pole sd-tts-auth-mode">
+        <option value="apiKey" ${authMode === 'apiKey' ? 'selected' : ''}>新版 API Key</option>
+        <option value="legacy" ${authMode === 'legacy' ? 'selected' : ''}>App ID + Access Key</option>
+      </select>
+      ${authMode === 'apiKey' ? `
+        <label>API Key</label><input class="text_pole sd-tts-key" type="password" placeholder="豆包语音 API Key" value="${htmlEscape(p.apiKey || '')}">
+      ` : `
+        <label>App ID</label><input class="text_pole sd-tts-app-id" value="${htmlEscape(p.appId || '')}" placeholder="火山引擎语音 App ID">
+        <label>Access Key</label><input class="text_pole sd-tts-access-key" type="password" value="${htmlEscape(p.accessKey || '')}" placeholder="火山引擎语音 Access Key">
+      `}
       ${modelField}${formatField}
       <label>采样率</label><select class="text_pole sd-tts-sample-rate">${[16000, 24000, 32000, 48000].map((rate) => `<option value="${rate}" ${Number(p.sampleRate) === rate ? 'selected' : ''}>${rate} Hz</option>`).join('')}</select>
       <p class="sd-muted sd-hint-sm">音色 ID 必须与所选资源匹配；不匹配时豆包会返回资源错误。</p>`;
@@ -4648,6 +4652,11 @@ function bindTtsTabEvents(root) {
     ttsRefreshProviderChat(true);   // 已提取台词不重抓；立即按新 Provider 重绘并展开，不再要求点一次提取图标
     renderModal();
   });
+  root.querySelector('.sd-tts-auth-mode')?.addEventListener('change', (e) => {
+    p.authMode = e.target.value === 'legacy' ? 'legacy' : 'apiKey';
+    saveSettings();
+    renderModal();
+  });
 
   // 接口字段：失焦即存
   const bindField = (sel, target, key, transform) => {
@@ -4687,12 +4696,13 @@ function bindTtsTabEvents(root) {
     const apiKey = (root.querySelector('.sd-tts-key')?.value || '').trim();
     const endpoint = root.querySelector('.sd-tts-endpoint')?.value || p.endpoint;
     const model = root.querySelector('.sd-tts-model')?.value || p.model;
+    const authMode = root.querySelector('.sd-tts-auth-mode')?.value || p.authMode;
     const appId = (root.querySelector('.sd-tts-app-id')?.value || p.appId || '').trim();
     const accessKey = (root.querySelector('.sd-tts-access-key')?.value || p.accessKey || '').trim();
     const proxyBase = (root.querySelector('.sd-tts-proxy')?.value || p.proxyBase || '').trim();
-    if (!ttsProviderHasCredentials(providerId, { ...p, apiKey, appId, accessKey, proxyBase })) {
+    if (!ttsProviderHasCredentials(providerId, { ...p, authMode, apiKey, appId, accessKey, proxyBase })) {
       const hint = providerId === 'doubao'
-        ? '请填写豆包 App ID + Access Key；若仅使用新版 API Key，还必须配置支持 X-Api-Key 的 TTS 反代。'
+        ? (authMode === 'legacy' ? '请填写豆包 App ID + Access Key。' : '请填写豆包新版 API Key。')
         : `请先填写 ${provider.label} 凭证。`;
       toast(hint, 'warning'); return;
     }
@@ -4705,7 +4715,7 @@ function bindTtsTabEvents(root) {
     btn.disabled = true;
     try {
       const { blob } = await synthesizeTts(providerId, {
-        ...p, apiKey, appId, accessKey, proxyBase, endpoint, model,
+        ...p, authMode, apiKey, appId, accessKey, proxyBase, endpoint, model,
         text: '你好，这是一段连接测试。', voiceId,
         speed: Number(p.defaultSpeed ?? 1), vol: Number(p.defaultVol ?? 1), pitch: Number(p.defaultPitch ?? 0),
         format: root.querySelector('.sd-tts-format')?.value || p.format || 'mp3',
@@ -4725,7 +4735,8 @@ function bindTtsTabEvents(root) {
   });
   root.querySelector('.sd-tts-save-conn')?.addEventListener('click', () => {
     // 把当前界面值显式写入并落盘（即便用户没触发 change）
-    p.apiKey = (root.querySelector('.sd-tts-key')?.value || '').trim();
+    if (root.querySelector('.sd-tts-key')) p.apiKey = root.querySelector('.sd-tts-key').value.trim();
+    if (root.querySelector('.sd-tts-auth-mode')) p.authMode = root.querySelector('.sd-tts-auth-mode').value === 'legacy' ? 'legacy' : 'apiKey';
     p.endpoint = root.querySelector('.sd-tts-endpoint')?.value || p.endpoint;
     p.proxyBase = root.querySelector('.sd-tts-proxy')?.value?.trim() || '';
     if (root.querySelector('.sd-tts-group-id')) p.groupId = root.querySelector('.sd-tts-group-id').value.trim();

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+const doubaoSource = await readFile(new URL('../qianmu-tts-doubao.js', import.meta.url), 'utf8');
 
 const requiredInteractions = [
   'function ttsHandleLinePlayClick',
@@ -32,10 +33,12 @@ assert.match(source, /value="provider"[\s\S]*value="custom"/, '提取提示词�
 assert.doesNotMatch(source, /<option value="generic"/, '界面不应继续暴露通用智能模板');
 assert.ok(source.includes('function ttsRefreshProviderChat('), 'Provider 切换必须原地刷新已提取台词');
 assert.match(source, /icon\.disabled = !voiced/, '未匹配新 Provider 音色时应保留禁用态正文耳机');
+assert.match(source, /sd-tts-auth-mode[\s\S]*新版 API Key[\s\S]*App ID \+ Access Key/, '豆包必须提供明确的新旧接入方式');
 assert.match(source, /<label>App ID<\/label>[\s\S]*<label>Access Key<\/label>/, '豆包旧版凭证标题必须保持精简');
 assert.doesNotMatch(source, /切换模型只替换连接/, '配音模型下方不应保留切换说明');
 assert.doesNotMatch(source, /App ID（浏览器直连）|Access Key（浏览器直连）|新版 API Key \/ 高级连接/, '豆包面板不应保留重复标注');
-assert.match(source, /<summary>新版 API Key（仅反代）<\/summary>/, '新版 Key 折叠区只保留一个标题');
+assert.doesNotMatch(source, /TTS 反代地址|仅反代/, '内置中转启用后不应再要求用户配置反代');
+assert.match(doubaoSource, /未检测到千幕豆包服务端插件/, '服务端插件缺失时必须给出可行动提示');
 assert.match(source, /<label>模型<\/label><select class="text_pole sd-tts-model">/, '模型字段标题必须精简');
 assert.match(source, /跟随当前模型（\$\{htmlEscape\(provider\.label\)\}）/, '跟随模型方案不应附加“推荐”');
 assert.match(source, /t\.extractSchemes\[providerId\] = `library:\$\{sch\.id\}`/, '载入方案库后必须记录方案身份');

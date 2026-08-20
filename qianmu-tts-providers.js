@@ -124,7 +124,7 @@ const PROVIDERS = Object.freeze({
     testVoiceId: 'zh_female_vv_uranus_bigtts',
     speedRange: Object.freeze({ min: 0.5, max: 2, step: 0.05 }),
     defaults: Object.freeze({
-      apiKey: '', appId: '', accessKey: '', endpoint: DOUBAO_ENDPOINT, proxyBase: '',
+      authMode: '', apiKey: '', appId: '', accessKey: '', endpoint: DOUBAO_ENDPOINT, proxyBase: '',
       model: 'seed-tts-2.0', format: 'mp3', sampleRate: 24000,
       defaultSpeed: 1, defaultVol: 1, defaultPitch: 0,
       voiceLibrary: [], npcArchetypes: [], npcAssignByChat: {},
@@ -138,9 +138,12 @@ const PROVIDERS = Object.freeze({
     }),
     emotionOptions() { return DOUBAO_EMOTIONS; },
     hasCredentials(config = {}) {
-      const legacyDirect = !!String(config.appId || '').trim() && !!String(config.accessKey || '').trim();
-      const proxiedApiKey = !!String(config.apiKey || '').trim() && !!String(config.proxyBase || '').trim();
-      return legacyDirect || proxiedApiKey;
+      const mode = config.authMode === 'apiKey' || config.authMode === 'legacy'
+        ? config.authMode
+        : (String(config.appId || '').trim() && String(config.accessKey || '').trim() ? 'legacy' : 'apiKey');
+      return mode === 'legacy'
+        ? !!String(config.appId || '').trim() && !!String(config.accessKey || '').trim()
+        : !!String(config.apiKey || '').trim();
     },
     async synthesize(params) { return synthesizeDoubao(params); },
     cacheKey(params) { return doubaoCacheKey(params); },
@@ -265,6 +268,10 @@ export function migrateTtsProviderSettingsState(tts) {
   }
   // 配音页当前只开放稳定验证过的 Seed TTS 2.0；旧选择统一回落，音色库与其他设置保持不动。
   if (doubao && doubao.model !== 'seed-tts-2.0') doubao.model = 'seed-tts-2.0';
+  // 首次升级时保留已可用的旧凭证路径；未配置旧凭证的用户默认进入新版 API Key。
+  if (doubao && !['apiKey', 'legacy'].includes(doubao.authMode)) {
+    doubao.authMode = String(doubao.appId || '').trim() && String(doubao.accessKey || '').trim() ? 'legacy' : 'apiKey';
+  }
   return state;
 }
 

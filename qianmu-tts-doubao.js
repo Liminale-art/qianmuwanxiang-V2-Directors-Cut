@@ -2,6 +2,7 @@
 // 使用官方 HTTP Chunked unidirectional 端点，并与 Siren-Voice 的浏览器直连实现保持一致。
 
 export const DOUBAO_ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional';
+export const QIANMU_DOUBAO_PROXY_ENDPOINT = '/api/plugins/qianmu-tts/doubao/synthesize';
 
 export const DOUBAO_MODELS = Object.freeze([
   { value: 'seed-tts-2.0', label: 'Seed TTS 2.0' },
@@ -40,9 +41,13 @@ function resolveUrl(endpoint, proxyBase) {
   catch (_) { return source; }
 }
 
-function requestId() {
-  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
-  return `qm-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+function stRequestHeaders() {
+  const context = globalThis.SillyTavern?.getContext?.() || {};
+  const headers = typeof context.getRequestHeaders === 'function' ? context.getRequestHeaders() : {};
+  const csrf = typeof document !== 'undefined'
+    ? document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || globalThis.token || ''
+    : '';
+  return { ...headers, 'Content-Type': 'application/json', ...(csrf && !headers['X-CSRF-Token'] ? { 'X-CSRF-Token': csrf } : {}) };
 }
 
 function base64Bytes(value) {
@@ -113,14 +118,12 @@ export async function synthesizeDoubao(opts = {}) {
   const apiKey = String(opts.apiKey || '').trim();
   const appId = String(opts.appId || '').trim();
   const accessKey = String(opts.accessKey || '').trim();
-  const proxyBase = String(opts.proxyBase || '').trim();
-  const useLegacyCredentials = !!(appId && accessKey);
-  if (!useLegacyCredentials && !apiKey) throw new Error('未配置豆包 App ID + Access Key，或反代用 API Key');
-  // 火山 TTS 端点的浏览器预检未放行 X-Api-Key；新版 Key 只能经允许并转发该请求头的 TTS 反代使用。
-  // 若两套凭证同时存在，始终优先 Siren-Voice 已验证可浏览器直连的 App-Key + Access-Key，避免旧设置残留 Key 误触发 CORS。
-  if (!useLegacyCredentials && apiKey && !proxyBase) {
-    throw new Error('豆包新版 API Key 无法从浏览器直连：请改填 App ID + Access Key，或配置支持 X-Api-Key 的 TTS 反代地址');
-  }
+  const authMode = opts.authMode === 'apiKey' || opts.authMode === 'legacy'
+    ? opts.authMode
+    : (appId && accessKey ? 'legacy' : 'apiKey');
+  const useLegacyCredentials = authMode === 'legacy';
+  if (useLegacyCredentials && !(appId && accessKey)) throw new Error('未配置豆包 App ID + Access Key');
+  if (!useLegacyCredentials && !apiKey) throw new Error('未配置豆包新版 API Key');
   const text = String(opts.text || '').trim();
   if (!text) throw new Error('文本为空');
   const voiceId = String(opts.voiceId || '').trim();
@@ -144,11 +147,7 @@ export async function synthesizeDoubao(opts = {}) {
     'Content-Type': 'application/json',
     'X-Api-Resource-Id': model,
   };
-  if (!useLegacyCredentials) {
-    headers['X-Api-Key'] = apiKey;
-    headers['X-Api-Request-Id'] = requestId();
-  }
-  else {
+  if (useLegacyCredentials) {
     // 旧版火山凭证的正确头名是 App-Key，不是 App-Id（对齐 Siren-Voice 已验证实现）。
     headers['X-Api-App-Key'] = appId;
     headers['X-Api-Access-Key'] = accessKey;
@@ -160,23 +159,25 @@ export async function synthesizeDoubao(opts = {}) {
       text: text.replace(/<#\s*\d+(?:\.\d+)?\s*#>/g, '，'),
       speaker: voiceId,
       sample_rate: Number(opts.sampleRate) || 24000,
-      audio_params: { format, speech_rate: speechRate, loudness_rate: loudnessRate, bit_rate: 128000 },
+      audio_params: { format, sample_rate: Number(opts.sampleRate) || 24000, speech_rate: speechRate, loudness_rate: loudnessRate, bit_rate: 128000 },
       additions: JSON.stringify(additions),
     },
   };
-  // 声音复刻 2.0 需要额外指定表现力模型，并用 cot 标签传递自然语言表演指令。
-  if (model === 'seed-icl-2.0') {
-    body.req_params.model = 'seed-tts-2.0-expressive';
-    additions.use_tag_parser = true;
-    if (hint) body.req_params.text = `<cot text=${hint}>${body.req_params.text}</cot>`;
-    body.req_params.additions = JSON.stringify(additions);
-  }
 
   let response;
+  const useInternalProxy = !useLegacyCredentials;
   try {
-    response = await fetch(resolveUrl(opts.endpoint, proxyBase), { method: 'POST', headers, body: JSON.stringify(body) });
+    response = useInternalProxy
+      ? await fetch(QIANMU_DOUBAO_PROXY_ENDPOINT, {
+        method: 'POST', headers: stRequestHeaders(), body: JSON.stringify({ apiKey, request: body }),
+      })
+      : await fetch(resolveUrl(opts.endpoint, ''), { method: 'POST', headers, body: JSON.stringify(body) });
   } catch (error) {
-    throw new Error(`豆包网络请求失败（可能是跨域或网络问题）：${error?.message || error}`);
+    const prefix = useInternalProxy ? '千幕豆包服务端插件请求失败' : '豆包网络请求失败（可能是跨域或网络问题）';
+    throw new Error(`${prefix}：${error?.message || error}`);
+  }
+  if (useInternalProxy && response.status === 404) {
+    throw new Error('未检测到千幕豆包服务端插件，请按 INSTALL-DOUBAO-APIKEY.md 完成安装并重启 SillyTavern');
   }
   if (!response.ok) {
     const detail = await response.text().catch(() => '');
