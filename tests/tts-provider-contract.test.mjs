@@ -68,6 +68,8 @@ assert.equal(outputExtensionForTts('doubao', { format: 'ogg_opus' }), 'ogg');
 assert.equal(outputExtensionForTts('elevenlabs', { format: 'pcm_24000' }), 'pcm');
 assert.equal(ttsProviderHasCredentials('doubao', { appId: 'app', accessKey: 'key' }), true);
 assert.equal(ttsProviderHasCredentials('doubao', { appId: 'app' }), false);
+assert.equal(ttsProviderHasCredentials('doubao', { apiKey: 'key' }), false, '豆包 API Key 不应被误认为可浏览器直连');
+assert.equal(ttsProviderHasCredentials('doubao', { apiKey: 'key', proxyBase: 'https://tts-proxy.example' }), true);
 assert.equal(ttsProviderHasCredentials('elevenlabs', { apiKey: 'key' }), true);
 
 const legacy = {
@@ -95,5 +97,14 @@ assert.ok(legacy.providers.doubao);
 assert.ok(legacy.providers.elevenlabs);
 migrateTtsProviderSettingsState(legacy);
 assert.equal(legacy.providers.minimax.apiKey, 'legacy-key', '重复迁移不得重置已保存的 Provider 配置');
+
+const corsEndpointMigration = {
+  provider: 'doubao',
+  providers: { doubao: { endpoint: 'https://openspeech.bytedance.com/api/v3/tts/unidirectional/sse' } },
+  _providerSettingsMigrated: true,
+  _providerParamsMigrated: true,
+};
+migrateTtsProviderSettingsState(corsEndpointMigration);
+assert.equal(corsEndpointMigration.providers.doubao.endpoint, 'https://openspeech.bytedance.com/api/v3/tts/unidirectional');
 
 console.log(`TTS Provider contract OK (${providers.length} provider)`);

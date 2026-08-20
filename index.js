@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.9.0';
+const VERSION = '1.9.1';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -391,7 +391,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     // 注：世界书「选择」本身按聊天存(getChatStore.ttsExtractWorldBooks/ttsExtractWorldItems)·不同聊天各自绑定；下面两折叠态为全局 UI 偏好。
     extractWbFoldOpen: true,     // 下拉「选择」折叠态（持久·全局 UI 偏好）
     extractItemsFoldOpen: true,  // 条目列折叠态（持久·全局 UI 偏好）
-    extractSchemes: {},          // {providerId:'provider'|'generic'|'custom'}，默认跟随当前模型推荐模板
+    extractSchemes: {},          // {providerId:'provider'|'custom'}，默认跟随当前模型推荐模板
     extractPrompts: {},          // 各 Provider 的用户自定义提示词
     extractPromptBackups: {},    // 各 Provider 覆盖前的上一份提示词
     guidanceSchemes: [],         // 台词指导方案库：[{ id, name, folder, content, createdAt }]
@@ -609,7 +609,7 @@ function migrateTtsProviderSettings(s) {
     t._extractPromptProviderMigrated = true;
   }
   for (const provider of listTtsProviders()) {
-    if (!['provider', 'generic', 'custom'].includes(t.extractSchemes[provider.id])) t.extractSchemes[provider.id] = 'provider';
+    if (!['provider', 'custom'].includes(t.extractSchemes[provider.id])) t.extractSchemes[provider.id] = 'provider';
     if (typeof t.extractPrompts[provider.id] !== 'string') t.extractPrompts[provider.id] = '';
   }
 }
@@ -4422,13 +4422,14 @@ function renderTtsProviderConnection(provider, p) {
   }
   if (provider.id === 'doubao') {
     return `
-      <label>新版 API Key</label><input class="text_pole sd-tts-key" type="password" placeholder="火山引擎语音 API Key" value="${htmlEscape(p.apiKey || '')}">
-      <p class="sd-muted sd-hint-sm">新版控制台只需 API Key；旧版账号可展开下方填写 App ID + Access Key。</p>
-      <details class="sd-plain-fold"><summary>旧版凭证 / 高级连接</summary>
-        <label>App ID</label><input class="text_pole sd-tts-app-id" value="${htmlEscape(p.appId || '')}">
-        <label>Access Key</label><input class="text_pole sd-tts-access-key" type="password" value="${htmlEscape(p.accessKey || '')}">
+      <label>App ID（浏览器直连）</label><input class="text_pole sd-tts-app-id" value="${htmlEscape(p.appId || '')}" placeholder="火山引擎语音 App ID">
+      <label>Access Key（浏览器直连）</label><input class="text_pole sd-tts-access-key" type="password" value="${htmlEscape(p.accessKey || '')}" placeholder="火山引擎语音 Access Key">
+      <p class="sd-muted sd-hint-sm">推荐使用 App ID + Access Key，千幕会优先采用这套凭证直连豆包 TTS。</p>
+      <details class="sd-plain-fold"><summary>新版 API Key / 高级连接</summary>
+        <label>新版 API Key（仅反代）</label><input class="text_pole sd-tts-key" type="password" placeholder="必须配合下方 TTS 反代" value="${htmlEscape(p.apiKey || '')}">
         <label>接口地址</label><input class="text_pole sd-tts-endpoint" value="${htmlEscape(p.endpoint || '')}">
-        <label>反代地址（可选）</label><input class="text_pole sd-tts-proxy" value="${htmlEscape(p.proxyBase || '')}" placeholder="留空直连">
+        <label>TTS 反代地址</label><input class="text_pole sd-tts-proxy" value="${htmlEscape(p.proxyBase || '')}" placeholder="API Key 模式必填；旧版凭证可留空">
+        <p class="sd-muted sd-hint-sm">豆包接口的浏览器预检不接受 X-Api-Key 请求头；仅在反代明确支持并转发该请求头时使用新版 Key。</p>
       </details>
       ${modelField}${formatField}
       <label>采样率</label><select class="text_pole sd-tts-sample-rate">${[16000, 24000, 32000, 48000].map((rate) => `<option value="${rate}" ${Number(p.sampleRate) === rate ? 'selected' : ''}>${rate} Hz</option>`).join('')}</select>
@@ -4603,10 +4604,9 @@ function renderTtsTab() {
         <label>提示词方案</label>
         <select class="text_pole sd-tts-extract-scheme">
           <option value="provider" ${ttsExtractScheme(providerId) === 'provider' ? 'selected' : ''}>跟随当前模型（${htmlEscape(provider.label)} 推荐）</option>
-          <option value="generic" ${ttsExtractScheme(providerId) === 'generic' ? 'selected' : ''}>通用智能模板</option>
           <option value="custom" ${ttsExtractScheme(providerId) === 'custom' ? 'selected' : ''}>我的自定义</option>
         </select>
-        <p class="sd-muted sd-hint-sm">推荐方案随配音模型自动切换；通用模板适合未知或自建兼容接口。保存编辑内容后自动转为“我的自定义”。</p>
+        <p class="sd-muted sd-hint-sm">推荐方案随配音模型自动切换；保存编辑内容后自动转为“我的自定义”。</p>
         <textarea class="text_pole sd-textarea sd-tts-extract-prompt" spellcheck="false">${htmlEscape(ttsResolvedExtractPrompt(providerId))}</textarea>
         <div class="sd-button-row">
           <button type="button" class="sd-btn sd-tts-save-prompt">保存提示词</button>
@@ -4640,6 +4640,7 @@ function bindTtsTabEvents(root) {
     ttsCloseQuickPopup();
     ttsStopPlayback(true);
     saveSettings();
+    ttsRefreshProviderChat(true);   // 已提取台词不重抓；立即按新 Provider 重绘并展开，不再要求点一次提取图标
     renderModal();
   });
 
@@ -4683,8 +4684,12 @@ function bindTtsTabEvents(root) {
     const model = root.querySelector('.sd-tts-model')?.value || p.model;
     const appId = (root.querySelector('.sd-tts-app-id')?.value || p.appId || '').trim();
     const accessKey = (root.querySelector('.sd-tts-access-key')?.value || p.accessKey || '').trim();
-    if (!ttsProviderHasCredentials(providerId, { ...p, apiKey, appId, accessKey })) {
-      toast(`请先填写 ${provider.label} 凭证。`, 'warning'); return;
+    const proxyBase = (root.querySelector('.sd-tts-proxy')?.value || p.proxyBase || '').trim();
+    if (!ttsProviderHasCredentials(providerId, { ...p, apiKey, appId, accessKey, proxyBase })) {
+      const hint = providerId === 'doubao'
+        ? '请填写豆包 App ID + Access Key；若仅使用新版 API Key，还必须配置支持 X-Api-Key 的 TTS 反代。'
+        : `请先填写 ${provider.label} 凭证。`;
+      toast(hint, 'warning'); return;
     }
     // 测试音色由 Provider 声明，仅验连通性；不取用户库/映射，避免账号下的自定义 ID 让连接测试失真。
     const voiceId = provider.testVoiceId;
@@ -4695,7 +4700,7 @@ function bindTtsTabEvents(root) {
     btn.disabled = true;
     try {
       const { blob } = await synthesizeTts(providerId, {
-        ...p, apiKey, appId, accessKey, endpoint, model,
+        ...p, apiKey, appId, accessKey, proxyBase, endpoint, model,
         text: '你好，这是一段连接测试。', voiceId,
         speed: Number(p.defaultSpeed ?? 1), vol: Number(p.defaultVol ?? 1), pitch: Number(p.defaultPitch ?? 0),
         format: root.querySelector('.sd-tts-format')?.value || p.format || 'mp3',
@@ -4979,7 +4984,7 @@ function bindTtsTabEvents(root) {
   // 台词提取提示词：保存 / 恢复默认 / 恢复上次 / 保存到方案库
   root.querySelector('.sd-tts-extract-scheme')?.addEventListener('change', (e) => {
     t.extractSchemes = isPlainObject(t.extractSchemes) ? t.extractSchemes : {};
-    t.extractSchemes[providerId] = ['provider', 'generic', 'custom'].includes(e.target.value) ? e.target.value : 'provider';
+    t.extractSchemes[providerId] = ['provider', 'custom'].includes(e.target.value) ? e.target.value : 'provider';
     saveSettings();
     renderModal();
   });
@@ -4998,7 +5003,7 @@ function bindTtsTabEvents(root) {
     const yes = await confirmDialog('恢复推荐提示词', `将 ${provider.label} 的台词提取提示词恢复为模型推荐模板？当前内容会自动备份。`);
     if (!yes) return;
     const cur = (root.querySelector('.sd-tts-extract-prompt')?.value ?? '').trim();
-    const builtin = ttsBuiltinExtractPrompt(providerId, 'provider').trim();
+    const builtin = ttsBuiltinExtractPrompt(providerId).trim();
     t.extractPromptBackups = isPlainObject(t.extractPromptBackups) ? t.extractPromptBackups : {};
     t.extractSchemes = isPlainObject(t.extractSchemes) ? t.extractSchemes : {};
     if (cur && cur !== builtin) t.extractPromptBackups[providerId] = cur;
@@ -5359,8 +5364,8 @@ const TTS_EXTRACT_SYSTEM = `你是有声剧配音指导导演，需从小说正�
 标准格式示例：
 \`{"lines": [{"speaker": "角色名", "text": "台词原话", "emotion": "auto"}]}\`（emotion 默认 auto、speed 默认省略）`;
 
-// 通用“傻瓜模板”：只产出跨 Provider 都能理解的语义字段，不写任何厂商标签进台词原文。
-const TTS_EXTRACT_GENERIC = `你是小说配音台词提取助手。请从正文中按出现顺序提取角色当下真正说出口的台词，并仅返回 JSON。
+// 新 Provider 推荐方案的共用基础规则：不作为独立“通用模板”暴露给用户。
+const TTS_EXTRACT_PROVIDER_BASE = `你是小说配音台词提取助手。请从正文中按出现顺序提取角色当下真正说出口的台词，并仅返回 JSON。
 
 {{QM_CONTEXT}}
 
@@ -5375,7 +5380,7 @@ const TTS_EXTRACT_GENERIC = `你是小说配音台词提取助手。请从正文
 仅输出：{"lines":[{"speaker":"角色名","text":"台词原话","emotion":"auto","speed":1.0,"delivery":"可选表演提示"}]}
 无台词时输出：{"lines":[]}`;
 
-const TTS_EXTRACT_DOUBAO = `${TTS_EXTRACT_GENERIC}
+const TTS_EXTRACT_DOUBAO = `${TTS_EXTRACT_PROVIDER_BASE}
 
 【豆包语音适配】
 - 豆包能依据语境和自然语言表演提示演绎。优先保持 text 纯净，把确有必要的声线、语气、方言或强弱要求写入 delivery。
@@ -5383,7 +5388,7 @@ const TTS_EXTRACT_DOUBAO = `${TTS_EXTRACT_GENERIC}
 - 禁止输出 MiniMax 的 <#秒数#> 停顿标记，也不要生成 SSML。正常停顿只保留原台词标点。
 - emotion 使用通用语义值，后续由千幕转换为豆包可用的上下文提示。`;
 
-const TTS_EXTRACT_ELEVENLABS = `${TTS_EXTRACT_GENERIC}
+const TTS_EXTRACT_ELEVENLABS = `${TTS_EXTRACT_PROVIDER_BASE}
 
 【ElevenLabs 适配】
 - ElevenLabs 会直接理解文本语境；保持 text 为角色真正说出的原话，禁止把“她悲伤地说”等描述塞进 text，以免被朗读出来。
@@ -5394,11 +5399,10 @@ const TTS_EXTRACT_ELEVENLABS = `${TTS_EXTRACT_GENERIC}
 function ttsExtractScheme(providerId = ttsProviderId()) {
   const t = settings.tts || {};
   const value = t.extractSchemes?.[providerId];
-  return ['provider', 'generic', 'custom'].includes(value) ? value : 'provider';
+  return ['provider', 'custom'].includes(value) ? value : 'provider';
 }
 
-function ttsBuiltinExtractPrompt(providerId = ttsProviderId(), scheme = 'provider') {
-  if (scheme === 'generic') return TTS_EXTRACT_GENERIC;
+function ttsBuiltinExtractPrompt(providerId = ttsProviderId()) {
   if (providerId === 'doubao') return TTS_EXTRACT_DOUBAO;
   if (providerId === 'elevenlabs') return TTS_EXTRACT_ELEVENLABS;
   return TTS_EXTRACT_SYSTEM;
@@ -5407,8 +5411,8 @@ function ttsBuiltinExtractPrompt(providerId = ttsProviderId(), scheme = 'provide
 function ttsResolvedExtractPrompt(providerId = ttsProviderId()) {
   const t = settings.tts || {};
   const scheme = ttsExtractScheme(providerId);
-  if (scheme === 'custom') return String(t.extractPrompts?.[providerId] || '').trim() || ttsBuiltinExtractPrompt(providerId, 'provider');
-  return ttsBuiltinExtractPrompt(providerId, scheme);
+  if (scheme === 'custom') return String(t.extractPrompts?.[providerId] || '').trim() || ttsBuiltinExtractPrompt(providerId);
+  return ttsBuiltinExtractPrompt(providerId);
 }
 
 // 提取用 API 配置：优先 settings.tts.extractApiProfileId 指定的预设，否则用主 API（返回 null 表示走主 API/ST）
@@ -5739,6 +5743,7 @@ function ttsBuildExtractContext() {
 // 落盘当前映射：写本聊天元数据
 function ttsSaveVoiceMap() {
   try { saveMetadata(); } catch (_) {}
+  ttsRefreshProviderChat();   // 新 Provider 配好角色音色后，无需重点台词提取即可激活正文耳机
 }
 
 // 按说话人查音色配置。优先本聊天映射（精确→去空白包含）；未命中且 NPC 开启则查「本聊天记忆」的原型音色。
@@ -6192,16 +6197,17 @@ function ttsApplyLines(mesEl, bar, lines, key, collapsed = false) {
   bar.dataset.loaded = '1';
   bar.dataset.loading = '';
   bar.dataset.key = key;                      // 供播放路径回查缓存 lines（取持久化的 speed/emotion）
+  bar.dataset.provider = ttsProviderId();     // Provider 切换时识别该列表是否需要重绘可播态
   // 记录楼层→当前 key 锚点：供原地编正文后凭 mesid 找回旧台词列表迁移（见 ttsMigrateLinesOnEdit）
   const mesid = ttsMesId(mesEl);
   if (mesid !== '') {
     try { const s = getChatStore(); if (s.ttsLineKeyByMes[mesid] !== key) { s.ttsLineKeyByMes[mesid] = key; saveMetadata(); } } catch (_) {}
   }
   ttsRenderLines(bar, lines);
-  ttsInjectInlineIcons(mesEl, lines);   // 正文内联 🔊（仅已配音色的台词）
+  ttsInjectInlineIcons(mesEl, lines);   // 正文内联耳机：未配音色时保留禁用态，配好后原地激活
   ttsToggleToolbarPlay(mesEl, lines.some((l) => ttsResolveVoice(l.speaker)));   // 外层连播/停止钮：有可播台词才显
+  bar.hidden = !!collapsed;
   if (collapsed) {
-    bar.hidden = true;
     mesEl.querySelectorAll('.sd-tts-inline').forEach((el) => { el.hidden = true; });   // 内联图标随台词条一并收起，点 🎧 再展开
   }
 }
@@ -6214,9 +6220,18 @@ function ttsAutoRestore(mesEl) {
     // 已渲染过。自愈：若有可播台词、但正文里的内联 🔊 被外部重渲（如 ST 保存原地编辑重写 .mes_text）抹掉了，按缓存幂等补回。
     // 这条路径替代了「跟 ST 重渲抢时序补一次」的脆弱做法——交给扫描兜底，幂等、跑几次都无害。不动列表/音频/key、不调模型。
     const k = bar.dataset.key || '';
-    const cached = k ? ttsLineCache.get(k) : null;
-    if (Array.isArray(cached) && cached.some((l) => ttsResolveVoice(l.speaker))
-        && !mesEl.querySelector('.mes_text .sd-tts-inline')) {
+    let cached = k ? ttsLineCache.get(k) : null;
+    if (!cached && k) {
+      try {
+        const saved = getChatStore().ttsLines?.[k];
+        if (Array.isArray(saved)) { cached = saved; ttsLineCache.set(k, saved); }
+      } catch (_) {}
+    }
+    if (Array.isArray(cached) && bar.dataset.provider !== ttsProviderId()) {
+      ttsApplyLines(mesEl, bar, cached, k, bar.hidden);   // 切模型后仅重绘，不重新提取
+      return;
+    }
+    if (Array.isArray(cached) && !mesEl.querySelector('.mes_text .sd-tts-inline')) {
       ttsInjectInlineIcons(mesEl, cached);
       if (bar.hidden) mesEl.querySelectorAll('.sd-tts-inline').forEach((el) => { el.hidden = true; });   // 折叠态：补回的图标随之隐藏
     }
@@ -6237,6 +6252,30 @@ function ttsAutoRestore(mesEl) {
   if (ttsAssignNpc(lines)) saveSettings();
   const ensured = ttsEnsureBar(mesEl);
   if (ensured) ttsApplyLines(mesEl, ensured, lines, key, true);   // 自动恢复：默认折叠，点 🎧 展开
+}
+
+// 切换 Provider / 修改角色音色映射后，用已持久化的台词刷新当前聊天。
+// 不调提取模型、不清音频缓存，仅更新列表禁用态、连播按钮与正文耳机。
+function ttsRefreshProviderChat(expand = false) {
+  const chat = document.getElementById('chat');
+  if (!chat) return;
+  chat.querySelectorAll('.mes').forEach((mesEl) => {
+    const bar = mesEl.querySelector(`.${TTS_BAR_CLASS}`);
+    if (bar?.dataset.loaded === '1') delete bar.dataset.provider;   // 强制 ttsAutoRestore 走 Provider 重绘分支
+    ttsAutoRestore(mesEl);
+    if (expand) {
+      const refreshed = mesEl.querySelector(`.${TTS_BAR_CLASS}[data-loaded="1"]`);
+      if (refreshed) {
+        refreshed.hidden = false;
+        mesEl.querySelectorAll('.sd-tts-inline').forEach((el) => { el.hidden = false; });
+      }
+    }
+  });
+  try {
+    const store = getChatStore();
+    if (store.ttsLastProvider !== ttsProviderId()) { store.ttsLastProvider = ttsProviderId(); saveMetadata(); }
+  } catch (_) {}
+  ttsScanDebounced(80);
 }
 
 function ttsRenderLines(bar, lines) {
@@ -6288,16 +6327,16 @@ function ttsClearInlineIcons(mesEl) {
   });
 }
 
-// 正文内联 🔊：把已配音色的台词，在 .mes_text 内对应句尾插入一个小喇叭（与列表共用合成+缓存+快捷窗）。
+// 正文内联耳机：已配音色可播，未配音色仍显示禁用图标，明确告知是映射缺失而非台词丢失。
 // 文本匹配：把 .mes_text 全部文本节点拼成全文做定位，再把匹配末尾映射回具体节点/偏移插入——
 // 故台词即便被加粗/链接拆到多个节点（末条最常见）也能命中。
 function ttsInjectInlineIcons(mesEl, lines) {
   ttsClearInlineIcons(mesEl);
   const textEl = mesEl.querySelector('.mes_text');
   if (!textEl) return;
-  // 保留原始下标（与列表项 data-idx 一致），过滤出有音色且有文本的句子
-  const voicedLines = lines.map((l, i) => ({ line: l, idx: i })).filter((x) => x.line.text && ttsResolveVoice(x.line.speaker));
-  if (!voicedLines.length) return;
+  // 保留原始下标（与列表项 data-idx 一致），音色映射仅决定按钮是否可用。
+  const inlineLines = lines.map((l, i) => ({ line: l, idx: i })).filter((x) => x.line.text);
+  if (!inlineLines.length) return;
 
   // 标签兜底（防小耳机窜进摘要/状态栏等被排除区域）：内联图标只应落在「提取所见」的正文里。
   // 提取用 ttsCleanText 按 tagRules 过滤（extract 模式=只留某些标签内容 / remove 模式=删某些标签段），
@@ -6472,7 +6511,7 @@ function ttsInjectInlineIcons(mesEl, lines) {
   // 只在真有 tagRules 限定意义时才试（否则直接全量），避免每条消息白跑一次限定 collect。
   const wantScope = tagScope.extractActive || tagScope.removeActive;
   const useScoped = wantScope ? (collect(true).full.trim().length > 0) : false;
-  for (const { line, idx: lineIdx } of voicedLines) {
+  for (const { line, idx: lineIdx } of inlineLines) {
     const needle = ttsStripPauseMarks(line.text).trim();   // 去停顿标记再匹配（标记不在正文里，留着必失配）
     if (needle.length < 2) continue;
     const { full, segs } = collect(useScoped);
@@ -6517,9 +6556,11 @@ function ttsInjectInlineIcons(mesEl, lines) {
     if (at.offset >= (target.nodeValue || '').length) after = target.nextSibling;   // 落在节点末尾
     else after = target.splitText(at.offset);                                        // 节点中间：切开
     const icon = document.createElement('button');
+    const voiced = !!ttsResolveVoice(line.speaker);
     icon.type = 'button';
-    icon.className = 'sd-tts-play sd-tts-inline';
-    icon.title = '播放（双击设置语速/情绪并重生成）';
+    icon.className = `sd-tts-play sd-tts-inline${voiced ? '' : ' sd-tts-novoice'}`;
+    icon.title = voiced ? '播放（双击设置语速/情绪并重生成）' : `当前配音模型未匹配“${line.speaker || '未知'}”的音色`;
+    icon.disabled = !voiced;
     icon.dataset.idx = String(lineIdx);   // 与列表项同下标，回查缓存 lines 取持久化 override + 同步高亮
     // 自描述兜底：与列表项 .sd-tts-line 一样带 speaker/text/emotion，缓存查不到（key 失配/内存清/重渲染）时也能现搭出正确 line，
     // 不致回落成「未知」→「未配置音色」（内联图标不在 .sd-tts-line 内，解析时 host=图标自身，靠这几个 dataset 兜底）
@@ -6544,7 +6585,7 @@ function ttsInjectInlineIcons(mesEl, lines) {
   }
   // 在正文最靠前的小喇叭前插「连续播放本条」钮。注意：因有乱序兜底，插入顺序≠DOM 顺序，
   // 故取 DOM 中实际第一个内联图标作锚点（而非最先创建的那个），保证连播钮真在最前。
-  const domFirstIcon = textEl.querySelector('.sd-tts-inline');
+  const domFirstIcon = textEl.querySelector('.sd-tts-inline.sd-tts-play:not(:disabled)');
   if (domFirstIcon) {
     const playAll = document.createElement('button');
     playAll.type = 'button';
@@ -6764,7 +6805,19 @@ function ttsStartChat() {
     ttsChatObserver.observe(chat, { childList: true });   // 只看顶层 childList，极轻
     ttsChatBound = true;
   }
+  let providerChanged = false;
+  try {
+    const store = getChatStore();
+    providerChanged = !!store.ttsLastProvider && store.ttsLastProvider !== ttsProviderId();
+  } catch (_) {}
   ttsScanMessages();
+  if (providerChanged) ttsRefreshProviderChat(true);
+  else {
+    try {
+      const store = getChatStore();
+      if (store.ttsLastProvider !== ttsProviderId()) { store.ttsLastProvider = ttsProviderId(); saveMetadata(); }
+    } catch (_) {}
+  }
   // 首扫可能早于 ST 注水聊天元数据（ttsLines），自动恢复查不到；延迟再扫一次兜底，让缓存「进聊天即加载」。
   ttsScanDebounced(400);
 }

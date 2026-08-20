@@ -2807,6 +2807,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   transition: background .15s ease;
 }
 .sd-tts-play.sd-tts-inline:hover { background: rgba(127, 127, 127, .36); }
+.sd-tts-play.sd-tts-inline:disabled { opacity: .38; cursor: not-allowed; background: rgba(127, 127, 127, .12); }
 .sd-tts-play.sd-tts-inline.sd-playing { background: rgba(127, 170, 127, .5); }
 /* 正文内联「连续播放本条」钮：与单句喇叭同尺寸，方形底+强调色区分 */
 .sd-tts-inline-playall {

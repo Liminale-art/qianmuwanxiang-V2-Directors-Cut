@@ -1,7 +1,7 @@
-// 千幕 · 豆包语音 V3 SSE 适配器
-// 官方接口：一次性输入文本，SSE 返回 base64 音频分片。
+// 千幕 · 豆包语音 V3 适配器
+// 使用官方 HTTP Chunked unidirectional 端点，并与 Siren-Voice 的浏览器直连实现保持一致。
 
-export const DOUBAO_ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional/sse';
+export const DOUBAO_ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional';
 
 export const DOUBAO_MODELS = Object.freeze([
   { value: 'seed-tts-2.0', label: 'Seed TTS 2.0（推荐）' },
@@ -33,7 +33,9 @@ function clamp(value, min, max, fallback) {
 }
 
 function resolveUrl(endpoint, proxyBase) {
-  const source = String(endpoint || DOUBAO_ENDPOINT).trim() || DOUBAO_ENDPOINT;
+  // 1.9.0 曾保存 /sse 为默认值；自动收敛到可直连的 chunked JSON 端点，无需用户重填。
+  const source = (String(endpoint || DOUBAO_ENDPOINT).trim() || DOUBAO_ENDPOINT)
+    .replace(/\/unidirectional\/sse\/?$/i, '/unidirectional');
   const proxy = String(proxyBase || '').trim().replace(/\/+$/, '');
   if (!proxy) return source;
   if (/\/api\/v3\/tts\//i.test(proxy)) return proxy;
@@ -56,6 +58,36 @@ function base64Bytes(value) {
   }
   if (typeof Buffer !== 'undefined') return new Uint8Array(Buffer.from(raw, 'base64'));
   throw new Error('当前环境不支持 base64 音频解码');
+}
+
+// HTTP Chunked 可能返回换行 JSON，也可能在代理/缓冲后变成 }{ 连续 JSON；同时兼容旧 /sse 的 data: 前缀。
+function parseJsonFrames(raw) {
+  const source = String(raw || '');
+  const frames = [];
+  let start = -1;
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    if (start < 0) {
+      if (char === '{') { start = i; depth = 1; }
+      continue;
+    }
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') quoted = false;
+      continue;
+    }
+    if (char === '"') quoted = true;
+    else if (char === '{') depth++;
+    else if (char === '}' && --depth === 0) {
+      try { frames.push(JSON.parse(source.slice(start, i + 1))); } catch (_) {}
+      start = -1;
+    }
+  }
+  return frames;
 }
 
 function mimeFor(format) {
@@ -84,7 +116,14 @@ export async function synthesizeDoubao(opts = {}) {
   const apiKey = String(opts.apiKey || '').trim();
   const appId = String(opts.appId || '').trim();
   const accessKey = String(opts.accessKey || '').trim();
-  if (!apiKey && !(appId && accessKey)) throw new Error('未配置豆包 API Key，或旧版 App ID + Access Key');
+  const proxyBase = String(opts.proxyBase || '').trim();
+  const useLegacyCredentials = !!(appId && accessKey);
+  if (!useLegacyCredentials && !apiKey) throw new Error('未配置豆包 App ID + Access Key，或反代用 API Key');
+  // 火山 TTS 端点的浏览器预检未放行 X-Api-Key；新版 Key 只能经允许并转发该请求头的 TTS 反代使用。
+  // 若两套凭证同时存在，始终优先 Siren-Voice 已验证可浏览器直连的 App-Key + Access-Key，避免旧设置残留 Key 误触发 CORS。
+  if (!useLegacyCredentials && apiKey && !proxyBase) {
+    throw new Error('豆包新版 API Key 无法从浏览器直连：请改填 App ID + Access Key，或配置支持 X-Api-Key 的 TTS 反代地址');
+  }
   const text = String(opts.text || '').trim();
   if (!text) throw new Error('文本为空');
   const voiceId = String(opts.voiceId || '').trim();
@@ -107,11 +146,14 @@ export async function synthesizeDoubao(opts = {}) {
   const headers = {
     'Content-Type': 'application/json',
     'X-Api-Resource-Id': model,
-    'X-Api-Request-Id': requestId(),
   };
-  if (apiKey) headers['X-Api-Key'] = apiKey;
+  if (!useLegacyCredentials) {
+    headers['X-Api-Key'] = apiKey;
+    headers['X-Api-Request-Id'] = requestId();
+  }
   else {
-    headers['X-Api-App-Id'] = appId;
+    // 旧版火山凭证的正确头名是 App-Key，不是 App-Id（对齐 Siren-Voice 已验证实现）。
+    headers['X-Api-App-Key'] = appId;
     headers['X-Api-Access-Key'] = accessKey;
   }
   const body = {
@@ -125,10 +167,17 @@ export async function synthesizeDoubao(opts = {}) {
       additions: JSON.stringify(additions),
     },
   };
+  // 声音复刻 2.0 需要额外指定表现力模型，并用 cot 标签传递自然语言表演指令。
+  if (model === 'seed-icl-2.0') {
+    body.req_params.model = 'seed-tts-2.0-expressive';
+    additions.use_tag_parser = true;
+    if (hint) body.req_params.text = `<cot text=${hint}>${body.req_params.text}</cot>`;
+    body.req_params.additions = JSON.stringify(additions);
+  }
 
   let response;
   try {
-    response = await fetch(resolveUrl(opts.endpoint, opts.proxyBase), { method: 'POST', headers, body: JSON.stringify(body) });
+    response = await fetch(resolveUrl(opts.endpoint, proxyBase), { method: 'POST', headers, body: JSON.stringify(body) });
   } catch (error) {
     throw new Error(`豆包网络请求失败（可能是跨域或网络问题）：${error?.message || error}`);
   }
@@ -145,15 +194,10 @@ export async function synthesizeDoubao(opts = {}) {
   const raw = await response.text();
   const chunks = [];
   let errorMessage = '';
-  for (const line of raw.split(/\r?\n/)) {
-    const payload = line.trim().replace(/^data:\s*/i, '');
-    if (!payload || payload === '[DONE]') continue;
-    try {
-      const event = JSON.parse(payload);
-      const code = Number(event.code ?? 0);
-      if (code !== 0 && code !== 20000000) errorMessage = `错误码 ${code}${event.message ? `：${event.message}` : ''}`;
-      if (event.data) chunks.push(base64Bytes(event.data));
-    } catch (_) {}
+  for (const event of parseJsonFrames(raw)) {
+    const code = Number(event.code ?? 0);
+    if (code !== 0 && code !== 20000000) errorMessage = `错误码 ${code}${event.message ? `：${event.message}` : ''}`;
+    if (event.data) chunks.push(base64Bytes(event.data));
   }
   if (!chunks.length) throw new Error(errorMessage || '豆包返回结果缺少音频数据');
   const mime = mimeFor(format);

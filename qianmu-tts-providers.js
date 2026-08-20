@@ -138,8 +138,9 @@ const PROVIDERS = Object.freeze({
     }),
     emotionOptions() { return DOUBAO_EMOTIONS; },
     hasCredentials(config = {}) {
-      return !!String(config.apiKey || '').trim()
-        || (!!String(config.appId || '').trim() && !!String(config.accessKey || '').trim());
+      const legacyDirect = !!String(config.appId || '').trim() && !!String(config.accessKey || '').trim();
+      const proxiedApiKey = !!String(config.apiKey || '').trim() && !!String(config.proxyBase || '').trim();
+      return legacyDirect || proxiedApiKey;
     },
     async synthesize(params) { return synthesizeDoubao(params); },
     cacheKey(params) { return doubaoCacheKey(params); },
@@ -256,6 +257,11 @@ export function migrateTtsProviderSettingsState(tts) {
     } else {
       mergeMissing(state.providers[provider.id], createTtsProviderDefaults(provider.id));
     }
+  }
+  // 1.9.0 默认使用 /sse；统一迁移到当前 HTTP Chunked 实现，仅处理已知旧值，不覆盖用户自定义端点。
+  const doubao = state.providers.doubao;
+  if (/\/api\/v3\/tts\/unidirectional\/sse\/?$/i.test(String(doubao?.endpoint || ''))) {
+    doubao.endpoint = DOUBAO_ENDPOINT;
   }
   return state;
 }
