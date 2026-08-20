@@ -26,6 +26,7 @@ assert.equal(normalizeTtsProviderId('not-installed'), DEFAULT_TTS_PROVIDER_ID);
 assert.equal(getTtsProvider('minimax').label, 'MiniMax');
 assert.equal(getTtsProvider('doubao').label, '豆包语音');
 assert.equal(getTtsProvider('elevenlabs').label, 'ElevenLabs');
+assert.deepEqual(getTtsProvider('doubao').modelOptions, [{ value: 'seed-tts-2.0', label: 'Seed TTS 2.0' }]);
 
 const a = createTtsProviderDefaults('minimax');
 const b = createTtsProviderDefaults('minimax');
@@ -106,5 +107,14 @@ const corsEndpointMigration = {
 };
 migrateTtsProviderSettingsState(corsEndpointMigration);
 assert.equal(corsEndpointMigration.providers.doubao.endpoint, 'https://openspeech.bytedance.com/api/v3/tts/unidirectional');
+
+const doubaoModelMigration = {
+  provider: 'doubao',
+  providers: { doubao: { model: 'seed-icl-2.0' } },
+  _providerSettingsMigrated: true,
+  _providerParamsMigrated: true,
+};
+migrateTtsProviderSettingsState(doubaoModelMigration);
+assert.equal(doubaoModelMigration.providers.doubao.model, 'seed-tts-2.0');
 
 console.log(`TTS Provider contract OK (${providers.length} provider)`);

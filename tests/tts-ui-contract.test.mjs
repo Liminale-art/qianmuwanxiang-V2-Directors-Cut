@@ -32,7 +32,14 @@ assert.match(source, /value="provider"[\s\S]*value="custom"/, '提取提示词�
 assert.doesNotMatch(source, /<option value="generic"/, '界面不应继续暴露通用智能模板');
 assert.ok(source.includes('function ttsRefreshProviderChat('), 'Provider 切换必须原地刷新已提取台词');
 assert.match(source, /icon\.disabled = !voiced/, '未匹配新 Provider 音色时应保留禁用态正文耳机');
-assert.match(source, /App ID（浏览器直连）[\s\S]*新版 API Key（仅反代）/, '豆包连接界面必须优先引导浏览器可用的旧版凭证');
+assert.match(source, /<label>App ID<\/label>[\s\S]*<label>Access Key<\/label>/, '豆包旧版凭证标题必须保持精简');
+assert.doesNotMatch(source, /切换模型只替换连接/, '配音模型下方不应保留切换说明');
+assert.doesNotMatch(source, /App ID（浏览器直连）|Access Key（浏览器直连）|新版 API Key \/ 高级连接/, '豆包面板不应保留重复标注');
+assert.match(source, /<summary>新版 API Key（仅反代）<\/summary>/, '新版 Key 折叠区只保留一个标题');
+assert.match(source, /<label>模型<\/label><select class="text_pole sd-tts-model">/, '模型字段标题必须精简');
+assert.match(source, /跟随当前模型（\$\{htmlEscape\(provider\.label\)\}）/, '跟随模型方案不应附加“推荐”');
+assert.match(source, /t\.extractSchemes\[providerId\] = `library:\$\{sch\.id\}`/, '载入方案库后必须记录方案身份');
+assert.match(source, /activeGuidanceScheme\.name/, '载入方案后下拉框必须显示方案标题');
 assert.match(source, /a\.download = `\$\{ttsSafeName[\s\S]*params\.fileExtension/, '下载扩展名必须经过 Provider 映射');
 
 console.log('TTS inline UI contract OK');

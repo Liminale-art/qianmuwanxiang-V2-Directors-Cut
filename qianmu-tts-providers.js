@@ -263,6 +263,8 @@ export function migrateTtsProviderSettingsState(tts) {
   if (/\/api\/v3\/tts\/unidirectional\/sse\/?$/i.test(String(doubao?.endpoint || ''))) {
     doubao.endpoint = DOUBAO_ENDPOINT;
   }
+  // 配音页当前只开放稳定验证过的 Seed TTS 2.0；旧选择统一回落，音色库与其他设置保持不动。
+  if (doubao && doubao.model !== 'seed-tts-2.0') doubao.model = 'seed-tts-2.0';
   return state;
 }
 

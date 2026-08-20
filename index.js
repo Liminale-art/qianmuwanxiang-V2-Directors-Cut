@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.9.1';
+const VERSION = '1.9.2';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -391,7 +391,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     // 注：世界书「选择」本身按聊天存(getChatStore.ttsExtractWorldBooks/ttsExtractWorldItems)·不同聊天各自绑定；下面两折叠态为全局 UI 偏好。
     extractWbFoldOpen: true,     // 下拉「选择」折叠态（持久·全局 UI 偏好）
     extractItemsFoldOpen: true,  // 条目列折叠态（持久·全局 UI 偏好）
-    extractSchemes: {},          // {providerId:'provider'|'custom'}，默认跟随当前模型推荐模板
+    extractSchemes: {},          // {providerId:'provider'|'custom'|'library:<id>'}，默认跟随当前模型模板
     extractPrompts: {},          // 各 Provider 的用户自定义提示词
     extractPromptBackups: {},    // 各 Provider 覆盖前的上一份提示词
     guidanceSchemes: [],         // 台词指导方案库：[{ id, name, folder, content, createdAt }]
@@ -609,7 +609,12 @@ function migrateTtsProviderSettings(s) {
     t._extractPromptProviderMigrated = true;
   }
   for (const provider of listTtsProviders()) {
-    if (!['provider', 'custom'].includes(t.extractSchemes[provider.id])) t.extractSchemes[provider.id] = 'provider';
+    const selected = t.extractSchemes[provider.id];
+    const libraryId = String(selected || '').match(/^library:(.+)$/)?.[1] || '';
+    const libraryExists = libraryId && Array.isArray(t.guidanceSchemes) && t.guidanceSchemes.some((item) => item.id === libraryId);
+    if (!['provider', 'custom'].includes(selected) && !libraryExists) {
+      t.extractSchemes[provider.id] = String(t.extractPrompts[provider.id] || '').trim() ? 'custom' : 'provider';
+    }
     if (typeof t.extractPrompts[provider.id] !== 'string') t.extractPrompts[provider.id] = '';
   }
 }
@@ -4405,7 +4410,7 @@ function renderTtsProviderOptions(options, selected) {
 }
 
 function renderTtsProviderConnection(provider, p) {
-  const modelField = `<label>模型 / 资源</label><select class="text_pole sd-tts-model">${renderTtsProviderOptions(provider.modelOptions, p.model)}</select>`;
+  const modelField = `<label>模型</label><select class="text_pole sd-tts-model">${renderTtsProviderOptions(provider.modelOptions, p.model)}</select>`;
   const formatField = `<label>音频格式</label><select class="text_pole sd-tts-format">${renderTtsProviderOptions(provider.formatOptions, p.format)}</select>`;
   if (provider.id === 'minimax') {
     const endpoints = Object.entries(provider.endpoints || {});
@@ -4422,14 +4427,12 @@ function renderTtsProviderConnection(provider, p) {
   }
   if (provider.id === 'doubao') {
     return `
-      <label>App ID（浏览器直连）</label><input class="text_pole sd-tts-app-id" value="${htmlEscape(p.appId || '')}" placeholder="火山引擎语音 App ID">
-      <label>Access Key（浏览器直连）</label><input class="text_pole sd-tts-access-key" type="password" value="${htmlEscape(p.accessKey || '')}" placeholder="火山引擎语音 Access Key">
-      <p class="sd-muted sd-hint-sm">推荐使用 App ID + Access Key，千幕会优先采用这套凭证直连豆包 TTS。</p>
-      <details class="sd-plain-fold"><summary>新版 API Key / 高级连接</summary>
-        <label>新版 API Key（仅反代）</label><input class="text_pole sd-tts-key" type="password" placeholder="必须配合下方 TTS 反代" value="${htmlEscape(p.apiKey || '')}">
+      <label>App ID</label><input class="text_pole sd-tts-app-id" value="${htmlEscape(p.appId || '')}" placeholder="火山引擎语音 App ID">
+      <label>Access Key</label><input class="text_pole sd-tts-access-key" type="password" value="${htmlEscape(p.accessKey || '')}" placeholder="火山引擎语音 Access Key">
+      <details class="sd-plain-fold"><summary>新版 API Key（仅反代）</summary>
+        <input class="text_pole sd-tts-key" type="password" placeholder="API Key" aria-label="新版 API Key" value="${htmlEscape(p.apiKey || '')}">
         <label>接口地址</label><input class="text_pole sd-tts-endpoint" value="${htmlEscape(p.endpoint || '')}">
-        <label>TTS 反代地址</label><input class="text_pole sd-tts-proxy" value="${htmlEscape(p.proxyBase || '')}" placeholder="API Key 模式必填；旧版凭证可留空">
-        <p class="sd-muted sd-hint-sm">豆包接口的浏览器预检不接受 X-Api-Key 请求头；仅在反代明确支持并转发该请求头时使用新版 Key。</p>
+        <label>TTS 反代地址</label><input class="text_pole sd-tts-proxy" value="${htmlEscape(p.proxyBase || '')}" placeholder="反代地址">
       </details>
       ${modelField}${formatField}
       <label>采样率</label><select class="text_pole sd-tts-sample-rate">${[16000, 24000, 32000, 48000].map((rate) => `<option value="${rate}" ${Number(p.sampleRate) === rate ? 'selected' : ''}>${rate} Hz</option>`).join('')}</select>
@@ -4514,6 +4517,8 @@ function renderTtsTab() {
   const lib = Array.isArray(p.voiceLibrary) ? p.voiceLibrary : [];
   const profiles = Array.isArray(settings.apiProfiles) ? settings.apiProfiles : [];
   const providers = listTtsProviders();
+  const extractScheme = ttsExtractScheme(providerId);
+  const activeGuidanceScheme = ttsGuidanceSchemeForValue(extractScheme);
   const dis = t.enabled ? '' : 'sd-disabled-card';
   return `
     <section class="sd-card">
@@ -4522,7 +4527,6 @@ function renderTtsTab() {
       </div>
       <label>配音模型</label>
       <select class="text_pole sd-tts-provider">${providers.map((item) => `<option value="${htmlEscape(item.id)}" ${item.id === providerId ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('')}</select>
-      <p class="sd-muted sd-hint-sm">切换模型只替换连接、模型参数与音色配置；正文台词、小耳机、重新生成、收藏和下载保持不变。</p>
     </section>
     <section class="sd-card ${dis}">
       <details class="sd-plain-fold" data-acc="tts-api" open>
@@ -4603,8 +4607,9 @@ function renderTtsTab() {
         <select class="text_pole sd-tts-extract-api"><option value="">使用千幕当前主 API</option>${profiles.map((profile) => `<option value="${htmlEscape(profile.id)}" ${profile.id === t.extractApiProfileId ? 'selected' : ''}>${htmlEscape(profile.name || profile.model || '未命名API')}</option>`).join('')}</select>
         <label>提示词方案</label>
         <select class="text_pole sd-tts-extract-scheme">
-          <option value="provider" ${ttsExtractScheme(providerId) === 'provider' ? 'selected' : ''}>跟随当前模型（${htmlEscape(provider.label)} 推荐）</option>
-          <option value="custom" ${ttsExtractScheme(providerId) === 'custom' ? 'selected' : ''}>我的自定义</option>
+          <option value="provider" ${extractScheme === 'provider' ? 'selected' : ''}>跟随当前模型（${htmlEscape(provider.label)}）</option>
+          <option value="custom" ${extractScheme === 'custom' ? 'selected' : ''}>我的自定义</option>
+          ${activeGuidanceScheme ? `<option value="${htmlEscape(extractScheme)}" selected>${htmlEscape(activeGuidanceScheme.name || '未命名方案')}</option>` : ''}
         </select>
         <p class="sd-muted sd-hint-sm">推荐方案随配音模型自动切换；保存编辑内容后自动转为“我的自定义”。</p>
         <textarea class="text_pole sd-textarea sd-tts-extract-prompt" spellcheck="false">${htmlEscape(ttsResolvedExtractPrompt(providerId))}</textarea>
@@ -4984,7 +4989,8 @@ function bindTtsTabEvents(root) {
   // 台词提取提示词：保存 / 恢复默认 / 恢复上次 / 保存到方案库
   root.querySelector('.sd-tts-extract-scheme')?.addEventListener('change', (e) => {
     t.extractSchemes = isPlainObject(t.extractSchemes) ? t.extractSchemes : {};
-    t.extractSchemes[providerId] = ['provider', 'custom'].includes(e.target.value) ? e.target.value : 'provider';
+    const value = String(e.target.value || '');
+    t.extractSchemes[providerId] = ['provider', 'custom'].includes(value) || ttsGuidanceSchemeForValue(value) ? value : 'provider';
     saveSettings();
     renderModal();
   });
@@ -5051,7 +5057,7 @@ function bindTtsTabEvents(root) {
       t.extractSchemes = isPlainObject(t.extractSchemes) ? t.extractSchemes : {};
       if (cur && cur !== String(sch.content || '').trim()) t.extractPromptBackups[providerId] = cur;
       t.extractPrompts[providerId] = sch.content || '';
-      t.extractSchemes[providerId] = 'custom';
+      t.extractSchemes[providerId] = `library:${sch.id}`;
       saveSettings();
       renderModal();
       toast(`已载入方案「${sch.name}」。`, 'success');
@@ -5071,6 +5077,10 @@ function bindTtsTabEvents(root) {
       if (!sch) return;
       const yes = await confirmDialog('删除方案', `确认删除方案「${sch.name}」？`);
       if (!yes) return;
+      t.extractSchemes = isPlainObject(t.extractSchemes) ? t.extractSchemes : {};
+      for (const id of Object.keys(t.extractSchemes)) {
+        if (t.extractSchemes[id] === `library:${sch.id}`) t.extractSchemes[id] = 'custom';
+      }
       t.guidanceSchemes = (t.guidanceSchemes || []).filter((x) => x.id !== id);
       saveSettings();
       renderModal();
@@ -5396,10 +5406,18 @@ const TTS_EXTRACT_ELEVENLABS = `${TTS_EXTRACT_PROVIDER_BASE}
 - delivery 仅作千幕内部语义记录，不要输出方括号音频标签；Eleven v3 所需标签由适配器安全转换。
 - 禁止输出 <#秒数#>、SSML 或任何供应商专用控制字符。`;
 
+function ttsGuidanceSchemeForValue(value) {
+  const id = String(value || '').match(/^library:(.+)$/)?.[1] || '';
+  if (!id) return null;
+  return (settings.tts?.guidanceSchemes || []).find((item) => item.id === id) || null;
+}
+
 function ttsExtractScheme(providerId = ttsProviderId()) {
   const t = settings.tts || {};
   const value = t.extractSchemes?.[providerId];
-  return ['provider', 'custom'].includes(value) ? value : 'provider';
+  if (['provider', 'custom'].includes(value)) return value;
+  if (ttsGuidanceSchemeForValue(value)) return value;
+  return String(t.extractPrompts?.[providerId] || '').trim() ? 'custom' : 'provider';
 }
 
 function ttsBuiltinExtractPrompt(providerId = ttsProviderId()) {
@@ -5411,6 +5429,8 @@ function ttsBuiltinExtractPrompt(providerId = ttsProviderId()) {
 function ttsResolvedExtractPrompt(providerId = ttsProviderId()) {
   const t = settings.tts || {};
   const scheme = ttsExtractScheme(providerId);
+  const libraryScheme = ttsGuidanceSchemeForValue(scheme);
+  if (libraryScheme) return String(libraryScheme.content || '').trim() || String(t.extractPrompts?.[providerId] || '').trim() || ttsBuiltinExtractPrompt(providerId);
   if (scheme === 'custom') return String(t.extractPrompts?.[providerId] || '').trim() || ttsBuiltinExtractPrompt(providerId);
   return ttsBuiltinExtractPrompt(providerId);
 }

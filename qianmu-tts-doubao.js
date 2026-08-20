@@ -4,10 +4,7 @@
 export const DOUBAO_ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional';
 
 export const DOUBAO_MODELS = Object.freeze([
-  { value: 'seed-tts-2.0', label: 'Seed TTS 2.0（推荐）' },
-  { value: 'seed-tts-1.0', label: 'Seed TTS 1.0' },
-  { value: 'seed-icl-2.0', label: '声音复刻 ICL 2.0' },
-  { value: 'volc.service_type.10029', label: '大模型音色兼容资源' },
+  { value: 'seed-tts-2.0', label: 'Seed TTS 2.0' },
 ]);
 
 export const DOUBAO_FORMATS = Object.freeze([
