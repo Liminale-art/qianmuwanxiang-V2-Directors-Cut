@@ -11,15 +11,21 @@ import {
   listTtsProviders,
   migrateTtsProviderSettingsState,
   normalizeTtsProviderId,
+  outputExtensionForTts,
+  ttsProviderHasCredentials,
+  ttsProviderSupports,
 } from '../qianmu-tts-providers.js';
 
 const providers = listTtsProviders();
+assert.deepEqual(providers.map((provider) => provider.id), ['minimax', 'doubao', 'elevenlabs']);
 assert.ok(providers.some((provider) => provider.id === DEFAULT_TTS_PROVIDER_ID));
 for (const provider of providers) assert.equal(assertTtsProviderContract(provider.id), true);
 
 assert.equal(normalizeTtsProviderId('MINIMAX'), 'minimax');
 assert.equal(normalizeTtsProviderId('not-installed'), DEFAULT_TTS_PROVIDER_ID);
 assert.equal(getTtsProvider('minimax').label, 'MiniMax');
+assert.equal(getTtsProvider('doubao').label, '豆包语音');
+assert.equal(getTtsProvider('elevenlabs').label, 'ElevenLabs');
 
 const a = createTtsProviderDefaults('minimax');
 const b = createTtsProviderDefaults('minimax');
@@ -48,6 +54,21 @@ assert.ok(!emotions28.includes('whisper'));
 const emotions26 = getTtsEmotionOptions('minimax', { model: 'speech-2.6-hd' }).map((item) => item.value);
 assert.ok(emotions26.includes('fluent'));
 assert.ok(emotions26.includes('whisper'));
+assert.ok(getTtsEmotionOptions('doubao', { model: 'seed-tts-2.0' }).some((item) => item.value === 'whisper'));
+assert.deepEqual(getTtsEmotionOptions('elevenlabs', { model: 'eleven_multilingual_v2' }).map((item) => item.value), ['auto']);
+assert.ok(getTtsEmotionOptions('elevenlabs', { model: 'eleven_v3' }).some((item) => item.value === 'angry'));
+assert.equal(ttsProviderSupports('elevenlabs', 'speed', { model: 'eleven_v3' }), false);
+assert.equal(ttsProviderSupports('elevenlabs', 'speed', { model: 'eleven_multilingual_v2' }), true);
+
+const commonCacheParams = { text: '同一句', voiceId: 'voice', speed: 1, emotion: 'auto' };
+assert.match(cacheKeyForTts('doubao', commonCacheParams), /^tts:doubao:/);
+assert.match(cacheKeyForTts('elevenlabs', commonCacheParams), /^tts:elevenlabs:/);
+assert.notEqual(cacheKeyForTts('doubao', commonCacheParams), cacheKeyForTts('elevenlabs', commonCacheParams));
+assert.equal(outputExtensionForTts('doubao', { format: 'ogg_opus' }), 'ogg');
+assert.equal(outputExtensionForTts('elevenlabs', { format: 'pcm_24000' }), 'pcm');
+assert.equal(ttsProviderHasCredentials('doubao', { appId: 'app', accessKey: 'key' }), true);
+assert.equal(ttsProviderHasCredentials('doubao', { appId: 'app' }), false);
+assert.equal(ttsProviderHasCredentials('elevenlabs', { apiKey: 'key' }), true);
 
 const legacy = {
   enabled: true,
@@ -55,6 +76,9 @@ const legacy = {
   model: 'speech-2.6-hd',
   voiceLibrary: [{ id: 'v1', name: '旧音色', voiceId: 'voice-1' }],
   pronunciationDict: [{ from: '处理', to: '(chu3)(li3)' }],
+  defaultSpeed: 1.15,
+  defaultVol: 1.2,
+  defaultPitch: 2,
 };
 migrateTtsProviderSettingsState(legacy);
 assert.equal(legacy.provider, 'minimax');
@@ -62,8 +86,13 @@ assert.equal(legacy.providers.minimax.apiKey, 'legacy-key');
 assert.equal(legacy.providers.minimax.model, 'speech-2.6-hd');
 assert.equal(legacy.providers.minimax.voiceLibrary[0].voiceId, 'voice-1');
 assert.equal(legacy.providers.minimax.pronunciationDict[0].from, '处理');
+assert.equal(legacy.providers.minimax.defaultSpeed, 1.15);
+assert.equal(legacy.providers.minimax.defaultVol, 1.2);
+assert.equal(legacy.providers.minimax.defaultPitch, 2);
 assert.ok(!Object.prototype.hasOwnProperty.call(legacy, 'apiKey'));
 assert.ok(!Object.prototype.hasOwnProperty.call(legacy, 'voiceLibrary'));
+assert.ok(legacy.providers.doubao);
+assert.ok(legacy.providers.elevenlabs);
 migrateTtsProviderSettingsState(legacy);
 assert.equal(legacy.providers.minimax.apiKey, 'legacy-key', '重复迁移不得重置已保存的 Provider 配置');
 

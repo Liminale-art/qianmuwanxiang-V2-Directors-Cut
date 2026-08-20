@@ -11,14 +11,17 @@ import {
   listTtsProviders,
   migrateTtsProviderSettingsState,
   normalizeTtsProviderId,
+  outputExtensionForTts,
   synthesizeTts,
+  ttsProviderHasCredentials,
+  ttsProviderSupports,
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.8.2';
+const VERSION = '1.9.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -377,9 +380,6 @@ const DEFAULT_SETTINGS = Object.freeze({
     providers: {
       minimax: createTtsProviderDefaults('minimax'),
     },
-    defaultSpeed: 1,             // 默认语速 [0.5,2]
-    defaultVol: 1,               // 默认音量 (0,10]
-    defaultPitch: 0,             // 默认语调 [-12,12]
     extractApiProfileId: '',     // 台词提取用哪个 API 预设（空=用当前主 API）
     cacheLimit: 200,             // 音频缓存条数上限（近似 LRU）
     injectInChat: true,          // 单句喇叭是否注入 ST 正文消息
@@ -391,8 +391,9 @@ const DEFAULT_SETTINGS = Object.freeze({
     // 注：世界书「选择」本身按聊天存(getChatStore.ttsExtractWorldBooks/ttsExtractWorldItems)·不同聊天各自绑定；下面两折叠态为全局 UI 偏好。
     extractWbFoldOpen: true,     // 下拉「选择」折叠态（持久·全局 UI 偏好）
     extractItemsFoldOpen: true,  // 条目列折叠态（持久·全局 UI 偏好）
-    extractPrompt: '',           // 自定义台词提取系统提示词（空=用内置默认 TTS_EXTRACT_SYSTEM）
-    extractPromptBackup: null,   // 「恢复上次」：方案载入/重置覆盖前自动备份
+    extractSchemes: {},          // {providerId:'provider'|'generic'|'custom'}，默认跟随当前模型推荐模板
+    extractPrompts: {},          // 各 Provider 的用户自定义提示词
+    extractPromptBackups: {},    // 各 Provider 覆盖前的上一份提示词
     guidanceSchemes: [],         // 台词指导方案库：[{ id, name, folder, content, createdAt }]
     testText: '你好，这是一段试听。',   // 统一试听台词
     npcEnabled: false,           // NPC 泛用音色：未在本聊天映射命中的说话人按原型库自动归类，默认关
@@ -590,6 +591,27 @@ function migrateTtsProviderSettings(s) {
   if (!isPlainObject(s.tts)) s.tts = clone(DEFAULT_SETTINGS.tts);
   migrateTtsProviderSettingsState(s.tts);
   for (const provider of listTtsProviders()) assertTtsProviderContract(provider.id);
+
+  const t = s.tts;
+  if (!isPlainObject(t.extractSchemes)) t.extractSchemes = {};
+  if (!isPlainObject(t.extractPrompts)) t.extractPrompts = {};
+  if (!isPlainObject(t.extractPromptBackups)) t.extractPromptBackups = {};
+  // 1.8.2 之前只有一份 MiniMax 自定义提示词；升级时保留为 MiniMax 的“我的自定义”。
+  if (!t._extractPromptProviderMigrated) {
+    const legacyPrompt = String(t.extractPrompt || '');
+    if (legacyPrompt.trim()) {
+      t.extractPrompts.minimax = legacyPrompt;
+      t.extractSchemes.minimax = 'custom';
+    }
+    if (t.extractPromptBackup) t.extractPromptBackups.minimax = String(t.extractPromptBackup);
+    delete t.extractPrompt;
+    delete t.extractPromptBackup;
+    t._extractPromptProviderMigrated = true;
+  }
+  for (const provider of listTtsProviders()) {
+    if (!['provider', 'generic', 'custom'].includes(t.extractSchemes[provider.id])) t.extractSchemes[provider.id] = 'provider';
+    if (typeof t.extractPrompts[provider.id] !== 'string') t.extractPrompts[provider.id] = '';
+  }
 }
 
 function ttsProviderId() {
@@ -4375,6 +4397,113 @@ function renderTtsFavoritesPlaceholder() {
   return '<p class="sd-muted sd-hint-sm">点「刷新收藏」加载已收藏的语音。</p>';
 }
 
+function renderTtsProviderOptions(options, selected) {
+  return (options || []).map((item) => {
+    const option = typeof item === 'string' ? { value: item, label: item } : item;
+    return `<option value="${htmlEscape(option.value)}" ${option.value === selected ? 'selected' : ''}>${htmlEscape(option.label || option.value)}</option>`;
+  }).join('');
+}
+
+function renderTtsProviderConnection(provider, p) {
+  const modelField = `<label>模型 / 资源</label><select class="text_pole sd-tts-model">${renderTtsProviderOptions(provider.modelOptions, p.model)}</select>`;
+  const formatField = `<label>音频格式</label><select class="text_pole sd-tts-format">${renderTtsProviderOptions(provider.formatOptions, p.format)}</select>`;
+  if (provider.id === 'minimax') {
+    const endpoints = Object.entries(provider.endpoints || {});
+    const epEmoji = (name) => name.includes('国际') ? '🌏 国际' : name.includes('备用') ? '🇨🇳 备用' : '🇨🇳 国内';
+    return `
+      <label>API Key</label><input class="text_pole sd-tts-key" type="password" placeholder="MiniMax API Key" value="${htmlEscape(p.apiKey || '')}">
+      <label>URL</label><select class="text_pole sd-tts-endpoint">${endpoints.map(([name, url]) => `<option value="${htmlEscape(url)}" ${url === p.endpoint ? 'selected' : ''}>${epEmoji(name)}</option>`).join('')}</select>
+      <p class="sd-muted sd-hint-sm sd-tts-endpoint-url">${htmlEscape(p.endpoint || '')}</p>
+      ${modelField}${formatField}
+      <details class="sd-plain-fold"><summary>高级连接</summary>
+        <label>反代地址（可选）</label><input class="text_pole sd-tts-proxy" value="${htmlEscape(p.proxyBase || '')}" placeholder="留空直连">
+        <label>Group ID（可选）</label><input class="text_pole sd-tts-group-id" value="${htmlEscape(p.groupId || '')}">
+      </details>`;
+  }
+  if (provider.id === 'doubao') {
+    return `
+      <label>新版 API Key</label><input class="text_pole sd-tts-key" type="password" placeholder="火山引擎语音 API Key" value="${htmlEscape(p.apiKey || '')}">
+      <p class="sd-muted sd-hint-sm">新版控制台只需 API Key；旧版账号可展开下方填写 App ID + Access Key。</p>
+      <details class="sd-plain-fold"><summary>旧版凭证 / 高级连接</summary>
+        <label>App ID</label><input class="text_pole sd-tts-app-id" value="${htmlEscape(p.appId || '')}">
+        <label>Access Key</label><input class="text_pole sd-tts-access-key" type="password" value="${htmlEscape(p.accessKey || '')}">
+        <label>接口地址</label><input class="text_pole sd-tts-endpoint" value="${htmlEscape(p.endpoint || '')}">
+        <label>反代地址（可选）</label><input class="text_pole sd-tts-proxy" value="${htmlEscape(p.proxyBase || '')}" placeholder="留空直连">
+      </details>
+      ${modelField}${formatField}
+      <label>采样率</label><select class="text_pole sd-tts-sample-rate">${[16000, 24000, 32000, 48000].map((rate) => `<option value="${rate}" ${Number(p.sampleRate) === rate ? 'selected' : ''}>${rate} Hz</option>`).join('')}</select>
+      <p class="sd-muted sd-hint-sm">音色 ID 必须与所选资源匹配；不匹配时豆包会返回资源错误。</p>`;
+  }
+  return `
+    <label>API Key</label><input class="text_pole sd-tts-key" type="password" placeholder="ElevenLabs API Key" value="${htmlEscape(p.apiKey || '')}">
+    ${modelField}${formatField}
+    <details class="sd-plain-fold"><summary>高级连接</summary>
+      <label>API 基址</label><input class="text_pole sd-tts-endpoint" value="${htmlEscape(p.endpoint || '')}">
+      <label>反代基址（可选）</label><input class="text_pole sd-tts-proxy" value="${htmlEscape(p.proxyBase || '')}" placeholder="留空直连">
+      <label>语言代码（可选）</label><input class="text_pole sd-tts-language-code" value="${htmlEscape(p.languageCode || '')}" placeholder="如 zh、en、ja">
+      <label>文本规范化</label><select class="text_pole sd-tts-text-normalization">${renderTtsProviderOptions([
+        { value: 'auto', label: '自动' }, { value: 'on', label: '开启' }, { value: 'off', label: '关闭' },
+      ], p.applyTextNormalization || 'auto')}</select>
+    </details>`;
+}
+
+function renderTtsProviderParams(provider, p, dis) {
+  const speedMin = provider.id === 'elevenlabs' ? 0.7 : 0.5;
+  const speedMax = provider.id === 'elevenlabs' ? 1.2 : 2;
+  const speed = Number(p.defaultSpeed ?? 1);
+  const supportsSpeed = ttsProviderSupports(provider.id, 'speed', p);
+  const base = supportsSpeed ? `
+    <label>语速 <span class="sd-tts-speed-val">${speed.toFixed(2)}</span></label>
+    <input type="range" class="sd-tts-speed" min="${speedMin}" max="${speedMax}" step="0.05" value="${speed}">`
+    : '<p class="sd-muted sd-hint-sm">Eleven v3 不支持 API 语速参数；节奏由正文标点与音频标签控制。</p>';
+  let extra = '';
+  if (provider.id === 'minimax' || provider.id === 'doubao') {
+    const volMin = provider.id === 'minimax' ? 0.1 : 0.5;
+    const volMax = provider.id === 'minimax' ? 10 : 2;
+    extra = `
+      <label>音量 <span class="sd-tts-vol-val">${Number(p.defaultVol ?? 1).toFixed(1)}</span></label>
+      <input type="range" class="sd-tts-vol" min="${volMin}" max="${volMax}" step="0.1" value="${Number(p.defaultVol ?? 1)}">
+      <label>语调 <span class="sd-tts-pitch-val">${Number(p.defaultPitch ?? 0)}</span></label>
+      <input type="range" class="sd-tts-pitch" min="-12" max="12" step="1" value="${Number(p.defaultPitch ?? 0)}">`;
+  } else {
+    extra = `
+      <label>稳定性 <span class="sd-tts-stability-val">${Number(p.stability ?? 0.5).toFixed(2)}</span></label>
+      <input type="range" class="sd-tts-stability" min="0" max="1" step="0.05" value="${Number(p.stability ?? 0.5)}">
+      ${p.model === 'eleven_v3' ? '<p class="sd-muted sd-hint-sm">Eleven v3 的情绪主要由正文语境和音频标签控制。</p>' : `
+        <label>音色相似度 <span class="sd-tts-similarity-val">${Number(p.similarityBoost ?? 0.75).toFixed(2)}</span></label>
+        <input type="range" class="sd-tts-similarity" min="0" max="1" step="0.05" value="${Number(p.similarityBoost ?? 0.75)}">
+        <label>风格夸张度 <span class="sd-tts-style-val">${Number(p.style ?? 0).toFixed(2)}</span></label>
+        <input type="range" class="sd-tts-style" min="0" max="1" step="0.05" value="${Number(p.style ?? 0)}">
+        <label class="checkbox_label"><input type="checkbox" class="sd-tts-speaker-boost" ${p.speakerBoost !== false ? 'checked' : ''}> 音色增强</label>`}`;
+  }
+  return `<section class="sd-card ${dis}"><details class="sd-plain-fold" data-acc="tts-params" open><summary><b>${htmlEscape(provider.label)} 默认参数</b></summary>${base}${extra}</details></section>`;
+}
+
+function renderTtsMinimaxExtras(provider, p, dis) {
+  if (provider.id !== 'minimax') return '';
+  return `
+    <section class="sd-card ${dis}"><details class="sd-plain-fold" data-acc="tts-lang-fx">
+      <summary><b>语言增强/音效器</b></summary>
+      <label>语言增强</label><div class="sd-muted sd-hint-sm sd-tts-fx-hint">混合中英用自动即可；粤语须选粤语/广东话</div>
+      <select class="text_pole sd-tts-langboost">${renderTtsProviderOptions(provider.languageBoostOptions, p.languageBoost || 'auto')}</select>
+      <label style="margin-top:10px">音效</label><div class="sd-muted sd-hint-sm sd-tts-fx-hint">全局生效，慎用</div>
+      <select class="text_pole sd-tts-soundfx">${renderTtsProviderOptions(provider.soundEffectOptions, p.soundEffects || '')}</select>
+      <label class="checkbox_label" style="margin-top:10px"><input type="checkbox" class="sd-tts-soundfx-auto" ${p.soundFxAuto ? 'checked' : ''}> 启用音效自动化</label>
+      <div class="sd-muted sd-hint-sm sd-tts-fx-hint">提取模型按语境为每句挑音效，与全局设置互斥</div>
+      <label style="margin-top:10px">音高（低沉↔明亮）<span class="sd-tts-vmpitch-val">${Number(p.vmPitch ?? 0)}</span></label>
+      <input type="range" class="sd-tts-vmpitch" min="-100" max="100" step="5" value="${Number(p.vmPitch ?? 0)}">
+      <label>强度（刚劲↔轻柔）<span class="sd-tts-vmintensity-val">${Number(p.vmIntensity ?? 0)}</span></label>
+      <input type="range" class="sd-tts-vmintensity" min="-100" max="100" step="5" value="${Number(p.vmIntensity ?? 0)}">
+      <label>音色（浑厚↔清脆）<span class="sd-tts-vmtimbre-val">${Number(p.vmTimbre ?? 0)}</span></label>
+      <input type="range" class="sd-tts-vmtimbre" min="-100" max="100" step="5" value="${Number(p.vmTimbre ?? 0)}">
+    </details></section>
+    <section class="sd-card ${dis}"><details class="sd-plain-fold" data-acc="tts-prondict">
+      <summary><b>发音词典</b></summary><p class="sd-muted sd-hint-sm">「原文」填要改的词，「读音」填拼音带声调数字，如 处理 → chu3li3。仅 MiniMax 生效。</p>
+      <div class="sd-tts-prondict-list">${renderTtsPronDictRows(Array.isArray(p.pronunciationDict) ? p.pronunciationDict : [])}</div>
+      <div class="sd-button-row"><button type="button" class="sd-btn sd-mini-btn sd-tts-add-prondict"><i class="fa-solid fa-plus"></i>添加词条</button></div>
+    </details></section>`;
+}
+
 function renderTtsTab() {
   const t = settings.tts || {};
   const providerId = ttsProviderId();
@@ -4384,9 +4513,7 @@ function renderTtsTab() {
   const lib = Array.isArray(p.voiceLibrary) ? p.voiceLibrary : [];
   const profiles = Array.isArray(settings.apiProfiles) ? settings.apiProfiles : [];
   const providers = listTtsProviders();
-  const endpoints = Object.entries(provider.endpoints || {});
   const dis = t.enabled ? '' : 'sd-disabled-card';
-  const epEmoji = (name) => name.includes('国际') ? '🌏 国际' : name.includes('备用') ? '🇨🇳 备用' : '🇨🇳 国内';
   return `
     <section class="sd-card">
       <div class="sd-toggle-row">
@@ -4399,12 +4526,7 @@ function renderTtsTab() {
     <section class="sd-card ${dis}">
       <details class="sd-plain-fold" data-acc="tts-api" open>
         <summary><b>${htmlEscape(provider.label)}</b></summary>
-        <label>API Key</label><input class="text_pole sd-tts-key" type="password" placeholder="${htmlEscape(provider.label)} API Key" value="${htmlEscape(p.apiKey || '')}">
-        <label>URL</label>
-        <select class="text_pole sd-tts-endpoint">${endpoints.map(([name, url]) => `<option value="${htmlEscape(url)}" ${url === p.endpoint ? 'selected' : ''}>${epEmoji(name)}</option>`).join('')}</select>
-        <p class="sd-muted sd-hint-sm sd-tts-endpoint-url">${htmlEscape(p.endpoint || (endpoints[0] && endpoints[0][1]) || '')}</p>
-        <label>模型</label>
-        <select class="text_pole sd-tts-model">${(provider.models || []).map((m) => `<option value="${htmlEscape(m)}" ${m === p.model ? 'selected' : ''}>${htmlEscape(m)}</option>`).join('')}</select>
+        ${renderTtsProviderConnection(provider, p)}
         <div class="sd-button-row"><button type="button" class="sd-btn sd-tts-test-conn"><i class="fa-solid fa-plug-circle-check"></i>测试连接</button><button type="button" class="sd-btn sd-tts-save-conn">保存</button></div>
       </details>
     </section>
@@ -4444,50 +4566,14 @@ function renderTtsTab() {
         </div>
       </details>
     </section>
-    <section class="sd-card ${dis}">
-      <details class="sd-plain-fold" data-acc="tts-params" open>
-        <summary><b>默认参数</b></summary>
-        <label>语速 <span class="sd-tts-speed-val">${Number(t.defaultSpeed ?? 1).toFixed(2)}</span></label>
-        <input type="range" class="sd-tts-speed" min="0.5" max="2" step="0.05" value="${Number(t.defaultSpeed ?? 1)}">
-        <label>音量 <span class="sd-tts-vol-val">${Number(t.defaultVol ?? 1).toFixed(1)}</span></label>
-        <input type="range" class="sd-tts-vol" min="0.1" max="10" step="0.1" value="${Number(t.defaultVol ?? 1)}">
-        <label>语调 <span class="sd-tts-pitch-val">${Number(t.defaultPitch ?? 0)}</span></label>
-        <input type="range" class="sd-tts-pitch" min="-12" max="12" step="1" value="${Number(t.defaultPitch ?? 0)}">
-      </details>
-    </section>
-    <section class="sd-card ${dis}">
-      <details class="sd-plain-fold" data-acc="tts-lang-fx">
-        <summary><b>语言增强/音效器</b></summary>
-        <label>语言增强</label>
-        <div class="sd-muted sd-hint-sm sd-tts-fx-hint">混合中英用自动即可；粤语须选粤语/广东话</div>
-        <select class="text_pole sd-tts-langboost">${(provider.languageBoostOptions || []).map((o) => `<option value="${o.value}" ${(p.languageBoost || 'auto') === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}</select>
-        <label style="margin-top:10px">音效</label>
-        <div class="sd-muted sd-hint-sm sd-tts-fx-hint">全局生效，慎用</div>
-        <select class="text_pole sd-tts-soundfx">${(provider.soundEffectOptions || []).map((o) => `<option value="${o.value}" ${(p.soundEffects || '') === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}</select>
-        <label class="checkbox_label" style="margin-top:10px"><input type="checkbox" class="sd-tts-soundfx-auto" ${p.soundFxAuto ? 'checked' : ''}> 启用音效自动化</label>
-        <div class="sd-muted sd-hint-sm sd-tts-fx-hint">提取模型按语境为每句挑音效，与全局设置互斥</div>
-        <label style="margin-top:10px">音高（低沉↔明亮）<span class="sd-tts-vmpitch-val">${Number(p.vmPitch ?? 0)}</span></label>
-        <input type="range" class="sd-tts-vmpitch" min="-100" max="100" step="5" value="${Number(p.vmPitch ?? 0)}">
-        <label>强度（刚劲↔轻柔）<span class="sd-tts-vmintensity-val">${Number(p.vmIntensity ?? 0)}</span></label>
-        <input type="range" class="sd-tts-vmintensity" min="-100" max="100" step="5" value="${Number(p.vmIntensity ?? 0)}">
-        <label>音色（浑厚↔清脆）<span class="sd-tts-vmtimbre-val">${Number(p.vmTimbre ?? 0)}</span></label>
-        <input type="range" class="sd-tts-vmtimbre" min="-100" max="100" step="5" value="${Number(p.vmTimbre ?? 0)}">
-      </details>
-    </section>
+    ${renderTtsProviderParams(provider, p, dis)}
+    ${renderTtsMinimaxExtras(provider, p, dis)}
     <section class="sd-card ${dis}">
       <details class="sd-plain-fold" data-acc="tts-tags" open>
         <summary><b>标签规则</b></summary>
         <div class="sd-tts-tag-list">${renderTtsTagRows(Array.isArray(t.tagRules) ? t.tagRules : [])}</div>
         <div class="sd-button-row"><button type="button" class="sd-btn sd-mini-btn sd-tts-add-tag"><i class="fa-solid fa-plus"></i>添加标签</button></div>
         <label class="checkbox_label"><input type="checkbox" class="sd-tts-strip-html" ${t.stripHtml !== false ? 'checked' : ''}> 屏蔽裸 HTML 标签（状态栏/卡片等）</label>
-      </details>
-    </section>
-    <section class="sd-card ${dis}">
-      <details class="sd-plain-fold" data-acc="tts-prondict">
-        <summary><b>发音词典</b></summary>
-        <p class="sd-muted sd-hint-sm">「原文」填要改的词，「读音」填拼音带声调数字，如 处理 → chu3li3。全局生效。</p>
-        <div class="sd-tts-prondict-list">${renderTtsPronDictRows(Array.isArray(p.pronunciationDict) ? p.pronunciationDict : [])}</div>
-        <div class="sd-button-row"><button type="button" class="sd-btn sd-mini-btn sd-tts-add-prondict"><i class="fa-solid fa-plus"></i>添加词条</button></div>
       </details>
     </section>
     <section class="sd-card ${dis}">
@@ -4514,11 +4600,18 @@ function renderTtsTab() {
         <summary><b>台词提取提示词</b></summary>
         <label>台词分析抓取模型</label>
         <select class="text_pole sd-tts-extract-api"><option value="">使用千幕当前主 API</option>${profiles.map((profile) => `<option value="${htmlEscape(profile.id)}" ${profile.id === t.extractApiProfileId ? 'selected' : ''}>${htmlEscape(profile.name || profile.model || '未命名API')}</option>`).join('')}</select>
-        <textarea class="text_pole sd-textarea sd-tts-extract-prompt" spellcheck="false" placeholder="留空则使用内置默认">${htmlEscape(t.extractPrompt || TTS_EXTRACT_SYSTEM)}</textarea>
+        <label>提示词方案</label>
+        <select class="text_pole sd-tts-extract-scheme">
+          <option value="provider" ${ttsExtractScheme(providerId) === 'provider' ? 'selected' : ''}>跟随当前模型（${htmlEscape(provider.label)} 推荐）</option>
+          <option value="generic" ${ttsExtractScheme(providerId) === 'generic' ? 'selected' : ''}>通用智能模板</option>
+          <option value="custom" ${ttsExtractScheme(providerId) === 'custom' ? 'selected' : ''}>我的自定义</option>
+        </select>
+        <p class="sd-muted sd-hint-sm">推荐方案随配音模型自动切换；通用模板适合未知或自建兼容接口。保存编辑内容后自动转为“我的自定义”。</p>
+        <textarea class="text_pole sd-textarea sd-tts-extract-prompt" spellcheck="false">${htmlEscape(ttsResolvedExtractPrompt(providerId))}</textarea>
         <div class="sd-button-row">
           <button type="button" class="sd-btn sd-tts-save-prompt">保存提示词</button>
           <button type="button" class="sd-btn sd-tts-save-scheme">保存到方案库</button>
-          <button type="button" class="sd-btn sd-tts-restore-prompt" title="找回载入/重置前你上一次使用的提示词" ${t.extractPromptBackup ? '' : 'disabled'}>恢复上次</button>
+          <button type="button" class="sd-btn sd-tts-restore-prompt" title="找回当前模型载入/重置前的提示词" ${t.extractPromptBackups?.[providerId] ? '' : 'disabled'}>恢复上次</button>
           <button type="button" class="sd-btn sd-tts-reset-prompt">恢复默认</button>
         </div>
         ${renderLibrarySection(ttsSchemeLibraryCfg())}
@@ -4559,24 +4652,40 @@ function bindTtsTabEvents(root) {
   };
   bindField('.sd-tts-key', p, 'apiKey');
   bindField('.sd-tts-endpoint', p, 'endpoint');
+  bindField('.sd-tts-proxy', p, 'proxyBase');
+  bindField('.sd-tts-group-id', p, 'groupId');
+  bindField('.sd-tts-app-id', p, 'appId');
+  bindField('.sd-tts-access-key', p, 'accessKey');
+  bindField('.sd-tts-format', p, 'format');
+  bindField('.sd-tts-sample-rate', p, 'sampleRate', (v) => Number(v) || 24000);
+  bindField('.sd-tts-language-code', p, 'languageCode', (v) => String(v || '').trim());
+  bindField('.sd-tts-text-normalization', p, 'applyTextNormalization');
   // URL 选择变化时，标题下方实时显示具体网址
   root.querySelector('.sd-tts-endpoint')?.addEventListener('change', (e) => {
     const out = root.querySelector('.sd-tts-endpoint-url');
     if (out) out.textContent = e.target.value || '';
   });
-  bindField('.sd-tts-model', p, 'model');
+  root.querySelector('.sd-tts-model')?.addEventListener('change', (e) => {
+    p.model = e.target.value;
+    saveSettings();
+    renderModal();   // 模型能力会改变参数区（如 Eleven v3 不显示相似度/音色增强）
+  });
   bindField('.sd-tts-extract-api', t, 'extractApiProfileId');
   bindField('.sd-tts-cache-limit', t, 'cacheLimit', (v) => Math.max(0, Number(v) || 0));
   bindField('.sd-tts-test-text', t, 'testText', (v) => String(v || ''));
 
-  // MiniMax 接口：测试连接（合成一句试听语音并播放）/ 保存（字段失焦本已存，此处显式存 + 反馈）
+  // 当前 Provider：测试连接（合成一句试听语音并播放）/ 保存
   root.querySelector('.sd-tts-test-conn')?.addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     // 以当前界面值为准（不强依赖已 change 落盘）
     const apiKey = (root.querySelector('.sd-tts-key')?.value || '').trim();
     const endpoint = root.querySelector('.sd-tts-endpoint')?.value || p.endpoint;
     const model = root.querySelector('.sd-tts-model')?.value || p.model;
-    if (!apiKey) { toast(`请先填写 ${provider.label} API Key。`, 'warning'); return; }
+    const appId = (root.querySelector('.sd-tts-app-id')?.value || p.appId || '').trim();
+    const accessKey = (root.querySelector('.sd-tts-access-key')?.value || p.accessKey || '').trim();
+    if (!ttsProviderHasCredentials(providerId, { ...p, apiKey, appId, accessKey })) {
+      toast(`请先填写 ${provider.label} 凭证。`, 'warning'); return;
+    }
     // 测试音色由 Provider 声明，仅验连通性；不取用户库/映射，避免账号下的自定义 ID 让连接测试失真。
     const voiceId = provider.testVoiceId;
     if (!voiceId) { toast(`${provider.label} 暂未配置连接测试音色。`, 'warning'); return; }
@@ -4586,9 +4695,11 @@ function bindTtsTabEvents(root) {
     btn.disabled = true;
     try {
       const { blob } = await synthesizeTts(providerId, {
-        apiKey, text: '你好，这是一段连接测试。', voiceId, model,
-        speed: Number(t.defaultSpeed ?? 1), pitch: Number(t.defaultPitch ?? 0),
-        format: p.format || 'mp3', endpoint, proxyBase: p.proxyBase, groupId: p.groupId,
+        ...p, apiKey, appId, accessKey, endpoint, model,
+        text: '你好，这是一段连接测试。', voiceId,
+        speed: Number(p.defaultSpeed ?? 1), vol: Number(p.defaultVol ?? 1), pitch: Number(p.defaultPitch ?? 0),
+        format: root.querySelector('.sd-tts-format')?.value || p.format || 'mp3',
+        sampleRate: Number(root.querySelector('.sd-tts-sample-rate')?.value || p.sampleRate || 24000),
       });
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
@@ -4606,7 +4717,15 @@ function bindTtsTabEvents(root) {
     // 把当前界面值显式写入并落盘（即便用户没触发 change）
     p.apiKey = (root.querySelector('.sd-tts-key')?.value || '').trim();
     p.endpoint = root.querySelector('.sd-tts-endpoint')?.value || p.endpoint;
+    p.proxyBase = root.querySelector('.sd-tts-proxy')?.value?.trim() || '';
+    if (root.querySelector('.sd-tts-group-id')) p.groupId = root.querySelector('.sd-tts-group-id').value.trim();
+    if (root.querySelector('.sd-tts-app-id')) p.appId = root.querySelector('.sd-tts-app-id').value.trim();
+    if (root.querySelector('.sd-tts-access-key')) p.accessKey = root.querySelector('.sd-tts-access-key').value.trim();
     p.model = root.querySelector('.sd-tts-model')?.value || p.model;
+    p.format = root.querySelector('.sd-tts-format')?.value || p.format;
+    if (root.querySelector('.sd-tts-sample-rate')) p.sampleRate = Number(root.querySelector('.sd-tts-sample-rate').value) || 24000;
+    if (root.querySelector('.sd-tts-language-code')) p.languageCode = root.querySelector('.sd-tts-language-code').value.trim();
+    if (root.querySelector('.sd-tts-text-normalization')) p.applyTextNormalization = root.querySelector('.sd-tts-text-normalization').value;
     t.extractApiProfileId = root.querySelector('.sd-tts-extract-api')?.value || '';
     saveSettings();
     toast('已保存', 'success');
@@ -4620,9 +4739,13 @@ function bindTtsTabEvents(root) {
     el.addEventListener('input', () => { if (out) out.textContent = fmt(el.value); });
     el.addEventListener('change', () => { target[key] = Number(el.value); saveSettings(); });
   };
-  bindSlider('.sd-tts-speed', '.sd-tts-speed-val', t, 'defaultSpeed', (v) => Number(v).toFixed(2));
-  bindSlider('.sd-tts-vol', '.sd-tts-vol-val', t, 'defaultVol', (v) => Number(v).toFixed(1));
-  bindSlider('.sd-tts-pitch', '.sd-tts-pitch-val', t, 'defaultPitch', (v) => String(Math.round(v)));
+  bindSlider('.sd-tts-speed', '.sd-tts-speed-val', p, 'defaultSpeed', (v) => Number(v).toFixed(2));
+  bindSlider('.sd-tts-vol', '.sd-tts-vol-val', p, 'defaultVol', (v) => Number(v).toFixed(1));
+  bindSlider('.sd-tts-pitch', '.sd-tts-pitch-val', p, 'defaultPitch', (v) => String(Math.round(v)));
+  bindSlider('.sd-tts-stability', '.sd-tts-stability-val', p, 'stability', (v) => Number(v).toFixed(2));
+  bindSlider('.sd-tts-similarity', '.sd-tts-similarity-val', p, 'similarityBoost', (v) => Number(v).toFixed(2));
+  bindSlider('.sd-tts-style', '.sd-tts-style-val', p, 'style', (v) => Number(v).toFixed(2));
+  root.querySelector('.sd-tts-speaker-boost')?.addEventListener('change', (e) => { p.speakerBoost = !!e.target.checked; saveSettings(); });
   // T3 音效器三滑块（音高/强度/音色 -100..100）
   bindSlider('.sd-tts-vmpitch', '.sd-tts-vmpitch-val', p, 'vmPitch', (v) => String(Math.round(v)));
   bindSlider('.sd-tts-vmintensity', '.sd-tts-vmintensity-val', p, 'vmIntensity', (v) => String(Math.round(v)));
@@ -4682,7 +4805,7 @@ function bindTtsTabEvents(root) {
     });
   });
 
-  // 角色映射：增 / 删 / 改（始终读写本聊天 store.ttsVoiceMap）
+  // 角色映射：增 / 删 / 改（始终读写本聊天、当前 Provider 的 store.ttsVoiceMaps）
   root.querySelector('.sd-tts-add-voice')?.addEventListener('click', () => {
     const map = ttsActiveVoiceMap();
     map.push({ name: '', voiceId: '', speed: null, emotion: 'auto' });
@@ -4727,7 +4850,10 @@ function bindTtsTabEvents(root) {
   root.querySelectorAll('.sd-tts-lib-edit').forEach((btn) => btn.addEventListener('click', async () => {
     const cur = (p.voiceLibrary || []).find((v) => v.id === btn.dataset.id);
     if (!cur) return;
-    const r = await promptVoiceLibEntry({ dialogTitle: '编辑音色', name: cur.name, voiceId: cur.voiceId, folder: cur.folder || '', withFx: true, fx: ttsVoiceFx(cur.voiceId) });
+    const r = await promptVoiceLibEntry({
+      dialogTitle: '编辑音色', name: cur.name, voiceId: cur.voiceId, folder: cur.folder || '',
+      withFx: !!getTtsProvider(ttsProviderId()).capabilities?.voiceEffects, fx: ttsVoiceFx(cur.voiceId),
+    });
     if (!r) return;
     if (!r.name || !r.voiceId) { toast('音色名与 ID 都要填。', 'warning'); return; }
     const oldVid = cur.voiceId;
@@ -4851,28 +4977,46 @@ function bindTtsTabEvents(root) {
   });
 
   // 台词提取提示词：保存 / 恢复默认 / 恢复上次 / 保存到方案库
-  root.querySelector('.sd-tts-save-prompt')?.addEventListener('click', () => {
-    const val = root.querySelector('.sd-tts-extract-prompt')?.value ?? '';
-    t.extractPrompt = String(val).trim() === TTS_EXTRACT_SYSTEM.trim() ? '' : val;   // 与默认相同则存空=跟随默认
-    saveSettings();
-    toast('台词提取提示词已保存。', 'success');
-  });
-  root.querySelector('.sd-tts-reset-prompt')?.addEventListener('click', async () => {
-    const yes = await confirmDialog('恢复默认提示词', '将台词提取提示词恢复为内置默认？当前内容会被覆盖（覆盖前自动备份，可「恢复上次」找回）。');
-    if (!yes) return;
-    const cur = (root.querySelector('.sd-tts-extract-prompt')?.value ?? '').trim();
-    if (cur && cur !== TTS_EXTRACT_SYSTEM.trim()) t.extractPromptBackup = cur;
-    t.extractPrompt = '';
+  root.querySelector('.sd-tts-extract-scheme')?.addEventListener('change', (e) => {
+    t.extractSchemes = isPlainObject(t.extractSchemes) ? t.extractSchemes : {};
+    t.extractSchemes[providerId] = ['provider', 'generic', 'custom'].includes(e.target.value) ? e.target.value : 'provider';
     saveSettings();
     renderModal();
-    toast('已恢复默认提示词。', 'success');
+  });
+  root.querySelector('.sd-tts-save-prompt')?.addEventListener('click', () => {
+    const val = String(root.querySelector('.sd-tts-extract-prompt')?.value ?? '').trim();
+    if (!val) { toast('提示词为空，未保存。', 'warning'); return; }
+    t.extractPrompts = isPlainObject(t.extractPrompts) ? t.extractPrompts : {};
+    t.extractSchemes = isPlainObject(t.extractSchemes) ? t.extractSchemes : {};
+    t.extractPrompts[providerId] = val;
+    t.extractSchemes[providerId] = 'custom';
+    saveSettings();
+    renderModal();
+    toast(`已保存为 ${provider.label} 自定义提示词。`, 'success');
+  });
+  root.querySelector('.sd-tts-reset-prompt')?.addEventListener('click', async () => {
+    const yes = await confirmDialog('恢复推荐提示词', `将 ${provider.label} 的台词提取提示词恢复为模型推荐模板？当前内容会自动备份。`);
+    if (!yes) return;
+    const cur = (root.querySelector('.sd-tts-extract-prompt')?.value ?? '').trim();
+    const builtin = ttsBuiltinExtractPrompt(providerId, 'provider').trim();
+    t.extractPromptBackups = isPlainObject(t.extractPromptBackups) ? t.extractPromptBackups : {};
+    t.extractSchemes = isPlainObject(t.extractSchemes) ? t.extractSchemes : {};
+    if (cur && cur !== builtin) t.extractPromptBackups[providerId] = cur;
+    t.extractSchemes[providerId] = 'provider';
+    saveSettings();
+    renderModal();
+    toast(`已恢复 ${provider.label} 推荐提示词。`, 'success');
   });
   root.querySelector('.sd-tts-restore-prompt')?.addEventListener('click', async () => {
-    if (!t.extractPromptBackup) { toast('没有可恢复的上一份提示词。', 'info'); return; }
+    const backup = t.extractPromptBackups?.[providerId];
+    if (!backup) { toast('当前模型没有可恢复的上一份提示词。', 'info'); return; }
     const yes = await confirmDialog('恢复上次提示词', '将台词提取提示词替换为上一次使用的那一份？当前内容会被覆盖。');
     if (!yes) return;
-    t.extractPrompt = t.extractPromptBackup;
-    t.extractPromptBackup = null;
+    t.extractPrompts = isPlainObject(t.extractPrompts) ? t.extractPrompts : {};
+    t.extractSchemes = isPlainObject(t.extractSchemes) ? t.extractSchemes : {};
+    t.extractPrompts[providerId] = backup;
+    t.extractSchemes[providerId] = 'custom';
+    delete t.extractPromptBackups[providerId];
     saveSettings();
     renderModal();
     toast('已恢复上一份提示词。', 'success');
@@ -4897,8 +5041,12 @@ function bindTtsTabEvents(root) {
       const sch = (t.guidanceSchemes || []).find((x) => x.id === id);
       if (!sch) return;
       const cur = (root.querySelector('.sd-tts-extract-prompt')?.value ?? '').trim();
-      if (cur && cur !== TTS_EXTRACT_SYSTEM.trim()) t.extractPromptBackup = cur;   // 覆盖前备份
-      t.extractPrompt = sch.content || '';
+      t.extractPromptBackups = isPlainObject(t.extractPromptBackups) ? t.extractPromptBackups : {};
+      t.extractPrompts = isPlainObject(t.extractPrompts) ? t.extractPrompts : {};
+      t.extractSchemes = isPlainObject(t.extractSchemes) ? t.extractSchemes : {};
+      if (cur && cur !== String(sch.content || '').trim()) t.extractPromptBackups[providerId] = cur;
+      t.extractPrompts[providerId] = sch.content || '';
+      t.extractSchemes[providerId] = 'custom';
       saveSettings();
       renderModal();
       toast(`已载入方案「${sch.name}」。`, 'success');
@@ -5022,7 +5170,7 @@ async function ttsPreviewVoice(voiceId, text, btn) {
   const providerId = ttsProviderId();
   const provider = getTtsProvider(providerId);
   const p = ttsProviderConfig(providerId);
-  if (!p.apiKey) { toast(`请先填写 ${provider.label} API Key。`, 'warning'); return; }
+  if (!ttsProviderHasCredentials(providerId, p)) { toast(`请先填写 ${provider.label} 凭证。`, 'warning'); return; }
   if (!voiceId) { toast('该行还没填音色 ID。', 'warning'); return; }
   if (!text) { toast('请先在上方填写试听台词。', 'warning'); return; }
   const icon = btn?.querySelector('i');
@@ -5032,8 +5180,9 @@ async function ttsPreviewVoice(voiceId, text, btn) {
   try {
     const vfx = ttsVoiceFx(voiceId);   // per-voice 音效器覆盖（试听须与正文合成一致）
     const { blob } = await synthesizeTts(providerId, {
+      ...p,
       apiKey: p.apiKey, text, voiceId, model: p.model,
-      speed: Number(t.defaultSpeed ?? 1), vol: Number(t.defaultVol ?? 1), pitch: Number(t.defaultPitch ?? 0),
+      speed: Number(p.defaultSpeed ?? 1), vol: Number(p.defaultVol ?? 1), pitch: Number(p.defaultPitch ?? 0),
       format: p.format || 'mp3', endpoint: p.endpoint, proxyBase: p.proxyBase, groupId: p.groupId,
       pronunciationTone: ttsPronunciationTone(),
       languageBoost: p.languageBoost || '',
@@ -5210,6 +5359,58 @@ const TTS_EXTRACT_SYSTEM = `你是有声剧配音指导导演，需从小说正�
 标准格式示例：
 \`{"lines": [{"speaker": "角色名", "text": "台词原话", "emotion": "auto"}]}\`（emotion 默认 auto、speed 默认省略）`;
 
+// 通用“傻瓜模板”：只产出跨 Provider 都能理解的语义字段，不写任何厂商标签进台词原文。
+const TTS_EXTRACT_GENERIC = `你是小说配音台词提取助手。请从正文中按出现顺序提取角色当下真正说出口的台词，并仅返回 JSON。
+
+{{QM_CONTEXT}}
+
+规则：
+1. 只提取由引号包裹、且角色在当前场景真实发声的内容；排除心理活动、作品名、强调词、回忆引用和未说出口的话。
+2. speaker 使用明确角色名；结合上下文仍无法确认时填“未知”，不要填“我/你”。
+3. text 只保留台词原话和语气词，移除引号及台词外动作。相同说话人被短动作隔开的连续话语可以合并，但不要插入任何模型专用标记。
+4. emotion 只允许 auto、happy、sad、angry、fearful、disgusted、surprised、calm、fluent、whisper；不确定时用 auto。
+5. speed 通常省略；只有正文明确表现急促或迟缓时才在 0.90~1.20 内轻微调整。
+6. delivery 可选，用不超过 20 个汉字概括表演方式，例如“克制地低声安慰”；无明确需要时省略。delivery 不能混入 text。
+
+仅输出：{"lines":[{"speaker":"角色名","text":"台词原话","emotion":"auto","speed":1.0,"delivery":"可选表演提示"}]}
+无台词时输出：{"lines":[]}`;
+
+const TTS_EXTRACT_DOUBAO = `${TTS_EXTRACT_GENERIC}
+
+【豆包语音适配】
+- 豆包能依据语境和自然语言表演提示演绎。优先保持 text 纯净，把确有必要的声线、语气、方言或强弱要求写入 delivery。
+- delivery 应简短自然，如“压低声音、带着试探性的温柔”，不要写模型参数、枚举解释或括号标签。
+- 禁止输出 MiniMax 的 <#秒数#> 停顿标记，也不要生成 SSML。正常停顿只保留原台词标点。
+- emotion 使用通用语义值，后续由千幕转换为豆包可用的上下文提示。`;
+
+const TTS_EXTRACT_ELEVENLABS = `${TTS_EXTRACT_GENERIC}
+
+【ElevenLabs 适配】
+- ElevenLabs 会直接理解文本语境；保持 text 为角色真正说出的原话，禁止把“她悲伤地说”等描述塞进 text，以免被朗读出来。
+- emotion 优先使用 auto；只有正文有明确强信号时使用 happy、sad、angry、fearful、surprised、calm、whisper。
+- delivery 仅作千幕内部语义记录，不要输出方括号音频标签；Eleven v3 所需标签由适配器安全转换。
+- 禁止输出 <#秒数#>、SSML 或任何供应商专用控制字符。`;
+
+function ttsExtractScheme(providerId = ttsProviderId()) {
+  const t = settings.tts || {};
+  const value = t.extractSchemes?.[providerId];
+  return ['provider', 'generic', 'custom'].includes(value) ? value : 'provider';
+}
+
+function ttsBuiltinExtractPrompt(providerId = ttsProviderId(), scheme = 'provider') {
+  if (scheme === 'generic') return TTS_EXTRACT_GENERIC;
+  if (providerId === 'doubao') return TTS_EXTRACT_DOUBAO;
+  if (providerId === 'elevenlabs') return TTS_EXTRACT_ELEVENLABS;
+  return TTS_EXTRACT_SYSTEM;
+}
+
+function ttsResolvedExtractPrompt(providerId = ttsProviderId()) {
+  const t = settings.tts || {};
+  const scheme = ttsExtractScheme(providerId);
+  if (scheme === 'custom') return String(t.extractPrompts?.[providerId] || '').trim() || ttsBuiltinExtractPrompt(providerId, 'provider');
+  return ttsBuiltinExtractPrompt(providerId, scheme);
+}
+
 // 提取用 API 配置：优先 settings.tts.extractApiProfileId 指定的预设，否则用主 API（返回 null 表示走主 API/ST）
 function ttsExtractApiConfig() {
   const id = settings.tts?.extractApiProfileId || '';
@@ -5314,7 +5515,7 @@ async function extractDialogue(text) {
   const cfg = ttsExtractApiConfig();
   const t = settings.tts || {};
   const p = ttsProviderConfig();
-  let sysPrompt = (t.extractPrompt || '').trim() || TTS_EXTRACT_SYSTEM;
+  let sysPrompt = ttsResolvedExtractPrompt();
   // 提取上下文注入（治 OOC/情绪失准/人称锚定）：把角色人设 + user 人设（+选中的世界书条目）喂给提取模型，
   // 让它判情绪有性格基线、据人设把「我/你」锚定到具体角色。取材式——从 ST 现成读取器拉，与主线共享同源。
   // 顺序治理：默认提示词含 {{QM_CONTEXT}} 占位符 → 把人设/世界书插在「规则之前」（先立"谁"和"世界"，规则再带着人设去套）。
@@ -5349,7 +5550,7 @@ async function extractDialogue(text) {
   try { parsed = extractJson(content); }
   catch (_) { throw new Error('台词提取结果无法解析'); }
   const lines = Array.isArray(parsed?.lines) ? parsed.lines : (Array.isArray(parsed) ? parsed : []);
-  const validEmotions = new Set(['happy', 'sad', 'angry', 'fearful', 'disgusted', 'surprised', 'calm', 'fluent', 'whisper']);
+  const validEmotions = new Set(getTtsEmotionOptions(ttsProviderId(), p).map((option) => option.value).filter((value) => value !== 'auto'));
   const fxOn = !!p.soundFxAuto;
   const validFx = new Set(['spacious_echo', 'auditorium_echo', 'lofi_telephone', 'robotic']);
   return lines
@@ -5363,6 +5564,8 @@ async function extractDialogue(text) {
         speaker: String(l?.speaker || '').trim() || '未知',
         text,
         emotion: validEmotions.has(l?.emotion) ? l.emotion : 'auto',
+        // 豆包等支持自然语言表演指令的 Provider 可消费；其他 Provider 保留但忽略，便于无损切换。
+        delivery: String(l?.delivery || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 120),
         npc: npcOn ? String(l?.npc || '').trim() : '',   // 模型判定的 NPC 原型标签（仅 npcOn 时有意义）
         fx: fxOn && validFx.has(l?.fx) ? l.fx : '',      // 音效自动化：模型判的 per-line 音效（仅 fxOn 且在白名单内才留）
       };
@@ -5604,19 +5807,22 @@ function ttsBuildParams(line) {
     : (voice.emotion && voice.emotion !== 'auto' ? voice.emotion : 'auto');
   // 语速：单句显式 → 角色默认 → 全局默认
   const speed = Number.isFinite(line.speed) ? line.speed
-    : (Number.isFinite(voice.speed) ? voice.speed : Number(t.defaultSpeed ?? 1));
+    : (Number.isFinite(voice.speed) ? voice.speed : Number(p.defaultSpeed ?? 1));
   const vfx = ttsVoiceFx(voice.voiceId);   // per-voice 音效器覆盖（无则 null，回落全局 T3）
   return {
+    ...p,
     providerId,
     apiKey: p.apiKey,
     text: line.text,   // 合成用干净台词原文（多音字矫正交 T1 全局发音词典·synth 合成态已移除）
     voiceId: voice.voiceId,
     model: p.model,
     speed,
-    vol: Number(t.defaultVol ?? 1),   // 全局默认音量（每音色微调已移除）
-    pitch: Number(t.defaultPitch ?? 0),
+    vol: Number(p.defaultVol ?? 1),
+    pitch: Number(p.defaultPitch ?? 0),
+    delivery: String(line.delivery || ''),
     emotion,
     format: p.format || 'mp3',
+    fileExtension: outputExtensionForTts(providerId, p),
     endpoint: p.endpoint,
     proxyBase: p.proxyBase,
     groupId: p.groupId,
@@ -5696,7 +5902,7 @@ async function ttsSynthCached(line, force = false, source = 'tts') {
   const params = ttsBuildParams(line);
   if (!params) throw new Error(`「${line.speaker}」未配置音色`);
   const provider = getTtsProvider(params.providerId);
-  if (!params.apiKey) throw new Error(`未配置 ${provider.label} API Key`);
+  if (!ttsProviderHasCredentials(params.providerId, params)) throw new Error(`未配置 ${provider.label} 凭证`);
   const key = cacheKeyForTts(params.providerId, params);
   const useCache = blobStore.blobStoreAvailable();
   if (!force && useCache) {
@@ -6434,16 +6640,19 @@ async function ttsHandlePlayAll(btn, force = false) {
 function ttsOpenQuickPopup(btn) {
   const { mesEl, idx, line } = ttsResolveLineFromBtn(btn);
   ttsCloseQuickPopup();
-  const curSpeed = Number.isFinite(line.speed) ? line.speed : Number(settings.tts?.defaultSpeed ?? 1);
+  const rawSpeed = Number.isFinite(line.speed) ? line.speed : Number(ttsProviderConfig().defaultSpeed ?? 1);
   const curEmotion = (line.emotion && line.emotion !== 'auto') ? line.emotion : 'auto';
   const providerId = ttsProviderId();
+  const supportsSpeed = ttsProviderSupports(providerId, 'speed', ttsProviderConfig(providerId));
+  const speedRange = getTtsProvider(providerId).speedRange || { min: 0.5, max: 2, step: 0.05 };
+  const curSpeed = Math.min(speedRange.max, Math.max(speedRange.min, rawSpeed));
   const emoOptions = getTtsEmotionOptions(providerId, ttsProviderConfig(providerId))
     .map((option) => `<option value="${htmlEscape(option.value)}" ${option.value === curEmotion ? 'selected' : ''}>${htmlEscape(option.label)}</option>`)
     .join('');
   const pop = document.createElement('div');
   pop.className = `sd-tts-popup sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
   pop.innerHTML = `
-    <div class="sd-tts-popup-row"><span>语速</span><input type="range" class="sd-tts-pop-speed" min="0.5" max="2" step="0.05" value="${curSpeed}"><b class="sd-tts-pop-speed-val">${curSpeed.toFixed(2)}</b></div>
+    ${supportsSpeed ? `<div class="sd-tts-popup-row"><span>语速</span><input type="range" class="sd-tts-pop-speed" min="${speedRange.min}" max="${speedRange.max}" step="${speedRange.step}" value="${curSpeed}"><b class="sd-tts-pop-speed-val">${curSpeed.toFixed(2)}</b></div>` : ''}
     <div class="sd-tts-popup-row"><span>情绪</span><select class="sd-tts-pop-emotion">${emoOptions}</select></div>
     <div class="sd-tts-popup-actions">
       <button type="button" class="sd-tts-pop-icon sd-tts-pop-regen" title="按当前语速/情绪重新生成并播放"><i class="fa-solid fa-rotate"></i></button>
@@ -6459,10 +6668,11 @@ function ttsOpenQuickPopup(btn) {
 
   const speedEl = pop.querySelector('.sd-tts-pop-speed');
   const speedVal = pop.querySelector('.sd-tts-pop-speed-val');
-  speedEl.addEventListener('input', () => { speedVal.textContent = Number(speedEl.value).toFixed(2); });
+  speedEl?.addEventListener('input', () => { if (speedVal) speedVal.textContent = Number(speedEl.value).toFixed(2); });
   // 读快捷窗当前控件 → 写入 line 对象并落盘（持久化，单击播放/连播/刷新后都沿用同一份）
   const applyOverride = () => {
-    const patch = { speed: Number(speedEl.value), emotion: pop.querySelector('.sd-tts-pop-emotion').value };
+    const patch = { emotion: pop.querySelector('.sd-tts-pop-emotion').value };
+    if (speedEl) patch.speed = Number(speedEl.value);
     Object.assign(line, patch);                       // 即时生效（缓存同引用）
     const canon = ttsPersistLineOverride(mesEl, idx, patch);   // 落盘并坐实到「后续点击会读到的同一份」对象
     ttsSyncLineDataset(mesEl, idx, canon || line);    // 同步 DOM 数据集，缓存全失时字面兜底也能算出含 override 的正确 key
@@ -6501,7 +6711,7 @@ async function ttsDownloadLine(line, btn) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${ttsSafeName(line.speaker, line.text)}.${params.format || 'mp3'}`;
+    a.download = `${ttsSafeName(line.speaker, line.text)}.${params.fileExtension || 'mp3'}`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -6523,7 +6733,10 @@ async function ttsFavoriteLine(line, btn) {
   try {
     const { blob, params } = await ttsSynthCached(line, false);
     const favId = `fav:${cacheKeyForTts(params.providerId, params)}`;
-    await blobStore.addFavorite(favId, blob, { speaker: line.speaker, text: line.text, format: params.format || 'mp3', provider: params.providerId }, line.text);
+    await blobStore.addFavorite(favId, blob, {
+      speaker: line.speaker, text: line.text,
+      format: params.fileExtension || 'mp3', provider: params.providerId,
+    }, line.text);
     toast('已收藏。', 'success');
   } catch (err) {
     toast(`收藏失败：${err?.message || err}`, 'error');
@@ -10235,16 +10448,19 @@ function coreadVoicePlayOrPopup(msg, speaker, btn) {
 // 改动写进 msg（speed/emotion）并存盘，重生成 force 跳缓存按新参数覆盖。
 function coreadOpenVoicePopup(msg, speaker, btn) {
   ttsCloseQuickPopup();
-  const curSpeed = Number.isFinite(msg.speed) ? msg.speed : Number(settings.tts?.defaultSpeed ?? 1);
+  const rawSpeed = Number.isFinite(msg.speed) ? msg.speed : Number(ttsProviderConfig().defaultSpeed ?? 1);
   const curEmotion = (msg.emotion && msg.emotion !== 'auto') ? msg.emotion : 'auto';
   const providerId = ttsProviderId();
+  const supportsSpeed = ttsProviderSupports(providerId, 'speed', ttsProviderConfig(providerId));
+  const speedRange = getTtsProvider(providerId).speedRange || { min: 0.5, max: 2, step: 0.05 };
+  const curSpeed = Math.min(speedRange.max, Math.max(speedRange.min, rawSpeed));
   const emoOptions = getTtsEmotionOptions(providerId, ttsProviderConfig(providerId))
     .map((option) => `<option value="${htmlEscape(option.value)}" ${option.value === curEmotion ? 'selected' : ''}>${htmlEscape(option.label)}</option>`)
     .join('');
   const pop = document.createElement('div');
   pop.className = `sd-tts-popup sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
   pop.innerHTML = `
-    <div class="sd-tts-popup-row"><span>语速</span><input type="range" class="sd-tts-pop-speed" min="0.5" max="2" step="0.05" value="${curSpeed}"><b class="sd-tts-pop-speed-val">${curSpeed.toFixed(2)}</b></div>
+    ${supportsSpeed ? `<div class="sd-tts-popup-row"><span>语速</span><input type="range" class="sd-tts-pop-speed" min="${speedRange.min}" max="${speedRange.max}" step="${speedRange.step}" value="${curSpeed}"><b class="sd-tts-pop-speed-val">${curSpeed.toFixed(2)}</b></div>` : ''}
     <div class="sd-tts-popup-row"><span>情绪</span><select class="sd-tts-pop-emotion">${emoOptions}</select></div>
     <div class="sd-tts-popup-actions">
       <button type="button" class="sd-tts-pop-icon sd-tts-pop-regen" title="按当前语速/情绪重新生成并播放"><i class="fa-solid fa-rotate"></i></button>
@@ -10257,9 +10473,9 @@ function coreadOpenVoicePopup(msg, speaker, btn) {
   pop.style.top = `${Math.min(window.innerHeight - pop.offsetHeight - 8, r.bottom + 6)}px`;
   const speedEl = pop.querySelector('.sd-tts-pop-speed');
   const speedVal = pop.querySelector('.sd-tts-pop-speed-val');
-  speedEl.addEventListener('input', () => { speedVal.textContent = Number(speedEl.value).toFixed(2); });
+  speedEl?.addEventListener('input', () => { if (speedVal) speedVal.textContent = Number(speedEl.value).toFixed(2); });
   const applyOverride = async () => {
-    msg.speed = Number(speedEl.value);
+    if (speedEl) msg.speed = Number(speedEl.value);
     msg.emotion = pop.querySelector('.sd-tts-pop-emotion').value;
     await coreadSaveDialog();
   };

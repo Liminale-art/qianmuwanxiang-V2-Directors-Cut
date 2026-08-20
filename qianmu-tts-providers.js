@@ -13,6 +13,24 @@ import {
   MINIMAX_SOUND_EFFECTS,
   emotionAllowedForModel,
 } from './qianmu-tts.js';
+import {
+  DOUBAO_EMOTIONS,
+  DOUBAO_ENDPOINT,
+  DOUBAO_FORMATS,
+  DOUBAO_MODELS,
+  doubaoCacheKey,
+  doubaoOutputExtension,
+  synthesizeDoubao,
+} from './qianmu-tts-doubao.js';
+import {
+  ELEVENLABS_ENDPOINT,
+  ELEVENLABS_FORMATS,
+  ELEVENLABS_MODELS,
+  elevenLabsCacheKey,
+  elevenLabsEmotionOptions,
+  elevenLabsOutputExtension,
+  synthesizeElevenLabs,
+} from './qianmu-tts-elevenlabs.js';
 
 export const DEFAULT_TTS_PROVIDER_ID = 'minimax';
 
@@ -42,6 +60,7 @@ const PROVIDERS = Object.freeze({
     label: 'MiniMax',
     description: 'MiniMax Speech 系列',
     testVoiceId: 'male-qn-qingse',
+    speedRange: Object.freeze({ min: 0.5, max: 2, step: 0.05 }),
     defaults: Object.freeze({
       apiKey: '',
       endpoint: MINIMAX_ENDPOINTS['国内 api.minimaxi.com'],
@@ -49,6 +68,9 @@ const PROVIDERS = Object.freeze({
       groupId: '',
       model: 'speech-2.8-hd',
       format: 'mp3',
+      defaultSpeed: 1,
+      defaultVol: 1,
+      defaultPitch: 0,
       voiceLibrary: [],
       pronunciationDict: [],
       languageBoost: 'auto',
@@ -61,7 +83,11 @@ const PROVIDERS = Object.freeze({
       npcArchetypes: [],
       npcAssignByChat: {},
     }),
-    models: MINIMAX_MODELS,
+    modelOptions: MINIMAX_MODELS.map((value) => ({ value, label: value })),
+    formatOptions: [
+      { value: 'mp3', label: 'MP3' }, { value: 'wav', label: 'WAV' },
+      { value: 'flac', label: 'FLAC' }, { value: 'opus', label: 'Opus' },
+    ],
     endpoints: MINIMAX_ENDPOINTS,
     languageBoostOptions: MINIMAX_LANGUAGE_BOOST,
     soundEffectOptions: MINIMAX_SOUND_EFFECTS,
@@ -79,6 +105,7 @@ const PROVIDERS = Object.freeze({
       const model = MINIMAX_MODELS.includes(config.model) ? config.model : 'speech-2.8-hd';
       return MINIMAX_EMOTION_OPTIONS.filter((option) => emotionAllowedForModel(option.value, model));
     },
+    hasCredentials(config = {}) { return !!String(config.apiKey || '').trim(); },
     async synthesize(params) {
       return synthesizeMinimax(params);
     },
@@ -86,6 +113,69 @@ const PROVIDERS = Object.freeze({
       // 保留既有 MiniMax 键格式，升级 Provider 架构后仍能命中用户原缓存。
       return minimaxCacheKey(params);
     },
+    outputExtension(config = {}) {
+      return ['mp3', 'wav', 'flac', 'opus'].includes(config.format) ? config.format : 'mp3';
+    },
+  }),
+  doubao: Object.freeze({
+    id: 'doubao',
+    label: '豆包语音',
+    description: '火山引擎豆包语音合成 V3',
+    testVoiceId: 'zh_female_vv_uranus_bigtts',
+    speedRange: Object.freeze({ min: 0.5, max: 2, step: 0.05 }),
+    defaults: Object.freeze({
+      apiKey: '', appId: '', accessKey: '', endpoint: DOUBAO_ENDPOINT, proxyBase: '',
+      model: 'seed-tts-2.0', format: 'mp3', sampleRate: 24000,
+      defaultSpeed: 1, defaultVol: 1, defaultPitch: 0,
+      voiceLibrary: [], npcArchetypes: [], npcAssignByChat: {},
+    }),
+    modelOptions: DOUBAO_MODELS,
+    formatOptions: DOUBAO_FORMATS,
+    capabilities: Object.freeze({
+      ...COMMON_LINE_ACTIONS,
+      emotion: true, speed: true, volume: true, pitch: true,
+      naturalLanguageDelivery: true,
+    }),
+    emotionOptions() { return DOUBAO_EMOTIONS; },
+    hasCredentials(config = {}) {
+      return !!String(config.apiKey || '').trim()
+        || (!!String(config.appId || '').trim() && !!String(config.accessKey || '').trim());
+    },
+    async synthesize(params) { return synthesizeDoubao(params); },
+    cacheKey(params) { return doubaoCacheKey(params); },
+    outputExtension(config = {}) { return doubaoOutputExtension(config.format); },
+  }),
+  elevenlabs: Object.freeze({
+    id: 'elevenlabs',
+    label: 'ElevenLabs',
+    description: 'ElevenLabs v3 / Multilingual / Flash',
+    testVoiceId: 'JBFqnCBsd6RMkjVDRZzb',
+    speedRange: Object.freeze({ min: 0.7, max: 1.2, step: 0.05 }),
+    defaults: Object.freeze({
+      apiKey: '', endpoint: ELEVENLABS_ENDPOINT, proxyBase: '',
+      model: 'eleven_multilingual_v2', format: 'mp3_44100_128',
+      defaultSpeed: 1,
+      stability: 0.5, similarityBoost: 0.75, style: 0, speakerBoost: true,
+      languageCode: '', applyTextNormalization: 'auto',
+      voiceLibrary: [], npcArchetypes: [], npcAssignByChat: {},
+    }),
+    modelOptions: ELEVENLABS_MODELS,
+    formatOptions: ELEVENLABS_FORMATS,
+    capabilities: Object.freeze({
+      ...COMMON_LINE_ACTIONS,
+      emotion: true, speed: true, voiceStability: true, voiceSimilarity: true,
+      style: true, speakerBoost: true, languageCode: true,
+    }),
+    capabilityFor(capability, config = {}) {
+      // Eleven v3 的语速由音频标签/文本结构控制，API speed 参数不可用。
+      if (capability === 'speed' && config.model === 'eleven_v3') return false;
+      return this.capabilities?.[capability] === true;
+    },
+    emotionOptions(config = {}) { return elevenLabsEmotionOptions(config); },
+    hasCredentials(config = {}) { return !!String(config.apiKey || '').trim(); },
+    async synthesize(params) { return synthesizeElevenLabs(params); },
+    cacheKey(params) { return elevenLabsCacheKey(params); },
+    outputExtension(config = {}) { return elevenLabsOutputExtension(config.format); },
   }),
 });
 
@@ -150,6 +240,16 @@ export function migrateTtsProviderSettingsState(tts) {
     state._providerSettingsMigrated = true;
   }
 
+  // 单元 1 曾暂时把三项默认参数保留在通用层；单元 2 起按 Provider 分别记忆。
+  if (!state._providerParamsMigrated) {
+    const minimax = state.providers.minimax || (state.providers.minimax = createTtsProviderDefaults('minimax'));
+    for (const key of ['defaultSpeed', 'defaultVol', 'defaultPitch']) {
+      if (Object.prototype.hasOwnProperty.call(state, key)) minimax[key] = copySetting(state[key]);
+      delete state[key];
+    }
+    state._providerParamsMigrated = true;
+  }
+
   for (const provider of listTtsProviders()) {
     if (!state.providers[provider.id] || typeof state.providers[provider.id] !== 'object') {
       state.providers[provider.id] = createTtsProviderDefaults(provider.id);
@@ -167,8 +267,18 @@ export function getTtsEmotionOptions(providerId, config = {}) {
     : [{ value: 'auto', label: '自动' }];
 }
 
-export function ttsProviderSupports(providerId, capability) {
-  return getTtsProvider(providerId).capabilities?.[capability] === true;
+export function ttsProviderSupports(providerId, capability, config = {}) {
+  const provider = getTtsProvider(providerId);
+  return typeof provider.capabilityFor === 'function'
+    ? provider.capabilityFor(capability, config)
+    : provider.capabilities?.[capability] === true;
+}
+
+export function ttsProviderHasCredentials(providerId, config = {}) {
+  const provider = getTtsProvider(providerId);
+  return typeof provider.hasCredentials === 'function'
+    ? provider.hasCredentials(config)
+    : !!String(config.apiKey || '').trim();
 }
 
 export async function synthesizeTts(providerId, params = {}) {
@@ -180,6 +290,11 @@ export function cacheKeyForTts(providerId, params = {}) {
   const provider = getTtsProvider(providerId);
   if (typeof provider.cacheKey !== 'function') throw new Error(`配音模型 ${provider.label} 未实现缓存键`);
   return provider.cacheKey({ ...params, providerId: provider.id });
+}
+
+export function outputExtensionForTts(providerId, config = {}) {
+  const provider = getTtsProvider(providerId);
+  return typeof provider.outputExtension === 'function' ? provider.outputExtension(config) : 'mp3';
 }
 
 // 开发期守卫：任何可选 Provider 都必须保留正文三项核心动作。
