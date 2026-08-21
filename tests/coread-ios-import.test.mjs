@@ -23,4 +23,10 @@ assert.match(openBook, /coreadShowRefillChooser\(bookId\)/, '正文未缓存时�
 assert.doesNotMatch(openBook, /confirmDialog[\s\S]*coreadTriggerImport/, '正文未缓存路径不得等待确认后再触发文件选择');
 assert.match(css, /\.sd-reader-refill-overlay\s*\{[^}]*position:\s*fixed[^}]*z-index:/, '补正文选择层必须覆盖当前书架界面');
 
+const center = source.slice(source.indexOf('function renderCoreadPackBar'), source.indexOf('function renderCompanionMoreBody'));
+const centerBinding = source.slice(source.indexOf("morePage?.addEventListener('change'"), source.indexOf("morePage?.addEventListener('input'"));
+assert.match(center, /sd-reader-pack-import[\s\S]*<input type="file" class="sd-reader-pack-import-input sd-reader-native-file"/, '伴读中心数据包导入必须使用常驻原生文件控件');
+assert.match(centerBinding, /sd-reader-pack-import-input[\s\S]*packInput\.value = ''[\s\S]*coreadImportDataFile\(file\)/, '伴读数据包选择后必须清空控件并进入统一导入器');
+assert.match(css, /\.sd-reader-pack-import \.sd-reader-pack-import-input\s*\{[^}]*inset:\s*0[^}]*width:\s*100%[^}]*height:\s*100%/, '数据包文件控件必须覆盖导入图标以兼容 iOS');
+
 console.log('Coread iOS import contract OK');

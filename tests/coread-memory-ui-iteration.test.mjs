@@ -7,7 +7,9 @@ const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 const setup = source.slice(source.indexOf('function renderCompanionSetupBody'), source.indexOf('function renderReaderVoiceClips'));
 assert.ok(setup.indexOf('renderCoreadSpoilerGuard(m)') < setup.indexOf('对话与可见范围'), '防剧透卡必须位于对话与可见范围上方');
 assert.match(setup, /sd-reader-setup-compact-grid[\s\S]*字数上限[\s\S]*每次回复条数[\s\S]*参考近期对话条数[\s\S]*语音条缓存上限/, '四项数值设置必须使用紧凑网格');
+assert.match(setup, /sd-reader-identity-card[\s\S]*书友：[\s\S]*我：[\s\S]*sd-reader-context-card[\s\S]*参考上下文层数/, '身份标签与参考上下文必须拆为两张卡');
 assert.doesNotMatch(setup, /控制书友能看见多少|超长篇按比例截取/, '设定页指定说明小字必须移除');
+assert.doesNotMatch(setup, /身份与正文联动|身份跟随 ST 当前角色与用户|独立于主线选择|伴读世界书<\/label>|伴读预设<\/label>/, '设定页指定旧标题和取材说明必须移除');
 assert.match(css, /\.sd-reader-setup-compact-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2/, '紧凑设置在窄屏也应保持二列基础布局');
 
 const records = source.slice(source.indexOf('function renderMemRecordsTab'), source.indexOf('function renderMemInjectTab'));
@@ -19,9 +21,11 @@ assert.doesNotMatch(records, /sd-reader-distillprompt-restore|sd-reader-mainline
 assert.match(records, /sd-reader-guide-replay/, '记忆档案末尾必须提供重看引导入口');
 assert.match(css, /\.sd-reader-promptblock[^{]*\{[^}]*border:[^}]*border-radius:/, '三类提示词必须使用统一折叠卡');
 
-const guide = source.slice(source.indexOf('function renderCoreadGuide'), source.indexOf('function renderCompanionMoreBody'));
-assert.match(guide, /控制书友视野[\s\S]*生成记忆切片[\s\S]*理解召回数量[\s\S]*选择同步方式/, '首次教程必须覆盖四项核心概念');
-assert.match(source, /if \(!m\.guideSeen\) return renderCoreadGuide\(\)/, '首次进入伴读中心必须显示引导态');
+const guide = source.slice(source.indexOf('const COREAD_GUIDE_STEPS'), source.indexOf('function renderCompanionMoreBody'));
+assert.match(guide, /tab: 'api'[\s\S]*tab: 'setup'[\s\S]*target: 'sources'[\s\S]*tab: 'records'[\s\S]*tab: 'inject'[\s\S]*target: 'transfer'/, '首次教程必须按接口、设定、取材、档案、注入和迁移逐步引导');
+assert.match(guide, /sd-reader-tour-prev[\s\S]*sd-reader-tour-next/, '逐步教程必须提供箭头式上一步和下一步');
+assert.match(source, /if \(!m\.guideSeen && coreadGuideStep === null\) coreadGuideStep = 0/, '首次进入伴读中心必须自动启动逐步引导');
+assert.match(css, /\.sd-reader-tour-target[^{]*\{[^}]*outline:[^}]*animation:/, '当前引导卡必须有明确高亮视觉');
 
 const inject = source.slice(source.indexOf('function renderMemInjectTab'), source.indexOf('function renderCompanionSetupBody'));
 assert.match(inject, /语境扫描对话条数[\s\S]*sd-reader-inj-scan/, '语境扫描条数必须允许用户设置');

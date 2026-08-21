@@ -289,6 +289,29 @@ export async function getReaderImage(bookId, n) {
   return reqP(s.get(imageKey(bookId, n)));
 }
 
+// 全量列出书内插图（伴读整包导出用）。返回 [{ key, blob }]。
+export async function listReaderImages() {
+  const s = await store(STORE_IMAGES, 'readonly');
+  const out = [];
+  await new Promise((resolve, reject) => {
+    const cur = s.openCursor();
+    cur.onsuccess = () => {
+      const c = cur.result;
+      if (!c) { resolve(); return; }
+      out.push({ key: String(c.key), blob: c.value });
+      c.continue();
+    };
+    cur.onerror = () => reject(cur.error);
+  });
+  return out;
+}
+
+export async function putReaderImageByKey(key, blob) {
+  const s = await store(STORE_IMAGES, 'readwrite');
+  await reqP(s.put(blob, String(key)));
+  return key;
+}
+
 // 删除某本书的全部插图（按 `${bookId}::` 前缀清理）。
 export async function deleteReaderImages(bookId) {
   const prefix = `${bookId}::`;
@@ -345,6 +368,12 @@ export async function putReaderVectors(bucketKey, record) {
 export async function deleteReaderVectors(bucketKey) {
   const s = await store(STORE_VECTORS, 'readwrite');
   await reqP(s.delete(bucketKey));
+}
+
+export async function listReaderVectorKeys() {
+  const s = await store(STORE_VECTORS, 'readonly');
+  const keys = await reqP(s.getAllKeys ? s.getAllKeys() : s.getAll());
+  return Array.isArray(keys) ? keys : [];
 }
 
 // ── 伴读：检索日志（环形，保留最近 maxEntries 条）──────────

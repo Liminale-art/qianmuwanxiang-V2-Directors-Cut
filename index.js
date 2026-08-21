@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.18.0';
+const VERSION = '1.19.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -8236,6 +8236,7 @@ let companionWorldView = '';     // 伴读设定浮层中：当前查看条目�
 let companionPresetView = '';    // 伴读设定浮层中：当前查看条目的预设名
 let coreadCurrentDictId = '';    // 注入状态tab：当前查看/编辑的词典册ID（空=默认整册视图）
 let coreadWorldSyncBusy = false; // 世界书镜像切换/批量同步互斥，防止连续切换造成交叉写入
+let coreadGuideStep = null;      // 首次引导仅是本次打开时的临时游标；完成态才持久化
 
 function coread() {
   if (!isPlainObject(settings.coread)) settings.coread = clone(DEFAULT_SETTINGS.coread);
@@ -12360,26 +12361,65 @@ function renderCoreadSpoilerGuard(m) {
   </label>`;
 }
 
+const COREAD_GUIDE_STEPS = [
+  { tab: 'api', target: 'api', icon: 'fa-plug-circle-check', title: '连接模型接口', text: '先确认对话 API。可直接跟随 SillyTavern 当前连接，也可选择千幕自定义预设；总结、向量与重排按需配置。' },
+  { tab: 'setup', target: 'context', icon: 'fa-link', title: '确认正文联动', text: '设置伴读参考最近多少层正文聊天。身份会自动跟随当前角色与用户，无需重复填写。' },
+  { tab: 'setup', target: 'sources', icon: 'fa-layer-group', title: '选择伴读取材', text: '按需勾选世界书和预设条目。防剧透会继续按阅读水位隔离尚未读到的内容。' },
+  { tab: 'records', target: 'records', icon: 'fa-box-archive', title: '建立伴读记忆', text: '正文、伴读短对话和主线选段会汇入同一份千幕档案；可在这里总结、整理和折叠管理切片。' },
+  { tab: 'inject', target: 'inject', icon: 'fa-wave-square', title: '检查实际注入', text: '这里回放最近一次真正带入模型的切片，并可调整近景、检索、语境扫描和主线联动数量。' },
+  { tab: 'records', target: 'transfer', icon: 'fa-box-open', title: '备份与跨设备迁移', text: '用伴读数据包一次带走书籍、封面、插图、对话、记忆切片、向量和伴读语音。为安全起见，API 密钥不会写入文件。' },
+];
+
+function coreadGuideSteps() {
+  return COREAD_MEMORY_ENABLED ? COREAD_GUIDE_STEPS : COREAD_GUIDE_STEPS.filter((step) => !['records', 'inject'].includes(step.tab));
+}
+
+function coreadGuideCurrent() {
+  if (coreadGuideStep === null) return null;
+  return coreadGuideSteps()[coreadGuideStep] || null;
+}
+
+function coreadGuideTargetClass(target) {
+  return coreadGuideCurrent()?.target === target ? ' sd-reader-tour-target' : '';
+}
+
 function renderCoreadGuide() {
-  return `<section class="sd-reader-guide">
-    <div class="sd-reader-guide-hero">
-      <span><i class="fa-solid fa-book-open-reader"></i></span>
-      <div><b>先认识伴读记忆</b><small>四步看懂正文、短对话与主线如何使用同一份记忆</small></div>
+  const steps = coreadGuideSteps();
+  const step = coreadGuideCurrent();
+  if (!step) return '';
+  const index = Math.max(0, Math.min(steps.length - 1, coreadGuideStep));
+  return `<aside class="sd-reader-tour" role="dialog" aria-label="伴读快速引导">
+    <div class="sd-reader-tour-icon"><i class="fa-solid ${step.icon}"></i></div>
+    <div class="sd-reader-tour-copy">
+      <span class="sd-reader-tour-count">${index + 1} / ${steps.length}</span>
+      <b>${htmlEscape(step.title)}</b>
+      <p>${htmlEscape(step.text)}</p>
     </div>
-    <div class="sd-reader-guide-grid">
-      <article><span>1</span><div><b>控制书友视野</b><p>防剧透会按当前阅读进度隔离后文章节形成的切片；可读范围决定书友能回看多少正文。</p></div></article>
-      <article><span>2</span><div><b>生成记忆切片</b><p>伴读对话、已读正文和主线选段都进入同一切片池。自动总结适合连续阅读，手动总结用于补整或重整指定区间。</p></div></article>
-      <article><span>3</span><div><b>理解召回数量</b><p>近景切片会固定带入最近记忆；检索命中会从扫描语境中寻找相关切片。向量与重排是可选增强，关闭也能用关键词召回。</p></div></article>
-      <article><span>4</span><div><b>选择同步方式</b><p>记忆始终保存在千幕档案并由同一切片池召回。默认不占用世界书；需要外部查看时，可镜像到千幕独立世界书或正文同本世界书。</p></div></article>
+    <div class="sd-reader-tour-actions">
+      <button type="button" class="sd-reader-tour-skip" title="跳过引导">跳过</button>
+      <button type="button" class="sd-reader-tour-prev" title="上一步"${index ? '' : ' disabled'}><i class="fa-solid fa-arrow-left"></i></button>
+      <button type="button" class="sd-reader-tour-next" title="${index === steps.length - 1 ? '完成' : '下一步'}"><i class="fa-solid ${index === steps.length - 1 ? 'fa-check' : 'fa-arrow-right'}"></i></button>
     </div>
-    <button type="button" class="sd-btn sd-primary sd-reader-guide-finish"><i class="fa-solid fa-check"></i>进入伴读中心</button>
+  </aside>`;
+}
+
+function renderCoreadPackBar() {
+  return `<section class="sd-reader-packbar${coreadGuideTargetClass('transfer')}">
+    <span class="sd-reader-packbar-icon"><i class="fa-solid fa-box-open"></i></span>
+    <span class="sd-reader-packbar-copy"><b>伴读数据包</b><small>整包迁移与备份 · 不含 API 密钥</small></span>
+    <span class="sd-reader-packbar-actions">
+      <button type="button" class="sd-reader-pack-export" title="导出伴读数据包"><i class="fa-solid fa-file-export"></i></button>
+      <label class="sd-reader-pack-import" title="导入伴读数据包"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-pack-import-input sd-reader-native-file" accept="application/json,.json"></label>
+    </span>
   </section>`;
 }
 
 function renderCompanionMoreBody() {
   const m = coreadMemory();
-  if (!m.guideSeen) return renderCoreadGuide();
-  const tab = (!COREAD_MEMORY_ENABLED && ['records', 'inject'].includes(m.moreTab)) ? 'setup' : m.moreTab;
+  if (!m.guideSeen && coreadGuideStep === null) coreadGuideStep = 0;
+  const guide = coreadGuideCurrent();
+  const requestedTab = guide?.tab || m.moreTab;
+  const tab = (!COREAD_MEMORY_ENABLED && ['records', 'inject'].includes(requestedTab)) ? 'setup' : requestedTab;
   // 当前 ST 连接现状（跟随档展示，让用户心里有数）
   let backend = '', model = '';
   try {
@@ -12405,7 +12445,7 @@ function renderCompanionMoreBody() {
     const ext = m.dialogProvider === 'external';
     const profiles = Array.isArray(settings.apiProfiles) ? settings.apiProfiles : [];
     panel = `
-      <div class="sd-reader-mcard">
+      <div class="sd-reader-mcard${coreadGuideTargetClass('api')}">
         <div class="sd-reader-mcard-head"><i class="fa-solid fa-comments"></i> 对话 API</div>
         <div class="sd-reader-mradio">
           <label class="sd-reader-mradio-opt ${!ext ? 'active' : ''}"><input type="radio" name="sd-reader-dialogprov" value="sillytavern"${!ext ? ' checked' : ''}><span>跟随 SillyTavern 当前连接</span></label>
@@ -12441,7 +12481,7 @@ function renderCompanionMoreBody() {
   } else {
     panel = renderMemInjectTab(m);
   }
-  return renderCoreadCenterStatus(m) + tabBar + `<div class="sd-reader-mtab-body">${panel}</div>`;
+  return renderCoreadCenterStatus(m) + tabBar + renderCoreadGuide() + renderCoreadPackBar() + `<div class="sd-reader-mtab-body">${panel}</div>`;
 }
 
 // 记忆记录 tab：①总结提示词(条目式·内置硬格式+自定义) ②自动/手动总结设置 ③切片列表(折叠·可编辑) ④切片二次总结。
@@ -12503,7 +12543,7 @@ function renderMemRecordsTab(m) {
   const boundary = readerDialog.readBoundary || coreadCurrentReadBoundarySync(readerDialog.bookId);
   const blockedN = slices.length - coreadSafeSlices(slices, boundary, m).length;
   const archiveOverview = `
-    <section class="sd-reader-memory-overview">
+    <section class="sd-reader-memory-overview${coreadGuideTargetClass('records')}">
       <div class="sd-reader-memory-title"><span><i class="fa-solid fa-book-bookmark"></i></span><div><b>${curBook ? `《${htmlEscape(curBook.title || '未命名')}》` : '当前伴读档案'}</b><small>${msgsLen} 条对话 · 已整理 ${cursor} 条</small></div></div>
       <div class="sd-reader-memory-stats">
         <span><b>${slices.length}</b><small>记忆切片</small></span>
@@ -12658,7 +12698,7 @@ function renderMemInjectTab(m) {
         <div class="sd-reader-injslice-full">${htmlEscape(h.slice.summary || '')}</div>
         <div class="sd-reader-injslice-keys">${kwTags(h)}</div>
       </div>`).join('')
-    : '<div class="sd-reader-mempty">尚无真实注入记录。与书友聊上一句、或触发一次主线联动后，这里会回放那次实际带入模型的切片。</div>';
+    : '<div class="sd-reader-mempty">尚无注入记录</div>';
 
   // ② 召回候选：编号 + 来源徽标 + 关键词（锚定词点亮）+ 命中数 + 分数
   const candRows = recall.length
@@ -12731,7 +12771,7 @@ function renderMemInjectTab(m) {
     </div>`;
 
   return `
-    <details class="sd-reader-mcard" open>
+    <details class="sd-reader-mcard${coreadGuideTargetClass('inject')}" open>
       <summary class="sd-reader-mcard-head"><i class="fa-solid fa-syringe"></i> 实际注入 <span class="sd-reader-inj-tag">${injected.length} 条</span>${li ? `<span class="sd-reader-inj-tag">最近一次·${liChannelLabel}</span>` : ''}</summary>
       <div class="sd-reader-injslices">${injCards}</div>
     </details>
@@ -12848,15 +12888,13 @@ function renderCompanionSetupBody() {
   const pct = Math.max(3, Math.min(60, Number(cp.visiblePercent) || 15));
   const cap = Math.max(200, Number(cp.visibleCharsBefore) || 6000);
   return `
-    <section class="sd-reader-center-section">
-      <div class="sd-reader-center-section-head"><span><i class="fa-solid fa-users"></i><b>身份与正文联动</b></span><small>身份跟随 ST 当前角色与用户</small></div>
-    <div class="sd-reader-setup-row">
+    <section class="sd-reader-center-section sd-reader-identity-card${coreadGuideTargetClass('identity')}">
       <div class="sd-reader-setup-tags">
         <span class="sd-reader-setup-tag"><i class="fa-solid fa-user"></i> 书友：${htmlEscape(stChar)}</span>
         <span class="sd-reader-setup-tag"><i class="fa-solid fa-circle-user"></i> 我：${htmlEscape(stUser)}</span>
       </div>
-    </div>
-    <div class="sd-reader-setup-row">
+    </section>
+    <section class="sd-reader-center-section sd-reader-context-card${coreadGuideTargetClass('context')}">
       <div class="sd-reader-setup-numrow">
         <label class="sd-reader-setup-lab">参考上下文层数</label>
         <div class="sd-reader-setup-numgroup">
@@ -12864,13 +12902,12 @@ function renderCompanionSetupBody() {
           <input type="number" class="sd-reader-setup-num sd-reader-setup-chatctx-floors" min="1" step="1" value="${cp.chatCtxFloors}"${cp.chatCtxEnabled ? '' : ' disabled'}>
         </div>
       </div>
-    </div>
     </section>
-    <section class="sd-reader-center-section">
-      <div class="sd-reader-center-section-head"><span><i class="fa-solid fa-layer-group"></i><b>伴读取材</b></span><small>仅影响伴读，不改动正文取材选择</small></div>
+    <section class="sd-reader-center-section${coreadGuideTargetClass('sources')}">
+      <div class="sd-reader-center-section-head"><span><i class="fa-solid fa-layer-group"></i><b>伴读取材</b></span></div>
     <div class="sd-reader-setup-row">
       <div class="sd-reader-cwb-head">
-        <span><label class="sd-reader-setup-lab">伴读世界书</label><em class="sd-muted" style="font-size:.78em">独立于主线选择</em></span>
+        <span><label class="sd-reader-setup-lab">世界书</label></span>
         <button class="sd-btn sd-reader-cwb-scan"><i class="fa-solid fa-rotate"></i> ${allNames.length ? '刷新' : '加载'}</button>
       </div>
       ${allNames.length
@@ -12888,7 +12925,7 @@ function renderCompanionSetupBody() {
     </div>
     <div class="sd-reader-setup-row">
       <div class="sd-reader-cwb-head">
-        <span><label class="sd-reader-setup-lab">伴读预设</label><em class="sd-muted" style="font-size:.78em">独立于主线选择</em></span>
+        <span><label class="sd-reader-setup-lab">预设</label></span>
         <button class="sd-btn sd-reader-cps-scan"><i class="fa-solid fa-rotate"></i> ${presetNames.length ? '刷新' : '加载'}</button>
       </div>
       ${presetNames.length
@@ -13352,7 +13389,12 @@ function bindReaderStageEvents(stageRoot) {
   // ── 伴读中心：设定、记忆、注入与模型接口统一为一个全屏入口 ──
   const morePage = q('.sd-reader-morepage');
   const setupOverlay = morePage;   // 复用既有设定事件委托，不再维护独立浮层
-  const rerenderMore = () => { const body = morePage?.querySelector('.sd-reader-more-body'); if (body) body.innerHTML = renderCompanionMoreBody(); };
+  const rerenderMore = () => {
+    const body = morePage?.querySelector('.sd-reader-more-body');
+    if (!body) return;
+    body.innerHTML = renderCompanionMoreBody();
+    setTimeout(() => morePage.querySelector('.sd-reader-tour-target')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0);
+  };
   const rerenderSetup = () => { const body = morePage?.querySelector('.sd-reader-setup-body'); if (body) { body.innerHTML = renderCompanionSetupBody(); applyAccState(morePage); } };
   rerenderMoreIfOpen = () => { if (morePage && !morePage.hidden) rerenderMore(); };
   const prepareCompanionSetup = async () => {
@@ -13387,19 +13429,48 @@ function bindReaderStageEvents(stageRoot) {
   q('.sd-reader-more-close')?.addEventListener('click', () => { if (morePage) morePage.hidden = true; });
   // 面板 tab 切换 + 向量/重排接口操作按钮（重渲后仍生效·事件委托）
   morePage?.addEventListener('click', (e) => {
-    if (e.target.closest('.sd-reader-guide-finish')) {
+    if (e.target.closest('.sd-reader-tour-skip')) {
+      coreadGuideStep = null;
       coreadMemory().guideSeen = true;
       saveSettings(); rerenderMore();
-      if (coreadMemory().moreTab === 'setup') void prepareCompanionSetup();
+      return;
+    }
+    if (e.target.closest('.sd-reader-tour-prev')) {
+      coreadGuideStep = Math.max(0, Number(coreadGuideStep) - 1);
+      rerenderMore();
+      if (coreadGuideCurrent()?.tab === 'setup') void prepareCompanionSetup();
+      return;
+    }
+    if (e.target.closest('.sd-reader-tour-next')) {
+      const last = coreadGuideSteps().length - 1;
+      if (Number(coreadGuideStep) >= last) {
+        coreadGuideStep = null;
+        coreadMemory().guideSeen = true;
+        coreadMemory().moreTab = 'setup';
+        saveSettings(); rerenderMore(); void prepareCompanionSetup();
+      } else {
+        coreadGuideStep = Math.min(last, Number(coreadGuideStep) + 1);
+        rerenderMore();
+        if (coreadGuideCurrent()?.tab === 'setup') void prepareCompanionSetup();
+      }
       return;
     }
     if (e.target.closest('.sd-reader-guide-replay')) {
       coreadMemory().guideSeen = false;
+      coreadGuideStep = 0;
       saveSettings(); rerenderMore();
+      return;
+    }
+    if (e.target.closest('.sd-reader-pack-export')) {
+      void coreadExportData();
       return;
     }
     const mtab = e.target.closest('.sd-reader-mtab');
     if (mtab) {
+      if (coreadGuideStep !== null) {
+        coreadGuideStep = null;
+        coreadMemory().guideSeen = true;
+      }
       coreadMemory().moreTab = mtab.dataset.mtab;
       saveSettings(); rerenderMore();
       if (mtab.dataset.mtab === 'setup') void prepareCompanionSetup();
@@ -13698,6 +13769,13 @@ function bindReaderStageEvents(stageRoot) {
     }
   });
   morePage?.addEventListener('change', (e) => {
+    const packInput = e.target.closest('.sd-reader-pack-import-input');
+    if (packInput) {
+      const file = packInput.files?.[0];
+      packInput.value = '';
+      void coreadImportDataFile(file);
+      return;
+    }
     const m = coreadMemory();
     const prov = e.target.closest('input[name="sd-reader-dialogprov"]');
     if (prov) { m.dialogProvider = prov.value === 'external' ? 'external' : 'sillytavern'; saveSettings(); rerenderMore(); return; }
@@ -14154,20 +14232,65 @@ function saveNoteEdit(stageRoot) {
   updateReaderArticle(stageRoot);   // 同步列表标签（摘录↔笔记）
 }
 
-/* ── 阅读数据导入 / 导出（整模块：书目索引 + 正文 + 封面 + 笔记 + 会话；语音 1B 接入后并入） ── */
+/* ── 伴读整包导入 / 导出（正文、媒体、对话、记忆、向量与设置；凭据永不出端） ── */
+
+function coreadIsCredentialKey(key) {
+  const k = String(key || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+  return k === 'apikey' || k.endsWith('apikey') || k === 'accesskey' || k.endsWith('accesskey')
+    || k === 'secret' || k === 'secretkey' || k.endsWith('secretkey') || k === 'authorization'
+    || k === 'password' || k === 'token' || k.endsWith('accesstoken') || k.endsWith('refreshtoken')
+    || k.endsWith('authtoken') || k.endsWith('bearertoken') || k.endsWith('clientsecret');
+}
+
+function coreadSanitizePackageValue(value) {
+  if (Array.isArray(value)) return value.map((item) => coreadSanitizePackageValue(item));
+  if (!isPlainObject(value)) return value;
+  const out = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (coreadIsCredentialKey(key) || key === 'books') continue;
+    out[key] = coreadSanitizePackageValue(item);
+  }
+  return out;
+}
+
+// 深合并时跳过凭据字段；对象数组按 id/name 对齐本机条目，避免导入无密钥版本时清空现有密钥。
+function coreadMergePackageValue(target, source) {
+  if (!isPlainObject(source)) return target;
+  for (const [key, value] of Object.entries(source)) {
+    if (key === 'books' || key === 'enabled' || coreadIsCredentialKey(key)) continue;
+    if (Array.isArray(value)) {
+      const local = Array.isArray(target[key]) ? target[key] : [];
+      target[key] = value.map((item, index) => {
+        if (!isPlainObject(item)) return item;
+        const match = local.find((old) => isPlainObject(old) && ((item.id && old.id === item.id) || (item.name && old.name === item.name))) || local[index];
+        const next = isPlainObject(match) ? clone(match) : {};
+        coreadMergePackageValue(next, item);
+        return next;
+      });
+    } else if (isPlainObject(value)) {
+      if (!isPlainObject(target[key])) target[key] = {};
+      coreadMergePackageValue(target[key], value);
+    } else {
+      target[key] = value;
+    }
+  }
+  return target;
+}
 
 async function coreadExportData() {
   if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地存储，无法导出。', 'error'); return; }
+  toast('正在整理伴读数据包…', 'info');
+  if (readerDialog.loaded) { try { await coreadSaveDialog(); } catch (_) {} }
   const books = [];
   for (const meta of coread().books || []) {
     let rec = null;
     try { rec = await blobStore.getBook(meta.id); } catch (_) {}
-    let coverB64 = '';
+    let coverB64 = '', coverMime = '';
     try {
       const cover = await blobStore.getCover(meta.id);
-      if (cover) coverB64 = await blobToBase64(cover);
+      if (cover) { coverB64 = await blobToBase64(cover); coverMime = cover.type || 'image/jpeg'; }
     } catch (_) {}
-    books.push({ meta, fullText: rec?.fullText || '', chapters: rec?.chapters || [], sig: rec?.sig || '', coverB64 });
+    books.push({ meta, fullText: rec?.fullText || '', chapters: rec?.chapters || [], sig: rec?.sig || '', coverB64, coverMime });
   }
   // 伴读对话 + 记忆切片：存 IndexedDB reader_chats（bucketKey=chatKey::bookId·含 messages/slices/cursor/names）。
   // 全量导出所有 bucket——换端后对话与蒸馏出的记忆切片可整体复原（语音条文本随 messages 走·音频可重生成）。
@@ -14178,28 +14301,50 @@ async function coreadExportData() {
       if (rec) chats.push({ key, rec });
     }
   } catch (e) { console.warn(`[${MODULE_NAME}] export chats failed`, e); }
+  const images = [];
+  try {
+    for (const item of await blobStore.listReaderImages()) {
+      if (!item?.key || !item.blob) continue;
+      images.push({ key: item.key, b64: await blobToBase64(item.blob), mime: item.blob.type || 'image/*' });
+    }
+  } catch (e) { console.warn(`[${MODULE_NAME}] export reader images failed`, e); }
+  const vectors = [];
+  try {
+    for (const key of await blobStore.listReaderVectorKeys()) {
+      const rec = await blobStore.getReaderVectors(key);
+      if (rec) vectors.push({ key, rec });
+    }
+  } catch (e) { console.warn(`[${MODULE_NAME}] export vectors failed`, e); }
+  const audio = [];
+  try {
+    const allAudio = await blobStore.listAudio();
+    for (const item of allAudio.filter((entry) => entry?.meta?.source === 'coread')) {
+      if (!item?.key || !item.blob) continue;
+      audio.push({ key: item.key, b64: await blobToBase64(item.blob), mime: item.blob.type || 'audio/mpeg', meta: item.meta || {}, createdAt: item.createdAt || 0 });
+    }
+  } catch (e) { console.warn(`[${MODULE_NAME}] export coread audio failed`, e); }
+  let retrievalLogs = [];
+  try { retrievalLogs = await blobStore.listRetLog(); } catch (e) { console.warn(`[${MODULE_NAME}] export retrieval logs failed`, e); }
   const payload = {
-    type: 'qianmu-coread', version: 2, exportedAt: new Date().toISOString(),
-    prefs: { ...coread(), books: undefined },   // 偏好（不含书目，书目随 books 走）
+    type: 'qianmu-coread', version: 3, exportedAt: new Date().toISOString(), credentialsIncluded: false,
+    prefs: coreadSanitizePackageValue(coread()),
     books,
     chats,
+    images,
+    vectors,
+    audio,
+    retrievalLogs,
   };
-  delete payload.prefs.books;
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `qianmu-coread-${fileStamp()}.json`;
+  a.href = url; a.download = `qianmu-coread-pack-${fileStamp()}.json`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
-  toast(`已导出阅读数据：${books.length} 本书。`, 'success');
+  toast(`伴读数据包已导出：${books.length} 本书 · ${chats.length} 段对话 · ${images.length} 张插图 · ${audio.length} 条语音。`, 'success');
 }
 
-function coreadImportData() {
-  const input = document.createElement('input');
-  input.type = 'file'; input.accept = 'application/json,.json'; input.style.display = 'none';
-  document.body.appendChild(input);
-  input.addEventListener('change', async () => {
-    const file = input.files?.[0]; input.remove();
+async function coreadImportDataFile(file) {
     if (!file) return;
     let data;
     try {
@@ -14208,13 +14353,14 @@ function coreadImportData() {
     } catch (_) { toast('导入失败：不是有效的千幕阅读数据文件。', 'error'); return; }
     if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地存储，无法导入。', 'error'); return; }
     const chatN = Array.isArray(data.chats) ? data.chats.length : 0;
-    if (!await confirmDialog('导入阅读数据', `将导入 ${data.books.length} 本书的正文、笔记与阅读进度${chatN ? `，以及 ${chatN} 段伴读对话与记忆切片` : ''}。同 id 的书 / 同会话会被覆盖，是否继续？`)) return;
+    const mediaN = (Array.isArray(data.images) ? data.images.length : 0) + (Array.isArray(data.audio) ? data.audio.length : 0);
+    if (!await confirmDialog('导入伴读数据包', `将导入 ${data.books.length} 本书${chatN ? `、${chatN} 段伴读对话与记忆` : ''}${mediaN ? `、${mediaN} 项媒体` : ''}。同 id 的书和会话会被覆盖；API 密钥沿用本机设置。是否继续？`)) return;
     let ok = 0;
     for (const b of data.books) {
       if (!b?.meta?.id) continue;
       try {
         await blobStore.putBook(b.meta.id, { meta: { title: b.meta.title, author: b.meta.author }, fullText: b.fullText || '', chapters: b.chapters || [], sig: b.sig || '' });
-        if (b.coverB64) { try { await blobStore.putCover(b.meta.id, base64ToBlob(b.coverB64)); b.meta.hasCover = true; } catch (_) {} }
+        if (b.coverB64) { try { await blobStore.putCover(b.meta.id, base64ToBlob(b.coverB64, b.coverMime || 'image/jpeg')); b.meta.hasCover = true; } catch (_) {} }
         const idx = (coread().books || []).findIndex((x) => x.id === b.meta.id);
         if (idx >= 0) coread().books[idx] = b.meta; else coread().books.unshift(b.meta);
         ok++;
@@ -14228,16 +14374,60 @@ function coreadImportData() {
         try { await blobStore.putReaderChat(c.key, c.rec); chatOk++; } catch (e) { console.warn(`[${MODULE_NAME}] import chat failed`, e); }
       }
     }
-    // 偏好并入（保留本机书目，不被覆盖）
-    if (isPlainObject(data.prefs)) {
-      for (const k of Object.keys(data.prefs)) {
-        if (k === 'books' || k === 'enabled') continue;
-        coread()[k] = data.prefs[k];
+    let imageOk = 0;
+    if (Array.isArray(data.images)) {
+      for (const item of data.images) {
+        if (!item?.key || !item.b64) continue;
+        try { await blobStore.putReaderImageByKey(item.key, base64ToBlob(item.b64, item.mime || 'image/*')); imageOk++; } catch (e) { console.warn(`[${MODULE_NAME}] import reader image failed`, e); }
       }
     }
+    let vectorOk = 0;
+    if (Array.isArray(data.vectors)) {
+      for (const item of data.vectors) {
+        if (!item?.key || !isPlainObject(item.rec)) continue;
+        try { await blobStore.putReaderVectors(item.key, item.rec); vectorOk++; } catch (e) { console.warn(`[${MODULE_NAME}] import vectors failed`, e); }
+      }
+    }
+    let audioOk = 0;
+    if (Array.isArray(data.audio)) {
+      const entries = [];
+      for (const item of data.audio) {
+        if (!item?.key || !item?.b64) continue;
+        try {
+          entries.push({
+            key: item.key,
+            blob: base64ToBlob(item.b64, item.mime || 'audio/mpeg'),
+            meta: { ...(item.meta || {}), source: 'coread' },
+            createdAt: item.createdAt || Date.now(),
+          });
+        } catch (e) { console.warn(`[${MODULE_NAME}] decode coread audio failed`, e); }
+      }
+      try { audioOk = (await blobStore.bulkPutAudio(entries)).added; } catch (e) { console.warn(`[${MODULE_NAME}] import coread audio failed`, e); }
+    }
+    let logOk = 0;
+    if (Array.isArray(data.retrievalLogs)) {
+      const ordered = data.retrievalLogs.slice().sort((a, b) => (a?.at || 0) - (b?.at || 0));
+      for (const item of ordered) {
+        if (!isPlainObject(item)) continue;
+        const rec = { ...item }; delete rec.id;
+        try { await blobStore.pushRetLog(rec, 50); logOk++; } catch (e) { console.warn(`[${MODULE_NAME}] import retrieval log failed`, e); }
+      }
+    }
+    // 偏好深合并：保留本机书目、启用态和全部凭据；v1/v2 数据仍兼容。
+    if (isPlainObject(data.prefs)) coreadMergePackageValue(coread(), data.prefs);
     saveSettings();
-    toast(`已导入 ${ok} 本书${chatOk ? ` · ${chatOk} 段伴读对话` : ''}。`, 'success');
+    toast(`已导入 ${ok} 本书 · ${chatOk} 段对话 · ${imageOk} 张插图 · ${vectorOk} 组向量 · ${audioOk} 条语音${logOk ? ` · ${logOk} 条检索记录` : ''}。`, 'success');
     renderModal();
+    rerenderMoreIfOpen();
+}
+
+function coreadImportData() {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'application/json,.json'; input.style.display = 'none';
+  document.body.appendChild(input);
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0]; input.remove();
+    await coreadImportDataFile(file);
   });
   input.click();
 }
