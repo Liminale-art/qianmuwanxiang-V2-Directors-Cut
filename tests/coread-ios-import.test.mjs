@@ -12,6 +12,15 @@ assert.doesNotMatch(shelfBinding, /\.sd-reader-import['"]\)\?\.addEventListener\
 assert.match(shelfBinding, /\.sd-reader-import-input['"]\)\?\.addEventListener\(['"]change['"][\s\S]*input\.value = ''[\s\S]*coreadHandleImportFile\(file\)/, '文件选择后必须立即清空控件并进入统一解析');
 assert.match(source, /application\/x-mobipocket-ebook/, 'iOS 文件提供器的 MOBI MIME 类型必须受支持');
 assert.match(css, /\.sd-reader-native-file\s*\{[\s\S]*opacity:\s*0[^}]*clip-path:\s*inset\(50%\)/, '文件控件必须视觉隐藏但不能使用 display:none');
-assert.match(css, /\.sd-reader-import-fab \.sd-reader-import-input\s*\{[^}]*inset:\s*0[^}]*width:\s*100%[^}]*height:\s*100%/, 'iOS 上原生文件控件本身必须覆盖整个导入按钮');
+assert.match(css, /\.sd-reader-import-fab \.sd-reader-import-input,[\s\S]*\.sd-reader-refill-pick \.sd-reader-refill-input\s*\{[^}]*inset:\s*0[^}]*width:\s*100%[^}]*height:\s*100%/, 'iOS 上原生文件控件本身必须覆盖书架和补正文按钮');
+
+const refillChooser = source.slice(source.indexOf('function coreadShowRefillChooser'), source.indexOf('function coreadPurgeBookMemory'));
+const openBook = source.slice(source.indexOf('async function coreadOpenBook'), source.indexOf('function coreadCloseReader'));
+assert.match(refillChooser, /sd-reader-refill-pick[\s\S]*<input type="file" class="sd-reader-refill-input sd-reader-native-file"/, '跨设备补正文弹层必须内嵌原生文件控件');
+assert.match(refillChooser, /\.sd-reader-refill-input['"]\)\?\.addEventListener\(['"]change['"][\s\S]*coreadHandleImportFile\(file, bookId\)/, '补正文文件必须进入统一解析并写回原书');
+assert.doesNotMatch(refillChooser, /\.click\(\)/, '补正文入口不得再以脚本模拟文件控件点击');
+assert.match(openBook, /coreadShowRefillChooser\(bookId\)/, '正文未缓存时必须打开 iOS 兼容的补正文选择层');
+assert.doesNotMatch(openBook, /confirmDialog[\s\S]*coreadTriggerImport/, '正文未缓存路径不得等待确认后再触发文件选择');
+assert.match(css, /\.sd-reader-refill-overlay\s*\{[^}]*position:\s*fixed[^}]*z-index:/, '补正文选择层必须覆盖当前书架界面');
 
 console.log('Coread iOS import contract OK');

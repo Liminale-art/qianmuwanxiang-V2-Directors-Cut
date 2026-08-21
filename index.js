@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.16.1';
+const VERSION = '1.16.2';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -11279,20 +11279,51 @@ async function coreadHandleImportFile(file, refillBookId = '') {
   }
 }
 
-// 跨端缺正文时使用的兼容入口。书架新增导入不再经过这里，而由常驻 label/input 直接承接用户点击。
-async function coreadTriggerImport(refillBookId = '') {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = COREAD_BOOK_ACCEPT;
-  input.className = 'sd-reader-native-file';
-  document.body.appendChild(input);
-  input.addEventListener('change', async () => {
+let coreadRefillChooserCleanup = null;
+
+// 跨设备仅同步了书目、正文未落到本机时，用内嵌原生 input 的提示层补全。
+// 不能在 confirm/Popup await 之后调用 input.click()：iOS 会撤销用户手势，表现为点完选择文件无响应。
+function coreadShowRefillChooser(bookId) {
+  const meta = coreadBookMeta(bookId);
+  if (!meta) return;
+  coreadRefillChooserCleanup?.();
+  const overlay = document.createElement('div');
+  overlay.className = 'sd-reader-refill-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-labelledby', 'sd-reader-refill-title');
+  overlay.innerHTML = `
+    <div class="sd-reader-refill-card">
+      <h3 id="sd-reader-refill-title">《${htmlEscape(meta.title)}》的正文未在本设备缓存</h3>
+      <p>书目信息会随千幕配置同步，但书籍内容保存在当前设备。请选择原书文件重新导入，阅读进度与书目资料会继续保留。</p>
+      <p class="sd-reader-refill-formats">支持 EPUB / MOBI / TXT；也可稍后通过阅读数据导入完成迁移。</p>
+      <div class="sd-reader-refill-actions">
+        <label class="sd-btn sd-primary sd-reader-refill-pick">
+          <i class="fa-solid fa-file-import" aria-hidden="true"></i> 选择文件
+          <input type="file" class="sd-reader-refill-input sd-reader-native-file" accept="${COREAD_BOOK_ACCEPT}">
+        </label>
+        <button type="button" class="sd-btn sd-reader-refill-cancel">取消</button>
+      </div>
+    </div>`;
+  const cleanup = () => {
+    document.removeEventListener('keydown', onKeydown);
+    overlay.remove();
+    if (coreadRefillChooserCleanup === cleanup) coreadRefillChooserCleanup = null;
+  };
+  const onKeydown = (event) => { if (event.key === 'Escape') cleanup(); };
+  overlay.querySelector('.sd-reader-refill-cancel')?.addEventListener('click', cleanup);
+  overlay.addEventListener('click', (event) => { if (event.target === overlay) cleanup(); });
+  overlay.querySelector('.sd-reader-refill-input')?.addEventListener('change', async (event) => {
+    const input = event.currentTarget;
     const file = input.files?.[0];
     input.value = '';
-    input.remove();
-    await coreadHandleImportFile(file, refillBookId);
+    if (!file) return;
+    cleanup();
+    await coreadHandleImportFile(file, bookId);
   });
-  input.click();
+  coreadRefillChooserCleanup = cleanup;
+  document.addEventListener('keydown', onKeydown);
+  (document.getElementById('story-director-modal') || document.body).appendChild(overlay);
 }
 
 /* 删书连带清理该书的伴读记忆，避免「管不了又继续污染主线」的孤儿：
@@ -11353,11 +11384,7 @@ async function coreadOpenBook(bookId) {
   try { rec = await blobStore.getBook(bookId); } catch (_) {}
   // 跨端：书目索引（settings，会同步）在，但正文 blob 在 IndexedDB（不跨端）→ 本机没有，友好提示而非报错弹窗
   if (!rec || !Array.isArray(rec.chapters)) {
-    const redo = await confirmDialog(
-      `《${meta.title}》的正文未在本设备缓存`,
-      '书目信息会随千幕配置同步，但书籍内容不随设备迁移。需重新导入书籍补全，或用「导入/导出」迁移阅读数据。是否现在重新导入？'
-    );
-    if (redo) coreadTriggerImport(bookId);   // 带 bookId：补全到这本，而非新建
+    coreadShowRefillChooser(bookId);
     return;
   }
   readerContentCache = { bookId, fullText: rec.fullText || '', chapters: rec.chapters, sig: rec.sig || '' };

@@ -3081,10 +3081,33 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   white-space: nowrap !important; border: 0 !important;
 }
 /* 书架 FAB 内让文件控件本身覆盖整个可点区域；iOS 实际点中 input，比仅依赖 label 转发更稳。 */
-#story-director-modal .sd-reader-import-fab .sd-reader-import-input {
+#story-director-modal .sd-reader-import-fab .sd-reader-import-input,
+#story-director-modal .sd-reader-refill-pick .sd-reader-refill-input {
   inset: 0 !important; width: 100% !important; height: 100% !important;
   margin: 0 !important; opacity: 0 !important; clip: auto !important; clip-path: none !important;
   cursor: pointer !important;
+}
+/* 换设备后正文缺失：选择文件必须留在弹层里的真实点击目标上，兼容 iOS 用户手势限制。 */
+.sd-reader-refill-overlay {
+  position: fixed; inset: 0; z-index: 2147483638;
+  display: flex; align-items: center; justify-content: center; padding: 18px;
+  background: rgba(0, 0, 0, .5); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+}
+.sd-reader-refill-card {
+  width: min(440px, 100%); padding: 20px; border-radius: 17px;
+  border: 1px solid var(--sd-border, rgba(255,255,255,.15));
+  background: var(--sd-folder-head, #25282e); color: var(--sd-text, #eee);
+  box-shadow: 0 20px 60px rgba(0,0,0,.4);
+}
+.sd-reader-refill-card h3 { margin: 0 0 12px; font-size: 1.05em; line-height: 1.45; }
+.sd-reader-refill-card p { margin: 0 0 9px; color: var(--sd-text, #eee); line-height: 1.65; font-size: .9em; }
+.sd-reader-refill-card .sd-reader-refill-formats { color: var(--sd-muted, #aaa); font-size: .8em; }
+.sd-reader-refill-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.sd-reader-refill-pick { position: relative; overflow: hidden; }
+@media (max-width: 620px) {
+  .sd-reader-refill-card { padding: 17px; }
+  .sd-reader-refill-actions { flex-direction: column; }
+  .sd-reader-refill-actions .sd-btn { width: 100%; justify-content: center; }
 }
 .sd-reader-sort-menu {
   position: absolute; top: calc(100% + 6px); left: 0; z-index: 30;
