@@ -12,7 +12,7 @@ assert.match(css, /\.sd-reader-setup-compact-grid\s*\{[^}]*grid-template-columns
 
 const records = source.slice(source.indexOf('function renderMemRecordsTab'), source.indexOf('function renderMemInjectTab'));
 assert.doesNotMatch(records, /开发测试|sd-reader-test-selftest|sd-reader-test-lore/, '记忆档案不得暴露开发测试卡');
-assert.match(records, /建立千幕伴读世界书[\s\S]*与正文记忆插件写入同本世界书/, '写入位置名称必须使用用户确认文案');
+assert.match(records, /世界书同步[\s\S]*不同步世界书（推荐）[\s\S]*同步到千幕伴读世界书[\s\S]*同步到正文同本世界书/, '千幕档案必须主存储，世界书只提供三档可选镜像');
 assert.match(records, /默认方案/, '总结预设默认项必须命名为默认方案');
 assert.match(records, /DEFAULT_DISTILL_TEXT_PROMPT[\s\S]*DEFAULT_MAINLINE_SUMMARY_PROMPT/, '蒸馏和主线提示词必须显示各自内置默认');
 assert.doesNotMatch(records, /sd-reader-distillprompt-restore|sd-reader-mainlineprompt-restore|sd-reader-sumitem-badge/, '提示词只保留整体恢复且不再突出内置标签');
@@ -20,7 +20,7 @@ assert.match(records, /sd-reader-guide-replay/, '记忆档案末尾必须提供�
 assert.match(css, /\.sd-reader-promptblock[^{]*\{[^}]*border:[^}]*border-radius:/, '三类提示词必须使用统一折叠卡');
 
 const guide = source.slice(source.indexOf('function renderCoreadGuide'), source.indexOf('function renderCompanionMoreBody'));
-assert.match(guide, /控制书友视野[\s\S]*生成记忆切片[\s\S]*理解召回数量[\s\S]*选择写入位置/, '首次教程必须覆盖四项核心概念');
+assert.match(guide, /控制书友视野[\s\S]*生成记忆切片[\s\S]*理解召回数量[\s\S]*选择同步方式/, '首次教程必须覆盖四项核心概念');
 assert.match(source, /if \(!m\.guideSeen\) return renderCoreadGuide\(\)/, '首次进入伴读中心必须显示引导态');
 
 const inject = source.slice(source.indexOf('function renderMemInjectTab'), source.indexOf('function renderCompanionSetupBody'));

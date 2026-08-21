@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.17.0';
+const VERSION = '1.18.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -503,7 +503,7 @@ const DEFAULT_SETTINGS = Object.freeze({
       mainlineDepth: 2,             // 反哺主线注入深度（插入主线上下文的倒数第 N 层·默认2）
       mainlinePickLimit: 50,        // 主线圈选对话框显示的最大楼层数（默认50·可调）
       mainlineTagRules: [{ name: 'content', action: 'extract' }],   // 主线选择标签规则（数组·同取材 tab 结构）：[{name,action:'extract'|'remove'}]。默认提取 <content> 内文；空数组=整条原文
-      storageMode: 'dedicated',     // 记忆写入模式：'dedicated'=新建「千幕伴读」独立世界书(零冲突) | 'shared'=写入当前聊天绑定世界书(与记忆插件共存)
+      worldSyncMode: 'none',        // 千幕档案是唯一主存储；世界书只作可选镜像：none | dedicated | shared
       rerankTopN: 4,                // 开重排档时召回候选重排后保留数（用户可改）
       // 词典册（手动别称词典·全局·可编辑·空也能建）：[{id,name,pairs:{标准词:[别称...]}}]。
       // 绑定到聊天(chatStore.coreadDictBound)后并入召回归一——主线与伴读对话走同一召回路径·天然共有。
@@ -1547,7 +1547,8 @@ async function getOrCreateChatBook() {
   return String(name || '').trim();
 }
 
-// 伴读切片写入目标世界书（按记忆写入模式）：
+// 伴读切片的世界书镜像目标（千幕 IndexedDB 档案始终是主存储）：
+//   'none'      → 不同步世界书（默认·最稳，不占用 ST 活跃世界书）
 //   'shared'    → 当前聊天绑定世界书（与记忆插件共存·命名空间隔离靠 coread:: 前缀）
 //   'dedicated' → 独立「千幕伴读」世界书（不存在则建·零冲突·专存伴读切片）
 const COREAD_DEDICATED_BOOK = '千幕伴读';
@@ -1573,7 +1574,8 @@ async function coreadEnsureDedicatedBook() {
 }
 async function coreadTargetBook() {
   const m = coreadMemory();
-  if (m.storageMode === 'shared') return getOrCreateChatBook();
+  if (m.worldSyncMode === 'none') return '';
+  if (m.worldSyncMode === 'shared') return getOrCreateChatBook();
   return coreadEnsureDedicatedBook();
 }
 
@@ -5757,14 +5759,164 @@ async function extractDialogue(text) {
 const TTS_BAR_CLASS = 'sd-tts-bar';
 const TTS_INTERCLIP_GAP_MS = 720;  // 连播句间停顿(ms)：略长于纯断句，留出自然换气感、不粘连也不拖沓
 let ttsChatBound = false;          // #chat 委托/观察者是否已挂
+let ttsChatElement = null;
 let ttsChatObserver = null;
 let ttsScanTimer = null;           // 扫描防抖：观察者短时间多次触发只在安定后扫一次，避免插在 ST 半渲染态里
-// 防抖扫描：DOM 连续变动（进聊天注水、流式回复）期间合并成一次，待 ST 安定再扫，规避注入打断 ST 渲染。
-function ttsScanDebounced(delay = 120) {
+let ttsMutationTimer = null;
+let ttsInitialScanToken = 0;        // 长聊天分片扫描令牌：切聊天/停用后令旧 idle 任务失效
+let ttsPendingMessageRoots = new Set(); // MutationObserver 只收集新增楼层，不再每次回扫全聊天
+// 原地编辑事件只重查对应楼层；取不到事件索引时才走分片历史扫描，不再同步回扫全聊天。
+function ttsScheduleEditedMessage(messageRef, delay = 250) {
   if (ttsScanTimer) clearTimeout(ttsScanTimer);
-  ttsScanTimer = setTimeout(() => { ttsScanTimer = null; try { ttsScanMessages(); } catch (_) {} }, delay);
+  ttsScanTimer = setTimeout(() => {
+    ttsScanTimer = null;
+    const chat = ttsChatElement || document.getElementById('chat');
+    if (!chat) return;
+    const rawId = isPlainObject(messageRef) ? (messageRef.messageId ?? messageRef.mesid ?? messageRef.id) : messageRef;
+    const id = rawId == null ? '' : String(rawId);
+    const target = id === '' ? null : Array.from(chat.children).find((el) => ttsMesId(el) === id);
+    if (target) ttsScanMessageElement(target);
+    else ttsScheduleInitialScan(chat);
+  }, delay);
 }
 let ttsLineCache = new Map();      // 内容指纹 → [{speaker,text,emotion}]（本会话内提取结果，避免重复调模型）
+const TTS_LOCAL_LINE_LIMIT = 100;  // 本机 IndexedDB 保留量
+const TTS_PORTABLE_LINE_LIMIT = 12;// 聊天 metadata 只保留少量跨设备兼容快照，控制聊天文件体积
+let ttsLineStoreState = { chatKey: '', lines: {}, keyByMes: {}, loaded: false };
+let ttsLineStorePromise = null;
+let ttsLineStoreToken = 0;
+let ttsLineStoreSaveTimer = null;
+
+function ttsPruneLineAnchors(keyByMes, lines, limit = TTS_LOCAL_LINE_LIMIT * 2) {
+  const live = new Set(Object.keys(lines || {}));
+  const entries = Object.entries(keyByMes || {}).filter(([, key]) => live.has(key));
+  const kept = entries.slice(Math.max(0, entries.length - limit));
+  for (const key of Object.keys(keyByMes || {})) delete keyByMes[key];
+  for (const [mesid, key] of kept) keyByMes[mesid] = key;
+}
+
+function ttsScheduleLocalLineSave() {
+  if (!ttsLineStoreState.loaded || !ttsLineStoreState.chatKey || !blobStore.blobStoreAvailable()) return;
+  if (ttsLineStoreSaveTimer) clearTimeout(ttsLineStoreSaveTimer);
+  const chatKey = ttsLineStoreState.chatKey;
+  ttsLineStoreSaveTimer = setTimeout(async () => {
+    ttsLineStoreSaveTimer = null;
+    if (!ttsLineStoreState.loaded || ttsLineStoreState.chatKey !== chatKey) return;
+    try {
+      await blobStore.putTtsLineCache(chatKey, {
+        lines: ttsLineStoreState.lines,
+        keyByMes: ttsLineStoreState.keyByMes,
+      });
+    } catch (error) { console.warn(`[${MODULE_NAME}] save TTS line cache failed`, error); }
+  }, 180);
+}
+
+function ttsFlushLocalLineStore() {
+  if (ttsLineStoreSaveTimer) { clearTimeout(ttsLineStoreSaveTimer); ttsLineStoreSaveTimer = null; }
+  if (!ttsLineStoreState.loaded || !ttsLineStoreState.chatKey || !blobStore.blobStoreAvailable()) return;
+  const { chatKey, lines, keyByMes } = ttsLineStoreState;
+  blobStore.putTtsLineCache(chatKey, { lines, keyByMes })
+    .catch((error) => console.warn(`[${MODULE_NAME}] flush TTS line cache failed`, error));
+}
+
+function ttsPortableSnapshot(store = getChatStore()) {
+  const lines = isPlainObject(store.ttsLines) ? store.ttsLines : (store.ttsLines = {});
+  const keyByMes = isPlainObject(store.ttsLineKeyByMes) ? store.ttsLineKeyByMes : (store.ttsLineKeyByMes = {});
+  return { lines, keyByMes };
+}
+
+function ttsPrunePortableSnapshot(store = getChatStore()) {
+  const portable = ttsPortableSnapshot(store);
+  ttsPruneLineStore(portable.lines, TTS_PORTABLE_LINE_LIMIT);
+  ttsPruneLineAnchors(portable.keyByMes, portable.lines, TTS_PORTABLE_LINE_LIMIT * 2);
+}
+
+async function ttsPrepareLineStore() {
+  const chatKey = getChatKey();
+  if (ttsLineStoreState.chatKey === chatKey && ttsLineStoreState.loaded) return ttsLineStoreState;
+  if (ttsLineStorePromise && ttsLineStoreState.chatKey === chatKey) return ttsLineStorePromise;
+  if (ttsLineStoreState.chatKey && ttsLineStoreState.chatKey !== chatKey) ttsFlushLocalLineStore();
+  const token = ++ttsLineStoreToken;
+  ttsLineStoreState = { chatKey, lines: {}, keyByMes: {}, loaded: false };
+  ttsLineStorePromise = (async () => {
+    let local = null;
+    try { if (blobStore.blobStoreAvailable()) local = await blobStore.getTtsLineCache(chatKey); } catch (_) {}
+    if (token !== ttsLineStoreToken || ttsLineStoreState.chatKey !== chatKey) return ttsLineStoreState;
+    const store = getChatStore();
+    const portable = ttsPortableSnapshot(store);
+    // 聊天内快照可能来自另一设备或比本机缓存新，合并时让它覆盖同 key 的旧本机值。
+    ttsLineStoreState.lines = { ...(isPlainObject(local?.lines) ? local.lines : {}), ...portable.lines };
+    ttsLineStoreState.keyByMes = { ...(isPlainObject(local?.keyByMes) ? local.keyByMes : {}), ...portable.keyByMes };
+    ttsPruneLineStore(ttsLineStoreState.lines, TTS_LOCAL_LINE_LIMIT);
+    ttsPruneLineAnchors(ttsLineStoreState.keyByMes, ttsLineStoreState.lines);
+    const oldPortableSize = Object.keys(portable.lines).length;
+    ttsPrunePortableSnapshot(store);
+    ttsLineStoreState.loaded = true;
+    ttsLineStorePromise = null;
+    ttsScheduleLocalLineSave();
+    if (oldPortableSize > TTS_PORTABLE_LINE_LIMIT) saveMetadata(); // 旧版最多100份；升级后一次性瘦身
+    return ttsLineStoreState;
+  })();
+  return ttsLineStorePromise;
+}
+
+function ttsPersistedLines(key) {
+  if (!key) return null;
+  const local = ttsLineStoreState.chatKey === getChatKey() ? ttsLineStoreState.lines?.[key] : null;
+  if (Array.isArray(local)) return local;
+  try { const portable = getChatStore().ttsLines?.[key]; return Array.isArray(portable) ? portable : null; } catch (_) { return null; }
+}
+
+function ttsPersistedAnchor(mesid) {
+  if (mesid === '') return '';
+  const local = ttsLineStoreState.chatKey === getChatKey() ? ttsLineStoreState.keyByMes?.[mesid] : '';
+  if (local) return local;
+  try { return getChatStore().ttsLineKeyByMes?.[mesid] || ''; } catch (_) { return ''; }
+}
+
+function ttsStoreLines(key, lines, mesid = '') {
+  if (!key || !Array.isArray(lines)) return;
+  if (ttsLineStoreState.chatKey !== getChatKey()) {
+    ttsLineStoreState = { chatKey: getChatKey(), lines: {}, keyByMes: {}, loaded: true };
+  }
+  // delete + reinsert 让 Object 插入序表达最近使用，裁剪时保留最新。
+  delete ttsLineStoreState.lines[key];
+  ttsLineStoreState.lines[key] = lines;
+  if (mesid !== '') ttsLineStoreState.keyByMes[mesid] = key;
+  ttsPruneLineStore(ttsLineStoreState.lines, TTS_LOCAL_LINE_LIMIT);
+  ttsPruneLineAnchors(ttsLineStoreState.keyByMes, ttsLineStoreState.lines);
+  ttsScheduleLocalLineSave();
+
+  // 保留最近少量台词在聊天内，兼顾跨设备打开；完整100份只在本机，不再拖累聊天文件。
+  try {
+    const store = getChatStore();
+    delete store.ttsLines[key];
+    store.ttsLines[key] = lines;
+    if (mesid !== '') store.ttsLineKeyByMes[mesid] = key;
+    ttsPrunePortableSnapshot(store);
+    saveMetadata();
+  } catch (_) {}
+}
+
+function ttsStoreLineAnchor(key, mesid) {
+  if (!key || mesid === '' || ttsLineStoreState.chatKey !== getChatKey()) return;
+  ttsLineStoreState.keyByMes[mesid] = key;
+  ttsPruneLineAnchors(ttsLineStoreState.keyByMes, ttsLineStoreState.lines);
+  ttsScheduleLocalLineSave();
+}
+
+function ttsDeleteStoredLines(key) {
+  if (!key) return;
+  delete ttsLineStoreState.lines?.[key];
+  ttsPruneLineAnchors(ttsLineStoreState.keyByMes, ttsLineStoreState.lines);
+  ttsScheduleLocalLineSave();
+  try {
+    const store = getChatStore();
+    delete store.ttsLines?.[key];
+    ttsPruneLineAnchors(store.ttsLineKeyByMes, store.ttsLines, TTS_PORTABLE_LINE_LIMIT * 2);
+    saveMetadata();
+  } catch (_) {}
+}
 
 // 台词列表的「内容指纹」：按消息正文本身算 key，而非楼层 mesid——
 // 楼层会因重 roll/swipe/插楼漂移，正文不变指纹就不变，故跨刷新/重排都能稳定命中；正文一变（重 roll/编辑）指纹即变，自动重提。
@@ -5781,11 +5933,9 @@ function ttsContentKey(raw) {
 function ttsMigrateLinesOnEdit(mesEl, newKey) {
   const mesid = ttsMesId(mesEl);
   if (mesid === '') return null;
-  let store;
-  try { store = getChatStore(); } catch (_) { return null; }
-  const oldKey = store.ttsLineKeyByMes?.[mesid];
+  const oldKey = ttsPersistedAnchor(mesid);
   if (!oldKey || oldKey === newKey) return null;
-  const oldLines = ttsLineCache.get(oldKey) || store.ttsLines?.[oldKey];
+  const oldLines = ttsLineCache.get(oldKey) || ttsPersistedLines(oldKey);
   if (!Array.isArray(oldLines) || !oldLines.length) return null;
   // 闸门：每句台词原文仍逐字在新 passage 中（去引号+折空白归一，宽松到只防「台词真被改」）
   const norm = (s) => String(s || '').replace(/["'“”‘’「」『』]/g, '').replace(/\s+/g, '');
@@ -5797,10 +5947,8 @@ function ttsMigrateLinesOnEdit(mesEl, newKey) {
   if (!allPresent) return null;   // 台词真变了：不迁移
   // 迁移：旧 lines 落到新 key、更新锚点。**不删旧 key**——内容指纹寻址下，内容相同的别的楼层可能也指向旧 key，
   // 删了会把那些楼层的缓存一并打掉（串楼）。孤儿键无害，由 ttsPruneLineStore 统一按上限裁剪。
-  store.ttsLines[newKey] = oldLines;
   ttsLineCache.set(newKey, oldLines);
-  store.ttsLineKeyByMes[mesid] = newKey;
-  try { ttsPruneLineStore(store.ttsLines); saveMetadata(); } catch (_) {}
+  ttsStoreLines(newKey, oldLines, mesid);
   return oldLines;
 }
 // 取消息原始正文：只认 chat[mesid].mes（原始文本，正则不改它，故指纹免疫正则开关）。
@@ -6208,28 +6356,86 @@ function ttsEnsureBar(mesEl) {
 // 扫描 #chat，给每条消息幂等追加工具栏（🎧 提取/折叠 + 🔁 重新提取）；不提取，点了才提取。
 // 工具栏只挂一次（sdTtsHooked 标记）；自动恢复 ttsAutoRestore 解耦出来每次扫描都跑——首扫可能早于元数据注水，
 // 那时查不到持久化台词，需后续扫描重试。恢复纯读缓存/持久化、幂等，重复跑无副作用。
-function ttsScanMessages() {
+function ttsScanMessageElement(mesEl, options = {}) {
+  if (!(mesEl instanceof Element) || !mesEl.matches('.mes')) return;
+  if (mesEl.getAttribute('is_system') === 'true') { mesEl.dataset.sdTtsHooked = '1'; return; }
+  const textEl = mesEl.querySelector('.mes_text');
+  if (!textEl) return;
+  if (mesEl.dataset.sdTtsHooked !== '1') {
+    mesEl.dataset.sdTtsHooked = '1';
+    const bar = document.createElement('div');
+    bar.className = 'sd-tts-toolbar';
+    bar.innerHTML = `
+      <button type="button" class="sd-tts-trigger" title="提取/展开台词列表" aria-label="提取台词"><i class="fa-solid fa-clapperboard"></i></button>
+      <button type="button" class="sd-tts-reextract" title="重新提取台词列表（仅刷新文本）" aria-label="重新提取台词"><i class="fa-solid fa-film"></i></button>
+      <button type="button" class="sd-tts-regenall" title="重新生成本条全部语音" aria-label="重生本条全部语音" hidden><i class="fa-solid fa-rotate"></i></button>
+      <button type="button" class="sd-tts-playall" title="连续播放本条全部台词" aria-label="连续播放" hidden><i class="fa-regular fa-circle-play"></i></button>`;
+    textEl.insertAdjacentElement('afterend', bar);
+  }
+  const bar = mesEl.querySelector(`.${TTS_BAR_CLASS}`);
+  if (options.forceProvider && bar?.dataset.loaded === '1') delete bar.dataset.provider;
+  ttsAutoRestore(mesEl);
+  if (options.expand) {
+    const restored = mesEl.querySelector(`.${TTS_BAR_CLASS}[data-loaded="1"]`);
+    if (restored) {
+      restored.hidden = false;
+      mesEl.querySelectorAll('.sd-tts-inline').forEach((el) => { el.hidden = false; });
+    }
+  }
+}
+
+function ttsMessageElementsWithin(root) {
+  if (!(root instanceof Element)) return [];
+  const out = [];
+  if (root.matches('.mes')) out.push(root);
+  root.querySelectorAll?.('.mes').forEach((el) => out.push(el));
+  return out;
+}
+
+function ttsScanMessages(root = document.getElementById('chat'), options = {}) {
   const t = settings.tts || {};
   if (!t.enabled || !t.injectInChat) return;
-  const chat = document.getElementById('chat');
-  if (!chat) return;
-  chat.querySelectorAll('.mes').forEach((mesEl) => {
-    if (mesEl.getAttribute('is_system') === 'true') { mesEl.dataset.sdTtsHooked = '1'; return; }
-    const textEl = mesEl.querySelector('.mes_text');
-    if (!textEl) return;
-    if (mesEl.dataset.sdTtsHooked !== '1') {
-      mesEl.dataset.sdTtsHooked = '1';
-      const bar = document.createElement('div');
-      bar.className = 'sd-tts-toolbar';
-      bar.innerHTML = `
-        <button type="button" class="sd-tts-trigger" title="提取/展开台词列表" aria-label="提取台词"><i class="fa-solid fa-clapperboard"></i></button>
-        <button type="button" class="sd-tts-reextract" title="重新提取台词列表（仅刷新文本）" aria-label="重新提取台词"><i class="fa-solid fa-film"></i></button>
-        <button type="button" class="sd-tts-regenall" title="重新生成本条全部语音" aria-label="重生本条全部语音" hidden><i class="fa-solid fa-rotate"></i></button>
-        <button type="button" class="sd-tts-playall" title="连续播放本条全部台词" aria-label="连续播放" hidden><i class="fa-regular fa-circle-play"></i></button>`;
-      textEl.insertAdjacentElement('afterend', bar);
+  for (const mesEl of ttsMessageElementsWithin(root)) ttsScanMessageElement(mesEl, options);
+}
+
+function ttsScheduleInitialScan(chat, options = {}) {
+  const token = ++ttsInitialScanToken;
+  const nodes = Array.from(chat?.querySelectorAll?.('.mes') || []).reverse(); // 先恢复最新楼层，用户最先看到
+  let cursor = 0;
+  const pump = (deadline) => {
+    if (token !== ttsInitialScanToken || chat !== ttsChatElement || !chat?.isConnected) return;
+    let count = 0;
+    while (cursor < nodes.length && count < 24 && (!deadline || deadline.timeRemaining() > 2 || deadline.didTimeout)) {
+      ttsScanMessageElement(nodes[cursor++], options);
+      count++;
     }
-    ttsAutoRestore(mesEl);   // 每次扫描都试：本条此前已提取过则渲染台词条与播放键（只读缓存/持久化、不调模型、幂等；已渲染则内部即返回）
-  });
+    if (cursor >= nodes.length) return;
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(pump, { timeout: 180 });
+    else setTimeout(() => pump(null), 0);
+  };
+  // 最新 8 层立即可用，其余让出主线程分片恢复，避免长聊天首帧冻结。
+  while (cursor < nodes.length && cursor < 8) ttsScanMessageElement(nodes[cursor++], options);
+  if (cursor < nodes.length) {
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(pump, { timeout: 180 });
+    else setTimeout(() => pump(null), 0);
+  }
+}
+
+function ttsQueueMutationRecords(records) {
+  for (const record of records || []) {
+    for (const node of record.addedNodes || []) {
+      if (!(node instanceof Element)) continue;
+      for (const mesEl of ttsMessageElementsWithin(node)) ttsPendingMessageRoots.add(mesEl);
+    }
+  }
+  if (!ttsPendingMessageRoots.size) return;
+  if (ttsMutationTimer) clearTimeout(ttsMutationTimer);
+  ttsMutationTimer = setTimeout(() => {
+    ttsMutationTimer = null;
+    const pending = [...ttsPendingMessageRoots];
+    ttsPendingMessageRoots.clear();
+    for (const mesEl of pending) if (mesEl.isConnected) ttsScanMessageElement(mesEl);
+  }, 80);
 }
 
 // 委托点击：🎧 触发 / 🔁 重提取 / 🔊 单句（双击=快捷窗）/ ▶ 连播（播放中再点=停止）/ 🌀 重生语音
@@ -6281,7 +6487,7 @@ function ttsResolveLineFromBtn(btn) {
   const idxHost = btn.closest('[data-idx]');
   const idx = Number(idxHost?.dataset.idx);
   const key = mesEl?.querySelector(`.${TTS_BAR_CLASS}`)?.dataset.key || '';
-  const lines = key ? ttsLineCache.get(key) : null;
+  const lines = key ? (ttsLineCache.get(key) || ttsPersistedLines(key)) : null;
   let line = (lines && Number.isInteger(idx) && lines[idx]) ? lines[idx] : null;
   if (!line) {
     // 缓存查不到：优先按 idx 取列表项快照（speaker/text/emotion/speed 齐），再退到按钮自身 dataset（内联图标也带），最后才裸兜底
@@ -6301,12 +6507,12 @@ function ttsPersistLineOverride(mesEl, idx, patch) {
   const key = mesEl?.querySelector(`.${TTS_BAR_CLASS}`)?.dataset.key || '';
   let lines = key ? ttsLineCache.get(key) : null;
   if (!lines && key) {
-    const saved = getChatStore().ttsLines?.[key];
+    const saved = ttsPersistedLines(key);
     if (Array.isArray(saved)) { lines = saved; ttsLineCache.set(key, lines); }   // 重新坐实，后续 resolve 命中同引用
   }
   if (!lines || !Number.isInteger(idx) || !lines[idx]) return null;
   Object.assign(lines[idx], patch);
-  try { saveMetadata(); } catch (_) {}
+  ttsStoreLines(key, lines, ttsMesId(mesEl));
   return lines[idx];
 }
 
@@ -6361,6 +6567,7 @@ async function ttsHandleTrigger(trig, force = false) {
     mesEl.querySelectorAll('.sd-tts-inline').forEach((el) => { el.hidden = bar.hidden; });
     return;
   }
+  await ttsPrepareLineStore();
   // 据原始正文算「内容指纹」做缓存 key
   const raw = ttsRawText(mesEl);
   if (!raw) { toast('正文尚未就绪，请稍候重试', 'info'); return; }   // 竞态窗口取不到原始正文：拦下，免按空文本算漂移 key 生成孤儿
@@ -6368,7 +6575,7 @@ async function ttsHandleTrigger(trig, force = false) {
   if (force) {
     // 重新提取：清掉本条缓存（内存 + 持久化）与已注入内联，强制重跑
     ttsLineCache.delete(key);
-    try { delete getChatStore().ttsLines[key]; saveMetadata(); } catch (_) {}
+    ttsDeleteStoredLines(key);
     bar.dataset.loaded = '';
     ttsClearInlineIcons(mesEl);
   }
@@ -6383,7 +6590,7 @@ async function ttsHandleTrigger(trig, force = false) {
     // 三级取：内存缓存 → 本聊天持久化（跨刷新/重排存活，按内容指纹寻址）→ 调模型提取
     let lines = ttsLineCache.has(key) ? ttsLineCache.get(key) : null;
     if (!lines) {
-      const saved = getChatStore().ttsLines?.[key];
+      const saved = ttsPersistedLines(key);
       if (Array.isArray(saved) && saved.length) { lines = saved; ttsLineCache.set(key, lines); }
     }
     if (!lines && !force) lines = ttsMigrateLinesOnEdit(mesEl, key);   // 编了正文但台词没变：迁移旧缓存，免白白调模型（force=用户主动要全量重提则跳过）
@@ -6391,7 +6598,7 @@ async function ttsHandleTrigger(trig, force = false) {
       const passage = ttsCleanText(raw);
       lines = await extractDialogue(passage);
       ttsLineCache.set(key, lines);
-      try { const store = getChatStore(); store.ttsLines[key] = lines; ttsPruneLineStore(store.ttsLines); saveMetadata(); } catch (_) {}   // 持久化，重开 ST 直接取回
+      ttsStoreLines(key, lines, ttsMesId(mesEl));   // 完整缓存进本机 IDB，聊天内只留少量跨设备快照
     }
     if (ttsAssignNpc(lines)) saveSettings();   // NPC 原型分配（熟脸记忆），落库
     ttsApplyLines(mesEl, bar, lines, key);
@@ -6415,7 +6622,7 @@ function ttsApplyLines(mesEl, bar, lines, key, collapsed = false) {
   // 记录楼层→当前 key 锚点：供原地编正文后凭 mesid 找回旧台词列表迁移（见 ttsMigrateLinesOnEdit）
   const mesid = ttsMesId(mesEl);
   if (mesid !== '') {
-    try { const s = getChatStore(); if (s.ttsLineKeyByMes[mesid] !== key) { s.ttsLineKeyByMes[mesid] = key; saveMetadata(); } } catch (_) {}
+    if (ttsPersistedAnchor(mesid) !== key) ttsStoreLineAnchor(key, mesid);
   }
   ttsRenderLines(bar, lines);
   ttsInjectInlineIcons(mesEl, lines);   // 正文内联耳机：未配音色时保留禁用态，配好后原地激活
@@ -6437,7 +6644,7 @@ function ttsAutoRestore(mesEl) {
     let cached = k ? ttsLineCache.get(k) : null;
     if (!cached && k) {
       try {
-        const saved = getChatStore().ttsLines?.[k];
+        const saved = ttsPersistedLines(k);
         if (Array.isArray(saved)) { cached = saved; ttsLineCache.set(k, saved); }
       } catch (_) {}
     }
@@ -6457,7 +6664,7 @@ function ttsAutoRestore(mesEl) {
   let lines = ttsLineCache.has(key) ? ttsLineCache.get(key) : null;
   if (!lines) {
     let saved = null;
-    try { saved = getChatStore().ttsLines?.[key]; } catch (_) {}
+    try { saved = ttsPersistedLines(key); } catch (_) {}
     if (Array.isArray(saved) && saved.length) { lines = saved; ttsLineCache.set(key, lines); }
   }
   // 新 key 查不到：可能是原地编了正文（仅旁白/非台词）。凭 mesid 锚点 + 台词原文在场校验迁移旧缓存，免重提。
@@ -6473,23 +6680,11 @@ function ttsAutoRestore(mesEl) {
 function ttsRefreshProviderChat(expand = false) {
   const chat = document.getElementById('chat');
   if (!chat) return;
-  chat.querySelectorAll('.mes').forEach((mesEl) => {
-    const bar = mesEl.querySelector(`.${TTS_BAR_CLASS}`);
-    if (bar?.dataset.loaded === '1') delete bar.dataset.provider;   // 强制 ttsAutoRestore 走 Provider 重绘分支
-    ttsAutoRestore(mesEl);
-    if (expand) {
-      const refreshed = mesEl.querySelector(`.${TTS_BAR_CLASS}[data-loaded="1"]`);
-      if (refreshed) {
-        refreshed.hidden = false;
-        mesEl.querySelectorAll('.sd-tts-inline').forEach((el) => { el.hidden = false; });
-      }
-    }
-  });
+  ttsScheduleInitialScan(chat, { forceProvider: true, expand });
   try {
     const store = getChatStore();
     if (store.ttsLastProvider !== ttsProviderId()) { store.ttsLastProvider = ttsProviderId(); saveMetadata(); }
   } catch (_) {}
-  ttsScanDebounced(80);
 }
 
 function ttsRenderLines(bar, lines) {
@@ -7096,13 +7291,20 @@ function ttsCloseQuickPopup() {
 // 启停 #chat 注入（总开关/注入开关变化、切聊天时调用）
 function ttsStartChat() {
   const t = settings.tts || {};
-  if (!t.enabled || !t.injectInChat) { ttsStopChat(); return; }
+  if (!t.enabled || !t.injectInChat) {
+    ttsStopChat();
+    // 即使暂时关闭正文配音，也迁移/裁剪旧版聊天内的重台词缓存，让历史聊天立即瘦身。
+    ttsPrepareLineStore().catch(() => {});
+    return;
+  }
   const chat = document.getElementById('chat');
   if (!chat) return;   // ST 尚未就绪，留待 MESSAGE_RECEIVED/CHAT_CHANGED 再触发
+  if (ttsChatBound && ttsChatElement !== chat) ttsStopChat();
   if (!ttsChatBound) {
     chat.addEventListener('click', ttsOnChatClick);
-    ttsChatObserver = new MutationObserver(() => ttsScanDebounced());
+    ttsChatObserver = new MutationObserver((records) => ttsQueueMutationRecords(records));
     ttsChatObserver.observe(chat, { childList: true });   // 只看顶层 childList，极轻
+    ttsChatElement = chat;
     ttsChatBound = true;
   }
   let providerChanged = false;
@@ -7110,24 +7312,30 @@ function ttsStartChat() {
     const store = getChatStore();
     providerChanged = !!store.ttsLastProvider && store.ttsLastProvider !== ttsProviderId();
   } catch (_) {}
-  ttsScanMessages();
-  if (providerChanged) ttsRefreshProviderChat(true);
-  else {
+  const expectedChatKey = getChatKey();
+  ttsPrepareLineStore().then(() => {
+    if (getChatKey() !== expectedChatKey || chat !== ttsChatElement) return;
+    ttsScheduleInitialScan(chat, { forceProvider: providerChanged, expand: providerChanged });
     try {
       const store = getChatStore();
       if (store.ttsLastProvider !== ttsProviderId()) { store.ttsLastProvider = ttsProviderId(); saveMetadata(); }
     } catch (_) {}
-  }
-  // 首扫可能早于 ST 注水聊天元数据（ttsLines），自动恢复查不到；延迟再扫一次兜底，让缓存「进聊天即加载」。
-  ttsScanDebounced(400);
+  }).catch(() => ttsScheduleInitialScan(chat));
 }
 function ttsStopChat() {
   if (!ttsChatBound) return;
   if (ttsScanTimer) { clearTimeout(ttsScanTimer); ttsScanTimer = null; }
-  const chat = document.getElementById('chat');
+  if (ttsMutationTimer) { clearTimeout(ttsMutationTimer); ttsMutationTimer = null; }
+  ttsFlushLocalLineStore();
+  ttsPendingMessageRoots.clear();
+  ttsInitialScanToken++;
+  ttsLineStoreToken++;
+  ttsLineStorePromise = null;
+  const chat = ttsChatElement || document.getElementById('chat');
   chat?.removeEventListener('click', ttsOnChatClick);
   ttsChatObserver?.disconnect();
   ttsChatObserver = null;
+  ttsChatElement = null;
   ttsChatBound = false;
   ttsStopPlayback(true);
   ttsCloseQuickPopup();
@@ -8027,6 +8235,7 @@ let readerScrollSaveTimer = null;
 let companionWorldView = '';     // 伴读设定浮层中：当前查看条目的世界书名
 let companionPresetView = '';    // 伴读设定浮层中：当前查看条目的预设名
 let coreadCurrentDictId = '';    // 注入状态tab：当前查看/编辑的词典册ID（空=默认整册视图）
+let coreadWorldSyncBusy = false; // 世界书镜像切换/批量同步互斥，防止连续切换造成交叉写入
 
 function coread() {
   if (!isPlainObject(settings.coread)) settings.coread = clone(DEFAULT_SETTINGS.coread);
@@ -8104,7 +8313,14 @@ function coreadMemory() {
   m.mainlineRecent = Math.max(0, Math.round(m.mainlineRecent));
   if (!Number.isFinite(m.mainlineDepth)) m.mainlineDepth = 2;
   m.mainlineDepth = Math.max(0, Math.min(20, Math.round(m.mainlineDepth)));
-  if (!['dedicated', 'shared'].includes(m.storageMode)) m.storageMode = 'dedicated';
+  // 1.18：世界书降为可选镜像。旧用户保留原先明确选择；新用户默认 none。
+  if ((m.__worldSyncRev || 0) < 1) {
+    if (['dedicated', 'shared'].includes(m.storageMode)) m.worldSyncMode = m.storageMode;
+    else if (!['none', 'dedicated', 'shared'].includes(m.worldSyncMode)) m.worldSyncMode = 'none';
+    delete m.storageMode;
+    m.__worldSyncRev = 1;
+  }
+  if (!['none', 'dedicated', 'shared'].includes(m.worldSyncMode)) m.worldSyncMode = 'none';
   // 主线选择标签规则（数组·同取材结构）。迁移旧的字符串字段 mainlineTagRule → 数组。
   if (!Array.isArray(m.mainlineTagRules)) {
     if (typeof m.mainlineTagRule === 'string' && m.mainlineTagRule.trim()) {
@@ -8763,6 +8979,99 @@ function coreadLoreComment(meta, label) {
   return `${COREAD_LORE_PREFIX}·${char}·${label}·${title}(${seq})`;
 }
 
+function coreadSliceLogicalId(slice, bookId = readerDialog.bookId || 'unknown') {
+  return `coread::${bookId}::${slice?.id || 'unknown'}`;
+}
+
+function coreadSliceLoreLabel(slice) {
+  if (slice?.src === 'text') return '正文';
+  if (slice?.src === 'mainline') return '主线';
+  return slice?.compressed ? '合并' : `#${slice?.batch || '?'}`;
+}
+
+async function coreadMirrorUidMap(book) {
+  const map = new Map();
+  if (!book) return map;
+  try {
+    for (const entry of (await getWorldBookEntries(book)) || []) {
+      const logical = coreadEntryLogicalId(entry);
+      if (logical) map.set(logical, String(entry?.uid ?? ''));
+    }
+  } catch (_) {}
+  return map;
+}
+
+async function coreadSyncSliceMirror(slice, meta, book = null, uidMap = null) {
+  const target = book == null ? await coreadTargetBook() : book;
+  if (!target || !slice) return '';
+  const logical = coreadSliceLogicalId(slice);
+  const known = slice.loreBook === target && /^\d+$/.test(String(slice.loreUid || ''))
+    ? String(slice.loreUid) : (uidMap?.get(logical) || '');
+  const finalUid = await writeWorldEntry({
+    book: target,
+    uid: known,
+    tag: logical,
+    comment: coreadLoreComment(meta, coreadSliceLoreLabel(slice)),
+    content: slice.summary,
+    clearKeys: true,
+    order: 50,
+    enable: true,
+  });
+  if (finalUid) {
+    slice.loreUid = finalUid;
+    slice.loreBook = target;
+    uidMap?.set(logical, finalUid);
+  }
+  return finalUid;
+}
+
+async function coreadRemoveSliceMirrors(book, slices) {
+  if (!book || !Array.isArray(slices) || !slices.length) return 0;
+  const map = await coreadMirrorUidMap(book);
+  let removed = 0;
+  for (const slice of slices) {
+    const uid = map.get(coreadSliceLogicalId(slice));
+    if (!uid) continue;
+    try { await deleteWorldEntry(book, uid); removed++; } catch (_) {}
+  }
+  return removed;
+}
+
+async function coreadSetWorldSyncMode(nextMode) {
+  if (coreadWorldSyncBusy) { toast('世界书镜像正在同步，请稍候。', 'info'); return; }
+  const m = coreadMemory();
+  const normalized = ['none', 'dedicated', 'shared'].includes(nextMode) ? nextMode : 'none';
+  if (m.worldSyncMode === normalized) return;
+  coreadWorldSyncBusy = true;
+  toast(normalized === 'none' ? '正在关闭世界书同步…' : '正在同步世界书镜像…', 'info');
+  try {
+    const slices = readerDialog.slices || [];
+    const meta = coreadBookMeta(readerDialog.bookId) || {};
+    const oldBook = await coreadTargetBook().catch(() => '');
+    m.worldSyncMode = normalized;
+    saveSettings();
+    const newBook = await coreadTargetBook().catch(() => '');
+    let synced = 0;
+    if (newBook) {
+      const map = await coreadMirrorUidMap(newBook);
+      for (const slice of slices) {
+        try { if (await coreadSyncSliceMirror(slice, meta, newBook, map)) synced++; } catch (_) {}
+      }
+    }
+    // 切换目标或关闭同步后，禁用旧镜像，避免世界书继续注入过期副本。
+    if (oldBook && oldBook !== newBook && (!newBook || synced === slices.length)) await coreadRemoveSliceMirrors(oldBook, slices);
+    if (!newBook) {
+      for (const slice of slices) { delete slice.loreUid; delete slice.loreBook; }
+    }
+    await coreadSaveDialog();
+    if (normalized === 'none') toast('已改为千幕档案主存储，不再同步世界书。', 'success');
+    else toast(`世界书镜像已同步 ${synced} 条记忆。`, synced === slices.length ? 'success' : 'warning');
+  } finally {
+    coreadWorldSyncBusy = false;
+    rerenderMore();
+  }
+}
+
 // 蒸馏走哪套 API：总结卡自成一套连接（自定义 URL/Key/模型·与向量/重排同构）——
 // ① 总结卡填了 URL+Key+模型 → 直连该接口（叠加温度/最大输出/流式）；
 // ② 否则回落跟随 SillyTavern generateRaw（gen-params 由 ST 自身接管，无法覆盖）。
@@ -9037,21 +9346,21 @@ async function coreadDistillRange(fromIdx, toIdx, m, meta, names) {
    'dialog'（默认·省略）＝共读对话蒸馏；'text'＝正文伴读切片（把已读正文直接蒸成情节记忆·不依赖对话）；
    'mainline'＝主线联动蒸馏（圈选主线里聊到书的片段沉淀为共读切片）。三者同池、同召回，UI 按 src 打标签。 */
 
-// 通用切片落地：写世界书(keyless+tag) + 推入镜像。res={summary,keywords,synonyms,salvaged}。返回 {ok, wrote, batch}。
+// 通用切片落地：千幕档案始终写入；用户开启时再额外写世界书镜像。
 async function coreadPersistSlice(res, meta, extra = {}) {
   const batch = coreadNextBatch();
   const sliceId = uid('slice');
   const bookId = readerDialog.bookId || 'unknown';
   const loreUid = `coread::${bookId}::${sliceId}`;
   let finalUid = '';
+  let targetBook = '';
   let writeErr = '';
   try {
-    const book = await coreadTargetBook();
-    if (!book) writeErr = '未能取得/创建伴读世界书';
-    else {
+    targetBook = await coreadTargetBook();
+    if (targetBook) {
       const srcTag = extra.src === 'text' ? '正文' : (extra.src === 'mainline' ? '主线' : `#${batch}`);
       finalUid = await writeWorldEntry({
-        book, tag: loreUid,
+        book: targetBook, tag: loreUid,
         comment: coreadLoreComment(meta, srcTag),
         content: res.summary, clearKeys: true, order: 50,
       });
@@ -9061,7 +9370,7 @@ async function coreadPersistSlice(res, meta, extra = {}) {
   readerDialog.slices = Array.isArray(readerDialog.slices) ? readerDialog.slices : [];
   const boundary = coreadCurrentReadBoundarySync(bookId);
   const rawSlice = {
-    id: sliceId, batch, loreUid: finalUid || loreUid,
+    id: sliceId, batch, ...(finalUid ? { loreUid: finalUid, loreBook: targetBook } : {}),
     summary: res.summary, keywords: res.keywords, synonyms: res.synonyms || {},
     ts: Date.now(), ...(res.salvaged ? { salvaged: true } : {}),
     ...extra,
@@ -9345,7 +9654,7 @@ async function coreadManualSummarize(fromIdx, toIdx) {
       // 手动重整伴读对话时只能匹配伴读对谈，禁止误删其它来源。
       if (reader.normalizeCoreadSource(s.provenance?.source || s.src) === 'dialog' && cf <= to && ct >= from) {
         overlapped = true;
-        if (s.loreUid) { try { const book = await coreadTargetBook(); if (book) await deleteWorldEntry(book, s.loreUid); } catch (_) {} }
+        try { const book = await coreadTargetBook(); if (book) await coreadRemoveSliceMirrors(book, [s]); } catch (_) {}
       } else kept.push(s);
     }
     readerDialog.slices = kept;
@@ -9397,7 +9706,7 @@ async function coreadCompressSlices(lo, hi) {
     const synonyms = coreadMergeSynonyms(inRange.map((s) => s.synonyms));
     // 删掉被压缩的旧切片(连 Lore)，插入一条合并切片
     const book = await coreadTargetBook().catch(() => '');
-    for (const s of inRange) { if (s.loreUid && book) { try { await deleteWorldEntry(book, s.loreUid); } catch (_) {} } }
+    if (book) await coreadRemoveSliceMirrors(book, inRange);
     const coveredFrom = Math.min(...inRange.map((s) => Number(s.coveredFrom) || 0));
     const coveredTo = Math.max(...inRange.map((s) => Number(s.coveredTo) || 0));
     const sliceId = uid('slice');
@@ -9427,7 +9736,7 @@ async function coreadCompressSlices(lo, hi) {
     const dialogIds = uniqueClean(normalizedParts.flatMap((s) => s.provenance?.dialogMessageIds || []));
     const mainlineFloors = uniqueClean(normalizedParts.flatMap((s) => s.provenance?.mainlineFloors || []));
     readerDialog.slices.push(reader.normalizeCoreadSlice({
-      id: sliceId, batch: 0, loreUid: finalUid || loreUid, summary, keywords, synonyms,
+      id: sliceId, batch: 0, ...(finalUid ? { loreUid: finalUid, loreBook: book } : {}), summary, keywords, synonyms,
       src: compressedSource === 'book' ? 'text' : compressedSource,
       coveredFrom, coveredTo, ts: Date.now(), compressed: true,
       provenance: {
@@ -9468,7 +9777,7 @@ async function coreadRegenSlice(sliceId) {
     if (!res) return { ok: false, reason: '该切片对应的对话已不存在或模型无返回' };
     slice.summary = res.summary; slice.keywords = res.keywords; slice.synonyms = res.synonyms || {}; slice.ts = Date.now();
     if (res.salvaged) slice.salvaged = true; else delete slice.salvaged;   // 重生成成功即摘掉保底标记
-    try { const book = await coreadTargetBook(); if (book && slice.loreUid) await writeWorldEntry({ book, uid: slice.loreUid, content: res.summary, clearKeys: true }); } catch (_) {}
+    try { await coreadSyncSliceMirror(slice, meta); } catch (_) {}
     await coreadSaveDialog();
     await coreadRefreshContainer();   // 切片内容有变→反哺主线切片池失效重建
     return { ok: true, slice };
@@ -9485,7 +9794,7 @@ async function coreadSaveSliceEdit(sliceId, summary, keywordsStr) {
   slice.keywords = uniqueClean(String(keywordsStr || '').split(/[,，、\s]+/).map((k) => k.trim()).filter(Boolean)).slice(0, 8);
   slice.ts = Date.now();
   delete slice.salvaged;   // 用户手动编辑过即视为已修正
-  try { const book = await coreadTargetBook(); if (book && slice.loreUid) await writeWorldEntry({ book, uid: slice.loreUid, content: slice.summary, clearKeys: true }); } catch (_) {}
+  try { await coreadSyncSliceMirror(slice, coreadBookMeta(readerDialog.bookId) || {}); } catch (_) {}
   await coreadSaveDialog();
   await coreadRefreshContainer();   // 切片内容有变→反哺主线切片池失效重建
 }
@@ -9495,9 +9804,7 @@ async function coreadDeleteSlice(sliceId) {
   const idx = (readerDialog.slices || []).findIndex((s) => s.id === sliceId);
   if (idx < 0) return;
   const slice = readerDialog.slices[idx];
-  if (slice.loreUid) {
-    try { const book = await coreadTargetBook(); if (book) await deleteWorldEntry(book, slice.loreUid); } catch (_) {}
-  }
+  try { const book = await coreadTargetBook(); if (book) await coreadRemoveSliceMirrors(book, [slice]); } catch (_) {}
   readerDialog.slices.splice(idx, 1);
   coreadEchoTtl.delete(sliceId);   // 顺带清回响，避免孤儿加分
   await coreadSaveDialog();
@@ -10002,7 +10309,7 @@ async function coreadClearAllSlices() {
   const slices = readerDialog.slices || [];
   try {
     const book = await coreadTargetBook();
-    if (book) { for (const s of slices) { if (s.loreUid) await deleteWorldEntry(book, s.loreUid); } }
+    if (book) await coreadRemoveSliceMirrors(book, slices);
   } catch (e) { console.warn(`[${MODULE_NAME}] clear slices failed`, e); }
   readerDialog.slices = [];
   coreadEchoTtl.clear();   // 切片全清，回响池随之清空
@@ -10091,23 +10398,15 @@ async function coreadMigrateFromChat(sourceRec) {
   readerDialog.lastInjected = null;
   coreadEchoTtl.clear();
   coreadVecCache = null;   // 迁入新切片→向量缓存作废，下次召回按需重算
-  // 在目标世界书重写每条切片的 Lore（loreUid 用同串·写进目标 book 即生效）
+  // 千幕档案先落盘；开启世界书同步时再按逻辑标识重建镜像。
   let wrote = 0;
   try {
     const book = await coreadTargetBook();
     if (book) {
+      const map = await coreadMirrorUidMap(book);
       for (const s of readerDialog.slices) {
-        const logical = `coread::${bookId}::${s.id}`;   // 逻辑标识（按册·稳定）
-        const uidStr = s.loreUid || logical;
         try {
-          const label = s.src === 'text' ? '正文' : (s.src === 'mainline' ? '主线' : (s.compressed ? '合并' : `#${s.batch || '?'}`));
-          const fin = await writeWorldEntry({
-            book, uid: uidStr, tag: logical,   // uid 为整数则原地更新·否则新建；逻辑标识始终入 comment ⟨…⟩
-            comment: coreadLoreComment(meta, label),
-            content: s.summary, clearKeys: true, order: 50, enable: true,   // 走A：keyless 仅存储
-          });
-          s.loreUid = fin || uidStr;
-          wrote++;
+          if (await coreadSyncSliceMirror(s, meta, book, map)) wrote++;
         } catch (_) {}
       }
     }
@@ -10432,7 +10731,7 @@ async function coreadOpenSliceManagerDialog() {
           <i class="fa-solid fa-chevron-down sd-reader-sm-chevron"></i>
         </summary>
         <div class="sd-reader-sm-detail">
-          <div class="sd-reader-sm-meta">${cover} ${s.ts ? `<span class="sd-muted">${new Date(s.ts).toLocaleString()}</span>` : ''}${s.loreUid ? '' : ' <span class="sd-muted">· 未写入世界书</span>'}</div>
+          <div class="sd-reader-sm-meta">${cover} ${s.ts ? `<span class="sd-muted">${new Date(s.ts).toLocaleString()}</span>` : ''}${m.worldSyncMode === 'none' ? ' <span class="sd-muted">· 千幕档案</span>' : (s.loreUid ? '' : ' <span class="sd-muted">· 世界书镜像待同步</span>')}</div>
           <textarea class="sd-reader-mtextarea sd-reader-sm-edit" data-id="${htmlEscape(s.id)}" rows="4">${htmlEscape(s.summary || '')}</textarea>
           <label class="sd-reader-mlab">关键词（逗号分隔）</label>
           <input class="sd-reader-minput sd-reader-sm-keys" data-id="${htmlEscape(s.id)}" value="${htmlEscape((s.keywords || []).join(', '))}">
@@ -10533,10 +10832,10 @@ async function coreadTestLoreWrite() {
 }
 globalThis.qmTestLoreWrite = coreadTestLoreWrite;   // 挂全局便于控制台调用
 
-// 综合自检：两模式写入切换 + keyless 校验 + 反哺主线切片池 + 召回内核。结果详见控制台（F12），不改动用户数据。
+// 综合自检：可选世界书镜像 + keyless 校验 + 反哺主线切片池 + 召回内核。结果详见控制台（F12），不改动用户数据。
 async function coreadSelfTest() {
   const m = coreadMemory();
-  const savedMode = m.storageMode;
+  const savedMode = m.worldSyncMode;
   const pass = [], fail = [];
   const log = (ok, label, extra = '') => { (ok ? pass : fail).push(label); console.log(`${ok ? '✓' : '✗'} ${label}${extra ? ` — ${extra}` : ''}`); };
   console.log('=== 千幕伴读·综合自检 ===');
@@ -10546,7 +10845,7 @@ async function coreadSelfTest() {
 
     // ① 两模式各写入一条 keyless 探针 → 校验落在正确世界书且无关键词
     for (const mode of ['dedicated', 'shared']) {
-      m.storageMode = mode;
+      m.worldSyncMode = mode;
       let book = '';
       try { book = await coreadTargetBook(); } catch (_) {}
       // shared 模式需打开聊天才有聊天绑定世界书（/getchatbook 无聊天时返回空）——非 bug，标「跳过」而非「失败」
@@ -10608,7 +10907,7 @@ async function coreadSelfTest() {
     console.error('自检异常:', e);
     fail.push('异常中断');
   } finally {
-    m.storageMode = savedMode;   // 复原用户设置（自检不留痕）
+    m.worldSyncMode = savedMode;   // 复原用户设置（自检不留痕）
     coreadInvalidatePool();
   }
   console.log(`=== 自检完成：通过 ${pass.length} · 失败 ${fail.length} ===`);
@@ -10771,8 +11070,12 @@ async function coreadSweepOrphanLore() {
     coreadSweptChats.add(chatKey);
     const liveIds = new Set((coread().books || []).map((b) => b.id));
     let cleaned = 0;
-    // 两模式都扫：当前聊天绑定书 + 独立「千幕伴读」书。指向「已删书」的伴读条目即孤儿。
-    const booksToScan = uniqueClean([await getOrCreateChatBook().catch(() => ''), await coreadEnsureDedicatedBook().catch(() => '')]);
+    // 只扫描已经存在的镜像目标；默认 none 绝不为了清扫反向创建一本世界书。
+    const existingBooks = await listWorldBooks().catch(() => []);
+    const booksToScan = uniqueClean([
+      await getOrCreateChatBook().catch(() => ''),
+      existingBooks.includes(COREAD_DEDICATED_BOOK) ? COREAD_DEDICATED_BOOK : '',
+    ]);
     for (const book of booksToScan) {
       if (!book) continue;
       const entries = await getWorldBookEntries(book);
@@ -12067,7 +12370,7 @@ function renderCoreadGuide() {
       <article><span>1</span><div><b>控制书友视野</b><p>防剧透会按当前阅读进度隔离后文章节形成的切片；可读范围决定书友能回看多少正文。</p></div></article>
       <article><span>2</span><div><b>生成记忆切片</b><p>伴读对话、已读正文和主线选段都进入同一切片池。自动总结适合连续阅读，手动总结用于补整或重整指定区间。</p></div></article>
       <article><span>3</span><div><b>理解召回数量</b><p>近景切片会固定带入最近记忆；检索命中会从扫描语境中寻找相关切片。向量与重排是可选增强，关闭也能用关键词召回。</p></div></article>
-      <article><span>4</span><div><b>选择写入位置</b><p>独立世界书便于隔离整理；写入正文同本世界书便于与现有记忆插件统一查看。千幕的召回仍由自身切片池完成。</p></div></article>
+      <article><span>4</span><div><b>选择同步方式</b><p>记忆始终保存在千幕档案并由同一切片池召回。默认不占用世界书；需要外部查看时，可镜像到千幕独立世界书或正文同本世界书。</p></div></article>
     </div>
     <button type="button" class="sd-btn sd-primary sd-reader-guide-finish"><i class="fa-solid fa-check"></i>进入伴读中心</button>
   </section>`;
@@ -12146,15 +12449,17 @@ function renderMemRecordsTab(m) {
   const boundN = coreadBoundBuckets().length;
   // 当前书用于档案总览标题。
   const curBook = coreadBookMeta(readerDialog.bookId);
-  // 记忆写入位置卡（从「注入」页移来·作记录页首卡）：写入位置四字不换行·下拉占比收窄·去小字注释
+  const syncLabel = m.worldSyncMode === 'shared' ? '同步至正文世界书' : (m.worldSyncMode === 'dedicated' ? '同步至千幕世界书' : '不同步世界书');
+  // 千幕档案是主存储，世界书仅作用户可选镜像。
   const storageCard = `
     <details class="sd-reader-mcard">
-      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-database"></i> 记忆写入位置 <span class="sd-reader-inj-tag">${m.storageMode === 'shared' ? '共享世界书' : '千幕独立世界书'}</span></summary>
+      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-database"></i> 世界书同步 <span class="sd-reader-inj-tag">${syncLabel}</span></summary>
       <div class="sd-reader-mrow">
-        <span class="sd-reader-mrow-lab" style="white-space:nowrap">写入位置</span>
-        <select class="sd-reader-minput sd-reader-storagemode">
-          <option value="dedicated"${m.storageMode !== 'shared' ? ' selected' : ''}>建立千幕伴读世界书</option>
-          <option value="shared"${m.storageMode === 'shared' ? ' selected' : ''}>与正文记忆插件写入同本世界书</option>
+        <span class="sd-reader-mrow-lab" style="white-space:nowrap">同步方式</span>
+        <select class="sd-reader-minput sd-reader-storagemode"${coreadWorldSyncBusy ? ' disabled' : ''}>
+          <option value="none"${m.worldSyncMode === 'none' ? ' selected' : ''}>不同步世界书（推荐）</option>
+          <option value="dedicated"${m.worldSyncMode === 'dedicated' ? ' selected' : ''}>同步到千幕伴读世界书</option>
+          <option value="shared"${m.worldSyncMode === 'shared' ? ' selected' : ''}>同步到正文同本世界书</option>
         </select>
       </div>
     </details>`;
@@ -13435,7 +13740,7 @@ function bindReaderStageEvents(stageRoot) {
     }
     if (e.target.closest('.sd-reader-spoiler-filter')) { m.spoilerProtection = e.target.checked; saveSettings(); coreadInvalidatePool(); rerenderMore(); return; }
     if (e.target.closest('.sd-reader-mainline-toggle')) { m.mainlineFeedback = e.target.checked; saveSettings(); coreadInvalidatePool(); rerenderMore(); return; }
-    if (e.target.closest('.sd-reader-storagemode')) { m.storageMode = e.target.value === 'shared' ? 'shared' : 'dedicated'; saveSettings(); return; }
+    if (e.target.closest('.sd-reader-storagemode')) { coreadSetWorldSyncMode(e.target.value); return; }
     // 模型下拉选中 → 直接落库（向量/重排/总结通用）
     const modelPick = e.target.closest('.sd-reader-mem-modelpick');
     if (modelPick) {
@@ -14865,8 +15170,11 @@ function bindEvents() {
       const len = Array.isArray(chat) ? chat.length : 0;
       const store = getChatStore();
       let mark = Number(store.lastPlanIdx ?? -1);
-      if (mark < 0 || mark > len - 1) mark = len - 1;   // 首次启用/删楼后：基准夹到当前末尾，既不漏数也不让历史楼层一次触发
-      store.lastPlanIdx = mark;
+      let metadataChanged = false;
+      if (mark < 0 || mark > len - 1) {
+        mark = len - 1;   // 首次启用/删楼后：基准夹到当前末尾，既不漏数也不让历史楼层一次触发
+        if (Number(store.lastPlanIdx) !== mark) { store.lastPlanIdx = mark; metadataChanged = true; }
+      }
       let layers = 0;                                    // 基准之后真正新增的「角色回复」层（你发的楼、system 都不计）
       for (let i = mark + 1; i < len; i++) {
         const m = chat[i];
@@ -14877,7 +15185,8 @@ function bindEvents() {
         await saveMetadata();
         await generateDirectorPlan(false, true);
       } else {
-        await saveMetadata();
+        // 计数由聊天长度相对固定基准实时得出；无状态变化时不重写整份聊天 metadata。
+        if (metadataChanged) await saveMetadata();
       }
     } catch (error) {
       console.warn(`[${MODULE_NAME}] auto refresh handler failed`, error);
@@ -14910,10 +15219,10 @@ function bindEvents() {
   // 原地编辑正文：刻意不复位缓存——保留已提取台词与已生成音频，交用户手动决定（🔁 全量重提取 / 双击单句更新）。
   // 但 ST 保存编辑会重渲 .mes_text 内部 HTML，抹掉注入其中的内联 🔊（工具栏/台词条是兄弟节点、不受影响）。
   // 故只触发一次防抖扫描，由 ttsAutoRestore 的「自愈」分支按缓存幂等补回内联图标（延时让 ST 重渲先落定）。
-  const ttsMessageEditedHandler = () => {
+  const ttsMessageEditedHandler = (messageRef) => {
     const t = settings.tts || {};
     if (!t.enabled || !t.injectInChat) return;
-    ttsScanDebounced(250);
+    ttsScheduleEditedMessage(messageRef, 250);
   };
   const pairs = [
     [types.APP_READY || 'app_ready', appReadyHandler],   // 注水后把悬浮球挪回上次拖动的位置（修偶发回默认位）

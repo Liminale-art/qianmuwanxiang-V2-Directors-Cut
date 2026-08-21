@@ -4,7 +4,7 @@
 // localStorage 存不下二进制大对象，故独立走 IndexedDB；存 Blob，播放时再 createObjectURL。
 
 const DB_NAME = 'qianmu-blobstore';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const STORE_AUDIO = 'audio';         // key: 缓存键   value: { blob, meta, createdAt }
 const STORE_FAVORITES = 'favorites'; // key: 收藏 id  value: { blob, meta, label, createdAt }
 // ── 伴读模块（v2 新增）──
@@ -16,6 +16,8 @@ const STORE_RETLOG = 'reader_retlog';      // key: 自增id    value: { bookId, 
 const STORE_IMAGES = 'reader_images';      // key: `${bookId}::${n}` value: Blob（书内插图·正文占位符 ⟦img:n⟧ 引用）
 // ── 伴读模块（v4 新增）──
 const STORE_VECTORS = 'reader_vectors';    // key: bucketKey value: { dim, model, vecs:{ sliceId:[...] }, fps:{ sliceId:指纹 } }（切片嵌入向量·独立于会话·仅变化时写）
+// ── 配音模块（v5 新增）──
+const STORE_TTS_LINES = 'tts_lines';       // key: chatKey value: { lines:{contentKey:[]}, keyByMes:{mesid:contentKey}, updatedAt }
 
 let dbPromise = null;
 
@@ -35,6 +37,7 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE_RETLOG)) db.createObjectStore(STORE_RETLOG, { autoIncrement: true });
       if (!db.objectStoreNames.contains(STORE_IMAGES)) db.createObjectStore(STORE_IMAGES);
       if (!db.objectStoreNames.contains(STORE_VECTORS)) db.createObjectStore(STORE_VECTORS);
+      if (!db.objectStoreNames.contains(STORE_TTS_LINES)) db.createObjectStore(STORE_TTS_LINES);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => { dbPromise = null; reject(req.error); };
@@ -82,6 +85,24 @@ export async function deleteAudio(key) {
 export async function clearAudioCache() {
   const s = await store(STORE_AUDIO, 'readwrite');
   await reqP(s.clear());
+}
+
+// ── 配音：台词提取缓存 ──────────────────────────────────────
+// 台词文本不再全量塞进聊天 metadata；按聊天分桶存在本机 IndexedDB，避免长聊天每次保存都重复序列化。
+export async function putTtsLineCache(chatKey, record) {
+  const s = await store(STORE_TTS_LINES, 'readwrite');
+  await reqP(s.put({ ...record, updatedAt: Date.now() }, String(chatKey || 'default')));
+  return chatKey;
+}
+
+export async function getTtsLineCache(chatKey) {
+  const s = await store(STORE_TTS_LINES, 'readonly');
+  return reqP(s.get(String(chatKey || 'default')));
+}
+
+export async function deleteTtsLineCache(chatKey) {
+  const s = await store(STORE_TTS_LINES, 'readwrite');
+  await reqP(s.delete(String(chatKey || 'default')));
 }
 
 // 缓存上限裁剪：按 createdAt 保留最新 maxEntries 条，其余删除（近似 LRU）
