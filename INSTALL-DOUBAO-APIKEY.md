@@ -12,7 +12,7 @@ curl -fsSL https://raw.githubusercontent.com/liminale1525/Omniscene/main/install
 
 这条命令会自动识别：
 
-- **VPS 原生部署**：当前目录能看到 `config.yaml`；安装完成后按原方式重启 SillyTavern。
+- **VPS 原生部署**：当前目录能看到 `config.yaml`；安装完成后按原方式重启 SillyTavern 后端服务。
 - **VPS Docker Compose 部署**：当前目录能看到 compose 配置文件和 `config` 文件夹；安装程序会检查插件目录挂载，并尝试自动重启 `sillytavern` 容器。
 
 如果出现过 `New-Item: command not found` 或 `Out-Null: command not found`，说明你使用的是 Linux/Git Bash 终端，应使用上面这一行，不要使用 PowerShell 命令。
@@ -37,7 +37,9 @@ curl -fsSL https://raw.githubusercontent.com/liminale1525/Omniscene/main/install
 
 ## 安装完成后
 
-重新启动 SillyTavern，然后打开千幕 → 配音 → 豆包语音，接入方式选择“新版 API Key”，粘贴 API Key 并点击“测试连接”。
+必须**重启 SillyTavern 后端服务或 Docker 容器**，不是只刷新、关闭或重新打开 ST 网页。服务端插件只会在后端启动时加载。
+
+后端重启完成后，再刷新 ST 网页，然后打开千幕 → 配音 → 豆包语音，接入方式选择“新版 API Key”，粘贴 API Key 并点击“测试连接”。
 
 安装成功后，健康检查地址会显示 `"ok":true`：
 

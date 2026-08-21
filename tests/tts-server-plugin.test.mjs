@@ -35,6 +35,8 @@ assert.match(installGuide, /install-server-plugin\.sh \| sh/);
 assert.match(installGuide, /install-server-plugin\.ps1 \| iex/);
 assert.match(installGuide, /云端 \/ VPS 部署/);
 assert.match(installGuide, /本地部署/);
+assert.match(installGuide, /重启 SillyTavern 后端服务或 Docker 容器/);
+assert.match(installGuide, /不是只刷新、关闭或重新打开 ST 网页/);
 assert.match(installGuide, /st\.example\.com\/api\/plugins\/qianmu-tts\/health/);
 assert.match(shellInstaller, /enableServerPlugins: true/);
 assert.match(shellInstaller, /mkdir -p "\$PLUGIN_PARENT"/);

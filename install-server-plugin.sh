@@ -70,6 +70,6 @@ if [ "$DEPLOYMENT" = "docker" ]; then
     printf '\n插件已安装。请手动重启 SillyTavern Docker 容器。\n'
   fi
 else
-  printf '\n千幕豆包新版 API Key 插件已安装完成。现在请重新启动 SillyTavern。\n'
+  printf '\n千幕豆包新版 API Key 插件已安装完成。现在请重启 SillyTavern 后端服务（不是只刷新或重新打开网页）。\n'
 fi
 printf '启动后可访问：http://127.0.0.1:8000/api/plugins/qianmu-tts/health\n\n'
