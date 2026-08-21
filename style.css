@@ -3601,6 +3601,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-src-badge.src-dialog { background: color-mix(in srgb, var(--sd-accent) 18%, transparent); color: var(--sd-accent); }
 .sd-reader-src-badge.src-text { background: color-mix(in srgb, #d0872e 22%, transparent); color: #d0872e; }
 .sd-reader-src-badge.src-mainline { background: color-mix(in srgb, var(--sd-good, #3fae6b) 22%, transparent); color: var(--sd-good, #3fae6b); }
+.sd-reader-src-badge.src-mixed { background: color-mix(in srgb, #8c6ad8 22%, transparent); color: #9d7bea; }
 /* 召回管线（原「召回候选/重排/向量」三卡合并·按管线顺序分步展示） */
 .sd-reader-pipe-step { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--sd-hairline); }
 .sd-reader-pipe-step:first-of-type { margin-top: 6px; padding-top: 0; border-top: none; }

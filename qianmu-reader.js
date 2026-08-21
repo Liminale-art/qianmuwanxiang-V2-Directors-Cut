@@ -254,7 +254,110 @@ export function totalChars(chapters) {
 }
 
 /* ============================================================
-   七、HTML → 纯文本（EPUB/MOBI 共用）
+   七、共读记忆来源与防剧透水位（纯数据层）
+   ============================================================ */
+
+export const COREAD_SLICE_SCHEMA_VERSION = 2;
+
+// 对外统一为三种用户可理解的来源；mixed 只用于旧切片被跨来源合并后的兼容记录。
+export function normalizeCoreadSource(source) {
+  const raw = String(source || '').toLowerCase();
+  if (raw === 'text' || raw === 'book') return 'book';
+  if (raw === 'mainline') return 'mainline';
+  if (raw === 'mixed') return 'mixed';
+  return 'dialog';
+}
+
+function finiteOrNull(value) {
+  if (value == null || value === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function cleanPositiveInts(values) {
+  return [...new Set((Array.isArray(values) ? values : [])
+    .map((value) => Math.round(Number(value)))
+    .filter((value) => Number.isFinite(value) && value > 0))]
+    .sort((a, b) => a - b);
+}
+
+// 旧切片在载入时补齐 provenance；不删除旧字段，保证已发布版本仍能读取同一份导出数据。
+export function normalizeCoreadSlice(rawSlice, context = {}) {
+  const raw = rawSlice && typeof rawSlice === 'object' ? rawSlice : {};
+  const oldProvenance = raw.provenance && typeof raw.provenance === 'object' ? raw.provenance : {};
+  const source = normalizeCoreadSource(oldProvenance.source || raw.src);
+  const coveredFrom = finiteOrNull(raw.coveredFrom);
+  const coveredTo = finiteOrNull(raw.coveredTo);
+  const fallbackBoundary = context.boundary && typeof context.boundary === 'object' ? context.boundary : {};
+  const createdAt = finiteOrNull(oldProvenance.createdAt) ?? finiteOrNull(raw.ts) ?? Date.now();
+  // 书中内容的 coveredTo 是不可放宽的硬边界：即使旧元数据写过更小 readTo，也不能提前放行。
+  const storedReadTo = finiteOrNull(oldProvenance.readTo);
+  const readTo = source === 'book'
+    ? (coveredTo ?? storedReadTo ?? finiteOrNull(fallbackBoundary.readTo))
+    : (storedReadTo ?? finiteOrNull(fallbackBoundary.readTo));
+  const sources = [...new Set((Array.isArray(oldProvenance.sources) ? oldProvenance.sources : [source])
+    .map(normalizeCoreadSource))];
+  const provenance = {
+    version: COREAD_SLICE_SCHEMA_VERSION,
+    source,
+    sources,
+    bookId: String(oldProvenance.bookId || context.bookId || ''),
+    bucket: String(oldProvenance.bucket || context.bucket || ''),
+    createdAt,
+    readTo,
+    readChapter: finiteOrNull(oldProvenance.readChapter) ?? finiteOrNull(fallbackBoundary.chapterIndex),
+    readProgress: finiteOrNull(oldProvenance.readProgress) ?? finiteOrNull(fallbackBoundary.progress),
+    charFrom: finiteOrNull(oldProvenance.charFrom) ?? (source === 'book' ? coveredFrom : null),
+    charTo: finiteOrNull(oldProvenance.charTo) ?? (source === 'book' ? coveredTo : null),
+    chapterFrom: finiteOrNull(oldProvenance.chapterFrom),
+    chapterTo: finiteOrNull(oldProvenance.chapterTo),
+    dialogFrom: finiteOrNull(oldProvenance.dialogFrom) ?? (source === 'dialog' ? coveredFrom : null),
+    dialogTo: finiteOrNull(oldProvenance.dialogTo) ?? (source === 'dialog' ? coveredTo : null),
+    dialogMessageIds: [...new Set((Array.isArray(oldProvenance.dialogMessageIds) ? oldProvenance.dialogMessageIds : [])
+      .map((value) => String(value || '')).filter(Boolean))],
+    mainlineFloors: cleanPositiveInts(oldProvenance.mainlineFloors || raw.mainlineFloors),
+  };
+  return {
+    ...raw,
+    src: source === 'book' ? 'text' : source,
+    ts: finiteOrNull(raw.ts) ?? createdAt,
+    provenance,
+  };
+}
+
+// 防剧透判断只看切片形成时已知到哪里；正文切片天然以 coveredTo 为硬边界。
+// 旧数据首次载入时尽量以当前读位补迁移水位；若仍无法确认，则在保护开启时保守隔离。
+export function isCoreadSliceVisibleAtBoundary(slice, boundary, protectionEnabled = true) {
+  if (!protectionEnabled) return true;
+  const current = finiteOrNull(boundary?.readTo);
+  const normalized = normalizeCoreadSlice(slice, { boundary });
+  const knowledgeEnd = finiteOrNull(normalized.provenance?.readTo);
+  // 开启保护但任一侧没有可比较水位时采取保守隔离；用户可显式关闭开关恢复全部旧数据。
+  if (current == null || knowledgeEnd == null) return false;
+  return knowledgeEnd <= current;
+}
+
+export function filterCoreadSlicesAtBoundary(slices, boundary, protectionEnabled = true) {
+  return (Array.isArray(slices) ? slices : [])
+    .filter((slice) => isCoreadSliceVisibleAtBoundary(slice, boundary, protectionEnabled));
+}
+
+// 全书绝对字符位 → 章节下标；offset 视为字符位置，超界时夹到首尾章节。
+export function chapterIndexAtOffset(chapters, offset) {
+  const list = Array.isArray(chapters) ? chapters : [];
+  if (!list.length) return null;
+  const target = Math.max(0, Number(offset) || 0);
+  let cursor = 0;
+  for (let i = 0; i < list.length; i++) {
+    const end = cursor + String(list[i]?.content || '').length;
+    if (target < end || i === list.length - 1) return i;
+    cursor = end;
+  }
+  return list.length - 1;
+}
+
+/* ============================================================
+   八、HTML → 纯文本（EPUB/MOBI 共用）
    块级标签换行、去脚本样式、解实体；保留段落感，交给分章/切片。
    ============================================================ */
 
