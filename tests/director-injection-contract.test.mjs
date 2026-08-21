@@ -13,7 +13,7 @@ assert.ok(source.includes('sd-editor-reset-injection'), '注入编辑页必须�
 assert.match(source, /injectionEditor \? '<button[^']*aria-label="返回"[^']*<\/button>'/, '注入编辑页返回按钮必须只有图标');
 assert.match(source, /aria-label="恢复自动生成"><i[^>]*><\/i><\/button><button[^']*aria-label="保存"><i[^>]*><\/i><\/button>/, '注入编辑页恢复与保存按钮必须只有图标');
 assert.equal((source.match(/sd-editor-tool-icon/g) || []).length, 3, '注入编辑页返回、恢复与保存必须共用同一图标规格');
-assert.match(css, /\.sd-editor-tool-icon\.sd-editor-save i[^}]*transform: scale\(1\.08\)/, '保存对勾必须进行光学尺寸校正');
+assert.doesNotMatch(css, /\.sd-editor-tool-icon\.sd-editor-save i[^}]*transform:/, '保存与恢复图标必须使用完全相同的尺寸规则');
 assert.ok((source.match(/delete (?:store|getChatStore\(\))\.injectOverride/g) || []).length >= 3, '新推演、清空与载入历史必须解除旧覆盖');
 assert.match(css, /sd-tts-fav-row\.sd-playing \.sd-tts-txt\.is-overflowing/, '收藏标题只能在播放且溢出时滚动');
 assert.match(css, /prefers-reduced-motion: reduce/, '标题滚动必须尊重系统减少动态效果设置');

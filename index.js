@@ -21,18 +21,17 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.15.0';
+const VERSION = '1.16.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
 // 推正式库前：VISIBLE 保持 true、ENABLED 置 false；推开发库：两者皆 true。tab 路由/portal 据 ENABLED 门控。
 const COREAD_VISIBLE = true;
 const COREAD_ENABLED = true;
-// COREAD_MEMORY_ENABLED —— 伴读「记忆模块」子闸。伴读对话本体可用、但记忆模块（脑图标浮层：蒸馏/召回/向量/注入）单独锁。
-// 开发库=true(能进·自测)，正式库=false(伴读开放但记忆锁·脑图标点击弹「烙饼中」)。推正式库前置 false。
+// COREAD_MEMORY_ENABLED —— 伴读中心里的记忆档案/注入状态子闸；伴读设定与模型接口仍可独立使用。
+// 开发库=true；正式库开放记忆前可置 false，只隐藏记忆相关 tab，不拆回重复入口。
 const COREAD_MEMORY_ENABLED = true;
 const COREAD_TEASER = '伴读 · 小火慢炖中……';   // 正式版点击图标时的预告文案
-const COREAD_MEMORY_TEASER = '伴读记忆 · 烙饼中……';   // 记忆模块锁定时点脑图标的预告文案
 const SETTINGS_PANEL_ID = 'story-director-settings';
 const MODAL_ID = 'story-director-modal';
 const FLOAT_ID = 'story-director-float';
@@ -450,9 +449,9 @@ const DEFAULT_SETTINGS = Object.freeze({
       foldPresetOpen: true,         // 设定浮层：预设下拉展开态（持久·跨重开书）
       foldPresetItemsOpen: true,    // 设定浮层：预设条目列展开态（持久·跨重开书）
     },
-    // 伴读记忆面板配置容器：三 tab = API 设置 / 记忆记录 / 注入状态。
+    // 伴读中心配置容器：伴读设定 / 记忆档案 / 注入状态 / 模型与接口。
     memory: {
-      moreTab: 'api',               // 面板当前 tab：api | records | inject
+      moreTab: 'setup',             // 面板当前 tab：setup | records | inject | api
       // 对话 API：跟随 ST 当前连接（默认·最省）或走千幕自定义预设方案（apiProfiles 里的一条）
       dialogProvider: 'sillytavern',// sillytavern | external
       dialogApiProfileId: '',       // external 时选用的千幕 API 预设 id（空＝仍回落跟随 ST）
@@ -8056,12 +8055,13 @@ function coreadCompanion() {
   return c.companion;
 }
 
-// 伴读记忆面板配置访问器（补默认·归一）。三 tab 的持久化容器。
+// 伴读中心配置访问器（补默认·归一）。
 function coreadMemory() {
   const c = coread();
   if (!isPlainObject(c.memory)) c.memory = clone(DEFAULT_SETTINGS.coread.memory);
   const m = c.memory;
-  if (!['api', 'records', 'inject'].includes(m.moreTab)) m.moreTab = 'api';
+  if (!['setup', 'api', 'records', 'inject'].includes(m.moreTab)) m.moreTab = 'setup';
+  if ((m.__centerUiRev || 0) < 1) { m.moreTab = 'setup'; m.__centerUiRev = 1; }
   if (!['sillytavern', 'external'].includes(m.dialogProvider)) m.dialogProvider = 'sillytavern';
   for (const k of ['dialogApiProfileId', 'vectorApiUrl', 'vectorApiKey', 'vectorModel', 'vectorProfileSel', 'rerankApiUrl', 'rerankApiKey', 'rerankModel', 'rerankProfileSel', 'summaryPrompt', 'summaryApiUrl', 'summaryApiKey', 'summaryModel', 'summaryProfileSel']) {
     if (typeof m[k] !== 'string') m[k] = '';
@@ -10044,7 +10044,7 @@ async function coreadListAllArchives() {
     try { rec = await blobStore.getReaderChat(key); } catch (_) {}
     const sliceN = (rec && Array.isArray(rec.slices)) ? rec.slices.length : 0;
     if (!sliceN) continue;   // 无切片的档案不列（绑了也没内容可召回）
-    const bookId = key.split('::')[1] || '';
+    const bookId = key.split('::').at(-1) || '';
     const title = coreadBookMeta(bookId)?.title || (rec?.names ? '' : '') || '（未知书目）';
     out.push({
       bucket: key, bookId, title,
@@ -10170,22 +10170,27 @@ async function coreadOpenArchiveDialog() {
   const list = await coreadListAllArchives();
   if (!list.length) { toast('没有找到其它聊天/书目的伴读档案。', 'info'); return; }
   const rows = list.map((a, i) => {
-    const when = a.updatedAt ? new Date(a.updatedAt).toLocaleString() : '';
-    return `<label class="sd-reader-migrate-row">
+    const when = a.updatedAt ? new Date(a.updatedAt).toLocaleString() : '旧档案';
+    return `<label class="sd-reader-archive-card${a.bound ? ' is-bound' : ''}">
       <input type="checkbox" class="sd-reader-arch-pick" value="${i}"${a.bound ? ' checked' : ''}>
-      <span class="sd-reader-migrate-info">
-        <b>《${htmlEscape(a.title || '未知书目')}》</b>　<span class="sd-muted">${htmlEscape(a.chatName)} · ${a.sliceN} 条记忆</span>
-        <span class="sd-reader-migrate-when">${htmlEscape(when)}</span>
+      <span class="sd-reader-archive-mark"><i class="fa-solid fa-book-bookmark"></i></span>
+      <span class="sd-reader-archive-main">
+        <span class="sd-reader-archive-title"><b>《${htmlEscape(a.title || '未知书目')}》</b><em><span class="off">未绑定</span><span class="on">已选择</span></em></span>
+        <span class="sd-reader-archive-tags">
+          <span><i class="fa-solid fa-user"></i>${htmlEscape(a.chatName || '未知角色')}</span>
+          <span><i class="fa-solid fa-layer-group"></i>${a.sliceN} 条记忆</span>
+          <span><i class="fa-regular fa-clock"></i>${htmlEscape(when)}</span>
+        </span>
       </span>
     </label>`;
   }).join('');
-  const inner = `<div class="sd-reader-migrate-dialog" style="text-align:left">
-    <p style="margin:0 0 6px;font-weight:600">伴读档案（绑定到当前主线+对话）</p>
-    <p style="margin:0 0 10px;color:var(--sd-muted,#888);font-size:.85em">勾选的旧档案，其记忆切片会加入<b>反哺主线</b>与伴读对话的召回池（批次号各归各档·不物理合并·带来源书名标签）。当前正在读的这本书自动在池内，无需勾选。</p>
-    ${rows}
+  const inner = `<div class="sd-reader-archive-dialog" style="text-align:left">
+    <div class="sd-reader-archive-heading"><span><i class="fa-solid fa-box-archive"></i></span><div><b>伴读档案</b><small>勾选需要与当前对话共同召回的档案</small></div></div>
+    <div class="sd-reader-archive-note"><i class="fa-solid fa-circle-info"></i><span>绑定只共享召回，不会物理合并或改写旧档案；当前正在阅读的档案已自动生效。</span></div>
+    <div class="sd-reader-archive-grid">${rows}</div>
     <div class="sd-reader-arch-secondary">
       <button type="button" class="sd-reader-textbtn sd-reader-arch-migrate"><i class="fa-solid fa-arrow-right-arrow-left"></i> 从其他聊天迁移这本书</button>
-      <span class="sd-muted" style="font-size:.78em">迁移＝把这本书在别的聊天里的对话+切片<b>复制</b>进当前聊天（覆盖当前·会真正合入），区别于上面的「绑定」（只借召回不合并）。</span>
+      <span class="sd-muted" style="font-size:.78em">迁移会把另一聊天里的对话与切片复制进当前档案，并覆盖当前档案；它与上方只共享召回的“绑定”不同。</span>
     </div>
   </div>`;
   const wrap = document.createElement('div');
@@ -10199,7 +10204,7 @@ async function coreadOpenArchiveDialog() {
     if (closeBtn) closeBtn.click();
   });
   try {
-    const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '保存绑定', cancelButton: '取消' });
+    const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '保存绑定', cancelButton: '取消', wide: true });
     const res = await popup.show();
     if (goMigrate) { await coreadOpenMigrateDialog(); return; }
     if (res !== true && String(res) !== '1') return;
@@ -10369,6 +10374,14 @@ async function coreadOpenSliceManagerDialog() {
   if (m.vectorEnabled) {
     try { const rec = await blobStore.getReaderVectors(readerDialog.bucket); if (rec && isPlainObject(rec.vecs)) vecIds = new Set(Object.keys(rec.vecs)); } catch (_) {}
   }
+  const managerBoundary = readerDialog.readBoundary || coreadCurrentReadBoundarySync(readerDialog.bookId);
+  const managerSlices = coreadNormalizeSlices(readerDialog.slices || [], readerDialog.bookId, readerDialog.bucket, managerBoundary);
+  const sourceCounts = managerSlices.reduce((acc, slice) => {
+    const source = reader.normalizeCoreadSource(slice.provenance?.source || slice.src);
+    acc[source] = (acc[source] || 0) + 1;
+    return acc;
+  }, {});
+  const blockedTotal = managerSlices.filter((slice) => !reader.isCoreadSliceVisibleAtBoundary(slice, managerBoundary, m.spoilerProtection !== false)).length;
   const buildRows = () => {
     const boundary = readerDialog.readBoundary || coreadCurrentReadBoundarySync(readerDialog.bookId);
     const slices = coreadNormalizeSlices(readerDialog.slices || [], readerDialog.bookId, readerDialog.bucket, boundary)
@@ -10384,11 +10397,14 @@ async function coreadOpenSliceManagerDialog() {
       const keys = (s.keywords || []).map((k) => `<span class="sd-reader-slice-key">${htmlEscape(k)}</span>`).join('');
       return `<details class="sd-reader-sm-row" data-id="${htmlEscape(s.id)}">
         <summary class="sd-reader-sm-sum">
-          <span class="sd-reader-sm-tags">
-            <span class="sd-reader-slice-batch">#${s.compressed ? '合并' : (s.batch || '?')}</span>
-            ${srcTag}${vecTag}${blockedTag}
+          <span class="sd-reader-sm-summary-main">
+            <span class="sd-reader-sm-tags">
+              <span class="sd-reader-slice-batch">#${s.compressed ? '合并' : (s.batch || '?')}</span>
+              ${srcTag}${vecTag}${blockedTag}
+            </span>
+            <span class="sd-reader-sm-peek">${htmlEscape((s.summary || '').slice(0, 60))}${(s.summary || '').length > 60 ? '…' : ''}</span>
           </span>
-          <span class="sd-reader-sm-peek">${htmlEscape((s.summary || '').slice(0, 44))}${(s.summary || '').length > 44 ? '…' : ''}</span>
+          <i class="fa-solid fa-chevron-down sd-reader-sm-chevron"></i>
         </summary>
         <div class="sd-reader-sm-detail">
           <div class="sd-reader-sm-meta">${cover} ${s.ts ? `<span class="sd-muted">${new Date(s.ts).toLocaleString()}</span>` : ''}${s.loreUid ? '' : ' <span class="sd-muted">· 未写入世界书</span>'}</div>
@@ -10408,8 +10424,15 @@ async function coreadOpenSliceManagerDialog() {
   const wrap = document.createElement('div');
   const vecHint = m.vectorEnabled ? '向量随总结改动自动重算（保存/重构后下次召回生效），无需手动同步。' : '未启用向量档，仅关键词召回。';
   wrap.innerHTML = `<div class="sd-reader-sm-dialog" style="text-align:left">
-    <p style="margin:0 0 4px;font-weight:600">切片管理（${(readerDialog.slices || []).length}）</p>
-    <p style="margin:0 0 10px;color:var(--sd-muted,#888);font-size:.82em">${htmlEscape(vecHint)}</p>
+    <div class="sd-reader-sm-heading"><span><i class="fa-solid fa-layer-group"></i></span><div><b>记忆切片</b><small>${htmlEscape(coreadBookMeta(readerDialog.bookId)?.title || '当前书籍')} · ${managerSlices.length} 条</small></div></div>
+    <div class="sd-reader-sm-overview">
+      <span class="src-dialog">伴读对谈 ${sourceCounts.dialog || 0}</span>
+      <span class="src-text">书中内容 ${sourceCounts.book || 0}</span>
+      <span class="src-mainline">正文回响 ${sourceCounts.mainline || 0}</span>
+      ${sourceCounts.mixed ? `<span class="src-mixed">融合记忆 ${sourceCounts.mixed}</span>` : ''}
+      ${blockedTotal ? `<span class="is-blocked"><i class="fa-solid fa-shield-halved"></i>隔离 ${blockedTotal}</span>` : ''}
+    </div>
+    <p class="sd-reader-sm-hint">${htmlEscape(vecHint)} 点击卡片可展开编辑；来源、阅读范围和标签使用不同颜色辅助辨认。</p>
     <div class="sd-reader-sm-list">${buildRows()}</div>
   </div>`;
   const rerenderList = () => { const list = wrap.querySelector('.sd-reader-sm-list'); if (list) list.innerHTML = buildRows(); };
@@ -10752,6 +10775,7 @@ async function coreadSaveDialog() {
       cursor: readerDialog.cursor,
       lastInjected: readerDialog.lastInjected,
       sliceSchemaVersion: reader.COREAD_SLICE_SCHEMA_VERSION,
+      updatedAt: Date.now(),
       names: { char: companionCharName(), user: getPersonaName() || '我' },
     });
   } catch (error) { console.warn(`[${MODULE_NAME}] save reader dialog failed`, error); }
@@ -11824,15 +11848,13 @@ function buildReaderStage() {
             <button class="sd-reader-dtab ${dTab === 'voice' ? 'active' : ''}" data-dtab="voice"><i class="fa-solid fa-comment-dots"></i> 语音条</button>
           </div>
           <div class="sd-reader-dialog-head-btns">
-            <button class="sd-reader-dialog-apiconf" title="对话 API"><i class="fa-solid fa-plug"></i></button>
-            <button class="sd-reader-dialog-setup" title="伴读设定"><i class="fa-solid fa-gear"></i></button>
+            <button class="sd-reader-dialog-center" title="伴读中心"><i class="fa-solid fa-book-open-reader"></i></button>
             <button class="sd-reader-dialog-pin ${readerView.dialogPinned ? 'active' : ''}" title="固定对话框"><i class="fa-solid fa-thumbtack"></i></button>
           </div>
         </div>
         <div class="sd-reader-dialog-body sd-reader-dtab-chat"${dTab === 'chat' ? '' : ' hidden'}>${renderReaderDialogMessages()}</div>
         <div class="sd-reader-dialog-body sd-reader-dtab-voice"${dTab === 'voice' ? '' : ' hidden'}>${renderReaderVoiceClips()}</div>
         <div class="sd-reader-dialog-input"${dTab === 'chat' ? '' : ' hidden'}>
-          <button class="sd-reader-inbtn sd-reader-dialog-more" title="伴读记忆"><i class="fa-solid fa-brain"></i></button>
           <textarea class="sd-reader-dialog-ta" placeholder="和「${htmlEscape(companionCharName())}」聊两句……" rows="1"></textarea>
           <button class="sd-reader-inbtn sd-reader-dialog-send" title="发送"><i class="fa-solid fa-arrow-up"></i></button>
           <button class="sd-reader-inbtn sd-reader-dialog-gen" title="让书友回复"><i class="fa-solid fa-paper-plane"></i></button>
@@ -11896,32 +11918,10 @@ function buildReaderStage() {
         </div>
       </div>
 
-      <!-- 伴读设定浮层（1B-1·与笔记浮层同范式·脱抽屉·居中·取材式独立勾选） -->
-      <div class="sd-reader-setupoverlay" hidden>
-        <div class="sd-reader-setupoverlay-card">
-          <div class="sd-reader-noteoverlay-head"><i class="fa-solid fa-gear"></i> 伴读设定</div>
-          <div class="sd-reader-setup-body">${renderCompanionSetupBody()}</div>
-          <div class="sd-reader-noteedit-actions">
-            <button class="sd-btn sd-reader-setup-close">完成</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 对话 API 临时面板（1.8.0·正式版记忆模块锁定时，对话 API 单独在此设·与伴读记忆里那套逻辑/拉取一致） -->
-      <div class="sd-reader-setupoverlay sd-reader-apioverlay" hidden>
-        <div class="sd-reader-setupoverlay-card">
-          <div class="sd-reader-noteoverlay-head"><i class="fa-solid fa-plug"></i> 对话 API</div>
-          <div class="sd-reader-setup-body sd-reader-apiconf-body">${renderDialogApiPanel()}</div>
-          <div class="sd-reader-noteedit-actions">
-            <button class="sd-btn sd-reader-apiconf-close">完成</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 伴读记忆：整页全屏面板（占满 stage·不透明底·标题左/关闭✕右·三 tab：API 设置/记忆记录/注入状态） -->
+      <!-- 伴读中心：伴读设定、记忆档案、注入状态与模型接口统一入口 -->
       <div class="sd-reader-morepage" hidden>
         <div class="sd-reader-morepage-top">
-          <div class="sd-reader-morepage-title"><i class="fa-solid fa-brain"></i> 伴读记忆</div>
+          <div class="sd-reader-morepage-title"><i class="fa-solid fa-book-open-reader"></i> 伴读中心</div>
           <button class="sd-reader-more-close" title="关闭"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div class="sd-reader-morepage-body sd-reader-more-body">${renderCompanionMoreBody()}</div>
@@ -11999,40 +11999,32 @@ function renderSummaryApiCard(m) {
     </div>`;
 }
 
-// 对话 API 临时面板内容：正式版记忆模块锁定时，对话 API 单独在此暴露。
-// 功能与伴读记忆「API 设置」tab 里的「对话 API」卡完全一致：跟随 ST / 千幕自定义预设，可拉取/新建/删除预设。
-function renderDialogApiPanel() {
-  const m = coreadMemory();
-  const ext = m.dialogProvider === 'external';
-  const profiles = Array.isArray(settings.apiProfiles) ? settings.apiProfiles : [];
-  let backend = '', model = '';
-  try {
-    const c = ctx();
-    backend = c?.mainApi || c?.chatCompletionSettings?.chat_completion_source || '';
-    model = (typeof c?.getChatCompletionModel === 'function' ? c.getChatCompletionModel() : '') || c?.onlineStatus || '';
-  } catch (_) {}
-  const connLine = (backend || model)
-    ? `当前连接：${htmlEscape([backend, model].filter(Boolean).join(' · '))}`
-    : '当前连接：跟随 SillyTavern（酒馆里选的那套）';
-  return `
-    <div class="sd-reader-mcard" style="border:none;padding:0;background:transparent">
-      <div class="sd-reader-mradio">
-        <label class="sd-reader-mradio-opt ${!ext ? 'active' : ''}"><input type="radio" name="sd-reader-dialogprov-tmp" value="sillytavern"${!ext ? ' checked' : ''}><span>跟随 SillyTavern 当前连接</span></label>
-        <label class="sd-reader-mradio-opt ${ext ? 'active' : ''}"><input type="radio" name="sd-reader-dialogprov-tmp" value="external"${ext ? ' checked' : ''}><span>千幕自定义预设</span></label>
-      </div>
-      ${ext
-        ? `<label class="sd-reader-mlab">选择预设</label>
-           <select class="sd-reader-minput sd-reader-dialog-profile-tmp">
-             <option value="">跟随当前 API 设置</option>
-             ${profiles.map((p) => `<option value="${htmlEscape(p.id)}" ${p.id === m.dialogApiProfileId ? 'selected' : ''}>${htmlEscape(p.name || p.model || '未命名API')}</option>`).join('')}
-           </select>`
-        : `<div class="sd-reader-more-conn">${connLine}</div>`}
-    </div>`;
+function renderCoreadCenterStatus(m) {
+  const meta = coreadBookMeta(readerDialog.bookId);
+  const boundary = readerDialog.readBoundary || coreadCurrentReadBoundarySync(readerDialog.bookId);
+  const allSlices = readerDialog.slices || [];
+  const safeSlices = coreadSafeSlices(allSlices, boundary, m);
+  const blocked = Math.max(0, allSlices.length - safeSlices.length);
+  const progress = Math.max(0, Math.min(100, Number(boundary?.progress ?? meta?.progress) || 0));
+  const protectedOn = m.spoilerProtection !== false;
+  return `<section class="sd-reader-center-status${protectedOn ? ' is-protected' : ''}">
+    <div class="sd-reader-center-book">
+      <span class="sd-reader-center-book-icon"><i class="fa-solid fa-book"></i></span>
+      <span class="sd-reader-center-book-copy">
+        <b>${meta ? `《${htmlEscape(meta.title || '未命名')}》` : '尚未打开书籍'}</b>
+        <small>已读 ${progress}% · ${allSlices.length} 条记忆${blocked ? ` · ${blocked} 条进度外隔离` : ''}</small>
+      </span>
+    </div>
+    <label class="sd-reader-center-guard">
+      <span><i class="fa-solid fa-shield-halved"></i><b>防剧透</b><small>${protectedOn ? (blocked ? `已隔离 ${blocked} 条` : '阅读水位保护中') : '已关闭'}</small></span>
+      ${renderMemSwitch('sd-reader-spoiler-filter', protectedOn)}
+    </label>
+  </section>`;
 }
 
 function renderCompanionMoreBody() {
   const m = coreadMemory();
-  const tab = m.moreTab;
+  const tab = (!COREAD_MEMORY_ENABLED && ['records', 'inject'].includes(m.moreTab)) ? 'setup' : m.moreTab;
   // 当前 ST 连接现状（跟随档展示，让用户心里有数）
   let backend = '', model = '';
   try {
@@ -12043,11 +12035,18 @@ function renderCompanionMoreBody() {
   const connLine = (backend || model)
     ? `当前连接：${htmlEscape([backend, model].filter(Boolean).join(' · '))}`
     : '当前连接：跟随 SillyTavern（酒馆里选的那套）';
-  const tabs = [['api', 'API 设置'], ['records', '记忆记录'], ['inject', '注入状态']];
-  const tabBar = `<div class="sd-reader-mtabs">${tabs.map(([k, label]) => `<button class="sd-reader-mtab ${tab === k ? 'active' : ''}" data-mtab="${k}">${label}</button>`).join('')}</div>`;
+  const tabs = [
+    ['setup', 'fa-sliders', '伴读设定'],
+    ['records', 'fa-box-archive', '记忆档案'],
+    ['inject', 'fa-wave-square', '注入状态'],
+    ['api', 'fa-microchip', '模型接口'],
+  ].filter(([key]) => COREAD_MEMORY_ENABLED || !['records', 'inject'].includes(key));
+  const tabBar = `<div class="sd-reader-mtabs">${tabs.map(([k, icon, label]) => `<button class="sd-reader-mtab ${tab === k ? 'active' : ''}" data-mtab="${k}"><i class="fa-solid ${icon}"></i><span>${label}</span></button>`).join('')}</div>`;
 
   let panel = '';
-  if (tab === 'api') {
+  if (tab === 'setup') {
+    panel = `<div class="sd-reader-setup-body sd-reader-center-setup">${renderCompanionSetupBody()}</div>`;
+  } else if (tab === 'api') {
     const ext = m.dialogProvider === 'external';
     const profiles = Array.isArray(settings.apiProfiles) ? settings.apiProfiles : [];
     panel = `
@@ -12087,21 +12086,18 @@ function renderCompanionMoreBody() {
   } else {
     panel = renderMemInjectTab(m);
   }
-  return tabBar + `<div class="sd-reader-mtab-body">${panel}</div>`;
+  return renderCoreadCenterStatus(m) + tabBar + `<div class="sd-reader-mtab-body">${panel}</div>`;
 }
 
 // 记忆记录 tab：①总结提示词(条目式·内置硬格式+自定义) ②自动/手动总结设置 ③切片列表(折叠·可编辑) ④切片二次总结。
 function renderMemRecordsTab(m) {
   const boundN = coreadBoundBuckets().length;
-  // 当前书在本聊天的「书序」标签——让「按聊天整体记忆」的框架一眼可见（世界书 comment 也用此式：角色·编号·书名(书序)）
+  // 当前书用于档案总览标题。
   const curBook = coreadBookMeta(readerDialog.bookId);
-  const curBookLabel = (curBook && readerDialog.bookId)
-    ? `<span class="sd-reader-inj-tag" style="margin-left:6px">《${htmlEscape(curBook.title || '未命名')}》(${coreadBookSeqInChat(readerDialog.bookId)})</span>`
-    : '';
   // 记忆写入位置卡（从「注入」页移来·作记录页首卡）：写入位置四字不换行·下拉占比收窄·去小字注释
   const storageCard = `
-    <div class="sd-reader-mcard">
-      <div class="sd-reader-mcard-head"><i class="fa-solid fa-database"></i> 记忆写入位置</div>
+    <details class="sd-reader-mcard">
+      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-database"></i> 记忆写入位置 <span class="sd-reader-inj-tag">${m.storageMode === 'shared' ? '共享世界书' : '千幕独立世界书'}</span></summary>
       <div class="sd-reader-mrow">
         <span class="sd-reader-mrow-lab" style="white-space:nowrap">写入位置</span>
         <select class="sd-reader-minput sd-reader-storagemode" style="flex:0 0 auto;max-width:60%">
@@ -12109,7 +12105,7 @@ function renderMemRecordsTab(m) {
           <option value="shared"${m.storageMode === 'shared' ? ' selected' : ''}>装了记忆插件：写入同本世界书</option>
         </select>
       </div>
-    </div>`;
+    </details>`;
 
   const items = (m.summaryItems || []).slice().sort((a, b) => a.order - b.order);
   let customIdx = 0;
@@ -12145,19 +12141,35 @@ function renderMemRecordsTab(m) {
       <span class="sd-reader-batchrow-start">起始 ${(Number(s.coveredFrom) || 0) + 1}</span>
       <span class="sd-reader-batchrow-count">${(Number(s.coveredTo) || 0) - (Number(s.coveredFrom) || 0) + 1} 条</span>
     </div>`).join('');
+  const boundary = readerDialog.readBoundary || coreadCurrentReadBoundarySync(readerDialog.bookId);
+  const blockedN = slices.length - coreadSafeSlices(slices, boundary, m).length;
+  const archiveOverview = `
+    <section class="sd-reader-memory-overview">
+      <div class="sd-reader-memory-title"><span><i class="fa-solid fa-book-bookmark"></i></span><div><b>${curBook ? `《${htmlEscape(curBook.title || '未命名')}》` : '当前伴读档案'}</b><small>${msgsLen} 条对话 · 已整理 ${cursor} 条</small></div></div>
+      <div class="sd-reader-memory-stats">
+        <span><b>${slices.length}</b><small>记忆切片</small></span>
+        <span><b>${pendingN}</b><small>待整理对话</small></span>
+        <span><b>${boundN}</b><small>绑定档案</small></span>
+        <span><b>${blockedN}</b><small>进度外隔离</small></span>
+      </div>
+      <div class="sd-reader-memory-actions">
+        <button type="button" class="sd-reader-mbtn sd-reader-slice-manage"${slices.length ? '' : ' disabled'}><i class="fa-solid fa-table-list"></i>管理切片</button>
+        <button type="button" class="sd-reader-mbtn sd-reader-arch-manage"><i class="fa-solid fa-box-archive"></i>管理档案</button>
+        <button type="button" class="sd-reader-mbtn sd-reader-slice-clear"${slices.length ? '' : ' disabled'}><i class="fa-solid fa-trash-can"></i>清空切片</button>
+      </div>
+    </section>`;
 
   return `
+    ${archiveOverview}
     ${storageCard}
-    <div class="sd-reader-mcard">
-      <div class="sd-reader-mcard-head">
-        <i class="fa-solid fa-pen-nib"></i> 总结提示词
-        <span class="sd-reader-mhead-acts">
+    <details class="sd-reader-mcard">
+      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-pen-nib"></i> 总结提示词 <span class="sd-reader-inj-tag">${items.length} 条规则</span></summary>
+        <span class="sd-reader-mhead-acts" style="justify-content:flex-end">
           <button type="button" class="sd-reader-mbtn sd-reader-sumitem-add" title="给伴读总结加一条自定义提示词"><i class="fa-solid fa-plus"></i></button>
           <button type="button" class="sd-reader-mbtn sd-reader-sumitem-restore" title="恢复全部三块的内置默认"><i class="fa-solid fa-rotate-left"></i></button>
           <button type="button" class="sd-reader-mbtn sd-reader-sumitem-import" title="导入（含三块）"><i class="fa-solid fa-file-import"></i></button>
           <button type="button" class="sd-reader-mbtn sd-reader-sumitem-export" title="导出（含三块）"><i class="fa-solid fa-file-export"></i></button>
         </span>
-      </div>
       <div class="sd-reader-promptpreset">
         <select class="sd-reader-minput sd-reader-sumpreset-sel">
           <option value="">（当前编辑中·未套用预设）</option>
@@ -12188,7 +12200,7 @@ function renderMemRecordsTab(m) {
         </summary>
         <textarea class="sd-reader-mtextarea sd-reader-mainlineprompt-text" rows="4" placeholder="留空则沿用上方「伴读总结提示词」。用于从主线选择与本书相关的片段做总结。">${htmlEscape(m.mainlineSummaryPrompt || '')}</textarea>
       </details>
-    </div>
+    </details>
     <div class="sd-reader-mcard">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-robot"></i> 伴读对话·自动总结</div>
       <div class="sd-reader-mhint">仅针对你与书友的<b>伴读对话</b>。与上方「书籍蒸馏」互不相干。</div>
@@ -12234,23 +12246,8 @@ function renderMemRecordsTab(m) {
       </div>
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">每往后读多少字自动总结</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-distill-textevery" min="1000" step="500" value="${m.distillTextEvery}"${m.autoDistillText ? '' : ' disabled'}></div>
     </div>
-    <div class="sd-reader-mcard">
-      <div class="sd-reader-mcard-head"><i class="fa-solid fa-box-archive"></i> 伴读档案 <span class="sd-reader-inj-tag">${boundN} 已绑定</span></div>
-      <div class="sd-reader-mhint">把其它伴读档案绑定到当前聊天。</div>
-      <div class="sd-reader-mactions">
-        <button type="button" class="sd-reader-mbtn sd-reader-arch-manage"><i class="fa-solid fa-link"></i>管理绑定档案</button>
-      </div>
-    </div>
-    <div class="sd-reader-mcard">
-      <div class="sd-reader-mcard-head"><i class="fa-solid fa-layer-group"></i> 记忆切片 <span class="sd-reader-inj-tag">${slices.length}</span>${curBookLabel}</div>
-      <div class="sd-reader-mhint">查看、编辑、重构、删除切片都在「管理切片」里进行。</div>
-      <div class="sd-reader-mactions">
-        <button type="button" class="sd-reader-mbtn sd-reader-slice-manage"${slices.length ? '' : ' disabled'}><i class="fa-solid fa-table-list"></i>管理切片</button>
-        <button type="button" class="sd-reader-mbtn sd-reader-slice-clear"${slices.length ? '' : ' disabled'}><i class="fa-solid fa-trash-can"></i>清空全部</button>
-      </div>
-    </div>
-    <div class="sd-reader-mcard">
-      <div class="sd-reader-mcard-head"><i class="fa-solid fa-compress"></i> 对切片进行总结</div>
+    <details class="sd-reader-mcard">
+      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-compress"></i> 对切片进行二次总结</summary>
       <div class="sd-reader-mrow sd-reader-mrow-resum">
         <span class="sd-reader-mrow-lab">批次</span>
         <input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-compress-lo" min="1" max="${lastBatch}" value="1">
@@ -12258,15 +12255,15 @@ function renderMemRecordsTab(m) {
         <input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-compress-hi" min="1" max="${lastBatch}" value="${Math.min(lastBatch, 10) || 1}">
         <button type="button" class="sd-reader-textbtn sd-reader-compress-go"${lastBatch >= 2 ? '' : ' disabled'}>执行总结</button>
       </div>
-    </div>
-    <div class="sd-reader-mcard" data-test style="border-top:2px dashed var(--sd-hairline);">
-      <div class="sd-reader-mcard-head"><i class="fa-solid fa-flask"></i> 开发测试</div>
+    </details>
+    <details class="sd-reader-mcard" data-test style="border-top:2px dashed var(--sd-hairline);">
+      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-flask"></i> 开发测试</summary>
       <div class="sd-reader-mhint">测试记忆读写通路，结果见浏览器控制台（F12）。综合自检覆盖：两模式写入切换 · keyless 校验 · 反哺主线切片池 · 召回内核 · 绑定读写（不改动你的数据）。</div>
       <div class="sd-reader-mactions">
         <button type="button" class="sd-reader-mbtn sd-reader-test-selftest"><i class="fa-solid fa-clipboard-check"></i>综合自检</button>
         <button type="button" class="sd-reader-mbtn sd-reader-test-lore"><i class="fa-solid fa-vial"></i>测试 Chat Lore 写入</button>
       </div>
-    </div>`;
+    </details>`;
 }
 
 // 注入状态 tab：①实际注入(显全文·第一卡) ②本次召回候选(编号+关键词) ③重排结果 ④向量选定 + 注入设置。
@@ -12393,10 +12390,6 @@ function renderMemInjectTab(m) {
     </details>
     <div class="sd-reader-mcard">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-sliders"></i> 注入设置</div>
-      <div class="sd-reader-mrow">
-        <span class="sd-reader-mrow-lab">防剧透记忆过滤<i class="fa-solid fa-circle-info" title="只允许形成时阅读水位不超过当前进度的记忆参与伴读与正文召回"></i></span>
-        ${renderMemSwitch('sd-reader-spoiler-filter', m.spoilerProtection !== false)}
-      </div>
       ${blockedCount ? `<div class="sd-reader-mhint"><i class="fa-solid fa-shield-halved"></i> 当前已隔离 ${blockedCount} 条超过阅读进度的记忆；它们仍保存在档案中，读到相应位置后自动恢复。</div>` : ''}
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">检索命中注入数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-recall" min="0" step="1" value="${m.recallCount}"></div>
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">近景切片注入数<i class="fa-solid fa-circle-info" title="伴读对话：最近N条切片无条件注入 0=关"></i></span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-recent" min="0" step="1" value="${m.recentInject}"></div>
@@ -12507,6 +12500,8 @@ function renderCompanionSetupBody() {
   const pct = Math.max(3, Math.min(60, Number(cp.visiblePercent) || 15));
   const cap = Math.max(200, Number(cp.visibleCharsBefore) || 6000);
   return `
+    <section class="sd-reader-center-section">
+      <div class="sd-reader-center-section-head"><span><i class="fa-solid fa-users"></i><b>身份与正文联动</b></span><small>身份跟随 ST 当前角色与用户</small></div>
     <div class="sd-reader-setup-row">
       <div class="sd-reader-setup-tags">
         <span class="sd-reader-setup-tag"><i class="fa-solid fa-user"></i> 书友：${htmlEscape(stChar)}</span>
@@ -12522,6 +12517,9 @@ function renderCompanionSetupBody() {
         </div>
       </div>
     </div>
+    </section>
+    <section class="sd-reader-center-section">
+      <div class="sd-reader-center-section-head"><span><i class="fa-solid fa-layer-group"></i><b>伴读取材</b></span><small>仅影响伴读，不改动正文取材选择</small></div>
     <div class="sd-reader-setup-row">
       <div class="sd-reader-cwb-head">
         <span><label class="sd-reader-setup-lab">伴读世界书</label><em class="sd-muted" style="font-size:.78em">独立于主线选择</em></span>
@@ -12558,6 +12556,9 @@ function renderCompanionSetupBody() {
             : '<span class="sd-muted" style="font-size:.78em">勾选或点击预设名查看其条目，再按需勾选伴读引用。</span>'}`
         : '<span class="sd-muted" style="font-size:.82em">点「加载」读取可选预设。</span>'}
     </div>
+    </section>
+    <section class="sd-reader-center-section">
+      <div class="sd-reader-center-section-head"><span><i class="fa-solid fa-message"></i><b>对话与可见范围</b></span><small>控制书友能看见多少，以及每轮如何回复</small></div>
     <div class="sd-reader-setup-row">
       <label class="sd-reader-setup-lab">书友可读范围（你所读位置往前回溯全书的百分比）</label>
       <div class="sd-reader-setup-pctwrap">
@@ -12594,7 +12595,8 @@ function renderCompanionSetupBody() {
         <label class="sd-reader-setup-lab">语音条缓存上限</label>
         <input type="number" class="sd-reader-setup-num sd-reader-setup-voicelimit" min="10" step="10" value="${coread().voiceCacheLimit || 100}">
       </div>
-    </div>`;
+    </div>
+    </section>`;
 }
 
 // 语音条 tab＝已生成语音的书友句的「听」视图：只列 msg.voiced 的 friend 气泡（未生成语音的不列）。
@@ -13016,34 +13018,27 @@ function bindReaderStageEvents(stageRoot) {
     }
   });
 
-  // ── 伴读设定浮层（1B-1·复用取材拉取/呈现·选择 companion 独立·脱抽屉居中） ──
-  const setupOverlay = q('.sd-reader-setupoverlay');
-  // 重渲后恢复折叠开合：两大容器从 settings 持久化(跨重开书不丢)；条目项用 accState(本会话)
-  const rerenderSetup = () => { const body = setupOverlay?.querySelector('.sd-reader-setup-body'); if (body) { body.innerHTML = renderCompanionSetupBody(); applyAccState(setupOverlay); } };
-  const openSetup = async () => {
-    if (!setupOverlay) return;
-    // 首次渲染前：把 view 预设到最后一个选中项，避免"有选中但显示暂无条目"（需点一次才读到）
+  // ── 伴读中心：设定、记忆、注入与模型接口统一为一个全屏入口 ──
+  const morePage = q('.sd-reader-morepage');
+  const setupOverlay = morePage;   // 复用既有设定事件委托，不再维护独立浮层
+  const rerenderMore = () => { const body = morePage?.querySelector('.sd-reader-more-body'); if (body) body.innerHTML = renderCompanionMoreBody(); };
+  const rerenderSetup = () => { const body = morePage?.querySelector('.sd-reader-setup-body'); if (body) { body.innerHTML = renderCompanionSetupBody(); applyAccState(morePage); } };
+  rerenderMoreIfOpen = () => { if (morePage && !morePage.hidden) rerenderMore(); };
+  const prepareCompanionSetup = async () => {
     const cp = coreadCompanion();
     const wb = coreadChatCompanionWb();
     if (!companionWorldView && wb.worldBooks.length) companionWorldView = wb.worldBooks[wb.worldBooks.length - 1];
     if (!companionPresetView && cp.presets.length) companionPresetView = cp.presets[cp.presets.length - 1];
     rerenderSetup();
-    setupOverlay.hidden = false;
-    // ST 重启后 contextScanCache 为空→已绑定/已选的世界书·预设列不出来（像没选）。
-    // 首开若缓存空则自动加载一次(等同点「加载」)，让绑定态直接显现，无需手动点。
     let loaded = false;
     if (!(contextScanCache.worldBookNames || []).length) { try { await refreshWorldBooks(false); loaded = true; } catch (_) {} }
     if (!(contextScanCache.presetNames || []).length) { try { await refreshPresets(false); loaded = true; } catch (_) {} }
-    // 已有选中的书/预设（上次会话留存）→ 首开就按需补拉其条目，避免「暂无条目」假象
-    const preWb = companionWorldView || '';
-    const prePs = companionPresetView || '';
-    if (preWb) { await coreadEnsureWorldEntries(preWb); loaded = true; }
-    if (prePs) { coreadEnsurePresetEntries(prePs); loaded = true; }
+    if (companionWorldView) { await coreadEnsureWorldEntries(companionWorldView); loaded = true; }
+    if (companionPresetView) { coreadEnsurePresetEntries(companionPresetView); loaded = true; }
     if (loaded) rerenderSetup();
   };
-  const closeSetup = () => { if (setupOverlay) setupOverlay.hidden = true; };
-  // details 开合记忆：data-fold 两大容器→持久化 settings(跨重开书)；data-acc 条目项→accState(本会话)
-  setupOverlay?.addEventListener('toggle', (e) => {
+  const closeSetup = () => { if (morePage) morePage.hidden = true; };
+  morePage?.addEventListener('toggle', (e) => {
     const d = e.target;
     if (d?.dataset?.fold === 'wb') { coreadCompanion().foldWbOpen = d.open; saveSettings(); }
     else if (d?.dataset?.fold === 'items') { coreadCompanion().foldItemsOpen = d.open; saveSettings(); }
@@ -13051,38 +13046,23 @@ function bindReaderStageEvents(stageRoot) {
     else if (d?.dataset?.fold === 'presetitems') { coreadCompanion().foldPresetItemsOpen = d.open; saveSettings(); }
     else if (d?.dataset?.acc) accState[d.dataset.acc] = d.open;
   }, true);
-  q('.sd-reader-dialog-setup')?.addEventListener('click', (e) => { e.stopPropagation(); openSetup(); });
-  setupOverlay?.addEventListener('click', (e) => { if (e.target === e.currentTarget) closeSetup(); });
-
-  // ── 对话 API 临时面板（1.8.0·记忆模块锁定期间对话 API 单独在此设·复用伴读记忆同套逻辑/拉取） ──
-  const apiOverlay = q('.sd-reader-apioverlay');
-  const rerenderApiPanel = () => { const body = apiOverlay?.querySelector('.sd-reader-apiconf-body'); if (body) body.innerHTML = renderDialogApiPanel(); };
-  q('.sd-reader-dialog-apiconf')?.addEventListener('click', (e) => { e.stopPropagation(); if (!apiOverlay) return; rerenderApiPanel(); apiOverlay.hidden = false; });
-  q('.sd-reader-apiconf-close')?.addEventListener('click', () => { if (apiOverlay) apiOverlay.hidden = true; });
-  apiOverlay?.addEventListener('click', (e) => { if (e.target === e.currentTarget) apiOverlay.hidden = true; });
-  // 面板内交互：对话提供方单选 + 预设下拉（与伴读记忆 API 页同 class·同落库逻辑）
-  apiOverlay?.addEventListener('change', (e) => {
-    const m = coreadMemory();
-    const prov = e.target.closest('input[name="sd-reader-dialogprov-tmp"]');
-    if (prov) { m.dialogProvider = prov.value === 'external' ? 'external' : 'sillytavern'; saveSettings(); rerenderApiPanel(); return; }
-    if (e.target.closest('.sd-reader-dialog-profile-tmp')) { m.dialogApiProfileId = e.target.value || ''; saveSettings(); return; }
-  });
-  // 伴读记忆全屏页（输入框左侧入口·占满 stage·三 tab）
-  const morePage = q('.sd-reader-morepage');
-  const rerenderMore = () => { const body = morePage?.querySelector('.sd-reader-more-body'); if (body) body.innerHTML = renderCompanionMoreBody(); };
-  rerenderMoreIfOpen = () => { if (morePage && !morePage.hidden) rerenderMore(); };
-  q('.sd-reader-dialog-more')?.addEventListener('click', (e) => {
+  q('.sd-reader-dialog-center')?.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (!COREAD_MEMORY_ENABLED) { toast(COREAD_MEMORY_TEASER, 'info'); return; }   // 正式版：记忆模块锁定·脑图标点击弹预告
     if (!morePage) return;
-    rerenderMore();   // 每次打开取最新连接现状
+    rerenderMore();
     morePage.hidden = false;
+    if (coreadMemory().moreTab === 'setup') void prepareCompanionSetup();
   });
   q('.sd-reader-more-close')?.addEventListener('click', () => { if (morePage) morePage.hidden = true; });
   // 面板 tab 切换 + 向量/重排接口操作按钮（重渲后仍生效·事件委托）
   morePage?.addEventListener('click', (e) => {
     const mtab = e.target.closest('.sd-reader-mtab');
-    if (mtab) { coreadMemory().moreTab = mtab.dataset.mtab; saveSettings(); rerenderMore(); return; }
+    if (mtab) {
+      coreadMemory().moreTab = mtab.dataset.mtab;
+      saveSettings(); rerenderMore();
+      if (mtab.dataset.mtab === 'setup') void prepareCompanionSetup();
+      return;
+    }
     const testBtn = e.target.closest('.sd-reader-mem-test');
     if (testBtn) { coreadTestMemConn(testBtn.dataset.kind, testBtn); return; }
     const fetchBtn = e.target.closest('.sd-reader-mem-fetch');

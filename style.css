@@ -2285,8 +2285,6 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   line-height: 1;
   text-align: center;
 }
-/* 对勾字形本身留白较多，轻微光学校正后与两枚箭头图标的可视尺寸一致。 */
-#story-director-modal .sd-editor-tool-icon.sd-editor-save i { transform: scale(1.08); }
 #story-director-modal .sd-editor-area {
   width: 100%;
   min-height: 64vh;
@@ -3361,9 +3359,9 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-dtab:hover { color: var(--sd-text); }
 .sd-reader-dtab.active { color: var(--sd-accent); background: var(--sd-glass-weak); }
 .sd-reader-dialog-head-btns { display: flex; align-items: center; gap: 2px; }
-/* 头部图标钮统一风格（对话API插头 / 设定齿轮 同款·无框透明底·hover 淡底） */
-.sd-reader-dialog-apiconf, .sd-reader-dialog-setup { background: transparent; border: 0; color: var(--sd-muted); cursor: pointer; padding: 4px 8px; border-radius: 8px; }
-.sd-reader-dialog-apiconf:hover, .sd-reader-dialog-setup:hover { color: var(--sd-text); background: var(--sd-glass-weak); }
+/* 伴读中心统一入口：替代原先分散的 API / 设定 / 记忆三个入口。 */
+.sd-reader-dialog-center { background: transparent; border: 0; color: var(--sd-muted); cursor: pointer; padding: 4px 8px; border-radius: 8px; }
+.sd-reader-dialog-center:hover { color: var(--sd-accent); background: var(--sd-glass-weak); }
 .sd-reader-dialog-pin { background: transparent; border: 0; color: var(--sd-muted); cursor: pointer; padding: 4px 8px; border-radius: 8px; transform: rotate(38deg); }
 .sd-reader-dialog-pin:hover { color: var(--sd-text); background: var(--sd-glass-weak); }
 .sd-reader-dialog-pin.active { color: var(--sd-accent); transform: rotate(0deg); }
@@ -3452,18 +3450,6 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-noteedit-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .sd-reader-noteedit-actions .sd-btn { cursor: pointer; }
 
-/* 伴读设定浮层（1B-1·复用笔记浮层定位语言·取材式独立勾选） */
-.sd-reader-setupoverlay {
-  position: absolute; inset: 0; z-index: 14;
-  display: flex; align-items: center; justify-content: center; padding: 20px;
-  background: rgba(0,0,0,.42); backdrop-filter: blur(2px);
-}
-.sd-reader-setupoverlay-card {
-  width: 100%; max-width: 460px; max-height: 84%; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 14px;
-  background: var(--sd-folder-head); border: 1px solid var(--sd-hairline);
-  border-radius: 16px; box-shadow: 0 18px 50px rgba(0,0,0,.4); padding: 16px 16px 14px;
-}
 .sd-reader-setup-body { display: flex; flex-direction: column; gap: 16px; }
 /* 连接与记忆：整页全屏面板（占满 stage·顶栏返回 + 可滚动正文·为后续复杂记忆设置留足版面） */
 .sd-reader-morepage {
@@ -3481,13 +3467,46 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-morepage-title i { color: var(--sd-accent); }
 .sd-reader-morepage .sd-reader-more-close { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--sd-border); background: var(--sd-glass); color: var(--sd-text); cursor: pointer; }
 .sd-reader-morepage .sd-reader-more-close:hover { filter: brightness(1.08); }
-.sd-reader-morepage-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 0 24px; display: block; max-width: 680px; width: 100%; margin: 0 auto; }
-/* 面板三 tab（仿千幕主体 tab）：等宽底线态 */
+.sd-reader-morepage-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 0 24px; display: block; max-width: 760px; width: 100%; margin: 0 auto; }
+/* 伴读中心总览：书籍进度与防剧透状态始终在四个 tab 上方可见。 */
+.sd-reader-center-status { display: grid; grid-template-columns: minmax(0,1fr) minmax(210px,.72fr); gap: 10px; padding: 14px 16px 10px; }
+.sd-reader-center-book, .sd-reader-center-guard { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--sd-hairline); border-radius: 13px; background: var(--sd-glass-weak); }
+.sd-reader-center-book-icon { width: 34px; height: 34px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: var(--sd-accent); background: color-mix(in srgb, var(--sd-accent) 14%, transparent); }
+.sd-reader-center-book-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sd-reader-center-book-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .9em; color: var(--sd-text); }
+.sd-reader-center-book-copy small, .sd-reader-center-guard small { color: var(--sd-muted); font-size: .72em; line-height: 1.35; }
+.sd-reader-center-guard { justify-content: space-between; cursor: pointer; }
+.sd-reader-center-guard > span:first-child { min-width: 0; display: grid; grid-template-columns: auto 1fr; column-gap: 7px; align-items: center; }
+.sd-reader-center-guard > span:first-child i { grid-row: 1 / 3; color: var(--sd-muted); }
+.sd-reader-center-status.is-protected .sd-reader-center-guard { border-color: color-mix(in srgb, var(--sd-good, #3fae6b) 55%, var(--sd-hairline)); background: color-mix(in srgb, var(--sd-good, #3fae6b) 8%, var(--sd-glass-weak)); }
+.sd-reader-center-status.is-protected .sd-reader-center-guard > span:first-child i { color: var(--sd-good, #3fae6b); }
+/* 面板四 tab：图标辅助窄屏识别。 */
 .sd-reader-mtabs { display: flex; position: sticky; top: 0; z-index: 2; background: var(--sd-portal-bg, var(--sd-folder-head)); border-bottom: 1px solid var(--sd-hairline); }
-.sd-reader-mtab { flex: 1; padding: 12px 6px; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--sd-muted); cursor: pointer; font: inherit; font-size: .9em; transition: color .16s; }
+.sd-reader-mtab { flex: 1; padding: 11px 5px; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--sd-muted); cursor: pointer; font: inherit; font-size: .86em; transition: color .16s; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+.sd-reader-mtab i { font-size: .92em; opacity: .8; }
 .sd-reader-mtab:hover { color: var(--sd-text); }
 .sd-reader-mtab.active { color: var(--sd-accent); border-bottom-color: var(--sd-accent); font-weight: 600; }
 .sd-reader-mtab-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+/* 伴读设定在中心内按任务分成三张卡，避免旧浮层的长表单堆叠。 */
+.sd-reader-center-setup { gap: 12px; }
+.sd-reader-center-section { display: flex; flex-direction: column; gap: 11px; padding: 14px; border: 1px solid var(--sd-hairline); border-radius: 14px; background: var(--sd-glass-weak); }
+.sd-reader-center-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 9px; border-bottom: 1px solid var(--sd-hairline); }
+.sd-reader-center-section-head > span { display: inline-flex; align-items: center; gap: 7px; color: var(--sd-text); font-size: .9em; }
+.sd-reader-center-section-head > span i { color: var(--sd-accent); }
+.sd-reader-center-section-head small { color: var(--sd-muted); font-size: .7em; text-align: right; line-height: 1.4; }
+/* 记忆档案页首：先展示可读状态与常用管理动作，其余高级配置下沉折叠。 */
+.sd-reader-memory-overview { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid color-mix(in srgb, var(--sd-accent) 34%, var(--sd-hairline)); border-radius: 15px; background: linear-gradient(145deg, color-mix(in srgb, var(--sd-accent) 8%, var(--sd-glass-weak)), var(--sd-glass-weak)); }
+.sd-reader-memory-title { display: flex; align-items: center; gap: 10px; }
+.sd-reader-memory-title > span { width: 38px; height: 38px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; background: color-mix(in srgb, #d0872e 16%, transparent); color: #d0872e; }
+.sd-reader-memory-title > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sd-reader-memory-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sd-text); font-size: .92em; }
+.sd-reader-memory-title small { color: var(--sd-muted); font-size: .72em; }
+.sd-reader-memory-stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 6px; }
+.sd-reader-memory-stats > span { display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 10px; background: var(--sd-pre); text-align: center; }
+.sd-reader-memory-stats b { color: var(--sd-accent); font-size: 1em; font-variant-numeric: tabular-nums; }
+.sd-reader-memory-stats small { color: var(--sd-muted); font-size: .64em; white-space: nowrap; }
+.sd-reader-memory-actions { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; }
+.sd-reader-memory-actions .sd-reader-mbtn { width: 100%; }
 /* 卡片 */
 .sd-reader-mcard { background: var(--sd-glass-weak); border: 1px solid var(--sd-hairline); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
 .sd-reader-mcard-head { display: flex; align-items: center; gap: 8px; font-size: .94em; font-weight: 600; color: var(--sd-text); }
@@ -3522,6 +3541,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 }
 .sd-reader-mactions .sd-reader-mbtn { flex: 1 1 0; min-width: 0; }
 .sd-reader-mbtn:hover { background: var(--sd-glass); }
+.sd-reader-mbtn:disabled { opacity: .42; cursor: default; }
 .sd-reader-mbtn i { font-size: .92em; opacity: .85; flex: 0 0 auto; }
 .sd-reader-mprofile .sd-reader-mem-profile-del { flex: 0 0 auto; padding: 8px 10px; }
 /* 胶囊左右滑开关 */
@@ -3664,6 +3684,32 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-migrate-info { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: .9em; flex: 1; min-width: 0; }
 .sd-reader-migrate-floor { font-size: .82em; color: var(--sd-accent); font-weight: 700; flex: 0 0 auto; opacity: .85; }
 .sd-reader-migrate-when { font-size: .78em; color: var(--sd-muted, #888); }
+/* 伴读档案：卡片式绑定，书目/角色/数量/时间分层显示。 */
+.sd-reader-archive-dialog { display: flex; flex-direction: column; gap: 12px; max-height: 72vh; }
+.sd-reader-archive-heading, .sd-reader-sm-heading { display: flex; align-items: center; gap: 11px; }
+.sd-reader-archive-heading > span, .sd-reader-sm-heading > span { width: 38px; height: 38px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: var(--sd-accent); background: color-mix(in srgb, var(--sd-accent) 15%, transparent); }
+.sd-reader-archive-heading > div, .sd-reader-sm-heading > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sd-reader-archive-heading b, .sd-reader-sm-heading b { color: var(--sd-text); font-size: 1em; }
+.sd-reader-archive-heading small, .sd-reader-sm-heading small { color: var(--sd-muted); font-size: .76em; }
+.sd-reader-archive-note { display: flex; align-items: flex-start; gap: 8px; padding: 9px 11px; border-radius: 10px; background: var(--sd-glass-weak); color: var(--sd-muted); font-size: .78em; line-height: 1.55; }
+.sd-reader-archive-note i { color: var(--sd-accent); margin-top: 2px; }
+.sd-reader-archive-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; overflow-y: auto; min-height: 0; padding: 1px 3px 3px 1px; }
+.sd-reader-archive-card { position: relative; min-width: 0; display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--sd-hairline); border-radius: 13px; background: var(--sd-glass-weak); cursor: pointer; transition: border-color .16s, background .16s, transform .16s; }
+.sd-reader-archive-card:hover { border-color: color-mix(in srgb, var(--sd-accent) 58%, var(--sd-hairline)); transform: translateY(-1px); }
+.sd-reader-archive-card:has(.sd-reader-arch-pick:checked) { border-color: color-mix(in srgb, var(--sd-good, #3fae6b) 66%, var(--sd-hairline)); background: color-mix(in srgb, var(--sd-good, #3fae6b) 8%, var(--sd-glass-weak)); }
+.sd-reader-archive-card > .sd-reader-arch-pick { position: absolute; right: 10px; top: 10px; accent-color: var(--sd-good, #3fae6b); }
+.sd-reader-archive-mark { width: 34px; height: 42px; border-radius: 8px 8px 5px 5px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: #d0872e; background: color-mix(in srgb, #d0872e 16%, transparent); }
+.sd-reader-archive-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 8px; padding-right: 18px; }
+.sd-reader-archive-title { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.sd-reader-archive-title b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sd-text); font-size: .88em; }
+.sd-reader-archive-title em { padding: 1px 7px; border-radius: 999px; background: var(--sd-pre); color: var(--sd-muted); font-style: normal; font-size: .64em; }
+.sd-reader-archive-title em .on { display: none; }
+.sd-reader-archive-card:has(.sd-reader-arch-pick:checked) .sd-reader-archive-title em .off { display: none; }
+.sd-reader-archive-card:has(.sd-reader-arch-pick:checked) .sd-reader-archive-title em .on { display: inline; }
+.sd-reader-archive-card:has(.sd-reader-arch-pick:checked) .sd-reader-archive-title em { background: color-mix(in srgb, var(--sd-good, #3fae6b) 20%, transparent); color: var(--sd-good, #3fae6b); }
+.sd-reader-archive-tags { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.sd-reader-archive-tags > span { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 999px; background: var(--sd-pre); color: var(--sd-muted); font-size: .67em; min-width: 0; }
+.sd-reader-archive-tags > span i { opacity: .75; }
 /* 档案弹窗次级操作：迁移入口（与绑定并列·语义各异） */
 .sd-reader-arch-secondary { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--sd-hairline); }
 .sd-reader-arch-secondary .sd-reader-textbtn { align-self: flex-start; }
@@ -3686,17 +3732,29 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-mlrow-peek { font-size: .82em; color: var(--sd-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; }
 .sd-reader-mlrow-body { margin: 0; padding: 8px 12px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .76em; line-height: 1.6; color: var(--sd-text); white-space: pre-wrap; word-break: break-word; background: var(--sd-input-bg); border-top: 1px solid var(--sd-hairline); max-height: 240px; overflow-y: auto; }
 /* 切片管理弹窗：滚动列表 + 可折叠行 */
-.sd-reader-sm-dialog { max-height: 72vh; display: flex; flex-direction: column; }
-.sd-reader-sm-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1 1 auto; max-height: 58vh; padding-right: 4px; }
-.sd-reader-sm-row { border: 1px solid var(--sd-hairline); border-radius: 9px; background: var(--sd-glass-weak); overflow: hidden; }
-.sd-reader-sm-sum { display: flex; align-items: center; gap: 8px; padding: 9px 11px; cursor: pointer; list-style: none; }
+.sd-reader-sm-dialog { max-height: 76vh; display: flex; flex-direction: column; gap: 10px; }
+.sd-reader-sm-overview { display: flex; flex-wrap: wrap; gap: 5px; }
+.sd-reader-sm-overview > span { padding: 3px 9px; border-radius: 999px; background: var(--sd-pre); font-size: .7em; font-weight: 600; }
+.sd-reader-sm-overview .src-dialog { color: var(--sd-accent); }
+.sd-reader-sm-overview .src-text { color: #d0872e; }
+.sd-reader-sm-overview .src-mainline { color: var(--sd-good, #3fae6b); }
+.sd-reader-sm-overview .src-mixed { color: #9d7bea; }
+.sd-reader-sm-overview .is-blocked { color: var(--sd-muted); }
+.sd-reader-sm-hint { margin: -2px 0 0; color: var(--sd-muted); font-size: .75em; line-height: 1.5; }
+.sd-reader-sm-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1 1 auto; max-height: 56vh; padding-right: 4px; }
+.sd-reader-sm-row { border: 1px solid var(--sd-hairline); border-radius: 12px; background: var(--sd-glass-weak); overflow: hidden; transition: border-color .16s, background .16s; }
+.sd-reader-sm-row[open] { border-color: color-mix(in srgb, var(--sd-accent) 38%, var(--sd-hairline)); background: color-mix(in srgb, var(--sd-accent) 4%, var(--sd-glass-weak)); }
+.sd-reader-sm-sum { display: flex; align-items: center; gap: 10px; padding: 11px 12px; cursor: pointer; list-style: none; }
 .sd-reader-sm-sum::-webkit-details-marker { display: none; }
-.sd-reader-sm-peek { font-size: .82em; color: var(--sd-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; }
+.sd-reader-sm-summary-main { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 7px; }
+.sd-reader-sm-peek { font-size: .8em; line-height: 1.45; color: var(--sd-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sd-reader-sm-chevron { color: var(--sd-muted); font-size: .72em; flex: 0 0 auto; transition: transform .18s; }
+.sd-reader-sm-row[open] .sd-reader-sm-chevron { transform: rotate(180deg); }
 /* 切片管理：标签横向成排（批次号 + 来源徽标 + 向量状态徽标），不再竖排 */
 .sd-reader-sm-tags { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; flex-wrap: nowrap; }
 .sd-reader-src-badge.vec-on { background: color-mix(in srgb, var(--sd-good, #3fae6b) 25%, transparent); color: var(--sd-good, #3fae6b); }
 .sd-reader-src-badge.vec-off { background: var(--sd-pre); color: var(--sd-muted, #888); }
-.sd-reader-sm-detail { padding: 0 11px 11px; display: flex; flex-direction: column; gap: 6px; }
+.sd-reader-sm-detail { padding: 2px 12px 12px; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--sd-hairline); }
 .sd-reader-sm-meta { font-size: .74em; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .sd-reader-sm-acts { display: flex; gap: 8px; justify-content: flex-end; }
 .sd-reader-slice-syn { font-size: .74em; margin: 4px 0 2px; line-height: 1.5; color: var(--sd-accent); }
@@ -3781,6 +3839,28 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-cwb-itemlab { display: flex; align-items: center; gap: 8px; font-size: .84em; color: var(--sd-text); cursor: pointer; }
 .sd-reader-cwb-itemlab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sd-reader-cwb-item pre { margin: 4px 8px 8px; padding: 8px 10px; background: var(--sd-input-bg); border-radius: 8px; font-size: .78em; color: var(--sd-muted); white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow-y: auto; }
+
+@media (max-width: 620px) {
+  .sd-reader-center-status { grid-template-columns: 1fr; padding: 10px 10px 8px; gap: 7px; }
+  .sd-reader-center-book, .sd-reader-center-guard { padding: 9px 10px; }
+  .sd-reader-mtab { flex-direction: column; gap: 3px; padding: 8px 2px; font-size: .74em; }
+  .sd-reader-mtab i { font-size: 1em; }
+  .sd-reader-mtab-body { padding: 10px; }
+  .sd-reader-center-section { padding: 11px; }
+  .sd-reader-center-section-head { flex-direction: column; gap: 3px; }
+  .sd-reader-center-section-head small { text-align: left; }
+  .sd-reader-setup-numrow { align-items: flex-start; flex-direction: column; }
+  .sd-reader-setup-numrow > .sd-reader-setup-num,
+  .sd-reader-setup-numrow > .sd-reader-setup-numgroup { width: 100%; }
+  .sd-reader-setup-numgroup { justify-content: flex-end; flex-wrap: wrap; }
+  .sd-reader-memory-stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .sd-reader-memory-actions { grid-template-columns: 1fr; }
+  .sd-reader-archive-grid { grid-template-columns: 1fr; }
+  .sd-reader-archive-dialog { max-height: 78vh; }
+  .sd-reader-sm-tags { flex-wrap: wrap; }
+  .sd-reader-sm-peek { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .sd-reader-sm-acts { flex-wrap: wrap; }
+}
 
 /* 设置抽屉行 */
 .sd-reader-typo-inner { padding: 4px 16px 20px; display: flex; flex-direction: column; gap: 14px; }
