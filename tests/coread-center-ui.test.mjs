@@ -17,8 +17,11 @@ assert.match(source, /tab === 'setup'[\s\S]*renderCompanionSetupBody/, '伴读�
 assert.ok(source.includes('sd-reader-archive-card'), '伴读档案必须使用卡片式绑定界面');
 assert.ok(source.includes('sd-reader-memory-overview'), '记忆档案页必须先提供状态总览与常用管理动作');
 assert.ok(source.includes('sd-reader-sm-chevron'), '记忆切片卡必须有明确折叠指示');
-assert.match(css, /\.sd-reader-archive-grid[^}]*grid-template-columns: repeat\(2/, '档案在宽屏必须使用双列卡片');
-assert.match(css, /@media \(max-width: 620px\)[\s\S]*\.sd-reader-archive-grid[^}]*grid-template-columns: 1fr/, '档案在窄屏必须回落单列');
+const archivePage = source.slice(source.indexOf('function renderCoreadArchivePage'), source.indexOf('async function coreadOpenArchivePage'));
+assert.match(archivePage, /<details class="sd-reader-archive-card[\s\S]*sd-reader-archive-detail/, '伴读档案必须使用矩形折叠卡片');
+assert.doesNotMatch(archivePage, /new Popup|POPUP_TYPE/, '伴读档案不得再叠加 ST 弹窗');
+assert.match(source, /coreadCenterPage === 'archives'[\s\S]*renderCoreadArchivePage/, '伴读档案必须作为中心内部子页面渲染');
+assert.match(css, /\.sd-reader-subpage-head[^}]*position:\s*sticky/, '中心内部子页面必须使用统一返回头');
 assert.match(css, /\.sd-reader-center-status[^}]*grid-template-columns:/, '伴读中心必须有独立状态总览布局');
 
 console.log('Coread center UI contract OK');

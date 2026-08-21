@@ -3502,7 +3502,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 /* 连接与记忆：整页全屏面板（占满 stage·顶栏返回 + 可滚动正文·为后续复杂记忆设置留足版面） */
 .sd-reader-morepage {
   position: absolute; inset: 0; z-index: 15; display: flex; flex-direction: column;
-  background: var(--sd-portal-bg, var(--sd-folder-head)); color: var(--sd-text);
+  overflow: hidden; background: var(--sd-portal-bg, var(--sd-folder-head)); color: var(--sd-text);
 }
 .sd-reader-morepage[hidden] { display: none; }
 .sd-reader-morepage-top {
@@ -3515,7 +3515,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-morepage-title i { color: var(--sd-accent); }
 .sd-reader-morepage .sd-reader-more-close { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--sd-border); background: var(--sd-glass); color: var(--sd-text); cursor: pointer; }
 .sd-reader-morepage .sd-reader-more-close:hover { filter: brightness(1.08); }
-.sd-reader-morepage-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 0 24px; display: block; max-width: 760px; width: 100%; margin: 0 auto; }
+.sd-reader-morepage-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 0 24px; display: block; max-width: 760px; width: 100%; margin: 0 auto; }
 /* 伴读中心总览：书籍进度与防剧透状态始终在四个 tab 上方可见。 */
 .sd-reader-center-status { display: grid; grid-template-columns: minmax(0,1fr); gap: 10px; padding: 14px 16px 10px; }
 .sd-reader-center-book, .sd-reader-center-guard { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--sd-hairline); border-radius: 13px; background: var(--sd-glass-weak); }
@@ -3536,6 +3536,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-packbar-copy b { color: var(--sd-text); font-size: .84em; }
 .sd-reader-packbar-copy small { color: var(--sd-muted); font-size: .66em; }
 .sd-reader-packbar-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.sd-reader-center-setup > .sd-reader-packbar { margin: 0; }
 .sd-reader-pack-export, .sd-reader-pack-import { position: relative; overflow: hidden; width: 31px; height: 31px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sd-hairline); border-radius: 9px; background: var(--sd-pre); color: var(--sd-text); cursor: pointer; }
 .sd-reader-pack-export:hover, .sd-reader-pack-import:hover { color: var(--sd-accent); border-color: var(--sd-accent); }
 .sd-reader-pack-import .sd-reader-pack-import-input { inset: 0 !important; width: 100% !important; height: 100% !important; margin: 0 !important; opacity: 0 !important; clip: auto !important; clip-path: none !important; cursor: pointer !important; }
@@ -3750,54 +3751,66 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-migrate-info { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: .9em; flex: 1; min-width: 0; }
 .sd-reader-migrate-floor { font-size: .82em; color: var(--sd-accent); font-weight: 700; flex: 0 0 auto; opacity: .85; }
 .sd-reader-migrate-when { font-size: .78em; color: var(--sd-muted, #888); }
-/* 伴读档案：卡片式绑定，书目/角色/数量/时间分层显示。 */
-.sd-reader-archive-dialog { display: flex; flex-direction: column; gap: 12px; max-height: 72vh; }
-.sd-reader-archive-heading, .sd-reader-sm-heading { display: flex; align-items: center; gap: 11px; }
-.sd-reader-archive-heading > span, .sd-reader-sm-heading > span { width: 38px; height: 38px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: var(--sd-accent); background: color-mix(in srgb, var(--sd-accent) 15%, transparent); }
-.sd-reader-archive-heading > div, .sd-reader-sm-heading > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.sd-reader-archive-heading b, .sd-reader-sm-heading b { color: var(--sd-text); font-size: 1em; }
-.sd-reader-archive-heading small, .sd-reader-sm-heading small { color: var(--sd-muted); font-size: .76em; }
+/* 伴读中心内部子页面：统一返回头、内容区和底部操作，不再叠加宽弹窗。 */
+.sd-reader-subpage { min-height: 100%; box-sizing: border-box; padding: 14px 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.sd-reader-subpage-head { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: auto auto minmax(0,1fr); align-items: center; gap: 9px; padding: 10px; border: 1px solid var(--sd-hairline); border-radius: 14px; background: color-mix(in srgb, var(--sd-folder-head) 94%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.sd-reader-subpage-back { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sd-hairline); border-radius: 9px; background: var(--sd-pre); color: var(--sd-text); cursor: pointer; }
+.sd-reader-subpage-icon { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; color: var(--sd-accent); background: color-mix(in srgb, var(--sd-accent) 14%, transparent); }
+.sd-reader-subpage-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sd-reader-subpage-copy b { color: var(--sd-text); font-size: .94em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sd-reader-subpage-copy small { color: var(--sd-muted); font-size: .7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sd-reader-subpage-actions { position: sticky; bottom: 0; z-index: 4; display: flex; justify-content: flex-end; gap: 8px; padding: 10px 0 0; background: linear-gradient(transparent, var(--sd-portal-bg, var(--sd-folder-head)) 32%); }
+.sd-reader-subpage-actions .sd-reader-subpage-back { width: auto; height: auto; }
+.sd-reader-sm-heading { display: flex; align-items: center; gap: 11px; }
+.sd-reader-sm-heading > span { width: 38px; height: 38px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: var(--sd-accent); background: color-mix(in srgb, var(--sd-accent) 15%, transparent); }
+.sd-reader-sm-heading > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sd-reader-sm-heading b { color: var(--sd-text); font-size: 1em; }
+.sd-reader-sm-heading small { color: var(--sd-muted); font-size: .76em; }
 .sd-reader-archive-note { display: flex; align-items: flex-start; gap: 8px; padding: 9px 11px; border-radius: 10px; background: var(--sd-glass-weak); color: var(--sd-muted); font-size: .78em; line-height: 1.55; }
 .sd-reader-archive-note i { color: var(--sd-accent); margin-top: 2px; }
-.sd-reader-archive-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; overflow-y: auto; min-height: 0; padding: 1px 3px 3px 1px; }
-.sd-reader-archive-card { position: relative; min-width: 0; display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--sd-hairline); border-radius: 13px; background: var(--sd-glass-weak); cursor: pointer; transition: border-color .16s, background .16s, transform .16s; }
-.sd-reader-archive-card:hover { border-color: color-mix(in srgb, var(--sd-accent) 58%, var(--sd-hairline)); transform: translateY(-1px); }
+.sd-reader-archive-list { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.sd-reader-archive-card { min-width: 0; border: 1px solid var(--sd-hairline); border-radius: 12px; background: var(--sd-glass-weak); overflow: hidden; transition: border-color .16s, background .16s; }
+.sd-reader-archive-card:hover { border-color: color-mix(in srgb, var(--sd-accent) 58%, var(--sd-hairline)); }
 .sd-reader-archive-card:has(.sd-reader-arch-pick:checked) { border-color: color-mix(in srgb, var(--sd-good, #3fae6b) 66%, var(--sd-hairline)); background: color-mix(in srgb, var(--sd-good, #3fae6b) 8%, var(--sd-glass-weak)); }
-.sd-reader-archive-card > .sd-reader-arch-pick { position: absolute; right: 10px; top: 10px; accent-color: var(--sd-good, #3fae6b); }
-.sd-reader-archive-mark { width: 34px; height: 42px; border-radius: 8px 8px 5px 5px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: #d0872e; background: color-mix(in srgb, #d0872e 16%, transparent); }
-.sd-reader-archive-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 8px; padding-right: 18px; }
-.sd-reader-archive-title { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.sd-reader-archive-summary { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 10px; padding: 10px 11px; cursor: pointer; list-style: none; }
+.sd-reader-archive-summary::-webkit-details-marker { display: none; }
+.sd-reader-archive-mark { width: 34px; height: 40px; border-radius: 8px 8px 5px 5px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: #d0872e; background: color-mix(in srgb, #d0872e 16%, transparent); }
+.sd-reader-archive-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.sd-reader-archive-title { min-width: 0; display: flex; align-items: center; gap: 7px; }
 .sd-reader-archive-title b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sd-text); font-size: .88em; }
 .sd-reader-archive-title em { padding: 1px 7px; border-radius: 999px; background: var(--sd-pre); color: var(--sd-muted); font-style: normal; font-size: .64em; }
+.sd-reader-archive-peek { color: var(--sd-muted); font-size: .7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sd-reader-archive-title em .on { display: none; }
 .sd-reader-archive-card:has(.sd-reader-arch-pick:checked) .sd-reader-archive-title em .off { display: none; }
 .sd-reader-archive-card:has(.sd-reader-arch-pick:checked) .sd-reader-archive-title em .on { display: inline; }
 .sd-reader-archive-card:has(.sd-reader-arch-pick:checked) .sd-reader-archive-title em { background: color-mix(in srgb, var(--sd-good, #3fae6b) 20%, transparent); color: var(--sd-good, #3fae6b); }
-.sd-reader-archive-tags { display: flex; flex-wrap: wrap; gap: 4px 6px; }
-.sd-reader-archive-tags > span { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 999px; background: var(--sd-pre); color: var(--sd-muted); font-size: .67em; min-width: 0; }
-.sd-reader-archive-tags > span i { opacity: .75; }
-/* 档案弹窗次级操作：迁移入口（与绑定并列·语义各异） */
+.sd-reader-archive-check { display: inline-flex; align-items: center; gap: 4px; color: var(--sd-muted); font-size: .7em; cursor: pointer; white-space: nowrap; }
+.sd-reader-archive-check input { accent-color: var(--sd-good, #3fae6b); }
+.sd-reader-archive-chevron { color: var(--sd-muted); font-size: .7em; transition: transform .16s; }
+.sd-reader-archive-card[open] .sd-reader-archive-chevron { transform: rotate(180deg); }
+.sd-reader-archive-detail { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; padding: 10px 12px; border-top: 1px solid var(--sd-hairline); background: var(--sd-input-bg); }
+.sd-reader-archive-detail > span { min-width: 0; color: var(--sd-muted); font-size: .72em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sd-reader-archive-detail i { margin-right: 5px; color: var(--sd-accent); }
 .sd-reader-arch-secondary { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--sd-hairline); }
 .sd-reader-arch-secondary .sd-reader-textbtn { align-self: flex-start; }
-/* 主线选择弹窗：正文楼层卡优先，文本清理规则收进底部高级折叠区。 */
-.sd-reader-mldialog { display: flex; flex-direction: column; min-height: 360px; gap: 9px; }
-.sd-reader-mlheading { display: flex; flex-direction: column; gap: 3px; }
-.sd-reader-mlheading b { color: var(--sd-text); font-size: .95em; }
-.sd-reader-mlheading small { color: var(--sd-muted); font-size: .76em; }
-.sd-reader-mltoolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; border-radius: 9px; background: var(--sd-pre); color: var(--sd-muted); font-size: .78em; }
+/* 主线选择子页面：清理规则在正文列表上方，楼层工具条支持任意位置重载。 */
+.sd-reader-mltoolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 10px; padding: 8px 10px; border-radius: 10px; background: var(--sd-pre); color: var(--sd-muted); font-size: .78em; }
 .sd-reader-mltoolbar label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.sd-reader-mljump { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
+.sd-reader-mljump-input { width: 72px; box-sizing: border-box; padding: 5px 7px; border: 1px solid var(--sd-hairline); border-radius: 8px; background: var(--sd-input-bg); color: var(--sd-text); font: inherit; }
+.sd-reader-mljump button { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sd-hairline); border-radius: 8px; background: var(--sd-glass-weak); color: var(--sd-accent); cursor: pointer; }
 .sd-reader-mlrule-wrap { border: 1px solid var(--sd-hairline); border-radius: 9px; margin-top: 2px; flex: 0 0 auto; }
 .sd-reader-mlrule-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 8px 10px; cursor: pointer; font-size: .82em; font-weight: 600; list-style: none; }
 .sd-reader-mlrule-head::-webkit-details-marker { display: none; }
 .sd-reader-mlrule-head > span { display: inline-flex; align-items: center; gap: 6px; }
-.sd-reader-mlrule-head small { padding: 1px 7px; border-radius: 999px; color: var(--sd-muted); background: var(--sd-pre); font-weight: 400; }
 .sd-reader-mlrule-rows { display: flex; flex-direction: column; gap: 5px; padding: 4px 10px 6px; }
 .sd-reader-mlrule-row { display: flex; align-items: center; gap: 6px; }
 .sd-reader-mlrule-row .sd-reader-minput:first-child { flex: 1 1 auto; }
 .sd-reader-mlrule-row .sd-reader-minput:nth-child(2) { flex: 0 0 80px; }
 .sd-reader-mlrule-acts { display: flex; align-items: center; gap: 6px; padding: 4px 10px 8px; }
-.sd-reader-mllist { display: flex; flex-direction: column; gap: 7px; overflow-y: auto; flex: 1 1 auto; min-height: 0; max-height: 58vh; padding: 1px 4px 1px 1px; }
+.sd-reader-mllist { display: flex; flex-direction: column; gap: 7px; min-height: 0; padding: 1px 4px 1px 1px; }
 .sd-reader-mlrow { border: 1px solid var(--sd-hairline); border-radius: 10px; background: var(--sd-glass-weak); overflow: hidden; flex: 0 0 auto; }
+.sd-reader-mlrow.is-located { border-color: var(--sd-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--sd-accent) 10%, transparent); }
 .sd-reader-mlrow-sum { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 9px; padding: 9px 10px; cursor: pointer; list-style: none; }
 .sd-reader-mlrow-sum::-webkit-details-marker { display: none; }
 .sd-reader-mlcheck { display: inline-flex; align-items: center; justify-content: center; }
@@ -3927,6 +3940,14 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-cwb-item pre { margin: 4px 8px 8px; padding: 8px 10px; background: var(--sd-input-bg); border-radius: 8px; font-size: .78em; color: var(--sd-muted); white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow-y: auto; }
 
 @media (max-width: 620px) {
+  .sd-reader-subpage { padding: 10px; }
+  .sd-reader-subpage-head { grid-template-columns: auto auto minmax(0,1fr); padding: 8px; }
+  .sd-reader-subpage-copy small { white-space: normal; line-height: 1.35; }
+  .sd-reader-archive-summary { grid-template-columns: auto minmax(0,1fr) auto; gap: 7px; padding: 9px; }
+  .sd-reader-archive-check span { display: none; }
+  .sd-reader-archive-chevron { display: none; }
+  .sd-reader-archive-detail { grid-template-columns: 1fr; }
+  .sd-reader-mljump { width: 100%; margin-left: 0; justify-content: flex-end; }
   .sd-reader-center-status { grid-template-columns: 1fr; padding: 10px 10px 8px; gap: 7px; }
   .sd-reader-center-book, .sd-reader-center-guard { padding: 9px 10px; }
   .sd-reader-mtab { flex-direction: column; gap: 3px; padding: 8px 2px; font-size: .74em; }
@@ -3936,6 +3957,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   .sd-reader-center-section-head { flex-direction: column; gap: 3px; }
   .sd-reader-center-section-head small { text-align: left; }
   .sd-reader-packbar { margin: 8px 10px 0; padding: 8px 9px; }
+  .sd-reader-center-setup > .sd-reader-packbar { margin: 0; }
   .sd-reader-packbar-copy small { display: none; }
   .sd-reader-tour { margin: 2px 10px 6px; grid-template-columns: auto minmax(0,1fr); padding: 10px; }
   .sd-reader-tour-icon { width: 34px; height: 34px; }
@@ -3955,8 +3977,6 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   .sd-reader-context-card .sd-reader-setup-numgroup { width: auto; flex-wrap: nowrap; }
   .sd-reader-memory-stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .sd-reader-memory-actions { grid-template-columns: 1fr; }
-  .sd-reader-archive-grid { grid-template-columns: 1fr; }
-  .sd-reader-archive-dialog { max-height: 78vh; }
   .sd-reader-sm-tags { flex-wrap: wrap; }
   .sd-reader-sm-peek { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .sd-reader-sm-acts { flex-wrap: wrap; }

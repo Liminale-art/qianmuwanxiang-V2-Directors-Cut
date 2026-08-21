@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.19.0';
+const VERSION = '1.20.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -501,7 +501,7 @@ const DEFAULT_SETTINGS = Object.freeze({
       mainlineRecall: 2,            // 反哺主线·检索命中注入数（主线按当下语境召回的切片数·默认2）
       mainlineRecent: 1,            // 反哺主线·近景切片注入数（最近 N 条无条件·默认1·0=关）
       mainlineDepth: 2,             // 反哺主线注入深度（插入主线上下文的倒数第 N 层·默认2）
-      mainlinePickLimit: 50,        // 主线圈选对话框显示的最大楼层数（默认50·可调）
+      mainlinePickLimit: 50,        // 主线选择页单次显示的最大楼层数（默认50·可调）
       mainlineTagRules: [{ name: 'content', action: 'extract' }],   // 主线选择标签规则（数组·同取材 tab 结构）：[{name,action:'extract'|'remove'}]。默认提取 <content> 内文；空数组=整条原文
       worldSyncMode: 'none',        // 千幕档案是唯一主存储；世界书只作可选镜像：none | dedicated | shared
       rerankTopN: 4,                // 开重排档时召回候选重排后保留数（用户可改）
@@ -8237,6 +8237,9 @@ let companionPresetView = '';    // 伴读设定浮层中：当前查看条目�
 let coreadCurrentDictId = '';    // 注入状态tab：当前查看/编辑的词典册ID（空=默认整册视图）
 let coreadWorldSyncBusy = false; // 世界书镜像切换/批量同步互斥，防止连续切换造成交叉写入
 let coreadGuideStep = null;      // 首次引导仅是本次打开时的临时游标；完成态才持久化
+let coreadCenterPage = 'main';   // main | archives | mainline：伴读中心内部导航，不再叠加大弹窗
+let coreadArchivePageItems = [];
+let coreadMainlineFocusFloor = 0;
 
 function coread() {
   if (!isPlainObject(settings.coread)) settings.coread = clone(DEFAULT_SETTINGS.coread);
@@ -10465,66 +10468,57 @@ async function coreadOpenMigrateDialog() {
     // 补渲对话流 + 重渲记忆 tab
     const body = document.querySelector('#sd-reader-portal .sd-reader-dtab-chat');
     if (body) { body.innerHTML = renderReaderDialogMessages(); scrollDialogToBottom(); }
-    rerenderMore?.();
+    coreadCenterPage = 'main';
+    coreadMemory().moreTab = 'records';
+    rerenderMoreIfOpen();
   } else {
     toast(`迁移失败：${r.reason || '未知错误'}`, 'error');
   }
 }
 
-// 伴读档案管理弹窗：列出全设备所有档案（勾选＝绑定到当前主线+对话·切片进反哺主线召回池）。
-async function coreadOpenArchiveDialog() {
-  const context = ctx();
-  const Popup = context.Popup;
-  if (!Popup || !context.POPUP_TYPE) { toast('当前环境不支持弹窗。', 'error'); return; }
-  const list = await coreadListAllArchives();
-  if (!list.length) { toast('没有找到其它聊天/书目的伴读档案。', 'info'); return; }
-  const rows = list.map((a, i) => {
+function renderCoreadSubpageHead(icon, title, subtitle) {
+  return `<header class="sd-reader-subpage-head">
+    <button type="button" class="sd-reader-subpage-back" title="返回伴读中心"><i class="fa-solid fa-arrow-left"></i></button>
+    <span class="sd-reader-subpage-icon"><i class="fa-solid ${icon}"></i></span>
+    <span class="sd-reader-subpage-copy"><b>${htmlEscape(title)}</b><small>${htmlEscape(subtitle)}</small></span>
+  </header>`;
+}
+
+// 伴读档案是中心内部子页面：矩形折叠卡管理绑定，不再叠加 ST Popup。
+function renderCoreadArchivePage() {
+  const rows = coreadArchivePageItems.map((a, i) => {
     const when = a.updatedAt ? new Date(a.updatedAt).toLocaleString() : '旧档案';
-    return `<label class="sd-reader-archive-card${a.bound ? ' is-bound' : ''}">
-      <input type="checkbox" class="sd-reader-arch-pick" value="${i}"${a.bound ? ' checked' : ''}>
-      <span class="sd-reader-archive-mark"><i class="fa-solid fa-book-bookmark"></i></span>
-      <span class="sd-reader-archive-main">
-        <span class="sd-reader-archive-title"><b>《${htmlEscape(a.title || '未知书目')}》</b><em><span class="off">未绑定</span><span class="on">已选择</span></em></span>
-        <span class="sd-reader-archive-tags">
-          <span><i class="fa-solid fa-user"></i>${htmlEscape(a.chatName || '未知角色')}</span>
-          <span><i class="fa-solid fa-layer-group"></i>${a.sliceN} 条记忆</span>
-          <span><i class="fa-regular fa-clock"></i>${htmlEscape(when)}</span>
+    return `<details class="sd-reader-archive-card${a.bound ? ' is-bound' : ''}">
+      <summary class="sd-reader-archive-summary">
+        <span class="sd-reader-archive-mark"><i class="fa-solid fa-book-bookmark"></i></span>
+        <span class="sd-reader-archive-main">
+          <span class="sd-reader-archive-title"><b>《${htmlEscape(a.title || '未知书目')}》</b><em><span class="off">未绑定</span><span class="on">已选择</span></em></span>
+          <span class="sd-reader-archive-peek">${htmlEscape(a.chatName || '未知角色')} · ${a.sliceN} 条记忆</span>
         </span>
-      </span>
-    </label>`;
+        <label class="sd-reader-archive-check" onclick="event.stopPropagation()"><input type="checkbox" class="sd-reader-arch-pick" value="${i}"${a.bound ? ' checked' : ''}><span>选用</span></label>
+        <i class="fa-solid fa-chevron-down sd-reader-archive-chevron"></i>
+      </summary>
+      <div class="sd-reader-archive-detail">
+        <span><i class="fa-solid fa-user"></i>角色：${htmlEscape(a.chatName || '未知角色')}</span>
+        <span><i class="fa-solid fa-layer-group"></i>记忆切片：${a.sliceN} 条</span>
+        <span><i class="fa-regular fa-clock"></i>更新：${htmlEscape(when)}</span>
+      </div>
+    </details>`;
   }).join('');
-  const inner = `<div class="sd-reader-archive-dialog" style="text-align:left">
-    <div class="sd-reader-archive-heading"><span><i class="fa-solid fa-box-archive"></i></span><div><b>伴读档案</b><small>勾选需要与当前对话共同召回的档案</small></div></div>
-    <div class="sd-reader-archive-note"><i class="fa-solid fa-circle-info"></i><span>绑定只共享召回，不会物理合并或改写旧档案；当前正在阅读的档案已自动生效。</span></div>
-    <div class="sd-reader-archive-grid">${rows}</div>
-    <div class="sd-reader-arch-secondary">
-      <button type="button" class="sd-reader-textbtn sd-reader-arch-migrate"><i class="fa-solid fa-arrow-right-arrow-left"></i> 从其他聊天迁移这本书</button>
-      <span class="sd-muted" style="font-size:.78em">迁移会把另一聊天里的对话与切片复制进当前档案，并覆盖当前档案；它与上方只共享召回的“绑定”不同。</span>
-    </div>
-  </div>`;
-  const wrap = document.createElement('div');
-  wrap.innerHTML = inner;
-  // 次级操作：迁移入口收进档案弹窗（与绑定并列·语义各异·见小字）。点了先关本弹窗再开迁移弹窗。
-  let goMigrate = false;
-  wrap.querySelector('.sd-reader-arch-migrate')?.addEventListener('click', (ev) => {
-    ev.preventDefault();
-    goMigrate = true;
-    const closeBtn = document.querySelector('.popup .popup-button-cancel, .popup .menu_button.popup-button-cancel');
-    if (closeBtn) closeBtn.click();
-  });
-  try {
-    const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '保存绑定', cancelButton: '取消', wide: true });
-    const res = await popup.show();
-    if (goMigrate) { await coreadOpenMigrateDialog(); return; }
-    if (res !== true && String(res) !== '1') return;
-    const checked = new Set([...wrap.querySelectorAll('.sd-reader-arch-pick:checked')].map((el) => Number(el.value)));
-    const store = getChatStore();
-    store.coreadBound = list.filter((_, i) => checked.has(i)).map((a) => a.bucket);
-    saveMetadata();
-    coreadInvalidatePool();
-    toast(`已绑定 ${store.coreadBound.length} 个伴读档案到当前聊天。`, 'success');
-    rerenderMore?.();
-  } catch (_) {}
+  return `<section class="sd-reader-subpage sd-reader-archive-page">
+    ${renderCoreadSubpageHead('fa-box-archive', '伴读档案', '选择需要与当前对话共同召回的档案')}
+    <div class="sd-reader-archive-note"><i class="fa-solid fa-circle-info"></i><span>绑定只共享召回，不会合并或改写旧档案；当前正在阅读的档案已自动生效。</span></div>
+    <div class="sd-reader-archive-list">${rows || '<div class="sd-reader-mempty">尚无可管理的伴读档案</div>'}</div>
+    <div class="sd-reader-arch-secondary"><button type="button" class="sd-reader-textbtn sd-reader-arch-migrate"><i class="fa-solid fa-arrow-right-arrow-left"></i>从其他聊天迁移这本书</button></div>
+    <footer class="sd-reader-subpage-actions"><button type="button" class="sd-reader-subpage-back sd-reader-mbtn">取消</button><button type="button" class="sd-reader-archive-save sd-reader-textbtn"><i class="fa-solid fa-check"></i>保存绑定</button></footer>
+  </section>`;
+}
+
+async function coreadOpenArchivePage() {
+  try { coreadArchivePageItems = await coreadListAllArchives(); }
+  catch (_) { coreadArchivePageItems = []; }
+  coreadCenterPage = 'archives';
+  rerenderMoreIfOpen();
 }
 
 // 主线标签规则：与取材 tab 的上下文处理同源——对「原始消息 HTML」按规则数组处理。
@@ -10560,33 +10554,32 @@ function coreadCleanWithTagRules(rawMes, rules) {
   return value.replace(/\n{3,}/g, '\n\n').trim();
 }
 
-// 主线联动圈选弹窗：列出主线近期消息（排除千幕/审片注入楼层），勾选「聊到书的片段」→蒸成共读切片。
-async function coreadOpenMainlinePickDialog() {
+// 主线选择是伴读中心内部子页面。可定位任意楼层，并以当前位置为锚点加载此前 N 楼。
+function coreadMainlinePageData() {
   const context = ctx();
-  const Popup = context.Popup;
-  if (!Popup || !context.POPUP_TYPE) { toast('当前环境不支持弹窗。', 'error'); return; }
-  if (!(readerView?.bookId || readerDialog.bookId)) { toast('请先在阅读器里打开一本书（主线联动需知道是哪本书）。', 'warning'); return; }
   const chat = Array.isArray(context.chat) ? context.chat : [];
   const m = coreadMemory();
   const limit = Math.max(10, Math.min(200, Number(m.mainlinePickLimit) || 50));
   const tagRules = Array.isArray(m.mainlineTagRules) ? m.mainlineTagRules.filter((r) => r && r.name) : [];
-  // 取最近 N 楼（可自定义·默认50）·排除千幕/审片注入的 System 楼（防把注入内容当素材·避免与记忆插件撞车）
-  // 从当前楼层往前排（列表最新在上）。标签规则作用于「原始 mm.mes」（含 HTML）·再剥壳·与取材 tab 同源逻辑（不能先 cleanContextText·否则标签早被剥光）。
+  const anchor = coreadMainlineFocusFloor > 0 ? Math.min(chat.length - 1, coreadMainlineFocusFloor - 1) : chat.length - 1;
   const items = [];
-  for (let i = chat.length - 1; i >= 0 && items.length < limit; i--) {
+  for (let i = anchor; i >= 0 && items.length < limit; i--) {
     const mm = chat[i];
     if (!mm || mm.extra?.qianmu_injected) continue;
     const rawMes = String(mm.mes || '');
     if (!rawMes.trim()) continue;
-    const filtered = coreadCleanWithTagRules(rawMes, tagRules);   // 应用规则于原始 HTML→剥壳
+    const filtered = coreadCleanWithTagRules(rawMes, tagRules);
     items.push({ idx: i, floor: i + 1, name: mm.name || (mm.is_user ? '我' : '角色'), isUser: !!mm.is_user, filtered });
   }
-  // 从当前楼层开始排（最新在上·不再 reverse）
-  if (!items.length) { toast('主线里没有可选的消息。', 'info'); return; }
+  return { chat, m, limit, tagRules, items };
+}
+
+function renderCoreadMainlinePage() {
+  const { chat, tagRules, items } = coreadMainlinePageData();
   const rows = items.map((it) => {
     const oneLine = (it.filtered || '').replace(/\s+/g, ' ').trim();
     const peek = oneLine.slice(0, 72) + (oneLine.length > 72 ? '…' : '');
-    return `<details class="sd-reader-mlrow">
+    return `<details class="sd-reader-mlrow${coreadMainlineFocusFloor === it.floor ? ' is-located' : ''}" data-floor="${it.floor}">
       <summary class="sd-reader-mlrow-sum">
         <span class="sd-reader-mlcheck" onclick="event.stopPropagation()"><input type="checkbox" class="sd-reader-mlpick" value="${it.idx}" aria-label="选择楼层 ${it.floor}"></span>
         <span class="sd-reader-mlrow-copy"><b class="sd-reader-mlrow-peek">${htmlEscape(peek || '（应用规则后无可总结内容）')}</b><small>${htmlEscape(it.name)}${it.isUser ? ' · 我' : ''}</small></span>
@@ -10596,7 +10589,6 @@ async function coreadOpenMainlinePickDialog() {
       <div class="sd-reader-mlrow-body">${htmlEscape(it.filtered || '（应用规则后无可总结内容）')}</div>
     </details>`;
   }).join('');
-  // 标签规则区：取材同款行（标签名 + 屏蔽/提取 + 删除）+ 添加按钮
   const ruleRows = (tagRules.length ? tagRules : [{ name: '', action: 'remove' }]).map((r, idx) => `
     <div class="sd-reader-mlrule-row">
       <input class="sd-reader-minput sd-reader-mltag-name" data-idx="${idx}" placeholder="标签名，如 content" value="${htmlEscape(r.name || '')}">
@@ -10607,84 +10599,79 @@ async function coreadOpenMainlinePickDialog() {
       <button type="button" class="sd-reader-mbtn sd-reader-mltag-del" data-idx="${idx}" title="删除"><i class="fa-solid fa-xmark"></i></button>
     </div>`).join('');
   const ruleField = `<details class="sd-reader-mlrule-wrap">
-    <summary class="sd-reader-mlrule-head"><span><i class="fa-solid fa-filter"></i> 文本清理规则</span><small>高级</small></summary>
+    <summary class="sd-reader-mlrule-head"><span><i class="fa-solid fa-filter"></i> 文本清理规则</span></summary>
     <div class="sd-reader-mlrule-rows">${ruleRows}</div>
     <div class="sd-reader-mlrule-acts">
       <button type="button" class="sd-reader-mbtn sd-reader-mltag-add"><i class="fa-solid fa-plus"></i>添加标签</button>
       <button type="button" class="sd-reader-textbtn sd-reader-mlrule-apply">应用规则</button>
     </div>
   </details>`;
-  const inner = `<div class="sd-reader-mldialog" style="text-align:left">
-    <div class="sd-reader-mlheading"><b>选择与《${htmlEscape(coreadBookMeta(readerView?.bookId || readerDialog.bookId)?.title || '当前书籍')}》相关的正文</b><small>点标题展开完整楼层内容</small></div>
-    <div class="sd-reader-mltoolbar"><label><input type="checkbox" class="sd-reader-mlpick-all"> 全选当前 ${items.length} 楼</label><span>已选 <b class="sd-reader-mlselected-count">0</b> 楼</span></div>
-    <div class="sd-reader-mllist">${rows}</div>
+  const title = coreadBookMeta(readerView?.bookId || readerDialog.bookId)?.title || '当前书籍';
+  return `<section class="sd-reader-subpage sd-reader-mainline-page">
+    ${renderCoreadSubpageHead('fa-arrow-right-arrow-left', '从主线选择总结', `选择与《${title}》相关的正文楼层`)}
     ${ruleField}
-  </div>`;
-  const wrap = document.createElement('div');
-  wrap.innerHTML = inner;
-  // 从 DOM 收编标签规则行→数组（供「应用」与「添加/删除」共用）
-  const collectRules = () => [...wrap.querySelectorAll('.sd-reader-mlrule-row')].map((row) => ({
+    <div class="sd-reader-mltoolbar">
+      <label><input type="checkbox" class="sd-reader-mlpick-all">全选当前 ${items.length} 楼</label>
+      <span>已选 <b class="sd-reader-mlselected-count">0</b> 楼</span>
+      <span class="sd-reader-mljump"><input type="number" class="sd-reader-mljump-input" min="1" max="${chat.length}" placeholder="楼层" value="${coreadMainlineFocusFloor || ''}"><button type="button" class="sd-reader-mljump-go" title="定位楼层"><i class="fa-solid fa-location-crosshairs"></i></button>${coreadMainlineFocusFloor ? '<button type="button" class="sd-reader-mljump-latest" title="返回最新楼层"><i class="fa-solid fa-arrow-up"></i></button>' : ''}</span>
+    </div>
+    <div class="sd-reader-mllist">${rows || '<div class="sd-reader-mempty">当前范围没有可选正文</div>'}</div>
+    <footer class="sd-reader-subpage-actions"><button type="button" class="sd-reader-subpage-back sd-reader-mbtn">取消</button><button type="button" class="sd-reader-mainline-submit sd-reader-textbtn"><i class="fa-solid fa-wand-magic-sparkles"></i>总结选中</button></footer>
+  </section>`;
+}
+
+function coreadOpenMainlinePage() {
+  if (!(readerView?.bookId || readerDialog.bookId)) { toast('请先在阅读器里打开一本书。', 'warning'); return; }
+  coreadMainlineFocusFloor = 0;
+  coreadCenterPage = 'mainline';
+  rerenderMoreIfOpen();
+}
+
+function coreadCollectMainlineRules(root) {
+  return [...root.querySelectorAll('.sd-reader-mlrule-row')].map((row) => ({
     name: String(row.querySelector('.sd-reader-mltag-name')?.value || '').trim().replace(/^<|>$/g, ''),
     action: row.querySelector('.sd-reader-mltag-action')?.value === 'extract' ? 'extract' : 'remove',
-  })).filter((r) => r.name);
-  let picked = [];
-  let reapply = false;
-  try {
-    const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '总结选中', cancelButton: '取消', wide: true, large: true });
-    const refreshPickedCount = () => {
-      const picks = [...wrap.querySelectorAll('.sd-reader-mlpick')];
-      const checked = picks.filter((el) => el.checked).length;
-      const count = wrap.querySelector('.sd-reader-mlselected-count');
-      const all = wrap.querySelector('.sd-reader-mlpick-all');
-      if (count) count.textContent = String(checked);
-      if (all) { all.checked = !!picks.length && checked === picks.length; all.indeterminate = checked > 0 && checked < picks.length; }
-    };
-    wrap.querySelector('.sd-reader-mlpick-all')?.addEventListener('change', (event) => {
-      wrap.querySelectorAll('.sd-reader-mlpick').forEach((el) => { el.checked = event.target.checked; });
-      refreshPickedCount();
-    });
-    wrap.querySelector('.sd-reader-mllist')?.addEventListener('change', (event) => {
-      if (event.target.closest('.sd-reader-mlpick')) refreshPickedCount();
-    });
-    // 添加标签行（就地追加·不关弹窗）
-    wrap.querySelector('.sd-reader-mltag-add')?.addEventListener('click', () => {
-      const rows2 = wrap.querySelector('.sd-reader-mlrule-rows');
-      const idx = wrap.querySelectorAll('.sd-reader-mlrule-row').length;
-      const div = document.createElement('div');
-      div.className = 'sd-reader-mlrule-row';
-      div.innerHTML = `<input class="sd-reader-minput sd-reader-mltag-name" data-idx="${idx}" placeholder="标签名，如 content" value="">
-        <select class="sd-reader-minput sd-reader-mltag-action" data-idx="${idx}"><option value="remove" selected>屏蔽</option><option value="extract">提取</option></select>
-        <button type="button" class="sd-reader-mbtn sd-reader-mltag-del" data-idx="${idx}" title="删除"><i class="fa-solid fa-xmark"></i></button>`;
-      rows2?.appendChild(div);
-    });
-    // 删除标签行
-    wrap.querySelector('.sd-reader-mlrule-rows')?.addEventListener('click', (ev) => {
-      const del = ev.target.closest('.sd-reader-mltag-del');
-      if (del) del.closest('.sd-reader-mlrule-row')?.remove();
-    });
-    // 标签规则「应用」：存新规则→关弹窗→重入（用新规则重算·所见即所得）
-    wrap.querySelector('.sd-reader-mlrule-apply')?.addEventListener('click', () => {
-      m.mainlineTagRules = collectRules();
-      saveSettings();
-      reapply = true;
-      try { popup.completeCancelled ? popup.completeCancelled() : popup.complete?.(false); } catch (_) {}
-    });
-    const res = await popup.show();
-    if (reapply) return coreadOpenMainlinePickDialog();
-    if (res !== true && String(res) !== '1') return;
-    const idxs = new Set([...wrap.querySelectorAll('.sd-reader-mlpick:checked')].map((el) => Number(el.value)));
-    // 蒸馏用「应用规则后的 filtered」（用户可见即所用·所见即所得）
-    picked = items.filter((it) => idxs.has(it.idx)).map((it) => ({
-      idx: it.idx,
-      floor: it.floor,
-      text: `${it.name}：${it.filtered || it.raw || ''}`,
-    }));
-  } catch (_) { return; }
-  if (!picked.length) { toast('没有选中任何消息。', 'info'); return; }
+  })).filter((rule) => rule.name);
+}
+
+function coreadRefreshMainlinePicked(root) {
+  const picks = [...root.querySelectorAll('.sd-reader-mlpick')];
+  const checked = picks.filter((el) => el.checked).length;
+  const count = root.querySelector('.sd-reader-mlselected-count');
+  const all = root.querySelector('.sd-reader-mlpick-all');
+  if (count) count.textContent = String(checked);
+  if (all) {
+    all.checked = !!picks.length && checked === picks.length;
+    all.indeterminate = checked > 0 && checked < picks.length;
+  }
+}
+
+async function coreadSubmitMainlinePage(root) {
+  const { items, m } = coreadMainlinePageData();
+  const idxs = new Set([...root.querySelectorAll('.sd-reader-mlpick:checked')].map((el) => Number(el.value)));
+  const picked = items.filter((item) => idxs.has(item.idx)).map((item) => ({
+    idx: item.idx,
+    floor: item.floor,
+    text: `${item.name}：${item.filtered || ''}`,
+  }));
+  if (!picked.length) { toast('没有选中任何正文楼层。', 'info'); return; }
+  const btn = root.querySelector('.sd-reader-mainline-submit');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>正在总结'; }
   toast('伴读记忆：正在从主线片段总结…', 'info');
-  const r = await coreadDistillMainline(picked, m);
-  if (r?.ok) { toast(`已从主线生成 1 条共读切片${r.salvaged ? '（关键词档降级保底）' : ''}。`, 'success'); rerenderMore?.(); }
-  else toast(r?.reason || '主线总结失败。', 'warning');
+  try {
+    const result = await coreadDistillMainline(picked, m);
+    if (!result?.ok) { toast(result?.reason || '主线总结失败。', 'warning'); return; }
+    toast(`已从主线生成 1 条共读切片${result.salvaged ? '（关键词档降级保底）' : ''}。`, 'success');
+    coreadCenterPage = 'main';
+    coreadMainlineFocusFloor = 0;
+    m.moreTab = 'records';
+    saveSettings();
+    rerenderMoreIfOpen();
+  } catch (error) {
+    toast(`主线总结失败：${coreadExplainError(error)}`, 'error');
+  } finally {
+    if (btn?.isConnected) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i>总结选中'; }
+  }
 }
 
 // 切片管理弹窗：滚动容器统一管理本书所有记忆切片（折叠列表·展开看全文·重构/删除·向量状态）。
@@ -12365,9 +12352,11 @@ const COREAD_GUIDE_STEPS = [
   { tab: 'api', target: 'api', icon: 'fa-plug-circle-check', title: '连接模型接口', text: '先确认对话 API。可直接跟随 SillyTavern 当前连接，也可选择千幕自定义预设；总结、向量与重排按需配置。' },
   { tab: 'setup', target: 'context', icon: 'fa-link', title: '确认正文联动', text: '设置伴读参考最近多少层正文聊天。身份会自动跟随当前角色与用户，无需重复填写。' },
   { tab: 'setup', target: 'sources', icon: 'fa-layer-group', title: '选择伴读取材', text: '按需勾选世界书和预设条目。防剧透会继续按阅读水位隔离尚未读到的内容。' },
-  { tab: 'records', target: 'records', icon: 'fa-box-archive', title: '建立伴读记忆', text: '正文、伴读短对话和主线选段会汇入同一份千幕档案；可在这里总结、整理和折叠管理切片。' },
+  { tab: 'records', target: 'dialog-summary', icon: 'fa-comments', title: '整理伴读对话', text: '自动总结会在短对话累积到设定条数后写入记忆；手动总结适合补整指定区间。两者都写入同一切片池，重叠时会先提醒再替换。' },
+  { tab: 'records', target: 'mainline-summary', icon: 'fa-arrow-right-arrow-left', title: '吸收正文主线', text: '从主线选择总结可以圈选与本书相关的正文楼层，把正文经历整理为伴读也能召回的记忆，不必让角色两边各记各的。' },
+  { tab: 'records', target: 'records', icon: 'fa-box-archive', title: '管理伴读档案', text: '正文、伴读短对话和主线选段最终汇入同一份千幕档案；可在这里管理切片或选择其他档案参与共同召回。' },
   { tab: 'inject', target: 'inject', icon: 'fa-wave-square', title: '检查实际注入', text: '这里回放最近一次真正带入模型的切片，并可调整近景、检索、语境扫描和主线联动数量。' },
-  { tab: 'records', target: 'transfer', icon: 'fa-box-open', title: '备份与跨设备迁移', text: '用伴读数据包一次带走书籍、封面、插图、对话、记忆切片、向量和伴读语音。为安全起见，API 密钥不会写入文件。' },
+  { tab: 'setup', target: 'transfer', icon: 'fa-box-open', title: '备份与跨设备迁移', text: '用伴读数据打包一次带走书籍、封面、插图、对话、记忆切片、向量和伴读语音。为安全起见，API 密钥不会写入文件。' },
 ];
 
 function coreadGuideSteps() {
@@ -12406,15 +12395,17 @@ function renderCoreadGuide() {
 function renderCoreadPackBar() {
   return `<section class="sd-reader-packbar${coreadGuideTargetClass('transfer')}">
     <span class="sd-reader-packbar-icon"><i class="fa-solid fa-box-open"></i></span>
-    <span class="sd-reader-packbar-copy"><b>伴读数据包</b><small>整包迁移与备份 · 不含 API 密钥</small></span>
+    <span class="sd-reader-packbar-copy"><b>伴读数据打包</b><small>整包迁移与备份 · 不含 API 密钥</small></span>
     <span class="sd-reader-packbar-actions">
-      <button type="button" class="sd-reader-pack-export" title="导出伴读数据包"><i class="fa-solid fa-file-export"></i></button>
-      <label class="sd-reader-pack-import" title="导入伴读数据包"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-pack-import-input sd-reader-native-file" accept="application/json,.json"></label>
+      <button type="button" class="sd-reader-pack-export" title="导出伴读数据打包"><i class="fa-solid fa-file-export"></i></button>
+      <label class="sd-reader-pack-import" title="导入伴读数据打包"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-pack-import-input sd-reader-native-file" accept="application/json,.json"></label>
     </span>
   </section>`;
 }
 
 function renderCompanionMoreBody() {
+  if (coreadCenterPage === 'archives') return renderCoreadArchivePage();
+  if (coreadCenterPage === 'mainline') return renderCoreadMainlinePage();
   const m = coreadMemory();
   if (!m.guideSeen && coreadGuideStep === null) coreadGuideStep = 0;
   const guide = coreadGuideCurrent();
@@ -12481,7 +12472,7 @@ function renderCompanionMoreBody() {
   } else {
     panel = renderMemInjectTab(m);
   }
-  return renderCoreadCenterStatus(m) + tabBar + renderCoreadGuide() + renderCoreadPackBar() + `<div class="sd-reader-mtab-body">${panel}</div>`;
+  return renderCoreadCenterStatus(m) + tabBar + renderCoreadGuide() + `<div class="sd-reader-mtab-body">${panel}</div>`;
 }
 
 // 记忆记录 tab：①总结提示词(条目式·内置硬格式+自定义) ②自动/手动总结设置 ③切片列表(折叠·可编辑) ④切片二次总结。
@@ -12597,7 +12588,7 @@ function renderMemRecordsTab(m) {
         <div class="sd-reader-promptedit"><textarea class="sd-reader-mtextarea sd-reader-mainlineprompt-text" rows="8">${htmlEscape(m.mainlineSummaryPrompt || DEFAULT_MAINLINE_SUMMARY_PROMPT)}</textarea></div>
       </details>
     </details>
-    <div class="sd-reader-mcard">
+    <div class="sd-reader-mcard${coreadGuideTargetClass('dialog-summary')}">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-robot"></i> 伴读对话·自动总结</div>
       <div class="sd-reader-mrow">
         <span class="sd-reader-mrow-lab">自动总结</span>
@@ -12625,14 +12616,15 @@ function renderMemRecordsTab(m) {
       </div>
       ${batchRows ? `<div class="sd-reader-batchtable">${batchRows}</div>` : ''}
     </div>
+    <div class="sd-reader-mcard${coreadGuideTargetClass('mainline-summary')}">
+      <div class="sd-reader-mcard-head"><i class="fa-solid fa-arrow-right-arrow-left"></i> 从主线选择总结</div>
+      <div class="sd-reader-mactions"><button type="button" class="sd-reader-mbtn sd-reader-distill-mainline"><i class="fa-solid fa-layer-group"></i>选择正文楼层</button></div>
+    </div>
     <div class="sd-reader-mcard">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-flask-vial"></i> 书籍蒸馏</div>
       <div class="sd-reader-mactions">
         <button type="button" class="sd-reader-mbtn sd-reader-distill-text">蒸馏已阅读内容</button>
         <button type="button" class="sd-reader-mbtn sd-reader-distill-fullbook">蒸馏全书</button>
-      </div>
-      <div class="sd-reader-mactions">
-        <button type="button" class="sd-reader-mbtn sd-reader-distill-mainline">从主线选择总结</button>
       </div>
       <div class="sd-reader-mrow" style="margin-top:10px">
         <span class="sd-reader-mrow-lab">按阅读进度自动总结内容</span>
@@ -12958,7 +12950,8 @@ function renderCompanionSetupBody() {
       <label class="sd-reader-setup-compact"><span>参考近期对话条数</span><input type="number" class="sd-reader-setup-num sd-reader-setup-recent" min="1" step="1" value="${cp.recentDialogueCount}"></label>
       <label class="sd-reader-setup-compact"><span>语音条缓存上限</span><input type="number" class="sd-reader-setup-num sd-reader-setup-voicelimit" min="10" step="10" value="${coread().voiceCacheLimit || 100}"></label>
     </div>
-    </section>`;
+    </section>
+    ${renderCoreadPackBar()}`;
 }
 
 // 语音条 tab＝已生成语音的书友句的「听」视图：只列 msg.voiced 的 friend 气泡（未生成语音的不列）。
@@ -13389,11 +13382,21 @@ function bindReaderStageEvents(stageRoot) {
   // ── 伴读中心：设定、记忆、注入与模型接口统一为一个全屏入口 ──
   const morePage = q('.sd-reader-morepage');
   const setupOverlay = morePage;   // 复用既有设定事件委托，不再维护独立浮层
+  // 只移动伴读中心自己的滚动层；禁用 scrollIntoView，避免它继续向上寻找祖先并把整个千幕面板推出视口。
+  const scrollMoreTarget = (target, behavior = 'smooth') => {
+    const scroller = morePage?.querySelector('.sd-reader-morepage-body');
+    if (!scroller || !target) return;
+    const sr = scroller.getBoundingClientRect();
+    const tr = target.getBoundingClientRect();
+    const centered = scroller.scrollTop + (tr.top - sr.top) - Math.max(64, (scroller.clientHeight - Math.min(tr.height, scroller.clientHeight * .7)) / 2);
+    const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    scroller.scrollTo({ top: Math.max(0, Math.min(max, centered)), behavior });
+  };
   const rerenderMore = () => {
     const body = morePage?.querySelector('.sd-reader-more-body');
     if (!body) return;
     body.innerHTML = renderCompanionMoreBody();
-    setTimeout(() => morePage.querySelector('.sd-reader-tour-target')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0);
+    setTimeout(() => scrollMoreTarget(morePage.querySelector('.sd-reader-tour-target')), 0);
   };
   const rerenderSetup = () => { const body = morePage?.querySelector('.sd-reader-setup-body'); if (body) { body.innerHTML = renderCompanionSetupBody(); applyAccState(morePage); } };
   rerenderMoreIfOpen = () => { if (morePage && !morePage.hidden) rerenderMore(); };
@@ -13426,9 +13429,57 @@ function bindReaderStageEvents(stageRoot) {
     morePage.hidden = false;
     if (coreadMemory().moreTab === 'setup') void prepareCompanionSetup();
   });
-  q('.sd-reader-more-close')?.addEventListener('click', () => { if (morePage) morePage.hidden = true; });
+  q('.sd-reader-more-close')?.addEventListener('click', () => { coreadCenterPage = 'main'; coreadMainlineFocusFloor = 0; if (morePage) morePage.hidden = true; });
   // 面板 tab 切换 + 向量/重排接口操作按钮（重渲后仍生效·事件委托）
   morePage?.addEventListener('click', (e) => {
+    if (e.target.closest('.sd-reader-subpage-back')) {
+      coreadCenterPage = 'main';
+      coreadMainlineFocusFloor = 0;
+      coreadMemory().moreTab = 'records';
+      saveSettings(); rerenderMore();
+      return;
+    }
+    if (e.target.closest('.sd-reader-archive-save')) {
+      const checked = new Set([...morePage.querySelectorAll('.sd-reader-arch-pick:checked')].map((el) => Number(el.value)));
+      const store = getChatStore();
+      store.coreadBound = coreadArchivePageItems.filter((_, index) => checked.has(index)).map((item) => item.bucket);
+      saveMetadata(); coreadInvalidatePool();
+      toast(`已绑定 ${store.coreadBound.length} 个伴读档案到当前聊天。`, 'success');
+      coreadCenterPage = 'main'; coreadMemory().moreTab = 'records'; rerenderMore();
+      return;
+    }
+    if (e.target.closest('.sd-reader-arch-migrate')) { void coreadOpenMigrateDialog(); return; }
+    if (e.target.closest('.sd-reader-mljump-go')) {
+      const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
+      const floor = Math.round(Number(morePage.querySelector('.sd-reader-mljump-input')?.value) || 0);
+      if (floor < 1 || floor > chat.length) { toast(`请输入 1–${chat.length || 1} 之间的楼层号。`, 'warning'); return; }
+      const message = chat[floor - 1];
+      if (!message || message.extra?.qianmu_injected || !String(message.mes || '').trim()) { toast(`楼层 ${floor} 不属于可总结正文。`, 'warning'); return; }
+      coreadMainlineFocusFloor = floor;
+      rerenderMore();
+      setTimeout(() => {
+        const row = morePage.querySelector(`.sd-reader-mlrow[data-floor="${floor}"]`);
+        if (row) { row.open = true; scrollMoreTarget(row); }
+      }, 0);
+      return;
+    }
+    if (e.target.closest('.sd-reader-mljump-latest')) { coreadMainlineFocusFloor = 0; rerenderMore(); return; }
+    if (e.target.closest('.sd-reader-mltag-add')) {
+      const rows = morePage.querySelector('.sd-reader-mlrule-rows');
+      const div = document.createElement('div');
+      div.className = 'sd-reader-mlrule-row';
+      div.innerHTML = `<input class="sd-reader-minput sd-reader-mltag-name" placeholder="标签名，如 content" value=""><select class="sd-reader-minput sd-reader-mltag-action"><option value="remove" selected>屏蔽</option><option value="extract">提取</option></select><button type="button" class="sd-reader-mbtn sd-reader-mltag-del" title="删除"><i class="fa-solid fa-xmark"></i></button>`;
+      rows?.appendChild(div);
+      return;
+    }
+    const mainlineRuleDel = e.target.closest('.sd-reader-mltag-del');
+    if (mainlineRuleDel) { mainlineRuleDel.closest('.sd-reader-mlrule-row')?.remove(); return; }
+    if (e.target.closest('.sd-reader-mlrule-apply')) {
+      coreadMemory().mainlineTagRules = coreadCollectMainlineRules(morePage);
+      saveSettings(); rerenderMore(); toast('文本清理规则已应用。', 'success');
+      return;
+    }
+    if (e.target.closest('.sd-reader-mainline-submit')) { void coreadSubmitMainlinePage(morePage); return; }
     if (e.target.closest('.sd-reader-tour-skip')) {
       coreadGuideStep = null;
       coreadMemory().guideSeen = true;
@@ -13595,7 +13646,7 @@ function bindReaderStageEvents(stageRoot) {
       return;
     }
     // 主线联动：圈选主线消息蒸成共读切片
-    if (e.target.closest('.sd-reader-distill-mainline')) { coreadOpenMainlinePickDialog(); return; }
+    if (e.target.closest('.sd-reader-distill-mainline')) { coreadOpenMainlinePage(); return; }
     // 手动总结：无重叠直接执行；有重叠则扩展至旧切片完整边界，经二次确认后替换，避免部分覆盖造成记忆空洞。
     if (e.target.closest('.sd-reader-manual-go')) {
       const btn = e.target.closest('.sd-reader-manual-go');
@@ -13675,7 +13726,7 @@ function bindReaderStageEvents(stageRoot) {
     }
     if (e.target.closest('.sd-reader-slice-migrate')) { coreadOpenMigrateDialog(); return; }
     if (e.target.closest('.sd-reader-slice-manage')) { coreadOpenSliceManagerDialog(); return; }
-    if (e.target.closest('.sd-reader-arch-manage')) { coreadOpenArchiveDialog(); return; }
+    if (e.target.closest('.sd-reader-arch-manage')) { void coreadOpenArchivePage(); return; }
     // 词典册：新建词册（弹窗命名后创建并自动选中）
     if (e.target.closest('.sd-reader-dictbook-add')) {
       coreadPromptText('新建词册', '给词册起个名字', `词典${(m.dictBooks.length || 0) + 1}`).then((name) => {
@@ -13769,6 +13820,13 @@ function bindReaderStageEvents(stageRoot) {
     }
   });
   morePage?.addEventListener('change', (e) => {
+    const allMainline = e.target.closest('.sd-reader-mlpick-all');
+    if (allMainline) {
+      morePage.querySelectorAll('.sd-reader-mlpick').forEach((el) => { el.checked = allMainline.checked; });
+      coreadRefreshMainlinePicked(morePage);
+      return;
+    }
+    if (e.target.closest('.sd-reader-mlpick')) { coreadRefreshMainlinePicked(morePage); return; }
     const packInput = e.target.closest('.sd-reader-pack-import-input');
     if (packInput) {
       const file = packInput.files?.[0];
@@ -13863,6 +13921,12 @@ function bindReaderStageEvents(stageRoot) {
       ['.sd-reader-summary-apiurl', 'summaryApiUrl'], ['.sd-reader-summary-apikey', 'summaryApiKey'],
     ];
     for (const [sel, key] of map) { if (e.target.closest(sel)) { m[key] = e.target.value; saveSettings(); return; } }
+  });
+  morePage?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.closest('.sd-reader-mljump-input')) {
+      e.preventDefault();
+      morePage.querySelector('.sd-reader-mljump-go')?.click();
+    }
   });
   // 文本/数字/滑块输入委托（浮层内容重渲后仍生效）
   setupOverlay?.addEventListener('input', (e) => {
@@ -14279,7 +14343,7 @@ function coreadMergePackageValue(target, source) {
 
 async function coreadExportData() {
   if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地存储，无法导出。', 'error'); return; }
-  toast('正在整理伴读数据包…', 'info');
+  toast('正在打包伴读数据…', 'info');
   if (readerDialog.loaded) { try { await coreadSaveDialog(); } catch (_) {} }
   const books = [];
   for (const meta of coread().books || []) {
@@ -14341,7 +14405,7 @@ async function coreadExportData() {
   a.href = url; a.download = `qianmu-coread-pack-${fileStamp()}.json`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
-  toast(`伴读数据包已导出：${books.length} 本书 · ${chats.length} 段对话 · ${images.length} 张插图 · ${audio.length} 条语音。`, 'success');
+  toast(`伴读数据已打包导出：${books.length} 本书 · ${chats.length} 段对话 · ${images.length} 张插图 · ${audio.length} 条语音。`, 'success');
 }
 
 async function coreadImportDataFile(file) {
@@ -14354,7 +14418,7 @@ async function coreadImportDataFile(file) {
     if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地存储，无法导入。', 'error'); return; }
     const chatN = Array.isArray(data.chats) ? data.chats.length : 0;
     const mediaN = (Array.isArray(data.images) ? data.images.length : 0) + (Array.isArray(data.audio) ? data.audio.length : 0);
-    if (!await confirmDialog('导入伴读数据包', `将导入 ${data.books.length} 本书${chatN ? `、${chatN} 段伴读对话与记忆` : ''}${mediaN ? `、${mediaN} 项媒体` : ''}。同 id 的书和会话会被覆盖；API 密钥沿用本机设置。是否继续？`)) return;
+    if (!await confirmDialog('导入伴读数据打包', `将导入 ${data.books.length} 本书${chatN ? `、${chatN} 段伴读对话与记忆` : ''}${mediaN ? `、${mediaN} 项媒体` : ''}。同 id 的书和会话会被覆盖；API 密钥沿用本机设置。是否继续？`)) return;
     let ok = 0;
     for (const b of data.books) {
       if (!b?.meta?.id) continue;

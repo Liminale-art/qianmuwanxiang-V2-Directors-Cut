@@ -22,10 +22,14 @@ assert.match(records, /sd-reader-guide-replay/, '记忆档案末尾必须提供�
 assert.match(css, /\.sd-reader-promptblock[^{]*\{[^}]*border:[^}]*border-radius:/, '三类提示词必须使用统一折叠卡');
 
 const guide = source.slice(source.indexOf('const COREAD_GUIDE_STEPS'), source.indexOf('function renderCompanionMoreBody'));
-assert.match(guide, /tab: 'api'[\s\S]*tab: 'setup'[\s\S]*target: 'sources'[\s\S]*tab: 'records'[\s\S]*tab: 'inject'[\s\S]*target: 'transfer'/, '首次教程必须按接口、设定、取材、档案、注入和迁移逐步引导');
+assert.match(guide, /tab: 'api'[\s\S]*target: 'sources'[\s\S]*target: 'dialog-summary'[\s\S]*target: 'mainline-summary'[\s\S]*target: 'records'[\s\S]*tab: 'inject'[\s\S]*target: 'transfer'/, '首次教程必须覆盖接口、取材、伴读总结、主线总结、档案、注入和迁移');
 assert.match(guide, /sd-reader-tour-prev[\s\S]*sd-reader-tour-next/, '逐步教程必须提供箭头式上一步和下一步');
 assert.match(source, /if \(!m\.guideSeen && coreadGuideStep === null\) coreadGuideStep = 0/, '首次进入伴读中心必须自动启动逐步引导');
 assert.match(css, /\.sd-reader-tour-target[^{]*\{[^}]*outline:[^}]*animation:/, '当前引导卡必须有明确高亮视觉');
+const centerScroll = source.slice(source.indexOf('// 只移动伴读中心自己的滚动层'), source.indexOf('const rerenderSetup'));
+assert.match(centerScroll, /sd-reader-morepage-body[\s\S]*scroller\.scrollTo[\s\S]*scrollMoreTarget/, '引导定位只能滚动伴读中心正文容器');
+assert.doesNotMatch(centerScroll, /\.scrollIntoView\(/, '引导切步不得调用会牵动外层千幕面板的 scrollIntoView');
+assert.match(css, /\.sd-reader-morepage-body[^}]*overscroll-behavior:\s*contain/, '伴读中心滚动必须阻止继续传递到外层面板');
 
 const inject = source.slice(source.indexOf('function renderMemInjectTab'), source.indexOf('function renderCompanionSetupBody'));
 assert.match(inject, /语境扫描对话条数[\s\S]*sd-reader-inj-scan/, '语境扫描条数必须允许用户设置');
@@ -34,11 +38,15 @@ assert.doesNotMatch(inject, /末240字|fa-circle-info|真正注入了哪些|② 
 assert.match(inject, /② 关键词锚定/, '锚定词必须改名为关键词锚定');
 assert.match(inject, />向量<\/span>[\s\S]*>重排<\/span>/, '向量和重排状态只以标签颜色表达');
 
-const picker = source.slice(source.indexOf('async function coreadOpenMainlinePickDialog'), source.indexOf('async function coreadOpenSliceManagerDialog'));
+const picker = source.slice(source.indexOf('function coreadMainlinePageData'), source.indexOf('async function coreadOpenSliceManagerDialog'));
 assert.match(picker, /sd-reader-mlrow-copy[\s\S]*sd-reader-mlrow-floor[\s\S]*楼层 \$\{it\.floor\}/, '主线消息必须以正文开头和楼层号组成折叠卡');
-assert.ok(picker.indexOf('sd-reader-mllist') < picker.indexOf('${ruleField}'), '标签规则必须放到正文楼层列表之后');
+assert.ok(picker.indexOf('${ruleField}') < picker.indexOf('sd-reader-mllist'), '文本清理规则必须放到正文楼层列表上方');
 assert.match(picker, /sd-reader-mlpick-all[\s\S]*sd-reader-mlselected-count/, '主线选择页必须提供全选和已选计数');
+assert.match(picker, /sd-reader-mljump-input[\s\S]*sd-reader-mljump-go/, '主线选择页必须支持输入楼层快速定位');
+assert.doesNotMatch(picker, /new Popup|POPUP_TYPE|<small>高级<\/small>/, '主线选择必须是中心子页面且移除高级小字');
 assert.match(css, /\.sd-reader-mlrow-sum\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:/, '正文楼层头必须使用防重叠网格布局');
+
+assert.ok(records.indexOf('从主线选择总结') < records.indexOf('书籍蒸馏'), '从主线选择总结必须独立成卡并放在书籍蒸馏上方');
 
 const manual = source.slice(source.indexOf("if (e.target.closest('.sd-reader-manual-go'))"), source.indexOf("if (e.target.closest('.sd-reader-compress-go'))"));
 assert.match(manual, /effectiveFrom[\s\S]*effectiveTo[\s\S]*检测到重复总结/, '手动总结重叠时必须扩展完整旧区间并二次确认');
