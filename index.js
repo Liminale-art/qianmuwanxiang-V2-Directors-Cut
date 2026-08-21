@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.14.0';
+const VERSION = '1.14.1';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -3029,9 +3029,9 @@ function renderEditorView() {
   return `
     <section class="sd-card sd-reader-card sd-editor-card">
       <div class="sd-sticky-bar sd-editor-bar">
-        ${injectionEditor ? '<button type="button" class="sd-icon-btn sd-editor-back" title="返回" aria-label="返回"><i class="fa-solid fa-arrow-left"></i></button>' : '<button type="button" class="sd-btn sd-mini-btn sd-editor-back"><i class="fa-solid fa-arrow-left"></i>返回</button>'}
+        ${injectionEditor ? '<button type="button" class="sd-icon-btn sd-editor-tool-icon sd-editor-back" title="返回" aria-label="返回"><i class="fa-solid fa-arrow-left"></i></button>' : '<button type="button" class="sd-btn sd-mini-btn sd-editor-back"><i class="fa-solid fa-arrow-left"></i>返回</button>'}
         <h3>${htmlEscape(ev.title)}</h3>
-        <div class="sd-editor-actions">${injectionEditor ? '<button type="button" class="sd-icon-btn sd-editor-reset-injection" title="恢复自动生成" aria-label="恢复自动生成"><i class="fa-solid fa-arrow-rotate-left"></i></button><button type="button" class="sd-icon-btn sd-primary sd-editor-save" title="保存" aria-label="保存"><i class="fa-solid fa-check"></i></button>' : '<button type="button" class="sd-btn sd-mini-btn sd-primary sd-editor-save"><i class="fa-solid fa-check"></i>保存</button>'}</div>
+        <div class="sd-editor-actions">${injectionEditor ? '<button type="button" class="sd-icon-btn sd-editor-tool-icon sd-editor-reset-injection" title="恢复自动生成" aria-label="恢复自动生成"><i class="fa-solid fa-arrow-rotate-left"></i></button><button type="button" class="sd-icon-btn sd-editor-tool-icon sd-primary sd-editor-save" title="保存" aria-label="保存"><i class="fa-solid fa-check"></i></button>' : '<button type="button" class="sd-btn sd-mini-btn sd-primary sd-editor-save"><i class="fa-solid fa-check"></i>保存</button>'}</div>
       </div>
       <textarea class="text_pole sd-editor-area" spellcheck="false" placeholder="${htmlEscape(ev.placeholder)}">${htmlEscape(ev.value)}</textarea>
     </section>`;
@@ -7167,15 +7167,17 @@ function renderPlugTab() {
       <div class="sd-button-row"><button class="sd-btn sd-test-api"><i class="fa-solid fa-plug-circle-check"></i>测试连接</button><button class="sd-btn sd-save-api">保存API</button><button class="sd-btn sd-save-api-profile">保存为预设</button></div>
     </section>
     <section class="sd-card">
-      <div class="sd-toggle-row">
-        <label class="checkbox_label"><input type="checkbox" class="sd-stream-toggle" ${settings.streamEnabled ? 'checked' : ''}> 流式传输</label>
+      <div class="sd-toggle-row sd-plug-toggle-row">
+        <div class="sd-stream-setting">
+          <label class="checkbox_label"><input type="checkbox" class="sd-stream-toggle" ${settings.streamEnabled ? 'checked' : ''}> 流式传输</label>
+          <p class="sd-muted sd-hint-sm sd-stream-scope-hint">仅支持自定义API</p>
+        </div>
         <label class="checkbox_label"><input type="checkbox" class="sd-float-toggle" ${settings.floatingButton ? 'checked' : ''}> 显示悬浮球</label>
       </div>
       <div class="sd-float-size-control" ${settings.floatingButton ? '' : 'hidden'}>
         <label for="sd-float-size">悬浮球大小 <b class="sd-float-size-value">${floatSize} px</b></label>
         <input id="sd-float-size" class="sd-float-size" type="range" min="32" max="80" step="2" value="${floatSize}">
       </div>
-      <p class="sd-muted sd-hint-sm">仅支持自定义API</p>
     </section>
     <section class="sd-card">
       <h3>日志</h3>

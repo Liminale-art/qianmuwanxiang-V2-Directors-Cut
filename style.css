@@ -1478,6 +1478,16 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   gap: 10px 24px;
 }
 #story-director-modal .sd-toggle-row .checkbox_label { margin: 0 !important; }
+#story-director-modal .sd-plug-toggle-row { align-items: flex-start; }
+#story-director-modal .sd-stream-setting {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+#story-director-modal .sd-stream-scope-hint {
+  margin: 0 0 0 24px;
+}
 
 #story-director-modal .sd-floor-refresh {
   display: inline-flex !important;
@@ -2261,6 +2271,22 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-modal .sd-editor-actions { flex: 0 0 auto; }
 #story-director-modal .sd-editor-actions .sd-icon-btn,
 #story-director-modal .sd-editor-bar > .sd-icon-btn { width: 32px; height: 32px; flex: 0 0 auto; }
+#story-director-modal .sd-editor-tool-icon {
+  width: 32px !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  padding: 0 !important;
+}
+#story-director-modal .sd-editor-tool-icon i {
+  display: inline-block;
+  width: 15px;
+  font-size: 15px;
+  line-height: 1;
+  text-align: center;
+}
+/* 对勾字形本身留白较多，轻微光学校正后与两枚箭头图标的可视尺寸一致。 */
+#story-director-modal .sd-editor-tool-icon.sd-editor-save i { transform: scale(1.08); }
 #story-director-modal .sd-editor-area {
   width: 100%;
   min-height: 64vh;
