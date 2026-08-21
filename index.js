@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.12.0';
+const VERSION = '1.13.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -2308,6 +2308,16 @@ function buildPlanDigest(plan) {
   return lines.join('\n\n');
 }
 
+// 当前真正注入的文本：默认由 plan 动态摘要；用户用铅笔修改后，当前聊天/当前推演改读覆盖层。
+// 覆盖层只存聊天元数据，不污染推演结构；新推演/载入历史/清空推演时会主动解除。
+function currentDirectorInjectionText(plan = getChatStore()?.plan) {
+  const store = getChatStore();
+  if (Object.prototype.hasOwnProperty.call(store, 'injectOverride') && typeof store.injectOverride === 'string') {
+    return store.injectOverride;
+  }
+  return buildPlanDigest(plan);
+}
+
 // 势·注入段：势力格局 + 关系张力 + 进行中的世界事件，作为世界回声的上游源头喂给正文
 // 写明「处处皆是却不点破」——大势是余波的来处，落到个体耳边时绝不直说源头在两层之上。
 function buildGeopoliticsDigest() {
@@ -2365,7 +2375,7 @@ async function applyDirectorInjection() {
     const len = Array.isArray(ctx().chat) ? ctx().chat.length : 0;
     const dangling = Number.isFinite(Number(store?.planAtLen)) && Number(store.planAtLen) > 0 && len < Number(store.planAtLen);
     const active = settings?.enabled && settings.injectEnabled && store?.plan && !dangling;
-    const text = active ? buildPlanDigest(store.plan) : '';
+    const text = active ? currentDirectorInjectionText(store.plan) : '';
     const depth = Math.max(0, Math.min(20, Number(settings?.injectDepth ?? 2)));
     setter(MODULE_NAME, text, position, depth, false, role);
   } catch (error) {
@@ -2400,7 +2410,7 @@ globalThis.qianmuDirectorInterceptor = async function (chat) {
     if (getInjectApi().setter) return;
     const store = getChatStore();
     if (!store?.plan || !Array.isArray(chat)) return;
-    const digest = buildPlanDigest(store.plan);
+    const digest = currentDirectorInjectionText(store.plan);
     if (!digest) return;
     const depth = Math.max(0, Math.min(chat.length, Number(settings.injectDepth ?? 2)));
     chat.splice(chat.length - depth, 0, {
@@ -2795,6 +2805,7 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     const store = getChatStore();
     const now = new Date().toISOString();
     store.plan = newPlan;
+    delete store.injectOverride;   // 新推演有自己的摘要，旧幕手动覆盖不得串入
     store.updatedAt = now;
     store.lastPlanIdx = (Array.isArray(ctx().chat) ? ctx().chat.length : 1) - 1;   // 任何推演（手动/自动）后都以当前末尾为新基准，自动推演从此重新累积
     store.planAtLen = Array.isArray(ctx().chat) ? ctx().chat.length : 0;            // 记下推演时的聊天长度：若日后删楼回退到此长度之前，则注入的暗线已悬空，自动清空待下次推演
@@ -2995,6 +3006,10 @@ async function commitEditorValue(target, val) {
     settings.systemPrompt = val || DEFAULT_SYSTEM_PROMPT;
     settings.systemPromptHash = settings.systemPrompt === DEFAULT_SYSTEM_PROMPT ? hashText(DEFAULT_SYSTEM_PROMPT) : '';
     saveSettings();
+  } else if (target === 'sd-inject-preview') {
+    getChatStore().injectOverride = String(val ?? '').trim();
+    await saveMetadata();
+    await applyDirectorInjection();
   } else if (target === 'sd-theater-instruction') {
     getTheater().instruction = val || '';
     theaterScriptSource = '';   // 手动改动即视为即兴，脱离剧札来源
@@ -3009,12 +3024,13 @@ async function commitEditorValue(target, val) {
 
 function renderEditorView() {
   const ev = editorView;
+  const injectionEditor = ev.target === 'sd-inject-preview';
   return `
     <section class="sd-card sd-reader-card sd-editor-card">
       <div class="sd-sticky-bar sd-editor-bar">
         <button type="button" class="sd-btn sd-mini-btn sd-editor-back"><i class="fa-solid fa-arrow-left"></i>返回</button>
         <h3>${htmlEscape(ev.title)}</h3>
-        <button type="button" class="sd-btn sd-mini-btn sd-primary sd-editor-save"><i class="fa-solid fa-check"></i>保存</button>
+        <div class="sd-editor-actions">${injectionEditor ? '<button type="button" class="sd-btn sd-mini-btn sd-editor-reset-injection" title="撤销手动修改，重新按当前推演自动生成"><i class="fa-solid fa-arrow-rotate-left"></i>恢复自动</button>' : ''}<button type="button" class="sd-btn sd-mini-btn sd-primary sd-editor-save"><i class="fa-solid fa-check"></i>保存</button></div>
       </div>
       <textarea class="text_pole sd-editor-area" spellcheck="false" placeholder="${htmlEscape(ev.placeholder)}">${htmlEscape(ev.value)}</textarea>
     </section>`;
@@ -4209,10 +4225,11 @@ function renderInjectPreview() {
   if (!settings.injectEnabled) {
     return '<details class="sd-plain-fold" data-acc="inject-preview"><summary><b>当前注入内容</b></summary><p class="sd-muted">暗线注入已关闭，本次推演结果不会被注入聊天。</p></details>';
   }
-  const text = buildPlanDigest(store.plan);
+  const custom = Object.prototype.hasOwnProperty.call(store, 'injectOverride') && typeof store.injectOverride === 'string';
+  const text = currentDirectorInjectionText(store.plan);
   // 与日志同款的终端式呈现：等宽块 + token 估算
   return `<details class="sd-plain-fold" data-acc="inject-preview">
-    <summary><b>当前注入内容</b>${infoTag(`约 ${estimateTokens(text)} token`)}</summary>
+    <summary><span class="sd-inject-title"><b>当前注入内容</b><button type="button" class="sd-icon-btn sd-icon-sm sd-edit-injection" title="修改当前注入内容" aria-label="修改当前注入内容"><i class="fa-solid fa-pencil"></i></button></span><span class="sd-inject-meta">${custom ? infoTag('已手动修改') : ''}${infoTag(`约 ${estimateTokens(text)} token`)}</span></summary>
     <pre class="sd-term sd-inject-term">${htmlEscape(text || '（本次推演结果为空）')}</pre>
   </details>`;
 }
@@ -5302,7 +5319,7 @@ async function ttsRefreshFavorites(root) {
     const filename = htmlEscape(ttsFavoriteFilename(f));
     return `<article class="sd-tts-fav-row" data-id="${htmlEscape(f.id)}" title="${filename}">
       <button type="button" class="sd-tts-play sd-tts-fav-play" title="重听"><i class="fa-solid fa-volume-high"></i></button>
-      <div class="sd-tts-fav-main">${spk ? `<span class="sd-tts-spk">${spk}</span>` : ''}<span class="sd-tts-txt">${txt}</span></div>
+      <div class="sd-tts-fav-main">${spk ? `<span class="sd-tts-spk">${spk}</span>` : ''}<span class="sd-tts-fav-title-viewport"><span class="sd-tts-txt">${txt}</span></span></div>
       <div class="sd-tts-fav-actions">
         <button type="button" class="sd-icon-btn sd-icon-sm sd-tts-fav-download" title="下载收藏" aria-label="下载收藏"><i class="fa-solid fa-download"></i></button>
         <button type="button" class="sd-icon-btn sd-icon-sm sd-tts-fav-edit" title="修改标题与文件夹" aria-label="整理收藏"><i class="fa-solid fa-pencil"></i></button>
@@ -5323,7 +5340,16 @@ async function ttsRefreshFavorites(root) {
     rowEl.querySelector('.sd-tts-fav-play')?.addEventListener('click', async () => {
       try {
         const fav = await blobStore.getFavorite(id);
-        if (fav?.blob) await ttsPlayBlob(fav.blob, rowEl);
+        if (fav?.blob) {
+          const title = rowEl.querySelector('.sd-tts-txt');
+          const viewport = rowEl.querySelector('.sd-tts-fav-title-viewport');
+          if (title && viewport) {
+            const distance = Math.max(0, title.scrollWidth - viewport.clientWidth);
+            title.classList.toggle('is-overflowing', distance > 4);
+            title.style.setProperty('--sd-tts-marquee-distance', `${distance + 12}px`);
+          }
+          await ttsPlayBlob(fav.blob, rowEl);
+        }
       } catch (err) { toast(`播放失败：${err?.message || err}`, 'error'); }
     });
     rowEl.querySelector('.sd-tts-fav-download')?.addEventListener('click', async (event) => {
@@ -7166,6 +7192,19 @@ function bindActiveTabEvents(root) {
   // 行内全屏编辑视图：返回 / 保存（保存直写数据模型，再退回原标签）
   if (editorView) {
     root.querySelector('.sd-editor-back')?.addEventListener('click', closeEditorView);
+    root.querySelector('.sd-editor-reset-injection')?.addEventListener('click', async () => {
+      const yes = await confirmDialog('恢复自动注入', '将放弃当前手动修改，重新按本次推演与注入范围生成内容。确认恢复？');
+      if (!yes) return;
+      delete getChatStore().injectOverride;
+      await saveMetadata();
+      await applyDirectorInjection();
+      editorView = null;
+      renderModal();
+      const body = document.getElementById(MODAL_ID)?.querySelector('.sd-body');
+      if (body && ttsEditorReturnScroll != null) body.scrollTop = ttsEditorReturnScroll;
+      ttsEditorReturnScroll = null;
+      toast('已恢复按当前推演自动生成注入内容。', 'success');
+    });
     root.querySelector('.sd-editor-save')?.addEventListener('click', async () => {
       const val = root.querySelector('.sd-editor-area')?.value ?? '';
       await commitEditorValue(editorView.target, val);
@@ -7182,6 +7221,16 @@ function bindActiveTabEvents(root) {
   bindGeopoliticsTabEvents(root);
   bindTtsTabEvents(root);
   bindCoreadTabEvents(root);
+  root.querySelector('.sd-edit-injection')?.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openTextEditor({
+      target: 'sd-inject-preview',
+      title: '修改当前注入内容',
+      value: currentDirectorInjectionText(),
+      placeholder: '留空并保存将使本次推演不注入任何暗线内容。',
+    });
+  });
   // 展开编辑：把目标 textarea 拉进行内全屏编辑视图，保存时按 target 直写数据模型
   root.querySelectorAll('.sd-expand-editor').forEach((el) => el.addEventListener('click', (e) => {
     e.preventDefault(); e.stopPropagation();   // 按钮可能位于 <summary> 内，阻止顺带折叠
@@ -7216,6 +7265,7 @@ function bindActiveTabEvents(root) {
     if (!yes) return;
     const store = getChatStore();
     store.plan = null;
+    delete store.injectOverride;
     store.updatedAt = '';
     injectSelection.clear();
     await saveMetadata();
@@ -7315,6 +7365,7 @@ function bindActiveTabEvents(root) {
     delete restored.factions; delete restored.faction_relations; delete restored.world_events; delete restored.threads;
     getChatStore().plan = restored;
     getChatStore().updatedAt = record.createdAt || new Date().toISOString();
+    delete getChatStore().injectOverride;
     injectSelection.clear();
     await saveMetadata();
     await applyDirectorInjection();

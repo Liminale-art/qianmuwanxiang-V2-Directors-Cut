@@ -53,5 +53,7 @@ assert.match(source, /activeGuidanceScheme\.name/, '载入方案后下拉框必�
 assert.match(source, /ttsDownloadBlob\(blob, `\$\{ttsLineFilenameBase\(line, source\)\}\.\$\{params\.fileExtension/, '下载名必须使用角色、来源时间与句序号并保留 Provider 扩展名');
 assert.match(source, /if \(await blobStore\.hasFavorite\(identity\.id\)\)[\s\S]*removeFavorite/, '快捷面板再次点击收藏必须取消收藏');
 assert.match(source, /groupByFolder\(favs,[\s\S]*meta\?\.folder/, '收藏夹必须按自定义文件夹分组');
+assert.match(source, /title\.scrollWidth - viewport\.clientWidth/, '收藏播放前必须按真实溢出距离计算滚动');
+assert.match(source, /classList\.toggle\('is-overflowing', distance > 4\)/, '只有长标题才应启用滚动');
 
 console.log('TTS inline UI contract OK');
