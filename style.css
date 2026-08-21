@@ -3071,6 +3071,21 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-modal .sd-reader-import-fab:active { transform: scale(.96); }
 /* ST主题直接对 i / .fa-solid 设高优先级 color 会导致加号颜色跑偏·此处双保险锁住FAB内图标 */
 #story-director-modal .sd-reader-import-fab i { color: var(--sd-primary-text, #fff) !important; }
+/* iOS Safari 需要文件控件在真实用户点击链上且仍存在于 DOM；用视觉隐藏而非 display:none，交给外层 label 原生触发。 */
+.sd-reader-native-file {
+  position: absolute !important;
+  width: 1px !important; height: 1px !important;
+  margin: -1px !important; padding: 0 !important;
+  overflow: hidden !important; opacity: 0 !important;
+  clip: rect(0 0 0 0) !important; clip-path: inset(50%) !important;
+  white-space: nowrap !important; border: 0 !important;
+}
+/* 书架 FAB 内让文件控件本身覆盖整个可点区域；iOS 实际点中 input，比仅依赖 label 转发更稳。 */
+#story-director-modal .sd-reader-import-fab .sd-reader-import-input {
+  inset: 0 !important; width: 100% !important; height: 100% !important;
+  margin: 0 !important; opacity: 0 !important; clip: auto !important; clip-path: none !important;
+  cursor: pointer !important;
+}
 .sd-reader-sort-menu {
   position: absolute; top: calc(100% + 6px); left: 0; z-index: 30;
   width: max-content; min-width: 108px; padding: 6px;

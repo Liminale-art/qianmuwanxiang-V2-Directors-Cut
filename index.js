@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.16.0';
+const VERSION = '1.16.1';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -11223,59 +11223,18 @@ function getJSZip() {
   return globalThis.JSZip || ctx()?.JSZip || window?.JSZip || null;
 }
 
-// 导入前的格式说明弹窗：列支持格式 + 取消/确认导入。确认返回 true。
-async function coreadImportFormatDialog() {
-  const context = ctx();
-  const Popup = context.Popup;
-  const inner = `
-    <div style="text-align:left">
-      <p style="margin:0 0 10px;font-weight:600">导入书籍</p>
-      <p style="margin:0 0 8px;color:var(--sd-muted,#888);font-size:.9em">支持以下格式，选择文件后即开始解析导入：</p>
-      <ul style="margin:0 0 4px;padding-left:20px;line-height:1.9;font-size:.92em">
-        <li><b>EPUB</b> — 标准电子书（自动按篇目分章）</li>
-        <li><b>MOBI</b> — Kindle 电子书（无压缩 / PalmDOC）</li>
-        <li><b>TXT</b> — 纯文本（自动识别编码与章节）</li>
-      </ul>
-      <p style="margin:8px 0 0;color:var(--sd-muted,#888);font-size:.8em">MOBI 若为较新的 HUFF/CDIC 压缩或 AZW3 容器可能无法解析，建议转成 EPUB。</p>
-      <p style="margin:6px 0 0;color:var(--sd-muted,#888);font-size:.8em">可以看漫画，但暂未做识图适配（人话：不能伴读）。</p>
-    </div>`;
-  if (Popup && context.POPUP_TYPE) {
-    const wrap = document.createElement('div');
-    wrap.className = 'sd-import-fmt';
-    wrap.innerHTML = inner;
-    try {
-      const popup = new Popup(wrap, context.POPUP_TYPE.TEXT, '', { okButton: '选择文件', cancelButton: '取消' });
-      const result = await popup.show();
-      return result === true || String(result) === '1';
-    } catch (_) { return false; }
-  }
-  return confirmDialog('导入书籍', '支持 EPUB / MOBI / TXT。点确定选择文件。');
-}
+const COREAD_BOOK_ACCEPT = '.txt,.text,.epub,.mobi,.azw,.azw3,.prc,text/plain,application/epub+zip,application/x-mobipocket-ebook';
 
-// 触发文件选择（集成在导入按钮）。先弹格式说明→确认后选文件→按扩展名分派解析。
-// refillBookId 非空 → 补写到既有书（跨端缺正文），否则新建。
-async function coreadTriggerImport(refillBookId = '') {
-  // 新建导入才弹格式说明；补正文场景直接进选择（用户已明确目标书）
-  if (!refillBookId) {
-    const go = await coreadImportFormatDialog();
-    if (!go) return;
-  }
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.txt,.text,.epub,.mobi,.azw,.azw3,.prc,text/plain,application/epub+zip';
-  input.style.display = 'none';
-  document.body.appendChild(input);
-  input.addEventListener('change', async () => {
-    const file = input.files?.[0];
-    input.remove();
-    if (!file) return;
-    const nameLower = String(file.name || '').toLowerCase();
-    const isEpub = /\.epub$/i.test(nameLower) || file.type === 'application/epub+zip';
-    const isMobi = /\.(mobi|azw|azw3|prc)$/i.test(nameLower);
-    const isTxt = /\.(txt|text)$/i.test(nameLower) || file.type === 'text/plain';
-    if (!isEpub && !isMobi && !isTxt) { toast('不支持的格式。请选 EPUB / MOBI / TXT。', 'warning'); return; }
-    const baseName = String(file.name || '').replace(/\.(txt|text|epub|mobi|azw3?|prc)$/i, '').trim();
-    try {
+// 已由原生文件控件取得 File 后统一解析。书架常驻 input 与跨端补正文共用，避免两套导入行为漂移。
+async function coreadHandleImportFile(file, refillBookId = '') {
+  if (!file) return;
+  const nameLower = String(file.name || '').toLowerCase();
+  const isEpub = /\.epub$/i.test(nameLower) || file.type === 'application/epub+zip';
+  const isMobi = /\.(mobi|azw|azw3|prc)$/i.test(nameLower) || file.type === 'application/x-mobipocket-ebook';
+  const isTxt = /\.(txt|text)$/i.test(nameLower) || file.type === 'text/plain';
+  if (!isEpub && !isMobi && !isTxt) { toast('不支持的格式。请选 EPUB / MOBI / TXT。', 'warning'); return; }
+  const baseName = String(file.name || '').replace(/\.(txt|text|epub|mobi|azw3?|prc)$/i, '').trim();
+  try {
       const buf = await file.arrayBuffer();
       let text = '', title = baseName, author = '', preChapters = null, cover = null, parsedImages = null;
 
@@ -11306,18 +11265,32 @@ async function coreadTriggerImport(refillBookId = '') {
         const id = await coreadImportText(text, title, author, preChapters, cover, parsedImages);
         if (id) renderModal();
       }
-    } catch (e) {
-      console.warn(`[${MODULE_NAME}] import file failed`, e);
-      const em = e?.message || '';
-      const msg = em === 'MOBI_HUFFCDIC_UNSUPPORTED'
-        ? 'MOBI 使用了 HUFF/CDIC 压缩或 AZW3 容器，暂不支持。请转成 EPUB 或 TXT。'
-        : em === 'NO_INFLATE'
-          ? '当前浏览器内核过旧，无法解压 EPUB（缺 DecompressionStream）。请升级浏览器或转成 TXT。'
-          : (em === 'EPUB_ZIP64' || em === 'EPUB_BAD_ZIP' || em === 'EPUB_UNSUPPORTED_METHOD')
-            ? 'EPUB 文件结构异常或使用了不支持的压缩，无法解析。请换一个文件或转成 TXT。'
-            : '读取或解析文件失败。';
-      toast(msg, 'error');
-    }
+  } catch (e) {
+    console.warn(`[${MODULE_NAME}] import file failed`, e);
+    const em = e?.message || '';
+    const msg = em === 'MOBI_HUFFCDIC_UNSUPPORTED'
+      ? 'MOBI 使用了 HUFF/CDIC 压缩或 AZW3 容器，暂不支持。请转成 EPUB 或 TXT。'
+      : em === 'NO_INFLATE'
+        ? '当前浏览器内核过旧，无法解压 EPUB（缺 DecompressionStream）。请升级浏览器或转成 TXT。'
+        : (em === 'EPUB_ZIP64' || em === 'EPUB_BAD_ZIP' || em === 'EPUB_UNSUPPORTED_METHOD')
+          ? 'EPUB 文件结构异常或使用了不支持的压缩，无法解析。请换一个文件或转成 TXT。'
+          : '读取或解析文件失败。';
+    toast(msg, 'error');
+  }
+}
+
+// 跨端缺正文时使用的兼容入口。书架新增导入不再经过这里，而由常驻 label/input 直接承接用户点击。
+async function coreadTriggerImport(refillBookId = '') {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = COREAD_BOOK_ACCEPT;
+  input.className = 'sd-reader-native-file';
+  document.body.appendChild(input);
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    input.value = '';
+    input.remove();
+    await coreadHandleImportFile(file, refillBookId);
   });
   input.click();
 }
@@ -11680,7 +11653,10 @@ function renderLibraryView() {
       </div>
       ${tags.length ? `<div class="sd-reader-tags">${tags.map((t) => `<button class="sd-reader-tag ${(c.libTags || []).includes(t) ? 'active' : ''}" data-tag="${htmlEscape(t)}">${htmlEscape(t)}</button>`).join('')}</div>` : ''}
       ${books.length ? `<div class="sd-reader-grid">${cards}</div>` : `<div class="sd-reader-empty"><i class="fa-solid fa-book-open"></i><p>书架还是空的。点右下「＋」添加第一本书，开始和角色伴读。</p></div>`}
-      <button class="sd-reader-import sd-reader-import-fab" title="导入书籍" aria-label="导入书籍"><i class="fa-solid fa-plus"></i></button>
+      <label class="sd-reader-import sd-reader-import-fab" title="导入 EPUB / MOBI / TXT" aria-label="导入书籍">
+        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+        <input type="file" class="sd-reader-import-input sd-reader-native-file" accept="${COREAD_BOOK_ACCEPT}">
+      </label>
     </div>`;
 }
 
@@ -12663,7 +12639,13 @@ function bindCoreadTabEvents(root) {
 
 function bindLibraryViewEvents(root) {
   loadShelfCovers(root);   // 异步给 hasCover 的卡片填充封面图（IndexedDB blob → objectURL）
-  root.querySelector('.sd-reader-import')?.addEventListener('click', () => coreadTriggerImport());
+  // iOS Safari 会阻止「等待弹窗结束后再 input.click()」：让原生 input 常驻在 label 内，点击 FAB 即保持用户手势直达文件选择器。
+  root.querySelector('.sd-reader-import-input')?.addEventListener('change', async (event) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';   // 先清空，导入完成后仍可再次选择同一个文件
+    await coreadHandleImportFile(file);
+  });
   root.querySelector('.sd-reader-view-toggle')?.addEventListener('click', () => {
     coread().libViewMode = coread().libViewMode === 'list' ? 'grid' : 'list';
     saveSettings(); renderModal();
