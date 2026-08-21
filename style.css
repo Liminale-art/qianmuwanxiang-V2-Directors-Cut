@@ -2259,12 +2259,34 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 }
 #story-director-modal .sd-editor-bar > .sd-btn { flex: 0 0 auto; }
 #story-director-modal .sd-editor-actions { flex: 0 0 auto; }
+#story-director-modal .sd-editor-actions .sd-icon-btn,
+#story-director-modal .sd-editor-bar > .sd-icon-btn { width: 32px; height: 32px; flex: 0 0 auto; }
 #story-director-modal .sd-editor-area {
   width: 100%;
   min-height: 64vh;
   resize: vertical;
   line-height: 1.8;
   padding: 14px 16px !important;
+}
+
+/* API 与日志：悬浮球开关展开的尺寸控制，拖动时由 JS 即时同步页面上的球。 */
+#story-director-modal .sd-float-size-control {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) minmax(160px, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--sd-border);
+  border-radius: 10px;
+  background: var(--sd-glass-weak);
+}
+#story-director-modal .sd-float-size-control[hidden] { display: none !important; }
+#story-director-modal .sd-float-size-control label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#story-director-modal .sd-float-size-value { color: var(--sd-accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#story-director-modal .sd-float-size { width: 100%; margin: 0; }
+@media (max-width: 520px) {
+  #story-director-modal .sd-float-size-control { grid-template-columns: 1fr; gap: 8px; }
 }
 
 /* ---------- 活幕·势：势力格局 / 世界事件可视化面板 ---------- */

@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.13.0';
+const VERSION = '1.14.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -329,6 +329,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   contextBudget: 1000000,
   streamEnabled: false,
   floatingButton: true,
+  floatSize: null,   // null=沿用原响应式默认（桌面48 / 移动44）；用户拖动滑块后保存明确像素值
   floatPosition: { x: null, y: null },
   theme: 'light',
   lastTab: 'dashboard',   // 面板上次停留的标签，二次打开恢复到此（校验回退 dashboard）
@@ -3028,9 +3029,9 @@ function renderEditorView() {
   return `
     <section class="sd-card sd-reader-card sd-editor-card">
       <div class="sd-sticky-bar sd-editor-bar">
-        <button type="button" class="sd-btn sd-mini-btn sd-editor-back"><i class="fa-solid fa-arrow-left"></i>返回</button>
+        ${injectionEditor ? '<button type="button" class="sd-icon-btn sd-editor-back" title="返回" aria-label="返回"><i class="fa-solid fa-arrow-left"></i></button>' : '<button type="button" class="sd-btn sd-mini-btn sd-editor-back"><i class="fa-solid fa-arrow-left"></i>返回</button>'}
         <h3>${htmlEscape(ev.title)}</h3>
-        <div class="sd-editor-actions">${injectionEditor ? '<button type="button" class="sd-btn sd-mini-btn sd-editor-reset-injection" title="撤销手动修改，重新按当前推演自动生成"><i class="fa-solid fa-arrow-rotate-left"></i>恢复自动</button>' : ''}<button type="button" class="sd-btn sd-mini-btn sd-primary sd-editor-save"><i class="fa-solid fa-check"></i>保存</button></div>
+        <div class="sd-editor-actions">${injectionEditor ? '<button type="button" class="sd-icon-btn sd-editor-reset-injection" title="恢复自动生成" aria-label="恢复自动生成"><i class="fa-solid fa-arrow-rotate-left"></i></button><button type="button" class="sd-icon-btn sd-primary sd-editor-save" title="保存" aria-label="保存"><i class="fa-solid fa-check"></i></button>' : '<button type="button" class="sd-btn sd-mini-btn sd-primary sd-editor-save"><i class="fa-solid fa-check"></i>保存</button>'}</div>
       </div>
       <textarea class="text_pole sd-editor-area" spellcheck="false" placeholder="${htmlEscape(ev.placeholder)}">${htmlEscape(ev.value)}</textarea>
     </section>`;
@@ -3040,9 +3041,15 @@ function renderSettingsPanel() {
   document.getElementById(SETTINGS_PANEL_ID)?.remove();
 }
 
+function getFloatSize() {
+  const responsiveDefault = window.matchMedia?.('(max-width: 760px)')?.matches ? 44 : 48;
+  const configured = Number(settings.floatSize);
+  return Number.isFinite(configured) && configured >= 32 ? Math.max(32, Math.min(80, configured)) : responsiveDefault;
+}
+
 function clampFloatPosition() {
   settings.floatPosition ||= { x: null, y: null };
-  const size = window.matchMedia?.('(max-width: 760px)')?.matches ? 44 : 48;
+  const size = getFloatSize();
   const margin = 10;
   const maxX = Math.max(margin, window.innerWidth - size - margin);
   const maxY = Math.max(margin, window.innerHeight - size - margin);
@@ -3055,6 +3062,8 @@ function clampFloatPosition() {
 
 function applyFloatPosition(btn) {
   const pos = clampFloatPosition();
+  btn.style.width = `${pos.size}px`;
+  btn.style.height = `${pos.size}px`;
   btn.style.left = `${pos.x}px`;
   btn.style.top = `${pos.y}px`;
   btn.style.right = 'auto';
@@ -7131,6 +7140,7 @@ function renderPlugTab() {
   const logs = Array.isArray(settings.logHistory) ? settings.logHistory : [];
   const models = uniqueClean([settings.model, ...(settings.availableModels || [])]);
   const profiles = Array.isArray(settings.apiProfiles) ? settings.apiProfiles : [];
+  const floatSize = getFloatSize();
   return `
     <section class="sd-card">
       <h3>模型来源</h3>
@@ -7160,6 +7170,10 @@ function renderPlugTab() {
       <div class="sd-toggle-row">
         <label class="checkbox_label"><input type="checkbox" class="sd-stream-toggle" ${settings.streamEnabled ? 'checked' : ''}> 流式传输</label>
         <label class="checkbox_label"><input type="checkbox" class="sd-float-toggle" ${settings.floatingButton ? 'checked' : ''}> 显示悬浮球</label>
+      </div>
+      <div class="sd-float-size-control" ${settings.floatingButton ? '' : 'hidden'}>
+        <label for="sd-float-size">悬浮球大小 <b class="sd-float-size-value">${floatSize} px</b></label>
+        <input id="sd-float-size" class="sd-float-size" type="range" min="32" max="80" step="2" value="${floatSize}">
       </div>
       <p class="sd-muted sd-hint-sm">仅支持自定义API</p>
     </section>
@@ -7689,10 +7703,19 @@ function bindActiveTabEvents(root) {
   }));
   root.querySelector('.sd-float-toggle')?.addEventListener('change', (e) => {
     settings.floatingButton = !!e.target.checked;
+    const sizeControl = root.querySelector('.sd-float-size-control');
+    if (sizeControl) sizeControl.hidden = !settings.floatingButton;
     saveSettings();
     renderFloatButton();
     toast(settings.floatingButton ? '悬浮球已显示。' : '悬浮球已隐藏。', 'info');
   });
+  root.querySelector('.sd-float-size')?.addEventListener('input', (e) => {
+    settings.floatSize = Math.max(32, Math.min(80, Number(e.target.value) || 48));
+    const out = root.querySelector('.sd-float-size-value');
+    if (out) out.textContent = `${settings.floatSize} px`;
+    renderFloatButton();
+  });
+  root.querySelector('.sd-float-size')?.addEventListener('change', () => saveSettings());
   root.querySelector('.sd-stream-toggle')?.addEventListener('change', (e) => {
     settings.streamEnabled = !!e.target.checked;
     saveSettings();
