@@ -1,108 +1,55 @@
-# 千幕豆包新版 API Key 安装说明
+# 千幕豆包新版 API Key 一键安装
 
-这份说明用于启用千幕的豆包新版 API Key。完成一次安装后，千幕中只需填写 API Key，不需要配置反代地址。
+安装程序会自动备份并修改 `config.yaml`、开启服务端插件、创建插件文件夹，并自动判断是首次安装还是更新。不需要手动编辑配置，也不需要执行 `npm install`。
 
-## 安装前确认
+## 云端 / VPS 部署（Linux）
 
-- 已正常安装并能启动 SillyTavern。
-- 已在 SillyTavern 中安装千幕万象。
-- 已从豆包语音新版控制台取得 API Key。
+通过 SSH 进入服务器，并进入 SillyTavern 的安装目录后，整行复制并回车：
 
-## 第一步：开启 SillyTavern 服务端插件
+```bash
+curl -fsSL https://raw.githubusercontent.com/liminale1525/Omniscene/main/install-server-plugin.sh | sh
+```
 
-1. 关闭 SillyTavern。
-2. 打开 SillyTavern 根目录中的 `config.yaml`。
-3. 找到 `enableServerPlugins`，修改为：
+这条命令会自动识别：
 
-   ```yaml
-   enableServerPlugins: true
-   ```
+- **VPS 原生部署**：当前目录能看到 `config.yaml`；安装完成后按原方式重启 SillyTavern。
+- **VPS Docker Compose 部署**：当前目录能看到 compose 配置文件和 `config` 文件夹；安装程序会检查插件目录挂载，并尝试自动重启 `sillytavern` 容器。
 
-4. 保存文件。
+如果出现过 `New-Item: command not found` 或 `Out-Null: command not found`，说明你使用的是 Linux/Git Bash 终端，应使用上面这一行，不要使用 PowerShell 命令。
 
-如果 `config.yaml` 中没有这一项，可在文件末尾另起一行添加。
+## 本地部署
 
-## 第二步：安装千幕服务端插件
+### Windows
 
-打开终端并进入 SillyTavern 根目录，然后执行对应命令。
-
-### Windows PowerShell
+先关闭 SillyTavern，在 **SillyTavern 根目录**打开 PowerShell，整行复制并回车：
 
 ```powershell
-New-Item -ItemType Directory -Force plugins | Out-Null
-git clone https://github.com/liminale1525/Omniscene.git plugins/Omniscene
+irm https://raw.githubusercontent.com/liminale1525/Omniscene/main/install-server-plugin.ps1 | iex
 ```
 
-### macOS / Linux
+### macOS / Linux / Git Bash
+
+关闭 SillyTavern，在 **SillyTavern 根目录**打开终端，整行复制并回车：
 
 ```bash
-mkdir -p plugins
-git clone https://github.com/liminale1525/Omniscene.git plugins/Omniscene
+curl -fsSL https://raw.githubusercontent.com/liminale1525/Omniscene/main/install-server-plugin.sh | sh
 ```
 
-如果提示 `plugins/Omniscene` 已存在，说明已经安装过，请改为执行：
+## 安装完成后
 
-```bash
-git -C plugins/Omniscene pull
-```
+重新启动 SillyTavern，然后打开千幕 → 配音 → 豆包语音，接入方式选择“新版 API Key”，粘贴 API Key 并点击“测试连接”。
 
-此插件没有额外依赖，不需要执行 `npm install`。
+安装成功后，健康检查地址会显示 `"ok":true`：
 
-## 第三步：重新启动并检查
+- 本地部署：`http://127.0.0.1:8000/api/plugins/qianmu-tts/health`
+- VPS 部署：在你的 SillyTavern 访问地址后加 `/api/plugins/qianmu-tts/health`，例如 `https://st.example.com/api/plugins/qianmu-tts/health`
 
-1. 重新启动 SillyTavern。
-2. 查看启动终端，应能看到千幕服务端插件已初始化。
-3. 登录 SillyTavern 后，在浏览器打开：
+原生部署会生成 `config.yaml.qianmu-backup`；Docker 部署会生成 `config/config.yaml.qianmu-backup`。再次运行同一条安装命令会自动更新插件，不会重复安装。
 
-   ```text
-   http://你的SillyTavern地址/api/plugins/qianmu-tts/health
-   ```
+## 常见提示
 
-   本机默认地址通常是：
-
-   ```text
-   http://127.0.0.1:8000/api/plugins/qianmu-tts/health
-   ```
-
-4. 页面显示 `"ok":true` 即安装成功。
-
-## 第四步：在千幕中连接豆包
-
-1. 打开千幕 → 配音。
-2. 配音模型选择“豆包语音”。
-3. 接入方式选择“新版 API Key”。
-4. 粘贴 API Key。
-5. 点击“测试连接”，听到测试语音即完成。
-
-不需要填写接口地址或 TTS 反代地址。
-
-## 更新方式
-
-以后更新千幕前端后，在 SillyTavern 根目录执行一次：
-
-```bash
-git -C plugins/Omniscene pull
-```
-
-然后重启 SillyTavern，使服务端插件同步到新版本。
-
-## 常见问题
-
-### 提示“未检测到千幕服务端插件”
-
-依次检查：
-
-1. `config.yaml` 中是否为 `enableServerPlugins: true`。
-2. 仓库是否位于 SillyTavern 根目录的 `plugins/Omniscene`。
-3. 修改配置或更新插件后是否重启过 SillyTavern。
-4. 健康检查地址是否显示 `"ok":true`。
-
-### 测试连接返回 401、403 或资源错误
-
-- 确认填写的是豆包语音新版控制台的 API Key，不是火山方舟聊天模型 Key。
-- 确认账号已开通 Seed TTS 2.0 服务。
-- 确认角色使用的音色 ID 属于 Seed TTS 2.0。
-
-### 旧版 App ID 还能使用吗
-
-可以。在千幕的“接入方式”中选择“App ID + Access Key”即可继续使用旧版直连。
+- 提示“既不是原生安装目录，也不是 Docker Compose 目录”：当前终端位置不对。原生部署需进入能看到 `config.yaml` 的目录；Docker 部署需进入能看到 compose 文件和 `config` 文件夹的目录。
+- Docker 提示“尚未挂载服务端插件目录”：在 `sillytavern` 服务的 `volumes` 下加入 `"./plugins:/home/node/app/plugins"`，重新执行安装命令。
+- `git command not found`：请先安装 Git，重新打开终端后再次粘贴安装命令。
+- 测试返回 401、403 或资源错误：确认填写的是豆包语音新版 API Key，账号已开通 Seed TTS 2.0，并使用属于该资源的音色 ID。
+- 旧版 App ID 仍可使用：在“接入方式”中选择“App ID + Access Key”。

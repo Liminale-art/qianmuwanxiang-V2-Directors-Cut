@@ -27,12 +27,22 @@ assert.ok(routes.has('POST /doubao/synthesize'));
 
 const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const installGuide = await readFile(new URL('../INSTALL-DOUBAO-APIKEY.md', import.meta.url), 'utf8');
+const shellInstaller = await readFile(new URL('../install-server-plugin.sh', import.meta.url), 'utf8');
+const powershellInstaller = await readFile(new URL('../install-server-plugin.ps1', import.meta.url), 'utf8');
 assert.equal(packageJson.main, 'server-plugin.js');
 assert.equal(packageJson.version, '1.10.0');
-assert.match(installGuide, /enableServerPlugins:\s*true/);
-assert.match(installGuide, /New-Item -ItemType Directory -Force plugins/);
-assert.match(installGuide, /mkdir -p plugins/);
-assert.match(installGuide, /plugins\/Omniscene/);
+assert.match(installGuide, /install-server-plugin\.sh \| sh/);
+assert.match(installGuide, /install-server-plugin\.ps1 \| iex/);
+assert.match(installGuide, /云端 \/ VPS 部署/);
+assert.match(installGuide, /本地部署/);
+assert.match(installGuide, /st\.example\.com\/api\/plugins\/qianmu-tts\/health/);
+assert.match(shellInstaller, /enableServerPlugins: true/);
+assert.match(shellInstaller, /mkdir -p "\$PLUGIN_PARENT"/);
+assert.match(shellInstaller, /config\/config\.yaml/);
+assert.match(shellInstaller, /docker compose restart sillytavern/);
+assert.match(shellInstaller, /\/home\/node\/app\/plugins/);
+assert.match(powershellInstaller, /enableServerPlugins: true/);
+assert.match(powershellInstaller, /New-Item -ItemType Directory/);
 assert.match(installGuide, /api\/plugins\/qianmu-tts\/health/);
 
 const health = mockResponse();
