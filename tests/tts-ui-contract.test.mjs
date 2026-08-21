@@ -39,6 +39,10 @@ assert.doesNotMatch(source, /切换模型只替换连接/, '配音模型下方�
 assert.doesNotMatch(source, /App ID（浏览器直连）|Access Key（浏览器直连）|新版 API Key \/ 高级连接/, '豆包面板不应保留重复标注');
 assert.doesNotMatch(source, /TTS 反代地址|仅反代/, '内置中转启用后不应再要求用户配置反代');
 assert.match(doubaoSource, /未检测到千幕豆包服务端插件/, '服务端插件缺失时必须给出可行动提示');
+assert.match(source, /音色类型[\s\S]*自动识别/, '豆包音色条目必须提供资源类型与自动识别');
+assert.match(source, /ttsPersistResolvedDoubaoModel/, '正文首次识别成功后必须记住音色资源');
+assert.match(source, /voiceSourceType:[\s\S]*voiceSourceId:/, '正文音色解析必须携带可持久化的来源身份');
+assert.match(source, /sd-tts-resource-badge/, '豆包音色库必须显示资源标签');
 assert.match(source, /<label>模型<\/label><select class="text_pole sd-tts-model">/, '模型字段标题必须精简');
 assert.match(source, /跟随当前模型（\$\{htmlEscape\(provider\.label\)\}）/, '跟随模型方案不应附加“推荐”');
 assert.match(source, /t\.extractSchemes\[providerId\] = `library:\$\{sch\.id\}`/, '载入方案库后必须记录方案身份');

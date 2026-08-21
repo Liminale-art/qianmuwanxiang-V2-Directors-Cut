@@ -3,10 +3,26 @@
 
 export const DOUBAO_ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional';
 export const QIANMU_DOUBAO_PROXY_ENDPOINT = '/api/plugins/qianmu-tts/doubao/synthesize';
+export const DOUBAO_AUTO_MODEL = 'auto';
 
 export const DOUBAO_MODELS = Object.freeze([
-  { value: 'seed-tts-2.0', label: 'Seed TTS 2.0' },
+  { value: 'seed-tts-2.0', label: '官方合成 2.0' },
+  { value: 'seed-icl-2.0', label: '声音复刻 2.0' },
+  { value: 'seed-icl-1.0', label: '声音复刻 1.0' },
 ]);
+
+const DOUBAO_MODEL_VALUES = new Set(DOUBAO_MODELS.map((item) => item.value));
+
+export function normalizeDoubaoModel(value, allowAuto = false) {
+  const model = String(value || '').trim();
+  if (allowAuto && model === DOUBAO_AUTO_MODEL) return DOUBAO_AUTO_MODEL;
+  return DOUBAO_MODEL_VALUES.has(model) ? model : 'seed-tts-2.0';
+}
+
+export function isDoubaoResourceMismatch(error) {
+  const message = String(error?.message || error || '');
+  return /55000000|resource\s*id.*mismatch|资源.*不匹配/i.test(message);
+}
 
 export const DOUBAO_FORMATS = Object.freeze([
   { value: 'mp3', label: 'MP3' },
@@ -114,34 +130,23 @@ function deliveryHint(params) {
   return hints[params.emotion] || '';
 }
 
-export async function synthesizeDoubao(opts = {}) {
-  const apiKey = String(opts.apiKey || '').trim();
-  const appId = String(opts.appId || '').trim();
-  const accessKey = String(opts.accessKey || '').trim();
-  const authMode = opts.authMode === 'apiKey' || opts.authMode === 'legacy'
-    ? opts.authMode
-    : (appId && accessKey ? 'legacy' : 'apiKey');
-  const useLegacyCredentials = authMode === 'legacy';
-  if (useLegacyCredentials && !(appId && accessKey)) throw new Error('未配置豆包 App ID + Access Key');
-  if (!useLegacyCredentials && !apiKey) throw new Error('未配置豆包新版 API Key');
+async function synthesizeDoubaoResource(opts, credentials, model) {
+  const { apiKey, appId, accessKey, useLegacyCredentials } = credentials;
   const text = String(opts.text || '').trim();
-  if (!text) throw new Error('文本为空');
   const voiceId = String(opts.voiceId || '').trim();
-  if (!voiceId) throw new Error('未指定豆包音色 ID');
-
-  const model = DOUBAO_MODELS.some((item) => item.value === opts.model) ? opts.model : 'seed-tts-2.0';
   const format = DOUBAO_FORMATS.some((item) => item.value === opts.format) ? opts.format : 'mp3';
   const speed = clamp(opts.speed, 0.5, 2, 1);
   const volume = clamp(opts.vol, 0.5, 2, 1);
   const speechRate = Math.round((speed - 1) * 100);
   const loudnessRate = Math.round((volume - 1) * 100);
-  const additions = {
+  const additions = model === 'seed-icl-1.0' ? {} : {
     disable_markdown_filter: false,
     enable_latex_tn: false,
-    post_process: { pitch: Math.round(clamp(opts.pitch, -12, 12, 0)) },
   };
+  if (model === 'seed-tts-2.0') additions.post_process = { pitch: Math.round(clamp(opts.pitch, -12, 12, 0)) };
   const hint = deliveryHint(opts);
-  if (hint) additions.context_texts = [hint];
+  // 合成 2.0 与复刻 2.0 均支持自然语言上下文演绎；复刻 1.0 保持纯文本，避免传入不支持的控制项。
+  if (hint && model !== 'seed-icl-1.0') additions.context_texts = [hint];
 
   const headers = {
     'Content-Type': 'application/json',
@@ -163,13 +168,15 @@ export async function synthesizeDoubao(opts = {}) {
       additions: JSON.stringify(additions),
     },
   };
+  if (model === 'seed-icl-2.0') body.req_params.model = 'seed-tts-2.0-expressive';
+  if (model === 'seed-icl-1.0') body.req_params.model = 'seed-tts-1.1';
 
   let response;
   const useInternalProxy = !useLegacyCredentials;
   try {
     response = useInternalProxy
       ? await fetch(QIANMU_DOUBAO_PROXY_ENDPOINT, {
-        method: 'POST', headers: stRequestHeaders(), body: JSON.stringify({ apiKey, request: body }),
+        method: 'POST', headers: stRequestHeaders(), body: JSON.stringify({ apiKey, resourceId: model, request: body }),
       })
       : await fetch(resolveUrl(opts.endpoint, ''), { method: 'POST', headers, body: JSON.stringify(body) });
   } catch (error) {
@@ -186,7 +193,7 @@ export async function synthesizeDoubao(opts = {}) {
   const contentType = response.headers?.get?.('content-type') || '';
   if (/^audio\//i.test(contentType)) {
     const blob = await response.blob();
-    return { blob, mime: blob.type || mimeFor(format), extra: {}, traceId: response.headers?.get?.('x-tt-logid') || '' };
+    return { blob, mime: blob.type || mimeFor(format), extra: {}, traceId: response.headers?.get?.('x-tt-logid') || '', resolvedModel: model };
   }
 
   const raw = await response.text();
@@ -199,7 +206,40 @@ export async function synthesizeDoubao(opts = {}) {
   }
   if (!chunks.length) throw new Error(errorMessage || '豆包返回结果缺少音频数据');
   const mime = mimeFor(format);
-  return { blob: new Blob(chunks, { type: mime }), mime, extra: {}, traceId: response.headers?.get?.('x-tt-logid') || '' };
+  return { blob: new Blob(chunks, { type: mime }), mime, extra: {}, traceId: response.headers?.get?.('x-tt-logid') || '', resolvedModel: model };
+}
+
+export async function synthesizeDoubao(opts = {}) {
+  const apiKey = String(opts.apiKey || '').trim();
+  const appId = String(opts.appId || '').trim();
+  const accessKey = String(opts.accessKey || '').trim();
+  const authMode = opts.authMode === 'apiKey' || opts.authMode === 'legacy'
+    ? opts.authMode
+    : (appId && accessKey ? 'legacy' : 'apiKey');
+  const useLegacyCredentials = authMode === 'legacy';
+  if (useLegacyCredentials && !(appId && accessKey)) throw new Error('未配置豆包 App ID + Access Key');
+  if (!useLegacyCredentials && !apiKey) throw new Error('未配置豆包新版 API Key');
+  if (!String(opts.text || '').trim()) throw new Error('文本为空');
+  if (!String(opts.voiceId || '').trim()) throw new Error('未指定豆包音色 ID');
+
+  const requestedModel = String(opts.model || '').trim() === DOUBAO_AUTO_MODEL
+    ? DOUBAO_AUTO_MODEL
+    : normalizeDoubaoModel(opts.model);
+  const defaultModel = normalizeDoubaoModel(opts.defaultModel);
+  const candidates = requestedModel === DOUBAO_AUTO_MODEL
+    ? [defaultModel, ...DOUBAO_MODELS.map((item) => item.value).filter((value) => value !== defaultModel)]
+    : [requestedModel];
+  const credentials = { apiKey, appId, accessKey, useLegacyCredentials };
+  let lastMismatch = null;
+  for (const model of candidates) {
+    try {
+      return await synthesizeDoubaoResource(opts, credentials, model);
+    } catch (error) {
+      if (requestedModel !== DOUBAO_AUTO_MODEL || !isDoubaoResourceMismatch(error)) throw error;
+      lastMismatch = error;
+    }
+  }
+  throw new Error(`无法自动识别该音色所属资源，请在音色编辑中手动选择类型${lastMismatch ? `：${lastMismatch.message}` : ''}`);
 }
 
 export function doubaoCacheKey(opts = {}) {

@@ -24,6 +24,7 @@ try {
   assert.equal(request.url, '/api/plugins/qianmu-tts/doubao/synthesize');
   const proxyRequest = JSON.parse(request.init.body);
   assert.equal(proxyRequest.apiKey, 'doubao-key');
+  assert.equal(proxyRequest.resourceId, 'seed-tts-2.0');
   const doubaoBody = proxyRequest.request;
   assert.equal(doubaoBody.req_params.speaker, 'voice-db');
   assert.equal(doubaoBody.req_params.audio_params.speech_rate, 20);
@@ -48,6 +49,52 @@ try {
   assert.equal(request.init.headers['X-Api-App-Key'], 'app-id');
   assert.equal(request.init.headers['X-Api-Access-Key'], 'access-key');
   assert.ok(!Object.prototype.hasOwnProperty.call(request.init.headers, 'X-Api-App-Id'));
+
+  const detectedResources = [];
+  globalThis.fetch = async (_url, init) => {
+    const outer = JSON.parse(init.body);
+    detectedResources.push(outer.resourceId);
+    if (outer.resourceId === 'seed-tts-2.0') {
+      return new Response(JSON.stringify({ code: 55000000, message: 'resource ID is mismatched with speaker related resource' }), { status: 200 });
+    }
+    const chunk = JSON.stringify({ code: 0, data: Buffer.from('icl2-audio').toString('base64') });
+    request = { outer };
+    return new Response(chunk, { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const autoDetected = await synthesizeDoubao({
+    authMode: 'apiKey', apiKey: 'key', model: 'auto', defaultModel: 'seed-tts-2.0',
+    text: '自动识别', voiceId: 'S_cloned', delivery: '悲伤地说',
+  });
+  assert.deepEqual(detectedResources, ['seed-tts-2.0', 'seed-icl-2.0']);
+  assert.equal(autoDetected.resolvedModel, 'seed-icl-2.0');
+  assert.equal(await autoDetected.blob.text(), 'icl2-audio');
+  assert.equal(request.outer.request.req_params.model, 'seed-tts-2.0-expressive');
+  assert.deepEqual(JSON.parse(request.outer.request.req_params.additions).context_texts, ['悲伤地说']);
+
+  globalThis.fetch = async (_url, init) => {
+    request = JSON.parse(init.body);
+    const chunk = JSON.stringify({ code: 0, data: Buffer.from('icl1-audio').toString('base64') });
+    return new Response(chunk, { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const icl1 = await synthesizeDoubao({
+    authMode: 'apiKey', apiKey: 'key', model: 'seed-icl-1.0',
+    text: '旧复刻', voiceId: 'S_old', delivery: '开心地说',
+  });
+  assert.equal(icl1.resolvedModel, 'seed-icl-1.0');
+  assert.equal(request.resourceId, 'seed-icl-1.0');
+  assert.equal(request.request.req_params.model, 'seed-tts-1.1');
+  assert.ok(!JSON.parse(request.request.req_params.additions).context_texts, '复刻 1.0 不应收到高级演绎参数');
+
+  let ordinaryErrorRequests = 0;
+  globalThis.fetch = async () => {
+    ordinaryErrorRequests++;
+    return new Response(JSON.stringify({ code: 55000001, message: 'quota exhausted' }), { status: 200 });
+  };
+  await assert.rejects(
+    () => synthesizeDoubao({ authMode: 'apiKey', apiKey: 'key', model: 'auto', text: '额度错误', voiceId: 'voice' }),
+    /55000001/,
+  );
+  assert.equal(ordinaryErrorRequests, 1, '非资源不匹配错误不得触发模型轮询');
 
   globalThis.fetch = async () => new Response('Not Found', { status: 404 });
   await assert.rejects(

@@ -9,6 +9,8 @@ const MAX_ADDITIONS_LENGTH = 20000;
 const REQUEST_TIMEOUT_MS = 90000;
 const ALLOWED_FORMATS = new Set(['mp3', 'ogg_opus', 'pcm']);
 const ALLOWED_SAMPLE_RATES = new Set([16000, 24000, 32000, 48000]);
+const ALLOWED_RESOURCE_IDS = new Set(['seed-tts-2.0', 'seed-icl-2.0', 'seed-icl-1.0']);
+const ALLOWED_INFERENCE_MODELS = new Set(['seed-tts-2.0-expressive', 'seed-tts-1.1']);
 
 export const info = Object.freeze({
   id: 'qianmu-tts',
@@ -41,6 +43,8 @@ function sanitizeRequest(input) {
     try { JSON.parse(additions); }
     catch (_) { throw new Error('豆包 additions 不是有效 JSON'); }
   }
+  const inferenceModel = asString(reqParams.model, 80);
+  if (inferenceModel && !ALLOWED_INFERENCE_MODELS.has(inferenceModel)) throw new Error('豆包推理模型不在允许列表');
 
   return {
     user: { uid: asString(request.user?.uid, 120) || 'qianmu-tts' },
@@ -55,16 +59,19 @@ function sanitizeRequest(input) {
         bit_rate: Math.round(clampNumber(audio.bit_rate, 32000, 256000, 128000)),
       },
       ...(additions ? { additions } : {}),
+      ...(inferenceModel ? { model: inferenceModel } : {}),
     },
   };
 }
 
 export async function init(router) {
-  router.get('/health', (_req, res) => res.json({ ok: true, plugin: info.id, version: '1.10.0' }));
+  router.get('/health', (_req, res) => res.json({ ok: true, plugin: info.id, version: '1.11.0' }));
 
   router.post('/doubao/synthesize', async (req, res) => {
     const apiKey = asString(req.body?.apiKey, 512);
     if (!apiKey) return res.status(400).send('缺少豆包 API Key');
+    const resourceId = asString(req.body?.resourceId, 80) || 'seed-tts-2.0';
+    if (!ALLOWED_RESOURCE_IDS.has(resourceId)) return res.status(400).send('豆包资源 ID 不在允许列表');
 
     let request;
     try { request = sanitizeRequest(req.body?.request); }
@@ -78,7 +85,7 @@ export async function init(router) {
         headers: {
           'Content-Type': 'application/json',
           'X-Api-Key': apiKey,
-          'X-Api-Resource-Id': 'seed-tts-2.0',
+          'X-Api-Resource-Id': resourceId,
           'X-Api-Request-Id': randomUUID(),
         },
         body: JSON.stringify(request),

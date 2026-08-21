@@ -26,7 +26,12 @@ assert.equal(normalizeTtsProviderId('not-installed'), DEFAULT_TTS_PROVIDER_ID);
 assert.equal(getTtsProvider('minimax').label, 'MiniMax');
 assert.equal(getTtsProvider('doubao').label, '豆包语音');
 assert.equal(getTtsProvider('elevenlabs').label, 'ElevenLabs');
-assert.deepEqual(getTtsProvider('doubao').modelOptions, [{ value: 'seed-tts-2.0', label: 'Seed TTS 2.0' }]);
+assert.deepEqual(getTtsProvider('doubao').modelOptions, [
+  { value: 'seed-tts-2.0', label: '官方合成 2.0' },
+  { value: 'seed-icl-2.0', label: '声音复刻 2.0' },
+  { value: 'seed-icl-1.0', label: '声音复刻 1.0' },
+]);
+assert.equal(getTtsProvider('doubao').testModel, 'seed-tts-2.0');
 
 const a = createTtsProviderDefaults('minimax');
 const b = createTtsProviderDefaults('minimax');
@@ -65,6 +70,11 @@ const commonCacheParams = { text: '同一句', voiceId: 'voice', speed: 1, emoti
 assert.match(cacheKeyForTts('doubao', commonCacheParams), /^tts:doubao:/);
 assert.match(cacheKeyForTts('elevenlabs', commonCacheParams), /^tts:elevenlabs:/);
 assert.notEqual(cacheKeyForTts('doubao', commonCacheParams), cacheKeyForTts('elevenlabs', commonCacheParams));
+assert.notEqual(
+  cacheKeyForTts('doubao', { ...commonCacheParams, model: 'seed-tts-2.0' }),
+  cacheKeyForTts('doubao', { ...commonCacheParams, model: 'seed-icl-2.0' }),
+  '同一音色使用不同豆包资源时必须隔离缓存',
+);
 assert.equal(outputExtensionForTts('doubao', { format: 'ogg_opus' }), 'ogg');
 assert.equal(outputExtensionForTts('elevenlabs', { format: 'pcm_24000' }), 'pcm');
 assert.equal(ttsProviderHasCredentials('doubao', { appId: 'app', accessKey: 'key' }), true);
@@ -111,12 +121,18 @@ assert.equal(corsEndpointMigration.providers.doubao.endpoint, 'https://openspeec
 
 const doubaoModelMigration = {
   provider: 'doubao',
-  providers: { doubao: { model: 'seed-icl-2.0' } },
+  providers: { doubao: {
+    model: 'seed-icl-2.0',
+    voiceLibrary: [{ id: 'old', voiceId: 'S_old' }],
+    npcArchetypes: [{ id: 'npc', voiceId: 'S_npc', model: 'invalid-resource' }],
+  } },
   _providerSettingsMigrated: true,
   _providerParamsMigrated: true,
 };
 migrateTtsProviderSettingsState(doubaoModelMigration);
-assert.equal(doubaoModelMigration.providers.doubao.model, 'seed-tts-2.0');
+assert.equal(doubaoModelMigration.providers.doubao.model, 'seed-icl-2.0');
+assert.equal(doubaoModelMigration.providers.doubao.voiceLibrary[0].model, 'auto');
+assert.equal(doubaoModelMigration.providers.doubao.npcArchetypes[0].model, 'auto');
 assert.equal(doubaoModelMigration.providers.doubao.authMode, 'apiKey');
 
 const legacyAuthMigration = {

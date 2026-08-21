@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.10.0';
+const VERSION = '1.11.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -630,6 +630,25 @@ function ttsProviderConfig(providerId = ttsProviderId()) {
   if (!isPlainObject(t.providers[id])) t.providers[id] = createTtsProviderDefaults(id);
   mergeDefaults(t.providers[id], createTtsProviderDefaults(id));
   return t.providers[id];
+}
+
+function ttsDoubaoVoiceModel(value, fallback = 'auto') {
+  const model = String(value || '').trim();
+  if (model === 'auto') return 'auto';
+  const allowed = getTtsProvider('doubao').modelOptions || [];
+  return allowed.some((item) => item.value === model) ? model : fallback;
+}
+
+function ttsDoubaoVoiceModelOptions(selected = 'auto', includeAuto = true) {
+  const value = ttsDoubaoVoiceModel(selected);
+  const options = includeAuto ? [{ value: 'auto', label: '自动识别' }] : [];
+  options.push(...(getTtsProvider('doubao').modelOptions || []));
+  return options.map((item) => `<option value="${htmlEscape(item.value)}" ${item.value === value ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('');
+}
+
+function ttsDoubaoVoiceModelLabel(value) {
+  if (value === 'auto' || !value) return '自动识别';
+  return (getTtsProvider('doubao').modelOptions || []).find((item) => item.value === value)?.label || '自动识别';
 }
 
 function getSettings() {
@@ -1259,7 +1278,7 @@ async function promptNameAndFolder({ dialogTitle, namePlaceholder, name = '', fo
 
 // 音色库条目弹窗：音色名 + 音色 ID（沿用剧札 Popup 交互，无 textarea）
 // withKeywords=true（NPC 原型用）：额外加「关键词描述」字段，喂给提取模型辅助声线归类（仅输入提示，不参与本地匹配/记忆）
-async function promptVoiceLibEntry({ dialogTitle, name = '', voiceId = '', folder = '', keywords = '', nameLabel = '音色名', namePlaceholder = '如 活泼少女音', withKeywords = false, withFx = false, fx = null }) {
+async function promptVoiceLibEntry({ dialogTitle, name = '', voiceId = '', voiceModel = 'auto', folder = '', keywords = '', nameLabel = '音色名', namePlaceholder = '如 活泼少女音', withKeywords = false, withFx = false, fx = null }) {
   const context = ctx();
   const Popup = context.Popup;
   if (Popup && context.POPUP_TYPE) {
@@ -1269,6 +1288,11 @@ async function promptVoiceLibEntry({ dialogTitle, name = '', voiceId = '', folde
     const kwField = withKeywords
       ? `<label style="display:block;text-align:left;margin:0 0 4px">关键词描述<span style="opacity:.6;font-weight:400">（辅助提取模型判断声线，越具体越准）</span></label>
          <input type="text" class="text_pole sd-vl-kw" placeholder="如 大学生、干净、18-25岁清朗音" style="width:100%;margin:0 0 10px">`
+      : '';
+    const modelField = provider.id === 'doubao'
+      ? `<label style="display:block;text-align:left;margin:0 0 4px">音色类型</label>
+         <select class="text_pole sd-vl-model" style="width:100%;margin:0 0 10px">${ttsDoubaoVoiceModelOptions(voiceModel)}</select>
+         <div class="sd-muted sd-hint-sm" style="text-align:left;margin:-5px 0 10px">自动识别仅在资源不匹配时尝试其他类型，成功后会记住结果。</div>`
       : '';
     const f = isPlainObject(fx) ? fx : {};
     const fxField = withFx
@@ -1292,6 +1316,7 @@ async function promptVoiceLibEntry({ dialogTitle, name = '', voiceId = '', folde
       ${kwField}
       <label style="display:block;text-align:left;margin:0 0 4px">音色 ID</label>
       <input type="text" class="text_pole sd-vl-id" placeholder="${htmlEscape(provider.label)} Voice ID" style="width:100%;margin:0 0 10px">
+      ${modelField}
       <label style="display:block;text-align:left;margin:0 0 4px">文件夹</label>
       <input type="text" class="text_pole sd-vl-folder" placeholder="留空则不分类" style="width:100%;margin:0">
       ${fxField}`;
@@ -1313,6 +1338,7 @@ async function promptVoiceLibEntry({ dialogTitle, name = '', voiceId = '', folde
       const out = {
         name: String(wrap.querySelector('.sd-vl-name').value || '').trim(),
         voiceId: String(wrap.querySelector('.sd-vl-id').value || '').trim(),
+        voiceModel: provider.id === 'doubao' ? ttsDoubaoVoiceModel(wrap.querySelector('.sd-vl-model')?.value) : '',
         folder: sanitizeFolder(wrap.querySelector('.sd-vl-folder').value),
         keywords: withKeywords ? String(wrap.querySelector('.sd-vl-kw').value || '').trim() : '',
       };
@@ -1337,9 +1363,15 @@ async function promptVoiceLibEntry({ dialogTitle, name = '', voiceId = '', folde
   }
   const newId = await promptInput(dialogTitle, '音色 ID：', voiceId || '');
   if (newId === null) return null;
+  let newVoiceModel = '';
+  if (ttsProviderId() === 'doubao') {
+    const enteredModel = await promptInput(dialogTitle, '音色类型（auto / seed-tts-2.0 / seed-icl-2.0 / seed-icl-1.0）：', voiceModel || 'auto');
+    if (enteredModel === null) return null;
+    newVoiceModel = ttsDoubaoVoiceModel(enteredModel);
+  }
   const newFolder = await promptInput(dialogTitle, '文件夹（留空不分类）：', folder || '');
   if (newFolder === null) return null;
-  return { name: String(newName || '').trim(), voiceId: String(newId || '').trim(), folder: sanitizeFolder(newFolder), keywords: newKw };
+  return { name: String(newName || '').trim(), voiceId: String(newId || '').trim(), voiceModel: newVoiceModel, folder: sanitizeFolder(newFolder), keywords: newKw };
 }
 
 
@@ -4306,9 +4338,13 @@ function renderTtsVoiceMapRows(map, lib = []) {
     // 音色库非空 → 下拉选（值为 voiceId）；当前 voiceId 不在库里则补一个临时项保留显示；库为空 → 退回手填输入框
     let idField;
     if (hasLib) {
-      const inLib = lib.some((v) => v.voiceId === row.voiceId);
+      const inLib = lib.some((v) => (row.voiceLibraryId && v.id === row.voiceLibraryId) || (!row.voiceLibraryId && v.voiceId === row.voiceId));
       const opts = [`<option value="" ${!row.voiceId ? 'selected' : ''}>— 选择音色 —</option>`]
-        .concat(lib.map((v) => `<option value="${htmlEscape(v.voiceId)}" ${v.voiceId === row.voiceId ? 'selected' : ''}>${htmlEscape(v.name || v.voiceId)}</option>`));
+        .concat(lib.map((v) => {
+          const selected = row.voiceLibraryId ? v.id === row.voiceLibraryId : v.voiceId === row.voiceId;
+          const resource = ttsProviderId() === 'doubao' ? ` · ${ttsDoubaoVoiceModelLabel(v.model)}` : '';
+          return `<option value="${htmlEscape(v.voiceId)}" data-lib-id="${htmlEscape(v.id)}" ${selected ? 'selected' : ''}>${htmlEscape(v.name || v.voiceId)}${htmlEscape(resource)}</option>`;
+        }));
       if (row.voiceId && !inLib) opts.push(`<option value="${htmlEscape(row.voiceId)}" selected>（自定义）${htmlEscape(row.voiceId)}</option>`);
       idField = `<select class="text_pole sd-tts-vid-sel">${opts.join('')}</select>`;
     } else {
@@ -4331,12 +4367,13 @@ function renderTtsVoiceEntryRows(list, kind) {
   const cls = isNpc ? { test: 'sd-tts-narch-test', edit: 'sd-tts-narch-edit', del: 'sd-tts-narch-del' }
                     : { test: 'sd-tts-lib-test', edit: 'sd-tts-lib-edit', del: 'sd-tts-lib-del' };
   if (!list.length) {
-    return `<p class="sd-muted sd-hint-sm">${isNpc ? '尚未配置原型。点「添加原型」，填入原型名（如 严肃老年男）与音色 ID。' : '音色库为空。点「添加音色」，填入音色名（如 温柔青年音）与当前配音模型的音色 ID。'}</p>`;
+    return `<p class="sd-muted sd-hint-sm">${isNpc ? '尚未配置原型。点「添加原型」，填入原型名（如 严肃老年男）与音色 ID。' : '音色库为空。点「添加音色」，填入音色名、音色 ID；豆包还可为每条音色单独选择或自动识别类型。'}</p>`;
   }
   const ns = isNpc ? 'ttsnpc' : 'ttslib';
+  const isDoubao = ttsProviderId() === 'doubao';
   const row = (it) => `
     <article class="sd-lib-row">
-      <div class="sd-lib-main"><h4>${htmlEscape(getName(it) || '未命名')}</h4></div>
+      <div class="sd-lib-main"><h4>${htmlEscape(getName(it) || '未命名')}${isDoubao ? `<span class="sd-tts-resource-badge" data-model="${htmlEscape(ttsDoubaoVoiceModel(it.model))}">${htmlEscape(ttsDoubaoVoiceModelLabel(it.model))}</span>` : ''}</h4></div>
       <div class="sd-lib-actions">
         <button type="button" class="sd-icon-btn sd-icon-sm ${cls.test}" data-id="${htmlEscape(it.id)}" title="试听" aria-label="试听"><i class="fa-solid fa-play"></i></button>
         <button type="button" class="sd-icon-btn sd-icon-sm ${cls.edit}" data-id="${htmlEscape(it.id)}" title="编辑" aria-label="编辑"><i class="fa-solid fa-pencil"></i></button>
@@ -4715,7 +4752,7 @@ function bindTtsTabEvents(root) {
     btn.disabled = true;
     try {
       const { blob } = await synthesizeTts(providerId, {
-        ...p, authMode, apiKey, appId, accessKey, proxyBase, endpoint, model,
+        ...p, authMode, apiKey, appId, accessKey, proxyBase, endpoint, model: provider.testModel || model,
         text: '你好，这是一段连接测试。', voiceId,
         speed: Number(p.defaultSpeed ?? 1), vol: Number(p.defaultVol ?? 1), pitch: Number(p.defaultPitch ?? 0),
         format: root.querySelector('.sd-tts-format')?.value || p.format || 'mp3',
@@ -4829,7 +4866,7 @@ function bindTtsTabEvents(root) {
   // 角色映射：增 / 删 / 改（始终读写本聊天、当前 Provider 的 store.ttsVoiceMaps）
   root.querySelector('.sd-tts-add-voice')?.addEventListener('click', () => {
     const map = ttsActiveVoiceMap();
-    map.push({ name: '', voiceId: '', speed: null, emotion: 'auto' });
+    map.push({ name: '', voiceId: '', voiceLibraryId: '', model: ttsProviderId() === 'doubao' ? 'auto' : '', speed: null, emotion: 'auto' });
     ttsSaveVoiceMap();
     renderModal();
   });
@@ -4841,10 +4878,14 @@ function bindTtsTabEvents(root) {
     });
     // 音色 ID：库非空时为下拉(.sd-tts-vid-sel)，库为空时为手填输入框(.sd-tts-vid)
     rowEl.querySelector('.sd-tts-vid-sel')?.addEventListener('change', (e) => {
-      if (map[idx]) { map[idx].voiceId = e.target.value.trim(); ttsSaveVoiceMap(); }
+      if (map[idx]) {
+        map[idx].voiceId = e.target.value.trim();
+        map[idx].voiceLibraryId = e.target.selectedOptions?.[0]?.dataset?.libId || '';
+        ttsSaveVoiceMap();
+      }
     });
     rowEl.querySelector('.sd-tts-vid')?.addEventListener('change', (e) => {
-      if (map[idx]) { map[idx].voiceId = e.target.value.trim(); ttsSaveVoiceMap(); }
+      if (map[idx]) { map[idx].voiceId = e.target.value.trim(); map[idx].voiceLibraryId = ''; ttsSaveVoiceMap(); }
     });
     rowEl.querySelector('.sd-tts-vdel')?.addEventListener('click', () => {
       map.splice(idx, 1);
@@ -4859,26 +4900,32 @@ function bindTtsTabEvents(root) {
     if (!r) return;
     if (!r.name || !r.voiceId) { toast('音色名与 ID 都要填。', 'warning'); return; }
     p.voiceLibrary = Array.isArray(p.voiceLibrary) ? p.voiceLibrary : [];
-    p.voiceLibrary.push({ id: uid('vlib'), name: r.name, voiceId: r.voiceId, folder: r.folder || '' });
+    p.voiceLibrary.push({ id: uid('vlib'), name: r.name, voiceId: r.voiceId, model: providerId === 'doubao' ? ttsDoubaoVoiceModel(r.voiceModel) : '', folder: r.folder || '' });
     saveSettings();
     renderModal();
   });
   root.querySelectorAll('.sd-tts-lib-test').forEach((btn) => btn.addEventListener('click', async (e) => {
     const cur = (p.voiceLibrary || []).find((v) => v.id === btn.dataset.id);
     const text = (root.querySelector('.sd-tts-test-text')?.value || '').trim();
-    await ttsPreviewVoice(cur?.voiceId || '', text, e.currentTarget);
+    const result = await ttsPreviewVoice(cur?.voiceId || '', text, e.currentTarget, cur?.model || 'auto');
+    if (providerId === 'doubao' && cur?.model === 'auto' && result?.resolvedModel) {
+      cur.model = result.resolvedModel;
+      saveSettings();
+      toast(`已识别为${ttsDoubaoVoiceModelLabel(cur.model)}，后续将自动使用。`, 'success');
+      renderModal();
+    }
   }));
   root.querySelectorAll('.sd-tts-lib-edit').forEach((btn) => btn.addEventListener('click', async () => {
     const cur = (p.voiceLibrary || []).find((v) => v.id === btn.dataset.id);
     if (!cur) return;
     const r = await promptVoiceLibEntry({
-      dialogTitle: '编辑音色', name: cur.name, voiceId: cur.voiceId, folder: cur.folder || '',
+      dialogTitle: '编辑音色', name: cur.name, voiceId: cur.voiceId, voiceModel: cur.model || 'auto', folder: cur.folder || '',
       withFx: !!getTtsProvider(ttsProviderId()).capabilities?.voiceEffects, fx: ttsVoiceFx(cur.voiceId),
     });
     if (!r) return;
     if (!r.name || !r.voiceId) { toast('音色名与 ID 都要填。', 'warning'); return; }
     const oldVid = cur.voiceId;
-    cur.name = r.name; cur.voiceId = r.voiceId; cur.folder = r.folder || '';
+    cur.name = r.name; cur.voiceId = r.voiceId; cur.model = providerId === 'doubao' ? ttsDoubaoVoiceModel(r.voiceModel) : ''; cur.folder = r.folder || '';
     ttsSaveVoiceFx(oldVid, r.voiceId, r.fx);   // 存 per-voice 音效器（voiceId 变则迁移·全默认则清除）
     saveSettings();
     renderModal();
@@ -4901,23 +4948,29 @@ function bindTtsTabEvents(root) {
     if (!r) return;
     if (!r.name || !r.voiceId) { toast('原型名与 ID 都要填。', 'warning'); return; }
     p.npcArchetypes = Array.isArray(p.npcArchetypes) ? p.npcArchetypes : [];
-    p.npcArchetypes.push({ id: uid('npc'), label: r.name, voiceId: r.voiceId, folder: r.folder || '', keywords: r.keywords || '' });
+    p.npcArchetypes.push({ id: uid('npc'), label: r.name, voiceId: r.voiceId, model: providerId === 'doubao' ? ttsDoubaoVoiceModel(r.voiceModel) : '', folder: r.folder || '', keywords: r.keywords || '' });
     saveSettings();
     renderModal();
   });
   root.querySelectorAll('.sd-tts-narch-test').forEach((btn) => btn.addEventListener('click', async (e) => {
     const cur = (p.npcArchetypes || []).find((a) => a.id === btn.dataset.id);
     const text = (root.querySelector('.sd-tts-test-text')?.value || '').trim();
-    await ttsPreviewVoice(cur?.voiceId || '', text, e.currentTarget);
+    const result = await ttsPreviewVoice(cur?.voiceId || '', text, e.currentTarget, cur?.model || 'auto');
+    if (providerId === 'doubao' && cur?.model === 'auto' && result?.resolvedModel) {
+      cur.model = result.resolvedModel;
+      saveSettings();
+      toast(`已识别为${ttsDoubaoVoiceModelLabel(cur.model)}，后续将自动使用。`, 'success');
+      renderModal();
+    }
   }));
   root.querySelectorAll('.sd-tts-narch-edit').forEach((btn) => btn.addEventListener('click', async () => {
     const cur = (p.npcArchetypes || []).find((a) => a.id === btn.dataset.id);
     if (!cur) return;
     // 注意：改名只动 label，不动 id；已记忆的「说话人→原型」按 id 绑定，故改名 / 改 ID / 改关键词都不会丢失已分配的 NPC 音色匹配
-    const r = await promptVoiceLibEntry({ dialogTitle: '编辑原型', name: cur.label, voiceId: cur.voiceId, folder: cur.folder || '', keywords: cur.keywords || '', nameLabel: '原型名', namePlaceholder: '如 严肃老年男', withKeywords: true });
+    const r = await promptVoiceLibEntry({ dialogTitle: '编辑原型', name: cur.label, voiceId: cur.voiceId, voiceModel: cur.model || 'auto', folder: cur.folder || '', keywords: cur.keywords || '', nameLabel: '原型名', namePlaceholder: '如 严肃老年男', withKeywords: true });
     if (!r) return;
     if (!r.name || !r.voiceId) { toast('原型名与 ID 都要填。', 'warning'); return; }
-    cur.label = r.name; cur.voiceId = r.voiceId; cur.folder = r.folder || ''; cur.keywords = r.keywords || '';
+    cur.label = r.name; cur.voiceId = r.voiceId; cur.model = providerId === 'doubao' ? ttsDoubaoVoiceModel(r.voiceModel) : ''; cur.folder = r.folder || ''; cur.keywords = r.keywords || '';
     saveSettings();
     renderModal();
   }));
@@ -5191,7 +5244,7 @@ async function ttsImportAudioCache(event) {
 }
 
 // 试听某音色：用统一试听台词 + 当前默认参数合成播放（不进缓存，纯预览）
-async function ttsPreviewVoice(voiceId, text, btn) {
+async function ttsPreviewVoice(voiceId, text, btn, voiceModel = '') {
   const t = settings.tts || {};
   const providerId = ttsProviderId();
   const provider = getTtsProvider(providerId);
@@ -5205,9 +5258,11 @@ async function ttsPreviewVoice(voiceId, text, btn) {
   if (btn) btn.disabled = true;
   try {
     const vfx = ttsVoiceFx(voiceId);   // per-voice 音效器覆盖（试听须与正文合成一致）
-    const { blob } = await synthesizeTts(providerId, {
+    const result = await synthesizeTts(providerId, {
       ...p,
-      apiKey: p.apiKey, text, voiceId, model: p.model,
+      apiKey: p.apiKey, text, voiceId,
+      model: providerId === 'doubao' ? ttsDoubaoVoiceModel(voiceModel) : p.model,
+      defaultModel: p.model,
       speed: Number(p.defaultSpeed ?? 1), vol: Number(p.defaultVol ?? 1), pitch: Number(p.defaultPitch ?? 0),
       format: p.format || 'mp3', endpoint: p.endpoint, proxyBase: p.proxyBase, groupId: p.groupId,
       pronunciationTone: ttsPronunciationTone(),
@@ -5217,10 +5272,11 @@ async function ttsPreviewVoice(voiceId, text, btn) {
       vmTimbre: Number.isFinite(vfx?.vmTimbre) ? vfx.vmTimbre : Number(p.vmTimbre ?? 0),
       soundEffects: (vfx && vfx.soundEffects) ? vfx.soundEffects : (p.soundEffects || ''),
     });
-    const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(result.blob);
     const audio = new Audio(url);
     audio.addEventListener('ended', () => URL.revokeObjectURL(url), { once: true });
     await audio.play();
+    return result;
   } catch (err) {
     toast(`试听失败：${err?.message || err}`, 'error');
   } finally {
@@ -5790,13 +5846,28 @@ function ttsResolveVoice(speaker) {
     const norm = name.replace(/\s+/g, '');
     row = map.find((r) => r.voiceId && r.name && (norm.includes(String(r.name).replace(/\s+/g, '')) || String(r.name).replace(/\s+/g, '').includes(norm)));
   }
-  if (row) return row;
+  if (row) {
+    if (ttsProviderId() !== 'doubao') return row;
+    const libEntry = (p.voiceLibrary || []).find((entry) => entry?.voiceId && (
+      (row.voiceLibraryId && entry.id === row.voiceLibraryId) || (!row.voiceLibraryId && entry.voiceId === row.voiceId)
+    ));
+    return {
+      ...row,
+      model: libEntry ? ttsDoubaoVoiceModel(libEntry.model) : ttsDoubaoVoiceModel(row.model),
+      voiceSourceType: libEntry ? 'library' : 'map',
+      voiceSourceId: libEntry?.id || String(row.name || '').trim(),
+    };
+  }
   // NPC 泛用：查本聊天已记忆的「说话人→原型」分配
   if (t.npcEnabled) {
     const archId = p.npcAssignByChat?.[getChatKey()]?.[name];
     if (archId) {
       const arch = (p.npcArchetypes || []).find((a) => a.id === archId && a.voiceId);
-      if (arch) return { name, voiceId: arch.voiceId, speed: null, emotion: 'auto' };
+      if (arch) return {
+        name, voiceId: arch.voiceId, speed: null, emotion: 'auto',
+        model: ttsProviderId() === 'doubao' ? ttsDoubaoVoiceModel(arch.model) : '',
+        voiceSourceType: 'npc', voiceSourceId: arch.id,
+      };
     }
   }
   return null;
@@ -5851,7 +5922,10 @@ function ttsBuildParams(line) {
     apiKey: p.apiKey,
     text: line.text,   // 合成用干净台词原文（多音字矫正交 T1 全局发音词典·synth 合成态已移除）
     voiceId: voice.voiceId,
-    model: p.model,
+    model: providerId === 'doubao' ? ttsDoubaoVoiceModel(voice.model) : p.model,
+    defaultModel: p.model,
+    voiceSourceType: voice.voiceSourceType || '',
+    voiceSourceId: voice.voiceSourceId || '',
     speed,
     vol: Number(p.defaultVol ?? 1),
     pitch: Number(p.defaultPitch ?? 0),
@@ -5870,6 +5944,27 @@ function ttsBuildParams(line) {
     vmTimbre: Number.isFinite(vfx?.vmTimbre) ? vfx.vmTimbre : Number(p.vmTimbre ?? 0),
     soundEffects: (p.soundFxAuto && line.fx) ? line.fx : (vfx && vfx.soundEffects ? vfx.soundEffects : (p.soundEffects || '')),   // 自动化per-line ＞ per-voice ＞ 全局
   };
+}
+
+function ttsPersistResolvedDoubaoModel(params, resolvedModel) {
+  if (params?.providerId !== 'doubao' || params.model !== 'auto') return false;
+  const model = ttsDoubaoVoiceModel(resolvedModel, '');
+  if (!model || model === 'auto') return false;
+  const p = ttsProviderConfig('doubao');
+  let changed = false;
+  if (params.voiceSourceType === 'library') {
+    const entry = (p.voiceLibrary || []).find((item) => item.id === params.voiceSourceId);
+    if (entry && entry.model !== model) { entry.model = model; changed = true; }
+  } else if (params.voiceSourceType === 'npc') {
+    const entry = (p.npcArchetypes || []).find((item) => item.id === params.voiceSourceId);
+    if (entry && entry.model !== model) { entry.model = model; changed = true; }
+  } else if (params.voiceSourceType === 'map') {
+    const row = ttsActiveVoiceMap().find((item) => item.voiceId === params.voiceId
+      && (!params.voiceSourceId || String(item.name || '').trim() === params.voiceSourceId));
+    if (row && row.model !== model) { row.model = model; changed = true; try { saveMetadata(); } catch (_) {} }
+  }
+  if (changed && params.voiceSourceType !== 'map') saveSettings();
+  return changed;
 }
 
 // 取某音色的 per-voice 音效器覆盖（无则 null）。
@@ -5939,7 +6034,7 @@ async function ttsSynthCached(line, force = false, source = 'tts') {
   if (!params) throw new Error(`「${line.speaker}」未配置音色`);
   const provider = getTtsProvider(params.providerId);
   if (!ttsProviderHasCredentials(params.providerId, params)) throw new Error(`未配置 ${provider.label} 凭证`);
-  const key = cacheKeyForTts(params.providerId, params);
+  let key = cacheKeyForTts(params.providerId, params);
   const useCache = blobStore.blobStoreAvailable();
   if (!force && useCache) {
     try {
@@ -5947,7 +6042,13 @@ async function ttsSynthCached(line, force = false, source = 'tts') {
       if (hit?.blob) return { blob: hit.blob, params, cached: true };
     } catch (_) {}
   }
-  const { blob } = await synthesizeTts(params.providerId, params);
+  const result = await synthesizeTts(params.providerId, params);
+  const blob = result.blob;
+  if (params.providerId === 'doubao' && params.model === 'auto' && result.resolvedModel) {
+    ttsPersistResolvedDoubaoModel(params, result.resolvedModel);
+    params.model = result.resolvedModel;
+    key = cacheKeyForTts(params.providerId, params);
+  }
   if (useCache) {
     try {
       await blobStore.putAudio(key, blob, { speaker: line.speaker, text: line.text, source, provider: params.providerId });

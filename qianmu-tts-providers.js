@@ -14,12 +14,14 @@ import {
   emotionAllowedForModel,
 } from './qianmu-tts.js';
 import {
+  DOUBAO_AUTO_MODEL,
   DOUBAO_EMOTIONS,
   DOUBAO_ENDPOINT,
   DOUBAO_FORMATS,
   DOUBAO_MODELS,
   doubaoCacheKey,
   doubaoOutputExtension,
+  normalizeDoubaoModel,
   synthesizeDoubao,
 } from './qianmu-tts-doubao.js';
 import {
@@ -122,6 +124,7 @@ const PROVIDERS = Object.freeze({
     label: '豆包语音',
     description: '火山引擎豆包语音合成 V3',
     testVoiceId: 'zh_female_vv_uranus_bigtts',
+    testModel: 'seed-tts-2.0',
     speedRange: Object.freeze({ min: 0.5, max: 2, step: 0.05 }),
     defaults: Object.freeze({
       authMode: '', apiKey: '', appId: '', accessKey: '', endpoint: DOUBAO_ENDPOINT, proxyBase: '',
@@ -266,8 +269,18 @@ export function migrateTtsProviderSettingsState(tts) {
   if (/\/api\/v3\/tts\/unidirectional\/sse\/?$/i.test(String(doubao?.endpoint || ''))) {
     doubao.endpoint = DOUBAO_ENDPOINT;
   }
-  // 配音页当前只开放稳定验证过的 Seed TTS 2.0；旧选择统一回落，音色库与其他设置保持不动。
-  if (doubao && doubao.model !== 'seed-tts-2.0') doubao.model = 'seed-tts-2.0';
+  // 豆包的全局模型只作为连接测试/未绑定条目的默认资源；音色库和 NPC 原型各自保存所属资源。
+  if (doubao) {
+    doubao.model = normalizeDoubaoModel(doubao.model);
+    for (const list of [doubao.voiceLibrary, doubao.npcArchetypes]) {
+      if (!Array.isArray(list)) continue;
+      for (const entry of list) {
+        if (!entry || typeof entry !== 'object') continue;
+        entry.model = entry.model === DOUBAO_AUTO_MODEL ? DOUBAO_AUTO_MODEL
+          : (DOUBAO_MODELS.some((item) => item.value === entry.model) ? entry.model : DOUBAO_AUTO_MODEL);
+      }
+    }
+  }
   // 首次升级时保留已可用的旧凭证路径；未配置旧凭证的用户默认进入新版 API Key。
   if (doubao && !['apiKey', 'legacy'].includes(doubao.authMode)) {
     doubao.authMode = String(doubao.appId || '').trim() && String(doubao.accessKey || '').trim() ? 'legacy' : 'apiKey';
