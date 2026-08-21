@@ -2290,6 +2290,11 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   cursor: pointer;
 }
 .sd-tts-pop-icon:hover { background: var(--sd-glass-weak, rgba(255,255,255,.08)); }
+.sd-tts-pop-fav.is-active {
+  color: #d6a93b;
+  border-color: rgba(214, 169, 59, .48);
+  background: rgba(214, 169, 59, .12);
+}
 
 #story-director-modal .sd-geo-empty { text-align: center; padding: 40px 20px; }
 #story-director-modal .sd-geo-empty i { font-size: 2.2em; color: var(--sd-accent); opacity: .7; margin-bottom: 8px; }
@@ -2670,15 +2675,17 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-modal .sd-tts-fav-list { margin: 6px 0 4px; display: flex; flex-direction: column; gap: 6px; }
 #story-director-modal .sd-tts-fav-list.sd-scroll { max-height: 280px; overflow-y: auto; scrollbar-width: thin; padding-right: 2px; }
 #story-director-modal .sd-tts-fav-row {
-  display: grid;
-  grid-template-columns: 30px auto 1fr 30px;
+  display: flex;
   gap: 8px;
   align-items: center;
-  padding: 3px 4px;
+  padding: 5px 6px;
   border-radius: 7px;
 }
+#story-director-modal .sd-tts-fav-folder + .sd-tts-fav-folder { margin-top: 2px; }
+#story-director-modal .sd-tts-fav-main { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
 #story-director-modal .sd-tts-fav-row .sd-tts-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .9; }
 #story-director-modal .sd-tts-fav-row .sd-tts-spk { font-weight: 600; opacity: .8; white-space: nowrap; }
+#story-director-modal .sd-tts-fav-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; }
 #story-director-modal .sd-tts-fav-play {
   width: 30px; height: 30px;
   display: inline-flex; align-items: center; justify-content: center;
@@ -2686,6 +2693,10 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   background: var(--sd-glass-weak); color: var(--sd-text); cursor: pointer;
 }
 #story-director-modal .sd-tts-fav-play:hover { background: var(--sd-glass); }
+@media (max-width: 520px) {
+  #story-director-modal .sd-tts-fav-main { align-items: flex-start; flex-direction: column; gap: 1px; }
+  #story-director-modal .sd-tts-fav-row .sd-tts-txt { max-width: 100%; }
+}
 #story-director-modal .sd-tts-tag-list { margin: 6px 0 8px; display: flex; flex-direction: column; gap: 8px; }
 #story-director-modal .sd-tts-tag-row {
   display: grid;

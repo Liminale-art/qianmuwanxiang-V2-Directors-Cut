@@ -12,6 +12,9 @@ const requiredInteractions = [
   'sd-tts-pop-fav',
   'async function ttsDownloadLine',
   'async function ttsFavoriteLine',
+  'blobStore.hasFavorite',
+  'sd-tts-fav-download',
+  'sd-tts-fav-edit',
   'cacheKeyForTts(params.providerId, params)',
   'synthesizeTts(params.providerId, params)',
   "providerId === 'doubao'",
@@ -47,6 +50,8 @@ assert.match(source, /<label>模型<\/label><select class="text_pole sd-tts-mode
 assert.match(source, /跟随当前模型（\$\{htmlEscape\(provider\.label\)\}）/, '跟随模型方案不应附加“推荐”');
 assert.match(source, /t\.extractSchemes\[providerId\] = `library:\$\{sch\.id\}`/, '载入方案库后必须记录方案身份');
 assert.match(source, /activeGuidanceScheme\.name/, '载入方案后下拉框必须显示方案标题');
-assert.match(source, /a\.download = `\$\{ttsSafeName[\s\S]*params\.fileExtension/, '下载扩展名必须经过 Provider 映射');
+assert.match(source, /ttsDownloadBlob\(blob, `\$\{ttsLineFilenameBase\(line, source\)\}\.\$\{params\.fileExtension/, '下载名必须使用角色、来源时间与句序号并保留 Provider 扩展名');
+assert.match(source, /if \(await blobStore\.hasFavorite\(identity\.id\)\)[\s\S]*removeFavorite/, '快捷面板再次点击收藏必须取消收藏');
+assert.match(source, /groupByFolder\(favs,[\s\S]*meta\?\.folder/, '收藏夹必须按自定义文件夹分组');
 
 console.log('TTS inline UI contract OK');

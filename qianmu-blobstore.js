@@ -160,6 +160,27 @@ export async function getFavorite(favId) {
   return reqP(s.get(favId));
 }
 
+export async function hasFavorite(favId) {
+  const s = await store(STORE_FAVORITES, 'readonly');
+  const k = await reqP(s.getKey ? s.getKey(favId) : s.get(favId));
+  return k !== undefined && k !== null;
+}
+
+// 只修改收藏标题/分类等轻元数据，保留原 Blob 与收藏时间。
+export async function updateFavorite(favId, patch = {}) {
+  const s = await store(STORE_FAVORITES, 'readwrite');
+  const current = await reqP(s.get(favId));
+  if (!current) return false;
+  const next = {
+    ...current,
+    meta: patch.meta === undefined ? (current.meta || {}) : (patch.meta || {}),
+    label: patch.label === undefined ? (current.label || '') : (patch.label || ''),
+    createdAt: current.createdAt || Date.now(),
+  };
+  await reqP(s.put(next, favId));
+  return true;
+}
+
 export async function removeFavorite(favId) {
   const s = await store(STORE_FAVORITES, 'readwrite');
   await reqP(s.delete(favId));

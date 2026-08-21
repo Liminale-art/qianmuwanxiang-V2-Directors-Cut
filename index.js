@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.11.0';
+const VERSION = '1.12.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -5285,26 +5285,39 @@ async function ttsPreviewVoice(voiceId, text, btn, voiceModel = '') {
   }
 }
 
-// 收藏夹：从 IndexedDB 列出已收藏语音，渲染重听/删除
+// 收藏夹：按文件夹分类展示；旧收藏没有 folder 时保持「未分类」，可用铅笔迁移整理。
 async function ttsRefreshFavorites(root) {
   const box = root.querySelector('.sd-tts-fav-list');
   if (!box) return;
   if (!blobStore.blobStoreAvailable()) { box.innerHTML = '<p class="sd-muted sd-hint-sm">当前环境不支持本地收藏。</p>'; return; }
+  snapshotAccState(box);
   box.innerHTML = '<p class="sd-muted sd-hint-sm"><i class="fa-solid fa-spinner fa-spin"></i> 加载中…</p>';
   let favs = [];
   try { favs = await blobStore.listFavorites(); }
   catch (_) { box.innerHTML = '<p class="sd-muted sd-hint-sm sd-tts-err">读取收藏失败。</p>'; return; }
   if (!favs.length) { box.innerHTML = '<p class="sd-muted sd-hint-sm">还没有收藏的语音。双击正文台词的小喇叭，在快捷窗里点收藏。</p>'; return; }
-  box.innerHTML = favs.map((f) => {
+  const renderRow = (f) => {
     const spk = htmlEscape(f.meta?.speaker || '');
     const txt = htmlEscape(f.label || f.meta?.text || '');
-    return `<div class="sd-tts-fav-row" data-id="${htmlEscape(f.id)}">
+    const filename = htmlEscape(ttsFavoriteFilename(f));
+    return `<article class="sd-tts-fav-row" data-id="${htmlEscape(f.id)}" title="${filename}">
       <button type="button" class="sd-tts-play sd-tts-fav-play" title="重听"><i class="fa-solid fa-volume-high"></i></button>
-      ${spk ? `<span class="sd-tts-spk">${spk}</span>` : ''}
-      <span class="sd-tts-txt">${txt}</span>
-      <button type="button" class="sd-icon-btn sd-icon-sm sd-danger sd-tts-fav-del" title="删除收藏"><i class="fa-solid fa-trash-can"></i></button>
-    </div>`;
-  }).join('');
+      <div class="sd-tts-fav-main">${spk ? `<span class="sd-tts-spk">${spk}</span>` : ''}<span class="sd-tts-txt">${txt}</span></div>
+      <div class="sd-tts-fav-actions">
+        <button type="button" class="sd-icon-btn sd-icon-sm sd-tts-fav-download" title="下载收藏" aria-label="下载收藏"><i class="fa-solid fa-download"></i></button>
+        <button type="button" class="sd-icon-btn sd-icon-sm sd-tts-fav-edit" title="修改标题与文件夹" aria-label="整理收藏"><i class="fa-solid fa-pencil"></i></button>
+        <button type="button" class="sd-icon-btn sd-icon-sm sd-danger sd-tts-fav-del" title="删除收藏" aria-label="删除收藏"><i class="fa-solid fa-trash-can"></i></button>
+      </div>
+    </article>`;
+  };
+  const { folderList, loose } = groupByFolder(favs, (f) => f.meta?.folder, (f) => f.label || f.meta?.text, true);
+  const renderFolder = ({ name, list }) => `
+    <details class="sd-lib-folder sd-tts-fav-folder" data-acc="ttsfav-folder-${htmlEscape(name)}" open>
+      <summary><i class="fa-solid fa-folder"></i><b>${htmlEscape(name)}</b><span>${list.length}</span></summary>
+      <div class="sd-lib-folder-body">${list.map(renderRow).join('')}</div>
+    </details>`;
+  box.innerHTML = folderList.map(renderFolder).join('') + (loose.length ? renderFolder({ name: '未分类', list: loose }) : '');
+  applyAccState(box);
   box.querySelectorAll('.sd-tts-fav-row').forEach((rowEl) => {
     const id = rowEl.dataset.id;
     rowEl.querySelector('.sd-tts-fav-play')?.addEventListener('click', async () => {
@@ -5312,6 +5325,38 @@ async function ttsRefreshFavorites(root) {
         const fav = await blobStore.getFavorite(id);
         if (fav?.blob) await ttsPlayBlob(fav.blob, rowEl);
       } catch (err) { toast(`播放失败：${err?.message || err}`, 'error'); }
+    });
+    rowEl.querySelector('.sd-tts-fav-download')?.addEventListener('click', async (event) => {
+      const btn = event.currentTarget;
+      const icon = btn.querySelector('i');
+      const prev = icon?.className;
+      if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+      btn.disabled = true;
+      try {
+        const fav = await blobStore.getFavorite(id);
+        if (!fav?.blob) throw new Error('收藏音频不存在');
+        ttsDownloadBlob(fav.blob, ttsFavoriteFilename({ id, ...fav }));
+        toast('已下载。', 'success');
+      } catch (err) { toast(`下载失败：${err?.message || err}`, 'error'); }
+      finally { btn.disabled = false; if (icon && prev) icon.className = prev; }
+    });
+    rowEl.querySelector('.sd-tts-fav-edit')?.addEventListener('click', async () => {
+      try {
+        const fav = await blobStore.getFavorite(id);
+        if (!fav) throw new Error('收藏不存在');
+        const edited = await promptNameAndFolder({
+          dialogTitle: '整理配音收藏',
+          namePlaceholder: '收藏标题',
+          name: fav.label || fav.meta?.text || '',
+          folder: fav.meta?.folder || '',
+        });
+        if (!edited) return;
+        await blobStore.updateFavorite(id, {
+          label: edited.name || fav.meta?.text || '未命名配音',
+          meta: { ...(fav.meta || {}), folder: edited.folder },
+        });
+        await ttsRefreshFavorites(root);
+      } catch (err) { toast(`保存失败：${err?.message || err}`, 'error'); }
     });
     rowEl.querySelector('.sd-tts-fav-del')?.addEventListener('click', async () => {
       const yes = await confirmDialog('删除收藏', '确认从收藏夹删除这条语音？');
@@ -6809,7 +6854,7 @@ async function ttsHandlePlayAll(btn, force = false) {
   }
 }
 
-// 双击单句 → 快捷窗：语速滑块 + 情绪下拉 + 重生成/下载/收藏。改动持久化进 line 对象（跨刷新稳定）。
+// 双击单句 → 快捷窗：语速滑块 + 情绪下拉 + 重生成/下载/收藏切换。改动持久化进 line 对象（跨刷新稳定）。
 function ttsOpenQuickPopup(btn) {
   const { mesEl, idx, line } = ttsResolveLineFromBtn(btn);
   ttsCloseQuickPopup();
@@ -6830,7 +6875,7 @@ function ttsOpenQuickPopup(btn) {
     <div class="sd-tts-popup-actions">
       <button type="button" class="sd-tts-pop-icon sd-tts-pop-regen" title="按当前语速/情绪重新生成并播放"><i class="fa-solid fa-rotate"></i></button>
       <button type="button" class="sd-tts-pop-icon sd-tts-pop-download" title="下载这句"><i class="fa-solid fa-download"></i></button>
-      <button type="button" class="sd-tts-pop-icon sd-tts-pop-fav" title="收藏这句"><i class="fa-solid fa-star"></i></button>
+      <button type="button" class="sd-tts-pop-icon sd-tts-pop-fav" title="收藏这句" aria-pressed="false"><i class="fa-regular fa-star"></i></button>
     </div>`;
   document.body.appendChild(pop);
   ttsPopupEl = pop;
@@ -6842,6 +6887,12 @@ function ttsOpenQuickPopup(btn) {
   const speedEl = pop.querySelector('.sd-tts-pop-speed');
   const speedVal = pop.querySelector('.sd-tts-pop-speed-val');
   speedEl?.addEventListener('input', () => { if (speedVal) speedVal.textContent = Number(speedEl.value).toFixed(2); });
+  const draftLine = () => ({ ...line, emotion: pop.querySelector('.sd-tts-pop-emotion').value, ...(speedEl ? { speed: Number(speedEl.value) } : {}) });
+  const favBtn = pop.querySelector('.sd-tts-pop-fav');
+  const syncDraftFavorite = () => ttsSyncFavoriteButton(draftLine(), favBtn);
+  speedEl?.addEventListener('change', syncDraftFavorite);
+  pop.querySelector('.sd-tts-pop-emotion')?.addEventListener('change', syncDraftFavorite);
+  syncDraftFavorite();
   // 读快捷窗当前控件 → 写入 line 对象并落盘（持久化，单击播放/连播/刷新后都沿用同一份）
   const applyOverride = () => {
     const patch = { emotion: pop.querySelector('.sd-tts-pop-emotion').value };
@@ -6858,37 +6909,77 @@ function ttsOpenQuickPopup(btn) {
   });
   pop.querySelector('.sd-tts-pop-download')?.addEventListener('click', async (ev) => {
     applyOverride();
-    await ttsDownloadLine(line, ev.currentTarget);
+    await ttsDownloadLine(line, ev.currentTarget, { mesEl, idx });
   });
   pop.querySelector('.sd-tts-pop-fav')?.addEventListener('click', async (ev) => {
     applyOverride();
-    await ttsFavoriteLine(line, ev.currentTarget);
+    await ttsFavoriteLine(line, ev.currentTarget, { mesEl, idx });
   });
   // 点外部关闭
   setTimeout(() => document.addEventListener('pointerdown', ttsPopupOutside, { capture: true }), 0);
 }
 
-// 文件名净化：取说话人+台词前段，去非法字符
-function ttsSafeName(speaker, text) {
-  const base = `${speaker || '台词'}-${String(text || '').slice(0, 16)}`;
-  return base.replace(/[\\/:*?"<>|\n\r\t]+/g, '_').slice(0, 48) || '台词';
+function ttsSafeFilenamePart(value, fallback = '') {
+  return String(value || fallback).replace(/[\\/:*?"<>|\n\r\t]+/g, '_').replace(/[. ]+$/g, '').trim();
+}
+
+function ttsCompactStamp(value = Date.now()) {
+  const date = value instanceof Date ? value : new Date(value);
+  const d = Number.isNaN(date.getTime()) ? new Date() : date;
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
+// 从正文消息取得可追溯来源：角色-消息时间-该消息内句序号。旧收藏则回落收藏时间。
+function ttsLineSourceMeta(mesEl, idx) {
+  const mesid = ttsMesId(mesEl);
+  const messageIndex = Number(mesid);
+  const message = Number.isInteger(messageIndex) ? ctx().chat?.[messageIndex] : null;
+  const parsed = new Date(message?.send_date || message?.date || '');
+  const sourceTime = Number.isNaN(parsed.getTime()) ? Date.now() : parsed.getTime();
+  return {
+    chatKey: String(getChatKey() || ''),
+    messageIndex: Number.isInteger(messageIndex) ? messageIndex : -1,
+    lineIndex: Number.isInteger(idx) && idx >= 0 ? idx : 0,
+    sourceTime,
+  };
+}
+
+function ttsLineFilenameBase(line, source = {}) {
+  const speaker = ttsSafeFilenamePart(line?.speaker, '台词').slice(0, 32) || '台词';
+  const stamp = ttsCompactStamp(source.sourceTime || Date.now());
+  const seq = String((Number(source.lineIndex) || 0) + 1).padStart(2, '0');
+  return `${speaker}-${stamp}-${seq}`.slice(0, 80);
+}
+
+function ttsFavoriteFilename(favorite) {
+  const meta = favorite?.meta || {};
+  const extension = ttsSafeFilenamePart(meta.format, 'mp3').toLowerCase() || 'mp3';
+  const base = ttsSafeFilenamePart(meta.fileNameBase)
+    || ttsLineFilenameBase({ speaker: meta.speaker }, { sourceTime: meta.sourceTime || favorite?.createdAt, lineIndex: meta.lineIndex });
+  return `${base}.${extension}`;
+}
+
+function ttsDownloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // 下载单句：合成(走缓存)→导出 blob
-async function ttsDownloadLine(line, btn) {
+async function ttsDownloadLine(line, btn, location = {}) {
   const icon = btn?.querySelector('i');
   const prev = icon?.className;
   if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
   try {
     const { blob, params } = await ttsSynthCached(line, false);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${ttsSafeName(line.speaker, line.text)}.${params.fileExtension || 'mp3'}`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const source = ttsLineSourceMeta(location.mesEl, location.idx);
+    ttsDownloadBlob(blob, `${ttsLineFilenameBase(line, source)}.${params.fileExtension || 'mp3'}`);
     toast('已下载。', 'success');
   } catch (err) {
     toast(`下载失败：${err?.message || err}`, 'error');
@@ -6897,24 +6988,64 @@ async function ttsDownloadLine(line, btn) {
   }
 }
 
-// 收藏单句：合成(走缓存)→存 IndexedDB 收藏 store
-async function ttsFavoriteLine(line, btn) {
+function ttsFavoriteIdentity(line) {
+  const params = ttsBuildParams(line);
+  return params ? { params, id: `fav:${cacheKeyForTts(params.providerId, params)}` } : null;
+}
+
+function ttsSetFavoriteButton(btn, active) {
+  if (!btn) return;
+  btn.classList.toggle('is-active', !!active);
+  btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  btn.title = active ? '取消收藏' : '收藏这句';
+  const icon = btn.querySelector('i');
+  if (icon) icon.className = active ? 'fa-solid fa-star' : 'fa-regular fa-star';
+}
+
+async function ttsSyncFavoriteButton(line, btn) {
+  if (!btn) return;
+  if (!blobStore.blobStoreAvailable()) { ttsSetFavoriteButton(btn, false); return; }
+  const identity = ttsFavoriteIdentity(line);
+  if (!identity) { ttsSetFavoriteButton(btn, false); return; }
+  try { ttsSetFavoriteButton(btn, await blobStore.hasFavorite(identity.id)); }
+  catch (_) { ttsSetFavoriteButton(btn, false); }
+}
+
+// 收藏按钮是幂等切换：同一模型/音色/参数再次点击即取消，不重新合成。
+async function ttsFavoriteLine(line, btn, location = {}) {
   if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地收藏。', 'warning'); return; }
   const icon = btn?.querySelector('i');
   const prev = icon?.className;
   if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+  if (btn) btn.disabled = true;
   try {
+    const identity = ttsFavoriteIdentity(line);
+    if (!identity) throw new Error('该角色尚未配置当前模型的音色');
+    if (await blobStore.hasFavorite(identity.id)) {
+      await blobStore.removeFavorite(identity.id);
+      ttsSetFavoriteButton(btn, false);
+      toast('已取消收藏。', 'success');
+      return;
+    }
     const { blob, params } = await ttsSynthCached(line, false);
-    const favId = `fav:${cacheKeyForTts(params.providerId, params)}`;
-    await blobStore.addFavorite(favId, blob, {
+    // 豆包「自动识别」可能在首次合成后落定资源；收藏 ID 必须用落定后的 params，避免下一次无法识别为同一收藏。
+    const resolvedId = `fav:${cacheKeyForTts(params.providerId, params)}`;
+    const source = ttsLineSourceMeta(location.mesEl, location.idx);
+    await blobStore.addFavorite(resolvedId, blob, {
       speaker: line.speaker, text: line.text,
       format: params.fileExtension || 'mp3', provider: params.providerId,
+      folder: sanitizeFolder(line.speaker || ''),
+      fileNameBase: ttsLineFilenameBase(line, source),
+      ...source,
     }, line.text);
+    ttsSetFavoriteButton(btn, true);
     toast('已收藏。', 'success');
   } catch (err) {
     toast(`收藏失败：${err?.message || err}`, 'error');
   } finally {
-    if (icon && prev) icon.className = prev;
+    if (btn) btn.disabled = false;
+    if (btn) await ttsSyncFavoriteButton(line, btn);
+    else if (icon && prev) icon.className = prev;
   }
 }
 function ttsPopupOutside(e) {
