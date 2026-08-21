@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.16.2';
+const VERSION = '1.17.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -491,6 +491,7 @@ const DEFAULT_SETTINGS = Object.freeze({
       // 召回/注入（1C·用户已定：召回数与单切片字数留自定义·按切片数控不硬控 token）
       recallCount: 2,               // 每次「检索命中」注入的记忆切片数（默认2·用户可改）
       recentInject: 1,              // 近景切片注入数：最近 N 条切片无条件注入（不参与检索·防漏掉刚聊的·默认1·0=关）
+      recallScanMessages: 8,        // 召回查询扫描最近 N 条对话（伴读/主线共用·默认8）
       sliceMaxChars: 300,           // 单条切片总结的字数上限（默认300·松紧刚好）
       spoilerProtection: true,      // 共读记忆防剧透：按每条切片形成时的阅读水位过滤后文章节（默认开）
       // 反哺主线（走A·共享切片池）：主线生成时用与伴读对话「同一份切片池 + 同一套召回」，按主线当下语境
@@ -515,6 +516,7 @@ const DEFAULT_SETTINGS = Object.freeze({
       // 总结提示词预设：整套（伴读条目 + 蒸馏书籍 + 主线选择）打包保存/切换。[{id,name,items,distillTextPrompt,mainlineSummaryPrompt}]
       summaryPresets: [],
       summaryPresetSel: '',   // 当前选中的预设 ID（重渲后固定显示）
+      guideSeen: false,       // 首次打开伴读中心进入引导态；可从记忆档案末尾再次查看
     },
   },
 });
@@ -8135,6 +8137,8 @@ function coreadMemory() {
   m.sliceMaxChars = Math.max(50, Math.round(m.sliceMaxChars));
   if (!Number.isFinite(m.rerankTopN)) m.rerankTopN = 4;
   m.rerankTopN = Math.max(1, Math.round(m.rerankTopN));
+  if (!Number.isFinite(m.recallScanMessages)) m.recallScanMessages = 8;
+  m.recallScanMessages = Math.max(1, Math.min(50, Math.round(m.recallScanMessages)));
   m.autoDistill = !!m.autoDistill;   // 自动总结默认关（用户手动开）
   m.autoDistillText = !!m.autoDistillText;
   if (!Number.isFinite(m.distillTextEvery)) m.distillTextEvery = 8000;
@@ -8165,6 +8169,7 @@ function coreadMemory() {
     mainlineSummaryPrompt: String(p.mainlineSummaryPrompt || ''),
   }));
   if (typeof m.summaryPresetSel !== 'string') m.summaryPresetSel = '';
+  if (typeof m.guideSeen !== 'boolean') m.guideSeen = false;
   return m;
 }
 
@@ -8180,6 +8185,11 @@ const DEFAULT_SUMMARY_ITEMS = [
 const DEFAULT_DISTILL_TEXT_PROMPT = `只记正文中确实发生的情节、人物、场景、关键转折，全程第三人称客观陈述，不加评论、不作书评。
 专名（人名/地名/作品内概念）沿用原文完整表述，不缩写、不意译。
 篇幅控制在 200 至 300 字。行文禁用破折号（——）。`;
+
+// 主线选择总结有独立目标：只沉淀正文里围绕本书产生的共读回响，不把主线剧情整体误写进伴读记忆。
+const DEFAULT_MAINLINE_SUMMARY_PROMPT = `只提取所选主线消息中与当前书籍直接相关的讨论、引用、联想、判断与态度变化；与书无关的剧情、动作和场景不写入。
+明确区分书中事实、角色观点与用户观点，不把推测写成已发生事实。保留关键原话与专名，全程第三人称客观陈述。
+篇幅控制在 150 至 250 字，并给出 3 至 10 个可准确召回的人名、事件或概念关键词。行文禁用破折号（——）。`;
 
 // 向量/重排接口的通用测试连接 + 拉取模型（OpenAI 兼容 /v1/models、/v1/embeddings、rerank）。
 // kind = 'vector' | 'rerank'。字段前缀同名（vectorApiUrl / rerankApiUrl…）。
@@ -9255,10 +9265,9 @@ async function coreadDistillMainline(pickedItems, m) {
   )).filter((item) => String(item.text || '').trim());
   const body = picked.map((item) => String(item.text || '').trim()).join('\n\n');
   if (!body.trim()) return { ok: false, reason: '没有选中可总结的主线消息' };
-  // 整理要求：主线选择总结提示词自定义→用其覆盖；否则沿用「伴读总结提示词」条目；再否则回落内置默认。
+  // 整理要求：主线选择总结有独立内置默认，避免沿用伴读对话规则后把主线剧情整体误收进来。
   const custom = String(m.mainlineSummaryPrompt || '').trim();
-  const sumRule = (m.summaryItems || []).slice().sort((a, b) => a.order - b.order).map((it) => it.text).filter(Boolean).join('\n');
-  const rule = custom || sumRule || '只提取与本书相关的讨论、引用、联想、观点碰撞；与书无关的剧情不记。全程第三人称客观陈述，专名沿用原文，篇幅 150 至 250 字。行文禁用破折号（——）。';
+  const rule = custom || DEFAULT_MAINLINE_SUMMARY_PROMPT;
   const sysPrompt = `你是伴读记忆整理助手。下面是主线剧情里「${names.user}」与「${names.char}」聊到《${meta.title || '这本书'}》的片段。请把其中与这本书相关的讨论、观点、引用蒸馏成第三人称客观的共读记忆，供日后回顾与延续。\n\n【整理要求】\n${rule}\n\n【底线】只输出纯 JSON：{"summary":"第三人称共读记忆正文","keywords":["高辨识度检索词"],"synonyms":{}}。不要代码块标记、不要额外解释。`;
   let res;
   try { res = await coreadDistillText(body, sysPrompt, m); }
@@ -9297,7 +9306,7 @@ async function coreadDistill(manual = false) {
     await coreadSaveDialog();
     await coreadRefreshContainer(meta);   // 切片有变→重建共读记忆容器
     // 注入(写世界书)成功沉默；失败弹原因。salvaged 提示降级保底。
-    if (!r.wrote) toast(`伴读记忆：第 ${r.batch} 批已生成，但写入世界书失败（${r.writeErr || '未知原因'}），本条召回可能不生效。`, 'error');
+    if (!r.wrote) toast(`伴读记忆：第 ${r.batch} 批已保存在千幕档案；同步世界书失败（${r.writeErr || '未知原因'}），千幕自身召回仍可用。`, 'warning');
     else if (r.salvaged) toast(`伴读记忆：第 ${r.batch} 批已总结（关键词档降级保底）。`, 'warning');
     else toast(`伴读记忆：第 ${r.batch} 批已总结 ✓`, 'success');
     return { ok: true, made: r.made };
@@ -9967,7 +9976,7 @@ async function coreadBuildMainlineInjection() {
   if (!pool.length) return '';
   // 查询语境＝主线近期双方发言（user + char 都要·召回按「当下在聊什么」而非单侧）。取末尾若干条清洗拼接。
   const chatArr = Array.isArray(ctx().chat) ? ctx().chat : [];
-  const query = chatArr.slice(-6).map((x) => cleanContextText(x?.mes || '')).filter(Boolean).join('\n') || '';
+  const query = chatArr.slice(-Math.max(1, Number(m.recallScanMessages) || 8)).map((x) => cleanContextText(x?.mes || '')).filter(Boolean).join('\n') || '';
   const recent = coreadRecentSlices(m.mainlineRecent || 0, pool);
   const excludeIds = new Set(recent.map((h) => h.slice.id));
   const hits = ((m.mainlineRecall || 0) > 0 && query)
@@ -10276,15 +10285,15 @@ async function coreadOpenMainlinePickDialog() {
   if (!items.length) { toast('主线里没有可选的消息。', 'info'); return; }
   const rows = items.map((it) => {
     const oneLine = (it.filtered || '').replace(/\s+/g, ' ').trim();
-    const peek = oneLine.slice(0, 48) + (oneLine.length > 48 ? '…' : '');
+    const peek = oneLine.slice(0, 72) + (oneLine.length > 72 ? '…' : '');
     return `<details class="sd-reader-mlrow">
       <summary class="sd-reader-mlrow-sum">
-        <input type="checkbox" class="sd-reader-mlpick" value="${it.idx}" onclick="event.stopPropagation()">
-        <b class="sd-reader-mlrow-name">${htmlEscape(it.name)}</b>${it.isUser ? '<span class="sd-muted">（我）</span>' : ''}
-        <span class="sd-reader-mlrow-peek">${htmlEscape(peek || '（应用标签规则后为空）')}</span>
-        <span class="sd-reader-migrate-floor"># ${it.floor}</span>
+        <span class="sd-reader-mlcheck" onclick="event.stopPropagation()"><input type="checkbox" class="sd-reader-mlpick" value="${it.idx}" aria-label="选择楼层 ${it.floor}"></span>
+        <span class="sd-reader-mlrow-copy"><b class="sd-reader-mlrow-peek">${htmlEscape(peek || '（应用规则后无可总结内容）')}</b><small>${htmlEscape(it.name)}${it.isUser ? ' · 我' : ''}</small></span>
+        <span class="sd-reader-mlrow-floor">楼层 ${it.floor}</span>
+        <i class="fa-solid fa-chevron-down sd-reader-mlrow-chevron" aria-hidden="true"></i>
       </summary>
-      <pre class="sd-reader-mlrow-body">${htmlEscape(it.filtered || '（应用标签规则后为空）')}</pre>
+      <div class="sd-reader-mlrow-body">${htmlEscape(it.filtered || '（应用规则后无可总结内容）')}</div>
     </details>`;
   }).join('');
   // 标签规则区：取材同款行（标签名 + 屏蔽/提取 + 删除）+ 添加按钮
@@ -10297,8 +10306,8 @@ async function coreadOpenMainlinePickDialog() {
       </select>
       <button type="button" class="sd-reader-mbtn sd-reader-mltag-del" data-idx="${idx}" title="删除"><i class="fa-solid fa-xmark"></i></button>
     </div>`).join('');
-  const ruleField = `<details class="sd-reader-mlrule-wrap"${tagRules.length ? '' : ''}>
-    <summary class="sd-reader-mlrule-head"><i class="fa-solid fa-filter"></i> 标签规则<span class="sd-muted">（提取＝只取该标签内文·屏蔽＝剔除整段·空＝整条原文）</span></summary>
+  const ruleField = `<details class="sd-reader-mlrule-wrap">
+    <summary class="sd-reader-mlrule-head"><span><i class="fa-solid fa-filter"></i> 文本清理规则</span><small>高级</small></summary>
     <div class="sd-reader-mlrule-rows">${ruleRows}</div>
     <div class="sd-reader-mlrule-acts">
       <button type="button" class="sd-reader-mbtn sd-reader-mltag-add"><i class="fa-solid fa-plus"></i>添加标签</button>
@@ -10306,9 +10315,10 @@ async function coreadOpenMainlinePickDialog() {
     </div>
   </details>`;
   const inner = `<div class="sd-reader-mldialog" style="text-align:left">
-    <p style="margin:0 0 8px;font-weight:600">从主线选择此书伴读相关并总结</p>
-    ${ruleField}
+    <div class="sd-reader-mlheading"><b>选择与《${htmlEscape(coreadBookMeta(readerView?.bookId || readerDialog.bookId)?.title || '当前书籍')}》相关的正文</b><small>点标题展开完整楼层内容</small></div>
+    <div class="sd-reader-mltoolbar"><label><input type="checkbox" class="sd-reader-mlpick-all"> 全选当前 ${items.length} 楼</label><span>已选 <b class="sd-reader-mlselected-count">0</b> 楼</span></div>
     <div class="sd-reader-mllist">${rows}</div>
+    ${ruleField}
   </div>`;
   const wrap = document.createElement('div');
   wrap.innerHTML = inner;
@@ -10321,6 +10331,21 @@ async function coreadOpenMainlinePickDialog() {
   let reapply = false;
   try {
     const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '总结选中', cancelButton: '取消', wide: true, large: true });
+    const refreshPickedCount = () => {
+      const picks = [...wrap.querySelectorAll('.sd-reader-mlpick')];
+      const checked = picks.filter((el) => el.checked).length;
+      const count = wrap.querySelector('.sd-reader-mlselected-count');
+      const all = wrap.querySelector('.sd-reader-mlpick-all');
+      if (count) count.textContent = String(checked);
+      if (all) { all.checked = !!picks.length && checked === picks.length; all.indeterminate = checked > 0 && checked < picks.length; }
+    };
+    wrap.querySelector('.sd-reader-mlpick-all')?.addEventListener('change', (event) => {
+      wrap.querySelectorAll('.sd-reader-mlpick').forEach((el) => { el.checked = event.target.checked; });
+      refreshPickedCount();
+    });
+    wrap.querySelector('.sd-reader-mllist')?.addEventListener('change', (event) => {
+      if (event.target.closest('.sd-reader-mlpick')) refreshPickedCount();
+    });
     // 添加标签行（就地追加·不关弹窗）
     wrap.querySelector('.sd-reader-mltag-add')?.addEventListener('click', () => {
       const rows2 = wrap.querySelector('.sd-reader-mlrule-rows');
@@ -10891,8 +10916,9 @@ async function coreadGenerateReply(isReroll = false) {
   if (!pendingUsers.length) { toast(isReroll ? '这批回复前没有你的消息，无法重新生成。' : '先发一句话，再点生成让书友回复。', 'info'); return; }
 
   // 组装上下文（防剧透滑窗 + 取材 + 身份人设 + 记忆召回）
-  // 召回查询＝本轮 user 消息 + 少量近期对话（让关键词命中更充分）
-  const recallQuery = [...pendingUsers, ...msgs.slice(Math.max(0, s + 1 - 6), s + 1)].map((x) => x.text || '').join(' ');
+  // 召回查询＝本轮 user 消息 + 用户设定数量的近期对话（伴读/主线共用同一扫描窗口）。
+  const recallScanN = Math.max(1, Number(coreadMemory().recallScanMessages) || 8);
+  const recallQuery = [...pendingUsers, ...msgs.slice(Math.max(0, s + 1 - recallScanN), s + 1)].map((x) => x.text || '').join(' ');
   const assembled = await buildCompanionContext(bookId, recallQuery);
   if (!assembled) { toast('无法读取正文，先在阅读器打开这本书。', 'warn'); return; }
 
@@ -12009,8 +12035,7 @@ function renderCoreadCenterStatus(m) {
   const safeSlices = coreadSafeSlices(allSlices, boundary, m);
   const blocked = Math.max(0, allSlices.length - safeSlices.length);
   const progress = Math.max(0, Math.min(100, Number(boundary?.progress ?? meta?.progress) || 0));
-  const protectedOn = m.spoilerProtection !== false;
-  return `<section class="sd-reader-center-status${protectedOn ? ' is-protected' : ''}">
+  return `<section class="sd-reader-center-status">
     <div class="sd-reader-center-book">
       <span class="sd-reader-center-book-icon"><i class="fa-solid fa-book"></i></span>
       <span class="sd-reader-center-book-copy">
@@ -12018,15 +12043,39 @@ function renderCoreadCenterStatus(m) {
         <small>已读 ${progress}% · ${allSlices.length} 条记忆${blocked ? ` · ${blocked} 条进度外隔离` : ''}</small>
       </span>
     </div>
-    <label class="sd-reader-center-guard">
-      <span><i class="fa-solid fa-shield-halved"></i><b>防剧透</b><small>${protectedOn ? (blocked ? `已隔离 ${blocked} 条` : '阅读水位保护中') : '已关闭'}</small></span>
-      ${renderMemSwitch('sd-reader-spoiler-filter', protectedOn)}
-    </label>
+  </section>`;
+}
+
+function renderCoreadSpoilerGuard(m) {
+  const boundary = readerDialog.readBoundary || coreadCurrentReadBoundarySync(readerDialog.bookId);
+  const allSlices = readerDialog.slices || [];
+  const blocked = Math.max(0, allSlices.length - coreadSafeSlices(allSlices, boundary, m).length);
+  const on = m.spoilerProtection !== false;
+  return `<label class="sd-reader-center-guard sd-reader-setup-guard${on ? ' is-protected' : ''}">
+    <span><i class="fa-solid fa-shield-halved"></i><b>防剧透</b><small>${on ? (blocked ? `已隔离 ${blocked} 条进度外记忆` : '阅读水位保护中') : '已关闭'}</small></span>
+    ${renderMemSwitch('sd-reader-spoiler-filter', on)}
+  </label>`;
+}
+
+function renderCoreadGuide() {
+  return `<section class="sd-reader-guide">
+    <div class="sd-reader-guide-hero">
+      <span><i class="fa-solid fa-book-open-reader"></i></span>
+      <div><b>先认识伴读记忆</b><small>四步看懂正文、短对话与主线如何使用同一份记忆</small></div>
+    </div>
+    <div class="sd-reader-guide-grid">
+      <article><span>1</span><div><b>控制书友视野</b><p>防剧透会按当前阅读进度隔离后文章节形成的切片；可读范围决定书友能回看多少正文。</p></div></article>
+      <article><span>2</span><div><b>生成记忆切片</b><p>伴读对话、已读正文和主线选段都进入同一切片池。自动总结适合连续阅读，手动总结用于补整或重整指定区间。</p></div></article>
+      <article><span>3</span><div><b>理解召回数量</b><p>近景切片会固定带入最近记忆；检索命中会从扫描语境中寻找相关切片。向量与重排是可选增强，关闭也能用关键词召回。</p></div></article>
+      <article><span>4</span><div><b>选择写入位置</b><p>独立世界书便于隔离整理；写入正文同本世界书便于与现有记忆插件统一查看。千幕的召回仍由自身切片池完成。</p></div></article>
+    </div>
+    <button type="button" class="sd-btn sd-primary sd-reader-guide-finish"><i class="fa-solid fa-check"></i>进入伴读中心</button>
   </section>`;
 }
 
 function renderCompanionMoreBody() {
   const m = coreadMemory();
+  if (!m.guideSeen) return renderCoreadGuide();
   const tab = (!COREAD_MEMORY_ENABLED && ['records', 'inject'].includes(m.moreTab)) ? 'setup' : m.moreTab;
   // 当前 ST 连接现状（跟随档展示，让用户心里有数）
   let backend = '', model = '';
@@ -12103,28 +12152,30 @@ function renderMemRecordsTab(m) {
       <summary class="sd-reader-mcard-head"><i class="fa-solid fa-database"></i> 记忆写入位置 <span class="sd-reader-inj-tag">${m.storageMode === 'shared' ? '共享世界书' : '千幕独立世界书'}</span></summary>
       <div class="sd-reader-mrow">
         <span class="sd-reader-mrow-lab" style="white-space:nowrap">写入位置</span>
-        <select class="sd-reader-minput sd-reader-storagemode" style="flex:0 0 auto;max-width:60%">
-          <option value="dedicated"${m.storageMode !== 'shared' ? ' selected' : ''}>没装记忆插件：建立千幕伴读世界书</option>
-          <option value="shared"${m.storageMode === 'shared' ? ' selected' : ''}>装了记忆插件：写入同本世界书</option>
+        <select class="sd-reader-minput sd-reader-storagemode">
+          <option value="dedicated"${m.storageMode !== 'shared' ? ' selected' : ''}>建立千幕伴读世界书</option>
+          <option value="shared"${m.storageMode === 'shared' ? ' selected' : ''}>与正文记忆插件写入同本世界书</option>
         </select>
       </div>
     </details>`;
 
   const items = (m.summaryItems || []).slice().sort((a, b) => a.order - b.order);
-  let customIdx = 0;
   const promptItems = items.map((it, i) => {
-    const colorCls = it.builtin ? 'sd-reader-sumitem-builtin' : `sd-reader-sumitem-c${customIdx++ % 5}`;
     return `
-    <div class="sd-reader-sumitem ${colorCls}" data-id="${htmlEscape(it.id)}">
-      <div class="sd-reader-sumitem-head">
-        <span class="sd-reader-sumitem-badge">${it.builtin ? '内置' : '自定义'}</span>
+    <details class="sd-reader-promptblock sd-reader-sumitem" data-id="${htmlEscape(it.id)}">
+      <summary class="sd-reader-promptblock-lab">
+        <span><i class="fa-solid fa-comments"></i> ${htmlEscape(it.title)}</span>
+        <span class="sd-reader-promptblock-acts" onclick="event.stopPropagation()">
+          <button type="button" class="sd-reader-mbtn sd-reader-sumitem-up" data-id="${htmlEscape(it.id)}" title="上移"${i === 0 ? ' disabled' : ''}><i class="fa-solid fa-chevron-up"></i></button>
+          <button type="button" class="sd-reader-mbtn sd-reader-sumitem-down" data-id="${htmlEscape(it.id)}" title="下移"${i === items.length - 1 ? ' disabled' : ''}><i class="fa-solid fa-chevron-down"></i></button>
+          ${it.builtin ? '' : `<button type="button" class="sd-reader-mbtn sd-reader-sumitem-del" data-id="${htmlEscape(it.id)}" title="删除"><i class="fa-solid fa-trash"></i></button>`}
+        </span>
+      </summary>
+      <div class="sd-reader-promptedit">
         <input class="sd-reader-minput sd-reader-sumitem-title" data-id="${htmlEscape(it.id)}" value="${htmlEscape(it.title)}" placeholder="提示词名">
-        <button type="button" class="sd-reader-mbtn sd-reader-sumitem-up" data-id="${htmlEscape(it.id)}" title="上移"${i === 0 ? ' disabled' : ''}><i class="fa-solid fa-chevron-up"></i></button>
-        <button type="button" class="sd-reader-mbtn sd-reader-sumitem-down" data-id="${htmlEscape(it.id)}" title="下移"${i === items.length - 1 ? ' disabled' : ''}><i class="fa-solid fa-chevron-down"></i></button>
-        ${it.builtin ? '' : `<button type="button" class="sd-reader-mbtn sd-reader-sumitem-del" data-id="${htmlEscape(it.id)}" title="删除"><i class="fa-solid fa-trash"></i></button>`}
+        <textarea class="sd-reader-mtextarea sd-reader-sumitem-text" data-id="${htmlEscape(it.id)}" rows="8" placeholder="这条提示词要总结什么……">${htmlEscape(it.text)}</textarea>
       </div>
-      <textarea class="sd-reader-mtextarea sd-reader-sumitem-text" data-id="${htmlEscape(it.id)}" rows="2" placeholder="这条提示词要总结什么……">${htmlEscape(it.text)}</textarea>
-    </div>`;
+    </details>`;
   }).join('');
 
   // 切片：折叠只显主按钮（批次号+摘要首句），展开看全文可编辑可删
@@ -12175,38 +12226,34 @@ function renderMemRecordsTab(m) {
         </span>
       <div class="sd-reader-promptpreset">
         <select class="sd-reader-minput sd-reader-sumpreset-sel">
-          <option value="">（当前编辑中·未套用预设）</option>
+          <option value="">默认方案</option>
           ${(m.summaryPresets || []).map((p) => `<option value="${htmlEscape(p.id)}"${m.summaryPresetSel === p.id ? ' selected' : ''}>${htmlEscape(p.name)}</option>`).join('')}
         </select>
         <button type="button" class="sd-reader-mbtn sd-reader-sumpreset-save" title="把当前三块提示词存为预设"><i class="fa-solid fa-floppy-disk"></i>存为预设</button>
         <button type="button" class="sd-reader-mbtn sd-reader-sumpreset-del"${m.summaryPresetSel ? '' : ' disabled'} title="删除选中预设"><i class="fa-solid fa-trash"></i></button>
       </div>
-      <div class="sd-reader-promptblock-lab"><i class="fa-solid fa-comments"></i> 伴读总结提示词</div>
       <div class="sd-reader-sumitems">${promptItems}</div>
       <details class="sd-reader-promptblock">
         <summary class="sd-reader-promptblock-lab">
           <i class="fa-solid fa-flask-vial"></i> 蒸馏书籍提示词
-          <span class="sd-reader-promptblock-acts">
+          <span class="sd-reader-promptblock-acts" onclick="event.stopPropagation()">
             <button type="button" class="sd-reader-mbtn sd-reader-distillprompt-save" title="保存"><i class="fa-solid fa-check"></i></button>
-            <button type="button" class="sd-reader-mbtn sd-reader-distillprompt-restore" title="恢复默认"><i class="fa-solid fa-rotate-left"></i></button>
           </span>
         </summary>
-        <textarea class="sd-reader-mtextarea sd-reader-distillprompt-text" rows="5" placeholder="留空则用内置默认整理要求。不同文体题材精炼方式不同，可按在读书籍调整（如议论文重观点、小说重情节转折）。">${htmlEscape(m.distillTextPrompt || '')}</textarea>
+        <div class="sd-reader-promptedit"><textarea class="sd-reader-mtextarea sd-reader-distillprompt-text" rows="8">${htmlEscape(m.distillTextPrompt || DEFAULT_DISTILL_TEXT_PROMPT)}</textarea></div>
       </details>
       <details class="sd-reader-promptblock">
         <summary class="sd-reader-promptblock-lab">
           <i class="fa-solid fa-arrow-right-arrow-left"></i> 主线选择总结提示词
-          <span class="sd-reader-promptblock-acts">
+          <span class="sd-reader-promptblock-acts" onclick="event.stopPropagation()">
             <button type="button" class="sd-reader-mbtn sd-reader-mainlineprompt-save" title="保存"><i class="fa-solid fa-check"></i></button>
-            <button type="button" class="sd-reader-mbtn sd-reader-mainlineprompt-restore" title="恢复默认"><i class="fa-solid fa-rotate-left"></i></button>
           </span>
         </summary>
-        <textarea class="sd-reader-mtextarea sd-reader-mainlineprompt-text" rows="4" placeholder="留空则沿用上方「伴读总结提示词」。用于从主线选择与本书相关的片段做总结。">${htmlEscape(m.mainlineSummaryPrompt || '')}</textarea>
+        <div class="sd-reader-promptedit"><textarea class="sd-reader-mtextarea sd-reader-mainlineprompt-text" rows="8">${htmlEscape(m.mainlineSummaryPrompt || DEFAULT_MAINLINE_SUMMARY_PROMPT)}</textarea></div>
       </details>
     </details>
     <div class="sd-reader-mcard">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-robot"></i> 伴读对话·自动总结</div>
-      <div class="sd-reader-mhint">仅针对你与书友的<b>伴读对话</b>。与上方「书籍蒸馏」互不相干。</div>
       <div class="sd-reader-mrow">
         <span class="sd-reader-mrow-lab">自动总结</span>
         ${renderMemSwitch('sd-reader-autodistill-en', m.autoDistill)}
@@ -12231,7 +12278,6 @@ function renderMemRecordsTab(m) {
         <span class="sd-reader-mrow-lab">条对话</span>
         <button type="button" class="sd-reader-textbtn sd-reader-manual-go"${msgsLen ? '' : ' disabled'}>执行总结</button>
       </div>
-      <div class="sd-reader-mhint">指定条数区间蒸成一条切片。区间与已总结范围重叠＝重新总结并覆盖那些切片；否则新增。</div>
       ${batchRows ? `<div class="sd-reader-batchtable">${batchRows}</div>` : ''}
     </div>
     <div class="sd-reader-mcard">
@@ -12244,7 +12290,7 @@ function renderMemRecordsTab(m) {
         <button type="button" class="sd-reader-mbtn sd-reader-distill-mainline">从主线选择总结</button>
       </div>
       <div class="sd-reader-mrow" style="margin-top:10px">
-        <span class="sd-reader-mrow-lab">按阅读进度自动总结正文</span>
+        <span class="sd-reader-mrow-lab">按阅读进度自动总结内容</span>
         ${renderMemSwitch('sd-reader-autotext-en', m.autoDistillText)}
       </div>
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">每往后读多少字自动总结</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-distill-textevery" min="1000" step="500" value="${m.distillTextEvery}"${m.autoDistillText ? '' : ' disabled'}></div>
@@ -12259,14 +12305,7 @@ function renderMemRecordsTab(m) {
         <button type="button" class="sd-reader-textbtn sd-reader-compress-go"${lastBatch >= 2 ? '' : ' disabled'}>执行总结</button>
       </div>
     </details>
-    <details class="sd-reader-mcard" data-test style="border-top:2px dashed var(--sd-hairline);">
-      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-flask"></i> 开发测试</summary>
-      <div class="sd-reader-mhint">测试记忆读写通路，结果见浏览器控制台（F12）。综合自检覆盖：两模式写入切换 · keyless 校验 · 反哺主线切片池 · 召回内核 · 绑定读写（不改动你的数据）。</div>
-      <div class="sd-reader-mactions">
-        <button type="button" class="sd-reader-mbtn sd-reader-test-selftest"><i class="fa-solid fa-clipboard-check"></i>综合自检</button>
-        <button type="button" class="sd-reader-mbtn sd-reader-test-lore"><i class="fa-solid fa-vial"></i>测试 Chat Lore 写入</button>
-      </div>
-    </details>`;
+    <button type="button" class="sd-reader-guide-replay"><i class="fa-solid fa-circle-question"></i>再看一次引导教程</button>`;
 }
 
 // 注入状态 tab：①实际注入(显全文·第一卡) ②本次召回候选(编号+关键词) ③重排结果 ④向量选定 + 注入设置。
@@ -12277,7 +12316,8 @@ function renderMemInjectTab(m) {
   const slices = coreadSafeSlices(allSlices, boundary, m);
   const blockedCount = Math.max(0, allSlices.length - slices.length);
   const msgs = readerDialog.messages || [];
-  const recentTxt = msgs.slice(-8).map((x) => x.text || '').join(' ');
+  const scanN = Math.max(1, Number(m.recallScanMessages) || 8);
+  const recentTxt = msgs.slice(-scanN).map((x) => x.text || '').join('\n');
   const scanText = recentTxt || '（还没有对话）';
   // 「召回管线」预览：镜像 buildCompanionContext 的召回逻辑（近景保底剔出检索池 + 检索命中）算候选池。
   // 注意：这里是「如果现在生成会召回什么」的预览，不等于实际注入（实际注入见下方 lastInjected 回放）。
@@ -12329,8 +12369,8 @@ function renderMemInjectTab(m) {
   // 本轮锚定词（跨候选去重·同义词归一后真实命中的关键词）——一眼看清「为什么召回了这些」。
   const roundAnchors = uniqueClean(recall.flatMap((h) => h.hits || []));
   const anchorBar = roundAnchors.length
-    ? `<div class="sd-reader-anchorbar"><span class="sd-reader-anchorbar-lab">本轮锚定</span>${roundAnchors.map((k) => `<span class="sd-reader-slice-key on">${htmlEscape(k)}</span>`).join('')}</div>`
-    : '<div class="sd-reader-anchorbar sd-muted">本轮无锚定词（近期对话未命中任何切片关键词）。</div>';
+    ? `<div class="sd-reader-anchorbar"><span class="sd-reader-anchorbar-lab">本轮关键词</span>${roundAnchors.map((k) => `<span class="sd-reader-slice-key on">${htmlEscape(k)}</span>`).join('')}</div>`
+    : '<div class="sd-reader-anchorbar sd-muted">本轮没有命中切片关键词。</div>';
 
   // 生效词典（绑定词册 + 切片 synonyms 并集·主线/伴读共用）
   const globalDict = coreadActiveDict(slices);
@@ -12388,14 +12428,14 @@ function renderMemInjectTab(m) {
   return `
     <details class="sd-reader-mcard" open>
       <summary class="sd-reader-mcard-head"><i class="fa-solid fa-syringe"></i> 实际注入 <span class="sd-reader-inj-tag">${injected.length} 条</span>${li ? `<span class="sd-reader-inj-tag">最近一次·${liChannelLabel}</span>` : ''}</summary>
-      <div class="sd-reader-mhint">回放<b>最近一次真实生成</b>时确实带入模型的切片，不是预览。书中内容/伴读对谈/正文回响徽标区分来源，避免混淆。</div>
       <div class="sd-reader-injslices">${injCards}</div>
     </details>
     <div class="sd-reader-mcard">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-sliders"></i> 注入设置</div>
       ${blockedCount ? `<div class="sd-reader-mhint"><i class="fa-solid fa-shield-halved"></i> 当前已隔离 ${blockedCount} 条超过阅读进度的记忆；它们仍保存在档案中，读到相应位置后自动恢复。</div>` : ''}
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">检索命中注入数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-recall" min="0" step="1" value="${m.recallCount}"></div>
-      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">近景切片注入数<i class="fa-solid fa-circle-info" title="伴读对话：最近N条切片无条件注入 0=关"></i></span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-recent" min="0" step="1" value="${m.recentInject}"></div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">近景切片注入数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-recent" min="0" step="1" value="${m.recentInject}"></div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">语境扫描对话条数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-scan" min="1" max="50" step="1" value="${scanN}"></div>
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">重排后保留数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-reranktop" min="1" step="1" value="${m.rerankTopN}"></div>
     </div>
     <div class="sd-reader-mcard">
@@ -12405,8 +12445,8 @@ function renderMemInjectTab(m) {
         <span class="sd-reader-mrow-lab">开启主线联动</span>
         ${renderMemSwitch('sd-reader-mainline-toggle', m.mainlineFeedback)}
       </div>
-      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">检索命中注入数<i class="fa-solid fa-circle-info" title="主线：按当下语境召回的切片数"></i></span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-recall" min="0" step="1" value="${m.mainlineRecall}"${m.mainlineFeedback ? '' : ' disabled'}></div>
-      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">近景切片注入数<i class="fa-solid fa-circle-info" title="主线：最近N条切片无条件注入 0=关"></i></span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-recent" min="0" step="1" value="${m.mainlineRecent}"${m.mainlineFeedback ? '' : ' disabled'}></div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">检索命中注入数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-recall" min="0" step="1" value="${m.mainlineRecall}"${m.mainlineFeedback ? '' : ' disabled'}></div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">近景切片注入数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-recent" min="0" step="1" value="${m.mainlineRecent}"${m.mainlineFeedback ? '' : ' disabled'}></div>
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">注入深度</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-depth" min="0" step="1" value="${m.mainlineDepth}"${m.mainlineFeedback ? '' : ' disabled'}></div>
     </div>
     <details class="sd-reader-mcard" open>
@@ -12416,23 +12456,22 @@ function renderMemInjectTab(m) {
     <details class="sd-reader-mcard">
       <summary class="sd-reader-mcard-head">
         <i class="fa-solid fa-diagram-project"></i> 召回管线
-        <span class="sd-reader-inj-tag${m.vectorEnabled ? ' on' : ''}">向量${m.vectorEnabled ? '开' : '关'}</span>
-        <span class="sd-reader-inj-tag${m.rerankEnabled ? ' on' : ''}">重排${m.rerankEnabled ? '开' : '关'}</span>
+        <span class="sd-reader-inj-tag${m.vectorEnabled ? ' on' : ''}">向量</span>
+        <span class="sd-reader-inj-tag${m.rerankEnabled ? ' on' : ''}">重排</span>
       </summary>
-      <div class="sd-reader-mhint">「如果<b>现在</b>生成会召回什么」的预览。按管线顺序：语境扫描 → 关键词/向量召回 → 重排精排 → 候选。真正注入了哪些以上方「实际注入」为准。</div>
       <div class="sd-reader-pipe-step">
-        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-magnifying-glass"></i> ① 语境扫描（近期对话末240字）</div>
-        <div class="sd-reader-scanbox">${htmlEscape(scanText.slice(-240))}</div>
+        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-magnifying-glass"></i> ① 语境扫描（最近 ${scanN} 条对话）</div>
+        <div class="sd-reader-scanbox">${htmlEscape(scanText)}</div>
       </div>
       <div class="sd-reader-pipe-step">
-        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-anchor"></i> ② 锚定词（同义词归一后命中的关键词）</div>
+        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-anchor"></i> ② 关键词锚定</div>
         ${anchorBar}
       </div>
       <div class="sd-reader-pipe-step">
-        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-vector-square"></i> ③ 向量召回 <span class="sd-reader-inj-tag${m.vectorEnabled ? ' on' : ''}">${m.vectorEnabled ? '已启用·与关键词 RRF 融合' : '未启用'}</span></div>
+        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-vector-square"></i> ③ 向量召回 <span class="sd-reader-inj-tag${m.vectorEnabled ? ' on' : ''}">向量</span></div>
       </div>
       <div class="sd-reader-pipe-step">
-        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-arrow-down-wide-short"></i> ④ 重排精排 <span class="sd-reader-inj-tag${m.rerankEnabled ? ' on' : ''}">${m.rerankEnabled ? `已启用·保留前 ${m.rerankTopN}` : '未启用'}</span></div>
+        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-arrow-down-wide-short"></i> ④ 重排精排 <span class="sd-reader-inj-tag${m.rerankEnabled ? ' on' : ''}">重排</span></div>
       </div>
       <div class="sd-reader-pipe-step">
         <div class="sd-reader-pipe-lab"><i class="fa-solid fa-list-check"></i> ⑤ 召回候选（${recall.length}）</div>
@@ -12445,6 +12484,7 @@ function renderMemInjectTab(m) {
 // 人设走「千幕已有取材注入逻辑」一种方式，无需在此重复勾选；轨道A 的对话记忆条数挪到 1C 蒸馏设置(短信体按条算·100-200 触发总结·此处版面不放)。
 function renderCompanionSetupBody() {
   const cp = coreadCompanion();
+  const m = coreadMemory();
   const wb = coreadChatCompanionWb();   // 世界书选择按聊天存·从 chatStore 读
   const stChar = getCharacterName() || '未选择';
   const stUser = getPersonaName() || '未选择';
@@ -12560,8 +12600,9 @@ function renderCompanionSetupBody() {
         : '<span class="sd-muted" style="font-size:.82em">点「加载」读取可选预设。</span>'}
     </div>
     </section>
+    ${renderCoreadSpoilerGuard(m)}
     <section class="sd-reader-center-section">
-      <div class="sd-reader-center-section-head"><span><i class="fa-solid fa-message"></i><b>对话与可见范围</b></span><small>控制书友能看见多少，以及每轮如何回复</small></div>
+      <div class="sd-reader-center-section-head"><span><i class="fa-solid fa-message"></i><b>对话与可见范围</b></span></div>
     <div class="sd-reader-setup-row">
       <label class="sd-reader-setup-lab">书友可读范围（你所读位置往前回溯全书的百分比）</label>
       <div class="sd-reader-setup-pctwrap">
@@ -12569,35 +12610,11 @@ function renderCompanionSetupBody() {
         <span class="sd-reader-setup-pct-box"><input type="number" class="sd-reader-setup-num sd-reader-setup-pct-num" min="3" max="60" step="1" value="${pct}"><b>%</b></span>
       </div>
     </div>
-    <div class="sd-reader-setup-row">
-      <div class="sd-reader-setup-numrow">
-        <label class="sd-reader-setup-lab">字数上限</label>
-        <input type="number" class="sd-reader-setup-num sd-reader-setup-visible" min="1000" max="20000" step="500" value="${cap}">
-      </div>
-      <em class="sd-muted" style="font-size:.76em">超长篇按比例截取仍可能篇幅偏大，可在此控制字数上限，避免上下文超限。</em>
-    </div>
-    <div class="sd-reader-setup-row">
-      <div class="sd-reader-setup-numrow">
-        <label class="sd-reader-setup-lab">每次回复条数</label>
-        <div class="sd-reader-setup-numgroup">
-          <span class="sd-muted">最少</span>
-          <input type="number" class="sd-reader-setup-num sd-reader-setup-replymin" min="1" max="12" step="1" value="${cp.replyLinesMin}">
-          <span class="sd-muted">最多</span>
-          <input type="number" class="sd-reader-setup-num sd-reader-setup-replymax" min="1" max="12" step="1" value="${cp.replyLinesMax}">
-        </div>
-      </div>
-    </div>
-    <div class="sd-reader-setup-row">
-      <div class="sd-reader-setup-numrow">
-        <label class="sd-reader-setup-lab">参考近期对话条数</label>
-        <input type="number" class="sd-reader-setup-num sd-reader-setup-recent" min="1" step="1" value="${cp.recentDialogueCount}">
-      </div>
-    </div>
-    <div class="sd-reader-setup-row">
-      <div class="sd-reader-setup-numrow">
-        <label class="sd-reader-setup-lab">语音条缓存上限</label>
-        <input type="number" class="sd-reader-setup-num sd-reader-setup-voicelimit" min="10" step="10" value="${coread().voiceCacheLimit || 100}">
-      </div>
+    <div class="sd-reader-setup-compact-grid">
+      <label class="sd-reader-setup-compact"><span>字数上限</span><input type="number" class="sd-reader-setup-num sd-reader-setup-visible" min="1000" max="20000" step="500" value="${cap}"></label>
+      <label class="sd-reader-setup-compact"><span>每次回复条数</span><span class="sd-reader-setup-range"><input type="number" class="sd-reader-setup-num sd-reader-setup-replymin" min="1" max="12" step="1" value="${cp.replyLinesMin}"><b>—</b><input type="number" class="sd-reader-setup-num sd-reader-setup-replymax" min="1" max="12" step="1" value="${cp.replyLinesMax}"></span></label>
+      <label class="sd-reader-setup-compact"><span>参考近期对话条数</span><input type="number" class="sd-reader-setup-num sd-reader-setup-recent" min="1" step="1" value="${cp.recentDialogueCount}"></label>
+      <label class="sd-reader-setup-compact"><span>语音条缓存上限</span><input type="number" class="sd-reader-setup-num sd-reader-setup-voicelimit" min="10" step="10" value="${coread().voiceCacheLimit || 100}"></label>
     </div>
     </section>`;
 }
@@ -13065,6 +13082,17 @@ function bindReaderStageEvents(stageRoot) {
   q('.sd-reader-more-close')?.addEventListener('click', () => { if (morePage) morePage.hidden = true; });
   // 面板 tab 切换 + 向量/重排接口操作按钮（重渲后仍生效·事件委托）
   morePage?.addEventListener('click', (e) => {
+    if (e.target.closest('.sd-reader-guide-finish')) {
+      coreadMemory().guideSeen = true;
+      saveSettings(); rerenderMore();
+      if (coreadMemory().moreTab === 'setup') void prepareCompanionSetup();
+      return;
+    }
+    if (e.target.closest('.sd-reader-guide-replay')) {
+      coreadMemory().guideSeen = false;
+      saveSettings(); rerenderMore();
+      return;
+    }
     const mtab = e.target.closest('.sd-reader-mtab');
     if (mtab) {
       coreadMemory().moreTab = mtab.dataset.mtab;
@@ -13097,12 +13125,12 @@ function bindReaderStageEvents(stageRoot) {
       saveSettings(); rerenderMore(); return;
     }
     if (e.target.closest('.sd-reader-sumitem-restore')) {
-      confirmDialog('恢复内置默认', '将把三块提示词恢复为默认：伴读总结（内置条恢复·自定义条保留）、蒸馏书籍、主线选择总结（后两块清空回落内置）。确定？').then((yes) => {
+      confirmDialog('恢复默认方案', '将恢复伴读总结、蒸馏书籍和主线选择总结的默认提示词；已有自定义伴读条目会保留。确定？').then((yes) => {
         if (!yes) return;
         const custom = (m.summaryItems || []).filter((it) => !it.builtin);
         m.summaryItems = [...clone(DEFAULT_SUMMARY_ITEMS), ...custom.map((it, i) => ({ ...it, order: DEFAULT_SUMMARY_ITEMS.length + i }))];
         m.distillTextPrompt = '';        // 蒸馏书籍：清空→回落 DEFAULT_DISTILL_TEXT_PROMPT
-        m.mainlineSummaryPrompt = '';     // 主线选择总结：清空→回落伴读总结提示词
+        m.mainlineSummaryPrompt = '';     // 主线选择总结：清空→回落独立内置默认
         saveSettings(); rerenderMore();
       });
       return;
@@ -13110,25 +13138,16 @@ function bindReaderStageEvents(stageRoot) {
     // 总结提示词预设：存为预设 / 删除选中预设（切换在 change 事件里处理）
     if (e.target.closest('.sd-reader-sumpreset-save')) { coreadSaveSummaryPreset(); return; }
     if (e.target.closest('.sd-reader-sumpreset-del')) { coreadDeleteSummaryPreset(); return; }
-    // 蒸馏书籍提示词：保存 / 恢复默认（单块·独立于伴读总结条目）
+    // 蒸馏书籍 / 主线选择提示词：各自保存；恢复统一走卡头的总恢复按钮。
     if (e.target.closest('.sd-reader-distillprompt-save')) {
       const ta = morePage.querySelector('.sd-reader-distillprompt-text');
       m.distillTextPrompt = String(ta?.value || '').trim();
       saveSettings(); toast('已保存蒸馏书籍提示词。', 'success'); return;
     }
-    if (e.target.closest('.sd-reader-distillprompt-restore')) {
-      m.distillTextPrompt = ''; saveSettings(); rerenderMore();
-      toast('已恢复内置默认（蒸馏书籍提示词）。', 'info'); return;
-    }
-    // 主线选择总结提示词：保存 / 恢复默认（空则沿用伴读总结提示词）
     if (e.target.closest('.sd-reader-mainlineprompt-save')) {
       const ta = morePage.querySelector('.sd-reader-mainlineprompt-text');
       m.mainlineSummaryPrompt = String(ta?.value || '').trim();
       saveSettings(); toast('已保存主线选择总结提示词。', 'success'); return;
-    }
-    if (e.target.closest('.sd-reader-mainlineprompt-restore')) {
-      m.mainlineSummaryPrompt = ''; saveSettings(); rerenderMore();
-      toast('已恢复默认（主线选择总结沿用伴读总结提示词）。', 'info'); return;
     }
     const upBtn = e.target.closest('.sd-reader-sumitem-up');
     const downBtn = e.target.closest('.sd-reader-sumitem-down');
@@ -13201,7 +13220,7 @@ function bindReaderStageEvents(stageRoot) {
     }
     // 主线联动：圈选主线消息蒸成共读切片
     if (e.target.closest('.sd-reader-distill-mainline')) { coreadOpenMainlinePickDialog(); return; }
-    // 手动总结（起止两条数·区间蒸一条切片；与已总结范围重叠则覆盖那些切片）
+    // 手动总结：无重叠直接执行；有重叠则扩展至旧切片完整边界，经二次确认后替换，避免部分覆盖造成记忆空洞。
     if (e.target.closest('.sd-reader-manual-go')) {
       const btn = e.target.closest('.sd-reader-manual-go');
       const msgs = readerDialog?.messages || [];
@@ -13210,25 +13229,37 @@ function bindReaderStageEvents(stageRoot) {
       if (from > to) [from, to] = [to, from];
       const fromIdx = from - 1, toIdx = Math.min(to - 1, msgs.length - 1);   // 1-based → 下标
       if (fromIdx >= msgs.length) { toast('对话条数不足。', 'warning'); return; }
-      const overlaps = (readerDialog?.slices || []).some((s) => (Number(s.coveredFrom) || 0) <= toIdx && (Number(s.coveredTo) || 0) >= fromIdx);
-      confirmDialog(overlaps ? '重新总结并覆盖' : '手动总结', `将总结第 ${from}–${to} 条对话${overlaps ? '（覆盖与此区间重叠的旧切片）' : ''}。确定？`).then((yes) => {
-        if (!yes) return;
+      const overlaps = (readerDialog?.slices || []).filter((s) => {
+        if (reader.normalizeCoreadSource(s.provenance?.source || s.src) !== 'dialog') return false;
+        return (Number(s.coveredFrom) || 0) <= toIdx && (Number(s.coveredTo) || 0) >= fromIdx;
+      });
+      const effectiveFrom = overlaps.length ? Math.min(fromIdx, ...overlaps.map((s) => Number(s.coveredFrom) || 0)) : fromIdx;
+      const effectiveTo = overlaps.length ? Math.max(toIdx, ...overlaps.map((s) => Number(s.coveredTo) || 0)) : toIdx;
+      const run = () => {
         const icon = btn.querySelector('i'); const prev = icon?.className;
         btn.disabled = true; if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
-        coreadManualSummarize(fromIdx, toIdx).then((r) => {
-          if (r?.ok && !r.wrote) toast(`已生成切片，但写入世界书失败（${r.writeErr || '未知原因'}），召回可能不生效。`, 'error');
+        coreadManualSummarize(effectiveFrom, effectiveTo).then((r) => {
+          if (r?.ok && !r.wrote) toast(`切片已保存在千幕档案；同步世界书失败（${r.writeErr || '未知原因'}），千幕自身召回仍可用。`, 'warning');
           else if (r?.ok) toast(`${r.mode === 'resummarize' ? '已重新总结' : '已总结'}出 ${r.made} 条切片${r.salvaged ? '（关键词档降级保底）' : ''}。`, 'success');
           else toast(r?.reason || '总结失败。', 'warning');
           rerenderMore();
         }).finally(() => { btn.disabled = false; if (icon && prev) icon.className = prev; });
-      });
+      };
+      if (!overlaps.length) run();
+      else {
+        const oldRanges = overlaps.map((s) => `#${s.batch || '?'}（${(Number(s.coveredFrom) || 0) + 1}–${(Number(s.coveredTo) || 0) + 1}）`).join('、');
+        confirmDialog(
+          '检测到重复总结',
+          `第 ${from}–${to} 条与旧切片 ${oldRanges} 重叠。为避免部分覆盖后丢失两端记忆，本次将扩展为第 ${effectiveFrom + 1}–${effectiveTo + 1} 条重新总结，并替换上述旧切片。是否继续？`
+        ).then((yes) => { if (yes) run(); });
+      }
       return;
     }
     if (e.target.closest('.sd-reader-compress-go')) {
       const btn = e.target.closest('.sd-reader-compress-go');
       const lo = Math.max(1, Number(morePage.querySelector('.sd-reader-compress-lo')?.value) || 1);
       const hi = Math.max(lo, Number(morePage.querySelector('.sd-reader-compress-hi')?.value) || lo);
-      confirmDialog('切片二次总结', `将把批次 ${lo}–${hi} 的切片压缩合并成一条。确定？`).then((yes) => {
+      confirmDialog('切片二次总结', `将把批次 ${lo}–${hi} 的原切片及对应世界书条目替换为一条合并切片。是否继续？`).then((yes) => {
         if (!yes) return;
         const icon = btn.querySelector('i'); const prev = icon?.className;
         btn.disabled = true; if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
@@ -13389,11 +13420,17 @@ function bindReaderStageEvents(stageRoot) {
       coreadCurrentDictId = e.target.value || '';
       rerenderMore(); return;
     }
-    // 总结提示词预设下拉：选中即套用（空值＝回到「当前编辑中」不套用）
+    // 总结提示词预设下拉：选中即套用；「默认方案」恢复三块内置默认。
     if (e.target.closest('.sd-reader-sumpreset-sel')) {
       const id = e.target.value || '';
       if (id) coreadApplySummaryPreset(id);
-      else { m.summaryPresetSel = ''; saveSettings(); rerenderMore(); }
+      else {
+        m.summaryItems = clone(DEFAULT_SUMMARY_ITEMS);
+        m.distillTextPrompt = '';
+        m.mainlineSummaryPrompt = '';
+        m.summaryPresetSel = '';
+        saveSettings(); rerenderMore();
+      }
       return;
     }
     if (e.target.closest('.sd-reader-spoiler-filter')) { m.spoilerProtection = e.target.checked; saveSettings(); coreadInvalidatePool(); rerenderMore(); return; }
@@ -13432,6 +13469,7 @@ function bindReaderStageEvents(stageRoot) {
     if (e.target.closest('.sd-reader-distill-textevery')) { m.distillTextEvery = Math.max(1000, Number(e.target.value) || 8000); saveSettings(); return; }
     if (e.target.closest('.sd-reader-inj-recall')) { m.recallCount = Math.max(0, Number(e.target.value) || 0); saveSettings(); return; }
     if (e.target.closest('.sd-reader-inj-recent')) { m.recentInject = Math.max(0, Number(e.target.value) || 0); saveSettings(); return; }
+    if (e.target.closest('.sd-reader-inj-scan')) { m.recallScanMessages = Math.max(1, Math.min(50, Number(e.target.value) || 8)); saveSettings(); return; }
     if (e.target.closest('.sd-reader-inj-reranktop')) { m.rerankTopN = Math.max(1, Number(e.target.value) || 4); saveSettings(); return; }
     if (e.target.closest('.sd-reader-mainline-recall')) { m.mainlineRecall = Math.max(0, Number(e.target.value) || 0); saveSettings(); coreadInvalidatePool(); return; }
     if (e.target.closest('.sd-reader-mainline-recent')) { m.mainlineRecent = Math.max(0, Number(e.target.value) || 0); saveSettings(); coreadInvalidatePool(); return; }
