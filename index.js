@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.23.0';
+const VERSION = '1.23.1';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -2584,6 +2584,21 @@ function validateApiSettings() {
   return !!getGenerateRaw();
 }
 
+// 推理模型可能把思考放在 reasoning_content / reasoning / analysis 等独立字段。
+// 这些字段永远不拼进正文，只通过专用回调交给需要折叠展示的调用方。
+function modelReasoningText(value) {
+  if (typeof value === 'string') return value.trim();
+  if (Array.isArray(value)) return value.map(modelReasoningText).filter(Boolean).join('\n').trim();
+  if (!value || typeof value !== 'object') return '';
+  return modelReasoningText(value.text ?? value.content ?? value.summary ?? value.reasoning ?? '');
+}
+
+function modelMessageReasoning(message) {
+  if (!message || typeof message !== 'object') return '';
+  return modelReasoningText(message.reasoning_content ?? message.reasoning ?? message.reasoning_details
+    ?? message.thinking_content ?? message.thinking ?? message.analysis ?? message.thoughts ?? '');
+}
+
 async function callExternalApi(messages, onDelta = null, cfg = null, controller = null) {
   const apiUrl = cfg?.apiUrl ?? settings.apiUrl;
   const apiKey = cfg?.apiKey ?? settings.apiKey;
@@ -2610,16 +2625,20 @@ async function callExternalApi(messages, onDelta = null, cfg = null, controller 
   }
   if (!stream || !res.body) {
     const data = await res.json();
-    return data.choices?.[0]?.message?.content || data.choices?.[0]?.text || '';
+    const message = data.choices?.[0]?.message || {};
+    const reasoning = modelMessageReasoning(message);
+    if (reasoning && typeof cfg?.onReasoning === 'function') cfg.onReasoning(reasoning);
+    return message.content || data.choices?.[0]?.text || '';
   }
-  return await readSseStream(res.body, onDelta);
+  return await readSseStream(res.body, onDelta, cfg?.onReasoning);
 }
 
-async function readSseStream(stream, onDelta) {
+async function readSseStream(stream, onDelta, onReasoning = null) {
   const reader = stream.getReader();
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
   let full = '';
+  let reasoningFull = '';
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -2640,6 +2659,13 @@ async function readSseStream(stream, onDelta) {
             ?? choice.text
             ?? '';
           if (delta) { full += delta; if (onDelta) onDelta(full); }
+          const reasoningDelta = modelMessageReasoning(choice.delta || choice.message || {});
+          if (reasoningDelta) {
+            reasoningFull = reasoningDelta.length >= reasoningFull.length && reasoningDelta.startsWith(reasoningFull)
+              ? reasoningDelta
+              : reasoningFull + reasoningDelta;
+            if (typeof onReasoning === 'function') onReasoning(reasoningFull);
+          }
         } catch (_) {}
       }
     }
@@ -8881,7 +8907,10 @@ async function generateViaSTProxy(url, authHeaderStr, model, messages, opts = {}
     throw new Error(`HTTP ${res.status}${text ? ` · ${text.slice(0, 300)}` : ''}`);
   }
   const data = await res.json().catch(() => ({}));
-  return data?.choices?.[0]?.message?.content || data?.choices?.[0]?.text || '';
+  const message = data?.choices?.[0]?.message || {};
+  const reasoning = modelMessageReasoning(message);
+  if (reasoning && typeof opts.onReasoning === 'function') opts.onReasoning(reasoning);
+  return message.content || data?.choices?.[0]?.text || '';
 }
 
 async function coreadFetchMemModels(kind, btn) {
@@ -9562,11 +9591,11 @@ async function callCoreadDialogModel(systemPrompt, userPrompt, opts = {}) {
     try {
       let authHeader = `Authorization: Bearer ${conn.apiKey}`;
       try {
-        return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: conn.temperature, signal });
+        return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: conn.temperature, signal, onReasoning: opts.onReasoning });
       } catch (err) {
         if (/HTTP\s*(401|403)/.test(String(err?.message || ''))) {
           authHeader = `Authorization: ${conn.apiKey}`;
-          return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: conn.temperature, signal });
+          return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: conn.temperature, signal, onReasoning: opts.onReasoning });
         }
         throw err;
       }
@@ -9577,6 +9606,7 @@ async function callCoreadDialogModel(systemPrompt, userPrompt, opts = {}) {
         return await callExternalApi(messages, onDelta, {
           apiUrl: conn.apiUrl, apiKey: conn.apiKey, model: conn.model,
           temperature: conn.temperature, stream: !!settings.streamEnabled,
+          onReasoning: opts.onReasoning,
         }, ac);
       }
       throw proxyErr;
@@ -11485,9 +11515,14 @@ async function coreadLoadDialog(bookId) {
     const rec = await blobStore.getReaderChat(bucket);
     if (rec) {
       readerDialog.messages = Array.isArray(rec.messages) ? rec.messages : [];
+      const repairedDialog = repairLegacyCoreadDialogMessages(readerDialog.messages);
+      if (repairedDialog.changed) {
+        readerDialog.messages = repairedDialog.messages;
+        needsMigration = true;
+      }
       readerDialog.summaries = Array.isArray(rec.summaries) ? rec.summaries : [];
       const rawSlices = Array.isArray(rec.slices) ? rec.slices : [];
-      needsMigration = Number(rec.sliceSchemaVersion) !== reader.COREAD_SLICE_SCHEMA_VERSION
+      needsMigration = needsMigration || Number(rec.sliceSchemaVersion) !== reader.COREAD_SLICE_SCHEMA_VERSION
         || rawSlices.some((slice) => Number(slice?.provenance?.version) !== reader.COREAD_SLICE_SCHEMA_VERSION);
       readerDialog.slices = coreadNormalizeSlices(rawSlices, bookId, bucket, boundary);   // 旧切片懒迁移：补来源与形成时阅读水位
       readerDialog.cursor = Number(rec.cursor) || 0;
@@ -11583,6 +11618,153 @@ function lastFriendBatchRange(msgs) {
   return { start, end };
 }
 
+// 伴读对话只认千幕自己的后台协议。推理模型若必须在正文通道输出思考，只能放进
+// qianmu_thought；真正进入气泡的内容必须逐句放进 qianmu_line。前端另有容错解析，
+// 即使模型忽略协议、输出 <think>/<thought>/Reasoning/Line 1，也不会把协议残片摊在聊天里。
+const COREAD_DIALOG_OUTPUT_PROTOCOL = `【千幕伴读后台输出协议｜最高优先级】
+前端只展示正式回复，不展示协议说明。最终输出必须严格使用以下结构，不得使用 Markdown 代码块：
+<qianmu_response>
+<qianmu_thought>仅当接口必须在正文通道返回思考时填写；没有则留空</qianmu_thought>
+<qianmu_reply>
+<qianmu_line>第一句正式回复</qianmu_line>
+<qianmu_line>第二句正式回复</qianmu_line>
+</qianmu_reply>
+</qianmu_response>
+每个 qianmu_line 只放一句要发给用户的话。不得输出 Line 1、行数说明、格式解释、任务复述、自我分析或标签外文字。若接口已用 reasoning_content、reasoning、analysis、thinking 等独立字段承载推理，正文只输出 qianmu_reply。`;
+
+const COREAD_THOUGHT_TAGS = 'qianmu_thought|think|thinking|redacted_thinking|thought|thoughts|reasoning|reason|analysis|reflection|deliberation|rationale|internal|internal_monologue|scratchpad|cot|chain_of_thought|chain-of-thought|chainofthought|思考|思维链|推理|分析';
+
+function coreadCleanThoughtText(value) {
+  return String(value || '')
+    .replace(/```(?:xml|html|json|text)?/gi, '')
+    .replace(/<\s*\/?\s*[\w:-]+\b[^>]*>/g, '')
+    .replace(/\[\s*\/?\s*(?:think(?:ing)?|thoughts?|reason(?:ing)?|analysis|reflection|internal|scratchpad|cot|chain[_ -]?of[_ -]?thought|思考|思维链|推理|分析)\s*\]/gi, '')
+    .replace(/^\s*(?:thoughts?|thinking|reasoning|analysis|思考|思维链|推理|分析)\s*[:：]\s*/gim, '')
+    .trim();
+}
+
+function coreadCleanReplyText(value) {
+  return String(value || '')
+    .replace(/```(?:xml|html|json|text)?/gi, '')
+    .replace(/<\s*\/?\s*(?:qianmu_response|qianmu_reply|qianmu_line|final|answer|response|reply|正文|回复)\b[^>]*>/gi, '')
+    .replace(/^\s*(?:(?:line|message|reply)\s*#?\s*\d+|第\s*\d+\s*(?:行|句|条))\s*[:：.)、-]\s*/gim, '')
+    .replace(/^\s*(?:final(?:\s+answer)?|answer|response|reply|最终(?:回答|回复)|正式回复|回复)\s*[:：]\s*/gim, '')
+    .trim();
+}
+
+// 将不同模型的思考标签、独立回复标签与行号格式归一成 {thought, reply, lines}。
+// streaming=true 时只在已经识别到正式回复区后给预览，宁可多显示一会儿三点，也不闪出思维链。
+function parseCoreadDialogOutput(input, streaming = false) {
+  let raw = String(input || '').replace(/^\s*```(?:xml|html|json|text)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+  const thoughts = [];
+  let explicit = false;
+  const thoughtPair = new RegExp(`<\\s*(${COREAD_THOUGHT_TAGS})(?=[\\s>])[^>]*>([\\s\\S]*?)<\\s*\\/\\s*\\1\\s*>`, 'gi');
+  raw = raw.replace(thoughtPair, (_all, _tag, body) => {
+    const clean = coreadCleanThoughtText(body);
+    if (clean) thoughts.push(clean);
+    explicit = true;
+    return '\n';
+  });
+  const thoughtBracket = new RegExp(`\\[\\s*(${COREAD_THOUGHT_TAGS})\\s*\\]([\\s\\S]*?)\\[\\s*\\/\\s*\\1\\s*\\]`, 'gi');
+  raw = raw.replace(thoughtBracket, (_all, _tag, body) => {
+    const clean = coreadCleanThoughtText(body);
+    if (clean) thoughts.push(clean);
+    explicit = true;
+    return '\n';
+  });
+
+  // 标题式思考区：Thought/Reasoning/思考 ... Final/Reply/回复。
+  const headed = raw.match(/(?:^|\n)\s*(?:#{0,3}\s*)?(?:\[\s*)?(?:thoughts?|thinking|reasoning|analysis|思考|思维链|推理|分析)(?:\s*\])?\s*[:：]?\s*\n([\s\S]*?)(?:\n\s*(?:#{0,3}\s*)?(?:\[\s*)?(?:final(?:\s+answer)?|answer|response|reply|最终(?:回答|回复)|正式回复|回复)(?:\s*\])?\s*[:：]\s*)/i);
+  if (headed) {
+    const clean = coreadCleanThoughtText(headed[1]);
+    if (clean) thoughts.push(clean);
+    raw = raw.slice((headed.index || 0) + headed[0].length);
+    explicit = true;
+  }
+
+  // 千幕标准逐句标签。流式期间也允许读取尚未闭合的最后一个 qianmu_line。
+  const taggedLines = [...raw.matchAll(/<\s*qianmu_line\b[^>]*>([\s\S]*?)<\s*\/\s*qianmu_line\s*>/gi)]
+    .map((match) => coreadCleanReplyText(match[1])).filter(Boolean);
+  if (taggedLines.length) {
+    explicit = true;
+    if (streaming) {
+      const openTail = raw.match(/<\s*qianmu_line\b[^>]*>([^<]*)$/i)?.[1] || '';
+      if (openTail.trim()) taggedLines.push(coreadCleanReplyText(openTail));
+    }
+    const uniqueThought = [...new Set(thoughts.filter(Boolean))].join('\n\n').slice(0, 16000);
+    return { thought: uniqueThought, reply: taggedLines.join('\n'), lines: taggedLines, explicit: true };
+  }
+
+  // 兼容模型自行输出的 Line 1 / 第1句。此前缀之前的任务复述与自我分析全部归入思考便签。
+  const lineRe = /^\s*(?:(?:line|message|reply)\s*#?\s*\d+|第\s*\d+\s*(?:行|句|条))\s*[:：.)、-]\s*(.+?)\s*$/gim;
+  const numbered = [...raw.matchAll(lineRe)];
+  if (numbered.length) {
+    const prefix = coreadCleanThoughtText(raw.slice(0, numbered[0].index || 0));
+    if (prefix) thoughts.push(prefix);
+    const lines = numbered.map((match) => coreadCleanReplyText(match[1])).filter(Boolean);
+    return { thought: [...new Set(thoughts.filter(Boolean))].join('\n\n').slice(0, 16000), reply: lines.join('\n'), lines, explicit: true };
+  }
+
+  // Final/Answer/回复 等显式终点：之前的内容只作思考，之后才是气泡正文。
+  const finalLabel = raw.match(/(?:^|\n)\s*(?:#{0,3}\s*)?(?:\[\s*)?(?:final(?:\s+answer)?|answer|response|reply|最终(?:回答|回复)|正式回复|回复)(?:\s*\])?\s*[:：]\s*/i);
+  if (finalLabel) {
+    const prefix = coreadCleanThoughtText(raw.slice(0, finalLabel.index || 0));
+    if (prefix) thoughts.push(prefix);
+    raw = raw.slice((finalLabel.index || 0) + finalLabel[0].length);
+    explicit = true;
+  }
+
+  // 千幕 reply 外壳（兼容流式未闭合）。
+  const replyOpen = raw.match(/<\s*qianmu_reply\b[^>]*>([\s\S]*)/i);
+  if (replyOpen) { raw = replyOpen[1].replace(/<\s*\/\s*qianmu_reply\s*>[\s\S]*$/i, ''); explicit = true; }
+
+  // 未闭合的思考标签没有可信边界：最终态全部折叠，流式态继续保持三点，绝不泄漏。
+  const danglingThought = raw.match(new RegExp(`<\\s*(?:${COREAD_THOUGHT_TAGS})(?=[\\s>])[^>]*>`, 'i'));
+  if (danglingThought) {
+    const tail = coreadCleanThoughtText(raw.slice(danglingThought.index + danglingThought[0].length));
+    if (tail) thoughts.push(tail);
+    raw = raw.slice(0, danglingThought.index);
+    explicit = true;
+  }
+
+  const reply = coreadCleanReplyText(raw);
+  return {
+    thought: [...new Set(thoughts.filter(Boolean))].join('\n\n').slice(0, 16000),
+    reply: streaming && !explicit ? '' : reply,
+    lines: [],
+    explicit,
+  };
+}
+
+// v1.23.0 以前若模型把 <thought> 与 Line 1 拆成多个气泡，这里在载入时按连续 friend 批自动收拢。
+function repairLegacyCoreadDialogMessages(messages) {
+  const source = Array.isArray(messages) ? messages : [];
+  const out = [];
+  let changed = false;
+  for (let i = 0; i < source.length;) {
+    if (source[i]?.role !== 'friend') { out.push(source[i]); i++; continue; }
+    let end = i + 1;
+    while (end < source.length && source[end]?.role === 'friend') end++;
+    const batch = source.slice(i, end);
+    const joined = batch.map((message) => String(message?.text || '')).join('\n');
+    const polluted = new RegExp(`<\\s*(?:${COREAD_THOUGHT_TAGS}|qianmu_reply|qianmu_line)(?=[\\s>])`, 'i').test(joined)
+      || /^\s*(?:(?:line|message|reply)\s*#?\s*\d+|第\s*\d+\s*(?:行|句|条))\s*[:：.)、-]/im.test(joined);
+    if (!polluted) { out.push(...batch); i = end; continue; }
+    const parsed = parseCoreadDialogOutput(joined, false);
+    const cleanLines = (parsed.lines.length ? parsed.lines : [parsed.reply]).map(stripDialogQuotes).filter(Boolean);
+    if (!cleanLines.length) { out.push(...batch); i = end; continue; }
+    cleanLines.forEach((text, lineIndex) => out.push({
+      ...batch[Math.min(lineIndex, batch.length - 1)],
+      id: lineIndex === 0 ? (batch[0].id || uid('rdm')) : uid('rdm'),
+      text,
+      thought: lineIndex === 0 ? parsed.thought : '',
+    }));
+    changed = true;
+    i = end;
+  }
+  return { messages: out, changed };
+}
+
 function renderReaderDialogMessages() {
   const msgs = readerDialog.messages || [];
   if (!msgs.length) return '<div class="sd-reader-panel-empty">还没有对话。</div>';
@@ -11603,7 +11785,11 @@ function renderReaderDialogMessages() {
       <button class="sd-reader-msg-action" data-act="edit" data-idx="${idx}" title="编辑"><i class="fa-solid fa-pen"></i></button>
       <button class="sd-reader-msg-action" data-act="delete" data-idx="${idx}" title="删除"><i class="fa-solid fa-trash"></i></button>
     </div>`;
+    const thought = who === 'friend' && String(m.thought || '').trim()
+      ? `<details class="sd-reader-thought-note"><summary><i class="fa-regular fa-note-sticky"></i><span>思考</span><i class="fa-solid fa-chevron-down"></i></summary><div>${htmlEscape(m.thought)}</div></details>`
+      : '';
     return `<div class="sd-reader-msg sd-reader-msg-${who}" data-msg="${htmlEscape(m.id)}">
+      ${thought}
       <div class="sd-reader-msg-bubble">${htmlEscape(m.text || '')}</div>
       ${actions}
     </div>`;
@@ -11851,6 +12037,7 @@ async function coreadGenerateReply(isReroll = false) {
   const cp = coreadCompanion();
   const lo = cp.replyLinesMin, hi = cp.replyLinesMax;
   const rangeHint = lo === hi ? `${lo}` : `${lo} 到 ${hi}`;
+  const dialogSystemPrompt = `${assembled.systemPrompt}\n\n${COREAD_DIALOG_OUTPUT_PROTOCOL}`;
   const userPrompt = [
     transcript ? `【最近的对话】\n${transcript}` : '',
     `【${names.user}刚说（可能是分几句一起说的，一并回应）】\n${pendingText}`,
@@ -11859,17 +12046,29 @@ async function coreadGenerateReply(isReroll = false) {
   ].filter(Boolean).join('\n');
 
   try {
+    let providerThought = '';
+    const onReasoning = (acc) => { providerThought = String(acc || '').trim(); };
     const onDelta = settings.streamEnabled
-      ? (acc) => { if (token !== dialogGenToken) return; const b = friendBubble(); if (b) { b.textContent = stripDialogQuotes(acc); scrollDialogToBottom(); } }
+      ? (acc) => {
+        if (token !== dialogGenToken) return;
+        const parsed = parseCoreadDialogOutput(acc, true);
+        const preview = stripDialogQuotes(parsed.lines.length ? parsed.lines.join('\n') : parsed.reply);
+        const b = friendBubble();
+        if (b && preview) { b.textContent = preview; scrollDialogToBottom(); }
+      }
       : null;
-    const reply = await callCoreadDialogModel(assembled.systemPrompt, userPrompt, { onDelta, controller: dialogAbort });
+    const reply = await callCoreadDialogModel(dialogSystemPrompt, userPrompt, { onDelta, onReasoning, controller: dialogAbort });
     if (token !== dialogGenToken) return;   // 已切书/关阅读/停止 → 丢弃
-    const finalText = stripDialogQuotes(String(reply || '').trim()) || '（书友没有回应）';
+    const parsed = parseCoreadDialogOutput(reply, false);
+    const thought = [...new Set([providerThought, parsed.thought].map(coreadCleanThoughtText).filter(Boolean))].join('\n\n').slice(0, 16000);
+    const finalText = stripDialogQuotes(parsed.reply) || '（书友没有回应）';
     // 拆句成多条气泡（按句号/问号/感叹号/省略号/分号/换行 拆），每句再去引号
-    const sentences = finalText.split(/([。！？…；\n]+)/).reduce((acc, part, i, arr) => {
-      if (i % 2 === 0 && part.trim()) acc.push(stripDialogQuotes(part.trim() + (arr[i + 1] || '')));
-      return acc;
-    }, []).filter((x) => x.trim());
+    const sentences = parsed.lines.length
+      ? parsed.lines.map(stripDialogQuotes).filter(Boolean)
+      : finalText.split(/([。！？…；\n]+)/).reduce((acc, part, i, arr) => {
+        if (i % 2 === 0 && part.trim()) acc.push(stripDialogQuotes(part.trim() + (arr[i + 1] || '')));
+        return acc;
+      }, []).filter((x) => x.trim());
     if (!sentences.length) sentences.push(finalText);   // 无标点兜底
     // 应用回复条数上限（[min,max] 区间的 max 封顶；模型已被提示落在区间内）
     const finalSentences = sentences.slice(0, Math.max(1, cp.replyLinesMax));
@@ -11888,7 +12087,7 @@ async function coreadGenerateReply(isReroll = false) {
       await new Promise((r) => setTimeout(r, Math.min(1100, 520 + finalSentences[i].trim().length * 14)));
       if (token !== dialogGenToken) { clearTyping(); return; }
       clearTyping();
-      readerDialog.messages.push({ id: uid('rdm'), role: 'friend', text: finalSentences[i].trim(), ts: Date.now() });
+      readerDialog.messages.push({ id: uid('rdm'), role: 'friend', text: finalSentences[i].trim(), thought: i === 0 ? thought : '', ts: Date.now() });
       if (body) { body.innerHTML = renderReaderDialogMessages(); scrollDialogToBottom(); }   // 新气泡为 :last-child → CSS 单独淡入上滑
       await coreadSaveDialog();
     }
