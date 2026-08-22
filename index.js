@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.22.0';
+const VERSION = '1.22.1';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -446,7 +446,7 @@ const DEFAULT_SETTINGS = Object.freeze({
       textColor: '#302c2a',
       accentColor: '#b37d6b',
       fontSize: 16,
-      fontId: 'zeo-376',            // ZeoSeven 字体项；仅用于摘录 Canvas
+      fontId: 'zeo-376',            // CSS 字体项；仅用于摘录 Canvas
       customFonts: [],              // [{id,name,css,family}] 用户命名并保存的摘录 CSS 字体
       showAnnotation: true,
       showSource: true,
@@ -577,6 +577,10 @@ let accState = {};                 // 折叠面板开合状态记忆
 
 function ctx() {
   return globalThis.SillyTavern?.getContext?.() || {};
+}
+
+function stMainScriptUrl() {
+  return document.querySelector('script[src$="/script.js"]')?.src || new URL('/script.js', window.location.origin).href;
 }
 // 当前聊天最后一层的索引（-1 表示空聊天）。自动推演用它判定「是不是真新增的一层」，重 roll 同层不重复计数
 function lastChatIdx() {
@@ -3069,7 +3073,7 @@ function renderSettingsPanel() {
 function getFloatSize() {
   const responsiveDefault = window.matchMedia?.('(max-width: 760px)')?.matches ? 44 : 48;
   const configured = Number(settings.floatSize);
-  return Number.isFinite(configured) && configured >= 32 ? Math.max(32, Math.min(80, configured)) : responsiveDefault;
+  return Number.isFinite(configured) && configured >= 32 ? Math.max(32, Math.min(50, configured)) : responsiveDefault;
 }
 
 function clampFloatPosition() {
@@ -3097,13 +3101,21 @@ function applyFloatPosition(btn) {
 
 const QUICK_COMMANDS = Object.freeze([
   { id: 'dashboard', label: '推演', icon: 'fa-clapperboard' },
-  { id: 'tts', label: '配音', icon: 'fa-microphone-lines' },
-  { id: 'coread', label: '伴读书架', icon: 'fa-book-open' },
+  { id: 'tasksnodes', label: '任务', icon: 'fa-list-check' },
+  { id: 'castworld', label: '世界', icon: 'fa-earth-asia' },
+  { id: 'blueprint', label: '编剧', icon: 'fa-feather-pointed' },
+  { id: 'context', label: '取材', icon: 'fa-box-archive' },
+  { id: 'settings', label: '幕后', icon: 'fa-sliders' },
   { id: 'theater', label: '幕外', icon: 'fa-masks-theater' },
+  { id: 'tts', label: '配音', icon: 'fa-microphone-lines' },
+  { id: 'coread', label: '书架', icon: 'fa-book-open' },
+  { id: 'geopolitics', label: '世界格局', icon: 'fa-atom' },
+  { id: 'plug', label: 'API与日志', icon: 'fa-gear' },
   { id: 'imagegen', label: '生图', icon: 'fa-wand-magic-sparkles', pending: true },
   { id: 'floor', label: '楼层跳转', icon: 'fa-layer-group' },
 ]);
 const QUICK_COMMAND_IDS = QUICK_COMMANDS.map((item) => item.id);
+const DEFAULT_QUICK_COMMAND_IDS = ['dashboard', 'tts', 'coread', 'theater', 'imagegen', 'floor'];
 
 function normalizeQuickWheelSettings() {
   if (!['default', 'custom'].includes(settings.quickWheelScheme)) settings.quickWheelScheme = 'default';
@@ -3118,7 +3130,7 @@ function quickWheelItems() {
   normalizeQuickWheelSettings();
   const ids = settings.quickWheelScheme === 'custom'
     ? settings.quickWheelCustomOrder.filter((id) => settings.quickWheelCustomEnabled.includes(id))
-    : QUICK_COMMAND_IDS;
+    : DEFAULT_QUICK_COMMAND_IDS;
   return ids.slice(0, 6).map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
 }
 
@@ -3131,7 +3143,7 @@ function closeFloorNavigator() {
 }
 
 function floorMessageElement(messageIndex) {
-  return Array.from(document.querySelectorAll('#chat .mes')).find((el) => Number(ttsMesId(el)) === messageIndex) || null;
+  return document.querySelector(`#chat .mes[mesid="${Number(messageIndex)}"]`);
 }
 
 function loadedFloorRange() {
@@ -3142,65 +3154,29 @@ function loadedFloorRange() {
   return ids.length ? { first: ids[0], last: ids.at(-1), count: ids.length } : null;
 }
 
-function floorMessageKind(message) {
-  if (message?.is_system) return { label: 'AI 隐藏', className: 'is-hidden', icon: 'fa-ghost' };
-  if (message?.is_user) return { label: '我', className: 'is-user', icon: 'fa-user' };
-  return { label: message?.name || '角色', className: 'is-character', icon: 'fa-comment' };
+function alignChatFloor(target) {
+  const chatElement = document.getElementById('chat');
+  if (!chatElement || !target?.isConnected) return false;
+  const chatRect = chatElement.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const centeredTop = chatElement.scrollTop + (targetRect.top - chatRect.top) - Math.max(0, (chatElement.clientHeight - targetRect.height) / 2);
+  chatElement.scrollTo({ top: Math.max(0, centeredTop), behavior: 'auto' });
+  return true;
 }
 
-function floorMessagePreview(message) {
-  const source = String(message?.extra?.display_text ?? message?.mes ?? '')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return source || '（空白楼层）';
-}
-
-function renderFloorNavigatorTarget(root, requestedFloor) {
-  const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
-  const total = chat.length;
-  const floor = Math.max(1, Math.min(total || 1, Math.round(Number(requestedFloor) || total || 1)));
-  const input = root.querySelector('.sd-floor-input');
-  if (input) { input.value = String(floor); input.max = String(Math.max(1, total)); }
-  root.dataset.floor = String(floor);
-  const loadedIds = Array.from(document.querySelectorAll('#chat .mes'))
-    .map((el) => Number(ttsMesId(el)))
-    .filter(Number.isInteger)
-    .sort((a, b) => a - b);
-  const loadedIdSet = new Set(loadedIds);
-  const range = loadedIds.length ? { first: loadedIds[0], last: loadedIds.at(-1), count: loadedIds.length } : null;
-  const status = root.querySelector('.sd-floor-loaded-status');
-  if (status) status.textContent = total
-    ? (range ? `共 ${total} 层 · 当前已加载 ${range.first + 1}–${range.last + 1} 层` : `共 ${total} 层 · 正文尚未加载`)
-    : '当前聊天没有可定位的楼层';
-  const list = root.querySelector('.sd-floor-nearby');
-  if (!list) return;
-  if (!total) {
-    list.innerHTML = '<div class="sd-floor-empty">先打开一个聊天，再使用楼层跳转。</div>';
-    return;
-  }
-  const targetIndex = floor - 1;
-  const start = Math.max(0, Math.min(total - 7, targetIndex - 3));
-  const end = Math.min(total, start + 7);
-  list.innerHTML = chat.slice(start, end).map((message, offset) => {
-    const index = start + offset;
-    const kind = floorMessageKind(message);
-    const loaded = loadedIdSet.has(index);
-    return `<button type="button" class="sd-floor-row ${index === targetIndex ? 'active' : ''}" data-floor="${index + 1}">
-      <span class="sd-floor-number">${index + 1}</span>
-      <span class="sd-floor-copy"><b><i class="fa-solid ${kind.icon}"></i>${htmlEscape(kind.label)}</b><small>${htmlEscape(floorMessagePreview(message))}</small></span>
-      <span class="sd-floor-state ${kind.className}">${message?.is_system ? 'AI 隐藏' : (loaded ? '已加载' : '未加载')}</span>
-    </button>`;
-  }).join('');
+function stabilizeChatFloor(target) {
+  alignChatFloor(target);
+  // 图片、字体与配音工具条可能在首帧后改变楼层高度；两次轻量校准只读目标元素，不扫描整段聊天。
+  setTimeout(() => alignChatFloor(target), 120);
+  setTimeout(() => alignChatFloor(target), 420);
 }
 
 async function jumpToChatFloor(floor) {
   const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
-  const targetIndex = Math.round(Number(floor)) - 1;
+  const floorText = String(floor ?? '').trim();
+  const targetIndex = floorText ? Math.round(Number(floorText)) : Number.NaN;
   if (!Number.isInteger(targetIndex) || targetIndex < 0 || targetIndex >= chat.length) {
-    toast(`请输入 1–${Math.max(1, chat.length)} 之间的楼层号。`, 'warning');
+    toast(`请输入 0–${Math.max(0, chat.length - 1)} 之间的楼层号。`, 'warning');
     return false;
   }
   let target = floorMessageElement(targetIndex);
@@ -3209,14 +3185,13 @@ async function jumpToChatFloor(floor) {
     const firstLoaded = range?.first ?? chat.length;
     const messagesToLoad = Math.max(1, firstLoaded - targetIndex);
     if (messagesToLoad > 300) {
-      const yes = await confirmDialog('加载较早楼层', `第 ${targetIndex + 1} 层尚未加载，需要由 SillyTavern 额外载入约 ${messagesToLoad} 层正文。加载量较大，可能短暂卡顿，继续吗？`);
+      const yes = await confirmDialog('加载较早楼层', `第 ${targetIndex} 层尚未加载，需要由 SillyTavern 额外载入约 ${messagesToLoad} 层正文。加载量较大，可能短暂卡顿，继续吗？`);
       if (!yes) return false;
     }
     const jumpButton = document.querySelector(`#${FLOOR_NAV_ID} .sd-floor-jump`);
     if (jumpButton) { jumpButton.disabled = true; jumpButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>加载中'; }
     try {
-      const scriptUrl = document.querySelector('script[src$="/script.js"]')?.src || new URL('/script.js', window.location.origin).href;
-      const st = await import(scriptUrl);
+      const st = await import(stMainScriptUrl());
       if (typeof st.showMoreMessages !== 'function') throw new Error('当前 SillyTavern 未提供历史分页接口');
       await st.showMoreMessages(messagesToLoad);
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -3235,7 +3210,8 @@ async function jumpToChatFloor(floor) {
   }
   closeFloorNavigator();
   if (document.getElementById(MODAL_ID)?.classList.contains('open')) closeModal();
-  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  stabilizeChatFloor(target);
   target.classList.remove('sd-floor-jump-hit');
   requestAnimationFrame(() => target.classList.add('sd-floor-jump-hit'));
   setTimeout(() => target.classList.remove('sd-floor-jump-hit'), 1800);
@@ -3246,46 +3222,33 @@ function openFloorNavigator() {
   closeQuickWheel();
   closeFloorNavigator();
   const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
-  const range = loadedFloorRange();
-  const initialFloor = range ? range.last + 1 : Math.max(1, chat.length);
   const root = document.createElement('div');
   root.id = FLOOR_NAV_ID;
   root.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
   root.innerHTML = `<div class="sd-floor-backdrop"></div>
     <section class="sd-floor-panel" role="dialog" aria-modal="true" aria-label="楼层跳转">
-      <header><div><h3>楼层跳转</h3><p class="sd-floor-loaded-status"></p></div><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
-      <div class="sd-floor-search"><span>第</span><input class="sd-floor-input" type="number" min="1" inputmode="numeric"><span>层</span><button type="button" class="sd-floor-jump"><i class="fa-solid fa-location-crosshairs"></i>跳转</button></div>
-      <div class="sd-floor-nearby"></div>
-      <footer><i class="fa-solid fa-ghost"></i> AI 隐藏楼层保留原编号并可正常定位</footer>
+      <header><div><h3>楼层跳转</h3><p>${chat.length ? `当前聊天共 ${chat.length} 层` : '当前聊天没有可定位的楼层'}</p></div><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
+      <div class="sd-floor-search"><span>第</span><input class="sd-floor-input" type="number" min="0" max="${Math.max(0, chat.length - 1)}" inputmode="numeric" placeholder="0–${Math.max(0, chat.length - 1)}"><span>层</span><button type="button" class="sd-floor-jump"><i class="fa-solid fa-location-crosshairs"></i>跳转</button></div>
+      <div class="sd-floor-actions"><button type="button" class="sd-floor-top"><i class="fa-solid fa-angles-up"></i>顶部</button><button type="button" class="sd-floor-bottom"><i class="fa-solid fa-angles-down"></i>当前聊天底部</button></div>
     </section>`;
   document.body.appendChild(root);
   root.tabIndex = -1;
-  root.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
-  renderFloorNavigatorTarget(root, initialFloor);
   const close = () => closeFloorNavigator();
+  root.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
   root.querySelector('.sd-floor-backdrop')?.addEventListener('click', close);
   root.querySelector('.sd-floor-close')?.addEventListener('click', close);
   const input = root.querySelector('.sd-floor-input');
-  input?.addEventListener('input', () => renderFloorNavigatorTarget(root, input.value));
   input?.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') jumpToChatFloor(input.value);
     if (event.key === 'Escape') close();
   });
   root.querySelector('.sd-floor-jump')?.addEventListener('click', () => jumpToChatFloor(input?.value));
-  root.querySelector('.sd-floor-nearby')?.addEventListener('click', (event) => {
-    const row = event.target.closest('.sd-floor-row');
-    if (!row) return;
-    renderFloorNavigatorTarget(root, row.dataset.floor);
-  });
-  input?.focus();
-  input?.select();
+  root.querySelector('.sd-floor-top')?.addEventListener('click', () => jumpToChatFloor(0));
+  root.querySelector('.sd-floor-bottom')?.addEventListener('click', () => jumpToChatFloor(chat.length - 1));
 }
 
 async function runQuickWheelCommand(id) {
   closeQuickWheel();
-  if (id === 'dashboard') return openModal('dashboard');
-  if (id === 'tts') return openModal('tts');
-  if (id === 'theater') return openModal('theater');
   if (id === 'coread') {
     if (!COREAD_ENABLED) return toast(COREAD_TEASER, 'info');
     if (readerView) coreadCloseReader();
@@ -3293,6 +3256,8 @@ async function runQuickWheelCommand(id) {
   }
   if (id === 'floor') return openFloorNavigator();
   if (id === 'imagegen') return toast('生图模块将在下一开发任务开放。', 'info');
+  if (id === 'geopolitics' && !settings.geopoliticsEnabled) return toast('请先在幕后开启「活幕·势」。', 'info');
+  if (QUICK_COMMAND_IDS.includes(id)) return openModal(id);
 }
 
 function openQuickWheel(btn) {
@@ -3302,27 +3267,32 @@ function openQuickWheel(btn) {
   if (!items.length) return;
   const rect = btn.getBoundingClientRect();
   const centerX = rect.left + rect.width / 2;
-  const centerY = rect.top + rect.height / 2;
-  const towardCenter = Math.atan2(window.innerHeight / 2 - centerY, window.innerWidth / 2 - centerX);
-  const spread = Math.PI * (.46 + Math.min(6, items.length) * .06);
-  const radius = Math.max(104, Math.min(142, getFloatSize() * 2.45));
+  const floatSize = getFloatSize();
+  const itemSize = Math.max(30, Math.min(40, Math.round(floatSize * .82)));
+  const gap = Math.max(5, Math.min(8, Math.round(floatSize * .15)));
+  const totalHeight = items.length * itemSize + Math.max(0, items.length - 1) * gap;
+  const spaceUp = rect.top - 8;
+  const spaceDown = window.innerHeight - rect.bottom - 8;
+  const expandUp = spaceUp >= totalHeight + gap || spaceUp >= spaceDown;
+  const desiredTop = expandUp ? rect.top - gap - totalHeight : rect.bottom + gap;
+  const railTop = Math.max(8, Math.min(window.innerHeight - totalHeight - 8, desiredTop));
+  const inwardLeft = centerX > window.innerWidth / 2;
+  const desiredLeft = inwardLeft ? rect.left - gap - itemSize : rect.right + gap;
+  const railLeft = Math.max(8, Math.min(window.innerWidth - itemSize - 8, desiredLeft));
   const root = document.createElement('div');
   root.id = QUICK_WHEEL_ID;
-  root.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
+  root.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'} ${expandUp ? 'expand-up' : 'expand-down'} ${inwardLeft ? 'inward-left' : 'inward-right'}`;
   root.innerHTML = '<div class="sd-wheel-backdrop"></div><div class="sd-wheel-items" role="menu" aria-label="千幕快捷轮盘"></div>';
   const holder = root.querySelector('.sd-wheel-items');
   items.forEach((item, index) => {
-    const ratio = items.length === 1 ? .5 : index / (items.length - 1);
-    const angle = towardCenter - spread / 2 + spread * ratio;
-    const size = 58;
-    const x = Math.max(8, Math.min(window.innerWidth - size - 8, centerX + Math.cos(angle) * radius - size / 2));
-    const y = Math.max(8, Math.min(window.innerHeight - size - 8, centerY + Math.sin(angle) * radius - size / 2));
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `sd-wheel-command${item.pending ? ' is-pending' : ''}`;
     button.dataset.command = item.id;
-    button.style.left = `${x}px`;
-    button.style.top = `${y}px`;
+    button.style.setProperty('--sd-wheel-item-size', `${itemSize}px`);
+    button.style.left = `${railLeft}px`;
+    button.style.top = `${railTop + index * (itemSize + gap)}px`;
+    button.style.animationDelay = `${index * 18}ms`;
     button.title = item.pending ? `${item.label}（即将开放）` : item.label;
     button.setAttribute('role', 'menuitem');
     button.innerHTML = `<i class="fa-solid ${item.icon}"></i><span>${htmlEscape(item.label)}</span>`;
@@ -3332,7 +3302,7 @@ function openQuickWheel(btn) {
   root.tabIndex = -1;
   root.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeQuickWheel(); });
   root.focus({ preventScroll: true });
-  root.querySelector('.sd-wheel-backdrop')?.addEventListener('click', closeQuickWheel);
+  root.addEventListener('click', (event) => { if (!event.target.closest('.sd-wheel-command')) closeQuickWheel(); });
   holder?.addEventListener('click', (event) => {
     const command = event.target.closest('.sd-wheel-command')?.dataset.command;
     if (command) runQuickWheelCommand(command);
@@ -7646,11 +7616,11 @@ function renderQuickWheelSettings() {
         <option value="custom" ${custom ? 'selected' : ''}>自定义方案</option>
       </select>
     </div>
-    ${custom ? `<div class="sd-wheel-custom-list">${ordered.map((item, index) => `
+    ${custom ? `<p class="sd-muted sd-wheel-default-copy">可从千幕全部入口中选择，轮盘最多显示 6 项。</p><div class="sd-wheel-custom-list">${ordered.map((item, index) => `
       <div class="sd-wheel-custom-row" data-command="${item.id}">
         <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}"></i><span>${htmlEscape(item.label)}</span></label>
         <div><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="up" ${index === 0 ? 'disabled' : ''} title="上移"><i class="fa-solid fa-chevron-up"></i></button><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="down" ${index === ordered.length - 1 ? 'disabled' : ''} title="下移"><i class="fa-solid fa-chevron-down"></i></button></div>
-      </div>`).join('')}</div>` : '<p class="sd-muted sd-wheel-default-copy">推演 · 配音 · 伴读书架 · 幕外 · 生图 · 楼层跳转</p>'}
+      </div>`).join('')}</div>` : '<p class="sd-muted sd-wheel-default-copy">推演 · 配音 · 书架 · 幕外 · 生图 · 楼层跳转</p>'}
   </div>`;
 }
 
@@ -7695,7 +7665,7 @@ function renderPlugTab() {
       </div>
       <div class="sd-float-size-control" ${settings.floatingButton ? '' : 'hidden'}>
         <label for="sd-float-size">悬浮球大小 <b class="sd-float-size-value">${floatSize} px</b></label>
-        <input id="sd-float-size" class="sd-float-size" type="range" min="32" max="80" step="2" value="${floatSize}">
+        <input id="sd-float-size" class="sd-float-size" type="range" min="32" max="50" step="2" value="${floatSize}">
       </div>
       ${renderQuickWheelSettings()}
     </section>
@@ -8232,7 +8202,7 @@ function bindActiveTabEvents(root) {
     toast(settings.floatingButton ? '悬浮球已显示。' : '悬浮球已隐藏。', 'info');
   });
   root.querySelector('.sd-float-size')?.addEventListener('input', (e) => {
-    settings.floatSize = Math.max(32, Math.min(80, Number(e.target.value) || 48));
+    settings.floatSize = Math.max(32, Math.min(50, Number(e.target.value) || 48));
     const out = root.querySelector('.sd-float-size-value');
     if (out) out.textContent = `${settings.floatSize} px`;
     renderFloatButton();
@@ -8253,6 +8223,11 @@ function bindActiveTabEvents(root) {
     if (!id) return;
     const next = settings.quickWheelCustomEnabled.filter((item) => item !== id);
     if (e.target.checked) next.push(id);
+    if (next.length > 6) {
+      e.target.checked = false;
+      toast('快捷轮盘最多显示 6 个入口。', 'warning');
+      return;
+    }
     if (!next.length) {
       e.target.checked = true;
       toast('快捷轮盘至少保留一个入口。', 'warning');
@@ -12589,7 +12564,7 @@ function buildReaderStage() {
       <!-- 划线工具浮窗（选区/点划线后弹·跟随选区定位·父级 划线|笔记，划线展开样式+取色） -->
       <div class="sd-reader-hltools" hidden>
         <div class="sd-reader-hltools-lv sd-reader-hltools-main">
-          <button data-act="highlight" title="划线"><i class="fa-solid fa-wave-square"></i></button>
+          <button data-act="highlight" title="划线"><i class="fa-solid fa-underline"></i></button>
           <button data-act="note" title="笔记"><i class="fa-solid fa-pen"></i></button>
           <button data-act="copy" title="复制文字"><i class="fa-solid fa-copy"></i></button>
           <button data-act="image" title="摘录成图"><i class="fa-solid fa-image"></i></button>
@@ -13321,6 +13296,25 @@ function renderMemInjectTab(m) {
     </details>`;
 }
 
+let coreadPersonaAvatarRaw = '';
+
+async function refreshCoreadPersonaAvatar() {
+  const context = ctx();
+  const power = context?.powerUserSettings || context?.power_user || globalThis.power_user || {};
+  let raw = '';
+  try {
+    const st = await import(stMainScriptUrl());
+    raw = st?.user_avatar || '';
+  } catch (error) {
+    console.warn(`[${EXTENSION_NAME}] current persona avatar unavailable`, error);
+  }
+  const selectedAvatar = document.querySelector('#user_avatar_block .avatar-container.selected img, #user_avatar_block .avatar.selected img, #user_avatar_block .selected img');
+  raw ||= selectedAvatar?.currentSrc || selectedAvatar?.src || '';
+  raw ||= power.user_avatar || power.default_persona || power.defaultPersona || '';
+  coreadPersonaAvatarRaw = String(raw || '').trim();
+  return coreadPersonaAvatarRaw;
+}
+
 function coreadIdentityAvatar(kind) {
   try {
     const context = ctx();
@@ -13329,11 +13323,11 @@ function coreadIdentityAvatar(kind) {
       const charId = context?.characterId;
       raw = context?.characters?.[charId]?.avatar || context?.characters?.[charId]?.data?.avatar || '';
     } else {
-      const power = globalThis.power_user || context?.powerUser || {};
-      // DOM 中的「当前选中人设 / 实际聊天头像」比扩展上下文的缓存字段更可靠，先取真实显示值。
+      const power = context?.powerUserSettings || context?.power_user || globalThis.power_user || {};
+      // 冷启动缓存直接来自 ST 的 user_avatar 模块导出；DOM 与聊天头像仅作旧版本兼容兜底。
       const selectedAvatar = document.querySelector('#user_avatar_block .avatar-container.selected img, #user_avatar_block .avatar.selected img, #user_avatar_block .selected img');
       const chatAvatar = [...document.querySelectorAll('#chat .mes[is_user="true"] .avatar img, #chat .mes.is_user .avatar img')].pop();
-      raw = selectedAvatar?.currentSrc || selectedAvatar?.src || chatAvatar?.currentSrc || chatAvatar?.src || '';
+      raw = coreadPersonaAvatarRaw || selectedAvatar?.currentSrc || selectedAvatar?.src || chatAvatar?.currentSrc || chatAvatar?.src || '';
       // ST 当前激活人设头像由 user_avatar 维护；default_persona 只是最后兜底，二者并不等价。
       raw ||= context?.user_avatar || context?.userAvatar || globalThis.user_avatar
         || globalThis.SillyTavern?.getContext?.()?.user_avatar
@@ -13583,14 +13577,10 @@ const COREAD_EXCERPT_PRESETS = {
 const COREAD_EXCERPT_FONT_FALLBACK = '"Noto Serif SC", "Songti SC", "SimSun", serif';
 const COREAD_EXCERPT_BUILTIN_FONTS = [
   { id: 'zeo-376', name: '文津宋体', family: 'WenJin Mincho Plane 0', css: '@import url("https://fontsapi.zeoseven.com/376/main/result.css");' },
-  { id: 'zeo-13', name: '文渊黑体 SC', family: 'WenYuan Sans SC VF', css: '@import url("https://fontsapi.zeoseven.com/13/main/result.css");' },
-  { id: 'zeo-256', name: '汇文明朝体', family: 'Huiwen-mincho', css: '@import url("https://fontsapi.zeoseven.com/256/main/result.css");' },
   { id: 'zeo-292', name: '霞鹜文楷', family: 'LXGW WenKai', css: '@import url("https://fontsapi.zeoseven.com/292/main/result.css");' },
-  { id: 'zeo-285', name: '思源宋体', family: 'Noto Serif CJK', css: '@import url("https://fontsapi.zeoseven.com/285/main/result.css");' },
-  { id: 'zeo-69', name: '思源黑体', family: 'Noto Sans CJK', css: '@import url("https://fontsapi.zeoseven.com/69/main/result.css");' },
-  { id: 'zeo-282', name: '小赖字体 Mono', family: 'Xiaolai Mono SC', css: '@import url("https://fontsapi.zeoseven.com/282/main/result.css");' },
-  { id: 'zeo-551', name: 'B2 Hana', family: 'B2 Hana', css: '@import url("https://fontsapi.zeoseven.com/551/main/result.css");' },
-  { id: 'zeo-416', name: 'Plix 普利世', family: 'Plix', css: '@import url("https://fontsapi.zeoseven.com/416/main/result.css");' },
+  { id: 'zeo-285', name: '思源宋', family: 'Noto Serif CJK', css: '@import url("https://fontsapi.zeoseven.com/285/main/result.css");' },
+  { id: 'zeo-69', name: '思源黑', family: 'Noto Sans CJK', css: '@import url("https://fontsapi.zeoseven.com/69/main/result.css");' },
+  { id: 'zeo-416', name: '普利世', family: 'Plix', css: '@import url("https://fontsapi.zeoseven.com/416/main/result.css");' },
 ];
 
 function coreadExcerptFonts(cfg = coreadExcerptConfig()) {
@@ -13621,9 +13611,9 @@ function coreadExcerptConfig() {
   cfg.textColor = sanitizeHexColor(cfg.textColor) || '#302c2a';
   cfg.accentColor = sanitizeHexColor(cfg.accentColor) || '#b37d6b';
   cfg.fontSize = Math.max(10, Math.min(20, Number(cfg.fontSize) || 16));
-  // v1.21.2 及更早的本机字体设置迁移到新的官方链接字体体系。
+  // v1.21.2 及更早的本机字体设置迁移到隔离 CSS 字体体系。
   if (!cfg.fontId) {
-    const legacy = { sans: 'zeo-13', kai: 'zeo-292', serif: 'zeo-376', fang: 'zeo-376', custom: 'zeo-376' };
+    const legacy = { sans: 'zeo-69', kai: 'zeo-292', serif: 'zeo-376', fang: 'zeo-376', custom: 'zeo-376' };
     cfg.fontId = legacy[cfg.fontFamily] || 'zeo-376';
   }
   if (!coreadExcerptFonts(cfg).some((font) => font.id === cfg.fontId)) cfg.fontId = 'zeo-376';
@@ -13820,7 +13810,7 @@ function coreadBuildExcerptCanvases(note, cfg) {
   const quoteLine = Math.round(quoteSize * 1.62);
   const noteSize = Math.max(24, Math.round(quoteSize * .64));
   const noteLine = Math.round(noteSize * 1.58);
-  measure.font = `600 ${quoteSize}px ${fontStack}`;
+  measure.font = `400 ${quoteSize}px ${fontStack}`;
   const quoteLines = coreadCanvasWrap(measure, `“${note.text || ''}”`, w - pad * 2);
   measure.font = `400 ${noteSize}px ${fontStack}`;
   const annotationLines = cfg.showAnnotation && String(note.annotation || '').trim()
@@ -13846,14 +13836,14 @@ function coreadBuildExcerptCanvases(note, cfg) {
     g.fillStyle = cfg.background; g.fillRect(0, 0, w, h);
     g.fillStyle = cfg.accentColor; g.fillRect(86, 86, 8, 116);
     g.fillStyle = cfg.textColor; g.globalAlpha = .68;
-    g.font = `600 28px ${fontStack}`;
+    g.font = `500 28px ${fontStack}`;
     g.fillText('千幕 · 伴读摘录', 124, 126);
     if (pages.length > 1) { g.textAlign = 'right'; g.fillText(`${pageIndex + 1} / ${pages.length}`, w - pad, 126); g.textAlign = 'left'; }
     g.globalAlpha = 1;
     let y = top;
     if (page.quote.length) {
       g.fillStyle = cfg.textColor;
-      g.font = `600 ${quoteSize}px ${fontStack}`;
+      g.font = `400 ${quoteSize}px ${fontStack}`;
       for (const line of page.quote) { g.fillText(line, pad, y); y += quoteLine; }
     }
     if (page.annotation.length) {
@@ -13865,7 +13855,7 @@ function coreadBuildExcerptCanvases(note, cfg) {
     }
     if (cfg.showSource) {
       g.fillStyle = cfg.textColor; g.globalAlpha = .78;
-      g.font = `600 31px ${fontStack}`;
+      g.font = `500 31px ${fontStack}`;
       g.fillText(`《${source.book}》`, pad, h - 128);
       g.globalAlpha = .55; g.font = `400 25px ${fontStack}`;
       g.fillText(source.author, pad, h - 84);
@@ -16750,6 +16740,7 @@ function bindEvents() {
     ttsLineCache.clear();      // 切聊天：旧消息台词缓存失效
     coreadInvalidatePool();    // 切聊天：反哺主线切片池随新聊天的绑定档案重算
     companionWorldView = '';   // 切聊天：世界书已按聊天分存，查看视图回到未选·避免跨聊天残留
+    await refreshCoreadPersonaAvatar();
     renderFloatButton();
     renderInputMenuEntry();
     await applyDirectorInjection();
@@ -16758,10 +16749,16 @@ function bindEvents() {
   };
   // APP_READY：ST 注水 extensionSettings 完成的信号。init 经 setTimeout 抢跑可能早于注水，
   // 此时读到的 floatPosition 仍是默认 → 悬浮球落默认中位。注水后重读 settings 并按保存位重绘，根治「重载后球回默认位」偶发。
-  const appReadyHandler = () => {
+  const appReadyHandler = async () => {
     settings = getSettings();
+    await refreshCoreadPersonaAvatar();
     renderFloatButton();
+    rerenderIfOpen();
     ttsStartChat();   // ST 就绪后 #chat 已存在，挂上有声注入（init 抢跑时 #chat 可能尚未就位）
+  };
+  const personaChangedHandler = async () => {
+    await refreshCoreadPersonaAvatar();
+    rerenderIfOpen();
   };
   // 原地编辑正文：刻意不复位缓存——保留已提取台词与已生成音频，交用户手动决定（🔁 全量重提取 / 双击单句更新）。
   // 但 ST 保存编辑会重渲 .mes_text 内部 HTML，抹掉注入其中的内联 🔊（工具栏/台词条是兄弟节点、不受影响）。
@@ -16773,6 +16770,7 @@ function bindEvents() {
   };
   const pairs = [
     [types.APP_READY || 'app_ready', appReadyHandler],   // 注水后把悬浮球挪回上次拖动的位置（修偶发回默认位）
+    [types.PERSONA_CHANGED || 'persona_changed', personaChangedHandler],   // 冷启动即读 ST 当前头像；切换人设后同步伴读设定
     [types.MESSAGE_RECEIVED || 'message_received', refreshHandler],   // 仅角色回复触发；重 roll/删楼由 refreshHandler 照实重算
     [types.MESSAGE_DELETED || 'message_deleted', applyDirectorInjection],   // 删楼即刻重判注入：若已回退到推演前的长度，悬空检测会清空注入
     [types.MESSAGE_EDITED || 'message_edited', ttsMessageEditedHandler],   // 原地编辑：仅按缓存补回被重渲抹掉的内联 🔊（不动列表/音频/key）
@@ -16790,6 +16788,7 @@ function init() {
   if (initialized) return;
   initialized = true;
   settings = getSettings();
+  void refreshCoreadPersonaAvatar().then(() => rerenderIfOpen());
   seedBuiltinTheaters();
   renderSettingsPanel();
   renderFloatButton();

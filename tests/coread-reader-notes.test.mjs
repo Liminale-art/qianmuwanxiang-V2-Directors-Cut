@@ -7,7 +7,7 @@ const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 const stage = source.slice(source.indexOf('function buildReaderStage'), source.indexOf('function renderSummaryApiCard'));
 assert.match(stage, /sd-reader-toc" style="height:\$\{listDrawerH\}px[\s\S]*sd-reader-toc-grip/, '目录、笔记和书签共用抽屉必须有固定可调高度');
 assert.doesNotMatch(stage, /sd-reader-export|sd-reader-import-data|导出阅读数据|导入阅读数据/, '阅读页设置不得保留重复的导入导出按钮');
-assert.match(stage, /data-act="highlight"[^>]*><i class="fa-solid fa-wave-square"/, '划线主按钮必须使用波浪线图标');
+assert.match(stage, /data-act="highlight"[^>]*><i class="fa-solid fa-underline"/, '划线主按钮必须使用明确的下划线图标');
 assert.match(stage, /data-act="copy" title="复制文字"><i class="fa-solid fa-copy"><\/i><\/button>[\s\S]*data-act="image" title="摘录成图"/, '选区工具必须以纯图标提供复制与摘录成图');
 assert.match(stage, /data-act="remove"><i class="fa-solid fa-eraser"><\/i><span>取消划线<\/span>/, '只有取消划线动作保留文字说明');
 assert.match(stage, /sd-reader-noteedit-tags[\s\S]*sd-reader-excerptoverlay/, '笔记编辑必须支持标签且提供独立摘录图片层');
@@ -30,9 +30,12 @@ assert.match(excerpt, /coreadNotePlainText[\s\S]*coreadCopyText[\s\S]*coreadSave
 assert.match(excerpt, /document\.createElement\('canvas'\)[\s\S]*\.toBlob\(resolve, 'image\/png'\)/, '图片输出必须使用本地原生画布而非外部截图依赖');
 assert.match(excerpt, /coreadBuildExcerptCanvases[\s\S]*pages\.map[\s\S]*canvasStage\.appendChild\(canvases\[index\]\)/, '长摘录必须自动分页且预览直接显示最终下载画布');
 assert.match(excerpt, /savedPresets[\s\S]*coreadRefreshExcerptPresetSelect/, '摘录图片必须支持保存用户自定义方案');
-assert.match(excerpt, /coreadExcerptFontStack[\s\S]*g\.font = `600 28px \$\{fontStack\}`/, '用户字体必须只经由摘录 Canvas 字体栈生效');
-assert.match(excerpt, /文津宋体[\s\S]*文渊黑体 SC[\s\S]*Plix 普利世/, '摘录字体下拉必须包含约定的 ZeoSeven 内置字体');
+assert.match(excerpt, /coreadExcerptFontStack[\s\S]*g\.font = `500 28px \$\{fontStack\}`/, '用户字体必须只经由摘录 Canvas 字体栈生效并降低字重');
+for (const font of ['文津宋体', '霞鹜文楷', '思源宋', '思源黑', '普利世']) assert.match(excerpt, new RegExp(font));
+for (const removed of ['文渊黑体 SC', '汇文明朝体', '小赖字体 Mono', 'B2 Hana']) assert.doesNotMatch(excerpt, new RegExp(removed));
 assert.match(excerpt, /fontsapi\.zeoseven\.com[\s\S]*createElement\('style'\)[\s\S]*coreadPromptExcerptCssFont/, '字体必须通过隔离的 CSS 载入，并支持用户命名后保存到下拉');
+assert.match(source, /powerUserSettings[\s\S]*await import\(stMainScriptUrl\(\)\)[\s\S]*user_avatar/, '冷启动必须从 ST 模块读取当前人设头像');
+assert.match(source, /PERSONA_CHANGED[\s\S]*personaChangedHandler/, '切换人设后必须同步刷新伴读头像');
 
 const binding = source.slice(source.indexOf('function bindReaderStageEvents'), source.indexOf('// 目录 / 笔记 / 书签共用固定高度'));
 assert.match(binding, /bindReaderListGrip[\s\S]*sd-reader-note-favorite[\s\S]*sd-reader-note-copy[\s\S]*sd-reader-note-image/, '阅读器必须接通抽屉高度记忆与笔记操作');
