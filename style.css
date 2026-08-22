@@ -3418,7 +3418,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 /* 正文：占满 topbar 以下全部空间；底栏浮于其上，不预留空位 */
 .sd-reader-body { flex: 1; min-height: 0; overflow-y: auto; padding: 26px var(--sd-rd-px, 6%) 84px; -webkit-overflow-scrolling: touch; }
 /* 对话图钉固定：对话抽屉常驻底部，正文给出 padding 让全文可滚于其上 */
-.sd-reader-dialog-pinned .sd-reader-body { padding-bottom: calc(var(--sd-rd-dialogh, 300px) + 24px); }
+.sd-reader-dialog-pinned[data-reader-panel="dialog"] .sd-reader-body { padding-bottom: calc(var(--sd-rd-dialogh, 300px) + 24px); }
 .sd-reader-article { margin: 0 auto; }
 .sd-reader-h2 { font-size: 1.3em; font-weight: 600; margin: 0 0 1.2em; line-height: 1.4; }
 .sd-reader-article p { margin: 0 0 var(--sd-rd-para, 1em); text-indent: 2em; }
@@ -3449,7 +3449,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-pageturn-prev { left: 12px; }
 .sd-reader-pageturn-next { right: 12px; }
 /* 对话图钉固定时对话抽屉常驻底部，翻页钮抬到抽屉上方 */
-.sd-reader-dialog-pinned .sd-reader-pageturn { bottom: calc(var(--sd-rd-dialogh, 300px) + 16px); }
+.sd-reader-dialog-pinned[data-reader-panel="dialog"] .sd-reader-pageturn { bottom: calc(var(--sd-rd-dialogh, 300px) + 16px); }
 .sd-reader-pageturn:hover:not(:disabled) { color: var(--sd-text); background: var(--sd-folder-head); }
 .sd-reader-pageturn:disabled { opacity: .28; cursor: default; }
 /* 隐操作栏时翻页钮一并淡出（沉浸阅读）；正文点击已由 body 处理 */
@@ -3544,6 +3544,12 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
   padding-bottom: env(safe-area-inset-bottom);
 }
 .sd-reader-panel.open { transform: translateY(0); }
+/* 唯一活动抽屉的 CSS 硬约束：data-reader-panel 是显示真值，残留/误加的 open class 无法让第二块面板露出。 */
+.sd-reader-stage[data-reader-panel] > .sd-reader-panel { transform: translateY(110%); pointer-events: none; }
+.sd-reader-stage[data-reader-panel="toc"] > .sd-reader-toc,
+.sd-reader-stage[data-reader-panel="progress"] > .sd-reader-progress,
+.sd-reader-stage[data-reader-panel="dialog"] > .sd-reader-dialog,
+.sd-reader-stage[data-reader-panel="typo"] > .sd-reader-typo { transform: translateY(0); pointer-events: auto; }
 .sd-reader-toc { padding-bottom: 8px; max-height: 82%; }
 .sd-reader-toc-grip { cursor: ns-resize; width: 52px; padding-block: 6px; margin-block: 1px 0; touch-action: none; }
 .sd-reader-panel-tabs { display: flex; gap: 4px; padding: 12px 14px 8px; flex: 0 0 auto; }
@@ -3604,8 +3610,6 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-dialog-pin { background: transparent; border: 0; color: var(--sd-muted); cursor: pointer; padding: 4px 8px; border-radius: 8px; transform: rotate(38deg); }
 .sd-reader-dialog-pin:hover { color: var(--sd-text); background: var(--sd-glass-weak); }
 .sd-reader-dialog-pin.active { color: var(--sd-accent); transform: rotate(0deg); }
-/* 固定态对话抽屉降一层，其他抽屉打开时可覆盖其上 */
-.sd-reader-dialog-pinned .sd-reader-dialog { z-index: 8; }
 .sd-reader-dialog-body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 14px; }
 .sd-reader-dialog-input { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--sd-hairline); flex: 0 0 auto; align-items: flex-end; }
 .sd-reader-chat-pending { flex: 0 0 100%; display: flex; gap: 7px; min-width: 0; overflow-x: auto; padding: 1px 0 3px; scrollbar-width: none; }
@@ -3642,13 +3646,14 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-chat-image-wrap { display: block; min-width: 0; overflow: hidden; border-radius: 9px; background: var(--sd-glass-weak); }
 .sd-reader-chat-image { display: none; width: 100%; max-width: 240px; height: auto; max-height: 220px; object-fit: cover; border-radius: 9px; box-shadow: none; }
 .sd-reader-chat-image.sd-reader-inline-img-on { display: block; }
-/* 模型思考与正式对话彻底分层：默认只露一枚轻便签，点击才展开；永不混进朗读/总结正文。 */
-.sd-reader-thought-note { width: max-content; max-width: 82%; box-sizing: border-box; margin: 0 0 5px; border: 1px solid color-mix(in srgb, var(--sd-accent) 34%, var(--sd-hairline)); border-radius: 10px; background: color-mix(in srgb, var(--sd-accent) 7%, var(--sd-glass-weak)); color: var(--sd-muted); overflow: hidden; }
+/* 模型思考与正式对话彻底分层：思考中显示实星句，结束后折叠为虚星句；不再使用标签底框。 */
+.sd-reader-thought-note { width: max-content; max-width: 82%; box-sizing: border-box; margin: 0 0 5px; border: 0; background: transparent; color: var(--sd-muted); overflow: visible; }
 .sd-reader-thought-note[open] { width: min(82%, 440px); }
-.sd-reader-thought-note summary { list-style: none; display: flex; align-items: center; min-height: 30px; padding: 4px 9px; cursor: pointer; user-select: none; font-size: .76em; font-weight: 650; white-space: nowrap; }
+.sd-reader-thought-note summary { list-style: none; display: flex; align-items: center; min-height: 26px; padding: 2px 0; cursor: pointer; user-select: none; font-size: .76em; font-weight: 650; white-space: nowrap; }
 .sd-reader-thought-note summary::-webkit-details-marker { display: none; }
-.sd-reader-thought-note > div { padding: 8px 10px 10px; border-top: 1px solid var(--sd-hairline); color: var(--sd-text); font-size: .78em; line-height: 1.62; white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow: auto; scrollbar-width: none; }
+.sd-reader-thought-note > div { padding: 7px 0 9px; border: 0; color: var(--sd-text); font-size: .78em; line-height: 1.62; white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow: auto; scrollbar-width: none; }
 .sd-reader-thought-note > div::-webkit-scrollbar { display: none; }
+.sd-reader-thought-live { color: var(--sd-muted); font-size: .76em; font-weight: 650; white-space: nowrap; }
 /* 逐条浮现：仅最新一条(:last-child)淡入上滑，历史气泡不重演动画（每次重渲只有末条是新加的） */
 @keyframes sd-reader-bubble-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .sd-reader-dtab-chat .sd-reader-msg:last-child { animation: sd-reader-bubble-in .28s ease-out; }
@@ -3908,9 +3913,10 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-mrow-lab { font-size: .84em; color: var(--sd-text); }
 /* 总结 API gen-params：温度/最大输出/上下文 一排三列（去说明·名称+框竖排·等宽均分） */
 .sd-reader-mrow-triple { display: flex; gap: 8px; margin-top: 8px; }
-.sd-reader-assistant-settings > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sd-reader-assistant-settings > summary { display: flex; align-items: center; gap: 10px; }
 .sd-reader-assistant-settings > summary > span { display: inline-flex; align-items: center; gap: 8px; }
-.sd-reader-assistant-settings .sd-reader-assistant-history-clear { width: auto; min-height: 30px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; padding: 5px 11px; border: 1px solid var(--sd-border); border-radius: 9px; background: var(--sd-glass-weak); color: var(--sd-text); cursor: pointer; font-size: .72em; line-height: 1.2; }
+.sd-reader-assistant-clear-row { display: flex; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--sd-hairline); }
+.sd-reader-assistant-settings .sd-reader-assistant-history-clear { width: 100%; min-height: 38px; display: inline-flex; align-items: center; justify-content: center; padding: 8px 12px; border: 1px solid var(--sd-border); border-radius: 10px; background: var(--sd-glass-weak); color: var(--sd-text); cursor: pointer; font: inherit; font-size: .8em; line-height: 1.2; }
 .sd-reader-assistant-settings .sd-reader-assistant-history-clear:hover { color: var(--sd-accent); border-color: color-mix(in srgb, var(--sd-accent) 55%, var(--sd-border)); background: var(--sd-glass); }
 .sd-reader-comic-review { display: flex; flex-direction: column; gap: 10px; min-width: min(520px, 82vw); text-align: left; }
 .sd-reader-comic-review h3 { margin: 0; }

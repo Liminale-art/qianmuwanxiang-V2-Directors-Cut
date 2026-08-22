@@ -34,9 +34,11 @@ assert.match(source, /reasoning_content[\s\S]*onReasoning/);
 assert.match(source, /repairLegacyCoreadDialogMessages/);
 assert.match(source, /sd-reader-thought-note/);
 assert.match(style, /\.sd-reader-thought-note/);
-assert.match(source, /<summary><span>每一个孤独的瞬息<\/span><\/summary>/);
+assert.match(source, /sd-reader-thought-live">✦每一个孤独的瞬息✦<\/span>/, '推理进行中必须显示实星思考标签');
+assert.match(source, /<summary><span>✧还有文字✧<\/span><\/summary>/, '推理结束后折叠标签必须切换为虚星文案');
 assert.doesNotMatch(source, /sd-reader-thought-note"><summary><i/);
 assert.match(style, /\.sd-reader-thought-note\s*\{[^}]*width:\s*max-content/);
+assert.match(style, /\.sd-reader-thought-note\s*\{[^}]*border:\s*0[^}]*background:\s*transparent/, '思维链折叠标签不得再使用底框');
 assert.match(source, /不得输出 Line 1、行数说明、格式解释/);
 
 console.log('Coread dialog output isolation contract OK');

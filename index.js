@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.25.3';
+const VERSION = '1.25.4';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -12016,7 +12016,7 @@ function renderReaderDialogMessages() {
       <button class="sd-reader-msg-action" data-act="delete" data-idx="${idx}" title="删除"><i class="fa-solid fa-trash"></i></button>
     </div>`;
     const thought = who === 'friend' && String(m.thought || '').trim()
-      ? `<details class="sd-reader-thought-note"><summary><span>每一个孤独的瞬息</span></summary><div>${htmlEscape(m.thought)}</div></details>`
+      ? `<details class="sd-reader-thought-note"><summary><span>✧还有文字✧</span></summary><div>${htmlEscape(m.thought)}</div></details>`
       : '';
     return `<div class="sd-reader-msg sd-reader-msg-${who}" data-msg="${htmlEscape(m.id)}">
       ${thought}
@@ -12128,6 +12128,26 @@ async function coreadAssistantReadingContext(bookId) {
   return { meta, visibleText: visibleText || '', chapterIndex, progress: Number(meta.progress) || 0 };
 }
 
+const COREAD_READER_PANELS = new Set(['toc', 'progress', 'dialog', 'typo']);
+
+// 阅读页所有底部抽屉只认这一处状态；DOM class 与 data-reader-panel 每次都从同一值重建。
+// 即使某个浏览器补发点击、某次重渲遗留 class，CSS 也只会显示 data-reader-panel 指定的唯一抽屉。
+function coreadSetReaderActivePanel(panelName = '') {
+  if (!readerView) return;
+  const active = COREAD_READER_PANELS.has(panelName) ? panelName : '';
+  readerView.activePanel = active;
+  readerView.barHidden = !!active;
+  const portal = document.getElementById('sd-reader-portal');
+  const stage = portal?.querySelector('.sd-reader-stage');
+  if (stage) {
+    stage.dataset.readerPanel = active || 'none';
+    stage.classList.toggle('sd-reader-bar-hidden', !!active);
+  }
+  portal?.querySelectorAll('.sd-reader-panel[data-reader-panel]').forEach((panel) => {
+    panel.classList.toggle('open', panel.dataset.readerPanel === active);
+  });
+}
+
 function coreadOpenAssistant(quote = '') {
   if (!readerView) return;
   readerView.assistantOpen = true;
@@ -12135,17 +12155,7 @@ function coreadOpenAssistant(quote = '') {
   if (String(quote || '').trim()) readerAssistant.quote = String(quote).trim().slice(0, 6000);
   const portal = document.getElementById('sd-reader-portal');
   const dialogPanel = portal?.querySelector('.sd-reader-dialog');
-  // 选区入口不经过底栏 togglePanel，必须在这里主动执行同一套抽屉互斥。
-  // 否则设置/目录/进度抽屉会保持 open，与小助手对话框叠在底部并共同顶起正文。
-  readerView.assistantDrawerGuardUntil = Date.now() + 800;
-  const openDialogOnly = () => {
-    const livePortal = document.getElementById('sd-reader-portal');
-    const liveDialog = livePortal?.querySelector('.sd-reader-dialog');
-    livePortal?.querySelectorAll('.sd-reader-panel').forEach((panel) => panel.classList.toggle('open', panel === liveDialog));
-    livePortal?.querySelector('.sd-reader-stage')?.classList.add('sd-reader-bar-hidden');
-  };
-  openDialogOnly();
-  requestAnimationFrame(openDialogOnly);
+  coreadSetReaderActivePanel('dialog');
   dialogPanel?.classList.remove('sd-reader-dialog-voicing');
   portal?.querySelector('.sd-reader-stage')?.classList.add('sd-reader-bar-hidden');
   const chatBody = portal?.querySelector('.sd-reader-dtab-chat');
@@ -12489,7 +12499,12 @@ async function coreadGenerateReply(isReroll = false) {
 
   try {
     let providerThought = '';
-    const onReasoning = (acc) => { providerThought = String(acc || '').trim(); };
+    const showLiveThought = () => {
+      const bubble = friendBubble();
+      if (bubble && !String(bubble.textContent || '').trim() && !bubble.querySelector('.sd-reader-thought-live')) bubble.innerHTML = '<span class="sd-reader-thought-live">✦每一个孤独的瞬息✦</span>';
+      scrollDialogToBottom();
+    };
+    const onReasoning = (acc) => { providerThought = String(acc || '').trim(); if (providerThought) showLiveThought(); };
     const onDelta = settings.streamEnabled
       ? (acc) => {
         if (token !== dialogGenToken) return;
@@ -12497,6 +12512,7 @@ async function coreadGenerateReply(isReroll = false) {
         const preview = stripDialogQuotes(parsed.lines.length ? parsed.lines.join('\n') : parsed.reply);
         const b = friendBubble();
         if (b && preview) { b.textContent = preview; scrollDialogToBottom(); }
+        else if (parsed.thought) showLiveThought();
       }
       : null;
     const imageUrls = [];
@@ -13129,7 +13145,7 @@ async function coreadOpenBook(bookId) {
   const startCh = Number.isInteger(meta.lastChapterIndex) ? meta.lastChapterIndex : 0;
   readerView = {
     bookId, chapterIndex: Math.max(0, Math.min(startCh, rec.chapters.length - 1)),
-    scrollRatio: meta.lastScrollRatio || 0, barHidden: false,
+    scrollRatio: meta.lastScrollRatio || 0, barHidden: false, activePanel: '', dialogPinned: false,
     sessionStart: nowMs(), assistantOpen: false, pendingChatImages: [],
   };
   readerAssistant = { bucket: coreadDialogBucket(bookId), bookId, messages: [], quote: '', loaded: false };
@@ -13533,7 +13549,10 @@ function buildReaderStage() {
   const bodyStyle = `font-size:${c.fontSizePx || 19}px;line-height:${c.lineHeight || 1.9};text-align:${c.justify ? 'justify' : 'left'};--sd-rd-para:${c.paraSpacing || 1}em;--sd-rd-px:${widthToPad(Math.max(28, Math.min(66, c.contentWidthRem || 42)))}%;`;
   const paras = buildReaderParagraphs(chapter.content, chHi);
   const widthRem = Math.max(28, Math.min(66, c.contentWidthRem || 42));
-  const barHidden = readerView.barHidden ? ' sd-reader-bar-hidden' : '';
+  let activePanel = COREAD_READER_PANELS.has(readerView.activePanel) ? readerView.activePanel : '';
+  if (readerView.dialogPinned && !activePanel) activePanel = 'dialog';
+  readerView.activePanel = activePanel;
+  const barHidden = readerView.barHidden || activePanel ? ' sd-reader-bar-hidden' : '';
   const pct = Math.max(0, Math.min(100, meta.progress || 0));
   const preset = c.spacingPreset || 'normal';
   const customOpen = preset === 'custom' ? ' open' : '';
@@ -13550,7 +13569,7 @@ function buildReaderStage() {
   const excerptFontOptions = coreadExcerptFontOptions(excerptCfg);
 
   return `
-    <div class="sd-reader-stage${barHidden}${pinned}${comicMode ? ' sd-reader-comic-mode' : ''}" style="--sd-rd-dialogh:${drawerH}px">
+    <div class="sd-reader-stage${barHidden}${pinned}${comicMode ? ' sd-reader-comic-mode' : ''}" data-reader-panel="${activePanel || 'none'}" style="--sd-rd-dialogh:${drawerH}px">
       <!-- 顶栏（固定不抽回）：书签 / 书名 / 返回(右) -->
       <div class="sd-reader-topbar">
         <button class="sd-reader-mark-btn ${bookmarked ? 'active' : ''}" title="书签"><i class="fa-${bookmarked ? 'solid' : 'regular'} fa-bookmark"></i></button>
@@ -13605,7 +13624,7 @@ function buildReaderStage() {
       </div>
 
       <!-- 目录 / 笔记 / 书签 抽屉（笔记编辑直接在「笔记」页内切换·不再独立抽屉） -->
-      <div class="sd-reader-panel sd-reader-toc" style="height:${listDrawerH}px">
+      <div class="sd-reader-panel sd-reader-toc${activePanel === 'toc' ? ' open' : ''}" data-reader-panel="toc" style="height:${listDrawerH}px">
         <div class="sd-reader-panel-grip sd-reader-toc-grip" title="拖动调整高度"></div>
         <div class="sd-reader-panel-tabs">
           <button class="active" data-ptab="toc">目录</button>
@@ -13624,7 +13643,7 @@ function buildReaderStage() {
       </div>
 
       <!-- 对话抽屉（伴读书友·可拖拽调高·可图钉固定）：头 tab 切「对话 / 语音条」，语音条并入此抽屉 -->
-      <div class="sd-reader-panel sd-reader-dialog${readerView.dialogPinned ? ' open' : ''}${dTab === 'voice' ? ' sd-reader-dialog-voicing' : ''}" style="height:${drawerH}px">
+      <div class="sd-reader-panel sd-reader-dialog${activePanel === 'dialog' ? ' open' : ''}${dTab === 'voice' ? ' sd-reader-dialog-voicing' : ''}" data-reader-panel="dialog" style="height:${drawerH}px">
         <div class="sd-reader-panel-grip sd-reader-dialog-grip"></div>
         <div class="sd-reader-dialog-head">
           <div class="sd-reader-dialog-tabs">
@@ -13650,7 +13669,7 @@ function buildReaderStage() {
       </div>
 
       <!-- 进度抽屉：上行左右半（百分比 | 已读时长）；下行 当前/全文；再下滑块 -->
-      <div class="sd-reader-panel sd-reader-progress">
+      <div class="sd-reader-panel sd-reader-progress${activePanel === 'progress' ? ' open' : ''}" data-reader-panel="progress">
         <div class="sd-reader-panel-grip"></div>
         <div class="sd-reader-prog-inner">
           <div class="sd-reader-prog-halves">
@@ -13667,7 +13686,7 @@ function buildReaderStage() {
       </div>
 
       <!-- 设置抽屉：字号 / 间距预设(+自定义) / 两端对齐 -->
-      <div class="sd-reader-panel sd-reader-typo">
+      <div class="sd-reader-panel sd-reader-typo${activePanel === 'typo' ? ' open' : ''}" data-reader-panel="typo">
         <div class="sd-reader-panel-grip"></div>
         <div class="sd-reader-typo-inner">
           <div class="sd-reader-typo-row"><span>字号</span><input type="range" class="sd-reader-font" min="14" max="30" step="1" value="${c.fontSizePx || 19}"><b class="sd-reader-font-val">${c.fontSizePx || 19}</b></div>
@@ -13951,7 +13970,7 @@ function renderCompanionMoreBody() {
           : `<div class="sd-reader-more-conn">${connLine}</div>`}
       </div>
       <details class="sd-reader-mcard sd-reader-assistant-settings${coreadGuideTargetClass('assistant')}"${guide?.target === 'assistant' ? ' open' : ''}>
-        <summary class="sd-reader-mcard-head"><span><i class="fa-regular fa-lightbulb"></i> 幕伴小助手</span><button type="button" class="sd-reader-assistant-history-clear sd-reader-textbtn">清空助手对话历史</button></summary>
+        <summary class="sd-reader-mcard-head"><span><i class="fa-regular fa-lightbulb"></i> 幕伴小助手</span></summary>
         <label class="sd-reader-mlab">API 预设</label>
         <select class="sd-reader-minput sd-reader-assistant-profile">
           <option value="">跟随伴读对话 API</option>
@@ -13963,6 +13982,9 @@ function renderCompanionMoreBody() {
           <option value="persistent"${assistantCfg.historyMode === 'persistent' ? ' selected' : ''}>随书保存</option>
           <option value="clear"${assistantCfg.historyMode === 'clear' ? ' selected' : ''}>关闭阅读即清空</option>
         </select>
+        <div class="sd-reader-assistant-clear-row">
+          <button type="button" class="sd-reader-assistant-history-clear">清空助手对话历史</button>
+        </div>
       </details>
       <details class="sd-reader-mcard sd-reader-comic-settings${coreadGuideTargetClass('comic')}"${guide?.target === 'comic' ? ' open' : ''}>
         <summary class="sd-reader-mcard-head"><i class="fa-solid fa-images"></i> 漫画与图片</summary>
@@ -15163,24 +15185,14 @@ function bindReaderStageEvents(stageRoot) {
   if (!stageRoot) return;
   const q = (sel) => stageRoot.querySelector(sel);
   const stage = q('.sd-reader-stage');
-  // 收抽屉：图钉固定的对话抽屉不收
-  const closePanels = () => stageRoot.querySelectorAll('.sd-reader-panel').forEach((p) => {
-    if (readerView.dialogPinned && p.classList.contains('sd-reader-dialog')) return;
-    p.classList.remove('open');
-  });
+  // 单一活动抽屉：图钉仅决定关闭其它抽屉后是否回到对话，不再允许两个面板并存。
+  const closePanels = (resumePinned = false) => coreadSetReaderActivePanel(resumePinned && readerView.dialogPinned ? 'dialog' : '');
   const togglePanel = (sel) => {
-    if (sel !== '.sd-reader-dialog' && Date.now() < Number(readerView.assistantDrawerGuardUntil || 0)) return;
     const target = q(sel);
-    const wasOpen = target?.classList.contains('open');
-    closePanels();
-    if (target && !wasOpen) target.classList.add('open');
-    syncBottombar();
-  };
-  // 任一抽屉打开 → 底栏收回（含对话抽屉）；全关 → 底栏复位
-  const syncBottombar = () => {
-    const open = !!stageRoot.querySelector('.sd-reader-panel.open');
-    readerView.barHidden = open;
-    stage?.classList.toggle('sd-reader-bar-hidden', open);
+    const name = target?.dataset.readerPanel || '';
+    const wasOpen = readerView.activePanel === name;
+    const fallback = readerView.dialogPinned && name !== 'dialog' ? 'dialog' : '';
+    coreadSetReaderActivePanel(wasOpen ? fallback : name);
   };
   q('.sd-reader-back')?.addEventListener('click', () => coreadCloseReader());
   q('.sd-reader-comic-scan')?.addEventListener('click', () => void coreadAnalyzeComicPages());
@@ -15483,8 +15495,8 @@ function bindReaderStageEvents(stageRoot) {
     readerView.dialogPinned = !readerView.dialogPinned;
     stage?.classList.toggle('sd-reader-dialog-pinned', readerView.dialogPinned);
     q('.sd-reader-dialog-pin')?.classList.toggle('active', readerView.dialogPinned);
-    if (readerView.dialogPinned) q('.sd-reader-dialog')?.classList.add('open');
-    syncBottombar();
+    if (readerView.dialogPinned) coreadSetReaderActivePanel('dialog');
+    else coreadSetReaderActivePanel(readerView.activePanel || 'dialog');
   });
   // 对话抽屉头 tab：对话 / 语音条（并入·不再独立抽屉）
   const dialogPanel = q('.sd-reader-dialog');
@@ -16567,7 +16579,7 @@ function bindReaderStageEvents(stageRoot) {
     const sel = window.getSelection?.();
     if (sel && String(sel).trim()) return;
     if (tools && !tools.hidden) { hideTools(); return; }
-    if (anyPanelOpen()) { closePanels(); syncBottombar(); return; }
+    if (anyPanelOpen()) { closePanels(true); return; }
     readerView.barHidden = !readerView.barHidden;
     stage?.classList.toggle('sd-reader-bar-hidden', readerView.barHidden);
   });
