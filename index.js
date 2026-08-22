@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.22.2';
+const VERSION = '1.22.3';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -3135,8 +3135,35 @@ function quickWheelItems() {
   return ids.slice(0, 6).map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
 }
 
+let quickWheelOutsideCleanup = null;
+
 function closeQuickWheel() {
+  quickWheelOutsideCleanup?.();
+  quickWheelOutsideCleanup = null;
   document.getElementById(QUICK_WHEEL_ID)?.remove();
+}
+
+function bindQuickWheelOutsideDismiss(root) {
+  const dismiss = (event) => {
+    if (!root?.isConnected) return closeQuickWheel();
+    const target = event.target;
+    if (target instanceof Element && target.closest(`#${QUICK_WHEEL_ID} .sd-wheel-command`)) return;
+    closeQuickWheel();
+  };
+  const dismissOnEscape = (event) => {
+    if (event.key === 'Escape') closeQuickWheel();
+  };
+  // 捕获阶段先于 ST 与其他插件的 stopPropagation；监听在长按事件结束后才建立，不会误关刚展开的轮盘。
+  document.addEventListener('pointerdown', dismiss, true);
+  document.addEventListener('mousedown', dismiss, true);
+  document.addEventListener('touchstart', dismiss, true);
+  document.addEventListener('keydown', dismissOnEscape, true);
+  quickWheelOutsideCleanup = () => {
+    document.removeEventListener('pointerdown', dismiss, true);
+    document.removeEventListener('mousedown', dismiss, true);
+    document.removeEventListener('touchstart', dismiss, true);
+    document.removeEventListener('keydown', dismissOnEscape, true);
+  };
 }
 
 let floorViewportCleanup = null;
@@ -3339,6 +3366,7 @@ function openQuickWheel(btn) {
     holder.appendChild(button);
   });
   document.body.appendChild(root);
+  bindQuickWheelOutsideDismiss(root);
   root.tabIndex = -1;
   root.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeQuickWheel(); });
   root.focus({ preventScroll: true });

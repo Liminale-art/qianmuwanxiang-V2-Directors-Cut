@@ -18,6 +18,9 @@ assert.match(source, /轮盘最多显示 6 项/);
 assert.match(source, /slotMap\s*=\s*\{[\s\S]*?6:\s*\[-3, -2, -1, 1, 2, 3\]/, '六个入口必须以悬浮球为中心上三下三');
 assert.match(source, /button\.innerHTML = `<i class="fa-solid \$\{item\.icon\}"><\/i>`/, '轮盘按钮只显示图标');
 assert.match(source, /sd-wheel-custom-details/, '自定义轮盘入口列表必须可折叠');
+assert.match(source, /document\.addEventListener\('pointerdown', dismiss, true\)/, '轮盘必须在文档捕获阶段监听外部点击');
+assert.match(source, /document\.removeEventListener\('pointerdown', dismiss, true\)/, '轮盘关闭时必须解除外部点击监听');
+assert.match(source, /bindQuickWheelOutsideDismiss\(root\)/);
 
 // 短按仍开主面板，长按才开轮盘；拖动超过阈值会取消长按。
 assert.match(source, /setTimeout\(\(\) =>[\s\S]*?openQuickWheel\(btn\)[\s\S]*?300\)/);
