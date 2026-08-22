@@ -14,7 +14,7 @@ assert.match(css, /\.sd-reader-setup-compact-grid\s*\{[^}]*grid-template-columns
 
 const records = source.slice(source.indexOf('function renderMemRecordsTab'), source.indexOf('function renderMemInjectTab'));
 assert.doesNotMatch(records, /开发测试|sd-reader-test-selftest|sd-reader-test-lore/, '记忆档案不得暴露开发测试卡');
-assert.match(records, /世界书同步[\s\S]*不同步世界书（推荐）[\s\S]*同步到千幕伴读世界书[\s\S]*同步到正文同本世界书/, '千幕档案必须主存储，世界书只提供三档可选镜像');
+assert.match(records, /世界书同步[\s\S]*仅存至千幕档案（本地存储）[\s\S]*同步到千幕伴读世界书[\s\S]*同步至正文记忆插件所用世界书/, '千幕档案必须主存储，世界书只提供三档可选镜像');
 assert.match(records, /默认方案/, '总结预设默认项必须命名为默认方案');
 assert.match(records, /DEFAULT_DISTILL_TEXT_PROMPT[\s\S]*DEFAULT_MAINLINE_SUMMARY_PROMPT/, '蒸馏和主线提示词必须显示各自内置默认');
 assert.doesNotMatch(records, /sd-reader-distillprompt-restore|sd-reader-mainlineprompt-restore|sd-reader-sumitem-badge/, '提示词只保留整体恢复且不再突出内置标签');

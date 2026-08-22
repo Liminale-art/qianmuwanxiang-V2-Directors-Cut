@@ -34,6 +34,9 @@ assert.match(source, /reasoning_content[\s\S]*onReasoning/);
 assert.match(source, /repairLegacyCoreadDialogMessages/);
 assert.match(source, /sd-reader-thought-note/);
 assert.match(style, /\.sd-reader-thought-note/);
+assert.match(source, /<summary><span>每一个孤独的瞬息<\/span><\/summary>/);
+assert.doesNotMatch(source, /sd-reader-thought-note"><summary><i/);
+assert.match(style, /\.sd-reader-thought-note\s*\{[^}]*width:\s*max-content/);
 assert.match(source, /不得输出 Line 1、行数说明、格式解释/);
 
 console.log('Coread dialog output isolation contract OK');

@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.23.1';
+const VERSION = '1.23.2';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -453,11 +453,10 @@ const DEFAULT_SETTINGS = Object.freeze({
       showSource: true,
       savedPresets: [],             // [{id,name,...当前摘录图片设置}]，用户自存方案
     },
-    // 页边助手：独立于角色书友的工具型问答；默认只在本次 ST 页面会话保留历史。
+    // 幕伴小助手：独立于角色书友的工具型问答；默认只在本次 ST 页面会话保留历史。
     assistant: {
       apiProfileId: '',             // 千幕 API 预设；空则跟随伴读对话 API
       historyMode: 'session',       // session | persistent | clear（关闭阅读即清空）
-      recentTurns: 12,              // 每次请求参考最近多少轮助手对话
     },
     // 伴读设定层（1B·复用取材的拉取/呈现·选择独立·身份/人设默认跟随 ST 当前选择+千幕注入逻辑）
     companion: {
@@ -8673,8 +8672,7 @@ function coreadAssistantConfig() {
   const a = c.assistant;
   if (typeof a.apiProfileId !== 'string') a.apiProfileId = '';
   if (!['session', 'persistent', 'clear'].includes(a.historyMode)) a.historyMode = 'session';
-  if (!Number.isFinite(a.recentTurns)) a.recentTurns = 12;
-  a.recentTurns = Math.max(1, Math.min(50, Math.round(a.recentTurns)));
+  delete a.recentTurns;   // v1.23.2 起改为后台固定轻量窗口，不再把无感参数暴露给用户。
   return a;
 }
 
@@ -9626,7 +9624,7 @@ function assistantApiConn() {
   return { apiUrl: profile.apiUrl, apiKey: profile.apiKey, model: profile.model, temperature: profile.temperature };
 }
 
-// 页边助手优先使用自己选中的千幕 API 预设；未选择时沿用伴读对话的统一分发。
+// 幕伴小助手优先使用自己选中的千幕 API 预设；未选择时沿用伴读对话的统一分发。
 async function callCoreadAssistantModel(systemPrompt, userPrompt, opts = {}) {
   const conn = assistantApiConn();
   if (!conn) return callCoreadDialogModel(systemPrompt, userPrompt, opts);
@@ -11500,6 +11498,7 @@ let readerAssistant = { bucket: '', bookId: '', messages: [], quote: '', loaded:
 let readerAssistantBusy = false;
 let readerAssistantAbort = null;
 let readerAssistantToken = 0;
+const COREAD_ASSISTANT_CONTEXT_MESSAGES = 12;   // 固定轻量窗口：约 6 轮问答，不再让用户管理无感参数。
 let dialogBusy = false;          // 伴读对话忙碌态（独立 lane）
 let dialogAbort = null;          // 伴读对话中止句柄
 let dialogGenToken = 0;          // 生成令牌：切书/关阅读使旧回调失效
@@ -11546,7 +11545,7 @@ async function coreadLoadDialog(bookId) {
   if (needsMigration) await coreadSaveDialog();
   // 若对话抽屉正开在对话 tab，载入后补渲消息
   const body = document.querySelector('#sd-reader-portal .sd-reader-dtab-chat');
-  if (body) { body.innerHTML = renderReaderDialogMessages(); scrollDialogToBottom(); }
+  if (body && !readerView?.assistantOpen) { body.innerHTML = renderReaderDialogMessages(); scrollDialogToBottom(); }
   coreadRefreshAssistantPanel();
   coreadSweepOrphanLore();   // 懒清扫：本聊天世界书里指向「已删书」的孤儿伴读条目（每聊天每会话一次）
 }
@@ -11786,7 +11785,7 @@ function renderReaderDialogMessages() {
       <button class="sd-reader-msg-action" data-act="delete" data-idx="${idx}" title="删除"><i class="fa-solid fa-trash"></i></button>
     </div>`;
     const thought = who === 'friend' && String(m.thought || '').trim()
-      ? `<details class="sd-reader-thought-note"><summary><i class="fa-regular fa-note-sticky"></i><span>思考</span><i class="fa-solid fa-chevron-down"></i></summary><div>${htmlEscape(m.thought)}</div></details>`
+      ? `<details class="sd-reader-thought-note"><summary><span>每一个孤独的瞬息</span></summary><div>${htmlEscape(m.thought)}</div></details>`
       : '';
     return `<div class="sd-reader-msg sd-reader-msg-${who}" data-msg="${htmlEscape(m.id)}">
       ${thought}
@@ -11822,7 +11821,7 @@ function scrollDialogToBottom() {
 
 function renderReaderAssistantMessages() {
   const messages = readerAssistant.messages || [];
-  if (!messages.length) return '<div class="sd-reader-assistant-empty"><i class="fa-regular fa-lightbulb"></i><span>选中文字来问，或直接聊一个衍生问题。</span></div>';
+  if (!messages.length) return '<div class="sd-reader-assistant-empty"><span>选中文字来问，或直接聊一个衍生问题。</span></div>';
   return messages.map((message) => {
     const role = message.role === 'user' ? 'user' : 'assistant';
     if (role === 'assistant' && !String(message.text || '').trim()) {
@@ -11837,22 +11836,40 @@ function renderReaderAssistantMessages() {
 
 function coreadRefreshAssistantPanel() {
   const portal = document.getElementById('sd-reader-portal');
-  const panel = portal?.querySelector('.sd-reader-assistant-panel');
-  if (!panel) return;
-  panel.classList.toggle('open', !!readerView?.assistantOpen);
-  const body = panel.querySelector('.sd-reader-assistant-body');
-  if (body) { body.innerHTML = renderReaderAssistantMessages(); body.scrollTop = body.scrollHeight; }
-  const quote = panel.querySelector('.sd-reader-assistant-quote');
+  if (!portal || !readerView) return;
+  const assistantMode = !!readerView.assistantOpen;
+  const body = portal.querySelector('.sd-reader-dtab-chat');
+  if (body) {
+    body.classList.toggle('sd-reader-assistant-body', assistantMode);
+    body.innerHTML = assistantMode ? renderReaderAssistantMessages() : renderReaderDialogMessages();
+    body.scrollTop = body.scrollHeight;
+  }
+  const chatTab = portal.querySelector('.sd-reader-dtab[data-dtab="chat"]');
+  if (chatTab) chatTab.innerHTML = `<i class="fa-solid fa-comments"></i> ${assistantMode ? '幕伴小助手' : '对话'}`;
+  const inputRow = portal.querySelector('.sd-reader-dialog-input');
+  inputRow?.classList.toggle('is-assistant', assistantMode);
+  const quote = portal.querySelector('.sd-reader-assistant-quote');
   if (quote) {
-    quote.hidden = !readerAssistant.quote;
+    quote.hidden = !assistantMode || !readerAssistant.quote;
     const text = quote.querySelector('span');
     if (text) text.textContent = readerAssistant.quote || '';
   }
-  const send = panel.querySelector('.sd-reader-assistant-send');
+  const toggle = portal.querySelector('.sd-reader-assistant-switch');
+  if (toggle) {
+    toggle.classList.toggle('active', assistantMode);
+    toggle.title = assistantMode ? '返回书友对话' : '切换至幕伴小助手';
+    toggle.innerHTML = `<span>${assistantMode ? '书友' : '幕伴'}</span>`;
+  }
+  const input = portal.querySelector('.sd-reader-dialog-ta');
+  if (input) input.placeholder = assistantMode ? '问当前选文，或聊一个衍生问题……' : '但愿你能不期而然地同我一起';
+  const gen = portal.querySelector('.sd-reader-dialog-gen');
+  if (gen) gen.hidden = assistantMode;
+  const send = portal.querySelector('.sd-reader-dialog-send');
   if (send) {
-    send.classList.toggle('is-stop', readerAssistantBusy);
-    send.title = readerAssistantBusy ? '停止回答' : '发送';
-    send.innerHTML = `<i class="fa-solid ${readerAssistantBusy ? 'fa-stop' : 'fa-arrow-up'}"></i>`;
+    send.classList.toggle('is-stop', assistantMode && readerAssistantBusy);
+    send.disabled = assistantMode ? false : dialogBusy;
+    send.title = assistantMode && readerAssistantBusy ? '停止回答' : '发送';
+    send.innerHTML = `<i class="fa-solid ${assistantMode && readerAssistantBusy ? 'fa-stop' : 'fa-arrow-up'}"></i>`;
   }
 }
 
@@ -11881,9 +11898,23 @@ async function coreadAssistantReadingContext(bookId) {
 function coreadOpenAssistant(quote = '') {
   if (!readerView) return;
   readerView.assistantOpen = true;
+  readerView.dialogTab = 'chat';
   if (String(quote || '').trim()) readerAssistant.quote = String(quote).trim().slice(0, 6000);
+  const portal = document.getElementById('sd-reader-portal');
+  const dialogPanel = portal?.querySelector('.sd-reader-dialog');
+  dialogPanel?.classList.add('open');
+  dialogPanel?.classList.remove('sd-reader-dialog-voicing');
+  portal?.querySelector('.sd-reader-stage')?.classList.add('sd-reader-bar-hidden');
+  const chatBody = portal?.querySelector('.sd-reader-dtab-chat');
+  const voiceBody = portal?.querySelector('.sd-reader-dtab-voice');
+  const inputRow = portal?.querySelector('.sd-reader-dialog-input');
+  const tabs = portal?.querySelectorAll('.sd-reader-dtab');
+  tabs?.forEach((button) => button.classList.toggle('active', button.dataset.dtab === 'chat'));
+  if (chatBody) chatBody.hidden = false;
+  if (voiceBody) voiceBody.hidden = true;
+  if (inputRow) inputRow.hidden = false;
   coreadRefreshAssistantPanel();
-  setTimeout(() => document.querySelector('#sd-reader-portal .sd-reader-assistant-input')?.focus(), 40);
+  setTimeout(() => document.querySelector('#sd-reader-portal .sd-reader-dialog-ta')?.focus(), 40);
 }
 
 function coreadStopAssistant(persist = true) {
@@ -11908,13 +11939,12 @@ async function coreadClearAssistantHistory() {
 async function coreadAskAssistant(inputText) {
   const question = String(inputText || '').trim();
   if (!question || readerAssistantBusy || !readerView) return;
-  if (!readerAssistant.loaded) { toast('页边助手正在载入，请稍候。', 'info'); return; }
+  if (!readerAssistant.loaded) { toast('幕伴小助手正在载入，请稍候。', 'info'); return; }
   const quote = readerAssistant.quote || '';
   const userMessage = { id: uid('rda'), role: 'user', text: question, quote, ts: Date.now() };
   readerAssistant.messages.push(userMessage);
   readerAssistant.quote = '';
-  const cfg = coreadAssistantConfig();
-  const prior = readerAssistant.messages.slice(0, -1).slice(-cfg.recentTurns * 2);
+  const prior = readerAssistant.messages.slice(0, -1).slice(-COREAD_ASSISTANT_CONTEXT_MESSAGES);
   const answer = { id: uid('rda'), role: 'assistant', text: '', ts: Date.now() };
   readerAssistant.messages.push(answer);
   readerAssistantBusy = true;
@@ -11929,10 +11959,10 @@ async function coreadAskAssistant(inputText) {
     const spoilerRule = coreadMemory().spoilerProtection !== false
       ? '严格止于当前已读范围。不得透露、暗示或利用后文信息；若问题必须依赖未读内容，直接说明需要继续阅读。'
       : '可以依据当前提供的已读内容作答，不虚构书中未提供的事实。';
-    const systemPrompt = `你是千幕的页边助手，是独立的阅读工具，不扮演书友或正文角色。回答要清楚、自然、实用，可以解释选文、梳理线索、讨论写法，也可以回答由阅读衍生出的额外问题。${spoilerRule}\n当前书籍：《${reading.meta.title || '未命名'}》${reading.meta.author ? `，作者：${reading.meta.author}` : ''}，读至约 ${reading.progress}%。`;
+    const systemPrompt = `你是千幕的幕伴小助手，是独立的阅读工具，不扮演书友或正文角色。回答要清楚、自然、实用，可以解释选文、梳理线索、讨论写法，也可以回答由阅读衍生出的额外问题。${spoilerRule}\n当前书籍：《${reading.meta.title || '未命名'}》${reading.meta.author ? `，作者：${reading.meta.author}` : ''}，读至约 ${reading.progress}%。`;
     const history = prior.map((message) => `${message.role === 'user' ? '用户' : '助手'}：${message.text || ''}`).join('\n');
     const userPrompt = [
-      history ? `【页边助手近期对话】\n${history}` : '',
+      history ? `【幕伴小助手近期对话】\n${history}` : '',
       quote ? `【用户选中的文字】\n${quote}` : '',
       reading.visibleText ? `【当前已读范围】\n${reading.visibleText}` : '',
       `【本次问题】\n${question}`,
@@ -11951,7 +11981,7 @@ async function coreadAskAssistant(inputText) {
     if (token === readerAssistantToken) {
       readerAssistant.messages = readerAssistant.messages.filter((message) => message !== answer);
       await coreadStoreAssistantHistory();
-      toast(`页边助手回答失败：${coreadExplainError(error)}`, 'error');
+      toast(`幕伴小助手回答失败：${coreadExplainError(error)}`, 'error');
     }
   } finally {
     if (token === readerAssistantToken) {
@@ -11968,6 +11998,7 @@ async function coreadAskAssistant(inputText) {
 // 同步发送/生成钮的视觉态（生成中→生成钮变停止钮；发送钮生成期间禁用防插队）。
 function coreadSyncDialogButtons() {
   const portal = document.getElementById('sd-reader-portal');
+  if (readerView?.assistantOpen) { coreadRefreshAssistantPanel(); return; }
   const sendBtn = portal?.querySelector('.sd-reader-dialog-send');
   const genBtn = portal?.querySelector('.sd-reader-dialog-gen');
   if (sendBtn) sendBtn.disabled = dialogBusy;   // 生成中不许再发（避免插进正在生成的批次）
@@ -13042,6 +13073,7 @@ function buildReaderStage() {
   const drawerH = Math.max(180, Math.min(520, c.dialogHeight || 300));
   const pinned = readerView.dialogPinned ? ' sd-reader-dialog-pinned' : '';
   const dTab = readerView.dialogTab === 'voice' ? 'voice' : 'chat';
+  const assistantMode = !!readerView.assistantOpen;
   const excerptCfg = coreadExcerptConfig();
   const excerptPresetOptions = (excerptCfg.savedPresets || []).map((item) => `<option value="${htmlEscape(item.id)}">${htmlEscape(item.name)}</option>`).join('');
   const excerptFontOptions = coreadExcerptFontOptions(excerptCfg);
@@ -13067,15 +13099,6 @@ function buildReaderStage() {
       <button class="sd-reader-pageturn sd-reader-pageturn-prev" ${ci <= 0 ? 'disabled' : ''} title="上一章" aria-label="上一章"><i class="fa-solid fa-chevron-left"></i></button>
       <button class="sd-reader-pageturn sd-reader-pageturn-next" ${ci >= total - 1 ? 'disabled' : ''} title="下一章" aria-label="下一章"><i class="fa-solid fa-chevron-right"></i></button>
 
-      <!-- 页边助手：独立工具型 AI；选区可直接带入引用，历史与角色书友对话完全分离。 -->
-      <button class="sd-reader-assistant-trigger${readerView.assistantOpen ? ' active' : ''}" title="页边助手" aria-label="打开页边助手"><i class="fa-regular fa-lightbulb"></i><span>助手</span></button>
-      <aside class="sd-reader-assistant-panel${readerView.assistantOpen ? ' open' : ''}" aria-label="页边助手">
-        <header><span><i class="fa-regular fa-lightbulb"></i><b>页边助手</b></span><span class="sd-reader-assistant-head-actions"><button class="sd-reader-assistant-clear" title="清空历史"><i class="fa-solid fa-broom"></i></button><button class="sd-reader-assistant-close" title="关闭"><i class="fa-solid fa-xmark"></i></button></span></header>
-        <div class="sd-reader-assistant-body">${renderReaderAssistantMessages()}</div>
-        <div class="sd-reader-assistant-quote"${readerAssistant.quote ? '' : ' hidden'}><i class="fa-solid fa-quote-left"></i><span>${htmlEscape(readerAssistant.quote || '')}</span><button class="sd-reader-assistant-quote-remove" title="移除引用"><i class="fa-solid fa-xmark"></i></button></div>
-        <div class="sd-reader-assistant-composer"><textarea class="sd-reader-assistant-input" rows="1" placeholder="问当前选文，或聊一个衍生问题……"></textarea><button class="sd-reader-assistant-send" title="发送"><i class="fa-solid fa-arrow-up"></i></button></div>
-      </aside>
-
       <!-- 划线工具浮窗（选区/点划线后弹·跟随选区定位·父级 划线|笔记，划线展开样式+取色） -->
       <div class="sd-reader-hltools" hidden>
         <div class="sd-reader-hltools-lv sd-reader-hltools-main">
@@ -13083,7 +13106,7 @@ function buildReaderStage() {
           <button data-act="note" title="笔记"><i class="fa-solid fa-pen"></i></button>
           <button data-act="copy" title="复制文字"><i class="fa-solid fa-copy"></i></button>
           <button data-act="image" title="摘录成图"><i class="fa-solid fa-image"></i></button>
-          <button data-act="assistant" title="问页边助手"><i class="fa-regular fa-lightbulb"></i></button>
+          <button data-act="assistant" title="问幕伴小助手"><i class="fa-regular fa-lightbulb"></i></button>
         </div>
         <div class="sd-reader-hltools-lv sd-reader-hltools-styles" hidden>
           <button data-back title="返回"><i class="fa-solid fa-chevron-left"></i></button>
@@ -13096,7 +13119,7 @@ function buildReaderStage() {
           <button data-act="note" title="笔记"><i class="fa-solid fa-pen"></i></button>
           <button data-act="copy" title="复制文字"><i class="fa-solid fa-copy"></i></button>
           <button data-act="image" title="摘录成图"><i class="fa-solid fa-image"></i></button>
-          <button data-act="assistant" title="问页边助手"><i class="fa-regular fa-lightbulb"></i></button>
+          <button data-act="assistant" title="问幕伴小助手"><i class="fa-regular fa-lightbulb"></i></button>
           <button data-act="remove"><i class="fa-solid fa-eraser"></i><span>取消划线</span></button>
         </div>
       </div>
@@ -13133,7 +13156,7 @@ function buildReaderStage() {
         <div class="sd-reader-panel-grip sd-reader-dialog-grip"></div>
         <div class="sd-reader-dialog-head">
           <div class="sd-reader-dialog-tabs">
-            <button class="sd-reader-dtab ${dTab === 'chat' ? 'active' : ''}" data-dtab="chat"><i class="fa-solid fa-comments"></i> 对话</button>
+            <button class="sd-reader-dtab ${dTab === 'chat' ? 'active' : ''}" data-dtab="chat"><i class="fa-solid fa-comments"></i> ${assistantMode ? '幕伴小助手' : '对话'}</button>
             <button class="sd-reader-dtab ${dTab === 'voice' ? 'active' : ''}" data-dtab="voice"><i class="fa-solid fa-comment-dots"></i> 语音条</button>
           </div>
           <div class="sd-reader-dialog-head-btns">
@@ -13141,12 +13164,14 @@ function buildReaderStage() {
             <button class="sd-reader-dialog-pin ${readerView.dialogPinned ? 'active' : ''}" title="固定对话框"><i class="fa-solid fa-thumbtack"></i></button>
           </div>
         </div>
-        <div class="sd-reader-dialog-body sd-reader-dtab-chat"${dTab === 'chat' ? '' : ' hidden'}>${renderReaderDialogMessages()}</div>
+        <div class="sd-reader-dialog-body sd-reader-dtab-chat${assistantMode ? ' sd-reader-assistant-body' : ''}"${dTab === 'chat' ? '' : ' hidden'}>${assistantMode ? renderReaderAssistantMessages() : renderReaderDialogMessages()}</div>
         <div class="sd-reader-dialog-body sd-reader-dtab-voice"${dTab === 'voice' ? '' : ' hidden'}>${renderReaderVoiceClips()}</div>
-        <div class="sd-reader-dialog-input"${dTab === 'chat' ? '' : ' hidden'}>
-          <textarea class="sd-reader-dialog-ta" placeholder="和「${htmlEscape(companionCharName())}」聊两句……" rows="1"></textarea>
-          <button class="sd-reader-inbtn sd-reader-dialog-send" title="发送"><i class="fa-solid fa-arrow-up"></i></button>
-          <button class="sd-reader-inbtn sd-reader-dialog-gen" title="让书友回复"><i class="fa-solid fa-paper-plane"></i></button>
+        <div class="sd-reader-dialog-input${assistantMode ? ' is-assistant' : ''}"${dTab === 'chat' ? '' : ' hidden'}>
+          <div class="sd-reader-assistant-quote"${assistantMode && readerAssistant.quote ? '' : ' hidden'}><i class="fa-solid fa-quote-left"></i><span>${htmlEscape(readerAssistant.quote || '')}</span><button class="sd-reader-assistant-quote-remove" title="移除引用"><i class="fa-solid fa-xmark"></i></button></div>
+          <button class="sd-reader-inbtn sd-reader-assistant-switch${assistantMode ? ' active' : ''}" title="${assistantMode ? '返回书友对话' : '切换至幕伴小助手'}"><span>${assistantMode ? '书友' : '幕伴'}</span></button>
+          <textarea class="sd-reader-dialog-ta" placeholder="${assistantMode ? '问当前选文，或聊一个衍生问题……' : '但愿你能不期而然地同我一起'}" rows="1"></textarea>
+          <button class="sd-reader-inbtn sd-reader-dialog-send" title="${assistantMode && readerAssistantBusy ? '停止回答' : '发送'}"><i class="fa-solid ${assistantMode && readerAssistantBusy ? 'fa-stop' : 'fa-arrow-up'}"></i></button>
+          <button class="sd-reader-inbtn sd-reader-dialog-gen" title="让书友回复"${assistantMode ? ' hidden' : ''}><i class="fa-solid fa-paper-plane"></i></button>
         </div>
       </div>
 
@@ -13346,7 +13371,7 @@ function renderCoreadSpoilerGuard(m) {
 
 const COREAD_GUIDE_STEPS = [
   { tab: 'api', target: 'api', icon: 'fa-plug-circle-check', title: '连接模型接口', text: '先确认对话 API。可直接跟随 SillyTavern 当前连接，也可选择千幕自定义预设；总结、向量与重排按需配置。' },
-  { tab: 'api', target: 'assistant', icon: 'fa-lightbulb', title: '配置页边助手', text: '页边助手与角色书友分开。可从千幕 API 预设中单独选模型，并决定历史只留本次页面、随书保存，或关闭阅读即清空；阅读时选中文字即可直接提问。' },
+  { tab: 'api', target: 'assistant', icon: 'fa-lightbulb', title: '配置幕伴小助手', text: '幕伴小助手与角色书友分开。可从千幕 API 预设中单独选模型，并决定历史只留本次页面、随书保存，或关闭阅读即清空；阅读时可从对话输入框左侧切换，也可选中文字直接提问。' },
   { tab: 'setup', target: 'context', icon: 'fa-link', title: '确认正文联动', text: '设置伴读参考最近多少层正文聊天。身份会自动跟随当前角色与用户，无需重复填写。' },
   { tab: 'setup', target: 'sources', icon: 'fa-layer-group', title: '选择伴读取材', text: '按需勾选世界书和预设条目。防全知剧透会继续按阅读水位隔离尚未读到的内容。' },
   { tab: 'records', target: 'dialog-summary', icon: 'fa-comments', title: '整理伴读对话', text: '自动总结会在短对话累积到设定条数后写入记忆；手动总结适合补整指定区间。两者都写入同一切片池，重叠时会先提醒再替换。' },
@@ -13448,25 +13473,20 @@ function renderCompanionMoreBody() {
              </select>`
           : `<div class="sd-reader-more-conn">${connLine}</div>`}
       </div>
-      <div class="sd-reader-mcard sd-reader-assistant-settings${coreadGuideTargetClass('assistant')}">
-        <div class="sd-reader-mcard-head"><i class="fa-regular fa-lightbulb"></i> 页边助手</div>
+      <details class="sd-reader-mcard sd-reader-assistant-settings${coreadGuideTargetClass('assistant')}">
+        <summary class="sd-reader-mcard-head"><span><i class="fa-regular fa-lightbulb"></i> 幕伴小助手</span><button type="button" class="sd-reader-assistant-history-clear" title="清空幕伴小助手历史" aria-label="清空幕伴小助手历史"><i class="fa-solid fa-broom"></i></button></summary>
         <label class="sd-reader-mlab">API 预设</label>
         <select class="sd-reader-minput sd-reader-assistant-profile">
           <option value="">跟随伴读对话 API</option>
           ${profiles.map((profile) => `<option value="${htmlEscape(profile.id)}"${profile.id === assistantCfg.apiProfileId ? ' selected' : ''}>${htmlEscape(profile.name || profile.model || '未命名API')}</option>`).join('')}
         </select>
-        <div class="sd-reader-mrow-double sd-reader-assistant-setting-grid">
-          <label class="sd-reader-mlab-inline">历史保存
-            <select class="sd-reader-minput sd-reader-assistant-history-mode">
-              <option value="session"${assistantCfg.historyMode === 'session' ? ' selected' : ''}>本次页面会话</option>
-              <option value="persistent"${assistantCfg.historyMode === 'persistent' ? ' selected' : ''}>随书保存</option>
-              <option value="clear"${assistantCfg.historyMode === 'clear' ? ' selected' : ''}>关闭阅读即清空</option>
-            </select>
-          </label>
-          <label class="sd-reader-mlab-inline">参考最近轮数<input type="number" class="sd-reader-minput sd-reader-assistant-recent" min="1" max="50" step="1" value="${assistantCfg.recentTurns}"></label>
-        </div>
-        <button type="button" class="sd-reader-mbtn sd-reader-assistant-history-clear"><i class="fa-solid fa-broom"></i>清空当前助手历史</button>
-      </div>
+        <label class="sd-reader-mlab">历史保存</label>
+        <select class="sd-reader-minput sd-reader-assistant-history-mode">
+          <option value="session"${assistantCfg.historyMode === 'session' ? ' selected' : ''}>本次页面会话</option>
+          <option value="persistent"${assistantCfg.historyMode === 'persistent' ? ' selected' : ''}>随书保存</option>
+          <option value="clear"${assistantCfg.historyMode === 'clear' ? ' selected' : ''}>关闭阅读即清空</option>
+        </select>
+      </details>
       ${renderSummaryApiCard(m)}
       <div class="sd-reader-mcard">
         <div class="sd-reader-mcard-head"><i class="fa-solid fa-vector-square"></i> 向量检索 ${renderMemSwitch('sd-reader-vector-en', m.vectorEnabled)}</div>
@@ -13497,7 +13517,7 @@ function renderMemRecordsTab(m) {
   const boundN = coreadBoundBuckets().length;
   // 当前书用于档案总览标题。
   const curBook = coreadBookMeta(readerDialog.bookId);
-  const syncLabel = m.worldSyncMode === 'shared' ? '同步至正文世界书' : (m.worldSyncMode === 'dedicated' ? '同步至千幕世界书' : '不同步世界书');
+  const syncLabel = m.worldSyncMode === 'shared' ? '正文记忆同书' : (m.worldSyncMode === 'dedicated' ? '千幕伴读世界书' : '仅存千幕档案');
   // 千幕档案是主存储，世界书仅作用户可选镜像。
   const storageCard = `
     <details class="sd-reader-mcard">
@@ -13505,9 +13525,9 @@ function renderMemRecordsTab(m) {
       <div class="sd-reader-mrow">
         <span class="sd-reader-mrow-lab" style="white-space:nowrap">同步方式</span>
         <select class="sd-reader-minput sd-reader-storagemode"${coreadWorldSyncBusy ? ' disabled' : ''}>
-          <option value="none"${m.worldSyncMode === 'none' ? ' selected' : ''}>不同步世界书（推荐）</option>
+          <option value="none"${m.worldSyncMode === 'none' ? ' selected' : ''}>仅存至千幕档案（本地存储）</option>
           <option value="dedicated"${m.worldSyncMode === 'dedicated' ? ' selected' : ''}>同步到千幕伴读世界书</option>
-          <option value="shared"${m.worldSyncMode === 'shared' ? ' selected' : ''}>同步到正文同本世界书</option>
+          <option value="shared"${m.worldSyncMode === 'shared' ? ' selected' : ''}>同步至正文记忆插件所用世界书</option>
         </select>
       </div>
     </details>`;
@@ -15010,6 +15030,14 @@ function bindReaderStageEvents(stageRoot) {
   const dialogSend = q('.sd-reader-dialog-send');
   const dialogGen = q('.sd-reader-dialog-gen');
   const doSend = () => {
+    if (readerView.assistantOpen) {
+      if (readerAssistantBusy) { coreadStopAssistant(); return; }
+      const text = dialogTa?.value || '';
+      if (!text.trim()) return;
+      if (dialogTa) { dialogTa.value = ''; dialogTa.style.height = 'auto'; }
+      void coreadAskAssistant(text);
+      return;
+    }
     if (dialogBusy) return;   // 生成中不许再发（防插进正在生成的批次）
     const text = dialogTa?.value || '';
     if (text.trim()) {
@@ -15030,44 +15058,21 @@ function bindReaderStageEvents(stageRoot) {
     dialogTa.style.height = 'auto';
     dialogTa.style.height = `${Math.min(120, dialogTa.scrollHeight)}px`;
   });
-  // 页边助手：侧边胶囊 + 独立问答面板。不会写入角色对话，也不参与伴读记忆自动总结。
-  const assistantPanel = q('.sd-reader-assistant-panel');
-  const assistantInput = q('.sd-reader-assistant-input');
-  q('.sd-reader-assistant-trigger')?.addEventListener('click', (event) => {
+  // 幕伴小助手复用对话抽屉：输入框左侧一键切换，仍与书友对话/伴读记忆完全隔离。
+  q('.sd-reader-assistant-switch')?.addEventListener('click', (event) => {
     event.stopPropagation();
+    if (dialogBusy) { toast('先停止书友回复，再切换到幕伴小助手。', 'info'); return; }
+    if (readerAssistantBusy) coreadStopAssistant();
     readerView.assistantOpen = !readerView.assistantOpen;
-    assistantPanel?.classList.toggle('open', readerView.assistantOpen);
-    event.currentTarget.classList.toggle('active', readerView.assistantOpen);
-    if (readerView.assistantOpen) { coreadRefreshAssistantPanel(); setTimeout(() => assistantInput?.focus(), 30); }
-  });
-  q('.sd-reader-assistant-close')?.addEventListener('click', () => {
-    readerView.assistantOpen = false;
-    assistantPanel?.classList.remove('open');
-    q('.sd-reader-assistant-trigger')?.classList.remove('active');
-  });
-  q('.sd-reader-assistant-clear')?.addEventListener('click', () => {
-    confirmDialog('清空页边助手', '清空当前书籍的页边助手对话？此操作不会影响书友对话和伴读记忆。').then((yes) => { if (yes) void coreadClearAssistantHistory(); });
+    if (dialogTa) { dialogTa.value = ''; dialogTa.style.height = 'auto'; }
+    coreadRefreshAssistantPanel();
+    setTimeout(() => dialogTa?.focus(), 30);
   });
   q('.sd-reader-assistant-quote-remove')?.addEventListener('click', () => { readerAssistant.quote = ''; coreadRefreshAssistantPanel(); });
-  const sendAssistant = () => {
-    if (readerAssistantBusy) { coreadStopAssistant(); return; }
-    const text = assistantInput?.value || '';
-    if (!text.trim()) return;
-    if (assistantInput) { assistantInput.value = ''; assistantInput.style.height = 'auto'; }
-    void coreadAskAssistant(text);
-  };
-  q('.sd-reader-assistant-send')?.addEventListener('click', sendAssistant);
-  assistantInput?.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendAssistant(); }
-  });
-  assistantInput?.addEventListener('input', () => {
-    assistantInput.style.height = 'auto';
-    assistantInput.style.height = `${Math.min(120, assistantInput.scrollHeight)}px`;
-  });
   // 载入完成后若对话流已在缓存，补渲（异步载入可能晚于本次绑定）
   if (readerDialog.loaded && readerDialog.bookId === readerView.bookId) {
     const cb = q('.sd-reader-dtab-chat');
-    if (cb) cb.innerHTML = renderReaderDialogMessages();
+    if (cb) cb.innerHTML = readerView.assistantOpen ? renderReaderAssistantMessages() : renderReaderDialogMessages();
   }
   // 气泡操作：重roll / 编辑 / 删除（事件委托·重渲后仍生效）
   const chatBody = q('.sd-reader-dtab-chat');
@@ -15288,7 +15293,8 @@ function bindReaderStageEvents(stageRoot) {
       return;
     }
     if (e.target.closest('.sd-reader-assistant-history-clear')) {
-      confirmDialog('清空页边助手', '清空当前书籍的页边助手对话？书友对话和伴读记忆不会受影响。').then((yes) => { if (yes) void coreadClearAssistantHistory(); });
+      e.preventDefault(); e.stopPropagation();
+      confirmDialog('清空幕伴小助手', '清空当前书籍的幕伴小助手对话？书友对话和伴读记忆不会受影响。').then((yes) => { if (yes) void coreadClearAssistantHistory(); });
       return;
     }
     if (e.target.closest('.sd-reader-pack-export')) {
@@ -15693,7 +15699,6 @@ function bindReaderStageEvents(stageRoot) {
     if (e.target.closest('.sd-reader-sum-temp')) { m.summaryTemperature = Math.max(0, Math.min(2, Number(e.target.value) || 0)); saveSettings(); return; }
     if (e.target.closest('.sd-reader-sum-maxtok')) { m.summaryMaxTokens = Math.max(0, Math.round(Number(e.target.value) || 0)); saveSettings(); return; }
     if (e.target.closest('.sd-reader-sum-ctx')) { m.summaryContextChars = Math.max(0, Math.round(Number(e.target.value) || 0)); saveSettings(); return; }
-    if (e.target.closest('.sd-reader-assistant-recent')) { coreadAssistantConfig().recentTurns = Math.max(1, Math.min(50, Math.round(Number(e.target.value) || 12))); saveSettings(); return; }
     // 自动/手动总结数值 + 注入设置（数字框·不重渲）
     if (e.target.closest('.sd-reader-distill-every')) { m.distillEvery = Math.max(2, Number(e.target.value) || 30); saveSettings(); return; }
     if (e.target.closest('.sd-reader-distill-textevery')) { m.distillTextEvery = Math.max(1000, Number(e.target.value) || 8000); saveSettings(); return; }
