@@ -9,7 +9,7 @@ const shelfBinding = source.slice(source.indexOf('function bindLibraryViewEvents
 
 assert.match(shelfMarkup, /<label class="sd-reader-import sd-reader-import-fab"[\s\S]*<input type="file" class="sd-reader-import-input sd-reader-native-file"/, '书架导入必须由 label 直接关联常驻原生文件控件');
 assert.doesNotMatch(shelfBinding, /\.sd-reader-import['"]\)\?\.addEventListener\(['"]click['"]/, '书架导入不得在点击回调中二次调用 input.click()');
-assert.match(shelfBinding, /\.sd-reader-import-input['"]\)\?\.addEventListener\(['"]change['"][\s\S]*input\.value = ''[\s\S]*coreadHandleImportFiles\(files\)/, '文件选择后必须立即清空控件并进入支持连续图片的统一解析');
+assert.match(shelfBinding, /\.sd-reader-import-input['"]\)\?\.addEventListener\(['"]change['"][\s\S]*input\.value = ''[\s\S]*coreadHandleImportFiles\(files\)/, '文件选择后必须立即清空控件并进入统一电子书解析');
 assert.match(source, /application\/x-mobipocket-ebook/, 'iOS 文件提供器的 MOBI MIME 类型必须受支持');
 assert.match(css, /\.sd-reader-native-file\s*\{[\s\S]*opacity:\s*0[^}]*clip-path:\s*inset\(50%\)/, '文件控件必须视觉隐藏但不能使用 display:none');
 assert.match(css, /\.sd-reader-import-fab \.sd-reader-import-input,[\s\S]*\.sd-reader-refill-pick \.sd-reader-refill-input\s*\{[^}]*inset:\s*0[^}]*width:\s*100%[^}]*height:\s*100%/, 'iOS 上原生文件控件本身必须覆盖书架和补正文按钮');
@@ -17,7 +17,9 @@ assert.match(css, /\.sd-reader-import-fab \.sd-reader-import-input,[\s\S]*\.sd-r
 const refillChooser = source.slice(source.indexOf('function coreadShowRefillChooser'), source.indexOf('function coreadPurgeBookMemory'));
 const openBook = source.slice(source.indexOf('async function coreadOpenBook'), source.indexOf('function coreadCloseReader'));
 assert.match(refillChooser, /sd-reader-refill-pick[\s\S]*<input type="file" class="sd-reader-refill-input sd-reader-native-file"/, '跨设备补正文弹层必须内嵌原生文件控件');
-assert.match(refillChooser, /\.sd-reader-refill-input['"]\)\?\.addEventListener\(['"]change['"][\s\S]*coreadHandleImportFiles\(files, bookId\)/, '补正文文件必须进入支持连续图片的统一解析并写回原书');
+assert.match(refillChooser, /\.sd-reader-refill-input['"]\)\?\.addEventListener\(['"]change['"][\s\S]*coreadHandleImportFiles\(files, bookId\)/, '补正文文件必须进入统一电子书解析并写回原书');
+assert.doesNotMatch(shelfMarkup, /sd-reader-import-input[^>]*multiple/, '书架电子书导入不得启用多文件选择');
+assert.doesNotMatch(refillChooser, /sd-reader-refill-input[^>]*multiple/, '跨设备补全不得启用多文件选择');
 assert.doesNotMatch(refillChooser, /\.click\(\)/, '补正文入口不得再以脚本模拟文件控件点击');
 assert.match(openBook, /coreadShowRefillChooser\(bookId\)/, '正文未缓存时必须打开 iOS 兼容的补正文选择层');
 assert.doesNotMatch(openBook, /confirmDialog[\s\S]*coreadTriggerImport/, '正文未缓存路径不得等待确认后再触发文件选择');

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { parseComicArchive } from '../qianmu-reader.js';
+import { parseComicArchive, parseMobi } from '../qianmu-reader.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
@@ -26,9 +26,40 @@ assert.equal(parsed.pageCount, 3, 'CBZ 只应读取可见图片');
 assert.deepEqual(parsed.images.map((item) => item.name), ['2.png', '10.jpg', 'folder/1.webp'], '漫画页必须按自然文件名排序');
 assert.deepEqual(parsed.chapters.map((item) => item.content), ['⟦img:1⟧', '⟦img:2⟧', '⟦img:3⟧']);
 
+function buildClassicMobiComic() {
+  const html = Buffer.from('<html><body><img recindex="00001" alt="封面"/><mbp:pagebreak/><img recindex="00002" alt="第 1 页"/></body></html>', 'utf8');
+  const record0 = Buffer.alloc(300);
+  record0.writeUInt16BE(1, 0);              // PalmDOC: uncompressed
+  record0.writeUInt16BE(1, 8);              // one text record
+  record0.write('MOBI', 16, 'ascii');
+  record0.writeUInt32BE(232, 20);
+  record0.writeUInt32BE(65001, 28);
+  record0.writeUInt32BE(2, 0x6c);            // first image = PalmDB record 2
+  const records = [record0, html, Buffer.from([0xff, 0xd8, 0xff, 0xd9]), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])];
+  const headerSize = 78 + records.length * 8;
+  const output = Buffer.alloc(headerSize + records.reduce((sum, record) => sum + record.length, 0));
+  output.writeUInt16BE(records.length, 76);
+  let offset = headerSize;
+  records.forEach((record, index) => {
+    output.writeUInt32BE(offset, 78 + index * 8);
+    record.copy(output, offset);
+    offset += record.length;
+  });
+  return output.buffer.slice(output.byteOffset, output.byteOffset + output.byteLength);
+}
+
+const mobiComic = parseMobi(buildClassicMobiComic());
+assert.equal(mobiComic.pageCount, 2, '经典 MOBI 的 recindex 图片必须按正文页序解析');
+assert.deepEqual(mobiComic.chapters.map((chapter) => chapter.content), ['⟦img:1⟧', '⟦img:2⟧']);
+assert.deepEqual(mobiComic.images.map((image) => image.mime), ['image/jpeg', 'image/png']);
+
 // 导入和阅读模式。
-assert.match(source, /COREAD_BOOK_ACCEPT[\s\S]*\.cbz[\s\S]*image\/\*/, '书架必须接收 CBZ 和连续图片');
-assert.match(source, /coreadHandleImportFiles\(files/, '导入必须保留多文件选择');
+const accept = /const COREAD_BOOK_ACCEPT = '([^']+)'/.exec(source)?.[1] || '';
+assert.match(accept, /\.epub[\s\S]*\.mobi[\s\S]*\.cbz/, '书架必须接收 EPUB、MOBI 和 CBZ 漫画容器');
+assert.doesNotMatch(accept, /image\/\*|\.jpg|\.png/, '书架不得继续接收散装单图或连续图片');
+assert.doesNotMatch(source, /sd-reader-import-input[^>]*multiple|sd-reader-refill-input[^>]*multiple/, '书籍导入与跨端补全必须一次选择一个电子书容器');
+assert.match(source, /comicPages \/ parsed\.chapters\.length >= \.8/, '图片型 EPUB 必须自动进入漫画阅读模式');
+assert.match(source, /!text && parsed\.pageCount && parsed\.images/, '图片型 MOBI 必须自动进入漫画阅读模式');
 assert.match(source, /mode:\s*'comic'[\s\S]*pageCount/, '漫画必须保存独立模式和页数');
 assert.match(source, /sd-reader-comic-mode/, '漫画阅读页必须有独立布局');
 assert.match(css, /\.sd-reader-comic-mode \.sd-reader-inline-img/, '漫画图片必须使用独立阅读样式');

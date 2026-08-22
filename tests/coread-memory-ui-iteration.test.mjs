@@ -39,6 +39,12 @@ assert.match(inject, /最近 \$\{scanN\} 条对话/, '召回管线必须按对�
 assert.doesNotMatch(inject, /末240字|fa-circle-info|真正注入了哪些|② 锚定词/, '注入页旧说明和移动端不可见注释必须移除');
 assert.match(inject, /② 关键词锚定/, '锚定词必须改名为关键词锚定');
 assert.match(inject, />向量<\/span>[\s\S]*>重排<\/span>/, '向量和重排状态只以标签颜色表达');
+assert.match(source, /async function coreadWithRetry[\s\S]*attempt <= retries[\s\S]*coreadRetryableError[\s\S]*openUntil: Date\.now\(\) \+ 30000/, '检索异步阶段必须执行三次静默重试并在最终失败后短暂熔断');
+assert.match(source, /status === 408 \|\| status === 429 \|\| status >= 500/, '只应重试网络、408、429 与服务端错误');
+assert.match(source, /coreadPipelineFailed\('vector'[\s\S]*return bm25\.slice/, '向量最终失败必须回退 BM25 且不中断回复');
+assert.match(source, /coreadPipelineFailed\('rerank'[\s\S]*已使用未重排的融合结果/, '重排最终失败必须保留融合结果');
+assert.match(source, /sd-coread-notice-layer[\s\S]*document\.body\.appendChild/, '最终失败提示必须挂到 body 顶层通知层');
+assert.match(css, /#sd-coread-notice-layer[^}]*z-index:\s*2147483647/, '召回失败提示必须显示在伴读中心与 ST 弹层之上');
 
 const picker = source.slice(source.indexOf('function coreadMainlinePageData'), source.indexOf('async function coreadOpenSliceManagerDialog'));
 assert.match(picker, /sd-reader-mlrow-copy[\s\S]*sd-reader-mlrow-floor[\s\S]*楼层 \$\{it\.floor\}/, '主线消息必须以正文开头和楼层号组成折叠卡');

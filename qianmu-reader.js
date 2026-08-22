@@ -854,9 +854,11 @@ export async function parseComicArchive(arrayBuffer, JSZip) {
 
 /* ============================================================
    九、MOBI 解析（无外部依赖）
-   PalmDB 记录表 → PalmDOC/MOBI 头 → 文本记录（无压缩或 PalmDOC LZ77）→ 去 HTML。
+   PalmDB 记录表 → PalmDOC/MOBI 头 → 文本记录（无压缩或 PalmDOC LZ77）→
+   正文 / recindex 图片资源。经典 MOBI 漫画通常以一段 pagebreak HTML 描述页序，
+   图片从 firstImageIndex 起按 recindex(1-based) 存在后续 PalmDB 记录中。
    不支持 HUFF/CDIC 压缩与 KF8/AZW3 新容器（抛错让上层提示）。
-   返回 { title, author, text }。
+   返回 { title, author, text, chapters?, images?, cover?, pageCount? }。
    ============================================================ */
 
 // PalmDOC (LZ77) 解压单条记录
@@ -919,6 +921,7 @@ export function parseMobi(arrayBuffer) {
   let fullName = '';
   let author = '';
   let extraFlags = 0;
+  let firstImageIndex = 0;
 
   // MOBI 头识别（rec0 偏移 16 起 "MOBI"）
   const hasMobiHeader = rec0.length >= 20 && rec0[16] === 0x4D && rec0[17] === 0x4F && rec0[18] === 0x42 && rec0[19] === 0x49;
@@ -927,6 +930,12 @@ export function parseMobi(arrayBuffer) {
     encoding = readU32BE(rdv, 28);              // 65001=UTF-8 1252=win1252
     // extraFlags 在 rec0 偏移 0xF2（U16BE）；仅当 MOBI 头够长且 rec0 覆盖到该位置时才读
     try { if (16 + mobiHeaderLen >= 0xF4 && rec0.length >= 0xF4) extraFlags = readU16BE(rdv, 0xF2); } catch (_) {}
+    // firstImageIndex 位于 PalmDOC 记录 0 的绝对偏移 0x6c（即 MOBI 头相对偏移 0x5c）。
+    // 0 / 0xffffffff 表示没有图片资源。
+    try {
+      const value = readU32BE(rdv, 0x6C);
+      if (value > 0 && value !== 0xFFFFFFFF && value < numRecords) firstImageIndex = value;
+    } catch (_) {}
     // 书名：fullName offset/length（MOBI 头偏移 0x54/0x58，均相对 rec0 起点=16）
     try {
       const nameOff = readU32BE(rdv, 0x54);
@@ -998,7 +1007,55 @@ export function parseMobi(arrayBuffer) {
   const text = stripHtmlToText(html);
   // 书名兜底：EXTH/fullName 没有则从正文首个标题猜
   const title = (fullName || pickHtmlTitle(html) || '').trim();
-  return { title, author: author || '', text };
+  const media = extractMobiImages(html, firstImageIndex, recData, numRecords);
+  return { title, author: author || '', text, ...media };
+}
+
+function mobiImageType(bytes) {
+  if (!bytes || bytes.length < 4) return '';
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8) return 'image/jpeg';
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return 'image/png';
+  const head = String.fromCharCode(...bytes.subarray(0, Math.min(6, bytes.length)));
+  if (head === 'GIF87a' || head === 'GIF89a') return 'image/gif';
+  if (head.slice(0, 4) === 'RIFF' && bytes.length >= 12 && String.fromCharCode(...bytes.subarray(8, 12)) === 'WEBP') return 'image/webp';
+  return '';
+}
+
+// 把经典 MOBI 的 <img recindex="00001"> 页序转成与 EPUB/CBZ 相同的占位符章节。
+// 只提取正文实际引用的记录，避免把封面缩略图、索引记录等内部资源误当漫画页。
+function extractMobiImages(html, firstImageIndex, recData, numRecords) {
+  if (!firstImageIndex || !html) return {};
+  const refs = [];
+  const imgRe = /<img\b[^>]*\brecindex\s*=\s*["']?(\d+)["']?[^>]*>/gi;
+  let match;
+  while ((match = imgRe.exec(html)) !== null) {
+    const ref = Number.parseInt(match[1], 10);
+    if (!Number.isFinite(ref) || ref < 1 || refs.some((item) => item.ref === ref)) continue;
+    const alt = (/\balt\s*=\s*["']([^"']*)["']/i.exec(match[0]) || [])[1] || '';
+    refs.push({ ref, alt: decodeHtmlEntities(alt).trim() });
+  }
+  if (!refs.length) return {};
+  const images = [];
+  const chapters = [];
+  for (const item of refs) {
+    const recordIndex = firstImageIndex + item.ref - 1;
+    if (recordIndex < 0 || recordIndex >= numRecords) continue;
+    const raw = recData(recordIndex);
+    const mime = mobiImageType(raw);
+    if (!mime || !raw?.length) continue;
+    const n = images.length + 1;
+    // 导入器会立即逐页写入 IndexedDB；这里保留视图可避免 70MB 漫画解析时再复制一整份峰值内存。
+    const bytes = raw;
+    images.push({ n, bytes, mime, recindex: item.ref });
+    chapters.push({ title: item.alt || (n === 1 ? '封面' : `第 ${n - 1} 页`), content: `⟦img:${n}⟧` });
+  }
+  if (!images.length) return {};
+  return {
+    chapters,
+    images,
+    cover: { bytes: images[0].bytes, mime: images[0].mime },
+    pageCount: images.length,
+  };
 }
 
 // 变长尾长度：MOBI 文本记录尾部「多字节 trailing 区」的大小，编码在该区最后 1~4 字节里。

@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.24.0';
+const VERSION = '1.25.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -8661,8 +8661,10 @@ let companionPresetView = '';    // 伴读设定浮层中：当前查看条目�
 let coreadCurrentDictId = '';    // 注入状态tab：当前查看/编辑的词典册ID（空=默认整册视图）
 let coreadWorldSyncBusy = false; // 世界书镜像切换/批量同步互斥，防止连续切换造成交叉写入
 let coreadGuideStep = null;      // 首次引导仅是本次打开时的临时游标；完成态才持久化
-let coreadCenterPage = 'main';   // main | archives | mainline：伴读中心内部导航，不再叠加大弹窗
+let coreadCenterPage = 'main';   // main | archives | slices | mainline：伴读中心内部导航，不再叠加大弹窗
 let coreadArchivePageItems = [];
+let coreadSlicePreview = false;  // 开发库空档案版面预览：仅内存 fixture，绝不写 IDB/世界书/向量库
+const coreadVectorStates = new Map(); // sliceId → { state, attempt, error, fingerprint, updatedAt }
 let coreadMainlineFocusFloor = 0;
 
 function coread() {
@@ -9372,7 +9374,14 @@ async function buildCompanionContext(bookId, recallQuery = '') {
     // 近景保底：最近 N 条无条件带上，且从检索候选剔除（防重复）
     const recent = coreadRecentSlices(mem.recentInject || 0, recallPool);
     const excludeIds = new Set(recent.map((h) => h.slice.id));
-    const hits = (mem.recallCount || 0) > 0 ? await coreadRetrieveHits(recallQuery, mem.recallCount, excludeIds, mem, recallPool) : [];
+    let hits = [];
+    if ((mem.recallCount || 0) > 0) {
+      try { hits = await coreadRetrieveHits(recallQuery, mem.recallCount, excludeIds, mem, recallPool); }
+      catch (error) {
+        coreadPipelineFailed('memory', error, '已回退本地关键词召回');
+        hits = coreadRecallSlices(recallQuery, mem.recallCount, excludeIds, recallPool);
+      }
+    }
     coreadEchoTick(hits);   // 真实注入路径：衰减旧回响 + 登记本轮检索命中（近景每轮都带·无需回响）
     // 组装顺序：近景在前（最近的先），检索命中在后
     const all = [...recent, ...hits];
@@ -9975,11 +9984,14 @@ async function coreadPersistSlice(res, meta, extra = {}) {
       mainlineFloors: extra.mainlineFloors || [],
     },
   };
-  readerDialog.slices.push(reader.normalizeCoreadSlice(rawSlice, {
+  const normalizedSlice = reader.normalizeCoreadSlice(rawSlice, {
     bookId,
     bucket: readerDialog.bucket,
     boundary,
-  }));
+  });
+  readerDialog.slices.push(normalizedSlice);
+  coreadVectorStates.set(sliceId, { state: 'pending', attempt: 0, fingerprint: coreadSliceFingerprint(normalizedSlice), updatedAt: Date.now() });
+  if (coreadMemory().vectorEnabled) queueMicrotask(() => { void coreadSyncSliceVector(sliceId, { announce: false }).then(() => rerenderMoreIfOpen?.()); });
   return { ok: true, wrote: !!finalUid, batch, sliceId, writeErr };
 }
 
@@ -10356,9 +10368,11 @@ async function coreadRegenSlice(sliceId) {
   const meta = coreadBookMeta(readerDialog.bookId) || {};
   const names = { char: companionCharName(), user: getPersonaName() || '我' };
   try {
-    const res = await coreadDistillSegment(seg, m, meta, names);
-    if (!res) return { ok: false, reason: '该切片对应的对话已不存在或模型无返回' };
-    slice.summary = res.summary; slice.keywords = res.keywords; slice.synonyms = res.synonyms || {}; slice.ts = Date.now();
+      const res = await coreadDistillSegment(seg, m, meta, names);
+      if (!res) return { ok: false, reason: '该切片对应的对话已不存在或模型无返回' };
+      slice.summary = res.summary; slice.keywords = res.keywords; slice.synonyms = res.synonyms || {}; slice.ts = Date.now();
+      coreadVectorStates.set(slice.id, { state: 'pending', attempt: 0, fingerprint: coreadSliceFingerprint(slice), updatedAt: Date.now() });
+      if (coreadVecCache?.vecs) { delete coreadVecCache.vecs[slice.id]; delete coreadVecCache.fps[slice.id]; delete coreadVecCache.errors?.[slice.id]; }
     if (res.salvaged) slice.salvaged = true; else delete slice.salvaged;   // 重生成成功即摘掉保底标记
     try { await coreadSyncSliceMirror(slice, meta); } catch (_) {}
     await coreadSaveDialog();
@@ -10393,8 +10407,10 @@ async function coreadSaveSliceEdit(sliceId, summary, keywordsStr) {
   const slice = (readerDialog.slices || []).find((s) => s.id === sliceId);
   if (!slice) return;
   slice.summary = String(summary || '').trim();
-  slice.keywords = uniqueClean(String(keywordsStr || '').split(/[,，、\s]+/).map((k) => k.trim()).filter(Boolean)).slice(0, 8);
-  slice.ts = Date.now();
+    slice.keywords = uniqueClean(String(keywordsStr || '').split(/[,，、\s]+/).map((k) => k.trim()).filter(Boolean)).slice(0, 8);
+    slice.ts = Date.now();
+    coreadVectorStates.set(slice.id, { state: 'pending', attempt: 0, fingerprint: coreadSliceFingerprint(slice), updatedAt: Date.now() });
+    if (coreadVecCache?.vecs) { delete coreadVecCache.vecs[slice.id]; delete coreadVecCache.fps[slice.id]; delete coreadVecCache.errors?.[slice.id]; }
   delete slice.salvaged;   // 用户手动编辑过即视为已修正
   await coreadUpdateComicDescriptionForSlice(sliceId, { summary: slice.summary, keywords: slice.keywords });
   try { await coreadSyncSliceMirror(slice, coreadBookMeta(readerDialog.bookId) || {}); } catch (_) {}
@@ -10407,8 +10423,13 @@ async function coreadDeleteSlice(sliceId) {
   const idx = (readerDialog.slices || []).findIndex((s) => s.id === sliceId);
   if (idx < 0) return;
   const slice = readerDialog.slices[idx];
-  try { const book = await coreadTargetBook(); if (book) await coreadRemoveSliceMirrors(book, [slice]); } catch (_) {}
-  readerDialog.slices.splice(idx, 1);
+    try { const book = await coreadTargetBook(); if (book) await coreadRemoveSliceMirrors(book, [slice]); } catch (_) {}
+    readerDialog.slices.splice(idx, 1);
+    coreadVectorStates.delete(sliceId);
+    if (coreadVecCache?.vecs) {
+      delete coreadVecCache.vecs[sliceId]; delete coreadVecCache.fps[sliceId]; delete coreadVecCache.errors?.[sliceId];
+      try { await blobStore.putReaderVectors(readerDialog.bucket, { dim: coreadVecCache.dim, model: coreadVecCache.model, vecs: coreadVecCache.vecs, fps: coreadVecCache.fps, errors: coreadVecCache.errors || {} }); } catch (_) {}
+    }
   await coreadUpdateComicDescriptionForSlice(sliceId, null);
   coreadEchoTtl.delete(sliceId);   // 顺带清回响，避免孤儿加分
   await coreadSaveDialog();
@@ -10570,6 +10591,77 @@ function coreadRecordInjection(channel, all, query) {
   };
 }
 
+const coreadPipelineCircuits = new Map();
+function coreadRetryableError(error) {
+  const status = Number(error?.status) || Number(/HTTP\s*(\d{3})/i.exec(String(error?.message || ''))?.[1]) || 0;
+  if (status) return status === 408 || status === 429 || status >= 500;
+  return /Failed to fetch|NetworkError|network request|fetch failed|timeout|timed out|ECONN|socket|temporar/i.test(String(error?.message || error || ''));
+}
+
+function coreadSleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+// 初次请求 + 最多 3 次静默重试。永久配置/鉴权错误立即失败；连续失败后短暂熔断，避免每轮对话重复阻塞。
+async function coreadWithRetry(stage, task, options = {}) {
+  const circuit = coreadPipelineCircuits.get(stage);
+  if (circuit?.openUntil > Date.now()) {
+    const error = new Error(`服务暂时熔断，请在 ${Math.max(1, Math.ceil((circuit.openUntil - Date.now()) / 1000))} 秒后重试`);
+    error.code = 'COREAD_CIRCUIT_OPEN'; throw error;
+  }
+  const retries = Number.isFinite(options.retries) ? options.retries : 3;
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const value = await task(attempt);
+      coreadPipelineCircuits.delete(stage);
+      return value;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= retries || !coreadRetryableError(error)) break;
+      options.onRetry?.(attempt + 1, error);
+      await coreadSleep(Math.min(1800, 320 * (2 ** attempt)));
+    }
+  }
+  coreadPipelineCircuits.set(stage, { openUntil: Date.now() + 30000, error: String(lastError?.message || lastError || '') });
+  throw lastError;
+}
+
+function coreadTopNotice(message, level = 'warning') {
+  let layer = document.getElementById('sd-coread-notice-layer');
+  if (!layer) {
+    layer = document.createElement('div'); layer.id = 'sd-coread-notice-layer';
+    document.body.appendChild(layer);
+  }
+  const item = document.createElement('div');
+  item.className = `sd-coread-notice is-${level}`;
+  item.setAttribute('role', 'alert');
+  item.innerHTML = `<i class="fa-solid ${level === 'error' ? 'fa-triangle-exclamation' : 'fa-circle-info'}"></i><span>${htmlEscape(message)}</span><button type="button" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button>`;
+  item.querySelector('button')?.addEventListener('click', () => item.remove());
+  layer.appendChild(item);
+  setTimeout(() => item.remove(), 12000);
+}
+
+function coreadSetPipelineStatus(stage, state, message = '', fallback = '') {
+  const previous = readerDialog.pipelineStatus;
+  if (state === 'ok') {
+    if (previous?.stage !== stage || previous?.state !== 'error') return;
+    readerDialog.pipelineStatus = null;
+    void coreadSaveDialog();
+    return;
+  }
+  if (previous?.stage === stage && previous?.state === state && previous?.message === String(message || '') && previous?.fallback === fallback) return;
+  readerDialog.pipelineStatus = { stage, state, message: String(message || ''), fallback, at: Date.now() };
+  void coreadSaveDialog();
+}
+
+function coreadPipelineFailed(stage, error, fallback) {
+  const names = { vector: '向量检索', rerank: '记忆重排', memory: '记忆召回' };
+  const name = names[stage] || stage;
+  const message = `${name}连续尝试后仍失败，${fallback}。本次对话仍会正常回复。`;
+  coreadSetPipelineStatus(stage, 'error', error?.message || String(error), fallback);
+  coreadTopNotice(message, 'error');
+  console.warn(`[${MODULE_NAME}] ${name}失败`, error);
+}
+
 /* ── 向量档（可选·自定义 embedding 直连 + 本地余弦 + 与 BM25 用 RRF 融合·借鉴成熟项目直连思路）──
    直连用户填的 embeddings 接口拿裸向量（浏览器直连·已验硅基流动放行 CORS），本地算余弦。
    向量按 bucket 存独立 IndexedDB store（不塞每轮对话记录），内容指纹增量：切片文本没变就复用旧向量不重算。 */
@@ -10599,7 +10691,7 @@ async function coreadEmbed(texts, m) {
   });
   let res = await call(`Bearer ${key}`);
   if (!res.ok && (res.status === 401 || res.status === 403)) res = await call(String(key));
-  if (!res.ok) { const t = await res.text().catch(() => ''); throw new Error(`embeddings HTTP ${res.status}${t ? ` · ${t.slice(0, 100)}` : ''}`); }
+  if (!res.ok) { const t = await res.text().catch(() => ''); const error = new Error(`embeddings HTTP ${res.status}${t ? ` · ${t.slice(0, 100)}` : ''}`); error.status = res.status; throw error; }
   const data = await res.json();
   const arr = Array.isArray(data?.data) ? data.data : [];
   // 按 index 归位（有些接口乱序返回）
@@ -10618,18 +10710,18 @@ function coreadCosine(a, b) {
 }
 
 // 确保当前切片都有最新向量（内容指纹增量·只对新增/变更的切片调 embedding）。返回 { vecs, changed }。
-let coreadVecCache = null;   // { bucket, dim, model, vecs:{id:[]}, fps:{id:fp} }
-async function coreadEnsureVectors(m) {
+let coreadVecCache = null;   // { bucket, dim, model, vecs:{id:[]}, fps:{id:fp}, errors:{id:{message,at}} }
+async function coreadEnsureVectors(m, onlySlices = null) {
   const bucket = readerDialog.bucket;
-  const slices = readerDialog.slices || [];
+  const slices = Array.isArray(onlySlices) ? onlySlices : (readerDialog.slices || []);
   if (!bucket || !slices.length) return null;
   // 载入持久化缓存（换 bucket / 换模型则重置）
   if (!coreadVecCache || coreadVecCache.bucket !== bucket || coreadVecCache.model !== m.vectorModel) {
     let rec = null;
     try { rec = await blobStore.getReaderVectors(bucket); } catch (_) {}
     coreadVecCache = (rec && rec.model === m.vectorModel && isPlainObject(rec.vecs))
-      ? { bucket, dim: rec.dim || 0, model: m.vectorModel, vecs: rec.vecs, fps: isPlainObject(rec.fps) ? rec.fps : {} }
-      : { bucket, dim: 0, model: m.vectorModel, vecs: {}, fps: {} };
+      ? { bucket, dim: rec.dim || 0, model: m.vectorModel, vecs: rec.vecs, fps: isPlainObject(rec.fps) ? rec.fps : {}, errors: isPlainObject(rec.errors) ? rec.errors : {} }
+      : { bucket, dim: 0, model: m.vectorModel, vecs: {}, fps: {}, errors: {} };
   }
   const cache = coreadVecCache;
   // 找需要（重）算的切片：无向量 或 指纹变了
@@ -10639,14 +10731,59 @@ async function coreadEnsureVectors(m) {
     if (!cache.vecs[s.id] || cache.fps[s.id] !== fp) need.push({ s, fp });
   }
   if (need.length) {
-    const vs = await coreadEmbed(need.map((x) => `${x.s.summary || ''}\n${(x.s.keywords || []).join(' ')}`), m);
-    need.forEach((x, i) => { if (vs[i]) { cache.vecs[x.s.id] = vs[i]; cache.fps[x.s.id] = x.fp; if (!cache.dim) cache.dim = vs[i].length; } });
+    const failures = [];
+    for (const item of need) {
+      coreadVectorStates.set(item.s.id, { state: 'pending', attempt: 0, fingerprint: item.fp, updatedAt: Date.now() });
+      try {
+        const [vector] = await coreadWithRetry('vector', () => coreadEmbed([`${item.s.summary || ''}\n${(item.s.keywords || []).join(' ')}`], m), {
+          onRetry: (attempt, error) => {
+            coreadVectorStates.set(item.s.id, { state: 'retrying', attempt, error: error?.message || String(error), fingerprint: item.fp, updatedAt: Date.now() });
+            rerenderMoreIfOpen?.();
+          },
+        });
+        // 请求返回前用户可能再次编辑；旧指纹结果不得覆盖新文本状态。
+        const live = (readerDialog.slices || []).find((slice) => slice.id === item.s.id);
+        if (!vector || !live || coreadSliceFingerprint(live) !== item.fp) {
+          coreadVectorStates.set(item.s.id, { state: 'pending', attempt: 0, fingerprint: live ? coreadSliceFingerprint(live) : '', updatedAt: Date.now() });
+          continue;
+        }
+        cache.vecs[item.s.id] = vector; cache.fps[item.s.id] = item.fp;
+        delete cache.errors[item.s.id];
+        if (!cache.dim) cache.dim = vector.length;
+        coreadVectorStates.set(item.s.id, { state: 'synced', attempt: 0, fingerprint: item.fp, updatedAt: Date.now() });
+      } catch (error) {
+        delete cache.vecs[item.s.id]; delete cache.fps[item.s.id];
+        cache.errors[item.s.id] = { message: error?.message || String(error), at: Date.now(), fingerprint: item.fp };
+        coreadVectorStates.set(item.s.id, { state: 'error', attempt: 3, error: error?.message || String(error), fingerprint: item.fp, updatedAt: Date.now() });
+        failures.push({ slice: item.s, error });
+      }
+    }
     // 清理已删切片的残留向量
-    const liveIds = new Set(slices.map((s) => s.id));
+    const liveIds = new Set((readerDialog.slices || []).map((s) => s.id));
     for (const id of Object.keys(cache.vecs)) if (!liveIds.has(id)) { delete cache.vecs[id]; delete cache.fps[id]; }
-    try { await blobStore.putReaderVectors(bucket, { dim: cache.dim, model: cache.model, vecs: cache.vecs, fps: cache.fps }); } catch (_) {}
+    for (const id of Object.keys(cache.errors)) if (!liveIds.has(id)) delete cache.errors[id];
+    try { await blobStore.putReaderVectors(bucket, { dim: cache.dim, model: cache.model, vecs: cache.vecs, fps: cache.fps, errors: cache.errors }); } catch (_) {}
+    if (failures.length) { const error = failures[0].error; error.failedSlices = failures.map((item) => item.slice.id); throw error; }
   }
   return cache;
+}
+
+async function coreadSyncSliceVector(sliceId, { announce = false } = {}) {
+  const m = coreadMemory();
+  if (!m.vectorEnabled) return { ok: false, skipped: true };
+  const slice = (readerDialog.slices || []).find((item) => item.id === sliceId);
+  if (!slice) return { ok: false, reason: '切片不存在' };
+  if (announce) coreadPipelineCircuits.delete('vector'); // 用户明确点重试时绕过短时熔断，立即开始新一轮尝试。
+  coreadVectorStates.set(sliceId, { state: 'pending', attempt: 0, fingerprint: coreadSliceFingerprint(slice), updatedAt: Date.now() });
+  if (coreadVecCache?.vecs) { delete coreadVecCache.vecs[sliceId]; delete coreadVecCache.fps[sliceId]; delete coreadVecCache.errors?.[sliceId]; }
+  try {
+    await coreadEnsureVectors(m, [slice]);
+    if (announce) toast('向量同步完成。', 'success');
+    return { ok: true };
+  } catch (error) {
+    if (announce) coreadPipelineFailed('vector', error, '已保留关键词召回');
+    return { ok: false, error };
+  }
 }
 
 // 向量召回：对查询算向量，与各切片向量算余弦，返回 [{slice, vscore}] 降序（仅 vscore>0）。异步。
@@ -10684,10 +10821,6 @@ function coreadRRF(bm25List, vecList, k = 60) {
   return out;
 }
 
-// 向量/重排失败提示去重标志（存上次错因·同因不刷屏·恢复即清并提示一次）。
-let coreadVecErrShown = '';
-let coreadRerankErrShown = '';
-
 // 可选 rerank：调重排接口对候选二次打分，取前 topN。未配置→静默返回原候选；配置了但调用失败→抛错（供上层提示）。cands=[{slice}]。
 async function coreadRerank(queryText, cands, m) {
   const rawUrl = String(m.rerankApiUrl || '').trim();
@@ -10704,7 +10837,7 @@ async function coreadRerank(queryText, cands, m) {
   });
   let res = await call(`Bearer ${key}`);
   if (!res.ok && (res.status === 401 || res.status === 403)) res = await call(String(key));
-  if (!res.ok) { const t = await res.text().catch(() => ''); throw new Error(`rerank HTTP ${res.status}${t ? ` · ${t.slice(0, 80)}` : ''}`); }
+  if (!res.ok) { const t = await res.text().catch(() => ''); const error = new Error(`rerank HTTP ${res.status}${t ? ` · ${t.slice(0, 80)}` : ''}`); error.status = res.status; throw error; }
   const data = await res.json();
   const results = Array.isArray(data?.results) ? data.results : [];
   if (!results.length) return cands;   // 空结果不算错，用融合
@@ -10723,25 +10856,21 @@ async function coreadRetrieveHits(queryText, n, excludeIds, m, pool) {
   if (!m.vectorEnabled || isCrossArchivePool) return bm25.slice(0, n);   // 跨档案池不走向量（向量缓存绑单 bucket），纯 BM25
   let vec = [];
   try {
-    vec = (await coreadVectorRecall(queryText, m, pool)).filter((h) => !excludeIds || !excludeIds.has(h.slice.id));
-    if (coreadVecErrShown) { toast('伴读记忆：向量检索已恢复正常。', 'success'); coreadVecErrShown = ''; }   // 恢复即提示一次
+    vec = (await coreadWithRetry('vector', () => coreadVectorRecall(queryText, m, pool))).filter((h) => !excludeIds || !excludeIds.has(h.slice.id));
+    coreadSetPipelineStatus('vector', 'ok');
   } catch (e) {
-    const msg = e?.message || String(e);
-    if (coreadVecErrShown !== msg) { toast(`伴读记忆：向量检索失败（${msg}），已回退关键词召回。`, 'error'); coreadVecErrShown = msg; }   // 去重·同因不重复刷屏
-    console.warn(`[${MODULE_NAME}] 向量召回失败，回退 BM25`, e);
+    coreadPipelineFailed('vector', e, '已回退关键词召回');
     return bm25.slice(0, n);
   }
   let fused = coreadRRF(bm25, vec.slice(0, Math.max(n * 3, n)));   // rank 融合·免量纲
   if (m.rerankEnabled) {
     try {
       const topForRerank = fused.slice(0, Math.max(n * 2, n));
-      const reranked = await coreadRerank(queryText, topForRerank, m);
+      const reranked = await coreadWithRetry('rerank', () => coreadRerank(queryText, topForRerank, m));
       if (reranked && reranked.length) fused = reranked;
-      if (coreadRerankErrShown) { toast('伴读记忆：重排已恢复正常。', 'success'); coreadRerankErrShown = ''; }
+      coreadSetPipelineStatus('rerank', 'ok');
     } catch (e) {
-      const msg = e?.message || String(e);
-      if (coreadRerankErrShown !== msg) { toast(`伴读记忆：重排失败（${msg}），已用融合结果。`, 'warning'); coreadRerankErrShown = msg; }
-      console.warn(`[${MODULE_NAME}] 重排失败，用融合结果`, e);
+      coreadPipelineFailed('rerank', e, '已使用未重排的融合结果');
     }
   }
   // hits 需带 hits 数组供 echo/可视化——RRF/rerank 结果补一个空 hits 兜底
@@ -10891,8 +11020,14 @@ async function coreadBuildMainlineInjection() {
   const query = chatArr.slice(-Math.max(1, Number(m.recallScanMessages) || 8)).map((x) => cleanContextText(x?.mes || '')).filter(Boolean).join('\n') || '';
   const recent = coreadRecentSlices(m.mainlineRecent || 0, pool);
   const excludeIds = new Set(recent.map((h) => h.slice.id));
-  const hits = ((m.mainlineRecall || 0) > 0 && query)
-    ? await coreadRetrieveHits(query, m.mainlineRecall, excludeIds, m, pool) : [];
+  let hits = [];
+  if ((m.mainlineRecall || 0) > 0 && query) {
+    try { hits = await coreadRetrieveHits(query, m.mainlineRecall, excludeIds, m, pool); }
+    catch (error) {
+      coreadPipelineFailed('memory', error, '已回退本地关键词召回');
+      hits = coreadRecallSlices(query, m.mainlineRecall, excludeIds, pool);
+    }
+  }
   const all = [...recent, ...hits];
   // 记录本轮「主线联动」真实注入（供注入状态页回看·非预览）。空注入也如实记空。
   coreadRecordInjection('mainline', all, query);
@@ -11112,7 +11247,6 @@ function renderCoreadArchivePage() {
     <div class="sd-reader-archive-note"><i class="fa-solid fa-circle-info"></i><span>绑定只共享召回，不会合并或改写旧档案；当前正在阅读的档案已自动生效。</span></div>
     <div class="sd-reader-archive-list">${rows || '<div class="sd-reader-mempty">尚无可管理的伴读档案</div>'}</div>
     <div class="sd-reader-arch-secondary"><button type="button" class="sd-reader-textbtn sd-reader-arch-migrate"><i class="fa-solid fa-arrow-right-arrow-left"></i>从其他聊天迁移这本书</button></div>
-    <footer class="sd-reader-subpage-actions"><button type="button" class="sd-reader-subpage-back sd-reader-mbtn">取消</button><button type="button" class="sd-reader-archive-save sd-reader-textbtn"><i class="fa-solid fa-check"></i>保存绑定</button></footer>
   </section>`;
 }
 
@@ -11276,113 +11410,81 @@ async function coreadSubmitMainlinePage(root) {
   }
 }
 
-// 切片管理弹窗：滚动容器统一管理本书所有记忆切片（折叠列表·展开看全文·重构/删除·向量状态）。
-// 重构=重新生成（对话切片重蒸对应楼层·正文/主线切片仅提示无法自动重蒸→引导删除重做）；向量随总结指纹变化自动重算（见 coreadEnsureVectors），无需手动同步。
-async function coreadOpenSliceManagerDialog() {
-  const context = ctx();
-  const Popup = context.Popup;
-  if (!Popup || !context.POPUP_TYPE) { toast('当前环境不支持弹窗。', 'error'); return; }
-  const m = coreadMemory();
-  // 向量状态：已启用时读缓存看哪些切片已向量化
-  let vecIds = new Set();
-  if (m.vectorEnabled) {
-    try { const rec = await blobStore.getReaderVectors(readerDialog.bucket); if (rec && isPlainObject(rec.vecs)) vecIds = new Set(Object.keys(rec.vecs)); } catch (_) {}
-  }
-  const managerBoundary = readerDialog.readBoundary || coreadCurrentReadBoundarySync(readerDialog.bookId);
-  const managerSlices = coreadNormalizeSlices(readerDialog.slices || [], readerDialog.bookId, readerDialog.bucket, managerBoundary);
-  const sourceCounts = managerSlices.reduce((acc, slice) => {
-    const source = reader.normalizeCoreadSource(slice.provenance?.source || slice.src);
-    acc[source] = (acc[source] || 0) + 1;
-    return acc;
-  }, {});
-  const blockedTotal = managerSlices.filter((slice) => !reader.isCoreadSliceVisibleAtBoundary(slice, managerBoundary, m.spoilerProtection !== false)).length;
-  const buildRows = () => {
-    const boundary = readerDialog.readBoundary || coreadCurrentReadBoundarySync(readerDialog.bookId);
-    const slices = coreadNormalizeSlices(readerDialog.slices || [], readerDialog.bookId, readerDialog.bucket, boundary)
-      .slice().sort((a, b) => (Number(b.batch) || 0) - (Number(a.batch) || 0));
-    if (!slices.length) return '<div class="sd-reader-mempty">还没有记忆切片。</div>';
-    return slices.map((s) => {
-      const srcTag = `<span class="sd-reader-src-badge ${coreadSliceSourceClass(s)}">${coreadSliceSourceLabel(s)}</span>`;
-      const vecTag = m.vectorEnabled ? `<span class="sd-reader-src-badge ${vecIds.has(s.id) ? 'vec-on' : 'vec-off'}">${vecIds.has(s.id) ? '已向量' : '未向量'}</span>` : '';
-      const coverage = coreadSliceCoverageText(s);
-      const blocked = !reader.isCoreadSliceVisibleAtBoundary(s, boundary, m.spoilerProtection !== false);
-      const cover = coverage ? `<span class="sd-muted">${htmlEscape(coverage)}</span>` : '';
-      const blockedTag = blocked ? '<span class="sd-reader-src-badge vec-off" title="超过当前阅读进度，暂不参与伴读与正文召回">进度外·已隔离</span>' : '';
-      const keys = (s.keywords || []).map((k) => `<span class="sd-reader-slice-key">${htmlEscape(k)}</span>`).join('');
-      return `<details class="sd-reader-sm-row" data-id="${htmlEscape(s.id)}">
-        <summary class="sd-reader-sm-sum">
-          <span class="sd-reader-sm-summary-main">
-            <span class="sd-reader-sm-tags">
-              <span class="sd-reader-slice-batch">#${s.compressed ? '合并' : (s.batch || '?')}</span>
-              ${srcTag}${vecTag}${blockedTag}
-            </span>
-            <span class="sd-reader-sm-peek">${htmlEscape((s.summary || '').slice(0, 60))}${(s.summary || '').length > 60 ? '…' : ''}</span>
-          </span>
-          <i class="fa-solid fa-chevron-down sd-reader-sm-chevron"></i>
-        </summary>
-        <div class="sd-reader-sm-detail">
-          <div class="sd-reader-sm-meta">${cover} ${s.ts ? `<span class="sd-muted">${new Date(s.ts).toLocaleString()}</span>` : ''}${m.worldSyncMode === 'none' ? ' <span class="sd-muted">· 千幕档案</span>' : (s.loreUid ? '' : ' <span class="sd-muted">· 世界书镜像待同步</span>')}</div>
-          <textarea class="sd-reader-mtextarea sd-reader-sm-edit" data-id="${htmlEscape(s.id)}" rows="4">${htmlEscape(s.summary || '')}</textarea>
-          <label class="sd-reader-mlab">关键词（逗号分隔）</label>
-          <input class="sd-reader-minput sd-reader-sm-keys" data-id="${htmlEscape(s.id)}" value="${htmlEscape((s.keywords || []).join(', '))}">
-          <div class="sd-reader-slice-keys">${keys}</div>
-          <div class="sd-reader-sm-acts">
-            <button type="button" class="sd-reader-textbtn sd-reader-sm-save" data-id="${htmlEscape(s.id)}">保存</button>
-            <button type="button" class="sd-reader-textbtn sd-reader-sm-regen" data-id="${htmlEscape(s.id)}">重构</button>
-            <button type="button" class="sd-reader-textbtn sd-reader-sm-del" data-id="${htmlEscape(s.id)}">删除</button>
-          </div>
-        </div>
-      </details>`;
-    }).join('');
+function coreadSlicePreviewFixtures() {
+  const now = Date.now();
+  return [
+    { id: '__preview-dialog', batch: 3, src: 'dialog', summary: '两人在读到关键选择时交换了不同看法，并约定保留疑问，等后文给出更多线索后再回看。', keywords: ['选择', '疑问', '回看'], coveredFrom: 12, coveredTo: 19, ts: now - 180000, _preview: true },
+    { id: '__preview-book', batch: 2, src: 'text', summary: '书中场景的氛围由日常细节逐渐转向不安，人物对异常的反应成为后续讨论的线索。', keywords: ['氛围', '异常', '线索'], coveredFrom: 4800, coveredTo: 6200, ts: now - 360000, _preview: true },
+    { id: '__preview-mainline', batch: 1, src: 'mainline', summary: '正文中的一次旧约定与本次阅读产生呼应，可在后续对话中作为关系变化的背景。', keywords: ['约定', '呼应', '关系'], mainlineFloors: [18, 21], ts: now - 540000, _preview: true },
+  ];
+}
+
+function coreadVectorState(slice, vectorEnabled) {
+  if (!vectorEnabled) return { state: 'off', label: '未启用', icon: 'fa-circle-minus' };
+  const cachedCandidate = coreadVecCache?.errors?.[slice.id];
+  const cachedError = cachedCandidate && (!cachedCandidate.fingerprint || cachedCandidate.fingerprint === coreadSliceFingerprint(slice)) ? cachedCandidate : null;
+  const status = coreadVectorStates.get(slice.id) || (cachedError ? { state: 'error', error: cachedError.message || cachedError } : null);
+  const state = status?.state || (coreadVecCache?.vecs?.[slice.id] && coreadVecCache?.fps?.[slice.id] === coreadSliceFingerprint(slice) ? 'synced' : 'pending');
+  const map = {
+    pending: ['待同步', 'fa-clock'], retrying: [`重试 ${Math.max(1, status?.attempt || 1)}/3`, 'fa-rotate'],
+    synced: ['已向量化', 'fa-database'], error: ['同步失败', 'fa-triangle-exclamation'], off: ['未启用', 'fa-circle-minus'],
   };
-  const wrap = document.createElement('div');
-  const vecHint = m.vectorEnabled ? '向量随总结改动自动重算（保存/重构后下次召回生效），无需手动同步。' : '未启用向量档，仅关键词召回。';
-  wrap.innerHTML = `<div class="sd-reader-sm-dialog" style="text-align:left">
-    <div class="sd-reader-sm-heading"><span><i class="fa-solid fa-layer-group"></i></span><div><b>记忆切片</b><small>${htmlEscape(coreadBookMeta(readerDialog.bookId)?.title || '当前书籍')} · ${managerSlices.length} 条</small></div></div>
-    <div class="sd-reader-sm-overview">
-      <span class="src-dialog">伴读对谈 ${sourceCounts.dialog || 0}</span>
-      <span class="src-text">书中内容 ${sourceCounts.book || 0}</span>
-      <span class="src-mainline">正文回响 ${sourceCounts.mainline || 0}</span>
-      ${sourceCounts.mixed ? `<span class="src-mixed">融合记忆 ${sourceCounts.mixed}</span>` : ''}
-      ${blockedTotal ? `<span class="is-blocked"><i class="fa-solid fa-shield-halved"></i>隔离 ${blockedTotal}</span>` : ''}
-    </div>
-    <p class="sd-reader-sm-hint">${htmlEscape(vecHint)} 点击卡片可展开编辑；来源、阅读范围和标签使用不同颜色辅助辨认。</p>
-    <div class="sd-reader-sm-list">${buildRows()}</div>
-  </div>`;
-  const rerenderList = () => { const list = wrap.querySelector('.sd-reader-sm-list'); if (list) list.innerHTML = buildRows(); };
-  // 弹窗内事件委托：保存 / 重构 / 删除（就地刷新列表·不关弹窗）
-  wrap.addEventListener('click', async (ev) => {
-    const saveBtn = ev.target.closest('.sd-reader-sm-save');
-    if (saveBtn) {
-      const id = saveBtn.dataset.id;
-      const sumEl = wrap.querySelector(`.sd-reader-sm-edit[data-id="${id}"]`);
-      const keyEl = wrap.querySelector(`.sd-reader-sm-keys[data-id="${id}"]`);
-      await coreadSaveSliceEdit(id, sumEl?.value, keyEl?.value);
-      toast('已保存（向量将随下次召回重算）。', 'success'); rerenderList(); rerenderMoreIfOpen?.(); return;
-    }
-    const regenBtn = ev.target.closest('.sd-reader-sm-regen');
-    if (regenBtn) {
-      const id = regenBtn.dataset.id;
-      const slice = (readerDialog.slices || []).find((s) => s.id === id);
-      if (slice && reader.normalizeCoreadSource(slice.provenance?.source || slice.src) !== 'dialog') { toast('书中内容/正文回响切片无法自动重构（无固定伴读对话来源）。请删除后重新蒸馏。', 'warning'); return; }
-      regenBtn.disabled = true; regenBtn.textContent = '重构中…';
-      const r = await coreadRegenSlice(id);
-      if (!r?.ok) toast(r?.reason || '重构失败。', 'warning');
-      else toast('已重构（向量将随下次召回重算）。', 'success');
-      rerenderList(); rerenderMoreIfOpen?.(); return;
-    }
-    const delBtn = ev.target.closest('.sd-reader-sm-del');
-    if (delBtn) {
-      const id = delBtn.dataset.id;
-      if (!await confirmDialog('删除切片', '将删除此切片（含世界书条目与向量），不可恢复。确定？')) return;
-      await coreadDeleteSlice(id);
-      toast('已删除。', 'info'); rerenderList(); rerenderMoreIfOpen?.(); return;
-    }
-  });
-  try {
-    const popup = new Popup(wrap, context.POPUP_TYPE.TEXT, '', { okButton: '关闭', wide: true, large: true });
-    await popup.show();
-  } catch (_) {}
+  const [label, icon] = map[state] || map.pending;
+  return { state, label, icon, error: status?.error || '' };
+}
+
+function renderCoreadSlicePage() {
+  const m = coreadMemory();
+  const boundary = readerDialog.readBoundary || coreadCurrentReadBoundarySync(readerDialog.bookId);
+  const realSlices = coreadNormalizeSlices(readerDialog.slices || [], readerDialog.bookId, readerDialog.bucket, boundary)
+    .slice().sort((a, b) => (Number(b.batch) || 0) - (Number(a.batch) || 0));
+  const slices = coreadSlicePreview && !realSlices.length ? coreadSlicePreviewFixtures() : realSlices;
+  const counts = slices.reduce((acc, slice) => { const source = reader.normalizeCoreadSource(slice.provenance?.source || slice.src); acc[source] = (acc[source] || 0) + 1; return acc; }, {});
+  const blockedTotal = slices.filter((slice) => !slice._preview && !reader.isCoreadSliceVisibleAtBoundary(slice, boundary, m.spoilerProtection !== false)).length;
+  const rows = slices.map((s) => {
+    const vector = coreadVectorState(s, m.vectorEnabled && !s._preview);
+    const coverage = s._preview
+      ? (s.src === 'mainline' ? '正文楼层 #18、#21' : s.src === 'book' ? '第 2 章 · 字符 4800–6200' : '伴读对话 13–20')
+      : coreadSliceCoverageText(s);
+    const blocked = !s._preview && !reader.isCoreadSliceVisibleAtBoundary(s, boundary, m.spoilerProtection !== false);
+    const keys = (s.keywords || []).map((key) => `<span class="sd-reader-slice-key">${htmlEscape(key)}</span>`).join('');
+    return `<details class="sd-reader-sm-row vec-${vector.state}${s._preview ? ' is-preview' : ''}" data-id="${htmlEscape(s.id)}">
+      <summary class="sd-reader-sm-sum">
+        <span class="sd-reader-sm-summary-main">
+          <span class="sd-reader-sm-tags"><span class="sd-reader-slice-batch">#${s.compressed ? '合并' : (s.batch || '?')}</span><span class="sd-reader-src-badge ${coreadSliceSourceClass(s)}">${coreadSliceSourceLabel(s)}</span><span class="sd-reader-src-badge vec-${vector.state}"${vector.error ? ` title="${htmlEscape(vector.error)}"` : ''}><i class="fa-solid ${vector.icon}${vector.state === 'retrying' ? ' fa-spin' : ''}"></i>${htmlEscape(vector.label)}</span>${blocked ? '<span class="sd-reader-src-badge vec-off">进度外·已隔离</span>' : ''}</span>
+          <span class="sd-reader-sm-peek">${htmlEscape((s.summary || '').slice(0, 86))}${(s.summary || '').length > 86 ? '…' : ''}</span>
+        </span><i class="fa-solid fa-chevron-down sd-reader-sm-chevron"></i>
+      </summary>
+      <div class="sd-reader-sm-detail">
+        <div class="sd-reader-sm-meta">${coverage ? `<span>${htmlEscape(coverage)}</span>` : ''}${s.ts ? `<span>${new Date(s.ts).toLocaleString()}</span>` : ''}</div>
+        <textarea class="sd-reader-mtextarea sd-reader-sm-edit" rows="5"${s._preview ? ' disabled' : ''}>${htmlEscape(s.summary || '')}</textarea>
+        <label class="sd-reader-mlab">关键词（逗号分隔）</label>
+        <input class="sd-reader-minput sd-reader-sm-keys" value="${htmlEscape((s.keywords || []).join(', '))}"${s._preview ? ' disabled' : ''}>
+        <div class="sd-reader-slice-keys">${keys}</div>
+        <div class="sd-reader-sm-acts">${s._preview ? '<span class="sd-muted">版面预览不会保存</span>' : `<button type="button" class="sd-reader-mbtn sd-reader-sm-sync" title="同步向量"><i class="fa-solid fa-rotate"></i></button><button type="button" class="sd-reader-textbtn sd-reader-sm-save">保存并同步</button><button type="button" class="sd-reader-textbtn sd-reader-sm-regen">重构</button><button type="button" class="sd-reader-mbtn sd-reader-sm-del" title="删除"><i class="fa-solid fa-trash"></i></button>`}</div>
+      </div>
+    </details>`;
+  }).join('');
+  return `<section class="sd-reader-subpage sd-reader-slice-page">
+    ${renderCoreadSubpageHead('fa-layer-group', '记忆切片', `${htmlEscape(coreadBookMeta(readerDialog.bookId)?.title || '当前书籍')} · ${realSlices.length} 条`)}
+    <div class="sd-reader-sm-overview"><span class="src-dialog">伴读对谈 ${counts.dialog || 0}</span><span class="src-text">书中内容 ${counts.book || 0}</span><span class="src-mainline">正文回响 ${counts.mainline || 0}</span>${blockedTotal ? `<span class="is-blocked"><i class="fa-solid fa-shield-halved"></i>隔离 ${blockedTotal}</span>` : ''}</div>
+    ${coreadSlicePreview && !realSlices.length ? '<div class="sd-reader-preview-note"><i class="fa-solid fa-flask"></i><span>当前没有真实切片，下方为开发版内存预览。它不会写入千幕档案、世界书或向量库。</span></div>' : ''}
+    <div class="sd-reader-sm-list">${rows || '<div class="sd-reader-mempty">还没有记忆切片。</div>'}</div>
+  </section>`;
+}
+
+// 切片管理改为伴读中心内部子页面；无数据时用内存 fixture 预览排版，正式数据出现即自动消失。
+async function coreadOpenSliceManagerDialog() {
+  const m = coreadMemory();
+  if (m.vectorEnabled) {
+    try {
+      const rec = await blobStore.getReaderVectors(readerDialog.bucket);
+      if (rec && rec.model === m.vectorModel && isPlainObject(rec.vecs)) coreadVecCache = { bucket: readerDialog.bucket, dim: rec.dim || 0, model: rec.model, vecs: rec.vecs, fps: isPlainObject(rec.fps) ? rec.fps : {}, errors: isPlainObject(rec.errors) ? rec.errors : {} };
+    } catch (_) {}
+  }
+  coreadSlicePreview = !(readerDialog.slices || []).length;
+  coreadCenterPage = 'slices';
+  rerenderMoreIfOpen();
 }
 
 // Chat Lore 写入自检：写一条带 coread:: 前缀的测试条目再清理，验证世界书写入通道。控制台 await qmTestLoreWrite() 或点记忆 tab 底部按钮。
@@ -11618,7 +11720,7 @@ function coreadDialogBucket(bookId) {
 }
 
 // 模块级对话缓存：避免每次渲染都读 IndexedDB。{ bucket, bookId, messages:[{id,role,text,at}], summaries, cursor, loaded }
-let readerDialog = { bucket: '', bookId: '', messages: [], summaries: [], slices: [], cursor: 0, lastInjected: null, readBoundary: null, loaded: false };
+let readerDialog = { bucket: '', bookId: '', messages: [], summaries: [], slices: [], cursor: 0, lastInjected: null, pipelineStatus: null, readBoundary: null, loaded: false };
 const readerAssistantSessions = new Map();
 let readerAssistant = { bucket: '', bookId: '', messages: [], quote: '', loaded: false };
 let readerAssistantBusy = false;
@@ -11635,7 +11737,9 @@ let dialogGenToken = 0;          // 生成令牌：切书/关阅读使旧回调�
 async function coreadLoadDialog(bookId) {
   const bucket = coreadDialogBucket(bookId);
   const boundary = coreadCurrentReadBoundarySync(bookId);
-  readerDialog = { bucket, bookId, messages: [], summaries: [], slices: [], cursor: 0, lastInjected: null, readBoundary: boundary, loaded: false };
+  coreadVectorStates.clear();
+  coreadVecCache = null;
+  readerDialog = { bucket, bookId, messages: [], summaries: [], slices: [], cursor: 0, lastInjected: null, pipelineStatus: null, readBoundary: boundary, loaded: false };
   let needsMigration = false;
   let persistentAssistantMessages = [];
   try {
@@ -11652,8 +11756,9 @@ async function coreadLoadDialog(bookId) {
       needsMigration = needsMigration || Number(rec.sliceSchemaVersion) !== reader.COREAD_SLICE_SCHEMA_VERSION
         || rawSlices.some((slice) => Number(slice?.provenance?.version) !== reader.COREAD_SLICE_SCHEMA_VERSION);
       readerDialog.slices = coreadNormalizeSlices(rawSlices, bookId, bucket, boundary);   // 旧切片懒迁移：补来源与形成时阅读水位
-      readerDialog.cursor = Number(rec.cursor) || 0;
-      readerDialog.lastInjected = rec.lastInjected && typeof rec.lastInjected === 'object' ? rec.lastInjected : null;
+        readerDialog.cursor = Number(rec.cursor) || 0;
+        readerDialog.lastInjected = rec.lastInjected && typeof rec.lastInjected === 'object' ? rec.lastInjected : null;
+        readerDialog.pipelineStatus = rec.pipelineStatus && typeof rec.pipelineStatus === 'object' ? rec.pipelineStatus : null;
       persistentAssistantMessages = Array.isArray(rec.assistantMessages) ? rec.assistantMessages : [];
     }
   } catch (_) {}
@@ -11722,8 +11827,9 @@ async function coreadSaveDialog() {
       messages: readerDialog.messages,
       summaries: readerDialog.summaries,
       slices: readerDialog.slices,
-      cursor: readerDialog.cursor,
-      lastInjected: readerDialog.lastInjected,
+        cursor: readerDialog.cursor,
+        lastInjected: readerDialog.lastInjected,
+        pipelineStatus: readerDialog.pipelineStatus,
       assistantMessages: coreadAssistantConfig().historyMode === 'persistent' && readerAssistant.bucket === readerDialog.bucket
         ? readerAssistant.messages
         : [],
@@ -12705,31 +12811,11 @@ function getJSZip() {
   return globalThis.JSZip || ctx()?.JSZip || window?.JSZip || null;
 }
 
-const COREAD_BOOK_ACCEPT = '.txt,.text,.epub,.mobi,.azw,.azw3,.prc,.cbz,.zip,.jpg,.jpeg,.png,.webp,.gif,.avif,text/plain,application/epub+zip,application/x-mobipocket-ebook,application/zip,image/*';
+const COREAD_BOOK_ACCEPT = '.txt,.text,.epub,.mobi,.azw,.azw3,.prc,.cbz,.zip,text/plain,application/epub+zip,application/x-mobipocket-ebook,application/zip';
 
-function coreadImageMime(file) {
-  const name = String(file?.name || '');
-  return file?.type && /^image\//i.test(file.type) ? file.type
-    : /\.png$/i.test(name) ? 'image/png'
-      : /\.webp$/i.test(name) ? 'image/webp'
-        : /\.gif$/i.test(name) ? 'image/gif'
-          : /\.avif$/i.test(name) ? 'image/avif'
-            : 'image/jpeg';
-}
-
-async function coreadParseComicFiles(files) {
-  const list = [...(files || [])].filter((file) => /^image\//i.test(file.type || '') || /\.(?:jpe?g|png|webp|gif|avif)$/i.test(file.name || ''))
-    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { numeric: true, sensitivity: 'base' }));
-  if (!list.length) throw new Error('COMIC_NO_IMAGES');
-  const images = [];
-  for (const [index, file] of list.entries()) images.push({ n: index + 1, bytes: new Uint8Array(await file.arrayBuffer()), mime: coreadImageMime(file), name: file.name || '' });
-  const chapters = images.map((image, index) => ({ title: `第 ${index + 1} 页`, content: `⟦img:${image.n}⟧` }));
-  return { images, chapters, cover: { bytes: images[0].bytes, mime: images[0].mime }, pageCount: images.length };
-}
-
-async function coreadImportComicParsed(parsed, title, refillBookId = '') {
+async function coreadImportComicParsed(parsed, title, refillBookId = '', author = '') {
   const pageText = (parsed.chapters || []).map((chapter) => `${chapter.title}\n${chapter.content}`).join('\n\n');
-  if (!refillBookId) return coreadImportText(pageText, title || '未命名漫画', '', parsed.chapters, parsed.cover, parsed.images, { mode: 'comic', pageCount: parsed.pageCount });
+  if (!refillBookId) return coreadImportText(pageText, title || '未命名漫画', author, parsed.chapters, parsed.cover, parsed.images, { mode: 'comic', pageCount: parsed.pageCount });
   const meta = coreadBookMeta(refillBookId);
   if (!meta) return null;
   // 仅覆写漫画页使用的小序号图片；保留同书对话里使用的大序号附件，避免补全书籍时误删聊天图片。
@@ -12745,16 +12831,6 @@ async function coreadImportComicParsed(parsed, title, refillBookId = '') {
 async function coreadHandleImportFiles(files, refillBookId = '') {
   const list = [...(files || [])].filter(Boolean);
   if (!list.length) return;
-  const allImages = list.every((file) => /^image\//i.test(file.type || '') || /\.(?:jpe?g|png|webp|gif|avif)$/i.test(file.name || ''));
-  if (allImages) {
-    try {
-      const parsed = await coreadParseComicFiles(list);
-      const title = String(list[0]?.webkitRelativePath || list[0]?.name || '未命名漫画').split('/')[0].replace(/\.(?:jpe?g|png|webp|gif|avif)$/i, '');
-      const id = await coreadImportComicParsed(parsed, title, refillBookId);
-      if (id) refillBookId ? coreadOpenBook(id) : renderModal();
-    } catch (error) { console.warn(`[${MODULE_NAME}] import comic images failed`, error); toast('漫画图片导入失败。', 'error'); }
-    return;
-  }
   await coreadHandleImportFile(list[0], refillBookId);
 }
 
@@ -12766,9 +12842,7 @@ async function coreadHandleImportFile(file, refillBookId = '') {
   const isMobi = /\.(mobi|azw|azw3|prc)$/i.test(nameLower) || file.type === 'application/x-mobipocket-ebook';
   const isTxt = /\.(txt|text)$/i.test(nameLower) || file.type === 'text/plain';
   const isComic = /\.(cbz|zip)$/i.test(nameLower) || file.type === 'application/zip';
-  const isImage = /^image\//i.test(file.type || '') || /\.(?:jpe?g|png|webp|gif|avif)$/i.test(nameLower);
-  if (isImage) return coreadHandleImportFiles([file], refillBookId);
-  if (!isEpub && !isMobi && !isTxt && !isComic) { toast('不支持的格式。请选 EPUB / MOBI / TXT / CBZ / 图片。', 'warning'); return; }
+  if (!isEpub && !isMobi && !isTxt && !isComic) { toast('不支持的格式。请选 EPUB / MOBI / TXT / CBZ。', 'warning'); return; }
   const baseName = String(file.name || '').replace(/\.(txt|text|epub|mobi|azw3?|prc|cbz|zip)$/i, '').trim();
   try {
       const buf = await file.arrayBuffer();
@@ -12779,20 +12853,32 @@ async function coreadHandleImportFile(file, refillBookId = '') {
         const id = await coreadImportComicParsed(parsed, baseName, refillBookId);
         if (id) refillBookId ? coreadOpenBook(id) : renderModal();
         return;
-      } else if (isEpub) {
+        } else if (isEpub) {
         // 优先用 ST 自带 JSZip（若暴露）；取不到则 parseEpub 内部走原生 DecompressionStream 解压
         const parsed = await reader.parseEpub(buf, getJSZip() || undefined);
         preChapters = parsed.chapters;
         text = (parsed.chapters || []).map((c) => c.content).join('\n\n').trim();
         title = parsed.title || baseName;
         author = parsed.author || '';
-        cover = parsed.cover || null;
-        parsedImages = parsed.images || null;
-      } else if (isMobi) {
-        const parsed = reader.parseMobi(buf);
-        text = String(parsed.text || '').trim();
-        title = parsed.title || baseName;
-        author = parsed.author || '';
+          cover = parsed.cover || null;
+          parsedImages = parsed.images || null;
+          const comicPages = (parsed.chapters || []).filter((chapter) => /^\s*⟦img:\d+⟧\s*$/.test(chapter.content || '')).length;
+          if (parsed.chapters?.length && comicPages / parsed.chapters.length >= .8) {
+            const comicParsed = { ...parsed, pageCount: parsed.chapters.length };
+            const id = await coreadImportComicParsed(comicParsed, title, refillBookId, author);
+            if (id) refillBookId ? coreadOpenBook(id) : renderModal();
+            return;
+          }
+        } else if (isMobi) {
+          const parsed = reader.parseMobi(buf);
+          text = String(parsed.text || '').trim();
+          title = parsed.title || baseName;
+          author = parsed.author || '';
+          if (!text && parsed.pageCount && parsed.images?.length) {
+            const id = await coreadImportComicParsed(parsed, title, refillBookId, author);
+            if (id) refillBookId ? coreadOpenBook(id) : renderModal();
+            return;
+          }
       } else {
         text = reader.decodeTxtBuffer(buf);
       }
@@ -12839,11 +12925,11 @@ function coreadShowRefillChooser(bookId) {
     <div class="sd-reader-refill-card">
       <h3 id="sd-reader-refill-title">《${htmlEscape(meta.title)}》的正文未在本设备缓存</h3>
       <p>书目信息会随千幕配置同步，但书籍内容保存在当前设备。请选择原书文件重新导入，阅读进度与书目资料会继续保留。</p>
-      <p class="sd-reader-refill-formats">支持 EPUB / MOBI / TXT / CBZ / 图片；也可稍后通过伴读数据打包完成迁移。</p>
+        <p class="sd-reader-refill-formats">支持 EPUB / MOBI / TXT / CBZ；也可稍后通过伴读数据打包完成迁移。</p>
       <div class="sd-reader-refill-actions">
         <label class="sd-btn sd-primary sd-reader-refill-pick">
           <i class="fa-solid fa-file-import" aria-hidden="true"></i> 选择文件
-          <input type="file" class="sd-reader-refill-input sd-reader-native-file" accept="${COREAD_BOOK_ACCEPT}" multiple>
+          <input type="file" class="sd-reader-refill-input sd-reader-native-file" accept="${COREAD_BOOK_ACCEPT}">
         </label>
         <button type="button" class="sd-btn sd-reader-refill-cancel">取消</button>
       </div>
@@ -12998,7 +13084,7 @@ async function coreadDeleteBook(bookId, options = {}) {
   // 删当前打开的书 → 先卸载阅读器 portal，避免 readerView / readerDialog 悬空
   if (readerView?.bookId === bookId) unmountReaderPortal();
   // 若删的正是当前会话的书，清掉内存镜像防其 autosave 复活桶
-  if (readerDialog?.bookId === bookId) { readerDialog = { bucket: '', bookId: '', messages: [], summaries: [], slices: [], cursor: 0, lastInjected: null, readBoundary: null, loaded: false }; coreadEchoTtl.clear(); }
+  if (readerDialog?.bookId === bookId) { readerDialog = { bucket: '', bookId: '', messages: [], summaries: [], slices: [], cursor: 0, lastInjected: null, pipelineStatus: null, readBoundary: null, loaded: false }; coreadEchoTtl.clear(); }
   coread().books = coread().books.filter((b) => b.id !== bookId);
   const retained = coread().retainedMemoryBooks || (coread().retainedMemoryBooks = []);
   const retainedIndex = retained.findIndex((b) => b.id === bookId);
@@ -13358,10 +13444,10 @@ function renderLibraryView() {
         ${batchControls}
       </div>
       ${tags.length ? `<div class="sd-reader-tags">${tags.map((t) => `<button class="sd-reader-tag ${(c.libTags || []).includes(t) ? 'active' : ''}" data-tag="${htmlEscape(t)}">${htmlEscape(t)}</button>`).join('')}</div>` : ''}
-      ${books.length ? `<div class="sd-reader-grid">${cards}</div>` : `<div class="sd-reader-empty"><i class="fa-solid fa-book-open"></i><p>书架还是空的。点右下「＋」添加第一本书，开始和角色伴读。<small>支持 EPUB、MOBI、TXT、CBZ 与连续图片</small></p></div>`}
+      ${books.length ? `<div class="sd-reader-grid">${cards}</div>` : `<div class="sd-reader-empty"><i class="fa-solid fa-book-open"></i><p>书架还是空的。点右下「＋」添加第一本书，开始和角色伴读。<small>支持 EPUB、MOBI、TXT 与 CBZ</small></p></div>`}
       <label class="sd-reader-import sd-reader-import-fab" title="导入书籍或漫画" aria-label="导入书籍或漫画">
         <i class="fa-solid fa-plus" aria-hidden="true"></i>
-        <input type="file" class="sd-reader-import-input sd-reader-native-file" accept="${COREAD_BOOK_ACCEPT}" multiple>
+        <input type="file" class="sd-reader-import-input sd-reader-native-file" accept="${COREAD_BOOK_ACCEPT}">
       </label>
     </div>`;
 }
@@ -13819,6 +13905,7 @@ function renderCoreadPackBar() {
 
 function renderCompanionMoreBody() {
   if (coreadCenterPage === 'archives') return renderCoreadArchivePage();
+  if (coreadCenterPage === 'slices') return renderCoreadSlicePage();
   if (coreadCenterPage === 'mainline') return renderCoreadMainlinePage();
   const m = coreadMemory();
   if (!m.guideSeen && coreadGuideStep === null) coreadGuideStep = 0;
@@ -14183,6 +14270,10 @@ function renderMemInjectTab(m) {
       </div>`).join('');
   }
   if (!dictRows) dictRows = '<div class="sd-reader-mempty">点下方「新增词条」添加。</div>';
+  const pipeline = readerDialog.pipelineStatus;
+  const pipelineState = pipeline?.state === 'error'
+    ? `<div class="sd-reader-pipeline-state is-error"><i class="fa-solid fa-triangle-exclamation"></i><span><b>上次召回已降级</b>${htmlEscape(pipeline.fallback || '已使用可用的本地召回路径')} · ${htmlEscape(pipeline.message || '')}</span></div>`
+    : `<div class="sd-reader-pipeline-state is-ok"><i class="fa-solid fa-circle-check"></i><span><b>召回管线可用</b>异常会先在后台重试，最终失败才提示并自动降级。</span></div>`;
 
   const dictBody = `
     <div class="sd-reader-dict-selector">
@@ -14203,6 +14294,7 @@ function renderMemInjectTab(m) {
     </div>`;
 
   return `
+    ${pipelineState}
     <details class="sd-reader-mcard${coreadGuideTargetClass('inject')}" open>
       <summary class="sd-reader-mcard-head"><i class="fa-solid fa-syringe"></i> 实际注入 <span class="sd-reader-inj-tag">${injected.length} 条</span>${li ? `<span class="sd-reader-inj-tag">最近一次·${liChannelLabel}</span>` : ''}</summary>
       <div class="sd-reader-injslices">${injCards}</div>
@@ -15649,7 +15741,7 @@ function bindReaderStageEvents(stageRoot) {
   });
   q('.sd-reader-more-close')?.addEventListener('click', () => { coreadCenterPage = 'main'; coreadMainlineFocusFloor = 0; if (morePage) morePage.hidden = true; });
   // 面板 tab 切换 + 向量/重排接口操作按钮（重渲后仍生效·事件委托）
-  morePage?.addEventListener('click', (e) => {
+  morePage?.addEventListener('click', async (e) => {
     if (e.target.closest('.sd-reader-subpage-back')) {
       coreadCenterPage = 'main';
       coreadMainlineFocusFloor = 0;
@@ -15657,16 +15749,33 @@ function bindReaderStageEvents(stageRoot) {
       saveSettings(); rerenderMore();
       return;
     }
-    if (e.target.closest('.sd-reader-archive-save')) {
-      const checked = new Set([...morePage.querySelectorAll('.sd-reader-arch-pick:checked')].map((el) => Number(el.value)));
-      const store = getChatStore();
-      store.coreadBound = coreadArchivePageItems.filter((_, index) => checked.has(index)).map((item) => item.bucket);
-      saveMetadata(); coreadInvalidatePool();
-      toast(`已绑定 ${store.coreadBound.length} 个伴读档案到当前聊天。`, 'success');
-      coreadCenterPage = 'main'; coreadMemory().moreTab = 'records'; rerenderMore();
-      return;
-    }
     if (e.target.closest('.sd-reader-arch-migrate')) { void coreadOpenMigrateDialog(); return; }
+    const sliceRow = e.target.closest('.sd-reader-sm-row');
+    if (sliceRow && !sliceRow.classList.contains('is-preview')) {
+      const id = sliceRow.dataset.id;
+      if (e.target.closest('.sd-reader-sm-save')) {
+        const button = e.target.closest('.sd-reader-sm-save');
+        button.disabled = true; button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>保存中';
+        await coreadSaveSliceEdit(id, sliceRow.querySelector('.sd-reader-sm-edit')?.value, sliceRow.querySelector('.sd-reader-sm-keys')?.value);
+        const result = await coreadSyncSliceVector(id, { announce: false });
+        toast(result.ok ? '切片已保存并同步向量。' : (result.skipped ? '切片已保存；当前未启用向量。' : '切片已保存；向量同步失败，已保留关键词召回。'), result.ok || result.skipped ? 'success' : 'warning');
+        rerenderMore(); return;
+      }
+      if (e.target.closest('.sd-reader-sm-sync')) { await coreadSyncSliceVector(id, { announce: true }); rerenderMore(); return; }
+      if (e.target.closest('.sd-reader-sm-regen')) {
+        const slice = (readerDialog.slices || []).find((item) => item.id === id);
+        if (slice && reader.normalizeCoreadSource(slice.provenance?.source || slice.src) !== 'dialog') { toast('书中内容或正文回响没有固定对话来源，请删除后重新总结。', 'warning'); return; }
+        const button = e.target.closest('.sd-reader-sm-regen'); button.disabled = true; button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>重构中';
+        const result = await coreadRegenSlice(id);
+        if (!result?.ok) toast(result?.reason || '重构失败。', 'warning');
+        else { await coreadSyncSliceVector(id, { announce: false }); toast('切片已重构并同步。', 'success'); }
+        rerenderMore(); return;
+      }
+      if (e.target.closest('.sd-reader-sm-del')) {
+        if (!await confirmDialog('删除切片', '将删除此切片及对应世界书镜像与向量，不可恢复。确定？')) return;
+        await coreadDeleteSlice(id); coreadVectorStates.delete(id); toast('切片已删除。', 'info'); rerenderMore(); return;
+      }
+    }
     if (e.target.closest('.sd-reader-mljump-go')) {
       const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
       const floor = Math.round(Number(morePage.querySelector('.sd-reader-mljump-input')?.value) || 0);
@@ -16043,6 +16152,16 @@ function bindReaderStageEvents(stageRoot) {
     }
   });
   morePage?.addEventListener('change', (e) => {
+    const pick = e.target.closest('.sd-reader-arch-pick');
+    if (!pick) return;
+    const item = coreadArchivePageItems[Number(pick.value)];
+    if (!item) return;
+    coreadToggleBind(item.bucket, pick.checked);
+    item.bound = pick.checked;
+    toast(pick.checked ? `已启用《${item.title}》档案召回。` : `已停用《${item.title}》档案召回。`, 'success');
+    rerenderMore();
+  });
+  morePage?.addEventListener('change', (e) => {
     const allMainline = e.target.closest('.sd-reader-mlpick-all');
     if (allMainline) {
       morePage.querySelectorAll('.sd-reader-mlpick').forEach((el) => { el.checked = allMainline.checked; });
@@ -16076,6 +16195,7 @@ function bindReaderStageEvents(stageRoot) {
     }
     if (e.target.closest('.sd-reader-vector-en')) {
       m.vectorEnabled = e.target.checked; saveSettings();
+      if (!m.vectorEnabled) coreadSetPipelineStatus('vector', 'ok');
       // 开启即自动向量化现有切片（指纹增量·已算的复用·不重复消耗）。静默失败回退关键词召回。
       if (m.vectorEnabled && (readerDialog.slices || []).length) {
         toast('向量检索：正在向量化现有切片…', 'info');
@@ -16083,11 +16203,11 @@ function bindReaderStageEvents(stageRoot) {
           if (c) toast(`向量检索已就绪（${Object.keys(c.vecs || {}).length} 条切片）。`, 'success');
           else toast('向量化未完成（接口未配置或无切片），已回退关键词召回。', 'warning');
           rerenderMore();
-        }).catch((err) => { toast(`向量化失败：${coreadExplainError(err)}，已回退关键词召回。`, 'warning'); rerenderMore(); });
+        }).catch((err) => { coreadPipelineFailed('vector', err, '已回退关键词召回'); rerenderMore(); });
       }
       return;
     }
-    if (e.target.closest('.sd-reader-rerank-en')) { m.rerankEnabled = e.target.checked; saveSettings(); return; }
+    if (e.target.closest('.sd-reader-rerank-en')) { m.rerankEnabled = e.target.checked; if (!m.rerankEnabled) coreadSetPipelineStatus('rerank', 'ok'); saveSettings(); rerenderMore(); return; }
     if (e.target.closest('.sd-reader-autodistill-en')) { m.autoDistill = e.target.checked; saveSettings(); return; }
     if (e.target.closest('.sd-reader-autotext-en')) { m.autoDistillText = e.target.checked; saveSettings(); rerenderMore(); return; }
     // 词典下拉：切换当前查看/编辑的词册
