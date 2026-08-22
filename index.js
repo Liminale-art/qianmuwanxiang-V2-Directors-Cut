@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.22.3';
+const VERSION = '1.23.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -452,6 +452,12 @@ const DEFAULT_SETTINGS = Object.freeze({
       showAnnotation: true,
       showSource: true,
       savedPresets: [],             // [{id,name,...当前摘录图片设置}]，用户自存方案
+    },
+    // 页边助手：独立于角色书友的工具型问答；默认只在本次 ST 页面会话保留历史。
+    assistant: {
+      apiProfileId: '',             // 千幕 API 预设；空则跟随伴读对话 API
+      historyMode: 'session',       // session | persistent | clear（关闭阅读即清空）
+      recentTurns: 12,              // 每次请求参考最近多少轮助手对话
     },
     // 伴读设定层（1B·复用取材的拉取/呈现·选择独立·身份/人设默认跟随 ST 当前选择+千幕注入逻辑）
     companion: {
@@ -3112,7 +3118,7 @@ const QUICK_COMMANDS = Object.freeze([
   { id: 'coread', label: '书架', icon: 'fa-book-open' },
   { id: 'geopolitics', label: '世界格局', icon: 'fa-atom' },
   { id: 'plug', label: 'API与日志', icon: 'fa-gear' },
-  { id: 'imagegen', label: '生图', icon: 'fa-wand-magic-sparkles', pending: true },
+  { id: 'imagegen', label: '生图', icon: 'fa-paintbrush', pending: true },
   { id: 'floor', label: '楼层跳转', icon: 'fa-layer-group' },
 ]);
 const QUICK_COMMAND_IDS = QUICK_COMMANDS.map((item) => item.id);
@@ -8635,6 +8641,17 @@ function coread() {
   return settings.coread;
 }
 
+function coreadAssistantConfig() {
+  const c = coread();
+  if (!isPlainObject(c.assistant)) c.assistant = clone(DEFAULT_SETTINGS.coread.assistant);
+  const a = c.assistant;
+  if (typeof a.apiProfileId !== 'string') a.apiProfileId = '';
+  if (!['session', 'persistent', 'clear'].includes(a.historyMode)) a.historyMode = 'session';
+  if (!Number.isFinite(a.recentTurns)) a.recentTurns = 12;
+  a.recentTurns = Math.max(1, Math.min(50, Math.round(a.recentTurns)));
+  return a;
+}
+
 // 伴读设定（1B）：书友身份 + 取材式独立勾选（复用主线拉取/呈现，但选择存 companion·互不影响）。
 function coreadCompanion() {
   const c = coread();
@@ -9567,6 +9584,46 @@ async function callCoreadDialogModel(systemPrompt, userPrompt, opts = {}) {
   }
   // 默认：跟随 ST 当前连接（generateRaw 走 STREAM_TOKEN_RECEIVED 尽力预览）
   return await callSillyTavernModel(userPrompt, systemPrompt, onDelta);
+}
+
+function assistantApiConn() {
+  const id = coreadAssistantConfig().apiProfileId;
+  if (!id) return null;
+  const profile = (Array.isArray(settings.apiProfiles) ? settings.apiProfiles : []).find((item) => item.id === id);
+  if (!profile) return null;
+  const base = normalizeUrl(profile.apiUrl);
+  if (!(base && profile.apiKey && profile.model)) return null;
+  return { apiUrl: profile.apiUrl, apiKey: profile.apiKey, model: profile.model, temperature: profile.temperature };
+}
+
+// 页边助手优先使用自己选中的千幕 API 预设；未选择时沿用伴读对话的统一分发。
+async function callCoreadAssistantModel(systemPrompt, userPrompt, opts = {}) {
+  const conn = assistantApiConn();
+  if (!conn) return callCoreadDialogModel(systemPrompt, userPrompt, opts);
+  const controller = opts.controller || new AbortController();
+  const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }];
+  const genUrl = String(conn.apiUrl || '').trim().replace(/\/+$/, '');
+  try {
+    let authHeader = `Authorization: Bearer ${conn.apiKey}`;
+    try {
+      return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: conn.temperature, signal: controller.signal });
+    } catch (error) {
+      if (/HTTP\s*(401|403)/.test(String(error?.message || ''))) {
+        authHeader = `Authorization: ${conn.apiKey}`;
+        return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: conn.temperature, signal: controller.signal });
+      }
+      throw error;
+    }
+  } catch (proxyError) {
+    if (!/ST backend proxy failed|Failed to fetch|NetworkError|HTTP\s*(404|501)/i.test(String(proxyError?.message || ''))) throw proxyError;
+    return callExternalApi(messages, opts.onDelta || null, {
+      apiUrl: conn.apiUrl,
+      apiKey: conn.apiKey,
+      model: conn.model,
+      temperature: conn.temperature,
+      stream: !!settings.streamEnabled,
+    }, controller);
+  }
 }
 
 // 拼总结提示词：全部条目（含内置格式+JSON 契约+用户自定义）按 order 拼；末尾仅补一句「纯 JSON」硬提醒兜底解析（不再重述格式/字数，交给可见的内置条掌管）。
@@ -11408,6 +11465,11 @@ function coreadDialogBucket(bookId) {
 
 // 模块级对话缓存：避免每次渲染都读 IndexedDB。{ bucket, bookId, messages:[{id,role,text,at}], summaries, cursor, loaded }
 let readerDialog = { bucket: '', bookId: '', messages: [], summaries: [], slices: [], cursor: 0, lastInjected: null, readBoundary: null, loaded: false };
+const readerAssistantSessions = new Map();
+let readerAssistant = { bucket: '', bookId: '', messages: [], quote: '', loaded: false };
+let readerAssistantBusy = false;
+let readerAssistantAbort = null;
+let readerAssistantToken = 0;
 let dialogBusy = false;          // 伴读对话忙碌态（独立 lane）
 let dialogAbort = null;          // 伴读对话中止句柄
 let dialogGenToken = 0;          // 生成令牌：切书/关阅读使旧回调失效
@@ -11418,6 +11480,7 @@ async function coreadLoadDialog(bookId) {
   const boundary = coreadCurrentReadBoundarySync(bookId);
   readerDialog = { bucket, bookId, messages: [], summaries: [], slices: [], cursor: 0, lastInjected: null, readBoundary: boundary, loaded: false };
   let needsMigration = false;
+  let persistentAssistantMessages = [];
   try {
     const rec = await blobStore.getReaderChat(bucket);
     if (rec) {
@@ -11429,13 +11492,27 @@ async function coreadLoadDialog(bookId) {
       readerDialog.slices = coreadNormalizeSlices(rawSlices, bookId, bucket, boundary);   // 旧切片懒迁移：补来源与形成时阅读水位
       readerDialog.cursor = Number(rec.cursor) || 0;
       readerDialog.lastInjected = rec.lastInjected && typeof rec.lastInjected === 'object' ? rec.lastInjected : null;
+      persistentAssistantMessages = Array.isArray(rec.assistantMessages) ? rec.assistantMessages : [];
     }
   } catch (_) {}
+  const assistantCfg = coreadAssistantConfig();
+  const sessionMessages = readerAssistantSessions.get(bucket);
+  const pendingQuote = readerAssistant.bucket === bucket ? readerAssistant.quote : '';
+  readerAssistant = {
+    bucket,
+    bookId,
+    messages: assistantCfg.historyMode === 'persistent'
+      ? persistentAssistantMessages
+      : (assistantCfg.historyMode === 'session' && Array.isArray(sessionMessages) ? sessionMessages : []),
+    quote: pendingQuote,
+    loaded: true,
+  };
   readerDialog.loaded = true;
   if (needsMigration) await coreadSaveDialog();
   // 若对话抽屉正开在对话 tab，载入后补渲消息
   const body = document.querySelector('#sd-reader-portal .sd-reader-dtab-chat');
   if (body) { body.innerHTML = renderReaderDialogMessages(); scrollDialogToBottom(); }
+  coreadRefreshAssistantPanel();
   coreadSweepOrphanLore();   // 懒清扫：本聊天世界书里指向「已删书」的孤儿伴读条目（每聊天每会话一次）
 }
 
@@ -11485,6 +11562,9 @@ async function coreadSaveDialog() {
       slices: readerDialog.slices,
       cursor: readerDialog.cursor,
       lastInjected: readerDialog.lastInjected,
+      assistantMessages: coreadAssistantConfig().historyMode === 'persistent' && readerAssistant.bucket === readerDialog.bucket
+        ? readerAssistant.messages
+        : [],
       sliceSchemaVersion: reader.COREAD_SLICE_SCHEMA_VERSION,
       updatedAt: Date.now(),
       names: { char: companionCharName(), user: getPersonaName() || '我' },
@@ -11552,6 +11632,148 @@ function stripDialogQuotes(s) {
 function scrollDialogToBottom() {
   const body = document.querySelector('#sd-reader-portal .sd-reader-dtab-chat');
   if (body) body.scrollTop = body.scrollHeight;
+}
+
+function renderReaderAssistantMessages() {
+  const messages = readerAssistant.messages || [];
+  if (!messages.length) return '<div class="sd-reader-assistant-empty"><i class="fa-regular fa-lightbulb"></i><span>选中文字来问，或直接聊一个衍生问题。</span></div>';
+  return messages.map((message) => {
+    const role = message.role === 'user' ? 'user' : 'assistant';
+    if (role === 'assistant' && !String(message.text || '').trim()) {
+      return `<div class="sd-reader-assistant-msg is-assistant" data-assistant-msg="${htmlEscape(message.id)}"><div class="sd-reader-assistant-bubble sd-reader-typing-bubble"><span></span><span></span><span></span></div></div>`;
+    }
+    return `<div class="sd-reader-assistant-msg is-${role}" data-assistant-msg="${htmlEscape(message.id)}">
+      ${message.quote ? `<blockquote>${htmlEscape(message.quote)}</blockquote>` : ''}
+      <div class="sd-reader-assistant-bubble">${htmlEscape(message.text || '')}</div>
+    </div>`;
+  }).join('');
+}
+
+function coreadRefreshAssistantPanel() {
+  const portal = document.getElementById('sd-reader-portal');
+  const panel = portal?.querySelector('.sd-reader-assistant-panel');
+  if (!panel) return;
+  panel.classList.toggle('open', !!readerView?.assistantOpen);
+  const body = panel.querySelector('.sd-reader-assistant-body');
+  if (body) { body.innerHTML = renderReaderAssistantMessages(); body.scrollTop = body.scrollHeight; }
+  const quote = panel.querySelector('.sd-reader-assistant-quote');
+  if (quote) {
+    quote.hidden = !readerAssistant.quote;
+    const text = quote.querySelector('span');
+    if (text) text.textContent = readerAssistant.quote || '';
+  }
+  const send = panel.querySelector('.sd-reader-assistant-send');
+  if (send) {
+    send.classList.toggle('is-stop', readerAssistantBusy);
+    send.title = readerAssistantBusy ? '停止回答' : '发送';
+    send.innerHTML = `<i class="fa-solid ${readerAssistantBusy ? 'fa-stop' : 'fa-arrow-up'}"></i>`;
+  }
+}
+
+async function coreadStoreAssistantHistory() {
+  const cfg = coreadAssistantConfig();
+  if (cfg.historyMode === 'session' && readerAssistant.bucket) readerAssistantSessions.set(readerAssistant.bucket, readerAssistant.messages);
+  if (cfg.historyMode === 'persistent') await coreadSaveDialog();
+}
+
+async function coreadAssistantReadingContext(bookId) {
+  const meta = coreadBookMeta(bookId);
+  if (!meta) return null;
+  let chapters = null;
+  if (readerContentCache?.bookId === bookId) chapters = readerContentCache.chapters;
+  else {
+    try { chapters = (await blobStore.getBook(bookId))?.chapters; } catch (_) {}
+  }
+  if (!Array.isArray(chapters) || !chapters.length) return null;
+  const cp = coreadCompanion();
+  const chapterIndex = readerView?.bookId === bookId ? readerView.chapterIndex : (meta.lastChapterIndex || 0);
+  const scrollRatio = readerView?.bookId === bookId ? (readerView.scrollRatio || 0) : (meta.lastScrollRatio || 0);
+  const win = computeVisibleWindow(chapters, chapterIndex, scrollRatio, cp.visiblePercent, cp.visibleCharsBefore);
+  return { meta, visibleText: win.visibleText || '', chapterIndex, progress: Number(meta.progress) || 0 };
+}
+
+function coreadOpenAssistant(quote = '') {
+  if (!readerView) return;
+  readerView.assistantOpen = true;
+  if (String(quote || '').trim()) readerAssistant.quote = String(quote).trim().slice(0, 6000);
+  coreadRefreshAssistantPanel();
+  setTimeout(() => document.querySelector('#sd-reader-portal .sd-reader-assistant-input')?.focus(), 40);
+}
+
+function coreadStopAssistant(persist = true) {
+  readerAssistantToken++;
+  try { readerAssistantAbort?.abort(); } catch (_) {}
+  readerAssistantAbort = null;
+  readerAssistantBusy = false;
+  readerAssistant.messages = (readerAssistant.messages || []).filter((message) => !(message.role === 'assistant' && !String(message.text || '').trim()));
+  coreadRefreshAssistantPanel();
+  if (persist) void coreadStoreAssistantHistory();
+}
+
+async function coreadClearAssistantHistory() {
+  coreadStopAssistant(false);
+  if (readerAssistant.bucket) readerAssistantSessions.delete(readerAssistant.bucket);
+  readerAssistant.messages = [];
+  readerAssistant.quote = '';
+  if (coreadAssistantConfig().historyMode === 'persistent') await coreadSaveDialog();
+  coreadRefreshAssistantPanel();
+}
+
+async function coreadAskAssistant(inputText) {
+  const question = String(inputText || '').trim();
+  if (!question || readerAssistantBusy || !readerView) return;
+  if (!readerAssistant.loaded) { toast('页边助手正在载入，请稍候。', 'info'); return; }
+  const quote = readerAssistant.quote || '';
+  const userMessage = { id: uid('rda'), role: 'user', text: question, quote, ts: Date.now() };
+  readerAssistant.messages.push(userMessage);
+  readerAssistant.quote = '';
+  const cfg = coreadAssistantConfig();
+  const prior = readerAssistant.messages.slice(0, -1).slice(-cfg.recentTurns * 2);
+  const answer = { id: uid('rda'), role: 'assistant', text: '', ts: Date.now() };
+  readerAssistant.messages.push(answer);
+  readerAssistantBusy = true;
+  readerAssistantAbort = new AbortController();
+  const token = ++readerAssistantToken;
+  coreadRefreshAssistantPanel();
+  await coreadStoreAssistantHistory();
+
+  try {
+    const reading = await coreadAssistantReadingContext(readerView.bookId);
+    if (!reading) throw new Error('无法读取当前书籍');
+    const spoilerRule = coreadMemory().spoilerProtection !== false
+      ? '严格止于当前已读范围。不得透露、暗示或利用后文信息；若问题必须依赖未读内容，直接说明需要继续阅读。'
+      : '可以依据当前提供的已读内容作答，不虚构书中未提供的事实。';
+    const systemPrompt = `你是千幕的页边助手，是独立的阅读工具，不扮演书友或正文角色。回答要清楚、自然、实用，可以解释选文、梳理线索、讨论写法，也可以回答由阅读衍生出的额外问题。${spoilerRule}\n当前书籍：《${reading.meta.title || '未命名'}》${reading.meta.author ? `，作者：${reading.meta.author}` : ''}，读至约 ${reading.progress}%。`;
+    const history = prior.map((message) => `${message.role === 'user' ? '用户' : '助手'}：${message.text || ''}`).join('\n');
+    const userPrompt = [
+      history ? `【页边助手近期对话】\n${history}` : '',
+      quote ? `【用户选中的文字】\n${quote}` : '',
+      reading.visibleText ? `【当前已读范围】\n${reading.visibleText}` : '',
+      `【本次问题】\n${question}`,
+    ].filter(Boolean).join('\n\n');
+    const onDelta = settings.streamEnabled ? (acc) => {
+      if (token !== readerAssistantToken) return;
+      answer.text = String(acc || '');
+      const bubble = document.querySelector(`#sd-reader-portal [data-assistant-msg="${answer.id}"] .sd-reader-assistant-bubble`);
+      if (bubble) { bubble.textContent = answer.text; bubble.closest('.sd-reader-assistant-body')?.scrollTo?.({ top: bubble.closest('.sd-reader-assistant-body').scrollHeight }); }
+    } : null;
+    const reply = await callCoreadAssistantModel(systemPrompt, userPrompt, { onDelta, controller: readerAssistantAbort });
+    if (token !== readerAssistantToken) return;
+    answer.text = String(reply || '').trim() || '暂时没有得到有效回答。';
+    await coreadStoreAssistantHistory();
+  } catch (error) {
+    if (token === readerAssistantToken) {
+      readerAssistant.messages = readerAssistant.messages.filter((message) => message !== answer);
+      await coreadStoreAssistantHistory();
+      toast(`页边助手回答失败：${coreadExplainError(error)}`, 'error');
+    }
+  } finally {
+    if (token === readerAssistantToken) {
+      readerAssistantBusy = false;
+      readerAssistantAbort = null;
+      coreadRefreshAssistantPanel();
+    }
+  }
 }
 
 // 发送/生成分离：发送只把 user 输入追加进消息流（可连发多句攒着），不触发模型；
@@ -12045,9 +12267,10 @@ function coreadShowRefillChooser(bookId) {
 async function coreadPurgeBookMemory(bookId) {
   let buckets = 0, loreEntries = 0;
   // ① 对话桶：匹配 `${任意chatKey}::${bookId}`（按 ::bookId 结尾判定·bookId 全局唯一）
+  const suffix = `::${bookId}`;
+  for (const key of readerAssistantSessions.keys()) { if (String(key).endsWith(suffix)) readerAssistantSessions.delete(key); }
   try {
     const keys = await blobStore.listReaderChatKeys();
-    const suffix = `::${bookId}`;
     for (const k of keys) {
       if (String(k).endsWith(suffix)) {
         try { await blobStore.deleteReaderChat(k); buckets++; } catch (_) {}
@@ -12074,18 +12297,21 @@ async function coreadPurgeBookMemory(bookId) {
 // 默认删书只清短对话：保留切片、二次总结和向量，长期记忆仍能在伴读档案中管理与反哺正文。
 async function coreadClearBookDialogue(bookId) {
   let conversations = 0;
+  const suffix = `::${bookId}`;
+  for (const key of readerAssistantSessions.keys()) { if (String(key).endsWith(suffix)) readerAssistantSessions.delete(key); }
   try {
     const keys = await blobStore.listReaderChatKeys();
-    const suffix = `::${bookId}`;
     for (const key of keys) {
       if (!String(key).endsWith(suffix)) continue;
       let rec = null;
       try { rec = await blobStore.getReaderChat(key); } catch (_) {}
       if (!rec) continue;
-      const hadDialogue = Array.isArray(rec.messages) && rec.messages.length > 0;
+      const hadDialogue = (Array.isArray(rec.messages) && rec.messages.length > 0)
+        || (Array.isArray(rec.assistantMessages) && rec.assistantMessages.length > 0);
       await blobStore.putReaderChat(key, {
         ...rec,
         messages: [],
+        assistantMessages: [],
         cursor: 0,
         lastInjected: null,
         updatedAt: Date.now(),
@@ -12212,8 +12438,9 @@ async function coreadOpenBook(bookId) {
   readerView = {
     bookId, chapterIndex: Math.max(0, Math.min(startCh, rec.chapters.length - 1)),
     scrollRatio: meta.lastScrollRatio || 0, barHidden: false,
-    sessionStart: nowMs(),
+    sessionStart: nowMs(), assistantOpen: false,
   };
+  readerAssistant = { bucket: coreadDialogBucket(bookId), bookId, messages: [], quote: '', loaded: false };
   // 阅读器始终走 body portal（逃离模态 backdrop-filter 包含块；窄屏/移动端真·全页，不被 .sd-window 裁切）
   renderModal();        // 模态内此 tab 转为占位
   refreshReaderPortal();
@@ -12222,6 +12449,14 @@ async function coreadOpenBook(bookId) {
 
 function coreadCloseReader() {
   coreadStopDialog();     // 中止在途生成，弃旧回调
+  coreadStopAssistant(false);
+  if (coreadAssistantConfig().historyMode === 'clear') {
+    if (readerAssistant.bucket) readerAssistantSessions.delete(readerAssistant.bucket);
+    readerAssistant.messages = [];
+    readerAssistant.quote = '';
+  } else {
+    void coreadStoreAssistantHistory();
+  }
   coreadSaveProgress();   // 落进度 + 累计阅读时长
   unmountReaderPortal();
   readerView = null;
@@ -12633,6 +12868,15 @@ function buildReaderStage() {
       <button class="sd-reader-pageturn sd-reader-pageturn-prev" ${ci <= 0 ? 'disabled' : ''} title="上一章" aria-label="上一章"><i class="fa-solid fa-chevron-left"></i></button>
       <button class="sd-reader-pageturn sd-reader-pageturn-next" ${ci >= total - 1 ? 'disabled' : ''} title="下一章" aria-label="下一章"><i class="fa-solid fa-chevron-right"></i></button>
 
+      <!-- 页边助手：独立工具型 AI；选区可直接带入引用，历史与角色书友对话完全分离。 -->
+      <button class="sd-reader-assistant-trigger${readerView.assistantOpen ? ' active' : ''}" title="页边助手" aria-label="打开页边助手"><i class="fa-regular fa-lightbulb"></i><span>助手</span></button>
+      <aside class="sd-reader-assistant-panel${readerView.assistantOpen ? ' open' : ''}" aria-label="页边助手">
+        <header><span><i class="fa-regular fa-lightbulb"></i><b>页边助手</b></span><span class="sd-reader-assistant-head-actions"><button class="sd-reader-assistant-clear" title="清空历史"><i class="fa-solid fa-broom"></i></button><button class="sd-reader-assistant-close" title="关闭"><i class="fa-solid fa-xmark"></i></button></span></header>
+        <div class="sd-reader-assistant-body">${renderReaderAssistantMessages()}</div>
+        <div class="sd-reader-assistant-quote"${readerAssistant.quote ? '' : ' hidden'}><i class="fa-solid fa-quote-left"></i><span>${htmlEscape(readerAssistant.quote || '')}</span><button class="sd-reader-assistant-quote-remove" title="移除引用"><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="sd-reader-assistant-composer"><textarea class="sd-reader-assistant-input" rows="1" placeholder="问当前选文，或聊一个衍生问题……"></textarea><button class="sd-reader-assistant-send" title="发送"><i class="fa-solid fa-arrow-up"></i></button></div>
+      </aside>
+
       <!-- 划线工具浮窗（选区/点划线后弹·跟随选区定位·父级 划线|笔记，划线展开样式+取色） -->
       <div class="sd-reader-hltools" hidden>
         <div class="sd-reader-hltools-lv sd-reader-hltools-main">
@@ -12640,6 +12884,7 @@ function buildReaderStage() {
           <button data-act="note" title="笔记"><i class="fa-solid fa-pen"></i></button>
           <button data-act="copy" title="复制文字"><i class="fa-solid fa-copy"></i></button>
           <button data-act="image" title="摘录成图"><i class="fa-solid fa-image"></i></button>
+          <button data-act="assistant" title="问页边助手"><i class="fa-regular fa-lightbulb"></i></button>
         </div>
         <div class="sd-reader-hltools-lv sd-reader-hltools-styles" hidden>
           <button data-back title="返回"><i class="fa-solid fa-chevron-left"></i></button>
@@ -12652,6 +12897,7 @@ function buildReaderStage() {
           <button data-act="note" title="笔记"><i class="fa-solid fa-pen"></i></button>
           <button data-act="copy" title="复制文字"><i class="fa-solid fa-copy"></i></button>
           <button data-act="image" title="摘录成图"><i class="fa-solid fa-image"></i></button>
+          <button data-act="assistant" title="问页边助手"><i class="fa-regular fa-lightbulb"></i></button>
           <button data-act="remove"><i class="fa-solid fa-eraser"></i><span>取消划线</span></button>
         </div>
       </div>
@@ -12901,6 +13147,7 @@ function renderCoreadSpoilerGuard(m) {
 
 const COREAD_GUIDE_STEPS = [
   { tab: 'api', target: 'api', icon: 'fa-plug-circle-check', title: '连接模型接口', text: '先确认对话 API。可直接跟随 SillyTavern 当前连接，也可选择千幕自定义预设；总结、向量与重排按需配置。' },
+  { tab: 'api', target: 'assistant', icon: 'fa-lightbulb', title: '配置页边助手', text: '页边助手与角色书友分开。可从千幕 API 预设中单独选模型，并决定历史只留本次页面、随书保存，或关闭阅读即清空；阅读时选中文字即可直接提问。' },
   { tab: 'setup', target: 'context', icon: 'fa-link', title: '确认正文联动', text: '设置伴读参考最近多少层正文聊天。身份会自动跟随当前角色与用户，无需重复填写。' },
   { tab: 'setup', target: 'sources', icon: 'fa-layer-group', title: '选择伴读取材', text: '按需勾选世界书和预设条目。防全知剧透会继续按阅读水位隔离尚未读到的内容。' },
   { tab: 'records', target: 'dialog-summary', icon: 'fa-comments', title: '整理伴读对话', text: '自动总结会在短对话累积到设定条数后写入记忆；手动总结适合补整指定区间。两者都写入同一切片池，重叠时会先提醒再替换。' },
@@ -12986,6 +13233,7 @@ function renderCompanionMoreBody() {
   } else if (tab === 'api') {
     const ext = m.dialogProvider === 'external';
     const profiles = Array.isArray(settings.apiProfiles) ? settings.apiProfiles : [];
+    const assistantCfg = coreadAssistantConfig();
     panel = `
       <div class="sd-reader-mcard${coreadGuideTargetClass('api')}">
         <div class="sd-reader-mcard-head"><i class="fa-solid fa-comments"></i> 对话 API</div>
@@ -13000,6 +13248,25 @@ function renderCompanionMoreBody() {
                ${profiles.map((p) => `<option value="${htmlEscape(p.id)}" ${p.id === m.dialogApiProfileId ? 'selected' : ''}>${htmlEscape(p.name || p.model || '未命名API')}</option>`).join('')}
              </select>`
           : `<div class="sd-reader-more-conn">${connLine}</div>`}
+      </div>
+      <div class="sd-reader-mcard sd-reader-assistant-settings${coreadGuideTargetClass('assistant')}">
+        <div class="sd-reader-mcard-head"><i class="fa-regular fa-lightbulb"></i> 页边助手</div>
+        <label class="sd-reader-mlab">API 预设</label>
+        <select class="sd-reader-minput sd-reader-assistant-profile">
+          <option value="">跟随伴读对话 API</option>
+          ${profiles.map((profile) => `<option value="${htmlEscape(profile.id)}"${profile.id === assistantCfg.apiProfileId ? ' selected' : ''}>${htmlEscape(profile.name || profile.model || '未命名API')}</option>`).join('')}
+        </select>
+        <div class="sd-reader-mrow-double sd-reader-assistant-setting-grid">
+          <label class="sd-reader-mlab-inline">历史保存
+            <select class="sd-reader-minput sd-reader-assistant-history-mode">
+              <option value="session"${assistantCfg.historyMode === 'session' ? ' selected' : ''}>本次页面会话</option>
+              <option value="persistent"${assistantCfg.historyMode === 'persistent' ? ' selected' : ''}>随书保存</option>
+              <option value="clear"${assistantCfg.historyMode === 'clear' ? ' selected' : ''}>关闭阅读即清空</option>
+            </select>
+          </label>
+          <label class="sd-reader-mlab-inline">参考最近轮数<input type="number" class="sd-reader-minput sd-reader-assistant-recent" min="1" max="50" step="1" value="${assistantCfg.recentTurns}"></label>
+        </div>
+        <button type="button" class="sd-reader-mbtn sd-reader-assistant-history-clear"><i class="fa-solid fa-broom"></i>清空当前助手历史</button>
       </div>
       ${renderSummaryApiCard(m)}
       <div class="sd-reader-mcard">
@@ -13777,8 +14044,7 @@ async function coreadPromptExcerptCssFont() {
     wrap.className = 'sd-reader-fontcss-form';
     wrap.innerHTML = `
       <label><span>字体名称</span><input type="text" class="sd-reader-fontcss-name" maxlength="40" placeholder="显示在下拉框中的名称"></label>
-      <label><span>CSS</span><textarea class="sd-reader-fontcss-code" rows="7" placeholder='粘贴网站提供的完整 CSS，例如：\n@import url("https://fontsapi.zeoseven.com/…/result.css");\n.demo { font-family: "字体族名称"; }'></textarea></label>
-      <small>只提取字体 API 与 font-family，CSS 不会应用到 ST 页面。</small>`;
+      <label><span>CSS</span><textarea class="sd-reader-fontcss-code" rows="7" placeholder='粘贴网站提供的完整 CSS，例如：\n@import url("https://fontsapi.zeoseven.com/…/result.css");\n.demo { font-family: "字体族名称"; }'></textarea></label>`;
     const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '添加', cancelButton: '取消', wide: true });
     const result = await popup.show();
     if (result !== true && String(result) !== '1') return null;
@@ -14565,6 +14831,40 @@ function bindReaderStageEvents(stageRoot) {
     dialogTa.style.height = 'auto';
     dialogTa.style.height = `${Math.min(120, dialogTa.scrollHeight)}px`;
   });
+  // 页边助手：侧边胶囊 + 独立问答面板。不会写入角色对话，也不参与伴读记忆自动总结。
+  const assistantPanel = q('.sd-reader-assistant-panel');
+  const assistantInput = q('.sd-reader-assistant-input');
+  q('.sd-reader-assistant-trigger')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    readerView.assistantOpen = !readerView.assistantOpen;
+    assistantPanel?.classList.toggle('open', readerView.assistantOpen);
+    event.currentTarget.classList.toggle('active', readerView.assistantOpen);
+    if (readerView.assistantOpen) { coreadRefreshAssistantPanel(); setTimeout(() => assistantInput?.focus(), 30); }
+  });
+  q('.sd-reader-assistant-close')?.addEventListener('click', () => {
+    readerView.assistantOpen = false;
+    assistantPanel?.classList.remove('open');
+    q('.sd-reader-assistant-trigger')?.classList.remove('active');
+  });
+  q('.sd-reader-assistant-clear')?.addEventListener('click', () => {
+    confirmDialog('清空页边助手', '清空当前书籍的页边助手对话？此操作不会影响书友对话和伴读记忆。').then((yes) => { if (yes) void coreadClearAssistantHistory(); });
+  });
+  q('.sd-reader-assistant-quote-remove')?.addEventListener('click', () => { readerAssistant.quote = ''; coreadRefreshAssistantPanel(); });
+  const sendAssistant = () => {
+    if (readerAssistantBusy) { coreadStopAssistant(); return; }
+    const text = assistantInput?.value || '';
+    if (!text.trim()) return;
+    if (assistantInput) { assistantInput.value = ''; assistantInput.style.height = 'auto'; }
+    void coreadAskAssistant(text);
+  };
+  q('.sd-reader-assistant-send')?.addEventListener('click', sendAssistant);
+  assistantInput?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendAssistant(); }
+  });
+  assistantInput?.addEventListener('input', () => {
+    assistantInput.style.height = 'auto';
+    assistantInput.style.height = `${Math.min(120, assistantInput.scrollHeight)}px`;
+  });
   // 载入完成后若对话流已在缓存，补渲（异步载入可能晚于本次绑定）
   if (readerDialog.loaded && readerDialog.bookId === readerView.bookId) {
     const cb = q('.sd-reader-dtab-chat');
@@ -14786,6 +15086,10 @@ function bindReaderStageEvents(stageRoot) {
       coreadMemory().guideSeen = false;
       coreadGuideStep = 0;
       saveSettings(); rerenderMore();
+      return;
+    }
+    if (e.target.closest('.sd-reader-assistant-history-clear')) {
+      confirmDialog('清空页边助手', '清空当前书籍的页边助手对话？书友对话和伴读记忆不会受影响。').then((yes) => { if (yes) void coreadClearAssistantHistory(); });
       return;
     }
     if (e.target.closest('.sd-reader-pack-export')) {
@@ -15116,6 +15420,15 @@ function bindReaderStageEvents(stageRoot) {
     if (e.target.closest('.sd-reader-sum-stream')) { m.summaryStream = e.target.checked; saveSettings(); return; }
     if (e.target.closest('.sd-reader-readdate-en')) { m.readDateInSummary = e.target.checked; saveSettings(); return; }
     if (e.target.closest('.sd-reader-dialog-profile')) { m.dialogApiProfileId = e.target.value || ''; saveSettings(); return; }
+    if (e.target.closest('.sd-reader-assistant-profile')) { coreadAssistantConfig().apiProfileId = e.target.value || ''; saveSettings(); return; }
+    if (e.target.closest('.sd-reader-assistant-history-mode')) {
+      const cfg = coreadAssistantConfig();
+      cfg.historyMode = ['session', 'persistent', 'clear'].includes(e.target.value) ? e.target.value : 'session';
+      if (cfg.historyMode === 'session' && readerAssistant.bucket) readerAssistantSessions.set(readerAssistant.bucket, readerAssistant.messages);
+      saveSettings();
+      if (cfg.historyMode === 'persistent') void coreadSaveDialog();
+      return;
+    }
     if (e.target.closest('.sd-reader-vector-en')) {
       m.vectorEnabled = e.target.checked; saveSettings();
       // 开启即自动向量化现有切片（指纹增量·已算的复用·不重复消耗）。静默失败回退关键词召回。
@@ -15181,6 +15494,7 @@ function bindReaderStageEvents(stageRoot) {
     if (e.target.closest('.sd-reader-sum-temp')) { m.summaryTemperature = Math.max(0, Math.min(2, Number(e.target.value) || 0)); saveSettings(); return; }
     if (e.target.closest('.sd-reader-sum-maxtok')) { m.summaryMaxTokens = Math.max(0, Math.round(Number(e.target.value) || 0)); saveSettings(); return; }
     if (e.target.closest('.sd-reader-sum-ctx')) { m.summaryContextChars = Math.max(0, Math.round(Number(e.target.value) || 0)); saveSettings(); return; }
+    if (e.target.closest('.sd-reader-assistant-recent')) { coreadAssistantConfig().recentTurns = Math.max(1, Math.min(50, Math.round(Number(e.target.value) || 12))); saveSettings(); return; }
     // 自动/手动总结数值 + 注入设置（数字框·不重渲）
     if (e.target.closest('.sd-reader-distill-every')) { m.distillEvery = Math.max(2, Number(e.target.value) || 30); saveSettings(); return; }
     if (e.target.closest('.sd-reader-distill-textevery')) { m.distillTextEvery = Math.max(1000, Number(e.target.value) || 8000); saveSettings(); return; }
@@ -15396,6 +15710,10 @@ function bindReaderStageEvents(stageRoot) {
       const text = pendingText; const segments = pendingSegments.slice(); hideTools(); window.getSelection?.()?.removeAllRanges?.();
       if (text) { const id = coreadAddHighlight(text, 'mark', segments); updateReaderArticle(stageRoot); if (id) coreadOpenExcerptDialog(id, stageRoot); }
     };
+    lvMain.querySelector('[data-act="assistant"]').onclick = () => {
+      const text = pendingText; hideTools(); window.getSelection?.()?.removeAllRanges?.();
+      if (text) coreadOpenAssistant(text);
+    };
     // 样式级：返回箭头 / 三样式 / 取色（荧光自动半透明由 CSS color-mix 负责）
     lvStyles.querySelector('[data-back]').onclick = () => showLevel('main');
     lvStyles.querySelector('.sd-reader-hlcolor-input')?.addEventListener('input', (e) => {
@@ -15413,6 +15731,10 @@ function bindReaderStageEvents(stageRoot) {
     lvExist.querySelector('[data-act="note"]').onclick = () => { const id = pendingMark; hideTools(); if (id) openReaderNoteDialog(id); };
     lvExist.querySelector('[data-act="copy"]').onclick = () => { const note = coreadFindReaderNote(pendingMark); hideTools(); if (note) void coreadCopyText(coreadNotePlainText(note)); };
     lvExist.querySelector('[data-act="image"]').onclick = () => { const id = pendingMark; hideTools(); if (id) coreadOpenExcerptDialog(id, stageRoot); };
+    lvExist.querySelector('[data-act="assistant"]').onclick = () => {
+      const note = coreadFindReaderNote(pendingMark); hideTools();
+      if (note) coreadOpenAssistant(coreadNotePlainText(note));
+    };
     lvExist.querySelector('[data-act="remove"]').onclick = () => {
       const id = pendingMark; hideTools();
       if (id) { coreadDeleteNote(id); updateReaderArticle(stageRoot); }   // 原地更新·不重渲不跳动
