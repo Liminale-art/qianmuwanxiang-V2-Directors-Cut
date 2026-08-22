@@ -14,7 +14,7 @@ assert.doesNotMatch(centerStatus, /sd-reader-spoiler-filter/, '防剧透开关�
 assert.ok(spoilerGuard.includes('sd-reader-spoiler-filter') && spoilerGuard.includes('防全知剧透'), '防全知剧透必须保留独立开关');
 assert.doesNotMatch(spoilerGuard, /<small>/, '防全知剧透卡不得再显示状态说明小字');
 assert.match(source, /renderCoreadIdentity\('我', stUser, userAvatar/, '用户身份标签必须显示为“我”并使用当前人设头像');
-assert.match(source, /context\?\.userAvatar[\s\S]*#chat \.mes\[is_user="true"\]/, '用户头像必须优先读取 ST 当前人设并提供聊天头像回退');
+assert.match(source, /#user_avatar_block[\s\S]*#chat \.mes\[is_user="true"\][\s\S]*context\?\.user_avatar/, '用户头像必须优先读取当前选中人设与聊天真实头像，再回退 ST 上下文字段');
 assert.match(css, /\.sd-reader-setup-guard\s*\{[^}]*min-height:\s*54px[^}]*padding:\s*13px 15px/, '防全知剧透卡必须为图标与开关保留稳定边距');
 assert.match(source, /tab === 'setup'[\s\S]*renderCompanionSetupBody/, '伴读设定必须并入统一中心');
 
