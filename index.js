@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.25.1';
+const VERSION = '1.25.2';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -12161,6 +12161,9 @@ function coreadOpenAssistant(quote = '') {
   if (String(quote || '').trim()) readerAssistant.quote = String(quote).trim().slice(0, 6000);
   const portal = document.getElementById('sd-reader-portal');
   const dialogPanel = portal?.querySelector('.sd-reader-dialog');
+  // 选区入口不经过底栏 togglePanel，必须在这里主动执行同一套抽屉互斥。
+  // 否则设置/目录/进度抽屉会保持 open，与小助手对话框叠在底部并共同顶起正文。
+  portal?.querySelectorAll('.sd-reader-panel.open').forEach((panel) => panel.classList.remove('open'));
   dialogPanel?.classList.add('open');
   dialogPanel?.classList.remove('sd-reader-dialog-voicing');
   portal?.querySelector('.sd-reader-stage')?.classList.add('sd-reader-bar-hidden');

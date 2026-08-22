@@ -18,6 +18,8 @@ assert.match(source, /assistantMode \? 'fa-user' : 'fa-lightbulb'/, '幕伴小�
 assert.doesNotMatch(source, /sd-reader-assistant-trigger|sd-reader-assistant-panel/);
 assert.match(source, /data-act="assistant" title="问幕伴小助手"/);
 assert.match(source, /coreadOpenAssistant\(text\)/);
+const openAssistant = source.slice(source.indexOf('function coreadOpenAssistant'), source.indexOf('function coreadStopAssistant'));
+assert.match(openAssistant, /querySelectorAll\('\.sd-reader-panel\.open'\)[\s\S]*classList\.remove\('open'\)[\s\S]*dialogPanel\?\.classList\.add\('open'\)/, '从选区打开小助手前必须关闭其他阅读抽屉，只保留对话面板');
 assert.match(source, /function coreadStopAssistant/);
 assert.match(source, /function coreadClearAssistantHistory/);
 assert.match(source, /但愿你能不期而然地同我一起/);
