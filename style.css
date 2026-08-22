@@ -3620,12 +3620,9 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-inbtn { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--sd-border); background: var(--sd-glass-weak); color: var(--sd-text); cursor: pointer; transition: background .18s, color .18s; }
 .sd-reader-inbtn:hover:not(:disabled) { background: var(--sd-glass); }
 .sd-reader-inbtn:disabled { opacity: .4; cursor: not-allowed; }
-.sd-reader-assistant-switch { width: auto; min-width: 46px; padding: 0 9px; color: var(--sd-muted); }
-.sd-reader-assistant-switch span { font-size: .72em; letter-spacing: .08em; white-space: nowrap; }
+.sd-reader-assistant-switch { width: 36px; min-width: 36px; padding: 0; color: var(--sd-muted); }
 .sd-reader-assistant-switch.active { color: var(--sd-accent); border-color: color-mix(in srgb, var(--sd-accent) 45%, var(--sd-border)); background: color-mix(in srgb, var(--sd-accent) 9%, var(--sd-glass-weak)); }
-.sd-reader-dialog-image { position: relative; margin: 0; overflow: hidden; }
-#sd-reader-portal .sd-reader-dialog-image .sd-reader-dialog-image-input { inset: 0 !important; width: 100% !important; height: 100% !important; margin: 0 !important; opacity: 0 !important; clip: auto !important; clip-path: none !important; cursor: pointer !important; }
-.sd-reader-dialog-image:focus-within { border-color: color-mix(in srgb, var(--sd-accent) 52%, var(--sd-border)); color: var(--sd-accent); }
+.sd-reader-dialog-send.is-image-hold { color: var(--sd-accent); border-color: color-mix(in srgb, var(--sd-accent) 62%, var(--sd-border)); background: color-mix(in srgb, var(--sd-accent) 12%, var(--sd-glass)); transform: scale(.94); }
 .sd-reader-dialog-input.is-assistant .sd-reader-dialog-send.is-stop { background: #a94642; color: #fff; border-color: transparent; }
 .sd-reader-more-conn { font-size: .9em; color: var(--sd-text); margin: 6px 0; padding: 8px 10px; background: var(--sd-glass-weak); border-radius: 8px; word-break: break-word; }
 /* 生成钮（让书友回复）＝主动作：强调色实心，压过统一玻璃底；生成中切停止红 */
@@ -4044,6 +4041,8 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-archive-card { min-width: 0; border: 1px solid var(--sd-hairline); border-radius: 12px; background: var(--sd-glass-weak); overflow: hidden; transition: border-color .16s, background .16s; }
 .sd-reader-archive-card:hover { border-color: color-mix(in srgb, var(--sd-accent) 58%, var(--sd-hairline)); }
 .sd-reader-archive-card:has(.sd-reader-arch-pick:checked) { border-color: color-mix(in srgb, var(--sd-good, #3fae6b) 66%, var(--sd-hairline)); background: color-mix(in srgb, var(--sd-good, #3fae6b) 8%, var(--sd-glass-weak)); }
+.sd-reader-archive-card.is-preview { opacity: .9; border-style: dashed; }
+.sd-reader-archive-card.is-preview .sd-reader-archive-check { cursor: default; }
 .sd-reader-archive-summary { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 10px; padding: 10px 11px; cursor: pointer; list-style: none; }
 .sd-reader-archive-summary::-webkit-details-marker { display: none; }
 .sd-reader-archive-mark { width: 34px; height: 40px; border-radius: 8px 8px 5px 5px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: #d0872e; background: color-mix(in srgb, #d0872e 16%, transparent); }
@@ -4144,11 +4143,6 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-src-badge i { margin-right: 4px; }
 .sd-reader-sm-row.is-preview { opacity: .9; }
 .sd-reader-sm-acts > .sd-muted { margin-right: auto; align-self: center; font-size: .75em; }
-.sd-reader-pipeline-state { display: flex; align-items: flex-start; gap: 9px; padding: 10px 12px; border-radius: 11px; font-size: .76em; line-height: 1.45; }
-.sd-reader-pipeline-state span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.sd-reader-pipeline-state.is-ok { color: var(--sd-good, #3fae6b); background: color-mix(in srgb, var(--sd-good, #3fae6b) 10%, var(--sd-glass-weak)); }
-.sd-reader-pipeline-state.is-error { color: #d45555; background: color-mix(in srgb, #d45555 11%, var(--sd-glass-weak)); }
-
 /* 伴读中心之上的独立通知层：只在后台重试最终失败时出现，不受 ST popup / reader portal 层级影响。 */
 #sd-coread-notice-layer { position: fixed; inset: max(12px, env(safe-area-inset-top)) 12px auto; z-index: 2147483647; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
 .sd-coread-notice { width: min(620px, calc(100vw - 24px)); box-sizing: border-box; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 9px; padding: 11px 12px; border: 1px solid color-mix(in srgb, #d45555 64%, transparent); border-radius: 13px; color: var(--sd-text, #eee); background: color-mix(in srgb, var(--sd-folder-head, #20242b) 95%, transparent); box-shadow: 0 10px 34px rgba(0,0,0,.28); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); pointer-events: auto; }

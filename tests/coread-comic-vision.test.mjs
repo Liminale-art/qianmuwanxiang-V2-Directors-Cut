@@ -74,12 +74,16 @@ assert.match(source, /if \(meta\.mode === 'comic'\) return \{ ok: false, reason:
 assert.match(source, /if \(coreadBookMeta\(id\)\?\.mode === 'comic'\) return;/, '漫画不得触发自动正文蒸馏');
 
 // 图片对话：本地存储、可移除预览，书友与幕伴助手共用视觉模型但消息池仍隔离。
-assert.match(source, /sd-reader-dialog-image[\s\S]*sd-reader-dialog-image-input sd-reader-native-file[\s\S]*accept="image\/\*"[\s\S]*multiple/, '伴读输入框必须使用 iOS 兼容的原生控件支持多图选择');
+assert.match(source, /sd-reader-dialog-send[\s\S]*sd-reader-dialog-image-input sd-reader-native-file[\s\S]*accept="image\/\*"[\s\S]*multiple/, '伴读输入框必须保留 iOS 兼容的原生多图控件');
 assert.match(source, /coreadPersistPendingChatImages[\s\S]*putReaderImage/, '发送前必须将图片保存到本书本地媒体仓');
 assert.match(source, /coreadAskAssistant\(text, imageIds\)[\s\S]*coreadAppendUserMessage\(text, imageIds\)/, '图片必须能分别发给幕伴助手或书友');
 assert.match(source, /pendingUsers\.flatMap[\s\S]*callCoreadVisionModel/, '书友回复必须读取本轮图片并调用视觉模型');
 assert.match(source, /comicDescriptions: rec\?\.comicDescriptions[\s\S]*version: 4/, '数据打包必须携带漫画视觉文字稿并升级格式');
 assert.match(css, /\.sd-reader-chat-pending[\s\S]*\.sd-reader-chat-images/, '待发送和已发送图片都必须有隔离样式');
-assert.match(css, /#sd-reader-portal \.sd-reader-dialog-image \.sd-reader-dialog-image-input[^}]*inset:\s*0[^}]*clip-path:\s*none/, '发图控件必须直接覆盖按钮，避免 iOS 丢失用户手势');
+assert.match(source, /openDialogImagePicker[\s\S]*showPicker/, '图片选择必须优先使用浏览器原生 showPicker 用户手势接口');
+assert.match(source, /pointerdown[\s\S]*pointerup[\s\S]*heldFor < 520[\s\S]*openDialogImagePicker/, '长按发送键必须在原生 pointerup 用户手势中打开图片选择器');
+assert.match(source, /dialogImageInput\?\.addEventListener\('change'[\s\S]*coreadAddPendingChatImages[\s\S]*void doSend\(\)/, '长按选图完成后必须直接发送');
+assert.doesNotMatch(source, /<label class="sd-reader-inbtn sd-reader-dialog-image"/, '对话输入框不得再保留拥挤的独立图片按钮');
+assert.match(css, /\.sd-reader-dialog-send\.is-image-hold/, '长按图片动作必须提供即时视觉反馈');
 
 console.log('Coread comic vision and image dialogue contract OK');

@@ -14,6 +14,7 @@ assert.doesNotMatch(source, /sd-reader-assistant-recent|参考最近轮数/);
 
 // UI：与伴读对话共用抽屉，从输入框左侧切换；不再占用阅读页悬浮空间。
 assert.match(source, /sd-reader-assistant-switch/);
+assert.match(source, /assistantMode \? 'fa-user' : 'fa-lightbulb'/, '幕伴小助手与书友切换必须分别使用灯泡和小人图标');
 assert.doesNotMatch(source, /sd-reader-assistant-trigger|sd-reader-assistant-panel/);
 assert.match(source, /data-act="assistant" title="问幕伴小助手"/);
 assert.match(source, /coreadOpenAssistant\(text\)/);
@@ -22,6 +23,8 @@ assert.match(source, /function coreadClearAssistantHistory/);
 assert.match(source, /但愿你能不期而然地同我一起/);
 assert.match(source, /<details class="sd-reader-mcard sd-reader-assistant-settings/);
 assert.match(source, /幕伴小助手/);
+assert.match(source, /清空助手对话历史/, '助手设置卡必须使用清楚的文字按钮清空历史');
+assert.match(source, /<label class="sd-reader-mlab">识图模型<\/label>/, '漫画与图片模型选择必须使用“识图模型”标题');
 
 // 模型必须可选择千幕已有 API 预设，且防剧透边界进入助手系统提示词。
 assert.match(source, /function assistantApiConn\(\)[\s\S]*?settings\.apiProfiles/);

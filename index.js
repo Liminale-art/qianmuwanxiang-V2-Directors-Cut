@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.25.0';
+const VERSION = '1.25.1';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -9736,7 +9736,7 @@ async function coreadVisionDataUrl(blob) {
 
 async function callCoreadVisionModel(systemPrompt, userPrompt, imageUrls, opts = {}) {
   const conn = coreadVisionApiConn();
-  if (!conn) throw new Error('请先在伴读中心的模型接口中选择支持图片的视觉 API 预设');
+  if (!conn) throw new Error('请先在伴读中心的模型接口中选择支持图片的识图模型');
   const images = (Array.isArray(imageUrls) ? imageUrls : []).filter(Boolean).slice(0, 8);
   if (!images.length) throw new Error('没有可发送的图片');
   const content = [
@@ -11222,17 +11222,28 @@ function renderCoreadSubpageHead(icon, title, subtitle) {
 }
 
 // 伴读档案是中心内部子页面：矩形折叠卡管理绑定，不再叠加 ST Popup。
+function coreadArchivePreviewFixtures() {
+  return [
+    { bucket: '__preview-archive-a', title: '雾港来信', chatName: '林见川', sliceN: 12, updatedAt: '2026-08-20T18:24:00.000Z', bound: true, _preview: true },
+    { bucket: '__preview-archive-b', title: '长夜观星手记', chatName: '书友 · 示例档案', sliceN: 7, updatedAt: '2026-08-18T09:40:00.000Z', bound: false, _preview: true },
+    { bucket: '__preview-archive-c', title: '旧城夏日', chatName: '跨聊天绑定示例', sliceN: 19, updatedAt: '2026-08-12T14:05:00.000Z', bound: false, _preview: true },
+  ];
+}
+
 function renderCoreadArchivePage() {
-  const rows = coreadArchivePageItems.map((a, i) => {
+  const preview = !coreadArchivePageItems.length;
+  const archiveItems = preview ? coreadArchivePreviewFixtures() : coreadArchivePageItems;
+  const rows = archiveItems.map((a, i) => {
     const when = a.updatedAt ? new Date(a.updatedAt).toLocaleString() : '旧档案';
-    return `<details class="sd-reader-archive-card${a.bound ? ' is-bound' : ''}">
+    const previewAttr = a._preview ? ' disabled aria-label="预览档案，不可选择"' : '';
+    return `<details class="sd-reader-archive-card${a.bound ? ' is-bound' : ''}${a._preview ? ' is-preview' : ''}">
       <summary class="sd-reader-archive-summary">
         <span class="sd-reader-archive-mark"><i class="fa-solid fa-book-bookmark"></i></span>
         <span class="sd-reader-archive-main">
-          <span class="sd-reader-archive-title"><b>《${htmlEscape(a.title || '未知书目')}》</b><em><span class="off">未绑定</span><span class="on">已选择</span></em></span>
+          <span class="sd-reader-archive-title"><b>《${htmlEscape(a.title || '未知书目')}》</b><em>${a._preview ? '<span>版面预览</span>' : '<span class="off">未绑定</span><span class="on">已选择</span>'}</em></span>
           <span class="sd-reader-archive-peek">${htmlEscape(a.chatName || '未知角色')} · ${a.sliceN} 条记忆</span>
         </span>
-        <label class="sd-reader-archive-check" onclick="event.stopPropagation()"><input type="checkbox" class="sd-reader-arch-pick" value="${i}"${a.bound ? ' checked' : ''}><span>选用</span></label>
+        <label class="sd-reader-archive-check" onclick="event.stopPropagation()"><input type="checkbox" class="sd-reader-arch-pick" value="${i}"${a.bound ? ' checked' : ''}${previewAttr}><span>${a._preview ? '预览' : '选用'}</span></label>
         <i class="fa-solid fa-chevron-down sd-reader-archive-chevron"></i>
       </summary>
       <div class="sd-reader-archive-detail">
@@ -11245,7 +11256,8 @@ function renderCoreadArchivePage() {
   return `<section class="sd-reader-subpage sd-reader-archive-page">
     ${renderCoreadSubpageHead('fa-box-archive', '伴读档案', '选择需要与当前对话共同召回的档案')}
     <div class="sd-reader-archive-note"><i class="fa-solid fa-circle-info"></i><span>绑定只共享召回，不会合并或改写旧档案；当前正在阅读的档案已自动生效。</span></div>
-    <div class="sd-reader-archive-list">${rows || '<div class="sd-reader-mempty">尚无可管理的伴读档案</div>'}</div>
+    ${preview ? '<div class="sd-reader-preview-note"><i class="fa-solid fa-eye"></i><span>当前没有真实档案，下方为版面预览数据；仅用于确认折叠卡外观，不会写入千幕档案、世界书或向量库。</span></div>' : ''}
+    <div class="sd-reader-archive-list">${rows}</div>
     <div class="sd-reader-arch-secondary"><button type="button" class="sd-reader-textbtn sd-reader-arch-migrate"><i class="fa-solid fa-arrow-right-arrow-left"></i>从其他聊天迁移这本书</button></div>
   </section>`;
 }
@@ -12104,7 +12116,7 @@ function coreadRefreshAssistantPanel() {
   if (toggle) {
     toggle.classList.toggle('active', assistantMode);
     toggle.title = assistantMode ? '返回书友对话' : '切换至幕伴小助手';
-    toggle.innerHTML = `<span>${assistantMode ? '书友' : '幕伴'}</span>`;
+    toggle.innerHTML = `<i class="fa-solid ${assistantMode ? 'fa-user' : 'fa-lightbulb'}"></i>`;
   }
   const input = portal.querySelector('.sd-reader-dialog-ta');
   if (input) input.placeholder = assistantMode ? '问当前选文，或聊一个衍生问题……' : '但愿你能不期而然地同我一起';
@@ -12114,7 +12126,7 @@ function coreadRefreshAssistantPanel() {
   if (send) {
     send.classList.toggle('is-stop', assistantMode && readerAssistantBusy);
     send.disabled = assistantMode ? false : dialogBusy;
-    send.title = assistantMode && readerAssistantBusy ? '停止回答' : '发送';
+    send.title = assistantMode && readerAssistantBusy ? '停止回答' : '发送；长按选择并发送图片';
     send.innerHTML = `<i class="fa-solid ${assistantMode && readerAssistantBusy ? 'fa-stop' : 'fa-arrow-up'}"></i>`;
   }
 }
@@ -13644,10 +13656,10 @@ function buildReaderStage() {
         <div class="sd-reader-dialog-input${assistantMode ? ' is-assistant' : ''}"${dTab === 'chat' ? '' : ' hidden'}>
           <div class="sd-reader-assistant-quote"${assistantMode && readerAssistant.quote ? '' : ' hidden'}><i class="fa-solid fa-quote-left"></i><span>${htmlEscape(readerAssistant.quote || '')}</span><button class="sd-reader-assistant-quote-remove" title="移除引用"><i class="fa-solid fa-xmark"></i></button></div>
           ${coreadPendingImagesHtml()}
-          <button class="sd-reader-inbtn sd-reader-assistant-switch${assistantMode ? ' active' : ''}" title="${assistantMode ? '返回书友对话' : '切换至幕伴小助手'}"><span>${assistantMode ? '书友' : '幕伴'}</span></button>
-          <label class="sd-reader-inbtn sd-reader-dialog-image" title="发送图片"><i class="fa-regular fa-image"></i><input type="file" class="sd-reader-dialog-image-input sd-reader-native-file" accept="image/*" multiple></label>
+          <button class="sd-reader-inbtn sd-reader-assistant-switch${assistantMode ? ' active' : ''}" title="${assistantMode ? '返回书友对话' : '切换至幕伴小助手'}"><i class="fa-solid ${assistantMode ? 'fa-user' : 'fa-lightbulb'}"></i></button>
           <textarea class="sd-reader-dialog-ta" placeholder="${assistantMode ? '问当前选文，或聊一个衍生问题……' : '但愿你能不期而然地同我一起'}" rows="1"></textarea>
-          <button class="sd-reader-inbtn sd-reader-dialog-send" title="${assistantMode && readerAssistantBusy ? '停止回答' : '发送'}"><i class="fa-solid ${assistantMode && readerAssistantBusy ? 'fa-stop' : 'fa-arrow-up'}"></i></button>
+          <button class="sd-reader-inbtn sd-reader-dialog-send" title="${assistantMode && readerAssistantBusy ? '停止回答' : '发送；长按选择并发送图片'}"><i class="fa-solid ${assistantMode && readerAssistantBusy ? 'fa-stop' : 'fa-arrow-up'}"></i></button>
+          <input type="file" class="sd-reader-dialog-image-input sd-reader-native-file" accept="image/*" multiple aria-label="选择并发送图片">
           <button class="sd-reader-inbtn sd-reader-dialog-gen" title="让书友回复"${assistantMode ? ' hidden' : ''}><i class="fa-solid fa-paper-plane"></i></button>
         </div>
       </div>
@@ -13849,7 +13861,7 @@ function renderCoreadSpoilerGuard(m) {
 const COREAD_GUIDE_STEPS = [
   { tab: 'api', target: 'api', icon: 'fa-plug-circle-check', title: '连接模型接口', text: '先确认对话 API。可直接跟随 SillyTavern 当前连接，也可选择千幕自定义预设；总结、向量与重排按需配置。' },
   { tab: 'api', target: 'assistant', icon: 'fa-lightbulb', title: '配置幕伴小助手', text: '幕伴小助手与角色书友分开。可从千幕 API 预设中单独选模型，并决定历史只留本次页面、随书保存，或关闭阅读即清空；阅读时可从对话输入框左侧切换，也可选中文字直接提问。' },
-  { tab: 'api', target: 'comic', icon: 'fa-images', title: '启用漫画与图片', text: '选择支持看图的视觉 API 预设。漫画阅读页可把当前及此前尚未整理的连续页面生成文字稿；确认或修改后才写入伴读档案。对话输入框也可发图片给书友或幕伴小助手。' },
+  { tab: 'api', target: 'comic', icon: 'fa-images', title: '启用漫画与图片', text: '选择支持看图的识图模型。漫画阅读页可把当前及此前尚未整理的连续页面生成文字稿；确认或修改后才写入伴读档案。长按对话发送键也可发图片给书友或幕伴小助手。' },
   { tab: 'setup', target: 'context', icon: 'fa-link', title: '确认正文联动', text: '设置伴读参考最近多少层正文聊天。身份会自动跟随当前角色与用户，无需重复填写。' },
   { tab: 'setup', target: 'sources', icon: 'fa-layer-group', title: '选择伴读取材', text: '按需勾选世界书和预设条目。防全知剧透会继续按阅读水位隔离尚未读到的内容。' },
   { tab: 'records', target: 'dialog-summary', icon: 'fa-comments', title: '整理伴读对话', text: '自动总结会在短对话累积到设定条数后写入记忆；手动总结适合补整指定区间。两者都写入同一切片池，重叠时会先提醒再替换。' },
@@ -13954,7 +13966,7 @@ function renderCompanionMoreBody() {
           : `<div class="sd-reader-more-conn">${connLine}</div>`}
       </div>
       <details class="sd-reader-mcard sd-reader-assistant-settings${coreadGuideTargetClass('assistant')}"${guide?.target === 'assistant' ? ' open' : ''}>
-        <summary class="sd-reader-mcard-head"><span><i class="fa-regular fa-lightbulb"></i> 幕伴小助手</span><button type="button" class="sd-reader-assistant-history-clear" title="清空幕伴小助手历史" aria-label="清空幕伴小助手历史"><i class="fa-solid fa-broom"></i></button></summary>
+        <summary class="sd-reader-mcard-head"><span><i class="fa-regular fa-lightbulb"></i> 幕伴小助手</span><button type="button" class="sd-reader-assistant-history-clear sd-reader-textbtn">清空助手对话历史</button></summary>
         <label class="sd-reader-mlab">API 预设</label>
         <select class="sd-reader-minput sd-reader-assistant-profile">
           <option value="">跟随伴读对话 API</option>
@@ -13969,7 +13981,7 @@ function renderCompanionMoreBody() {
       </details>
       <details class="sd-reader-mcard sd-reader-comic-settings${coreadGuideTargetClass('comic')}"${guide?.target === 'comic' ? ' open' : ''}>
         <summary class="sd-reader-mcard-head"><i class="fa-solid fa-images"></i> 漫画与图片</summary>
-        <label class="sd-reader-mlab">视觉 API 预设</label>
+        <label class="sd-reader-mlab">识图模型</label>
         <select class="sd-reader-minput sd-reader-comic-profile">
           <option value="">跟随幕伴小助手 / 伴读对话预设</option>
           ${profiles.map((profile) => `<option value="${htmlEscape(profile.id)}"${profile.id === comicCfg.visionApiProfileId ? ' selected' : ''}>${htmlEscape(profile.name || profile.model || '未命名API')}</option>`).join('')}
@@ -14070,7 +14082,7 @@ function renderMemRecordsTab(m) {
         <span><b>${blockedN}</b><small>进度外隔离</small></span>
       </div>
       <div class="sd-reader-memory-actions">
-        <button type="button" class="sd-reader-mbtn sd-reader-slice-manage"${slices.length ? '' : ' disabled'}><i class="fa-solid fa-table-list"></i>管理切片</button>
+        <button type="button" class="sd-reader-mbtn sd-reader-slice-manage"><i class="fa-solid fa-table-list"></i>${slices.length ? '管理切片' : '预览切片版面'}</button>
         <button type="button" class="sd-reader-mbtn sd-reader-arch-manage"><i class="fa-solid fa-box-archive"></i>管理档案</button>
         <button type="button" class="sd-reader-mbtn sd-reader-slice-clear"${slices.length ? '' : ' disabled'}><i class="fa-solid fa-trash-can"></i>清空切片</button>
       </div>
@@ -14270,18 +14282,12 @@ function renderMemInjectTab(m) {
       </div>`).join('');
   }
   if (!dictRows) dictRows = '<div class="sd-reader-mempty">点下方「新增词条」添加。</div>';
-  const pipeline = readerDialog.pipelineStatus;
-  const pipelineState = pipeline?.state === 'error'
-    ? `<div class="sd-reader-pipeline-state is-error"><i class="fa-solid fa-triangle-exclamation"></i><span><b>上次召回已降级</b>${htmlEscape(pipeline.fallback || '已使用可用的本地召回路径')} · ${htmlEscape(pipeline.message || '')}</span></div>`
-    : `<div class="sd-reader-pipeline-state is-ok"><i class="fa-solid fa-circle-check"></i><span><b>召回管线可用</b>异常会先在后台重试，最终失败才提示并自动降级。</span></div>`;
-
   const dictBody = `
     <div class="sd-reader-dict-selector">
       <select class="sd-reader-minput sd-reader-dict-booksel">
         ${dictOptions}
       </select>
       ${curBook ? `<span class="sd-reader-dict-book-acts">
-        <span class="sd-reader-inj-tag${curBound ? ' on' : ''}">${curBound ? '已绑定' : '未绑定'}</span>
         ${isDefaultBook ? '' : `<button type="button" class="sd-reader-mbtn sd-reader-dictbook-rename" data-id="${htmlEscape(curBook.id)}" title="重命名词册"><i class="fa-solid fa-pen"></i></button>
         <button type="button" class="sd-reader-mbtn sd-reader-dictbook-delbtn" data-id="${htmlEscape(curBook.id)}" title="删除此词册"><i class="fa-solid fa-trash"></i></button>`}
       </span>` : ''}
@@ -14294,7 +14300,6 @@ function renderMemInjectTab(m) {
     </div>`;
 
   return `
-    ${pipelineState}
     <details class="sd-reader-mcard${coreadGuideTargetClass('inject')}" open>
       <summary class="sd-reader-mcard-head"><i class="fa-solid fa-syringe"></i> 实际注入 <span class="sd-reader-inj-tag">${injected.length} 条</span>${li ? `<span class="sd-reader-inj-tag">最近一次·${liChannelLabel}</span>` : ''}</summary>
       <div class="sd-reader-injslices">${injCards}</div>
@@ -14319,7 +14324,7 @@ function renderMemInjectTab(m) {
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">注入深度</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-depth" min="0" step="1" value="${m.mainlineDepth}"${m.mainlineFeedback ? '' : ' disabled'}></div>
     </div>
     <details class="sd-reader-mcard" open>
-      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-book-bookmark"></i> 检索词典 <span class="sd-reader-inj-tag">${dictPairs.length}</span></summary>
+      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-book-bookmark"></i> 检索词典 <span class="sd-reader-inj-tag">${dictPairs.length}</span><span class="sd-reader-inj-tag${curBound ? ' on' : ''}">${curBound ? '已绑定' : '未绑定'}</span></summary>
       ${dictBody}
     </details>
     <details class="sd-reader-mcard">
@@ -15526,7 +15531,7 @@ function bindReaderStageEvents(stageRoot) {
   const dialogSend = q('.sd-reader-dialog-send');
   const dialogGen = q('.sd-reader-dialog-gen');
   const dialogInput = q('.sd-reader-dialog-input');
-  const dialogImageInput = q('.sd-reader-dialog-image input');
+  const dialogImageInput = q('.sd-reader-dialog-image-input');
   let chatSendBusy = false;
   const refreshPendingImages = () => {
     const old = dialogInput?.querySelector('.sd-reader-chat-pending');
@@ -15560,7 +15565,60 @@ function bindReaderStageEvents(stageRoot) {
     if (dialogBusy) { coreadStopDialog(); return; }   // 生成中点＝停止
     coreadGenerateReply(false);
   };
-  dialogSend?.addEventListener('click', (e) => { e.stopPropagation(); void doSend(); });
+  // 短按发送文字；长按在 pointerup 的原生用户手势内打开文件选择器，兼容 iOS WebKit。
+  // 选图完成后直接发送，不再占用输入框左右两侧的独立图标位。
+  let imageHoldStartedAt = 0;
+  let imageHoldFeedbackTimer = null;
+  let suppressSendClick = false;
+  let lastImagePickerAt = 0;
+  const clearImageHold = () => {
+    imageHoldStartedAt = 0;
+    if (imageHoldFeedbackTimer) clearTimeout(imageHoldFeedbackTimer);
+    imageHoldFeedbackTimer = null;
+    dialogSend?.classList.remove('is-image-hold');
+  };
+  const openDialogImagePicker = () => {
+    if (!dialogImageInput || dialogBusy || readerAssistantBusy || chatSendBusy) return false;
+    const now = Date.now();
+    if (now - lastImagePickerAt < 1000) return true;
+    lastImagePickerAt = now;
+    try {
+      if (typeof dialogImageInput.showPicker === 'function') dialogImageInput.showPicker();
+      else dialogImageInput.click();
+      return true;
+    } catch (_) {
+      try { dialogImageInput.click(); return true; } catch (_) { return false; }
+    }
+  };
+  dialogSend?.addEventListener('pointerdown', (event) => {
+    if (event.button != null && event.button !== 0) return;
+    imageHoldStartedAt = Date.now();
+    imageHoldFeedbackTimer = setTimeout(() => dialogSend.classList.add('is-image-hold'), 360);
+  });
+  dialogSend?.addEventListener('pointerup', (event) => {
+    if (!imageHoldStartedAt) return;
+    const heldFor = Date.now() - imageHoldStartedAt;
+    clearImageHold();
+    if (heldFor < 520) return;
+    event.preventDefault();
+    event.stopPropagation();
+    suppressSendClick = openDialogImagePicker();
+    setTimeout(() => { suppressSendClick = false; }, 500);
+  });
+  dialogSend?.addEventListener('pointercancel', clearImageHold);
+  dialogSend?.addEventListener('pointerleave', (event) => { if (event.pointerType === 'mouse') clearImageHold(); });
+  dialogSend?.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    clearImageHold();
+    suppressSendClick = openDialogImagePicker();
+    setTimeout(() => { suppressSendClick = false; }, 500);
+  });
+  dialogSend?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (suppressSendClick) { e.preventDefault(); return; }
+    void doSend();
+  });
   dialogGen?.addEventListener('click', (e) => { e.stopPropagation(); doGen(); });
   dialogTa?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); void doSend(); }   // Enter 发送（攒句）·点生成才回复
@@ -15572,6 +15630,8 @@ function bindReaderStageEvents(stageRoot) {
   dialogImageInput?.addEventListener('change', () => {
     coreadAddPendingChatImages(dialogImageInput.files);
     dialogImageInput.value = '';
+    refreshPendingImages();
+    if (coreadPendingChatImages().length) void doSend();
   });
   dialogInput?.addEventListener('click', (event) => {
     const remove = event.target.closest('[data-pending-image]');

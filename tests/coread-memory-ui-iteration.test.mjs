@@ -39,6 +39,8 @@ assert.match(inject, /最近 \$\{scanN\} 条对话/, '召回管线必须按对�
 assert.doesNotMatch(inject, /末240字|fa-circle-info|真正注入了哪些|② 锚定词/, '注入页旧说明和移动端不可见注释必须移除');
 assert.match(inject, /② 关键词锚定/, '锚定词必须改名为关键词锚定');
 assert.match(inject, />向量<\/span>[\s\S]*>重排<\/span>/, '向量和重排状态只以标签颜色表达');
+assert.match(inject, /检索词典 <span class="sd-reader-inj-tag">\$\{dictPairs\.length\}<\/span><span class="sd-reader-inj-tag\$\{curBound/, '词典绑定状态必须紧跟词典数量同排显示');
+assert.doesNotMatch(inject, /sd-reader-pipeline-state|召回管线可用|上次召回已降级/, '注入状态页不得再展示冗余的召回管线可用状态卡');
 assert.match(source, /async function coreadWithRetry[\s\S]*attempt <= retries[\s\S]*coreadRetryableError[\s\S]*openUntil: Date\.now\(\) \+ 30000/, '检索异步阶段必须执行三次静默重试并在最终失败后短暂熔断');
 assert.match(source, /status === 408 \|\| status === 429 \|\| status >= 500/, '只应重试网络、408、429 与服务端错误');
 assert.match(source, /coreadPipelineFailed\('vector'[\s\S]*return bm25\.slice/, '向量最终失败必须回退 BM25 且不中断回复');
