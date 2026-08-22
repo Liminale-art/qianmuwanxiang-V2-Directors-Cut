@@ -13,11 +13,14 @@ assert.match(stage, /data-act="remove"><i class="fa-solid fa-eraser"><\/i><span>
 assert.match(stage, /sd-reader-noteedit-tags[\s\S]*sd-reader-excerptoverlay/, '笔记编辑必须支持标签且提供独立摘录图片层');
 assert.match(stage, /sd-reader-excerpt-canvas-wrap[\s\S]*sd-reader-excerpt-panel/, '摘录页必须将纯画布预览置于功能面板上方');
 assert.match(stage, /min="10" max="20"[\s\S]*>页眉</, '摘录字号必须限制为 10–20 且强调色更名为页眉');
+assert.match(stage, /sd-reader-excerpt-zoom-out[\s\S]*sd-reader-excerpt-zoomval[\s\S]*sd-reader-excerpt-zoom-fit/, '摘录预览必须提供缩放百分比与完整适应操作');
+assert.match(stage, /sd-reader-excerpt-fontfamily[\s\S]*sd-reader-excerpt-customfont/, '摘录面板必须支持内置和自定义字体名');
 
 const notes = source.slice(source.indexOf('function renderReaderNotes'), source.indexOf('function renderReaderMarks'));
 assert.match(notes, /sd-reader-notes-search[\s\S]*sd-reader-notes-filter[\s\S]*favorite/, '笔记列表必须支持搜索、类型筛选和收藏');
 assert.match(notes, /sd-reader-note-copy[\s\S]*sd-reader-note-image[\s\S]*sd-reader-note-edit/, '每条摘录必须提供复制、图片与编辑操作');
 assert.match(notes, /sd-reader-note-tools-toggle[\s\S]*sd-reader-note-tools" hidden/, '笔记卡工具必须在右侧折叠后按需展开');
+assert.match(notes, /sd-reader-note-del[\s\S]*fa-trash/, '摘录卡删除操作必须使用垃圾桶图标');
 assert.doesNotMatch(notes, /fa-magnifying-glass/, '笔记搜索框不得继续显示放大镜图标');
 assert.match(notes, /sd-reader-note-tags/, '笔记列表必须呈现用户标签');
 
@@ -25,17 +28,22 @@ const excerpt = source.slice(source.indexOf('const COREAD_EXCERPT_PRESETS'), sou
 assert.match(excerpt, /paper:[\s\S]*night:[\s\S]*mist:/, '摘录图片必须提供千幕内置配色方案');
 assert.match(excerpt, /coreadNotePlainText[\s\S]*coreadCopyText[\s\S]*coreadSaveExcerptImage/, '摘录必须同时支持文字复制与 PNG 图片输出');
 assert.match(excerpt, /document\.createElement\('canvas'\)[\s\S]*\.toBlob\(resolve, 'image\/png'\)/, '图片输出必须使用本地原生画布而非外部截图依赖');
-assert.match(excerpt, /coreadBuildExcerptCanvases[\s\S]*pages\.map[\s\S]*replaceChildren\(canvases\[index\]\)/, '长摘录必须自动分页且预览直接显示最终下载画布');
+assert.match(excerpt, /coreadBuildExcerptCanvases[\s\S]*pages\.map[\s\S]*canvasStage\.appendChild\(canvases\[index\]\)/, '长摘录必须自动分页且预览直接显示最终下载画布');
 assert.match(excerpt, /savedPresets[\s\S]*coreadRefreshExcerptPresetSelect/, '摘录图片必须支持保存用户自定义方案');
+assert.match(excerpt, /coreadExcerptFontStack[\s\S]*g\.font = `600 28px \$\{fontStack\}`/, '用户字体必须只经由摘录 Canvas 字体栈生效');
 
 const binding = source.slice(source.indexOf('function bindReaderStageEvents'), source.indexOf('// 目录 / 笔记 / 书签共用固定高度'));
 assert.match(binding, /bindReaderListGrip[\s\S]*sd-reader-note-favorite[\s\S]*sd-reader-note-copy[\s\S]*sd-reader-note-image/, '阅读器必须接通抽屉高度记忆与笔记操作');
+assert.match(binding, /stageRoot\.addEventListener\('click'[\s\S]*sd-reader-note-tools-toggle[\s\S]*row\.hidden = true/, '点笔记菜单外任意位置必须自动收起菜单');
+assert.match(binding, /sel\.isCollapsed[\s\S]*!pendingMark[\s\S]*hideTools\(\)/, '用户取消正文选区时必须立即收起划线工具');
 assert.doesNotMatch(binding, /q\('\.sd-reader-export'\)|q\('\.sd-reader-import-data'\)/, '阅读页不得继续绑定已移除的导入导出入口');
 
 assert.match(css, /\.sd-reader-toc\s*\{[^}]*max-height:\s*82%/, '目录抽屉必须限制高度并让正文区保持可用');
 assert.match(css, /\.sd-reader-notes-toolbar\s*\{[^}]*position:\s*sticky/, '笔记搜索筛选栏必须固定在抽屉顶部');
 assert.match(css, /\.sd-reader-excerptoverlay\s*\{[^}]*position:\s*absolute/, '摘录图片编辑层必须限制在阅读器内');
 assert.match(css, /\.sd-reader-note-tools\s*\{[^}]*position:\s*absolute[^}]*right:\s*9px/, '笔记卡工具栏必须从卡片右侧展开');
+assert.match(css, /\.sd-reader-excerpt-canvas-wrap\s*\{[^}]*overflow:\s*auto/, '摘录预览必须允许放大后滚动查看');
+assert.match(css, /\.sd-reader-excerpt-canvas-wrap\.can-pan\s*\{[^}]*cursor:\s*grab/, '摘录预览放大后必须支持拖动查看');
 assert.match(css, /\.sd-reader-morepage, \.sd-reader-morepage \*\s*\{[^}]*scrollbar-width:\s*none/, '伴读中心必须隐藏滚动条但保留滚动能力');
 assert.match(css, /\.sd-reader-mainline-page > \.sd-reader-mllist\s*\{[^}]*overflow-y:\s*auto/, '主线选择页必须只让正文楼层列表滚动');
 
