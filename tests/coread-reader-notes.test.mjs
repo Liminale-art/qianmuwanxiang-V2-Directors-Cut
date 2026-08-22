@@ -7,7 +7,7 @@ const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 assert.match(css, /\.sd-reader-hl-underline\s*\{[^}]*text-decoration-line:\s*underline\s*!important[^}]*text-decoration-style:\s*solid\s*!important/, '直线划线必须使用不可被 mark 边框吞掉的文字装饰线');
 
 const stage = source.slice(source.indexOf('function buildReaderStage'), source.indexOf('function renderSummaryApiCard'));
-assert.match(stage, /sd-reader-toc[^>]*data-reader-panel="toc" style="height:\$\{listDrawerH\}px[\s\S]*sd-reader-toc-grip/, '目录、笔记和书签共用抽屉必须有固定可调高度');
+assert.match(stage, /sd-reader-toc[^>]*data-reader-panel="toc"[^>]*style="height:\$\{listDrawerH\}px[\s\S]*sd-reader-toc-grip/, '目录、笔记和书签共用抽屉必须有固定可调高度');
 assert.doesNotMatch(stage, /sd-reader-export|sd-reader-import-data|导出阅读数据|导入阅读数据/, '阅读页设置不得保留重复的导入导出按钮');
 assert.match(stage, /data-act="highlight"[^>]*><i class="fa-solid fa-underline"/, '划线主按钮必须使用明确的下划线图标');
 assert.match(stage, /data-act="copy" title="复制文字"><i class="fa-solid fa-copy"><\/i><\/button>[\s\S]*data-act="image" title="摘录成图"/, '选区工具必须以纯图标提供复制与摘录成图');

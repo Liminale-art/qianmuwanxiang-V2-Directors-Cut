@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.25.4';
+const VERSION = '1.25.5';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -12137,23 +12137,42 @@ function coreadSetReaderActivePanel(panelName = '') {
   const active = COREAD_READER_PANELS.has(panelName) ? panelName : '';
   readerView.activePanel = active;
   readerView.barHidden = !!active;
-  const portal = document.getElementById('sd-reader-portal');
+  const portal = currentReaderPortal();
   const stage = portal?.querySelector('.sd-reader-stage');
   if (stage) {
-    stage.dataset.readerPanel = active || 'none';
+    if (stage.dataset.readerPanel !== (active || 'none')) stage.dataset.readerPanel = active || 'none';
     stage.classList.toggle('sd-reader-bar-hidden', !!active);
   }
   portal?.querySelectorAll('.sd-reader-panel[data-reader-panel]').forEach((panel) => {
-    panel.classList.toggle('open', panel.dataset.readerPanel === active);
+    const isActive = panel.dataset.readerPanel === active;
+    panel.classList.toggle('open', isActive);
+    // 不再只靠 transform 把其它抽屉推到屏幕外：直接退出渲染树与交互树。
+    // inline !important 还可跨过浏览器缓存到旧 CSS 的混合加载期。
+    if (isActive) {
+      if (panel.hidden) panel.hidden = false;
+      if (panel.hasAttribute('inert')) panel.removeAttribute('inert');
+      if (panel.getAttribute('aria-hidden') !== 'false') panel.setAttribute('aria-hidden', 'false');
+      if (panel.style.getPropertyValue('display')) panel.style.removeProperty('display');
+    } else {
+      if (!panel.hidden) panel.hidden = true;
+      if (!panel.hasAttribute('inert')) panel.setAttribute('inert', '');
+      if (panel.getAttribute('aria-hidden') !== 'true') panel.setAttribute('aria-hidden', 'true');
+      if (panel.style.getPropertyValue('display') !== 'none' || panel.style.getPropertyPriority('display') !== 'important') {
+        panel.style.setProperty('display', 'none', 'important');
+      }
+    }
   });
+  if (portal && readerPanelObservedPortal !== portal) watchReaderPanelInvariant(portal);
 }
 
 function coreadOpenAssistant(quote = '') {
   if (!readerView) return;
   readerView.assistantOpen = true;
   readerView.dialogTab = 'chat';
+  // 移动端选区工具消失后的合成 click 可能落到底栏；短锁只拦这一次幽灵点击。
+  readerView.panelInputBlockedUntil = nowMs() + 480;
   if (String(quote || '').trim()) readerAssistant.quote = String(quote).trim().slice(0, 6000);
-  const portal = document.getElementById('sd-reader-portal');
+  const portal = currentReaderPortal();
   const dialogPanel = portal?.querySelector('.sd-reader-dialog');
   coreadSetReaderActivePanel('dialog');
   dialogPanel?.classList.remove('sd-reader-dialog-voicing');
@@ -13146,7 +13165,7 @@ async function coreadOpenBook(bookId) {
   readerView = {
     bookId, chapterIndex: Math.max(0, Math.min(startCh, rec.chapters.length - 1)),
     scrollRatio: meta.lastScrollRatio || 0, barHidden: false, activePanel: '', dialogPinned: false,
-    sessionStart: nowMs(), assistantOpen: false, pendingChatImages: [],
+    sessionStart: nowMs(), assistantOpen: false, pendingChatImages: [], panelInputBlockedUntil: 0,
   };
   readerAssistant = { bucket: coreadDialogBucket(bookId), bookId, messages: [], quote: '', loaded: false };
   // 阅读器始终走 body portal（逃离模态 backdrop-filter 包含块；窄屏/移动端真·全页，不被 .sd-window 裁切）
@@ -13227,8 +13246,58 @@ async function coreadMaybeAutoDistillText() {
 // 阅读器选区监听句柄（document 级·portal 每次重建都会重绑·此处存旧句柄以便先摘再挂·防泄漏）
 let readerSelChangeHandler = null;
 let readerExcerptResizeObserver = null;
+let readerPortalNode = null;
+let readerPanelObserver = null;
+let readerPanelObservedPortal = null;
+let readerPanelRepairQueued = false;
 function detachReaderSelListener() {
   if (readerSelChangeHandler) { try { document.removeEventListener('selectionchange', readerSelChangeHandler); } catch (_) {} readerSelChangeHandler = null; }
+}
+
+// 始终选择最后创建的阅读 portal，并清理热更新/重复初始化遗留的同名旧层。
+// 旧实现只 remove getElementById 命中的第一层，是间歇性双抽屉最关键的生命周期缺口。
+function currentReaderPortal() {
+  const portals = [...document.querySelectorAll('[id="sd-reader-portal"]')];
+  const current = readerPortalNode?.isConnected ? readerPortalNode : (portals[portals.length - 1] || null);
+  let removed = 0;
+  for (const portal of portals) {
+    if (portal === current) continue;
+    portal.remove(); removed++;
+  }
+  if (removed) console.warn(`[${MODULE_NAME}] repaired ${removed} stale reader portal(s)`);
+  readerPortalNode = current;
+  return current;
+}
+
+function watchReaderPanelInvariant(portal) {
+  readerPanelObserver?.disconnect?.();
+  readerPanelObserver = null;
+  readerPanelObservedPortal = null;
+  if (!portal || typeof MutationObserver !== 'function') return;
+  const stage = portal.querySelector('.sd-reader-stage');
+  const targets = stage ? [stage, ...stage.querySelectorAll('.sd-reader-panel[data-reader-panel]')] : [];
+  readerPanelObserver = new MutationObserver((records) => {
+    if (readerPanelRepairQueued || !readerView || !portal.isConnected) return;
+    const active = readerView.activePanel || '';
+    const needsRepair = records.some((record) => {
+      if (record.attributeName !== 'style' || !record.target?.matches?.('.sd-reader-panel[data-reader-panel]')) return true;
+      const targetActive = record.target.dataset.readerPanel === active;
+      const display = record.target.style.getPropertyValue('display');
+      const priority = record.target.style.getPropertyPriority('display');
+      return targetActive ? !!display : (display !== 'none' || priority !== 'important');
+    });
+    if (!needsRepair) return;   // 拖动抽屉高度等合法 style 变化无需触发一次全体校正。
+    readerPanelRepairQueued = true;
+    queueMicrotask(() => {
+      readerPanelRepairQueued = false;
+      if (!readerView || !portal.isConnected) return;
+      coreadSetReaderActivePanel(readerView.activePanel || '');
+    });
+  });
+  for (const target of targets) {
+    readerPanelObserver.observe(target, { attributes: true, attributeFilter: ['class', 'data-reader-panel', 'hidden', 'inert', 'style'] });
+  }
+  readerPanelObservedPortal = portal;
 }
 
 function unmountReaderPortal() {
@@ -13241,7 +13310,12 @@ function unmountReaderPortal() {
   detachReaderSelListener();
   readerExcerptResizeObserver?.disconnect?.();
   readerExcerptResizeObserver = null;
-  document.getElementById('sd-reader-portal')?.remove();
+  readerPanelObserver?.disconnect?.();
+  readerPanelObserver = null;
+  readerPanelObservedPortal = null;
+  readerPanelRepairQueued = false;
+  document.querySelectorAll('[id="sd-reader-portal"]').forEach((portal) => portal.remove());
+  readerPortalNode = null;
 }
 
 // 重建 portal 内容并重绑事件（章节切换/划线等局部刷新统一走这里，不动模态）
@@ -13249,6 +13323,7 @@ function refreshReaderPortal() {
   if (!readerView) { unmountReaderPortal(); return; }
   const portal = mountReaderPortal(buildReaderStage());
   bindReaderStageEvents(portal);
+  coreadSetReaderActivePanel(readerView.activePanel || '');
   loadInlineImages(portal);
 }
 
@@ -13346,6 +13421,7 @@ function mountReaderPortal(innerHtml) {
   portal.style.setProperty('--sd-portal-bg', portalBg);   // 供伴读记忆面板等子层引用同款不透明底
   portal.innerHTML = innerHtml;
   document.body.appendChild(portal);
+  readerPortalNode = portal;
   return portal;
 }
 
@@ -13624,7 +13700,7 @@ function buildReaderStage() {
       </div>
 
       <!-- 目录 / 笔记 / 书签 抽屉（笔记编辑直接在「笔记」页内切换·不再独立抽屉） -->
-      <div class="sd-reader-panel sd-reader-toc${activePanel === 'toc' ? ' open' : ''}" data-reader-panel="toc" style="height:${listDrawerH}px">
+      <div class="sd-reader-panel sd-reader-toc${activePanel === 'toc' ? ' open' : ''}" data-reader-panel="toc"${activePanel === 'toc' ? ' aria-hidden="false"' : ' hidden inert aria-hidden="true"'} style="height:${listDrawerH}px">
         <div class="sd-reader-panel-grip sd-reader-toc-grip" title="拖动调整高度"></div>
         <div class="sd-reader-panel-tabs">
           <button class="active" data-ptab="toc">目录</button>
@@ -13643,7 +13719,7 @@ function buildReaderStage() {
       </div>
 
       <!-- 对话抽屉（伴读书友·可拖拽调高·可图钉固定）：头 tab 切「对话 / 语音条」，语音条并入此抽屉 -->
-      <div class="sd-reader-panel sd-reader-dialog${activePanel === 'dialog' ? ' open' : ''}${dTab === 'voice' ? ' sd-reader-dialog-voicing' : ''}" data-reader-panel="dialog" style="height:${drawerH}px">
+      <div class="sd-reader-panel sd-reader-dialog${activePanel === 'dialog' ? ' open' : ''}${dTab === 'voice' ? ' sd-reader-dialog-voicing' : ''}" data-reader-panel="dialog"${activePanel === 'dialog' ? ' aria-hidden="false"' : ' hidden inert aria-hidden="true"'} style="height:${drawerH}px">
         <div class="sd-reader-panel-grip sd-reader-dialog-grip"></div>
         <div class="sd-reader-dialog-head">
           <div class="sd-reader-dialog-tabs">
@@ -13669,7 +13745,7 @@ function buildReaderStage() {
       </div>
 
       <!-- 进度抽屉：上行左右半（百分比 | 已读时长）；下行 当前/全文；再下滑块 -->
-      <div class="sd-reader-panel sd-reader-progress${activePanel === 'progress' ? ' open' : ''}" data-reader-panel="progress">
+      <div class="sd-reader-panel sd-reader-progress${activePanel === 'progress' ? ' open' : ''}" data-reader-panel="progress"${activePanel === 'progress' ? ' aria-hidden="false"' : ' hidden inert aria-hidden="true"'}>
         <div class="sd-reader-panel-grip"></div>
         <div class="sd-reader-prog-inner">
           <div class="sd-reader-prog-halves">
@@ -13686,7 +13762,7 @@ function buildReaderStage() {
       </div>
 
       <!-- 设置抽屉：字号 / 间距预设(+自定义) / 两端对齐 -->
-      <div class="sd-reader-panel sd-reader-typo${activePanel === 'typo' ? ' open' : ''}" data-reader-panel="typo">
+      <div class="sd-reader-panel sd-reader-typo${activePanel === 'typo' ? ' open' : ''}" data-reader-panel="typo"${activePanel === 'typo' ? ' aria-hidden="false"' : ' hidden inert aria-hidden="true"'}>
         <div class="sd-reader-panel-grip"></div>
         <div class="sd-reader-typo-inner">
           <div class="sd-reader-typo-row"><span>字号</span><input type="range" class="sd-reader-font" min="14" max="30" step="1" value="${c.fontSizePx || 19}"><b class="sd-reader-font-val">${c.fontSizePx || 19}</b></div>
@@ -15188,6 +15264,7 @@ function bindReaderStageEvents(stageRoot) {
   // 单一活动抽屉：图钉仅决定关闭其它抽屉后是否回到对话，不再允许两个面板并存。
   const closePanels = (resumePinned = false) => coreadSetReaderActivePanel(resumePinned && readerView.dialogPinned ? 'dialog' : '');
   const togglePanel = (sel) => {
+    if (nowMs() < Number(readerView.panelInputBlockedUntil || 0)) return;
     const target = q(sel);
     const name = target?.dataset.readerPanel || '';
     const wasOpen = readerView.activePanel === name;
@@ -16533,9 +16610,10 @@ function bindReaderStageEvents(stageRoot) {
       if (text) { const id = coreadAddHighlight(text, 'mark', segments); updateReaderArticle(stageRoot); if (id) coreadOpenExcerptDialog(id, stageRoot); }
     };
     lvMain.querySelector('[data-act="assistant"]').onclick = (event) => {
-      event.preventDefault(); event.stopPropagation();
-      const text = pendingText; hideTools(); window.getSelection?.()?.removeAllRanges?.();
+      event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation?.();
+      const text = pendingText;
       if (text) coreadOpenAssistant(text);
+      requestAnimationFrame(() => { hideTools(); window.getSelection?.()?.removeAllRanges?.(); });
     };
     // 样式级：返回箭头 / 三样式 / 取色（荧光自动半透明由 CSS color-mix 负责）
     lvStyles.querySelector('[data-back]').onclick = () => showLevel('main');
@@ -16555,9 +16633,10 @@ function bindReaderStageEvents(stageRoot) {
     lvExist.querySelector('[data-act="copy"]').onclick = () => { const note = coreadFindReaderNote(pendingMark); hideTools(); if (note) void coreadCopyText(coreadNotePlainText(note)); };
     lvExist.querySelector('[data-act="image"]').onclick = () => { const id = pendingMark; hideTools(); if (id) coreadOpenExcerptDialog(id, stageRoot); };
     lvExist.querySelector('[data-act="assistant"]').onclick = (event) => {
-      event.preventDefault(); event.stopPropagation();
-      const note = coreadFindReaderNote(pendingMark); hideTools();
+      event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation?.();
+      const note = coreadFindReaderNote(pendingMark);
       if (note) coreadOpenAssistant(coreadNotePlainText(note));
+      requestAnimationFrame(() => { hideTools(); window.getSelection?.()?.removeAllRanges?.(); });
     };
     lvExist.querySelector('[data-act="remove"]').onclick = () => {
       const id = pendingMark; hideTools();
