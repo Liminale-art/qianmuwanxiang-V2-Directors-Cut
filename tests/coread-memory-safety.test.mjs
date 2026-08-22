@@ -10,7 +10,7 @@ import {
   normalizeCoreadSource,
 } from '../qianmu-reader.js';
 
-assert.equal(COREAD_SLICE_SCHEMA_VERSION, 2);
+assert.equal(COREAD_SLICE_SCHEMA_VERSION, 3);
 assert.equal(normalizeCoreadSource('text'), 'book');
 assert.equal(normalizeCoreadSource('mainline'), 'mainline');
 assert.equal(normalizeCoreadSource('dialog'), 'dialog');

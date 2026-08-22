@@ -257,7 +257,7 @@ export function totalChars(chapters) {
    七、共读记忆来源与防剧透水位（纯数据层）
    ============================================================ */
 
-export const COREAD_SLICE_SCHEMA_VERSION = 2;
+export const COREAD_SLICE_SCHEMA_VERSION = 3;
 
 // 对外统一为三种用户可理解的来源；mixed 只用于旧切片被跨来源合并后的兼容记录。
 export function normalizeCoreadSource(source) {
@@ -313,6 +313,7 @@ export function normalizeCoreadSlice(rawSlice, context = {}) {
     chapterTo: finiteOrNull(oldProvenance.chapterTo),
     dialogFrom: finiteOrNull(oldProvenance.dialogFrom) ?? (source === 'dialog' ? coveredFrom : null),
     dialogTo: finiteOrNull(oldProvenance.dialogTo) ?? (source === 'dialog' ? coveredTo : null),
+    dialogArchived: oldProvenance.dialogArchived === true,
     dialogMessageIds: [...new Set((Array.isArray(oldProvenance.dialogMessageIds) ? oldProvenance.dialogMessageIds : [])
       .map((value) => String(value || '')).filter(Boolean))],
     mainlineFloors: cleanPositiveInts(oldProvenance.mainlineFloors || raw.mainlineFloors),
@@ -340,6 +341,74 @@ export function isCoreadSliceVisibleAtBoundary(slice, boundary, protectionEnable
 export function filterCoreadSlicesAtBoundary(slices, boundary, protectionEnabled = true) {
   return (Array.isArray(slices) ? slices : [])
     .filter((slice) => isCoreadSliceVisibleAtBoundary(slice, boundary, protectionEnabled));
+}
+
+// 伴读对谈切片的消息区间。纯 dialog 可参与“重新总结替换”；mixed 仅可用于
+// 计算连续覆盖水位，避免跨来源压缩后重复总结已经写入融合记忆的对话。
+function coreadDialogRange(rawSlice, includeMixed = false) {
+  const slice = normalizeCoreadSlice(rawSlice);
+  if (slice.provenance?.dialogArchived === true) return null;
+  const source = normalizeCoreadSource(slice.provenance?.source || slice.src);
+  const sources = Array.isArray(slice.provenance?.sources)
+    ? slice.provenance.sources.map(normalizeCoreadSource)
+    : [source];
+  if (source !== 'dialog' && !(includeMixed && sources.includes('dialog'))) return null;
+  const from = finiteOrNull(slice.provenance?.dialogFrom)
+    ?? (source === 'dialog' ? finiteOrNull(slice.coveredFrom) : null);
+  const to = finiteOrNull(slice.provenance?.dialogTo)
+    ?? (source === 'dialog' ? finiteOrNull(slice.coveredTo) : null);
+  if (from == null || to == null) return null;
+  return {
+    from: Math.max(0, Math.floor(Math.min(from, to))),
+    to: Math.max(0, Math.floor(Math.max(from, to))),
+  };
+}
+
+// 求手动总结区间与既有对谈切片的重叠闭包。
+// 例：新范围命中 A，A 扩展后又命中 B，则 A/B 必须一起确认、一起替换，不能只算第一层。
+export function expandCoreadDialogRange(slices, fromIndex, toIndex) {
+  const rawFrom = finiteOrNull(fromIndex);
+  const rawTo = finiteOrNull(toIndex);
+  if (rawFrom == null || rawTo == null) return { from: 0, to: -1, overlaps: [] };
+  let from = Math.max(0, Math.floor(Math.min(rawFrom, rawTo)));
+  let to = Math.max(0, Math.floor(Math.max(rawFrom, rawTo)));
+  const candidates = (Array.isArray(slices) ? slices : [])
+    .map((slice) => ({ slice, range: coreadDialogRange(slice, false) }))
+    .filter((item) => item.range)
+    .sort((a, b) => (a.range.from - b.range.from) || (a.range.to - b.range.to));
+  const selected = new Set();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const item of candidates) {
+      if (selected.has(item.slice) || item.range.from > to || item.range.to < from) continue;
+      selected.add(item.slice);
+      const nextFrom = Math.min(from, item.range.from);
+      const nextTo = Math.max(to, item.range.to);
+      changed = nextFrom !== from || nextTo !== to || changed;
+      from = nextFrom;
+      to = nextTo;
+    }
+  }
+  return { from, to, overlaps: candidates.filter((item) => selected.has(item.slice)).map((item) => item.slice) };
+}
+
+// cursor 表示“从 summaryFloor 开始已被连续覆盖到哪里”，而不是曾总结过的最大下标。
+// 中间有空洞就停在空洞前，避免手动总结后段时让自动总结永久跳过前段。
+export function calculateCoreadDialogCursor(slices, messageCount, summaryFloor = 0) {
+  const count = Math.max(0, Math.floor(Number(messageCount) || 0));
+  let cursor = Math.max(0, Math.min(count, Math.floor(Number(summaryFloor) || 0)));
+  const ranges = (Array.isArray(slices) ? slices : [])
+    .map((slice) => coreadDialogRange(slice, true))
+    .filter(Boolean)
+    .sort((a, b) => (a.from - b.from) || (a.to - b.to));
+  for (const range of ranges) {
+    if (range.to < cursor) continue;
+    if (range.from > cursor) break;
+    cursor = Math.min(count, Math.max(cursor, range.to + 1));
+    if (cursor >= count) break;
+  }
+  return cursor;
 }
 
 // 全书绝对字符位 → 章节下标；offset 视为字符位置，超界时夹到首尾章节。
