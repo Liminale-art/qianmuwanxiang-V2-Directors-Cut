@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.22.1';
+const VERSION = '1.22.2';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -336,6 +336,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   quickWheelScheme: 'default',
   quickWheelCustomOrder: ['dashboard', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
   quickWheelCustomEnabled: ['dashboard', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
+  quickWheelCustomExpanded: false,
   theme: 'light',
   lastTab: 'dashboard',   // 面板上次停留的标签，二次打开恢复到此（校验回退 dashboard）
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
@@ -3138,8 +3139,36 @@ function closeQuickWheel() {
   document.getElementById(QUICK_WHEEL_ID)?.remove();
 }
 
+let floorViewportCleanup = null;
+
 function closeFloorNavigator() {
+  floorViewportCleanup?.();
+  floorViewportCleanup = null;
   document.getElementById(FLOOR_NAV_ID)?.remove();
+}
+
+function bindFloorNavigatorViewport(root) {
+  const viewport = window.visualViewport;
+  const sync = () => {
+    if (!root?.isConnected) return;
+    const left = Number(viewport?.offsetLeft || 0);
+    const top = Number(viewport?.offsetTop || 0);
+    const width = Math.max(1, Number(viewport?.width || window.innerWidth || document.documentElement.clientWidth));
+    const height = Math.max(1, Number(viewport?.height || window.innerHeight || document.documentElement.clientHeight));
+    root.style.left = `${left}px`;
+    root.style.top = `${top}px`;
+    root.style.width = `${width}px`;
+    root.style.height = `${height}px`;
+  };
+  sync();
+  viewport?.addEventListener('resize', sync);
+  viewport?.addEventListener('scroll', sync);
+  window.addEventListener('orientationchange', sync);
+  floorViewportCleanup = () => {
+    viewport?.removeEventListener('resize', sync);
+    viewport?.removeEventListener('scroll', sync);
+    window.removeEventListener('orientationchange', sync);
+  };
 }
 
 function floorMessageElement(messageIndex) {
@@ -3226,12 +3255,13 @@ function openFloorNavigator() {
   root.id = FLOOR_NAV_ID;
   root.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
   root.innerHTML = `<div class="sd-floor-backdrop"></div>
-    <section class="sd-floor-panel" role="dialog" aria-modal="true" aria-label="楼层跳转">
-      <header><div><h3>楼层跳转</h3><p>${chat.length ? `当前聊天共 ${chat.length} 层` : '当前聊天没有可定位的楼层'}</p></div><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
-      <div class="sd-floor-search"><span>第</span><input class="sd-floor-input" type="number" min="0" max="${Math.max(0, chat.length - 1)}" inputmode="numeric" placeholder="0–${Math.max(0, chat.length - 1)}"><span>层</span><button type="button" class="sd-floor-jump"><i class="fa-solid fa-location-crosshairs"></i>跳转</button></div>
-      <div class="sd-floor-actions"><button type="button" class="sd-floor-top"><i class="fa-solid fa-angles-up"></i>顶部</button><button type="button" class="sd-floor-bottom"><i class="fa-solid fa-angles-down"></i>当前聊天底部</button></div>
-    </section>`;
+    <div class="sd-floor-shell"><section class="sd-floor-panel" role="dialog" aria-modal="true" aria-label="楼层跳转">
+        <header><div><h3>楼层跳转</h3><p>${chat.length ? `当前聊天共 ${chat.length} 层` : '当前聊天没有可定位的楼层'}</p></div><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
+        <div class="sd-floor-search"><span>第</span><input class="sd-floor-input" type="number" min="0" max="${Math.max(0, chat.length - 1)}" inputmode="numeric" placeholder="0–${Math.max(0, chat.length - 1)}"><span>层</span><button type="button" class="sd-floor-jump"><i class="fa-solid fa-location-crosshairs"></i>跳转</button></div>
+        <div class="sd-floor-actions"><button type="button" class="sd-floor-top"><i class="fa-solid fa-angles-up"></i>顶部</button><button type="button" class="sd-floor-bottom"><i class="fa-solid fa-angles-down"></i>当前聊天底部</button></div>
+      </section></div>`;
   document.body.appendChild(root);
+  bindFloorNavigatorViewport(root);
   root.tabIndex = -1;
   const close = () => closeFloorNavigator();
   root.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
@@ -3267,35 +3297,45 @@ function openQuickWheel(btn) {
   if (!items.length) return;
   const rect = btn.getBoundingClientRect();
   const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
   const floatSize = getFloatSize();
   const itemSize = Math.max(30, Math.min(40, Math.round(floatSize * .82)));
   const gap = Math.max(5, Math.min(8, Math.round(floatSize * .15)));
-  const totalHeight = items.length * itemSize + Math.max(0, items.length - 1) * gap;
-  const spaceUp = rect.top - 8;
-  const spaceDown = window.innerHeight - rect.bottom - 8;
-  const expandUp = spaceUp >= totalHeight + gap || spaceUp >= spaceDown;
-  const desiredTop = expandUp ? rect.top - gap - totalHeight : rect.bottom + gap;
-  const railTop = Math.max(8, Math.min(window.innerHeight - totalHeight - 8, desiredTop));
-  const inwardLeft = centerX > window.innerWidth / 2;
-  const desiredLeft = inwardLeft ? rect.left - gap - itemSize : rect.right + gap;
-  const railLeft = Math.max(8, Math.min(window.innerWidth - itemSize - 8, desiredLeft));
+  const step = itemSize + gap;
+  const firstStep = rect.height / 2 + gap + itemSize / 2;
+  const slotMap = {
+    1: [-1],
+    2: [-1, 1],
+    3: [-2, -1, 1],
+    4: [-2, -1, 1, 2],
+    5: [-3, -2, -1, 1, 2],
+    6: [-3, -2, -1, 1, 2, 3],
+  };
+  const slots = slotMap[items.length] || slotMap[6];
+  const viewport = window.visualViewport;
+  const viewportLeft = Number(viewport?.offsetLeft || 0);
+  const viewportWidth = Number(viewport?.width || window.innerWidth);
+  const railLeft = Math.max(viewportLeft + 6, Math.min(viewportLeft + viewportWidth - itemSize - 6, centerX - itemSize / 2));
   const root = document.createElement('div');
   root.id = QUICK_WHEEL_ID;
-  root.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'} ${expandUp ? 'expand-up' : 'expand-down'} ${inwardLeft ? 'inward-left' : 'inward-right'}`;
+  root.className = 'sd-wheel-coaxial';
   root.innerHTML = '<div class="sd-wheel-backdrop"></div><div class="sd-wheel-items" role="menu" aria-label="千幕快捷轮盘"></div>';
   const holder = root.querySelector('.sd-wheel-items');
   items.forEach((item, index) => {
+    const slot = slots[index];
+    const distance = firstStep + (Math.abs(slot) - 1) * step;
+    const itemCenterY = centerY + Math.sign(slot) * distance;
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = `sd-wheel-command${item.pending ? ' is-pending' : ''}`;
+    button.className = `sd-wheel-command ${slot < 0 ? 'is-upper' : 'is-lower'}${item.pending ? ' is-pending' : ''}`;
     button.dataset.command = item.id;
     button.style.setProperty('--sd-wheel-item-size', `${itemSize}px`);
     button.style.left = `${railLeft}px`;
-    button.style.top = `${railTop + index * (itemSize + gap)}px`;
+    button.style.top = `${itemCenterY - itemSize / 2}px`;
     button.style.animationDelay = `${index * 18}ms`;
     button.title = item.pending ? `${item.label}（即将开放）` : item.label;
     button.setAttribute('role', 'menuitem');
-    button.innerHTML = `<i class="fa-solid ${item.icon}"></i><span>${htmlEscape(item.label)}</span>`;
+    button.innerHTML = `<i class="fa-solid ${item.icon}"></i>`;
     holder.appendChild(button);
   });
   document.body.appendChild(root);
@@ -7616,11 +7656,11 @@ function renderQuickWheelSettings() {
         <option value="custom" ${custom ? 'selected' : ''}>自定义方案</option>
       </select>
     </div>
-    ${custom ? `<p class="sd-muted sd-wheel-default-copy">可从千幕全部入口中选择，轮盘最多显示 6 项。</p><div class="sd-wheel-custom-list">${ordered.map((item, index) => `
+    ${custom ? `<details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑轮盘入口</span><b>${settings.quickWheelCustomEnabled.length} / 6</b></summary><p class="sd-muted sd-wheel-default-copy">可从千幕全部入口中选择，轮盘最多显示 6 项。</p><div class="sd-wheel-custom-list">${ordered.map((item, index) => `
       <div class="sd-wheel-custom-row" data-command="${item.id}">
         <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}"></i><span>${htmlEscape(item.label)}</span></label>
         <div><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="up" ${index === 0 ? 'disabled' : ''} title="上移"><i class="fa-solid fa-chevron-up"></i></button><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="down" ${index === ordered.length - 1 ? 'disabled' : ''} title="下移"><i class="fa-solid fa-chevron-down"></i></button></div>
-      </div>`).join('')}</div>` : '<p class="sd-muted sd-wheel-default-copy">推演 · 配音 · 书架 · 幕外 · 生图 · 楼层跳转</p>'}
+      </div>`).join('')}</div></details>` : '<p class="sd-muted sd-wheel-default-copy">推演 · 配音 · 书架 · 幕外 · 生图 · 楼层跳转</p>'}
   </div>`;
 }
 
@@ -8217,6 +8257,10 @@ function bindActiveTabEvents(root) {
     settings.quickWheelScheme = e.target.value === 'custom' ? 'custom' : 'default';
     saveSettings();
     renderModal();
+  });
+  root.querySelector('.sd-wheel-custom-details')?.addEventListener('toggle', (e) => {
+    settings.quickWheelCustomExpanded = !!e.currentTarget.open;
+    saveSettings();
   });
   root.querySelectorAll('.sd-wheel-command-toggle').forEach((toggle) => toggle.addEventListener('change', (e) => {
     const id = e.target.closest('.sd-wheel-custom-row')?.dataset.command;
@@ -16796,7 +16840,6 @@ function init() {
   startInputMenuObserver();
   resizeHandler = () => {
     closeQuickWheel();
-    closeFloorNavigator();
     const btn = document.getElementById(FLOAT_ID);
     if (btn) applyFloatPosition(btn);
     const tabsBar = document.getElementById(MODAL_ID)?.querySelector('.sd-tabs');

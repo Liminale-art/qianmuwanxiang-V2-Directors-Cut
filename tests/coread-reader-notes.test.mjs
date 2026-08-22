@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
+assert.match(css, /\.sd-reader-hl-underline\s*\{[^}]*text-decoration-line:\s*underline\s*!important[^}]*text-decoration-style:\s*solid\s*!important/, '直线划线必须使用不可被 mark 边框吞掉的文字装饰线');
+
 const stage = source.slice(source.indexOf('function buildReaderStage'), source.indexOf('function renderSummaryApiCard'));
 assert.match(stage, /sd-reader-toc" style="height:\$\{listDrawerH\}px[\s\S]*sd-reader-toc-grip/, '目录、笔记和书签共用抽屉必须有固定可调高度');
 assert.doesNotMatch(stage, /sd-reader-export|sd-reader-import-data|导出阅读数据|导入阅读数据/, '阅读页设置不得保留重复的导入导出按钮');

@@ -15,6 +15,9 @@ for (const id of ['tasksnodes', 'castworld', 'blueprint', 'context', 'settings',
   assert.match(source, new RegExp(`id: '${id}'`));
 }
 assert.match(source, /轮盘最多显示 6 项/);
+assert.match(source, /slotMap\s*=\s*\{[\s\S]*?6:\s*\[-3, -2, -1, 1, 2, 3\]/, '六个入口必须以悬浮球为中心上三下三');
+assert.match(source, /button\.innerHTML = `<i class="fa-solid \$\{item\.icon\}"><\/i>`/, '轮盘按钮只显示图标');
+assert.match(source, /sd-wheel-custom-details/, '自定义轮盘入口列表必须可折叠');
 
 // 短按仍开主面板，长按才开轮盘；拖动超过阈值会取消长按。
 assert.match(source, /setTimeout\(\(\) =>[\s\S]*?openQuickWheel\(btn\)[\s\S]*?300\)/);
@@ -33,10 +36,16 @@ assert.match(source, /st\.showMoreMessages\(messagesToLoad\)/);
 assert.match(source, /function alignChatFloor[\s\S]*chatElement\.scrollTo/);
 assert.match(source, /setTimeout\(\(\) => alignChatFloor\(target\), 420\)/);
 assert.doesNotMatch(source, /AI 隐藏楼层保留原编号并可正常定位/);
+assert.match(source, /window\.visualViewport/);
+assert.match(source, /bindFloorNavigatorViewport\(root\)/);
+assert.match(source, /viewport\?\.addEventListener\('resize', sync\)/);
 
 assert.match(css, /#story-director-quick-wheel/);
 assert.match(css, /#story-director-floor-nav/);
-assert.match(css, /#story-director-floor-nav\s*\{[^}]*display:\s*flex[^}]*align-items:\s*center/);
+assert.match(css, /#story-director-floor-nav\s*\{[^}]*overflow-y:\s*auto/);
+assert.match(css, /\.sd-floor-shell\s*\{[^}]*min-height:\s*100%[^}]*display:\s*flex/);
+assert.doesNotMatch(css, /#story-director-floor-nav \.sd-floor-panel\s*\{[^}]*max-height:\s*100%[^}]*overflow:\s*hidden/);
+assert.match(css, /#story-director-floor-nav\.sd-theme-dark/);
 assert.match(css, /\.mes\.sd-floor-jump-hit/);
 
 console.log('Quick wheel and floor jump contract OK');
