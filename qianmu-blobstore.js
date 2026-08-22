@@ -289,6 +289,11 @@ export async function getReaderImage(bookId, n) {
   return reqP(s.get(imageKey(bookId, n)));
 }
 
+export async function deleteReaderImage(bookId, n) {
+  const s = await store(STORE_IMAGES, 'readwrite');
+  await reqP(s.delete(imageKey(bookId, n)));
+}
+
 // 全量列出书内插图（伴读整包导出用）。返回 [{ key, blob }]。
 export async function listReaderImages() {
   const s = await store(STORE_IMAGES, 'readonly');

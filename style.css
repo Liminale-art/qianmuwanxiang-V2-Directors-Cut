@@ -3405,6 +3405,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-topbar button:hover { color: var(--sd-text); background: var(--sd-glass-weak); }
 .sd-reader-chtitle { flex: 1; min-width: 0; font-size: .92em; font-weight: 600; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sd-reader-mark-btn.active { color: var(--sd-accent) !important; }
+.sd-reader-comic-scan.active { color: var(--sd-accent) !important; }
 .sd-reader-back { font-size: 1.15em !important; }
 
 /* 幕外剧场全屏阅读 portal：复用伴读阅读器骨架（顶栏 + 正文），单屏一幕、无对话抽屉 */
@@ -3429,6 +3430,11 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
   border-radius: 8px; display: none; box-shadow: 0 2px 12px rgba(0,0,0,.14);
 }
 .sd-reader-inline-img.sd-reader-inline-img-on { display: inline-block; }
+.sd-reader-comic-mode .sd-reader-body { padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
+.sd-reader-comic-mode .sd-reader-article { max-width: min(100%, 70rem) !important; }
+.sd-reader-comic-mode .sd-reader-h2 { display: none; }
+.sd-reader-comic-mode .sd-reader-inline-fig { margin: 0 auto; min-height: 45vh; display: flex; align-items: flex-start; justify-content: center; }
+.sd-reader-comic-mode .sd-reader-inline-img { max-height: none; border-radius: 4px; box-shadow: 0 8px 32px rgba(0,0,0,.2); }
 /* 小图（自然宽 <260px）：不放大、也不撑列宽·按原尺寸居中·JS 量到后打 -small 标记 */
 .sd-reader-inline-img.sd-reader-inline-img-small { max-width: none; }
 
@@ -3602,6 +3608,12 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-dialog-pinned .sd-reader-dialog { z-index: 8; }
 .sd-reader-dialog-body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 14px; }
 .sd-reader-dialog-input { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--sd-hairline); flex: 0 0 auto; align-items: flex-end; }
+.sd-reader-chat-pending { flex: 0 0 100%; display: flex; gap: 7px; min-width: 0; overflow-x: auto; padding: 1px 0 3px; scrollbar-width: none; }
+.sd-reader-chat-pending::-webkit-scrollbar { display: none; }
+.sd-reader-chat-pending[hidden] { display: none; }
+.sd-reader-chat-pending > span { position: relative; flex: 0 0 54px; width: 54px; height: 54px; border-radius: 10px; overflow: hidden; background: var(--sd-glass-weak); border: 1px solid var(--sd-hairline); }
+.sd-reader-chat-pending img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.sd-reader-chat-pending button { position: absolute; top: 3px; right: 3px; width: 19px; height: 19px; padding: 0; border: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: rgba(20,20,20,.68); color: #fff; font-size: 10px; cursor: pointer; }
 .sd-reader-dialog-ta { flex: 1; min-width: 0; background: var(--sd-input-bg); color: var(--sd-text); border: 1px solid var(--sd-border); border-radius: 10px; padding: 9px 12px; font: inherit; font-size: .88em; resize: none; max-height: 120px; }
 .sd-reader-dialog-ta:disabled { opacity: .6; cursor: not-allowed; }
 /* 三个输入钮统一：同尺寸(38²)、同圆角、同描边玻璃底；靠图标区分（连接/记忆·发送↑·让书友回复✈） */
@@ -3611,6 +3623,9 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-assistant-switch { width: auto; min-width: 46px; padding: 0 9px; color: var(--sd-muted); }
 .sd-reader-assistant-switch span { font-size: .72em; letter-spacing: .08em; white-space: nowrap; }
 .sd-reader-assistant-switch.active { color: var(--sd-accent); border-color: color-mix(in srgb, var(--sd-accent) 45%, var(--sd-border)); background: color-mix(in srgb, var(--sd-accent) 9%, var(--sd-glass-weak)); }
+.sd-reader-dialog-image { position: relative; margin: 0; overflow: hidden; }
+#sd-reader-portal .sd-reader-dialog-image .sd-reader-dialog-image-input { inset: 0 !important; width: 100% !important; height: 100% !important; margin: 0 !important; opacity: 0 !important; clip: auto !important; clip-path: none !important; cursor: pointer !important; }
+.sd-reader-dialog-image:focus-within { border-color: color-mix(in srgb, var(--sd-accent) 52%, var(--sd-border)); color: var(--sd-accent); }
 .sd-reader-dialog-input.is-assistant .sd-reader-dialog-send.is-stop { background: #a94642; color: #fff; border-color: transparent; }
 .sd-reader-more-conn { font-size: .9em; color: var(--sd-text); margin: 6px 0; padding: 8px 10px; background: var(--sd-glass-weak); border-radius: 8px; word-break: break-word; }
 /* 生成钮（让书友回复）＝主动作：强调色实心，压过统一玻璃底；生成中切停止红 */
@@ -3625,6 +3640,11 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-msg-bubble { max-width: 82%; padding: 9px 13px; border-radius: 14px; font-size: .9em; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
 .sd-reader-msg-user .sd-reader-msg-bubble { background: var(--sd-accent); color: var(--sd-primary-text); border-bottom-right-radius: 5px; }
 .sd-reader-msg-friend .sd-reader-msg-bubble { background: var(--sd-glass-weak); color: var(--sd-text); border: 1px solid var(--sd-hairline); border-bottom-left-radius: 5px; }
+.sd-reader-chat-images { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin-bottom: 7px; }
+.sd-reader-chat-images.one { grid-template-columns: minmax(0, 1fr); }
+.sd-reader-chat-image-wrap { display: block; min-width: 0; overflow: hidden; border-radius: 9px; background: var(--sd-glass-weak); }
+.sd-reader-chat-image { display: none; width: 100%; max-width: 240px; height: auto; max-height: 220px; object-fit: cover; border-radius: 9px; box-shadow: none; }
+.sd-reader-chat-image.sd-reader-inline-img-on { display: block; }
 /* 模型思考与正式对话彻底分层：默认只露一枚轻便签，点击才展开；永不混进朗读/总结正文。 */
 .sd-reader-thought-note { width: max-content; max-width: 82%; box-sizing: border-box; margin: 0 0 5px; border: 1px solid color-mix(in srgb, var(--sd-accent) 34%, var(--sd-hairline)); border-radius: 10px; background: color-mix(in srgb, var(--sd-accent) 7%, var(--sd-glass-weak)); color: var(--sd-muted); overflow: hidden; }
 .sd-reader-thought-note[open] { width: min(82%, 440px); }
@@ -3895,6 +3915,11 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-assistant-settings > summary > span { display: inline-flex; align-items: center; gap: 8px; }
 .sd-reader-assistant-settings .sd-reader-assistant-history-clear { width: 30px; height: 30px; flex: 0 0 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--sd-muted); cursor: pointer; }
 .sd-reader-assistant-settings .sd-reader-assistant-history-clear:hover { color: var(--sd-text); background: var(--sd-glass-weak); }
+.sd-reader-comic-review { display: flex; flex-direction: column; gap: 10px; min-width: min(520px, 82vw); text-align: left; }
+.sd-reader-comic-review h3 { margin: 0; }
+.sd-reader-comic-review textarea, .sd-reader-comic-review input { width: 100%; box-sizing: border-box; border: 1px solid var(--sd-border); border-radius: 10px; background: var(--sd-input-bg); color: var(--sd-text); padding: 9px 11px; font: inherit; }
+.sd-reader-comic-review textarea { min-height: 190px; resize: vertical; line-height: 1.6; }
+.sd-reader-comic-review label { display: flex; flex-direction: column; gap: 5px; color: var(--sd-muted); font-size: .8em; }
 .sd-reader-mlab-inline {
   flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 4px;
   font-size: .8em; color: var(--sd-muted);

@@ -818,6 +818,40 @@ async function extractEpubCover(zip, opfPath, opf, manifest, hrefOf) {
   } catch (_) { return null; }
 }
 
+// CBZ/ZIP 漫画：按自然文件名顺序抽取图片，一页一章。隐藏文件与 __MACOSX 元数据自动跳过。
+// 返回结构沿用 EPUB 的 chapters/cover/images，所以上层可复用同一套 IndexedDB 与阅读器懒加载链路。
+export async function parseComicArchive(arrayBuffer, JSZip) {
+  const zip = (typeof JSZip === 'function')
+    ? await JSZip.loadAsync(arrayBuffer)
+    : await openZipNative(arrayBuffer);
+  const names = Object.keys(zip.files || {})
+    .filter((name) => !/(^|\/)__MACOSX\//i.test(name) && !/(^|\/)\./.test(name) && /\.(?:jpe?g|png|webp|gif|avif)$/i.test(name))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  if (!names.length) throw new Error('COMIC_NO_IMAGES');
+  const images = [];
+  for (const [index, name] of names.entries()) {
+    const file = zipFile(zip, name);
+    if (!file) continue;
+    const bytes = await file.async('uint8array');
+    if (!bytes?.length) continue;
+    const mime = /\.png$/i.test(name) ? 'image/png'
+      : /\.webp$/i.test(name) ? 'image/webp'
+        : /\.gif$/i.test(name) ? 'image/gif'
+          : /\.avif$/i.test(name) ? 'image/avif'
+            : 'image/jpeg';
+    images.push({ n: index + 1, bytes, mime, name });
+  }
+  if (!images.length) throw new Error('COMIC_NO_IMAGES');
+  const chapters = images.map((image, index) => ({ title: `第 ${index + 1} 页`, content: `⟦img:${image.n}⟧` }));
+  const first = images[0];
+  return {
+    chapters,
+    images,
+    cover: { bytes: first.bytes, mime: first.mime },
+    pageCount: images.length,
+  };
+}
+
 /* ============================================================
    九、MOBI 解析（无外部依赖）
    PalmDB 记录表 → PalmDOC/MOBI 头 → 文本记录（无压缩或 PalmDOC LZ77）→ 去 HTML。
