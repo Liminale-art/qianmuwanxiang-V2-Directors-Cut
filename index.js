@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.21.4';
+const VERSION = '1.22.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -35,6 +35,8 @@ const COREAD_TEASER = '伴读 · 小火慢炖中……';   // 正式版点击图
 const SETTINGS_PANEL_ID = 'story-director-settings';
 const MODAL_ID = 'story-director-modal';
 const FLOAT_ID = 'story-director-float';
+const QUICK_WHEEL_ID = 'story-director-quick-wheel';
+const FLOOR_NAV_ID = 'story-director-floor-nav';
 const INPUT_ENTRY_ID = 'story-director-input-entry';
 const INPUT_BUTTON_ID = 'story-director-input-button';
 
@@ -330,6 +332,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   floatingButton: true,
   floatSize: null,   // null=沿用原响应式默认（桌面48 / 移动44）；用户拖动滑块后保存明确像素值
   floatPosition: { x: null, y: null },
+  quickWheelEnabled: true,
+  quickWheelScheme: 'default',
+  quickWheelCustomOrder: ['dashboard', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
+  quickWheelCustomEnabled: ['dashboard', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
   theme: 'light',
   lastTab: 'dashboard',   // 面板上次停留的标签，二次打开恢复到此（校验回退 dashboard）
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
@@ -3089,6 +3095,250 @@ function applyFloatPosition(btn) {
   btn.style.bottom = 'auto';
 }
 
+const QUICK_COMMANDS = Object.freeze([
+  { id: 'dashboard', label: '推演', icon: 'fa-clapperboard' },
+  { id: 'tts', label: '配音', icon: 'fa-microphone-lines' },
+  { id: 'coread', label: '伴读书架', icon: 'fa-book-open' },
+  { id: 'theater', label: '幕外', icon: 'fa-masks-theater' },
+  { id: 'imagegen', label: '生图', icon: 'fa-wand-magic-sparkles', pending: true },
+  { id: 'floor', label: '楼层跳转', icon: 'fa-layer-group' },
+]);
+const QUICK_COMMAND_IDS = QUICK_COMMANDS.map((item) => item.id);
+
+function normalizeQuickWheelSettings() {
+  if (!['default', 'custom'].includes(settings.quickWheelScheme)) settings.quickWheelScheme = 'default';
+  const order = Array.isArray(settings.quickWheelCustomOrder) ? settings.quickWheelCustomOrder : [];
+  settings.quickWheelCustomOrder = [...new Set(order.filter((id) => QUICK_COMMAND_IDS.includes(id))), ...QUICK_COMMAND_IDS.filter((id) => !order.includes(id))];
+  const enabled = Array.isArray(settings.quickWheelCustomEnabled) ? settings.quickWheelCustomEnabled : QUICK_COMMAND_IDS;
+  settings.quickWheelCustomEnabled = [...new Set(enabled.filter((id) => QUICK_COMMAND_IDS.includes(id)))];
+  if (!settings.quickWheelCustomEnabled.length) settings.quickWheelCustomEnabled = [QUICK_COMMAND_IDS[0]];
+}
+
+function quickWheelItems() {
+  normalizeQuickWheelSettings();
+  const ids = settings.quickWheelScheme === 'custom'
+    ? settings.quickWheelCustomOrder.filter((id) => settings.quickWheelCustomEnabled.includes(id))
+    : QUICK_COMMAND_IDS;
+  return ids.slice(0, 6).map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
+}
+
+function closeQuickWheel() {
+  document.getElementById(QUICK_WHEEL_ID)?.remove();
+}
+
+function closeFloorNavigator() {
+  document.getElementById(FLOOR_NAV_ID)?.remove();
+}
+
+function floorMessageElement(messageIndex) {
+  return Array.from(document.querySelectorAll('#chat .mes')).find((el) => Number(ttsMesId(el)) === messageIndex) || null;
+}
+
+function loadedFloorRange() {
+  const ids = Array.from(document.querySelectorAll('#chat .mes'))
+    .map((el) => Number(ttsMesId(el)))
+    .filter(Number.isInteger)
+    .sort((a, b) => a - b);
+  return ids.length ? { first: ids[0], last: ids.at(-1), count: ids.length } : null;
+}
+
+function floorMessageKind(message) {
+  if (message?.is_system) return { label: 'AI 隐藏', className: 'is-hidden', icon: 'fa-ghost' };
+  if (message?.is_user) return { label: '我', className: 'is-user', icon: 'fa-user' };
+  return { label: message?.name || '角色', className: 'is-character', icon: 'fa-comment' };
+}
+
+function floorMessagePreview(message) {
+  const source = String(message?.extra?.display_text ?? message?.mes ?? '')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return source || '（空白楼层）';
+}
+
+function renderFloorNavigatorTarget(root, requestedFloor) {
+  const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
+  const total = chat.length;
+  const floor = Math.max(1, Math.min(total || 1, Math.round(Number(requestedFloor) || total || 1)));
+  const input = root.querySelector('.sd-floor-input');
+  if (input) { input.value = String(floor); input.max = String(Math.max(1, total)); }
+  root.dataset.floor = String(floor);
+  const loadedIds = Array.from(document.querySelectorAll('#chat .mes'))
+    .map((el) => Number(ttsMesId(el)))
+    .filter(Number.isInteger)
+    .sort((a, b) => a - b);
+  const loadedIdSet = new Set(loadedIds);
+  const range = loadedIds.length ? { first: loadedIds[0], last: loadedIds.at(-1), count: loadedIds.length } : null;
+  const status = root.querySelector('.sd-floor-loaded-status');
+  if (status) status.textContent = total
+    ? (range ? `共 ${total} 层 · 当前已加载 ${range.first + 1}–${range.last + 1} 层` : `共 ${total} 层 · 正文尚未加载`)
+    : '当前聊天没有可定位的楼层';
+  const list = root.querySelector('.sd-floor-nearby');
+  if (!list) return;
+  if (!total) {
+    list.innerHTML = '<div class="sd-floor-empty">先打开一个聊天，再使用楼层跳转。</div>';
+    return;
+  }
+  const targetIndex = floor - 1;
+  const start = Math.max(0, Math.min(total - 7, targetIndex - 3));
+  const end = Math.min(total, start + 7);
+  list.innerHTML = chat.slice(start, end).map((message, offset) => {
+    const index = start + offset;
+    const kind = floorMessageKind(message);
+    const loaded = loadedIdSet.has(index);
+    return `<button type="button" class="sd-floor-row ${index === targetIndex ? 'active' : ''}" data-floor="${index + 1}">
+      <span class="sd-floor-number">${index + 1}</span>
+      <span class="sd-floor-copy"><b><i class="fa-solid ${kind.icon}"></i>${htmlEscape(kind.label)}</b><small>${htmlEscape(floorMessagePreview(message))}</small></span>
+      <span class="sd-floor-state ${kind.className}">${message?.is_system ? 'AI 隐藏' : (loaded ? '已加载' : '未加载')}</span>
+    </button>`;
+  }).join('');
+}
+
+async function jumpToChatFloor(floor) {
+  const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
+  const targetIndex = Math.round(Number(floor)) - 1;
+  if (!Number.isInteger(targetIndex) || targetIndex < 0 || targetIndex >= chat.length) {
+    toast(`请输入 1–${Math.max(1, chat.length)} 之间的楼层号。`, 'warning');
+    return false;
+  }
+  let target = floorMessageElement(targetIndex);
+  if (!target) {
+    const range = loadedFloorRange();
+    const firstLoaded = range?.first ?? chat.length;
+    const messagesToLoad = Math.max(1, firstLoaded - targetIndex);
+    if (messagesToLoad > 300) {
+      const yes = await confirmDialog('加载较早楼层', `第 ${targetIndex + 1} 层尚未加载，需要由 SillyTavern 额外载入约 ${messagesToLoad} 层正文。加载量较大，可能短暂卡顿，继续吗？`);
+      if (!yes) return false;
+    }
+    const jumpButton = document.querySelector(`#${FLOOR_NAV_ID} .sd-floor-jump`);
+    if (jumpButton) { jumpButton.disabled = true; jumpButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>加载中'; }
+    try {
+      const scriptUrl = document.querySelector('script[src$="/script.js"]')?.src || new URL('/script.js', window.location.origin).href;
+      const st = await import(scriptUrl);
+      if (typeof st.showMoreMessages !== 'function') throw new Error('当前 SillyTavern 未提供历史分页接口');
+      await st.showMoreMessages(messagesToLoad);
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      target = floorMessageElement(targetIndex);
+    } catch (error) {
+      console.error(`[${EXTENSION_NAME}] floor jump failed`, error);
+      toast(`楼层载入失败：${error?.message || error}`, 'error');
+      return false;
+    } finally {
+      if (jumpButton) { jumpButton.disabled = false; jumpButton.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i>跳转'; }
+    }
+  }
+  if (!target) {
+    toast('目标楼层载入后仍未找到，请确认当前聊天未在切换中。', 'warning');
+    return false;
+  }
+  closeFloorNavigator();
+  if (document.getElementById(MODAL_ID)?.classList.contains('open')) closeModal();
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  target.classList.remove('sd-floor-jump-hit');
+  requestAnimationFrame(() => target.classList.add('sd-floor-jump-hit'));
+  setTimeout(() => target.classList.remove('sd-floor-jump-hit'), 1800);
+  return true;
+}
+
+function openFloorNavigator() {
+  closeQuickWheel();
+  closeFloorNavigator();
+  const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
+  const range = loadedFloorRange();
+  const initialFloor = range ? range.last + 1 : Math.max(1, chat.length);
+  const root = document.createElement('div');
+  root.id = FLOOR_NAV_ID;
+  root.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
+  root.innerHTML = `<div class="sd-floor-backdrop"></div>
+    <section class="sd-floor-panel" role="dialog" aria-modal="true" aria-label="楼层跳转">
+      <header><div><h3>楼层跳转</h3><p class="sd-floor-loaded-status"></p></div><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
+      <div class="sd-floor-search"><span>第</span><input class="sd-floor-input" type="number" min="1" inputmode="numeric"><span>层</span><button type="button" class="sd-floor-jump"><i class="fa-solid fa-location-crosshairs"></i>跳转</button></div>
+      <div class="sd-floor-nearby"></div>
+      <footer><i class="fa-solid fa-ghost"></i> AI 隐藏楼层保留原编号并可正常定位</footer>
+    </section>`;
+  document.body.appendChild(root);
+  root.tabIndex = -1;
+  root.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
+  renderFloorNavigatorTarget(root, initialFloor);
+  const close = () => closeFloorNavigator();
+  root.querySelector('.sd-floor-backdrop')?.addEventListener('click', close);
+  root.querySelector('.sd-floor-close')?.addEventListener('click', close);
+  const input = root.querySelector('.sd-floor-input');
+  input?.addEventListener('input', () => renderFloorNavigatorTarget(root, input.value));
+  input?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') jumpToChatFloor(input.value);
+    if (event.key === 'Escape') close();
+  });
+  root.querySelector('.sd-floor-jump')?.addEventListener('click', () => jumpToChatFloor(input?.value));
+  root.querySelector('.sd-floor-nearby')?.addEventListener('click', (event) => {
+    const row = event.target.closest('.sd-floor-row');
+    if (!row) return;
+    renderFloorNavigatorTarget(root, row.dataset.floor);
+  });
+  input?.focus();
+  input?.select();
+}
+
+async function runQuickWheelCommand(id) {
+  closeQuickWheel();
+  if (id === 'dashboard') return openModal('dashboard');
+  if (id === 'tts') return openModal('tts');
+  if (id === 'theater') return openModal('theater');
+  if (id === 'coread') {
+    if (!COREAD_ENABLED) return toast(COREAD_TEASER, 'info');
+    if (readerView) coreadCloseReader();
+    return openModal('coread');
+  }
+  if (id === 'floor') return openFloorNavigator();
+  if (id === 'imagegen') return toast('生图模块将在下一开发任务开放。', 'info');
+}
+
+function openQuickWheel(btn) {
+  closeQuickWheel();
+  closeFloorNavigator();
+  const items = quickWheelItems();
+  if (!items.length) return;
+  const rect = btn.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const towardCenter = Math.atan2(window.innerHeight / 2 - centerY, window.innerWidth / 2 - centerX);
+  const spread = Math.PI * (.46 + Math.min(6, items.length) * .06);
+  const radius = Math.max(104, Math.min(142, getFloatSize() * 2.45));
+  const root = document.createElement('div');
+  root.id = QUICK_WHEEL_ID;
+  root.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
+  root.innerHTML = '<div class="sd-wheel-backdrop"></div><div class="sd-wheel-items" role="menu" aria-label="千幕快捷轮盘"></div>';
+  const holder = root.querySelector('.sd-wheel-items');
+  items.forEach((item, index) => {
+    const ratio = items.length === 1 ? .5 : index / (items.length - 1);
+    const angle = towardCenter - spread / 2 + spread * ratio;
+    const size = 58;
+    const x = Math.max(8, Math.min(window.innerWidth - size - 8, centerX + Math.cos(angle) * radius - size / 2));
+    const y = Math.max(8, Math.min(window.innerHeight - size - 8, centerY + Math.sin(angle) * radius - size / 2));
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `sd-wheel-command${item.pending ? ' is-pending' : ''}`;
+    button.dataset.command = item.id;
+    button.style.left = `${x}px`;
+    button.style.top = `${y}px`;
+    button.title = item.pending ? `${item.label}（即将开放）` : item.label;
+    button.setAttribute('role', 'menuitem');
+    button.innerHTML = `<i class="fa-solid ${item.icon}"></i><span>${htmlEscape(item.label)}</span>`;
+    holder.appendChild(button);
+  });
+  document.body.appendChild(root);
+  root.tabIndex = -1;
+  root.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeQuickWheel(); });
+  root.focus({ preventScroll: true });
+  root.querySelector('.sd-wheel-backdrop')?.addEventListener('click', closeQuickWheel);
+  holder?.addEventListener('click', (event) => {
+    const command = event.target.closest('.sd-wheel-command')?.dataset.command;
+    if (command) runQuickWheelCommand(command);
+  });
+}
+
 function bindFloatDrag(btn) {
   if (btn.dataset.dragBound) return;
   btn.dataset.dragBound = '1';
@@ -3097,6 +3347,8 @@ function bindFloatDrag(btn) {
   let originX = 0;
   let originY = 0;
   let moved = false;
+  let holdTimer = null;
+  let wheelOpened = false;
 
   btn.addEventListener('pointerdown', (event) => {
     if (event.button !== undefined && event.button !== 0) return;
@@ -3106,14 +3358,25 @@ function bindFloatDrag(btn) {
     originX = pos.x;
     originY = pos.y;
     moved = false;
+    wheelOpened = false;
     btn.setPointerCapture?.(event.pointerId);
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => {
+      if (moved || settings.quickWheelEnabled === false) return;
+      wheelOpened = true;
+      openQuickWheel(btn);
+    }, 300);
   });
 
   btn.addEventListener('pointermove', (event) => {
     if (!btn.hasPointerCapture?.(event.pointerId)) return;
     const dx = event.clientX - startX;
     const dy = event.clientY - startY;
-    if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
+    if (Math.abs(dx) + Math.abs(dy) > 4) {
+      moved = true;
+      clearTimeout(holdTimer);
+      if (wheelOpened) closeQuickWheel();
+    }
     settings.floatPosition ||= { x: null, y: null };
     settings.floatPosition.x = originX + dx;
     settings.floatPosition.y = originY + dy;
@@ -3122,6 +3385,7 @@ function bindFloatDrag(btn) {
 
   const finish = (event) => {
     if (!btn.hasPointerCapture?.(event.pointerId)) return;
+    clearTimeout(holdTimer);
     btn.releasePointerCapture?.(event.pointerId);
     const pos = clampFloatPosition();
     settings.floatPosition.x = pos.x;
@@ -3132,23 +3396,33 @@ function bindFloatDrag(btn) {
       btn.dataset.justDragged = '1';
       setTimeout(() => { delete btn.dataset.justDragged; }, 120);
     }
+    if (wheelOpened) {
+      btn.dataset.justOpenedWheel = '1';
+      setTimeout(() => { delete btn.dataset.justOpenedWheel; }, 160);
+    }
   };
   btn.addEventListener('pointerup', finish);
   btn.addEventListener('pointercancel', finish);
 
   btn.addEventListener('click', (event) => {
-    if (btn.dataset.justDragged === '1') {
+    if (btn.dataset.justDragged === '1' || btn.dataset.justOpenedWheel === '1') {
       event.preventDefault();
       event.stopPropagation();
       return;
     }
     openModal();   // 无参=恢复上次停留的 tab（校验回退首页）
   });
+  btn.addEventListener('contextmenu', (event) => {
+    if (settings.quickWheelEnabled === false) return;
+    event.preventDefault();
+  });
 }
 
 function renderFloatButton() {
   let btn = document.getElementById(FLOAT_ID);
   if (!settings.enabled || !settings.floatingButton) {
+    closeQuickWheel();
+    closeFloorNavigator();
     btn?.remove();
     return;
   }
@@ -7360,6 +7634,26 @@ function ttsStopChat() {
   document.querySelectorAll('.mes[data-sd-tts-hooked]').forEach((el) => { delete el.dataset.sdTtsHooked; });
 }
 
+function renderQuickWheelSettings() {
+  normalizeQuickWheelSettings();
+  const custom = settings.quickWheelScheme === 'custom';
+  const ordered = settings.quickWheelCustomOrder.map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
+  return `<div class="sd-wheel-settings">
+    <div class="sd-wheel-setting-head">
+      <label class="checkbox_label"><input type="checkbox" class="sd-wheel-toggle" ${settings.quickWheelEnabled !== false ? 'checked' : ''}> 长按展开快捷轮盘</label>
+      <select class="text_pole sd-wheel-scheme" aria-label="快捷轮盘方案">
+        <option value="default" ${custom ? '' : 'selected'}>默认方案</option>
+        <option value="custom" ${custom ? 'selected' : ''}>自定义方案</option>
+      </select>
+    </div>
+    ${custom ? `<div class="sd-wheel-custom-list">${ordered.map((item, index) => `
+      <div class="sd-wheel-custom-row" data-command="${item.id}">
+        <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}"></i><span>${htmlEscape(item.label)}</span></label>
+        <div><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="up" ${index === 0 ? 'disabled' : ''} title="上移"><i class="fa-solid fa-chevron-up"></i></button><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="down" ${index === ordered.length - 1 ? 'disabled' : ''} title="下移"><i class="fa-solid fa-chevron-down"></i></button></div>
+      </div>`).join('')}</div>` : '<p class="sd-muted sd-wheel-default-copy">推演 · 配音 · 伴读书架 · 幕外 · 生图 · 楼层跳转</p>'}
+  </div>`;
+}
+
 function renderPlugTab() {
   const isExternal = settings.providerMode === 'external';
   const logs = Array.isArray(settings.logHistory) ? settings.logHistory : [];
@@ -7403,6 +7697,7 @@ function renderPlugTab() {
         <label for="sd-float-size">悬浮球大小 <b class="sd-float-size-value">${floatSize} px</b></label>
         <input id="sd-float-size" class="sd-float-size" type="range" min="32" max="80" step="2" value="${floatSize}">
       </div>
+      ${renderQuickWheelSettings()}
     </section>
     <section class="sd-card">
       <h3>日志</h3>
@@ -7943,6 +8238,38 @@ function bindActiveTabEvents(root) {
     renderFloatButton();
   });
   root.querySelector('.sd-float-size')?.addEventListener('change', () => saveSettings());
+  root.querySelector('.sd-wheel-toggle')?.addEventListener('change', (e) => {
+    settings.quickWheelEnabled = !!e.target.checked;
+    if (!settings.quickWheelEnabled) closeQuickWheel();
+    saveSettings();
+  });
+  root.querySelector('.sd-wheel-scheme')?.addEventListener('change', (e) => {
+    settings.quickWheelScheme = e.target.value === 'custom' ? 'custom' : 'default';
+    saveSettings();
+    renderModal();
+  });
+  root.querySelectorAll('.sd-wheel-command-toggle').forEach((toggle) => toggle.addEventListener('change', (e) => {
+    const id = e.target.closest('.sd-wheel-custom-row')?.dataset.command;
+    if (!id) return;
+    const next = settings.quickWheelCustomEnabled.filter((item) => item !== id);
+    if (e.target.checked) next.push(id);
+    if (!next.length) {
+      e.target.checked = true;
+      toast('快捷轮盘至少保留一个入口。', 'warning');
+      return;
+    }
+    settings.quickWheelCustomEnabled = settings.quickWheelCustomOrder.filter((item) => next.includes(item));
+    saveSettings();
+  }));
+  root.querySelectorAll('.sd-wheel-move').forEach((button) => button.addEventListener('click', () => {
+    const id = button.closest('.sd-wheel-custom-row')?.dataset.command;
+    const index = settings.quickWheelCustomOrder.indexOf(id);
+    const target = button.dataset.direction === 'up' ? index - 1 : index + 1;
+    if (index < 0 || target < 0 || target >= settings.quickWheelCustomOrder.length) return;
+    [settings.quickWheelCustomOrder[index], settings.quickWheelCustomOrder[target]] = [settings.quickWheelCustomOrder[target], settings.quickWheelCustomOrder[index]];
+    saveSettings();
+    renderModal();
+  }));
   root.querySelector('.sd-stream-toggle')?.addEventListener('change', (e) => {
     settings.streamEnabled = !!e.target.checked;
     saveSettings();
@@ -16469,6 +16796,8 @@ function init() {
   renderInputMenuEntry();
   startInputMenuObserver();
   resizeHandler = () => {
+    closeQuickWheel();
+    closeFloorNavigator();
     const btn = document.getElementById(FLOAT_ID);
     if (btn) applyFloatPosition(btn);
     const tabsBar = document.getElementById(MODAL_ID)?.querySelector('.sd-tabs');
@@ -16509,6 +16838,8 @@ function cleanupRuntime(resetSettings = false) {
   document.getElementById(SETTINGS_PANEL_ID)?.remove();
   document.getElementById(MODAL_ID)?.remove();
   document.getElementById(FLOAT_ID)?.remove();
+  closeQuickWheel();
+  closeFloorNavigator();
   document.getElementById(INPUT_ENTRY_ID)?.remove();
   document.getElementById(INPUT_BUTTON_ID)?.remove();
   inputMenuObserver?.disconnect?.();
