@@ -14,7 +14,7 @@ assert.match(stage, /sd-reader-noteedit-tags[\s\S]*sd-reader-excerptoverlay/, '�
 assert.match(stage, /sd-reader-excerpt-canvas-wrap[\s\S]*sd-reader-excerpt-panel/, '摘录页必须将纯画布预览置于功能面板上方');
 assert.match(stage, /min="10" max="20"[\s\S]*>页眉</, '摘录字号必须限制为 10–20 且强调色更名为页眉');
 assert.match(stage, /sd-reader-excerpt-zoom-out[\s\S]*sd-reader-excerpt-zoomval[\s\S]*sd-reader-excerpt-zoom-fit/, '摘录预览必须提供缩放百分比与完整适应操作');
-assert.match(stage, />样式<[^]*sd-reader-excerpt-fontfamily[^]*sd-reader-excerpt-font-add/, '摘录面板必须以样式命名并支持通过链接添加字体');
+assert.match(stage, />样式<[^]*sd-reader-excerpt-fontfamily[^]*sd-reader-excerpt-font-add[^]*fa-solid fa-plus/, '摘录面板必须以样式命名并用加号添加 CSS 字体');
 
 const notes = source.slice(source.indexOf('function renderReaderNotes'), source.indexOf('function renderReaderMarks'));
 assert.match(notes, /sd-reader-notes-search[\s\S]*sd-reader-notes-filter[\s\S]*favorite/, '笔记列表必须支持搜索、类型筛选和收藏');
@@ -32,12 +32,14 @@ assert.match(excerpt, /coreadBuildExcerptCanvases[\s\S]*pages\.map[\s\S]*canvasS
 assert.match(excerpt, /savedPresets[\s\S]*coreadRefreshExcerptPresetSelect/, '摘录图片必须支持保存用户自定义方案');
 assert.match(excerpt, /coreadExcerptFontStack[\s\S]*g\.font = `600 28px \$\{fontStack\}`/, '用户字体必须只经由摘录 Canvas 字体栈生效');
 assert.match(excerpt, /文津宋体[\s\S]*文渊黑体 SC[\s\S]*Plix 普利世/, '摘录字体下拉必须包含约定的 ZeoSeven 内置字体');
-assert.match(excerpt, /fonts\.zeoseven\.com[\s\S]*fontsapi\.zeoseven\.com[\s\S]*coreadAddExcerptFontFromLink/, '自定义字体必须限制为 ZeoSeven 官方链接并保存到下拉');
+assert.match(excerpt, /fontsapi\.zeoseven\.com[\s\S]*createElement\('style'\)[\s\S]*coreadPromptExcerptCssFont/, '字体必须通过隔离的 CSS 载入，并支持用户命名后保存到下拉');
 
 const binding = source.slice(source.indexOf('function bindReaderStageEvents'), source.indexOf('// 目录 / 笔记 / 书签共用固定高度'));
 assert.match(binding, /bindReaderListGrip[\s\S]*sd-reader-note-favorite[\s\S]*sd-reader-note-copy[\s\S]*sd-reader-note-image/, '阅读器必须接通抽屉高度记忆与笔记操作');
 assert.match(binding, /stageRoot\.addEventListener\('click'[\s\S]*sd-reader-note-tools-toggle[\s\S]*row\.hidden = true/, '点笔记菜单外任意位置必须自动收起菜单');
 assert.match(binding, /sel\.isCollapsed[\s\S]*!pendingMark[\s\S]*hideTools\(\)/, '用户取消正文选区时必须立即收起划线工具');
+assert.match(binding, /toolInteracting[\s\S]*pointerdown[\s\S]*pointerup/, '划线工具必须用交互锁保护选区且不得再吞掉 iOS 点击');
+assert.doesNotMatch(binding, /tools\.addEventListener\('pointerdown',\s*\(e\)[^]*e\.preventDefault/, '划线工具不得阻止 pointerdown 导致 iOS 点击失效');
 assert.doesNotMatch(binding, /q\('\.sd-reader-export'\)|q\('\.sd-reader-import-data'\)/, '阅读页不得继续绑定已移除的导入导出入口');
 
 assert.match(css, /\.sd-reader-toc\s*\{[^}]*max-height:\s*82%/, '目录抽屉必须限制高度并让正文区保持可用');

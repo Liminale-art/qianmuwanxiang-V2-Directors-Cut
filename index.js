@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.21.3';
+const VERSION = '1.21.4';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -441,7 +441,7 @@ const DEFAULT_SETTINGS = Object.freeze({
       accentColor: '#b37d6b',
       fontSize: 16,
       fontId: 'zeo-376',            // ZeoSeven 字体项；仅用于摘录 Canvas
-      customFonts: [],              // [{id,name,url,family}] 用户保存的 ZeoSeven 官方链接字体
+      customFonts: [],              // [{id,name,css,family}] 用户命名并保存的摘录 CSS 字体
       showAnnotation: true,
       showSource: true,
       savedPresets: [],             // [{id,name,...当前摘录图片设置}]，用户自存方案
@@ -11523,7 +11523,7 @@ async function coreadImportText(rawText, title = '', author = '', preChapters = 
   }
   coread().books.unshift({
     id: bookId, title: finalTitle, author: String(author || ''),
-    addedAt: Date.now(), chapterCount: finalChapters.length, charCount,
+    addedAt: Date.now(), lastReadAt: 0, chapterCount: finalChapters.length, charCount,
     tags: [], boundChar: '', progress: 0, lastChapterIndex: 0, lastScrollRatio: 0, ragEnabled: false, hasCover, imageCount,
   });
   saveSettings();
@@ -11722,6 +11722,46 @@ async function coreadClearBookDialogue(bookId) {
   return { conversations };
 }
 
+async function coreadEditBookInfo(bookId) {
+  const meta = coreadBookMeta(bookId);
+  if (!meta) return false;
+  let title = meta.title || '';
+  let author = meta.author || '';
+  try {
+    const context = ctx();
+    const Popup = context.Popup;
+    if (Popup && context.POPUP_TYPE) {
+      const wrap = document.createElement('div');
+      wrap.className = 'sd-reader-bookedit-form';
+      wrap.innerHTML = `
+        <label><span>书名</span><input type="text" class="sd-reader-bookedit-title" maxlength="120" value="${htmlEscape(title)}"></label>
+        <label><span>作者</span><input type="text" class="sd-reader-bookedit-author" maxlength="80" value="${htmlEscape(author)}" placeholder="可留空"></label>`;
+      const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '保存', cancelButton: '取消' });
+      const result = await popup.show();
+      if (result !== true && String(result) !== '1') return false;
+      title = String(wrap.querySelector('.sd-reader-bookedit-title')?.value || '').trim();
+      author = String(wrap.querySelector('.sd-reader-bookedit-author')?.value || '').trim();
+    } else {
+      const nextTitle = await promptInput('编辑书籍信息', '书名：', title);
+      if (nextTitle == null) return false;
+      title = String(nextTitle).trim();
+      const nextAuthor = await promptInput('编辑书籍信息', '作者（可留空）：', author);
+      if (nextAuthor == null) return false;
+      author = String(nextAuthor).trim();
+    }
+  } catch (_) { return false; }
+  if (!title) { toast('书名不能为空。', 'warning'); return false; }
+  meta.title = title.slice(0, 120);
+  meta.author = author.slice(0, 80);
+  saveSettings();
+  try {
+    const rec = await blobStore.getBook(bookId);
+    if (rec) await blobStore.putBook(bookId, { ...rec, meta: { ...(rec.meta || {}), title: meta.title, author: meta.author } });
+  } catch (error) { console.warn(`[${MODULE_NAME}] update book metadata failed`, error); }
+  toast('书籍信息已更新。', 'success');
+  return true;
+}
+
 async function coreadChooseDeleteMemory(label) {
   const title = `是否一并删除${label}的长期记忆？`;
   const text = '长期记忆默认保留，可继续在伴读档案中管理并反哺正文。选择“删除记忆”才会永久清除；选择“保留记忆”会继续删书。';
@@ -11791,6 +11831,8 @@ async function coreadOpenBook(bookId) {
     coreadShowRefillChooser(bookId);
     return;
   }
+  meta.lastReadAt = Date.now();
+  saveSettings();
   readerContentCache = { bookId, fullText: rec.fullText || '', chapters: rec.chapters, sig: rec.sig || '' };
   const startCh = Number.isInteger(meta.lastChapterIndex) ? meta.lastChapterIndex : 0;
   readerView = {
@@ -11825,6 +11867,7 @@ function coreadSaveProgress() {
   if (!meta) return;
   meta.lastChapterIndex = readerView.chapterIndex;
   meta.lastScrollRatio = readerView.scrollRatio || 0;
+  meta.lastReadAt = Date.now();
   const total = readerContentCache.chapters.length || 1;
   meta.progress = Math.round(((readerView.chapterIndex + (readerView.scrollRatio || 0)) / total) * 100);
   if (readerDialog.bookId === readerView.bookId) readerDialog.readBoundary = coreadCurrentReadBoundarySync(readerView.bookId);
@@ -12002,6 +12045,7 @@ function sortedLibraryBooks() {
       case 'title': return b.title || '';
       case 'author': return b.author || '';
       case 'progress': return b.progress || 0;
+      case 'lastReadAt': return b.lastReadAt || 0;
       case 'length': return b.charCount || 0;
       default: return b.addedAt || 0;
     }
@@ -12023,6 +12067,7 @@ function allLibraryTags() {
 
 // 书架排序选项（下拉用）
 const LIBRARY_SORTS = [
+  { key: 'lastReadAt-desc', name: '最近阅读' },
   { key: 'addedAt-desc', name: '最近添加' },
   { key: 'addedAt-asc', name: '最早添加' },
   { key: 'title-asc', name: '书名 A→Z' },
@@ -12046,6 +12091,7 @@ function renderLibraryView() {
             <span class="sd-reader-row-sub">${b.author ? htmlEscape(b.author) + ' · ' : ''}${(b.chapterCount || 0)}章 · ${(b.charCount || 0).toLocaleString()}字</span>
           </div>
           <span class="sd-reader-row-prog">${prog}%</span>
+          <button class="sd-reader-card-edit" data-book="${htmlEscape(b.id)}" title="编辑书籍信息"><i class="fa-solid fa-pen"></i></button>
           <button class="sd-reader-card-del" data-book="${htmlEscape(b.id)}" title="删除"><i class="fa-solid fa-trash"></i></button>
         </div>`;
     }
@@ -12062,6 +12108,7 @@ function renderLibraryView() {
           <div class="sd-reader-card-title" title="${htmlEscape(b.title)}">${htmlEscape(b.title)}</div>
           ${b.author ? `<div class="sd-reader-card-author" title="${htmlEscape(b.author)}">${htmlEscape(b.author)}</div>` : ''}
           <div class="sd-reader-card-sub">${(b.chapterCount || 0)}章 · ${(b.charCount || 0).toLocaleString()}字</div>
+          <button class="sd-reader-card-edit sd-reader-card-edit-grid" data-book="${htmlEscape(b.id)}" title="编辑书名与作者"><i class="fa-solid fa-pen"></i></button>
         </div>
       </div>`;
   }).join('');
@@ -12103,8 +12150,13 @@ function buildReaderParagraphs(text, hiList) {
     : s.split('\n').map((l) => l.trim());
   // 长文本优先，避免短串先命中把长串切断
   const hi = (hiList || [])
-    .filter((h) => h && String(h.text || '').trim().length >= 2)
-    .map((h) => ({ id: h.id, text: String(h.text).trim(), style: h.hlStyle || 'mark', color: sanitizeHexColor(h.color) }))
+    .filter(Boolean)
+    .flatMap((h) => {
+      const parts = Array.isArray(h.segments) && h.segments.length ? h.segments : [h.text];
+      return parts.map((part) => String(part || '').trim()).filter((part) => part.length >= 2).map((part) => ({
+        id: h.id, text: part, style: h.hlStyle || 'mark', color: sanitizeHexColor(h.color),
+      }));
+    })
     .sort((a, b) => b.text.length - a.text.length);
   const out = blocks.filter(Boolean).map((p) => {
     // 书内插图占位符 ⟦img:n⟧ → 图片位（懒加载 IndexedDB blob·失败静默移除）
@@ -12168,7 +12220,7 @@ function buildReaderStage() {
   const chapter = cache.chapters[ci] || { title: '', content: '' };
   const c = coread();
   const notes = Array.isArray(meta.notes) ? meta.notes : [];
-  const chHi = notes.filter((n) => n.kind === 'highlight' && n.chapterIndex === ci).map((n) => ({ id: n.id, text: n.text, hlStyle: n.hlStyle, color: n.color }));
+  const chHi = notes.filter((n) => n.kind === 'highlight' && n.chapterIndex === ci).map((n) => ({ id: n.id, text: n.text, segments: n.segments, hlStyle: n.hlStyle, color: n.color }));
   const bookmarked = notes.some((n) => n.kind === 'bookmark' && n.chapterIndex === ci);
   const bodyStyle = `font-size:${c.fontSizePx || 19}px;line-height:${c.lineHeight || 1.9};text-align:${c.justify ? 'justify' : 'left'};--sd-rd-para:${c.paraSpacing || 1}em;--sd-rd-px:${widthToPad(Math.max(28, Math.min(66, c.contentWidthRem || 42)))}%;`;
   const paras = buildReaderParagraphs(chapter.content, chHi);
@@ -12349,7 +12401,7 @@ function buildReaderStage() {
               <label class="sd-reader-excerpt-scheme"><span>样式</span><span class="sd-reader-excerpt-scheme-pick"><select class="sd-reader-excerpt-preset"><option value="paper">米纸</option><option value="night">夜墨</option><option value="mist">雾蓝</option><option value="custom">临时自定义</option>${excerptPresetOptions}</select><button type="button" class="sd-reader-excerpt-preset-save" title="保存当前为自定义样式"><i class="fa-solid fa-bookmark"></i></button><button type="button" class="sd-reader-excerpt-preset-del" title="删除当前自定义样式"><i class="fa-solid fa-trash"></i></button></span></label>
               <label>比例<select class="sd-reader-excerpt-ratio"><option value="square">1 : 1</option><option value="portrait">4 : 5</option><option value="story">9 : 16</option></select></label>
               <label>字号<input type="range" class="sd-reader-excerpt-font" min="10" max="20" step="1"><b class="sd-reader-excerpt-fontval"></b></label>
-              <label class="sd-reader-excerpt-fontface"><span>字体</span><span class="sd-reader-excerpt-fontpick"><select class="sd-reader-excerpt-fontfamily">${excerptFontOptions}</select><button type="button" class="sd-reader-excerpt-font-add" title="从 ZeoSeven 链接添加字体"><i class="fa-solid fa-link"></i></button><button type="button" class="sd-reader-excerpt-font-del" title="删除当前自定义字体"><i class="fa-solid fa-trash"></i></button></span></label>
+              <label class="sd-reader-excerpt-fontface"><span>字体</span><span class="sd-reader-excerpt-fontpick"><select class="sd-reader-excerpt-fontfamily">${excerptFontOptions}</select><button type="button" class="sd-reader-excerpt-font-add" title="添加 CSS 字体"><i class="fa-solid fa-plus"></i></button><button type="button" class="sd-reader-excerpt-font-del" title="删除当前自定义字体"><i class="fa-solid fa-trash"></i></button></span></label>
               <label title="背景色">底色<input type="color" class="sd-reader-excerpt-bg"></label>
               <label title="文字颜色">字色<input type="color" class="sd-reader-excerpt-fg"></label>
               <label title="页眉颜色">页眉<input type="color" class="sd-reader-excerpt-accent"></label>
@@ -13203,15 +13255,15 @@ const COREAD_EXCERPT_PRESETS = {
 
 const COREAD_EXCERPT_FONT_FALLBACK = '"Noto Serif SC", "Songti SC", "SimSun", serif';
 const COREAD_EXCERPT_BUILTIN_FONTS = [
-  { id: 'zeo-376', name: '文津宋体', family: 'WenJin Mincho Plane 0', url: 'https://fontsapi.zeoseven.com/376/main/result.css' },
-  { id: 'zeo-13', name: '文渊黑体 SC', family: 'WenYuan Sans SC VF', url: 'https://fontsapi.zeoseven.com/13/main/result.css' },
-  { id: 'zeo-256', name: '汇文明朝体', family: 'Huiwen-mincho', url: 'https://fontsapi.zeoseven.com/256/main/result.css' },
-  { id: 'zeo-292', name: '霞鹜文楷', family: 'LXGW WenKai', url: 'https://fontsapi.zeoseven.com/292/main/result.css' },
-  { id: 'zeo-285', name: '思源宋体', family: 'Noto Serif CJK', url: 'https://fontsapi.zeoseven.com/285/main/result.css' },
-  { id: 'zeo-69', name: '思源黑体', family: 'Noto Sans CJK', url: 'https://fontsapi.zeoseven.com/69/main/result.css' },
-  { id: 'zeo-282', name: '小赖字体 Mono', family: 'Xiaolai Mono SC', url: 'https://fontsapi.zeoseven.com/282/main/result.css' },
-  { id: 'zeo-551', name: 'B2 Hana', family: 'B2 Hana', url: 'https://fontsapi.zeoseven.com/551/main/result.css' },
-  { id: 'zeo-416', name: 'Plix 普利世', family: 'Plix', url: 'https://fontsapi.zeoseven.com/416/main/result.css' },
+  { id: 'zeo-376', name: '文津宋体', family: 'WenJin Mincho Plane 0', css: '@import url("https://fontsapi.zeoseven.com/376/main/result.css");' },
+  { id: 'zeo-13', name: '文渊黑体 SC', family: 'WenYuan Sans SC VF', css: '@import url("https://fontsapi.zeoseven.com/13/main/result.css");' },
+  { id: 'zeo-256', name: '汇文明朝体', family: 'Huiwen-mincho', css: '@import url("https://fontsapi.zeoseven.com/256/main/result.css");' },
+  { id: 'zeo-292', name: '霞鹜文楷', family: 'LXGW WenKai', css: '@import url("https://fontsapi.zeoseven.com/292/main/result.css");' },
+  { id: 'zeo-285', name: '思源宋体', family: 'Noto Serif CJK', css: '@import url("https://fontsapi.zeoseven.com/285/main/result.css");' },
+  { id: 'zeo-69', name: '思源黑体', family: 'Noto Sans CJK', css: '@import url("https://fontsapi.zeoseven.com/69/main/result.css");' },
+  { id: 'zeo-282', name: '小赖字体 Mono', family: 'Xiaolai Mono SC', css: '@import url("https://fontsapi.zeoseven.com/282/main/result.css");' },
+  { id: 'zeo-551', name: 'B2 Hana', family: 'B2 Hana', css: '@import url("https://fontsapi.zeoseven.com/551/main/result.css");' },
+  { id: 'zeo-416', name: 'Plix 普利世', family: 'Plix', css: '@import url("https://fontsapi.zeoseven.com/416/main/result.css");' },
 ];
 
 function coreadExcerptFonts(cfg = coreadExcerptConfig()) {
@@ -13231,7 +13283,11 @@ function coreadExcerptConfig() {
   if (!Array.isArray(cfg.savedPresets)) cfg.savedPresets = [];
   cfg.savedPresets = cfg.savedPresets.filter((item) => item && item.id && item.name).slice(0, 30);
   if (!Array.isArray(cfg.customFonts)) cfg.customFonts = [];
-  cfg.customFonts = cfg.customFonts.filter((font) => font && font.id && font.name && font.url && font.family).slice(0, 30);
+  cfg.customFonts = cfg.customFonts.map((font) => {
+    if (!font || typeof font !== 'object') return null;
+    const css = String(font.css || (font.url ? `@import url("${font.url}");` : '')).trim();
+    return { ...font, css };
+  }).filter((font) => font && font.id && font.name && font.css && font.family).slice(0, 30);
   if (!['paper', 'night', 'mist', 'custom'].includes(cfg.preset) && !cfg.savedPresets.some((item) => item.id === cfg.preset)) cfg.preset = 'paper';
   if (!['square', 'portrait', 'story'].includes(cfg.ratio)) cfg.ratio = 'portrait';
   cfg.background = sanitizeHexColor(cfg.background) || '#f2ede3';
@@ -13270,53 +13326,79 @@ function coreadNormalizeZeoFontUrl(value) {
 }
 
 function coreadAttachExcerptFont(font) {
-  if (!font?.url) return Promise.resolve(false);
-  const linkId = `sd-coread-font-${String(font.id).replace(/[^a-z0-9_-]/gi, '-')}`;
-  const existing = document.getElementById(linkId);
-  if (existing?.dataset.loaded === '1') return Promise.resolve(true);
-  return new Promise((resolve) => {
-    const link = existing || document.createElement('link');
-    let settled = false;
-    const done = (ok) => { if (ok) link.dataset.loaded = '1'; if (!settled) { settled = true; resolve(ok); } };
-    link.addEventListener('load', () => done(true), { once: true });
-    link.addEventListener('error', () => done(false), { once: true });
-    if (!existing) {
-      link.id = linkId; link.rel = 'stylesheet'; link.href = font.url; link.crossOrigin = 'anonymous';
-      document.head.appendChild(link);
-    }
-    else if (link.sheet != null) done(true);
-    setTimeout(() => done(link.sheet != null), 8000);
-  });
+  if (!font?.css) return false;
+  const styleId = `sd-coread-font-${String(font.id).replace(/[^a-z0-9_-]/gi, '-')}`;
+  let style = document.getElementById(styleId);
+  if (!style) {
+    style = document.createElement('style');
+    style.id = styleId;
+    style.dataset.coreadFont = String(font.id);
+    style.textContent = String(font.css);
+    document.head.appendChild(style);
+  }
+  return true;
 }
 
 async function coreadEnsureExcerptFont(cfg = coreadExcerptConfig()) {
   const font = coreadExcerptFonts(cfg).find((item) => item.id === cfg.fontId);
   if (!font) return false;
-  const loaded = await coreadAttachExcerptFont(font);
-  if (loaded && document.fonts?.load) {
-    try { await document.fonts.load(`16px "${String(font.family).replace(/["\\\r\n]/g, '')}"`); } catch (_) {}
+  if (!coreadAttachExcerptFont(font)) return false;
+  if (document.fonts?.load) {
+    const family = String(font.family).replace(/["\\\r\n]/g, '');
+    // @import 先交给 CSSOM 解析，再由 FontFaceSet 等待真实字体；不再预先 fetch 同一份 CSS。
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    try {
+      const loaded = await Promise.race([
+        document.fonts.load(`16px "${family}"`),
+        new Promise((resolve) => setTimeout(() => resolve([]), 6000)),
+      ]);
+      return Array.isArray(loaded) ? loaded.length > 0 || document.fonts.check(`16px "${family}"`) : true;
+    } catch (_) { return false; }
   }
-  return loaded;
+  return true;
 }
 
-async function coreadAddExcerptFontFromLink(value) {
-  const normalized = coreadNormalizeZeoFontUrl(value);
-  if (!normalized) throw new Error('仅支持 ZeoSeven 字体作品页或官方字体 API 链接');
-  const known = COREAD_EXCERPT_BUILTIN_FONTS.find((font) => font.url === normalized.url || font.id === `zeo-${normalized.fontNo}`);
-  if (known) return known;
-  const response = await fetch(normalized.url, { method: 'GET', credentials: 'omit', mode: 'cors' });
-  if (!response.ok) throw new Error(`字体链接读取失败（HTTP ${response.status}）`);
-  const css = await response.text();
-  const familyMatch = css.match(/font-family\s*:\s*(['"])([^'"\r\n;]+)\1/i) || css.match(/font-family\s*:\s*([^;\r\n]+)/i);
+function coreadCreateExcerptCssFont(name, cssText) {
+  const displayName = String(name || '').replace(/[<>\r\n]/g, '').trim().slice(0, 40);
+  const rawCss = String(cssText || '').trim();
+  if (!displayName) throw new Error('请填写字体名称');
+  const normalized = coreadNormalizeZeoFontUrl(rawCss);
+  if (!normalized) throw new Error('CSS 中未找到有效的 ZeoSeven 字体 API 地址');
+  const familyMatch = rawCss.match(/font-family\s*:\s*(['"])([^'"\r\n;]+)\1/i) || rawCss.match(/font-family\s*:\s*([^;\r\n}]+)/i);
   const family = String(familyMatch?.[2] || familyMatch?.[1] || '').replace(/["'\\\r\n]/g, '').trim().slice(0, 80);
-  if (!family) throw new Error('未能从该链接识别字体名称');
-  const font = { id: `zeo-custom-${normalized.fontNo}`, name: family, family, url: normalized.url };
+  if (!family) throw new Error('CSS 中未找到 font-family，请粘贴网站提供的完整 CSS 用法');
+  const font = {
+    id: `zeo-custom-${normalized.fontNo}-${uid('font').replace(/[^a-z0-9]/gi, '').slice(-8)}`,
+    name: displayName,
+    family,
+    css: `@import url("${normalized.url}");`,
+  };
   const cfg = coreadExcerptConfig();
-  const current = cfg.customFonts.find((item) => item.id === font.id);
-  if (current) Object.assign(current, font); else cfg.customFonts.push(font);
+  cfg.customFonts.push(font);
   cfg.fontId = font.id;
   saveSettings();
   return font;
+}
+
+async function coreadPromptExcerptCssFont() {
+  const context = ctx();
+  const Popup = context.Popup;
+  if (Popup && context.POPUP_TYPE) {
+    const wrap = document.createElement('div');
+    wrap.className = 'sd-reader-fontcss-form';
+    wrap.innerHTML = `
+      <label><span>字体名称</span><input type="text" class="sd-reader-fontcss-name" maxlength="40" placeholder="显示在下拉框中的名称"></label>
+      <label><span>CSS</span><textarea class="sd-reader-fontcss-code" rows="7" placeholder='粘贴网站提供的完整 CSS，例如：\n@import url("https://fontsapi.zeoseven.com/…/result.css");\n.demo { font-family: "字体族名称"; }'></textarea></label>
+      <small>只提取字体 API 与 font-family，CSS 不会应用到 ST 页面。</small>`;
+    const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '添加', cancelButton: '取消', wide: true });
+    const result = await popup.show();
+    if (result !== true && String(result) !== '1') return null;
+    return coreadCreateExcerptCssFont(wrap.querySelector('.sd-reader-fontcss-name')?.value, wrap.querySelector('.sd-reader-fontcss-code')?.value);
+  }
+  const name = await promptInput('添加摘录字体', '字体名称：', '');
+  if (!name) return null;
+  const css = await promptInput('添加摘录字体', '粘贴完整 CSS：', '');
+  return css ? coreadCreateExcerptCssFont(name, css) : null;
 }
 
 function coreadFindReaderNote(noteId) {
@@ -13549,9 +13631,12 @@ async function coreadOpenExcerptDialog(noteId, stageRoot) {
   overlay.querySelector('.sd-reader-excerpt-note').checked = cfg.showAnnotation;
   overlay.querySelector('.sd-reader-excerpt-source').checked = cfg.showSource;
   overlay.hidden = false;
-  const loaded = await coreadEnsureExcerptFont(cfg);
-  if (!loaded) toast('字体资源暂时无法载入，摘录将使用本机备用字体。', 'warning');
+  // 先用备用字体即时出预览，远程 CSS 字体就绪后再无感重绘，避免空等网络。
   coreadSyncExcerptPreview(stageRoot);
+  const fontId = cfg.fontId;
+  void coreadEnsureExcerptFont(cfg).then((loaded) => {
+    if (loaded && coreadExcerptConfig().fontId === fontId && readerView?.sharingNoteId === noteId) coreadSyncExcerptPreview(stageRoot);
+  });
 }
 
 function coreadCloseExcerptDialog(stageRoot) {
@@ -13653,17 +13738,21 @@ function bindLibraryViewEvents(root) {
   // 网格卡（封面视图）：单击开书，去掉删除功能（P1 优化·删除功能只留给列表视图）
   root.querySelectorAll('.sd-reader-card').forEach((card) => {
     card.addEventListener('click', (e) => {
-      if (e.target.closest('.sd-reader-book-check')) return;  // 勾选框不触发开书
+      if (e.target.closest('.sd-reader-book-check, .sd-reader-card-edit')) return;  // 工具按钮不触发开书
       coreadOpenBook(card.dataset.book);
     });
   });
   // 列表行：单击开书（勾选框与删除钮除外）
   root.querySelectorAll('.sd-reader-row').forEach((row) => {
     row.addEventListener('click', (e) => {
-      if (e.target.closest('.sd-reader-book-check') || e.target.closest('.sd-reader-card-del')) return;
+      if (e.target.closest('.sd-reader-book-check, .sd-reader-card-edit, .sd-reader-card-del')) return;
       coreadOpenBook(row.dataset.book);
     });
   });
+  root.querySelectorAll('.sd-reader-card-edit').forEach((el) => el.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (await coreadEditBookInfo(el.dataset.book)) renderModal();
+  }));
   // 列表行删除钮（单本删除）
   root.querySelectorAll('.sd-reader-card-del').forEach((el) => el.addEventListener('click', async (e) => {
     e.stopPropagation();
@@ -13870,12 +13959,13 @@ function bindReaderStageEvents(stageRoot) {
       const presetSelect = q('.sd-reader-excerpt-preset'); if (presetSelect) presetSelect.value = 'custom';
     }
     saveSettings();
+    coreadRefreshExcerptFontSelect(stageRoot);
+    coreadSyncExcerptPreview(stageRoot);
     if (changed === 'preset' || changed === 'fontfamily') {
       const loaded = await coreadEnsureExcerptFont(cfg);
       if (!loaded) toast('字体资源暂时无法载入，已使用本机备用字体。', 'warning');
+      else coreadSyncExcerptPreview(stageRoot);
     }
-    coreadRefreshExcerptFontSelect(stageRoot);
-    coreadSyncExcerptPreview(stageRoot);
   };
   q('.sd-reader-excerpt-preset')?.addEventListener('change', () => void syncExcerptControls('preset'));
   q('.sd-reader-excerpt-ratio')?.addEventListener('change', () => void syncExcerptControls('ratio'));
@@ -13884,13 +13974,13 @@ function bindReaderStageEvents(stageRoot) {
   stageRoot.querySelectorAll('.sd-reader-excerpt-bg, .sd-reader-excerpt-fg, .sd-reader-excerpt-accent').forEach((el) => el.addEventListener('input', () => void syncExcerptControls('color')));
   stageRoot.querySelectorAll('.sd-reader-excerpt-note, .sd-reader-excerpt-source').forEach((el) => el.addEventListener('change', () => void syncExcerptControls('check')));
   q('.sd-reader-excerpt-font-add')?.addEventListener('click', async () => {
-    const link = String(await promptInput('添加摘录字体', '粘贴 ZeoSeven 字体作品页或字体 API 链接：', '') || '').trim();
-    if (!link) return;
     try {
-      const font = await coreadAddExcerptFontFromLink(link);
+      const font = await coreadPromptExcerptCssFont();
+      if (!font) return;
       const cfg = coreadExcerptConfig(); cfg.fontId = font.id; cfg.preset = 'custom'; saveSettings();
       coreadRefreshExcerptFontSelect(stageRoot); fillExcerptControls(cfg);
-      await coreadEnsureExcerptFont(cfg); coreadSyncExcerptPreview(stageRoot);
+      coreadSyncExcerptPreview(stageRoot);
+      if (await coreadEnsureExcerptFont(cfg)) coreadSyncExcerptPreview(stageRoot);
       toast(`已添加字体「${font.name}」。`, 'success');
     } catch (error) { toast(error?.message || '字体添加失败。', 'error'); }
   });
@@ -14823,7 +14913,9 @@ function bindReaderStageEvents(stageRoot) {
   const anyPanelOpen = () => !!stageRoot.querySelector('.sd-reader-panel.open');
   const hideTools = () => { if (tools) tools.hidden = true; };
   let pendingText = '';   // 新选区文本
+  let pendingSegments = []; // 跨段选区按正文段保存，既保留完整摘录也能逐段正确划线
   let pendingMark = '';   // 已划线 noteId
+  let toolInteracting = false;
   if (bodyEl && tools) {
     const lvMain = tools.querySelector('.sd-reader-hltools-main');
     const lvStyles = tools.querySelector('.sd-reader-hltools-styles');
@@ -14846,13 +14938,31 @@ function bindReaderStageEvents(stageRoot) {
         tools.style.left = `${left}px`; tools.style.top = `${Math.max(8, top)}px`;
       });
     };
+    const selectionSegments = (range) => {
+      const parts = [];
+      const article = bodyEl.querySelector('.sd-reader-article');
+      if (!article || !range) return parts;
+      for (const paragraph of article.querySelectorAll('p')) {
+        try {
+          if (!range.intersectsNode(paragraph)) continue;
+          const piece = document.createRange();
+          piece.selectNodeContents(paragraph);
+          if (paragraph.contains(range.startContainer)) piece.setStart(range.startContainer, range.startOffset);
+          if (paragraph.contains(range.endContainer)) piece.setEnd(range.endContainer, range.endOffset);
+          const text = piece.toString().trim();
+          if (text) parts.push(text);
+        } catch (_) {}
+      }
+      return parts;
+    };
     // 选中正文 → 父级。移动端长按选字往往只触发 selectionchange（不必有 touchend/mouseup 落在正文上），
     // 故三路监听（selectionchange 兜底 + touchend/mouseup 提速）合流到一个去抖的 onSelect，避免移动端选完不弹窗。
     const onSelect = () => {
       const sel = window.getSelection?.();
       if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+        if (toolInteracting) return;
         // 新选区被用户取消时立即收起；已划线菜单由正文点击逻辑独立管理。
-        if (!pendingMark) { pendingText = ''; hideTools(); }
+        if (!pendingMark) { pendingText = ''; pendingSegments = []; hideTools(); }
         return;
       }
       let range;
@@ -14862,8 +14972,8 @@ function bindReaderStageEvents(stageRoot) {
       if (anchorEl && anchorEl.closest('.sd-reader-hltools')) return;
       if (anchorEl && !anchorEl.closest('.sd-reader-body')) return;
       const text = String(sel).trim();
-      if (!text) { if (!pendingMark) { pendingText = ''; hideTools(); } return; }
-      pendingText = text; pendingMark = '';
+      if (!text) { if (!pendingMark) { pendingText = ''; pendingSegments = []; hideTools(); } return; }
+      pendingText = text; pendingSegments = selectionSegments(range); pendingMark = '';
       // getClientRects 末段更贴合多行选区尾部；退回 getBoundingClientRect
       const rects = range.getClientRects();
       const rect = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
@@ -14877,22 +14987,25 @@ function bindReaderStageEvents(stageRoot) {
     detachReaderSelListener();
     readerSelChangeHandler = () => scheduleSelect(140);
     document.addEventListener('selectionchange', readerSelChangeHandler);
-    // 按下工具浮窗时阻止默认——避免手指/鼠标落到浮窗上时浏览器清掉选区（downstream click 仍照常派发）
-    tools.addEventListener('pointerdown', (e) => { e.preventDefault(); });
+    // 不阻止 pointerdown（iOS 会因此吞掉 click）；改用短暂交互锁保护已缓存的选区。
+    tools.addEventListener('pointerdown', () => { toolInteracting = true; });
+    const releaseToolLock = () => setTimeout(() => { toolInteracting = false; }, 180);
+    tools.addEventListener('pointerup', releaseToolLock);
+    tools.addEventListener('pointercancel', releaseToolLock);
     // 父级：划线 → 展开样式级；笔记 → 建划线(荧光默认)并即开笔记
     lvMain.querySelector('[data-act="highlight"]').onclick = () => showLevel('styles');
     lvMain.querySelector('[data-act="note"]').onclick = () => {
-      const text = pendingText; hideTools();
+      const text = pendingText; const segments = pendingSegments.slice(); hideTools();
       window.getSelection?.()?.removeAllRanges?.();
-      if (text) { const id = coreadAddHighlight(text, 'mark'); updateReaderArticle(stageRoot); if (id) openReaderNoteDialog(id); }
+      if (text) { const id = coreadAddHighlight(text, 'mark', segments); updateReaderArticle(stageRoot); if (id) openReaderNoteDialog(id); }
     };
     lvMain.querySelector('[data-act="copy"]').onclick = () => {
       const text = pendingText; hideTools(); window.getSelection?.()?.removeAllRanges?.();
       if (text) void coreadCopyText(text);
     };
     lvMain.querySelector('[data-act="image"]').onclick = () => {
-      const text = pendingText; hideTools(); window.getSelection?.()?.removeAllRanges?.();
-      if (text) { const id = coreadAddHighlight(text, 'mark'); updateReaderArticle(stageRoot); if (id) coreadOpenExcerptDialog(id, stageRoot); }
+      const text = pendingText; const segments = pendingSegments.slice(); hideTools(); window.getSelection?.()?.removeAllRanges?.();
+      if (text) { const id = coreadAddHighlight(text, 'mark', segments); updateReaderArticle(stageRoot); if (id) coreadOpenExcerptDialog(id, stageRoot); }
     };
     // 样式级：返回箭头 / 三样式 / 取色（荧光自动半透明由 CSS color-mix 负责）
     lvStyles.querySelector('[data-back]').onclick = () => showLevel('main');
@@ -14902,10 +15015,10 @@ function bindReaderStageEvents(stageRoot) {
       const sw = lvStyles.querySelector('.sd-reader-hlcolor span'); if (sw) sw.style.background = col || '#d8a657';
     });
     lvStyles.querySelectorAll('button[data-style]').forEach((btn) => btn.addEventListener('click', () => {
-      const text = pendingText; hideTools();
+      const text = pendingText; const segments = pendingSegments.slice(); hideTools();
       window.getSelection?.()?.removeAllRanges?.();
       showLevel('main');   // 划线后自动返回上一级
-      if (text) { coreadAddHighlight(text, btn.dataset.style || 'mark'); updateReaderArticle(stageRoot); }
+      if (text) { coreadAddHighlight(text, btn.dataset.style || 'mark', segments); updateReaderArticle(stageRoot); }
     }));
     // 已划线级：笔记 / 取消划线
     lvExist.querySelector('[data-act="note"]').onclick = () => { const id = pendingMark; hideTools(); if (id) openReaderNoteDialog(id); };
@@ -14920,7 +15033,7 @@ function bindReaderStageEvents(stageRoot) {
       const mark = e.target.closest('.sd-reader-hl');
       if (!mark) return;
       e.stopPropagation();
-      pendingMark = mark.dataset.note; pendingText = '';
+      pendingMark = mark.dataset.note; pendingText = ''; pendingSegments = [];
       showTools(mark.getBoundingClientRect(), 'exist');
     });
   }
@@ -15051,7 +15164,7 @@ function updateReaderArticle(stageRoot) {
   const ci = Math.max(0, Math.min(readerView.chapterIndex, readerContentCache.chapters.length - 1));
   const chapter = readerContentCache.chapters[ci] || { title: '', content: '' };
   const notes = Array.isArray(meta.notes) ? meta.notes : [];
-  const chHi = notes.filter((n) => n.kind === 'highlight' && n.chapterIndex === ci).map((n) => ({ id: n.id, text: n.text, hlStyle: n.hlStyle, color: n.color }));
+  const chHi = notes.filter((n) => n.kind === 'highlight' && n.chapterIndex === ci).map((n) => ({ id: n.id, text: n.text, segments: n.segments, hlStyle: n.hlStyle, color: n.color }));
   const article = root.querySelector('.sd-reader-article');
   if (article) { article.innerHTML = `<h2 class="sd-reader-h2">${htmlEscape(chapter.title || '')}</h2>${buildReaderParagraphs(chapter.content, chHi)}`; loadInlineImages(root); }
   // 笔记/书签列表同步（若抽屉开着，内容不至于过时）
@@ -15061,14 +15174,14 @@ function updateReaderArticle(stageRoot) {
 
 // 新增划线（带样式 + 颜色快照）。text + style:'mark'|'wavy'|'underline'。返回新 noteId（供「笔记」接力打开批注）。
 // 不在此重建/更新 DOM，由调用方 updateReaderArticle 原地刷新（不跳动）。
-function coreadAddHighlight(text, style) {
+function coreadAddHighlight(text, style, segments = []) {
   const meta = coreadBookMeta(readerView.bookId);
   if (!meta) return '';
   if (!Array.isArray(meta.notes)) meta.notes = [];
   const id = uid('note');
   meta.notes.push({
     id, kind: 'highlight', chapterIndex: readerView.chapterIndex,
-    text: String(text || '').slice(0, 400), hlStyle: style || 'mark',
+    text: String(text || ''), segments: (Array.isArray(segments) ? segments : []).map((part) => String(part || '').trim()).filter(Boolean), hlStyle: style || 'mark',
     color: sanitizeHexColor(coread().hlColor), annotation: '', at: nowMs(),
   });
   saveSettings();

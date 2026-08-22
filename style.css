@@ -3158,7 +3158,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   position: absolute; left: 6px; bottom: 6px; background: rgba(0,0,0,.55); color: #fff;
   font-size: .7em; padding: 1px 7px; border-radius: 10px; font-variant-numeric: tabular-nums;
 }
-.sd-reader-card-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sd-reader-card-meta { position: relative; display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-right: 25px; }
 .sd-reader-card-title { font-size: .9em; font-weight: 600; color: var(--sd-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sd-reader-card-author { font-size: .78em; color: var(--sd-text); opacity: .72; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sd-reader-card-sub { font-size: .76em; color: var(--sd-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3203,6 +3203,16 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   background: transparent; color: var(--sd-muted); width: 30px; height: 30px; padding: 0; flex: 0 0 auto; border-radius: 8px;
 }
 .sd-reader-row:hover .sd-reader-card-del { opacity: 1; }
+.sd-reader-card-edit { width: 30px; height: 30px; padding: 0; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: transparent; color: var(--sd-muted); opacity: .68; cursor: pointer; }
+.sd-reader-card-edit:hover { opacity: 1; color: var(--sd-accent); background: var(--sd-glass-weak); }
+.sd-reader-card-edit-grid { position: absolute; right: 0; bottom: -2px; width: 25px; height: 25px; font-size: .72em; }
+.sd-reader-row .sd-reader-card-edit { opacity: .62; }
+.sd-reader-row:hover .sd-reader-card-edit { opacity: 1; }
+.sd-reader-bookedit-form, .sd-reader-fontcss-form { display: flex; flex-direction: column; gap: 12px; text-align: left; }
+.sd-reader-bookedit-form label, .sd-reader-fontcss-form label { display: flex; flex-direction: column; gap: 6px; color: var(--sd-muted); font-size: .84em; }
+.sd-reader-bookedit-form input, .sd-reader-fontcss-form input, .sd-reader-fontcss-form textarea { box-sizing: border-box; width: 100%; border: 1px solid var(--sd-border); border-radius: 9px; padding: 9px 11px; background: var(--sd-input-bg); color: var(--sd-text); font: inherit; }
+.sd-reader-fontcss-form textarea { min-height: 150px; resize: vertical; line-height: 1.5; }
+.sd-reader-fontcss-form small { color: var(--sd-muted); font-size: .74em; line-height: 1.5; }
 
 .sd-reader-empty { text-align: center; padding: 48px 20px; color: var(--sd-muted); }
 .sd-reader-empty i { font-size: 2.4em; opacity: .5; display: block; margin-bottom: 12px; }
