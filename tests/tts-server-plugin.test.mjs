@@ -31,7 +31,7 @@ const installGuide = await readFile(new URL('../INSTALL-DOUBAO-APIKEY.md', impor
 const shellInstaller = await readFile(new URL('../install-server-plugin.sh', import.meta.url), 'utf8');
 const powershellInstaller = await readFile(new URL('../install-server-plugin.ps1', import.meta.url), 'utf8');
 assert.equal(packageJson.main, 'server-plugin.js');
-assert.equal(packageJson.version, '1.20.0');
+assert.equal(packageJson.version, '1.21.0');
 assert.equal(manifest.version, packageJson.version);
 assert.match(installGuide, /install-server-plugin\.sh \| sh/);
 assert.match(installGuide, /install-server-plugin\.ps1 \| iex/);
@@ -51,7 +51,7 @@ assert.match(installGuide, /api\/plugins\/qianmu-tts\/health/);
 
 const health = mockResponse();
 await routes.get('GET /health')({}, health);
-assert.deepEqual(health.body, { ok: true, plugin: 'qianmu-tts', version: '1.20.0' });
+assert.deepEqual(health.body, { ok: true, plugin: 'qianmu-tts', version: '1.21.0' });
 
 const originalFetch = globalThis.fetch;
 try {

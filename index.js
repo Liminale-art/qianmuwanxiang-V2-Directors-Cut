@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.20.0';
+const VERSION = '1.21.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -430,7 +430,18 @@ const DEFAULT_SETTINGS = Object.freeze({
     voiceCacheLimit: 100,           // 伴读语音条缓存上限（条），用户可自定义
     bgCustom: '',                   // 阅读背景自定义 CSS（DIY，1B 接线）
     bubbleCustom: '',               // 对话气泡自定义 CSS（DIY，1B 接线）
-    drawerHeight: 240,              // 对话抽屉高度(px)，可拖拽
+    drawerHeight: 320,              // 目录 / 笔记 / 书签共用抽屉高度(px)，可拖拽并记忆
+    dialogHeight: 300,              // 伴读对话抽屉高度(px)，独立记忆
+    excerptCard: {                  // 摘录图片卡：少量内置方案 + 用户微调，随伴读数据打包迁移
+      preset: 'paper',              // paper | night | mist | custom
+      ratio: 'portrait',            // square | portrait | story
+      background: '#f2ede3',
+      textColor: '#302c2a',
+      accentColor: '#b37d6b',
+      fontSize: 20,
+      showAnnotation: true,
+      showSource: true,
+    },
     // 伴读设定层（1B·复用取材的拉取/呈现·选择独立·身份/人设默认跟随 ST 当前选择+千幕注入逻辑）
     companion: {
       worldBooks: [],               // 伴读专属选中的世界书名（独立于主线选择·条目级勾选另存）
@@ -12088,6 +12099,7 @@ function buildReaderStage() {
   const preset = c.spacingPreset || 'normal';
   const customOpen = preset === 'custom' ? ' open' : '';
   const hlColor = sanitizeHexColor(c.hlColor) || '#d8a657';
+  const listDrawerH = Math.max(220, Math.min(620, c.drawerHeight || 320));
   const drawerH = Math.max(180, Math.min(520, c.dialogHeight || 300));
   const pinned = readerView.dialogPinned ? ' sd-reader-dialog-pinned' : '';
   const dTab = readerView.dialogTab === 'voice' ? 'voice' : 'chat';
@@ -12116,7 +12128,7 @@ function buildReaderStage() {
       <!-- 划线工具浮窗（选区/点划线后弹·跟随选区定位·父级 划线|笔记，划线展开样式+取色） -->
       <div class="sd-reader-hltools" hidden>
         <div class="sd-reader-hltools-lv sd-reader-hltools-main">
-          <button data-act="highlight"><i class="fa-solid fa-highlighter"></i><span>划线</span></button>
+          <button data-act="highlight"><i class="fa-solid fa-wave-square"></i><span>划线</span></button>
           <button data-act="note"><i class="fa-solid fa-pen"></i><span>笔记</span></button>
         </div>
         <div class="sd-reader-hltools-lv sd-reader-hltools-styles" hidden>
@@ -12141,8 +12153,8 @@ function buildReaderStage() {
       </div>
 
       <!-- 目录 / 笔记 / 书签 抽屉（笔记编辑直接在「笔记」页内切换·不再独立抽屉） -->
-      <div class="sd-reader-panel sd-reader-toc">
-        <div class="sd-reader-panel-grip"></div>
+      <div class="sd-reader-panel sd-reader-toc" style="height:${listDrawerH}px">
+        <div class="sd-reader-panel-grip sd-reader-toc-grip" title="拖动调整高度"></div>
         <div class="sd-reader-panel-tabs">
           <button class="active" data-ptab="toc">目录</button>
           <button data-ptab="notes">笔记</button>
@@ -12198,7 +12210,7 @@ function buildReaderStage() {
         </div>
       </div>
 
-      <!-- 设置抽屉：字号 / 间距预设(+自定义) / 两端对齐 / 语音缓存 / 导入导出 -->
+      <!-- 设置抽屉：字号 / 间距预设(+自定义) / 两端对齐 -->
       <div class="sd-reader-panel sd-reader-typo">
         <div class="sd-reader-panel-grip"></div>
         <div class="sd-reader-typo-inner">
@@ -12218,10 +12230,6 @@ function buildReaderStage() {
             <div class="sd-reader-typo-row"><span>页宽</span><input type="range" class="sd-reader-width" min="28" max="66" step="1" value="${widthRem}"><b class="sd-reader-width-val">${widthRem}</b></div>
           </div>
           <div class="sd-reader-typo-row sd-reader-typo-checks"><label><input type="checkbox" class="sd-reader-justify"${c.justify ? ' checked' : ''}> <span>两端对齐</span></label></div>
-          <div class="sd-reader-typo-io">
-            <button class="sd-reader-export sd-btn"><i class="fa-solid fa-file-export"></i> 导出阅读数据</button>
-            <button class="sd-reader-import-data sd-btn"><i class="fa-solid fa-file-import"></i> 导入阅读数据</button>
-          </div>
         </div>
       </div>
 
@@ -12231,9 +12239,34 @@ function buildReaderStage() {
           <div class="sd-reader-noteoverlay-head"><i class="fa-solid fa-pen"></i> 笔记</div>
           <div class="sd-reader-noteedit-quote"></div>
           <textarea class="sd-reader-noteedit-input" placeholder="写下你的想法（留空＝仅作摘录）……"></textarea>
+          <input class="sd-reader-noteedit-tags" type="text" placeholder="标签（用逗号分隔，可选）">
           <div class="sd-reader-noteedit-actions">
             <button class="sd-btn sd-reader-noteedit-cancel">取消</button>
             <button class="sd-btn sd-primary sd-reader-noteedit-ok">保存</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 摘录图片：功能优先的原生画布导出，模板与微调随伴读设置记忆 -->
+      <div class="sd-reader-excerptoverlay" hidden>
+        <div class="sd-reader-excerptoverlay-card">
+          <div class="sd-reader-excerpt-head"><span><i class="fa-solid fa-image"></i> 摘录图片</span><button class="sd-reader-excerpt-close" title="关闭"><i class="fa-solid fa-xmark"></i></button></div>
+          <div class="sd-reader-excerpt-preview"><div class="sd-reader-excerpt-preview-inner"></div></div>
+          <div class="sd-reader-excerpt-controls">
+            <label>方案<select class="sd-reader-excerpt-preset"><option value="paper">米纸</option><option value="night">夜墨</option><option value="mist">雾蓝</option><option value="custom">自定义</option></select></label>
+            <label>比例<select class="sd-reader-excerpt-ratio"><option value="square">1 : 1</option><option value="portrait">4 : 5</option><option value="story">9 : 16</option></select></label>
+            <label>字号<input type="range" class="sd-reader-excerpt-font" min="16" max="28" step="1"><b class="sd-reader-excerpt-fontval"></b></label>
+            <label title="背景色">底色<input type="color" class="sd-reader-excerpt-bg"></label>
+            <label title="文字颜色">字色<input type="color" class="sd-reader-excerpt-fg"></label>
+            <label title="强调颜色">强调<input type="color" class="sd-reader-excerpt-accent"></label>
+          </div>
+          <div class="sd-reader-excerpt-checks">
+            <label><input type="checkbox" class="sd-reader-excerpt-note"> 显示笔记</label>
+            <label><input type="checkbox" class="sd-reader-excerpt-source"> 显示出处</label>
+          </div>
+          <div class="sd-reader-excerpt-actions">
+            <button class="sd-btn sd-reader-excerpt-copy"><i class="fa-solid fa-copy"></i> 复制文字</button>
+            <button class="sd-btn sd-primary sd-reader-excerpt-save"><i class="fa-solid fa-download"></i> 保存图片</button>
           </div>
         </div>
       </div>
@@ -12338,12 +12371,9 @@ function renderCoreadCenterStatus(m) {
 }
 
 function renderCoreadSpoilerGuard(m) {
-  const boundary = readerDialog.readBoundary || coreadCurrentReadBoundarySync(readerDialog.bookId);
-  const allSlices = readerDialog.slices || [];
-  const blocked = Math.max(0, allSlices.length - coreadSafeSlices(allSlices, boundary, m).length);
   const on = m.spoilerProtection !== false;
   return `<label class="sd-reader-center-guard sd-reader-setup-guard${on ? ' is-protected' : ''}">
-    <span><i class="fa-solid fa-shield-halved"></i><b>防剧透</b><small>${on ? (blocked ? `已隔离 ${blocked} 条进度外记忆` : '阅读水位保护中') : '已关闭'}</small></span>
+    <span><i class="fa-solid fa-shield-halved"></i><b>防全知剧透</b></span>
     ${renderMemSwitch('sd-reader-spoiler-filter', on)}
   </label>`;
 }
@@ -12351,7 +12381,7 @@ function renderCoreadSpoilerGuard(m) {
 const COREAD_GUIDE_STEPS = [
   { tab: 'api', target: 'api', icon: 'fa-plug-circle-check', title: '连接模型接口', text: '先确认对话 API。可直接跟随 SillyTavern 当前连接，也可选择千幕自定义预设；总结、向量与重排按需配置。' },
   { tab: 'setup', target: 'context', icon: 'fa-link', title: '确认正文联动', text: '设置伴读参考最近多少层正文聊天。身份会自动跟随当前角色与用户，无需重复填写。' },
-  { tab: 'setup', target: 'sources', icon: 'fa-layer-group', title: '选择伴读取材', text: '按需勾选世界书和预设条目。防剧透会继续按阅读水位隔离尚未读到的内容。' },
+  { tab: 'setup', target: 'sources', icon: 'fa-layer-group', title: '选择伴读取材', text: '按需勾选世界书和预设条目。防全知剧透会继续按阅读水位隔离尚未读到的内容。' },
   { tab: 'records', target: 'dialog-summary', icon: 'fa-comments', title: '整理伴读对话', text: '自动总结会在短对话累积到设定条数后写入记忆；手动总结适合补整指定区间。两者都写入同一切片池，重叠时会先提醒再替换。' },
   { tab: 'records', target: 'mainline-summary', icon: 'fa-arrow-right-arrow-left', title: '吸收正文主线', text: '从主线选择总结可以圈选与本书相关的正文楼层，把正文经历整理为伴读也能召回的记忆，不必让角色两边各记各的。' },
   { tab: 'records', target: 'records', icon: 'fa-box-archive', title: '管理伴读档案', text: '正文、伴读短对话和主线选段最终汇入同一份千幕档案；可在这里管理切片或选择其他档案参与共同召回。' },
@@ -12817,7 +12847,36 @@ function renderMemInjectTab(m) {
     </details>`;
 }
 
-// 伴读设定浮层内容：身份直显(标签·联动 ST 当前)+世界书取材式选择(书/条目独立)+可见正文范围。
+function coreadIdentityAvatar(kind) {
+  try {
+    const context = ctx();
+    let raw = '';
+    if (kind === 'char') {
+      const charId = context?.characterId;
+      raw = context?.characters?.[charId]?.avatar || context?.characters?.[charId]?.data?.avatar || '';
+    } else {
+      const power = globalThis.power_user || context?.powerUser || {};
+      raw = power.default_persona || power.defaultPersona || '';
+    }
+    raw = String(raw || '').trim();
+    if (!raw || raw.toLowerCase() === 'none') return '';
+    if (/^(?:data:|blob:|https?:|\/)/i.test(raw)) return raw;
+    return kind === 'char'
+      ? `/characters/${encodeURIComponent(raw)}`
+      : `/User Avatars/${encodeURIComponent(raw)}`;
+  } catch (_) {
+    return '';
+  }
+}
+
+function renderCoreadIdentity(role, name, avatar, icon) {
+  return `<div class="sd-reader-setup-identity">
+    <span class="sd-reader-identity-avatar"><i class="fa-solid ${icon}"></i>${avatar ? `<img src="${htmlEscape(avatar)}" alt="">` : ''}</span>
+    <span class="sd-reader-setup-tag"><em>${htmlEscape(role)}</em><b title="${htmlEscape(name)}">${htmlEscape(name)}</b></span>
+  </div>`;
+}
+
+// 伴读设定浮层内容：身份直显(头像+标签·联动 ST 当前)+世界书取材式选择(书/条目独立)+可见正文范围。
 // 人设走「千幕已有取材注入逻辑」一种方式，无需在此重复勾选；轨道A 的对话记忆条数挪到 1C 蒸馏设置(短信体按条算·100-200 触发总结·此处版面不放)。
 function renderCompanionSetupBody() {
   const cp = coreadCompanion();
@@ -12825,6 +12884,8 @@ function renderCompanionSetupBody() {
   const wb = coreadChatCompanionWb();   // 世界书选择按聊天存·从 chatStore 读
   const stChar = getCharacterName() || '未选择';
   const stUser = getPersonaName() || '未选择';
+  const charAvatar = coreadIdentityAvatar('char');
+  const userAvatar = coreadIdentityAvatar('user');
   // 复用主线扫描缓存（点「扫描」会 refreshWorldBooks 填充 contextScanCache·与取材同源）
   const boundNames = contextScanCache.boundWorldBookNames || detectBoundWorldBookNames();
   const allNames = uniqueClean([...boundNames, ...(contextScanCache.worldBookNames || [])]).filter(Boolean);
@@ -12882,8 +12943,8 @@ function renderCompanionSetupBody() {
   return `
     <section class="sd-reader-center-section sd-reader-identity-card${coreadGuideTargetClass('identity')}">
       <div class="sd-reader-setup-tags">
-        <span class="sd-reader-setup-tag"><i class="fa-solid fa-user"></i> 书友：${htmlEscape(stChar)}</span>
-        <span class="sd-reader-setup-tag"><i class="fa-solid fa-circle-user"></i> 我：${htmlEscape(stUser)}</span>
+        ${renderCoreadIdentity('书友', stChar, charAvatar, 'fa-user')}
+        ${renderCoreadIdentity('User', stUser, userAvatar, 'fa-circle-user')}
       </div>
     </section>
     <section class="sd-reader-center-section sd-reader-context-card${coreadGuideTargetClass('context')}">
@@ -12973,20 +13034,41 @@ function renderReaderVoiceClips() {
 // 划线有批注 → 「笔记」标签；仅划线无批注 → 「摘录」标签。点条目可定位回正文。
 function renderReaderNotes(meta) {
   const notes = (meta.notes || []).filter((n) => n.kind === 'highlight');
-  if (!notes.length) return '<div class="sd-reader-panel-empty">还没有笔记。点顶部划线钮，选中正文即可划线；划线后可补笔记。</div>';
-  return notes.slice().reverse().map((n) => {
+  if (!notes.length) return '<div class="sd-reader-panel-empty">还没有笔记。选中正文后可划线、记录想法或保存摘录。</div>';
+  const search = String(readerView?.noteSearch || '').trim().toLowerCase();
+  const filter = ['all', 'excerpt', 'note', 'favorite'].includes(readerView?.noteFilter) ? readerView.noteFilter : 'all';
+  const ordered = notes.slice().sort((a, b) => Number(!!b.favorite) - Number(!!a.favorite) || (Number(b.at) || 0) - (Number(a.at) || 0));
+  let visible = 0;
+  const cards = ordered.map((n) => {
     const isNote = !!(n.annotation && n.annotation.trim());
+    const tags = Array.isArray(n.tags) ? n.tags.filter(Boolean).slice(0, 8) : [];
+    const created = Number(n.at) ? new Date(n.at).toLocaleDateString() : '';
+    const kind = isNote ? 'note' : 'excerpt';
+    const kindHit = filter === 'all' || filter === kind || (filter === 'favorite' && n.favorite);
+    const textHit = !search || [n.text, n.annotation, ...tags].join(' ').toLowerCase().includes(search);
+    const shown = kindHit && textHit;
+    if (shown) visible++;
     return `
-    <div class="sd-reader-note-item" data-note="${htmlEscape(n.id)}" data-ch="${n.chapterIndex}">
+    <article class="sd-reader-note-item" data-note="${htmlEscape(n.id)}" data-ch="${n.chapterIndex}" data-kind="${kind}" data-favorite="${n.favorite ? '1' : '0'}"${shown ? '' : ' hidden'}>
       <div class="sd-reader-note-head"><span class="sd-reader-note-kind ${isNote ? 'sd-reader-kind-note' : ''}">${isNote ? '笔记' : '摘录'}</span>
         <button class="sd-reader-note-jump" data-ch="${n.chapterIndex}" title="定位到正文">第${(n.chapterIndex || 0) + 1}节</button>
+        ${created ? `<time>${htmlEscape(created)}</time>` : ''}
+        <button class="sd-reader-note-favorite${n.favorite ? ' active' : ''}" data-note="${htmlEscape(n.id)}" title="${n.favorite ? '取消收藏' : '收藏'}"><i class="fa-${n.favorite ? 'solid' : 'regular'} fa-star"></i></button>
+        <button class="sd-reader-note-copy" data-note="${htmlEscape(n.id)}" title="复制文字"><i class="fa-solid fa-copy"></i></button>
+        <button class="sd-reader-note-image" data-note="${htmlEscape(n.id)}" title="生成摘录图片"><i class="fa-solid fa-image"></i></button>
         <button class="sd-reader-note-edit" data-note="${htmlEscape(n.id)}" title="${isNote ? '编辑笔记' : '加笔记'}"><i class="fa-solid fa-pen"></i></button>
         <button class="sd-reader-note-del" data-note="${htmlEscape(n.id)}" title="删除"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="sd-reader-note-text">${htmlEscape(n.text || '')}</div>
       ${isNote ? `<div class="sd-reader-note-anno">${htmlEscape(n.annotation)}</div>` : ''}
-    </div>`;
+      ${tags.length ? `<div class="sd-reader-note-tags">${tags.map((tag) => `<span>#${htmlEscape(tag)}</span>`).join('')}</div>` : ''}
+    </article>`;
   }).join('');
+  return `<div class="sd-reader-notes-toolbar">
+      <label class="sd-reader-notes-search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="搜索摘录、笔记或标签" value="${htmlEscape(readerView?.noteSearch || '')}"></label>
+      <select class="sd-reader-notes-filter" title="筛选"><option value="all"${filter === 'all' ? ' selected' : ''}>全部</option><option value="excerpt"${filter === 'excerpt' ? ' selected' : ''}>仅摘录</option><option value="note"${filter === 'note' ? ' selected' : ''}>仅笔记</option><option value="favorite"${filter === 'favorite' ? ' selected' : ''}>已收藏</option></select>
+      <span class="sd-reader-notes-count">${visible} 条</span>
+    </div><div class="sd-reader-notes-list">${cards}</div><div class="sd-reader-notes-none"${visible ? ' hidden' : ''}>没有符合条件的记录。</div>`;
 }
 
 function renderReaderMarks(meta) {
@@ -13000,6 +13082,186 @@ function renderReaderMarks(meta) {
       </div>
       ${n.text ? `<div class="sd-reader-note-text">${htmlEscape(n.text)}</div>` : ''}
     </div>`).join('');
+}
+
+const COREAD_EXCERPT_PRESETS = {
+  paper: { background: '#f2ede3', textColor: '#302c2a', accentColor: '#b37d6b' },
+  night: { background: '#20242c', textColor: '#ece7dc', accentColor: '#c99a73' },
+  mist: { background: '#dfe7e9', textColor: '#26363b', accentColor: '#6f929b' },
+};
+
+function coreadExcerptConfig() {
+  const c = coread();
+  if (!isPlainObject(c.excerptCard)) c.excerptCard = clone(DEFAULT_SETTINGS.coread.excerptCard);
+  mergeDefaults(c.excerptCard, DEFAULT_SETTINGS.coread.excerptCard);
+  const cfg = c.excerptCard;
+  if (!['paper', 'night', 'mist', 'custom'].includes(cfg.preset)) cfg.preset = 'paper';
+  if (!['square', 'portrait', 'story'].includes(cfg.ratio)) cfg.ratio = 'portrait';
+  cfg.background = sanitizeHexColor(cfg.background) || '#f2ede3';
+  cfg.textColor = sanitizeHexColor(cfg.textColor) || '#302c2a';
+  cfg.accentColor = sanitizeHexColor(cfg.accentColor) || '#b37d6b';
+  cfg.fontSize = Math.max(16, Math.min(28, Number(cfg.fontSize) || 20));
+  cfg.showAnnotation = cfg.showAnnotation !== false;
+  cfg.showSource = cfg.showSource !== false;
+  return cfg;
+}
+
+function coreadFindReaderNote(noteId) {
+  return coreadBookMeta(readerView?.bookId)?.notes?.find((n) => n.id === noteId && n.kind === 'highlight') || null;
+}
+
+function coreadNoteSource(note) {
+  const meta = coreadBookMeta(readerView?.bookId);
+  const chapter = readerContentCache?.chapters?.[Math.max(0, Number(note?.chapterIndex) || 0)];
+  return {
+    book: meta?.title || '未命名书籍',
+    chapter: chapter?.title || `第${(Number(note?.chapterIndex) || 0) + 1}节`,
+  };
+}
+
+function coreadNotePlainText(note) {
+  if (!note) return '';
+  const source = coreadNoteSource(note);
+  const parts = [`“${String(note.text || '').trim()}”`];
+  if (String(note.annotation || '').trim()) parts.push(String(note.annotation).trim());
+  parts.push(`——《${source.book}》· ${source.chapter}`);
+  return parts.filter(Boolean).join('\n\n');
+}
+
+async function coreadCopyText(text) {
+  const value = String(text || '');
+  try {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
+    else throw new Error('clipboard unavailable');
+  } catch (_) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = value; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand?.('copy'); ta.remove();
+      if (!ok) throw new Error('copy failed');
+    } catch (_) {
+      toast('复制失败，请检查浏览器剪贴板权限。', 'error');
+      return;
+    }
+  }
+  toast('已复制摘录文字。', 'success');
+}
+
+function coreadSyncExcerptPreview(stageRoot) {
+  const note = coreadFindReaderNote(readerView?.sharingNoteId);
+  const overlay = stageRoot?.querySelector('.sd-reader-excerptoverlay');
+  const preview = overlay?.querySelector('.sd-reader-excerpt-preview-inner');
+  if (!note || !preview) return;
+  const cfg = coreadExcerptConfig();
+  const source = coreadNoteSource(note);
+  const ratio = cfg.ratio === 'square' ? '1 / 1' : (cfg.ratio === 'story' ? '9 / 16' : '4 / 5');
+  preview.style.cssText = `--excerpt-bg:${cfg.background};--excerpt-fg:${cfg.textColor};--excerpt-accent:${cfg.accentColor};--excerpt-size:${cfg.fontSize}px;aspect-ratio:${ratio}`;
+  preview.innerHTML = `<span class="sd-reader-excerpt-mark">千幕 · 伴读摘录</span>
+    <blockquote>${htmlEscape(note.text || '')}</blockquote>
+    ${cfg.showAnnotation && String(note.annotation || '').trim() ? `<p>${htmlEscape(note.annotation)}</p>` : ''}
+    ${cfg.showSource ? `<footer>《${htmlEscape(source.book)}》<small>${htmlEscape(source.chapter)}</small></footer>` : ''}`;
+  const fontVal = overlay.querySelector('.sd-reader-excerpt-fontval');
+  if (fontVal) fontVal.textContent = `${cfg.fontSize}`;
+}
+
+function coreadOpenExcerptDialog(noteId, stageRoot) {
+  const note = coreadFindReaderNote(noteId);
+  const overlay = stageRoot?.querySelector('.sd-reader-excerptoverlay');
+  if (!note || !overlay) return;
+  readerView.sharingNoteId = noteId;
+  const cfg = coreadExcerptConfig();
+  overlay.querySelector('.sd-reader-excerpt-preset').value = cfg.preset;
+  overlay.querySelector('.sd-reader-excerpt-ratio').value = cfg.ratio;
+  overlay.querySelector('.sd-reader-excerpt-font').value = String(cfg.fontSize);
+  overlay.querySelector('.sd-reader-excerpt-bg').value = cfg.background;
+  overlay.querySelector('.sd-reader-excerpt-fg').value = cfg.textColor;
+  overlay.querySelector('.sd-reader-excerpt-accent').value = cfg.accentColor;
+  overlay.querySelector('.sd-reader-excerpt-note').checked = cfg.showAnnotation;
+  overlay.querySelector('.sd-reader-excerpt-source').checked = cfg.showSource;
+  overlay.hidden = false;
+  coreadSyncExcerptPreview(stageRoot);
+}
+
+function coreadCloseExcerptDialog(stageRoot) {
+  if (readerView) readerView.sharingNoteId = '';
+  const overlay = stageRoot?.querySelector('.sd-reader-excerptoverlay');
+  if (overlay) overlay.hidden = true;
+}
+
+function coreadCanvasWrap(ctx, text, maxWidth) {
+  const lines = [];
+  for (const paragraph of String(text || '').split(/\n/)) {
+    if (!paragraph) { lines.push(''); continue; }
+    let line = '';
+    for (const char of [...paragraph]) {
+      const next = line + char;
+      if (line && ctx.measureText(next).width > maxWidth) { lines.push(line); line = char; }
+      else line = next;
+    }
+    if (line) lines.push(line);
+  }
+  return lines;
+}
+
+function coreadCanvasDrawLines(ctx, lines, x, y, lineHeight, maxY) {
+  const room = Math.max(1, Math.floor((maxY - y) / lineHeight));
+  const visible = lines.slice(0, room);
+  if (lines.length > room && visible.length) visible[visible.length - 1] = String(visible[visible.length - 1]).replace(/[，。！？、；：,.!?;:]?$/, '…');
+  let currentY = y;
+  for (const line of visible) {
+    ctx.fillText(line, x, currentY);
+    currentY += lineHeight;
+  }
+  return currentY;
+}
+
+async function coreadSaveExcerptImage(stageRoot) {
+  const note = coreadFindReaderNote(readerView?.sharingNoteId);
+  if (!note) return;
+  const cfg = coreadExcerptConfig();
+  const source = coreadNoteSource(note);
+  const dims = cfg.ratio === 'square' ? [1080, 1080] : (cfg.ratio === 'story' ? [1080, 1920] : [1080, 1350]);
+  const canvas = document.createElement('canvas');
+  [canvas.width, canvas.height] = dims;
+  const g = canvas.getContext('2d');
+  if (!g) { toast('当前浏览器无法生成图片。', 'error'); return; }
+  const [w, h] = dims;
+  g.fillStyle = cfg.background; g.fillRect(0, 0, w, h);
+  g.fillStyle = cfg.accentColor; g.fillRect(86, 86, 8, 116);
+  g.fillStyle = cfg.textColor; g.globalAlpha = .68;
+  g.font = '600 28px "PingFang SC", "Microsoft YaHei", sans-serif';
+  g.fillText('千幕 · 伴读摘录', 124, 126);
+  g.globalAlpha = 1;
+  const pad = 124;
+  let y = 250;
+  const quoteSize = Math.round(cfg.fontSize * 2.45);
+  const quoteLine = Math.round(quoteSize * 1.72);
+  g.fillStyle = cfg.textColor;
+  g.font = `600 ${quoteSize}px "Noto Serif SC", "Songti SC", "SimSun", serif`;
+  const quoteMaxY = h - (cfg.showAnnotation && note.annotation ? 390 : 250);
+  y = coreadCanvasDrawLines(g, coreadCanvasWrap(g, `“${note.text || ''}”`, w - pad * 2), pad, y, quoteLine, quoteMaxY) + 46;
+  if (cfg.showAnnotation && String(note.annotation || '').trim() && y < h - 245) {
+    g.fillStyle = cfg.accentColor; g.fillRect(pad, y - 10, 54, 4); y += 32;
+    const noteSize = Math.max(30, Math.round(quoteSize * .68));
+    g.fillStyle = cfg.textColor; g.globalAlpha = .82;
+    g.font = `400 ${noteSize}px "PingFang SC", "Microsoft YaHei", sans-serif`;
+    y = coreadCanvasDrawLines(g, coreadCanvasWrap(g, note.annotation, w - pad * 2), pad, y, Math.round(noteSize * 1.65), h - 220);
+    g.globalAlpha = 1;
+  }
+  if (cfg.showSource) {
+    g.fillStyle = cfg.textColor; g.globalAlpha = .78;
+    g.font = '600 31px "Noto Serif SC", "Songti SC", serif';
+    g.fillText(`《${source.book}》`, pad, h - 128);
+    g.globalAlpha = .55; g.font = '400 25px "PingFang SC", "Microsoft YaHei", sans-serif';
+    g.fillText(source.chapter, pad, h - 84);
+    g.globalAlpha = 1;
+  }
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) { toast('图片生成失败。', 'error'); return; }
+  const base = ttsSafeFilenamePart(source.book, '伴读摘录').slice(0, 36);
+  ttsDownloadBlob(blob, `${base}-摘录-${fileStamp()}.png`);
+  toast('摘录图片已保存。', 'success');
 }
 
 /* ── 事件绑定 ─────────────────────────────────────────── */
@@ -13157,6 +13419,7 @@ function bindReaderStageEvents(stageRoot) {
   q('.sd-reader-toc-btn')?.addEventListener('click', () => togglePanel('.sd-reader-toc'));
   q('.sd-reader-progress-btn')?.addEventListener('click', () => togglePanel('.sd-reader-progress'));
   q('.sd-reader-typo-btn')?.addEventListener('click', () => togglePanel('.sd-reader-typo'));
+  bindReaderListGrip(q('.sd-reader-toc'), q('.sd-reader-toc-grip'));
 
   // 抽屉内 目录/笔记/书签 切页（切走「笔记」时退出编辑态）
   stageRoot.querySelectorAll('.sd-reader-toc .sd-reader-panel-tabs button').forEach((btn) => btn.addEventListener('click', () => {
@@ -13176,18 +13439,85 @@ function bindReaderStageEvents(stageRoot) {
   // 笔记/书签：定位 + 编辑 + 删除（事件委托·列表重渲后仍生效·原地不关抽屉）
   stageRoot.querySelectorAll('.sd-reader-ptab-notes, .sd-reader-ptab-marks').forEach((panel) => panel.addEventListener('click', (e) => {
     const jump = e.target.closest('.sd-reader-note-jump');
+    const favorite = e.target.closest('.sd-reader-note-favorite');
+    const copy = e.target.closest('.sd-reader-note-copy');
+    const image = e.target.closest('.sd-reader-note-image');
     const edit = e.target.closest('.sd-reader-note-edit');
     const del = e.target.closest('.sd-reader-note-del');
     if (jump) { readerView.chapterIndex = Number(jump.dataset.ch) || 0; readerView.scrollRatio = 0; coreadSaveProgress(); refreshReaderPortal(); return; }
+    if (favorite) {
+      e.stopPropagation();
+      const note = coreadFindReaderNote(favorite.dataset.note);
+      if (note) { note.favorite = !note.favorite; saveSettings(); updateReaderArticle(stageRoot); }
+      return;
+    }
+    if (copy) { e.stopPropagation(); void coreadCopyText(coreadNotePlainText(coreadFindReaderNote(copy.dataset.note))); return; }
+    if (image) { e.stopPropagation(); coreadOpenExcerptDialog(image.dataset.note, stageRoot); return; }
     if (edit) { e.stopPropagation(); openReaderNoteDialog(edit.dataset.note); return; }
     if (del) { e.stopPropagation(); coreadDeleteNote(del.dataset.note); del.closest('.sd-reader-note-item')?.remove(); updateReaderArticle(stageRoot); return; }
   }));
+  const filterReaderNotes = () => {
+    const notesPanel = q('.sd-reader-ptab-notes');
+    if (!notesPanel) return;
+    const key = String(notesPanel.querySelector('.sd-reader-notes-search input')?.value || '').trim().toLowerCase();
+    const kind = notesPanel.querySelector('.sd-reader-notes-filter')?.value || 'all';
+    readerView.noteSearch = notesPanel.querySelector('.sd-reader-notes-search input')?.value || '';
+    readerView.noteFilter = kind;
+    let visible = 0;
+    notesPanel.querySelectorAll('.sd-reader-note-item').forEach((item) => {
+      const kindHit = kind === 'all' || item.dataset.kind === kind || (kind === 'favorite' && item.dataset.favorite === '1');
+      const textHit = !key || String(item.textContent || '').toLowerCase().includes(key);
+      item.hidden = !(kindHit && textHit);
+      if (!item.hidden) visible++;
+    });
+    const count = notesPanel.querySelector('.sd-reader-notes-count'); if (count) count.textContent = `${visible} 条`;
+    const none = notesPanel.querySelector('.sd-reader-notes-none'); if (none) none.hidden = visible > 0;
+  };
+  q('.sd-reader-ptab-notes')?.addEventListener('input', (e) => {
+    if (e.target.matches('.sd-reader-notes-search input, .sd-reader-notes-filter')) filterReaderNotes();
+  });
+  q('.sd-reader-ptab-notes')?.addEventListener('change', (e) => {
+    if (e.target.matches('.sd-reader-notes-filter')) filterReaderNotes();
+  });
   // 笔记编辑浮层：保存 / 取消 / 点遮罩空白关闭（脱离抽屉体系·不牵出底栏）
   q('.sd-reader-noteedit-cancel')?.addEventListener('click', () => exitNoteEdit(stageRoot));
   q('.sd-reader-noteedit-ok')?.addEventListener('click', () => saveNoteEdit(stageRoot));
   q('.sd-reader-noteoverlay')?.addEventListener('click', (e) => {
     if (e.target === e.currentTarget) exitNoteEdit(stageRoot);   // 仅点遮罩本身关闭，点卡片内不关
   });
+  const excerptOverlay = q('.sd-reader-excerptoverlay');
+  q('.sd-reader-excerpt-close')?.addEventListener('click', () => coreadCloseExcerptDialog(stageRoot));
+  excerptOverlay?.addEventListener('click', (e) => { if (e.target === e.currentTarget) coreadCloseExcerptDialog(stageRoot); });
+  q('.sd-reader-excerpt-copy')?.addEventListener('click', () => void coreadCopyText(coreadNotePlainText(coreadFindReaderNote(readerView?.sharingNoteId))));
+  q('.sd-reader-excerpt-save')?.addEventListener('click', () => void coreadSaveExcerptImage(stageRoot).catch((error) => toast(`图片生成失败：${error?.message || error}`, 'error')));
+  const syncExcerptControls = (changed) => {
+    const cfg = coreadExcerptConfig();
+    if (changed === 'preset') {
+      cfg.preset = q('.sd-reader-excerpt-preset')?.value || 'paper';
+      const colors = COREAD_EXCERPT_PRESETS[cfg.preset];
+      if (colors) {
+        Object.assign(cfg, colors);
+        q('.sd-reader-excerpt-bg').value = cfg.background;
+        q('.sd-reader-excerpt-fg').value = cfg.textColor;
+        q('.sd-reader-excerpt-accent').value = cfg.accentColor;
+      }
+    } else {
+      cfg.ratio = q('.sd-reader-excerpt-ratio')?.value || 'portrait';
+      cfg.fontSize = Number(q('.sd-reader-excerpt-font')?.value) || 20;
+      cfg.background = sanitizeHexColor(q('.sd-reader-excerpt-bg')?.value) || cfg.background;
+      cfg.textColor = sanitizeHexColor(q('.sd-reader-excerpt-fg')?.value) || cfg.textColor;
+      cfg.accentColor = sanitizeHexColor(q('.sd-reader-excerpt-accent')?.value) || cfg.accentColor;
+      cfg.showAnnotation = !!q('.sd-reader-excerpt-note')?.checked;
+      cfg.showSource = !!q('.sd-reader-excerpt-source')?.checked;
+      if (changed === 'color') { cfg.preset = 'custom'; q('.sd-reader-excerpt-preset').value = 'custom'; }
+    }
+    saveSettings(); coreadSyncExcerptPreview(stageRoot);
+  };
+  q('.sd-reader-excerpt-preset')?.addEventListener('change', () => syncExcerptControls('preset'));
+  q('.sd-reader-excerpt-ratio')?.addEventListener('change', () => syncExcerptControls('ratio'));
+  q('.sd-reader-excerpt-font')?.addEventListener('input', () => syncExcerptControls('font'));
+  stageRoot.querySelectorAll('.sd-reader-excerpt-bg, .sd-reader-excerpt-fg, .sd-reader-excerpt-accent').forEach((el) => el.addEventListener('input', () => syncExcerptControls('color')));
+  stageRoot.querySelectorAll('.sd-reader-excerpt-note, .sd-reader-excerpt-source').forEach((el) => el.addEventListener('change', () => syncExcerptControls('check')));
   // 书签开关（顶栏）
   q('.sd-reader-mark-btn')?.addEventListener('click', () => coreadToggleBookmark(stageRoot));
 
@@ -13249,10 +13579,6 @@ function bindReaderStageEvents(stageRoot) {
     if (!open) applySpacingPreset(coread().spacingPreset, stageRoot);
     saveSettings();
   });
-  // 阅读数据导入 / 导出
-  q('.sd-reader-export')?.addEventListener('click', () => coreadExportData());
-  q('.sd-reader-import-data')?.addEventListener('click', () => coreadImportData());
-
   // 对话抽屉：开合 + 拖拽调高 + 图钉固定（占位·1B 接入对话内容）
   q('.sd-reader-dialog-btn')?.addEventListener('click', () => togglePanel('.sd-reader-dialog'));
   bindDialogGrip(q('.sd-reader-dialog'), q('.sd-reader-dialog-grip'));
@@ -13392,13 +13718,39 @@ function bindReaderStageEvents(stageRoot) {
     const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
     scroller.scrollTo({ top: Math.max(0, Math.min(max, centered)), behavior });
   };
+  const bindIdentityAvatarFallback = (root) => root?.querySelectorAll('.sd-reader-identity-avatar img').forEach((img) => {
+    img.addEventListener('error', () => img.remove(), { once: true });
+  });
+  const positionGuide = (target) => {
+    const scroller = morePage?.querySelector('.sd-reader-morepage-body');
+    const tour = morePage?.querySelector('.sd-reader-tour');
+    if (!scroller || !tour || !target) return;
+    const sr = scroller.getBoundingClientRect();
+    const tr = target.getBoundingClientRect();
+    const contentY = scroller.scrollTop + tr.top - sr.top;
+    tour.style.top = `${Math.max(8, contentY - tour.offsetHeight - 12)}px`;
+  };
   const rerenderMore = () => {
     const body = morePage?.querySelector('.sd-reader-more-body');
     if (!body) return;
     body.innerHTML = renderCompanionMoreBody();
-    setTimeout(() => scrollMoreTarget(morePage.querySelector('.sd-reader-tour-target')), 0);
+    bindIdentityAvatarFallback(body);
+    setTimeout(() => {
+      const target = morePage.querySelector('.sd-reader-tour-target');
+      positionGuide(target);
+      scrollMoreTarget(target);
+    }, 0);
   };
-  const rerenderSetup = () => { const body = morePage?.querySelector('.sd-reader-setup-body'); if (body) { body.innerHTML = renderCompanionSetupBody(); applyAccState(morePage); } };
+  const rerenderSetup = () => {
+    const body = morePage?.querySelector('.sd-reader-setup-body');
+    if (body) {
+      body.innerHTML = renderCompanionSetupBody(); applyAccState(morePage); bindIdentityAvatarFallback(body);
+      setTimeout(() => {
+        const target = morePage.querySelector('.sd-reader-tour-target');
+        positionGuide(target); scrollMoreTarget(target);
+      }, 0);
+    }
+  };
   rerenderMoreIfOpen = () => { if (morePage && !morePage.hidden) rerenderMore(); };
   const prepareCompanionSetup = async () => {
     const cp = coreadCompanion();
@@ -14142,6 +14494,44 @@ function bindReaderStageEvents(stageRoot) {
   }
 }
 
+// 目录 / 笔记 / 书签共用固定高度；抓手调整后跨章节、跨重开书记忆。
+function bindReaderListGrip(panel, grip) {
+  if (!panel || !grip) return;
+  let startY = 0, startH = 0, dragging = false;
+  const clamp = (height) => {
+    const stageH = panel.closest('.sd-reader-stage')?.clientHeight || window.innerHeight || 720;
+    return Math.max(220, Math.min(Math.min(620, Math.round(stageH * .82)), height));
+  };
+  const onMove = (event) => {
+    if (!dragging) return;
+    const y = event.touches ? event.touches[0].clientY : event.clientY;
+    panel.style.height = `${clamp(startH + (startY - y))}px`;
+    if (event.cancelable) event.preventDefault();
+  };
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    coread().drawerHeight = clamp(parseInt(panel.style.height) || 320);
+    saveSettings();
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onUp);
+  };
+  const onDown = (event) => {
+    dragging = true;
+    startY = event.touches ? event.touches[0].clientY : event.clientY;
+    startH = panel.offsetHeight;
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onUp);
+    event.preventDefault();
+  };
+  grip.addEventListener('mousedown', onDown);
+  grip.addEventListener('touchstart', onDown, { passive: false });
+}
+
 // 拖拽对话抽屉高度（grip 上下拖）。保存到 coread().dialogHeight。
 function bindDialogGrip(panel, grip) {
   if (!panel || !grip) return;
@@ -14270,6 +14660,8 @@ function openReaderNoteDialog(noteId) {
   overlay.querySelector('.sd-reader-noteedit-quote').textContent = text.slice(0, 200) + (text.length > 200 ? '…' : '');
   const ta = overlay.querySelector('.sd-reader-noteedit-input');
   ta.value = note.annotation || '';
+  const tags = overlay.querySelector('.sd-reader-noteedit-tags');
+  if (tags) tags.value = Array.isArray(note.tags) ? note.tags.join('，') : '';
   overlay.hidden = false;
   setTimeout(() => ta.focus(), 60);
 }
@@ -14289,6 +14681,8 @@ function saveNoteEdit(stageRoot) {
   const ta = stageRoot.querySelector('.sd-reader-noteedit-input');
   if (note && ta) {
     note.annotation = String(ta.value || '').trim();
+    const rawTags = stageRoot.querySelector('.sd-reader-noteedit-tags')?.value || '';
+    note.tags = uniqueClean(String(rawTags).split(/[,，、;；]+/).map((tag) => tag.trim())).slice(0, 8);
     saveSettings();
     toast(note.annotation ? '已记笔记' : '已保存', 'success');
   }

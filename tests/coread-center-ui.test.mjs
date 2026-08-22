@@ -11,7 +11,8 @@ assert.match(source, /\['setup',[\s\S]*\['records',[\s\S]*\['inject',[\s\S]*\['a
 const centerStatus = source.slice(source.indexOf('function renderCoreadCenterStatus'), source.indexOf('function renderCoreadSpoilerGuard'));
 const spoilerGuard = source.slice(source.indexOf('function renderCoreadSpoilerGuard'), source.indexOf('function renderCoreadGuide'));
 assert.doesNotMatch(centerStatus, /sd-reader-spoiler-filter/, '防剧透开关不应继续挤在全局总览卡里');
-assert.ok(spoilerGuard.includes('sd-reader-spoiler-filter') && spoilerGuard.includes('进度外'), '防剧透独立卡必须保留进度隔离状态');
+assert.ok(spoilerGuard.includes('sd-reader-spoiler-filter') && spoilerGuard.includes('防全知剧透'), '防全知剧透必须保留独立开关');
+assert.doesNotMatch(spoilerGuard, /<small>/, '防全知剧透卡不得再显示状态说明小字');
 assert.match(source, /tab === 'setup'[\s\S]*renderCompanionSetupBody/, '伴读设定必须并入统一中心');
 
 assert.ok(source.includes('sd-reader-archive-card'), '伴读档案必须使用卡片式绑定界面');
