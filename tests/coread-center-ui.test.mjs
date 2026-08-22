@@ -26,13 +26,12 @@ assert.match(archivePage, /<details class="sd-reader-archive-card[\s\S]*sd-reade
 assert.doesNotMatch(archivePage, /new Popup|POPUP_TYPE/, '伴读档案不得再叠加 ST 弹窗');
 assert.match(source, /coreadCenterPage === 'archives'[\s\S]*renderCoreadArchivePage/, '伴读档案必须作为中心内部子页面渲染');
 assert.doesNotMatch(archivePage, /sd-reader-archive-save|保存绑定|>取消</, '档案绑定必须即时保存，不再保留散落的底部取消与保存按钮');
-assert.match(source, /coreadArchivePreviewFixtures[\s\S]*_preview: true[\s\S]*当前没有真实档案[\s\S]*不会写入千幕档案、世界书或向量库/, '空档案必须提供明确标注且不落库的折叠卡版面预览');
+assert.doesNotMatch(source, /coreadArchivePreviewFixtures|coreadSlicePreviewFixtures|_preview/, '版面确认后必须移除全部虚拟档案和切片数据');
 assert.match(source, /sd-reader-arch-pick[\s\S]*coreadToggleBind\(item\.bucket, pick\.checked\)/, '档案勾选变化必须即时写入当前聊天绑定');
 const slicePage = source.slice(source.indexOf('function renderCoreadSlicePage'), source.indexOf('async function coreadOpenSliceManagerDialog'));
 assert.match(slicePage, /<details class="sd-reader-sm-row[\s\S]*sd-reader-sm-edit[\s\S]*保存并同步/, '切片管理必须使用中心内部可折叠编辑卡');
 assert.match(source, /coreadCenterPage === 'slices'[\s\S]*renderCoreadSlicePage/, '切片管理必须作为中心内部子页面渲染');
-assert.match(source, /coreadSlicePreviewFixtures[\s\S]*_preview: true[\s\S]*不会写入千幕档案、世界书或向量库/, '空档案开发预览必须只使用明确标注的内存 fixture');
-assert.match(source, /class="sd-reader-mbtn sd-reader-slice-manage"[\s\S]*预览切片版面/, '没有真实切片时管理入口仍必须可进入虚拟版面预览');
+assert.match(source, /class="sd-reader-mbtn sd-reader-slice-manage"[\s\S]*管理切片/, '切片管理入口必须使用正式名称');
 assert.match(source, /coreadSyncSliceVector\(id[\s\S]*保存并同步/, '切片保存必须立即触发单条向量同步');
 assert.match(css, /\.sd-reader-subpage-head[^}]*position:\s*sticky/, '中心内部子页面必须使用统一返回头');
 assert.match(css, /\.sd-reader-sm-row\.vec-error[^}]*border-color:/, '向量失败的切片必须高亮显示');

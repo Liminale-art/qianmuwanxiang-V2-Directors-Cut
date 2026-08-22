@@ -3910,8 +3910,8 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-mrow-triple { display: flex; gap: 8px; margin-top: 8px; }
 .sd-reader-assistant-settings > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .sd-reader-assistant-settings > summary > span { display: inline-flex; align-items: center; gap: 8px; }
-.sd-reader-assistant-settings .sd-reader-assistant-history-clear { width: 30px; height: 30px; flex: 0 0 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--sd-muted); cursor: pointer; }
-.sd-reader-assistant-settings .sd-reader-assistant-history-clear:hover { color: var(--sd-text); background: var(--sd-glass-weak); }
+.sd-reader-assistant-settings .sd-reader-assistant-history-clear { width: auto; min-height: 30px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; padding: 5px 11px; border: 1px solid var(--sd-border); border-radius: 9px; background: var(--sd-glass-weak); color: var(--sd-text); cursor: pointer; font-size: .72em; line-height: 1.2; }
+.sd-reader-assistant-settings .sd-reader-assistant-history-clear:hover { color: var(--sd-accent); border-color: color-mix(in srgb, var(--sd-accent) 55%, var(--sd-border)); background: var(--sd-glass); }
 .sd-reader-comic-review { display: flex; flex-direction: column; gap: 10px; min-width: min(520px, 82vw); text-align: left; }
 .sd-reader-comic-review h3 { margin: 0; }
 .sd-reader-comic-review textarea, .sd-reader-comic-review input { width: 100%; box-sizing: border-box; border: 1px solid var(--sd-border); border-radius: 10px; background: var(--sd-input-bg); color: var(--sd-text); padding: 9px 11px; font: inherit; }
@@ -4041,8 +4041,6 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-archive-card { min-width: 0; border: 1px solid var(--sd-hairline); border-radius: 12px; background: var(--sd-glass-weak); overflow: hidden; transition: border-color .16s, background .16s; }
 .sd-reader-archive-card:hover { border-color: color-mix(in srgb, var(--sd-accent) 58%, var(--sd-hairline)); }
 .sd-reader-archive-card:has(.sd-reader-arch-pick:checked) { border-color: color-mix(in srgb, var(--sd-good, #3fae6b) 66%, var(--sd-hairline)); background: color-mix(in srgb, var(--sd-good, #3fae6b) 8%, var(--sd-glass-weak)); }
-.sd-reader-archive-card.is-preview { opacity: .9; border-style: dashed; }
-.sd-reader-archive-card.is-preview .sd-reader-archive-check { cursor: default; }
 .sd-reader-archive-summary { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 10px; padding: 10px 11px; cursor: pointer; list-style: none; }
 .sd-reader-archive-summary::-webkit-details-marker { display: none; }
 .sd-reader-archive-mark { width: 34px; height: 40px; border-radius: 8px 8px 5px 5px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: #d0872e; background: color-mix(in srgb, #d0872e 16%, transparent); }
@@ -4132,8 +4130,6 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-slice-page { height: 100%; min-height: 0; overflow: hidden; }
 .sd-reader-slice-page > .sd-reader-subpage-head { position: relative; top: auto; flex: 0 0 auto; }
 .sd-reader-slice-page > .sd-reader-sm-list { max-height: none; flex: 1 1 auto; min-height: 0; }
-.sd-reader-preview-note { display: flex; align-items: flex-start; gap: 8px; padding: 9px 11px; border: 1px dashed color-mix(in srgb, var(--sd-accent) 48%, var(--sd-hairline)); border-radius: 10px; color: var(--sd-muted); background: color-mix(in srgb, var(--sd-accent) 7%, transparent); font-size: .76em; line-height: 1.5; }
-.sd-reader-preview-note i { color: var(--sd-accent); margin-top: 2px; }
 .sd-reader-sm-row.vec-error { border-color: color-mix(in srgb, #d45555 76%, var(--sd-hairline)); background: color-mix(in srgb, #d45555 8%, var(--sd-glass-weak)); }
 .sd-reader-sm-row.vec-retrying { border-color: color-mix(in srgb, #d08a2e 65%, var(--sd-hairline)); }
 .sd-reader-src-badge.vec-pending { background: var(--sd-pre); color: var(--sd-muted); }
@@ -4141,7 +4137,6 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-src-badge.vec-synced { color: var(--sd-good, #3fae6b); background: color-mix(in srgb, var(--sd-good, #3fae6b) 18%, transparent); }
 .sd-reader-src-badge.vec-error { color: #dc5a5a; background: color-mix(in srgb, #d45555 17%, transparent); }
 .sd-reader-src-badge i { margin-right: 4px; }
-.sd-reader-sm-row.is-preview { opacity: .9; }
 .sd-reader-sm-acts > .sd-muted { margin-right: auto; align-self: center; font-size: .75em; }
 /* 伴读中心之上的独立通知层：只在后台重试最终失败时出现，不受 ST popup / reader portal 层级影响。 */
 #sd-coread-notice-layer { position: fixed; inset: max(12px, env(safe-area-inset-top)) 12px auto; z-index: 2147483647; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }

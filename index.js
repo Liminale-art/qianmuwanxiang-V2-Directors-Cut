@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.25.2';
+const VERSION = '1.25.3';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -8663,7 +8663,6 @@ let coreadWorldSyncBusy = false; // 世界书镜像切换/批量同步互斥，�
 let coreadGuideStep = null;      // 首次引导仅是本次打开时的临时游标；完成态才持久化
 let coreadCenterPage = 'main';   // main | archives | slices | mainline：伴读中心内部导航，不再叠加大弹窗
 let coreadArchivePageItems = [];
-let coreadSlicePreview = false;  // 开发库空档案版面预览：仅内存 fixture，绝不写 IDB/世界书/向量库
 const coreadVectorStates = new Map(); // sliceId → { state, attempt, error, fingerprint, updatedAt }
 let coreadMainlineFocusFloor = 0;
 
@@ -11222,28 +11221,17 @@ function renderCoreadSubpageHead(icon, title, subtitle) {
 }
 
 // 伴读档案是中心内部子页面：矩形折叠卡管理绑定，不再叠加 ST Popup。
-function coreadArchivePreviewFixtures() {
-  return [
-    { bucket: '__preview-archive-a', title: '雾港来信', chatName: '林见川', sliceN: 12, updatedAt: '2026-08-20T18:24:00.000Z', bound: true, _preview: true },
-    { bucket: '__preview-archive-b', title: '长夜观星手记', chatName: '书友 · 示例档案', sliceN: 7, updatedAt: '2026-08-18T09:40:00.000Z', bound: false, _preview: true },
-    { bucket: '__preview-archive-c', title: '旧城夏日', chatName: '跨聊天绑定示例', sliceN: 19, updatedAt: '2026-08-12T14:05:00.000Z', bound: false, _preview: true },
-  ];
-}
-
 function renderCoreadArchivePage() {
-  const preview = !coreadArchivePageItems.length;
-  const archiveItems = preview ? coreadArchivePreviewFixtures() : coreadArchivePageItems;
-  const rows = archiveItems.map((a, i) => {
+  const rows = coreadArchivePageItems.map((a, i) => {
     const when = a.updatedAt ? new Date(a.updatedAt).toLocaleString() : '旧档案';
-    const previewAttr = a._preview ? ' disabled aria-label="预览档案，不可选择"' : '';
-    return `<details class="sd-reader-archive-card${a.bound ? ' is-bound' : ''}${a._preview ? ' is-preview' : ''}">
+    return `<details class="sd-reader-archive-card${a.bound ? ' is-bound' : ''}">
       <summary class="sd-reader-archive-summary">
         <span class="sd-reader-archive-mark"><i class="fa-solid fa-book-bookmark"></i></span>
         <span class="sd-reader-archive-main">
-          <span class="sd-reader-archive-title"><b>《${htmlEscape(a.title || '未知书目')}》</b><em>${a._preview ? '<span>版面预览</span>' : '<span class="off">未绑定</span><span class="on">已选择</span>'}</em></span>
+          <span class="sd-reader-archive-title"><b>《${htmlEscape(a.title || '未知书目')}》</b><em><span class="off">未绑定</span><span class="on">已选择</span></em></span>
           <span class="sd-reader-archive-peek">${htmlEscape(a.chatName || '未知角色')} · ${a.sliceN} 条记忆</span>
         </span>
-        <label class="sd-reader-archive-check" onclick="event.stopPropagation()"><input type="checkbox" class="sd-reader-arch-pick" value="${i}"${a.bound ? ' checked' : ''}${previewAttr}><span>${a._preview ? '预览' : '选用'}</span></label>
+        <label class="sd-reader-archive-check" onclick="event.stopPropagation()"><input type="checkbox" class="sd-reader-arch-pick" value="${i}"${a.bound ? ' checked' : ''}><span>选用</span></label>
         <i class="fa-solid fa-chevron-down sd-reader-archive-chevron"></i>
       </summary>
       <div class="sd-reader-archive-detail">
@@ -11256,8 +11244,7 @@ function renderCoreadArchivePage() {
   return `<section class="sd-reader-subpage sd-reader-archive-page">
     ${renderCoreadSubpageHead('fa-box-archive', '伴读档案', '选择需要与当前对话共同召回的档案')}
     <div class="sd-reader-archive-note"><i class="fa-solid fa-circle-info"></i><span>绑定只共享召回，不会合并或改写旧档案；当前正在阅读的档案已自动生效。</span></div>
-    ${preview ? '<div class="sd-reader-preview-note"><i class="fa-solid fa-eye"></i><span>当前没有真实档案，下方为版面预览数据；仅用于确认折叠卡外观，不会写入千幕档案、世界书或向量库。</span></div>' : ''}
-    <div class="sd-reader-archive-list">${rows}</div>
+    <div class="sd-reader-archive-list">${rows || '<div class="sd-reader-mempty">尚无可管理的伴读档案</div>'}</div>
     <div class="sd-reader-arch-secondary"><button type="button" class="sd-reader-textbtn sd-reader-arch-migrate"><i class="fa-solid fa-arrow-right-arrow-left"></i>从其他聊天迁移这本书</button></div>
   </section>`;
 }
@@ -11422,15 +11409,6 @@ async function coreadSubmitMainlinePage(root) {
   }
 }
 
-function coreadSlicePreviewFixtures() {
-  const now = Date.now();
-  return [
-    { id: '__preview-dialog', batch: 3, src: 'dialog', summary: '两人在读到关键选择时交换了不同看法，并约定保留疑问，等后文给出更多线索后再回看。', keywords: ['选择', '疑问', '回看'], coveredFrom: 12, coveredTo: 19, ts: now - 180000, _preview: true },
-    { id: '__preview-book', batch: 2, src: 'text', summary: '书中场景的氛围由日常细节逐渐转向不安，人物对异常的反应成为后续讨论的线索。', keywords: ['氛围', '异常', '线索'], coveredFrom: 4800, coveredTo: 6200, ts: now - 360000, _preview: true },
-    { id: '__preview-mainline', batch: 1, src: 'mainline', summary: '正文中的一次旧约定与本次阅读产生呼应，可在后续对话中作为关系变化的背景。', keywords: ['约定', '呼应', '关系'], mainlineFloors: [18, 21], ts: now - 540000, _preview: true },
-  ];
-}
-
 function coreadVectorState(slice, vectorEnabled) {
   if (!vectorEnabled) return { state: 'off', label: '未启用', icon: 'fa-circle-minus' };
   const cachedCandidate = coreadVecCache?.errors?.[slice.id];
@@ -11450,17 +11428,15 @@ function renderCoreadSlicePage() {
   const boundary = readerDialog.readBoundary || coreadCurrentReadBoundarySync(readerDialog.bookId);
   const realSlices = coreadNormalizeSlices(readerDialog.slices || [], readerDialog.bookId, readerDialog.bucket, boundary)
     .slice().sort((a, b) => (Number(b.batch) || 0) - (Number(a.batch) || 0));
-  const slices = coreadSlicePreview && !realSlices.length ? coreadSlicePreviewFixtures() : realSlices;
+  const slices = realSlices;
   const counts = slices.reduce((acc, slice) => { const source = reader.normalizeCoreadSource(slice.provenance?.source || slice.src); acc[source] = (acc[source] || 0) + 1; return acc; }, {});
-  const blockedTotal = slices.filter((slice) => !slice._preview && !reader.isCoreadSliceVisibleAtBoundary(slice, boundary, m.spoilerProtection !== false)).length;
+  const blockedTotal = slices.filter((slice) => !reader.isCoreadSliceVisibleAtBoundary(slice, boundary, m.spoilerProtection !== false)).length;
   const rows = slices.map((s) => {
-    const vector = coreadVectorState(s, m.vectorEnabled && !s._preview);
-    const coverage = s._preview
-      ? (s.src === 'mainline' ? '正文楼层 #18、#21' : s.src === 'book' ? '第 2 章 · 字符 4800–6200' : '伴读对话 13–20')
-      : coreadSliceCoverageText(s);
-    const blocked = !s._preview && !reader.isCoreadSliceVisibleAtBoundary(s, boundary, m.spoilerProtection !== false);
+    const vector = coreadVectorState(s, m.vectorEnabled);
+    const coverage = coreadSliceCoverageText(s);
+    const blocked = !reader.isCoreadSliceVisibleAtBoundary(s, boundary, m.spoilerProtection !== false);
     const keys = (s.keywords || []).map((key) => `<span class="sd-reader-slice-key">${htmlEscape(key)}</span>`).join('');
-    return `<details class="sd-reader-sm-row vec-${vector.state}${s._preview ? ' is-preview' : ''}" data-id="${htmlEscape(s.id)}">
+    return `<details class="sd-reader-sm-row vec-${vector.state}" data-id="${htmlEscape(s.id)}">
       <summary class="sd-reader-sm-sum">
         <span class="sd-reader-sm-summary-main">
           <span class="sd-reader-sm-tags"><span class="sd-reader-slice-batch">#${s.compressed ? '合并' : (s.batch || '?')}</span><span class="sd-reader-src-badge ${coreadSliceSourceClass(s)}">${coreadSliceSourceLabel(s)}</span><span class="sd-reader-src-badge vec-${vector.state}"${vector.error ? ` title="${htmlEscape(vector.error)}"` : ''}><i class="fa-solid ${vector.icon}${vector.state === 'retrying' ? ' fa-spin' : ''}"></i>${htmlEscape(vector.label)}</span>${blocked ? '<span class="sd-reader-src-badge vec-off">进度外·已隔离</span>' : ''}</span>
@@ -11469,23 +11445,22 @@ function renderCoreadSlicePage() {
       </summary>
       <div class="sd-reader-sm-detail">
         <div class="sd-reader-sm-meta">${coverage ? `<span>${htmlEscape(coverage)}</span>` : ''}${s.ts ? `<span>${new Date(s.ts).toLocaleString()}</span>` : ''}</div>
-        <textarea class="sd-reader-mtextarea sd-reader-sm-edit" rows="5"${s._preview ? ' disabled' : ''}>${htmlEscape(s.summary || '')}</textarea>
+        <textarea class="sd-reader-mtextarea sd-reader-sm-edit" rows="5">${htmlEscape(s.summary || '')}</textarea>
         <label class="sd-reader-mlab">关键词（逗号分隔）</label>
-        <input class="sd-reader-minput sd-reader-sm-keys" value="${htmlEscape((s.keywords || []).join(', '))}"${s._preview ? ' disabled' : ''}>
+        <input class="sd-reader-minput sd-reader-sm-keys" value="${htmlEscape((s.keywords || []).join(', '))}">
         <div class="sd-reader-slice-keys">${keys}</div>
-        <div class="sd-reader-sm-acts">${s._preview ? '<span class="sd-muted">版面预览不会保存</span>' : `<button type="button" class="sd-reader-mbtn sd-reader-sm-sync" title="同步向量"><i class="fa-solid fa-rotate"></i></button><button type="button" class="sd-reader-textbtn sd-reader-sm-save">保存并同步</button><button type="button" class="sd-reader-textbtn sd-reader-sm-regen">重构</button><button type="button" class="sd-reader-mbtn sd-reader-sm-del" title="删除"><i class="fa-solid fa-trash"></i></button>`}</div>
+        <div class="sd-reader-sm-acts"><button type="button" class="sd-reader-mbtn sd-reader-sm-sync" title="同步向量"><i class="fa-solid fa-rotate"></i></button><button type="button" class="sd-reader-textbtn sd-reader-sm-save">保存并同步</button><button type="button" class="sd-reader-textbtn sd-reader-sm-regen">重构</button><button type="button" class="sd-reader-mbtn sd-reader-sm-del" title="删除"><i class="fa-solid fa-trash"></i></button></div>
       </div>
     </details>`;
   }).join('');
   return `<section class="sd-reader-subpage sd-reader-slice-page">
     ${renderCoreadSubpageHead('fa-layer-group', '记忆切片', `${htmlEscape(coreadBookMeta(readerDialog.bookId)?.title || '当前书籍')} · ${realSlices.length} 条`)}
     <div class="sd-reader-sm-overview"><span class="src-dialog">伴读对谈 ${counts.dialog || 0}</span><span class="src-text">书中内容 ${counts.book || 0}</span><span class="src-mainline">正文回响 ${counts.mainline || 0}</span>${blockedTotal ? `<span class="is-blocked"><i class="fa-solid fa-shield-halved"></i>隔离 ${blockedTotal}</span>` : ''}</div>
-    ${coreadSlicePreview && !realSlices.length ? '<div class="sd-reader-preview-note"><i class="fa-solid fa-flask"></i><span>当前没有真实切片，下方为开发版内存预览。它不会写入千幕档案、世界书或向量库。</span></div>' : ''}
     <div class="sd-reader-sm-list">${rows || '<div class="sd-reader-mempty">还没有记忆切片。</div>'}</div>
   </section>`;
 }
 
-// 切片管理改为伴读中心内部子页面；无数据时用内存 fixture 预览排版，正式数据出现即自动消失。
+// 切片管理改为伴读中心内部子页面。
 async function coreadOpenSliceManagerDialog() {
   const m = coreadMemory();
   if (m.vectorEnabled) {
@@ -11494,7 +11469,6 @@ async function coreadOpenSliceManagerDialog() {
       if (rec && rec.model === m.vectorModel && isPlainObject(rec.vecs)) coreadVecCache = { bucket: readerDialog.bucket, dim: rec.dim || 0, model: rec.model, vecs: rec.vecs, fps: isPlainObject(rec.fps) ? rec.fps : {}, errors: isPlainObject(rec.errors) ? rec.errors : {} };
     } catch (_) {}
   }
-  coreadSlicePreview = !(readerDialog.slices || []).length;
   coreadCenterPage = 'slices';
   rerenderMoreIfOpen();
 }
@@ -12037,7 +12011,7 @@ function renderReaderDialogMessages() {
     const showReroll = who === 'friend' && batch && idx === batch.end;
     const actions = `<div class="sd-reader-msg-actions">
       ${showReroll ? `<button class="sd-reader-msg-action" data-act="reroll" data-idx="${idx}" title="重新生成本批回复"><i class="fa-solid fa-rotate"></i></button>` : ''}
-      <button class="sd-reader-msg-action" data-act="speak" data-idx="${idx}" title="用绑定音色朗读"><i class="fa-solid fa-circle-play"></i></button>
+      ${String(m.text || '').trim() ? `<button class="sd-reader-msg-action" data-act="speak" data-idx="${idx}" title="用绑定音色朗读"><i class="fa-solid fa-circle-play"></i></button>` : ''}
       <button class="sd-reader-msg-action" data-act="edit" data-idx="${idx}" title="编辑"><i class="fa-solid fa-pen"></i></button>
       <button class="sd-reader-msg-action" data-act="delete" data-idx="${idx}" title="删除"><i class="fa-solid fa-trash"></i></button>
     </div>`;
@@ -12163,8 +12137,15 @@ function coreadOpenAssistant(quote = '') {
   const dialogPanel = portal?.querySelector('.sd-reader-dialog');
   // 选区入口不经过底栏 togglePanel，必须在这里主动执行同一套抽屉互斥。
   // 否则设置/目录/进度抽屉会保持 open，与小助手对话框叠在底部并共同顶起正文。
-  portal?.querySelectorAll('.sd-reader-panel.open').forEach((panel) => panel.classList.remove('open'));
-  dialogPanel?.classList.add('open');
+  readerView.assistantDrawerGuardUntil = Date.now() + 800;
+  const openDialogOnly = () => {
+    const livePortal = document.getElementById('sd-reader-portal');
+    const liveDialog = livePortal?.querySelector('.sd-reader-dialog');
+    livePortal?.querySelectorAll('.sd-reader-panel').forEach((panel) => panel.classList.toggle('open', panel === liveDialog));
+    livePortal?.querySelector('.sd-reader-stage')?.classList.add('sd-reader-bar-hidden');
+  };
+  openDialogOnly();
+  requestAnimationFrame(openDialogOnly);
   dialogPanel?.classList.remove('sd-reader-dialog-voicing');
   portal?.querySelector('.sd-reader-stage')?.classList.add('sd-reader-bar-hidden');
   const chatBody = portal?.querySelector('.sd-reader-dtab-chat');
@@ -12254,11 +12235,12 @@ async function coreadDeleteMessageImages(messages, bookId = readerView?.bookId) 
 
 async function coreadAskAssistant(inputText, imageIds = []) {
   const images = (Array.isArray(imageIds) ? imageIds : []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
-  const question = String(inputText || '').trim() || (images.length ? '请看这些图片，并结合当前阅读内容回答。' : '');
+  const visibleText = String(inputText || '').trim();
+  const question = visibleText || (images.length ? '请分析本次附带的图片，并结合当前阅读内容回答。' : '');
   if (!question || readerAssistantBusy || !readerView) return;
   if (!readerAssistant.loaded) { toast('幕伴小助手正在载入，请稍候。', 'info'); return; }
   const quote = readerAssistant.quote || '';
-  const userMessage = { id: uid('rda'), role: 'user', text: question, quote, images, ts: Date.now() };
+  const userMessage = { id: uid('rda'), role: 'user', text: visibleText, quote, images, ts: Date.now() };
   readerAssistant.messages.push(userMessage);
   readerAssistant.quote = '';
   const prior = readerAssistant.messages.slice(0, -1).slice(-COREAD_ASSISTANT_CONTEXT_MESSAGES);
@@ -12438,8 +12420,8 @@ function coreadSyncDialogButtons() {
 // 发送：仅追加 user 气泡到消息流（不调模型）。可连续点，攒多句后再点「生成」一起回。
 async function coreadAppendUserMessage(text, imageIds = []) {
   const images = (Array.isArray(imageIds) ? imageIds : []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
-  const content = String(text || '').trim() || (images.length ? '看看这张图。' : '');
-  if (!content || dialogBusy) return;
+  const content = String(text || '').trim();
+  if ((!content && !images.length) || dialogBusy) return;
   readerDialog.messages.push({ id: uid('rdm'), role: 'user', text: content, images, ts: Date.now() });
   const body = document.querySelector('#sd-reader-portal .sd-reader-dtab-chat');
   if (body) { body.innerHTML = renderReaderDialogMessages(); scrollDialogToBottom(); }
@@ -14085,7 +14067,7 @@ function renderMemRecordsTab(m) {
         <span><b>${blockedN}</b><small>进度外隔离</small></span>
       </div>
       <div class="sd-reader-memory-actions">
-        <button type="button" class="sd-reader-mbtn sd-reader-slice-manage"><i class="fa-solid fa-table-list"></i>${slices.length ? '管理切片' : '预览切片版面'}</button>
+        <button type="button" class="sd-reader-mbtn sd-reader-slice-manage"><i class="fa-solid fa-table-list"></i>管理切片</button>
         <button type="button" class="sd-reader-mbtn sd-reader-arch-manage"><i class="fa-solid fa-box-archive"></i>管理档案</button>
         <button type="button" class="sd-reader-mbtn sd-reader-slice-clear"${slices.length ? '' : ' disabled'}><i class="fa-solid fa-trash-can"></i>清空切片</button>
       </div>
@@ -14095,7 +14077,7 @@ function renderMemRecordsTab(m) {
     ${archiveOverview}
     ${storageCard}
     <details class="sd-reader-mcard">
-      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-pen-nib"></i> 总结提示词 <span class="sd-reader-inj-tag">${items.length} 条规则</span></summary>
+      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-pen-nib"></i> 总结提示词</summary>
         <span class="sd-reader-mhead-acts" style="justify-content:flex-end">
           <button type="button" class="sd-reader-mbtn sd-reader-sumitem-add" title="给伴读总结加一条自定义提示词"><i class="fa-solid fa-plus"></i></button>
           <button type="button" class="sd-reader-mbtn sd-reader-sumitem-restore" title="恢复全部三块的内置默认"><i class="fa-solid fa-rotate-left"></i></button>
@@ -15187,6 +15169,7 @@ function bindReaderStageEvents(stageRoot) {
     p.classList.remove('open');
   });
   const togglePanel = (sel) => {
+    if (sel !== '.sd-reader-dialog' && Date.now() < Number(readerView.assistantDrawerGuardUntil || 0)) return;
     const target = q(sel);
     const wasOpen = target?.classList.contains('open');
     closePanels();
@@ -16537,7 +16520,8 @@ function bindReaderStageEvents(stageRoot) {
       const text = pendingText; const segments = pendingSegments.slice(); hideTools(); window.getSelection?.()?.removeAllRanges?.();
       if (text) { const id = coreadAddHighlight(text, 'mark', segments); updateReaderArticle(stageRoot); if (id) coreadOpenExcerptDialog(id, stageRoot); }
     };
-    lvMain.querySelector('[data-act="assistant"]').onclick = () => {
+    lvMain.querySelector('[data-act="assistant"]').onclick = (event) => {
+      event.preventDefault(); event.stopPropagation();
       const text = pendingText; hideTools(); window.getSelection?.()?.removeAllRanges?.();
       if (text) coreadOpenAssistant(text);
     };
@@ -16558,7 +16542,8 @@ function bindReaderStageEvents(stageRoot) {
     lvExist.querySelector('[data-act="note"]').onclick = () => { const id = pendingMark; hideTools(); if (id) openReaderNoteDialog(id); };
     lvExist.querySelector('[data-act="copy"]').onclick = () => { const note = coreadFindReaderNote(pendingMark); hideTools(); if (note) void coreadCopyText(coreadNotePlainText(note)); };
     lvExist.querySelector('[data-act="image"]').onclick = () => { const id = pendingMark; hideTools(); if (id) coreadOpenExcerptDialog(id, stageRoot); };
-    lvExist.querySelector('[data-act="assistant"]').onclick = () => {
+    lvExist.querySelector('[data-act="assistant"]').onclick = (event) => {
+      event.preventDefault(); event.stopPropagation();
       const note = coreadFindReaderNote(pendingMark); hideTools();
       if (note) coreadOpenAssistant(coreadNotePlainText(note));
     };

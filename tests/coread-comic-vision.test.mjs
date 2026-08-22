@@ -77,6 +77,9 @@ assert.match(source, /if \(coreadBookMeta\(id\)\?\.mode === 'comic'\) return;/, 
 assert.match(source, /sd-reader-dialog-send[\s\S]*sd-reader-dialog-image-input sd-reader-native-file[\s\S]*accept="image\/\*"[\s\S]*multiple/, '伴读输入框必须保留 iOS 兼容的原生多图控件');
 assert.match(source, /coreadPersistPendingChatImages[\s\S]*putReaderImage/, '发送前必须将图片保存到本书本地媒体仓');
 assert.match(source, /coreadAskAssistant\(text, imageIds\)[\s\S]*coreadAppendUserMessage\(text, imageIds\)/, '图片必须能分别发给幕伴助手或书友');
+assert.doesNotMatch(source, /看看这张图。/, '纯图片气泡不得自动附加占位文字');
+assert.match(source, /if \(\(!content && !images\.length\) \|\| dialogBusy\) return/, '只有图片没有文字时仍必须允许发送');
+assert.match(source, /String\(m\.text \|\| ''\)\.trim\(\) \? `<button class="sd-reader-msg-action" data-act="speak"/, '只有存在文字的气泡才显示播放按钮');
 assert.match(source, /pendingUsers\.flatMap[\s\S]*callCoreadVisionModel/, '书友回复必须读取本轮图片并调用视觉模型');
 assert.match(source, /comicDescriptions: rec\?\.comicDescriptions[\s\S]*version: 4/, '数据打包必须携带漫画视觉文字稿并升级格式');
 assert.match(css, /\.sd-reader-chat-pending[\s\S]*\.sd-reader-chat-images/, '待发送和已发送图片都必须有隔离样式');
