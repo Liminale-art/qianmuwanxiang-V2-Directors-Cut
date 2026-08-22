@@ -7,7 +7,7 @@ const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 const setup = source.slice(source.indexOf('function renderCompanionSetupBody'), source.indexOf('function renderReaderVoiceClips'));
 assert.ok(setup.indexOf('renderCoreadSpoilerGuard(m)') < setup.indexOf('对话与可见范围'), '防剧透卡必须位于对话与可见范围上方');
 assert.match(setup, /sd-reader-setup-compact-grid[\s\S]*字数上限[\s\S]*每次回复条数[\s\S]*参考近期对话条数[\s\S]*语音条缓存上限/, '四项数值设置必须使用紧凑网格');
-assert.match(setup, /sd-reader-identity-card[\s\S]*renderCoreadIdentity\('书友'[\s\S]*renderCoreadIdentity\('User'[\s\S]*sd-reader-context-card[\s\S]*参考上下文层数/, '头像身份标签与参考上下文必须拆为两张卡');
+assert.match(setup, /sd-reader-identity-card[\s\S]*renderCoreadIdentity\('书友'[\s\S]*renderCoreadIdentity\('我'[\s\S]*sd-reader-context-card[\s\S]*参考上下文层数/, '头像身份标签与参考上下文必须拆为两张卡');
 assert.doesNotMatch(setup, /控制书友能看见多少|超长篇按比例截取/, '设定页指定说明小字必须移除');
 assert.doesNotMatch(setup, /身份与正文联动|身份跟随 ST 当前角色与用户|独立于主线选择|伴读世界书<\/label>|伴读预设<\/label>/, '设定页指定旧标题和取材说明必须移除');
 assert.match(css, /\.sd-reader-setup-compact-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2/, '紧凑设置在窄屏也应保持二列基础布局');

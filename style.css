@@ -3339,8 +3339,9 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 }
 .sd-reader-hltools button:hover { background: var(--sd-glass-weak); color: var(--sd-accent); }
 /* 父级/已划线级：带文字钮 */
-.sd-reader-hltools-main button, .sd-reader-hltools-exist button { font-size: .84em; padding: 8px 14px; }
-.sd-reader-hltools-main button span, .sd-reader-hltools-exist button span { font-size: 1em; }
+/* 选中文字后的快捷功能全部使用方形图标；仅“取消划线”保留文字，避免破坏动作辨识。 */
+.sd-reader-hltools-main button, .sd-reader-hltools-exist button { width: 38px; height: 38px; padding: 0; font-size: .92em; }
+.sd-reader-hltools-exist button[data-act="remove"] { width: auto; padding: 0 11px; font-size: .78em; }
 /* 样式级：图标方钮 + 返回箭头 */
 .sd-reader-hltools-styles button { width: 38px; height: 38px; font-size: 1em; }
 .sd-reader-hltools-styles [data-back] { color: var(--sd-muted); border-right: 1px solid var(--sd-hairline); border-radius: 0; padding-right: 4px; margin-right: 2px; }
@@ -3380,24 +3381,27 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-toc-item:hover { background: var(--sd-glass-weak); }
 .sd-reader-toc-item.active { color: var(--sd-accent); font-weight: 600; }
 .sd-reader-panel-empty { padding: 28px 16px; text-align: center; color: var(--sd-muted); font-size: .85em; line-height: 1.7; }
-.sd-reader-note-item { padding: 11px 12px; border: 1px solid var(--sd-hairline); border-radius: 11px; background: var(--sd-glass-weak); margin: 7px 2px; }
+.sd-reader-note-item { position: relative; padding: 11px 12px; border: 1px solid var(--sd-hairline); border-radius: 11px; background: var(--sd-glass-weak); margin: 7px 2px; }
 .sd-reader-note-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .sd-reader-note-kind { font-size: .7em; background: var(--sd-glass-weak); color: var(--sd-muted); padding: 1px 8px; border-radius: 10px; flex: 0 0 auto; }
 .sd-reader-note-kind.sd-reader-kind-note { color: var(--sd-accent); background: color-mix(in srgb, var(--sd-accent) 16%, transparent); }
 .sd-reader-note-jump { background: transparent; border: 0; color: var(--sd-muted); cursor: pointer; font-size: .76em; padding: 0; }
 .sd-reader-note-head time { color: var(--sd-muted); font-size: .68em; margin-right: auto; white-space: nowrap; }
-.sd-reader-note-edit, .sd-reader-note-del, .sd-reader-note-favorite, .sd-reader-note-copy, .sd-reader-note-image { background: transparent; border: 0; color: var(--sd-muted); cursor: pointer; font-size: .82em; padding: 3px; }
+.sd-reader-note-tools-toggle { margin-left: auto; width: 28px; height: 28px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: transparent; color: var(--sd-muted); cursor: pointer; }
+.sd-reader-note-tools-toggle[aria-expanded="true"] { color: var(--sd-accent); background: var(--sd-pre); }
+.sd-reader-note-tools { position: absolute; z-index: 3; top: 39px; right: 9px; display: flex; align-items: center; gap: 2px; padding: 4px; border: 1px solid var(--sd-hairline); border-radius: 10px; background: var(--sd-folder-head); box-shadow: 0 8px 22px rgba(0,0,0,.25); }
+.sd-reader-note-tools[hidden] { display: none; }
+.sd-reader-note-edit, .sd-reader-note-del, .sd-reader-note-favorite, .sd-reader-note-copy, .sd-reader-note-image { width: 29px; height: 29px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 0; border-radius: 7px; color: var(--sd-muted); cursor: pointer; font-size: .82em; padding: 0; }
 .sd-reader-note-favorite.active { color: #d49a34; }
 .sd-reader-note-edit:hover, .sd-reader-note-del:hover, .sd-reader-note-favorite:hover, .sd-reader-note-copy:hover, .sd-reader-note-image:hover { color: var(--sd-accent); }
 .sd-reader-note-text { font-size: .85em; line-height: 1.6; color: var(--sd-text); }
 .sd-reader-note-anno { font-size: .8em; color: var(--sd-muted); margin-top: 4px; padding-left: 8px; border-left: 2px solid var(--sd-accent); }
 .sd-reader-note-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 .sd-reader-note-tags span { color: var(--sd-accent); background: color-mix(in srgb, var(--sd-accent) 11%, transparent); border-radius: 999px; padding: 2px 7px; font-size: .68em; }
-.sd-reader-notes-toolbar { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: minmax(120px,1fr) auto auto; align-items: center; gap: 7px; padding: 5px 2px 7px; background: var(--sd-folder-head); }
-.sd-reader-notes-search { min-width: 0; display: flex; align-items: center; gap: 7px; border: 1px solid var(--sd-border); border-radius: 9px; padding: 6px 9px; color: var(--sd-muted); background: var(--sd-input-bg); }
-.sd-reader-notes-search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: var(--sd-text); font: inherit; font-size: .78em; }
+.sd-reader-notes-toolbar { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: minmax(120px,1fr) auto; align-items: center; gap: 7px; padding: 5px 2px 7px; background: var(--sd-folder-head); }
+.sd-reader-notes-search { min-width: 0; display: block; }
+.sd-reader-notes-search input { box-sizing: border-box; min-width: 0; width: 100%; border: 0; outline: 0; border-radius: 9px; padding: 7px 10px; background: var(--sd-input-bg); color: var(--sd-text); font: inherit; font-size: .78em; }
 .sd-reader-notes-filter { min-width: 78px; border: 1px solid var(--sd-border); border-radius: 9px; padding: 6px 8px; background: var(--sd-input-bg); color: var(--sd-text); font: inherit; font-size: .76em; }
-.sd-reader-notes-count { color: var(--sd-muted); font-size: .7em; white-space: nowrap; }
 .sd-reader-notes-none { padding: 25px 12px; text-align: center; color: var(--sd-muted); font-size: .82em; }
 
 /* 语音条列表 */
@@ -3509,28 +3513,32 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-noteedit-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .sd-reader-noteedit-actions .sd-btn { cursor: pointer; }
 
-/* 摘录图片：轻量原生预览与画布导出，不依赖外部截图脚本。 */
+/* 摘录图片：预览直接挂载最终 Canvas，彻底隔离 ST 主题样式并保证预览与下载像素一致。 */
 .sd-reader-excerptoverlay { position: absolute; inset: 0; z-index: 15; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,.5); backdrop-filter: blur(3px); }
-.sd-reader-excerptoverlay-card { width: min(620px,100%); max-height: 92%; overflow-y: auto; padding: 15px; border: 1px solid var(--sd-hairline); border-radius: 16px; background: var(--sd-folder-head); box-shadow: 0 20px 60px rgba(0,0,0,.42); display: flex; flex-direction: column; gap: 12px; }
-.sd-reader-excerpt-head { display: flex; align-items: center; justify-content: space-between; color: var(--sd-text); font-weight: 600; }
-.sd-reader-excerpt-head > span { display: inline-flex; align-items: center; gap: 8px; }
-.sd-reader-excerpt-head i { color: var(--sd-accent); }
-.sd-reader-excerpt-close { width: 30px; height: 30px; border: 0; border-radius: 50%; background: var(--sd-glass-weak); color: var(--sd-muted); cursor: pointer; }
-.sd-reader-excerpt-preview { display: flex; justify-content: center; max-height: 410px; overflow-y: auto; padding: 10px; border-radius: 12px; background: var(--sd-pre); }
-.sd-reader-excerpt-preview-inner { width: min(300px,100%); min-height: 260px; box-sizing: border-box; display: flex; flex-direction: column; padding: 28px; background: var(--excerpt-bg); color: var(--excerpt-fg); border-radius: 3px; box-shadow: 0 12px 35px rgba(0,0,0,.2); }
-.sd-reader-excerpt-mark { color: var(--excerpt-accent); font-size: .67em; font-weight: 700; letter-spacing: .08em; }
-.sd-reader-excerpt-preview blockquote { margin: auto 0; padding: 18px 0; border: 0; color: inherit; font-family: "Noto Serif SC", "Songti SC", serif; font-size: var(--excerpt-size); line-height: 1.8; font-weight: 600; white-space: pre-wrap; }
-.sd-reader-excerpt-preview p { margin: 0 0 auto; padding-top: 12px; border-top: 2px solid var(--excerpt-accent); color: inherit; opacity: .78; font-size: calc(var(--excerpt-size) * .72); line-height: 1.65; white-space: pre-wrap; }
-.sd-reader-excerpt-preview footer { display: flex; flex-direction: column; gap: 3px; margin-top: 20px; font-size: .72em; font-weight: 600; }
-.sd-reader-excerpt-preview footer small { opacity: .58; font-size: .88em; }
+.sd-reader-excerptoverlay-card { position: relative; width: min(650px,100%); max-height: 94%; overflow-y: auto; padding: 14px; border: 1px solid var(--sd-hairline); border-radius: 16px; background: var(--sd-folder-head); box-shadow: 0 20px 60px rgba(0,0,0,.42); display: flex; flex-direction: column; gap: 12px; }
+.sd-reader-excerpt-close { position: absolute; z-index: 2; top: 22px; right: 22px; width: 31px; height: 31px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,.18); border-radius: 50%; background: rgba(20,20,20,.55); color: #fff; cursor: pointer; backdrop-filter: blur(8px); }
+.sd-reader-excerpt-preview { min-height: 260px; max-height: 47vh; overflow: hidden; padding: 0; background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+.sd-reader-excerpt-canvas-wrap { min-width: 0; min-height: 0; flex: 1; width: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.sd-reader-excerpt-canvas-wrap canvas { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; border-radius: 3px; box-shadow: 0 12px 35px rgba(0,0,0,.24); }
+.sd-reader-excerpt-pages { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; padding: 3px 7px; border-radius: 999px; background: var(--sd-glass-weak); color: var(--sd-muted); font-size: .72em; }
+.sd-reader-excerpt-pages[hidden] { display: none; }
+.sd-reader-excerpt-pages button { width: 25px; height: 25px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: transparent; color: var(--sd-text); cursor: pointer; }
+.sd-reader-excerpt-pages button:disabled { opacity: .28; cursor: default; }
+.sd-reader-excerpt-panel { display: flex; flex-direction: column; gap: 9px; padding: 11px; border: 1px solid var(--sd-hairline); border-radius: 13px; background: var(--sd-glass-weak); }
 .sd-reader-excerpt-controls { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
 .sd-reader-excerpt-controls label { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 7px 9px; border: 1px solid var(--sd-hairline); border-radius: 9px; color: var(--sd-muted); font-size: .75em; }
-.sd-reader-excerpt-controls select { min-width: 0; max-width: 86px; background: var(--sd-input-bg); color: var(--sd-text); border: 0; font: inherit; }
+.sd-reader-excerpt-controls .sd-reader-excerpt-scheme { grid-column: span 2; }
+.sd-reader-excerpt-scheme-pick { min-width: 0; flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: 3px; }
+.sd-reader-excerpt-controls select { min-width: 0; max-width: 100px; background: var(--sd-input-bg); color: var(--sd-text); border: 0; font: inherit; }
+.sd-reader-excerpt-scheme select { flex: 1; max-width: 150px; }
+.sd-reader-excerpt-preset-save, .sd-reader-excerpt-preset-del { width: 25px; height: 25px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 7px; background: var(--sd-pre); color: var(--sd-muted); cursor: pointer; }
+.sd-reader-excerpt-preset-save:hover, .sd-reader-excerpt-preset-del:hover { color: var(--sd-accent); }
 .sd-reader-excerpt-controls input[type=range] { min-width: 0; width: 80px; accent-color: var(--sd-accent); }
 .sd-reader-excerpt-controls input[type=color] { width: 28px; height: 24px; padding: 0; border: 0; background: transparent; }
-.sd-reader-excerpt-checks, .sd-reader-excerpt-actions { display: flex; align-items: center; gap: 12px; }
-.sd-reader-excerpt-checks { color: var(--sd-muted); font-size: .78em; }
-.sd-reader-excerpt-actions { justify-content: flex-end; }
+.sd-reader-excerpt-checks { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.sd-reader-excerpt-checks > label { min-width: 0; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 7px 10px; border-radius: 999px; background: var(--sd-pre); color: var(--sd-muted); font-size: .76em; cursor: pointer; }
+.sd-reader-excerpt-checks .sd-reader-mtoggle { flex: 0 0 auto; padding: 0; background: transparent; }
+.sd-reader-excerpt-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 
 .sd-reader-setup-body { display: flex; flex-direction: column; gap: 16px; }
 /* 连接与记忆：整页全屏面板（占满 stage·顶栏返回 + 可滚动正文·为后续复杂记忆设置留足版面） */
@@ -3539,6 +3547,9 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
   overflow: hidden; background: var(--sd-portal-bg, var(--sd-folder-head)); color: var(--sd-text);
 }
 .sd-reader-morepage[hidden] { display: none; }
+/* 整个伴读中心保留滚动能力但不展示右侧滚动条。 */
+.sd-reader-morepage, .sd-reader-morepage * { scrollbar-width: none; -ms-overflow-style: none; }
+.sd-reader-morepage::-webkit-scrollbar, .sd-reader-morepage *::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .sd-reader-morepage-top {
   display: flex; align-items: center; gap: 10px; flex: 0 0 auto;
   padding: 12px 14px; padding-top: max(12px, env(safe-area-inset-top));
@@ -3560,7 +3571,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-center-guard { justify-content: space-between; cursor: pointer; }
 .sd-reader-center-guard > span:first-child { min-width: 0; display: inline-flex; gap: 7px; align-items: center; }
 .sd-reader-center-guard > span:first-child i { color: var(--sd-muted); }
-.sd-reader-setup-guard { margin: 0; }
+.sd-reader-setup-guard { margin: 0; min-height: 54px; box-sizing: border-box; padding: 13px 15px; }
 .sd-reader-setup-guard.is-protected { border-color: color-mix(in srgb, var(--sd-good, #3fae6b) 55%, var(--sd-hairline)); background: color-mix(in srgb, var(--sd-good, #3fae6b) 8%, var(--sd-glass-weak)); }
 .sd-reader-setup-guard.is-protected > span:first-child i { color: var(--sd-good, #3fae6b); }
 /* 数据包入口：常驻伴读中心，真实 file input 覆盖 label，iOS 也保持原生用户手势链。 */
@@ -3843,6 +3854,13 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-mlrule-row .sd-reader-minput:nth-child(2) { flex: 0 0 80px; }
 .sd-reader-mlrule-acts { display: flex; align-items: center; gap: 6px; padding: 4px 10px 8px; }
 .sd-reader-mllist { display: flex; flex-direction: column; gap: 7px; min-height: 0; padding: 1px 4px 1px 1px; }
+/* 主线选择页只有楼层列表滚动；标题、规则、定位栏与底部操作始终留在原位。 */
+.sd-reader-morepage-body:has(> .sd-reader-mainline-page) { overflow: hidden; padding-bottom: 0; }
+.sd-reader-mainline-page { height: 100%; min-height: 0; overflow: hidden; }
+.sd-reader-mainline-page > .sd-reader-subpage-head { position: relative; top: auto; flex: 0 0 auto; }
+.sd-reader-mainline-page > .sd-reader-mlrule-wrap, .sd-reader-mainline-page > .sd-reader-mltoolbar { flex: 0 0 auto; }
+.sd-reader-mainline-page > .sd-reader-mllist { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding-right: 5px; }
+.sd-reader-mainline-page > .sd-reader-subpage-actions { position: relative; bottom: auto; flex: 0 0 auto; padding: 9px 0 0; border-top: 1px solid var(--sd-hairline); background: var(--sd-portal-bg, var(--sd-folder-head)); }
 .sd-reader-mlrow { border: 1px solid var(--sd-hairline); border-radius: 10px; background: var(--sd-glass-weak); overflow: hidden; flex: 0 0 auto; }
 .sd-reader-mlrow.is-located { border-color: var(--sd-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--sd-accent) 10%, transparent); }
 .sd-reader-mlrow-sum { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 9px; padding: 9px 10px; cursor: pointer; list-style: none; }
@@ -4014,14 +4032,14 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   .sd-reader-context-card .sd-reader-setup-numrow { flex-direction: row; align-items: center; }
   .sd-reader-context-card .sd-reader-setup-numgroup { width: auto; flex-wrap: nowrap; }
   .sd-reader-notes-toolbar { grid-template-columns: minmax(0,1fr) auto; }
-  .sd-reader-notes-count { grid-column: 1 / -1; text-align: right; }
   .sd-reader-note-head { gap: 5px; }
   .sd-reader-note-head time { display: none; }
-  .sd-reader-note-edit, .sd-reader-note-del, .sd-reader-note-favorite, .sd-reader-note-copy, .sd-reader-note-image { padding: 4px 2px; }
   .sd-reader-excerptoverlay { padding: 8px; }
-  .sd-reader-excerptoverlay-card { max-height: 96%; padding: 12px; }
+  .sd-reader-excerptoverlay-card { max-height: 97%; padding: 10px; }
   .sd-reader-excerpt-controls { grid-template-columns: repeat(2,minmax(0,1fr)); }
-  .sd-reader-excerpt-preview { max-height: 330px; }
+  .sd-reader-excerpt-controls .sd-reader-excerpt-scheme { grid-column: 1 / -1; }
+  .sd-reader-excerpt-preview { min-height: 225px; max-height: 42vh; padding: 0; }
+  .sd-reader-excerpt-panel { padding: 9px; }
   .sd-reader-memory-stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .sd-reader-memory-actions { grid-template-columns: 1fr; }
   .sd-reader-sm-tags { flex-wrap: wrap; }
