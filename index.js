@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.29.0';
+const VERSION = '1.29.1';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -324,9 +324,9 @@ const PROSE_LAYOUT_DEFAULTS = Object.freeze({
   paragraphGap: 0.45,
   indent: 2,
   contentWidth: 80,
-  sidePadding: 0.35,
   splitBreaks: false,
   justify: false,
+  updatedAt: 0,
 });
 const PROSE_LAYOUT_CONTROLS = Object.freeze([
   { key: 'fontSize', label: '字号', min: 12, max: 32, step: 1, unit: 'px' },
@@ -334,8 +334,19 @@ const PROSE_LAYOUT_CONTROLS = Object.freeze([
   { key: 'paragraphGap', label: '段距', min: 0, max: 2, step: 0.05, unit: 'em' },
   { key: 'indent', label: '缩进', min: 0, max: 4, step: 0.1, unit: 'em' },
   { key: 'contentWidth', label: '宽度', min: 36, max: 160, step: 2, unit: 'ch' },
-  { key: 'sidePadding', label: '边距', min: 0, max: 4, step: 0.1, unit: 'rem' },
 ]);
+const PROSE_LAYOUT_STORAGE_KEY = `${MODULE_NAME}:prose-layout`;
+
+function readCachedProseLayout() {
+  try {
+    const parsed = JSON.parse(globalThis.localStorage?.getItem(PROSE_LAYOUT_STORAGE_KEY) || 'null');
+    return isPlainObject(parsed) ? parsed : null;
+  } catch (_) { return null; }
+}
+
+function cacheProseLayout(layout) {
+  try { globalThis.localStorage?.setItem(PROSE_LAYOUT_STORAGE_KEY, JSON.stringify(layout)); } catch (_) {}
+}
 
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
@@ -716,6 +727,11 @@ function getSettings() {
   const extensionSettings = context.extensionSettings || (context.extensionSettings = {});
   if (!extensionSettings[MODULE_NAME]) extensionSettings[MODULE_NAME] = clone(DEFAULT_SETTINGS);
   mergeDefaults(extensionSettings[MODULE_NAME], DEFAULT_SETTINGS);
+  const cachedProse = readCachedProseLayout();
+  const storedProse = extensionSettings[MODULE_NAME].proseLayout;
+  if (cachedProse && Number(cachedProse.updatedAt || 0) > Number(storedProse?.updatedAt || 0)) {
+    extensionSettings[MODULE_NAME].proseLayout = clone(cachedProse);
+  }
   migrateSettings(extensionSettings[MODULE_NAME]);
   return extensionSettings[MODULE_NAME];
 }
@@ -3745,6 +3761,62 @@ function bindQuickWheelOutsideDismiss(root) {
   };
 }
 
+function bindQuickWheelUndockDrag(button, item, layout) {
+  const command = String(item?.id || '');
+  if (!(button instanceof Element) || !item?.external || !command.startsWith('dock:')) return;
+  const key = command.slice(5);
+  const releaseDistance = Math.max(60, Number(layout?.itemSize || 36) * 1.45);
+  let drag = null;
+  let suppressClick = false;
+  const resetVisual = () => {
+    button.classList.remove('is-undock-dragging', 'is-undock-ready');
+    button.style.removeProperty('transform');
+  };
+  button.title = `${item.label}（拖出蜂巢可解除收纳）`;
+  button.setAttribute('aria-label', button.title);
+  button.addEventListener('pointerdown', (event) => {
+    if (event.button != null && event.button !== 0) return;
+    drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, moved: false, ready: false };
+    try { button.setPointerCapture?.(event.pointerId); } catch (_) {}
+  });
+  button.addEventListener('pointermove', (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    const distance = Math.hypot(dx, dy);
+    if (!drag.moved && distance <= 8) return;
+    drag.moved = true;
+    drag.ready = distance >= releaseDistance;
+    button.classList.add('is-undock-dragging');
+    button.classList.toggle('is-undock-ready', drag.ready);
+    button.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(${drag.ready ? 0.86 : 0.94})`;
+    event.preventDefault();
+  });
+  const finish = (event, cancelled = false) => {
+    if (!drag || (event?.pointerId != null && event.pointerId !== drag.pointerId)) return;
+    const completed = !cancelled && drag.moved && drag.ready;
+    const moved = drag.moved;
+    try { button.releasePointerCapture?.(drag.pointerId); } catch (_) {}
+    drag = null;
+    resetVisual();
+    if (moved) {
+      suppressClick = true;
+      setTimeout(() => { suppressClick = false; }, 0);
+    }
+    if (!completed) return;
+    quickDockRemove(key, false);
+    toast(`已将「${item.label}」移出千幕蜂巢。`, 'success');
+    closeQuickWheel();
+  };
+  button.addEventListener('pointerup', (event) => finish(event));
+  button.addEventListener('pointercancel', (event) => finish(event, true));
+  button.addEventListener('click', (event) => {
+    if (!suppressClick) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
+}
+
 const PROSE_LAYOUT_BODY_CLASSES = ['sd-prose-layout', 'sd-prose-justify', 'sd-prose-split-breaks'];
 const PROSE_LAYOUT_CSS_VARS = ['--sd-prose-font-size', '--sd-prose-line-height', '--sd-prose-paragraph-gap', '--sd-prose-indent', '--sd-prose-content-width', '--sd-prose-side-padding'];
 let proseLayoutObserver = null;
@@ -3758,6 +3830,8 @@ function proseLayoutSettings() {
   layout.active = Boolean(layout.active);
   layout.splitBreaks = Boolean(layout.splitBreaks);
   layout.justify = Boolean(layout.justify);
+  layout.updatedAt = Math.max(0, Number(layout.updatedAt) || 0);
+  delete layout.sidePadding;
   for (const spec of PROSE_LAYOUT_CONTROLS) {
     const raw = Number(layout[spec.key]);
     const fallback = Number(PROSE_LAYOUT_DEFAULTS[spec.key]);
@@ -3785,6 +3859,7 @@ function proseLayoutMessageRoots(root = document) {
 
 function proseLayoutClearBreakMarks(root = document) {
   const scope = root instanceof Element ? root : document;
+  scope.querySelectorAll?.('[data-sd-prose-gap="1"]').forEach((element) => element.remove());
   scope.querySelectorAll?.('[data-sd-prose-indent="1"]').forEach((element) => element.remove());
   scope.querySelectorAll?.('br[data-sd-prose-break="1"]').forEach((element) => element.removeAttribute('data-sd-prose-break'));
 }
@@ -3799,11 +3874,15 @@ function proseLayoutMarkBreaks(root = document) {
     message.querySelectorAll('br').forEach((br) => {
       if (br.closest('pre, code, table, thead, tbody, tr, ul, ol, svg, style, script')) return;
       br.dataset.sdProseBreak = '1';
-      if (br.nextSibling instanceof Element && br.nextSibling.dataset.sdProseIndent === '1') return;
+      const next = br.nextSibling instanceof Element ? br.nextSibling : null;
+      if (next?.dataset.sdProseGap === '1') return;
+      const gap = document.createElement('span');
+      gap.dataset.sdProseGap = '1';
+      gap.setAttribute('aria-hidden', 'true');
       const indent = document.createElement('span');
       indent.dataset.sdProseIndent = '1';
       indent.setAttribute('aria-hidden', 'true');
-      br.after(indent);
+      br.after(gap, indent);
     });
   }
 }
@@ -3829,7 +3908,7 @@ function proseLayoutStartObserver() {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (!(node instanceof Element)) continue;
-        if (node.dataset.sdProseIndent === '1') continue;
+        if (node.dataset.sdProseIndent === '1' || node.dataset.sdProseGap === '1') continue;
         proseLayoutSchedule(node);
       }
     }
@@ -3864,13 +3943,24 @@ function applyProseLayout(refreshBreaks = true) {
   rootStyle.setProperty('--sd-prose-paragraph-gap', `${layout.paragraphGap}em`);
   rootStyle.setProperty('--sd-prose-indent', `${layout.indent}em`);
   rootStyle.setProperty('--sd-prose-content-width', `${layout.contentWidth}ch`);
-  rootStyle.setProperty('--sd-prose-side-padding', `${layout.sidePadding}rem`);
   if (layout.splitBreaks) {
     if (refreshBreaks) proseLayoutMarkBreaks(document);
   } else {
     proseLayoutClearBreakMarks(document);
   }
   proseLayoutStartObserver();
+}
+
+function persistProseLayout() {
+  const layout = proseLayoutSettings();
+  layout.updatedAt = Date.now();
+  const context = ctx();
+  const extensionSettings = context.extensionSettings || (context.extensionSettings = {});
+  if (!isPlainObject(extensionSettings[MODULE_NAME])) extensionSettings[MODULE_NAME] = settings;
+  extensionSettings[MODULE_NAME].proseLayout = clone(layout);
+  settings.proseLayout = extensionSettings[MODULE_NAME].proseLayout;
+  cacheProseLayout(settings.proseLayout);
+  context.saveSettingsDebounced?.();
 }
 
 let floorViewportCleanup = null;
@@ -4053,6 +4143,7 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   const setProseNumber = (key, raw, persist = false) => {
     const spec = PROSE_LAYOUT_CONTROLS.find((item) => item.key === key);
     if (!spec) return;
+    if (String(raw ?? '').trim() === '') return;
     const parsed = Number(raw);
     const fallback = Number(PROSE_LAYOUT_DEFAULTS[key]);
     const value = Math.min(spec.max, Math.max(spec.min, Number.isFinite(parsed) ? parsed : fallback));
@@ -4062,25 +4153,28 @@ function openFloorNavigator(initialView = floorNavigatorView) {
     root.querySelectorAll(`[data-prose-key="${key}"]`).forEach((control) => { control.value = proseLayoutFormatValue(key, value); });
     applyProseLayout(false);
     updateProseState();
-    if (persist) saveSettings();
+    if (persist) persistProseLayout();
   };
   root.querySelectorAll('input[type="range"][data-prose-key]').forEach((control) => {
-    control.addEventListener('input', () => setProseNumber(control.dataset.proseKey, control.value, false));
+    control.addEventListener('input', () => setProseNumber(control.dataset.proseKey, control.value, true));
     control.addEventListener('change', () => setProseNumber(control.dataset.proseKey, control.value, true));
   });
-  root.querySelectorAll('input[type="number"][data-prose-key]').forEach((control) => control.addEventListener('change', () => setProseNumber(control.dataset.proseKey, control.value, true)));
+  root.querySelectorAll('input[type="number"][data-prose-key]').forEach((control) => {
+    control.addEventListener('input', () => setProseNumber(control.dataset.proseKey, control.value, true));
+    control.addEventListener('change', () => setProseNumber(control.dataset.proseKey, control.value, true));
+  });
   root.querySelectorAll('[data-prose-toggle]').forEach((control) => control.addEventListener('change', () => {
     const layout = proseLayoutSettings();
     layout[control.dataset.proseToggle] = Boolean(control.checked);
     layout.active = true;
     applyProseLayout(control.dataset.proseToggle === 'splitBreaks');
     updateProseState();
-    saveSettings();
+    persistProseLayout();
   }));
   root.querySelector('.sd-prose-reset')?.addEventListener('click', () => {
     settings.proseLayout = clone(PROSE_LAYOUT_DEFAULTS);
     applyProseLayout();
-    saveSettings();
+    persistProseLayout();
     openFloorNavigator('layout');
   });
 }
@@ -4153,7 +4247,10 @@ function openQuickWheel(btn) {
     button.setAttribute('role', 'menuitem');
     button.innerHTML = item.external ? quickDockIconMarkup(item) : `<i class="fa-solid ${item.icon}"></i>`;
     holder.appendChild(button);
-    if (item.external) quickDockBindIconFallback(button, item);
+    if (item.external) {
+      quickDockBindIconFallback(button, item);
+      bindQuickWheelUndockDrag(button, item, layout);
+    }
   });
   document.body.appendChild(root);
   quickWheelOriginButton = btn;
@@ -8517,7 +8614,7 @@ function renderQuickWheelSettings() {
         <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}"></i><span>${htmlEscape(item.label)}</span></label>
         <div><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="up" ${index === 0 ? 'disabled' : ''} title="上移"><i class="fa-solid fa-chevron-up"></i></button><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="down" ${index === ordered.length - 1 ? 'disabled' : ''} title="下移"><i class="fa-solid fa-chevron-down"></i></button></div>
       </div>`).join('')}</div>
-      <p class="sd-muted sd-wheel-dock-copy">拖动其他插件的悬浮窗靠近千幕悬浮窗即可收纳；千幕只建立代理入口，不移动对方界面。</p>
+      <p class="sd-muted sd-wheel-dock-copy">拖动其他插件的悬浮窗靠近千幕即可收纳；展开蜂巢后，将第三方蜂巢片向外拖出即可解除。</p>
       ${docked.length ? `<div class="sd-wheel-docked-list"><b>已收纳悬浮窗</b>${docked.map((item) => `<div class="sd-wheel-docked-row" data-dock-key="${htmlEscape(item.key)}"><span class="sd-wheel-docked-icon">${quickDockIconMarkup(item, 'sd-wheel-docked-logo')}</span><span>${htmlEscape(item.label)}</span><small>${item.connected ? '已连接' : '等待载入'}</small><button type="button" class="sd-icon-btn sd-wheel-dock-remove" title="解除收纳" aria-label="解除收纳"><i class="fa-solid fa-arrow-right-from-bracket"></i></button></div>`).join('')}</div>` : ''}
     </details>
   </div>`;
@@ -9369,6 +9466,10 @@ async function importConfig(event) {
   const hasApi = API_CONFIG_KEYS.some((key) => typeof incoming[key] !== 'undefined');
   if (!hasApi) {
     for (const key of API_CONFIG_KEYS) merged[key] = settings[key];
+  }
+  if (isPlainObject(merged.proseLayout)) {
+    merged.proseLayout.updatedAt = Date.now();
+    cacheProseLayout(merged.proseLayout);
   }
   extensionSettings[MODULE_NAME] = merged;
   settings = getSettings();

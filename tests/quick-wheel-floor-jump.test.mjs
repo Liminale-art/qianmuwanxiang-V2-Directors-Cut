@@ -31,6 +31,8 @@ assert.match(source, /sd-wheel-custom-details/, '蜂巢入口列表必须可折�
 assert.match(source, /document\.addEventListener\('pointerdown', dismiss, true\)/, '轮盘必须在文档捕获阶段监听外部点击');
 assert.match(source, /document\.removeEventListener\('pointerdown', dismiss, true\)/, '轮盘关闭时必须解除外部点击监听');
 assert.match(source, /bindQuickWheelOutsideDismiss\(root\)/);
+assert.match(source, /function bindQuickWheelUndockDrag[\s\S]*releaseDistance[\s\S]*quickDockRemove\(key, false\)/, '第三方蜂巢片必须支持向外拖出解除收纳');
+assert.match(source, /bindQuickWheelUndockDrag\(button, item, layout\)/);
 
 // 第三方悬浮窗使用非侵入式代理收纳：拖近捕获、隐藏原入口、代理点击、可解除且不搬动对方 DOM。
 assert.match(source, /quickWheelDockedPlugins:\s*\[\]/);
@@ -72,17 +74,21 @@ assert.match(source, /viewport\?\.addEventListener\('resize', sync\)/);
 assert.match(css, /#story-director-quick-wheel/);
 assert.match(css, /--sd-wheel-item-height/);
 assert.match(css, /clip-path:\s*polygon\(25% 0, 75% 0, 100% 50%/, '蜂巢入口必须是无畸变边角的正六边形');
-assert.match(css, /#story-director-float\s*\{[^}]*--sd-float-edge:\s*#e9e7e2/, '主悬浮窗使用固定象牙白边线');
-assert.match(css, /#story-director-float::before\s*\{[^}]*backdrop-filter:\s*blur\(30px\)/, '主悬浮窗必须使用高模糊透白玻璃');
+assert.match(css, /#story-director-float\s*\{[^}]*--sd-float-edge:\s*#c99b51/, '主悬浮窗使用固定金色边线');
+assert.match(css, /#story-director-float\s*\{[^}]*background:\s*transparent !important/, '主悬浮窗中心不得被不透明边框底色垫住');
+assert.match(css, /#story-director-float::after\s*\{[^}]*background:\s*var\(--sd-float-edge\)[^}]*mask-composite:\s*exclude/, '主悬浮窗必须使用独立的不透明金色边框环');
+assert.match(css, /#story-director-float\s*\{[^}]*backdrop-filter:\s*blur\(22px\) saturate\(\.72\)/, '主悬浮窗必须直接采样页面背景形成毛玻璃');
 const floatGlass = css.slice(css.indexOf('#story-director-float::before'), css.indexOf('#story-director-float:hover'));
 assert.match(floatGlass, /sd-float-glass-breathe/, '主 Logo 透白底必须保留缓慢呼吸');
-assert.match(css, /@keyframes sd-float-glass-breathe\s*\{[^}]*rgba\(255, 255, 255, \.24\)[\s\S]*rgba\(255, 255, 255, \.75\)/, '呼吸区间必须从轻透白过渡到 75% 不透明');
+assert.match(css, /@keyframes sd-float-glass-breathe\s*\{[^}]*rgba\(255, 255, 255, \.14\)[\s\S]*rgba\(255, 255, 255, \.38\)/, '呼吸区间必须保持足够透明，不能再遮成实色');
 assert.doesNotMatch(css, /#story-director-float\.sd-theme-|#story-director-quick-wheel\.sd-theme-/, '悬浮窗与蜂巢不得再受面板主题配色影响');
 assert.match(css, /--sd-wheel-icon:\s*#4b4b49/, '所有千幕蜂巢入口统一使用暗灰图标');
-assert.match(css, /\.is-edge-ivory\s*\{[^}]*#efeee9[\s\S]*\.is-edge-gold\s*\{[^}]*#c99b51[\s\S]*\.is-edge-graphite\s*\{[^}]*#454644/, '蜂巢边线必须使用正式 Logo 三色且保持不透明');
-assert.match(css, /backdrop-filter:\s*blur\(26px\) saturate\(1\.04\)/, '展开蜂巢与主 Logo 使用统一的高模糊透白玻璃');
+assert.match(css, /\.is-edge-ivory\s*\{[^}]*#f3eee3[\s\S]*\.is-edge-gold\s*\{[^}]*#c99b51[\s\S]*\.is-edge-graphite\s*\{[^}]*#454644[^}]*--sd-wheel-icon:\s*#f7f3ea/, '浅色边线需更清晰，石墨边线必须切换白色图标');
+assert.match(css, /backdrop-filter:\s*blur\(18px\) saturate\(\.72\) brightness\(1\.06\)/, '蜂巢需保留背景可见的低饱和毛玻璃');
+assert.match(css, /\.sd-wheel-command::after\s*\{[^}]*background:\s*var\(--sd-wheel-edge[^}]*mask-composite:\s*exclude/, '蜂巢边线必须作为独立环绘制，不能用不透明色垫满中心');
 assert.match(css, /sd-wheel-hive-in[\s\S]*rotateY\(82deg\)/, '蜂巢片应有翻转入场效果');
 assert.match(css, /\.sd-wheel-command\.is-external\s*\{[^}]*animation:\s*none[^}]*opacity:\s*1/, '第三方收纳片必须保持静态，边线仍沿用随机 Logo 色系');
+assert.match(css, /\.sd-wheel-command\.is-undock-ready/, '拖出解除收纳必须提供清晰的就绪反馈');
 assert.match(css, /\.sd-quick-docked-origin\s*\{[^}]*visibility:\s*hidden[^}]*pointer-events:\s*none/, '原插件入口只能视觉隐藏，不能从 DOM 删除');
 assert.match(css, /prefers-reduced-motion:\s*reduce/, '蜂巢动态必须尊重系统减少动态设置');
 
@@ -141,18 +147,22 @@ assert.match(css, /\.mes\.sd-floor-jump-hit/);
 
 // 楼层工具新增独立正文排版页：默认零介入，首次改值即启用，不提供额外启动开关。
 assert.match(source, /const PROSE_LAYOUT_DEFAULTS[\s\S]*active:\s*false/);
-for (const label of ['字号', '行高', '段距', '缩进', '宽度', '边距', '换行整理为段落', '两端对齐']) {
+for (const label of ['字号', '行高', '段距', '缩进', '宽度', '换行整理为段落', '两端对齐']) {
   assert.match(source, new RegExp(label));
 }
+assert.doesNotMatch(source.slice(source.indexOf('const PROSE_LAYOUT_CONTROLS'), source.indexOf('const PROSE_LAYOUT_STORAGE_KEY')), /sidePadding|边距/, '宽度与边距功能重叠，只保留宽度');
 assert.match(source, /data-floor-tab="jump"[\s\S]*data-floor-tab="layout"/);
 assert.match(source, /layout\[key\] = value;[\s\S]*layout\.active = true;/, '任一数值发生变化即应用正文排版');
 assert.doesNotMatch(source, /data-prose-toggle="active"|启用正文排版/, '不得增加额外的启用开关');
 assert.match(source, /settings\.proseLayout = clone\(PROSE_LAYOUT_DEFAULTS\)/, '必须可一键恢复 ST 原始正文排版');
+assert.match(source, /PROSE_LAYOUT_STORAGE_KEY[\s\S]*readCachedProseLayout[\s\S]*cacheProseLayout/, '正文排版必须具有刷新防丢的本地持久化镜像');
+assert.match(source, /function persistProseLayout[\s\S]*extensionSettings\[MODULE_NAME\]\.proseLayout = clone\(layout\)[\s\S]*saveSettingsDebounced/, '保存必须同时写回 ST 设置对象');
+assert.match(source, /input\[type="number"\]\[data-prose-key\][\s\S]*addEventListener\('input'/, '数值输入必须即时响应');
 assert.match(source, /querySelectorAll\('#chat \.mes_text'\)/, '排版功能必须严格限制在聊天正文');
 assert.doesNotMatch(source.slice(source.indexOf('function proseLayoutMarkBreaks'), source.indexOf('function proseLayoutSchedule')), /innerHTML|outerHTML|wrap|replaceWith/, '换行整理不得重建正文或复制参考实现');
-assert.match(css, /body\.sd-prose-layout #chat \.mes \.mes_text/);
-assert.match(css, /body\.sd-prose-justify #chat \.mes \.mes_text/);
-assert.match(css, /body\.sd-prose-split-breaks #chat \.mes \.mes_text br\[data-sd-prose-break="1"\]/);
+assert.match(css, /html body\.sd-prose-layout #chat \.mes \.mes_text[\s\S]*line-height:\s*var\(--sd-prose-line-height\) !important/, '正文排版必须以高优先级覆盖 ST 美化');
+assert.match(css, /html body\.sd-prose-justify #chat \.mes \.mes_text/);
+assert.match(css, /body\.sd-prose-split-breaks #chat \.mes \.mes_text \[data-sd-prose-gap="1"\][\s\S]*height:\s*var\(--sd-prose-paragraph-gap\) !important/, '段距必须使用稳定的间隔元素而非无效的 br margin');
 assert.match(css, /\.sd-floor-search\s*\{[^}]*grid-template-columns:\s*auto minmax\(0, 1fr\) auto auto/);
 assert.match(css, /\.sd-floor-actions\s*\{[^}]*grid-template-columns:\s*1fr 1fr/);
 assert.match(css, /\.sd-floor-jump\s*\{[^}]*border-radius:\s*999px/);
