@@ -21,6 +21,7 @@ assert.match(source, /sd-option-chip sd-inject-section/);
 assert.match(source, /sd-derivative-options[\s\S]*sd-option-chip[\s\S]*伏笔显影[\s\S]*尘寰群生[\s\S]*世界格局/);
 assert.match(css, /\.sd-option-chip:has\(input:checked\)\s*\{[^}]*--sd-accent/);
 assert.match(css, /\.sd-inject-subfold\s*\{[^}]*border:[^}]*background:/);
+assert.match(css, /\.sd-inject-subfold \+ \.sd-inject-subfold\s*\{[^}]*margin-top:\s*4px/, '注入范围与当前注入内容的间距须由 20px 缩减 80%');
 assert.match(source, /sd-inject-title[\s\S]*token[^<]*<\/span><span class="sd-inject-meta">[\s\S]*sd-edit-injection/);
 
 // 剧组之律默认只露出单一折叠标题，展开后才包含两份文本与操作按钮。

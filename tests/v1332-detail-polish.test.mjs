@@ -11,8 +11,8 @@ assert.match(source, /function applyAccState[\s\S]*key\?\.startsWith\('log-'\)[\
 assert.match(source, /sd-log-entry[^`]*logOpenState\?\.\[id\] === true \? ' open' : ''/);
 assert.doesNotMatch(source, /sd-log-entry[^`]*index === 0 \? 'open'/);
 
-// 注入子卡之间留白；剧组之律副注释靠右。
-assert.match(css, /\.sd-inject-subfold \+ \.sd-inject-subfold\s*\{[^}]*margin-top:\s*20px/);
+// 注入子卡之间保留紧凑留白；剧组之律副注释靠右。
+assert.match(css, /\.sd-inject-subfold \+ \.sd-inject-subfold\s*\{[^}]*margin-top:\s*4px/);
 assert.match(css, /\.sd-director-law-fold > summary\s*\{[^}]*justify-content:\s*space-between/);
 assert.match(css, /\.sd-director-law-fold > summary \.sd-summary-note\s*\{[^}]*margin-left:\s*auto/);
 

@@ -154,16 +154,16 @@ assert.doesNotMatch(css, /#story-director-floor-nav \.sd-floor-panel\s*\{[^}]*ma
 assert.match(css, /#story-director-floor-nav\.sd-theme-dark/);
 assert.match(css, /\.mes\.sd-floor-jump-hit/);
 
-// 楼层工具新增独立正文排版页：默认零介入，首次改值即启用，不提供额外启动开关。
+// 楼层工具新增独立正文排版页：默认零介入，三项开关置于滑动条组上方。
 assert.match(source, /const PROSE_LAYOUT_DEFAULTS[\s\S]*active:\s*false/);
-for (const label of ['字号', '行高', '段距', '缩进', '宽度', '换行整理为段落', '两端对齐']) {
+for (const label of ['开启排版', '字号', '行高', '段距', '缩进', '宽度', '换行整理为段落', '两端对齐']) {
   assert.match(source, new RegExp(label));
 }
 assert.doesNotMatch(source.slice(source.indexOf('const PROSE_LAYOUT_CONTROLS'), source.indexOf('const PROSE_LAYOUT_STORAGE_KEY')), /sidePadding|边距/, '宽度与边距功能重叠，只保留宽度');
 assert.match(source, /data-floor-tab="jump"[\s\S]*data-floor-tab="layout"/);
-assert.match(source, /layout\[key\] = value;[\s\S]*layout\.active = true;/, '任一数值发生变化即应用正文排版');
-assert.doesNotMatch(source, /data-prose-toggle="active"|启用正文排版/, '不得增加额外的启用开关');
-assert.match(source, /settings\.proseLayout = clone\(PROSE_LAYOUT_DEFAULTS\)/, '必须可一键恢复 ST 原始正文排版');
+assert.match(source, /data-prose-toggle="active"[\s\S]*开启排版/);
+assert.doesNotMatch(source, /已应用正文排版|跟随 SillyTavern 默认|恢复正文默认/);
+assert.ok(source.indexOf('data-prose-toggle="active"') < source.indexOf('<div class="sd-prose-controls">'), '排版开关组必须位于滑动条组上方');
 assert.match(source, /PROSE_LAYOUT_STORAGE_KEY[\s\S]*readCachedProseLayout[\s\S]*cacheProseLayout/, '正文排版必须具有刷新防丢的本地持久化镜像');
 assert.match(source, /function persistProseLayout[\s\S]*extensionSettings\[MODULE_NAME\]\.proseLayout = clone\(layout\)[\s\S]*saveSettingsDebounced/, '保存必须同时写回 ST 设置对象');
 assert.match(source, /input\[type="number"\]\[data-prose-key\][\s\S]*addEventListener\('input'/, '数值输入必须即时响应');

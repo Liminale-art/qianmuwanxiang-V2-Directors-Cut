@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.33.2';
+const VERSION = '1.33.3';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -4075,12 +4075,12 @@ function floorProseLayoutMarkup() {
     const value = proseLayoutFormatValue(spec.key, layout[spec.key]);
     return `<label class="sd-prose-control"><span>${spec.label}</span><input type="range" data-prose-key="${spec.key}" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${value}"><input type="number" data-prose-key="${spec.key}" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${value}" inputmode="decimal"><small>${spec.unit}</small></label>`;
   }).join('');
-  return `<div class="sd-prose-state-row"><span class="sd-prose-state ${layout.active ? 'is-active' : ''}">${layout.active ? '已应用正文排版' : '跟随 SillyTavern 默认'}</span><button type="button" class="sd-prose-reset" ${layout.active ? '' : 'disabled'}>恢复正文默认</button></div>
-    <div class="sd-prose-controls">${controls}</div>
-    <div class="sd-prose-checks">
+  return `<div class="sd-prose-checks">
+      <label><input type="checkbox" data-prose-toggle="active" ${layout.active ? 'checked' : ''}><span>开启排版</span></label>
       <label><input type="checkbox" data-prose-toggle="splitBreaks" ${layout.splitBreaks ? 'checked' : ''}><span>换行整理为段落</span></label>
       <label><input type="checkbox" data-prose-toggle="justify" ${layout.justify ? 'checked' : ''}><span>两端对齐</span></label>
-    </div>`;
+    </div>
+    <div class="sd-prose-controls">${controls}</div>`;
 }
 
 function openFloorNavigator(initialView = floorNavigatorView) {
@@ -4127,16 +4127,6 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   root.querySelector('.sd-floor-jump')?.addEventListener('click', () => jumpToChatFloor(input?.value));
   root.querySelector('.sd-floor-top')?.addEventListener('click', () => jumpToChatFloor(0));
   root.querySelector('.sd-floor-bottom')?.addEventListener('click', () => jumpToChatFloor(chat.length - 1));
-  const updateProseState = () => {
-    const layout = proseLayoutSettings();
-    const state = root.querySelector('.sd-prose-state');
-    if (state) {
-      state.textContent = layout.active ? '已应用正文排版' : '跟随 SillyTavern 默认';
-      state.classList.toggle('is-active', layout.active);
-    }
-    const reset = root.querySelector('.sd-prose-reset');
-    if (reset) reset.disabled = !layout.active;
-  };
   const setProseNumber = (key, raw, persist = false) => {
     const spec = PROSE_LAYOUT_CONTROLS.find((item) => item.key === key);
     if (!spec) return;
@@ -4146,10 +4136,8 @@ function openFloorNavigator(initialView = floorNavigatorView) {
     const value = Math.min(spec.max, Math.max(spec.min, Number.isFinite(parsed) ? parsed : fallback));
     const layout = proseLayoutSettings();
     layout[key] = value;
-    layout.active = true;
     root.querySelectorAll(`[data-prose-key="${key}"]`).forEach((control) => { control.value = proseLayoutFormatValue(key, value); });
     applyProseLayout(false);
-    updateProseState();
     if (persist) persistProseLayout();
   };
   root.querySelectorAll('input[type="range"][data-prose-key]').forEach((control) => {
@@ -4163,17 +4151,9 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   root.querySelectorAll('[data-prose-toggle]').forEach((control) => control.addEventListener('change', () => {
     const layout = proseLayoutSettings();
     layout[control.dataset.proseToggle] = Boolean(control.checked);
-    layout.active = true;
-    applyProseLayout(control.dataset.proseToggle === 'splitBreaks');
-    updateProseState();
+    applyProseLayout(control.dataset.proseToggle === 'splitBreaks' || control.dataset.proseToggle === 'active');
     persistProseLayout();
   }));
-  root.querySelector('.sd-prose-reset')?.addEventListener('click', () => {
-    settings.proseLayout = clone(PROSE_LAYOUT_DEFAULTS);
-    applyProseLayout();
-    persistProseLayout();
-    openFloorNavigator('layout');
-  });
 }
 
 async function runQuickWheelCommand(id) {
