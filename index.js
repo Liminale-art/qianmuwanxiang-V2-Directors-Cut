@@ -336,6 +336,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   quickWheelScheme: 'custom',   // 兼容旧配置字段；蜂巢快捷盘从 1.27 起仅使用用户自定义入口
   quickWheelCustomOrder: ['dashboard', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
   quickWheelCustomEnabled: ['dashboard', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
+  quickWheelDockedPlugins: [],
   quickWheelCustomExpanded: false,
   theme: 'light',
   lastTab: 'dashboard',   // 面板上次停留的标签，二次打开恢复到此（校验回退 dashboard）
@@ -3164,6 +3165,12 @@ const QUICK_HIVE_LAYOUTS = Object.freeze({
   7: [[-.82, -.92], [0, -.92], [.82, -.92], [1.22, 0], [.82, .92], [-.82, .92], [-1.22, 0]],
   8: [[-.82, -.92], [0, -.92], [.82, -.92], [1.22, 0], [.82, .92], [0, .92], [-.82, .92], [-1.22, 0]],
 });
+const quickDockRuntime = new Map();
+let quickDockObserver = null;
+let quickDockRestoreTimer = null;
+let quickDockRestoreStopTimer = null;
+let quickDockDrag = null;
+let quickDockCaptureBound = false;
 
 function normalizeQuickWheelSettings() {
   // 旧版“默认方案”只在迁移时存在；更新后直接沿用用户已经勾选的自定义入口。
@@ -3174,12 +3181,40 @@ function normalizeQuickWheelSettings() {
   const enabledSet = new Set(enabled.filter((id) => QUICK_COMMAND_IDS.includes(id)));
   settings.quickWheelCustomEnabled = settings.quickWheelCustomOrder.filter((id) => enabledSet.has(id)).slice(0, QUICK_HIVE_MAX_ITEMS);
   if (!settings.quickWheelCustomEnabled.length) settings.quickWheelCustomEnabled = [QUICK_COMMAND_IDS[0]];
+  const docked = Array.isArray(settings.quickWheelDockedPlugins) ? settings.quickWheelDockedPlugins : [];
+  const seenDockKeys = new Set();
+  settings.quickWheelDockedPlugins = docked.filter((item) => {
+    const key = String(item?.key || '').trim();
+    const selector = String(item?.selector || '').trim();
+    if (!key || !selector || seenDockKeys.has(key)) return false;
+    seenDockKeys.add(key);
+    return true;
+  }).slice(0, QUICK_HIVE_MAX_ITEMS).map((item) => ({
+    key: String(item.key).slice(0, 120),
+    selector: String(item.selector).slice(0, 500),
+    label: String(item.label || '第三方工具').slice(0, 40),
+    iconUrl: String(item.iconUrl || '').slice(0, 2048),
+    iconClass: String(item.iconClass || '').split(/\s+/).filter((name) => /^fa[\w-]*$/.test(name)).slice(0, 5).join(' '),
+  }));
 }
 
-function quickWheelItems() {
+function quickWheelPrimaryItems() {
   normalizeQuickWheelSettings();
   const ids = settings.quickWheelCustomOrder.filter((id) => settings.quickWheelCustomEnabled.includes(id));
   return ids.slice(0, QUICK_HIVE_MAX_ITEMS).map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
+}
+
+function quickWheelItems() {
+  const primary = quickWheelPrimaryItems();
+  const room = Math.max(0, QUICK_HIVE_MAX_ITEMS - primary.length);
+  const docked = [...quickDockRuntime.values()].filter((record) => record.host?.isConnected).slice(0, room).map((record) => ({
+    id: `dock:${record.key}`,
+    label: record.label,
+    icon: record.iconClass || 'fa-solid fa-puzzle-piece',
+    iconUrl: record.iconUrl || '',
+    external: true,
+  }));
+  return [...primary, ...docked];
 }
 
 let quickWheelOutsideCleanup = null;
@@ -3191,6 +3226,266 @@ function closeQuickWheel() {
   quickWheelOriginButton?.classList.remove('sd-wheel-origin-hidden');
   quickWheelOriginButton = null;
   document.getElementById(QUICK_WHEEL_ID)?.remove();
+}
+
+function quickDockAttrEscape(value) {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]/g, ' ');
+}
+
+function quickDockStableSelector(element) {
+  if (!(element instanceof Element)) return '';
+  const candidates = [];
+  if (element.id) candidates.push(`[id="${quickDockAttrEscape(element.id)}"]`);
+  for (const attr of ['data-extension-id', 'data-plugin-id', 'data-extension-name', 'aria-label', 'title']) {
+    const value = element.getAttribute(attr);
+    if (value) candidates.push(`${element.tagName.toLowerCase()}[${attr}="${quickDockAttrEscape(value)}"]`);
+  }
+  for (const selector of candidates) {
+    try { if (document.querySelectorAll(selector).length === 1) return selector; } catch (_) {}
+  }
+  return '';
+}
+
+function quickDockActivatorForHost(host, preferred = null) {
+  if (preferred instanceof Element && (preferred === host || host.contains(preferred))) return preferred;
+  if (host?.matches?.('button, a, [role="button"], [tabindex]')) return host;
+  return host?.querySelector?.('button, a, [role="button"], [tabindex]') || host;
+}
+
+function quickDockCandidate(target) {
+  if (!(target instanceof Element)) return null;
+  if (target.closest(`#${FLOAT_ID}, #${MODAL_ID}, #${QUICK_WHEEL_ID}, #${FLOOR_NAV_ID}, #sd-reader-portal, .sd-toast`)) return null;
+  const preferred = target.closest('button, a, [role="button"], [tabindex]');
+  let node = target;
+  while (node && node !== document.body && node !== document.documentElement) {
+    const rect = node.getBoundingClientRect();
+    const style = getComputedStyle(node);
+    const bodyAbsolute = style.position === 'absolute' && node.parentElement === document.body;
+    const compact = rect.width >= 20 && rect.height >= 20 && rect.width <= 140 && rect.height <= 140;
+    if ((style.position === 'fixed' || bodyAbsolute) && compact && style.display !== 'none' && style.visibility !== 'hidden') {
+      return { host: node, activator: quickDockActivatorForHost(node, preferred) };
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
+
+function quickDockDescribe(host, activator) {
+  const label = String(
+    activator?.getAttribute?.('aria-label') || activator?.getAttribute?.('title')
+    || host?.getAttribute?.('aria-label') || host?.getAttribute?.('title')
+    || activator?.textContent || host?.textContent || '第三方工具',
+  ).replace(/\s+/g, ' ').trim().slice(0, 40) || '第三方工具';
+  const iconNode = activator?.querySelector?.('img') || (activator?.matches?.('img') ? activator : null)
+    || host?.querySelector?.('img');
+  let iconUrl = String(iconNode?.currentSrc || iconNode?.src || '').trim();
+  if (!iconUrl) {
+    const background = String(getComputedStyle(activator || host).backgroundImage || '');
+    const match = /^url\(["']?(.*?)["']?\)$/.exec(background);
+    if (match) iconUrl = match[1];
+  }
+  if (iconUrl.length > 2048) iconUrl = '';
+  const faNode = activator?.matches?.('i[class*="fa-"]') ? activator : activator?.querySelector?.('i[class*="fa-"]')
+    || host?.querySelector?.('i[class*="fa-"]');
+  const iconClass = [...(faNode?.classList || [])].filter((name) => /^fa[\w-]*$/.test(name)).slice(0, 5).join(' ');
+  return { label, iconUrl, iconClass };
+}
+
+function quickDockReservedCount() {
+  const keys = new Set((settings.quickWheelDockedPlugins || []).map((item) => item.key));
+  for (const key of quickDockRuntime.keys()) keys.add(key);
+  return keys.size;
+}
+
+function syncQuickDockOriginVisibility() {
+  const hidden = settings.quickWheelEnabled !== false && settings.floatingButton !== false;
+  for (const record of quickDockRuntime.values()) record.host?.classList.toggle('sd-quick-docked-origin', hidden);
+}
+
+function quickDockDisplayRecords() {
+  normalizeQuickWheelSettings();
+  const records = new Map((settings.quickWheelDockedPlugins || []).map((item) => [item.key, { ...item, connected: quickDockRuntime.has(item.key), persistent: true }]));
+  for (const record of quickDockRuntime.values()) {
+    records.set(record.key, { key: record.key, label: record.label, iconUrl: record.iconUrl, iconClass: record.iconClass, connected: !!record.host?.isConnected, persistent: !!record.selector });
+  }
+  return [...records.values()];
+}
+
+function quickDockRefreshSettingsIfVisible() {
+  if (isModalOpen() && activeTab === 'plug') renderModal();
+}
+
+function quickDockAttach(host, activator, descriptor = null, fromRestore = false) {
+  if (!(host instanceof Element) || host.closest(`#${FLOAT_ID}, #${MODAL_ID}, #${QUICK_WHEEL_ID}, #${FLOOR_NAV_ID}, #sd-reader-portal`)) return false;
+  normalizeQuickWheelSettings();
+  const selector = String(descriptor?.selector || quickDockStableSelector(host) || quickDockStableSelector(activator));
+  const saved = selector ? settings.quickWheelDockedPlugins.find((item) => item.selector === selector) : null;
+  const key = String(descriptor?.key || saved?.key || uid('dock'));
+  if (quickDockRuntime.has(key)) return true;
+  const primaryCount = quickWheelPrimaryItems().length;
+  const occupied = fromRestore ? quickDockRuntime.size : Math.max(0, quickDockReservedCount() - (saved ? 1 : 0));
+  if (primaryCount + occupied >= QUICK_HIVE_MAX_ITEMS) {
+    if (!fromRestore) toast('蜂巢已满，请先在 API 与日志中取消一个千幕入口或解除一项收纳。', 'warning');
+    return false;
+  }
+  const visual = { ...quickDockDescribe(host, activator), ...(descriptor || {}) };
+  const record = {
+    key,
+    selector,
+    label: String(visual.label || '第三方工具').slice(0, 40),
+    iconUrl: String(visual.iconUrl || '').slice(0, 2048),
+    iconClass: String(visual.iconClass || '').split(/\s+/).filter((name) => /^fa[\w-]*$/.test(name)).slice(0, 5).join(' '),
+    host,
+    activator: quickDockActivatorForHost(host, activator),
+  };
+  quickDockRuntime.set(key, record);
+  syncQuickDockOriginVisibility();
+  if (selector && !saved) {
+    settings.quickWheelDockedPlugins.push({
+      key,
+      selector,
+      label: record.label,
+      iconUrl: /^blob:/i.test(record.iconUrl) ? '' : record.iconUrl,
+      iconClass: record.iconClass,
+    });
+    saveSettings();
+  }
+  if (!fromRestore) {
+    toast(selector ? `已将「${record.label}」收纳进千幕蜂巢。` : `已收纳「${record.label}」；此入口缺少稳定标识，本次页面有效。`, 'success');
+    quickDockRefreshSettingsIfVisible();
+  }
+  return true;
+}
+
+function quickDockRemove(key, refresh = true) {
+  const record = quickDockRuntime.get(String(key));
+  record?.host?.classList.remove('sd-quick-docked-origin');
+  quickDockRuntime.delete(String(key));
+  normalizeQuickWheelSettings();
+  settings.quickWheelDockedPlugins = settings.quickWheelDockedPlugins.filter((item) => item.key !== String(key));
+  saveSettings();
+  if (refresh) quickDockRefreshSettingsIfVisible();
+}
+
+function quickDockRun(key) {
+  const record = quickDockRuntime.get(String(key));
+  if (!record?.host?.isConnected) {
+    toast('这个第三方入口尚未载入，已保留收纳记录。', 'warning');
+    restoreQuickDockedPlugins();
+    return;
+  }
+  const target = quickDockActivatorForHost(record.host, record.activator);
+  record.host.classList.remove('sd-quick-docked-origin');
+  try { target?.click?.(); }
+  catch (error) { console.warn(`[${MODULE_NAME}] docked plugin activation failed`, error); toast('第三方入口唤起失败，请先解除收纳后重试。', 'error'); }
+  requestAnimationFrame(() => {
+    if (!quickDockRuntime.has(record.key)) return;
+    if (record.host?.isConnected) syncQuickDockOriginVisibility();
+    else { quickDockRuntime.delete(record.key); restoreQuickDockedPlugins(); }
+  });
+}
+
+function quickDockScanStored() {
+  normalizeQuickWheelSettings();
+  for (const item of settings.quickWheelDockedPlugins) {
+    const current = quickDockRuntime.get(item.key);
+    if (current?.host?.isConnected) continue;
+    if (current) quickDockRuntime.delete(item.key);
+    let host = null;
+    try { host = document.querySelector(item.selector); } catch (_) {}
+    if (host) quickDockAttach(host, quickDockActivatorForHost(host), item, true);
+  }
+  const unresolved = settings.quickWheelDockedPlugins.some((item) => !quickDockRuntime.get(item.key)?.host?.isConnected);
+  if (!unresolved) {
+    quickDockObserver?.disconnect();
+    quickDockObserver = null;
+  }
+}
+
+function restoreQuickDockedPlugins() {
+  normalizeQuickWheelSettings();
+  const savedKeys = new Set(settings.quickWheelDockedPlugins.map((item) => item.key));
+  for (const [key, record] of quickDockRuntime) {
+    if (record.selector && !savedKeys.has(key)) {
+      record.host?.classList.remove('sd-quick-docked-origin');
+      quickDockRuntime.delete(key);
+    }
+  }
+  if (!settings.quickWheelDockedPlugins.length) return;
+  quickDockScanStored();
+  syncQuickDockOriginVisibility();
+  if (settings.quickWheelDockedPlugins.every((item) => quickDockRuntime.get(item.key)?.host?.isConnected) || quickDockObserver) return;
+  quickDockObserver = new MutationObserver(() => {
+    if (quickDockRestoreTimer) return;
+    quickDockRestoreTimer = setTimeout(() => { quickDockRestoreTimer = null; quickDockScanStored(); }, 160);
+  });
+  quickDockObserver.observe(document.body, { childList: true, subtree: true });
+  if (quickDockRestoreStopTimer) clearTimeout(quickDockRestoreStopTimer);
+  quickDockRestoreStopTimer = setTimeout(() => {
+    quickDockObserver?.disconnect();
+    quickDockObserver = null;
+    quickDockRestoreStopTimer = null;
+  }, 30000);
+}
+
+function quickDockClearDrag() {
+  document.getElementById(FLOAT_ID)?.classList.remove('sd-dock-ready');
+  quickDockDrag = null;
+}
+
+function quickDockOnPointerDown(event) {
+  if (!settings.quickWheelEnabled || settings.floatingButton === false || (event.button != null && event.button !== 0)) return;
+  const candidate = quickDockCandidate(event.target);
+  if (!candidate || candidate.host.classList.contains('sd-quick-docked-origin')) return;
+  quickDockDrag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, moved: false, ready: false, ...candidate };
+}
+
+function quickDockOnPointerMove(event) {
+  if (!quickDockDrag || event.pointerId !== quickDockDrag.pointerId) return;
+  const distance = Math.hypot(event.clientX - quickDockDrag.startX, event.clientY - quickDockDrag.startY);
+  if (distance > 9) quickDockDrag.moved = true;
+  if (!quickDockDrag.moved) return;
+  const float = document.getElementById(FLOAT_ID);
+  if (!float) return quickDockClearDrag();
+  const rect = float.getBoundingClientRect();
+  const radius = Math.max(46, getFloatSize() * 1.4);
+  quickDockDrag.ready = Math.hypot(event.clientX - (rect.left + rect.width / 2), event.clientY - (rect.top + rect.height / 2)) <= radius;
+  float.classList.toggle('sd-dock-ready', quickDockDrag.ready);
+}
+
+function quickDockOnPointerUp(event) {
+  if (!quickDockDrag || event.pointerId !== quickDockDrag.pointerId) return;
+  const drag = quickDockDrag;
+  quickDockClearDrag();
+  if (drag.moved && drag.ready) setTimeout(() => quickDockAttach(drag.host, drag.activator), 0);
+}
+
+function bindQuickDockCapture() {
+  if (quickDockCaptureBound) return;
+  quickDockCaptureBound = true;
+  document.addEventListener('pointerdown', quickDockOnPointerDown, true);
+  document.addEventListener('pointermove', quickDockOnPointerMove, true);
+  document.addEventListener('pointerup', quickDockOnPointerUp, true);
+  document.addEventListener('pointercancel', quickDockClearDrag, true);
+}
+
+function unbindQuickDockCapture() {
+  if (quickDockCaptureBound) {
+    document.removeEventListener('pointerdown', quickDockOnPointerDown, true);
+    document.removeEventListener('pointermove', quickDockOnPointerMove, true);
+    document.removeEventListener('pointerup', quickDockOnPointerUp, true);
+    document.removeEventListener('pointercancel', quickDockClearDrag, true);
+  }
+  quickDockCaptureBound = false;
+  quickDockObserver?.disconnect();
+  quickDockObserver = null;
+  if (quickDockRestoreTimer) clearTimeout(quickDockRestoreTimer);
+  if (quickDockRestoreStopTimer) clearTimeout(quickDockRestoreStopTimer);
+  quickDockRestoreTimer = null;
+  quickDockRestoreStopTimer = null;
+  quickDockClearDrag();
+  for (const record of quickDockRuntime.values()) record.host?.classList.remove('sd-quick-docked-origin');
+  quickDockRuntime.clear();
 }
 
 function bindQuickWheelOutsideDismiss(root) {
@@ -3361,6 +3656,7 @@ function openFloorNavigator() {
 
 async function runQuickWheelCommand(id) {
   closeQuickWheel();
+  if (String(id).startsWith('dock:')) return quickDockRun(String(id).slice(5));
   if (id === 'coread') {
     if (!COREAD_ENABLED) return toast(COREAD_TEASER, 'info');
     if (readerView) coreadCloseReader();
@@ -3417,19 +3713,23 @@ function openQuickWheel(btn) {
     const button = document.createElement('button');
     button.type = 'button';
     const palettes = ['is-black-gold', 'is-white-gold', 'is-gold-black'];
-    const palette = palettes[Math.floor(Math.random() * palettes.length)];
+    const palette = item.external ? 'is-external' : palettes[Math.floor(Math.random() * palettes.length)];
     button.className = `sd-wheel-command ${palette}${item.pending ? ' is-pending' : ''}`;
     button.dataset.command = item.id;
     button.style.setProperty('--sd-wheel-item-size', `${itemSize}px`);
-    button.style.setProperty('--sd-wheel-delay', `${index * 24 + Math.floor(Math.random() * 45)}ms`);
-    button.style.setProperty('--sd-wheel-glint-speed', `${(2.7 + Math.random() * 2.4).toFixed(2)}s`);
-    button.style.setProperty('--sd-wheel-idle-alpha', `${(.8 + Math.random() * .14).toFixed(2)}`);
+    if (!item.external) {
+      button.style.setProperty('--sd-wheel-delay', `${index * 24 + Math.floor(Math.random() * 45)}ms`);
+      button.style.setProperty('--sd-wheel-glint-speed', `${(2.7 + Math.random() * 2.4).toFixed(2)}s`);
+      button.style.setProperty('--sd-wheel-idle-alpha', `${(.8 + Math.random() * .14).toFixed(2)}`);
+    }
     button.style.left = `${centerX + slot.x - itemSize / 2}px`;
     button.style.top = `${centerY + slot.y - itemSize / 2}px`;
     button.title = item.pending ? `${item.label}（即将开放）` : item.label;
     button.setAttribute('aria-label', button.title);
     button.setAttribute('role', 'menuitem');
-    button.innerHTML = `<i class="fa-solid ${item.icon}"></i>`;
+    button.innerHTML = item.iconUrl
+      ? `<img class="sd-wheel-external-logo" src="${htmlEscape(item.iconUrl)}" alt="">`
+      : `<i class="${item.external ? htmlEscape(item.icon || 'fa-solid fa-puzzle-piece') : `fa-solid ${item.icon}`}"></i>`;
     holder.appendChild(button);
   });
   document.body.appendChild(root);
@@ -7741,15 +8041,19 @@ function ttsStopChat() {
 function renderQuickWheelSettings() {
   normalizeQuickWheelSettings();
   const ordered = settings.quickWheelCustomOrder.map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
+  const docked = quickDockDisplayRecords();
+  const occupied = Math.min(QUICK_HIVE_MAX_ITEMS, settings.quickWheelCustomEnabled.length + docked.length);
   return `<div class="sd-wheel-settings">
     <div class="sd-wheel-setting-head">
       <label class="checkbox_label"><input type="checkbox" class="sd-wheel-toggle" ${settings.quickWheelEnabled !== false ? 'checked' : ''}> 长按展开蜂巢快捷盘</label>
     </div>
-    <details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑蜂巢入口</span><b>${settings.quickWheelCustomEnabled.length} / ${QUICK_HIVE_MAX_ITEMS}</b></summary><p class="sd-muted sd-wheel-default-copy">可从千幕全部入口中选择，最多显示 ${QUICK_HIVE_MAX_ITEMS} 项；列表顺序就是蜂巢顺序。</p><div class="sd-wheel-custom-list">${ordered.map((item, index) => `
+    <details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑蜂巢入口</span><b>${occupied} / ${QUICK_HIVE_MAX_ITEMS}</b></summary><p class="sd-muted sd-wheel-default-copy">可从千幕全部入口中选择，最多显示 ${QUICK_HIVE_MAX_ITEMS} 项；列表顺序就是蜂巢顺序。</p><div class="sd-wheel-custom-list">${ordered.map((item, index) => `
       <div class="sd-wheel-custom-row" data-command="${item.id}">
         <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}"></i><span>${htmlEscape(item.label)}</span></label>
         <div><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="up" ${index === 0 ? 'disabled' : ''} title="上移"><i class="fa-solid fa-chevron-up"></i></button><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="down" ${index === ordered.length - 1 ? 'disabled' : ''} title="下移"><i class="fa-solid fa-chevron-down"></i></button></div>
       </div>`).join('')}</div></details>
+    <p class="sd-muted sd-wheel-dock-copy">拖动其他插件的悬浮窗靠近千幕悬浮球即可收纳；千幕只建立代理入口，不移动对方界面。</p>
+    ${docked.length ? `<div class="sd-wheel-docked-list"><b>已收纳悬浮窗</b>${docked.map((item) => `<div class="sd-wheel-docked-row" data-dock-key="${htmlEscape(item.key)}"><span class="sd-wheel-docked-icon">${item.iconUrl ? `<img src="${htmlEscape(item.iconUrl)}" alt="">` : `<i class="${htmlEscape(item.iconClass || 'fa-solid fa-puzzle-piece')}"></i>`}</span><span>${htmlEscape(item.label)}</span><small>${item.connected ? '已连接' : '等待载入'}</small><button type="button" class="sd-icon-btn sd-wheel-dock-remove" title="解除收纳" aria-label="解除收纳"><i class="fa-solid fa-arrow-right-from-bracket"></i></button></div>`).join('')}</div>` : ''}
   </div>`;
 }
 
@@ -8328,6 +8632,7 @@ function bindActiveTabEvents(root) {
     if (sizeControl) sizeControl.hidden = !settings.floatingButton;
     saveSettings();
     renderFloatButton();
+    syncQuickDockOriginVisibility();
     toast(settings.floatingButton ? '悬浮球已显示。' : '悬浮球已隐藏。', 'info');
   });
   root.querySelector('.sd-float-size')?.addEventListener('input', (e) => {
@@ -8340,6 +8645,7 @@ function bindActiveTabEvents(root) {
   root.querySelector('.sd-wheel-toggle')?.addEventListener('change', (e) => {
     settings.quickWheelEnabled = !!e.target.checked;
     if (!settings.quickWheelEnabled) closeQuickWheel();
+    syncQuickDockOriginVisibility();
     saveSettings();
   });
   root.querySelector('.sd-wheel-custom-details')?.addEventListener('toggle', (e) => {
@@ -8351,9 +8657,9 @@ function bindActiveTabEvents(root) {
     if (!id) return;
     const next = settings.quickWheelCustomEnabled.filter((item) => item !== id);
     if (e.target.checked) next.push(id);
-    if (next.length > QUICK_HIVE_MAX_ITEMS) {
+    if (next.length + quickDockReservedCount() > QUICK_HIVE_MAX_ITEMS) {
       e.target.checked = false;
-      toast(`蜂巢快捷盘最多显示 ${QUICK_HIVE_MAX_ITEMS} 个入口。`, 'warning');
+      toast(`蜂巢快捷盘含收纳入口在内最多显示 ${QUICK_HIVE_MAX_ITEMS} 项。`, 'warning');
       return;
     }
     if (!next.length) {
@@ -8372,6 +8678,10 @@ function bindActiveTabEvents(root) {
     [settings.quickWheelCustomOrder[index], settings.quickWheelCustomOrder[target]] = [settings.quickWheelCustomOrder[target], settings.quickWheelCustomOrder[index]];
     saveSettings();
     renderModal();
+  }));
+  root.querySelectorAll('.sd-wheel-dock-remove').forEach((button) => button.addEventListener('click', () => {
+    const key = button.closest('.sd-wheel-docked-row')?.dataset.dockKey;
+    if (key) quickDockRemove(key);
   }));
   root.querySelector('.sd-stream-toggle')?.addEventListener('change', (e) => {
     settings.streamEnabled = !!e.target.checked;
@@ -18356,6 +18666,7 @@ function bindEvents() {
     settings = getSettings();
     await refreshCoreadPersonaAvatar();
     renderFloatButton();
+    restoreQuickDockedPlugins();
     rerenderIfOpen();
     ttsStartChat();   // ST 就绪后 #chat 已存在，挂上有声注入（init 抢跑时 #chat 可能尚未就位）
   };
@@ -18395,6 +18706,8 @@ function init() {
   seedBuiltinTheaters();
   renderSettingsPanel();
   renderFloatButton();
+  bindQuickDockCapture();
+  restoreQuickDockedPlugins();
   renderInputMenuEntry();
   startInputMenuObserver();
   resizeHandler = () => {
@@ -18435,6 +18748,7 @@ export async function onDelete() {
 }
 
 function cleanupRuntime(resetSettings = false) {
+  unbindQuickDockCapture();
   clearDirectorInjection();
   document.getElementById(SETTINGS_PANEL_ID)?.remove();
   document.getElementById(MODAL_ID)?.remove();
