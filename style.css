@@ -2875,6 +2875,9 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   padding: 1px 8px; border-radius: 99px; background: var(--sd-glass-weak); border: 1px solid var(--sd-hairline);
 }
 #story-director-modal .sd-geo-chip i { width: 8px; height: 8px; border-radius: 99px; flex: 0 0 auto; }
+#story-director-modal button.sd-geo-chip { font: inherit; cursor: pointer; transition: opacity .18s ease, border-color .18s ease, background .18s ease; }
+#story-director-modal button.sd-geo-chip:not(.active) { opacity: .42; filter: saturate(.35); }
+#story-director-modal button.sd-geo-chip.active { border-color: color-mix(in srgb, var(--sd-accent) 48%, transparent); background: color-mix(in srgb, var(--sd-accent) 10%, var(--sd-glass-weak)); }
 
 /* 势面板：仅「星轨图卡」(.sd-geo-stage) 走恒暗星图皮肤，态势带/世界事件/详情等随主题。
    事件卡在星轨卡之外、随主题，故五阶段配色挂在 .sd-geo-tab 上跨组件共用（饱和中间调，明暗皆可读）。 */
@@ -2922,6 +2925,13 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
     radial-gradient(120% 80% at 50% -10%, rgba(60, 72, 104, .18), transparent 60%),
     #0c0d12;
 }
+#story-director-modal .sd-geo-stage-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 0 4px; }
+#story-director-modal .sd-geo-stage-head h3 { margin: 0; font-size: 1em; font-weight: 700; color: var(--sd-geo-skin-text); }
+#story-director-modal .sd-geo-view-switch { display: inline-grid; grid-template-columns: repeat(2, 1fr); gap: 2px; padding: 2px; border: 1px solid var(--sd-geo-skin-border); border-radius: 99px; background: rgba(255,255,255,.035); }
+#story-director-modal .sd-geo-view-btn { min-width: 50px; padding: 3px 10px; border: 0; border-radius: 99px; background: transparent; color: var(--sd-geo-skin-muted); font: inherit; font-size: .75em; cursor: pointer; }
+#story-director-modal .sd-geo-view-btn.active { color: var(--sd-geo-skin-text); background: rgba(159,184,214,.18); }
+#story-director-modal .sd-geo-map-view[hidden],
+#story-director-modal .sd-geo-list-view[hidden] { display: none !important; }
 #story-director-modal .sd-geo-mapwrap { position: relative; }
 #story-director-modal .sd-geo-map {
   display: block; width: 100%; max-width: 460px; margin: 2px auto 0; height: auto; overflow: visible;
@@ -2960,6 +2970,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 /* 关联线：极淡定位底线 + 一束流光顺线掠过（取消虚线、改流光感）。
    线用 pathLength=100 归一化 → dasharray/keyframe 走固定值，普适地动起来 */
 #story-director-modal .sd-geo-edge { transition: opacity .25s ease; }
+#story-director-modal .sd-geo-edge-secondary { opacity: 0; pointer-events: none; }
+#story-director-modal .sd-kind-hidden { display: none !important; }
 #story-director-modal .sd-geo-edge-base { stroke-width: 1.1; stroke-linecap: round; opacity: .3; }
 #story-director-modal .sd-geo-edge-flow {
   stroke-width: 1.6; stroke-linecap: round; opacity: .95; mix-blend-mode: screen;
@@ -2976,8 +2988,25 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-edge-neutral .sd-geo-edge-flow { opacity: .6; animation-duration: 3.8s; }
 #story-director-modal .sd-geo-edge-vassal .sd-geo-edge-flow { animation-duration: 2.4s; }
 
+/* 进行中的世界事件只以脉冲提示“哪里正在变化”，不额外常驻文字，避免再占用图面。 */
+#story-director-modal .sd-geo-event-pulses { pointer-events: none; }
+#story-director-modal .sd-geo-event-pulse,
+#story-director-modal .sd-geo-event-node-pulse {
+  fill: none; stroke: var(--sd-geo-stage-brew); stroke-width: 2; opacity: 0;
+  filter: drop-shadow(0 0 3px currentColor); animation-delay: var(--pulse-delay, 0s);
+}
+#story-director-modal .sd-geo-event-pulse { stroke-dasharray: 10 90; animation: sd-geo-event-travel 3.2s ease-in-out infinite; }
+#story-director-modal .sd-geo-event-node-pulse { transform-box: fill-box; transform-origin: center; animation: sd-geo-event-ring 3.2s ease-out infinite; }
+#story-director-modal .sd-geo-event-pulse-erupt { stroke: var(--sd-geo-stage-erupt); }
+#story-director-modal .sd-geo-event-pulse-spread { stroke: var(--sd-geo-stage-spread); }
+#story-director-modal .sd-geo-event-pulse-fade { stroke: var(--sd-geo-stage-fade); }
+#story-director-modal .sd-geo-event-pulse-settle { stroke: var(--sd-geo-stage-settle); }
+@keyframes sd-geo-event-travel { 0%, 16% { opacity: 0; stroke-dashoffset: 100; } 35%, 72% { opacity: .85; } 100% { opacity: 0; stroke-dashoffset: -15; } }
+@keyframes sd-geo-event-ring { 0%, 12% { opacity: 0; transform: scale(.58); } 35% { opacity: .8; } 100% { opacity: 0; transform: scale(1.7); } }
+
 /* 势力主点：彩色状态点（同线索星点风格、更大）+ 上方小标签。主点一律不透明、无装饰 */
 #story-director-modal .sd-geo-node { cursor: pointer; outline: none; transition: opacity .25s ease; }
+#story-director-modal .sd-geo-node-hit { fill: transparent; }
 #story-director-modal .sd-geo-node-dot {
   fill: var(--sd-geo-stable); fill-opacity: 1; stroke: none;
   transition: transform .25s cubic-bezier(.22,1,.36,1); transform-origin: center;
@@ -2998,7 +3027,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 /* 线索星点：环绕势力局部轨道、明显大于装饰点；透明大命中圈保移动端可点。
    动态＝缩小中的白点 ↔ 放大中的荧光蓝（放大时不透明、盖住轨道线交叠处，免透底不美观） */
 #story-director-modal .sd-geo-clue-orbit { fill: none; stroke: var(--sd-geo-clue-blue); stroke-width: .9; opacity: .35; pointer-events: none; }
-#story-director-modal .sd-geo-clue-hit { fill: transparent; cursor: pointer; }
+#story-director-modal .sd-geo-clues { opacity: 0; pointer-events: none; }
+#story-director-modal .sd-geo-clue-hit { fill: transparent; cursor: pointer; pointer-events: none; }
 #story-director-modal .sd-geo-clue {
   fill: var(--sd-geo-clue-blue); opacity: 1; pointer-events: none;
   filter: drop-shadow(0 0 2px var(--sd-geo-clue-blue));
@@ -3018,12 +3048,18 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-node .sd-geo-node-tag { transition: transform .28s cubic-bezier(.22,1,.36,1); transform-origin: center; }
 #story-director-modal .sd-geo-focused .sd-geo-node.sd-dim { opacity: .26; }
 #story-director-modal .sd-geo-focused .sd-geo-edge.sd-dim { opacity: .12; }
+#story-director-modal .sd-geo-focused .sd-geo-node.sd-near { opacity: .9; }
+#story-director-modal .sd-geo-focused .sd-geo-node.sd-far { opacity: .58; }
+#story-director-modal .sd-geo-focused .sd-geo-edge.sd-on { opacity: 1; }
+#story-director-modal .sd-geo-focused .sd-geo-edge.sd-near { opacity: .42; }
 #story-director-modal .sd-geo-focused .sd-geo-node.sd-on .sd-geo-node-dot { transform: scale(1.22); }
-#story-director-modal .sd-geo-focused .sd-geo-node.sd-on .sd-geo-clues { transform: scale(1.12); }
+#story-director-modal .sd-geo-focused .sd-geo-node.sd-on .sd-geo-clues { opacity: 1; pointer-events: auto; transform: scale(1.12); }
+#story-director-modal .sd-geo-focused .sd-geo-node.sd-on .sd-geo-clue-hit { pointer-events: all; }
 #story-director-modal .sd-geo-focused .sd-geo-node.sd-dim .sd-geo-clue,
 #story-director-modal .sd-geo-focused .sd-geo-node.sd-dim .sd-geo-clue-orbit { opacity: .12; animation: none; }
 #story-director-modal .sd-geo-focused .sd-geo-edge.sd-on .sd-geo-edge-flow { stroke-width: 2.6; }
 #story-director-modal .sd-geo-focused .sd-geo-edge.sd-on .sd-geo-edge-base { opacity: .55; }
+#story-director-modal .sd-geo-focused .sd-geo-edge.sd-near .sd-geo-edge-flow { stroke-width: 1.3; opacity: .62; }
 
 /* 线索短句气泡 */
 #story-director-modal .sd-geo-cluepop {
@@ -3051,6 +3087,31 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   background: var(--sd-geo-clue-blue);
   box-shadow: 0 0 5px var(--sd-geo-clue-blue), 0 0 2px var(--sd-geo-clue-blue);
 }
+
+/* 列表视图：与星图共享筛选状态，窄屏或势力很多时更适合逐条阅读。 */
+#story-director-modal .sd-geo-list-view { display: flex; flex-direction: column; gap: 7px; margin-top: 8px; }
+#story-director-modal .sd-geo-list-card { border: 1px solid var(--sd-geo-skin-border); border-radius: 10px; background: rgba(255,255,255,.035); overflow: hidden; }
+#story-director-modal .sd-geo-list-card > summary { display: grid; grid-template-columns: 10px minmax(82px, auto) minmax(0, 1fr) auto 24px; align-items: center; gap: 8px; min-height: 42px; padding: 7px 10px; cursor: pointer; list-style: none; }
+#story-director-modal .sd-geo-list-card > summary::-webkit-details-marker { display: none; }
+#story-director-modal .sd-geo-list-card > summary strong { font-size: .88em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-geo-list-card > summary > span { color: var(--sd-geo-skin-muted); font-size: .73em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-geo-list-card > summary em { color: var(--sd-geo-skin-muted); font-size: .73em; font-style: normal; white-space: nowrap; }
+#story-director-modal .sd-geo-list-card > summary small { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 99px; color: var(--sd-geo-skin-muted); background: rgba(255,255,255,.06); }
+#story-director-modal .sd-geo-list-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sd-geo-stable); }
+#story-director-modal .sd-geo-list-dot-rising { background: var(--sd-geo-ally); }
+#story-director-modal .sd-geo-list-dot-declining { background: var(--sd-geo-decline); }
+#story-director-modal .sd-geo-list-dot-turbulent { background: var(--sd-geo-conflict); }
+#story-director-modal .sd-geo-list-body { padding: 2px 12px 12px 30px; border-top: 1px solid var(--sd-geo-skin-border); animation: sd-geo-detail-in .18s ease; }
+#story-director-modal .sd-geo-list-body > p { margin: 8px 0 0; color: var(--sd-geo-skin-text); font-size: .84em; line-height: 1.55; }
+#story-director-modal .sd-geo-list-body .sd-geo-list-agenda { display: flex; gap: 6px; color: var(--sd-geo-skin-muted); }
+#story-director-modal .sd-geo-list-agenda i { margin-top: 4px; color: var(--sd-accent); }
+#story-director-modal .sd-geo-list-clues { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+#story-director-modal .sd-geo-list-clues span { padding: 2px 8px; border-radius: 99px; font-size: .72em; color: var(--sd-geo-clue-blue); background: rgba(56,224,255,.07); border: 1px solid rgba(56,224,255,.14); }
+#story-director-modal .sd-geo-list-body ul { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+#story-director-modal .sd-geo-list-rel { display: grid; grid-template-columns: 7px 34px minmax(0, 1fr); align-items: baseline; gap: 7px; font-size: .78em; }
+#story-director-modal .sd-geo-list-rel > i { width: 7px; height: 7px; border-radius: 50%; }
+#story-director-modal .sd-geo-list-rel > b { font-weight: 600; color: var(--sd-geo-skin-text); }
+#story-director-modal .sd-geo-list-rel > span { color: var(--sd-geo-skin-muted); line-height: 1.45; word-break: break-word; }
 
 
 /* 势力详情面板（点选节点后展开） */
@@ -3151,6 +3212,15 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-closed summary { cursor: pointer; font-size: .86em; color: var(--sd-muted); padding: 4px 0; }
 #story-director-modal .sd-geo-closed[open] summary { margin-bottom: 10px; }
 
+@media (max-width: 520px) {
+  #story-director-modal .sd-geo-stage { padding: 9px 9px 12px; }
+  #story-director-modal .sd-geo-map { width: calc(100% + 4px); margin-left: -2px; }
+  #story-director-modal .sd-geo-list-card > summary { grid-template-columns: 9px minmax(0, 1fr) auto 22px; gap: 7px; }
+  #story-director-modal .sd-geo-list-card > summary > span { display: none; }
+  #story-director-modal .sd-geo-list-body { padding-left: 11px; }
+  #story-director-modal .sd-geo-d-head { flex-wrap: wrap; }
+}
+
 /* 减少动态：尊重系统「减少动画」偏好 */
 @media (prefers-reduced-motion: reduce) {
   #story-director-modal .sd-geo-orbit,
@@ -3159,8 +3229,12 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   #story-director-modal .sd-geo-axis-star,
   #story-director-modal .sd-geo-axis-halo,
   #story-director-modal .sd-geo-clue,
+  #story-director-modal .sd-geo-event-pulse,
+  #story-director-modal .sd-geo-event-node-pulse,
   #story-director-modal .sd-evt-stage-erupt::before { animation: none; }
   #story-director-modal .sd-geo-edge-flow { opacity: .6; stroke-dasharray: none; }
+  #story-director-modal .sd-geo-event-pulse,
+  #story-director-modal .sd-geo-event-node-pulse { opacity: .34; }
 }
 
 /* ── 有声小剧场（TTS）配置 tab ── */

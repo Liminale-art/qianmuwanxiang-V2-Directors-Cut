@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.32.0';
+const VERSION = '1.33.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -382,6 +382,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   liveStageEnabled: false,   // 活幕·伏笔显影：暗线跨推演持续身份与显影刻度，默认关
   worldChatterEnabled: false,   // 活幕·尘寰群生：世间百态喊话墙，随推演刷新、不进注入，默认关
   geopoliticsEnabled: false,   // 活幕·势：势力/地缘格局与世界事件跨推演演进，作为世界回声上游源头，默认关
+  geopoliticsView: 'map',      // 世界格局视图：map 星图 / list 势力列表
+  geopoliticsRelationKinds: [...FACTION_RELATION_KINDS], // 关系分层显示偏好
   injectSections: { quests: true, nodes: true, npc: true, relations: true, world: true, threads: true, geopolitics: true },   // 注入方向开关（控 token）
   promptRevision: 0,
   systemPromptHash: '',
@@ -4660,124 +4662,204 @@ function heatTier(heat) {
   return { key: 'calm', label: '承平', desc: '大势安稳，余波细微' };
 }
 
-// 确定性环形布局：第 i 股势力固定落在同一角度，刷新不跳
-function geoNodeLayout(n, cx, cy, r) {
-  const pts = [];
-  for (let i = 0; i < n; i++) {
-    // 从正上方起，等角分布；半径随个数微调由调用方给
-    const ang = (-90 + (i * 360) / Math.max(1, n)) * (Math.PI / 180);
-    pts.push({ x: +(cx + r * Math.cos(ang)).toFixed(1), y: +(cy + r * Math.sin(ang)).toFixed(1) });
-  }
-  return pts;
+function geoStableHash(value) {
+  let hash = 2166136261;
+  for (const ch of String(value || '')) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619);
+  return hash >>> 0;
 }
 
-// 「势」星轨：天体运行图式可视化。
-// 背景多条倾斜椭圆各自恒定旋转、彼此交错（世界持续运转）；势力主点钉在稳定屏幕位、彩色不透明、随时可点；
-// 每股势力的零碎线索化作环绕其局部轨道的单色明灭点；两两关联以由内而外渐变的色弧串联，半透明交叠处自然叠亮。
-function renderFactionStarMap(factions, rels) {
-  const n = factions.length;
-  if (!n) return '';
-  const W = 380, H = 392, cx = 190, cy = 196;
-  const R = n <= 2 ? 72 : n <= 4 ? 104 : 124;
-  const pts = geoNodeLayout(n, cx, cy, R);
+function geoRelationClass(kind) {
+  return { 冲突: 'conflict', 同盟: 'ally', 张力: 'tension', 中立: 'neutral', 依附: 'vassal' }[kind] || 'neutral';
+}
+
+function geoRelationKindsSelected() {
+  const raw = Array.isArray(settings.geopoliticsRelationKinds) ? settings.geopoliticsRelationKinds : FACTION_RELATION_KINDS;
+  return raw.filter((kind) => FACTION_RELATION_KINDS.includes(kind));
+}
+
+// 用「同盟 / 依附」作为稳定聚簇骨架；冲突与张力跨簇连线，星图刷新时不会随机换位。
+function geoFactionClusters(factions, rels) {
+  const parent = new Map(factions.map((f) => [f.id, f.id]));
+  const find = (id) => {
+    let root = parent.get(id) || id;
+    while (parent.get(root) && parent.get(root) !== root) root = parent.get(root);
+    let cur = id;
+    while (parent.get(cur) && parent.get(cur) !== root) { const next = parent.get(cur); parent.set(cur, root); cur = next; }
+    return root;
+  };
+  const join = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
+  rels.filter((r) => r.kind === '同盟' || r.kind === '依附').forEach((r) => join(r.a, r.b));
+  const degree = new Map(factions.map((f) => [f.id, 0]));
+  rels.forEach((r) => { degree.set(r.a, (degree.get(r.a) || 0) + 1); degree.set(r.b, (degree.get(r.b) || 0) + 1); });
+  const groups = new Map();
+  factions.forEach((f) => { const key = find(f.id); if (!groups.has(key)) groups.set(key, []); groups.get(key).push(f); });
+  return Array.from(groups.values())
+    .map((group) => group.sort((a, b) => (degree.get(b.id) || 0) - (degree.get(a.id) || 0) || geoStableHash(a.id) - geoStableHash(b.id)))
+    .sort((a, b) => geoStableHash(a.map((f) => f.id).sort().join('|')) - geoStableHash(b.map((f) => f.id).sort().join('|')));
+}
+
+function geoClusteredNodeLayout(factions, rels, width, height) {
+  const cx = width / 2, cy = height / 2;
+  const clusters = geoFactionClusters(factions, rels);
+  const points = new Map();
+  if (clusters.length === 1) {
+    const group = clusters[0];
+    if (group.length === 1) {
+      points.set(group[0].id, { x: cx, y: cy, cluster: 0 });
+      return points;
+    }
+    const outerCount = Math.min(group.length, 8);
+    group.forEach((f, index) => {
+      const ring = index < outerCount ? 0 : 1;
+      const ringIndex = ring ? index - outerCount : index;
+      const ringCount = ring ? group.length - outerCount : outerCount;
+      const radius = ring ? 68 : Math.min(width, height) * .32;
+      const angle = -Math.PI / 2 + ringIndex * Math.PI * 2 / Math.max(1, ringCount) + (ring ? .28 : 0);
+      points.set(f.id, { x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle), cluster: 0 });
+    });
+  } else {
+    const clusterRadius = Math.min(width, height) * (clusters.length <= 3 ? .25 : .29);
+    clusters.forEach((group, clusterIndex) => {
+      const angle = -Math.PI / 2 + clusterIndex * Math.PI * 2 / clusters.length;
+      const ccx = cx + clusterRadius * Math.cos(angle), ccy = cy + clusterRadius * Math.sin(angle);
+      const localRadius = group.length === 1 ? 0 : 24 + Math.min(22, group.length * 4);
+      const seed = (geoStableHash(group.map((f) => f.id).join('|')) % 360) * Math.PI / 180;
+      group.forEach((f, index) => {
+        const localAngle = seed + index * Math.PI * 2 / group.length;
+        points.set(f.id, { x: ccx + localRadius * Math.cos(localAngle), y: ccy + localRadius * Math.sin(localAngle), cluster: clusterIndex });
+      });
+    });
+  }
+  // 确定性轻量避让：只推开过近星核，迭代次数固定，因此相同数据始终落在相同位置。
+  const ordered = factions.map((f) => ({ id: f.id, ...points.get(f.id) }));
+  for (let pass = 0; pass < 18; pass++) {
+    for (let i = 0; i < ordered.length; i++) for (let j = i + 1; j < ordered.length; j++) {
+      const a = ordered[i], b = ordered[j];
+      let dx = b.x - a.x, dy = b.y - a.y;
+      let dist = Math.hypot(dx, dy);
+      if (dist >= 54) continue;
+      if (dist < .01) { dx = ((geoStableHash(a.id) % 7) - 3) || 1; dy = ((geoStableHash(b.id) % 7) - 3) || -1; dist = Math.hypot(dx, dy); }
+      const push = (54 - dist) * .27;
+      const ux = dx / dist, uy = dy / dist;
+      a.x -= ux * push; a.y -= uy * push; b.x += ux * push; b.y += uy * push;
+    }
+    ordered.forEach((p) => { p.x = Math.max(42, Math.min(width - 42, p.x)); p.y = Math.max(40, Math.min(height - 40, p.y)); });
+  }
+  return new Map(ordered.map((p) => [p.id, { x: +p.x.toFixed(1), y: +p.y.toFixed(1), cluster: p.cluster }]));
+}
+
+// 标签候选位逐个避让；不改变星核位置，只把名称放到最不拥挤的一侧。
+function geoLabelLayout(factions, pointMap, width, height) {
+  const placed = [];
+  const out = new Map();
+  const overlap = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  factions.slice().sort((a, b) => (pointMap.get(a.id)?.y || 0) - (pointMap.get(b.id)?.y || 0) || geoStableHash(a.id) - geoStableHash(b.id)).forEach((f) => {
+    const p = pointMap.get(f.id); const label = snip(f.name, 7); const w = Math.max(44, label.length * 11 + 18), h = 18;
+    const candidates = [
+      { x: p.x - w / 2, y: p.y - 34 }, { x: p.x - w / 2, y: p.y + 17 },
+      { x: p.x + 17, y: p.y - h / 2 }, { x: p.x - w - 17, y: p.y - h / 2 },
+      { x: p.x + 12, y: p.y - 29 }, { x: p.x - w - 12, y: p.y - 29 },
+      { x: p.x + 12, y: p.y + 12 }, { x: p.x - w - 12, y: p.y + 12 },
+    ];
+    let best = candidates[0], bestScore = Infinity;
+    candidates.forEach((c, order) => {
+      const rect = { ...c, w, h };
+      const boundary = Math.max(0, 4 - c.x) + Math.max(0, c.x + w - width + 4) + Math.max(0, 4 - c.y) + Math.max(0, c.y + h - height + 4);
+      const score = placed.reduce((sum, old) => sum + overlap(rect, old), 0) * 20 + boundary * 200 + order;
+      if (score < bestScore) { best = c; bestScore = score; }
+    });
+    best = { x: Math.max(4, Math.min(width - w - 4, best.x)), y: Math.max(4, Math.min(height - h - 4, best.y)), w, h };
+    placed.push(best); out.set(f.id, { ...best, label });
+  });
+  return out;
+}
+
+function geoPrimaryRelationKeys(factions, rels, activeEvents) {
+  const keyOf = (r) => [r.a, r.b].sort().join('::');
+  const eventText = activeEvents.map((e) => `${e.title || ''} ${e.scope || ''} ${e.essence || ''}`).join(' ');
+  const touchedIds = new Set(factions.filter((f) => eventText.includes(f.name)).map((f) => f.id));
+  const weight = { 冲突: 50, 同盟: 42, 依附: 36, 张力: 24, 中立: 10 };
+  const ranked = rels.map((r) => ({ r, score: (weight[r.kind] || 0) + (touchedIds.has(r.a) || touchedIds.has(r.b) ? 18 : 0) + (r.note ? 2 : 0) }))
+    .sort((a, b) => b.score - a.score || geoStableHash(keyOf(a.r)) - geoStableHash(keyOf(b.r)));
+  const chosen = new Set();
+  // 先让每个势力至少保留一条最重要的关系，再限制总览关系总量。
+  factions.forEach((f) => { const hit = ranked.find(({ r }) => r.a === f.id || r.b === f.id); if (hit) chosen.add(keyOf(hit.r)); });
+  const limit = Math.min(rels.length, Math.max(5, Math.min(8, Math.ceil(factions.length * .8))));
+  for (const { r } of ranked) { if (chosen.size >= limit) break; chosen.add(keyOf(r)); }
+  return chosen;
+}
+
+// 聚焦式星图：总览只露出主关系与星核；点选势力后展开一、二级牵连及该势力线索轨道。
+function renderFactionStarMap(factions, rels, activeEvents = []) {
+  if (!factions.length) return '';
+  const W = 420, H = factions.length > 9 ? 430 : 400, cx = W / 2, cy = H / 2;
+  const points = geoClusteredNodeLayout(factions, rels, W, H);
+  const labels = geoLabelLayout(factions, points, W, H);
   const idx = new Map(factions.map((f, i) => [f.id, i]));
   const relCount = factions.map(() => 0);
+  const primaryKeys = geoPrimaryRelationKeys(factions, rels, activeEvents);
+  const selectedKinds = new Set(geoRelationKindsSelected());
+  const edgeMeta = [];
 
-  // 背景星轨：3 条贯穿全图的倾斜椭圆，各自速度/方向不同地恒定旋转，交错出「世界在转」的底盘；
-  // 每条环上随机散落几颗小星点，随环一同旋转
   const bed = [0, 1, 2].map((k) => {
-    const rx = 158 - k * 26, ry = (158 - k * 26) * (0.46 + 0.15 * k);
-    const tilt = 26 + k * 57;
-    const dur = 132 + k * 46;            // 慢速，各环错开
-    const rev = k % 2 ? ' sd-geo-orbit-rev' : '';
-    const dotN = 5 + k;                  // 5/6/7 颗
+    const rx = 174 - k * 29, ry = (174 - k * 29) * (0.46 + 0.15 * k);
+    const tilt = 26 + k * 57, dur = 132 + k * 46, rev = k % 2 ? ' sd-geo-orbit-rev' : '', dotN = 5 + k;
     let dots = '';
     for (let j = 0; j < dotN; j++) {
-      // 沿椭圆参数角散落（伪随机偏移，确定性、刷新不跳），落点再按倾角旋转回去
       const a = (j / dotN) * Math.PI * 2 + (k * 1.3 + j * 2.39) % (Math.PI * 2);
-      const ex = rx * Math.cos(a), ey = ry * Math.sin(a);
-      const tr = tilt * Math.PI / 180, ct = Math.cos(tr), st = Math.sin(tr);
-      const dx = +(cx + ex * ct - ey * st).toFixed(1);
-      const dy = +(cy + ex * st + ey * ct).toFixed(1);
-      const r = (1.3 + ((k * 3 + j * 5) % 3) * 0.6).toFixed(1);
-      const dl = (((k * 5 + j * 7) % 11) * 0.4).toFixed(2);
-      dots += `<circle class="sd-geo-bed-dot" cx="${dx}" cy="${dy}" r="${r}" style="--d:${dl}s"></circle>`;
+      const ex = rx * Math.cos(a), ey = ry * Math.sin(a), tr = tilt * Math.PI / 180, ct = Math.cos(tr), st = Math.sin(tr);
+      const dx = +(cx + ex * ct - ey * st).toFixed(1), dy = +(cy + ex * st + ey * ct).toFixed(1);
+      dots += `<circle class="sd-geo-bed-dot" cx="${dx}" cy="${dy}" r="${(1.3 + ((k * 3 + j * 5) % 3) * .6).toFixed(1)}" style="--d:${(((k * 5 + j * 7) % 11) * .4).toFixed(2)}s"></circle>`;
     }
     return `<g class="sd-geo-orbit${rev}" style="--dur:${dur}s"><ellipse cx="${cx}" cy="${cy}" rx="${rx.toFixed(1)}" ry="${ry.toFixed(1)}" transform="rotate(${tilt} ${cx} ${cy})"></ellipse>${dots}</g>`;
   }).join('');
 
-  // 关联色弧：两两势力间一条朝心微弯的弧。底层极淡定位线 + 上层一束流光顺线游走（取消虚线、改流光感）
   const edges = rels.map((rel) => {
-    const a = idx.get(rel.a), b = idx.get(rel.b);
-    if (a == null || b == null) return '';
+    const a = idx.get(rel.a), b = idx.get(rel.b), p1 = points.get(rel.a), p2 = points.get(rel.b);
+    if (a == null || b == null || !p1 || !p2) return '';
     relCount[a]++; relCount[b]++;
-    const p1 = pts[a], p2 = pts[b];
-    const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
-    const tox = cx - mx, toy = cy - my;
-    const tlen = Math.hypot(tox, toy) || 1;
-    const bend = Math.min(40, Math.hypot(p2.x - p1.x, p2.y - p1.y) * 0.2);
-    const ctrlX = +(mx + (tox / tlen) * bend).toFixed(1);
-    const ctrlY = +(my + (toy / tlen) * bend).toFixed(1);
+    const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2, tox = cx - mx, toy = cy - my, tlen = Math.hypot(tox, toy) || 1;
+    const bend = Math.min(34, Math.hypot(p2.x - p1.x, p2.y - p1.y) * .15);
+    const ctrlX = +(mx + (tox / tlen) * bend).toFixed(1), ctrlY = +(my + (toy / tlen) * bend).toFixed(1);
     const d = `M${p1.x},${p1.y} Q${ctrlX},${ctrlY} ${p2.x},${p2.y}`;
-    const color = GEO_REL_COLOR[rel.kind] || GEO_REL_COLOR['中立'];
-    const kindCls = { 冲突: 'conflict', 同盟: 'ally', 张力: 'tension', 中立: 'neutral', 依附: 'vassal' }[rel.kind] || 'neutral';
+    const key = [rel.a, rel.b].sort().join('::'), primary = primaryKeys.has(key), kindCls = geoRelationClass(rel.kind);
     const marker = rel.kind === '依附' ? ' marker-end="url(#sd-geo-arrow)"' : '';
     const title = `${factions[a].name} · ${rel.kind} · ${factions[b].name}${rel.note ? `\n${rel.note}` : ''}`;
-    // base = 细定位线；flow = 一束亮流光。用 pathLength=100 把所有线归一化，dasharray/动画走固定值 → 普适地动起来
-    return `<g class="sd-geo-edge sd-geo-edge-${kindCls}" data-ea="${htmlEscape(rel.a)}" data-eb="${htmlEscape(rel.b)}">`
-      + `<path class="sd-geo-edge-base" d="${d}" stroke="${color}" fill="none"${marker}><title>${htmlEscape(title)}</title></path>`
-      + `<path class="sd-geo-edge-flow" d="${d}" stroke="${color}" fill="none" pathLength="100"></path>`
-      + `</g>`;
+    edgeMeta.push({ rel, d, key });
+    return `<g class="sd-geo-edge sd-geo-edge-${kindCls} ${primary ? 'sd-geo-edge-primary' : 'sd-geo-edge-secondary'}${selectedKinds.has(rel.kind) ? '' : ' sd-kind-hidden'}" data-kind="${htmlEscape(rel.kind)}" data-ea="${htmlEscape(rel.a)}" data-eb="${htmlEscape(rel.b)}">`
+      + `<path class="sd-geo-edge-base" d="${d}" stroke="${GEO_REL_COLOR[rel.kind] || GEO_REL_COLOR['中立']}" fill="none"${marker}><title>${htmlEscape(title)}</title></path>`
+      + `<path class="sd-geo-edge-flow" d="${d}" stroke="${GEO_REL_COLOR[rel.kind] || GEO_REL_COLOR['中立']}" fill="none" pathLength="100"></path></g>`;
   }).join('');
 
-  // 中央轴心：呼吸大小的星（世界锚点），呼应天体图的「恒星」
-  const axis = `<g class="sd-geo-axis"><circle class="sd-geo-axis-halo" cx="${cx}" cy="${cy}" r="13"></circle>`
-    + `<path class="sd-geo-axis-star" d="${starPath(cx, cy, 7.5, 3)}"></path></g>`;
+  const eventPulses = activeEvents.map((event, eventIndex) => {
+    const text = `${event.title || ''} ${event.scope || ''} ${event.essence || ''}`;
+    const involved = factions.filter((f) => text.includes(f.name)).map((f) => f.id);
+    const edge = edgeMeta.find(({ rel }) => involved.includes(rel.a) && involved.includes(rel.b));
+    const stage = EVENT_STAGE_CLS[sanitizeEventStage(event.stage)] || 'brew';
+    if (edge) return `<path class="sd-geo-event-pulse sd-geo-event-pulse-${stage}" d="${edge.d}" pathLength="100" style="--pulse-delay:${(eventIndex * .47).toFixed(2)}s"><title>${htmlEscape(event.title || '世界事件')}</title></path>`;
+    if (involved[0] && points.get(involved[0])) {
+      const p = points.get(involved[0]);
+      return `<circle class="sd-geo-event-node-pulse sd-geo-event-pulse-${stage}" cx="${p.x}" cy="${p.y}" r="18" style="--pulse-delay:${(eventIndex * .47).toFixed(2)}s"><title>${htmlEscape(event.title || '世界事件')}</title></circle>`;
+    }
+    return `<circle class="sd-geo-event-node-pulse sd-geo-event-pulse-${stage}" cx="${cx}" cy="${cy}" r="${18 + eventIndex * 3}" style="--pulse-delay:${(eventIndex * .47).toFixed(2)}s"><title>${htmlEscape(event.title || '世界事件')}</title></circle>`;
+  }).join('');
 
-  // 势力主点：彩色状态点（同小点风格、更大）+ 上方小标签；点击仍出档案卡
+  const axis = `<g class="sd-geo-axis"><circle class="sd-geo-axis-halo" cx="${cx}" cy="${cy}" r="13"></circle><path class="sd-geo-axis-star" d="${starPath(cx, cy, 7.5, 3)}"></path></g>`;
   const nodes = factions.map((f, i) => {
-    const p = pts[i];
-    const trend = ['rising', 'stable', 'declining', 'turbulent'].includes(f.trend) ? f.trend : 'stable';
-    const tone = `sd-geo-node-${trend}`;
-    const rad = 8 + Math.min(6, relCount[i] * 1.5);   // 8-14：牵连越密体量越显，但只比线索点略大
-    const label = snip(f.name, 6);
-    const tip = `${f.name}（${snip(f.type, 12)}·${f.scale || ''}·${GEO_TREND_CN[f.trend] || '稳守'}）${f.standing ? `\n${f.standing}` : ''}${f.agenda ? `\n诉求：${f.agenda}` : ''}`;
-    // 局部轨道：环绕主点的倾斜椭圆，朝外侧倾，线索星点落在其上 → 环形星盘观感
-    const clues = Array.isArray(f.clues) ? f.clues.filter(Boolean).slice(0, 5) : [];
-    const m = clues.length;
-    const baseA = Math.atan2(p.y - cy, p.x - cx);     // 朝外方向
-    const orx = rad + 24, ory = rad + 15;             // 局部轨道长短轴（线索点放大后外推一点免压主点）
-    const cosT = Math.cos(baseA), sinT = Math.sin(baseA);
-    const ringPath = `<ellipse class="sd-geo-clue-orbit" cx="0" cy="0" rx="${orx}" ry="${ory}" transform="rotate(${(baseA * 180 / Math.PI).toFixed(1)})"></ellipse>`;
-    const clueSvg = clues.map((c, j) => {
-      const ang = (j / Math.max(1, m)) * Math.PI * 2 + (i * 0.9) + 0.5;
-      const ex = orx * Math.cos(ang), ey = ory * Math.sin(ang);
-      const dx = +(ex * cosT - ey * sinT).toFixed(1);
-      const dy = +(ex * sinT + ey * cosT).toFixed(1);
-      const cr = (4.2 + ((i * 3 + j * 7) % 3) * 0.9).toFixed(1);   // 4.2 / 5.1 / 6.0：明显大于装饰点
-      const delay = (((i * 3 + j * 5) % 13) * 0.32).toFixed(2);
-      return `<circle class="sd-geo-clue-hit" cx="${dx}" cy="${dy}" r="11" data-clue="${htmlEscape(c)}"></circle>`
-        + `<circle class="sd-geo-clue" cx="${dx}" cy="${dy}" r="${cr}" style="--d:${delay}s"><title>${htmlEscape(c)}</title></circle>`;
+    const p = points.get(f.id), tagPos = labels.get(f.id), trend = FACTION_TRENDS.includes(f.trend) ? f.trend : 'stable';
+    const rad = 8 + Math.min(5, relCount[i] * 1.15), clues = Array.isArray(f.clues) ? f.clues.filter(Boolean).slice(0, 5) : [];
+    const baseA = Math.atan2(p.y - cy, p.x - cx), orx = rad + 23, ory = rad + 14, cosT = Math.cos(baseA), sinT = Math.sin(baseA);
+    const clueSvg = clues.map((clue, j) => {
+      const angle = j / Math.max(1, clues.length) * Math.PI * 2 + i * .9 + .5, ex = orx * Math.cos(angle), ey = ory * Math.sin(angle);
+      const dx = +(ex * cosT - ey * sinT).toFixed(1), dy = +(ex * sinT + ey * cosT).toFixed(1);
+      return `<circle class="sd-geo-clue-hit" cx="${dx}" cy="${dy}" r="11" data-clue="${htmlEscape(clue)}"></circle><circle class="sd-geo-clue" cx="${dx}" cy="${dy}" r="${(4.2 + ((i * 3 + j * 7) % 3) * .9).toFixed(1)}" style="--d:${(((i * 3 + j * 5) % 13) * .32).toFixed(2)}s"><title>${htmlEscape(clue)}</title></circle>`;
     }).join('');
-    // 标签放主点正上方、抬到局部线索轨道之上（不再遮住线索点），并夹住不越出画布顶
-    const tagW = label.length * 11 + 14;
-    let tagTop = -(rad + orx + 12);                 // 抬到线索轨道最外缘之上留白
-    if (p.y + tagTop < 2) tagTop = 2 - p.y;         // 顶部节点夹回画布内
-    const tag = `<g class="sd-geo-node-tag" transform="translate(${(-tagW / 2).toFixed(1)},${tagTop.toFixed(1)})">`
-      + `<rect class="sd-geo-tag-bg" width="${tagW}" height="16" rx="8"></rect>`
-      + `<text class="sd-geo-tag-text" x="${(tagW / 2).toFixed(1)}" y="11.5" text-anchor="middle">${GEO_TREND_ICON[f.trend] || '＝'} ${htmlEscape(label)}</text></g>`;
-    return `<g class="sd-geo-node ${tone}" data-fid="${htmlEscape(f.id)}" transform="translate(${p.x},${p.y})" tabindex="0" role="button" aria-label="${htmlEscape(f.name)}"><title>${htmlEscape(tip)}</title>`
-      + `<g class="sd-geo-clues">${ringPath}${clueSvg}</g>`
-      + `<circle class="sd-geo-node-dot" r="${rad}"></circle>`
-      + tag
-      + `</g>`;
+    const tag = `<g class="sd-geo-node-tag" transform="translate(${(tagPos.x - p.x).toFixed(1)},${(tagPos.y - p.y).toFixed(1)})"><rect class="sd-geo-tag-bg" width="${tagPos.w}" height="${tagPos.h}" rx="9"></rect><text class="sd-geo-tag-text" x="${(tagPos.w / 2).toFixed(1)}" y="12.5" text-anchor="middle">${GEO_TREND_ICON[f.trend] || '＝'} ${htmlEscape(tagPos.label)}</text></g>`;
+    const tip = `${f.name}（${snip(f.type, 12)}·${f.scale || ''}·${GEO_TREND_CN[f.trend] || '稳守'}）${f.standing ? `\n${f.standing}` : ''}${f.agenda ? `\n诉求：${f.agenda}` : ''}`;
+    return `<g class="sd-geo-node sd-geo-node-${trend}" data-fid="${htmlEscape(f.id)}" transform="translate(${p.x},${p.y})" tabindex="0" role="button" aria-label="${htmlEscape(f.name)}"><title>${htmlEscape(tip)}</title><g class="sd-geo-clues"><ellipse class="sd-geo-clue-orbit" cx="0" cy="0" rx="${orx}" ry="${ory}" transform="rotate(${(baseA * 180 / Math.PI).toFixed(1)})"></ellipse>${clueSvg}</g><circle class="sd-geo-node-hit" r="19"></circle><circle class="sd-geo-node-dot" r="${rad}"></circle>${tag}</g>`;
   }).join('');
 
-  return `<svg class="sd-geo-map" viewBox="0 0 ${W} ${H}" role="img" aria-label="势力关系星轨" preserveAspectRatio="xMidYMid meet">`
-    + `<defs><marker id="sd-geo-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--sd-geo-vassal)"></path></marker></defs>`
-    + `<g class="sd-geo-bed">${bed}</g>`
-    + axis
-    + `<g class="sd-geo-edges">${edges}</g><g class="sd-geo-nodes">${nodes}</g></svg>`;
+  return `<svg class="sd-geo-map" viewBox="0 0 ${W} ${H}" role="img" aria-label="势力关系聚焦星图" preserveAspectRatio="xMidYMid meet"><defs><marker id="sd-geo-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--sd-geo-vassal)"></path></marker></defs><g class="sd-geo-bed">${bed}</g>${axis}<g class="sd-geo-edges">${edges}</g><g class="sd-geo-event-pulses">${eventPulses}</g><g class="sd-geo-nodes">${nodes}</g></svg>`;
 }
 
 // 生成 spikes 角星路径（中央轴心用）
@@ -4812,6 +4894,37 @@ function renderWorldEventCard(e) {
   </details>`;
 }
 
+function renderFactionListView(factions, rels) {
+  const byId = new Map(factions.map((f) => [f.id, f]));
+  const selectedKinds = new Set(geoRelationKindsSelected());
+  const ordered = factions.slice().sort((a, b) => {
+    const trendOrder = { turbulent: 0, rising: 1, stable: 2, declining: 3 };
+    const ar = rels.filter((r) => r.a === a.id || r.b === a.id).length;
+    const br = rels.filter((r) => r.a === b.id || r.b === b.id).length;
+    return (trendOrder[a.trend] ?? 2) - (trendOrder[b.trend] ?? 2) || br - ar || geoStableHash(a.id) - geoStableHash(b.id);
+  });
+  return ordered.map((f) => {
+    const mine = rels.filter((r) => r.a === f.id || r.b === f.id);
+    const relRows = mine.map((r) => {
+      const other = r.a === f.id ? r.b : r.a;
+      const direction = r.kind === '依附'
+        ? (r.a === f.id ? `依附于 ${byId.get(other)?.name || '某势力'}` : `${byId.get(other)?.name || '某势力'} 依附于此`)
+        : `与 ${byId.get(other)?.name || '某势力'}`;
+      return `<li class="sd-geo-list-rel${selectedKinds.has(r.kind) ? '' : ' sd-kind-hidden'}" data-kind="${htmlEscape(r.kind)}"><i style="background:${GEO_REL_COLOR[r.kind] || GEO_REL_COLOR['中立']}"></i><b>${htmlEscape(r.kind)}</b><span>${htmlEscape(direction)}${r.note ? ` · ${htmlEscape(r.note)}` : ''}</span></li>`;
+    }).join('');
+    const clues = (Array.isArray(f.clues) ? f.clues : []).filter(Boolean).map((clue) => `<span>${htmlEscape(clue)}</span>`).join('');
+    return `<details class="sd-geo-list-card" data-acc="geo-list-${htmlEscape(f.id)}">
+      <summary><i class="sd-geo-list-dot sd-geo-list-dot-${htmlEscape(f.trend || 'stable')}"></i><strong>${htmlEscape(f.name)}</strong><span>${htmlEscape([f.type, f.scale].filter(Boolean).join(' · '))}</span><em>${GEO_TREND_ICON[f.trend] || '＝'} ${GEO_TREND_CN[f.trend] || '稳守'}</em><small>${mine.length}</small></summary>
+      <div class="sd-geo-list-body">
+        ${f.standing ? `<p>${htmlEscape(f.standing)}</p>` : ''}
+        ${f.agenda ? `<p class="sd-geo-list-agenda"><i class="fa-solid fa-bullseye"></i>${htmlEscape(f.agenda)}</p>` : ''}
+        ${clues ? `<div class="sd-geo-list-clues">${clues}</div>` : ''}
+        ${relRows ? `<ul>${relRows}</ul>` : '<p class="sd-muted sd-hint-sm">暂无牵连关系。</p>'}
+      </div>
+    </details>`;
+  }).join('');
+}
+
 function renderGeopoliticsTab() {
   const store = getChatStore();
   const factions = Array.isArray(store.factions) ? store.factions : [];
@@ -4832,8 +4945,9 @@ function renderGeopoliticsTab() {
   const tier = heatTier(heat);
   // 顶部态势带：温度条 + 当前档位 + 关系基调速览
   const relTally = rels.reduce((m, r) => { m[r.kind] = (m[r.kind] || 0) + 1; return m; }, {});
+  const selectedKinds = new Set(geoRelationKindsSelected());
   const tallyChips = FACTION_RELATION_KINDS.filter((k) => relTally[k]).map((k) =>
-    `<span class="sd-geo-chip" data-kind="${k}"><i style="background:${GEO_REL_COLOR[k]}"></i>${k} ${relTally[k]}</span>`).join('');
+    `<button type="button" class="sd-geo-chip sd-geo-filter${selectedKinds.has(k) ? ' active' : ''}" data-kind="${k}" aria-pressed="${selectedKinds.has(k)}"><i style="background:${GEO_REL_COLOR[k]}"></i>${k} ${relTally[k]}</button>`).join('');
 
   const bandHtml = `<section class="sd-geo-band sd-geo-tier-${tier.key}">
     <div class="sd-geo-band-top">
@@ -4847,20 +4961,24 @@ function renderGeopoliticsTab() {
     ${tallyChips ? `<div class="sd-geo-chips">${tallyChips}</div>` : ''}
   </section>`;
 
+  const view = settings.geopoliticsView === 'list' ? 'list' : 'map';
   const mapHtml = factions.length ? `<section class="sd-geo-stage">
-    <div class="sd-geo-mapwrap">
-      ${renderFactionStarMap(factions, rels)}
-      <div class="sd-geo-cluepop" hidden></div>
-      <div class="sd-geo-detail" hidden></div>
+    <div class="sd-geo-stage-head">
+      <h3>势力格局</h3>
+      <div class="sd-geo-view-switch" role="group" aria-label="势力格局视图">
+        <button type="button" class="sd-geo-view-btn${view === 'map' ? ' active' : ''}" data-view="map" aria-pressed="${view === 'map'}">星图</button>
+        <button type="button" class="sd-geo-view-btn${view === 'list' ? ' active' : ''}" data-view="list" aria-pressed="${view === 'list'}">列表</button>
+      </div>
     </div>
-    <div class="sd-geo-legend">
-      <span><i style="background:${GEO_REL_COLOR['冲突']}"></i>冲突</span>
-      <span><i style="background:${GEO_REL_COLOR['同盟']}"></i>同盟</span>
-      <span><i style="background:${GEO_REL_COLOR['张力']}"></i>张力</span>
-      <span><i style="background:${GEO_REL_COLOR['中立']}"></i>中立</span>
-      <span><i style="background:${GEO_REL_COLOR['依附']}"></i>依附</span>
+    <div class="sd-geo-map-view"${view === 'map' ? '' : ' hidden'}>
+      <div class="sd-geo-mapwrap">
+        ${renderFactionStarMap(factions, rels, activeEvents)}
+        <div class="sd-geo-cluepop" hidden></div>
+        <div class="sd-geo-detail" hidden></div>
+      </div>
+      <p class="sd-muted sd-hint-sm sd-geo-maptip">点选势力查看两层牵连，再点一次收起</p>
     </div>
-    <p class="sd-muted sd-hint-sm sd-geo-maptip">点击主点获取情报，<i class="sd-geo-tip-clue" aria-hidden="true"></i>点击蓝点查探风声</p>
+    <div class="sd-geo-list-view"${view === 'list' ? '' : ' hidden'}>${renderFactionListView(factions, rels)}</div>
   </section>` : '';
 
   const eventsHtml = `<section class="sd-geo-events">
@@ -4895,6 +5013,24 @@ function bindGeopoliticsTabEvents(root) {
     toast('世界格局已清空。', 'success');
     renderModal();
   });
+
+  root.querySelectorAll('.sd-geo-view-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+      const view = button.getAttribute('data-view') === 'list' ? 'list' : 'map';
+      settings.geopoliticsView = view;
+      saveSettings();
+      root.querySelectorAll('.sd-geo-view-btn').forEach((item) => {
+        const active = item.getAttribute('data-view') === view;
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-pressed', String(active));
+      });
+      const mapView = root.querySelector('.sd-geo-map-view');
+      const listView = root.querySelector('.sd-geo-list-view');
+      if (mapView) mapView.hidden = view !== 'map';
+      if (listView) listView.hidden = view !== 'list';
+    });
+  });
+
   const svg = root.querySelector('.sd-geo-map');
   const panel = root.querySelector('.sd-geo-detail');
   if (!svg || !panel) return;
@@ -4904,11 +5040,14 @@ function bindGeopoliticsTabEvents(root) {
   const byId = new Map(factions.map((f) => [f.id, f]));
   const nameOf = (id) => byId.get(id)?.name || '某势力';
   let focused = null;
+  const pop = root.querySelector('.sd-geo-cluepop');
+  const wrap = root.querySelector('.sd-geo-mapwrap');
+  const hidePop = () => { if (pop) { pop.hidden = true; pop.textContent = ''; } svg.querySelectorAll('.sd-geo-clue.sd-on').forEach((c) => c.classList.remove('sd-on')); };
 
   const clear = () => {
     focused = null;
     svg.classList.remove('sd-geo-focused');
-    svg.querySelectorAll('.sd-geo-node, .sd-geo-edge').forEach((el) => el.classList.remove('sd-on', 'sd-dim'));
+    svg.querySelectorAll('.sd-geo-node, .sd-geo-edge').forEach((el) => el.classList.remove('sd-on', 'sd-near', 'sd-far', 'sd-dim'));
     panel.hidden = true;
     panel.innerHTML = '';
   };
@@ -4918,22 +5057,39 @@ function bindGeopoliticsTabEvents(root) {
     if (!f) return;
     focused = fid;
     svg.classList.add('sd-geo-focused');
-    const linked = new Set([fid]);
+    const visibleEdges = Array.from(svg.querySelectorAll('.sd-geo-edge:not(.sd-kind-hidden)'));
+    const direct = new Set();
+    visibleEdges.forEach((g) => {
+      const a = g.getAttribute('data-ea'), b = g.getAttribute('data-eb');
+      if (a === fid) direct.add(b);
+      if (b === fid) direct.add(a);
+    });
+    const second = new Set();
+    visibleEdges.forEach((g) => {
+      const a = g.getAttribute('data-ea'), b = g.getAttribute('data-eb');
+      if (direct.has(a) && b !== fid && !direct.has(b)) second.add(b);
+      if (direct.has(b) && a !== fid && !direct.has(a)) second.add(a);
+    });
     svg.querySelectorAll('.sd-geo-edge').forEach((g) => {
       const a = g.getAttribute('data-ea'), b = g.getAttribute('data-eb');
-      const hit = a === fid || b === fid;
-      g.classList.toggle('sd-on', hit);
-      g.classList.toggle('sd-dim', !hit);
-      if (hit) { linked.add(a); linked.add(b); }
+      const hidden = g.classList.contains('sd-kind-hidden');
+      const on = !hidden && (a === fid || b === fid);
+      const near = !hidden && !on && ((direct.has(a) && (direct.has(b) || second.has(b))) || (direct.has(b) && second.has(a)));
+      g.classList.toggle('sd-on', on);
+      g.classList.toggle('sd-near', near);
+      g.classList.toggle('sd-dim', !on && !near);
     });
     svg.querySelectorAll('.sd-geo-node').forEach((g) => {
-      const on = linked.has(g.getAttribute('data-fid'));
-      g.classList.toggle('sd-on', g.getAttribute('data-fid') === fid);
-      g.classList.toggle('sd-dim', !on);
+      const id = g.getAttribute('data-fid');
+      g.classList.toggle('sd-on', id === fid);
+      g.classList.toggle('sd-near', direct.has(id));
+      g.classList.toggle('sd-far', second.has(id));
+      g.classList.toggle('sd-dim', id !== fid && !direct.has(id) && !second.has(id));
     });
     // 详情面板：势力档案 + 它牵连的每一道关系
     const trendChip = `<span class="sd-geo-d-trend sd-geo-d-trend-${f.trend || 'stable'}">${GEO_TREND_ICON[f.trend] || '＝'} ${GEO_TREND_CN[f.trend] || '稳守'}</span>`;
-    const myRels = rels.filter((r) => r.a === fid || r.b === fid).map((r) => {
+    const activeKinds = new Set(geoRelationKindsSelected());
+    const myRels = rels.filter((r) => activeKinds.has(r.kind) && (r.a === fid || r.b === fid)).map((r) => {
       const other = r.a === fid ? r.b : r.a;
       const dirTxt = r.kind === '依附' ? (r.a === fid ? `依附于 ${nameOf(other)}` : `${nameOf(other)} 依附于此`) : `与 ${nameOf(other)}`;
       const kindCls = { 冲突: 'conflict', 同盟: 'ally', 张力: 'tension', 中立: 'neutral', 依附: 'vassal' }[r.kind] || 'neutral';
@@ -4948,6 +5104,25 @@ function bindGeopoliticsTabEvents(root) {
     panel.querySelector('.sd-geo-d-close')?.addEventListener('click', (e) => { e.stopPropagation(); clear(); });
   };
 
+  root.querySelectorAll('.sd-geo-filter').forEach((button) => {
+    button.addEventListener('click', () => {
+      const kind = button.getAttribute('data-kind');
+      if (!FACTION_RELATION_KINDS.includes(kind)) return;
+      const selected = new Set(geoRelationKindsSelected());
+      if (selected.has(kind)) selected.delete(kind); else selected.add(kind);
+      settings.geopoliticsRelationKinds = FACTION_RELATION_KINDS.filter((item) => selected.has(item));
+      saveSettings();
+      const active = selected.has(kind);
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+      root.querySelectorAll('.sd-geo-edge[data-kind], .sd-geo-list-rel[data-kind]').forEach((item) => {
+        if (item.getAttribute('data-kind') === kind) item.classList.toggle('sd-kind-hidden', !active);
+      });
+      hidePop();
+      if (focused) focus(focused);
+    });
+  });
+
   svg.querySelectorAll('.sd-geo-node').forEach((node) => {
     const act = (e) => {
       e.stopPropagation();
@@ -4960,9 +5135,6 @@ function bindGeopoliticsTabEvents(root) {
   });
 
   // 线索星点：点击冒出短句气泡（定位到该点附近），不触发势力聚焦。命中靠透明的大命中圈，移动端友好
-  const pop = root.querySelector('.sd-geo-cluepop');
-  const wrap = root.querySelector('.sd-geo-mapwrap');
-  const hidePop = () => { if (pop) { pop.hidden = true; pop.textContent = ''; } svg.querySelectorAll('.sd-geo-clue.sd-on').forEach((c) => c.classList.remove('sd-on')); };
   svg.querySelectorAll('.sd-geo-clue-hit').forEach((hit) => {
     hit.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -4993,7 +5165,7 @@ function bindGeopoliticsTabEvents(root) {
   });
 
   // 点空白处取消聚焦与气泡
-  svg.addEventListener('click', (e) => { if (e.target === svg || e.target.closest('.sd-geo-bed') || e.target.closest('.sd-geo-axis')) { clear(); hidePop(); } });
+  svg.addEventListener('click', (e) => { if (e.target === svg || e.target.closest('.sd-geo-bed') || e.target.closest('.sd-geo-axis') || e.target.closest('.sd-geo-event-pulses')) { clear(); hidePop(); } });
 }
 
 function renderInjectDock() {
