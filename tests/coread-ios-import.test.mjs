@@ -24,6 +24,10 @@ assert.doesNotMatch(refillChooser, /\.click\(\)/, '补正文入口不得再以�
 assert.match(openBook, /coreadShowRefillChooser\(bookId\)/, '正文未缓存时必须打开 iOS 兼容的补正文选择层');
 assert.doesNotMatch(openBook, /confirmDialog[\s\S]*coreadTriggerImport/, '正文未缓存路径不得等待确认后再触发文件选择');
 assert.match(css, /\.sd-reader-refill-overlay\s*\{[^}]*position:\s*fixed[^}]*z-index:/, '补正文选择层必须覆盖当前书架界面');
+assert.match(refillChooser, /document\.body\.appendChild\(overlay\)/, '补正文弹层必须脱离带 transform 的千幕面板，直挂页面视口');
+assert.doesNotMatch(refillChooser, /document\.getElementById\('story-director-modal'\)[^\n]*appendChild\(overlay\)/, '补正文弹层不得再挂进主面板定位容器');
+assert.match(refillChooser, /window\.visualViewport[\s\S]*viewport\?\.addEventListener\('resize', syncViewport\)/, '补正文弹层必须跟随移动端 visualViewport');
+assert.match(css, /\.sd-reader-refill-card\s*\{[^}]*max-height:\s*100%[^}]*overflow-y:\s*auto/, '短视口下补正文卡片必须可滚动且不越界');
 
 const center = source.slice(source.indexOf('function renderCoreadPackBar'), source.indexOf('function renderCompanionMoreBody'));
 const centerBinding = source.slice(source.indexOf("morePage?.addEventListener('change'"), source.indexOf("morePage?.addEventListener('input'"));

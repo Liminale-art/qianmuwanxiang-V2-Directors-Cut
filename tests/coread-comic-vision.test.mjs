@@ -76,7 +76,7 @@ assert.match(source, /if \(coreadBookMeta\(id\)\?\.mode === 'comic'\) return;/, 
 // 图片对话：本地存储、可移除预览，书友与幕伴助手共用视觉模型但消息池仍隔离。
 assert.match(source, /sd-reader-dialog-send[\s\S]*sd-reader-dialog-image-input sd-reader-native-file[\s\S]*accept="image\/\*"[\s\S]*multiple/, '伴读输入框必须保留 iOS 兼容的原生多图控件');
 assert.match(source, /coreadPersistPendingChatImages[\s\S]*putReaderImage/, '发送前必须将图片保存到本书本地媒体仓');
-assert.match(source, /coreadAskAssistant\(text, imageIds\)[\s\S]*coreadAppendUserMessage\(text, imageIds\)/, '图片必须能分别发给幕伴助手或书友');
+assert.match(source, /coreadAppendAssistantMessage\(text, imageIds\)[\s\S]*coreadAppendUserMessage\(text, imageIds\)/, '图片必须能分别发给幕伴助手或书友');
 assert.doesNotMatch(source, /看看这张图。/, '纯图片气泡不得自动附加占位文字');
 assert.match(source, /if \(\(!content && !images\.length\) \|\| dialogBusy\) return/, '只有图片没有文字时仍必须允许发送');
 assert.match(source, /String\(m\.text \|\| ''\)\.trim\(\) \? `<button class="sd-reader-msg-action" data-act="speak"/, '只有存在文字的气泡才显示播放按钮');
@@ -84,9 +84,12 @@ assert.match(source, /pendingUsers\.flatMap[\s\S]*callCoreadVisionModel/, '书�
 assert.match(source, /comicDescriptions: rec\?\.comicDescriptions[\s\S]*version: 4/, '数据打包必须携带漫画视觉文字稿并升级格式');
 assert.match(css, /\.sd-reader-chat-pending[\s\S]*\.sd-reader-chat-images/, '待发送和已发送图片都必须有隔离样式');
 assert.match(source, /openDialogImagePicker[\s\S]*showPicker/, '图片选择必须优先使用浏览器原生 showPicker 用户手势接口');
-assert.match(source, /pointerdown[\s\S]*pointerup[\s\S]*heldFor < 520[\s\S]*openDialogImagePicker/, '长按发送键必须在原生 pointerup 用户手势中打开图片选择器');
-assert.match(source, /dialogImageInput\?\.addEventListener\('change'[\s\S]*coreadAddPendingChatImages[\s\S]*void doSend\(\)/, '长按选图完成后必须直接发送');
+assert.match(source, /pointermove[\s\S]*sendPressStartY - event\.clientY > 28[\s\S]*openDialogImagePicker/, '触屏必须以上滑发送键打开原生图片选择器');
+assert.match(source, /heldFor < 520[\s\S]*void doReply\(\)/, '长按发送键必须改为让 AI 回复');
+assert.match(source, /desktopSendTimer[\s\S]*openDialogImagePicker/, '桌面双击必须在不误发第一击的情况下打开图片选择器');
+assert.match(source, /dialogImageInput\?\.addEventListener\('change'[\s\S]*coreadAddPendingChatImages[\s\S]*void doSend\(\)/, '选图完成后必须直接发送');
 assert.doesNotMatch(source, /<label class="sd-reader-inbtn sd-reader-dialog-image"/, '对话输入框不得再保留拥挤的独立图片按钮');
-assert.match(css, /\.sd-reader-dialog-send\.is-image-hold/, '长按图片动作必须提供即时视觉反馈');
+assert.match(css, /\.sd-reader-dialog-send\.is-reply-hold/, '长按回复动作必须提供即时视觉反馈');
+assert.match(css, /\.sd-reader-dialog-send\.is-image-swipe/, '触屏上滑图片动作必须提供即时视觉反馈');
 
 console.log('Coread comic vision and image dialogue contract OK');

@@ -187,45 +187,68 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   user-select: none;
 }
 
-/* 悬浮球长按快捷轨：以悬浮球为中轴，上三下三；固定灰色毛玻璃，不跟随面板主题。 */
+/* 悬浮球长按蜂巢：主 Logo 居中，入口使用与 ST 主题无关的黑金 / 白金配色。 */
 #story-director-quick-wheel {
-  --sd-wheel-bg: rgba(255, 255, 255, .22);
-  --sd-wheel-icon: #777579;
-  --sd-wheel-line: rgba(255, 255, 255, .55);
   position: fixed;
-  inset: 0;
   z-index: 2147483002;
   pointer-events: none;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 #story-director-quick-wheel .sd-wheel-backdrop { position: absolute; inset: 0; pointer-events: auto; background: transparent; }
-#story-director-quick-wheel .sd-wheel-command {
-  position: fixed;
+#story-director-quick-wheel .sd-wheel-items { position: absolute; inset: 0; pointer-events: none; }
+#story-director-quick-wheel .sd-wheel-command,
+#story-director-quick-wheel .sd-wheel-core {
+  position: absolute;
   width: var(--sd-wheel-item-size, 36px);
   height: var(--sd-wheel-item-size, 36px);
   padding: 0 !important;
-  border: 1px solid var(--sd-wheel-line) !important;
-  border-radius: 50% !important;
-  background: var(--sd-wheel-bg) !important;
-  color: var(--sd-wheel-icon) !important;
+  border: 1px solid rgba(207, 164, 85, .7) !important;
+  border-radius: 0 !important;
+  clip-path: polygon(25% 2%, 75% 2%, 100% 50%, 75% 98%, 25% 98%, 0 50%);
   box-shadow: none !important;
-  backdrop-filter: blur(14px) saturate(1.4) !important;
-  -webkit-backdrop-filter: blur(14px) saturate(1.4) !important;
   display: flex;
   align-items: center;
   justify-content: center;
   pointer-events: auto;
-  animation-duration: .18s;
-  animation-timing-function: ease;
-  animation-fill-mode: both;
   touch-action: manipulation;
+  transform-origin: 50% 50%;
 }
-#story-director-quick-wheel .sd-wheel-command.is-upper { animation-name: sd-wheel-slide-up; }
-#story-director-quick-wheel .sd-wheel-command.is-lower { animation-name: sd-wheel-slide-down; }
-#story-director-quick-wheel .sd-wheel-command i { color: inherit; font-size: clamp(13px, calc(var(--sd-wheel-item-size, 36px) * .40), 16px); }
-#story-director-quick-wheel .sd-wheel-command:hover { filter: brightness(1.04); }
-#story-director-quick-wheel .sd-wheel-command.is-pending { opacity: .68; }
-@keyframes sd-wheel-slide-up { from { opacity: 0; transform: translateY(8px) scale(.94); } to { opacity: 1; transform: translateY(0) scale(1); } }
-@keyframes sd-wheel-slide-down { from { opacity: 0; transform: translateY(-8px) scale(.94); } to { opacity: 1; transform: translateY(0) scale(1); } }
+#story-director-quick-wheel .sd-wheel-command {
+  color: #d7ab57 !important;
+  background: rgba(23, 23, 22, .94) !important;
+  backdrop-filter: blur(12px) saturate(1.15) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(1.15) !important;
+  animation: sd-wheel-hive-in .34s cubic-bezier(.2,.72,.2,1) var(--sd-wheel-delay, 0ms) both,
+             sd-wheel-hive-glint var(--sd-wheel-glint-speed, 3.6s) ease-in-out calc(var(--sd-wheel-delay, 0ms) + .34s) infinite alternate;
+}
+#story-director-quick-wheel .sd-wheel-command.is-white-gold { color: #b78a3f !important; background: rgba(247, 244, 236, .96) !important; }
+#story-director-quick-wheel .sd-wheel-command.is-gold-black { color: #181715 !important; background: rgba(205, 158, 76, .96) !important; border-color: rgba(255, 238, 190, .74) !important; }
+#story-director-quick-wheel .sd-wheel-command i { color: inherit !important; font-size: clamp(13px, calc(var(--sd-wheel-item-size, 36px) * .38), 19px); }
+#story-director-quick-wheel .sd-wheel-command:hover { filter: brightness(1.12) saturate(1.05); opacity: 1 !important; }
+#story-director-quick-wheel .sd-wheel-command.is-pending { filter: saturate(.6); }
+#story-director-quick-wheel .sd-wheel-core {
+  overflow: hidden;
+  color: #d6a650 !important;
+  background: rgba(25, 24, 22, .96) !important;
+  border-color: rgba(222, 180, 94, .86) !important;
+  animation: sd-wheel-core-in .24s ease-out both;
+}
+#story-director-quick-wheel .sd-wheel-core img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+#story-director-float.sd-wheel-origin-hidden { opacity: 0 !important; pointer-events: none !important; }
+@keyframes sd-wheel-hive-in {
+  from { opacity: 0; transform: perspective(260px) rotateY(82deg) scale(.72); }
+  to { opacity: var(--sd-wheel-idle-alpha, .9); transform: perspective(260px) rotateY(0) scale(1); }
+}
+@keyframes sd-wheel-hive-glint {
+  from { opacity: var(--sd-wheel-idle-alpha, .86); }
+  to { opacity: 1; }
+}
+@keyframes sd-wheel-core-in { from { opacity: 0; transform: scale(.82); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  #story-director-quick-wheel .sd-wheel-command,
+  #story-director-quick-wheel .sd-wheel-core { animation: none; opacity: 1; }
+}
 
 /* 楼层跳转独立轻量窗：绑定 visualViewport，短视口改为整窗滚动，绝不裁掉面板上沿。 */
 #story-director-floor-nav {
@@ -2430,7 +2453,6 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-modal .sd-float-size { width: 100%; margin: 0; }
 #story-director-modal .sd-wheel-settings { margin-top: 10px; padding: 11px 12px; border: 1px solid var(--sd-border); border-radius: 10px; background: var(--sd-glass-weak); }
 #story-director-modal .sd-wheel-setting-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-#story-director-modal .sd-wheel-scheme { width: auto; min-width: 118px; margin: 0 !important; }
 #story-director-modal .sd-wheel-default-copy { margin: 8px 0 0; font-size: 12px; }
 #story-director-modal .sd-wheel-custom-details { margin-top: 9px; border-top: 1px solid var(--sd-hairline); }
 #story-director-modal .sd-wheel-custom-details > summary { min-height: 40px; padding: 8px 3px 6px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--sd-text); list-style: none; }
@@ -2447,8 +2469,6 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-modal .sd-wheel-custom-row .sd-icon-btn { width: 29px; height: 29px; min-width: 29px; padding: 0 !important; }
 @media (max-width: 520px) {
   #story-director-modal .sd-float-size-control { grid-template-columns: 1fr; gap: 8px; }
-  #story-director-modal .sd-wheel-setting-head { align-items: stretch; flex-direction: column; }
-  #story-director-modal .sd-wheel-scheme { width: 100%; }
 }
 
 /* ---------- 活幕·势：势力格局 / 世界事件可视化面板 ---------- */
@@ -3220,19 +3240,21 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 }
 /* 书架 FAB 内让文件控件本身覆盖整个可点区域；iOS 实际点中 input，比仅依赖 label 转发更稳。 */
 #story-director-modal .sd-reader-import-fab .sd-reader-import-input,
-#story-director-modal .sd-reader-refill-pick .sd-reader-refill-input {
+.sd-reader-refill-pick .sd-reader-refill-input {
   inset: 0 !important; width: 100% !important; height: 100% !important;
   margin: 0 !important; opacity: 0 !important; clip: auto !important; clip-path: none !important;
   cursor: pointer !important;
 }
 /* 换设备后正文缺失：选择文件必须留在弹层里的真实点击目标上，兼容 iOS 用户手势限制。 */
 .sd-reader-refill-overlay {
-  position: fixed; inset: 0; z-index: 2147483638;
-  display: flex; align-items: center; justify-content: center; padding: 18px;
+  position: fixed; inset: auto; z-index: 2147483638;
+  display: flex; align-items: center; justify-content: center;
+  box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain;
+  padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
   background: rgba(0, 0, 0, .5); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
 }
 .sd-reader-refill-card {
-  width: min(440px, 100%); padding: 20px; border-radius: 17px;
+  width: min(440px, 100%); max-height: 100%; margin: auto; padding: 20px; overflow-y: auto; box-sizing: border-box; border-radius: 17px;
   border: 1px solid var(--sd-border, rgba(255,255,255,.15));
   background: var(--sd-folder-head, #25282e); color: var(--sd-text, #eee);
   box-shadow: 0 20px 60px rgba(0,0,0,.4);
@@ -3242,8 +3264,11 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 .sd-reader-refill-card .sd-reader-refill-formats { color: var(--sd-muted, #aaa); font-size: .8em; }
 .sd-reader-refill-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 .sd-reader-refill-pick { position: relative; overflow: hidden; }
+.sd-reader-refill-actions .sd-btn { min-height: 42px; padding: 9px 16px; border: 1px solid var(--sd-border, rgba(255,255,255,.15)); border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: var(--sd-glass-weak, rgba(255,255,255,.08)); color: var(--sd-text, #eee); font: inherit; cursor: pointer; }
+.sd-reader-refill-actions .sd-reader-refill-pick { background: var(--sd-primary, #a9d8b9); color: var(--sd-primary-text, #20231f); border-color: transparent; }
 @media (max-width: 620px) {
-  .sd-reader-refill-card { padding: 17px; }
+  .sd-reader-refill-overlay { align-items: flex-start; padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .sd-reader-refill-card { padding: 17px; margin-block: auto; }
   .sd-reader-refill-actions { flex-direction: column; }
   .sd-reader-refill-actions .sd-btn { width: 100%; justify-content: center; }
 }
@@ -3465,6 +3490,14 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-assistant-msg blockquote { max-width: 88%; margin: 0; padding: 6px 9px; border-left: 2px solid var(--sd-accent); border-radius: 4px 9px 9px 4px; background: var(--sd-glass-weak); color: var(--sd-muted); font-size: .72em; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 .sd-reader-assistant-bubble { max-width: 90%; padding: 9px 11px; border: 1px solid var(--sd-hairline); border-radius: 5px 14px 14px 14px; background: var(--sd-glass-weak); color: var(--sd-text); font-size: .86em; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
 .sd-reader-assistant-msg.is-user .sd-reader-assistant-bubble { border-color: transparent; border-radius: 14px 5px 14px 14px; background: var(--sd-primary); color: var(--sd-primary-text); }
+.sd-reader-assistant-actions { display: flex; gap: 6px; padding: 0 2px; opacity: 0; pointer-events: none; transition: opacity .16s; }
+.sd-reader-assistant-msg:hover .sd-reader-assistant-actions,
+.sd-reader-assistant-msg.actions-open .sd-reader-assistant-actions { opacity: 1; pointer-events: auto; }
+.sd-reader-assistant-action { padding: 2px 4px; border: 0; background: transparent; color: var(--sd-muted); cursor: pointer; font-size: .8em; }
+.sd-reader-assistant-action:hover { color: var(--sd-text); }
+.sd-reader-assistant-action[data-assistant-act="delete"]:hover { color: var(--sd-danger, #c0554e); }
+.sd-reader-assistant-msg.is-editing { align-items: stretch; }
+.sd-reader-assistant-msg.is-editing .sd-reader-assistant-bubble { width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--sd-border); border-radius: 12px; background: var(--sd-input-bg); color: var(--sd-text); }
 .sd-reader-assistant-quote { flex: 0 0 100%; width: 100%; box-sizing: border-box; margin: 0 0 2px; padding: 7px 7px 7px 10px; border-left: 2px solid var(--sd-accent); border-radius: 6px 10px 10px 6px; background: var(--sd-glass-weak); color: var(--sd-muted); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; }
 .sd-reader-assistant-quote > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .73em; }
 .sd-reader-assistant-quote button { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--sd-muted); cursor: pointer; }
@@ -3620,20 +3653,16 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-chat-pending button { position: absolute; top: 3px; right: 3px; width: 19px; height: 19px; padding: 0; border: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: rgba(20,20,20,.68); color: #fff; font-size: 10px; cursor: pointer; }
 .sd-reader-dialog-ta { flex: 1; min-width: 0; background: var(--sd-input-bg); color: var(--sd-text); border: 1px solid var(--sd-border); border-radius: 10px; padding: 9px 12px; font: inherit; font-size: .88em; resize: none; max-height: 120px; }
 .sd-reader-dialog-ta:disabled { opacity: .6; cursor: not-allowed; }
-/* 三个输入钮统一：同尺寸(38²)、同圆角、同描边玻璃底；靠图标区分（连接/记忆·发送↑·让书友回复✈） */
+/* 输入钮统一：同尺寸、同圆角、同描边玻璃底；发送键同时承载发送、回复和图片手势。 */
 .sd-reader-inbtn { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--sd-border); background: var(--sd-glass-weak); color: var(--sd-text); cursor: pointer; transition: background .18s, color .18s; }
 .sd-reader-inbtn:hover:not(:disabled) { background: var(--sd-glass); }
 .sd-reader-inbtn:disabled { opacity: .4; cursor: not-allowed; }
 .sd-reader-assistant-switch { width: 36px; min-width: 36px; padding: 0; color: var(--sd-muted); }
 .sd-reader-assistant-switch.active { color: var(--sd-accent); border-color: color-mix(in srgb, var(--sd-accent) 45%, var(--sd-border)); background: color-mix(in srgb, var(--sd-accent) 9%, var(--sd-glass-weak)); }
-.sd-reader-dialog-send.is-image-hold { color: var(--sd-accent); border-color: color-mix(in srgb, var(--sd-accent) 62%, var(--sd-border)); background: color-mix(in srgb, var(--sd-accent) 12%, var(--sd-glass)); transform: scale(.94); }
-.sd-reader-dialog-input.is-assistant .sd-reader-dialog-send.is-stop { background: #a94642; color: #fff; border-color: transparent; }
+.sd-reader-dialog-send.is-reply-hold { color: var(--sd-primary-text); border-color: transparent; background: var(--sd-accent); transform: scale(.94); }
+.sd-reader-dialog-send.is-image-swipe { color: #d7ab57; border-color: rgba(207, 164, 85, .72); background: rgba(24, 23, 21, .9); transform: translateY(-3px); }
+.sd-reader-dialog-send.is-stop { background: #a94642; color: #fff; border-color: transparent; }
 .sd-reader-more-conn { font-size: .9em; color: var(--sd-text); margin: 6px 0; padding: 8px 10px; background: var(--sd-glass-weak); border-radius: 8px; word-break: break-word; }
-/* 生成钮（让书友回复）＝主动作：强调色实心，压过统一玻璃底；生成中切停止红 */
-.sd-reader-dialog-gen { background: var(--sd-accent); color: var(--sd-primary-text); border-color: transparent; }
-.sd-reader-dialog-gen:hover:not(:disabled) { background: var(--sd-accent); filter: brightness(1.06); }
-.sd-reader-dialog-gen.sd-reader-dialog-stop { background: var(--sd-danger, #c0554e); }
-.sd-reader-dialog-gen.sd-reader-dialog-stop:hover:not(:disabled) { background: var(--sd-danger, #c0554e); filter: brightness(1.06); }
 /* 伴读对话气泡（user 右 / friend 左·跟随主题·bubbleCustom DIY 于 1B 后续接线） */
 .sd-reader-msg { display: flex; flex-direction: column; margin: 8px 0; }
 .sd-reader-msg-user { align-items: flex-end; }
@@ -3676,8 +3705,9 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-msg-edit-ok { background: var(--sd-accent); color: var(--sd-primary-text); border-color: transparent; }
 .sd-reader-msg-edit-ok:hover { background: var(--sd-accent); filter: brightness(1.06); color: var(--sd-primary-text); }
 /* 气泡操作按钮：重roll / 编辑 / 删除（双方气泡·hover 浮现·纯图标无状态底色） */
-.sd-reader-msg-actions { display: flex; gap: 6px; margin-top: 4px; padding: 0 2px; opacity: 0; transition: opacity .16s; }
-.sd-reader-msg:hover .sd-reader-msg-actions { opacity: 1; }
+.sd-reader-msg-actions { display: flex; gap: 6px; margin-top: 4px; padding: 0 2px; opacity: 0; pointer-events: none; transition: opacity .16s; }
+.sd-reader-msg:hover .sd-reader-msg-actions,
+.sd-reader-msg.actions-open .sd-reader-msg-actions { opacity: 1; pointer-events: auto; }
 .sd-reader-msg-action { background: transparent; border: 0; color: var(--sd-muted); cursor: pointer; padding: 2px 4px; font-size: .8em; }
 .sd-reader-msg-action:hover { color: var(--sd-text); }
 .sd-reader-msg-action[data-act="delete"]:hover { color: var(--sd-danger, #c0554e); }

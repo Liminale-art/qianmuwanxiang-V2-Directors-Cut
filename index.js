@@ -333,7 +333,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   floatSize: null,   // null=沿用原响应式默认（桌面48 / 移动44）；用户拖动滑块后保存明确像素值
   floatPosition: { x: null, y: null },
   quickWheelEnabled: true,
-  quickWheelScheme: 'default',
+  quickWheelScheme: 'custom',   // 兼容旧配置字段；蜂巢快捷盘从 1.27 起仅使用用户自定义入口
   quickWheelCustomOrder: ['dashboard', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
   quickWheelCustomEnabled: ['dashboard', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
   quickWheelCustomExpanded: false,
@@ -3151,30 +3151,45 @@ const QUICK_COMMANDS = Object.freeze([
   { id: 'floor', label: '楼层跳转', icon: 'fa-layer-group' },
 ]);
 const QUICK_COMMAND_IDS = QUICK_COMMANDS.map((item) => item.id);
-const DEFAULT_QUICK_COMMAND_IDS = ['dashboard', 'tts', 'coread', 'theater', 'imagegen', 'floor'];
+const QUICK_HIVE_MAX_ITEMS = 8;
+// 六边形蜂巢的归一化坐标。1–6 项使用均匀环形，7–8 项切成 3-2-3 蜂巢；
+// 同一入口数量下坐标与用户排序始终稳定，随机性只用于配色和微光节奏。
+const QUICK_HIVE_LAYOUTS = Object.freeze({
+  1: [[1.08, 0]],
+  2: [[-1.08, 0], [1.08, 0]],
+  3: [[0, -.98], [.88, .62], [-.88, .62]],
+  4: [[0, -.98], [1.08, 0], [0, .98], [-1.08, 0]],
+  5: [[0, -.98], [.96, -.44], [.64, .9], [-.64, .9], [-.96, -.44]],
+  6: [[0, -.98], [.88, -.49], [.88, .49], [0, .98], [-.88, .49], [-.88, -.49]],
+  7: [[-.82, -.92], [0, -.92], [.82, -.92], [1.22, 0], [.82, .92], [-.82, .92], [-1.22, 0]],
+  8: [[-.82, -.92], [0, -.92], [.82, -.92], [1.22, 0], [.82, .92], [0, .92], [-.82, .92], [-1.22, 0]],
+});
 
 function normalizeQuickWheelSettings() {
-  if (!['default', 'custom'].includes(settings.quickWheelScheme)) settings.quickWheelScheme = 'default';
+  // 旧版“默认方案”只在迁移时存在；更新后直接沿用用户已经勾选的自定义入口。
+  settings.quickWheelScheme = 'custom';
   const order = Array.isArray(settings.quickWheelCustomOrder) ? settings.quickWheelCustomOrder : [];
   settings.quickWheelCustomOrder = [...new Set(order.filter((id) => QUICK_COMMAND_IDS.includes(id))), ...QUICK_COMMAND_IDS.filter((id) => !order.includes(id))];
   const enabled = Array.isArray(settings.quickWheelCustomEnabled) ? settings.quickWheelCustomEnabled : QUICK_COMMAND_IDS;
-  settings.quickWheelCustomEnabled = [...new Set(enabled.filter((id) => QUICK_COMMAND_IDS.includes(id)))];
+  const enabledSet = new Set(enabled.filter((id) => QUICK_COMMAND_IDS.includes(id)));
+  settings.quickWheelCustomEnabled = settings.quickWheelCustomOrder.filter((id) => enabledSet.has(id)).slice(0, QUICK_HIVE_MAX_ITEMS);
   if (!settings.quickWheelCustomEnabled.length) settings.quickWheelCustomEnabled = [QUICK_COMMAND_IDS[0]];
 }
 
 function quickWheelItems() {
   normalizeQuickWheelSettings();
-  const ids = settings.quickWheelScheme === 'custom'
-    ? settings.quickWheelCustomOrder.filter((id) => settings.quickWheelCustomEnabled.includes(id))
-    : DEFAULT_QUICK_COMMAND_IDS;
-  return ids.slice(0, 6).map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
+  const ids = settings.quickWheelCustomOrder.filter((id) => settings.quickWheelCustomEnabled.includes(id));
+  return ids.slice(0, QUICK_HIVE_MAX_ITEMS).map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
 }
 
 let quickWheelOutsideCleanup = null;
+let quickWheelOriginButton = null;
 
 function closeQuickWheel() {
   quickWheelOutsideCleanup?.();
   quickWheelOutsideCleanup = null;
+  quickWheelOriginButton?.classList.remove('sd-wheel-origin-hidden');
+  quickWheelOriginButton = null;
   document.getElementById(QUICK_WHEEL_ID)?.remove();
 }
 
@@ -3188,16 +3203,21 @@ function bindQuickWheelOutsideDismiss(root) {
   const dismissOnEscape = (event) => {
     if (event.key === 'Escape') closeQuickWheel();
   };
+  const dismissOnViewportChange = () => closeQuickWheel();
   // 捕获阶段先于 ST 与其他插件的 stopPropagation；监听在长按事件结束后才建立，不会误关刚展开的轮盘。
   document.addEventListener('pointerdown', dismiss, true);
   document.addEventListener('mousedown', dismiss, true);
   document.addEventListener('touchstart', dismiss, true);
   document.addEventListener('keydown', dismissOnEscape, true);
+  window.visualViewport?.addEventListener('resize', dismissOnViewportChange, { once: true });
+  window.addEventListener('orientationchange', dismissOnViewportChange, { once: true });
   quickWheelOutsideCleanup = () => {
     document.removeEventListener('pointerdown', dismiss, true);
     document.removeEventListener('mousedown', dismiss, true);
     document.removeEventListener('touchstart', dismiss, true);
     document.removeEventListener('keydown', dismissOnEscape, true);
+    window.visualViewport?.removeEventListener('resize', dismissOnViewportChange);
+    window.removeEventListener('orientationchange', dismissOnViewportChange);
   };
 }
 
@@ -3358,53 +3378,64 @@ function openQuickWheel(btn) {
   const items = quickWheelItems();
   if (!items.length) return;
   const rect = btn.getBoundingClientRect();
-  const centerX = rect.left + rect.width / 2;
-  const centerY = rect.top + rect.height / 2;
   const floatSize = getFloatSize();
-  const itemSize = Math.max(30, Math.min(40, Math.round(floatSize * .82)));
-  const gap = Math.max(5, Math.min(8, Math.round(floatSize * .15)));
+  const itemSize = Math.max(32, Math.min(50, Math.round(floatSize)));
+  const gap = Math.max(4, Math.min(7, Math.round(itemSize * .11)));
   const step = itemSize + gap;
-  const firstStep = rect.height / 2 + gap + itemSize / 2;
-  const slotMap = {
-    1: [-1],
-    2: [-1, 1],
-    3: [-2, -1, 1],
-    4: [-2, -1, 1, 2],
-    5: [-3, -2, -1, 1, 2],
-    6: [-3, -2, -1, 1, 2, 3],
-  };
-  const slots = slotMap[items.length] || slotMap[6];
+  const slots = QUICK_HIVE_LAYOUTS[items.length] || QUICK_HIVE_LAYOUTS[QUICK_HIVE_MAX_ITEMS];
   const viewport = window.visualViewport;
   const viewportLeft = Number(viewport?.offsetLeft || 0);
+  const viewportTop = Number(viewport?.offsetTop || 0);
   const viewportWidth = Number(viewport?.width || window.innerWidth);
-  const railLeft = Math.max(viewportLeft + 6, Math.min(viewportLeft + viewportWidth - itemSize - 6, centerX - itemSize / 2));
+  const viewportHeight = Number(viewport?.height || window.innerHeight);
+  const originCenterX = rect.left + rect.width / 2 - viewportLeft;
+  const originCenterY = rect.top + rect.height / 2 - viewportTop;
+  const offsets = slots.map(([x, y]) => ({ x: x * step, y: y * step }));
+  const allX = [0, ...offsets.map((slot) => slot.x)];
+  const allY = [0, ...offsets.map((slot) => slot.y)];
+  const margin = 8;
+  const minCenterX = margin + itemSize / 2 - Math.min(...allX);
+  const maxCenterX = viewportWidth - margin - itemSize / 2 - Math.max(...allX);
+  const minCenterY = margin + itemSize / 2 - Math.min(...allY);
+  const maxCenterY = viewportHeight - margin - itemSize / 2 - Math.max(...allY);
+  // 贴边时整座蜂巢向可视区内侧平移，主 Logo 仍在蜂巢中心；关闭后原悬浮球回到原位。
+  const centerX = minCenterX <= maxCenterX ? Math.max(minCenterX, Math.min(maxCenterX, originCenterX)) : viewportWidth / 2;
+  const centerY = minCenterY <= maxCenterY ? Math.max(minCenterY, Math.min(maxCenterY, originCenterY)) : viewportHeight / 2;
   const root = document.createElement('div');
   root.id = QUICK_WHEEL_ID;
-  root.className = 'sd-wheel-coaxial';
-  root.innerHTML = '<div class="sd-wheel-backdrop"></div><div class="sd-wheel-items" role="menu" aria-label="千幕快捷轮盘"></div>';
+  root.className = 'sd-wheel-hive';
+  root.style.left = `${viewportLeft}px`;
+  root.style.top = `${viewportTop}px`;
+  root.style.width = `${viewportWidth}px`;
+  root.style.height = `${viewportHeight}px`;
+  root.innerHTML = `<div class="sd-wheel-backdrop"></div><div class="sd-wheel-items" role="menu" aria-label="千幕蜂巢快捷盘">
+    <button type="button" class="sd-wheel-core" aria-label="收起千幕蜂巢快捷盘" style="--sd-wheel-item-size:${itemSize}px;left:${centerX - itemSize / 2}px;top:${centerY - itemSize / 2}px"><img src="${FLOAT_LOGO_URL}" alt=""></button>
+  </div>`;
   const holder = root.querySelector('.sd-wheel-items');
   items.forEach((item, index) => {
-    const slot = slots[index];
-    const distance = firstStep + (Math.abs(slot) - 1) * step;
-    const itemCenterY = centerY + Math.sign(slot) * distance;
+    const slot = offsets[index];
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = `sd-wheel-command ${slot < 0 ? 'is-upper' : 'is-lower'}${item.pending ? ' is-pending' : ''}`;
+    const palettes = ['is-black-gold', 'is-white-gold', 'is-gold-black'];
+    const palette = palettes[Math.floor(Math.random() * palettes.length)];
+    button.className = `sd-wheel-command ${palette}${item.pending ? ' is-pending' : ''}`;
     button.dataset.command = item.id;
     button.style.setProperty('--sd-wheel-item-size', `${itemSize}px`);
-    button.style.left = `${railLeft}px`;
-    button.style.top = `${itemCenterY - itemSize / 2}px`;
-    button.style.animationDelay = `${index * 18}ms`;
+    button.style.setProperty('--sd-wheel-delay', `${index * 24 + Math.floor(Math.random() * 45)}ms`);
+    button.style.setProperty('--sd-wheel-glint-speed', `${(2.7 + Math.random() * 2.4).toFixed(2)}s`);
+    button.style.setProperty('--sd-wheel-idle-alpha', `${(.8 + Math.random() * .14).toFixed(2)}`);
+    button.style.left = `${centerX + slot.x - itemSize / 2}px`;
+    button.style.top = `${centerY + slot.y - itemSize / 2}px`;
     button.title = item.pending ? `${item.label}（即将开放）` : item.label;
+    button.setAttribute('aria-label', button.title);
     button.setAttribute('role', 'menuitem');
     button.innerHTML = `<i class="fa-solid ${item.icon}"></i>`;
     holder.appendChild(button);
   });
   document.body.appendChild(root);
+  quickWheelOriginButton = btn;
+  btn.classList.add('sd-wheel-origin-hidden');
   bindQuickWheelOutsideDismiss(root);
-  root.tabIndex = -1;
-  root.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeQuickWheel(); });
-  root.focus({ preventScroll: true });
   root.addEventListener('click', (event) => { if (!event.target.closest('.sd-wheel-command')) closeQuickWheel(); });
   holder?.addEventListener('click', (event) => {
     const command = event.target.closest('.sd-wheel-command')?.dataset.command;
@@ -7709,21 +7740,16 @@ function ttsStopChat() {
 
 function renderQuickWheelSettings() {
   normalizeQuickWheelSettings();
-  const custom = settings.quickWheelScheme === 'custom';
   const ordered = settings.quickWheelCustomOrder.map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
   return `<div class="sd-wheel-settings">
     <div class="sd-wheel-setting-head">
-      <label class="checkbox_label"><input type="checkbox" class="sd-wheel-toggle" ${settings.quickWheelEnabled !== false ? 'checked' : ''}> 长按展开快捷轮盘</label>
-      <select class="text_pole sd-wheel-scheme" aria-label="快捷轮盘方案">
-        <option value="default" ${custom ? '' : 'selected'}>默认方案</option>
-        <option value="custom" ${custom ? 'selected' : ''}>自定义方案</option>
-      </select>
+      <label class="checkbox_label"><input type="checkbox" class="sd-wheel-toggle" ${settings.quickWheelEnabled !== false ? 'checked' : ''}> 长按展开蜂巢快捷盘</label>
     </div>
-    ${custom ? `<details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑轮盘入口</span><b>${settings.quickWheelCustomEnabled.length} / 6</b></summary><p class="sd-muted sd-wheel-default-copy">可从千幕全部入口中选择，轮盘最多显示 6 项。</p><div class="sd-wheel-custom-list">${ordered.map((item, index) => `
+    <details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑蜂巢入口</span><b>${settings.quickWheelCustomEnabled.length} / ${QUICK_HIVE_MAX_ITEMS}</b></summary><p class="sd-muted sd-wheel-default-copy">可从千幕全部入口中选择，最多显示 ${QUICK_HIVE_MAX_ITEMS} 项；列表顺序就是蜂巢顺序。</p><div class="sd-wheel-custom-list">${ordered.map((item, index) => `
       <div class="sd-wheel-custom-row" data-command="${item.id}">
         <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}"></i><span>${htmlEscape(item.label)}</span></label>
         <div><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="up" ${index === 0 ? 'disabled' : ''} title="上移"><i class="fa-solid fa-chevron-up"></i></button><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="down" ${index === ordered.length - 1 ? 'disabled' : ''} title="下移"><i class="fa-solid fa-chevron-down"></i></button></div>
-      </div>`).join('')}</div></details>` : '<p class="sd-muted sd-wheel-default-copy">推演 · 配音 · 书架 · 幕外 · 生图 · 楼层跳转</p>'}
+      </div>`).join('')}</div></details>
   </div>`;
 }
 
@@ -8316,11 +8342,6 @@ function bindActiveTabEvents(root) {
     if (!settings.quickWheelEnabled) closeQuickWheel();
     saveSettings();
   });
-  root.querySelector('.sd-wheel-scheme')?.addEventListener('change', (e) => {
-    settings.quickWheelScheme = e.target.value === 'custom' ? 'custom' : 'default';
-    saveSettings();
-    renderModal();
-  });
   root.querySelector('.sd-wheel-custom-details')?.addEventListener('toggle', (e) => {
     settings.quickWheelCustomExpanded = !!e.currentTarget.open;
     saveSettings();
@@ -8330,9 +8351,9 @@ function bindActiveTabEvents(root) {
     if (!id) return;
     const next = settings.quickWheelCustomEnabled.filter((item) => item !== id);
     if (e.target.checked) next.push(id);
-    if (next.length > 6) {
+    if (next.length > QUICK_HIVE_MAX_ITEMS) {
       e.target.checked = false;
-      toast('快捷轮盘最多显示 6 个入口。', 'warning');
+      toast(`蜂巢快捷盘最多显示 ${QUICK_HIVE_MAX_ITEMS} 个入口。`, 'warning');
       return;
     }
     if (!next.length) {
@@ -12165,14 +12186,19 @@ function renderReaderAssistantMessages() {
   const messages = readerAssistant.messages || [];
   if (!messages.length) return '<div class="sd-reader-assistant-empty"><span>选中文字来问，或直接聊一个衍生问题。</span></div>';
   coreadScheduleChatImages();
-  return messages.map((message) => {
+  return messages.map((message, index) => {
     const role = message.role === 'user' ? 'user' : 'assistant';
     if (role === 'assistant' && !String(message.text || '').trim()) {
       return `<div class="sd-reader-assistant-msg is-assistant" data-assistant-msg="${htmlEscape(message.id)}"><div class="sd-reader-assistant-bubble sd-reader-typing-bubble"><span></span><span></span><span></span></div></div>`;
     }
+    const actions = `<div class="sd-reader-assistant-actions">
+      <button class="sd-reader-assistant-action" data-assistant-act="edit" data-assistant-idx="${index}" title="编辑"><i class="fa-solid fa-pen"></i></button>
+      <button class="sd-reader-assistant-action" data-assistant-act="delete" data-assistant-idx="${index}" title="删除"><i class="fa-solid fa-trash"></i></button>
+    </div>`;
     return `<div class="sd-reader-assistant-msg is-${role}" data-assistant-msg="${htmlEscape(message.id)}">
       ${message.quote ? `<blockquote>${htmlEscape(message.quote)}</blockquote>` : ''}
       <div class="sd-reader-assistant-bubble">${coreadMessageImagesHtml(message)}${message.text ? `<span>${htmlEscape(message.text)}</span>` : ''}</div>
+      ${actions}
     </div>`;
   }).join('');
 }
@@ -12205,14 +12231,13 @@ function coreadRefreshAssistantPanel() {
   }
   const input = portal.querySelector('.sd-reader-dialog-ta');
   if (input) input.placeholder = assistantMode ? '问当前选文，或聊一个衍生问题……' : '但愿你能不期而然地同我一起';
-  const gen = portal.querySelector('.sd-reader-dialog-gen');
-  if (gen) gen.hidden = assistantMode;
   const send = portal.querySelector('.sd-reader-dialog-send');
   if (send) {
-    send.classList.toggle('is-stop', assistantMode && readerAssistantBusy);
-    send.disabled = assistantMode ? false : dialogBusy;
-    send.title = assistantMode && readerAssistantBusy ? '停止回答' : '发送；长按选择并发送图片';
-    send.innerHTML = `<i class="fa-solid ${assistantMode && readerAssistantBusy ? 'fa-stop' : 'fa-arrow-up'}"></i>`;
+    const busy = assistantMode ? readerAssistantBusy : dialogBusy;
+    send.classList.toggle('is-stop', busy);
+    send.disabled = false;
+    send.title = busy ? '停止回答' : '单击发送；长按让 AI 回复；桌面双击或触屏上滑添加图片';
+    send.innerHTML = `<i class="fa-solid ${busy ? 'fa-stop' : 'fa-arrow-up'}"></i>`;
   }
 }
 
@@ -12297,7 +12322,6 @@ function coreadOpenAssistant(quote = '') {
   if (voiceBody) voiceBody.hidden = true;
   if (inputRow) inputRow.hidden = false;
   coreadRefreshAssistantPanel();
-  setTimeout(() => document.querySelector('#sd-reader-portal .sd-reader-dialog-ta')?.focus(), 40);
 }
 
 function coreadStopAssistant(persist = true) {
@@ -12373,17 +12397,39 @@ async function coreadDeleteMessageImages(messages, bookId = readerView?.bookId) 
   }
 }
 
-async function coreadAskAssistant(inputText, imageIds = []) {
+// 幕伴小助手也采用“发送 / 回复分离”：单击发送只落 user 气泡，长按发送键才让 AI
+// 一次回答末尾连续的 user 消息。这样两套对话拥有完全一致的肌肉记忆。
+async function coreadAppendAssistantMessage(inputText, imageIds = []) {
   const images = (Array.isArray(imageIds) ? imageIds : []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
   const visibleText = String(inputText || '').trim();
-  const question = visibleText || (images.length ? '请分析本次附带的图片，并结合当前阅读内容回答。' : '');
-  if (!question || readerAssistantBusy || !readerView) return;
-  if (!readerAssistant.loaded) { toast('幕伴小助手正在载入，请稍候。', 'info'); return; }
+  if ((!visibleText && !images.length) || readerAssistantBusy || !readerView) return false;
+  if (!readerAssistant.loaded) { toast('幕伴小助手正在载入，请稍候。', 'info'); return false; }
   const quote = readerAssistant.quote || '';
   const userMessage = { id: uid('rda'), role: 'user', text: visibleText, quote, images, ts: Date.now() };
   readerAssistant.messages.push(userMessage);
   readerAssistant.quote = '';
-  const prior = readerAssistant.messages.slice(0, -1).slice(-COREAD_ASSISTANT_CONTEXT_MESSAGES);
+  coreadRefreshAssistantPanel();
+  await coreadStoreAssistantHistory();
+  return true;
+}
+
+async function coreadGenerateAssistantReply() {
+  if (readerAssistantBusy || !readerView) return false;
+  if (!readerAssistant.loaded) { toast('幕伴小助手正在载入，请稍候。', 'info'); return false; }
+  const messages = readerAssistant.messages || [];
+  let pendingStart = messages.length - 1;
+  while (pendingStart >= 0 && messages[pendingStart].role === 'user') pendingStart--;
+  const pendingUsers = messages.slice(pendingStart + 1);
+  if (!pendingUsers.length) {
+    toast('先发一句话，再长按发送键让幕伴小助手回复。', 'info');
+    return false;
+  }
+  const prior = messages.slice(0, pendingStart + 1).slice(-COREAD_ASSISTANT_CONTEXT_MESSAGES);
+  const images = pendingUsers.flatMap((message) => Array.isArray(message?.images) ? message.images : [])
+    .map(Number).filter((n) => Number.isFinite(n) && n > 0).slice(0, 8);
+  const question = pendingUsers.map((message) => String(message?.text || '').trim()).filter(Boolean).join('\n')
+    || (images.length ? '请分析本轮附带的图片，并结合当前阅读内容回答。' : '');
+  const quotes = uniqueClean(pendingUsers.map((message) => String(message?.quote || '').trim()).filter(Boolean));
   const answer = { id: uid('rda'), role: 'assistant', text: '', ts: Date.now() };
   readerAssistant.messages.push(answer);
   readerAssistantBusy = true;
@@ -12402,9 +12448,9 @@ async function coreadAskAssistant(inputText, imageIds = []) {
     const history = prior.map((message) => `${message.role === 'user' ? '用户' : '助手'}：${message.text || ''}${message.images?.length ? ' [曾附图片]' : ''}`).join('\n');
     const userPrompt = [
       history ? `【幕伴小助手近期对话】\n${history}` : '',
-      quote ? `【用户选中的文字】\n${quote}` : '',
+      quotes.length ? `【用户选中的文字】\n${quotes.join('\n\n')}` : '',
       reading.visibleText ? `【当前已读范围】\n${reading.visibleText}` : '',
-      `【本次问题】\n${question}`,
+      `【本轮问题】\n${question}`,
     ].filter(Boolean).join('\n\n');
     const onDelta = settings.streamEnabled ? (acc) => {
       if (token !== readerAssistantToken) return;
@@ -12436,6 +12482,7 @@ async function coreadAskAssistant(inputText, imageIds = []) {
       coreadRefreshAssistantPanel();
     }
   }
+  return true;
 }
 
 function coreadComicPageImageNumber(chapter) {
@@ -12550,11 +12597,11 @@ function coreadSyncDialogButtons() {
   const portal = document.getElementById('sd-reader-portal');
   if (readerView?.assistantOpen) { coreadRefreshAssistantPanel(); return; }
   const sendBtn = portal?.querySelector('.sd-reader-dialog-send');
-  const genBtn = portal?.querySelector('.sd-reader-dialog-gen');
-  if (sendBtn) sendBtn.disabled = dialogBusy;   // 生成中不许再发（避免插进正在生成的批次）
-  if (genBtn) {
-    if (dialogBusy) { genBtn.innerHTML = '<i class="fa-solid fa-stop"></i>'; genBtn.classList.add('sd-reader-dialog-stop'); genBtn.title = '停止生成'; }
-    else { genBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i>'; genBtn.classList.remove('sd-reader-dialog-stop'); genBtn.title = '让书友回复'; }
+  if (sendBtn) {
+    sendBtn.disabled = false;
+    sendBtn.classList.toggle('is-stop', dialogBusy);
+    sendBtn.title = dialogBusy ? '停止回答' : '单击发送；长按让 AI 回复；桌面双击或触屏上滑添加图片';
+    sendBtn.innerHTML = `<i class="fa-solid ${dialogBusy ? 'fa-stop' : 'fa-arrow-up'}"></i>`;
   }
 }
 
@@ -13065,6 +13112,14 @@ function coreadShowRefillChooser(bookId) {
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
   overlay.setAttribute('aria-labelledby', 'sd-reader-refill-title');
+  const viewport = window.visualViewport;
+  const syncViewport = () => {
+    if (!overlay.isConnected) return;
+    overlay.style.left = `${Number(viewport?.offsetLeft || 0)}px`;
+    overlay.style.top = `${Number(viewport?.offsetTop || 0)}px`;
+    overlay.style.width = `${Math.max(1, Number(viewport?.width || window.innerWidth || document.documentElement.clientWidth))}px`;
+    overlay.style.height = `${Math.max(1, Number(viewport?.height || window.innerHeight || document.documentElement.clientHeight))}px`;
+  };
   overlay.innerHTML = `
     <div class="sd-reader-refill-card">
       <h3 id="sd-reader-refill-title">《${htmlEscape(meta.title)}》的正文未在本设备缓存</h3>
@@ -13080,6 +13135,9 @@ function coreadShowRefillChooser(bookId) {
     </div>`;
   const cleanup = () => {
     document.removeEventListener('keydown', onKeydown);
+    viewport?.removeEventListener('resize', syncViewport);
+    viewport?.removeEventListener('scroll', syncViewport);
+    window.removeEventListener('orientationchange', syncViewport);
     overlay.remove();
     if (coreadRefillChooserCleanup === cleanup) coreadRefillChooserCleanup = null;
   };
@@ -13096,7 +13154,21 @@ function coreadShowRefillChooser(bookId) {
   });
   coreadRefillChooserCleanup = cleanup;
   document.addEventListener('keydown', onKeydown);
-  (document.getElementById('story-director-modal') || document.body).appendChild(overlay);
+  // 必须直挂 body：千幕主面板带 transform / overflow 时，内部 fixed 会退化成相对面板定位，
+  // 正是窄屏弹层被推到视口外的根因。主题变量从主面板复制，不以牺牲外观换定位正确。
+  const themeSource = document.getElementById('story-director-modal');
+  if (themeSource) {
+    const computed = getComputedStyle(themeSource);
+    ['--sd-text', '--sd-muted', '--sd-border', '--sd-hairline', '--sd-folder-head', '--sd-glass-weak', '--sd-primary', '--sd-primary-text'].forEach((name) => {
+      const value = computed.getPropertyValue(name);
+      if (value) overlay.style.setProperty(name, value);
+    });
+  }
+  document.body.appendChild(overlay);
+  syncViewport();
+  viewport?.addEventListener('resize', syncViewport);
+  viewport?.addEventListener('scroll', syncViewport);
+  window.addEventListener('orientationchange', syncViewport);
 }
 
 /* 用户明确选择「一并删除记忆」时，清理该书的全部伴读记忆：
@@ -13854,9 +13926,8 @@ function buildReaderStage() {
           ${coreadPendingImagesHtml()}
           <button class="sd-reader-inbtn sd-reader-assistant-switch${assistantMode ? ' active' : ''}" title="${assistantMode ? '返回书友对话' : '切换至幕伴小助手'}"><i class="fa-solid ${assistantMode ? 'fa-user' : 'fa-lightbulb'}"></i></button>
           <textarea class="sd-reader-dialog-ta" placeholder="${assistantMode ? '问当前选文，或聊一个衍生问题……' : '但愿你能不期而然地同我一起'}" rows="1"></textarea>
-          <button class="sd-reader-inbtn sd-reader-dialog-send" title="${assistantMode && readerAssistantBusy ? '停止回答' : '发送；长按选择并发送图片'}"><i class="fa-solid ${assistantMode && readerAssistantBusy ? 'fa-stop' : 'fa-arrow-up'}"></i></button>
+          <button class="sd-reader-inbtn sd-reader-dialog-send${(assistantMode ? readerAssistantBusy : dialogBusy) ? ' is-stop' : ''}" title="${(assistantMode ? readerAssistantBusy : dialogBusy) ? '停止回答' : '单击发送；长按让 AI 回复；桌面双击或触屏上滑添加图片'}"><i class="fa-solid ${(assistantMode ? readerAssistantBusy : dialogBusy) ? 'fa-stop' : 'fa-arrow-up'}"></i></button>
           <input type="file" class="sd-reader-dialog-image-input sd-reader-native-file" accept="image/*" multiple aria-label="选择并发送图片">
-          <button class="sd-reader-inbtn sd-reader-dialog-gen" title="让书友回复"${assistantMode ? ' hidden' : ''}><i class="fa-solid fa-paper-plane"></i></button>
         </div>
       </div>
 
@@ -14057,7 +14128,7 @@ function renderCoreadSpoilerGuard(m) {
 const COREAD_GUIDE_STEPS = [
   { tab: 'api', target: 'api', icon: 'fa-plug-circle-check', title: '连接模型接口', text: '先确认对话 API。可直接跟随 SillyTavern 当前连接，也可选择千幕自定义预设；总结、向量与重排按需配置。' },
   { tab: 'api', target: 'assistant', icon: 'fa-lightbulb', title: '配置幕伴小助手', text: '幕伴小助手与角色书友分开。可从千幕 API 预设中单独选模型，并决定历史只留本次页面、随书保存，或关闭阅读即清空；阅读时可从对话输入框左侧切换，也可选中文字直接提问。' },
-  { tab: 'api', target: 'comic', icon: 'fa-images', title: '启用漫画与图片', text: '选择支持看图的识图模型。漫画阅读页可把当前及此前尚未整理的连续页面生成文字稿；确认或修改后才写入伴读档案。长按对话发送键也可发图片给书友或幕伴小助手。' },
+  { tab: 'api', target: 'comic', icon: 'fa-images', title: '启用漫画与图片', text: '选择支持看图的识图模型。漫画阅读页可把当前及此前尚未整理的连续页面生成文字稿；确认或修改后才写入伴读档案。桌面双击发送键、触屏从发送键上滑即可发图片。' },
   { tab: 'setup', target: 'context', icon: 'fa-link', title: '确认正文联动', text: '设置伴读参考最近多少层正文聊天。身份会自动跟随当前角色与用户，无需重复填写。' },
   { tab: 'setup', target: 'sources', icon: 'fa-layer-group', title: '选择伴读取材', text: '按需勾选世界书和预设条目。防全知剧透会继续按阅读水位隔离尚未读到的内容。' },
   { tab: 'records', target: 'dialog-summary', icon: 'fa-comments', title: '整理伴读对话', text: '自动总结会在短对话累积到设定条数后写入记忆；手动总结适合补整指定区间。两者都写入同一切片池，重叠时会先提醒再替换。' },
@@ -15717,10 +15788,9 @@ function bindReaderStageEvents(stageRoot) {
     const m = (readerDialog.messages || []).find((x) => x.id === mid);
     if (m) coreadVoicePlayOrPopup(m, companionCharName(), playBtn);
   });
-  // 对话收发（发送/生成分离）：发送=追加 user 气泡（可连发）·生成=让书友回复一整批（生成中＝停止）
+  // 两套对话共用一个发送键：单击发送、长按让 AI 回复；桌面双击 / 触屏上滑添加图片。
   const dialogTa = q('.sd-reader-dialog-ta');
   const dialogSend = q('.sd-reader-dialog-send');
-  const dialogGen = q('.sd-reader-dialog-gen');
   const dialogInput = q('.sd-reader-dialog-input');
   const dialogImageInput = q('.sd-reader-dialog-image-input');
   let chatSendBusy = false;
@@ -15730,43 +15800,59 @@ function bindReaderStageEvents(stageRoot) {
   };
   const doSend = async () => {
     if (readerView.assistantOpen) {
-      if (readerAssistantBusy) { coreadStopAssistant(); return; }
+      if (readerAssistantBusy) { coreadStopAssistant(); return false; }
     }
-    if (dialogBusy) return;   // 生成中不许再发（防插进正在生成的批次）
+    if (dialogBusy) { coreadStopDialog(); return false; }
     const text = dialogTa?.value || '';
-    if (!text.trim() && !coreadPendingChatImages().length) return;
-    if (chatSendBusy) return;
+    if (!text.trim() && !coreadPendingChatImages().length) return false;
+    if (chatSendBusy) return false;
+    const assistantMode = !!readerView.assistantOpen;
     chatSendBusy = true;
     if (dialogSend) dialogSend.disabled = true;
     try {
       const imageIds = await coreadPersistPendingChatImages();
       refreshPendingImages();
-      if (dialogTa) { dialogTa.value = ''; dialogTa.style.height = 'auto'; dialogTa.focus(); }
-      if (readerView.assistantOpen) await coreadAskAssistant(text, imageIds);
+      if (dialogTa) { dialogTa.value = ''; dialogTa.style.height = 'auto'; }
+      if (assistantMode) await coreadAppendAssistantMessage(text, imageIds);
       else await coreadAppendUserMessage(text, imageIds);
+      return true;
     } catch (error) {
       console.warn(`[${MODULE_NAME}] persist reader chat image failed`, error);
       toast('图片保存失败，请重试。', 'error');
+      return false;
     } finally {
       chatSendBusy = false;
       coreadSyncDialogButtons();
     }
   };
-  const doGen = () => {
-    if (dialogBusy) { coreadStopDialog(); return; }   // 生成中点＝停止
-    coreadGenerateReply(false);
+  const doReply = async () => {
+    if (readerView.assistantOpen && readerAssistantBusy) { coreadStopAssistant(); return; }
+    if (!readerView.assistantOpen && dialogBusy) { coreadStopDialog(); return; }
+    if (chatSendBusy) return;
+    if ((dialogTa?.value || '').trim() || coreadPendingChatImages().length) await doSend();
+    if (readerView.assistantOpen) await coreadGenerateAssistantReply();
+    else await coreadGenerateReply(false);
   };
-  // 短按发送文字；长按在 pointerup 的原生用户手势内打开文件选择器，兼容 iOS WebKit。
-  // 选图完成后直接发送，不再占用输入框左右两侧的独立图标位。
-  let imageHoldStartedAt = 0;
-  let imageHoldFeedbackTimer = null;
+  let sendPressStartedAt = 0;
+  let sendPressStartY = 0;
+  let sendPointerType = '';
+  let imageSwipeReady = false;
+  let replyHoldFeedbackTimer = null;
+  let replyHoldTriggerTimer = null;
+  let replyHoldTriggered = false;
   let suppressSendClick = false;
   let lastImagePickerAt = 0;
-  const clearImageHold = () => {
-    imageHoldStartedAt = 0;
-    if (imageHoldFeedbackTimer) clearTimeout(imageHoldFeedbackTimer);
-    imageHoldFeedbackTimer = null;
-    dialogSend?.classList.remove('is-image-hold');
+  let desktopSendTimer = null;
+  const clearSendPress = () => {
+    sendPressStartedAt = 0;
+    sendPressStartY = 0;
+    imageSwipeReady = false;
+    if (replyHoldFeedbackTimer) clearTimeout(replyHoldFeedbackTimer);
+    if (replyHoldTriggerTimer) clearTimeout(replyHoldTriggerTimer);
+    replyHoldFeedbackTimer = null;
+    replyHoldTriggerTimer = null;
+    replyHoldTriggered = false;
+    dialogSend?.classList.remove('is-reply-hold', 'is-image-swipe');
   };
   const openDialogImagePicker = () => {
     if (!dialogImageInput || dialogBusy || readerAssistantBusy || chatSendBusy) return false;
@@ -15783,36 +15869,70 @@ function bindReaderStageEvents(stageRoot) {
   };
   dialogSend?.addEventListener('pointerdown', (event) => {
     if (event.button != null && event.button !== 0) return;
-    imageHoldStartedAt = Date.now();
-    imageHoldFeedbackTimer = setTimeout(() => dialogSend.classList.add('is-image-hold'), 360);
+    sendPressStartedAt = Date.now();
+    sendPressStartY = event.clientY;
+    sendPointerType = event.pointerType || '';
+    imageSwipeReady = false;
+    replyHoldTriggered = false;
+    replyHoldFeedbackTimer = setTimeout(() => dialogSend.classList.add('is-reply-hold'), 360);
+    // 回复不依赖文件选择的“原生手势窗口”，到达阈值即触发，可避开 iOS 长按产生 contextmenu / pointercancel 的差异。
+    replyHoldTriggerTimer = setTimeout(() => {
+      if (imageSwipeReady || !sendPressStartedAt) return;
+      replyHoldTriggered = true;
+      suppressSendClick = true;
+      dialogSend.classList.remove('is-reply-hold');
+      void doReply();
+      setTimeout(() => { suppressSendClick = false; }, 500);
+    }, 520);
+  });
+  dialogSend?.addEventListener('pointermove', (event) => {
+    if (!sendPressStartedAt || !['touch', 'pen'].includes(event.pointerType)) return;
+    imageSwipeReady = sendPressStartY - event.clientY > 28;
+    dialogSend.classList.toggle('is-image-swipe', imageSwipeReady);
+    if (imageSwipeReady) {
+      dialogSend.classList.remove('is-reply-hold');
+      if (replyHoldTriggerTimer) clearTimeout(replyHoldTriggerTimer);
+      replyHoldTriggerTimer = null;
+    }
   });
   dialogSend?.addEventListener('pointerup', (event) => {
-    if (!imageHoldStartedAt) return;
-    const heldFor = Date.now() - imageHoldStartedAt;
-    clearImageHold();
-    if (heldFor < 520) return;
+    if (!sendPressStartedAt) return;
+    const heldFor = Date.now() - sendPressStartedAt;
+    const shouldPickImage = imageSwipeReady;
+    const alreadyReplied = replyHoldTriggered;
+    clearSendPress();
+    if (!shouldPickImage && !alreadyReplied && heldFor < 520) return;
     event.preventDefault();
     event.stopPropagation();
-    suppressSendClick = openDialogImagePicker();
+    suppressSendClick = true;
+    if (shouldPickImage) openDialogImagePicker();
+    else if (!alreadyReplied) void doReply();
     setTimeout(() => { suppressSendClick = false; }, 500);
   });
-  dialogSend?.addEventListener('pointercancel', clearImageHold);
-  dialogSend?.addEventListener('pointerleave', (event) => { if (event.pointerType === 'mouse') clearImageHold(); });
+  dialogSend?.addEventListener('pointercancel', clearSendPress);
+  dialogSend?.addEventListener('pointerleave', (event) => { if (event.pointerType === 'mouse') clearSendPress(); });
   dialogSend?.addEventListener('contextmenu', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    clearImageHold();
-    suppressSendClick = openDialogImagePicker();
-    setTimeout(() => { suppressSendClick = false; }, 500);
   });
   dialogSend?.addEventListener('click', (e) => {
     e.stopPropagation();
     if (suppressSendClick) { e.preventDefault(); return; }
+    // 鼠标端延迟极短的一拍区分双击；触屏单击不等待，避免移动端误触和迟滞。
+    if (sendPointerType === 'mouse') {
+      if (desktopSendTimer) {
+        clearTimeout(desktopSendTimer);
+        desktopSendTimer = null;
+        openDialogImagePicker();
+      } else {
+        desktopSendTimer = setTimeout(() => { desktopSendTimer = null; void doSend(); }, 300);
+      }
+      return;
+    }
     void doSend();
   });
-  dialogGen?.addEventListener('click', (e) => { e.stopPropagation(); doGen(); });
   dialogTa?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); void doSend(); }   // Enter 发送（攒句）·点生成才回复
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); void doSend(); }
   });
   dialogTa?.addEventListener('input', () => {
     dialogTa.style.height = 'auto';
@@ -15844,7 +15964,6 @@ function bindReaderStageEvents(stageRoot) {
     refreshPendingImages();
     if (dialogTa) { dialogTa.value = ''; dialogTa.style.height = 'auto'; }
     coreadRefreshAssistantPanel();
-    setTimeout(() => dialogTa?.focus(), 30);
   });
   q('.sd-reader-assistant-quote-remove')?.addEventListener('click', () => { readerAssistant.quote = ''; coreadRefreshAssistantPanel(); });
   // 载入完成后若对话流已在缓存，补渲（异步载入可能晚于本次绑定）
@@ -15852,11 +15971,74 @@ function bindReaderStageEvents(stageRoot) {
     const cb = q('.sd-reader-dtab-chat');
     if (cb) cb.innerHTML = readerView.assistantOpen ? renderReaderAssistantMessages() : renderReaderDialogMessages();
   }
-  // 气泡操作：重roll / 编辑 / 删除（事件委托·重渲后仍生效）
+  // 气泡操作：移动端单击气泡展开工具；书友支持朗读 / 重试 / 编辑 / 删除，助手仅编辑 / 删除。
   const chatBody = q('.sd-reader-dtab-chat');
   chatBody?.addEventListener('click', async (e) => {
+    const focusEditorAtEnd = (ta) => {
+      if (!ta) return;
+      ta.style.height = 'auto';
+      ta.style.height = `${Math.min(320, ta.scrollHeight)}px`;
+      try { ta.focus({ preventScroll: true }); } catch (_) { ta.focus(); }
+      const end = ta.value.length;
+      try { ta.setSelectionRange(end, end); } catch (_) {}
+      ta.addEventListener('input', () => {
+        ta.style.height = 'auto';
+        ta.style.height = `${Math.min(320, ta.scrollHeight)}px`;
+      });
+    };
+
+    const assistantAct = e.target.closest('.sd-reader-assistant-action');
+    if (assistantAct) {
+      e.stopPropagation();
+      const action = assistantAct.dataset.assistantAct;
+      const idx = Number(assistantAct.dataset.assistantIdx);
+      const messages = readerAssistant.messages || [];
+      if (!Number.isInteger(idx) || idx < 0 || idx >= messages.length) return;
+      const message = messages[idx];
+      if (action === 'delete') {
+        await coreadDeleteMessageImages([message]);
+        readerAssistant.messages = messages.filter((_, index) => index !== idx);
+        await coreadStoreAssistantHistory();
+        coreadRefreshAssistantPanel();
+        return;
+      }
+      if (action === 'edit') {
+        const messageEl = assistantAct.closest('.sd-reader-assistant-msg');
+        const bubble = messageEl?.querySelector('.sd-reader-assistant-bubble');
+        if (!bubble) return;
+        const original = String(message.text || '');
+        messageEl.classList.add('is-editing');
+        bubble.innerHTML = `<textarea class="sd-reader-msg-edit-ta">${htmlEscape(original)}</textarea>
+          <div class="sd-reader-msg-edit-actions">
+            <button class="sd-reader-msg-edit-btn sd-reader-msg-edit-cancel" title="取消"><i class="fa-solid fa-xmark"></i></button>
+            <button class="sd-reader-msg-edit-btn sd-reader-msg-edit-ok" title="保存"><i class="fa-solid fa-check"></i></button>
+          </div>`;
+        const ta = bubble.querySelector('.sd-reader-msg-edit-ta');
+        focusEditorAtEnd(ta);
+        bubble.querySelector('.sd-reader-msg-edit-cancel')?.addEventListener('click', coreadRefreshAssistantPanel);
+        bubble.querySelector('.sd-reader-msg-edit-ok')?.addEventListener('click', async () => {
+          const nextText = String(ta?.value || '').trim();
+          if (nextText) {
+            message.text = nextText;
+            await coreadStoreAssistantHistory();
+          }
+          coreadRefreshAssistantPanel();
+        });
+      }
+      return;
+    }
+
     const act = e.target.closest('.sd-reader-msg-action');
-    if (!act) return;
+    if (!act) {
+      const assistantMessage = e.target.closest('.sd-reader-assistant-msg');
+      const readerMessage = e.target.closest('.sd-reader-msg');
+      chatBody.querySelectorAll('.actions-open').forEach((node) => {
+        if (node !== assistantMessage && node !== readerMessage) node.classList.remove('actions-open');
+      });
+      if (assistantMessage && e.target.closest('.sd-reader-assistant-bubble')) assistantMessage.classList.toggle('actions-open');
+      else if (readerMessage && e.target.closest('.sd-reader-msg-bubble')) readerMessage.classList.toggle('actions-open');
+      return;
+    }
     e.stopPropagation();
     const action = act.dataset.act;
     const idx = Number(act.dataset.idx);
@@ -15890,8 +16072,7 @@ function bindReaderStageEvents(stageRoot) {
           <button class="sd-reader-msg-edit-btn sd-reader-msg-edit-ok" title="保存"><i class="fa-solid fa-check"></i></button>
         </div>`;
       const ta = bubble.querySelector('.sd-reader-msg-edit-ta');
-      const autoGrow = () => { if (ta) { ta.style.height = 'auto'; ta.style.height = `${Math.min(320, ta.scrollHeight)}px`; } };
-      if (ta) { autoGrow(); ta.focus(); ta.addEventListener('input', autoGrow); }
+      focusEditorAtEnd(ta);
       const exitEdit = () => {
         if (chatBody) chatBody.innerHTML = renderReaderDialogMessages();
       };

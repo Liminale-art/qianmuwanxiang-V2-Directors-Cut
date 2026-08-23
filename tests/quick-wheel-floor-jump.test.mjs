@@ -4,20 +4,22 @@ import { readFile } from 'node:fs/promises';
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
-// 默认方案固定保留六个约定入口；自定义方案独立保存顺序与启用状态。
-for (const id of ['dashboard', 'tts', 'coread', 'theater', 'imagegen', 'floor']) {
-  assert.match(source, new RegExp(`id: '${id}'`));
-}
+// 更新后只沿用用户自定义入口，全部千幕 tab 均可选择，蜂巢最多八格。
 assert.match(source, /quickWheelCustomOrder/);
 assert.match(source, /quickWheelCustomEnabled/);
-assert.match(source, /长按展开快捷轮盘/);
-for (const id of ['tasksnodes', 'castworld', 'blueprint', 'context', 'settings', 'geopolitics', 'plug']) {
+assert.match(source, /quickWheelScheme: 'custom'/);
+assert.match(source, /长按展开蜂巢快捷盘/);
+for (const id of ['dashboard', 'tasksnodes', 'castworld', 'blueprint', 'context', 'settings', 'theater', 'tts', 'coread', 'geopolitics', 'plug', 'imagegen', 'floor']) {
   assert.match(source, new RegExp(`id: '${id}'`));
 }
-assert.match(source, /轮盘最多显示 6 项/);
-assert.match(source, /slotMap\s*=\s*\{[\s\S]*?6:\s*\[-3, -2, -1, 1, 2, 3\]/, '六个入口必须以悬浮球为中心上三下三');
+assert.match(source, /QUICK_HIVE_MAX_ITEMS = 8/);
+assert.match(source, /QUICK_HIVE_LAYOUTS[\s\S]*8:\s*\[\[-\.82, -\.92\]/, '八格必须使用环绕主 Logo 的 3-2-3 蜂巢布局');
+assert.doesNotMatch(source, /<option value="default"[^>]*>默认方案<\/option>/, '不得再显示固定默认方案');
 assert.match(source, /button\.innerHTML = `<i class="fa-solid \$\{item\.icon\}"><\/i>`/, '轮盘按钮只显示图标');
-assert.match(source, /sd-wheel-custom-details/, '自定义轮盘入口列表必须可折叠');
+assert.match(source, /sd-wheel-core[\s\S]*FLOAT_LOGO_URL/, '正式 Logo 必须位于蜂巢中心');
+assert.match(source, /is-black-gold[\s\S]*is-white-gold[\s\S]*is-gold-black/, '每次展开只随机分配黑金、白金与金黑配色');
+assert.match(source, /minCenterX[\s\S]*maxCenterX[\s\S]*minCenterY[\s\S]*maxCenterY/, '贴边展开必须把完整蜂巢夹在可视区内');
+assert.match(source, /sd-wheel-custom-details/, '蜂巢入口列表必须可折叠');
 assert.match(source, /document\.addEventListener\('pointerdown', dismiss, true\)/, '轮盘必须在文档捕获阶段监听外部点击');
 assert.match(source, /document\.removeEventListener\('pointerdown', dismiss, true\)/, '轮盘关闭时必须解除外部点击监听');
 assert.match(source, /bindQuickWheelOutsideDismiss\(root\)/);
@@ -44,6 +46,9 @@ assert.match(source, /bindFloorNavigatorViewport\(root\)/);
 assert.match(source, /viewport\?\.addEventListener\('resize', sync\)/);
 
 assert.match(css, /#story-director-quick-wheel/);
+assert.match(css, /clip-path:\s*polygon\(25% 2%, 75% 2%, 100% 50%/, '蜂巢入口必须是六边形');
+assert.match(css, /sd-wheel-hive-in[\s\S]*rotateY\(82deg\)/, '蜂巢片应有翻转入场效果');
+assert.match(css, /prefers-reduced-motion:\s*reduce/, '蜂巢动态必须尊重系统减少动态设置');
 assert.match(css, /#story-director-floor-nav/);
 assert.match(css, /#story-director-floor-nav\s*\{[^}]*overflow-y:\s*auto/);
 assert.match(css, /\.sd-floor-shell\s*\{[^}]*min-height:\s*100%[^}]*display:\s*flex/);
