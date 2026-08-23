@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.33.0';
+const VERSION = '1.33.1';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -44,7 +44,7 @@ const INPUT_BUTTON_ID = 'story-director-input-button';
 // 根治「幕」字因字体加载失败而失效的问题。换图标只改这一行。
 const FLOAT_LOGO_URL = new URL('./qianmulogo.png', import.meta.url).href;
 
-const PROMPT_REVISION = 23;
+const PROMPT_REVISION = 24;
 const BLUEPRINT_REVISION = 1;          // 默认剧本模板版本，升一档即用新默认覆盖各聊天剧本（旧 DIY 自动备份进「恢复上次」）
 const BUILTIN_THEATER_REVISION = 6;   // 内置剧场组版本，升一档即重置内置项（保留用户自建剧札）。
 const QIANMU_THEATER_REVISION = 5;   // 千幕剧场组版本，与吱吱组各自独立；升一档即重置千幕内置项（保留用户自建）。
@@ -122,12 +122,12 @@ const DEFAULT_SYSTEM_PROMPT = `你是千幕——观世间百态、阅人性幽�
 9. progress 为本幕进度，即当前叙事单元（当前幕）的完成度，0-100。
 10. 【硬性数量下限，必须满足，不足即为失职】每次推演必须至少产出：任务 5 条、角色动向 5 条、世界回声 3 至 5 条（最低 3）、因果链 3 条、关系暗涌 3 至 5 条（最低 3），可多于次数，禁止以"剧情平淡""无事发生"为由偷懒缩水；剧情密度高时再自然上浮。其中任务的时间段务必拉开层次——近期可即时上手的与中长期需铺垫酝酿的相结合，不得挤在同一时间窗。
 11. 模块边界与职能准则：各模块职能独立无重叠，创作时严守「唯一职能 + 固定视角距离」，不得交叉渗透，确保每个版块输出具备不可替代的独立作用：
-   - quests（任务）：唯一职能为「{{user}}此刻可主动选择、执行或追求的事」。第一人称向心视角，是{{user}}主动触碰世界的交互入口。仅写{{user}}可落地的行动方向，不叙写他人生活、不铺陈世界格局。题材需多元发散、严防单线化，横跨多维度生活切面：生计营生、技艺修习、见闻探索、谋划布局、解谜调查、利害抉择、立身扬名、人情往来、闲情逸致均可。需跳出固化套路：如江湖不只有打斗争胜，亦有市井营生、师门琐事、恩怨权衡、行走见闻；恋爱向不局限于角色关系推进，需兼顾用户自身的事业、交游、志趣与待解难题。涉及的NPC均为有独立生活与目标的鲜活个体，绝非推进关系线的功能道具，不得视作「关系值载体」。
+   - quests（任务）：唯一职能为「{{user}}此刻可主动选择、执行或追求的事」。第三人称向心视角，是{{user}}主动触碰世界的交互入口。仅写{{user}}可落地的行动方向，不叙写他人生活、不铺陈世界格局。题材需多元发散、严防单线化，横跨多维度生活切面：生计营生、技艺修习、见闻探索、谋划布局、解谜调查、利害抉择、立身扬名、人情往来、闲情逸致均可。需跳出固化套路：如江湖不只有打斗争胜，亦有市井营生、师门琐事、恩怨权衡、行走见闻；恋爱向不局限于角色关系推进，需兼顾用户自身的事业、交游、志趣与待解难题。涉及的NPC均为有独立生活与目标的鲜活个体，绝非推进关系线的功能道具，不得视作「关系值载体」。
    - npc_updates（角色动向）：唯一职能为「单个具体角色当下的自主日常状态」。离心视角，聚焦个体主观能动性，明确「谁、此刻、在哪、为自身目标做什么」。仅写独立个体，不涉及系统规则或集体事件。【强制配额：本组半数以上NPC须与{{user}}暂无交集，其next_action中不得出现{{user}}，完全为自身目标推进；剩余角色可与用户产生关联，但仍以NPC自身意志为核心，不得围绕用户行动。须克制「NPC主动心系、靠近、示好」的创作惯性——{{user}}只是世界的普通过客，并非自带光环的主角。仅保底保留1-2位可与其产生当下交集的角色，留出交互入口即可。】
    - relation_undercurrents（关系暗涌）：唯一职能为「多个角色间关系张力的自主流转」。视角聚焦「人与人的联结本身」，不单独叙写某个人的私事（与npc_updates明确区隔）。关系基调具备正/负/中立，涵盖旧怨、债务、暗生情愫、利益捆绑、猜忌、同盟裂痕，或并肩、扶持、知遇、惺惺相惜、师徒传承、暗中回护等多样形态。【硬性约束：① parties填2-5名具体角色（{{char}}、NPC），绝不含{{user}}；② 各条目参与人数互不重复，形成 2/3/4/5 的疏密层级；须至少包含 1 组 2 人一对一纠葛，禁止同人数扎堆，主动设计不同规模的关系结构。③ 权重均衡：单名主要角色至多卷入 2 条暗涌，剩余条目由 NPC 独立构成关系链，避免新角色、配角边缘化，维持人际网络均衡。④ 基调多元：整组须同时覆盖正向、中立、负面三种基调，不可单一偏向。⑤ 独立运转：关系按自身逻辑自然演进，多数时候 {{user}} 浑然不知或仅有所耳闻；严禁构建以 {{user}} 为起因的关系，即使 {{user}} 缺席时，世界人际网络仍可独立纠缠运转。】
    - world_updates（世界回声）：唯一职能为「系统与集体层面的宏观趋势变动」。最远全景视角，无明确主角，属于结构性背景推移。覆盖势力消长、天候、经济、公共事件、舆论等范畴，不聚焦任何个体的私人事务。
    - chain_reactions（因果链）：唯一职能为「串联上述各模块事件，呈现可感知的连锁传导效应」。本模块是全局唯一可书写蝴蝶效应的版块，其余模块禁止凭空提及连锁效应。【硬性规则】链条须由世界内部的某桩小事发起、自主流转，全程与{{user}}无关；绝不以{{user}}的行动或言论为起点，也绝不最终回转落到{{user}}身上——至多在某一环被事件涟漪擦到其视野边缘。】
-   - 各模块inject_prompt须匹配对应视角书写：quests采用{{user}}第一人称；npc、world类模块采用全知导演视角，{{user}}在场与否均可。
+   - 各模块inject_prompt须匹配对应视角书写：quests采用以{{user}}为中心的第三人称；npc、world类模块采用全知导演视角，{{user}}在场与否均可。
 12. director_comment（众声）是一段随机化身某个带个性身份（故事外的任意视角/戏中NPC等且不限于此）人物的旁观议论，须像真人闲聊，有态度、有私心、有该身份独有的视角，开头点明身份，绝不能是助手腔或客观总结，详见输出格式中的说明。
 13. 行文务必精炼直接。禁用「不是……而是……」这类否定对比句式；禁止反复使用破折号来补充说明或制造停顿；不堆砌冗余解释与排比铺陈。以上均属偷懒且易致读者审美疲劳的措辞，应代之以具体、有信息量的表达。
 14. 输出为一个 JSON 对象，字段名完整保留，数组字段可以为空数组。`;
@@ -155,7 +155,7 @@ const JSON_SCHEMA_TEXT = `固定输出格式：
       "deadline": "依据任务紧迫度自然填写时间条件，可是立即、稍后、隔日、数轮后、下个场景、等待触发、长期潜伏等。整组任务的时间段要拉开：近期可即时上手的与中长期需酝酿的相结合，不要全堆在同一时间窗",
       "trigger": "触发或推进条件",
       "reward": "剧情收益、关系变化、线索或新交际圈入口",
-      "inject_prompt": "以 {{user}} 的第一人称视角描述行动、观察、心理和下一步安排，让任务自然推进——这是 {{user}} 主动触碰世界的入口。须 60-120 字。"
+      "inject_prompt": "以第三人称描述 {{user}} 的行动、观察、心理和下一步安排，让任务自然推进——这是 {{user}} 主动触碰世界的入口。须 60-120 字。"
     }
   ],
   "npc_updates": [
@@ -2537,7 +2537,7 @@ async function buildPrompt() {
   if (settings.liveStageEnabled) segments.push(THREADS_SCHEMA_TEXT);
   if (settings.worldChatterEnabled) segments.push(WORLD_CHATTER_SCHEMA_TEXT);
   if (settings.geopoliticsEnabled) segments.push(GEOPOLITICS_SCHEMA_TEXT);
-  segments.push('【最终任务·发送前重申，违则失职】\n依据上方编剧方案与全部参考，推演当前故事的下一幕，只输出 JSON 对象，所有百分比数值范围 0-100。\n硬约束（务必逐条满足）：\n1. 数量下限不可破：任务≥5、角色动向≥5、世界回声 3-5（最低 3）、因果链≥3、关系暗涌≥3，剧情密度高时再自然上浮，绝不允许以「剧情平淡」为由缩水。\n2. 视角分工不可串：任务用 {{user}} 第一人称；角色动向、世界回声、因果链、关系暗涌用全知导演镜头。关系暗涌的 parties 写 2-5 个角色（主要角色/NPC 皆可），绝不含 {{user}}，且负面/中立/正向基调都要有；各条人数务必有别、勿齐刷一个数，至少一条仅 2 人（一对一）、其余须各取不同规模。\n3. 辐射扩散：相当一部分 npc_updates 与 world_updates 须与 {{user}} 此刻无关，是角色各自生活在推进的事；让其中一些因果相连、彼此波及，再借传闻/偶遇/委托/误会辐射到 {{user}} 视野边缘——避免一切围着 {{user}} 打转。因果链一律由世界内部起头、自行流转，绝不以 {{user}} 为源头或收束点。同时提供不同参与距离的事件（可介入、间接波及、纯属背景）。\n4. 文风铁律（全字段强制）：禁用「不是……而是……」否定对比句式；禁止用破折号补充说明或制造停顿；情绪、氛围等短句须客观精炼、点明由来，不写空标签、不堆解释性补白。\n5. progress 为本幕进度；当前主线 summary 写成勾人的楔子式引子，不作流水账复述。');
+  segments.push('【最终任务·发送前重申，违则失职】\n依据上方编剧方案与全部参考，推演当前故事的下一幕，只输出 JSON 对象，所有百分比数值范围 0-100。\n硬约束（务必逐条满足）：\n1. 数量下限不可破：任务≥5、角色动向≥5、世界回声 3-5（最低 3）、因果链≥3、关系暗涌≥3，剧情密度高时再自然上浮，绝不允许以「剧情平淡」为由缩水。\n2. 视角分工不可串：任务用以 {{user}} 为中心的第三人称；角色动向、世界回声、因果链、关系暗涌用全知导演镜头。关系暗涌的 parties 写 2-5 个角色（主要角色/NPC 皆可），绝不含 {{user}}，且负面/中立/正向基调都要有；各条人数务必有别、勿齐刷一个数，至少一条仅 2 人（一对一）、其余须各取不同规模。\n3. 辐射扩散：相当一部分 npc_updates 与 world_updates 须与 {{user}} 此刻无关，是角色各自生活在推进的事；让其中一些因果相连、彼此波及，再借传闻/偶遇/委托/误会辐射到 {{user}} 视野边缘——避免一切围着 {{user}} 打转。因果链一律由世界内部起头、自行流转，绝不以 {{user}} 为源头或收束点。同时提供不同参与距离的事件（可介入、间接波及、纯属背景）。\n4. 文风铁律（全字段强制）：禁用「不是……而是……」否定对比句式；禁止用破折号补充说明或制造停顿；情绪、氛围等短句须客观精炼、点明由来，不写空标签、不堆解释性补白。\n5. progress 为本幕进度；当前主线 summary 写成勾人的楔子式引子，不作流水账复述。');
   if (settings.geopoliticsEnabled) segments.push('【势·关系网·最后重申】\n输出 factions 后，务必同步输出 faction_relations 数组。容许极少数势力作孤立局外方，但孤点至多不超过势力总数的三分之一（4 股≤1、5-6 股≤2），其余势力都要连入关系网。这是星图能否成形的命门，你必须把该连的势力都连上，绝不会交一盘大半悬空的散点。');
   return segments.join('\n\n');
 }
@@ -4856,7 +4856,7 @@ function renderFactionStarMap(factions, rels, activeEvents = []) {
     }).join('');
     const tag = `<g class="sd-geo-node-tag" transform="translate(${(tagPos.x - p.x).toFixed(1)},${(tagPos.y - p.y).toFixed(1)})"><rect class="sd-geo-tag-bg" width="${tagPos.w}" height="${tagPos.h}" rx="9"></rect><text class="sd-geo-tag-text" x="${(tagPos.w / 2).toFixed(1)}" y="12.5" text-anchor="middle">${GEO_TREND_ICON[f.trend] || '＝'} ${htmlEscape(tagPos.label)}</text></g>`;
     const tip = `${f.name}（${snip(f.type, 12)}·${f.scale || ''}·${GEO_TREND_CN[f.trend] || '稳守'}）${f.standing ? `\n${f.standing}` : ''}${f.agenda ? `\n诉求：${f.agenda}` : ''}`;
-    return `<g class="sd-geo-node sd-geo-node-${trend}" data-fid="${htmlEscape(f.id)}" transform="translate(${p.x},${p.y})" tabindex="0" role="button" aria-label="${htmlEscape(f.name)}"><title>${htmlEscape(tip)}</title><g class="sd-geo-clues"><ellipse class="sd-geo-clue-orbit" cx="0" cy="0" rx="${orx}" ry="${ory}" transform="rotate(${(baseA * 180 / Math.PI).toFixed(1)})"></ellipse>${clueSvg}</g><circle class="sd-geo-node-hit" r="19"></circle><circle class="sd-geo-node-dot" r="${rad}"></circle>${tag}</g>`;
+    return `<g class="sd-geo-node sd-geo-node-${trend}" data-fid="${htmlEscape(f.id)}" transform="translate(${p.x},${p.y})" tabindex="0" role="button" aria-label="${htmlEscape(f.name)}"><title>${htmlEscape(tip)}</title><g class="sd-geo-clues"><ellipse class="sd-geo-clue-orbit" cx="0" cy="0" rx="${orx}" ry="${ory}" transform="rotate(${(baseA * 180 / Math.PI).toFixed(1)})"></ellipse>${clueSvg}</g><circle class="sd-geo-node-focus-ring" r="${rad + 7}"></circle><circle class="sd-geo-node-hit" r="19"></circle><circle class="sd-geo-node-dot" r="${rad}"></circle>${tag}</g>`;
   }).join('');
 
   return `<svg class="sd-geo-map" viewBox="0 0 ${W} ${H}" role="img" aria-label="势力关系聚焦星图" preserveAspectRatio="xMidYMid meet"><defs><marker id="sd-geo-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--sd-geo-vassal)"></path></marker></defs><g class="sd-geo-bed">${bed}</g>${axis}<g class="sd-geo-edges">${edges}</g><g class="sd-geo-event-pulses">${eventPulses}</g><g class="sd-geo-nodes">${nodes}</g></svg>`;
@@ -4964,7 +4964,6 @@ function renderGeopoliticsTab() {
   const view = settings.geopoliticsView === 'list' ? 'list' : 'map';
   const mapHtml = factions.length ? `<section class="sd-geo-stage">
     <div class="sd-geo-stage-head">
-      <h3>势力格局</h3>
       <div class="sd-geo-view-switch" role="group" aria-label="势力格局视图">
         <button type="button" class="sd-geo-view-btn${view === 'map' ? ' active' : ''}" data-view="map" aria-pressed="${view === 'map'}">星图</button>
         <button type="button" class="sd-geo-view-btn${view === 'list' ? ' active' : ''}" data-view="list" aria-pressed="${view === 'list'}">列表</button>
@@ -4976,7 +4975,6 @@ function renderGeopoliticsTab() {
         <div class="sd-geo-cluepop" hidden></div>
         <div class="sd-geo-detail" hidden></div>
       </div>
-      <p class="sd-muted sd-hint-sm sd-geo-maptip">点选势力查看两层牵连，再点一次收起</p>
     </div>
     <div class="sd-geo-list-view"${view === 'list' ? '' : ' hidden'}>${renderFactionListView(factions, rels)}</div>
   </section>` : '';
@@ -5595,7 +5593,7 @@ function renderSelectedPresetEntries(selectedNames) {
     const items = contextScanCache.presets?.[name] || getPresetEntries(name);
     (items || []).forEach((item, index) => rows.push(renderContextEntry('preset', name, item, index, selectedNames.length > 1 ? name : '')));
   }
-  return `<details class="sd-context-block" data-acc="blk-preset-entries" open><summary><b>预设条目</b><span class="sd-summary-note">建议只开所需条目，避免冲突导致模型左右脑互搏</span></summary><div class="sd-entry-scroll sd-scroll">${rows.join('') || '<p class="sd-muted">暂无条目</p>'}</div></details>`;
+  return `<details class="sd-context-block" data-acc="blk-preset-entries" open><summary><b>预设条目</b><span class="sd-summary-note">避免左右脑互搏建议只开所需</span></summary><div class="sd-entry-scroll sd-scroll">${rows.join('') || '<p class="sd-muted">暂无条目</p>'}</div></details>`;
 }
 
 // 世界书：下拉勾选（多选），下方滚动容器呈现「最后选择」的世界书条目
@@ -5653,23 +5651,23 @@ function renderInjectSections() {
   ];
   if (settings.liveStageEnabled) items.push(['threads', '伏笔显影']);
   if (settings.geopoliticsEnabled) items.push(['geopolitics', '世界格局']);
-  const boxes = items.map(([key, label]) => `<label class="sd-inject-section"><input type="checkbox" class="sd-inject-section-toggle" data-key="${key}" ${sec[key] !== false ? 'checked' : ''}> ${label}</label>`).join('');
-  return `<details class="sd-plain-fold" data-acc="inject-sections"><summary><b>注入范围</b></summary><div class="sd-inject-section-grid">${boxes}</div></details>`;
+  const boxes = items.map(([key, label]) => `<label class="sd-option-chip sd-inject-section"><input type="checkbox" class="sd-inject-section-toggle" data-key="${key}" ${sec[key] !== false ? 'checked' : ''}><span>${label}</span></label>`).join('');
+  return `<details class="sd-plain-fold sd-inject-subfold" data-acc="inject-sections"><summary><b>注入范围</b></summary><div class="sd-inject-section-grid">${boxes}</div></details>`;
 }
 
 function renderInjectPreview() {
   const store = getChatStore();
   if (!store?.plan) {
-    return '<details class="sd-plain-fold" data-acc="inject-preview"><summary><b>当前注入内容</b></summary><p class="sd-muted">尚无推演结果，暂无可注入的暗线。</p></details>';
+    return '<details class="sd-plain-fold sd-inject-subfold" data-acc="inject-preview"><summary><b>当前注入内容</b></summary><p class="sd-muted">尚无推演结果，暂无可注入的暗线。</p></details>';
   }
   if (!settings.injectEnabled) {
-    return '<details class="sd-plain-fold" data-acc="inject-preview"><summary><b>当前注入内容</b></summary><p class="sd-muted">暗线注入已关闭，本次推演结果不会被注入聊天。</p></details>';
+    return '<details class="sd-plain-fold sd-inject-subfold" data-acc="inject-preview"><summary><b>当前注入内容</b></summary><p class="sd-muted">暗线注入已关闭，本次推演结果不会被注入聊天。</p></details>';
   }
   const custom = Object.prototype.hasOwnProperty.call(store, 'injectOverride') && typeof store.injectOverride === 'string';
   const text = currentDirectorInjectionText(store.plan);
   // 与日志同款的终端式呈现：等宽块 + token 估算
-  return `<details class="sd-plain-fold" data-acc="inject-preview">
-    <summary><span class="sd-inject-title"><b>当前注入内容</b><button type="button" class="sd-icon-btn sd-icon-sm sd-edit-injection" title="修改当前注入内容" aria-label="修改当前注入内容"><i class="fa-solid fa-pencil"></i></button></span><span class="sd-inject-meta">${custom ? infoTag('已手动修改') : ''}${infoTag(`约 ${estimateTokens(text)} token`)}</span></summary>
+  return `<details class="sd-plain-fold sd-inject-subfold" data-acc="inject-preview">
+    <summary><span class="sd-inject-title"><b>当前注入内容</b>${infoTag(`约 ${estimateTokens(text)} token`)}</span><span class="sd-inject-meta">${custom ? infoTag('已手动修改') : ''}<button type="button" class="sd-icon-btn sd-icon-sm sd-edit-injection" title="修改当前注入内容" aria-label="修改当前注入内容"><i class="fa-solid fa-pencil"></i></button></span></summary>
     <pre class="sd-term sd-inject-term">${htmlEscape(text || '（本次推演结果为空）')}</pre>
   </details>`;
 }
@@ -5683,7 +5681,7 @@ function renderDirectorSettingsTab() {
         <label class="sd-floor-refresh"><span>每</span><input class="text_pole sd-auto-every" type="number" min="2" max="50" value="${htmlEscape(settings.autoRefreshEvery || 10)}"><span>层</span></label>
       </div>
     </section>
-    <section class="sd-card">
+    <section class="sd-card sd-injection-card">
       <h3>暗线注入正文</h3>
       <div class="sd-refresh-row">
         <label class="checkbox_label"><input type="checkbox" class="sd-inject-enabled" ${settings.injectEnabled ? 'checked' : ''}> 启用暗线注入</label>
@@ -5692,29 +5690,26 @@ function renderDirectorSettingsTab() {
       ${renderInjectSections()}
       ${renderInjectPreview()}
     </section>
-    <section class="sd-card">
+    <section class="sd-card sd-derivative-card">
       <h3>衍生模块</h3>
-      <div class="sd-livefeature-row">
-        <label class="checkbox_label"><input type="checkbox" class="sd-livestage-enabled" ${settings.liveStageEnabled ? 'checked' : ''}> 伏笔显影</label>
-      </div>
-      <div class="sd-livefeature-row">
-        <label class="checkbox_label"><input type="checkbox" class="sd-worldchatter-enabled" ${settings.worldChatterEnabled ? 'checked' : ''}> 尘寰群生</label>
-      </div>
-      <div class="sd-livefeature-row">
-        <label class="checkbox_label"><input type="checkbox" class="sd-geopolitics-enabled" ${settings.geopoliticsEnabled ? 'checked' : ''}> 世界格局</label>
+      <div class="sd-derivative-options">
+        <label class="sd-option-chip"><input type="checkbox" class="sd-livestage-enabled" ${settings.liveStageEnabled ? 'checked' : ''}><span>伏笔显影</span></label>
+        <label class="sd-option-chip"><input type="checkbox" class="sd-worldchatter-enabled" ${settings.worldChatterEnabled ? 'checked' : ''}><span>尘寰群生</span></label>
+        <label class="sd-option-chip"><input type="checkbox" class="sd-geopolitics-enabled" ${settings.geopoliticsEnabled ? 'checked' : ''}><span>世界格局</span></label>
       </div>
     </section>
     ${renderBackstageBlueprintCard()}
-    <section class="sd-card">
-      <details class="sd-plain-fold sd-director-title-fold" data-acc="system-prompt">
-        <summary><b>幕后提示词</b><button type="button" class="sd-icon-btn sd-icon-sm sd-expand-editor" data-target="sd-system-prompt" data-title="幕后提示词" title="展开编辑" aria-label="展开编辑"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button></summary>
-        <textarea class="text_pole sd-textarea sd-system-prompt" spellcheck="false">${htmlEscape(settings.systemPrompt || DEFAULT_SYSTEM_PROMPT)}</textarea>
+    <section class="sd-card sd-director-law-card">
+      <details class="sd-plain-fold sd-director-title-fold sd-director-law-fold" data-acc="director-law">
+        <summary><span class="sd-director-law-title"><b>剧组之律</b><span class="sd-summary-note">一般无需改动</span></span></summary>
+        <div class="sd-director-law-body">
+          <div class="sd-field-head"><label>提示词</label><button type="button" class="sd-icon-btn sd-icon-sm sd-expand-editor" data-target="sd-system-prompt" data-title="剧组之律" title="展开编辑" aria-label="展开编辑"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button></div>
+          <textarea class="text_pole sd-textarea sd-system-prompt" spellcheck="false">${htmlEscape(settings.systemPrompt || DEFAULT_SYSTEM_PROMPT)}</textarea>
+          <div class="sd-field-head sd-output-schema-head"><label>输出格式</label></div>
+          <textarea class="text_pole sd-textarea sd-output-schema" spellcheck="false">${htmlEscape(settings.outputSchemaText || JSON_SCHEMA_TEXT)}</textarea>
+          <div class="sd-button-row"><button class="sd-btn sd-save-director-settings">保存幕后</button><button class="sd-btn sd-restore-system" title="找回更新前你上一次使用的提示词与输出格式" ${(settings.systemPromptBackup || settings.outputSchemaBackup) ? '' : 'disabled'}>恢复上次</button><button class="sd-btn sd-reset-system">恢复默认</button></div>
+        </div>
       </details>
-      <details class="sd-plain-fold sd-director-title-fold" data-acc="output-schema">
-        <summary><b>输出格式</b><span class="sd-summary-note">一般无需改动</span></summary>
-        <textarea class="text_pole sd-textarea sd-output-schema" spellcheck="false">${htmlEscape(settings.outputSchemaText || JSON_SCHEMA_TEXT)}</textarea>
-      </details>
-      <div class="sd-button-row"><button class="sd-btn sd-save-director-settings">保存幕后</button><button class="sd-btn sd-restore-system" title="找回更新前你上一次使用的提示词与输出格式" ${(settings.systemPromptBackup || settings.outputSchemaBackup) ? '' : 'disabled'}>恢复上次</button><button class="sd-btn sd-reset-system">恢复默认</button></div>
     </section>`;
 }
 
@@ -5840,6 +5835,7 @@ function ttsSchemeLibraryCfg() {
     setSearch: (v) => { ttsSchemeSearch = v; },
     exportMode: ttsSchemeExportMode,
     selection: ttsSchemeExportSelection,
+    inlineCount: true,
     emptyText: '暂无方案',
     searchPlaceholder: '搜索方案标题…',
   };
@@ -6040,7 +6036,6 @@ function renderTtsTab() {
           <option value="custom" ${extractScheme === 'custom' ? 'selected' : ''}>我的自定义</option>
           ${activeGuidanceScheme ? `<option value="${htmlEscape(extractScheme)}" selected>${htmlEscape(activeGuidanceScheme.name || '未命名方案')}</option>` : ''}
         </select>
-        <p class="sd-muted sd-hint-sm">推荐方案随配音模型自动切换；保存编辑内容后自动转为“我的自定义”。</p>
         <textarea class="text_pole sd-textarea sd-tts-extract-prompt" spellcheck="false">${htmlEscape(ttsResolvedExtractPrompt(providerId))}</textarea>
         <div class="sd-button-row">
           <button type="button" class="sd-btn sd-tts-save-prompt">保存提示词</button>

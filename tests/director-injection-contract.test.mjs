@@ -25,10 +25,10 @@ assert.match(css, /\.sd-editor-body > \.sd-editor-card\s*\{[^}]*flex:\s*1 1 0[^}
 assert.match(css, /\.sd-theater-reader-scroll\s*\{[^}]*flex:\s*1 1 0[^}]*overflow:\s*auto/, '幕外正文必须在独立区域滚动，不能再穿透工具栏');
 assert.match(css, /\.sd-editor-area\s*\{[^}]*flex:\s*1 1 0[^}]*overflow:\s*auto[^}]*resize:\s*none/, '编辑框必须固定尺寸并自行滚动');
 assert.doesNotMatch(source.slice(source.indexOf('const tabs = ['), source.indexOf('const wasOpen')), /\['blueprint', '编剧'\]/, '编剧不得继续占用顶层 tab');
-assert.match(source, /renderBackstageBlueprintCard\(\)[\s\S]*data-acc="system-prompt"/, '编剧卡必须并入幕后提示词卡之前');
+assert.match(source, /renderBackstageBlueprintCard\(\)[\s\S]*data-acc="director-law"/, '编剧卡必须并入剧组之律卡之前');
 assert.match(source, /sd-backstage-blueprint sd-director-title-fold[\s\S]*<summary><b>编剧<\/b>/, '编剧标题必须移除图标并使用幕后统一标题规格');
-assert.equal((source.match(/sd-plain-fold sd-director-title-fold/g) || []).length, 2, '幕后提示词与输出格式必须共用标题规格');
-assert.match(css, /\.sd-director-title-fold > summary b\s*\{[^}]*font-size:\s*1\.06em[^}]*letter-spacing:\s*\.03em/, '三个幕后折叠卡标题必须与剧情推演标题字号一致');
+assert.equal((source.match(/sd-director-title-fold/g) || []).length, 2, '编剧与剧组之律必须共用标题规格');
+assert.match(css, /\.sd-director-title-fold > summary b\s*\{[^}]*font-size:\s*1\.06em[^}]*letter-spacing:\s*\.03em/, '幕后折叠卡标题必须与剧情推演标题字号一致');
 assert.ok((source.match(/delete (?:store|getChatStore\(\))\.injectOverride/g) || []).length >= 3, '新推演、清空与载入历史必须解除旧覆盖');
 assert.match(css, /sd-tts-fav-row\.sd-playing \.sd-tts-txt\.is-overflowing/, '收藏标题只能在播放且溢出时滚动');
 assert.match(css, /prefers-reduced-motion: reduce/, '标题滚动必须尊重系统减少动态效果设置');
