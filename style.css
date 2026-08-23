@@ -154,40 +154,72 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-float {
   position: fixed;
   width: 48px;
-  height: 48px;
-  padding: 0 !important;
-  border-radius: 50% !important;
-  border: 1px solid rgba(255, 255, 255, .55) !important;
-  background: rgba(255, 255, 255, .22) !important;
-  backdrop-filter: blur(14px) saturate(1.4) !important;
-  -webkit-backdrop-filter: blur(14px) saturate(1.4) !important;
+  height: 41.57px;
+  padding: 1.35px !important;
+  border-radius: 0 !important;
+  border: 0 !important;
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  background: linear-gradient(135deg, rgba(74, 74, 72, .92), rgba(211, 170, 91, .72)) !important;
   color: #f5f1e8 !important;
   z-index: 1000;   /* 压在 ST 顶栏抽屉/菜单（约 3000+）之下、聊天内容之上：菜单展开时不被悬浮球遮挡；弹窗自身仍保最高层 */
   cursor: pointer;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, .18) !important;
+  box-shadow: none !important;
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, .2));
   font-family: Georgia, 'Times New Roman', serif !important;
   font-weight: 700;
   font-size: 21px;
   line-height: 1;
   touch-action: none;
   user-select: none;
+  isolation: isolate;
+  overflow: hidden;
 }
 
-#story-director-float:hover { filter: brightness(1.1); }
-#story-director-float.sd-dock-ready { border-color: #d6aa55 !important; animation: sd-quick-dock-ready .72s ease-in-out infinite alternate; }
+#story-director-float::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  clip-path: inherit;
+  background: rgba(232, 194, 116, .8);
+  opacity: .08;
+  animation: sd-float-hex-breathe 5.8s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+#story-director-float::before {
+  content: '';
+  position: absolute;
+  inset: 1.35px;
+  z-index: 1;
+  clip-path: inherit;
+  background: rgba(34, 34, 33, .48);
+  backdrop-filter: blur(14px) saturate(1.35);
+  -webkit-backdrop-filter: blur(14px) saturate(1.35);
+  pointer-events: none;
+}
+#story-director-float:hover { filter: brightness(1.08) drop-shadow(0 6px 12px rgba(0, 0, 0, .2)); }
+#story-director-float.sd-wheel-active { z-index: 2147483003; }
+#story-director-float.sd-dock-ready { animation: sd-quick-dock-ready .72s ease-in-out infinite alternate; }
 .sd-quick-docked-origin { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }
 @keyframes sd-quick-dock-ready { from { filter: brightness(1); transform: scale(1); } to { filter: brightness(1.18); transform: scale(1.08); } }
+@keyframes sd-float-hex-breathe {
+  from { opacity: .06; }
+  to { opacity: .72; }
+}
 
 /* 悬浮球 logo：透明 PNG 徽标，完整居中显示在按钮上（contain 不裁切，透明处透出按钮毛玻璃底）；不拦指针 */
 #story-director-float img {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  padding: 5px;
+  padding: 4px;
   box-sizing: border-box;
   display: block;
   pointer-events: none;
   user-select: none;
+  position: relative;
+  z-index: 2;
+  transform: translateY(4%);
 }
 
 /* 悬浮球长按蜂巢：主 Logo 居中，入口使用与 ST 主题无关的黑金 / 白金配色。 */
@@ -200,47 +232,54 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 }
 #story-director-quick-wheel .sd-wheel-backdrop { position: absolute; inset: 0; pointer-events: auto; background: transparent; }
 #story-director-quick-wheel .sd-wheel-items { position: absolute; inset: 0; pointer-events: none; }
-#story-director-quick-wheel .sd-wheel-command,
-#story-director-quick-wheel .sd-wheel-core {
+#story-director-quick-wheel .sd-wheel-command {
   position: absolute;
   width: var(--sd-wheel-item-size, 36px);
-  height: var(--sd-wheel-item-size, 36px);
-  padding: 0 !important;
-  border: 1px solid rgba(207, 164, 85, .7) !important;
+  height: var(--sd-wheel-item-height, 31.18px);
+  padding: 1.2px !important;
+  border: 0 !important;
   border-radius: 0 !important;
-  clip-path: polygon(25% 2%, 75% 2%, 100% 50%, 75% 98%, 25% 98%, 0 50%);
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
   box-shadow: none !important;
+  background: var(--sd-wheel-edge, rgba(194, 157, 88, .72)) !important;
   display: flex;
   align-items: center;
   justify-content: center;
   pointer-events: auto;
   touch-action: manipulation;
   transform-origin: 50% 50%;
+  isolation: isolate;
+}
+#story-director-quick-wheel .sd-wheel-command::before {
+  content: '';
+  position: absolute;
+  inset: 1.2px;
+  z-index: 0;
+  clip-path: inherit;
+  background: var(--sd-wheel-glass, rgba(24, 24, 23, .56));
+  backdrop-filter: blur(12px) saturate(1.18);
+  -webkit-backdrop-filter: blur(12px) saturate(1.18);
+  pointer-events: none;
 }
 #story-director-quick-wheel .sd-wheel-command {
-  color: #d7ab57 !important;
-  background: rgba(23, 23, 22, .94) !important;
-  backdrop-filter: blur(12px) saturate(1.15) !important;
-  -webkit-backdrop-filter: blur(12px) saturate(1.15) !important;
+  color: var(--sd-wheel-icon, #d7ab57) !important;
   animation: sd-wheel-hive-in .34s cubic-bezier(.2,.72,.2,1) var(--sd-wheel-delay, 0ms) both,
              sd-wheel-hive-glint var(--sd-wheel-glint-speed, 3.6s) ease-in-out calc(var(--sd-wheel-delay, 0ms) + .34s) infinite alternate;
 }
-#story-director-quick-wheel .sd-wheel-command.is-white-gold { color: #b78a3f !important; background: rgba(247, 244, 236, .96) !important; }
-#story-director-quick-wheel .sd-wheel-command.is-gold-black { color: #181715 !important; background: rgba(205, 158, 76, .96) !important; border-color: rgba(255, 238, 190, .74) !important; }
-#story-director-quick-wheel .sd-wheel-command.is-external { color: #9b793c !important; background: rgba(245, 242, 234, .97) !important; border-color: rgba(196, 151, 73, .78) !important; animation: none !important; opacity: 1 !important; }
+#story-director-quick-wheel .sd-wheel-command.is-black-gold { --sd-wheel-icon: #d7ab57; --sd-wheel-edge: rgba(153, 125, 75, .78); --sd-wheel-glass: rgba(22, 22, 21, .58); }
+#story-director-quick-wheel .sd-wheel-command.is-white-gold { --sd-wheel-icon: #c49a4e; --sd-wheel-edge: rgba(215, 187, 126, .78); --sd-wheel-glass: rgba(244, 241, 234, .58); }
+#story-director-quick-wheel .sd-wheel-command.is-gold-black { --sd-wheel-icon: #25221d; --sd-wheel-edge: rgba(226, 194, 128, .84); --sd-wheel-glass: rgba(194, 151, 75, .6); }
+#story-director-quick-wheel .sd-wheel-command.is-external { --sd-wheel-icon: #aa8541; --sd-wheel-edge: rgba(178, 148, 91, .74); --sd-wheel-glass: rgba(239, 236, 229, .56); animation: none !important; opacity: 1 !important; }
+#story-director-quick-wheel .sd-wheel-command > i,
+#story-director-quick-wheel .sd-wheel-command > span,
+#story-director-quick-wheel .sd-wheel-command > img { position: relative; z-index: 1; }
 #story-director-quick-wheel .sd-wheel-command i { color: inherit !important; font-size: clamp(13px, calc(var(--sd-wheel-item-size, 36px) * .38), 19px); }
-#story-director-quick-wheel .sd-wheel-external-logo { width: 68%; height: 68%; object-fit: contain; display: block; pointer-events: none; }
+#story-director-quick-wheel .sd-wheel-external-logo { width: 64%; height: 64%; object-fit: contain; display: flex; align-items: center; justify-content: center; pointer-events: none; overflow: hidden; }
+#story-director-quick-wheel .sd-wheel-external-svg svg { width: 100%; height: 100%; display: block; }
+#story-director-quick-wheel .sd-wheel-external-text { font-size: clamp(11px, calc(var(--sd-wheel-item-size, 36px) * .3), 16px); line-height: 1; }
+#story-director-quick-wheel .sd-wheel-external-fallback { color: inherit; }
 #story-director-quick-wheel .sd-wheel-command:hover { filter: brightness(1.12) saturate(1.05); opacity: 1 !important; }
 #story-director-quick-wheel .sd-wheel-command.is-pending { filter: saturate(.6); }
-#story-director-quick-wheel .sd-wheel-core {
-  overflow: hidden;
-  color: #d6a650 !important;
-  background: rgba(25, 24, 22, .96) !important;
-  border-color: rgba(222, 180, 94, .86) !important;
-  animation: sd-wheel-core-in .24s ease-out both;
-}
-#story-director-quick-wheel .sd-wheel-core img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
-#story-director-float.sd-wheel-origin-hidden { opacity: 0 !important; pointer-events: none !important; }
 @keyframes sd-wheel-hive-in {
   from { opacity: 0; transform: perspective(260px) rotateY(82deg) scale(.72); }
   to { opacity: var(--sd-wheel-idle-alpha, .9); transform: perspective(260px) rotateY(0) scale(1); }
@@ -249,10 +288,10 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   from { opacity: var(--sd-wheel-idle-alpha, .86); }
   to { opacity: 1; }
 }
-@keyframes sd-wheel-core-in { from { opacity: 0; transform: scale(.82); } to { opacity: 1; transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) {
-  #story-director-quick-wheel .sd-wheel-command,
-  #story-director-quick-wheel .sd-wheel-core { animation: none; opacity: 1; }
+  #story-director-float,
+  #story-director-quick-wheel .sd-wheel-command { animation: none; opacity: 1; }
+  #story-director-float::after { animation: none; opacity: .38; }
 }
 
 /* 楼层跳转独立轻量窗：绑定 visualViewport，短视口改为整窗滚动，绝不裁掉面板上沿。 */
@@ -1787,7 +1826,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 }
 
 @media (max-width: 760px) {
-  #story-director-float { width: 44px; height: 44px; }
+  #story-director-float { width: 44px; height: 38.11px; }
 
   #story-director-modal { padding: max(20px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)) !important; }
 
@@ -2479,7 +2518,10 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-modal .sd-wheel-docked-row > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .86em; }
 #story-director-modal .sd-wheel-docked-row small { color: var(--sd-muted); font-size: 10px; white-space: nowrap; }
 #story-director-modal .sd-wheel-docked-icon { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; color: #b28a43; }
-#story-director-modal .sd-wheel-docked-icon img { width: 100%; height: 100%; object-fit: contain; }
+#story-director-modal .sd-wheel-docked-icon img,
+#story-director-modal .sd-wheel-docked-icon .sd-wheel-docked-logo { width: 100%; height: 100%; object-fit: contain; display: flex; align-items: center; justify-content: center; }
+#story-director-modal .sd-wheel-docked-icon svg { width: 100%; height: 100%; display: block; }
+#story-director-modal .sd-wheel-docked-icon .sd-wheel-external-fallback { font-size: 14px; }
 #story-director-modal .sd-wheel-dock-remove { width: 28px; height: 28px; min-width: 28px; padding: 0 !important; }
 @media (max-width: 520px) {
   #story-director-modal .sd-float-size-control { grid-template-columns: 1fr; gap: 8px; }

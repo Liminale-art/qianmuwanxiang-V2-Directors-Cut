@@ -3116,20 +3116,21 @@ function getFloatSize() {
 function clampFloatPosition() {
   settings.floatPosition ||= { x: null, y: null };
   const size = getFloatSize();
+  const height = size * QUICK_HEX_HEIGHT_RATIO;
   const margin = 10;
   const maxX = Math.max(margin, window.innerWidth - size - margin);
-  const maxY = Math.max(margin, window.innerHeight - size - margin);
+  const maxY = Math.max(margin, window.innerHeight - height - margin);
   if (typeof settings.floatPosition.x !== 'number') settings.floatPosition.x = maxX;
-  if (typeof settings.floatPosition.y !== 'number') settings.floatPosition.y = Math.max(margin, window.innerHeight - size - 84);
+  if (typeof settings.floatPosition.y !== 'number') settings.floatPosition.y = Math.max(margin, window.innerHeight - height - 84);
   settings.floatPosition.x = Math.min(maxX, Math.max(margin, Number(settings.floatPosition.x)));
   settings.floatPosition.y = Math.min(maxY, Math.max(margin, Number(settings.floatPosition.y)));
-  return { x: settings.floatPosition.x, y: settings.floatPosition.y, size, margin, maxX, maxY };
+  return { x: settings.floatPosition.x, y: settings.floatPosition.y, size, height, margin, maxX, maxY };
 }
 
 function applyFloatPosition(btn) {
   const pos = clampFloatPosition();
   btn.style.width = `${pos.size}px`;
-  btn.style.height = `${pos.size}px`;
+  btn.style.height = `${pos.height}px`;
   btn.style.left = `${pos.x}px`;
   btn.style.top = `${pos.y}px`;
   btn.style.right = 'auto';
@@ -3153,18 +3154,107 @@ const QUICK_COMMANDS = Object.freeze([
 ]);
 const QUICK_COMMAND_IDS = QUICK_COMMANDS.map((item) => item.id);
 const QUICK_HIVE_MAX_ITEMS = 8;
-// 六边形蜂巢的归一化坐标。1–6 项使用均匀环形，7–8 项切成 3-2-3 蜂巢；
-// 同一入口数量下坐标与用户排序始终稳定，随机性只用于配色和微光节奏。
-const QUICK_HIVE_LAYOUTS = Object.freeze({
-  1: [[1.08, 0]],
-  2: [[-1.08, 0], [1.08, 0]],
-  3: [[0, -.98], [.88, .62], [-.88, .62]],
-  4: [[0, -.98], [1.08, 0], [0, .98], [-1.08, 0]],
-  5: [[0, -.98], [.96, -.44], [.64, .9], [-.64, .9], [-.96, -.44]],
-  6: [[0, -.98], [.88, -.49], [.88, .49], [0, .98], [-.88, .49], [-.88, -.49]],
-  7: [[-.82, -.92], [0, -.92], [.82, -.92], [1.22, 0], [.82, .92], [-.82, .92], [-1.22, 0]],
-  8: [[-.82, -.92], [0, -.92], [.82, -.92], [1.22, 0], [.82, .92], [0, .92], [-.82, .92], [-1.22, 0]],
-});
+const QUICK_HEX_HEIGHT_RATIO = Math.sqrt(3) / 2;
+const QUICK_HIVE_AXIAL_DIRECTIONS = Object.freeze([
+  [1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1],
+]);
+
+// 使用标准轴向六角坐标生成完整蜂巢环：第一圈恰好六格，第七格起进入第二圈。
+// 坐标顺序恒定，用户排序只映射到格位；随机性只属于展开时的图标微光。
+function quickHiveAxialRing(radius) {
+  if (!Number.isInteger(radius) || radius < 1) return [];
+  const cells = [];
+  let q = 0;
+  let r = -radius;
+  for (const [dq, dr] of QUICK_HIVE_AXIAL_DIRECTIONS) {
+    for (let step = 0; step < radius; step++) {
+      cells.push({ q, r });
+      q += dq;
+      r += dr;
+    }
+  }
+  return cells;
+}
+
+function quickHiveCells(count, maxRing = 6) {
+  const cells = [];
+  for (let ring = 1; ring <= maxRing && cells.length < count; ring++) cells.push(...quickHiveAxialRing(ring));
+  return cells.slice(0, count);
+}
+
+function quickHiveCellRing(cell) {
+  return Math.max(Math.abs(cell.q), Math.abs(cell.r), Math.abs(cell.q + cell.r));
+}
+
+function quickHivePixelOffset(cell, itemSize, gap) {
+  const renderedRadius = itemSize / 2;
+  // 把缝隙折算进六角晶格半径：垂直相邻中心距 = 六边形高度 + gap。
+  const latticeRadius = renderedRadius + gap / Math.sqrt(3);
+  return {
+    x: 1.5 * latticeRadius * cell.q,
+    y: Math.sqrt(3) * latticeRadius * (cell.r + cell.q / 2),
+  };
+}
+
+function quickHiveCellFits(cell, geometry) {
+  const offset = quickHivePixelOffset(cell, geometry.itemSize, geometry.gap);
+  const halfW = geometry.itemSize / 2;
+  const halfH = geometry.itemHeight / 2;
+  const x = geometry.centerX + offset.x;
+  const y = geometry.centerY + offset.y;
+  return x - halfW >= geometry.margin
+    && x + halfW <= geometry.viewportWidth - geometry.margin
+    && y - halfH >= geometry.margin
+    && y + halfH <= geometry.viewportHeight - geometry.margin;
+}
+
+function quickHiveDirectionalCells(count, geometry) {
+  const left = geometry.centerX - geometry.margin;
+  const right = geometry.viewportWidth - geometry.margin - geometry.centerX;
+  const top = geometry.centerY - geometry.margin;
+  const bottom = geometry.viewportHeight - geometry.margin - geometry.centerY;
+  let inwardX = right - left;
+  let inwardY = bottom - top;
+  const length = Math.hypot(inwardX, inwardY) || 1;
+  inwardX /= length;
+  inwardY /= length;
+  const scale = Math.max(1, geometry.itemSize + geometry.gap);
+  const candidates = [];
+  for (let ring = 1; ring <= 8; ring++) {
+    for (const cell of quickHiveAxialRing(ring)) {
+      if (!quickHiveCellFits(cell, geometry)) continue;
+      const offset = quickHivePixelOffset(cell, geometry.itemSize, geometry.gap);
+      const projection = (offset.x * inwardX + offset.y * inwardY) / scale;
+      const cross = Math.abs(offset.x * inwardY - offset.y * inwardX) / scale;
+      // 环数保持蜂巢紧凑；朝页面空白侧的投影可让第二圈入口优先于贴边外侧入口。
+      const score = quickHiveCellRing(cell) * 100 - projection * 34 + cross * 3;
+      candidates.push({ cell, score, projection, cross });
+    }
+  }
+  candidates.sort((a, b) => a.score - b.score || b.projection - a.projection || a.cross - b.cross || a.cell.q - b.cell.q || a.cell.r - b.cell.r);
+  return candidates.slice(0, count).map((entry) => entry.cell);
+}
+
+function quickHiveLayout(count, requestedSize, viewportGeometry) {
+  for (let itemSize = requestedSize; itemSize >= 32; itemSize -= 2) {
+    const gap = Math.max(3, Math.min(6, Math.round(itemSize * .1)));
+    const geometry = {
+      ...viewportGeometry,
+      itemSize,
+      itemHeight: itemSize * QUICK_HEX_HEIGHT_RATIO,
+      gap,
+    };
+    const ringCells = quickHiveCells(count);
+    if (ringCells.every((cell) => quickHiveCellFits(cell, geometry))) return { ...geometry, cells: ringCells, edgeDirected: false };
+    const directional = quickHiveDirectionalCells(count, geometry);
+    if (directional.length === count) return { ...geometry, cells: directional, edgeDirected: true };
+  }
+  // 正常 ST 视口不会走到此处；极端短视口仍保持锚点不动并使用最小蜂巢片。
+  const itemSize = 32;
+  const gap = 3;
+  const geometry = { ...viewportGeometry, itemSize, itemHeight: itemSize * QUICK_HEX_HEIGHT_RATIO, gap };
+  return { ...geometry, cells: quickHiveDirectionalCells(count, geometry), edgeDirected: true };
+}
 const quickDockRuntime = new Map();
 let quickDockObserver = null;
 let quickDockRestoreTimer = null;
@@ -3193,8 +3283,10 @@ function normalizeQuickWheelSettings() {
     key: String(item.key).slice(0, 120),
     selector: String(item.selector).slice(0, 500),
     label: String(item.label || '第三方工具').slice(0, 40),
-    iconUrl: String(item.iconUrl || '').slice(0, 2048),
+    iconUrl: quickDockNormalizeIconUrl(item.iconUrl, true),
+    iconSvg: quickDockSanitizeSvg(item.iconSvg),
     iconClass: String(item.iconClass || '').split(/\s+/).filter((name) => /^fa[\w-]*$/.test(name)).slice(0, 5).join(' '),
+    iconText: Array.from(String(item.iconText || '')).slice(0, 2).join(''),
   }));
 }
 
@@ -3211,7 +3303,10 @@ function quickWheelItems() {
     id: `dock:${record.key}`,
     label: record.label,
     icon: record.iconClass || 'fa-solid fa-puzzle-piece',
+    iconClass: record.iconClass || '',
     iconUrl: record.iconUrl || '',
+    iconSvg: record.iconSvg || '',
+    iconText: record.iconText || '',
     external: true,
   }));
   return [...primary, ...docked];
@@ -3223,13 +3318,91 @@ let quickWheelOriginButton = null;
 function closeQuickWheel() {
   quickWheelOutsideCleanup?.();
   quickWheelOutsideCleanup = null;
-  quickWheelOriginButton?.classList.remove('sd-wheel-origin-hidden');
+  quickWheelOriginButton?.classList.remove('sd-wheel-active');
   quickWheelOriginButton = null;
   document.getElementById(QUICK_WHEEL_ID)?.remove();
 }
 
 function quickDockAttrEscape(value) {
   return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]/g, ' ');
+}
+
+const QUICK_DOCK_ICON_DATA_LIMIT = 64 * 1024;
+
+function quickDockNormalizeIconUrl(value, persist = false) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^blob:/i.test(raw)) return persist ? '' : raw;
+  if (/^data:/i.test(raw)) {
+    const limit = persist ? QUICK_DOCK_ICON_DATA_LIMIT : 512 * 1024;
+    return /^data:image\/(?:png|jpe?g|gif|webp|svg\+xml);/i.test(raw) && raw.length <= limit ? raw : '';
+  }
+  try {
+    const url = new URL(raw, document.baseURI);
+    return /^(?:https?:)$/i.test(url.protocol) ? url.href : '';
+  } catch (_) { return ''; }
+}
+
+function quickDockSanitizeSvg(value) {
+  if (!value) return '';
+  let root = null;
+  try {
+    if (value instanceof Element && value.localName?.toLowerCase() === 'svg') root = value.cloneNode(true);
+    else {
+      const parsed = new DOMParser().parseFromString(String(value), 'image/svg+xml');
+      if (parsed.querySelector('parsererror')) return '';
+      root = parsed.documentElement;
+    }
+  } catch (_) { return ''; }
+  if (!root || root.localName?.toLowerCase() !== 'svg') return '';
+  root.querySelectorAll('script, foreignObject, iframe, object, embed, link, style').forEach((node) => node.remove());
+  [root, ...root.querySelectorAll('*')].forEach((node) => {
+    for (const attr of [...node.attributes]) {
+      const name = attr.name.toLowerCase();
+      const attrValue = String(attr.value || '');
+      if (name.startsWith('on') || /javascript:|data:text\/html|url\s*\(/i.test(attrValue)
+        || ((name === 'href' || name === 'xlink:href') && !attrValue.startsWith('#'))) node.removeAttribute(attr.name);
+    }
+  });
+  root.setAttribute('aria-hidden', 'true');
+  root.removeAttribute('id');
+  const markup = root.outerHTML;
+  return markup.length <= 12 * 1024 ? markup : '';
+}
+
+function quickDockCssImageUrl(value) {
+  const match = /url\(\s*(["']?)(.*?)\1\s*\)/i.exec(String(value || ''));
+  return match ? quickDockNormalizeIconUrl(match[2]) : '';
+}
+
+function quickDockFallbackMarkup(item) {
+  const iconClass = String(item?.iconClass || '').split(/\s+/).filter((name) => /^fa[\w-]*$/.test(name)).slice(0, 5).join(' ');
+  if (iconClass) return `<i class="${htmlEscape(iconClass)}"></i>`;
+  const iconText = Array.from(String(item?.iconText || '')).slice(0, 2).join('');
+  if (iconText) return `<span class="sd-wheel-external-text">${htmlEscape(iconText)}</span>`;
+  return '<i class="fa-solid fa-puzzle-piece"></i>';
+}
+
+function quickDockIconMarkup(item, className = 'sd-wheel-external-logo') {
+  const svg = quickDockSanitizeSvg(item?.iconSvg);
+  if (svg) return `<span class="${className} sd-wheel-external-svg">${svg}</span>`;
+  const url = quickDockNormalizeIconUrl(item?.iconUrl);
+  if (url) return `<img class="${className}" src="${htmlEscape(url)}" alt="">`;
+  return quickDockFallbackMarkup(item);
+}
+
+function quickDockBindIconFallback(root, item) {
+  const image = root?.querySelector?.('img.sd-wheel-external-logo, img.sd-wheel-docked-logo');
+  if (!image) return;
+  const fallback = () => {
+    if (!image.isConnected) return;
+    const holder = document.createElement('span');
+    holder.className = `${image.className} sd-wheel-external-fallback`;
+    holder.innerHTML = quickDockFallbackMarkup(item);
+    image.replaceWith(holder);
+  };
+  image.addEventListener('error', fallback, { once: true });
+  if (image.complete && !image.naturalWidth) queueMicrotask(fallback);
 }
 
 function quickDockStableSelector(element) {
@@ -3276,19 +3449,42 @@ function quickDockDescribe(host, activator) {
     || host?.getAttribute?.('aria-label') || host?.getAttribute?.('title')
     || activator?.textContent || host?.textContent || '第三方工具',
   ).replace(/\s+/g, ' ').trim().slice(0, 40) || '第三方工具';
-  const iconNode = activator?.querySelector?.('img') || (activator?.matches?.('img') ? activator : null)
-    || host?.querySelector?.('img');
-  let iconUrl = String(iconNode?.currentSrc || iconNode?.src || '').trim();
-  if (!iconUrl) {
-    const background = String(getComputedStyle(activator || host).backgroundImage || '');
-    const match = /^url\(["']?(.*?)["']?\)$/.exec(background);
-    if (match) iconUrl = match[1];
+  const visualNodes = [...new Set([
+    activator, host,
+    ...(activator?.querySelectorAll?.('img, svg, canvas, i, [class], [style]') || []),
+    ...(host?.querySelectorAll?.('img, svg, canvas, i, [class], [style]') || []),
+  ].filter((node) => node instanceof Element))].slice(0, 32);
+  const iconNode = visualNodes.find((node) => node.matches?.('img'));
+  let iconUrl = quickDockNormalizeIconUrl(iconNode?.currentSrc || iconNode?.src || '');
+  const svgNode = visualNodes.find((node) => node.localName?.toLowerCase() === 'svg');
+  const iconSvg = quickDockSanitizeSvg(svgNode);
+  const canvasNode = visualNodes.find((node) => node.localName?.toLowerCase() === 'canvas');
+  if (!iconUrl && canvasNode) {
+    try { iconUrl = quickDockNormalizeIconUrl(canvasNode.toDataURL('image/png')); } catch (_) {}
   }
-  if (iconUrl.length > 2048) iconUrl = '';
+  if (!iconUrl) {
+    for (const node of visualNodes) {
+      const style = getComputedStyle(node);
+      iconUrl = quickDockCssImageUrl(style.backgroundImage)
+        || quickDockCssImageUrl(style.maskImage)
+        || quickDockCssImageUrl(style.webkitMaskImage);
+      if (iconUrl) break;
+    }
+  }
   const faNode = activator?.matches?.('i[class*="fa-"]') ? activator : activator?.querySelector?.('i[class*="fa-"]')
     || host?.querySelector?.('i[class*="fa-"]');
   const iconClass = [...(faNode?.classList || [])].filter((name) => /^fa[\w-]*$/.test(name)).slice(0, 5).join(' ');
-  return { label, iconUrl, iconClass };
+  let iconText = '';
+  if (!iconUrl && !iconSvg && !iconClass) {
+    for (const node of [activator, host]) {
+      if (!(node instanceof Element)) continue;
+      const pseudo = [getComputedStyle(node, '::before').content, getComputedStyle(node, '::after').content]
+        .find((content) => content && content !== 'none' && content !== 'normal');
+      const text = String(pseudo || node.textContent || '').replace(/^['"]|['"]$/g, '').trim();
+      if (text) { iconText = Array.from(text).slice(0, 2).join(''); break; }
+    }
+  }
+  return { label, iconUrl, iconSvg, iconClass, iconText };
 }
 
 function quickDockReservedCount() {
@@ -3306,7 +3502,7 @@ function quickDockDisplayRecords() {
   normalizeQuickWheelSettings();
   const records = new Map((settings.quickWheelDockedPlugins || []).map((item) => [item.key, { ...item, connected: quickDockRuntime.has(item.key), persistent: true }]));
   for (const record of quickDockRuntime.values()) {
-    records.set(record.key, { key: record.key, label: record.label, iconUrl: record.iconUrl, iconClass: record.iconClass, connected: !!record.host?.isConnected, persistent: !!record.selector });
+    records.set(record.key, { key: record.key, label: record.label, iconUrl: record.iconUrl, iconSvg: record.iconSvg, iconClass: record.iconClass, iconText: record.iconText, connected: !!record.host?.isConnected, persistent: !!record.selector });
   }
   return [...records.values()];
 }
@@ -3328,13 +3524,22 @@ function quickDockAttach(host, activator, descriptor = null, fromRestore = false
     if (!fromRestore) toast('蜂巢已满，请先在 API 与日志中取消一个千幕入口或解除一项收纳。', 'warning');
     return false;
   }
-  const visual = { ...quickDockDescribe(host, activator), ...(descriptor || {}) };
+  const described = quickDockDescribe(host, activator);
+  const visual = {
+    label: descriptor?.label || described.label,
+    iconUrl: described.iconUrl || descriptor?.iconUrl || '',
+    iconSvg: described.iconSvg || descriptor?.iconSvg || '',
+    iconClass: described.iconClass || descriptor?.iconClass || '',
+    iconText: described.iconText || descriptor?.iconText || '',
+  };
   const record = {
     key,
     selector,
     label: String(visual.label || '第三方工具').slice(0, 40),
-    iconUrl: String(visual.iconUrl || '').slice(0, 2048),
+    iconUrl: quickDockNormalizeIconUrl(visual.iconUrl),
+    iconSvg: quickDockSanitizeSvg(visual.iconSvg),
     iconClass: String(visual.iconClass || '').split(/\s+/).filter((name) => /^fa[\w-]*$/.test(name)).slice(0, 5).join(' '),
+    iconText: Array.from(String(visual.iconText || '')).slice(0, 2).join(''),
     host,
     activator: quickDockActivatorForHost(host, activator),
   };
@@ -3345,8 +3550,10 @@ function quickDockAttach(host, activator, descriptor = null, fromRestore = false
       key,
       selector,
       label: record.label,
-      iconUrl: /^blob:/i.test(record.iconUrl) ? '' : record.iconUrl,
+      iconUrl: quickDockNormalizeIconUrl(record.iconUrl, true),
+      iconSvg: record.iconSvg,
       iconClass: record.iconClass,
+      iconText: record.iconText,
     });
     saveSettings();
   }
@@ -3492,7 +3699,7 @@ function bindQuickWheelOutsideDismiss(root) {
   const dismiss = (event) => {
     if (!root?.isConnected) return closeQuickWheel();
     const target = event.target;
-    if (target instanceof Element && target.closest(`#${QUICK_WHEEL_ID} .sd-wheel-command`)) return;
+    if (target instanceof Element && target.closest(`#${FLOAT_ID}, #${QUICK_WHEEL_ID} .sd-wheel-command`)) return;
     closeQuickWheel();
   };
   const dismissOnEscape = (event) => {
@@ -3675,10 +3882,7 @@ function openQuickWheel(btn) {
   if (!items.length) return;
   const rect = btn.getBoundingClientRect();
   const floatSize = getFloatSize();
-  const itemSize = Math.max(32, Math.min(50, Math.round(floatSize)));
-  const gap = Math.max(4, Math.min(7, Math.round(itemSize * .11)));
-  const step = itemSize + gap;
-  const slots = QUICK_HIVE_LAYOUTS[items.length] || QUICK_HIVE_LAYOUTS[QUICK_HIVE_MAX_ITEMS];
+  const requestedSize = Math.max(32, Math.min(50, Math.round(floatSize)));
   const viewport = window.visualViewport;
   const viewportLeft = Number(viewport?.offsetLeft || 0);
   const viewportTop = Number(viewport?.offsetTop || 0);
@@ -3686,27 +3890,23 @@ function openQuickWheel(btn) {
   const viewportHeight = Number(viewport?.height || window.innerHeight);
   const originCenterX = rect.left + rect.width / 2 - viewportLeft;
   const originCenterY = rect.top + rect.height / 2 - viewportTop;
-  const offsets = slots.map(([x, y]) => ({ x: x * step, y: y * step }));
-  const allX = [0, ...offsets.map((slot) => slot.x)];
-  const allY = [0, ...offsets.map((slot) => slot.y)];
   const margin = 8;
-  const minCenterX = margin + itemSize / 2 - Math.min(...allX);
-  const maxCenterX = viewportWidth - margin - itemSize / 2 - Math.max(...allX);
-  const minCenterY = margin + itemSize / 2 - Math.min(...allY);
-  const maxCenterY = viewportHeight - margin - itemSize / 2 - Math.max(...allY);
-  // 贴边时整座蜂巢向可视区内侧平移，主 Logo 仍在蜂巢中心；关闭后原悬浮球回到原位。
-  const centerX = minCenterX <= maxCenterX ? Math.max(minCenterX, Math.min(maxCenterX, originCenterX)) : viewportWidth / 2;
-  const centerY = minCenterY <= maxCenterY ? Math.max(minCenterY, Math.min(maxCenterY, originCenterY)) : viewportHeight / 2;
+  const layout = quickHiveLayout(items.length, requestedSize, {
+    centerX: originCenterX,
+    centerY: originCenterY,
+    viewportWidth,
+    viewportHeight,
+    margin,
+  });
+  const offsets = layout.cells.map((cell) => quickHivePixelOffset(cell, layout.itemSize, layout.gap));
   const root = document.createElement('div');
   root.id = QUICK_WHEEL_ID;
-  root.className = 'sd-wheel-hive';
+  root.className = `sd-wheel-hive${layout.edgeDirected ? ' sd-wheel-edge-directed' : ''}`;
   root.style.left = `${viewportLeft}px`;
   root.style.top = `${viewportTop}px`;
   root.style.width = `${viewportWidth}px`;
   root.style.height = `${viewportHeight}px`;
-  root.innerHTML = `<div class="sd-wheel-backdrop"></div><div class="sd-wheel-items" role="menu" aria-label="千幕蜂巢快捷盘">
-    <button type="button" class="sd-wheel-core" aria-label="收起千幕蜂巢快捷盘" style="--sd-wheel-item-size:${itemSize}px;left:${centerX - itemSize / 2}px;top:${centerY - itemSize / 2}px"><img src="${FLOAT_LOGO_URL}" alt=""></button>
-  </div>`;
+  root.innerHTML = '<div class="sd-wheel-backdrop"></div><div class="sd-wheel-items" role="menu" aria-label="千幕蜂巢快捷盘"></div>';
   const holder = root.querySelector('.sd-wheel-items');
   items.forEach((item, index) => {
     const slot = offsets[index];
@@ -3716,25 +3916,25 @@ function openQuickWheel(btn) {
     const palette = item.external ? 'is-external' : palettes[Math.floor(Math.random() * palettes.length)];
     button.className = `sd-wheel-command ${palette}${item.pending ? ' is-pending' : ''}`;
     button.dataset.command = item.id;
-    button.style.setProperty('--sd-wheel-item-size', `${itemSize}px`);
+    button.style.setProperty('--sd-wheel-item-size', `${layout.itemSize}px`);
+    button.style.setProperty('--sd-wheel-item-height', `${layout.itemHeight}px`);
     if (!item.external) {
       button.style.setProperty('--sd-wheel-delay', `${index * 24 + Math.floor(Math.random() * 45)}ms`);
       button.style.setProperty('--sd-wheel-glint-speed', `${(2.7 + Math.random() * 2.4).toFixed(2)}s`);
       button.style.setProperty('--sd-wheel-idle-alpha', `${(.8 + Math.random() * .14).toFixed(2)}`);
     }
-    button.style.left = `${centerX + slot.x - itemSize / 2}px`;
-    button.style.top = `${centerY + slot.y - itemSize / 2}px`;
+    button.style.left = `${originCenterX + slot.x - layout.itemSize / 2}px`;
+    button.style.top = `${originCenterY + slot.y - layout.itemHeight / 2}px`;
     button.title = item.pending ? `${item.label}（即将开放）` : item.label;
     button.setAttribute('aria-label', button.title);
     button.setAttribute('role', 'menuitem');
-    button.innerHTML = item.iconUrl
-      ? `<img class="sd-wheel-external-logo" src="${htmlEscape(item.iconUrl)}" alt="">`
-      : `<i class="${item.external ? htmlEscape(item.icon || 'fa-solid fa-puzzle-piece') : `fa-solid ${item.icon}`}"></i>`;
+    button.innerHTML = item.external ? quickDockIconMarkup(item) : `<i class="fa-solid ${item.icon}"></i>`;
     holder.appendChild(button);
+    if (item.external) quickDockBindIconFallback(button, item);
   });
   document.body.appendChild(root);
   quickWheelOriginButton = btn;
-  btn.classList.add('sd-wheel-origin-hidden');
+  btn.classList.add('sd-wheel-active');
   bindQuickWheelOutsideDismiss(root);
   root.addEventListener('click', (event) => { if (!event.target.closest('.sd-wheel-command')) closeQuickWheel(); });
   holder?.addEventListener('click', (event) => {
@@ -3756,6 +3956,14 @@ function bindFloatDrag(btn) {
 
   btn.addEventListener('pointerdown', (event) => {
     if (event.button !== undefined && event.button !== 0) return;
+    if (document.getElementById(QUICK_WHEEL_ID)) {
+      closeQuickWheel();
+      btn.dataset.justClosedWheel = '1';
+      setTimeout(() => { delete btn.dataset.justClosedWheel; }, 180);
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const pos = clampFloatPosition();
     startX = event.clientX;
     startY = event.clientY;
@@ -3809,7 +4017,7 @@ function bindFloatDrag(btn) {
   btn.addEventListener('pointercancel', finish);
 
   btn.addEventListener('click', (event) => {
-    if (btn.dataset.justDragged === '1' || btn.dataset.justOpenedWheel === '1') {
+    if (btn.dataset.justDragged === '1' || btn.dataset.justOpenedWheel === '1' || btn.dataset.justClosedWheel === '1') {
       event.preventDefault();
       event.stopPropagation();
       return;
@@ -7035,7 +7243,7 @@ function ttsPlayBlob(blob, hi = []) {
 // 给单条消息找/建台词条容器（插在 🎧 钮之后；幂等）
 function ttsEnsureBar(mesEl) {
   let bar = mesEl.querySelector(`.${TTS_BAR_CLASS}`);
-  if (bar) return bar;
+  if (bar) { ttsBindControlBoundary(bar); return bar; }
   const tb = mesEl.querySelector('.sd-tts-toolbar');
   const textEl = mesEl.querySelector('.mes_text');
   const anchor = tb || textEl;
@@ -7043,6 +7251,7 @@ function ttsEnsureBar(mesEl) {
   bar = document.createElement('div');
   bar.className = TTS_BAR_CLASS;
   anchor.insertAdjacentElement('afterend', bar);
+  ttsBindControlBoundary(bar);
   return bar;
 }
 
@@ -7065,7 +7274,9 @@ function ttsScanMessageElement(mesEl, options = {}) {
       <button type="button" class="sd-tts-playall" title="连续播放本条全部台词" aria-label="连续播放" hidden><i class="fa-regular fa-circle-play"></i></button>`;
     textEl.insertAdjacentElement('afterend', bar);
   }
+  ttsBindControlBoundary(mesEl.querySelector('.sd-tts-toolbar'));
   const bar = mesEl.querySelector(`.${TTS_BAR_CLASS}`);
+  if (bar) ttsBindControlBoundary(bar);
   if (options.forceProvider && bar?.dataset.loaded === '1') delete bar.dataset.provider;
   ttsAutoRestore(mesEl);
   if (options.expand) {
@@ -7131,15 +7342,43 @@ function ttsQueueMutationRecords(records) {
   }, 80);
 }
 
-// 委托点击：🎧 触发 / 🔁 重提取 / 🔊 单句（双击=快捷窗）/ ▶ 连播（播放中再点=停止）/ 🌀 重生语音
+const TTS_CHAT_CONTROL_SELECTOR = '.sd-tts-trigger, .sd-tts-reextract, .sd-tts-regenall, .sd-tts-playall, .sd-tts-inline-playall, .sd-tts-play';
+const TTS_CHAT_GESTURE_EVENTS = Object.freeze(['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'touchcancel', 'dblclick', 'contextmenu']);
+
+function ttsBoundaryControl(event, boundary) {
+  const control = event.target instanceof Element ? event.target.closest(TTS_CHAT_CONTROL_SELECTOR) : null;
+  return control && (control === boundary || boundary.contains(control)) ? control : null;
+}
+
+// 正文配音是独立“事件岛”：动作在按钮/局部容器内完成，不再让双击、长按等手势冒泡到整张 .mes。
+// 这避免任何正文轮盘或手势插件把小耳机的两次点击同时解释成自己的唤起动作，且不影响正文空白处的第三方手势。
+function ttsBindControlBoundary(boundary) {
+  if (!(boundary instanceof Element) || boundary.dataset.sdTtsBoundary === '1') return;
+  boundary.dataset.sdTtsBoundary = '1';
+  boundary.dataset.sdInteractive = 'tts';
+  for (const type of TTS_CHAT_GESTURE_EVENTS) {
+    boundary.addEventListener(type, (event) => {
+      if (ttsBoundaryControl(event, boundary)) event.stopPropagation();
+    }, type.startsWith('touch') ? { passive: true } : false);
+  }
+  boundary.addEventListener('click', (event) => {
+    if (!ttsBoundaryControl(event, boundary)) return;
+    event.stopPropagation();
+    ttsOnChatClick(event);
+  });
+}
+
+// 委托点击兜底：🎧 触发 / 🔁 重提取 / 🔊 单句（双击=快捷窗）/ ▶ 连播（播放中再点=停止）/ 🌀 重生语音
 function ttsOnChatClick(e) {
-  const reext = e.target.closest('.sd-tts-reextract');
+  const target = e.target instanceof Element ? e.target : null;
+  if (!target) return;
+  const reext = target.closest('.sd-tts-reextract');
   if (reext) { e.preventDefault(); ttsHandleTrigger(reext.closest('.mes')?.querySelector('.sd-tts-trigger') || reext, true); return; }
-  const trig = e.target.closest('.sd-tts-trigger');
+  const trig = target.closest('.sd-tts-trigger');
   if (trig) { e.preventDefault(); ttsHandleTrigger(trig); return; }
-  const regenAll = e.target.closest('.sd-tts-regenall');
+  const regenAll = target.closest('.sd-tts-regenall');
   if (regenAll) { e.preventDefault(); ttsHandlePlayAll(regenAll, true); return; }   // force=true 全量重生成
-  const playAll = e.target.closest('.sd-tts-playall, .sd-tts-inline-playall');
+  const playAll = target.closest('.sd-tts-playall, .sd-tts-inline-playall');
   if (playAll) {
     e.preventDefault();
     // 合并的连播/停止钮：播放态再点即停止；否则开始连播
@@ -7147,7 +7386,7 @@ function ttsOnChatClick(e) {
     ttsHandlePlayAll(playAll, false);
     return;
   }
-  const playBtn = e.target.closest('.sd-tts-play');
+  const playBtn = target.closest('.sd-tts-play');
   if (playBtn) { e.preventDefault(); ttsHandleLinePlayClick(playBtn); return; }
 }
 
@@ -7671,6 +7910,7 @@ function ttsInjectInlineIcons(mesEl, lines) {
     icon.dataset.emotion = line.emotion || 'auto';
     if (Number.isFinite(line.speed)) icon.dataset.speed = String(line.speed);   // 提取注入的语速快照：快捷窗回落 dataset 时也能显出确切值（与情绪同款）
     icon.innerHTML = '<i class="fa-solid fa-headphones"></i>';
+    ttsBindControlBoundary(icon);
     // 防「图标独自掉到下一行」根治：把图标前的最后一个字符抠出来，与图标一同塞进 white-space:nowrap 的胶囊 span。
     // （旧方案用 Word Joiner 文本节点，但 inline-flex 原子盒前的断行点浏览器对 WJ 支持不稳→仍偶尔掉行；
     //  把「末字＋图标」焊成一个 nowrap 整体后，图标最多带着前一个字一起换行，绝不会孤零零单起一行。）
@@ -7695,6 +7935,7 @@ function ttsInjectInlineIcons(mesEl, lines) {
     playAll.title = '连续播放本条全部台词';
     playAll.setAttribute('aria-label', '连续播放本条');
     playAll.innerHTML = '<i class="fa-regular fa-circle-play"></i>';
+    ttsBindControlBoundary(playAll);
     // 连播钮插进首个小喇叭所在的胶囊 span（同一 nowrap 整体）：连播钮＋末字＋喇叭三者焊在一起，绝不彼此拆行。
     domFirstIcon.parentNode.insertBefore(playAll, domFirstIcon);
   }
@@ -8051,9 +8292,10 @@ function renderQuickWheelSettings() {
       <div class="sd-wheel-custom-row" data-command="${item.id}">
         <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}"></i><span>${htmlEscape(item.label)}</span></label>
         <div><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="up" ${index === 0 ? 'disabled' : ''} title="上移"><i class="fa-solid fa-chevron-up"></i></button><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="down" ${index === ordered.length - 1 ? 'disabled' : ''} title="下移"><i class="fa-solid fa-chevron-down"></i></button></div>
-      </div>`).join('')}</div></details>
-    <p class="sd-muted sd-wheel-dock-copy">拖动其他插件的悬浮窗靠近千幕悬浮球即可收纳；千幕只建立代理入口，不移动对方界面。</p>
-    ${docked.length ? `<div class="sd-wheel-docked-list"><b>已收纳悬浮窗</b>${docked.map((item) => `<div class="sd-wheel-docked-row" data-dock-key="${htmlEscape(item.key)}"><span class="sd-wheel-docked-icon">${item.iconUrl ? `<img src="${htmlEscape(item.iconUrl)}" alt="">` : `<i class="${htmlEscape(item.iconClass || 'fa-solid fa-puzzle-piece')}"></i>`}</span><span>${htmlEscape(item.label)}</span><small>${item.connected ? '已连接' : '等待载入'}</small><button type="button" class="sd-icon-btn sd-wheel-dock-remove" title="解除收纳" aria-label="解除收纳"><i class="fa-solid fa-arrow-right-from-bracket"></i></button></div>`).join('')}</div>` : ''}
+      </div>`).join('')}</div>
+      <p class="sd-muted sd-wheel-dock-copy">拖动其他插件的悬浮窗靠近千幕悬浮窗即可收纳；千幕只建立代理入口，不移动对方界面。</p>
+      ${docked.length ? `<div class="sd-wheel-docked-list"><b>已收纳悬浮窗</b>${docked.map((item) => `<div class="sd-wheel-docked-row" data-dock-key="${htmlEscape(item.key)}"><span class="sd-wheel-docked-icon">${quickDockIconMarkup(item, 'sd-wheel-docked-logo')}</span><span>${htmlEscape(item.label)}</span><small>${item.connected ? '已连接' : '等待载入'}</small><button type="button" class="sd-icon-btn sd-wheel-dock-remove" title="解除收纳" aria-label="解除收纳"><i class="fa-solid fa-arrow-right-from-bracket"></i></button></div>`).join('')}</div>` : ''}
+    </details>
   </div>`;
 }
 
@@ -8651,6 +8893,10 @@ function bindActiveTabEvents(root) {
   root.querySelector('.sd-wheel-custom-details')?.addEventListener('toggle', (e) => {
     settings.quickWheelCustomExpanded = !!e.currentTarget.open;
     saveSettings();
+  });
+  root.querySelectorAll('.sd-wheel-docked-row').forEach((row) => {
+    const item = quickDockDisplayRecords().find((entry) => entry.key === row.dataset.dockKey);
+    if (item) quickDockBindIconFallback(row, item);
   });
   root.querySelectorAll('.sd-wheel-command-toggle').forEach((toggle) => toggle.addEventListener('change', (e) => {
     const id = e.target.closest('.sd-wheel-custom-row')?.dataset.command;

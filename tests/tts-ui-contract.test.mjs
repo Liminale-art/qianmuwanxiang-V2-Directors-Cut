@@ -30,6 +30,11 @@ for (const marker of requiredInteractions) {
 }
 
 assert.match(source, /if \(ttsClickTimer\).*ttsOpenQuickPopup\(btn\)/s, '双击小耳机必须继续打开单句面板');
+assert.match(source, /TTS_CHAT_GESTURE_EVENTS[\s\S]*touchstart[\s\S]*touchend[\s\S]*dblclick/, '配音事件岛必须隔离桌面与触屏手势');
+assert.match(source, /function ttsBindControlBoundary[\s\S]*event\.stopPropagation\(\)[\s\S]*ttsOnChatClick\(event\)/, '配音动作必须在局部边界内完成后停止向正文消息冒泡');
+assert.match(source, /ttsBindControlBoundary\(mesEl\.querySelector\('\.sd-tts-toolbar'\)\)/, '正文配音工具栏必须建立事件边界');
+assert.match(source, /ttsBindControlBoundary\(icon\)[\s\S]*ttsBindControlBoundary\(playAll\)/, '正文内联单句与连播按钮必须建立事件边界');
+assert.match(source, /dataset\.sdInteractive = 'tts'/, '配音控件必须提供通用的正文交互标记');
 assert.match(source, /ttsPlayResolvedLine\(line, mesEl, idx, btn, true\)/, '重新生成必须强制绕过缓存并播放');
 assert.match(source, /sd-tts-provider[\s\S]*MiniMax|listTtsProviders\(\)/, '配音设置必须从 Provider 注册表渲染');
 assert.match(source, /value="provider"[\s\S]*value="custom"/, '提取提示词必须提供模型默认与自定义方案');

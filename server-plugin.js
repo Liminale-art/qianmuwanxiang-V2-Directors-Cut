@@ -65,7 +65,7 @@ function sanitizeRequest(input) {
 }
 
 export async function init(router) {
-router.get('/health', (_req, res) => res.json({ ok: true, plugin: info.id, version: '1.27.0' }));
+router.get('/health', (_req, res) => res.json({ ok: true, plugin: info.id, version: '1.28.0' }));
 
   router.post('/doubao/synthesize', async (req, res) => {
     const apiKey = asString(req.body?.apiKey, 512);
