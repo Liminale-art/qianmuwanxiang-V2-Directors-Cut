@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.30.0';
+const VERSION = '1.30.1';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -3192,6 +3192,8 @@ const QUICK_COMMANDS = Object.freeze([
   { id: 'floor', label: '楼层跳转', icon: 'fa-layer-group' },
 ]);
 const QUICK_COMMAND_IDS = QUICK_COMMANDS.map((item) => item.id);
+// 使用真实 SVG polygon 描边，而非“矩形 mask 再裁六边形”。后者只会留下几段横线，无法贴合斜边。
+const QUICK_HEX_BORDER_SVG = '<svg class="sd-hive-hex-outline" viewBox="0 0 100 86.602" preserveAspectRatio="none" aria-hidden="true" focusable="false"><polygon points="25,0 75,0 100,43.301 75,86.602 25,86.602 0,43.301"></polygon></svg>';
 // 蜂巢不设置面向用户的入口上限；24 仅用于拦截损坏配置或异常第三方注入造成的无限增长。
 const QUICK_HIVE_SAFETY_LIMIT = 24;
 const QUICK_HEX_HEIGHT_RATIO = Math.sqrt(3) / 2;
@@ -4266,7 +4268,8 @@ function openQuickWheel(btn) {
     button.title = item.pending ? `${item.label}（即将开放）` : item.label;
     button.setAttribute('aria-label', button.title);
     button.setAttribute('role', 'menuitem');
-    button.innerHTML = item.external ? quickDockIconMarkup(item) : `<i class="fa-solid ${item.icon}"></i>`;
+    const iconMarkup = item.external ? quickDockIconMarkup(item) : `<i class="fa-solid ${item.icon}"></i>`;
+    button.innerHTML = `${iconMarkup}${QUICK_HEX_BORDER_SVG}`;
     holder.appendChild(button);
     if (item.external) {
       quickDockBindIconFallback(button, item);
@@ -4387,7 +4390,7 @@ function renderFloatButton() {
     bindFloatDrag(btn);
   }
   // 本地 logo 铺满圆形悬浮球（object-fit:cover 由 CSS 控）；img 不拦指针，拖拽/点击仍落在按钮上
-  btn.innerHTML = `<img src="${FLOAT_LOGO_URL}" alt="${EXTENSION_NAME}" draggable="false">`;
+  btn.innerHTML = `<img src="${FLOAT_LOGO_URL}" alt="${EXTENSION_NAME}" draggable="false">${QUICK_HEX_BORDER_SVG}`;
   btn.title = EXTENSION_NAME;
   // 与蜂巢片相同，锁定悬浮主格的关键玻璃属性，避免第三方主题把 blur/background 清空。
   btn.style.setProperty('background', 'rgba(255, 255, 255, .22)', 'important');
@@ -5354,8 +5357,8 @@ function renderBlueprintEditorContent() {
 function renderBackstageBlueprintCard() {
   return `
     <section class="sd-card sd-backstage-blueprint-card">
-      <details class="sd-plain-fold sd-backstage-blueprint" data-acc="backstage-blueprint">
-        <summary><b><i class="fa-solid fa-feather-pointed"></i> 编剧</b><span class="sd-summary-note">当前聊天剧本与剧本库</span></summary>
+      <details class="sd-plain-fold sd-backstage-blueprint sd-director-title-fold" data-acc="backstage-blueprint">
+        <summary><b>编剧</b><span class="sd-summary-note">当前聊天剧本与剧本库</span></summary>
         <div class="sd-backstage-blueprint-body">
           ${renderBlueprintEditorContent()}
           <div class="sd-backstage-blueprint-library">${renderLibrarySection(templateLibraryCfg())}</div>
@@ -5543,13 +5546,13 @@ function renderDirectorSettingsTab() {
     </section>
     ${renderBackstageBlueprintCard()}
     <section class="sd-card">
-      <details class="sd-plain-fold" data-acc="system-prompt">
+      <details class="sd-plain-fold sd-director-title-fold" data-acc="system-prompt">
         <summary><b>幕后提示词</b><button type="button" class="sd-icon-btn sd-icon-sm sd-expand-editor" data-target="sd-system-prompt" data-title="幕后提示词" title="展开编辑" aria-label="展开编辑"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button></summary>
         <textarea class="text_pole sd-textarea sd-system-prompt" spellcheck="false">${htmlEscape(settings.systemPrompt || DEFAULT_SYSTEM_PROMPT)}</textarea>
       </details>
     </section>
     <section class="sd-card">
-      <details class="sd-plain-fold" data-acc="output-schema">
+      <details class="sd-plain-fold sd-director-title-fold" data-acc="output-schema">
         <summary><b>输出格式</b><span class="sd-summary-note">推演返回的JSON结构，一般无需改动</span></summary>
         <textarea class="text_pole sd-textarea sd-output-schema" spellcheck="false">${htmlEscape(settings.outputSchemaText || JSON_SCHEMA_TEXT)}</textarea>
       </details>
@@ -8648,12 +8651,11 @@ function renderQuickWheelSettings() {
     <div class="sd-wheel-setting-head">
       <label class="checkbox_label"><input type="checkbox" class="sd-wheel-toggle" ${settings.quickWheelEnabled !== false ? 'checked' : ''}> 长按展开蜂巢快捷盘</label>
     </div>
-    <details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑蜂巢入口</span><b>${occupied} 项</b></summary><p class="sd-muted sd-wheel-default-copy">可自由组合千幕全部入口与已收纳工具；列表顺序就是蜂巢顺序。</p><div class="sd-wheel-custom-list">${ordered.map((item, index) => `
+    <details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑蜂巢入口</span><b>${occupied} 项</b></summary><div class="sd-wheel-custom-list">${ordered.map((item, index) => `
       <div class="sd-wheel-custom-row" data-command="${item.id}">
         <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}"></i><span>${htmlEscape(item.label)}</span></label>
         <div><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="up" ${index === 0 ? 'disabled' : ''} title="上移"><i class="fa-solid fa-chevron-up"></i></button><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="down" ${index === ordered.length - 1 ? 'disabled' : ''} title="下移"><i class="fa-solid fa-chevron-down"></i></button></div>
       </div>`).join('')}</div>
-      <p class="sd-muted sd-wheel-dock-copy">拖动其他插件的悬浮窗靠近千幕即可收纳；展开蜂巢后，将第三方蜂巢片向外拖出即可解除。</p>
       ${docked.length ? `<div class="sd-wheel-docked-list"><b>已收纳悬浮窗</b>${docked.map((item) => `<div class="sd-wheel-docked-row" data-dock-key="${htmlEscape(item.key)}"><span class="sd-wheel-docked-icon">${quickDockIconMarkup(item, 'sd-wheel-docked-logo')}</span><span>${htmlEscape(item.label)}</span><small>${item.connected ? '已连接' : '等待载入'}</small><button type="button" class="sd-icon-btn sd-wheel-dock-remove" title="解除收纳" aria-label="解除收纳"><i class="fa-solid fa-arrow-right-from-bracket"></i></button></div>`).join('')}</div>` : ''}
     </details>
   </div>`;
