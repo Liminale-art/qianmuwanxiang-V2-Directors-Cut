@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.33.3';
+const VERSION = '1.33.4';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -39,6 +39,8 @@ const QUICK_WHEEL_ID = 'story-director-quick-wheel';
 const FLOOR_NAV_ID = 'story-director-floor-nav';
 const INPUT_ENTRY_ID = 'story-director-input-entry';
 const INPUT_BUTTON_ID = 'story-director-input-button';
+const FLOAT_SIZE_MIN = 32;
+const FLOAT_SIZE_MAX = 80;
 
 // 悬浮球图标：扩展自带的本地透明 PNG（96px、与 index.js 同源），不依赖外部字体/网络，
 // 根治「幕」字因字体加载失败而失效的问题。换图标只改这一行。
@@ -3139,7 +3141,9 @@ function renderSettingsPanel() {
 function getFloatSize() {
   const responsiveDefault = window.matchMedia?.('(max-width: 760px)')?.matches ? 44 : 48;
   const configured = Number(settings.floatSize);
-  return Number.isFinite(configured) && configured >= 32 ? Math.max(32, Math.min(50, configured)) : responsiveDefault;
+  return Number.isFinite(configured) && configured >= FLOAT_SIZE_MIN
+    ? Math.max(FLOAT_SIZE_MIN, Math.min(FLOAT_SIZE_MAX, configured))
+    : responsiveDefault;
 }
 
 function clampFloatPosition() {
@@ -4177,7 +4181,7 @@ function openQuickWheel(btn) {
   if (!items.length) return;
   const rect = btn.getBoundingClientRect();
   const floatSize = getFloatSize();
-  const requestedSize = Math.max(32, Math.min(50, Math.round(floatSize)));
+  const requestedSize = Math.max(FLOAT_SIZE_MIN, Math.min(FLOAT_SIZE_MAX, Math.round(floatSize)));
   const viewport = window.visualViewport;
   const viewportLeft = Number(viewport?.offsetLeft || 0);
   const viewportTop = Number(viewport?.offsetTop || 0);
@@ -8659,7 +8663,7 @@ function renderPlugTab() {
       </div>
       <div class="sd-float-size-control" ${settings.floatingButton ? '' : 'hidden'}>
         <label for="sd-float-size">悬浮球大小 <b class="sd-float-size-value">${floatSize} px</b></label>
-        <input id="sd-float-size" class="sd-float-size" type="range" min="32" max="50" step="2" value="${floatSize}">
+        <input id="sd-float-size" class="sd-float-size" type="range" min="${FLOAT_SIZE_MIN}" max="${FLOAT_SIZE_MAX}" step="2" value="${floatSize}">
       </div>
       ${renderQuickWheelSettings()}
     </section>
@@ -9197,7 +9201,7 @@ function bindActiveTabEvents(root) {
     toast(settings.floatingButton ? '悬浮球已显示。' : '悬浮球已隐藏。', 'info');
   });
   root.querySelector('.sd-float-size')?.addEventListener('input', (e) => {
-    settings.floatSize = Math.max(32, Math.min(50, Number(e.target.value) || 48));
+    settings.floatSize = Math.max(FLOAT_SIZE_MIN, Math.min(FLOAT_SIZE_MAX, Number(e.target.value) || 48));
     const out = root.querySelector('.sd-float-size-value');
     if (out) out.textContent = `${settings.floatSize} px`;
     renderFloatButton();
