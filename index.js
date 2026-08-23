@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.31.0';
+const VERSION = '1.31.1';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -3158,15 +3158,17 @@ function getFloatSize() {
 function clampFloatPosition() {
   settings.floatPosition ||= { x: null, y: null };
   const size = getFloatSize();
-  const height = size * QUICK_HEX_HEIGHT_RATIO;
+  // 竖向正六边形：上下为尖角、左右为直边；size 表示视觉高度，宽度按 √3/2 收窄。
+  const width = size * QUICK_HEX_WIDTH_RATIO;
+  const height = size;
   const margin = 10;
-  const maxX = Math.max(margin, window.innerWidth - size - margin);
+  const maxX = Math.max(margin, window.innerWidth - width - margin);
   const maxY = Math.max(margin, window.innerHeight - height - margin);
   if (typeof settings.floatPosition.x !== 'number') settings.floatPosition.x = maxX;
   if (typeof settings.floatPosition.y !== 'number') settings.floatPosition.y = Math.max(margin, window.innerHeight - height - 84);
   settings.floatPosition.x = Math.min(maxX, Math.max(margin, Number(settings.floatPosition.x)));
   settings.floatPosition.y = Math.min(maxY, Math.max(margin, Number(settings.floatPosition.y)));
-  return { x: settings.floatPosition.x, y: settings.floatPosition.y, size, height, margin, maxX, maxY };
+  return { x: settings.floatPosition.x, y: settings.floatPosition.y, size: width, height, margin, maxX, maxY };
 }
 
 function applyFloatPosition(btn) {
@@ -3195,10 +3197,10 @@ const QUICK_COMMANDS = Object.freeze([
 ]);
 const QUICK_COMMAND_IDS = QUICK_COMMANDS.map((item) => item.id);
 // 使用真实 SVG polygon 描边，而非“矩形 mask 再裁六边形”。后者只会留下几段横线，无法贴合斜边。
-const QUICK_HEX_BORDER_SVG = '<svg class="sd-hive-hex-outline" viewBox="0 0 100 86.602" preserveAspectRatio="none" aria-hidden="true" focusable="false"><polygon points="25,0 75,0 100,43.301 75,86.602 25,86.602 0,43.301"></polygon></svg>';
+const QUICK_HEX_BORDER_SVG = '<svg class="sd-hive-hex-outline" viewBox="0 0 86.602 100" preserveAspectRatio="none" aria-hidden="true" focusable="false"><polygon points="43.301,0 86.602,25 86.602,75 43.301,100 0,75 0,25"></polygon></svg>';
 // 蜂巢不设置面向用户的入口上限；24 仅用于拦截损坏配置或异常第三方注入造成的无限增长。
 const QUICK_HIVE_SAFETY_LIMIT = 24;
-const QUICK_HEX_HEIGHT_RATIO = Math.sqrt(3) / 2;
+const QUICK_HEX_WIDTH_RATIO = Math.sqrt(3) / 2;
 const QUICK_HIVE_AXIAL_DIRECTIONS = Object.freeze([
   [1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1],
 ]);
@@ -3231,12 +3233,12 @@ function quickHiveCellRing(cell) {
 }
 
 function quickHivePixelOffset(cell, itemSize, gap) {
-  const renderedRadius = itemSize / 2;
-  // 把缝隙折算进六角晶格半径：垂直相邻中心距 = 六边形高度 + gap。
+  const renderedRadius = itemSize / QUICK_HEX_WIDTH_RATIO / 2;
+  // 竖向六边形：水平相邻中心距 = 六边形宽度 + gap。
   const latticeRadius = renderedRadius + gap / Math.sqrt(3);
   return {
-    x: 1.5 * latticeRadius * cell.q,
-    y: Math.sqrt(3) * latticeRadius * (cell.r + cell.q / 2),
+    x: Math.sqrt(3) * latticeRadius * (cell.q + cell.r / 2),
+    y: 1.5 * latticeRadius * cell.r,
   };
 }
 
@@ -3280,12 +3282,13 @@ function quickHiveDirectionalCells(count, geometry) {
 }
 
 function quickHiveLayout(count, requestedSize, viewportGeometry) {
-  for (let itemSize = requestedSize; itemSize >= 32; itemSize -= 2) {
-    const gap = Math.max(3, Math.min(6, Math.round(itemSize * .1)));
+  for (let itemHeight = requestedSize; itemHeight >= 32; itemHeight -= 2) {
+    const itemSize = itemHeight * QUICK_HEX_WIDTH_RATIO;
+    const gap = Math.max(3, Math.min(6, Math.round(itemHeight * .1)));
     const geometry = {
       ...viewportGeometry,
       itemSize,
-      itemHeight: itemSize * QUICK_HEX_HEIGHT_RATIO,
+      itemHeight,
       gap,
     };
     const ringCells = quickHiveCells(count);
@@ -3294,9 +3297,10 @@ function quickHiveLayout(count, requestedSize, viewportGeometry) {
     if (directional.length === count) return { ...geometry, cells: directional, edgeDirected: true };
   }
   // 正常 ST 视口不会走到此处；极端短视口仍保持锚点不动并使用最小蜂巢片。
-  const itemSize = 32;
+  const itemHeight = 32;
+  const itemSize = itemHeight * QUICK_HEX_WIDTH_RATIO;
   const gap = 3;
-  const geometry = { ...viewportGeometry, itemSize, itemHeight: itemSize * QUICK_HEX_HEIGHT_RATIO, gap };
+  const geometry = { ...viewportGeometry, itemSize, itemHeight, gap };
   return { ...geometry, cells: quickHiveDirectionalCells(count, geometry), edgeDirected: true };
 }
 const quickDockRuntime = new Map();
@@ -4256,7 +4260,7 @@ function openQuickWheel(btn) {
     button.style.setProperty('background', visual.fill, 'important');
     button.style.setProperty('backdrop-filter', 'blur(20px) saturate(1.12) brightness(1.04)', 'important');
     button.style.setProperty('-webkit-backdrop-filter', 'blur(20px) saturate(1.12) brightness(1.04)', 'important');
-    button.style.setProperty('clip-path', 'polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%)', 'important');
+    button.style.setProperty('clip-path', 'polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%)', 'important');
     button.style.setProperty('color', visual.icon, 'important');
     button.style.setProperty('border', '0', 'important');
     button.style.setProperty('border-radius', '0', 'important');
@@ -4398,7 +4402,7 @@ function renderFloatButton() {
   btn.style.setProperty('background', 'rgba(255, 255, 255, .22)', 'important');
   btn.style.setProperty('backdrop-filter', 'blur(22px) saturate(1.12) brightness(1.04)', 'important');
   btn.style.setProperty('-webkit-backdrop-filter', 'blur(22px) saturate(1.12) brightness(1.04)', 'important');
-  btn.style.setProperty('clip-path', 'polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%)', 'important');
+  btn.style.setProperty('clip-path', 'polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%)', 'important');
   bindFloatDrag(btn);
   applyFloatPosition(btn);
 }
@@ -4505,7 +4509,10 @@ function renderModal() {
       <main class="sd-body${editorLayout ? ' sd-editor-body' : ''}">${['tasksnodes', 'castworld', 'context'].includes(activeTab) && !editorView ? `<div class="sd-cols-inner">${renderActiveTab()}</div>` : renderActiveTab()}</main>
       ${renderInjectDock()}
     </section>`;
-  modal.querySelector('.sd-backdrop')?.addEventListener('click', closeModal);
+  // 以整个视口层判断点外关闭；比只绑 backdrop 更能抵抗 ST 美化重排或透明覆盖层抢占点击。
+  modal.onclick = (event) => {
+    if (event.target === modal || event.target.closest?.('.sd-backdrop')) closeModal();
+  };
   modal.querySelector('.sd-window')?.addEventListener('click', (event) => event.stopPropagation());
   modal.querySelector('.sd-close')?.addEventListener('click', closeModal);
   modal.querySelector('.sd-plug-shortcut')?.addEventListener('click', () => { activeTab = 'plug'; renderModal(); });
@@ -13853,7 +13860,7 @@ function coreadMoveBooksToCollection(bookIds, collectionId = '') {
 }
 
 async function coreadCreateCollection(defaultName = '') {
-  const raw = await promptInput('新建书架合集', '合集名称：', defaultName);
+  const raw = await promptInput('新建书架合集', '', defaultName);
   if (raw == null) return null;
   const name = String(raw || '').trim().slice(0, 60);
   if (!name) { toast('合集名称不能为空。', 'warning'); return null; }
@@ -13885,7 +13892,7 @@ async function coreadDissolveCollection(collectionId) {
   const c = coread();
   const collection = coreadCollections().find((item) => item.id === collectionId);
   if (!collection) return false;
-  if (!await confirmDialog('解散合集', `确定解散「${collection.name}」？其中 ${collection.bookIds.length} 本书会回到书架根层，书籍与阅读数据不会删除。`)) return false;
+  if (!await confirmDialog(`确定解散「${collection.name}」？`, '')) return false;
   c.collections = coreadCollections().filter((item) => item.id !== collectionId);
   if (c.libCollectionId === collectionId) c.libCollectionId = '';
   saveSettings();
@@ -14175,8 +14182,8 @@ function coreadShowRefillChooser(bookId) {
   overlay.innerHTML = `
     <div class="sd-reader-refill-card">
       <h3 id="sd-reader-refill-title">《${htmlEscape(meta.title)}》的正文未在本设备缓存</h3>
-      <p>书目信息会随千幕配置同步，但书籍内容保存在当前设备。请选择原书文件重新导入，阅读进度与书目资料会继续保留。</p>
-        <p class="sd-reader-refill-formats">支持 EPUB / MOBI / TXT / CBZ；也可稍后通过伴读数据打包完成迁移。</p>
+      <p>仅书目信息会随千幕配置同步，书籍内容须选择原书文件重新导入。</p>
+      <p class="sd-reader-refill-formats">支持 EPUB / MOBI / TXT / CBZ</p>
       <div class="sd-reader-refill-actions">
         <label class="sd-btn sd-primary sd-reader-refill-pick">
           <i class="fa-solid fa-file-import" aria-hidden="true"></i> 选择文件
@@ -14718,7 +14725,7 @@ const LIBRARY_SORTS = [
   { key: 'progress-desc', name: '进度高→低' },
 ];
 
-function renderLibraryBookItem(book, viewMode) {
+function renderLibraryBookItem(book, viewMode, collectionId = '') {
   const prog = Math.max(0, Math.min(100, book.progress || 0));
   const bookStat = book.mode === 'comic' ? `${book.pageCount || book.chapterCount || 0}页 · 漫画` : `${book.chapterCount || 0}章 · ${(book.charCount || 0).toLocaleString()}字`;
   if (viewMode === 'list') {
@@ -14731,6 +14738,7 @@ function renderLibraryBookItem(book, viewMode) {
         </div>
         <span class="sd-reader-row-prog">${prog}%</span>
         <button class="sd-reader-card-edit" data-book="${htmlEscape(book.id)}" title="编辑书籍信息"><i class="fa-solid fa-pen"></i></button>
+        ${collectionId ? `<button class="sd-reader-collection-remove-book" data-book="${htmlEscape(book.id)}" title="移出当前合集"><i class="fa-solid fa-folder-minus"></i></button>` : ''}
         <button class="sd-reader-card-del" data-book="${htmlEscape(book.id)}" title="删除"><i class="fa-solid fa-trash"></i></button>
       </div>`;
   }
@@ -14742,11 +14750,14 @@ function renderLibraryBookItem(book, viewMode) {
       <div class="sd-reader-card-cover">${coverInner}
         <div class="sd-reader-prog"><span>${prog}%</span></div>
       </div>
-      <div class="sd-reader-card-meta">
+      <div class="sd-reader-card-meta${collectionId ? ' sd-reader-card-meta-tools' : ''}">
         <div class="sd-reader-card-title" title="${htmlEscape(book.title)}">${htmlEscape(book.title)}</div>
         ${book.author ? `<div class="sd-reader-card-author" title="${htmlEscape(book.author)}">${htmlEscape(book.author)}</div>` : ''}
         <div class="sd-reader-card-sub">${bookStat}</div>
-        <button class="sd-reader-card-edit sd-reader-card-edit-grid" data-book="${htmlEscape(book.id)}" title="编辑书籍信息"><i class="fa-solid fa-pen"></i></button>
+        <div class="sd-reader-card-grid-tools">
+          <button class="sd-reader-card-edit" data-book="${htmlEscape(book.id)}" title="编辑书籍信息"><i class="fa-solid fa-pen"></i></button>
+          ${collectionId ? `<button class="sd-reader-collection-remove-book" data-book="${htmlEscape(book.id)}" title="移出当前合集"><i class="fa-solid fa-folder-minus"></i></button>` : ''}
+        </div>
       </div>
     </div>`;
 }
@@ -14798,11 +14809,12 @@ function renderLibraryView() {
     .sort((a, b) => a.name.localeCompare(b.name, 'zh'));
   const tags = allLibraryTags();
   const viewMode = c.libViewMode === 'list' ? 'list' : 'grid';
-  const items = `${visibleCollections.map((collection) => renderLibraryCollectionItem(collection, viewMode)).join('')}${books.map((book) => renderLibraryBookItem(book, viewMode)).join('')}`;
+  const items = `${visibleCollections.map((collection) => renderLibraryCollectionItem(collection, viewMode)).join('')}${books.map((book) => renderLibraryBookItem(book, viewMode, activeCollection?.id || '')).join('')}`;
   const curSort = LIBRARY_SORTS.find((s) => s.key === c.libSort) || LIBRARY_SORTS[0];
   const batchControls = viewMode === 'list'
     ? `<button class="sd-reader-batch-toggle-all" title="全选/取消全选"><i class="fa-solid fa-check-double"></i></button>
-       <button class="sd-reader-batch-collect" title="归入合集" disabled><i class="fa-solid fa-folder-plus"></i> 归入合集</button>
+       <button class="sd-reader-collection-create" title="新建合集"><i class="fa-solid fa-folder-plus"></i></button>
+       <button class="sd-reader-batch-collect" title="归入合集" disabled>归入合集</button>
        <button class="sd-reader-batch-delete" title="删除已选" disabled><i class="fa-solid fa-trash-can"></i> 删除已选 (<span class="sd-reader-batch-count">0</span>)</button>`
     : '';
   const collectionHead = activeCollection ? `
@@ -14826,7 +14838,7 @@ function renderLibraryView() {
             ${LIBRARY_SORTS.map((s) => `<button type="button" class="sd-reader-sort-opt ${c.libSort === s.key ? 'active' : ''}" role="menuitemradio" aria-checked="${c.libSort === s.key}" data-sort="${s.key}">${htmlEscape(s.name)}</button>`).join('')}
           </div>
         </div>
-        ${activeCollection ? '' : '<button class="sd-reader-collection-create" title="新建合集"><i class="fa-solid fa-folder-plus"></i></button>'}
+        ${viewMode === 'grid' && !activeCollection ? '<button class="sd-reader-collection-create" title="新建合集"><i class="fa-solid fa-folder-plus"></i></button>' : ''}
         <input type="search" class="sd-reader-search" placeholder="搜索书名 / 作者 / 合集" />
         ${batchControls}
       </div>
@@ -16433,8 +16445,104 @@ function bindCoreadTabEvents(root) {
   bindLibraryViewEvents(root);
 }
 
+// 封面视图长按拖书：鼠标与触摸屏统一走 Pointer Events；短按/滚动仍保持原交互。
+// 只在根层存在合集封面时启用拖放，避免在合集内部制造不可见的投放目标。
+function bindLibraryBookDrag(root) {
+  if (!root.querySelector('.sd-reader-lib-grid')) return;
+  const targets = [...root.querySelectorAll('.sd-reader-collection-card')];
+  if (!targets.length) return;
+  root.querySelectorAll('.sd-reader-card').forEach((source) => {
+    source.addEventListener('pointerdown', (downEvent) => {
+      if (downEvent.button !== undefined && downEvent.button !== 0) return;
+      if (downEvent.target.closest('button, input, label')) return;
+      const pointerId = downEvent.pointerId;
+      const startX = downEvent.clientX;
+      const startY = downEvent.clientY;
+      let active = false;
+      let destination = null;
+      let ghost = null;
+      let cancelled = false;
+      const previousUserSelect = document.body.style.userSelect;
+
+      const clearTarget = () => {
+        targets.forEach((target) => target.classList.remove('sd-reader-collection-drop-target'));
+        destination = null;
+      };
+      const cleanup = () => {
+        clearTimeout(holdTimer);
+        document.removeEventListener('pointermove', onMove, true);
+        document.removeEventListener('pointerup', finish, true);
+        document.removeEventListener('pointercancel', cancel, true);
+        document.removeEventListener('contextmenu', blockContext, true);
+        clearTarget();
+        source.classList.remove('sd-reader-book-dragging');
+        ghost?.remove();
+        document.body.style.userSelect = previousUserSelect;
+      };
+      const activate = () => {
+        if (cancelled) return;
+        active = true;
+        source.classList.add('sd-reader-book-dragging');
+        source.dataset.justShelfDragged = '1';
+        ghost = document.createElement('div');
+        ghost.className = 'sd-reader-book-drag-ghost';
+        ghost.innerHTML = `<i class="fa-solid fa-book"></i><span>${htmlEscape(coreadBookMeta(source.dataset.book)?.title || '书籍')}</span>`;
+        document.body.appendChild(ghost);
+        document.body.style.userSelect = 'none';
+        navigator.vibrate?.(18);
+        onMove(downEvent);
+      };
+      const onMove = (event) => {
+        if (event.pointerId !== pointerId) return;
+        const distance = Math.hypot(event.clientX - startX, event.clientY - startY);
+        if (!active) {
+          if (distance > 9) { cancelled = true; cleanup(); }
+          return;
+        }
+        event.preventDefault();
+        if (ghost) {
+          ghost.style.left = `${event.clientX + 12}px`;
+          ghost.style.top = `${event.clientY + 12}px`;
+        }
+        clearTarget();
+        const hit = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('.sd-reader-collection-card');
+        if (hit && targets.includes(hit)) {
+          destination = hit;
+          destination.classList.add('sd-reader-collection-drop-target');
+        }
+      };
+      const blockContext = (event) => {
+        if (active && (event.target === source || source.contains(event.target))) event.preventDefault();
+      };
+      const finish = (event) => {
+        if (event.pointerId !== pointerId) return;
+        const targetId = destination?.dataset.collection || '';
+        if (active) { event.preventDefault(); event.stopPropagation(); }
+        cleanup();
+        if (!active) return;
+        setTimeout(() => { delete source.dataset.justShelfDragged; }, 260);
+        if (!targetId) return;
+        const target = coreadMoveBooksToCollection([source.dataset.book], targetId);
+        if (target) toast(`已放入「${target.name}」。`, 'success');
+        renderModal();
+      };
+      const cancel = (event) => {
+        if (event.pointerId !== pointerId) return;
+        cleanup();
+        if (active) setTimeout(() => { delete source.dataset.justShelfDragged; }, 260);
+      };
+      const holdTimer = setTimeout(activate, 380);
+      document.addEventListener('pointermove', onMove, { capture: true, passive: false });
+      document.addEventListener('pointerup', finish, true);
+      document.addEventListener('pointercancel', cancel, true);
+      document.addEventListener('contextmenu', blockContext, true);
+    });
+  });
+}
+
 function bindLibraryViewEvents(root) {
   loadShelfCovers(root);   // 异步给 hasCover 的卡片填充封面图（IndexedDB blob → objectURL）
+  bindLibraryBookDrag(root);
   root.querySelector('.sd-reader-collection-create')?.addEventListener('click', async () => {
     if (await coreadCreateCollection()) renderModal();
   });
@@ -16513,20 +16621,27 @@ function bindLibraryViewEvents(root) {
   // 网格卡（封面视图）：单击开书，去掉删除功能（P1 优化·删除功能只留给列表视图）
   root.querySelectorAll('.sd-reader-card').forEach((card) => {
     card.addEventListener('click', (e) => {
-      if (e.target.closest('.sd-reader-book-check, .sd-reader-card-edit')) return;  // 工具按钮不触发开书
+      if (card.dataset.justShelfDragged === '1' || e.target.closest('.sd-reader-book-check, .sd-reader-card-edit, .sd-reader-collection-remove-book')) return;  // 工具按钮/拖放不触发开书
       coreadOpenBook(card.dataset.book);
     });
   });
   // 列表行：单击开书（勾选框与删除钮除外）
   root.querySelectorAll('.sd-reader-row').forEach((row) => {
     row.addEventListener('click', (e) => {
-      if (e.target.closest('.sd-reader-book-check, .sd-reader-card-edit, .sd-reader-card-del')) return;
+      if (e.target.closest('.sd-reader-book-check, .sd-reader-card-edit, .sd-reader-card-del, .sd-reader-collection-remove-book')) return;
       coreadOpenBook(row.dataset.book);
     });
   });
   root.querySelectorAll('.sd-reader-card-edit').forEach((el) => el.addEventListener('click', async (e) => {
     e.stopPropagation();
     if (await coreadEditBookInfo(el.dataset.book)) renderModal();
+  }));
+  root.querySelectorAll('.sd-reader-collection-remove-book').forEach((button) => button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const book = coreadBookMeta(button.dataset.book);
+    coreadMoveBooksToCollection([button.dataset.book], '');
+    toast(`已将《${book?.title || '未命名书籍'}》移出合集。`, 'success');
+    renderModal();
   }));
   // 列表行删除钮（单本删除）
   root.querySelectorAll('.sd-reader-card-del').forEach((el) => el.addEventListener('click', async (e) => {

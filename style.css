@@ -154,12 +154,12 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-float {
   --sd-float-edge: #c99b51;
   position: fixed;
-  width: 48px;
-  height: 41.57px;
+  width: 41.57px;
+  height: 48px;
   padding: 1.35px !important;
   border-radius: 0 !important;
   border: 0 !important;
-  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
   background: rgba(255, 255, 255, .22) !important;
   backdrop-filter: blur(22px) saturate(1.12) brightness(1.04) !important;
   -webkit-backdrop-filter: blur(22px) saturate(1.12) brightness(1.04) !important;
@@ -228,12 +228,12 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-quick-wheel .sd-wheel-items { position: absolute; inset: 0; pointer-events: none; }
 #story-director-quick-wheel .sd-wheel-command {
   position: absolute;
-  width: var(--sd-wheel-item-size, 36px);
-  height: var(--sd-wheel-item-height, 31.18px);
+  width: var(--sd-wheel-item-size, 31.18px);
+  height: var(--sd-wheel-item-height, 36px);
   padding: 1.2px !important;
   border: 0 !important;
   border-radius: 0 !important;
-  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
   box-shadow: none !important;
   background: var(--sd-wheel-glass-fill) !important;
   backdrop-filter: blur(20px) saturate(1.12) brightness(1.04) !important;
@@ -1025,6 +1025,39 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal input[type="radio"]:focus-visible {
   outline: 2px solid var(--sd-accent);
   outline-offset: 2px;
+}
+
+/* 布尔设置统一为胶囊开关；条目多选不使用 checkbox_label，继续保留方形勾选框。 */
+#story-director-modal#story-director-modal .checkbox_label > input[type="checkbox"] {
+  width: 38px !important;
+  height: 22px !important;
+  border-radius: 999px !important;
+  border: 1px solid var(--sd-border) !important;
+  background: var(--sd-glass) !important;
+  padding: 0 !important;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .08) !important;
+  transition: background .18s ease, border-color .18s ease !important;
+}
+#story-director-modal#story-director-modal .checkbox_label > input[type="checkbox"]::after {
+  content: "" !important;
+  position: absolute !important;
+  left: 2px !important;
+  top: 2px !important;
+  width: 16px !important;
+  height: 16px !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  background: var(--sd-muted) !important;
+  transform: none !important;
+  transition: transform .18s ease, background .18s ease !important;
+}
+#story-director-modal#story-director-modal .checkbox_label > input[type="checkbox"]:checked {
+  background: var(--sd-accent) !important;
+  border-color: transparent !important;
+}
+#story-director-modal#story-director-modal .checkbox_label > input[type="checkbox"]:checked::after {
+  background: var(--sd-primary-text) !important;
+  transform: translateX(16px) !important;
 }
 
 /* 模型来源：分段控件。配色全用主题变量（自适配六套主题），自绘 dot 隔绝 ST 原生 radio 干扰 */
@@ -1916,7 +1949,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 
 @media (max-width: 760px) {
-  #story-director-float { width: 44px; height: 38.11px; }
+  #story-director-float { width: 38.11px; height: 44px; }
 
   #story-director-modal { padding: max(20px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)) !important; }
 
@@ -3535,6 +3568,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   font-size: .7em; padding: 1px 7px; border-radius: 10px; font-variant-numeric: tabular-nums;
 }
 .sd-reader-card-meta { position: relative; display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-right: 25px; }
+.sd-reader-card-meta-tools { padding-right: 54px; }
 .sd-reader-card-title { font-size: .9em; font-weight: 600; color: var(--sd-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sd-reader-card-author { font-size: .78em; color: var(--sd-text); opacity: .72; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sd-reader-card-sub { font-size: .76em; color: var(--sd-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3602,8 +3636,28 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 .sd-reader-card-edit { width: 30px; height: 30px; padding: 0; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: transparent; color: var(--sd-muted); opacity: .68; cursor: pointer; }
 .sd-reader-card-edit:hover { opacity: 1; color: var(--sd-accent); background: var(--sd-glass-weak); }
 .sd-reader-card-edit-grid { position: absolute; right: 0; bottom: -2px; width: 25px; height: 25px; font-size: .72em; }
+.sd-reader-card-grid-tools { position: absolute; right: 0; bottom: -2px; display: inline-flex; align-items: center; gap: 1px; }
+.sd-reader-card-grid-tools .sd-reader-card-edit,
+.sd-reader-card-grid-tools .sd-reader-collection-remove-book { width: 25px; height: 25px; font-size: .72em; }
 .sd-reader-row .sd-reader-card-edit { opacity: .62; }
 .sd-reader-row:hover .sd-reader-card-edit { opacity: 1; }
+.sd-reader-collection-remove-book {
+  width: 30px; height: 30px; padding: 0; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 8px; background: transparent; color: var(--sd-muted); opacity: .68; cursor: pointer;
+}
+.sd-reader-collection-remove-book:hover { opacity: 1; color: var(--sd-accent); background: var(--sd-glass-weak); }
+.sd-reader-card.sd-reader-book-dragging { opacity: .3; pointer-events: none; transform: scale(.97); }
+.sd-reader-collection-card.sd-reader-collection-drop-target .sd-reader-card-cover {
+  outline: 3px solid var(--sd-accent); outline-offset: 3px; filter: brightness(1.08);
+}
+.sd-reader-book-drag-ghost {
+  position: fixed; z-index: 2147483639; max-width: min(230px, 72vw); pointer-events: none;
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px;
+  border: 1px solid var(--sd-border, rgba(255,255,255,.2)); background: var(--sd-folder-head, rgba(35,37,42,.92));
+  color: var(--sd-text, #eee); box-shadow: 0 8px 24px rgba(0,0,0,.24); font: 600 13px/1.25 var(--sd-font, sans-serif);
+  transform: translateZ(0); white-space: nowrap; overflow: hidden;
+}
+.sd-reader-book-drag-ghost span { overflow: hidden; text-overflow: ellipsis; }
 .sd-reader-collection-edit, .sd-reader-collection-dissolve {
   width: 30px; height: 30px; padding: 0; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
   border: 0; border-radius: 8px; background: transparent; color: var(--sd-muted); opacity: .68; cursor: pointer;

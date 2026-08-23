@@ -78,10 +78,10 @@ assert.match(source, /viewport\?\.addEventListener\('resize', sync\)/);
 
 assert.match(css, /#story-director-quick-wheel/);
 assert.match(css, /--sd-wheel-item-height/);
-assert.match(css, /clip-path:\s*polygon\(25% 0, 75% 0, 100% 50%/, '蜂巢入口必须是无畸变边角的正六边形');
+assert.match(css, /clip-path:\s*polygon\(50% 0, 100% 25%, 100% 75%/, '蜂巢入口必须是左右直边的竖向正六边形');
 assert.match(css, /#story-director-float\s*\{[^}]*--sd-float-edge:\s*#c99b51/, '主悬浮窗使用固定金色边线');
 assert.match(css, /#story-director-float\s*\{[^}]*background:\s*rgba\(255, 255, 255, \.22\) !important/, '主悬浮窗必须使用固定半透明玻璃底');
-assert.match(source, /QUICK_HEX_BORDER_SVG[\s\S]*<polygon points="25,0 75,0 100,43\.301 75,86\.602 25,86\.602 0,43\.301"/, '主悬浮窗与蜂巢片必须使用真实六边形矢量描边');
+assert.match(source, /QUICK_HEX_BORDER_SVG[\s\S]*<polygon points="43\.301,0 86\.602,25 86\.602,75 43\.301,100 0,75 0,25"/, '主悬浮窗与蜂巢片必须使用左右直边的真实六边形矢量描边');
 assert.match(css, /#story-director-float\s*\{[^}]*backdrop-filter:\s*blur\(22px\) saturate\(1\.12\)/, '主悬浮窗必须直接采样页面背景形成毛玻璃');
 const floatGlass = css.slice(css.indexOf('#story-director-float::before'), css.indexOf('#story-director-float:hover'));
 assert.match(floatGlass, /sd-float-glass-breathe/, '主 Logo 透白底必须保留缓慢呼吸');
@@ -102,13 +102,13 @@ assert.match(css, /\.sd-quick-docked-origin\s*\{[^}]*visibility:\s*hidden[^}]*po
 assert.match(css, /prefers-reduced-motion:\s*reduce/, '蜂巢动态必须尊重系统减少动态设置');
 
 // 直接执行纯几何函数：居中先满六格内圈，贴边不移动锚点且所有蜂巢片留在可视区。
-const geometryStart = source.indexOf('const QUICK_HEX_HEIGHT_RATIO');
+const geometryStart = source.indexOf('const QUICK_HEX_WIDTH_RATIO');
 const geometryEnd = source.indexOf('const quickDockRuntime');
 assert.ok(geometryStart > 0 && geometryEnd > geometryStart, '未找到蜂巢纯几何实现');
 const sandbox = {};
-vm.runInNewContext(`${source.slice(geometryStart, geometryEnd)}\nglobalThis.hive = { QUICK_HEX_HEIGHT_RATIO, quickHiveAxialRing, quickHiveCellRing, quickHiveCellFits, quickHiveLayout };`, sandbox);
+vm.runInNewContext(`${source.slice(geometryStart, geometryEnd)}\nglobalThis.hive = { QUICK_HEX_WIDTH_RATIO, quickHiveAxialRing, quickHiveCellRing, quickHiveCellFits, quickHiveLayout };`, sandbox);
 const { hive } = sandbox;
-assert.equal(hive.QUICK_HEX_HEIGHT_RATIO, Math.sqrt(3) / 2);
+assert.equal(hive.QUICK_HEX_WIDTH_RATIO, Math.sqrt(3) / 2);
 const firstRing = hive.quickHiveAxialRing(1);
 assert.equal(firstRing.length, 6);
 assert.equal(new Set(firstRing.map(({ q, r }) => `${q},${r}`)).size, 6);
@@ -130,8 +130,8 @@ assert.ok(atLeftEdge.cells.every((cell) => hive.quickHiveCellFits(cell, atLeftEd
 for (const size of [32, 40, 50]) {
   const width = 390;
   const height = 800;
-  const halfW = size / 2;
-  const halfH = size * hive.QUICK_HEX_HEIGHT_RATIO / 2;
+  const halfW = size * hive.QUICK_HEX_WIDTH_RATIO / 2;
+  const halfH = size / 2;
   const anchors = [
     [10 + halfW, height / 2], [width - 10 - halfW, height / 2],
     [width / 2, 10 + halfH], [width / 2, height - 10 - halfH],
