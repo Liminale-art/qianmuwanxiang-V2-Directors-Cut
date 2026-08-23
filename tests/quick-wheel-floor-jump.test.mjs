@@ -10,9 +10,12 @@ assert.match(source, /quickWheelCustomOrder/);
 assert.match(source, /quickWheelCustomEnabled/);
 assert.match(source, /quickWheelScheme: 'custom'/);
 assert.match(source, /长按展开蜂巢快捷盘/);
-for (const id of ['dashboard', 'tasksnodes', 'castworld', 'blueprint', 'context', 'settings', 'theater', 'tts', 'coread', 'geopolitics', 'plug', 'imagegen', 'floor']) {
+for (const id of ['dashboard', 'tasksnodes', 'castworld', 'context', 'settings', 'theater', 'tts', 'coread', 'geopolitics', 'plug', 'imagegen', 'floor']) {
   assert.match(source, new RegExp(`id: '${id}'`));
 }
+const quickCommands = source.slice(source.indexOf('const QUICK_COMMANDS'), source.indexOf('const QUICK_COMMAND_IDS'));
+assert.doesNotMatch(quickCommands, /id: 'blueprint'/, '编剧已并入幕后，不得继续占用蜂巢入口');
+assert.match(quickCommands, /id: 'settings', label: '幕后', icon: 'fa-feather-pointed'/, '幕后蜂巢入口必须改用羽毛笔');
 assert.match(source, /QUICK_HIVE_SAFETY_LIMIT = 24/, '仅保留异常配置安全阀，不得再把八格当作产品限制');
 assert.doesNotMatch(source, /QUICK_HIVE_MAX_ITEMS|最多显示 \$\{QUICK_HIVE/, '设置页不得再显示蜂巢入口上限');
 assert.match(source, /function quickHiveAxialRing[\s\S]*function quickHiveLayout/, '蜂巢必须使用通用轴向六角坐标生成器');
@@ -20,7 +23,7 @@ assert.doesNotMatch(source, /<option value="default"[^>]*>默认方案<\/option>
 assert.match(source, /button\.innerHTML = item\.external \? quickDockIconMarkup\(item\)/, '第三方 Logo 必须经过安全视觉描述渲染');
 assert.match(source, /btn\.innerHTML = `<img src="\$\{FLOAT_LOGO_URL\}"/, '正式 Logo 必须继续使用真实悬浮窗');
 assert.doesNotMatch(source, /sd-wheel-core/, '展开时不得再创建会使锚点跳位的替代中心按钮');
-assert.match(source, /is-edge-ivory[\s\S]*is-edge-gold[\s\S]*is-edge-graphite/, '每个蜂巢片必须从正式 Logo 色系中随机取得不透明边线');
+assert.match(source, /is-glass-light is-edge-graphite[\s\S]*is-glass-light is-edge-gold[\s\S]*is-glass-dark is-edge-ivory[\s\S]*is-glass-dark is-edge-gold/, '每个蜂巢片必须从规定的明暗玻璃与边线组合中取样');
 assert.doesNotMatch(source, /wheelTheme[\s\S]*sd-theme-\$\{wheelTheme\}/, '展开蜂巢不再跟随面板主题换色');
 const renderFloat = source.slice(source.indexOf('function renderFloatButton'), source.indexOf('function renderBusyState'));
 assert.doesNotMatch(renderFloat, /sd-theme-|THEME_KEYS/, '主悬浮窗必须维持固定极简视觉，不再挂载面板主题类');
@@ -75,16 +78,19 @@ assert.match(css, /#story-director-quick-wheel/);
 assert.match(css, /--sd-wheel-item-height/);
 assert.match(css, /clip-path:\s*polygon\(25% 0, 75% 0, 100% 50%/, '蜂巢入口必须是无畸变边角的正六边形');
 assert.match(css, /#story-director-float\s*\{[^}]*--sd-float-edge:\s*#c99b51/, '主悬浮窗使用固定金色边线');
-assert.match(css, /#story-director-float\s*\{[^}]*background:\s*transparent !important/, '主悬浮窗中心不得被不透明边框底色垫住');
+assert.match(css, /#story-director-float\s*\{[^}]*background:\s*rgba\(255, 255, 255, \.22\) !important/, '主悬浮窗必须使用固定半透明玻璃底');
 assert.match(css, /#story-director-float::after\s*\{[^}]*background:\s*var\(--sd-float-edge\)[^}]*mask-composite:\s*exclude/, '主悬浮窗必须使用独立的不透明金色边框环');
-assert.match(css, /#story-director-float\s*\{[^}]*backdrop-filter:\s*blur\(22px\) saturate\(\.72\)/, '主悬浮窗必须直接采样页面背景形成毛玻璃');
+assert.match(css, /#story-director-float\s*\{[^}]*backdrop-filter:\s*blur\(22px\) saturate\(1\.12\)/, '主悬浮窗必须直接采样页面背景形成毛玻璃');
 const floatGlass = css.slice(css.indexOf('#story-director-float::before'), css.indexOf('#story-director-float:hover'));
 assert.match(floatGlass, /sd-float-glass-breathe/, '主 Logo 透白底必须保留缓慢呼吸');
-assert.match(css, /@keyframes sd-float-glass-breathe\s*\{[^}]*rgba\(255, 255, 255, \.14\)[\s\S]*rgba\(255, 255, 255, \.38\)/, '呼吸区间必须保持足够透明，不能再遮成实色');
+assert.match(css, /@keyframes sd-float-glass-breathe\s*\{[^}]*opacity:\s*\.34[\s\S]*opacity:\s*\.88/, '呼吸只改变玻璃辉光透明度，不能把底色遮成实色');
 assert.doesNotMatch(css, /#story-director-float\.sd-theme-|#story-director-quick-wheel\.sd-theme-/, '悬浮窗与蜂巢不得再受面板主题配色影响');
-assert.match(css, /--sd-wheel-icon:\s*#4b4b49/, '所有千幕蜂巢入口统一使用暗灰图标');
-assert.match(css, /\.is-edge-ivory\s*\{[^}]*#f3eee3[\s\S]*\.is-edge-gold\s*\{[^}]*#c99b51[\s\S]*\.is-edge-graphite\s*\{[^}]*#454644[^}]*--sd-wheel-icon:\s*#f7f3ea/, '浅色边线需更清晰，石墨边线必须切换白色图标');
-assert.match(css, /backdrop-filter:\s*blur\(18px\) saturate\(\.72\) brightness\(1\.06\)/, '蜂巢需保留背景可见的低饱和毛玻璃');
+assert.match(css, /\.is-glass-light\s*\{[^}]*rgba\(248, 247, 243, \.34\)[^}]*--sd-wheel-icon:\s*#4b4b49/, '浅玻璃必须搭配暗灰图标');
+assert.match(css, /\.is-glass-dark\s*\{[^}]*rgba\(43, 44, 44, \.42\)[^}]*--sd-wheel-icon:\s*#f7f3ea/, '暗玻璃必须搭配白色图标');
+assert.match(css, /\.is-edge-ivory\s*\{[^}]*#ddd8cd[\s\S]*\.is-edge-gold\s*\{[^}]*#c99b51[\s\S]*\.is-edge-graphite\s*\{[^}]*#77736d/, '边线仅使用浅灰、金和中灰细线');
+assert.match(css, /\.sd-wheel-command\s*\{[^}]*padding:\s*1\.2px !important/, '蜂巢边线必须恢复原细线规格');
+assert.match(css, /backdrop-filter:\s*blur\(20px\) saturate\(1\.12\) brightness\(1\.04\) !important/, '蜂巢需保留背景可见的高模糊毛玻璃');
+assert.match(source, /setProperty\('backdrop-filter', 'blur\(20px\)[^\n]*'important'\)/, '蜂巢关键视觉属性必须以内联 important 隔离 ST 美化覆盖');
 assert.match(css, /\.sd-wheel-command::after\s*\{[^}]*background:\s*var\(--sd-wheel-edge[^}]*mask-composite:\s*exclude/, '蜂巢边线必须作为独立环绘制，不能用不透明色垫满中心');
 assert.match(css, /sd-wheel-hive-in[\s\S]*rotateY\(82deg\)/, '蜂巢片应有翻转入场效果');
 assert.match(css, /\.sd-wheel-command\.is-external\s*\{[^}]*animation:\s*none[^}]*opacity:\s*1/, '第三方收纳片必须保持静态，边线仍沿用随机 Logo 色系');

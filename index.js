@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.29.1';
+const VERSION = '1.30.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -3051,7 +3051,10 @@ function injectToInput(text) {
 // 校验一个 tab id 当前是否可落脚：coread 隐藏时、geopolitics 关闭时回落 dashboard。
 // 用于「二次打开恢复上次 tab」——记录的 tab 若因开关变化已不可用，安全回落首页。
 function resolveRestorableTab(tab) {
-  const KNOWN = ['dashboard', 'tasksnodes', 'castworld', 'blueprint', 'context', 'settings', 'theater', 'tts', 'geopolitics', 'coread', 'plug'];
+  // v1.30 起「编剧」并入「幕后」。旧设置里若仍记着 blueprint，直接迁移到 settings，
+  // 避免更新后恢复到一个已经撤掉的顶层入口。
+  if (tab === 'blueprint') return 'settings';
+  const KNOWN = ['dashboard', 'tasksnodes', 'castworld', 'context', 'settings', 'theater', 'tts', 'geopolitics', 'coread', 'plug'];
   if (!KNOWN.includes(tab)) return 'dashboard';
   if (tab === 'coread' && !COREAD_ENABLED) return 'dashboard';
   if (tab === 'geopolitics' && !settings.geopoliticsEnabled) return 'dashboard';
@@ -3178,9 +3181,8 @@ const QUICK_COMMANDS = Object.freeze([
   { id: 'dashboard', label: '推演', icon: 'fa-clapperboard' },
   { id: 'tasksnodes', label: '任务', icon: 'fa-list-check' },
   { id: 'castworld', label: '世界', icon: 'fa-earth-asia' },
-  { id: 'blueprint', label: '编剧', icon: 'fa-feather-pointed' },
   { id: 'context', label: '取材', icon: 'fa-box-archive' },
-  { id: 'settings', label: '幕后', icon: 'fa-sliders' },
+  { id: 'settings', label: '幕后', icon: 'fa-feather-pointed' },
   { id: 'theater', label: '幕外', icon: 'fa-masks-theater' },
   { id: 'tts', label: '配音', icon: 'fa-microphone-lines' },
   { id: 'coread', label: '书架', icon: 'fa-book-open' },
@@ -4230,12 +4232,31 @@ function openQuickWheel(btn) {
     const slot = offsets[index];
     const button = document.createElement('button');
     button.type = 'button';
-    const palettes = ['is-edge-ivory', 'is-edge-gold', 'is-edge-graphite'];
-    const palette = palettes[Math.floor(Math.random() * palettes.length)];
-    button.className = `sd-wheel-command ${palette}${item.external ? ' is-external' : ''}${item.pending ? ' is-pending' : ''}`;
+    // 明暗底色与边线成对出现：浅玻璃仅配灰/金边与深色图标；暗玻璃仅配浅灰/金边与白色图标。
+    // 每次展开重新取样，动态只改变组合与微光，不改变用户设置的入口顺序。
+    const visualPairs = [
+      { classes: 'is-glass-light is-edge-graphite', fill: 'rgba(248, 247, 243, .34)', edge: '#77736d', icon: '#4b4b49' },
+      { classes: 'is-glass-light is-edge-gold', fill: 'rgba(248, 247, 243, .34)', edge: '#c99b51', icon: '#4b4b49' },
+      { classes: 'is-glass-dark is-edge-ivory', fill: 'rgba(43, 44, 44, .42)', edge: '#ddd8cd', icon: '#f7f3ea' },
+      { classes: 'is-glass-dark is-edge-gold', fill: 'rgba(43, 44, 44, .42)', edge: '#c99b51', icon: '#f7f3ea' },
+    ];
+    const visual = visualPairs[Math.floor(Math.random() * visualPairs.length)];
+    button.className = `sd-wheel-command ${visual.classes}${item.external ? ' is-external' : ''}${item.pending ? ' is-pending' : ''}`;
     button.dataset.command = item.id;
-    button.style.setProperty('--sd-wheel-item-size', `${layout.itemSize}px`);
-    button.style.setProperty('--sd-wheel-item-height', `${layout.itemHeight}px`);
+    button.style.setProperty('--sd-wheel-item-size', `${layout.itemSize}px`, 'important');
+    button.style.setProperty('--sd-wheel-item-height', `${layout.itemHeight}px`, 'important');
+    button.style.setProperty('--sd-wheel-glass-fill', visual.fill, 'important');
+    button.style.setProperty('--sd-wheel-edge', visual.edge, 'important');
+    button.style.setProperty('--sd-wheel-icon', visual.icon, 'important');
+    // 组件级视觉锁：阻断 ST 美化或其他插件的全局 button/div 样式覆盖蜂巢毛玻璃。
+    button.style.setProperty('background', visual.fill, 'important');
+    button.style.setProperty('backdrop-filter', 'blur(20px) saturate(1.12) brightness(1.04)', 'important');
+    button.style.setProperty('-webkit-backdrop-filter', 'blur(20px) saturate(1.12) brightness(1.04)', 'important');
+    button.style.setProperty('clip-path', 'polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%)', 'important');
+    button.style.setProperty('color', visual.icon, 'important');
+    button.style.setProperty('border', '0', 'important');
+    button.style.setProperty('border-radius', '0', 'important');
+    button.style.setProperty('box-shadow', 'none', 'important');
     if (!item.external) {
       button.style.setProperty('--sd-wheel-delay', `${index * 24 + Math.floor(Math.random() * 45)}ms`);
       button.style.setProperty('--sd-wheel-breathe-delay', `${(-Math.random() * 4.8).toFixed(2)}s`);
@@ -4368,6 +4389,11 @@ function renderFloatButton() {
   // 本地 logo 铺满圆形悬浮球（object-fit:cover 由 CSS 控）；img 不拦指针，拖拽/点击仍落在按钮上
   btn.innerHTML = `<img src="${FLOAT_LOGO_URL}" alt="${EXTENSION_NAME}" draggable="false">`;
   btn.title = EXTENSION_NAME;
+  // 与蜂巢片相同，锁定悬浮主格的关键玻璃属性，避免第三方主题把 blur/background 清空。
+  btn.style.setProperty('background', 'rgba(255, 255, 255, .22)', 'important');
+  btn.style.setProperty('backdrop-filter', 'blur(22px) saturate(1.12) brightness(1.04)', 'important');
+  btn.style.setProperty('-webkit-backdrop-filter', 'blur(22px) saturate(1.12) brightness(1.04)', 'important');
+  btn.style.setProperty('clip-path', 'polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%)', 'important');
   bindFloatDrag(btn);
   applyFloatPosition(btn);
 }
@@ -4424,13 +4450,13 @@ function renderModal() {
     saveSettings();
   }
   const prevScroll = modal.querySelector('.sd-body')?.scrollTop ?? 0;
+  const prevTheaterScroll = modal.querySelector('.sd-theater-reader-scroll')?.scrollTop ?? 0;
   const prevTabScroll = modal.querySelector('.sd-tabs')?.scrollLeft ?? 0;
   snapshotAccState(modal);
   const tabs = [
     ['dashboard', '审片'],
     ['tasksnodes', '任务'],
     ['castworld', '世界'],
-    ['blueprint', '编剧'],
     ['context', '取材'],
     ['settings', '幕后'],
     ['theater', '幕外'],
@@ -4440,7 +4466,7 @@ function renderModal() {
   const animIn = modalJustOpened;   // 仅「打开」后的首帧入场动画，消费后清零，静默重渲染不再播（消除刷新闪动）
   modalJustOpened = false;
   const themeKey = THEME_KEYS.includes(settings.theme) ? settings.theme : 'light';
-  const editorLayout = !!editorView || !!theaterView?.editing;
+  const editorLayout = !!editorView || (activeTab === 'theater' && !!theaterView);
   modal.className = `sd-theme-${themeKey}${wasOpen ? ' open' : ''}${animIn ? ' sd-anim-in' : ''}`;
   modal.innerHTML = `
     <div class="sd-backdrop"></div>
@@ -4519,6 +4545,8 @@ function renderModal() {
   syncFontWithST();
   const body = modal.querySelector('.sd-body');
   if (body) body.scrollTop = prevScroll;
+  const theaterScroller = modal.querySelector('.sd-theater-reader-scroll');
+  if (theaterScroller) theaterScroller.scrollTop = prevTheaterScroll;
   // 保留标签栏横向滚动位置，并确保激活标签可见；两端按可滚动方向显隐渐隐遮罩
   const tabsBar = modal.querySelector('.sd-tabs');
   if (tabsBar) {
@@ -4601,7 +4629,6 @@ function currentPlan() {
 function renderActiveTab() {
   if (editorView) return renderEditorView();
   switch (activeTab) {
-    case 'blueprint': return renderBlueprintTab();
     case 'tasksnodes': return renderTasksNodesTab();
     case 'castworld': return renderCastWorldTab();
     case 'context': return renderContextTab();
@@ -5310,20 +5337,31 @@ function templateLibraryCfg() {
   };
 }
 
-function renderBlueprintTab() {
+function renderBlueprintEditorContent() {
   const store = getChatStore();
   return `
-    <section class="sd-card">
-      <div class="sd-field-head"><h3>当前聊天的剧本</h3><button type="button" class="sd-icon-btn sd-icon-sm sd-expand-editor" data-target="sd-blueprint" data-title="当前聊天的剧本" title="展开编辑" aria-label="展开编辑"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button></div>
-      <textarea class="text_pole sd-textarea sd-blueprint" spellcheck="false">${htmlEscape(store.blueprint || DEFAULT_BLUEPRINT)}</textarea>
-      <div class="sd-button-row sd-current-blueprint-actions">
-        <button type="button" class="sd-btn sd-save-blueprint">保存当前剧本</button>
-        <button type="button" class="sd-btn sd-save-template">保存到剧本库</button>
-        <button type="button" class="sd-btn sd-restore-blueprint" title="找回更新前你上一次使用的剧本" ${store.blueprintBackup ? '' : 'disabled'}>恢复上次</button>
-        <button type="button" class="sd-btn sd-reset-blueprint">恢复默认剧本</button>
-      </div>
-    </section>
-    <section class="sd-card">${renderLibrarySection(templateLibraryCfg())}</section>`;
+    <div class="sd-field-head"><h3>当前聊天的剧本</h3><button type="button" class="sd-icon-btn sd-icon-sm sd-expand-editor" data-target="sd-blueprint" data-title="当前聊天的剧本" title="展开编辑" aria-label="展开编辑"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button></div>
+    <textarea class="text_pole sd-textarea sd-blueprint" spellcheck="false">${htmlEscape(store.blueprint || DEFAULT_BLUEPRINT)}</textarea>
+    <div class="sd-button-row sd-current-blueprint-actions">
+      <button type="button" class="sd-btn sd-save-blueprint">保存当前剧本</button>
+      <button type="button" class="sd-btn sd-save-template">保存到剧本库</button>
+      <button type="button" class="sd-btn sd-restore-blueprint" title="找回更新前你上一次使用的剧本" ${store.blueprintBackup ? '' : 'disabled'}>恢复上次</button>
+      <button type="button" class="sd-btn sd-reset-blueprint">恢复默认剧本</button>
+    </div>`;
+}
+
+// 「编剧」不再占用一个低频顶层 tab：数据与全部操作原样并入幕后，默认折叠以保持幕后页面简洁。
+function renderBackstageBlueprintCard() {
+  return `
+    <section class="sd-card sd-backstage-blueprint-card">
+      <details class="sd-plain-fold sd-backstage-blueprint" data-acc="backstage-blueprint">
+        <summary><b><i class="fa-solid fa-feather-pointed"></i> 编剧</b><span class="sd-summary-note">当前聊天剧本与剧本库</span></summary>
+        <div class="sd-backstage-blueprint-body">
+          ${renderBlueprintEditorContent()}
+          <div class="sd-backstage-blueprint-library">${renderLibrarySection(templateLibraryCfg())}</div>
+        </div>
+      </details>
+    </section>`;
 }
 
 
@@ -5503,6 +5541,7 @@ function renderDirectorSettingsTab() {
         <p class="sd-muted sd-hint-sm">势力格局、地缘张力与世界事件，并作为世界回声的上游源头</p>
       </div>
     </section>
+    ${renderBackstageBlueprintCard()}
     <section class="sd-card">
       <details class="sd-plain-fold" data-acc="system-prompt">
         <summary><b>幕后提示词</b><button type="button" class="sd-icon-btn sd-icon-sm sd-expand-editor" data-target="sd-system-prompt" data-title="幕后提示词" title="展开编辑" aria-label="展开编辑"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button></summary>
@@ -18578,16 +18617,18 @@ function renderTheaterReadView(scene) {
        <button class="sd-icon-btn sd-theater-reader-fav" title="收藏"><i class="${fav ? 'fa-solid fa-star sd-fav-on' : 'fa-regular fa-star'}"></i></button>
        <button type="button" class="sd-icon-btn sd-reader-fullscreen" title="全屏阅读" aria-label="全屏阅读"><i class="fa-solid fa-expand"></i></button>`;
   return `
-    <section class="sd-card sd-reader-card${editing ? ' sd-editor-card sd-reader-editor-card' : ''}">
+    <section class="sd-card sd-reader-card sd-editor-card sd-theater-view-card${editing ? ' sd-reader-editor-card' : ''}">
       <div class="sd-reader-bar sd-sticky-bar">
         <button class="sd-icon-btn sd-theater-reader-back" title="返回" aria-label="返回"><i class="fa-solid fa-arrow-left"></i></button>
         ${rightBtns}
       </div>
-      <div class="sd-reader-title">
-        <h3>${htmlEscape(THEATER_READ_TITLE)}</h3>
-        <p class="sd-reader-subtitle">${htmlEscape(theaterSubtitle(scene))}</p>
+      <div class="sd-theater-reader-scroll${(editing || scene.isHtml) ? ' sd-theater-reader-scroll-fill' : ''}">
+        <div class="sd-reader-title">
+          <h3>${htmlEscape(THEATER_READ_TITLE)}</h3>
+          <p class="sd-reader-subtitle">${htmlEscape(theaterSubtitle(scene))}</p>
+        </div>
+        ${bodyHtml}
       </div>
-      ${bodyHtml}
     </section>`;
 }
 
@@ -18601,12 +18642,12 @@ function renderTheaterFavoritesView() {
       </div></article>`).join('')
     : '<p class="sd-muted">收藏夹还空着。</p>';
   return `
-    <section class="sd-card sd-reader-card">
+    <section class="sd-card sd-reader-card sd-editor-card sd-theater-view-card">
       <div class="sd-reader-bar sd-sticky-bar">
         <button class="sd-btn sd-mini-btn sd-theater-reader-back"><i class="fa-solid fa-arrow-left"></i>返回</button>
         <span></span>
       </div>
-      <div class="sd-lib-list sd-scroll" style="padding:4px 2px">${rows}</div>
+      <div class="sd-lib-list sd-scroll sd-theater-reader-scroll" style="padding:4px 2px">${rows}</div>
     </section>`;
 }
 

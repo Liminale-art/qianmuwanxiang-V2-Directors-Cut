@@ -160,9 +160,9 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   border-radius: 0 !important;
   border: 0 !important;
   clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
-  background: transparent !important;
-  backdrop-filter: blur(22px) saturate(.72) brightness(1.06);
-  -webkit-backdrop-filter: blur(22px) saturate(.72) brightness(1.06);
+  background: rgba(255, 255, 255, .22) !important;
+  backdrop-filter: blur(22px) saturate(1.12) brightness(1.04) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(1.12) brightness(1.04) !important;
   color: #45423d !important;
   z-index: 1000;   /* 压在 ST 顶栏抽屉/菜单（约 3000+）之下、聊天内容之上：菜单展开时不被悬浮球遮挡；弹窗自身仍保最高层 */
   cursor: pointer;
@@ -180,10 +180,10 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-float::before {
   content: '';
   position: absolute;
-  inset: 1.7px;
+  inset: 1.35px;
   z-index: 0;
   clip-path: inherit;
-  background: rgba(255, 255, 255, .14);
+  background: linear-gradient(145deg, rgba(255, 255, 255, .34), rgba(255, 255, 255, .06));
   animation: sd-float-glass-breathe 5.8s ease-in-out infinite alternate;
   pointer-events: none;
 }
@@ -193,7 +193,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   inset: 0;
   z-index: 1;
   box-sizing: border-box;
-  padding: 1.7px;
+  padding: 1.35px;
   clip-path: inherit;
   background: var(--sd-float-edge);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -206,7 +206,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-float.sd-dock-ready { animation: sd-quick-dock-ready .72s ease-in-out infinite alternate; }
 .sd-quick-docked-origin { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }
 @keyframes sd-quick-dock-ready { from { filter: brightness(1); transform: scale(1); } to { filter: brightness(1.18); transform: scale(1.08); } }
-@keyframes sd-float-glass-breathe { from { background-color: rgba(255, 255, 255, .14); } to { background-color: rgba(255, 255, 255, .38); } }
+@keyframes sd-float-glass-breathe { from { opacity: .34; } to { opacity: .88; } }
 
 /* 悬浮球 logo：透明 PNG 徽标，完整居中显示在按钮上（contain 不裁切，透明处透出按钮毛玻璃底）；不拦指针 */
 #story-director-float img {
@@ -223,11 +223,12 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   transform: translateY(4%);
 }
 
-/* 悬浮球长按蜂巢：固定透白毛玻璃；只在不透明边线中随机取正式 Logo 的象牙白 / 金 / 石墨色。 */
+/* 悬浮球长按蜂巢：组件级隔离的双色毛玻璃。
+   浅玻璃 = 灰/金细边 + 深灰图标；暗玻璃 = 浅灰/金细边 + 白色图标。 */
 #story-director-quick-wheel {
   --sd-wheel-icon: #4b4b49;
-  --sd-wheel-glass-low: rgba(255, 255, 255, .14);
-  --sd-wheel-glass-high: rgba(255, 255, 255, .38);
+  --sd-wheel-glass-fill: rgba(248, 247, 243, .34);
+  --sd-wheel-glass-sheen: linear-gradient(145deg, rgba(255, 255, 255, .28), rgba(255, 255, 255, .04));
   position: fixed;
   z-index: 2147483002;
   pointer-events: none;
@@ -240,14 +241,14 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   position: absolute;
   width: var(--sd-wheel-item-size, 36px);
   height: var(--sd-wheel-item-height, 31.18px);
-  padding: 1.7px !important;
+  padding: 1.2px !important;
   border: 0 !important;
   border-radius: 0 !important;
   clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
   box-shadow: none !important;
-  background: transparent !important;
-  backdrop-filter: blur(18px) saturate(.72) brightness(1.06);
-  -webkit-backdrop-filter: blur(18px) saturate(.72) brightness(1.06);
+  background: var(--sd-wheel-glass-fill) !important;
+  backdrop-filter: blur(20px) saturate(1.12) brightness(1.04) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.12) brightness(1.04) !important;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -259,10 +260,10 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-quick-wheel .sd-wheel-command::before {
   content: '';
   position: absolute;
-  inset: 1.7px;
+  inset: 1.2px;
   z-index: 0;
   clip-path: inherit;
-  background: var(--sd-wheel-glass-low);
+  background: var(--sd-wheel-glass-sheen) !important;
   animation: sd-wheel-glass-breathe 5.8s ease-in-out var(--sd-wheel-breathe-delay, 0s) infinite alternate;
   pointer-events: none;
 }
@@ -272,9 +273,9 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   inset: 0;
   z-index: 1;
   box-sizing: border-box;
-  padding: 1.7px;
+  padding: 1.2px;
   clip-path: inherit;
-  background: var(--sd-wheel-edge, #f3eee3);
+  background: var(--sd-wheel-edge, #c99b51) !important;
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -284,11 +285,21 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   color: var(--sd-wheel-icon) !important;
   animation: sd-wheel-hive-in .34s cubic-bezier(.2,.72,.2,1) var(--sd-wheel-delay, 0ms) both;
 }
-#story-director-quick-wheel .sd-wheel-command.is-edge-ivory { --sd-wheel-edge: #f3eee3; }
+#story-director-quick-wheel .sd-wheel-command.is-glass-light {
+  --sd-wheel-glass-fill: rgba(248, 247, 243, .34);
+  --sd-wheel-glass-sheen: linear-gradient(145deg, rgba(255, 255, 255, .32), rgba(255, 255, 255, .04));
+  --sd-wheel-icon: #4b4b49;
+}
+#story-director-quick-wheel .sd-wheel-command.is-glass-dark {
+  --sd-wheel-glass-fill: rgba(43, 44, 44, .42);
+  --sd-wheel-glass-sheen: linear-gradient(145deg, rgba(255, 255, 255, .13), rgba(16, 17, 17, .06));
+  --sd-wheel-icon: #f7f3ea;
+}
+#story-director-quick-wheel .sd-wheel-command.is-edge-ivory { --sd-wheel-edge: #ddd8cd; }
 #story-director-quick-wheel .sd-wheel-command.is-edge-gold { --sd-wheel-edge: #c99b51; }
-#story-director-quick-wheel .sd-wheel-command.is-edge-graphite { --sd-wheel-edge: #454644; --sd-wheel-icon: #f7f3ea; }
+#story-director-quick-wheel .sd-wheel-command.is-edge-graphite { --sd-wheel-edge: #77736d; }
 #story-director-quick-wheel .sd-wheel-command.is-external { animation: none !important; opacity: 1 !important; touch-action: none; }
-#story-director-quick-wheel .sd-wheel-command.is-external::before { animation: none !important; background: rgba(255, 255, 255, .26); }
+#story-director-quick-wheel .sd-wheel-command.is-external::before { animation: none !important; background: var(--sd-wheel-glass-sheen) !important; opacity: .72; }
 #story-director-quick-wheel .sd-wheel-command > i,
 #story-director-quick-wheel .sd-wheel-command > span,
 #story-director-quick-wheel .sd-wheel-command > img { position: relative; z-index: 2; }
@@ -305,12 +316,12 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   from { opacity: 0; transform: perspective(260px) rotateY(82deg) scale(.72); }
   to { opacity: 1; transform: perspective(260px) rotateY(0) scale(1); }
 }
-@keyframes sd-wheel-glass-breathe { from { background-color: var(--sd-wheel-glass-low); } to { background-color: var(--sd-wheel-glass-high); } }
+@keyframes sd-wheel-glass-breathe { from { opacity: .38; } to { opacity: .92; } }
 @media (prefers-reduced-motion: reduce) {
   #story-director-float,
   #story-director-quick-wheel .sd-wheel-command { animation: none; opacity: 1; }
   #story-director-float::before,
-  #story-director-quick-wheel .sd-wheel-command::before { animation: none; background: rgba(255, 255, 255, .26); }
+  #story-director-quick-wheel .sd-wheel-command::before { animation: none; opacity: .68; }
 }
 
 /* 楼层跳转独立轻量窗：绑定 visualViewport，短视口改为整窗滚动，绝不裁掉面板上沿。 */
@@ -1225,6 +1236,16 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-plain-fold > summary::-webkit-details-marker { display: none; }
 #story-director-modal .sd-plain-fold > summary b { font-weight: 600; }
 #story-director-modal .sd-plain-fold > .sd-textarea { margin-top: 8px; }
+#story-director-modal .sd-backstage-blueprint { margin-top: 0; }
+#story-director-modal .sd-backstage-blueprint > summary b { display: inline-flex; align-items: center; gap: 6px; }
+#story-director-modal .sd-backstage-blueprint > summary b i { color: var(--sd-accent); font-size: .92em; }
+#story-director-modal .sd-backstage-blueprint[open] > summary { margin-bottom: 12px; }
+#story-director-modal .sd-backstage-blueprint-body { min-width: 0; }
+#story-director-modal .sd-backstage-blueprint-library {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--sd-hairline);
+}
 #story-director-modal .sd-inject-title,
 #story-director-modal .sd-inject-meta,
 #story-director-modal .sd-editor-actions { display: inline-flex; align-items: center; gap: 6px; }
@@ -2474,7 +2495,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 /* 此幕指令未展开时的默认高度（约 6 行，便于直接写较长指令） */
 #story-director-modal .sd-theater-instruction-compact { min-height: 140px; }
 
-/* 顶栏固定：使用主题实色隔离层，正文滚动时不得从标题与按钮后方穿透。 */
+/* 顶栏固定：使用主题实色隔离层，正文滚动时不得从标题与按钮后方穿透。
+   不绘制下边线或投影，让固定区与正文保持无感衔接。 */
 #story-director-modal .sd-sticky-bar {
   position: sticky;
   top: 0;
@@ -2483,8 +2505,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   background: var(--sd-sticky-bg, var(--sd-folder-head));
   padding: 6px 2px;
   margin: -4px 0 10px;
-  border-bottom: 1px solid var(--sd-hairline);
-  box-shadow: 0 9px 14px -15px rgba(0, 0, 0, .45);
+  border: 0 !important;
+  box-shadow: none !important;
 }
 /* 吸顶栏内的按钮：用各主题近不透明的 --sd-folder-head 作底，避免下方内容透出，且六套主题自动匹配 */
 #story-director-modal .sd-sticky-bar .sd-btn,
@@ -2539,6 +2561,41 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   text-overflow: ellipsis;
 }
 #story-director-modal .sd-editor-bar > .sd-btn { flex: 0 0 auto; }
+
+/* 幕外阅读/编辑：顶栏与正文分成两个真正独立的 flex 区域。
+   只让正文容器滚动，内容从结构上无法穿过工具栏，也无需用阴影伪装遮挡。 */
+#story-director-modal .sd-theater-view-card {
+  cursor: default;
+  transform: none !important;
+}
+#story-director-modal .sd-theater-view-card > .sd-reader-bar {
+  position: relative;
+  top: auto;
+  flex: 0 0 auto;
+  margin: 0 0 8px;
+  padding: 0 2px 8px;
+  background: transparent;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+#story-director-modal .sd-theater-reader-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 2px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  overscroll-behavior: contain;
+}
+#story-director-modal .sd-theater-reader-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
+#story-director-modal .sd-theater-reader-scroll-fill { display: flex; flex-direction: column; }
+#story-director-modal .sd-theater-reader-scroll-fill > .sd-reader-frame,
+#story-director-modal .sd-theater-reader-scroll-fill > .sd-reader-edit-area {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+}
+#story-director-modal .sd-theater-reader-scroll-fill > .sd-reader-edit-area { resize: none; }
 #story-director-modal .sd-editor-actions { flex: 0 0 auto; }
 #story-director-modal .sd-editor-actions .sd-icon-btn,
 #story-director-modal .sd-editor-bar > .sd-icon-btn { width: 32px; height: 32px; flex: 0 0 auto; }
