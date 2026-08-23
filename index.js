@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.33.4';
+const VERSION = '1.33.5';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -8648,19 +8648,24 @@ function renderPlugTab() {
       <label>API Key</label><input class="text_pole sd-api-key" type="password" placeholder="sk-..." value="${htmlEscape(settings.apiKey || '')}">
       <label>模型</label>
       <div class="sd-inline-field"><select class="text_pole sd-model-select"><option value="">选择模型</option>${models.map((m) => `<option value="${htmlEscape(m)}" ${m === settings.model ? 'selected' : ''}>${htmlEscape(m)}</option>`).join('')}</select><button class="sd-btn sd-fetch-models"><i class="fa-solid fa-rotate"></i>拉取模型</button></div>
-      <label>Temperature</label><input class="text_pole sd-temperature" type="number" min="0" max="2" step="0.05" value="${htmlEscape(settings.temperature)}">
-      <label>最大输出 token</label><input class="text_pole sd-max-output" type="number" min="0" step="256" placeholder="0 表示不限" value="${htmlEscape(settings.maxOutputTokens ?? 32000)}">
-      <label>上下文长度</label><input class="text_pole sd-context-budget" type="number" min="0" step="1000" placeholder="0 表示不限" value="${htmlEscape(settings.contextBudget ?? 1000000)}">
-      <div class="sd-button-row"><button class="sd-btn sd-test-api"><i class="fa-solid fa-plug-circle-check"></i>测试连接</button><button class="sd-btn sd-save-api">保存API</button><button class="sd-btn sd-save-api-profile">保存为预设</button></div>
+      <div class="sd-api-generation-row">
+        <label><span>Temperature</span><input class="text_pole sd-temperature" type="number" min="0" max="2" step="0.05" value="${htmlEscape(settings.temperature)}"></label>
+        <label><span>最大输出 token</span><input class="text_pole sd-max-output" type="number" min="0" step="256" placeholder="0 表示不限" value="${htmlEscape(settings.maxOutputTokens ?? 32000)}"></label>
+        <label><span>上下文长度</span><input class="text_pole sd-context-budget" type="number" min="0" step="1000" placeholder="0 表示不限" value="${htmlEscape(settings.contextBudget ?? 1000000)}"></label>
+      </div>
+      <div class="sd-button-row sd-api-action-row">
+        <div class="sd-api-stream-action">
+          <button type="button" class="sd-btn sd-stream-toggle ${settings.streamEnabled ? 'sd-primary' : ''}" aria-pressed="${settings.streamEnabled ? 'true' : 'false'}">流式</button>
+          <small class="sd-muted sd-stream-scope-hint">仅支持自定义</small>
+        </div>
+        <button class="sd-btn sd-test-api"><i class="fa-solid fa-plug-circle-check"></i>测试连接</button>
+        <button class="sd-btn sd-save-api">保存API</button>
+        <button class="sd-btn sd-save-api-profile">保存为预设</button>
+      </div>
     </section>
     <section class="sd-card">
-      <div class="sd-toggle-row sd-plug-toggle-row">
-        <div class="sd-stream-setting">
-          <label class="checkbox_label"><input type="checkbox" class="sd-stream-toggle" ${settings.streamEnabled ? 'checked' : ''}> 流式传输</label>
-          <p class="sd-muted sd-hint-sm sd-stream-scope-hint">仅支持自定义API</p>
-        </div>
-        <label class="checkbox_label"><input type="checkbox" class="sd-float-toggle" ${settings.floatingButton ? 'checked' : ''}> 显示悬浮球</label>
-      </div>
+      <h3>悬浮球设置</h3>
+      <label class="checkbox_label sd-float-toggle-row"><input type="checkbox" class="sd-float-toggle" ${settings.floatingButton ? 'checked' : ''}> 显示悬浮球</label>
       <div class="sd-float-size-control" ${settings.floatingButton ? '' : 'hidden'}>
         <label for="sd-float-size">悬浮球大小 <b class="sd-float-size-value">${floatSize} px</b></label>
         <input id="sd-float-size" class="sd-float-size" type="range" min="${FLOAT_SIZE_MIN}" max="${FLOAT_SIZE_MAX}" step="2" value="${floatSize}">
@@ -9247,8 +9252,10 @@ function bindActiveTabEvents(root) {
     const key = button.closest('.sd-wheel-docked-row')?.dataset.dockKey;
     if (key) quickDockRemove(key);
   }));
-  root.querySelector('.sd-stream-toggle')?.addEventListener('change', (e) => {
-    settings.streamEnabled = !!e.target.checked;
+  root.querySelector('.sd-stream-toggle')?.addEventListener('click', (e) => {
+    settings.streamEnabled = !settings.streamEnabled;
+    e.currentTarget.classList.toggle('sd-primary', settings.streamEnabled);
+    e.currentTarget.setAttribute('aria-pressed', settings.streamEnabled ? 'true' : 'false');
     saveSettings();
     toast(settings.streamEnabled ? '流式传输已开启。' : '流式传输已关闭。', 'info');
   });

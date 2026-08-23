@@ -1843,7 +1843,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 
 #story-director-modal .sd-refresh-row .checkbox_label { margin: 0 !important; }
 
-/* 流式传输 / 显示悬浮球：并排一行 */
+/* 通用开关行 */
 #story-director-modal .sd-toggle-row {
   display: flex;
   flex-wrap: wrap;
@@ -1851,16 +1851,26 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   gap: 10px 24px;
 }
 #story-director-modal .sd-toggle-row .checkbox_label { margin: 0 !important; }
-#story-director-modal .sd-plug-toggle-row { align-items: flex-start; }
-#story-director-modal .sd-stream-setting {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+#story-director-modal .sd-api-generation-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+  gap: 8px;
+  margin-top: 8px;
 }
-#story-director-modal .sd-stream-scope-hint {
-  margin: 0 0 0 24px;
+#story-director-modal .sd-api-generation-row label { display: grid; align-content: end; gap: 5px; min-width: 0; margin: 0 !important; }
+#story-director-modal .sd-api-generation-row label > span { min-height: 1.35em; font-size: 12px; line-height: 1.35; }
+#story-director-modal .sd-api-generation-row .text_pole { width: 100% !important; min-width: 0; margin: 0 !important; }
+#story-director-modal .sd-api-action-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: start;
 }
+#story-director-modal .sd-api-action-row > .sd-btn,
+#story-director-modal .sd-api-stream-action .sd-btn { width: 100%; min-width: 0; }
+#story-director-modal .sd-api-stream-action { display: grid; gap: 4px; min-width: 0; }
+#story-director-modal .sd-stream-scope-hint { margin: 0; text-align: center; font-size: 11px; line-height: 1.25; }
+#story-director-modal .sd-float-toggle-row { display: inline-flex !important; align-items: center; margin: 6px 0 10px !important; }
 
 #story-director-modal .sd-floor-refresh {
   display: inline-flex !important;
@@ -2059,12 +2069,16 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   #story-director-modal .sd-inject-select-label { flex: 0 0 auto; }
   #story-director-modal .sd-api-profile-row { grid-template-columns: minmax(0, 1fr) auto 38px; }
   #story-director-modal .sd-api-profile-row .sd-btn { flex: 0 0 auto; min-width: 0; }
+  #story-director-modal .sd-api-action-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 420px) {
   #story-director-modal .sd-header p { font-size: 10.5px; }
 
   #story-director-modal .sd-current-blueprint-actions { grid-template-columns: 1fr !important; }
+  #story-director-modal .sd-api-generation-row { gap: 5px; }
+  #story-director-modal .sd-api-generation-row label > span { font-size: 10.5px; }
+  #story-director-modal .sd-api-generation-row .text_pole { padding-inline: 6px !important; font-size: 11px !important; }
 }
 
 @media (max-height: 620px) {
