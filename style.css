@@ -152,6 +152,10 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 
 /* ---------- 3. 悬浮球 / 输入区入口 ---------- */
 #story-director-float {
+  --sd-float-edge-base: hsla(137, 14%, 58%, .34);
+  --sd-float-edge-hi: hsla(137, 24%, 70%, .92);
+  --sd-float-edge-glint: hsla(42, 44%, 88%, .98);
+  --sd-float-edge-glow: hsla(137, 26%, 64%, .58);
   position: fixed;
   width: 48px;
   height: 41.57px;
@@ -159,7 +163,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   border-radius: 0 !important;
   border: 0 !important;
   clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
-  background: rgba(255, 255, 255, .22) !important;
+  background: var(--sd-float-edge-base) !important;
   color: #45423d !important;
   z-index: 1000;   /* 压在 ST 顶栏抽屉/菜单（约 3000+）之下、聊天内容之上：菜单展开时不被悬浮球遮挡；弹窗自身仍保最高层 */
   cursor: pointer;
@@ -174,6 +178,36 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   isolation: isolate;
   overflow: hidden;
 }
+#story-director-float.sd-theme-dark {
+  --sd-float-edge-base: hsla(140, 22%, 66%, .34);
+  --sd-float-edge-hi: hsla(140, 31%, 76%, .94);
+  --sd-float-edge-glint: hsla(42, 18%, 90%, .98);
+  --sd-float-edge-glow: hsla(140, 31%, 72%, .62);
+}
+#story-director-float.sd-theme-summer {
+  --sd-float-edge-base: hsla(188, 38%, 55%, .34);
+  --sd-float-edge-hi: hsla(188, 53%, 64%, .94);
+  --sd-float-edge-glint: hsla(58, 62%, 80%, .98);
+  --sd-float-edge-glow: hsla(188, 53%, 58%, .6);
+}
+#story-director-float.sd-theme-candy {
+  --sd-float-edge-base: hsla(336, 28%, 68%, .34);
+  --sd-float-edge-hi: hsla(336, 42%, 76%, .94);
+  --sd-float-edge-glint: hsla(44, 68%, 82%, .98);
+  --sd-float-edge-glow: hsla(336, 42%, 72%, .6);
+}
+#story-director-float.sd-theme-kraft {
+  --sd-float-edge-base: hsla(36, 30%, 54%, .36);
+  --sd-float-edge-hi: hsla(36, 38%, 67%, .94);
+  --sd-float-edge-glint: hsla(42, 54%, 86%, .98);
+  --sd-float-edge-glow: hsla(36, 40%, 62%, .6);
+}
+#story-director-float.sd-theme-dream {
+  --sd-float-edge-base: hsla(252, 28%, 67%, .34);
+  --sd-float-edge-hi: hsla(252, 42%, 77%, .94);
+  --sd-float-edge-glint: hsla(164, 42%, 82%, .98);
+  --sd-float-edge-glow: hsla(252, 42%, 72%, .62);
+}
 
 #story-director-float::after {
   content: '';
@@ -182,14 +216,15 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   z-index: 0;
   background: conic-gradient(
     from 0deg,
-    transparent 0 61%,
-    rgba(255, 255, 255, .12) 66%,
-    rgba(225, 202, 156, .88) 73%,
-    rgba(255, 255, 255, .82) 78%,
+    transparent 0 62%,
+    var(--sd-float-edge-hi) 69%,
+    var(--sd-float-edge-glint) 75%,
+    var(--sd-float-edge-hi) 80%,
     transparent 87% 100%
   );
-  opacity: .84;
-  animation: sd-float-edge-orbit 7.2s linear infinite;
+  opacity: .9;
+  filter: blur(.25px) drop-shadow(0 0 3.5px var(--sd-float-edge-glow));
+  animation: sd-float-edge-orbit 6.8s linear infinite;
   pointer-events: none;
 }
 #story-director-float::before {
@@ -199,9 +234,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   z-index: 1;
   clip-path: inherit;
   background: linear-gradient(145deg, rgba(255, 255, 255, .2), rgba(255, 255, 255, .08) 54%, rgba(30, 30, 28, .08));
-  backdrop-filter: blur(14px) saturate(1.04);
-  -webkit-backdrop-filter: blur(14px) saturate(1.04);
-  animation: sd-float-glass-breathe 4.8s ease-in-out infinite alternate;
+  backdrop-filter: blur(20px) saturate(1.02);
+  -webkit-backdrop-filter: blur(20px) saturate(1.02);
   pointer-events: none;
 }
 #story-director-float:hover { filter: brightness(1.08) drop-shadow(0 6px 12px rgba(0, 0, 0, .2)); }
@@ -210,7 +244,6 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 .sd-quick-docked-origin { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }
 @keyframes sd-quick-dock-ready { from { filter: brightness(1); transform: scale(1); } to { filter: brightness(1.18); transform: scale(1.08); } }
 @keyframes sd-float-edge-orbit { to { transform: rotate(1turn); } }
-@keyframes sd-float-glass-breathe { from { opacity: .72; } to { opacity: 1; } }
 
 /* 悬浮球 logo：透明 PNG 徽标，完整居中显示在按钮上（contain 不裁切，透明处透出按钮毛玻璃底）；不拦指针 */
 #story-director-float img {
@@ -227,17 +260,17 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   transform: translateY(4%);
 }
 
-/* 悬浮球长按蜂巢：主 Logo 保持恒定纯透玻璃；展开入口只借用千幕主题的低饱和色相。 */
+/* 悬浮球长按蜂巢：主 Logo 保持恒定纯透玻璃；展开入口沿用千幕主题的 HSL 色相与明度关系。 */
 #story-director-quick-wheel {
-  --sd-wheel-icon-a: rgba(87, 79, 69, .8);
-  --sd-wheel-edge-a: rgba(120, 105, 84, .32);
-  --sd-wheel-glass-a: rgba(249, 247, 242, .24);
-  --sd-wheel-icon-b: rgba(116, 101, 76, .78);
-  --sd-wheel-edge-b: rgba(171, 145, 99, .28);
-  --sd-wheel-glass-b: rgba(255, 253, 247, .2);
-  --sd-wheel-icon-c: rgba(70, 66, 60, .8);
-  --sd-wheel-edge-c: rgba(158, 128, 76, .3);
-  --sd-wheel-glass-c: rgba(207, 178, 121, .2);
+  --sd-wheel-icon-a: hsla(137, 15%, 38%, .9);
+  --sd-wheel-edge-a: hsla(137, 22%, 60%, .38);
+  --sd-wheel-glass-a: hsla(40, 44%, 96%, .3);
+  --sd-wheel-icon-b: hsla(39, 26%, 43%, .88);
+  --sd-wheel-edge-b: hsla(39, 38%, 68%, .36);
+  --sd-wheel-glass-b: hsla(44, 58%, 97%, .28);
+  --sd-wheel-icon-c: hsla(28, 14%, 38%, .88);
+  --sd-wheel-edge-c: hsla(28, 24%, 62%, .35);
+  --sd-wheel-glass-c: hsla(34, 34%, 94%, .28);
   position: fixed;
   z-index: 2147483002;
   pointer-events: none;
@@ -245,59 +278,59 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   box-sizing: border-box;
 }
 #story-director-quick-wheel.sd-theme-dark {
-  --sd-wheel-icon-a: rgba(222, 216, 202, .82);
-  --sd-wheel-edge-a: rgba(188, 173, 143, .28);
-  --sd-wheel-glass-a: rgba(28, 30, 34, .3);
-  --sd-wheel-icon-b: rgba(205, 194, 171, .8);
-  --sd-wheel-edge-b: rgba(207, 184, 139, .25);
-  --sd-wheel-glass-b: rgba(66, 64, 58, .22);
-  --sd-wheel-icon-c: rgba(226, 211, 177, .8);
-  --sd-wheel-edge-c: rgba(184, 150, 87, .28);
-  --sd-wheel-glass-c: rgba(103, 82, 47, .22);
+  --sd-wheel-icon-a: hsla(140, 31%, 79%, .92);
+  --sd-wheel-edge-a: hsla(140, 28%, 68%, .4);
+  --sd-wheel-glass-a: hsla(220, 8%, 25%, .34);
+  --sd-wheel-icon-b: hsla(42, 18%, 86%, .9);
+  --sd-wheel-edge-b: hsla(42, 22%, 70%, .36);
+  --sd-wheel-glass-b: hsla(220, 7%, 30%, .3);
+  --sd-wheel-icon-c: hsla(215, 12%, 82%, .9);
+  --sd-wheel-edge-c: hsla(215, 18%, 66%, .36);
+  --sd-wheel-glass-c: hsla(220, 9%, 22%, .34);
 }
 #story-director-quick-wheel.sd-theme-summer {
-  --sd-wheel-icon-a: rgba(55, 105, 114, .82);
-  --sd-wheel-edge-a: rgba(64, 128, 138, .28);
-  --sd-wheel-glass-a: rgba(233, 247, 246, .24);
-  --sd-wheel-icon-b: rgba(92, 120, 105, .8);
-  --sd-wheel-edge-b: rgba(138, 153, 95, .25);
-  --sd-wheel-glass-b: rgba(244, 244, 216, .2);
-  --sd-wheel-icon-c: rgba(54, 104, 122, .8);
-  --sd-wheel-edge-c: rgba(79, 137, 153, .27);
-  --sd-wheel-glass-c: rgba(199, 230, 237, .2);
+  --sd-wheel-icon-a: hsla(188, 53%, 38%, .9);
+  --sd-wheel-edge-a: hsla(188, 48%, 59%, .4);
+  --sd-wheel-glass-a: hsla(174, 33%, 95%, .3);
+  --sd-wheel-icon-b: hsla(58, 30%, 38%, .88);
+  --sd-wheel-edge-b: hsla(58, 50%, 66%, .38);
+  --sd-wheel-glass-b: hsla(58, 62%, 94%, .28);
+  --sd-wheel-icon-c: hsla(199, 42%, 42%, .9);
+  --sd-wheel-edge-c: hsla(199, 48%, 64%, .38);
+  --sd-wheel-glass-c: hsla(199, 50%, 93%, .28);
 }
 #story-director-quick-wheel.sd-theme-candy {
-  --sd-wheel-icon-a: rgba(118, 89, 104, .8);
-  --sd-wheel-edge-a: rgba(159, 120, 141, .27);
-  --sd-wheel-glass-a: rgba(249, 239, 244, .24);
-  --sd-wheel-icon-b: rgba(128, 108, 79, .78);
-  --sd-wheel-edge-b: rgba(180, 153, 102, .25);
-  --sd-wheel-glass-b: rgba(249, 242, 220, .2);
-  --sd-wheel-icon-c: rgba(90, 108, 128, .78);
-  --sd-wheel-edge-c: rgba(113, 144, 172, .25);
-  --sd-wheel-glass-c: rgba(222, 235, 247, .2);
+  --sd-wheel-icon-a: hsla(336, 32%, 46%, .9);
+  --sd-wheel-edge-a: hsla(336, 42%, 72%, .4);
+  --sd-wheel-glass-a: hsla(336, 52%, 96%, .3);
+  --sd-wheel-icon-b: hsla(44, 36%, 40%, .88);
+  --sd-wheel-edge-b: hsla(44, 58%, 70%, .38);
+  --sd-wheel-glass-b: hsla(44, 68%, 95%, .28);
+  --sd-wheel-icon-c: hsla(211, 28%, 44%, .88);
+  --sd-wheel-edge-c: hsla(211, 42%, 72%, .36);
+  --sd-wheel-glass-c: hsla(211, 48%, 96%, .28);
 }
 #story-director-quick-wheel.sd-theme-kraft {
-  --sd-wheel-icon-a: rgba(91, 76, 52, .82);
-  --sd-wheel-edge-a: rgba(132, 105, 67, .3);
-  --sd-wheel-glass-a: rgba(244, 235, 216, .24);
-  --sd-wheel-icon-b: rgba(111, 91, 60, .8);
-  --sd-wheel-edge-b: rgba(156, 126, 79, .27);
-  --sd-wheel-glass-b: rgba(250, 243, 227, .2);
-  --sd-wheel-icon-c: rgba(76, 65, 49, .8);
-  --sd-wheel-edge-c: rgba(137, 108, 65, .29);
-  --sd-wheel-glass-c: rgba(204, 179, 137, .2);
+  --sd-wheel-icon-a: hsla(36, 30%, 35%, .9);
+  --sd-wheel-edge-a: hsla(36, 38%, 59%, .4);
+  --sd-wheel-glass-a: hsla(39, 48%, 93%, .3);
+  --sd-wheel-icon-b: hsla(36, 34%, 42%, .88);
+  --sd-wheel-edge-b: hsla(36, 44%, 67%, .38);
+  --sd-wheel-glass-b: hsla(42, 58%, 96%, .28);
+  --sd-wheel-icon-c: hsla(30, 22%, 34%, .88);
+  --sd-wheel-edge-c: hsla(30, 34%, 61%, .36);
+  --sd-wheel-glass-c: hsla(34, 38%, 90%, .28);
 }
 #story-director-quick-wheel.sd-theme-dream {
-  --sd-wheel-icon-a: rgba(91, 87, 125, .8);
-  --sd-wheel-edge-a: rgba(133, 125, 167, .27);
-  --sd-wheel-glass-a: rgba(246, 244, 250, .24);
-  --sd-wheel-icon-b: rgba(117, 91, 121, .78);
-  --sd-wheel-edge-b: rgba(160, 127, 164, .24);
-  --sd-wheel-glass-b: rgba(249, 239, 247, .2);
-  --sd-wheel-icon-c: rgba(76, 112, 112, .78);
-  --sd-wheel-edge-c: rgba(108, 151, 149, .24);
-  --sd-wheel-glass-c: rgba(225, 243, 238, .2);
+  --sd-wheel-icon-a: hsla(252, 30%, 46%, .9);
+  --sd-wheel-edge-a: hsla(252, 42%, 72%, .4);
+  --sd-wheel-glass-a: hsla(252, 48%, 97%, .3);
+  --sd-wheel-icon-b: hsla(320, 28%, 47%, .88);
+  --sd-wheel-edge-b: hsla(320, 40%, 75%, .37);
+  --sd-wheel-glass-b: hsla(320, 48%, 97%, .28);
+  --sd-wheel-icon-c: hsla(164, 28%, 39%, .88);
+  --sd-wheel-edge-c: hsla(164, 40%, 69%, .37);
+  --sd-wheel-glass-c: hsla(164, 48%, 96%, .28);
 }
 #story-director-quick-wheel .sd-wheel-backdrop { position: absolute; inset: 0; pointer-events: auto; background: transparent; }
 #story-director-quick-wheel .sd-wheel-items { position: absolute; inset: 0; pointer-events: none; }
@@ -326,8 +359,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   z-index: 0;
   clip-path: inherit;
   background: var(--sd-wheel-glass, rgba(24, 24, 23, .56));
-  backdrop-filter: blur(12px) saturate(.82);
-  -webkit-backdrop-filter: blur(12px) saturate(.82);
+  backdrop-filter: blur(18px) saturate(.9);
+  -webkit-backdrop-filter: blur(18px) saturate(.9);
   pointer-events: none;
 }
 #story-director-quick-wheel .sd-wheel-command {
@@ -335,9 +368,9 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   animation: sd-wheel-hive-in .34s cubic-bezier(.2,.72,.2,1) var(--sd-wheel-delay, 0ms) both,
              sd-wheel-hive-glint var(--sd-wheel-glint-speed, 3.6s) ease-in-out calc(var(--sd-wheel-delay, 0ms) + .34s) infinite alternate;
 }
-#story-director-quick-wheel .sd-wheel-command.is-black-gold { --sd-wheel-icon: var(--sd-wheel-icon-a); --sd-wheel-edge: var(--sd-wheel-edge-a); --sd-wheel-glass: var(--sd-wheel-glass-a); }
-#story-director-quick-wheel .sd-wheel-command.is-white-gold { --sd-wheel-icon: var(--sd-wheel-icon-b); --sd-wheel-edge: var(--sd-wheel-edge-b); --sd-wheel-glass: var(--sd-wheel-glass-b); }
-#story-director-quick-wheel .sd-wheel-command.is-gold-black { --sd-wheel-icon: var(--sd-wheel-icon-c); --sd-wheel-edge: var(--sd-wheel-edge-c); --sd-wheel-glass: var(--sd-wheel-glass-c); }
+#story-director-quick-wheel .sd-wheel-command.is-tone-a { --sd-wheel-icon: var(--sd-wheel-icon-a); --sd-wheel-edge: var(--sd-wheel-edge-a); --sd-wheel-glass: var(--sd-wheel-glass-a); }
+#story-director-quick-wheel .sd-wheel-command.is-tone-b { --sd-wheel-icon: var(--sd-wheel-icon-b); --sd-wheel-edge: var(--sd-wheel-edge-b); --sd-wheel-glass: var(--sd-wheel-glass-b); }
+#story-director-quick-wheel .sd-wheel-command.is-tone-c { --sd-wheel-icon: var(--sd-wheel-icon-c); --sd-wheel-edge: var(--sd-wheel-edge-c); --sd-wheel-glass: var(--sd-wheel-glass-c); }
 #story-director-quick-wheel .sd-wheel-command.is-external { --sd-wheel-icon: var(--sd-wheel-icon-b); --sd-wheel-edge: var(--sd-wheel-edge-b); --sd-wheel-glass: var(--sd-wheel-glass-b); animation: none !important; opacity: .86 !important; }
 #story-director-quick-wheel .sd-wheel-command > i,
 #story-director-quick-wheel .sd-wheel-command > span,
@@ -360,7 +393,6 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 @media (prefers-reduced-motion: reduce) {
   #story-director-float,
   #story-director-quick-wheel .sd-wheel-command { animation: none; opacity: .86; }
-  #story-director-float::before { animation: none; opacity: .9; }
   #story-director-float::after { animation: none; opacity: .52; transform: rotate(24deg); }
 }
 

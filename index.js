@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.28.1';
+const VERSION = '1.28.2';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -3914,7 +3914,7 @@ function openQuickWheel(btn) {
     const slot = offsets[index];
     const button = document.createElement('button');
     button.type = 'button';
-    const palettes = ['is-black-gold', 'is-white-gold', 'is-gold-black'];
+    const palettes = ['is-tone-a', 'is-tone-b', 'is-tone-c'];
     const palette = item.external ? 'is-external' : palettes[Math.floor(Math.random() * palettes.length)];
     button.className = `sd-wheel-command ${palette}${item.pending ? ' is-pending' : ''}`;
     button.dataset.command = item.id;
@@ -3923,7 +3923,7 @@ function openQuickWheel(btn) {
     if (!item.external) {
       button.style.setProperty('--sd-wheel-delay', `${index * 24 + Math.floor(Math.random() * 45)}ms`);
       button.style.setProperty('--sd-wheel-glint-speed', `${(2.7 + Math.random() * 2.4).toFixed(2)}s`);
-      button.style.setProperty('--sd-wheel-idle-alpha', `${(.72 + Math.random() * .1).toFixed(2)}`);
+      button.style.setProperty('--sd-wheel-idle-alpha', `${(.76 + Math.random() * .1).toFixed(2)}`);
     }
     button.style.left = `${originCenterX + slot.x - layout.itemSize / 2}px`;
     button.style.top = `${originCenterY + slot.y - layout.itemHeight / 2}px`;
@@ -4047,6 +4047,9 @@ function renderFloatButton() {
     document.body.appendChild(btn);
     bindFloatDrag(btn);
   }
+  const themeKey = THEME_KEYS.includes(settings.theme) ? settings.theme : 'light';
+  btn.classList.remove(...THEME_KEYS.map((key) => `sd-theme-${key}`));
+  btn.classList.add(`sd-theme-${themeKey}`);
   // 本地 logo 铺满圆形悬浮球（object-fit:cover 由 CSS 控）；img 不拦指针，拖拽/点击仍落在按钮上
   btn.innerHTML = `<img src="${FLOAT_LOGO_URL}" alt="${EXTENSION_NAME}" draggable="false">`;
   btn.title = EXTENSION_NAME;
@@ -4186,6 +4189,7 @@ function renderModal() {
   modal.querySelectorAll('.sd-theme-opt').forEach((el) => el.addEventListener('click', () => {
     const next = el.dataset.theme;
     if (next && next !== settings.theme) { settings.theme = next; saveSettings(); }
+    renderFloatButton();
     renderModal();   // 重渲染会重建菜单（默认收起态）
   }));
   modal.querySelectorAll('.sd-tab').forEach((el) => el.addEventListener('click', () => {
