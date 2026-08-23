@@ -5,7 +5,7 @@ import vm from 'node:vm';
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
-// 更新后只沿用用户自定义入口，全部千幕 tab 均可选择，蜂巢最多八格。
+// 更新后只沿用用户自定义入口，全部千幕 tab 均可自由选择，不设置可见的产品上限。
 assert.match(source, /quickWheelCustomOrder/);
 assert.match(source, /quickWheelCustomEnabled/);
 assert.match(source, /quickWheelScheme: 'custom'/);
@@ -13,13 +13,15 @@ assert.match(source, /长按展开蜂巢快捷盘/);
 for (const id of ['dashboard', 'tasksnodes', 'castworld', 'blueprint', 'context', 'settings', 'theater', 'tts', 'coread', 'geopolitics', 'plug', 'imagegen', 'floor']) {
   assert.match(source, new RegExp(`id: '${id}'`));
 }
-assert.match(source, /QUICK_HIVE_MAX_ITEMS = 8/);
+assert.match(source, /QUICK_HIVE_SAFETY_LIMIT = 24/, '仅保留异常配置安全阀，不得再把八格当作产品限制');
+assert.doesNotMatch(source, /QUICK_HIVE_MAX_ITEMS|最多显示 \$\{QUICK_HIVE/, '设置页不得再显示蜂巢入口上限');
 assert.match(source, /function quickHiveAxialRing[\s\S]*function quickHiveLayout/, '蜂巢必须使用通用轴向六角坐标生成器');
 assert.doesNotMatch(source, /<option value="default"[^>]*>默认方案<\/option>/, '不得再显示固定默认方案');
 assert.match(source, /button\.innerHTML = item\.external \? quickDockIconMarkup\(item\)/, '第三方 Logo 必须经过安全视觉描述渲染');
 assert.match(source, /btn\.innerHTML = `<img src="\$\{FLOAT_LOGO_URL\}"/, '正式 Logo 必须继续使用真实悬浮窗');
 assert.doesNotMatch(source, /sd-wheel-core/, '展开时不得再创建会使锚点跳位的替代中心按钮');
-assert.match(source, /is-black-gold[\s\S]*is-white-gold[\s\S]*is-gold-black/, '每次展开只随机分配黑金、白金与金黑配色');
+assert.match(source, /is-black-gold[\s\S]*is-white-gold[\s\S]*is-gold-black/, '每次展开继续保留轻微随机视觉层次');
+assert.match(source, /wheelTheme[\s\S]*sd-theme-\$\{wheelTheme\}/, '展开蜂巢必须读取千幕当前外观主题');
 assert.match(source, /quickHiveDirectionalCells[\s\S]*edgeDirected/, '贴边展开必须从页面可用空间选择蜂巢格，不能移动主锚点');
 assert.match(source, /originCenterX[\s\S]*quickHiveLayout[\s\S]*originCenterX \+ slot\.x/, '所有入口必须以真实悬浮窗中心定位');
 assert.match(source, /classList\.add\('sd-wheel-active'\)/);
@@ -68,9 +70,12 @@ assert.match(source, /viewport\?\.addEventListener\('resize', sync\)/);
 assert.match(css, /#story-director-quick-wheel/);
 assert.match(css, /--sd-wheel-item-height/);
 assert.match(css, /clip-path:\s*polygon\(25% 0, 75% 0, 100% 50%/, '蜂巢入口必须是无畸变边角的正六边形');
-assert.match(css, /#story-director-float::after[\s\S]*sd-float-hex-breathe/, '主悬浮窗必须使用暗灰至浅金呼吸边线');
+assert.match(css, /#story-director-float\s*\{[^}]*background:\s*rgba\(255, 255, 255, \.22\)/, '主悬浮窗必须保持恒定纯透毛玻璃底');
+assert.match(css, /#story-director-float::after[\s\S]*sd-float-edge-orbit/, '主悬浮窗必须使用沿边巡游流光而非整面底色闪烁');
+assert.match(css, /#story-director-quick-wheel\.sd-theme-dark[\s\S]*#story-director-quick-wheel\.sd-theme-dream/, '蜂巢需覆盖千幕全部外观主题');
+assert.match(css, /backdrop-filter:\s*blur\(12px\) saturate\(\.82\)/, '展开蜂巢需降低背景饱和度');
 assert.match(css, /sd-wheel-hive-in[\s\S]*rotateY\(82deg\)/, '蜂巢片应有翻转入场效果');
-assert.match(css, /\.sd-wheel-command\.is-external\s*\{[^}]*animation:\s*none[^}]*opacity:\s*1/, '第三方收纳片必须保持静态');
+assert.match(css, /\.sd-wheel-command\.is-external\s*\{[^}]*animation:\s*none[^}]*opacity:\s*\.86/, '第三方收纳片必须保持静态且使用雅致半透层');
 assert.match(css, /\.sd-quick-docked-origin\s*\{[^}]*visibility:\s*hidden[^}]*pointer-events:\s*none/, '原插件入口只能视觉隐藏，不能从 DOM 删除');
 assert.match(css, /prefers-reduced-motion:\s*reduce/, '蜂巢动态必须尊重系统减少动态设置');
 
@@ -91,6 +96,9 @@ const centered = hive.quickHiveLayout(8, 50, { centerX: 200, centerY: 200, viewp
 assert.equal(centered.edgeDirected, false);
 assert.ok(centered.cells.slice(0, 6).every((cell) => hive.quickHiveCellRing(cell) === 1));
 assert.ok(centered.cells.slice(6).every((cell) => hive.quickHiveCellRing(cell) === 2));
+const expanded = hive.quickHiveLayout(24, 50, { centerX: 35, centerY: 40, viewportWidth: 390, viewportHeight: 800, margin: 8 });
+assert.equal(expanded.cells.length, 24, '移动端角落必须容纳内部安全容量的完整蜂巢');
+assert.ok(expanded.cells.every((cell) => hive.quickHiveCellFits(cell, expanded)));
 const edgeCenter = { centerX: 35, centerY: 400, viewportWidth: 390, viewportHeight: 800, margin: 8 };
 const atLeftEdge = hive.quickHiveLayout(8, 50, edgeCenter);
 assert.equal(atLeftEdge.centerX, edgeCenter.centerX, '贴边布局不得移动主悬浮窗中心');

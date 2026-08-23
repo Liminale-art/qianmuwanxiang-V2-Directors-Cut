@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.25.5';
+const VERSION = '1.28.1';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -3153,7 +3153,8 @@ const QUICK_COMMANDS = Object.freeze([
   { id: 'floor', label: '楼层跳转', icon: 'fa-layer-group' },
 ]);
 const QUICK_COMMAND_IDS = QUICK_COMMANDS.map((item) => item.id);
-const QUICK_HIVE_MAX_ITEMS = 8;
+// 蜂巢不设置面向用户的入口上限；24 仅用于拦截损坏配置或异常第三方注入造成的无限增长。
+const QUICK_HIVE_SAFETY_LIMIT = 24;
 const QUICK_HEX_HEIGHT_RATIO = Math.sqrt(3) / 2;
 const QUICK_HIVE_AXIAL_DIRECTIONS = Object.freeze([
   [1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1],
@@ -3269,7 +3270,7 @@ function normalizeQuickWheelSettings() {
   settings.quickWheelCustomOrder = [...new Set(order.filter((id) => QUICK_COMMAND_IDS.includes(id))), ...QUICK_COMMAND_IDS.filter((id) => !order.includes(id))];
   const enabled = Array.isArray(settings.quickWheelCustomEnabled) ? settings.quickWheelCustomEnabled : QUICK_COMMAND_IDS;
   const enabledSet = new Set(enabled.filter((id) => QUICK_COMMAND_IDS.includes(id)));
-  settings.quickWheelCustomEnabled = settings.quickWheelCustomOrder.filter((id) => enabledSet.has(id)).slice(0, QUICK_HIVE_MAX_ITEMS);
+  settings.quickWheelCustomEnabled = settings.quickWheelCustomOrder.filter((id) => enabledSet.has(id));
   if (!settings.quickWheelCustomEnabled.length) settings.quickWheelCustomEnabled = [QUICK_COMMAND_IDS[0]];
   const docked = Array.isArray(settings.quickWheelDockedPlugins) ? settings.quickWheelDockedPlugins : [];
   const seenDockKeys = new Set();
@@ -3279,7 +3280,7 @@ function normalizeQuickWheelSettings() {
     if (!key || !selector || seenDockKeys.has(key)) return false;
     seenDockKeys.add(key);
     return true;
-  }).slice(0, QUICK_HIVE_MAX_ITEMS).map((item) => ({
+  }).slice(0, QUICK_HIVE_SAFETY_LIMIT).map((item) => ({
     key: String(item.key).slice(0, 120),
     selector: String(item.selector).slice(0, 500),
     label: String(item.label || '第三方工具').slice(0, 40),
@@ -3293,12 +3294,12 @@ function normalizeQuickWheelSettings() {
 function quickWheelPrimaryItems() {
   normalizeQuickWheelSettings();
   const ids = settings.quickWheelCustomOrder.filter((id) => settings.quickWheelCustomEnabled.includes(id));
-  return ids.slice(0, QUICK_HIVE_MAX_ITEMS).map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
+  return ids.map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
 }
 
 function quickWheelItems() {
   const primary = quickWheelPrimaryItems();
-  const room = Math.max(0, QUICK_HIVE_MAX_ITEMS - primary.length);
+  const room = Math.max(0, QUICK_HIVE_SAFETY_LIMIT - primary.length);
   const docked = [...quickDockRuntime.values()].filter((record) => record.host?.isConnected).slice(0, room).map((record) => ({
     id: `dock:${record.key}`,
     label: record.label,
@@ -3520,8 +3521,8 @@ function quickDockAttach(host, activator, descriptor = null, fromRestore = false
   if (quickDockRuntime.has(key)) return true;
   const primaryCount = quickWheelPrimaryItems().length;
   const occupied = fromRestore ? quickDockRuntime.size : Math.max(0, quickDockReservedCount() - (saved ? 1 : 0));
-  if (primaryCount + occupied >= QUICK_HIVE_MAX_ITEMS) {
-    if (!fromRestore) toast('蜂巢已满，请先在 API 与日志中取消一个千幕入口或解除一项收纳。', 'warning');
+  if (primaryCount + occupied >= QUICK_HIVE_SAFETY_LIMIT) {
+    if (!fromRestore) toast('蜂巢入口异常繁多，已触发安全容量保护。请先解除一项收纳。', 'warning');
     return false;
   }
   const described = quickDockDescribe(host, activator);
@@ -3901,7 +3902,8 @@ function openQuickWheel(btn) {
   const offsets = layout.cells.map((cell) => quickHivePixelOffset(cell, layout.itemSize, layout.gap));
   const root = document.createElement('div');
   root.id = QUICK_WHEEL_ID;
-  root.className = `sd-wheel-hive${layout.edgeDirected ? ' sd-wheel-edge-directed' : ''}`;
+  const wheelTheme = THEME_KEYS.includes(settings.theme) ? settings.theme : 'light';
+  root.className = `sd-wheel-hive sd-theme-${wheelTheme}${layout.edgeDirected ? ' sd-wheel-edge-directed' : ''}`;
   root.style.left = `${viewportLeft}px`;
   root.style.top = `${viewportTop}px`;
   root.style.width = `${viewportWidth}px`;
@@ -3921,7 +3923,7 @@ function openQuickWheel(btn) {
     if (!item.external) {
       button.style.setProperty('--sd-wheel-delay', `${index * 24 + Math.floor(Math.random() * 45)}ms`);
       button.style.setProperty('--sd-wheel-glint-speed', `${(2.7 + Math.random() * 2.4).toFixed(2)}s`);
-      button.style.setProperty('--sd-wheel-idle-alpha', `${(.8 + Math.random() * .14).toFixed(2)}`);
+      button.style.setProperty('--sd-wheel-idle-alpha', `${(.72 + Math.random() * .1).toFixed(2)}`);
     }
     button.style.left = `${originCenterX + slot.x - layout.itemSize / 2}px`;
     button.style.top = `${originCenterY + slot.y - layout.itemHeight / 2}px`;
@@ -8283,12 +8285,12 @@ function renderQuickWheelSettings() {
   normalizeQuickWheelSettings();
   const ordered = settings.quickWheelCustomOrder.map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
   const docked = quickDockDisplayRecords();
-  const occupied = Math.min(QUICK_HIVE_MAX_ITEMS, settings.quickWheelCustomEnabled.length + docked.length);
+  const occupied = settings.quickWheelCustomEnabled.length + docked.length;
   return `<div class="sd-wheel-settings">
     <div class="sd-wheel-setting-head">
       <label class="checkbox_label"><input type="checkbox" class="sd-wheel-toggle" ${settings.quickWheelEnabled !== false ? 'checked' : ''}> 长按展开蜂巢快捷盘</label>
     </div>
-    <details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑蜂巢入口</span><b>${occupied} / ${QUICK_HIVE_MAX_ITEMS}</b></summary><p class="sd-muted sd-wheel-default-copy">可从千幕全部入口中选择，最多显示 ${QUICK_HIVE_MAX_ITEMS} 项；列表顺序就是蜂巢顺序。</p><div class="sd-wheel-custom-list">${ordered.map((item, index) => `
+    <details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑蜂巢入口</span><b>${occupied} 项</b></summary><p class="sd-muted sd-wheel-default-copy">可自由组合千幕全部入口与已收纳工具；列表顺序就是蜂巢顺序。</p><div class="sd-wheel-custom-list">${ordered.map((item, index) => `
       <div class="sd-wheel-custom-row" data-command="${item.id}">
         <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}"></i><span>${htmlEscape(item.label)}</span></label>
         <div><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="up" ${index === 0 ? 'disabled' : ''} title="上移"><i class="fa-solid fa-chevron-up"></i></button><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="down" ${index === ordered.length - 1 ? 'disabled' : ''} title="下移"><i class="fa-solid fa-chevron-down"></i></button></div>
@@ -8903,11 +8905,6 @@ function bindActiveTabEvents(root) {
     if (!id) return;
     const next = settings.quickWheelCustomEnabled.filter((item) => item !== id);
     if (e.target.checked) next.push(id);
-    if (next.length + quickDockReservedCount() > QUICK_HIVE_MAX_ITEMS) {
-      e.target.checked = false;
-      toast(`蜂巢快捷盘含收纳入口在内最多显示 ${QUICK_HIVE_MAX_ITEMS} 项。`, 'warning');
-      return;
-    }
     if (!next.length) {
       e.target.checked = true;
       toast('快捷轮盘至少保留一个入口。', 'warning');

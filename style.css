@@ -159,8 +159,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   border-radius: 0 !important;
   border: 0 !important;
   clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
-  background: linear-gradient(135deg, rgba(74, 74, 72, .92), rgba(211, 170, 91, .72)) !important;
-  color: #f5f1e8 !important;
+  background: rgba(255, 255, 255, .22) !important;
+  color: #45423d !important;
   z-index: 1000;   /* 压在 ST 顶栏抽屉/菜单（约 3000+）之下、聊天内容之上：菜单展开时不被悬浮球遮挡；弹窗自身仍保最高层 */
   cursor: pointer;
   box-shadow: none !important;
@@ -178,12 +178,18 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-float::after {
   content: '';
   position: absolute;
-  inset: 0;
+  inset: -58%;
   z-index: 0;
-  clip-path: inherit;
-  background: rgba(232, 194, 116, .8);
-  opacity: .08;
-  animation: sd-float-hex-breathe 5.8s ease-in-out infinite alternate;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0 61%,
+    rgba(255, 255, 255, .12) 66%,
+    rgba(225, 202, 156, .88) 73%,
+    rgba(255, 255, 255, .82) 78%,
+    transparent 87% 100%
+  );
+  opacity: .84;
+  animation: sd-float-edge-orbit 7.2s linear infinite;
   pointer-events: none;
 }
 #story-director-float::before {
@@ -192,9 +198,10 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   inset: 1.35px;
   z-index: 1;
   clip-path: inherit;
-  background: rgba(34, 34, 33, .48);
-  backdrop-filter: blur(14px) saturate(1.35);
-  -webkit-backdrop-filter: blur(14px) saturate(1.35);
+  background: linear-gradient(145deg, rgba(255, 255, 255, .2), rgba(255, 255, 255, .08) 54%, rgba(30, 30, 28, .08));
+  backdrop-filter: blur(14px) saturate(1.04);
+  -webkit-backdrop-filter: blur(14px) saturate(1.04);
+  animation: sd-float-glass-breathe 4.8s ease-in-out infinite alternate;
   pointer-events: none;
 }
 #story-director-float:hover { filter: brightness(1.08) drop-shadow(0 6px 12px rgba(0, 0, 0, .2)); }
@@ -202,10 +209,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-float.sd-dock-ready { animation: sd-quick-dock-ready .72s ease-in-out infinite alternate; }
 .sd-quick-docked-origin { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }
 @keyframes sd-quick-dock-ready { from { filter: brightness(1); transform: scale(1); } to { filter: brightness(1.18); transform: scale(1.08); } }
-@keyframes sd-float-hex-breathe {
-  from { opacity: .06; }
-  to { opacity: .72; }
-}
+@keyframes sd-float-edge-orbit { to { transform: rotate(1turn); } }
+@keyframes sd-float-glass-breathe { from { opacity: .72; } to { opacity: 1; } }
 
 /* 悬浮球 logo：透明 PNG 徽标，完整居中显示在按钮上（contain 不裁切，透明处透出按钮毛玻璃底）；不拦指针 */
 #story-director-float img {
@@ -222,13 +227,77 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   transform: translateY(4%);
 }
 
-/* 悬浮球长按蜂巢：主 Logo 居中，入口使用与 ST 主题无关的黑金 / 白金配色。 */
+/* 悬浮球长按蜂巢：主 Logo 保持恒定纯透玻璃；展开入口只借用千幕主题的低饱和色相。 */
 #story-director-quick-wheel {
+  --sd-wheel-icon-a: rgba(87, 79, 69, .8);
+  --sd-wheel-edge-a: rgba(120, 105, 84, .32);
+  --sd-wheel-glass-a: rgba(249, 247, 242, .24);
+  --sd-wheel-icon-b: rgba(116, 101, 76, .78);
+  --sd-wheel-edge-b: rgba(171, 145, 99, .28);
+  --sd-wheel-glass-b: rgba(255, 253, 247, .2);
+  --sd-wheel-icon-c: rgba(70, 66, 60, .8);
+  --sd-wheel-edge-c: rgba(158, 128, 76, .3);
+  --sd-wheel-glass-c: rgba(207, 178, 121, .2);
   position: fixed;
   z-index: 2147483002;
   pointer-events: none;
   overflow: hidden;
   box-sizing: border-box;
+}
+#story-director-quick-wheel.sd-theme-dark {
+  --sd-wheel-icon-a: rgba(222, 216, 202, .82);
+  --sd-wheel-edge-a: rgba(188, 173, 143, .28);
+  --sd-wheel-glass-a: rgba(28, 30, 34, .3);
+  --sd-wheel-icon-b: rgba(205, 194, 171, .8);
+  --sd-wheel-edge-b: rgba(207, 184, 139, .25);
+  --sd-wheel-glass-b: rgba(66, 64, 58, .22);
+  --sd-wheel-icon-c: rgba(226, 211, 177, .8);
+  --sd-wheel-edge-c: rgba(184, 150, 87, .28);
+  --sd-wheel-glass-c: rgba(103, 82, 47, .22);
+}
+#story-director-quick-wheel.sd-theme-summer {
+  --sd-wheel-icon-a: rgba(55, 105, 114, .82);
+  --sd-wheel-edge-a: rgba(64, 128, 138, .28);
+  --sd-wheel-glass-a: rgba(233, 247, 246, .24);
+  --sd-wheel-icon-b: rgba(92, 120, 105, .8);
+  --sd-wheel-edge-b: rgba(138, 153, 95, .25);
+  --sd-wheel-glass-b: rgba(244, 244, 216, .2);
+  --sd-wheel-icon-c: rgba(54, 104, 122, .8);
+  --sd-wheel-edge-c: rgba(79, 137, 153, .27);
+  --sd-wheel-glass-c: rgba(199, 230, 237, .2);
+}
+#story-director-quick-wheel.sd-theme-candy {
+  --sd-wheel-icon-a: rgba(118, 89, 104, .8);
+  --sd-wheel-edge-a: rgba(159, 120, 141, .27);
+  --sd-wheel-glass-a: rgba(249, 239, 244, .24);
+  --sd-wheel-icon-b: rgba(128, 108, 79, .78);
+  --sd-wheel-edge-b: rgba(180, 153, 102, .25);
+  --sd-wheel-glass-b: rgba(249, 242, 220, .2);
+  --sd-wheel-icon-c: rgba(90, 108, 128, .78);
+  --sd-wheel-edge-c: rgba(113, 144, 172, .25);
+  --sd-wheel-glass-c: rgba(222, 235, 247, .2);
+}
+#story-director-quick-wheel.sd-theme-kraft {
+  --sd-wheel-icon-a: rgba(91, 76, 52, .82);
+  --sd-wheel-edge-a: rgba(132, 105, 67, .3);
+  --sd-wheel-glass-a: rgba(244, 235, 216, .24);
+  --sd-wheel-icon-b: rgba(111, 91, 60, .8);
+  --sd-wheel-edge-b: rgba(156, 126, 79, .27);
+  --sd-wheel-glass-b: rgba(250, 243, 227, .2);
+  --sd-wheel-icon-c: rgba(76, 65, 49, .8);
+  --sd-wheel-edge-c: rgba(137, 108, 65, .29);
+  --sd-wheel-glass-c: rgba(204, 179, 137, .2);
+}
+#story-director-quick-wheel.sd-theme-dream {
+  --sd-wheel-icon-a: rgba(91, 87, 125, .8);
+  --sd-wheel-edge-a: rgba(133, 125, 167, .27);
+  --sd-wheel-glass-a: rgba(246, 244, 250, .24);
+  --sd-wheel-icon-b: rgba(117, 91, 121, .78);
+  --sd-wheel-edge-b: rgba(160, 127, 164, .24);
+  --sd-wheel-glass-b: rgba(249, 239, 247, .2);
+  --sd-wheel-icon-c: rgba(76, 112, 112, .78);
+  --sd-wheel-edge-c: rgba(108, 151, 149, .24);
+  --sd-wheel-glass-c: rgba(225, 243, 238, .2);
 }
 #story-director-quick-wheel .sd-wheel-backdrop { position: absolute; inset: 0; pointer-events: auto; background: transparent; }
 #story-director-quick-wheel .sd-wheel-items { position: absolute; inset: 0; pointer-events: none; }
@@ -257,8 +326,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   z-index: 0;
   clip-path: inherit;
   background: var(--sd-wheel-glass, rgba(24, 24, 23, .56));
-  backdrop-filter: blur(12px) saturate(1.18);
-  -webkit-backdrop-filter: blur(12px) saturate(1.18);
+  backdrop-filter: blur(12px) saturate(.82);
+  -webkit-backdrop-filter: blur(12px) saturate(.82);
   pointer-events: none;
 }
 #story-director-quick-wheel .sd-wheel-command {
@@ -266,10 +335,10 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   animation: sd-wheel-hive-in .34s cubic-bezier(.2,.72,.2,1) var(--sd-wheel-delay, 0ms) both,
              sd-wheel-hive-glint var(--sd-wheel-glint-speed, 3.6s) ease-in-out calc(var(--sd-wheel-delay, 0ms) + .34s) infinite alternate;
 }
-#story-director-quick-wheel .sd-wheel-command.is-black-gold { --sd-wheel-icon: #d7ab57; --sd-wheel-edge: rgba(153, 125, 75, .78); --sd-wheel-glass: rgba(22, 22, 21, .58); }
-#story-director-quick-wheel .sd-wheel-command.is-white-gold { --sd-wheel-icon: #c49a4e; --sd-wheel-edge: rgba(215, 187, 126, .78); --sd-wheel-glass: rgba(244, 241, 234, .58); }
-#story-director-quick-wheel .sd-wheel-command.is-gold-black { --sd-wheel-icon: #25221d; --sd-wheel-edge: rgba(226, 194, 128, .84); --sd-wheel-glass: rgba(194, 151, 75, .6); }
-#story-director-quick-wheel .sd-wheel-command.is-external { --sd-wheel-icon: #aa8541; --sd-wheel-edge: rgba(178, 148, 91, .74); --sd-wheel-glass: rgba(239, 236, 229, .56); animation: none !important; opacity: 1 !important; }
+#story-director-quick-wheel .sd-wheel-command.is-black-gold { --sd-wheel-icon: var(--sd-wheel-icon-a); --sd-wheel-edge: var(--sd-wheel-edge-a); --sd-wheel-glass: var(--sd-wheel-glass-a); }
+#story-director-quick-wheel .sd-wheel-command.is-white-gold { --sd-wheel-icon: var(--sd-wheel-icon-b); --sd-wheel-edge: var(--sd-wheel-edge-b); --sd-wheel-glass: var(--sd-wheel-glass-b); }
+#story-director-quick-wheel .sd-wheel-command.is-gold-black { --sd-wheel-icon: var(--sd-wheel-icon-c); --sd-wheel-edge: var(--sd-wheel-edge-c); --sd-wheel-glass: var(--sd-wheel-glass-c); }
+#story-director-quick-wheel .sd-wheel-command.is-external { --sd-wheel-icon: var(--sd-wheel-icon-b); --sd-wheel-edge: var(--sd-wheel-edge-b); --sd-wheel-glass: var(--sd-wheel-glass-b); animation: none !important; opacity: .86 !important; }
 #story-director-quick-wheel .sd-wheel-command > i,
 #story-director-quick-wheel .sd-wheel-command > span,
 #story-director-quick-wheel .sd-wheel-command > img { position: relative; z-index: 1; }
@@ -278,7 +347,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-quick-wheel .sd-wheel-external-svg svg { width: 100%; height: 100%; display: block; }
 #story-director-quick-wheel .sd-wheel-external-text { font-size: clamp(11px, calc(var(--sd-wheel-item-size, 36px) * .3), 16px); line-height: 1; }
 #story-director-quick-wheel .sd-wheel-external-fallback { color: inherit; }
-#story-director-quick-wheel .sd-wheel-command:hover { filter: brightness(1.12) saturate(1.05); opacity: 1 !important; }
+#story-director-quick-wheel .sd-wheel-command:hover { filter: brightness(1.08) saturate(.9); opacity: .96 !important; }
 #story-director-quick-wheel .sd-wheel-command.is-pending { filter: saturate(.6); }
 @keyframes sd-wheel-hive-in {
   from { opacity: 0; transform: perspective(260px) rotateY(82deg) scale(.72); }
@@ -286,12 +355,13 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 }
 @keyframes sd-wheel-hive-glint {
   from { opacity: var(--sd-wheel-idle-alpha, .86); }
-  to { opacity: 1; }
+  to { opacity: .92; }
 }
 @media (prefers-reduced-motion: reduce) {
   #story-director-float,
-  #story-director-quick-wheel .sd-wheel-command { animation: none; opacity: 1; }
-  #story-director-float::after { animation: none; opacity: .38; }
+  #story-director-quick-wheel .sd-wheel-command { animation: none; opacity: .86; }
+  #story-director-float::before { animation: none; opacity: .9; }
+  #story-director-float::after { animation: none; opacity: .52; transform: rotate(24deg); }
 }
 
 /* 楼层跳转独立轻量窗：绑定 visualViewport，短视口改为整窗滚动，绝不裁掉面板上沿。 */
