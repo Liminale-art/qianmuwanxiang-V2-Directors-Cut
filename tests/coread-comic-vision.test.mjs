@@ -81,7 +81,7 @@ assert.doesNotMatch(source, /看看这张图。/, '纯图片气泡不得自动�
 assert.match(source, /if \(\(!content && !images\.length\) \|\| dialogBusy\) return/, '只有图片没有文字时仍必须允许发送');
 assert.match(source, /String\(m\.text \|\| ''\)\.trim\(\) \? `<button class="sd-reader-msg-action" data-act="speak"/, '只有存在文字的气泡才显示播放按钮');
 assert.match(source, /pendingUsers\.flatMap[\s\S]*callCoreadVisionModel/, '书友回复必须读取本轮图片并调用视觉模型');
-assert.match(source, /comicDescriptions: rec\?\.comicDescriptions[\s\S]*version: 4/, '数据打包必须携带漫画视觉文字稿并升级格式');
+assert.match(source, /comicDescriptions: rec\?\.comicDescriptions[\s\S]*version: 5/, '数据打包必须携带漫画视觉文字稿并升级格式');
 assert.match(css, /\.sd-reader-chat-pending[\s\S]*\.sd-reader-chat-images/, '待发送和已发送图片都必须有隔离样式');
 assert.match(source, /openDialogImagePicker[\s\S]*showPicker/, '图片选择必须优先使用浏览器原生 showPicker 用户手势接口');
 assert.match(source, /pointermove[\s\S]*sendPressStartY - event\.clientY > 28[\s\S]*openDialogImagePicker/, '触屏必须以上滑发送键打开原生图片选择器');

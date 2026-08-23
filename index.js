@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.30.1';
+const VERSION = '1.31.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -455,6 +455,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   coread: {
     enabled: false,                 // 总开关，默认关
     books: [],                      // 轻量书目索引：[{ id, title, author, addedAt, chapterCount, charCount, tags:[], boundChar, progress, lastChapterIndex, lastScrollRatio, ragEnabled }]，正文在 IndexedDB
+    collections: [],                // 书架合集：[{id,name,bookIds:[],createdAt,updatedAt}]；正文仍按书独立存储
+    libCollectionId: '',            // 当前打开的合集；空=书架根层
     libViewMode: 'grid',            // 书架视图：grid | list
     libSort: 'addedAt-desc',        // 排序：title/author/progress/addedAt × asc/desc
     libTags: [],                    // 当前标签筛选
@@ -13803,6 +13805,133 @@ function coreadBookMeta(bookId) {
   return (coread().books || []).find((b) => b.id === bookId) || null;
 }
 
+function coreadCollections() {
+  const c = coread();
+  if (!Array.isArray(c.collections)) c.collections = [];
+  const validBooks = new Set((c.books || []).map((book) => String(book?.id || '')).filter(Boolean));
+  const seenCollections = new Set();
+  const claimedBooks = new Set();
+  c.collections = c.collections.map((raw) => {
+    const id = String(raw?.id || '').trim();
+    const name = String(raw?.name || '').trim().slice(0, 60);
+    if (!id || !name || seenCollections.has(id)) return null;
+    seenCollections.add(id);
+    const bookIds = [];
+    for (const bookId of Array.isArray(raw.bookIds) ? raw.bookIds : []) {
+      const normalized = String(bookId || '');
+      if (!validBooks.has(normalized) || claimedBooks.has(normalized)) continue;
+      claimedBooks.add(normalized);
+      bookIds.push(normalized);
+    }
+    return {
+      id,
+      name,
+      bookIds,
+      createdAt: Number(raw.createdAt) || Date.now(),
+      updatedAt: Number(raw.updatedAt) || Number(raw.createdAt) || Date.now(),
+    };
+  }).filter(Boolean);
+  if (c.libCollectionId && !c.collections.some((item) => item.id === c.libCollectionId)) c.libCollectionId = '';
+  return c.collections;
+}
+
+function coreadCollectionForBook(bookId) {
+  return coreadCollections().find((collection) => collection.bookIds.includes(bookId)) || null;
+}
+
+function coreadMoveBooksToCollection(bookIds, collectionId = '') {
+  const ids = [...new Set((bookIds || []).map(String).filter((id) => coreadBookMeta(id)))];
+  const collections = coreadCollections();
+  for (const collection of collections) collection.bookIds = collection.bookIds.filter((id) => !ids.includes(id));
+  const target = collections.find((collection) => collection.id === collectionId);
+  if (target) {
+    target.bookIds.push(...ids.filter((id) => !target.bookIds.includes(id)));
+    target.updatedAt = Date.now();
+  }
+  saveSettings();
+  return target || null;
+}
+
+async function coreadCreateCollection(defaultName = '') {
+  const raw = await promptInput('新建书架合集', '合集名称：', defaultName);
+  if (raw == null) return null;
+  const name = String(raw || '').trim().slice(0, 60);
+  if (!name) { toast('合集名称不能为空。', 'warning'); return null; }
+  const collections = coreadCollections();
+  if (collections.some((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+    toast('已有同名合集。', 'warning'); return null;
+  }
+  const collection = { id: uid('shelf'), name, bookIds: [], createdAt: Date.now(), updatedAt: Date.now() };
+  collections.push(collection);
+  saveSettings();
+  return collection;
+}
+
+async function coreadRenameCollection(collectionId) {
+  const collection = coreadCollections().find((item) => item.id === collectionId);
+  if (!collection) return false;
+  const raw = await promptInput('重命名合集', '合集名称：', collection.name);
+  if (raw == null) return false;
+  const name = String(raw || '').trim().slice(0, 60);
+  if (!name) { toast('合集名称不能为空。', 'warning'); return false; }
+  if (coreadCollections().some((item) => item.id !== collection.id && item.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+    toast('已有同名合集。', 'warning'); return false;
+  }
+  collection.name = name; collection.updatedAt = Date.now(); saveSettings();
+  return true;
+}
+
+async function coreadDissolveCollection(collectionId) {
+  const c = coread();
+  const collection = coreadCollections().find((item) => item.id === collectionId);
+  if (!collection) return false;
+  if (!await confirmDialog('解散合集', `确定解散「${collection.name}」？其中 ${collection.bookIds.length} 本书会回到书架根层，书籍与阅读数据不会删除。`)) return false;
+  c.collections = coreadCollections().filter((item) => item.id !== collectionId);
+  if (c.libCollectionId === collectionId) c.libCollectionId = '';
+  saveSettings();
+  return true;
+}
+
+async function coreadChooseCollectionForBooks(bookIds) {
+  const ids = [...new Set((bookIds || []).map(String).filter((id) => coreadBookMeta(id)))];
+  if (!ids.length) return false;
+  let collections = coreadCollections();
+  if (!collections.length) {
+    const created = await coreadCreateCollection();
+    if (!created) return false;
+    coreadMoveBooksToCollection(ids, created.id);
+    return true;
+  }
+  try {
+    const context = ctx();
+    if (context.Popup && context.POPUP_TYPE) {
+      const wrap = document.createElement('div');
+      wrap.className = 'sd-reader-collection-pick-form';
+      wrap.innerHTML = `<label><span>移动到</span><select class="text_pole sd-reader-collection-pick"><option value="">未分类（移出合集）</option>${collections.map((item) => `<option value="${htmlEscape(item.id)}">${htmlEscape(item.name)} · ${item.bookIds.length} 本</option>`).join('')}<option value="__new__">＋ 新建合集</option></select></label>`;
+      const popup = new context.Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '确定', cancelButton: '取消' });
+      const result = await popup.show();
+      if (result !== true && String(result) !== '1') return false;
+      let collectionId = wrap.querySelector('.sd-reader-collection-pick')?.value || '';
+      if (collectionId === '__new__') {
+        const created = await coreadCreateCollection();
+        if (!created) return false;
+        collectionId = created.id;
+      }
+      const target = coreadMoveBooksToCollection(ids, collectionId);
+      toast(target ? `已移入「${target.name}」。` : '已移出合集。', 'success');
+      return true;
+    }
+  } catch (_) {}
+  const raw = await promptInput('整理书架', '输入目标合集名称；留空移出合集：', '');
+  if (raw == null) return false;
+  const name = String(raw || '').trim();
+  let target = coreadCollections().find((item) => item.name === name) || null;
+  if (name && !target) target = await coreadCreateCollection(name);
+  if (name && !target) return false;
+  coreadMoveBooksToCollection(ids, target?.id || '');
+  return true;
+}
+
 // 网格封面（无图时）：书名 + 作者，长名自动省略不出框。
 function readerCoverPlaceholder(title, author) {
   return `<div class="sd-reader-cover-ph">
@@ -13882,6 +14011,12 @@ async function coreadImportText(rawText, title = '', author = '', preChapters = 
     tags: [], boundChar: '', progress: 0, lastChapterIndex: 0, lastScrollRatio: 0, ragEnabled: false, hasCover, imageCount,
     mode: bookOptions.mode || 'text', pageCount: Number(bookOptions.pageCount) || 0,
   });
+  // 在合集内点「＋」导入时，新书留在当前合集；根层导入仍保持未分类。
+  const activeCollection = coreadCollections().find((collection) => collection.id === coread().libCollectionId);
+  if (activeCollection) {
+    activeCollection.bookIds.unshift(bookId);
+    activeCollection.updatedAt = Date.now();
+  }
   saveSettings();
   toast(bookOptions.mode === 'comic'
     ? `已导入《${finalTitle}》：${Number(bookOptions.pageCount) || finalChapters.length} 页。`
@@ -14159,6 +14294,7 @@ async function coreadEditBookInfo(bookId) {
   if (!meta) return false;
   let title = meta.title || '';
   let author = meta.author || '';
+  let collectionId = coreadCollectionForBook(bookId)?.id || '';
   try {
     const context = ctx();
     const Popup = context.Popup;
@@ -14167,12 +14303,14 @@ async function coreadEditBookInfo(bookId) {
       wrap.className = 'sd-reader-bookedit-form';
       wrap.innerHTML = `
         <label><span>书名</span><input type="text" class="sd-reader-bookedit-title" maxlength="120" value="${htmlEscape(title)}"></label>
-        <label><span>作者</span><input type="text" class="sd-reader-bookedit-author" maxlength="80" value="${htmlEscape(author)}" placeholder="可留空"></label>`;
+        <label><span>作者</span><input type="text" class="sd-reader-bookedit-author" maxlength="80" value="${htmlEscape(author)}" placeholder="可留空"></label>
+        <label><span>归入合集</span><select class="text_pole sd-reader-bookedit-collection"><option value="">未分类</option>${coreadCollections().map((item) => `<option value="${htmlEscape(item.id)}" ${item.id === collectionId ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('')}</select></label>`;
       const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '保存', cancelButton: '取消' });
       const result = await popup.show();
       if (result !== true && String(result) !== '1') return false;
       title = String(wrap.querySelector('.sd-reader-bookedit-title')?.value || '').trim();
       author = String(wrap.querySelector('.sd-reader-bookedit-author')?.value || '').trim();
+      collectionId = String(wrap.querySelector('.sd-reader-bookedit-collection')?.value || '');
     } else {
       const nextTitle = await promptInput('编辑书籍信息', '书名：', title);
       if (nextTitle == null) return false;
@@ -14185,7 +14323,7 @@ async function coreadEditBookInfo(bookId) {
   if (!title) { toast('书名不能为空。', 'warning'); return false; }
   meta.title = title.slice(0, 120);
   meta.author = author.slice(0, 80);
-  saveSettings();
+  coreadMoveBooksToCollection([bookId], collectionId);
   try {
     const rec = await blobStore.getBook(bookId);
     if (rec) await blobStore.putBook(bookId, { ...rec, meta: { ...(rec.meta || {}), title: meta.title, author: meta.author } });
@@ -14222,6 +14360,8 @@ async function coreadDeleteBook(bookId, options = {}) {
   if (readerView?.bookId === bookId) unmountReaderPortal();
   // 若删的正是当前会话的书，清掉内存镜像防其 autosave 复活桶
   if (readerDialog?.bookId === bookId) { readerDialog = { bucket: '', bookId: '', messages: [], summaries: [], slices: [], cursor: 0, summaryFloor: 0, lastInjected: null, pipelineStatus: null, readBoundary: null, loaded: false }; coreadEchoTtl.clear(); }
+  // 删除书籍只移除其合集索引；合集本身和其他书不受影响。
+  for (const collection of coreadCollections()) collection.bookIds = collection.bookIds.filter((id) => id !== bookId);
   coread().books = coread().books.filter((b) => b.id !== bookId);
   const retained = coread().retainedMemoryBooks || (coread().retainedMemoryBooks = []);
   const retainedIndex = retained.findIndex((b) => b.id === bookId);
@@ -14578,54 +14718,106 @@ const LIBRARY_SORTS = [
   { key: 'progress-desc', name: '进度高→低' },
 ];
 
+function renderLibraryBookItem(book, viewMode) {
+  const prog = Math.max(0, Math.min(100, book.progress || 0));
+  const bookStat = book.mode === 'comic' ? `${book.pageCount || book.chapterCount || 0}页 · 漫画` : `${book.chapterCount || 0}章 · ${(book.charCount || 0).toLocaleString()}字`;
+  if (viewMode === 'list') {
+    return `
+      <div class="sd-reader-row" data-book="${htmlEscape(book.id)}">
+        <input type="checkbox" class="sd-reader-book-check" data-book="${htmlEscape(book.id)}">
+        <div class="sd-reader-row-main">
+          <span class="sd-reader-row-title" title="${htmlEscape(book.title)}">${htmlEscape(book.title)}</span>
+          <span class="sd-reader-row-sub">${book.author ? htmlEscape(book.author) + ' · ' : ''}${bookStat}</span>
+        </div>
+        <span class="sd-reader-row-prog">${prog}%</span>
+        <button class="sd-reader-card-edit" data-book="${htmlEscape(book.id)}" title="编辑书籍信息"><i class="fa-solid fa-pen"></i></button>
+        <button class="sd-reader-card-del" data-book="${htmlEscape(book.id)}" title="删除"><i class="fa-solid fa-trash"></i></button>
+      </div>`;
+  }
+  const coverInner = book.hasCover
+    ? `<img class="sd-reader-cover-img" data-cover="${htmlEscape(book.id)}" alt="${htmlEscape(book.title)}" loading="lazy">${readerCoverPlaceholder(book.title, book.author)}`
+    : readerCoverPlaceholder(book.title, book.author);
+  return `
+    <div class="sd-reader-card" data-book="${htmlEscape(book.id)}">
+      <div class="sd-reader-card-cover">${coverInner}
+        <div class="sd-reader-prog"><span>${prog}%</span></div>
+      </div>
+      <div class="sd-reader-card-meta">
+        <div class="sd-reader-card-title" title="${htmlEscape(book.title)}">${htmlEscape(book.title)}</div>
+        ${book.author ? `<div class="sd-reader-card-author" title="${htmlEscape(book.author)}">${htmlEscape(book.author)}</div>` : ''}
+        <div class="sd-reader-card-sub">${bookStat}</div>
+        <button class="sd-reader-card-edit sd-reader-card-edit-grid" data-book="${htmlEscape(book.id)}" title="编辑书籍信息"><i class="fa-solid fa-pen"></i></button>
+      </div>
+    </div>`;
+}
+
+function renderLibraryCollectionItem(collection, viewMode) {
+  const books = collection.bookIds.map(coreadBookMeta).filter(Boolean);
+  const searchText = [collection.name, ...books.flatMap((book) => [book.title || '', book.author || ''])].join(' ').toLowerCase();
+  if (viewMode === 'list') {
+    return `
+      <div class="sd-reader-collection-row" data-collection="${htmlEscape(collection.id)}" data-search="${htmlEscape(searchText)}">
+        <span class="sd-reader-collection-row-icon"><i class="fa-solid fa-folder"></i></span>
+        <div class="sd-reader-row-main">
+          <span class="sd-reader-row-title" title="${htmlEscape(collection.name)}">${htmlEscape(collection.name)}</span>
+          <span class="sd-reader-row-sub">${books.length} 本书</span>
+        </div>
+        <button class="sd-reader-collection-edit" data-collection="${htmlEscape(collection.id)}" title="重命名合集"><i class="fa-solid fa-pen"></i></button>
+        <button class="sd-reader-collection-dissolve" data-collection="${htmlEscape(collection.id)}" title="解散合集"><i class="fa-solid fa-folder-minus"></i></button>
+        <i class="fa-solid fa-chevron-right sd-reader-collection-enter"></i>
+      </div>`;
+  }
+  const tiles = Array.from({ length: 4 }, (_, index) => {
+    const book = books[index];
+    if (!book) return '<span class="sd-reader-collection-tile sd-reader-collection-tile-empty"></span>';
+    return `<span class="sd-reader-collection-tile">${book.hasCover ? `<img class="sd-reader-cover-img" data-cover="${htmlEscape(book.id)}" alt="" loading="lazy">` : ''}<span class="sd-reader-collection-tile-ph">${htmlEscape(book.title || '书')}</span></span>`;
+  }).join('');
+  return `
+    <div class="sd-reader-collection-card" data-collection="${htmlEscape(collection.id)}" data-search="${htmlEscape(searchText)}">
+      <div class="sd-reader-card-cover sd-reader-collection-cover">${tiles}</div>
+      <div class="sd-reader-card-meta">
+        <div class="sd-reader-card-title" title="${htmlEscape(collection.name)}">${htmlEscape(collection.name)}</div>
+        <div class="sd-reader-card-sub">${books.length} 本书</div>
+        <button class="sd-reader-collection-edit sd-reader-card-edit-grid" data-collection="${htmlEscape(collection.id)}" title="重命名合集"><i class="fa-solid fa-pen"></i></button>
+      </div>
+    </div>`;
+}
+
 function renderLibraryView() {
   const c = coread();
-  const books = sortedLibraryBooks();
+  const collections = coreadCollections();
+  const activeCollection = collections.find((collection) => collection.id === c.libCollectionId) || null;
+  const sortedBooks = sortedLibraryBooks();
+  const filteredBookIds = new Set(sortedBooks.map((book) => book.id));
+  const claimedBookIds = new Set(collections.flatMap((collection) => collection.bookIds));
+  const books = activeCollection
+    ? sortedBooks.filter((book) => activeCollection.bookIds.includes(book.id))
+    : sortedBooks.filter((book) => !claimedBookIds.has(book.id));
+  const visibleCollections = activeCollection ? [] : collections
+    .filter((collection) => !(c.libTags || []).length || collection.bookIds.some((id) => filteredBookIds.has(id)))
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh'));
   const tags = allLibraryTags();
   const viewMode = c.libViewMode === 'list' ? 'list' : 'grid';
-  const cards = books.map((b) => {
-    const prog = Math.max(0, Math.min(100, b.progress || 0));
-    const bookStat = b.mode === 'comic' ? `${b.pageCount || b.chapterCount || 0}页 · 漫画` : `${b.chapterCount || 0}章 · ${(b.charCount || 0).toLocaleString()}字`;
-    if (viewMode === 'list') {
-      // 列表行：左侧勾选框 + 书籍信息 + 进度 + 删除钮
-      return `
-        <div class="sd-reader-row" data-book="${htmlEscape(b.id)}">
-          <input type="checkbox" class="sd-reader-book-check" data-book="${htmlEscape(b.id)}">
-          <div class="sd-reader-row-main">
-            <span class="sd-reader-row-title" title="${htmlEscape(b.title)}">${htmlEscape(b.title)}</span>
-            <span class="sd-reader-row-sub">${b.author ? htmlEscape(b.author) + ' · ' : ''}${bookStat}</span>
-          </div>
-          <span class="sd-reader-row-prog">${prog}%</span>
-          <button class="sd-reader-card-edit" data-book="${htmlEscape(b.id)}" title="编辑书籍信息"><i class="fa-solid fa-pen"></i></button>
-          <button class="sd-reader-card-del" data-book="${htmlEscape(b.id)}" title="删除"><i class="fa-solid fa-trash"></i></button>
-        </div>`;
-    }
-    // 封面卡（grid）：无删除按钮·单击开书；删除走列表视图（多选批删）
-    const coverInner = b.hasCover
-      ? `<img class="sd-reader-cover-img" data-cover="${htmlEscape(b.id)}" alt="${htmlEscape(b.title)}" loading="lazy">${readerCoverPlaceholder(b.title, b.author)}`
-      : readerCoverPlaceholder(b.title, b.author);
-    return `
-      <div class="sd-reader-card" data-book="${htmlEscape(b.id)}">
-        <div class="sd-reader-card-cover">${coverInner}
-          <div class="sd-reader-prog"><span>${prog}%</span></div>
-        </div>
-        <div class="sd-reader-card-meta">
-          <div class="sd-reader-card-title" title="${htmlEscape(b.title)}">${htmlEscape(b.title)}</div>
-          ${b.author ? `<div class="sd-reader-card-author" title="${htmlEscape(b.author)}">${htmlEscape(b.author)}</div>` : ''}
-          <div class="sd-reader-card-sub">${bookStat}</div>
-          <button class="sd-reader-card-edit sd-reader-card-edit-grid" data-book="${htmlEscape(b.id)}" title="编辑书名与作者"><i class="fa-solid fa-pen"></i></button>
-        </div>
-      </div>`;
-  }).join('');
-
+  const items = `${visibleCollections.map((collection) => renderLibraryCollectionItem(collection, viewMode)).join('')}${books.map((book) => renderLibraryBookItem(book, viewMode)).join('')}`;
   const curSort = LIBRARY_SORTS.find((s) => s.key === c.libSort) || LIBRARY_SORTS[0];
-  // 列表视图：工具栏增加批量操作按钮（全选 + 删除已选）
   const batchControls = viewMode === 'list'
     ? `<button class="sd-reader-batch-toggle-all" title="全选/取消全选"><i class="fa-solid fa-check-double"></i></button>
+       <button class="sd-reader-batch-collect" title="归入合集" disabled><i class="fa-solid fa-folder-plus"></i> 归入合集</button>
        <button class="sd-reader-batch-delete" title="删除已选" disabled><i class="fa-solid fa-trash-can"></i> 删除已选 (<span class="sd-reader-batch-count">0</span>)</button>`
     : '';
+  const collectionHead = activeCollection ? `
+    <div class="sd-reader-collection-head">
+      <button class="sd-reader-collection-back" title="返回书架"><i class="fa-solid fa-arrow-left"></i></button>
+      <div><strong>${htmlEscape(activeCollection.name)}</strong><span>${activeCollection.bookIds.length} 本书</span></div>
+      <button class="sd-reader-collection-edit" data-collection="${htmlEscape(activeCollection.id)}" title="重命名合集"><i class="fa-solid fa-pen"></i></button>
+      <button class="sd-reader-collection-dissolve" data-collection="${htmlEscape(activeCollection.id)}" title="解散合集"><i class="fa-solid fa-folder-minus"></i></button>
+    </div>` : '';
+  const emptyText = activeCollection
+    ? '这个合集还是空的。可在列表视图批量归入，或从书籍信息中选择合集。'
+    : ((c.libTags || []).length ? '没有符合当前标签的书籍。' : '书架还是空的。点右下「＋」添加第一本书，开始和角色伴读。');
   return `
     <div class="sd-reader-lib sd-reader-lib-${viewMode}">
+      ${collectionHead}
       <div class="sd-reader-lib-bar">
         <button class="sd-reader-view-toggle" title="切换视图"><i class="fa-solid ${viewMode === 'grid' ? 'fa-list' : 'fa-table-cells-large'}"></i></button>
         <div class="sd-reader-sort-pick">
@@ -14634,11 +14826,12 @@ function renderLibraryView() {
             ${LIBRARY_SORTS.map((s) => `<button type="button" class="sd-reader-sort-opt ${c.libSort === s.key ? 'active' : ''}" role="menuitemradio" aria-checked="${c.libSort === s.key}" data-sort="${s.key}">${htmlEscape(s.name)}</button>`).join('')}
           </div>
         </div>
-        <input type="search" class="sd-reader-search" placeholder="搜索书名 / 作者" />
+        ${activeCollection ? '' : '<button class="sd-reader-collection-create" title="新建合集"><i class="fa-solid fa-folder-plus"></i></button>'}
+        <input type="search" class="sd-reader-search" placeholder="搜索书名 / 作者 / 合集" />
         ${batchControls}
       </div>
       ${tags.length ? `<div class="sd-reader-tags">${tags.map((t) => `<button class="sd-reader-tag ${(c.libTags || []).includes(t) ? 'active' : ''}" data-tag="${htmlEscape(t)}">${htmlEscape(t)}</button>`).join('')}</div>` : ''}
-      ${books.length ? `<div class="sd-reader-grid">${cards}</div>` : `<div class="sd-reader-empty"><i class="fa-solid fa-book-open"></i><p>书架还是空的。点右下「＋」添加第一本书，开始和角色伴读。<small>支持 EPUB、MOBI、TXT 与 CBZ</small></p></div>`}
+      ${items ? `<div class="sd-reader-grid">${items}</div>` : `<div class="sd-reader-empty"><i class="fa-solid fa-book-open"></i><p>${htmlEscape(emptyText)}${!activeCollection && !(c.libTags || []).length ? '<small>支持 EPUB、MOBI、TXT 与 CBZ</small>' : ''}</p></div>`}
       <label class="sd-reader-import sd-reader-import-fab" title="导入书籍或漫画" aria-label="导入书籍或漫画">
         <i class="fa-solid fa-plus" aria-hidden="true"></i>
         <input type="file" class="sd-reader-import-input sd-reader-native-file" accept="${COREAD_BOOK_ACCEPT}">
@@ -16242,6 +16435,24 @@ function bindCoreadTabEvents(root) {
 
 function bindLibraryViewEvents(root) {
   loadShelfCovers(root);   // 异步给 hasCover 的卡片填充封面图（IndexedDB blob → objectURL）
+  root.querySelector('.sd-reader-collection-create')?.addEventListener('click', async () => {
+    if (await coreadCreateCollection()) renderModal();
+  });
+  root.querySelector('.sd-reader-collection-back')?.addEventListener('click', () => {
+    coread().libCollectionId = ''; saveSettings(); renderModal();
+  });
+  root.querySelectorAll('.sd-reader-collection-card, .sd-reader-collection-row').forEach((item) => item.addEventListener('click', (event) => {
+    if (event.target.closest('.sd-reader-collection-edit, .sd-reader-collection-dissolve')) return;
+    coread().libCollectionId = item.dataset.collection || ''; saveSettings(); renderModal();
+  }));
+  root.querySelectorAll('.sd-reader-collection-edit').forEach((button) => button.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    if (await coreadRenameCollection(button.dataset.collection)) renderModal();
+  }));
+  root.querySelectorAll('.sd-reader-collection-dissolve').forEach((button) => button.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    if (await coreadDissolveCollection(button.dataset.collection)) renderModal();
+  }));
   // iOS Safari 会阻止「等待弹窗结束后再 input.click()」：让原生 input 常驻在 label 内，点击 FAB 即保持用户手势直达文件选择器。
   root.querySelector('.sd-reader-import-input')?.addEventListener('change', async (event) => {
     const input = event.currentTarget;
@@ -16294,6 +16505,9 @@ function bindLibraryViewEvents(root) {
         const hit = !q || (b && ((b.title || '').toLowerCase().includes(q) || (b.author || '').toLowerCase().includes(q)));
         card.style.display = hit ? '' : 'none';
       });
+      root.querySelectorAll('.sd-reader-collection-card, .sd-reader-collection-row').forEach((item) => {
+        item.style.display = !q || String(item.dataset.search || '').includes(q) ? '' : 'none';
+      });
     });
   }
   // 网格卡（封面视图）：单击开书，去掉删除功能（P1 优化·删除功能只留给列表视图）
@@ -16328,7 +16542,9 @@ function bindLibraryViewEvents(root) {
   const updateBatchBtn = () => {
     const checks = root.querySelectorAll('.sd-reader-book-check:checked');
     const batchBtn = root.querySelector('.sd-reader-batch-delete');
+    const collectBtn = root.querySelector('.sd-reader-batch-collect');
     const countSpan = root.querySelector('.sd-reader-batch-count');
+    if (collectBtn) collectBtn.disabled = checks.length === 0;
     if (batchBtn) {
       batchBtn.disabled = checks.length === 0;
       if (countSpan) countSpan.textContent = checks.length;
@@ -16342,6 +16558,11 @@ function bindLibraryViewEvents(root) {
     const allChecked = Array.from(checks).every((c) => c.checked);
     checks.forEach((c) => { c.checked = !allChecked; });
     updateBatchBtn();
+  });
+  // 批量归类：同一入口也可把书移回根层；移动不会改变正文、进度、对话或记忆。
+  root.querySelector('.sd-reader-batch-collect')?.addEventListener('click', async () => {
+    const ids = Array.from(root.querySelectorAll('.sd-reader-book-check:checked')).map((check) => check.dataset.book);
+    if (await coreadChooseCollectionForBooks(ids)) renderModal();
   });
   // 批量删除
   const batchDel = root.querySelector('.sd-reader-batch-delete');
@@ -18193,7 +18414,7 @@ async function coreadExportData() {
   let retrievalLogs = [];
   try { retrievalLogs = await blobStore.listRetLog(); } catch (e) { console.warn(`[${MODULE_NAME}] export retrieval logs failed`, e); }
   const payload = {
-    type: 'qianmu-coread', version: 4, exportedAt: new Date().toISOString(), credentialsIncluded: false,
+    type: 'qianmu-coread', version: 5, exportedAt: new Date().toISOString(), credentialsIncluded: false,
     prefs: coreadSanitizePackageValue(coread()),
     books,
     chats,
@@ -18280,7 +18501,7 @@ async function coreadImportDataFile(file) {
         try { await blobStore.pushRetLog(rec, 50); logOk++; } catch (e) { console.warn(`[${MODULE_NAME}] import retrieval log failed`, e); }
       }
     }
-    // 偏好深合并：保留本机书目、启用态和全部凭据；v1–v3 数据仍兼容。
+    // 偏好深合并：保留本机书目、启用态和全部凭据；v1–v5 数据均兼容。
     if (isPlainObject(data.prefs)) coreadMergePackageValue(coread(), data.prefs);
     saveSettings();
     toast(`已导入 ${ok} 本书 · ${chatOk} 段对话 · ${imageOk} 张插图 · ${vectorOk} 组向量 · ${audioOk} 条语音${logOk ? ` · ${logOk} 条检索记录` : ''}。`, 'success');
