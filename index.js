@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.31.1';
+const VERSION = '1.32.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -427,10 +427,6 @@ const DEFAULT_SETTINGS = Object.freeze({
     // action: 'remove'=删除该标签整段；'extract'=只保留该标签内内容（extract 一旦存在则优先，其余 remove 忽略）。
     tagRules: [{ name: 'thinking', action: 'remove' }],
     stripHtml: true,             // 清洗后再剥裸 HTML 标签（状态栏/卡片等），默认开
-    // 提取（人设参照）：人设默认注入(取材式·让情绪有性格基线、"我/你"锚定身份)。世界书取材式——刷新→下拉多选书→选中书展开条目勾选。
-    // 注：世界书「选择」本身按聊天存(getChatStore.ttsExtractWorldBooks/ttsExtractWorldItems)·不同聊天各自绑定；下面两折叠态为全局 UI 偏好。
-    extractWbFoldOpen: true,     // 下拉「选择」折叠态（持久·全局 UI 偏好）
-    extractItemsFoldOpen: true,  // 条目列折叠态（持久·全局 UI 偏好）
     extractSchemes: {},          // {providerId:'provider'|'custom'|'library:<id>'}，默认跟随当前模型模板
     extractPrompts: {},          // 各 Provider 的用户自定义提示词
     extractPromptBackups: {},    // 各 Provider 覆盖前的上一份提示词
@@ -597,7 +593,6 @@ let theaterScriptSource = '';   // 当前此幕指令来自哪个剧札标题；
 let chatterExpanded = false;       // 尘寰群生：false=动态浮现舞台，true=展开完整台本列表
 let contextScanCache = { presets: {}, worldBooks: {}, presetNames: [], worldBookNames: [], currentPresetName: '', boundWorldBookNames: [], presetScannedAt: '', worldScannedAt: '' };
 let contextAutoScanned = false;    // 本次 ST 会话内是否已自动补扫过取材（重进/刷新后首开取材页时懒加载一次）
-let ttsExtractAutoScanned = false; // 同上·配音「人设参照」世界书：首开配音页时懒加载一次，让已选世界书/条目免刷新即显
 let modalJustOpened = false;        // 仅本次「打开」后的首帧渲染加入场动画，之后的静默重渲染（刷新/扫描/切换）不再重播，消除闪动
 let busy = false;                  // 推演忙碌态
 let abortController = null;         // 推演中止句柄
@@ -1203,12 +1198,12 @@ function renderLibrarySection(cfg) {
   return `
       <div class="sd-lib-scope" data-lib="${htmlEscape(cfg.ns)}">
       <div class="sd-template-head">
-        <h3>${htmlEscape(cfg.title)}</h3>
+        <div class="sd-template-title"><h3>${htmlEscape(cfg.title)}</h3>${cfg.inlineCount ? `<span class="sd-tpl-count">${all.length}</span>` : ''}</div>
         <div class="sd-template-io-buttons">
           <label class="sd-icon-btn sd-file-label sd-lib-import-label" title="导入" aria-label="导入"><i class="fa-solid fa-file-import"></i><input type="file" accept="application/json" class="sd-lib-import"></label>
           <button type="button" class="sd-icon-btn sd-lib-export-toggle ${cfg.exportMode ? 'active' : ''}" title="多选" aria-label="多选"><i class="fa-solid fa-square-check"></i></button>
         </div>
-        <span class="sd-tpl-count">${all.length} 个</span>
+        ${cfg.inlineCount ? '' : `<span class="sd-tpl-count">${all.length} 个</span>`}
       </div>
       ${exportBar}
       <input type="search" class="text_pole sd-lib-search" placeholder="${htmlEscape(cfg.searchPlaceholder || '搜索标题…')}" value="${htmlEscape(search)}">
@@ -1835,24 +1830,6 @@ function maybeAutoScanContext() {
   if (contextScanCache.presetScannedAt && contextScanCache.worldScannedAt) { contextAutoScanned = true; return; }
   contextAutoScanned = true;   // 先置位，避免渲染→扫描→重渲染→再扫描的循环
   refreshContextSources(false).catch((error) => console.warn(`[${MODULE_NAME}] auto scan context failed`, error));
-}
-
-// 配音「人设参照」世界书懒加载补扫：ST 重进/刷新后 contextScanCache 空（仅内存），但选择存在 settings.tts。
-// 首开配音页时静默补扫一次——扫世界书名 + 拉「本聊天已选中的那些书」的条目，扫完重渲，让已选状态免刷新即显。
-function maybeAutoScanTtsExtract() {
-  if (ttsExtractAutoScanned) return;
-  const sel = ttsExtractWorldBooks();
-  if (!sel.length) { ttsExtractAutoScanned = true; return; }   // 没选过书就没什么要恢复的
-  // 已扫过（缓存里这些书的条目都在）则无需再扫
-  if (contextScanCache.worldScannedAt && sel.every((n) => Array.isArray(contextScanCache.worldBooks?.[n]))) { ttsExtractAutoScanned = true; return; }
-  ttsExtractAutoScanned = true;   // 先置位，避免渲染→扫描→重渲染循环
-  (async () => {
-    try {
-      await refreshWorldBooks(false);
-      for (const n of sel) { if (!Array.isArray(contextScanCache.worldBooks?.[n])) await coreadEnsureWorldEntries(n); }
-      rerenderIfOpen();
-    } catch (error) { console.warn(`[${MODULE_NAME}] auto scan tts extract failed`, error); }
-  })();
 }
 
 function getPresetNameStore() {
@@ -3161,7 +3138,7 @@ function clampFloatPosition() {
   // 竖向正六边形：上下为尖角、左右为直边；size 表示视觉高度，宽度按 √3/2 收窄。
   const width = size * QUICK_HEX_WIDTH_RATIO;
   const height = size;
-  const margin = 10;
+  const margin = 4;
   const maxX = Math.max(margin, window.innerWidth - width - margin);
   const maxY = Math.max(margin, window.innerHeight - height - margin);
   if (typeof settings.floatPosition.x !== 'number') settings.floatPosition.x = maxX;
@@ -4218,7 +4195,7 @@ function openQuickWheel(btn) {
   const viewportHeight = Number(viewport?.height || window.innerHeight);
   const originCenterX = rect.left + rect.width / 2 - viewportLeft;
   const originCenterY = rect.top + rect.height / 2 - viewportTop;
-  const margin = 8;
+  const margin = 4;
   const layout = quickHiveLayout(items.length, requestedSize, {
     centerX: originCenterX,
     centerY: originCenterY,
@@ -5384,14 +5361,16 @@ function renderContextTab() {
   // 首次进入取材页时后台补扫一次，让面板照实显示「已读取 + 既有勾选」，无需手动点读取。
   maybeAutoScanContext();
   return `
-    <section class="sd-card sd-base-card">
-      <div class="sd-base-row">
-        <label class="checkbox_label"><input type="checkbox" class="sd-opt" data-key="includeChatHistory" ${opts.includeChatHistory ? 'checked' : ''}> 上下文参考</label>
-        <label class="sd-depth-field"><span>参考楼层数</span><input class="text_pole sd-context-depth" type="number" min="1" max="200" value="${htmlEscape(opts.contextDepth || 5)}"></label>
-      </div>
+    <section class="sd-card sd-base-card sd-context-identity-card">
       <div class="sd-base-row">
         <span class="sd-fixed-ref"><span class="sd-fixed-ref-label">当前角色</span>${infoTag(getCharacterName())}</span>
         <span class="sd-fixed-ref"><span class="sd-fixed-ref-label">当前用户</span>${infoTag(getPersonaName())}</span>
+      </div>
+    </section>
+    <section class="sd-card sd-base-card">
+      <div class="sd-base-row sd-context-reference-row">
+        <label class="checkbox_label"><input type="checkbox" class="sd-opt" data-key="includeChatHistory" ${opts.includeChatHistory ? 'checked' : ''}> 上下文参考</label>
+        <label class="sd-depth-field"><span>参考层数</span><input class="text_pole sd-context-depth" type="number" min="1" max="200" value="${htmlEscape(opts.contextDepth || 5)}"></label>
       </div>
     </section>
     <details class="sd-accordion" data-acc="acc-tags" open>
@@ -5401,12 +5380,10 @@ function renderContextTab() {
     </details>
     <details class="sd-accordion" data-acc="acc-presets" open>
       <summary><b>预设</b><span>${contextScanCache.presetScannedAt ? '已读取' : '待读取'}</span></summary>
-      <div class="sd-button-row"><button type="button" class="sd-btn sd-refresh-presets"><i class="fa-solid fa-rotate"></i>读取预设</button></div>
       ${renderPresetSourcePanel()}
     </details>
     <details class="sd-accordion" data-acc="acc-worlds" open>
       <summary><b>世界书</b><span>${contextScanCache.worldScannedAt ? '已读取' : '待读取'}</span></summary>
-      <div class="sd-button-row"><button type="button" class="sd-btn sd-refresh-worldbooks"><i class="fa-solid fa-rotate"></i>读取世界书</button></div>
       ${renderWorldBookSourcePanel()}
     </details>`;
 }
@@ -5427,13 +5404,16 @@ function renderPresetSourcePanel() {
   const headLabel = active || '未选择';
   const rows = names.map((name) => `<label class="sd-source-row"><input type="radio" name="sd-preset-radio" class="sd-pick-preset" data-name="${htmlEscape(name)}" ${name === active ? 'checked' : ''}><span>${htmlEscape(name)}</span>${currentName && name === currentName ? badge('当前使用') : ''}</label>`).join('');
   return `
-    <details class="sd-dropdown" data-acc="dd-preset">
-      <summary class="sd-dropdown-head"><span>选择预设</span><b>${htmlEscape(headLabel)}</b></summary>
-      <div class="sd-dropdown-body sd-scroll">
-        <label class="sd-source-row"><input type="radio" name="sd-preset-radio" class="sd-pick-preset" data-name="" ${active ? '' : 'checked'}><span class="sd-muted">不使用预设</span></label>
-        ${rows}
-      </div>
-    </details>
+    <div class="sd-context-source-pick">
+      <details class="sd-dropdown" data-acc="dd-preset">
+        <summary class="sd-dropdown-head"><span>选择</span><b>${htmlEscape(headLabel)}</b></summary>
+        <div class="sd-dropdown-body sd-scroll">
+          <label class="sd-source-row"><input type="radio" name="sd-preset-radio" class="sd-pick-preset" data-name="" ${active ? '' : 'checked'}><span class="sd-muted">不使用预设</span></label>
+          ${rows}
+        </div>
+      </details>
+      <button type="button" class="sd-icon-btn sd-refresh-presets" title="读取预设" aria-label="读取预设"><i class="fa-solid fa-rotate"></i></button>
+    </div>
     ${active ? renderSelectedPresetEntries([active]) : ''}`;
 }
 
@@ -5461,10 +5441,13 @@ function renderWorldBookSourcePanel() {
     <button type="button" class="sd-icon-btn sd-icon-sm sd-world-global${isWorldBookGlobal(name) ? ' sd-world-global-on' : ''}" data-name="${htmlEscape(name)}" title="${isWorldBookGlobal(name) ? '已设为全局，点击取消（所有聊天默认引用）' : '设为全局：对所有聊天默认引用（单个聊天仍可取消）'}" aria-pressed="${isWorldBookGlobal(name) ? 'true' : 'false'}"><i class="fa-${isWorldBookGlobal(name) ? 'solid' : 'regular'} fa-earth-asia"></i></button>
   </div>`).join('');
   return `
-    <details class="sd-dropdown" data-acc="dd-world">
-      <summary class="sd-dropdown-head"><span>选择世界书</span><b>${selected.length} 项</b></summary>
-      <div class="sd-dropdown-body sd-scroll">${rows}</div>
-    </details>
+    <div class="sd-context-source-pick">
+      <details class="sd-dropdown" data-acc="dd-world">
+        <summary class="sd-dropdown-head"><span>选择</span><b>${selected.length} 项</b></summary>
+        <div class="sd-dropdown-body sd-scroll">${rows}</div>
+      </details>
+      <button type="button" class="sd-icon-btn sd-refresh-worldbooks" title="读取世界书" aria-label="读取世界书"><i class="fa-solid fa-rotate"></i></button>
+    </div>
     ${viewName ? renderSelectedWorldBookEntries([viewName]) : ''}`;
 }
 
@@ -5498,7 +5481,7 @@ function renderInjectSections() {
   ];
   if (settings.liveStageEnabled) items.push(['threads', '伏笔显影']);
   if (settings.geopoliticsEnabled) items.push(['geopolitics', '世界格局']);
-  const boxes = items.map(([key, label]) => `<label class="checkbox_label sd-inject-section"><input type="checkbox" class="sd-inject-section-toggle" data-key="${key}" ${sec[key] !== false ? 'checked' : ''}> ${label}</label>`).join('');
+  const boxes = items.map(([key, label]) => `<label class="sd-inject-section"><input type="checkbox" class="sd-inject-section-toggle" data-key="${key}" ${sec[key] !== false ? 'checked' : ''}> ${label}</label>`).join('');
   return `<details class="sd-plain-fold" data-acc="inject-sections"><summary><b>注入范围</b></summary><div class="sd-inject-section-grid">${boxes}</div></details>`;
 }
 
@@ -5522,16 +5505,14 @@ function renderInjectPreview() {
 function renderDirectorSettingsTab() {
   return `
     <section class="sd-card">
-      <h3>刷新</h3>
-      <p class="sd-muted sd-hint-sm">仅计入角色回复层</p>
+      <div class="sd-card-title-row"><h3>刷新</h3><p class="sd-muted sd-hint-sm">仅计入角色回复层</p></div>
       <div class="sd-refresh-row">
         <label class="checkbox_label"><input type="checkbox" class="sd-auto-refresh" ${settings.autoRefresh ? 'checked' : ''}> 自动推演剧情</label>
         <label class="sd-floor-refresh"><span>每</span><input class="text_pole sd-auto-every" type="number" min="2" max="50" value="${htmlEscape(settings.autoRefreshEvery || 10)}"><span>层</span></label>
       </div>
     </section>
     <section class="sd-card">
-      <h3>暗线注入</h3>
-      <p class="sd-muted sd-hint-sm">把推演结果提炼成暗线灵感，悄悄注入后续聊天</p>
+      <h3>暗线注入正文</h3>
       <div class="sd-refresh-row">
         <label class="checkbox_label"><input type="checkbox" class="sd-inject-enabled" ${settings.injectEnabled ? 'checked' : ''}> 启用暗线注入</label>
         <label class="sd-floor-refresh"><span>注入深度</span><input class="text_pole sd-inject-depth" type="number" min="0" max="20" value="${htmlEscape(settings.injectDepth ?? 2)}"></label>
@@ -5540,17 +5521,15 @@ function renderDirectorSettingsTab() {
       ${renderInjectPreview()}
     </section>
     <section class="sd-card">
+      <h3>衍生模块</h3>
       <div class="sd-livefeature-row">
-        <label class="checkbox_label"><input type="checkbox" class="sd-livestage-enabled" ${settings.liveStageEnabled ? 'checked' : ''}> 启用伏笔显影</label>
-        <p class="sd-muted sd-hint-sm">推演时按正文呼应判定进度（铺陈→升温→临界→高潮→落幕），使暗线有连续命运</p>
+        <label class="checkbox_label"><input type="checkbox" class="sd-livestage-enabled" ${settings.liveStageEnabled ? 'checked' : ''}> 伏笔显影</label>
       </div>
       <div class="sd-livefeature-row">
-        <label class="checkbox_label"><input type="checkbox" class="sd-worldchatter-enabled" ${settings.worldChatterEnabled ? 'checked' : ''}> 启用尘寰群生</label>
-        <p class="sd-muted sd-hint-sm">在「世界」页生成当前世界的芸芸众声</p>
+        <label class="checkbox_label"><input type="checkbox" class="sd-worldchatter-enabled" ${settings.worldChatterEnabled ? 'checked' : ''}> 尘寰群生</label>
       </div>
       <div class="sd-livefeature-row">
-        <label class="checkbox_label"><input type="checkbox" class="sd-geopolitics-enabled" ${settings.geopoliticsEnabled ? 'checked' : ''}> 启用世界格局</label>
-        <p class="sd-muted sd-hint-sm">势力格局、地缘张力与世界事件，并作为世界回声的上游源头</p>
+        <label class="checkbox_label"><input type="checkbox" class="sd-geopolitics-enabled" ${settings.geopoliticsEnabled ? 'checked' : ''}> 世界格局</label>
       </div>
     </section>
     ${renderBackstageBlueprintCard()}
@@ -5559,10 +5538,8 @@ function renderDirectorSettingsTab() {
         <summary><b>幕后提示词</b><button type="button" class="sd-icon-btn sd-icon-sm sd-expand-editor" data-target="sd-system-prompt" data-title="幕后提示词" title="展开编辑" aria-label="展开编辑"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button></summary>
         <textarea class="text_pole sd-textarea sd-system-prompt" spellcheck="false">${htmlEscape(settings.systemPrompt || DEFAULT_SYSTEM_PROMPT)}</textarea>
       </details>
-    </section>
-    <section class="sd-card">
       <details class="sd-plain-fold sd-director-title-fold" data-acc="output-schema">
-        <summary><b>输出格式</b><span class="sd-summary-note">推演返回的JSON结构，一般无需改动</span></summary>
+        <summary><b>输出格式</b><span class="sd-summary-note">一般无需改动</span></summary>
         <textarea class="text_pole sd-textarea sd-output-schema" spellcheck="false">${htmlEscape(settings.outputSchemaText || JSON_SCHEMA_TEXT)}</textarea>
       </details>
       <div class="sd-button-row"><button class="sd-btn sd-save-director-settings">保存幕后</button><button class="sd-btn sd-restore-system" title="找回更新前你上一次使用的提示词与输出格式" ${(settings.systemPromptBackup || settings.outputSchemaBackup) ? '' : 'disabled'}>恢复上次</button><button class="sd-btn sd-reset-system">恢复默认</button></div>
@@ -5591,47 +5568,6 @@ function renderLogEntry(log, index) {
       <pre class="sd-term">${htmlEscape(log.response || '暂无')}</pre>
     </div>
   </details>`;
-}
-
-// 提取·世界书（取材式·独立于主线）：刷新→下拉多选书→选中书展开条目勾选。折叠态持久。
-function renderTtsExtractWorldBooks() {
-  const t = settings.tts || {};
-  const boundNames = contextScanCache.boundWorldBookNames || detectBoundWorldBookNames();
-  const allNames = uniqueClean([...boundNames, ...(contextScanCache.worldBookNames || [])]).filter(Boolean);
-  const selected = ttsExtractWorldBooks().filter((n) => allNames.includes(n));
-  if (ttsExtractWorldView && !allNames.includes(ttsExtractWorldView)) ttsExtractWorldView = '';
-  const viewName = ttsExtractWorldView || selected[selected.length - 1] || '';
-  const head = `<div class="sd-tts-extract-wb-head"><span>世界书</span><button type="button" class="sd-btn sd-mini-btn sd-tts-extract-wb-scan"><i class="fa-solid fa-rotate"></i> ${allNames.length ? '刷新' : '扫描'}</button></div>`;
-  if (!allNames.length) {
-    return `<div class="sd-tts-extract-wb">${head}</div>`;
-  }
-  const bookRows = allNames.map((name) => `
-    <div class="sd-tts-extract-wb-row${viewName === name ? ' sd-tts-extract-wb-viewing' : ''}">
-      <input type="checkbox" class="sd-tts-extract-wb-toggle" data-name="${htmlEscape(name)}"${selected.includes(name) ? ' checked' : ''} title="选中作为提取参照">
-      <button type="button" class="sd-tts-extract-wb-name" data-name="${htmlEscape(name)}"><span>${htmlEscape(name)}</span>${boundNames.includes(name) ? '<em class="sd-tts-extract-wb-tag">绑定</em>' : ''}</button>
-    </div>`).join('');
-  const items = viewName ? (contextScanCache.worldBooks?.[viewName] || []) : [];
-  let itemSelCount = 0;
-  const itemRows = items.map((item, index) => {
-    const id = getContextItemId(item, index);
-    const title = item.name || item.comment || (Array.isArray(item.key) ? item.key.join(', ') : item.key) || `条目 ${index + 1}`;
-    const checked = isTtsExtractWorldItemSelected(viewName, id, item.enabled);
-    if (checked) itemSelCount++;
-    return `<label class="sd-tts-extract-wb-item"><input type="checkbox" class="sd-tts-extract-wb-check" data-book="${htmlEscape(viewName)}" data-id="${htmlEscape(String(id))}"${checked ? ' checked' : ''}><span>${htmlEscape(title)}</span></label>`;
-  }).join('');
-  const headRight = selected.length >= 2 ? `${selected.length} 项` : (selected.length === 1 ? htmlEscape(selected[0]) : '未选择');
-  return `<div class="sd-tts-extract-wb">${head}
-    <details class="sd-tts-extract-wb-dropdown" data-fold="wb"${t.extractWbFoldOpen !== false ? ' open' : ''}>
-      <summary><span>选择</span><b>${headRight}</b></summary>
-      <div class="sd-tts-extract-wb-list">${bookRows}</div>
-    </details>
-    ${viewName
-      ? `<details class="sd-tts-extract-wb-itemfold" data-fold="items"${t.extractItemsFoldOpen !== false ? ' open' : ''}>
-          <summary><span>${htmlEscape(viewName)} · 条目</span><b>已选 ${itemSelCount}/${items.length}</b></summary>
-          <div class="sd-tts-extract-wb-items">${itemRows || '<span class="sd-muted" style="font-size:.82em">该世界书暂无条目。</span>'}</div>
-        </details>`
-      : '<span class="sd-muted" style="font-size:.78em">勾选或点击书名查看条目，再按需勾选要带的条目。</span>'}
-  </div>`;
 }
 
 function renderTtsVoiceMapRows(map, lib = []) {
@@ -5757,13 +5693,8 @@ function renderTtsProviderConnection(provider, p) {
     const epEmoji = (name) => name.includes('国际') ? '🌏 国际' : name.includes('备用') ? '🇨🇳 备用' : '🇨🇳 国内';
     return `
       <label>API Key</label><input class="text_pole sd-tts-key" type="password" placeholder="MiniMax API Key" value="${htmlEscape(p.apiKey || '')}">
-      <label>URL</label><select class="text_pole sd-tts-endpoint">${endpoints.map(([name, url]) => `<option value="${htmlEscape(url)}" ${url === p.endpoint ? 'selected' : ''}>${epEmoji(name)}</option>`).join('')}</select>
-      <p class="sd-muted sd-hint-sm sd-tts-endpoint-url">${htmlEscape(p.endpoint || '')}</p>
-      ${modelField}${formatField}
-      <details class="sd-plain-fold"><summary>高级连接</summary>
-        <label>反代地址（可选）</label><input class="text_pole sd-tts-proxy" value="${htmlEscape(p.proxyBase || '')}" placeholder="留空直连">
-        <label>Group ID（可选）</label><input class="text_pole sd-tts-group-id" value="${htmlEscape(p.groupId || '')}">
-      </details>`;
+      <label>URL</label><select class="text_pole sd-tts-endpoint">${endpoints.map(([name, url]) => `<option value="${htmlEscape(url)}" ${url === p.endpoint ? 'selected' : ''}>${epEmoji(name)} · ${htmlEscape(url)}</option>`).join('')}</select>
+      ${modelField}${formatField}`;
   }
   if (provider.id === 'doubao') {
     const authMode = p.authMode === 'legacy' ? 'legacy' : 'apiKey';
@@ -5784,15 +5715,7 @@ function renderTtsProviderConnection(provider, p) {
   }
   return `
     <label>API Key</label><input class="text_pole sd-tts-key" type="password" placeholder="ElevenLabs API Key" value="${htmlEscape(p.apiKey || '')}">
-    ${modelField}${formatField}
-    <details class="sd-plain-fold"><summary>高级连接</summary>
-      <label>API 基址</label><input class="text_pole sd-tts-endpoint" value="${htmlEscape(p.endpoint || '')}">
-      <label>反代基址（可选）</label><input class="text_pole sd-tts-proxy" value="${htmlEscape(p.proxyBase || '')}" placeholder="留空直连">
-      <label>语言代码（可选）</label><input class="text_pole sd-tts-language-code" value="${htmlEscape(p.languageCode || '')}" placeholder="如 zh、en、ja">
-      <label>文本规范化</label><select class="text_pole sd-tts-text-normalization">${renderTtsProviderOptions([
-        { value: 'auto', label: '自动' }, { value: 'on', label: '开启' }, { value: 'off', label: '关闭' },
-      ], p.applyTextNormalization || 'auto')}</select>
-    </details>`;
+    ${modelField}${formatField}`;
 }
 
 function renderTtsProviderParams(provider, p, dis) {
@@ -5831,7 +5754,7 @@ function renderTtsMinimaxExtras(provider, p, dis) {
   if (provider.id !== 'minimax') return '';
   return `
     <section class="sd-card ${dis}"><details class="sd-plain-fold" data-acc="tts-lang-fx">
-      <summary><b>语言增强/音效器</b></summary>
+      <summary><b>其他参数</b></summary>
       <label>语言增强</label><div class="sd-muted sd-hint-sm sd-tts-fx-hint">混合中英用自动即可；粤语须选粤语/广东话</div>
       <select class="text_pole sd-tts-langboost">${renderTtsProviderOptions(provider.languageBoostOptions, p.languageBoost || 'auto')}</select>
       <label style="margin-top:10px">音效</label><div class="sd-muted sd-hint-sm sd-tts-fx-hint">全局生效，慎用</div>
@@ -5865,12 +5788,12 @@ function renderTtsTab() {
   const activeGuidanceScheme = ttsGuidanceSchemeForValue(extractScheme);
   const dis = t.enabled ? '' : 'sd-disabled-card';
   return `
-    <section class="sd-card">
-      <div class="sd-toggle-row">
-        <label class="checkbox_label"><input type="checkbox" class="sd-tts-enabled" ${t.enabled ? 'checked' : ''}> 启用配音</label>
+    <section class="sd-card sd-tts-model-card">
+      <h3>模型选择</h3>
+      <div class="sd-tts-model-row">
+        <select class="text_pole sd-tts-provider" aria-label="模型选择">${providers.map((item) => `<option value="${htmlEscape(item.id)}" ${item.id === providerId ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('')}</select>
+        <button type="button" class="sd-btn sd-tts-enabled ${t.enabled ? 'is-enabled' : ''}" aria-pressed="${t.enabled ? 'true' : 'false'}">${t.enabled ? '已启用' : '未启用'}</button>
       </div>
-      <label>配音模型</label>
-      <select class="text_pole sd-tts-provider">${providers.map((item) => `<option value="${htmlEscape(item.id)}" ${item.id === providerId ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('')}</select>
     </section>
     <section class="sd-card ${dis}">
       <details class="sd-plain-fold" data-acc="tts-api" open>
@@ -5887,16 +5810,6 @@ function renderTtsTab() {
       </details>
     </section>
     <section class="sd-card ${dis}">
-      <details class="sd-plain-fold" data-acc="tts-extract-ctx">
-        <summary><b>人设参照</b></summary>
-        <div class="sd-tts-extract-tags">
-          <span class="sd-reader-setup-tag"><i class="fa-solid fa-user"></i> 角色：${htmlEscape(getCharacterName() || '未选择')}</span>
-          <span class="sd-reader-setup-tag"><i class="fa-solid fa-circle-user"></i> 我：${htmlEscape(getPersonaName() || '未选择')}</span>
-        </div>
-        ${renderTtsExtractWorldBooks()}
-      </details>
-    </section>
-    <section class="sd-card ${dis}">
       <details class="sd-plain-fold" data-acc="tts-lib" open>
         <summary><b>音色库</b></summary>
         <label>试听台词</label><input class="text_pole sd-tts-test-text" placeholder="输入一句话，用于各音色试听" value="${htmlEscape(t.testText || '你好，这是一段试听。')}">
@@ -5906,7 +5819,7 @@ function renderTtsTab() {
     </section>
     <section class="sd-card ${dis}">
       <details class="sd-plain-fold" data-acc="tts-npc" open>
-        <summary><b>泛用音色库</b><span class="sd-tts-sub">提取模型自动根据此库为非主角色人物适配音色</span></summary>
+        <summary><b>泛用音色</b><span class="sd-tts-sub">自动根据此库为NPC适配</span></summary>
         <label class="checkbox_label"><input type="checkbox" class="sd-tts-npc-enabled" ${t.npcEnabled ? 'checked' : ''}> 启用</label>
         <div class="sd-tts-npc-list sd-scroll">${renderTtsNpcRows(Array.isArray(p.npcArchetypes) ? p.npcArchetypes : [])}</div>
         <div class="sd-button-row">
@@ -5974,11 +5887,9 @@ function bindTtsTabEvents(root) {
   const providerId = ttsProviderId();
   const provider = getTtsProvider(providerId);
   const p = ttsProviderConfig(providerId);
-  maybeAutoScanTtsExtract();   // 首开配音页：懒加载补扫世界书，让「人设参照」已选状态免手动刷新即显（重进/重启后）
-
   // 总开关
-  root.querySelector('.sd-tts-enabled')?.addEventListener('change', (e) => {
-    t.enabled = !!e.target.checked;
+  root.querySelector('.sd-tts-enabled')?.addEventListener('click', () => {
+    t.enabled = !t.enabled;
     saveSettings();
     if (t.enabled) ttsStartChat(); else ttsStopChat();
     renderModal();
@@ -6015,11 +5926,6 @@ function bindTtsTabEvents(root) {
   bindField('.sd-tts-sample-rate', p, 'sampleRate', (v) => Number(v) || 24000);
   bindField('.sd-tts-language-code', p, 'languageCode', (v) => String(v || '').trim());
   bindField('.sd-tts-text-normalization', p, 'applyTextNormalization');
-  // URL 选择变化时，标题下方实时显示具体网址
-  root.querySelector('.sd-tts-endpoint')?.addEventListener('change', (e) => {
-    const out = root.querySelector('.sd-tts-endpoint-url');
-    if (out) out.textContent = e.target.value || '';
-  });
   root.querySelector('.sd-tts-model')?.addEventListener('change', (e) => {
     p.model = e.target.value;
     saveSettings();
@@ -6115,56 +6021,6 @@ function bindTtsTabEvents(root) {
   root.querySelector('.sd-tts-langboost')?.addEventListener('change', (e) => { p.languageBoost = e.target.value || ''; saveSettings(); });
   root.querySelector('.sd-tts-soundfx')?.addEventListener('change', (e) => { p.soundEffects = e.target.value || ''; saveSettings(); });
   root.querySelector('.sd-tts-soundfx-auto')?.addEventListener('change', (e) => { p.soundFxAuto = !!e.target.checked; saveSettings(); });
-
-  // 提取·世界书（取材式）：扫描 / 折叠记忆 / 书级多选 / 点书名切查看 / 条目勾选
-  root.querySelector('.sd-tts-extract-wb-scan')?.addEventListener('click', async (e) => {
-    const btn = e.currentTarget;
-    const icon = btn.querySelector('i');
-    if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
-    btn.disabled = true;
-    try { await refreshWorldBooks(false); } catch (_) {}
-    // 已选书按需补拉条目（主线只拉主线选中的书）
-    for (const n of ttsExtractWorldBooks()) { if (!Array.isArray(contextScanCache.worldBooks?.[n])) { try { await coreadEnsureWorldEntries(n); } catch (_) {} } }
-    renderModal();
-  });
-  // 两个折叠栏（下拉「选择」/ 条目列）持久化开合
-  root.querySelectorAll('.sd-tts-extract-wb-dropdown, .sd-tts-extract-wb-itemfold').forEach((d) => {
-    d.addEventListener('toggle', () => {
-      if (d.dataset.fold === 'wb') t.extractWbFoldOpen = d.open;
-      else if (d.dataset.fold === 'items') t.extractItemsFoldOpen = d.open;
-      saveSettings();
-    });
-  });
-  // 书级多选：勾选即切到该书查看条目 + 按需补拉
-  root.querySelectorAll('.sd-tts-extract-wb-toggle').forEach((cb) => {
-    cb.addEventListener('change', async (e) => {
-      const name = e.target.dataset.name;
-      toggleTtsExtractWorldBook(name, !!e.target.checked);
-      if (e.target.checked) { ttsExtractWorldView = name; if (!Array.isArray(contextScanCache.worldBooks?.[name])) { try { await coreadEnsureWorldEntries(name); } catch (_) {} } }
-      renderModal();
-    });
-  });
-  // 点书名：切到该书查看条目（不改选中态）+ 按需补拉
-  root.querySelectorAll('.sd-tts-extract-wb-name').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const name = btn.dataset.name;
-      ttsExtractWorldView = name;
-      if (!Array.isArray(contextScanCache.worldBooks?.[name])) { try { await coreadEnsureWorldEntries(name); } catch (_) {} }
-      renderModal();
-    });
-  });
-  // 条目勾选：存 + 即时更新条目列标题「已选 N/M」计数（不整体重渲）
-  root.querySelectorAll('.sd-tts-extract-wb-check').forEach((cb) => {
-    cb.addEventListener('change', (e) => {
-      setTtsExtractWorldItemSelected(e.target.dataset.book, e.target.dataset.id, !!e.target.checked);
-      const fold = e.target.closest('.sd-tts-extract-wb-itemfold');
-      const b = fold?.querySelector('summary b');
-      if (b) {
-        const checks = fold.querySelectorAll('.sd-tts-extract-wb-check');
-        b.textContent = `已选 ${Array.from(checks).filter((c) => c.checked).length}/${checks.length}`;
-      }
-    });
-  });
 
   // 角色映射：增 / 删 / 改（始终读写本聊天、当前 Provider 的 store.ttsVoiceMaps）
   root.querySelector('.sd-tts-add-voice')?.addEventListener('click', () => {
@@ -6710,7 +6566,7 @@ const TTS_EXTRACT_SYSTEM = `你是有声剧配音指导导演，需从小说正�
 
 #### B类｜孤立单句场景
 - 场景特征：本句前后多为叙事动作描写，单句独立成段，缺乏对话上下文支撑（如动作场景中的零散喊话）。
-- 标注策略：此处声学模型缺上下文、纯 auto 易显平淡，你应当主动补一档温和情绪为它托底。结合句面含义与人设，给一个贴合人设的平缓情绪值（如 \`calm / fluent / happy\`）。这是 B 类的职责所在，遇到时须补足，避免因求稳而退回 auto。唯一限制：情绪须平缓，不给 \`angry / fearful\` 等激烈值（孤立单句配激烈情绪易显突兀）。
+- 标注策略：此处声学模型缺上下文、纯 auto 易显平淡，你应当主动补一档温和情绪为它托底。结合句面含义，给一个贴合当前语境的平缓情绪值（如 \`calm / fluent / happy\`）。这是 B 类的职责所在，遇到时须补足，避免因求稳而退回 auto。唯一限制：情绪须平缓，不给 \`angry / fearful\` 等激烈值（孤立单句配激烈情绪易显突兀）。
 
 #### C类｜亲密场景
 - 标注策略：按声线状态（主导方/承受方）执行第六节的专项细化规则。
@@ -6720,9 +6576,7 @@ const TTS_EXTRACT_SYSTEM = `你是有声剧配音指导导演，需从小说正�
 ### 判定纪律（硬性约束）
 1. 语境分类仅用于调整标注干预强度：A 类放手 auto、B 类主动托底、C 类专项细化，三档区别对待，避免混为一谈全填 auto。
 2. 语境类型为内部判断维度，禁止输出至最终 JSON，输出字段仅保留 \`speaker / text / emotion\`（可选 \`speed\`）。
-3. B 类补充的情绪必须贴合人设且强度平缓，不使用激烈情绪值。
-
-{{QM_CONTEXT}}
+3. B 类补充的情绪必须贴合上下文且强度平缓，不使用激烈情绪值。
 
 ### 一、有效台词判定
 有效台词＝角色在正文当下开口说出的话语，须被引号（「」『』“”、英文双引号""）包裹。无引号内容一律不计入。
@@ -6748,8 +6602,7 @@ const TTS_EXTRACT_SYSTEM = `你是有声剧配音指导导演，需从小说正�
 1. **显式归属优先**：台词紧邻处有明确姓名/身份提示（如「XX说」「XX冷笑道」），直接取对应角色名。
    > 易错示例：张三皱眉道：“我不会同意的。” → speaker=张三
    > 提醒：台词内的“我”是张三的自称，不能据此混淆说话人；说话人永远以台词外的归属描述为准。
-2. **人设还原次之**：仅当台词外的说话人以人称代词/泛称（我、你、老先生等）表述时，结合【角色定位】人设将其还原为角色本名（第一人称“我”通常是叙事主体角色、第二人称“你”通常是对话另一方）；禁止直接填写「我」「你」。
-   > 示例：我转过身道：“走吧。” + 【角色定位】指明叙事主体为沈清 → speaker=沈清
+2. **上下文还原次之**：仅当台词外的说话人以人称代词或泛称表述时，尝试从本段正文的明确上下文还原角色本名；禁止直接填写「我」「你」。
 3. 无法明确判定时填「未知」，严禁将旁白叙事者标注为说话人。
 
 ### 三、台词文本（text）
@@ -6774,9 +6627,9 @@ const TTS_EXTRACT_SYSTEM = `你是有声剧配音指导导演，需从小说正�
 
 标注前**先按上文语境研判定档**（A/B/C），再据下列细则落值：
 1. **A 类放手 auto**：连贯对话有充足上下文，情绪几乎全填 auto，仅整段明确情绪拐点标一次。
-2. **B 类主动托底**：孤立单句应给一档**贴人设的平缓情绪**（calm/fluent/happy 等）为声学模型托底，不要退回 auto；但不给 angry/fearful 等激烈值。
+2. **B 类主动托底**：孤立单句应给一档**贴合语境的平缓情绪**（calm/fluent/happy 等）为声学模型托底，不要退回 auto；但不给 angry/fearful 等激烈值。
 3. **强信号从其信号**：无论哪档，正文明写怒吼/嘶喊/失声痛哭/颤抖惊惧/压低耳语等清晰强信号时，直接标对应的具体情绪（此时可用激烈值）。
-4. **贴合人设**：标具体情绪时，强度与表达须符合角色定位，避免脱离人设的 OOC 标注。
+4. **贴合正文**：标具体情绪时，强度与表达须符合正文中角色的当下表现，避免无依据的夸张标注。
 5. **连贯抗跳变**：同一角色相邻台词情绪保持连续，绝不因一句纯叙事动作就切换（见顶层规则1）。
    > 错误示范：同角色相邻两句无任何剧情转折，前句标 happy、后句突然标 surprised
 6. 仅当语境模糊、既无对话上下文也无任何情绪线索、且不属 B 类需托底的情形时，才回落 auto。auto 的定位是让权给声学模型（见顶层规则2）。
@@ -6800,8 +6653,6 @@ const TTS_EXTRACT_SYSTEM = `你是有声剧配音指导导演，需从小说正�
 
 // 新 Provider 推荐方案的共用基础规则：不作为独立“通用模板”暴露给用户。
 const TTS_EXTRACT_PROVIDER_BASE = `你是小说配音台词提取助手。请从正文中按出现顺序提取角色当下真正说出口的台词，并仅返回 JSON。
-
-{{QM_CONTEXT}}
 
 规则：
 1. 只提取由引号包裹、且角色在当前场景真实发声的内容；排除心理活动、作品名、强调词、回忆引用和未说出口的话。
@@ -6963,17 +6814,7 @@ async function extractDialogue(text) {
   const cfg = ttsExtractApiConfig();
   const t = settings.tts || {};
   const p = ttsProviderConfig();
-  let sysPrompt = ttsResolvedExtractPrompt();
-  // 提取上下文注入（治 OOC/情绪失准/人称锚定）：把角色人设 + user 人设（+选中的世界书条目）喂给提取模型，
-  // 让它判情绪有性格基线、据人设把「我/你」锚定到具体角色。取材式——从 ST 现成读取器拉，与主线共享同源。
-  // 顺序治理：默认提示词含 {{QM_CONTEXT}} 占位符 → 把人设/世界书插在「规则之前」（先立"谁"和"世界"，规则再带着人设去套）。
-  // 自定义提示词若无占位符则回落追加末尾（老行为，向后兼容）。上下文为空时占位符清成空串。
-  const ctxBlock = ttsBuildExtractContext();
-  if (sysPrompt.includes('{{QM_CONTEXT}}')) {
-    sysPrompt = sysPrompt.replace('{{QM_CONTEXT}}', ctxBlock ? ctxBlock.replace(/^\n+/, '') : '');
-  } else {
-    sysPrompt += ctxBlock;
-  }
+  let sysPrompt = ttsResolvedExtractPrompt().replace(/\{\{QM_CONTEXT\}\}/g, '');
   // NPC 泛用音色开启且配了原型：追加归类指令，让模型给非主角台词标一个最贴的原型标签
   const archetypes = (Array.isArray(p.npcArchetypes) ? p.npcArchetypes : []).filter((a) => a.label && a.voiceId);
   const npcOn = t.npcEnabled && archetypes.length > 0;
@@ -7253,8 +7094,6 @@ let ttsCurrentUrl = '';            // 当前 objectURL（播完撤销）
 let ttsSeqToken = 0;               // 连播序列令牌：自增即令旧连播失效（停止/重启）
 let ttsPlayCleanup = null;         // 当前 ttsPlayBlob 的收尾回调：停止时主动调，令 await 的播放 Promise 立即 resolve、旧连播循环得以解开（不被暂停的音频卡死）
 let ttsPopupEl = null;             // 快捷窗 DOM
-let ttsExtractWorldView = '';      // 提取卡：当前查看条目的世界书名
-
 // 当前生效的角色→音色映射：按聊天、按 Provider 双重隔离。
 // 首次升级时把旧 store.ttsVoiceMap 无损迁到 minimax，避免切换供应商后音色 ID 串用。
 function ttsActiveVoiceMap() {
@@ -7263,71 +7102,6 @@ function ttsActiveVoiceMap() {
   const providerId = ttsProviderId();
   if (!Array.isArray(store.ttsVoiceMaps[providerId])) store.ttsVoiceMaps[providerId] = [];
   return store.ttsVoiceMaps[providerId];
-}
-
-// 配音「人设参照」世界书选择：**按聊天存**（绑当前聊天·类比 ttsVoiceMap）。不同聊天各自记住绑哪些书/条目。
-// 未打开聊天时 store 为临时对象，选择为空、界面显示未选。返回真实引用（改后 saveMetadata 落盘）。
-function ttsExtractWorldItemsStore() {
-  const store = getChatStore();
-  if (!isPlainObject(store.ttsExtractWorldItems)) store.ttsExtractWorldItems = {};
-  return store.ttsExtractWorldItems;
-}
-// 书级多选（按聊天）。
-function ttsExtractWorldBooks() {
-  const store = getChatStore();
-  if (!Array.isArray(store.ttsExtractWorldBooks)) store.ttsExtractWorldBooks = [];
-  return store.ttsExtractWorldBooks;
-}
-function toggleTtsExtractWorldBook(name, selected) {
-  if (!name) return;
-  const arr = ttsExtractWorldBooks();
-  const i = arr.indexOf(name);
-  const want = typeof selected === 'boolean' ? selected : i < 0;
-  if (want && i < 0) arr.push(name);
-  else if (!want && i >= 0) arr.splice(i, 1);
-  saveMetadata();
-}
-function isTtsExtractWorldItemSelected(book, itemId, fallbackEnabled) {
-  const store = ttsExtractWorldItemsStore()[book];
-  if (store && typeof store[itemId] === 'boolean') return store[itemId];
-  return fallbackEnabled !== false;
-}
-function setTtsExtractWorldItemSelected(book, itemId, selected) {
-  const store = ttsExtractWorldItemsStore();
-  if (!isPlainObject(store[book])) store[book] = {};
-  store[book][itemId] = !!selected;
-  saveMetadata();
-}
-
-// 组装提取上下文块（角色/persona 人设 + 选中的世界书条目），追加进提取系统提示词。
-// 人设默认注入（治 OOC/情绪/人称）；世界书只注入用户勾选的条目。都空则返回空串。世界书用主线扫描缓存 contextScanCache（同源）。
-function ttsBuildExtractContext() {
-  const blocks = [];
-  // 人设：默认注入（AI 角色 + user 人设）。取材式，从 ST 现成读取器拉。
-  const charName = getCharacterName();
-  const charDesc = getCharacterDescription();
-  const userName = getPersonaName();
-  const userDesc = getPersonaDescription();
-  const plines = [];
-  if (charName) plines.push(`- AI 角色：${charName}${charDesc ? `\n  人设：${clipLog(charDesc, 800)}` : ''}`);
-  if (userName) plines.push(`- 用户（user）：${userName}${userDesc && userDesc !== '{{persona}}' ? `\n  人设：${clipLog(userDesc, 500)}` : ''}`);
-  if (plines.length) blocks.push(`【角色定位】判断说话人身份与情绪时，须结合以下人设基线（性格决定情绪的表达方式与上限，勿判成脱离性格的 OOC 情绪；正文用第一/第二人称叙事时据此把"我/你"还原到对应角色本名）：\n${plines.join('\n')}`);
-  // 世界书：只注入「书级选中 且 条目勾选」的条目（独立于主线选择）。
-  const wb = contextScanCache?.worldBooks || {};
-  const selectedBooks = ttsExtractWorldBooks();
-  const chunks = [];
-  for (const name of selectedBooks) {
-    const entries = Array.isArray(wb[name]) ? wb[name] : [];
-    entries.forEach((it, index) => {
-      const id = getContextItemId(it, index);
-      if (!isTtsExtractWorldItemSelected(name, id, it?.enabled)) return;
-      const c = cleanContextText(it?.content || it?.prompt || '');
-      if (c) chunks.push(c);
-    });
-  }
-  const joined = chunks.join('\n').trim();
-  if (joined) blocks.push(`【世界设定参考】辅助理解专有名词、角色关系与情境（仅参考，不影响台词判定规则）：\n${clipLog(joined, 2000)}`);
-  return blocks.length ? `\n\n${blocks.join('\n\n')}` : '';
 }
 
 // 落盘当前映射：写本聊天元数据
@@ -18820,6 +18594,7 @@ function theaterScriptLibraryCfg() {
     setSearch: (v) => { getTheater().scriptSearch = v; },
     exportMode: theaterExportMode,
     selection: theaterExportSelection,
+    inlineCount: true,
     emptyText: '剧札空空，写一幕番外吧',
     searchPlaceholder: '搜索剧札标题…',
   };
@@ -18835,29 +18610,31 @@ function renderTheaterTab() {
   const out = t.lastOutput;
   return `
     <section class="sd-card">
-      <h3>番外小剧场栏目组</h3>
-      <label>API</label>
-      <div class="sd-inline-field">
-        <select class="text_pole sd-theater-api-select">
-          <option value="">跟随当前 API 设置</option>
-          ${profiles.map((p) => `<option value="${htmlEscape(p.id)}" ${p.id === t.apiProfileId ? 'selected' : ''}>${htmlEscape(p.name || p.model || '未命名API')}</option>`).join('')}
-        </select>
-      </div>
-      <label>预设</label>
-      <div class="sd-inline-field">
-        <select class="text_pole sd-theater-preset-select">
-          <option value="">无</option>
-          ${presetNames.map((n) => `<option value="${htmlEscape(n)}" ${n === t.presetName ? 'selected' : ''}>${htmlEscape(n)}</option>`).join('')}
-        </select>
-        <button type="button" class="sd-btn sd-mini-btn sd-theater-refresh-preset"><i class="fa-solid fa-rotate"></i>读取</button>
-      </div>
-      ${t.presetName
-        ? renderTheaterPresetEntries(t.presetName)
-        : ''}
-      <div class="sd-theater-history-row">
-        <label class="checkbox_label"><input type="checkbox" class="sd-theater-use-history" ${t.useChatHistory !== false ? 'checked' : ''}> 衔接当前正文</label>
-        <label class="sd-depth-field"><span>参考楼层</span><input class="text_pole sd-theater-history-depth" type="number" min="1" max="200" value="${htmlEscape(t.historyDepth || 5)}" ${t.useChatHistory !== false ? '' : 'disabled'}></label>
-      </div>
+      <details class="sd-plain-fold sd-theater-settings-fold" data-acc="theater-settings" open>
+        <summary><b>番外小剧场栏目组</b></summary>
+        <div class="sd-theater-settings-body">
+          <label>API</label>
+          <select class="text_pole sd-theater-api-select">
+            <option value="">跟随当前 API 设置</option>
+            ${profiles.map((p) => `<option value="${htmlEscape(p.id)}" ${p.id === t.apiProfileId ? 'selected' : ''}>${htmlEscape(p.name || p.model || '未命名API')}</option>`).join('')}
+          </select>
+          <label>预设</label>
+          <div class="sd-inline-field sd-theater-preset-row">
+            <select class="text_pole sd-theater-preset-select">
+              <option value="">无</option>
+              ${presetNames.map((n) => `<option value="${htmlEscape(n)}" ${n === t.presetName ? 'selected' : ''}>${htmlEscape(n)}</option>`).join('')}
+            </select>
+            <button type="button" class="sd-icon-btn sd-theater-refresh-preset" title="读取预设" aria-label="读取预设"><i class="fa-solid fa-rotate"></i></button>
+          </div>
+          ${t.presetName ? renderTheaterPresetEntries(t.presetName) : ''}
+          <div class="sd-theater-history-row">
+            <label class="checkbox_label"><input type="checkbox" class="sd-theater-use-history" ${t.useChatHistory !== false ? 'checked' : ''}> 衔接当前正文</label>
+            <label class="sd-depth-field"><span>参考楼层</span><input class="text_pole sd-theater-history-depth" type="number" min="1" max="200" value="${htmlEscape(t.historyDepth || 5)}" ${t.useChatHistory !== false ? '' : 'disabled'}></label>
+          </div>
+        </div>
+      </details>
+    </section>
+    <section class="sd-card sd-theater-command-card">
       <div class="sd-field-head"><label>此幕指令</label><button type="button" class="sd-icon-btn sd-icon-sm sd-expand-editor" data-target="sd-theater-instruction" data-title="此幕指令" title="展开编辑" aria-label="展开编辑"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button></div>
       <textarea class="text_pole sd-textarea sd-theater-instruction sd-theater-instruction-compact" spellcheck="false" placeholder="${htmlEscape(THEATER_INSTRUCTION_PLACEHOLDER)}">${htmlEscape(t.instruction || '')}</textarea>
       <div class="sd-button-row">
@@ -19594,7 +19371,6 @@ function bindEvents() {
     contextScanCache.worldScannedAt = '';
     contextScanCache.boundWorldBookNames = [];
     contextAutoScanned = false;
-    ttsExtractAutoScanned = false;   // 切聊天：配音「人设参照」也重新按新聊天补扫一次
     ttsLineCache.clear();      // 切聊天：旧消息台词缓存失效
     coreadInvalidatePool();    // 切聊天：反哺主线切片池随新聊天的绑定档案重算
     companionWorldView = '';   // 切聊天：世界书已按聊天分存，查看视图回到未选·避免跨聊天残留

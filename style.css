@@ -949,7 +949,26 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 /* 入场动画只在「打开」首帧（modal 带 .sd-anim-in）播放，静默重渲染不重播，消除刷新闪动 */
 #story-director-modal.sd-anim-in .sd-card { animation: sd-fade-up .26s ease both; }
 
-#story-director-modal .sd-card h3 { margin: 0 0 10px; font-size: 1.06em; letter-spacing: .03em; color: var(--sd-text); }
+#story-director-modal .sd-card h3 { margin: 0 0 10px; font-size: 15px; line-height: 1.35; letter-spacing: .03em; color: var(--sd-text); }
+
+/* 主面板排版基线：卡片标题、折叠标题与灰色说明在所有 tab 保持同一字号层级。 */
+#story-director-modal .sd-card > h3,
+#story-director-modal .sd-card-title-row > h3,
+#story-director-modal .sd-template-head h3,
+#story-director-modal .sd-section-title h3,
+#story-director-modal .sd-plain-fold > summary > b,
+#story-director-modal .sd-accordion > summary > b {
+  font-size: 15px !important;
+  line-height: 1.35 !important;
+  letter-spacing: .03em;
+}
+#story-director-modal .sd-hint-sm,
+#story-director-modal .sd-summary-note,
+#story-director-modal .sd-tts-sub,
+#story-director-modal .sd-accordion > summary > span {
+  font-size: 12px !important;
+  line-height: 1.4;
+}
 
 #story-director-modal .sd-section-title {
   display: flex;
@@ -1300,6 +1319,22 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-plain-fold[data-acc^="tts-"][open] > summary { margin-bottom: 8px; }
 /* 有声卡片收紧内边距：折叠态不显空旷（展开内容自带上间距） */
 #story-director-modal .sd-card:has(> .sd-plain-fold[data-acc^="tts-"]) { padding: 11px 16px; }
+
+/* 直接作为卡片标题的折叠栏统一采用「主音色匹配」的紧凑高度与垂直居中。 */
+#story-director-modal .sd-card > .sd-plain-fold {
+  margin-top: 0;
+}
+#story-director-modal .sd-card > .sd-plain-fold > summary {
+  min-height: 22px;
+  padding: 0 !important;
+  align-items: center !important;
+}
+#story-director-modal .sd-card:has(> .sd-plain-fold) {
+  padding: 11px 16px;
+}
+#story-director-modal .sd-card > .sd-plain-fold[open] > summary {
+  margin-bottom: 8px;
+}
 /* 有声输入框占位符字号略小 */
 #story-director-modal .sd-tts-voice-row .text_pole::placeholder { font-size: 12px; }
 
@@ -1499,6 +1534,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 
 #story-director-modal .sd-template-head h3 { margin: 0; }
+#story-director-modal .sd-template-title { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 
 #story-director-modal .sd-template-io-buttons {
   display: flex;
@@ -1512,6 +1548,16 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   font-size: .92em;
   white-space: nowrap;
 }
+#story-director-modal .sd-template-title .sd-tpl-count {
+  margin-left: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--sd-glass);
+  border: 1px solid var(--sd-hairline);
+  font-size: 11px;
+  line-height: 1.25;
+}
+#story-director-modal .sd-template-head .sd-template-io-buttons { margin-left: auto; }
 
 #story-director-modal .sd-export-bar {
   display: flex;
@@ -1542,7 +1588,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   align-items: center;
   gap: 10px;
   cursor: pointer;
-  padding: 13px 15px;
+  min-height: 44px;
+  padding: 10px 15px;
 }
 
 #story-director-modal .sd-accordion > summary span { color: var(--sd-muted); font-size: .9em; }
@@ -1564,6 +1611,9 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 #story-director-modal .sd-base-row .checkbox_label { margin: 0 !important; }
 #story-director-modal .sd-base-row .sd-depth-field { margin-left: auto; }
+#story-director-modal .sd-context-reference-row { flex-wrap: nowrap; }
+#story-director-modal .sd-context-reference-row .sd-depth-field { margin-left: auto !important; }
+#story-director-modal .sd-context-identity-card .sd-base-row { justify-content: space-between; }
 
 #story-director-modal .sd-fixed-ref {
   display: flex;
@@ -1664,6 +1714,15 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   background: var(--sd-input-bg) !important;
   overflow: hidden;
 }
+#story-director-modal .sd-context-source-pick {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  align-items: start;
+  gap: 8px;
+  margin: 10px 15px;
+}
+#story-director-modal .sd-context-source-pick > .sd-dropdown { margin: 0; min-width: 0; }
+#story-director-modal .sd-context-source-pick > .sd-icon-btn { width: 36px; height: 36px; min-width: 36px; }
 #story-director-modal .sd-dropdown-head {
   display: flex !important;
   align-items: center;
@@ -2513,7 +2572,25 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   gap: 8px 16px;
   padding: 6px 2px 2px;
 }
-#story-director-modal .sd-inject-section { margin: 0 !important; }
+#story-director-modal .sd-inject-section { display: inline-flex; align-items: center; gap: 7px; margin: 0 !important; cursor: pointer; }
+#story-director-modal .sd-inject-section > input { width: auto !important; min-width: auto !important; height: auto !important; appearance: auto !important; -webkit-appearance: checkbox !important; accent-color: var(--sd-accent); }
+#story-director-modal .sd-card-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+#story-director-modal .sd-card-title-row > h3,
+#story-director-modal .sd-card-title-row > p { margin: 0 !important; }
+#story-director-modal .sd-livefeature-row:first-of-type { margin-top: 8px; }
+
+/* 幕外设置与指令拆卡：设置折叠后保持紧凑，预设读取按钮不再挤压下拉栏。 */
+#story-director-modal .sd-theater-settings-body { min-width: 0; }
+#story-director-modal .sd-theater-settings-body > .text_pole { width: 100% !important; }
+#story-director-modal .sd-theater-preset-row { grid-template-columns: minmax(0, 1fr) 36px; }
+#story-director-modal .sd-theater-preset-row > .sd-icon-btn { width: 36px; height: 36px; min-width: 36px; }
+#story-director-modal .sd-theater-settings-body > .sd-context-block { margin-left: 0; margin-right: 0; width: 100%; }
+
+/* 配音模型开关使用明确的文字状态，避免与普通布尔胶囊混淆。 */
+#story-director-modal .sd-tts-model-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+#story-director-modal .sd-tts-model-row > .text_pole { margin: 0 !important; min-width: 0; }
+#story-director-modal .sd-tts-enabled { min-width: 76px; color: var(--sd-muted) !important; background: var(--sd-glass-weak) !important; }
+#story-director-modal .sd-tts-enabled.is-enabled { color: var(--sd-good, #4fae73) !important; border-color: color-mix(in srgb, var(--sd-good, #4fae73) 42%, var(--sd-border)) !important; background: color-mix(in srgb, var(--sd-good, #4fae73) 12%, var(--sd-glass-weak)) !important; }
 
 /* 字段标题行（标题 + 右上角展开编辑按钮） */
 #story-director-modal .sd-field-head {
@@ -3194,32 +3271,6 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-tts-prondict-row .text_pole { margin: 0 !important; }
 #story-director-modal .sd-tts-prondict-arrow { text-align: center; color: var(--sd-muted); }
 #story-director-modal .sd-tts-prondict-row .sd-tts-prondict-del { width: 34px; height: 34px; }
-/* 人设参照卡：身份标签 + 世界书取材式（刷新→下拉多选书→选中书展开条目勾选） */
-#story-director-modal .sd-tts-extract-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-#story-director-modal .sd-tts-extract-wb-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
-#story-director-modal .sd-tts-extract-wb-head > span { display: inline-flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-/* 下拉「选择」+ 条目列 两个折叠栏（同款 summary） */
-#story-director-modal .sd-tts-extract-wb-dropdown,
-#story-director-modal .sd-tts-extract-wb-itemfold { border: 1px solid var(--sd-hairline); border-radius: 10px; overflow: hidden; margin-bottom: 6px; }
-#story-director-modal .sd-tts-extract-wb-dropdown > summary,
-#story-director-modal .sd-tts-extract-wb-itemfold > summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; font-size: .86em; color: var(--sd-text); background: var(--sd-glass-weak); }
-#story-director-modal .sd-tts-extract-wb-dropdown > summary::-webkit-details-marker,
-#story-director-modal .sd-tts-extract-wb-itemfold > summary::-webkit-details-marker { display: none; }
-#story-director-modal .sd-tts-extract-wb-dropdown > summary span,
-#story-director-modal .sd-tts-extract-wb-itemfold > summary span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#story-director-modal .sd-tts-extract-wb-dropdown > summary b,
-#story-director-modal .sd-tts-extract-wb-itemfold > summary b { color: var(--sd-accent); font-weight: 600; font-size: .9em; flex: 0 0 auto; }
-/* 书列表（下拉体）：checkbox + 点击书名切查看 */
-#story-director-modal .sd-tts-extract-wb-list { max-height: 180px; overflow-y: auto; padding: 4px; }
-#story-director-modal .sd-tts-extract-wb-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 8px; }
-#story-director-modal .sd-tts-extract-wb-row.sd-tts-extract-wb-viewing { background: var(--sd-glass-weak); }
-#story-director-modal .sd-tts-extract-wb-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: transparent; border: 0; color: var(--sd-text); cursor: pointer; font: inherit; font-size: .85em; text-align: left; padding: 2px 0; }
-#story-director-modal .sd-tts-extract-wb-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#story-director-modal .sd-tts-extract-wb-tag { font-style: normal; font-size: .78em; color: var(--sd-accent); border: 1px solid var(--sd-hairline); border-radius: 6px; padding: 0 5px; flex: 0 0 auto; }
-/* 条目列（条目体） */
-#story-director-modal .sd-tts-extract-wb-items { max-height: 220px; overflow-y: auto; padding: 6px 10px; display: flex; flex-direction: column; gap: 6px; }
-#story-director-modal .sd-tts-extract-wb-item { display: flex; align-items: center; gap: 8px; font-size: .84em; color: var(--sd-text); cursor: pointer; }
-#story-director-modal .sd-tts-extract-wb-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 滑条全自绘：accent-color 只染填充/滑块，轨道仍是浏览器默认（浅主题下近白、糊在浅卡上看不见）。
    故 appearance:none 后显式画轨道(主题边框色) + 滑块(主题强调色)，双 ID + !important 压过 ST 移动端高特异性。 */
 #story-director-modal#story-director-modal input[type=range] {
