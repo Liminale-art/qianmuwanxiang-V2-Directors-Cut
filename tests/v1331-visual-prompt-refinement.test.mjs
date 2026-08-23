@@ -24,7 +24,7 @@ assert.match(css, /\.sd-inject-subfold\s*\{[^}]*border:[^}]*background:/);
 assert.match(source, /sd-inject-title[\s\S]*token[^<]*<\/span><span class="sd-inject-meta">[\s\S]*sd-edit-injection/);
 
 // 剧组之律默认只露出单一折叠标题，展开后才包含两份文本与操作按钮。
-assert.match(source, /data-acc="director-law">\s*<summary><span class="sd-director-law-title"><b>剧组之律<\/b><span class="sd-summary-note">一般无需改动<\/span><\/span><\/summary>[\s\S]*sd-system-prompt[\s\S]*sd-output-schema[\s\S]*sd-save-director-settings/);
+assert.match(source, /data-acc="director-law">\s*<summary><b>剧组之律<\/b><span class="sd-summary-note">一般无需改动<\/span><\/summary>[\s\S]*sd-system-prompt[\s\S]*sd-output-schema[\s\S]*sd-save-director-settings/);
 assert.doesNotMatch(source, /data-acc="director-law"[^>]*\sopen(?:\s|>)/);
 
 // 星核不再缩放位移：只用原位描边、辉光与虚线外环表达聚焦。

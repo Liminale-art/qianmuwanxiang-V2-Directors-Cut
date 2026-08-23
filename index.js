@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.33.1';
+const VERSION = '1.33.2';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -391,6 +391,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   systemPromptBackup: null,       // 「恢复上次」：模板更新覆盖前，自动备份用户上一份幕后提示词
   outputSchemaBackup: null,       // 「恢复上次」：同上，备份用户上一份输出格式
   logHistory: [],
+  logOpenState: {},               // API 与日志：按日志 ID 记忆展开状态，默认折叠
   templates: [
     {
       id: 'default-free-blueprint',
@@ -797,6 +798,7 @@ function migrateSettings(s) {
   s.outputSchemaHash = String(s.outputSchemaText || '') === JSON_SCHEMA_TEXT ? hashText(JSON_SCHEMA_TEXT) : '';
 
   if (!Array.isArray(s.logHistory)) s.logHistory = [];
+  if (!isPlainObject(s.logOpenState)) s.logOpenState = {};
   if (s.lastLog && typeof s.lastLog === 'object') {
     if (s.lastLog.status && s.lastLog.status !== 'none') {
       s.logHistory.unshift({
@@ -808,7 +810,9 @@ function migrateSettings(s) {
         response: clipLog(s.lastLog.response),
         error: s.lastLog.error || '',
       });
-      s.logHistory = s.logHistory.slice(0, LOG_LIMIT);
+  s.logHistory = s.logHistory.slice(0, LOG_LIMIT);
+  const validLogIds = new Set(s.logHistory.map((log) => String(log?.id || '')).filter(Boolean));
+  Object.keys(s.logOpenState).forEach((id) => { if (!validLogIds.has(id)) delete s.logOpenState[id]; });
     }
     delete s.lastLog;
   }
@@ -870,8 +874,12 @@ function clipLog(text, limit = LOG_CLIP) {
 
 function pushLog(entry) {
   settings.logHistory ||= [];
+  settings.logOpenState ||= {};
   settings.logHistory.unshift(entry);
   settings.logHistory = settings.logHistory.slice(0, LOG_LIMIT);
+  if (entry?.id) settings.logOpenState[entry.id] = false;
+  const validIds = new Set(settings.logHistory.map((log) => String(log?.id || '')).filter(Boolean));
+  Object.keys(settings.logOpenState).forEach((id) => { if (!validIds.has(id)) delete settings.logOpenState[id]; });
   saveSettings();
   return entry;
 }
@@ -4408,13 +4416,26 @@ function renderBusyState() {
 // 折叠面板开合状态记忆
 function snapshotAccState(modal) {
   modal.querySelectorAll('details[data-acc]').forEach((el) => {
-    accState[el.dataset.acc] = el.open;
+    const key = el.dataset.acc;
+    if (key?.startsWith('log-')) {
+      settings.logOpenState ||= {};
+      settings.logOpenState[key.slice(4)] = el.open;
+    } else accState[key] = el.open;
   });
 }
 
 function applyAccState(modal) {
   modal.querySelectorAll('details[data-acc]').forEach((el) => {
-    if (typeof accState[el.dataset.acc] === 'boolean') el.open = accState[el.dataset.acc];
+    const key = el.dataset.acc;
+    if (key?.startsWith('log-')) {
+      const id = key.slice(4);
+      el.open = settings.logOpenState?.[id] === true;
+      el.addEventListener('toggle', () => {
+        settings.logOpenState ||= {};
+        settings.logOpenState[id] = el.open;
+        saveSettings();
+      });
+    } else if (typeof accState[key] === 'boolean') el.open = accState[key];
   });
 }
 
@@ -4849,8 +4870,12 @@ function renderFactionStarMap(factions, rels, activeEvents = []) {
     const p = points.get(f.id), tagPos = labels.get(f.id), trend = FACTION_TRENDS.includes(f.trend) ? f.trend : 'stable';
     const rad = 8 + Math.min(5, relCount[i] * 1.15), clues = Array.isArray(f.clues) ? f.clues.filter(Boolean).slice(0, 5) : [];
     const baseA = Math.atan2(p.y - cy, p.x - cx), orx = rad + 23, ory = rad + 14, cosT = Math.cos(baseA), sinT = Math.sin(baseA);
+    // 标签方向在局部椭圆上预留一段空轨：线索点只分布到其余弧段，聚焦显现时不会压住势力名。
+    const tagDx = tagPos.x + tagPos.w / 2 - p.x, tagDy = tagPos.y + tagPos.h / 2 - p.y;
+    const tagLocalX = tagDx * cosT + tagDy * sinT, tagLocalY = -tagDx * sinT + tagDy * cosT;
+    const blockedAngle = Math.atan2(tagLocalY / ory, tagLocalX / orx), labelGap = Math.PI * .62, freeArc = Math.PI * 2 - labelGap;
     const clueSvg = clues.map((clue, j) => {
-      const angle = j / Math.max(1, clues.length) * Math.PI * 2 + i * .9 + .5, ex = orx * Math.cos(angle), ey = ory * Math.sin(angle);
+      const angle = blockedAngle + labelGap / 2 + ((j + .5) / Math.max(1, clues.length)) * freeArc, ex = orx * Math.cos(angle), ey = ory * Math.sin(angle);
       const dx = +(ex * cosT - ey * sinT).toFixed(1), dy = +(ex * sinT + ey * cosT).toFixed(1);
       return `<circle class="sd-geo-clue-hit" cx="${dx}" cy="${dy}" r="11" data-clue="${htmlEscape(clue)}"></circle><circle class="sd-geo-clue" cx="${dx}" cy="${dy}" r="${(4.2 + ((i * 3 + j * 7) % 3) * .9).toFixed(1)}" style="--d:${(((i * 3 + j * 5) % 13) * .32).toFixed(2)}s"><title>${htmlEscape(clue)}</title></circle>`;
     }).join('');
@@ -5491,6 +5516,7 @@ function templateLibraryCfg() {
     setSearch: (v) => { templateSearch = v; },
     exportMode: templateExportMode,
     selection: templateExportSelection,
+    inlineCount: true,
     emptyText: '暂无剧本',
     searchPlaceholder: '搜索剧本标题…',
   };
@@ -5499,7 +5525,7 @@ function templateLibraryCfg() {
 function renderBlueprintEditorContent() {
   const store = getChatStore();
   return `
-    <div class="sd-field-head"><h3>当前聊天的剧本</h3><button type="button" class="sd-icon-btn sd-icon-sm sd-expand-editor" data-target="sd-blueprint" data-title="当前聊天的剧本" title="展开编辑" aria-label="展开编辑"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button></div>
+    <div class="sd-field-head"><h3>当前剧本</h3><button type="button" class="sd-icon-btn sd-icon-sm sd-expand-editor" data-target="sd-blueprint" data-title="当前剧本" title="展开编辑" aria-label="展开编辑"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button></div>
     <textarea class="text_pole sd-textarea sd-blueprint" spellcheck="false">${htmlEscape(store.blueprint || DEFAULT_BLUEPRINT)}</textarea>
     <div class="sd-button-row sd-current-blueprint-actions">
       <button type="button" class="sd-btn sd-save-blueprint">保存当前剧本</button>
@@ -5701,7 +5727,7 @@ function renderDirectorSettingsTab() {
     ${renderBackstageBlueprintCard()}
     <section class="sd-card sd-director-law-card">
       <details class="sd-plain-fold sd-director-title-fold sd-director-law-fold" data-acc="director-law">
-        <summary><span class="sd-director-law-title"><b>剧组之律</b><span class="sd-summary-note">一般无需改动</span></span></summary>
+        <summary><b>剧组之律</b><span class="sd-summary-note">一般无需改动</span></summary>
         <div class="sd-director-law-body">
           <div class="sd-field-head"><label>提示词</label><button type="button" class="sd-icon-btn sd-icon-sm sd-expand-editor" data-target="sd-system-prompt" data-title="剧组之律" title="展开编辑" aria-label="展开编辑"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button></div>
           <textarea class="text_pole sd-textarea sd-system-prompt" spellcheck="false">${htmlEscape(settings.systemPrompt || DEFAULT_SYSTEM_PROMPT)}</textarea>
@@ -5720,7 +5746,8 @@ const LOG_KIND_LABELS = { director: '推演', theater: '小剧场' };
 function renderLogEntry(log, index) {
   const status = log.status || 'none';
   const kindLabel = LOG_KIND_LABELS[log.kind] || '推演';
-  return `<details class="sd-log-entry" data-acc="log-${htmlEscape(log.id || String(index))}" ${index === 0 ? 'open' : ''}>
+  const id = String(log.id || index);
+  return `<details class="sd-log-entry" data-acc="log-${htmlEscape(id)}"${settings.logOpenState?.[id] === true ? ' open' : ''}>
     <summary>
       <span class="sd-log-status ${htmlEscape(status)}">${htmlEscape(LOG_STATUS_LABELS[status] || status)}</span>
       <span class="sd-log-meta">${htmlEscape(log.time || '-')}</span>
