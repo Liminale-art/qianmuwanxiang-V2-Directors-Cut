@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.28.2';
+const VERSION = '1.28.3';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -4125,6 +4125,7 @@ function renderModal() {
   const animIn = modalJustOpened;   // 仅「打开」后的首帧入场动画，消费后清零，静默重渲染不再播（消除刷新闪动）
   modalJustOpened = false;
   const themeKey = THEME_KEYS.includes(settings.theme) ? settings.theme : 'light';
+  const editorLayout = !!editorView || !!theaterView?.editing;
   modal.className = `sd-theme-${themeKey}${wasOpen ? ' open' : ''}${animIn ? ' sd-anim-in' : ''}`;
   modal.innerHTML = `
     <div class="sd-backdrop"></div>
@@ -4155,7 +4156,7 @@ function renderModal() {
       <nav class="sd-tabs">
         ${tabs.map(([id, label]) => `<button class="sd-tab ${activeTab === id ? 'active' : ''}" data-tab="${id}">${label}</button>`).join('')}
       </nav>
-      <main class="sd-body">${['tasksnodes', 'castworld', 'context'].includes(activeTab) && !editorView ? `<div class="sd-cols-inner">${renderActiveTab()}</div>` : renderActiveTab()}</main>
+      <main class="sd-body${editorLayout ? ' sd-editor-body' : ''}">${['tasksnodes', 'castworld', 'context'].includes(activeTab) && !editorView ? `<div class="sd-cols-inner">${renderActiveTab()}</div>` : renderActiveTab()}</main>
       ${renderInjectDock()}
     </section>`;
   modal.querySelector('.sd-backdrop')?.addEventListener('click', closeModal);
@@ -18259,7 +18260,7 @@ function renderTheaterReadView(scene) {
        <button class="sd-icon-btn sd-theater-reader-fav" title="收藏"><i class="${fav ? 'fa-solid fa-star sd-fav-on' : 'fa-regular fa-star'}"></i></button>
        <button type="button" class="sd-icon-btn sd-reader-fullscreen" title="全屏阅读" aria-label="全屏阅读"><i class="fa-solid fa-expand"></i></button>`;
   return `
-    <section class="sd-card sd-reader-card">
+    <section class="sd-card sd-reader-card${editing ? ' sd-editor-card sd-reader-editor-card' : ''}">
       <div class="sd-reader-bar sd-sticky-bar">
         <button class="sd-icon-btn sd-theater-reader-back" title="返回" aria-label="返回"><i class="fa-solid fa-arrow-left"></i></button>
         ${rightBtns}

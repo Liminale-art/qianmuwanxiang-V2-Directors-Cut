@@ -512,6 +512,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   --sd-glass-weak: rgba(255, 255, 255, .18);
   --sd-card: rgba(255, 253, 248, .28);
   --sd-folder-head: rgba(247, 243, 235, .94);   /* 文件夹吸顶头：近不透明，遮住下方滚动条目 */
+  --sd-sticky-bg: #f7f3eb;
   --sd-pre: rgba(50, 44, 38, .07);
   --sd-input-bg: rgba(255, 255, 255, .52);
   --sd-accent: #5f7a68;
@@ -544,6 +545,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   --sd-glass-weak: rgba(255, 255, 255, .045);
   --sd-card: rgba(255, 255, 255, .055);
   --sd-folder-head: rgba(38, 40, 45, .95);   /* 文件夹吸顶头：近不透明，遮住下方滚动条目 */
+  --sd-sticky-bg: #26282d;
   --sd-pre: rgba(0, 0, 0, .26);
   --sd-input-bg: rgba(0, 0, 0, .26);
   --sd-accent: #a4cdb2;                 /* 提亮 */
@@ -573,6 +575,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   --sd-glass-weak: rgba(255, 255, 255, .22);
   --sd-card: rgba(255, 255, 255, .32);
   --sd-folder-head: rgba(236, 248, 246, .94);
+  --sd-sticky-bg: #ecf8f6;
   --sd-pre: rgba(30, 100, 110, .08);
   --sd-input-bg: rgba(255, 255, 255, .56);
   --sd-accent: #3aa6bc;
@@ -596,6 +599,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   --sd-glass-weak: rgba(255, 255, 255, .26);
   --sd-card: rgba(255, 253, 254, .36);
   --sd-folder-head: rgba(250, 243, 246, .95);
+  --sd-sticky-bg: #faf3f6;
   --sd-pre: rgba(170, 120, 140, .07);
   --sd-input-bg: rgba(255, 255, 255, .60);
   --sd-accent: #d79bb3;
@@ -620,6 +624,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   --sd-glass-weak: rgba(255, 252, 244, .22);
   --sd-card: rgba(252, 245, 230, .36);
   --sd-folder-head: rgba(243, 233, 213, .95);
+  --sd-sticky-bg: #f3e9d5;
   --sd-pre: rgba(110, 84, 46, .08);
   --sd-input-bg: rgba(255, 251, 242, .60);
   --sd-accent: #b08a55;
@@ -643,6 +648,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   --sd-glass-weak: rgba(255, 255, 255, .30);
   --sd-card: rgba(255, 255, 255, .34);
   --sd-folder-head: rgba(249, 248, 252, .95);
+  --sd-sticky-bg: #f9f8fc;
   --sd-pre: rgba(120, 110, 160, .07);
   --sd-input-bg: rgba(255, 255, 255, .60);
   --sd-accent: #a99edd;
@@ -2509,14 +2515,17 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 /* 此幕指令未展开时的默认高度（约 6 行，便于直接写较长指令） */
 #story-director-modal .sd-theater-instruction-compact { min-height: 140px; }
 
-/* 顶栏固定：阅读/收藏返回栏吸顶，滑动时常驻。去掉整条底色，按钮自带不透明底即可 */
+/* 顶栏固定：使用主题实色隔离层，正文滚动时不得从标题与按钮后方穿透。 */
 #story-director-modal .sd-sticky-bar {
   position: sticky;
   top: 0;
   z-index: 5;
-  background: transparent;
+  isolation: isolate;
+  background: var(--sd-sticky-bg, var(--sd-folder-head));
   padding: 6px 2px;
   margin: -4px 0 10px;
+  border-bottom: 1px solid var(--sd-hairline);
+  box-shadow: 0 9px 14px -15px rgba(0, 0, 0, .45);
 }
 /* 吸顶栏内的按钮：用各主题近不透明的 --sd-folder-head 作底，避免下方内容透出，且六套主题自动匹配 */
 #story-director-modal .sd-sticky-bar .sd-btn,
@@ -2538,8 +2547,23 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 
 /* 行内全屏编辑视图：活在 .sd-window 内（与阅读页同一套布局），不再 body 挂载，任意尺寸都稳。
    返回/保存栏复用 .sd-sticky-bar 吸顶规则；编辑区撑满可用高度沉浸编辑。 */
+#story-director-modal .sd-body.sd-editor-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#story-director-modal .sd-editor-body > .sd-editor-card {
+  flex: 1 1 0;
+  height: 100%;
+  min-height: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+}
 #story-director-modal .sd-editor-card { display: flex; flex-direction: column; min-height: 0; }
 #story-director-modal .sd-editor-bar {
+  position: relative;
+  top: auto;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2574,11 +2598,20 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   text-align: center;
 }
 #story-director-modal .sd-editor-area {
+  flex: 1 1 0;
   width: 100%;
-  min-height: 64vh;
-  resize: vertical;
+  min-height: 0 !important;
+  overflow: auto;
+  resize: none;
   line-height: 1.8;
   padding: 14px 16px !important;
+}
+#story-director-modal .sd-reader-editor-card .sd-reader-title { flex: 0 0 auto; }
+#story-director-modal .sd-reader-editor-card .sd-reader-edit-area {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  resize: none;
 }
 
 /* API 与日志：悬浮球开关展开的尺寸控制，拖动时由 JS 即时同步页面上的球。 */
