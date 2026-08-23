@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.28.3';
+const VERSION = '1.29.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -317,6 +317,26 @@ const THEMES = [
 ];
 const THEME_KEYS = THEMES.map((t) => t.key);
 
+const PROSE_LAYOUT_DEFAULTS = Object.freeze({
+  active: false,
+  fontSize: 18,
+  lineHeight: 1.8,
+  paragraphGap: 0.45,
+  indent: 2,
+  contentWidth: 80,
+  sidePadding: 0.35,
+  splitBreaks: false,
+  justify: false,
+});
+const PROSE_LAYOUT_CONTROLS = Object.freeze([
+  { key: 'fontSize', label: '字号', min: 12, max: 32, step: 1, unit: 'px' },
+  { key: 'lineHeight', label: '行高', min: 1.2, max: 2.6, step: 0.05, unit: '倍' },
+  { key: 'paragraphGap', label: '段距', min: 0, max: 2, step: 0.05, unit: 'em' },
+  { key: 'indent', label: '缩进', min: 0, max: 4, step: 0.1, unit: 'em' },
+  { key: 'contentWidth', label: '宽度', min: 36, max: 160, step: 2, unit: 'ch' },
+  { key: 'sidePadding', label: '边距', min: 0, max: 4, step: 0.1, unit: 'rem' },
+]);
+
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
   providerMode: 'external',
@@ -332,6 +352,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   floatingButton: true,
   floatSize: null,   // null=沿用原响应式默认（桌面48 / 移动44）；用户拖动滑块后保存明确像素值
   floatPosition: { x: null, y: null },
+  proseLayout: { ...PROSE_LAYOUT_DEFAULTS },
   quickWheelEnabled: true,
   quickWheelScheme: 'custom',   // 兼容旧配置字段；蜂巢快捷盘从 1.27 起仅使用用户自定义入口
   quickWheelCustomOrder: ['dashboard', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
@@ -3724,7 +3745,136 @@ function bindQuickWheelOutsideDismiss(root) {
   };
 }
 
+const PROSE_LAYOUT_BODY_CLASSES = ['sd-prose-layout', 'sd-prose-justify', 'sd-prose-split-breaks'];
+const PROSE_LAYOUT_CSS_VARS = ['--sd-prose-font-size', '--sd-prose-line-height', '--sd-prose-paragraph-gap', '--sd-prose-indent', '--sd-prose-content-width', '--sd-prose-side-padding'];
+let proseLayoutObserver = null;
+let proseLayoutFrame = 0;
+let proseLayoutPendingRoots = new Set();
+
+function proseLayoutSettings() {
+  if (!isPlainObject(settings.proseLayout)) settings.proseLayout = clone(PROSE_LAYOUT_DEFAULTS);
+  mergeDefaults(settings.proseLayout, PROSE_LAYOUT_DEFAULTS);
+  const layout = settings.proseLayout;
+  layout.active = Boolean(layout.active);
+  layout.splitBreaks = Boolean(layout.splitBreaks);
+  layout.justify = Boolean(layout.justify);
+  for (const spec of PROSE_LAYOUT_CONTROLS) {
+    const raw = Number(layout[spec.key]);
+    const fallback = Number(PROSE_LAYOUT_DEFAULTS[spec.key]);
+    layout[spec.key] = Math.min(spec.max, Math.max(spec.min, Number.isFinite(raw) ? raw : fallback));
+  }
+  return layout;
+}
+
+function proseLayoutFormatValue(key, value) {
+  if (['fontSize', 'contentWidth'].includes(key)) return String(Math.round(Number(value) || 0));
+  return String(Number(Number(value).toFixed(2)));
+}
+
+function proseLayoutMessageRoots(root = document) {
+  const found = new Set();
+  if (root instanceof Element) {
+    const own = root.matches('.mes_text') ? root : root.closest('.mes_text');
+    if (own?.closest('#chat')) found.add(own);
+    root.querySelectorAll?.('.mes_text').forEach((element) => { if (element.closest('#chat')) found.add(element); });
+  } else {
+    document.querySelectorAll('#chat .mes_text').forEach((element) => found.add(element));
+  }
+  return [...found];
+}
+
+function proseLayoutClearBreakMarks(root = document) {
+  const scope = root instanceof Element ? root : document;
+  scope.querySelectorAll?.('[data-sd-prose-indent="1"]').forEach((element) => element.remove());
+  scope.querySelectorAll?.('br[data-sd-prose-break="1"]').forEach((element) => element.removeAttribute('data-sd-prose-break'));
+}
+
+function proseLayoutMarkBreaks(root = document) {
+  const layout = proseLayoutSettings();
+  for (const message of proseLayoutMessageRoots(root)) {
+    if (!layout.active || !layout.splitBreaks) {
+      proseLayoutClearBreakMarks(message);
+      continue;
+    }
+    message.querySelectorAll('br').forEach((br) => {
+      if (br.closest('pre, code, table, thead, tbody, tr, ul, ol, svg, style, script')) return;
+      br.dataset.sdProseBreak = '1';
+      if (br.nextSibling instanceof Element && br.nextSibling.dataset.sdProseIndent === '1') return;
+      const indent = document.createElement('span');
+      indent.dataset.sdProseIndent = '1';
+      indent.setAttribute('aria-hidden', 'true');
+      br.after(indent);
+    });
+  }
+}
+
+function proseLayoutSchedule(root) {
+  proseLayoutPendingRoots.add(root instanceof Element ? root : document);
+  if (proseLayoutFrame) return;
+  proseLayoutFrame = requestAnimationFrame(() => {
+    proseLayoutFrame = 0;
+    const roots = [...proseLayoutPendingRoots];
+    proseLayoutPendingRoots.clear();
+    roots.forEach((entry) => proseLayoutMarkBreaks(entry));
+  });
+}
+
+function proseLayoutStartObserver() {
+  proseLayoutObserver?.disconnect();
+  proseLayoutObserver = null;
+  const layout = proseLayoutSettings();
+  const chat = document.getElementById('chat');
+  if (!layout.active || !layout.splitBreaks || !chat) return;
+  proseLayoutObserver = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (!(node instanceof Element)) continue;
+        if (node.dataset.sdProseIndent === '1') continue;
+        proseLayoutSchedule(node);
+      }
+    }
+  });
+  proseLayoutObserver.observe(chat, { childList: true, subtree: true });
+}
+
+function stopProseLayout(cleanDom = true) {
+  proseLayoutObserver?.disconnect();
+  proseLayoutObserver = null;
+  if (proseLayoutFrame) cancelAnimationFrame(proseLayoutFrame);
+  proseLayoutFrame = 0;
+  proseLayoutPendingRoots.clear();
+  document.body?.classList.remove(...PROSE_LAYOUT_BODY_CLASSES);
+  PROSE_LAYOUT_CSS_VARS.forEach((name) => document.documentElement.style.removeProperty(name));
+  if (cleanDom) proseLayoutClearBreakMarks(document);
+}
+
+function applyProseLayout(refreshBreaks = true) {
+  const layout = proseLayoutSettings();
+  stopProseLayout(false);
+  if (!layout.active) {
+    proseLayoutClearBreakMarks(document);
+    return;
+  }
+  document.body?.classList.add('sd-prose-layout');
+  document.body?.classList.toggle('sd-prose-justify', layout.justify);
+  document.body?.classList.toggle('sd-prose-split-breaks', layout.splitBreaks);
+  const rootStyle = document.documentElement.style;
+  rootStyle.setProperty('--sd-prose-font-size', `${layout.fontSize}px`);
+  rootStyle.setProperty('--sd-prose-line-height', String(layout.lineHeight));
+  rootStyle.setProperty('--sd-prose-paragraph-gap', `${layout.paragraphGap}em`);
+  rootStyle.setProperty('--sd-prose-indent', `${layout.indent}em`);
+  rootStyle.setProperty('--sd-prose-content-width', `${layout.contentWidth}ch`);
+  rootStyle.setProperty('--sd-prose-side-padding', `${layout.sidePadding}rem`);
+  if (layout.splitBreaks) {
+    if (refreshBreaks) proseLayoutMarkBreaks(document);
+  } else {
+    proseLayoutClearBreakMarks(document);
+  }
+  proseLayoutStartObserver();
+}
+
 let floorViewportCleanup = null;
+let floorNavigatorView = 'jump';
 
 function closeFloorNavigator() {
   floorViewportCleanup?.();
@@ -3803,7 +3953,7 @@ async function jumpToChatFloor(floor) {
       if (!yes) return false;
     }
     const jumpButton = document.querySelector(`#${FLOOR_NAV_ID} .sd-floor-jump`);
-    if (jumpButton) { jumpButton.disabled = true; jumpButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>加载中'; }
+    if (jumpButton) { jumpButton.disabled = true; jumpButton.textContent = '加载中'; }
     try {
       const st = await import(stMainScriptUrl());
       if (typeof st.showMoreMessages !== 'function') throw new Error('当前 SillyTavern 未提供历史分页接口');
@@ -3815,7 +3965,7 @@ async function jumpToChatFloor(floor) {
       toast(`楼层载入失败：${error?.message || error}`, 'error');
       return false;
     } finally {
-      if (jumpButton) { jumpButton.disabled = false; jumpButton.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i>跳转'; }
+      if (jumpButton) { jumpButton.disabled = false; jumpButton.textContent = '跳转'; }
     }
   }
   if (!target) {
@@ -3832,18 +3982,37 @@ async function jumpToChatFloor(floor) {
   return true;
 }
 
-function openFloorNavigator() {
+function floorProseLayoutMarkup() {
+  const layout = proseLayoutSettings();
+  const controls = PROSE_LAYOUT_CONTROLS.map((spec) => {
+    const value = proseLayoutFormatValue(spec.key, layout[spec.key]);
+    return `<label class="sd-prose-control"><span>${spec.label}</span><input type="range" data-prose-key="${spec.key}" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${value}"><input type="number" data-prose-key="${spec.key}" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${value}" inputmode="decimal"><small>${spec.unit}</small></label>`;
+  }).join('');
+  return `<div class="sd-prose-state-row"><span class="sd-prose-state ${layout.active ? 'is-active' : ''}">${layout.active ? '已应用正文排版' : '跟随 SillyTavern 默认'}</span><button type="button" class="sd-prose-reset" ${layout.active ? '' : 'disabled'}>恢复正文默认</button></div>
+    <div class="sd-prose-controls">${controls}</div>
+    <div class="sd-prose-checks">
+      <label><input type="checkbox" data-prose-toggle="splitBreaks" ${layout.splitBreaks ? 'checked' : ''}><span>换行整理为段落</span></label>
+      <label><input type="checkbox" data-prose-toggle="justify" ${layout.justify ? 'checked' : ''}><span>两端对齐</span></label>
+    </div>`;
+}
+
+function openFloorNavigator(initialView = floorNavigatorView) {
   closeQuickWheel();
   closeFloorNavigator();
   const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
+  floorNavigatorView = initialView === 'layout' ? 'layout' : 'jump';
   const root = document.createElement('div');
   root.id = FLOOR_NAV_ID;
   root.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
   root.innerHTML = `<div class="sd-floor-backdrop"></div>
-    <div class="sd-floor-shell"><section class="sd-floor-panel" role="dialog" aria-modal="true" aria-label="楼层跳转">
-        <header><div><h3>楼层跳转</h3><p>${chat.length ? `当前聊天共 ${chat.length} 层` : '当前聊天没有可定位的楼层'}</p></div><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
-        <div class="sd-floor-search"><span>第</span><input class="sd-floor-input" type="number" min="0" max="${Math.max(0, chat.length - 1)}" inputmode="numeric" placeholder="0–${Math.max(0, chat.length - 1)}"><span>层</span><button type="button" class="sd-floor-jump"><i class="fa-solid fa-location-crosshairs"></i>跳转</button></div>
-        <div class="sd-floor-actions"><button type="button" class="sd-floor-top"><i class="fa-solid fa-angles-up"></i>顶部</button><button type="button" class="sd-floor-bottom"><i class="fa-solid fa-angles-down"></i>当前聊天底部</button></div>
+    <div class="sd-floor-shell"><section class="sd-floor-panel" role="dialog" aria-modal="true" aria-label="楼层与正文排版">
+        <header><div><h3>楼层工具</h3><p>${chat.length ? `当前聊天共 ${chat.length} 层` : '当前聊天没有可定位的楼层'}</p></div><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
+        <nav class="sd-floor-tabs" role="tablist"><button type="button" role="tab" data-floor-tab="jump">楼层跳转</button><button type="button" role="tab" data-floor-tab="layout">正文排版</button></nav>
+        <section class="sd-floor-view" data-floor-view="jump">
+          <div class="sd-floor-search"><span>第</span><input class="sd-floor-input" type="number" min="0" max="${Math.max(0, chat.length - 1)}" inputmode="numeric" placeholder="0–${Math.max(0, chat.length - 1)}"><span>层</span><button type="button" class="sd-floor-jump">跳转</button></div>
+          <div class="sd-floor-actions"><button type="button" class="sd-floor-top">跳转至顶部</button><button type="button" class="sd-floor-bottom">跳转至底部</button></div>
+        </section>
+        <section class="sd-floor-view" data-floor-view="layout">${floorProseLayoutMarkup()}</section>
       </section></div>`;
   document.body.appendChild(root);
   bindFloorNavigatorViewport(root);
@@ -3852,6 +4021,17 @@ function openFloorNavigator() {
   root.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
   root.querySelector('.sd-floor-backdrop')?.addEventListener('click', close);
   root.querySelector('.sd-floor-close')?.addEventListener('click', close);
+  const setView = (view) => {
+    floorNavigatorView = view === 'layout' ? 'layout' : 'jump';
+    root.querySelectorAll('[data-floor-tab]').forEach((button) => {
+      const active = button.dataset.floorTab === floorNavigatorView;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-selected', String(active));
+    });
+    root.querySelectorAll('[data-floor-view]').forEach((section) => { section.hidden = section.dataset.floorView !== floorNavigatorView; });
+  };
+  root.querySelectorAll('[data-floor-tab]').forEach((button) => button.addEventListener('click', () => setView(button.dataset.floorTab)));
+  setView(floorNavigatorView);
   const input = root.querySelector('.sd-floor-input');
   input?.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') jumpToChatFloor(input.value);
@@ -3860,6 +4040,49 @@ function openFloorNavigator() {
   root.querySelector('.sd-floor-jump')?.addEventListener('click', () => jumpToChatFloor(input?.value));
   root.querySelector('.sd-floor-top')?.addEventListener('click', () => jumpToChatFloor(0));
   root.querySelector('.sd-floor-bottom')?.addEventListener('click', () => jumpToChatFloor(chat.length - 1));
+  const updateProseState = () => {
+    const layout = proseLayoutSettings();
+    const state = root.querySelector('.sd-prose-state');
+    if (state) {
+      state.textContent = layout.active ? '已应用正文排版' : '跟随 SillyTavern 默认';
+      state.classList.toggle('is-active', layout.active);
+    }
+    const reset = root.querySelector('.sd-prose-reset');
+    if (reset) reset.disabled = !layout.active;
+  };
+  const setProseNumber = (key, raw, persist = false) => {
+    const spec = PROSE_LAYOUT_CONTROLS.find((item) => item.key === key);
+    if (!spec) return;
+    const parsed = Number(raw);
+    const fallback = Number(PROSE_LAYOUT_DEFAULTS[key]);
+    const value = Math.min(spec.max, Math.max(spec.min, Number.isFinite(parsed) ? parsed : fallback));
+    const layout = proseLayoutSettings();
+    layout[key] = value;
+    layout.active = true;
+    root.querySelectorAll(`[data-prose-key="${key}"]`).forEach((control) => { control.value = proseLayoutFormatValue(key, value); });
+    applyProseLayout(false);
+    updateProseState();
+    if (persist) saveSettings();
+  };
+  root.querySelectorAll('input[type="range"][data-prose-key]').forEach((control) => {
+    control.addEventListener('input', () => setProseNumber(control.dataset.proseKey, control.value, false));
+    control.addEventListener('change', () => setProseNumber(control.dataset.proseKey, control.value, true));
+  });
+  root.querySelectorAll('input[type="number"][data-prose-key]').forEach((control) => control.addEventListener('change', () => setProseNumber(control.dataset.proseKey, control.value, true)));
+  root.querySelectorAll('[data-prose-toggle]').forEach((control) => control.addEventListener('change', () => {
+    const layout = proseLayoutSettings();
+    layout[control.dataset.proseToggle] = Boolean(control.checked);
+    layout.active = true;
+    applyProseLayout(control.dataset.proseToggle === 'splitBreaks');
+    updateProseState();
+    saveSettings();
+  }));
+  root.querySelector('.sd-prose-reset')?.addEventListener('click', () => {
+    settings.proseLayout = clone(PROSE_LAYOUT_DEFAULTS);
+    applyProseLayout();
+    saveSettings();
+    openFloorNavigator('layout');
+  });
 }
 
 async function runQuickWheelCommand(id) {
@@ -3902,8 +4125,7 @@ function openQuickWheel(btn) {
   const offsets = layout.cells.map((cell) => quickHivePixelOffset(cell, layout.itemSize, layout.gap));
   const root = document.createElement('div');
   root.id = QUICK_WHEEL_ID;
-  const wheelTheme = THEME_KEYS.includes(settings.theme) ? settings.theme : 'light';
-  root.className = `sd-wheel-hive sd-theme-${wheelTheme}${layout.edgeDirected ? ' sd-wheel-edge-directed' : ''}`;
+  root.className = `sd-wheel-hive${layout.edgeDirected ? ' sd-wheel-edge-directed' : ''}`;
   root.style.left = `${viewportLeft}px`;
   root.style.top = `${viewportTop}px`;
   root.style.width = `${viewportWidth}px`;
@@ -3914,16 +4136,15 @@ function openQuickWheel(btn) {
     const slot = offsets[index];
     const button = document.createElement('button');
     button.type = 'button';
-    const palettes = ['is-tone-a', 'is-tone-b', 'is-tone-c'];
-    const palette = item.external ? 'is-external' : palettes[Math.floor(Math.random() * palettes.length)];
-    button.className = `sd-wheel-command ${palette}${item.pending ? ' is-pending' : ''}`;
+    const palettes = ['is-edge-ivory', 'is-edge-gold', 'is-edge-graphite'];
+    const palette = palettes[Math.floor(Math.random() * palettes.length)];
+    button.className = `sd-wheel-command ${palette}${item.external ? ' is-external' : ''}${item.pending ? ' is-pending' : ''}`;
     button.dataset.command = item.id;
     button.style.setProperty('--sd-wheel-item-size', `${layout.itemSize}px`);
     button.style.setProperty('--sd-wheel-item-height', `${layout.itemHeight}px`);
     if (!item.external) {
       button.style.setProperty('--sd-wheel-delay', `${index * 24 + Math.floor(Math.random() * 45)}ms`);
-      button.style.setProperty('--sd-wheel-glint-speed', `${(2.7 + Math.random() * 2.4).toFixed(2)}s`);
-      button.style.setProperty('--sd-wheel-idle-alpha', `${(.76 + Math.random() * .1).toFixed(2)}`);
+      button.style.setProperty('--sd-wheel-breathe-delay', `${(-Math.random() * 4.8).toFixed(2)}s`);
     }
     button.style.left = `${originCenterX + slot.x - layout.itemSize / 2}px`;
     button.style.top = `${originCenterY + slot.y - layout.itemHeight / 2}px`;
@@ -4047,9 +4268,6 @@ function renderFloatButton() {
     document.body.appendChild(btn);
     bindFloatDrag(btn);
   }
-  const themeKey = THEME_KEYS.includes(settings.theme) ? settings.theme : 'light';
-  btn.classList.remove(...THEME_KEYS.map((key) => `sd-theme-${key}`));
-  btn.classList.add(`sd-theme-${themeKey}`);
   // 本地 logo 铺满圆形悬浮球（object-fit:cover 由 CSS 控）；img 不拦指针，拖拽/点击仍落在按钮上
   btn.innerHTML = `<img src="${FLOAT_LOGO_URL}" alt="${EXTENSION_NAME}" draggable="false">`;
   btn.title = EXTENSION_NAME;
@@ -4190,7 +4408,6 @@ function renderModal() {
   modal.querySelectorAll('.sd-theme-opt').forEach((el) => el.addEventListener('click', () => {
     const next = el.dataset.theme;
     if (next && next !== settings.theme) { settings.theme = next; saveSettings(); }
-    renderFloatButton();
     renderModal();   // 重渲染会重建菜单（默认收起态）
   }));
   modal.querySelectorAll('.sd-tab').forEach((el) => el.addEventListener('click', () => {
@@ -18902,6 +19119,7 @@ function bindEvents() {
     coreadInvalidatePool();    // 切聊天：反哺主线切片池随新聊天的绑定档案重算
     companionWorldView = '';   // 切聊天：世界书已按聊天分存，查看视图回到未选·避免跨聊天残留
     await refreshCoreadPersonaAvatar();
+    applyProseLayout();
     renderFloatButton();
     renderInputMenuEntry();
     await applyDirectorInjection();
@@ -18913,6 +19131,7 @@ function bindEvents() {
   const appReadyHandler = async () => {
     settings = getSettings();
     await refreshCoreadPersonaAvatar();
+    applyProseLayout();
     renderFloatButton();
     restoreQuickDockedPlugins();
     rerenderIfOpen();
@@ -18951,6 +19170,7 @@ function init() {
   initialized = true;
   settings = getSettings();
   void refreshCoreadPersonaAvatar().then(() => rerenderIfOpen());
+  applyProseLayout();
   seedBuiltinTheaters();
   renderSettingsPanel();
   renderFloatButton();
@@ -19008,6 +19228,7 @@ function cleanupRuntime(resetSettings = false) {
   inputMenuObserver?.disconnect?.();
   inputMenuObserver = null;
   ttsStopChat();   // 清理有声注入的 observer/委托/挂件，避免停用或重载后残留
+  stopProseLayout(true);
   if (resizeHandler) window.removeEventListener('resize', resizeHandler);
   resizeHandler = null;
   unbindEvents();
