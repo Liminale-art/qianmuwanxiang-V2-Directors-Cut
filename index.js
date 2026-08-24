@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.36.0';
+const VERSION = '1.36.1';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -78,9 +78,9 @@ const FOCUS_CLOCK_RELATIONS = Object.freeze({
   elder: { label: '长者', rule: '以成熟长者的关照或督促口吻表达，稳重自然，不居高临下说教。' },
 });
 const FOCUS_CLOCK_VOICE_FREQUENCIES = Object.freeze({
-  low: { label: '低', chance: .2 },
-  medium: { label: '中', chance: .45 },
-  high: { label: '高', chance: .7 },
+  low: { label: '低', chance: .3 },
+  medium: { label: '中', chance: .5 },
+  high: { label: '高', chance: .75 },
 });
 const FOCUS_CLOCK_STOCK_LINES = Object.freeze({
   stranger: ['请继续专注，也记得适当休息。', '辛苦了，稍微放松一下眼睛吧。', '这一段完成得很好，可以休息片刻了。'],
@@ -9269,6 +9269,19 @@ async function focusClockSynthVoiceCue(binding, text) {
   return key;
 }
 
+function focusClockMidCueProgresses(durationMinutes, chance) {
+  if (durationMinutes < 45) return [];
+  const checkpoints = durationMinutes >= 120
+    ? [.2, .4, .6, .8]
+    : durationMinutes >= 75
+      ? [.27, .52, .78]
+      : [.4, .72];
+  const selected = checkpoints.filter(() => Math.random() < chance);
+  // 频率只决定一轮长时专注中的陪伴次数；达到 45 分钟后至少保留一次中途陪伴。
+  if (!selected.length) selected.push(checkpoints[Math.floor(Math.random() * checkpoints.length)]);
+  return selected;
+}
+
 async function focusClockPrepareVoiceCues(sessionToken) {
   const prepareSeq = ++focusClockVoicePrepareSeq;
   const f = focusClockState();
@@ -9279,9 +9292,8 @@ async function focusClockPrepareVoiceCues(sessionToken) {
   if (!baseParams || !ttsProviderHasCredentials(baseParams.providerId, baseParams)) return;
   const frequency = FOCUS_CLOCK_VOICE_FREQUENCIES[f.voiceFrequency] || FOCUS_CLOCK_VOICE_FREQUENCIES.low;
   const durationMinutes = Math.max(1, Number(f.sessionPlannedMs) / 60000);
-  const specs = durationMinutes >= 45
-    ? [.4, .72].filter(() => Math.random() < frequency.chance).map((progress) => ({ type: 'mid', progress }))
-    : [];
+  const specs = focusClockMidCueProgresses(durationMinutes, frequency.chance)
+    .map((progress) => ({ type: 'mid', progress }));
   specs.push({ type: 'complete', progress: 1 });
   const book = f.sessionBookId ? coreadBookMeta(f.sessionBookId) : null;
   const subject = f.sessionBookId ? `阅读《${book?.title || '未命名书籍'}》` : (f.task || '完成一段专注');
@@ -9573,7 +9585,7 @@ function renderFocusClockTab() {
   const soundConfig = f.soundEnabled ? `
     <div class="sd-focus-sound-config">
       <div class="sd-focus-sound-sources" role="tablist" aria-label="完成提示音来源">
-        ${[['builtin', '内置'], ['url', '外链']].map(([id, label]) => `<button type="button" class="sd-focus-sound-source ${f.soundSource === id ? 'active' : ''}" data-focus-sound-source="${id}">${label}</button>`).join('')}
+        ${[['builtin', '内置'], ['url', '自定义']].map(([id, label]) => `<button type="button" class="sd-focus-sound-source ${f.soundSource === id ? 'active' : ''}" data-focus-sound-source="${id}">${label}</button>`).join('')}
       </div>
       <div class="sd-focus-sound-control">
         ${f.soundSource === 'builtin'
