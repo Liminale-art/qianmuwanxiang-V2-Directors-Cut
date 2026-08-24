@@ -19,6 +19,15 @@ export const STORYBOARD_RATIOS = Object.freeze([
   Object.freeze({ id: '16:9', label: '16 : 9', value: 16 / 9 }),
 ]);
 
+// 与 SillyTavern 官方四条后端请求体逐项对齐。UI 与任务快照都以此裁剪参数，
+// 避免把后端不会读取的滑杆伪装成有效设置。
+export const STORYBOARD_CAPABILITIES = Object.freeze({
+  novel: Object.freeze({ negative: true, steps: true, cfg: true, seed: true, sampler: true, scheduler: true, reference: false }),
+  comfy: Object.freeze({ negative: true, steps: true, cfg: true, seed: true, sampler: true, scheduler: true, reference: true }),
+  openai: Object.freeze({ negative: false, steps: false, cfg: false, seed: false, sampler: false, scheduler: false, reference: false }),
+  banana: Object.freeze({ negative: true, steps: false, cfg: false, seed: true, sampler: false, scheduler: false, reference: false }),
+});
+
 export function createStoryboardDefaults() {
   return {
     view: 'create',                // create | characters | gallery | logs | connection
@@ -29,6 +38,7 @@ export function createStoryboardDefaults() {
     target: 'latest',              // latest | floor | gallery
     floor: '',
     inlineByDefault: true,
+    consistencyModes: Object.fromEntries(Object.keys(STORYBOARD_SOURCES).map((id) => [id, 'description'])),
     prompt: '',
     negative: '',
     selectedCharacterId: '',
@@ -57,6 +67,11 @@ export function normalizeStoryboardState(value) {
   state.source = STORYBOARD_SOURCES[state.source] ? state.source : 'novel';
   state.target = ['latest', 'floor', 'gallery'].includes(state.target) ? state.target : 'latest';
   state.inlineByDefault = state.inlineByDefault !== false;
+  if (!state.consistencyModes || typeof state.consistencyModes !== 'object') state.consistencyModes = {};
+  for (const sourceId of Object.keys(STORYBOARD_SOURCES)) {
+    const mode = state.consistencyModes[sourceId];
+    state.consistencyModes[sourceId] = sourceId === 'comfy' && mode === 'reference' ? 'reference' : 'description';
+  }
   if (!state.profiles || typeof state.profiles !== 'object') state.profiles = {};
   for (const [id, fallback] of Object.entries(defaults.profiles)) {
     if (!state.profiles[id] || typeof state.profiles[id] !== 'object') state.profiles[id] = structuredCloneSafe(fallback);
@@ -144,6 +159,8 @@ function normalizeStoryboardSnapshot(value, fallback = {}) {
     floor: Number.isInteger(raw.floor) ? raw.floor : (Number.isInteger(fallback.floor) ? fallback.floor : null),
     inlineByDefault: raw.inlineByDefault !== false,
     selectedCharacterId: String(raw.selectedCharacterId || '').slice(0, 160),
+    consistencyMode: source === 'comfy' && raw.consistencyMode === 'reference' ? 'reference' : 'description',
+    referenceUrl: String(raw.referenceUrl || '').slice(0, 4096),
     chatKey: String(raw.chatKey || '').slice(0, 512),
     messageHash: String(raw.messageHash || '').slice(0, 160),
     swipeId: Number.isInteger(raw.swipeId) ? raw.swipeId : 0,

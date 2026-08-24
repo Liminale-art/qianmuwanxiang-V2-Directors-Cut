@@ -19,6 +19,7 @@ import {
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
 import {
+  STORYBOARD_CAPABILITIES,
   STORYBOARD_RATIOS,
   STORYBOARD_SOURCES,
   buildImagineCommand,
@@ -29,7 +30,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.41.0';
+const VERSION = '1.42.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -9558,19 +9559,41 @@ function renderStoryboardQueue() {
 
 function renderStoryboardCreate(state) {
   const profile = storyboardProfile(state.source);
+  const capabilities = STORYBOARD_CAPABILITIES[state.source];
   const sd = storyboardSdSettings();
   const latestFloor = storyboardCurrentAssistantFloor();
   const characterOptions = state.characters.map((item) => `<option value="${htmlEscape(item.id)}" ${state.selectedCharacterId === item.id ? 'selected' : ''}>${item.subjectType === 'user' ? '[我]' : '[角色]'} ${htmlEscape(item.name || item.subjectName || '未命名')} · ${htmlEscape(item.variantName || '默认档案')}</option>`).join('');
+  const selectedCharacter = state.characters.find((item) => item.id === state.selectedCharacterId);
+  const consistencyMode = state.consistencyModes[state.source] || 'description';
   const last = [...storyboardGalleryRecords()].reverse().find((item) => storyboardSafeUrl(item.url));
+  const openAiModel = String(profile.model || '').toLowerCase();
+  const openAiIsGpt = /gpt-image-(?:1|2|latest)/.test(openAiModel);
+  const openAiIsDalle3 = /dall-e-3/.test(openAiModel);
+  const openAiUnknown = !openAiModel || (!openAiIsGpt && !/dall-e-2/.test(openAiModel) && !openAiIsDalle3);
+  const openAiQualityOptions = openAiIsDalle3 ? ['standard', 'hd'] : openAiIsGpt ? ['auto', 'low', 'medium', 'high'] : ['auto', 'low', 'medium', 'high', 'standard', 'hd'];
   const sourceFields = state.source === 'novel' ? `<div class="sd-storyboard-check-grid">
       ${[['novelSm', 'SMEA'], ['novelSmDyn', 'SMEA DYN'], ['novelDecrisper', 'Decrisper'], ['novelVarietyBoost', 'Variety Boost']].map(([key, label]) => `<label class="checkbox_label"><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="${key}" ${profile[key] ? 'checked' : ''}> ${label}</label>`).join('')}
     </div>` : state.source === 'openai' ? `<div class="sd-storyboard-grid sd-storyboard-grid-two">
-      <label><span>Style</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiStyle"><option value="">沿用当前</option>${['natural', 'vivid'].map((value) => `<option value="${value}" ${profile.openaiStyle === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>
-      <label><span>Quality</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiQuality"><option value="">沿用当前</option>${['auto', 'low', 'medium', 'high', 'standard', 'hd'].map((value) => `<option value="${value}" ${profile.openaiQuality === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>
+      ${(openAiIsDalle3 || openAiUnknown) ? `<label><span>Style</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiStyle"><option value="">沿用当前</option>${['natural', 'vivid'].map((value) => `<option value="${value}" ${profile.openaiStyle === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>` : ''}
+      ${(!/dall-e-2/.test(openAiModel) || openAiUnknown) ? `<label><span>Quality</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiQuality"><option value="">沿用当前</option>${openAiQualityOptions.map((value) => `<option value="${value}" ${profile.openaiQuality === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>` : ''}
     </div>` : state.source === 'banana' ? `<label class="checkbox_label sd-storyboard-google-enhance"><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="googleEnhance" ${profile.googleEnhance ? 'checked' : ''}> Prompt Enhance</label>` : `<div class="sd-storyboard-grid sd-storyboard-grid-two">
       <label><span>ComfyUI URL</span><input class="text_pole sd-storyboard-field" data-storyboard-field="comfyUrl" value="${htmlEscape(profile.comfyUrl || sd.comfy_url || '')}" placeholder="http://127.0.0.1:8188"></label>
       <label><span>Workflow</span><input class="text_pole sd-storyboard-field" data-storyboard-field="comfyWorkflow" list="sd-storyboard-workflows" value="${htmlEscape(profile.comfyWorkflow || sd.comfy_workflow || '')}" placeholder="沿用当前工作流"><datalist id="sd-storyboard-workflows">${storyboardSelectOptions('#sd_comfy_workflow', profile.comfyWorkflow)}</datalist></label>
     </div>`;
+  const advancedFields = [
+    capabilities.steps ? `<label><span>Steps</span><input class="text_pole sd-storyboard-field" data-storyboard-field="steps" type="number" min="1" max="300" step="1" value="${htmlEscape(profile.steps)}" placeholder="${htmlEscape(sd.steps || '')}"></label>` : '',
+    capabilities.cfg ? `<label><span>CFG</span><input class="text_pole sd-storyboard-field" data-storyboard-field="cfg" type="number" min="0" max="100" step="0.1" value="${htmlEscape(profile.cfg)}" placeholder="${htmlEscape(sd.scale || '')}"></label>` : '',
+    capabilities.seed ? `<label><span>Seed</span><input class="text_pole sd-storyboard-field" data-storyboard-field="seed" type="number" min="-1" step="1" value="${htmlEscape(profile.seed)}" placeholder="随机"></label>` : '',
+    capabilities.sampler ? `<label><span>Sampler</span><input class="text_pole sd-storyboard-field" data-storyboard-field="sampler" list="sd-storyboard-samplers" value="${htmlEscape(profile.sampler)}" placeholder="沿用当前"><datalist id="sd-storyboard-samplers">${storyboardSelectOptions('#sd_sampler', profile.sampler)}</datalist></label>` : '',
+    capabilities.scheduler ? `<label><span>Scheduler</span><input class="text_pole sd-storyboard-field" data-storyboard-field="scheduler" list="sd-storyboard-schedulers" value="${htmlEscape(profile.scheduler)}" placeholder="沿用当前"><datalist id="sd-storyboard-schedulers">${storyboardSelectOptions('#sd_scheduler', profile.scheduler)}</datalist></label>` : '',
+  ].filter(Boolean).join('');
+  const capabilityText = state.source === 'openai'
+    ? '当前后端使用 Model、方向尺寸、Quality 与 Style'
+    : state.source === 'banana'
+      ? '当前后端使用 Model、比例、反向提示词、Seed 与 Prompt Enhance'
+      : state.source === 'comfy'
+        ? '参数由所选 Workflow 的占位符决定'
+        : 'NovelAI 支持完整扩散参数；不兼容项由后端自动校正';
   return `<div class="sd-storyboard-create">
     <section class="sd-card sd-storyboard-hero-card">
       <div><span class="sd-storyboard-kicker">STORYBOARD</span><h3>将此瞬，妥为留存</h3></div>
@@ -9582,8 +9605,8 @@ function renderStoryboardCreate(state) {
     </section>
     <section class="sd-card sd-storyboard-prompt-card">
       <div class="sd-card-title-row"><h3>画面描述</h3><button type="button" class="sd-storyboard-use-floor" ${latestFloor < 0 ? 'disabled' : ''}>取当前回复</button></div>
-      <textarea class="text_pole sd-textarea sd-storyboard-prompt" spellcheck="false" placeholder="写下构图、人物、光线、动作与氛围；内容会原样交给当前生图模型。">${htmlEscape(state.prompt)}</textarea>
-      <label class="sd-storyboard-field-label"><span>反向提示词</span><textarea class="text_pole sd-storyboard-negative" spellcheck="false" placeholder="可留空">${htmlEscape(state.negative)}</textarea></label>
+      <textarea class="text_pole sd-textarea sd-storyboard-prompt" spellcheck="false" placeholder="写下构图、人物、光线、动作与氛围；所选形象档案会作为稳定外观条件一并使用。">${htmlEscape(state.prompt)}</textarea>
+      ${capabilities.negative ? `<label class="sd-storyboard-field-label"><span>反向提示词</span><textarea class="text_pole sd-storyboard-negative" spellcheck="false" placeholder="可留空">${htmlEscape(state.negative)}</textarea></label>` : ''}
       <div class="sd-storyboard-grid sd-storyboard-grid-two">
         <label><span>人物形象</span><select class="text_pole sd-storyboard-character"><option value="">不套用档案</option>${characterOptions}</select></label>
         <label><span>插入位置</span><select class="text_pole sd-storyboard-target">
@@ -9592,22 +9615,20 @@ function renderStoryboardCreate(state) {
           <option value="gallery" ${state.target === 'gallery' ? 'selected' : ''}>只存入成片</option>
         </select></label>
       </div>
+      ${selectedCharacter ? `<div class="sd-storyboard-consistency-row"><div><b>人物一致性</b><small>${state.source === 'comfy' ? '参考图模式要求 Workflow 含 %qianmu_reference%' : '当前模型使用稳定外观描述'}</small></div><select class="text_pole sd-storyboard-consistency"><option value="description" ${consistencyMode === 'description' ? 'selected' : ''}>外观描述（通用）</option>${state.source === 'comfy' ? `<option value="reference" ${consistencyMode === 'reference' ? 'selected' : ''} ${storyboardSafeUrl(selectedCharacter.referenceUrl) ? '' : 'disabled'}>参考图（ComfyUI）</option>` : ''}</select></div>` : ''}
       ${state.target === 'floor' ? `<label class="sd-storyboard-floor-row"><span>正文楼层</span><input class="text_pole sd-storyboard-floor" type="number" min="0" step="1" value="${htmlEscape(state.floor)}" placeholder="例如 128"></label>` : ''}
       <label class="checkbox_label sd-storyboard-inline-choice"><input type="checkbox" class="sd-storyboard-inline" ${state.inlineByDefault && state.target !== 'gallery' ? 'checked' : ''} ${state.target === 'gallery' ? 'disabled' : ''}> 生成后穿插在正文中</label>
     </section>
     <details class="sd-card sd-storyboard-params" open>
       <summary><span>绘制参数</span><small>空值沿用当前连接</small></summary>
       ${renderStoryboardParameterPresets(state)}
+      <div class="sd-storyboard-capability-note"><i class="fa-solid fa-circle-info"></i><span>${htmlEscape(capabilityText)}</span></div>
       <div class="sd-storyboard-grid sd-storyboard-grid-two">
         <label><span>Model</span><input class="text_pole sd-storyboard-field" data-storyboard-field="model" list="sd-storyboard-models" value="${htmlEscape(profile.model)}" placeholder="沿用当前"><datalist id="sd-storyboard-models">${storyboardSelectOptions('#sd_model', profile.model)}</datalist></label>
         <label><span>比例</span><select class="text_pole sd-storyboard-ratio">${STORYBOARD_RATIOS.map((item) => `<option value="${item.id}" ${profile.ratio === item.id ? 'selected' : ''}>${item.label}</option>`).join('')}</select></label>
         <label><span>Width</span><input class="text_pole sd-storyboard-field sd-storyboard-width" data-storyboard-field="width" type="number" min="64" max="4096" step="64" value="${htmlEscape(profile.width)}" placeholder="${htmlEscape(sd.width || '')}"></label>
         <label><span>Height</span><input class="text_pole sd-storyboard-field sd-storyboard-height" data-storyboard-field="height" type="number" min="64" max="4096" step="64" value="${htmlEscape(profile.height)}" placeholder="${htmlEscape(sd.height || '')}"></label>
-        <label><span>Steps</span><input class="text_pole sd-storyboard-field" data-storyboard-field="steps" type="number" min="1" max="300" step="1" value="${htmlEscape(profile.steps)}" placeholder="${htmlEscape(sd.steps || '')}"></label>
-        <label><span>CFG</span><input class="text_pole sd-storyboard-field" data-storyboard-field="cfg" type="number" min="0" max="100" step="0.1" value="${htmlEscape(profile.cfg)}" placeholder="${htmlEscape(sd.scale || '')}"></label>
-        <label><span>Seed</span><input class="text_pole sd-storyboard-field" data-storyboard-field="seed" type="number" min="-1" step="1" value="${htmlEscape(profile.seed)}" placeholder="随机"></label>
-        <label><span>Sampler</span><input class="text_pole sd-storyboard-field" data-storyboard-field="sampler" list="sd-storyboard-samplers" value="${htmlEscape(profile.sampler)}" placeholder="沿用当前"><datalist id="sd-storyboard-samplers">${storyboardSelectOptions('#sd_sampler', profile.sampler)}</datalist></label>
-        <label><span>Scheduler</span><input class="text_pole sd-storyboard-field" data-storyboard-field="scheduler" list="sd-storyboard-schedulers" value="${htmlEscape(profile.scheduler)}" placeholder="沿用当前"><datalist id="sd-storyboard-schedulers">${storyboardSelectOptions('#sd_scheduler', profile.scheduler)}</datalist></label>
+        ${advancedFields}
       </div>
       ${sourceFields}
     </details>
@@ -9626,7 +9647,7 @@ function renderStoryboardConnection(state) {
   const extra = state.source === 'comfy' ? `<div class="sd-storyboard-grid sd-storyboard-grid-two">
       <label><span>ComfyUI URL</span><input class="text_pole sd-storyboard-connect-comfy-url" value="${htmlEscape(profile.comfyUrl || storyboardSdSettings().comfy_url || '')}" placeholder="http://127.0.0.1:8188"></label>
       <label><span>Workflow</span><input class="text_pole sd-storyboard-connect-comfy-workflow" list="sd-storyboard-workflows-connect" value="${htmlEscape(profile.comfyWorkflow || storyboardSdSettings().comfy_workflow || '')}" placeholder="工作流文件名"><datalist id="sd-storyboard-workflows-connect">${storyboardSelectOptions('#sd_comfy_workflow', profile.comfyWorkflow)}</datalist></label>
-    </div>` : state.source === 'banana' ? `<label class="checkbox_label"><input type="checkbox" class="sd-storyboard-connect-google-enhance" ${profile.googleEnhance ? 'checked' : ''}> Prompt Enhance</label>` : '';
+    </div><details class="sd-storyboard-reference-help"><summary>参考图工作流</summary><p>需要人物参考图时，在 ComfyUI API Workflow 的参考图输入处使用 <code>%qianmu_reference%</code>。连接检查会明确显示当前工作流是否支持。</p></details>` : state.source === 'banana' ? `<label class="checkbox_label"><input type="checkbox" class="sd-storyboard-connect-google-enhance" ${profile.googleEnhance ? 'checked' : ''}> Prompt Enhance</label>` : '';
   return `<div class="sd-storyboard-connection">
     <section class="sd-card sd-storyboard-connection-head"><span class="sd-storyboard-kicker">CONNECTION</span><h3>模型连接</h3></section>
     <section class="sd-card">
@@ -9739,7 +9760,7 @@ function renderStoryboardCharacters(state) {
         <label><span>一句识别</span><input class="text_pole" data-character-field="subtitle" value="${htmlEscape(selected.subtitle)}" placeholder="例如：黑发、冷白肤色、旧式长风衣"></label>
         <label><span>视觉描述</span><textarea class="text_pole" data-character-field="appearance" placeholder="只写画面中看得见的稳定特征；套用档案时会与镜头描述一并发送。">${htmlEscape(selected.appearance)}</textarea></label>
         <label><span>专属反向提示词</span><textarea class="text_pole" data-character-field="negative" placeholder="可留空">${htmlEscape(selected.negative)}</textarea></label>
-        <label><span>档案图 URL</span><input class="text_pole" data-character-field="referenceUrl" type="url" value="${htmlEscape(selected.referenceUrl)}" placeholder="可留空，默认使用捕获到的头像"></label>
+        <label><span>参考图 URL</span><input class="text_pole" data-character-field="referenceUrl" type="url" value="${htmlEscape(selected.referenceUrl)}" placeholder="可留空，默认使用捕获到的头像"></label>
         <div class="sd-storyboard-profile-actions"><button type="button" class="sd-btn ${bound ? 'sd-primary' : ''} sd-storyboard-bind-character" ${bound ? 'disabled' : ''}>${bound ? '已绑定当前聊天' : '绑定到当前聊天'}</button><button type="button" class="sd-btn sd-primary sd-storyboard-save-character">保存档案</button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-character" title="删除档案" aria-label="删除档案"><i class="fa-solid fa-trash-can"></i></button></div>
       </div>
       <div class="sd-storyboard-profile-photo">${avatar ? `<img src="${htmlEscape(storyboardSafeUrl(avatar))}" alt="${htmlEscape(selected.name)}">` : '<i class="fa-solid fa-user"></i>'}<span>${htmlEscape(selected.name)} · ${htmlEscape(selected.variantName || '默认档案')}</span></div>
@@ -9787,10 +9808,13 @@ function storyboardCreateJob(state, profile, { attempt = 1 } = {}) {
   const requestedFloor = Number.isInteger(Number(rawFloor)) && rawFloor ? Number(rawFloor) : null;
   const floor = state.target === 'latest' ? storyboardCurrentAssistantFloor() : (state.target === 'floor' ? requestedFloor : null);
   const message = Number.isInteger(floor) ? ctx().chat?.[floor] : null;
+  const character = state.characters.find((item) => item.id === state.selectedCharacterId);
+  const consistencyMode = state.source === 'comfy' && state.consistencyModes[state.source] === 'reference' ? 'reference' : 'description';
   const snapshot = {
     source: state.source, prompt: String(state.prompt || ''), negative: String(state.negative || ''),
     target: state.target, floor, inlineByDefault: state.inlineByDefault !== false,
     selectedCharacterId: String(state.selectedCharacterId || ''), chatKey: String(getChatKey() || ''),
+    consistencyMode, referenceUrl: consistencyMode === 'reference' ? String(character?.referenceUrl || '') : '',
     messageHash: message ? hashText(String(message.mes || '')) : '', swipeId: Number(message?.swipe_id || 0),
     profile: storyboardProfileSnapshot(profile, state.source),
   };
@@ -9811,11 +9835,13 @@ function storyboardStartLog(job) {
     params: {
       width: job.profile.width || '', height: job.profile.height || '', steps: job.profile.steps || '', cfg: job.profile.cfg || '',
       seed: job.profile.seed || '', sampler: job.profile.sampler || '', scheduler: job.profile.scheduler || '',
+      consistency: job.consistencyMode || 'description',
     },
     error: '', recordId: '', queuedAt: now, startedAt: 0, finishedAt: 0, durationMs: 0,
     attempt: job.attempt, snapshot: clone({
       source: job.source, prompt: job.prompt, negative: job.negative, target: job.target, floor: job.floor,
       inlineByDefault: job.inlineByDefault, selectedCharacterId: job.selectedCharacterId, chatKey: job.chatKey,
+      consistencyMode: job.consistencyMode, referenceUrl: job.referenceUrl,
       messageHash: job.messageHash, swipeId: job.swipeId,
       profile: job.profile,
     }),
@@ -9866,6 +9892,7 @@ function storyboardLoadLogToWorkbench(log) {
   state.floor = sameChat && Number.isInteger(snap.floor) ? String(snap.floor) : '';
   state.inlineByDefault = sameChat && snap.inlineByDefault !== false;
   state.selectedCharacterId = state.characters.some((item) => item.id === snap.selectedCharacterId) ? snap.selectedCharacterId : '';
+  state.consistencyModes[state.source] = state.source === 'comfy' && snap.consistencyMode === 'reference' ? 'reference' : 'description';
   state.view = 'create';
   saveSettings();
   renderModal();
@@ -9890,6 +9917,7 @@ function storyboardLoadRecordToWorkbench(record) {
   state.negative = String(snap?.negative || record.negative || '');
   state.selectedCharacterId = state.characters.some((item) => item.id === (snap?.selectedCharacterId || record.characterId))
     ? String(snap?.selectedCharacterId || record.characterId) : '';
+  state.consistencyModes[source] = source === 'comfy' && snap?.consistencyMode === 'reference' ? 'reference' : 'description';
   state.target = 'gallery';
   state.floor = '';
   state.view = 'create';
@@ -9916,7 +9944,7 @@ function renderStoryboardLogs(state) {
       <summary><span class="sd-storyboard-log-status">${statusLabel}</span><b>${htmlEscape(source)}${log.model ? ` · ${htmlEscape(log.model)}` : ''}</b><small>${htmlEscape(formatDateTime(log.startedAt || log.queuedAt))}</small><i class="fa-solid fa-chevron-down"></i></summary>
       <div class="sd-storyboard-log-body">
         <p>${htmlEscape(log.prompt || '未记录画面描述')}</p>
-        <div class="sd-storyboard-log-meta"><span>耗时 ${log.durationMs ? `${(log.durationMs / 1000).toFixed(1)}s` : '—'}</span><span>${Number.isInteger(log.floor) ? `第 ${log.floor} 层` : '仅成片'}</span><span>${htmlEscape([log.params?.width, log.params?.height].filter(Boolean).join(' × ') || '沿用尺寸')}</span>${log.attempt > 1 ? `<span>第 ${log.attempt} 次</span>` : ''}</div>
+        <div class="sd-storyboard-log-meta"><span>耗时 ${log.durationMs ? `${(log.durationMs / 1000).toFixed(1)}s` : '—'}</span><span>${Number.isInteger(log.floor) ? `第 ${log.floor} 层` : '仅成片'}</span><span>${htmlEscape([log.params?.width, log.params?.height].filter(Boolean).join(' × ') || '沿用尺寸')}</span>${log.params?.consistency === 'reference' ? '<span>参考图一致性</span>' : ''}${log.attempt > 1 ? `<span>第 ${log.attempt} 次</span>` : ''}</div>
         ${log.error ? `<pre>${htmlEscape(log.error)}</pre>` : ''}
         <div class="sd-storyboard-log-actions"><button type="button" class="sd-btn sd-storyboard-load-log">载入镜头台</button>${runAction}<button type="button" class="sd-btn sd-storyboard-copy-log">复制诊断</button></div>
       </div>
@@ -9951,6 +9979,8 @@ function storyboardCaptureWorkbench(root) {
   const inline = root.querySelector('.sd-storyboard-inline');
   if (inline && !inline.disabled) state.inlineByDefault = Boolean(inline.checked);
   state.selectedCharacterId = String(root.querySelector('.sd-storyboard-character')?.value || '');
+  state.consistencyModes[state.source] = root.querySelector('.sd-storyboard-consistency')?.value === 'reference' && state.source === 'comfy'
+    ? 'reference' : 'description';
   root.querySelectorAll('.sd-storyboard-field').forEach((field) => {
     const key = field.dataset.storyboardField;
     if (!key) return;
@@ -10011,7 +10041,11 @@ async function storyboardCheckConnection(root) {
       const headers = typeof main.getRequestHeaders === 'function' ? main.getRequestHeaders() : { 'Content-Type': 'application/json' };
       const response = await fetch('/api/sd/comfy/ping', { method: 'POST', headers, body: JSON.stringify({ url }) });
       if (!response.ok) throw new Error(`ComfyUI 连接失败（${response.status}）`);
-      storyboardConnectionStatus.set(sourceId, { ok: true, message: `连接通过 · ${workflow}` });
+      const workflowResponse = await fetch('/api/sd/comfy/workflow', { method: 'POST', headers, body: JSON.stringify({ file_name: workflow }) });
+      if (!workflowResponse.ok) throw new Error(`Workflow 无法读取（${workflowResponse.status}）`);
+      const workflowText = String(await workflowResponse.json());
+      const supportsReference = workflowText.includes('%qianmu_reference%');
+      storyboardConnectionStatus.set(sourceId, { ok: true, message: `连接通过 · ${workflow} · ${supportsReference ? '支持参考图' : '外观描述'}`, supportsReference });
     } else {
       const sd = storyboardSdSettings();
       const effectiveModel = String(profile.model || (sd.source === source.stSource ? sd.model : '') || '').trim();
@@ -10051,12 +10085,18 @@ async function storyboardActivateSource(sourceId, { hydrate = false } = {}) {
 
 function storyboardApplyProfileToSt(profile, sourceId) {
   const sd = storyboardSdSettings();
+  const capabilities = STORYBOARD_CAPABILITIES[sourceId];
   const write = (key, sdKey = key, numeric = false) => {
     const raw = profile[key];
     if (raw === '' || raw === null || raw === undefined) return;
     sd[sdKey] = numeric ? Number(raw) : raw;
   };
-  write('model'); write('sampler'); write('scheduler'); write('width', 'width', true); write('height', 'height', true); write('steps', 'steps', true); write('cfg', 'scale', true); write('seed', 'seed', true);
+  write('model'); write('width', 'width', true); write('height', 'height', true);
+  if (capabilities.sampler) write('sampler');
+  if (capabilities.scheduler) write('scheduler');
+  if (capabilities.steps) write('steps', 'steps', true);
+  if (capabilities.cfg) write('cfg', 'scale', true);
+  if (capabilities.seed) write('seed', 'seed', true);
   if (sourceId === 'comfy') { write('comfyUrl', 'comfy_url'); write('comfyWorkflow', 'comfy_workflow'); sd.comfy_type = 'standard'; }
   if (sourceId === 'openai') {
     write('openaiStyle', 'openai_style');
@@ -10076,14 +10116,54 @@ const STORYBOARD_TRANSIENT_SD_KEYS = Object.freeze([
   'source', 'model', 'sampler', 'scheduler', 'width', 'height', 'steps', 'scale', 'seed',
   'comfy_url', 'comfy_workflow', 'comfy_type', 'openai_style', 'openai_quality', 'openai_quality_gpt',
   'google_api', 'google_enhance', 'novel_sm', 'novel_sm_dyn', 'novel_decrisper', 'novel_variety_boost',
+  'comfy_placeholders',
 ]);
 
-async function storyboardWithTransientProfile(profile, sourceId, task) {
+function storyboardBlobToBase64(blob) {
+  return blob.arrayBuffer().then((buffer) => {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(offset, Math.min(bytes.length, offset + 0x8000)));
+    }
+    return btoa(binary);
+  });
+}
+
+async function storyboardPrepareComfyReference(job) {
+  if (job?.source !== 'comfy' || job.consistencyMode !== 'reference') return '';
+  const referenceUrl = storyboardSafeUrl(job.referenceUrl);
+  if (!referenceUrl) throw new Error('所选形象档案没有可用的参考图 URL');
+  const main = await storyboardStModule();
+  const headers = typeof main.getRequestHeaders === 'function' ? main.getRequestHeaders() : { 'Content-Type': 'application/json' };
+  const workflowResponse = await fetch('/api/sd/comfy/workflow', {
+    method: 'POST', headers, body: JSON.stringify({ file_name: job.profile?.comfyWorkflow }),
+  });
+  if (!workflowResponse.ok) throw new Error(`无法读取 ComfyUI Workflow（${workflowResponse.status}）`);
+  const workflow = String(await workflowResponse.json());
+  if (!workflow.includes('%qianmu_reference%')) {
+    throw new Error('当前 Workflow 不含 %qianmu_reference% 占位符；请改用外观描述，或在参考图工作流中加入该占位符');
+  }
+  let response;
+  try { response = await fetch(referenceUrl); }
+  catch (_) { throw new Error('参考图读取失败；外链须允许浏览器跨域访问，或改用 SillyTavern 本地图片地址'); }
+  if (!response.ok) throw new Error(`参考图读取失败（${response.status}）`);
+  const blob = await response.blob();
+  if (blob.type && !blob.type.startsWith('image/')) throw new Error('参考图 URL 返回的不是图片');
+  if (!blob.size || blob.size > 12 * 1024 * 1024) throw new Error('参考图须小于 12 MB');
+  return storyboardBlobToBase64(blob);
+}
+
+async function storyboardWithTransientProfile(profile, sourceId, options, task) {
   const sd = storyboardSdSettings();
   const snapshot = Object.fromEntries(STORYBOARD_TRANSIENT_SD_KEYS.map((key) => [key, sd[key]]));
   try {
     await storyboardActivateSource(sourceId);
     storyboardApplyProfileToSt(profile, sourceId);
+    if (sourceId === 'comfy' && options?.referenceBase64) {
+      const placeholders = Array.isArray(sd.comfy_placeholders) ? sd.comfy_placeholders.filter((item) => item?.find !== 'qianmu_reference') : [];
+      sd.comfy_placeholders = [...placeholders, { find: 'qianmu_reference', replace: options.referenceBase64 }];
+    }
     return await task();
   } finally {
     for (const key of STORYBOARD_TRANSIENT_SD_KEYS) {
@@ -10118,23 +10198,30 @@ async function storyboardSaveConnection(root, { quiet = false } = {}) {
 
 function storyboardGenerationPayload(state, profile) {
   const character = state.characters.find((item) => item.id === state.selectedCharacterId);
+  const capabilities = STORYBOARD_CAPABILITIES[state.source];
   const prompt = character?.appearance
     ? `人物视觉档案：${character.name || '角色'}；${character.appearance}\n镜头画面：${state.prompt}`
     : state.prompt;
-  const negative = [character?.negative, state.negative].map((item) => String(item || '').trim()).filter(Boolean).join(', ');
-  return { prompt, negative, width: profile.width, height: profile.height, steps: profile.steps, cfg: profile.cfg, seed: profile.seed };
+  const negative = capabilities.negative
+    ? [character?.negative, state.negative].map((item) => String(item || '').trim()).filter(Boolean).join(', ')
+    : '';
+  return {
+    prompt, negative, width: profile.width, height: profile.height,
+    steps: capabilities.steps ? profile.steps : '', cfg: capabilities.cfg ? profile.cfg : '', seed: capabilities.seed ? profile.seed : '',
+  };
 }
 
 function storyboardJobFromLog(log) {
   if (!log?.snapshot) return null;
   const snap = clone(log.snapshot);
+  const capabilities = STORYBOARD_CAPABILITIES[snap.source];
   return {
     id: uid('shotjob'), ...snap,
     payload: {
       prompt: String(log.effectivePrompt || snap.prompt || ''),
-      negative: String(log.effectiveNegative || snap.negative || ''),
-      width: snap.profile?.width, height: snap.profile?.height, steps: snap.profile?.steps,
-      cfg: snap.profile?.cfg, seed: snap.profile?.seed,
+      negative: capabilities.negative ? String(log.effectiveNegative || snap.negative || '') : '',
+      width: snap.profile?.width, height: snap.profile?.height, steps: capabilities.steps ? snap.profile?.steps : '',
+      cfg: capabilities.cfg ? snap.profile?.cfg : '', seed: capabilities.seed ? snap.profile?.seed : '',
     },
     discardRequested: false, attempt: Math.max(1, Number(log.attempt || 1) + 1),
   };
@@ -10144,6 +10231,9 @@ function storyboardQueueJob(job) {
   if (!job?.payload?.prompt?.trim()) return toast('请先写下画面描述。', 'warning');
   if (job.source === 'comfy' && (!String(job.profile?.comfyUrl || '').trim() || !String(job.profile?.comfyWorkflow || '').trim())) {
     return toast('请先完成 ComfyUI URL 与 Workflow 配置。', 'warning');
+  }
+  if (job.source === 'comfy' && job.consistencyMode === 'reference' && !storyboardSafeUrl(job.referenceUrl)) {
+    return toast('参考图模式需要形象档案中的有效图片地址。', 'warning');
   }
   const source = STORYBOARD_SOURCES[job.source];
   const sd = storyboardSdSettings();
@@ -10229,7 +10319,8 @@ async function storyboardRunJob(job, log) {
       return;
     }
     const command = buildImagineCommand(job.payload);
-    const url = storyboardSafeUrl(await storyboardWithTransientProfile(job.profile, job.source, () => storyboardExecuteSlash(command)));
+    const referenceBase64 = await storyboardPrepareComfyReference(job);
+    const url = storyboardSafeUrl(await storyboardWithTransientProfile(job.profile, job.source, { referenceBase64 }, () => storyboardExecuteSlash(command)));
     if (job.discardRequested || job.chatKey && job.chatKey !== getChatKey()) {
       storyboardFinishLog(log, 'cancelled', { error: job.discardRequested ? '用户放弃收片' : '生成期间切换了聊天' });
       return;
@@ -10443,6 +10534,15 @@ function bindStoryboardTabEvents(root) {
     storyboardCaptureWorkbench(root);
     state.target = event.target.value;
     saveSettings(); renderModal();
+  });
+  root.querySelector('.sd-storyboard-character')?.addEventListener('change', () => {
+    storyboardCaptureWorkbench(root); saveSettings(); renderModal();
+  });
+  root.querySelector('.sd-storyboard-consistency')?.addEventListener('change', () => {
+    storyboardCaptureWorkbench(root); saveSettings(); renderModal();
+  });
+  root.querySelector('[data-storyboard-field="model"]')?.addEventListener('change', () => {
+    storyboardCaptureWorkbench(root); saveSettings(); renderModal();
   });
   root.querySelector('.sd-storyboard-ratio')?.addEventListener('change', (event) => {
     const width = root.querySelector('.sd-storyboard-width');

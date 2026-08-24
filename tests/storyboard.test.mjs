@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
+  STORYBOARD_CAPABILITIES,
   STORYBOARD_SOURCES,
   buildImagineCommand,
   createStoryboardDefaults,
@@ -13,6 +14,9 @@ const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
 assert.deepEqual(Object.keys(STORYBOARD_SOURCES), ['novel', 'comfy', 'openai', 'banana'], '第一阶段只开放四种确认过的连接');
 assert.equal(STORYBOARD_SOURCES.banana.stSource, 'google', 'Banana 必须复用 ST 官方 Google 图像后端');
+assert.equal(STORYBOARD_CAPABILITIES.openai.seed, false, 'OpenAI 官方后端不读取 Seed，界面不得伪装支持');
+assert.equal(STORYBOARD_CAPABILITIES.banana.negative, true);
+assert.equal(STORYBOARD_CAPABILITIES.comfy.reference, true);
 assert.equal(STORYBOARD_SOURCES.novel.secretKey, 'api_key_novel');
 assert.equal(STORYBOARD_SOURCES.openai.secretKey, 'api_key_openai');
 assert.equal(STORYBOARD_SOURCES.banana.secretKey, 'api_key_makersuite');
@@ -73,5 +77,8 @@ assert.match(css, /#chat \.mes \.sd-storyboard-inline/, '正文分镜样式必�
 assert.match(source, /storyboardInjectMessageButtons[\s\S]*dataset\.storyboardChatAction = 'open-floor'/, '正文每层必须提供不直接计费的分镜快捷入口');
 assert.match(source, /storyboardParameterPresets[\s\S]*保存分镜样式[\s\S]*parameterPresetSelection/, '分镜参数样式必须可按模型保存和切换');
 assert.match(source, /storyboardLoadRecordToWorkbench[\s\S]*复用设置/, '成片必须可安全载回镜头台复用');
+assert.match(source, /STORYBOARD_CAPABILITIES\[state\.source\][\s\S]*capabilityText/, '绘制参数必须按官方供应商能力裁剪');
+assert.match(source, /storyboardPrepareComfyReference[\s\S]*%qianmu_reference%[\s\S]*comfy_placeholders/, 'ComfyUI 参考图必须走真实 Workflow 占位符链路');
+assert.doesNotMatch(source, /source !== 'comfy'[\s\S]{0,120}consistencyMode = 'reference'/, '非 ComfyUI 后端不得伪装参考图一致性');
 
 console.log('Storyboard unit 1 contract OK');
