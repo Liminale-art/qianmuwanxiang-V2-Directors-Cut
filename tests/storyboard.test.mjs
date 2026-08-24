@@ -85,5 +85,12 @@ assert.match(source, /storyboardGallerySelection[\s\S]*删除选中成片/, '成
 assert.match(source, /storyboardExportPackage[\s\S]*type: 'qianmu-storyboard'[\s\S]*credentialsIncluded: false/, '分镜数据包不得包含 API 密钥');
 assert.match(source, /storyboardImportPackage[\s\S]*saveBase64AsFile[\s\S]*messageHash/, '跨端导入须将内嵌图片交给 ST 落盘并重新校验正文锚点');
 assert.match(source, /if \(gallery\.length > 400\)/, '聊天成片元数据必须有容量上限');
+assert.match(source, /sd-reader-native-file sd-storyboard-pack-file/, 'iOS 导入必须保留真实文件控件，不得用 hidden 切断用户手势链');
+assert.match(source, /const saveDraft[\s\S]*setTimeout[\s\S]*storyboardCaptureWorkbench\(root, sourceAtBind\)/, '镜头台长文与参数草稿必须延迟自动保存');
+assert.match(source, /function closeModal\(\)[\s\S]*storyboardCaptureWorkbench\(storyboardRoot\)[\s\S]*storyboardCloseLightbox\(\)/, '关闭面板必须先保存草稿并收掉独立看图层');
+assert.match(source, /role="dialog"[\s\S]*aria-modal[\s\S]*event\.key === 'Escape'/, '成片看图层必须支持屏幕阅读语义和 Escape 关闭');
+assert.match(source, /storyboardHandleChatChanged\(\)[\s\S]*storyboardGallerySelection\.clear\(\)/, '切换聊天时必须清理成片选择态');
+assert.match(css, /prefers-reduced-motion: reduce[\s\S]*sd-storyboard-queue-pulse[\s\S]*animation: none/, '分镜必须尊重系统低动态偏好');
+assert.match(css, /sd-storyboard-root button:focus-visible[\s\S]*outline:/, '分镜主要操作必须保留键盘焦点轮廓');
 
-console.log('Storyboard unit 1 contract OK');
+console.log('Storyboard module contract OK');

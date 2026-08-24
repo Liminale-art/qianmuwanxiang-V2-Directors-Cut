@@ -30,7 +30,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.43.0';
+const VERSION = '1.44.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -3606,6 +3606,11 @@ function openModal(tab) {
 }
 
 function closeModal() {
+  if (activeTab === 'imagegen') {
+    const storyboardRoot = document.getElementById(MODAL_ID)?.querySelector('.sd-storyboard-root');
+    if (storyboardRoot && storyboardState().view === 'create') storyboardCaptureWorkbench(storyboardRoot);
+    storyboardCloseLightbox();
+  }
   focusClockCloseVoiceDrawer();
   document.getElementById(MODAL_ID)?.classList.remove('open');
   document.body.classList.remove('sd-qm-modal-open');
@@ -9520,7 +9525,7 @@ function storyboardSelectOptions(selector, selected = '') {
 
 function renderStoryboardSourceTabs(state) {
   return `<div class="sd-storyboard-source-tabs" role="tablist" aria-label="生图连接">
-    ${Object.values(STORYBOARD_SOURCES).map((source) => `<button type="button" class="sd-storyboard-source ${state.source === source.id ? 'active' : ''}" data-storyboard-source="${source.id}">${source.label}</button>`).join('')}
+    ${Object.values(STORYBOARD_SOURCES).map((source) => `<button type="button" role="tab" aria-selected="${state.source === source.id}" class="sd-storyboard-source ${state.source === source.id ? 'active' : ''}" data-storyboard-source="${source.id}">${source.label}</button>`).join('')}
   </div>`;
 }
 
@@ -9532,7 +9537,7 @@ function renderStoryboardNav(state) {
     ['logs', '日志', 'fa-list-ul'],
     ['connection', '模型连接', 'fa-plug'],
   ];
-  return `<nav class="sd-storyboard-nav">${items.map(([id, label, icon]) => `<button type="button" class="${state.view === id ? 'active' : ''}" data-storyboard-view="${id}"><i class="fa-solid ${icon}"></i><span>${label}</span></button>`).join('')}</nav>`;
+  return `<nav class="sd-storyboard-nav" aria-label="分镜功能">${items.map(([id, label, icon]) => `<button type="button" aria-current="${state.view === id ? 'page' : 'false'}" aria-label="${label}" class="${state.view === id ? 'active' : ''}" data-storyboard-view="${id}"><i class="fa-solid ${icon}"></i><span>${label}</span></button>`).join('')}</nav>`;
 }
 
 function storyboardGalleryRecords() {
@@ -9661,7 +9666,7 @@ function renderStoryboardConnection(state) {
       ${check ? `<div class="sd-storyboard-connection-result ${check.ok ? 'ok' : 'failed'}"><i class="fa-solid ${check.ok ? 'fa-circle-check' : 'fa-triangle-exclamation'}"></i><span>${htmlEscape(check.message)}</span></div>` : ''}
       <div class="sd-storyboard-connection-actions"><button type="button" class="sd-btn sd-storyboard-check-connection"><i class="fa-solid fa-stethoscope"></i>检查连接</button><button type="button" class="sd-btn sd-primary sd-storyboard-save-connection"><i class="fa-solid fa-check"></i>保存连接</button></div>
     </section>
-    <section class="sd-card sd-storyboard-pack-card"><div><h3>分镜数据打包</h3><small>形象档案、样式、日志与本聊天成片 · 不含 API Key</small></div><div><button type="button" class="sd-icon-btn sd-storyboard-pack-export" title="导出分镜数据" aria-label="导出分镜数据"><i class="fa-solid fa-file-export"></i></button><label class="sd-icon-btn sd-storyboard-pack-import" title="导入分镜数据" aria-label="导入分镜数据"><i class="fa-solid fa-file-import"></i><input type="file" accept="application/json,.json" hidden></label></div></section>
+    <section class="sd-card sd-storyboard-pack-card"><div><h3>分镜数据打包</h3><small>形象档案、样式、日志与本聊天成片 · 不含 API Key</small></div><div><button type="button" class="sd-icon-btn sd-storyboard-pack-export" title="导出分镜数据" aria-label="导出分镜数据"><i class="fa-solid fa-file-export"></i></button><label class="sd-icon-btn sd-storyboard-pack-import" title="导入分镜数据" aria-label="导入分镜数据"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-native-file sd-storyboard-pack-file" accept="application/json,.json"></label></div></section>
   </div>`;
 }
 
@@ -9791,7 +9796,7 @@ function renderStoryboardGallery(state) {
   const records = storyboardFilteredGalleryRecords(state);
   const visible = records.slice(0, storyboardGalleryVisibleCount);
   return `<div class="sd-storyboard-gallery-page">
-    <section class="sd-card sd-storyboard-gallery-head"><div><span class="sd-storyboard-kicker">TAKES</span><h3>成片</h3></div><div><b>${allRecords.length}</b><button type="button" class="sd-btn sd-storyboard-gallery-select-mode">${storyboardGallerySelectMode ? '完成' : '多选'}</button></div></section>
+    <section class="sd-card sd-storyboard-gallery-head"><div><span class="sd-storyboard-kicker">TAKES</span><h3>成片</h3></div><div><b>${allRecords.length}</b><button type="button" class="sd-btn sd-storyboard-gallery-select-mode" aria-pressed="${storyboardGallerySelectMode}">${storyboardGallerySelectMode ? '完成' : '多选'}</button></div></section>
     <section class="sd-card sd-storyboard-gallery-tools"><input class="text_pole sd-storyboard-gallery-search" value="${htmlEscape(state.gallerySearch)}" placeholder="搜索画面、模型或人物"><select class="text_pole sd-storyboard-gallery-source"><option value="all">全部模型</option>${Object.values(STORYBOARD_SOURCES).map((item) => `<option value="${item.id}" ${state.gallerySource === item.id ? 'selected' : ''}>${item.label}</option>`).join('')}</select></section>
     ${storyboardGallerySelectMode ? `<section class="sd-card sd-storyboard-gallery-bulk"><span>已选 <b>${storyboardGallerySelection.size}</b> 张</span><div><button type="button" class="sd-btn sd-storyboard-gallery-select-all" ${records.length ? '' : 'disabled'}>全选结果</button><button type="button" class="sd-btn sd-danger sd-storyboard-gallery-delete-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>删除选中</button></div></section>` : ''}
     ${records.length ? `<div class="sd-storyboard-gallery">${visible.map((record) => {
@@ -9991,9 +9996,9 @@ function renderStoryboardTab() {
   return `<div class="sd-storyboard-root">${renderStoryboardNav(state)}${body}</div>`;
 }
 
-function storyboardCaptureWorkbench(root) {
+function storyboardCaptureWorkbench(root, sourceId = storyboardState().source) {
   const state = storyboardState();
-  const profile = storyboardProfile(state.source);
+  const profile = state.profiles[sourceId] || (state.profiles[sourceId] = createStoryboardDefaults().profiles[sourceId]);
   const prompt = root.querySelector('.sd-storyboard-prompt');
   const negative = root.querySelector('.sd-storyboard-negative');
   if (prompt) state.prompt = String(prompt.value || '').slice(0, 24000);
@@ -10003,7 +10008,7 @@ function storyboardCaptureWorkbench(root) {
   const inline = root.querySelector('.sd-storyboard-inline');
   if (inline && !inline.disabled) state.inlineByDefault = Boolean(inline.checked);
   state.selectedCharacterId = String(root.querySelector('.sd-storyboard-character')?.value || '');
-  state.consistencyModes[state.source] = root.querySelector('.sd-storyboard-consistency')?.value === 'reference' && state.source === 'comfy'
+  state.consistencyModes[sourceId] = root.querySelector('.sd-storyboard-consistency')?.value === 'reference' && sourceId === 'comfy'
     ? 'reference' : 'description';
   root.querySelectorAll('.sd-storyboard-field').forEach((field) => {
     const key = field.dataset.storyboardField;
@@ -10330,6 +10335,10 @@ function storyboardRemoveQueuedLog(log) {
 function storyboardHandleChatChanged() {
   const currentChatKey = String(getChatKey() || '');
   const state = storyboardState();
+  storyboardCloseLightbox();
+  storyboardGallerySelection.clear();
+  storyboardGallerySelectMode = false;
+  storyboardGalleryVisibleCount = 40;
   if (storyboardActiveJob?.chatKey && storyboardActiveJob.chatKey !== currentChatKey) storyboardActiveJob.discardRequested = true;
   const keep = [];
   for (const job of storyboardQueue) {
@@ -10483,18 +10492,24 @@ function storyboardOpenLightbox(record) {
   storyboardCloseLightbox();
   const layer = document.createElement('div');
   layer.className = 'sd-storyboard-lightbox';
+  layer.tabIndex = -1;
+  layer.setAttribute('role', 'dialog');
+  layer.setAttribute('aria-modal', 'true');
+  layer.setAttribute('aria-label', '分镜成片预览');
   layer.innerHTML = `<button type="button" class="sd-storyboard-lightbox-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button><div class="sd-storyboard-lightbox-stage"><img src="${htmlEscape(url)}" alt="${htmlEscape(snip(record.prompt || '分镜', 80))}"></div><footer><div><b>${htmlEscape(STORYBOARD_SOURCES[record.source]?.label || '分镜')}</b><span>${htmlEscape(record.prompt || '')}</span></div><button type="button" class="sd-btn sd-storyboard-lightbox-reuse">复用设置</button><button type="button" class="sd-btn sd-storyboard-lightbox-download">下载</button></footer>`;
   layer.addEventListener('pointerdown', (event) => event.stopPropagation());
   layer.addEventListener('click', (event) => {
     event.stopPropagation();
     if (event.target === layer || event.target.closest('.sd-storyboard-lightbox-close')) storyboardCloseLightbox();
   });
+  layer.addEventListener('keydown', (event) => { if (event.key === 'Escape') storyboardCloseLightbox(); });
   layer.querySelector('.sd-storyboard-lightbox-download')?.addEventListener('click', () => void storyboardDownloadRecord(record));
   layer.querySelector('.sd-storyboard-lightbox-reuse')?.addEventListener('click', () => {
     storyboardCloseLightbox(); storyboardLoadRecordToWorkbench(record); toast('已载入镜头台；确认画面后再生成。', 'success');
   });
   document.body.appendChild(layer);
   storyboardLightboxEl = layer;
+  layer.focus({ preventScroll: true });
 }
 
 async function storyboardDownloadRecord(record) {
@@ -10664,6 +10679,21 @@ function storyboardUnbindChat() {
 function bindStoryboardTabEvents(root) {
   if (activeTab !== 'imagegen') return;
   const state = storyboardState();
+  if (state.view === 'create') {
+    const sourceAtBind = state.source;
+    let draftTimer = null;
+    const saveDraft = () => {
+      clearTimeout(draftTimer);
+      draftTimer = setTimeout(() => {
+        // 路由切换会替换整棵 root；旧计时器绝不能用脱离 DOM 的旧表单覆盖新页面。
+        if (!root.isConnected) return;
+        storyboardCaptureWorkbench(root, sourceAtBind);
+      }, 320);
+    };
+    root.querySelectorAll('.sd-storyboard-prompt, .sd-storyboard-negative, .sd-storyboard-floor, .sd-storyboard-field').forEach((field) => {
+      field.addEventListener(field.type === 'checkbox' || field.tagName === 'SELECT' ? 'change' : 'input', saveDraft);
+    });
+  }
   root.querySelectorAll('[data-storyboard-view]').forEach((button) => button.addEventListener('click', () => {
     if (state.view === 'create') storyboardCaptureWorkbench(root);
     state.view = button.dataset.storyboardView;
