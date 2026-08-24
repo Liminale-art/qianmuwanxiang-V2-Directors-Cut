@@ -30,7 +30,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.42.0';
+const VERSION = '1.43.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -766,8 +766,13 @@ const storyboardConnectionStatus = new Map();
 let storyboardSecrets = {};          // 只缓存“是否已配置”，绝不读取或缓存密钥正文
 let storyboardSecretModulePromise = null;
 let storyboardStModulePromise = null;
+let storyboardUtilsModulePromise = null;
 let storyboardChatClickBound = false;
 let storyboardInlineTimer = null;
+const storyboardGallerySelection = new Set();
+let storyboardGallerySelectMode = false;
+let storyboardGalleryVisibleCount = 40;
+let storyboardLightboxEl = null;
 let initialized = false;
 let eventBound = false;
 let inputMenuObserver = null;
@@ -9656,6 +9661,7 @@ function renderStoryboardConnection(state) {
       ${check ? `<div class="sd-storyboard-connection-result ${check.ok ? 'ok' : 'failed'}"><i class="fa-solid ${check.ok ? 'fa-circle-check' : 'fa-triangle-exclamation'}"></i><span>${htmlEscape(check.message)}</span></div>` : ''}
       <div class="sd-storyboard-connection-actions"><button type="button" class="sd-btn sd-storyboard-check-connection"><i class="fa-solid fa-stethoscope"></i>检查连接</button><button type="button" class="sd-btn sd-primary sd-storyboard-save-connection"><i class="fa-solid fa-check"></i>保存连接</button></div>
     </section>
+    <section class="sd-card sd-storyboard-pack-card"><div><h3>分镜数据打包</h3><small>形象档案、样式、日志与本聊天成片 · 不含 API Key</small></div><div><button type="button" class="sd-icon-btn sd-storyboard-pack-export" title="导出分镜数据" aria-label="导出分镜数据"><i class="fa-solid fa-file-export"></i></button><label class="sd-icon-btn sd-storyboard-pack-import" title="导入分镜数据" aria-label="导入分镜数据"><i class="fa-solid fa-file-import"></i><input type="file" accept="application/json,.json" hidden></label></div></section>
   </div>`;
 }
 
@@ -9768,19 +9774,37 @@ function renderStoryboardCharacters(state) {
   </section></div>`;
 }
 
-function renderStoryboardGallery() {
-  const records = [...storyboardGalleryRecords()].reverse();
+function storyboardFilteredGalleryRecords(state) {
+  const query = String(state.gallerySearch || '').trim().toLowerCase();
+  const allRecords = [...storyboardGalleryRecords()].reverse();
+  return allRecords.filter((record) => {
+    if (state.gallerySource !== 'all' && record.source !== state.gallerySource) return false;
+    if (!query) return true;
+    const character = state.characters.find((item) => item.id === record.characterId);
+    return [record.prompt, record.model, STORYBOARD_SOURCES[record.source]?.label, character?.name, character?.variantName]
+      .some((value) => String(value || '').toLowerCase().includes(query));
+  });
+}
+
+function renderStoryboardGallery(state) {
+  const allRecords = [...storyboardGalleryRecords()].reverse();
+  const records = storyboardFilteredGalleryRecords(state);
+  const visible = records.slice(0, storyboardGalleryVisibleCount);
   return `<div class="sd-storyboard-gallery-page">
-    <section class="sd-card sd-storyboard-gallery-head"><div><span class="sd-storyboard-kicker">TAKES</span><h3>成片</h3></div><b>${records.length}</b></section>
-    ${records.length ? `<div class="sd-storyboard-gallery">${records.map((record) => {
+    <section class="sd-card sd-storyboard-gallery-head"><div><span class="sd-storyboard-kicker">TAKES</span><h3>成片</h3></div><div><b>${allRecords.length}</b><button type="button" class="sd-btn sd-storyboard-gallery-select-mode">${storyboardGallerySelectMode ? '完成' : '多选'}</button></div></section>
+    <section class="sd-card sd-storyboard-gallery-tools"><input class="text_pole sd-storyboard-gallery-search" value="${htmlEscape(state.gallerySearch)}" placeholder="搜索画面、模型或人物"><select class="text_pole sd-storyboard-gallery-source"><option value="all">全部模型</option>${Object.values(STORYBOARD_SOURCES).map((item) => `<option value="${item.id}" ${state.gallerySource === item.id ? 'selected' : ''}>${item.label}</option>`).join('')}</select></section>
+    ${storyboardGallerySelectMode ? `<section class="sd-card sd-storyboard-gallery-bulk"><span>已选 <b>${storyboardGallerySelection.size}</b> 张</span><div><button type="button" class="sd-btn sd-storyboard-gallery-select-all" ${records.length ? '' : 'disabled'}>全选结果</button><button type="button" class="sd-btn sd-danger sd-storyboard-gallery-delete-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>删除选中</button></div></section>` : ''}
+    ${records.length ? `<div class="sd-storyboard-gallery">${visible.map((record) => {
       const url = storyboardSafeUrl(record.url);
       const status = storyboardRecordStatus(record);
-      return `<article data-storyboard-record="${htmlEscape(record.id)}">
-        ${url ? `<img src="${htmlEscape(url)}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 40))}">` : '<div class="sd-storyboard-image-missing"><i class="fa-solid fa-image"></i></div>'}
+      const selected = storyboardGallerySelection.has(record.id);
+      return `<article class="${selected ? 'selected' : ''}" data-storyboard-record="${htmlEscape(record.id)}">
+        ${storyboardGallerySelectMode ? `<button type="button" class="sd-storyboard-gallery-check" aria-label="${selected ? '取消选择' : '选择'}"><i class="fa-solid ${selected ? 'fa-circle-check' : 'fa-circle'}"></i></button>` : ''}
+        <button type="button" class="sd-storyboard-preview-record" ${url ? '' : 'disabled'}>${url ? `<img src="${htmlEscape(url)}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 40))}">` : '<span class="sd-storyboard-image-missing"><i class="fa-solid fa-image"></i></span>'}</button>
         <div><span>${htmlEscape(STORYBOARD_SOURCES[record.source]?.label || record.source || '分镜')}</span><small>${htmlEscape(status || formatDateTime(record.createdAt))}</small><p>${htmlEscape(snip(record.prompt || '', 110))}</p></div>
         <div class="sd-storyboard-gallery-actions"><button type="button" class="sd-icon-btn sd-storyboard-reuse-record" title="复用设置" aria-label="复用设置"><i class="fa-solid fa-arrow-rotate-right"></i></button><button type="button" class="sd-icon-btn sd-storyboard-download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button>${Number.isInteger(record.floor) ? `<button type="button" class="sd-icon-btn sd-storyboard-inline-toggle" title="${record.inline === false ? '插回正文' : '移出正文'}" aria-label="${record.inline === false ? '插回正文' : '移出正文'}"><i class="fa-solid ${record.inline === false ? 'fa-eye' : 'fa-eye-slash'}"></i></button>` : ''}<button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-record" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div>
       </article>`;
-    }).join('')}</div>` : '<section class="sd-card sd-storyboard-empty"><i class="fa-solid fa-film"></i><p>还没有成片。镜头台生成的画面会收在这里。</p></section>'}
+    }).join('')}</div>${records.length > visible.length ? `<button type="button" class="sd-btn sd-storyboard-gallery-more">再显示 ${Math.min(40, records.length - visible.length)} 张</button>` : ''}` : `<section class="sd-card sd-storyboard-empty"><i class="fa-solid fa-film"></i><p>${allRecords.length ? '没有符合条件的成片。' : '还没有成片。镜头台生成的画面会收在这里。'}</p></section>`}
   </div>`;
 }
 
@@ -10000,6 +10024,11 @@ async function storyboardSecretModule() {
 async function storyboardStModule() {
   if (!storyboardStModulePromise) storyboardStModulePromise = import('../../../script.js');
   return storyboardStModulePromise;
+}
+
+async function storyboardUtilsModule() {
+  if (!storyboardUtilsModulePromise) storyboardUtilsModulePromise = import('../../../utils.js');
+  return storyboardUtilsModulePromise;
 }
 
 function storyboardSourceSecretConfigured(source) {
@@ -10347,7 +10376,9 @@ async function storyboardRunJob(job, log) {
       }),
       createdAt: Date.now(),
     };
-    storyboardGalleryRecords().push(record);
+    const gallery = storyboardGalleryRecords();
+    gallery.push(record);
+    if (gallery.length > 400) gallery.splice(0, gallery.length - 400);
     await saveMetadata();
     storyboardFinishLog(log, 'success', { recordId: record.id, floor });
     storyboardScheduleInlineRender(30);
@@ -10441,6 +10472,31 @@ function storyboardScheduleInlineRender(delay = 80) {
   storyboardInlineTimer = setTimeout(() => { storyboardInlineTimer = null; storyboardRenderInlineImages(); }, delay);
 }
 
+function storyboardCloseLightbox() {
+  storyboardLightboxEl?.remove();
+  storyboardLightboxEl = null;
+}
+
+function storyboardOpenLightbox(record) {
+  const url = storyboardSafeUrl(record?.url);
+  if (!record || !url) return;
+  storyboardCloseLightbox();
+  const layer = document.createElement('div');
+  layer.className = 'sd-storyboard-lightbox';
+  layer.innerHTML = `<button type="button" class="sd-storyboard-lightbox-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button><div class="sd-storyboard-lightbox-stage"><img src="${htmlEscape(url)}" alt="${htmlEscape(snip(record.prompt || '分镜', 80))}"></div><footer><div><b>${htmlEscape(STORYBOARD_SOURCES[record.source]?.label || '分镜')}</b><span>${htmlEscape(record.prompt || '')}</span></div><button type="button" class="sd-btn sd-storyboard-lightbox-reuse">复用设置</button><button type="button" class="sd-btn sd-storyboard-lightbox-download">下载</button></footer>`;
+  layer.addEventListener('pointerdown', (event) => event.stopPropagation());
+  layer.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (event.target === layer || event.target.closest('.sd-storyboard-lightbox-close')) storyboardCloseLightbox();
+  });
+  layer.querySelector('.sd-storyboard-lightbox-download')?.addEventListener('click', () => void storyboardDownloadRecord(record));
+  layer.querySelector('.sd-storyboard-lightbox-reuse')?.addEventListener('click', () => {
+    storyboardCloseLightbox(); storyboardLoadRecordToWorkbench(record); toast('已载入镜头台；确认画面后再生成。', 'success');
+  });
+  document.body.appendChild(layer);
+  storyboardLightboxEl = layer;
+}
+
 async function storyboardDownloadRecord(record) {
   const url = storyboardSafeUrl(record?.url);
   if (!url) return toast('图片地址无效。', 'warning');
@@ -10456,6 +10512,101 @@ async function storyboardDownloadRecord(record) {
     anchor.href = url; anchor.target = '_blank'; anchor.rel = 'noopener'; anchor.download = `${base}.png`;
     anchor.click();
   }
+}
+
+async function storyboardExportPackage() {
+  const state = storyboardState();
+  const records = storyboardGalleryRecords().map((item) => clone(item));
+  toast('正在打包分镜数据…', 'info');
+  const media = [];
+  let skipped = 0;
+  for (const record of records) {
+    const url = storyboardSafeUrl(record.url);
+    if (!url) { skipped++; continue; }
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(String(response.status));
+      const blob = await response.blob();
+      if (!blob.size || blob.size > 24 * 1024 * 1024) throw new Error('image-too-large');
+      media.push({ id: record.id, mime: blob.type || 'image/png', b64: await blobToBase64(blob) });
+    } catch (_) { skipped++; }
+  }
+  const payload = {
+    type: 'qianmu-storyboard', version: 2, exportedAt: new Date().toISOString(), credentialsIncluded: false,
+    settings: {
+      source: state.source, inlineByDefault: state.inlineByDefault, consistencyModes: clone(state.consistencyModes),
+      profiles: clone(state.profiles), parameterPresets: clone(state.parameterPresets), characters: clone(state.characters), logs: clone(state.logs),
+    },
+    chat: { bindings: clone(storyboardChatBindings()), images: records },
+    media,
+  };
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url; link.download = `qianmu-storyboard-pack-${fileStamp()}.json`;
+  document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+  toast(`分镜数据已打包：${state.characters.length} 份档案 · ${records.length} 条成片${skipped ? ` · ${skipped} 张仅保留原地址` : ''}。`, 'success');
+}
+
+function storyboardMergeById(local, incoming, limit = 240) {
+  const map = new Map((Array.isArray(local) ? local : []).filter((item) => item?.id).map((item) => [String(item.id), item]));
+  for (const item of Array.isArray(incoming) ? incoming : []) if (item?.id) map.set(String(item.id), item);
+  return [...map.values()].slice(0, limit);
+}
+
+async function storyboardImportPackage(file) {
+  if (!file) return;
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+    if (data?.type !== 'qianmu-storyboard' || !isPlainObject(data.settings) || !isPlainObject(data.chat)) throw new Error('invalid');
+  } catch (_) { return toast('导入失败：不是有效的千幕分镜数据包。', 'error'); }
+  const incomingImages = Array.isArray(data.chat.images) ? data.chat.images : [];
+  const incomingCharacters = Array.isArray(data.settings.characters) ? data.settings.characters : [];
+  if (!await confirmDialog('导入分镜数据打包', `将导入 ${incomingCharacters.length} 份形象档案与 ${incomingImages.length} 条本聊天成片；同 ID 条目会更新，API Key 沿用本机设置。是否继续？`)) return;
+  const state = storyboardState();
+  const normalized = normalizeStoryboardState({ ...createStoryboardDefaults(), ...clone(data.settings) });
+  state.characters = storyboardMergeById(state.characters, normalized.characters, 240);
+  state.parameterPresets = storyboardMergeById(state.parameterPresets, normalized.parameterPresets, 120);
+  state.logs = storyboardMergeById(state.logs, normalized.logs, 120);
+  for (const sourceId of Object.keys(STORYBOARD_SOURCES)) Object.assign(state.profiles[sourceId], normalized.profiles[sourceId], { loaded: true });
+  state.consistencyModes = clone(normalized.consistencyModes);
+  if (STORYBOARD_SOURCES[normalized.source]) state.source = normalized.source;
+  const media = new Map((Array.isArray(data.media) ? data.media : []).filter((item) => item?.id && item?.b64).map((item) => [String(item.id), item]));
+  let restored = 0;
+  let metadataOnly = 0;
+  let utils = null;
+  try { utils = await storyboardUtilsModule(); } catch (_) {}
+  const imported = [];
+  for (let index = 0; index < incomingImages.length; index++) {
+    const raw = incomingImages[index];
+    if (!raw?.id || !STORYBOARD_SOURCES[raw.source]) continue;
+    const record = clone(raw);
+    const embedded = media.get(String(record.id));
+    if (embedded && typeof utils?.saveBase64AsFile === 'function') {
+      try {
+        const extension = String(embedded.mime || '').includes('jpeg') ? 'jpg' : String(embedded.mime || '').includes('webp') ? 'webp' : 'png';
+        record.url = await utils.saveBase64AsFile(embedded.b64, getCharacterName() || 'Qianmu', `qianmu_storyboard_import_${Date.now()}_${index + 1}`, extension);
+        restored++;
+      } catch (_) { metadataOnly++; }
+    } else metadataOnly++;
+    const floor = Number.isInteger(record.floor) ? record.floor : null;
+    const message = Number.isInteger(floor) ? ctx().chat?.[floor] : null;
+    const anchorValid = message && (!record.messageHash || record.messageHash === hashText(String(message.mes || '')))
+      && Number(record.swipeId || 0) === Number(message.swipe_id || 0);
+    if (!anchorValid) { record.floor = null; record.inline = false; record.messageHash = ''; }
+    imported.push(record);
+  }
+  const store = getChatStore();
+  store.storyboardImages = storyboardMergeById(storyboardGalleryRecords(), imported, 400);
+  const bindings = isPlainObject(data.chat.bindings) ? data.chat.bindings : {};
+  store.storyboardProfileBindings = {
+    char: state.characters.some((item) => item.id === bindings.char) ? String(bindings.char) : storyboardChatBindings().char,
+    user: state.characters.some((item) => item.id === bindings.user) ? String(bindings.user) : storyboardChatBindings().user,
+  };
+  normalizeStoryboardState(state);
+  saveSettings(); await saveMetadata(); storyboardScheduleInlineRender(30); renderModal();
+  toast(`分镜数据已导入：${incomingCharacters.length} 份档案 · ${imported.length} 条成片${restored ? ` · ${restored} 张图片已落盘` : ''}${metadataOnly ? ` · ${metadataOnly} 张沿用原地址` : ''}。`, 'success');
 }
 
 async function storyboardOnChatClick(event) {
@@ -10504,6 +10655,10 @@ function storyboardUnbindChat() {
   storyboardInlineTimer = null;
   document.querySelectorAll('#chat .sd-storyboard-inline').forEach((node) => node.remove());
   document.querySelectorAll('#chat .sd-storyboard-message-action').forEach((node) => node.remove());
+  storyboardCloseLightbox();
+  storyboardGallerySelection.clear();
+  storyboardGallerySelectMode = false;
+  storyboardGalleryVisibleCount = 40;
 }
 
 function bindStoryboardTabEvents(root) {
@@ -10590,6 +10745,8 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-clear-queue')?.addEventListener('click', () => storyboardClearWaitingQueue());
   root.querySelector('.sd-storyboard-save-connection')?.addEventListener('click', () => void storyboardSaveConnection(root).catch((error) => toast(`保存失败：${error?.message || error}`, 'error')));
   root.querySelector('.sd-storyboard-check-connection')?.addEventListener('click', () => void storyboardCheckConnection(root));
+  root.querySelector('.sd-storyboard-pack-export')?.addEventListener('click', () => void storyboardExportPackage());
+  root.querySelector('.sd-storyboard-pack-import input')?.addEventListener('change', (event) => void storyboardImportPackage(event.target.files?.[0]));
   root.querySelectorAll('[data-storyboard-capture]').forEach((button) => button.addEventListener('click', () => void storyboardCreateProfile(button.dataset.storyboardCapture)));
   root.querySelectorAll('[data-storyboard-character-id]').forEach((button) => button.addEventListener('click', () => {
     state.selectedCharacterId = button.dataset.storyboardCharacterId || '';
@@ -10652,8 +10809,50 @@ function bindStoryboardTabEvents(root) {
     });
     row.querySelector('.sd-storyboard-cancel-queued-log')?.addEventListener('click', () => storyboardRemoveQueuedLog(log));
   });
+  let gallerySearchTimer = null;
+  root.querySelector('.sd-storyboard-gallery-search')?.addEventListener('input', (event) => {
+    state.gallerySearch = String(event.target.value || '').slice(0, 120);
+    saveSettings();
+    clearTimeout(gallerySearchTimer);
+    gallerySearchTimer = setTimeout(() => { storyboardGalleryVisibleCount = 40; renderModal(); }, 260);
+  });
+  root.querySelector('.sd-storyboard-gallery-source')?.addEventListener('change', (event) => {
+    state.gallerySource = event.target.value || 'all'; storyboardGalleryVisibleCount = 40; saveSettings(); renderModal();
+  });
+  root.querySelector('.sd-storyboard-gallery-select-mode')?.addEventListener('click', () => {
+    storyboardGallerySelectMode = !storyboardGallerySelectMode;
+    if (!storyboardGallerySelectMode) storyboardGallerySelection.clear();
+    renderModal();
+  });
+  root.querySelector('.sd-storyboard-gallery-select-all')?.addEventListener('click', () => {
+    const ids = storyboardFilteredGalleryRecords(state).map((item) => item.id);
+    const allSelected = ids.length && ids.every((id) => storyboardGallerySelection.has(id));
+    ids.forEach((id) => allSelected ? storyboardGallerySelection.delete(id) : storyboardGallerySelection.add(id));
+    renderModal();
+  });
+  root.querySelector('.sd-storyboard-gallery-delete-selected')?.addEventListener('click', async () => {
+    const count = storyboardGallerySelection.size;
+    if (!count || !await confirmDialog('删除选中成片', `确定删除选中的 ${count} 条成片记录？SillyTavern 图片文件本身不会被清除。`)) return;
+    const store = getChatStore();
+    store.storyboardImages = storyboardGalleryRecords().filter((item) => !storyboardGallerySelection.has(item.id));
+    storyboardGallerySelection.clear(); storyboardGallerySelectMode = false;
+    await saveMetadata(); storyboardRenderInlineImages(); renderModal();
+  });
+  root.querySelector('.sd-storyboard-gallery-more')?.addEventListener('click', () => { storyboardGalleryVisibleCount += 40; renderModal(); });
   root.querySelectorAll('.sd-storyboard-gallery article[data-storyboard-record]').forEach((card) => {
     const record = storyboardGalleryRecords().find((item) => item.id === card.dataset.storyboardRecord);
+    card.querySelector('.sd-storyboard-gallery-check')?.addEventListener('click', () => {
+      if (!record) return;
+      if (storyboardGallerySelection.has(record.id)) storyboardGallerySelection.delete(record.id); else storyboardGallerySelection.add(record.id);
+      renderModal();
+    });
+    card.querySelector('.sd-storyboard-preview-record')?.addEventListener('click', () => {
+      if (record && !storyboardGallerySelectMode) storyboardOpenLightbox(record);
+      else if (record) {
+        if (storyboardGallerySelection.has(record.id)) storyboardGallerySelection.delete(record.id); else storyboardGallerySelection.add(record.id);
+        renderModal();
+      }
+    });
     card.querySelector('.sd-storyboard-reuse-record')?.addEventListener('click', () => {
       if (record) { storyboardLoadRecordToWorkbench(record); toast('已载入镜头台；确认画面后再生成。', 'success'); }
     });
@@ -10666,6 +10865,7 @@ function bindStoryboardTabEvents(root) {
     card.querySelector('.sd-storyboard-delete-record')?.addEventListener('click', async () => {
       if (!record || !await confirmDialog('删除分镜', '确定删除这张分镜记录？SillyTavern 图片文件本身不会被清除。')) return;
       const store = getChatStore(); store.storyboardImages = store.storyboardImages.filter((item) => item.id !== record.id);
+      storyboardGallerySelection.delete(record.id);
       await saveMetadata(); storyboardRenderInlineImages(); renderModal();
     });
   });

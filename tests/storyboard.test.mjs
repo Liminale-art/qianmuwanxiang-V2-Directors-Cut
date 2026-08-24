@@ -80,5 +80,10 @@ assert.match(source, /storyboardLoadRecordToWorkbench[\s\S]*复用设置/, '成�
 assert.match(source, /STORYBOARD_CAPABILITIES\[state\.source\][\s\S]*capabilityText/, '绘制参数必须按官方供应商能力裁剪');
 assert.match(source, /storyboardPrepareComfyReference[\s\S]*%qianmu_reference%[\s\S]*comfy_placeholders/, 'ComfyUI 参考图必须走真实 Workflow 占位符链路');
 assert.doesNotMatch(source, /source !== 'comfy'[\s\S]{0,120}consistencyMode = 'reference'/, '非 ComfyUI 后端不得伪装参考图一致性');
+assert.match(source, /storyboardFilteredGalleryRecords[\s\S]*storyboardGalleryVisibleCount[\s\S]*storyboardOpenLightbox/, '成片必须支持检索、渐进渲染与独立看图层');
+assert.match(source, /storyboardGallerySelection[\s\S]*删除选中成片/, '成片必须具备批量管理');
+assert.match(source, /storyboardExportPackage[\s\S]*type: 'qianmu-storyboard'[\s\S]*credentialsIncluded: false/, '分镜数据包不得包含 API 密钥');
+assert.match(source, /storyboardImportPackage[\s\S]*saveBase64AsFile[\s\S]*messageHash/, '跨端导入须将内嵌图片交给 ST 落盘并重新校验正文锚点');
+assert.match(source, /if \(gallery\.length > 400\)/, '聊天成片元数据必须有容量上限');
 
 console.log('Storyboard unit 1 contract OK');

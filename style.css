@@ -112,6 +112,13 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-modal .sd-storyboard-callchain > i { width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--sd-folder-head); color: var(--sd-accent); }
 #story-director-modal .sd-storyboard-callchain div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 #story-director-modal .sd-storyboard-callchain span { color: var(--sd-muted); font-size: .72em; }
+#story-director-modal .sd-storyboard-pack-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+#story-director-modal .sd-storyboard-pack-card > div:first-child { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+#story-director-modal .sd-storyboard-pack-card h3 { margin: 0; }
+#story-director-modal .sd-storyboard-pack-card small { color: var(--sd-muted); font-size: .68em; }
+#story-director-modal .sd-storyboard-pack-card > div:last-child { display: flex; flex: 0 0 auto; gap: 7px; }
+#story-director-modal .sd-storyboard-pack-card .sd-icon-btn { margin: 0; }
+#story-director-modal .sd-storyboard-pack-import { cursor: pointer; }
 
 /* 人物形象档案：杂志纸页与叠档案只取排版语言，不复刻任何外部资产。 */
 #story-director-modal .sd-storyboard-magazine { min-height: 610px; padding: clamp(18px, 4vw, 34px); border: 1px solid color-mix(in srgb, var(--sd-hairline) 78%, transparent); border-radius: 22px; background: color-mix(in srgb, var(--sd-card) 90%, #fff 10%); overflow: hidden; }
@@ -160,9 +167,18 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 
 #story-director-modal .sd-storyboard-gallery-head { display: flex; align-items: flex-end; justify-content: space-between; }
 #story-director-modal .sd-storyboard-gallery-head h3 { margin: 4px 0 0; font-family: ui-serif, Georgia, serif; font-size: 34px; font-weight: 450; }
-#story-director-modal .sd-storyboard-gallery-head > b { color: var(--sd-accent); font-size: 24px; }
+#story-director-modal .sd-storyboard-gallery-head > div:last-child { display: flex; align-items: center; gap: 10px; }
+#story-director-modal .sd-storyboard-gallery-head > div:last-child > b { color: var(--sd-accent); font-size: 24px; }
+#story-director-modal .sd-storyboard-gallery-head .sd-btn { min-height: 34px; margin: 0; }
+#story-director-modal .sd-storyboard-gallery-tools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(130px, .35fr); gap: 8px; }
+#story-director-modal .sd-storyboard-gallery-tools .text_pole { width: 100%; min-width: 0; margin: 0 !important; }
+#story-director-modal .sd-storyboard-gallery-bulk { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+#story-director-modal .sd-storyboard-gallery-bulk > div { display: flex; gap: 7px; }
+#story-director-modal .sd-storyboard-gallery-bulk .sd-btn { min-height: 34px; margin: 0; }
 #story-director-modal .sd-storyboard-gallery { columns: 2 220px; column-gap: 12px; }
 #story-director-modal .sd-storyboard-gallery > article { position: relative; break-inside: avoid; margin: 0 0 12px; overflow: hidden; border: 1px solid var(--sd-hairline); border-radius: 16px; background: var(--sd-card); }
+#story-director-modal .sd-storyboard-gallery > article.selected { border-color: var(--sd-accent); box-shadow: inset 0 0 0 1px var(--sd-accent); }
+#story-director-modal .sd-storyboard-preview-record { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; cursor: zoom-in; }
 #story-director-modal .sd-storyboard-gallery img,
 #story-director-modal .sd-storyboard-image-missing { display: block; width: 100%; min-height: 150px; object-fit: cover; background: var(--sd-pre); }
 #story-director-modal .sd-storyboard-image-missing { display: flex; align-items: center; justify-content: center; color: var(--sd-muted); font-size: 34px; }
@@ -174,6 +190,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-modal .sd-storyboard-gallery article:hover .sd-storyboard-gallery-actions,
 #story-director-modal .sd-storyboard-gallery article:focus-within .sd-storyboard-gallery-actions { opacity: 1; transform: none; }
 #story-director-modal .sd-storyboard-gallery-actions .sd-icon-btn { width: 31px; height: 31px; margin: 0; background: color-mix(in srgb, var(--sd-card) 82%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+#story-director-modal .sd-storyboard-gallery-check { position: absolute; z-index: 3; left: 9px; top: 9px; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid rgba(255, 255, 255, .26); border-radius: 50%; background: rgba(20, 20, 20, .42); color: #fff; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+#story-director-modal .sd-storyboard-gallery-more { width: 100%; min-height: 42px; margin: 0; border-radius: 999px; }
 #story-director-modal .sd-storyboard-empty { min-height: 230px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--sd-muted); text-align: center; }
 #story-director-modal .sd-storyboard-empty i { font-size: 36px; }
 
@@ -227,6 +245,16 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #chat .mes .sd-storyboard-message-action { display: inline-flex; align-items: center; justify-content: center; padding: 0; color: inherit; cursor: pointer; }
 #chat .mes .sd-storyboard-message-action i { pointer-events: none; }
 
+.sd-storyboard-lightbox { position: fixed; z-index: 100000; inset: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 12px; padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left)); background: rgba(10, 11, 12, .78); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); }
+.sd-storyboard-lightbox-stage { min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: auto; scrollbar-width: none; }
+.sd-storyboard-lightbox-stage::-webkit-scrollbar { display: none; }
+.sd-storyboard-lightbox-stage img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 12px; box-shadow: 0 18px 52px rgba(0, 0, 0, .3); }
+.sd-storyboard-lightbox-close { position: fixed; z-index: 2; right: max(18px, env(safe-area-inset-right)); top: max(18px, env(safe-area-inset-top)); width: 42px; height: 42px; border: 1px solid rgba(255, 255, 255, .22); border-radius: 50%; background: rgba(20, 20, 20, .42); color: #fff; }
+.sd-storyboard-lightbox footer { width: min(920px, 100%); margin: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 9px; padding: 10px; border: 1px solid rgba(255, 255, 255, .18); border-radius: 16px; background: rgba(25, 25, 25, .42); color: #fff; }
+.sd-storyboard-lightbox footer > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sd-storyboard-lightbox footer span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgba(255, 255, 255, .7); font-size: .72em; }
+.sd-storyboard-lightbox footer .sd-btn { min-height: 38px; margin: 0; color: #fff; }
+
 @media (max-width: 640px) {
   #story-director-modal .sd-storyboard-nav button { min-height: 40px; gap: 4px; font-size: .72em; }
   #story-director-modal .sd-storyboard-nav button span { display: none; }
@@ -249,6 +277,9 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   #story-director-modal .sd-storyboard-profile-copy label { grid-template-columns: 76px minmax(0, 1fr); }
   #story-director-modal .sd-storyboard-profile-photo { width: min(70%, 240px); min-height: 0; margin: 0 auto; }
   #story-director-modal .sd-storyboard-gallery { columns: 1; }
+  #story-director-modal .sd-storyboard-gallery-tools { grid-template-columns: 1fr; }
+  #story-director-modal .sd-storyboard-gallery-bulk { align-items: stretch; flex-direction: column; }
+  #story-director-modal .sd-storyboard-gallery-bulk > div { display: grid; grid-template-columns: 1fr 1fr; }
   #story-director-modal .sd-storyboard-gallery-actions { opacity: 1; transform: none; }
   #story-director-modal .sd-storyboard-log > summary { grid-template-columns: auto minmax(0, 1fr) auto; }
   #story-director-modal .sd-storyboard-log > summary small { display: none; }
@@ -257,6 +288,9 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   #story-director-modal .sd-storyboard-queue-card > div:last-child .sd-btn:only-child { grid-column: 1 / -1; }
   #story-director-modal .sd-storyboard-log-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   #chat .mes .sd-storyboard-inline figcaption { opacity: 1; transform: none; }
+  .sd-storyboard-lightbox { padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
+  .sd-storyboard-lightbox footer { grid-template-columns: 1fr 1fr; }
+  .sd-storyboard-lightbox footer > div { grid-column: 1 / -1; }
 }
 
 @keyframes sd-fade-up {

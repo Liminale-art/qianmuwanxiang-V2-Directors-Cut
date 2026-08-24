@@ -33,6 +33,8 @@ export function createStoryboardDefaults() {
     view: 'create',                // create | characters | gallery | logs | connection
     characterView: 'directory',    // directory | edit
     logFilter: 'all',              // all | success | failed
+    gallerySearch: '',
+    gallerySource: 'all',
     source: 'novel',
     initialized: false,             // 首开时从 ST 当前连接取一次，不在千幕硬塞画质默认值
     target: 'latest',              // latest | floor | gallery
@@ -64,6 +66,8 @@ export function normalizeStoryboardState(value) {
   state.view = ['create', 'characters', 'gallery', 'logs', 'connection'].includes(state.view) ? state.view : 'create';
   state.characterView = ['directory', 'edit'].includes(state.characterView) ? state.characterView : 'directory';
   state.logFilter = ['all', 'success', 'failed'].includes(state.logFilter) ? state.logFilter : 'all';
+  state.gallerySearch = String(state.gallerySearch || '').slice(0, 120);
+  state.gallerySource = state.gallerySource === 'all' || STORYBOARD_SOURCES[state.gallerySource] ? state.gallerySource : 'all';
   state.source = STORYBOARD_SOURCES[state.source] ? state.source : 'novel';
   state.target = ['latest', 'floor', 'gallery'].includes(state.target) ? state.target : 'latest';
   state.inlineByDefault = state.inlineByDefault !== false;
