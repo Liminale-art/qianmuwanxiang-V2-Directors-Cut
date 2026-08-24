@@ -2433,7 +2433,22 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 #story-director-modal .sd-thread-bar { margin: 8px 0 6px; color: var(--sd-primary); }
 #story-director-modal .sd-thread-essence { margin: 0; font-size: .86em; color: var(--sd-muted); }
+#story-director-modal .sd-thread-evidence,
+#story-director-modal .sd-thread-decision { margin: 7px 0 0; display: flex; align-items: flex-start; gap: 6px; color: var(--sd-muted); font-size: .72em; line-height: 1.5; }
+#story-director-modal .sd-thread-evidence i { margin-top: 2px; color: var(--sd-accent); }
+#story-director-modal .sd-thread-decision i { margin-top: 2px; color: color-mix(in srgb, var(--sd-accent) 70%, var(--sd-muted)); }
+#story-director-modal .sd-thread-quality { flex: 0 0 auto; padding: 3px 7px; border-radius: 999px; background: color-mix(in srgb, var(--sd-accent) 11%, transparent); color: var(--sd-accent); font-size: .66em; font-weight: 500; }
 #story-director-modal .sd-threads-closed-fold { margin-top: 6px; }
+.sd-thread-edit-form > label { display: block; margin: 0 0 4px; text-align: left; }
+.sd-thread-edit-form > input,
+.sd-thread-edit-form > textarea { width: 100%; margin: 0 0 10px !important; }
+.sd-thread-edit-form > textarea { resize: vertical; }
+.sd-thread-edit-form .sd-thread-edit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.sd-thread-edit-form .sd-thread-edit-grid label { min-width: 0; display: flex; flex-direction: column; gap: 5px; text-align: left; }
+.sd-thread-edit-form .sd-thread-edit-grid select { width: 100%; margin: 0 !important; }
+@media (max-width: 420px) {
+  .sd-thread-edit-form .sd-thread-edit-grid { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* 可折叠分区（角色动向 / 世界回声）的展开体留白 */
 #story-director-modal .sd-fold-body { margin-top: 8px; }

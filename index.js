@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.36.2';
+const VERSION = '1.37.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -154,7 +154,7 @@ const DEFAULT_SYSTEM_PROMPT = `你是千幕——观世间百态、阅人性幽�
 2. 同时守护 {{user}} 的最大自由：他可以主动介入、间接卷入、远远旁观，或对某些事一无所知。每次推演都要同时备足多种不同距离的事件，任其自取。
 3. 尊重既已落地的剧情、关系与人设，维系事件与人物的内在逻辑，为 {{user}} 留足选择的余地。
 4. 任务可被选择、延后、转向，也会因任何人的举动而改写结局，始终留出即兴的呼吸口。
-5. 蝴蝶效应是结构，非形容词：绝不可空喊“会引发连锁”“产生涟漪”。真正的辐射集中写进chain_reactions，挑 1-2 桩具体小事，顺出一条 A 触发 B、B 又波及 C 的因果链。链条完全在世界内部流转、与 {{user}} 毫无干系，只偶尔掠过其视野边缘；绝不以 {{user}} 的行动/言论为源头或绕回收束于 {{user}} 。其余字段只如实写自己那一格的事，把“它如何外溢”留给 chain_reactions 去串。重心永远是让涟漪在世界里散开，而非围着 {{user}} 打转。
+5. 蝴蝶效应是结构，非形容词：绝不可空喊“会引发连锁”“产生涟漪”。真正的辐射集中写进chain_reactions，至少挑 3 桩彼此不同的具体小事，各自顺出一条 A 触发 B、B 又波及 C 的因果链。链条完全在世界内部流转、与 {{user}} 毫无干系，只偶尔掠过其视野边缘；绝不以 {{user}} 的行动/言论为源头或绕回收束于 {{user}} 。其余字段只如实写自己那一格的事，把“它如何外溢”留给 chain_reactions 去串。重心永远是让涟漪在世界里散开，而非围着 {{user}} 打转。
 6. NPC 是有完整生活的人，绝非围着 {{user}} 转的功能道具。每个 NPC 都有自己的目标、生计、交际圈、今日要办的事；他们会在 {{user}} 不在场时见面、交易、争执、相爱、谋划、犯错。npc_updates 里应有相当一部分人此刻做的事与 {{user}} 无直接关联，纯粹是各自的日子在推进。
 7. 依叙事概率自然引入新 NPC、共同交际圈的角色、临时线索人物或外部势力，为任务与角色世界添入变量。
 8. 时间、周期、期限与提示语，皆从当前场景的真实节奏中提炼，用贴合剧情语境的自然表达，使每次推演呈现不同的时间颗粒与未来走向。
@@ -169,7 +169,7 @@ const DEFAULT_SYSTEM_PROMPT = `你是千幕——观世间百态、阅人性幽�
    - 各模块inject_prompt须匹配对应视角书写：quests采用以{{user}}为中心的第三人称；npc、world类模块采用全知导演视角，{{user}}在场与否均可。
 12. director_comment（众声）是一段随机化身某个带个性身份（故事外的任意视角/戏中NPC等且不限于此）人物的旁观议论，须像真人闲聊，有态度、有私心、有该身份独有的视角，开头点明身份，绝不能是助手腔或客观总结，详见输出格式中的说明。
 13. 行文务必精炼直接。禁用「不是……而是……」这类否定对比句式；禁止反复使用破折号来补充说明或制造停顿；不堆砌冗余解释与排比铺陈。以上均属偷懒且易致读者审美疲劳的措辞，应代之以具体、有信息量的表达。
-14. 输出为一个 JSON 对象，字段名完整保留，数组字段可以为空数组。`;
+14. 输出为一个 JSON 对象，字段名完整保留。quests、npc_updates、world_updates、chain_reactions、relation_undercurrents 五个核心数组必须达到第 10 条的数量下限；仅没有可用内容的可选扩展字段允许为空数组。`;
 
 const JSON_SCHEMA_TEXT = `固定输出格式：
 {
@@ -239,6 +239,19 @@ const JSON_SCHEMA_TEXT = `固定输出格式：
 
 // 活幕·伏笔显影：五档刻度（线性顺势升降，由戏剧因果驱动）
 const STAGE_LADDER = ['铺陈', '升温', '临界', '高潮', '落幕'];
+const DIRECTOR_SECTION_RULES = Object.freeze({
+  quests: '用户可主动选择、执行或放弃的行动入口；不代写 NPC 私生活或宏观局势。',
+  npc_updates: '单个角色为自身目标采取的自主行动；不写成用户任务或集体趋势。',
+  world_updates: '环境、社会、组织与公共层面的结构变化；不聚焦个人私事。',
+  chain_reactions: '不同事件之间可验证的因果传导；不复述任一单点事件。',
+  relation_undercurrents: '多个非用户角色之间尚未明说的关系张力；不写成单人动向。',
+  threads: '正文已有细节中尚未兑现、未来可能回响的潜在线索；必须附正文证据。',
+});
+const DIRECTOR_MIN_COUNTS = Object.freeze({ quests: 5, npc_updates: 5, world_updates: 3, chain_reactions: 3, relation_undercurrents: 3 });
+const THREAD_ACTIVE_TARGET_MIN = 3;
+const THREAD_ACTIVE_TARGET_MAX = 5;
+const THREAD_RECALL_LIMIT = 2;
+const THREAD_RECALL_COOLDOWN = 2;
 
 // 活幕开启时追加到推演输出格式：暗线档案的回传结构
 const THREADS_SCHEMA_TEXT = `【活幕·伏笔显影·额外输出字段】
@@ -253,18 +266,23 @@ const THREADS_SCHEMA_TEXT = `【活幕·伏笔显影·额外输出字段】
     "essence": "一句话勾出这条暗线水面下悬着的那点张力，点到即止。只留下一个引人遐想的落点，不替读者解释它意味着什么、更不预告后续会如何发展，把想象空间整个留给取用它的人",
     "stage": "铺陈/升温/临界/高潮/落幕 五档之一",
     "touched": "本幕近期对话是否触碰了这条线：advance(确有推进)/mention(仅被提及)/idle(无人问津)",
+    "evidence_floor": "advance/mention/closed 时必填：近期对话中的真实楼层号；idle 填 -1",
+    "evidence_quote": "advance/mention/closed 时必填：从该楼层原文摘取 6-36 字，不得概括或虚构；idle 留空",
+    "resolution": "仅申请 closed 时填写：正文如何明确兑现、揭晓或终止了这条伏笔；其余留空",
     "note": "本幕这条线发生了什么的一句话，写入显影轨迹",
     "status": "active/dormant/closed —— 持续追踪/暂时沉睡/已收场归档"
   }
 ]
 判定规则（务必遵守）：
-- 【在演总量·维持 3 至 5 条】每幕推演后，处于 active 的暗线应稳定在 3 至 5 条。若当前在演不足 3 条，本幕务必从正文与其余板块产出中多提炼几条新暗线补足下限；若已有 3 至 5 条，则不强求增量，重心转为推进、流转既有暗线的火候，仅在确有新料时自然增埋。这是为了让伏笔池始终有足够的可取用储备，但绝不可为凑数硬造空洞、牵强或与正文无依据的暗线。
+- 【在演储备目标·3 至 5 条】3 至 5 条是档案健康储备，不是本轮必须调用的数量，也不代表每条都要注入正文。低于 3 条时须认真扫描近期对话中的潜在线索，但新增暗线必须同时给出可核验的 evidence_floor 与 evidence_quote；确无证据时宁可暂低于目标，禁止凑数硬造。
 - 暗线贵在「暗」与「伏」：埋时只露张力、不点破，绝不把正文已挑明的进展直接登记成暗线。stage 升降只反映这条暗线自身的酝酿火候，不必跟着正文主线的节奏走。
-- stage 只能在五档间顺势升降或熄灭，由近期对话的戏剧因果决定，绝不靠概率或为了推进而推进。
-- touched=advance → 顺势升一档并刷新；mention → 档位不变；idle 连续多幕 → 可令其转向、沉睡(dormant)或自然落幕(closed)。
+- stage 只可维持或在 advance 时顺势升一档，由近期对话的戏剧因果决定，绝不跨档、倒退、靠概率或为了推进而推进；明确收束时才进入落幕。
+- touched=advance → 最多顺势升一档；mention → 档位不变；idle 仅表示本次已审阅但正文未触及，连续多幕才可沉睡。模型漏回传某个既有 id 不等于 idle。
+- 每个既有 id 都必须回传一次审阅结论。advance/mention/closed 必须有真实楼层原句作证；无证据则回传 idle，系统不会接受无依据升档。
+- closed 只用于正文已明确兑现、揭晓或终止的伏笔，必须填写 resolution 与正文证据；事件只是暂时离场时用 dormant。
 - 标注 pinned(钉住)的暗线不得擅自 dormant/closed，除非正文已明确将其了结。
 - 暗线是可取用的可能性而非必须引爆的剧本，{{user}} 始终自由介入或无视。
-- 只回传本幕有实质变化或新埋下的暗线；原样复述不算变化。`;
+- 既有暗线全部回传以证明已逐条审阅；新增暗线只回传确有正文证据者。`;
 
 const THEATER_INSTRUCTION_PLACEHOLDER = '在此撰写剧场指令';
 
@@ -1171,10 +1189,11 @@ function getChatHistoryText() {
   const chat = Array.isArray(context.chat) ? context.chat : [];
   const max = Math.max(1, Math.min(200, Number(settings.contextOptions.contextDepth || 5)));
   const recent = chat.slice(-max);
-  const lines = recent.map((m) => {
+  const firstFloor = Math.max(0, chat.length - recent.length);
+  const lines = recent.map((m, offset) => {
     const role = m.is_user ? '<user>' : (m.name || '<char>');
     const text = cleanContextText(m.mes || '');
-    return text ? `${role}: ${text}` : '';
+    return text ? `[楼层${firstFloor + offset}] ${role}: ${text}` : '';
   }).filter(Boolean);
   return capByBudget(lines).join('\n');
 }
@@ -1477,6 +1496,38 @@ async function promptNameAndFolder({ dialogTitle, namePlaceholder, name = '', fo
   const newFolder = await promptInput(dialogTitle, '文件夹（留空不分类）：', folder || '');
   if (newFolder === null) return null;
   return { name: String(newName || '').trim(), folder: sanitizeFolder(newFolder) };
+}
+
+async function promptThreadEdit(thread) {
+  const context = ctx();
+  const Popup = context.Popup;
+  if (Popup && context.POPUP_TYPE) {
+    const wrap = document.createElement('div');
+    wrap.className = 'sd-lib-edit-form sd-thread-edit-form';
+    wrap.innerHTML = `<label>伏笔标题</label><input type="text" class="text_pole sd-thread-edit-title" maxlength="24">
+      <label>伏笔内容</label><textarea class="text_pole sd-thread-edit-essence" rows="5" maxlength="240"></textarea>
+      <div class="sd-thread-edit-grid"><label>显影阶段<select class="text_pole sd-thread-edit-stage">${STAGE_LADDER.map((stage) => `<option value="${stage}">${stage}</option>`).join('')}</select></label>
+      <label>档案状态<select class="text_pole sd-thread-edit-status"><option value="active">在演</option><option value="dormant">沉睡</option><option value="closed">已落幕</option></select></label></div>`;
+    wrap.querySelector('.sd-thread-edit-title').value = thread.title || '';
+    wrap.querySelector('.sd-thread-edit-essence').value = thread.essence || '';
+    wrap.querySelector('.sd-thread-edit-stage').value = sanitizeStage(thread.stage);
+    wrap.querySelector('.sd-thread-edit-status').value = ['active', 'dormant', 'closed'].includes(thread.status) ? thread.status : 'active';
+    try {
+      const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '保存', cancelButton: '取消' });
+      if (!await popup.show()) return null;
+      return {
+        title: String(wrap.querySelector('.sd-thread-edit-title').value || '').trim().slice(0, 24),
+        essence: String(wrap.querySelector('.sd-thread-edit-essence').value || '').trim().slice(0, 240),
+        stage: sanitizeStage(wrap.querySelector('.sd-thread-edit-stage').value),
+        status: ['active', 'dormant', 'closed'].includes(wrap.querySelector('.sd-thread-edit-status').value) ? wrap.querySelector('.sd-thread-edit-status').value : 'active',
+      };
+    } catch (_) {}
+  }
+  const title = await promptInput('编辑伏笔', '伏笔标题：', thread.title || '');
+  if (title === null) return null;
+  const essence = await promptInput('编辑伏笔', '伏笔内容：', thread.essence || '');
+  if (essence === null) return null;
+  return { title: String(title).trim().slice(0, 24), essence: String(essence).trim().slice(0, 240), stage: thread.stage, status: thread.status };
 }
 
 // 音色库条目弹窗：音色名 + 音色 ID（沿用剧札 Popup 交互，无 textarea）
@@ -2228,6 +2279,92 @@ function advanceStage(stage) {
   return STAGE_LADDER[Math.min(idx + 1, STAGE_LADDER.length - 1)];
 }
 
+function directorEvidenceNorm(value) {
+  return String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+function directorRecentEvidenceRows() {
+  const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
+  const depth = Math.max(1, Math.min(200, Number(settings.contextOptions.contextDepth || 5)));
+  const first = Math.max(0, chat.length - depth);
+  return chat.slice(first).map((message, offset) => ({
+    floor: first + offset,
+    text: cleanContextText(message?.mes || ''),
+  })).filter((row) => row.text);
+}
+
+function validateThreadEvidence(raw) {
+  const quote = String(raw?.evidence_quote || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  const quoteNorm = directorEvidenceNorm(quote);
+  if (quoteNorm.length < 4) return { valid: false, floor: -1, quote, reason: '未提供可核验原句' };
+  const rows = directorRecentEvidenceRows();
+  let floor = Number.parseInt(String(raw?.evidence_floor ?? ''), 10);
+  let row = rows.find((item) => item.floor === floor);
+  if (!row || !directorEvidenceNorm(row.text).includes(quoteNorm)) {
+    row = rows.find((item) => directorEvidenceNorm(item.text).includes(quoteNorm));
+    floor = row?.floor ?? -1;
+  }
+  return row
+    ? { valid: true, floor, quote, reason: `楼层${floor}原句命中` }
+    : { valid: false, floor: -1, quote, reason: '原句不在近期对话中' };
+}
+
+function directorBigrams(value) {
+  const text = directorEvidenceNorm(value);
+  const out = new Set();
+  if (text.length < 2) { if (text) out.add(text); return out; }
+  for (let index = 0; index < text.length - 1; index++) out.add(text.slice(index, index + 2));
+  return out;
+}
+
+function directorOverlapRatio(needle, haystack) {
+  const left = directorBigrams(needle);
+  const right = directorBigrams(haystack);
+  if (!left.size || !right.size) return 0;
+  let hit = 0;
+  for (const token of left) if (right.has(token)) hit += 1;
+  return hit / left.size;
+}
+
+function selectThreadsForRecall(store, round = Number(store?.threadSeq || 0), commit = false) {
+  const recentText = directorRecentEvidenceRows().map((row) => row.text).join('\n');
+  const evaluated = (Array.isArray(store?.threads) ? store.threads : [])
+    .filter((thread) => thread.status === 'active')
+    .map((thread) => {
+      const cooldown = Number(thread.lastInjectedRound || 0) > 0
+        && round - Number(thread.lastInjectedRound || 0) < THREAD_RECALL_COOLDOWN
+        && Number(thread.lastTouched || 0) !== round;
+      const semantic = directorOverlapRatio(`${thread.title || ''}${thread.essence || ''}${thread.lastEvidenceQuote || ''}`, recentText);
+      const fresh = Number(thread.lastTouched || 0) === round ? 1 : 0;
+      const stage = Math.max(0, STAGE_LADDER.indexOf(sanitizeStage(thread.stage))) / 20;
+      const score = fresh + semantic + stage + (thread.pinned ? .04 : 0);
+      return { thread, cooldown, semantic, fresh, score };
+    });
+  const candidates = evaluated
+    .filter((entry) => !entry.cooldown && (entry.fresh || entry.semantic >= (entry.thread.pinned ? .08 : .12)))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, THREAD_RECALL_LIMIT);
+  if (commit) {
+    const selected = new Set(candidates.map((entry) => entry.thread.id));
+    for (const thread of (store.threads || [])) {
+      if (selected.has(thread.id)) {
+        thread.lastInjectedRound = round;
+        thread.recallReason = Number(thread.lastTouched || 0) === round
+          ? (Number.isFinite(Number(thread.lastEvidenceFloor)) ? `本轮正文证据 · 楼层${thread.lastEvidenceFloor}` : '本轮正文证据')
+          : '近期语境命中';
+      } else if (thread.status === 'active') {
+        const entry = evaluated.find((item) => item.thread.id === thread.id);
+        const eligible = entry && !entry.cooldown && (entry.fresh || entry.semantic >= (thread.pinned ? .08 : .12));
+        thread.recallReason = entry?.cooldown
+          ? '本轮未召回 · 冷却中'
+          : eligible ? '本轮未召回 · 召回预算已满' : '本轮未召回 · 语境未命中';
+      }
+    }
+    store.threadRecallIds = candidates.map((entry) => entry.thread.id);
+  }
+  return candidates.map((entry) => entry.thread);
+}
+
 // 把本次推演返回的 threads 合并进档案：按 id 承接旧线、升降显影、归档终局、收纳新线。
 // store：getChatStore() 结果；incoming：plan.threads（模型回传，可空）。原地更新 store.threads。
 function mergeThreads(store, incoming) {
@@ -2236,58 +2373,141 @@ function mergeThreads(store, incoming) {
   const list = Array.isArray(store.threads) ? store.threads : (store.threads = []);
   const byId = new Map(list.map((t) => [t.id, t]));
   const seen = new Set();
+  const newFingerprints = new Set();
+  const accepted = [];
+  const rejected = [];
 
-  for (const raw of Array.isArray(incoming) ? incoming : []) {
+  const incomingRows = (Array.isArray(incoming) ? incoming : []).filter(Boolean);
+  // 先审阅既有档案、再接纳新线：若本轮恰有旧线落幕，空出的储备位不会受模型数组顺序影响。
+  const orderedRows = [
+    ...incomingRows.filter((raw) => raw?.id && byId.has(raw.id)),
+    ...incomingRows.filter((raw) => !raw?.id || !byId.has(raw.id)),
+  ];
+  for (const raw of orderedRows) {
     if (!raw || (!raw.title && !raw.id)) continue;
     const touched = ['advance', 'mention', 'idle'].includes(raw.touched) ? raw.touched : 'mention';
     const reqStatus = ['active', 'dormant', 'closed'].includes(raw.status) ? raw.status : 'active';
+    const evidence = touched === 'idle' ? { valid: true, floor: -1, quote: '', reason: '已审阅·正文未触及' } : validateThreadEvidence(raw);
     let t = raw.id ? byId.get(raw.id) : null;
     if (t) {
-      // 承接已有暗线
-      if (raw.title) t.title = String(raw.title).slice(0, 24);
-      if (raw.essence) t.essence = String(raw.essence).slice(0, 120);
-      const prevStage = t.stage;
-      t.stage = touched === 'advance' ? advanceStage(raw.stage || t.stage) : sanitizeStage(raw.stage || t.stage);
-      // 钉住的暗线模型不得擅自沉睡/归档（除非已推到落幕）
-      t.status = (t.pinned && reqStatus !== 'active' && t.stage !== '落幕') ? 'active' : reqStatus;
-      if (touched === 'idle') t.silentRounds = Number(t.silentRounds || 0) + 1;
-      else { t.silentRounds = 0; t.lastTouched = round; }
-      if (raw.note || t.stage !== prevStage) {
-        t.trail = Array.isArray(t.trail) ? t.trail : [];
-        t.trail.push({ round, stage: t.stage, note: snip(raw.note || `${prevStage}→${t.stage}`, 40) });
-        if (t.trail.length > 12) t.trail = t.trail.slice(-12);
+      if (seen.has(t.id)) {
+        rejected.push({ id: t.id, reason: '同一伏笔 id 在本轮重复回传' });
+        continue;
       }
+      seen.add(t.id);
+      if (t.status === 'closed') {
+        t.lastDecision = '已落幕档案 · 拒绝模型重新开启';
+        rejected.push({ id: t.id, reason: '已落幕档案不可由模型复活' });
+        continue;
+      }
+      t.reviewedRound = round;
+      t.unreviewedRounds = 0;
+      t.trail = Array.isArray(t.trail) ? t.trail : [];
+      if (!evidence.valid) {
+        t.rejectedRounds = Number(t.rejectedRounds || 0) + 1;
+        t.lastDecision = `保持原状 · ${evidence.reason}`;
+        rejected.push({ id: t.id, reason: evidence.reason });
+        continue;
+      }
+      if (touched === 'idle') {
+        t.silentRounds = Number(t.silentRounds || 0) + 1;
+        if (!t.pinned && t.status === 'active' && t.silentRounds >= 4) t.status = 'dormant';
+        t.lastDecision = t.status === 'dormant' ? '连续四轮确认为未触及，转入沉睡' : '已审阅 · 本轮未触及';
+        accepted.push({ id: t.id, touched });
+        continue;
+      }
+      const previousStage = sanitizeStage(t.stage);
+      t.silentRounds = 0;
+      t.lastTouched = round;
+      t.lastEvidenceFloor = evidence.floor;
+      t.lastEvidenceQuote = evidence.quote;
+      if (raw.essence && touched === 'advance') t.essence = String(raw.essence).slice(0, 120);
+      const wantsClose = reqStatus === 'closed' || sanitizeStage(raw.stage) === '落幕';
+      const resolution = String(raw.resolution || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+      if (wantsClose && resolution.length >= 4) {
+        t.stage = '落幕';
+        t.status = 'closed';
+        t.resolution = resolution;
+        t.lastDecision = `已落幕 · ${evidence.reason}`;
+      } else if (touched === 'advance') {
+        // 模型可能已把 raw.stage 写成下一档；程序只允许相对旧档最多前进一步，杜绝双重升档与跨档跳跃。
+        t.stage = advanceStage(previousStage);
+        if (t.stage === '落幕') {
+          t.status = 'closed';
+          t.resolution = resolution || String(raw.note || '正文已完成最后一次推进').slice(0, 120);
+          t.lastDecision = `推进至落幕并归档 · ${evidence.reason}`;
+        } else {
+          t.status = 'active';
+          t.lastDecision = `推进一档 · ${evidence.reason}`;
+        }
+      } else {
+        if (t.status !== 'dormant') t.status = 'active';
+        t.stage = previousStage;
+        t.lastDecision = `仅被提及 · ${evidence.reason}`;
+      }
+      const note = snip(raw.note || t.lastDecision, 60);
+      t.trail.push({ round, stage: t.stage, note, floor: evidence.floor, quote: evidence.quote });
+      if (t.trail.length > 12) t.trail = t.trail.slice(-12);
+      accepted.push({ id: t.id, touched, floor: evidence.floor });
     } else {
-      // 新埋暗线
+      if (raw.id) {
+        rejected.push({ id: String(raw.id), title: String(raw.title || ''), reason: '回传了不存在的伏笔 id' });
+        continue;
+      }
+      // 新伏笔必须源自近期正文原句；无证据候选直接拒绝，不为凑 3—5 条制造空线。
+      if (!evidence.valid || touched === 'idle' || reqStatus === 'closed') {
+        rejected.push({ id: String(raw.id || ''), title: String(raw.title || ''), reason: evidence.reason || '新线状态无效' });
+        continue;
+      }
+      const fingerprint = `${directorEvidenceNorm(raw.title)}|${evidence.floor}|${directorEvidenceNorm(evidence.quote)}`;
+      if (newFingerprints.has(fingerprint)) {
+        rejected.push({ id: '', title: String(raw.title || ''), reason: '本轮重复的新伏笔候选' });
+        continue;
+      }
+      newFingerprints.add(fingerprint);
+      if (list.filter((thread) => thread.status === 'active').length >= THREAD_ACTIVE_TARGET_MAX) {
+        rejected.push({ id: '', title: String(raw.title || ''), reason: `在演储备已达 ${THREAD_ACTIVE_TARGET_MAX} 条` });
+        continue;
+      }
       t = {
         id: uid('thread'),
         title: String(raw.title || '未命名暗线').slice(0, 24),
         essence: String(raw.essence || '').slice(0, 120),
-        stage: sanitizeStage(raw.stage),
+        stage: '铺陈',
         pinned: false,
         origin: round,
         lastTouched: round,
+        reviewedRound: round,
         silentRounds: 0,
-        status: reqStatus,
-        trail: [{ round, stage: sanitizeStage(raw.stage), note: snip(raw.note || '初次埋线', 40) }],
+        status: 'active',
+        originFloor: evidence.floor,
+        originQuote: evidence.quote,
+        lastEvidenceFloor: evidence.floor,
+        lastEvidenceQuote: evidence.quote,
+        lastDecision: `新埋伏笔 · ${evidence.reason}`,
+        trail: [{ round, stage: '铺陈', note: snip(raw.note || '初次埋线', 60), floor: evidence.floor, quote: evidence.quote }],
       };
       list.unshift(t);
       byId.set(t.id, t);
+      accepted.push({ id: t.id, touched: 'new', floor: evidence.floor });
     }
     seen.add(t.id);
   }
 
-  // 本幕模型未提及的暗线：沉寂计数 +1；过久无人问津且未钉住则自然沉睡
+  // 模型漏回传只记录漏审，不等同于正文 idle；状态、沉寂轮数与显影刻度全部保持。
   for (const t of list) {
     if (seen.has(t.id) || t.status === 'closed') continue;
-    t.silentRounds = Number(t.silentRounds || 0) + 1;
-    if (!t.pinned && t.status === 'active' && t.silentRounds >= 4) t.status = 'dormant';
+    t.unreviewedRounds = Number(t.unreviewedRounds || 0) + 1;
+    t.lastDecision = '模型本轮漏审 · 状态保持';
+    rejected.push({ id: t.id, reason: '模型漏回传既有 id' });
   }
 
   // 归档落幕：已 closed 的保留少量供回看，超量裁掉最旧的
   const active = list.filter((t) => t.status !== 'closed');
   const closed = list.filter((t) => t.status === 'closed');
   store.threads = [...active.slice(0, 24), ...closed.slice(0, 8)];
+  store.threadQuality = { round, accepted, rejected, activeCount: active.filter((t) => t.status === 'active').length };
+  selectThreadsForRecall(store, round, true);
 }
 
 /* ============================================================
@@ -2525,18 +2745,20 @@ function buildGeopoliticsDigest() {
   return out.join('\n');
 }
 
-// 伏笔显影注入段：只取 active 暗线，钉住/临界者排前，标出显影火候提示取用时机
+// 伏笔显影注入段：档案可以保有 3—5 条在演储备，但每轮只注入语境命中的 0—2 条。
 function buildThreadsDigest() {
   const store = getChatStore();
-  const active = (store.threads || []).filter((t) => t.status === 'active');
-  if (!active.length) return '';
-  const weight = (t) => (t.pinned ? 100 : 0) + STAGE_LADDER.indexOf(sanitizeStage(t.stage));
-  const sorted = [...active].sort((a, b) => weight(b) - weight(a)).slice(0, 8);
-  const rows = sorted.map((t) => {
+  const ids = Array.isArray(store.threadRecallIds) ? store.threadRecallIds : [];
+  const selected = ids.length
+    ? ids.map((id) => (store.threads || []).find((thread) => thread.id === id)).filter((thread) => thread?.status === 'active')
+    : selectThreadsForRecall(store, Number(store.threadSeq || 0), false);
+  if (!selected.length) return '';
+  const rows = selected.slice(0, THREAD_RECALL_LIMIT).map((t) => {
     const heat = t.stage === '临界' || t.stage === '高潮' ? '，火候渐起，可择机让它浮现' : '';
-    return `- ${t.pinned ? '（重点）' : ''}${snip(t.title, INJ_LEN.label)}【${t.stage}】：${snip(t.essence, INJ_LEN.line)}${heat}`;
+    const evidence = Number.isFinite(Number(t.lastEvidenceFloor)) ? `（依据：楼层${t.lastEvidenceFloor}）` : '';
+    return `- ${t.pinned ? '（重点）' : ''}${snip(t.title, INJ_LEN.label)}【${t.stage}】${evidence}：${snip(t.essence, INJ_LEN.line)}${heat}`;
   });
-  return `伏笔显影（各暗线的显影火候，仅供把握取用时机，仍是可介入可无视的可能性）：\n${rows.join('\n')}`;
+  return `伏笔显影（仅列本轮语境命中的候选，最多两条；可自然取用，也可完全不触发）：\n${rows.join('\n')}`;
 }
 
 function getInjectApi() {
@@ -2661,6 +2883,7 @@ async function buildPrompt() {
     if (geo) segments.push(geo);
   }
 
+  segments.push(`【叙事辖区·防板块串台】\n${Object.entries(DIRECTOR_SECTION_RULES).filter(([field]) => field !== 'threads' || settings.liveStageEnabled).map(([field, rule]) => `- ${field}：${rule}`).join('\n')}\n同一事件可以在多个板块形成有机呼应，但必须分别承担行动入口、人物自主性、结构背景、因果传导、关系张力或潜在线索中的不同职能；若只是换词复述，视为缺项。`);
   segments.push(settings.outputSchemaText || JSON_SCHEMA_TEXT);
   if (settings.liveStageEnabled) segments.push(THREADS_SCHEMA_TEXT);
   if (settings.worldChatterEnabled) segments.push(WORLD_CHATTER_SCHEMA_TEXT);
@@ -2677,14 +2900,15 @@ function buildThreadsArchiveSegment(store) {
   const rows = active.map((t) => {
     const tag = t.pinned ? '（重点·勿擅自了结）' : '';
     const sleep = t.status === 'dormant' ? '（已沉睡，正文重新触及可唤醒）' : (t.silentRounds ? `（已沉寂${t.silentRounds}幕）` : '');
-    return `- [id:${t.id}] ${tag}${snip(t.title, 24)}【${t.stage}】：${snip(t.essence, 60)}${sleep}`;
+    const evidence = t.lastEvidenceQuote ? `（最近证据：楼层${t.lastEvidenceFloor}「${snip(t.lastEvidenceQuote, 28)}」）` : '';
+    return `- [id:${t.id}] ${tag}${snip(t.title, 24)}【${t.stage}】：${snip(t.essence, 60)}${sleep}${evidence}`;
   });
-  // 在演总量提醒：维持 3-5 条 active 暗线。不足则提示本幕补足，已达标则提示重在推进、不硬凑。
+  // 3—5 是档案储备，不是注入配额。低于目标时强制扫描，但程序会拒绝没有楼层原句的新线。
   const liveCount = active.filter((t) => t.status === 'active').length;
-  const tally = liveCount < 3
-    ? `\n⚠️ 当前在演暗线仅 ${liveCount} 条，低于 3-5 条的储备下限。本幕务必从正文与其余板块产出中再提炼几条新暗线补足，让伏笔池有足够可取用储备，但不可硬造空洞牵强的暗线。`
-    : `\n（当前在演 ${liveCount} 条，已在 3-5 条的健康储备区间。本幕重在推进、流转既有暗线的火候，仅在确有新料时自然增埋，不必为凑数硬加。）`;
-  return `【在演伏笔显影档案】\n以下暗线已在故事中存活，各有持续身份(id)与显影刻度。请对照「近期对话」逐条判定本幕走向，并在输出的 threads 字段中沿用对应 id 回传更新；标「重点」的暗线不得擅自沉睡或归档。\n${rows.join('\n')}${tally}`;
+  const tally = liveCount < THREAD_ACTIVE_TARGET_MIN
+    ? `\n⚠️ 当前在演储备 ${liveCount} 条，低于 ${THREAD_ACTIVE_TARGET_MIN}—${THREAD_ACTIVE_TARGET_MAX} 条健康区间。请认真扫描近期对话中的潜在线索；每条新增候选必须引用真实 evidence_floor 与 evidence_quote。没有证据就不要补足。`
+    : `\n（当前在演储备 ${liveCount} 条。储备不等于调用，本轮仅审阅状态；不要为维持数字而重复改写或强行引爆。）`;
+  return `【在演伏笔显影档案】\n以下暗线已在故事中存活。必须逐条沿用 id 回传审阅结果：正文有证据才可 advance/mention/closed，否则回传 idle；遗漏 id 不会被当作 idle，只会被质量门控判为漏审。钉住表示保留身份，不代表必须在正文调用。\n${rows.join('\n')}${tally}`;
 }
 
 // 活幕·势：构建「在演格局档案」段——把现有势力/关系/世界事件喂回，让模型对照近期对话推动大势演进
@@ -2968,6 +3192,153 @@ function normalizePlan(plan) {
   return plan;
 }
 
+function directorItemText(field, item) {
+  if (!item || typeof item !== 'object') return String(item || '');
+  const keys = {
+    quests: ['title', 'objective', 'description', 'trigger', 'reward'],
+    npc_updates: ['name', 'role', 'current_goal', 'emotional_state', 'next_action', 'hidden_agenda', 'relations'],
+    world_updates: ['type', 'title', 'content', 'scope', 'timing'],
+    chain_reactions: ['spark', 'chain'],
+    relation_undercurrents: ['parties', 'tone', 'tension', 'drift', 'user_awareness'],
+  }[field] || Object.keys(item);
+  return keys.map((key) => {
+    const value = item[key];
+    return Array.isArray(value) ? value.join(' ') : String(value || '');
+  }).join(' ');
+}
+
+function directorSimilarity(left, right) {
+  const a = directorBigrams(left);
+  const b = directorBigrams(right);
+  if (!a.size || !b.size) return 0;
+  let common = 0;
+  for (const token of a) if (b.has(token)) common += 1;
+  return common / Math.min(a.size, b.size);
+}
+
+function directorDedupePlan(plan) {
+  const fields = Object.keys(DIRECTOR_MIN_COUNTS);
+  const globalSeen = [];
+  const removed = [];
+  for (const field of fields) {
+    const local = [];
+    plan[field] = (Array.isArray(plan[field]) ? plan[field] : []).filter((item, index) => {
+      const text = directorItemText(field, item);
+      const norm = directorEvidenceNorm(text);
+      if (!norm) { removed.push({ field, index, reason: '空条目' }); return false; }
+      const sameField = local.some((entry) => directorSimilarity(text, entry.text) >= .92);
+      if (sameField) { removed.push({ field, index, reason: '同板块重复' }); return false; }
+      // 跨板块只拦截近乎逐字复述；同一事件从不同叙事角度展开会因专属字段不同而被保留。
+      const crossField = globalSeen.find((entry) => directorSimilarity(text, entry.text) >= .97);
+      if (crossField) { removed.push({ field, index, reason: `与 ${crossField.field} 机械复述` }); return false; }
+      const entry = { field, text };
+      local.push(entry);
+      globalSeen.push(entry);
+      return true;
+    });
+  }
+  return removed;
+}
+
+function directorFieldSignature(plan, field) {
+  return (Array.isArray(plan?.[field]) ? plan[field] : []).map((item) => directorItemText(field, item)).join('\n');
+}
+
+function directorQualityNeeds(plan, previousPlan, store) {
+  const gaps = {};
+  for (const [field, minimum] of Object.entries(DIRECTOR_MIN_COUNTS)) {
+    const count = Array.isArray(plan[field]) ? plan[field].length : 0;
+    if (count < minimum) gaps[field] = minimum - count;
+  }
+  const chatAdvanced = Number(store?.planAtLen || 0) > 0 && (Array.isArray(ctx().chat) ? ctx().chat.length : 0) > Number(store.planAtLen || 0);
+  const stagnantFields = [];
+  if (chatAdvanced && previousPlan) {
+    for (const field of Object.keys(DIRECTOR_MIN_COUNTS)) {
+      const current = directorFieldSignature(plan, field);
+      const previous = directorFieldSignature(previousPlan, field);
+      if (current && previous && directorSimilarity(current, previous) >= .96) stagnantFields.push(field);
+    }
+  }
+  const existingIds = settings.liveStageEnabled
+    ? (Array.isArray(store?.threads) ? store.threads : []).filter((thread) => thread.status !== 'closed').map((thread) => thread.id)
+    : [];
+  const returnedThreads = Array.isArray(plan.threads) ? plan.threads : [];
+  const returnedIds = new Set(returnedThreads.filter((thread) => {
+    if (!thread?.id) return false;
+    if (thread.touched === 'idle') return true;
+    const evidence = validateThreadEvidence(thread);
+    return evidence.valid && (thread.status !== 'closed' || String(thread.resolution || '').trim().length >= 4);
+  }).map((thread) => String(thread.id)));
+  const missingThreadIds = existingIds.filter((id) => !returnedIds.has(id));
+  const storedThreads = Array.isArray(store?.threads) ? store.threads : [];
+  const activeThreads = storedThreads.filter((thread) => thread.status === 'active');
+  const activeById = new Map(activeThreads.map((thread) => [String(thread.id), thread]));
+  const projectedExits = new Set(returnedThreads.filter((thread) => {
+    const stored = activeById.get(String(thread?.id || ''));
+    if (!stored) return false;
+    if (thread?.touched === 'idle') return !stored.pinned && Number(stored.silentRounds || 0) >= 3;
+    const evidence = validateThreadEvidence(thread);
+    if (!evidence.valid) return false;
+    const explicitClose = thread?.status === 'closed' || sanitizeStage(thread?.stage) === '落幕';
+    const advancesToClose = thread?.touched === 'advance' && sanitizeStage(stored.stage) === '高潮';
+    return (explicitClose && String(thread?.resolution || '').trim().length >= 4) || advancesToClose;
+  }).map((thread) => String(thread.id)));
+  const validNewCandidates = returnedThreads.filter((thread) => !thread?.id && thread?.touched !== 'idle' && thread?.status !== 'closed' && validateThreadEvidence(thread).valid).length;
+  const projectedActiveCount = activeThreads.length - projectedExits.size + validNewCandidates;
+  const needsThreadCandidates = settings.liveStageEnabled && projectedActiveCount < THREAD_ACTIVE_TARGET_MIN;
+  return { gaps, stagnantFields: stagnantFields.slice(0, 2), missingThreadIds, needsThreadCandidates };
+}
+
+function directorHasQualityNeeds(needs) {
+  return Object.keys(needs.gaps || {}).length > 0 || (needs.stagnantFields || []).length > 0
+    || (needs.missingThreadIds || []).length > 0 || needs.needsThreadCandidates;
+}
+
+async function repairDirectorPlanQuality(plan, previousPlan, store) {
+  const needs = directorQualityNeeds(plan, previousPlan, store);
+  if (!directorHasQualityNeeds(needs)) return { plan, needs, repaired: false, raw: '', error: '' };
+  const requestedFields = uniqueClean([...Object.keys(needs.gaps), ...needs.stagnantFields]);
+  const jurisdiction = requestedFields.map((field) => `- ${field}：${DIRECTOR_SECTION_RULES[field]}`).join('\n');
+  const threadInstruction = settings.liveStageEnabled && (needs.missingThreadIds.length || needs.needsThreadCandidates)
+    ? `\n- threads：逐条补审既有 id ${needs.missingThreadIds.join('、') || '（无漏审）'}。每条结构至少包含 id、title、essence、stage、touched、evidence_floor、evidence_quote、resolution、note、status。低于储备目标时可新增候选（id 留空），但必须逐字引用近期对话中真实的 evidence_floor 与 evidence_quote；无证据不要新增。`
+    : '';
+  const systemPrompt = `你是千幕推演的“缺口补写器”。已有合格字段绝不可改写，只输出被点名字段组成的 JSON 对象，不输出解释、Markdown 或思考过程。\n叙事辖区：\n${jurisdiction || '- 本次只补 threads 审阅'}${threadInstruction}\n同一事件可以在不同板块形成因果呼应，但每个板块必须提供本职角度，禁止换词复述。`;
+  const userPrompt = `【近期对话】\n${getChatHistoryText() || '暂无对话'}\n\n【当前已生成结果】\n${JSON.stringify(plan)}\n\n【需要修复的缺口】\n数量不足：${JSON.stringify(needs.gaps)}\n疑似沿用上轮、须整体换成贴合新正文的新内容：${needs.stagnantFields.join('、') || '无'}\n漏审伏笔 id：${needs.missingThreadIds.join('、') || '无'}\n伏笔储备扫描：${needs.needsThreadCandidates ? '需要，但新增必须有正文原句证据' : '不需要'}\n\n只返回上述必要字段。数量不足的字段补到既定下限；疑似沿用上轮的字段返回完整替换数组。`;
+  try {
+    const raw = settings.providerMode === 'sillytavern'
+      ? await callSillyTavernModel(userPrompt, systemPrompt, null, { stream_response: false, max_tokens: Math.min(4200, Math.max(1400, Number(settings.maxOutputTokens || 2600))) })
+      : await callExternalApi([{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }], null, {
+        stream: false, temperature: Math.min(.85, Math.max(.45, Number(settings.temperature || .7))),
+        maxTokens: Math.min(4200, Math.max(1400, Number(settings.maxOutputTokens || 2600))),
+      }, abortController);
+    const patch = normalizePlan(extractJson(raw));
+    for (const field of requestedFields) {
+      const returned = Array.isArray(patch[field]) ? patch[field] : [];
+      if (!returned.length) continue;
+      if (needs.stagnantFields.includes(field) && returned.length >= DIRECTOR_MIN_COUNTS[field]) {
+        plan[field] = returned;
+      } else {
+        // 缺几条只收几条，避免“补写器”误回整套数组后把主结果反向撑得臃肿。
+        const missing = Math.max(0, Number(needs.gaps[field] || 0));
+        plan[field] = [...(plan[field] || []), ...returned.slice(0, missing)];
+      }
+    }
+    if (settings.liveStageEnabled && Array.isArray(patch.threads)) {
+      const byId = new Map((plan.threads || []).map((thread) => [String(thread?.id || ''), thread]));
+      for (const thread of patch.threads) {
+        const id = String(thread?.id || '');
+        if (id && byId.has(id)) Object.assign(byId.get(id), thread);
+        else (plan.threads ||= []).push(thread);
+      }
+    }
+    const removed = directorDedupePlan(plan);
+    return { plan, needs, repaired: true, raw, removed, error: '' };
+  } catch (error) {
+    if (error?.name === 'AbortError' || error?.message === 'USER_CANCELLED') throw error;
+    return { plan, needs, repaired: false, raw: '', error: error?.message || String(error) };
+  }
+}
+
 function makeStreamLogUpdater(log) {
   let lastPaint = 0;
   const paint = (text) => {
@@ -3014,9 +3385,22 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
       : await callExternalApi(messages, onDelta);
     if (cancelRequested) throw new Error('USER_CANCELLED');
     log.response = clipLog(raw);
-    const newPlan = normalizePlan(extractJson(raw));
     const store = getChatStore();
+    const previousPlan = store.plan ? clone(store.plan) : null;
+    const newPlan = normalizePlan(extractJson(raw));
+    const initialRemoved = directorDedupePlan(newPlan);
+    const quality = await repairDirectorPlanQuality(newPlan, previousPlan, store);
+    if (cancelRequested) throw new Error('USER_CANCELLED');
+    if (quality.raw) log.response = clipLog(`${raw}\n\n【千幕定向补写】\n${quality.raw}`);
+    else if (quality.error) log.response = clipLog(`${raw}\n\n【千幕质量门控】\n定向补写未完成，已保留首轮可用结果：${quality.error}`);
     const now = new Date().toISOString();
+    store.directorQuality = {
+      at: now,
+      repaired: quality.repaired,
+      needs: quality.needs,
+      removed: [...initialRemoved, ...(quality.removed || [])],
+      repairError: quality.error || '',
+    };
     store.plan = newPlan;
     delete store.injectOverride;   // 新推演有自己的摘要，旧幕手动覆盖不得串入
     store.updatedAt = now;
@@ -5481,8 +5865,15 @@ function renderThreadsCard() {
   const store = getChatStore();
   const all = Array.isArray(store.threads) ? store.threads : [];
   const live = all.filter((t) => t.status !== 'closed');
+  const activeCount = live.filter((t) => t.status === 'active').length;
   const closed = all.filter((t) => t.status === 'closed');
+  const quality = store.threadQuality || {};
   const stageIdx = (s) => STAGE_LADDER.indexOf(sanitizeStage(s));
+  const evidenceHtml = (thread) => {
+    if (!thread.lastEvidenceQuote) return '';
+    const floor = Number.isFinite(Number(thread.lastEvidenceFloor)) ? `楼层 ${Number(thread.lastEvidenceFloor)}` : '近期正文';
+    return `<p class="sd-thread-evidence"><i class="fa-solid fa-quote-left"></i><span>${floor} · ${htmlEscape(snip(thread.lastEvidenceQuote, 48))}</span></p>`;
+  };
   const sorted = [...live].sort((a, b) => (Number(a.origin || 0) - Number(b.origin || 0)) || String(a.id).localeCompare(String(b.id)));
   const rowHtml = (t) => {
     const pct = Math.round((stageIdx(t.stage) / (STAGE_LADDER.length - 1)) * 100);
@@ -5493,21 +5884,24 @@ function renderThreadsCard() {
         <h4>${htmlEscape(snip(t.title, 24))}</h4>
         <span class="sd-thread-stage">${htmlEscape(t.stage)}${dormant ? ' · 沉睡' : ''}</span>
         ${dormant ? `<button type="button" class="sd-icon-btn sd-icon-sm sd-thread-wake" data-id="${htmlEscape(t.id)}" title="唤醒"><i class="fa-solid fa-rotate-right"></i></button>` : ''}
+        <button type="button" class="sd-icon-btn sd-icon-sm sd-thread-edit" data-id="${htmlEscape(t.id)}" title="修改伏笔"><i class="fa-solid fa-pencil"></i></button>
         <button type="button" class="sd-icon-btn sd-icon-sm sd-thread-close" data-id="${htmlEscape(t.id)}" title="归档"><i class="fa-solid fa-box-archive"></i></button>
       </div>
       <div class="sd-bar sd-thread-bar"><i style="width:${pct}%"></i></div>
       ${t.essence ? `<p class="sd-thread-essence">${htmlEscape(snip(t.essence, 70))}</p>` : ''}
+      ${evidenceHtml(t)}
+      ${t.lastDecision ? `<p class="sd-thread-decision"><i class="fa-solid ${String(t.recallReason || '').includes('本轮正文证据') ? 'fa-link' : 'fa-shield-halved'}"></i><span>${htmlEscape(t.lastDecision)}${t.recallReason ? ` · ${htmlEscape(t.recallReason)}` : ''}</span></p>` : ''}
     </article>`;
   };
   const body = sorted.length
     ? sorted.map(rowHtml).join('')
     : '<p class="sd-muted">暂无在演伏笔。</p>';
   const closedFold = closed.length
-    ? `<details class="sd-plain-fold sd-threads-closed-fold" data-acc="threads-closed"><summary><b>已落幕</b><span class="sd-summary-note">${closed.length} 条</span></summary>${closed.map((t) => `<article class="sd-thread-row sd-thread-closed"><div class="sd-thread-head"><h4>${htmlEscape(snip(t.title, 24))}</h4><span class="sd-thread-stage">${htmlEscape(t.stage)}</span><button type="button" class="sd-icon-btn sd-icon-sm sd-thread-purge" data-id="${htmlEscape(t.id)}" title="彻底删除"><i class="fa-solid fa-trash-can"></i></button></div>${t.essence ? `<p class="sd-thread-essence">${htmlEscape(snip(t.essence, 70))}</p>` : ''}</article>`).join('')}</details>`
+    ? `<details class="sd-plain-fold sd-threads-closed-fold" data-acc="threads-closed"><summary><b>已落幕</b><span class="sd-summary-note">${closed.length} 条</span></summary>${closed.map((t) => `<article class="sd-thread-row sd-thread-closed"><div class="sd-thread-head"><h4>${htmlEscape(snip(t.title, 24))}</h4><span class="sd-thread-stage">${htmlEscape(t.stage)}</span><button type="button" class="sd-icon-btn sd-icon-sm sd-thread-purge" data-id="${htmlEscape(t.id)}" title="彻底删除"><i class="fa-solid fa-trash-can"></i></button></div>${t.essence ? `<p class="sd-thread-essence">${htmlEscape(snip(t.essence, 70))}</p>` : ''}${t.resolution ? `<p class="sd-thread-decision"><i class="fa-solid fa-circle-check"></i><span>${htmlEscape(snip(t.resolution, 80))}</span></p>` : ''}${evidenceHtml(t)}</article>`).join('')}</details>`
     : '';
   return `<section class="sd-card sd-threads-card">
     <details class="sd-threads-fold" data-acc="threads-card" open>
-      <summary class="sd-threads-summary"><b>伏笔显影</b><span class="sd-tpl-count">${live.length} 条在演</span>${all.length ? '<button type="button" class="sd-icon-btn sd-icon-sm sd-threads-clear" title="清空全部伏笔（在演与已落幕）" aria-label="清空全部伏笔"><i class="fa-solid fa-broom"></i></button>' : ''}</summary>
+      <summary class="sd-threads-summary"><b>伏笔显影</b><span class="sd-tpl-count">${activeCount} 条在演${live.length > activeCount ? ` · ${live.length - activeCount} 条沉睡` : ''}</span>${quality.round ? `<span class="sd-thread-quality" title="本轮接受 ${quality.accepted?.length || 0} 项状态判断，拦截 ${quality.rejected?.length || 0} 项无证据或漏审变更">已核验</span>` : ''}${all.length ? '<button type="button" class="sd-icon-btn sd-icon-sm sd-threads-clear" title="清空全部伏笔（在演与已落幕）" aria-label="清空全部伏笔"><i class="fa-solid fa-broom"></i></button>' : ''}</summary>
       <div class="sd-threads-body">
         ${body}
         ${closedFold}
@@ -10112,10 +10506,15 @@ function bindActiveTabEvents(root) {
   // 活幕·伏笔显影卡：钉住 / 唤醒 / 归档
   // 钉住与唤醒不重排行（列表按 origin 固定），故走定点 DOM 更新，避免整屏 renderModal 造成界面闪烁
   root.querySelectorAll('.sd-thread-pin').forEach((el) => el.addEventListener('click', async () => {
-    const t = (getChatStore().threads || []).find((x) => x.id === el.dataset.id);
+    const store = getChatStore();
+    const t = (store.threads || []).find((x) => x.id === el.dataset.id);
     if (!t) return;
     t.pinned = !t.pinned;
-    if (t.pinned && t.status === 'dormant') { t.status = 'active'; t.silentRounds = 0; }
+    if (t.pinned && t.status === 'dormant') {
+      t.status = 'active';
+      t.silentRounds = 0;
+      t.lastDecision = '用户钉住并唤醒';
+    }
     // —— 就地更新此行视觉，不重绘 ——
     const row = el.closest('.sd-thread-row');
     el.classList.toggle('sd-thread-pin-on', t.pinned);
@@ -10132,14 +10531,17 @@ function bindActiveTabEvents(root) {
         row.querySelector('.sd-thread-wake')?.remove();
       }
     }
+    selectThreadsForRecall(store, Number(store.threadSeq || 0), true);
     await saveMetadata();
     await applyDirectorInjection();
   }));
   root.querySelectorAll('.sd-thread-wake').forEach((el) => el.addEventListener('click', async () => {
-    const t = (getChatStore().threads || []).find((x) => x.id === el.dataset.id);
+    const store = getChatStore();
+    const t = (store.threads || []).find((x) => x.id === el.dataset.id);
     if (!t) return;
     t.status = 'active';
     t.silentRounds = 0;
+    t.lastDecision = '用户手动唤醒';
     // —— 就地更新此行视觉，不重绘 ——
     const row = el.closest('.sd-thread-row');
     if (row) {
@@ -10148,17 +10550,44 @@ function bindActiveTabEvents(root) {
       if (stage) stage.textContent = t.stage;
     }
     el.remove();
+    selectThreadsForRecall(store, Number(store.threadSeq || 0), true);
     await saveMetadata();
     await applyDirectorInjection();
     toast('已唤醒这条伏笔，下次推演将重新追踪。', 'success');
   }));
+  root.querySelectorAll('.sd-thread-edit').forEach((el) => el.addEventListener('click', async () => {
+    const store = getChatStore();
+    const thread = (store.threads || []).find((item) => item.id === el.dataset.id);
+    if (!thread) return;
+    const edited = await promptThreadEdit(thread);
+    if (!edited) return;
+    if (!edited.title) return toast('伏笔标题不能为空。', 'warning');
+    thread.title = edited.title;
+    thread.essence = edited.essence;
+    thread.stage = edited.status === 'closed' ? '落幕' : edited.stage;
+    thread.status = edited.status;
+    if (thread.status === 'closed') thread.pinned = false;
+    thread.lastDecision = '用户手动校正';
+    thread.trail = Array.isArray(thread.trail) ? thread.trail : [];
+    thread.trail.push({ round: Number(store.threadSeq || 0), stage: thread.stage, note: '用户手动校正' });
+    if (thread.trail.length > 12) thread.trail = thread.trail.slice(-12);
+    selectThreadsForRecall(store, Number(store.threadSeq || 0), true);
+    await saveMetadata();
+    await applyDirectorInjection();
+    toast('伏笔已更新。', 'success');
+    renderModal();
+  }));
   root.querySelectorAll('.sd-thread-close').forEach((el) => el.addEventListener('click', async () => {
-    const t = (getChatStore().threads || []).find((x) => x.id === el.dataset.id);
+    const store = getChatStore();
+    const t = (store.threads || []).find((x) => x.id === el.dataset.id);
     if (!t) return;
     const yes = await confirmDialog('归档伏笔', `确认将「${snip(t.title, 20)}」归档？归档后不再注入，可在「已落幕」中回看。`);
     if (!yes) return;
     t.status = 'closed';
+    t.stage = '落幕';
     t.pinned = false;
+    t.lastDecision = '用户手动归档';
+    store.threadRecallIds = (store.threadRecallIds || []).filter((id) => id !== t.id);
     await saveMetadata();
     await applyDirectorInjection();
     toast('已归档。', 'success');
@@ -10171,7 +10600,9 @@ function bindActiveTabEvents(root) {
     const yes = await confirmDialog('彻底删除', `将「${snip(t.title, 20)}」从档案中永久删除？此操作不可撤销。`);
     if (!yes) return;
     store.threads = (store.threads || []).filter((x) => x.id !== el.dataset.id);
+    store.threadRecallIds = (store.threadRecallIds || []).filter((id) => id !== el.dataset.id);
     await saveMetadata();
+    await applyDirectorInjection();
     toast('已删除。', 'success');
     renderModal();
   }));
@@ -10184,6 +10615,7 @@ function bindActiveTabEvents(root) {
     const yes = await confirmDialog('清空伏笔', `将清空全部 ${n} 条伏笔（含在演与已落幕），此操作不可撤销。确认清空？`);
     if (!yes) return;
     store.threads = [];
+    store.threadRecallIds = [];
     await saveMetadata();
     await applyDirectorInjection();   // 伏笔参与注入，清空后同步刷新注入
     toast('伏笔已清空。', 'success');
