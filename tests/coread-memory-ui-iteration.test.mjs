@@ -28,6 +28,9 @@ assert.match(guide, /sd-reader-tour-prev[\s\S]*sd-reader-tour-next/, '逐步教�
 assert.match(source, /if \(!m\.guideSeen && coreadGuideStep === null\) coreadGuideStep = 0/, '首次进入伴读中心必须自动启动逐步引导');
 assert.match(css, /\.sd-reader-tour-target[^{]*\{[^}]*outline:[^}]*animation:/, '当前引导卡必须有明确高亮视觉');
 assert.match(css, /\.sd-reader-tour\s*\{[^}]*position:\s*absolute/, '引导说明卡必须跟随当前高亮区定位而非固定在页顶');
+assert.match(css, /\.sd-reader-tour-copy b\s*\{[^}]*font-size:\s*1em/, '引导标题必须提高易读性');
+assert.match(css, /\.sd-reader-tour-copy p\s*\{[^}]*font-size:\s*\.84em[^}]*line-height:\s*1\.55/, '引导正文必须统一放大并提高行距');
+assert.match(css, /@media \(max-width: 620px\)[\s\S]*\.sd-reader-tour-copy p\s*\{[^}]*font-size:\s*\.9em/, '移动端引导正文必须进一步放大');
 const centerScroll = source.slice(source.indexOf('// 只移动伴读中心自己的滚动层'), source.indexOf('const rerenderSetup'));
 assert.match(centerScroll, /sd-reader-morepage-body[\s\S]*scroller\.scrollTo[\s\S]*scrollMoreTarget/, '引导定位只能滚动伴读中心正文容器');
 assert.match(centerScroll, /positionGuide[\s\S]*contentY[\s\S]*tour\.style\.top/, '引导说明卡必须计算并放置在高亮卡上方');

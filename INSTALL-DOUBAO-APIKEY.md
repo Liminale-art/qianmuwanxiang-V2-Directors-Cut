@@ -39,7 +39,7 @@ curl -fsSL https://raw.githubusercontent.com/liminale1525/Omniscene/main/install
 
 必须**重启 SillyTavern 后端服务或 Docker 容器**，不是只刷新、关闭或重新打开 ST 网页。服务端插件只会在后端启动时加载。
 
-后端重启完成后，再刷新 ST 网页，然后打开千幕 → 配音 → 豆包语音，接入方式选择“新版 API Key”，粘贴 API Key 并点击“测试连接”。
+后端重启完成后，再刷新 ST 网页，然后打开千幕 → 配音 → 豆包语音，接入方式选择“API Key”，粘贴 API Key 并点击“测试连接”。
 
 安装成功后，健康检查地址会显示 `"ok":true`：
 

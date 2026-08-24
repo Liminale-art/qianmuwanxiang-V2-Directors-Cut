@@ -24,6 +24,8 @@ assert.match(css, /\.sd-body\.sd-editor-body\s*\{[^}]*overflow:\s*hidden/, '编�
 assert.match(css, /\.sd-editor-body > \.sd-editor-card\s*\{[^}]*flex:\s*1 1 0[^}]*overflow:\s*hidden/, '编辑卡必须固定占满剩余空间');
 assert.match(css, /\.sd-theater-reader-scroll\s*\{[^}]*flex:\s*1 1 0[^}]*overflow:\s*auto/, '幕外正文必须在独立区域滚动，不能再穿透工具栏');
 assert.match(css, /\.sd-editor-area\s*\{[^}]*flex:\s*1 1 0[^}]*overflow:\s*auto[^}]*resize:\s*none/, '编辑框必须固定尺寸并自行滚动');
+assert.match(css, /\.sd-editor-card:not\(\.sd-theater-view-card\)[\s\S]*background:\s*transparent !important[\s\S]*box-shadow:\s*none !important/, '编辑页不得再用整块卡片底色包住顶栏按钮');
+assert.match(css, /\.sd-editor-bar\s*\{[^}]*background:\s*transparent !important/, '编辑页顶栏按钮下方必须保持无感透明');
 assert.doesNotMatch(source.slice(source.indexOf('const tabs = ['), source.indexOf('const wasOpen')), /\['blueprint', '编剧'\]/, '编剧不得继续占用顶层 tab');
 assert.match(source, /renderBackstageBlueprintCard\(\)[\s\S]*data-acc="director-law"/, '编剧卡必须并入剧组之律卡之前');
 assert.match(source, /sd-backstage-blueprint sd-director-title-fold[\s\S]*<summary><b>编剧<\/b>/, '编剧标题必须移除图标并使用幕后统一标题规格');

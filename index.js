@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.33.6';
+const VERSION = '1.34.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -45,6 +45,15 @@ const FLOAT_SIZE_MAX = 80;
 // 悬浮球图标：扩展自带的本地透明 PNG（96px、与 index.js 同源），不依赖外部字体/网络，
 // 根治「幕」字因字体加载失败而失效的问题。换图标只改这一行。
 const FLOAT_LOGO_URL = new URL('./qianmulogo.png', import.meta.url).href;
+const FLOAT_LOGO_URLS = Object.freeze({
+  light: FLOAT_LOGO_URL,
+  dark: new URL('./qianmulogo-dark.png', import.meta.url).href,
+  summer: new URL('./qianmulogo-summer.png', import.meta.url).href,
+  candy: new URL('./qianmulogo-candy.png', import.meta.url).href,
+  kraft: FLOAT_LOGO_URL,
+  dream: new URL('./qianmulogo-dream.png', import.meta.url).href,
+});
+const DOUBAO_APIKEY_GUIDE_URL = 'https://github.com/liminale1525/Omniscene/blob/main/INSTALL-DOUBAO-APIKEY.md';
 
 const PROMPT_REVISION = 24;
 const BLUEPRINT_REVISION = 1;          // 默认剧本模板版本，升一档即用新默认覆盖各聊天剧本（旧 DIY 自动备份进「恢复上次」）
@@ -318,6 +327,46 @@ const THEMES = [
   { key: 'dream', name: '幻梦', dot: '#9b8fd0' },
 ];
 const THEME_KEYS = THEMES.map((t) => t.key);
+const QUICK_HIVE_THEME_PALETTES = Object.freeze({
+  light: {
+    lightFill: 'rgba(248, 247, 243, .30)', darkFill: 'rgba(43, 44, 44, .38)',
+    lightIcon: '#4b4b49', darkIcon: '#f7f3ea',
+    edges: ['#77736d', '#c99b51', '#ddd8cd'], mainEdge: '#c99b51', mainFill: 'rgba(255, 255, 255, .22)',
+  },
+  dark: {
+    lightFill: 'rgba(68, 72, 70, .32)', darkFill: 'rgba(35, 37, 38, .44)',
+    lightIcon: '#f7f3ea', darkIcon: '#f7f3ea',
+    edges: ['#8faf9b', '#d8ddd8', '#777c79'], mainEdge: '#8faf9b', mainFill: 'rgba(43, 44, 44, .34)',
+  },
+  summer: {
+    lightFill: 'rgba(248, 249, 246, .30)', darkFill: 'rgba(45, 48, 47, .38)',
+    lightIcon: '#4b4b49', darkIcon: '#f7f3ea',
+    edges: ['#c6df4e', '#83cbb4', '#ddd8cd', '#77736d'], mainEdge: '#9fca62', mainFill: 'rgba(255, 255, 255, .22)',
+  },
+  candy: {
+    lightFill: 'rgba(249, 247, 247, .30)', darkFill: 'rgba(46, 43, 45, .38)',
+    lightIcon: '#4b4b49', darkIcon: '#f7f3ea',
+    edges: ['#e5c971', '#e8a7bd', '#ddd8cd', '#77736d'], mainEdge: '#e3a0b8', mainFill: 'rgba(255, 255, 255, .22)',
+  },
+  kraft: {
+    lightFill: 'rgba(248, 246, 241, .30)', darkFill: 'rgba(45, 43, 40, .38)',
+    lightIcon: '#4b4b49', darkIcon: '#f7f3ea',
+    edges: ['#a77b45', '#d8b66e', '#ddd8cd', '#77736d'], mainEdge: '#c99b51', mainFill: 'rgba(255, 255, 255, .22)',
+  },
+  dream: {
+    lightFill: 'rgba(249, 248, 250, .30)', darkFill: 'rgba(44, 43, 48, .38)',
+    lightIcon: '#4b4b49', darkIcon: '#f7f3ea',
+    edges: ['#b7a5e3', '#8ec9c0', '#e6a8c7', '#e4cd8e', '#ddd8cd', '#77736d'], mainEdge: '#b7a5e3', mainFill: 'rgba(255, 255, 255, .22)',
+  },
+});
+
+function currentHiveThemeKey() {
+  return THEME_KEYS.includes(settings.theme) ? settings.theme : 'light';
+}
+
+function currentHivePalette() {
+  return QUICK_HIVE_THEME_PALETTES[currentHiveThemeKey()] || QUICK_HIVE_THEME_PALETTES.light;
+}
 
 const PROSE_LAYOUT_DEFAULTS = Object.freeze({
   active: false,
@@ -3187,6 +3236,12 @@ const QUICK_COMMANDS = Object.freeze([
   { id: 'floor', label: '楼层跳转', icon: 'fa-layer-group' },
 ]);
 const QUICK_COMMAND_IDS = QUICK_COMMANDS.map((item) => item.id);
+const QUICK_ICON_OPTICAL_SCALE = Object.freeze({
+  tts: 1.16,
+  theater: 1.04,
+  coread: 1.04,
+  plug: 1.04,
+});
 // 使用真实 SVG polygon 描边，而非“矩形 mask 再裁六边形”。后者只会留下几段横线，无法贴合斜边。
 const QUICK_HEX_BORDER_SVG = '<svg class="sd-hive-hex-outline" viewBox="0 0 86.602 100" preserveAspectRatio="none" aria-hidden="true" focusable="false"><polygon points="43.301,0 86.602,25 86.602,75 43.301,100 0,75 0,25"></polygon></svg>';
 // 蜂巢不设置面向用户的入口上限；24 仅用于拦截损坏配置或异常第三方注入造成的无限增长。
@@ -3275,7 +3330,7 @@ function quickHiveDirectionalCells(count, geometry) {
 function quickHiveLayout(count, requestedSize, viewportGeometry) {
   for (let itemHeight = requestedSize; itemHeight >= 32; itemHeight -= 2) {
     const itemSize = itemHeight * QUICK_HEX_WIDTH_RATIO;
-    const gap = Math.max(3, Math.min(6, Math.round(itemHeight * .1)));
+    const gap = Math.max(1, Math.min(3, Math.round(itemHeight * .045)));
     const geometry = {
       ...viewportGeometry,
       itemSize,
@@ -3290,7 +3345,7 @@ function quickHiveLayout(count, requestedSize, viewportGeometry) {
   // 正常 ST 视口不会走到此处；极端短视口仍保持锚点不动并使用最小蜂巢片。
   const itemHeight = 32;
   const itemSize = itemHeight * QUICK_HEX_WIDTH_RATIO;
-  const gap = 3;
+  const gap = 1;
   const geometry = { ...viewportGeometry, itemSize, itemHeight, gap };
   return { ...geometry, cells: quickHiveDirectionalCells(count, geometry), edgeDirected: true };
 }
@@ -3613,6 +3668,36 @@ function quickDockRemove(key, refresh = true) {
   if (refresh) quickDockRefreshSettingsIfVisible();
 }
 
+function quickDockDispatchActivation(record) {
+  const host = record?.host;
+  if (!(host instanceof Element) || !host.isConnected) return false;
+  host.classList.remove('sd-quick-docked-origin');
+  host.classList.add('sd-quick-docked-activating');
+  requestAnimationFrame(() => {
+    const target = quickDockActivatorForHost(host, record.activator);
+    try {
+      target?.focus?.({ preventScroll: true });
+      const common = { bubbles: true, cancelable: true, composed: true, view: window, button: 0, buttons: 1 };
+      if (typeof PointerEvent === 'function') target?.dispatchEvent?.(new PointerEvent('pointerdown', { ...common, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+      target?.dispatchEvent?.(new MouseEvent('mousedown', common));
+      if (typeof PointerEvent === 'function') target?.dispatchEvent?.(new PointerEvent('pointerup', { ...common, buttons: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+      target?.dispatchEvent?.(new MouseEvent('mouseup', { ...common, buttons: 0 }));
+      if (typeof target?.click === 'function') target.click();
+      else target?.dispatchEvent?.(new MouseEvent('click', { ...common, buttons: 0 }));
+    } catch (error) {
+      console.warn(`[${MODULE_NAME}] docked plugin activation failed`, error);
+      toast('第三方入口唤起失败，请先解除收纳后重试。', 'error');
+    } finally {
+      setTimeout(() => {
+        host.classList.remove('sd-quick-docked-activating');
+        if (quickDockRuntime.has(record.key) && host.isConnected) syncQuickDockOriginVisibility();
+        else if (!host.isConnected) { quickDockRuntime.delete(record.key); restoreQuickDockedPlugins(); }
+      }, 120);
+    }
+  });
+  return true;
+}
+
 function quickDockRun(key) {
   const record = quickDockRuntime.get(String(key));
   if (!record?.host?.isConnected) {
@@ -3620,15 +3705,7 @@ function quickDockRun(key) {
     restoreQuickDockedPlugins();
     return;
   }
-  const target = quickDockActivatorForHost(record.host, record.activator);
-  record.host.classList.remove('sd-quick-docked-origin');
-  try { target?.click?.(); }
-  catch (error) { console.warn(`[${MODULE_NAME}] docked plugin activation failed`, error); toast('第三方入口唤起失败，请先解除收纳后重试。', 'error'); }
-  requestAnimationFrame(() => {
-    if (!quickDockRuntime.has(record.key)) return;
-    if (record.host?.isConnected) syncQuickDockOriginVisibility();
-    else { quickDockRuntime.delete(record.key); restoreQuickDockedPlugins(); }
-  });
+  quickDockDispatchActivation(record);
 }
 
 function quickDockScanStored() {
@@ -4197,10 +4274,12 @@ function openQuickWheel(btn) {
     viewportHeight,
     margin,
   });
+  const themeKey = currentHiveThemeKey();
+  const palette = currentHivePalette();
   const offsets = layout.cells.map((cell) => quickHivePixelOffset(cell, layout.itemSize, layout.gap));
   const root = document.createElement('div');
   root.id = QUICK_WHEEL_ID;
-  root.className = `sd-wheel-hive${layout.edgeDirected ? ' sd-wheel-edge-directed' : ''}`;
+  root.className = `sd-wheel-hive sd-hive-theme-${themeKey}${layout.edgeDirected ? ' sd-wheel-edge-directed' : ''}`;
   root.style.left = `${viewportLeft}px`;
   root.style.top = `${viewportTop}px`;
   root.style.width = `${viewportWidth}px`;
@@ -4211,15 +4290,14 @@ function openQuickWheel(btn) {
     const slot = offsets[index];
     const button = document.createElement('button');
     button.type = 'button';
-    // 明暗底色与边线成对出现：浅玻璃仅配灰/金边与深色图标；暗玻璃仅配浅灰/金边与白色图标。
-    // 每次展开重新取样，动态只改变组合与微光，不改变用户设置的入口顺序。
-    const visualPairs = [
-      { classes: 'is-glass-light is-edge-graphite', fill: 'rgba(248, 247, 243, .34)', edge: '#77736d', icon: '#4b4b49' },
-      { classes: 'is-glass-light is-edge-gold', fill: 'rgba(248, 247, 243, .34)', edge: '#c99b51', icon: '#4b4b49' },
-      { classes: 'is-glass-dark is-edge-ivory', fill: 'rgba(43, 44, 44, .42)', edge: '#ddd8cd', icon: '#f7f3ea' },
-      { classes: 'is-glass-dark is-edge-gold', fill: 'rgba(43, 44, 44, .42)', edge: '#c99b51', icon: '#f7f3ea' },
-    ];
-    const visual = visualPairs[Math.floor(Math.random() * visualPairs.length)];
+    // 毛玻璃始终只取灰白明暗；主题只改变边线组合，图标根据玻璃明暗保持深灰/白色可读性。
+    const darkGlass = Math.random() >= .5;
+    const visual = {
+      classes: darkGlass ? 'is-glass-dark' : 'is-glass-light',
+      fill: darkGlass ? palette.darkFill : palette.lightFill,
+      edge: palette.edges[Math.floor(Math.random() * palette.edges.length)],
+      icon: darkGlass ? palette.darkIcon : palette.lightIcon,
+    };
     button.className = `sd-wheel-command ${visual.classes}${item.external ? ' is-external' : ''}${item.pending ? ' is-pending' : ''}`;
     button.dataset.command = item.id;
     button.style.setProperty('--sd-wheel-item-size', `${layout.itemSize}px`, 'important');
@@ -4227,6 +4305,7 @@ function openQuickWheel(btn) {
     button.style.setProperty('--sd-wheel-glass-fill', visual.fill, 'important');
     button.style.setProperty('--sd-wheel-edge', visual.edge, 'important');
     button.style.setProperty('--sd-wheel-icon', visual.icon, 'important');
+    button.style.setProperty('--sd-wheel-optical-scale', String(QUICK_ICON_OPTICAL_SCALE[item.id] || 1));
     // 组件级视觉锁：阻断 ST 美化或其他插件的全局 button/div 样式覆盖蜂巢毛玻璃。
     button.style.setProperty('background', visual.fill, 'important');
     button.style.setProperty('backdrop-filter', 'blur(20px) saturate(1.12) brightness(1.04)', 'important');
@@ -4366,11 +4445,17 @@ function renderFloatButton() {
     document.body.appendChild(btn);
     bindFloatDrag(btn);
   }
+  const themeKey = currentHiveThemeKey();
+  const palette = currentHivePalette();
+  const logoUrl = FLOAT_LOGO_URLS[themeKey] || FLOAT_LOGO_URL;
+  btn.classList.remove(...THEME_KEYS.map((key) => `sd-hive-theme-${key}`));
+  btn.classList.add(`sd-hive-theme-${themeKey}`);
   // 本地 logo 铺满圆形悬浮球（object-fit:cover 由 CSS 控）；img 不拦指针，拖拽/点击仍落在按钮上
-  btn.innerHTML = `<img src="${FLOAT_LOGO_URL}" alt="${EXTENSION_NAME}" draggable="false">${QUICK_HEX_BORDER_SVG}`;
+  btn.innerHTML = `<img src="${logoUrl}" alt="${EXTENSION_NAME}" draggable="false">${QUICK_HEX_BORDER_SVG}`;
   btn.title = EXTENSION_NAME;
   // 与蜂巢片相同，锁定悬浮主格的关键玻璃属性，避免第三方主题把 blur/background 清空。
-  btn.style.setProperty('background', 'rgba(255, 255, 255, .22)', 'important');
+  btn.style.setProperty('--sd-float-edge', palette.mainEdge, 'important');
+  btn.style.setProperty('background', palette.mainFill, 'important');
   btn.style.setProperty('backdrop-filter', 'blur(22px) saturate(1.12) brightness(1.04)', 'important');
   btn.style.setProperty('-webkit-backdrop-filter', 'blur(22px) saturate(1.12) brightness(1.04)', 'important');
   btn.style.setProperty('clip-path', 'polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%)', 'important');
@@ -4527,6 +4612,7 @@ function renderModal() {
   modal.querySelectorAll('.sd-theme-opt').forEach((el) => el.addEventListener('click', () => {
     const next = el.dataset.theme;
     if (next && next !== settings.theme) { settings.theme = next; saveSettings(); }
+    renderFloatButton();
     renderModal();   // 重渲染会重建菜单（默认收起态）
   }));
   modal.querySelectorAll('.sd-tab').forEach((el) => el.addEventListener('click', () => {
@@ -5878,10 +5964,10 @@ function renderTtsProviderConnection(provider, p) {
   if (provider.id === 'doubao') {
     const authMode = p.authMode === 'legacy' ? 'legacy' : 'apiKey';
     return `
-      <label>接入方式</label><select class="text_pole sd-tts-auth-mode">
-        <option value="apiKey" ${authMode === 'apiKey' ? 'selected' : ''}>新版 API Key</option>
+      <label>接入方式</label><div class="sd-tts-auth-row"><select class="text_pole sd-tts-auth-mode">
+        <option value="apiKey" ${authMode === 'apiKey' ? 'selected' : ''}>API Key</option>
         <option value="legacy" ${authMode === 'legacy' ? 'selected' : ''}>App ID + Access Key</option>
-      </select>
+      </select>${authMode === 'apiKey' ? `<a class="sd-icon-btn sd-tts-doubao-guide" href="${DOUBAO_APIKEY_GUIDE_URL}" target="_blank" rel="noopener noreferrer" title="打开豆包后端安装指引" aria-label="打开豆包后端安装指引"><i class="fa-solid fa-circle-info"></i></a>` : ''}</div>
       ${authMode === 'apiKey' ? `
         <label>API Key</label><input class="text_pole sd-tts-key" type="password" placeholder="豆包语音 API Key" value="${htmlEscape(p.apiKey || '')}">
       ` : `
@@ -6126,7 +6212,7 @@ function bindTtsTabEvents(root) {
     const proxyBase = (root.querySelector('.sd-tts-proxy')?.value || p.proxyBase || '').trim();
     if (!ttsProviderHasCredentials(providerId, { ...p, authMode, apiKey, appId, accessKey, proxyBase })) {
       const hint = providerId === 'doubao'
-        ? (authMode === 'legacy' ? '请填写豆包 App ID + Access Key。' : '请填写豆包新版 API Key。')
+        ? (authMode === 'legacy' ? '请填写豆包 App ID + Access Key。' : '请填写豆包 API Key。')
         : `请先填写 ${provider.label} 凭证。`;
       toast(hint, 'warning'); return;
     }

@@ -194,6 +194,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-float.sd-wheel-active { z-index: 2147483003; }
 #story-director-float.sd-dock-ready { animation: sd-quick-dock-ready .72s ease-in-out infinite alternate; }
 .sd-quick-docked-origin { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }
+.sd-quick-docked-activating { opacity: .001 !important; visibility: visible !important; pointer-events: none !important; }
 @keyframes sd-quick-dock-ready { from { filter: brightness(1); transform: scale(1); } to { filter: brightness(1.18); transform: scale(1.08); } }
 @keyframes sd-float-glass-breathe { from { opacity: .34; } to { opacity: .88; } }
 
@@ -300,7 +301,19 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   stroke-linejoin: round !important;
   vector-effect: non-scaling-stroke;
 }
-#story-director-quick-wheel .sd-wheel-command i { color: inherit !important; font-size: clamp(13px, calc(var(--sd-wheel-item-size, 36px) * .38), 19px); }
+#story-director-float.sd-hive-theme-dream > .sd-hive-hex-outline polygon { animation: sd-hive-dream-edge 12s ease-in-out infinite; }
+@keyframes sd-hive-dream-edge {
+  0%, 100% { stroke: #b7a5e3; }
+  25% { stroke: #8ec9c0; }
+  50% { stroke: #e4cd8e; }
+  75% { stroke: #e6a8c7; }
+}
+#story-director-quick-wheel .sd-wheel-command i {
+  color: inherit !important;
+  font-size: clamp(15px, calc(var(--sd-wheel-item-size, 36px) * .44), 22px);
+  transform: scale(var(--sd-wheel-optical-scale, 1));
+  transform-origin: center;
+}
 #story-director-quick-wheel .sd-wheel-external-logo { width: 64%; height: 64%; object-fit: contain; display: flex; align-items: center; justify-content: center; pointer-events: none; overflow: hidden; }
 #story-director-quick-wheel .sd-wheel-external-svg svg { width: 100%; height: 100%; display: block; }
 #story-director-quick-wheel .sd-wheel-external-text { font-size: clamp(11px, calc(var(--sd-wheel-item-size, 36px) * .3), 16px); line-height: 1; }
@@ -2655,6 +2668,9 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 /* 配音模型开关使用明确的文字状态，避免与普通布尔胶囊混淆。 */
 #story-director-modal .sd-tts-model-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; }
 #story-director-modal .sd-tts-model-row > .text_pole { margin: 0 !important; min-width: 0; }
+#story-director-modal .sd-tts-auth-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#story-director-modal .sd-tts-auth-row > .text_pole { flex: 1 1 auto; min-width: 0; margin: 0 !important; }
+#story-director-modal .sd-tts-doubao-guide { flex: 0 0 34px; width: 34px; height: 34px; }
 #story-director-modal .sd-tts-enabled { min-width: 76px; color: var(--sd-muted) !important; background: var(--sd-glass-weak) !important; }
 #story-director-modal .sd-tts-enabled.is-enabled { color: var(--sd-good, #4fae73) !important; border-color: color-mix(in srgb, var(--sd-good, #4fae73) 42%, var(--sd-border)) !important; background: color-mix(in srgb, var(--sd-good, #4fae73) 12%, var(--sd-glass-weak)) !important; }
 
@@ -2719,6 +2735,13 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   overflow: hidden;
 }
 #story-director-modal .sd-editor-card { display: flex; flex-direction: column; min-height: 0; }
+#story-director-modal .sd-editor-card:not(.sd-theater-view-card),
+#story-director-modal .sd-theater-view-card.sd-reader-editor-card {
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
 #story-director-modal .sd-editor-bar {
   position: relative;
   top: auto;
@@ -2726,6 +2749,9 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   display: flex;
   align-items: center;
   gap: 10px;
+  margin: 0 0 10px;
+  padding: 0 2px;
+  background: transparent !important;
 }
 #story-director-modal .sd-editor-bar h3 {
   flex: 1 1 auto;
@@ -4311,7 +4337,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
   border-bottom: 1px solid var(--sd-hairline);
 }
 /* 标题左·关闭✕右 */
-.sd-reader-morepage-title { flex: 1; text-align: left; font-size: 1.02em; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
+.sd-reader-morepage-title { flex: 1; text-align: left; font-size: 1.08em; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
 .sd-reader-morepage-title i { color: var(--sd-accent); }
 .sd-reader-morepage .sd-reader-more-close { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--sd-border); background: var(--sd-glass); color: var(--sd-text); cursor: pointer; }
 .sd-reader-morepage .sd-reader-more-close:hover { filter: brightness(1.08); }
@@ -4321,7 +4347,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-center-book, .sd-reader-center-guard { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--sd-hairline); border-radius: 13px; background: var(--sd-glass-weak); }
 .sd-reader-center-book-icon { width: 34px; height: 34px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: var(--sd-accent); background: color-mix(in srgb, var(--sd-accent) 14%, transparent); }
 .sd-reader-center-book-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.sd-reader-center-book-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .9em; color: var(--sd-text); }
+.sd-reader-center-book-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .96em; color: var(--sd-text); }
 .sd-reader-center-book-copy small, .sd-reader-center-guard small { color: var(--sd-muted); font-size: .72em; line-height: 1.35; }
 .sd-reader-center-guard { justify-content: space-between; cursor: pointer; }
 .sd-reader-center-guard > span:first-child { min-width: 0; display: inline-flex; gap: 7px; align-items: center; }
@@ -4346,19 +4372,19 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-tour { position: absolute; z-index: 8; left: 16px; right: 16px; margin: 0; display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 11px; align-items: center; padding: 12px; border: 1px solid color-mix(in srgb, var(--sd-accent) 55%, var(--sd-hairline)); border-radius: 15px; background: color-mix(in srgb, var(--sd-folder-head) 94%, var(--sd-accent)); box-shadow: 0 14px 38px rgba(0,0,0,.32); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
 .sd-reader-tour-icon { width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; color: var(--sd-accent); background: color-mix(in srgb, var(--sd-accent) 14%, transparent); }
 .sd-reader-tour-copy { min-width: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: baseline; }
-.sd-reader-tour-count { color: var(--sd-accent); font-size: .67em; font-weight: 700; font-variant-numeric: tabular-nums; }
-.sd-reader-tour-copy b { color: var(--sd-text); font-size: .88em; }
-.sd-reader-tour-copy p { grid-column: 1 / -1; margin: 2px 0 0; color: var(--sd-muted); font-size: .72em; line-height: 1.48; }
+.sd-reader-tour-count { color: var(--sd-accent); font-size: .76em; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sd-reader-tour-copy b { color: var(--sd-text); font-size: 1em; }
+.sd-reader-tour-copy p { grid-column: 1 / -1; margin: 2px 0 0; color: var(--sd-muted); font-size: .84em; line-height: 1.55; }
 .sd-reader-tour-actions { display: flex; align-items: center; gap: 6px; }
-.sd-reader-tour-actions button { height: 31px; min-width: 31px; padding: 0 9px; border: 1px solid var(--sd-hairline); border-radius: 9px; background: var(--sd-pre); color: var(--sd-text); cursor: pointer; }
+.sd-reader-tour-actions button { height: 32px; min-width: 32px; padding: 0 9px; border: 1px solid var(--sd-hairline); border-radius: 9px; background: var(--sd-pre); color: var(--sd-text); cursor: pointer; font-size: .9em; }
 .sd-reader-tour-actions button:disabled { opacity: .35; cursor: default; }
-.sd-reader-tour-actions .sd-reader-tour-skip { border-color: transparent; background: transparent; color: var(--sd-muted); font-size: .74em; }
+.sd-reader-tour-actions .sd-reader-tour-skip { border-color: transparent; background: transparent; color: var(--sd-muted); font-size: .84em; }
 .sd-reader-tour-actions .sd-reader-tour-next { color: var(--sd-primary-text); background: var(--sd-accent); border-color: transparent; }
-.sd-reader-guide-replay { width: 100%; padding: 9px; border: 1px dashed var(--sd-hairline); border-radius: 10px; background: transparent; color: var(--sd-muted); cursor: pointer; font: inherit; font-size: .8em; }
+.sd-reader-guide-replay { width: 100%; padding: 9px; border: 1px dashed var(--sd-hairline); border-radius: 10px; background: transparent; color: var(--sd-muted); cursor: pointer; font: inherit; font-size: .86em; }
 .sd-reader-guide-replay:hover { color: var(--sd-accent); border-color: var(--sd-accent); }
 /* 面板四 tab：图标辅助窄屏识别。 */
 .sd-reader-mtabs { display: flex; position: sticky; top: 0; z-index: 2; background: var(--sd-portal-bg, var(--sd-folder-head)); border-bottom: 1px solid var(--sd-hairline); }
-.sd-reader-mtab { flex: 1; padding: 11px 5px; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--sd-muted); cursor: pointer; font: inherit; font-size: .86em; transition: color .16s; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+.sd-reader-mtab { flex: 1; padding: 11px 5px; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--sd-muted); cursor: pointer; font: inherit; font-size: .92em; transition: color .16s; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
 .sd-reader-mtab i { font-size: .92em; opacity: .8; }
 .sd-reader-mtab:hover { color: var(--sd-text); }
 .sd-reader-mtab.active { color: var(--sd-accent); border-bottom-color: var(--sd-accent); font-weight: 600; }
@@ -4367,7 +4393,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-center-setup { gap: 12px; }
 .sd-reader-center-section { display: flex; flex-direction: column; gap: 11px; padding: 14px; border: 1px solid var(--sd-hairline); border-radius: 14px; background: var(--sd-glass-weak); }
 .sd-reader-center-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 9px; border-bottom: 1px solid var(--sd-hairline); }
-.sd-reader-center-section-head > span { display: inline-flex; align-items: center; gap: 7px; color: var(--sd-text); font-size: .9em; }
+.sd-reader-center-section-head > span { display: inline-flex; align-items: center; gap: 7px; color: var(--sd-text); font-size: .96em; }
 .sd-reader-center-section-head > span i { color: var(--sd-accent); }
 .sd-reader-center-section-head small { color: var(--sd-muted); font-size: .7em; text-align: right; line-height: 1.4; }
 /* 记忆档案页首：先展示可读状态与常用管理动作，其余高级配置下沉折叠。 */
@@ -4375,7 +4401,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-memory-title { display: flex; align-items: center; gap: 10px; }
 .sd-reader-memory-title > span { width: 38px; height: 38px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; background: color-mix(in srgb, #d0872e 16%, transparent); color: #d0872e; }
 .sd-reader-memory-title > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.sd-reader-memory-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sd-text); font-size: .92em; }
+.sd-reader-memory-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sd-text); font-size: .98em; }
 .sd-reader-memory-title small { color: var(--sd-muted); font-size: .72em; }
 .sd-reader-memory-stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 6px; }
 .sd-reader-memory-stats > span { display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 10px; background: var(--sd-pre); text-align: center; }
@@ -4385,7 +4411,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-memory-actions .sd-reader-mbtn { width: 100%; }
 /* 卡片 */
 .sd-reader-mcard { background: var(--sd-glass-weak); border: 1px solid var(--sd-hairline); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
-.sd-reader-mcard-head { display: flex; align-items: center; gap: 8px; font-size: .94em; font-weight: 600; color: var(--sd-text); }
+.sd-reader-mcard-head { display: flex; align-items: center; gap: 8px; font-size: 1em; font-weight: 600; color: var(--sd-text); }
 .sd-reader-mcard-head i { color: var(--sd-accent); }
 /* 可折叠卡片：mcard 作 details 时，head 作 summary（去默认三角·加自绘 chevron·点击整条头折叠） */
 details.sd-reader-mcard > summary.sd-reader-mcard-head { cursor: pointer; list-style: none; user-select: none; }
@@ -4396,14 +4422,14 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-mswitch { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: .78em; color: var(--sd-muted); font-weight: 400; cursor: pointer; }
 /* 单选（跟随 ST / 自定义） */
 .sd-reader-mradio { display: flex; flex-direction: column; gap: 6px; }
-.sd-reader-mradio-opt { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--sd-hairline); border-radius: 9px; cursor: pointer; font-size: .86em; }
+.sd-reader-mradio-opt { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--sd-hairline); border-radius: 9px; cursor: pointer; font-size: .92em; }
 .sd-reader-mradio-opt.active { border-color: var(--sd-accent); background: var(--sd-glass); }
 /* 输入 */
-.sd-reader-mlab { font-size: .78em; color: var(--sd-muted); margin-top: 4px; }
-.sd-reader-minput { background: var(--sd-input-bg); color: var(--sd-text); border: 1px solid var(--sd-border); border-radius: 9px; padding: 8px 11px; font: inherit; font-size: .86em; width: 100%; box-sizing: border-box; }
-.sd-reader-mtextarea { background: var(--sd-input-bg); color: var(--sd-text); border: 1px solid var(--sd-border); border-radius: 9px; padding: 8px 11px; font: inherit; font-size: .86em; width: 100%; box-sizing: border-box; min-height: 72px; resize: vertical; }
+.sd-reader-mlab { font-size: .84em; color: var(--sd-muted); margin-top: 4px; }
+.sd-reader-minput { background: var(--sd-input-bg); color: var(--sd-text); border: 1px solid var(--sd-border); border-radius: 9px; padding: 8px 11px; font: inherit; font-size: .92em; width: 100%; box-sizing: border-box; }
+.sd-reader-mtextarea { background: var(--sd-input-bg); color: var(--sd-text); border: 1px solid var(--sd-border); border-radius: 9px; padding: 8px 11px; font: inherit; font-size: .92em; width: 100%; box-sizing: border-box; min-height: 72px; resize: vertical; }
 .sd-reader-mtextarea:disabled { opacity: .55; cursor: not-allowed; }
-.sd-reader-mempty { font-size: .82em; color: var(--sd-muted); padding: 14px; text-align: center; background: var(--sd-glass-weak); border-radius: 10px; }
+.sd-reader-mempty { font-size: .88em; color: var(--sd-muted); padding: 14px; text-align: center; background: var(--sd-glass-weak); border-radius: 10px; }
 /* 向量/重排卡：预设行 + 操作按钮行 */
 .sd-reader-mprofile { display: flex; align-items: center; gap: 6px; }
 .sd-reader-mprofile .sd-reader-minput { flex: 1; }
@@ -4412,7 +4438,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-mbtn {
   display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 6px;
   background: var(--sd-input-bg); color: var(--sd-text); border: 1px solid var(--sd-border);
-  border-radius: 8px; font: inherit; font-size: .8em; cursor: pointer;
+  border-radius: 8px; font: inherit; font-size: .86em; cursor: pointer;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .sd-reader-mactions .sd-reader-mbtn { flex: 1 1 0; min-width: 0; }
@@ -4791,7 +4817,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   .sd-reader-mljump { width: 100%; margin-left: 0; justify-content: flex-end; }
   .sd-reader-center-status { grid-template-columns: 1fr; padding: 10px 10px 8px; gap: 7px; }
   .sd-reader-center-book, .sd-reader-center-guard { padding: 9px 10px; }
-  .sd-reader-mtab { flex-direction: column; gap: 3px; padding: 8px 2px; font-size: .74em; }
+  .sd-reader-mtab { flex-direction: column; gap: 3px; padding: 8px 2px; font-size: .82em; }
   .sd-reader-mtab i { font-size: 1em; }
   .sd-reader-mtab-body { padding: 10px; }
   .sd-reader-center-section { padding: 11px; }
@@ -4800,8 +4826,12 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   .sd-reader-packbar { margin: 8px 10px 0; padding: 8px 9px; }
   .sd-reader-center-setup > .sd-reader-packbar { margin: 0; }
   .sd-reader-packbar-copy small { display: none; }
-  .sd-reader-tour { left: 10px; right: 10px; grid-template-columns: auto minmax(0,1fr); padding: 10px; }
+  .sd-reader-tour { left: 10px; right: 10px; grid-template-columns: auto minmax(0,1fr); padding: 11px; }
   .sd-reader-tour-icon { width: 34px; height: 34px; }
+  .sd-reader-tour-count { font-size: .82em; }
+  .sd-reader-tour-copy b { font-size: 1.04em; }
+  .sd-reader-tour-copy p { font-size: .9em; line-height: 1.6; }
+  .sd-reader-tour-actions button { font-size: .92em; }
   .sd-reader-tour-actions { grid-column: 1 / -1; justify-content: flex-end; }
   .sd-reader-setup-compact-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .sd-reader-setup-compact { align-items: stretch; flex-direction: column; gap: 6px; }

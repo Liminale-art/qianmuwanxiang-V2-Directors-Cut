@@ -218,7 +218,7 @@ export async function synthesizeDoubao(opts = {}) {
     : (appId && accessKey ? 'legacy' : 'apiKey');
   const useLegacyCredentials = authMode === 'legacy';
   if (useLegacyCredentials && !(appId && accessKey)) throw new Error('未配置豆包 App ID + Access Key');
-  if (!useLegacyCredentials && !apiKey) throw new Error('未配置豆包新版 API Key');
+  if (!useLegacyCredentials && !apiKey) throw new Error('未配置豆包 API Key');
   if (!String(opts.text || '').trim()) throw new Error('文本为空');
   if (!String(opts.voiceId || '').trim()) throw new Error('未指定豆包音色 ID');
 
