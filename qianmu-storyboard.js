@@ -81,21 +81,51 @@ export function normalizeStoryboardState(value) {
   if (!Array.isArray(state.logs)) state.logs = [];
   state.logs = state.logs.filter((item) => item && typeof item === 'object' && item.id).slice(0, 120).map((item) => ({
     id: String(item.id),
-    status: ['generating', 'success', 'failed', 'cancelled'].includes(item.status) ? item.status : 'failed',
+    status: ['queued', 'generating', 'success', 'failed', 'cancelled'].includes(item.status) ? item.status : 'failed',
     source: STORYBOARD_SOURCES[item.source] ? item.source : 'novel',
     model: String(item.model || '').slice(0, 240),
     prompt: String(item.prompt || '').slice(0, 800),
     negative: String(item.negative || '').slice(0, 400),
+    effectivePrompt: String(item.effectivePrompt || item.prompt || '').slice(0, 24000),
+    effectiveNegative: String(item.effectiveNegative || item.negative || '').slice(0, 12000),
     target: String(item.target || '').slice(0, 40),
     floor: Number.isInteger(item.floor) ? item.floor : null,
     params: item.params && typeof item.params === 'object' ? item.params : {},
     error: String(item.error || '').slice(0, 1600),
     recordId: String(item.recordId || ''),
+    queuedAt: Number(item.queuedAt || item.startedAt || 0),
     startedAt: Number(item.startedAt || 0),
     finishedAt: Number(item.finishedAt || 0),
     durationMs: Math.max(0, Number(item.durationMs || 0)),
+    attempt: Math.max(1, Math.min(20, Math.round(Number(item.attempt || 1)))),
+    snapshot: normalizeStoryboardSnapshot(item.snapshot, item),
   }));
   return state;
+}
+
+function normalizeStoryboardSnapshot(value, fallback = {}) {
+  const raw = value && typeof value === 'object' ? value : {};
+  const source = STORYBOARD_SOURCES[raw.source] ? raw.source : (STORYBOARD_SOURCES[fallback.source] ? fallback.source : 'novel');
+  const profileDefaults = createStoryboardDefaults().profiles[source];
+  const profileRaw = raw.profile && typeof raw.profile === 'object' ? raw.profile : {};
+  const profile = {};
+  for (const [key, defaultValue] of Object.entries(profileDefaults)) {
+    const next = profileRaw[key];
+    profile[key] = next === undefined ? defaultValue : (typeof defaultValue === 'boolean' ? Boolean(next) : String(next ?? '').slice(0, 2048));
+  }
+  return {
+    source,
+    prompt: String(raw.prompt ?? fallback.prompt ?? '').slice(0, 24000),
+    negative: String(raw.negative ?? fallback.negative ?? '').slice(0, 12000),
+    target: ['latest', 'floor', 'gallery'].includes(raw.target) ? raw.target : (['latest', 'floor', 'gallery'].includes(fallback.target) ? fallback.target : 'gallery'),
+    floor: Number.isInteger(raw.floor) ? raw.floor : (Number.isInteger(fallback.floor) ? fallback.floor : null),
+    inlineByDefault: raw.inlineByDefault !== false,
+    selectedCharacterId: String(raw.selectedCharacterId || '').slice(0, 160),
+    chatKey: String(raw.chatKey || '').slice(0, 512),
+    messageHash: String(raw.messageHash || '').slice(0, 160),
+    swipeId: Number.isInteger(raw.swipeId) ? raw.swipeId : 0,
+    profile,
+  };
 }
 
 export function storyboardRatioDimensions(ratioId, currentWidth, currentHeight) {

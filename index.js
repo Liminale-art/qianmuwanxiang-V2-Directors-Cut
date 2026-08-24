@@ -29,7 +29,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.39.0';
+const VERSION = '1.40.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -756,9 +756,15 @@ let focusClockPreviewFrame = 0;     // requestAnimationFrame 驱动试听圆环�
 let focusClockVoicePrepareSeq = 0;   // 新专注轮次递增；旧异步情景生成返回时自动作废
 const focusClockVoiceBlobs = new Map(); // IndexedDB 不可用时仍可在本页完成播放；仅保留少量预生成结果
 let focusClockVoiceDrawerEl = null;  // 专注角色语音二层抽屉；挂在千幕根容器，避免移动端 fixed 定位受 ST 主题干扰
+const STORYBOARD_QUEUE_LIMIT = 8;     // 仅本页运行态；刷新后不自动续跑，避免意外消耗生图额度
 let storyboardBusy = false;          // 分镜生成独立忙碌态，不占用推演/幕外请求锁
+let storyboardActiveJob = null;      // 正在生成的一项；ST 斜杠层未暴露 AbortController，放弃时只丢弃回传
+let storyboardQueue = [];            // 千幕内串行队列，防止临时 ST 生图配置互相覆盖
+let storyboardRuntimeReconciled = false;
+const storyboardConnectionStatus = new Map();
 let storyboardSecrets = {};          // 只缓存“是否已配置”，绝不读取或缓存密钥正文
 let storyboardSecretModulePromise = null;
+let storyboardStModulePromise = null;
 let storyboardChatClickBound = false;
 let storyboardInlineTimer = null;
 let initialized = false;
@@ -9421,6 +9427,19 @@ function renderPlugTab() {
 function storyboardState() {
   if (!isPlainObject(settings.imagegen)) settings.imagegen = createStoryboardDefaults();
   const state = normalizeStoryboardState(settings.imagegen);
+  if (!storyboardRuntimeReconciled) {
+    storyboardRuntimeReconciled = true;
+    let changed = false;
+    for (const log of state.logs) {
+      if (!['queued', 'generating'].includes(log.status)) continue;
+      log.status = 'cancelled';
+      log.finishedAt = Date.now();
+      log.durationMs = Math.max(0, log.finishedAt - Number(log.startedAt || log.queuedAt || log.finishedAt));
+      log.error = '页面刷新后未自动续跑';
+      changed = true;
+    }
+    if (changed) queueMicrotask(() => saveSettings());
+  }
   if (!state.initialized) {
     const sd = storyboardSdSettings();
     const current = Object.values(STORYBOARD_SOURCES).find((item) => item.stSource === sd.source);
@@ -9525,6 +9544,18 @@ function storyboardRecordStatus(record) {
   return `第 ${record.floor} 层`;
 }
 
+function renderStoryboardQueue() {
+  if (!storyboardActiveJob && !storyboardQueue.length) return '';
+  const activeSource = STORYBOARD_SOURCES[storyboardActiveJob?.source]?.label || '';
+  const activeText = storyboardActiveJob
+    ? `${storyboardActiveJob.discardRequested ? '正在放弃收片' : `正在生成 · ${activeSource}`}`
+    : '正在准备下一项';
+  return `<section class="sd-card sd-storyboard-queue-card">
+    <div><span class="sd-storyboard-queue-pulse"></span><b>${htmlEscape(activeText)}</b><small>${storyboardQueue.length ? `等待 ${storyboardQueue.length} 项` : '队列已空'}</small></div>
+    <div>${storyboardActiveJob ? `<button type="button" class="sd-btn sd-storyboard-discard-active" ${storyboardActiveJob.discardRequested ? 'disabled' : ''}>放弃本次</button>` : ''}${storyboardQueue.length ? '<button type="button" class="sd-btn sd-storyboard-clear-queue">清空等待</button>' : ''}</div>
+  </section>`;
+}
+
 function renderStoryboardCreate(state) {
   const profile = storyboardProfile(state.source);
   const sd = storyboardSdSettings();
@@ -9565,7 +9596,7 @@ function renderStoryboardCreate(state) {
       <label class="checkbox_label sd-storyboard-inline-choice"><input type="checkbox" class="sd-storyboard-inline" ${state.inlineByDefault && state.target !== 'gallery' ? 'checked' : ''} ${state.target === 'gallery' ? 'disabled' : ''}> 生成后穿插在正文中</label>
     </section>
     <details class="sd-card sd-storyboard-params" open>
-      <summary><span>绘制参数</span><small>空值沿用 SillyTavern 当前设置</small></summary>
+      <summary><span>绘制参数</span><small>空值沿用当前连接</small></summary>
       <div class="sd-storyboard-grid sd-storyboard-grid-two">
         <label><span>Model</span><input class="text_pole sd-storyboard-field" data-storyboard-field="model" list="sd-storyboard-models" value="${htmlEscape(profile.model)}" placeholder="沿用当前"><datalist id="sd-storyboard-models">${storyboardSelectOptions('#sd_model', profile.model)}</datalist></label>
         <label><span>比例</span><select class="text_pole sd-storyboard-ratio">${STORYBOARD_RATIOS.map((item) => `<option value="${item.id}" ${profile.ratio === item.id ? 'selected' : ''}>${item.label}</option>`).join('')}</select></label>
@@ -9579,7 +9610,8 @@ function renderStoryboardCreate(state) {
       </div>
       ${sourceFields}
     </details>
-    <button type="button" class="sd-btn sd-primary sd-storyboard-generate" ${storyboardBusy ? 'disabled' : ''}><i class="fa-solid ${storyboardBusy ? 'fa-spinner fa-spin' : 'fa-camera'}"></i>${storyboardBusy ? '正在生成' : '生成分镜'}</button>
+    <button type="button" class="sd-btn sd-primary sd-storyboard-generate"><i class="fa-solid ${storyboardBusy ? 'fa-layer-group' : 'fa-camera'}"></i>${storyboardBusy ? '加入等待' : '生成分镜'}</button>
+    ${renderStoryboardQueue()}
     ${last ? `<section class="sd-card sd-storyboard-last"><div class="sd-card-title-row"><h3>最近成片</h3><button type="button" data-storyboard-view="gallery">查看全部</button></div><img src="${htmlEscape(storyboardSafeUrl(last.url))}" alt="最近生成的分镜" loading="lazy"></section>` : ''}
   </div>`;
 }
@@ -9587,7 +9619,8 @@ function renderStoryboardCreate(state) {
 function renderStoryboardConnection(state) {
   const profile = storyboardProfile(state.source);
   const source = STORYBOARD_SOURCES[state.source];
-  const saved = source.secretKey && storyboardSecrets[source.secretKey];
+  const check = storyboardConnectionStatus.get(state.source);
+  const saved = storyboardSourceSecretConfigured(source);
   const credential = source.secretKey ? `<label class="sd-storyboard-api-key"><span>API Key <em class="sd-storyboard-secret-state ${saved ? 'saved' : ''}">${saved ? '已保存' : '未配置'}</em></span><input class="text_pole" type="password" autocomplete="new-password" placeholder="${saved ? '留空则继续使用已保存 Key' : '输入 API Key'}"></label>` : '';
   const extra = state.source === 'comfy' ? `<div class="sd-storyboard-grid sd-storyboard-grid-two">
       <label><span>ComfyUI URL</span><input class="text_pole sd-storyboard-connect-comfy-url" value="${htmlEscape(profile.comfyUrl || storyboardSdSettings().comfy_url || '')}" placeholder="http://127.0.0.1:8188"></label>
@@ -9598,7 +9631,8 @@ function renderStoryboardConnection(state) {
     <section class="sd-card">
       ${renderStoryboardSourceTabs(state)}
       <div class="sd-storyboard-connection-form">${credential}${extra}</div>
-      <button type="button" class="sd-btn sd-primary sd-storyboard-save-connection"><i class="fa-solid fa-check"></i>保存连接</button>
+      ${check ? `<div class="sd-storyboard-connection-result ${check.ok ? 'ok' : 'failed'}"><i class="fa-solid ${check.ok ? 'fa-circle-check' : 'fa-triangle-exclamation'}"></i><span>${htmlEscape(check.message)}</span></div>` : ''}
+      <div class="sd-storyboard-connection-actions"><button type="button" class="sd-btn sd-storyboard-check-connection"><i class="fa-solid fa-stethoscope"></i>检查连接</button><button type="button" class="sd-btn sd-primary sd-storyboard-save-connection"><i class="fa-solid fa-check"></i>保存连接</button></div>
     </section>
   </div>`;
 }
@@ -9728,18 +9762,48 @@ function renderStoryboardGallery() {
   </div>`;
 }
 
-function storyboardStartLog(state, profile) {
-  const now = Date.now();
+function storyboardProfileSnapshot(profile, sourceId) {
+  const fallback = createStoryboardDefaults().profiles[sourceId];
+  return Object.fromEntries(Object.keys(fallback).map((key) => [key, clone(profile?.[key] ?? fallback[key])]));
+}
+
+function storyboardCreateJob(state, profile, { attempt = 1 } = {}) {
   const rawFloor = String(state.floor ?? '').trim();
+  const requestedFloor = Number.isInteger(Number(rawFloor)) && rawFloor ? Number(rawFloor) : null;
+  const floor = state.target === 'latest' ? storyboardCurrentAssistantFloor() : (state.target === 'floor' ? requestedFloor : null);
+  const message = Number.isInteger(floor) ? ctx().chat?.[floor] : null;
+  const snapshot = {
+    source: state.source, prompt: String(state.prompt || ''), negative: String(state.negative || ''),
+    target: state.target, floor, inlineByDefault: state.inlineByDefault !== false,
+    selectedCharacterId: String(state.selectedCharacterId || ''), chatKey: String(getChatKey() || ''),
+    messageHash: message ? hashText(String(message.mes || '')) : '', swipeId: Number(message?.swipe_id || 0),
+    profile: storyboardProfileSnapshot(profile, state.source),
+  };
+  return {
+    id: uid('shotjob'), ...snapshot, payload: storyboardGenerationPayload(state, profile),
+    discardRequested: false, attempt: Math.max(1, Number(attempt) || 1),
+  };
+}
+
+function storyboardStartLog(job) {
+  const state = storyboardState();
+  const now = Date.now();
   const log = {
-    id: uid('shotlog'), status: 'generating', source: state.source, model: String(profile.model || ''),
-    prompt: String(state.prompt || '').slice(0, 800), negative: String(state.negative || '').slice(0, 400),
-    target: state.target, floor: Number.isInteger(Number(rawFloor)) && rawFloor ? Number(rawFloor) : null,
+    id: uid('shotlog'), status: 'queued', source: job.source, model: String(job.profile.model || ''),
+    prompt: String(job.prompt || '').slice(0, 800), negative: String(job.negative || '').slice(0, 400),
+    effectivePrompt: String(job.payload.prompt || '').slice(0, 24000), effectiveNegative: String(job.payload.negative || '').slice(0, 12000),
+    target: job.target, floor: job.floor,
     params: {
-      width: profile.width || '', height: profile.height || '', steps: profile.steps || '', cfg: profile.cfg || '',
-      seed: profile.seed || '', sampler: profile.sampler || '', scheduler: profile.scheduler || '',
+      width: job.profile.width || '', height: job.profile.height || '', steps: job.profile.steps || '', cfg: job.profile.cfg || '',
+      seed: job.profile.seed || '', sampler: job.profile.sampler || '', scheduler: job.profile.scheduler || '',
     },
-    error: '', recordId: '', startedAt: now, finishedAt: 0, durationMs: 0,
+    error: '', recordId: '', queuedAt: now, startedAt: 0, finishedAt: 0, durationMs: 0,
+    attempt: job.attempt, snapshot: clone({
+      source: job.source, prompt: job.prompt, negative: job.negative, target: job.target, floor: job.floor,
+      inlineByDefault: job.inlineByDefault, selectedCharacterId: job.selectedCharacterId, chatKey: job.chatKey,
+      messageHash: job.messageHash, swipeId: job.swipeId,
+      profile: job.profile,
+    }),
   };
   state.logs.unshift(log);
   state.logs = state.logs.slice(0, 120);
@@ -9747,23 +9811,50 @@ function storyboardStartLog(state, profile) {
   return log;
 }
 
+function storyboardMarkLogGenerating(log) {
+  if (!log) return;
+  log.status = 'generating';
+  log.startedAt = Date.now();
+  log.error = '';
+  saveSettings();
+}
+
 function storyboardFinishLog(log, status, details = {}) {
   if (!log) return;
   log.status = status;
   log.finishedAt = Date.now();
-  log.durationMs = Math.max(0, log.finishedAt - Number(log.startedAt || log.finishedAt));
+  log.durationMs = Math.max(0, log.finishedAt - Number(log.startedAt || log.queuedAt || log.finishedAt));
   if (details.error) log.error = String(details.error).slice(0, 1600);
   if (details.recordId) log.recordId = String(details.recordId);
-  if (Number.isInteger(details.floor)) log.floor = details.floor;
+  if (Object.hasOwn(details, 'floor')) log.floor = Number.isInteger(details.floor) ? details.floor : null;
   saveSettings();
 }
 
 function storyboardLogText(log) {
   return JSON.stringify({
-    time: formatDateTime(log.startedAt), status: log.status, provider: STORYBOARD_SOURCES[log.source]?.label || log.source,
+    time: formatDateTime(log.startedAt || log.queuedAt), status: log.status, provider: STORYBOARD_SOURCES[log.source]?.label || log.source,
     model: log.model || '(current)', target: log.target, floor: log.floor, durationMs: log.durationMs,
-    params: log.params, prompt: log.prompt, negative: log.negative, error: log.error || undefined,
+    attempt: log.attempt || 1, params: log.params, prompt: log.prompt, negative: log.negative, error: log.error || undefined,
   }, null, 2);
+}
+
+function storyboardLoadLogToWorkbench(log) {
+  if (!log?.snapshot) return false;
+  const state = storyboardState();
+  const snap = log.snapshot;
+  state.source = STORYBOARD_SOURCES[snap.source] ? snap.source : log.source;
+  Object.assign(state.profiles[state.source], clone(snap.profile || {}), { loaded: true });
+  state.prompt = String(snap.prompt || log.prompt || '');
+  state.negative = String(snap.negative || log.negative || '');
+  const sameChat = !snap.chatKey || snap.chatKey === getChatKey();
+  state.target = sameChat ? snap.target : 'gallery';
+  state.floor = sameChat && Number.isInteger(snap.floor) ? String(snap.floor) : '';
+  state.inlineByDefault = sameChat && snap.inlineByDefault !== false;
+  state.selectedCharacterId = state.characters.some((item) => item.id === snap.selectedCharacterId) ? snap.selectedCharacterId : '';
+  state.view = 'create';
+  saveSettings();
+  renderModal();
+  return sameChat;
 }
 
 function renderStoryboardLogs(state) {
@@ -9775,19 +9866,22 @@ function renderStoryboardLogs(state) {
   };
   const rows = logs.map((log) => {
     const source = STORYBOARD_SOURCES[log.source]?.label || log.source;
-    const statusLabel = log.status === 'success' ? '完成' : log.status === 'failed' ? '失败' : log.status === 'cancelled' ? '已取消' : '生成中';
+    const statusLabel = log.status === 'success' ? '完成' : log.status === 'failed' ? '失败' : log.status === 'cancelled' ? '已放弃' : log.status === 'queued' ? '等待' : '生成中';
+    const runAction = log.status === 'queued'
+      ? '<button type="button" class="sd-btn sd-storyboard-cancel-queued-log">移出等待</button>'
+      : `<button type="button" class="sd-btn sd-storyboard-retry-log" ${log.status === 'generating' ? 'disabled' : ''}>${log.status === 'failed' ? '重试' : '再生成'}</button>`;
     return `<details class="sd-card sd-storyboard-log ${log.status}" data-storyboard-log="${htmlEscape(log.id)}">
-      <summary><span class="sd-storyboard-log-status">${statusLabel}</span><b>${htmlEscape(source)}${log.model ? ` · ${htmlEscape(log.model)}` : ''}</b><small>${htmlEscape(formatDateTime(log.startedAt))}</small><i class="fa-solid fa-chevron-down"></i></summary>
+      <summary><span class="sd-storyboard-log-status">${statusLabel}</span><b>${htmlEscape(source)}${log.model ? ` · ${htmlEscape(log.model)}` : ''}</b><small>${htmlEscape(formatDateTime(log.startedAt || log.queuedAt))}</small><i class="fa-solid fa-chevron-down"></i></summary>
       <div class="sd-storyboard-log-body">
         <p>${htmlEscape(log.prompt || '未记录画面描述')}</p>
-        <div class="sd-storyboard-log-meta"><span>耗时 ${log.durationMs ? `${(log.durationMs / 1000).toFixed(1)}s` : '—'}</span><span>${Number.isInteger(log.floor) ? `第 ${log.floor} 层` : '仅成片'}</span><span>${htmlEscape([log.params?.width, log.params?.height].filter(Boolean).join(' × ') || '沿用尺寸')}</span></div>
+        <div class="sd-storyboard-log-meta"><span>耗时 ${log.durationMs ? `${(log.durationMs / 1000).toFixed(1)}s` : '—'}</span><span>${Number.isInteger(log.floor) ? `第 ${log.floor} 层` : '仅成片'}</span><span>${htmlEscape([log.params?.width, log.params?.height].filter(Boolean).join(' × ') || '沿用尺寸')}</span>${log.attempt > 1 ? `<span>第 ${log.attempt} 次</span>` : ''}</div>
         ${log.error ? `<pre>${htmlEscape(log.error)}</pre>` : ''}
-        <button type="button" class="sd-btn sd-storyboard-copy-log">复制诊断信息</button>
+        <div class="sd-storyboard-log-actions"><button type="button" class="sd-btn sd-storyboard-load-log">载入镜头台</button>${runAction}<button type="button" class="sd-btn sd-storyboard-copy-log">复制诊断</button></div>
       </div>
     </details>`;
   }).join('');
   return `<div class="sd-storyboard-logs-page">
-    <section class="sd-card sd-storyboard-log-head"><div><span class="sd-storyboard-kicker">GENERATION LOG</span><h3>分镜日志</h3></div>${state.logs.length ? '<button type="button" class="sd-btn sd-storyboard-clear-logs">清空日志</button>' : ''}</section>
+    <section class="sd-card sd-storyboard-log-head"><div><span class="sd-storyboard-kicker">GENERATION LOG</span><h3>分镜日志</h3></div>${state.logs.length ? `<button type="button" class="sd-btn sd-storyboard-clear-logs" ${storyboardActiveJob || storyboardQueue.length ? 'disabled' : ''}>清空日志</button>` : ''}</section>
     <div class="sd-storyboard-log-filters">${[['all', '全部'], ['success', '完成'], ['failed', '失败']].map(([id, label]) => `<button type="button" class="${state.logFilter === id ? 'active' : ''}" data-storyboard-log-filter="${id}">${label}<span>${counts[id]}</span></button>`).join('')}</div>
     ${rows || '<section class="sd-card sd-storyboard-empty"><i class="fa-solid fa-list-ul"></i><p>暂无对应日志。每次生成都会记录连接、参数、耗时与失败原因。</p></section>'}
   </div>`;
@@ -9831,12 +9925,23 @@ async function storyboardSecretModule() {
   return storyboardSecretModulePromise;
 }
 
+async function storyboardStModule() {
+  if (!storyboardStModulePromise) storyboardStModulePromise = import('../../../script.js');
+  return storyboardStModulePromise;
+}
+
+function storyboardSourceSecretConfigured(source) {
+  if (!source?.secretKey) return true;
+  const value = storyboardSecrets[source.secretKey];
+  return Array.isArray(value) ? value.length > 0 : Boolean(value);
+}
+
 async function storyboardRefreshSecretState(root = document.getElementById(MODAL_ID)) {
   try {
     const secrets = await storyboardSecretModule();
     storyboardSecrets = secrets.secret_state || {};
     const source = STORYBOARD_SOURCES[storyboardState().source];
-    const configured = Boolean(source.secretKey && Array.isArray(storyboardSecrets[source.secretKey]) && storyboardSecrets[source.secretKey].length);
+    const configured = storyboardSourceSecretConfigured(source);
     const badge = root?.querySelector('.sd-storyboard-secret-state');
     if (badge) {
       badge.textContent = configured ? '已保存' : '未配置';
@@ -9844,6 +9949,39 @@ async function storyboardRefreshSecretState(root = document.getElementById(MODAL
     }
   } catch (error) {
     console.warn(`[${MODULE_NAME}] storyboard secret state unavailable`, error);
+  }
+}
+
+async function storyboardCheckConnection(root) {
+  const state = storyboardState();
+  const sourceId = state.source;
+  const source = STORYBOARD_SOURCES[sourceId];
+  try {
+    await storyboardSaveConnection(root, { quiet: true });
+    const profile = storyboardProfile(sourceId);
+    if (!storyboardSourceSecretConfigured(source)) throw new Error('请先填写并保存 API Key');
+    if (sourceId === 'comfy') {
+      const url = String(profile.comfyUrl || '').trim();
+      const workflow = String(profile.comfyWorkflow || '').trim();
+      if (!url) throw new Error('请填写 ComfyUI URL');
+      if (!workflow) throw new Error('请选择 Workflow');
+      const main = await storyboardStModule();
+      const headers = typeof main.getRequestHeaders === 'function' ? main.getRequestHeaders() : { 'Content-Type': 'application/json' };
+      const response = await fetch('/api/sd/comfy/ping', { method: 'POST', headers, body: JSON.stringify({ url }) });
+      if (!response.ok) throw new Error(`ComfyUI 连接失败（${response.status}）`);
+      storyboardConnectionStatus.set(sourceId, { ok: true, message: `连接通过 · ${workflow}` });
+    } else {
+      const sd = storyboardSdSettings();
+      const effectiveModel = String(profile.model || (sd.source === source.stSource ? sd.model : '') || '').trim();
+      if (!effectiveModel) throw new Error('请先在镜头台填写 Model');
+      storyboardConnectionStatus.set(sourceId, { ok: true, message: `配置就绪 · ${effectiveModel}` });
+    }
+    toast(sourceId === 'comfy' ? '连接检查通过。' : '配置检查通过。', 'success');
+  } catch (error) {
+    storyboardConnectionStatus.set(sourceId, { ok: false, message: String(error?.message || error) });
+    toast(`检查失败：${error?.message || error}`, 'error');
+  } finally {
+    renderModal();
   }
 }
 
@@ -9945,47 +10083,161 @@ function storyboardGenerationPayload(state, profile) {
   return { prompt, negative, width: profile.width, height: profile.height, steps: profile.steps, cfg: profile.cfg, seed: profile.seed };
 }
 
-async function storyboardGenerate(root) {
-  if (storyboardBusy) return;
+function storyboardJobFromLog(log) {
+  if (!log?.snapshot) return null;
+  const snap = clone(log.snapshot);
+  return {
+    id: uid('shotjob'), ...snap,
+    payload: {
+      prompt: String(log.effectivePrompt || snap.prompt || ''),
+      negative: String(log.effectiveNegative || snap.negative || ''),
+      width: snap.profile?.width, height: snap.profile?.height, steps: snap.profile?.steps,
+      cfg: snap.profile?.cfg, seed: snap.profile?.seed,
+    },
+    discardRequested: false, attempt: Math.max(1, Number(log.attempt || 1) + 1),
+  };
+}
+
+function storyboardQueueJob(job) {
+  if (!job?.payload?.prompt?.trim()) return toast('请先写下画面描述。', 'warning');
+  if (job.source === 'comfy' && (!String(job.profile?.comfyUrl || '').trim() || !String(job.profile?.comfyWorkflow || '').trim())) {
+    return toast('请先完成 ComfyUI URL 与 Workflow 配置。', 'warning');
+  }
+  const source = STORYBOARD_SOURCES[job.source];
+  const sd = storyboardSdSettings();
+  if (job.source !== 'comfy' && !String(job.profile?.model || '').trim() && !(sd.source === source?.stSource && String(sd.model || '').trim())) {
+    return toast('请先为当前连接填写 Model。', 'warning');
+  }
+  if (storyboardQueue.length + (storyboardActiveJob ? 1 : 0) >= STORYBOARD_QUEUE_LIMIT) {
+    return toast(`等待队列最多 ${STORYBOARD_QUEUE_LIMIT} 项，请先完成或移除部分任务。`, 'warning');
+  }
+  const log = storyboardStartLog(job);
+  job.logId = log.id;
+  storyboardQueue.push(job);
+  saveSettings();
+  renderModal();
+  void storyboardPumpQueue();
+  return true;
+}
+
+function storyboardGenerate(root) {
   const { state, profile } = storyboardCaptureWorkbench(root);
   if (!state.prompt.trim()) return toast('请先写下画面描述。', 'warning');
-  const log = storyboardStartLog(state, profile);
-  storyboardBusy = true;
+  if (state.target === 'floor' && (!String(state.floor || '').trim() || !Number.isInteger(Number(state.floor)))) {
+    return toast('请输入有效的正文楼层。', 'warning');
+  }
+  return storyboardQueueJob(storyboardCreateJob(state, profile));
+}
+
+function storyboardRetryLog(log) {
+  const job = storyboardJobFromLog(log);
+  if (!job) return toast('这条日志缺少可复用设置。', 'warning');
+  if (job.chatKey && job.chatKey !== getChatKey()) {
+    storyboardLoadLogToWorkbench(log);
+    toast('原任务属于其他聊天，已安全载入镜头台并改为仅存成片。', 'info');
+    return false;
+  }
+  return storyboardQueueJob(job);
+}
+
+function storyboardDiscardActive() {
+  if (!storyboardActiveJob || storyboardActiveJob.discardRequested) return;
+  storyboardActiveJob.discardRequested = true;
+  toast('已放弃本次收片；后端若已提交，返回结果将不会写入成片或正文。', 'info');
   renderModal();
+}
+
+function storyboardClearWaitingQueue(reason = '已从等待队列移除') {
+  const state = storyboardState();
+  for (const job of storyboardQueue) {
+    const log = state.logs.find((item) => item.id === job.logId);
+    storyboardFinishLog(log, 'cancelled', { error: reason });
+  }
+  storyboardQueue = [];
+  saveSettings();
+  renderModal();
+}
+
+function storyboardRemoveQueuedLog(log) {
+  const index = storyboardQueue.findIndex((job) => job.logId === log?.id);
+  if (index < 0) return;
+  storyboardQueue.splice(index, 1);
+  storyboardFinishLog(log, 'cancelled', { error: '已从等待队列移除' });
+  renderModal();
+}
+
+function storyboardHandleChatChanged() {
+  const currentChatKey = String(getChatKey() || '');
+  const state = storyboardState();
+  if (storyboardActiveJob?.chatKey && storyboardActiveJob.chatKey !== currentChatKey) storyboardActiveJob.discardRequested = true;
+  const keep = [];
+  for (const job of storyboardQueue) {
+    if (!job.chatKey || job.chatKey === currentChatKey) keep.push(job);
+    else storyboardFinishLog(state.logs.find((item) => item.id === job.logId), 'cancelled', { error: '切换聊天后已自动移除等待任务' });
+  }
+  storyboardQueue = keep;
+  saveSettings();
+}
+
+async function storyboardRunJob(job, log) {
+  storyboardMarkLogGenerating(log);
   try {
-    const command = buildImagineCommand(storyboardGenerationPayload(state, profile));
-    const url = storyboardSafeUrl(await storyboardWithTransientProfile(profile, state.source, () => storyboardExecuteSlash(command)));
-    if (!url) throw new Error('未返回图片地址，请检查模型连接与参数');
-    let floor = null;
-    if (state.target === 'latest') floor = storyboardCurrentAssistantFloor();
-    if (state.target === 'floor') {
-      const rawFloor = String(state.floor ?? '').trim();
-      if (!rawFloor || !Number.isInteger(Number(rawFloor))) throw new Error('请输入有效的正文楼层');
-      floor = Number(rawFloor);
+    if (job.chatKey && job.chatKey !== getChatKey()) {
+      storyboardFinishLog(log, 'cancelled', { error: '聊天已切换，任务未执行' });
+      return;
     }
+    const command = buildImagineCommand(job.payload);
+    const url = storyboardSafeUrl(await storyboardWithTransientProfile(job.profile, job.source, () => storyboardExecuteSlash(command)));
+    if (job.discardRequested || job.chatKey && job.chatKey !== getChatKey()) {
+      storyboardFinishLog(log, 'cancelled', { error: job.discardRequested ? '用户放弃收片' : '生成期间切换了聊天' });
+      return;
+    }
+    if (!url) throw new Error('未返回图片地址，请检查模型连接与参数');
+    let floor = job.target === 'gallery' ? null : job.floor;
     const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
-    if (!Number.isInteger(floor) || floor < 0 || floor >= chat.length || state.target === 'gallery') floor = null;
-    const message = Number.isInteger(floor) ? chat[floor] : null;
+    let message = Number.isInteger(floor) ? chat[floor] : null;
+    const anchorValid = message
+      && (!job.messageHash || job.messageHash === hashText(String(message.mes || '')))
+      && Number(job.swipeId || 0) === Number(message.swipe_id || 0);
+    if (!anchorValid) { floor = null; message = null; }
     const record = {
-      id: uid('shot'), url, prompt: state.prompt, negative: state.negative, source: state.source,
-      characterId: state.selectedCharacterId || '', floor, inline: Boolean(state.inlineByDefault && Number.isInteger(floor)),
+      id: uid('shot'), url, prompt: job.prompt, negative: job.negative, source: job.source,
+      characterId: job.selectedCharacterId || '', floor, inline: Boolean(job.inlineByDefault && Number.isInteger(floor)),
       messageHash: message ? hashText(String(message.mes || '')) : '', swipeId: message ? Number(message.swipe_id || 0) : 0,
-      model: profile.model || '', sampler: profile.sampler || '', scheduler: profile.scheduler || '',
-      steps: Number(profile.steps) || 0, cfg: Number(profile.cfg) || 0, seed: profile.seed === '' ? null : Number(profile.seed),
-      width: Number(profile.width) || 0, height: Number(profile.height) || 0, createdAt: Date.now(),
+      model: job.profile.model || '', sampler: job.profile.sampler || '', scheduler: job.profile.scheduler || '',
+      steps: Number(job.profile.steps) || 0, cfg: Number(job.profile.cfg) || 0, seed: job.profile.seed === '' ? null : Number(job.profile.seed),
+      width: Number(job.profile.width) || 0, height: Number(job.profile.height) || 0, createdAt: Date.now(),
     };
     storyboardGalleryRecords().push(record);
     await saveMetadata();
     storyboardFinishLog(log, 'success', { recordId: record.id, floor });
     storyboardScheduleInlineRender(30);
-    toast(record.inline ? `分镜已插入第 ${floor} 层。` : '分镜已生成并存入成片。', 'success');
+    if (!anchorValid && job.target !== 'gallery') toast('原楼层已变化，分镜已安全转存成片。', 'warning');
+    else toast(record.inline ? `分镜已插入第 ${floor} 层。` : '分镜已生成并存入成片。', 'success');
   } catch (error) {
     console.error(`[${MODULE_NAME}] storyboard generation failed`, error);
-    storyboardFinishLog(log, 'failed', { error: error?.message || error });
-    toast(`分镜生成失败：${error?.message || error}`, 'error');
+    if (job.discardRequested) storyboardFinishLog(log, 'cancelled', { error: '用户放弃收片' });
+    else {
+      storyboardFinishLog(log, 'failed', { error: error?.message || error });
+      toast(`分镜生成失败：${error?.message || error}`, 'error');
+    }
+  }
+}
+
+async function storyboardPumpQueue() {
+  if (storyboardActiveJob || !storyboardQueue.length) return;
+  const job = storyboardQueue.shift();
+  const log = storyboardState().logs.find((item) => item.id === job.logId);
+  storyboardActiveJob = job;
+  storyboardBusy = true;
+  renderModal();
+  try {
+    await storyboardRunJob(job, log);
   } finally {
+    storyboardActiveJob = null;
     storyboardBusy = false;
     renderModal();
+    if (storyboardQueue.length) queueMicrotask(() => void storyboardPumpQueue());
   }
 }
 
@@ -10110,8 +10362,11 @@ function bindStoryboardTabEvents(root) {
     if (height && dimensions.height) height.value = dimensions.height;
     storyboardCaptureWorkbench(root);
   });
-  root.querySelector('.sd-storyboard-generate')?.addEventListener('click', () => void storyboardGenerate(root));
+  root.querySelector('.sd-storyboard-generate')?.addEventListener('click', () => storyboardGenerate(root));
+  root.querySelector('.sd-storyboard-discard-active')?.addEventListener('click', storyboardDiscardActive);
+  root.querySelector('.sd-storyboard-clear-queue')?.addEventListener('click', () => storyboardClearWaitingQueue());
   root.querySelector('.sd-storyboard-save-connection')?.addEventListener('click', () => void storyboardSaveConnection(root).catch((error) => toast(`保存失败：${error?.message || error}`, 'error')));
+  root.querySelector('.sd-storyboard-check-connection')?.addEventListener('click', () => void storyboardCheckConnection(root));
   root.querySelectorAll('[data-storyboard-capture]').forEach((button) => button.addEventListener('click', () => void storyboardCreateProfile(button.dataset.storyboardCapture)));
   root.querySelectorAll('[data-storyboard-character-id]').forEach((button) => button.addEventListener('click', () => {
     state.selectedCharacterId = button.dataset.storyboardCharacterId || '';
@@ -10166,6 +10421,13 @@ function bindStoryboardTabEvents(root) {
     row.querySelector('.sd-storyboard-copy-log')?.addEventListener('click', () => {
       if (log) void coreadCopyText(storyboardLogText(log)).then(() => toast('诊断信息已复制。', 'success'));
     });
+    row.querySelector('.sd-storyboard-load-log')?.addEventListener('click', () => {
+      if (log) storyboardLoadLogToWorkbench(log);
+    });
+    row.querySelector('.sd-storyboard-retry-log')?.addEventListener('click', () => {
+      if (log) storyboardRetryLog(log);
+    });
+    row.querySelector('.sd-storyboard-cancel-queued-log')?.addEventListener('click', () => storyboardRemoveQueuedLog(log));
   });
   root.querySelectorAll('.sd-storyboard-gallery article[data-storyboard-record]').forEach((card) => {
     const record = storyboardGalleryRecords().find((item) => item.id === card.dataset.storyboardRecord);
@@ -22317,6 +22579,7 @@ function bindEvents() {
     coreadInvalidatePool();    // 切聊天：反哺主线切片池随新聊天的绑定档案重算
     companionWorldView = '';   // 切聊天：世界书已按聊天分存，查看视图回到未选·避免跨聊天残留
     await refreshCoreadPersonaAvatar();
+    storyboardHandleChatChanged();
     storyboardSyncSelectionForChat({ force: true });
     applyProseLayout();
     renderFloatButton();
@@ -22436,6 +22699,12 @@ function cleanupRuntime(resetSettings = false) {
   inputMenuObserver?.disconnect?.();
   inputMenuObserver = null;
   ttsStopChat();   // 清理有声注入的 observer/委托/挂件，避免停用或重载后残留
+  if (storyboardActiveJob) storyboardActiveJob.discardRequested = true;
+  if (storyboardQueue.length && settings?.imagegen?.logs) {
+    for (const job of storyboardQueue) storyboardFinishLog(settings.imagegen.logs.find((item) => item.id === job.logId), 'cancelled', { error: '扩展已停用或更新' });
+  }
+  storyboardQueue = [];
+  storyboardRuntimeReconciled = false;
   storyboardUnbindChat();
   stopFocusClockRuntime();
   stopProseLayout(true);
