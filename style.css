@@ -77,6 +77,10 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-modal .sd-storyboard-params > .sd-storyboard-grid,
 #story-director-modal .sd-storyboard-params > .sd-storyboard-check-grid,
 #story-director-modal .sd-storyboard-params > .sd-storyboard-google-enhance { margin: 0 16px 14px; }
+#story-director-modal .sd-storyboard-preset-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: end; gap: 7px; margin: 0 16px 12px; }
+#story-director-modal .sd-storyboard-preset-row > label { min-width: 0; display: flex; flex-direction: column; gap: 6px; color: var(--sd-muted); font-size: .76em; }
+#story-director-modal .sd-storyboard-preset-row .text_pole { width: 100%; min-width: 0; margin: 0 !important; }
+#story-director-modal .sd-storyboard-preset-row .sd-icon-btn { margin: 0 0 1px; }
 #story-director-modal .sd-storyboard-check-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 #story-director-modal .sd-storyboard-check-grid .checkbox_label { margin: 0; padding: 8px 10px; border-radius: 11px; background: var(--sd-glass-weak); font-size: .74em; }
 #story-director-modal .sd-storyboard-generate { width: 100%; min-height: 48px; border-radius: 999px; }
@@ -209,6 +213,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #chat .mes .sd-storyboard-inline figcaption > span { padding-left: 5px; font-size: 10px; font-weight: 700; letter-spacing: .18em; }
 #chat .mes .sd-storyboard-inline figcaption > div { display: flex; gap: 4px; }
 #chat .mes .sd-storyboard-inline button { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .12); color: inherit; cursor: pointer; }
+#chat .mes .sd-storyboard-message-action { display: inline-flex; align-items: center; justify-content: center; padding: 0; color: inherit; cursor: pointer; }
+#chat .mes .sd-storyboard-message-action i { pointer-events: none; }
 
 @media (max-width: 640px) {
   #story-director-modal .sd-storyboard-nav button { min-height: 40px; gap: 4px; font-size: .72em; }

@@ -22,6 +22,7 @@ assert.equal(defaults.profiles.novel.model, '', '千幕不得硬塞默认模型�
 assert.equal(defaults.profiles.openai.openaiQuality, '', 'OpenAI 画质默认也必须留空/沿用 ST');
 assert.equal(defaults.characterView, 'directory');
 assert.deepEqual(defaults.logs, []);
+assert.deepEqual(defaults.parameterPresets, []);
 
 const command = buildImagineCommand({ prompt: 'cinematic portrait', negative: 'watermark', width: 1024, height: 1536, steps: 28, cfg: 6.5, seed: -1 });
 assert.match(command, /^\/imagine quiet=true gallery=false /);
@@ -37,6 +38,14 @@ const normalized = normalizeStoryboardState({ logs: [{
 assert.equal(normalized.logs[0].status, 'queued');
 assert.equal(normalized.logs[0].snapshot.profile.model, 'gpt-image-1');
 assert.equal(normalized.logs[0].snapshot.chatKey, 'chat-a');
+
+const normalizedPresets = normalizeStoryboardState({
+  parameterPresets: [{ id: 'style-1', name: '柔光', source: 'openai', profile: { model: 'gpt-image-1', openaiQuality: 'high' } }],
+  parameterPresetSelection: { openai: 'style-1', novel: 'missing' },
+});
+assert.equal(normalizedPresets.parameterPresets[0].profile.openaiQuality, 'high');
+assert.equal(normalizedPresets.parameterPresetSelection.openai, 'style-1');
+assert.equal(normalizedPresets.parameterPresetSelection.novel, '', '参数样式必须按供应商隔离并清理无效选择');
 
 assert.match(source, /case 'imagegen': return renderStoryboardTab\(\)/, '分镜必须进入千幕顶层路由');
 assert.doesNotMatch(source, /storyboardExecuteSlash\(`\/imagine-source/, '浏览模型标签不得触发 ST 全局连接切换');
@@ -61,5 +70,8 @@ assert.match(source, /storyboardHandleChatChanged[\s\S]*切换聊天后已自动
 assert.match(source, /将此瞬，妥为留存/, '镜头台主文案必须使用确认后的版本');
 assert.doesNotMatch(source, /千幕组织镜头，SillyTavern 负责连接与生成/, '镜头台不应展示尴尬的实现说明');
 assert.match(css, /#chat \.mes \.sd-storyboard-inline/, '正文分镜样式必须严格限定在聊天消息内');
+assert.match(source, /storyboardInjectMessageButtons[\s\S]*dataset\.storyboardChatAction = 'open-floor'/, '正文每层必须提供不直接计费的分镜快捷入口');
+assert.match(source, /storyboardParameterPresets[\s\S]*保存分镜样式[\s\S]*parameterPresetSelection/, '分镜参数样式必须可按模型保存和切换');
+assert.match(source, /storyboardLoadRecordToWorkbench[\s\S]*复用设置/, '成片必须可安全载回镜头台复用');
 
 console.log('Storyboard unit 1 contract OK');

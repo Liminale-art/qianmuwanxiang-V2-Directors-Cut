@@ -38,6 +38,8 @@ export function createStoryboardDefaults() {
       comfyUrl: '', comfyWorkflow: '', openaiStyle: '', openaiQuality: '', googleEnhance: false,
       novelSm: false, novelSmDyn: false, novelDecrisper: false, novelVarietyBoost: false,
     }])),
+    parameterPresets: [],          // 用户自建参数方案；按 source 隔离，千幕不内置画质偏好
+    parameterPresetSelection: Object.fromEntries(Object.keys(STORYBOARD_SOURCES).map((id) => [id, ''])),
     characters: [],
     logs: [],
   };
@@ -61,6 +63,20 @@ export function normalizeStoryboardState(value) {
     for (const [key, defaultValue] of Object.entries(fallback)) {
       if (state.profiles[id][key] === undefined) state.profiles[id][key] = defaultValue;
     }
+  }
+  if (!Array.isArray(state.parameterPresets)) state.parameterPresets = [];
+  state.parameterPresets = state.parameterPresets.filter((item) => item && typeof item === 'object' && item.id && STORYBOARD_SOURCES[item.source]).map((item) => ({
+    id: String(item.id).slice(0, 160),
+    name: String(item.name || '未命名样式').trim().slice(0, 80) || '未命名样式',
+    source: item.source,
+    profile: normalizeStoryboardProfile(item.profile, item.source),
+    createdAt: Math.max(0, Number(item.createdAt || item.updatedAt || 0)),
+    updatedAt: Math.max(0, Number(item.updatedAt || 0)),
+  })).slice(0, 120);
+  if (!state.parameterPresetSelection || typeof state.parameterPresetSelection !== 'object') state.parameterPresetSelection = {};
+  for (const sourceId of Object.keys(STORYBOARD_SOURCES)) {
+    const selected = String(state.parameterPresetSelection[sourceId] || '');
+    state.parameterPresetSelection[sourceId] = state.parameterPresets.some((item) => item.id === selected && item.source === sourceId) ? selected : '';
   }
   if (!Array.isArray(state.characters)) state.characters = [];
   state.characters = state.characters.filter((item) => item && typeof item === 'object').map((item) => ({
@@ -103,16 +119,23 @@ export function normalizeStoryboardState(value) {
   return state;
 }
 
+function normalizeStoryboardProfile(value, source) {
+  const fallback = createStoryboardDefaults().profiles[source];
+  const raw = value && typeof value === 'object' ? value : {};
+  const profile = {};
+  for (const [key, defaultValue] of Object.entries(fallback)) {
+    const next = raw[key];
+    profile[key] = next === undefined
+      ? defaultValue
+      : (typeof defaultValue === 'boolean' ? Boolean(next) : String(next ?? '').slice(0, 2048));
+  }
+  return profile;
+}
+
 function normalizeStoryboardSnapshot(value, fallback = {}) {
   const raw = value && typeof value === 'object' ? value : {};
   const source = STORYBOARD_SOURCES[raw.source] ? raw.source : (STORYBOARD_SOURCES[fallback.source] ? fallback.source : 'novel');
-  const profileDefaults = createStoryboardDefaults().profiles[source];
-  const profileRaw = raw.profile && typeof raw.profile === 'object' ? raw.profile : {};
-  const profile = {};
-  for (const [key, defaultValue] of Object.entries(profileDefaults)) {
-    const next = profileRaw[key];
-    profile[key] = next === undefined ? defaultValue : (typeof defaultValue === 'boolean' ? Boolean(next) : String(next ?? '').slice(0, 2048));
-  }
+  const profile = normalizeStoryboardProfile(raw.profile, source);
   return {
     source,
     prompt: String(raw.prompt ?? fallback.prompt ?? '').slice(0, 24000),
