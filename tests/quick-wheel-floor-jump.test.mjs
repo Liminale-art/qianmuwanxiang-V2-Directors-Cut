@@ -10,7 +10,7 @@ assert.match(source, /quickWheelCustomOrder/);
 assert.match(source, /quickWheelCustomEnabled/);
 assert.match(source, /quickWheelScheme: 'custom'/);
 assert.match(source, /长按展开蜂巢快捷盘/);
-for (const id of ['dashboard', 'tasksnodes', 'castworld', 'context', 'settings', 'theater', 'tts', 'coread', 'geopolitics', 'plug', 'imagegen', 'floor']) {
+for (const id of ['dashboard', 'focus', 'tasksnodes', 'castworld', 'context', 'settings', 'theater', 'tts', 'coread', 'geopolitics', 'plug', 'imagegen', 'floor']) {
   assert.match(source, new RegExp(`id: '${id}'`));
 }
 const quickCommands = source.slice(source.indexOf('const QUICK_COMMANDS'), source.indexOf('const QUICK_COMMAND_IDS'));

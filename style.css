@@ -4882,3 +4882,146 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-preset-custom.active { color: var(--sd-accent); border-color: var(--sd-accent); }
 .sd-reader-custom-wrap { display: none; flex-direction: column; gap: 14px; }
 .sd-reader-custom-wrap.open { display: flex; }
+
+/* ---------- 专注时钟 ---------- */
+#story-director-modal .sd-focus-hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 18px;
+}
+#story-director-modal .sd-focus-hero::before {
+  content: '';
+  position: absolute;
+  width: 230px;
+  height: 230px;
+  top: 54px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--sd-accent) 12%, transparent);
+  filter: blur(38px);
+  pointer-events: none;
+}
+#story-director-modal .sd-focus-phase-tabs {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 430px);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  padding: 4px;
+  border: 1px solid var(--sd-hairline);
+  border-radius: 999px;
+  background: var(--sd-glass-weak);
+}
+#story-director-modal .sd-focus-phase {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sd-muted);
+  font: inherit;
+  font-size: .88em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+#story-director-modal .sd-focus-phase.active {
+  color: var(--sd-accent);
+  background: var(--sd-folder-head);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, .09);
+}
+#story-director-modal .sd-focus-phase:disabled { cursor: default; }
+#story-director-modal .sd-focus-ring {
+  --sd-focus-angle: 0deg;
+  position: relative;
+  z-index: 1;
+  width: 208px;
+  height: 208px;
+  padding: 9px;
+  border-radius: 50%;
+  background: conic-gradient(var(--sd-accent) 0deg var(--sd-focus-angle), color-mix(in srgb, var(--sd-muted) 18%, transparent) var(--sd-focus-angle) 360deg);
+  box-shadow: 0 15px 36px rgba(0, 0, 0, .10), 0 0 0 1px var(--sd-hairline);
+}
+#story-director-modal .sd-focus-ring-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: var(--sd-folder-head);
+  border: 1px solid var(--sd-hairline);
+  color: var(--sd-text);
+}
+#story-director-modal .sd-focus-ring-inner small,
+#story-director-modal .sd-focus-ring-inner span { color: var(--sd-muted); font-size: .78em; }
+#story-director-modal .sd-focus-time {
+  font-size: 2.34em;
+  line-height: 1;
+  letter-spacing: .04em;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+#story-director-modal .sd-focus-task-label { position: relative; z-index: 1; width: min(100%, 460px); display: flex; flex-direction: column; gap: 7px; }
+#story-director-modal .sd-focus-task-label > span { color: var(--sd-muted); font-size: .78em; text-align: center; }
+#story-director-modal .sd-focus-task { margin: 0 !important; text-align: center; }
+#story-director-modal .sd-focus-activity-tabs { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; width: min(100%, 360px); padding: 4px; border-radius: 999px; background: var(--sd-glass-weak); border: 1px solid var(--sd-hairline); }
+#story-director-modal .sd-focus-activity { min-width: 0; padding: 7px 10px; border: 0; border-radius: 999px; background: transparent; color: var(--sd-muted); font: inherit; font-size: .82em; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+#story-director-modal .sd-focus-activity.active { color: var(--sd-accent); background: var(--sd-folder-head); box-shadow: 0 1px 4px rgba(0, 0, 0, .08); }
+#story-director-modal .sd-focus-activity:disabled { cursor: default; }
+#story-director-modal .sd-focus-reading-link { position: relative; z-index: 1; width: min(100%, 460px); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+#story-director-modal .sd-focus-reading-link > label { min-width: 0; display: flex; flex-direction: column; gap: 6px; color: var(--sd-muted); font-size: .76em; }
+#story-director-modal .sd-focus-reading-link select { min-width: 0; margin: 0 !important; }
+#story-director-modal .sd-focus-reading-link .sd-btn { min-width: 104px; margin: 0; }
+#story-director-modal .sd-focus-actions { position: relative; z-index: 1; width: min(100%, 360px); display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#story-director-modal .sd-focus-actions .sd-btn { min-width: 0; margin: 0; }
+#story-director-modal .sd-focus-today-count { padding: 4px 9px; border-radius: 999px; background: color-mix(in srgb, var(--sd-accent) 13%, transparent); color: var(--sd-accent); font-size: .76em; font-variant-numeric: tabular-nums; }
+#story-director-modal .sd-focus-today-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+#story-director-modal .sd-focus-today-stats > div { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 6px; border-radius: 11px; background: var(--sd-pre); }
+#story-director-modal .sd-focus-today-stats b { color: var(--sd-text); font-size: 1.14em; font-variant-numeric: tabular-nums; }
+#story-director-modal .sd-focus-today-stats small { color: var(--sd-muted); font-size: .7em; }
+#story-director-modal .sd-focus-goal-track { height: 5px; margin-top: 10px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--sd-muted) 14%, transparent); }
+#story-director-modal .sd-focus-goal-track > span { display: block; height: 100%; border-radius: inherit; background: var(--sd-accent); transition: width .25s ease; }
+#story-director-modal .sd-focus-settings > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--sd-text); font-size: 15px; font-weight: 600; }
+#story-director-modal .sd-focus-settings > summary::-webkit-details-marker { display: none; }
+#story-director-modal .sd-focus-settings > summary i { color: var(--sd-muted); font-size: .78em; transition: transform .18s ease; }
+#story-director-modal .sd-focus-settings[open] > summary i { transform: rotate(180deg); }
+#story-director-modal .sd-focus-setting-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 13px; }
+#story-director-modal .sd-focus-setting-grid > label { min-width: 0; display: flex; flex-direction: column; gap: 6px; color: var(--sd-muted); font-size: .76em; }
+#story-director-modal .sd-focus-setting-grid > label > div { display: flex; align-items: center; gap: 5px; }
+#story-director-modal .sd-focus-setting-grid input { min-width: 0; margin: 0 !important; text-align: center; }
+#story-director-modal .sd-focus-setting-grid small { flex: 0 0 auto; color: var(--sd-muted); }
+#story-director-modal .sd-focus-toggles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+#story-director-modal .sd-focus-toggles .checkbox_label { min-width: 0; margin: 0; }
+#story-director-modal .sd-focus-history { display: flex; flex-direction: column; gap: 7px; }
+#story-director-modal .sd-focus-history-row { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 9px; align-items: center; padding: 9px 10px; border-radius: 11px; background: var(--sd-pre); }
+#story-director-modal .sd-focus-history-row > span { width: 28px; height: 28px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; color: var(--sd-accent); background: color-mix(in srgb, var(--sd-accent) 13%, transparent); font-size: .76em; }
+#story-director-modal .sd-focus-history-row > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+#story-director-modal .sd-focus-history-row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sd-text); font-size: .86em; font-weight: 500; }
+#story-director-modal .sd-focus-history-row small { color: var(--sd-muted); font-size: .7em; }
+#story-director-modal .sd-focus-empty { padding: 14px; border-radius: 10px; background: var(--sd-pre); color: var(--sd-muted); text-align: center; font-size: .8em; }
+.sd-reader-focus-btn { display: inline-flex; align-items: center; gap: 5px; }
+.sd-reader-focus-btn.active { color: var(--sd-accent) !important; background: color-mix(in srgb, var(--sd-accent) 10%, transparent) !important; }
+.sd-reader-focus-mini { min-width: 2.2em; font-size: .72em; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 520px) {
+  #story-director-modal .sd-focus-hero { padding: 14px 11px; }
+  #story-director-modal .sd-focus-ring { width: 184px; height: 184px; }
+  #story-director-modal .sd-focus-time { font-size: 2.08em; }
+  #story-director-modal .sd-focus-phase { padding: 7px 5px; font-size: .82em; }
+  #story-director-modal .sd-focus-setting-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #story-director-modal .sd-focus-toggles { grid-template-columns: 1fr; }
+  #story-director-modal .sd-focus-reading-link { grid-template-columns: 1fr; }
+  #story-director-modal .sd-focus-reading-link .sd-btn { width: 100%; }
+  .sd-reader-focus-btn { padding-inline: 6px !important; }
+}

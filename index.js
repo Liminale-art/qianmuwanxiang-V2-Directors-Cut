@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.34.1';
+const VERSION = '1.35.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -61,6 +61,7 @@ const BUILTIN_THEATER_REVISION = 6;   // 内置剧场组版本，升一档即重
 const QIANMU_THEATER_REVISION = 5;   // 千幕剧场组版本，与吱吱组各自独立；升一档即重置千幕内置项（保留用户自建）。
 const LOG_LIMIT = 5;
 const LOG_CLIP = 80000;
+const FOCUS_CLOCK_HISTORY_LIMIT = 120;
 
 const DEFAULT_BLUEPRINT = `【主要指令】
 你将依据以下维度自动分析当前聊天，为其创作最优秀的演绎剧本方案。各维度无需用户填写：留空时，从当前对话、角色设定、世界观与已发生事件中自行提炼；若某一维度已被用户写入具体内容，则视为优先级最高的覆盖指令。
@@ -417,8 +418,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   proseLayout: { ...PROSE_LAYOUT_DEFAULTS },
   quickWheelEnabled: true,
   quickWheelScheme: 'custom',   // 兼容旧配置字段；蜂巢快捷盘从 1.27 起仅使用用户自定义入口
-  quickWheelCustomOrder: ['dashboard', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
-  quickWheelCustomEnabled: ['dashboard', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
+  quickWheelCustomOrder: ['dashboard', 'focus', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
+  quickWheelCustomEnabled: ['dashboard', 'focus', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
   quickWheelDockedPlugins: [],
   quickWheelCustomExpanded: false,
   theme: 'light',
@@ -443,6 +444,31 @@ const DEFAULT_SETTINGS = Object.freeze({
   outputSchemaBackup: null,       // 「恢复上次」：同上，备份用户上一份输出格式
   logHistory: [],
   logOpenState: {},               // API 与日志：按日志 ID 记忆展开状态，默认折叠
+  // 专注时钟：全局轻量状态，与聊天、推演和伴读存储完全隔离。运行态保存绝对截止时间，后台挂起/刷新后按真实时间续算。
+  focusClock: {
+    phase: 'focus',               // focus | shortBreak | longBreak
+    status: 'idle',               // idle | running | paused
+    activity: 'task',             // task | reading；伴读只保存轻量书目关联，不复制正文
+    bookId: '',
+    task: '',
+    focusMinutes: 25,
+    shortBreakMinutes: 5,
+    longBreakMinutes: 15,
+    longBreakEvery: 4,
+    dailyGoal: 4,
+    autoStartNext: false,
+    soundEnabled: true,
+    remainingMs: 25 * 60 * 1000,
+    endsAt: 0,
+    runStartedAt: 0,
+    sessionStartedAt: 0,
+    sessionElapsedMs: 0,
+    sessionPlannedMs: 25 * 60 * 1000,
+    sessionBookId: '',
+    sessionProgressStart: 0,
+    focusCycle: 0,
+    history: [],
+  },
   templates: [
     {
       id: 'default-free-blueprint',
@@ -654,6 +680,8 @@ let cancelRequested = false;       // 推演取消标记
 let theaterBusy = false;           // 幕外忙碌态（与推演独立，允许并发）
 let theaterAbort = null;           // 幕外中止句柄
 let theaterCancel = false;         // 幕外取消标记
+let focusClockTicker = null;        // 专注时钟只负责刷新显示；真实进度由持久化 endsAt 计算
+let focusClockAudio = null;         // 用户首次启动后预热的轻量完成提示音
 let initialized = false;
 let eventBound = false;
 let inputMenuObserver = null;
@@ -3094,7 +3122,7 @@ function resolveRestorableTab(tab) {
   // v1.30 起「编剧」并入「幕后」。旧设置里若仍记着 blueprint，直接迁移到 settings，
   // 避免更新后恢复到一个已经撤掉的顶层入口。
   if (tab === 'blueprint') return 'settings';
-  const KNOWN = ['dashboard', 'tasksnodes', 'castworld', 'context', 'settings', 'theater', 'tts', 'geopolitics', 'coread', 'plug'];
+  const KNOWN = ['dashboard', 'focus', 'tasksnodes', 'castworld', 'context', 'settings', 'theater', 'tts', 'geopolitics', 'coread', 'plug'];
   if (!KNOWN.includes(tab)) return 'dashboard';
   if (tab === 'coread' && !COREAD_ENABLED) return 'dashboard';
   if (tab === 'geopolitics' && !settings.geopoliticsEnabled) return 'dashboard';
@@ -3223,6 +3251,7 @@ function applyFloatPosition(btn) {
 
 const QUICK_COMMANDS = Object.freeze([
   { id: 'dashboard', label: '推演', icon: 'fa-clapperboard' },
+  { id: 'focus', label: '专注', icon: 'fa-hourglass-half' },
   { id: 'tasksnodes', label: '任务', icon: 'fa-list-check' },
   { id: 'castworld', label: '世界', icon: 'fa-earth-asia' },
   { id: 'context', label: '取材', icon: 'fa-box-archive' },
@@ -4533,6 +4562,7 @@ function renderModal() {
   snapshotAccState(modal);
   const tabs = [
     ['dashboard', '审片'],
+    ['focus', '专注'],
     ['tasksnodes', '任务'],
     ['castworld', '世界'],
     ['context', '取材'],
@@ -4711,6 +4741,7 @@ function currentPlan() {
 function renderActiveTab() {
   if (editorView) return renderEditorView();
   switch (activeTab) {
+    case 'focus': return renderFocusClockTab();
     case 'tasksnodes': return renderTasksNodesTab();
     case 'castworld': return renderCastWorldTab();
     case 'context': return renderContextTab();
@@ -8774,6 +8805,400 @@ function renderPlugTab() {
     </section>`;
 }
 
+/* ============================================================
+   专注时钟：轻量、全局、与聊天逻辑隔离。
+   运行态只持久化绝对截止时间，不逐秒写设置；页面后台挂起或刷新后仍按真实时间续算。
+   ============================================================ */
+const FOCUS_CLOCK_PHASES = Object.freeze({
+  focus: { label: '专注', icon: 'fa-seedling', setting: 'focusMinutes' },
+  shortBreak: { label: '小憩', icon: 'fa-mug-hot', setting: 'shortBreakMinutes' },
+  longBreak: { label: '长休', icon: 'fa-cloud-moon', setting: 'longBreakMinutes' },
+});
+
+function focusClockState() {
+  if (!isPlainObject(settings.focusClock)) settings.focusClock = clone(DEFAULT_SETTINGS.focusClock);
+  mergeDefaults(settings.focusClock, DEFAULT_SETTINGS.focusClock);
+  const f = settings.focusClock;
+  if (!FOCUS_CLOCK_PHASES[f.phase]) f.phase = 'focus';
+  if (!['idle', 'running', 'paused'].includes(f.status)) f.status = 'idle';
+  const int = (value, fallback, min, max) => Math.max(min, Math.min(max, Math.round(Number(value) || fallback)));
+  f.focusMinutes = int(f.focusMinutes, 25, 1, 240);
+  f.shortBreakMinutes = int(f.shortBreakMinutes, 5, 1, 60);
+  f.longBreakMinutes = int(f.longBreakMinutes, 15, 1, 120);
+  f.longBreakEvery = int(f.longBreakEvery, 4, 1, 12);
+  f.dailyGoal = int(f.dailyGoal, 4, 1, 24);
+  f.focusCycle = Math.max(0, Math.round(Number(f.focusCycle) || 0));
+  f.history = Array.isArray(f.history) ? f.history.slice(0, FOCUS_CLOCK_HISTORY_LIMIT) : [];
+  f.task = String(f.task || '').slice(0, 120);
+  f.activity = f.activity === 'reading' ? 'reading' : 'task';
+  f.bookId = String(f.bookId || '');
+  f.sessionBookId = String(f.sessionBookId || '');
+  f.sessionProgressStart = Math.max(0, Math.min(100, Number(f.sessionProgressStart) || 0));
+  f.endsAt = Math.max(0, Number(f.endsAt) || 0);
+  f.runStartedAt = Math.max(0, Number(f.runStartedAt) || 0);
+  f.sessionStartedAt = Math.max(0, Number(f.sessionStartedAt) || 0);
+  f.sessionElapsedMs = Math.max(0, Number(f.sessionElapsedMs) || 0);
+  f.sessionPlannedMs = Math.max(1000, Number(f.sessionPlannedMs) || focusClockPhaseMs(f.phase, f));
+  f.remainingMs = Math.max(0, Number(f.remainingMs) || 0);
+  if (f.status === 'running' && !f.endsAt) {
+    f.status = 'paused';
+    f.remainingMs ||= focusClockPhaseMs(f.phase, f);
+  }
+  if (f.status === 'idle' && f.remainingMs <= 0) f.remainingMs = focusClockPhaseMs(f.phase, f);
+  return f;
+}
+
+function focusClockPhaseMs(phase, state = settings?.focusClock || DEFAULT_SETTINGS.focusClock) {
+  const meta = FOCUS_CLOCK_PHASES[phase] || FOCUS_CLOCK_PHASES.focus;
+  const fallback = Number(DEFAULT_SETTINGS.focusClock[meta.setting]) || 25;
+  return Math.max(1, Number(state?.[meta.setting]) || fallback) * 60 * 1000;
+}
+
+function focusClockRemainingMs(state = focusClockState(), now = Date.now()) {
+  return state.status === 'running' ? Math.max(0, state.endsAt - now) : Math.max(0, state.remainingMs);
+}
+
+function focusClockFormat(ms) {
+  const seconds = Math.max(0, Math.ceil(Number(ms || 0) / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function focusClockDateKey(value = Date.now()) {
+  const date = new Date(value);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function focusClockTodayHistory(state = focusClockState()) {
+  const today = focusClockDateKey();
+  return state.history.filter((item) => item?.kind === 'focus' && focusClockDateKey(item.finishedAt || item.startedAt) === today);
+}
+
+function focusClockPrimeSound() {
+  if (!focusClockState().soundEnabled) return;
+  try {
+    const AudioCtx = globalThis.AudioContext || globalThis.webkitAudioContext;
+    if (!AudioCtx) return;
+    focusClockAudio ||= new AudioCtx();
+    if (focusClockAudio.state === 'suspended') void focusClockAudio.resume();
+  } catch (_) {}
+}
+
+function focusClockPlayDoneSound() {
+  const f = focusClockState();
+  if (!f.soundEnabled || !focusClockAudio) return;
+  try {
+    const start = focusClockAudio.currentTime;
+    [523.25, 659.25].forEach((frequency, index) => {
+      const osc = focusClockAudio.createOscillator();
+      const gain = focusClockAudio.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = frequency;
+      gain.gain.setValueAtTime(0.0001, start + index * .16);
+      gain.gain.exponentialRampToValueAtTime(.09, start + index * .16 + .02);
+      gain.gain.exponentialRampToValueAtTime(.0001, start + index * .16 + .28);
+      osc.connect(gain).connect(focusClockAudio.destination);
+      osc.start(start + index * .16);
+      osc.stop(start + index * .16 + .3);
+    });
+  } catch (_) {}
+}
+
+function focusClockSetPhase(phase) {
+  const f = focusClockState();
+  if (!FOCUS_CLOCK_PHASES[phase] || f.status !== 'idle') return;
+  f.phase = phase;
+  f.status = 'idle';
+  f.remainingMs = focusClockPhaseMs(phase, f);
+  f.sessionPlannedMs = f.remainingMs;
+  f.endsAt = 0;
+  f.runStartedAt = 0;
+  f.sessionStartedAt = 0;
+  f.sessionElapsedMs = 0;
+  saveSettings();
+}
+
+function focusClockStart() {
+  const f = focusClockState();
+  if (f.status === 'running') return;
+  const now = Date.now();
+  const remaining = Math.max(1000, focusClockRemainingMs(f, now) || focusClockPhaseMs(f.phase, f));
+  if (f.status === 'idle') {
+    if (f.activity === 'reading') {
+      const book = coreadBookMeta(f.bookId);
+      if (!book) return toast('请先选择一本伴读书籍。', 'warning');
+      f.task = `阅读《${book.title || '未命名书籍'}》`;
+      f.sessionBookId = book.id;
+      f.sessionProgressStart = Math.max(0, Math.min(100, Number(book.progress) || 0));
+    } else {
+      f.sessionBookId = '';
+      f.sessionProgressStart = 0;
+    }
+    f.sessionStartedAt = now;
+    f.sessionElapsedMs = 0;
+    f.sessionPlannedMs = remaining;
+  }
+  f.status = 'running';
+  f.remainingMs = remaining;
+  f.runStartedAt = now;
+  f.endsAt = now + remaining;
+  focusClockPrimeSound();
+  saveSettings();
+  focusClockUpdateDom();
+}
+
+function focusClockPause() {
+  const f = focusClockState();
+  if (f.status !== 'running') return;
+  const now = Date.now();
+  if (f.endsAt <= now) { focusClockComplete(); return; }
+  f.sessionElapsedMs += Math.max(0, now - (f.runStartedAt || now));
+  f.remainingMs = Math.max(0, f.endsAt - now);
+  f.endsAt = 0;
+  f.runStartedAt = 0;
+  f.status = 'paused';
+  saveSettings();
+}
+
+function focusClockReset() {
+  const f = focusClockState();
+  f.status = 'idle';
+  f.remainingMs = focusClockPhaseMs(f.phase, f);
+  f.sessionPlannedMs = f.remainingMs;
+  f.endsAt = 0;
+  f.runStartedAt = 0;
+  f.sessionStartedAt = 0;
+  f.sessionElapsedMs = 0;
+  f.sessionBookId = '';
+  f.sessionProgressStart = 0;
+  saveSettings();
+}
+
+function focusClockComplete() {
+  const f = focusClockState();
+  if (f.status !== 'running') return;
+  const now = Date.now();
+  const completedPhase = f.phase;
+  if (completedPhase === 'focus') {
+    const durationMs = Math.max(1000, Number(f.sessionPlannedMs) || focusClockPhaseMs('focus', f));
+    const linkedBook = f.sessionBookId ? coreadBookMeta(f.sessionBookId) : null;
+    f.history.unshift({
+      id: uid('focus'), kind: 'focus', task: String(f.task || '').trim() || '未命名专注',
+      startedAt: f.sessionStartedAt || Math.max(0, now - durationMs), finishedAt: now, durationMs,
+      activity: f.sessionBookId ? 'reading' : 'task', bookId: f.sessionBookId || '', bookTitle: linkedBook?.title || '',
+      progressStart: f.sessionBookId ? f.sessionProgressStart : null,
+      progressEnd: f.sessionBookId ? Math.max(0, Math.min(100, Number(linkedBook?.progress) || 0)) : null,
+    });
+    f.history = f.history.slice(0, FOCUS_CLOCK_HISTORY_LIMIT);
+    f.focusCycle += 1;
+    f.phase = f.focusCycle % f.longBreakEvery === 0 ? 'longBreak' : 'shortBreak';
+  } else {
+    f.phase = 'focus';
+  }
+  f.status = f.autoStartNext ? 'running' : 'idle';
+  f.remainingMs = focusClockPhaseMs(f.phase, f);
+  f.sessionPlannedMs = f.remainingMs;
+  f.sessionStartedAt = f.autoStartNext ? now : 0;
+  f.sessionElapsedMs = 0;
+  f.sessionBookId = f.autoStartNext && f.phase === 'focus' && f.activity === 'reading' ? f.bookId : '';
+  f.sessionProgressStart = f.sessionBookId ? Math.max(0, Math.min(100, Number(coreadBookMeta(f.sessionBookId)?.progress) || 0)) : 0;
+  f.runStartedAt = f.autoStartNext ? now : 0;
+  f.endsAt = f.autoStartNext ? now + f.remainingMs : 0;
+  saveSettings();
+  focusClockPlayDoneSound();
+  const nextLabel = FOCUS_CLOCK_PHASES[f.phase].label;
+  toast(completedPhase === 'focus' ? `这一程已经完成，接下来是${nextLabel}。` : '休息结束，慢慢回到下一段专注。', 'success');
+  if (isModalOpen() && activeTab === 'focus') renderModal();
+  else focusClockUpdateDom();
+}
+
+function focusClockUpdateDom() {
+  const f = focusClockState();
+  const remaining = focusClockRemainingMs(f);
+  const total = Math.max(1000, Number(f.sessionPlannedMs) || focusClockPhaseMs(f.phase, f));
+  const progress = Math.max(0, Math.min(1, 1 - remaining / total));
+  document.querySelectorAll('.sd-focus-time').forEach((el) => { el.textContent = focusClockFormat(remaining); });
+  document.querySelectorAll('.sd-reader-focus-mini').forEach((el) => { el.textContent = f.status !== 'idle' ? focusClockFormat(remaining) : '专注'; });
+  document.querySelectorAll('.sd-focus-ring').forEach((el) => {
+    el.style.setProperty('--sd-focus-angle', `${(progress * 360).toFixed(2)}deg`);
+    el.setAttribute('aria-valuenow', String(Math.round(progress * 100)));
+  });
+}
+
+function focusClockRuntimeTick() {
+  const f = focusClockState();
+  if (f.status === 'running' && focusClockRemainingMs(f) <= 0) { focusClockComplete(); return; }
+  focusClockUpdateDom();
+}
+
+function focusClockVisibilitySync() {
+  if (document.visibilityState === 'visible') focusClockRuntimeTick();
+}
+
+function startFocusClockRuntime() {
+  if (focusClockTicker) clearInterval(focusClockTicker);
+  document.removeEventListener('visibilitychange', focusClockVisibilitySync);
+  focusClockRuntimeTick();
+  focusClockTicker = setInterval(focusClockRuntimeTick, 500);
+  document.addEventListener('visibilitychange', focusClockVisibilitySync, { passive: true });
+}
+
+function stopFocusClockRuntime() {
+  if (focusClockTicker) clearInterval(focusClockTicker);
+  focusClockTicker = null;
+  document.removeEventListener('visibilitychange', focusClockVisibilitySync);
+  try { void focusClockAudio?.close?.(); } catch (_) {}
+  focusClockAudio = null;
+}
+
+function renderFocusClockTab() {
+  const f = focusClockState();
+  const remaining = focusClockRemainingMs(f);
+  const total = Math.max(1000, Number(f.sessionPlannedMs) || focusClockPhaseMs(f.phase, f));
+  const progress = Math.max(0, Math.min(1, 1 - remaining / total));
+  const phase = FOCUS_CLOCK_PHASES[f.phase];
+  const statusLabel = f.status === 'running' ? `${phase.label}中` : f.status === 'paused' ? '停在此刻' : '准备开始';
+  const mainLabel = f.status === 'running' ? '暂停' : f.status === 'paused' ? '继续' : '开始';
+  const mainIcon = f.status === 'running' ? 'fa-pause' : 'fa-play';
+  const today = focusClockTodayHistory(f);
+  const todayMinutes = Math.round(today.reduce((sum, item) => sum + Math.max(0, Number(item.durationMs) || 0), 0) / 60000);
+  const goalProgress = Math.max(0, Math.min(100, today.length / f.dailyGoal * 100));
+  const locked = f.status === 'running' || f.status === 'paused';
+  const books = (coread().books || []).filter((book) => book?.id);
+  if (f.activity === 'reading' && !books.some((book) => book.id === f.bookId)) f.bookId = books[0]?.id || '';
+  const linkedBook = books.find((book) => book.id === f.bookId) || null;
+  const historyRows = today.length ? today.map((item) => {
+    const time = new Date(item.finishedAt || item.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const minutes = Math.max(1, Math.round((Number(item.durationMs) || 0) / 60000));
+    const readingProgress = item.activity === 'reading' && Number.isFinite(Number(item.progressStart)) && Number.isFinite(Number(item.progressEnd))
+      ? ` · ${Math.round(Number(item.progressStart))}% → ${Math.round(Number(item.progressEnd))}%` : '';
+    return `<article class="sd-focus-history-row"><span><i class="fa-solid ${item.activity === 'reading' ? 'fa-book-open' : 'fa-check'}"></i></span><div><b>${htmlEscape(item.task || '未命名专注')}</b><small>${htmlEscape(time)} · ${minutes} 分钟${readingProgress}</small></div></article>`;
+  }).join('') : '<div class="sd-focus-empty">今天还没有完成记录。</div>';
+  return `
+    <section class="sd-card sd-focus-hero">
+      <div class="sd-focus-phase-tabs" role="tablist" aria-label="计时阶段">
+        ${Object.entries(FOCUS_CLOCK_PHASES).map(([id, item]) => `<button type="button" class="sd-focus-phase ${f.phase === id ? 'active' : ''}" data-focus-phase="${id}" ${locked ? 'disabled' : ''}><i class="fa-solid ${item.icon}"></i><span>${item.label}</span></button>`).join('')}
+      </div>
+      <div class="sd-focus-ring" role="progressbar" aria-label="${htmlEscape(phase.label)}进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(progress * 100)}" style="--sd-focus-angle:${(progress * 360).toFixed(2)}deg">
+        <div class="sd-focus-ring-inner"><small>${htmlEscape(statusLabel)}</small><strong class="sd-focus-time">${focusClockFormat(remaining)}</strong><span>${htmlEscape(phase.label)}</span></div>
+      </div>
+      <div class="sd-focus-activity-tabs">
+        <button type="button" class="sd-focus-activity ${f.activity === 'task' ? 'active' : ''}" data-focus-activity="task" ${locked ? 'disabled' : ''}><i class="fa-solid fa-list-check"></i>专注任务</button>
+        <button type="button" class="sd-focus-activity ${f.activity === 'reading' ? 'active' : ''}" data-focus-activity="reading" ${locked ? 'disabled' : ''}><i class="fa-solid fa-book-open-reader"></i>伴读</button>
+      </div>
+      ${f.activity === 'reading' ? `<div class="sd-focus-reading-link"><label><span>选择书籍</span><select class="text_pole sd-focus-book" ${locked ? 'disabled' : ''}>${books.length ? books.map((book) => `<option value="${htmlEscape(book.id)}" ${book.id === f.bookId ? 'selected' : ''}>${htmlEscape(book.title || '未命名书籍')}</option>`).join('') : '<option value="">书架还是空的</option>'}</select></label>${linkedBook ? `<button type="button" class="sd-btn sd-focus-open-reading"><i class="fa-solid fa-book-open"></i>进入阅读</button>` : ''}</div>` : `<label class="sd-focus-task-label"><span>这一程想完成什么</span><input class="text_pole sd-focus-task" maxlength="120" placeholder="写下一个清楚、够小的目标" value="${htmlEscape(f.task)}" ${f.status === 'running' ? 'disabled' : ''}></label>`}
+      <div class="sd-focus-actions">
+        <button type="button" class="sd-btn sd-primary sd-focus-main"><i class="fa-solid ${mainIcon}"></i>${mainLabel}</button>
+        <button type="button" class="sd-btn sd-focus-reset">${f.status === 'idle' ? '重置' : '结束本轮'}</button>
+      </div>
+    </section>
+    <section class="sd-card sd-focus-today-card">
+      <div class="sd-card-title-row"><h3>今日</h3><span class="sd-focus-today-count">${today.length} / ${f.dailyGoal} 段</span></div>
+      <div class="sd-focus-today-stats"><div><b>${todayMinutes}</b><small>专注分钟</small></div><div><b>${today.length}</b><small>完成段数</small></div><div><b>${f.focusCycle}</b><small>当前循环</small></div></div>
+      <div class="sd-focus-goal-track" aria-label="今日目标进度"><span style="width:${goalProgress.toFixed(1)}%"></span></div>
+    </section>
+    <section class="sd-card">
+      <details class="sd-focus-settings" data-acc="focus-clock-settings">
+        <summary><span>周期设置</span><i class="fa-solid fa-chevron-down"></i></summary>
+        <div class="sd-focus-setting-grid">
+          <label><span>专注</span><div><input class="text_pole sd-focus-setting" data-focus-setting="focusMinutes" type="number" min="1" max="240" value="${f.focusMinutes}" ${locked ? 'disabled' : ''}><small>分钟</small></div></label>
+          <label><span>小憩</span><div><input class="text_pole sd-focus-setting" data-focus-setting="shortBreakMinutes" type="number" min="1" max="60" value="${f.shortBreakMinutes}" ${locked ? 'disabled' : ''}><small>分钟</small></div></label>
+          <label><span>长休</span><div><input class="text_pole sd-focus-setting" data-focus-setting="longBreakMinutes" type="number" min="1" max="120" value="${f.longBreakMinutes}" ${locked ? 'disabled' : ''}><small>分钟</small></div></label>
+          <label><span>每几段长休</span><div><input class="text_pole sd-focus-setting" data-focus-setting="longBreakEvery" type="number" min="1" max="12" value="${f.longBreakEvery}" ${locked ? 'disabled' : ''}><small>段</small></div></label>
+          <label><span>今日目标</span><div><input class="text_pole sd-focus-setting" data-focus-setting="dailyGoal" type="number" min="1" max="24" value="${f.dailyGoal}"><small>段</small></div></label>
+        </div>
+        <div class="sd-focus-toggles">
+          <label class="checkbox_label"><input type="checkbox" class="sd-focus-auto-next" ${f.autoStartNext ? 'checked' : ''}> 自动开始下一阶段</label>
+          <label class="checkbox_label"><input type="checkbox" class="sd-focus-sound" ${f.soundEnabled ? 'checked' : ''}> 完成提示音</label>
+        </div>
+      </details>
+    </section>
+    <section class="sd-card sd-focus-history-card">
+      <div class="sd-card-title-row"><h3>今日记录</h3>${today.length ? '<button type="button" class="sd-icon-btn sd-danger sd-focus-clear-history" title="清空今日记录" aria-label="清空今日记录"><i class="fa-solid fa-trash-can"></i></button>' : ''}</div>
+      <div class="sd-focus-history">${historyRows}</div>
+    </section>`;
+}
+
+function bindFocusClockEvents(root) {
+  if (activeTab !== 'focus') return;
+  root.querySelectorAll('.sd-focus-phase').forEach((button) => button.addEventListener('click', () => {
+    focusClockSetPhase(button.dataset.focusPhase);
+    renderModal();
+  }));
+  root.querySelectorAll('.sd-focus-activity').forEach((button) => button.addEventListener('click', () => {
+    const f = focusClockState();
+    if (f.status !== 'idle') return;
+    f.activity = button.dataset.focusActivity === 'reading' ? 'reading' : 'task';
+    if (f.activity === 'reading' && !coreadBookMeta(f.bookId)) f.bookId = coread().books?.[0]?.id || '';
+    saveSettings();
+    renderModal();
+  }));
+  root.querySelector('.sd-focus-book')?.addEventListener('change', (event) => {
+    const f = focusClockState();
+    f.bookId = String(event.target.value || '');
+    const book = coreadBookMeta(f.bookId);
+    if (book) f.task = `阅读《${book.title || '未命名书籍'}》`;
+    saveSettings();
+    renderModal();
+  });
+  root.querySelector('.sd-focus-open-reading')?.addEventListener('click', () => {
+    const id = focusClockState().bookId;
+    if (id) void coreadOpenBook(id);
+  });
+  root.querySelector('.sd-focus-main')?.addEventListener('click', () => {
+    const f = focusClockState();
+    const task = root.querySelector('.sd-focus-task')?.value;
+    if (typeof task === 'string') f.task = task.trim().slice(0, 120);
+    if (f.status === 'running') focusClockPause(); else focusClockStart();
+    renderModal();
+  });
+  root.querySelector('.sd-focus-task')?.addEventListener('change', (event) => {
+    focusClockState().task = String(event.target.value || '').trim().slice(0, 120);
+    saveSettings();
+  });
+  root.querySelector('.sd-focus-reset')?.addEventListener('click', async () => {
+    const f = focusClockState();
+    if (f.status !== 'idle') {
+      const yes = await confirmDialog('结束本轮', '当前进度不会计入完成记录，确定结束？');
+      if (!yes) return;
+    }
+    focusClockReset();
+    renderModal();
+  });
+  root.querySelectorAll('.sd-focus-setting').forEach((input) => input.addEventListener('change', () => {
+    const f = focusClockState();
+    const key = input.dataset.focusSetting;
+    const limits = { focusMinutes: [1, 240], shortBreakMinutes: [1, 60], longBreakMinutes: [1, 120], longBreakEvery: [1, 12], dailyGoal: [1, 24] };
+    const [min, max] = limits[key] || [1, 240];
+    f[key] = Math.max(min, Math.min(max, Math.round(Number(input.value) || Number(DEFAULT_SETTINGS.focusClock[key]) || min)));
+    if (f.status === 'idle' && FOCUS_CLOCK_PHASES[f.phase]?.setting === key) {
+      f.remainingMs = focusClockPhaseMs(f.phase, f);
+      f.sessionPlannedMs = f.remainingMs;
+    }
+    saveSettings();
+    renderModal();
+  }));
+  root.querySelector('.sd-focus-auto-next')?.addEventListener('change', (event) => {
+    focusClockState().autoStartNext = Boolean(event.target.checked);
+    saveSettings();
+  });
+  root.querySelector('.sd-focus-sound')?.addEventListener('change', (event) => {
+    focusClockState().soundEnabled = Boolean(event.target.checked);
+    if (event.target.checked) focusClockPrimeSound();
+    saveSettings();
+  });
+  root.querySelector('.sd-focus-clear-history')?.addEventListener('click', async () => {
+    const yes = await confirmDialog('清空今日记录', '只清除今天已完成的专注记录，确定继续？');
+    if (!yes) return;
+    const f = focusClockState();
+    const today = focusClockDateKey();
+    f.history = f.history.filter((item) => focusClockDateKey(item.finishedAt || item.startedAt) !== today);
+    saveSettings();
+    renderModal();
+  });
+}
+
 function updateInjectDock(root = document) {
   const dockButton = root.querySelector?.('.sd-inject-selected');
   if (!dockButton) return;
@@ -8813,6 +9238,7 @@ function bindActiveTabEvents(root) {
     return; // 编辑视图独占界面，不再绑定其余标签事件
   }
   bindTheaterTabEvents(root);
+  bindFocusClockEvents(root);
   bindGeopoliticsTabEvents(root);
   bindTtsTabEvents(root);
   bindCoreadTabEvents(root);
@@ -14998,6 +15424,10 @@ function buildReaderStage() {
   const excerptCfg = coreadExcerptConfig();
   const excerptPresetOptions = (excerptCfg.savedPresets || []).map((item) => `<option value="${htmlEscape(item.id)}">${htmlEscape(item.name)}</option>`).join('');
   const excerptFontOptions = coreadExcerptFontOptions(excerptCfg);
+  const focusState = focusClockState();
+  const focusLinkedHere = focusState.activity === 'reading'
+    && (focusState.status === 'idle' ? focusState.bookId === meta.id : focusState.sessionBookId === meta.id);
+  const focusMiniText = focusLinkedHere && focusState.status !== 'idle' ? focusClockFormat(focusClockRemainingMs(focusState)) : '专注';
 
   return `
     <div class="sd-reader-stage${barHidden}${pinned}${comicMode ? ' sd-reader-comic-mode' : ''}" data-reader-panel="${activePanel || 'none'}" style="--sd-rd-dialogh:${drawerH}px">
@@ -15005,6 +15435,7 @@ function buildReaderStage() {
       <div class="sd-reader-topbar">
         <button class="sd-reader-mark-btn ${bookmarked ? 'active' : ''}" title="书签"><i class="fa-${bookmarked ? 'solid' : 'regular'} fa-bookmark"></i></button>
         <div class="sd-reader-chtitle">${htmlEscape(chapter.title || meta.title)}</div>
+        <button class="sd-reader-focus-btn${focusLinkedHere ? ' active' : ''}" title="${focusLinkedHere && focusState.status !== 'idle' ? '查看专注计时' : '设为专注阅读'}"><i class="fa-solid fa-hourglass-half"></i><span class="sd-reader-focus-mini">${focusMiniText}</span></button>
         ${comicMode ? `<button class="sd-reader-comic-scan${comicPageAnalyzed ? ' active' : ''}" title="${coreadComicVisionBusy ? '正在生成视觉文字稿' : '识别当前及前几页'}" ${coreadComicVisionBusy ? 'disabled' : ''}><i class="fa-solid ${coreadComicVisionBusy ? 'fa-spinner fa-spin' : 'fa-eye'}"></i></button>` : ''}
         <button class="sd-reader-back" title="返回书架"><i class="fa-solid fa-xmark"></i></button>
       </div>
@@ -16990,6 +17421,25 @@ function bindReaderStageEvents(stageRoot) {
   });
   // 书签开关（顶栏）
   q('.sd-reader-mark-btn')?.addEventListener('click', () => coreadToggleBookmark(stageRoot));
+  q('.sd-reader-focus-btn')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    coreadSaveProgress();
+    const f = focusClockState();
+    if (f.status === 'idle') {
+      const book = coreadBookMeta(readerView?.bookId);
+      if (book) {
+        f.activity = 'reading';
+        f.bookId = book.id;
+        f.task = `阅读《${book.title || '未命名书籍'}》`;
+        saveSettings();
+      }
+    } else if (f.sessionBookId && f.sessionBookId !== readerView?.bookId) {
+      toast('已有另一段专注正在进行，可在专注页结束后再切换书籍。', 'warning');
+    }
+    coreadCloseReader();
+    activeTab = 'focus';
+    renderModal();
+  });
 
   // 进度滑块（按章）+ 上下章
   const slider = q('.sd-reader-prog-slider');
@@ -19657,6 +20107,8 @@ function bindEvents() {
   // 此时读到的 floatPosition 仍是默认 → 悬浮球落默认中位。注水后重读 settings 并按保存位重绘，根治「重载后球回默认位」偶发。
   const appReadyHandler = async () => {
     settings = getSettings();
+    focusClockState();
+    focusClockRuntimeTick();
     await refreshCoreadPersonaAvatar();
     applyProseLayout();
     renderFloatButton();
@@ -19696,6 +20148,8 @@ function init() {
   if (initialized) return;
   initialized = true;
   settings = getSettings();
+  focusClockState();
+  startFocusClockRuntime();
   void refreshCoreadPersonaAvatar().then(() => rerenderIfOpen());
   applyProseLayout();
   seedBuiltinTheaters();
@@ -19755,6 +20209,7 @@ function cleanupRuntime(resetSettings = false) {
   inputMenuObserver?.disconnect?.();
   inputMenuObserver = null;
   ttsStopChat();   // 清理有声注入的 observer/委托/挂件，避免停用或重载后残留
+  stopFocusClockRuntime();
   stopProseLayout(true);
   if (resizeHandler) window.removeEventListener('resize', resizeHandler);
   resizeHandler = null;
