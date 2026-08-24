@@ -29,7 +29,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.38.0';
+const VERSION = '1.39.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -9504,6 +9504,7 @@ function renderStoryboardNav(state) {
     ['create', '镜头台', 'fa-camera-retro'],
     ['characters', '形象档案', 'fa-address-card'],
     ['gallery', '成片', 'fa-images'],
+    ['logs', '日志', 'fa-list-ul'],
     ['connection', '模型连接', 'fa-plug'],
   ];
   return `<nav class="sd-storyboard-nav">${items.map(([id, label, icon]) => `<button type="button" class="${state.view === id ? 'active' : ''}" data-storyboard-view="${id}"><i class="fa-solid ${icon}"></i><span>${label}</span></button>`).join('')}</nav>`;
@@ -9528,7 +9529,7 @@ function renderStoryboardCreate(state) {
   const profile = storyboardProfile(state.source);
   const sd = storyboardSdSettings();
   const latestFloor = storyboardCurrentAssistantFloor();
-  const characterOptions = state.characters.map((item) => `<option value="${htmlEscape(item.id)}" ${state.selectedCharacterId === item.id ? 'selected' : ''}>${htmlEscape(item.name || '未命名档案')}</option>`).join('');
+  const characterOptions = state.characters.map((item) => `<option value="${htmlEscape(item.id)}" ${state.selectedCharacterId === item.id ? 'selected' : ''}>${item.subjectType === 'user' ? '[我]' : '[角色]'} ${htmlEscape(item.name || item.subjectName || '未命名')} · ${htmlEscape(item.variantName || '默认档案')}</option>`).join('');
   const last = [...storyboardGalleryRecords()].reverse().find((item) => storyboardSafeUrl(item.url));
   const sourceFields = state.source === 'novel' ? `<div class="sd-storyboard-check-grid">
       ${[['novelSm', 'SMEA'], ['novelSmDyn', 'SMEA DYN'], ['novelDecrisper', 'Decrisper'], ['novelVarietyBoost', 'Variety Boost']].map(([key, label]) => `<label class="checkbox_label"><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="${key}" ${profile[key] ? 'checked' : ''}> ${label}</label>`).join('')}
@@ -9541,7 +9542,7 @@ function renderStoryboardCreate(state) {
     </div>`;
   return `<div class="sd-storyboard-create">
     <section class="sd-card sd-storyboard-hero-card">
-      <div><span class="sd-storyboard-kicker">STORYBOARD</span><h3>把这一幕留下来</h3><p>千幕组织镜头，SillyTavern 负责连接与生成。</p></div>
+      <div><span class="sd-storyboard-kicker">STORYBOARD</span><h3>将此瞬，妥为留存</h3></div>
       <i class="fa-solid fa-video"></i>
     </section>
     <section class="sd-card sd-storyboard-source-card">
@@ -9587,46 +9588,128 @@ function renderStoryboardConnection(state) {
   const profile = storyboardProfile(state.source);
   const source = STORYBOARD_SOURCES[state.source];
   const saved = source.secretKey && storyboardSecrets[source.secretKey];
-  const credential = source.secretKey ? `<label class="sd-storyboard-api-key"><span>API Key <em class="sd-storyboard-secret-state ${saved ? 'saved' : ''}">${saved ? '已保存至 ST' : '未配置'}</em></span><input class="text_pole" type="password" autocomplete="new-password" placeholder="${saved ? '留空则继续使用已保存 Key' : '输入后保存至 SillyTavern 密钥库'}"></label>` : '';
+  const credential = source.secretKey ? `<label class="sd-storyboard-api-key"><span>API Key <em class="sd-storyboard-secret-state ${saved ? 'saved' : ''}">${saved ? '已保存' : '未配置'}</em></span><input class="text_pole" type="password" autocomplete="new-password" placeholder="${saved ? '留空则继续使用已保存 Key' : '输入 API Key'}"></label>` : '';
   const extra = state.source === 'comfy' ? `<div class="sd-storyboard-grid sd-storyboard-grid-two">
       <label><span>ComfyUI URL</span><input class="text_pole sd-storyboard-connect-comfy-url" value="${htmlEscape(profile.comfyUrl || storyboardSdSettings().comfy_url || '')}" placeholder="http://127.0.0.1:8188"></label>
       <label><span>Workflow</span><input class="text_pole sd-storyboard-connect-comfy-workflow" list="sd-storyboard-workflows-connect" value="${htmlEscape(profile.comfyWorkflow || storyboardSdSettings().comfy_workflow || '')}" placeholder="工作流文件名"><datalist id="sd-storyboard-workflows-connect">${storyboardSelectOptions('#sd_comfy_workflow', profile.comfyWorkflow)}</datalist></label>
     </div>` : state.source === 'banana' ? `<label class="checkbox_label"><input type="checkbox" class="sd-storyboard-connect-google-enhance" ${profile.googleEnhance ? 'checked' : ''}> Prompt Enhance</label>` : '';
   return `<div class="sd-storyboard-connection">
-    <section class="sd-card sd-storyboard-connection-head"><span class="sd-storyboard-kicker">CONNECTION</span><h3>模型连接</h3><p>所有输入都在千幕完成；密钥进入 SillyTavern 密钥库，实际请求仍由其 Image Generation 后端发出。</p></section>
+    <section class="sd-card sd-storyboard-connection-head"><span class="sd-storyboard-kicker">CONNECTION</span><h3>模型连接</h3></section>
     <section class="sd-card">
       ${renderStoryboardSourceTabs(state)}
       <div class="sd-storyboard-connection-form">${credential}${extra}</div>
-      <button type="button" class="sd-btn sd-primary sd-storyboard-save-connection"><i class="fa-solid fa-check"></i>保存到 SillyTavern</button>
+      <button type="button" class="sd-btn sd-primary sd-storyboard-save-connection"><i class="fa-solid fa-check"></i>保存连接</button>
     </section>
-    <section class="sd-card sd-storyboard-callchain"><i class="fa-solid fa-route"></i><div><b>调用链</b><span>千幕工作台 → SillyTavern Image Generation → ${source.label}</span></div></section>
   </div>`;
 }
 
+function storyboardChatBindings() {
+  const store = getChatStore();
+  if (!isPlainObject(store.storyboardProfileBindings)) store.storyboardProfileBindings = { char: '', user: '' };
+  store.storyboardProfileBindings.char = String(store.storyboardProfileBindings.char || '');
+  store.storyboardProfileBindings.user = String(store.storyboardProfileBindings.user || '');
+  return store.storyboardProfileBindings;
+}
+
+function storyboardSubjectSnapshot(kind) {
+  const context = ctx();
+  const type = kind === 'user' ? 'user' : 'char';
+  const avatar = coreadIdentityAvatar(type);
+  if (type === 'user') {
+    const name = getPersonaName() || '我';
+    const identity = coreadPersonaAvatarRaw || avatar || name;
+    return { subjectType: type, subjectKey: `user:${identity}`, subjectName: name, name, referenceUrl: avatar };
+  }
+  const name = getCharacterName() || '当前角色';
+  const character = context.characters?.[context.characterId];
+  const identity = context.groupId ? `group:${context.groupId}` : (character?.avatar || character?.data?.avatar || name);
+  return { subjectType: type, subjectKey: `char:${identity}`, subjectName: name, name, referenceUrl: avatar };
+}
+
+function storyboardSyncSelectionForChat({ force = false } = {}) {
+  const state = storyboardState();
+  const bindings = storyboardChatBindings();
+  const valid = (id) => state.characters.some((item) => item.id === id);
+  if (!valid(bindings.char)) bindings.char = '';
+  if (!valid(bindings.user)) bindings.user = '';
+  const currentSubjects = [storyboardSubjectSnapshot('char'), storyboardSubjectSnapshot('user')];
+  const matched = currentSubjects.map((subject) => state.characters.find((item) => item.subjectKey === subject.subjectKey)?.id).find(Boolean);
+  const preferred = bindings.char || bindings.user || matched || '';
+  if (preferred && (force || !valid(state.selectedCharacterId))) state.selectedCharacterId = preferred;
+  if (!preferred && force) state.selectedCharacterId = '';
+  return preferred;
+}
+
+function storyboardProfileIsBound(item) {
+  const bindings = storyboardChatBindings();
+  return bindings[item?.subjectType === 'user' ? 'user' : 'char'] === item?.id;
+}
+
+async function storyboardCreateProfile(kind, base = null) {
+  const state = storyboardState();
+  const subject = base ? {
+    subjectType: base.subjectType, subjectKey: base.subjectKey, subjectName: base.subjectName,
+    name: base.name, referenceUrl: base.referenceUrl,
+  } : storyboardSubjectSnapshot(kind);
+  const siblingCount = state.characters.filter((item) => item.subjectKey === subject.subjectKey).length;
+  const now = Date.now();
+  const item = {
+    id: uid('cast'), ...subject, variantName: siblingCount ? `方案 ${siblingCount + 1}` : '默认档案',
+    subtitle: base?.subtitle || '', appearance: base?.appearance || '', negative: base?.negative || '',
+    createdAt: now, updatedAt: now,
+  };
+  state.characters.push(item);
+  state.selectedCharacterId = item.id;
+  state.characterView = 'edit';
+  storyboardChatBindings()[item.subjectType] = item.id;
+  saveSettings();
+  await saveMetadata();
+  renderModal();
+  return item;
+}
+
 function renderStoryboardCharacters(state) {
-  const selected = state.characters.find((item) => item.id === state.selectedCharacterId) || state.characters[0] || null;
-  const avatar = selected?.referenceUrl || coreadIdentityAvatar('char');
-  const cards = state.characters.map((item, index) => `<button type="button" class="sd-storyboard-file ${selected?.id === item.id ? 'active' : ''}" data-storyboard-character-id="${htmlEscape(item.id)}" style="--sd-file-index:${index}">
-      <span>${String(index + 1).padStart(2, '0')}</span><b>${htmlEscape(item.name || '未命名')}</b><small>${htmlEscape(item.subtitle || 'CHARACTER FILE')}</small>
-    </button>`).join('');
-  return `<div class="sd-storyboard-characters">
-    <section class="sd-storyboard-magazine">
-      <header><div><span class="sd-storyboard-kicker">CAST ARCHIVE</span><h3>Appearance<br>Files<sup>✦</sup></h3></div><button type="button" class="sd-btn sd-storyboard-add-current"><i class="fa-solid fa-plus"></i>为当前角色建档</button></header>
-      ${cards ? `<div class="sd-storyboard-file-stack">${cards}</div>` : '<div class="sd-storyboard-character-empty">还没有形象档案。为当前角色建一张，之后每个镜头都可随手调用。</div>'}
-      ${selected ? `<article class="sd-storyboard-profile-sheet" data-storyboard-character-edit="${htmlEscape(selected.id)}">
-        <div class="sd-storyboard-profile-copy">
-          <span class="sd-storyboard-profile-no">PROFILE / ${String(Math.max(1, state.characters.indexOf(selected) + 1)).padStart(2, '0')}</span>
-          <label><span>档案名</span><input class="text_pole" data-character-field="name" value="${htmlEscape(selected.name)}"></label>
-          <label><span>一句识别</span><input class="text_pole" data-character-field="subtitle" value="${htmlEscape(selected.subtitle)}" placeholder="例如：黑发、冷白肤色、旧式长风衣"></label>
-          <label><span>视觉描述</span><textarea class="text_pole" data-character-field="appearance" placeholder="只写画面中看得见的稳定特征；套用档案时会与镜头描述一并发送。">${htmlEscape(selected.appearance)}</textarea></label>
-          <label><span>专属反向提示词</span><textarea class="text_pole" data-character-field="negative" placeholder="可留空">${htmlEscape(selected.negative)}</textarea></label>
-          <label><span>档案图 URL</span><input class="text_pole" data-character-field="referenceUrl" type="url" value="${htmlEscape(selected.referenceUrl)}" placeholder="可留空，默认显示当前角色头像"></label>
-          <div class="sd-button-row"><button type="button" class="sd-btn sd-primary sd-storyboard-save-character">保存档案</button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-character" title="删除档案" aria-label="删除档案"><i class="fa-solid fa-trash-can"></i></button></div>
-        </div>
-        <div class="sd-storyboard-profile-photo">${avatar ? `<img src="${htmlEscape(storyboardSafeUrl(avatar))}" alt="${htmlEscape(selected.name)}">` : '<i class="fa-solid fa-user"></i>'}<span>${htmlEscape(selected.name)}</span></div>
-      </article>` : ''}
-    </section>
-  </div>`;
+  const selected = state.characters.find((item) => item.id === state.selectedCharacterId) || null;
+  const bindings = storyboardChatBindings();
+  const captureButtons = `<div class="sd-storyboard-capture-row"><button type="button" class="sd-btn sd-storyboard-capture" data-storyboard-capture="char"><i class="fa-solid fa-user-plus"></i>捕获当前角色</button><button type="button" class="sd-btn sd-storyboard-capture" data-storyboard-capture="user"><i class="fa-solid fa-user-pen"></i>捕获我</button></div>`;
+  if (state.characterView !== 'edit' || !selected) {
+    const grouped = new Map();
+    for (const item of state.characters) {
+      const key = item.subjectKey || item.id;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(item);
+    }
+    const directories = [...grouped.values()].map((items, groupIndex) => {
+      const first = items[0];
+      const cards = items.map((item, index) => `<button type="button" class="sd-storyboard-file ${storyboardProfileIsBound(item) ? 'bound' : ''}" data-storyboard-character-id="${htmlEscape(item.id)}" style="--sd-file-index:${index}">
+        <span>${String(index + 1).padStart(2, '0')}</span><b>${htmlEscape(item.variantName || '默认档案')}</b><small>${htmlEscape(item.subtitle || item.name || 'APPEARANCE FILE')}</small>${storyboardProfileIsBound(item) ? '<em>当前聊天</em>' : ''}
+      </button>`).join('');
+      return `<section class="sd-storyboard-directory-group" style="--sd-group-index:${groupIndex}"><header><div><span>${first.subjectType === 'user' ? 'USER' : 'CHARACTER'}</span><b>${htmlEscape(first.subjectName || first.name || '未命名')}</b></div><small>${items.length} 套档案</small></header><div class="sd-storyboard-file-stack">${cards}</div></section>`;
+    }).join('');
+    return `<div class="sd-storyboard-characters"><section class="sd-storyboard-magazine sd-storyboard-directory">
+      <header><div><span class="sd-storyboard-kicker">CAST DIRECTORY</span><h3>Appearance<br>Index<sup>✦</sup></h3></div>${captureButtons}</header>
+      <div class="sd-storyboard-binding-strip"><span>当前聊天</span><b>角色：${htmlEscape(state.characters.find((item) => item.id === bindings.char)?.variantName || '未绑定')}</b><b>我：${htmlEscape(state.characters.find((item) => item.id === bindings.user)?.variantName || '未绑定')}</b></div>
+      ${directories || '<div class="sd-storyboard-character-empty">还没有形象档案。可分别捕获当前角色与“我”，并为同一人物保存多套外观。</div>'}
+    </section></div>`;
+  }
+  const avatar = selected.referenceUrl || coreadIdentityAvatar(selected.subjectType);
+  const bound = storyboardProfileIsBound(selected);
+  return `<div class="sd-storyboard-characters"><section class="sd-storyboard-magazine sd-storyboard-profile-page">
+    <header><button type="button" class="sd-btn sd-storyboard-character-back"><i class="fa-solid fa-arrow-left"></i>总目录</button><div class="sd-storyboard-profile-heading"><span class="sd-storyboard-kicker">${selected.subjectType === 'user' ? 'USER FILE' : 'CHARACTER FILE'}</span><b>${htmlEscape(selected.subjectName || selected.name)}</b></div><button type="button" class="sd-btn sd-storyboard-duplicate-character"><i class="fa-solid fa-copy"></i>复制一套</button></header>
+    <article class="sd-storyboard-profile-sheet" data-storyboard-character-edit="${htmlEscape(selected.id)}">
+      <div class="sd-storyboard-profile-copy">
+        <span class="sd-storyboard-profile-no">PROFILE / ${String(Math.max(1, state.characters.indexOf(selected) + 1)).padStart(2, '0')}</span>
+        <label><span>方案名</span><input class="text_pole" data-character-field="variantName" value="${htmlEscape(selected.variantName || '默认档案')}"></label>
+        <label><span>档案名</span><input class="text_pole" data-character-field="name" value="${htmlEscape(selected.name)}"></label>
+        <label><span>一句识别</span><input class="text_pole" data-character-field="subtitle" value="${htmlEscape(selected.subtitle)}" placeholder="例如：黑发、冷白肤色、旧式长风衣"></label>
+        <label><span>视觉描述</span><textarea class="text_pole" data-character-field="appearance" placeholder="只写画面中看得见的稳定特征；套用档案时会与镜头描述一并发送。">${htmlEscape(selected.appearance)}</textarea></label>
+        <label><span>专属反向提示词</span><textarea class="text_pole" data-character-field="negative" placeholder="可留空">${htmlEscape(selected.negative)}</textarea></label>
+        <label><span>档案图 URL</span><input class="text_pole" data-character-field="referenceUrl" type="url" value="${htmlEscape(selected.referenceUrl)}" placeholder="可留空，默认使用捕获到的头像"></label>
+        <div class="sd-storyboard-profile-actions"><button type="button" class="sd-btn ${bound ? 'sd-primary' : ''} sd-storyboard-bind-character" ${bound ? 'disabled' : ''}>${bound ? '已绑定当前聊天' : '绑定到当前聊天'}</button><button type="button" class="sd-btn sd-primary sd-storyboard-save-character">保存档案</button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-character" title="删除档案" aria-label="删除档案"><i class="fa-solid fa-trash-can"></i></button></div>
+      </div>
+      <div class="sd-storyboard-profile-photo">${avatar ? `<img src="${htmlEscape(storyboardSafeUrl(avatar))}" alt="${htmlEscape(selected.name)}">` : '<i class="fa-solid fa-user"></i>'}<span>${htmlEscape(selected.name)} · ${htmlEscape(selected.variantName || '默认档案')}</span></div>
+    </article>
+  </section></div>`;
 }
 
 function renderStoryboardGallery() {
@@ -9645,10 +9728,76 @@ function renderStoryboardGallery() {
   </div>`;
 }
 
+function storyboardStartLog(state, profile) {
+  const now = Date.now();
+  const rawFloor = String(state.floor ?? '').trim();
+  const log = {
+    id: uid('shotlog'), status: 'generating', source: state.source, model: String(profile.model || ''),
+    prompt: String(state.prompt || '').slice(0, 800), negative: String(state.negative || '').slice(0, 400),
+    target: state.target, floor: Number.isInteger(Number(rawFloor)) && rawFloor ? Number(rawFloor) : null,
+    params: {
+      width: profile.width || '', height: profile.height || '', steps: profile.steps || '', cfg: profile.cfg || '',
+      seed: profile.seed || '', sampler: profile.sampler || '', scheduler: profile.scheduler || '',
+    },
+    error: '', recordId: '', startedAt: now, finishedAt: 0, durationMs: 0,
+  };
+  state.logs.unshift(log);
+  state.logs = state.logs.slice(0, 120);
+  saveSettings();
+  return log;
+}
+
+function storyboardFinishLog(log, status, details = {}) {
+  if (!log) return;
+  log.status = status;
+  log.finishedAt = Date.now();
+  log.durationMs = Math.max(0, log.finishedAt - Number(log.startedAt || log.finishedAt));
+  if (details.error) log.error = String(details.error).slice(0, 1600);
+  if (details.recordId) log.recordId = String(details.recordId);
+  if (Number.isInteger(details.floor)) log.floor = details.floor;
+  saveSettings();
+}
+
+function storyboardLogText(log) {
+  return JSON.stringify({
+    time: formatDateTime(log.startedAt), status: log.status, provider: STORYBOARD_SOURCES[log.source]?.label || log.source,
+    model: log.model || '(current)', target: log.target, floor: log.floor, durationMs: log.durationMs,
+    params: log.params, prompt: log.prompt, negative: log.negative, error: log.error || undefined,
+  }, null, 2);
+}
+
+function renderStoryboardLogs(state) {
+  const logs = state.logs.filter((item) => state.logFilter === 'all' || (state.logFilter === 'success' ? item.status === 'success' : item.status === 'failed'));
+  const counts = {
+    all: state.logs.length,
+    success: state.logs.filter((item) => item.status === 'success').length,
+    failed: state.logs.filter((item) => item.status === 'failed').length,
+  };
+  const rows = logs.map((log) => {
+    const source = STORYBOARD_SOURCES[log.source]?.label || log.source;
+    const statusLabel = log.status === 'success' ? '完成' : log.status === 'failed' ? '失败' : log.status === 'cancelled' ? '已取消' : '生成中';
+    return `<details class="sd-card sd-storyboard-log ${log.status}" data-storyboard-log="${htmlEscape(log.id)}">
+      <summary><span class="sd-storyboard-log-status">${statusLabel}</span><b>${htmlEscape(source)}${log.model ? ` · ${htmlEscape(log.model)}` : ''}</b><small>${htmlEscape(formatDateTime(log.startedAt))}</small><i class="fa-solid fa-chevron-down"></i></summary>
+      <div class="sd-storyboard-log-body">
+        <p>${htmlEscape(log.prompt || '未记录画面描述')}</p>
+        <div class="sd-storyboard-log-meta"><span>耗时 ${log.durationMs ? `${(log.durationMs / 1000).toFixed(1)}s` : '—'}</span><span>${Number.isInteger(log.floor) ? `第 ${log.floor} 层` : '仅成片'}</span><span>${htmlEscape([log.params?.width, log.params?.height].filter(Boolean).join(' × ') || '沿用尺寸')}</span></div>
+        ${log.error ? `<pre>${htmlEscape(log.error)}</pre>` : ''}
+        <button type="button" class="sd-btn sd-storyboard-copy-log">复制诊断信息</button>
+      </div>
+    </details>`;
+  }).join('');
+  return `<div class="sd-storyboard-logs-page">
+    <section class="sd-card sd-storyboard-log-head"><div><span class="sd-storyboard-kicker">GENERATION LOG</span><h3>分镜日志</h3></div>${state.logs.length ? '<button type="button" class="sd-btn sd-storyboard-clear-logs">清空日志</button>' : ''}</section>
+    <div class="sd-storyboard-log-filters">${[['all', '全部'], ['success', '完成'], ['failed', '失败']].map(([id, label]) => `<button type="button" class="${state.logFilter === id ? 'active' : ''}" data-storyboard-log-filter="${id}">${label}<span>${counts[id]}</span></button>`).join('')}</div>
+    ${rows || '<section class="sd-card sd-storyboard-empty"><i class="fa-solid fa-list-ul"></i><p>暂无对应日志。每次生成都会记录连接、参数、耗时与失败原因。</p></section>'}
+  </div>`;
+}
+
 function renderStoryboardTab() {
   const state = storyboardState();
   const body = state.view === 'characters' ? renderStoryboardCharacters(state)
     : state.view === 'gallery' ? renderStoryboardGallery(state)
+      : state.view === 'logs' ? renderStoryboardLogs(state)
       : state.view === 'connection' ? renderStoryboardConnection(state)
         : renderStoryboardCreate(state);
   return `<div class="sd-storyboard-root">${renderStoryboardNav(state)}${body}</div>`;
@@ -9690,7 +9839,7 @@ async function storyboardRefreshSecretState(root = document.getElementById(MODAL
     const configured = Boolean(source.secretKey && Array.isArray(storyboardSecrets[source.secretKey]) && storyboardSecrets[source.secretKey].length);
     const badge = root?.querySelector('.sd-storyboard-secret-state');
     if (badge) {
-      badge.textContent = configured ? '已保存至 ST' : '未配置';
+      badge.textContent = configured ? '已保存' : '未配置';
       badge.classList.toggle('saved', configured);
     }
   } catch (error) {
@@ -9710,8 +9859,6 @@ async function storyboardActivateSource(sourceId, { hydrate = false } = {}) {
   const source = STORYBOARD_SOURCES[sourceId];
   if (!source) throw new Error('不支持的生图模型');
   const sd = storyboardSdSettings();
-  try { await storyboardExecuteSlash(`/imagine-source ${source.stSource}`); }
-  catch (error) { console.warn(`[${MODULE_NAME}] imagine-source fallback`, error); }
   sd.source = source.stSource;
   if (sourceId === 'banana') sd.google_api = 'makersuite';
   if (hydrate) {
@@ -9719,7 +9866,6 @@ async function storyboardActivateSource(sourceId, { hydrate = false } = {}) {
     if (profile) profile.loaded = false;
     storyboardHydrateProfile(sourceId, sd);
   }
-  saveSettings();
   return sd;
 }
 
@@ -9744,7 +9890,27 @@ function storyboardApplyProfileToSt(profile, sourceId) {
     sd.novel_sm = Boolean(profile.novelSm); sd.novel_sm_dyn = Boolean(profile.novelSmDyn);
     sd.novel_decrisper = Boolean(profile.novelDecrisper); sd.novel_variety_boost = Boolean(profile.novelVarietyBoost);
   }
-  saveSettings();
+}
+
+const STORYBOARD_TRANSIENT_SD_KEYS = Object.freeze([
+  'source', 'model', 'sampler', 'scheduler', 'width', 'height', 'steps', 'scale', 'seed',
+  'comfy_url', 'comfy_workflow', 'comfy_type', 'openai_style', 'openai_quality', 'openai_quality_gpt',
+  'google_api', 'google_enhance', 'novel_sm', 'novel_sm_dyn', 'novel_decrisper', 'novel_variety_boost',
+]);
+
+async function storyboardWithTransientProfile(profile, sourceId, task) {
+  const sd = storyboardSdSettings();
+  const snapshot = Object.fromEntries(STORYBOARD_TRANSIENT_SD_KEYS.map((key) => [key, sd[key]]));
+  try {
+    await storyboardActivateSource(sourceId);
+    storyboardApplyProfileToSt(profile, sourceId);
+    return await task();
+  } finally {
+    for (const key of STORYBOARD_TRANSIENT_SD_KEYS) {
+      if (snapshot[key] === undefined) delete sd[key];
+      else sd[key] = snapshot[key];
+    }
+  }
 }
 
 async function storyboardSaveConnection(root, { quiet = false } = {}) {
@@ -9756,8 +9922,6 @@ async function storyboardSaveConnection(root, { quiet = false } = {}) {
     profile.comfyWorkflow = String(root.querySelector('.sd-storyboard-connect-comfy-workflow, [data-storyboard-field="comfyWorkflow"]')?.value || profile.comfyWorkflow || '').trim();
   }
   if (state.source === 'banana') profile.googleEnhance = Boolean(root.querySelector('.sd-storyboard-connect-google-enhance, [data-storyboard-field="googleEnhance"]')?.checked ?? profile.googleEnhance);
-  await storyboardActivateSource(state.source);
-  storyboardApplyProfileToSt(profile, state.source);
   const keyInput = root.querySelector('.sd-storyboard-api-key input');
   const keyValue = String(keyInput?.value || '').trim();
   if (source.secretKey && keyValue) {
@@ -9785,14 +9949,13 @@ async function storyboardGenerate(root) {
   if (storyboardBusy) return;
   const { state, profile } = storyboardCaptureWorkbench(root);
   if (!state.prompt.trim()) return toast('请先写下画面描述。', 'warning');
+  const log = storyboardStartLog(state, profile);
   storyboardBusy = true;
   renderModal();
   try {
-    await storyboardSaveConnection(document.getElementById(MODAL_ID), { quiet: true });
-    storyboardApplyProfileToSt(profile, state.source);
     const command = buildImagineCommand(storyboardGenerationPayload(state, profile));
-    const url = storyboardSafeUrl(await storyboardExecuteSlash(command));
-    if (!url) throw new Error('SillyTavern 未返回图片地址，请检查模型连接与参数');
+    const url = storyboardSafeUrl(await storyboardWithTransientProfile(profile, state.source, () => storyboardExecuteSlash(command)));
+    if (!url) throw new Error('未返回图片地址，请检查模型连接与参数');
     let floor = null;
     if (state.target === 'latest') floor = storyboardCurrentAssistantFloor();
     if (state.target === 'floor') {
@@ -9807,14 +9970,18 @@ async function storyboardGenerate(root) {
       id: uid('shot'), url, prompt: state.prompt, negative: state.negative, source: state.source,
       characterId: state.selectedCharacterId || '', floor, inline: Boolean(state.inlineByDefault && Number.isInteger(floor)),
       messageHash: message ? hashText(String(message.mes || '')) : '', swipeId: message ? Number(message.swipe_id || 0) : 0,
+      model: profile.model || '', sampler: profile.sampler || '', scheduler: profile.scheduler || '',
+      steps: Number(profile.steps) || 0, cfg: Number(profile.cfg) || 0, seed: profile.seed === '' ? null : Number(profile.seed),
       width: Number(profile.width) || 0, height: Number(profile.height) || 0, createdAt: Date.now(),
     };
     storyboardGalleryRecords().push(record);
     await saveMetadata();
+    storyboardFinishLog(log, 'success', { recordId: record.id, floor });
     storyboardScheduleInlineRender(30);
     toast(record.inline ? `分镜已插入第 ${floor} 层。` : '分镜已生成并存入成片。', 'success');
   } catch (error) {
     console.error(`[${MODULE_NAME}] storyboard generation failed`, error);
+    storyboardFinishLog(log, 'failed', { error: error?.message || error });
     toast(`分镜生成失败：${error?.message || error}`, 'error');
   } finally {
     storyboardBusy = false;
@@ -9906,22 +10073,13 @@ function storyboardUnbindChat() {
   document.querySelectorAll('#chat .sd-storyboard-inline').forEach((node) => node.remove());
 }
 
-function storyboardCreateCurrentCharacter() {
-  const state = storyboardState();
-  const name = getCharacterName() || '未命名角色';
-  const item = { id: uid('cast'), name, subtitle: '', appearance: '', negative: '', referenceUrl: coreadIdentityAvatar('char'), updatedAt: Date.now() };
-  state.characters.push(item);
-  state.selectedCharacterId = item.id;
-  saveSettings();
-  renderModal();
-}
-
 function bindStoryboardTabEvents(root) {
   if (activeTab !== 'imagegen') return;
   const state = storyboardState();
   root.querySelectorAll('[data-storyboard-view]').forEach((button) => button.addEventListener('click', () => {
     if (state.view === 'create') storyboardCaptureWorkbench(root);
     state.view = button.dataset.storyboardView;
+    if (state.view === 'characters') state.characterView = storyboardSyncSelectionForChat({ force: true }) ? 'edit' : 'directory';
     saveSettings(); renderModal();
   }));
   root.querySelector('.sd-storyboard-open-connection')?.addEventListener('click', () => { storyboardCaptureWorkbench(root); state.view = 'connection'; saveSettings(); renderModal(); });
@@ -9930,7 +10088,6 @@ function bindStoryboardTabEvents(root) {
     if (!STORYBOARD_SOURCES[id] || id === state.source) return;
     if (state.view === 'create') storyboardCaptureWorkbench(root);
     state.source = id; saveSettings();
-    try { await storyboardActivateSource(id, { hydrate: true }); } catch (error) { toast(`切换失败：${error?.message || error}`, 'warning'); }
     renderModal();
   }));
   root.querySelector('.sd-storyboard-use-floor')?.addEventListener('click', () => {
@@ -9955,11 +10112,28 @@ function bindStoryboardTabEvents(root) {
   });
   root.querySelector('.sd-storyboard-generate')?.addEventListener('click', () => void storyboardGenerate(root));
   root.querySelector('.sd-storyboard-save-connection')?.addEventListener('click', () => void storyboardSaveConnection(root).catch((error) => toast(`保存失败：${error?.message || error}`, 'error')));
-  root.querySelector('.sd-storyboard-add-current')?.addEventListener('click', storyboardCreateCurrentCharacter);
+  root.querySelectorAll('[data-storyboard-capture]').forEach((button) => button.addEventListener('click', () => void storyboardCreateProfile(button.dataset.storyboardCapture)));
   root.querySelectorAll('[data-storyboard-character-id]').forEach((button) => button.addEventListener('click', () => {
     state.selectedCharacterId = button.dataset.storyboardCharacterId || '';
+    state.characterView = 'edit';
     saveSettings(); renderModal();
   }));
+  root.querySelector('.sd-storyboard-character-back')?.addEventListener('click', () => {
+    state.characterView = 'directory';
+    saveSettings(); renderModal();
+  });
+  root.querySelector('.sd-storyboard-duplicate-character')?.addEventListener('click', () => {
+    const item = state.characters.find((entry) => entry.id === state.selectedCharacterId);
+    if (item) void storyboardCreateProfile(item.subjectType, item);
+  });
+  root.querySelector('.sd-storyboard-bind-character')?.addEventListener('click', async () => {
+    const item = state.characters.find((entry) => entry.id === state.selectedCharacterId);
+    if (!item) return;
+    storyboardChatBindings()[item.subjectType] = item.id;
+    await saveMetadata();
+    toast('已绑定到当前聊天。', 'success');
+    renderModal();
+  });
   root.querySelector('.sd-storyboard-save-character')?.addEventListener('click', () => {
     const sheet = root.querySelector('[data-storyboard-character-edit]');
     const item = state.characters.find((entry) => entry.id === sheet?.dataset.storyboardCharacterEdit);
@@ -9970,9 +10144,28 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-delete-character')?.addEventListener('click', async () => {
     const item = state.characters.find((entry) => entry.id === state.selectedCharacterId);
     if (!item || !await confirmDialog('删除形象档案', `确定删除「${item.name || '未命名档案'}」？已生成的图片不会被删除。`)) return;
+    const bindings = storyboardChatBindings();
+    if (bindings.char === item.id) bindings.char = '';
+    if (bindings.user === item.id) bindings.user = '';
     state.characters = state.characters.filter((entry) => entry.id !== item.id);
-    state.selectedCharacterId = state.characters[0]?.id || '';
+    state.selectedCharacterId = '';
+    state.characterView = 'directory';
+    saveSettings(); await saveMetadata(); renderModal();
+  });
+  root.querySelectorAll('[data-storyboard-log-filter]').forEach((button) => button.addEventListener('click', () => {
+    state.logFilter = button.dataset.storyboardLogFilter || 'all';
     saveSettings(); renderModal();
+  }));
+  root.querySelector('.sd-storyboard-clear-logs')?.addEventListener('click', async () => {
+    if (!await confirmDialog('清空分镜日志', '确定清空全部分镜日志？成片不会被删除。')) return;
+    state.logs = [];
+    saveSettings(); renderModal();
+  });
+  root.querySelectorAll('[data-storyboard-log]').forEach((row) => {
+    const log = state.logs.find((item) => item.id === row.dataset.storyboardLog);
+    row.querySelector('.sd-storyboard-copy-log')?.addEventListener('click', () => {
+      if (log) void coreadCopyText(storyboardLogText(log)).then(() => toast('诊断信息已复制。', 'success'));
+    });
   });
   root.querySelectorAll('.sd-storyboard-gallery article[data-storyboard-record]').forEach((card) => {
     const record = storyboardGalleryRecords().find((item) => item.id === card.dataset.storyboardRecord);
@@ -22124,6 +22317,7 @@ function bindEvents() {
     coreadInvalidatePool();    // 切聊天：反哺主线切片池随新聊天的绑定档案重算
     companionWorldView = '';   // 切聊天：世界书已按聊天分存，查看视图回到未选·避免跨聊天残留
     await refreshCoreadPersonaAvatar();
+    storyboardSyncSelectionForChat({ force: true });
     applyProseLayout();
     renderFloatButton();
     renderInputMenuEntry();
@@ -22139,6 +22333,7 @@ function bindEvents() {
     focusClockState();
     focusClockRuntimeTick();
     await refreshCoreadPersonaAvatar();
+    storyboardSyncSelectionForChat({ force: true });
     applyProseLayout();
     renderFloatButton();
     restoreQuickDockedPlugins();
@@ -22148,6 +22343,7 @@ function bindEvents() {
   };
   const personaChangedHandler = async () => {
     await refreshCoreadPersonaAvatar();
+    storyboardSyncSelectionForChat({ force: true });
     rerenderIfOpen();
   };
   // 原地编辑正文：刻意不复位缓存——保留已提取台词与已生成音频，交用户手动决定（🔁 全量重提取 / 双击单句更新）。

@@ -21,7 +21,9 @@ export const STORYBOARD_RATIOS = Object.freeze([
 
 export function createStoryboardDefaults() {
   return {
-    view: 'create',                // create | characters | gallery | connection
+    view: 'create',                // create | characters | gallery | logs | connection
+    characterView: 'directory',    // directory | edit
+    logFilter: 'all',              // all | success | failed
     source: 'novel',
     initialized: false,             // 首开时从 ST 当前连接取一次，不在千幕硬塞画质默认值
     target: 'latest',              // latest | floor | gallery
@@ -37,6 +39,7 @@ export function createStoryboardDefaults() {
       novelSm: false, novelSmDyn: false, novelDecrisper: false, novelVarietyBoost: false,
     }])),
     characters: [],
+    logs: [],
   };
 }
 
@@ -46,7 +49,9 @@ export function normalizeStoryboardState(value) {
   for (const [key, fallback] of Object.entries(defaults)) {
     if (state[key] === undefined) state[key] = structuredCloneSafe(fallback);
   }
-  state.view = ['create', 'characters', 'gallery', 'connection'].includes(state.view) ? state.view : 'create';
+  state.view = ['create', 'characters', 'gallery', 'logs', 'connection'].includes(state.view) ? state.view : 'create';
+  state.characterView = ['directory', 'edit'].includes(state.characterView) ? state.characterView : 'directory';
+  state.logFilter = ['all', 'success', 'failed'].includes(state.logFilter) ? state.logFilter : 'all';
   state.source = STORYBOARD_SOURCES[state.source] ? state.source : 'novel';
   state.target = ['latest', 'floor', 'gallery'].includes(state.target) ? state.target : 'latest';
   state.inlineByDefault = state.inlineByDefault !== false;
@@ -60,14 +65,36 @@ export function normalizeStoryboardState(value) {
   if (!Array.isArray(state.characters)) state.characters = [];
   state.characters = state.characters.filter((item) => item && typeof item === 'object').map((item) => ({
     id: String(item.id || ''),
+    subjectType: item.subjectType === 'user' ? 'user' : 'char',
+    subjectKey: String(item.subjectKey || `legacy:${item.id || ''}`).slice(0, 512),
+    subjectName: String(item.subjectName || item.name || '').slice(0, 80),
+    variantName: String(item.variantName || '默认档案').slice(0, 80),
     name: String(item.name || '').slice(0, 80),
     subtitle: String(item.subtitle || '').slice(0, 120),
     appearance: String(item.appearance || '').slice(0, 12000),
     negative: String(item.negative || '').slice(0, 6000),
     referenceUrl: String(item.referenceUrl || '').slice(0, 2048),
+    createdAt: Number(item.createdAt || item.updatedAt || 0),
     updatedAt: Number(item.updatedAt || 0),
   })).filter((item) => item.id);
   if (!state.characters.some((item) => item.id === state.selectedCharacterId)) state.selectedCharacterId = '';
+  if (!Array.isArray(state.logs)) state.logs = [];
+  state.logs = state.logs.filter((item) => item && typeof item === 'object' && item.id).slice(0, 120).map((item) => ({
+    id: String(item.id),
+    status: ['generating', 'success', 'failed', 'cancelled'].includes(item.status) ? item.status : 'failed',
+    source: STORYBOARD_SOURCES[item.source] ? item.source : 'novel',
+    model: String(item.model || '').slice(0, 240),
+    prompt: String(item.prompt || '').slice(0, 800),
+    negative: String(item.negative || '').slice(0, 400),
+    target: String(item.target || '').slice(0, 40),
+    floor: Number.isInteger(item.floor) ? item.floor : null,
+    params: item.params && typeof item.params === 'object' ? item.params : {},
+    error: String(item.error || '').slice(0, 1600),
+    recordId: String(item.recordId || ''),
+    startedAt: Number(item.startedAt || 0),
+    finishedAt: Number(item.finishedAt || 0),
+    durationMs: Math.max(0, Number(item.durationMs || 0)),
+  }));
   return state;
 }
 
