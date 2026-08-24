@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.34.0';
+const VERSION = '1.34.1';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
