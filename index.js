@@ -69,6 +69,8 @@ const FOCUS_CLOCK_SOUND_PRESETS = Object.freeze({
   bright: { label: '明亮', url: new URL('./assets/focus-sounds/bright.mp3', import.meta.url).href },
   horizon: { label: '地平线', url: new URL('./assets/focus-sounds/horizon.mp3', import.meta.url).href },
   sunrise: { label: '日出', url: new URL('./assets/focus-sounds/sunrise.mp3', import.meta.url).href },
+  merryChristmasMrLawrence: { label: 'Merry Christmas Mr. Lawrence', url: 'https://img.liminale.art/f/P3ix/Merry%20Christmas%20Mr.%20Lawrence.mp3' },
+  farewell: { label: 'Farewell', url: 'https://img.liminale.art/f/KWUK/Farewell.mp3' },
 });
 const FOCUS_CLOCK_RELATIONS = Object.freeze({
   stranger: { label: '陌生', rule: '保持礼貌和距离感，不使用昵称、亲密暗示或越界关怀。' },
@@ -3810,6 +3812,95 @@ let quickDockRestoreTimer = null;
 let quickDockRestoreStopTimer = null;
 let quickDockDrag = null;
 let quickDockCaptureBound = false;
+let quickDockExtensionApiPromise = null;
+
+function quickDockCleanLabel(value) {
+  const label = String(value || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  if (!label) return '';
+  if (/^(?:第三方)?(?:插件|工具|入口|悬浮窗|悬浮球)(?:按钮)?$/i.test(label)) return '';
+  if (/^(?:打开|关闭|菜单|设置|工具|入口)$/i.test(label)) return '';
+  return label;
+}
+
+function quickDockNextFallbackLabel(extraLabels = []) {
+  const used = new Set([
+    ...(settings.quickWheelDockedPlugins || []).map((item) => item?.label),
+    ...[...quickDockRuntime.values()].map((item) => item?.label),
+    ...extraLabels,
+  ].map((label) => quickDockCleanLabel(label)).filter(Boolean));
+  let index = 1;
+  while (used.has(`插件收纳${index}`)) index += 1;
+  return `插件收纳${index}`;
+}
+
+function quickDockExtensionApi() {
+  if (!quickDockExtensionApiPromise) {
+    // 动态读取 ST 扩展清单，避免旧版 ST 缺少导出时拖垮千幕整体加载。
+    quickDockExtensionApiPromise = import('../../../extensions.js').then((module) => ({
+      names: Array.isArray(module.extensionNames) ? module.extensionNames.map(String) : [],
+      getManifest: typeof module.getExtensionManifest === 'function' ? module.getExtensionManifest : null,
+    })).catch(() => null);
+  }
+  return quickDockExtensionApiPromise;
+}
+
+function quickDockOwnerSignals(host, activator) {
+  const nodes = [...new Set([
+    host, activator,
+    ...[host, activator].flatMap((node) => node?.querySelectorAll ? [...node.querySelectorAll('*')].slice(0, 48) : []),
+  ].filter((node) => node instanceof Element))];
+  const signals = [];
+  const attrs = ['id', 'class', 'src', 'href', 'style', 'data-extension-id', 'data-extension-name', 'data-plugin-id', 'data-plugin-name'];
+  for (const node of nodes) {
+    for (const attr of attrs) {
+      const value = node.getAttribute?.(attr);
+      if (value) signals.push(String(value));
+    }
+    if ('currentSrc' in node && node.currentSrc) signals.push(String(node.currentSrc));
+  }
+  return signals.map((value) => {
+    try { return decodeURIComponent(value).toLowerCase(); } catch (_) { return value.toLowerCase(); }
+  });
+}
+
+function quickDockMatchExtensionName(signals, extensionNames) {
+  const ranked = [...extensionNames].filter(Boolean).sort((a, b) => b.length - a.length);
+  for (const name of ranked) {
+    const lowerName = String(name).toLowerCase();
+    const shortName = lowerName.split('/').filter(Boolean).pop() || lowerName;
+    const pathNeedle = `/scripts/extensions/${lowerName.replace(/^scripts\/extensions\//, '')}/`;
+    if (signals.some((signal) => signal.includes(pathNeedle))) return name;
+    const tokenNeedle = shortName.replace(/[^a-z0-9_-]/g, '');
+    if (tokenNeedle.length >= 4 && signals.some((signal) => {
+      const tokens = signal.split(/[^a-z0-9_-]+/).filter(Boolean);
+      return tokens.includes(tokenNeedle);
+    })) return name;
+  }
+  return '';
+}
+
+async function quickDockResolvePluginLabel(host, activator) {
+  const api = await quickDockExtensionApi();
+  if (!api?.names?.length) return '';
+  const extensionName = quickDockMatchExtensionName(quickDockOwnerSignals(host, activator), api.names);
+  if (!extensionName) return '';
+  let manifest = null;
+  try { manifest = api.getManifest ? await api.getManifest(extensionName) : null; } catch (_) {}
+  return quickDockCleanLabel(manifest?.display_name || manifest?.name || extensionName.split('/').pop());
+}
+
+function quickDockApplyResolvedLabel(key, label) {
+  const clean = quickDockCleanLabel(label);
+  if (!clean) return;
+  const record = quickDockRuntime.get(String(key));
+  if (record && /^插件收纳\d+$/.test(record.label)) record.label = clean;
+  const saved = (settings.quickWheelDockedPlugins || []).find((item) => item.key === String(key));
+  if (saved && /^插件收纳\d+$/.test(saved.label)) {
+    saved.label = clean;
+    saveSettings();
+  }
+  quickDockRefreshSettingsIfVisible();
+}
 
 function normalizeQuickWheelSettings() {
   // 旧版“默认方案”只在迁移时存在；更新后直接沿用用户已经勾选的自定义入口。
@@ -3822,21 +3913,27 @@ function normalizeQuickWheelSettings() {
   if (!settings.quickWheelCustomEnabled.length) settings.quickWheelCustomEnabled = [QUICK_COMMAND_IDS[0]];
   const docked = Array.isArray(settings.quickWheelDockedPlugins) ? settings.quickWheelDockedPlugins : [];
   const seenDockKeys = new Set();
-  settings.quickWheelDockedPlugins = docked.filter((item) => {
+  const validDocked = docked.filter((item) => {
     const key = String(item?.key || '').trim();
     const selector = String(item?.selector || '').trim();
     if (!key || !selector || seenDockKeys.has(key)) return false;
     seenDockKeys.add(key);
     return true;
-  }).slice(0, QUICK_HIVE_SAFETY_LIMIT).map((item) => ({
-    key: String(item.key).slice(0, 120),
-    selector: String(item.selector).slice(0, 500),
-    label: String(item.label || '第三方工具').slice(0, 40),
-    iconUrl: quickDockNormalizeIconUrl(item.iconUrl, true),
-    iconSvg: quickDockSanitizeSvg(item.iconSvg),
-    iconClass: String(item.iconClass || '').split(/\s+/).filter((name) => /^fa[\w-]*$/.test(name)).slice(0, 5).join(' '),
-    iconText: Array.from(String(item.iconText || '')).slice(0, 2).join(''),
-  }));
+  }).slice(0, QUICK_HIVE_SAFETY_LIMIT);
+  const reservedLabels = validDocked.map((item) => quickDockCleanLabel(item.label)).filter((label) => /^插件收纳\d+$/.test(label));
+  settings.quickWheelDockedPlugins = validDocked.map((item) => {
+    const label = quickDockCleanLabel(item.label) || quickDockNextFallbackLabel(reservedLabels);
+    reservedLabels.push(label);
+    return {
+      key: String(item.key).slice(0, 120),
+      selector: String(item.selector).slice(0, 500),
+      label,
+      iconUrl: quickDockNormalizeIconUrl(item.iconUrl, true),
+      iconSvg: quickDockSanitizeSvg(item.iconSvg),
+      iconClass: String(item.iconClass || '').split(/\s+/).filter((name) => /^fa[\w-]*$/.test(name)).slice(0, 5).join(' '),
+      iconText: Array.from(String(item.iconText || '')).slice(0, 2).join(''),
+    };
+  });
 }
 
 function quickWheelPrimaryItems() {
@@ -3993,11 +4090,11 @@ function quickDockCandidate(target) {
 }
 
 function quickDockDescribe(host, activator) {
-  const label = String(
-    activator?.getAttribute?.('aria-label') || activator?.getAttribute?.('title')
-    || host?.getAttribute?.('aria-label') || host?.getAttribute?.('title')
-    || activator?.textContent || host?.textContent || '第三方工具',
-  ).replace(/\s+/g, ' ').trim().slice(0, 40) || '第三方工具';
+  const label = [
+    activator?.getAttribute?.('aria-label'), activator?.getAttribute?.('title'),
+    host?.getAttribute?.('aria-label'), host?.getAttribute?.('title'),
+    activator?.textContent, host?.textContent,
+  ].map(quickDockCleanLabel).find(Boolean) || '';
   const visualNodes = [...new Set([
     activator, host,
     ...(activator?.querySelectorAll?.('img, svg, canvas, i, [class], [style]') || []),
@@ -4074,8 +4171,9 @@ function quickDockAttach(host, activator, descriptor = null, fromRestore = false
     return false;
   }
   const described = quickDockDescribe(host, activator);
+  const resolvedLabel = quickDockCleanLabel(described.label) || quickDockCleanLabel(descriptor?.label) || quickDockCleanLabel(saved?.label);
   const visual = {
-    label: descriptor?.label || described.label,
+    label: resolvedLabel || quickDockNextFallbackLabel(),
     iconUrl: described.iconUrl || descriptor?.iconUrl || '',
     iconSvg: described.iconSvg || descriptor?.iconSvg || '',
     iconClass: described.iconClass || descriptor?.iconClass || '',
@@ -4084,7 +4182,7 @@ function quickDockAttach(host, activator, descriptor = null, fromRestore = false
   const record = {
     key,
     selector,
-    label: String(visual.label || '第三方工具').slice(0, 40),
+    label: quickDockCleanLabel(visual.label) || quickDockNextFallbackLabel(),
     iconUrl: quickDockNormalizeIconUrl(visual.iconUrl),
     iconSvg: quickDockSanitizeSvg(visual.iconSvg),
     iconClass: String(visual.iconClass || '').split(/\s+/).filter((name) => /^fa[\w-]*$/.test(name)).slice(0, 5).join(' '),
@@ -4093,6 +4191,7 @@ function quickDockAttach(host, activator, descriptor = null, fromRestore = false
     activator: quickDockActivatorForHost(host, activator),
   };
   quickDockRuntime.set(key, record);
+  void quickDockResolvePluginLabel(host, record.activator).then((label) => quickDockApplyResolvedLabel(key, label));
   syncQuickDockOriginVisibility();
   if (selector && !saved) {
     settings.quickWheelDockedPlugins.push({
