@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+for (const name of ['light.mp3', 'daylight.mp3', 'silver-bell.mp3', 'bright.mp3', 'horizon.mp3', 'sunrise.mp3']) {
+  const file = await stat(new URL(`../assets/focus-sounds/${name}`, import.meta.url));
+  assert.ok(file.size > 0, `内置提示音资源不能为空：${name}`);
+}
 
 assert.match(source, /focusClock:\s*\{[\s\S]*phase: 'focus'[\s\S]*status: 'idle'[\s\S]*endsAt: 0[\s\S]*history: \[\]/, '专注状态必须独立存入全局轻量设置');
 assert.match(source, /\['focus', '专注'\]/, '专注时钟必须拥有独立顶层标签');
@@ -27,18 +31,30 @@ assert.match(source, /已有另一段专注正在进行/, '阅读页不得擅自
 assert.match(source, /const returnTab = activeTab === 'focus' \? 'focus' : 'coread'[\s\S]*activeTab = 'coread'/, '从专注进入阅读器时必须切到伴读路由，防止计时重渲染卸载阅读页');
 assert.match(source, /const returnTab = readerView\?\.returnTab === 'focus'[\s\S]*activeTab = returnTab/, '退出阅读器必须能够回到原专注页');
 
-assert.match(source, /FOCUS_CLOCK_HISTORY_LIMIT = 120/, '完成记录必须有明确容量上限');
+assert.match(source, /FOCUS_CLOCK_WEEK_ENTRY_LIMIT = 160/, '本周明细必须有异常容量保护');
+assert.match(source, /historyBeforeCleanup[\s\S]*finishedAt \|\| item\.startedAt\) >= weekStart/, '不可见的往周记录必须在状态归一时自动清理');
+assert.match(source, /function focusClockWeekStats[\s\S]*readingMinutes/, '本周记录必须按日聚合专注与伴读分钟');
+assert.match(source, /function focusClockExportWeekImage[\s\S]*canvas\.toBlob[\s\S]*千幕-本周专注/, '本周记录必须可导出独立 PNG 图片');
 assert.match(source, /f\.focusCycle % f\.longBreakEvery === 0 \? 'longBreak' : 'shortBreak'/, '专注周期必须按用户设置进入小憩或长休');
-assert.match(source, /autoStartNext[\s\S]*完成提示音/, '自动下一阶段与提示音必须保留为用户自选项');
-assert.match(source, /FOCUS_CLOCK_SOUND_PRESETS[\s\S]*softChime[\s\S]*forest[\s\S]*tide/, '完成提示音必须提供内置方案');
-assert.match(source, /soundSource: 'builtin'[\s\S]*soundUrl: ''[\s\S]*soundFileData: ''/, '提示音必须支持内置、外链与可跨端的小体积本地音频');
-assert.match(source, /FOCUS_CLOCK_LOCAL_SOUND_MAX_BYTES = 524288/, '本地提示音必须限制体积，避免同步设置膨胀');
+assert.match(source, /sd-focus-settings-head[\s\S]*sd-focus-auto-next-wrap/, '自动下一阶段必须位于周期设置标题右侧');
+assert.match(source, /sd-focus-sound-card[\s\S]*<h3>完成提示音<\/h3>/, '完成提示音必须使用独立卡片');
+assert.match(source, /FOCUS_CLOCK_SOUND_PRESETS[\s\S]*light\.mp3[\s\S]*daylight\.mp3[\s\S]*silver-bell\.mp3[\s\S]*bright\.mp3[\s\S]*horizon\.mp3[\s\S]*sunrise\.mp3/, '完成提示音必须使用六个正式内置音频');
+assert.match(source, /soundSource: 'builtin'[\s\S]*soundUrl: ''/, '提示音必须支持内置与外链方案');
+assert.doesNotMatch(source, /data-focus-sound-source="file"|sd-focus-sound-file/, '本地提示音入口必须移除');
 assert.match(source, /data-focus-sound-source="\$\{id\}"[\s\S]*sd-focus-sound-preview/, '提示音来源必须可切换并可试听');
+assert.match(source, /FOCUS_CLOCK_RELATIONS[\s\S]*stranger[\s\S]*neutral[\s\S]*friend[\s\S]*partner[\s\S]*elder/, '角色语音必须提供陌生、中性、朋友、伴侣、长者五档关系');
+assert.match(source, /FOCUS_CLOCK_VOICE_FREQUENCIES[\s\S]*chance: \.2[\s\S]*chance: \.45[\s\S]*chance: \.7/, '长时角色语音必须按低中高三档概率决定');
+assert.match(source, /voiceEnabledByChat[\s\S]*voiceSpeakerByChat[\s\S]*voiceRelationByChat/, '角色语音启用、角色与关系必须按聊天隔离');
+assert.match(source, /你是“千幕专注场景”的角色短句编写器[\s\S]*不引用聊天正文[\s\S]*不得猜测正文情节/, '情景生成提示词必须与正文隔离并约束不 OOC');
+assert.match(source, /function focusClockPrepareVoiceCues[\s\S]*ttsBuildParams[\s\S]*focusClockSynthVoiceCue/, '角色语音必须在开始时冻结音色参数并预生成缓存');
+assert.match(source, /function focusClockPlayCompletionAlert[\s\S]*focusClockPlayDoneSound/, '角色语音失败必须回退普通完成提示音');
+assert.match(source, /sd-focus-finale-card[\s\S]*sd-focus-finale-note/, '完成后必须提供可随记的片尾卡');
 assert.match(css, /\.sd-focus-ring\s*\{[^}]*conic-gradient/, '主计时器必须使用清晰的环形进度视觉');
 assert.match(css, /\.sd-focus-setting-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3/, '桌面周期设置必须使用紧凑网格');
 assert.match(css, /@media \(max-width: 520px\)[\s\S]*\.sd-focus-setting-grid\s*\{[^}]*repeat\(2/, '移动端周期设置必须保持两列易读布局');
 assert.match(css, /\.sd-reader-focus-btn\.active/, '伴读阅读页必须明确显示当前绑定的专注计时');
 assert.match(css, /\.sd-focus-actions\s*\{[^}]*width:\s*min\(100%, 460px\)/, '暂停与结束按钮组必须和进入阅读区域同宽');
-assert.doesNotMatch(css, /@media \(max-width: 520px\)[\s\S]*\.sd-focus-toggles\s*\{[^}]*grid-template-columns:\s*1fr/, '移动端两个周期选项也必须保持并排');
+assert.match(css, /\.sd-focus-week-chart\s*\{[^}]*repeat\(7/, '本周记录必须以七日图表呈现');
+assert.match(css, /\.sd-focus-voice-grid\s*\{[^}]*repeat\(2/, '角色与关系选择必须使用整齐双列布局');
 
 console.log('Focus clock contract OK');

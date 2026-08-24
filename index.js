@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.35.1';
+const VERSION = '1.36.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -61,12 +61,33 @@ const BUILTIN_THEATER_REVISION = 6;   // 内置剧场组版本，升一档即重
 const QIANMU_THEATER_REVISION = 5;   // 千幕剧场组版本，与吱吱组各自独立；升一档即重置千幕内置项（保留用户自建）。
 const LOG_LIMIT = 5;
 const LOG_CLIP = 80000;
-const FOCUS_CLOCK_HISTORY_LIMIT = 120;
-const FOCUS_CLOCK_LOCAL_SOUND_MAX_BYTES = 524288; // 本地提示音以内嵌 data URL 随千幕配置跨端；短提示限定 512 KB，避免拖慢全局设置保存
+const FOCUS_CLOCK_WEEK_ENTRY_LIMIT = 160; // 仅保留本自然周明细；容量只作异常保护，不再暗存不可见的旧记录
 const FOCUS_CLOCK_SOUND_PRESETS = Object.freeze({
-  softChime: { label: '清铃', wave: 'sine', notes: [[523.25, 0, .32, .075], [659.25, .17, .36, .07], [783.99, .36, .48, .055]] },
-  forest: { label: '林间', wave: 'triangle', notes: [[392, 0, .22, .055], [523.25, .25, .28, .06], [659.25, .53, .42, .045]] },
-  tide: { label: '潮汐', wave: 'sine', notes: [[329.63, 0, .46, .05], [440, .24, .52, .055], [554.37, .52, .58, .04]] },
+  light: { label: '光', url: new URL('./assets/focus-sounds/light.mp3', import.meta.url).href },
+  daylight: { label: '白昼', url: new URL('./assets/focus-sounds/daylight.mp3', import.meta.url).href },
+  silverBell: { label: '银铃', url: new URL('./assets/focus-sounds/silver-bell.mp3', import.meta.url).href },
+  bright: { label: '明亮', url: new URL('./assets/focus-sounds/bright.mp3', import.meta.url).href },
+  horizon: { label: '地平线', url: new URL('./assets/focus-sounds/horizon.mp3', import.meta.url).href },
+  sunrise: { label: '日出', url: new URL('./assets/focus-sounds/sunrise.mp3', import.meta.url).href },
+});
+const FOCUS_CLOCK_RELATIONS = Object.freeze({
+  stranger: { label: '陌生', rule: '保持礼貌和距离感，不使用昵称、亲密暗示或越界关怀。' },
+  neutral: { label: '中性', rule: '自然、克制地提醒，不预设双方关系，也不显得冷漠。' },
+  friend: { label: '朋友', rule: '可以熟稔、轻松和互相打气，但不得出现恋爱式称呼或占有欲。' },
+  partner: { label: '伴侣', rule: '允许自然亲昵和关心，可使用符合角色习惯的亲昵称呼，但不过度甜腻。' },
+  elder: { label: '长者', rule: '以成熟长者的关照或督促口吻表达，稳重自然，不居高临下说教。' },
+});
+const FOCUS_CLOCK_VOICE_FREQUENCIES = Object.freeze({
+  low: { label: '低', chance: .2 },
+  medium: { label: '中', chance: .45 },
+  high: { label: '高', chance: .7 },
+});
+const FOCUS_CLOCK_STOCK_LINES = Object.freeze({
+  stranger: ['请继续专注，也记得适当休息。', '辛苦了，稍微放松一下眼睛吧。', '这一段完成得很好，可以休息片刻了。'],
+  neutral: ['先停一停吧，喝口水再继续。', '这一段已经完成，留一点时间给自己休息。', '做得不错，起来活动一下吧。'],
+  friend: ['干得漂亮，先歇会儿再继续。', '别一直绷着啦，喝口水放松一下。', '这一段拿下了，给自己一点喘息时间吧。'],
+  partner: ['辛苦了，先休息一下，我会心疼的。', '做得很好，来，先把眼睛和肩膀放松一下。', '这一段结束了，陪我歇一会儿吧。'],
+  elder: ['不要分心，也要注意劳逸结合。', '这一段做完了，起来活动一下再继续。', '专注是好事，但别忘了照顾身体。'],
 });
 
 const DEFAULT_BLUEPRINT = `【主要指令】
@@ -464,11 +485,16 @@ const DEFAULT_SETTINGS = Object.freeze({
     dailyGoal: 4,
     autoStartNext: false,
     soundEnabled: true,
-    soundSource: 'builtin',       // builtin | url | file
-    soundPreset: 'softChime',
+    soundSource: 'builtin',       // builtin | url
+    soundPreset: 'silverBell',
     soundUrl: '',
-    soundFileName: '',
-    soundFileData: '',            // 小体积音频以 data URL 保存，随同一 ST 的千幕配置跨端
+    voiceEnabledByChat: {},        // 每个聊天单独启用，避免切聊天后自动套用另一角色
+    voiceMode: 'stock',           // stock=轻量话语 | scene=情景生成（只读任务/书名/人设/手选关系，不读正文）
+    voiceFrequency: 'low',        // 长时专注在 40%/72% 检查点按低20%/中45%/高70%抽取
+    voiceSpeakerByChat: {},       // 每个聊天、当前配音 Provider 下由用户选择的角色名
+    voiceRelationByChat: {},      // stranger | neutral | friend | partner | elder
+    sessionToken: '',
+    sessionVoiceCues: [],         // [{type,progress,text,cacheKey,played}]；不存 API Key/音色凭证
     remainingMs: 25 * 60 * 1000,
     endsAt: 0,
     runStartedAt: 0,
@@ -478,6 +504,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     sessionBookId: '',
     sessionProgressStart: 0,
     focusCycle: 0,
+    lastCompletionId: '',
     history: [],
   },
   templates: [
@@ -692,8 +719,9 @@ let theaterBusy = false;           // 幕外忙碌态（与推演独立，允许
 let theaterAbort = null;           // 幕外中止句柄
 let theaterCancel = false;         // 幕外取消标记
 let focusClockTicker = null;        // 专注时钟只负责刷新显示；真实进度由持久化 endsAt 计算
-let focusClockAudio = null;         // 用户首次启动后预热的轻量完成提示音
-let focusClockMedia = null;         // 外链/本地提示音复用同一 Audio 元素，开始计时时由用户手势预热
+let focusClockMedia = null;         // 内置/外链提示音复用同一 Audio 元素，开始计时时由用户手势预热
+let focusClockVoicePrepareSeq = 0;   // 新专注轮次递增；旧异步情景生成返回时自动作废
+const focusClockVoiceBlobs = new Map(); // IndexedDB 不可用时仍可在本页完成播放；仅保留少量预生成结果
 let initialized = false;
 let eventBound = false;
 let inputMenuObserver = null;
@@ -3941,6 +3969,7 @@ const PROSE_LAYOUT_CSS_VARS = ['--sd-prose-font-size', '--sd-prose-line-height',
 let proseLayoutObserver = null;
 let proseLayoutFrame = 0;
 let proseLayoutPendingRoots = new Set();
+let proseLayoutRestoreFrame = 0;
 
 function proseLayoutSettings() {
   if (!isPlainObject(settings.proseLayout)) settings.proseLayout = clone(PROSE_LAYOUT_DEFAULTS);
@@ -4035,22 +4064,72 @@ function proseLayoutStartObserver() {
   proseLayoutObserver.observe(chat, { childList: true, subtree: true });
 }
 
+// 正文排版会改变每层高度，且换行整理还会增删占位节点。切换前固定当前可见楼层，
+// 完成两帧重排后按同一楼层的像素偏移复位，避免 ST/浏览器把末楼误作滚动锚点。
+function proseLayoutCaptureViewport() {
+  const chat = document.getElementById('chat');
+  if (!chat) return null;
+  const rect = chat.getBoundingClientRect();
+  const messages = [...chat.querySelectorAll('.mes')];
+  const anchor = messages.find((message) => {
+    const row = message.getBoundingClientRect();
+    return row.bottom > rect.top + 2 && row.top < rect.bottom - 2;
+  }) || null;
+  return {
+    chat,
+    anchor,
+    offset: anchor ? anchor.getBoundingClientRect().top - rect.top : 0,
+    scrollTop: chat.scrollTop,
+    atBottom: chat.scrollHeight - chat.clientHeight - chat.scrollTop < 8,
+    overflowAnchor: chat.style.getPropertyValue('overflow-anchor'),
+    overflowAnchorPriority: chat.style.getPropertyPriority('overflow-anchor'),
+  };
+}
+
+function proseLayoutScheduleViewportRestore(snapshot) {
+  if (!snapshot?.chat) return;
+  if (proseLayoutRestoreFrame) cancelAnimationFrame(proseLayoutRestoreFrame);
+  const { chat } = snapshot;
+  chat.style.setProperty('overflow-anchor', 'none', 'important');
+  proseLayoutRestoreFrame = requestAnimationFrame(() => {
+    proseLayoutRestoreFrame = requestAnimationFrame(() => {
+      proseLayoutRestoreFrame = 0;
+      if (!chat.isConnected) return;
+      if (snapshot.atBottom) {
+        chat.scrollTop = Math.max(0, chat.scrollHeight - chat.clientHeight);
+      } else if (snapshot.anchor?.isConnected) {
+        const rect = chat.getBoundingClientRect();
+        const currentOffset = snapshot.anchor.getBoundingClientRect().top - rect.top;
+        chat.scrollTop += currentOffset - snapshot.offset;
+      } else {
+        chat.scrollTop = snapshot.scrollTop;
+      }
+      if (snapshot.overflowAnchor) chat.style.setProperty('overflow-anchor', snapshot.overflowAnchor, snapshot.overflowAnchorPriority);
+      else chat.style.removeProperty('overflow-anchor');
+    });
+  });
+}
+
 function stopProseLayout(cleanDom = true) {
   proseLayoutObserver?.disconnect();
   proseLayoutObserver = null;
   if (proseLayoutFrame) cancelAnimationFrame(proseLayoutFrame);
   proseLayoutFrame = 0;
   proseLayoutPendingRoots.clear();
+  if (proseLayoutRestoreFrame) cancelAnimationFrame(proseLayoutRestoreFrame);
+  proseLayoutRestoreFrame = 0;
   document.body?.classList.remove(...PROSE_LAYOUT_BODY_CLASSES);
   PROSE_LAYOUT_CSS_VARS.forEach((name) => document.documentElement.style.removeProperty(name));
   if (cleanDom) proseLayoutClearBreakMarks(document);
 }
 
 function applyProseLayout(refreshBreaks = true) {
+  const viewport = proseLayoutCaptureViewport();
   const layout = proseLayoutSettings();
   stopProseLayout(false);
   if (!layout.active) {
     proseLayoutClearBreakMarks(document);
+    proseLayoutScheduleViewportRestore(viewport);
     return;
   }
   document.body?.classList.add('sd-prose-layout');
@@ -4068,6 +4147,7 @@ function applyProseLayout(refreshBreaks = true) {
     proseLayoutClearBreakMarks(document);
   }
   proseLayoutStartObserver();
+  proseLayoutScheduleViewportRestore(viewport);
 }
 
 function persistProseLayout() {
@@ -8840,16 +8920,30 @@ function focusClockState() {
   f.longBreakEvery = int(f.longBreakEvery, 4, 1, 12);
   f.dailyGoal = int(f.dailyGoal, 4, 1, 24);
   f.focusCycle = Math.max(0, Math.round(Number(f.focusCycle) || 0));
-  f.history = Array.isArray(f.history) ? f.history.slice(0, FOCUS_CLOCK_HISTORY_LIMIT) : [];
+  f.lastCompletionId = String(f.lastCompletionId || '');
+  const weekStart = focusClockWeekStart().getTime();
+  const historyBeforeCleanup = Array.isArray(f.history) ? f.history : [];
+  f.history = historyBeforeCleanup
+    .filter((item) => item?.kind === 'focus' && Number(item.finishedAt || item.startedAt) >= weekStart)
+    .slice(0, FOCUS_CLOCK_WEEK_ENTRY_LIMIT);
+  if (f.history.length !== historyBeforeCleanup.length) queueMicrotask(() => saveSettings());
   f.task = String(f.task || '').slice(0, 120);
   f.activity = f.activity === 'reading' ? 'reading' : 'task';
   f.bookId = String(f.bookId || '');
   f.sessionBookId = String(f.sessionBookId || '');
-  f.soundSource = ['builtin', 'url', 'file'].includes(f.soundSource) ? f.soundSource : 'builtin';
-  f.soundPreset = FOCUS_CLOCK_SOUND_PRESETS[f.soundPreset] ? f.soundPreset : 'softChime';
+  f.soundSource = ['builtin', 'url'].includes(f.soundSource) ? f.soundSource : 'builtin';
+  f.soundPreset = FOCUS_CLOCK_SOUND_PRESETS[f.soundPreset] ? f.soundPreset : 'silverBell';
   f.soundUrl = String(f.soundUrl || '').trim().slice(0, 2048);
-  f.soundFileName = String(f.soundFileName || '').slice(0, 120);
-  f.soundFileData = /^data:audio\//i.test(String(f.soundFileData || '')) ? String(f.soundFileData) : '';
+  delete f.soundFileName;
+  delete f.soundFileData;
+  f.voiceEnabledByChat = isPlainObject(f.voiceEnabledByChat) ? f.voiceEnabledByChat : {};
+  delete f.voiceEnabled;
+  f.voiceMode = f.voiceMode === 'scene' ? 'scene' : 'stock';
+  f.voiceFrequency = FOCUS_CLOCK_VOICE_FREQUENCIES[f.voiceFrequency] ? f.voiceFrequency : 'low';
+  f.voiceSpeakerByChat = isPlainObject(f.voiceSpeakerByChat) ? f.voiceSpeakerByChat : {};
+  f.voiceRelationByChat = isPlainObject(f.voiceRelationByChat) ? f.voiceRelationByChat : {};
+  f.sessionToken = String(f.sessionToken || '');
+  f.sessionVoiceCues = Array.isArray(f.sessionVoiceCues) ? f.sessionVoiceCues.filter((cue) => cue?.cacheKey && cue?.text).slice(0, 4) : [];
   f.sessionProgressStart = Math.max(0, Math.min(100, Number(f.sessionProgressStart) || 0));
   f.endsAt = Math.max(0, Number(f.endsAt) || 0);
   f.runStartedAt = Math.max(0, Number(f.runStartedAt) || 0);
@@ -8887,13 +8981,135 @@ function focusClockDateKey(value = Date.now()) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+function focusClockWeekStart(value = Date.now()) {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  const mondayOffset = (date.getDay() + 6) % 7;
+  date.setDate(date.getDate() - mondayOffset);
+  return date;
+}
+
+function focusClockWeekHistory(state = focusClockState()) {
+  const start = focusClockWeekStart().getTime();
+  return state.history.filter((item) => item?.kind === 'focus' && Number(item.finishedAt || item.startedAt) >= start);
+}
+
 function focusClockTodayHistory(state = focusClockState()) {
   const today = focusClockDateKey();
   return state.history.filter((item) => item?.kind === 'focus' && focusClockDateKey(item.finishedAt || item.startedAt) === today);
 }
 
+function focusClockWeekStats(state = focusClockState()) {
+  const history = focusClockWeekHistory(state);
+  const start = focusClockWeekStart();
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return { date, key: focusClockDateKey(date), minutes: 0, count: 0, readingMinutes: 0 };
+  });
+  for (const item of history) {
+    const day = days.find((entry) => entry.key === focusClockDateKey(item.finishedAt || item.startedAt));
+    if (!day) continue;
+    const minutes = Math.max(1, Math.round((Number(item.durationMs) || 0) / 60000));
+    day.minutes += minutes;
+    day.count += 1;
+    if (item.activity === 'reading') day.readingMinutes += minutes;
+  }
+  return {
+    history,
+    days,
+    minutes: days.reduce((sum, day) => sum + day.minutes, 0),
+    count: days.reduce((sum, day) => sum + day.count, 0),
+    readingMinutes: days.reduce((sum, day) => sum + day.readingMinutes, 0),
+  };
+}
+
+function focusClockRoundRect(context, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(x + r, y);
+  context.arcTo(x + width, y, x + width, y + height, r);
+  context.arcTo(x + width, y + height, x, y + height, r);
+  context.arcTo(x, y + height, x, y, r);
+  context.arcTo(x, y, x + width, y, r);
+  context.closePath();
+}
+
+async function focusClockExportWeekImage() {
+  const stats = focusClockWeekStats();
+  if (!stats.history.length) { toast('本周还没有可导出的专注记录。', 'warning'); return; }
+  const palettes = {
+    dark: { bg: '#18201d', card: '#222c28', text: '#eef4f0', muted: '#9fb0a7', accent: '#94c2a8', bar: '#b8dac6' },
+    summer: { bg: '#eff6df', card: '#fbfff2', text: '#344233', muted: '#788a73', accent: '#9fbd45', bar: '#c4d969' },
+    candy: { bg: '#fff0f3', card: '#fff9f7', text: '#554146', muted: '#9b7f86', accent: '#d78fa2', bar: '#efb6c5' },
+    kraft: { bg: '#eee3cf', card: '#faf4e8', text: '#51483c', muted: '#8d806e', accent: '#b18b54', bar: '#d3b77f' },
+    dream: { bg: '#eeeafb', card: '#f9f7ff', text: '#453f5e', muted: '#857d9d', accent: '#9b8bd0', bar: '#c3b7e8' },
+    light: { bg: '#edf2ed', card: '#fafcf8', text: '#354239', muted: '#7a897f', accent: '#718f7c', bar: '#a8c2af' },
+  };
+  const palette = palettes[THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'] || palettes.light;
+  const canvas = document.createElement('canvas');
+  canvas.width = 1200;
+  canvas.height = 820;
+  const context = canvas.getContext('2d');
+  if (!context) { toast('当前浏览器无法生成记录图片。', 'error'); return; }
+  const gradient = context.createLinearGradient(0, 0, 1200, 820);
+  gradient.addColorStop(0, palette.bg);
+  gradient.addColorStop(1, palette.card);
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, 1200, 820);
+  context.fillStyle = palette.card;
+  focusClockRoundRect(context, 68, 62, 1064, 696, 34);
+  context.fill();
+  context.fillStyle = palette.text;
+  context.font = '600 46px "Noto Serif SC", "Songti SC", serif';
+  context.fillText('千幕 · 本周专注', 120, 142);
+  const start = focusClockWeekStart();
+  const end = new Date(start); end.setDate(start.getDate() + 6);
+  context.fillStyle = palette.muted;
+  context.font = '26px "Noto Sans SC", sans-serif';
+  context.fillText(`${start.getMonth() + 1}月${start.getDate()}日 — ${end.getMonth() + 1}月${end.getDate()}日`, 120, 188);
+  const summary = [[stats.minutes, '专注分钟'], [stats.count, '完成段数'], [stats.readingMinutes, '伴读分钟']];
+  summary.forEach(([value, label], index) => {
+    const x = 120 + index * 300;
+    context.fillStyle = palette.text;
+    context.font = '600 42px "Noto Sans SC", sans-serif';
+    context.fillText(String(value), x, 282);
+    context.fillStyle = palette.muted;
+    context.font = '23px "Noto Sans SC", sans-serif';
+    context.fillText(label, x, 321);
+  });
+  const chartX = 120, chartY = 390, chartW = 960, chartH = 252;
+  const maxMinutes = Math.max(1, ...stats.days.map((day) => day.minutes));
+  const slot = chartW / 7;
+  const weekLabels = ['一', '二', '三', '四', '五', '六', '日'];
+  stats.days.forEach((day, index) => {
+    const barW = 62;
+    const barH = Math.max(day.minutes ? 12 : 4, day.minutes / maxMinutes * 188);
+    const x = chartX + slot * index + (slot - barW) / 2;
+    const y = chartY + 196 - barH;
+    context.fillStyle = day.minutes ? palette.bar : `${palette.muted}35`;
+    focusClockRoundRect(context, x, y, barW, barH, 22);
+    context.fill();
+    context.fillStyle = palette.text;
+    context.font = '600 21px "Noto Sans SC", sans-serif';
+    context.textAlign = 'center';
+    if (day.minutes) context.fillText(String(day.minutes), x + barW / 2, y - 14);
+    context.fillStyle = palette.muted;
+    context.font = '22px "Noto Sans SC", sans-serif';
+    context.fillText(`周${weekLabels[index]}`, x + barW / 2, chartY + 236);
+  });
+  context.textAlign = 'left';
+  context.fillStyle = palette.accent;
+  context.font = '24px "Noto Serif SC", serif';
+  context.fillText('一蝶振翅，万象入幕', 120, 704);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) { toast('本周记录图片生成失败。', 'error'); return; }
+  ttsDownloadBlob(blob, `千幕-本周专注-${focusClockDateKey(start)}.png`);
+  toast('本周记录图片已导出。', 'success');
+}
+
 function focusClockMediaSource(state = focusClockState()) {
-  if (state.soundSource === 'file') return state.soundFileData || '';
+  if (state.soundSource === 'builtin') return FOCUS_CLOCK_SOUND_PRESETS[state.soundPreset]?.url || FOCUS_CLOCK_SOUND_PRESETS.silverBell.url;
   if (state.soundSource === 'url' && /^https?:\/\//i.test(state.soundUrl)) return state.soundUrl;
   return '';
 }
@@ -8907,13 +9123,6 @@ function focusClockPrimeSound() {
   const f = focusClockState();
   if (!f.soundEnabled) return;
   try {
-    if (f.soundSource === 'builtin') {
-      const AudioCtx = globalThis.AudioContext || globalThis.webkitAudioContext;
-      if (!AudioCtx) return;
-      focusClockAudio ||= new AudioCtx();
-      if (focusClockAudio.state === 'suspended') void focusClockAudio.resume();
-      return;
-    }
     const src = focusClockMediaSource(f);
     if (!src) return;
     if (!focusClockMedia || focusClockMedia.dataset?.source !== src) {
@@ -8938,45 +9147,209 @@ async function focusClockPlayDoneSound({ preview = false } = {}) {
   const f = focusClockState();
   if (!f.soundEnabled && !preview) return false;
   try {
-    if (f.soundSource !== 'builtin') {
-      const src = focusClockMediaSource(f);
-      if (!src) {
-        if (preview) toast('请先填写可用外链或选择本地音频。', 'warning');
-        return false;
-      }
-      if (!focusClockMedia || focusClockMedia.dataset?.source !== src) {
-        focusClockResetMedia();
-        focusClockMedia = new Audio(src);
-        focusClockMedia.preload = 'auto';
-        focusClockMedia.dataset.source = src;
-      }
-      focusClockMedia.volume = 1;
-      focusClockMedia.currentTime = 0;
-      await focusClockMedia.play();
-      return true;
+    const src = focusClockMediaSource(f);
+    if (!src) {
+      if (preview) toast('请先填写可用的音频外链。', 'warning');
+      return false;
     }
-    focusClockPrimeSound();
-    if (!focusClockAudio) return false;
-    if (focusClockAudio.state === 'suspended') await focusClockAudio.resume();
-    const preset = FOCUS_CLOCK_SOUND_PRESETS[f.soundPreset] || FOCUS_CLOCK_SOUND_PRESETS.softChime;
-    const start = focusClockAudio.currentTime + .015;
-    preset.notes.forEach(([frequency, offset, duration, volume]) => {
-      const osc = focusClockAudio.createOscillator();
-      const gain = focusClockAudio.createGain();
-      osc.type = preset.wave;
-      osc.frequency.value = frequency;
-      gain.gain.setValueAtTime(0.0001, start + offset);
-      gain.gain.exponentialRampToValueAtTime(volume, start + offset + .025);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + offset + duration);
-      osc.connect(gain).connect(focusClockAudio.destination);
-      osc.start(start + offset);
-      osc.stop(start + offset + duration + .03);
-    });
+    if (!focusClockMedia || focusClockMedia.dataset?.source !== src) {
+      focusClockResetMedia();
+      focusClockMedia = new Audio(src);
+      focusClockMedia.preload = 'auto';
+      focusClockMedia.dataset.source = src;
+    }
+    focusClockMedia.volume = 1;
+    focusClockMedia.currentTime = 0;
+    await focusClockMedia.play();
     return true;
   } catch (_) {
     if (preview) toast('提示音无法播放，请检查音频地址或浏览器媒体权限。', 'warning');
     return false;
   }
+}
+
+function focusClockVoiceContext(state = focusClockState()) {
+  const context = ctx();
+  const hasChat = Boolean(context.groupId || context.chatId || context.characterId !== undefined && context.characterId !== null);
+  if (!hasChat) return { hasChat: false, enabled: false, options: [], chatKey: '', speaker: '', relation: 'neutral', characterName: '' };
+  const chatKey = getChatKey();
+  const options = ttsActiveVoiceMap().filter((row) => row?.voiceId && String(row.name || '').trim());
+  const characterName = String(getCharacterName() || '').trim();
+  const saved = String(state.voiceSpeakerByChat?.[chatKey] || '').trim();
+  const speaker = options.some((row) => String(row.name).trim() === saved)
+    ? saved
+    : (options.find((row) => String(row.name).trim() === characterName)?.name || options[0]?.name || '');
+  const savedRelation = String(state.voiceRelationByChat?.[chatKey] || 'neutral');
+  const relation = FOCUS_CLOCK_RELATIONS[savedRelation] ? savedRelation : 'neutral';
+  return { hasChat: true, enabled: Boolean(state.voiceEnabledByChat?.[chatKey]), options, chatKey, speaker: String(speaker || '').trim(), relation, characterName };
+}
+
+function focusClockCharacterDescription(speaker, characterName) {
+  const context = ctx();
+  const match = Array.isArray(context.characters)
+    ? context.characters.find((item) => String(item?.name || '').trim() === String(speaker || '').trim())
+    : null;
+  if (match) return match.description || match.data?.description || '';
+  return String(speaker || '').trim() === String(characterName || '').trim() ? getCharacterDescription() : '';
+}
+
+function focusClockPickStockLines(relation, count) {
+  const bank = [...(FOCUS_CLOCK_STOCK_LINES[relation] || FOCUS_CLOCK_STOCK_LINES.neutral)];
+  const result = [];
+  while (result.length < count) {
+    if (!bank.length) bank.push(...(FOCUS_CLOCK_STOCK_LINES[relation] || FOCUS_CLOCK_STOCK_LINES.neutral));
+    result.push(bank.splice(Math.floor(Math.random() * bank.length), 1)[0]);
+  }
+  return result;
+}
+
+function focusClockCleanVoiceLine(value) {
+  return String(value || '')
+    .replace(/<\/?(?:think|thinking|thought|analysis|reasoning)[^>]*>/gi, '')
+    .replace(/^(?:台词|角色|line)\s*\d*\s*[:：]\s*/i, '')
+    .replace(/^[\s"'“”‘’「」『』]+|[\s"'“”‘’「」『』]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+}
+
+async function focusClockGenerateSceneLines(binding, count, subject) {
+  const relationMeta = FOCUS_CLOCK_RELATIONS[binding.relation] || FOCUS_CLOCK_RELATIONS.neutral;
+  const rawDescription = focusClockCharacterDescription(binding.speaker, binding.characterName);
+  const characterDescription = cleanContextText(await resolveMacro(rawDescription)).slice(0, 1800) || '未提供额外人设；保持自然、克制，不擅自补写关系和经历。';
+  const systemPrompt = `你是“千幕专注场景”的角色短句编写器。你的唯一任务是让指定角色在专注计时中自然地提醒、陪伴或收束，不续写剧情，不扮演用户，不引用聊天正文。
+
+【绝对边界】
+1. 仅依据角色人设、用户手动选择的关系档、当前专注事项写台词；不得猜测正文情节、双方共同经历或未给出的关系进度。
+2. 角色必须自然且不 OOC：措辞、礼貌程度、情绪表达与角色人设一致；不把“专注提示”写成客服模板。
+3. 关系档为“${relationMeta.label}”：${relationMeta.rule}
+4. 每句 12—42 个汉字，只说一句话，不写动作、旁白、引号、名字前缀、舞台说明或表情符号。
+5. 不使用“作为AI”、任务分析、行数说明、思维链或标签。只输出严格 JSON：{"lines":["台词1","台词2"]}，数组数量必须为 ${count}。`;
+  const userPrompt = `角色：${binding.speaker}
+角色人设：${characterDescription}
+专注事项：${String(subject || '完成一段专注').slice(0, 160)}
+需要 ${count} 句彼此不重复的专注场景短句；最后一句用于完成时收束，其余用于长时专注中的低频陪伴。`;
+  let output = '';
+  if (settings.providerMode === 'external' && validateApiSettings()) {
+    output = await callExternalApi([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ], null, { stream: false, temperature: .82, maxTokens: 220 }, new AbortController());
+  } else {
+    output = await callSillyTavernModel(userPrompt, systemPrompt, null, { stream_response: false, max_tokens: 220 });
+  }
+  const parsed = extractJson(output);
+  return (Array.isArray(parsed?.lines) ? parsed.lines : [])
+    .map(focusClockCleanVoiceLine)
+    .filter(Boolean)
+    .slice(0, count);
+}
+
+async function focusClockSynthVoiceCue(binding, text) {
+  let params = { ...binding.params, text };
+  const provider = getTtsProvider(params.providerId);
+  if (!ttsProviderHasCredentials(params.providerId, params)) throw new Error(`未配置 ${provider.label} 凭证`);
+  let key = cacheKeyForTts(params.providerId, params);
+  if (blobStore.blobStoreAvailable()) {
+    const hit = await blobStore.getAudio(key).catch(() => null);
+    if (hit?.blob) { focusClockVoiceBlobs.set(key, hit.blob); return key; }
+  }
+  const result = await synthesizeTts(params.providerId, params);
+  if (params.providerId === 'doubao' && params.model === 'auto' && result.resolvedModel) {
+    ttsPersistResolvedDoubaoModel(params, result.resolvedModel);
+    params = { ...params, model: result.resolvedModel };
+    key = cacheKeyForTts(params.providerId, params);
+  }
+  if (blobStore.blobStoreAvailable()) {
+    await blobStore.putAudio(key, result.blob, { speaker: binding.speaker, text, source: 'focus', provider: params.providerId });
+    await blobStore.pruneAudio(Number(settings.tts?.cacheLimit ?? 200), 'tts').catch(() => {});
+  }
+  focusClockVoiceBlobs.set(key, result.blob);
+  while (focusClockVoiceBlobs.size > 12) focusClockVoiceBlobs.delete(focusClockVoiceBlobs.keys().next().value);
+  return key;
+}
+
+async function focusClockPrepareVoiceCues(sessionToken) {
+  const prepareSeq = ++focusClockVoicePrepareSeq;
+  const f = focusClockState();
+  if (f.phase !== 'focus' || f.sessionToken !== sessionToken) return;
+  const voiceContext = focusClockVoiceContext(f);
+  if (!voiceContext.hasChat || !voiceContext.enabled || !voiceContext.speaker) return;
+  const baseParams = ttsBuildParams({ speaker: voiceContext.speaker, text: '专注提醒', emotion: 'auto' });
+  if (!baseParams || !ttsProviderHasCredentials(baseParams.providerId, baseParams)) return;
+  const frequency = FOCUS_CLOCK_VOICE_FREQUENCIES[f.voiceFrequency] || FOCUS_CLOCK_VOICE_FREQUENCIES.low;
+  const durationMinutes = Math.max(1, Number(f.sessionPlannedMs) / 60000);
+  const specs = durationMinutes >= 45
+    ? [.4, .72].filter(() => Math.random() < frequency.chance).map((progress) => ({ type: 'mid', progress }))
+    : [];
+  specs.push({ type: 'complete', progress: 1 });
+  const book = f.sessionBookId ? coreadBookMeta(f.sessionBookId) : null;
+  const subject = f.sessionBookId ? `阅读《${book?.title || '未命名书籍'}》` : (f.task || '完成一段专注');
+  const binding = { ...voiceContext, params: { ...baseParams, text: '' } };
+  let lines = [];
+  if (f.voiceMode === 'scene') {
+    try { lines = await focusClockGenerateSceneLines(binding, specs.length, subject); } catch (error) { console.warn(`[${MODULE_NAME}] focus scene voice fallback`, error); }
+  }
+  if (lines.length < specs.length) {
+    const fallback = focusClockPickStockLines(binding.relation, specs.length);
+    lines = specs.map((_, index) => lines[index] || fallback[index]);
+  }
+  const cues = [];
+  for (let index = 0; index < specs.length; index++) {
+    if (prepareSeq !== focusClockVoicePrepareSeq || focusClockState().sessionToken !== sessionToken) return;
+    const text = focusClockCleanVoiceLine(lines[index]);
+    if (!text) continue;
+    try {
+      const cacheKey = await focusClockSynthVoiceCue(binding, text);
+      cues.push({ id: uid('focusvoice'), ...specs[index], text, cacheKey, played: false });
+    } catch (error) { console.warn(`[${MODULE_NAME}] focus voice synth failed`, error); }
+  }
+  const current = focusClockState();
+  if (prepareSeq !== focusClockVoicePrepareSeq || current.sessionToken !== sessionToken) return;
+  current.sessionVoiceCues = cues;
+  saveSettings();
+}
+
+async function focusClockPlayVoiceCue(cue) {
+  if (!cue?.cacheKey) return false;
+  try {
+    const memoryBlob = focusClockVoiceBlobs.get(cue.cacheKey);
+    const hit = memoryBlob ? { blob: memoryBlob } : (blobStore.blobStoreAvailable() ? await blobStore.getAudio(cue.cacheKey) : null);
+    if (!hit?.blob) return false;
+    ttsStopPlayback(true);
+    const url = URL.createObjectURL(hit.blob);
+    const audio = new Audio(url);
+    ttsCurrentAudio = audio;
+    ttsCurrentUrl = url;
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      if (ttsPlayCleanup === cleanup) ttsPlayCleanup = null;
+      if (ttsCurrentUrl === url) { try { URL.revokeObjectURL(url); } catch (_) {} ttsCurrentUrl = ''; }
+      if (ttsCurrentAudio === audio) ttsCurrentAudio = null;
+    };
+    ttsPlayCleanup = cleanup;
+    audio.addEventListener('ended', cleanup, { once: true });
+    audio.addEventListener('error', cleanup, { once: true });
+    try { await audio.play(); } catch (_) { cleanup(); return false; }
+    return true;
+  } catch (_) { return false; }
+}
+
+async function focusClockPlayCompletionAlert(cue) {
+  if (await focusClockPlayVoiceCue(cue)) return;
+  await focusClockPlayDoneSound();
+}
+
+function focusClockMaybePlayMidCue(state) {
+  if (state.status !== 'running' || state.phase !== 'focus') return;
+  const elapsed = 1 - focusClockRemainingMs(state) / Math.max(1000, Number(state.sessionPlannedMs) || focusClockPhaseMs('focus', state));
+  const cue = state.sessionVoiceCues.find((item) => item.type === 'mid' && !item.played && elapsed >= Number(item.progress || 1));
+  if (!cue) return;
+  cue.played = true;
+  saveSettings();
+  void focusClockPlayVoiceCue(cue);
 }
 
 function focusClockSetPhase(phase) {
@@ -8990,6 +9363,9 @@ function focusClockSetPhase(phase) {
   f.runStartedAt = 0;
   f.sessionStartedAt = 0;
   f.sessionElapsedMs = 0;
+  f.sessionToken = '';
+  f.sessionVoiceCues = [];
+  focusClockVoicePrepareSeq += 1;
   saveSettings();
 }
 
@@ -8998,7 +9374,9 @@ function focusClockStart() {
   if (f.status === 'running') return;
   const now = Date.now();
   const remaining = Math.max(1000, focusClockRemainingMs(f, now) || focusClockPhaseMs(f.phase, f));
+  let prepareVoice = false;
   if (f.status === 'idle') {
+    if (f.phase === 'focus') f.lastCompletionId = '';
     if (f.activity === 'reading') {
       const book = coreadBookMeta(f.bookId);
       if (!book) return toast('请先选择一本伴读书籍。', 'warning');
@@ -9012,6 +9390,10 @@ function focusClockStart() {
     f.sessionStartedAt = now;
     f.sessionElapsedMs = 0;
     f.sessionPlannedMs = remaining;
+    f.sessionToken = f.phase === 'focus' ? uid('focussession') : '';
+    f.sessionVoiceCues = [];
+    focusClockVoicePrepareSeq += 1;
+    prepareVoice = f.phase === 'focus' && focusClockVoiceContext(f).enabled;
   }
   f.status = 'running';
   f.remainingMs = remaining;
@@ -9020,6 +9402,7 @@ function focusClockStart() {
   focusClockPrimeSound();
   saveSettings();
   focusClockUpdateDom();
+  if (prepareVoice) void focusClockPrepareVoiceCues(f.sessionToken);
 }
 
 function focusClockPause() {
@@ -9046,6 +9429,9 @@ function focusClockReset() {
   f.sessionElapsedMs = 0;
   f.sessionBookId = '';
   f.sessionProgressStart = 0;
+  f.sessionToken = '';
+  f.sessionVoiceCues = [];
+  focusClockVoicePrepareSeq += 1;
   saveSettings();
 }
 
@@ -9054,17 +9440,21 @@ function focusClockComplete() {
   if (f.status !== 'running') return;
   const now = Date.now();
   const completedPhase = f.phase;
+  const completionCue = completedPhase === 'focus' ? f.sessionVoiceCues.find((cue) => cue.type === 'complete' && !cue.played) : null;
   if (completedPhase === 'focus') {
     const durationMs = Math.max(1000, Number(f.sessionPlannedMs) || focusClockPhaseMs('focus', f));
     const linkedBook = f.sessionBookId ? coreadBookMeta(f.sessionBookId) : null;
-    f.history.unshift({
+    const completedEntry = {
       id: uid('focus'), kind: 'focus', task: String(f.task || '').trim() || '未命名专注',
       startedAt: f.sessionStartedAt || Math.max(0, now - durationMs), finishedAt: now, durationMs,
       activity: f.sessionBookId ? 'reading' : 'task', bookId: f.sessionBookId || '', bookTitle: linkedBook?.title || '',
       progressStart: f.sessionBookId ? f.sessionProgressStart : null,
       progressEnd: f.sessionBookId ? Math.max(0, Math.min(100, Number(linkedBook?.progress) || 0)) : null,
-    });
-    f.history = f.history.slice(0, FOCUS_CLOCK_HISTORY_LIMIT);
+      voiceText: completionCue?.text || '', note: '',
+    };
+    f.history.unshift(completedEntry);
+    f.lastCompletionId = completedEntry.id;
+    f.history = f.history.slice(0, FOCUS_CLOCK_WEEK_ENTRY_LIMIT);
     f.focusCycle += 1;
     f.phase = f.focusCycle % f.longBreakEvery === 0 ? 'longBreak' : 'shortBreak';
   } else {
@@ -9079,8 +9469,12 @@ function focusClockComplete() {
   f.sessionProgressStart = f.sessionBookId ? Math.max(0, Math.min(100, Number(coreadBookMeta(f.sessionBookId)?.progress) || 0)) : 0;
   f.runStartedAt = f.autoStartNext ? now : 0;
   f.endsAt = f.autoStartNext ? now + f.remainingMs : 0;
+  f.sessionToken = f.autoStartNext && f.phase === 'focus' ? uid('focussession') : '';
+  f.sessionVoiceCues = [];
+  focusClockVoicePrepareSeq += 1;
   saveSettings();
-  void focusClockPlayDoneSound();
+  void focusClockPlayCompletionAlert(completionCue);
+  if (f.sessionToken && focusClockVoiceContext(f).enabled) void focusClockPrepareVoiceCues(f.sessionToken);
   const nextLabel = FOCUS_CLOCK_PHASES[f.phase].label;
   toast(completedPhase === 'focus' ? `这一程已经完成，接下来是${nextLabel}。` : '休息结束，慢慢回到下一段专注。', 'success');
   if (isModalOpen() && activeTab === 'focus') renderModal();
@@ -9103,6 +9497,7 @@ function focusClockUpdateDom() {
 function focusClockRuntimeTick() {
   const f = focusClockState();
   if (f.status === 'running' && focusClockRemainingMs(f) <= 0) { focusClockComplete(); return; }
+  focusClockMaybePlayMidCue(f);
   focusClockUpdateDom();
 }
 
@@ -9120,6 +9515,8 @@ function startFocusClockRuntime() {
   document.addEventListener('visibilitychange', focusClockVisibilitySync, { passive: true });
   window.addEventListener('pageshow', focusClockRuntimeTick, { passive: true });
   window.addEventListener('focus', focusClockRuntimeTick, { passive: true });
+  const f = focusClockState();
+  if (f.status === 'running' && f.phase === 'focus' && f.sessionToken && !f.sessionVoiceCues.length && focusClockVoiceContext(f).enabled) void focusClockPrepareVoiceCues(f.sessionToken);
 }
 
 function stopFocusClockRuntime() {
@@ -9128,9 +9525,8 @@ function stopFocusClockRuntime() {
   document.removeEventListener('visibilitychange', focusClockVisibilitySync);
   window.removeEventListener('pageshow', focusClockRuntimeTick);
   window.removeEventListener('focus', focusClockRuntimeTick);
-  try { void focusClockAudio?.close?.(); } catch (_) {}
-  focusClockAudio = null;
   focusClockResetMedia();
+  focusClockVoiceBlobs.clear();
 }
 
 function renderFocusClockTab() {
@@ -9143,26 +9539,47 @@ function renderFocusClockTab() {
   const mainLabel = f.status === 'running' ? '暂停' : f.status === 'paused' ? '继续' : '开始';
   const mainIcon = f.status === 'running' ? 'fa-pause' : 'fa-play';
   const today = focusClockTodayHistory(f);
+  const week = focusClockWeekStats(f);
   const todayMinutes = Math.round(today.reduce((sum, item) => sum + Math.max(0, Number(item.durationMs) || 0), 0) / 60000);
   const goalProgress = Math.max(0, Math.min(100, today.length / f.dailyGoal * 100));
   const locked = f.status === 'running' || f.status === 'paused';
   const books = (coread().books || []).filter((book) => book?.id);
   if (f.activity === 'reading' && !books.some((book) => book.id === f.bookId)) f.bookId = books[0]?.id || '';
   const linkedBook = books.find((book) => book.id === f.bookId) || null;
+  const weekMax = Math.max(1, ...week.days.map((day) => day.minutes));
+  const weekBars = week.days.map((day, index) => `<div class="sd-focus-week-day"><span class="sd-focus-week-value">${day.minutes || ''}</span><span class="sd-focus-week-bar"><i style="height:${day.minutes ? Math.max(8, day.minutes / weekMax * 100) : 3}%"></i></span><small>${['一', '二', '三', '四', '五', '六', '日'][index]}</small></div>`).join('');
+  const weekStart = focusClockWeekStart();
+  const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
+  const weekRange = `${weekStart.getMonth() + 1}.${weekStart.getDate()}–${weekEnd.getMonth() + 1}.${weekEnd.getDate()}`;
+  const voiceContext = focusClockVoiceContext(f);
+  const voiceAvailable = voiceContext.hasChat && voiceContext.options.length > 0;
+  const voiceStatus = !voiceContext.hasChat
+    ? '进入一个聊天后，才可选择角色并关联当前聊天的音色。'
+    : !voiceContext.options.length
+      ? '当前聊天还没有可用角色音色，请先在配音中完成绑定。'
+      : `已关联当前聊天 · ${getTtsProvider(ttsProviderId()).label}`;
+  const voiceSpeakerOptions = voiceContext.options.map((row) => `<option value="${htmlEscape(row.name)}" ${String(row.name).trim() === voiceContext.speaker ? 'selected' : ''}>${htmlEscape(row.name)}</option>`).join('');
+  const voiceRelationOptions = Object.entries(FOCUS_CLOCK_RELATIONS).map(([id, item]) => `<option value="${id}" ${voiceContext.relation === id ? 'selected' : ''}>${item.label}</option>`).join('');
+  const voiceConfig = voiceContext.enabled && voiceAvailable ? `
+    <div class="sd-focus-voice-config">
+      <div class="sd-focus-voice-grid">
+        <label><span>角色</span><select class="text_pole sd-focus-voice-speaker" ${locked ? 'disabled' : ''}>${voiceSpeakerOptions}</select></label>
+        <label><span>关系</span><select class="text_pole sd-focus-voice-relation" ${locked ? 'disabled' : ''}>${voiceRelationOptions}</select></label>
+      </div>
+      <div class="sd-focus-voice-row"><span>话语方式</span><div class="sd-focus-segments">${[['stock', '轻量话语'], ['scene', '情景生成']].map(([id, label]) => `<button type="button" class="sd-focus-voice-mode ${f.voiceMode === id ? 'active' : ''}" data-focus-voice-mode="${id}" ${locked ? 'disabled' : ''}>${label}</button>`).join('')}</div></div>
+      <div class="sd-focus-voice-row"><span>长时陪伴频率</span><div class="sd-focus-segments">${Object.entries(FOCUS_CLOCK_VOICE_FREQUENCIES).map(([id, item]) => `<button type="button" class="sd-focus-voice-frequency ${f.voiceFrequency === id ? 'active' : ''}" data-focus-voice-frequency="${id}" ${locked ? 'disabled' : ''}>${item.label} ${Math.round(item.chance * 100)}%</button>`).join('')}</div></div>
+    </div>` : '';
   const soundPresetOptions = Object.entries(FOCUS_CLOCK_SOUND_PRESETS).map(([id, item]) => `<option value="${id}" ${f.soundPreset === id ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('');
   const soundConfig = f.soundEnabled ? `
     <div class="sd-focus-sound-config">
       <div class="sd-focus-sound-sources" role="tablist" aria-label="完成提示音来源">
-        ${[['builtin', '内置'], ['url', '外链'], ['file', '本地']].map(([id, label]) => `<button type="button" class="sd-focus-sound-source ${f.soundSource === id ? 'active' : ''}" data-focus-sound-source="${id}">${label}</button>`).join('')}
+        ${[['builtin', '内置'], ['url', '外链']].map(([id, label]) => `<button type="button" class="sd-focus-sound-source ${f.soundSource === id ? 'active' : ''}" data-focus-sound-source="${id}">${label}</button>`).join('')}
       </div>
       <div class="sd-focus-sound-control">
         ${f.soundSource === 'builtin'
           ? `<select class="text_pole sd-focus-sound-preset" aria-label="内置提示音">${soundPresetOptions}</select>`
-          : f.soundSource === 'url'
-            ? `<input class="text_pole sd-focus-sound-url" type="url" inputmode="url" maxlength="2048" placeholder="https://…/提示音.mp3" value="${htmlEscape(f.soundUrl)}">`
-            : `<label class="sd-btn sd-focus-sound-file"><i class="fa-solid fa-file-audio"></i><span>${htmlEscape(f.soundFileName || '选择音频')}</span><input type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.webm" hidden></label>`}
+          : `<input class="text_pole sd-focus-sound-url" type="url" inputmode="url" maxlength="2048" placeholder="https://…/提示音.mp3" value="${htmlEscape(f.soundUrl)}">`}
         <button type="button" class="sd-icon-btn sd-focus-sound-preview" title="试听提示音" aria-label="试听提示音"><i class="fa-solid fa-play"></i></button>
-        ${f.soundSource === 'file' && f.soundFileData ? '<button type="button" class="sd-icon-btn sd-danger sd-focus-sound-file-clear" title="移除本地提示音" aria-label="移除本地提示音"><i class="fa-solid fa-trash-can"></i></button>' : ''}
       </div>
     </div>` : '';
   const historyRows = today.length ? today.map((item) => {
@@ -9172,6 +9589,16 @@ function renderFocusClockTab() {
       ? ` · ${Math.round(Number(item.progressStart))}% → ${Math.round(Number(item.progressEnd))}%` : '';
     return `<article class="sd-focus-history-row"><span><i class="fa-solid ${item.activity === 'reading' ? 'fa-book-open' : 'fa-check'}"></i></span><div><b>${htmlEscape(item.task || '未命名专注')}</b><small>${htmlEscape(time)} · ${minutes} 分钟${readingProgress}</small></div></article>`;
   }).join('') : '<div class="sd-focus-empty">今天还没有完成记录。</div>';
+  const lastCompletion = f.history.find((item) => item.id === f.lastCompletionId) || null;
+  const finaleProgress = lastCompletion?.activity === 'reading' && Number.isFinite(Number(lastCompletion.progressStart)) && Number.isFinite(Number(lastCompletion.progressEnd))
+    ? `${Math.round(Number(lastCompletion.progressStart))}% → ${Math.round(Number(lastCompletion.progressEnd))}%` : '';
+  const finaleMarkup = lastCompletion ? `<section class="sd-card sd-focus-finale-card">
+      <div class="sd-card-title-row"><h3>这一程</h3><button type="button" class="sd-icon-btn sd-focus-finale-close" title="收起片尾卡" aria-label="收起片尾卡"><i class="fa-solid fa-xmark"></i></button></div>
+      <strong>${htmlEscape(lastCompletion.task || '未命名专注')}</strong>
+      <div class="sd-focus-finale-meta"><span>${Math.max(1, Math.round((Number(lastCompletion.durationMs) || 0) / 60000))} 分钟</span>${finaleProgress ? `<span>${finaleProgress}</span>` : ''}</div>
+      ${lastCompletion.voiceText ? `<blockquote>${htmlEscape(lastCompletion.voiceText)}</blockquote>` : ''}
+      <input class="text_pole sd-focus-finale-note" maxlength="100" placeholder="留一句给此刻的自己（可选）" value="${htmlEscape(lastCompletion.note || '')}">
+    </section>` : '';
   return `
     <section class="sd-card sd-focus-hero">
       <div class="sd-focus-phase-tabs" role="tablist" aria-label="计时阶段">
@@ -9190,14 +9617,20 @@ function renderFocusClockTab() {
         <button type="button" class="sd-btn sd-focus-reset">${f.status === 'idle' ? '重置' : '结束本轮'}</button>
       </div>
     </section>
+    ${finaleMarkup}
     <section class="sd-card sd-focus-today-card">
       <div class="sd-card-title-row"><h3>今日</h3><span class="sd-focus-today-count">${today.length} / ${f.dailyGoal} 段</span></div>
       <div class="sd-focus-today-stats"><div><b>${todayMinutes}</b><small>专注分钟</small></div><div><b>${today.length}</b><small>完成段数</small></div><div><b>${f.focusCycle}</b><small>当前循环</small></div></div>
       <div class="sd-focus-goal-track" aria-label="今日目标进度"><span style="width:${goalProgress.toFixed(1)}%"></span></div>
     </section>
+    <section class="sd-card sd-focus-week-card">
+      <div class="sd-card-title-row"><h3>本周记录</h3><span class="sd-focus-week-head"><small>${weekRange}</small><button type="button" class="sd-icon-btn sd-focus-week-export" title="导出本周记录图片" aria-label="导出本周记录图片" ${week.history.length ? '' : 'disabled'}><i class="fa-solid fa-image"></i></button></span></div>
+      <div class="sd-focus-week-summary"><span><b>${week.minutes}</b><small>分钟</small></span><span><b>${week.count}</b><small>段</small></span><span><b>${week.readingMinutes}</b><small>伴读</small></span></div>
+      <div class="sd-focus-week-chart" aria-label="本周每日专注分钟">${weekBars}</div>
+    </section>
     <section class="sd-card">
       <details class="sd-focus-settings" data-acc="focus-clock-settings">
-        <summary><span>周期设置</span><i class="fa-solid fa-chevron-down"></i></summary>
+        <summary><span>周期设置</span><span class="sd-focus-settings-head"><label class="checkbox_label sd-focus-auto-next-wrap"><input type="checkbox" class="sd-focus-auto-next" ${f.autoStartNext ? 'checked' : ''}> 自动开始下一阶段</label><i class="fa-solid fa-chevron-down"></i></span></summary>
         <div class="sd-focus-setting-grid">
           <label><span>专注</span><div><input class="text_pole sd-focus-setting" data-focus-setting="focusMinutes" type="number" min="1" max="240" value="${f.focusMinutes}" ${locked ? 'disabled' : ''}><small>分钟</small></div></label>
           <label><span>小憩</span><div><input class="text_pole sd-focus-setting" data-focus-setting="shortBreakMinutes" type="number" min="1" max="60" value="${f.shortBreakMinutes}" ${locked ? 'disabled' : ''}><small>分钟</small></div></label>
@@ -9205,12 +9638,16 @@ function renderFocusClockTab() {
           <label><span>每几段长休</span><div><input class="text_pole sd-focus-setting" data-focus-setting="longBreakEvery" type="number" min="1" max="12" value="${f.longBreakEvery}" ${locked ? 'disabled' : ''}><small>段</small></div></label>
           <label><span>今日目标</span><div><input class="text_pole sd-focus-setting" data-focus-setting="dailyGoal" type="number" min="1" max="24" value="${f.dailyGoal}"><small>段</small></div></label>
         </div>
-        <div class="sd-focus-toggles">
-          <label class="checkbox_label"><input type="checkbox" class="sd-focus-auto-next" ${f.autoStartNext ? 'checked' : ''}> 自动开始下一阶段</label>
-          <label class="checkbox_label"><input type="checkbox" class="sd-focus-sound" ${f.soundEnabled ? 'checked' : ''}> 完成提示音</label>
-        </div>
-        ${soundConfig}
       </details>
+    </section>
+    <section class="sd-card sd-focus-sound-card">
+      <div class="sd-card-title-row"><h3>完成提示音</h3><label class="checkbox_label"><input type="checkbox" class="sd-focus-sound" ${f.soundEnabled ? 'checked' : ''}>${f.soundEnabled ? '已开启' : '已关闭'}</label></div>
+      ${soundConfig}
+    </section>
+    <section class="sd-card sd-focus-voice-card">
+      <div class="sd-card-title-row"><h3>角色语音</h3><label class="checkbox_label"><input type="checkbox" class="sd-focus-voice-enabled" ${voiceContext.enabled ? 'checked' : ''} ${voiceAvailable && !locked ? '' : 'disabled'}>${voiceContext.enabled ? '已开启' : '已关闭'}</label></div>
+      <div class="sd-focus-voice-status"><i class="fa-solid ${voiceAvailable ? 'fa-link' : 'fa-circle-info'}"></i><span>${htmlEscape(voiceStatus)}</span></div>
+      ${voiceConfig}
     </section>
     <section class="sd-card sd-focus-history-card">
       <div class="sd-card-title-row"><h3>今日记录</h3>${today.length ? '<button type="button" class="sd-icon-btn sd-danger sd-focus-clear-history" title="清空今日记录" aria-label="清空今日记录"><i class="fa-solid fa-trash-can"></i></button>' : ''}</div>
@@ -9220,6 +9657,7 @@ function renderFocusClockTab() {
 
 function bindFocusClockEvents(root) {
   if (activeTab !== 'focus') return;
+  root.querySelector('.sd-focus-auto-next-wrap')?.addEventListener('click', (event) => event.stopPropagation());
   root.querySelectorAll('.sd-focus-phase').forEach((button) => button.addEventListener('click', () => {
     focusClockSetPhase(button.dataset.focusPhase);
     renderModal();
@@ -9289,14 +9727,14 @@ function bindFocusClockEvents(root) {
   });
   root.querySelectorAll('.sd-focus-sound-source').forEach((button) => button.addEventListener('click', () => {
     const f = focusClockState();
-    f.soundSource = ['builtin', 'url', 'file'].includes(button.dataset.focusSoundSource) ? button.dataset.focusSoundSource : 'builtin';
+    f.soundSource = ['builtin', 'url'].includes(button.dataset.focusSoundSource) ? button.dataset.focusSoundSource : 'builtin';
     focusClockResetMedia();
     saveSettings();
     renderModal();
   }));
   root.querySelector('.sd-focus-sound-preset')?.addEventListener('change', (event) => {
     const f = focusClockState();
-    f.soundPreset = FOCUS_CLOCK_SOUND_PRESETS[event.target.value] ? event.target.value : 'softChime';
+    f.soundPreset = FOCUS_CLOCK_SOUND_PRESETS[event.target.value] ? event.target.value : 'silverBell';
     saveSettings();
   });
   root.querySelector('.sd-focus-sound-url')?.addEventListener('change', (event) => {
@@ -9304,38 +9742,6 @@ function bindFocusClockEvents(root) {
     f.soundUrl = String(event.target.value || '').trim().slice(0, 2048);
     focusClockResetMedia();
     saveSettings();
-  });
-  root.querySelector('.sd-focus-sound-file input')?.addEventListener('change', async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const looksLikeAudio = String(file.type || '').startsWith('audio/') || /\.(mp3|m4a|aac|wav|ogg|webm)$/i.test(String(file.name || ''));
-    if (!looksLikeAudio) { toast('请选择音频文件。', 'warning'); return; }
-    if (file.size > FOCUS_CLOCK_LOCAL_SOUND_MAX_BYTES) {
-      toast('本地提示音请控制在 512 KB 内，以便跨端保存且不拖慢千幕配置。', 'warning');
-      return;
-    }
-    try {
-      let dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = () => reject(reader.error || new Error('读取失败'));
-        reader.readAsDataURL(file);
-      });
-      if (!/^data:audio\//i.test(dataUrl)) {
-        const ext = String(file.name || '').split('.').pop()?.toLowerCase();
-        const fallbackMime = { mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', ogg: 'audio/ogg', webm: 'audio/webm' }[ext];
-        if (fallbackMime) dataUrl = dataUrl.replace(/^data:[^;,]+/i, `data:${fallbackMime}`);
-      }
-      if (!/^data:audio\//i.test(dataUrl)) throw new Error('音频格式无法识别');
-      const f = focusClockState();
-      f.soundFileName = String(file.name || '本地提示音').slice(0, 120);
-      f.soundFileData = dataUrl;
-      focusClockResetMedia();
-      saveSettings();
-      renderModal();
-    } catch (error) {
-      toast(`提示音读取失败：${error?.message || error}`, 'error');
-    }
   });
   root.querySelector('.sd-focus-sound-preview')?.addEventListener('click', () => {
     const urlInput = root.querySelector('.sd-focus-sound-url');
@@ -9346,11 +9752,51 @@ function bindFocusClockEvents(root) {
     }
     void focusClockPlayDoneSound({ preview: true });
   });
-  root.querySelector('.sd-focus-sound-file-clear')?.addEventListener('click', () => {
+  root.querySelector('.sd-focus-week-export')?.addEventListener('click', () => void focusClockExportWeekImage());
+  root.querySelector('.sd-focus-voice-enabled')?.addEventListener('change', (event) => {
     const f = focusClockState();
-    f.soundFileName = '';
-    f.soundFileData = '';
-    focusClockResetMedia();
+    const voice = focusClockVoiceContext(f);
+    if (!voice.chatKey || !voice.options.length) return;
+    f.voiceEnabledByChat[voice.chatKey] = Boolean(event.target.checked);
+    if (!f.voiceSpeakerByChat[voice.chatKey] && voice.speaker) f.voiceSpeakerByChat[voice.chatKey] = voice.speaker;
+    if (!f.voiceRelationByChat[voice.chatKey]) f.voiceRelationByChat[voice.chatKey] = 'neutral';
+    saveSettings();
+    renderModal();
+  });
+  root.querySelector('.sd-focus-voice-speaker')?.addEventListener('change', (event) => {
+    const f = focusClockState();
+    const voice = focusClockVoiceContext(f);
+    if (!voice.chatKey) return;
+    f.voiceSpeakerByChat[voice.chatKey] = String(event.target.value || '').trim();
+    saveSettings();
+  });
+  root.querySelector('.sd-focus-voice-relation')?.addEventListener('change', (event) => {
+    const f = focusClockState();
+    const voice = focusClockVoiceContext(f);
+    if (!voice.chatKey) return;
+    f.voiceRelationByChat[voice.chatKey] = FOCUS_CLOCK_RELATIONS[event.target.value] ? event.target.value : 'neutral';
+    saveSettings();
+  });
+  root.querySelectorAll('.sd-focus-voice-mode').forEach((button) => button.addEventListener('click', () => {
+    focusClockState().voiceMode = button.dataset.focusVoiceMode === 'scene' ? 'scene' : 'stock';
+    saveSettings();
+    renderModal();
+  }));
+  root.querySelectorAll('.sd-focus-voice-frequency').forEach((button) => button.addEventListener('click', () => {
+    const id = button.dataset.focusVoiceFrequency;
+    focusClockState().voiceFrequency = FOCUS_CLOCK_VOICE_FREQUENCIES[id] ? id : 'low';
+    saveSettings();
+    renderModal();
+  }));
+  root.querySelector('.sd-focus-finale-note')?.addEventListener('change', (event) => {
+    const f = focusClockState();
+    const entry = f.history.find((item) => item.id === f.lastCompletionId);
+    if (!entry) return;
+    entry.note = String(event.target.value || '').trim().slice(0, 100);
+    saveSettings();
+  });
+  root.querySelector('.sd-focus-finale-close')?.addEventListener('click', () => {
+    focusClockState().lastCompletionId = '';
     saveSettings();
     renderModal();
   });
@@ -9360,6 +9806,7 @@ function bindFocusClockEvents(root) {
     const f = focusClockState();
     const today = focusClockDateKey();
     f.history = f.history.filter((item) => focusClockDateKey(item.finishedAt || item.startedAt) !== today);
+    if (!f.history.some((item) => item.id === f.lastCompletionId)) f.lastCompletionId = '';
     saveSettings();
     renderModal();
   });
