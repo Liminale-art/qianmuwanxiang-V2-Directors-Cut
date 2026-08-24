@@ -4989,7 +4989,8 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-focus-finale-card > strong { color: var(--sd-text); font-size: .94em; font-weight: 600; }
 #story-director-modal .sd-focus-finale-meta { display: flex; flex-wrap: wrap; gap: 7px; }
 #story-director-modal .sd-focus-finale-meta span { padding: 4px 9px; border-radius: 999px; background: color-mix(in srgb, var(--sd-accent) 12%, transparent); color: var(--sd-accent); font-size: .72em; }
-#story-director-modal .sd-focus-finale-card blockquote { margin: 0; padding: 10px 12px; border-left: 2px solid var(--sd-accent); border-radius: 0 10px 10px 0; background: var(--sd-pre); color: var(--sd-text); font-size: .84em; line-height: 1.65; }
+#story-director-modal .sd-focus-finale-voice { width: 100%; margin: 0; padding: 10px 12px; border: 0; border-left: 2px solid var(--sd-accent); border-radius: 0 10px 10px 0; background: var(--sd-pre); color: var(--sd-text); font: inherit; font-size: .84em; line-height: 1.65; text-align: left; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 9px; cursor: pointer; }
+#story-director-modal .sd-focus-finale-voice i { color: var(--sd-accent); }
 #story-director-modal .sd-focus-finale-note { width: 100%; margin: 0 !important; }
 #story-director-modal .sd-focus-today-count { padding: 4px 9px; border-radius: 999px; background: color-mix(in srgb, var(--sd-accent) 13%, transparent); color: var(--sd-accent); font-size: .76em; font-variant-numeric: tabular-nums; }
 #story-director-modal .sd-focus-today-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
@@ -5031,6 +5032,9 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-focus-sound-control .text_pole { min-width: 0; width: 100%; margin: 0 !important; }
 #story-director-modal .sd-focus-sound-control .sd-icon-btn { width: 38px; height: 38px; margin: 0; }
 #story-director-modal .sd-focus-voice-card > .sd-card-title-row .checkbox_label { margin: 0; color: var(--sd-muted); font-size: .8em; }
+#story-director-modal .sd-focus-voice-head-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; }
+#story-director-modal .sd-focus-voice-drawer-open { position: relative; width: 34px; height: 34px; margin: 0; color: var(--sd-accent); }
+#story-director-modal .sd-focus-voice-drawer-open > span { position: absolute; right: -3px; top: -3px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: var(--sd-accent); color: var(--sd-accent-contrast, #fff); font-size: 9px; font-weight: 700; line-height: 1; }
 #story-director-modal .sd-focus-voice-status { display: flex; align-items: center; gap: 8px; margin-top: 9px; padding: 9px 10px; border-radius: 11px; background: var(--sd-pre); color: var(--sd-muted); font-size: .76em; }
 #story-director-modal .sd-focus-voice-status i { color: var(--sd-accent); }
 #story-director-modal .sd-focus-voice-config { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
@@ -5041,6 +5045,27 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-focus-segments { min-width: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; padding: 3px; border-radius: 999px; background: var(--sd-glass-weak); }
 #story-director-modal .sd-focus-segments button { min-width: 0; padding: 6px 7px; border: 0; border-radius: 999px; background: transparent; color: var(--sd-muted); font: inherit; cursor: pointer; white-space: nowrap; }
 #story-director-modal .sd-focus-segments button.active { color: var(--sd-accent); background: var(--sd-folder-head); box-shadow: 0 1px 4px rgba(0, 0, 0, .07); }
+#story-director-modal .sd-focus-voice-drawer-portal { position: absolute; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; padding: 18px; }
+#story-director-modal .sd-focus-voice-drawer-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; background: color-mix(in srgb, #0d1110 44%, transparent); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); cursor: default; }
+#story-director-modal .sd-focus-voice-drawer { position: relative; z-index: 1; width: min(480px, 100%); max-height: min(72vh, 620px); overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--sd-hairline); border-radius: 20px; background: color-mix(in srgb, var(--sd-card) 90%, var(--sd-sticky-bg)); color: var(--sd-text); box-shadow: 0 18px 48px rgba(0, 0, 0, .24); backdrop-filter: blur(24px) saturate(1.08); -webkit-backdrop-filter: blur(24px) saturate(1.08); }
+#story-director-modal .sd-focus-voice-drawer > header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 16px 12px; border-bottom: 1px solid var(--sd-hairline); }
+#story-director-modal .sd-focus-voice-drawer > header h3 { margin: 0; color: var(--sd-text); font-size: 15px; }
+#story-director-modal .sd-focus-voice-drawer > header small { display: block; margin-top: 3px; color: var(--sd-muted); font-size: 11px; }
+#story-director-modal .sd-focus-voice-drawer-close { flex: 0 0 auto; width: 34px; height: 34px; margin: 0; }
+#story-director-modal .sd-focus-voice-drawer-list { min-height: 0; overflow: auto; scrollbar-width: none; display: flex; flex-direction: column; gap: 7px; padding: 10px; }
+#story-director-modal .sd-focus-voice-drawer-list::-webkit-scrollbar { display: none; }
+#story-director-modal .sd-focus-cue { display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; gap: 8px; align-items: center; padding: 9px; border-radius: 13px; background: var(--sd-pre); border: 1px solid transparent; }
+#story-director-modal .sd-focus-cue:has(.sd-focus-cue-tools:not([hidden])) { border-color: color-mix(in srgb, var(--sd-accent) 34%, transparent); }
+#story-director-modal .sd-focus-cue-play { width: 32px; height: 32px; margin: 0; padding: 0; border: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--sd-accent) 15%, transparent); color: var(--sd-accent); cursor: pointer; }
+#story-director-modal .sd-focus-cue-main { min-width: 0; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
+#story-director-modal .sd-focus-cue-main b { color: var(--sd-text); font-size: .78em; font-weight: 600; }
+#story-director-modal .sd-focus-cue-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sd-text); font-size: .84em; }
+#story-director-modal .sd-focus-cue-main small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sd-muted); font-size: .68em; }
+#story-director-modal .sd-focus-cue-more { width: 32px; height: 32px; margin: 0; }
+#story-director-modal .sd-focus-cue-tools { grid-column: 2 / 4; display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding-top: 7px; border-top: 1px solid var(--sd-hairline); }
+#story-director-modal .sd-focus-cue-tools[hidden] { display: none; }
+#story-director-modal .sd-focus-cue-tools .sd-icon-btn { width: 34px; height: 34px; margin: 0; }
+#story-director-modal .sd-focus-cue-fav.is-active { color: var(--sd-accent); }
 #story-director-modal .sd-focus-history { display: flex; flex-direction: column; gap: 7px; }
 #story-director-modal .sd-focus-history-row { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 9px; align-items: center; padding: 9px 10px; border-radius: 11px; background: var(--sd-pre); }
 #story-director-modal .sd-focus-history-row > span { width: 28px; height: 28px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; color: var(--sd-accent); background: color-mix(in srgb, var(--sd-accent) 13%, transparent); font-size: .76em; }
@@ -5061,5 +5086,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-focus-reading-link { grid-template-columns: 1fr; }
   #story-director-modal .sd-focus-reading-link .sd-btn { width: 100%; }
   #story-director-modal .sd-focus-voice-row { grid-template-columns: 1fr; gap: 6px; }
+  #story-director-modal .sd-focus-voice-drawer-portal { align-items: flex-end; padding: 10px; }
+  #story-director-modal .sd-focus-voice-drawer { width: 100%; max-height: min(76vh, 620px); border-radius: 18px; }
   .sd-reader-focus-btn { padding-inline: 6px !important; }
 }

@@ -49,6 +49,10 @@ assert.match(source, /\['url', '自定义'\]/, '完成提示音的自定义来�
 assert.match(source, /voiceEnabledByChat[\s\S]*voiceSpeakerByChat[\s\S]*voiceRelationByChat/, '角色语音启用、角色与关系必须按聊天隔离');
 assert.match(source, /你是“千幕专注场景”的角色短句编写器[\s\S]*不引用聊天正文[\s\S]*不得猜测正文情节/, '情景生成提示词必须与正文隔离并约束不 OOC');
 assert.match(source, /function focusClockPrepareVoiceCues[\s\S]*ttsBuildParams[\s\S]*focusClockSynthVoiceCue/, '角色语音必须在开始时冻结音色参数并预生成缓存');
+assert.match(source, /function focusClockOpenVoiceDrawer[\s\S]*sd-focus-cue-play[\s\S]*sd-focus-cue-regen[\s\S]*sd-focus-cue-fav[\s\S]*sd-focus-cue-download/, '专注角色语音必须通过二层抽屉提供重听、重生成、收藏和下载');
+assert.match(source, /voiceText: completionCue\?\.text \|\| '', voiceCues: completedVoiceCues/, '完成记录必须持久化可回放的安全语音缓存索引');
+assert.match(source, /blobStore\.addFavorite[\s\S]*source: 'focus'/, '专注语音必须复用配音收藏夹存储');
+assert.match(source, /function focusClockVoiceCueFileBase[\s\S]*speaker[\s\S]*task[\s\S]*ttsCompactStamp/, '专注角色语音命名必须包含角色、任务与时间');
 assert.match(source, /function focusClockPlayCompletionAlert[\s\S]*focusClockPlayDoneSound/, '角色语音失败必须回退普通完成提示音');
 assert.match(source, /sd-focus-finale-card[\s\S]*sd-focus-finale-note/, '完成后必须提供可随记的片尾卡');
 assert.match(css, /\.sd-focus-ring\s*\{[^}]*conic-gradient/, '主计时器必须使用清晰的环形进度视觉');
