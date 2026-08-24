@@ -52,6 +52,6 @@ assert.doesNotMatch(css, /\.sd-reader-assistant-trigger\s*\{|\.sd-reader-assista
 
 // 本轮两个收尾项。
 assert.doesNotMatch(source, /只提取字体 API 与 font-family/);
-assert.match(source, /id: 'imagegen', label: '生图', icon: 'fa-paintbrush'/);
+assert.match(source, /id: 'imagegen', label: '分镜', icon: 'fa-video'/);
 
 console.log('Coread page assistant contract OK');

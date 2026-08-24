@@ -18,10 +18,18 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
+import {
+  STORYBOARD_RATIOS,
+  STORYBOARD_SOURCES,
+  buildImagineCommand,
+  createStoryboardDefaults,
+  normalizeStoryboardState,
+  storyboardRatioDimensions,
+} from './qianmu-storyboard.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.37.0';
+const VERSION = '1.38.0';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -527,6 +535,9 @@ const DEFAULT_SETTINGS = Object.freeze({
     lastCompletionId: '',
     history: [],
   },
+  // 分镜：千幕只保存工作台、人物档案与挂载偏好；API 密钥始终写入 SillyTavern 密钥库。
+  // 真正的供应商请求由 ST 内置 Image Generation 负责，千幕不复制其网络层。
+  imagegen: createStoryboardDefaults(),
   templates: [
     {
       id: 'default-free-blueprint',
@@ -740,9 +751,16 @@ let theaterAbort = null;           // 幕外中止句柄
 let theaterCancel = false;         // 幕外取消标记
 let focusClockTicker = null;        // 专注时钟只负责刷新显示；真实进度由持久化 endsAt 计算
 let focusClockMedia = null;         // 内置/外链提示音复用同一 Audio 元素，开始计时时由用户手势预热
+let focusClockPreviewMode = false;  // 试听可暂停后继续；完成提醒播放不占用试听按钮状态
+let focusClockPreviewFrame = 0;     // requestAnimationFrame 驱动试听圆环，避免 timeupdate 的阶梯感
 let focusClockVoicePrepareSeq = 0;   // 新专注轮次递增；旧异步情景生成返回时自动作废
 const focusClockVoiceBlobs = new Map(); // IndexedDB 不可用时仍可在本页完成播放；仅保留少量预生成结果
 let focusClockVoiceDrawerEl = null;  // 专注角色语音二层抽屉；挂在千幕根容器，避免移动端 fixed 定位受 ST 主题干扰
+let storyboardBusy = false;          // 分镜生成独立忙碌态，不占用推演/幕外请求锁
+let storyboardSecrets = {};          // 只缓存“是否已配置”，绝不读取或缓存密钥正文
+let storyboardSecretModulePromise = null;
+let storyboardChatClickBound = false;
+let storyboardInlineTimer = null;
 let initialized = false;
 let eventBound = false;
 let inputMenuObserver = null;
@@ -1050,6 +1068,7 @@ function getChatStore() {
   if (!meta[MODULE_NAME].ttsLines || typeof meta[MODULE_NAME].ttsLines !== 'object') meta[MODULE_NAME].ttsLines = {};   // 有声：已提取台词列表 内容指纹key→lines，持久化跨刷新
   if (!meta[MODULE_NAME].ttsLineKeyByMes || typeof meta[MODULE_NAME].ttsLineKeyByMes !== 'object') meta[MODULE_NAME].ttsLineKeyByMes = {};   // 有声：楼层mesid→最近一次台词key，原地编正文后凭此+台词原文在场校验迁移缓存（免重提）
   if (!isPlainObject(meta[MODULE_NAME].ttsVoiceMaps)) meta[MODULE_NAME].ttsVoiceMaps = {};   // 配音：按 Provider 隔离的本聊天角色→音色映射
+  if (!Array.isArray(meta[MODULE_NAME].storyboardImages)) meta[MODULE_NAME].storyboardImages = [];   // 分镜：只存图片 URL/镜头参数/楼层锚点，不改正文 mes
   if (Array.isArray(meta[MODULE_NAME].ttsVoiceMap) && !Array.isArray(meta[MODULE_NAME].ttsVoiceMaps.minimax)) {
     meta[MODULE_NAME].ttsVoiceMaps.minimax = meta[MODULE_NAME].ttsVoiceMap;   // 1.8.1 旧映射无损迁移
   }
@@ -3549,7 +3568,7 @@ function resolveRestorableTab(tab) {
   // v1.30 起「编剧」并入「幕后」。旧设置里若仍记着 blueprint，直接迁移到 settings，
   // 避免更新后恢复到一个已经撤掉的顶层入口。
   if (tab === 'blueprint') return 'settings';
-  const KNOWN = ['dashboard', 'focus', 'tasksnodes', 'castworld', 'context', 'settings', 'theater', 'tts', 'geopolitics', 'coread', 'plug'];
+  const KNOWN = ['dashboard', 'focus', 'tasksnodes', 'castworld', 'context', 'settings', 'theater', 'tts', 'imagegen', 'geopolitics', 'coread', 'plug'];
   if (!KNOWN.includes(tab)) return 'dashboard';
   if (tab === 'coread' && !COREAD_ENABLED) return 'dashboard';
   if (tab === 'geopolitics' && !settings.geopoliticsEnabled) return 'dashboard';
@@ -3689,7 +3708,7 @@ const QUICK_COMMANDS = Object.freeze([
   { id: 'coread', label: '书架', icon: 'fa-book-open' },
   { id: 'geopolitics', label: '世界格局', icon: 'fa-atom' },
   { id: 'plug', label: 'API与日志', icon: 'fa-gear' },
-  { id: 'imagegen', label: '生图', icon: 'fa-paintbrush', pending: true },
+  { id: 'imagegen', label: '分镜', icon: 'fa-video' },
   { id: 'floor', label: '楼层跳转', icon: 'fa-layer-group' },
 ]);
 const QUICK_COMMAND_IDS = QUICK_COMMANDS.map((item) => item.id);
@@ -4852,7 +4871,6 @@ async function runQuickWheelCommand(id) {
     return openModal('coread');
   }
   if (id === 'floor') return openFloorNavigator();
-  if (id === 'imagegen') return toast('生图模块将在下一开发任务开放。', 'info');
   if (id === 'geopolitics' && !settings.geopoliticsEnabled) return toast('请先在幕后开启「活幕·势」。', 'info');
   if (QUICK_COMMAND_IDS.includes(id)) return openModal(id);
 }
@@ -5146,6 +5164,7 @@ function renderModal() {
     ['theater', '幕外'],
     ['tts', '配音'],
     ['focus', '专注'],
+    ['imagegen', '分镜'],
   ];
   const wasOpen = modal.classList.contains('open');
   const animIn = modalJustOpened;   // 仅「打开」后的首帧入场动画，消费后清零，静默重渲染不再播（消除刷新闪动）
@@ -5326,6 +5345,7 @@ function renderActiveTab() {
     case 'settings': return renderDirectorSettingsTab();
     case 'theater': return renderTheaterTab();
     case 'tts': return renderTtsTab();
+    case 'imagegen': return renderStoryboardTab();
     case 'geopolitics': return renderGeopoliticsTab();
     case 'coread': return COREAD_ENABLED ? renderCoreadTab() : renderDashboardTab();   // 功能沉睡时误入 coread 回落仪表盘
     case 'plug': return renderPlugTab();
@@ -9394,6 +9414,584 @@ function renderPlugTab() {
 }
 
 /* ============================================================
+   分镜：千幕负责配置入口、镜头工作台、人物视觉档案与正文呈现；
+   供应商请求统一交给 SillyTavern 内置 Image Generation，绝不复制其网络层。
+   正文图片只作为 .mes_text 的兄弟节点挂载，原始 mes 与配音扫描区保持纯净。
+   ============================================================ */
+function storyboardState() {
+  if (!isPlainObject(settings.imagegen)) settings.imagegen = createStoryboardDefaults();
+  const state = normalizeStoryboardState(settings.imagegen);
+  if (!state.initialized) {
+    const sd = storyboardSdSettings();
+    const current = Object.values(STORYBOARD_SOURCES).find((item) => item.stSource === sd.source);
+    if (current) state.source = current.id;
+    storyboardHydrateProfile(state.source, sd);
+    state.initialized = true;
+    queueMicrotask(() => saveSettings());
+  }
+  return state;
+}
+
+function storyboardSdSettings() {
+  const context = ctx();
+  const extensionSettings = context.extensionSettings || (context.extensionSettings = {});
+  return extensionSettings.sd || (extensionSettings.sd = {});
+}
+
+function storyboardProfile(sourceId = storyboardState().source) {
+  const state = storyboardState();
+  return state.profiles[sourceId] || (state.profiles[sourceId] = createStoryboardDefaults().profiles[sourceId]);
+}
+
+function storyboardHydrateProfile(sourceId, sd = storyboardSdSettings()) {
+  const state = normalizeStoryboardState(settings.imagegen);
+  const profile = state.profiles[sourceId];
+  if (!profile || profile.loaded) return profile;
+  const read = (key, sdKey = key) => { if (sd[sdKey] !== undefined && sd[sdKey] !== null) profile[key] = sd[sdKey]; };
+  read('model'); read('sampler'); read('scheduler'); read('width'); read('height'); read('steps'); read('cfg', 'scale'); read('seed');
+  if (sourceId === 'comfy') { read('comfyUrl', 'comfy_url'); read('comfyWorkflow', 'comfy_workflow'); }
+  if (sourceId === 'openai') { read('openaiStyle', 'openai_style'); read('openaiQuality', 'openai_quality_gpt'); }
+  if (sourceId === 'banana') profile.googleEnhance = Boolean(sd.google_enhance);
+  if (sourceId === 'novel') {
+    profile.novelSm = Boolean(sd.novel_sm);
+    profile.novelSmDyn = Boolean(sd.novel_sm_dyn);
+    profile.novelDecrisper = Boolean(sd.novel_decrisper);
+    profile.novelVarietyBoost = Boolean(sd.novel_variety_boost);
+  }
+  profile.loaded = true;
+  return profile;
+}
+
+function storyboardCurrentAssistantFloor() {
+  const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
+  for (let i = chat.length - 1; i >= 0; i--) {
+    if (chat[i] && !chat[i].is_user && !chat[i].is_system) return i;
+  }
+  return -1;
+}
+
+function storyboardCleanMessageText(value) {
+  return stripThinkChain(String(value || ''))
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function storyboardSafeUrl(value) {
+  const url = String(value || '').trim();
+  if (/^(?:https?:|data:image\/|blob:|\/|\.\/)/i.test(url)) return url;
+  if (/^(?:user|characters|images)\//i.test(url)) return `/${url}`;
+  return '';
+}
+
+function storyboardSelectOptions(selector, selected = '') {
+  const values = [...new Set(Array.from(document.querySelectorAll(`${selector} option`)).map((item) => String(item.value || '').trim()).filter(Boolean))];
+  if (selected && !values.includes(String(selected))) values.unshift(String(selected));
+  return values.map((value) => `<option value="${htmlEscape(value)}"></option>`).join('');
+}
+
+function renderStoryboardSourceTabs(state) {
+  return `<div class="sd-storyboard-source-tabs" role="tablist" aria-label="生图连接">
+    ${Object.values(STORYBOARD_SOURCES).map((source) => `<button type="button" class="sd-storyboard-source ${state.source === source.id ? 'active' : ''}" data-storyboard-source="${source.id}">${source.label}</button>`).join('')}
+  </div>`;
+}
+
+function renderStoryboardNav(state) {
+  const items = [
+    ['create', '镜头台', 'fa-camera-retro'],
+    ['characters', '形象档案', 'fa-address-card'],
+    ['gallery', '成片', 'fa-images'],
+    ['connection', '模型连接', 'fa-plug'],
+  ];
+  return `<nav class="sd-storyboard-nav">${items.map(([id, label, icon]) => `<button type="button" class="${state.view === id ? 'active' : ''}" data-storyboard-view="${id}"><i class="fa-solid ${icon}"></i><span>${label}</span></button>`).join('')}</nav>`;
+}
+
+function storyboardGalleryRecords() {
+  const store = getChatStore();
+  if (!Array.isArray(store.storyboardImages)) store.storyboardImages = [];
+  return store.storyboardImages;
+}
+
+function storyboardRecordStatus(record) {
+  if (!Number.isInteger(record?.floor)) return '';
+  const message = ctx().chat?.[record.floor];
+  if (!message) return '原楼层已不存在';
+  if (record.messageHash && record.messageHash !== hashText(String(message.mes || ''))) return '正文已变化';
+  if (record.swipeId !== undefined && Number(record.swipeId) !== Number(message.swipe_id || 0)) return '已切换回复版本';
+  return `第 ${record.floor} 层`;
+}
+
+function renderStoryboardCreate(state) {
+  const profile = storyboardProfile(state.source);
+  const sd = storyboardSdSettings();
+  const latestFloor = storyboardCurrentAssistantFloor();
+  const characterOptions = state.characters.map((item) => `<option value="${htmlEscape(item.id)}" ${state.selectedCharacterId === item.id ? 'selected' : ''}>${htmlEscape(item.name || '未命名档案')}</option>`).join('');
+  const last = [...storyboardGalleryRecords()].reverse().find((item) => storyboardSafeUrl(item.url));
+  const sourceFields = state.source === 'novel' ? `<div class="sd-storyboard-check-grid">
+      ${[['novelSm', 'SMEA'], ['novelSmDyn', 'SMEA DYN'], ['novelDecrisper', 'Decrisper'], ['novelVarietyBoost', 'Variety Boost']].map(([key, label]) => `<label class="checkbox_label"><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="${key}" ${profile[key] ? 'checked' : ''}> ${label}</label>`).join('')}
+    </div>` : state.source === 'openai' ? `<div class="sd-storyboard-grid sd-storyboard-grid-two">
+      <label><span>Style</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiStyle"><option value="">沿用当前</option>${['natural', 'vivid'].map((value) => `<option value="${value}" ${profile.openaiStyle === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>
+      <label><span>Quality</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiQuality"><option value="">沿用当前</option>${['auto', 'low', 'medium', 'high', 'standard', 'hd'].map((value) => `<option value="${value}" ${profile.openaiQuality === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>
+    </div>` : state.source === 'banana' ? `<label class="checkbox_label sd-storyboard-google-enhance"><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="googleEnhance" ${profile.googleEnhance ? 'checked' : ''}> Prompt Enhance</label>` : `<div class="sd-storyboard-grid sd-storyboard-grid-two">
+      <label><span>ComfyUI URL</span><input class="text_pole sd-storyboard-field" data-storyboard-field="comfyUrl" value="${htmlEscape(profile.comfyUrl || sd.comfy_url || '')}" placeholder="http://127.0.0.1:8188"></label>
+      <label><span>Workflow</span><input class="text_pole sd-storyboard-field" data-storyboard-field="comfyWorkflow" list="sd-storyboard-workflows" value="${htmlEscape(profile.comfyWorkflow || sd.comfy_workflow || '')}" placeholder="沿用当前工作流"><datalist id="sd-storyboard-workflows">${storyboardSelectOptions('#sd_comfy_workflow', profile.comfyWorkflow)}</datalist></label>
+    </div>`;
+  return `<div class="sd-storyboard-create">
+    <section class="sd-card sd-storyboard-hero-card">
+      <div><span class="sd-storyboard-kicker">STORYBOARD</span><h3>把这一幕留下来</h3><p>千幕组织镜头，SillyTavern 负责连接与生成。</p></div>
+      <i class="fa-solid fa-video"></i>
+    </section>
+    <section class="sd-card sd-storyboard-source-card">
+      <div class="sd-card-title-row"><h3>生图模型</h3><button type="button" class="sd-storyboard-open-connection">配置连接</button></div>
+      ${renderStoryboardSourceTabs(state)}
+    </section>
+    <section class="sd-card sd-storyboard-prompt-card">
+      <div class="sd-card-title-row"><h3>画面描述</h3><button type="button" class="sd-storyboard-use-floor" ${latestFloor < 0 ? 'disabled' : ''}>取当前回复</button></div>
+      <textarea class="text_pole sd-textarea sd-storyboard-prompt" spellcheck="false" placeholder="写下构图、人物、光线、动作与氛围；内容会原样交给当前生图模型。">${htmlEscape(state.prompt)}</textarea>
+      <label class="sd-storyboard-field-label"><span>反向提示词</span><textarea class="text_pole sd-storyboard-negative" spellcheck="false" placeholder="可留空">${htmlEscape(state.negative)}</textarea></label>
+      <div class="sd-storyboard-grid sd-storyboard-grid-two">
+        <label><span>人物形象</span><select class="text_pole sd-storyboard-character"><option value="">不套用档案</option>${characterOptions}</select></label>
+        <label><span>插入位置</span><select class="text_pole sd-storyboard-target">
+          <option value="latest" ${state.target === 'latest' ? 'selected' : ''}>当前角色回复后</option>
+          <option value="floor" ${state.target === 'floor' ? 'selected' : ''}>指定正文楼层</option>
+          <option value="gallery" ${state.target === 'gallery' ? 'selected' : ''}>只存入成片</option>
+        </select></label>
+      </div>
+      ${state.target === 'floor' ? `<label class="sd-storyboard-floor-row"><span>正文楼层</span><input class="text_pole sd-storyboard-floor" type="number" min="0" step="1" value="${htmlEscape(state.floor)}" placeholder="例如 128"></label>` : ''}
+      <label class="checkbox_label sd-storyboard-inline-choice"><input type="checkbox" class="sd-storyboard-inline" ${state.inlineByDefault && state.target !== 'gallery' ? 'checked' : ''} ${state.target === 'gallery' ? 'disabled' : ''}> 生成后穿插在正文中</label>
+    </section>
+    <details class="sd-card sd-storyboard-params" open>
+      <summary><span>绘制参数</span><small>空值沿用 SillyTavern 当前设置</small></summary>
+      <div class="sd-storyboard-grid sd-storyboard-grid-two">
+        <label><span>Model</span><input class="text_pole sd-storyboard-field" data-storyboard-field="model" list="sd-storyboard-models" value="${htmlEscape(profile.model)}" placeholder="沿用当前"><datalist id="sd-storyboard-models">${storyboardSelectOptions('#sd_model', profile.model)}</datalist></label>
+        <label><span>比例</span><select class="text_pole sd-storyboard-ratio">${STORYBOARD_RATIOS.map((item) => `<option value="${item.id}" ${profile.ratio === item.id ? 'selected' : ''}>${item.label}</option>`).join('')}</select></label>
+        <label><span>Width</span><input class="text_pole sd-storyboard-field sd-storyboard-width" data-storyboard-field="width" type="number" min="64" max="4096" step="64" value="${htmlEscape(profile.width)}" placeholder="${htmlEscape(sd.width || '')}"></label>
+        <label><span>Height</span><input class="text_pole sd-storyboard-field sd-storyboard-height" data-storyboard-field="height" type="number" min="64" max="4096" step="64" value="${htmlEscape(profile.height)}" placeholder="${htmlEscape(sd.height || '')}"></label>
+        <label><span>Steps</span><input class="text_pole sd-storyboard-field" data-storyboard-field="steps" type="number" min="1" max="300" step="1" value="${htmlEscape(profile.steps)}" placeholder="${htmlEscape(sd.steps || '')}"></label>
+        <label><span>CFG</span><input class="text_pole sd-storyboard-field" data-storyboard-field="cfg" type="number" min="0" max="100" step="0.1" value="${htmlEscape(profile.cfg)}" placeholder="${htmlEscape(sd.scale || '')}"></label>
+        <label><span>Seed</span><input class="text_pole sd-storyboard-field" data-storyboard-field="seed" type="number" min="-1" step="1" value="${htmlEscape(profile.seed)}" placeholder="随机"></label>
+        <label><span>Sampler</span><input class="text_pole sd-storyboard-field" data-storyboard-field="sampler" list="sd-storyboard-samplers" value="${htmlEscape(profile.sampler)}" placeholder="沿用当前"><datalist id="sd-storyboard-samplers">${storyboardSelectOptions('#sd_sampler', profile.sampler)}</datalist></label>
+        <label><span>Scheduler</span><input class="text_pole sd-storyboard-field" data-storyboard-field="scheduler" list="sd-storyboard-schedulers" value="${htmlEscape(profile.scheduler)}" placeholder="沿用当前"><datalist id="sd-storyboard-schedulers">${storyboardSelectOptions('#sd_scheduler', profile.scheduler)}</datalist></label>
+      </div>
+      ${sourceFields}
+    </details>
+    <button type="button" class="sd-btn sd-primary sd-storyboard-generate" ${storyboardBusy ? 'disabled' : ''}><i class="fa-solid ${storyboardBusy ? 'fa-spinner fa-spin' : 'fa-camera'}"></i>${storyboardBusy ? '正在生成' : '生成分镜'}</button>
+    ${last ? `<section class="sd-card sd-storyboard-last"><div class="sd-card-title-row"><h3>最近成片</h3><button type="button" data-storyboard-view="gallery">查看全部</button></div><img src="${htmlEscape(storyboardSafeUrl(last.url))}" alt="最近生成的分镜" loading="lazy"></section>` : ''}
+  </div>`;
+}
+
+function renderStoryboardConnection(state) {
+  const profile = storyboardProfile(state.source);
+  const source = STORYBOARD_SOURCES[state.source];
+  const saved = source.secretKey && storyboardSecrets[source.secretKey];
+  const credential = source.secretKey ? `<label class="sd-storyboard-api-key"><span>API Key <em class="sd-storyboard-secret-state ${saved ? 'saved' : ''}">${saved ? '已保存至 ST' : '未配置'}</em></span><input class="text_pole" type="password" autocomplete="new-password" placeholder="${saved ? '留空则继续使用已保存 Key' : '输入后保存至 SillyTavern 密钥库'}"></label>` : '';
+  const extra = state.source === 'comfy' ? `<div class="sd-storyboard-grid sd-storyboard-grid-two">
+      <label><span>ComfyUI URL</span><input class="text_pole sd-storyboard-connect-comfy-url" value="${htmlEscape(profile.comfyUrl || storyboardSdSettings().comfy_url || '')}" placeholder="http://127.0.0.1:8188"></label>
+      <label><span>Workflow</span><input class="text_pole sd-storyboard-connect-comfy-workflow" list="sd-storyboard-workflows-connect" value="${htmlEscape(profile.comfyWorkflow || storyboardSdSettings().comfy_workflow || '')}" placeholder="工作流文件名"><datalist id="sd-storyboard-workflows-connect">${storyboardSelectOptions('#sd_comfy_workflow', profile.comfyWorkflow)}</datalist></label>
+    </div>` : state.source === 'banana' ? `<label class="checkbox_label"><input type="checkbox" class="sd-storyboard-connect-google-enhance" ${profile.googleEnhance ? 'checked' : ''}> Prompt Enhance</label>` : '';
+  return `<div class="sd-storyboard-connection">
+    <section class="sd-card sd-storyboard-connection-head"><span class="sd-storyboard-kicker">CONNECTION</span><h3>模型连接</h3><p>所有输入都在千幕完成；密钥进入 SillyTavern 密钥库，实际请求仍由其 Image Generation 后端发出。</p></section>
+    <section class="sd-card">
+      ${renderStoryboardSourceTabs(state)}
+      <div class="sd-storyboard-connection-form">${credential}${extra}</div>
+      <button type="button" class="sd-btn sd-primary sd-storyboard-save-connection"><i class="fa-solid fa-check"></i>保存到 SillyTavern</button>
+    </section>
+    <section class="sd-card sd-storyboard-callchain"><i class="fa-solid fa-route"></i><div><b>调用链</b><span>千幕工作台 → SillyTavern Image Generation → ${source.label}</span></div></section>
+  </div>`;
+}
+
+function renderStoryboardCharacters(state) {
+  const selected = state.characters.find((item) => item.id === state.selectedCharacterId) || state.characters[0] || null;
+  const avatar = selected?.referenceUrl || coreadIdentityAvatar('char');
+  const cards = state.characters.map((item, index) => `<button type="button" class="sd-storyboard-file ${selected?.id === item.id ? 'active' : ''}" data-storyboard-character-id="${htmlEscape(item.id)}" style="--sd-file-index:${index}">
+      <span>${String(index + 1).padStart(2, '0')}</span><b>${htmlEscape(item.name || '未命名')}</b><small>${htmlEscape(item.subtitle || 'CHARACTER FILE')}</small>
+    </button>`).join('');
+  return `<div class="sd-storyboard-characters">
+    <section class="sd-storyboard-magazine">
+      <header><div><span class="sd-storyboard-kicker">CAST ARCHIVE</span><h3>Appearance<br>Files<sup>✦</sup></h3></div><button type="button" class="sd-btn sd-storyboard-add-current"><i class="fa-solid fa-plus"></i>为当前角色建档</button></header>
+      ${cards ? `<div class="sd-storyboard-file-stack">${cards}</div>` : '<div class="sd-storyboard-character-empty">还没有形象档案。为当前角色建一张，之后每个镜头都可随手调用。</div>'}
+      ${selected ? `<article class="sd-storyboard-profile-sheet" data-storyboard-character-edit="${htmlEscape(selected.id)}">
+        <div class="sd-storyboard-profile-copy">
+          <span class="sd-storyboard-profile-no">PROFILE / ${String(Math.max(1, state.characters.indexOf(selected) + 1)).padStart(2, '0')}</span>
+          <label><span>档案名</span><input class="text_pole" data-character-field="name" value="${htmlEscape(selected.name)}"></label>
+          <label><span>一句识别</span><input class="text_pole" data-character-field="subtitle" value="${htmlEscape(selected.subtitle)}" placeholder="例如：黑发、冷白肤色、旧式长风衣"></label>
+          <label><span>视觉描述</span><textarea class="text_pole" data-character-field="appearance" placeholder="只写画面中看得见的稳定特征；套用档案时会与镜头描述一并发送。">${htmlEscape(selected.appearance)}</textarea></label>
+          <label><span>专属反向提示词</span><textarea class="text_pole" data-character-field="negative" placeholder="可留空">${htmlEscape(selected.negative)}</textarea></label>
+          <label><span>档案图 URL</span><input class="text_pole" data-character-field="referenceUrl" type="url" value="${htmlEscape(selected.referenceUrl)}" placeholder="可留空，默认显示当前角色头像"></label>
+          <div class="sd-button-row"><button type="button" class="sd-btn sd-primary sd-storyboard-save-character">保存档案</button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-character" title="删除档案" aria-label="删除档案"><i class="fa-solid fa-trash-can"></i></button></div>
+        </div>
+        <div class="sd-storyboard-profile-photo">${avatar ? `<img src="${htmlEscape(storyboardSafeUrl(avatar))}" alt="${htmlEscape(selected.name)}">` : '<i class="fa-solid fa-user"></i>'}<span>${htmlEscape(selected.name)}</span></div>
+      </article>` : ''}
+    </section>
+  </div>`;
+}
+
+function renderStoryboardGallery() {
+  const records = [...storyboardGalleryRecords()].reverse();
+  return `<div class="sd-storyboard-gallery-page">
+    <section class="sd-card sd-storyboard-gallery-head"><div><span class="sd-storyboard-kicker">TAKES</span><h3>成片</h3></div><b>${records.length}</b></section>
+    ${records.length ? `<div class="sd-storyboard-gallery">${records.map((record) => {
+      const url = storyboardSafeUrl(record.url);
+      const status = storyboardRecordStatus(record);
+      return `<article data-storyboard-record="${htmlEscape(record.id)}">
+        ${url ? `<img src="${htmlEscape(url)}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 40))}">` : '<div class="sd-storyboard-image-missing"><i class="fa-solid fa-image"></i></div>'}
+        <div><span>${htmlEscape(STORYBOARD_SOURCES[record.source]?.label || record.source || '分镜')}</span><small>${htmlEscape(status || formatDateTime(record.createdAt))}</small><p>${htmlEscape(snip(record.prompt || '', 110))}</p></div>
+        <div class="sd-storyboard-gallery-actions"><button type="button" class="sd-icon-btn sd-storyboard-download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button>${Number.isInteger(record.floor) ? `<button type="button" class="sd-icon-btn sd-storyboard-inline-toggle" title="${record.inline === false ? '插回正文' : '移出正文'}" aria-label="${record.inline === false ? '插回正文' : '移出正文'}"><i class="fa-solid ${record.inline === false ? 'fa-eye' : 'fa-eye-slash'}"></i></button>` : ''}<button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-record" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div>
+      </article>`;
+    }).join('')}</div>` : '<section class="sd-card sd-storyboard-empty"><i class="fa-solid fa-film"></i><p>还没有成片。镜头台生成的画面会收在这里。</p></section>'}
+  </div>`;
+}
+
+function renderStoryboardTab() {
+  const state = storyboardState();
+  const body = state.view === 'characters' ? renderStoryboardCharacters(state)
+    : state.view === 'gallery' ? renderStoryboardGallery(state)
+      : state.view === 'connection' ? renderStoryboardConnection(state)
+        : renderStoryboardCreate(state);
+  return `<div class="sd-storyboard-root">${renderStoryboardNav(state)}${body}</div>`;
+}
+
+function storyboardCaptureWorkbench(root) {
+  const state = storyboardState();
+  const profile = storyboardProfile(state.source);
+  const prompt = root.querySelector('.sd-storyboard-prompt');
+  const negative = root.querySelector('.sd-storyboard-negative');
+  if (prompt) state.prompt = String(prompt.value || '').slice(0, 24000);
+  if (negative) state.negative = String(negative.value || '').slice(0, 12000);
+  state.target = root.querySelector('.sd-storyboard-target')?.value || state.target;
+  state.floor = String(root.querySelector('.sd-storyboard-floor')?.value ?? state.floor ?? '').trim();
+  const inline = root.querySelector('.sd-storyboard-inline');
+  if (inline && !inline.disabled) state.inlineByDefault = Boolean(inline.checked);
+  state.selectedCharacterId = String(root.querySelector('.sd-storyboard-character')?.value || '');
+  root.querySelectorAll('.sd-storyboard-field').forEach((field) => {
+    const key = field.dataset.storyboardField;
+    if (!key) return;
+    profile[key] = field.type === 'checkbox' ? Boolean(field.checked) : String(field.value || '').trim();
+  });
+  profile.ratio = String(root.querySelector('.sd-storyboard-ratio')?.value || profile.ratio || '');
+  profile.loaded = true;
+  saveSettings();
+  return { state, profile };
+}
+
+async function storyboardSecretModule() {
+  if (!storyboardSecretModulePromise) storyboardSecretModulePromise = import('../../../secrets.js');
+  return storyboardSecretModulePromise;
+}
+
+async function storyboardRefreshSecretState(root = document.getElementById(MODAL_ID)) {
+  try {
+    const secrets = await storyboardSecretModule();
+    storyboardSecrets = secrets.secret_state || {};
+    const source = STORYBOARD_SOURCES[storyboardState().source];
+    const configured = Boolean(source.secretKey && Array.isArray(storyboardSecrets[source.secretKey]) && storyboardSecrets[source.secretKey].length);
+    const badge = root?.querySelector('.sd-storyboard-secret-state');
+    if (badge) {
+      badge.textContent = configured ? '已保存至 ST' : '未配置';
+      badge.classList.toggle('saved', configured);
+    }
+  } catch (error) {
+    console.warn(`[${MODULE_NAME}] storyboard secret state unavailable`, error);
+  }
+}
+
+async function storyboardExecuteSlash(command) {
+  const context = ctx();
+  const execute = context.executeSlashCommandsWithOptions || globalThis.executeSlashCommandsWithOptions;
+  if (typeof execute !== 'function') throw new Error('当前 SillyTavern 未开放命令执行接口');
+  const result = await execute.call(context, command, { handleParserErrors: true, source: 'qianmu-storyboard' });
+  return String(result?.pipe ?? result?.output ?? result ?? '').trim().replace(/^['"]|['"]$/g, '');
+}
+
+async function storyboardActivateSource(sourceId, { hydrate = false } = {}) {
+  const source = STORYBOARD_SOURCES[sourceId];
+  if (!source) throw new Error('不支持的生图模型');
+  const sd = storyboardSdSettings();
+  try { await storyboardExecuteSlash(`/imagine-source ${source.stSource}`); }
+  catch (error) { console.warn(`[${MODULE_NAME}] imagine-source fallback`, error); }
+  sd.source = source.stSource;
+  if (sourceId === 'banana') sd.google_api = 'makersuite';
+  if (hydrate) {
+    const profile = storyboardState().profiles[sourceId];
+    if (profile) profile.loaded = false;
+    storyboardHydrateProfile(sourceId, sd);
+  }
+  saveSettings();
+  return sd;
+}
+
+function storyboardApplyProfileToSt(profile, sourceId) {
+  const sd = storyboardSdSettings();
+  const write = (key, sdKey = key, numeric = false) => {
+    const raw = profile[key];
+    if (raw === '' || raw === null || raw === undefined) return;
+    sd[sdKey] = numeric ? Number(raw) : raw;
+  };
+  write('model'); write('sampler'); write('scheduler'); write('width', 'width', true); write('height', 'height', true); write('steps', 'steps', true); write('cfg', 'scale', true); write('seed', 'seed', true);
+  if (sourceId === 'comfy') { write('comfyUrl', 'comfy_url'); write('comfyWorkflow', 'comfy_workflow'); sd.comfy_type = 'standard'; }
+  if (sourceId === 'openai') {
+    write('openaiStyle', 'openai_style');
+    if (profile.openaiQuality) {
+      const qualityKey = /dall[-_ ]?e/i.test(String(profile.model || sd.model || '')) ? 'openai_quality' : 'openai_quality_gpt';
+      sd[qualityKey] = profile.openaiQuality;
+    }
+  }
+  if (sourceId === 'banana') { sd.google_api = 'makersuite'; sd.google_enhance = Boolean(profile.googleEnhance); }
+  if (sourceId === 'novel') {
+    sd.novel_sm = Boolean(profile.novelSm); sd.novel_sm_dyn = Boolean(profile.novelSmDyn);
+    sd.novel_decrisper = Boolean(profile.novelDecrisper); sd.novel_variety_boost = Boolean(profile.novelVarietyBoost);
+  }
+  saveSettings();
+}
+
+async function storyboardSaveConnection(root, { quiet = false } = {}) {
+  const state = storyboardState();
+  const source = STORYBOARD_SOURCES[state.source];
+  const profile = storyboardProfile(state.source);
+  if (state.source === 'comfy') {
+    profile.comfyUrl = String(root.querySelector('.sd-storyboard-connect-comfy-url, [data-storyboard-field="comfyUrl"]')?.value || profile.comfyUrl || '').trim();
+    profile.comfyWorkflow = String(root.querySelector('.sd-storyboard-connect-comfy-workflow, [data-storyboard-field="comfyWorkflow"]')?.value || profile.comfyWorkflow || '').trim();
+  }
+  if (state.source === 'banana') profile.googleEnhance = Boolean(root.querySelector('.sd-storyboard-connect-google-enhance, [data-storyboard-field="googleEnhance"]')?.checked ?? profile.googleEnhance);
+  await storyboardActivateSource(state.source);
+  storyboardApplyProfileToSt(profile, state.source);
+  const keyInput = root.querySelector('.sd-storyboard-api-key input');
+  const keyValue = String(keyInput?.value || '').trim();
+  if (source.secretKey && keyValue) {
+    const secrets = await storyboardSecretModule();
+    const id = await secrets.writeSecret(source.secretKey, keyValue, `千幕 · 分镜 · ${source.label}`);
+    if (!id) throw new Error('API Key 未能写入 SillyTavern 密钥库');
+    if (keyInput) keyInput.value = '';
+  }
+  saveSettings();
+  await storyboardRefreshSecretState(root);
+  if (!quiet) toast(`${source.label} 连接设置已保存。`, 'success');
+  return true;
+}
+
+function storyboardGenerationPayload(state, profile) {
+  const character = state.characters.find((item) => item.id === state.selectedCharacterId);
+  const prompt = character?.appearance
+    ? `人物视觉档案：${character.name || '角色'}；${character.appearance}\n镜头画面：${state.prompt}`
+    : state.prompt;
+  const negative = [character?.negative, state.negative].map((item) => String(item || '').trim()).filter(Boolean).join(', ');
+  return { prompt, negative, width: profile.width, height: profile.height, steps: profile.steps, cfg: profile.cfg, seed: profile.seed };
+}
+
+async function storyboardGenerate(root) {
+  if (storyboardBusy) return;
+  const { state, profile } = storyboardCaptureWorkbench(root);
+  if (!state.prompt.trim()) return toast('请先写下画面描述。', 'warning');
+  storyboardBusy = true;
+  renderModal();
+  try {
+    await storyboardSaveConnection(document.getElementById(MODAL_ID), { quiet: true });
+    storyboardApplyProfileToSt(profile, state.source);
+    const command = buildImagineCommand(storyboardGenerationPayload(state, profile));
+    const url = storyboardSafeUrl(await storyboardExecuteSlash(command));
+    if (!url) throw new Error('SillyTavern 未返回图片地址，请检查模型连接与参数');
+    let floor = null;
+    if (state.target === 'latest') floor = storyboardCurrentAssistantFloor();
+    if (state.target === 'floor') {
+      const rawFloor = String(state.floor ?? '').trim();
+      if (!rawFloor || !Number.isInteger(Number(rawFloor))) throw new Error('请输入有效的正文楼层');
+      floor = Number(rawFloor);
+    }
+    const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
+    if (!Number.isInteger(floor) || floor < 0 || floor >= chat.length || state.target === 'gallery') floor = null;
+    const message = Number.isInteger(floor) ? chat[floor] : null;
+    const record = {
+      id: uid('shot'), url, prompt: state.prompt, negative: state.negative, source: state.source,
+      characterId: state.selectedCharacterId || '', floor, inline: Boolean(state.inlineByDefault && Number.isInteger(floor)),
+      messageHash: message ? hashText(String(message.mes || '')) : '', swipeId: message ? Number(message.swipe_id || 0) : 0,
+      width: Number(profile.width) || 0, height: Number(profile.height) || 0, createdAt: Date.now(),
+    };
+    storyboardGalleryRecords().push(record);
+    await saveMetadata();
+    storyboardScheduleInlineRender(30);
+    toast(record.inline ? `分镜已插入第 ${floor} 层。` : '分镜已生成并存入成片。', 'success');
+  } catch (error) {
+    console.error(`[${MODULE_NAME}] storyboard generation failed`, error);
+    toast(`分镜生成失败：${error?.message || error}`, 'error');
+  } finally {
+    storyboardBusy = false;
+    renderModal();
+  }
+}
+
+function storyboardInlineRecordValid(record) {
+  if (!record?.inline || !Number.isInteger(record.floor)) return false;
+  const message = ctx().chat?.[record.floor];
+  if (!message) return false;
+  if (record.messageHash && record.messageHash !== hashText(String(message.mes || ''))) return false;
+  if (record.swipeId !== undefined && Number(record.swipeId) !== Number(message.swipe_id || 0)) return false;
+  return Boolean(storyboardSafeUrl(record.url));
+}
+
+function storyboardRenderInlineImages() {
+  const chatRoot = document.getElementById('chat');
+  if (!chatRoot) return;
+  const byFloor = new Map();
+  for (const record of storyboardGalleryRecords()) {
+    if (!storyboardInlineRecordValid(record)) continue;
+    if (!byFloor.has(record.floor)) byFloor.set(record.floor, []);
+    byFloor.get(record.floor).push(record);
+  }
+  chatRoot.querySelectorAll('.sd-storyboard-inline').forEach((node) => node.remove());
+  for (const [floor, records] of byFloor) {
+    const message = chatRoot.querySelector(`.mes[mesid="${floor}"], .mes[data-message-id="${floor}"]`);
+    const text = message?.querySelector('.mes_text');
+    if (!message || !text) continue;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'sd-storyboard-inline';
+    wrapper.dataset.storyboardFloor = String(floor);
+    wrapper.innerHTML = records.map((record) => `<figure data-storyboard-record="${htmlEscape(record.id)}"><a href="${htmlEscape(storyboardSafeUrl(record.url))}" target="_blank" rel="noopener"><img src="${htmlEscape(storyboardSafeUrl(record.url))}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 48))}"></a><figcaption><span>分镜</span><div><button type="button" data-storyboard-chat-action="download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button><button type="button" data-storyboard-chat-action="detach" title="移出正文" aria-label="移出正文"><i class="fa-solid fa-eye-slash"></i></button></div></figcaption></figure>`).join('');
+    text.insertAdjacentElement('afterend', wrapper);
+  }
+}
+
+function storyboardScheduleInlineRender(delay = 80) {
+  if (storyboardInlineTimer) clearTimeout(storyboardInlineTimer);
+  storyboardInlineTimer = setTimeout(() => { storyboardInlineTimer = null; storyboardRenderInlineImages(); }, delay);
+}
+
+async function storyboardDownloadRecord(record) {
+  const url = storyboardSafeUrl(record?.url);
+  if (!url) return toast('图片地址无效。', 'warning');
+  const base = `千幕-分镜-${Number.isInteger(record.floor) ? `${record.floor}-` : ''}${fileStamp()}`;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(String(response.status));
+    const blob = await response.blob();
+    const ext = String(blob.type || '').includes('jpeg') ? 'jpg' : String(blob.type || '').includes('webp') ? 'webp' : 'png';
+    ttsDownloadBlob(blob, `${base}.${ext}`);
+  } catch (_) {
+    const anchor = document.createElement('a');
+    anchor.href = url; anchor.target = '_blank'; anchor.rel = 'noopener'; anchor.download = `${base}.png`;
+    anchor.click();
+  }
+}
+
+async function storyboardOnChatClick(event) {
+  const button = event.target.closest?.('[data-storyboard-chat-action]');
+  if (!button || !button.closest('#chat')) return;
+  event.preventDefault(); event.stopPropagation();
+  const id = button.closest('[data-storyboard-record]')?.dataset.storyboardRecord;
+  const record = storyboardGalleryRecords().find((item) => item.id === id);
+  if (!record) return;
+  if (button.dataset.storyboardChatAction === 'download') return storyboardDownloadRecord(record);
+  if (button.dataset.storyboardChatAction === 'detach') {
+    record.inline = false;
+    await saveMetadata();
+    storyboardRenderInlineImages();
+    rerenderIfOpen();
+  }
+}
+
+function storyboardBindChat() {
+  if (storyboardChatClickBound) return;
+  document.addEventListener('click', storyboardOnChatClick, true);
+  storyboardChatClickBound = true;
+  storyboardScheduleInlineRender(120);
+}
+
+function storyboardUnbindChat() {
+  if (storyboardChatClickBound) document.removeEventListener('click', storyboardOnChatClick, true);
+  storyboardChatClickBound = false;
+  if (storyboardInlineTimer) clearTimeout(storyboardInlineTimer);
+  storyboardInlineTimer = null;
+  document.querySelectorAll('#chat .sd-storyboard-inline').forEach((node) => node.remove());
+}
+
+function storyboardCreateCurrentCharacter() {
+  const state = storyboardState();
+  const name = getCharacterName() || '未命名角色';
+  const item = { id: uid('cast'), name, subtitle: '', appearance: '', negative: '', referenceUrl: coreadIdentityAvatar('char'), updatedAt: Date.now() };
+  state.characters.push(item);
+  state.selectedCharacterId = item.id;
+  saveSettings();
+  renderModal();
+}
+
+function bindStoryboardTabEvents(root) {
+  if (activeTab !== 'imagegen') return;
+  const state = storyboardState();
+  root.querySelectorAll('[data-storyboard-view]').forEach((button) => button.addEventListener('click', () => {
+    if (state.view === 'create') storyboardCaptureWorkbench(root);
+    state.view = button.dataset.storyboardView;
+    saveSettings(); renderModal();
+  }));
+  root.querySelector('.sd-storyboard-open-connection')?.addEventListener('click', () => { storyboardCaptureWorkbench(root); state.view = 'connection'; saveSettings(); renderModal(); });
+  root.querySelectorAll('[data-storyboard-source]').forEach((button) => button.addEventListener('click', async () => {
+    const id = button.dataset.storyboardSource;
+    if (!STORYBOARD_SOURCES[id] || id === state.source) return;
+    if (state.view === 'create') storyboardCaptureWorkbench(root);
+    state.source = id; saveSettings();
+    try { await storyboardActivateSource(id, { hydrate: true }); } catch (error) { toast(`切换失败：${error?.message || error}`, 'warning'); }
+    renderModal();
+  }));
+  root.querySelector('.sd-storyboard-use-floor')?.addEventListener('click', () => {
+    const floor = storyboardCurrentAssistantFloor();
+    if (floor < 0) return;
+    state.prompt = storyboardCleanMessageText(ctx().chat?.[floor]?.mes).slice(0, 24000);
+    state.floor = String(floor);
+    saveSettings(); renderModal();
+  });
+  root.querySelector('.sd-storyboard-target')?.addEventListener('change', (event) => {
+    storyboardCaptureWorkbench(root);
+    state.target = event.target.value;
+    saveSettings(); renderModal();
+  });
+  root.querySelector('.sd-storyboard-ratio')?.addEventListener('change', (event) => {
+    const width = root.querySelector('.sd-storyboard-width');
+    const height = root.querySelector('.sd-storyboard-height');
+    const dimensions = storyboardRatioDimensions(event.target.value, width?.value || width?.placeholder, height?.value || height?.placeholder);
+    if (width && dimensions.width) width.value = dimensions.width;
+    if (height && dimensions.height) height.value = dimensions.height;
+    storyboardCaptureWorkbench(root);
+  });
+  root.querySelector('.sd-storyboard-generate')?.addEventListener('click', () => void storyboardGenerate(root));
+  root.querySelector('.sd-storyboard-save-connection')?.addEventListener('click', () => void storyboardSaveConnection(root).catch((error) => toast(`保存失败：${error?.message || error}`, 'error')));
+  root.querySelector('.sd-storyboard-add-current')?.addEventListener('click', storyboardCreateCurrentCharacter);
+  root.querySelectorAll('[data-storyboard-character-id]').forEach((button) => button.addEventListener('click', () => {
+    state.selectedCharacterId = button.dataset.storyboardCharacterId || '';
+    saveSettings(); renderModal();
+  }));
+  root.querySelector('.sd-storyboard-save-character')?.addEventListener('click', () => {
+    const sheet = root.querySelector('[data-storyboard-character-edit]');
+    const item = state.characters.find((entry) => entry.id === sheet?.dataset.storyboardCharacterEdit);
+    if (!item) return;
+    sheet.querySelectorAll('[data-character-field]').forEach((field) => { item[field.dataset.characterField] = String(field.value || '').trim(); });
+    item.updatedAt = Date.now(); saveSettings(); toast('形象档案已保存。', 'success'); renderModal();
+  });
+  root.querySelector('.sd-storyboard-delete-character')?.addEventListener('click', async () => {
+    const item = state.characters.find((entry) => entry.id === state.selectedCharacterId);
+    if (!item || !await confirmDialog('删除形象档案', `确定删除「${item.name || '未命名档案'}」？已生成的图片不会被删除。`)) return;
+    state.characters = state.characters.filter((entry) => entry.id !== item.id);
+    state.selectedCharacterId = state.characters[0]?.id || '';
+    saveSettings(); renderModal();
+  });
+  root.querySelectorAll('.sd-storyboard-gallery article[data-storyboard-record]').forEach((card) => {
+    const record = storyboardGalleryRecords().find((item) => item.id === card.dataset.storyboardRecord);
+    card.querySelector('.sd-storyboard-download')?.addEventListener('click', () => void storyboardDownloadRecord(record));
+    card.querySelector('.sd-storyboard-inline-toggle')?.addEventListener('click', async () => {
+      if (!record) return;
+      record.inline = record.inline === false;
+      await saveMetadata(); storyboardRenderInlineImages(); renderModal();
+    });
+    card.querySelector('.sd-storyboard-delete-record')?.addEventListener('click', async () => {
+      if (!record || !await confirmDialog('删除分镜', '确定删除这张分镜记录？SillyTavern 图片文件本身不会被清除。')) return;
+      const store = getChatStore(); store.storyboardImages = store.storyboardImages.filter((item) => item.id !== record.id);
+      await saveMetadata(); storyboardRenderInlineImages(); renderModal();
+    });
+  });
+  void storyboardRefreshSecretState(root);
+}
+
+/* ============================================================
    专注时钟：轻量、全局、与聊天逻辑隔离。
    运行态只持久化绝对截止时间，不逐秒写设置；页面后台挂起或刷新后仍按真实时间续算。
    ============================================================ */
@@ -9610,9 +10208,74 @@ function focusClockMediaSource(state = focusClockState()) {
   return '';
 }
 
+function focusClockSyncPreviewButton() {
+  const button = document.querySelector(`#${MODAL_ID} .sd-focus-sound-preview`);
+  if (!button) return;
+  const duration = Number(focusClockMedia?.duration);
+  const current = Number(focusClockMedia?.currentTime);
+  const progress = Number.isFinite(duration) && duration > 0 && Number.isFinite(current)
+    ? Math.max(0, Math.min(1, current / duration))
+    : 0;
+  const playing = Boolean(focusClockPreviewMode && focusClockMedia && !focusClockMedia.paused && !focusClockMedia.ended);
+  button.style.setProperty('--sd-sound-progress', `${progress * 360}deg`);
+  button.classList.toggle('is-playing', playing);
+  button.title = playing ? '暂停试听' : (focusClockPreviewMode && progress > 0 ? '继续试听' : '试听提示音');
+  button.setAttribute('aria-label', button.title);
+  const icon = button.querySelector('i');
+  if (icon) icon.className = `fa-solid ${playing ? 'fa-pause' : 'fa-play'}`;
+}
+
+function focusClockStopPreviewFrame() {
+  if (focusClockPreviewFrame) cancelAnimationFrame(focusClockPreviewFrame);
+  focusClockPreviewFrame = 0;
+}
+
+function focusClockRunPreviewFrame() {
+  focusClockStopPreviewFrame();
+  const tick = () => {
+    focusClockSyncPreviewButton();
+    if (focusClockPreviewMode && focusClockMedia && !focusClockMedia.paused && !focusClockMedia.ended) {
+      focusClockPreviewFrame = requestAnimationFrame(tick);
+    } else {
+      focusClockPreviewFrame = 0;
+    }
+  };
+  tick();
+}
+
+function focusClockAttachMediaEvents(audio) {
+  if (!audio || audio.dataset?.qianmuEvents === '1') return;
+  audio.dataset.qianmuEvents = '1';
+  for (const eventName of ['loadedmetadata', 'durationchange', 'seeked', 'pause', 'play']) {
+    audio.addEventListener(eventName, focusClockSyncPreviewButton);
+  }
+  audio.addEventListener('ended', () => {
+    if (focusClockPreviewMode) {
+      focusClockPreviewMode = false;
+      try { audio.currentTime = 0; } catch (_) {}
+    }
+    focusClockStopPreviewFrame();
+    focusClockSyncPreviewButton();
+  });
+}
+
+function focusClockEnsureMedia(src) {
+  if (!focusClockMedia || focusClockMedia.dataset?.source !== src) {
+    focusClockResetMedia();
+    focusClockMedia = new Audio(src);
+    focusClockMedia.preload = 'auto';
+    focusClockMedia.dataset.source = src;
+    focusClockAttachMediaEvents(focusClockMedia);
+  }
+  return focusClockMedia;
+}
+
 function focusClockResetMedia() {
   try { focusClockMedia?.pause?.(); } catch (_) {}
+  focusClockPreviewMode = false;
+  focusClockStopPreviewFrame();
   focusClockMedia = null;
+  focusClockSyncPreviewButton();
 }
 
 function focusClockPrimeSound() {
@@ -9621,12 +10284,7 @@ function focusClockPrimeSound() {
   try {
     const src = focusClockMediaSource(f);
     if (!src) return;
-    if (!focusClockMedia || focusClockMedia.dataset?.source !== src) {
-      focusClockResetMedia();
-      focusClockMedia = new Audio(src);
-      focusClockMedia.preload = 'auto';
-      focusClockMedia.dataset.source = src;
-    }
+    focusClockEnsureMedia(src);
     // 开始/预览均来自用户手势；静音预热能提高移动端稍后播放的成功率，但浏览器仍可能在锁屏后暂停网页。
     const previousVolume = focusClockMedia.volume;
     focusClockMedia.volume = 0;
@@ -9648,17 +10306,32 @@ async function focusClockPlayDoneSound({ preview = false } = {}) {
       if (preview) toast('请先填写可用的音频外链。', 'warning');
       return false;
     }
-    if (!focusClockMedia || focusClockMedia.dataset?.source !== src) {
-      focusClockResetMedia();
-      focusClockMedia = new Audio(src);
-      focusClockMedia.preload = 'auto';
-      focusClockMedia.dataset.source = src;
+    const sameSource = focusClockMedia?.dataset?.source === src;
+    const audio = focusClockEnsureMedia(src);
+    audio.volume = 1;
+    if (preview && sameSource && focusClockPreviewMode && !audio.ended) {
+      if (audio.paused) {
+        await audio.play();
+        focusClockRunPreviewFrame();
+      } else {
+        audio.pause();
+        focusClockStopPreviewFrame();
+        focusClockSyncPreviewButton();
+      }
+      return true;
     }
-    focusClockMedia.volume = 1;
-    focusClockMedia.currentTime = 0;
-    await focusClockMedia.play();
+    focusClockPreviewMode = preview;
+    audio.currentTime = 0;
+    await audio.play();
+    if (preview) focusClockRunPreviewFrame();
+    else focusClockSyncPreviewButton();
     return true;
   } catch (_) {
+    if (preview) {
+      focusClockPreviewMode = false;
+      focusClockStopPreviewFrame();
+      focusClockSyncPreviewButton();
+    }
     if (preview) toast('提示音无法播放，请检查音频地址或浏览器媒体权限。', 'warning');
     return false;
   }
@@ -10438,12 +11111,17 @@ function bindFocusClockEvents(root) {
   root.querySelector('.sd-focus-sound-preview')?.addEventListener('click', () => {
     const urlInput = root.querySelector('.sd-focus-sound-url');
     if (urlInput) {
-      focusClockState().soundUrl = String(urlInput.value || '').trim().slice(0, 2048);
-      focusClockResetMedia();
-      saveSettings();
+      const f = focusClockState();
+      const nextUrl = String(urlInput.value || '').trim().slice(0, 2048);
+      if (nextUrl !== f.soundUrl) {
+        f.soundUrl = nextUrl;
+        focusClockResetMedia();
+        saveSettings();
+      }
     }
     void focusClockPlayDoneSound({ preview: true });
   });
+  focusClockSyncPreviewButton();
   root.querySelector('.sd-focus-week-export')?.addEventListener('click', () => void focusClockExportWeekImage());
   root.querySelector('.sd-focus-voice-enabled')?.addEventListener('change', (event) => {
     const f = focusClockState();
@@ -10544,6 +11222,7 @@ function bindActiveTabEvents(root) {
   }
   bindTheaterTabEvents(root);
   bindFocusClockEvents(root);
+  bindStoryboardTabEvents(root);
   bindGeopoliticsTabEvents(root);
   bindTtsTabEvents(root);
   bindCoreadTabEvents(root);
@@ -21432,6 +22111,7 @@ function bindEvents() {
     } catch (error) {
       console.warn(`[${MODULE_NAME}] auto refresh handler failed`, error);
     }
+    storyboardScheduleInlineRender(120);
   };
   const rerenderHandler = async () => {
     settings = getSettings();
@@ -21450,6 +22130,7 @@ function bindEvents() {
     await applyDirectorInjection();
     rerenderIfOpen();
     ttsStartChat();            // 新聊天 DOM 重建，重挂注入
+    storyboardScheduleInlineRender(140);
   };
   // APP_READY：ST 注水 extensionSettings 完成的信号。init 经 setTimeout 抢跑可能早于注水，
   // 此时读到的 floatPosition 仍是默认 → 悬浮球落默认中位。注水后重读 settings 并按保存位重绘，根治「重载后球回默认位」偶发。
@@ -21463,6 +22144,7 @@ function bindEvents() {
     restoreQuickDockedPlugins();
     rerenderIfOpen();
     ttsStartChat();   // ST 就绪后 #chat 已存在，挂上有声注入（init 抢跑时 #chat 可能尚未就位）
+    storyboardScheduleInlineRender(160);
   };
   const personaChangedHandler = async () => {
     await refreshCoreadPersonaAvatar();
@@ -21473,8 +22155,8 @@ function bindEvents() {
   // 故只触发一次防抖扫描，由 ttsAutoRestore 的「自愈」分支按缓存幂等补回内联图标（延时让 ST 重渲先落定）。
   const ttsMessageEditedHandler = (messageRef) => {
     const t = settings.tts || {};
-    if (!t.enabled || !t.injectInChat) return;
-    ttsScheduleEditedMessage(messageRef, 250);
+    if (t.enabled && t.injectInChat) ttsScheduleEditedMessage(messageRef, 250);
+    storyboardScheduleInlineRender(280);
   };
   const pairs = [
     [types.APP_READY || 'app_ready', appReadyHandler],   // 注水后把悬浮球挪回上次拖动的位置（修偶发回默认位）
@@ -21505,6 +22187,7 @@ function init() {
   renderFloatButton();
   bindQuickDockCapture();
   restoreQuickDockedPlugins();
+  storyboardBindChat();
   renderInputMenuEntry();
   startInputMenuObserver();
   resizeHandler = () => {
@@ -21557,6 +22240,7 @@ function cleanupRuntime(resetSettings = false) {
   inputMenuObserver?.disconnect?.();
   inputMenuObserver = null;
   ttsStopChat();   // 清理有声注入的 observer/委托/挂件，避免停用或重载后残留
+  storyboardUnbindChat();
   stopFocusClockRuntime();
   stopProseLayout(true);
   if (resizeHandler) window.removeEventListener('resize', resizeHandler);
