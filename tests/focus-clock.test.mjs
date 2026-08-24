@@ -6,6 +6,7 @@ const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
 assert.match(source, /focusClock:\s*\{[\s\S]*phase: 'focus'[\s\S]*status: 'idle'[\s\S]*endsAt: 0[\s\S]*history: \[\]/, '专注状态必须独立存入全局轻量设置');
 assert.match(source, /\['focus', '专注'\]/, '专注时钟必须拥有独立顶层标签');
+assert.match(source, /\['tts', '配音'\],\s*\['focus', '专注'\]/, '专注标签必须排列在配音之后');
 assert.match(source, /id: 'focus', label: '专注', icon: 'fa-hourglass-half'/, '蜂巢入口列表必须包含专注时钟');
 assert.match(source, /case 'focus': return renderFocusClockTab\(\)/, '专注标签必须接入统一路由');
 
@@ -23,13 +24,21 @@ assert.match(source, /data-focus-activity="reading"[\s\S]*sd-focus-book[\s\S]*�
 assert.match(source, /progressStart:[\s\S]*progressEnd:/, '伴读专注完成记录必须保存阅读进度变化');
 assert.match(source, /sd-reader-focus-btn[\s\S]*sd-reader-focus-mini/, '阅读页必须提供专注时钟入口与实时剩余时间');
 assert.match(source, /已有另一段专注正在进行/, '阅读页不得擅自覆盖正在进行的其他书籍专注');
+assert.match(source, /const returnTab = activeTab === 'focus' \? 'focus' : 'coread'[\s\S]*activeTab = 'coread'/, '从专注进入阅读器时必须切到伴读路由，防止计时重渲染卸载阅读页');
+assert.match(source, /const returnTab = readerView\?\.returnTab === 'focus'[\s\S]*activeTab = returnTab/, '退出阅读器必须能够回到原专注页');
 
 assert.match(source, /FOCUS_CLOCK_HISTORY_LIMIT = 120/, '完成记录必须有明确容量上限');
 assert.match(source, /f\.focusCycle % f\.longBreakEvery === 0 \? 'longBreak' : 'shortBreak'/, '专注周期必须按用户设置进入小憩或长休');
 assert.match(source, /autoStartNext[\s\S]*完成提示音/, '自动下一阶段与提示音必须保留为用户自选项');
+assert.match(source, /FOCUS_CLOCK_SOUND_PRESETS[\s\S]*softChime[\s\S]*forest[\s\S]*tide/, '完成提示音必须提供内置方案');
+assert.match(source, /soundSource: 'builtin'[\s\S]*soundUrl: ''[\s\S]*soundFileData: ''/, '提示音必须支持内置、外链与可跨端的小体积本地音频');
+assert.match(source, /FOCUS_CLOCK_LOCAL_SOUND_MAX_BYTES = 524288/, '本地提示音必须限制体积，避免同步设置膨胀');
+assert.match(source, /data-focus-sound-source="\$\{id\}"[\s\S]*sd-focus-sound-preview/, '提示音来源必须可切换并可试听');
 assert.match(css, /\.sd-focus-ring\s*\{[^}]*conic-gradient/, '主计时器必须使用清晰的环形进度视觉');
 assert.match(css, /\.sd-focus-setting-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3/, '桌面周期设置必须使用紧凑网格');
 assert.match(css, /@media \(max-width: 520px\)[\s\S]*\.sd-focus-setting-grid\s*\{[^}]*repeat\(2/, '移动端周期设置必须保持两列易读布局');
 assert.match(css, /\.sd-reader-focus-btn\.active/, '伴读阅读页必须明确显示当前绑定的专注计时');
+assert.match(css, /\.sd-focus-actions\s*\{[^}]*width:\s*min\(100%, 460px\)/, '暂停与结束按钮组必须和进入阅读区域同宽');
+assert.doesNotMatch(css, /@media \(max-width: 520px\)[\s\S]*\.sd-focus-toggles\s*\{[^}]*grid-template-columns:\s*1fr/, '移动端两个周期选项也必须保持并排');
 
 console.log('Focus clock contract OK');

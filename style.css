@@ -4983,7 +4983,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-focus-reading-link > label { min-width: 0; display: flex; flex-direction: column; gap: 6px; color: var(--sd-muted); font-size: .76em; }
 #story-director-modal .sd-focus-reading-link select { min-width: 0; margin: 0 !important; }
 #story-director-modal .sd-focus-reading-link .sd-btn { min-width: 104px; margin: 0; }
-#story-director-modal .sd-focus-actions { position: relative; z-index: 1; width: min(100%, 360px); display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#story-director-modal .sd-focus-actions { position: relative; z-index: 1; width: min(100%, 460px); display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 #story-director-modal .sd-focus-actions .sd-btn { min-width: 0; margin: 0; }
 #story-director-modal .sd-focus-today-count { padding: 4px 9px; border-radius: 999px; background: color-mix(in srgb, var(--sd-accent) 13%, transparent); color: var(--sd-accent); font-size: .76em; font-variant-numeric: tabular-nums; }
 #story-director-modal .sd-focus-today-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
@@ -5003,6 +5003,15 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-focus-setting-grid small { flex: 0 0 auto; color: var(--sd-muted); }
 #story-director-modal .sd-focus-toggles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
 #story-director-modal .sd-focus-toggles .checkbox_label { min-width: 0; margin: 0; }
+#story-director-modal .sd-focus-sound-config { display: flex; flex-direction: column; gap: 8px; margin-top: 9px; padding: 9px; border-radius: 12px; background: var(--sd-pre); border: 1px solid var(--sd-hairline); }
+#story-director-modal .sd-focus-sound-sources { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 3px; border-radius: 999px; background: var(--sd-glass-weak); }
+#story-director-modal .sd-focus-sound-source { min-width: 0; padding: 6px 8px; border: 0; border-radius: 999px; background: transparent; color: var(--sd-muted); font: inherit; font-size: .76em; cursor: pointer; }
+#story-director-modal .sd-focus-sound-source.active { color: var(--sd-accent); background: var(--sd-folder-head); box-shadow: 0 1px 4px rgba(0, 0, 0, .07); }
+#story-director-modal .sd-focus-sound-control { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 7px; align-items: center; }
+#story-director-modal .sd-focus-sound-control .text_pole { min-width: 0; width: 100%; margin: 0 !important; }
+#story-director-modal .sd-focus-sound-file { min-width: 0; width: 100%; margin: 0; justify-content: flex-start; overflow: hidden; }
+#story-director-modal .sd-focus-sound-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-focus-sound-control .sd-icon-btn { width: 38px; height: 38px; margin: 0; }
 #story-director-modal .sd-focus-history { display: flex; flex-direction: column; gap: 7px; }
 #story-director-modal .sd-focus-history-row { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 9px; align-items: center; padding: 9px 10px; border-radius: 11px; background: var(--sd-pre); }
 #story-director-modal .sd-focus-history-row > span { width: 28px; height: 28px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; color: var(--sd-accent); background: color-mix(in srgb, var(--sd-accent) 13%, transparent); font-size: .76em; }
@@ -5020,7 +5029,6 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-focus-time { font-size: 2.08em; }
   #story-director-modal .sd-focus-phase { padding: 7px 5px; font-size: .82em; }
   #story-director-modal .sd-focus-setting-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  #story-director-modal .sd-focus-toggles { grid-template-columns: 1fr; }
   #story-director-modal .sd-focus-reading-link { grid-template-columns: 1fr; }
   #story-director-modal .sd-focus-reading-link .sd-btn { width: 100%; }
   .sd-reader-focus-btn { padding-inline: 6px !important; }

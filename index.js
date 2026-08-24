@@ -21,7 +21,7 @@ import * as reader from './qianmu-reader.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.35.0';
+const VERSION = '1.35.1';
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -62,6 +62,12 @@ const QIANMU_THEATER_REVISION = 5;   // 千幕剧场组版本，与吱吱组各�
 const LOG_LIMIT = 5;
 const LOG_CLIP = 80000;
 const FOCUS_CLOCK_HISTORY_LIMIT = 120;
+const FOCUS_CLOCK_LOCAL_SOUND_MAX_BYTES = 524288; // 本地提示音以内嵌 data URL 随千幕配置跨端；短提示限定 512 KB，避免拖慢全局设置保存
+const FOCUS_CLOCK_SOUND_PRESETS = Object.freeze({
+  softChime: { label: '清铃', wave: 'sine', notes: [[523.25, 0, .32, .075], [659.25, .17, .36, .07], [783.99, .36, .48, .055]] },
+  forest: { label: '林间', wave: 'triangle', notes: [[392, 0, .22, .055], [523.25, .25, .28, .06], [659.25, .53, .42, .045]] },
+  tide: { label: '潮汐', wave: 'sine', notes: [[329.63, 0, .46, .05], [440, .24, .52, .055], [554.37, .52, .58, .04]] },
+});
 
 const DEFAULT_BLUEPRINT = `【主要指令】
 你将依据以下维度自动分析当前聊天，为其创作最优秀的演绎剧本方案。各维度无需用户填写：留空时，从当前对话、角色设定、世界观与已发生事件中自行提炼；若某一维度已被用户写入具体内容，则视为优先级最高的覆盖指令。
@@ -458,6 +464,11 @@ const DEFAULT_SETTINGS = Object.freeze({
     dailyGoal: 4,
     autoStartNext: false,
     soundEnabled: true,
+    soundSource: 'builtin',       // builtin | url | file
+    soundPreset: 'softChime',
+    soundUrl: '',
+    soundFileName: '',
+    soundFileData: '',            // 小体积音频以 data URL 保存，随同一 ST 的千幕配置跨端
     remainingMs: 25 * 60 * 1000,
     endsAt: 0,
     runStartedAt: 0,
@@ -682,6 +693,7 @@ let theaterAbort = null;           // 幕外中止句柄
 let theaterCancel = false;         // 幕外取消标记
 let focusClockTicker = null;        // 专注时钟只负责刷新显示；真实进度由持久化 endsAt 计算
 let focusClockAudio = null;         // 用户首次启动后预热的轻量完成提示音
+let focusClockMedia = null;         // 外链/本地提示音复用同一 Audio 元素，开始计时时由用户手势预热
 let initialized = false;
 let eventBound = false;
 let inputMenuObserver = null;
@@ -4562,13 +4574,13 @@ function renderModal() {
   snapshotAccState(modal);
   const tabs = [
     ['dashboard', '审片'],
-    ['focus', '专注'],
     ['tasksnodes', '任务'],
     ['castworld', '世界'],
     ['context', '取材'],
     ['settings', '幕后'],
     ['theater', '幕外'],
     ['tts', '配音'],
+    ['focus', '专注'],
   ];
   const wasOpen = modal.classList.contains('open');
   const animIn = modalJustOpened;   // 仅「打开」后的首帧入场动画，消费后清零，静默重渲染不再播（消除刷新闪动）
@@ -8833,6 +8845,11 @@ function focusClockState() {
   f.activity = f.activity === 'reading' ? 'reading' : 'task';
   f.bookId = String(f.bookId || '');
   f.sessionBookId = String(f.sessionBookId || '');
+  f.soundSource = ['builtin', 'url', 'file'].includes(f.soundSource) ? f.soundSource : 'builtin';
+  f.soundPreset = FOCUS_CLOCK_SOUND_PRESETS[f.soundPreset] ? f.soundPreset : 'softChime';
+  f.soundUrl = String(f.soundUrl || '').trim().slice(0, 2048);
+  f.soundFileName = String(f.soundFileName || '').slice(0, 120);
+  f.soundFileData = /^data:audio\//i.test(String(f.soundFileData || '')) ? String(f.soundFileData) : '';
   f.sessionProgressStart = Math.max(0, Math.min(100, Number(f.sessionProgressStart) || 0));
   f.endsAt = Math.max(0, Number(f.endsAt) || 0);
   f.runStartedAt = Math.max(0, Number(f.runStartedAt) || 0);
@@ -8875,34 +8892,91 @@ function focusClockTodayHistory(state = focusClockState()) {
   return state.history.filter((item) => item?.kind === 'focus' && focusClockDateKey(item.finishedAt || item.startedAt) === today);
 }
 
+function focusClockMediaSource(state = focusClockState()) {
+  if (state.soundSource === 'file') return state.soundFileData || '';
+  if (state.soundSource === 'url' && /^https?:\/\//i.test(state.soundUrl)) return state.soundUrl;
+  return '';
+}
+
+function focusClockResetMedia() {
+  try { focusClockMedia?.pause?.(); } catch (_) {}
+  focusClockMedia = null;
+}
+
 function focusClockPrimeSound() {
-  if (!focusClockState().soundEnabled) return;
+  const f = focusClockState();
+  if (!f.soundEnabled) return;
   try {
-    const AudioCtx = globalThis.AudioContext || globalThis.webkitAudioContext;
-    if (!AudioCtx) return;
-    focusClockAudio ||= new AudioCtx();
-    if (focusClockAudio.state === 'suspended') void focusClockAudio.resume();
+    if (f.soundSource === 'builtin') {
+      const AudioCtx = globalThis.AudioContext || globalThis.webkitAudioContext;
+      if (!AudioCtx) return;
+      focusClockAudio ||= new AudioCtx();
+      if (focusClockAudio.state === 'suspended') void focusClockAudio.resume();
+      return;
+    }
+    const src = focusClockMediaSource(f);
+    if (!src) return;
+    if (!focusClockMedia || focusClockMedia.dataset?.source !== src) {
+      focusClockResetMedia();
+      focusClockMedia = new Audio(src);
+      focusClockMedia.preload = 'auto';
+      focusClockMedia.dataset.source = src;
+    }
+    // 开始/预览均来自用户手势；静音预热能提高移动端稍后播放的成功率，但浏览器仍可能在锁屏后暂停网页。
+    const previousVolume = focusClockMedia.volume;
+    focusClockMedia.volume = 0;
+    const primed = focusClockMedia.play();
+    if (primed?.then) void primed.then(() => {
+      focusClockMedia.pause();
+      focusClockMedia.currentTime = 0;
+      focusClockMedia.volume = previousVolume || 1;
+    }).catch(() => { focusClockMedia.volume = previousVolume || 1; });
   } catch (_) {}
 }
 
-function focusClockPlayDoneSound() {
+async function focusClockPlayDoneSound({ preview = false } = {}) {
   const f = focusClockState();
-  if (!f.soundEnabled || !focusClockAudio) return;
+  if (!f.soundEnabled && !preview) return false;
   try {
-    const start = focusClockAudio.currentTime;
-    [523.25, 659.25].forEach((frequency, index) => {
+    if (f.soundSource !== 'builtin') {
+      const src = focusClockMediaSource(f);
+      if (!src) {
+        if (preview) toast('请先填写可用外链或选择本地音频。', 'warning');
+        return false;
+      }
+      if (!focusClockMedia || focusClockMedia.dataset?.source !== src) {
+        focusClockResetMedia();
+        focusClockMedia = new Audio(src);
+        focusClockMedia.preload = 'auto';
+        focusClockMedia.dataset.source = src;
+      }
+      focusClockMedia.volume = 1;
+      focusClockMedia.currentTime = 0;
+      await focusClockMedia.play();
+      return true;
+    }
+    focusClockPrimeSound();
+    if (!focusClockAudio) return false;
+    if (focusClockAudio.state === 'suspended') await focusClockAudio.resume();
+    const preset = FOCUS_CLOCK_SOUND_PRESETS[f.soundPreset] || FOCUS_CLOCK_SOUND_PRESETS.softChime;
+    const start = focusClockAudio.currentTime + .015;
+    preset.notes.forEach(([frequency, offset, duration, volume]) => {
       const osc = focusClockAudio.createOscillator();
       const gain = focusClockAudio.createGain();
-      osc.type = 'sine';
+      osc.type = preset.wave;
       osc.frequency.value = frequency;
-      gain.gain.setValueAtTime(0.0001, start + index * .16);
-      gain.gain.exponentialRampToValueAtTime(.09, start + index * .16 + .02);
-      gain.gain.exponentialRampToValueAtTime(.0001, start + index * .16 + .28);
+      gain.gain.setValueAtTime(0.0001, start + offset);
+      gain.gain.exponentialRampToValueAtTime(volume, start + offset + .025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + offset + duration);
       osc.connect(gain).connect(focusClockAudio.destination);
-      osc.start(start + index * .16);
-      osc.stop(start + index * .16 + .3);
+      osc.start(start + offset);
+      osc.stop(start + offset + duration + .03);
     });
-  } catch (_) {}
+    return true;
+  } catch (_) {
+    if (preview) toast('提示音无法播放，请检查音频地址或浏览器媒体权限。', 'warning');
+    return false;
+  }
 }
 
 function focusClockSetPhase(phase) {
@@ -9006,7 +9080,7 @@ function focusClockComplete() {
   f.runStartedAt = f.autoStartNext ? now : 0;
   f.endsAt = f.autoStartNext ? now + f.remainingMs : 0;
   saveSettings();
-  focusClockPlayDoneSound();
+  void focusClockPlayDoneSound();
   const nextLabel = FOCUS_CLOCK_PHASES[f.phase].label;
   toast(completedPhase === 'focus' ? `这一程已经完成，接下来是${nextLabel}。` : '休息结束，慢慢回到下一段专注。', 'success');
   if (isModalOpen() && activeTab === 'focus') renderModal();
@@ -9039,17 +9113,24 @@ function focusClockVisibilitySync() {
 function startFocusClockRuntime() {
   if (focusClockTicker) clearInterval(focusClockTicker);
   document.removeEventListener('visibilitychange', focusClockVisibilitySync);
+  window.removeEventListener('pageshow', focusClockRuntimeTick);
+  window.removeEventListener('focus', focusClockRuntimeTick);
   focusClockRuntimeTick();
   focusClockTicker = setInterval(focusClockRuntimeTick, 500);
   document.addEventListener('visibilitychange', focusClockVisibilitySync, { passive: true });
+  window.addEventListener('pageshow', focusClockRuntimeTick, { passive: true });
+  window.addEventListener('focus', focusClockRuntimeTick, { passive: true });
 }
 
 function stopFocusClockRuntime() {
   if (focusClockTicker) clearInterval(focusClockTicker);
   focusClockTicker = null;
   document.removeEventListener('visibilitychange', focusClockVisibilitySync);
+  window.removeEventListener('pageshow', focusClockRuntimeTick);
+  window.removeEventListener('focus', focusClockRuntimeTick);
   try { void focusClockAudio?.close?.(); } catch (_) {}
   focusClockAudio = null;
+  focusClockResetMedia();
 }
 
 function renderFocusClockTab() {
@@ -9068,6 +9149,22 @@ function renderFocusClockTab() {
   const books = (coread().books || []).filter((book) => book?.id);
   if (f.activity === 'reading' && !books.some((book) => book.id === f.bookId)) f.bookId = books[0]?.id || '';
   const linkedBook = books.find((book) => book.id === f.bookId) || null;
+  const soundPresetOptions = Object.entries(FOCUS_CLOCK_SOUND_PRESETS).map(([id, item]) => `<option value="${id}" ${f.soundPreset === id ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('');
+  const soundConfig = f.soundEnabled ? `
+    <div class="sd-focus-sound-config">
+      <div class="sd-focus-sound-sources" role="tablist" aria-label="完成提示音来源">
+        ${[['builtin', '内置'], ['url', '外链'], ['file', '本地']].map(([id, label]) => `<button type="button" class="sd-focus-sound-source ${f.soundSource === id ? 'active' : ''}" data-focus-sound-source="${id}">${label}</button>`).join('')}
+      </div>
+      <div class="sd-focus-sound-control">
+        ${f.soundSource === 'builtin'
+          ? `<select class="text_pole sd-focus-sound-preset" aria-label="内置提示音">${soundPresetOptions}</select>`
+          : f.soundSource === 'url'
+            ? `<input class="text_pole sd-focus-sound-url" type="url" inputmode="url" maxlength="2048" placeholder="https://…/提示音.mp3" value="${htmlEscape(f.soundUrl)}">`
+            : `<label class="sd-btn sd-focus-sound-file"><i class="fa-solid fa-file-audio"></i><span>${htmlEscape(f.soundFileName || '选择音频')}</span><input type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.webm" hidden></label>`}
+        <button type="button" class="sd-icon-btn sd-focus-sound-preview" title="试听提示音" aria-label="试听提示音"><i class="fa-solid fa-play"></i></button>
+        ${f.soundSource === 'file' && f.soundFileData ? '<button type="button" class="sd-icon-btn sd-danger sd-focus-sound-file-clear" title="移除本地提示音" aria-label="移除本地提示音"><i class="fa-solid fa-trash-can"></i></button>' : ''}
+      </div>
+    </div>` : '';
   const historyRows = today.length ? today.map((item) => {
     const time = new Date(item.finishedAt || item.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const minutes = Math.max(1, Math.round((Number(item.durationMs) || 0) / 60000));
@@ -9112,6 +9209,7 @@ function renderFocusClockTab() {
           <label class="checkbox_label"><input type="checkbox" class="sd-focus-auto-next" ${f.autoStartNext ? 'checked' : ''}> 自动开始下一阶段</label>
           <label class="checkbox_label"><input type="checkbox" class="sd-focus-sound" ${f.soundEnabled ? 'checked' : ''}> 完成提示音</label>
         </div>
+        ${soundConfig}
       </details>
     </section>
     <section class="sd-card sd-focus-history-card">
@@ -9185,8 +9283,76 @@ function bindFocusClockEvents(root) {
   });
   root.querySelector('.sd-focus-sound')?.addEventListener('change', (event) => {
     focusClockState().soundEnabled = Boolean(event.target.checked);
-    if (event.target.checked) focusClockPrimeSound();
+    if (event.target.checked) focusClockPrimeSound(); else focusClockResetMedia();
     saveSettings();
+    renderModal();
+  });
+  root.querySelectorAll('.sd-focus-sound-source').forEach((button) => button.addEventListener('click', () => {
+    const f = focusClockState();
+    f.soundSource = ['builtin', 'url', 'file'].includes(button.dataset.focusSoundSource) ? button.dataset.focusSoundSource : 'builtin';
+    focusClockResetMedia();
+    saveSettings();
+    renderModal();
+  }));
+  root.querySelector('.sd-focus-sound-preset')?.addEventListener('change', (event) => {
+    const f = focusClockState();
+    f.soundPreset = FOCUS_CLOCK_SOUND_PRESETS[event.target.value] ? event.target.value : 'softChime';
+    saveSettings();
+  });
+  root.querySelector('.sd-focus-sound-url')?.addEventListener('change', (event) => {
+    const f = focusClockState();
+    f.soundUrl = String(event.target.value || '').trim().slice(0, 2048);
+    focusClockResetMedia();
+    saveSettings();
+  });
+  root.querySelector('.sd-focus-sound-file input')?.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const looksLikeAudio = String(file.type || '').startsWith('audio/') || /\.(mp3|m4a|aac|wav|ogg|webm)$/i.test(String(file.name || ''));
+    if (!looksLikeAudio) { toast('请选择音频文件。', 'warning'); return; }
+    if (file.size > FOCUS_CLOCK_LOCAL_SOUND_MAX_BYTES) {
+      toast('本地提示音请控制在 512 KB 内，以便跨端保存且不拖慢千幕配置。', 'warning');
+      return;
+    }
+    try {
+      let dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error || new Error('读取失败'));
+        reader.readAsDataURL(file);
+      });
+      if (!/^data:audio\//i.test(dataUrl)) {
+        const ext = String(file.name || '').split('.').pop()?.toLowerCase();
+        const fallbackMime = { mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', ogg: 'audio/ogg', webm: 'audio/webm' }[ext];
+        if (fallbackMime) dataUrl = dataUrl.replace(/^data:[^;,]+/i, `data:${fallbackMime}`);
+      }
+      if (!/^data:audio\//i.test(dataUrl)) throw new Error('音频格式无法识别');
+      const f = focusClockState();
+      f.soundFileName = String(file.name || '本地提示音').slice(0, 120);
+      f.soundFileData = dataUrl;
+      focusClockResetMedia();
+      saveSettings();
+      renderModal();
+    } catch (error) {
+      toast(`提示音读取失败：${error?.message || error}`, 'error');
+    }
+  });
+  root.querySelector('.sd-focus-sound-preview')?.addEventListener('click', () => {
+    const urlInput = root.querySelector('.sd-focus-sound-url');
+    if (urlInput) {
+      focusClockState().soundUrl = String(urlInput.value || '').trim().slice(0, 2048);
+      focusClockResetMedia();
+      saveSettings();
+    }
+    void focusClockPlayDoneSound({ preview: true });
+  });
+  root.querySelector('.sd-focus-sound-file-clear')?.addEventListener('click', () => {
+    const f = focusClockState();
+    f.soundFileName = '';
+    f.soundFileData = '';
+    focusClockResetMedia();
+    saveSettings();
+    renderModal();
   });
   root.querySelector('.sd-focus-clear-history')?.addEventListener('click', async () => {
     const yes = await confirmDialog('清空今日记录', '只清除今天已完成的专注记录，确定继续？');
@@ -14872,6 +15038,8 @@ async function coreadDeleteBook(bookId, options = {}) {
 /* ── 进入/退出阅读器 ───────────────────────────────────── */
 
 async function coreadOpenBook(bookId) {
+  // 阅读器必须暂时归属伴读路由。若仍把 activeTab 留在专注，计时到点触发的模态重渲会卸载 portal，造成偶发“闪退回专注”。
+  const returnTab = activeTab === 'focus' ? 'focus' : 'coread';
   const meta = coreadBookMeta(bookId);
   if (!meta) { toast('找不到这本书。', 'error'); return; }
   let rec = null;
@@ -14888,16 +15056,18 @@ async function coreadOpenBook(bookId) {
   readerView = {
     bookId, chapterIndex: Math.max(0, Math.min(startCh, rec.chapters.length - 1)),
     scrollRatio: meta.lastScrollRatio || 0, barHidden: false, activePanel: '', dialogPinned: false,
-    sessionStart: nowMs(), assistantOpen: false, pendingChatImages: [], panelInputBlockedUntil: 0,
+    sessionStart: nowMs(), assistantOpen: false, pendingChatImages: [], panelInputBlockedUntil: 0, returnTab,
   };
   readerAssistant = { bucket: coreadDialogBucket(bookId), bookId, messages: [], quote: '', loaded: false };
   // 阅读器始终走 body portal（逃离模态 backdrop-filter 包含块；窄屏/移动端真·全页，不被 .sd-window 裁切）
+  activeTab = 'coread';
   renderModal();        // 模态内此 tab 转为占位
   refreshReaderPortal();
   coreadLoadDialog(bookId);   // 异步载入本「聊天×书」会话，载完补渲对话流
 }
 
 function coreadCloseReader() {
+  const returnTab = readerView?.returnTab === 'focus' ? 'focus' : 'coread';
   coreadStopDialog();     // 中止在途生成，弃旧回调
   coreadStopAssistant(false);
   coreadClearPendingChatImages();
@@ -14916,6 +15086,7 @@ function coreadCloseReader() {
   unmountReaderPortal();
   readerView = null;
   readerContentCache = null;
+  activeTab = returnTab;
   renderModal();
 }
 
