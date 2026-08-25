@@ -199,6 +199,7 @@ const OWNED_ROOT_SELECTOR = [
   '.sd-reader-collection-pick-form',
   '.sd-reader-bookedit-form',
 ].join(',');
+const OWNED_DISCOVERY_SELECTOR = `${OWNED_ROOT_SELECTOR}, [data-qm-icon]`;
 
 const THIRD_PARTY_BOUNDARY_SELECTOR = [
   '.sd-preserve-external-icon',
@@ -304,8 +305,8 @@ function belongsToQianmu(icon) {
 function clearAppliedIcon(icon) {
   if (!(icon instanceof HTMLElement)) return;
   icon.querySelectorAll(':scope > svg.qm-phosphor-svg').forEach((svg) => svg.remove());
-  icon.classList.remove(ICON_CLASS);
-  icon.removeAttribute(ICON_DATA);
+  if (icon.classList.contains(ICON_CLASS)) icon.classList.remove(ICON_CLASS);
+  if (icon.hasAttribute(ICON_DATA)) icon.removeAttribute(ICON_DATA);
 }
 
 function updateIcon(icon) {
@@ -348,6 +349,13 @@ export function applyQianmuIcons(root = document) {
   return count;
 }
 
+function applyExistingQianmuIcons(doc) {
+  const roots = new Set(doc.querySelectorAll(OWNED_DISCOVERY_SELECTOR));
+  let count = 0;
+  roots.forEach((root) => { count += applyQianmuIcons(root); });
+  return count;
+}
+
 function ensureStyle(doc) {
   if (doc.getElementById(STYLE_ID)) return;
   const style = doc.createElement('style');
@@ -364,6 +372,12 @@ function ensureStyle(doc) {
 
 function queueRoot(root) {
   if (!(root instanceof Element) && !(root instanceof DocumentFragment) && !(root instanceof Document)) return;
+  if (root instanceof Element) {
+    const touchesOwnedRoot = root.matches(OWNED_DISCOVERY_SELECTOR)
+      || !!root.closest(OWNED_DISCOVERY_SELECTOR)
+      || !!root.querySelector(OWNED_DISCOVERY_SELECTOR);
+    if (!touchesOwnedRoot) return;
+  } else if (!(root instanceof Document) && !root.querySelector(OWNED_DISCOVERY_SELECTOR)) return;
   if (root instanceof Element && !root.matches(ICON_HOST_SELECTOR) && !root.querySelector(ICON_HOST_SELECTOR)) return;
   pendingRoots.add(root);
   if (flushQueued) return;
@@ -401,13 +415,13 @@ function queueMutationRecord(record) {
 export function installQianmuIconSystem(doc = document) {
   if (!doc?.documentElement) return false;
   if (observer && installedDocument === doc) {
-    applyQianmuIcons(doc);
+    applyExistingQianmuIcons(doc);
     return true;
   }
   uninstallQianmuIconSystem();
   installedDocument = doc;
   ensureStyle(doc);
-  applyQianmuIcons(doc);
+  applyExistingQianmuIcons(doc);
   observer = new MutationObserver((records) => {
     records.forEach((record) => queueMutationRecord(record));
   });
