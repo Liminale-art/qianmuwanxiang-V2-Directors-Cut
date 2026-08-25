@@ -18,7 +18,6 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
-import { installQianmuIconSystem, uninstallQianmuIconSystem } from './qianmu-icons.js';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_CONSISTENCY_STRATEGIES,
@@ -3788,19 +3787,19 @@ function revealFloatButton(btn, { temporary = true } = {}) {
 }
 
 const QUICK_COMMANDS = Object.freeze([
-  { id: 'dashboard', label: '推演', icon: 'fa-clapperboard', phosphor: 'qm-duotone-film-slate' },
-  { id: 'focus', label: '专注', icon: 'fa-hourglass-half', phosphor: 'focus' },
-  { id: 'tasksnodes', label: '任务', icon: 'fa-list-check', phosphor: 'tasks' },
-  { id: 'castworld', label: '世界', icon: 'fa-earth-asia', phosphor: 'world' },
-  { id: 'context', label: '取材', icon: 'fa-box-archive', phosphor: 'context' },
-  { id: 'settings', label: '幕后', icon: 'fa-feather-pointed', phosphor: 'backstage' },
-  { id: 'theater', label: '幕外', icon: 'fa-masks-theater', phosphor: 'qm-duotone-mask-happy' },
-  { id: 'tts', label: '配音', icon: 'fa-microphone-lines', phosphor: 'qm-duotone-microphone-stage' },
-  { id: 'coread', label: '书架', icon: 'fa-book-open', phosphor: 'coread-entry' },
-  { id: 'geopolitics', label: '世界格局', icon: 'fa-atom', phosphor: 'world-map' },
-  { id: 'plug', label: 'API与日志', icon: 'fa-gear', phosphor: 'qm-duotone-gear' },
-  { id: 'imagegen', label: '分镜', icon: 'fa-video', phosphor: 'qm-duotone-video-camera' },
-  { id: 'floor', label: '楼层跳转', icon: 'fa-layer-group', phosphor: 'floor-tools' },
+  { id: 'dashboard', label: '推演', icon: 'fa-clapperboard' },
+  { id: 'focus', label: '专注', icon: 'fa-hourglass-half' },
+  { id: 'tasksnodes', label: '任务', icon: 'fa-list-check' },
+  { id: 'castworld', label: '世界', icon: 'fa-earth-asia' },
+  { id: 'context', label: '取材', icon: 'fa-box-archive' },
+  { id: 'settings', label: '幕后', icon: 'fa-feather-pointed' },
+  { id: 'theater', label: '幕外', icon: 'fa-masks-theater' },
+  { id: 'tts', label: '配音', icon: 'fa-microphone-lines' },
+  { id: 'coread', label: '书架', icon: 'fa-book-open' },
+  { id: 'geopolitics', label: '世界格局', icon: 'fa-atom' },
+  { id: 'plug', label: 'API与日志', icon: 'fa-gear' },
+  { id: 'imagegen', label: '分镜', icon: 'fa-video' },
+  { id: 'floor', label: '楼层跳转', icon: 'fa-layer-group' },
 ]);
 const QUICK_COMMAND_IDS = QUICK_COMMANDS.map((item) => item.id);
 const QUICK_ICON_OPTICAL_SCALE = Object.freeze({
@@ -4152,10 +4151,10 @@ function quickDockCssImageUrl(value) {
 
 function quickDockFallbackMarkup(item) {
   const iconClass = String(item?.iconClass || '').split(/\s+/).filter((name) => /^fa[\w-]*$/.test(name)).slice(0, 5).join(' ');
-  if (iconClass) return `<i class="sd-preserve-external-icon ${htmlEscape(iconClass)}"></i>`;
+  if (iconClass) return `<i class="${htmlEscape(iconClass)}"></i>`;
   const iconText = Array.from(String(item?.iconText || '')).slice(0, 2).join('');
   if (iconText) return `<span class="sd-wheel-external-text">${htmlEscape(iconText)}</span>`;
-  return '<i class="fa-solid fa-puzzle-piece" data-qm-icon="qm-duotone-puzzle-piece"></i>';
+  return '<i class="fa-solid fa-puzzle-piece"></i>';
 }
 
 function quickDockIconMarkup(item, className = 'sd-wheel-external-logo') {
@@ -5232,7 +5231,7 @@ function openQuickWheel(btn) {
     button.title = item.pending ? `${item.label}（即将开放）` : item.label;
     button.setAttribute('aria-label', button.title);
     button.setAttribute('role', 'menuitem');
-    const iconMarkup = item.external ? quickDockIconMarkup(item) : `<i class="fa-solid ${item.icon}" data-qm-icon="${item.phosphor}"></i>`;
+    const iconMarkup = item.external ? quickDockIconMarkup(item) : `<i class="fa-solid ${item.icon}"></i>`;
     button.innerHTML = `${iconMarkup}${QUICK_HEX_BORDER_SVG}`;
     holder.appendChild(button);
     if (item.external) {
@@ -5498,9 +5497,9 @@ function renderModal() {
           <p>一蝶振翅&nbsp;&nbsp;万象入幕</p>
         </div>
         <div class="sd-header-actions">
-          ${COREAD_VISIBLE ? `<button class="sd-coread-shortcut ${activeTab === 'coread' ? 'active' : ''}" title="伴读" aria-label="伴读"><i class="fa-solid fa-book-open" data-qm-icon="coread-entry"></i></button>` : ''}
-          <button class="sd-geo-shortcut ${activeTab === 'geopolitics' ? 'active' : ''}" title="世界格局" aria-label="世界格局"><i class="fa-solid fa-atom" data-qm-icon="world-map"></i></button>
-          <button class="sd-plug-shortcut" title="API与日志"><i class="fa-solid fa-gear" data-qm-icon="qm-duotone-gear"></i></button>
+          ${COREAD_VISIBLE ? `<button class="sd-coread-shortcut ${activeTab === 'coread' ? 'active' : ''}" title="伴读" aria-label="伴读"><i class="fa-solid fa-book-open"></i></button>` : ''}
+          <button class="sd-geo-shortcut ${activeTab === 'geopolitics' ? 'active' : ''}" title="世界格局" aria-label="世界格局"><i class="fa-solid fa-atom"></i></button>
+          <button class="sd-plug-shortcut" title="API与日志"><i class="fa-solid fa-gear"></i></button>
           <div class="sd-theme-pick">
             <button class="sd-theme-btn" title="外观主题" aria-label="外观主题" aria-haspopup="true"><i class="fa-solid fa-palette"></i></button>
             <div class="sd-theme-menu" role="menu" hidden>
@@ -8633,9 +8632,9 @@ function ttsScanMessageElement(mesEl, options = {}) {
     const bar = document.createElement('div');
     bar.className = 'sd-tts-toolbar';
     bar.innerHTML = `
-      <button type="button" class="sd-tts-trigger" title="提取/展开台词列表" aria-label="提取台词"><i class="fa-solid fa-clapperboard" data-qm-icon="voice-lines"></i></button>
-      <button type="button" class="sd-tts-reextract" title="重新提取台词列表（仅刷新文本）" aria-label="重新提取台词"><i class="fa-solid fa-film" data-qm-icon="voice-reextract"></i></button>
-      <button type="button" class="sd-tts-regenall" title="重新生成本条全部语音" aria-label="重生本条全部语音" hidden><i class="fa-solid fa-rotate" data-qm-icon="voice-regenerate-all"></i></button>
+      <button type="button" class="sd-tts-trigger" title="提取/展开台词列表" aria-label="提取台词"><i class="fa-solid fa-clapperboard"></i></button>
+      <button type="button" class="sd-tts-reextract" title="重新提取台词列表（仅刷新文本）" aria-label="重新提取台词"><i class="fa-solid fa-film"></i></button>
+      <button type="button" class="sd-tts-regenall" title="重新生成本条全部语音" aria-label="重生本条全部语音" hidden><i class="fa-solid fa-rotate"></i></button>
       <button type="button" class="sd-tts-playall" title="连续播放本条全部台词" aria-label="连续播放" hidden><i class="fa-regular fa-circle-play"></i></button>`;
     textEl.insertAdjacentElement('afterend', bar);
   }
@@ -9654,7 +9653,7 @@ function renderQuickWheelSettings() {
     </div>
     <details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑蜂巢入口</span><b>${occupied} 项</b></summary><div class="sd-wheel-custom-list">${ordered.map((item, index) => `
       <div class="sd-wheel-custom-row" data-command="${item.id}">
-        <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}" data-qm-icon="${item.phosphor}"></i><span>${htmlEscape(item.label)}</span></label>
+        <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}"></i><span>${htmlEscape(item.label)}</span></label>
         <div><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="up" ${index === 0 ? 'disabled' : ''} title="上移"><i class="fa-solid fa-chevron-up"></i></button><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="down" ${index === ordered.length - 1 ? 'disabled' : ''} title="下移"><i class="fa-solid fa-chevron-down"></i></button></div>
       </div>`).join('')}</div>
     </details>
@@ -9940,13 +9939,13 @@ function storyboardSelectOptions(selector, selected = '') {
 
 function renderStoryboardNav(state) {
   const items = [
-    ['create', '镜头台', 'fa-camera', 'qm-duotone-camera'],
-    ['characters', '形象档案', 'fa-address-card', 'character-profile'],
-    ['assets', '素材库', 'fa-tags', 'qm-duotone-tag'],
-    ['gallery', '阅片室', 'fa-images', 'screening'],
-    ['logs', '日志', 'fa-list-ul', 'qm-regular-list-bullets'],
+    ['create', '镜头台', 'fa-camera'],
+    ['characters', '形象档案', 'fa-address-card'],
+    ['assets', '素材库', 'fa-tags'],
+    ['gallery', '阅片室', 'fa-images'],
+    ['logs', '日志', 'fa-list-ul'],
   ];
-  return `<nav class="sd-storyboard-nav" aria-label="分镜功能">${items.map(([id, label, icon, phosphor]) => `<button type="button" aria-current="${state.view === id ? 'page' : 'false'}" aria-label="${label}" class="${state.view === id ? 'active' : ''}" data-storyboard-view="${id}"><i class="fa-solid ${icon}" data-qm-icon="${phosphor}"></i><span>${label}</span></button>`).join('')}</nav>`;
+  return `<nav class="sd-storyboard-nav" aria-label="分镜功能">${items.map(([id, label, icon]) => `<button type="button" aria-current="${state.view === id ? 'page' : 'false'}" aria-label="${label}" class="${state.view === id ? 'active' : ''}" data-storyboard-view="${id}"><i class="fa-solid ${icon}"></i><span>${label}</span></button>`).join('')}</nav>`;
 }
 
 function storyboardConnectionState(state, providerId = state.source) {
@@ -11971,7 +11970,7 @@ function storyboardRenderInlineImages() {
     wrapper.className = 'sd-storyboard-inline';
     wrapper.dataset.storyboardFloor = String(floor);
     if (records.length > 1) wrapper.classList.add('sd-storyboard-filmstrip');
-    wrapper.innerHTML = records.map((record) => `<figure data-storyboard-record="${htmlEscape(record.id)}"><button type="button" data-storyboard-chat-action="preview"><img src="${htmlEscape(storyboardSafeUrl(record.url))}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 48))}"></button><figcaption><span>分镜</span><div><button type="button" data-storyboard-chat-action="edit" title="修改提示词" aria-label="修改提示词"><i class="fa-solid fa-pen"></i></button><button type="button" data-storyboard-chat-action="copy" title="复制提示词" aria-label="复制提示词"><i class="fa-solid fa-copy"></i></button><button type="button" data-storyboard-chat-action="redraw" title="重绘" aria-label="重绘"><i class="fa-solid fa-rotate-right" data-qm-icon="image-regenerate"></i></button><button type="button" data-storyboard-chat-action="download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button><button type="button" data-storyboard-chat-action="detach" title="移出正文" aria-label="移出正文"><i class="fa-solid fa-eye-slash"></i></button></div></figcaption></figure>`).join('');
+    wrapper.innerHTML = records.map((record) => `<figure data-storyboard-record="${htmlEscape(record.id)}"><button type="button" data-storyboard-chat-action="preview"><img src="${htmlEscape(storyboardSafeUrl(record.url))}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 48))}"></button><figcaption><span>分镜</span><div><button type="button" data-storyboard-chat-action="edit" title="修改提示词" aria-label="修改提示词"><i class="fa-solid fa-pen"></i></button><button type="button" data-storyboard-chat-action="copy" title="复制提示词" aria-label="复制提示词"><i class="fa-solid fa-copy"></i></button><button type="button" data-storyboard-chat-action="redraw" title="重绘" aria-label="重绘"><i class="fa-solid fa-rotate-right"></i></button><button type="button" data-storyboard-chat-action="download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button><button type="button" data-storyboard-chat-action="detach" title="移出正文" aria-label="移出正文"><i class="fa-solid fa-eye-slash"></i></button></div></figcaption></figure>`).join('');
     const anchor = storyboardInlineAnchorNode(text, records);
     // Keep the frame outside .mes_text. Paragraph anchoring is metadata-driven; placing
     // controls inside rendered message text would expose them to TTS and third-party regex scanners.
@@ -24737,7 +24736,7 @@ function renderInputMenuEntry() {
     entry.id = INPUT_ENTRY_ID;
     entry.className = 'list-group-item flex-container flexGap5 interactable story-director-input-entry';
     entry.tabIndex = 0;
-    entry.innerHTML = `<div class="fa-solid fa-clapperboard extensionsMenuExtensionButton" data-qm-icon="qm-duotone-film-slate"></div><span>${EXTENSION_NAME}</span>`;
+    entry.innerHTML = `<div class="fa-solid fa-clapperboard extensionsMenuExtensionButton"></div><span>${EXTENSION_NAME}</span>`;
     entry.addEventListener('click', () => openModal());   // 恢复上次 tab
     menu.appendChild(entry);
     return;
@@ -24751,7 +24750,7 @@ function renderInputMenuEntry() {
   button.id = INPUT_BUTTON_ID;
   button.type = 'button';
   button.title = EXTENSION_NAME;
-  button.innerHTML = '<i class="fa-solid fa-clapperboard" data-qm-icon="qm-duotone-film-slate"></i>';
+  button.innerHTML = '<i class="fa-solid fa-clapperboard"></i>';
   button.addEventListener('click', () => openModal());   // 恢复上次 tab
   if (textarea && textarea.parentElement === parent) parent.insertBefore(button, textarea);
   else parent.insertBefore(button, parent.firstChild);
@@ -24887,7 +24886,6 @@ function bindEvents() {
 function init() {
   if (initialized) return;
   initialized = true;
-  installQianmuIconSystem(document);
   settings = getSettings();
   if (isPlainObject(settings.imagegen)) normalizeStoryboardState(settings.imagegen);
   focusClockState();
@@ -24940,7 +24938,6 @@ export async function onDelete() {
 }
 
 function cleanupRuntime(resetSettings = false) {
-  uninstallQianmuIconSystem();
   unbindQuickDockCapture();
   if (floatRevealOutsideHandler) document.removeEventListener('pointerdown', floatRevealOutsideHandler, true);
   floatRevealOutsideHandler = null;
