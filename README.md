@@ -69,7 +69,7 @@
 SillyTavern → **扩展（Extensions）→ 安装扩展（Install Extension）**，填入本仓库地址：
 
 ```
-https://github.com/liminale1525/story-director.git
+https://github.com/liminale1525/Omniscene.git
 ```
 
 分镜生图与豆包 API Key 配音还需要启用同仓库附带的千幕服务端插件。Windows、本地 Linux、macOS、VPS 与 Docker 均可按[一键安装说明](./INSTALL-DOUBAO-APIKEY.md)操作；安装后必须重启 SillyTavern 后端服务，仅刷新网页不会加载插件。

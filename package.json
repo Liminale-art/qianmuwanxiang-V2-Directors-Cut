@@ -1,6 +1,6 @@
 {
   "name": "qianmu-omniscene",
-  "version": "1.45.0",
+  "version": "1.45.3",
   "private": true,
   "type": "module",
   "main": "server-plugin.js",

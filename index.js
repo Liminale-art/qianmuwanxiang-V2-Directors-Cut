@@ -44,7 +44,10 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '2.0.0';
+const VERSION = '1.45.3';
+const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
+const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
+const RUNTIME_URL = import.meta.url;
 // 伴读模块双闸：
 // COREAD_VISIBLE —— 入口图标是否显示。正式版也 true（图标露出、预告存在），仅整体隐藏时才 false。
 // COREAD_ENABLED —— 功能是否真正可用。开发库=true(能进·自测)，正式库=false(点击只弹「小火慢炖中」预告)。
@@ -792,6 +795,10 @@ let storyboardGalleryVisibleCount = 40;
 let storyboardReferencePicker = null; // 阅片室作为档案参考图选择器时的返回上下文；仅保留在当前页面会话
 let storyboardLightboxEl = null;
 let initialized = false;
+let duplicateRuntimeWarned = false;
+let lifecycleHandled = false;
+let startupFallbackTimer = null;
+let startupFallbackListening = false;
 let eventBound = false;
 let inputMenuObserver = null;
 let templateExportMode = false;
@@ -805,6 +812,70 @@ let ttsSchemeExportMode = false;     // 台词指导方案库多选导出态
 let ttsSchemeExportSelection = new Set();
 let injectSelection = new Map();   // 写入勾选持久化（id→text，跨重渲染/切主题/切标签保留，Map 顺序即勾选先后）
 let accState = {};                 // 折叠面板开合状态记忆
+
+function isRuntimeOwner() {
+  return globalThis[RUNTIME_LOCK_KEY]?.owner === RUNTIME_OWNER;
+}
+
+function acquireRuntimeOwnership() {
+  const current = globalThis[RUNTIME_LOCK_KEY];
+  if (current?.owner && current.owner !== RUNTIME_OWNER) {
+    if (!duplicateRuntimeWarned) {
+      console.warn(`[${EXTENSION_NAME}] 已有运行实例，跳过重复加载：${RUNTIME_URL}`);
+      duplicateRuntimeWarned = true;
+    }
+    return false;
+  }
+  globalThis[RUNTIME_LOCK_KEY] = {
+    owner: RUNTIME_OWNER,
+    url: RUNTIME_URL,
+    version: VERSION,
+    startedAt: Date.now(),
+  };
+  return true;
+}
+
+function registerRuntimeInterceptor() {
+  if (isRuntimeOwner()) globalThis.qianmuDirectorInterceptor = qianmuDirectorInterceptor;
+}
+
+function releaseRuntimeOwnership() {
+  if (!isRuntimeOwner()) return;
+  if (globalThis.qianmuDirectorInterceptor === qianmuDirectorInterceptor) {
+    delete globalThis.qianmuDirectorInterceptor;
+  }
+  delete globalThis[RUNTIME_LOCK_KEY];
+}
+
+function cancelStartupFallback() {
+  if (startupFallbackTimer) clearTimeout(startupFallbackTimer);
+  startupFallbackTimer = null;
+  if (startupFallbackListening) document.removeEventListener('DOMContentLoaded', scheduleStartupFallback);
+  startupFallbackListening = false;
+}
+
+function scheduleStartupFallback() {
+  if (lifecycleHandled || startupFallbackTimer) return;
+  startupFallbackListening = false;
+  startupFallbackTimer = setTimeout(() => {
+    startupFallbackTimer = null;
+    if (!lifecycleHandled) init();
+  }, 1500);
+}
+
+function handleLifecycle() {
+  lifecycleHandled = true;
+  cancelStartupFallback();
+}
+
+function installStartupFallback() {
+  if (document.readyState === 'loading') {
+    startupFallbackListening = true;
+    document.addEventListener('DOMContentLoaded', scheduleStartupFallback, { once: true });
+  } else {
+    scheduleStartupFallback();
+  }
+}
 
 function ctx() {
   return globalThis.SillyTavern?.getContext?.() || {};
@@ -2848,7 +2919,7 @@ function clearDirectorInjection() {
   try { setter?.(MODULE_NAME, '', position, 0, false, role); } catch (_) {}
 }
 
-globalThis.qianmuDirectorInterceptor = async function (chat) {
+async function qianmuDirectorInterceptor(chat) {
   // ── 反哺主线（走A）：与推演注入独立·主线生成前用共享切片池按当下语境智能召回并 splice 进上下文 ──
   // 拦截器是主线生成的唯一确定入口·能拿到本轮真实上下文·避免 setExtensionPrompt 时序问题。
   try {
@@ -2884,7 +2955,7 @@ globalThis.qianmuDirectorInterceptor = async function (chat) {
   } catch (error) {
     console.warn(`[${MODULE_NAME}] interceptor failed`, error);
   }
-};
+}
 
 /* ============================================================
    推演提示词：六段固定顺序（后台写死）
@@ -24779,11 +24850,11 @@ function unbindEvents() {
 
 function bindEvents() {
   if (eventBound) return;
-  eventBound = true;
   const context = ctx();
   const source = context.eventSource;
   const types = context.event_types || {};
   if (!source?.on) return;
+  eventBound = true;
   // 自动推演触发：每有新角色回复（MESSAGE_RECEIVED）就照实数一遍——以 lastPlanIdx 为基准，统计其后真正新增的
   // 角色回复层，满阈值即刻推演、读取当下完整聊天。重 roll 同层改写不新增索引、天然不计；删楼则把基准夹回当前末尾自动重算。
   const refreshHandler = async () => {
@@ -24884,92 +24955,121 @@ function bindEvents() {
 }
 
 function init() {
-  if (initialized) return;
-  initialized = true;
-  settings = getSettings();
-  if (isPlainObject(settings.imagegen)) normalizeStoryboardState(settings.imagegen);
-  focusClockState();
-  startFocusClockRuntime();
-  void refreshCoreadPersonaAvatar().then(() => rerenderIfOpen());
-  applyProseLayout();
-  seedBuiltinTheaters();
-  renderSettingsPanel();
-  renderFloatButton();
-  bindQuickDockCapture();
-  restoreQuickDockedPlugins();
-  storyboardBindChat();
-  renderInputMenuEntry();
-  startInputMenuObserver();
-  resizeHandler = () => {
-    closeQuickWheel();
-    const btn = document.getElementById(FLOAT_ID);
-    if (btn) applyFloatPosition(btn);
-    const tabsBar = document.getElementById(MODAL_ID)?.querySelector('.sd-tabs');
-    if (tabsBar) updateTabsFade(tabsBar);
-  };
-  window.addEventListener('resize', resizeHandler);
-  bindEvents();
-  applyDirectorInjection();
-  ttsStartChat();   // 若 ST 已就绪则即刻挂注入；未就绪由 APP_READY 兜底
-  console.log(`[${EXTENSION_NAME}] v${VERSION} loaded`);
+  if (initialized || !acquireRuntimeOwnership()) return;
+  try {
+    settings = getSettings();
+    if (isPlainObject(settings.imagegen)) normalizeStoryboardState(settings.imagegen);
+    focusClockState();
+    startFocusClockRuntime();
+    void refreshCoreadPersonaAvatar()
+      .then(() => rerenderIfOpen())
+      .catch((error) => console.warn(`[${MODULE_NAME}] persona initialization failed`, error));
+    applyProseLayout();
+    seedBuiltinTheaters();
+    renderSettingsPanel();
+    renderFloatButton();
+    bindQuickDockCapture();
+    restoreQuickDockedPlugins();
+    storyboardBindChat();
+    renderInputMenuEntry();
+    startInputMenuObserver();
+    resizeHandler = () => {
+      closeQuickWheel();
+      const btn = document.getElementById(FLOAT_ID);
+      if (btn) applyFloatPosition(btn);
+      const tabsBar = document.getElementById(MODAL_ID)?.querySelector('.sd-tabs');
+      if (tabsBar) updateTabsFade(tabsBar);
+    };
+    window.addEventListener('resize', resizeHandler);
+    bindEvents();
+    void applyDirectorInjection();
+    ttsStartChat();   // 若 ST 已就绪则即刻挂注入；未就绪由 APP_READY 兜底
+    registerRuntimeInterceptor();
+    initialized = true;
+    console.log(`[${EXTENSION_NAME}] v${VERSION} loaded`);
+  } catch (error) {
+    console.error(`[${EXTENSION_NAME}] v${VERSION} initialization failed`, error);
+    cleanupRuntime(false);
+  }
 }
 
 export async function onActivate() {
-  cleanupRuntime(false);
+  handleLifecycle();
   init();
 }
 
 export async function onEnable() {
-  cleanupRuntime(false);
+  handleLifecycle();
   init();
 }
 
 export async function onDisable() {
+  handleLifecycle();
   cleanupRuntime(false);
 }
 
 export async function onUpdate() {
+  handleLifecycle();
+  const wasOwner = isRuntimeOwner();
   cleanupRuntime(false);
-  init();
+  if (wasOwner) console.info(`[${EXTENSION_NAME}] 更新已安装，刷新页面后加载新版本。`);
 }
 
 export async function onDelete() {
+  handleLifecycle();
   cleanupRuntime(false);
 }
 
 function cleanupRuntime(resetSettings = false) {
-  unbindQuickDockCapture();
-  if (floatRevealOutsideHandler) document.removeEventListener('pointerdown', floatRevealOutsideHandler, true);
-  floatRevealOutsideHandler = null;
-  clearDirectorInjection();
-  document.getElementById(SETTINGS_PANEL_ID)?.remove();
-  document.getElementById(MODAL_ID)?.remove();
-  document.getElementById(FLOAT_ID)?.remove();
-  closeQuickWheel();
-  closeFloorNavigator();
-  document.getElementById(INPUT_ENTRY_ID)?.remove();
-  document.getElementById(INPUT_BUTTON_ID)?.remove();
-  inputMenuObserver?.disconnect?.();
-  inputMenuObserver = null;
-  ttsStopChat();   // 清理有声注入的 observer/委托/挂件，避免停用或重载后残留
-  if (storyboardActiveJob) storyboardActiveJob.discardRequested = true;
-  if (storyboardQueue.length && settings?.imagegen?.logs) {
-    for (const job of storyboardQueue) storyboardFinishLog(settings.imagegen.logs.find((item) => item.id === job.logId), 'cancelled', { error: '扩展已停用或更新' });
-  }
-  storyboardQueue = [];
-  storyboardRuntimeReconciled = false;
-  storyboardUnbindChat();
-  stopFocusClockRuntime();
-  stopProseLayout(true);
-  if (resizeHandler) window.removeEventListener('resize', resizeHandler);
-  resizeHandler = null;
-  unbindEvents();
+  cancelStartupFallback();
+  if (!isRuntimeOwner()) return;
   initialized = false;
-  if (resetSettings && ctx().extensionSettings) delete ctx().extensionSettings[MODULE_NAME];
+  const clean = (label, callback) => {
+    try { callback(); } catch (error) { console.warn(`[${MODULE_NAME}] cleanup ${label} failed`, error); }
+  };
+  try {
+    clean('quick dock', () => unbindQuickDockCapture());
+    clean('float reveal', () => {
+      if (floatRevealOutsideHandler) document.removeEventListener('pointerdown', floatRevealOutsideHandler, true);
+      floatRevealOutsideHandler = null;
+    });
+    clean('injection', () => clearDirectorInjection());
+    clean('panels', () => {
+      document.getElementById(SETTINGS_PANEL_ID)?.remove();
+      document.getElementById(MODAL_ID)?.remove();
+      document.getElementById(FLOAT_ID)?.remove();
+      document.getElementById(INPUT_ENTRY_ID)?.remove();
+      document.getElementById(INPUT_BUTTON_ID)?.remove();
+    });
+    clean('wheel', () => closeQuickWheel());
+    clean('floor navigator', () => closeFloorNavigator());
+    clean('input observer', () => {
+      inputMenuObserver?.disconnect?.();
+      inputMenuObserver = null;
+    });
+    clean('speech', () => ttsStopChat());
+    clean('storyboard queue', () => {
+      if (storyboardActiveJob) storyboardActiveJob.discardRequested = true;
+      if (storyboardQueue.length && settings?.imagegen?.logs) {
+        for (const job of storyboardQueue) storyboardFinishLog(settings.imagegen.logs.find((item) => item.id === job.logId), 'cancelled', { error: '扩展已停用或更新' });
+      }
+      storyboardQueue = [];
+      storyboardRuntimeReconciled = false;
+    });
+    clean('storyboard events', () => storyboardUnbindChat());
+    clean('focus clock', () => stopFocusClockRuntime());
+    clean('prose layout', () => stopProseLayout(true));
+    clean('resize', () => {
+      if (resizeHandler) window.removeEventListener('resize', resizeHandler);
+      resizeHandler = null;
+    });
+    clean('SillyTavern events', () => unbindEvents());
+    if (resetSettings) clean('settings', () => {
+      if (ctx().extensionSettings) delete ctx().extensionSettings[MODULE_NAME];
+    });
+  } finally {
+    releaseRuntimeOwnership();
+  }
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => setTimeout(init, 0));
-} else {
-  setTimeout(init, 0);
-}
+installStartupFallback();
