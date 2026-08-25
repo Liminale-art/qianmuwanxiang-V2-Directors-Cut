@@ -6464,3 +6464,32 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-root *,
   #chat .mes .sd-storyboard-inline * { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+/* Qianmu-owned Phosphor icon bridge. Icons are inserted explicitly by the
+   component that rendered them; no page-wide observer or Font Awesome override. */
+.qm-phosphor-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+  font-style: normal;
+  vertical-align: -0.125em;
+}
+.qm-phosphor-icon::before {
+  content: none !important;
+  display: none !important;
+}
+.qm-phosphor-icon > svg.qm-phosphor-svg {
+  display: block;
+  width: 1em;
+  height: 1em;
+  flex: none;
+  overflow: visible;
+  fill: currentColor;
+  color: inherit;
+}
+.qm-phosphor-icon.fa-spin {
+  animation: qm-phosphor-spin 1s linear infinite !important;
+}
+@keyframes qm-phosphor-spin { to { transform: rotate(360deg); } }

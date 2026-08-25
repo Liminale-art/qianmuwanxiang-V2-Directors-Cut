@@ -18,6 +18,7 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.45.4';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_CONSISTENCY_STRATEGIES,
@@ -44,7 +45,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.45.3';
+const VERSION = '1.45.4';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -1500,6 +1501,7 @@ function bindLibraryEvents(rootEl, makeCfg, handlers) {
     const list = root.querySelector('.sd-lib-list');
     if (list) {
       list.innerHTML = renderLibraryListBody(c, matched);
+      applyQianmuIcons(list);
       applyAccState(root);
       bindRowEvents();
     }
@@ -3858,19 +3860,19 @@ function revealFloatButton(btn, { temporary = true } = {}) {
 }
 
 const QUICK_COMMANDS = Object.freeze([
-  { id: 'dashboard', label: '推演', icon: 'fa-clapperboard' },
-  { id: 'focus', label: '专注', icon: 'fa-hourglass-half' },
-  { id: 'tasksnodes', label: '任务', icon: 'fa-list-check' },
-  { id: 'castworld', label: '世界', icon: 'fa-earth-asia' },
-  { id: 'context', label: '取材', icon: 'fa-box-archive' },
-  { id: 'settings', label: '幕后', icon: 'fa-feather-pointed' },
-  { id: 'theater', label: '幕外', icon: 'fa-masks-theater' },
-  { id: 'tts', label: '配音', icon: 'fa-microphone-lines' },
-  { id: 'coread', label: '书架', icon: 'fa-book-open' },
-  { id: 'geopolitics', label: '世界格局', icon: 'fa-atom' },
-  { id: 'plug', label: 'API与日志', icon: 'fa-gear' },
-  { id: 'imagegen', label: '分镜', icon: 'fa-video' },
-  { id: 'floor', label: '楼层跳转', icon: 'fa-layer-group' },
+  { id: 'dashboard', label: '推演', icon: 'fa-clapperboard', phosphor: 'qm-duotone-film-slate' },
+  { id: 'focus', label: '专注', icon: 'fa-hourglass-half', phosphor: 'focus' },
+  { id: 'tasksnodes', label: '任务', icon: 'fa-list-check', phosphor: 'tasks' },
+  { id: 'castworld', label: '世界', icon: 'fa-earth-asia', phosphor: 'world' },
+  { id: 'context', label: '取材', icon: 'fa-box-archive', phosphor: 'context' },
+  { id: 'settings', label: '幕后', icon: 'fa-feather-pointed', phosphor: 'backstage' },
+  { id: 'theater', label: '幕外', icon: 'fa-masks-theater', phosphor: 'qm-duotone-mask-happy' },
+  { id: 'tts', label: '配音', icon: 'fa-microphone-lines', phosphor: 'qm-duotone-microphone-stage' },
+  { id: 'coread', label: '书架', icon: 'fa-book-open', phosphor: 'coread-entry' },
+  { id: 'geopolitics', label: '世界格局', icon: 'fa-atom', phosphor: 'world-map' },
+  { id: 'plug', label: 'API与日志', icon: 'fa-gear', phosphor: 'qm-duotone-gear' },
+  { id: 'imagegen', label: '分镜', icon: 'fa-video', phosphor: 'qm-duotone-video-camera' },
+  { id: 'floor', label: '楼层跳转', icon: 'fa-layer-group', phosphor: 'floor-tools' },
 ]);
 const QUICK_COMMAND_IDS = QUICK_COMMANDS.map((item) => item.id);
 const QUICK_ICON_OPTICAL_SCALE = Object.freeze({
@@ -4222,10 +4224,10 @@ function quickDockCssImageUrl(value) {
 
 function quickDockFallbackMarkup(item) {
   const iconClass = String(item?.iconClass || '').split(/\s+/).filter((name) => /^fa[\w-]*$/.test(name)).slice(0, 5).join(' ');
-  if (iconClass) return `<i class="${htmlEscape(iconClass)}"></i>`;
+  if (iconClass) return `<i class="sd-preserve-external-icon ${htmlEscape(iconClass)}"></i>`;
   const iconText = Array.from(String(item?.iconText || '')).slice(0, 2).join('');
   if (iconText) return `<span class="sd-wheel-external-text">${htmlEscape(iconText)}</span>`;
-  return '<i class="fa-solid fa-puzzle-piece"></i>';
+  return '<i class="fa-solid fa-puzzle-piece" data-qm-icon="qm-duotone-puzzle-piece"></i>';
 }
 
 function quickDockIconMarkup(item, className = 'sd-wheel-external-logo') {
@@ -5162,6 +5164,7 @@ function openFloorNavigator(initialView = floorNavigatorView) {
         <section class="sd-floor-view" data-floor-view="layout">${floorProseLayoutMarkup()}</section>
       </section></div>`;
   document.body.appendChild(root);
+  applyQianmuIcons(root);
   bindFloorNavigatorViewport(root);
   root.tabIndex = -1;
   const close = () => closeFloorNavigator();
@@ -5277,6 +5280,7 @@ function openQuickWheel(btn) {
       icon: darkGlass ? palette.darkIcon : palette.lightIcon,
     };
     button.className = `sd-wheel-command ${visual.classes}${item.external ? ' is-external' : ''}${item.pending ? ' is-pending' : ''}`;
+    if (item.external) button.setAttribute('data-qm-icon-preserve', '');
     button.dataset.command = item.id;
     button.style.setProperty('--sd-wheel-item-size', `${layout.itemSize}px`, 'important');
     button.style.setProperty('--sd-wheel-item-height', `${layout.itemHeight}px`, 'important');
@@ -5302,7 +5306,7 @@ function openQuickWheel(btn) {
     button.title = item.pending ? `${item.label}（即将开放）` : item.label;
     button.setAttribute('aria-label', button.title);
     button.setAttribute('role', 'menuitem');
-    const iconMarkup = item.external ? quickDockIconMarkup(item) : `<i class="fa-solid ${item.icon}"></i>`;
+    const iconMarkup = item.external ? quickDockIconMarkup(item) : `<i class="fa-solid ${item.icon}" data-qm-icon="${item.phosphor}"></i>`;
     button.innerHTML = `${iconMarkup}${QUICK_HEX_BORDER_SVG}`;
     holder.appendChild(button);
     if (item.external) {
@@ -5311,6 +5315,7 @@ function openQuickWheel(btn) {
     }
   });
   document.body.appendChild(root);
+  applyQianmuIcons(root);
   quickWheelOriginButton = btn;
   btn.classList.add('sd-wheel-active');
   bindQuickWheelOutsideDismiss(root);
@@ -5481,6 +5486,7 @@ function renderBusyState() {
     el.innerHTML = busy
       ? '<i class="fa-solid fa-stop"></i>停止推演'
       : '<i class="fa-solid fa-clapperboard"></i>推演下一幕';
+    applyQianmuIcons(el);
   });
   // 幕外上演键同理原地切换
   document.querySelectorAll('.sd-theater-stage').forEach((el) => {
@@ -5489,6 +5495,7 @@ function renderBusyState() {
     el.innerHTML = theaterBusy
       ? '<i class="fa-solid fa-stop"></i>停止上演'
       : '<i class="fa-solid fa-masks-theater"></i>上演此幕';
+    applyQianmuIcons(el);
   });
 }
 
@@ -5526,6 +5533,12 @@ function syncFontWithST() {
     const bodyFont = getComputedStyle(document.body).fontFamily;
     if (bodyFont) modal.style.setProperty('--sd-font', bodyFont);
   } catch (_) {}
+}
+
+function setQianmuIconClass(icon, className) {
+  if (!icon) return;
+  icon.className = className;
+  refreshQianmuIcon(icon);
 }
 
 function renderModal() {
@@ -5568,9 +5581,9 @@ function renderModal() {
           <p>一蝶振翅&nbsp;&nbsp;万象入幕</p>
         </div>
         <div class="sd-header-actions">
-          ${COREAD_VISIBLE ? `<button class="sd-coread-shortcut ${activeTab === 'coread' ? 'active' : ''}" title="伴读" aria-label="伴读"><i class="fa-solid fa-book-open"></i></button>` : ''}
-          <button class="sd-geo-shortcut ${activeTab === 'geopolitics' ? 'active' : ''}" title="世界格局" aria-label="世界格局"><i class="fa-solid fa-atom"></i></button>
-          <button class="sd-plug-shortcut" title="API与日志"><i class="fa-solid fa-gear"></i></button>
+          ${COREAD_VISIBLE ? `<button class="sd-coread-shortcut ${activeTab === 'coread' ? 'active' : ''}" title="伴读" aria-label="伴读"><i class="fa-solid fa-book-open" data-qm-icon="coread-entry"></i></button>` : ''}
+          <button class="sd-geo-shortcut ${activeTab === 'geopolitics' ? 'active' : ''}" title="世界格局" aria-label="世界格局"><i class="fa-solid fa-atom" data-qm-icon="world-map"></i></button>
+          <button class="sd-plug-shortcut" title="API与日志"><i class="fa-solid fa-gear" data-qm-icon="qm-duotone-gear"></i></button>
           <div class="sd-theme-pick">
             <button class="sd-theme-btn" title="外观主题" aria-label="外观主题" aria-haspopup="true"><i class="fa-solid fa-palette"></i></button>
             <div class="sd-theme-menu" role="menu" hidden>
@@ -5590,6 +5603,7 @@ function renderModal() {
       <main class="sd-body${editorLayout ? ' sd-editor-body' : ''}">${['tasksnodes', 'castworld', 'context'].includes(activeTab) && !editorView ? `<div class="sd-cols-inner">${renderActiveTab()}</div>` : renderActiveTab()}</main>
       ${renderInjectDock()}
     </section>`;
+  applyQianmuIcons(modal);
   // 以整个视口层判断点外关闭；比只绑 backdrop 更能抵抗 ST 美化重排或透明覆盖层抢占点击。
   modal.onclick = (event) => {
     if (event.target === modal || event.target.closest?.('.sd-backdrop')) closeModal();
@@ -6208,6 +6222,7 @@ function bindGeopoliticsTabEvents(root) {
       + (f.standing ? `<p class="sd-geo-d-standing">${htmlEscape(f.standing)}</p>` : '')
       + (f.agenda ? `<p class="sd-geo-d-agenda"><i class="fa-solid fa-bullseye"></i>${htmlEscape(f.agenda)}</p>` : '')
       + (myRels ? `<ul class="sd-geo-d-rels">${myRels}</ul>` : '<p class="sd-muted sd-hint-sm">暂无牵连关系。</p>');
+    applyQianmuIcons(panel);
     panel.hidden = false;
     panel.querySelector('.sd-geo-d-close')?.addEventListener('click', (e) => { e.stopPropagation(); clear(); });
   };
@@ -7246,7 +7261,7 @@ function bindTtsTabEvents(root) {
     if (!voiceId) { toast(`${provider.label} 暂未配置连接测试音色。`, 'warning'); return; }
     const btnIcon = btn.querySelector('i');
     const prevIcon = btnIcon?.className;
-    if (btnIcon) btnIcon.className = 'fa-solid fa-spinner fa-spin';
+    setQianmuIconClass(btnIcon, 'fa-solid fa-spinner fa-spin');
     btn.disabled = true;
     try {
       const { blob } = await synthesizeTts(providerId, {
@@ -7265,7 +7280,7 @@ function bindTtsTabEvents(root) {
       toast(`连接失败：${err?.message || err}`, 'error');
     } finally {
       btn.disabled = false;
-      if (btnIcon && prevIcon) btnIcon.className = prevIcon;
+      if (prevIcon) setQianmuIconClass(btnIcon, prevIcon);
     }
   });
   root.querySelector('.sd-tts-save-conn')?.addEventListener('click', () => {
@@ -7628,7 +7643,7 @@ async function ttsExportAudioCache(btn) {
   if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地缓存。', 'warning'); return; }
   const icon = btn?.querySelector('i');
   const prev = icon?.className;
-  if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+  setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
   if (btn) btn.disabled = true;
   try {
     const list = await blobStore.listAudio();
@@ -7657,7 +7672,7 @@ async function ttsExportAudioCache(btn) {
   } catch (err) {
     toast(`导出失败：${err?.message || err}`, 'error');
   } finally {
-    if (icon && prev) icon.className = prev;
+    if (prev) setQianmuIconClass(icon, prev);
     if (btn) btn.disabled = false;
   }
 }
@@ -7702,7 +7717,7 @@ async function ttsPreviewVoice(voiceId, text, btn, voiceModel = '') {
   if (!text) { toast('请先在上方填写试听台词。', 'warning'); return; }
   const icon = btn?.querySelector('i');
   const prev = icon?.className;
-  if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+  setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
   if (btn) btn.disabled = true;
   try {
     const vfx = ttsVoiceFx(voiceId);   // per-voice 音效器覆盖（试听须与正文合成一致）
@@ -7729,7 +7744,7 @@ async function ttsPreviewVoice(voiceId, text, btn, voiceModel = '') {
     toast(`试听失败：${err?.message || err}`, 'error');
   } finally {
     if (btn) btn.disabled = false;
-    if (icon && prev) icon.className = prev;
+    if (prev) setQianmuIconClass(icon, prev);
   }
 }
 
@@ -7740,6 +7755,7 @@ async function ttsRefreshFavorites(root) {
   if (!blobStore.blobStoreAvailable()) { box.innerHTML = '<p class="sd-muted sd-hint-sm">当前环境不支持本地收藏。</p>'; return; }
   snapshotAccState(box);
   box.innerHTML = '<p class="sd-muted sd-hint-sm"><i class="fa-solid fa-spinner fa-spin"></i> 加载中…</p>';
+  applyQianmuIcons(box);
   let favs = [];
   try { favs = await blobStore.listFavorites(); }
   catch (_) { box.innerHTML = '<p class="sd-muted sd-hint-sm sd-tts-err">读取收藏失败。</p>'; return; }
@@ -7765,6 +7781,7 @@ async function ttsRefreshFavorites(root) {
       <div class="sd-lib-folder-body">${list.map(renderRow).join('')}</div>
     </details>`;
   box.innerHTML = folderList.map(renderFolder).join('') + (loose.length ? renderFolder({ name: '未分类', list: loose }) : '');
+  applyQianmuIcons(box);
   applyAccState(box);
   box.querySelectorAll('.sd-tts-fav-row').forEach((rowEl) => {
     const id = rowEl.dataset.id;
@@ -7787,7 +7804,7 @@ async function ttsRefreshFavorites(root) {
       const btn = event.currentTarget;
       const icon = btn.querySelector('i');
       const prev = icon?.className;
-      if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+      setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
       btn.disabled = true;
       try {
         const fav = await blobStore.getFavorite(id);
@@ -7795,7 +7812,7 @@ async function ttsRefreshFavorites(root) {
         ttsDownloadBlob(fav.blob, ttsFavoriteFilename({ id, ...fav }));
         toast('已下载。', 'success');
       } catch (err) { toast(`下载失败：${err?.message || err}`, 'error'); }
-      finally { btn.disabled = false; if (icon && prev) icon.className = prev; }
+      finally { btn.disabled = false; if (prev) setQianmuIconClass(icon, prev); }
     });
     rowEl.querySelector('.sd-tts-fav-edit')?.addEventListener('click', async () => {
       try {
@@ -8643,6 +8660,7 @@ function ttsStopPlayback(bumpSeq = true) {
       b.classList.remove('sd-tts-playing');
       const isToolbar = b.classList.contains('sd-tts-playall');
       b.innerHTML = '<i class="fa-regular fa-circle-play"></i>';
+      applyQianmuIcons(b);
       b.title = isToolbar ? '连续播放本条全部台词（命中缓存秒回）；播放中再点即停止' : '连续播放本条全部台词';
     });
   }
@@ -8703,11 +8721,12 @@ function ttsScanMessageElement(mesEl, options = {}) {
     const bar = document.createElement('div');
     bar.className = 'sd-tts-toolbar';
     bar.innerHTML = `
-      <button type="button" class="sd-tts-trigger" title="提取/展开台词列表" aria-label="提取台词"><i class="fa-solid fa-clapperboard"></i></button>
-      <button type="button" class="sd-tts-reextract" title="重新提取台词列表（仅刷新文本）" aria-label="重新提取台词"><i class="fa-solid fa-film"></i></button>
-      <button type="button" class="sd-tts-regenall" title="重新生成本条全部语音" aria-label="重生本条全部语音" hidden><i class="fa-solid fa-rotate"></i></button>
+      <button type="button" class="sd-tts-trigger" title="提取/展开台词列表" aria-label="提取台词"><i class="fa-solid fa-clapperboard" data-qm-icon="voice-lines"></i></button>
+      <button type="button" class="sd-tts-reextract" title="重新提取台词列表（仅刷新文本）" aria-label="重新提取台词"><i class="fa-solid fa-film" data-qm-icon="voice-reextract"></i></button>
+      <button type="button" class="sd-tts-regenall" title="重新生成本条全部语音" aria-label="重生本条全部语音" hidden><i class="fa-solid fa-rotate" data-qm-icon="voice-regenerate-all"></i></button>
       <button type="button" class="sd-tts-playall" title="连续播放本条全部台词" aria-label="连续播放" hidden><i class="fa-regular fa-circle-play"></i></button>`;
     textEl.insertAdjacentElement('afterend', bar);
+    applyQianmuIcons(bar);
   }
   ttsBindControlBoundary(mesEl.querySelector('.sd-tts-toolbar'));
   const bar = mesEl.querySelector(`.${TTS_BAR_CLASS}`);
@@ -8833,6 +8852,7 @@ function ttsSetPlayingState(mesEl, playing) {
     const iconCls = playing ? 'fa-solid fa-circle-stop' : 'fa-regular fa-circle-play';
     // 工具栏与内联钮均仅图标（去文案）
     b.innerHTML = `<i class="${iconCls}"></i>`;
+    applyQianmuIcons(b);
     b.title = playing ? '停止播放' : '连续播放本条全部台词';
   });
 }
@@ -8904,14 +8924,14 @@ function ttsHighlightEls(mesEl, idx) {
 async function ttsPlayResolvedLine(line, mesEl, idx, spinBtn, force = false) {
   const icon = spinBtn?.querySelector('i');
   const prev = icon?.className;
-  if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+  setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
   try {
     const { blob, cached } = await ttsSynthCached(line, force);
-    if (icon && prev) icon.className = prev;
+    if (prev) setQianmuIconClass(icon, prev);
     if (!cached) toast('配音已完成', 'success');   // 仅真合成才通知，缓存重播不刷屏
     await ttsPlayBlob(blob, ttsHighlightEls(mesEl, idx));
   } catch (err) {
-    if (icon && prev) icon.className = prev;
+    if (prev) setQianmuIconClass(icon, prev);
     toast(`配音失败：${err?.message || err}`, 'error');
   }
 }
@@ -8950,9 +8970,10 @@ async function ttsHandleTrigger(trig, force = false) {
   bar.dataset.loading = '1';
   bar.hidden = false;
   bar.innerHTML = '<span class="sd-tts-status"><i class="fa-solid fa-spinner fa-spin"></i> 正在提取台词…</span>';
+  applyQianmuIcons(bar);
   const icon = trig.querySelector('i');
   const prevIcon = icon?.className;
-  if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+  setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
   try {
     // 三级取：内存缓存 → 本聊天持久化（跨刷新/重排存活，按内容指纹寻址）→ 调模型提取
     let lines = ttsLineCache.has(key) ? ttsLineCache.get(key) : null;
@@ -8975,7 +8996,7 @@ async function ttsHandleTrigger(trig, force = false) {
     bar.innerHTML = `<span class="sd-tts-status sd-tts-err">提取失败：${htmlEscape(err?.message || String(err))}</span>`;
     toast(`台词指导失败：${err?.message || err}`, 'error');
   } finally {
-    if (icon && prevIcon) icon.className = prevIcon;
+    if (prevIcon) setQianmuIconClass(icon, prevIcon);
   }
 }
 
@@ -9072,6 +9093,7 @@ function ttsRenderLines(bar, lines) {
   bar.innerHTML = `
     <div class="sd-tts-lines">${rows}</div>
     ${anyVoiced ? '' : '<div class="sd-tts-bar-actions"><span class="sd-tts-status">未配置任何角色音色，请先配置。</span></div>'}`;
+  applyQianmuIcons(bar);
 }
 
 // 提取成功后，把外层工具栏的「连续播放/重生语音/停止」钮显隐切换；anyVoiced=false 则不显示
@@ -9359,6 +9381,7 @@ function ttsInjectInlineIcons(mesEl, lines) {
     glue.appendChild(icon);
     if (after) after.parentNode.insertBefore(glue, after);
     else target.parentNode.appendChild(glue);
+    applyQianmuIcons(glue);
   }
   // 在正文最靠前的小喇叭前插「连续播放本条」钮。注意：因有乱序兜底，插入顺序≠DOM 顺序，
   // 故取 DOM 中实际第一个内联图标作锚点（而非最先创建的那个），保证连播钮真在最前。
@@ -9373,6 +9396,7 @@ function ttsInjectInlineIcons(mesEl, lines) {
     ttsBindControlBoundary(playAll);
     // 连播钮插进首个小喇叭所在的胶囊 span（同一 nowrap 整体）：连播钮＋末字＋喇叭三者焊在一起，绝不彼此拆行。
     domFirstIcon.parentNode.insertBefore(playAll, domFirstIcon);
+    applyQianmuIcons(playAll);
   }
 }
 
@@ -9479,6 +9503,7 @@ function ttsOpenQuickPopup(btn) {
       <button type="button" class="sd-tts-pop-icon sd-tts-pop-fav" title="收藏这句" aria-pressed="false"><i class="fa-regular fa-star"></i></button>
     </div>`;
   document.body.appendChild(pop);
+  applyQianmuIcons(pop);
   ttsPopupEl = pop;
   // 定位到按钮下方
   const r = btn.getBoundingClientRect();
@@ -9576,7 +9601,7 @@ function ttsDownloadBlob(blob, filename) {
 async function ttsDownloadLine(line, btn, location = {}) {
   const icon = btn?.querySelector('i');
   const prev = icon?.className;
-  if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+  setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
   try {
     const { blob, params } = await ttsSynthCached(line, false);
     const source = ttsLineSourceMeta(location.mesEl, location.idx);
@@ -9585,7 +9610,7 @@ async function ttsDownloadLine(line, btn, location = {}) {
   } catch (err) {
     toast(`下载失败：${err?.message || err}`, 'error');
   } finally {
-    if (icon && prev) icon.className = prev;
+    if (prev) setQianmuIconClass(icon, prev);
   }
 }
 
@@ -9600,7 +9625,7 @@ function ttsSetFavoriteButton(btn, active) {
   btn.setAttribute('aria-pressed', active ? 'true' : 'false');
   btn.title = active ? '取消收藏' : '收藏这句';
   const icon = btn.querySelector('i');
-  if (icon) icon.className = active ? 'fa-solid fa-star' : 'fa-regular fa-star';
+  setQianmuIconClass(icon, active ? 'fa-solid fa-star' : 'fa-regular fa-star');
 }
 
 async function ttsSyncFavoriteButton(line, btn) {
@@ -9617,7 +9642,7 @@ async function ttsFavoriteLine(line, btn, location = {}) {
   if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地收藏。', 'warning'); return; }
   const icon = btn?.querySelector('i');
   const prev = icon?.className;
-  if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+  setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
   if (btn) btn.disabled = true;
   try {
     const identity = ttsFavoriteIdentity(line);
@@ -9646,7 +9671,7 @@ async function ttsFavoriteLine(line, btn, location = {}) {
   } finally {
     if (btn) btn.disabled = false;
     if (btn) await ttsSyncFavoriteButton(line, btn);
-    else if (icon && prev) icon.className = prev;
+    else if (prev) setQianmuIconClass(icon, prev);
   }
 }
 function ttsPopupOutside(e) {
@@ -9724,7 +9749,7 @@ function renderQuickWheelSettings() {
     </div>
     <details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑蜂巢入口</span><b>${occupied} 项</b></summary><div class="sd-wheel-custom-list">${ordered.map((item, index) => `
       <div class="sd-wheel-custom-row" data-command="${item.id}">
-        <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}"></i><span>${htmlEscape(item.label)}</span></label>
+        <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}" data-qm-icon="${item.phosphor}"></i><span>${htmlEscape(item.label)}</span></label>
         <div><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="up" ${index === 0 ? 'disabled' : ''} title="上移"><i class="fa-solid fa-chevron-up"></i></button><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="down" ${index === ordered.length - 1 ? 'disabled' : ''} title="下移"><i class="fa-solid fa-chevron-down"></i></button></div>
       </div>`).join('')}</div>
     </details>
@@ -10010,13 +10035,13 @@ function storyboardSelectOptions(selector, selected = '') {
 
 function renderStoryboardNav(state) {
   const items = [
-    ['create', '镜头台', 'fa-camera'],
-    ['characters', '形象档案', 'fa-address-card'],
-    ['assets', '素材库', 'fa-tags'],
-    ['gallery', '阅片室', 'fa-images'],
-    ['logs', '日志', 'fa-list-ul'],
+    ['create', '镜头台', 'fa-camera', 'qm-duotone-camera'],
+    ['characters', '形象档案', 'fa-address-card', 'character-profile'],
+    ['assets', '素材库', 'fa-tags', 'qm-duotone-tag'],
+    ['gallery', '阅片室', 'fa-images', 'screening'],
+    ['logs', '日志', 'fa-list-ul', 'qm-regular-list-bullets'],
   ];
-  return `<nav class="sd-storyboard-nav" aria-label="分镜功能">${items.map(([id, label, icon]) => `<button type="button" aria-current="${state.view === id ? 'page' : 'false'}" aria-label="${label}" class="${state.view === id ? 'active' : ''}" data-storyboard-view="${id}"><i class="fa-solid ${icon}"></i><span>${label}</span></button>`).join('')}</nav>`;
+  return `<nav class="sd-storyboard-nav" aria-label="分镜功能">${items.map(([id, label, icon, phosphor]) => `<button type="button" aria-current="${state.view === id ? 'page' : 'false'}" aria-label="${label}" class="${state.view === id ? 'active' : ''}" data-storyboard-view="${id}"><i class="fa-solid ${icon}" data-qm-icon="${phosphor}"></i><span>${label}</span></button>`).join('')}</nav>`;
 }
 
 function storyboardConnectionState(state, providerId = state.source) {
@@ -12017,8 +12042,9 @@ function storyboardInjectMessageButtons(chatRoot) {
     button.dataset.storyboardChatAction = 'open-floor';
     button.title = `将第 ${floor} 层带入分镜`;
     button.setAttribute('aria-label', `将第 ${floor} 层带入分镜`);
-    button.innerHTML = '<i class="fa-solid fa-video"></i>';
+    button.innerHTML = '<i class="fa-solid fa-video" data-qm-icon="qm-duotone-video-camera"></i>';
     toolbar.appendChild(button);
+    applyQianmuIcons(button);
   });
 }
 
@@ -12041,7 +12067,8 @@ function storyboardRenderInlineImages() {
     wrapper.className = 'sd-storyboard-inline';
     wrapper.dataset.storyboardFloor = String(floor);
     if (records.length > 1) wrapper.classList.add('sd-storyboard-filmstrip');
-    wrapper.innerHTML = records.map((record) => `<figure data-storyboard-record="${htmlEscape(record.id)}"><button type="button" data-storyboard-chat-action="preview"><img src="${htmlEscape(storyboardSafeUrl(record.url))}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 48))}"></button><figcaption><span>分镜</span><div><button type="button" data-storyboard-chat-action="edit" title="修改提示词" aria-label="修改提示词"><i class="fa-solid fa-pen"></i></button><button type="button" data-storyboard-chat-action="copy" title="复制提示词" aria-label="复制提示词"><i class="fa-solid fa-copy"></i></button><button type="button" data-storyboard-chat-action="redraw" title="重绘" aria-label="重绘"><i class="fa-solid fa-rotate-right"></i></button><button type="button" data-storyboard-chat-action="download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button><button type="button" data-storyboard-chat-action="detach" title="移出正文" aria-label="移出正文"><i class="fa-solid fa-eye-slash"></i></button></div></figcaption></figure>`).join('');
+    wrapper.innerHTML = records.map((record) => `<figure data-storyboard-record="${htmlEscape(record.id)}"><button type="button" data-storyboard-chat-action="preview"><img src="${htmlEscape(storyboardSafeUrl(record.url))}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 48))}"></button><figcaption><span>分镜</span><div><button type="button" data-storyboard-chat-action="edit" title="修改提示词" aria-label="修改提示词"><i class="fa-solid fa-pen"></i></button><button type="button" data-storyboard-chat-action="copy" title="复制提示词" aria-label="复制提示词"><i class="fa-solid fa-copy"></i></button><button type="button" data-storyboard-chat-action="redraw" title="重绘" aria-label="重绘"><i class="fa-solid fa-rotate-right" data-qm-icon="image-regenerate"></i></button><button type="button" data-storyboard-chat-action="download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button><button type="button" data-storyboard-chat-action="detach" title="移出正文" aria-label="移出正文"><i class="fa-solid fa-eye-slash"></i></button></div></figcaption></figure>`).join('');
+    applyQianmuIcons(wrapper);
     const anchor = storyboardInlineAnchorNode(text, records);
     // Keep the frame outside .mes_text. Paragraph anchoring is metadata-driven; placing
     // controls inside rendered message text would expose them to TTS and third-party regex scanners.
@@ -12083,6 +12110,7 @@ function storyboardOpenLightbox(record) {
     storyboardCloseLightbox(); storyboardLoadRecordToWorkbench(record); toast('已载入镜头台；确认画面后再生成。', 'success');
   });
   document.body.appendChild(layer);
+  applyQianmuIcons(layer);
   storyboardLightboxEl = layer;
   layer.focus({ preventScroll: true });
 }
@@ -13002,7 +13030,7 @@ function focusClockSyncPreviewButton() {
   button.title = playing ? '暂停试听' : (focusClockPreviewMode && progress > 0 ? '继续试听' : '试听提示音');
   button.setAttribute('aria-label', button.title);
   const icon = button.querySelector('i');
-  if (icon) icon.className = `fa-solid ${playing ? 'fa-pause' : 'fa-play'}`;
+  setQianmuIconClass(icon, `fa-solid ${playing ? 'fa-pause' : 'fa-play'}`);
 }
 
 function focusClockStopPreviewFrame() {
@@ -13429,6 +13457,7 @@ function focusClockOpenVoiceDrawer() {
       </article>`).join('')}</div>
     </section>`;
   modal.appendChild(portal);
+  applyQianmuIcons(portal);
   focusClockVoiceDrawerEl = portal;
   const cueFor = (target) => rows.find((cue) => cue.id === target.closest('.sd-focus-cue')?.dataset.cueId);
   portal.querySelector('.sd-focus-voice-drawer-backdrop')?.addEventListener('click', focusClockCloseVoiceDrawer);
@@ -13451,7 +13480,7 @@ function focusClockOpenVoiceDrawer() {
     const cue = cueFor(event.currentTarget);
     if (!cue) return;
     button.disabled = true;
-    const icon = button.querySelector('i'); if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+    const icon = button.querySelector('i'); setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
     await focusClockRegenerateVoiceCue(cue);
     focusClockOpenVoiceDrawer();
   }));
@@ -14079,7 +14108,7 @@ function bindActiveTabEvents(root) {
     el.setAttribute('aria-pressed', t.pinned ? 'true' : 'false');
     el.title = t.pinned ? '已钉住，点击取消' : '钉住（重点追踪，不被自动归档）';
     const icon = el.querySelector('i');
-    if (icon) icon.className = `fa-${t.pinned ? 'solid' : 'regular'} fa-thumbtack`;
+    setQianmuIconClass(icon, `fa-${t.pinned ? 'solid' : 'regular'} fa-thumbtack`);
     if (row) {
       row.classList.toggle('sd-thread-pinned', t.pinned);
       if (t.status === 'active') {
@@ -14592,7 +14621,7 @@ function bindActiveTabEvents(root) {
     btn.disabled = true;
     const icon = btn.querySelector('i');
     const prevIcon = icon?.className;
-    if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+    setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
     try {
       // 借 ST 后端代理探活（绕过浏览器 CORS）
       let res = await fetchViaSTProxy(rawUrl, `Authorization: Bearer ${apiKey}`);
@@ -14609,7 +14638,7 @@ function bindActiveTabEvents(root) {
       toast(`连接失败：${err?.message || err}`, 'error');
     } finally {
       btn.disabled = false;
-      if (icon && prevIcon) icon.className = prevIcon;
+      if (prevIcon) setQianmuIconClass(icon, prevIcon);
     }
   });
   root.querySelector('.sd-save-api-profile')?.addEventListener('click', async () => {
@@ -15147,7 +15176,7 @@ async function coreadFetchMemModels(kind, btn) {
   if (!base || !key) { toast('请先填写 API URL 与 Key。', 'warning'); return; }
   const icon = btn?.querySelector('i'); const prev = icon?.className;
   if (btn) btn.disabled = true;
-  if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+  setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
   try {
     // 直接传原始 URL（后端负责拼 /models 路径，此处不自拼 /v1/models 免路径重复）
     const proxyUrl = rawUrl.replace(/\/+$/, '');
@@ -15181,7 +15210,7 @@ async function coreadFetchMemModels(kind, btn) {
     toast(`拉取失败：${err?.message || err}`, 'error');
   } finally {
     if (btn) btn.disabled = false;
-    if (icon && prev) icon.className = prev;
+    if (prev) setQianmuIconClass(icon, prev);
   }
 }
 
@@ -15193,7 +15222,7 @@ async function coreadTestMemConn(kind, btn) {
   if (!rawUrl || !key) { toast('请先填写 API URL 与 Key。', 'warning'); return; }
   const icon = btn?.querySelector('i'); const prev = icon?.className;
   if (btn) btn.disabled = true;
-  if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+  setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
   try {
     let res = await fetchViaSTProxy(rawUrl, `Authorization: Bearer ${key}`);
     if (!res.ok && (res.status === 401 || res.status === 403)) {
@@ -15205,7 +15234,7 @@ async function coreadTestMemConn(kind, btn) {
     toast(`连接失败：${err?.message || err}`, 'error');
   } finally {
     if (btn) btn.disabled = false;
-    if (icon && prev) icon.className = prev;
+    if (prev) setQianmuIconClass(icon, prev);
   }
 }
 
@@ -15286,9 +15315,9 @@ function setCompanionWorldItemSelected(book, itemId, selected) {
 async function coreadSetupScanWorldBooks(overlay) {
   const body = overlay?.querySelector('.sd-reader-setup-body');
   const scanBtn = body?.querySelector('.sd-reader-cwb-scan');
-  if (scanBtn) scanBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 加载中';
+  if (scanBtn) { scanBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 加载中'; applyQianmuIcons(scanBtn); }
   try { await refreshWorldBooks(false); } catch (_) {}
-  if (body) body.innerHTML = renderCompanionSetupBody();
+  if (body) { body.innerHTML = renderCompanionSetupBody(); applyQianmuIcons(body); }
 }
 
 // ── 伴读预设取材（镜像世界书三件套·方式相同·选择存 companion 独立·不碰主线 selectedPreset*） ──
@@ -15318,9 +15347,9 @@ function setCompanionPresetItemSelected(preset, itemId, selected) {
 async function coreadSetupScanPresets(overlay) {
   const body = overlay?.querySelector('.sd-reader-setup-body');
   const scanBtn = body?.querySelector('.sd-reader-cps-scan');
-  if (scanBtn) scanBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 加载中';
+  if (scanBtn) { scanBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 加载中'; applyQianmuIcons(scanBtn); }
   try { await refreshPresets(false); } catch (_) {}
-  if (body) body.innerHTML = renderCompanionSetupBody();
+  if (body) { body.innerHTML = renderCompanionSetupBody(); applyQianmuIcons(body); }
 }
 
 // 懒加载某预设条目到 contextScanCache.presets（refreshPresets 只为「当前/主线选中」的预设拉条目，
@@ -16943,6 +16972,7 @@ function coreadTopNotice(message, level = 'warning') {
   item.innerHTML = `<i class="fa-solid ${level === 'error' ? 'fa-triangle-exclamation' : 'fa-circle-info'}"></i><span>${htmlEscape(message)}</span><button type="button" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button>`;
   item.querySelector('button')?.addEventListener('click', () => item.remove());
   layer.appendChild(item);
+  applyQianmuIcons(item);
   setTimeout(() => item.remove(), 12000);
 }
 
@@ -17517,7 +17547,7 @@ async function coreadOpenMigrateDialog() {
     toast(`已迁移：${r.messages} 条对话、${r.slices} 条记忆（写入世界书 ${r.wrote} 条）。`, 'success');
     // 补渲对话流 + 重渲记忆 tab
     const body = document.querySelector('#sd-reader-portal .sd-reader-dtab-chat');
-    if (body) { body.innerHTML = renderReaderDialogMessages(); scrollDialogToBottom(); }
+    if (body) { body.innerHTML = renderReaderDialogMessages(); applyQianmuIcons(body); scrollDialogToBottom(); }
     coreadCenterPage = 'main';
     coreadMemory().moreTab = 'records';
     rerenderMoreIfOpen();
@@ -17705,7 +17735,7 @@ async function coreadSubmitMainlinePage(root) {
   }));
   if (!picked.length) { toast('没有选中任何正文楼层。', 'info'); return; }
   const btn = root.querySelector('.sd-reader-mainline-submit');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>正在总结'; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>正在总结'; applyQianmuIcons(btn); }
   toast('伴读记忆：正在从主线片段总结…', 'info');
   try {
     const result = await coreadDistillMainline(picked, m);
@@ -17719,7 +17749,7 @@ async function coreadSubmitMainlinePage(root) {
   } catch (error) {
     toast(`主线总结失败：${coreadExplainError(error)}`, 'error');
   } finally {
-    if (btn?.isConnected) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i>总结选中'; }
+    if (btn?.isConnected) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i>总结选中'; applyQianmuIcons(btn); }
   }
 }
 
@@ -18088,7 +18118,7 @@ async function coreadLoadDialog(bookId) {
   if (needsMigration) await coreadSaveDialog();
   // 若对话抽屉正开在对话 tab，载入后补渲消息
   const body = document.querySelector('#sd-reader-portal .sd-reader-dtab-chat');
-  if (body && !readerView?.assistantOpen) { body.innerHTML = renderReaderDialogMessages(); scrollDialogToBottom(); }
+  if (body && !readerView?.assistantOpen) { body.innerHTML = renderReaderDialogMessages(); applyQianmuIcons(body); scrollDialogToBottom(); }
   coreadRefreshAssistantPanel();
   coreadSweepOrphanLore();   // 懒清扫：本聊天世界书里指向「已删书」的孤儿伴读条目（每聊天每会话一次）
 }
@@ -18404,10 +18434,11 @@ function coreadRefreshAssistantPanel() {
   if (body) {
     body.classList.toggle('sd-reader-assistant-body', assistantMode);
     body.innerHTML = assistantMode ? renderReaderAssistantMessages() : renderReaderDialogMessages();
+    applyQianmuIcons(body);
     body.scrollTop = body.scrollHeight;
   }
   const chatTab = portal.querySelector('.sd-reader-dtab[data-dtab="chat"]');
-  if (chatTab) chatTab.innerHTML = `<i class="fa-solid fa-comments"></i> ${assistantMode ? '幕伴小助手' : '对话'}`;
+  if (chatTab) { chatTab.innerHTML = `<i class="fa-solid fa-comments"></i> ${assistantMode ? '幕伴小助手' : '对话'}`; applyQianmuIcons(chatTab); }
   const inputRow = portal.querySelector('.sd-reader-dialog-input');
   inputRow?.classList.toggle('is-assistant', assistantMode);
   const quote = portal.querySelector('.sd-reader-assistant-quote');
@@ -18421,6 +18452,7 @@ function coreadRefreshAssistantPanel() {
     toggle.classList.toggle('active', assistantMode);
     toggle.title = assistantMode ? '返回书友对话' : '切换至幕伴小助手';
     toggle.innerHTML = `<i class="fa-solid ${assistantMode ? 'fa-user' : 'fa-lightbulb'}"></i>`;
+    applyQianmuIcons(toggle);
   }
   const input = portal.querySelector('.sd-reader-dialog-ta');
   if (input) input.placeholder = assistantMode ? '问当前选文，或聊一个衍生问题……' : '但愿你能不期而然地同我一起';
@@ -18431,6 +18463,7 @@ function coreadRefreshAssistantPanel() {
     send.disabled = false;
     send.title = busy ? '停止回答' : '单击发送；长按让 AI 回复；桌面双击或触屏上滑添加图片';
     send.innerHTML = `<i class="fa-solid ${busy ? 'fa-stop' : 'fa-arrow-up'}"></i>`;
+    applyQianmuIcons(send);
   }
 }
 
@@ -18563,7 +18596,11 @@ function coreadAddPendingChatImages(files) {
   }
   const host = document.querySelector('#sd-reader-portal .sd-reader-dialog-input');
   const old = host?.querySelector('.sd-reader-chat-pending');
-  if (old) old.outerHTML = coreadPendingImagesHtml();
+  if (old) {
+    const parent = old.parentElement;
+    old.outerHTML = coreadPendingImagesHtml();
+    applyQianmuIcons(parent);
+  }
 }
 
 async function coreadPersistPendingChatImages() {
@@ -18795,6 +18832,7 @@ function coreadSyncDialogButtons() {
     sendBtn.classList.toggle('is-stop', dialogBusy);
     sendBtn.title = dialogBusy ? '停止回答' : '单击发送；长按让 AI 回复；桌面双击或触屏上滑添加图片';
     sendBtn.innerHTML = `<i class="fa-solid ${dialogBusy ? 'fa-stop' : 'fa-arrow-up'}"></i>`;
+    applyQianmuIcons(sendBtn);
   }
 }
 
@@ -18805,7 +18843,7 @@ async function coreadAppendUserMessage(text, imageIds = []) {
   if ((!content && !images.length) || dialogBusy) return;
   readerDialog.messages.push({ id: uid('rdm'), role: 'user', text: content, images, ts: Date.now() });
   const body = document.querySelector('#sd-reader-portal .sd-reader-dtab-chat');
-  if (body) { body.innerHTML = renderReaderDialogMessages(); scrollDialogToBottom(); }
+  if (body) { body.innerHTML = renderReaderDialogMessages(); applyQianmuIcons(body); scrollDialogToBottom(); }
   await coreadSaveDialog();
 }
 
@@ -18821,7 +18859,7 @@ async function coreadGenerateReply(isReroll = false) {
   if (isReroll) {
     const batch = lastFriendBatchRange(readerDialog.messages);
     if (batch) readerDialog.messages.splice(batch.start, batch.end - batch.start + 1);
-    if (body) { body.innerHTML = renderReaderDialogMessages(); scrollDialogToBottom(); }
+    if (body) { body.innerHTML = renderReaderDialogMessages(); applyQianmuIcons(body); scrollDialogToBottom(); }
   }
 
   // 取末尾连续的 user 消息（本轮待回复的输入）；没有就提示
@@ -18846,7 +18884,7 @@ async function coreadGenerateReply(isReroll = false) {
   // 追加占位 friend 气泡（先流式填充首条，落定后拆成多条逐条浮现）
   const friendMsg = { id: uid('rdm'), role: 'friend', text: '', ts: Date.now() };
   readerDialog.messages.push(friendMsg);
-  if (body) { body.innerHTML = renderReaderDialogMessages(); scrollDialogToBottom(); }
+  if (body) { body.innerHTML = renderReaderDialogMessages(); applyQianmuIcons(body); scrollDialogToBottom(); }
   const friendBubble = () => portal?.querySelector(`.sd-reader-msg[data-msg="${friendMsg.id}"] .sd-reader-msg-bubble`);
 
   // 最近对话回带（不含本轮 pending user 与占位 friend）；本轮 user 群单独整理进 userPrompt
@@ -18924,14 +18962,14 @@ async function coreadGenerateReply(isReroll = false) {
       if (token !== dialogGenToken) { clearTyping(); return; }
       clearTyping();
       readerDialog.messages.push({ id: uid('rdm'), role: 'friend', text: finalSentences[i].trim(), thought: i === 0 ? thought : '', ts: Date.now() });
-      if (body) { body.innerHTML = renderReaderDialogMessages(); scrollDialogToBottom(); }   // 新气泡为 :last-child → CSS 单独淡入上滑
+      if (body) { body.innerHTML = renderReaderDialogMessages(); applyQianmuIcons(body); scrollDialogToBottom(); }   // 新气泡为 :last-child → CSS 单独淡入上滑
       await coreadSaveDialog();
     }
   } catch (error) {
     if (token === dialogGenToken) {
       console.warn(`[${MODULE_NAME}] reader dialog gen failed`, error);
       readerDialog.messages = readerDialog.messages.filter((m) => m.id !== friendMsg.id);
-      if (body) { body.innerHTML = renderReaderDialogMessages(); scrollDialogToBottom(); }
+      if (body) { body.innerHTML = renderReaderDialogMessages(); applyQianmuIcons(body); scrollDialogToBottom(); }
       toast('伴读对话生成失败，请重试。', 'warn');
       await coreadSaveDialog();
     }
@@ -18969,7 +19007,7 @@ function coreadStopDialog() {
   const body = document.querySelector('#sd-reader-portal .sd-reader-dtab-chat');
   if (body) {
     body.querySelectorAll('.sd-reader-typing').forEach((el) => el.remove());   // 移除逐条浮现的 typing 气泡
-    if (hadPlaceholder) { body.innerHTML = renderReaderDialogMessages(); scrollDialogToBottom(); }   // 有占位才整渲·抹掉三点空气泡
+    if (hadPlaceholder) { body.innerHTML = renderReaderDialogMessages(); applyQianmuIcons(body); scrollDialogToBottom(); }   // 有占位才整渲·抹掉三点空气泡
   }
   if (hadPlaceholder) coreadSaveDialog();
   coreadSyncDialogButtons();
@@ -18985,7 +19023,7 @@ async function coreadSpeakMsg(msg, speaker, btn, force = false) {
   if (!force && btn?.dataset.speaking === '1') { ttsStopPlayback(true); return; }   // 播放中再点＝停
   const icon = btn?.querySelector('i');
   const prev = icon?.className;
-  if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+  setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
   if (btn) btn.dataset.speaking = '1';
   const line = { speaker, text: t };
   if (Number.isFinite(msg.speed)) line.speed = msg.speed;
@@ -18993,12 +19031,12 @@ async function coreadSpeakMsg(msg, speaker, btn, force = false) {
   try {
     const { blob } = await ttsSynthCached(line, force, 'coread');
     if (!msg.voiced) { msg.voiced = 1; await coreadSaveDialog(); refreshVoiceClipsIfVisible(); }
-    if (icon) icon.className = 'fa-solid fa-circle-stop';
+    setQianmuIconClass(icon, 'fa-solid fa-circle-stop');
     await ttsPlayBlob(blob, btn ? [btn] : []);
   } catch (err) {
     toast(`朗读失败：${err?.message || err}`, 'error');
   } finally {
-    if (icon && prev) icon.className = prev;
+    if (prev) setQianmuIconClass(icon, prev);
     if (btn) delete btn.dataset.speaking;
   }
 }
@@ -19006,7 +19044,10 @@ async function coreadSpeakMsg(msg, speaker, btn, force = false) {
 // 语音条可见时重渲（生成语音后新句进列表·重生成后旧句退出）。
 function refreshVoiceClipsIfVisible() {
   const vb = document.querySelector('#sd-reader-portal .sd-reader-dtab-voice');
-  if (vb && !vb.hidden) vb.innerHTML = renderReaderVoiceClips();
+  if (vb && !vb.hidden) {
+    vb.innerHTML = renderReaderVoiceClips();
+    applyQianmuIcons(vb);
+  }
 }
 
 // 单击播放 / 双击弹小面板（语速·情绪·重生成）——仿正文双击小耳机。用延迟守卫区分。
@@ -19039,6 +19080,7 @@ function coreadOpenVoicePopup(msg, speaker, btn) {
       <button type="button" class="sd-tts-pop-icon sd-tts-pop-download" title="下载这句"><i class="fa-solid fa-download"></i></button>
     </div>`;
   document.body.appendChild(pop);
+  applyQianmuIcons(pop);
   ttsPopupEl = pop;
   const r = btn.getBoundingClientRect();
   pop.style.left = `${Math.min(window.innerWidth - pop.offsetWidth - 8, Math.max(8, r.left))}px`;
@@ -19491,6 +19533,7 @@ function coreadShowRefillChooser(bookId) {
     });
   }
   document.body.appendChild(overlay);
+  applyQianmuIcons(overlay);
   syncViewport();
   viewport?.addEventListener('resize', syncViewport);
   viewport?.addEventListener('scroll', syncViewport);
@@ -19945,6 +19988,7 @@ function mountReaderPortal(innerHtml) {
   portal.style.setProperty('--sd-portal-bg', portalBg);   // 供伴读记忆面板等子层引用同款不透明底
   portal.innerHTML = innerHtml;
   document.body.appendChild(portal);
+  applyQianmuIcons(portal);
   readerPortalNode = portal;
   return portal;
 }
@@ -20234,7 +20278,7 @@ function buildReaderStage() {
     <div class="sd-reader-stage${barHidden}${pinned}${comicMode ? ' sd-reader-comic-mode' : ''}" data-reader-panel="${activePanel || 'none'}" style="--sd-rd-dialogh:${drawerH}px">
       <!-- 顶栏（固定不抽回）：书签 / 书名 / 返回(右) -->
       <div class="sd-reader-topbar">
-        <button class="sd-reader-mark-btn ${bookmarked ? 'active' : ''}" title="书签"><i class="fa-${bookmarked ? 'solid' : 'regular'} fa-bookmark"></i></button>
+        <button class="sd-reader-mark-btn ${bookmarked ? 'active' : ''}" title="书签"><i class="fa-${bookmarked ? 'solid' : 'regular'} fa-bookmark" data-qm-icon="${bookmarked ? 'bookmarks' : 'qm-regular-bookmark'}"></i></button>
         <div class="sd-reader-chtitle">${htmlEscape(chapter.title || meta.title)}</div>
         <button class="sd-reader-focus-btn${focusLinkedHere ? ' active' : ''}" title="${focusLinkedHere && focusState.status !== 'idle' ? '查看专注计时' : '设为专注阅读'}"><i class="fa-solid fa-hourglass-half"></i><span class="sd-reader-focus-mini">${focusMiniText}</span></button>
         ${comicMode ? `<button class="sd-reader-comic-scan${comicPageAnalyzed ? ' active' : ''}" title="${coreadComicVisionBusy ? '正在生成视觉文字稿' : '识别当前及前几页'}" ${coreadComicVisionBusy ? 'disabled' : ''}><i class="fa-solid ${coreadComicVisionBusy ? 'fa-spinner fa-spin' : 'fa-eye'}"></i></button>` : ''}
@@ -21765,6 +21809,7 @@ function bindLibraryBookDrag(root) {
         ghost.className = 'sd-reader-book-drag-ghost';
         ghost.innerHTML = `<i class="fa-solid fa-book"></i><span>${htmlEscape(coreadBookMeta(source.dataset.book)?.title || '书籍')}</span>`;
         document.body.appendChild(ghost);
+        applyQianmuIcons(ghost);
         document.body.style.userSelect = 'none';
         navigator.vibrate?.(18);
         onMove(downEvent);
@@ -22322,7 +22367,10 @@ function bindReaderStageEvents(stageRoot) {
     const voiceBody = q('.sd-reader-dtab-voice');
     const input = q('.sd-reader-dialog-input');
     if (chatBody) chatBody.hidden = tab !== 'chat';
-    if (voiceBody) { voiceBody.hidden = tab !== 'voice'; if (tab === 'voice') voiceBody.innerHTML = renderReaderVoiceClips(); }   // 切进语音条即取最新 friend 气泡
+    if (voiceBody) {
+      voiceBody.hidden = tab !== 'voice';
+      if (tab === 'voice') { voiceBody.innerHTML = renderReaderVoiceClips(); applyQianmuIcons(voiceBody); }
+    }   // 切进语音条即取最新 friend 气泡
     if (input) input.hidden = tab !== 'chat';
     dialogPanel?.classList.toggle('sd-reader-dialog-voicing', tab === 'voice');
     if (tab === 'chat') scrollDialogToBottom();
@@ -22345,7 +22393,11 @@ function bindReaderStageEvents(stageRoot) {
   let chatSendBusy = false;
   const refreshPendingImages = () => {
     const old = dialogInput?.querySelector('.sd-reader-chat-pending');
-    if (old) old.outerHTML = coreadPendingImagesHtml();
+    if (old) {
+      const parent = old.parentElement;
+      old.outerHTML = coreadPendingImagesHtml();
+      applyQianmuIcons(parent);
+    }
   };
   const doSend = async () => {
     if (readerView.assistantOpen) {
@@ -22518,7 +22570,7 @@ function bindReaderStageEvents(stageRoot) {
   // 载入完成后若对话流已在缓存，补渲（异步载入可能晚于本次绑定）
   if (readerDialog.loaded && readerDialog.bookId === readerView.bookId) {
     const cb = q('.sd-reader-dtab-chat');
-    if (cb) cb.innerHTML = readerView.assistantOpen ? renderReaderAssistantMessages() : renderReaderDialogMessages();
+    if (cb) { cb.innerHTML = readerView.assistantOpen ? renderReaderAssistantMessages() : renderReaderDialogMessages(); applyQianmuIcons(cb); }
   }
   // 气泡操作：移动端单击气泡展开工具；书友支持朗读 / 重试 / 编辑 / 删除，助手仅编辑 / 删除。
   const chatBody = q('.sd-reader-dtab-chat');
@@ -22562,6 +22614,7 @@ function bindReaderStageEvents(stageRoot) {
             <button class="sd-reader-msg-edit-btn sd-reader-msg-edit-cancel" title="取消"><i class="fa-solid fa-xmark"></i></button>
             <button class="sd-reader-msg-edit-btn sd-reader-msg-edit-ok" title="保存"><i class="fa-solid fa-check"></i></button>
           </div>`;
+        applyQianmuIcons(bubble);
         const ta = bubble.querySelector('.sd-reader-msg-edit-ta');
         focusEditorAtEnd(ta);
         bubble.querySelector('.sd-reader-msg-edit-cancel')?.addEventListener('click', coreadRefreshAssistantPanel);
@@ -22606,7 +22659,7 @@ function bindReaderStageEvents(stageRoot) {
       await coreadDeleteMessageImages([msg]);
       readerDialog.messages = msgs.filter((_, i) => i !== idx);
       await coreadSaveDialog();
-      if (chatBody) chatBody.innerHTML = renderReaderDialogMessages();
+      if (chatBody) { chatBody.innerHTML = renderReaderDialogMessages(); applyQianmuIcons(chatBody); }
       scrollDialogToBottom();
     } else if (action === 'edit') {
       // 内联编辑：气泡展开成宽松编辑框（脱离 82% 窄列·占满抽屉宽·字号继承·舒适可读）
@@ -22620,10 +22673,11 @@ function bindReaderStageEvents(stageRoot) {
           <button class="sd-reader-msg-edit-btn sd-reader-msg-edit-cancel" title="取消"><i class="fa-solid fa-xmark"></i></button>
           <button class="sd-reader-msg-edit-btn sd-reader-msg-edit-ok" title="保存"><i class="fa-solid fa-check"></i></button>
         </div>`;
+      applyQianmuIcons(bubble);
       const ta = bubble.querySelector('.sd-reader-msg-edit-ta');
       focusEditorAtEnd(ta);
       const exitEdit = () => {
-        if (chatBody) chatBody.innerHTML = renderReaderDialogMessages();
+        if (chatBody) { chatBody.innerHTML = renderReaderDialogMessages(); applyQianmuIcons(chatBody); }
       };
       bubble.querySelector('.sd-reader-msg-edit-cancel')?.addEventListener('click', () => {
         exitEdit();
@@ -22673,6 +22727,7 @@ function bindReaderStageEvents(stageRoot) {
     const body = morePage?.querySelector('.sd-reader-more-body');
     if (!body) return;
     body.innerHTML = renderCompanionMoreBody();
+    applyQianmuIcons(body);
     bindIdentityAvatarFallback(body);
     setTimeout(() => {
       const target = morePage.querySelector('.sd-reader-tour-target');
@@ -22683,7 +22738,7 @@ function bindReaderStageEvents(stageRoot) {
   const rerenderSetup = () => {
     const body = morePage?.querySelector('.sd-reader-setup-body');
     if (body) {
-      body.innerHTML = renderCompanionSetupBody(); applyAccState(morePage); bindIdentityAvatarFallback(body);
+      body.innerHTML = renderCompanionSetupBody(); applyQianmuIcons(body); applyAccState(morePage); bindIdentityAvatarFallback(body);
       setTimeout(() => {
         const target = morePage.querySelector('.sd-reader-tour-target');
         positionGuide(target); scrollMoreTarget(target);
@@ -22737,6 +22792,7 @@ function bindReaderStageEvents(stageRoot) {
       if (e.target.closest('.sd-reader-sm-save')) {
         const button = e.target.closest('.sd-reader-sm-save');
         button.disabled = true; button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>保存中';
+        applyQianmuIcons(button);
         const saved = await coreadSaveSliceEdit(id, sliceRow.querySelector('.sd-reader-sm-edit')?.value, sliceRow.querySelector('.sd-reader-sm-keys')?.value);
         if (!saved.ok) { toast(saved.reason || '保存失败。', 'warning'); rerenderMore(); return; }
         const result = saved.vector;
@@ -22748,6 +22804,7 @@ function bindReaderStageEvents(stageRoot) {
         const slice = (readerDialog.slices || []).find((item) => item.id === id);
         if (slice && reader.normalizeCoreadSource(slice.provenance?.source || slice.src) !== 'dialog') { toast('书中内容或正文回响没有固定对话来源，请删除后重新总结。', 'warning'); return; }
         const button = e.target.closest('.sd-reader-sm-regen'); button.disabled = true; button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>重构中';
+        applyQianmuIcons(button);
         const result = await coreadRegenSlice(id);
         if (!result?.ok) toast(result?.reason || '重构失败。', 'warning');
         else toast(result.vector?.ok ? '切片已重构并同步。' : (result.vector?.skipped ? '切片已重构；当前未启用向量。' : '切片已重构；向量同步失败，已保留关键词召回。'), result.vector?.ok || result.vector?.skipped ? 'success' : 'warning');
@@ -22779,6 +22836,7 @@ function bindReaderStageEvents(stageRoot) {
       div.className = 'sd-reader-mlrule-row';
       div.innerHTML = `<input class="sd-reader-minput sd-reader-mltag-name" placeholder="标签名，如 content" value=""><select class="sd-reader-minput sd-reader-mltag-action"><option value="remove" selected>屏蔽</option><option value="extract">提取</option></select><button type="button" class="sd-reader-mbtn sd-reader-mltag-del" title="删除"><i class="fa-solid fa-xmark"></i></button>`;
       rows?.appendChild(div);
+      applyQianmuIcons(div);
       return;
     }
     const mainlineRuleDel = e.target.closest('.sd-reader-mltag-del');
@@ -22976,13 +23034,13 @@ function bindReaderStageEvents(stageRoot) {
       const effectiveTo = expanded.to;
       const run = () => {
         const icon = btn.querySelector('i'); const prev = icon?.className;
-        btn.disabled = true; if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+        btn.disabled = true; setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
         coreadManualSummarize(effectiveFrom, effectiveTo).then((r) => {
           if (r?.ok && !r.wrote) toast(`切片已保存在千幕档案；同步世界书失败（${r.writeErr || '未知原因'}），千幕自身召回仍可用。`, 'warning');
           else if (r?.ok) toast(`${r.mode === 'resummarize' ? '已重新总结' : '已总结'}出 ${r.made} 条切片${r.salvaged ? '（关键词档降级保底）' : ''}。`, 'success');
           else toast(r?.reason || '总结失败。', 'warning');
           rerenderMore();
-        }).finally(() => { btn.disabled = false; if (icon && prev) icon.className = prev; });
+        }).finally(() => { btn.disabled = false; if (prev) setQianmuIconClass(icon, prev); });
       };
       if (!overlaps.length) run();
       else {
@@ -23005,12 +23063,12 @@ function bindReaderStageEvents(stageRoot) {
       confirmDialog('切片二次总结', `将把批次 ${lo}–${hi} 的原切片及对应世界书条目替换为一条合并切片。是否继续？`).then((yes) => {
         if (!yes) return;
         const icon = btn.querySelector('i'); const prev = icon?.className;
-        btn.disabled = true; if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+        btn.disabled = true; setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
         coreadCompressSlices(lo, hi).then((r) => {
           if (r?.ok) toast('已压缩合并。', 'success');
           else toast(r?.reason || '压缩失败。', 'warning');
           rerenderMore();
-        }).finally(() => { if (icon && prev) icon.className = prev; });
+        }).finally(() => { if (prev) setQianmuIconClass(icon, prev); });
       });
       return;
     }
@@ -23031,11 +23089,11 @@ function bindReaderStageEvents(stageRoot) {
     const regenBtn = e.target.closest('.sd-reader-slice-regen');
     if (regenBtn) {
       const btn = regenBtn; const icon = btn.querySelector('i'); const prev = icon?.className;
-      btn.disabled = true; if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+      btn.disabled = true; setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
       coreadRegenSlice(btn.dataset.id).then((r) => {
         if (!r?.ok) toast(r?.reason || '重新生成失败。', 'warning');
         rerenderMore();
-      }).finally(() => { if (icon && prev) icon.className = prev; });
+      }).finally(() => { if (prev) setQianmuIconClass(icon, prev); });
       return;
     }
     const sliceDel = e.target.closest('.sd-reader-slice-del');
@@ -23637,8 +23695,10 @@ function updateReaderArticle(stageRoot) {
   const article = root.querySelector('.sd-reader-article');
   if (article) { article.innerHTML = `<h2 class="sd-reader-h2">${htmlEscape(chapter.title || '')}</h2>${buildReaderParagraphs(chapter.content, chHi)}`; loadInlineImages(root); }
   // 笔记/书签列表同步（若抽屉开着，内容不至于过时）
-  const nv = root.querySelector('.sd-reader-notes-view'); if (nv) nv.innerHTML = renderReaderNotes(meta);
-  const mk = root.querySelector('.sd-reader-ptab-marks'); if (mk) mk.innerHTML = renderReaderMarks(meta);
+  const nv = root.querySelector('.sd-reader-notes-view');
+  if (nv) { nv.innerHTML = renderReaderNotes(meta); applyQianmuIcons(nv); }
+  const mk = root.querySelector('.sd-reader-ptab-marks');
+  if (mk) { mk.innerHTML = renderReaderMarks(meta); applyQianmuIcons(mk); }
 }
 
 // 新增划线（带样式 + 颜色快照）。text + style:'mark'|'wavy'|'underline'。返回新 noteId（供「笔记」接力打开批注）。
@@ -23684,8 +23744,14 @@ function coreadToggleBookmark(stageRoot) {
   // 原地更新顶栏书签图标 + 书签列表，不重渲染
   const btn = stageRoot.querySelector('.sd-reader-mark-btn');
   const on = meta.notes.some((n) => n.kind === 'bookmark' && n.chapterIndex === ci);
-  if (btn) { btn.classList.toggle('active', on); const i = btn.querySelector('i'); if (i) i.className = `fa-${on ? 'solid' : 'regular'} fa-bookmark`; }
-  const mk = stageRoot.querySelector('.sd-reader-ptab-marks'); if (mk) mk.innerHTML = renderReaderMarks(meta);
+  if (btn) {
+    btn.classList.toggle('active', on);
+    const icon = btn.querySelector('i');
+    icon?.setAttribute('data-qm-icon', on ? 'bookmarks' : 'qm-regular-bookmark');
+    setQianmuIconClass(icon, `fa-${on ? 'solid' : 'regular'} fa-bookmark`);
+  }
+  const mk = stageRoot.querySelector('.sd-reader-ptab-marks');
+  if (mk) { mk.innerHTML = renderReaderMarks(meta); applyQianmuIcons(mk); }
 }
 
 // 笔记批注：复用「目录」抽屉的「笔记」页·list↔edit 内部切换（窄屏移动端不出界·不叠层）。
@@ -24492,6 +24558,7 @@ function openTheaterFullscreen(scene) {
       <div class="sd-theater-fs-body sd-scroll">${bodyHtml}</div>
     </div>`;
   document.body.appendChild(portal);
+  applyQianmuIcons(portal);
   portal.querySelector('.sd-theater-fs-back')?.addEventListener('click', unmountTheaterFullscreen);
   portal.querySelector('.sd-theater-fs-close')?.addEventListener('click', unmountTheaterFullscreen);
   setTimeout(() => document.addEventListener('keydown', theaterFullscreenEsc, true), 0);
@@ -24526,7 +24593,7 @@ function bindTheaterTabEvents(root) {
       root.querySelector('.sd-theater-reader-fav')?.addEventListener('click', () => {
         toggleTheaterFavorite(scene);
         const icon = root.querySelector('.sd-theater-reader-fav i');
-        if (icon) icon.className = isTheaterFavorited(scene.id) ? 'fa-solid fa-star sd-fav-on' : 'fa-regular fa-star';
+        setQianmuIconClass(icon, isTheaterFavorited(scene.id) ? 'fa-solid fa-star sd-fav-on' : 'fa-regular fa-star');
       });
       // 字号下拉（仿主题菜单）：点图标开合·选档即应用+存·点菜单外收起
       const fontPick = root.querySelector('.sd-reader-font-pick');
@@ -24807,9 +24874,10 @@ function renderInputMenuEntry() {
     entry.id = INPUT_ENTRY_ID;
     entry.className = 'list-group-item flex-container flexGap5 interactable story-director-input-entry';
     entry.tabIndex = 0;
-    entry.innerHTML = `<div class="fa-solid fa-clapperboard extensionsMenuExtensionButton"></div><span>${EXTENSION_NAME}</span>`;
+    entry.innerHTML = `<div class="fa-solid fa-clapperboard extensionsMenuExtensionButton" data-qm-icon="qm-duotone-film-slate"></div><span>${EXTENSION_NAME}</span>`;
     entry.addEventListener('click', () => openModal());   // 恢复上次 tab
     menu.appendChild(entry);
+    applyQianmuIcons(entry);
     return;
   }
 
@@ -24821,10 +24889,11 @@ function renderInputMenuEntry() {
   button.id = INPUT_BUTTON_ID;
   button.type = 'button';
   button.title = EXTENSION_NAME;
-  button.innerHTML = '<i class="fa-solid fa-clapperboard"></i>';
+  button.innerHTML = '<i class="fa-solid fa-clapperboard" data-qm-icon="qm-duotone-film-slate"></i>';
   button.addEventListener('click', () => openModal());   // 恢复上次 tab
   if (textarea && textarea.parentElement === parent) parent.insertBefore(button, textarea);
   else parent.insertBefore(button, parent.firstChild);
+  applyQianmuIcons(button);
 }
 
 function startInputMenuObserver() {
