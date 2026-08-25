@@ -1,237 +1,554 @@
-// 千幕·分镜：只负责稳定的数据契约与 SillyTavern /imagine 命令适配。
-// UI、密钥录入与正文挂载留在主扩展；此层不实现任何生图供应商 HTTP 请求。
+// 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
+export const STORYBOARD_SCHEMA_VERSION = 2;
+export const STORYBOARD_PIPELINE_LOG_LIMIT = 300;
+export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
-export const STORYBOARD_SOURCES = Object.freeze({
-  novel: Object.freeze({ id: 'novel', label: 'NovelAI', stSource: 'novel', secretKey: 'api_key_novel' }),
-  comfy: Object.freeze({ id: 'comfy', label: 'ComfyUI', stSource: 'comfy', secretKey: '' }),
-  openai: Object.freeze({ id: 'openai', label: 'OpenAI', stSource: 'openai', secretKey: 'api_key_openai' }),
-  banana: Object.freeze({ id: 'banana', label: 'Banana', stSource: 'google', secretKey: 'api_key_makersuite' }),
+const BASE_CAPS = { prompt: true, negative: false, size: true, ratio: true, seed: false, steps: false, cfg: false, sampler: false, scheduler: false, reference: false, multipleReferences: false, imageEdit: false, mask: false, vibe: false, preciseReference: false, multiCharacter: false, workflow: false };
+const caps = (extra = {}) => Object.freeze({ ...BASE_CAPS, ...extra });
+const model = (id, label, generation, extra) => Object.freeze({ id, label, generation, capabilities: caps(extra) });
+
+export const STORYBOARD_PROVIDER_REGISTRY = Object.freeze({
+  novel: Object.freeze({ id: 'novel', label: 'NovelAI', protocol: 'novelai', defaultBaseUrl: 'https://image.novelai.net', customBaseUrl: true, customModelId: true, stSource: 'novel', secretKey: 'api_key_novel', defaultModel: 'nai-diffusion-5-full', capabilities: caps({ negative: true, seed: true, steps: true, cfg: true, sampler: true, scheduler: true, multiCharacter: true }) }),
+  banana: Object.freeze({ id: 'banana', label: 'Banana', protocol: 'gemini-images', defaultBaseUrl: 'https://generativelanguage.googleapis.com', customBaseUrl: true, customModelId: true, stSource: 'google', secretKey: 'api_key_makersuite', defaultModel: 'gemini-3.1-flash-image', capabilities: caps({ negative: true, reference: true, multipleReferences: true, imageEdit: true }) }),
+  openai: Object.freeze({ id: 'openai', label: 'GPT Image', protocol: 'openai-images', defaultBaseUrl: 'https://api.openai.com/v1', customBaseUrl: true, customModelId: true, stSource: 'openai', secretKey: 'api_key_openai', defaultModel: 'gpt-image-2', capabilities: caps({ reference: true, multipleReferences: true, imageEdit: true }) }),
+  seedream: Object.freeze({ id: 'seedream', label: 'Doubao Seedream', protocol: 'ark-images', defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3', customBaseUrl: true, customModelId: true, stSource: '', secretKey: '', defaultModel: 'doubao-seedream-5-0-260128', capabilities: caps({ seed: true, reference: true, multipleReferences: true, imageEdit: true }) }),
+  comfy: Object.freeze({ id: 'comfy', label: 'ComfyUI', protocol: 'comfy-workflow', defaultBaseUrl: '', customBaseUrl: true, customModelId: true, stSource: 'comfy', secretKey: '', defaultModel: 'comfy-workflow', capabilities: caps({ negative: true, seed: true, steps: true, cfg: true, sampler: true, scheduler: true, reference: true, multipleReferences: true, imageEdit: true, mask: true, workflow: true }) }),
 });
 
+export const STORYBOARD_MODEL_REGISTRY = Object.freeze({
+  novel: Object.freeze([
+    model('safe-diffusion', 'Anime Curated V1', 'V1', { negative: true, seed: true, steps: true, cfg: true, sampler: true }),
+    model('nai-diffusion', 'Anime Full V1', 'V1', { negative: true, seed: true, steps: true, cfg: true, sampler: true }),
+    model('nai-diffusion-furry', 'Furry V1', 'V1', { negative: true, seed: true, steps: true, cfg: true, sampler: true }),
+    model('nai-diffusion-2', 'Anime V2', 'V2', { negative: true, seed: true, steps: true, cfg: true, sampler: true }),
+    model('nai-diffusion-3', 'Anime V3', 'V3', { negative: true, seed: true, steps: true, cfg: true, sampler: true, vibe: true }),
+    model('nai-diffusion-furry-3', 'Furry V3', 'V3', { negative: true, seed: true, steps: true, cfg: true, sampler: true, vibe: true }),
+    model('nai-diffusion-4-curated-preview', 'Anime Curated V4', 'V4', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
+    model('nai-diffusion-4-full', 'Anime Full V4', 'V4', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
+    model('nai-diffusion-4-5-curated', 'Anime Curated V4.5', 'V4.5', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
+    model('nai-diffusion-4-5-full', 'Anime Full V4.5', 'V4.5', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
+    // V5 首发不暴露 Vibe / Precise Reference；后续只需更新能力表，无需迁移用户数据。
+    model('nai-diffusion-5-curated', 'Anime Curated V5', 'V5', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multiCharacter: true }),
+    model('nai-diffusion-5-full', 'Anime Full V5', 'V5', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multiCharacter: true }),
+  ]),
+  banana: Object.freeze([
+    model('gemini-3.1-flash-lite-image', 'Nano Banana 2 Lite', '3.1', { negative: true, reference: true, multipleReferences: true, imageEdit: true }),
+    model('gemini-3.1-flash-image', 'Nano Banana 2', '3.1', { negative: true, reference: true, multipleReferences: true, imageEdit: true }),
+    model('gemini-3-pro-image', 'Nano Banana Pro', '3', { negative: true, reference: true, multipleReferences: true, imageEdit: true }),
+    model('gemini-2.5-flash-image', 'Nano Banana', '2.5', { negative: true, reference: true, multipleReferences: true, imageEdit: true }),
+  ]),
+  openai: Object.freeze([model('gpt-image-2', 'GPT Image 2', '2', { reference: true, multipleReferences: true, imageEdit: true })]),
+  seedream: Object.freeze([
+    model('doubao-seedream-5-0-260128', 'Seedream 5.0', '5.0', { seed: true, reference: true, multipleReferences: true, imageEdit: true }),
+    model('doubao-seedream-4-5-251128', 'Seedream 4.5', '4.5', { seed: true, reference: true, multipleReferences: true, imageEdit: true }),
+    model('doubao-seedream-4-0-250828', 'Seedream 4.0', '4.0', { seed: true, reference: true, multipleReferences: true, imageEdit: true }),
+  ]),
+  comfy: Object.freeze([model('comfy-workflow', '自定义工作流', 'workflow', { negative: true, seed: true, steps: true, cfg: true, sampler: true, scheduler: true, reference: true, multipleReferences: true, imageEdit: true, mask: true, workflow: true })]),
+});
+
+// v1.44 UI compatibility.
+export const STORYBOARD_SOURCES = STORYBOARD_PROVIDER_REGISTRY;
+export const STORYBOARD_CAPABILITIES = Object.freeze(Object.fromEntries(Object.entries(STORYBOARD_PROVIDER_REGISTRY).map(([id, p]) => [id, p.capabilities])));
 export const STORYBOARD_RATIOS = Object.freeze([
-  Object.freeze({ id: '', label: '沿用当前' }),
-  Object.freeze({ id: '1:1', label: '1 : 1', value: 1 }),
-  Object.freeze({ id: '2:3', label: '2 : 3', value: 2 / 3 }),
-  Object.freeze({ id: '3:2', label: '3 : 2', value: 3 / 2 }),
-  Object.freeze({ id: '3:4', label: '3 : 4', value: 3 / 4 }),
-  Object.freeze({ id: '4:3', label: '4 : 3', value: 4 / 3 }),
-  Object.freeze({ id: '9:16', label: '9 : 16', value: 9 / 16 }),
-  Object.freeze({ id: '16:9', label: '16 : 9', value: 16 / 9 }),
-]);
+  { id: '', label: '沿用当前' }, { id: '1:1', label: '1 : 1', value: 1 }, { id: '2:3', label: '2 : 3', value: 2 / 3 },
+  { id: '3:2', label: '3 : 2', value: 3 / 2 }, { id: '3:4', label: '3 : 4', value: 3 / 4 }, { id: '4:3', label: '4 : 3', value: 4 / 3 },
+  { id: '4:5', label: '4 : 5', value: 4 / 5 }, { id: '5:4', label: '5 : 4', value: 5 / 4 }, { id: '9:16', label: '9 : 16', value: 9 / 16 }, { id: '16:9', label: '16 : 9', value: 16 / 9 },
+].map(Object.freeze));
 
-// 与 SillyTavern 官方四条后端请求体逐项对齐。UI 与任务快照都以此裁剪参数，
-// 避免把后端不会读取的滑杆伪装成有效设置。
-export const STORYBOARD_CAPABILITIES = Object.freeze({
-  novel: Object.freeze({ negative: true, steps: true, cfg: true, seed: true, sampler: true, scheduler: true, reference: false }),
-  comfy: Object.freeze({ negative: true, steps: true, cfg: true, seed: true, sampler: true, scheduler: true, reference: true }),
-  openai: Object.freeze({ negative: false, steps: false, cfg: false, seed: false, sampler: false, scheduler: false, reference: false }),
-  banana: Object.freeze({ negative: true, steps: false, cfg: false, seed: true, sampler: false, scheduler: false, reference: false }),
+export const STORYBOARD_PROMPT_MODES = Object.freeze({
+  manual: Object.freeze({ id: 'manual', label: '手写', usesCompiler: false }),
+  auto: Object.freeze({ id: 'auto', label: '自动取景', usesCompiler: true }),
+  combined: Object.freeze({ id: 'combined', label: '手写 + 自动取景', usesCompiler: true }),
 });
+export const STORYBOARD_ENTITY_TYPES = Object.freeze(['char', 'user', 'cast']);
+export const STORYBOARD_CONSISTENCY_STRATEGIES = Object.freeze({ scene: { id: 'scene', label: '以当前场景为准' }, archive: { id: 'archive', label: '以形象档案为准' }, hybrid: { id: 'hybrid', label: '当前场景优先，档案补全' }, none: { id: 'none', label: '不固定人物形象' } });
+export const STORYBOARD_REFERENCE_STRATEGIES = Object.freeze({ description: { id: 'description', label: '仅使用外貌特征', capability: '' }, avatar: { id: 'avatar', label: '角色头像', capability: 'reference' }, gallery: { id: 'gallery', label: '从阅片室选择', capability: 'reference' }, vibe: { id: 'vibe', label: 'Vibe', capability: 'vibe' }, precise: { id: 'precise', label: '精确参考', capability: 'preciseReference' }, none: { id: 'none', label: '不使用参考', capability: '' } });
+export const STORYBOARD_TAG_CATEGORIES = Object.freeze(['identity', 'appearance', 'wardrobe', 'state', 'action', 'expression', 'composition', 'camera', 'environment', 'props', 'lighting', 'color', 'style', 'quality', 'negative', 'custom']);
+export const STORYBOARD_STATE_PRECEDENCE = Object.freeze(['explicit', 'targetParagraph', 'scene', 'timeline', 'archive', 'worldInfo', 'global']);
+
+export const getStoryboardProvider = (id) => STORYBOARD_PROVIDER_REGISTRY[id] || null;
+export const getStoryboardModel = (providerId, modelId) => (STORYBOARD_MODEL_REGISTRY[providerId] || []).find((item) => item.id === modelId) || null;
+export const getStoryboardCapabilities = (providerId, modelId = '') => getStoryboardModel(providerId, modelId)?.capabilities || getStoryboardProvider(providerId)?.capabilities || caps();
+
+const legacyProfile = () => ({ loaded: false, model: '', sampler: '', scheduler: '', width: '', height: '', ratio: '', count: '', steps: '', cfg: '', seed: '', comfyUrl: '', comfyWorkflow: '', comfyWorkflowNotice: '', openaiStyle: '', openaiQuality: '', openaiBackground: '', openaiOutputFormat: '', imageSize: '', watermark: false, seedreamGuidanceScale: '', seedreamSequential: false, googleEnhance: false, novelSm: false, novelSmDyn: false, novelDecrisper: false, novelVarietyBoost: false });
+const promptDraft = () => ({ manual: '', autoInstruction: '', compiled: '', negative: '', compiledAt: 0, compiledBy: '', userEditedCompiled: false, sourceSummary: [] });
+const connection = (id) => ({ providerId: id, activePresetId: '', presets: [], draft: { baseUrl: getStoryboardProvider(id).defaultBaseUrl, model: getStoryboardProvider(id).defaultModel } });
+const routingDefaults = () => ({ mode: 'single', single: { providerId: 'novel', connectionPresetId: '', parameterPresetId: '' }, rules: [], maxShotsPerFloor: 1, confirmMultipleRequests: true, providerConcurrency: 1 });
 
 export function createStoryboardDefaults() {
+  const ids = Object.keys(STORYBOARD_PROVIDER_REGISTRY);
   return {
-    view: 'create',                // create | characters | gallery | logs | connection
-    characterView: 'directory',    // directory | edit
-    logFilter: 'all',              // all | success | failed
-    gallerySearch: '',
-    gallerySource: 'all',
-    source: 'novel',
-    initialized: false,             // 首开时从 ST 当前连接取一次，不在千幕硬塞画质默认值
-    target: 'latest',              // latest | floor | gallery
-    floor: '',
-    inlineByDefault: true,
-    consistencyModes: Object.fromEntries(Object.keys(STORYBOARD_SOURCES).map((id) => [id, 'description'])),
-    prompt: '',
-    negative: '',
-    selectedCharacterId: '',
-    profiles: Object.fromEntries(Object.keys(STORYBOARD_SOURCES).map((id) => [id, {
-      loaded: false,
-      model: '', sampler: '', scheduler: '', width: '', height: '', ratio: '', steps: '', cfg: '', seed: '',
-      comfyUrl: '', comfyWorkflow: '', openaiStyle: '', openaiQuality: '', googleEnhance: false,
-      novelSm: false, novelSmDyn: false, novelDecrisper: false, novelVarietyBoost: false,
-    }])),
-    parameterPresets: [],          // 用户自建参数方案；按 source 隔离，千幕不内置画质偏好
-    parameterPresetSelection: Object.fromEntries(Object.keys(STORYBOARD_SOURCES).map((id) => [id, ''])),
-    characters: [],
-    logs: [],
+    schemaVersion: 2, view: 'create', workspaceView: 'workbench', characterView: 'directory', assetView: 'tags', assetSearch: '', logFilter: 'all', gallerySearch: '', gallerySource: 'all', source: 'novel', initialized: false,
+    target: 'latest', floor: '', inlineByDefault: true, promptMode: 'manual', prompt: '', negative: '', promptDraft: promptDraft(),
+    promptCompiler: { enabled: false, apiProfileId: '', connectionPresetId: '', instructionPresetId: '', instruction: '', includeCurrentFloor: true, includeRecentFloors: 2, includeCharacterCards: true, includeUserPersona: true, includeActivatedWorldInfo: true },
+    selectedCharacterId: '', selectedCharacters: [], consistencyModes: Object.fromEntries(ids.map((id) => [id, 'description'])),
+    profiles: Object.fromEntries(ids.map((id) => [id, legacyProfile()])), parameterPresets: [], parameterPresetSelection: Object.fromEntries(ids.map((id) => [id, ''])),
+    connections: Object.fromEntries(ids.map((id) => [id, connection(id)])), characters: [], entities: { char: [], user: [], cast: [], candidates: [] },
+    promptPresets: [], tagLibrary: [], vibeLibrary: [], selectedVibeIds: [], routing: routingDefaults(), shotPlans: [], collapsedCards: {}, logs: [], pipelineLogs: [],
   };
+}
+
+export function createStoryboardEntity(input = {}) {
+  const type = STORYBOARD_ENTITY_TYPES.includes(input.type || input.subjectType) ? (input.type || input.subjectType) : 'cast';
+  const id = cleanId(input.id || `${type}:${input.subjectKey || input.name || 'unknown'}`);
+  const profiles = entityProfiles(input.profiles);
+  const requestedProfileId = cleanId(input.activeProfileId);
+  const activeProfileId = profiles.some((profile) => profile.id === requestedProfileId) ? requestedProfileId : (profiles[0]?.id || '');
+  return { id, type, subjectKey: str(input.subjectKey || id, 512), name: str(input.name || input.subjectName, 80), avatarUrl: str(input.avatarUrl, 4096), activeProfileId, profiles, source: ['captured', 'detected', 'manual', 'migrated'].includes(input.source) ? input.source : 'manual', confirmed: input.confirmed !== false, createdAt: pos(input.createdAt), updatedAt: pos(input.updatedAt) };
+}
+
+export function sanitizeStoryboardWorkflow(value) {
+  const empty = { ok: true, workflow: {}, serialized: '', removedFields: [], message: '' };
+  if (value == null || value === '') return empty;
+  let source = value;
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text) return empty;
+    if (text.length > 2 * 1024 * 1024) return { ...empty, ok: false, message: 'ComfyUI API Workflow 过大' };
+    try { source = JSON.parse(text); }
+    catch (_) { return { ...empty, ok: false, message: 'ComfyUI API Workflow 必须是有效的 JSON' }; }
+  }
+  if (!obj(source)) return { ...empty, ok: false, message: 'ComfyUI API Workflow 顶层必须是 JSON 对象' };
+  const removedFields = [];
+  const clean = (item, path = '$', depth = 0) => {
+    if (depth > 64) throw new Error('ComfyUI API Workflow 嵌套过深');
+    if (item === null || ['string', 'number', 'boolean'].includes(typeof item)) return item;
+    if (Array.isArray(item)) return item.map((entry, index) => clean(entry, `${path}[${index}]`, depth + 1));
+    if (!obj(item)) return null;
+    const output = {};
+    for (const [rawKey, rawValue] of Object.entries(item)) {
+      const key = str(rawKey, 240);
+      if (!key || isUnsafeObjectKey(key)) continue;
+      const fieldPath = `${path}.${key}`;
+      if (isSensitiveField(key)) {
+        if (removedFields.length < 80) removedFields.push(fieldPath);
+        continue;
+      }
+      output[key] = clean(rawValue, fieldPath, depth + 1);
+    }
+    return output;
+  };
+  try {
+    const workflow = clean(source);
+    const serialized = JSON.stringify(workflow);
+    if (serialized.length > 2 * 1024 * 1024) return { ...empty, ok: false, message: 'ComfyUI API Workflow 过大' };
+    return { ok: true, workflow, serialized, removedFields: [...new Set(removedFields)], message: '' };
+  } catch (error) {
+    return { ...empty, ok: false, message: String(error?.message || 'ComfyUI API Workflow 无法读取') };
+  }
+}
+
+export function sanitizeStoryboardDiagnosticData(value) {
+  return redact(value);
+}
+
+export function sanitizeStoryboardSnapshot(value, fallback = {}) {
+  return snapshot(value, fallback);
+}
+
+function entityProfiles(value) {
+  const normalized = Array.isArray(value) ? value.filter(obj).map((p) => ({ id: cleanId(p.id), name: str(p.name || p.variantName || '默认档案', 80) || '默认档案', appearance: str(p.appearance || p.description, 12000), negative: str(p.negative, 6000), reference: reference(p.reference || { type: p.referenceUrl ? 'url' : 'none', value: p.referenceUrl }), tags: ids(p.tags, 300), permanentState: safeData(p.permanentState, 4) || {}, createdAt: pos(p.createdAt || p.updatedAt), updatedAt: pos(p.updatedAt) })).filter((p) => p.id) : [];
+  return dedupeById(normalized).slice(0, 100);
+}
+function reference(value) { const r = obj(value) ? value : {}; return { type: ['none', 'avatar', 'gallery', 'url', 'asset'].includes(r.type) ? r.type : 'none', value: str(r.value, 4096), assetId: cleanId(r.assetId) }; }
+
+export function normalizeStoryboardConnectionProfile(value, providerId) {
+  const provider = getStoryboardProvider(providerId);
+  if (!provider) throw new Error(`未知生图供应商：${providerId}`);
+  const r = obj(value) ? value : {}, modelId = str(r.model || provider.defaultModel, 240);
+  return { id: cleanId(r.id), name: str(r.name || '默认连接', 80) || '默认连接', providerId, baseUrl: str(r.baseUrl || provider.defaultBaseUrl, 2048), model: modelId, customModel: !getStoryboardModel(providerId, modelId), credentialId: cleanId(r.credentialId), headers: safeRecord(r.headers), options: safeRecord(r.options), createdAt: pos(r.createdAt || r.updatedAt), updatedAt: pos(r.updatedAt) };
+}
+
+export function migrateStoryboardState(value) {
+  const s = obj(value) ? clone(value) : {};
+  if (Number(s.schemaVersion) >= 2) return s;
+  const defaults = createStoryboardDefaults(), currentEntities = entities(s.entities), maps = { char: new Map(), user: new Map(), cast: new Map() };
+  for (const type of STORYBOARD_ENTITY_TYPES) for (const entity of currentEntities[type]) maps[type].set(entity.subjectKey || entity.id, entity);
+  for (const p of (Array.isArray(s.characters) ? s.characters : []).filter(obj)) {
+    const type = p.subjectType === 'user' ? 'user' : (p.subjectType === 'cast' ? 'cast' : 'char'), key = str(p.subjectKey || `legacy:${p.id || ''}`, 512);
+    if (!maps[type].has(key)) maps[type].set(key, createStoryboardEntity({ id: `${type}:${key}`, type, subjectKey: key, name: p.subjectName || p.name, source: 'migrated' }));
+    const entity = maps[type].get(key), profile = entityProfiles([{ ...p, name: p.variantName || '默认档案', referenceUrl: p.referenceUrl }])[0];
+    if (profile) {
+      entity.profiles = dedupeById([...entity.profiles, profile]);
+      if (!entity.activeProfileId || String(s.selectedCharacterId) === String(p.id)) entity.activeProfileId = profile.id;
+    }
+  }
+  s.entities = { char: [...maps.char.values()], user: [...maps.user.values()], cast: [...maps.cast.values()], candidates: currentEntities.candidates };
+  s.connections ||= defaults.connections;
+  for (const [providerId, p] of Object.entries(s.profiles || {})) if (getStoryboardProvider(providerId) && (p?.model || p?.comfyUrl) && !s.connections[providerId]?.presets?.length) {
+    const id = `migrated-${providerId}`, preset = normalizeStoryboardConnectionProfile({ id, name: '原有连接', model: p.model, baseUrl: p.comfyUrl, options: p }, providerId);
+    s.connections[providerId] = { providerId, activePresetId: id, presets: [preset], draft: { baseUrl: preset.baseUrl, model: preset.model } };
+  }
+  s.promptMode ||= 'manual'; s.promptDraft ||= { ...promptDraft(), manual: s.prompt || '', negative: s.negative || '' };
+  if (!Array.isArray(s.selectedCharacters)) {
+    const entityId = s.selectedCharacterId ? findEntityByProfile(s.entities, s.selectedCharacterId) : '';
+    s.selectedCharacters = entityId ? [{ entityId, profileId: cleanId(s.selectedCharacterId), consistency: 'hybrid', referenceStrategy: 'description', referenceAssetIds: [] }] : [];
+  }
+  s.promptPresets ||= []; s.tagLibrary ||= []; s.vibeLibrary ||= []; s.routing ||= routingDefaults(); s.shotPlans ||= []; s.collapsedCards ||= {}; s.pipelineLogs ||= legacyPipelineLogs(s.logs); s.schemaVersion = 2;
+  return s;
 }
 
 export function normalizeStoryboardState(value) {
-  const defaults = createStoryboardDefaults();
-  const state = value && typeof value === 'object' ? value : {};
-  for (const [key, fallback] of Object.entries(defaults)) {
-    if (state[key] === undefined) state[key] = structuredCloneSafe(fallback);
+  const migrated = migrateStoryboardState(value), defaults = createStoryboardDefaults(), state = obj(value) ? value : {};
+  Object.assign(state, migrated); for (const [key, val] of Object.entries(defaults)) if (state[key] === undefined) state[key] = clone(val);
+  state.schemaVersion = 2; state.view = ['create', 'characters', 'assets', 'gallery', 'logs', 'connection'].includes(state.view) ? state.view : 'create'; state.workspaceView = ['workbench', 'characters', 'assets', 'gallery', 'logs'].includes(state.workspaceView) ? state.workspaceView : 'workbench'; state.characterView = ['directory', 'folder', 'edit'].includes(state.characterView) ? state.characterView : 'directory'; state.logFilter = ['all', 'success', 'failed'].includes(state.logFilter) ? state.logFilter : 'all';
+  state.assetView = ['tags', 'vibes', 'presets', 'routing'].includes(state.assetView) ? state.assetView : 'tags'; state.assetSearch = str(state.assetSearch, 120); state.gallerySearch = str(state.gallerySearch, 120); state.gallerySource = state.gallerySource === 'all' || getStoryboardProvider(state.gallerySource) ? state.gallerySource : 'all'; state.source = getStoryboardProvider(state.source) ? state.source : 'novel'; state.target = ['latest', 'floor', 'gallery'].includes(state.target) ? state.target : 'latest'; state.inlineByDefault = state.inlineByDefault !== false; state.promptMode = STORYBOARD_PROMPT_MODES[state.promptMode] ? state.promptMode : 'manual'; state.prompt = str(state.prompt, 24000); state.negative = str(state.negative, 12000);
+  const d = obj(state.promptDraft) ? state.promptDraft : {}, safeDraft = safeData(d, 5); state.promptDraft = { ...(obj(safeDraft) ? safeDraft : {}), manual: str(d.manual ?? state.prompt, 24000), autoInstruction: str(d.autoInstruction, 12000), compiled: str(d.compiled, 24000), negative: str(d.negative ?? state.negative, 12000), compiledAt: pos(d.compiledAt), compiledBy: str(d.compiledBy, 160), userEditedCompiled: Boolean(d.userEditedCompiled), sourceSummary: Array.isArray(d.sourceSummary) ? d.sourceSummary.slice(0, 40).map((x) => str(x, 240)).filter(Boolean) : [] };
+  const c = obj(state.promptCompiler) ? state.promptCompiler : {}, safeCompiler = safeData(c, 5); state.promptCompiler = { ...(obj(safeCompiler) ? safeCompiler : {}), enabled: Boolean(c.enabled), apiProfileId: cleanId(c.apiProfileId), connectionPresetId: cleanId(c.connectionPresetId), instructionPresetId: cleanId(c.instructionPresetId), instruction: str(c.instruction, 12000), includeCurrentFloor: c.includeCurrentFloor !== false, includeRecentFloors: int(c.includeRecentFloors, 0, 20, 2), includeCharacterCards: c.includeCharacterCards !== false, includeUserPersona: c.includeUserPersona !== false, includeActivatedWorldInfo: c.includeActivatedWorldInfo !== false };
+  state.profiles = legacyProfiles(state.profiles); state.consistencyModes = Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((id) => [id, id === 'comfy' && state.consistencyModes?.[id] === 'reference' ? 'reference' : 'description'])); state.parameterPresets = parameterPresets(state.parameterPresets); state.parameterPresetSelection = Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((id) => { const selected = cleanId(state.parameterPresetSelection?.[id]); return [id, state.parameterPresets.some((p) => p.id === selected && p.source === id) ? selected : '']; }));
+  state.connections = connections(state.connections); state.characters = legacyCharacters(state.characters); state.entities = entities(state.entities); state.selectedCharacters = selections(state.selectedCharacters, state.entities, state.source, activeModel(state)); if (!state.characters.some((p) => p.id === state.selectedCharacterId)) state.selectedCharacterId = '';
+  state.promptPresets = promptPresets(state.promptPresets); state.tagLibrary = tags(state.tagLibrary); state.vibeLibrary = vibes(state.vibeLibrary);
+  const knownTagIds = new Set(state.tagLibrary.map((tag) => tag.id));
+  for (const preset of state.promptPresets) preset.tagIds = preset.tagIds.filter((id) => knownTagIds.has(id));
+  for (const vibe of state.vibeLibrary) vibe.tags = vibe.tags.filter((id) => knownTagIds.has(id));
+  const knownVibeIds = new Set(state.vibeLibrary.map((vibe) => vibe.id)); state.selectedVibeIds = ids(state.selectedVibeIds, 16).filter((id) => knownVibeIds.has(id));
+  if (!state.promptPresets.some((preset) => preset.id === state.promptCompiler.instructionPresetId)) state.promptCompiler.instructionPresetId = '';
+  state.routing = normalizeRouting(state.routing, { connections: state.connections, parameterPresets: state.parameterPresets }); state.shotPlans = shotPlans(state.shotPlans, state); state.collapsedCards = Object.fromEntries(Object.entries(obj(state.collapsedCards) ? state.collapsedCards : {}).slice(0, 200).map(([k, v]) => [str(k, 120), Boolean(v)]).filter(([k]) => k)); state.logs = legacyLogs(state.logs); state.pipelineLogs = pipelineLogs(state.pipelineLogs);
+  const knownStateKeys = new Set(Object.keys(defaults));
+  for (const key of Object.keys(state)) {
+    if (isSensitiveField(key)) { delete state[key]; continue; }
+    if (knownStateKeys.has(key) || key === 'schemaVersion') continue;
+    const normalized = safeData(state[key], 12);
+    if (normalized === undefined) delete state[key]; else state[key] = normalized;
   }
-  state.view = ['create', 'characters', 'gallery', 'logs', 'connection'].includes(state.view) ? state.view : 'create';
-  state.characterView = ['directory', 'edit'].includes(state.characterView) ? state.characterView : 'directory';
-  state.logFilter = ['all', 'success', 'failed'].includes(state.logFilter) ? state.logFilter : 'all';
-  state.gallerySearch = String(state.gallerySearch || '').slice(0, 120);
-  state.gallerySource = state.gallerySource === 'all' || STORYBOARD_SOURCES[state.gallerySource] ? state.gallerySource : 'all';
-  state.source = STORYBOARD_SOURCES[state.source] ? state.source : 'novel';
-  state.target = ['latest', 'floor', 'gallery'].includes(state.target) ? state.target : 'latest';
-  state.inlineByDefault = state.inlineByDefault !== false;
-  if (!state.consistencyModes || typeof state.consistencyModes !== 'object') state.consistencyModes = {};
-  for (const sourceId of Object.keys(STORYBOARD_SOURCES)) {
-    const mode = state.consistencyModes[sourceId];
-    state.consistencyModes[sourceId] = sourceId === 'comfy' && mode === 'reference' ? 'reference' : 'description';
-  }
-  if (!state.profiles || typeof state.profiles !== 'object') state.profiles = {};
-  for (const [id, fallback] of Object.entries(defaults.profiles)) {
-    if (!state.profiles[id] || typeof state.profiles[id] !== 'object') state.profiles[id] = structuredCloneSafe(fallback);
-    for (const [key, defaultValue] of Object.entries(fallback)) {
-      if (state.profiles[id][key] === undefined) state.profiles[id][key] = defaultValue;
-    }
-  }
-  if (!Array.isArray(state.parameterPresets)) state.parameterPresets = [];
-  state.parameterPresets = state.parameterPresets.filter((item) => item && typeof item === 'object' && item.id && STORYBOARD_SOURCES[item.source]).map((item) => ({
-    id: String(item.id).slice(0, 160),
-    name: String(item.name || '未命名样式').trim().slice(0, 80) || '未命名样式',
-    source: item.source,
-    profile: normalizeStoryboardProfile(item.profile, item.source),
-    createdAt: Math.max(0, Number(item.createdAt || item.updatedAt || 0)),
-    updatedAt: Math.max(0, Number(item.updatedAt || 0)),
-  })).slice(0, 120);
-  if (!state.parameterPresetSelection || typeof state.parameterPresetSelection !== 'object') state.parameterPresetSelection = {};
-  for (const sourceId of Object.keys(STORYBOARD_SOURCES)) {
-    const selected = String(state.parameterPresetSelection[sourceId] || '');
-    state.parameterPresetSelection[sourceId] = state.parameterPresets.some((item) => item.id === selected && item.source === sourceId) ? selected : '';
-  }
-  if (!Array.isArray(state.characters)) state.characters = [];
-  state.characters = state.characters.filter((item) => item && typeof item === 'object').map((item) => ({
-    id: String(item.id || ''),
-    subjectType: item.subjectType === 'user' ? 'user' : 'char',
-    subjectKey: String(item.subjectKey || `legacy:${item.id || ''}`).slice(0, 512),
-    subjectName: String(item.subjectName || item.name || '').slice(0, 80),
-    variantName: String(item.variantName || '默认档案').slice(0, 80),
-    name: String(item.name || '').slice(0, 80),
-    subtitle: String(item.subtitle || '').slice(0, 120),
-    appearance: String(item.appearance || '').slice(0, 12000),
-    negative: String(item.negative || '').slice(0, 6000),
-    referenceUrl: String(item.referenceUrl || '').slice(0, 2048),
-    createdAt: Number(item.createdAt || item.updatedAt || 0),
-    updatedAt: Number(item.updatedAt || 0),
-  })).filter((item) => item.id);
-  if (!state.characters.some((item) => item.id === state.selectedCharacterId)) state.selectedCharacterId = '';
-  if (!Array.isArray(state.logs)) state.logs = [];
-  state.logs = state.logs.filter((item) => item && typeof item === 'object' && item.id).slice(0, 120).map((item) => ({
-    id: String(item.id),
-    status: ['queued', 'generating', 'success', 'failed', 'cancelled'].includes(item.status) ? item.status : 'failed',
-    source: STORYBOARD_SOURCES[item.source] ? item.source : 'novel',
-    model: String(item.model || '').slice(0, 240),
-    prompt: String(item.prompt || '').slice(0, 800),
-    negative: String(item.negative || '').slice(0, 400),
-    effectivePrompt: String(item.effectivePrompt || item.prompt || '').slice(0, 24000),
-    effectiveNegative: String(item.effectiveNegative || item.negative || '').slice(0, 12000),
-    target: String(item.target || '').slice(0, 40),
-    floor: Number.isInteger(item.floor) ? item.floor : null,
-    params: item.params && typeof item.params === 'object' ? item.params : {},
-    error: String(item.error || '').slice(0, 1600),
-    recordId: String(item.recordId || ''),
-    queuedAt: Number(item.queuedAt || item.startedAt || 0),
-    startedAt: Number(item.startedAt || 0),
-    finishedAt: Number(item.finishedAt || 0),
-    durationMs: Math.max(0, Number(item.durationMs || 0)),
-    attempt: Math.max(1, Math.min(20, Math.round(Number(item.attempt || 1)))),
-    snapshot: normalizeStoryboardSnapshot(item.snapshot, item),
-  }));
   return state;
 }
 
-function normalizeStoryboardProfile(value, source) {
-  const fallback = createStoryboardDefaults().profiles[source];
-  const raw = value && typeof value === 'object' ? value : {};
-  const profile = {};
-  for (const [key, defaultValue] of Object.entries(fallback)) {
-    const next = raw[key];
-    profile[key] = next === undefined
-      ? defaultValue
-      : (typeof defaultValue === 'boolean' ? Boolean(next) : String(next ?? '').slice(0, 2048));
+function connections(value) {
+  const raw = obj(value) ? value : {}, out = {};
+  for (const providerId of Object.keys(STORYBOARD_PROVIDER_REGISTRY)) {
+    const c = obj(raw[providerId]) ? raw[providerId] : {};
+    const presets = dedupeById((Array.isArray(c.presets) ? c.presets : []).filter(obj).map((p) => normalizeStoryboardConnectionProfile(p, providerId)).filter((p) => p.id)).slice(0, 60);
+    const activePresetId = cleanId(c.activePresetId);
+    const active = presets.find((p) => p.id === activePresetId) || null;
+    const draftSource = obj(c.draft) ? c.draft : (active || {});
+    out[providerId] = { providerId, activePresetId: active?.id || '', presets, draft: normalizeStoryboardConnectionProfile({ ...draftSource, id: '', name: '当前编辑' }, providerId) };
   }
-  return profile;
+  return out;
 }
 
-function normalizeStoryboardSnapshot(value, fallback = {}) {
-  const raw = value && typeof value === 'object' ? value : {};
-  const source = STORYBOARD_SOURCES[raw.source] ? raw.source : (STORYBOARD_SOURCES[fallback.source] ? fallback.source : 'novel');
-  const profile = normalizeStoryboardProfile(raw.profile, source);
+function entities(value) {
+  const r = obj(value) ? value : {}, out = { char: [], user: [], cast: [], candidates: [] }, entityIds = new Set();
+  for (const type of STORYBOARD_ENTITY_TYPES) {
+    const normalized = dedupeById((Array.isArray(r[type]) ? r[type] : []).filter(obj).map((entity) => createStoryboardEntity({ ...entity, type })).filter((entity) => entity.id));
+    out[type] = normalized.filter((entity) => !entityIds.has(entity.id) && entityIds.add(entity.id)).slice(0, 300);
+  }
+  const candidates = dedupeById((Array.isArray(r.candidates) ? r.candidates : []).filter(obj).map((candidate) => ({ id: cleanId(candidate.id), name: str(candidate.name, 80), evidence: str(candidate.evidence, 1000), floor: Number.isInteger(candidate.floor) ? candidate.floor : null, detectedAt: pos(candidate.detectedAt) })).filter((candidate) => candidate.id && !entityIds.has(candidate.id)));
+  out.candidates = candidates.slice(0, 100);
+  return out;
+}
+
+function selections(value, es, providerId, modelId) {
+  if (!Array.isArray(value)) return [];
+  const entityMap = new Map(STORYBOARD_ENTITY_TYPES.flatMap((type) => es[type].map((entity) => [entity.id, entity]))), seen = new Set(), capability = getStoryboardCapabilities(providerId, modelId), out = [];
+  for (const raw of value.filter(obj)) {
+    const entityId = cleanId(raw.entityId), entity = entityMap.get(entityId);
+    if (!entity || seen.has(entityId)) continue;
+    seen.add(entityId);
+    const requestedProfileId = cleanId(raw.profileId);
+    const profileId = entity.profiles.some((profile) => profile.id === requestedProfileId) ? requestedProfileId : (entity.activeProfileId || entity.profiles[0]?.id || '');
+    const consistency = STORYBOARD_CONSISTENCY_STRATEGIES[raw.consistency] ? raw.consistency : 'hybrid';
+    let referenceStrategy = STORYBOARD_REFERENCE_STRATEGIES[raw.referenceStrategy] ? raw.referenceStrategy : 'description';
+    const required = STORYBOARD_REFERENCE_STRATEGIES[referenceStrategy].capability;
+    if (required && !capability[required]) referenceStrategy = 'description';
+    out.push({ entityId, profileId, consistency, referenceStrategy, referenceAssetIds: ids(raw.referenceAssetIds, 12), appearanceOverride: str(raw.appearanceOverride, 6000), locked: Boolean(raw.locked) });
+    if (out.length >= 30) break;
+  }
+  return out;
+}
+
+function promptPresets(value) {
+  const normalized = (Array.isArray(value) ? value : []).filter(obj).map((preset) => ({ id: cleanId(preset.id), name: str(preset.name || '未命名方案', 80) || '未命名方案', mode: STORYBOARD_PROMPT_MODES[preset.mode] ? preset.mode : 'combined', instruction: str(preset.instruction, 24000), positiveTemplate: str(preset.positiveTemplate, 24000), negativeTemplate: str(preset.negativeTemplate, 12000), providerIds: providers(preset.providerIds), tagIds: ids(preset.tagIds, 300), createdAt: pos(preset.createdAt || preset.updatedAt), updatedAt: pos(preset.updatedAt) })).filter((preset) => preset.id);
+  return dedupeById(normalized).slice(0, 200);
+}
+
+function tags(value) {
+  const normalized = dedupeById((Array.isArray(value) ? value : []).filter(obj).map((tag) => ({ id: cleanId(tag.id), name: str(tag.name, 100), category: STORYBOARD_TAG_CATEGORIES.includes(tag.category) ? tag.category : 'custom', aliases: uniqueStrings(tag.aliases, 30, 100), positive: tag.positive !== false, scope: ['global', 'character', 'chat', 'shot'].includes(tag.scope) ? tag.scope : 'global', scopeId: cleanId(tag.scopeId), renderings: providerStrings(tag.renderings, 6000), naturalLanguage: str(tag.naturalLanguage || tag.description, 2000), weight: num(tag.weight, -10, 10, 1), conflictIds: ids(tag.conflictIds, 100), favorite: Boolean(tag.favorite), usageCount: int(tag.usageCount, 0, Number.MAX_SAFE_INTEGER, 0), createdAt: pos(tag.createdAt || tag.updatedAt), updatedAt: pos(tag.updatedAt) })).filter((tag) => tag.id && tag.name)).slice(0, 2000);
+  const known = new Set(normalized.map((tag) => tag.id));
+  for (const tag of normalized) {
+    if (tag.scope === 'global') tag.scopeId = '';
+    tag.conflictIds = tag.conflictIds.filter((id) => id !== tag.id && known.has(id));
+  }
+  return normalized;
+}
+
+function vibes(value) {
+  const normalized = (Array.isArray(value) ? value : []).filter(obj).map((vibe) => ({ id: cleanId(vibe.id), name: str(vibe.name || '未命名 Vibe', 100), assetId: cleanId(vibe.assetId), previewUrl: str(vibe.previewUrl, 4096), providerIds: providers(vibe.providerIds).filter((providerId) => providerSupports(providerId, 'vibe')), modelIds: uniqueStrings(vibe.modelIds, 100, 240).filter((modelId) => Object.values(STORYBOARD_MODEL_REGISTRY).flat().some((model) => model.id === modelId && model.capabilities.vibe)), strength: num(vibe.strength, 0, 1, 0.6), informationExtracted: num(vibe.informationExtracted, 0, 1, 1), tags: ids(vibe.tags, 100), notes: str(vibe.notes, 4000), createdAt: pos(vibe.createdAt || vibe.updatedAt), updatedAt: pos(vibe.updatedAt) })).filter((vibe) => vibe.id);
+  return dedupeById(normalized).slice(0, 500);
+}
+
+function normalizeRouting(value, catalogs = {}) {
+  const r = obj(value) ? value : {}, hasConnectionCatalog = obj(catalogs.connections), hasParameterCatalog = Array.isArray(catalogs.parameterPresets);
+  const target = (input = {}, fallbackProviderId = 'novel') => {
+    const providerId = getStoryboardProvider(input.providerId) ? input.providerId : fallbackProviderId;
+    if (!providerId) return { providerId: '', connectionPresetId: '', parameterPresetId: '' };
+    const requestedConnection = cleanId(input.connectionPresetId), requestedParameters = cleanId(input.parameterPresetId);
+    const connectionPresetId = hasConnectionCatalog && requestedConnection && !catalogs.connections[providerId]?.presets?.some((preset) => preset.id === requestedConnection) ? '' : requestedConnection;
+    const parameterPresetId = hasParameterCatalog && requestedParameters && !catalogs.parameterPresets.some((preset) => preset.id === requestedParameters && preset.source === providerId) ? '' : requestedParameters;
+    return { providerId, connectionPresetId, parameterPresetId };
+  };
+  const rules = dedupeById((Array.isArray(r.rules) ? r.rules : []).filter(obj).map((rule) => ({ id: cleanId(rule.id), name: str(rule.name || '未命名分工', 80), shotTypes: uniqueStrings(rule.shotTypes, 30, 60), sensitive: rule.sensitive === true ? true : (rule.sensitive === false ? false : null), target: target(rule.target, ''), enabled: rule.enabled !== false, priority: int(rule.priority, -1000, 1000, 0) })).filter((rule) => rule.id && rule.target.providerId)).slice(0, 50).sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
+  return { mode: r.mode === 'ensemble' ? 'ensemble' : 'single', single: target(r.single), rules, maxShotsPerFloor: int(r.maxShotsPerFloor, 1, 20, 1), confirmMultipleRequests: r.confirmMultipleRequests !== false, providerConcurrency: int(r.providerConcurrency, 1, 4, 1) };
+}
+
+function shotPlans(value, state = {}) {
+  const knownEntities = new Set(STORYBOARD_ENTITY_TYPES.flatMap((type) => (state.entities?.[type] || []).map((entity) => entity.id))), hasEntityCatalog = obj(state.entities);
+  const normalized = (Array.isArray(value) ? value : []).filter(obj).map((plan) => {
+    const shots = dedupeById((Array.isArray(plan.shots) ? plan.shots : []).filter(obj).map((shot) => {
+      const providerId = getStoryboardProvider(shot.providerId) ? shot.providerId : '';
+      const requestedConnection = cleanId(shot.connectionPresetId), requestedParameters = cleanId(shot.parameterPresetId);
+      const connectionPresetId = providerId && state.connections?.[providerId]?.presets?.some((preset) => preset.id === requestedConnection) ? requestedConnection : '';
+      const parameterPresetId = providerId && state.parameterPresets?.some((preset) => preset.id === requestedParameters && preset.source === providerId) ? requestedParameters : '';
+      return { id: cleanId(shot.id), shotType: str(shot.shotType || 'custom', 60), title: str(shot.title, 120), prompt: str(shot.prompt, 24000), negative: str(shot.negative, 12000), selectedCharacters: ids(shot.selectedCharacters, 30).filter((id) => !hasEntityCatalog || knownEntities.has(id)), providerId, connectionPresetId, parameterPresetId, routeRuleId: cleanId(shot.routeRuleId), status: ['draft', 'ready', 'queued', 'running', 'success', 'complete', 'failed', 'cancelled', 'skipped'].includes(shot.status) ? shot.status : 'draft', resultIds: ids(shot.resultIds, 20), error: str(shot.error, 4000), attempt: int(shot.attempt, 0, 20, 0), paragraphAnchor: shot.paragraphAnchor ? normalizeStoryboardParagraphAnchor(shot.paragraphAnchor) : null, sensitive: Boolean(shot.sensitive), userEdited: Boolean(shot.userEdited) };
+    }).filter((shot) => shot.id)).slice(0, 20);
+    return { id: cleanId(plan.id), chatKey: str(plan.chatKey, 512), floor: Number.isInteger(plan.floor) ? plan.floor : null, swipeId: int(plan.swipeId, 0, Number.MAX_SAFE_INTEGER, 0), status: ['draft', 'ready', 'queued', 'running', 'partial', 'complete', 'failed', 'cancelled'].includes(plan.status) ? plan.status : 'draft', shots, createdAt: pos(plan.createdAt || plan.updatedAt), updatedAt: pos(plan.updatedAt) };
+  }).filter((plan) => plan.id);
+  return dedupeById(normalized).slice(0, 300);
+}
+
+function pipelineLogs(value) { return pruneStoryboardPipelineLogs(value); }
+
+export function pruneStoryboardPipelineLogs(value, options = {}) {
+  const now = pos(options.now) || Date.now(), limit = int(options.limit, 1, 2000, STORYBOARD_PIPELINE_LOG_LIMIT), retentionMs = int(options.retentionMs, 1, 365 * 24 * 60 * 60 * 1000, STORYBOARD_PIPELINE_LOG_RETENTION_MS), cutoff = now - retentionMs;
+  const normalized = dedupeById((Array.isArray(value) ? value : []).filter(obj).map(normalizePipelineLog).filter((log) => log.id));
+  return normalized.map((log, index) => ({ log, index, activityAt: log.finishedAt || log.startedAt })).filter(({ log, activityAt }) => ['queued', 'running'].includes(log.status) || !activityAt || activityAt >= cutoff).sort((a, b) => b.activityAt - a.activityAt || a.index - b.index).slice(0, limit).map(({ log }) => log);
+}
+
+function normalizePipelineLog(log) {
+  const stages = dedupeById((Array.isArray(log.stages) ? log.stages : []).filter(obj).map((stage) => ({ id: cleanId(stage.id), type: str(stage.type, 80), status: status(stage.status), startedAt: pos(stage.startedAt), finishedAt: pos(stage.finishedAt), input: redact(stage.input), output: redact(stage.output), decisions: uniqueStrings(stage.decisions, 100, 1000), error: redactString(stage.error).slice(0, 4000) })).filter((stage) => stage.id)).slice(0, 30);
+  return { id: cleanId(log.id), taskId: cleanId(log.taskId || log.id), status: status(log.status), providerId: getStoryboardProvider(log.providerId) ? log.providerId : '', model: str(log.model, 240), startedAt: pos(log.startedAt), finishedAt: pos(log.finishedAt), durationMs: pos(log.durationMs), stages, migrated: Boolean(log.migrated) };
+}
+function legacyPipelineLogs(value) {
+  const migrated = (Array.isArray(value) ? value : []).filter(obj).map((log) => ({ id: cleanId(log.id), taskId: cleanId(log.id), status: status(log.status), providerId: getStoryboardProvider(log.source) ? log.source : 'novel', model: str(log.model, 240), startedAt: pos(log.startedAt || log.queuedAt), finishedAt: pos(log.finishedAt), durationMs: pos(log.durationMs), stages: [{ id: 'legacy-generation', type: 'generation', status: status(log.status), startedAt: pos(log.startedAt || log.queuedAt), finishedAt: pos(log.finishedAt), input: { prompt: str(log.effectivePrompt || log.prompt, 24000), negative: str(log.effectiveNegative || log.negative, 12000) }, output: { ...(log.recordId ? { recordId: cleanId(log.recordId) } : {}), ...(ids(log.recordIds, 20).length ? { recordIds: ids(log.recordIds, 20) } : {}) }, error: redactString(log.error).slice(0, 4000) }], migrated: true })).filter((log) => log.id);
+  return pruneStoryboardPipelineLogs(migrated);
+}
+
+export function buildStoryboardProviderPlan(input = {}) {
+  const provider = getStoryboardProvider(input.providerId); if (!provider) throw new Error('请选择有效的生图模型');
+  const conn = normalizeStoryboardConnectionProfile(input.connection || {}, provider.id), modelId = str(input.model || conn.model || provider.defaultModel, 240), capability = getStoryboardCapabilities(provider.id, modelId), prompt = str(input.prompt, 24000); if (!prompt) throw new Error('提示词不能为空');
+  const p = obj(input.params) ? input.params : {}, request = { prompt }, dropped = [];
+  const own = (...keys) => { for (const key of keys) if (Object.hasOwn(p, key)) return p[key]; return undefined; };
+  const providerValue = (providerId, key, value) => { if (value === '' || value == null) return; if (provider.id === providerId) request[key] = value; else dropped.push(key); };
+  const providerFlag = (providerId, key, value) => { if (value === undefined) return; if (provider.id === providerId) request[key] = flag(value); else if (flag(value)) dropped.push(key); };
+  accept(request, dropped, capability, 'negative', str(input.negative ?? p.negative, 12000)); accept(request, dropped, capability, 'seed', bounded(p.seed, -1, Number.MAX_SAFE_INTEGER, true)); accept(request, dropped, capability, 'steps', bounded(p.steps, 1, 300, true)); accept(request, dropped, capability, 'cfg', bounded(p.cfg ?? p.scale, 0, 100)); accept(request, dropped, capability, 'sampler', str(p.sampler, 120)); accept(request, dropped, capability, 'scheduler', str(p.scheduler, 120));
+  const width = bounded(p.width, 64, 8192, true), height = bounded(p.height, 64, 8192, true);
+  accept(request, dropped, capability, 'size', width === '' ? '' : width, 'width'); accept(request, dropped, capability, 'size', height === '' ? '' : height, 'height');
+  const requestedRatio = p.ratio || p.aspectRatio;
+  if (requestedRatio) {
+    const ratio = STORYBOARD_RATIOS.some((item) => item.id === requestedRatio && item.id) ? requestedRatio : '';
+    if (!ratio || !capability.ratio) dropped.push('ratio'); else request.ratio = ratio;
+  }
+  const allReferences = Array.isArray(input.references) ? input.references.filter(obj).map(reference).filter((item) => item.type !== 'none') : [], referenceSupported = capability.reference || capability.preciseReference;
+  const referenceLimit = capability.multipleReferences ? 16 : 1, references = allReferences.slice(0, referenceLimit);
+  if (allReferences.length > referenceLimit && referenceSupported) dropped.push('extraReferences');
+  if (allReferences.length && !referenceSupported) dropped.push('references');
+  request.references = referenceSupported ? references : [];
+  const allVibes = Array.isArray(input.vibes) ? input.vibes.filter(obj).map((vibe) => ({ id: cleanId(vibe.id), assetId: cleanId(vibe.assetId), strength: num(vibe.strength, 0, 1, 0.6), informationExtracted: num(vibe.informationExtracted ?? vibe.information, 0, 1, 1) })).filter((vibe) => vibe.id || vibe.assetId) : [];
+  if (allVibes.length && !capability.vibe) dropped.push('vibes');
+  request.vibes = capability.vibe ? allVibes.slice(0, 16) : [];
+  request.providerOptions = safeRecord(p.providerOptions, { reserved: true });
+  const count = bounded(p.count, 1, 4, true); if (count !== '') request.count = count;
+  const explicitSize = str(p.size, 40); if (explicitSize) request.size = explicitSize;
+  providerValue('banana', 'imageSize', str(p.imageSize, 20));
+  providerValue('openai', 'quality', str(own('quality', 'openaiQuality'), 40));
+  providerValue('openai', 'background', str(own('background', 'openaiBackground'), 40));
+  providerValue('openai', 'outputFormat', str(own('outputFormat', 'openaiOutputFormat'), 20).toLowerCase());
+  providerValue('seedream', 'guidanceScale', bounded(own('guidanceScale', 'seedreamGuidanceScale'), 0, 20));
+  providerFlag('seedream', 'sequential', own('sequential', 'seedreamSequential'));
+  providerFlag('seedream', 'watermark', own('watermark'));
+  const novelOptions = [
+    ['sm', own('sm', 'novelSm')],
+    ['sm_dyn', own('sm_dyn', 'smDyn', 'novelSmDyn')],
+    ['dynamic_thresholding', own('dynamic_thresholding', 'decrisper', 'novelDecrisper')],
+    ['variety_boost', own('variety_boost', 'varietyBoost', 'novelVarietyBoost')],
+  ];
+  for (const [key, value] of novelOptions) {
+    if (value === undefined) continue;
+    if (provider.id === 'novel') request.providerOptions[key] = flag(value);
+    else if (flag(value)) dropped.push(key);
+  }
+  if (p.workflow !== undefined) { if (capability.workflow && obj(p.workflow)) request.workflow = safeData(p.workflow, 12); else dropped.push('workflow'); }
+  if (input.mask !== undefined) { if (capability.mask) request.mask = reference(input.mask); else dropped.push('mask'); }
+  const gatewayParameters = {
+    width: request.width, height: request.height, size: request.size, aspectRatio: request.ratio, imageSize: request.imageSize,
+    quality: request.quality, background: request.background, outputFormat: request.outputFormat, count: request.count,
+    seed: request.seed, steps: request.steps, cfg: request.cfg, sampler: request.sampler, scheduler: request.scheduler,
+    guidanceScale: request.guidanceScale, sequential: request.sequential, watermark: request.watermark,
+    workflow: request.workflow, providerOptions: request.providerOptions,
+  };
+  for (const key of Object.keys(gatewayParameters)) if (gatewayParameters[key] === undefined || gatewayParameters[key] === '') delete gatewayParameters[key];
+  const gatewayRequest = { provider: provider.id, baseUrl: conn.baseUrl, model: modelId, prompt, negativePrompt: request.negative || '', references: request.references, vibes: request.vibes, parameters: gatewayParameters };
+  return { version: 1, providerId: provider.id, protocol: provider.protocol, baseUrl: conn.baseUrl, credentialId: conn.credentialId, connectionPresetId: conn.id, model: modelId, customModel: !getStoryboardModel(provider.id, modelId), capabilities: capability, request, gatewayRequest, droppedParameters: [...new Set(dropped)] };
+}
+
+export function resolveStoryboardVisualState(facts) {
+  const rank = new Map(STORYBOARD_STATE_PRECEDENCE.map((source, index) => [source, index]));
+  const ordered = (Array.isArray(facts) ? facts : []).filter(obj).map((fact, index) => ({ key: str(fact.key, 120), value: fact.value, source: rank.has(fact.source) ? fact.source : 'global', evidence: str(fact.evidence, 1000), index })).filter((fact) => fact.key).sort((a, b) => rank.get(a.source) - rank.get(b.source) || b.index - a.index), accepted = new Map(), decisions = [];
+  for (const fact of ordered) if (!accepted.has(fact.key)) { accepted.set(fact.key, fact); decisions.push({ key: fact.key, action: 'accepted', source: fact.source, value: fact.value, evidence: fact.evidence }); } else decisions.push({ key: fact.key, action: 'suppressed', source: fact.source, value: fact.value, winner: accepted.get(fact.key).source, evidence: fact.evidence });
+  return { values: Object.fromEntries([...accepted].map(([key, fact]) => [key, fact.value])), sources: Object.fromEntries([...accepted].map(([key, fact]) => [key, fact.source])), decisions };
+}
+
+export function routeStoryboardShot(shot, routing) { const r = normalizeRouting(routing); if (r.mode !== 'ensemble') return { ...r.single, ruleId: '' }; const type = str(shot?.shotType || 'custom', 60), sensitive = Boolean(shot?.sensitive), rule = r.rules.find((x) => x.enabled && (!x.shotTypes.length || x.shotTypes.includes(type)) && (x.sensitive === null || x.sensitive === sensitive)); return rule ? { ...rule.target, ruleId: rule.id } : { ...r.single, ruleId: '' }; }
+
+export function summarizeStoryboardGenerationDemand(jobs) {
+  const requests = (Array.isArray(jobs) ? jobs : []).filter(obj);
+  const outputsByRequest = requests.map((job) => int(job.payload?.parameters?.count, 1, 4, 1));
   return {
-    source,
-    prompt: String(raw.prompt ?? fallback.prompt ?? '').slice(0, 24000),
-    negative: String(raw.negative ?? fallback.negative ?? '').slice(0, 12000),
-    target: ['latest', 'floor', 'gallery'].includes(raw.target) ? raw.target : (['latest', 'floor', 'gallery'].includes(fallback.target) ? fallback.target : 'gallery'),
-    floor: Number.isInteger(raw.floor) ? raw.floor : (Number.isInteger(fallback.floor) ? fallback.floor : null),
-    inlineByDefault: raw.inlineByDefault !== false,
-    selectedCharacterId: String(raw.selectedCharacterId || '').slice(0, 160),
-    consistencyMode: source === 'comfy' && raw.consistencyMode === 'reference' ? 'reference' : 'description',
-    referenceUrl: String(raw.referenceUrl || '').slice(0, 4096),
-    chatKey: String(raw.chatKey || '').slice(0, 512),
-    messageHash: String(raw.messageHash || '').slice(0, 160),
-    swipeId: Number.isInteger(raw.swipeId) ? raw.swipeId : 0,
-    profile,
+    requestCount: requests.length,
+    imageCount: outputsByRequest.reduce((total, count) => total + count, 0),
+    hasMultiImageRequest: outputsByRequest.some((count) => count > 1),
   };
 }
 
-export function storyboardRatioDimensions(ratioId, currentWidth, currentHeight) {
-  const ratio = STORYBOARD_RATIOS.find((item) => item.id === ratioId && item.value);
-  if (!ratio) return { width: numericOrBlank(currentWidth), height: numericOrBlank(currentHeight) };
-  const width = Number(currentWidth);
-  const height = Number(currentHeight);
-  const area = Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0
-    ? width * height
-    : 1024 * 1024;
-  const rawHeight = Math.sqrt(area / ratio.value);
-  const rawWidth = rawHeight * ratio.value;
-  return {
-    width: clamp64(rawWidth),
-    height: clamp64(rawHeight),
-  };
+export function createStoryboardParagraphAnchor(input = {}) {
+  const messageText = anchorText(input.messageText), paragraphText = anchorText(input.paragraphText), previousText = anchorText(input.previousText), nextText = anchorText(input.nextText);
+  return normalizeStoryboardParagraphAnchor({ version: 1, chatKey: input.chatKey, floor: Number.isInteger(input.floor) ? input.floor : null, swipeId: Number.isInteger(input.swipeId) ? input.swipeId : 0, messageHash: messageText ? hash(messageText) : '', paragraphIndex: Number.isInteger(input.paragraphIndex) ? input.paragraphIndex : 0, paragraphHash: paragraphText ? hash(paragraphText) : '', paragraphText: paragraphText.slice(0, 1200), previousHash: previousText ? hash(previousText) : '', nextHash: nextText ? hash(nextText) : '', createdAt: pos(input.createdAt || Date.now()) });
 }
+export function scoreStoryboardParagraphAnchor(anchor, candidate, index, previousText = '', nextText = '') {
+  const a = normalizeStoryboardParagraphAnchor(anchor), text = anchorText(candidate);
+  if (!text || !a.paragraphText || !a.paragraphHash) return 0;
+  let score = hash(text) === a.paragraphHash ? 70 : Math.round(similarity(a.paragraphText, text) * 55);
+  if (Number.isInteger(index) && index === a.paragraphIndex) score += 15;
+  if (a.previousHash && hash(anchorText(previousText)) === a.previousHash) score += 8;
+  if (a.nextHash && hash(anchorText(nextText)) === a.nextHash) score += 7;
+  return Math.min(100, score);
+}
+export function normalizeStoryboardParagraphAnchor(value) { const anchor = obj(value) ? value : {}; return { version: 1, chatKey: str(anchor.chatKey, 512), floor: Number.isInteger(anchor.floor) ? anchor.floor : null, swipeId: int(anchor.swipeId, 0, Number.MAX_SAFE_INTEGER, 0), messageHash: str(anchor.messageHash, 32), paragraphIndex: int(anchor.paragraphIndex, 0, Number.MAX_SAFE_INTEGER, 0), paragraphHash: str(anchor.paragraphHash, 32), paragraphText: str(anchor.paragraphText, 1200), previousHash: str(anchor.previousHash, 32), nextHash: str(anchor.nextHash, 32), createdAt: pos(anchor.createdAt) }; }
 
-export function buildImagineCommand({ prompt, negative = '', width = '', height = '', steps = '', cfg = '', seed = '' }) {
-  const cleanPrompt = slashValue(prompt, 24000);
-  if (!cleanPrompt) throw new Error('画面描述不能为空');
-  const parts = ['/imagine', 'quiet=true', 'gallery=false'];
-  if (String(negative || '').trim()) parts.push(`negative="${slashValue(negative, 12000)}"`);
-  addNumber(parts, 'width', width, 64, 4096, true);
-  addNumber(parts, 'height', height, 64, 4096, true);
-  addNumber(parts, 'steps', steps, 1, 300, true);
-  addNumber(parts, 'cfg', cfg, 0, 100, false);
-  addNumber(parts, 'seed', seed, -1, Number.MAX_SAFE_INTEGER, true);
-  parts.push(`"${cleanPrompt}"`);
-  return parts.join(' ');
-}
+export function storyboardRatioDimensions(ratioId, currentWidth, currentHeight) { const ratio = STORYBOARD_RATIOS.find((x) => x.id === ratioId && x.value); if (!ratio) return { width: numeric(currentWidth), height: numeric(currentHeight) }; const w = Number(currentWidth), h = Number(currentHeight), area = Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0 ? w * h : 1024 ** 2, rawH = Math.sqrt(area / ratio.value); return { width: clamp64(rawH * ratio.value), height: clamp64(rawH) }; }
 
-function addNumber(parts, key, raw, min, max, integer) {
-  if (raw === '' || raw === null || raw === undefined) return;
-  let value = Number(raw);
-  if (!Number.isFinite(value)) return;
-  value = Math.max(min, Math.min(max, value));
-  if (integer) value = Math.round(value);
-  parts.push(`${key}=${value}`);
-}
+// Kept for v1.44 migration/tests.
+export function buildImagineCommand({ prompt, negative = '', width = '', height = '', steps = '', cfg = '', seed = '' }) { const clean = slash(prompt, 24000); if (!clean) throw new Error('画面描述不能为空'); const parts = ['/imagine', 'quiet=true', 'gallery=false']; if (String(negative || '').trim()) parts.push(`negative="${slash(negative, 12000)}"`); add(parts, 'width', width, 64, 4096, true); add(parts, 'height', height, 64, 4096, true); add(parts, 'steps', steps, 1, 300, true); add(parts, 'cfg', cfg, 0, 100, false); add(parts, 'seed', seed, -1, Number.MAX_SAFE_INTEGER, true); parts.push(`"${clean}"`); return parts.join(' '); }
 
-function slashValue(value, max) {
-  return String(value || '')
-    .replace(/[\r\n\t]+/g, ' ')
-    .replace(/\\/g, '\\\\')
-    .replace(/"/g, '\\"')
-    .replace(/\|/g, '｜')
-    .replace(/\s{2,}/g, ' ')
-    .trim()
-    .slice(0, max);
+function legacyProfiles(value) {
+  const r = obj(value) ? value : {};
+  return Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((id) => {
+    const base = legacyProfile(), p = obj(r[id]) ? r[id] : {};
+    for (const [k, v] of Object.entries(base)) {
+      base[k] = p[k] === undefined ? v : (typeof v === 'boolean' ? flag(p[k]) : str(p[k], k === 'comfyWorkflow' ? 2 * 1024 * 1024 : 2048));
+    }
+    if (id === 'comfy') {
+      const rawWorkflow = p.comfyWorkflow;
+      const result = sanitizeStoryboardWorkflow(rawWorkflow);
+      base.comfyWorkflow = result.ok ? result.serialized : '';
+      if (result.removedFields.length) base.comfyWorkflowNotice = `已移除凭据字段：${result.removedFields.join('、')}`.slice(0, 2048);
+      else if (!result.ok && String(rawWorkflow || '').trim()) base.comfyWorkflowNotice = result.message;
+      else base.comfyWorkflowNotice = str(p.comfyWorkflowNotice, 2048);
+    }
+    return [id, base];
+  }));
 }
+function parameterPresets(value) { return Array.isArray(value) ? value.slice(0, 200).filter(obj).map((p) => ({ id: cleanId(p.id), name: str(p.name || '未命名样式', 80), source: getStoryboardProvider(p.source) ? p.source : '', profile: getStoryboardProvider(p.source) ? legacyProfiles({ [p.source]: p.profile })[p.source] : {}, createdAt: pos(p.createdAt || p.updatedAt), updatedAt: pos(p.updatedAt) })).filter((p) => p.id && p.source) : []; }
+function legacyCharacters(value) { return Array.isArray(value) ? value.slice(0, 500).filter(obj).map((p) => ({ id: cleanId(p.id), subjectType: p.subjectType === 'user' ? 'user' : (p.subjectType === 'cast' ? 'cast' : 'char'), subjectKey: str(p.subjectKey || `legacy:${p.id || ''}`, 512), subjectName: str(p.subjectName || p.name, 80), variantName: str(p.variantName || '默认档案', 80), name: str(p.name, 80), subtitle: str(p.subtitle, 120), appearance: str(p.appearance, 12000), negative: str(p.negative, 6000), referenceUrl: str(p.referenceUrl, 4096), createdAt: pos(p.createdAt || p.updatedAt), updatedAt: pos(p.updatedAt) })).filter((p) => p.id) : []; }
+function legacyLogs(value) {
+  const now = Date.now(), cutoff = now - STORYBOARD_PIPELINE_LOG_RETENTION_MS;
+  const normalized = dedupeById((Array.isArray(value) ? value : []).filter(obj).map((log) => ({ id: cleanId(log.id), status: ['queued', 'generating', 'success', 'failed', 'cancelled'].includes(log.status) ? log.status : 'failed', source: getStoryboardProvider(log.source) ? log.source : 'novel', model: str(log.model, 240), prompt: str(log.prompt, 800), negative: str(log.negative, 400), effectivePrompt: str(log.effectivePrompt || log.prompt, 24000), effectiveNegative: str(log.effectiveNegative || log.negative, 12000), target: str(log.target, 40), floor: Number.isInteger(log.floor) ? log.floor : null, params: safeData(log.params, 5) || {}, error: redactString(log.error).slice(0, 1600), recordId: cleanId(log.recordId), recordIds: ids(log.recordIds, 20), pipelineId: cleanId(log.pipelineId), queuedAt: pos(log.queuedAt || log.startedAt), startedAt: pos(log.startedAt), finishedAt: pos(log.finishedAt), durationMs: pos(log.durationMs), attempt: int(log.attempt, 1, 20, 1), snapshot: snapshot(log.snapshot, log) })).filter((log) => log.id));
+  return normalized.map((log, index) => ({ log, index, activityAt: log.finishedAt || log.startedAt || log.queuedAt })).filter(({ log, activityAt }) => ['queued', 'generating'].includes(log.status) || !activityAt || activityAt >= cutoff).sort((a, b) => b.activityAt - a.activityAt || a.index - b.index).slice(0, STORYBOARD_PIPELINE_LOG_LIMIT).map(({ log }) => log);
+}
+function snapshot(value, fallback = {}) {
+  const raw = obj(value) ? value : {}, source = getStoryboardProvider(raw.source) ? raw.source : (getStoryboardProvider(fallback.source) ? fallback.source : 'novel'), safe = safeData(raw, 8);
+  const profile = legacyProfiles({ [source]: raw.profile })[source];
+  const payload = safeData(raw.payload, 12) || {};
+  if (source === 'comfy' && raw.payload?.parameters?.workflow !== undefined) {
+    const result = sanitizeStoryboardWorkflow(raw.payload.parameters.workflow);
+    payload.parameters ||= {};
+    if (result.ok && result.serialized) payload.parameters.workflow = result.workflow;
+    else delete payload.parameters.workflow;
+    if (result.removedFields.length && !profile.comfyWorkflowNotice) {
+      profile.comfyWorkflowNotice = `已移除凭据字段：${result.removedFields.join('、')}`.slice(0, 2048);
+    } else if (!result.ok && !profile.comfyWorkflowNotice) profile.comfyWorkflowNotice = result.message;
+  }
+  return { ...(obj(safe) ? safe : {}), source, prompt: str(raw.prompt ?? fallback.prompt, 24000), negative: str(raw.negative ?? fallback.negative, 12000), target: ['latest', 'floor', 'gallery'].includes(raw.target) ? raw.target : (['latest', 'floor', 'gallery'].includes(fallback.target) ? fallback.target : 'gallery'), floor: Number.isInteger(raw.floor) ? raw.floor : (Number.isInteger(fallback.floor) ? fallback.floor : null), inlineByDefault: raw.inlineByDefault !== false, selectedCharacterId: cleanId(raw.selectedCharacterId), selectedCharacters: snapshotCharacters(raw.selectedCharacters), consistencyMode: source === 'comfy' && raw.consistencyMode === 'reference' ? 'reference' : 'description', referenceUrl: str(raw.referenceUrl, 4096), chatKey: str(raw.chatKey, 512), messageHash: str(raw.messageHash, 160), swipeId: Number.isInteger(raw.swipeId) ? raw.swipeId : 0, paragraphAnchor: raw.paragraphAnchor ? normalizeStoryboardParagraphAnchor(raw.paragraphAnchor) : null, shotType: str(raw.shotType || 'custom', 60), profile, connection: snapshotConnection(raw.connection, source), payload };
+}
+function snapshotCharacters(value) { return Array.isArray(value) ? value.slice(0, 30).filter(obj).map((item) => ({ ...(safeData(item, 5) || {}), entityId: cleanId(item.entityId), profileId: cleanId(item.profileId), name: str(item.name, 80), appearance: str(item.appearance, 12000), negative: str(item.negative, 6000), consistency: STORYBOARD_CONSISTENCY_STRATEGIES[item.consistency] ? item.consistency : 'hybrid', referenceStrategy: STORYBOARD_REFERENCE_STRATEGIES[item.referenceStrategy] ? item.referenceStrategy : 'description', referenceUrl: str(item.referenceUrl, 4096), referenceAssetIds: ids(item.referenceAssetIds, 12) })) : []; }
+function snapshotConnection(value, providerId) { const raw = obj(value) ? value : {}, safe = safeData(raw, 5); return { ...(obj(safe) ? safe : {}), id: cleanId(raw.id), credentialId: cleanId(raw.credentialId), baseUrl: str(raw.baseUrl || getStoryboardProvider(providerId)?.defaultBaseUrl, 2048), model: str(raw.model, 240), allowPrivateNetwork: providerId === 'comfy' && Boolean(raw.allowPrivateNetwork) }; }
 
-function numericOrBlank(value) {
-  const number = Number(value);
-  return Number.isFinite(number) && number > 0 ? Math.round(number) : '';
+function findEntityByProfile(es, id) { for (const type of STORYBOARD_ENTITY_TYPES) { const found = (es?.[type] || []).find((e) => (e.profiles || []).some((p) => p.id === id)); if (found) return found.id; } return ''; }
+function activeModel(state, providerId = state.source) { const c = state.connections?.[providerId]; return c?.draft?.model || c?.presets?.find((p) => p.id === c.activePresetId)?.model || ''; }
+function providers(value) { return Array.isArray(value) ? [...new Set(value.filter(getStoryboardProvider))].slice(0, 10) : []; }
+function providerSupports(providerId, capability) { return (STORYBOARD_MODEL_REGISTRY[providerId] || []).some((model) => Boolean(model.capabilities[capability])); }
+function providerStrings(value, max) { const out = {}; if (obj(value)) for (const id of Object.keys(STORYBOARD_PROVIDER_REGISTRY)) if (value[id] !== undefined) out[id] = str(value[id], max); return out; }
+function safeRecord(value, { reserved = false } = {}) {
+  if (!obj(value)) return {};
+  const out = {};
+  for (const [rawKey, rawValue] of Object.entries(value).slice(0, 100)) {
+    const key = str(rawKey, 120);
+    if (!key || isUnsafeObjectKey(key) || isSensitiveField(key) || reserved && isReservedProviderField(key)) continue;
+    const normalized = safeData(rawValue, 5);
+    if (normalized !== undefined) out[key] = normalized;
+  }
+  return out;
 }
-
-function clamp64(value) {
-  return Math.max(64, Math.min(4096, Math.round(Number(value || 0) / 64) * 64));
+function safeData(value, depth = 5) {
+  if (value === null || typeof value === 'boolean') return value;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (typeof value === 'string') return str(value, 24000);
+  if (depth <= 0) return undefined;
+  if (Array.isArray(value)) return value.slice(0, 100).map((item) => safeData(item, depth - 1)).filter((item) => item !== undefined);
+  if (!obj(value)) return undefined;
+  const out = {};
+  for (const [rawKey, rawValue] of Object.entries(value).slice(0, 150)) {
+    const key = str(rawKey, 120);
+    if (!key || isUnsafeObjectKey(key) || isSensitiveField(key)) continue;
+    if (isBinaryField(key) && (typeof rawValue !== 'string' || looksLikeBase64(rawValue))) continue;
+    const normalized = safeData(rawValue, depth - 1);
+    if (normalized !== undefined) out[key] = normalized;
+  }
+  return out;
 }
-
-function structuredCloneSafe(value) {
-  if (typeof structuredClone === 'function') return structuredClone(value);
-  return JSON.parse(JSON.stringify(value));
+function redact(value, depth = 0) {
+  if (depth > 6 || value == null) return value ?? null;
+  if (typeof value === 'string') return redactString(value);
+  if (typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.slice(0, 100).map((item) => redact(item, depth + 1));
+  const out = {};
+  for (const [rawKey, rawValue] of Object.entries(value).slice(0, 150)) {
+    const key = str(rawKey, 120);
+    if (!key || isUnsafeObjectKey(key)) continue;
+    if (key.toLowerCase() === 'workflow') {
+      const result = sanitizeStoryboardWorkflow(rawValue);
+      out[key] = result.ok ? result.workflow : '[invalid workflow omitted]';
+    } else if (isSensitiveField(key)) out[key] = '[redacted]';
+    else if (isBinaryField(key) && (typeof rawValue !== 'string' || looksLikeBase64(rawValue))) out[key] = '[image omitted]';
+    else out[key] = redact(rawValue, depth + 1);
+  }
+  return out;
 }
+function redactString(value) {
+  const text = str(value, 24000);
+  if (/^data:image\/[^;]+;base64,/i.test(text) || looksLikeBase64(text)) return '[image omitted]';
+  return text.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=\s]+/gi, '[image omitted]').replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]').replace(/(["']?(?:api[-_ ]?key|access[-_ ]?token|authorization|password|secret)["']?\s*[:=]\s*)["']?[^\s,"'}]+/gi, '$1[redacted]');
+}
+function isUnsafeObjectKey(value) { return ['__proto__', 'prototype', 'constructor'].includes(String(value || '').toLowerCase()); }
+function isSensitiveField(value) {
+  const key = String(value || '').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+  if (/^(?:credential|secret)[-_.]?id$/.test(key)) return false;
+  return key === 'key' || key === 'token' || /(^|[-_.])(api[-_.]?key|access[-_.]?key|secret[-_.]?key|access[-_.]?token|refresh[-_.]?token|bearer[-_.]?token|secret|authorization|auth|headers?|cookies?|password|passphrase|credential|credentials)(?:$|[-_.])/.test(key);
+}
+function isReservedProviderField(value) { return ['model', 'prompt', 'input', 'api-key', 'authorization', 'url', 'base-url'].includes(String(value || '').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()); }
+function isBinaryField(value) { return /^(?:data|base64|b64|b64_json|imageData|image_data|bytes)$/i.test(String(value || '')); }
+function looksLikeBase64(value) { const text = String(value || '').replace(/\s+/g, ''); return /^data:image\/[^;]+;base64,/i.test(text) || text.length >= 256 && text.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(text); }
+function status(value) { if (value === 'generating') return 'running'; return ['queued', 'running', 'success', 'failed', 'cancelled', 'skipped'].includes(value) ? value : 'failed'; }
+function accept(target, dropped, capability, key, value, outputKey = key) { if (value === '' || value == null) return; if (capability[key]) target[outputKey] = value; else dropped.push(outputKey); }
+function add(parts, key, raw, min, max, integer) { if (raw === '' || raw == null) return; let value = Number(raw); if (!Number.isFinite(value)) return; value = Math.max(min, Math.min(max, value)); if (integer) value = Math.round(value); parts.push(`${key}=${value}`); }
+function slash(value, max) { return String(value || '').replace(/[\r\n\t]+/g, ' ').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\|/g, '｜').replace(/\s{2,}/g, ' ').trim().slice(0, max); }
+function obj(value) { return Boolean(value && typeof value === 'object' && !Array.isArray(value)); }
+function str(value, max) { return String(value ?? '').trim().slice(0, max); }
+function cleanId(value) { return str(value, 200); }
+function ids(value, max) { return Array.isArray(value) ? [...new Set(value.map(cleanId).filter(Boolean))].slice(0, max) : []; }
+function uniqueStrings(value, max, length) { return Array.isArray(value) ? [...new Set(value.map((item) => str(item, length)).filter(Boolean))].slice(0, max) : []; }
+function dedupeById(value) { const out = [], positions = new Map(); for (const item of value || []) { const id = cleanId(item?.id); if (!id) continue; if (positions.has(id)) out[positions.get(id)] = item; else { positions.set(id, out.length); out.push(item); } } return out; }
+function pos(value) { const n = Number(value); return Number.isFinite(n) && n > 0 ? n : 0; }
+function int(value, min, max, fallback) { const n = Number(value); return Number.isFinite(n) ? Math.max(min, Math.min(max, Math.round(n))) : fallback; }
+function num(value, min, max, fallback) { const n = Number(value); return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback; }
+function flag(value) { return value === true || value === 1 || String(value).toLowerCase() === 'true' || String(value) === '1'; }
+function bounded(value, min, max, integer = false) { const n = Number(value); if (value === '' || value == null || !Number.isFinite(n)) return ''; const clamped = Math.max(min, Math.min(max, n)); return integer ? Math.round(clamped) : clamped; }
+function numeric(value) { const n = Number(value); return Number.isFinite(n) && n > 0 ? Math.round(n) : ''; }
+function clamp64(value) { return Math.max(64, Math.min(4096, Math.round(Number(value || 0) / 64) * 64)); }
+function anchorText(value) { return String(value || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); }
+function hash(value) { let h = 2166136261; for (const ch of String(value || '')) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16).padStart(8, '0'); }
+function similarity(left, right) { if (!left || !right) return 0; const a = String(left).toLowerCase(), b = String(right).toLowerCase(); if (a === b) return 1; const scores = [setSimilarity(words(a), words(b)), setSimilarity(ngrams(a, 2), ngrams(b, 2))]; if (/\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}/u.test(a + b)) scores.push(setSimilarity(ngrams(a, 1), ngrams(b, 1))); return Math.max(...scores); }
+function words(value) { return new Set(String(value || '').match(/[\p{L}\p{N}]+/gu) || []); }
+function ngrams(value, size) { const chars = [...String(value || '').replace(/[^\p{L}\p{N}]+/gu, '')], out = new Set(); if (chars.length < size) { if (chars.length) out.add(chars.join('')); return out; } for (let i = 0; i <= chars.length - size; i++) out.add(chars.slice(i, i + size).join('')); return out; }
+function setSimilarity(left, right) { if (!left.size || !right.size) return 0; let same = 0; for (const token of left) if (right.has(token)) same++; return same / (left.size + right.size - same); }
+function clone(value) { return typeof structuredClone === 'function' ? structuredClone(value) : JSON.parse(JSON.stringify(value)); }

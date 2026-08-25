@@ -52,13 +52,12 @@ assert.match(source, /function quickDockResolvePluginLabel[\s\S]*manifest\?\.dis
 assert.match(source, /document\.addEventListener\('pointerdown', quickDockOnPointerDown, true\)/);
 assert.match(source, /drag\.moved && drag\.ready[\s\S]*quickDockAttach\(drag\.host, drag\.activator\)/);
 assert.match(source, /host\.classList\.add\('sd-quick-docked-origin'\)|classList\.toggle\('sd-quick-docked-origin'/);
-assert.match(source, /function quickDockDispatchActivation[\s\S]*requestAnimationFrame[\s\S]*pointerdown[\s\S]*mousedown[\s\S]*pointerup[\s\S]*mouseup[\s\S]*target\.click\(\)/, '代理蜂巢片必须在恢复原入口布局后模拟完整点击序列');
+assert.match(source, /function quickDockDispatchActivation[\s\S]*requestAnimationFrame[\s\S]*KeyboardEvent\('keydown'[\s\S]*KeyboardEvent\('keyup'[\s\S]*pointerdown[\s\S]*mousedown[\s\S]*pointerup[\s\S]*mouseup/, '代理蜂巢片须按 role=button 键盘语义或自定义指针序列唤起');
 assert.match(source, /function quickDockRun[\s\S]*quickDockDispatchActivation\(record\)/, '第三方代理入口必须统一走兼容唤起通道');
 const dockAttach = source.slice(source.indexOf('function quickDockAttach'), source.indexOf('function quickDockRemove'));
 assert.doesNotMatch(dockAttach, /appendChild|replaceChild|insertBefore/, '收纳不得移动或重挂第三方插件 DOM');
-assert.match(source, /sd-wheel-dock-remove/);
 const wheelSettings = source.slice(source.indexOf('function renderQuickWheelSettings'), source.indexOf('function renderPlugTab'));
-assert.match(wheelSettings, /sd-wheel-custom-details[\s\S]*sd-wheel-docked-list[\s\S]*<\/details>/, '已收纳悬浮窗必须并入蜂巢入口折叠区');
+assert.doesNotMatch(wheelSettings, /sd-wheel-docked-list|已收纳悬浮窗|sd-wheel-dock-remove/, '编辑蜂巢入口只管理千幕入口，第三方悬浮窗仅通过拖入拖出管理');
 assert.doesNotMatch(wheelSettings, /可自由组合千幕全部入口|拖动其他插件的悬浮窗靠近千幕/, '蜂巢入口编辑区不得保留上下两段说明小字');
 
 // 短按仍开主面板，长按才开轮盘；拖动超过阈值会取消长按。
@@ -104,6 +103,11 @@ assert.match(css, /\.sd-wheel-command\.is-external\s*\{[^}]*animation:\s*none[^}
 assert.match(css, /\.sd-wheel-command\.is-undock-ready/, '拖出解除收纳必须提供清晰的就绪反馈');
 assert.match(css, /\.sd-quick-docked-origin\s*\{[^}]*visibility:\s*hidden[^}]*pointer-events:\s*none/, '原插件入口只能视觉隐藏，不能从 DOM 删除');
 assert.match(css, /\.sd-quick-docked-activating\s*\{[^}]*visibility:\s*visible/, '代理点击期间必须短暂恢复第三方入口的可交互布局状态');
+assert.match(source, /function quickDockCandidate\(event\)[\s\S]*event\?\.composedPath/, '第三方拖入必须从 composedPath 识别 Shadow DOM 内真实入口');
+assert.match(source, /function quickDockStablePath[\s\S]*getRootNode[\s\S]*ShadowRoot[\s\S]*function quickDockResolvePath[\s\S]*shadowRoot/, 'open Shadow DOM 入口必须保存并恢复逐层路径');
+assert.match(source, /function quickDockSetOriginState[\s\S]*setProperty\('visibility', 'hidden', 'important'\)/, 'Shadow DOM 内原入口须以内联 important 可逆隐藏');
+assert.match(source, /function quickDockObserveShadowRoots[\s\S]*observer\.observe\(root/, '恢复监听必须覆盖已存在的 open Shadow Root');
+assert.match(source, /setInterval\(\(\) =>[\s\S]*quickDockScanStored\(\)/, 'Shadow Root 延迟建立必须有有限时长的低频恢复重试');
 assert.match(source, /const gap = Math\.max\(1, Math\.min\(3, Math\.round\(itemHeight \* \.045\)\)\)/, '蜂巢间距必须缩至紧凑的一至三像素');
 assert.match(source, /QUICK_ICON_OPTICAL_SCALE[\s\S]*tts:\s*1\.16/, '话筒等视觉偏小图标必须进行光学校正');
 assert.match(css, /font-size:\s*clamp\(15px,[^;]*\.44[^;]*22px\)/, '千幕内置入口图标必须整体增大');
@@ -135,6 +139,9 @@ assert.equal(atLeftEdge.centerX, edgeCenter.centerX, '贴边布局不得移动�
 assert.equal(atLeftEdge.edgeDirected, true);
 assert.equal(atLeftEdge.cells.length, 8);
 assert.ok(atLeftEdge.cells.every((cell) => hive.quickHiveCellFits(cell, atLeftEdge)), '贴边蜂巢不得越出可视区');
+const halfHiddenLeft = hive.quickHiveLayout(8, 48, { centerX: 0, centerY: 400, viewportWidth: 390, viewportHeight: 800, margin: 4 });
+assert.equal(halfHiddenLeft.cells.length, 8, '主 Logo 隐藏一半时仍须容纳完整快捷蜂巢');
+assert.ok(halfHiddenLeft.cells.every((cell) => hive.quickHiveCellFits(cell, halfHiddenLeft)), '主 Logo 隐藏一半时蜂巢入口不得越出视口');
 for (const size of [32, 40, 50]) {
   const width = 390;
   const height = 800;

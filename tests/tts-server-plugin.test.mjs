@@ -24,6 +24,10 @@ function mockResponse() {
 assert.equal(info.id, 'qianmu-tts');
 assert.ok(routes.has('GET /health'));
 assert.ok(routes.has('POST /doubao/synthesize'));
+assert.ok(routes.has('GET /image/capabilities'));
+assert.ok(routes.has('POST /image/check'));
+assert.ok(routes.has('POST /image/models'));
+assert.ok(routes.has('POST /image/generate'));
 
 const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
@@ -31,7 +35,7 @@ const installGuide = await readFile(new URL('../INSTALL-DOUBAO-APIKEY.md', impor
 const shellInstaller = await readFile(new URL('../install-server-plugin.sh', import.meta.url), 'utf8');
 const powershellInstaller = await readFile(new URL('../install-server-plugin.ps1', import.meta.url), 'utf8');
 assert.equal(packageJson.main, 'server-plugin.js');
-assert.equal(packageJson.version, '1.44.0');
+assert.match(packageJson.version, /^\d+\.\d+\.\d+$/);
 assert.equal(manifest.version, packageJson.version);
 assert.match(installGuide, /install-server-plugin\.sh \| sh/);
 assert.match(installGuide, /install-server-plugin\.ps1 \| iex/);
@@ -51,10 +55,40 @@ assert.match(installGuide, /api\/plugins\/qianmu-tts\/health/);
 
 const health = mockResponse();
 await routes.get('GET /health')({}, health);
-assert.deepEqual(health.body, { ok: true, plugin: 'qianmu-tts', version: packageJson.version });
+assert.equal(health.body.ok, true);
+assert.equal(health.body.plugin, 'qianmu-tts');
+assert.equal(health.body.version, packageJson.version);
+assert.deepEqual(health.body.services, ['doubao-tts', 'storyboard-image']);
+
+const capabilities = mockResponse();
+await routes.get('GET /image/capabilities')({}, capabilities);
+assert.equal(capabilities.body.version, 2);
+assert.equal(capabilities.body.modelListing, true);
+assert.ok(capabilities.body.providers.some((provider) => provider.id === 'openai'));
 
 const originalFetch = globalThis.fetch;
 try {
+  globalThis.fetch = async (url) => {
+    assert.match(String(url), /\/object_info$/);
+    return new Response(JSON.stringify({
+      CheckpointLoaderSimple: { input: { required: { ckpt_name: [['model.safetensors']] } } },
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const modelResponse = mockResponse();
+  await routes.get('POST /image/models')({
+    body: { provider: 'comfy', baseUrl: 'http://127.0.0.1:8188', allowPrivateNetwork: true },
+  }, modelResponse);
+  assert.equal(modelResponse.statusCode, 200);
+  assert.equal(modelResponse.body.models[0].id, 'model.safetensors');
+  assert.equal(modelResponse.headers['cache-control'], 'no-store');
+  assert.equal(modelResponse.headers['x-content-type-options'], 'nosniff');
+
+  const missingImageKey = mockResponse();
+  await routes.get('POST /image/generate')({ body: { provider: 'openai', model: 'gpt-image-2', prompt: 'test' } }, missingImageKey);
+  assert.equal(missingImageKey.statusCode, 400);
+  assert.equal(missingImageKey.body.code, 'missing_api_key');
+  assert.equal(missingImageKey.headers['cache-control'], 'no-store');
+
   let upstreamRequest;
   globalThis.fetch = async (url, init) => {
     upstreamRequest = { url, init };

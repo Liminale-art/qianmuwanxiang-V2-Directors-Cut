@@ -1,7 +1,14 @@
 // 千幕 · SillyTavern Server Plugin
-// 只中转固定的豆包 TTS V3 端点，解决浏览器无法携带 X-Api-Key 跨域直连的问题。
+// 为豆包 TTS 与分镜生图提供同源请求边界，密钥只在单次上游请求中使用。
 import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
+import {
+  IMAGE_GATEWAY_PROVIDERS,
+  checkImageConnection,
+  generateImage,
+  imageGatewayErrorPayload,
+  listImageModels,
+} from './qianmu-image-gateway.js';
 
 const DOUBAO_ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional';
 const MAX_TEXT_LENGTH = 10000;
@@ -12,10 +19,17 @@ const ALLOWED_SAMPLE_RATES = new Set([16000, 24000, 32000, 48000]);
 const ALLOWED_RESOURCE_IDS = new Set(['seed-tts-2.0', 'seed-icl-2.0', 'seed-icl-1.0']);
 const ALLOWED_INFERENCE_MODELS = new Set(['seed-tts-2.0-expressive', 'seed-tts-1.1']);
 
+async function pluginVersion() {
+  try {
+    const module = await import('./package.json', { with: { type: 'json' } });
+    return String(module.default?.version || 'unknown');
+  } catch (_) { return 'unknown'; }
+}
+
 export const info = Object.freeze({
   id: 'qianmu-tts',
-  name: '千幕豆包语音中转',
-  description: '为千幕提供豆包新版 API Key 的本机同源 TTS 中转。',
+  name: '千幕同源服务',
+  description: '为千幕提供豆包语音与分镜图像供应商的同源网关。',
 });
 
 function asString(value, max = 500) {
@@ -65,7 +79,58 @@ function sanitizeRequest(input) {
 }
 
 export async function init(router) {
-  router.get('/health', (_req, res) => res.json({ ok: true, plugin: info.id, version: '1.44.0' }));
+  router.get('/health', async (_req, res) => res.json({
+    ok: true,
+    plugin: info.id,
+    version: await pluginVersion(),
+    services: ['doubao-tts', 'storyboard-image'],
+  }));
+
+  router.get('/image/capabilities', (_req, res) => res.json({
+    ok: true,
+    version: 2,
+    modelListing: true,
+    providers: Object.values(IMAGE_GATEWAY_PROVIDERS).map(({ id, label, protocol, requiresKey }) => ({ id, label, protocol, requiresKey, modelListing: true })),
+  }));
+
+  const prepareImageResponse = (res) => {
+    res.set('Cache-Control', 'no-store');
+    res.set('X-Content-Type-Options', 'nosniff');
+    return res;
+  };
+
+  router.post('/image/check', async (req, res) => {
+    prepareImageResponse(res);
+    try {
+      return res.json(await checkImageConnection(req.body));
+    } catch (error) {
+      const result = imageGatewayErrorPayload(error);
+      console.warn('[千幕分镜网关] 连接检查失败', result.body.code);
+      return res.status(result.status).json(result.body);
+    }
+  });
+
+  router.post('/image/models', async (req, res) => {
+    prepareImageResponse(res);
+    try {
+      return res.json(await listImageModels(req.body));
+    } catch (error) {
+      const result = imageGatewayErrorPayload(error);
+      console.warn('[千幕分镜网关] 模型列表读取失败', result.body.code, result.body.upstreamStatus || '');
+      return res.status(result.status).json(result.body);
+    }
+  });
+
+  router.post('/image/generate', async (req, res) => {
+    prepareImageResponse(res);
+    try {
+      return res.json(await generateImage(req.body));
+    } catch (error) {
+      const result = imageGatewayErrorPayload(error);
+      console.warn('[千幕分镜网关] 生成失败', result.body.code, result.body.upstreamStatus || '');
+      return res.status(result.status).json(result.body);
+    }
+  });
 
   router.post('/doubao/synthesize', async (req, res) => {
     const apiKey = asString(req.body?.apiKey, 512);

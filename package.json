@@ -1,8 +1,8 @@
 {
   "name": "qianmu-omniscene",
-  "version": "1.44.0",
+  "version": "1.45.0",
   "private": true,
   "type": "module",
   "main": "server-plugin.js",
-  "description": "千幕万象前端扩展与豆包新版 API Key 本机中转插件"
+  "description": "千幕万象前端扩展与语音、分镜同源服务插件"
 }
