@@ -7006,3 +7006,17 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-gallery-tools .sd-storyboard-gallery-new-folder { grid-column: 3; }
   #story-director-modal .sd-storyboard-gallery-folders { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* v1.54 · 日志只呈现固定 20 条可见诊断，不再占用搜索栏。 */
+#story-director-modal .sd-storyboard-log-head > div:first-child {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0 9px;
+}
+#story-director-modal .sd-storyboard-log-head > div:first-child .sd-storyboard-kicker { grid-column: 1 / -1; }
+#story-director-modal .sd-storyboard-log-head > div:first-child h3 { min-width: 0; }
+#story-director-modal .sd-storyboard-log-head > div:first-child > small { padding-bottom: 2px; color: var(--sd-muted); font-size: 11px; }
+#story-director-modal .sd-storyboard-log-tools { grid-template-columns: minmax(0, 1fr); }
+#story-director-modal .sd-storyboard-log-filters { width: min(100%, 440px); }

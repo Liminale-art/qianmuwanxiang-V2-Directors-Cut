@@ -221,6 +221,9 @@ export function normalizeStoryboardState(value) {
   const knownVibeIds = new Set(state.vibeLibrary.map((vibe) => vibe.id)); state.selectedVibeIds = ids(state.selectedVibeIds, 16).filter((id) => knownVibeIds.has(id));
   if (!state.promptPresets.some((preset) => preset.id === state.promptCompiler.instructionPresetId)) state.promptCompiler.instructionPresetId = '';
   state.routing = normalizeRouting(state.routing, { connections: state.connections, parameterPresets: state.parameterPresets }); state.shotPlans = shotPlans(state.shotPlans, state); state.collapsedCards = Object.fromEntries(Object.entries(obj(state.collapsedCards) ? state.collapsedCards : {}).slice(0, 200).map(([k, v]) => [str(k, 120), Boolean(v)]).filter(([k]) => k)); state.logs = legacyLogs(state.logs); state.pipelineLogs = pipelineLogs(state.pipelineLogs);
+  const visiblePipelineIds = new Set(state.logs.map((log) => log.pipelineId).filter(Boolean));
+  // v1/v2 日志没有 pipelineId；旧数据先按相同上限保留，只有新契约完整时才做一一配对裁剪。
+  if (visiblePipelineIds.size) state.pipelineLogs = state.pipelineLogs.filter((log) => visiblePipelineIds.has(log.id));
   const knownStateKeys = new Set(Object.keys(defaults));
   for (const key of Object.keys(state)) {
     if (isSensitiveField(key)) { delete state[key]; continue; }

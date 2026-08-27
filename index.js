@@ -18,7 +18,7 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.53.0';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.54.0';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_CONSISTENCY_STRATEGIES,
@@ -51,7 +51,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.53.0';
+const VERSION = '1.54.0';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -11209,6 +11209,8 @@ function storyboardStartLog(job) {
   state.logs = state.logs
     .sort((a, b) => Number(b.finishedAt || b.startedAt || b.queuedAt || 0) - Number(a.finishedAt || a.startedAt || a.queuedAt || 0))
     .slice(0, STORYBOARD_PIPELINE_LOG_LIMIT);
+  const visiblePipelineIds = new Set(state.logs.map((item) => item.pipelineId).filter(Boolean));
+  state.pipelineLogs = state.pipelineLogs.filter((item) => visiblePipelineIds.has(item.id));
   saveSettings();
   return log;
 }
@@ -11324,9 +11326,7 @@ function storyboardLoadRecordToWorkbench(record) {
 }
 
 function renderStoryboardLogs(state) {
-  const query = String(state.logSearch || '').trim().toLowerCase();
-  const logs = state.logs.filter((item) => (state.logFilter === 'all' || (state.logFilter === 'success' ? item.status === 'success' : item.status === 'failed'))
-    && (!query || [item.prompt, item.negative, item.model, item.error, STORYBOARD_SOURCES[item.source]?.label].some((value) => String(value || '').toLowerCase().includes(query))));
+  const logs = state.logs.filter((item) => state.logFilter === 'all' || (state.logFilter === 'success' ? item.status === 'success' : item.status === 'failed'));
   const counts = {
     all: state.logs.length,
     success: state.logs.filter((item) => item.status === 'success').length,
@@ -11343,7 +11343,6 @@ function renderStoryboardLogs(state) {
     return `<details class="sd-card sd-storyboard-log ${log.status}" data-storyboard-log="${htmlEscape(log.id)}">
       <summary><span class="sd-storyboard-log-status">${statusLabel}</span><b>${htmlEscape(source)}${log.model ? ` · ${htmlEscape(log.model)}` : ''}</b><small>${htmlEscape(formatDateTime(log.startedAt || log.queuedAt))}</small><i class="fa-solid fa-chevron-down"></i></summary>
       <div class="sd-storyboard-log-body">
-        <p>${htmlEscape(log.prompt || '未记录画面描述')}</p>
         <div class="sd-storyboard-log-meta"><span>耗时 ${log.durationMs ? `${(log.durationMs / 1000).toFixed(1)}s` : '—'}</span><span>${Number.isInteger(log.floor) ? `第 ${log.floor} 层` : '仅成片'}</span><span>${htmlEscape([log.params?.width, log.params?.height].filter(Boolean).join(' × ') || '沿用尺寸')}</span>${log.params?.consistency === 'reference' ? '<span>参考图一致性</span>' : ''}${log.attempt > 1 ? `<span>第 ${log.attempt} 次</span>` : ''}</div>
         ${stageRows ? `<ol class="sd-storyboard-pipeline-stages">${stageRows}</ol>` : ''}
         ${log.error ? `<pre>${htmlEscape(log.error)}</pre>` : ''}
@@ -11352,8 +11351,8 @@ function renderStoryboardLogs(state) {
     </details>`;
   }).join('');
   return `<div class="sd-storyboard-logs-page">
-    <section class="sd-card sd-storyboard-log-head"><div><span class="sd-storyboard-kicker">GENERATION LOG</span><h3>分镜日志</h3></div>${state.logs.length ? `<div><button type="button" class="sd-btn sd-storyboard-export-logs">导出</button><button type="button" class="sd-btn sd-storyboard-clear-logs" ${storyboardActiveJob || storyboardQueue.length ? 'disabled' : ''}>清空</button></div>` : ''}</section>
-    <div class="sd-storyboard-log-tools"><input class="text_pole sd-storyboard-log-search" value="${htmlEscape(state.logSearch || '')}" placeholder="搜索模型、提示词或错误"><div class="sd-storyboard-log-filters">${[['all', '全部'], ['success', '完成'], ['failed', '失败']].map(([id, label]) => `<button type="button" class="${state.logFilter === id ? 'active' : ''}" data-storyboard-log-filter="${id}">${label}<span>${counts[id]}</span></button>`).join('')}</div></div>
+    <section class="sd-card sd-storyboard-log-head"><div><span class="sd-storyboard-kicker">GENERATION LOG</span><h3>分镜日志</h3><small>${state.logs.length} / ${STORYBOARD_PIPELINE_LOG_LIMIT}</small></div>${state.logs.length ? `<div><button type="button" class="sd-btn sd-storyboard-export-logs">导出</button><button type="button" class="sd-btn sd-storyboard-clear-logs" ${storyboardActiveJob || storyboardQueue.length ? 'disabled' : ''}>清空</button></div>` : ''}</section>
+    <div class="sd-storyboard-log-tools"><div class="sd-storyboard-log-filters">${[['all', '全部'], ['success', '完成'], ['failed', '失败']].map(([id, label]) => `<button type="button" class="${state.logFilter === id ? 'active' : ''}" data-storyboard-log-filter="${id}">${label}<span>${counts[id]}</span></button>`).join('')}</div></div>
     ${rows || '<section class="sd-card sd-storyboard-empty"><i class="fa-solid fa-list-ul"></i><p>暂无对应日志。每次生成都会记录连接、参数、耗时与失败原因。</p></section>'}
   </div>`;
 }
@@ -13575,11 +13574,6 @@ function bindStoryboardTabEvents(root) {
     state.logFilter = button.dataset.storyboardLogFilter || 'all';
     saveSettings(); renderModal();
   }));
-  let logSearchTimer = null;
-  root.querySelector('.sd-storyboard-log-search')?.addEventListener('input', (event) => {
-    state.logSearch = String(event.target.value || '').slice(0, 120); saveSettings();
-    clearTimeout(logSearchTimer); logSearchTimer = setTimeout(() => renderModal(), 220);
-  });
   root.querySelector('.sd-storyboard-export-logs')?.addEventListener('click', () => {
     const payload = {
       type: 'qianmu-storyboard-log', version: 2, exportedAt: new Date().toISOString(),
