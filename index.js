@@ -18,11 +18,12 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.45.5';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.46.0';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_CONSISTENCY_STRATEGIES,
   STORYBOARD_MODEL_REGISTRY,
+  STORYBOARD_PIPELINE_LOG_LIMIT,
   STORYBOARD_PROMPT_MODES,
   STORYBOARD_PROVIDER_REGISTRY,
   STORYBOARD_RATIOS,
@@ -32,8 +33,11 @@ import {
   buildStoryboardProviderPlan,
   createStoryboardParagraphAnchor,
   createStoryboardDefaults,
+  createStoryboardMessageReference,
   getStoryboardCapabilities,
   normalizeStoryboardState,
+  pruneStoryboardPipelineLogs,
+  resolveStoryboardMessageReference,
   routeStoryboardShot,
   sanitizeStoryboardDiagnosticData,
   sanitizeStoryboardSnapshot,
@@ -45,7 +49,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.45.5';
+const VERSION = '1.46.0';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -790,6 +794,7 @@ let storyboardStModulePromise = null;
 let storyboardUtilsModulePromise = null;
 let storyboardChatClickBound = false;
 let storyboardInlineTimer = null;
+let storyboardLinkSaveQueued = false;
 const storyboardGallerySelection = new Set();
 let storyboardGallerySelectMode = false;
 let storyboardGalleryVisibleCount = 40;
@@ -10170,7 +10175,69 @@ function storyboardGalleryRecords() {
   return store.storyboardImages;
 }
 
+function storyboardScheduleLinkSave() {
+  if (storyboardLinkSaveQueued) return;
+  storyboardLinkSaveQueued = true;
+  queueMicrotask(async () => {
+    storyboardLinkSaveQueued = false;
+    try { await saveMetadata(); }
+    catch (error) { console.warn(`[${MODULE_NAME}] storyboard message-link save failed`, error); }
+  });
+}
+
+function storyboardRecoverLegacyMessageReference(record, chat, chatKey) {
+  const expectedHash = String(record?.messageHash || '');
+  const expectedSwipe = Number(record?.swipeId || 0);
+  const directFloor = Number.isInteger(record?.floor) ? record.floor : null;
+  const direct = Number.isInteger(directFloor) ? chat[directFloor] : null;
+  if (direct && (!expectedHash || expectedHash === hashText(String(direct.mes || ''))) && expectedSwipe === Number(direct.swipe_id || 0)) {
+    return createStoryboardMessageReference({ message: direct, chatKey, floor: directFloor });
+  }
+  if (!expectedHash) return null;
+  const candidates = [];
+  chat.forEach((message, floor) => {
+    if (!message || expectedHash !== hashText(String(message.mes || '')) || expectedSwipe !== Number(message.swipe_id || 0)) return;
+    candidates.push({ message, floor });
+  });
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => Math.abs(a.floor - Number(directFloor || 0)) - Math.abs(b.floor - Number(directFloor || 0)));
+  return createStoryboardMessageReference({ message: candidates[0].message, chatKey, floor: candidates[0].floor });
+}
+
+function storyboardReconcileGalleryLinks({ persist = true } = {}) {
+  const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
+  const chatKey = String(getChatKey() || '');
+  let changed = false;
+  for (const record of storyboardGalleryRecords()) {
+    if (!record || record.snapshot?.chatKey && record.snapshot.chatKey !== chatKey) continue;
+    if (!record.messageRef?.messageKey) {
+      const recovered = storyboardRecoverLegacyMessageReference(record, chat, chatKey);
+      if (recovered) { record.messageRef = recovered; changed = true; }
+    }
+    if (!record.messageRef?.messageKey) continue;
+    const resolved = resolveStoryboardMessageReference(record.messageRef, chat, { chatKey });
+    const previousFloor = record.floor;
+    const previousState = record.linkState || '';
+    if (resolved.state === 'active' || resolved.state === 'stale' || resolved.state === 'inactive_swipe') {
+      record.floor = resolved.floor;
+      record.lastKnownFloor = resolved.floor;
+      if (record.messageRef.lastKnownFloor !== resolved.floor) record.messageRef.lastKnownFloor = resolved.floor;
+      if (record.paragraphAnchor && record.paragraphAnchor.floor !== resolved.floor) record.paragraphAnchor.floor = resolved.floor;
+    } else if (resolved.state === 'orphaned') {
+      if (Number.isInteger(previousFloor)) record.lastKnownFloor = previousFloor;
+      record.floor = null;
+    }
+    record.linkState = resolved.state;
+    if (previousFloor !== record.floor || previousState !== record.linkState) changed = true;
+  }
+  if (changed && persist) storyboardScheduleLinkSave();
+  return changed;
+}
+
 function storyboardRecordStatus(record) {
+  if (record?.linkState === 'orphaned') return '原楼层已删除';
+  if (record?.linkState === 'stale') return '正文已更改';
+  if (record?.linkState === 'inactive_swipe') return '已切换回复版本';
   if (!Number.isInteger(record?.floor)) return '';
   const message = ctx().chat?.[record.floor];
   if (!message) return '原楼层已不存在';
@@ -10210,6 +10277,7 @@ function renderStoryboardCreate(state) {
       : state.source === 'seedream' ? `<label><span>Guidance scale</span><input class="text_pole sd-storyboard-field" data-storyboard-field="seedreamGuidanceScale" type="number" min="0" max="20" step="0.1" value="${htmlEscape(profile.seedreamGuidanceScale)}" placeholder="默认"></label><label class="sd-switch-row"><span>Sequential generation</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="seedreamSequential" ${profile.seedreamSequential ? 'checked' : ''}></label><label class="sd-switch-row"><span>Watermark</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="watermark" ${profile.watermark ? 'checked' : ''}></label>`
         : state.source === 'novel' ? `<label class="sd-switch-row"><span>SMEA</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelSm" ${profile.novelSm ? 'checked' : ''}></label><label class="sd-switch-row"><span>SMEA DYN</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelSmDyn" ${profile.novelSmDyn ? 'checked' : ''}></label><label class="sd-switch-row"><span>Decrisper</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelDecrisper" ${profile.novelDecrisper ? 'checked' : ''}></label><label class="sd-switch-row"><span>Variety Boost</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelVarietyBoost" ${profile.novelVarietyBoost ? 'checked' : ''}></label>` : '';
   return `<div class="sd-storyboard-create">
+    <section class="sd-card sd-storyboard-master-switch"><div><b>分镜</b><small>${state.enabled ? '正文取景已启用' : '关闭时不在正文显示或自动运行'}</small></div><label class="sd-switch-row"><span>${state.enabled ? '已启用' : '未启用'}</span><input type="checkbox" class="sd-storyboard-enabled" ${state.enabled ? 'checked' : ''}></label></section>
     ${renderStoryboardModelCard(state)}
     <details class="sd-card sd-storyboard-prompt-card" data-storyboard-card="prompt" ${state.collapsedCards.prompt ? '' : 'open'}>
       <summary><span><b>提示词</b><small>${htmlEscape(STORYBOARD_PROMPT_MODES[state.promptMode]?.label || '')}</small></span><i class="fa-solid fa-chevron-down"></i></summary>
@@ -10246,7 +10314,7 @@ function renderStoryboardCreate(state) {
         ${sourceSpecific}
       </div>
       </div></details>
-    <button type="button" class="sd-storyboard-generate" title="${storyboardBusy ? '加入等待' : '生成分镜'}" aria-label="${storyboardBusy ? '加入等待' : '生成分镜'}"><i class="fa-solid fa-camera"></i></button>
+    <button type="button" class="sd-storyboard-generate" title="${!state.enabled ? '开启分镜后可生成' : storyboardBusy ? '加入等待' : '生成分镜'}" aria-label="${!state.enabled ? '开启分镜后可生成' : storyboardBusy ? '加入等待' : '生成分镜'}" ${state.enabled ? '' : 'disabled'}><i class="fa-solid fa-camera"></i></button>
     ${renderStoryboardQueue()}
     ${last ? `<section class="sd-card sd-storyboard-last"><div class="sd-card-title-row"><h3>最近画面</h3><button type="button" data-storyboard-view="gallery">查看全部</button></div><img src="${htmlEscape(storyboardSafeUrl(last.url))}" alt="最近生成的分镜" loading="lazy"></section>` : ''}
   </div>`;
@@ -10837,11 +10905,12 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
   const payload = storyboardGenerationPayload(state, providerProfile, { sourceId, prompt, negative });
   const credentialId = connection?.credentialId || storyboardCredentialId(sourceId, connection?.id || 'draft');
   const paragraphAnchor = storyboardAnchorForMessage(message, floor, prompt, shot?.paragraphIndex ?? state.pendingParagraphIndex);
+  const messageRef = message ? createStoryboardMessageReference({ message, chatKey: String(getChatKey() || ''), floor }) : null;
   const snapshot = {
     source: sourceId, prompt, negative,
     target: state.target, floor, inlineByDefault: state.inlineByDefault !== false,
     selectedCharacterId: String(state.selectedCharacterId || ''), chatKey: String(getChatKey() || ''),
-    messageHash: message ? hashText(String(message.mes || '')) : '', swipeId: Number(message?.swipe_id || 0),
+    messageRef, messageHash: message ? hashText(String(message.mes || '')) : '', swipeId: Number(message?.swipe_id || 0),
     profile: storyboardProfileSnapshot(providerProfile, sourceId), selectedCharacters: clone(payload.characters),
     paragraphAnchor, shotType: String(shot?.shotType || state.pendingShotType || 'custom'),
     connection: {
@@ -10874,7 +10943,7 @@ function storyboardStartLog(job) {
     attempt: job.attempt, snapshot: clone({
       source: job.source, prompt: job.prompt, negative: job.negative, target: job.target, floor: job.floor,
       inlineByDefault: job.inlineByDefault, selectedCharacterId: job.selectedCharacterId, chatKey: job.chatKey,
-      messageHash: job.messageHash, swipeId: job.swipeId,
+      messageRef: job.messageRef, messageHash: job.messageHash, swipeId: job.swipeId,
       profile: job.profile, selectedCharacters: job.selectedCharacters, paragraphAnchor: job.paragraphAnchor,
       shotType: job.shotType, connection: job.connection, payload: job.payload,
     }),
@@ -10886,9 +10955,11 @@ function storyboardStartLog(job) {
   };
   log.pipelineId = pipeline.id;
   state.pipelineLogs.unshift(pipeline);
-  state.pipelineLogs = state.pipelineLogs.filter((item) => Date.now() - Number(item.startedAt || item.finishedAt || now) < 30 * 86400000).slice(0, 300);
+  state.pipelineLogs = pruneStoryboardPipelineLogs(state.pipelineLogs);
   state.logs.unshift(log);
-  state.logs = state.logs.filter((item) => Date.now() - Number(item.queuedAt || now) < 30 * 86400000).slice(0, 300);
+  state.logs = state.logs
+    .sort((a, b) => Number(b.finishedAt || b.startedAt || b.queuedAt || 0) - Number(a.finishedAt || a.startedAt || a.queuedAt || 0))
+    .slice(0, STORYBOARD_PIPELINE_LOG_LIMIT);
   saveSettings();
   return log;
 }
@@ -11036,6 +11107,7 @@ function renderStoryboardLogs(state) {
 
 function renderStoryboardTab() {
   const state = storyboardState();
+  storyboardReconcileGalleryLinks();
   const body = state.view === 'characters' ? renderStoryboardCharacters(state)
     : state.view === 'assets' ? renderStoryboardAssets(state)
       : state.view === 'gallery' ? renderStoryboardGallery(state)
@@ -11558,6 +11630,7 @@ function storyboardCompilerResult(raw, context, capabilities, state) {
 async function storyboardCompilePrompt(root) {
   if (storyboardCompilerBusy) return;
   const { state, profile } = storyboardCaptureWorkbench(root);
+  if (!state.enabled) return toast('请先启用分镜。', 'warning');
   const floor = storyboardTargetFloor(state);
   if (floor < 0 || !ctx().chat?.[floor]) return toast('当前没有可用于自动取景的正文。', 'warning');
   storyboardCompilerBusy = true;
@@ -11712,6 +11785,7 @@ function storyboardQueueJob(job) {
 
 async function storyboardGenerate(root) {
   const { state, profile, workflowResult } = storyboardCaptureWorkbench(root);
+  if (!state.enabled) return toast('请先启用分镜。', 'warning');
   if (state.source === 'comfy' && (!workflowResult.ok || workflowResult.removedFields.length || profile.comfyWorkflowNotice)) {
     return toast(profile.comfyWorkflowNotice || storyboardWorkflowIssue(workflowResult), 'warning');
   }
@@ -11894,12 +11968,17 @@ async function storyboardPersistGatewayImage(image, job, index) {
 function storyboardValidatedAnchor(job) {
   let floor = job.target === 'gallery' ? null : job.floor;
   const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
+  if (job.target !== 'gallery' && job.messageRef?.messageKey) {
+    const resolved = resolveStoryboardMessageReference(job.messageRef, chat, { chatKey: String(getChatKey() || '') });
+    const valid = resolved.state === 'active';
+    return { floor: valid ? resolved.floor : null, message: valid ? resolved.message : null, valid, linkState: resolved.state, relocated: resolved.relocated };
+  }
   let message = Number.isInteger(floor) ? chat[floor] : null;
   const valid = message
     && (!job.messageHash || job.messageHash === hashText(String(message.mes || '')))
     && Number(job.swipeId || 0) === Number(message.swipe_id || 0);
   if (!valid) { floor = null; message = null; }
-  return { floor, message, valid: Boolean(valid) };
+  return { floor, message, valid: Boolean(valid), linkState: valid ? 'active' : 'orphaned', relocated: false };
 }
 
 function storyboardCreateRecord(job, log, url, index, anchorState, response) {
@@ -11909,7 +11988,9 @@ function storyboardCreateRecord(job, log, url, index, anchorState, response) {
     negative: job.negative, effectiveNegative: job.payload?.negative || '', source: job.source,
     characterId: job.selectedCharacterId || '', selectedCharacters: clone(job.selectedCharacters || []),
     floor, inline: Boolean(job.inlineByDefault && Number.isInteger(floor)), paragraphAnchor: Number.isInteger(floor) ? clone(job.paragraphAnchor || null) : null,
+    messageRef: job.messageRef ? clone(job.messageRef) : null,
     messageHash: message ? hashText(String(message.mes || '')) : '', swipeId: message ? Number(message.swipe_id || 0) : 0,
+    linkState: anchorState.valid ? 'active' : anchorState.linkState || 'orphaned', lastKnownFloor: Number.isInteger(job.floor) ? job.floor : null,
     model: job.profile.model || '', sampler: job.profile.sampler || '', scheduler: job.profile.scheduler || '',
     steps: Number(job.profile.steps) || 0, cfg: Number(job.profile.cfg) || 0, seed: job.profile.seed === '' ? null : Number(job.profile.seed),
     width: Number(job.profile.width) || 0, height: Number(job.profile.height) || 0, shotType: job.shotType || 'custom',
@@ -11919,12 +12000,22 @@ function storyboardCreateRecord(job, log, url, index, anchorState, response) {
 }
 
 async function storyboardRunJob(job, log) {
-  storyboardMarkLogGenerating(log);
   try {
+    if (!storyboardState().enabled) {
+      storyboardFinishLog(log, 'cancelled', { error: '分镜总开关已关闭' });
+      return;
+    }
     if (job.chatKey && job.chatKey !== getChatKey()) {
       storyboardFinishLog(log, 'cancelled', { error: '聊天已切换，任务未执行' });
       return;
     }
+    const beforeRequestAnchor = storyboardValidatedAnchor(job);
+    if (job.target !== 'gallery' && job.messageRef?.messageKey && !beforeRequestAnchor.valid) {
+      storyboardFinishLog(log, 'cancelled', { error: beforeRequestAnchor.linkState === 'orphaned' ? '原正文楼层已删除，未发起生图请求' : '正文已更改，未发起生图请求' });
+      return;
+    }
+    if (beforeRequestAnchor.valid && beforeRequestAnchor.relocated) job.floor = beforeRequestAnchor.floor;
+    storyboardMarkLogGenerating(log);
     storyboardPipelineStage(log, 'context', 'success', {}, {
       floor: job.floor, chatKey: job.chatKey, paragraphAnchor: job.paragraphAnchor,
       characters: (job.selectedCharacters || []).map((item) => ({ name: item.name, consistency: item.consistency, referenceStrategy: item.referenceStrategy })),
@@ -12006,6 +12097,7 @@ async function storyboardPumpQueue() {
 
 function storyboardInlineRecordValid(record) {
   if (!record?.inline || !Number.isInteger(record.floor)) return false;
+  if (record.linkState && record.linkState !== 'active') return false;
   const message = ctx().chat?.[record.floor];
   if (!message) return false;
   if (record.messageHash && record.messageHash !== hashText(String(message.mes || ''))) return false;
@@ -12065,6 +12157,11 @@ function storyboardInjectMessageButtons(chatRoot) {
 function storyboardRenderInlineImages() {
   const chatRoot = document.getElementById('chat');
   if (!chatRoot) return;
+  if (!storyboardState().enabled) {
+    chatRoot.querySelectorAll('.sd-storyboard-inline, .sd-storyboard-message-action').forEach((node) => node.remove());
+    return;
+  }
+  storyboardReconcileGalleryLinks();
   storyboardInjectMessageButtons(chatRoot);
   const byFloor = new Map();
   for (const record of storyboardGalleryRecords()) {
@@ -12167,9 +12264,9 @@ async function storyboardExportPackage() {
     } catch (_) { skipped++; }
   }
   const payload = {
-    type: 'qianmu-storyboard', version: 2, exportedAt: new Date().toISOString(), credentialsIncluded: false,
+    type: 'qianmu-storyboard', version: 3, exportedAt: new Date().toISOString(), credentialsIncluded: false,
     settings: {
-      schemaVersion: state.schemaVersion, source: state.source, inlineByDefault: state.inlineByDefault,
+      schemaVersion: state.schemaVersion, enabled: state.enabled, automation: clone(state.automation), source: state.source, inlineByDefault: state.inlineByDefault,
       promptMode: state.promptMode, promptCompiler: clone(state.promptCompiler), consistencyModes: clone(state.consistencyModes),
       profiles: clone(state.profiles), parameterPresets: clone(state.parameterPresets), characters: clone(state.characters),
       entities: clone(state.entities), promptPresets: clone(state.promptPresets), tagLibrary: clone(state.tagLibrary),
@@ -12214,8 +12311,10 @@ async function storyboardImportPackage(file) {
   state.promptPresets = storyboardMergeById(state.promptPresets, normalized.promptPresets, 200);
   state.tagLibrary = storyboardMergeById(state.tagLibrary, normalized.tagLibrary, 2000);
   state.vibeLibrary = storyboardMergeById(state.vibeLibrary, normalized.vibeLibrary, 500);
-  state.logs = storyboardMergeById(state.logs, normalized.logs, 300);
-  state.pipelineLogs = storyboardMergeById(state.pipelineLogs, normalized.pipelineLogs, 300);
+  state.logs = storyboardMergeById(state.logs, normalized.logs, STORYBOARD_PIPELINE_LOG_LIMIT);
+  state.pipelineLogs = storyboardMergeById(state.pipelineLogs, normalized.pipelineLogs, STORYBOARD_PIPELINE_LOG_LIMIT);
+  state.enabled = normalized.enabled;
+  state.automation = clone(normalized.automation);
   for (const sourceId of Object.keys(STORYBOARD_SOURCES)) Object.assign(state.profiles[sourceId], normalized.profiles[sourceId], { loaded: true });
   state.consistencyModes = clone(normalized.consistencyModes);
   state.routing = clone(normalized.routing);
@@ -12247,9 +12346,13 @@ async function storyboardImportPackage(file) {
     } else metadataOnly++;
     const floor = Number.isInteger(record.floor) ? record.floor : null;
     const message = Number.isInteger(floor) ? ctx().chat?.[floor] : null;
-    const anchorValid = message && (!record.messageHash || record.messageHash === hashText(String(message.mes || '')))
+    const resolved = record.messageRef?.messageKey
+      ? resolveStoryboardMessageReference(record.messageRef, ctx().chat, { chatKey: String(getChatKey() || '') })
+      : null;
+    const anchorValid = resolved ? resolved.state === 'active' : message && (!record.messageHash || record.messageHash === hashText(String(message.mes || '')))
       && Number(record.swipeId || 0) === Number(message.swipe_id || 0);
-    if (!anchorValid) { record.floor = null; record.inline = false; record.messageHash = ''; }
+    if (resolved?.state === 'active') { record.floor = resolved.floor; record.linkState = 'active'; }
+    else if (!anchorValid) { record.lastKnownFloor = floor; record.floor = null; record.linkState = resolved?.state || 'orphaned'; }
     imported.push(record);
   }
   const store = getChatStore();
@@ -12348,6 +12451,16 @@ function storyboardUnbindChat() {
 function bindStoryboardTabEvents(root) {
   if (activeTab !== 'imagegen') return;
   const state = storyboardState();
+  root.querySelector('.sd-storyboard-enabled')?.addEventListener('change', (event) => {
+    state.enabled = Boolean(event.target.checked);
+    if (!state.enabled) {
+      if (storyboardActiveJob) storyboardActiveJob.discardRequested = true;
+      if (storyboardQueue.length) storyboardClearWaitingQueue('分镜总开关已关闭');
+    }
+    saveSettings();
+    storyboardRenderInlineImages();
+    renderModal();
+  });
   if (state.view === 'create') {
     const sourceAtBind = state.source;
     let draftTimer = null;
@@ -25097,12 +25210,20 @@ function bindEvents() {
     if (t.enabled && t.injectInChat) ttsScheduleEditedMessage(messageRef, 250);
     storyboardScheduleInlineRender(280);
   };
+  const storyboardMessageDeletedHandler = async () => {
+    await applyDirectorInjection();
+    storyboardScheduleInlineRender(140);
+  };
+  const storyboardMessageVersionHandler = () => storyboardScheduleInlineRender(180);
   const pairs = [
     [types.APP_READY || 'app_ready', appReadyHandler],   // 注水后把悬浮球挪回上次拖动的位置（修偶发回默认位）
     [types.PERSONA_CHANGED || 'persona_changed', personaChangedHandler],   // 冷启动即读 ST 当前头像；切换人设后同步伴读设定
     [types.MESSAGE_RECEIVED || 'message_received', refreshHandler],   // 仅角色回复触发；重 roll/删楼由 refreshHandler 照实重算
-    [types.MESSAGE_DELETED || 'message_deleted', applyDirectorInjection],   // 删楼即刻重判注入：若已回退到推演前的长度，悬空检测会清空注入
+    [types.MESSAGE_DELETED || 'message_deleted', storyboardMessageDeletedHandler],   // 删楼重判推演注入，并把分镜成片转为可恢复的孤儿记录
     [types.MESSAGE_EDITED || 'message_edited', ttsMessageEditedHandler],   // 原地编辑：仅按缓存补回被重渲抹掉的内联 🔊（不动列表/音频/key）
+    [types.MESSAGE_SWIPED || 'message_swiped', storyboardMessageVersionHandler],
+    [types.MESSAGE_SWIPE_DELETED || 'message_swipe_deleted', storyboardMessageVersionHandler],
+    [types.MORE_MESSAGES_LOADED || 'more_messages_loaded', storyboardMessageVersionHandler],
     [types.CHAT_CHANGED || 'chat_changed', rerenderHandler],
     [types.GROUP_UPDATED || 'group_updated', rerenderHandler],
     [types.CHARACTER_SELECTED || 'character_selected', rerenderHandler],

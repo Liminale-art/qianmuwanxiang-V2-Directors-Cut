@@ -61,6 +61,8 @@ assert.match(source, /import\('\.\.\/\.\.\/\.\.\/secrets\.js'\)[\s\S]*writeSecre
 assert.match(source, /readSecret[\s\S]*findSecret/, '密钥读取必须兼容 SillyTavern 新旧公开接口');
 assert.match(source, /sourceCredentialId[\s\S]*storyboardResolveApiKey\(sourceId, sourceCredentialId\)[\s\S]*storyboardRememberApiKey\(sourceId, existingKey, credentialId\)/, '当前编辑连接另存为预设时必须无感迁移已保存 Key');
 assert.match(source, /storyboardImages[\s\S]*messageHash[\s\S]*swipeId/, '正文挂载必须带楼层内容与 swipe 锚点');
+assert.match(source, /createStoryboardMessageReference[\s\S]*resolveStoryboardMessageReference/, '正文挂载必须以稳定消息身份协调删楼、改楼与 swipe');
+assert.match(source, /if \(!storyboardState\(\)\.enabled\)[\s\S]*sd-storyboard-inline, \.sd-storyboard-message-action/, '分镜总开关关闭后必须清理全部正文入口与成片');
 assert.match(source, /paragraphAnchor: Number\.isInteger\(floor\)/, '第 0 楼也必须保留段落锚点');
 assert.match(source, /storyboardInlineAnchorNode\(text, records\)[\s\S]*text\.insertAdjacentElement\('afterend', wrapper\)[\s\S]*storyboardParagraphIndex/, '段落锚点必须保留定位元数据，可见控件仍须作为 mes_text 兄弟节点，避免污染配音与正则扫描');
 assert.match(source, /function storyboardInlineRecordValid[\s\S]*record\.messageHash[\s\S]*record\.swipeId/, '编辑或 reroll 后必须阻止旧图误挂');
@@ -79,6 +81,7 @@ assert.match(source, /storyboardDiscardActive[\s\S]*discardRequested[\s\S]*放�
 assert.match(source, /storyboardLoadLogToWorkbench[\s\S]*storyboardRetryLog[\s\S]*载入镜头台/, '日志必须可载入与再生成');
 assert.match(source, /storyboardCheckConnection[\s\S]*\/api\/plugins\/qianmu-tts\/image\/check/, '所有供应商必须走千幕同源网关实测连接');
 assert.match(source, /storyboardHandleChatChanged[\s\S]*切换聊天后已自动移除等待任务/, '队列不得把旧聊天的分镜写入新聊天');
+assert.match(source, /原正文楼层已删除，未发起生图请求[\s\S]*正文已更改，未发起生图请求/, '请求送出前若正文删除或改写，必须停止而非继续消耗额度');
 assert.match(source, /将此瞬，妥为留存/, '镜头台主文案必须使用确认后的版本');
 assert.doesNotMatch(source, /千幕组织镜头，SillyTavern 负责连接与生成/, '镜头台不应展示尴尬的实现说明');
 assert.match(css, /#chat \.mes \.sd-storyboard-inline/, '正文分镜样式必须严格限定在聊天消息内');

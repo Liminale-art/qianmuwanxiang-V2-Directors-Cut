@@ -5460,6 +5460,23 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-logs-page {
   gap: var(--sd-storyboard-gap);
 }
+#story-director-modal .sd-storyboard-master-switch {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+}
+#story-director-modal .sd-storyboard-master-switch > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+#story-director-modal .sd-storyboard-master-switch b { color: var(--sd-text); font-size: 15px; }
+#story-director-modal .sd-storyboard-master-switch small { color: var(--sd-muted); font-size: 11px; }
+#story-director-modal .sd-storyboard-master-switch .sd-switch-row { flex: 0 0 auto; margin: 0; }
 
 /* Every workbench card closes to the same stable 52 px row. */
 #story-director-modal .sd-storyboard-root details.sd-card {

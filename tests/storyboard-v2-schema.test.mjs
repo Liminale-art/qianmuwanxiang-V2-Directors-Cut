@@ -25,9 +25,9 @@ import {
   scoreStoryboardParagraphAnchor,
 } from '../qianmu-storyboard.js';
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 2);
-assert.equal(STORYBOARD_PIPELINE_LOG_LIMIT, 300);
-assert.equal(STORYBOARD_PIPELINE_LOG_RETENTION_MS, 30 * 24 * 60 * 60 * 1000);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 3);
+assert.equal(STORYBOARD_PIPELINE_LOG_LIMIT, 20);
+assert.equal(STORYBOARD_PIPELINE_LOG_RETENTION_MS, 0);
 assert.deepEqual(Object.keys(STORYBOARD_PROVIDER_REGISTRY), ['novel', 'banana', 'openai', 'seedream', 'comfy']);
 assert.deepEqual(Object.keys(STORYBOARD_PROMPT_MODES), ['manual', 'auto', 'combined']);
 assert.deepEqual(STORYBOARD_ENTITY_TYPES, ['char', 'user', 'cast']);
@@ -41,6 +41,9 @@ assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-5-full').vibe, fa
 assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-5-full').preciseReference, false, 'V5 launch must gate Precise Reference');
 
 const defaults = createStoryboardDefaults();
+assert.equal(defaults.schemaVersion, 3);
+assert.equal(defaults.enabled, false);
+assert.deepEqual(defaults.automation, { autoCapture: false, autoGenerate: false });
 assert.equal(defaults.promptMode, 'manual');
 assert.equal(defaults.promptDraft.userEditedCompiled, false);
 assert.deepEqual(defaults.selectedCharacters, []);
@@ -113,7 +116,8 @@ const migrated = normalizeStoryboardState({
   characters: [{ id: 'look-1', subjectType: 'char', subjectKey: 'card:a', subjectName: 'Alice', variantName: 'Winter', appearance: 'red coat' }],
   logs: [{ id: 'old-log', source: 'openai', status: 'success', prompt: 'old prompt', startedAt: now - 100, finishedAt: now }],
 });
-assert.equal(migrated.schemaVersion, 2);
+assert.equal(migrated.schemaVersion, 3);
+assert.equal(migrated.enabled, true, 'existing storyboard users must keep their pre-upgrade behavior');
 assert.equal(migrated.promptDraft.manual, 'old prompt');
 assert.equal(migrated.entities.char[0].name, 'Alice');
 assert.equal(migrated.entities.char[0].profiles[0].appearance, 'red coat');
@@ -296,24 +300,24 @@ assert.equal(scoreStoryboardParagraphAnchor(normalizeStoryboardParagraphAnchor({
 const logNow = 2_000_000_000_000;
 const base64 = 'A'.repeat(512);
 const retainedLogs = pruneStoryboardPipelineLogs([
-  { id: 'old', status: 'success', finishedAt: logNow - STORYBOARD_PIPELINE_LOG_RETENTION_MS - 1 },
-  { id: 'queued-old', status: 'queued', startedAt: logNow - STORYBOARD_PIPELINE_LOG_RETENTION_MS - 1 },
+  { id: 'old', status: 'success', finishedAt: logNow - 999_999_999 },
+  { id: 'queued-old', status: 'queued', startedAt: logNow - 999_999_999 },
   { id: 'newer', status: 'success', finishedAt: logNow - 1, stages: [{ id: 'provider', status: 'success', input: { apiKey: 'secret', credentialId: 'credential:1', image: base64, nested: { authorization: 'Bearer secret' } }, decisions: ['used', 'used'], error: 'Authorization: Bearer sk-private' }] },
   { id: 'newest', status: 'failed', finishedAt: logNow },
 ], { now: logNow });
-assert.deepEqual(retainedLogs.map((log) => log.id), ['newest', 'newer', 'queued-old']);
-const sanitizedInput = retainedLogs[1].stages[0].input;
+assert.deepEqual(retainedLogs.map((log) => log.id), ['queued-old', 'newest', 'newer', 'old']);
+const sanitizedInput = retainedLogs.find((log) => log.id === 'newer').stages[0].input;
 assert.equal(sanitizedInput.apiKey, '[redacted]');
 assert.equal(sanitizedInput.credentialId, 'credential:1', 'opaque credential references are safe to retain');
 assert.equal(sanitizedInput.image, '[image omitted]');
 assert.equal(sanitizedInput.nested.authorization, '[redacted]');
-assert.deepEqual(retainedLogs[1].stages[0].decisions, ['used']);
-assert.doesNotMatch(retainedLogs[1].stages[0].error, /sk-private/);
+assert.deepEqual(retainedLogs.find((log) => log.id === 'newer').stages[0].decisions, ['used']);
+assert.doesNotMatch(retainedLogs.find((log) => log.id === 'newer').stages[0].error, /sk-private/);
 
 const manyLogs = pruneStoryboardPipelineLogs(Array.from({ length: 350 }, (_, index) => ({ id: `log-${index}`, status: 'success', finishedAt: logNow - index })), { now: logNow });
 assert.equal(manyLogs.length, STORYBOARD_PIPELINE_LOG_LIMIT);
 assert.equal(manyLogs[0].id, 'log-0');
-assert.equal(manyLogs.at(-1).id, 'log-299');
+assert.equal(manyLogs.at(-1).id, 'log-19');
 
 const snapshotState = normalizeStoryboardState({ schemaVersion: 2, logs: [{
   id: 'snapshot', status: 'success', source: 'openai', queuedAt: now, finishedAt: now,
@@ -333,6 +337,6 @@ assert.equal(snapshotState.logs[0].snapshot.connection.apiKey, undefined);
 assert.equal(snapshotState.logs[0].snapshot.payload.references[0].data, undefined, 'binary request payloads must not persist in settings');
 
 assert.match(buildImagineCommand({ prompt: 'legacy remains' }), /^\/imagine /, 'legacy command must remain available for migration');
-assert.equal(migrateStoryboardState({ schemaVersion: 2, prompt: 'kept' }).prompt, 'kept', 'v2 migration must be idempotent');
+assert.equal(migrateStoryboardState({ schemaVersion: 3, prompt: 'kept' }).prompt, 'kept', 'v3 migration must be idempotent');
 
-console.log('Storyboard v2 schema contract OK');
+console.log('Storyboard v3 schema contract OK');
