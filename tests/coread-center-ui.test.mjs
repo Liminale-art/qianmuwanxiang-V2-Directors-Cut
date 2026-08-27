@@ -36,7 +36,7 @@ assert.match(source, /coreadSyncSliceVector\(id[\s\S]*保存并同步/, '切片�
 assert.match(css, /\.sd-reader-subpage-head[^}]*position:\s*sticky/, '中心内部子页面必须使用统一返回头');
 assert.match(css, /\.sd-reader-sm-row\.vec-error[^}]*border-color:/, '向量失败的切片必须高亮显示');
 assert.match(css, /\.sd-reader-center-status[^}]*grid-template-columns:/, '伴读中心必须有独立状态总览布局');
-assert.match(css, /\.sd-reader-mcard-head\s*\{[^}]*font-size:\s*1em/, '伴读中心主要卡片标题必须整体增大一号');
+assert.match(css, /\.sd-reader-mcard-head\s*\{[^}]*font-size:\s*16px/, '伴读中心主要卡片标题必须遵循统一标题字号');
 assert.match(css, /\.sd-reader-center-section-head small\s*\{[^}]*font-size:\s*\.7em/, '说明类小字必须维持原层级，不能随主要字号一并放大');
 
 console.log('Coread center UI contract OK');

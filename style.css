@@ -377,9 +377,9 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
+  width: var(--sd-icon-button-size, 34px);
+  height: var(--sd-icon-button-size, 34px);
+  min-width: var(--sd-icon-button-size, 34px);
   margin: 0 !important;                 /* 防止导入(label)被全局 label 边距顶歪 */
   padding: 0 !important;
   border-radius: 999px !important;
@@ -392,7 +392,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   vertical-align: middle;
 }
 
-#story-director-modal .sd-icon-btn i { font-size: 14px; }
+#story-director-modal .sd-icon-btn i { font-size: var(--sd-icon-glyph-size, 16px); }
 #story-director-modal .sd-icon-btn:hover:not(:disabled) { filter: brightness(1.08); }
 #story-director-modal .sd-icon-btn.sd-danger i { color: inherit; }
 
@@ -588,8 +588,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 }
 #story-director-quick-wheel .sd-wheel-command i {
   color: inherit !important;
-  font-size: clamp(15px, calc(var(--sd-wheel-item-size, 36px) * .44), 22px);
-  transform: scale(var(--sd-wheel-optical-scale, 1));
+  font-size: clamp(17px, calc(var(--sd-wheel-item-size, 36px) * .50), 25px);
+  transform: scale(var(--sd-wheel-optical-scale, 1.04));
   transform-origin: center;
 }
 #story-director-quick-wheel .sd-wheel-external-logo { width: 64%; height: 64%; object-fit: contain; display: flex; align-items: center; justify-content: center; pointer-events: none; overflow: hidden; }
@@ -625,6 +625,15 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   --sd-accent: #5f7a68;
   --sd-primary: #2e2a26;
   --sd-primary-text: #f7f3ea;
+  /* 全模块视觉基线：后续新卡片与控件统一沿用，不再各自猜字号和间距。 */
+  --sd-type-body: 15px;
+  --sd-type-title: 16px;
+  --sd-type-control: 14px;
+  --sd-type-note: 12px;
+  --sd-card-gap: 12px;
+  --sd-card-pad: 14px;
+  --sd-icon-button-size: 34px;
+  --sd-icon-glyph-size: 16px;
   --sd-window-bg: linear-gradient(152deg, rgba(250, 247, 240, .96) 0%, rgba(240, 233, 222, .92) 48%, rgba(228, 220, 207, .95) 100%);
   --sd-window-glow: radial-gradient(120% 60% at 8% 0%, rgba(255, 255, 255, .42), transparent 52%);
   position: fixed;
@@ -1180,6 +1189,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   writing-mode: horizontal-tb !important;
   box-shadow: none !important;
   transition: color .15s ease, background .15s ease;
+  font-size: var(--sd-type-body) !important;
 }
 
 #story-director-modal .sd-tab:hover { color: var(--sd-text) !important; }
@@ -1228,14 +1238,14 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   backdrop-filter: blur(10px) !important;
   -webkit-backdrop-filter: blur(10px) !important;
   box-shadow: 0 1px 0 rgba(255, 255, 255, .14) inset !important;
-  padding: 16px;
-  margin-bottom: 14px;
+  padding: var(--sd-card-pad);
+  margin-bottom: var(--sd-card-gap);
 }
 
 /* 入场动画只在「打开」首帧（modal 带 .sd-anim-in）播放，静默重渲染不重播，消除刷新闪动 */
 #story-director-modal.sd-anim-in .sd-card { animation: sd-fade-up .26s ease both; }
 
-#story-director-modal .sd-card h3 { margin: 0 0 10px; font-size: 15px; line-height: 1.35; letter-spacing: .03em; color: var(--sd-text); }
+#story-director-modal .sd-card h3 { margin: 0 0 10px; font-size: var(--sd-type-title); line-height: 1.35; letter-spacing: .03em; color: var(--sd-text); }
 
 /* 主面板排版基线：卡片标题、折叠标题与灰色说明在所有 tab 保持同一字号层级。 */
 #story-director-modal .sd-card > h3,
@@ -1244,7 +1254,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-section-title h3,
 #story-director-modal .sd-plain-fold > summary > b,
 #story-director-modal .sd-accordion > summary > b {
-  font-size: 15px !important;
+  font-size: var(--sd-type-title) !important;
   line-height: 1.35 !important;
   letter-spacing: .03em;
 }
@@ -1252,8 +1262,17 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-summary-note,
 #story-director-modal .sd-tts-sub,
 #story-director-modal .sd-accordion > summary > span {
-  font-size: 12px !important;
+  font-size: var(--sd-type-note) !important;
   line-height: 1.4;
+}
+#story-director-modal .sd-card-title-row h3 > i,
+#story-director-modal .sd-plain-fold > summary i,
+#story-director-modal .sd-accordion > summary i,
+#story-director-modal .sd-section-title h3 > i {
+  width: 18px;
+  font-size: var(--sd-icon-glyph-size) !important;
+  line-height: 1;
+  text-align: center;
 }
 
 #story-director-modal .sd-section-title {
@@ -1427,9 +1446,13 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   background: var(--sd-input-bg) !important;
   color: var(--sd-text) !important;
   box-shadow: none !important;
-  font: inherit !important;
+  font-family: inherit !important;
+  font-size: var(--sd-type-control) !important;
   line-height: 1.45 !important;
 }
+
+#story-director-modal input.text_pole,
+#story-director-modal select.text_pole { min-height: 38px; }
 
 #story-director-modal select.text_pole option {
   background: var(--sd-primary-text);
@@ -2635,7 +2658,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal,
 #story-director-modal .sd-window {
   font-family: var(--sd-font, var(--mainFontFamily, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif)) !important;
-  font-size: 14.5px !important;
+  font-size: var(--sd-type-body) !important;
 }
 
 #story-director-modal *:not(i):not(pre):not(code):not(.sd-term) {
@@ -4610,6 +4633,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-morepage {
   position: absolute; inset: 0; z-index: 15; display: flex; flex-direction: column;
   overflow: hidden; background: var(--sd-portal-bg, var(--sd-folder-head)); color: var(--sd-text);
+  font-size: 16px;
 }
 .sd-reader-morepage[hidden] { display: none; }
 /* 整个伴读中心保留滚动能力但不展示右侧滚动条。 */
@@ -4632,7 +4656,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-center-book-icon { width: 34px; height: 34px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: var(--sd-accent); background: color-mix(in srgb, var(--sd-accent) 14%, transparent); }
 .sd-reader-center-book-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .sd-reader-center-book-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .96em; color: var(--sd-text); }
-.sd-reader-center-book-copy small, .sd-reader-center-guard small { color: var(--sd-muted); font-size: .72em; line-height: 1.35; }
+.sd-reader-center-book-copy small, .sd-reader-center-guard small { color: var(--sd-muted); font-size: 11px; line-height: 1.35; }
 .sd-reader-center-guard { justify-content: space-between; cursor: pointer; }
 .sd-reader-center-guard > span:first-child { min-width: 0; display: inline-flex; gap: 7px; align-items: center; }
 .sd-reader-center-guard > span:first-child i { color: var(--sd-muted); }
@@ -4668,17 +4692,17 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-guide-replay:hover { color: var(--sd-accent); border-color: var(--sd-accent); }
 /* 面板四 tab：图标辅助窄屏识别。 */
 .sd-reader-mtabs { display: flex; position: sticky; top: 0; z-index: 2; background: var(--sd-portal-bg, var(--sd-folder-head)); border-bottom: 1px solid var(--sd-hairline); }
-.sd-reader-mtab { flex: 1; padding: 11px 5px; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--sd-muted); cursor: pointer; font: inherit; font-size: .92em; transition: color .16s; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
-.sd-reader-mtab i { font-size: .92em; opacity: .8; }
+.sd-reader-mtab { flex: 1; padding: 11px 5px; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--sd-muted); cursor: pointer; font: inherit; font-size: 14px; transition: color .16s; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+.sd-reader-mtab i { width: 18px; font-size: 17px; opacity: .86; text-align: center; }
 .sd-reader-mtab:hover { color: var(--sd-text); }
 .sd-reader-mtab.active { color: var(--sd-accent); border-bottom-color: var(--sd-accent); font-weight: 600; }
-.sd-reader-mtab-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.sd-reader-mtab-body { padding: 14px; display: flex; flex-direction: column; gap: 11px; }
 /* 伴读设定在中心内按任务分成三张卡，避免旧浮层的长表单堆叠。 */
 .sd-reader-center-setup { gap: 12px; }
 .sd-reader-center-section { display: flex; flex-direction: column; gap: 11px; padding: 14px; border: 1px solid var(--sd-hairline); border-radius: 14px; background: var(--sd-glass-weak); }
 .sd-reader-center-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 9px; border-bottom: 1px solid var(--sd-hairline); }
-.sd-reader-center-section-head > span { display: inline-flex; align-items: center; gap: 7px; color: var(--sd-text); font-size: .96em; }
-.sd-reader-center-section-head > span i { color: var(--sd-accent); }
+.sd-reader-center-section-head > span { display: inline-flex; align-items: center; gap: 7px; color: var(--sd-text); font-size: 16px; }
+.sd-reader-center-section-head > span i { width: 18px; color: var(--sd-accent); font-size: 17px; text-align: center; }
 .sd-reader-center-section-head small { color: var(--sd-muted); font-size: .7em; text-align: right; line-height: 1.4; }
 /* 记忆档案页首：先展示可读状态与常用管理动作，其余高级配置下沉折叠。 */
 .sd-reader-memory-overview { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid color-mix(in srgb, var(--sd-accent) 34%, var(--sd-hairline)); border-radius: 15px; background: linear-gradient(145deg, color-mix(in srgb, var(--sd-accent) 8%, var(--sd-glass-weak)), var(--sd-glass-weak)); }
@@ -4694,9 +4718,9 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-memory-actions { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; }
 .sd-reader-memory-actions .sd-reader-mbtn { width: 100%; }
 /* 卡片 */
-.sd-reader-mcard { background: var(--sd-glass-weak); border: 1px solid var(--sd-hairline); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
-.sd-reader-mcard-head { display: flex; align-items: center; gap: 8px; font-size: 1em; font-weight: 600; color: var(--sd-text); }
-.sd-reader-mcard-head i { color: var(--sd-accent); }
+.sd-reader-mcard { background: var(--sd-glass-weak); border: 1px solid var(--sd-hairline); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 9px; }
+.sd-reader-mcard-head { display: flex; align-items: center; gap: 8px; font-size: 16px; line-height: 1.35; font-weight: 600; color: var(--sd-text); }
+.sd-reader-mcard-head i { width: 18px; color: var(--sd-accent); font-size: 17px; text-align: center; }
 /* 可折叠卡片：mcard 作 details 时，head 作 summary（去默认三角·加自绘 chevron·点击整条头折叠） */
 details.sd-reader-mcard > summary.sd-reader-mcard-head { cursor: pointer; list-style: none; user-select: none; }
 details.sd-reader-mcard > summary.sd-reader-mcard-head::-webkit-details-marker { display: none; }
@@ -4710,7 +4734,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-mradio-opt.active { border-color: var(--sd-accent); background: var(--sd-glass); }
 /* 输入 */
 .sd-reader-mlab { font-size: .84em; color: var(--sd-muted); margin-top: 4px; }
-.sd-reader-minput { background: var(--sd-input-bg); color: var(--sd-text); border: 1px solid var(--sd-border); border-radius: 9px; padding: 8px 11px; font: inherit; font-size: .92em; width: 100%; box-sizing: border-box; }
+.sd-reader-minput { min-height: 38px; background: var(--sd-input-bg); color: var(--sd-text); border: 1px solid var(--sd-border); border-radius: 9px; padding: 8px 11px; font-family: inherit; font-size: 14px; line-height: 1.4; width: 100%; box-sizing: border-box; }
 .sd-reader-mtextarea { background: var(--sd-input-bg); color: var(--sd-text); border: 1px solid var(--sd-border); border-radius: 9px; padding: 8px 11px; font: inherit; font-size: .92em; width: 100%; box-sizing: border-box; min-height: 72px; resize: vertical; }
 .sd-reader-mtextarea:disabled { opacity: .55; cursor: not-allowed; }
 .sd-reader-mempty { font-size: .88em; color: var(--sd-muted); padding: 14px; text-align: center; background: var(--sd-glass-weak); border-radius: 10px; }
@@ -5460,6 +5484,8 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-logs-page {
   gap: var(--sd-storyboard-gap);
 }
+#story-director-modal .sd-storyboard-root .sd-card,
+#story-director-modal .sd-storyboard-root .sd-accordion { margin-bottom: 0; }
 #story-director-modal .sd-storyboard-master-switch {
   min-height: 58px;
   display: flex;
@@ -6513,3 +6539,23 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   animation: qm-phosphor-spin 1s linear infinite !important;
 }
 @keyframes qm-phosphor-spin { to { transform: rotate(360deg); } }
+
+/* ---------- v1.47 全局视觉基线收口 ---------- */
+#story-director-modal .sd-plug-shortcut,
+#story-director-modal .sd-close,
+#story-director-modal .sd-theme-btn,
+#story-director-modal .sd-geo-shortcut,
+#story-director-modal .sd-coread-shortcut {
+  width: var(--sd-icon-button-size) !important;
+  height: var(--sd-icon-button-size) !important;
+  min-width: var(--sd-icon-button-size) !important;
+}
+#story-director-modal .sd-plug-shortcut i,
+#story-director-modal .sd-close i,
+#story-director-modal .sd-theme-btn i,
+#story-director-modal .sd-geo-shortcut i,
+#story-director-modal .sd-coread-shortcut i {
+  font-size: var(--sd-icon-glyph-size) !important;
+}
+#story-director-modal .sd-btn { font-size: var(--sd-type-control); }
+#story-director-modal .sd-btn > i { font-size: 1.08em; }

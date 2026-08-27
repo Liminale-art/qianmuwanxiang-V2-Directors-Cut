@@ -18,7 +18,7 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.46.0';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.47.0';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_CONSISTENCY_STRATEGIES,
@@ -49,7 +49,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.46.0';
+const VERSION = '1.47.0';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -3881,10 +3881,19 @@ const QUICK_COMMANDS = Object.freeze([
 ]);
 const QUICK_COMMAND_IDS = QUICK_COMMANDS.map((item) => item.id);
 const QUICK_ICON_OPTICAL_SCALE = Object.freeze({
-  tts: 1.16,
-  theater: 1.04,
-  coread: 1.04,
-  plug: 1.04,
+  dashboard: 1.02,
+  focus: 1.04,
+  tasksnodes: .98,
+  castworld: 1.02,
+  context: .99,
+  settings: 1.05,
+  theater: 1.07,
+  tts: 1.22,
+  coread: 1.07,
+  geopolitics: 1.01,
+  plug: 1.05,
+  imagegen: 1.10,
+  floor: 1.01,
 });
 // 使用真实 SVG polygon 描边，而非“矩形 mask 再裁六边形”。后者只会留下几段横线，无法贴合斜边。
 const QUICK_HEX_BORDER_SVG = '<svg class="sd-hive-hex-outline" viewBox="0 0 86.602 100" preserveAspectRatio="none" aria-hidden="true" focusable="false"><polygon points="43.301,0 86.602,25 86.602,75 43.301,100 0,75 0,25"></polygon></svg>';
@@ -5292,7 +5301,7 @@ function openQuickWheel(btn) {
     button.style.setProperty('--sd-wheel-glass-fill', visual.fill, 'important');
     button.style.setProperty('--sd-wheel-edge', visual.edge, 'important');
     button.style.setProperty('--sd-wheel-icon', visual.icon, 'important');
-    button.style.setProperty('--sd-wheel-optical-scale', String(QUICK_ICON_OPTICAL_SCALE[item.id] || 1));
+    button.style.setProperty('--sd-wheel-optical-scale', String(QUICK_ICON_OPTICAL_SCALE[item.id] || 1.04));
     // 组件级视觉锁：阻断 ST 美化或其他插件的全局 button/div 样式覆盖蜂巢毛玻璃。
     button.style.setProperty('background', visual.fill, 'important');
     button.style.setProperty('backdrop-filter', 'blur(20px) saturate(1.12) brightness(1.04)', 'important');
@@ -10236,7 +10245,7 @@ function storyboardReconcileGalleryLinks({ persist = true } = {}) {
 
 function storyboardRecordStatus(record) {
   if (record?.linkState === 'orphaned') return '原楼层已删除';
-  if (record?.linkState === 'stale') return '正文已更改';
+  if (record?.linkState === 'stale') return '正文已更改 · 原图保留';
   if (record?.linkState === 'inactive_swipe') return '已切换回复版本';
   if (!Number.isInteger(record?.floor)) return '';
   const message = ctx().chat?.[record.floor];
@@ -10908,6 +10917,8 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
   const messageRef = message ? createStoryboardMessageReference({ message, chatKey: String(getChatKey() || ''), floor }) : null;
   const snapshot = {
     source: sourceId, prompt, negative,
+    promptMode: state.promptMode, manualPrompt: String(state.promptDraft?.manual || ''),
+    promptLocked: Boolean(state.promptDraft?.userEditedCompiled),
     target: state.target, floor, inlineByDefault: state.inlineByDefault !== false,
     selectedCharacterId: String(state.selectedCharacterId || ''), chatKey: String(getChatKey() || ''),
     messageRef, messageHash: message ? hashText(String(message.mes || '')) : '', swipeId: Number(message?.swipe_id || 0),
@@ -10942,6 +10953,7 @@ function storyboardStartLog(job) {
     error: '', recordId: '', recordIds: [], pipelineId: '', queuedAt: now, startedAt: 0, finishedAt: 0, durationMs: 0,
     attempt: job.attempt, snapshot: clone({
       source: job.source, prompt: job.prompt, negative: job.negative, target: job.target, floor: job.floor,
+      promptMode: job.promptMode, manualPrompt: job.manualPrompt, promptLocked: Boolean(job.promptLocked),
       inlineByDefault: job.inlineByDefault, selectedCharacterId: job.selectedCharacterId, chatKey: job.chatKey,
       messageRef: job.messageRef, messageHash: job.messageHash, swipeId: job.swipeId,
       profile: job.profile, selectedCharacters: job.selectedCharacters, paragraphAnchor: job.paragraphAnchor,
@@ -11164,9 +11176,13 @@ function storyboardCaptureWorkbench(root, sourceId = storyboardState().source) {
   if (manual) state.promptDraft.manual = String(manual.value || '').slice(0, 24000);
   if (autoInstruction) state.promptDraft.autoInstruction = String(autoInstruction.value || '').slice(0, 12000);
   if (prompt) {
-    state.prompt = String(prompt.value || '').slice(0, 24000);
+    const nextPrompt = String(prompt.value || '').slice(0, 24000);
+    const compiledBeforeEdit = String(state.promptDraft.compiled || '');
+    state.promptDraft.userEditedCompiled = ['auto', 'combined'].includes(state.promptMode)
+      ? !compiledBeforeEdit || nextPrompt !== compiledBeforeEdit
+      : true;
+    state.prompt = nextPrompt;
     state.promptDraft.compiled = state.prompt;
-    state.promptDraft.userEditedCompiled = true;
   }
   if (negative) {
     state.negative = String(negative.value || '').slice(0, 12000);
@@ -11990,6 +12006,7 @@ function storyboardCreateRecord(job, log, url, index, anchorState, response) {
     floor, inline: Boolean(job.inlineByDefault && Number.isInteger(floor)), paragraphAnchor: Number.isInteger(floor) ? clone(job.paragraphAnchor || null) : null,
     messageRef: job.messageRef ? clone(job.messageRef) : null,
     messageHash: message ? hashText(String(message.mes || '')) : '', swipeId: message ? Number(message.swipe_id || 0) : 0,
+    promptMode: job.promptMode || 'manual', promptLocked: Boolean(job.promptLocked),
     linkState: anchorState.valid ? 'active' : anchorState.linkState || 'orphaned', lastKnownFloor: Number.isInteger(job.floor) ? job.floor : null,
     model: job.profile.model || '', sampler: job.profile.sampler || '', scheduler: job.profile.scheduler || '',
     steps: Number(job.profile.steps) || 0, cfg: Number(job.profile.cfg) || 0, seed: job.profile.seed === '' ? null : Number(job.profile.seed),
@@ -12097,10 +12114,11 @@ async function storyboardPumpQueue() {
 
 function storyboardInlineRecordValid(record) {
   if (!record?.inline || !Number.isInteger(record.floor)) return false;
-  if (record.linkState && record.linkState !== 'active') return false;
+  if (record.linkState && !['active', 'stale'].includes(record.linkState)) return false;
   const message = ctx().chat?.[record.floor];
   if (!message) return false;
-  if (record.messageHash && record.messageHash !== hashText(String(message.mes || ''))) return false;
+  // 原楼层原地编辑时保留已接受的旧图；只有主动重绘才重新整理新正文。
+  if (record.linkState !== 'stale' && record.messageHash && record.messageHash !== hashText(String(message.mes || ''))) return false;
   if (record.swipeId !== undefined && Number(record.swipeId) !== Number(message.swipe_id || 0)) return false;
   return Boolean(storyboardSafeUrl(record.url));
 }
@@ -12367,6 +12385,113 @@ async function storyboardImportPackage(file) {
   toast(`分镜数据已导入：${incomingCharacters.length} 份档案 · ${imported.length} 条成片${restored ? ` · ${restored} 张图片已落盘` : ''}${metadataOnly ? ` · ${metadataOnly} 张沿用原地址` : ''}。`, 'success');
 }
 
+function storyboardRelinkRedrawSnapshot(snapshot, record, floor, message, paragraphIndex) {
+  const prompt = String(snapshot?.payload?.prompt || snapshot?.prompt || record?.finalPrompt || record?.prompt || '');
+  const messageRef = createStoryboardMessageReference({ message, chatKey: String(getChatKey() || ''), floor });
+  Object.assign(snapshot, {
+    target: 'floor', floor, inlineByDefault: true, chatKey: String(getChatKey() || ''), messageRef,
+    messageHash: hashText(String(message?.mes || '')), swipeId: Number(message?.swipe_id || 0),
+    paragraphAnchor: storyboardAnchorForMessage(message, floor, prompt, paragraphIndex),
+  });
+  return snapshot;
+}
+
+async function storyboardRedrawRecord(record) {
+  const state = storyboardState();
+  if (!state.enabled) return toast('请先启用分镜。', 'warning');
+  storyboardReconcileGalleryLinks({ persist: false });
+  if (!Number.isInteger(record?.floor) || !ctx().chat?.[record.floor]) {
+    storyboardLoadRecordToWorkbench(record);
+    return toast('原正文楼层已不存在，已载入镜头台并改为安全确认后生成。', 'info');
+  }
+  if (record.linkState === 'inactive_swipe') return toast('请先切回这张图对应的回复版本。', 'warning');
+
+  const linkedLog = state.logs.find((item) => item.recordId === record.id || item.recordIds?.includes(record.id));
+  const snapshot = clone(linkedLog?.snapshot || record.snapshot || {});
+  if (!snapshot?.source || !snapshot?.profile || !snapshot?.payload) {
+    storyboardLoadRecordToWorkbench(record);
+    return toast('这张旧图缺少完整生成设置，已载入镜头台，请确认后重绘。', 'info');
+  }
+
+  const savedMode = record.promptMode || snapshot.promptMode || state.promptMode;
+  const mode = ['auto', 'combined'].includes(savedMode) ? savedMode : 'manual';
+  const promptLocked = Boolean(record.promptLocked || snapshot.promptLocked);
+  const shouldRecompile = !promptLocked && mode !== 'manual';
+  let compilerStages = [];
+  let paragraphIndex = record.paragraphAnchor?.paragraphIndex ?? snapshot.paragraphAnchor?.paragraphIndex ?? 0;
+
+  if (shouldRecompile) {
+    if (storyboardCompilerBusy) return toast('已有画面正在整理，请稍候。', 'info');
+    storyboardCompilerBusy = true;
+    toast('正在依据更新后的正文重新取景…', 'info');
+    const startedAt = Date.now();
+    try {
+      const compilerState = clone(state);
+      compilerState.source = snapshot.source;
+      compilerState.target = 'floor';
+      compilerState.floor = String(record.floor);
+      compilerState.promptMode = mode;
+      compilerState.routing = { ...compilerState.routing, mode: 'single' };
+      compilerState.promptDraft = {
+        ...compilerState.promptDraft,
+        manual: String(snapshot.manualPrompt ?? compilerState.promptDraft?.manual ?? ''),
+      };
+      const context = await storyboardCompilerContext(compilerState);
+      const archivedProfiles = (snapshot.selectedCharacters || record.selectedCharacters || []).map((item) => ({
+        name: item.name, appearance: item.appearance, consistency: item.consistency, referenceStrategy: item.referenceStrategy,
+      })).filter((item) => item.name || item.appearance);
+      if (archivedProfiles.length) context.profiles = archivedProfiles;
+      const systemPrompt = storyboardCompilerSystemPrompt(compilerState, snapshot.profile);
+      const userPrompt = storyboardCompilerUserPrompt(compilerState, context);
+      const raw = await storyboardCallCompiler([
+        { role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt },
+      ], compilerState.promptCompiler.apiProfileId);
+      const result = storyboardCompilerResult(raw, context, getStoryboardCapabilities(snapshot.source, snapshot.profile.model), compilerState);
+      const capabilities = getStoryboardCapabilities(snapshot.source, snapshot.profile.model);
+      const archiveNegative = (snapshot.selectedCharacters || []).filter((item) => ['archive', 'hybrid'].includes(item.consistency))
+        .map((item) => String(item.negative || '').trim()).filter(Boolean);
+      const effectiveNegative = capabilities.negative
+        ? [...archiveNegative, result.negative].map((item) => String(item || '').trim()).filter(Boolean).join(', ')
+        : '';
+      snapshot.prompt = result.prompt;
+      snapshot.negative = result.negative;
+      snapshot.payload.prompt = result.prompt;
+      snapshot.payload.negative = effectiveNegative;
+      snapshot.promptMode = mode;
+      snapshot.promptLocked = false;
+      paragraphIndex = result.paragraphIndex;
+      compilerStages = [{
+        id: uid('stage-compiler'), type: 'prompt_compiler', status: 'success', startedAt, finishedAt: Date.now(),
+        input: { floor: context.floor, mode, reason: 'explicit-redraw-after-edit' },
+        output: { prompt: result.prompt, negative: result.negative, paragraphIndex, shotType: result.shotType },
+        decisions: result.decisions, error: '',
+      }];
+    } catch (error) {
+      console.error(`[${MODULE_NAME}] storyboard redraw compiler failed`, error);
+      toast(`重新取景失败：${error?.message || error}；原图仍保留。`, 'error');
+      return false;
+    } finally {
+      storyboardCompilerBusy = false;
+      rerenderIfOpen();
+    }
+  } else {
+    const finalPrompt = String(record.finalPrompt || record.prompt || snapshot.payload.prompt || snapshot.prompt || '').trim();
+    snapshot.prompt = finalPrompt;
+    snapshot.payload.prompt = finalPrompt;
+    snapshot.promptMode = mode;
+    snapshot.promptLocked = promptLocked;
+  }
+
+  storyboardRelinkRedrawSnapshot(snapshot, record, record.floor, ctx().chat[record.floor], paragraphIndex);
+  const redrawLog = linkedLog
+    ? { ...linkedLog, snapshot, effectivePrompt: snapshot.payload.prompt, effectiveNegative: snapshot.payload.negative }
+    : { id: uid('shotlog'), attempt: 0, snapshot, effectivePrompt: snapshot.payload.prompt, effectiveNegative: snapshot.payload.negative };
+  const job = storyboardJobFromLog(redrawLog);
+  if (!job) return toast('无法恢复这张图的生成设置。', 'warning');
+  job.compilerStages = compilerStages;
+  return storyboardQueueJob(job);
+}
+
 async function storyboardOnChatClick(event) {
   const button = event.target.closest?.('[data-storyboard-chat-action]');
   if (!button || !button.closest('#chat')) return;
@@ -12400,23 +12525,18 @@ async function storyboardOnChatClick(event) {
     const value = String(answer ?? '').trim().slice(0, 24000);
     if (!value) return;
     record.finalPrompt = value;
-    if (record.snapshot) { record.snapshot.prompt = value; if (record.snapshot.payload) record.snapshot.payload.prompt = value; }
+    record.promptLocked = true;
+    if (record.snapshot) {
+      record.snapshot.prompt = value;
+      record.snapshot.promptLocked = true;
+      if (record.snapshot.payload) record.snapshot.payload.prompt = value;
+    }
     await saveMetadata();
     storyboardRenderInlineImages();
     return;
   }
   if (button.dataset.storyboardChatAction === 'redraw') {
-    const state = storyboardState();
-    const log = state.logs.find((item) => item.recordId === record.id || item.recordIds?.includes(record.id));
-    if (log?.snapshot) {
-      const snapshot = clone(log.snapshot);
-      snapshot.prompt = record.finalPrompt || record.prompt || snapshot.prompt;
-      if (snapshot.payload) snapshot.payload.prompt = snapshot.prompt;
-      const redrawLog = { ...log, snapshot, effectivePrompt: snapshot.payload?.prompt || snapshot.prompt };
-      return storyboardRetryLog(redrawLog);
-    }
-    storyboardLoadRecordToWorkbench(record);
-    return toast('已载入镜头台，请确认后重绘。', 'info');
+    return storyboardRedrawRecord(record);
   }
   if (button.dataset.storyboardChatAction === 'download') return storyboardDownloadRecord(record);
   if (button.dataset.storyboardChatAction === 'detach') {
