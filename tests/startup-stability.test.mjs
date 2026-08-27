@@ -9,14 +9,14 @@ const manifest = JSON.parse(await readFile(new URL('manifest.json', root), 'utf8
 const packageJson = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
 const readme = await readFile(new URL('README.md', root), 'utf8');
 
-assert.equal(manifest.version, '1.52.0');
+assert.equal(manifest.version, '1.53.0');
 assert.equal(packageJson.version, manifest.version, 'manifest 与 package 版本必须一致');
 assert.equal(manifest.js, `index.js?v=${manifest.version}`, '入口脚本必须按版本破除浏览器模块缓存');
 assert.equal(manifest.css, `style.css?v=${manifest.version}`, '样式必须按版本破除浏览器缓存');
 assert.equal(manifest.homePage, 'https://github.com/liminale1525/Omniscene.git');
 assert.match(readme, /https:\/\/github\.com\/liminale1525\/Omniscene\.git/);
 assert.doesNotMatch(readme, /liminale1525\/story-director/);
-assert.match(source, /const VERSION = '1\.52\.0';/);
+assert.match(source, /const VERSION = '1\.53\.0';/);
 
 assert.match(source, /Symbol\.for\('qianmu\.omniscene\.runtime'\)/, '不同 URL 和安装目录必须共用一把运行锁');
 assert.match(source, /function init\(\) \{\s*if \(initialized \|\| !acquireRuntimeOwnership\(\)\) return;\s*try \{/, '初始化必须先取得所有权并启用事务保护');
@@ -49,7 +49,7 @@ const createGuard = vm.runInContext(`
   (RUNTIME_OWNER, RUNTIME_URL) => {
     const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
     const EXTENSION_NAME = 'test';
-const VERSION = '1.52.0';
+const VERSION = '1.53.0';
     let duplicateRuntimeWarned = false;
     async function qianmuDirectorInterceptor() {}
     ${guardSource}
@@ -63,8 +63,8 @@ const VERSION = '1.52.0';
   }
 `, sandbox);
 
-const first = createGuard(Symbol('first'), 'index.js?v=1.52.0');
-const duplicate = createGuard(Symbol('duplicate'), 'index.js?v=1.52.0&copy=2');
+const first = createGuard(Symbol('first'), 'index.js?v=1.53.0');
+const duplicate = createGuard(Symbol('duplicate'), 'index.js?v=1.53.0&copy=2');
 assert.equal(first.acquire(), true);
 first.register();
 assert.equal(first.owns(), true);
@@ -81,7 +81,7 @@ duplicate.release();
 for (const removedPath of ['qianmu-icons.js', 'assets/qianmu-phosphor-icons.svg']) {
   await assert.rejects(access(new URL(removedPath, root)), undefined, `${removedPath} 不得出现在稳定版`);
 }
-assert.match(source, /qianmu-icon-renderer\.js\?v=1\.52\.0/, '稳定版必须按版本加载局部图标渲染器');
+assert.match(source, /qianmu-icon-renderer\.js\?v=1\.53\.0/, '稳定版必须按版本加载局部图标渲染器');
 assert.doesNotMatch(source, /qianmu-icons\.js|installQianmuIconSystem/, '稳定版不得恢复旧图标系统');
 assert.doesNotMatch(iconRendererSource, /\bMutationObserver\b/, '局部图标渲染器不得观察全页 DOM');
 

@@ -35,7 +35,6 @@ export const QIANMU_FA_ICON_MAP = Object.freeze({
   'fa-arrow-right': 'qm-regular-arrow-right',
   'fa-arrow-right-arrow-left': 'qm-regular-arrows-left-right',
   'fa-arrow-rotate-left': 'qm-regular-arrow-counter-clockwise',
-  'fa-arrow-rotate-right': 'qm-regular-arrow-clockwise',
   'fa-arrow-trend-up': 'qm-duotone-trend-up',
   'fa-arrow-up': 'qm-regular-arrow-up',
   'fa-atom': 'qm-user-world-map',

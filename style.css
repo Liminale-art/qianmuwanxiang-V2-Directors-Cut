@@ -6813,3 +6813,196 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   background: color-mix(in srgb, var(--sd-accent) 18%, transparent);
 }
 #story-director-modal .sd-storyboard-tag-custom-category.hidden { display: none; }
+
+/* v1.53 · 阅片室：瀑布流、合集与同镜头版本叠片。 */
+#story-director-modal .sd-storyboard-gallery-head {
+  display: grid;
+  gap: 10px;
+  align-items: stretch;
+}
+#story-director-modal .sd-storyboard-gallery-title,
+#story-director-modal .sd-storyboard-gallery-tools {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#story-director-modal .sd-storyboard-gallery-title > span { min-width: 0; flex: 1; }
+#story-director-modal .sd-storyboard-gallery-title > b {
+  flex: 0 0 auto;
+  color: var(--sd-accent);
+  font-size: 18px;
+}
+#story-director-modal .sd-storyboard-gallery-tools {
+  display: grid;
+  grid-template-columns: minmax(112px, .34fr) minmax(0, 1fr) auto auto;
+  padding: 0 !important;
+}
+#story-director-modal .sd-storyboard-gallery-tools .text_pole { width: 100%; min-width: 0; margin: 0 !important; }
+#story-director-modal .sd-storyboard-gallery-select-mode::before { content: none !important; }
+#story-director-modal .sd-storyboard-gallery-select-mode { font-size: inherit !important; }
+#story-director-modal .sd-storyboard-gallery-folders {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+#story-director-modal .sd-storyboard-gallery-folder {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--sd-hairline);
+  border-radius: 13px;
+  background: var(--sd-card);
+}
+#story-director-modal .sd-storyboard-gallery-folder-open {
+  width: 100%;
+  display: grid;
+  gap: 7px;
+  padding: 8px 8px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+#story-director-modal .sd-storyboard-folder-covers {
+  aspect-ratio: 4 / 3;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  overflow: hidden;
+  border-radius: 9px;
+  background: var(--sd-pre);
+}
+#story-director-modal .sd-storyboard-folder-covers img,
+#story-director-modal .sd-storyboard-folder-covers i {
+  width: 100%; height: 100%; min-height: 0;
+  display: flex; align-items: center; justify-content: center;
+  object-fit: cover; color: var(--sd-muted); font-size: 14px;
+}
+#story-director-modal .sd-storyboard-gallery-folder-open > span:last-child { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 7px; }
+#story-director-modal .sd-storyboard-gallery-folder-open b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .75em; }
+#story-director-modal .sd-storyboard-gallery-folder-open small { flex: 0 0 auto; color: var(--sd-muted); font-size: .62em; }
+#story-director-modal .sd-storyboard-gallery-folder > div {
+  position: absolute;
+  z-index: 2;
+  top: 13px;
+  right: 13px;
+  display: flex;
+  gap: 5px;
+  opacity: 0;
+  transition: opacity .16s ease;
+}
+#story-director-modal .sd-storyboard-gallery-folder:hover > div,
+#story-director-modal .sd-storyboard-gallery-folder:focus-within > div { opacity: 1; }
+#story-director-modal .sd-storyboard-gallery-folder > div .sd-icon-btn {
+  width: 30px; height: 30px; margin: 0;
+  background: color-mix(in srgb, var(--sd-card) 82%, transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+#story-director-modal .sd-storyboard-gallery-bulk > div { flex-wrap: wrap; justify-content: flex-end; }
+#story-director-modal .sd-storyboard-gallery-move-target { width: min(150px, 34vw); min-width: 105px; margin: 0 !important; }
+#story-director-modal .sd-storyboard-gallery { columns: 3 180px; column-gap: 10px; }
+#story-director-modal .sd-storyboard-gallery-card { isolation: isolate; }
+#story-director-modal .sd-storyboard-gallery-card.is-stack { overflow: visible; margin-top: 5px; margin-right: 5px; }
+#story-director-modal .sd-storyboard-gallery-card.is-stack::before,
+#story-director-modal .sd-storyboard-gallery-card.is-stack::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border: 1px solid var(--sd-hairline);
+  border-radius: inherit;
+  background: var(--sd-card);
+  transform: translate(3px, -3px);
+}
+#story-director-modal .sd-storyboard-gallery-card.is-stack::after { transform: translate(6px, -6px); opacity: .72; }
+#story-director-modal .sd-storyboard-stack-count {
+  position: absolute;
+  right: 9px;
+  bottom: 9px;
+  min-width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(16, 17, 18, .55);
+  color: #fff;
+  font-size: 11px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+#story-director-modal .sd-storyboard-preview-record { position: relative; overflow: hidden; border-radius: inherit; }
+#story-director-modal .sd-storyboard-gallery-caption { display: grid !important; grid-template-columns: 1fr auto !important; gap: 4px 8px !important; padding: 10px 12px 13px !important; }
+
+.sd-storyboard-lightbox {
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, .55fr);
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+}
+.sd-storyboard-lightbox-stage { position: relative; }
+.sd-storyboard-lightbox-prev,
+.sd-storyboard-lightbox-next {
+  position: absolute;
+  top: 50%;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 50%;
+  background: rgba(20,20,20,.42);
+  color: #fff;
+  transform: translateY(-50%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.sd-storyboard-lightbox-prev { left: 10px; }
+.sd-storyboard-lightbox-next { right: 10px; }
+.sd-storyboard-lightbox-index {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(20,20,20,.46);
+  color: #fff;
+  font-size: 11px;
+  transform: translateX(-50%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.sd-storyboard-lightbox-detail {
+  min-width: 0;
+  overflow: auto;
+  padding: 48px 14px 14px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 16px;
+  background: rgba(24,25,27,.56);
+  color: #fff;
+  scrollbar-width: none;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.sd-storyboard-lightbox-detail::-webkit-scrollbar { display: none; }
+.sd-storyboard-lightbox-detail dl { display: grid; gap: 0; margin: 0; }
+.sd-storyboard-lightbox-detail dl > div { display: grid; gap: 5px; padding: 11px 2px; border-bottom: 1px solid rgba(255,255,255,.1); }
+.sd-storyboard-lightbox-detail dt { color: rgba(255,255,255,.58); font-size: 11px; }
+.sd-storyboard-lightbox-detail dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.55; }
+.sd-storyboard-lightbox-detail footer { position: sticky; bottom: 0; width: 100%; display: flex; justify-content: flex-end; margin-top: 12px; padding: 9px 0 0; border: 0; border-radius: 0; background: transparent; }
+.sd-storyboard-lightbox-detail footer .sd-btn { min-width: 88px; }
+
+@media (max-width: 640px) {
+  #story-director-modal .sd-storyboard-gallery-tools { grid-template-columns: minmax(100px, .36fr) minmax(0, 1fr) auto auto; }
+  #story-director-modal .sd-storyboard-gallery-folders { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+  #story-director-modal .sd-storyboard-gallery-folder > div { opacity: 1; top: 9px; right: 9px; }
+  #story-director-modal .sd-storyboard-gallery-folder > div .sd-icon-btn { width: 27px; height: 27px; }
+  #story-director-modal .sd-storyboard-gallery { columns: 2 140px; }
+  .sd-storyboard-lightbox { grid-template-columns: 1fr; grid-template-rows: minmax(42vh, 1fr) minmax(0, .72fr); padding: max(12px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)); }
+  .sd-storyboard-lightbox-detail { padding: 12px; }
+  .sd-storyboard-lightbox-close { top: max(14px, env(safe-area-inset-top)); right: 14px; }
+}
+
+@media (max-width: 430px) {
+  #story-director-modal .sd-storyboard-gallery-tools { grid-template-columns: minmax(0, .42fr) minmax(0, 1fr) auto; }
+  #story-director-modal .sd-storyboard-gallery-tools .sd-storyboard-gallery-new-folder { grid-column: 3; }
+  #story-director-modal .sd-storyboard-gallery-folders { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

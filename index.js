@@ -18,7 +18,7 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.52.0';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.53.0';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_CONSISTENCY_STRATEGIES,
@@ -51,7 +51,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.52.0';
+const VERSION = '1.53.0';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -800,6 +800,7 @@ let storyboardLinkSaveQueued = false;
 const storyboardGallerySelection = new Set();
 let storyboardGallerySelectMode = false;
 let storyboardGalleryVisibleCount = 40;
+let storyboardGalleryOpenCollectionId = '';
 let storyboardReferencePicker = null; // 阅片室作为档案参考图选择器时的返回上下文；仅保留在当前页面会话
 let storyboardLightboxEl = null;
 let initialized = false;
@@ -10204,6 +10205,40 @@ function storyboardGalleryRecords() {
   return store.storyboardImages;
 }
 
+function storyboardGalleryCollections() {
+  const store = getChatStore();
+  if (!Array.isArray(store.storyboardCollections)) store.storyboardCollections = [];
+  store.storyboardCollections = store.storyboardCollections
+    .filter((item) => item && String(item.id || '').trim() && String(item.name || '').trim())
+    .slice(0, 120);
+  return store.storyboardCollections;
+}
+
+function storyboardGalleryGroupId(record) {
+  return String(record?.variantRootId || record?.planShotId || record?.groupId || record?.id || '');
+}
+
+function storyboardGalleryGroups(records) {
+  const groups = new Map();
+  for (const record of records) {
+    const id = storyboardGalleryGroupId(record);
+    if (!id) continue;
+    if (!groups.has(id)) groups.set(id, []);
+    groups.get(id).push(record);
+  }
+  return [...groups.entries()].map(([id, variants]) => ({
+    id,
+    variants: variants.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0)),
+  })).sort((a, b) => Number(b.variants[0]?.createdAt || 0) - Number(a.variants[0]?.createdAt || 0));
+}
+
+function storyboardGalleryCollectionCovers(collectionId) {
+  return [...storyboardGalleryRecords()]
+    .filter((item) => String(item.collectionId || '') === String(collectionId || '') && storyboardSafeUrl(item.url))
+    .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+    .slice(0, 4);
+}
+
 function storyboardPlanCompilerSignature(state = storyboardState()) {
   return hashText([
     state.promptCompiler?.apiProfileId || 'current-api',
@@ -10866,9 +10901,12 @@ function storyboardFilteredGalleryRecords(state) {
   const allRecords = [...storyboardGalleryRecords()].reverse();
   return allRecords.filter((record) => {
     if (state.gallerySource !== 'all' && record.source !== state.gallerySource) return false;
+    if (storyboardGalleryOpenCollectionId) {
+      if (String(record.collectionId || '') !== storyboardGalleryOpenCollectionId) return false;
+    } else if (!query && record.collectionId) return false;
     if (!query) return true;
     const character = state.characters.find((item) => item.id === record.characterId);
-    return [record.prompt, record.model, STORYBOARD_SOURCES[record.source]?.label, character?.name, character?.variantName]
+    return [record.prompt, record.finalPrompt, record.model, record.artistString, STORYBOARD_SOURCES[record.source]?.label, character?.name, character?.variantName]
       .some((value) => String(value || '').toLowerCase().includes(query));
   });
 }
@@ -10876,6 +10914,7 @@ function storyboardFilteredGalleryRecords(state) {
 function storyboardBeginReferencePicker(state, entity, profile) {
   if (!entity || !profile) return;
   storyboardReferencePicker = { entityId: entity.id, profileId: profile.id };
+  storyboardGalleryOpenCollectionId = '';
   storyboardGallerySelection.clear();
   if (profile.reference?.type === 'gallery' && profile.reference.assetId
     && storyboardGalleryRecords().some((item) => item.id === profile.reference.assetId)) {
@@ -10912,25 +10951,42 @@ function storyboardReturnFromReferencePicker({ commit = false } = {}) {
 
 function renderStoryboardGallery(state) {
   const allRecords = [...storyboardGalleryRecords()].reverse();
+  const collections = storyboardGalleryCollections();
+  if (storyboardGalleryOpenCollectionId && !collections.some((item) => item.id === storyboardGalleryOpenCollectionId)) {
+    storyboardGalleryOpenCollectionId = '';
+  }
   const records = storyboardFilteredGalleryRecords(state);
-  const visible = records.slice(0, storyboardGalleryVisibleCount);
+  const groups = storyboardGalleryGroups(records);
+  const visible = groups.slice(0, storyboardGalleryVisibleCount);
+  const currentCollection = collections.find((item) => item.id === storyboardGalleryOpenCollectionId) || null;
   const pickingReference = Boolean(storyboardReferencePicker);
   const selectionMode = pickingReference || storyboardGallerySelectMode;
+  const collectionCards = !storyboardGalleryOpenCollectionId && !String(state.gallerySearch || '').trim()
+    ? collections.map((collection) => {
+      const covers = storyboardGalleryCollectionCovers(collection.id);
+      const count = allRecords.filter((item) => String(item.collectionId || '') === collection.id).length;
+      return `<article class="sd-storyboard-gallery-folder" data-storyboard-collection="${htmlEscape(collection.id)}">
+        <button type="button" class="sd-storyboard-gallery-folder-open" aria-label="打开合集 ${htmlEscape(collection.name)}"><span class="sd-storyboard-folder-covers">${[0, 1, 2, 3].map((index) => covers[index] ? `<img src="${htmlEscape(storyboardSafeUrl(covers[index].url))}" loading="lazy" alt="">` : '<i class="fa-solid fa-image"></i>').join('')}</span><span><b>${htmlEscape(collection.name)}</b><small>${count} 张</small></span></button>
+        ${pickingReference ? '' : '<div><button type="button" class="sd-icon-btn sd-storyboard-gallery-folder-rename" title="重命名" aria-label="重命名"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-gallery-folder-delete" title="解散合集" aria-label="解散合集"><i class="fa-solid fa-trash-can"></i></button></div>'}
+      </article>`;
+    }).join('') : '';
   return `<div class="sd-storyboard-gallery-page">
-    <section class="sd-card sd-storyboard-gallery-head"><div><span class="sd-storyboard-kicker">TAKES</span><h3>${pickingReference ? '选择档案参考图' : '成片'}</h3></div><div><b>${allRecords.length}</b>${pickingReference ? `<button type="button" class="sd-btn sd-storyboard-reference-cancel">取消</button><button type="button" class="sd-btn sd-primary sd-storyboard-reference-confirm" ${storyboardGallerySelection.size ? '' : 'disabled'}>确认</button>` : `<button type="button" class="sd-btn sd-storyboard-gallery-select-mode" aria-pressed="${storyboardGallerySelectMode}">${storyboardGallerySelectMode ? '完成' : '多选'}</button>`}</div></section>
-    <section class="sd-card sd-storyboard-gallery-tools"><input class="text_pole sd-storyboard-gallery-search" value="${htmlEscape(state.gallerySearch)}" placeholder="搜索画面、模型或人物"><select class="text_pole sd-storyboard-gallery-source"><option value="all">全部模型</option>${Object.values(STORYBOARD_SOURCES).map((item) => `<option value="${item.id}" ${state.gallerySource === item.id ? 'selected' : ''}>${item.label}</option>`).join('')}</select></section>
-    ${storyboardGallerySelectMode && !pickingReference ? `<section class="sd-card sd-storyboard-gallery-bulk"><span>已选 <b>${storyboardGallerySelection.size}</b> 张</span><div><button type="button" class="sd-btn sd-storyboard-gallery-select-all" ${records.length ? '' : 'disabled'}>全选结果</button><button type="button" class="sd-btn sd-danger sd-storyboard-gallery-delete-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>删除选中</button></div></section>` : ''}
-    ${records.length ? `<div class="sd-storyboard-gallery">${visible.map((record) => {
+    <section class="sd-card sd-storyboard-gallery-head"><div class="sd-storyboard-gallery-title">${currentCollection ? '<button type="button" class="sd-icon-btn sd-storyboard-gallery-folder-back" title="返回阅片室" aria-label="返回阅片室"><i class="fa-solid fa-arrow-left"></i></button>' : ''}<span><span class="sd-storyboard-kicker">TAKES</span><h3>${pickingReference ? '选择档案参考图' : (currentCollection?.name || '阅片室')}</h3></span><b>${currentCollection ? records.length : allRecords.length}</b></div><div class="sd-storyboard-gallery-tools"><select class="text_pole sd-storyboard-gallery-source" aria-label="筛选模型"><option value="all">全部模型</option>${Object.values(STORYBOARD_SOURCES).map((item) => `<option value="${item.id}" ${state.gallerySource === item.id ? 'selected' : ''}>${item.label}</option>`).join('')}</select><input class="text_pole sd-storyboard-gallery-search" value="${htmlEscape(state.gallerySearch)}" placeholder="搜索画面、模型或人物">${pickingReference ? `<button type="button" class="sd-btn sd-storyboard-reference-cancel">取消</button><button type="button" class="sd-btn sd-primary sd-storyboard-reference-confirm" ${storyboardGallerySelection.size ? '' : 'disabled'}>确认</button>` : `<button type="button" class="sd-icon-btn sd-storyboard-gallery-select-mode" aria-pressed="${storyboardGallerySelectMode}" title="${storyboardGallerySelectMode ? '完成多选' : '多选'}" aria-label="${storyboardGallerySelectMode ? '完成多选' : '多选'}"><i class="fa-solid ${storyboardGallerySelectMode ? 'fa-check' : 'fa-list-check'}"></i></button><button type="button" class="sd-icon-btn sd-storyboard-gallery-new-folder" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button>`}</div></section>
+    ${collectionCards ? `<section class="sd-storyboard-gallery-folders">${collectionCards}</section>` : ''}
+    ${storyboardGallerySelectMode && !pickingReference ? `<section class="sd-card sd-storyboard-gallery-bulk"><span>已选 <b>${storyboardGallerySelection.size}</b> 张</span><div><select class="text_pole sd-storyboard-gallery-move-target" aria-label="目标合集"><option value="">移出合集</option>${collections.map((item) => `<option value="${htmlEscape(item.id)}">${htmlEscape(item.name)}</option>`).join('')}</select><button type="button" class="sd-btn sd-storyboard-gallery-move-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>归入合集</button><button type="button" class="sd-btn sd-storyboard-gallery-select-all" ${records.length ? '' : 'disabled'}>全选结果</button><button type="button" class="sd-btn sd-danger sd-storyboard-gallery-delete-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>删除选中</button></div></section>` : ''}
+    ${groups.length ? `<div class="sd-storyboard-gallery">${visible.map((group) => {
+      const record = group.variants[0];
       const url = storyboardSafeUrl(record.url);
       const status = storyboardRecordStatus(record);
-      const selected = storyboardGallerySelection.has(record.id);
-      return `<article class="${selected ? 'selected' : ''}" data-storyboard-record="${htmlEscape(record.id)}">
+      const memberIds = group.variants.map((item) => item.id);
+      const selected = memberIds.length > 0 && memberIds.every((id) => storyboardGallerySelection.has(id));
+      return `<article class="sd-storyboard-gallery-card ${selected ? 'selected' : ''} ${group.variants.length > 1 ? 'is-stack' : ''}" data-storyboard-record="${htmlEscape(record.id)}" data-storyboard-group="${htmlEscape(group.id)}" data-storyboard-members="${htmlEscape(memberIds.join(','))}">
         ${selectionMode ? `<button type="button" class="sd-storyboard-gallery-check" aria-label="${selected ? '取消选择' : '选择'}"><i class="fa-solid ${selected ? 'fa-circle-check' : 'fa-circle'}"></i></button>` : ''}
-        <button type="button" class="sd-storyboard-preview-record" ${url ? '' : 'disabled'}>${url ? `<img src="${htmlEscape(url)}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 40))}">` : '<span class="sd-storyboard-image-missing"><i class="fa-solid fa-image"></i></span>'}</button>
-        <div><span>${htmlEscape(STORYBOARD_SOURCES[record.source]?.label || record.source || '分镜')}</span><small>${htmlEscape(status || formatDateTime(record.createdAt))}</small><p>${htmlEscape(snip(record.prompt || '', 110))}</p></div>
-        ${pickingReference ? '' : `<div class="sd-storyboard-gallery-actions"><button type="button" class="sd-icon-btn sd-storyboard-reuse-record" title="复用设置" aria-label="复用设置"><i class="fa-solid fa-arrow-rotate-right"></i></button><button type="button" class="sd-icon-btn sd-storyboard-download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button>${Number.isInteger(record.floor) ? `<button type="button" class="sd-icon-btn sd-storyboard-inline-toggle" title="${record.inline === false ? '插回正文' : '移出正文'}" aria-label="${record.inline === false ? '插回正文' : '移出正文'}"><i class="fa-solid ${record.inline === false ? 'fa-eye' : 'fa-eye-slash'}"></i></button>` : ''}<button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-record" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div>`}
+        <button type="button" class="sd-storyboard-preview-record" ${url ? '' : 'disabled'}>${url ? `<img src="${htmlEscape(url)}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 40))}">` : '<span class="sd-storyboard-image-missing"><i class="fa-solid fa-image"></i></span>'}${group.variants.length > 1 ? `<span class="sd-storyboard-stack-count">${group.variants.length}</span>` : ''}</button>
+        <div class="sd-storyboard-gallery-caption"><span>${htmlEscape(STORYBOARD_SOURCES[record.source]?.label || record.source || '分镜')}</span><small>${htmlEscape(status || formatDateTime(record.createdAt))}</small><p>${htmlEscape(snip(record.finalPrompt || record.prompt || '', 110))}</p></div>
+        ${pickingReference ? '' : `<div class="sd-storyboard-gallery-actions"><button type="button" class="sd-icon-btn sd-storyboard-download" title="下载当前图片" aria-label="下载当前图片"><i class="fa-solid fa-download"></i></button>${Number.isInteger(record.floor) ? `<button type="button" class="sd-icon-btn sd-storyboard-inline-toggle" title="${record.inline === false ? '插回正文' : '移出正文'}" aria-label="${record.inline === false ? '插回正文' : '移出正文'}"><i class="fa-solid ${record.inline === false ? 'fa-eye' : 'fa-eye-slash'}"></i></button>` : ''}<button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-record" title="删除当前图片" aria-label="删除当前图片"><i class="fa-solid fa-trash-can"></i></button></div>`}
       </article>`;
-    }).join('')}</div>${records.length > visible.length ? `<button type="button" class="sd-btn sd-storyboard-gallery-more">再显示 ${Math.min(40, records.length - visible.length)} 张</button>` : ''}` : `<section class="sd-card sd-storyboard-empty"><i class="fa-solid fa-film"></i><p>${allRecords.length ? '没有符合条件的成片。' : '还没有成片。镜头台生成的画面会收在这里。'}</p></section>`}
+    }).join('')}</div>${groups.length > visible.length ? `<button type="button" class="sd-btn sd-storyboard-gallery-more">再显示 ${Math.min(40, groups.length - visible.length)} 组</button>` : ''}` : `${collectionCards ? '' : `<section class="sd-card sd-storyboard-empty"><i class="fa-solid fa-film"></i><p>${allRecords.length ? '这里暂时没有符合条件的画面。' : '阅片室还是空的。生成后的画面会完整保留在这里。'}</p></section>`}`}
   </div>`;
 }
 
@@ -12184,6 +12240,11 @@ async function storyboardGenerate(root, { plan = null, automatic = false } = {})
 function storyboardRetryLog(log) {
   const job = storyboardJobFromLog(log);
   if (!job) return toast('这条日志缺少可复用设置。', 'warning');
+  const previous = storyboardGalleryRecords().find((item) => item.id === log.recordId || log.recordIds?.includes(item.id));
+  if (previous) {
+    job.variantRootId = storyboardGalleryGroupId(previous);
+    job.collectionId = String(previous.collectionId || '');
+  }
   if (job.chatKey && job.chatKey !== getChatKey()) {
     storyboardLoadLogToWorkbench(log);
     toast('原任务属于其他聊天，已安全载入镜头台并改为仅存成片。', 'info');
@@ -12227,6 +12288,7 @@ function storyboardHandleChatChanged() {
   storyboardGallerySelection.clear();
   storyboardGallerySelectMode = false;
   storyboardReferencePicker = null;
+  storyboardGalleryOpenCollectionId = '';
   storyboardGalleryVisibleCount = 40;
   if (storyboardActiveJob?.chatKey && storyboardActiveJob.chatKey !== currentChatKey) storyboardActiveJob.discardRequested = true;
   const keep = [];
@@ -12343,7 +12405,8 @@ function storyboardValidatedAnchor(job) {
 function storyboardCreateRecord(job, log, url, index, anchorState, response) {
   const { floor, message } = anchorState;
   return {
-    id: uid('shot'), groupId: job.id, planId: job.planId || '', planShotId: job.planShotId || '', imageIndex: index, url, prompt: job.prompt, finalPrompt: job.payload?.prompt,
+    id: uid('shot'), groupId: job.id, variantRootId: job.variantRootId || job.planShotId || job.id,
+    collectionId: job.collectionId || '', planId: job.planId || '', planShotId: job.planShotId || '', imageIndex: index, url, prompt: job.prompt, finalPrompt: job.payload?.prompt,
     artistString: job.artistString || job.payload?.artistString || '', contentRating: job.contentRating || 'sfw',
     negative: job.negative, effectiveNegative: job.payload?.negative || '', source: job.source,
     characterId: job.selectedCharacterId || '', selectedCharacters: clone(job.selectedCharacters || []),
@@ -12614,30 +12677,74 @@ function storyboardCloseLightbox() {
   storyboardLightboxEl = null;
 }
 
-function storyboardOpenLightbox(record) {
-  const url = storyboardSafeUrl(record?.url);
-  if (!record || !url) return;
+function storyboardRecordCharacterLabel(record) {
+  const state = storyboardState();
+  const rows = (record?.selectedCharacters || []).map((item) => {
+    const entity = storyboardEntityCatalog(state).find((entry) => entry.id === item.entityId);
+    const profile = entity?.profiles?.find((entry) => entry.id === item.profileId);
+    return [item.name || entity?.name, profile?.name].filter(Boolean).join(' · ');
+  }).filter(Boolean);
+  return rows.join('、') || '未使用人物档案';
+}
+
+function storyboardRecordParameterLabel(record) {
+  const size = record.width && record.height ? `${record.width} × ${record.height}` : '';
+  return [
+    size,
+    record.steps ? `${record.steps} steps` : '',
+    record.cfg ? `CFG ${record.cfg}` : '',
+    record.sampler || '',
+    record.scheduler || '',
+  ].filter(Boolean).join(' · ') || '沿用模型默认参数';
+}
+
+function storyboardOpenLightbox(input, initialId = '') {
+  let variants = (Array.isArray(input) ? input : [input]).filter((record) => storyboardSafeUrl(record?.url));
+  if (!variants.length) return;
+  let currentIndex = Math.max(0, variants.findIndex((record) => record.id === initialId));
   storyboardCloseLightbox();
   const layer = document.createElement('div');
   layer.className = 'sd-storyboard-lightbox';
   layer.tabIndex = -1;
   layer.setAttribute('role', 'dialog');
   layer.setAttribute('aria-modal', 'true');
-  layer.setAttribute('aria-label', '分镜成片预览');
-  layer.innerHTML = `<button type="button" class="sd-storyboard-lightbox-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button><div class="sd-storyboard-lightbox-stage"><img src="${htmlEscape(url)}" alt="${htmlEscape(snip(record.prompt || '分镜', 80))}"></div><footer><div><b>${htmlEscape(STORYBOARD_SOURCES[record.source]?.label || '分镜')}</b><span>${htmlEscape(record.prompt || '')}</span></div><button type="button" class="sd-btn sd-storyboard-lightbox-reuse">复用设置</button><button type="button" class="sd-btn sd-storyboard-lightbox-download">下载</button></footer>`;
+  layer.setAttribute('aria-label', '阅片室图片详情');
+  const render = () => {
+    const record = variants[currentIndex];
+    const url = storyboardSafeUrl(record?.url);
+    const sourceFloor = Number.isInteger(record.floor) ? `第 ${record.floor} 层` : (record.lastKnownFloor != null ? `原第 ${record.lastKnownFloor} 层` : '仅存于阅片室');
+    const positive = String(record.prompt || '').trim() || '—';
+    const negative = String(record.effectiveNegative || record.negative || '').trim() || '—';
+    const finalPrompt = String(record.finalPrompt || record.snapshot?.payload?.prompt || record.prompt || '').trim() || '—';
+    const artist = String(record.artistString || record.snapshot?.artistString || '').trim() || '—';
+    layer.innerHTML = `<button type="button" class="sd-storyboard-lightbox-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button><div class="sd-storyboard-lightbox-stage"><img src="${htmlEscape(url)}" alt="${htmlEscape(snip(finalPrompt, 80))}">${variants.length > 1 ? `<button type="button" class="sd-storyboard-lightbox-prev" aria-label="上一张"><i class="fa-solid fa-chevron-left"></i></button><button type="button" class="sd-storyboard-lightbox-next" aria-label="下一张"><i class="fa-solid fa-chevron-right"></i></button><span class="sd-storyboard-lightbox-index">${currentIndex + 1} / ${variants.length}</span>` : ''}</div><aside class="sd-storyboard-lightbox-detail"><dl><div><dt>来源楼层</dt><dd>${htmlEscape(sourceFloor)}</dd></div><div><dt>正面提示词</dt><dd>${htmlEscape(positive)}</dd></div><div><dt>负面提示词</dt><dd>${htmlEscape(negative)}</dd></div><div><dt>画师串</dt><dd>${htmlEscape(artist)}</dd></div><div><dt>实际最终提示词</dt><dd>${htmlEscape(finalPrompt)}</dd></div><div><dt>模型与参数</dt><dd>${htmlEscape(`${STORYBOARD_SOURCES[record.source]?.label || record.source || '分镜'} · ${record.model || '默认模型'} · ${storyboardRecordParameterLabel(record)}`)}</dd></div><div><dt>种子</dt><dd>${htmlEscape(record.seed == null || record.seed === '' ? '随机' : String(record.seed))}</dd></div><div><dt>人物档案</dt><dd>${htmlEscape(storyboardRecordCharacterLabel(record))}</dd></div></dl><footer><button type="button" class="sd-btn sd-storyboard-lightbox-download">下载</button><button type="button" class="sd-btn sd-danger sd-storyboard-lightbox-delete">删除</button></footer></aside>`;
+    applyQianmuIcons(layer);
+    layer.querySelector('.sd-storyboard-lightbox-close')?.addEventListener('click', storyboardCloseLightbox);
+    layer.querySelector('.sd-storyboard-lightbox-prev')?.addEventListener('click', () => { currentIndex = (currentIndex - 1 + variants.length) % variants.length; render(); });
+    layer.querySelector('.sd-storyboard-lightbox-next')?.addEventListener('click', () => { currentIndex = (currentIndex + 1) % variants.length; render(); });
+    layer.querySelector('.sd-storyboard-lightbox-download')?.addEventListener('click', () => void storyboardDownloadRecord(record));
+    layer.querySelector('.sd-storyboard-lightbox-delete')?.addEventListener('click', async () => {
+      if (!await confirmDialog('删除图片', '确定删除这张图片记录？SillyTavern 图片文件本身不会被清除。')) return;
+      const store = getChatStore();
+      store.storyboardImages = storyboardGalleryRecords().filter((item) => item.id !== record.id);
+      storyboardGallerySelection.delete(record.id);
+      variants = variants.filter((item) => item.id !== record.id);
+      await saveMetadata();
+      storyboardRenderInlineImages();
+      rerenderIfOpen();
+      if (!variants.length) storyboardCloseLightbox();
+      else { currentIndex = Math.min(currentIndex, variants.length - 1); render(); }
+    });
+  };
   layer.addEventListener('pointerdown', (event) => event.stopPropagation());
   layer.addEventListener('click', (event) => {
     event.stopPropagation();
-    if (event.target === layer || event.target.closest('.sd-storyboard-lightbox-close')) storyboardCloseLightbox();
+    if (event.target === layer) storyboardCloseLightbox();
   });
   layer.addEventListener('keydown', (event) => { if (event.key === 'Escape') storyboardCloseLightbox(); });
-  layer.querySelector('.sd-storyboard-lightbox-download')?.addEventListener('click', () => void storyboardDownloadRecord(record));
-  layer.querySelector('.sd-storyboard-lightbox-reuse')?.addEventListener('click', () => {
-    storyboardCloseLightbox(); storyboardLoadRecordToWorkbench(record); toast('已载入镜头台；确认画面后再生成。', 'success');
-  });
   document.body.appendChild(layer);
-  applyQianmuIcons(layer);
   storyboardLightboxEl = layer;
+  render();
   layer.focus({ preventScroll: true });
 }
 
@@ -12691,7 +12798,7 @@ async function storyboardExportPackage() {
         draft: { ...clone(group.draft), credentialId: '' },
       }])),
     },
-    chat: { bindings: clone(storyboardChatBindings()), images: records },
+    chat: { bindings: clone(storyboardChatBindings()), images: records, collections: clone(storyboardGalleryCollections()) },
     media,
   };
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
@@ -12716,6 +12823,7 @@ async function storyboardImportPackage(file) {
     if (data?.type !== 'qianmu-storyboard' || !isPlainObject(data.settings) || !isPlainObject(data.chat)) throw new Error('invalid');
   } catch (_) { return toast('导入失败：不是有效的千幕分镜数据包。', 'error'); }
   const incomingImages = Array.isArray(data.chat.images) ? data.chat.images : [];
+  const incomingCollections = Array.isArray(data.chat.collections) ? data.chat.collections : [];
   const incomingCharacters = Array.isArray(data.settings.characters) ? data.settings.characters : [];
   if (!await confirmDialog('导入分镜数据打包', `将导入 ${incomingCharacters.length} 份形象档案与 ${incomingImages.length} 条本聊天成片；同 ID 条目会更新，API Key 沿用本机设置。是否继续？`)) return;
   const state = storyboardState();
@@ -12773,6 +12881,11 @@ async function storyboardImportPackage(file) {
   }
   const store = getChatStore();
   store.storyboardImages = storyboardMergeById(storyboardGalleryRecords(), imported, 400);
+  store.storyboardCollections = storyboardMergeById(storyboardGalleryCollections(), incomingCollections, 120)
+    .filter((item) => String(item.name || '').trim()).map((item) => ({
+      id: String(item.id), name: String(item.name).trim().slice(0, 80),
+      createdAt: Number(item.createdAt) || Date.now(), updatedAt: Number(item.updatedAt) || Date.now(),
+    }));
   const bindings = isPlainObject(data.chat.bindings) ? data.chat.bindings : {};
   store.storyboardProfileBindings = {
     char: state.characters.some((item) => item.id === bindings.char) ? String(bindings.char) : storyboardChatBindings().char,
@@ -12886,6 +12999,8 @@ async function storyboardRedrawRecord(record) {
     : { id: uid('shotlog'), attempt: 0, snapshot, effectivePrompt: snapshot.payload.prompt, effectiveNegative: snapshot.payload.negative };
   const job = storyboardJobFromLog(redrawLog);
   if (!job) return toast('无法恢复这张图的生成设置。', 'warning');
+  job.variantRootId = storyboardGalleryGroupId(record);
+  job.collectionId = String(record.collectionId || '');
   job.compilerStages = compilerStages;
   return storyboardQueueJob(job);
 }
@@ -13505,6 +13620,46 @@ function bindStoryboardTabEvents(root) {
   });
   root.querySelector('.sd-storyboard-reference-cancel')?.addEventListener('click', () => storyboardReturnFromReferencePicker());
   root.querySelector('.sd-storyboard-reference-confirm')?.addEventListener('click', () => storyboardReturnFromReferencePicker({ commit: true }));
+  root.querySelector('.sd-storyboard-gallery-folder-back')?.addEventListener('click', () => {
+    storyboardGalleryOpenCollectionId = '';
+    storyboardGalleryVisibleCount = 40;
+    renderModal();
+  });
+  root.querySelector('.sd-storyboard-gallery-new-folder')?.addEventListener('click', async () => {
+    const answer = await promptInput('新建阅片合集', '输入合集名称。', '');
+    const name = String(answer ?? '').trim().slice(0, 80);
+    if (!name) return;
+    const collections = storyboardGalleryCollections();
+    if (collections.some((item) => item.name === name)) return toast('已有同名合集。', 'warning');
+    collections.push({ id: uid('shotcollection'), name, createdAt: Date.now(), updatedAt: Date.now() });
+    await saveMetadata(); renderModal();
+  });
+  root.querySelectorAll('[data-storyboard-collection]').forEach((card) => {
+    const collection = storyboardGalleryCollections().find((item) => item.id === card.dataset.storyboardCollection);
+    card.querySelector('.sd-storyboard-gallery-folder-open')?.addEventListener('click', () => {
+      if (!collection) return;
+      storyboardGalleryOpenCollectionId = collection.id;
+      storyboardGalleryVisibleCount = 40;
+      renderModal();
+    });
+    card.querySelector('.sd-storyboard-gallery-folder-rename')?.addEventListener('click', async () => {
+      if (!collection) return;
+      const answer = await promptInput('重命名阅片合集', '输入新的合集名称。', collection.name);
+      const name = String(answer ?? '').trim().slice(0, 80);
+      if (!name || name === collection.name) return;
+      if (storyboardGalleryCollections().some((item) => item.id !== collection.id && item.name === name)) return toast('已有同名合集。', 'warning');
+      collection.name = name; collection.updatedAt = Date.now();
+      await saveMetadata(); renderModal();
+    });
+    card.querySelector('.sd-storyboard-gallery-folder-delete')?.addEventListener('click', async () => {
+      if (!collection || !await confirmDialog('解散阅片合集', `确定解散「${collection.name}」？图片会回到阅片室，不会被删除。`)) return;
+      storyboardGalleryRecords().forEach((record) => { if (record.collectionId === collection.id) record.collectionId = ''; });
+      const store = getChatStore();
+      store.storyboardCollections = storyboardGalleryCollections().filter((item) => item.id !== collection.id);
+      if (storyboardGalleryOpenCollectionId === collection.id) storyboardGalleryOpenCollectionId = '';
+      await saveMetadata(); renderModal();
+    });
+  });
   root.querySelector('.sd-storyboard-gallery-select-mode')?.addEventListener('click', () => {
     storyboardGallerySelectMode = !storyboardGallerySelectMode;
     if (!storyboardGallerySelectMode) storyboardGallerySelection.clear();
@@ -13518,39 +13673,46 @@ function bindStoryboardTabEvents(root) {
   });
   root.querySelector('.sd-storyboard-gallery-delete-selected')?.addEventListener('click', async () => {
     const count = storyboardGallerySelection.size;
-    if (!count || !await confirmDialog('删除选中成片', `确定删除选中的 ${count} 条成片记录？SillyTavern 图片文件本身不会被清除。`)) return;
+    if (!count || !await confirmDialog('删除选中图片', `确定删除选中的 ${count} 条图片记录？SillyTavern 图片文件本身不会被清除。`)) return;
     const store = getChatStore();
     store.storyboardImages = storyboardGalleryRecords().filter((item) => !storyboardGallerySelection.has(item.id));
     storyboardGallerySelection.clear(); storyboardGallerySelectMode = false;
     await saveMetadata(); storyboardRenderInlineImages(); renderModal();
   });
+  root.querySelector('.sd-storyboard-gallery-move-selected')?.addEventListener('click', async () => {
+    if (!storyboardGallerySelection.size) return;
+    const collectionId = String(root.querySelector('.sd-storyboard-gallery-move-target')?.value || '');
+    storyboardGalleryRecords().forEach((record) => {
+      if (storyboardGallerySelection.has(record.id)) record.collectionId = collectionId;
+    });
+    const moved = storyboardGallerySelection.size;
+    storyboardGallerySelection.clear(); storyboardGallerySelectMode = false;
+    await saveMetadata(); toast(collectionId ? `已将 ${moved} 张图片归入合集。` : `已将 ${moved} 张图片移出合集。`, 'success'); renderModal();
+  });
   root.querySelector('.sd-storyboard-gallery-more')?.addEventListener('click', () => { storyboardGalleryVisibleCount += 40; renderModal(); });
-  root.querySelectorAll('.sd-storyboard-gallery article[data-storyboard-record]').forEach((card) => {
+  root.querySelectorAll('.sd-storyboard-gallery-card[data-storyboard-record]').forEach((card) => {
     const record = storyboardGalleryRecords().find((item) => item.id === card.dataset.storyboardRecord);
-    card.querySelector('.sd-storyboard-gallery-check')?.addEventListener('click', () => {
+    const memberIds = String(card.dataset.storyboardMembers || record?.id || '').split(',').filter(Boolean);
+    const variants = storyboardGalleryRecords().filter((item) => storyboardGalleryGroupId(item) === card.dataset.storyboardGroup)
+      .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+    const toggleSelection = () => {
       if (!record) return;
       if (storyboardReferencePicker) {
         const alreadySelected = storyboardGallerySelection.has(record.id);
         storyboardGallerySelection.clear();
         if (!alreadySelected) storyboardGallerySelection.add(record.id);
-      } else if (storyboardGallerySelection.has(record.id)) storyboardGallerySelection.delete(record.id);
-      else storyboardGallerySelection.add(record.id);
+      } else {
+        const allSelected = memberIds.length && memberIds.every((id) => storyboardGallerySelection.has(id));
+        memberIds.forEach((id) => allSelected ? storyboardGallerySelection.delete(id) : storyboardGallerySelection.add(id));
+      }
       renderModal();
+    };
+    card.querySelector('.sd-storyboard-gallery-check')?.addEventListener('click', () => {
+      toggleSelection();
     });
     card.querySelector('.sd-storyboard-preview-record')?.addEventListener('click', () => {
-      if (record && !storyboardGallerySelectMode && !storyboardReferencePicker) storyboardOpenLightbox(record);
-      else if (record) {
-        if (storyboardReferencePicker) {
-          const alreadySelected = storyboardGallerySelection.has(record.id);
-          storyboardGallerySelection.clear();
-          if (!alreadySelected) storyboardGallerySelection.add(record.id);
-        } else if (storyboardGallerySelection.has(record.id)) storyboardGallerySelection.delete(record.id);
-        else storyboardGallerySelection.add(record.id);
-        renderModal();
-      }
-    });
-    card.querySelector('.sd-storyboard-reuse-record')?.addEventListener('click', () => {
-      if (record) { storyboardLoadRecordToWorkbench(record); toast('已载入镜头台；确认画面后再生成。', 'success'); }
+      if (record && !storyboardGallerySelectMode && !storyboardReferencePicker) storyboardOpenLightbox(variants, record.id);
+      else toggleSelection();
     });
     card.querySelector('.sd-storyboard-download')?.addEventListener('click', () => void storyboardDownloadRecord(record));
     card.querySelector('.sd-storyboard-inline-toggle')?.addEventListener('click', async () => {
@@ -13559,7 +13721,7 @@ function bindStoryboardTabEvents(root) {
       await saveMetadata(); storyboardRenderInlineImages(); renderModal();
     });
     card.querySelector('.sd-storyboard-delete-record')?.addEventListener('click', async () => {
-      if (!record || !await confirmDialog('删除分镜', '确定删除这张分镜记录？SillyTavern 图片文件本身不会被清除。')) return;
+      if (!record || !await confirmDialog('删除图片', `${variants.length > 1 ? '只删除当前显示的这一张；同组其他版本会继续保留。' : '确定删除这张图片记录？'} SillyTavern 图片文件本身不会被清除。`)) return;
       const store = getChatStore(); store.storyboardImages = store.storyboardImages.filter((item) => item.id !== record.id);
       storyboardGallerySelection.delete(record.id);
       await saveMetadata(); storyboardRenderInlineImages(); renderModal();

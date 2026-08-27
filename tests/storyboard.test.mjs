@@ -91,7 +91,7 @@ assert.doesNotMatch(source, /千幕组织镜头，SillyTavern 负责连接与生
 assert.match(css, /#chat \.mes \.sd-storyboard-inline/, '正文分镜样式必须严格限定在聊天消息内');
 assert.match(source, /storyboardInjectMessageButtons[\s\S]*dataset\.storyboardChatAction = 'open-floor'/, '正文每层必须提供不直接计费的分镜快捷入口');
 assert.match(source, /storyboardParameterPresets[\s\S]*保存分镜样式[\s\S]*parameterPresetSelection/, '分镜参数样式必须可按模型保存和切换');
-assert.match(source, /storyboardLoadRecordToWorkbench[\s\S]*复用设置/, '成片必须可安全载回镜头台复用');
+assert.doesNotMatch(source, /sd-storyboard-reuse-record|sd-storyboard-lightbox-reuse/, '阅片室不得保留复用或重新生成入口');
 assert.match(source, /getStoryboardCapabilities\(state\.source, profile\.model\)[\s\S]*capabilities\.negative[\s\S]*capabilities\.steps/, '绘制参数必须按供应商与具体模型能力裁剪');
 assert.match(source, /openaiBackground[\s\S]*openaiOutputFormat[\s\S]*seedreamGuidanceScale[\s\S]*seedreamSequential[\s\S]*novelSm[\s\S]*novelVarietyBoost/, '各模型的官方参数必须在前端可调且进入真实请求');
 assert.match(source, /storyboardParseWorkflow[\s\S]*storyboardGatewayRequest/, 'ComfyUI 必须把有效 API Workflow 交给千幕网关');
@@ -104,7 +104,7 @@ assert.match(source, /async function importConfig[\s\S]*merged\.imagegen[\s\S]*n
 assert.match(gateway, /qianmu_prompt[\s\S]*qianmu_negative[\s\S]*qianmu_reference/, 'ComfyUI Workflow 占位符必须在服务端安全替换');
 assert.doesNotMatch(source, /source !== 'comfy'[\s\S]{0,120}consistencyMode = 'reference'/, '非 ComfyUI 后端不得伪装参考图一致性');
 assert.match(source, /storyboardFilteredGalleryRecords[\s\S]*storyboardGalleryVisibleCount[\s\S]*storyboardOpenLightbox/, '成片必须支持检索、渐进渲染与独立看图层');
-assert.match(source, /storyboardGallerySelection[\s\S]*删除选中成片/, '成片必须具备批量管理');
+assert.match(source, /storyboardGallerySelection[\s\S]*删除选中图片/, '阅片室必须具备批量管理');
 assert.match(source, /storyboardExportPackage[\s\S]*type: 'qianmu-storyboard'[\s\S]*credentialsIncluded: false/, '分镜数据包不得包含 API 密钥');
 assert.match(source, /storyboardImportPackage[\s\S]*saveBase64AsFile[\s\S]*messageHash/, '跨端导入须将内嵌图片交给 ST 落盘并重新校验正文锚点');
 assert.match(source, /if \(gallery\.length > 400\)/, '聊天成片元数据必须有容量上限');
