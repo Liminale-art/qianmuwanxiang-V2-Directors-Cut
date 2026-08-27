@@ -1,5 +1,5 @@
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
-export const STORYBOARD_SCHEMA_VERSION = 3;
+export const STORYBOARD_SCHEMA_VERSION = 4;
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -25,7 +25,6 @@ export const STORYBOARD_PROVIDER_REGISTRY = Object.freeze({
 export const STORYBOARD_MODEL_REGISTRY = Object.freeze({
   novel: Object.freeze([
     model('nai-diffusion-3', 'Anime V3 💕', 'V3', { negative: true, seed: true, steps: true, cfg: true, sampler: true, vibe: true }),
-    model('nai-diffusion-furry-3', 'Furry V3 💕', 'V3', { negative: true, seed: true, steps: true, cfg: true, sampler: true, vibe: true }),
     model('nai-diffusion-4-curated-preview', 'Anime Curated V4', 'V4', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
     model('nai-diffusion-4-full', 'Anime Full V4 💕', 'V4', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
     model('nai-diffusion-4-5-curated', 'Anime Curated V4.5', 'V4.5', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
@@ -76,7 +75,7 @@ export const getStoryboardCapabilities = (providerId, modelId = '') => getStoryb
 const legacyProfile = () => ({ loaded: false, model: '', sampler: '', scheduler: '', width: '', height: '', ratio: '1:1', count: '', steps: '', cfg: '', seed: '', comfyUrl: '', comfyWorkflow: '', comfyWorkflowNotice: '', openaiStyle: '', openaiQuality: '', openaiBackground: '', openaiOutputFormat: '', imageSize: '', watermark: false, seedreamGuidanceScale: '', seedreamSequential: false, googleEnhance: false, novelSm: false, novelSmDyn: false, novelDecrisper: false, novelVarietyBoost: false });
 const promptDraft = () => ({ manual: '', autoInstruction: '', compiled: '', negative: '', artistString: '', compiledAt: 0, compiledBy: '', userEditedCompiled: false, sourceSummary: [] });
 const connection = (id) => ({ providerId: id, activePresetId: '', presets: [], draft: { baseUrl: getStoryboardProvider(id).defaultBaseUrl, model: getStoryboardProvider(id).defaultModel } });
-const routingDefaults = () => ({ mode: 'single', single: { providerId: 'novel', connectionPresetId: '', parameterPresetId: '' }, rules: [], maxShotsPerFloor: 1, confirmMultipleRequests: true, providerConcurrency: 1 });
+const routingDefaults = () => ({ enabled: false, mode: 'single', single: { providerId: 'novel', modelId: 'nai-diffusion-5-full', connectionPresetId: '', parameterPresetId: '' }, rules: [], maxShotsPerFloor: 1, confirmMultipleRequests: true, providerConcurrency: 1 });
 const automationDefaults = () => ({ autoCapture: false, autoGenerate: false });
 
 export function createStoryboardDefaults() {
@@ -198,6 +197,10 @@ export function migrateStoryboardState(value) {
     if (s.enabled === undefined) s.enabled = true;
     s.automation ||= automationDefaults();
   }
+  if (fromVersion < 4) {
+    s.routing ||= routingDefaults();
+    if (s.routing.enabled === undefined) s.routing.enabled = s.routing.mode === 'ensemble';
+  }
   s.schemaVersion = STORYBOARD_SCHEMA_VERSION;
   return s;
 }
@@ -301,14 +304,18 @@ function normalizeRouting(value, catalogs = {}) {
   const r = obj(value) ? value : {}, hasConnectionCatalog = obj(catalogs.connections), hasParameterCatalog = Array.isArray(catalogs.parameterPresets);
   const target = (input = {}, fallbackProviderId = 'novel') => {
     const providerId = getStoryboardProvider(input.providerId) ? input.providerId : fallbackProviderId;
-    if (!providerId) return { providerId: '', connectionPresetId: '', parameterPresetId: '' };
+    if (!providerId) return { providerId: '', modelId: '', connectionPresetId: '', parameterPresetId: '' };
     const requestedConnection = cleanId(input.connectionPresetId), requestedParameters = cleanId(input.parameterPresetId);
-    const connectionPresetId = hasConnectionCatalog && requestedConnection && !catalogs.connections[providerId]?.presets?.some((preset) => preset.id === requestedConnection) ? '' : requestedConnection;
-    const parameterPresetId = hasParameterCatalog && requestedParameters && !catalogs.parameterPresets.some((preset) => preset.id === requestedParameters && preset.source === providerId) ? '' : requestedParameters;
-    return { providerId, connectionPresetId, parameterPresetId };
+    const connectionPreset = hasConnectionCatalog && requestedConnection ? catalogs.connections[providerId]?.presets?.find((preset) => preset.id === requestedConnection) : null;
+    const connectionPresetId = hasConnectionCatalog && requestedConnection && !connectionPreset ? '' : requestedConnection;
+    const requestedModel = str(input.modelId || connectionPreset?.model, 240);
+    const modelId = getStoryboardModel(providerId, requestedModel) ? requestedModel : getStoryboardProvider(providerId).defaultModel;
+    const parameterPresetId = hasParameterCatalog && requestedParameters && !catalogs.parameterPresets.some((preset) => preset.id === requestedParameters && preset.source === providerId && (!preset.profile?.model || preset.profile.model === modelId)) ? '' : requestedParameters;
+    return { providerId, modelId, connectionPresetId, parameterPresetId };
   };
   const rules = dedupeById((Array.isArray(r.rules) ? r.rules : []).filter(obj).map((rule) => ({ id: cleanId(rule.id), name: str(rule.name || '未命名分工', 80), shotTypes: uniqueStrings(rule.shotTypes, 30, 60), sensitive: rule.sensitive === true ? true : (rule.sensitive === false ? false : null), target: target(rule.target, ''), enabled: rule.enabled !== false, priority: int(rule.priority, -1000, 1000, 0) })).filter((rule) => rule.id && rule.target.providerId)).slice(0, 50).sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
-  return { mode: r.mode === 'ensemble' ? 'ensemble' : 'single', single: target(r.single), rules, maxShotsPerFloor: int(r.maxShotsPerFloor, 1, 20, 1), confirmMultipleRequests: r.confirmMultipleRequests !== false, providerConcurrency: int(r.providerConcurrency, 1, 4, 1) };
+  const enabled = r.enabled === undefined ? r.mode === 'ensemble' : Boolean(r.enabled);
+  return { enabled, mode: enabled ? 'ensemble' : 'single', single: target(r.single), rules, maxShotsPerFloor: int(r.maxShotsPerFloor, 1, 20, 1), confirmMultipleRequests: r.confirmMultipleRequests !== false, providerConcurrency: int(r.providerConcurrency, 1, 4, 1) };
 }
 
 export function normalizeStoryboardAutomation(value) {
@@ -421,7 +428,7 @@ export function resolveStoryboardVisualState(facts) {
   return { values: Object.fromEntries([...accepted].map(([key, fact]) => [key, fact.value])), sources: Object.fromEntries([...accepted].map(([key, fact]) => [key, fact.source])), decisions };
 }
 
-export function routeStoryboardShot(shot, routing) { const r = normalizeRouting(routing); if (r.mode !== 'ensemble') return { ...r.single, ruleId: '' }; const type = str(shot?.shotType || 'custom', 60), sensitive = Boolean(shot?.sensitive), rule = r.rules.find((x) => x.enabled && (!x.shotTypes.length || x.shotTypes.includes(type)) && (x.sensitive === null || x.sensitive === sensitive)); return rule ? { ...rule.target, ruleId: rule.id } : { ...r.single, ruleId: '' }; }
+export function routeStoryboardShot(shot, routing) { const r = normalizeRouting(routing); if (!r.enabled) return { ...r.single, ruleId: '' }; const type = str(shot?.shotType || 'custom', 60), sensitive = Boolean(shot?.sensitive), rule = r.rules.find((x) => x.enabled && (!x.shotTypes.length || x.shotTypes.includes(type)) && (x.sensitive === null || x.sensitive === sensitive)); return rule ? { ...rule.target, ruleId: rule.id } : { ...r.single, ruleId: '' }; }
 
 export function summarizeStoryboardGenerationDemand(jobs) {
   const requests = (Array.isArray(jobs) ? jobs : []).filter(obj);

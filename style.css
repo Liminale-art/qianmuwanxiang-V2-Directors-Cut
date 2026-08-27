@@ -6049,6 +6049,44 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   gap: 7px;
 }
 #story-director-modal .sd-storyboard-vibe-source .sd-icon-btn { width: 38px; min-width: 38px; height: 38px; margin: 0; }
+#story-director-modal .sd-storyboard-param-vibes {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 10px;
+  border-top: 1px solid var(--sd-hairline);
+}
+#story-director-modal .sd-storyboard-param-vibes > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+#story-director-modal .sd-storyboard-param-vibes > div:first-child > span { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+#story-director-modal .sd-storyboard-param-vibes small { color: var(--sd-muted); font-size: 10px; }
+#story-director-modal .sd-storyboard-param-vibes .sd-icon-btn { width: 32px; min-width: 32px; height: 32px; margin: 0; }
+#story-director-modal .sd-storyboard-param-vibe-list { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+#story-director-modal .sd-storyboard-param-vibe-list::-webkit-scrollbar { display: none; }
+#story-director-modal .sd-storyboard-param-vibe {
+  flex: 0 0 auto;
+  max-width: 156px;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px 4px 5px;
+  border: 1px solid var(--sd-hairline);
+  border-radius: 999px;
+  background: var(--sd-glass-weak);
+  color: var(--sd-text);
+  font: inherit;
+  font-size: 11px;
+}
+#story-director-modal .sd-storyboard-param-vibe img,
+#story-director-modal .sd-storyboard-param-vibe > i { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; display: inline-flex; align-items: center; justify-content: center; }
+#story-director-modal .sd-storyboard-param-vibe span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-storyboard-param-vibe.active { border-color: var(--sd-accent); color: var(--sd-accent); }
+#story-director-modal .sd-storyboard-param-vibe:disabled { opacity: .42; cursor: not-allowed; }
 #story-director-modal .sd-storyboard-asset-create-actions {
   display: flex;
   align-items: center;
@@ -6073,12 +6111,14 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-routing > .sd-card { padding: 13px 14px !important; }
 #story-director-modal .sd-storyboard-routing > .sd-card > .sd-card-title-row { align-items: center; margin-bottom: 10px; }
 #story-director-modal .sd-storyboard-routing > .sd-card > .sd-card-title-row h3 { margin: 0; }
+#story-director-modal .sd-storyboard-routing-head .sd-card-title-row > div:first-child { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+#story-director-modal .sd-storyboard-routing-head .sd-card-title-row > div:first-child small { color: var(--sd-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #story-director-modal .sd-storyboard-routing > .sd-card > .sd-card-title-row .sd-storyboard-mode { width: min(210px, 48%); }
 #story-director-modal .sd-storyboard-route-default,
 #story-director-modal .sd-storyboard-route-target {
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: center;
   gap: 6px;
 }
@@ -6099,7 +6139,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-route-rule > div:first-child {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(108px, .34fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(96px, .3fr) minmax(112px, .34fr) auto;
   gap: 6px;
 }
 #story-director-modal .sd-storyboard-route-rule > .sd-storyboard-route-target { grid-column: 1; }
@@ -6497,6 +6537,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-asset-main { grid-template-columns: minmax(92px, .38fr) minmax(0, 1fr); gap: 7px; }
   #story-director-modal .sd-storyboard-vibe-source { grid-template-columns: minmax(0, 1fr) auto; }
   #story-director-modal .sd-storyboard-vibe-source select { grid-column: 1 / -1; grid-row: 2; }
+  #story-director-modal .sd-storyboard-route-target { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #story-director-modal .sd-storyboard-route-default { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   #story-director-modal .sd-storyboard-route-default > span { grid-column: 1 / -1; }
   #story-director-modal .sd-storyboard-log-tools { grid-template-columns: 1fr; }
@@ -6541,7 +6582,8 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-route-default { grid-template-columns: 1fr; }
   #story-director-modal .sd-storyboard-route-default > span { grid-column: 1; }
   #story-director-modal .sd-storyboard-route-rule { grid-template-columns: 1fr; }
-  #story-director-modal .sd-storyboard-route-rule > div:first-child { grid-template-columns: minmax(0, 1fr) minmax(90px, .4fr) auto; }
+  #story-director-modal .sd-storyboard-route-rule > div:first-child { grid-template-columns: minmax(90px, 1fr) minmax(104px, 1fr) auto; }
+  #story-director-modal .sd-storyboard-route-rule > div:first-child .sd-storyboard-route-name { grid-column: 1 / -1; }
   #story-director-modal .sd-storyboard-route-rule > .sd-storyboard-route-target { grid-column: 1; grid-template-columns: 1fr; }
   #story-director-modal .sd-storyboard-route-rule > .sd-switch-row { grid-column: 1; }
   #story-director-modal .sd-storyboard-root details.sd-storyboard-log > summary { grid-template-columns: auto minmax(0, 1fr) auto; }

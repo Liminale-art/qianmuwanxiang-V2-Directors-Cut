@@ -25,7 +25,7 @@ import {
   scoreStoryboardParagraphAnchor,
 } from '../qianmu-storyboard.js';
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 3);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 4);
 assert.equal(STORYBOARD_PIPELINE_LOG_LIMIT, 20);
 assert.equal(STORYBOARD_PIPELINE_LOG_RETENTION_MS, 0);
 assert.deepEqual(Object.keys(STORYBOARD_PROVIDER_REGISTRY), ['novel', 'banana', 'openai', 'seedream', 'comfy']);
@@ -43,7 +43,7 @@ assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-5-full').vibe, fa
 assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-5-full').preciseReference, false, 'V5 launch must gate Precise Reference');
 
 const defaults = createStoryboardDefaults();
-assert.equal(defaults.schemaVersion, 3);
+assert.equal(defaults.schemaVersion, 4);
 assert.equal(defaults.enabled, false);
 assert.deepEqual(defaults.automation, { autoCapture: false, autoGenerate: false });
 assert.equal(defaults.promptMode, 'manual');
@@ -118,7 +118,7 @@ const migrated = normalizeStoryboardState({
   characters: [{ id: 'look-1', subjectType: 'char', subjectKey: 'card:a', subjectName: 'Alice', variantName: 'Winter', appearance: 'red coat' }],
   logs: [{ id: 'old-log', source: 'openai', status: 'success', prompt: 'old prompt', startedAt: now - 100, finishedAt: now }],
 });
-assert.equal(migrated.schemaVersion, 3);
+assert.equal(migrated.schemaVersion, 4);
 assert.equal(migrated.enabled, true, 'existing storyboard users must keep their pre-upgrade behavior');
 assert.equal(migrated.promptDraft.manual, 'old prompt');
 assert.equal(migrated.entities.char[0].name, 'Alice');
@@ -340,6 +340,6 @@ assert.equal(snapshotState.logs[0].snapshot.connection.apiKey, undefined);
 assert.equal(snapshotState.logs[0].snapshot.payload.references[0].data, undefined, 'binary request payloads must not persist in settings');
 
 assert.match(buildImagineCommand({ prompt: 'legacy remains' }), /^\/imagine /, 'legacy command must remain available for migration');
-assert.equal(migrateStoryboardState({ schemaVersion: 3, prompt: 'kept' }).prompt, 'kept', 'v3 migration must be idempotent');
+assert.equal(migrateStoryboardState({ schemaVersion: 4, prompt: 'kept' }).prompt, 'kept', 'v4 migration must be idempotent');
 
-console.log('Storyboard v3 schema contract OK');
+console.log('Storyboard v4 schema contract OK');
