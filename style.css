@@ -453,6 +453,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   transition: left .2s ease, top .2s ease, filter .18s ease;
 }
 #story-director-float.sd-float-dragging { transition: none; }
+#story-director-float.sd-float-wheel-opening { transition: none !important; }
 #story-director-float.sd-float-revealed { filter: brightness(1.08) drop-shadow(0 6px 12px rgba(0, 0, 0, .2)); }
 #story-director-float::before {
   content: '';
@@ -1466,6 +1467,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   resize: vertical;
   line-height: 1.55 !important;
   margin: 8px 0 10px;
+  overscroll-behavior-y: auto !important;
+  touch-action: pan-y !important;
 }
 
 #story-director-modal .sd-empty {

@@ -18,7 +18,7 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.45.4';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.45.5';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_CONSISTENCY_STRATEGIES,
@@ -45,7 +45,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.45.4';
+const VERSION = '1.45.5';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -5326,6 +5326,19 @@ function openQuickWheel(btn) {
   });
 }
 
+// 移动端半隐藏主格没有 pointerenter 预热：长按时先冻结位移动画、同步露出到最终位置，
+// 再读取真实 rect 作为蜂巢锚点。不能用固定延时等待 CSS transition，否则低帧率下仍会错位。
+function openQuickWheelFromLongPress(btn) {
+  const wasHidden = floatPositionIsHidden();
+  if (wasHidden) {
+    btn.classList.add('sd-float-wheel-opening');
+    revealFloatButton(btn, { temporary: false });
+    void btn.getBoundingClientRect().left;
+  }
+  openQuickWheel(btn);
+  if (wasHidden) requestAnimationFrame(() => btn.classList.remove('sd-float-wheel-opening'));
+}
+
 function bindFloatDrag(btn) {
   if (btn.dataset.dragBound) return;
   btn.dataset.dragBound = '1';
@@ -5370,19 +5383,20 @@ function bindFloatDrag(btn) {
     holdTimer = setTimeout(() => {
       if (moved || settings.quickWheelEnabled === false) return;
       wheelOpened = true;
-      revealFloatButton(btn, { temporary: false });
-      openQuickWheel(btn);
+      openQuickWheelFromLongPress(btn);
     }, 300);
   });
 
   btn.addEventListener('pointermove', (event) => {
     if (!btn.hasPointerCapture?.(event.pointerId)) return;
+    // 长按已经确认后锁住主格直到抬手；触屏的自然抖动不应把刚展开的蜂巢关闭或拖走。
+    if (wheelOpened) return;
     const dx = event.clientX - startX;
     const dy = event.clientY - startY;
-    if (Math.abs(dx) + Math.abs(dy) > 4) {
+    const dragSlop = event.pointerType === 'touch' ? 12 : 4;
+    if (Math.hypot(dx, dy) > dragSlop) {
       moved = true;
       clearTimeout(holdTimer);
-      if (wheelOpened) closeQuickWheel();
     }
     if (!moved) return;
     clearFloatRevealTimer(btn);
@@ -14000,6 +14014,81 @@ function updateInjectDock(root = document) {
   dockButton.disabled = count === 0;
 }
 
+function nestedScrollAtBoundary(element, deltaY) {
+  if (!(element instanceof Element) || !Number.isFinite(deltaY) || deltaY === 0) return false;
+  const maxScroll = Math.max(0, element.scrollHeight - element.clientHeight);
+  if (maxScroll <= 1) return true;
+  if (deltaY < 0) return element.scrollTop <= 1;
+  return element.scrollTop >= maxScroll - 1;
+}
+
+// 大文本框与主面板都是滚动容器。Safari / 移动 WebView 在文本框到达边界后偶尔不会
+// 把后续手势交还外层，表现为整页“卡住”。只在内部已到边界时接力，正文编辑与内部滚动保持原生。
+function bindPanelScrollStability(root) {
+  const body = root.querySelector?.('.sd-body');
+  if (!body) return;
+
+  body.querySelectorAll('textarea.sd-textarea').forEach((textarea) => {
+    textarea.addEventListener('wheel', (event) => {
+      if (!nestedScrollAtBoundary(textarea, event.deltaY)) return;
+      const before = body.scrollTop;
+      body.scrollTop += event.deltaY;
+      if (body.scrollTop === before) return;
+      event.preventDefault();
+      event.stopPropagation();
+    }, { passive: false });
+
+    let lastTouchY = null;
+    textarea.addEventListener('touchstart', (event) => {
+      lastTouchY = event.touches.length === 1 ? event.touches[0].clientY : null;
+    }, { passive: true });
+    textarea.addEventListener('touchmove', (event) => {
+      if (lastTouchY == null || event.touches.length !== 1) return;
+      const currentY = event.touches[0].clientY;
+      const deltaY = lastTouchY - currentY;
+      lastTouchY = currentY;
+      if (!nestedScrollAtBoundary(textarea, deltaY)) return;
+      const before = body.scrollTop;
+      body.scrollTop += deltaY;
+      if (body.scrollTop === before) return;
+      event.preventDefault();
+      event.stopPropagation();
+    }, { passive: false });
+    const clearTouch = () => { lastTouchY = null; };
+    textarea.addEventListener('touchend', clearTouch, { passive: true });
+    textarea.addEventListener('touchcancel', clearTouch, { passive: true });
+  });
+
+  // 折叠大卡会瞬间改变 scrollHeight；保持用户点击的标题在原视口位置，避免 iOS
+  // scroll anchoring 把旧的极限滚动值带到新布局。仅响应用户点击，不干预程序化恢复开合状态。
+  body.querySelectorAll('details[data-acc]').forEach((details) => {
+    const summary = details.querySelector(':scope > summary');
+    if (!summary) return;
+    let anchorTop = null;
+    let anchorTimer = null;
+    summary.addEventListener('click', (event) => {
+      if (event.target instanceof Element && event.target.closest('button, input, select, textarea, a')) return;
+      anchorTop = summary.getBoundingClientRect().top;
+      clearTimeout(anchorTimer);
+      anchorTimer = setTimeout(() => { anchorTop = null; }, 240);
+    });
+    details.addEventListener('toggle', () => {
+      const key = details.dataset.acc;
+      if (key && !key.startsWith('log-')) accState[key] = details.open;
+      if (anchorTop == null) return;
+      const expectedTop = anchorTop;
+      anchorTop = null;
+      clearTimeout(anchorTimer);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const maxScroll = Math.max(0, body.scrollHeight - body.clientHeight);
+        body.scrollTop = Math.min(maxScroll, Math.max(0, body.scrollTop));
+        const shift = summary.getBoundingClientRect().top - expectedTop;
+        if (Math.abs(shift) > .5) body.scrollTop = Math.min(maxScroll, Math.max(0, body.scrollTop + shift));
+      }));
+    });
+  });
+}
+
 function bindActiveTabEvents(root) {
   // 行内全屏编辑视图：返回 / 保存（保存直写数据模型，再退回原标签）
   if (editorView) {
@@ -14029,6 +14118,7 @@ function bindActiveTabEvents(root) {
     });
     return; // 编辑视图独占界面，不再绑定其余标签事件
   }
+  bindPanelScrollStability(root);
   bindTheaterTabEvents(root);
   bindFocusClockEvents(root);
   bindStoryboardTabEvents(root);

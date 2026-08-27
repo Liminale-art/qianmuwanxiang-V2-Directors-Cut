@@ -60,9 +60,11 @@ const wheelSettings = source.slice(source.indexOf('function renderQuickWheelSett
 assert.doesNotMatch(wheelSettings, /sd-wheel-docked-list|已收纳悬浮窗|sd-wheel-dock-remove/, '编辑蜂巢入口只管理千幕入口，第三方悬浮窗仅通过拖入拖出管理');
 assert.doesNotMatch(wheelSettings, /可自由组合千幕全部入口|拖动其他插件的悬浮窗靠近千幕/, '蜂巢入口编辑区不得保留上下两段说明小字');
 
-// 短按仍开主面板，长按才开轮盘；拖动超过阈值会取消长按。
-assert.match(source, /setTimeout\(\(\) =>[\s\S]*?openQuickWheel\(btn\)[\s\S]*?300\)/);
-assert.match(source, /if \(wheelOpened\) closeQuickWheel\(\)/);
+// 短按仍开主面板，长按才开轮盘；半隐藏触屏长按必须先冻结滑出动画再读取最终锚点。
+assert.match(source, /function openQuickWheelFromLongPress[\s\S]*sd-float-wheel-opening[\s\S]*revealFloatButton[\s\S]*getBoundingClientRect[\s\S]*openQuickWheel\(btn\)/);
+assert.match(source, /setTimeout\(\(\) =>[\s\S]*?openQuickWheelFromLongPress\(btn\)[\s\S]*?300\)/);
+assert.match(source, /if \(wheelOpened\) return;[\s\S]*event\.pointerType === 'touch' \? 12 : 4/, '长按确认后须锁住主格，触屏抖动阈值应宽于鼠标');
+assert.doesNotMatch(source, /if \(wheelOpened\) closeQuickWheel\(\)/, '长按后的自然手指抖动不得关闭轮盘');
 assert.match(source, /openModal\(\);\s*\/\/ 无参=恢复上次停留的 tab/);
 
 // 楼层窗保持纯数字导航，不创建正文预览列表。
@@ -82,6 +84,7 @@ assert.match(source, /bindFloorNavigatorViewport\(root\)/);
 assert.match(source, /viewport\?\.addEventListener\('resize', sync\)/);
 
 assert.match(css, /#story-director-quick-wheel/);
+assert.match(css, /#story-director-float\.sd-float-wheel-opening\s*\{[^}]*transition:\s*none !important/, '读取触屏长按锚点前必须冻结主格位移动画');
 assert.match(css, /--sd-wheel-item-height/);
 assert.match(css, /clip-path:\s*polygon\(50% 0, 100% 25%, 100% 75%/, '蜂巢入口必须是左右直边的竖向正六边形');
 assert.match(source, /mainEdge: '#c99b51'[\s\S]*mainEdge: '#8faf9b'[\s\S]*mainEdge: '#9fca62'[\s\S]*mainEdge: '#e3a0b8'/, '主 Logo 边线必须覆盖日间、夜间、柠夏与粉糯的指定强调色');
