@@ -6597,6 +6597,139 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-root *,
   #chat .mes .sd-storyboard-inline * { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+/* 正文镜头节点：只存在于渲染 DOM，不进入 .mes_text 或聊天消息数据。 */
+#chat .mes .sd-storyboard-inline {
+  --sd-shot-ink: color-mix(in srgb, currentColor 70%, var(--SmartThemeQuoteColor, #9f8870));
+  width: min(100%, 760px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 7px;
+  padding: 0;
+  overflow: visible;
+}
+#chat .mes .sd-storyboard-inline-title {
+  width: 100%;
+  height: 34px;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 19px minmax(28px, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 3px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--sd-shot-ink);
+  text-align: left;
+  cursor: pointer;
+}
+#chat .mes .sd-storyboard-inline-mark { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; }
+#chat .mes .sd-storyboard-inline-mark svg { width: 18px; height: 18px; display: block; }
+#chat .mes .sd-storyboard-inline-rule { height: 1px; background: currentColor; opacity: .28; }
+#chat .mes .sd-storyboard-inline-title b { font-size: 11px; font-weight: 650; letter-spacing: .16em; white-space: nowrap; }
+#chat .mes .sd-storyboard-inline-title small { font-size: 9px; opacity: .52; white-space: nowrap; }
+#chat .mes .sd-storyboard-inline:is(.is-screening, .is-compiling, .is-prompt_ready, .is-queued, .is-generating) .sd-storyboard-inline-title {
+  animation: sd-storyboard-inline-breathe 2.4s ease-in-out infinite;
+}
+@keyframes sd-storyboard-inline-breathe {
+  0%, 100% { opacity: .58; filter: brightness(.92); }
+  50% { opacity: 1; filter: brightness(1.18); }
+}
+#chat .mes .sd-storyboard-inline-reel {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 0 2px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+#chat .mes .sd-storyboard-inline-reel::-webkit-scrollbar { display: none; }
+#chat .mes .sd-storyboard-inline figure {
+  position: relative;
+  flex: 0 0 min(78%, 360px);
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--sd-shot-ink) 25%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #1b1b1b) 26%, transparent);
+  box-shadow: none;
+  scroll-snap-align: start;
+}
+#chat .mes .sd-storyboard-inline figure:only-child { flex-basis: 100%; }
+#chat .mes .sd-storyboard-inline-preview {
+  width: 100%;
+  height: auto;
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+#chat .mes .sd-storyboard-inline-preview img { width: 100%; max-height: min(72vh, 760px); object-fit: contain; }
+#chat .mes .sd-storyboard-inline-more {
+  position: absolute;
+  right: 9px;
+  bottom: 9px;
+  z-index: 2;
+  width: 31px;
+  height: 31px;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 50%;
+  background: rgba(23,24,24,.42);
+  color: rgba(255,255,255,.92);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+#chat .mes .sd-storyboard-inline-actions {
+  position: absolute;
+  right: 46px;
+  bottom: 9px;
+  z-index: 1;
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 999px;
+  background: rgba(23,24,24,.42);
+  color: rgba(255,255,255,.92);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  opacity: 0;
+  transform: translateX(16px) scale(.96);
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease, visibility .18s;
+}
+#chat .mes .sd-storyboard-inline figure.actions-open .sd-storyboard-inline-actions {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  pointer-events: auto;
+}
+#chat .mes .sd-storyboard-inline-actions button {
+  width: 27px;
+  height: 27px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+}
+@media (max-width: 640px) {
+  #chat .mes .sd-storyboard-inline-title { grid-template-columns: 19px minmax(18px, 1fr) auto; }
+  #chat .mes .sd-storyboard-inline-title small { display: none; }
+  #chat .mes .sd-storyboard-inline figure { flex-basis: min(88%, 340px); }
+  #chat .mes .sd-storyboard-inline-actions { right: 43px; max-width: calc(100% - 52px); }
+}
 /* Qianmu-owned Phosphor icon bridge. Icons are inserted explicitly by the
    component that rendered them; no page-wide observer or Font Awesome override. */
 .qm-phosphor-icon {

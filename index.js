@@ -18,7 +18,7 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.51.0';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.52.0';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_CONSISTENCY_STRATEGIES,
@@ -34,6 +34,7 @@ import {
   createStoryboardParagraphAnchor,
   createStoryboardDefaults,
   createStoryboardMessageReference,
+  createStoryboardWorkflowTicket,
   getStoryboardCapabilities,
   getStoryboardModel,
   normalizeStoryboardState,
@@ -50,7 +51,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.51.0';
+const VERSION = '1.52.0';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -10203,6 +10204,96 @@ function storyboardGalleryRecords() {
   return store.storyboardImages;
 }
 
+function storyboardPlanCompilerSignature(state = storyboardState()) {
+  return hashText([
+    state.promptCompiler?.apiProfileId || 'current-api',
+    state.promptCompiler?.instructionPresetId || 'default',
+    state.promptCompiler?.autoInstruction || state.promptDraft?.autoInstruction || '',
+    state.contentRating || 'sfw',
+    state.paragraphMode || 'auto',
+  ].join('\u241f'));
+}
+
+function storyboardPlanForMessage(state, floor, message) {
+  if (!message || !Number.isInteger(floor)) return null;
+  const chatKey = String(getChatKey() || '');
+  const reference = createStoryboardMessageReference({ message, chatKey, floor });
+  return (state.shotPlans || []).find((plan) => plan.chatKey === chatKey
+    && plan.messageRef?.messageKey === reference.messageKey
+    && plan.revisionId === reference.revisionId) || null;
+}
+
+function storyboardEnsurePlan(state, floor, message, { origin = 'manual', autoGenerate = false } = {}) {
+  let plan = storyboardPlanForMessage(state, floor, message);
+  if (plan) return plan;
+  const chatKey = String(getChatKey() || '');
+  const messageRef = createStoryboardMessageReference({ message, chatKey, floor });
+  const ticket = createStoryboardWorkflowTicket({
+    messageRef, chatKey, floor, origin, autoGenerate,
+    compilerSignature: storyboardPlanCompilerSignature(state), createdAt: Date.now(),
+  });
+  plan = { ...ticket, shots: [], status: 'idle' };
+  state.shotPlans.unshift(plan);
+  state.shotPlans = state.shotPlans.slice(0, 300);
+  return plan;
+}
+
+function storyboardPlanForJob(job) {
+  if (!job?.planId) return null;
+  return storyboardState().shotPlans.find((plan) => plan.id === job.planId) || null;
+}
+
+function storyboardSetPlanStatus(plan, status, { error = '', resultIds = null, job = null } = {}) {
+  if (!plan) return;
+  const shot = job?.planShotId ? plan.shots?.find((item) => item.id === job.planShotId) : null;
+  if (shot) {
+    shot.status = status;
+    shot.error = String(error || '').slice(0, 4000);
+    shot.attempt = Math.max(Number(shot.attempt) || 0, Number(job?.attempt) || 0);
+    if (Array.isArray(resultIds)) shot.resultIds = resultIds.map(String).slice(0, 20);
+  }
+  const shotStates = (plan.shots || []).map((item) => item.status);
+  if (!shot || !shotStates.length) plan.status = status;
+  else if (shotStates.includes('generating')) plan.status = 'generating';
+  else if (shotStates.includes('queued')) plan.status = 'queued';
+  else if (shotStates.includes('compiling')) plan.status = 'compiling';
+  else if (shotStates.includes('prompt_ready')) plan.status = 'prompt_ready';
+  else if (shotStates.every((item) => item === 'completed')) plan.status = 'completed';
+  else if (shotStates.some((item) => item === 'completed')) plan.status = 'completed';
+  else if (shotStates.every((item) => ['failed', 'cancelled', 'orphaned', 'stale'].includes(item))) plan.status = status;
+  else plan.status = status;
+  plan.updatedAt = Date.now();
+  if (error && !shot) plan.error = String(error).slice(0, 4000);
+  saveSettings();
+  storyboardScheduleInlineRender(30);
+}
+
+function storyboardReconcileShotPlans() {
+  const state = storyboardState();
+  const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
+  const chatKey = String(getChatKey() || '');
+  let changed = false;
+  for (const plan of state.shotPlans || []) {
+    if (!plan?.messageRef?.messageKey || plan.chatKey !== chatKey) continue;
+    const resolved = resolveStoryboardMessageReference(plan.messageRef, chat, { chatKey });
+    const previousFloor = plan.floor;
+    const previousState = plan.linkState || '';
+    if (['active', 'stale', 'inactive_swipe'].includes(resolved.state)) {
+      plan.floor = resolved.floor;
+      plan.messageRef.lastKnownFloor = resolved.floor;
+      if (resolved.state === 'inactive_swipe') plan.linkState = 'inactive_swipe';
+      else plan.linkState = resolved.state;
+    } else if (resolved.state === 'orphaned') {
+      plan.floor = null;
+      plan.linkState = 'orphaned';
+      if (!['completed', 'failed', 'cancelled'].includes(plan.status)) plan.status = 'orphaned';
+    }
+    if (previousFloor !== plan.floor || previousState !== plan.linkState) changed = true;
+  }
+  if (changed) queueMicrotask(() => saveSettings());
+  return changed;
+}
+
 function storyboardScheduleLinkSave() {
   if (storyboardLinkSaveQueued) return;
   storyboardLinkSaveQueued = true;
@@ -10348,6 +10439,7 @@ function renderStoryboardCreate(state) {
         : state.source === 'novel' ? `<label class="sd-switch-row"><span>SMEA</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelSm" ${profile.novelSm ? 'checked' : ''}></label><label class="sd-switch-row"><span>SMEA DYN</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelSmDyn" ${profile.novelSmDyn ? 'checked' : ''}></label><label class="sd-switch-row"><span>Decrisper</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelDecrisper" ${profile.novelDecrisper ? 'checked' : ''}></label><label class="sd-switch-row"><span>Variety Boost</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelVarietyBoost" ${profile.novelVarietyBoost ? 'checked' : ''}></label>` : '';
   return `<div class="sd-storyboard-create">
     <section class="sd-card sd-storyboard-master-switch"><div><b>分镜</b><small>${state.enabled ? '正文取景已启用' : '关闭时不在正文显示或自动运行'}</small></div><label class="sd-switch-row"><span>${state.enabled ? '已启用' : '未启用'}</span><input type="checkbox" class="sd-storyboard-enabled" ${state.enabled ? 'checked' : ''}></label></section>
+    <details class="sd-card sd-storyboard-automation-card" data-storyboard-card="automation" ${state.collapsedCards.automation ? '' : 'open'}><summary><span><b>自动化</b><small>${state.automation.autoGenerate ? '自动取景并生成' : state.automation.autoCapture ? '自动取景' : '手动触发'}</small></span><i class="fa-solid fa-chevron-down"></i></summary><div class="sd-storyboard-card-body"><label class="sd-switch-row"><span>新回复自动取景</span><input type="checkbox" class="sd-storyboard-auto-capture" ${state.automation.autoCapture ? 'checked' : ''} ${!state.enabled || !state.promptCompiler.enabled ? 'disabled' : ''}></label><label class="sd-switch-row"><span>取景后自动生成</span><input type="checkbox" class="sd-storyboard-auto-generate" ${state.automation.autoGenerate ? 'checked' : ''} ${!state.enabled || !state.promptCompiler.enabled || !state.automation.autoCapture ? 'disabled' : ''}></label></div></details>
     ${renderStoryboardModelCard(state)}
     <details class="sd-card sd-storyboard-prompt-card" data-storyboard-card="prompt" ${state.collapsedCards.prompt ? '' : 'open'}>
       <summary><span><b>提示词</b><small>${compilerEnabled ? (effectiveMode === 'combined' ? '手写意图 · LLM 整理' : 'LLM 自动取景') : '纯手写'}</small></span><i class="fa-solid fa-chevron-down"></i></summary>
@@ -10974,7 +11066,7 @@ function storyboardGenerationPayload(state, profile, { sourceId = state.source, 
   };
 }
 
-function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceId = state.source, modelId = '', connectionPresetId = '' } = {}) {
+function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceId = state.source, modelId = '', connectionPresetId = '', planId = '', planShotId = '' } = {}) {
   const rawFloor = String(state.floor ?? '').trim();
   const requestedFloor = Number.isInteger(Number(rawFloor)) && rawFloor ? Number(rawFloor) : null;
   const floor = state.target === 'latest' ? storyboardCurrentAssistantFloor() : (state.target === 'floor' ? requestedFloor : null);
@@ -11018,7 +11110,7 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
     },
   };
   return {
-    id: uid('shotjob'), ...snapshot, payload,
+    id: uid('shotjob'), ...snapshot, payload, planId, planShotId,
     compilerStages: clone(state.pendingCompilerStages || []),
     discardRequested: false, attempt: Math.max(1, Number(attempt) || 1),
   };
@@ -11046,6 +11138,7 @@ function storyboardStartLog(job) {
       messageRef: job.messageRef, messageHash: job.messageHash, swipeId: job.swipeId,
       profile: job.profile, selectedCharacters: job.selectedCharacters, paragraphAnchor: job.paragraphAnchor,
       shotType: job.shotType, connection: job.connection, payload: job.payload,
+      planId: job.planId || '', planShotId: job.planShotId || '',
     }),
   };
   const pipeline = {
@@ -11260,6 +11353,12 @@ function storyboardCaptureComfyWorkflow(root, profile) {
 function storyboardCaptureWorkbench(root, sourceId = storyboardState().source) {
   const state = storyboardState();
   const profile = state.profiles[sourceId] || (state.profiles[sourceId] = createStoryboardDefaults().profiles[sourceId]);
+  if (!root) {
+    const workflowResult = sourceId === 'comfy'
+      ? sanitizeStoryboardWorkflow(profile.comfyWorkflow)
+      : { ok: true, workflow: {}, serialized: '', removedFields: [], message: '' };
+    return { state, profile, workflowResult };
+  }
   const manual = root.querySelector('.sd-storyboard-manual-prompt');
   const autoInstruction = root.querySelector('.sd-storyboard-auto-instruction');
   const prompt = root.querySelector('.sd-storyboard-prompt');
@@ -11782,13 +11881,14 @@ function storyboardCompilerResult(raw, context, capabilities, state) {
   };
 }
 
-async function storyboardCompilePrompt(root) {
+async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}) {
   if (storyboardCompilerBusy) return false;
   const { state, profile } = storyboardCaptureWorkbench(root);
   if (!state.enabled) { toast('请先启用分镜。', 'warning'); return false; }
   const floor = storyboardTargetFloor(state);
   if (floor < 0 || !ctx().chat?.[floor]) { toast('当前没有可用于自动取景的正文。', 'warning'); return false; }
   storyboardCompilerBusy = true;
+  storyboardSetPlanStatus(plan, 'compiling');
   renderModal();
   const startedAt = Date.now();
   try {
@@ -11799,16 +11899,38 @@ async function storyboardCompilePrompt(root) {
       { role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt },
     ], state.promptCompiler.apiProfileId);
     const result = storyboardCompilerResult(raw, context, getStoryboardCapabilities(state.source, profile.model), state);
+    const compiledShots = Array.isArray(result.shots) && result.shots.length
+      ? result.shots
+      : [{
+        id: uid('shotdraft'), title: '镜头 1', shotType: result.shotType || 'custom',
+        prompt: result.prompt, negative: result.negative, paragraphIndex: result.paragraphIndex,
+        sensitive: state.contentRating === 'nsfw',
+      }];
     state.prompt = result.prompt;
     state.negative = result.negative;
     Object.assign(state.promptDraft, {
       compiled: result.prompt, negative: result.negative, compiledAt: Date.now(),
       compiledBy: state.promptCompiler.apiProfileId || 'current-api', userEditedCompiled: false,
       sourceSummary: [`第 ${context.floor} 层`, `近景 ${context.messages.length} 条`, `形象档案 ${context.profiles.length} 份`, `世界书 ${context.worldRows.length} 条`],
-      shots: result.shots,
+      shots: compiledShots,
     });
     state.pendingParagraphIndex = result.paragraphIndex;
     state.pendingShotType = result.shotType;
+    if (plan) {
+      plan.floor = context.floor;
+      plan.status = 'prompt_ready';
+      plan.promptLocked = false;
+      plan.shots = compiledShots.map((shot, index) => ({
+        id: shot.id || uid('shotplan'), title: shot.title || `镜头 ${index + 1}`,
+        shotType: shot.shotType || 'custom', prompt: shot.prompt || '', negative: shot.negative || '',
+        selectedCharacters: (state.selectedCharacters || []).map((item) => item.entityId).filter(Boolean),
+        providerId: '', connectionPresetId: '', parameterPresetId: '', routeRuleId: '',
+        status: 'prompt_ready', resultIds: [], error: '', attempt: 0,
+        paragraphAnchor: storyboardAnchorForMessage(ctx().chat?.[context.floor], context.floor, shot.prompt, shot.paragraphIndex),
+        sensitive: Boolean(shot.sensitive ?? state.contentRating === 'nsfw'), userEdited: false, promptLocked: false,
+      }));
+      plan.updatedAt = Date.now();
+    }
     for (const candidate of result.castCandidates) {
       const key = candidate.name.toLocaleLowerCase();
       const existing = state.entities.candidates.find((item) => item.name.toLocaleLowerCase() === key);
@@ -11823,16 +11945,18 @@ async function storyboardCompilePrompt(root) {
         manual: state.promptDraft.manual || '', paragraphMode: state.paragraphMode,
         worldMode: state.promptCompiler.worldMode, worldFallback: context.worldFallback,
         sourceSummary: state.promptDraft.sourceSummary,
-      }, output: { prompt: result.prompt, negative: result.negative, paragraphIndex: result.paragraphIndex, shotType: result.shotType, shots: result.shots, castCandidates: result.castCandidates },
+      }, output: { prompt: result.prompt, negative: result.negative, paragraphIndex: result.paragraphIndex, shotType: result.shotType, shots: compiledShots, castCandidates: result.castCandidates },
       decisions: result.decisions, error: '',
     }];
     saveSettings();
-    toast(result.castCandidates.length
+    storyboardScheduleInlineRender(30);
+    if (!quiet) toast(result.castCandidates.length
       ? `画面已整理；发现 ${result.castCandidates.length} 位群像候选，可在形象档案中确认。`
       : '画面已整理，可继续修改最终提示词。', 'success');
     return true;
   } catch (error) {
     console.error(`[${MODULE_NAME}] storyboard prompt compiler failed`, error);
+    storyboardSetPlanStatus(plan, 'failed', { error: error?.message || error });
     toast(`画面整理失败：${error?.message || error}`, 'error');
     return false;
   } finally {
@@ -11971,19 +12095,24 @@ function storyboardQueueJob(job) {
   const log = storyboardStartLog(job);
   job.logId = log.id;
   storyboardQueue.push(job);
+  storyboardSetPlanStatus(storyboardPlanForJob(job), 'queued', { job });
   saveSettings();
   renderModal();
   void storyboardPumpQueue();
   return true;
 }
 
-async function storyboardGenerate(root) {
+async function storyboardGenerate(root, { plan = null, automatic = false } = {}) {
   const { state, profile, workflowResult } = storyboardCaptureWorkbench(root);
   if (!state.enabled) return toast('请先启用分镜。', 'warning');
   if (state.source === 'comfy' && (!workflowResult.ok || workflowResult.removedFields.length || profile.comfyWorkflowNotice)) {
     return toast(profile.comfyWorkflowNotice || storyboardWorkflowIssue(workflowResult), 'warning');
   }
-  if (!state.prompt.trim() && state.promptCompiler.enabled) await storyboardCompilePrompt(root);
+  const targetFloor = storyboardTargetFloor(state);
+  if (!plan && state.target !== 'gallery' && Number.isInteger(targetFloor) && ctx().chat?.[targetFloor]) {
+    plan = storyboardEnsurePlan(state, targetFloor, ctx().chat[targetFloor], { origin: automatic ? 'automatic' : 'manual', autoGenerate: automatic });
+  }
+  if (!state.prompt.trim() && state.promptCompiler.enabled) await storyboardCompilePrompt(root, { plan });
   if (!state.prompt.trim()) return toast('请先写下画面描述，或开启 LLM 协作自动取景。', 'warning');
   if (state.target === 'floor' && (!String(state.floor || '').trim() || !Number.isInteger(Number(state.floor)))) {
     return toast('请输入有效的正文楼层。', 'warning');
@@ -11997,15 +12126,41 @@ async function storyboardGenerate(root) {
       paragraphIndex: state.paragraphMode === 'manual' ? state.manualParagraphIndex : state.pendingParagraphIndex,
       shotType: state.pendingShotType || 'custom', sensitive: state.contentRating === 'nsfw',
     }];
+  if (plan) {
+    plan.status = 'prompt_ready';
+    plan.autoGenerate = Boolean(plan.autoGenerate || automatic);
+    plan.promptLocked = Boolean(state.promptDraft?.userEditedCompiled);
+    plan.shots = planned.map((shot, index) => ({
+      ...(plan.shots?.find((item) => item.id === shot.id) || {}),
+      id: shot.id || plan.shots?.[index]?.id || uid('shotplan'),
+      title: shot.title || `镜头 ${index + 1}`, shotType: shot.shotType || 'custom',
+      prompt: String(shot.prompt || '').trim(), negative: String(shot.negative || '').trim(),
+      selectedCharacters: (state.selectedCharacters || []).map((item) => item.entityId).filter(Boolean),
+      providerId: '', connectionPresetId: '', parameterPresetId: '', routeRuleId: '',
+      status: 'prompt_ready', resultIds: [], error: '', attempt: 0,
+      paragraphAnchor: storyboardAnchorForMessage(ctx().chat?.[targetFloor], targetFloor, shot.prompt, shot.paragraphIndex),
+      sensitive: Boolean(shot.sensitive), userEdited: Boolean(state.promptDraft?.userEditedCompiled),
+      promptLocked: Boolean(state.promptDraft?.userEditedCompiled),
+    }));
+    plan.updatedAt = Date.now();
+  }
   const jobs = [];
-  for (const shot of planned) {
+  for (let index = 0; index < planned.length; index++) {
+    const shot = planned[index];
     const route = routingEnabled ? routeStoryboardShot(shot, state.routing) : { providerId: state.source, modelId: profile.model, connectionPresetId: '', parameterPresetId: '' };
     const sourceId = STORYBOARD_PROVIDER_REGISTRY[route.providerId] ? route.providerId : state.source;
     let shotProfile = sourceId === state.source ? storyboardProfileSnapshot(profile, sourceId) : storyboardProfileSnapshot(storyboardProviderProfile(state, sourceId), sourceId);
     const parameterPreset = state.parameterPresets.find((item) => item.id === route.parameterPresetId && item.source === sourceId);
     if (parameterPreset) shotProfile = { ...shotProfile, ...clone(parameterPreset.profile), loaded: true };
     if (route.modelId) shotProfile.model = route.modelId;
-    jobs.push(storyboardCreateJob(state, shotProfile, { shot, sourceId, modelId: route.modelId, connectionPresetId: route.connectionPresetId }));
+    const planShot = plan?.shots?.[index] || null;
+    if (planShot) Object.assign(planShot, { providerId: sourceId, connectionPresetId: route.connectionPresetId || '', parameterPresetId: route.parameterPresetId || '', routeRuleId: route.ruleId || '' });
+    const job = storyboardCreateJob(state, shotProfile, {
+      shot, sourceId, modelId: route.modelId, connectionPresetId: route.connectionPresetId,
+      planId: plan?.id || '', planShotId: planShot?.id || '',
+    });
+    job.automatic = Boolean(automatic);
+    jobs.push(job);
   }
   const remainingSlots = STORYBOARD_QUEUE_LIMIT - storyboardQueue.length - (storyboardActiveJob ? 1 : 0);
   if (jobs.length > remainingSlots) {
@@ -12014,7 +12169,7 @@ async function storyboardGenerate(root) {
   const generationDemand = summarizeStoryboardGenerationDemand(jobs);
   const requiresPlanConfirmation = generationDemand.requestCount > 1 && state.routing.confirmMultipleRequests !== false;
   const requiresCountConfirmation = generationDemand.hasMultiImageRequest;
-  if (requiresPlanConfirmation || requiresCountConfirmation) {
+  if (!automatic && (requiresPlanConfirmation || requiresCountConfirmation)) {
     const providers = jobs.map((job) => STORYBOARD_PROVIDER_REGISTRY[job.source]?.label || '模型');
     const detail = generationDemand.requestCount > 1
       ? `${generationDemand.requestCount} 次生图请求（${providers.join('、')}），预计生成 ${generationDemand.imageCount} 张图片`
@@ -12049,6 +12204,7 @@ function storyboardClearWaitingQueue(reason = '已从等待队列移除') {
   for (const job of storyboardQueue) {
     const log = state.logs.find((item) => item.id === job.logId);
     storyboardFinishLog(log, 'cancelled', { error: reason });
+    storyboardSetPlanStatus(storyboardPlanForJob(job), 'cancelled', { error: reason, job });
   }
   storyboardQueue = [];
   saveSettings();
@@ -12058,8 +12214,9 @@ function storyboardClearWaitingQueue(reason = '已从等待队列移除') {
 function storyboardRemoveQueuedLog(log) {
   const index = storyboardQueue.findIndex((job) => job.logId === log?.id);
   if (index < 0) return;
-  storyboardQueue.splice(index, 1);
+  const [job] = storyboardQueue.splice(index, 1);
   storyboardFinishLog(log, 'cancelled', { error: '已从等待队列移除' });
+  storyboardSetPlanStatus(storyboardPlanForJob(job), 'cancelled', { error: '已从等待队列移除', job });
   renderModal();
 }
 
@@ -12186,7 +12343,7 @@ function storyboardValidatedAnchor(job) {
 function storyboardCreateRecord(job, log, url, index, anchorState, response) {
   const { floor, message } = anchorState;
   return {
-    id: uid('shot'), groupId: job.id, imageIndex: index, url, prompt: job.prompt, finalPrompt: job.payload?.prompt,
+    id: uid('shot'), groupId: job.id, planId: job.planId || '', planShotId: job.planShotId || '', imageIndex: index, url, prompt: job.prompt, finalPrompt: job.payload?.prompt,
     artistString: job.artistString || job.payload?.artistString || '', contentRating: job.contentRating || 'sfw',
     negative: job.negative, effectiveNegative: job.payload?.negative || '', source: job.source,
     characterId: job.selectedCharacterId || '', selectedCharacters: clone(job.selectedCharacters || []),
@@ -12204,22 +12361,27 @@ function storyboardCreateRecord(job, log, url, index, anchorState, response) {
 }
 
 async function storyboardRunJob(job, log) {
+  const plan = storyboardPlanForJob(job);
   try {
     if (!storyboardState().enabled) {
       storyboardFinishLog(log, 'cancelled', { error: '分镜总开关已关闭' });
+      storyboardSetPlanStatus(plan, 'cancelled', { error: '分镜总开关已关闭', job });
       return;
     }
     if (job.chatKey && job.chatKey !== getChatKey()) {
       storyboardFinishLog(log, 'cancelled', { error: '聊天已切换，任务未执行' });
+      storyboardSetPlanStatus(plan, 'cancelled', { error: '聊天已切换，任务未执行', job });
       return;
     }
     const beforeRequestAnchor = storyboardValidatedAnchor(job);
     if (job.target !== 'gallery' && job.messageRef?.messageKey && !beforeRequestAnchor.valid) {
       storyboardFinishLog(log, 'cancelled', { error: beforeRequestAnchor.linkState === 'orphaned' ? '原正文楼层已删除，未发起生图请求' : '正文已更改，未发起生图请求' });
+      storyboardSetPlanStatus(plan, beforeRequestAnchor.linkState === 'orphaned' ? 'orphaned' : 'stale', { error: '正文引用已变化', job });
       return;
     }
     if (beforeRequestAnchor.valid && beforeRequestAnchor.relocated) job.floor = beforeRequestAnchor.floor;
     storyboardMarkLogGenerating(log);
+    storyboardSetPlanStatus(plan, 'generating', { job });
     storyboardPipelineStage(log, 'context', 'success', {}, {
       floor: job.floor, chatKey: job.chatKey, paragraphAnchor: job.paragraphAnchor,
       characters: (job.selectedCharacters || []).map((item) => ({ name: item.name, consistency: item.consistency, referenceStrategy: item.referenceStrategy })),
@@ -12248,6 +12410,7 @@ async function storyboardRunJob(job, log) {
     });
     if (job.discardRequested || job.chatKey && job.chatKey !== getChatKey()) {
       storyboardFinishLog(log, 'cancelled', { error: job.discardRequested ? '用户放弃收片' : '生成期间切换了聊天' });
+      storyboardSetPlanStatus(plan, 'cancelled', { error: job.discardRequested ? '用户放弃收片' : '生成期间切换了聊天', job });
       return;
     }
     const images = Array.isArray(data.images) ? data.images.slice(0, 8) : [];
@@ -12266,17 +12429,22 @@ async function storyboardRunJob(job, log) {
       requestedFloor: job.floor, finalFloor: anchorState.floor, fallback: !anchorState.valid && job.target !== 'gallery',
     });
     storyboardFinishLog(log, 'success', { recordId: records[0].id, recordIds: records.map((item) => item.id), floor: anchorState.floor });
+    storyboardSetPlanStatus(plan, 'completed', { resultIds: records.map((item) => item.id), job });
     storyboardScheduleInlineRender(30);
     if (!anchorState.valid && job.target !== 'gallery') toast(`${records.length} 张分镜已生成；原楼层变化，已安全转存阅片室。`, 'warning');
-    else toast(records[0].inline ? `${records.length} 张分镜已穿插至第 ${anchorState.floor} 层。` : `${records.length} 张分镜已存入阅片室。`, 'success');
+    else if (!job.automatic) toast(records[0].inline ? `${records.length} 张分镜已穿插至第 ${anchorState.floor} 层。` : `${records.length} 张分镜已存入阅片室。`, 'success');
   } catch (error) {
     console.error(`[${MODULE_NAME}] storyboard generation failed`, error);
-    if (job.discardRequested) storyboardFinishLog(log, 'cancelled', { error: '用户放弃收片' });
+    if (job.discardRequested) {
+      storyboardFinishLog(log, 'cancelled', { error: '用户放弃收片' });
+      storyboardSetPlanStatus(plan, 'cancelled', { error: '用户放弃收片', job });
+    }
     else {
       const pipeline = storyboardState().pipelineLogs.find((item) => item.id === log?.pipelineId);
       const runningStage = [...(pipeline?.stages || [])].reverse().find((item) => item.status === 'running');
       if (runningStage) storyboardPipelineStage(log, runningStage.type, 'failed', {}, {}, error?.message || error);
       storyboardFinishLog(log, 'failed', { error: error?.message || error });
+      storyboardSetPlanStatus(plan, 'failed', { error: error?.message || error, job });
       toast(`分镜生成失败：${error?.message || error}`, 'error');
     }
   }
@@ -12359,6 +12527,32 @@ function storyboardInjectMessageButtons(chatRoot) {
   });
 }
 
+const STORYBOARD_INLINE_ICONS = Object.freeze({
+  empty: '<svg viewBox="0 0 256 256" aria-hidden="true"><path d="M159.82 159.82l-24.34 66.94a8 8 0 0 1-15 0L96.18 159.82l-66.94-24.34a8 8 0 0 1 0-15L96.18 96.18l24.34-66.94a8 8 0 0 1 15 0l24.34 66.94 66.94 24.34a8 8 0 0 1 0 15Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></svg>',
+  pending: '<svg viewBox="0 0 256 256" aria-hidden="true"><path d="M159.82 159.82l-24.34 66.94a8 8 0 0 1-15 0L96.18 159.82l-66.94-24.34a8 8 0 0 1 0-15L96.18 96.18l24.34-66.94a8 8 0 0 1 15 0l24.34 66.94 66.94 24.34a8 8 0 0 1 0 15Z" fill="currentColor" opacity=".18"/><path d="M159.82 159.82l-24.34 66.94a8 8 0 0 1-15 0L96.18 159.82l-66.94-24.34a8 8 0 0 1 0-15L96.18 96.18l24.34-66.94a8 8 0 0 1 15 0l24.34 66.94 66.94 24.34a8 8 0 0 1 0 15Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></svg>',
+  complete: '<svg viewBox="0 0 256 256" aria-hidden="true"><path d="M208 144a15.78 15.78 0 0 1-10.42 14.94L146 178l-19 51.62a15.92 15.92 0 0 1-29.88 0L78 178l-51.62-19a15.92 15.92 0 0 1 0-29.88L78 110l19-51.62a15.92 15.92 0 0 1 29.88 0L146 110l51.62 19A15.78 15.78 0 0 1 208 144Zm-56-96h16v16a8 8 0 0 0 16 0V48h16a8 8 0 0 0 0-16h-16V16a8 8 0 0 0-16 0v16h-16a8 8 0 0 0 0 16Zm88 32h-8v-8a8 8 0 0 0-16 0v8h-8a8 8 0 0 0 0 16h8v8a8 8 0 0 0 16 0v-8h8a8 8 0 0 0 0-16Z"/></svg>',
+});
+
+function storyboardInlinePlanState(plan, records) {
+  if (records.length) return { status: 'completed', icon: STORYBOARD_INLINE_ICONS.complete, label: '画面已留存' };
+  const status = plan?.status || 'idle';
+  if (['screening', 'compiling'].includes(status)) return { status, icon: STORYBOARD_INLINE_ICONS.pending, label: '正在取景' };
+  if (status === 'prompt_ready') return { status, icon: STORYBOARD_INLINE_ICONS.pending, label: '画面已备妥' };
+  if (status === 'queued') return { status, icon: STORYBOARD_INLINE_ICONS.pending, label: '等待生成' };
+  if (status === 'generating') return { status, icon: STORYBOARD_INLINE_ICONS.pending, label: '正在生成' };
+  if (status === 'failed') return { status, icon: STORYBOARD_INLINE_ICONS.empty, label: '生成未完成' };
+  return { status: 'idle', icon: STORYBOARD_INLINE_ICONS.empty, label: '打开分镜' };
+}
+
+function storyboardInlineRecordMarkup(record) {
+  const url = storyboardSafeUrl(record.url);
+  return `<figure data-storyboard-record="${htmlEscape(record.id)}">
+    <button type="button" class="sd-storyboard-inline-preview" data-storyboard-chat-action="preview" title="查看画面"><img src="${htmlEscape(url)}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 48))}"></button>
+    <button type="button" class="sd-storyboard-inline-more" data-storyboard-chat-action="toggle-actions" title="更多操作" aria-label="更多操作" aria-expanded="false"><i class="fa-solid fa-ellipsis"></i></button>
+    <div class="sd-storyboard-inline-actions" aria-hidden="true"><button type="button" data-storyboard-chat-action="edit" title="修改提示词" aria-label="修改提示词"><i class="fa-solid fa-pen"></i></button><button type="button" data-storyboard-chat-action="copy" title="复制提示词" aria-label="复制提示词"><i class="fa-solid fa-copy"></i></button><button type="button" data-storyboard-chat-action="redraw" title="重新生成" aria-label="重新生成"><i class="fa-solid fa-rotate-right" data-qm-icon="image-regenerate"></i></button><button type="button" data-storyboard-chat-action="download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button><button type="button" data-storyboard-chat-action="detach" title="移出正文" aria-label="移出正文"><i class="fa-solid fa-eye-slash"></i></button></div>
+  </figure>`;
+}
+
 function storyboardRenderInlineImages() {
   const chatRoot = document.getElementById('chat');
   if (!chatRoot) return;
@@ -12367,23 +12561,39 @@ function storyboardRenderInlineImages() {
     return;
   }
   storyboardReconcileGalleryLinks();
+  storyboardReconcileShotPlans();
   storyboardInjectMessageButtons(chatRoot);
   const byFloor = new Map();
   for (const record of storyboardGalleryRecords()) {
     if (!storyboardInlineRecordValid(record)) continue;
-    if (!byFloor.has(record.floor)) byFloor.set(record.floor, []);
-    byFloor.get(record.floor).push(record);
+    if (!byFloor.has(record.floor)) byFloor.set(record.floor, { records: [], plan: null });
+    byFloor.get(record.floor).records.push(record);
+  }
+  const state = storyboardState();
+  const chatKey = String(getChatKey() || '');
+  for (const plan of state.shotPlans || []) {
+    if (plan.chatKey !== chatKey || !Number.isInteger(plan.floor) || ['orphaned', 'inactive_swipe'].includes(plan.linkState)) continue;
+    if (!byFloor.has(plan.floor)) byFloor.set(plan.floor, { records: [], plan: null });
+    const group = byFloor.get(plan.floor);
+    if (!group.plan || Number(plan.updatedAt || 0) > Number(group.plan.updatedAt || 0)) group.plan = plan;
+  }
+  const latestFloor = storyboardCurrentAssistantFloor();
+  if (latestFloor >= 0 && !byFloor.has(latestFloor)) {
+    byFloor.set(latestFloor, { records: [], plan: null });
   }
   chatRoot.querySelectorAll('.sd-storyboard-inline').forEach((node) => node.remove());
-  for (const [floor, records] of byFloor) {
+  for (const [floor, group] of byFloor) {
+    const { records, plan } = group;
     const message = chatRoot.querySelector(`.mes[mesid="${floor}"], .mes[data-message-id="${floor}"]`);
     const text = message?.querySelector('.mes_text');
     if (!message || !text) continue;
+    const lifecycle = storyboardInlinePlanState(plan, records);
     const wrapper = document.createElement('div');
-    wrapper.className = 'sd-storyboard-inline';
+    wrapper.className = `sd-storyboard-inline is-${lifecycle.status}`;
     wrapper.dataset.storyboardFloor = String(floor);
+    if (plan?.id) wrapper.dataset.storyboardPlan = plan.id;
     if (records.length > 1) wrapper.classList.add('sd-storyboard-filmstrip');
-    wrapper.innerHTML = records.map((record) => `<figure data-storyboard-record="${htmlEscape(record.id)}"><button type="button" data-storyboard-chat-action="preview"><img src="${htmlEscape(storyboardSafeUrl(record.url))}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 48))}"></button><figcaption><span>分镜</span><div><button type="button" data-storyboard-chat-action="edit" title="修改提示词" aria-label="修改提示词"><i class="fa-solid fa-pen"></i></button><button type="button" data-storyboard-chat-action="copy" title="复制提示词" aria-label="复制提示词"><i class="fa-solid fa-copy"></i></button><button type="button" data-storyboard-chat-action="redraw" title="重绘" aria-label="重绘"><i class="fa-solid fa-rotate-right" data-qm-icon="image-regenerate"></i></button><button type="button" data-storyboard-chat-action="download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button><button type="button" data-storyboard-chat-action="detach" title="移出正文" aria-label="移出正文"><i class="fa-solid fa-eye-slash"></i></button></div></figcaption></figure>`).join('');
+    wrapper.innerHTML = `<button type="button" class="sd-storyboard-inline-title" data-storyboard-chat-action="open-floor" title="${htmlEscape(lifecycle.label)}"><span class="sd-storyboard-inline-mark">${lifecycle.icon}</span><span class="sd-storyboard-inline-rule"></span><b>刻瞬于光</b><small>${htmlEscape(lifecycle.label)}</small></button>${records.length ? `<div class="sd-storyboard-inline-reel">${records.map(storyboardInlineRecordMarkup).join('')}</div>` : ''}`;
     applyQianmuIcons(wrapper);
     const anchor = storyboardInlineAnchorNode(text, records);
     // Keep the frame outside .mes_text. Paragraph anchoring is metadata-driven; placing
@@ -12682,7 +12892,14 @@ async function storyboardRedrawRecord(record) {
 
 async function storyboardOnChatClick(event) {
   const button = event.target.closest?.('[data-storyboard-chat-action]');
-  if (!button || !button.closest('#chat')) return;
+  if (!button || !button.closest('#chat')) {
+    document.querySelectorAll('#chat .sd-storyboard-inline figure.actions-open').forEach((figure) => {
+      figure.classList.remove('actions-open');
+      figure.querySelector('.sd-storyboard-inline-more')?.setAttribute('aria-expanded', 'false');
+      figure.querySelector('.sd-storyboard-inline-actions')?.setAttribute('aria-hidden', 'true');
+    });
+    return;
+  }
   event.preventDefault(); event.stopPropagation();
   if (button.dataset.storyboardChatAction === 'open-floor') {
     const message = button.closest('.mes');
@@ -12695,6 +12912,22 @@ async function storyboardOnChatClick(event) {
     state.paragraphMode = 'auto';
     state.manualParagraphIndex = null;
     state.view = 'create';
+    const plan = storyboardEnsurePlan(state, floor, chatMessage, { origin: 'manual' });
+    const firstShot = plan.shots?.find((shot) => String(shot.prompt || '').trim()) || null;
+    if (firstShot) {
+      state.prompt = firstShot.prompt;
+      state.negative = firstShot.negative || '';
+      state.promptDraft.compiled = firstShot.prompt;
+      state.promptDraft.negative = firstShot.negative || '';
+      state.promptDraft.userEditedCompiled = Boolean(firstShot.promptLocked || firstShot.userEdited);
+      state.pendingParagraphIndex = firstShot.paragraphAnchor?.paragraphIndex ?? null;
+      state.pendingShotType = firstShot.shotType || 'custom';
+      state.promptDraft.shots = plan.shots.map((shot) => ({
+        id: shot.id, title: shot.title, prompt: shot.prompt, negative: shot.negative,
+        paragraphIndex: shot.paragraphAnchor?.paragraphIndex ?? null,
+        shotType: shot.shotType || 'custom', sensitive: Boolean(shot.sensitive),
+      }));
+    }
     storyboardSyncSelectionForChat({ force: true });
     saveSettings();
     openModal('imagegen');
@@ -12703,6 +12936,17 @@ async function storyboardOnChatClick(event) {
   const id = button.closest('[data-storyboard-record]')?.dataset.storyboardRecord;
   const record = storyboardGalleryRecords().find((item) => item.id === id);
   if (!record) return;
+  if (button.dataset.storyboardChatAction === 'toggle-actions') {
+    const figure = button.closest('figure');
+    const open = !figure.classList.contains('actions-open');
+    document.querySelectorAll('#chat .sd-storyboard-inline figure.actions-open').forEach((item) => {
+      if (item !== figure) item.classList.remove('actions-open');
+    });
+    figure.classList.toggle('actions-open', open);
+    button.setAttribute('aria-expanded', String(open));
+    figure.querySelector('.sd-storyboard-inline-actions')?.setAttribute('aria-hidden', String(!open));
+    return;
+  }
   if (button.dataset.storyboardChatAction === 'preview') return storyboardOpenLightbox(record);
   if (button.dataset.storyboardChatAction === 'copy') {
     await coreadCopyText(record.finalPrompt || record.prompt || '');
@@ -12799,6 +13043,15 @@ function bindStoryboardTabEvents(root) {
     storyboardRenderInlineImages();
     renderModal();
   });
+  root.querySelector('.sd-storyboard-auto-capture')?.addEventListener('change', (event) => {
+    state.automation.autoCapture = Boolean(event.target.checked);
+    if (!state.automation.autoCapture) state.automation.autoGenerate = false;
+    saveSettings(); renderModal();
+  });
+  root.querySelector('.sd-storyboard-auto-generate')?.addEventListener('change', (event) => {
+    state.automation.autoGenerate = Boolean(event.target.checked && state.automation.autoCapture);
+    saveSettings(); renderModal();
+  });
   if (state.view === 'create') {
     const sourceAtBind = state.source;
     let draftTimer = null;
@@ -12868,6 +13121,7 @@ function bindStoryboardTabEvents(root) {
     state.promptMode = state.promptCompiler.enabled
       ? (String(state.promptDraft.manual || '').trim() ? 'combined' : 'auto')
       : 'manual';
+    if (!state.promptCompiler.enabled) state.automation = { autoCapture: false, autoGenerate: false };
     saveSettings();
     if (state.promptCompiler.enabled) void storyboardWarmCompilerWorldEntries({ rerender: true });
     renderModal();
@@ -25499,6 +25753,44 @@ function startInputMenuObserver() {
 let resizeHandler = null;
 let eventBindings = [];
 
+async function storyboardHandleAutomaticCapture() {
+  const state = storyboardState();
+  if (!state.enabled || !state.automation?.autoCapture || !state.promptCompiler?.enabled) return false;
+  const floor = storyboardCurrentAssistantFloor();
+  const message = floor >= 0 ? ctx().chat?.[floor] : null;
+  if (!message || message.is_user || message.is_system) return false;
+  const existing = storyboardPlanForMessage(state, floor, message);
+  if (existing && !['idle', 'failed', 'cancelled'].includes(existing.status)) return false;
+  if (storyboardCompilerBusy) {
+    setTimeout(() => void storyboardHandleAutomaticCapture(), 900);
+    return false;
+  }
+  const plan = existing || storyboardEnsurePlan(state, floor, message, {
+    origin: 'automatic', autoGenerate: state.automation.autoGenerate,
+  });
+  plan.origin = 'automatic';
+  plan.autoGenerate = Boolean(state.automation.autoGenerate);
+  plan.status = 'screening';
+  plan.updatedAt = Date.now();
+  state.target = 'floor';
+  state.floor = String(floor);
+  state.paragraphMode = 'auto';
+  state.manualParagraphIndex = null;
+  state.promptMode = 'auto';
+  state.prompt = '';
+  state.negative = '';
+  state.promptDraft.manual = '';
+  state.promptDraft.compiled = '';
+  state.promptDraft.negative = '';
+  state.promptDraft.shots = [];
+  state.promptDraft.userEditedCompiled = false;
+  saveSettings();
+  storyboardScheduleInlineRender(20);
+  const compiled = await storyboardCompilePrompt(null, { plan, quiet: true });
+  if (!compiled || !plan.autoGenerate) return compiled;
+  return storyboardGenerate(null, { plan, automatic: true });
+}
+
 function unbindEvents() {
   const source = ctx().eventSource;
   if (source?.off) {
@@ -25546,6 +25838,7 @@ function bindEvents() {
       console.warn(`[${MODULE_NAME}] auto refresh handler failed`, error);
     }
     storyboardScheduleInlineRender(120);
+    void storyboardHandleAutomaticCapture();
   };
   const rerenderHandler = async () => {
     settings = getSettings();
