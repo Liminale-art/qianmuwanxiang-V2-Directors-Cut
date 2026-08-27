@@ -5765,6 +5765,16 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   gap: 5px;
   padding-block: 7px 10px;
 }
+#story-director-modal .sd-storyboard-cast-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 1px 5px;
+  color: var(--sd-muted);
+  font-size: 10px;
+}
+#story-director-modal .sd-storyboard-cast-head .sd-icon-btn { width: 34px; min-width: 34px; height: 34px; margin: 0; }
 #story-director-modal .sd-storyboard-cast-choice {
   overflow: hidden;
   border: 1px solid transparent;
@@ -5818,6 +5828,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-cast-toggle b { font-size: 13px; font-weight: 600; }
 #story-director-modal .sd-storyboard-cast-toggle small { color: var(--sd-muted); font-size: 10px; }
 #story-director-modal .sd-storyboard-cast-toggle > i:last-child { color: var(--sd-accent); }
+#story-director-modal .sd-storyboard-cast-toggle > .sd-icon-btn { width: 32px; min-width: 32px; height: 32px; margin: 0; color: var(--sd-muted); }
 #story-director-modal .sd-storyboard-cast-strategy {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
@@ -5827,6 +5838,36 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 }
 #story-director-modal .sd-storyboard-cast-strategy .text_pole { min-width: 0; width: 100%; margin: 0 !important; }
 #story-director-modal .sd-storyboard-cast-strategy .sd-icon-btn { width: 36px; min-width: 36px; height: 36px; margin: 0; }
+#story-director-modal .sd-storyboard-cast-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--sd-hairline);
+}
+#story-director-modal .sd-storyboard-cast-pick {
+  min-width: 0;
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--sd-hairline);
+  border-radius: 10px;
+  background: var(--sd-glass-weak);
+  color: var(--sd-text);
+  text-align: left;
+}
+#story-director-modal .sd-storyboard-cast-pick > img,
+#story-director-modal .sd-storyboard-cast-pick > i:first-child { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; object-fit: cover; background: var(--sd-pre); }
+#story-director-modal .sd-storyboard-cast-pick > span { min-width: 0; display: flex; flex-direction: column; }
+#story-director-modal .sd-storyboard-cast-pick b,
+#story-director-modal .sd-storyboard-cast-pick small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-storyboard-cast-pick b { font-size: 11px; }
+#story-director-modal .sd-storyboard-cast-pick small { color: var(--sd-muted); font-size: 9px; }
 #story-director-modal .sd-storyboard-empty-action {
   width: 100%;
   min-height: 44px;
@@ -6196,6 +6237,15 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+#story-director-modal .sd-storyboard-current-subjects span b { margin-right: 5px; color: var(--sd-accent); font-size: 8px; letter-spacing: .08em; }
+#story-director-modal .sd-storyboard-current-subjects article > small {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--sd-muted);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 #story-director-modal .sd-storyboard-directory > header > .sd-storyboard-capture-row {
   grid-column: 2;
   grid-row: 2;
@@ -6246,6 +6296,15 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   transform: none;
   text-align: left;
 }
+#story-director-modal .sd-storyboard-file::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--sd-card) 4%, transparent) 28%, color-mix(in srgb, var(--sd-card) 88%, transparent) 100%);
+  pointer-events: none;
+}
 #story-director-modal .sd-storyboard-file:hover,
 #story-director-modal .sd-storyboard-file:focus-visible {
   margin: 0;
@@ -6257,10 +6316,17 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: .24;
+  opacity: .78;
   pointer-events: none;
 }
 #story-director-modal .sd-storyboard-file > *:not(img) { position: relative; z-index: 1; }
+#story-director-modal .sd-storyboard-file > span { left: 9px; right: auto; top: 8px; color: var(--sd-text); }
+#story-director-modal .sd-storyboard-file > em { left: auto; right: 9px; top: 9px; bottom: auto; width: 7px; height: 7px; padding: 0; border: 0; border-radius: 50%; background: #76b88a; box-shadow: 0 0 0 3px color-mix(in srgb, #76b88a 18%, transparent); }
+#story-director-modal .sd-storyboard-file > b { margin-top: auto; color: var(--sd-text); text-shadow: 0 1px 6px color-mix(in srgb, var(--sd-card) 90%, transparent); }
+#story-director-modal .sd-storyboard-file > b > i { display: inline-block; min-width: 100%; font-style: normal; }
+#story-director-modal .sd-storyboard-file:hover > b.is-overflowing > i,
+#story-director-modal .sd-storyboard-file:focus-visible > b.is-overflowing > i { animation: sd-storyboard-file-title 6s linear infinite alternate; }
+@keyframes sd-storyboard-file-title { from { transform: translateX(0); } to { transform: translateX(calc(-1 * var(--sd-title-shift, 0px))); } }
 
 /* Profile detail keeps the reference portrait at the upper left. */
 #story-director-modal .sd-storyboard-profile-page > header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; }
@@ -6290,6 +6356,8 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   border: 1px solid var(--sd-hairline);
   border-radius: 8px;
 }
+#story-director-modal .sd-storyboard-profile-photo { aspect-ratio: 3 / 4; min-height: 0; }
+#story-director-modal .sd-storyboard-profile-photo img { height: 100%; aspect-ratio: auto; }
 #story-director-modal .sd-storyboard-profile-copy,
 #story-director-modal .sd-storyboard-profile-fields {
   grid-column: 2;
@@ -6307,6 +6375,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   grid-template-columns: minmax(118px, .38fr) minmax(0, 1fr);
   gap: 7px;
 }
+#story-director-modal .sd-storyboard-reference-picker.single { grid-template-columns: 1fr; }
 #story-director-modal .sd-storyboard-reference-picker .text_pole { width: 100%; min-width: 0; margin: 0 !important; }
 #story-director-modal .sd-storyboard-profile-actions { gap: 7px; }
 
@@ -6412,16 +6481,16 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-file { min-height: 108px; padding: 8px; }
   #story-director-modal .sd-storyboard-file b { font-size: 11px; }
   #story-director-modal .sd-storyboard-file small { font-size: 8px; }
-  #story-director-modal .sd-storyboard-profile-sheet { grid-template-columns: 1fr; gap: 12px; }
+  #story-director-modal .sd-storyboard-profile-sheet { grid-template-columns: minmax(108px, .42fr) minmax(0, .58fr); gap: 9px; }
   #story-director-modal .sd-storyboard-profile-photo,
   #story-director-modal .sd-storyboard-profile-reference {
     grid-column: 1;
     grid-row: 1;
-    width: min(48%, 190px);
+    width: 100%;
     justify-self: start;
   }
   #story-director-modal .sd-storyboard-profile-copy,
-  #story-director-modal .sd-storyboard-profile-fields { grid-column: 1; grid-row: 2; }
+  #story-director-modal .sd-storyboard-profile-fields { grid-column: 2; grid-row: 1; }
   #story-director-modal .sd-storyboard-reference-picker { grid-template-columns: 1fr; }
   #story-director-modal .sd-storyboard-asset-row,
   #story-director-modal .sd-storyboard-vibe-row { gap: 5px; padding: 6px; }
@@ -6443,8 +6512,8 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-root details.sd-card > summary { padding-inline: 11px; }
   #story-director-modal .sd-storyboard-root details.sd-card > summary small { display: none; }
   #story-director-modal .sd-storyboard-mode button { padding-inline: 5px; font-size: 10px; }
-  #story-director-modal .sd-storyboard-cast-strategy { grid-template-columns: minmax(0, 1fr) auto; }
-  #story-director-modal .sd-storyboard-cast-strategy select:first-child { grid-column: 1 / -1; }
+  #story-director-modal .sd-storyboard-cast-strategy { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+  #story-director-modal .sd-storyboard-cast-picker { grid-template-columns: 1fr; }
   #story-director-modal .sd-storyboard-directory > header {
     grid-template-columns: 1fr;
     align-items: start;
@@ -6457,7 +6526,9 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-capture-row .sd-btn { min-width: 42px; padding-inline: 7px !important; font-size: 0 !important; }
   #story-director-modal .sd-storyboard-capture-row .sd-btn i { margin: 0; font-size: 13px; }
   #story-director-modal .sd-storyboard-file { min-height: 98px; }
-  #story-director-modal .sd-storyboard-profile-copy label { grid-template-columns: 70px minmax(0, 1fr); }
+  #story-director-modal .sd-storyboard-profile-copy label { grid-template-columns: 1fr; gap: 4px; padding-top: 6px; }
+  #story-director-modal .sd-storyboard-profile-copy { gap: 7px; }
+  #story-director-modal .sd-storyboard-profile-no { margin-bottom: 0; }
   #story-director-modal .sd-storyboard-gallery-tools { grid-template-columns: minmax(0, 1fr) minmax(98px, 37%); }
   #story-director-modal .sd-storyboard-gallery-tools .text_pole { font-size: 12px !important; }
   #story-director-modal .sd-storyboard-asset-tools { grid-template-columns: minmax(0, 1fr) minmax(98px, 37%); }

@@ -18,7 +18,7 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.48.0';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.49.0';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_CONSISTENCY_STRATEGIES,
@@ -49,7 +49,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.48.0';
+const VERSION = '1.49.0';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -10128,22 +10128,41 @@ function renderStoryboardModeSelector(state) {
   return `<div class="sd-storyboard-mode" role="group" aria-label="提示词生成方式">${Object.values(STORYBOARD_PROMPT_MODES).map((mode) => `<button type="button" class="${state.promptMode === mode.id ? 'active' : ''}" data-storyboard-prompt-mode="${mode.id}">${htmlEscape(mode.label)}</button>`).join('')}</div>`;
 }
 
+function storyboardSelectionFromProfile(entity, profile, { origin = 'manual', consistency = 'hybrid' } = {}) {
+  const referenceType = profile?.reference?.type;
+  return {
+    entityId: entity.id, profileId: profile.id, consistency: consistency === 'archive' ? 'archive' : 'hybrid', origin,
+    referenceStrategy: referenceType === 'gallery' ? 'gallery' : ['avatar', 'url'].includes(referenceType) ? 'avatar' : 'description',
+    referenceAssetIds: referenceType === 'gallery' && profile.reference?.assetId ? [profile.reference.assetId] : [],
+  };
+}
+
 function renderStoryboardCastCard(state) {
-  const selected = new Map((state.selectedCharacters || []).map((item) => [item.entityId, item]));
-  const rows = storyboardEntityCatalog(state).map((entity) => {
-    const selection = selected.get(entity.id);
-    const profile = entity.profiles?.find((item) => item.id === selection?.profileId)
-      || entity.profiles?.find((item) => item.id === entity.activeProfileId)
-      || entity.profiles?.[0];
-    if (!profile) return '';
+  const catalog = storyboardEntityCatalog(state);
+  const selectedIds = new Set((state.selectedCharacters || []).map((item) => item.entityId));
+  const rows = (state.selectedCharacters || []).map((selection) => {
+    const entity = catalog.find((item) => item.id === selection.entityId);
+    const profile = entity?.profiles?.find((item) => item.id === selection.profileId)
+      || entity?.profiles?.find((item) => item.id === entity.activeProfileId)
+      || entity?.profiles?.[0];
+    if (!entity || !profile) return '';
     const avatar = storyboardProfileReferenceUrl(state, entity, profile) || storyboardSafeUrl(entity.avatarUrl);
     const profileOptions = entity.profiles.map((item) => `<option value="${htmlEscape(item.id)}" ${item.id === profile.id ? 'selected' : ''}>${htmlEscape(item.name || '默认档案')}</option>`).join('');
-    return `<article class="sd-storyboard-cast-choice ${selection ? 'selected' : ''}" data-storyboard-entity-choice="${htmlEscape(entity.id)}" data-storyboard-profile-choice="${htmlEscape(profile.id)}">
-      <button type="button" class="sd-storyboard-cast-toggle" aria-pressed="${Boolean(selection)}">${avatar ? `<img src="${htmlEscape(avatar)}" alt="">` : '<i class="fa-solid fa-user"></i>'}<span><b>${htmlEscape(entity.name || '未命名')}</b><small>${htmlEscape(profile.name || '默认档案')}</small></span><i class="fa-solid ${selection ? 'fa-circle-check' : 'fa-circle'}"></i></button>
-      ${selection ? `<div class="sd-storyboard-cast-strategy"><select class="text_pole" data-storyboard-profile-variant="${htmlEscape(entity.id)}" aria-label="形象方案">${profileOptions}</select><select class="text_pole" data-storyboard-consistency="${htmlEscape(entity.id)}">${Object.values(STORYBOARD_CONSISTENCY_STRATEGIES).map((entry) => `<option value="${entry.id}" ${selection.consistency === entry.id ? 'selected' : ''}>${htmlEscape(entry.label)}</option>`).join('')}</select><select class="text_pole" data-storyboard-reference="${htmlEscape(entity.id)}">${Object.values(STORYBOARD_REFERENCE_STRATEGIES).filter((entry) => ['description', 'avatar', 'gallery', 'none'].includes(entry.id)).map((entry) => `<option value="${entry.id}" ${selection.referenceStrategy === entry.id ? 'selected' : ''}>${htmlEscape(entry.id === 'avatar' && profile.reference?.type === 'url' ? '档案参考图' : entry.label)}</option>`).join('')}</select><button type="button" class="sd-icon-btn" data-storyboard-open-profile="${htmlEscape(profile.id)}" title="打开档案" aria-label="打开档案"><i class="fa-solid fa-address-card"></i></button></div>` : ''}
+    const automatic = selection.origin === 'auto';
+    return `<article class="sd-storyboard-cast-choice selected" data-storyboard-cast-entry="${htmlEscape(entity.id)}">
+      <div class="sd-storyboard-cast-toggle">${avatar ? `<img src="${htmlEscape(avatar)}" alt="">` : '<i class="fa-solid fa-user"></i>'}<span><b>${htmlEscape(entity.name || '未命名')}</b><small>${automatic ? '跟随当前聊天' : '手动出镜'} · ${htmlEscape(profile.name || '默认档案')}</small></span>${automatic ? '<i class="fa-solid fa-link" title="自动跟随"></i>' : `<button type="button" class="sd-icon-btn sd-storyboard-cast-remove" title="移出镜头" aria-label="移出镜头"><i class="fa-solid fa-xmark"></i></button>`}</div>
+      <div class="sd-storyboard-cast-strategy"><select class="text_pole" data-storyboard-profile-variant="${htmlEscape(entity.id)}" aria-label="形象档案">${profileOptions}</select><select class="text_pole" data-storyboard-consistency="${htmlEscape(entity.id)}" aria-label="形象依据"><option value="hybrid" ${selection.consistency !== 'archive' ? 'selected' : ''}>自动判断</option><option value="archive" ${selection.consistency === 'archive' ? 'selected' : ''}>档案优先</option></select><button type="button" class="sd-icon-btn" data-storyboard-open-profile="${htmlEscape(profile.id)}" title="打开档案" aria-label="打开档案"><i class="fa-solid fa-address-card"></i></button></div>
     </article>`;
   }).join('');
-  return `<details class="sd-card sd-storyboard-cast-card" data-storyboard-card="cast" ${state.collapsedCards.cast ? '' : 'open'}><summary><span><b>当前出镜角色</b><small>${selected.size ? `已选 ${selected.size} 人` : '可多选'}</small></span><i class="fa-solid fa-chevron-down"></i></summary><div class="sd-storyboard-card-body">${rows || '<button type="button" class="sd-storyboard-empty-action" data-storyboard-view="characters">建立第一份形象档案</button>'}</div></details>`;
+  const candidates = catalog.map((entity) => {
+    if (selectedIds.has(entity.id)) return '';
+    const profile = entity.profiles?.find((item) => item.id === entity.activeProfileId) || entity.profiles?.[0];
+    if (!profile) return '';
+    const avatar = storyboardProfileReferenceUrl(state, entity, profile) || storyboardSafeUrl(entity.avatarUrl);
+    return `<button type="button" class="sd-storyboard-cast-pick" data-storyboard-cast-pick="${htmlEscape(entity.id)}" data-storyboard-profile-choice="${htmlEscape(profile.id)}">${avatar ? `<img src="${htmlEscape(avatar)}" alt="">` : '<i class="fa-solid fa-user"></i>'}<span><b>${htmlEscape(entity.name || '未命名')}</b><small>${htmlEscape(profile.name || '默认档案')}</small></span><i class="fa-solid fa-plus"></i></button>`;
+  }).join('');
+  const count = (state.selectedCharacters || []).length;
+  return `<details class="sd-card sd-storyboard-cast-card" data-storyboard-card="cast" ${state.collapsedCards.cast ? '' : 'open'}><summary><span><b>当前出镜角色</b><small>${count ? `已选 ${count} 人` : '尚未选择'}</small></span><i class="fa-solid fa-chevron-down"></i></summary><div class="sd-storyboard-card-body"><div class="sd-storyboard-cast-head"><span>${count ? '当前聊天自动匹配，群像可手动补充' : '当前聊天暂无可自动匹配的档案'}</span><button type="button" class="sd-icon-btn sd-storyboard-cast-add" aria-expanded="${Boolean(state.castPickerOpen)}" title="添加出镜角色" aria-label="添加出镜角色"><i class="fa-solid ${state.castPickerOpen ? 'fa-xmark' : 'fa-plus'}"></i></button></div>${rows || '<div class="sd-storyboard-empty-inline">未选择出镜角色。</div>'}${state.castPickerOpen ? `<div class="sd-storyboard-cast-picker">${candidates || '<button type="button" class="sd-storyboard-empty-action" data-storyboard-view="characters">前往建立形象档案</button>'}</div>` : ''}</div></details>`;
 }
 
 function storyboardGalleryRecords() {
@@ -10319,17 +10338,34 @@ function storyboardSubjectSnapshot(kind) {
   return { subjectType: type, subjectKey: `char:${identity}`, subjectName: name, name, referenceUrl: avatar };
 }
 
+function storyboardResolveSubjectProfile(state, kind, bindings = storyboardChatBindings()) {
+  const type = kind === 'user' ? 'user' : 'char';
+  const subject = storyboardSubjectSnapshot(type);
+  const boundProfileId = String(bindings[type] || '');
+  let match = boundProfileId ? storyboardFindEntityProfile(state, boundProfileId) : { entity: null, profile: null };
+  if (!match.entity || match.entity.type !== type || !match.profile) {
+    if (boundProfileId) bindings[type] = '';
+    const entity = state.entities[type]?.find((item) => item.subjectKey === subject.subjectKey) || null;
+    const profile = entity?.profiles?.find((item) => item.id === entity.activeProfileId) || entity?.profiles?.[0] || null;
+    match = { entity, profile };
+  }
+  return { ...match, subject, explicitlyBound: Boolean(boundProfileId && match.profile?.id === boundProfileId) };
+}
+
 function storyboardSyncSelectionForChat({ force = false } = {}) {
   const state = storyboardState();
   const bindings = storyboardChatBindings();
-  const valid = (id) => state.characters.some((item) => item.id === id);
-  if (!valid(bindings.char)) bindings.char = '';
-  if (!valid(bindings.user)) bindings.user = '';
-  const currentSubjects = [storyboardSubjectSnapshot('char'), storyboardSubjectSnapshot('user')];
-  const matched = currentSubjects.map((subject) => state.characters.find((item) => item.subjectKey === subject.subjectKey)?.id).find(Boolean);
-  const preferred = bindings.char || bindings.user || matched || '';
-  if (preferred && (force || !valid(state.selectedCharacterId))) state.selectedCharacterId = preferred;
-  if (!preferred && force) state.selectedCharacterId = '';
+  const manual = (state.selectedCharacters || []).filter((item) => item.origin === 'manual');
+  const manualEntities = new Set(manual.map((item) => item.entityId));
+  const automatic = ['char', 'user'].map((kind) => storyboardResolveSubjectProfile(state, kind, bindings))
+    .filter(({ entity, profile }) => entity && profile && !manualEntities.has(entity.id))
+    .map(({ entity, profile }) => storyboardSelectionFromProfile(entity, profile, { origin: 'auto', consistency: 'hybrid' }));
+  const previous = state.selectedCharacters || [];
+  const changed = force || previous.length !== automatic.length + manual.length
+    || automatic.some((item, index) => previous[index]?.entityId !== item.entityId || previous[index]?.profileId !== item.profileId || previous[index]?.origin !== 'auto');
+  if (changed) state.selectedCharacters = [...automatic, ...manual].slice(0, 30);
+  const preferred = state.selectedCharacters[0]?.profileId || '';
+  state.selectedCharacterId = preferred;
   return preferred;
 }
 
@@ -10378,6 +10414,7 @@ async function storyboardCreateProfile(kind, base = null) {
   storyboardSetActiveProfile(state, entity, profile);
   state.characterView = 'edit';
   if (['char', 'user'].includes(type)) storyboardChatBindings()[type] = profile.id;
+  storyboardSyncSelectionForChat({ force: true });
   saveSettings();
   if (['char', 'user'].includes(type)) await saveMetadata();
   renderModal();
@@ -10424,15 +10461,26 @@ function renderStoryboardCharacters(state) {
   const bindings = storyboardChatBindings();
   const charSubject = storyboardSubjectSnapshot('char');
   const userSubject = storyboardSubjectSnapshot('user');
-  const captureButtons = `<div class="sd-storyboard-current-subjects"><article>${storyboardSafeUrl(charSubject.referenceUrl) ? `<img src="${htmlEscape(storyboardSafeUrl(charSubject.referenceUrl))}" alt="">` : '<i class="fa-solid fa-user"></i>'}<span>char · ${htmlEscape(charSubject.subjectName)}</span></article><article>${storyboardSafeUrl(userSubject.referenceUrl) ? `<img src="${htmlEscape(storyboardSafeUrl(userSubject.referenceUrl))}" alt="">` : '<i class="fa-solid fa-user"></i>'}<span>user · ${htmlEscape(userSubject.subjectName)}</span></article></div><div class="sd-storyboard-capture-row"><button type="button" class="sd-btn sd-storyboard-capture" data-storyboard-capture="char"><i class="fa-solid fa-folder-plus"></i>CHAR</button><button type="button" class="sd-btn sd-storyboard-capture" data-storyboard-capture="user"><i class="fa-solid fa-folder-plus"></i>USER</button><button type="button" class="sd-btn sd-storyboard-capture-cast"><i class="fa-solid fa-folder-plus"></i>CAST</button></div>`;
+  const charResolved = storyboardResolveSubjectProfile(state, 'char', bindings);
+  const userResolved = storyboardResolveSubjectProfile(state, 'user', bindings);
+  const subjectCard = (kind, subject, resolved) => {
+    const image = storyboardSafeUrl(subject.referenceUrl);
+    const status = resolved.profile
+      ? `${resolved.explicitlyBound ? '已绑定' : '自动匹配'} · ${resolved.profile.name || '默认档案'}`
+      : '未建立档案';
+    return `<article>${image ? `<img src="${htmlEscape(image)}" alt="">` : '<i class="fa-solid fa-user"></i>'}<span><b>${kind.toUpperCase()}</b>${htmlEscape(subject.subjectName)}</span><small>${htmlEscape(status)}</small></article>`;
+  };
+  const captureButtons = `<div class="sd-storyboard-current-subjects">${subjectCard('char', charSubject, charResolved)}${subjectCard('user', userSubject, userResolved)}</div><div class="sd-storyboard-capture-row"><button type="button" class="sd-btn sd-storyboard-capture" data-storyboard-capture="char"><i class="fa-solid fa-folder-plus"></i>CHAR</button><button type="button" class="sd-btn sd-storyboard-capture" data-storyboard-capture="user"><i class="fa-solid fa-folder-plus"></i>USER</button><button type="button" class="sd-btn sd-storyboard-capture-cast"><i class="fa-solid fa-folder-plus"></i>CAST</button></div>`;
   if (state.characterView !== 'edit' || !selected) {
     const directories = storyboardEntityCatalog(state).map((entity, groupIndex) => {
       const activeProfile = entity.profiles.find((item) => item.id === entity.activeProfileId) || entity.profiles[0];
       const avatar = storyboardProfileReferenceUrl(state, entity, activeProfile) || storyboardSafeUrl(entity.avatarUrl);
       const cards = entity.profiles.map((profile, index) => {
         const item = storyboardSyncEntityProfileToLegacy(state, entity, profile);
-        return `<button type="button" class="sd-storyboard-file ${storyboardProfileIsBound(item) ? 'bound' : ''}" data-storyboard-character-id="${htmlEscape(profile.id)}" style="--sd-file-index:${index}">
-        <span>${String(index + 1).padStart(2, '0')}</span><b>${htmlEscape(profile.name || '默认档案')}</b><small>${htmlEscape(entity.name || 'APPEARANCE FILE')}</small>${storyboardProfileIsBound(item) ? '<em>当前聊天</em>' : profile.id === entity.activeProfileId ? '<em>当前方案</em>' : ''}
+        const cover = storyboardProfileReferenceUrl(state, entity, profile) || storyboardSafeUrl(entity.avatarUrl);
+        const current = profile.id === entity.activeProfileId;
+        return `<button type="button" class="sd-storyboard-file ${storyboardProfileIsBound(item) ? 'bound' : ''} ${current ? 'active' : ''}" data-storyboard-character-id="${htmlEscape(profile.id)}" style="--sd-file-index:${index}" aria-label="${htmlEscape(`${entity.name || '未命名'} · ${profile.name || '默认档案'}`)}">
+        ${cover ? `<img src="${htmlEscape(cover)}" alt="">` : ''}<span>${String(index + 1).padStart(2, '0')}</span>${current ? '<em aria-label="当前方案"></em>' : ''}<b><i>${htmlEscape(profile.name || '默认档案')}</i></b>
       </button>`;
       }).join('');
       return `<section class="sd-storyboard-directory-group" style="--sd-group-index:${groupIndex}"><header>${avatar ? `<img src="${htmlEscape(avatar)}" alt="">` : '<i class="fa-solid fa-user"></i>'}<div><span>${entity.type === 'user' ? 'USER' : entity.type === 'cast' ? 'CAST' : 'CHAR'}</span><b>${htmlEscape(entity.name || '未命名')}</b></div><small>${entity.profiles.length} 套</small></header><div class="sd-storyboard-file-stack">${cards}</div></section>`;
@@ -10440,7 +10488,6 @@ function renderStoryboardCharacters(state) {
     const candidates = state.entities.candidates.map((candidate) => `<article class="sd-storyboard-asset-row" data-storyboard-candidate="${htmlEscape(candidate.id)}"><div><b>${htmlEscape(candidate.name)}</b><small>${htmlEscape(candidate.evidence || (Number.isInteger(candidate.floor) ? `第 ${candidate.floor} 层` : '正文候选'))}</small></div><div><button type="button" class="sd-btn sd-storyboard-confirm-candidate">确认入档</button><button type="button" class="sd-icon-btn sd-storyboard-dismiss-candidate" title="忽略候选" aria-label="忽略候选"><i class="fa-solid fa-xmark"></i></button></div></article>`).join('');
     return `<div class="sd-storyboard-characters"><section class="sd-storyboard-magazine sd-storyboard-directory">
       <header><div><span class="sd-storyboard-kicker">CAST DIRECTORY</span><h3>Appearance Index<sup>✦</sup></h3></div>${captureButtons}</header>
-      <div class="sd-storyboard-binding-strip"><span>当前聊天</span><b>角色：${htmlEscape(state.characters.find((item) => item.id === bindings.char)?.variantName || '未绑定')}</b><b>我：${htmlEscape(state.characters.find((item) => item.id === bindings.user)?.variantName || '未绑定')}</b></div>
       ${candidates ? `<section class="sd-card sd-storyboard-candidates"><header><b>待确认群像</b><small>${state.entities.candidates.length} 人</small></header>${candidates}</section>` : ''}
       ${directories || '<div class="sd-storyboard-character-empty">还没有形象档案。可分别捕获当前角色与“我”，并为同一人物保存多套外观。</div>'}
     </section></div>`;
@@ -10453,20 +10500,20 @@ function renderStoryboardCharacters(state) {
   const galleryRecord = reference.assetId ? storyboardGalleryRecords().find((item) => item.id === reference.assetId) : null;
   const referenceControl = referenceSource === 'gallery'
     ? `<button type="button" class="sd-btn sd-storyboard-pick-reference"><i class="fa-solid fa-images"></i>${galleryRecord ? '更换阅片参考' : '从阅片室选择'}</button><small>${galleryRecord ? htmlEscape(snip(galleryRecord.prompt || formatDateTime(galleryRecord.createdAt), 60)) : '尚未选择'}</small>`
-    : `<input class="text_pole sd-storyboard-character-reference-url" type="url" value="${htmlEscape(referenceSource === 'url' ? reference.value : selectedEntity.avatarUrl)}" ${referenceSource === 'avatar' ? 'readonly' : ''} placeholder="https://...">`;
+    : referenceSource === 'url' ? `<input class="text_pole sd-storyboard-character-reference-url" type="url" value="${htmlEscape(reference.value || '')}" placeholder="https://...">` : '';
   return `<div class="sd-storyboard-characters"><section class="sd-storyboard-magazine sd-storyboard-profile-page">
     <header><button type="button" class="sd-icon-btn sd-storyboard-character-back" title="返回总目录" aria-label="返回总目录"><i class="fa-solid fa-arrow-left"></i></button><div class="sd-storyboard-profile-heading"><span class="sd-storyboard-kicker">${selected.subjectType === 'user' ? 'USER FILE' : selected.subjectType === 'cast' ? 'CAST FILE' : 'CHAR FILE'}</span><b>${htmlEscape(selected.subjectName || selected.name)}</b></div><button type="button" class="sd-icon-btn sd-storyboard-duplicate-character" title="复制一套" aria-label="复制一套"><i class="fa-solid fa-copy"></i></button></header>
     <article class="sd-storyboard-profile-sheet" data-storyboard-character-edit="${htmlEscape(selectedProfile.id)}" data-storyboard-entity-edit="${htmlEscape(selectedEntity.id)}">
+      <div class="sd-storyboard-profile-photo">${avatar ? `<img src="${htmlEscape(storyboardSafeUrl(avatar))}" alt="${htmlEscape(selectedEntity.name)}">` : '<i class="fa-solid fa-user"></i>'}</div>
       <div class="sd-storyboard-profile-copy">
         <span class="sd-storyboard-profile-no">PROFILE / ${String(Math.max(1, state.characters.indexOf(selected) + 1)).padStart(2, '0')}</span>
         <label><span>方案名</span><input class="text_pole" data-profile-field="name" value="${htmlEscape(selectedProfile.name || '默认档案')}"></label>
         <label><span>在档人</span><input class="text_pole" data-entity-field="name" value="${htmlEscape(selectedEntity.name)}" placeholder="填写角色名"></label>
-        <label><span>外貌特征</span><textarea class="text_pole" data-profile-field="appearance" placeholder="记录画面中可见的稳定特征；当前正文状态冲突时，以目标楼层为准。">${htmlEscape(selectedProfile.appearance || '')}</textarea></label>
-        <label><span>专属反向提示词</span><textarea class="text_pole" data-profile-field="negative" placeholder="可留空">${htmlEscape(selectedProfile.negative || '')}</textarea></label>
-        <label><span>参考图</span><div class="sd-storyboard-reference-picker"><select class="text_pole sd-storyboard-character-reference-source"><option value="avatar" ${referenceSource === 'avatar' ? 'selected' : ''} ${selectedEntity.avatarUrl ? '' : 'disabled'}>角色头像</option><option value="gallery" ${referenceSource === 'gallery' ? 'selected' : ''}>从阅片室选择</option><option value="url" ${referenceSource === 'url' ? 'selected' : ''}>图片 URL</option></select>${referenceControl}</div></label>
+        <label><span>形貌纪要</span><textarea class="text_pole" data-profile-field="appearance" placeholder="当前正文状态冲突时，以目标楼层为准。">${htmlEscape(selectedProfile.appearance || '')}</textarea></label>
+        <label><span>专用负面词</span><textarea class="text_pole" data-profile-field="negative" placeholder="可留空">${htmlEscape(selectedProfile.negative || '')}</textarea></label>
+        <label><span>参考图</span><div class="sd-storyboard-reference-picker ${referenceControl ? '' : 'single'}"><select class="text_pole sd-storyboard-character-reference-source"><option value="avatar" ${referenceSource === 'avatar' ? 'selected' : ''} ${selectedEntity.avatarUrl ? '' : 'disabled'}>角色头像</option><option value="gallery" ${referenceSource === 'gallery' ? 'selected' : ''}>从阅片室选择</option><option value="url" ${referenceSource === 'url' ? 'selected' : ''}>图片 URL</option></select>${referenceControl}</div></label>
         <div class="sd-storyboard-profile-actions">${selectedEntity.type !== 'cast' ? `<button type="button" class="sd-btn ${bound ? 'sd-primary' : ''} sd-storyboard-bind-character" ${bound ? 'disabled' : ''}>${bound ? '已绑定当前聊天' : '绑定到当前聊天'}</button>` : ''}<button type="button" class="sd-btn sd-primary sd-storyboard-save-character">保存档案</button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-character" title="删除档案" aria-label="删除档案"><i class="fa-solid fa-trash-can"></i></button></div>
       </div>
-      <div class="sd-storyboard-profile-photo">${avatar ? `<img src="${htmlEscape(storyboardSafeUrl(avatar))}" alt="${htmlEscape(selectedEntity.name)}">` : '<i class="fa-solid fa-user"></i>'}<span>${htmlEscape(selectedEntity.name)} · ${htmlEscape(selectedProfile.name || '默认档案')}</span></div>
     </article>
   </section></div>`;
 }
@@ -12426,8 +12473,7 @@ async function storyboardOnChatClick(event) {
     state.target = 'floor';
     state.floor = String(floor);
     state.view = 'create';
-    const bindings = storyboardChatBindings();
-    if (bindings.char && state.characters.some((item) => item.id === bindings.char)) state.selectedCharacterId = bindings.char;
+    storyboardSyncSelectionForChat({ force: true });
     saveSettings();
     openModal('imagegen');
     return;
@@ -12491,6 +12537,13 @@ function storyboardUnbindChat() {
 function bindStoryboardTabEvents(root) {
   if (activeTab !== 'imagegen') return;
   const state = storyboardState();
+  root.querySelectorAll('.sd-storyboard-file > b').forEach((label) => {
+    const title = label.querySelector('i');
+    if (!title) return;
+    const shift = Math.max(0, title.scrollWidth - label.clientWidth);
+    label.classList.toggle('is-overflowing', shift > 2);
+    label.style.setProperty('--sd-title-shift', `${shift}px`);
+  });
   root.querySelector('.sd-storyboard-enabled')?.addEventListener('change', (event) => {
     state.enabled = Boolean(event.target.checked);
     if (!state.enabled) {
@@ -12652,25 +12705,27 @@ function bindStoryboardTabEvents(root) {
       state.routing.rules = state.routing.rules.filter((item) => item.id !== rule.id); saveSettings(); renderModal();
     });
   });
-  root.querySelectorAll('[data-storyboard-entity-choice]').forEach((row) => {
-    const entityId = row.dataset.storyboardEntityChoice;
+  root.querySelector('.sd-storyboard-cast-add')?.addEventListener('click', () => {
+    state.castPickerOpen = !state.castPickerOpen;
+    saveSettings(); renderModal();
+  });
+  root.querySelectorAll('[data-storyboard-cast-pick]').forEach((button) => button.addEventListener('click', () => {
+    const entityId = button.dataset.storyboardCastPick;
+    const profileId = button.dataset.storyboardProfileChoice;
     const entity = storyboardEntityCatalog(state).find((item) => item.id === entityId);
-    const profileId = row.dataset.storyboardProfileChoice;
-    row.querySelector('.sd-storyboard-cast-toggle')?.addEventListener('click', () => {
-      const index = state.selectedCharacters.findIndex((item) => item.entityId === entityId);
-      if (index >= 0) state.selectedCharacters.splice(index, 1);
-      else if (entity) {
-        const profile = entity.profiles.find((item) => item.id === profileId) || entity.profiles[0];
-        if (profile) {
-          storyboardSetActiveProfile(state, entity, profile);
-          const referenceType = profile.reference?.type;
-          state.selectedCharacters.push({
-            entityId: entity.id, profileId: profile.id, consistency: 'hybrid',
-            referenceStrategy: referenceType === 'gallery' ? 'gallery' : ['avatar', 'url'].includes(referenceType) ? 'avatar' : 'description',
-            referenceAssetIds: referenceType === 'gallery' && profile.reference?.assetId ? [profile.reference.assetId] : [],
-          });
-        }
-      }
+    const profile = entity?.profiles.find((item) => item.id === profileId) || entity?.profiles[0];
+    if (!entity || !profile || state.selectedCharacters.some((item) => item.entityId === entity.id)) return;
+    storyboardSetActiveProfile(state, entity, profile);
+    state.selectedCharacters.push(storyboardSelectionFromProfile(entity, profile, { origin: 'manual' }));
+    state.selectedCharacterId = state.selectedCharacters[0]?.profileId || '';
+    state.castPickerOpen = false;
+    saveSettings(); renderModal();
+  }));
+  root.querySelectorAll('[data-storyboard-cast-entry]').forEach((row) => {
+    const entityId = row.dataset.storyboardCastEntry;
+    const entity = storyboardEntityCatalog(state).find((item) => item.id === entityId);
+    row.querySelector('.sd-storyboard-cast-remove')?.addEventListener('click', () => {
+      state.selectedCharacters = state.selectedCharacters.filter((item) => item.entityId !== entityId || item.origin === 'auto');
       state.selectedCharacterId = state.selectedCharacters[0]?.profileId || '';
       saveSettings(); renderModal();
     });
@@ -12679,25 +12734,16 @@ function bindStoryboardTabEvents(root) {
       const item = state.selectedCharacters.find((entry) => entry.entityId === entityId);
       if (!entity || !profile || !item) return;
       storyboardSetActiveProfile(state, entity, profile);
-      item.profileId = profile.id;
+      Object.assign(item, storyboardSelectionFromProfile(entity, profile, { origin: item.origin, consistency: item.consistency }));
       saveSettings(); renderModal();
     });
     row.querySelector('[data-storyboard-consistency]')?.addEventListener('change', (event) => {
       const item = state.selectedCharacters.find((entry) => entry.entityId === entityId);
-      if (item) item.consistency = event.target.value;
-      saveSettings();
-    });
-    row.querySelector('[data-storyboard-reference]')?.addEventListener('change', (event) => {
-      const item = state.selectedCharacters.find((entry) => entry.entityId === entityId);
-      if (item) {
-        item.referenceStrategy = event.target.value;
-        const profile = entity?.profiles.find((entry) => entry.id === item.profileId);
-        item.referenceAssetIds = event.target.value === 'gallery' && profile?.reference?.assetId ? [profile.reference.assetId] : [];
-      }
+      if (item) item.consistency = event.target.value === 'archive' ? 'archive' : 'hybrid';
       saveSettings();
     });
     row.querySelector('[data-storyboard-open-profile]')?.addEventListener('click', (event) => {
-      const openProfileId = event.currentTarget.dataset.storyboardOpenProfile || profileId;
+      const openProfileId = event.currentTarget.dataset.storyboardOpenProfile;
       const profile = entity?.profiles.find((item) => item.id === openProfileId);
       if (entity && profile) storyboardSetActiveProfile(state, entity, profile);
       state.characterView = 'edit'; state.view = 'characters'; saveSettings(); renderModal();
@@ -12806,6 +12852,7 @@ function bindStoryboardTabEvents(root) {
     const item = state.characters.find((entry) => entry.id === state.selectedCharacterId);
     if (!item || !['char', 'user'].includes(item.subjectType)) return;
     storyboardChatBindings()[item.subjectType] = item.id;
+    storyboardSyncSelectionForChat({ force: true });
     await saveMetadata();
     toast('已绑定到当前聊天。', 'success');
     renderModal();
