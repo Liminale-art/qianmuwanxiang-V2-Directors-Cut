@@ -32,8 +32,7 @@ assert.doesNotMatch(source, /人设参照|renderTtsExtractWorldBooks|ttsBuildExt
 assert.match(source, /epEmoji\(name\)[\s\S]*htmlEscape\(url\)/);
 
 // 全局卡片标题/说明与折叠高度统一；蜂巢可更贴近视口边缘。
-assert.match(css, /全模块视觉基线[\s\S]*--sd-type-title:\s*16px[\s\S]*--sd-type-note:\s*12px/);
-assert.match(css, /主面板排版基线[\s\S]*font-size:\s*var\(--sd-type-title\) !important[\s\S]*font-size:\s*var\(--sd-type-note\) !important/);
+assert.match(css, /主面板排版基线[\s\S]*font-size:\s*15px !important[\s\S]*font-size:\s*12px !important/);
 assert.match(css, /直接作为卡片标题的折叠栏统一采用[\s\S]*min-height:\s*22px/);
 assert.ok((source.match(/const margin = 4;/g) || []).length >= 2);
 

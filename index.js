@@ -18,7 +18,7 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.47.0';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.47.1';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_CONSISTENCY_STRATEGIES,
@@ -49,7 +49,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.47.0';
+const VERSION = '1.47.1';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -3881,19 +3881,10 @@ const QUICK_COMMANDS = Object.freeze([
 ]);
 const QUICK_COMMAND_IDS = QUICK_COMMANDS.map((item) => item.id);
 const QUICK_ICON_OPTICAL_SCALE = Object.freeze({
-  dashboard: 1.02,
-  focus: 1.04,
-  tasksnodes: .98,
-  castworld: 1.02,
-  context: .99,
-  settings: 1.05,
-  theater: 1.07,
-  tts: 1.22,
-  coread: 1.07,
-  geopolitics: 1.01,
-  plug: 1.05,
-  imagegen: 1.10,
-  floor: 1.01,
+  tts: 1.16,
+  theater: 1.04,
+  coread: 1.04,
+  plug: 1.04,
 });
 // 使用真实 SVG polygon 描边，而非“矩形 mask 再裁六边形”。后者只会留下几段横线，无法贴合斜边。
 const QUICK_HEX_BORDER_SVG = '<svg class="sd-hive-hex-outline" viewBox="0 0 86.602 100" preserveAspectRatio="none" aria-hidden="true" focusable="false"><polygon points="43.301,0 86.602,25 86.602,75 43.301,100 0,75 0,25"></polygon></svg>';
@@ -5301,7 +5292,7 @@ function openQuickWheel(btn) {
     button.style.setProperty('--sd-wheel-glass-fill', visual.fill, 'important');
     button.style.setProperty('--sd-wheel-edge', visual.edge, 'important');
     button.style.setProperty('--sd-wheel-icon', visual.icon, 'important');
-    button.style.setProperty('--sd-wheel-optical-scale', String(QUICK_ICON_OPTICAL_SCALE[item.id] || 1.04));
+    button.style.setProperty('--sd-wheel-optical-scale', String(QUICK_ICON_OPTICAL_SCALE[item.id] || 1));
     // 组件级视觉锁：阻断 ST 美化或其他插件的全局 button/div 样式覆盖蜂巢毛玻璃。
     button.style.setProperty('background', visual.fill, 'important');
     button.style.setProperty('backdrop-filter', 'blur(20px) saturate(1.12) brightness(1.04)', 'important');
@@ -10245,7 +10236,7 @@ function storyboardReconcileGalleryLinks({ persist = true } = {}) {
 
 function storyboardRecordStatus(record) {
   if (record?.linkState === 'orphaned') return '原楼层已删除';
-  if (record?.linkState === 'stale') return '正文已更改 · 原图保留';
+  if (record?.linkState === 'stale') return Number.isInteger(record?.floor) ? `第 ${record.floor} 层` : '';
   if (record?.linkState === 'inactive_swipe') return '已切换回复版本';
   if (!Number.isInteger(record?.floor)) return '';
   const message = ctx().chat?.[record.floor];

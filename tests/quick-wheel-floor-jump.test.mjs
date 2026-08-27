@@ -112,8 +112,8 @@ assert.match(source, /function quickDockSetOriginState[\s\S]*setProperty\('visib
 assert.match(source, /function quickDockObserveShadowRoots[\s\S]*observer\.observe\(root/, '恢复监听必须覆盖已存在的 open Shadow Root');
 assert.match(source, /setInterval\(\(\) =>[\s\S]*quickDockScanStored\(\)/, 'Shadow Root 延迟建立必须有有限时长的低频恢复重试');
 assert.match(source, /const gap = Math\.max\(1, Math\.min\(3, Math\.round\(itemHeight \* \.045\)\)\)/, '蜂巢间距必须缩至紧凑的一至三像素');
-assert.match(source, /QUICK_ICON_OPTICAL_SCALE[\s\S]*tts:\s*1\.22/, '话筒等视觉偏小图标必须进行光学校正');
-assert.match(css, /font-size:\s*clamp\(17px,[^;]*\.50[^;]*25px\)/, '千幕内置入口图标必须整体增大');
+assert.match(source, /QUICK_ICON_OPTICAL_SCALE[\s\S]*tts:\s*1\.16/, '话筒等视觉偏小图标必须进行光学校正');
+assert.match(css, /font-size:\s*clamp\(15px,[^;]*\.44[^;]*22px\)/, '千幕内置入口图标必须维持既有视觉比例');
 assert.match(css, /prefers-reduced-motion:\s*reduce/, '蜂巢动态必须尊重系统减少动态设置');
 
 // 直接执行纯几何函数：居中先满六格内圈，贴边不移动锚点且所有蜂巢片留在可视区。
