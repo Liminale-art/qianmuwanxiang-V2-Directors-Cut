@@ -18,7 +18,7 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.47.1';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.48.0';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_CONSISTENCY_STRATEGIES,
@@ -49,7 +49,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.47.1';
+const VERSION = '1.48.0';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -785,7 +785,6 @@ let storyboardCompilerBusy = false;  // 自动取景是独立的一次 LLM 请�
 let storyboardActiveJob = null;      // 正在生成的一项；放弃时不取消可能已计费的上游请求，只丢弃回传
 let storyboardQueue = [];            // 千幕内串行队列，避免同一连接并发误耗额度
 const storyboardApiKeys = new Map(); // credentialId -> Key；不进入设置、日志或分镜数据包
-const storyboardFetchedModels = new Map(); // provider/preset -> 当前会话拉取结果
 let storyboardRuntimeReconciled = false;
 const storyboardConnectionStatus = new Map();
 let storyboardSecrets = {};          // 只缓存“是否已配置”，绝不读取或缓存密钥正文
@@ -9872,7 +9871,6 @@ function storyboardState() {
     state.initialized = true;
     queueMicrotask(() => saveSettings());
   }
-  state.showAllFetchedModels ||= {};
   state.assetCategory = state.assetCategory === 'all' || STORYBOARD_TAG_CATEGORIES.includes(state.assetCategory) ? state.assetCategory : 'all';
   state.pendingParagraphIndex = Number.isInteger(state.pendingParagraphIndex) ? state.pendingParagraphIndex : null;
   state.pendingShotType = String(state.pendingShotType || 'custom');
@@ -10010,12 +10008,6 @@ function storyboardSetProfileReference(state, entity, profile, reference) {
   }
 }
 
-function storyboardSdSettings() {
-  const context = ctx();
-  const extensionSettings = context.extensionSettings || (context.extensionSettings = {});
-  return extensionSettings.sd || (extensionSettings.sd = {});
-}
-
 function storyboardProfile(sourceId = storyboardState().source) {
   const state = storyboardState();
   return state.profiles[sourceId] || (state.profiles[sourceId] = createStoryboardDefaults().profiles[sourceId]);
@@ -10046,12 +10038,6 @@ function storyboardSafeUrl(value) {
   return '';
 }
 
-function storyboardSelectOptions(selector, selected = '') {
-  const values = [...new Set(Array.from(document.querySelectorAll(`${selector} option`)).map((item) => String(item.value || '').trim()).filter(Boolean))];
-  if (selected && !values.includes(String(selected))) values.unshift(String(selected));
-  return values.map((value) => `<option value="${htmlEscape(value)}"></option>`).join('');
-}
-
 function renderStoryboardNav(state) {
   const items = [
     ['create', '镜头台', 'fa-camera', 'qm-duotone-camera'],
@@ -10069,37 +10055,31 @@ function storyboardConnectionState(state, providerId = state.source) {
   return { group, active, draft: group?.draft || active || {} };
 }
 
-function storyboardFetchedModelKey(state, providerId = state.source, presetId = undefined, baseUrl = undefined) {
-  const connection = storyboardConnectionState(state, providerId);
-  return `${providerId}:${presetId ?? connection.active?.id ?? 'draft'}:${baseUrl ?? connection.draft?.baseUrl ?? ''}`;
-}
-
-function storyboardFetchedModelState(state, providerId = state.source) {
-  return storyboardFetchedModels.get(storyboardFetchedModelKey(state, providerId)) || null;
-}
-
 function storyboardModelOptions(providerId, selected = '') {
-  const state = storyboardState();
-  const fetched = storyboardFetchedModelState(state, providerId)?.models || [];
-  const showAll = Boolean(state.showAllFetchedModels?.[providerId]);
-  const options = [...(STORYBOARD_MODEL_REGISTRY[providerId] || [])];
-  for (const item of fetched) {
-    if (!showAll && item.imageCapable === false && item.id !== selected) continue;
-    if (!options.some((entry) => entry.id === item.id)) options.push({ id: item.id, label: item.label || item.id });
-  }
-  const custom = selected && !options.some((item) => item.id === selected);
-  return `${options.map((item) => `<option value="${htmlEscape(item.id)}" ${selected === item.id ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('')}<option value="__custom__" ${custom ? 'selected' : ''}>自定义兼容模型</option>`;
+  const options = STORYBOARD_MODEL_REGISTRY[providerId] || [];
+  const fixedSelection = options.some((item) => item.id === selected)
+    ? selected
+    : STORYBOARD_PROVIDER_REGISTRY[providerId]?.defaultModel;
+  return options.map((item) => `<option value="${htmlEscape(item.id)}" ${fixedSelection === item.id ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('');
 }
 
 function storyboardProviderProfile(state, providerId = state.source) {
   const legacy = storyboardProfile(providerId);
   const { draft } = storyboardConnectionState(state, providerId);
+  const requestedModel = String(draft.model || legacy.model || STORYBOARD_PROVIDER_REGISTRY[providerId]?.defaultModel || '');
+  const fixedModel = (STORYBOARD_MODEL_REGISTRY[providerId] || []).some((item) => item.id === requestedModel)
+    ? requestedModel
+    : STORYBOARD_PROVIDER_REGISTRY[providerId]?.defaultModel || '';
   return {
     ...legacy,
-    model: String(draft.model || legacy.model || STORYBOARD_PROVIDER_REGISTRY[providerId]?.defaultModel || ''),
+    model: fixedModel,
     baseUrl: String(draft.baseUrl || STORYBOARD_PROVIDER_REGISTRY[providerId]?.defaultBaseUrl || ''),
     connectionPresetId: String(storyboardConnectionState(state, providerId).group?.activePresetId || ''),
   };
+}
+
+function storyboardCompilerProfileOptions(state) {
+  return (settings.apiProfiles || []).map((item) => `<option value="${htmlEscape(item.id)}" ${state.promptCompiler.apiProfileId === item.id ? 'selected' : ''}>${htmlEscape(item.name || item.model || '未命名预设')}</option>`).join('');
 }
 
 function storyboardSelectedProfiles(state) {
@@ -10124,25 +10104,22 @@ function renderStoryboardModelCard(state) {
   const credentialId = connection.draft?.credentialId || connection.active?.credentialId || storyboardCredentialId(state.source, 'draft');
   const savedKey = storyboardApiKeys.has(credentialId) || storyboardApiKeys.has(state.source) || Boolean(storyboardSecrets[credentialId]);
   const activePreset = connection.active?.id || '';
-  const fetchedState = storyboardFetchedModelState(state);
-  const knownModels = [...(STORYBOARD_MODEL_REGISTRY[state.source] || []), ...(fetchedState?.models || [])];
-  const customModel = profile.model && !knownModels.some((item) => item.id === profile.model);
   const presetOptions = (connection.group?.presets || []).map((item) => `<option value="${htmlEscape(item.id)}" ${activePreset === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
   return `<details class="sd-card sd-storyboard-model-card" data-storyboard-card="model" ${state.collapsedCards.model ? '' : 'open'}>
-    <summary><span><small>STORYBOARD</small><b>将此瞬，妥为留存</b></span><em>${htmlEscape(provider.label)}</em><i class="fa-solid fa-chevron-down"></i></summary>
+    <summary><span><b>STORYBOARD</b></span><em>${htmlEscape(provider.label)}</em><i class="fa-solid fa-chevron-down"></i></summary>
     <div class="sd-storyboard-card-body">
       <div class="sd-storyboard-model-picker">
         <label><span>生图模型</span><select class="text_pole sd-storyboard-provider">${Object.values(STORYBOARD_PROVIDER_REGISTRY).map((item) => `<option value="${item.id}" ${state.source === item.id ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('')}</select></label>
-        <label><span>模型</span><span class="sd-storyboard-model-input"><select class="text_pole sd-storyboard-model-select">${storyboardModelOptions(state.source, profile.model)}</select><button type="button" class="sd-icon-btn sd-storyboard-fetch-models" title="从当前接口拉取模型" aria-label="从当前接口拉取模型"><i class="fa-solid fa-rotate"></i></button></span></label>
+        <label><span>模型</span><select class="text_pole sd-storyboard-model-select">${storyboardModelOptions(state.source, profile.model)}</select></label>
       </div>
-      ${fetchedState?.total > fetchedState?.imageCapableCount ? `<button type="button" class="sd-storyboard-toggle-all-models">${state.showAllFetchedModels?.[state.source] ? '只看生图模型' : '查看接口全部模型'}</button>` : ''}
-      <label class="sd-storyboard-custom-model" ${customModel ? '' : 'hidden'}><span>模型 ID</span><input class="text_pole" value="${htmlEscape(customModel ? profile.model : '')}" placeholder="输入兼容模型 ID"></label>
+      <label><span>画面整理模型</span><select class="text_pole sd-storyboard-compiler-api"><option value="">沿用千幕当前 API</option>${storyboardCompilerProfileOptions(state)}</select></label>
       <div class="sd-storyboard-connection-preset-row"><select class="text_pole sd-storyboard-connection-preset"><option value="">当前连接</option>${presetOptions}</select><button type="button" class="sd-icon-btn sd-storyboard-save-connection-preset" title="保存连接预设" aria-label="保存连接预设"><i class="fa-solid fa-bookmark"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-connection-preset" ${activePreset ? '' : 'disabled'} title="删除连接预设" aria-label="删除连接预设"><i class="fa-solid fa-trash-can"></i></button></div>
       <label><span>API 地址</span><input class="text_pole sd-storyboard-base-url" value="${htmlEscape(profile.baseUrl)}" placeholder="${htmlEscape(provider.defaultBaseUrl || 'http://127.0.0.1:8188')}"></label>
       <label><span>${state.source === 'comfy' ? '访问令牌（可选）' : 'API Key'}</span><input class="text_pole sd-storyboard-api-key-memory" type="password" autocomplete="new-password" placeholder="${savedKey ? '已保存' : '输入 API Key'}"></label>
       ${state.source === 'comfy' ? `<label class="sd-switch-row"><span>允许本地网络</span><input type="checkbox" class="sd-storyboard-private-network" ${(connection.active?.options?.allowPrivateNetwork ?? connection.group?.draft?.options?.allowPrivateNetwork) ? 'checked' : ''}></label><label><span>API Workflow</span><textarea class="text_pole sd-storyboard-workflow" placeholder="粘贴 ComfyUI API Workflow JSON">${htmlEscape(typeof profile.comfyWorkflow === 'string' && profile.comfyWorkflow.trim().startsWith('{') ? profile.comfyWorkflow : '')}</textarea></label><div class="sd-storyboard-workflow-warning sd-storyboard-connection-result failed" ${profile.comfyWorkflowNotice ? '' : 'hidden'}><i class="fa-solid fa-triangle-exclamation"></i><span>${htmlEscape(profile.comfyWorkflowNotice || '')}</span></div>` : ''}
       ${check ? `<div class="sd-storyboard-connection-result ${check.ok ? 'ok' : 'failed'}"><i class="fa-solid ${check.ok ? 'fa-circle-check' : 'fa-triangle-exclamation'}"></i><span>${htmlEscape(check.message)}</span></div>` : ''}
       <div class="sd-storyboard-model-actions"><button type="button" class="sd-btn sd-storyboard-check-connection">测试连接</button><button type="button" class="sd-btn sd-primary sd-storyboard-save-connection">保存连接</button></div>
+      <div class="sd-storyboard-pack-card"><div><b>分镜数据</b><small>不包含 API Key</small></div><div><button type="button" class="sd-icon-btn sd-storyboard-pack-export" title="导出分镜数据" aria-label="导出分镜数据"><i class="fa-solid fa-file-export"></i></button><label class="sd-icon-btn sd-storyboard-pack-import" title="导入分镜数据" aria-label="导入分镜数据"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-native-file sd-storyboard-pack-file" accept="application/json,.json"></label></div></div>
     </div>
   </details>`;
 }
@@ -10269,7 +10246,6 @@ function renderStoryboardCreate(state) {
   const manualVisible = state.promptMode !== 'auto';
   const autoVisible = state.promptMode !== 'manual';
   const promptPresets = state.promptPresets.map((item) => `<option value="${htmlEscape(item.id)}" ${state.promptCompiler.instructionPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
-  const apiProfiles = (settings.apiProfiles || []).map((item) => `<option value="${htmlEscape(item.id)}" ${state.promptCompiler.apiProfileId === item.id ? 'selected' : ''}>${htmlEscape(item.name || item.model || '未命名预设')}</option>`).join('');
   const tagChips = state.tagLibrary.filter((item) => item.favorite).concat(state.tagLibrary.filter((item) => !item.favorite)).slice(0, 24)
     .map((item) => `<button type="button" data-storyboard-add-tag="${htmlEscape(item.id)}"><span>${htmlEscape(item.name)}</span></button>`).join('');
   const sourceSpecific = state.source === 'openai' ? `<label><span>Quality</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiQuality"><option value="">auto</option>${['low', 'medium', 'high'].map((value) => `<option value="${value}" ${profile.openaiQuality === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label><span>Background</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiBackground"><option value="">auto</option>${['transparent', 'opaque'].map((value) => `<option value="${value}" ${profile.openaiBackground === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label><span>Output format</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiOutputFormat"><option value="">png</option>${['jpeg', 'webp'].map((value) => `<option value="${value}" ${profile.openaiOutputFormat === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>`
@@ -10284,7 +10260,7 @@ function renderStoryboardCreate(state) {
       <div class="sd-storyboard-card-body">
       ${renderStoryboardModeSelector(state)}
       ${manualVisible ? `<label><span>手写画面</span><textarea class="text_pole sd-storyboard-manual-prompt" spellcheck="false" placeholder="写下想看见的主体、动作、镜头与氛围">${htmlEscape(draft.manual)}</textarea></label>` : ''}
-      ${autoVisible ? `<div class="sd-storyboard-compiler-settings"><div class="sd-storyboard-inline-control"><select class="text_pole sd-storyboard-compiler-api"><option value="">沿用千幕当前 API</option>${apiProfiles}</select><select class="text_pole sd-storyboard-prompt-preset"><option value="">默认方案</option>${promptPresets}</select><button type="button" class="sd-icon-btn sd-storyboard-save-prompt-preset" title="保存提示词方案" aria-label="保存提示词方案"><i class="fa-solid fa-bookmark"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-prompt-preset" title="删除提示词方案" aria-label="删除提示词方案" ${state.promptCompiler.instructionPresetId ? '' : 'disabled'}><i class="fa-solid fa-trash-can"></i></button></div><textarea class="text_pole sd-storyboard-auto-instruction" placeholder="可补充本次取景重点">${htmlEscape(draft.autoInstruction)}</textarea><button type="button" class="sd-btn sd-storyboard-compile-prompt" ${latestFloor < 0 || storyboardCompilerBusy ? 'disabled' : ''}>${storyboardCompilerBusy ? '正在整理…' : '整理画面'}</button></div>` : ''}
+      ${autoVisible ? `<div class="sd-storyboard-compiler-settings"><div class="sd-storyboard-inline-control"><select class="text_pole sd-storyboard-prompt-preset"><option value="">默认方案</option>${promptPresets}</select><button type="button" class="sd-icon-btn sd-storyboard-save-prompt-preset" title="保存提示词方案" aria-label="保存提示词方案"><i class="fa-solid fa-bookmark"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-prompt-preset" title="删除提示词方案" aria-label="删除提示词方案" ${state.promptCompiler.instructionPresetId ? '' : 'disabled'}><i class="fa-solid fa-trash-can"></i></button></div><textarea class="text_pole sd-storyboard-auto-instruction" placeholder="可补充本次取景重点">${htmlEscape(draft.autoInstruction)}</textarea><button type="button" class="sd-btn sd-storyboard-compile-prompt" ${latestFloor < 0 || storyboardCompilerBusy ? 'disabled' : ''}>${storyboardCompilerBusy ? '正在整理…' : '整理画面'}</button></div>` : ''}
       <label><span>最终提示词</span><textarea class="text_pole sd-storyboard-prompt" spellcheck="false" placeholder="最终发送给图像模型的内容，可在生成前继续修改">${htmlEscape(promptValue)}</textarea></label>
       ${capabilities.negative ? `<label><span>负面提示词</span><textarea class="text_pole sd-storyboard-negative" spellcheck="false" placeholder="可留空">${htmlEscape(draft.negative || state.negative)}</textarea></label>` : ''}
       ${plannedShots.length > 1 ? `<div class="sd-storyboard-shot-plan"><header><b>镜头计划</b><small>${plannedShots.length} 次模型请求</small></header>${plannedShots.map((shot, index) => { const route = routeStoryboardShot(shot, state.routing); return `<article data-storyboard-shot-index="${index}"><div><span>${index + 1}</span><select class="text_pole sd-storyboard-shot-type">${[['portrait', '人物'], ['group', '群像'], ['environment', '场景'], ['object', '物件'], ['action', '动作'], ['closeup', '特写'], ['custom', '自定义']].map(([id, label]) => `<option value="${id}" ${shot.shotType === id ? 'selected' : ''}>${label}</option>`).join('')}</select><em>${htmlEscape(STORYBOARD_PROVIDER_REGISTRY[route.providerId]?.label || route.providerId)}</em><button type="button" class="sd-icon-btn sd-danger sd-storyboard-remove-shot" title="移除" aria-label="移除"><i class="fa-solid fa-xmark"></i></button></div><textarea class="text_pole sd-storyboard-shot-prompt" spellcheck="false">${htmlEscape(shot.prompt || '')}</textarea><textarea class="text_pole sd-storyboard-shot-negative" spellcheck="false" placeholder="负面提示词">${htmlEscape(shot.negative || '')}</textarea></article>`; }).join('')}</div>` : ''}
@@ -10317,28 +10293,6 @@ function renderStoryboardCreate(state) {
     <button type="button" class="sd-storyboard-generate" title="${!state.enabled ? '开启分镜后可生成' : storyboardBusy ? '加入等待' : '生成分镜'}" aria-label="${!state.enabled ? '开启分镜后可生成' : storyboardBusy ? '加入等待' : '生成分镜'}" ${state.enabled ? '' : 'disabled'}><i class="fa-solid fa-camera"></i></button>
     ${renderStoryboardQueue()}
     ${last ? `<section class="sd-card sd-storyboard-last"><div class="sd-card-title-row"><h3>最近画面</h3><button type="button" data-storyboard-view="gallery">查看全部</button></div><img src="${htmlEscape(storyboardSafeUrl(last.url))}" alt="最近生成的分镜" loading="lazy"></section>` : ''}
-  </div>`;
-}
-
-function renderStoryboardConnection(state) {
-  const profile = storyboardProfile(state.source);
-  const source = STORYBOARD_SOURCES[state.source];
-  const check = storyboardConnectionStatus.get(state.source);
-  const saved = storyboardSourceSecretConfigured(source);
-  const credential = source.secretKey ? `<label class="sd-storyboard-api-key"><span>API Key <em class="sd-storyboard-secret-state ${saved ? 'saved' : ''}">${saved ? '已保存' : '未配置'}</em></span><input class="text_pole" type="password" autocomplete="new-password" placeholder="${saved ? '留空则继续使用已保存 Key' : '输入 API Key'}"></label>` : '';
-  const extra = state.source === 'comfy' ? `<div class="sd-storyboard-grid sd-storyboard-grid-two">
-      <label><span>ComfyUI URL</span><input class="text_pole sd-storyboard-connect-comfy-url" value="${htmlEscape(profile.comfyUrl || storyboardSdSettings().comfy_url || '')}" placeholder="http://127.0.0.1:8188"></label>
-      <label><span>Workflow</span><input class="text_pole sd-storyboard-connect-comfy-workflow" list="sd-storyboard-workflows-connect" value="${htmlEscape(profile.comfyWorkflow || storyboardSdSettings().comfy_workflow || '')}" placeholder="工作流文件名"><datalist id="sd-storyboard-workflows-connect">${storyboardSelectOptions('#sd_comfy_workflow', profile.comfyWorkflow)}</datalist></label>
-    </div><details class="sd-storyboard-reference-help"><summary>参考图工作流</summary><p>需要人物参考图时，在 ComfyUI API Workflow 的参考图输入处使用 <code>%qianmu_reference%</code>。连接检查会明确显示当前工作流是否支持。</p></details>` : state.source === 'banana' ? `<label class="checkbox_label"><input type="checkbox" class="sd-storyboard-connect-google-enhance" ${profile.googleEnhance ? 'checked' : ''}> Prompt Enhance</label>` : '';
-  return `<div class="sd-storyboard-connection">
-    <section class="sd-card sd-storyboard-connection-head"><span class="sd-storyboard-kicker">CONNECTION</span><h3>模型连接</h3></section>
-    <section class="sd-card">
-      ${renderStoryboardSourceTabs(state)}
-      <div class="sd-storyboard-connection-form">${credential}${extra}</div>
-      ${check ? `<div class="sd-storyboard-connection-result ${check.ok ? 'ok' : 'failed'}"><i class="fa-solid ${check.ok ? 'fa-circle-check' : 'fa-triangle-exclamation'}"></i><span>${htmlEscape(check.message)}</span></div>` : ''}
-      <div class="sd-storyboard-connection-actions"><button type="button" class="sd-btn sd-storyboard-check-connection"><i class="fa-solid fa-stethoscope"></i>检查连接</button><button type="button" class="sd-btn sd-primary sd-storyboard-save-connection"><i class="fa-solid fa-check"></i>保存连接</button></div>
-    </section>
-    <section class="sd-card sd-storyboard-pack-card"><div><h3>分镜数据打包</h3><small>形象档案、样式、日志与本聊天成片 · 不含 API Key</small></div><div><button type="button" class="sd-icon-btn sd-storyboard-pack-export" title="导出分镜数据" aria-label="导出分镜数据"><i class="fa-solid fa-file-export"></i></button><label class="sd-icon-btn sd-storyboard-pack-import" title="导入分镜数据" aria-label="导入分镜数据"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-native-file sd-storyboard-pack-file" accept="application/json,.json"></label></div></section>
   </div>`;
 }
 
@@ -10898,9 +10852,13 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
   const routedConnection = connectionState.group?.presets?.find((item) => item.id === connectionPresetId) || null;
   const connection = routedConnection || connectionState.draft || connectionState.active;
   const baseProviderProfile = sourceId === state.source ? profile : storyboardProviderProfile(state, sourceId);
+  const requestedModel = String(connection?.model || baseProviderProfile.model || STORYBOARD_PROVIDER_REGISTRY[sourceId]?.defaultModel || '');
+  const fixedModel = (STORYBOARD_MODEL_REGISTRY[sourceId] || []).some((item) => item.id === requestedModel)
+    ? requestedModel
+    : STORYBOARD_PROVIDER_REGISTRY[sourceId]?.defaultModel || '';
   const providerProfile = {
     ...baseProviderProfile,
-    model: String(connection?.model || baseProviderProfile.model || STORYBOARD_PROVIDER_REGISTRY[sourceId]?.defaultModel || ''),
+    model: fixedModel,
   };
   const payload = storyboardGenerationPayload(state, providerProfile, { sourceId, prompt, negative });
   const credentialId = connection?.credentialId || storyboardCredentialId(sourceId, connection?.id || 'draft');
@@ -11115,8 +11073,7 @@ function renderStoryboardTab() {
     : state.view === 'assets' ? renderStoryboardAssets(state)
       : state.view === 'gallery' ? renderStoryboardGallery(state)
         : state.view === 'logs' ? renderStoryboardLogs(state)
-          : state.view === 'connection' ? renderStoryboardConnection(state)
-            : renderStoryboardCreate(state);
+          : renderStoryboardCreate(state);
   return `<div class="sd-storyboard-root">${renderStoryboardNav(state)}${body}</div>`;
 }
 
@@ -11190,7 +11147,8 @@ function storyboardCaptureWorkbench(root, sourceId = storyboardState().source) {
       order: index,
     })).filter((item) => item.prompt);
   }
-  state.promptCompiler.apiProfileId = String(root.querySelector('.sd-storyboard-compiler-api')?.value || state.promptCompiler.apiProfileId || '');
+  const compilerApi = root.querySelector('.sd-storyboard-compiler-api');
+  if (compilerApi) state.promptCompiler.apiProfileId = String(compilerApi.value || '');
   state.promptCompiler.instructionPresetId = String(root.querySelector('.sd-storyboard-prompt-preset')?.value || state.promptCompiler.instructionPresetId || '');
   state.target = root.querySelector('.sd-storyboard-target')?.value || state.target;
   state.floor = String(root.querySelector('.sd-storyboard-floor')?.value ?? state.floor ?? '').trim();
@@ -11205,8 +11163,12 @@ function storyboardCaptureWorkbench(root, sourceId = storyboardState().source) {
   profile.ratio = String(root.querySelector('.sd-storyboard-ratio')?.value || profile.ratio || '');
   profile.loaded = true;
   const providerModel = root.querySelector('.sd-storyboard-model-select');
-  const customModel = root.querySelector('.sd-storyboard-custom-model input');
-  if (providerModel) profile.model = providerModel.value === '__custom__' ? String(customModel?.value || profile.model || '').trim() : String(providerModel.value || '').trim();
+  if (providerModel) {
+    const requestedModel = String(providerModel.value || '').trim();
+    profile.model = (STORYBOARD_MODEL_REGISTRY[sourceId] || []).some((item) => item.id === requestedModel)
+      ? requestedModel
+      : STORYBOARD_PROVIDER_REGISTRY[sourceId]?.defaultModel || '';
+  }
   const selectedStyleId = state.parameterPresetSelection[sourceId] || '';
   const selectedStyle = state.parameterPresets.find((item) => item.id === selectedStyleId && item.source === sourceId);
   if (selectedStyle?.profile?.model && selectedStyle.profile.model !== profile.model) state.parameterPresetSelection[sourceId] = '';
@@ -11341,36 +11303,6 @@ async function storyboardCheckConnection(root) {
   }
 }
 
-async function storyboardFetchModels(root) {
-  const state = storyboardState();
-  const sourceId = state.source;
-  try {
-    await storyboardSaveConnection(root, { quiet: true });
-    const connectionState = storyboardConnectionState(state, sourceId);
-    const profile = storyboardProviderProfile(state, sourceId);
-    const credentialId = connectionState.draft?.credentialId || connectionState.active?.credentialId || storyboardCredentialId(sourceId, 'draft');
-    const apiKey = await storyboardResolveApiKey(sourceId, credentialId);
-    if (sourceId !== 'comfy' && !apiKey) throw new Error('请填写 API Key');
-    const response = await fetch('/api/plugins/qianmu-tts/image/models', {
-      method: 'POST', headers: storyboardRequestHeaders(), body: JSON.stringify({
-        provider: sourceId, apiKey, baseUrl: profile.baseUrl, model: profile.model,
-        allowPrivateNetwork: Boolean(connectionState.draft?.options?.allowPrivateNetwork),
-      }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.ok) throw new Error(data.message || `模型列表获取失败（${response.status}）`);
-    const cacheKey = storyboardFetchedModelKey(state, sourceId);
-    storyboardFetchedModels.set(cacheKey, {
-      models: Array.isArray(data.models) ? data.models.slice(0, 1000) : [],
-      total: Number(data.total) || 0, imageCapableCount: Number(data.imageCapableCount) || 0, fetchedAt: Date.now(),
-    });
-    toast(`已获取 ${Number(data.total) || data.models?.length || 0} 个模型，优先显示可识别的生图模型。`, 'success');
-    renderModal();
-  } catch (error) {
-    toast(`拉取模型失败：${error?.message || error}；仍可手动填写模型 ID。`, 'error');
-  }
-}
-
 function storyboardRequestHeaders() {
   return typeof ctx().getRequestHeaders === 'function'
     ? ctx().getRequestHeaders()
@@ -11449,7 +11381,6 @@ async function storyboardSaveConnectionPreset(root) {
   const current = group.presets.find((item) => item.id === group.activePresetId) || null;
   const sourceCredentialId = group.draft?.credentialId || current?.credentialId || storyboardCredentialId(sourceId, 'draft');
   const { profile, workflowResult } = storyboardCaptureWorkbench(root, sourceId);
-  const sourceModelCacheKey = storyboardFetchedModelKey(state, sourceId);
   if (sourceId === 'comfy' && (!workflowResult.ok || workflowResult.removedFields.length || profile.comfyWorkflowNotice)) {
     toast(profile.comfyWorkflowNotice || storyboardWorkflowIssue(workflowResult), 'warning');
     return false;
@@ -11466,7 +11397,7 @@ async function storyboardSaveConnectionPreset(root) {
   const credentialId = target.credentialId || storyboardCredentialId(sourceId, target.id);
   Object.assign(target, {
     name, providerId: sourceId, baseUrl: String(group.draft.baseUrl || ''), model: String(profile.model || ''),
-    customModel: !(STORYBOARD_MODEL_REGISTRY[sourceId] || []).some((item) => item.id === profile.model),
+    customModel: false,
     credentialId, options: { allowPrivateNetwork: Boolean(group.draft.options?.allowPrivateNetwork) },
     updatedAt: now,
   });
@@ -11480,8 +11411,6 @@ async function storyboardSaveConnectionPreset(root) {
   }
   group.activePresetId = target.id;
   group.draft = { ...clone(target), id: '', name: '当前编辑' };
-  const fetchedModels = storyboardFetchedModels.get(sourceModelCacheKey);
-  if (fetchedModels) storyboardFetchedModels.set(storyboardFetchedModelKey(state, sourceId), fetchedModels);
   saveSettings();
   toast(`连接预设「${name}」已保存。`, 'success');
   renderModal();
@@ -12585,7 +12514,7 @@ function bindStoryboardTabEvents(root) {
     };
     const workflowField = root.querySelector('.sd-storyboard-workflow');
     workflowField?.addEventListener('input', () => { workflowField.dataset.storyboardWorkflowEdited = 'true'; });
-    root.querySelectorAll('.sd-storyboard-prompt, .sd-storyboard-negative, .sd-storyboard-floor, .sd-storyboard-field, .sd-storyboard-manual-prompt, .sd-storyboard-auto-instruction, .sd-storyboard-base-url, .sd-storyboard-custom-model input, .sd-storyboard-workflow').forEach((field) => {
+    root.querySelectorAll('.sd-storyboard-prompt, .sd-storyboard-negative, .sd-storyboard-floor, .sd-storyboard-field, .sd-storyboard-manual-prompt, .sd-storyboard-auto-instruction, .sd-storyboard-base-url, .sd-storyboard-workflow').forEach((field) => {
       field.addEventListener(field.type === 'checkbox' || field.tagName === 'SELECT' ? 'change' : 'input', saveDraft);
     });
   }
@@ -12606,7 +12535,6 @@ function bindStoryboardTabEvents(root) {
     }
     saveSettings(); renderModal();
   }));
-  root.querySelector('.sd-storyboard-open-connection')?.addEventListener('click', () => { storyboardCaptureWorkbench(root); state.view = 'connection'; saveSettings(); renderModal(); });
   root.querySelectorAll('[data-storyboard-source]').forEach((button) => button.addEventListener('click', async () => {
     const id = button.dataset.storyboardSource;
     if (!STORYBOARD_SOURCES[id] || id === state.source) return;
@@ -12622,20 +12550,15 @@ function bindStoryboardTabEvents(root) {
     saveSettings(); renderModal();
   });
   root.querySelector('.sd-storyboard-model-select')?.addEventListener('change', (event) => {
-    const custom = root.querySelector('.sd-storyboard-custom-model');
-    if (custom) custom.hidden = event.target.value !== '__custom__';
     storyboardCaptureWorkbench(root); saveSettings();
-    if (event.target.value !== '__custom__') renderModal();
+    renderModal();
+  });
+  root.querySelector('.sd-storyboard-compiler-api')?.addEventListener('change', () => {
+    storyboardCaptureWorkbench(root); saveSettings();
   });
   root.querySelector('.sd-storyboard-connection-preset')?.addEventListener('change', (event) => storyboardLoadConnectionPreset(String(event.target.value || '')));
   root.querySelector('.sd-storyboard-save-connection-preset')?.addEventListener('click', () => void storyboardSaveConnectionPreset(root));
   root.querySelector('.sd-storyboard-delete-connection-preset')?.addEventListener('click', () => void storyboardDeleteConnectionPreset());
-  root.querySelector('.sd-storyboard-fetch-models')?.addEventListener('click', () => void storyboardFetchModels(root));
-  root.querySelector('.sd-storyboard-toggle-all-models')?.addEventListener('click', () => {
-    state.showAllFetchedModels ||= {};
-    state.showAllFetchedModels[state.source] = !state.showAllFetchedModels[state.source];
-    saveSettings(); renderModal();
-  });
   root.querySelectorAll('[data-storyboard-prompt-mode]').forEach((button) => button.addEventListener('click', () => {
     storyboardCaptureWorkbench(root);
     state.promptMode = STORYBOARD_PROMPT_MODES[button.dataset.storyboardPromptMode] ? button.dataset.storyboardPromptMode : 'manual';

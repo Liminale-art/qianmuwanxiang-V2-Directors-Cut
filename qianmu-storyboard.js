@@ -15,28 +15,24 @@ const caps = (extra = {}) => Object.freeze({ ...BASE_CAPS, ...extra });
 const model = (id, label, generation, extra) => Object.freeze({ id, label, generation, capabilities: caps(extra) });
 
 export const STORYBOARD_PROVIDER_REGISTRY = Object.freeze({
-  novel: Object.freeze({ id: 'novel', label: 'NovelAI', protocol: 'novelai', defaultBaseUrl: 'https://image.novelai.net', customBaseUrl: true, customModelId: true, stSource: 'novel', secretKey: 'api_key_novel', defaultModel: 'nai-diffusion-5-full', capabilities: caps({ negative: true, seed: true, steps: true, cfg: true, sampler: true, scheduler: true, multiCharacter: true }) }),
-  banana: Object.freeze({ id: 'banana', label: 'Banana', protocol: 'gemini-images', defaultBaseUrl: 'https://generativelanguage.googleapis.com', customBaseUrl: true, customModelId: true, stSource: 'google', secretKey: 'api_key_makersuite', defaultModel: 'gemini-3.1-flash-image', capabilities: caps({ negative: true, reference: true, multipleReferences: true, imageEdit: true }) }),
-  openai: Object.freeze({ id: 'openai', label: 'GPT Image', protocol: 'openai-images', defaultBaseUrl: 'https://api.openai.com/v1', customBaseUrl: true, customModelId: true, stSource: 'openai', secretKey: 'api_key_openai', defaultModel: 'gpt-image-2', capabilities: caps({ reference: true, multipleReferences: true, imageEdit: true }) }),
-  seedream: Object.freeze({ id: 'seedream', label: 'Doubao Seedream', protocol: 'ark-images', defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3', customBaseUrl: true, customModelId: true, stSource: '', secretKey: '', defaultModel: 'doubao-seedream-5-0-260128', capabilities: caps({ seed: true, reference: true, multipleReferences: true, imageEdit: true }) }),
-  comfy: Object.freeze({ id: 'comfy', label: 'ComfyUI', protocol: 'comfy-workflow', defaultBaseUrl: '', customBaseUrl: true, customModelId: true, stSource: 'comfy', secretKey: '', defaultModel: 'comfy-workflow', capabilities: caps({ negative: true, seed: true, steps: true, cfg: true, sampler: true, scheduler: true, reference: true, multipleReferences: true, imageEdit: true, mask: true, workflow: true }) }),
+  novel: Object.freeze({ id: 'novel', label: 'NovelAI', protocol: 'novelai', defaultBaseUrl: 'https://image.novelai.net', customBaseUrl: true, customModelId: false, stSource: 'novel', secretKey: 'api_key_novel', defaultModel: 'nai-diffusion-5-full', capabilities: caps({ negative: true, seed: true, steps: true, cfg: true, sampler: true, scheduler: true, multiCharacter: true }) }),
+  banana: Object.freeze({ id: 'banana', label: 'Banana', protocol: 'gemini-images', defaultBaseUrl: 'https://generativelanguage.googleapis.com', customBaseUrl: true, customModelId: false, stSource: 'google', secretKey: 'api_key_makersuite', defaultModel: 'gemini-3.1-flash-image', capabilities: caps({ negative: true, reference: true, multipleReferences: true, imageEdit: true }) }),
+  openai: Object.freeze({ id: 'openai', label: 'GPT Image 2', protocol: 'openai-images', defaultBaseUrl: 'https://api.openai.com/v1', customBaseUrl: true, customModelId: false, stSource: 'openai', secretKey: 'api_key_openai', defaultModel: 'gpt-image-2', capabilities: caps({ reference: true, multipleReferences: true, imageEdit: true }) }),
+  seedream: Object.freeze({ id: 'seedream', label: 'Doubao Seedream', protocol: 'ark-images', defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3', customBaseUrl: true, customModelId: false, stSource: '', secretKey: '', defaultModel: 'doubao-seedream-5-0-260128', capabilities: caps({ seed: true, reference: true, multipleReferences: true, imageEdit: true }) }),
+  comfy: Object.freeze({ id: 'comfy', label: 'ComfyUI', protocol: 'comfy-workflow', defaultBaseUrl: '', customBaseUrl: true, customModelId: false, stSource: 'comfy', secretKey: '', defaultModel: 'comfy-workflow', capabilities: caps({ negative: true, seed: true, steps: true, cfg: true, sampler: true, scheduler: true, reference: true, multipleReferences: true, imageEdit: true, mask: true, workflow: true }) }),
 });
 
 export const STORYBOARD_MODEL_REGISTRY = Object.freeze({
   novel: Object.freeze([
-    model('safe-diffusion', 'Anime Curated V1', 'V1', { negative: true, seed: true, steps: true, cfg: true, sampler: true }),
-    model('nai-diffusion', 'Anime Full V1', 'V1', { negative: true, seed: true, steps: true, cfg: true, sampler: true }),
-    model('nai-diffusion-furry', 'Furry V1', 'V1', { negative: true, seed: true, steps: true, cfg: true, sampler: true }),
-    model('nai-diffusion-2', 'Anime V2', 'V2', { negative: true, seed: true, steps: true, cfg: true, sampler: true }),
-    model('nai-diffusion-3', 'Anime V3', 'V3', { negative: true, seed: true, steps: true, cfg: true, sampler: true, vibe: true }),
-    model('nai-diffusion-furry-3', 'Furry V3', 'V3', { negative: true, seed: true, steps: true, cfg: true, sampler: true, vibe: true }),
+    model('nai-diffusion-3', 'Anime V3 💕', 'V3', { negative: true, seed: true, steps: true, cfg: true, sampler: true, vibe: true }),
+    model('nai-diffusion-furry-3', 'Furry V3 💕', 'V3', { negative: true, seed: true, steps: true, cfg: true, sampler: true, vibe: true }),
     model('nai-diffusion-4-curated-preview', 'Anime Curated V4', 'V4', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
-    model('nai-diffusion-4-full', 'Anime Full V4', 'V4', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
+    model('nai-diffusion-4-full', 'Anime Full V4 💕', 'V4', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
     model('nai-diffusion-4-5-curated', 'Anime Curated V4.5', 'V4.5', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
-    model('nai-diffusion-4-5-full', 'Anime Full V4.5', 'V4.5', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
+    model('nai-diffusion-4-5-full', 'Anime Full V4.5 💕', 'V4.5', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
     // V5 首发不暴露 Vibe / Precise Reference；后续只需更新能力表，无需迁移用户数据。
     model('nai-diffusion-5-curated', 'Anime Curated V5', 'V5', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multiCharacter: true }),
-    model('nai-diffusion-5-full', 'Anime Full V5', 'V5', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multiCharacter: true }),
+    model('nai-diffusion-5-full', 'Anime Full V5 💕', 'V5', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multiCharacter: true }),
   ]),
   banana: Object.freeze([
     model('gemini-3.1-flash-lite-image', 'Nano Banana 2 Lite', '3.1', { negative: true, reference: true, multipleReferences: true, imageEdit: true }),
@@ -57,7 +53,7 @@ export const STORYBOARD_MODEL_REGISTRY = Object.freeze({
 export const STORYBOARD_SOURCES = STORYBOARD_PROVIDER_REGISTRY;
 export const STORYBOARD_CAPABILITIES = Object.freeze(Object.fromEntries(Object.entries(STORYBOARD_PROVIDER_REGISTRY).map(([id, p]) => [id, p.capabilities])));
 export const STORYBOARD_RATIOS = Object.freeze([
-  { id: '', label: '沿用当前' }, { id: '1:1', label: '1 : 1', value: 1 }, { id: '2:3', label: '2 : 3', value: 2 / 3 },
+  { id: '1:1', label: '1 : 1', value: 1 }, { id: '2:3', label: '2 : 3', value: 2 / 3 },
   { id: '3:2', label: '3 : 2', value: 3 / 2 }, { id: '3:4', label: '3 : 4', value: 3 / 4 }, { id: '4:3', label: '4 : 3', value: 4 / 3 },
   { id: '4:5', label: '4 : 5', value: 4 / 5 }, { id: '5:4', label: '5 : 4', value: 5 / 4 }, { id: '9:16', label: '9 : 16', value: 9 / 16 }, { id: '16:9', label: '16 : 9', value: 16 / 9 },
 ].map(Object.freeze));
@@ -77,7 +73,7 @@ export const getStoryboardProvider = (id) => STORYBOARD_PROVIDER_REGISTRY[id] ||
 export const getStoryboardModel = (providerId, modelId) => (STORYBOARD_MODEL_REGISTRY[providerId] || []).find((item) => item.id === modelId) || null;
 export const getStoryboardCapabilities = (providerId, modelId = '') => getStoryboardModel(providerId, modelId)?.capabilities || getStoryboardProvider(providerId)?.capabilities || caps();
 
-const legacyProfile = () => ({ loaded: false, model: '', sampler: '', scheduler: '', width: '', height: '', ratio: '', count: '', steps: '', cfg: '', seed: '', comfyUrl: '', comfyWorkflow: '', comfyWorkflowNotice: '', openaiStyle: '', openaiQuality: '', openaiBackground: '', openaiOutputFormat: '', imageSize: '', watermark: false, seedreamGuidanceScale: '', seedreamSequential: false, googleEnhance: false, novelSm: false, novelSmDyn: false, novelDecrisper: false, novelVarietyBoost: false });
+const legacyProfile = () => ({ loaded: false, model: '', sampler: '', scheduler: '', width: '', height: '', ratio: '1:1', count: '', steps: '', cfg: '', seed: '', comfyUrl: '', comfyWorkflow: '', comfyWorkflowNotice: '', openaiStyle: '', openaiQuality: '', openaiBackground: '', openaiOutputFormat: '', imageSize: '', watermark: false, seedreamGuidanceScale: '', seedreamSequential: false, googleEnhance: false, novelSm: false, novelSmDyn: false, novelDecrisper: false, novelVarietyBoost: false });
 const promptDraft = () => ({ manual: '', autoInstruction: '', compiled: '', negative: '', compiledAt: 0, compiledBy: '', userEditedCompiled: false, sourceSummary: [] });
 const connection = (id) => ({ providerId: id, activePresetId: '', presets: [], draft: { baseUrl: getStoryboardProvider(id).defaultBaseUrl, model: getStoryboardProvider(id).defaultModel } });
 const routingDefaults = () => ({ mode: 'single', single: { providerId: 'novel', connectionPresetId: '', parameterPresetId: '' }, rules: [], maxShotsPerFloor: 1, confirmMultipleRequests: true, providerConcurrency: 1 });
@@ -163,8 +159,9 @@ function reference(value) { const r = obj(value) ? value : {}; return { type: ['
 export function normalizeStoryboardConnectionProfile(value, providerId) {
   const provider = getStoryboardProvider(providerId);
   if (!provider) throw new Error(`未知生图供应商：${providerId}`);
-  const r = obj(value) ? value : {}, modelId = str(r.model || provider.defaultModel, 240);
-  return { id: cleanId(r.id), name: str(r.name || '默认连接', 80) || '默认连接', providerId, baseUrl: str(r.baseUrl || provider.defaultBaseUrl, 2048), model: modelId, customModel: !getStoryboardModel(providerId, modelId), credentialId: cleanId(r.credentialId), headers: safeRecord(r.headers), options: safeRecord(r.options), createdAt: pos(r.createdAt || r.updatedAt), updatedAt: pos(r.updatedAt) };
+  const r = obj(value) ? value : {}, requestedModel = str(r.model || provider.defaultModel, 240);
+  const modelId = getStoryboardModel(providerId, requestedModel) ? requestedModel : provider.defaultModel;
+  return { id: cleanId(r.id), name: str(r.name || '默认连接', 80) || '默认连接', providerId, baseUrl: str(r.baseUrl || provider.defaultBaseUrl, 2048), model: modelId, customModel: false, credentialId: cleanId(r.credentialId), headers: safeRecord(r.headers), options: safeRecord(r.options), createdAt: pos(r.createdAt || r.updatedAt), updatedAt: pos(r.updatedAt) };
 }
 
 export function migrateStoryboardState(value) {
@@ -208,7 +205,7 @@ export function migrateStoryboardState(value) {
 export function normalizeStoryboardState(value) {
   const migrated = migrateStoryboardState(value), defaults = createStoryboardDefaults(), state = obj(value) ? value : {};
   Object.assign(state, migrated); for (const [key, val] of Object.entries(defaults)) if (state[key] === undefined) state[key] = clone(val);
-  state.schemaVersion = STORYBOARD_SCHEMA_VERSION; state.enabled = Boolean(state.enabled); state.automation = normalizeStoryboardAutomation(state.automation); state.view = ['create', 'characters', 'assets', 'gallery', 'logs', 'connection'].includes(state.view) ? state.view : 'create'; state.workspaceView = ['workbench', 'characters', 'assets', 'gallery', 'logs'].includes(state.workspaceView) ? state.workspaceView : 'workbench'; state.characterView = ['directory', 'folder', 'edit'].includes(state.characterView) ? state.characterView : 'directory'; state.logFilter = ['all', 'success', 'failed'].includes(state.logFilter) ? state.logFilter : 'all';
+  state.schemaVersion = STORYBOARD_SCHEMA_VERSION; state.enabled = Boolean(state.enabled); state.automation = normalizeStoryboardAutomation(state.automation); state.view = ['create', 'characters', 'assets', 'gallery', 'logs'].includes(state.view) ? state.view : 'create'; state.workspaceView = ['workbench', 'characters', 'assets', 'gallery', 'logs'].includes(state.workspaceView) ? state.workspaceView : 'workbench'; state.characterView = ['directory', 'folder', 'edit'].includes(state.characterView) ? state.characterView : 'directory'; state.logFilter = ['all', 'success', 'failed'].includes(state.logFilter) ? state.logFilter : 'all';
   state.assetView = ['tags', 'vibes', 'presets', 'routing'].includes(state.assetView) ? state.assetView : 'tags'; state.assetSearch = str(state.assetSearch, 120); state.gallerySearch = str(state.gallerySearch, 120); state.gallerySource = state.gallerySource === 'all' || getStoryboardProvider(state.gallerySource) ? state.gallerySource : 'all'; state.source = getStoryboardProvider(state.source) ? state.source : 'novel'; state.target = ['latest', 'floor', 'gallery'].includes(state.target) ? state.target : 'latest'; state.inlineByDefault = state.inlineByDefault !== false; state.promptMode = STORYBOARD_PROMPT_MODES[state.promptMode] ? state.promptMode : 'manual'; state.prompt = str(state.prompt, 24000); state.negative = str(state.negative, 12000);
   const d = obj(state.promptDraft) ? state.promptDraft : {}, safeDraft = safeData(d, 5); state.promptDraft = { ...(obj(safeDraft) ? safeDraft : {}), manual: str(d.manual ?? state.prompt, 24000), autoInstruction: str(d.autoInstruction, 12000), compiled: str(d.compiled, 24000), negative: str(d.negative ?? state.negative, 12000), compiledAt: pos(d.compiledAt), compiledBy: str(d.compiledBy, 160), userEditedCompiled: Boolean(d.userEditedCompiled), sourceSummary: Array.isArray(d.sourceSummary) ? d.sourceSummary.slice(0, 40).map((x) => str(x, 240)).filter(Boolean) : [] };
   const c = obj(state.promptCompiler) ? state.promptCompiler : {}, safeCompiler = safeData(c, 5); state.promptCompiler = { ...(obj(safeCompiler) ? safeCompiler : {}), enabled: Boolean(c.enabled), apiProfileId: cleanId(c.apiProfileId), connectionPresetId: cleanId(c.connectionPresetId), instructionPresetId: cleanId(c.instructionPresetId), instruction: str(c.instruction, 12000), includeCurrentFloor: c.includeCurrentFloor !== false, includeRecentFloors: int(c.includeRecentFloors, 0, 20, 2), includeCharacterCards: c.includeCharacterCards !== false, includeUserPersona: c.includeUserPersona !== false, includeActivatedWorldInfo: c.includeActivatedWorldInfo !== false };
@@ -355,7 +352,7 @@ function legacyPipelineLogs(value) {
 
 export function buildStoryboardProviderPlan(input = {}) {
   const provider = getStoryboardProvider(input.providerId); if (!provider) throw new Error('请选择有效的生图模型');
-  const conn = normalizeStoryboardConnectionProfile(input.connection || {}, provider.id), modelId = str(input.model || conn.model || provider.defaultModel, 240), capability = getStoryboardCapabilities(provider.id, modelId), prompt = str(input.prompt, 24000); if (!prompt) throw new Error('提示词不能为空');
+  const conn = normalizeStoryboardConnectionProfile(input.connection || {}, provider.id), requestedModel = str(input.model || conn.model || provider.defaultModel, 240), modelId = getStoryboardModel(provider.id, requestedModel) ? requestedModel : provider.defaultModel, capability = getStoryboardCapabilities(provider.id, modelId), prompt = str(input.prompt, 24000); if (!prompt) throw new Error('提示词不能为空');
   const p = obj(input.params) ? input.params : {}, request = { prompt }, dropped = [];
   const own = (...keys) => { for (const key of keys) if (Object.hasOwn(p, key)) return p[key]; return undefined; };
   const providerValue = (providerId, key, value) => { if (value === '' || value == null) return; if (provider.id === providerId) request[key] = value; else dropped.push(key); };
@@ -408,7 +405,7 @@ export function buildStoryboardProviderPlan(input = {}) {
   };
   for (const key of Object.keys(gatewayParameters)) if (gatewayParameters[key] === undefined || gatewayParameters[key] === '') delete gatewayParameters[key];
   const gatewayRequest = { provider: provider.id, baseUrl: conn.baseUrl, model: modelId, prompt, negativePrompt: request.negative || '', references: request.references, vibes: request.vibes, parameters: gatewayParameters };
-  return { version: 1, providerId: provider.id, protocol: provider.protocol, baseUrl: conn.baseUrl, credentialId: conn.credentialId, connectionPresetId: conn.id, model: modelId, customModel: !getStoryboardModel(provider.id, modelId), capabilities: capability, request, gatewayRequest, droppedParameters: [...new Set(dropped)] };
+  return { version: 1, providerId: provider.id, protocol: provider.protocol, baseUrl: conn.baseUrl, credentialId: conn.credentialId, connectionPresetId: conn.id, model: modelId, customModel: false, capabilities: capability, request, gatewayRequest, droppedParameters: [...new Set(dropped)] };
 }
 
 export function resolveStoryboardVisualState(facts) {
@@ -550,6 +547,7 @@ function legacyProfiles(value) {
       else if (!result.ok && String(rawWorkflow || '').trim()) base.comfyWorkflowNotice = result.message;
       else base.comfyWorkflowNotice = str(p.comfyWorkflowNotice, 2048);
     }
+    if (!STORYBOARD_RATIOS.some((item) => item.id === base.ratio)) base.ratio = '1:1';
     return [id, base];
   }));
 }

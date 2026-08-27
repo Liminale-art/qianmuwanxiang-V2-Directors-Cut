@@ -33,7 +33,9 @@ assert.deepEqual(Object.keys(STORYBOARD_PROMPT_MODES), ['manual', 'auto', 'combi
 assert.deepEqual(STORYBOARD_ENTITY_TYPES, ['char', 'user', 'cast']);
 
 const novelGenerations = new Set(STORYBOARD_MODEL_REGISTRY.novel.map((item) => item.generation));
-for (const generation of ['V1', 'V2', 'V3', 'V4', 'V4.5', 'V5']) assert.ok(novelGenerations.has(generation), `NovelAI ${generation} must be registered`);
+assert.deepEqual([...novelGenerations], ['V3', 'V4', 'V4.5', 'V5'], 'NovelAI must expose only V3 and later generations');
+assert.ok(STORYBOARD_MODEL_REGISTRY.novel.filter((item) => item.id.includes('full') || item.generation === 'V3').every((item) => item.label.includes('💕')), 'unfiltered NovelAI models must be visibly marked');
+assert.ok(Object.values(STORYBOARD_PROVIDER_REGISTRY).every((provider) => provider.customModelId === false), 'the workbench model IDs must be fixed');
 assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-4-5-full').vibe, true);
 assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-4-5-full').preciseReference, true);
 assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-4-5-full').multipleReferences, true);
@@ -122,7 +124,7 @@ assert.equal(migrated.promptDraft.manual, 'old prompt');
 assert.equal(migrated.entities.char[0].name, 'Alice');
 assert.equal(migrated.entities.char[0].profiles[0].appearance, 'red coat');
 assert.equal(migrated.selectedCharacters[0].entityId, migrated.entities.char[0].id);
-assert.equal(migrated.connections.openai.presets[0].model, 'gpt-image-1');
+assert.equal(migrated.connections.openai.presets[0].model, 'gpt-image-2', 'retired or arbitrary model IDs must migrate to the provider default');
 assert.equal(migrated.profiles.openai.openaiBackground, 'transparent');
 assert.equal(migrated.profiles.openai.openaiOutputFormat, 'webp');
 assert.equal(migrated.profiles.openai.count, '2');
@@ -187,7 +189,8 @@ const customPlan = buildStoryboardProviderPlan({
   references: [{ type: 'gallery', assetId: 'asset-1' }],
   mask: { type: 'asset', assetId: 'mask-1' },
 });
-assert.equal(customPlan.customModel, true);
+assert.equal(customPlan.customModel, false);
+assert.equal(customPlan.model, 'gpt-image-2', 'a mirror may replace the base URL but not inject an arbitrary model ID');
 assert.equal(customPlan.baseUrl, 'https://mirror.example/v1');
 assert.equal(customPlan.request.references.length, 1);
 assert.ok(customPlan.droppedParameters.includes('negative'));

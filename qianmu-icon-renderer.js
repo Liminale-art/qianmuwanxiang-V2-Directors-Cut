@@ -138,7 +138,6 @@ export const QIANMU_FA_ICON_MAP = Object.freeze({
   'fa-square-check': 'qm-fill-check-square',
   'fa-star': Object.freeze({ default: 'qm-regular-star', regular: 'qm-regular-star', solid: 'qm-fill-star' }),
   'fa-star-half-stroke': 'qm-duotone-star-half',
-  'fa-stethoscope': 'qm-duotone-stethoscope',
   'fa-stop': 'qm-fill-stop',
   'fa-syringe': 'qm-duotone-syringe',
   'fa-table-cells-large': 'qm-duotone-squares-four',

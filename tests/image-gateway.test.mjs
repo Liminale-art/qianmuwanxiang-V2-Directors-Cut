@@ -50,13 +50,9 @@ function storedZip(name, payload) {
 assert.deepEqual(Object.keys(IMAGE_GATEWAY_PROVIDERS), ['novel', 'banana', 'openai', 'seedream', 'comfy']);
 
 const browserSource = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-assert.match(browserSource, /fetch\('\/api\/plugins\/qianmu-tts\/image\/models'/, '浏览器必须通过同源模型列表路由');
-assert.match(browserSource, /apiKey,\s*baseUrl:\s*profile\.baseUrl/, '模型列表请求必须携带当前连接的鉴权与地址');
-assert.match(browserSource, /item\.imageCapable === false/, '模型选择器必须能优先过滤生图模型');
-assert.match(browserSource, /查看接口全部模型/, '模型选择器必须保留显示接口完整列表的入口');
-assert.match(browserSource, /value="__custom__"/, '接口未列出的模型必须保留手填兜底');
-assert.match(browserSource, /item\.imageCapable === false && item\.id !== selected/, '当前已选中转模型不得被生图模型过滤器隐藏');
-assert.match(browserSource, /storyboardFetchedModels\.set\(storyboardFetchedModelKey\(state, sourceId\), fetchedModels\)/, '连接另存为预设后必须保留已拉取模型');
+assert.doesNotMatch(browserSource, /fetch\('\/api\/plugins\/qianmu-tts\/image\/models'/, '镜头台使用固定模型目录，不应在切换配置时额外拉取模型');
+assert.doesNotMatch(browserSource, /查看接口全部模型|value="__custom__"|输入兼容模型 ID/, '固定模型目录不得重新暴露接口全集或任意模型 ID');
+assert.match(browserSource, /function storyboardModelOptions[\s\S]*STORYBOARD_MODEL_REGISTRY\[providerId\]/, '模型选择器必须直接来自千幕固定目录');
 
 const sanitized = sanitizeImageRequest({
   provider: 'openai', apiKey: 'secret', model: 'gpt-image-2', prompt: 'quiet street', negativePrompt: 'watermark',

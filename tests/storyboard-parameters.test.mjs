@@ -108,8 +108,8 @@ assert.deepEqual(summarizeStoryboardGenerationDemand([
 ]), { requestCount: 2, imageCount: 5, hasMultiImageRequest: true }, 'confirmation math must match the one-to-four image request contract');
 
 assert.match(browserSource, /function storyboardConnectionState[\s\S]*draft: group\?\.draft \|\| active/, 'the UI must render the editable draft instead of the saved preset object');
-assert.match(browserSource, /const knownModels = \[\.\.\.\(STORYBOARD_MODEL_REGISTRY\[state\.source\][\s\S]*fetchedState\?\.models/, 'models fetched from a relay must not be mistaken for manual model IDs after rerender');
-assert.match(browserSource, /item\.imageCapable === false && item\.id !== selected/, 'a selected relay model must remain visible when the list returns to the image-only filter');
+assert.match(browserSource, /function storyboardModelOptions[\s\S]*const options = STORYBOARD_MODEL_REGISTRY\[providerId\][\s\S]*fixedSelection/, 'the model picker must be limited to the fixed provider catalog');
+assert.doesNotMatch(browserSource, /storyboardFetchedModels|showAllFetchedModels|__custom__/, 'relay discovery and arbitrary model IDs must not leak back into the workbench');
 assert.match(browserSource, /const connection = routedConnection \|\| connectionState\.draft \|\| connectionState\.active/, 'ordinary generation must use the current draft while an explicit ensemble route may use its saved preset');
 assert.match(browserSource, /function storyboardParameterPresets[\s\S]*item\.profile\.model === currentModel/, 'the style picker must isolate saved parameters by concrete model');
 const saveConnectionSource = browserSource.slice(browserSource.indexOf('async function storyboardSaveConnection'), browserSource.indexOf('async function storyboardSaveConnectionPreset'));

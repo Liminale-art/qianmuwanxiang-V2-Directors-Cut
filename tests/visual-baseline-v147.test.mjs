@@ -22,4 +22,4 @@ assert.match(source, /function storyboardRedrawRecord[\s\S]*shouldRecompile = !p
 assert.match(source, /record\.promptLocked = true/);
 assert.match(source, /promptMode: state\.promptMode[\s\S]*promptLocked: Boolean\(state\.promptDraft\?\.userEditedCompiled\)/);
 
-console.log('v1.47.1 visual rollback and edited-storyboard continuity contract OK');
+console.log('v1.48.0 visual rollback and edited-storyboard continuity contract OK');
