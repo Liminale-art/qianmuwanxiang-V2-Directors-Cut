@@ -6584,3 +6584,57 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   animation: qm-phosphor-spin 1s linear infinite !important;
 }
 @keyframes qm-phosphor-spin { to { transform: rotate(360deg); } }
+
+/* Storyboard S3: unified prompt workbench. Scoped to avoid changing the shared visual baseline. */
+#story-director-modal .sd-storyboard-prompt-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+#story-director-modal .sd-storyboard-paragraph-control,
+#story-director-modal .sd-storyboard-artist-control {
+  display: grid;
+  gap: 8px;
+}
+#story-director-modal .sd-storyboard-compiler-sources {
+  border: 1px solid var(--sd-border);
+  border-radius: 12px;
+  padding: 0 12px;
+}
+#story-director-modal .sd-storyboard-compiler-sources > summary {
+  min-height: 42px;
+  cursor: pointer;
+}
+#story-director-modal .sd-storyboard-compiler-sources > div {
+  display: grid;
+  gap: 10px;
+  padding: 0 0 12px;
+}
+#story-director-modal .sd-storyboard-world-entries {
+  display: grid;
+  gap: 6px;
+  max-height: 230px;
+  overflow: auto;
+  scrollbar-width: none;
+}
+#story-director-modal .sd-storyboard-world-entries::-webkit-scrollbar { display: none; }
+#story-director-modal .sd-storyboard-world-entries label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--sd-card) 78%, transparent);
+}
+#story-director-modal .sd-storyboard-world-entries span { display: grid; min-width: 0; }
+#story-director-modal .sd-storyboard-world-entries small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-storyboard-tag-negative.active,
+#story-director-modal .sd-storyboard-tag-negative[aria-pressed="true"] {
+  color: var(--sd-accent);
+  border-color: var(--sd-accent);
+  background: color-mix(in srgb, var(--sd-accent) 18%, transparent);
+}
+#story-director-modal .sd-storyboard-tag-custom-category.hidden { display: none; }
