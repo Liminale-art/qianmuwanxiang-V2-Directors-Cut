@@ -18,7 +18,7 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.54.0';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.55.0';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_CONSISTENCY_STRATEGIES,
@@ -51,7 +51,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.54.0';
+const VERSION = '1.55.0';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -10035,15 +10035,37 @@ function storyboardCleanMessageText(value) {
     .trim();
 }
 
-function storyboardStripExcludedBlocks(value, excludedTags = '') {
-  let text = String(value || '');
-  const names = String(excludedTags || '')
+function storyboardCompilerTagRules(state = storyboardState()) {
+  const compiler = state?.promptCompiler || {};
+  const legacy = String(compiler.excludedTags || '')
     .split(/[,，\s]+/)
-    .map((item) => item.trim().replace(/[^a-zA-Z0-9_:-]/g, ''))
-    .filter(Boolean)
+    .map((name) => ({ name, action: 'remove' }));
+  return (Array.isArray(compiler.tagRules) ? compiler.tagRules : legacy)
+    .map((rule) => ({
+      name: String(rule?.name || '').trim().replace(/^<|>$/g, '').replace(/[^a-zA-Z0-9_:-]/g, ''),
+      action: rule?.action === 'extract' ? 'extract' : 'remove',
+    }))
+    .filter((rule) => rule.name)
     .slice(0, 80);
-  for (const name of names) {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function storyboardCleanWithTagRules(value, state = storyboardState()) {
+  let text = String(value || '').replace(/<!--[\s\S]*?-->/g, '');
+  const rules = storyboardCompilerTagRules(state);
+  const extractRules = rules.filter((rule) => rule.action === 'extract');
+  if (extractRules.length) {
+    const extracted = [];
+    for (const rule of extractRules) {
+      const escaped = rule.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = new RegExp(`<${escaped}\\b[^>]*>([\\s\\S]*?)<\\/${escaped}>`, 'gi');
+      let match;
+      while ((match = pattern.exec(text)) !== null) if (match[1].trim()) extracted.push(match[1].trim());
+    }
+    // 提取标签没有命中时回退原文，避免一次错误配置让取景上下文整层变空。
+    if (extracted.length) text = extracted.join('\n\n');
+  }
+  for (const rule of rules.filter((item) => item.action === 'remove')) {
+    const escaped = rule.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     text = text
       .replace(new RegExp(`<${escaped}\\b[^>]*>[\\s\\S]*?<\\/${escaped}>`, 'gi'), ' ')
       .replace(new RegExp(`<${escaped}\\b[^>]*\\/?\\s*>`, 'gi'), ' ');
@@ -10127,20 +10149,20 @@ function renderStoryboardModelCard(state) {
   const activePreset = modelPresets.some((item) => item.id === connection.active?.id) ? connection.active.id : '';
   const presetOptions = modelPresets.map((item) => `<option value="${htmlEscape(item.id)}" ${activePreset === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
   return `<details class="sd-card sd-storyboard-model-card" data-storyboard-card="model" ${state.collapsedCards.model ? '' : 'open'}>
-    <summary><span><b>STORYBOARD</b></span><em>${htmlEscape(provider.label)}</em><i class="fa-solid fa-chevron-down"></i></summary>
+    <summary><span><b>API 设置</b></span><em>${htmlEscape(provider.label)}</em><i class="fa-solid fa-chevron-down"></i></summary>
     <div class="sd-storyboard-card-body">
+      <label><span>提示词预处理</span><select class="text_pole sd-storyboard-compiler-api"><option value="">沿用千幕当前 API</option>${storyboardCompilerProfileOptions(state)}</select></label>
       <div class="sd-storyboard-model-picker">
         <label><span>生图模型</span><select class="text_pole sd-storyboard-provider">${Object.values(STORYBOARD_PROVIDER_REGISTRY).map((item) => `<option value="${item.id}" ${state.source === item.id ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('')}</select></label>
         <label><span>模型</span><select class="text_pole sd-storyboard-model-select">${storyboardModelOptions(state.source, profile.model)}</select></label>
       </div>
-      <label><span>画面整理模型</span><select class="text_pole sd-storyboard-compiler-api"><option value="">沿用千幕当前 API</option>${storyboardCompilerProfileOptions(state)}</select></label>
-      <div class="sd-storyboard-connection-preset-row"><select class="text_pole sd-storyboard-connection-preset"><option value="">当前模型设置</option>${presetOptions}</select><button type="button" class="sd-icon-btn sd-storyboard-save-connection-preset" title="保存当前模型的 API 预设" aria-label="保存当前模型的 API 预设"><i class="fa-solid fa-bookmark"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-connection-preset" ${activePreset ? '' : 'disabled'} title="删除所选 API 预设" aria-label="删除所选 API 预设"><i class="fa-solid fa-trash-can"></i></button></div>
+      <div class="sd-storyboard-preset-field"><span>API 预设</span><div class="sd-storyboard-connection-preset-row"><select class="text_pole sd-storyboard-connection-preset"><option value="">当前模型设置</option>${presetOptions}</select><button type="button" class="sd-icon-btn sd-storyboard-save-connection-preset" title="保存当前模型的 API 预设" aria-label="保存当前模型的 API 预设"><i class="fa-solid fa-bookmark"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-connection-preset" ${activePreset ? '' : 'disabled'} title="删除所选 API 预设" aria-label="删除所选 API 预设"><i class="fa-solid fa-trash-can"></i></button></div></div>
       <label><span>API 地址</span><input class="text_pole sd-storyboard-base-url" value="${htmlEscape(profile.baseUrl)}" placeholder="${htmlEscape(provider.defaultBaseUrl || 'http://127.0.0.1:8188')}"></label>
       <label><span>${state.source === 'comfy' ? '访问令牌（可选）' : 'API Key'}</span><input class="text_pole sd-storyboard-api-key-memory" type="password" autocomplete="new-password" placeholder="${savedKey ? '已保存' : '输入 API Key'}"></label>
       ${state.source === 'comfy' ? `<label class="sd-switch-row"><span>允许本地网络</span><input type="checkbox" class="sd-storyboard-private-network" ${(connection.active?.options?.allowPrivateNetwork ?? connection.group?.draft?.options?.allowPrivateNetwork) ? 'checked' : ''}></label><label><span>API Workflow</span><textarea class="text_pole sd-storyboard-workflow" placeholder="粘贴 ComfyUI API Workflow JSON">${htmlEscape(typeof profile.comfyWorkflow === 'string' && profile.comfyWorkflow.trim().startsWith('{') ? profile.comfyWorkflow : '')}</textarea></label><div class="sd-storyboard-workflow-warning sd-storyboard-connection-result failed" ${profile.comfyWorkflowNotice ? '' : 'hidden'}><i class="fa-solid fa-triangle-exclamation"></i><span>${htmlEscape(profile.comfyWorkflowNotice || '')}</span></div>` : ''}
       ${check ? `<div class="sd-storyboard-connection-result ${check.ok ? 'ok' : 'failed'}"><i class="fa-solid ${check.ok ? 'fa-circle-check' : 'fa-triangle-exclamation'}"></i><span>${htmlEscape(check.message)}</span></div>` : ''}
       <div class="sd-storyboard-model-actions"><button type="button" class="sd-btn sd-storyboard-check-connection">测试连接</button><button type="button" class="sd-btn sd-primary sd-storyboard-save-connection">保存连接</button></div>
-      <div class="sd-storyboard-pack-card"><div><b>分镜数据</b><small>不包含 API Key</small></div><div><button type="button" class="sd-icon-btn sd-storyboard-pack-export" title="导出分镜数据" aria-label="导出分镜数据"><i class="fa-solid fa-file-export"></i></button><label class="sd-icon-btn sd-storyboard-pack-import" title="导入分镜数据" aria-label="导入分镜数据"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-native-file sd-storyboard-pack-file" accept="application/json,.json"></label></div></div>
+      <div class="sd-storyboard-pack-card"><div><b>分镜数据打包</b><small>跨 SillyTavern 迁移，不包含 API Key</small></div><div><button type="button" class="sd-icon-btn sd-storyboard-pack-export" title="导出分镜数据" aria-label="导出分镜数据"><i class="fa-solid fa-file-export"></i></button><label class="sd-icon-btn sd-storyboard-pack-import" title="导入分镜数据" aria-label="导入分镜数据"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-native-file sd-storyboard-pack-file" accept="application/json,.json"></label></div></div>
     </div>
   </details>`;
 }
@@ -10243,8 +10265,13 @@ function storyboardPlanCompilerSignature(state = storyboardState()) {
   return hashText([
     state.promptCompiler?.apiProfileId || 'current-api',
     state.promptCompiler?.instructionPresetId || 'default',
-    state.promptCompiler?.autoInstruction || state.promptDraft?.autoInstruction || '',
-    state.contentRating || 'sfw',
+    state.promptDraft?.autoInstruction || '',
+    JSON.stringify(storyboardCompilerTagRules(state)),
+    Number(state.promptCompiler?.includeRecentFloors) || 0,
+    state.promptCompiler?.includeCharacterCards !== false,
+    state.promptCompiler?.includeUserPersona !== false,
+    state.promptCompiler?.worldMode || 'auto',
+    (state.promptCompiler?.worldEntryIds || []).join(','),
     state.paragraphMode || 'auto',
   ].join('\u241f'));
 }
@@ -10448,6 +10475,43 @@ async function storyboardWarmCompilerWorldEntries({ rerender = false } = {}) {
   return loading;
 }
 
+function renderStoryboardAutomationCard(state) {
+  const status = state.automation.autoGenerate ? '自动取景并生成' : (state.automation.autoCapture ? '自动取景' : '');
+  return `<details class="sd-card sd-storyboard-automation-card" data-storyboard-card="automation" ${state.collapsedCards.automation ? '' : 'open'}>
+    <summary><span><b>自动化</b>${status ? `<small>${status}</small>` : ''}</span><i class="fa-solid fa-chevron-down"></i></summary>
+    <div class="sd-storyboard-card-body"><div class="sd-storyboard-toggle-pills">
+      <label class="sd-storyboard-toggle-pill"><input type="checkbox" class="sd-storyboard-auto-capture" ${state.automation.autoCapture ? 'checked' : ''} ${!state.enabled || !state.promptCompiler.enabled ? 'disabled' : ''}><span>新回复自动取景</span></label>
+      <label class="sd-storyboard-toggle-pill"><input type="checkbox" class="sd-storyboard-auto-generate" ${state.automation.autoGenerate ? 'checked' : ''} ${!state.enabled || !state.promptCompiler.enabled || !state.automation.autoCapture ? 'disabled' : ''}><span>取景后自动生成</span></label>
+    </div></div>
+  </details>`;
+}
+
+function renderStoryboardCompilerContextPanel(state, worldEntryRows) {
+  const rules = storyboardCompilerTagRules(state);
+  const ruleRows = rules.map((rule, index) => `<div class="sd-storyboard-context-rule" data-storyboard-context-rule="${index}"><input class="text_pole sd-storyboard-context-rule-name" value="${htmlEscape(rule.name)}" placeholder="标签名，如 thinking"><select class="text_pole sd-storyboard-context-rule-action"><option value="remove" ${rule.action !== 'extract' ? 'selected' : ''}>屏蔽</option><option value="extract" ${rule.action === 'extract' ? 'selected' : ''}>提取</option></select><button type="button" class="sd-icon-btn sd-storyboard-delete-context-rule" title="删除规则" aria-label="删除规则"><i class="fa-solid fa-xmark"></i></button></div>`).join('');
+  const worldEnabled = state.promptCompiler.includeActivatedWorldInfo !== false && state.promptCompiler.worldMode !== 'off';
+  return `<details class="sd-storyboard-compiler-sources"><summary>上下文参考</summary><div>
+    <div class="sd-storyboard-context-pills">
+      <label class="sd-storyboard-toggle-pill"><input type="checkbox" class="sd-storyboard-context-character" ${state.promptCompiler.includeCharacterCards ? 'checked' : ''}><span>角色设定</span></label>
+      <label class="sd-storyboard-toggle-pill"><input type="checkbox" class="sd-storyboard-context-user" ${state.promptCompiler.includeUserPersona ? 'checked' : ''}><span>User 人设</span></label>
+      <label class="sd-storyboard-toggle-pill"><input type="checkbox" class="sd-storyboard-context-world" ${worldEnabled ? 'checked' : ''}><span>世界设定</span></label>
+    </div>
+    <label class="sd-storyboard-context-depth"><span>参考近期层数</span><input class="text_pole sd-storyboard-context-recent" type="number" min="0" max="20" step="1" value="${htmlEscape(state.promptCompiler.includeRecentFloors)}"></label>
+    ${worldEnabled ? `<label><span>世界设定</span><select class="text_pole sd-storyboard-world-mode"><option value="auto" ${state.promptCompiler.worldMode === 'auto' ? 'selected' : ''}>自动筛选</option><option value="selected" ${state.promptCompiler.worldMode === 'selected' ? 'selected' : ''}>手动选择</option></select></label>${state.promptCompiler.worldMode === 'selected' ? `<div class="sd-storyboard-world-entries">${worldEntryRows || '<small>正在读取当前角色绑定的世界书；未勾选时会自动筛选兜底。</small>'}</div>` : ''}` : ''}
+    <div class="sd-storyboard-context-rules"><header><span><b>正文处理</b><small>提取规则优先；未命中时回退原文</small></span><button type="button" class="sd-icon-btn sd-storyboard-add-context-rule" title="添加标签规则" aria-label="添加标签规则"><i class="fa-solid fa-plus"></i></button></header>${ruleRows || '<div class="sd-storyboard-empty-inline">不处理正文标签。</div>'}</div>
+  </div></details>`;
+}
+
+function renderStoryboardCompilerPanel(state, { draft, promptPresets, worldEntryRows, latestFloor }) {
+  return `<label><span>画面意图</span><textarea class="text_pole sd-storyboard-manual-prompt" spellcheck="false" placeholder="可留空由提示词预处理自动取景；填写后以此为最高优先补全">${htmlEscape(draft.manual)}</textarea></label>
+    <div class="sd-storyboard-compiler-settings">
+      <div class="sd-storyboard-preset-field"><span>取景指令</span><div class="sd-storyboard-inline-control"><select class="text_pole sd-storyboard-prompt-preset"><option value="">默认方案</option>${promptPresets}</select><button type="button" class="sd-icon-btn sd-storyboard-save-prompt-preset" title="保存当前取景指令" aria-label="保存当前取景指令"><i class="fa-solid fa-bookmark"></i></button><button type="button" class="sd-icon-btn sd-storyboard-open-prompt-library" title="管理取景指令" aria-label="管理取景指令"><i class="fa-solid fa-folder"></i></button></div></div>
+      <label><span>本次取景指令</span><textarea class="text_pole sd-storyboard-auto-instruction" placeholder="给提示词预处理模型的指导；不会直接发送给生图模型">${htmlEscape(draft.autoInstruction)}</textarea></label>
+      ${renderStoryboardCompilerContextPanel(state, worldEntryRows)}
+      <button type="button" class="sd-btn sd-storyboard-compile-prompt" ${latestFloor < 0 || storyboardCompilerBusy ? 'disabled' : ''}>${storyboardCompilerBusy ? '正在整理…' : '整理画面'}</button>
+    </div>`;
+}
+
 function renderStoryboardCreate(state) {
   const profile = storyboardProviderProfile(state);
   const capabilities = getStoryboardCapabilities(state.source, profile.model);
@@ -10457,7 +10521,6 @@ function renderStoryboardCreate(state) {
   const plannedShots = Array.isArray(draft.shots) ? draft.shots : [];
   const promptValue = draft.compiled || state.prompt || (!state.promptCompiler.enabled ? draft.manual : '');
   const compilerEnabled = Boolean(state.promptCompiler.enabled);
-  const effectiveMode = compilerEnabled ? (String(draft.manual || '').trim() ? 'combined' : 'auto') : 'manual';
   const promptPresets = state.promptPresets.map((item) => `<option value="${htmlEscape(item.id)}" ${state.promptCompiler.instructionPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
   const artistPresets = state.artistPresets.map((item) => `<option value="${htmlEscape(item.id)}" ${state.selectedArtistPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
   const targetFloor = storyboardTargetFloor(state);
@@ -10473,14 +10536,13 @@ function renderStoryboardCreate(state) {
       : state.source === 'seedream' ? `<label><span>Guidance scale</span><input class="text_pole sd-storyboard-field" data-storyboard-field="seedreamGuidanceScale" type="number" min="0" max="20" step="0.1" value="${htmlEscape(profile.seedreamGuidanceScale)}" placeholder="默认"></label><label class="sd-switch-row"><span>Sequential generation</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="seedreamSequential" ${profile.seedreamSequential ? 'checked' : ''}></label><label class="sd-switch-row"><span>Watermark</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="watermark" ${profile.watermark ? 'checked' : ''}></label>`
         : state.source === 'novel' ? `<label class="sd-switch-row"><span>SMEA</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelSm" ${profile.novelSm ? 'checked' : ''}></label><label class="sd-switch-row"><span>SMEA DYN</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelSmDyn" ${profile.novelSmDyn ? 'checked' : ''}></label><label class="sd-switch-row"><span>Decrisper</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelDecrisper" ${profile.novelDecrisper ? 'checked' : ''}></label><label class="sd-switch-row"><span>Variety Boost</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelVarietyBoost" ${profile.novelVarietyBoost ? 'checked' : ''}></label>` : '';
   return `<div class="sd-storyboard-create">
-    <section class="sd-card sd-storyboard-master-switch"><div><b>分镜</b><small>${state.enabled ? '正文取景已启用' : '关闭时不在正文显示或自动运行'}</small></div><label class="sd-switch-row"><span>${state.enabled ? '已启用' : '未启用'}</span><input type="checkbox" class="sd-storyboard-enabled" ${state.enabled ? 'checked' : ''}></label></section>
-    <details class="sd-card sd-storyboard-automation-card" data-storyboard-card="automation" ${state.collapsedCards.automation ? '' : 'open'}><summary><span><b>自动化</b><small>${state.automation.autoGenerate ? '自动取景并生成' : state.automation.autoCapture ? '自动取景' : '手动触发'}</small></span><i class="fa-solid fa-chevron-down"></i></summary><div class="sd-storyboard-card-body"><label class="sd-switch-row"><span>新回复自动取景</span><input type="checkbox" class="sd-storyboard-auto-capture" ${state.automation.autoCapture ? 'checked' : ''} ${!state.enabled || !state.promptCompiler.enabled ? 'disabled' : ''}></label><label class="sd-switch-row"><span>取景后自动生成</span><input type="checkbox" class="sd-storyboard-auto-generate" ${state.automation.autoGenerate ? 'checked' : ''} ${!state.enabled || !state.promptCompiler.enabled || !state.automation.autoCapture ? 'disabled' : ''}></label></div></details>
+    <section class="sd-card sd-storyboard-master-switch"><div><b>启用分镜</b><small>${state.enabled ? '正文入口与任务监听已启用' : '关闭时不显示正文入口，也不会发起请求'}</small></div><label class="sd-switch-row"><span>${state.enabled ? '已启用' : '未启用'}</span><input type="checkbox" class="sd-storyboard-enabled" ${state.enabled ? 'checked' : ''}></label></section>
+    ${renderStoryboardAutomationCard(state)}
     ${renderStoryboardModelCard(state)}
     <details class="sd-card sd-storyboard-prompt-card" data-storyboard-card="prompt" ${state.collapsedCards.prompt ? '' : 'open'}>
-      <summary><span><b>提示词</b><small>${compilerEnabled ? (effectiveMode === 'combined' ? '手写意图 · LLM 整理' : 'LLM 自动取景') : '纯手写'}</small></span><i class="fa-solid fa-chevron-down"></i></summary>
+      <summary><span><b>提示词</b></span><button type="button" class="sd-storyboard-compiler-toggle ${compilerEnabled ? 'active' : ''}" aria-pressed="${compilerEnabled}" title="${compilerEnabled ? '关闭提示词预处理' : '启用提示词预处理'}" aria-label="${compilerEnabled ? '关闭提示词预处理' : '启用提示词预处理'}"><i class="fa-solid fa-robot"></i></button><i class="fa-solid fa-chevron-down"></i></summary>
       <div class="sd-storyboard-card-body">
-      <div class="sd-storyboard-prompt-toolbar"><label class="sd-switch-row"><span>LLM 协作</span><input type="checkbox" class="sd-storyboard-compiler-enabled" ${compilerEnabled ? 'checked' : ''}></label><div class="sd-storyboard-mode" role="group" aria-label="内容分区"><button type="button" class="${state.contentRating !== 'nsfw' ? 'active' : ''}" data-storyboard-content-rating="sfw">SFW</button><button type="button" class="${state.contentRating === 'nsfw' ? 'active' : ''}" data-storyboard-content-rating="nsfw">NSFW</button></div></div>
-      ${compilerEnabled ? `<label><span>画面意图</span><textarea class="text_pole sd-storyboard-manual-prompt" spellcheck="false" placeholder="可留空由 LLM 自动取景；填写后会以此为最高优先补全">${htmlEscape(draft.manual)}</textarea></label><div class="sd-storyboard-compiler-settings"><div class="sd-storyboard-inline-control"><select class="text_pole sd-storyboard-prompt-preset"><option value="">默认取景方案</option>${promptPresets}</select><button type="button" class="sd-icon-btn sd-storyboard-save-prompt-preset" title="保存取景方案" aria-label="保存取景方案"><i class="fa-solid fa-bookmark"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-prompt-preset" title="删除取景方案" aria-label="删除取景方案" ${state.promptCompiler.instructionPresetId ? '' : 'disabled'}><i class="fa-solid fa-trash-can"></i></button></div><label><span>取景指令</span><textarea class="text_pole sd-storyboard-auto-instruction" placeholder="透明可改；用于指导 LLM 如何整理画面">${htmlEscape(draft.autoInstruction)}</textarea></label><div class="sd-storyboard-paragraph-control"><span>正文取景</span><div class="sd-storyboard-mode"><button type="button" class="${state.paragraphMode !== 'manual' ? 'active' : ''}" data-storyboard-paragraph-mode="auto">自动判断</button><button type="button" class="${state.paragraphMode === 'manual' ? 'active' : ''}" data-storyboard-paragraph-mode="manual">手动选择</button></div>${state.paragraphMode === 'manual' ? `<select class="text_pole sd-storyboard-paragraph-select" ${paragraphOptions ? '' : 'disabled'}>${paragraphOptions || '<option>当前楼层暂无可选段落</option>'}</select>` : ''}</div><details class="sd-storyboard-compiler-sources"><summary>资料取用</summary><div><label><span>世界设定</span><select class="text_pole sd-storyboard-world-mode"><option value="auto" ${state.promptCompiler.worldMode === 'auto' ? 'selected' : ''}>自动筛选</option><option value="selected" ${state.promptCompiler.worldMode === 'selected' ? 'selected' : ''}>手动选择</option><option value="off" ${state.promptCompiler.worldMode === 'off' ? 'selected' : ''}>不读取</option></select></label>${state.promptCompiler.worldMode === 'selected' ? `<div class="sd-storyboard-world-entries">${worldEntryRows || '<small>正在读取当前角色绑定的世界书；未勾选时会自动筛选兜底。</small>'}</div>` : ''}<label><span>排除标签</span><input class="text_pole sd-storyboard-excluded-tags" value="${htmlEscape(state.promptCompiler.excludedTags || '')}" placeholder="以逗号分隔，例如 think, status"></label></div></details><button type="button" class="sd-btn sd-storyboard-compile-prompt" ${latestFloor < 0 || storyboardCompilerBusy ? 'disabled' : ''}>${storyboardCompilerBusy ? '正在整理…' : '整理画面'}</button></div>` : ''}
+      ${compilerEnabled ? renderStoryboardCompilerPanel(state, { draft, promptPresets, worldEntryRows, latestFloor }) : ''}
       <div class="sd-storyboard-paragraph-control sd-storyboard-paragraph-placement"><span>正文取景</span><div class="sd-storyboard-mode"><button type="button" class="${state.paragraphMode !== 'manual' ? 'active' : ''}" data-storyboard-paragraph-mode="auto">自动判断</button><button type="button" class="${state.paragraphMode === 'manual' ? 'active' : ''}" data-storyboard-paragraph-mode="manual">手动选择</button></div>${state.paragraphMode === 'manual' ? `<select class="text_pole sd-storyboard-paragraph-select" ${paragraphOptions ? '' : 'disabled'}>${paragraphOptions || '<option>当前楼层暂无可选段落</option>'}</select>` : ''}</div>
       <label><span>${compilerEnabled ? '最终提示词' : '提示词'}</span><textarea class="text_pole sd-storyboard-prompt" spellcheck="false" placeholder="${compilerEnabled ? 'LLM 整理后仍可手动修改；最终以此处为准' : '写下发送给图像模型的提示词'}">${htmlEscape(promptValue)}</textarea></label>
       ${capabilities.negative ? `<label><span>负面提示词</span><textarea class="text_pole sd-storyboard-negative" spellcheck="false" placeholder="可留空">${htmlEscape(draft.negative || state.negative)}</textarea></label>` : ''}
@@ -10786,6 +10848,7 @@ function renderStoryboardAssets(state) {
   const capabilities = getStoryboardCapabilities(state.source, profile.model);
   const editingTag = state.tagLibrary.find((item) => item.id === state.editingTagId) || null;
   const editingVibe = state.vibeLibrary.find((item) => item.id === state.editingVibeId) || null;
+  const editingPrompt = state.promptPresets.find((item) => item.id === state.editingPromptPresetId) || null;
   const selectedVibes = new Set(state.selectedVibeIds || []);
   const compatibleVibes = state.vibeLibrary.filter((item) => (!item.providerIds?.length || item.providerIds.includes(state.source))
     && (!item.modelIds?.length || item.modelIds.includes(profile.model)));
@@ -10801,15 +10864,36 @@ function renderStoryboardAssets(state) {
       <div><button type="button" class="sd-icon-btn sd-storyboard-edit-vibe" title="编辑" aria-label="编辑"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-vibe" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div>
     </article>`;
   }).join('');
-  const promptRows = state.promptPresets.map((item) => `<article class="sd-storyboard-asset-row" data-storyboard-prompt-id="${htmlEscape(item.id)}"><button type="button" class="sd-storyboard-asset-main sd-storyboard-use-prompt-preset"><span><b>${htmlEscape(item.name)}</b><small>LLM 取景指令</small></span><em>${htmlEscape(snip(item.instruction || '沿用默认整理规则', 100))}</em></button><div><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-asset-prompt" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div></article>`).join('');
+  const promptRows = state.promptPresets.map((item) => `<article class="sd-storyboard-asset-row ${state.promptCompiler.instructionPresetId === item.id ? 'selected' : ''}" data-storyboard-prompt-id="${htmlEscape(item.id)}"><button type="button" class="sd-storyboard-asset-main sd-storyboard-use-prompt-preset"><span><b>${htmlEscape(item.name)}</b><small>提示词预处理指令</small></span><em>${htmlEscape(snip(item.instruction || '沿用千幕基础规则', 100))}</em></button><div><button type="button" class="sd-icon-btn sd-storyboard-edit-asset-prompt" title="编辑" aria-label="编辑"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-asset-prompt" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div></article>`).join('');
   return `<div class="sd-storyboard-assets-page">
-    <div class="sd-storyboard-assets-tabs" role="tablist">${[['tags', 'Tag 库'], ['vibes', 'Vibe 库'], ['presets', '取景方案'], ['routing', '镜组']].map(([id, label]) => `<button type="button" role="tab" aria-selected="${activeSection === id}" class="${activeSection === id ? 'active' : ''}" data-storyboard-asset-section="${id}">${label}</button>`).join('')}</div>
+    <div class="sd-storyboard-assets-tabs" role="tablist">${[['tags', 'Tag 库'], ['vibes', 'Vibe 库'], ['presets', '取景指令'], ['routing', '镜组']].map(([id, label]) => `<button type="button" role="tab" aria-selected="${activeSection === id}" class="${activeSection === id ? 'active' : ''}" data-storyboard-asset-section="${id}">${label}</button>`).join('')}</div>
     ${activeSection === 'tags' ? `<details class="sd-card sd-storyboard-asset-create" data-storyboard-card="asset-tag-create" ${state.collapsedCards['asset-tag-create'] ? '' : 'open'}><summary><span><b>${editingTag ? '编辑 Tag' : '新建 Tag'}</b><small>保存后可在任何镜头中复用</small></span><i class="fa-solid fa-chevron-down"></i></summary><div class="sd-storyboard-card-body"><div class="sd-storyboard-grid sd-storyboard-grid-two"><label><span>名称</span><input class="text_pole sd-storyboard-tag-name" maxlength="100" value="${htmlEscape(editingTag?.name || '')}" placeholder="例如：雨夜逆光"></label><label><span>分类</span><select class="text_pole sd-storyboard-tag-category">${STORYBOARD_TAG_CATEGORIES.map((id) => `<option value="${id}" ${editingTag?.category === id ? 'selected' : ''}>${STORYBOARD_TAG_CATEGORY_LABELS[id]}</option>`).join('')}</select></label></div><label><span>当前模型 Tag / 提示词</span><textarea class="text_pole sd-storyboard-tag-rendering" placeholder="写入发送给 ${htmlEscape(STORYBOARD_PROVIDER_REGISTRY[state.source].label)} 的内容">${htmlEscape(editingTag?.renderings?.[state.source] || '')}</textarea></label><label><span>自然语言说明</span><input class="text_pole sd-storyboard-tag-description" value="${htmlEscape(editingTag?.naturalLanguage || '')}" placeholder="可留空，用于其他模型回退"></label><div class="sd-storyboard-asset-create-actions"><label class="sd-switch-row"><span>负面 Tag</span><input type="checkbox" class="sd-storyboard-tag-negative" ${editingTag?.positive === false ? 'checked' : ''}></label><div>${editingTag ? '<button type="button" class="sd-btn sd-storyboard-cancel-tag-edit">取消</button>' : ''}<button type="button" class="sd-btn sd-primary sd-storyboard-create-tag">${editingTag ? '保存修改' : '保存 Tag'}</button></div></div></div></details>
       <section class="sd-storyboard-asset-tools"><input class="text_pole sd-storyboard-asset-search" value="${htmlEscape(state.assetSearch || '')}" placeholder="搜索 Tag"><select class="text_pole sd-storyboard-asset-category"><option value="all">全部分类</option>${STORYBOARD_TAG_CATEGORIES.map((id) => `<option value="${id}" ${state.assetCategory === id ? 'selected' : ''}>${STORYBOARD_TAG_CATEGORY_LABELS[id]}</option>`).join('')}</select></section><div class="sd-storyboard-asset-list">${tagRows || '<div class="sd-storyboard-empty-inline">还没有符合条件的 Tag。</div>'}</div>` : ''}
     ${activeSection === 'vibes' ? `<details class="sd-card sd-storyboard-asset-create" data-storyboard-card="asset-vibe-create" ${state.collapsedCards['asset-vibe-create'] ? '' : 'open'}><summary><span><b>${editingVibe ? '编辑 Vibe' : '新建 Vibe'}</b><small>${capabilities.vibe ? `${profile.model} 可用` : `${profile.model} 当前不支持`}</small></span><i class="fa-solid fa-chevron-down"></i></summary><div class="sd-storyboard-card-body"><label><span>名称</span><input class="text_pole sd-storyboard-vibe-name" maxlength="100" value="${htmlEscape(editingVibe?.name || '')}" placeholder="便于识别的名称"></label><label><span>参考图</span><div class="sd-storyboard-vibe-source"><input class="text_pole sd-storyboard-vibe-url" type="url" value="${htmlEscape(editingVibe?.previewUrl || '')}" placeholder="图片 URL"><select class="text_pole sd-storyboard-vibe-gallery"><option value="">或从阅片室选择</option>${galleryOptions}</select><label class="sd-icon-btn" title="选择本地图片" aria-label="选择本地图片"><i class="fa-solid fa-upload"></i><input class="sd-storyboard-vibe-file" type="file" accept="image/png,image/jpeg,image/webp" hidden></label></div></label><div class="sd-storyboard-grid sd-storyboard-grid-two"><label><span>强度</span><input class="text_pole sd-storyboard-vibe-strength" type="number" min="0" max="1" step="0.05" value="${htmlEscape(editingVibe?.strength ?? 0.6)}"></label><label><span>信息提取</span><input class="text_pole sd-storyboard-vibe-info" type="number" min="0" max="1" step="0.05" value="${htmlEscape(editingVibe?.informationExtracted ?? 1)}"></label></div><div class="sd-storyboard-asset-create-actions"><span></span><div>${editingVibe ? '<button type="button" class="sd-btn sd-storyboard-cancel-vibe-edit">取消</button>' : ''}<button type="button" class="sd-btn sd-primary sd-storyboard-create-vibe">${editingVibe ? '保存修改' : '保存 Vibe'}</button></div></div></div></details>${!capabilities.vibe ? '<div class="sd-storyboard-capability-note">当前模型不会发送 Vibe；素材仍会保留，切换到支持的 NovelAI 模型即可使用。</div>' : ''}<div class="sd-storyboard-vibe-list">${vibeRows || '<div class="sd-storyboard-empty-inline">还没有与当前模型匹配的 Vibe。</div>'}</div>` : ''}
-    ${activeSection === 'presets' ? `<div class="sd-storyboard-asset-list">${promptRows || '<div class="sd-storyboard-empty-inline">在镜头台保存自动取景方案后，会出现在这里。</div>'}</div>` : ''}
+    ${activeSection === 'presets' ? `<details class="sd-card sd-storyboard-asset-create" data-storyboard-card="asset-prompt-create" ${state.collapsedCards['asset-prompt-create'] ? '' : 'open'}><summary><span><b>${editingPrompt ? '编辑取景指令' : '新建取景指令'}</b><small>仅供提示词预处理使用</small></span><i class="fa-solid fa-chevron-down"></i></summary><div class="sd-storyboard-card-body"><label><span>名称</span><input class="text_pole sd-storyboard-prompt-name" maxlength="80" value="${htmlEscape(editingPrompt?.name || '')}" placeholder="例如：剧情关键帧"></label><label><span>指导提示词</span><textarea class="text_pole sd-storyboard-prompt-instruction" rows="8" placeholder="告诉预处理模型如何判断画面价值、提取场景并整理成目标生图模型可用的提示词">${htmlEscape(editingPrompt?.instruction || '')}</textarea></label><div class="sd-storyboard-asset-create-actions"><span></span><div>${editingPrompt ? '<button type="button" class="sd-btn sd-storyboard-cancel-prompt-edit">取消</button>' : ''}<button type="button" class="sd-btn sd-primary sd-storyboard-save-prompt-instruction">${editingPrompt ? '保存修改' : '保存指令'}</button></div></div></div></details><div class="sd-storyboard-asset-list">${promptRows || '<div class="sd-storyboard-empty-inline">尚未保存自定义取景指令；镜头台会沿用千幕基础规则。</div>'}</div>` : ''}
     ${activeSection === 'routing' ? renderStoryboardRouting(state) : ''}
   </div>`;
+}
+
+function storyboardSavePromptInstructionFromForm(root) {
+  const state = storyboardState();
+  const name = String(root.querySelector('.sd-storyboard-prompt-name')?.value || '').trim().slice(0, 80);
+  const instruction = String(root.querySelector('.sd-storyboard-prompt-instruction')?.value || '').trim().slice(0, 24000);
+  if (!name || !instruction) return toast('请填写取景指令名称和内容。', 'warning');
+  const sameName = state.promptPresets.find((item) => item.name === name && item.id !== state.editingPromptPresetId);
+  if (sameName) return toast(`已存在名为「${name}」的取景指令。`, 'warning');
+  const now = Date.now();
+  let item = state.promptPresets.find((entry) => entry.id === state.editingPromptPresetId) || null;
+  if (!item) {
+    item = { id: uid('shotprompt'), mode: 'combined', positiveTemplate: '', negativeTemplate: '', providerIds: [], tagIds: [], createdAt: now };
+    state.promptPresets.push(item);
+  }
+  Object.assign(item, { name, instruction, updatedAt: now });
+  state.promptCompiler.instructionPresetId = item.id;
+  state.promptDraft.autoInstruction = instruction;
+  state.promptCompiler.enabled = true;
+  state.editingPromptPresetId = '';
+  saveSettings(); toast(`取景指令「${name}」已保存。`, 'success'); renderModal();
 }
 
 function storyboardSaveTagFromForm(root) {
@@ -11419,7 +11503,6 @@ function storyboardCaptureWorkbench(root, sourceId = storyboardState().source) {
   const prompt = root.querySelector('.sd-storyboard-prompt');
   const negative = root.querySelector('.sd-storyboard-negative');
   const artistString = root.querySelector('.sd-storyboard-artist-string');
-  const excludedTags = root.querySelector('.sd-storyboard-excluded-tags');
   const paragraphSelect = root.querySelector('.sd-storyboard-paragraph-select');
   if (manual) state.promptDraft.manual = String(manual.value || '').slice(0, 24000);
   if (autoInstruction) state.promptDraft.autoInstruction = String(autoInstruction.value || '').slice(0, 12000);
@@ -11437,7 +11520,6 @@ function storyboardCaptureWorkbench(root, sourceId = storyboardState().source) {
     state.promptDraft.negative = state.negative;
   }
   if (artistString) state.promptDraft.artistString = String(artistString.value || '').trim().slice(0, 6000);
-  if (excludedTags) state.promptCompiler.excludedTags = String(excludedTags.value || '').trim().slice(0, 2000);
   if (paragraphSelect) {
     const paragraphIndex = Number(paragraphSelect.value);
     state.manualParagraphIndex = Number.isInteger(paragraphIndex) && paragraphIndex >= 0 ? paragraphIndex : null;
@@ -11812,13 +11894,14 @@ async function storyboardCompilerWorldText(state, focusText) {
 async function storyboardCompilerContext(state) {
   const floor = storyboardTargetFloor(state);
   const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
-  const recentCount = Math.max(0, Math.min(20, Number(state.promptCompiler.includeRecentFloors) || 2));
+  const recentSetting = Number(state.promptCompiler.includeRecentFloors);
+  const recentCount = Math.max(0, Math.min(20, Number.isFinite(recentSetting) ? recentSetting : 2));
   const start = Math.max(0, floor - recentCount);
   const messages = [];
   for (let index = start; index <= floor && index < chat.length; index++) {
     const item = chat[index];
     if (!item || item.is_system) continue;
-    const cleanSource = storyboardStripExcludedBlocks(item.mes, state.promptCompiler.excludedTags);
+    const cleanSource = storyboardCleanWithTagRules(item.mes, state);
     const text = storyboardCleanMessageText(cleanSource).slice(0, 6000);
     if (text) messages.push({ floor: index, role: item.is_user ? 'user' : 'character', text });
   }
@@ -11830,7 +11913,7 @@ async function storyboardCompilerContext(state) {
   const persona = state.promptCompiler.includeUserPersona
     ? cleanContextText(await resolveMacro(getPersonaDescription())).slice(0, 8000) : '';
   const targetMessage = Number.isInteger(floor) ? chat[floor] : null;
-  const paragraphs = storyboardMessageParagraphs(storyboardStripExcludedBlocks(targetMessage?.mes || '', state.promptCompiler.excludedTags));
+  const paragraphs = storyboardMessageParagraphs(storyboardCleanWithTagRules(targetMessage?.mes || '', state));
   const forcedParagraphIndex = state.paragraphMode === 'manual' && Number.isInteger(state.manualParagraphIndex)
     ? Math.max(0, Math.min(Math.max(0, paragraphs.length - 1), state.manualParagraphIndex))
     : null;
@@ -11848,22 +11931,20 @@ function storyboardCompilerSystemPrompt(state, profile) {
   const provider = STORYBOARD_PROVIDER_REGISTRY[state.source];
   const novel = state.source === 'novel';
   const preset = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId);
-  const extra = [preset?.instruction, state.promptDraft.autoInstruction].map((item) => String(item || '').trim()).filter(Boolean).join('\n');
+  // 选中方案后，编辑框就是本次可见、可改的有效指令；避免同一段方案被重复拼接两次。
+  const extra = String(state.promptDraft.autoInstruction || preset?.instruction || '').trim();
   const ensemble = Boolean(state.routing.enabled);
-  const ratingRule = state.contentRating === 'nsfw'
-    ? '当前为 NSFW 取景：只依据正文中明确存在的成人内容表达，不主动升级尺度，也不把未成年或年龄不明人物置于成人内容中。'
-    : '当前为 SFW 取景：回避裸露、性行为与色情构图；遇到暧昧正文也保持非露骨表达。';
   return `你是千幕的镜头编排器。只负责把既有叙事转换为可执行的生图提示词，不续写剧情，不替人物新增事实。\n
 信息取舍顺序：用户本次明确要求 > 目标段落已发生的外貌/服装/年龄/动作 > 当前场景与时间线 > 形象档案的稳定特征 > 角色卡与世界设定。冲突时必须采用优先级更高且更接近目标楼层的信息。\n
 已选形象档案中，scene 只以目标场景为准，archive 必须保留档案稳定特征，hybrid 以当前场景覆盖变化状态并用档案补齐其余稳定特征，none 不引入档案外貌。\n
 画面须能单独成立：明确主体、人物数量、动作、表情、构图、镜头、环境、光线与视觉风格。不得把说明文字、分析、对白、标签标题或 JSON 之外的内容塞进 prompt。\n
-${ratingRule}\n
+内容尺度与表现边界服从目标正文和本次取景指令，不擅自升级或弱化；不得把未成年或年龄不明人物置于成人内容中。\n
 画师串完全由用户另行控制。不得建议、生成、改写或在 prompt、negative、decisions 中加入画师名、artist:、by artist 或相近内容。\n
 当前图像模型：${provider?.label || state.source} / ${profile.model || ''}。${novel ? '正向提示词使用精确、简洁、逗号分隔的英文视觉标签；不要写散文句子。' : '提示词使用清晰、具体的自然语言，保留必要的官方参数术语；不要虚构模型参数。'}\n
 negative 仅填写当前模型适合规避的视觉缺陷或明确排除项；不支持负面提示词时返回空字符串。paragraph_index 是插图应位于其后的目标段落序号，从 0 开始。shot_type 仅用 portrait、group、environment、object、action、closeup、custom 之一。\n
 ${ensemble ? `当前启用镜组。根据正文确有需要时规划 1-${Math.max(1, Math.min(4, Number(state.routing.maxShotsPerFloor) || 1))} 个彼此有价值且不重复的镜头。` : '只规划一个镜头。'}\n
  若目标正文中出现了档案目录尚未收录、且确实需要出镜的有名人物，可在 cast_candidates 中列出其原文姓名与一句可核验依据；不得把无名路人、称谓、当前 CHAR/USER 或已收录人物重复列入。没有则返回空数组。
- 只输出一个 JSON 对象：${ensemble ? '{"shots":[{"prompt":"...","negative":"...","paragraph_index":0,"shot_type":"portrait"}],"cast_candidates":[{"name":"...","evidence":"..."}],"decisions":["..."]}' : '{"prompt":"...","negative":"...","paragraph_index":0,"shot_type":"custom","cast_candidates":[{"name":"...","evidence":"..."}],"decisions":["..."]}'}。decisions 只简短记录冲突取舍，不输出思维过程。${extra ? `\n\n本次整理要求：\n${extra}` : ''}`;
+ 只输出一个 JSON 对象：${ensemble ? '{"shots":[{"prompt":"...","negative":"...","paragraph_index":0,"shot_type":"portrait","sensitive":false}],"cast_candidates":[{"name":"...","evidence":"..."}],"decisions":["..."]}' : '{"prompt":"...","negative":"...","paragraph_index":0,"shot_type":"custom","sensitive":false,"cast_candidates":[{"name":"...","evidence":"..."}],"decisions":["..."]}'}。sensitive 只表示画面是否包含明确成人内容，供镜组路由使用；decisions 只简短记录冲突取舍，不输出思维过程。${extra ? `\n\n本次整理要求：\n${extra}` : ''}`;
 }
 
 function storyboardCompilerUserPrompt(state, context) {
@@ -11915,7 +11996,7 @@ function storyboardCompilerResult(raw, context, capabilities, state) {
         ? context.forcedParagraphIndex
         : Math.max(0, Math.min(maxIndex, Math.round(Number(item?.paragraph_index) || 0))),
       shotType: allowedTypes.has(item?.shot_type) ? item.shot_type : 'custom',
-      sensitive: state.contentRating === 'nsfw', order: index,
+      sensitive: Boolean(item?.sensitive), order: index,
     };
   }).filter(Boolean);
   if (!shots.length) throw new Error('画面整理没有返回可用提示词');
@@ -11961,6 +12042,8 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
         prompt: result.prompt, negative: result.negative, paragraphIndex: result.paragraphIndex,
         sensitive: state.contentRating === 'nsfw',
       }];
+    // 内容分区不再由前端先验切换；以预处理结果作为镜组路由的唯一事实来源。
+    state.contentRating = compiledShots.some((shot) => Boolean(shot.sensitive)) ? 'nsfw' : 'sfw';
     state.prompt = result.prompt;
     state.negative = result.negative;
     Object.assign(state.promptDraft, {
@@ -12023,11 +12106,11 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
 async function storyboardSavePromptPreset(root) {
   const { state } = storyboardCaptureWorkbench(root);
   const selected = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId) || null;
-  const answer = await promptInput('保存取景方案', '保存当前给 LLM 的取景指令。', selected?.name || '');
+  const answer = await promptInput('保存取景指令', '保存当前给提示词预处理模型的指导提示词。', selected?.name || '');
   const name = String(answer ?? '').trim().slice(0, 80);
   if (!name) return;
   const sameName = state.promptPresets.find((item) => item.name === name) || null;
-  if (sameName && sameName !== selected && !await confirmDialog('覆盖取景方案', `已存在「${name}」，是否覆盖？`)) return;
+  if (sameName && sameName !== selected && !await confirmDialog('覆盖取景指令', `已存在「${name}」，是否覆盖？`)) return;
   const now = Date.now();
   const target = sameName || selected || { id: uid('shotprompt'), createdAt: now };
   Object.assign(target, {
@@ -12036,7 +12119,7 @@ async function storyboardSavePromptPreset(root) {
   });
   if (!state.promptPresets.some((item) => item.id === target.id)) state.promptPresets.push(target);
   state.promptCompiler.instructionPresetId = target.id;
-  saveSettings(); toast(`取景方案「${name}」已保存。`, 'success'); renderModal();
+  saveSettings(); toast(`取景指令「${name}」已保存。`, 'success'); renderModal();
 }
 
 function storyboardLoadPromptPreset(presetId) {
@@ -12047,14 +12130,14 @@ function storyboardLoadPromptPreset(presetId) {
     state.promptCompiler.enabled = true;
     state.promptDraft.autoInstruction = preset.instruction || '';
     if (preset.negativeTemplate) { state.negative = preset.negativeTemplate; state.promptDraft.negative = preset.negativeTemplate; }
-  }
+  } else state.promptDraft.autoInstruction = '';
   saveSettings(); renderModal();
 }
 
 async function storyboardDeletePromptPreset() {
   const state = storyboardState();
   const preset = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId);
-  if (!preset || !await confirmDialog('删除取景方案', `确定删除「${preset.name}」？`)) return;
+  if (!preset || !await confirmDialog('删除取景指令', `确定删除「${preset.name}」？`)) return;
   state.promptPresets = state.promptPresets.filter((item) => item.id !== preset.id);
   state.promptCompiler.instructionPresetId = '';
   saveSettings(); renderModal();
@@ -12580,9 +12663,9 @@ function storyboardInjectMessageButtons(chatRoot) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'mes_button interactable sd-storyboard-message-action';
-    button.dataset.storyboardChatAction = 'open-floor';
-    button.title = `将第 ${floor} 层带入分镜`;
-    button.setAttribute('aria-label', `将第 ${floor} 层带入分镜`);
+    button.dataset.storyboardChatAction = 'capture-floor';
+    button.title = storyboardState().promptCompiler.enabled ? `为第 ${floor} 层取景` : `打开第 ${floor} 层分镜`;
+    button.setAttribute('aria-label', button.title);
     button.innerHTML = '<i class="fa-solid fa-video" data-qm-icon="qm-duotone-video-camera"></i>';
     toolbar.appendChild(button);
     applyQianmuIcons(button);
@@ -13015,6 +13098,27 @@ async function storyboardOnChatClick(event) {
     return;
   }
   event.preventDefault(); event.stopPropagation();
+  if (button.dataset.storyboardChatAction === 'capture-floor') {
+    const message = button.closest('.mes');
+    const floor = storyboardMessageFloor(message);
+    const chatMessage = Number.isInteger(floor) ? ctx().chat?.[floor] : null;
+    if (!chatMessage || chatMessage.is_system) return toast('这一层当前不可用于分镜。', 'warning');
+    const state = storyboardState();
+    state.target = 'floor'; state.floor = String(floor); state.paragraphMode = 'auto'; state.manualParagraphIndex = null;
+    storyboardSyncSelectionForChat({ force: true });
+    const plan = storyboardEnsurePlan(state, floor, chatMessage, { origin: 'manual', autoGenerate: false });
+    if (['screening', 'compiling', 'queued', 'generating'].includes(plan.status)) return toast('这一层的分镜任务正在进行。', 'info');
+    if (!state.promptCompiler.enabled || plan.status === 'prompt_ready' || plan.shots?.some((shot) => String(shot.prompt || '').trim())) {
+      state.view = 'create'; saveSettings(); openModal('imagegen'); return;
+    }
+    state.promptMode = 'auto'; state.prompt = ''; state.negative = '';
+    state.promptDraft.manual = ''; state.promptDraft.compiled = ''; state.promptDraft.negative = '';
+    state.promptDraft.shots = []; state.promptDraft.userEditedCompiled = false;
+    plan.origin = 'manual'; plan.autoGenerate = false; plan.status = 'screening'; plan.updatedAt = Date.now();
+    saveSettings(); storyboardScheduleInlineRender(20);
+    await storyboardCompilePrompt(null, { plan, quiet: false });
+    return;
+  }
   if (button.dataset.storyboardChatAction === 'open-floor') {
     const message = button.closest('.mes');
     const floor = storyboardMessageFloor(message);
@@ -13229,9 +13333,10 @@ function bindStoryboardTabEvents(root) {
     state.promptMode = STORYBOARD_PROMPT_MODES[button.dataset.storyboardPromptMode] ? button.dataset.storyboardPromptMode : 'manual';
     saveSettings(); renderModal();
   }));
-  root.querySelector('.sd-storyboard-compiler-enabled')?.addEventListener('change', (event) => {
+  root.querySelector('.sd-storyboard-compiler-toggle')?.addEventListener('click', (event) => {
+    event.preventDefault(); event.stopPropagation();
     storyboardCaptureWorkbench(root);
-    state.promptCompiler.enabled = Boolean(event.target.checked);
+    state.promptCompiler.enabled = !state.promptCompiler.enabled;
     state.promptMode = state.promptCompiler.enabled
       ? (String(state.promptDraft.manual || '').trim() ? 'combined' : 'auto')
       : 'manual';
@@ -13240,11 +13345,6 @@ function bindStoryboardTabEvents(root) {
     if (state.promptCompiler.enabled) void storyboardWarmCompilerWorldEntries({ rerender: true });
     renderModal();
   });
-  root.querySelectorAll('[data-storyboard-content-rating]').forEach((button) => button.addEventListener('click', () => {
-    storyboardCaptureWorkbench(root);
-    state.contentRating = button.dataset.storyboardContentRating === 'nsfw' ? 'nsfw' : 'sfw';
-    saveSettings(); renderModal();
-  }));
   root.querySelectorAll('[data-storyboard-paragraph-mode]').forEach((button) => button.addEventListener('click', () => {
     storyboardCaptureWorkbench(root);
     state.paragraphMode = button.dataset.storyboardParagraphMode === 'manual' ? 'manual' : 'auto';
@@ -13257,10 +13357,60 @@ function bindStoryboardTabEvents(root) {
   });
   root.querySelector('.sd-storyboard-world-mode')?.addEventListener('change', (event) => {
     storyboardCaptureWorkbench(root);
-    state.promptCompiler.worldMode = ['auto', 'selected', 'off'].includes(event.target.value) ? event.target.value : 'auto';
+    state.promptCompiler.worldMode = ['auto', 'selected'].includes(event.target.value) ? event.target.value : 'auto';
     saveSettings();
     if (state.promptCompiler.worldMode === 'selected') void storyboardWarmCompilerWorldEntries({ rerender: true });
     renderModal();
+  });
+  root.querySelector('.sd-storyboard-context-character')?.addEventListener('change', (event) => {
+    state.promptCompiler.includeCharacterCards = Boolean(event.target.checked); saveSettings();
+  });
+  root.querySelector('.sd-storyboard-context-user')?.addEventListener('change', (event) => {
+    state.promptCompiler.includeUserPersona = Boolean(event.target.checked); saveSettings();
+  });
+  root.querySelector('.sd-storyboard-context-world')?.addEventListener('change', (event) => {
+    state.promptCompiler.includeActivatedWorldInfo = Boolean(event.target.checked);
+    state.promptCompiler.worldMode = state.promptCompiler.includeActivatedWorldInfo ? (state.promptCompiler.worldMode === 'selected' ? 'selected' : 'auto') : 'off';
+    saveSettings(); renderModal();
+  });
+  root.querySelector('.sd-storyboard-context-recent')?.addEventListener('change', (event) => {
+    state.promptCompiler.includeRecentFloors = Math.max(0, Math.min(20, Math.round(Number(event.target.value) || 0)));
+    saveSettings(); renderModal();
+  });
+  root.querySelectorAll('[data-storyboard-context-rule]').forEach((row) => {
+    const index = Math.max(0, Number(row.dataset.storyboardContextRule) || 0);
+    row.querySelector('.sd-storyboard-context-rule-name')?.addEventListener('change', (event) => {
+      const rules = storyboardCompilerTagRules(state);
+      if (!rules[index]) return;
+      rules[index].name = String(event.target.value || '').trim().replace(/^<|>$/g, '').replace(/[^a-zA-Z0-9_:-]/g, '').slice(0, 120);
+      state.promptCompiler.tagRules = rules.filter((rule) => rule.name);
+      state.promptCompiler.excludedTags = state.promptCompiler.tagRules.filter((rule) => rule.action === 'remove').map((rule) => rule.name).join(', ');
+      saveSettings(); renderModal();
+    });
+    row.querySelector('.sd-storyboard-context-rule-action')?.addEventListener('change', (event) => {
+      const rules = storyboardCompilerTagRules(state);
+      if (!rules[index]) return;
+      rules[index].action = event.target.value === 'extract' ? 'extract' : 'remove';
+      state.promptCompiler.tagRules = rules;
+      state.promptCompiler.excludedTags = rules.filter((rule) => rule.action === 'remove').map((rule) => rule.name).join(', ');
+      saveSettings(); renderModal();
+    });
+    row.querySelector('.sd-storyboard-delete-context-rule')?.addEventListener('click', () => {
+      const rules = storyboardCompilerTagRules(state); rules.splice(index, 1);
+      state.promptCompiler.tagRules = rules;
+      state.promptCompiler.excludedTags = rules.filter((rule) => rule.action === 'remove').map((rule) => rule.name).join(', ');
+      saveSettings(); renderModal();
+    });
+  });
+  root.querySelector('.sd-storyboard-add-context-rule')?.addEventListener('click', async () => {
+    const answer = await promptInput('添加正文标签规则', '填写标签名，不需要尖括号。', '');
+    const name = String(answer ?? '').trim().replace(/^<|>$/g, '').replace(/[^a-zA-Z0-9_:-]/g, '').slice(0, 120);
+    if (!name) return;
+    const rules = storyboardCompilerTagRules(state);
+    if (rules.some((rule) => rule.name.toLocaleLowerCase() === name.toLocaleLowerCase())) return toast(`标签「${name}」已有规则。`, 'warning');
+    state.promptCompiler.tagRules = [...rules, { name, action: 'remove' }].slice(0, 80);
+    state.promptCompiler.excludedTags = state.promptCompiler.tagRules.filter((rule) => rule.action === 'remove').map((rule) => rule.name).join(', ');
+    saveSettings(); renderModal();
   });
   root.querySelectorAll('[data-storyboard-world-entry]').forEach((input) => input.addEventListener('change', () => {
     const selected = new Set(state.promptCompiler.worldEntryIds || []);
@@ -13272,6 +13422,9 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-prompt-preset')?.addEventListener('change', (event) => storyboardLoadPromptPreset(String(event.target.value || '')));
   root.querySelector('.sd-storyboard-save-prompt-preset')?.addEventListener('click', () => void storyboardSavePromptPreset(root));
   root.querySelector('.sd-storyboard-delete-prompt-preset')?.addEventListener('click', () => void storyboardDeletePromptPreset());
+  root.querySelector('.sd-storyboard-open-prompt-library')?.addEventListener('click', () => {
+    storyboardCaptureWorkbench(root); state.view = 'assets'; state.assetView = 'presets'; saveSettings(); renderModal();
+  });
   root.querySelector('.sd-storyboard-artist-preset')?.addEventListener('change', (event) => storyboardLoadArtistPreset(String(event.target.value || '')));
   root.querySelector('.sd-storyboard-save-artist')?.addEventListener('click', () => void storyboardSaveArtistPreset(root));
   root.querySelector('.sd-storyboard-delete-artist')?.addEventListener('click', () => void storyboardDeleteArtistPreset());
@@ -13334,13 +13487,22 @@ function bindStoryboardTabEvents(root) {
   root.querySelectorAll('[data-storyboard-prompt-id]').forEach((row) => {
     const item = state.promptPresets.find((entry) => entry.id === row.dataset.storyboardPromptId);
     row.querySelector('.sd-storyboard-use-prompt-preset')?.addEventListener('click', () => { if (item) { storyboardLoadPromptPreset(item.id); state.view = 'create'; saveSettings(); renderModal(); } });
+    row.querySelector('.sd-storyboard-edit-asset-prompt')?.addEventListener('click', () => {
+      if (!item) return;
+      state.editingPromptPresetId = item.id;
+      state.collapsedCards['asset-prompt-create'] = false;
+      saveSettings(); renderModal();
+    });
     row.querySelector('.sd-storyboard-delete-asset-prompt')?.addEventListener('click', async () => {
       if (!item || !await confirmDialog('删除提示词方案', `确定删除「${item.name}」？`)) return;
       state.promptPresets = state.promptPresets.filter((entry) => entry.id !== item.id);
       if (state.promptCompiler.instructionPresetId === item.id) state.promptCompiler.instructionPresetId = '';
+      if (state.editingPromptPresetId === item.id) state.editingPromptPresetId = '';
       saveSettings(); renderModal();
     });
   });
+  root.querySelector('.sd-storyboard-save-prompt-instruction')?.addEventListener('click', () => storyboardSavePromptInstructionFromForm(root));
+  root.querySelector('.sd-storyboard-cancel-prompt-edit')?.addEventListener('click', () => { state.editingPromptPresetId = ''; saveSettings(); renderModal(); });
   root.querySelector('.sd-storyboard-routing-enabled')?.addEventListener('change', (event) => {
     state.routing.enabled = Boolean(event.target.checked);
     state.routing.mode = state.routing.enabled ? 'ensemble' : 'single';

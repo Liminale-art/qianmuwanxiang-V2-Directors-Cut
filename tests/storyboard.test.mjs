@@ -82,14 +82,14 @@ assert.match(source, /storyboardLoadLogToWorkbench[\s\S]*storyboardRetryLog[\s\S
 assert.match(source, /storyboardCheckConnection[\s\S]*\/api\/plugins\/qianmu-tts\/image\/check/, '所有供应商必须走千幕同源网关实测连接');
 assert.match(source, /storyboardHandleChatChanged[\s\S]*切换聊天后已自动移除等待任务/, '队列不得把旧聊天的分镜写入新聊天');
 assert.match(source, /原正文楼层已删除，未发起生图请求[\s\S]*正文已更改，未发起生图请求/, '请求送出前若正文删除或改写，必须停止而非继续消耗额度');
-assert.match(source, /<b>STORYBOARD<\/b>/, '镜头台版头只保留 STORYBOARD');
+assert.match(source, /<b>API 设置<\/b>/, '镜头台接口卡应使用清楚的 API 设置标题');
 assert.doesNotMatch(source, /将此瞬，妥为留存/, '镜头台不得继续显示已移除的装饰文案');
 assert.doesNotMatch(source, /自定义兼容模型|输入兼容模型 ID|查看接口全部模型/, '模型工作台不得暴露低概率的任意模型入口');
 assert.match(source, /function renderStoryboardModelCard[\s\S]*sd-storyboard-compiler-api[\s\S]*function renderStoryboardModeSelector/, '画面整理模型必须与生图连接合并在同一工作台');
 assert.doesNotMatch(source, /function renderStoryboardConnection\(/, '旧的重复连接页面必须移除');
 assert.doesNotMatch(source, /千幕组织镜头，SillyTavern 负责连接与生成/, '镜头台不应展示尴尬的实现说明');
 assert.match(css, /#chat \.mes \.sd-storyboard-inline/, '正文分镜样式必须严格限定在聊天消息内');
-assert.match(source, /storyboardInjectMessageButtons[\s\S]*dataset\.storyboardChatAction = 'open-floor'/, '正文每层必须提供不直接计费的分镜快捷入口');
+assert.match(source, /storyboardInjectMessageButtons[\s\S]*dataset\.storyboardChatAction = 'capture-floor'/, '正文每层必须提供半自动取景快捷入口');
 assert.match(source, /storyboardParameterPresets[\s\S]*保存分镜样式[\s\S]*parameterPresetSelection/, '分镜参数样式必须可按模型保存和切换');
 assert.doesNotMatch(source, /sd-storyboard-reuse-record|sd-storyboard-lightbox-reuse/, '阅片室不得保留复用或重新生成入口');
 assert.match(source, /getStoryboardCapabilities\(state\.source, profile\.model\)[\s\S]*capabilities\.negative[\s\S]*capabilities\.steps/, '绘制参数必须按供应商与具体模型能力裁剪');

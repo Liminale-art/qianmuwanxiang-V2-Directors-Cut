@@ -9,7 +9,7 @@ import {
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 5);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 6);
 const defaults = createStoryboardDefaults();
 assert.deepEqual(defaults.automation, { autoCapture: false, autoGenerate: false });
 const normalized = normalizeStoryboardState({

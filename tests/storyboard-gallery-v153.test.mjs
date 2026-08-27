@@ -6,7 +6,7 @@ const source = await readFile(new URL('index.js', root), 'utf8');
 const css = await readFile(new URL('style.css', root), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('manifest.json', root), 'utf8'));
 
-assert.equal(manifest.version, '1.54.0');
+assert.equal(manifest.version, '1.55.0');
 assert.match(source, /function storyboardGalleryCollections\(\)[\s\S]*storyboardCollections/, '合集必须跟随聊天元数据保存');
 assert.match(source, /function storyboardGalleryGroupId[\s\S]*variantRootId[\s\S]*planShotId[\s\S]*groupId/, '新旧图片必须都有稳定的同源分组兜底');
 assert.match(source, /function storyboardCreateRecord[\s\S]*variantRootId: job\.variantRootId \|\| job\.planShotId \|\| job\.id/, '新图片必须记录同源版本根');
