@@ -139,5 +139,29 @@ export function sanitizeFolder(name) {
   return String(name || '').trim().slice(0, 16);
 }
 
+/**
+ * 截断过长的日志文本
+ * @param {string} text - 日志文本
+ * @param {number} limit - 长度限制
+ * @returns {string} 截断后的文本
+ */
+export function clipLog(text, limit = 1000) {
+  const value = String(text || '');
+  return value.length > limit ? `${value.slice(0, limit)}\n…[内容过长已截断]` : value;
+}
+
+/**
+ * 估算文本的 token 数量
+ * @param {string} text - 要估算的文本
+ * @returns {number} 估算的 token 数
+ */
+export function estimateTokens(text) {
+  const value = String(text || '').trim();
+  if (!value) return 0;
+  const cjk = (value.match(/[一-鿿]/g) || []).length;
+  const latin = value.replace(/[一-鿿]/g, '').trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.ceil(cjk / 1.7 + latin * 1.25));
+}
+
 export const UTILS_MODULE_VERSION = '1.56.0';
 export const UTILS_MODULE_NAME = 'qianmu-storyboard-utils';

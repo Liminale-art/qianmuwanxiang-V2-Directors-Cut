@@ -14,6 +14,8 @@ import {
   uniqueClean,
   normalizeSourceName,
   sanitizeFolder,
+  clipLog,
+  estimateTokens,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -1152,10 +1154,11 @@ function migrateSettings(s) {
   }
 }
 
-function clipLog(text, limit = LOG_CLIP) {
-  const value = String(text || '');
-  return value.length > limit ? `${value.slice(0, limit)}\n…[内容过长已截断]` : value;
-}
+// clipLog - 已迁移到 qianmu-storyboard-utils.js
+// function clipLog(text, limit = LOG_CLIP) {
+//   const value = String(text || '');
+//   return value.length > limit ? `${value.slice(0, limit)}\n…[内容过长已截断]` : value;
+// }
 
 function pushLog(entry) {
   settings.logHistory ||= [];
@@ -1287,13 +1290,14 @@ function getPersonaName() {
   return context.name1 || globalThis.name1 || power.persona || '{{user}}';
 }
 
-function estimateTokens(text) {
-  const value = String(text || '').trim();
-  if (!value) return 0;
-  const cjk = (value.match(/[\u4e00-\u9fff]/g) || []).length;
-  const latin = value.replace(/[\u4e00-\u9fff]/g, '').trim().split(/\s+/).filter(Boolean).length;
-  return Math.max(1, Math.ceil(cjk / 1.7 + latin * 1.25));
-}
+// estimateTokens - \u5df2\u8fc1\u79fb\u5230 qianmu-storyboard-utils.js
+// function estimateTokens(text) {
+//   const value = String(text || '').trim();
+//   if (!value) return 0;
+//   const cjk = (value.match(/[\u4e00-\u9fff]/g) || []).length;
+//   const latin = value.replace(/[\u4e00-\u9fff]/g, '').trim().split(/\s+/).filter(Boolean).length;
+//   return Math.max(1, Math.ceil(cjk / 1.7 + latin * 1.25));
+// }
 
 function infoTag(text) {
   return `<span class="sd-info-tag">${htmlEscape(text)}</span>`;
