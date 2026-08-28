@@ -80,5 +80,64 @@ export function uid(prefix = 'id') {
   return `${prefix}-${Date.now().toString(36)}-${uidCounter.toString(36)}-${rand}`;
 }
 
+/**
+ * 生成文件名时间戳（本地时区 YYYY-MM-DD_HH-MM-SS）
+ * @returns {string} 格式化的时间戳
+ */
+export function fileStamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
+}
+
+/**
+ * 转义正则表达式特殊字符
+ * @param {string} text - 要转义的文本
+ * @returns {string} 转义后的文本
+ */
+export function escapeRegExp(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * 解析任意值为字符串数组
+ * @param {*} value - 要解析的值
+ * @returns {string[]} 字符串数组
+ */
+export function parseAnyString(value) {
+  if (!value) return [];
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(parseAnyString);
+  if (typeof value === 'object') return Object.values(value).flatMap(parseAnyString);
+  return [];
+}
+
+/**
+ * 去重并清理字符串数组
+ * @param {string[]} list - 字符串数组
+ * @returns {string[]} 去重后的数组
+ */
+export function uniqueClean(list) {
+  return [...new Set((list || []).map((x) => String(x || '').trim()).filter(Boolean))];
+}
+
+/**
+ * 规范化来源名称
+ * @param {string} name - 来源名称
+ * @returns {string} 规范化后的名称
+ */
+export function normalizeSourceName(name) {
+  return String(name || '').trim();
+}
+
+/**
+ * 清理文件夹名称（限制长度）
+ * @param {string} name - 文件夹名称
+ * @returns {string} 清理后的名称
+ */
+export function sanitizeFolder(name) {
+  return String(name || '').trim().slice(0, 16);
+}
+
 export const UTILS_MODULE_VERSION = '1.56.0';
 export const UTILS_MODULE_NAME = 'qianmu-storyboard-utils';

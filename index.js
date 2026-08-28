@@ -8,6 +8,12 @@ import {
   htmlEscape,
   stripThinkChain,
   uid,
+  fileStamp,
+  escapeRegExp,
+  parseAnyString,
+  uniqueClean,
+  normalizeSourceName,
+  sanitizeFolder,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -1232,12 +1238,13 @@ function normalizeUrl(url) {
 //   return `${prefix}-${Date.now().toString(36)}-${uidCounter.toString(36)}-${rand}`;
 // }
 
+// fileStamp - 已迁移到 qianmu-storyboard-utils.js
 // 导出文件名时间戳：本地时区 YYYY-MM-DD_HH-MM-SS
-function fileStamp() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
-}
+// function fileStamp() {
+//   const d = new Date();
+//   const p = (n) => String(n).padStart(2, '0');
+//   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
+// }
 
 function toast(message, type = 'info') {
   const t = globalThis.toastr;
@@ -1324,9 +1331,10 @@ function cleanContextText(text) {
   return value.replace(/\n{3,}/g, '\n\n').trim();
 }
 
-function escapeRegExp(text) {
-  return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+// escapeRegExp - 已迁移到 qianmu-storyboard-utils.js
+// function escapeRegExp(text) {
+//   return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// }
 
 function getChatHistoryText() {
   const context = ctx();
@@ -1399,30 +1407,34 @@ async function resolveMacro(text) {
   return text;
 }
 
-function parseAnyString(value) {
-  if (!value) return [];
-  if (typeof value === 'string') return [value];
-  if (Array.isArray(value)) return value.flatMap(parseAnyString);
-  if (typeof value === 'object') return Object.values(value).flatMap(parseAnyString);
-  return [];
-}
+// parseAnyString - 已迁移到 qianmu-storyboard-utils.js
+// function parseAnyString(value) {
+//   if (!value) return [];
+//   if (typeof value === 'string') return [value];
+//   if (Array.isArray(value)) return value.flatMap(parseAnyString);
+//   if (typeof value === 'object') return Object.values(value).flatMap(parseAnyString);
+//   return [];
+// }
 
-function uniqueClean(list) {
-  return [...new Set((list || []).map((x) => String(x || '').trim()).filter(Boolean))];
-}
+// uniqueClean - 已迁移到 qianmu-storyboard-utils.js
+// function uniqueClean(list) {
+//   return [...new Set((list || []).map((x) => String(x || '').trim()).filter(Boolean))];
+// }
 
-function normalizeSourceName(name) {
-  return String(name || '').trim();
-}
+// normalizeSourceName - 已迁移到 qianmu-storyboard-utils.js
+// function normalizeSourceName(name) {
+//   return String(name || '').trim();
+// }
 
 /* ============================================================
    通用资料库前端（剧本库 / 剧札共用）：文件夹分组 + 紧凑行 + 滚动 + 搜索 + 多选导入导出
    cfg: { ns, items, getName, getFolder, getSearch, setSearch, exportMode, selection,
           emptyText, searchPlaceholder }
    ============================================================ */
-function sanitizeFolder(name) {
-  return String(name || '').trim().slice(0, 16);
-}
+// sanitizeFolder - 已迁移到 qianmu-storyboard-utils.js
+// function sanitizeFolder(name) {
+//   return String(name || '').trim().slice(0, 16);
+// }
 
 function groupByFolder(items, getFolder, getName, sortAlpha) {
   const folders = new Map();
