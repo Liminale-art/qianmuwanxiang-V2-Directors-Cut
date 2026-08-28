@@ -807,5 +807,72 @@ export function theaterSubtitle(scene) {
   return src ? `@${src}` : '@即兴';
 }
 
+/**
+ * 从文本中提取 JSON
+ * @param {string} text - 文本
+ * @returns {Object} 解析后的 JSON 对象
+ * @throws {Error} JSON 解析失败
+ */
+export function extractJson(text) {
+  let content = String(text || '').trim();
+  content = content.replace(/^```(?:json)?/i, '').replace(/```$/g, '').trim();
+  const start = content.indexOf('{');
+  const end = content.lastIndexOf('}');
+  if (start !== -1 && end !== -1 && end > start) content = content.slice(start, end + 1);
+  const base = content.replace(/,\s*([}\]])/g, '$1');
+  let lastError = null;
+  try { return JSON.parse(base); } catch (e) { lastError = e; }
+  const commaFixed = insertMissingCommas(base).replace(/,\s*([}\]])/g, '$1');
+  try { return JSON.parse(commaFixed); } catch (e) { lastError = e; }
+  const repaired = repairTruncatedJson(commaFixed);
+  if (repaired !== null) {
+    console.warn('[qianmu-storyboard-utils] JSON 已自动修复（若为截断，末尾少量条目可能缺失）');
+    return repaired;
+  }
+  throw new Error(`JSON_PARSE_FAILED::${lastError?.message || 'unknown'}`);
+}
+
+/**
+ * 清理十六进制颜色值
+ * @param {string} c - 颜色值
+ * @returns {string} 有效的十六进制颜色值或空字符串
+ */
+export function sanitizeHexColor(c) {
+  const s = String(c || '').trim();
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s) ? s : '';
+}
+
+/**
+ * 格式化阅读时长
+ * @param {number} ms - 毫秒数
+ * @returns {string} 格式化的时长字符串
+ */
+export function formatReadDuration(ms) {
+  const m = Math.floor((ms || 0) / 60000);
+  if (m < 1) return '不足 1 分钟';
+  if (m < 60) return `${m} 分钟`;
+  return `${Math.floor(m / 60)} 时 ${m % 60} 分`;
+}
+
+/**
+ * 格式化日期时间
+ * @param {*} date - 日期对象或字符串
+ * @returns {string} 格式化的日期时间字符串
+ */
+export function formatDateTime(date) {
+  if (!date) return '';
+  try { return new Date(date).toLocaleString(); } catch (_) { return String(date); }
+}
+
+/**
+ * 页宽转内边距百分比
+ * @param {number} widthRem - 页宽（rem）
+ * @returns {string} 内边距百分比
+ */
+export function widthToPad(widthRem) {
+  const w = Math.max(28, Math.min(66, widthRem || 42));
+  return ((66 - w) / 38 * 14).toFixed(1);
+}
+
 export const UTILS_MODULE_VERSION = '1.56.0';
 export const UTILS_MODULE_NAME = 'qianmu-storyboard-utils';

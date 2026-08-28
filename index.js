@@ -63,6 +63,11 @@ import {
   isBuiltinScript,
   looksLikeHtml,
   theaterSubtitle,
+  extractJson,
+  sanitizeHexColor,
+  formatReadDuration,
+  formatDateTime,
+  widthToPad,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -3381,24 +3386,25 @@ async function callSillyTavernModel(userPrompt, systemPrompt = '', onDelta = nul
 //   return tryCut(false) ?? tryCut(true);
 // }
 
-function extractJson(text) {
-  let content = String(text || '').trim();
-  content = content.replace(/^```(?:json)?/i, '').replace(/```$/g, '').trim();
-  const start = content.indexOf('{');
-  const end = content.lastIndexOf('}');
-  if (start !== -1 && end !== -1 && end > start) content = content.slice(start, end + 1);
-  const base = content.replace(/,\s*([}\]])/g, '\$1');
-  let lastError = null;
-  try { return JSON.parse(base); } catch (e) { lastError = e; }
-  const commaFixed = insertMissingCommas(base).replace(/,\s*([}\]])/g, '\$1');
-  try { return JSON.parse(commaFixed); } catch (e) { lastError = e; }
-  const repaired = repairTruncatedJson(commaFixed);
-  if (repaired !== null) {
-    console.warn(`[${MODULE_NAME}] JSON 已自动修复（若为截断，末尾少量条目可能缺失）`);
-    return repaired;
-  }
-  throw new Error(`JSON_PARSE_FAILED::${lastError?.message || 'unknown'}`);
-}
+// extractJson - 已迁移到 qianmu-storyboard-utils.js
+// function extractJson(text) {
+//   let content = String(text || '').trim();
+//   content = content.replace(/^```(?:json)?/i, '').replace(/```$/g, '').trim();
+//   const start = content.indexOf('{');
+//   const end = content.lastIndexOf('}');
+//   if (start !== -1 && end !== -1 && end > start) content = content.slice(start, end + 1);
+//   const base = content.replace(/,\s*([}\]])/g, '\$1');
+//   let lastError = null;
+//   try { return JSON.parse(base); } catch (e) { lastError = e; }
+//   const commaFixed = insertMissingCommas(base).replace(/,\s*([}\]])/g, '\$1');
+//   try { return JSON.parse(commaFixed); } catch (e) { lastError = e; }
+//   const repaired = repairTruncatedJson(commaFixed);
+//   if (repaired !== null) {
+//     console.warn(`[${MODULE_NAME}] JSON 已自动修复（若为截断，末尾少量条目可能缺失）`);
+//     return repaired;
+//   }
+//   throw new Error(`JSON_PARSE_FAILED::${lastError?.message || 'unknown'}`);
+// }
 
 function normalizePlan(plan) {
   const base = {
@@ -6582,10 +6588,11 @@ function renderHistorySection() {
   return `<section class="sd-card"><div class="sd-field-head"><h3>历史记录</h3><span class="sd-summary-note">最多保留 5 条审片记录</span></div>${rows || '<p class="sd-muted">暂无历史记录。</p>'}</section>`;
 }
 
-function formatDateTime(date) {
-  if (!date) return '';
-  try { return new Date(date).toLocaleString(); } catch (_) { return String(date); }
-}
+// formatDateTime - 已迁移到 qianmu-storyboard-utils.js
+// function formatDateTime(date) {
+//   if (!date) return '';
+//   try { return new Date(date).toLocaleString(); } catch (_) { return String(date); }
+// }
 
 function renderTasksNodesTab() {
   const p = currentPlan();
@@ -21489,25 +21496,28 @@ function buildReaderParagraphs(text, hiList) {
 }
 
 // 颜色白名单：只接受 #rgb / #rrggbb，挡注入。空/非法 → ''（回落主题色）。
-function sanitizeHexColor(c) {
-  const s = String(c || '').trim();
-  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s) ? s : '';
-}
+// sanitizeHexColor - 已迁移到 qianmu-storyboard-utils.js
+// function sanitizeHexColor(c) {
+//   const s = String(c || '').trim();
+//   return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s) ? s : '';
+// }
 
 // 阅读时长格式化（ms → 「Xh Ym」/「Y 分钟」/「不足 1 分钟」）
-function formatReadDuration(ms) {
-  const m = Math.floor((ms || 0) / 60000);
-  if (m < 1) return '不足 1 分钟';
-  if (m < 60) return `${m} 分钟`;
-  return `${Math.floor(m / 60)} 时 ${m % 60} 分`;
-}
+// formatReadDuration - 已迁移到 qianmu-storyboard-utils.js
+// function formatReadDuration(ms) {
+//   const m = Math.floor((ms || 0) / 60000);
+//   if (m < 1) return '不足 1 分钟';
+//   if (m < 60) return `${m} 分钟`;
+//   return `${Math.floor(m / 60)} 时 ${m % 60} 分`;
+// }
 
 // 页宽(rem) → 正文左右内边距(%)。窄屏/移动端 max-width 顶不到时，靠内边距给出可见的「页宽」效果。
 // 宽设置→小边距(更宽列)；窄设置→大边距(更窄列)。28→14% … 66→0%。
-function widthToPad(widthRem) {
-  const w = Math.max(28, Math.min(66, widthRem || 42));
-  return ((66 - w) / 38 * 14).toFixed(1);
-}
+// widthToPad - 已迁移到 qianmu-storyboard-utils.js
+// function widthToPad(widthRem) {
+//   const w = Math.max(28, Math.min(66, widthRem || 42));
+//   return ((66 - w) / 38 * 14).toFixed(1);
+// }
 
 // 构建阅读器舞台 HTML（始终在 body portal 内）。手机阅读 APP 式：点正文切换上下操作栏。
 function buildReaderStage() {
