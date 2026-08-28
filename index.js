@@ -50,6 +50,9 @@ import {
   modelMessageReasoning,
   directorItemText,
   directorSimilarity,
+  isNoisePresetName,
+  normalizePresetEntries,
+  parseNameSource,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -1830,10 +1833,11 @@ async function promptVoiceLibEntry({ dialogTitle, name = '', voiceId = '', voice
 
 
 
-function isNoisePresetName(name) {
-  const value = normalizeSourceName(name);
-  return !value || ['in_use', 'settings', 'prompts', 'prompt_order', 'preset_settings', '当前预设'].includes(value);
-}
+// isNoisePresetName - 已迁移到 qianmu-storyboard-utils.js
+// function isNoisePresetName(name) {
+//   const value = normalizeSourceName(name);
+//   return !value || ['in_use', 'settings', 'prompts', 'prompt_order', 'preset_settings', '当前预设'].includes(value);
+// }
 
 function getCurrentPresetName() {
   const context = ctx();
@@ -1859,24 +1863,26 @@ function getCurrentPresetEntries() {
   return normalizePresetEntries(prompts);
 }
 
-function normalizePresetEntries(entries) {
-  return (Array.isArray(entries) ? entries : Object.values(entries || {}))
-    .filter((item) => item && typeof item === 'object')
-    .filter((item) => String(item.identifier || item.name || '').trim() !== 'in_use')
-    .filter((item) => item.content || item.prompt || item.message || item.text || item.name || item.identifier);
-}
+// normalizePresetEntries - 已迁移到 qianmu-storyboard-utils.js
+// function normalizePresetEntries(entries) {
+//   return (Array.isArray(entries) ? entries : Object.values(entries || {}))
+//     .filter((item) => item && typeof item === 'object')
+//     .filter((item) => String(item.identifier || item.name || '').trim() !== 'in_use')
+//     .filter((item) => item.content || item.prompt || item.message || item.text || item.name || item.identifier);
+// }
 
-function parseNameSource(source) {
-  if (!source) return [];
-  if (typeof source === 'string') return [source];
-  if (Array.isArray(source)) return source.flatMap((item) => {
-    if (typeof item === 'string') return [item];
-    if (item && typeof item === 'object') return [item.name, item.id, item.filename].filter(Boolean);
-    return [];
-  });
-  if (typeof source === 'object') return Object.keys(source);
-  return [];
-}
+// parseNameSource - 已迁移到 qianmu-storyboard-utils.js
+// function parseNameSource(source) {
+//   if (!source) return [];
+//   if (typeof source === 'string') return [source];
+//   if (Array.isArray(source)) return source.flatMap((item) => {
+//     if (typeof item === 'string') return [item];
+//     if (item && typeof item === 'object') return [item.name, item.id, item.filename].filter(Boolean);
+//     return [];
+//   });
+//   if (typeof source === 'object') return Object.keys(source);
+//   return [];
+// }
 
 function listPresetNames() {
   const context = ctx();

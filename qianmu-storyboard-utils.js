@@ -578,5 +578,44 @@ export function directorSimilarity(left, right) {
   return common / Math.min(a.size, b.size);
 }
 
+/**
+ * 检查是否为噪声预设名称
+ * @param {string} name - 预设名称
+ * @returns {boolean} 是否为噪声名称
+ */
+export function isNoisePresetName(name) {
+  const value = normalizeSourceName(name);
+  return !value || ['in_use', 'settings', 'prompts', 'prompt_order', 'preset_settings', '当前预设'].includes(value);
+}
+
+/**
+ * 规范化预设条目
+ * @param {Array} entries - 条目数组
+ * @returns {Array} 规范化后的条目
+ */
+export function normalizePresetEntries(entries) {
+  return (Array.isArray(entries) ? entries : Object.values(entries || {}))
+    .filter((item) => item && typeof item === 'object')
+    .filter((item) => String(item.identifier || item.name || '').trim() !== 'in_use')
+    .filter((item) => item.content || item.prompt || item.message || item.text || item.name || item.identifier);
+}
+
+/**
+ * 解析名称源
+ * @param {*} source - 名称源
+ * @returns {Array<string>} 名称数组
+ */
+export function parseNameSource(source) {
+  if (!source) return [];
+  if (typeof source === 'string') return [source];
+  if (Array.isArray(source)) return source.flatMap((item) => {
+    if (typeof item === 'string') return [item];
+    if (item && typeof item === 'object') return [item.name, item.id, item.filename].filter(Boolean);
+    return [];
+  });
+  if (typeof source === 'object') return Object.keys(source);
+  return [];
+}
+
 export const UTILS_MODULE_VERSION = '1.56.0';
 export const UTILS_MODULE_NAME = 'qianmu-storyboard-utils';
