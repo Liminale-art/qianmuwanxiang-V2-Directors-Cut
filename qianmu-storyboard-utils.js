@@ -300,5 +300,86 @@ export function quickDockCleanLabel(value) {
   return label;
 }
 
+// 暗线显影阶段梯度
+export const STAGE_LADDER = ['铺陈', '升温', '临界', '高潮', '落幕'];
+
+// 世界事件阶段梯度
+export const EVENT_STAGE_LADDER = ['酝酿', '爆发', '蔓延', '消退', '落定'];
+
+/**
+ * 清理暗线显影阶段值
+ * @param {string} stage - 阶段值
+ * @returns {string} 有效的阶段值
+ */
+export function sanitizeStage(stage) {
+  return STAGE_LADDER.includes(stage) ? stage : '铺陈';
+}
+
+/**
+ * 暗线显影阶段升级
+ * @param {string} stage - 当前阶段
+ * @returns {string} 下一阶段
+ */
+export function advanceStage(stage) {
+  const idx = STAGE_LADDER.indexOf(sanitizeStage(stage));
+  return STAGE_LADDER[Math.min(idx + 1, STAGE_LADDER.length - 1)];
+}
+
+/**
+ * 清理世界事件阶段值
+ * @param {string} stage - 阶段值
+ * @returns {string} 有效的阶段值
+ */
+export function sanitizeEventStage(stage) {
+  return EVENT_STAGE_LADDER.includes(stage) ? stage : '酝酿';
+}
+
+/**
+ * 世界事件阶段升级
+ * @param {string} stage - 当前阶段
+ * @returns {string} 下一阶段
+ */
+export function advanceEventStage(stage) {
+  const idx = EVENT_STAGE_LADDER.indexOf(sanitizeEventStage(stage));
+  return EVENT_STAGE_LADDER[Math.min(idx + 1, EVENT_STAGE_LADDER.length - 1)];
+}
+
+/**
+ * 规范化证据文本（用于比对）
+ * @param {string} value - 原始文本
+ * @returns {string} 规范化后的文本
+ */
+export function directorEvidenceNorm(value) {
+  return String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+/**
+ * 生成文本的 bigram 集合
+ * @param {string} value - 输入文本
+ * @returns {Set<string>} bigram 集合
+ */
+export function directorBigrams(value) {
+  const text = directorEvidenceNorm(value);
+  const out = new Set();
+  if (text.length < 2) { if (text) out.add(text); return out; }
+  for (let index = 0; index < text.length - 1; index++) out.add(text.slice(index, index + 2));
+  return out;
+}
+
+/**
+ * 计算两段文本的重叠率
+ * @param {string} needle - 查找文本
+ * @param {string} haystack - 目标文本
+ * @returns {number} 重叠率 (0-1)
+ */
+export function directorOverlapRatio(needle, haystack) {
+  const left = directorBigrams(needle);
+  const right = directorBigrams(haystack);
+  if (!left.size || !right.size) return 0;
+  let hit = 0;
+  for (const token of left) if (right.has(token)) hit += 1;
+  return hit / left.size;
+}
+
 export const UTILS_MODULE_VERSION = '1.56.0';
 export const UTILS_MODULE_NAME = 'qianmu-storyboard-utils';

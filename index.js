@@ -24,6 +24,15 @@ import {
   normalizeUrl,
   processRandomMacros,
   quickDockCleanLabel,
+  STAGE_LADDER,
+  EVENT_STAGE_LADDER,
+  sanitizeStage,
+  advanceStage,
+  sanitizeEventStage,
+  advanceEventStage,
+  directorEvidenceNorm,
+  directorBigrams,
+  directorOverlapRatio,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -297,7 +306,8 @@ const JSON_SCHEMA_TEXT = `固定输出格式：
 }`;
 
 // 活幕·伏笔显影：五档刻度（线性顺势升降，由戏剧因果驱动）
-const STAGE_LADDER = ['铺陈', '升温', '临界', '高潮', '落幕'];
+// STAGE_LADDER - 已迁移到 qianmu-storyboard-utils.js
+// const STAGE_LADDER = ['铺陈', '升温', '临界', '高潮', '落幕'];
 const DIRECTOR_SECTION_RULES = Object.freeze({
   quests: '用户可主动选择、执行或放弃的行动入口；不代写 NPC 私生活或宏观局势。',
   npc_updates: '单个角色为自身目标采取的自主行动；不写成用户任务或集体趋势。',
@@ -363,7 +373,8 @@ const WORLD_CHATTER_SCHEMA_TEXT = `【活幕·尘寰群生·额外输出字段�
 - 只输出 text/who/where 三个字段，不要分类标签、不要关联强度、不要联动信息。`;
 
 // 活幕·势：世界事件的阶段阶梯（线性顺势升降，由局势因果驱动，非概率）
-const EVENT_STAGE_LADDER = ['酝酿', '爆发', '蔓延', '消退', '落定'];
+// EVENT_STAGE_LADDER - 已迁移到 qianmu-storyboard-utils.js
+// const EVENT_STAGE_LADDER = ['酝酿', '爆发', '蔓延', '消退', '落定'];
 // 势力之间的关系基调：四态 + 依附（单向倾斜），染色用
 const FACTION_RELATION_KINDS = ['冲突', '同盟', '张力', '中立', '依附'];
 
@@ -2443,19 +2454,22 @@ const INJ_LEN = {
    活幕·伏笔显影：暗线档案承接（跨推演的持续身份层）
    纯函数，无副作用；store 来自 chatMetadata，与 plan 平级、独立累积。
    ============================================================ */
-function sanitizeStage(stage) {
-  return STAGE_LADDER.includes(stage) ? stage : '铺陈';
-}
+// sanitizeStage - 已迁移到 qianmu-storyboard-utils.js
+// function sanitizeStage(stage) {
+//   return STAGE_LADDER.includes(stage) ? stage : '铺陈';
+// }
 
 // 顺势升一档（不越过「落幕」）
-function advanceStage(stage) {
-  const idx = STAGE_LADDER.indexOf(sanitizeStage(stage));
-  return STAGE_LADDER[Math.min(idx + 1, STAGE_LADDER.length - 1)];
-}
+// advanceStage - 已迁移到 qianmu-storyboard-utils.js
+// function advanceStage(stage) {
+//   const idx = STAGE_LADDER.indexOf(sanitizeStage(stage));
+//   return STAGE_LADDER[Math.min(idx + 1, STAGE_LADDER.length - 1)];
+// }
 
-function directorEvidenceNorm(value) {
-  return String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
-}
+// directorEvidenceNorm - 已迁移到 qianmu-storyboard-utils.js
+// function directorEvidenceNorm(value) {
+//   return String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+// }
 
 function directorRecentEvidenceRows() {
   const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
@@ -2483,22 +2497,24 @@ function validateThreadEvidence(raw) {
     : { valid: false, floor: -1, quote, reason: '原句不在近期对话中' };
 }
 
-function directorBigrams(value) {
-  const text = directorEvidenceNorm(value);
-  const out = new Set();
-  if (text.length < 2) { if (text) out.add(text); return out; }
-  for (let index = 0; index < text.length - 1; index++) out.add(text.slice(index, index + 2));
-  return out;
-}
+// directorBigrams - 已迁移到 qianmu-storyboard-utils.js
+// function directorBigrams(value) {
+//   const text = directorEvidenceNorm(value);
+//   const out = new Set();
+//   if (text.length < 2) { if (text) out.add(text); return out; }
+//   for (let index = 0; index < text.length - 1; index++) out.add(text.slice(index, index + 2));
+//   return out;
+// }
 
-function directorOverlapRatio(needle, haystack) {
-  const left = directorBigrams(needle);
-  const right = directorBigrams(haystack);
-  if (!left.size || !right.size) return 0;
-  let hit = 0;
-  for (const token of left) if (right.has(token)) hit += 1;
-  return hit / left.size;
-}
+// directorOverlapRatio - 已迁移到 qianmu-storyboard-utils.js
+// function directorOverlapRatio(needle, haystack) {
+//   const left = directorBigrams(needle);
+//   const right = directorBigrams(haystack);
+//   if (!left.size || !right.size) return 0;
+//   let hit = 0;
+//   for (const token of left) if (right.has(token)) hit += 1;
+//   return hit / left.size;
+// }
 
 function selectThreadsForRecall(store, round = Number(store?.threadSeq || 0), commit = false) {
   const recentText = directorRecentEvidenceRows().map((row) => row.text).join('\n');
@@ -2689,13 +2705,15 @@ function mergeThreads(store, incoming) {
    思路同伏笔显影：用 LLM 当「推演引擎」吐质性局势变化，不做数值模拟；
    状态跨幕续命，「你不看也在变」靠推演时世界时钟往前演——零后台循环、零 tick。
    ============================================================ */
-function sanitizeEventStage(stage) {
-  return EVENT_STAGE_LADDER.includes(stage) ? stage : '酝酿';
-}
-function advanceEventStage(stage) {
-  const idx = EVENT_STAGE_LADDER.indexOf(sanitizeEventStage(stage));
-  return EVENT_STAGE_LADDER[Math.min(idx + 1, EVENT_STAGE_LADDER.length - 1)];
-}
+// sanitizeEventStage - 已迁移到 qianmu-storyboard-utils.js
+// function sanitizeEventStage(stage) {
+//   return EVENT_STAGE_LADDER.includes(stage) ? stage : '酝酿';
+// }
+// advanceEventStage - 已迁移到 qianmu-storyboard-utils.js
+// function advanceEventStage(stage) {
+//   const idx = EVENT_STAGE_LADDER.indexOf(sanitizeEventStage(stage));
+//   return EVENT_STAGE_LADDER[Math.min(idx + 1, EVENT_STAGE_LADDER.length - 1)];
+// }
 const FACTION_TRENDS = ['rising', 'stable', 'declining', 'turbulent'];
 const FACTION_SCALES = ['城邦内', '区域性', '跨区域', '全局性'];
 const GEO_REVIEW_CYCLE = 3;   // 格局「体检」节奏：每 N 个推演轮（geoSeq）做一次新陈代谢模态判断，其余轮专注演进、阵容稳定
