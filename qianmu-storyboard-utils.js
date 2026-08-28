@@ -955,5 +955,89 @@ export function computeVisibleWindow(chapters, chapterIndex, scrollRatio, percen
   return { visibleText: full.slice(start, readPos), readPos, totalLen: full.length, windowChars, start };
 }
 
+/**
+ * 剥离对话引号
+ * @param {string} s - 输入字符串
+ * @returns {string} 去除引号后的字符串
+ */
+export function stripDialogQuotes(s) {
+  let t = String(s || '').trim();
+  const pairs = [['「', '」'], ['『', '』'], ['"', '"'], [''', '''], ['"', '"'], ["'", "'"], ['《', '》']];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [l, r] of pairs) {
+      if (t.length >= 2 && t.startsWith(l) && t.endsWith(r)) {
+        t = t.slice(l.length, t.length - r.length).trim();
+        changed = true;
+      }
+    }
+  }
+  t = t.replace(/[「」『』""''""'']/g, '').trim();
+  t = t.replace(/[—─]{1,}/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  return t;
+}
+
+/**
+ * readerCoverPlaceholder - 生成网格封面占位符（无图时显示书名+作者）
+ * @param {string} title - 书名
+ * @param {string} author - 作者
+ * @returns {string} - HTML 字符串
+ */
+export function readerCoverPlaceholder(title, author) {
+  return `<div class="sd-reader-cover-ph">
+    <span class="sd-reader-cover-title">${htmlEscape(title || '未命名')}</span>
+    ${author ? `<span class="sd-reader-cover-author">${htmlEscape(author)}</span>` : ''}
+  </div>`;
+}
+
+/**
+ * extractTheaterBody - 从剧场文本中提取正文，免疫标签残缺问题
+ * @param {string} text - 原始文本
+ * @returns {string} - 提取的正文
+ */
+export function extractTheaterBody(text) {
+  const raw = String(text || '');
+  let body = '';
+  let m = raw.match(/<\s*幕外正文\s*>([\s\S]*?)<\s*\/\s*幕外正文\s*>/i);
+  if (m && m[1].trim()) body = m[1];
+  if (!body) { m = raw.match(/<\s*幕外正文\s*>([\s\S]*)$/i); if (m && m[1].trim()) body = m[1]; }
+  if (!body) { m = raw.match(/^([\s\S]*?)<\s*\/\s*幕外正文\s*>/i); if (m && m[1].trim()) body = m[1]; }
+  if (!body) body = raw;
+  body = body.replace(/<\s*\/?\s*幕外正文\s*>/gi, '');
+  return stripThinkChain(body).trim();
+}
+
+/**
+ * parseModelList - 从多种API响应结构中提取模型列表
+ * @param {any} data - API响应数据
+ * @returns {Array<string>} - 模型ID列表（排序去重）
+ */
+export function parseModelList(data) {
+  const candidates = [];
+  if (Array.isArray(data?.data)) candidates.push(...data.data.map((x) => x?.id || x?.name || x));
+  if (Array.isArray(data?.models)) candidates.push(...data.models.map((x) => x?.id || x?.name || x));
+  if (Array.isArray(data)) candidates.push(...data.map((x) => x?.id || x?.name || x));
+  if (data?.data && typeof data.data === 'object' && !Array.isArray(data.data)) candidates.push(...Object.keys(data.data));
+  if (data?.models && typeof data.models === 'object' && !Array.isArray(data.models)) candidates.push(...Object.keys(data.models));
+  return uniqueClean(candidates).sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * countGroupTag - 生成审片页跳转标签HTML
+ * @param {string} label - 标签名
+ * @param {string} jump - 跳转目标
+ * @param {Array<[string, number]>} parts - 分项名称和数量
+ * @returns {string} - HTML字符串
+ */
+export function countGroupTag(label, jump, parts) {
+  const inner = parts.map(([name, count]) => `<span class="sd-ct-part">${htmlEscape(name)}<b>${count}</b></span>`).join('');
+  return `<button class="sd-count-tag sd-count-group" data-jump="${jump}"><span class="sd-ct-label">${htmlEscape(label)}</span>${inner}</button>`;
+}
+  t = t.replace(/[「」『』""''""'']/g, '').trim();
+  t = t.replace(/[—─]{1,}/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  return t;
+}
+
 export const UTILS_MODULE_VERSION = '1.56.0';
 export const UTILS_MODULE_NAME = 'qianmu-storyboard-utils';

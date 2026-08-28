@@ -73,6 +73,11 @@ import {
   geoStableHash,
   geoRelationClass,
   computeVisibleWindow,
+  stripDialogQuotes,
+  readerCoverPlaceholder,
+  extractTheaterBody,
+  parseModelList,
+  countGroupTag,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -3686,15 +3691,16 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
   }
 }
 
-function parseModelList(data) {
-  const candidates = [];
-  if (Array.isArray(data?.data)) candidates.push(...data.data.map((x) => x?.id || x?.name || x));
-  if (Array.isArray(data?.models)) candidates.push(...data.models.map((x) => x?.id || x?.name || x));
-  if (Array.isArray(data)) candidates.push(...data.map((x) => x?.id || x?.name || x));
-  if (data?.data && typeof data.data === 'object' && !Array.isArray(data.data)) candidates.push(...Object.keys(data.data));
-  if (data?.models && typeof data.models === 'object' && !Array.isArray(data.models)) candidates.push(...Object.keys(data.models));
-  return uniqueClean(candidates).sort((a, b) => a.localeCompare(b));
-}
+// MIGRATED to qianmu-storyboard-utils.js (commit 19)
+// function parseModelList(data) {
+//   const candidates = [];
+//   if (Array.isArray(data?.data)) candidates.push(...data.data.map((x) => x?.id || x?.name || x));
+//   if (Array.isArray(data?.models)) candidates.push(...data.models.map((x) => x?.id || x?.name || x));
+//   if (Array.isArray(data)) candidates.push(...data.map((x) => x?.id || x?.name || x));
+//   if (data?.data && typeof data.data === 'object' && !Array.isArray(data.data)) candidates.push(...Object.keys(data.data));
+//   if (data?.models && typeof data.models === 'object' && !Array.isArray(data.models)) candidates.push(...Object.keys(data.models));
+//   return uniqueClean(candidates).sort((a, b) => a.localeCompare(b));
+// }
 
 async function fetchModels() {
   try {
@@ -6580,10 +6586,11 @@ function renderThreadsCard() {
 
 // 审片页跳转标签：按版块（任务线/角色世界）各一枚，标功能合并名 + 该版块各分项条数，点击跳到对应标签页。
 // 任务线 = 任务标签页（任务 + 因果链）；角色世界 = 角色世界标签页（角色 + 关系 + 世界）。
-function countGroupTag(label, jump, parts) {
-  const inner = parts.map(([name, count]) => `<span class="sd-ct-part">${htmlEscape(name)}<b>${count}</b></span>`).join('');
-  return `<button class="sd-count-tag sd-count-group" data-jump="${jump}"><span class="sd-ct-label">${htmlEscape(label)}</span>${inner}</button>`;
-}
+// MIGRATED to qianmu-storyboard-utils.js (commit 19)
+// function countGroupTag(label, jump, parts) {
+//   const inner = parts.map(([name, count]) => `<span class="sd-ct-part">${htmlEscape(name)}<b>${count}</b></span>`).join('');
+//   return `<button class="sd-count-tag sd-count-group" data-jump="${jump}"><span class="sd-ct-label">${htmlEscape(label)}</span>${inner}</button>`;
+// }
 
 function renderHistorySection() {
   const history = Array.isArray(getChatStore().history) ? getChatStore().history : [];
@@ -19671,23 +19678,21 @@ function renderReaderDialogMessages() {
 }
 
 // 去引号：模型偶尔仍给台词裹引号，前端兜底剥掉（首尾成对 + 通篇残留），保证气泡内零引号。
-function stripDialogQuotes(s) {
-  let t = String(s || '').trim();
-  // 反复剥首尾成对引号（「」『』""''「」等）
-  const pairs = [['「', '」'], ['『', '』'], ['“', '”'], ['‘', '’'], ['"', '"'], ["'", "'"], ['《', '》']];
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const [l, r] of pairs) {
-      if (t.length >= 2 && t.startsWith(l) && t.endsWith(r)) { t = t.slice(l.length, t.length - r.length).trim(); changed = true; }
-    }
-  }
-  // 通篇残留的引号字符也一并去掉（书友台词不该含任何引号）
-  t = t.replace(/[「」『』“”‘’""'']/g, '').trim();
-  // 聊天体：破折号是书面腔，真人发消息不会用——转成空格或直接去掉（保口语感）
-  t = t.replace(/[—─]{1,}/g, ' ').replace(/\s{2,}/g, ' ').trim();
-  return t;
-}
+// MIGRATED to qianmu-storyboard-utils.js (commit 19)
+// function stripDialogQuotes(s) {
+//   let t = String(s || ‘’).trim();
+//   const pairs = [[‘「’, ‘」’], [‘『’, ‘』’], [‘”’, ‘”’], [‘’’, ‘’’], [‘”’, ‘”’], [“’”, “’”], [‘《’, ‘》’]];
+//   let changed = true;
+//   while (changed) {
+//     changed = false;
+//     for (const [l, r] of pairs) {
+//       if (t.length >= 2 && t.startsWith(l) && t.endsWith(r)) { t = t.slice(l.length, t.length - r.length).trim(); changed = true; }
+//     }
+//   }
+//   t = t.replace(/[「」『』””’’””’’]/g, ‘’).trim();
+//   t = t.replace(/[—─]{1,}/g, ‘ ‘).replace(/\s{2,}/g, ‘ ‘).trim();
+//   return t;
+// }
 
 function scrollDialogToBottom() {
   const body = document.querySelector('#sd-reader-portal .sd-reader-dtab-chat');
@@ -20538,12 +20543,13 @@ async function coreadChooseCollectionForBooks(bookIds) {
 }
 
 // 网格封面（无图时）：书名 + 作者，长名自动省略不出框。
-function readerCoverPlaceholder(title, author) {
-  return `<div class="sd-reader-cover-ph">
-    <span class="sd-reader-cover-title">${htmlEscape(title || '未命名')}</span>
-    ${author ? `<span class="sd-reader-cover-author">${htmlEscape(author)}</span>` : ''}
-  </div>`;
-}
+// MIGRATED to qianmu-storyboard-utils.js (commit 19)
+// function readerCoverPlaceholder(title, author) {
+//   return `<div class="sd-reader-cover-ph">
+//     <span class="sd-reader-cover-title">${htmlEscape(title || '未命名')}</span>
+//     ${author ? `<span class="sd-reader-cover-author">${htmlEscape(author)}</span>` : ''}
+//   </div>`;
+// }
 
 // 书架封面图缓存：bookId → objectURL（避免每次重渲都重建 URL）。
 const shelfCoverUrls = new Map();
@@ -25758,22 +25764,18 @@ async function stageTheaterScene() {
 // 幕外展示用正文提取：优先取 <幕外正文>…</幕外正文> 标签内的内容（裸思维链一并被挡在标签外丢弃）；
 // 对模型偶发的标签残缺（漏闭合/漏起始/无标签/碎片）全部免疫，绝不因格式问题导致正文取空、连累「最近一幕」与按钮布局。
 // 日志展示不走这里，仍显示完整原文。
-function extractTheaterBody(text) {
-  const raw = String(text || '');
-  let body = '';
-  // ① 完整标签对：取中间正文
-  let m = raw.match(/<\s*幕外正文\s*>([\s\S]*?)<\s*\/\s*幕外正文\s*>/i);
-  if (m && m[1].trim()) body = m[1];
-  // ② 只有起始标签（漏闭合/被截断）：取其后全部
-  if (!body) { m = raw.match(/<\s*幕外正文\s*>([\s\S]*)$/i); if (m && m[1].trim()) body = m[1]; }
-  // ③ 只有闭合标签（漏起始）：取其前全部
-  if (!body) { m = raw.match(/^([\s\S]*?)<\s*\/\s*幕外正文\s*>/i); if (m && m[1].trim()) body = m[1]; }
-  // ④ 完全无标签：用全文回落
-  if (!body) body = raw;
-  // 防御：剥掉残留的「幕外正文」起始/闭合标签碎片，再剥裸思维链，杜绝碎片混入显示
-  body = body.replace(/<\s*\/?\s*幕外正文\s*>/gi, '');
-  return stripThinkChain(body).trim();
-}
+// MIGRATED to qianmu-storyboard-utils.js (commit 19)
+// function extractTheaterBody(text) {
+//   const raw = String(text || '');
+//   let body = '';
+//   let m = raw.match(/<\s*幕外正文\s*>([\s\S]*?)<\s*\/\s*幕外正文\s*>/i);
+//   if (m && m[1].trim()) body = m[1];
+//   if (!body) { m = raw.match(/<\s*幕外正文\s*>([\s\S]*)$/i); if (m && m[1].trim()) body = m[1]; }
+//   if (!body) { m = raw.match(/^([\s\S]*?)<\s*\/\s*幕外正文\s*>/i); if (m && m[1].trim()) body = m[1]; }
+//   if (!body) body = raw;
+//   body = body.replace(/<\s*\/?\s*幕外正文\s*>/gi, '');
+//   return stripThinkChain(body).trim();
+// }
 
 function openTheaterReader(scene) {
   if (!scene) return;
