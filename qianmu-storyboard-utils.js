@@ -874,5 +874,86 @@ export function widthToPad(widthRem) {
   return ((66 - w) / 38 * 14).toFixed(1);
 }
 
+/**
+ * 计算世界热度
+ * @param {Array} rels - 关系数组
+ * @param {Array} events - 事件数组
+ * @returns {number} 热度值 (0-100)
+ */
+export function computeWorldHeat(rels, events) {
+  const relWeight = { 冲突: 26, 张力: 13, 依附: 5, 中立: 0, 同盟: -8 };
+  let heat = 0;
+  for (const r of rels) heat += relWeight[r.kind] || 0;
+  for (const e of events) {
+    if (e.status === 'closed') continue;
+    heat += e.stage === '爆发' ? 18 : e.stage === '蔓延' ? 14 : e.stage === '酝酿' ? 7 : 2;
+  }
+  return Math.max(0, Math.min(100, Math.round(heat)));
+}
+
+/**
+ * 根据热度获取层级信息
+ * @param {number} heat - 热度值
+ * @returns {Object} 层级对象
+ */
+export function heatTier(heat) {
+  if (heat >= 72) return { key: 'boil', label: '鼎沸', desc: '多方火并，世界沸反盈天' };
+  if (heat >= 45) return { key: 'turmoil', label: '动荡', desc: '冲突四起，暗潮已掀明浪' };
+  if (heat >= 20) return { key: 'undercurrent', label: '暗流', desc: '表面平静，底下各有盘算' };
+  return { key: 'calm', label: '承平', desc: '大势安稳，余波细微' };
+}
+
+/**
+ * 稳定哈希函数
+ * @param {string} value - 输入值
+ * @returns {number} 哈希值
+ */
+export function geoStableHash(value) {
+  let hash = 2166136261;
+  for (const ch of String(value || '')) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619);
+  return hash >>> 0;
+}
+
+/**
+ * 获取地缘关系的 CSS 类名
+ * @param {string} kind - 关系类型
+ * @returns {string} CSS 类名
+ */
+export function geoRelationClass(kind) {
+  return { 冲突: 'conflict', 同盟: 'ally', 张力: 'tension', 中立: 'neutral', 依附: 'vassal' }[kind] || 'neutral';
+}
+
+/**
+ * 计算可见窗口
+ * @param {Array} chapters - 章节数组
+ * @param {number} chapterIndex - 当前章节索引
+ * @param {number} scrollRatio - 滚动比例
+ * @param {number} percent - 百分比
+ * @param {number} charCap - 字符上限
+ * @returns {Object} 可见窗口信息
+ */
+export function computeVisibleWindow(chapters, chapterIndex, scrollRatio, percent, charCap) {
+  const list = Array.isArray(chapters) ? chapters : [];
+  const bodies = list.map((ch) => String(ch?.content || ''));
+  const offsets = [];
+  let acc = 0;
+  for (const b of bodies) { offsets.push(acc); acc += b.length; }
+  const totalLen = acc || 1;
+  const full = bodies.join('');
+  const ci = Math.max(0, Math.min(Number(chapterIndex) || 0, Math.max(0, bodies.length - 1)));
+  const curLen = bodies[ci] ? bodies[ci].length : 0;
+  const ratio = Math.max(0, Math.min(1, Number(scrollRatio) || 0));
+  const readPos = Math.max(0, Math.min(full.length, (offsets[ci] || 0) + Math.round(curLen * ratio)));
+  const pct = Math.max(1, Math.min(100, Number(percent) || 15));
+  const cap = Math.max(200, Number(charCap) || 6000);
+  const windowChars = Math.min(Math.ceil((pct / 100) * totalLen), cap);
+  let start = Math.max(0, readPos - windowChars);
+  if (start > 0) {
+    const m = full.slice(start, Math.min(readPos, start + 200)).search(/[。！？…\n」』】）\)]/);
+    if (m >= 0) start = Math.min(readPos, start + m + 1);
+  }
+  return { visibleText: full.slice(start, readPos), readPos, totalLen: full.length, windowChars, start };
+}
+
 export const UTILS_MODULE_VERSION = '1.56.0';
 export const UTILS_MODULE_NAME = 'qianmu-storyboard-utils';

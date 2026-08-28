@@ -68,6 +68,11 @@ import {
   formatReadDuration,
   formatDateTime,
   widthToPad,
+  computeWorldHeat,
+  heatTier,
+  geoStableHash,
+  geoRelationClass,
+  computeVisibleWindow,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -5903,32 +5908,37 @@ const GEO_TREND_ICON = { rising: '▲', stable: '＝', declining: '▼', turbule
 const EVENT_STAGE_CLS = { 酝酿: 'brew', 爆发: 'erupt', 蔓延: 'spread', 消退: 'fade', 落定: 'settle' };
 
 // 世界温度：由关系张力 + 事件烈度合成 0-100，映射四档态势
-function computeWorldHeat(rels, events) {
-  const relWeight = { 冲突: 26, 张力: 13, 依附: 5, 中立: 0, 同盟: -8 };
-  let heat = 0;
-  for (const r of rels) heat += relWeight[r.kind] || 0;
-  for (const e of events) {
-    if (e.status === 'closed') continue;
-    heat += e.stage === '爆发' ? 18 : e.stage === '蔓延' ? 14 : e.stage === '酝酿' ? 7 : 2;
-  }
-  return Math.max(0, Math.min(100, Math.round(heat)));
-}
-function heatTier(heat) {
-  if (heat >= 72) return { key: 'boil', label: '鼎沸', desc: '多方火并，世界沸反盈天' };
-  if (heat >= 45) return { key: 'turmoil', label: '动荡', desc: '冲突四起，暗潮已掀明浪' };
-  if (heat >= 20) return { key: 'undercurrent', label: '暗流', desc: '表面平静，底下各有盘算' };
-  return { key: 'calm', label: '承平', desc: '大势安稳，余波细微' };
-}
+// computeWorldHeat - 已迁移到 qianmu-storyboard-utils.js
+// function computeWorldHeat(rels, events) {
+//   const relWeight = { 冲突: 26, 张力: 13, 依附: 5, 中立: 0, 同盟: -8 };
+//   let heat = 0;
+//   for (const r of rels) heat += relWeight[r.kind] || 0;
+//   for (const e of events) {
+//     if (e.status === 'closed') continue;
+//     heat += e.stage === '爆发' ? 18 : e.stage === '蔓延' ? 14 : e.stage === '酝酿' ? 7 : 2;
+//   }
+//   return Math.max(0, Math.min(100, Math.round(heat)));
+// }
+// heatTier - 已迁移到 qianmu-storyboard-utils.js
+// function heatTier(heat) {
+//   if (heat >= 72) return { key: 'boil', label: '鼎沸', desc: '多方火并，世界沸反盈天' };
+//   if (heat >= 45) return { key: 'turmoil', label: '动荡', desc: '冲突四起，暗潮已掀明浪' };
+//   if (heat >= 20) return { key: 'undercurrent', label: '暗流', desc: '表面平静，底下各有盘算' };
+//   return { key: 'calm', label: '承平', desc: '大势安稳，余波细微' };
+// }
 
-function geoStableHash(value) {
-  let hash = 2166136261;
-  for (const ch of String(value || '')) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619);
-  return hash >>> 0;
-}
+// geoStableHash - 已迁移到 qianmu-storyboard-utils.js
+// function geoStableHash(value) {
+//   let hash = 2166136261;
+//   for (const ch of String(value || '')) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619);
+//   return hash >>> 0;
+// }
 
-function geoRelationClass(kind) {
-  return { 冲突: 'conflict', 同盟: 'ally', 张力: 'tension', 中立: 'neutral', 依附: 'vassal' }[kind] || 'neutral';
-}
+// geoRelationClass - 已迁移到 qianmu-storyboard-utils.js
+// function geoRelationClass(kind) {
+//   return { 冲突: 'conflict', 同盟: 'ally', 张力: 'tension', 中立: 'neutral', 依附: 'vassal' }[kind] || 'neutral';
+// }
+
 
 function geoRelationKindsSelected() {
   const raw = Array.isArray(settings.geopoliticsRelationKinds) ? settings.geopoliticsRelationKinds : FACTION_RELATION_KINDS;
@@ -16651,30 +16661,29 @@ function coreadEnsurePresetEntries(name) {
 
 // 读位与可见窗：把 chapters 线性拼成全文，按 chapterIndex+scrollRatio 求当前绝对读位，
 // 再往前取 visiblePercent% 正文（占全书·硬上限 visibleCharsBefore 字），起点对齐句界。
-function computeVisibleWindow(chapters, chapterIndex, scrollRatio, percent, charCap) {
-  const list = Array.isArray(chapters) ? chapters : [];
-  const bodies = list.map((ch) => String(ch?.content || ''));
-  const offsets = [];
-  let acc = 0;
-  for (const b of bodies) { offsets.push(acc); acc += b.length; }
-  const totalLen = acc || 1;
-  const full = bodies.join('');
-  const ci = Math.max(0, Math.min(Number(chapterIndex) || 0, Math.max(0, bodies.length - 1)));
-  const curLen = bodies[ci] ? bodies[ci].length : 0;
-  const ratio = Math.max(0, Math.min(1, Number(scrollRatio) || 0));
-  // 当前读位（全文绝对偏移）：前面各章长度之和 + 本章内滚动比例投影
-  const readPos = Math.max(0, Math.min(full.length, (offsets[ci] || 0) + Math.round(curLen * ratio)));
-  const pct = Math.max(1, Math.min(100, Number(percent) || 15));
-  const cap = Math.max(200, Number(charCap) || 6000);
-  const windowChars = Math.min(Math.ceil((pct / 100) * totalLen), cap);
-  let start = Math.max(0, readPos - windowChars);
-  // 起点对齐句界：向后找最近的句末标点/换行，避免从半句切入（不越过 readPos）
-  if (start > 0) {
-    const m = full.slice(start, Math.min(readPos, start + 200)).search(/[。！？…\n」』】）\)]/);
-    if (m >= 0) start = Math.min(readPos, start + m + 1);
-  }
-  return { visibleText: full.slice(start, readPos), readPos, totalLen: full.length, windowChars, start };
-}
+// computeVisibleWindow - 已迁移到 qianmu-storyboard-utils.js
+// function computeVisibleWindow(chapters, chapterIndex, scrollRatio, percent, charCap) {
+//   const list = Array.isArray(chapters) ? chapters : [];
+//   const bodies = list.map((ch) => String(ch?.content || ''));
+//   const offsets = [];
+//   let acc = 0;
+//   for (const b of bodies) { offsets.push(acc); acc += b.length; }
+//   const totalLen = acc || 1;
+//   const full = bodies.join('');
+//   const ci = Math.max(0, Math.min(Number(chapterIndex) || 0, Math.max(0, bodies.length - 1)));
+//   const curLen = bodies[ci] ? bodies[ci].length : 0;
+//   const ratio = Math.max(0, Math.min(1, Number(scrollRatio) || 0));
+//   const readPos = Math.max(0, Math.min(full.length, (offsets[ci] || 0) + Math.round(curLen * ratio)));
+//   const pct = Math.max(1, Math.min(100, Number(percent) || 15));
+//   const cap = Math.max(200, Number(charCap) || 6000);
+//   const windowChars = Math.min(Math.ceil((pct / 100) * totalLen), cap);
+//   let start = Math.max(0, readPos - windowChars);
+//   if (start > 0) {
+//     const m = full.slice(start, Math.min(readPos, start + 200)).search(/[。！？…\n」』】）\)]/);
+//     if (m >= 0) start = Math.min(readPos, start + m + 1);
+//   }
+//   return { visibleText: full.slice(start, readPos), readPos, totalLen: full.length, windowChars, start };
+// }
 
 function coreadComicVisibleText(descriptions, chapterIndex) {
   return Object.values(isPlainObject(descriptions) ? descriptions : {})
