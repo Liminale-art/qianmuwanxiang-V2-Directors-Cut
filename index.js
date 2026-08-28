@@ -58,6 +58,11 @@ import {
   isLegacyBlueprint,
   groupByFolder,
   capByBudget as capByBudgetCore,
+  blobToBase64,
+  base64ToBlob,
+  isBuiltinScript,
+  looksLikeHtml,
+  theaterSubtitle,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -25265,21 +25270,23 @@ function coreadImportData() {
   input.click();
 }
 
-function blobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result || '').split(',')[1] || '');
-    r.onerror = reject;
-    r.readAsDataURL(blob);
-  });
-}
+// blobToBase64 - 已迁移到 qianmu-storyboard-utils.js
+// function blobToBase64(blob) {
+//   return new Promise((resolve, reject) => {
+//     const r = new FileReader();
+//     r.onload = () => resolve(String(r.result || '').split(',')[1] || '');
+//     r.onerror = reject;
+//     r.readAsDataURL(blob);
+//   });
+// }
 
-function base64ToBlob(b64, mime = 'image/*') {
-  const bin = atob(b64);
-  const arr = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return new Blob([arr], { type: mime });
-}
+// base64ToBlob - 已迁移到 qianmu-storyboard-utils.js
+// function base64ToBlob(b64, mime = 'image/*') {
+//   const bin = atob(b64);
+//   const arr = new Uint8Array(bin.length);
+//   for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+//   return new Blob([arr], { type: mime });
+// }
 
 /* ============================================================
    幕外 · 番外小剧场（完全独立于推演：不写聊天、不注入、不入推演提示词）
@@ -25301,9 +25308,10 @@ function getTheater() {
 // 内置项以 builtin:true + 稳定 id（sd-bt-*）双标记。判定走 isBuiltinScript：
 // 早期版本种入的内置项可能没写 builtin 标志（仅有 sd-bt-* id），仅靠 !s.builtin 过滤会漏判、
 // 导致升级时旧内置被当用户项留下 + 新内置又全量追加 → 整组重复翻倍。故 id 命名空间兜底。
-function isBuiltinScript(s) {
-  return !!s && (s.builtin === true || (typeof s.id === 'string' && (s.id.startsWith('sd-bt-') || s.id.startsWith('sd-qm-'))));
-}
+// isBuiltinScript - 已迁移到 qianmu-storyboard-utils.js
+// function isBuiltinScript(s) {
+//   return !!s && (s.builtin === true || (typeof s.id === 'string' && (s.id.startsWith('sd-bt-') || s.id.startsWith('sd-qm-'))));
+// }
 // 更古早的 seed 曾用 uid('script') 铸内置项（id=script-*、无 builtin 标志），isBuiltinScript 认不出，
 // 升级时被当用户项留下 → 与新内置同名重复。清扫规则：标题命中内置、且在内置文件夹、且正文与当前
 // 内置逐字一致者，视为「纯遗留副本」剔除；正文被改过的（用户 DIY 副本）正文不同、保留不动。
@@ -25429,9 +25437,10 @@ async function buildTheaterDefaultText() {
   return output.trim();
 }
 
-function looksLikeHtml(text) {
-  return /<\s*(html|body|div|section|article|table|canvas|svg|style|script|button|input|h[1-6]|p|ul|ol|img|iframe)\b/i.test(String(text || ''));
-}
+// looksLikeHtml - 已迁移到 qianmu-storyboard-utils.js
+// function looksLikeHtml(text) {
+//   return /<\s*(html|body|div|section|article|table|canvas|svg|style|script|button|input|h[1-6]|p|ul|ol|img|iframe)\b/i.test(String(text || ''));
+// }
 
 function isTheaterFavorited(id) {
   return getTheater().favorites.some((f) => f.id === id);
@@ -25507,6 +25516,8 @@ function renderTheaterTab() {
 }
 
 // 番外正文开端：提取 <幕外正文> 内正文（并清洗 HTML 标签）取开头若干字，作为列表/最近一幕的显示名
+// theaterOpening - 已迁移到 qianmu-storyboard-utils.js（简化版本）
+// 主模块保留完整版本，调用 extractTheaterBody
 function theaterOpening(scene, n = 28) {
   if (!scene) return '番外';
   let text = extractTheaterBody(String(scene.content || ''));
@@ -25518,10 +25529,11 @@ function theaterOpening(scene, n = 28) {
 }
 
 // 阅读页副标题：来自剧札则 @剧札名，否则 @即兴
-function theaterSubtitle(scene) {
-  const src = String(scene?.source || '').trim();
-  return src ? `@${src}` : '@即兴';
-}
+// theaterSubtitle - 已迁移到 qianmu-storyboard-utils.js
+// function theaterSubtitle(scene) {
+//   const src = String(scene?.source || '').trim();
+//   return src ? `@${src}` : '@即兴';
+// }
 
 const THEATER_READ_TITLE = '幕外一折';
 

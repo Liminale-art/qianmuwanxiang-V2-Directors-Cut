@@ -735,5 +735,77 @@ export function capByBudget(lines, budget) {
   return kept;
 }
 
+/**
+ * 将 Blob 转换为 Base64
+ * @param {Blob} blob - Blob 对象
+ * @returns {Promise<string>} Base64 字符串
+ */
+export function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || '').split(',')[1] || '');
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+/**
+ * 将 Base64 转换为 Blob
+ * @param {string} b64 - Base64 字符串
+ * @param {string} mime - MIME 类型
+ * @returns {Blob} Blob 对象
+ */
+export function base64ToBlob(b64, mime = 'image/*') {
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
+/**
+ * 检查脚本是否为内置脚本
+ * @param {Object} s - 脚本对象
+ * @returns {boolean} 是否为内置脚本
+ */
+export function isBuiltinScript(s) {
+  return !!s && (s.builtin === true || (typeof s.id === 'string' && (s.id.startsWith('sd-bt-') || s.id.startsWith('sd-qm-'))));
+}
+
+/**
+ * 检查文本是否看起来像 HTML
+ * @param {string} text - 文本
+ * @returns {boolean} 是否像 HTML
+ */
+export function looksLikeHtml(text) {
+  return /<\s*(html|body|div|section|article|table|canvas|svg|style|script|button|input|h[1-6]|p|ul|ol|img|iframe)\b/i.test(String(text || ''));
+}
+
+/**
+ * 提取场景开头文本
+ * @param {Object} scene - 场景对象
+ * @param {number} n - 最大长度
+ * @returns {string} 开头文本
+ */
+export function theaterOpening(scene, n = 28) {
+  if (!scene) return '番外';
+  let text = String(scene.content || '');
+  // 简化版本，不调用 extractTheaterBody
+  if (scene.isHtml || /<[^>]+>/.test(text)) {
+    text = text.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, ' ');
+  }
+  text = text.replace(/\s+/g, ' ').trim();
+  return text ? snip(text, n) : '番外';
+}
+
+/**
+ * 生成场景副标题
+ * @param {Object} scene - 场景对象
+ * @returns {string} 副标题
+ */
+export function theaterSubtitle(scene) {
+  const src = String(scene?.source || '').trim();
+  return src ? `@${src}` : '@即兴';
+}
+
 export const UTILS_MODULE_VERSION = '1.56.0';
 export const UTILS_MODULE_NAME = 'qianmu-storyboard-utils';
