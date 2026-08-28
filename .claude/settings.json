@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//e/github/qianmu-Sample Database/**)",
+      "Read(//e/github/**)",
+      "Bash(cd \"E:/Visual Design Software/adobe/Adobe Photoshop \\(Beta\\)/Plug-ins\" && ls -la | grep -i wheelchair || echo \"路径不存在或无权限访问\")",
+      "Read(//e/Visual Design Software/adobe/Adobe Photoshop \\\\\\(Beta\\\\\\)/Plug-ins/**)",
+      "Bash(cd \"E:/github/qianmu-Sample Database/ST-BaiBai-Image\" && ls -la | head -20)",
+      "Read(//e/github/qianmu-Sample Database/ST-BaiBai-Image/**)",
+      "Bash(cd \"E:/github/qianmu-Sample Database/st-chatu8-main\" && ls -la | head -20)",
+      "Read(//e/github/qianmu-Sample Database/st-chatu8-main/**)",
+      "Bash(cd \"E:/Visual Design Software/adobe/Adobe Photoshop \\(Beta\\)/Plug-ins/Xiasanqi-Wheelchair\" && ls -la)",
+      "Read(//e/Visual Design Software/adobe/Adobe Photoshop \\\\\\(Beta\\\\\\)/Plug-ins/Xiasanqi-Wheelchair/**)",
+      "Bash(git tag *)",
+      "Bash(git add *)"
+    ]
+  }
+}
