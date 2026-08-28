@@ -38,6 +38,13 @@ import {
   quickDockSelectorEscape,
   quickDockPathKey,
   quickDockLocatorKey,
+  QUICK_HEX_WIDTH_RATIO,
+  QUICK_HIVE_AXIAL_DIRECTIONS,
+  quickHiveAxialRing,
+  quickHiveCells,
+  quickHiveCellRing,
+  quickHivePixelOffset,
+  quickHiveCellFits,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -3960,59 +3967,66 @@ const QUICK_ICON_OPTICAL_SCALE = Object.freeze({
 const QUICK_HEX_BORDER_SVG = '<svg class="sd-hive-hex-outline" viewBox="0 0 86.602 100" preserveAspectRatio="none" aria-hidden="true" focusable="false"><polygon points="43.301,0 86.602,25 86.602,75 43.301,100 0,75 0,25"></polygon></svg>';
 // 蜂巢不设置面向用户的入口上限；24 仅用于拦截损坏配置或异常第三方注入造成的无限增长。
 const QUICK_HIVE_SAFETY_LIMIT = 24;
-const QUICK_HEX_WIDTH_RATIO = Math.sqrt(3) / 2;
-const QUICK_HIVE_AXIAL_DIRECTIONS = Object.freeze([
-  [1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1],
-]);
+// QUICK_HEX_WIDTH_RATIO - 已迁移到 qianmu-storyboard-utils.js
+// const QUICK_HEX_WIDTH_RATIO = Math.sqrt(3) / 2;
+// QUICK_HIVE_AXIAL_DIRECTIONS - 已迁移到 qianmu-storyboard-utils.js
+// const QUICK_HIVE_AXIAL_DIRECTIONS = Object.freeze([
+//   [1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1],
+// ]);
 
 // 使用标准轴向六角坐标生成完整蜂巢环：第一圈恰好六格，第七格起进入第二圈。
 // 坐标顺序恒定，用户排序只映射到格位；随机性只属于展开时的图标微光。
-function quickHiveAxialRing(radius) {
-  if (!Number.isInteger(radius) || radius < 1) return [];
-  const cells = [];
-  let q = 0;
-  let r = -radius;
-  for (const [dq, dr] of QUICK_HIVE_AXIAL_DIRECTIONS) {
-    for (let step = 0; step < radius; step++) {
-      cells.push({ q, r });
-      q += dq;
-      r += dr;
-    }
-  }
-  return cells;
-}
+// quickHiveAxialRing - 已迁移到 qianmu-storyboard-utils.js
+// function quickHiveAxialRing(radius) {
+//   if (!Number.isInteger(radius) || radius < 1) return [];
+//   const cells = [];
+//   let q = 0;
+//   let r = -radius;
+//   for (const [dq, dr] of QUICK_HIVE_AXIAL_DIRECTIONS) {
+//     for (let step = 0; step < radius; step++) {
+//       cells.push({ q, r });
+//       q += dq;
+//       r += dr;
+//     }
+//   }
+//   return cells;
+// }
 
-function quickHiveCells(count, maxRing = 6) {
-  const cells = [];
-  for (let ring = 1; ring <= maxRing && cells.length < count; ring++) cells.push(...quickHiveAxialRing(ring));
-  return cells.slice(0, count);
-}
+// quickHiveCells - 已迁移到 qianmu-storyboard-utils.js
+// function quickHiveCells(count, maxRing = 6) {
+//   const cells = [];
+//   for (let ring = 1; ring <= maxRing && cells.length < count; ring++) cells.push(...quickHiveAxialRing(ring));
+//   return cells.slice(0, count);
+// }
 
-function quickHiveCellRing(cell) {
-  return Math.max(Math.abs(cell.q), Math.abs(cell.r), Math.abs(cell.q + cell.r));
-}
+// quickHiveCellRing - 已迁移到 qianmu-storyboard-utils.js
+// function quickHiveCellRing(cell) {
+//   return Math.max(Math.abs(cell.q), Math.abs(cell.r), Math.abs(cell.q + cell.r));
+// }
 
-function quickHivePixelOffset(cell, itemSize, gap) {
-  const renderedRadius = itemSize / QUICK_HEX_WIDTH_RATIO / 2;
-  // 竖向六边形：水平相邻中心距 = 六边形宽度 + gap。
-  const latticeRadius = renderedRadius + gap / Math.sqrt(3);
-  return {
-    x: Math.sqrt(3) * latticeRadius * (cell.q + cell.r / 2),
-    y: 1.5 * latticeRadius * cell.r,
-  };
-}
+// quickHivePixelOffset - 已迁移到 qianmu-storyboard-utils.js
+// function quickHivePixelOffset(cell, itemSize, gap) {
+//   const renderedRadius = itemSize / QUICK_HEX_WIDTH_RATIO / 2;
+//   // 竖向六边形：水平相邻中心距 = 六边形宽度 + gap。
+//   const latticeRadius = renderedRadius + gap / Math.sqrt(3);
+//   return {
+//     x: Math.sqrt(3) * latticeRadius * (cell.q + cell.r / 2),
+//     y: 1.5 * latticeRadius * cell.r,
+//   };
+// }
 
-function quickHiveCellFits(cell, geometry) {
-  const offset = quickHivePixelOffset(cell, geometry.itemSize, geometry.gap);
-  const halfW = geometry.itemSize / 2;
-  const halfH = geometry.itemHeight / 2;
-  const x = geometry.centerX + offset.x;
-  const y = geometry.centerY + offset.y;
-  return x - halfW >= geometry.margin
-    && x + halfW <= geometry.viewportWidth - geometry.margin
-    && y - halfH >= geometry.margin
-    && y + halfH <= geometry.viewportHeight - geometry.margin;
-}
+// quickHiveCellFits - 已迁移到 qianmu-storyboard-utils.js
+// function quickHiveCellFits(cell, geometry) {
+//   const offset = quickHivePixelOffset(cell, geometry.itemSize, geometry.gap);
+//   const halfW = geometry.itemSize / 2;
+//   const halfH = geometry.itemHeight / 2;
+//   const x = geometry.centerX + offset.x;
+//   const y = geometry.centerY + offset.y;
+//   return x - halfW >= geometry.margin
+//     && x + halfW <= geometry.viewportWidth - geometry.margin
+//     && y - halfH >= geometry.margin
+//     && y + halfH <= geometry.viewportHeight - geometry.margin;
+// }
 
 function quickHiveDirectionalCells(count, geometry) {
   const left = geometry.centerX - geometry.margin;

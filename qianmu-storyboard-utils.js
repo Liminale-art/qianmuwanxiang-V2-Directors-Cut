@@ -429,5 +429,86 @@ export function quickDockLocatorKey(item) {
   return quickDockPathKey(item?.shadowPath) || String(item?.selector || '').trim();
 }
 
+// 蜂巢布局相关常量
+export const QUICK_HEX_WIDTH_RATIO = Math.sqrt(3) / 2;
+export const QUICK_HIVE_AXIAL_DIRECTIONS = Object.freeze([
+  [1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1],
+]);
+
+/**
+ * 生成蜂巢环的轴向六角坐标
+ * @param {number} radius - 环半径
+ * @returns {Array<{q: number, r: number}>} 坐标数组
+ */
+export function quickHiveAxialRing(radius) {
+  if (!Number.isInteger(radius) || radius < 1) return [];
+  const cells = [];
+  let q = 0;
+  let r = -radius;
+  for (const [dq, dr] of QUICK_HIVE_AXIAL_DIRECTIONS) {
+    for (let step = 0; step < radius; step++) {
+      cells.push({ q, r });
+      q += dq;
+      r += dr;
+    }
+  }
+  return cells;
+}
+
+/**
+ * 生成指定数量的蜂巢格子
+ * @param {number} count - 格子数量
+ * @param {number} maxRing - 最大环数
+ * @returns {Array<{q: number, r: number}>} 格子数组
+ */
+export function quickHiveCells(count, maxRing = 6) {
+  const cells = [];
+  for (let ring = 1; ring <= maxRing && cells.length < count; ring++) cells.push(...quickHiveAxialRing(ring));
+  return cells.slice(0, count);
+}
+
+/**
+ * 计算格子所在的环数
+ * @param {{q: number, r: number}} cell - 格子坐标
+ * @returns {number} 环数
+ */
+export function quickHiveCellRing(cell) {
+  return Math.max(Math.abs(cell.q), Math.abs(cell.r), Math.abs(cell.q + cell.r));
+}
+
+/**
+ * 计算格子的像素偏移
+ * @param {{q: number, r: number}} cell - 格子坐标
+ * @param {number} itemSize - 项目尺寸
+ * @param {number} gap - 间隙
+ * @returns {{x: number, y: number}} 像素偏移
+ */
+export function quickHivePixelOffset(cell, itemSize, gap) {
+  const renderedRadius = itemSize / QUICK_HEX_WIDTH_RATIO / 2;
+  const latticeRadius = renderedRadius + gap / Math.sqrt(3);
+  return {
+    x: Math.sqrt(3) * latticeRadius * (cell.q + cell.r / 2),
+    y: 1.5 * latticeRadius * cell.r,
+  };
+}
+
+/**
+ * 检查格子是否在几何范围内
+ * @param {{q: number, r: number}} cell - 格子坐标
+ * @param {Object} geometry - 几何参数
+ * @returns {boolean} 是否适合
+ */
+export function quickHiveCellFits(cell, geometry) {
+  const offset = quickHivePixelOffset(cell, geometry.itemSize, geometry.gap);
+  const halfW = geometry.itemSize / 2;
+  const halfH = geometry.itemHeight / 2;
+  const x = geometry.centerX + offset.x;
+  const y = geometry.centerY + offset.y;
+  return x - halfW >= geometry.margin
+    && x + halfW <= geometry.viewportWidth - geometry.margin
+    && y - halfH >= geometry.margin
+    && y + halfH <= geometry.viewportHeight - geometry.margin;
+}
+
 export const UTILS_MODULE_VERSION = '1.56.0';
 export const UTILS_MODULE_NAME = 'qianmu-storyboard-utils';
