@@ -79,6 +79,7 @@ import {
   parseModelList,
   countGroupTag,
   normalizeScripts,
+  validateThreadEvidence,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -2528,20 +2529,25 @@ function directorRecentEvidenceRows() {
   })).filter((row) => row.text);
 }
 
-function validateThreadEvidence(raw) {
-  const quote = String(raw?.evidence_quote || '').replace(/\s+/g, ' ').trim().slice(0, 80);
-  const quoteNorm = directorEvidenceNorm(quote);
-  if (quoteNorm.length < 4) return { valid: false, floor: -1, quote, reason: '未提供可核验原句' };
-  const rows = directorRecentEvidenceRows();
-  let floor = Number.parseInt(String(raw?.evidence_floor ?? ''), 10);
-  let row = rows.find((item) => item.floor === floor);
-  if (!row || !directorEvidenceNorm(row.text).includes(quoteNorm)) {
-    row = rows.find((item) => directorEvidenceNorm(item.text).includes(quoteNorm));
-    floor = row?.floor ?? -1;
-  }
-  return row
-    ? { valid: true, floor, quote, reason: `楼层${floor}原句命中` }
-    : { valid: false, floor: -1, quote, reason: '原句不在近期对话中' };
+// MIGRATED to qianmu-storyboard-utils.js (commit 21)
+// function validateThreadEvidence(raw) {
+//   const quote = String(raw?.evidence_quote || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+//   const quoteNorm = directorEvidenceNorm(quote);
+//   if (quoteNorm.length < 4) return { valid: false, floor: -1, quote, reason: '未提供可核验原句' };
+//   const rows = directorRecentEvidenceRows();
+//   let floor = Number.parseInt(String(raw?.evidence_floor ?? ''), 10);
+//   let row = rows.find((item) => item.floor === floor);
+//   if (!row || !directorEvidenceNorm(row.text).includes(quoteNorm)) {
+//     row = rows.find((item) => directorEvidenceNorm(item.text).includes(quoteNorm));
+//     floor = row?.floor ?? -1;
+//   }
+//   return row
+//     ? { valid: true, floor, quote, reason: `楼层${floor}原句命中` }
+//     : { valid: false, floor: -1, quote, reason: '原句不在近期对话中' };
+// }
+
+function validateThreadEvidenceWrapper(raw) {
+  return validateThreadEvidence(raw, directorRecentEvidenceRows);
 }
 
 // directorBigrams - 已迁移到 qianmu-storyboard-utils.js
@@ -2624,7 +2630,7 @@ function mergeThreads(store, incoming) {
     if (!raw || (!raw.title && !raw.id)) continue;
     const touched = ['advance', 'mention', 'idle'].includes(raw.touched) ? raw.touched : 'mention';
     const reqStatus = ['active', 'dormant', 'closed'].includes(raw.status) ? raw.status : 'active';
-    const evidence = touched === 'idle' ? { valid: true, floor: -1, quote: '', reason: '已审阅·正文未触及' } : validateThreadEvidence(raw);
+    const evidence = touched === 'idle' ? { valid: true, floor: -1, quote: '', reason: '已审阅·正文未触及' } : validateThreadEvidenceWrapper(raw);
     let t = raw.id ? byId.get(raw.id) : null;
     if (t) {
       if (seen.has(t.id)) {
@@ -3512,7 +3518,7 @@ function directorQualityNeeds(plan, previousPlan, store) {
   const returnedIds = new Set(returnedThreads.filter((thread) => {
     if (!thread?.id) return false;
     if (thread.touched === 'idle') return true;
-    const evidence = validateThreadEvidence(thread);
+    const evidence = validateThreadEvidenceWrapper(thread);
     return evidence.valid && (thread.status !== 'closed' || String(thread.resolution || '').trim().length >= 4);
   }).map((thread) => String(thread.id)));
   const missingThreadIds = existingIds.filter((id) => !returnedIds.has(id));
@@ -3523,13 +3529,13 @@ function directorQualityNeeds(plan, previousPlan, store) {
     const stored = activeById.get(String(thread?.id || ''));
     if (!stored) return false;
     if (thread?.touched === 'idle') return !stored.pinned && Number(stored.silentRounds || 0) >= 3;
-    const evidence = validateThreadEvidence(thread);
+    const evidence = validateThreadEvidenceWrapper(thread);
     if (!evidence.valid) return false;
     const explicitClose = thread?.status === 'closed' || sanitizeStage(thread?.stage) === '落幕';
     const advancesToClose = thread?.touched === 'advance' && sanitizeStage(stored.stage) === '高潮';
     return (explicitClose && String(thread?.resolution || '').trim().length >= 4) || advancesToClose;
   }).map((thread) => String(thread.id)));
-  const validNewCandidates = returnedThreads.filter((thread) => !thread?.id && thread?.touched !== 'idle' && thread?.status !== 'closed' && validateThreadEvidence(thread).valid).length;
+  const validNewCandidates = returnedThreads.filter((thread) => !thread?.id && thread?.touched !== 'idle' && thread?.status !== 'closed' && validateThreadEvidenceWrapper(thread).valid).length;
   const projectedActiveCount = activeThreads.length - projectedExits.size + validNewCandidates;
   const needsThreadCandidates = settings.liveStageEnabled && projectedActiveCount < THREAD_ACTIVE_TARGET_MIN;
   return { gaps, stagnantFields: stagnantFields.slice(0, 2), missingThreadIds, needsThreadCandidates };

@@ -1046,6 +1046,28 @@ export function normalizeScripts(scripts) {
   const builtins = list.filter((s) => isBuiltinScript(s));
   return [...user, ...builtins];
 }
+
+/**
+ * validateThreadEvidence - 验证暗线证据引用的有效性
+ * @param {Object} raw - 原始证据数据
+ * @param {Function} directorRecentEvidenceRows - 获取最近对话行的函数
+ * @returns {Object} - { valid, floor, quote, reason }
+ */
+export function validateThreadEvidence(raw, directorRecentEvidenceRows) {
+  const quote = String(raw?.evidence_quote || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  const quoteNorm = directorEvidenceNorm(quote);
+  if (quoteNorm.length < 4) return { valid: false, floor: -1, quote, reason: '未提供可核验原句' };
+  const rows = directorRecentEvidenceRows();
+  let floor = Number.parseInt(String(raw?.evidence_floor ?? ''), 10);
+  let row = rows.find((item) => item.floor === floor);
+  if (!row || !directorEvidenceNorm(row.text).includes(quoteNorm)) {
+    row = rows.find((item) => directorEvidenceNorm(item.text).includes(quoteNorm));
+    floor = row?.floor ?? -1;
+  }
+  return row
+    ? { valid: true, floor, quote, reason: `楼层${floor}原句命中` }
+    : { valid: false, floor: -1, quote, reason: '原句不在近期对话中' };
+}
   t = t.replace(/[「」『』""''""'']/g, '').trim();
   t = t.replace(/[—─]{1,}/g, ' ').replace(/\s{2,}/g, ' ').trim();
   return t;
