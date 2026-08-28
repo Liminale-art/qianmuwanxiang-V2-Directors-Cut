@@ -921,7 +921,6 @@ function isPlainObject(value) {
 //   for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
 //   return `${str.length}:${h.toString(36)}`;
 // }
-}
 
 function mergeDefaults(target, defaults) {
   for (const [key, value] of Object.entries(defaults)) {
