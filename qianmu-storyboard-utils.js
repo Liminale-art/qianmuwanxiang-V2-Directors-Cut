@@ -617,5 +617,58 @@ export function parseNameSource(source) {
   return [];
 }
 
+/**
+ * 从世界书条目提取伴读逻辑标识
+ * @param {Object} entry - 世界书条目
+ * @returns {string} 逻辑标识
+ */
+export function coreadEntryLogicalId(entry) {
+  const u = String(entry?.uid ?? '');
+  if (u.startsWith('coread::')) return u;
+  const c = `${entry?.comment ?? ''}\n${entry?.name ?? ''}\n${entry?.title ?? ''}\n${entry?.memo ?? ''}`;
+  const mm = c.match(/⟨(coread::[^⟩]+)⟩/);
+  return mm ? mm[1] : '';
+}
+
+/**
+ * 验证豆包语音模型值
+ * @param {string} value - 模型值
+ * @param {string} fallback - 回退值
+ * @returns {string} 有效的模型值
+ */
+export function ttsDoubaoVoiceModel(value, fallback = 'auto') {
+  const model = String(value || '').trim();
+  if (model === 'auto') return 'auto';
+  // 注意：此函数依赖 getTtsProvider，在工具模块中简化为仅校验 'auto'
+  // 完整校验需要在主模块中进行
+  return model || fallback;
+}
+
+/**
+ * 获取豆包语音模型标签
+ * @param {string} value - 模型值
+ * @returns {string} 模型标签
+ */
+export function ttsDoubaoVoiceModelLabel(value) {
+  if (value === 'auto' || !value) return '自动识别';
+  // 注意：完整实现需要 getTtsProvider，这里返回默认值
+  return '自动识别';
+}
+
+/**
+ * 合并默认值到目标对象
+ * @param {Object} target - 目标对象
+ * @param {Object} defaults - 默认值对象
+ */
+export function mergeDefaults(target, defaults) {
+  for (const [key, value] of Object.entries(defaults)) {
+    if (!Object.prototype.hasOwnProperty.call(target, key)) {
+      target[key] = clone(value);
+    } else if (isPlainObject(value) && isPlainObject(target[key])) {
+      mergeDefaults(target[key], value);
+    }
+  }
+}
+
 export const UTILS_MODULE_VERSION = '1.56.0';
 export const UTILS_MODULE_NAME = 'qianmu-storyboard-utils';

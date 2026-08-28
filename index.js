@@ -53,6 +53,8 @@ import {
   isNoisePresetName,
   normalizePresetEntries,
   parseNameSource,
+  coreadEntryLogicalId,
+  mergeDefaults,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -974,15 +976,16 @@ function lastChatIdx() {
 //   return `${str.length}:${h.toString(36)}`;
 // }
 
-function mergeDefaults(target, defaults) {
-  for (const [key, value] of Object.entries(defaults)) {
-    if (!Object.prototype.hasOwnProperty.call(target, key)) {
-      target[key] = clone(value);
-    } else if (isPlainObject(value) && isPlainObject(target[key])) {
-      mergeDefaults(target[key], value);
-    }
-  }
-}
+// mergeDefaults - 已迁移到 qianmu-storyboard-utils.js
+// function mergeDefaults(target, defaults) {
+//   for (const [key, value] of Object.entries(defaults)) {
+//     if (!Object.prototype.hasOwnProperty.call(target, key)) {
+//       target[key] = clone(value);
+//     } else if (isPlainObject(value) && isPlainObject(target[key])) {
+//       mergeDefaults(target[key], value);
+//     }
+//   }
+// }
 
 function migrateTtsProviderSettings(s) {
   if (!isPlainObject(s.tts)) s.tts = clone(DEFAULT_SETTINGS.tts);
@@ -1029,6 +1032,7 @@ function ttsProviderConfig(providerId = ttsProviderId()) {
   return t.providers[id];
 }
 
+// ttsDoubaoVoiceModel 和 ttsDoubaoVoiceModelLabel 依赖 getTtsProvider，保留在主模块中
 function ttsDoubaoVoiceModel(value, fallback = 'auto') {
   const model = String(value || '').trim();
   if (model === 'auto') return 'auto';
@@ -2096,14 +2100,14 @@ async function deleteWorldEntry(book, uid) {
 
 // 从世界书条目里解出伴读逻辑标识 coread::bookId::sliceId。
 // 兼容两代：新条目＝逻辑标识写在 comment 的 ⟨…⟩ 机器标记里（UID 为整数）；旧条目＝uid 本身就是逻辑串。
-function coreadEntryLogicalId(entry) {
-  const u = String(entry?.uid ?? '');
-  if (u.startsWith('coread::')) return u;   // 旧条目：uid 即逻辑标识
-  // 备注字段名各读取源不一（ST 原生 comment / TavernHelper name / 别名 title·memo）——都扫一遍取 ⟨…⟩ 标记
-  const c = `${entry?.comment ?? ''}\n${entry?.name ?? ''}\n${entry?.title ?? ''}\n${entry?.memo ?? ''}`;
-  const mm = c.match(/⟨(coread::[^⟩]+)⟩/);
-  return mm ? mm[1] : '';
-}
+// coreadEntryLogicalId - 已迁移到 qianmu-storyboard-utils.js
+// function coreadEntryLogicalId(entry) {
+//   const u = String(entry?.uid ?? '');
+//   if (u.startsWith('coread::')) return u;
+//   const c = `${entry?.comment ?? ''}\n${entry?.name ?? ''}\n${entry?.title ?? ''}\n${entry?.memo ?? ''}`;
+//   const mm = c.match(/⟨(coread::[^⟩]+)⟩/);
+//   return mm ? mm[1] : '';
+// }
 
 // 临时验证钩子（1A-1）：在 ST 控制台执行 await qmTestWorldWrite() 应能往当前聊天 Chat Lore 写入一条「千幕伴读·测试」。
 // 验证通过后将移除。
