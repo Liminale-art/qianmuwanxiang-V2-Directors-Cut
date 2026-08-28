@@ -163,5 +163,106 @@ export function estimateTokens(text) {
   return Math.max(1, Math.ceil(cjk / 1.7 + latin * 1.25));
 }
 
+/**
+ * 截断文本并添加省略号
+ * @param {string} text - 要截断的文本
+ * @param {number} n - 最大长度
+ * @returns {string} 截断后的文本
+ */
+export function snip(text, n = 64) {
+  const value = String(text || '').replace(/\s+/g, ' ').trim();
+  return value.length > n ? `${value.slice(0, n)}...` : value;
+}
+
+/**
+ * 转义 STscript 斜杠命令的值
+ * @param {string} s - 要转义的字符串
+ * @returns {string} 转义后的字符串
+ */
+export function escapeSlashValue(s) {
+  return String(s ?? '').replace(/\|/g, '\\|').replace(/\r?\n+/g, ' ').trim();
+}
+
+/**
+ * 为 STscript 斜杠命令的值添加引号
+ * @param {string} s - 要处理的字符串
+ * @returns {string} 加引号后的字符串
+ */
+export function quoteSlashValue(s) {
+  return `"${escapeSlashValue(s).replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * 在 JSON 文本中插入缺失的逗号
+ * @param {string} text - JSON 文本
+ * @returns {string} 修复后的文本
+ */
+export function insertMissingCommas(text) {
+  let result = '';
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    result += ch;
+    if (inString) {
+      if (escape) { escape = false; continue; }
+      if (ch === '\\') { escape = true; continue; }
+      if (ch === '"') {
+        inString = false;
+        if (/^\s*[{\["]/.test(text.slice(i + 1))) result += ',';
+      }
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if ((ch === '}' || ch === ']') && /^\s*[{\["]/.test(text.slice(i + 1))) result += ',';
+  }
+  return result;
+}
+
+/**
+ * 修复被截断的 JSON 文本
+ * @param {string} text - 被截断的 JSON 文本
+ * @returns {*} 解析后的对象，失败返回 null
+ */
+export function repairTruncatedJson(text) {
+  const tryCut = (includeStrings) => {
+    let inString = false;
+    let escape = false;
+    let cutIndex = -1;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inString) {
+        if (escape) escape = false;
+        else if (ch === '\\') escape = true;
+        else if (ch === '"') { inString = false; if (includeStrings) cutIndex = i + 1; }
+        continue;
+      }
+      if (ch === '"') { inString = true; continue; }
+      if (ch === '}' || ch === ']') cutIndex = i + 1;
+    }
+    if (cutIndex <= 0) return null;
+    let candidate = text.slice(0, cutIndex).replace(/,\s*$/, '');
+    inString = false;
+    escape = false;
+    const stack = [];
+    for (const ch of candidate) {
+      if (inString) {
+        if (escape) escape = false;
+        else if (ch === '\\') escape = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') inString = true;
+      else if (ch === '{') stack.push('}');
+      else if (ch === '[') stack.push(']');
+      else if (ch === '}' || ch === ']') stack.pop();
+    }
+    candidate += stack.reverse().join('');
+    candidate = candidate.replace(/,\s*([}\]])/g, '$1');
+    try { return JSON.parse(candidate); } catch (_) { return null; }
+  };
+  return tryCut(false) ?? tryCut(true);
+}
+
 export const UTILS_MODULE_VERSION = '1.56.0';
 export const UTILS_MODULE_NAME = 'qianmu-storyboard-utils';

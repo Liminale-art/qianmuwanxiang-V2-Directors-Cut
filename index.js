@@ -16,6 +16,11 @@ import {
   sanitizeFolder,
   clipLog,
   estimateTokens,
+  snip,
+  escapeSlashValue,
+  quoteSlashValue,
+  insertMissingCommas,
+  repairTruncatedJson,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -1992,15 +1997,17 @@ async function coreadTargetBook() {
 }
 
 // 斜杠命令值转义：管道符 | 会终止命令，需转义；换行折叠为空格（伴读总结本就精炼，避免破坏单条命令解析）。
-function escapeSlashValue(s) {
-  return String(s ?? '').replace(/\|/g, '\\|').replace(/\r?\n+/g, ' ').trim();
-}
+// escapeSlashValue - 已迁移到 qianmu-storyboard-utils.js
+// function escapeSlashValue(s) {
+//   return String(s ?? '').replace(/\|/g, '\\|').replace(/\r?\n+/g, ' ').trim();
+// }
 
 // STscript 未命名尾参（如 /setentryfield 的值）遇空格会被截断，只取首个 token → 带空格的 comment/content 落字为空。
 // 故字符串值须用双引号包裹成单个 token（内部双引号转义）。数值字段（order/constant 等）不加引号。
-function quoteSlashValue(s) {
-  return `"${escapeSlashValue(s).replace(/"/g, '\\"')}"`;
-}
+// quoteSlashValue - 已迁移到 qianmu-storyboard-utils.js
+// function quoteSlashValue(s) {
+//   return `"${escapeSlashValue(s).replace(/"/g, '\\"')}"`;
+// }
 
 // 向指定世界书写入/更新一条目。opts: { book, uid?, tag?, comment?, content?, keys?:[], order?, position?, vectorized?, group? }
 // uid 必须是 ST 世界书条目的「整数 UID」——传整数 uid＝更新该条；uid 为空或非整数＝新建（/createentry 由 ST 分配整数 UID）。
@@ -2410,10 +2417,11 @@ async function buildWorldContextText() {
    暗线注入系统
    ============================================================ */
 
-function snip(text, n = 64) {
-  const value = String(text || '').replace(/\s+/g, ' ').trim();
-  return value.length > n ? `${value.slice(0, n)}…` : value;
-}
+// snip - 已迁移到 qianmu-storyboard-utils.js
+// function snip(text, n = 64) {
+//   const value = String(text || '').replace(/\s+/g, ' ').trim();
+//   return value.length > n ? `${value.slice(0, n)}...` : value;
+// }
 
 // 注入预览/注入段的字数弹性档：按各字段要求生成字数的约 2 倍设上限，留足溢出余地。
 // 生成那点字数本就 OK，截断纯属显示问题——统一抬到弹性档，根除「人物暗流/关系暗涌/世界大势」等显示不全。
@@ -3252,68 +3260,70 @@ async function callSillyTavernModel(userPrompt, systemPrompt = '', onDelta = nul
 }
 
 // 字符串感知的缺逗号补全（仅在字符串外操作，{{user}} 等内容不受影响）
-function insertMissingCommas(text) {
-  let result = '';
-  let inString = false;
-  let escape = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    result += ch;
-    if (inString) {
-      if (escape) { escape = false; continue; }
-      if (ch === '\\') { escape = true; continue; }
-      if (ch === '"') {
-        inString = false;
-        if (/^\s*[{\["]/.test(text.slice(i + 1))) result += ',';
-      }
-      continue;
-    }
-    if (ch === '"') { inString = true; continue; }
-    if ((ch === '}' || ch === ']') && /^\s*[{\["]/.test(text.slice(i + 1))) result += ',';
-  }
-  return result;
-}
+// insertMissingCommas - 已迁移到 qianmu-storyboard-utils.js
+// function insertMissingCommas(text) {
+//   let result = '';
+//   let inString = false;
+//   let escape = false;
+//   for (let i = 0; i < text.length; i++) {
+//     const ch = text[i];
+//     result += ch;
+//     if (inString) {
+//       if (escape) { escape = false; continue; }
+//       if (ch === '\\') { escape = true; continue; }
+//       if (ch === '"') {
+//         inString = false;
+//         if (/^\s*[{\["]/.test(text.slice(i + 1))) result += ',';
+//       }
+//       continue;
+//     }
+//     if (ch === '"') { inString = true; continue; }
+//     if ((ch === '}' || ch === ']') && /^\s*[{\["]/.test(text.slice(i + 1))) result += ',';
+//   }
+//   return result;
+// }
 
 // 截断自愈——裁剪到最后一个完整值，再按括号栈补齐闭合
-function repairTruncatedJson(text) {
-  const tryCut = (includeStrings) => {
-    let inString = false;
-    let escape = false;
-    let cutIndex = -1;
-    for (let i = 0; i < text.length; i++) {
-      const ch = text[i];
-      if (inString) {
-        if (escape) escape = false;
-        else if (ch === '\\') escape = true;
-        else if (ch === '"') { inString = false; if (includeStrings) cutIndex = i + 1; }
-        continue;
-      }
-      if (ch === '"') { inString = true; continue; }
-      if (ch === '}' || ch === ']') cutIndex = i + 1;
-    }
-    if (cutIndex <= 0) return null;
-    let candidate = text.slice(0, cutIndex).replace(/,\s*$/, '');
-    inString = false;
-    escape = false;
-    const stack = [];
-    for (const ch of candidate) {
-      if (inString) {
-        if (escape) escape = false;
-        else if (ch === '\\') escape = true;
-        else if (ch === '"') inString = false;
-        continue;
-      }
-      if (ch === '"') inString = true;
-      else if (ch === '{') stack.push('}');
-      else if (ch === '[') stack.push(']');
-      else if (ch === '}' || ch === ']') stack.pop();
-    }
-    candidate += stack.reverse().join('');
-    candidate = candidate.replace(/,\s*([}\]])/g, '$1');
-    try { return JSON.parse(candidate); } catch (_) { return null; }
-  };
-  return tryCut(false) ?? tryCut(true);
-}
+// repairTruncatedJson - 已迁移到 qianmu-storyboard-utils.js
+// function repairTruncatedJson(text) {
+//   const tryCut = (includeStrings) => {
+//     let inString = false;
+//     let escape = false;
+//     let cutIndex = -1;
+//     for (let i = 0; i < text.length; i++) {
+//       const ch = text[i];
+//       if (inString) {
+//         if (escape) escape = false;
+//         else if (ch === '\\') escape = true;
+//         else if (ch === '"') { inString = false; if (includeStrings) cutIndex = i + 1; }
+//         continue;
+//       }
+//       if (ch === '"') { inString = true; continue; }
+//       if (ch === '}' || ch === ']') cutIndex = i + 1;
+//     }
+//     if (cutIndex <= 0) return null;
+//     let candidate = text.slice(0, cutIndex).replace(/,\s*$/, '');
+//     inString = false;
+//     escape = false;
+//     const stack = [];
+//     for (const ch of candidate) {
+//       if (inString) {
+//         if (escape) escape = false;
+//         else if (ch === '\\') escape = true;
+//         else if (ch === '"') inString = false;
+//         continue;
+//       }
+//       if (ch === '"') inString = true;
+//       else if (ch === '{') stack.push('}');
+//       else if (ch === '[') stack.push(']');
+//       else if (ch === '}' || ch === ']') stack.pop();
+//     }
+//     candidate += stack.reverse().join('');
+//     candidate = candidate.replace(/,\s*([}\]])/g, '$1');
+//     try { return JSON.parse(candidate); } catch (_) { return null; }
+//   };
+//   return tryCut(false) ?? tryCut(true);
+// }
 
 function extractJson(text) {
   let content = String(text || '').trim();
