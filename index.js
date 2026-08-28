@@ -2,6 +2,11 @@
 import { BUILTIN_THEATERS, BUILTIN_THEATER_FOLDER } from './builtin-theaters.js';
 import { QIANMU_THEATERS, QIANMU_THEATER_FOLDER } from './qianmu-theaters.js';
 import {
+  hashText,
+  htmlEscape,
+  stripThinkChain,
+} from './qianmu-storyboard-utils.js';
+import {
   DEFAULT_TTS_PROVIDER_ID,
   assertTtsProviderContract,
   cacheKeyForTts,
@@ -908,12 +913,14 @@ function isPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
 }
 
+// hashText - 已迁移到 qianmu-storyboard-utils.js
 // 轻量字符串哈希，用于判断默认提示词是否被用户改动过
-function hashText(text) {
-  const str = String(text || '');
-  let h = 5381;
-  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
-  return `${str.length}:${h.toString(36)}`;
+// function hashText(text) {
+//   const str = String(text || '');
+//   let h = 5381;
+//   for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
+//   return `${str.length}:${h.toString(36)}`;
+// }
 }
 
 function mergeDefaults(target, defaults) {
@@ -1200,11 +1207,12 @@ function getChatStore() {
   return meta[MODULE_NAME];
 }
 
-function htmlEscape(input) {
-  return String(input ?? '').replace(/[&<>"']/g, (m) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[m]));
-}
+// htmlEscape - 已迁移到 qianmu-storyboard-utils.js
+// function htmlEscape(input) {
+//   return String(input ?? '').replace(/[&<>"']/g, (m) => ({
+//     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+//   }[m]));
+// }
 
 function normalizeUrl(url) {
   let value = String(url || '').trim().replace(/\/+$/, '');
@@ -25611,12 +25619,13 @@ async function stageTheaterScene() {
   }
 }
 
-function stripThinkChain(text) {
-  return String(text || '')
-    .replace(/<think(?:ing)?\b[^>]*>[\s\S]*?<\/think(?:ing)?>/gi, '')
-    .replace(/<think(?:ing)?\b[^>]*>[\s\S]*$/i, '')
-    .trim();
-}
+// stripThinkChain - 已迁移到 qianmu-storyboard-utils.js
+// function stripThinkChain(text) {
+//   return String(text || '')
+//     .replace(/<think(?:ing)?\b[^>]*>[\s\S]*?<\/think(?:ing)?>/gi, '')
+//     .replace(/<think(?:ing)?\b[^>]*>[\s\S]*$/i, '')
+//     .trim();
+// }
 
 // 幕外展示用正文提取：优先取 <幕外正文>…</幕外正文> 标签内的内容（裸思维链一并被挡在标签外丢弃）；
 // 对模型偶发的标签残缺（漏闭合/漏起始/无标签/碎片）全部免疫，绝不因格式问题导致正文取空、连累「最近一幕」与按钮布局。
