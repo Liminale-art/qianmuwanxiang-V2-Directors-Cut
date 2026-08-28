@@ -542,5 +542,41 @@ export function modelMessageReasoning(message) {
     ?? message.thinking_content ?? message.thinking ?? message.analysis ?? message.thoughts ?? '');
 }
 
+/**
+ * 提取导演项目的文本内容
+ * @param {string} field - 字段类型
+ * @param {Object} item - 项目对象
+ * @returns {string} 文本内容
+ */
+export function directorItemText(field, item) {
+  if (!item || typeof item !== 'object') return String(item || '');
+  const keys = {
+    quests: ['title', 'objective', 'description', 'trigger', 'reward'],
+    npc_updates: ['name', 'role', 'current_goal', 'emotional_state', 'next_action', 'hidden_agenda', 'relations'],
+    world_updates: ['type', 'title', 'content', 'scope', 'timing'],
+    chain_reactions: ['spark', 'chain'],
+    relation_undercurrents: ['parties', 'tone', 'tension', 'drift', 'user_awareness'],
+  }[field] || Object.keys(item);
+  return keys.map((key) => {
+    const value = item[key];
+    return Array.isArray(value) ? value.join(' ') : String(value || '');
+  }).join(' ');
+}
+
+/**
+ * 计算两段文本的相似度
+ * @param {string} left - 第一段文本
+ * @param {string} right - 第二段文本
+ * @returns {number} 相似度 (0-1)
+ */
+export function directorSimilarity(left, right) {
+  const a = directorBigrams(left);
+  const b = directorBigrams(right);
+  if (!a.size || !b.size) return 0;
+  let common = 0;
+  for (const token of a) if (b.has(token)) common += 1;
+  return common / Math.min(a.size, b.size);
+}
+
 export const UTILS_MODULE_VERSION = '1.56.0';
 export const UTILS_MODULE_NAME = 'qianmu-storyboard-utils';

@@ -48,6 +48,8 @@ import {
   infoTag,
   modelReasoningText,
   modelMessageReasoning,
+  directorItemText,
+  directorSimilarity,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -3404,29 +3406,31 @@ function normalizePlan(plan) {
   return plan;
 }
 
-function directorItemText(field, item) {
-  if (!item || typeof item !== 'object') return String(item || '');
-  const keys = {
-    quests: ['title', 'objective', 'description', 'trigger', 'reward'],
-    npc_updates: ['name', 'role', 'current_goal', 'emotional_state', 'next_action', 'hidden_agenda', 'relations'],
-    world_updates: ['type', 'title', 'content', 'scope', 'timing'],
-    chain_reactions: ['spark', 'chain'],
-    relation_undercurrents: ['parties', 'tone', 'tension', 'drift', 'user_awareness'],
-  }[field] || Object.keys(item);
-  return keys.map((key) => {
-    const value = item[key];
-    return Array.isArray(value) ? value.join(' ') : String(value || '');
-  }).join(' ');
-}
+// directorItemText - 已迁移到 qianmu-storyboard-utils.js
+// function directorItemText(field, item) {
+//   if (!item || typeof item !== 'object') return String(item || '');
+//   const keys = {
+//     quests: ['title', 'objective', 'description', 'trigger', 'reward'],
+//     npc_updates: ['name', 'role', 'current_goal', 'emotional_state', 'next_action', 'hidden_agenda', 'relations'],
+//     world_updates: ['type', 'title', 'content', 'scope', 'timing'],
+//     chain_reactions: ['spark', 'chain'],
+//     relation_undercurrents: ['parties', 'tone', 'tension', 'drift', 'user_awareness'],
+//   }[field] || Object.keys(item);
+//   return keys.map((key) => {
+//     const value = item[key];
+//     return Array.isArray(value) ? value.join(' ') : String(value || '');
+//   }).join(' ');
+// }
 
-function directorSimilarity(left, right) {
-  const a = directorBigrams(left);
-  const b = directorBigrams(right);
-  if (!a.size || !b.size) return 0;
-  let common = 0;
-  for (const token of a) if (b.has(token)) common += 1;
-  return common / Math.min(a.size, b.size);
-}
+// directorSimilarity - 已迁移到 qianmu-storyboard-utils.js
+// function directorSimilarity(left, right) {
+//   const a = directorBigrams(left);
+//   const b = directorBigrams(right);
+//   if (!a.size || !b.size) return 0;
+//   let common = 0;
+//   for (const token of a) if (b.has(token)) common += 1;
+//   return common / Math.min(a.size, b.size);
+// }
 
 function directorDedupePlan(plan) {
   const fields = Object.keys(DIRECTOR_MIN_COUNTS);
