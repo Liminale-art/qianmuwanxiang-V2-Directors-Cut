@@ -57,6 +57,7 @@ import {
   mergeDefaults,
   isLegacyBlueprint,
   groupByFolder,
+  capByBudget as capByBudgetCore,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -1404,17 +1405,11 @@ function getChatHistoryText() {
 
 // 上下文长度预算（字符近似 token）软裁剪：从最近一层往前累加，超出即停，优先保留最近楼层。
 // 全局统一上限，推演与幕外各自独立调用、互不污染。0 或未设视为不限。
+// capByBudget 核心逻辑已迁移到 qianmu-storyboard-utils.js
+// 主模块中保留包装版本，从 settings 读取 budget
 function capByBudget(lines) {
   const budget = Number(settings.contextBudget || 0);
-  if (!(budget > 0)) return lines;
-  const kept = [];
-  let total = 0;
-  for (let i = lines.length - 1; i >= 0; i--) {
-    total += lines[i].length + 1;
-    if (total > budget && kept.length) break;
-    kept.unshift(lines[i]);
-  }
-  return kept;
+  return capByBudgetCore(lines, budget);
 }
 
 // 幕外专用：取最近 N 层「可见」楼层原文（过滤被记忆/隐藏插件标记的 is_system 楼），再走全局上下文长度软裁剪。

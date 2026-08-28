@@ -717,5 +717,23 @@ export function groupByFolder(items, getFolder, getName, sortAlpha) {
   return { folderList, loose };
 }
 
+/**
+ * 按预算裁剪行数组（从最近开始累加）
+ * @param {Array<string>} lines - 行数组
+ * @param {number} budget - 预算字符数
+ * @returns {Array<string>} 裁剪后的行数组
+ */
+export function capByBudget(lines, budget) {
+  if (!(budget > 0)) return lines;
+  const kept = [];
+  let total = 0;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    total += lines[i].length + 1;
+    if (total > budget && kept.length) break;
+    kept.unshift(lines[i]);
+  }
+  return kept;
+}
+
 export const UTILS_MODULE_VERSION = '1.56.0';
 export const UTILS_MODULE_NAME = 'qianmu-storyboard-utils';
