@@ -78,6 +78,7 @@ import {
   extractTheaterBody,
   parseModelList,
   countGroupTag,
+  normalizeScripts,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -25383,12 +25384,13 @@ function seedBuiltinTheaters() {
 }
 
 // 规整剧札顺序：用户自建项在前、内置项在后，不设数量上限（保留全部）
-function normalizeScripts(scripts) {
-  const list = Array.isArray(scripts) ? scripts : [];
-  const user = list.filter((s) => !isBuiltinScript(s));
-  const builtins = list.filter((s) => isBuiltinScript(s));
-  return [...user, ...builtins];
-}
+// MIGRATED to qianmu-storyboard-utils.js (commit 20)
+// function normalizeScripts(scripts) {
+//   const list = Array.isArray(scripts) ? scripts : [];
+//   const user = list.filter((s) => !isBuiltinScript(s));
+//   const builtins = list.filter((s) => isBuiltinScript(s));
+//   return [...user, ...builtins];
+// }
 
 function theaterApiConfig() {
   const t = getTheater();

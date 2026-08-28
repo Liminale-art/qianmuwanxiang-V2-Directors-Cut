@@ -1034,6 +1034,18 @@ export function countGroupTag(label, jump, parts) {
   const inner = parts.map(([name, count]) => `<span class="sd-ct-part">${htmlEscape(name)}<b>${count}</b></span>`).join('');
   return `<button class="sd-count-tag sd-count-group" data-jump="${jump}"><span class="sd-ct-label">${htmlEscape(label)}</span>${inner}</button>`;
 }
+
+/**
+ * normalizeScripts - 规整剧札顺序（用户自建项在前、内置项在后）
+ * @param {Array} scripts - 脚本列表
+ * @returns {Array} - 排序后的脚本列表
+ */
+export function normalizeScripts(scripts) {
+  const list = Array.isArray(scripts) ? scripts : [];
+  const user = list.filter((s) => !isBuiltinScript(s));
+  const builtins = list.filter((s) => isBuiltinScript(s));
+  return [...user, ...builtins];
+}
   t = t.replace(/[「」『』""''""'']/g, '').trim();
   t = t.replace(/[—─]{1,}/g, ' ').replace(/\s{2,}/g, ' ').trim();
   return t;
