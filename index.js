@@ -33,6 +33,11 @@ import {
   directorEvidenceNorm,
   directorBigrams,
   directorOverlapRatio,
+  quickDockAttrEscape,
+  quickDockNormalizePath,
+  quickDockSelectorEscape,
+  quickDockPathKey,
+  quickDockLocatorKey,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -4241,9 +4246,10 @@ function closeQuickWheel() {
   document.getElementById(QUICK_WHEEL_ID)?.remove();
 }
 
-function quickDockAttrEscape(value) {
-  return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]/g, ' ');
-}
+// quickDockAttrEscape - 已迁移到 qianmu-storyboard-utils.js
+// function quickDockAttrEscape(value) {
+//   return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]/g, ' ');
+// }
 
 const QUICK_DOCK_ICON_DATA_LIMIT = 64 * 1024;
 
@@ -4323,15 +4329,17 @@ function quickDockBindIconFallback(root, item) {
   if (image.complete && !image.naturalWidth) queueMicrotask(fallback);
 }
 
-function quickDockNormalizePath(value) {
-  if (!Array.isArray(value)) return [];
-  return value.map((part) => String(part || '').trim().slice(0, 500)).filter(Boolean).slice(0, 12);
-}
+// quickDockNormalizePath - 已迁移到 qianmu-storyboard-utils.js
+// function quickDockNormalizePath(value) {
+//   if (!Array.isArray(value)) return [];
+//   return value.map((part) => String(part || '').trim().slice(0, 500)).filter(Boolean).slice(0, 12);
+// }
 
-function quickDockSelectorEscape(value) {
-  if (globalThis.CSS?.escape) return CSS.escape(String(value || ''));
-  return String(value || '').replace(/[^a-zA-Z0-9_-]/g, (char) => `\\${char.codePointAt(0).toString(16)} `);
-}
+// quickDockSelectorEscape - 已迁移到 qianmu-storyboard-utils.js
+// function quickDockSelectorEscape(value) {
+//   if (globalThis.CSS?.escape) return CSS.escape(String(value || ''));
+//   return String(value || '').replace(/[^a-zA-Z0-9_-]/g, (char) => `\\${char.codePointAt(0).toString(16)} `);
+// }
 
 function quickDockStableSelector(element, scope = element?.getRootNode?.()) {
   if (!(element instanceof Element)) return '';
@@ -4383,14 +4391,16 @@ function quickDockResolvePath(value) {
   return node;
 }
 
-function quickDockPathKey(value) {
-  const path = quickDockNormalizePath(value);
-  return path.length ? path.join('\n>>>shadow>>>\n') : '';
-}
+// quickDockPathKey - 已迁移到 qianmu-storyboard-utils.js
+// function quickDockPathKey(value) {
+//   const path = quickDockNormalizePath(value);
+//   return path.length ? path.join('\n>>>shadow>>>\n') : '';
+// }
 
-function quickDockLocatorKey(item) {
-  return quickDockPathKey(item?.shadowPath) || String(item?.selector || '').trim();
-}
+// quickDockLocatorKey - 已迁移到 qianmu-storyboard-utils.js
+// function quickDockLocatorKey(item) {
+//   return quickDockPathKey(item?.shadowPath) || String(item?.selector || '').trim();
+// }
 
 function quickDockActivatorForHost(host, preferred = null) {
   if (preferred instanceof Element && (preferred === host || host.contains(preferred))) return preferred;

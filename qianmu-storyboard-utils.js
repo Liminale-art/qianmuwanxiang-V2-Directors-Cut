@@ -381,5 +381,53 @@ export function directorOverlapRatio(needle, haystack) {
   return hit / left.size;
 }
 
+/**
+ * 转义 HTML 属性值
+ * @param {string} value - 属性值
+ * @returns {string} 转义后的值
+ */
+export function quickDockAttrEscape(value) {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]/g, ' ');
+}
+
+/**
+ * 规范化路径数组
+ * @param {Array} value - 路径数组
+ * @returns {Array<string>} 规范化后的路径
+ */
+export function quickDockNormalizePath(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((part) => String(part || '').trim().slice(0, 500)).filter(Boolean).slice(0, 12);
+}
+
+/**
+ * 转义 CSS 选择器
+ * @param {string} value - 选择器值
+ * @returns {string} 转义后的选择器
+ */
+export function quickDockSelectorEscape(value) {
+  if (globalThis.CSS?.escape) return CSS.escape(String(value || ''));
+  return String(value || '').replace(/[^a-zA-Z0-9_-]/g, (char) => `\\${char.codePointAt(0).toString(16)} `);
+}
+
+/**
+ * 生成路径键
+ * @param {Array} value - 路径数组
+ * @returns {string} 路径键
+ */
+export function quickDockPathKey(value) {
+  const path = quickDockNormalizePath(value);
+  return path.length ? path.join('\n>>>shadow>>>\n') : '';
+}
+
+/**
+ * 生成定位器键
+ * @param {Object} item - 项目对象
+ * @returns {string} 定位器键
+ */
+export function quickDockLocatorKey(item) {
+  return quickDockPathKey(item?.shadowPath) || String(item?.selector || '').trim();
+}
+
 export const UTILS_MODULE_VERSION = '1.56.0';
 export const UTILS_MODULE_NAME = 'qianmu-storyboard-utils';
