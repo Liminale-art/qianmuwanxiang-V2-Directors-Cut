@@ -2,9 +2,12 @@
 import { BUILTIN_THEATERS, BUILTIN_THEATER_FOLDER } from './builtin-theaters.js';
 import { QIANMU_THEATERS, QIANMU_THEATER_FOLDER } from './qianmu-theaters.js';
 import {
+  clone,
+  isPlainObject,
   hashText,
   htmlEscape,
   stripThinkChain,
+  uid,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -904,14 +907,16 @@ function lastChatIdx() {
   return Array.isArray(chat) ? chat.length - 1 : -1;
 }
 
-function clone(value) {
-  if (typeof structuredClone === 'function') return structuredClone(value);
-  return JSON.parse(JSON.stringify(value));
-}
+// clone - 已迁移到 qianmu-storyboard-utils.js
+// function clone(value) {
+//   if (typeof structuredClone === 'function') return structuredClone(value);
+//   return JSON.parse(JSON.stringify(value));
+// }
 
-function isPlainObject(value) {
-  return value && typeof value === 'object' && !Array.isArray(value);
-}
+// isPlainObject - 已迁移到 qianmu-storyboard-utils.js
+// function isPlainObject(value) {
+//   return value && typeof value === 'object' && !Array.isArray(value);
+// }
 
 // hashText - 已迁移到 qianmu-storyboard-utils.js
 // 轻量字符串哈希，用于判断默认提示词是否被用户改动过
@@ -1219,12 +1224,13 @@ function normalizeUrl(url) {
   return value;
 }
 
-let uidCounter = 0;
-function uid(prefix = 'id') {
-  uidCounter = (uidCounter + 1) % 1000000;
-  const rand = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 9);
-  return `${prefix}-${Date.now().toString(36)}-${uidCounter.toString(36)}-${rand}`;
-}
+// uid - 已迁移到 qianmu-storyboard-utils.js
+// let uidCounter = 0;
+// function uid(prefix = 'id') {
+//   uidCounter = (uidCounter + 1) % 1000000;
+//   const rand = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 9);
+//   return `${prefix}-${Date.now().toString(36)}-${uidCounter.toString(36)}-${rand}`;
+// }
 
 // 导出文件名时间戳：本地时区 YYYY-MM-DD_HH-MM-SS
 function fileStamp() {
