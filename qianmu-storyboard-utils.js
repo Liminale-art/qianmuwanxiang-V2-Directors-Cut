@@ -510,5 +510,37 @@ export function quickHiveCellFits(cell, geometry) {
     && y + halfH <= geometry.viewportHeight - geometry.margin;
 }
 
+/**
+ * 生成 HTML 信息标签
+ * @param {string} text - 标签文本
+ * @returns {string} HTML 标签
+ */
+export function infoTag(text) {
+  return `<span class="sd-info-tag">${htmlEscape(text)}</span>`;
+}
+
+/**
+ * 提取推理模型的思考内容
+ * @param {*} value - 推理内容
+ * @returns {string} 思考文本
+ */
+export function modelReasoningText(value) {
+  if (typeof value === 'string') return value.trim();
+  if (Array.isArray(value)) return value.map(modelReasoningText).filter(Boolean).join('\n').trim();
+  if (!value || typeof value !== 'object') return '';
+  return modelReasoningText(value.text ?? value.content ?? value.summary ?? value.reasoning ?? '');
+}
+
+/**
+ * 从消息对象中提取推理内容
+ * @param {Object} message - 消息对象
+ * @returns {string} 推理文本
+ */
+export function modelMessageReasoning(message) {
+  if (!message || typeof message !== 'object') return '';
+  return modelReasoningText(message.reasoning_content ?? message.reasoning ?? message.reasoning_details
+    ?? message.thinking_content ?? message.thinking ?? message.analysis ?? message.thoughts ?? '');
+}
+
 export const UTILS_MODULE_VERSION = '1.56.0';
 export const UTILS_MODULE_NAME = 'qianmu-storyboard-utils';

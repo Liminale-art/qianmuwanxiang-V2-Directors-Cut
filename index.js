@@ -45,6 +45,9 @@ import {
   quickHiveCellRing,
   quickHivePixelOffset,
   quickHiveCellFits,
+  infoTag,
+  modelReasoningText,
+  modelMessageReasoning,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -1331,9 +1334,10 @@ function getPersonaName() {
 //   return Math.max(1, Math.ceil(cjk / 1.7 + latin * 1.25));
 // }
 
-function infoTag(text) {
-  return `<span class="sd-info-tag">${htmlEscape(text)}</span>`;
-}
+// infoTag - 已迁移到 qianmu-storyboard-utils.js
+// function infoTag(text) {
+//   return `<span class="sd-info-tag">${htmlEscape(text)}</span>`;
+// }
 
 function getTagRules() {
   const rules = Array.isArray(settings.contextOptions.tagRules) ? settings.contextOptions.tagRules : [];
@@ -3164,18 +3168,20 @@ function validateApiSettings() {
 
 // 推理模型可能把思考放在 reasoning_content / reasoning / analysis 等独立字段。
 // 这些字段永远不拼进正文，只通过专用回调交给需要折叠展示的调用方。
-function modelReasoningText(value) {
-  if (typeof value === 'string') return value.trim();
-  if (Array.isArray(value)) return value.map(modelReasoningText).filter(Boolean).join('\n').trim();
-  if (!value || typeof value !== 'object') return '';
-  return modelReasoningText(value.text ?? value.content ?? value.summary ?? value.reasoning ?? '');
-}
+// modelReasoningText - 已迁移到 qianmu-storyboard-utils.js
+// function modelReasoningText(value) {
+//   if (typeof value === 'string') return value.trim();
+//   if (Array.isArray(value)) return value.map(modelReasoningText).filter(Boolean).join('\n').trim();
+//   if (!value || typeof value !== 'object') return '';
+//   return modelReasoningText(value.text ?? value.content ?? value.summary ?? value.reasoning ?? '');
+// }
 
-function modelMessageReasoning(message) {
-  if (!message || typeof message !== 'object') return '';
-  return modelReasoningText(message.reasoning_content ?? message.reasoning ?? message.reasoning_details
-    ?? message.thinking_content ?? message.thinking ?? message.analysis ?? message.thoughts ?? '');
-}
+// modelMessageReasoning - 已迁移到 qianmu-storyboard-utils.js
+// function modelMessageReasoning(message) {
+//   if (!message || typeof message !== 'object') return '';
+//   return modelReasoningText(message.reasoning_content ?? message.reasoning ?? message.reasoning_details
+//     ?? message.thinking_content ?? message.thinking ?? message.analysis ?? message.thoughts ?? '');
+// }
 
 async function callExternalApi(messages, onDelta = null, cfg = null, controller = null) {
   const apiUrl = cfg?.apiUrl ?? settings.apiUrl;
