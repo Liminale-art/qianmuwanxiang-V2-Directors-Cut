@@ -962,7 +962,7 @@ export function computeVisibleWindow(chapters, chapterIndex, scrollRatio, percen
  */
 export function stripDialogQuotes(s) {
   let t = String(s || '').trim();
-  const pairs = [['「', '」'], ['『', '』'], ['"', '"'], [''', '''], ['"', '"'], ["'", "'"], ['《', '》']];
+  const pairs = [['「', '」'], ['『', '』'], ['"', '"'], ["'", "'"], ['"', '"'], ["'", "'"], ['《', '》']];
   let changed = true;
   while (changed) {
     changed = false;
@@ -1067,10 +1067,6 @@ export function validateThreadEvidence(raw, directorRecentEvidenceRows) {
   return row
     ? { valid: true, floor, quote, reason: `楼层${floor}原句命中` }
     : { valid: false, floor: -1, quote, reason: '原句不在近期对话中' };
-}
-  t = t.replace(/[「」『』""''""'']/g, '').trim();
-  t = t.replace(/[—─]{1,}/g, ' ').replace(/\s{2,}/g, ' ').trim();
-  return t;
 }
 
 export const UTILS_MODULE_VERSION = '1.56.0';
