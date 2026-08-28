@@ -264,5 +264,41 @@ export function repairTruncatedJson(text) {
   return tryCut(false) ?? tryCut(true);
 }
 
+/**
+ * 规范化 URL（移除末尾斜杠和 /v1 后缀）
+ * @param {string} url - 要规范化的 URL
+ * @returns {string} 规范化后的 URL
+ */
+export function normalizeUrl(url) {
+  let value = String(url || '').trim().replace(/\/+$/, '');
+  if (value.endsWith('/v1')) value = value.slice(0, -3);
+  return value;
+}
+
+/**
+ * 处理文本中的随机宏 {{random:option1,option2,...}}
+ * @param {string} text - 包含随机宏的文本
+ * @returns {string} 处理后的文本
+ */
+export function processRandomMacros(text) {
+  return String(text || '').replace(/\{\{random:(.*?)\}\}/gi, (_, raw) => {
+    const options = raw.split(',').map((x) => x.trim()).filter(Boolean);
+    return options.length ? options[Math.floor(Math.random() * options.length)] : '';
+  });
+}
+
+/**
+ * 清理快速坞站标签
+ * @param {string} value - 标签值
+ * @returns {string} 清理后的标签
+ */
+export function quickDockCleanLabel(value) {
+  const label = String(value || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  if (!label) return '';
+  if (/^(?:第三方)?(?:插件|工具|入口|悬浮窗|悬浮球)(?:按钮)?$/i.test(label)) return '';
+  if (/^(?:打开|关闭|菜单|设置|工具|入口)$/i.test(label)) return '';
+  return label;
+}
+
 export const UTILS_MODULE_VERSION = '1.56.0';
 export const UTILS_MODULE_NAME = 'qianmu-storyboard-utils';

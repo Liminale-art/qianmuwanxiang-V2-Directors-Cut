@@ -21,6 +21,9 @@ import {
   quoteSlashValue,
   insertMissingCommas,
   repairTruncatedJson,
+  normalizeUrl,
+  processRandomMacros,
+  quickDockCleanLabel,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -1232,11 +1235,12 @@ function getChatStore() {
 //   }[m]));
 // }
 
-function normalizeUrl(url) {
-  let value = String(url || '').trim().replace(/\/+$/, '');
-  if (value.endsWith('/v1')) value = value.slice(0, -3);
-  return value;
-}
+// normalizeUrl - 已迁移到 qianmu-storyboard-utils.js
+// function normalizeUrl(url) {
+//   let value = String(url || '').trim().replace(/\/+$/, '');
+//   if (value.endsWith('/v1')) value = value.slice(0, -3);
+//   return value;
+// }
 
 // uid - 已迁移到 qianmu-storyboard-utils.js
 // let uidCounter = 0;
@@ -1390,12 +1394,13 @@ function getTheaterChatHistoryText() {
   return capByBudget(lines).join('\n');
 }
 
-function processRandomMacros(text) {
-  return String(text || '').replace(/\{\{random:(.*?)\}\}/gi, (_, raw) => {
-    const options = raw.split(',').map((x) => x.trim()).filter(Boolean);
-    return options.length ? options[Math.floor(Math.random() * options.length)] : '';
-  });
-}
+// processRandomMacros - 已迁移到 qianmu-storyboard-utils.js
+// function processRandomMacros(text) {
+//   return String(text || '').replace(/\{\{random:(.*?)\}\}/gi, (_, raw) => {
+//     const options = raw.split(',').map((x) => x.trim()).filter(Boolean);
+//     return options.length ? options[Math.floor(Math.random() * options.length)] : '';
+//   });
+// }
 
 async function resolveMacro(text) {
   try {
@@ -4045,13 +4050,14 @@ let quickDockCaptureBound = false;
 let quickDockExtensionApiPromise = null;
 const quickDockShadowObservers = new Map();
 
-function quickDockCleanLabel(value) {
-  const label = String(value || '').replace(/\s+/g, ' ').trim().slice(0, 40);
-  if (!label) return '';
-  if (/^(?:第三方)?(?:插件|工具|入口|悬浮窗|悬浮球)(?:按钮)?$/i.test(label)) return '';
-  if (/^(?:打开|关闭|菜单|设置|工具|入口)$/i.test(label)) return '';
-  return label;
-}
+// quickDockCleanLabel - 已迁移到 qianmu-storyboard-utils.js
+// function quickDockCleanLabel(value) {
+//   const label = String(value || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+//   if (!label) return '';
+//   if (/^(?:第三方)?(?:插件|工具|入口|悬浮窗|悬浮球)(?:按钮)?$/i.test(label)) return '';
+//   if (/^(?:打开|关闭|菜单|设置|工具|入口)$/i.test(label)) return '';
+//   return label;
+// }
 
 function quickDockNextFallbackLabel(extraLabels = []) {
   const used = new Set([
