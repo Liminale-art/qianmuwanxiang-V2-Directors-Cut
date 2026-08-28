@@ -55,6 +55,8 @@ import {
   parseNameSource,
   coreadEntryLogicalId,
   mergeDefaults,
+  isLegacyBlueprint,
+  groupByFolder,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -224,16 +226,17 @@ const DEFAULT_BLUEPRINT = `【主要指令】
 【导演特别说明】
 （可在此写下本轮重点：氛围、关系推进、线索方向、支线灵感、节奏偏好、需要暂时搁置的内容；留空则自行判断本轮最值得推进的重点。）`;
 
-function isLegacyBlueprint(text) {
-  const value = String(text || '').trim();
-  if (value.includes('【主要指令】')) return false;
-  return value.includes('现代都市 / 校园 / 西幻 / 末日 / 无限流 / 其他')
-    || value.includes('例如：慢热恋爱、悬疑调查、群像成长、轻喜剧、黑暗奇幻')
-    || value.includes('【给导演的额外叮嘱】')
-    || (value.includes('【故事基底】') && value.includes('时代、地域、社会秩序、生活方式'))
-    || (value.includes('【故事基底】') && !value.includes('【任务与节点偏好】'))
-    || (value.includes('【世界观】') && value.includes('【剧情基调】') && value.includes('【长期目标】'));
-}
+// isLegacyBlueprint - 已迁移到 qianmu-storyboard-utils.js
+// function isLegacyBlueprint(text) {
+//   const value = String(text || '').trim();
+//   if (value.includes('【主要指令】')) return false;
+//   return value.includes('现代都市 / 校园 / 西幻 / 末日 / 无限流 / 其他')
+//     || value.includes('例如：慢热恋爱、悬疑调查、群像成长、轻喜剧、黑暗奇幻')
+//     || value.includes('【给导演的额外叮嘱】')
+//     || (value.includes('【故事基底】') && value.includes('时代、地域、社会秩序、生活方式'))
+//     || (value.includes('【故事基底】') && !value.includes('【任务与节点偏好】'))
+//     || (value.includes('【世界观】') && value.includes('【剧情基调】') && value.includes('【长期目标】'));
+// }
 
 const DEFAULT_SYSTEM_PROMPT = `你是千幕——观世间百态、阅人性幽微的剧作家与导演，千幕万象的执笔者，大千小世界的造物主。你戏弄人性之复杂，谱写命运之多舛；你深爱自己亲手造出的每一寸天地与每一个角色，他们将在你的绘卷中生出骨血，长出令观者共情的灵魂。
 
@@ -1486,29 +1489,29 @@ async function resolveMacro(text) {
 //   return String(name || '').trim().slice(0, 16);
 // }
 
-function groupByFolder(items, getFolder, getName, sortAlpha) {
-  const folders = new Map();
-  const loose = [];
-  for (const it of items) {
-    const f = sanitizeFolder(getFolder(it));
-    if (f) {
-      if (!folders.has(f)) folders.set(f, []);
-      folders.get(f).push(it);
-    } else {
-      loose.push(it);
-    }
-  }
-  // 文件夹始终按名字母序（在上）；开启 sortAlpha 时，文件夹内条目与散条目（在下）也按名字母序
-  if (sortAlpha && typeof getName === 'function') {
-    const byName = (a, b) => String(getName(a) || '').localeCompare(String(getName(b) || ''), 'zh');
-    for (const list of folders.values()) list.sort(byName);
-    loose.sort(byName);
-  }
-  const folderList = [...folders.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0], 'zh'))
-    .map(([name, list]) => ({ name, list }));
-  return { folderList, loose };
-}
+// groupByFolder - 已迁移到 qianmu-storyboard-utils.js
+// function groupByFolder(items, getFolder, getName, sortAlpha) {
+//   const folders = new Map();
+//   const loose = [];
+//   for (const it of items) {
+//     const f = sanitizeFolder(getFolder(it));
+//     if (f) {
+//       if (!folders.has(f)) folders.set(f, []);
+//       folders.get(f).push(it);
+//     } else {
+//       loose.push(it);
+//     }
+//   }
+//   if (sortAlpha && typeof getName === 'function') {
+//     const byName = (a, b) => String(getName(a) || '').localeCompare(String(getName(b) || ''), 'zh');
+//     for (const list of folders.values()) list.sort(byName);
+//     loose.sort(byName);
+//   }
+//   const folderList = [...folders.entries()]
+//     .sort((a, b) => a[0].localeCompare(b[0], 'zh'))
+//     .map(([name, list]) => ({ name, list }));
+//   return { folderList, loose };
+// }
 
 function renderLibraryRow(cfg, item) {
   const pick = cfg.exportMode
