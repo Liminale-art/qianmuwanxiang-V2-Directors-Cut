@@ -212,11 +212,6 @@ import {
   getStoryboardIntegration,
   cleanupStoryboardIntegration,
 } from './qianmu-storyboard-integration.js';
-import {
-  renderStoryboardConfig,
-  getStoryboardConfigStyles,
-  bindStoryboardConfigEvents,
-} from './qianmu-storyboard-config-ui.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
