@@ -26507,8 +26507,13 @@ function init() {
       })
       .catch((error) => console.warn(`[${MODULE_NAME}] Failed to inject storyboard styles`, error));
 
-    // 初始化分镜集成
-    initStoryboardIntegration(ctx());
+    // 初始化分镜集成（独立错误处理，避免影响主初始化流程）
+    try {
+      initStoryboardIntegration(ctx());
+      console.log(`[${MODULE_NAME}] Storyboard integration initialized`);
+    } catch (error) {
+      console.error(`[${MODULE_NAME}] Failed to initialize storyboard integration`, error);
+    }
 
     resizeHandler = () => {
       closeQuickWheel();
