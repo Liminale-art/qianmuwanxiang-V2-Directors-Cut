@@ -73,11 +73,12 @@ assert.match(source, /storyboardProfileBindings[\s\S]*绑定到当前聊天/, '�
 assert.match(source, /复制一套/, '同一人物必须支持多套方案');
 assert.match(source, /\['archive', 'hybrid'\]\.includes\(item\.consistency\)[\s\S]*state\.promptMode === 'manual'[\s\S]*sourceId === 'novel'/, '人物档案补全必须遵守一致性策略，并区分 NovelAI 标签与自然语言提示词');
 assert.match(source, /function storyboardStartLog[\s\S]*function storyboardFinishLog[\s\S]*分镜日志/, '分镜必须记录成功、失败与诊断信息');
-assert.match(source, /STORYBOARD_QUEUE_LIMIT[\s\S]*storyboardQueueJob[\s\S]*storyboardPumpQueue/, '分镜必须使用有上限的串行队列');
+assert.match(source, /STORYBOARD_QUEUE_LIMIT[\s\S]*storyboardQueueJob[\s\S]*storyboardPumpQueue/, '分镜必须使用有上限的生成队列');
+assert.match(source, /storyboardActiveJobs\.size < concurrency/, '镜组队列必须按配置执行真实并发');
 assert.match(source, /routedConnection[\s\S]*const fixedModel[\s\S]*model: fixedModel[\s\S]*storyboardGenerationPayload\(state, providerProfile/, '镜组路由必须使用固定目录中的真实模型并按该模型裁剪能力');
 assert.match(source, /function storyboardRemoveQueuedLog/, '等待任务必须可单独移除');
 assert.match(source, /移出等待/, '日志必须提供明确的移出等待操作');
-assert.match(source, /storyboardDiscardActive[\s\S]*discardRequested[\s\S]*放弃本次/, '斩断未暴露的 ST 请求时必须明确为放弃收片');
+assert.match(source, /storyboardDiscardActive[\s\S]*discardRequested[\s\S]*放弃进行中/, '斩断未暴露的 ST 请求时必须明确为放弃收片');
 assert.match(source, /storyboardLoadLogToWorkbench[\s\S]*storyboardRetryLog[\s\S]*载入镜头台/, '日志必须可载入与再生成');
 assert.match(source, /storyboardCheckConnection[\s\S]*\/api\/plugins\/qianmu-tts\/image\/check/, '所有供应商必须走千幕同源网关实测连接');
 assert.match(source, /storyboardHandleChatChanged[\s\S]*切换聊天后已自动移除等待任务/, '队列不得把旧聊天的分镜写入新聊天');

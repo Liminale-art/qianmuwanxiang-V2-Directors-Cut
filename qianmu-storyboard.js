@@ -1,5 +1,5 @@
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
-export const STORYBOARD_SCHEMA_VERSION = 6;
+export const STORYBOARD_SCHEMA_VERSION = 7;
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -9,10 +9,23 @@ export const STORYBOARD_WORKFLOW_STATES = Object.freeze([
   'completed', 'skipped', 'failed', 'cancelled', 'stale', 'orphaned',
 ]);
 export const STORYBOARD_MESSAGE_LINK_STATES = Object.freeze(['active', 'stale', 'inactive_swipe', 'orphaned', 'foreign']);
+export const STORYBOARD_SHOT_GROUP_TEMPLATES = Object.freeze({
+  smart: Object.freeze({ id: 'smart', label: '智能镜组', instruction: '按叙事价值自由选择 1-4 个不重复镜头；优先建立场景、推进动作、落到情绪或关键细节。' }),
+  threeBeat: Object.freeze({ id: 'threeBeat', label: '三拍叙事', instruction: '优先采用建立关系的全景、推进人物或动作的近景、完成情绪落点的特写；没有价值的节拍可以省略。' }),
+  dialogue: Object.freeze({ id: 'dialogue', label: '对话组', instruction: '围绕双人或多人关系组织同框、越肩或单人近景与反应镜头，避免只改变焦段而不推进信息。' }),
+  action: Object.freeze({ id: 'action', label: '动作组', instruction: '组织环境与站位、关键动作、冲击或结果三个节拍，保持方向、人物和关键物件连续。' }),
+  atmosphere: Object.freeze({ id: 'atmosphere', label: '氛围组', instruction: '用环境、人物状态和细节物件共同建立情绪，镜头必须承担不同信息。' }),
+});
 
-const BASE_CAPS = { prompt: true, negative: false, size: true, ratio: true, seed: false, steps: false, cfg: false, sampler: false, scheduler: false, reference: false, multipleReferences: false, imageEdit: false, mask: false, vibe: false, preciseReference: false, multiCharacter: false, workflow: false };
+const BASE_CAPS = { prompt: true, negative: false, size: true, ratio: true, seed: false, steps: false, cfg: false, sampler: false, scheduler: false, reference: false, multipleReferences: false, imageEdit: false, mask: false, vibe: false, preciseReference: false, multiCharacter: false, workflow: false, contentPolicy: 'filtered' };
 const caps = (extra = {}) => Object.freeze({ ...BASE_CAPS, ...extra });
-const model = (id, label, generation, extra) => Object.freeze({ id, label, generation, capabilities: caps(extra) });
+const model = (id, label, generation, extra = {}) => Object.freeze({
+  id, label, generation,
+  capabilities: caps({
+    ...extra,
+    contentPolicy: extra.contentPolicy || (id === 'comfy-workflow' ? 'custom' : (/^nai-diffusion-(?:3|.*-full)$/.test(id) ? 'full' : 'filtered')),
+  }),
+});
 
 export const STORYBOARD_PROVIDER_REGISTRY = Object.freeze({
   novel: Object.freeze({ id: 'novel', label: 'NovelAI', protocol: 'novelai', defaultBaseUrl: 'https://image.novelai.net', customBaseUrl: true, customModelId: false, stSource: 'novel', secretKey: 'api_key_novel', defaultModel: 'nai-diffusion-5-full', capabilities: caps({ negative: true, seed: true, steps: true, cfg: true, sampler: true, scheduler: true, multiCharacter: true }) }),
@@ -75,8 +88,8 @@ export const getStoryboardCapabilities = (providerId, modelId = '') => getStoryb
 const legacyProfile = () => ({ loaded: false, model: '', sampler: '', scheduler: '', width: '', height: '', ratio: '1:1', count: '', steps: '', cfg: '', seed: '', comfyUrl: '', comfyWorkflow: '', comfyWorkflowNotice: '', openaiStyle: '', openaiQuality: '', openaiBackground: '', openaiOutputFormat: '', imageSize: '', watermark: false, seedreamGuidanceScale: '', seedreamSequential: false, googleEnhance: false, novelSm: false, novelSmDyn: false, novelDecrisper: false, novelVarietyBoost: false });
 const promptDraft = () => ({ manual: '', autoInstruction: '', compiled: '', negative: '', artistString: '', compiledAt: 0, compiledBy: '', userEditedCompiled: false, sourceSummary: [] });
 const connection = (id) => ({ providerId: id, activePresetId: '', presets: [], draft: { baseUrl: getStoryboardProvider(id).defaultBaseUrl, model: getStoryboardProvider(id).defaultModel } });
-const routingDefaults = () => ({ enabled: false, mode: 'single', single: { providerId: 'novel', modelId: 'nai-diffusion-5-full', connectionPresetId: '', parameterPresetId: '' }, rules: [], maxShotsPerFloor: 1, confirmMultipleRequests: true, providerConcurrency: 1 });
-const automationDefaults = () => ({ autoCapture: false, autoGenerate: false });
+const routingDefaults = () => ({ enabled: false, mode: 'single', templateId: 'smart', single: { providerId: 'novel', modelId: 'nai-diffusion-5-full', connectionPresetId: '', parameterPresetId: '' }, rules: [], maxShotsPerFloor: 3, confirmMultipleRequests: true, providerConcurrency: 1 });
+const automationDefaults = () => ({ autoCapture: true, autoGenerate: true });
 const compilerTagRuleDefaults = () => ['think', 'thinking', 'analysis', 'reasoning', 'status', 'summary', 'script', 'style']
   .map((name) => ({ name, action: 'remove' }));
 
@@ -85,11 +98,11 @@ export function createStoryboardDefaults() {
   return {
     schemaVersion: STORYBOARD_SCHEMA_VERSION, enabled: false, automation: automationDefaults(), view: 'create', workspaceView: 'workbench', characterView: 'directory', castPickerOpen: false, assetView: 'tags', assetSearch: '', logFilter: 'all', gallerySearch: '', gallerySource: 'all', source: 'novel', initialized: false,
     target: 'latest', floor: '', inlineByDefault: true, promptMode: 'manual', prompt: '', negative: '', contentRating: 'sfw', paragraphMode: 'auto', manualParagraphIndex: null, promptDraft: promptDraft(),
-    promptCompiler: { enabled: false, apiProfileId: '', connectionPresetId: '', instructionPresetId: '', instruction: '', includeCurrentFloor: true, includeRecentFloors: 2, includeCharacterCards: true, includeUserPersona: true, includeActivatedWorldInfo: true, worldMode: 'auto', worldEntryIds: [], tagRules: compilerTagRuleDefaults(), excludedTags: 'think, thinking, analysis, reasoning, status, summary, script, style' },
+    promptCompiler: { enabled: true, apiProfileId: '', connectionPresetId: '', instructionPresetId: '', instruction: '', includeCurrentFloor: true, includeRecentFloors: 2, includeCharacterCards: true, includeUserPersona: true, includeActivatedWorldInfo: true, worldMode: 'auto', worldEntryIds: [], tagRules: compilerTagRuleDefaults(), excludedTags: 'think, thinking, analysis, reasoning, status, summary, script, style' },
     selectedCharacterId: '', selectedCharacters: [], consistencyModes: Object.fromEntries(ids.map((id) => [id, 'description'])),
     profiles: Object.fromEntries(ids.map((id) => [id, legacyProfile()])), parameterPresets: [], parameterPresetSelection: Object.fromEntries(ids.map((id) => [id, ''])),
     connections: Object.fromEntries(ids.map((id) => [id, connection(id)])), characters: [], entities: { char: [], user: [], cast: [], candidates: [] },
-    promptPresets: [], artistPresets: [], selectedArtistPresetId: '', tagLibrary: [], vibeLibrary: [], selectedVibeIds: [], routing: routingDefaults(), shotPlans: [], collapsedCards: {}, logs: [], pipelineLogs: [],
+    promptPresets: [], artistPresets: [], selectedArtistPresetId: '', tagLibrary: [], vibeLibrary: [], selectedVibeIds: [], routing: routingDefaults(), shotPlans: [], collapsedCards: { model: true, prompt: true, cast: true, params: true, 'routing-rules': true }, logs: [], pipelineLogs: [],
   };
 }
 
@@ -202,6 +215,14 @@ export function migrateStoryboardState(value) {
   if (fromVersion < 4) {
     s.routing ||= routingDefaults();
     if (s.routing.enabled === undefined) s.routing.enabled = s.routing.mode === 'ensemble';
+  }
+  if (fromVersion < 7 && Array.isArray(s.routing?.rules)) {
+    s.routing.rules = s.routing.rules.map((rule) => {
+      if (!obj(rule)) return rule;
+      const migratedRule = { ...rule };
+      delete migratedRule.sensitive;
+      return migratedRule;
+    });
   }
   s.schemaVersion = STORYBOARD_SCHEMA_VERSION;
   return s;
@@ -323,15 +344,17 @@ function normalizeRouting(value, catalogs = {}) {
     const parameterPresetId = hasParameterCatalog && requestedParameters && !catalogs.parameterPresets.some((preset) => preset.id === requestedParameters && preset.source === providerId && (!preset.profile?.model || preset.profile.model === modelId)) ? '' : requestedParameters;
     return { providerId, modelId, connectionPresetId, parameterPresetId };
   };
-  const rules = dedupeById((Array.isArray(r.rules) ? r.rules : []).filter(obj).map((rule) => ({ id: cleanId(rule.id), name: str(rule.name || '未命名分工', 80), shotTypes: uniqueStrings(rule.shotTypes, 30, 60), sensitive: rule.sensitive === true ? true : (rule.sensitive === false ? false : null), target: target(rule.target, ''), enabled: rule.enabled !== false, priority: int(rule.priority, -1000, 1000, 0) })).filter((rule) => rule.id && rule.target.providerId)).slice(0, 50).sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
+  const rules = dedupeById((Array.isArray(r.rules) ? r.rules : []).filter(obj).map((rule) => ({ id: cleanId(rule.id), name: str(rule.name || '未命名分工', 80), shotTypes: uniqueStrings(rule.shotTypes, 30, 60), target: target(rule.target, ''), enabled: rule.enabled !== false, priority: int(rule.priority, -1000, 1000, 0) })).filter((rule) => rule.id && rule.target.providerId)).slice(0, 50).sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
   const enabled = r.enabled === undefined ? r.mode === 'ensemble' : Boolean(r.enabled);
-  return { enabled, mode: enabled ? 'ensemble' : 'single', single: target(r.single), rules, maxShotsPerFloor: int(r.maxShotsPerFloor, 1, 20, 1), confirmMultipleRequests: r.confirmMultipleRequests !== false, providerConcurrency: int(r.providerConcurrency, 1, 4, 1) };
+  const templateId = STORYBOARD_SHOT_GROUP_TEMPLATES[r.templateId] ? r.templateId : 'smart';
+  return { enabled, mode: enabled ? 'ensemble' : 'single', templateId, single: target(r.single), rules, maxShotsPerFloor: int(r.maxShotsPerFloor, 1, 4, 3), confirmMultipleRequests: r.confirmMultipleRequests !== false, providerConcurrency: int(r.providerConcurrency, 1, 4, 1) };
 }
 
 export function normalizeStoryboardAutomation(value) {
   const raw = obj(value) ? value : {};
-  const autoCapture = Boolean(raw.autoCapture);
-  return { autoCapture, autoGenerate: autoCapture && Boolean(raw.autoGenerate) };
+  const autoCapture = raw.autoCapture === undefined ? true : Boolean(raw.autoCapture);
+  const autoGenerate = raw.autoGenerate === undefined ? true : Boolean(raw.autoGenerate);
+  return { autoCapture, autoGenerate: autoCapture && autoGenerate };
 }
 
 function workflowState(value, fallback = 'idle') {
@@ -348,7 +371,7 @@ function shotPlans(value, state = {}) {
       const requestedConnection = cleanId(shot.connectionPresetId), requestedParameters = cleanId(shot.parameterPresetId);
       const connectionPresetId = providerId && state.connections?.[providerId]?.presets?.some((preset) => preset.id === requestedConnection) ? requestedConnection : '';
       const parameterPresetId = providerId && state.parameterPresets?.some((preset) => preset.id === requestedParameters && preset.source === providerId) ? requestedParameters : '';
-      return { id: cleanId(shot.id), shotType: str(shot.shotType || 'custom', 60), title: str(shot.title, 120), prompt: str(shot.prompt, 24000), negative: str(shot.negative, 12000), selectedCharacters: ids(shot.selectedCharacters, 30).filter((id) => !hasEntityCatalog || knownEntities.has(id)), providerId, connectionPresetId, parameterPresetId, routeRuleId: cleanId(shot.routeRuleId), status: workflowState(shot.status), resultIds: ids(shot.resultIds, 20), error: str(shot.error, 4000), attempt: int(shot.attempt, 0, 20, 0), paragraphAnchor: shot.paragraphAnchor ? normalizeStoryboardParagraphAnchor(shot.paragraphAnchor) : null, sensitive: Boolean(shot.sensitive), userEdited: Boolean(shot.userEdited), promptLocked: Boolean(shot.promptLocked || shot.userEdited) };
+      return { id: cleanId(shot.id), shotType: str(shot.shotType || 'custom', 60), role: str(shot.role, 60), title: str(shot.title, 120), purpose: str(shot.purpose, 500), prompt: str(shot.prompt, 24000), safePrompt: str(shot.safePrompt, 24000), negative: str(shot.negative, 12000), selectedCharacters: ids(shot.selectedCharacters, 30).filter((id) => !hasEntityCatalog || knownEntities.has(id)), providerId, connectionPresetId, parameterPresetId, routeRuleId: cleanId(shot.routeRuleId), status: workflowState(shot.status), resultIds: ids(shot.resultIds, 20), error: str(shot.error, 4000), attempt: int(shot.attempt, 0, 20, 0), paragraphAnchor: shot.paragraphAnchor ? normalizeStoryboardParagraphAnchor(shot.paragraphAnchor) : null, sensitive: Boolean(shot.sensitive), safetyAdapted: Boolean(shot.safetyAdapted), userEdited: Boolean(shot.userEdited), promptLocked: Boolean(shot.promptLocked || shot.userEdited) };
     }).filter((shot) => shot.id)).slice(0, 20);
     const messageRef = plan.messageRef ? normalizeStoryboardMessageReference(plan.messageRef) : null;
     return { id: cleanId(plan.id), chatKey: str(plan.chatKey || messageRef?.chatKey, 512), floor: Number.isInteger(plan.floor) ? plan.floor : (Number.isInteger(messageRef?.lastKnownFloor) ? messageRef.lastKnownFloor : null), swipeId: int(plan.swipeId ?? messageRef?.swipeId, 0, Number.MAX_SAFE_INTEGER, 0), messageRef, revisionId: str(plan.revisionId || messageRef?.revisionId, 80), idempotencyKey: str(plan.idempotencyKey, 80), origin: ['manual', 'automatic'].includes(plan.origin) ? plan.origin : 'manual', autoGenerate: Boolean(plan.autoGenerate), promptLocked: Boolean(plan.promptLocked), status: workflowState(plan.status), shots, createdAt: pos(plan.createdAt || plan.updatedAt), updatedAt: pos(plan.updatedAt) };
@@ -438,7 +461,7 @@ export function resolveStoryboardVisualState(facts) {
   return { values: Object.fromEntries([...accepted].map(([key, fact]) => [key, fact.value])), sources: Object.fromEntries([...accepted].map(([key, fact]) => [key, fact.source])), decisions };
 }
 
-export function routeStoryboardShot(shot, routing) { const r = normalizeRouting(routing); if (!r.enabled) return { ...r.single, ruleId: '' }; const type = str(shot?.shotType || 'custom', 60), sensitive = Boolean(shot?.sensitive), rule = r.rules.find((x) => x.enabled && (!x.shotTypes.length || x.shotTypes.includes(type)) && (x.sensitive === null || x.sensitive === sensitive)); return rule ? { ...rule.target, ruleId: rule.id } : { ...r.single, ruleId: '' }; }
+export function routeStoryboardShot(shot, routing) { const r = normalizeRouting(routing); if (!r.enabled) return { ...r.single, ruleId: '' }; const type = str(shot?.shotType || 'custom', 60), rule = r.rules.find((x) => x.enabled && (!x.shotTypes.length || x.shotTypes.includes(type))); return rule ? { ...rule.target, ruleId: rule.id } : { ...r.single, ruleId: '' }; }
 
 export function summarizeStoryboardGenerationDemand(jobs) {
   const requests = (Array.isArray(jobs) ? jobs : []).filter(obj);

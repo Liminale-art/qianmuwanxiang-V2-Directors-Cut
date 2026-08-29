@@ -9,9 +9,10 @@ import {
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 6);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 7);
 const defaults = createStoryboardDefaults();
-assert.deepEqual(defaults.automation, { autoCapture: false, autoGenerate: false });
+assert.deepEqual(defaults.automation, { autoCapture: true, autoGenerate: true });
+assert.equal(defaults.promptCompiler.enabled, true);
 const normalized = normalizeStoryboardState({
   schemaVersion: 4,
   automation: { autoCapture: true, autoGenerate: true },
@@ -56,11 +57,13 @@ assert.match(source, /shouldRecompile = !promptLocked && mode !== 'manual'/);
 assert.match(source, /原正文楼层已删除，未发起生图请求/);
 assert.match(source, /linkState === 'inactive_swipe'/);
 
-// Automatic capture is opt-in twice: module, LLM cooperation, then optional generation.
-assert.match(source, /sd-storyboard-auto-capture/);
-assert.match(source, /sd-storyboard-auto-generate/);
+// New installations use one unobtrusive automatic flow; editing and redraw remain available afterwards.
+assert.match(source, /sd-storyboard-auto-flow/);
+assert.doesNotMatch(source, /sd-storyboard-auto-capture|sd-storyboard-auto-generate/);
 assert.match(source, /function storyboardHandleAutomaticCapture/);
 assert.match(source, /state\.enabled \|\| !state\.automation\?\.autoCapture \|\| !state\.promptCompiler\?\.enabled/);
 assert.match(source, /storyboardGenerate\(null, \{ plan, automatic: true \}\)/);
+assert.match(source, /data-storyboard-chat-action="edit"/);
+assert.match(source, /data-storyboard-chat-action="redraw"/);
 
 console.log('Storyboard inline lifecycle contract OK');

@@ -27,17 +27,18 @@ assert.ok(!STORYBOARD_MODEL_REGISTRY.novel.find((item) => item.id === 'nai-diffu
 
 const defaults = createStoryboardDefaults();
 assert.equal(defaults.routing.enabled, false, 'the shot router must be opt-in');
+assert.equal(STORYBOARD_MODEL_REGISTRY.novel.find((item) => item.id === 'nai-diffusion-5-full').capabilities.contentPolicy, 'full');
+assert.equal(STORYBOARD_MODEL_REGISTRY.novel.find((item) => item.id === 'nai-diffusion-5-curated').capabilities.contentPolicy, 'filtered');
 
 const routed = routeStoryboardShot({ shotType: 'portrait', sensitive: true }, {
   enabled: true,
   single: { providerId: 'novel', modelId: 'nai-diffusion-5-full' },
   rules: [
-    { id: 'sfw', shotTypes: ['portrait'], sensitive: false, target: { providerId: 'openai', modelId: 'gpt-image-2' } },
-    { id: 'nsfw', shotTypes: ['portrait'], sensitive: true, target: { providerId: 'novel', modelId: 'nai-diffusion-4-5-full' } },
+    { id: 'portrait', shotTypes: ['portrait'], sensitive: false, target: { providerId: 'openai', modelId: 'gpt-image-2' } },
   ],
 });
-assert.equal(routed.ruleId, 'nsfw');
-assert.equal(routed.modelId, 'nai-diffusion-4-5-full');
+assert.equal(routed.ruleId, 'portrait');
+assert.equal(routed.modelId, 'gpt-image-2');
 
 const disabled = routeStoryboardShot({ shotType: 'portrait', sensitive: true }, {
   enabled: false,
@@ -72,12 +73,15 @@ const normalized = normalizeStoryboardState({
 });
 assert.equal(normalized.routing.rules[0].target.connectionPresetId, 'v45-api');
 assert.equal(normalized.routing.rules[0].target.parameterPresetId, '', 'a route cannot apply a style saved for another model');
+assert.equal(Object.hasOwn(normalized.routing.rules[0], 'sensitive'), false, 'content sensitivity is internal metadata, not a routing switch');
 
 assert.match(browserSource, /modelPresets[\s\S]*item\.model === profile\.model/, 'API presets must be isolated by concrete model');
 assert.doesNotMatch(browserSource, /data-storyboard-routing-mode=/, 'the old single-model versus ensemble selector must be removed');
 assert.match(browserSource, /class="sd-storyboard-routing-enabled"/, 'the router needs one master switch');
 assert.match(browserSource, /class="text_pole sd-storyboard-route-model"/, 'each shot assignment must choose a concrete model');
-assert.match(browserSource, /class="text_pole sd-storyboard-route-rating"/, 'SFW and NSFW routes must be independently assignable');
+assert.doesNotMatch(browserSource, /sd-storyboard-route-rating|仅 SFW|仅 NSFW/, 'the configuration UI must not expose redundant SFW/NSFW routing states');
+assert.match(browserSource, /sd-storyboard-safety-notice[\s\S]*受限制模型[\s\S]*安全但叙事一致/, 'the safety policy must be explained once in configuration');
+assert.match(browserSource, /function storyboardAdaptShotForModel[\s\S]*contentPolicy[\s\S]*safePrompt/, 'filtered models must receive the compiler-provided safe narrative equivalent');
 assert.match(browserSource, /function renderStoryboardParameterVibes[\s\S]*!capabilities\.vibe[\s\S]*disabled/, 'Vibe selection must remain visible but disabled on unsupported NovelAI models');
 assert.match(browserSource, /modelId: route\.modelId[\s\S]*connectionPresetId: route\.connectionPresetId/, 'the routed concrete model must reach the generation job');
 

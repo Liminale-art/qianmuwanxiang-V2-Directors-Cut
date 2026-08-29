@@ -52,8 +52,10 @@ assert.doesNotMatch(source, />手动触发</);
 assert.match(source, /<b>API 设置<\/b>/);
 assert.match(source, /<span>提示词预处理<\/span>/);
 
-// Manual, semi-automatic and fully automatic paths must be distinct and actionable.
-assert.match(source, /sd-storyboard-toggle-pills[\s\S]*新回复自动取景[\s\S]*取景后自动生成/);
+// The default path is one unobtrusive automatic flow; manual capture remains an escape hatch.
+assert.match(source, /sd-storyboard-auto-flow[\s\S]*dataset\.storyboardChatAction = 'capture-floor'/);
+assert.match(source, /无感自动配图[\s\S]*新回复后自动取景并生成/);
+assert.doesNotMatch(source, /sd-storyboard-toggle-pills/);
 assert.match(source, /dataset\.storyboardChatAction = 'capture-floor'/);
 assert.match(source, /button\.dataset\.storyboardChatAction === 'capture-floor'[\s\S]*storyboardCompilePrompt\(null, \{ plan, quiet: false \}\)/);
 assert.match(source, /function storyboardHandleAutomaticCapture/);
