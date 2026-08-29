@@ -1,8 +1,17 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import {
+  QUICK_HEX_WIDTH_RATIO,
+  quickHiveAxialRing,
+  quickHiveCells,
+  quickHiveCellRing,
+  quickHivePixelOffset,
+  quickHiveCellFits,
+} from '../qianmu-storyboard-utils.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+const utilsSource = await readFile(new URL('../qianmu-storyboard-utils.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
 // 更新后只沿用用户自定义入口，全部千幕 tab 均可自由选择，不设置可见的产品上限。
@@ -18,7 +27,7 @@ assert.doesNotMatch(quickCommands, /id: 'blueprint'/, '编剧已并入幕后，�
 assert.match(quickCommands, /id: 'settings', label: '幕后', icon: 'fa-feather-pointed'/, '幕后蜂巢入口必须改用羽毛笔');
 assert.match(source, /QUICK_HIVE_SAFETY_LIMIT = 24/, '仅保留异常配置安全阀，不得再把八格当作产品限制');
 assert.doesNotMatch(source, /QUICK_HIVE_MAX_ITEMS|最多显示 \$\{QUICK_HIVE/, '设置页不得再显示蜂巢入口上限');
-assert.match(source, /function quickHiveAxialRing[\s\S]*function quickHiveLayout/, '蜂巢必须使用通用轴向六角坐标生成器');
+assert.match(utilsSource, /export function quickHiveAxialRing[\s\S]*export function quickHiveCellFits/, '蜂巢必须使用通用轴向六角坐标生成器');
 assert.doesNotMatch(source, /<option value="default"[^>]*>默认方案<\/option>/, '不得再显示固定默认方案');
 assert.match(source, /const iconMarkup = item\.external \? quickDockIconMarkup\(item\)/, '第三方 Logo 必须经过安全视觉描述渲染');
 assert.match(source, /button\.innerHTML = `\$\{iconMarkup\}\$\{QUICK_HEX_BORDER_SVG\}`/, '每个蜂巢片必须挂载独立六边形描边');
@@ -117,10 +126,17 @@ assert.match(css, /font-size:\s*clamp\(15px,[^;]*\.44[^;]*22px\)/, '千幕内置
 assert.match(css, /prefers-reduced-motion:\s*reduce/, '蜂巢动态必须尊重系统减少动态设置');
 
 // 直接执行纯几何函数：居中先满六格内圈，贴边不移动锚点且所有蜂巢片留在可视区。
-const geometryStart = source.indexOf('const QUICK_HEX_WIDTH_RATIO');
+const geometryStart = source.indexOf('function quickHiveDirectionalCells');
 const geometryEnd = source.indexOf('const quickDockRuntime');
 assert.ok(geometryStart > 0 && geometryEnd > geometryStart, '未找到蜂巢纯几何实现');
-const sandbox = {};
+const sandbox = {
+  QUICK_HEX_WIDTH_RATIO,
+  quickHiveAxialRing,
+  quickHiveCells,
+  quickHiveCellRing,
+  quickHivePixelOffset,
+  quickHiveCellFits,
+};
 vm.runInNewContext(`${source.slice(geometryStart, geometryEnd)}\nglobalThis.hive = { QUICK_HEX_WIDTH_RATIO, quickHiveAxialRing, quickHiveCellRing, quickHiveCellFits, quickHiveLayout };`, sandbox);
 const { hive } = sandbox;
 assert.equal(hive.QUICK_HEX_WIDTH_RATIO, Math.sqrt(3) / 2);

@@ -5,6 +5,7 @@
 
 import {
   renderArtistLibraryManager,
+  renderArtistGrid,
   renderArtistEditForm,
   renderArtistImportDialog,
 } from './qianmu-storyboard-artist-library-ui.js';
@@ -138,7 +139,6 @@ function refreshModalContent(modal, libraryManager, filters = {}) {
       const artists = libraryManager.getAll(filters);
       const gridContainer = container.querySelector('.qm-artist-manager-content');
       if (gridContainer) {
-        const { renderArtistGrid } = await import('./qianmu-storyboard-artist-library-ui.js');
         gridContainer.innerHTML = renderArtistGrid(artists, { selectable: false, showActions: true });
       }
     }
