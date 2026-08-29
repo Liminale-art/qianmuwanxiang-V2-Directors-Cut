@@ -128,6 +128,95 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
 } from './qianmu-storyboard.js';
+import {
+  SHOT_CARD_STATUS,
+  SHOT_CARD_EVENTS,
+  ShotCardStateMachine,
+  ShotCardQueue,
+  createShotCard,
+  analyzeSceneForShots,
+} from './qianmu-storyboard-frame.js';
+import {
+  FACTORY_PRESETS,
+  PresetManager,
+  createPreset,
+} from './qianmu-storyboard-presets.js';
+import {
+  ROUTING_TEMPLATES,
+  RoutingManager,
+  createRoutingRule,
+} from './qianmu-storyboard-routing.js';
+import {
+  COMPILER_MODES,
+  PromptCompiler,
+} from './qianmu-storyboard-compiler.js';
+import {
+  renderShotCard,
+  injectFloorCaptureButton,
+  createFloorObserver,
+} from './qianmu-storyboard-frame-ui.js';
+import {
+  repairAndParseJSON,
+  validateShotSequence,
+  processShotAnalysisResponse,
+  buildEnhancedShotAnalysisPrompt,
+} from './qianmu-storyboard-protocol.js';
+import {
+  PROVIDER_CAPABILITIES,
+  adaptShotForProvider,
+  recommendProvidersForSequence,
+} from './qianmu-storyboard-adapter.js';
+import {
+  BUILTIN_ARTISTS,
+  ArtistLibraryManager,
+  createArtistEntry,
+} from './qianmu-storyboard-artist-library.js';
+import {
+  renderArtistCard,
+  renderArtistGrid,
+  renderArtistSelector,
+  renderArtistLibraryManager,
+  renderArtistEditForm,
+  createArtistSelectorModal,
+  injectArtistQuickJump,
+  renderArtistImportDialog,
+} from './qianmu-storyboard-artist-library-ui.js';
+import {
+  StoryboardStorage,
+  UserPresetsStorage,
+  RoutingRulesStorage,
+  UserArtistsStorage,
+  StoryboardConfigStorage,
+  ShotCardsStorage,
+  createStoryboardStorage,
+} from './qianmu-storyboard-storage.js';
+import {
+  injectStoryboardStyles,
+  removeStoryboardStyles,
+  loadAndInjectStyles,
+  injectAllStoryboardStyles,
+} from './qianmu-storyboard-style-injector.js';
+import {
+  renderStoryboardConfig,
+  bindStoryboardConfigEvents,
+} from './qianmu-storyboard-config-ui.js';
+import {
+  createArtistLibraryModal,
+} from './qianmu-storyboard-artist-library-modal.js';
+import {
+  openStoryboardConfigModal,
+  getStoryboardConfigModalStyles,
+} from './qianmu-storyboard-config-modal.js';
+import {
+  initStoryboardIntegration,
+  getStoryboardIntegration,
+  cleanupStoryboardIntegration,
+} from './qianmu-storyboard-integration.js';
+import {
+  renderStoryboardConfig,
+  getStoryboardConfigStyles,
+  bindStoryboardConfigEvents,
+} from './qianmu-storyboard-config-ui.js';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
@@ -11590,7 +11679,8 @@ function renderStoryboardTab() {
       : state.view === 'gallery' ? renderStoryboardGallery(state)
         : state.view === 'logs' ? renderStoryboardLogs(state)
           : renderStoryboardCreate(state);
-  return `<div class="sd-storyboard-root">${renderStoryboardNav(state)}${body}</div>`;
+  const configBtn = `<button type="button" class="sd-icon-btn sd-storyboard-config-btn" title="分镜配置" aria-label="分镜配置"><i class="fa-solid fa-gear"></i></button>`;
+  return `<div class="sd-storyboard-root">${renderStoryboardNav(state)}<div class="sd-storyboard-header-tools">${configBtn}</div>${body}</div>`;
 }
 
 function storyboardWorkflowIssue(result) {
@@ -13445,6 +13535,10 @@ function bindStoryboardTabEvents(root) {
     }
     saveSettings(); renderModal();
   }));
+  // 分镜配置按钮
+  root.querySelector('.sd-storyboard-config-btn')?.addEventListener('click', () => {
+    openStoryboardConfigModal();
+  });
   root.querySelectorAll('[data-storyboard-source]').forEach((button) => button.addEventListener('click', async () => {
     const id = button.dataset.storyboardSource;
     if (!STORYBOARD_SOURCES[id] || id === state.source) return;
@@ -26399,6 +26493,28 @@ function init() {
     storyboardBindChat();
     renderInputMenuEntry();
     startInputMenuObserver();
+
+    // 注入分镜样式
+    void injectAllStoryboardStyles()
+      .then((result) => {
+        if (result.frame) {
+          console.log(`[${MODULE_NAME}] Storyboard shot card styles injected`);
+        }
+        if (result.editPanel) {
+          console.log(`[${MODULE_NAME}] Storyboard edit panel styles injected`);
+        }
+        if (result.configUI) {
+          console.log(`[${MODULE_NAME}] Storyboard config UI styles injected`);
+        }
+        if (result.artist) {
+          console.log(`[${MODULE_NAME}] Storyboard artist styles injected`);
+        }
+      })
+      .catch((error) => console.warn(`[${MODULE_NAME}] Failed to inject storyboard styles`, error));
+
+    // 初始化分镜集成
+    initStoryboardIntegration(ctx());
+
     resizeHandler = () => {
       closeQuickWheel();
       const btn = document.getElementById(FLOAT_ID);
@@ -26474,6 +26590,7 @@ function cleanupRuntime(resetSettings = false) {
       inputMenuObserver = null;
     });
     clean('speech', () => ttsStopChat());
+    clean('storyboard integration', () => cleanupStoryboardIntegration());
     clean('storyboard queue', () => {
       if (storyboardActiveJob) storyboardActiveJob.discardRequested = true;
       if (storyboardQueue.length && settings?.imagegen?.logs) {

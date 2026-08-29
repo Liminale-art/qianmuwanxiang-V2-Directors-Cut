@@ -297,56 +297,68 @@ export class ShotCardQueue {
 }
 
 /**
- * 快速取景 - 分析场景
+ * 快速取景 - 分析场景（重构版本）
  * @param {Object} context - 上下文（楼层、角色、世界书等）
  * @param {Object} options - 配置项
  * @returns {Promise<Object>} 分析结果
  */
 export async function analyzeSceneForShots(context, options = {}) {
-  // TODO: 调用 LLM 分析场景
-  // 这里是占位实现，实际需要集成现有的 API 调用逻辑
+  // 导入协议处理模块
+  const { buildEnhancedShotAnalysisPrompt, processShotAnalysisResponse } = await import('./qianmu-storyboard-protocol.js');
 
-  const floorText = context.floorText || '';
+  const floorText = context.currentFloor?.text || context.floorText || '';
   if (!floorText.trim()) {
-    return { needImage: false, shots: [] };
+    return { success: false, shots: [], error: '场景文本为空' };
   }
 
-  // 构建提示词（简化版本，实际需要更完整的上下文）
-  const analysisPrompt = `分析以下场景，判断是否需要配图，最多提供 ${options.maxShots || 3} 个镜头方案。
+  // 构建增强的分析提示词
+  const analysisPrompt = buildEnhancedShotAnalysisPrompt(context, {
+    maxShots: options.maxShots || 3,
+  });
 
-场景：${floorText}
+  console.log('[analyzeSceneForShots] 分析提示词已构建');
 
-返回 JSON 格式：
-{
-  "need_image": true/false,
-  "shots": [
-    {
-      "type": "portrait",  // portrait/group/environment/object/action/closeup/custom
-      "focus": "描述镜头焦点",
-      "prompt": "英文提示词",
-      "position": "end"  // start/middle/end
+  try {
+    // TODO: 调用实际的 LLM API
+    // 需要从外部注入 LLM 调用函数
+    if (!options.llmCaller) {
+      console.warn('[analyzeSceneForShots] 未配置 LLM 调用器，返回占位结果');
+      return {
+        success: true,
+        shots: [
+          {
+            sequence: 1,
+            type: 'custom',
+            focus: '场景主体',
+            prompt: floorText.slice(0, 100),
+            negative: '',
+            style: '',
+            artistString: '',
+          },
+        ],
+        warnings: ['LLM 调用器未配置，使用占位结果'],
+      };
     }
-  ]
-}`;
 
-  console.log('[analyzeSceneForShots] Analysis prompt:', analysisPrompt);
+    const response = await options.llmCaller(analysisPrompt, options);
 
-  // TODO: 实际 API 调用
-  // const response = await callLLM(analysisPrompt, options);
-  // return JSON.parse(response);
+    // 使用协议处理流程
+    const result = processShotAnalysisResponse(response, context);
 
-  // 占位返回
-  return {
-    needImage: true,
-    shots: [
-      {
-        type: 'portrait',
-        focus: '场景主体人物',
-        prompt: 'placeholder prompt',
-        position: 'end',
-      },
-    ],
-  };
+    return {
+      success: result.valid,
+      shots: result.shots,
+      errors: result.errors,
+      warnings: result.warnings,
+    };
+  } catch (error) {
+    console.error('[analyzeSceneForShots] LLM 调用失败:', error);
+    return {
+      success: false,
+      shots: [],
+      error: error.message,
+    };
+  }
 }
 
 /**
