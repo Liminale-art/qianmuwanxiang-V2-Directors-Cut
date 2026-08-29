@@ -130,7 +130,6 @@ import {
 } from './qianmu-storyboard.js';
 import {
   SHOT_CARD_STATUS,
-  SHOT_CARD_EVENTS,
   ShotCardStateMachine,
   ShotCardQueue,
   createShotCard,
@@ -139,7 +138,6 @@ import {
 import {
   FACTORY_PRESETS,
   PresetManager,
-  createPreset,
 } from './qianmu-storyboard-presets.js';
 import {
   ROUTING_TEMPLATES,
