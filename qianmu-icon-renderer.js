@@ -26,7 +26,6 @@ export const QIANMU_SEMANTIC_ICONS = Object.freeze({
 // Font Awesome names currently emitted by Qianmu. Explicit data-qm-icon values
 // take precedence where the same legacy class has more than one meaning.
 export const QIANMU_FA_ICON_MAP = Object.freeze({
-  'fa-address-card': 'qm-user-character-profile',
   'fa-anchor': 'qm-regular-anchor',
   'fa-angle-right': 'qm-regular-caret-right',
   'fa-arrow-down': 'qm-regular-arrow-down',
@@ -93,6 +92,7 @@ export const QIANMU_FA_ICON_MAP = Object.freeze({
   'fa-forward-step': 'qm-fill-skip-forward',
   'fa-gauge-simple': 'qm-duotone-gauge',
   'fa-gear': 'qm-duotone-gear',
+  'fa-grip-lines': 'qm-regular-list',
   'fa-headphones': 'qm-duotone-headphones',
   'fa-headphones-simple': 'qm-regular-headphones',
   'fa-highlighter': 'qm-regular-highlighter',

@@ -118,48 +118,6 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-modal .sd-storyboard-pack-card .sd-icon-btn { margin: 0; }
 #story-director-modal .sd-storyboard-pack-import { cursor: pointer; }
 
-/* 人物形象档案：杂志纸页与叠档案只取排版语言，不复刻任何外部资产。 */
-#story-director-modal .sd-storyboard-magazine { min-height: 610px; padding: clamp(18px, 4vw, 34px); border: 1px solid color-mix(in srgb, var(--sd-hairline) 78%, transparent); border-radius: 22px; background: color-mix(in srgb, var(--sd-card) 90%, #fff 10%); overflow: hidden; }
-#story-director-modal .sd-storyboard-magazine > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-#story-director-modal .sd-storyboard-magazine > header h3 { margin: 8px 0 20px; font-family: ui-serif, Georgia, 'Times New Roman', serif; font-size: clamp(38px, 8vw, 72px); font-weight: 400; line-height: .83; letter-spacing: -.065em; }
-#story-director-modal .sd-storyboard-magazine > header h3 sup { margin-left: 5px; color: var(--sd-accent); font-size: .32em; vertical-align: top; }
-#story-director-modal .sd-storyboard-file-stack { position: relative; min-height: 126px; display: flex; align-items: flex-end; padding: 14px 0 0; }
-#story-director-modal .sd-storyboard-file { position: relative; width: clamp(112px, 23%, 156px); min-height: 102px; margin-left: -22px; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; gap: 3px; padding: 13px; border: 1px solid var(--sd-hairline); border-radius: 4px 18px 4px 4px; background: color-mix(in srgb, var(--sd-card) 92%, var(--sd-accent) 8%); color: var(--sd-text); box-shadow: 5px 9px 18px rgba(0, 0, 0, .08); transform: translateY(calc((var(--sd-file-index) % 3) * 4px)) rotate(calc((var(--sd-file-index) - 2) * .35deg)); transition: transform .24s ease, margin .24s ease, border-color .24s ease; cursor: pointer; text-align: left; }
-#story-director-modal .sd-storyboard-file:first-child { margin-left: 0; }
-#story-director-modal .sd-storyboard-file:hover,
-#story-director-modal .sd-storyboard-file:focus-visible { z-index: 3; margin-right: 18px; transform: translateY(-14px) rotate(0); }
-#story-director-modal .sd-storyboard-file.active { z-index: 2; border-color: var(--sd-accent); }
-#story-director-modal .sd-storyboard-file > span { position: absolute; right: 10px; top: 9px; color: var(--sd-muted); font-size: 9px; letter-spacing: .12em; }
-#story-director-modal .sd-storyboard-file b { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .86em; }
-#story-director-modal .sd-storyboard-file small { width: 100%; overflow: hidden; text-overflow: ellipsis; color: var(--sd-muted); font-size: 9px; letter-spacing: .08em; white-space: nowrap; }
-#story-director-modal .sd-storyboard-file > em { position: absolute; left: 9px; bottom: 8px; padding: 2px 6px; border-radius: 999px; background: color-mix(in srgb, var(--sd-accent) 16%, var(--sd-card)); color: var(--sd-accent); font-size: 8px; font-style: normal; }
-#story-director-modal .sd-storyboard-file.bound { border-color: color-mix(in srgb, var(--sd-accent) 58%, var(--sd-hairline)); }
-#story-director-modal .sd-storyboard-character-empty { margin: 16px 0 28px; padding: 26px; border: 1px dashed var(--sd-hairline); border-radius: 16px; color: var(--sd-muted); text-align: center; font-size: .78em; }
-#story-director-modal .sd-storyboard-capture-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-#story-director-modal .sd-storyboard-capture-row .sd-btn { min-height: 38px; margin: 0; }
-#story-director-modal .sd-storyboard-directory-group { margin-top: 15px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--sd-hairline) 72%, transparent); }
-#story-director-modal .sd-storyboard-directory-group > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
-#story-director-modal .sd-storyboard-directory-group > header div { min-width: 0; display: flex; align-items: baseline; gap: 8px; }
-#story-director-modal .sd-storyboard-directory-group > header span { color: var(--sd-accent); font-size: 9px; font-weight: 800; letter-spacing: .12em; }
-#story-director-modal .sd-storyboard-directory-group > header b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#story-director-modal .sd-storyboard-directory-group > header small { flex: 0 0 auto; color: var(--sd-muted); font-size: .7em; }
-#story-director-modal .sd-storyboard-profile-page > header { align-items: center; }
-#story-director-modal .sd-storyboard-profile-heading { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; }
-#story-director-modal .sd-storyboard-profile-heading b { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#story-director-modal .sd-storyboard-profile-sheet { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(160px, .75fr); gap: clamp(18px, 4vw, 42px); margin-top: 25px; padding-top: 24px; border-top: 1px solid var(--sd-hairline); }
-#story-director-modal .sd-storyboard-profile-copy { min-width: 0; display: flex; flex-direction: column; gap: 11px; }
-#story-director-modal .sd-storyboard-profile-no { margin-bottom: 4px; color: var(--sd-muted); font-size: 9px; font-weight: 800; letter-spacing: .2em; }
-#story-director-modal .sd-storyboard-profile-copy label { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px; align-items: start; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--sd-hairline) 72%, transparent); color: var(--sd-muted); font-size: .7em; }
-#story-director-modal .sd-storyboard-profile-copy .text_pole { width: 100%; min-width: 0; margin: 0 !important; }
-#story-director-modal .sd-storyboard-profile-copy textarea { min-height: 76px; resize: vertical; }
-#story-director-modal .sd-storyboard-profile-copy .sd-button-row { justify-content: flex-end; }
-#story-director-modal .sd-storyboard-profile-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
-#story-director-modal .sd-storyboard-profile-actions .sd-btn { margin: 0; }
-#story-director-modal .sd-storyboard-profile-photo { align-self: start; min-height: 250px; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; border-radius: 3px; background: var(--sd-pre); }
-#story-director-modal .sd-storyboard-profile-photo img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; }
-#story-director-modal .sd-storyboard-profile-photo > i { margin: auto; color: var(--sd-muted); font-size: 52px; }
-#story-director-modal .sd-storyboard-profile-photo > span { padding: 9px 10px; border-top: 1px solid var(--sd-hairline); font-family: ui-serif, Georgia, serif; font-size: .78em; }
-
 #story-director-modal .sd-storyboard-gallery-head { display: flex; align-items: flex-end; justify-content: space-between; }
 #story-director-modal .sd-storyboard-gallery-head h3 { margin: 4px 0 0; font-family: ui-serif, Georgia, serif; font-size: 34px; font-weight: 450; }
 #story-director-modal .sd-storyboard-gallery-head > div:last-child { display: flex; align-items: center; gap: 10px; }
@@ -257,7 +215,6 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 
 @media (prefers-reduced-motion: reduce) {
   #story-director-modal .sd-storyboard-queue-pulse { animation: none; }
-  #story-director-modal .sd-storyboard-file,
   #story-director-modal .sd-storyboard-gallery-actions,
   #chat .mes .sd-storyboard-inline figcaption { transition: none; }
 }
@@ -269,20 +226,6 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   #story-director-modal .sd-storyboard-grid-two { grid-template-columns: 1fr; }
   #story-director-modal .sd-storyboard-consistency-row { grid-template-columns: 1fr; }
   #story-director-modal .sd-storyboard-hero-card { min-height: 112px; }
-  #story-director-modal .sd-storyboard-magazine { min-height: 0; padding: 17px; }
-  #story-director-modal .sd-storyboard-magazine > header { flex-direction: column; }
-  #story-director-modal .sd-storyboard-capture-row { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
-  #story-director-modal .sd-storyboard-profile-page > header { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; }
-  #story-director-modal .sd-storyboard-profile-page > header .sd-btn { min-width: 38px; padding-inline: 10px; font-size: 0; }
-  #story-director-modal .sd-storyboard-profile-page > header .sd-btn i { margin: 0; font-size: 14px; }
-  #story-director-modal .sd-storyboard-magazine > header h3 { margin-bottom: 5px; }
-  #story-director-modal .sd-storyboard-file-stack { min-height: 112px; overflow-x: auto; overflow-y: hidden; padding-bottom: 12px; scrollbar-width: none; }
-  #story-director-modal .sd-storyboard-file-stack::-webkit-scrollbar { display: none; }
-  #story-director-modal .sd-storyboard-file { flex: 0 0 124px; margin-left: -12px; transform: none; }
-  #story-director-modal .sd-storyboard-file:hover { margin-right: 0; transform: none; }
-  #story-director-modal .sd-storyboard-profile-sheet { grid-template-columns: 1fr; }
-  #story-director-modal .sd-storyboard-profile-copy label { grid-template-columns: 76px minmax(0, 1fr); }
-  #story-director-modal .sd-storyboard-profile-photo { width: min(70%, 240px); min-height: 0; margin: 0 auto; }
   #story-director-modal .sd-storyboard-gallery { columns: 1; }
   #story-director-modal .sd-storyboard-gallery-actions .sd-icon-btn { width: 38px; height: 38px; }
   #story-director-modal .sd-storyboard-gallery-tools { grid-template-columns: 1fr; }
@@ -3166,22 +3109,6 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 /* ---------- 活幕·势：势力格局 / 世界事件可视化面板 ---------- */
 #story-director-modal .sd-geo-tab { display: flex; flex-direction: column; gap: 16px; }
 
-/* header 入口按钮（API 设置图标左侧）：底框与设置/外观按钮保持一致（圆形描边+玻璃底），仅图标随主题色 */
-#story-director-modal .sd-geo-shortcut {
-  position: static !important;
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; padding: 0 !important;
-  border: 1px solid var(--sd-hairline) !important;
-  border-radius: 999px !important; cursor: pointer;
-  color: var(--sd-accent) !important;
-  background: var(--sd-glass-weak) !important;
-  box-shadow: none !important;
-  transition: background .2s ease, color .2s ease;
-}
-#story-director-modal .sd-geo-shortcut i { font-size: 14px; }
-#story-director-modal .sd-geo-shortcut:hover { background: var(--sd-glass) !important; }
-#story-director-modal .sd-geo-shortcut.active { color: var(--sd-accent) !important; background: var(--sd-glass) !important; }
-
 /* 快捷窗图标按钮（下载/收藏） */
 .sd-tts-pop-icon {
   width: 30px; height: 30px;
@@ -3931,7 +3858,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
    阅读器跟随千幕主题与字体；全屏走 body portal 覆盖整个 ST 页面。
    ============================================================ */
 
-/* ── 头部入口按钮（与 sd-geo-shortcut 同款圆形框） ── */
+/* ── 头部圆形入口按钮 ── */
 #story-director-modal .sd-coread-shortcut {
   position: static !important;
   display: inline-flex; align-items: center; justify-content: center;
@@ -5448,7 +5375,6 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 
 #story-director-modal .sd-storyboard-create,
 #story-director-modal .sd-storyboard-connection,
-#story-director-modal .sd-storyboard-characters,
 #story-director-modal .sd-storyboard-assets-page,
 #story-director-modal .sd-storyboard-materials-page,
 #story-director-modal .sd-storyboard-gallery-page,
@@ -6074,214 +6000,6 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-pipeline-stages li b { color: var(--sd-muted); font-size: 10px; font-weight: 600; }
 #story-director-modal .sd-storyboard-pipeline-stages li small { grid-column: 1 / -1; color: #c85e5e; font-size: 10px; line-height: 1.45; }
 
-/* Character directory: no overlapping files; three stable folders on phones. */
-#story-director-modal .sd-storyboard-magazine {
-  min-height: 0;
-  padding: 18px;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--sd-card) 94%, var(--sd-glass-weak));
-}
-#story-director-modal .sd-storyboard-magazine > header {
-  display: grid;
-  grid-template-columns: minmax(140px, 1fr) minmax(180px, .55fr);
-  align-items: center;
-  gap: 9px 16px;
-  padding-bottom: 13px;
-  border-bottom: 1px solid var(--sd-hairline);
-}
-#story-director-modal .sd-storyboard-directory > header > div:first-child { grid-column: 1; grid-row: 1 / 3; }
-#story-director-modal .sd-storyboard-magazine > header h3 {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-  margin: 5px 0 0;
-  color: var(--sd-text);
-  font-family: ui-serif, Georgia, 'Times New Roman', serif;
-  font-size: 25px;
-  font-weight: 500;
-  line-height: 1.12;
-  letter-spacing: 0;
-}
-#story-director-modal .sd-storyboard-magazine > header h3 br { display: none; }
-#story-director-modal .sd-storyboard-magazine > header h3 sup { margin: 0; font-size: 12px; }
-#story-director-modal .sd-storyboard-capture-row { flex: 0 0 auto; gap: 7px; }
-#story-director-modal .sd-storyboard-capture-row .sd-btn { min-width: 72px; min-height: 36px; padding-inline: 11px !important; }
-#story-director-modal .sd-storyboard-current-subjects {
-  grid-column: 2;
-  grid-row: 1;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
-  gap: 7px;
-}
-#story-director-modal .sd-storyboard-current-subjects article {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-#story-director-modal .sd-storyboard-current-subjects img,
-#story-director-modal .sd-storyboard-current-subjects article > i {
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--sd-hairline);
-  border-radius: 50%;
-  object-fit: cover;
-  background: var(--sd-pre);
-  color: var(--sd-muted);
-}
-#story-director-modal .sd-storyboard-current-subjects span {
-  max-width: 100%;
-  overflow: hidden;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: var(--sd-folder-head);
-  color: var(--sd-muted);
-  font-size: 9px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-#story-director-modal .sd-storyboard-current-subjects span b { margin-right: 5px; color: var(--sd-accent); font-size: 8px; letter-spacing: .08em; }
-#story-director-modal .sd-storyboard-current-subjects article > small {
-  max-width: 100%;
-  overflow: hidden;
-  color: var(--sd-muted);
-  font-size: 8px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-#story-director-modal .sd-storyboard-directory > header > .sd-storyboard-capture-row {
-  grid-column: 2;
-  grid-row: 2;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-#story-director-modal .sd-storyboard-directory > header > .sd-storyboard-capture-row .sd-btn { min-width: 0; }
-#story-director-modal .sd-storyboard-directory-group { margin-top: 14px; padding-top: 0; border-top: 0; }
-#story-director-modal .sd-storyboard-directory-group > header { min-height: 34px; margin-bottom: 7px; }
-#story-director-modal .sd-storyboard-directory-group > header > img,
-#story-director-modal .sd-storyboard-directory-group > header > i:first-child {
-  width: 31px;
-  height: 31px;
-  flex: 0 0 31px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--sd-hairline);
-  border-radius: 50%;
-  object-fit: cover;
-  background: var(--sd-pre);
-  color: var(--sd-muted);
-}
-#story-director-modal .sd-storyboard-directory-group > header div { min-width: 0; gap: 7px; }
-#story-director-modal .sd-storyboard-file-stack,
-#story-director-modal .sd-storyboard-directory-grid {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
-  align-items: stretch;
-  gap: 8px;
-  padding: 0;
-  overflow: visible;
-}
-#story-director-modal .sd-storyboard-file {
-  width: 100%;
-  min-width: 0;
-  min-height: 118px;
-  margin: 0;
-  padding: 10px;
-  border-radius: 5px 13px 5px 5px;
-  box-shadow: 0 6px 15px rgba(0, 0, 0, .06);
-  transform: none;
-  text-align: left;
-}
-#story-director-modal .sd-storyboard-file::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  border-radius: inherit;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--sd-card) 4%, transparent) 28%, color-mix(in srgb, var(--sd-card) 88%, transparent) 100%);
-  pointer-events: none;
-}
-#story-director-modal .sd-storyboard-file:hover,
-#story-director-modal .sd-storyboard-file:focus-visible {
-  margin: 0;
-  transform: translateY(-3px);
-}
-#story-director-modal .sd-storyboard-file img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: .78;
-  pointer-events: none;
-}
-#story-director-modal .sd-storyboard-file > *:not(img) { position: relative; z-index: 1; }
-#story-director-modal .sd-storyboard-file > span { left: 9px; right: auto; top: 8px; color: var(--sd-text); }
-#story-director-modal .sd-storyboard-file > em { left: auto; right: 9px; top: 9px; bottom: auto; width: 7px; height: 7px; padding: 0; border: 0; border-radius: 50%; background: #76b88a; box-shadow: 0 0 0 3px color-mix(in srgb, #76b88a 18%, transparent); }
-#story-director-modal .sd-storyboard-file > b { margin-top: auto; color: var(--sd-text); text-shadow: 0 1px 6px color-mix(in srgb, var(--sd-card) 90%, transparent); }
-#story-director-modal .sd-storyboard-file > b > i { display: inline-block; min-width: 100%; font-style: normal; }
-#story-director-modal .sd-storyboard-file:hover > b.is-overflowing > i,
-#story-director-modal .sd-storyboard-file:focus-visible > b.is-overflowing > i { animation: sd-storyboard-file-title 6s linear infinite alternate; }
-@keyframes sd-storyboard-file-title { from { transform: translateX(0); } to { transform: translateX(calc(-1 * var(--sd-title-shift, 0px))); } }
-
-/* Profile detail keeps the reference portrait at the upper left. */
-#story-director-modal .sd-storyboard-profile-page > header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; }
-#story-director-modal .sd-storyboard-profile-page > header .sd-btn {
-  min-width: 38px !important;
-  width: 38px;
-  height: 38px;
-  padding: 0 !important;
-  font-size: 0 !important;
-}
-#story-director-modal .sd-storyboard-profile-page > header .sd-btn i { margin: 0; font-size: 14px; }
-#story-director-modal .sd-storyboard-profile-heading { min-width: 0; }
-#story-director-modal .sd-storyboard-profile-sheet {
-  grid-template-columns: minmax(150px, .62fr) minmax(0, 1.38fr);
-  gap: 18px;
-  margin-top: 16px;
-  padding-top: 0;
-  border-top: 0;
-}
-#story-director-modal .sd-storyboard-profile-photo,
-#story-director-modal .sd-storyboard-profile-reference {
-  grid-column: 1;
-  grid-row: 1;
-  width: 100%;
-  min-height: 0;
-  margin: 0;
-  border: 1px solid var(--sd-hairline);
-  border-radius: 8px;
-}
-#story-director-modal .sd-storyboard-profile-photo { aspect-ratio: 3 / 4; min-height: 0; }
-#story-director-modal .sd-storyboard-profile-photo img { height: 100%; aspect-ratio: auto; }
-#story-director-modal .sd-storyboard-profile-copy,
-#story-director-modal .sd-storyboard-profile-fields {
-  grid-column: 2;
-  grid-row: 1;
-  min-width: 0;
-}
-#story-director-modal .sd-storyboard-profile-copy label {
-  grid-template-columns: 82px minmax(0, 1fr);
-  gap: 9px;
-  padding-top: 7px;
-}
-#story-director-modal .sd-storyboard-reference-picker {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(118px, .38fr) minmax(0, 1fr);
-  gap: 7px;
-}
-#story-director-modal .sd-storyboard-reference-picker.single { grid-template-columns: 1fr; }
-#story-director-modal .sd-storyboard-reference-picker .text_pole { width: 100%; min-width: 0; margin: 0 !important; }
-#story-director-modal .sd-storyboard-profile-actions { gap: 7px; }
-
 /* Gallery controls stay on one line; image tools reveal without moving cards. */
 #story-director-modal .sd-storyboard-gallery-head {
   align-items: center;
@@ -6372,28 +6090,6 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-compiler-settings .sd-storyboard-inline-control { grid-template-columns: minmax(0, 1fr) auto auto; }
   #story-director-modal .sd-storyboard-compiler-settings .sd-storyboard-compiler-api { grid-column: 1 / -1; }
   #story-director-modal .sd-storyboard-grid-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  #story-director-modal .sd-storyboard-magazine { padding: 14px 12px; }
-  #story-director-modal .sd-storyboard-magazine > header { align-items: center; }
-  #story-director-modal .sd-storyboard-magazine > header h3 { font-size: 22px; }
-  #story-director-modal .sd-storyboard-directory > header { grid-template-columns: minmax(112px, 1fr) minmax(160px, .7fr); }
-  #story-director-modal .sd-storyboard-capture-row { width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  #story-director-modal .sd-storyboard-capture-row .sd-btn { min-width: 56px; padding-inline: 9px !important; font-size: 11px !important; }
-  #story-director-modal .sd-storyboard-file-stack,
-  #story-director-modal .sd-storyboard-directory-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
-  #story-director-modal .sd-storyboard-file { min-height: 108px; padding: 8px; }
-  #story-director-modal .sd-storyboard-file b { font-size: 11px; }
-  #story-director-modal .sd-storyboard-file small { font-size: 8px; }
-  #story-director-modal .sd-storyboard-profile-sheet { grid-template-columns: minmax(108px, .42fr) minmax(0, .58fr); gap: 9px; }
-  #story-director-modal .sd-storyboard-profile-photo,
-  #story-director-modal .sd-storyboard-profile-reference {
-    grid-column: 1;
-    grid-row: 1;
-    width: 100%;
-    justify-self: start;
-  }
-  #story-director-modal .sd-storyboard-profile-copy,
-  #story-director-modal .sd-storyboard-profile-fields { grid-column: 2; grid-row: 1; }
-  #story-director-modal .sd-storyboard-reference-picker { grid-template-columns: 1fr; }
   #story-director-modal .sd-storyboard-asset-row,
   #story-director-modal .sd-storyboard-vibe-row { gap: 5px; padding: 6px; }
   #story-director-modal .sd-storyboard-asset-main { grid-template-columns: minmax(92px, .38fr) minmax(0, 1fr); gap: 7px; }
@@ -6415,21 +6111,6 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-root details.sd-card > summary { padding-inline: 11px; }
   #story-director-modal .sd-storyboard-root details.sd-card > summary small { display: none; }
   #story-director-modal .sd-storyboard-mode button { padding-inline: 5px; font-size: 10px; }
-  #story-director-modal .sd-storyboard-directory > header {
-    grid-template-columns: 1fr;
-    align-items: start;
-  }
-  #story-director-modal .sd-storyboard-directory > header > div:first-child { grid-column: 1; grid-row: 1; }
-  #story-director-modal .sd-storyboard-current-subjects { grid-column: 1; grid-row: 2; width: min(230px, 100%); }
-  #story-director-modal .sd-storyboard-directory > header > .sd-storyboard-capture-row { grid-column: 1; grid-row: 3; }
-  #story-director-modal .sd-storyboard-magazine > header h3 { font-size: 20px; }
-  #story-director-modal .sd-storyboard-capture-row { gap: 5px; }
-  #story-director-modal .sd-storyboard-capture-row .sd-btn { min-width: 42px; padding-inline: 7px !important; font-size: 0 !important; }
-  #story-director-modal .sd-storyboard-capture-row .sd-btn i { margin: 0; font-size: 13px; }
-  #story-director-modal .sd-storyboard-file { min-height: 98px; }
-  #story-director-modal .sd-storyboard-profile-copy label { grid-template-columns: 1fr; gap: 4px; padding-top: 6px; }
-  #story-director-modal .sd-storyboard-profile-copy { gap: 7px; }
-  #story-director-modal .sd-storyboard-profile-no { margin-bottom: 0; }
   #story-director-modal .sd-storyboard-gallery-tools { grid-template-columns: minmax(0, 1fr) minmax(98px, 37%); }
   #story-director-modal .sd-storyboard-gallery-tools .text_pole { font-size: 12px !important; }
   #story-director-modal .sd-storyboard-asset-tools { grid-template-columns: minmax(0, 1fr) minmax(98px, 37%); }
@@ -6451,6 +6132,116 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-material-grid,
   #story-director-modal .sd-storyboard-tag-grid,
   #story-director-modal .sd-storyboard-vibe-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* v1.56.1 · 分镜精调：独占工作区、手动世界书、取景预设与画师合集。 */
+#story-director-modal .sd-storyboard-shortcut {
+  position: static !important;
+  width: 32px; height: 32px; padding: 0 !important;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--sd-hairline) !important;
+  border-radius: 999px !important;
+  background: var(--sd-glass-weak) !important;
+  color: var(--sd-accent) !important;
+  cursor: pointer;
+}
+#story-director-modal .sd-storyboard-shortcut:hover { background: var(--sd-glass) !important; }
+#story-director-modal.sd-storyboard-mode .sd-window { display: block; }
+#story-director-modal.sd-storyboard-mode .sd-storyboard-body {
+  height: 100%; max-height: none; padding: 12px !important; overflow: auto;
+}
+#story-director-modal.sd-storyboard-mode .sd-storyboard-root { position: relative; min-height: 100%; }
+#story-director-modal .sd-storyboard-exit {
+  position: sticky; z-index: 24; top: 0; align-self: flex-end;
+  width: 40px; min-width: 40px; height: 40px; margin: 0 4px -50px 0;
+  border-radius: 999px; background: color-mix(in srgb, var(--sd-card) 88%, transparent) !important;
+  box-shadow: 0 5px 18px rgba(0,0,0,.1); backdrop-filter: blur(18px);
+}
+#story-director-modal .sd-storyboard-nav { grid-template-columns: repeat(4, minmax(0, 1fr)); padding-right: 49px; }
+
+#story-director-modal .sd-storyboard-automation-head { align-items: center; }
+#story-director-modal .sd-storyboard-capsule-switch span {
+  width: 52px; min-width: 52px; height: 28px; padding: 0;
+}
+#story-director-modal .sd-storyboard-capsule-switch span::before { left: 4px; width: 20px; height: 20px; }
+#story-director-modal .sd-storyboard-capsule-switch input:checked + span { padding: 0; }
+#story-director-modal .sd-storyboard-capsule-switch input:checked + span::before { left: calc(100% - 24px); }
+
+#story-director-modal .sd-storyboard-prompt-stack { display: grid; gap: 10px; }
+#story-director-modal .sd-storyboard-prompt-stack > label { display: grid; gap: 5px; }
+#story-director-modal .sd-storyboard-worldbook-title { padding: 2px 1px 10px; font-size: 14px; }
+#story-director-modal .sd-storyboard-world-entries { max-height: 340px; overflow: auto; }
+
+#story-director-modal .sd-storyboard-presets-page,
+#story-director-modal .sd-storyboard-preset-editor-page,
+#story-director-modal .sd-storyboard-artist-editor-page { min-height: calc(100% - 56px); display: flex; flex-direction: column; gap: 12px; }
+#story-director-modal .sd-storyboard-preset-controls { display: grid; gap: 9px; padding: 12px !important; }
+#story-director-modal .sd-storyboard-preset-control-row { display: flex; align-items: center; gap: 7px; }
+#story-director-modal .sd-storyboard-preset-control-row .text_pole { min-width: 0; flex: 1; margin: 0 !important; }
+#story-director-modal .sd-storyboard-preset-control-row .sd-icon-btn { width: 38px; min-width: 38px; height: 38px; margin: 0; }
+#story-director-modal .sd-storyboard-preset-list { display: grid; gap: 8px; padding-bottom: 72px; }
+#story-director-modal .sd-storyboard-preset-entry {
+  display: block; padding: 0; overflow: hidden; background: var(--sd-card);
+}
+#story-director-modal .sd-storyboard-preset-entry > summary {
+  min-height: 48px; display: flex; align-items: center; gap: 9px; padding: 7px 10px; list-style: none; cursor: pointer;
+}
+#story-director-modal .sd-storyboard-preset-entry > summary::-webkit-details-marker { display: none; }
+#story-director-modal .sd-storyboard-preset-entry > summary > b { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-storyboard-preset-entry > summary > span { color: var(--sd-muted); font-size: 10px; }
+#story-director-modal .sd-storyboard-preset-entry > summary > div { display: flex; gap: 4px; }
+#story-director-modal .sd-storyboard-preset-entry > summary .sd-icon-btn { width: 30px; min-width: 30px; height: 30px; margin: 0; }
+#story-director-modal .sd-storyboard-preset-entry-drag { width: auto; height: auto; cursor: grab; }
+#story-director-modal .sd-storyboard-preset-entry-preview { padding: 0 14px 14px; color: var(--sd-muted); line-height: 1.65; white-space: pre-wrap; }
+#story-director-modal .sd-storyboard-add-preset-item {
+  position: sticky; z-index: 20; bottom: 8px; align-self: flex-end;
+  width: 46px; min-width: 46px; height: 46px; margin: auto 7px 7px 0; border-radius: 50%;
+  box-shadow: 0 8px 25px rgba(0,0,0,.17);
+}
+#story-director-modal .sd-storyboard-preset-editor-page > header,
+#story-director-modal .sd-storyboard-artist-editor-page > header { padding: 11px 4px; font-size: 18px; }
+#story-director-modal .sd-storyboard-preset-editor-fields,
+#story-director-modal .sd-storyboard-artist-editor-fields { display: grid; gap: 12px; }
+#story-director-modal .sd-storyboard-preset-editor-fields label,
+#story-director-modal .sd-storyboard-artist-editor-fields label { display: grid; gap: 6px; }
+#story-director-modal .sd-storyboard-preset-item-instruction,
+#story-director-modal .sd-storyboard-artist-edit-value { min-height: min(52vh, 430px); resize: vertical; }
+#story-director-modal .sd-storyboard-preset-editor-page > footer,
+#story-director-modal .sd-storyboard-artist-editor-page > footer { position: sticky; bottom: 0; display: flex; justify-content: space-between; gap: 10px; margin-top: auto; padding: 10px 0 2px; background: var(--sd-sticky-bg, var(--sd-bg)); }
+
+#story-director-modal .sd-storyboard-artist-head > div:last-child { grid-template-columns: minmax(0, 1fr) 38px 38px; gap: 6px; }
+#story-director-modal .sd-storyboard-artist-folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 9px; }
+#story-director-modal .sd-storyboard-artist-folder { position: relative; overflow: hidden; border: 1px solid var(--sd-hairline); border-radius: 13px; background: var(--sd-card); }
+#story-director-modal .sd-storyboard-artist-folder-open { width: 100%; display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 9px; border: 0; background: transparent; color: inherit; text-align: left; }
+#story-director-modal .sd-storyboard-artist-folder-open > span { display: grid; grid-template-columns: repeat(2, 1fr); overflow: hidden; aspect-ratio: 4/3; border-radius: 8px; background: var(--sd-pre); }
+#story-director-modal .sd-storyboard-artist-folder-open img { width: 100%; height: 100%; object-fit: cover; }
+#story-director-modal .sd-storyboard-artist-folder-open i { display: grid; place-items: center; color: var(--sd-muted); }
+#story-director-modal .sd-storyboard-artist-folder > div { position: absolute; top: 5px; right: 5px; display: flex; gap: 3px; }
+#story-director-modal .sd-storyboard-artist-folder > div .sd-icon-btn { width: 28px; min-width: 28px; height: 28px; margin: 0; backdrop-filter: blur(10px); }
+#story-director-modal .sd-storyboard-artist-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+#story-director-modal .sd-storyboard-artist-tags em { padding: 2px 6px; border-radius: 999px; background: var(--sd-glass-weak); color: var(--sd-muted); font-size: 9px; font-style: normal; }
+
+@keyframes sd-world-edge-breathe { 0%,100% { opacity: .34; filter: blur(.2px); } 50% { opacity: .86; filter: blur(0); } }
+#story-director-modal .sd-world-flip-shell { position: relative; grid-column: 1 / -1; width: 100%; min-height: 100%; touch-action: pan-y; }
+#story-director-modal .sd-world-page { min-width: 0; }
+#story-director-modal .sd-world-edge {
+  position: absolute; z-index: 8; top: 50%; width: 27px; height: 116px; padding: 0; border: 0;
+  color: var(--sd-accent); background: linear-gradient(90deg, color-mix(in srgb, var(--sd-accent) 18%, transparent), transparent);
+  animation: sd-world-edge-breathe 2.8s ease-in-out infinite; cursor: pointer;
+}
+#story-director-modal .sd-world-edge-left { left: -12px; border-radius: 0 99px 99px 0; }
+#story-director-modal .sd-world-edge-right { right: -12px; border-radius: 99px 0 0 99px; transform: scaleX(-1); }
+#story-director-modal .sd-world-edge i { font-size: 10px; }
+
+#story-director-modal .sd-term { max-height: min(52vh, 720px); }
+
+@media (prefers-reduced-motion: reduce) { #story-director-modal .sd-world-edge { animation: none; opacity: .58; } }
+@media (max-width: 430px) {
+  #story-director-modal.sd-storyboard-mode .sd-storyboard-body { padding: 8px !important; }
+  #story-director-modal .sd-storyboard-nav button span { display: none; }
+  #story-director-modal .sd-storyboard-preset-control-row { flex-wrap: wrap; }
+  #story-director-modal .sd-storyboard-preset-control-row .text_pole { flex-basis: calc(100% - 90px); }
+  #story-director-modal .sd-storyboard-artist-folders { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

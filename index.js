@@ -14,7 +14,6 @@ import {
   uniqueClean,
   normalizeSourceName,
   sanitizeFolder,
-  clipLog,
   estimateTokens,
   snip,
   escapeSlashValue,
@@ -98,7 +97,7 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.56.0';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.56.1';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_MODEL_REGISTRY,
@@ -129,7 +128,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.56.0';
+const VERSION = '1.56.1';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -171,7 +170,6 @@ const BLUEPRINT_REVISION = 1;          // 默认剧本模板版本，升一档�
 const BUILTIN_THEATER_REVISION = 6;   // 内置剧场组版本，升一档即重置内置项（保留用户自建剧札）。
 const QIANMU_THEATER_REVISION = 5;   // 千幕剧场组版本，与吱吱组各自独立；升一档即重置千幕内置项（保留用户自建）。
 const LOG_LIMIT = 5;
-const LOG_CLIP = 80000;
 const FOCUS_CLOCK_WEEK_ENTRY_LIMIT = 160; // 仅保留本自然周明细；容量只作异常保护，不再暗存不可见的旧记录
 const FOCUS_CLOCK_SOUND_PRESETS = Object.freeze({
   light: { label: '光', url: new URL('./assets/focus-sounds/light.mp3', import.meta.url).href },
@@ -840,6 +838,8 @@ const DEFAULT_SETTINGS = Object.freeze({
 
 let settings = null;
 let activeTab = 'dashboard';
+let storyboardReturnTab = 'dashboard';
+let worldPage = 'front';
 let theaterView = null; // null=常规；{mode:'read', scene}=阅读；{mode:'favorites'}=收藏夹
 let readerView = null;  // 伴读：null=书架；{ bookId, fullscreen, chapterIndex }=阅读器全屏子视图
 let editorView = null;  // null=常规；{target, title, value, returnTab}=行内全屏编辑（沿用阅读页逻辑，不另开 body 窗口）
@@ -883,7 +883,6 @@ const storyboardGallerySelection = new Set();
 let storyboardGallerySelectMode = false;
 let storyboardGalleryVisibleCount = 40;
 let storyboardGalleryOpenCollectionId = '';
-let storyboardReferencePicker = null; // 阅片室作为档案参考图选择器时的返回上下文；仅保留在当前页面会话
 let storyboardLightboxEl = null;
 let initialized = false;
 let duplicateRuntimeWarned = false;
@@ -1161,8 +1160,8 @@ function migrateSettings(s) {
         status: s.lastLog.status === 'loading' ? 'cancelled' : s.lastLog.status,
         time: s.lastLog.time || '',
         duration: s.lastLog.duration || '',
-        request: clipLog(s.lastLog.request),
-        response: clipLog(s.lastLog.response),
+        request: String(s.lastLog.request || ''),
+        response: String(s.lastLog.response || ''),
         error: s.lastLog.error || '',
       });
   s.logHistory = s.logHistory.slice(0, LOG_LIMIT);
@@ -1221,12 +1220,6 @@ function migrateSettings(s) {
     delete s.contextOptions.removeHtmlComments;
   }
 }
-
-// clipLog - 已迁移到 qianmu-storyboard-utils.js
-// function clipLog(text, limit = LOG_CLIP) {
-//   const value = String(text || '');
-//   return value.length > limit ? `${value.slice(0, limit)}\n…[内容过长已截断]` : value;
-// }
 
 function pushLog(entry) {
   settings.logHistory ||= [];
@@ -3603,7 +3596,7 @@ function makeStreamLogUpdater(log) {
     }
   };
   return (full) => {
-    log.response = clipLog(full);
+    log.response = String(full || '');
     const now = Date.now();
     if (now - lastPaint < 80) return;
     lastPaint = now;
@@ -3627,7 +3620,7 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
   try {
     const userPrompt = await buildPrompt();
     const messages = [{ role: 'system', content: settings.systemPrompt || DEFAULT_SYSTEM_PROMPT }, { role: 'user', content: userPrompt }];
-    log.request = clipLog(JSON.stringify(messages, null, 2));
+    log.request = JSON.stringify(messages, null, 2);
     saveSettings();
 
     const onDelta = settings.streamEnabled ? makeStreamLogUpdater(log) : null;
@@ -3635,15 +3628,15 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
       ? await callSillyTavernModel(userPrompt, settings.systemPrompt || DEFAULT_SYSTEM_PROMPT, onDelta)
       : await callExternalApi(messages, onDelta);
     if (cancelRequested) throw new Error('USER_CANCELLED');
-    log.response = clipLog(raw);
+    log.response = String(raw || '');
     const store = getChatStore();
     const previousPlan = store.plan ? clone(store.plan) : null;
     const newPlan = normalizePlan(extractJson(raw));
     const initialRemoved = directorDedupePlan(newPlan);
     const quality = await repairDirectorPlanQuality(newPlan, previousPlan, store);
     if (cancelRequested) throw new Error('USER_CANCELLED');
-    if (quality.raw) log.response = clipLog(`${raw}\n\n【千幕定向补写】\n${quality.raw}`);
-    else if (quality.error) log.response = clipLog(`${raw}\n\n【千幕质量门控】\n定向补写未完成，已保留首轮可用结果：${quality.error}`);
+    if (quality.raw) log.response = `${raw}\n\n【千幕定向补写】\n${quality.raw}`;
+    else if (quality.error) log.response = `${raw}\n\n【千幕质量门控】\n定向补写未完成，已保留首轮可用结果：${quality.error}`;
     const now = new Date().toISOString();
     store.directorQuality = {
       at: now,
@@ -3799,10 +3792,11 @@ function resolveRestorableTab(tab) {
   // v1.30 起「编剧」并入「幕后」。旧设置里若仍记着 blueprint，直接迁移到 settings，
   // 避免更新后恢复到一个已经撤掉的顶层入口。
   if (tab === 'blueprint') return 'settings';
+  if (tab === 'imagegen') return 'dashboard';
+  if (tab === 'geopolitics') return 'castworld';
   const KNOWN = ['dashboard', 'focus', 'tasksnodes', 'castworld', 'context', 'settings', 'theater', 'tts', 'imagegen', 'geopolitics', 'coread', 'plug'];
   if (!KNOWN.includes(tab)) return 'dashboard';
   if (tab === 'coread' && !COREAD_ENABLED) return 'dashboard';
-  if (tab === 'geopolitics' && !settings.geopoliticsEnabled) return 'dashboard';
   return tab;
 }
 
@@ -3810,7 +3804,21 @@ function openModal(tab) {
   if (!settings.enabled) return toast('千幕已关闭。', 'warning');
   seedBuiltinTheaters();   // 开窗渲染前补种：根除「更新后首开剧札为空、需重开才显示」（幂等，两组 revision 最新即早退）
   // tab 显式传入则用之；否则恢复上次停留的标签（校验回退）——修「不管上次停在哪，重开都回首页」。
-  activeTab = resolveRestorableTab(tab != null ? tab : (settings.lastTab || 'dashboard'));
+  const requestedTab = tab != null ? tab : (settings.lastTab || 'dashboard');
+  if (tab === 'imagegen') {
+    storyboardReturnTab = resolveRestorableTab(settings.lastTab || 'dashboard');
+    activeTab = 'imagegen';
+  } else if (requestedTab === 'geopolitics') {
+    if (!settings.geopoliticsEnabled) {
+      if (tab === 'geopolitics') toast('请先在幕后开启「活幕·势」。', 'info');
+      activeTab = 'dashboard';
+    } else {
+      worldPage = 'geopolitics';
+      activeTab = 'castworld';
+    }
+  } else {
+    activeTab = resolveRestorableTab(requestedTab);
+  }
   theaterView = null;
   let modal = document.getElementById(MODAL_ID);
   if (!modal) {
@@ -3829,13 +3837,6 @@ function closeModal() {
     const storyboardRoot = document.getElementById(MODAL_ID)?.querySelector('.sd-storyboard-root');
     if (storyboardRoot && storyboardState().view === 'create') storyboardCaptureWorkbench(storyboardRoot);
     storyboardCloseLightbox();
-    if (storyboardReferencePicker) {
-      const state = storyboardState();
-      state.view = 'characters';
-      state.characterView = 'edit';
-      saveSettings();
-    }
-    storyboardReferencePicker = null;
     storyboardGallerySelection.clear();
   }
   focusClockCloseVoiceDrawer();
@@ -5369,7 +5370,7 @@ async function runQuickWheelCommand(id) {
     return openModal('coread');
   }
   if (id === 'floor') return openFloorNavigator();
-  if (id === 'geopolitics' && !settings.geopoliticsEnabled) return toast('请先在幕后开启「活幕·势」。', 'info');
+  if (id === 'geopolitics') return openModal('geopolitics');
   if (QUICK_COMMAND_IDS.includes(id)) return openModal(id);
 }
 
@@ -5701,7 +5702,7 @@ function renderModal() {
   if (!modal) return;
   // 记录当前 tab 供下次打开恢复。只在真变化且非临时视图时落盘，避免每次静默重渲染都写。
   // theater 的阅读/收藏子视图（theaterView）是临时态，仍记 tab='theater' 无妨；editorView 是行内编辑、不改 activeTab。
-  if (activeTab && settings.lastTab !== activeTab) {
+  if (activeTab && !['imagegen', 'geopolitics'].includes(activeTab) && settings.lastTab !== activeTab) {
     settings.lastTab = activeTab;
     saveSettings();
   }
@@ -5718,17 +5719,18 @@ function renderModal() {
     ['theater', '幕外'],
     ['tts', '配音'],
     ['focus', '专注'],
-    ['imagegen', '分镜'],
   ];
   const wasOpen = modal.classList.contains('open');
   const animIn = modalJustOpened;   // 仅「打开」后的首帧入场动画，消费后清零，静默重渲染不再播（消除刷新闪动）
   modalJustOpened = false;
   const themeKey = THEME_KEYS.includes(settings.theme) ? settings.theme : 'light';
   const editorLayout = !!editorView || (activeTab === 'theater' && !!theaterView);
-  modal.className = `sd-theme-${themeKey}${wasOpen ? ' open' : ''}${animIn ? ' sd-anim-in' : ''}`;
+  const storyboardLayout = activeTab === 'imagegen';
+  modal.className = `sd-theme-${themeKey}${wasOpen ? ' open' : ''}${animIn ? ' sd-anim-in' : ''}${storyboardLayout ? ' sd-storyboard-mode' : ''}`;
   modal.innerHTML = `
     <div class="sd-backdrop"></div>
     <section class="sd-window" role="dialog" aria-label="${EXTENSION_NAME}">
+      ${storyboardLayout ? `<main class="sd-body sd-storyboard-body">${renderActiveTab()}</main>` : `
       <header class="sd-header">
         <div class="sd-titlebox">
           <h2>${EXTENSION_NAME}</h2>
@@ -5737,7 +5739,7 @@ function renderModal() {
         </div>
         <div class="sd-header-actions">
           ${COREAD_VISIBLE ? `<button class="sd-coread-shortcut ${activeTab === 'coread' ? 'active' : ''}" title="伴读" aria-label="伴读"><i class="fa-solid fa-book-open" data-qm-icon="coread-entry"></i></button>` : ''}
-          <button class="sd-geo-shortcut ${activeTab === 'geopolitics' ? 'active' : ''}" title="世界格局" aria-label="世界格局"><i class="fa-solid fa-atom" data-qm-icon="world-map"></i></button>
+          <button class="sd-storyboard-shortcut" title="分镜" aria-label="分镜"><i class="fa-solid fa-camera" data-qm-icon="qm-duotone-camera"></i></button>
           <button class="sd-plug-shortcut" title="API与日志"><i class="fa-solid fa-gear" data-qm-icon="qm-duotone-gear"></i></button>
           <div class="sd-theme-pick">
             <button class="sd-theme-btn" title="外观主题" aria-label="外观主题" aria-haspopup="true"><i class="fa-solid fa-palette"></i></button>
@@ -5755,8 +5757,9 @@ function renderModal() {
       <nav class="sd-tabs">
         ${tabs.map(([id, label]) => `<button class="sd-tab ${activeTab === id ? 'active' : ''}" data-tab="${id}">${label}</button>`).join('')}
       </nav>
-      <main class="sd-body${editorLayout ? ' sd-editor-body' : ''}">${['tasksnodes', 'castworld', 'context'].includes(activeTab) && !editorView ? `<div class="sd-cols-inner">${renderActiveTab()}</div>` : renderActiveTab()}</main>
+      <main class="sd-body${editorLayout ? ' sd-editor-body' : ''}">${['tasksnodes', 'context'].includes(activeTab) || (activeTab === 'castworld' && worldPage === 'front') ? (!editorView ? `<div class="sd-cols-inner">${renderActiveTab()}</div>` : renderActiveTab()) : renderActiveTab()}</main>
       ${renderInjectDock()}
+      `}
     </section>`;
   applyQianmuIcons(modal);
   // 以整个视口层判断点外关闭；比只绑 backdrop 更能抵抗 ST 美化重排或透明覆盖层抢占点击。
@@ -5766,7 +5769,11 @@ function renderModal() {
   modal.querySelector('.sd-window')?.addEventListener('click', (event) => event.stopPropagation());
   modal.querySelector('.sd-close')?.addEventListener('click', closeModal);
   modal.querySelector('.sd-plug-shortcut')?.addEventListener('click', () => { activeTab = 'plug'; renderModal(); });
-  modal.querySelector('.sd-geo-shortcut')?.addEventListener('click', () => { activeTab = 'geopolitics'; renderModal(); });
+  modal.querySelector('.sd-storyboard-shortcut')?.addEventListener('click', () => {
+    storyboardReturnTab = activeTab === 'imagegen' ? 'dashboard' : activeTab;
+    activeTab = 'imagegen';
+    renderModal();
+  });
   modal.querySelector('.sd-coread-shortcut')?.addEventListener('click', () => {
     if (!COREAD_ENABLED) { toast(COREAD_TEASER, 'info'); return; }   // 正式版：图标露出但功能沉睡，点击只弹预告
     activeTab = 'coread'; renderModal();
@@ -6277,7 +6284,7 @@ function renderGeopoliticsTab() {
 
 // 「势」星图交互：点选势力 → 高亮其牵连关系、淡化无关者，下方详情面板展开该势力档案
 function bindGeopoliticsTabEvents(root) {
-  if (activeTab !== 'geopolitics') return;
+  if (!(activeTab === 'geopolitics' || (activeTab === 'castworld' && worldPage === 'geopolitics'))) return;
   // 世界格局一键清除：势力 / 关系 / 世界事件同属跨幕活档案，与伏笔一样独立于扫帚单独清。
   // 绑定放在 svg 存在性判断之前——有世界事件无势力时面板无 svg，但清除按钮仍在态势带、需可点。
   root.querySelector('.sd-geo-clear')?.addEventListener('click', async () => {
@@ -6453,6 +6460,7 @@ function bindGeopoliticsTabEvents(root) {
 
 function renderInjectDock() {
   if (editorView) return '';   // 行内编辑视图独占界面，不浮写入坞
+  if (activeTab === 'castworld' && worldPage === 'geopolitics') return '';
   if (!['tasksnodes', 'castworld'].includes(activeTab) || !currentPlan()) return '';
   return '<div class="sd-inject-dock"><button class="sd-btn sd-primary sd-inject-selected" type="button" disabled>写入已选 (<span>0</span>)</button></div>';
 }
@@ -6624,10 +6632,49 @@ function renderTasksNodesTab() {
 }
 
 function renderCastWorldTab() {
+  const side = worldPage === 'geopolitics' ? 'geopolitics' : 'front';
+  const content = side === 'geopolitics' ? renderGeopoliticsTab() : renderCastWorldFront();
+  const targetLabel = side === 'front' ? '翻到世界背面' : '返回世界正面';
+  return `<div class="sd-world-flip-shell" data-world-side="${side}">
+    <button type="button" class="sd-world-edge sd-world-edge-left" title="${targetLabel}" aria-label="${targetLabel}"><i class="fa-solid fa-chevron-left"></i></button>
+    <div class="sd-world-page">${content}</div>
+    <button type="button" class="sd-world-edge sd-world-edge-right" title="${targetLabel}" aria-label="${targetLabel}"><i class="fa-solid fa-chevron-right"></i></button>
+  </div>`;
+}
+
+function renderCastWorldFront() {
   const p = currentPlan();
   if (!p) return renderNoPlan('角色世界尚未生成');
   // 尘寰群生置顶（市井剪影，先声夺人），再是可折叠的角色动向 / 关系暗涌 / 世界回声（记忆开合，避免本页过长）
   return `${renderWorldChatterCard(p)}${renderPlanSectionFold('角色动向', p.npc_updates || [], 'npc', 'castfold-npc')}${renderRelationUndercurrentsCard(p)}${renderPlanSectionFold('世界回声', p.world_updates || [], 'world', 'castfold-world')}`;
+}
+
+function bindWorldFlipEvents(root) {
+  if (activeTab !== 'castworld') return;
+  const shell = root.querySelector('.sd-world-flip-shell');
+  if (!shell) return;
+  const flip = () => {
+    if (worldPage === 'front' && !settings.geopoliticsEnabled) {
+      toast('请先在幕后开启「活幕·势」。', 'info');
+      return;
+    }
+    worldPage = worldPage === 'geopolitics' ? 'front' : 'geopolitics';
+    renderModal();
+  };
+  shell.querySelectorAll('.sd-world-edge').forEach((button) => button.addEventListener('click', flip));
+  let startX = 0, startY = 0, pointerId = null;
+  shell.addEventListener('pointerdown', (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    if (event.target.closest('button, input, select, textarea, a, summary')) return;
+    pointerId = event.pointerId; startX = event.clientX; startY = event.clientY;
+  });
+  shell.addEventListener('pointerup', (event) => {
+    if (pointerId !== event.pointerId) return;
+    const dx = event.clientX - startX, dy = event.clientY - startY;
+    pointerId = null;
+    if (Math.abs(dx) >= 52 && Math.abs(dx) > Math.abs(dy) * 1.25) flip();
+  });
+  shell.addEventListener('pointercancel', () => { pointerId = null; });
 }
 
 // 关系暗涌：角色之间自行纠缠的张力（可负可中可正），独立于 {{user}} 演变。一行一簇关系，标出基调、走势与 user 知情程度。
@@ -10019,122 +10066,7 @@ function storyboardState() {
   state.pendingParagraphIndex = Number.isInteger(state.pendingParagraphIndex) ? state.pendingParagraphIndex : null;
   state.pendingShotType = String(state.pendingShotType || 'custom');
   state.pendingCompilerStages = Array.isArray(state.pendingCompilerStages) ? state.pendingCompilerStages : [];
-  storyboardSyncLegacyEntities(state);
   return state;
-}
-
-function storyboardSyncLegacyEntities(state) {
-  if (!state?.entities) return;
-  let changed = false;
-  for (const item of state.characters || []) {
-    const type = item.subjectType === 'user' ? 'user' : item.subjectType === 'cast' ? 'cast' : 'char';
-    const bucket = state.entities[type] || (state.entities[type] = []);
-    let entity = bucket.find((entry) => entry.subjectKey === item.subjectKey);
-    if (!entity) {
-      entity = {
-        id: uid(`entity-${type}`), type, subjectKey: item.subjectKey || item.id,
-        name: item.subjectName || item.name || '未命名', avatarUrl: item.referenceUrl || '',
-        activeProfileId: item.id, profiles: [], source: 'migrated', confirmed: true,
-        createdAt: item.createdAt || Date.now(), updatedAt: item.updatedAt || Date.now(),
-      };
-      bucket.push(entity);
-      changed = true;
-    }
-    let profile = entity.profiles?.find((entry) => entry.id === item.id);
-    if (!profile) {
-      entity.profiles ||= [];
-      entity.profiles.push({
-        id: item.id, name: item.variantName || '默认档案', appearance: item.appearance || '',
-        negative: item.negative || '', reference: item.referenceUrl
-          ? { type: item.subjectType === 'cast' ? 'url' : 'avatar', value: item.referenceUrl, assetId: '' }
-          : { type: 'none', value: '', assetId: '' },
-        tags: [], permanentState: {}, createdAt: item.createdAt || Date.now(), updatedAt: item.updatedAt || Date.now(),
-      });
-      changed = true;
-    }
-    if (!entity.activeProfileId) entity.activeProfileId = item.id;
-    if (!entity.name && (item.subjectName || item.name)) entity.name = item.subjectName || item.name;
-    if (!entity.avatarUrl && item.referenceUrl && item.subjectType !== 'cast') entity.avatarUrl = item.referenceUrl;
-  }
-  const legacyIds = new Set((state.characters || []).map((item) => item.id));
-  for (const entity of storyboardEntityCatalog(state)) {
-    for (const profile of entity.profiles || []) {
-      if (legacyIds.has(profile.id)) continue;
-      storyboardSyncEntityProfileToLegacy(state, entity, profile);
-      legacyIds.add(profile.id);
-      changed = true;
-    }
-  }
-  if (changed) queueMicrotask(() => saveSettings());
-}
-
-function storyboardEntityCatalog(state) {
-  return ['char', 'user', 'cast'].flatMap((type) => state.entities?.[type] || []);
-}
-
-function storyboardFindEntityProfile(state, profileId, entityId = '') {
-  const wantedProfile = String(profileId || '');
-  const entities = storyboardEntityCatalog(state);
-  const entity = (entityId && entities.find((item) => item.id === entityId))
-    || entities.find((item) => item.profiles?.some((profile) => profile.id === wantedProfile));
-  if (!entity) return { entity: null, profile: null };
-  const profile = entity.profiles?.find((item) => item.id === wantedProfile)
-    || entity.profiles?.find((item) => item.id === entity.activeProfileId)
-    || entity.profiles?.[0]
-    || null;
-  return { entity, profile };
-}
-
-function storyboardProfileReferenceUrl(state, entity, profile) {
-  const reference = profile?.reference || {};
-  if (reference.type === 'none') return '';
-  if (reference.type === 'avatar') return storyboardSafeUrl(entity?.avatarUrl || '');
-  if (['gallery', 'asset'].includes(reference.type)) {
-    const record = storyboardGalleryRecords().find((item) => item.id === reference.assetId);
-    return storyboardSafeUrl(record?.url || reference.value || '');
-  }
-  if (reference.type === 'url') return storyboardSafeUrl(reference.value || '');
-  const legacy = state.characters.find((item) => item.id === profile?.id);
-  return storyboardSafeUrl(legacy?.referenceUrl || '');
-}
-
-function storyboardSyncEntityProfileToLegacy(state, entity, profile) {
-  if (!state || !entity || !profile) return null;
-  let legacy = state.characters.find((item) => item.id === profile.id);
-  const now = Date.now();
-  const referenceUrl = storyboardProfileReferenceUrl(state, entity, profile);
-  const next = {
-    id: profile.id, subjectType: entity.type, subjectKey: entity.subjectKey || entity.id,
-    subjectName: entity.name || '未命名', name: entity.name || '未命名', variantName: profile.name || '默认档案',
-    subtitle: '', appearance: profile.appearance || '', negative: profile.negative || '', referenceUrl,
-    createdAt: profile.createdAt || entity.createdAt || now, updatedAt: profile.updatedAt || now,
-  };
-  if (legacy) Object.assign(legacy, next);
-  else {
-    legacy = next;
-    state.characters.push(legacy);
-  }
-  return legacy;
-}
-
-function storyboardSetActiveProfile(state, entity, profile) {
-  if (!entity || !profile) return;
-  entity.activeProfileId = profile.id;
-  entity.updatedAt = Date.now();
-  state.selectedCharacterId = profile.id;
-  storyboardSyncEntityProfileToLegacy(state, entity, profile);
-}
-
-function storyboardSetProfileReference(state, entity, profile, reference) {
-  if (!entity || !profile) return;
-  profile.reference = {
-    type: ['none', 'avatar', 'gallery', 'url', 'asset'].includes(reference?.type) ? reference.type : 'none',
-    value: String(reference?.value || '').trim().slice(0, 4096),
-    assetId: String(reference?.assetId || '').trim(),
-  };
-  profile.updatedAt = Date.now();
-  entity.updatedAt = profile.updatedAt;
-  storyboardSyncEntityProfileToLegacy(state, entity, profile);
 }
 
 function storyboardProfile(sourceId = storyboardState().source) {
@@ -10208,7 +10140,6 @@ function storyboardSafeUrl(value) {
 function renderStoryboardNav(state) {
   const items = [
     ['create', '镜头台', 'fa-camera', 'qm-duotone-camera'],
-    ['characters', '形象档案', 'fa-address-card', 'character-profile'],
     ['assets', '素材库', 'fa-tags', 'qm-duotone-tag'],
     ['gallery', '阅片室', 'fa-images', 'screening'],
     ['logs', '日志', 'fa-list-ul', 'qm-regular-list-bullets'],
@@ -10545,7 +10476,7 @@ async function storyboardWarmCompilerWorldEntries({ rerender = false } = {}) {
 
 function renderStoryboardAutomationCard(state) {
   return `<section class="sd-card sd-storyboard-automation-card">
-    <div class="sd-storyboard-automation-head"><div><b>启用分镜</b><small>${state.enabled ? '正文取景与成片展示已启用' : '关闭后不监听正文，也不会发起请求'}</small></div><label class="sd-storyboard-capsule-switch"><input type="checkbox" class="sd-storyboard-enabled" ${state.enabled ? 'checked' : ''}><span>${state.enabled ? '已启用' : '未启用'}</span></label></div>
+    <div class="sd-storyboard-automation-head"><b>启用分镜</b><label class="sd-storyboard-capsule-switch" aria-label="启用分镜"><input type="checkbox" class="sd-storyboard-enabled" ${state.enabled ? 'checked' : ''}><span aria-hidden="true"></span></label></div>
     <div class="sd-storyboard-automation-options">
       <label class="sd-option-chip"><input type="checkbox" class="sd-storyboard-auto-capture" ${state.automation.autoCapture ? 'checked' : ''} ${!state.enabled ? 'disabled' : ''}><span>自动提取生成词</span></label>
       <label class="sd-option-chip"><input type="checkbox" class="sd-storyboard-auto-generate" ${state.automation.autoGenerate ? 'checked' : ''} ${!state.enabled || !state.automation.autoCapture ? 'disabled' : ''}><span>自动生图</span></label>
@@ -10553,27 +10484,30 @@ function renderStoryboardAutomationCard(state) {
   </section>`;
 }
 
-function renderStoryboardCompilerContextPanel(state, worldEntryRows) {
+function renderStoryboardCompilerContextPanel(state) {
   const rules = storyboardCompilerTagRules(state);
-  const ruleRows = rules.map((rule, index) => `<div class="sd-storyboard-context-rule" data-storyboard-context-rule="${index}"><input class="text_pole sd-storyboard-context-rule-name" value="${htmlEscape(rule.name)}" placeholder="标签名，如 thinking"><select class="text_pole sd-storyboard-context-rule-action"><option value="remove" ${rule.action !== 'extract' ? 'selected' : ''}>屏蔽</option><option value="extract" ${rule.action === 'extract' ? 'selected' : ''}>提取</option></select><button type="button" class="sd-icon-btn sd-storyboard-delete-context-rule" title="删除规则" aria-label="删除规则"><i class="fa-solid fa-xmark"></i></button></div>`).join('');
-  const worldEnabled = state.promptCompiler.includeActivatedWorldInfo !== false && state.promptCompiler.worldMode !== 'off';
+  const ruleRows = rules.map((rule, index) => `<div class="sd-storyboard-context-rule" data-storyboard-context-rule="${index}"><input class="text_pole sd-storyboard-context-rule-name" value="${htmlEscape(rule.name)}"><select class="text_pole sd-storyboard-context-rule-action"><option value="remove" ${rule.action !== 'extract' ? 'selected' : ''}>屏蔽</option><option value="extract" ${rule.action === 'extract' ? 'selected' : ''}>提取</option></select><button type="button" class="sd-icon-btn sd-storyboard-delete-context-rule" title="删除规则" aria-label="删除规则"><i class="fa-solid fa-xmark"></i></button></div>`).join('');
   return `<div class="sd-storyboard-compiler-sources">
-    <div class="sd-storyboard-context-pills">
-      <label class="sd-storyboard-toggle-pill"><input type="checkbox" class="sd-storyboard-context-character" ${state.promptCompiler.includeCharacterCards ? 'checked' : ''}><span>角色设定</span></label>
-      <label class="sd-storyboard-toggle-pill"><input type="checkbox" class="sd-storyboard-context-user" ${state.promptCompiler.includeUserPersona ? 'checked' : ''}><span>User 人设</span></label>
-      <label class="sd-storyboard-toggle-pill"><input type="checkbox" class="sd-storyboard-context-world" ${worldEnabled ? 'checked' : ''}><span>世界设定</span></label>
-    </div>
-    <label class="sd-storyboard-context-depth"><span>参考近期层数</span><input class="text_pole sd-storyboard-context-recent" type="number" min="0" max="20" step="1" value="${htmlEscape(state.promptCompiler.includeRecentFloors)}"></label>
-    ${worldEnabled ? `<label><span>世界设定</span><select class="text_pole sd-storyboard-world-mode"><option value="auto" ${state.promptCompiler.worldMode === 'auto' ? 'selected' : ''}>自动筛选</option><option value="selected" ${state.promptCompiler.worldMode === 'selected' ? 'selected' : ''}>手动选择</option></select></label>${state.promptCompiler.worldMode === 'selected' ? `<div class="sd-storyboard-world-entries">${worldEntryRows || '<small>正在读取当前角色绑定的世界书；未勾选时会自动筛选兜底。</small>'}</div>` : ''}` : ''}
-    <div class="sd-storyboard-context-rules"><header><span><b>正文处理</b><small>提取规则优先；未命中时回退原文</small></span><button type="button" class="sd-icon-btn sd-storyboard-add-context-rule" title="添加标签规则" aria-label="添加标签规则"><i class="fa-solid fa-plus"></i></button></header>${ruleRows || '<div class="sd-storyboard-empty-inline">不处理正文标签。</div>'}</div>
+    <label class="sd-storyboard-context-depth"><span>参考层数</span><input class="text_pole sd-storyboard-context-recent" type="number" min="0" max="20" step="1" value="${htmlEscape(state.promptCompiler.includeRecentFloors)}"></label>
+    <div class="sd-storyboard-context-rules"><header><b>提取规则</b><button type="button" class="sd-icon-btn sd-storyboard-add-context-rule" title="添加标签规则" aria-label="添加标签规则"><i class="fa-solid fa-plus"></i></button></header>${ruleRows || '<div class="sd-storyboard-empty-inline">不处理正文标签。</div>'}</div>
   </div>`;
 }
 
-function renderStoryboardContextCard(state, worldEntryRows) {
+function renderStoryboardContextCard(state) {
   return `<details class="sd-card sd-storyboard-context-card" data-storyboard-card="context" ${state.collapsedCards.context ? '' : 'open'}>
-    <summary><span><b>上下文参考</b><small>沿用取材页的来源选择逻辑</small></span><i class="fa-solid fa-chevron-down"></i></summary>
-    <div class="sd-storyboard-card-body">${renderStoryboardCompilerContextPanel(state, worldEntryRows)}</div>
+    <summary><b>上下文处理</b><i class="fa-solid fa-chevron-down"></i></summary>
+    <div class="sd-storyboard-card-body">${renderStoryboardCompilerContextPanel(state)}</div>
   </details>`;
+}
+
+function renderStoryboardWorldbookCard(worldEntryRows) {
+  const body = storyboardWorldEntryCache.loading
+    ? '<div class="sd-storyboard-empty-inline">正在读取世界书…</div>'
+    : (worldEntryRows || '<div class="sd-storyboard-empty-inline">当前角色未绑定可选世界书条目。</div>');
+  return `<section class="sd-card sd-storyboard-worldbook-card">
+    <div class="sd-storyboard-worldbook-title"><b>世界书</b></div>
+    <div class="sd-storyboard-card-body"><div class="sd-storyboard-world-entries">${body}</div></div>
+  </section>`;
 }
 
 function renderStoryboardCreate(state) {
@@ -10584,7 +10518,7 @@ function renderStoryboardCreate(state) {
   const promptPresets = state.promptPresets.map((item) => `<option value="${htmlEscape(item.id)}" ${state.promptCompiler.instructionPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
   const artistPresets = state.artistPresets.map((item) => `<option value="${htmlEscape(item.id)}" ${state.selectedArtistPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
   const selectedWorldEntries = new Set(state.promptCompiler.worldEntryIds || []);
-  const worldEntryRows = storyboardWorldEntryCache.rows.slice(0, 160).map((row) => `<label><input type="checkbox" data-storyboard-world-entry="${htmlEscape(row.id)}" ${selectedWorldEntries.has(row.id) ? 'checked' : ''}><span><b>${htmlEscape(row.title)}</b><small>${htmlEscape(row.book)}</small></span></label>`).join('');
+  const worldEntryRows = storyboardWorldEntryCache.rows.slice(0, 500).map((row) => `<label><input type="checkbox" data-storyboard-world-entry="${htmlEscape(row.id)}" ${selectedWorldEntries.has(row.id) ? 'checked' : ''}><span><b>${htmlEscape(row.title)}</b><small>${htmlEscape(row.book)}</small></span></label>`).join('');
   const tagChips = state.tagLibrary.filter((item) => item.favorite).concat(state.tagLibrary.filter((item) => !item.favorite)).slice(0, 24)
     .map((item) => `<button type="button" class="${item.positive === false ? 'negative' : ''}" data-storyboard-add-tag="${htmlEscape(item.id)}" title="${item.positive === false ? '加入负面提示词' : '加入提示词'}"><span>${htmlEscape(item.name)}</span></button>`).join('');
   const sourceSpecific = state.source === 'openai' ? `<label><span>Quality</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiQuality"><option value="">auto</option>${['low', 'medium', 'high'].map((value) => `<option value="${value}" ${profile.openaiQuality === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label><span>Background</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiBackground"><option value="">auto</option>${['transparent', 'opaque'].map((value) => `<option value="${value}" ${profile.openaiBackground === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label><span>Output format</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiOutputFormat"><option value="">png</option>${['jpeg', 'webp'].map((value) => `<option value="${value}" ${profile.openaiOutputFormat === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>`
@@ -10594,13 +10528,18 @@ function renderStoryboardCreate(state) {
   return `<div class="sd-storyboard-create">
     ${renderStoryboardAutomationCard(state)}
     ${renderStoryboardModelCard(state)}
-    ${renderStoryboardContextCard(state, worldEntryRows)}
+    ${renderStoryboardContextCard(state)}
+    ${renderStoryboardWorldbookCard(worldEntryRows)}
     <details class="sd-card sd-storyboard-prompt-card" data-storyboard-card="prompt" ${state.collapsedCards.prompt ? '' : 'open'}>
-      <summary><span><b>提示词</b><small>自动提取为主，按需展开修改</small></span><i class="fa-solid fa-chevron-down"></i></summary>
+      <summary><b>提示词</b><i class="fa-solid fa-chevron-down"></i></summary>
       <div class="sd-storyboard-card-body">
-        <details class="sd-storyboard-prompt-section" open><summary><span><b>取景预设</b><small>${state.promptCompiler.instructionPresetId ? '已选择' : '使用千幕基础规则'}</small></span><i class="fa-solid fa-chevron-down"></i></summary><div><div class="sd-storyboard-inline-control"><select class="text_pole sd-storyboard-prompt-preset"><option value="">选择取景预设</option>${promptPresets}</select><button type="button" class="sd-icon-btn sd-storyboard-open-prompt-library" title="管理取景预设" aria-label="管理取景预设"><i class="fa-solid fa-folder"></i></button></div></div></details>
-        <details class="sd-storyboard-prompt-section"><summary><span><b>画师串</b><small>${state.selectedArtistPresetId ? '已选择方案' : '可留空'}</small></span><i class="fa-solid fa-chevron-down"></i></summary><div class="sd-storyboard-artist-control"><div class="sd-storyboard-inline-control"><button type="button" class="sd-icon-btn sd-storyboard-open-artist-library" title="打开画师库" aria-label="打开画师库"><i class="fa-solid fa-images"></i></button><select class="text_pole sd-storyboard-artist-preset"><option value="">选择画师串</option>${artistPresets}</select><button type="button" class="sd-icon-btn sd-storyboard-save-artist" title="保存画师串" aria-label="保存画师串"><i class="fa-solid fa-bookmark"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-artist" title="删除画师串" aria-label="删除画师串" ${state.selectedArtistPresetId ? '' : 'disabled'}><i class="fa-solid fa-trash-can"></i></button></div><label><span>画师串</span><input class="text_pole sd-storyboard-artist-string" value="${htmlEscape(draft.artistString || '')}" placeholder="仅由你控制，不交给 LLM 生成或改写"></label></div></details>
-        <details class="sd-storyboard-prompt-section"><summary><span><b>正、负面提示词</b><small>手动修改后由你决定何时生成</small></span><i class="fa-solid fa-chevron-down"></i></summary><div><label><span>正面提示词</span><textarea class="text_pole sd-storyboard-prompt" spellcheck="false" placeholder="正文取景后会在这里保留可编辑草稿">${htmlEscape(state.prompt || draft.compiled || '')}</textarea></label>${capabilities.negative ? `<label><span>负面提示词</span><textarea class="text_pole sd-storyboard-negative" spellcheck="false" placeholder="可留空">${htmlEscape(draft.negative || state.negative)}</textarea></label>` : ''}${tagChips ? `<div class="sd-storyboard-tag-quick">${tagChips}</div>` : ''}<div class="sd-storyboard-prompt-actions"><small>修改只保存草稿，不会自动取景或生图</small><button type="button" class="sd-btn sd-primary sd-storyboard-manual-generate">生成当前画面</button></div></div></details>
+        <div class="sd-storyboard-prompt-stack">
+          <div class="sd-storyboard-inline-control"><select class="text_pole sd-storyboard-prompt-preset" aria-label="取景预设"><option value="">选择取景预设</option>${promptPresets}</select><button type="button" class="sd-icon-btn sd-storyboard-open-prompt-library" title="取景预设" aria-label="取景预设"><i class="fa-solid fa-folder"></i></button></div>
+          <div class="sd-storyboard-inline-control"><button type="button" class="sd-icon-btn sd-storyboard-open-artist-library" title="画师库" aria-label="画师库"><i class="fa-solid fa-images"></i></button><select class="text_pole sd-storyboard-artist-preset" aria-label="画师串"><option value="">选择画师串</option>${artistPresets}</select><button type="button" class="sd-icon-btn sd-storyboard-edit-selected-artist" title="编辑所选画师串" aria-label="编辑所选画师串" ${state.selectedArtistPresetId ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button></div>
+          <label><span>正面提示词</span><textarea class="text_pole sd-storyboard-prompt" spellcheck="false">${htmlEscape(state.prompt || draft.compiled || '')}</textarea></label>
+          ${capabilities.negative ? `<label><span>负面提示词</span><textarea class="text_pole sd-storyboard-negative" spellcheck="false">${htmlEscape(draft.negative || state.negative)}</textarea></label>` : ''}
+          ${tagChips ? `<div class="sd-storyboard-tag-quick">${tagChips}</div>` : ''}
+        </div>
       </div>
     </details>
     <details class="sd-card sd-storyboard-params" data-storyboard-card="params" ${state.collapsedCards.params ? '' : 'open'}>
@@ -10623,145 +10562,6 @@ function renderStoryboardCreate(state) {
     ${renderStoryboardQueue()}
     ${last ? `<section class="sd-card sd-storyboard-last"><div class="sd-card-title-row"><h3>最近画面</h3><button type="button" data-storyboard-view="gallery">查看全部</button></div><img src="${htmlEscape(storyboardSafeUrl(last.url))}" alt="最近生成的分镜" loading="lazy"></section>` : ''}
   </div>`;
-}
-
-function storyboardSubjectSnapshot(kind) {
-  const context = ctx();
-  const type = kind === 'user' ? 'user' : 'char';
-  const avatar = coreadIdentityAvatar(type);
-  if (type === 'user') {
-    const name = getPersonaName() || '我';
-    const identity = coreadPersonaAvatarRaw || avatar || name;
-    return { subjectType: type, subjectKey: `user:${identity}`, subjectName: name, name, referenceUrl: avatar };
-  }
-  const name = getCharacterName() || '当前角色';
-  const character = context.characters?.[context.characterId];
-  const identity = context.groupId ? `group:${context.groupId}` : (character?.avatar || character?.data?.avatar || name);
-  return { subjectType: type, subjectKey: `char:${identity}`, subjectName: name, name, referenceUrl: avatar };
-}
-
-async function storyboardCreateProfile(kind, base = null) {
-  const state = storyboardState();
-  const baseMatch = base?.id ? storyboardFindEntityProfile(state, base.id, base.entityId) : { entity: null, profile: null };
-  let subject = base ? {
-    subjectType: baseMatch.entity?.type || base.subjectType, subjectKey: baseMatch.entity?.subjectKey || base.subjectKey,
-    subjectName: baseMatch.entity?.name || base.subjectName, name: baseMatch.entity?.name || base.name,
-    referenceUrl: baseMatch.entity?.avatarUrl || base.referenceUrl,
-  } : storyboardSubjectSnapshot(kind);
-  if (kind === 'cast' && !base) {
-    const answer = await promptInput('建立群像档案', '填写需要出镜的其他人物名称。', '');
-    const name = String(answer ?? '').trim().slice(0, 80);
-    if (!name) return null;
-    subject = { subjectType: 'cast', subjectKey: `cast:${name}:${uid('person')}`, subjectName: name, name, referenceUrl: '' };
-  }
-  const type = subject.subjectType === 'user' ? 'user' : subject.subjectType === 'cast' ? 'cast' : 'char';
-  let entity = baseMatch.entity || state.entities[type]?.find((item) => item.subjectKey === subject.subjectKey);
-  const now = Date.now();
-  if (!entity) {
-    entity = {
-      id: uid(`entity-${type}`), type, subjectKey: subject.subjectKey || uid(`subject-${type}`),
-      name: subject.subjectName || subject.name || '未命名', avatarUrl: subject.referenceUrl || '',
-      activeProfileId: '', profiles: [], source: type === 'cast' ? 'manual' : 'captured', confirmed: true,
-      createdAt: now, updatedAt: now,
-    };
-    state.entities[type].push(entity);
-  }
-  const sourceProfile = baseMatch.profile;
-  const profile = {
-    id: uid('cast'), name: entity.profiles.length ? `方案 ${entity.profiles.length + 1}` : '默认档案',
-    appearance: sourceProfile?.appearance || base?.appearance || '', negative: sourceProfile?.negative || base?.negative || '',
-    reference: sourceProfile?.reference ? clone(sourceProfile.reference)
-      : (entity.avatarUrl ? { type: 'avatar', value: entity.avatarUrl, assetId: '' } : { type: 'none', value: '', assetId: '' }),
-    tags: clone(sourceProfile?.tags || []), permanentState: clone(sourceProfile?.permanentState || {}),
-    createdAt: now, updatedAt: now,
-  };
-  entity.profiles.push(profile);
-  storyboardSetActiveProfile(state, entity, profile);
-  state.characterView = 'edit';
-  saveSettings();
-  renderModal();
-  return storyboardSyncEntityProfileToLegacy(state, entity, profile);
-}
-
-function renderStoryboardCharacters(state) {
-  const selectedMatch = storyboardFindEntityProfile(state, state.selectedCharacterId);
-  const selectedEntity = selectedMatch.entity;
-  const selectedProfile = selectedMatch.profile;
-  const selected = selectedEntity && selectedProfile ? storyboardSyncEntityProfileToLegacy(state, selectedEntity, selectedProfile) : null;
-  const charSubject = storyboardSubjectSnapshot('char');
-  const userSubject = storyboardSubjectSnapshot('user');
-  const subjectCard = (kind, subject) => {
-    const image = storyboardSafeUrl(subject.referenceUrl);
-    const entity = state.entities[kind]?.find((item) => item.subjectKey === subject.subjectKey);
-    const status = entity?.profiles?.length ? `${entity.profiles.length} 套档案` : '未建立档案';
-    return `<article>${image ? `<img src="${htmlEscape(image)}" alt="">` : '<i class="fa-solid fa-user"></i>'}<span><b>${kind.toUpperCase()}</b>${htmlEscape(subject.subjectName)}</span><small>${htmlEscape(status)}</small></article>`;
-  };
-  const captureButtons = `<div class="sd-storyboard-current-subjects">${subjectCard('char', charSubject)}${subjectCard('user', userSubject)}</div><div class="sd-storyboard-capture-row"><button type="button" class="sd-btn sd-storyboard-capture" data-storyboard-capture="char"><i class="fa-solid fa-folder-plus"></i>CHAR</button><button type="button" class="sd-btn sd-storyboard-capture" data-storyboard-capture="user"><i class="fa-solid fa-folder-plus"></i>USER</button><button type="button" class="sd-btn sd-storyboard-capture-cast"><i class="fa-solid fa-folder-plus"></i>CAST</button></div>`;
-  if (state.characterView !== 'edit' || !selected) {
-    const directories = storyboardEntityCatalog(state).map((entity, groupIndex) => {
-      const activeProfile = entity.profiles.find((item) => item.id === entity.activeProfileId) || entity.profiles[0];
-      const avatar = storyboardProfileReferenceUrl(state, entity, activeProfile) || storyboardSafeUrl(entity.avatarUrl);
-      const cards = entity.profiles.map((profile, index) => {
-        const item = storyboardSyncEntityProfileToLegacy(state, entity, profile);
-        const cover = storyboardProfileReferenceUrl(state, entity, profile) || storyboardSafeUrl(entity.avatarUrl);
-        const current = profile.id === entity.activeProfileId;
-        return `<button type="button" class="sd-storyboard-file ${current ? 'active' : ''}" data-storyboard-character-id="${htmlEscape(profile.id)}" style="--sd-file-index:${index}" aria-label="${htmlEscape(`${entity.name || '未命名'} · ${profile.name || '默认档案'}`)}">
-        ${cover ? `<img src="${htmlEscape(cover)}" alt="">` : ''}<span>${String(index + 1).padStart(2, '0')}</span>${current ? '<em aria-label="当前方案"></em>' : ''}<b><i>${htmlEscape(profile.name || '默认档案')}</i></b>
-      </button>`;
-      }).join('');
-      return `<section class="sd-storyboard-directory-group" style="--sd-group-index:${groupIndex}"><header>${avatar ? `<img src="${htmlEscape(avatar)}" alt="">` : '<i class="fa-solid fa-user"></i>'}<div><span>${entity.type === 'user' ? 'USER' : entity.type === 'cast' ? 'CAST' : 'CHAR'}</span><b>${htmlEscape(entity.name || '未命名')}</b></div><small>${entity.profiles.length} 套</small></header><div class="sd-storyboard-file-stack">${cards}</div></section>`;
-    }).join('');
-    return `<div class="sd-storyboard-characters"><section class="sd-storyboard-magazine sd-storyboard-directory">
-      <header><div><span class="sd-storyboard-kicker">CAST DIRECTORY</span><h3>Appearance Index<sup>✦</sup></h3></div>${captureButtons}</header>
-      ${directories || '<div class="sd-storyboard-character-empty">还没有形象档案。可分别捕获当前角色与“我”，并为同一人物保存多套外观。</div>'}
-    </section></div>`;
-  }
-  const reference = selectedProfile.reference || { type: 'none', value: '', assetId: '' };
-  const referenceSource = ['avatar', 'gallery', 'url'].includes(reference.type)
-    ? reference.type : (selectedEntity.avatarUrl ? 'avatar' : 'url');
-  const avatar = storyboardProfileReferenceUrl(state, selectedEntity, selectedProfile) || selectedEntity.avatarUrl;
-  const galleryRecord = reference.assetId ? storyboardGalleryRecords().find((item) => item.id === reference.assetId) : null;
-  const referenceControl = referenceSource === 'gallery'
-    ? `<button type="button" class="sd-btn sd-storyboard-pick-reference"><i class="fa-solid fa-images"></i>${galleryRecord ? '更换阅片参考' : '从阅片室选择'}</button><small>${galleryRecord ? htmlEscape(snip(galleryRecord.prompt || formatDateTime(galleryRecord.createdAt), 60)) : '尚未选择'}</small>`
-    : referenceSource === 'url' ? `<input class="text_pole sd-storyboard-character-reference-url" type="url" value="${htmlEscape(reference.value || '')}" placeholder="https://...">` : '';
-  return `<div class="sd-storyboard-characters"><section class="sd-storyboard-magazine sd-storyboard-profile-page">
-    <header><button type="button" class="sd-icon-btn sd-storyboard-character-back" title="返回总目录" aria-label="返回总目录"><i class="fa-solid fa-arrow-left"></i></button><div class="sd-storyboard-profile-heading"><span class="sd-storyboard-kicker">${selected.subjectType === 'user' ? 'USER FILE' : selected.subjectType === 'cast' ? 'CAST FILE' : 'CHAR FILE'}</span><b>${htmlEscape(selected.subjectName || selected.name)}</b></div><button type="button" class="sd-icon-btn sd-storyboard-duplicate-character" title="复制一套" aria-label="复制一套"><i class="fa-solid fa-copy"></i></button></header>
-    <article class="sd-storyboard-profile-sheet" data-storyboard-character-edit="${htmlEscape(selectedProfile.id)}" data-storyboard-entity-edit="${htmlEscape(selectedEntity.id)}">
-      <div class="sd-storyboard-profile-photo">${avatar ? `<img src="${htmlEscape(storyboardSafeUrl(avatar))}" alt="${htmlEscape(selectedEntity.name)}">` : '<i class="fa-solid fa-user"></i>'}</div>
-      <div class="sd-storyboard-profile-copy">
-        <span class="sd-storyboard-profile-no">PROFILE / ${String(Math.max(1, state.characters.indexOf(selected) + 1)).padStart(2, '0')}</span>
-        <label><span>方案名</span><input class="text_pole" data-profile-field="name" value="${htmlEscape(selectedProfile.name || '默认档案')}"></label>
-        <label><span>在档人</span><input class="text_pole" data-entity-field="name" value="${htmlEscape(selectedEntity.name)}" placeholder="填写角色名"></label>
-        <label><span>形貌纪要</span><textarea class="text_pole" data-profile-field="appearance" placeholder="当前正文状态冲突时，以目标楼层为准。">${htmlEscape(selectedProfile.appearance || '')}</textarea></label>
-        <label><span>专用负面词</span><textarea class="text_pole" data-profile-field="negative" placeholder="可留空">${htmlEscape(selectedProfile.negative || '')}</textarea></label>
-        <label><span>参考图</span><div class="sd-storyboard-reference-picker ${referenceControl ? '' : 'single'}"><select class="text_pole sd-storyboard-character-reference-source"><option value="avatar" ${referenceSource === 'avatar' ? 'selected' : ''} ${selectedEntity.avatarUrl ? '' : 'disabled'}>角色头像</option><option value="gallery" ${referenceSource === 'gallery' ? 'selected' : ''}>从阅片室选择</option><option value="url" ${referenceSource === 'url' ? 'selected' : ''}>图片 URL</option></select>${referenceControl}</div></label>
-        <div class="sd-storyboard-profile-actions"><button type="button" class="sd-btn sd-primary sd-storyboard-save-character">保存档案</button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-character" title="删除档案" aria-label="删除档案"><i class="fa-solid fa-trash-can"></i></button></div>
-      </div>
-    </article>
-  </section></div>`;
-}
-
-function storyboardCaptureCharacterSheet(root, state) {
-  const sheet = root.querySelector('[data-storyboard-character-edit]');
-  const { entity, profile } = storyboardFindEntityProfile(state, sheet?.dataset.storyboardCharacterEdit, sheet?.dataset.storyboardEntityEdit);
-  if (!entity || !profile) return null;
-  sheet.querySelectorAll('[data-entity-field]').forEach((field) => {
-    entity[field.dataset.entityField] = String(field.value || '').trim().slice(0, 80);
-  });
-  sheet.querySelectorAll('[data-profile-field]').forEach((field) => {
-    const limit = field.dataset.profileField === 'negative' ? 6000 : field.dataset.profileField === 'appearance' ? 12000 : 80;
-    profile[field.dataset.profileField] = String(field.value || '').trim().slice(0, limit);
-  });
-  const source = sheet.querySelector('.sd-storyboard-character-reference-source')?.value || profile.reference?.type || 'none';
-  if (source === 'avatar' && entity.avatarUrl) storyboardSetProfileReference(state, entity, profile, { type: 'avatar', value: entity.avatarUrl });
-  if (source === 'url') {
-    const value = String(sheet.querySelector('.sd-storyboard-character-reference-url')?.value || '').trim().slice(0, 4096);
-    storyboardSetProfileReference(state, entity, profile, value ? { type: 'url', value } : { type: 'none' });
-  }
-  entity.updatedAt = profile.updatedAt = Date.now();
-  storyboardSetActiveProfile(state, entity, profile);
-  storyboardSyncEntityProfileToLegacy(state, entity, profile);
-  return { entity, profile };
 }
 
 const STORYBOARD_TAG_CATEGORY_LABELS = Object.freeze({
@@ -10805,18 +10605,41 @@ function renderStoryboardRouting(state) {
 }
 
 function storyboardPromptPresetEntryMarkup(item = {}, index = 0) {
-  return `<article class="sd-storyboard-preset-entry" draggable="true" data-storyboard-preset-entry="${htmlEscape(item.id || `draft-${index + 1}`)}"><button type="button" class="sd-storyboard-preset-entry-drag" title="拖动排序" aria-label="拖动排序"><i class="fa-solid fa-list-ul"></i></button><div><input class="text_pole sd-storyboard-preset-entry-name" maxlength="80" value="${htmlEscape(item.name || `条目 ${index + 1}`)}" placeholder="条目名"><textarea class="text_pole sd-storyboard-preset-entry-instruction" rows="5" placeholder="这一条将按当前顺序发给取景整理模型">${htmlEscape(item.instruction || '')}</textarea></div><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-preset-entry" title="删除条目" aria-label="删除条目"><i class="fa-solid fa-trash-can"></i></button></article>`;
+  return `<details class="sd-card sd-storyboard-preset-entry" draggable="true" data-storyboard-preset-entry="${htmlEscape(item.id || `draft-${index + 1}`)}">
+    <summary><i class="fa-solid fa-grip-lines sd-storyboard-preset-entry-drag" aria-hidden="true"></i><b>${htmlEscape(item.name || `条目 ${index + 1}`)}</b><span>${index + 1}</span><div><button type="button" class="sd-icon-btn sd-storyboard-edit-preset-entry" title="编辑条目" aria-label="编辑条目"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-preset-entry" title="删除条目" aria-label="删除条目"><i class="fa-solid fa-trash-can"></i></button></div><i class="fa-solid fa-chevron-down"></i></summary>
+    <div class="sd-storyboard-preset-entry-preview">${htmlEscape(item.instruction || '')}</div>
+  </details>`;
+}
+
+function renderStoryboardPresetLibrary(state) {
+  const selected = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId) || null;
+  const editingItem = selected?.items?.find((item) => item.id === state.editingPromptItemId) || null;
+  if (selected && state.editingPromptItemId) {
+    const draft = state.promptItemDraft || { name: editingItem?.name || '', instruction: editingItem?.instruction || '' };
+    return `<div class="sd-storyboard-preset-editor-page">
+      <header><b>${editingItem ? '编辑条目' : '新建条目'}</b></header>
+      <div class="sd-storyboard-preset-editor-fields"><label><span>条目名</span><input class="text_pole sd-storyboard-preset-item-name" maxlength="80" value="${htmlEscape(draft.name || '')}"></label><label><span>取景指令</span><textarea class="text_pole sd-storyboard-preset-item-instruction" spellcheck="false">${htmlEscape(draft.instruction || '')}</textarea></label></div>
+      <footer><button type="button" class="sd-btn sd-storyboard-cancel-preset-item">取消</button><button type="button" class="sd-btn sd-primary sd-storyboard-save-preset-item">保存</button></footer>
+    </div>`;
+  }
+  const options = state.promptPresets.map((item) => `<option value="${htmlEscape(item.id)}" ${selected?.id === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
+  const rows = (selected?.items || []).map(storyboardPromptPresetEntryMarkup).join('');
+  return `<div class="sd-storyboard-presets-page">
+    <section class="sd-card sd-storyboard-preset-controls">
+      <div class="sd-storyboard-preset-control-row"><label class="sd-icon-btn" title="导入取景预设" aria-label="导入取景预设"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-storyboard-preset-import-file" accept="application/json,.json" hidden></label><button type="button" class="sd-icon-btn sd-storyboard-export-presets" title="导出取景预设" aria-label="导出取景预设"><i class="fa-solid fa-file-export"></i></button><select class="text_pole sd-storyboard-preset-library-select"><option value="">选择取景预设</option>${options}</select></div>
+      <div class="sd-storyboard-preset-control-row"><button type="button" class="sd-btn sd-primary sd-storyboard-new-preset">新建预设</button><button type="button" class="sd-btn sd-storyboard-overwrite-preset" ${selected ? '' : 'disabled'}>保存覆盖</button><button type="button" class="sd-icon-btn sd-storyboard-rename-preset" title="编辑预设名" aria-label="编辑预设名" ${selected ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-preset" title="删除预设" aria-label="删除预设" ${selected ? '' : 'disabled'}><i class="fa-solid fa-trash-can"></i></button></div>
+    </section>
+    ${selected ? `<section class="sd-storyboard-preset-list" data-storyboard-preset-list="${htmlEscape(selected.id)}">${rows || '<div class="sd-storyboard-empty-inline">这个预设还没有条目。</div>'}</section><button type="button" class="sd-icon-btn sd-primary sd-storyboard-add-preset-item" title="添加条目" aria-label="添加条目"><i class="fa-solid fa-plus"></i></button>` : ''}
+  </div>`;
 }
 
 function renderStoryboardAssets(state) {
-  const activeSection = ['tags', 'vibes', 'presets', 'routing'].includes(state.assetView) ? state.assetView : 'tags';
+  const activeSection = ['tags', 'vibes', 'routing'].includes(state.assetView) ? state.assetView : 'tags';
   const tags = storyboardFilteredTags(state);
   const profile = storyboardProviderProfile(state);
   const capabilities = getStoryboardCapabilities(state.source, profile.model);
   const editingTag = state.tagLibrary.find((item) => item.id === state.editingTagId) || null;
   const editingVibe = state.vibeLibrary.find((item) => item.id === state.editingVibeId) || null;
-  const editingPrompt = state.promptPresets.find((item) => item.id === state.editingPromptPresetId) || null;
-  const promptEntryRows = (editingPrompt?.items?.length ? editingPrompt.items : [{ id: 'draft-1', name: '基础指令', instruction: '' }]).map(storyboardPromptPresetEntryMarkup).join('');
   const selectedVibes = new Set(state.selectedVibeIds || []);
   const compatibleVibes = state.vibeLibrary.filter((item) => (!item.providerIds?.length || item.providerIds.includes(state.source))
     && (!item.modelIds?.length || item.modelIds.includes(profile.model)));
@@ -10832,39 +10655,13 @@ function renderStoryboardAssets(state) {
       <div><button type="button" class="sd-icon-btn sd-storyboard-edit-vibe" title="编辑" aria-label="编辑"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-vibe" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div>
     </article>`;
   }).join('');
-  const promptRows = state.promptPresets.map((item) => `<article class="sd-storyboard-asset-row ${state.promptCompiler.instructionPresetId === item.id ? 'selected' : ''}" data-storyboard-prompt-id="${htmlEscape(item.id)}"><button type="button" class="sd-storyboard-asset-main sd-storyboard-use-prompt-preset"><span><b>${htmlEscape(item.name)}</b><small>${item.items?.length || 0} 条取景规则</small></span><em>${htmlEscape(snip(item.items?.map((entry) => entry.name).join(' · ') || '沿用千幕基础规则', 100))}</em></button><div><button type="button" class="sd-icon-btn sd-storyboard-edit-asset-prompt" title="编辑" aria-label="编辑"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-asset-prompt" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div></article>`).join('');
   return `<div class="sd-storyboard-assets-page">
-    <div class="sd-storyboard-assets-tabs" role="tablist">${[['tags', 'Tag 库'], ['vibes', 'Vibe 库'], ['presets', '取景预设'], ['routing', '镜组']].map(([id, label]) => `<button type="button" role="tab" aria-selected="${activeSection === id}" class="${activeSection === id ? 'active' : ''}" data-storyboard-asset-section="${id}">${label}</button>`).join('')}</div>
+    <div class="sd-storyboard-assets-tabs" role="tablist">${[['tags', 'Tag 库'], ['vibes', 'Vibe 库'], ['routing', '镜组']].map(([id, label]) => `<button type="button" role="tab" aria-selected="${activeSection === id}" class="${activeSection === id ? 'active' : ''}" data-storyboard-asset-section="${id}">${label}</button>`).join('')}</div>
     ${activeSection === 'tags' ? `<details class="sd-card sd-storyboard-asset-create" data-storyboard-card="asset-tag-create" ${state.collapsedCards['asset-tag-create'] ? '' : 'open'}><summary><span><b>${editingTag ? '编辑 Tag' : '新建 Tag'}</b><small>保存后可在任何镜头中复用</small></span><i class="fa-solid fa-chevron-down"></i></summary><div class="sd-storyboard-card-body"><div class="sd-storyboard-grid sd-storyboard-grid-two"><label><span>名称</span><input class="text_pole sd-storyboard-tag-name" maxlength="100" value="${htmlEscape(editingTag?.name || '')}" placeholder="例如：雨夜逆光"></label><label><span>分类</span><select class="text_pole sd-storyboard-tag-category">${STORYBOARD_TAG_CATEGORIES.map((id) => `<option value="${id}" ${editingTag?.category === id ? 'selected' : ''}>${STORYBOARD_TAG_CATEGORY_LABELS[id]}</option>`).join('')}</select></label></div><label><span>当前模型 Tag / 提示词</span><textarea class="text_pole sd-storyboard-tag-rendering" placeholder="写入发送给 ${htmlEscape(STORYBOARD_PROVIDER_REGISTRY[state.source].label)} 的内容">${htmlEscape(editingTag?.renderings?.[state.source] || '')}</textarea></label><label><span>自然语言说明</span><input class="text_pole sd-storyboard-tag-description" value="${htmlEscape(editingTag?.naturalLanguage || '')}" placeholder="可留空，用于其他模型回退"></label><div class="sd-storyboard-asset-create-actions"><label class="sd-switch-row"><span>负面 Tag</span><input type="checkbox" class="sd-storyboard-tag-negative" ${editingTag?.positive === false ? 'checked' : ''}></label><div>${editingTag ? '<button type="button" class="sd-btn sd-storyboard-cancel-tag-edit">取消</button>' : ''}<button type="button" class="sd-btn sd-primary sd-storyboard-create-tag">${editingTag ? '保存修改' : '保存 Tag'}</button></div></div></div></details>
       <section class="sd-storyboard-asset-tools"><input class="text_pole sd-storyboard-asset-search" value="${htmlEscape(state.assetSearch || '')}" placeholder="搜索 Tag"><select class="text_pole sd-storyboard-asset-category"><option value="all">全部分类</option>${STORYBOARD_TAG_CATEGORIES.map((id) => `<option value="${id}" ${state.assetCategory === id ? 'selected' : ''}>${STORYBOARD_TAG_CATEGORY_LABELS[id]}</option>`).join('')}</select></section><div class="sd-storyboard-asset-list">${tagRows || '<div class="sd-storyboard-empty-inline">还没有符合条件的 Tag。</div>'}</div>` : ''}
     ${activeSection === 'vibes' ? `<details class="sd-card sd-storyboard-asset-create" data-storyboard-card="asset-vibe-create" ${state.collapsedCards['asset-vibe-create'] ? '' : 'open'}><summary><span><b>${editingVibe ? '编辑 Vibe' : '新建 Vibe'}</b><small>${capabilities.vibe ? `${profile.model} 可用` : `${profile.model} 当前不支持`}</small></span><i class="fa-solid fa-chevron-down"></i></summary><div class="sd-storyboard-card-body"><label><span>名称</span><input class="text_pole sd-storyboard-vibe-name" maxlength="100" value="${htmlEscape(editingVibe?.name || '')}" placeholder="便于识别的名称"></label><label><span>参考图</span><div class="sd-storyboard-vibe-source"><input class="text_pole sd-storyboard-vibe-url" type="url" value="${htmlEscape(editingVibe?.previewUrl || '')}" placeholder="图片 URL"><select class="text_pole sd-storyboard-vibe-gallery"><option value="">或从阅片室选择</option>${galleryOptions}</select><label class="sd-icon-btn" title="选择本地图片" aria-label="选择本地图片"><i class="fa-solid fa-upload"></i><input class="sd-storyboard-vibe-file" type="file" accept="image/png,image/jpeg,image/webp" hidden></label></div></label><div class="sd-storyboard-grid sd-storyboard-grid-two"><label><span>强度</span><input class="text_pole sd-storyboard-vibe-strength" type="number" min="0" max="1" step="0.05" value="${htmlEscape(editingVibe?.strength ?? 0.6)}"></label><label><span>信息提取</span><input class="text_pole sd-storyboard-vibe-info" type="number" min="0" max="1" step="0.05" value="${htmlEscape(editingVibe?.informationExtracted ?? 1)}"></label></div><div class="sd-storyboard-asset-create-actions"><span></span><div>${editingVibe ? '<button type="button" class="sd-btn sd-storyboard-cancel-vibe-edit">取消</button>' : ''}<button type="button" class="sd-btn sd-primary sd-storyboard-create-vibe">${editingVibe ? '保存修改' : '保存 Vibe'}</button></div></div></div></details>${!capabilities.vibe ? '<div class="sd-storyboard-capability-note">当前模型不会发送 Vibe；素材仍会保留，切换到支持的 NovelAI 模型即可使用。</div>' : ''}<div class="sd-storyboard-vibe-list">${vibeRows || '<div class="sd-storyboard-empty-inline">还没有与当前模型匹配的 Vibe。</div>'}</div>` : ''}
-    ${activeSection === 'presets' ? `<details class="sd-card sd-storyboard-asset-create sd-storyboard-preset-builder" data-storyboard-card="asset-prompt-create" ${state.collapsedCards['asset-prompt-create'] ? '' : 'open'}><summary><span><b>${editingPrompt ? '编辑取景预设' : '新建取景预设'}</b><small>拖动条目决定发给 LLM 的顺序</small></span><i class="fa-solid fa-chevron-down"></i></summary><div class="sd-storyboard-card-body"><label><span>预设名称</span><input class="text_pole sd-storyboard-prompt-name" maxlength="80" value="${htmlEscape(editingPrompt?.name || '')}" placeholder="例如：剧情关键帧"></label><div class="sd-storyboard-preset-entries">${promptEntryRows}</div><button type="button" class="sd-btn sd-storyboard-add-preset-entry"><i class="fa-solid fa-plus"></i>添加条目</button><div class="sd-storyboard-asset-create-actions"><span></span><div>${editingPrompt ? '<button type="button" class="sd-btn sd-storyboard-cancel-prompt-edit">取消</button>' : ''}<button type="button" class="sd-btn sd-primary sd-storyboard-save-prompt-instruction">${editingPrompt ? '保存修改' : '保存预设'}</button></div></div></div></details><div class="sd-storyboard-asset-list">${promptRows || '<div class="sd-storyboard-empty-inline">尚未保存取景预设；镜头台会沿用千幕基础规则。</div>'}</div>` : ''}
     ${activeSection === 'routing' ? renderStoryboardRouting(state) : ''}
   </div>`;
-}
-
-function storyboardSavePromptInstructionFromForm(root) {
-  const state = storyboardState();
-  const name = String(root.querySelector('.sd-storyboard-prompt-name')?.value || '').trim().slice(0, 80);
-  const items = Array.from(root.querySelectorAll('.sd-storyboard-preset-entry')).map((row, index) => ({
-    id: String(row.dataset.storyboardPresetEntry || '').startsWith('draft-') ? uid('shotrule') : String(row.dataset.storyboardPresetEntry || uid('shotrule')),
-    name: String(row.querySelector('.sd-storyboard-preset-entry-name')?.value || `条目 ${index + 1}`).trim().slice(0, 80),
-    instruction: String(row.querySelector('.sd-storyboard-preset-entry-instruction')?.value || '').trim().slice(0, 12000),
-  })).filter((item) => item.instruction).slice(0, 50);
-  if (!name || !items.length) return toast('请填写取景预设名称，并至少保留一条有效条目。', 'warning');
-  const sameName = state.promptPresets.find((item) => item.name === name && item.id !== state.editingPromptPresetId);
-  if (sameName) return toast(`已存在名为「${name}」的取景预设。`, 'warning');
-  const now = Date.now();
-  let item = state.promptPresets.find((entry) => entry.id === state.editingPromptPresetId) || null;
-  if (!item) {
-    item = { id: uid('shotprompt'), mode: 'combined', positiveTemplate: '', negativeTemplate: '', providerIds: [], tagIds: [], createdAt: now };
-    state.promptPresets.push(item);
-  }
-  Object.assign(item, { name, items, instruction: items.map((entry) => entry.instruction).join('\n\n').slice(0, 24000), updatedAt: now });
-  state.promptCompiler.instructionPresetId = item.id;
-  state.promptCompiler.enabled = true;
-  state.editingPromptPresetId = '';
-  saveSettings(); toast(`取景预设「${name}」已保存。`, 'success'); renderModal();
 }
 
 function storyboardSaveTagFromForm(root) {
@@ -10965,60 +10762,43 @@ function storyboardFilteredGalleryRecords(state) {
   });
 }
 
-function storyboardBeginReferencePicker(state, entity, profile) {
-  if (!entity || !profile) return;
-  storyboardReferencePicker = { entityId: entity.id, profileId: profile.id };
-  storyboardGalleryOpenCollectionId = '';
-  storyboardGallerySelection.clear();
-  if (profile.reference?.type === 'gallery' && profile.reference.assetId
-    && storyboardGalleryRecords().some((item) => item.id === profile.reference.assetId)) {
-    storyboardGallerySelection.add(profile.reference.assetId);
-  }
-  storyboardGallerySelectMode = false;
-  storyboardGalleryVisibleCount = 40;
-  state.view = 'gallery';
-  saveSettings(); renderModal();
-}
-
-function storyboardReturnFromReferencePicker({ commit = false } = {}) {
-  const picker = storyboardReferencePicker;
-  if (!picker) return;
-  const state = storyboardState();
-  const { entity, profile } = storyboardFindEntityProfile(state, picker.profileId, picker.entityId);
-  if (commit && entity && profile) {
-    const assetId = [...storyboardGallerySelection][0] || '';
-    const record = storyboardGalleryRecords().find((item) => item.id === assetId);
-    if (!record || !storyboardSafeUrl(record.url)) {
-      toast('请选择一张可用的成片。', 'warning');
-      return;
-    }
-    storyboardSetProfileReference(state, entity, profile, { type: 'gallery', assetId: record.id, value: record.url });
-    storyboardSetActiveProfile(state, entity, profile);
-  }
-  storyboardReferencePicker = null;
-  storyboardGallerySelection.clear();
-  state.view = 'characters';
-  state.characterView = 'edit';
-  if (profile) state.selectedCharacterId = profile.id;
-  saveSettings(); renderModal();
-}
-
 function renderStoryboardArtistLibrary(state) {
   const editing = state.artistPresets.find((item) => item.id === state.editingArtistPresetId) || null;
+  const editingActive = Boolean(editing || state.editingArtistPresetId === 'new');
+  if (editingActive) {
+    const collectionOptions = state.artistCollections.map((item) => `<option value="${htmlEscape(item.id)}" ${(editing?.collectionId || state.artistCollectionId) === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
+    return `<div class="sd-storyboard-artist-editor-page"><header><b>${editing ? '编辑画师串' : '新建画师串'}</b></header><div class="sd-storyboard-artist-editor-fields">
+      <label><span>名称</span><input class="text_pole sd-storyboard-artist-edit-name" maxlength="80" value="${htmlEscape(editing?.name || '')}"></label>
+      <label><span>画师串</span><textarea class="text_pole sd-storyboard-artist-edit-value" spellcheck="false">${htmlEscape(editing?.value || '')}</textarea></label>
+      <label><span>标签</span><input class="text_pole sd-storyboard-artist-edit-tags" value="${htmlEscape((editing?.tags || []).join(', '))}"></label>
+      <label><span>合集</span><select class="text_pole sd-storyboard-artist-edit-collection"><option value="">未归入合集</option>${collectionOptions}</select></label>
+      <label><span>预览图 URL</span><input class="text_pole sd-storyboard-artist-edit-preview" value="${htmlEscape(editing?.previewUrl || '')}"></label>
+    </div><footer><button type="button" class="sd-btn sd-storyboard-cancel-artist-edit">取消</button><button type="button" class="sd-btn sd-primary sd-storyboard-save-artist-card">保存</button></footer></div>`;
+  }
   const query = String(state.artistSearch || '').trim().toLocaleLowerCase();
-  const artists = state.artistPresets.filter((item) => !query || `${item.name}\n${item.value}\n${item.note || ''}`.toLocaleLowerCase().includes(query));
+  const currentCollection = state.artistCollections.find((item) => item.id === state.artistCollectionId) || null;
+  const artists = state.artistPresets.filter((item) => {
+    if (currentCollection && item.collectionId !== currentCollection.id) return false;
+    if (!currentCollection && !query && item.collectionId) return false;
+    return !query || `${item.name}\n${item.value}\n${(item.tags || []).join(' ')}`.toLocaleLowerCase().includes(query);
+  });
   const cards = artists.map((item) => {
     const selected = state.selectedArtistPresetId === item.id;
     const preview = storyboardSafeUrl(item.previewUrl);
     return `<article class="sd-storyboard-artist-card ${selected ? 'selected' : ''}" data-storyboard-artist-card="${htmlEscape(item.id)}">
-      <button type="button" class="sd-storyboard-use-artist-card" aria-pressed="${selected}">${preview ? `<img src="${htmlEscape(preview)}" loading="lazy" alt="">` : `<span class="sd-storyboard-artist-type-preview"><b>${htmlEscape(item.name.slice(0, 2))}</b><small>ARTIST STRING</small></span>`}<span><b>${htmlEscape(item.name)}</b><small>${htmlEscape(snip(item.note || item.value, 90))}</small></span></button>
+      <button type="button" class="sd-storyboard-use-artist-card" aria-pressed="${selected}">${preview ? `<img src="${htmlEscape(preview)}" loading="lazy" alt="">` : `<span class="sd-storyboard-artist-type-preview"><b>${htmlEscape(item.name.slice(0, 2))}</b></span>`}<span><b>${htmlEscape(item.name)}</b>${item.tags?.length ? `<span class="sd-storyboard-artist-tags">${item.tags.map((tag) => `<em>${htmlEscape(tag)}</em>`).join('')}</span>` : ''}</span></button>
       <div><button type="button" class="sd-icon-btn sd-storyboard-edit-artist-card" title="编辑" aria-label="编辑"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-artist-card" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div>
     </article>`;
   }).join('');
+  const folders = !currentCollection && !query ? state.artistCollections.map((collection) => {
+    const members = state.artistPresets.filter((item) => item.collectionId === collection.id);
+    const covers = members.map((item) => storyboardSafeUrl(item.previewUrl)).filter(Boolean).slice(0, 4);
+    return `<article class="sd-storyboard-artist-folder" data-storyboard-artist-collection="${htmlEscape(collection.id)}"><button type="button" class="sd-storyboard-artist-folder-open"><span>${[0, 1, 2, 3].map((index) => covers[index] ? `<img src="${htmlEscape(covers[index])}" loading="lazy" alt="">` : '<i class="fa-solid fa-image"></i>').join('')}</span><b>${htmlEscape(collection.name)}</b><em>${members.length}</em></button><div><button type="button" class="sd-icon-btn sd-storyboard-rename-artist-collection" title="重命名" aria-label="重命名"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-artist-collection" title="解散合集" aria-label="解散合集"><i class="fa-solid fa-trash-can"></i></button></div></article>`;
+  }).join('') : '';
   return `<div class="sd-storyboard-artist-page">
-    <section class="sd-card sd-storyboard-artist-head"><div><button type="button" class="sd-icon-btn sd-storyboard-artist-back" title="返回镜头台" aria-label="返回镜头台"><i class="fa-solid fa-arrow-left"></i></button><span><span class="sd-storyboard-kicker">ARTIST LIBRARY</span><h3>画师库</h3></span><b>${state.artistPresets.length}</b></div><div><input class="text_pole sd-storyboard-artist-search" value="${htmlEscape(state.artistSearch || '')}" placeholder="搜索画师串"><button type="button" class="sd-icon-btn sd-storyboard-new-artist" title="新建画师串" aria-label="新建画师串"><i class="fa-solid fa-plus"></i></button></div></section>
-    ${editing || state.editingArtistPresetId === 'new' ? `<details class="sd-card sd-storyboard-artist-editor" open><summary><span><b>${editing ? '编辑画师串' : '新建画师串'}</b><small>预览图可留空</small></span><i class="fa-solid fa-chevron-down"></i></summary><div class="sd-storyboard-card-body"><label><span>名称</span><input class="text_pole sd-storyboard-artist-edit-name" maxlength="80" value="${htmlEscape(editing?.name || '')}" placeholder="便于识别的名称"></label><label><span>画师串</span><textarea class="text_pole sd-storyboard-artist-edit-value" rows="5" placeholder="仅由你填写，不交给 LLM 改写">${htmlEscape(editing?.value || '')}</textarea></label><label><span>预览图 URL</span><input class="text_pole sd-storyboard-artist-edit-preview" value="${htmlEscape(editing?.previewUrl || '')}" placeholder="可选"></label><label><span>备注</span><input class="text_pole sd-storyboard-artist-edit-note" value="${htmlEscape(editing?.note || '')}" placeholder="风格、适用场景等"></label><div class="sd-storyboard-asset-create-actions"><span></span><div><button type="button" class="sd-btn sd-storyboard-cancel-artist-edit">取消</button><button type="button" class="sd-btn sd-primary sd-storyboard-save-artist-card">保存</button></div></div></div></details>` : ''}
-    <section class="sd-storyboard-artist-waterfall">${cards || '<div class="sd-storyboard-empty-inline">画师库还是空的；新建后可在镜头台直接选择。</div>'}</section>
+    <section class="sd-card sd-storyboard-artist-head"><div><button type="button" class="sd-icon-btn ${currentCollection ? 'sd-storyboard-artist-folder-back' : 'sd-storyboard-artist-back'}" title="返回" aria-label="返回"><i class="fa-solid fa-arrow-left"></i></button><span><span class="sd-storyboard-kicker">ARTIST LIBRARY</span><h3>${htmlEscape(currentCollection?.name || '画师库')}</h3></span><b>${currentCollection ? artists.length : state.artistPresets.length}</b></div><div><input class="text_pole sd-storyboard-artist-search" value="${htmlEscape(state.artistSearch || '')}" placeholder="搜索画师串或标签"><button type="button" class="sd-icon-btn sd-storyboard-new-artist-collection" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button><button type="button" class="sd-icon-btn sd-storyboard-new-artist" title="新建画师串" aria-label="新建画师串"><i class="fa-solid fa-plus"></i></button></div></section>
+    ${folders ? `<section class="sd-storyboard-artist-folders">${folders}</section>` : ''}
+    <section class="sd-storyboard-artist-waterfall">${cards || '<div class="sd-storyboard-empty-inline">暂无画师串。</div>'}</section>
   </div>`;
 }
 
@@ -11032,21 +10812,20 @@ function renderStoryboardGallery(state) {
   const groups = storyboardGalleryGroups(records);
   const visible = groups.slice(0, storyboardGalleryVisibleCount);
   const currentCollection = collections.find((item) => item.id === storyboardGalleryOpenCollectionId) || null;
-  const pickingReference = Boolean(storyboardReferencePicker);
-  const selectionMode = pickingReference || storyboardGallerySelectMode;
+  const selectionMode = storyboardGallerySelectMode;
   const collectionCards = !storyboardGalleryOpenCollectionId && !String(state.gallerySearch || '').trim()
     ? collections.map((collection) => {
       const covers = storyboardGalleryCollectionCovers(collection.id);
       const count = allRecords.filter((item) => String(item.collectionId || '') === collection.id).length;
       return `<article class="sd-storyboard-gallery-folder" data-storyboard-collection="${htmlEscape(collection.id)}">
         <button type="button" class="sd-storyboard-gallery-folder-open" aria-label="打开合集 ${htmlEscape(collection.name)}"><span class="sd-storyboard-folder-covers">${[0, 1, 2, 3].map((index) => covers[index] ? `<img src="${htmlEscape(storyboardSafeUrl(covers[index].url))}" loading="lazy" alt="">` : '<i class="fa-solid fa-image"></i>').join('')}</span><span><b>${htmlEscape(collection.name)}</b><small>${count} 张</small></span></button>
-        ${pickingReference ? '' : '<div><button type="button" class="sd-icon-btn sd-storyboard-gallery-folder-rename" title="重命名" aria-label="重命名"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-gallery-folder-delete" title="解散合集" aria-label="解散合集"><i class="fa-solid fa-trash-can"></i></button></div>'}
+        <div><button type="button" class="sd-icon-btn sd-storyboard-gallery-folder-rename" title="重命名" aria-label="重命名"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-gallery-folder-delete" title="解散合集" aria-label="解散合集"><i class="fa-solid fa-trash-can"></i></button></div>
       </article>`;
     }).join('') : '';
   return `<div class="sd-storyboard-gallery-page">
-    <section class="sd-card sd-storyboard-gallery-head"><div class="sd-storyboard-gallery-title">${currentCollection ? '<button type="button" class="sd-icon-btn sd-storyboard-gallery-folder-back" title="返回阅片室" aria-label="返回阅片室"><i class="fa-solid fa-arrow-left"></i></button>' : ''}<span><span class="sd-storyboard-kicker">TAKES</span><h3>${pickingReference ? '选择档案参考图' : (currentCollection?.name || '阅片室')}</h3></span><b>${currentCollection ? records.length : allRecords.length}</b></div><div class="sd-storyboard-gallery-tools"><select class="text_pole sd-storyboard-gallery-source" aria-label="筛选模型"><option value="all">全部模型</option>${Object.values(STORYBOARD_SOURCES).map((item) => `<option value="${item.id}" ${state.gallerySource === item.id ? 'selected' : ''}>${item.label}</option>`).join('')}</select><input class="text_pole sd-storyboard-gallery-search" value="${htmlEscape(state.gallerySearch)}" placeholder="搜索画面、模型或画师">${pickingReference ? `<button type="button" class="sd-btn sd-storyboard-reference-cancel">取消</button><button type="button" class="sd-btn sd-primary sd-storyboard-reference-confirm" ${storyboardGallerySelection.size ? '' : 'disabled'}>确认</button>` : `<button type="button" class="sd-icon-btn sd-storyboard-gallery-select-mode" aria-pressed="${storyboardGallerySelectMode}" title="${storyboardGallerySelectMode ? '完成多选' : '多选'}" aria-label="${storyboardGallerySelectMode ? '完成多选' : '多选'}"><i class="fa-solid ${storyboardGallerySelectMode ? 'fa-check' : 'fa-list-check'}"></i></button><button type="button" class="sd-icon-btn sd-storyboard-gallery-new-folder" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button>`}</div></section>
+    <section class="sd-card sd-storyboard-gallery-head"><div class="sd-storyboard-gallery-title">${currentCollection ? '<button type="button" class="sd-icon-btn sd-storyboard-gallery-folder-back" title="返回阅片室" aria-label="返回阅片室"><i class="fa-solid fa-arrow-left"></i></button>' : ''}<span><span class="sd-storyboard-kicker">TAKES</span><h3>${currentCollection?.name || '阅片室'}</h3></span><b>${currentCollection ? records.length : allRecords.length}</b></div><div class="sd-storyboard-gallery-tools"><select class="text_pole sd-storyboard-gallery-source" aria-label="筛选模型"><option value="all">全部模型</option>${Object.values(STORYBOARD_SOURCES).map((item) => `<option value="${item.id}" ${state.gallerySource === item.id ? 'selected' : ''}>${item.label}</option>`).join('')}</select><input class="text_pole sd-storyboard-gallery-search" value="${htmlEscape(state.gallerySearch)}" placeholder="搜索画面、模型或画师"><button type="button" class="sd-icon-btn sd-storyboard-gallery-select-mode" aria-pressed="${storyboardGallerySelectMode}" title="${storyboardGallerySelectMode ? '完成多选' : '多选'}" aria-label="${storyboardGallerySelectMode ? '完成多选' : '多选'}"><i class="fa-solid ${storyboardGallerySelectMode ? 'fa-check' : 'fa-list-check'}"></i></button><button type="button" class="sd-icon-btn sd-storyboard-gallery-new-folder" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button></div></section>
     ${collectionCards ? `<section class="sd-storyboard-gallery-folders">${collectionCards}</section>` : ''}
-    ${storyboardGallerySelectMode && !pickingReference ? `<section class="sd-card sd-storyboard-gallery-bulk"><span>已选 <b>${storyboardGallerySelection.size}</b> 张</span><div><select class="text_pole sd-storyboard-gallery-move-target" aria-label="目标合集"><option value="">移出合集</option>${collections.map((item) => `<option value="${htmlEscape(item.id)}">${htmlEscape(item.name)}</option>`).join('')}</select><button type="button" class="sd-btn sd-storyboard-gallery-move-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>归入合集</button><button type="button" class="sd-btn sd-storyboard-gallery-select-all" ${records.length ? '' : 'disabled'}>全选结果</button><button type="button" class="sd-btn sd-danger sd-storyboard-gallery-delete-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>删除选中</button></div></section>` : ''}
+    ${storyboardGallerySelectMode ? `<section class="sd-card sd-storyboard-gallery-bulk"><span>已选 <b>${storyboardGallerySelection.size}</b> 张</span><div><select class="text_pole sd-storyboard-gallery-move-target" aria-label="目标合集"><option value="">移出合集</option>${collections.map((item) => `<option value="${htmlEscape(item.id)}">${htmlEscape(item.name)}</option>`).join('')}</select><button type="button" class="sd-btn sd-storyboard-gallery-move-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>归入合集</button><button type="button" class="sd-btn sd-storyboard-gallery-select-all" ${records.length ? '' : 'disabled'}>全选结果</button><button type="button" class="sd-btn sd-danger sd-storyboard-gallery-delete-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>删除选中</button></div></section>` : ''}
     ${groups.length ? `<div class="sd-storyboard-gallery">${visible.map((group) => {
       const record = group.variants[0];
       const url = storyboardSafeUrl(record.url);
@@ -11057,7 +10836,7 @@ function renderStoryboardGallery(state) {
         ${selectionMode ? `<button type="button" class="sd-storyboard-gallery-check" aria-label="${selected ? '取消选择' : '选择'}"><i class="fa-solid ${selected ? 'fa-circle-check' : 'fa-circle'}"></i></button>` : ''}
         <button type="button" class="sd-storyboard-preview-record" ${url ? '' : 'disabled'}>${url ? `<img src="${htmlEscape(url)}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 40))}">` : '<span class="sd-storyboard-image-missing"><i class="fa-solid fa-image"></i></span>'}${group.variants.length > 1 ? `<span class="sd-storyboard-stack-count">${group.variants.length}</span>` : ''}</button>
         <div class="sd-storyboard-gallery-caption"><span>${htmlEscape(STORYBOARD_SOURCES[record.source]?.label || record.source || '分镜')}</span><small>${htmlEscape(status || formatDateTime(record.createdAt))}</small><p>${htmlEscape(snip(record.finalPrompt || record.prompt || '', 110))}</p></div>
-        ${pickingReference ? '' : `<div class="sd-storyboard-gallery-actions"><button type="button" class="sd-icon-btn sd-storyboard-download" title="下载当前图片" aria-label="下载当前图片"><i class="fa-solid fa-download"></i></button>${Number.isInteger(record.floor) ? `<button type="button" class="sd-icon-btn sd-storyboard-inline-toggle" title="${record.inline === false ? '插回正文' : '移出正文'}" aria-label="${record.inline === false ? '插回正文' : '移出正文'}"><i class="fa-solid ${record.inline === false ? 'fa-eye' : 'fa-eye-slash'}"></i></button>` : ''}<button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-record" title="删除当前图片" aria-label="删除当前图片"><i class="fa-solid fa-trash-can"></i></button></div>`}
+        <div class="sd-storyboard-gallery-actions"><button type="button" class="sd-icon-btn sd-storyboard-download" title="下载当前图片" aria-label="下载当前图片"><i class="fa-solid fa-download"></i></button>${Number.isInteger(record.floor) ? `<button type="button" class="sd-icon-btn sd-storyboard-inline-toggle" title="${record.inline === false ? '插回正文' : '移出正文'}" aria-label="${record.inline === false ? '插回正文' : '移出正文'}"><i class="fa-solid ${record.inline === false ? 'fa-eye' : 'fa-eye-slash'}"></i></button>` : ''}<button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-record" title="删除当前图片" aria-label="删除当前图片"><i class="fa-solid fa-trash-can"></i></button></div>
       </article>`;
     }).join('')}</div>${groups.length > visible.length ? `<button type="button" class="sd-btn sd-storyboard-gallery-more">再显示 ${Math.min(40, groups.length - visible.length)} 组</button>` : ''}` : `${collectionCards ? '' : `<section class="sd-card sd-storyboard-empty"><i class="fa-solid fa-film"></i><p>${allRecords.length ? '这里暂时没有符合条件的画面。' : '阅片室还是空的。生成后的画面会完整保留在这里。'}</p></section>`}`}
   </div>`;
@@ -11397,14 +11176,13 @@ function renderStoryboardLogs(state) {
 function renderStoryboardTab() {
   const state = storyboardState();
   storyboardReconcileGalleryLinks();
-  const body = state.view === 'characters' ? renderStoryboardCharacters(state)
-    : state.view === 'assets' ? renderStoryboardAssets(state)
+  const body = state.view === 'assets' ? renderStoryboardAssets(state)
       : state.view === 'artists' ? renderStoryboardArtistLibrary(state)
-        : state.view === 'gallery' ? renderStoryboardGallery(state)
-          : state.view === 'logs' ? renderStoryboardLogs(state)
-            : renderStoryboardCreate(state);
-  const configBtn = `<button type="button" class="sd-icon-btn sd-storyboard-config-btn" title="分镜配置" aria-label="分镜配置"><i class="fa-solid fa-gear"></i></button>`;
-  return `<div class="sd-storyboard-root">${renderStoryboardNav(state)}<div class="sd-storyboard-header-tools">${configBtn}</div>${body}</div>`;
+        : state.view === 'presets' ? renderStoryboardPresetLibrary(state)
+          : state.view === 'gallery' ? renderStoryboardGallery(state)
+            : state.view === 'logs' ? renderStoryboardLogs(state)
+              : renderStoryboardCreate(state);
+  return `<div class="sd-storyboard-root"><button type="button" class="sd-icon-btn sd-storyboard-exit" title="返回千幕" aria-label="返回千幕"><i class="fa-solid fa-arrow-left"></i></button>${renderStoryboardNav(state)}${body}</div>`;
 }
 
 function storyboardWorkflowIssue(result) {
@@ -11455,7 +11233,6 @@ function storyboardCaptureWorkbench(root, sourceId = storyboardState().source, {
   }
   const prompt = root.querySelector('.sd-storyboard-prompt');
   const negative = root.querySelector('.sd-storyboard-negative');
-  const artistString = root.querySelector('.sd-storyboard-artist-string');
   if (prompt) {
     const nextPrompt = String(prompt.value || '').slice(0, 24000);
     const compiledBeforeEdit = String(state.promptDraft.compiled || '');
@@ -11469,7 +11246,6 @@ function storyboardCaptureWorkbench(root, sourceId = storyboardState().source, {
     state.negative = String(negative.value || '').slice(0, 12000);
     state.promptDraft.negative = state.negative;
   }
-  if (artistString) state.promptDraft.artistString = String(artistString.value || '').trim().slice(0, 6000);
   state.promptMode = state.promptDraft.userEditedCompiled ? 'manual' : 'auto';
   const shotRows = Array.from(root.querySelectorAll('[data-storyboard-shot-index]'));
   if (shotRows.length) {
@@ -11805,44 +11581,16 @@ function storyboardTargetFloor(state) {
   return storyboardCurrentAssistantFloor();
 }
 
-function storyboardWorldEntrySearchText(row) {
-  const item = row?.item || {};
-  return [row?.title, row?.book, item.key, item.keys, item.secondary_keys, item.comment, item.content]
-    .flat().map((value) => String(value || '')).join(' ');
-}
-
-function storyboardWorldEntryScore(row, queryTokens) {
-  const tokens = storyboardParagraphTokenSet(storyboardWorldEntrySearchText(row));
-  let score = Number(row?.item?.constant || row?.item?.selectiveLogic === 0) ? 1 : 0;
-  for (const token of queryTokens) if (tokens.has(token)) score += 2;
-  return score;
-}
-
-async function storyboardCompilerWorldText(state, focusText) {
-  if (!state.promptCompiler.includeActivatedWorldInfo || state.promptCompiler.worldMode === 'off') {
-    return { text: '', rows: [], fallback: false };
-  }
+async function storyboardCompilerWorldText(state) {
   const rows = await storyboardWarmCompilerWorldEntries();
   const requested = new Set(state.promptCompiler.worldEntryIds || []);
-  let selected = state.promptCompiler.worldMode === 'selected'
-    ? rows.filter((row) => requested.has(row.id))
-    : [];
-  const fallback = state.promptCompiler.worldMode === 'selected' && !selected.length;
-  if (state.promptCompiler.worldMode === 'auto' || fallback) {
-    const query = storyboardParagraphTokenSet(focusText);
-    selected = rows
-      .map((row) => ({ row, score: storyboardWorldEntryScore(row, query) }))
-      .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score || a.row.index - b.row.index)
-      .slice(0, 8)
-      .map((item) => item.row);
-  }
+  const selected = rows.filter((row) => requested.has(row.id));
   const resolved = [];
   for (const row of selected.slice(0, 20)) {
     const content = cleanContextText(await resolveMacro(String(row.item?.content || ''))).slice(0, 5000);
     if (content) resolved.push(`【${row.book} · ${row.title}】\n${content}`);
   }
-  return { text: resolved.join('\n\n').slice(0, 18000), rows: selected, fallback };
+  return { text: resolved.join('\n\n').slice(0, 18000), rows: selected, fallback: false };
 }
 
 async function storyboardCompilerContext(state) {
@@ -11868,8 +11616,7 @@ async function storyboardCompilerContext(state) {
   const forcedParagraphIndex = state.paragraphMode === 'manual' && Number.isInteger(state.manualParagraphIndex)
     ? Math.max(0, Math.min(Math.max(0, paragraphs.length - 1), state.manualParagraphIndex))
     : null;
-  const focusText = Number.isInteger(forcedParagraphIndex) ? paragraphs[forcedParagraphIndex] : paragraphs.join(' ');
-  const worldResult = await storyboardCompilerWorldText(state, focusText);
+  const worldResult = await storyboardCompilerWorldText(state);
   return {
     floor, messages, currentCharacter, persona, world: worldResult.text,
     worldRows: worldResult.rows, worldFallback: worldResult.fallback,
@@ -11888,7 +11635,7 @@ function storyboardCompilerSystemPrompt(state, profile) {
   const ensemble = Boolean(state.routing.enabled);
   const groupTemplate = STORYBOARD_SHOT_GROUP_TEMPLATES[state.routing.templateId] || STORYBOARD_SHOT_GROUP_TEMPLATES.smart;
   return `你是千幕的镜头编排器。只负责把既有叙事转换为可执行的生图提示词，不续写剧情，不替人物新增事实。\n
-信息取舍顺序：用户本次明确要求 > 目标段落已发生的外貌/服装/年龄/动作 > 当前场景与时间线 > 角色卡与世界设定。冲突时必须采用优先级更高且更接近目标楼层的信息。\n
+信息取舍顺序：用户本次明确要求 > 目标段落已发生的外貌/服装/年龄/动作 > 当前场景与时间线 > 角色卡与世界书。冲突时必须采用优先级更高且更接近目标楼层的信息。\n
 画面须能单独成立：明确主体、人物数量、动作、表情、构图、镜头、环境、光线与视觉风格。不得把说明文字、分析、对白、标签标题或 JSON 之外的内容塞进 prompt。\n
 \n
 先判断这一层是否值得配图。只有出现新的场景、重要动作、关系变化、鲜明情绪落点、关键物件或强视觉氛围时 should_generate 才为 true；纯状态说明、重复信息、元叙事、无视觉变化的过渡应返回 false，避免打断正文与刷屏。\n
@@ -11911,7 +11658,7 @@ function storyboardCompilerUserPrompt(state, context) {
 【目标楼层段落】\n${context.paragraphs.map((item, index) => `${index}. ${item}`).join('\n') || '0. （整层末尾）'}\n
 【当前角色设定】\n${context.currentCharacter || '（未提供）'}\n
 【当前用户人设】\n${context.persona || '（未提供）'}\n
-【相关世界设定】\n${context.world || '（未提供）'}\n
+【手动选择的世界书】\n${context.world || '（未选择）'}\n
 ${paragraphRule}请整理为一张最能承接当前叙事的画面。`;
 }
 
@@ -12084,38 +11831,11 @@ function storyboardLoadPromptPreset(presetId) {
   saveSettings(); renderModal();
 }
 
-async function storyboardSaveArtistPreset(root) {
-  const { state } = storyboardCaptureWorkbench(root);
-  const value = String(state.promptDraft.artistString || '').trim();
-  if (!value) return toast('请先填写画师串。', 'warning');
-  const selected = state.artistPresets.find((item) => item.id === state.selectedArtistPresetId) || null;
-  const answer = await promptInput('保存画师串', '保存后可在镜头台直接选择复用。', selected?.name || '');
-  const name = String(answer ?? '').trim().slice(0, 80);
-  if (!name) return;
-  const sameName = state.artistPresets.find((item) => item.name === name) || null;
-  if (sameName && sameName !== selected && !await confirmDialog('覆盖画师串', `已存在「${name}」，是否覆盖？`)) return;
-  const now = Date.now();
-  const target = sameName || selected || { id: uid('shotartist'), createdAt: now };
-  Object.assign(target, { name, value, updatedAt: now });
-  if (!state.artistPresets.some((item) => item.id === target.id)) state.artistPresets.push(target);
-  state.selectedArtistPresetId = target.id;
-  saveSettings(); toast(`画师串「${name}」已保存。`, 'success'); renderModal();
-}
-
 function storyboardLoadArtistPreset(presetId) {
   const state = storyboardState();
   const preset = state.artistPresets.find((item) => item.id === presetId) || null;
   state.selectedArtistPresetId = preset?.id || '';
   if (preset) state.promptDraft.artistString = preset.value || '';
-  saveSettings(); renderModal();
-}
-
-async function storyboardDeleteArtistPreset() {
-  const state = storyboardState();
-  const preset = state.artistPresets.find((item) => item.id === state.selectedArtistPresetId);
-  if (!preset || !await confirmDialog('删除画师串', `确定删除「${preset.name}」？`)) return;
-  state.artistPresets = state.artistPresets.filter((item) => item.id !== preset.id);
-  state.selectedArtistPresetId = '';
   saveSettings(); renderModal();
 }
 
@@ -12329,7 +12049,6 @@ function storyboardHandleChatChanged() {
   storyboardCloseLightbox();
   storyboardGallerySelection.clear();
   storyboardGallerySelectMode = false;
-  storyboardReferencePicker = null;
   storyboardGalleryOpenCollectionId = '';
   storyboardGalleryVisibleCount = 40;
   for (const job of storyboardActiveJobs.values()) {
@@ -12774,12 +12493,12 @@ async function storyboardExportPackage() {
     } catch (_) { skipped++; }
   }
   const payload = {
-    type: 'qianmu-storyboard', version: 4, exportedAt: new Date().toISOString(), credentialsIncluded: false,
+    type: 'qianmu-storyboard', version: 5, exportedAt: new Date().toISOString(), credentialsIncluded: false,
     settings: {
       schemaVersion: state.schemaVersion, enabled: state.enabled, automation: clone(state.automation), source: state.source, inlineByDefault: state.inlineByDefault,
       promptMode: state.promptMode, promptCompiler: clone(state.promptCompiler),
-      profiles: clone(state.profiles), parameterPresets: clone(state.parameterPresets), characters: clone(state.characters),
-      entities: clone(state.entities), promptPresets: clone(state.promptPresets), artistPresets: clone(state.artistPresets), tagLibrary: clone(state.tagLibrary),
+      profiles: clone(state.profiles), parameterPresets: clone(state.parameterPresets),
+      promptPresets: clone(state.promptPresets), artistPresets: clone(state.artistPresets), artistCollections: clone(state.artistCollections), tagLibrary: clone(state.tagLibrary),
       vibeLibrary: clone(state.vibeLibrary), routing: clone(state.routing), logs: clone(state.logs), pipelineLogs: clone(state.pipelineLogs),
       connections: Object.fromEntries(Object.entries(state.connections).map(([providerId, group]) => [providerId, {
         ...clone(group), presets: (group.presets || []).map((item) => ({ ...clone(item), credentialId: '' })),
@@ -12794,7 +12513,7 @@ async function storyboardExportPackage() {
   const link = document.createElement('a');
   link.href = url; link.download = `qianmu-storyboard-pack-${fileStamp()}.json`;
   document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
-  toast(`分镜数据已打包：${state.characters.length} 份档案 · ${records.length} 条成片${skipped ? ` · ${skipped} 张仅保留原地址` : ''}。`, 'success');
+  toast(`分镜数据已打包：${records.length} 条成片${skipped ? ` · ${skipped} 张仅保留原地址` : ''}。`, 'success');
 }
 
 function storyboardMergeById(local, incoming, limit = 240) {
@@ -12812,15 +12531,13 @@ async function storyboardImportPackage(file) {
   } catch (_) { return toast('导入失败：不是有效的千幕分镜数据包。', 'error'); }
   const incomingImages = Array.isArray(data.chat.images) ? data.chat.images : [];
   const incomingCollections = Array.isArray(data.chat.collections) ? data.chat.collections : [];
-  const incomingCharacters = Array.isArray(data.settings.characters) ? data.settings.characters : [];
-  if (!await confirmDialog('导入分镜数据打包', `将导入 ${incomingCharacters.length} 份形象档案与 ${incomingImages.length} 条本聊天成片；同 ID 条目会更新，API Key 沿用本机设置。是否继续？`)) return;
+  if (!await confirmDialog('导入分镜数据打包', `将导入 ${incomingImages.length} 条本聊天成片及分镜预设；同 ID 条目会更新，API Key 沿用本机设置。是否继续？`)) return;
   const state = storyboardState();
   const normalized = normalizeStoryboardState({ ...createStoryboardDefaults(), ...clone(data.settings) });
-  state.characters = storyboardMergeById(state.characters, normalized.characters, 240);
-  for (const type of ['char', 'user', 'cast']) state.entities[type] = storyboardMergeById(state.entities[type], normalized.entities[type], 300);
   state.parameterPresets = storyboardMergeById(state.parameterPresets, normalized.parameterPresets, 120);
   state.promptPresets = storyboardMergeById(state.promptPresets, normalized.promptPresets, 200);
   state.artistPresets = storyboardMergeById(state.artistPresets, normalized.artistPresets, 200);
+  state.artistCollections = storyboardMergeById(state.artistCollections, normalized.artistCollections, 100);
   state.tagLibrary = storyboardMergeById(state.tagLibrary, normalized.tagLibrary, 2000);
   state.vibeLibrary = storyboardMergeById(state.vibeLibrary, normalized.vibeLibrary, 500);
   state.logs = storyboardMergeById(state.logs, normalized.logs, STORYBOARD_PIPELINE_LOG_LIMIT);
@@ -12875,7 +12592,7 @@ async function storyboardImportPackage(file) {
     }));
   normalizeStoryboardState(state);
   saveSettings(); await saveMetadata(); storyboardScheduleInlineRender(30); renderModal();
-  toast(`分镜数据已导入：${incomingCharacters.length} 份档案 · ${imported.length} 条成片${restored ? ` · ${restored} 张图片已落盘` : ''}${metadataOnly ? ` · ${metadataOnly} 张沿用原地址` : ''}。`, 'success');
+  toast(`分镜数据已导入：${imported.length} 条成片${restored ? ` · ${restored} 张图片已落盘` : ''}${metadataOnly ? ` · ${metadataOnly} 张沿用原地址` : ''}。`, 'success');
 }
 
 function storyboardRelinkRedrawSnapshot(snapshot, record, floor, message, paragraphIndex) {
@@ -13108,7 +12825,6 @@ function storyboardUnbindChat() {
   storyboardCloseLightbox();
   storyboardGallerySelection.clear();
   storyboardGallerySelectMode = false;
-  storyboardReferencePicker = null;
   storyboardGalleryVisibleCount = 40;
   storyboardCollapsedInlineFloors.clear();
 }
@@ -13116,6 +12832,14 @@ function storyboardUnbindChat() {
 function bindStoryboardTabEvents(root) {
   if (activeTab !== 'imagegen') return;
   const state = storyboardState();
+  root.querySelector('.sd-storyboard-exit')?.addEventListener('click', () => {
+    if (state.view === 'create') storyboardCaptureWorkbench(root);
+    storyboardCloseLightbox();
+    state.view = 'create';
+    saveSettings();
+    activeTab = resolveRestorableTab(storyboardReturnTab || settings.lastTab || 'dashboard');
+    renderModal();
+  });
   root.querySelector('.sd-storyboard-compiler-settings > .sd-storyboard-paragraph-control')?.remove();
   const tagCategory = root.querySelector('.sd-storyboard-tag-category');
   if (tagCategory && !root.querySelector('.sd-storyboard-tag-custom-category')) {
@@ -13135,8 +12859,7 @@ function bindStoryboardTabEvents(root) {
     legacyNegative.closest('label')?.remove();
     root.querySelector('.sd-storyboard-asset-create-actions > div')?.prepend(button);
   }
-  if (state.view === 'create' && state.promptCompiler.enabled
-      && (state.promptCompiler.worldMode === 'auto' || state.promptCompiler.worldMode === 'selected')) {
+  if (state.view === 'create' && state.promptCompiler.enabled) {
     void storyboardWarmCompilerWorldEntries({ rerender: true });
   }
   root.querySelectorAll('.sd-storyboard-file > b').forEach((label) => {
@@ -13181,7 +12904,7 @@ function bindStoryboardTabEvents(root) {
     };
     const workflowField = root.querySelector('.sd-storyboard-workflow');
     workflowField?.addEventListener('input', () => { workflowField.dataset.storyboardWorkflowEdited = 'true'; });
-    root.querySelectorAll('.sd-storyboard-prompt, .sd-storyboard-negative, .sd-storyboard-artist-string, .sd-storyboard-floor, .sd-storyboard-field, .sd-storyboard-base-url, .sd-storyboard-workflow').forEach((field) => {
+    root.querySelectorAll('.sd-storyboard-prompt, .sd-storyboard-negative, .sd-storyboard-floor, .sd-storyboard-field, .sd-storyboard-base-url, .sd-storyboard-workflow').forEach((field) => {
       field.addEventListener(field.type === 'checkbox' || field.tagName === 'SELECT' ? 'change' : 'input', saveDraft);
     });
   }
@@ -13191,22 +12914,9 @@ function bindStoryboardTabEvents(root) {
   }));
   root.querySelectorAll('[data-storyboard-view]').forEach((button) => button.addEventListener('click', () => {
     if (state.view === 'create') storyboardCaptureWorkbench(root);
-    if (storyboardReferencePicker && button.dataset.storyboardView !== 'gallery') {
-      storyboardReferencePicker = null;
-      storyboardGallerySelection.clear();
-    }
     state.view = button.dataset.storyboardView;
-    if (state.view === 'characters') {
-      state.characterView = 'directory';
-    }
     saveSettings(); renderModal();
   }));
-  // 分镜配置按钮
-  root.querySelector('.sd-storyboard-config-btn')?.addEventListener('click', () => {
-    state.view = 'create';
-    saveSettings();
-    renderModal();
-  });
   root.querySelectorAll('[data-storyboard-source]').forEach((button) => button.addEventListener('click', async () => {
     const id = button.dataset.storyboardSource;
     if (!STORYBOARD_SOURCES[id] || id === state.source) return;
@@ -13244,24 +12954,6 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-connection-preset')?.addEventListener('change', (event) => storyboardLoadConnectionPreset(String(event.target.value || '')));
   root.querySelector('.sd-storyboard-save-connection-preset')?.addEventListener('click', () => void storyboardSaveConnectionPreset(root));
   root.querySelector('.sd-storyboard-delete-connection-preset')?.addEventListener('click', () => void storyboardDeleteConnectionPreset());
-  root.querySelector('.sd-storyboard-world-mode')?.addEventListener('change', (event) => {
-    storyboardCaptureWorkbench(root);
-    state.promptCompiler.worldMode = ['auto', 'selected'].includes(event.target.value) ? event.target.value : 'auto';
-    saveSettings();
-    if (state.promptCompiler.worldMode === 'selected') void storyboardWarmCompilerWorldEntries({ rerender: true });
-    renderModal();
-  });
-  root.querySelector('.sd-storyboard-context-character')?.addEventListener('change', (event) => {
-    state.promptCompiler.includeCharacterCards = Boolean(event.target.checked); saveSettings();
-  });
-  root.querySelector('.sd-storyboard-context-user')?.addEventListener('change', (event) => {
-    state.promptCompiler.includeUserPersona = Boolean(event.target.checked); saveSettings();
-  });
-  root.querySelector('.sd-storyboard-context-world')?.addEventListener('change', (event) => {
-    state.promptCompiler.includeActivatedWorldInfo = Boolean(event.target.checked);
-    state.promptCompiler.worldMode = state.promptCompiler.includeActivatedWorldInfo ? (state.promptCompiler.worldMode === 'selected' ? 'selected' : 'auto') : 'off';
-    saveSettings(); renderModal();
-  });
   root.querySelector('.sd-storyboard-context-recent')?.addEventListener('change', (event) => {
     state.promptCompiler.includeRecentFloors = Math.max(0, Math.min(20, Math.round(Number(event.target.value) || 0)));
     saveSettings(); renderModal();
@@ -13308,20 +13000,28 @@ function bindStoryboardTabEvents(root) {
     saveSettings();
   }));
   root.querySelector('.sd-storyboard-prompt-preset')?.addEventListener('change', (event) => storyboardLoadPromptPreset(String(event.target.value || '')));
-  root.querySelector('.sd-storyboard-manual-generate')?.addEventListener('click', () => {
-    void storyboardGenerate(root, { automatic: false });
-  });
   root.querySelector('.sd-storyboard-open-prompt-library')?.addEventListener('click', () => {
-    storyboardCaptureWorkbench(root); state.view = 'assets'; state.assetView = 'presets'; saveSettings(); renderModal();
+    storyboardCaptureWorkbench(root); state.view = 'presets'; state.editingPromptItemId = ''; state.promptItemDraft = null; saveSettings(); renderModal();
   });
   root.querySelector('.sd-storyboard-open-artist-library')?.addEventListener('click', () => {
     storyboardCaptureWorkbench(root); state.view = 'artists'; saveSettings(); renderModal();
   });
   root.querySelector('.sd-storyboard-artist-preset')?.addEventListener('change', (event) => storyboardLoadArtistPreset(String(event.target.value || '')));
-  root.querySelector('.sd-storyboard-save-artist')?.addEventListener('click', () => void storyboardSaveArtistPreset(root));
-  root.querySelector('.sd-storyboard-delete-artist')?.addEventListener('click', () => void storyboardDeleteArtistPreset());
-  root.querySelector('.sd-storyboard-artist-back')?.addEventListener('click', () => { state.view = 'create'; state.editingArtistPresetId = ''; saveSettings(); renderModal(); });
+  root.querySelector('.sd-storyboard-edit-selected-artist')?.addEventListener('click', () => {
+    if (!state.selectedArtistPresetId) return;
+    storyboardCaptureWorkbench(root); state.view = 'artists'; state.editingArtistPresetId = state.selectedArtistPresetId; saveSettings(); renderModal();
+  });
+  root.querySelector('.sd-storyboard-artist-back')?.addEventListener('click', () => { state.view = 'create'; state.editingArtistPresetId = ''; state.artistCollectionId = ''; saveSettings(); renderModal(); });
+  root.querySelector('.sd-storyboard-artist-folder-back')?.addEventListener('click', () => { state.artistCollectionId = ''; saveSettings(); renderModal(); });
   root.querySelector('.sd-storyboard-new-artist')?.addEventListener('click', () => { state.editingArtistPresetId = 'new'; saveSettings(); renderModal(); });
+  root.querySelector('.sd-storyboard-new-artist-collection')?.addEventListener('click', async () => {
+    const answer = await promptInput('新建画师合集', '填写合集名称。', '');
+    const name = String(answer ?? '').trim().slice(0, 80);
+    if (!name) return;
+    if (state.artistCollections.some((item) => item.name === name)) return toast(`合集「${name}」已存在。`, 'warning');
+    const now = Date.now(); state.artistCollections.push({ id: uid('artist-folder'), name, createdAt: now, updatedAt: now });
+    saveSettings(); renderModal();
+  });
   root.querySelector('.sd-storyboard-cancel-artist-edit')?.addEventListener('click', () => { state.editingArtistPresetId = ''; saveSettings(); renderModal(); });
   root.querySelector('.sd-storyboard-save-artist-card')?.addEventListener('click', () => {
     const name = String(root.querySelector('.sd-storyboard-artist-edit-name')?.value || '').trim().slice(0, 80);
@@ -13330,7 +13030,9 @@ function bindStoryboardTabEvents(root) {
     const now = Date.now();
     let item = state.artistPresets.find((entry) => entry.id === state.editingArtistPresetId) || null;
     if (!item) { item = { id: uid('artist'), createdAt: now }; state.artistPresets.push(item); }
-    Object.assign(item, { name, value, previewUrl: String(root.querySelector('.sd-storyboard-artist-edit-preview')?.value || '').trim().slice(0, 4096), note: String(root.querySelector('.sd-storyboard-artist-edit-note')?.value || '').trim().slice(0, 1000), updatedAt: now });
+    const tags = uniqueClean(String(root.querySelector('.sd-storyboard-artist-edit-tags')?.value || '').split(/[,，\n]+/)).slice(0, 30).map((tag) => tag.slice(0, 80));
+    const collectionId = String(root.querySelector('.sd-storyboard-artist-edit-collection')?.value || '');
+    Object.assign(item, { name, value, previewUrl: String(root.querySelector('.sd-storyboard-artist-edit-preview')?.value || '').trim().slice(0, 4096), tags, collectionId: state.artistCollections.some((entry) => entry.id === collectionId) ? collectionId : '', updatedAt: now });
     state.selectedArtistPresetId = item.id;
     state.promptDraft.artistString = item.value;
     state.editingArtistPresetId = '';
@@ -13353,6 +13055,24 @@ function bindStoryboardTabEvents(root) {
       state.artistPresets = state.artistPresets.filter((entry) => entry.id !== item.id);
       if (state.selectedArtistPresetId === item.id) { state.selectedArtistPresetId = ''; state.promptDraft.artistString = ''; }
       state.editingArtistPresetId = ''; saveSettings(); renderModal();
+    });
+  });
+  root.querySelectorAll('[data-storyboard-artist-collection]').forEach((folder) => {
+    const collection = state.artistCollections.find((item) => item.id === folder.dataset.storyboardArtistCollection);
+    folder.querySelector('.sd-storyboard-artist-folder-open')?.addEventListener('click', () => { if (collection) { state.artistCollectionId = collection.id; saveSettings(); renderModal(); } });
+    folder.querySelector('.sd-storyboard-rename-artist-collection')?.addEventListener('click', async () => {
+      if (!collection) return;
+      const answer = await promptInput('重命名画师合集', '填写新名称。', collection.name);
+      const name = String(answer ?? '').trim().slice(0, 80);
+      if (!name) return;
+      collection.name = name; collection.updatedAt = Date.now(); saveSettings(); renderModal();
+    });
+    folder.querySelector('.sd-storyboard-delete-artist-collection')?.addEventListener('click', async () => {
+      if (!collection || !await confirmDialog('解散画师合集', `解散「${collection.name}」？画师串不会删除。`)) return;
+      state.artistCollections = state.artistCollections.filter((item) => item.id !== collection.id);
+      state.artistPresets.forEach((item) => { if (item.collectionId === collection.id) item.collectionId = ''; });
+      if (state.artistCollectionId === collection.id) state.artistCollectionId = '';
+      saveSettings(); renderModal();
     });
   });
   root.querySelectorAll('[data-storyboard-add-tag]').forEach((button) => button.addEventListener('click', () => storyboardAddLibraryTag(button.dataset.storyboardAddTag)));
@@ -13411,59 +13131,89 @@ function bindStoryboardTabEvents(root) {
     state.assetView = 'vibes'; state.view = 'assets';
     saveSettings(); renderModal();
   });
-  root.querySelectorAll('[data-storyboard-prompt-id]').forEach((row) => {
-    const item = state.promptPresets.find((entry) => entry.id === row.dataset.storyboardPromptId);
-    row.querySelector('.sd-storyboard-use-prompt-preset')?.addEventListener('click', () => { if (item) { storyboardLoadPromptPreset(item.id); state.view = 'create'; saveSettings(); renderModal(); } });
-    row.querySelector('.sd-storyboard-edit-asset-prompt')?.addEventListener('click', () => {
-      if (!item) return;
-      state.editingPromptPresetId = item.id;
-      state.collapsedCards['asset-prompt-create'] = false;
-      saveSettings(); renderModal();
-    });
-    row.querySelector('.sd-storyboard-delete-asset-prompt')?.addEventListener('click', async () => {
-      if (!item || !await confirmDialog('删除取景预设', `确定删除「${item.name}」？`)) return;
-      state.promptPresets = state.promptPresets.filter((entry) => entry.id !== item.id);
-      if (state.promptCompiler.instructionPresetId === item.id) state.promptCompiler.instructionPresetId = '';
-      if (state.editingPromptPresetId === item.id) state.editingPromptPresetId = '';
-      saveSettings(); renderModal();
-    });
+  root.querySelector('.sd-storyboard-preset-library-select')?.addEventListener('change', (event) => {
+    state.promptCompiler.instructionPresetId = String(event.target.value || '');
+    state.editingPromptPresetId = state.promptCompiler.instructionPresetId;
+    state.editingPromptItemId = ''; state.promptItemDraft = null; saveSettings(); renderModal();
   });
-  const presetEntries = root.querySelector('.sd-storyboard-preset-entries');
-  root.querySelector('.sd-storyboard-add-preset-entry')?.addEventListener('click', () => {
-    const index = presetEntries?.querySelectorAll('.sd-storyboard-preset-entry').length || 0;
-    presetEntries?.insertAdjacentHTML('beforeend', storyboardPromptPresetEntryMarkup({ id: `draft-${uid('rule')}`, name: `条目 ${index + 1}`, instruction: '' }, index));
-    if (presetEntries) applyQianmuIcons(presetEntries);
+  root.querySelector('.sd-storyboard-new-preset')?.addEventListener('click', async () => {
+    const answer = await promptInput('新建取景预设', '填写预设名称。', '');
+    const name = String(answer ?? '').trim().slice(0, 80);
+    if (!name) return;
+    if (state.promptPresets.some((item) => item.name === name)) return toast(`预设「${name}」已存在。`, 'warning');
+    const now = Date.now();
+    const preset = { id: uid('shotprompt'), name, mode: 'combined', items: [], instruction: '', positiveTemplate: '', negativeTemplate: '', providerIds: [], tagIds: [], createdAt: now, updatedAt: now };
+    state.promptPresets.push(preset); state.promptCompiler.instructionPresetId = preset.id; state.editingPromptPresetId = preset.id;
+    saveSettings(); renderModal();
   });
-  if (presetEntries) {
+  root.querySelector('.sd-storyboard-overwrite-preset')?.addEventListener('click', () => {
+    const preset = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId);
+    if (!preset) return;
+    preset.instruction = (preset.items || []).map((item) => item.instruction).join('\n\n').slice(0, 24000); preset.updatedAt = Date.now();
+    saveSettings(); toast(`已覆盖保存「${preset.name}」。`, 'success');
+  });
+  root.querySelector('.sd-storyboard-rename-preset')?.addEventListener('click', async () => {
+    const preset = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId);
+    if (!preset) return;
+    const answer = await promptInput('编辑预设名', '填写新名称。', preset.name);
+    const name = String(answer ?? '').trim().slice(0, 80);
+    if (!name) return;
+    preset.name = name; preset.updatedAt = Date.now(); saveSettings(); renderModal();
+  });
+  root.querySelector('.sd-storyboard-delete-preset')?.addEventListener('click', async () => {
+    const preset = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId);
+    if (!preset || !await confirmDialog('删除取景预设', `确定删除「${preset.name}」？`)) return;
+    state.promptPresets = state.promptPresets.filter((item) => item.id !== preset.id); state.promptCompiler.instructionPresetId = '';
+    state.editingPromptPresetId = ''; state.editingPromptItemId = ''; state.promptItemDraft = null; saveSettings(); renderModal();
+  });
+  root.querySelector('.sd-storyboard-add-preset-item')?.addEventListener('click', () => {
+    const preset = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId);
+    if (!preset) return;
+    state.editingPromptPresetId = preset.id; state.editingPromptItemId = 'new'; state.promptItemDraft = { name: `条目 ${(preset.items?.length || 0) + 1}`, instruction: '' };
+    saveSettings(); renderModal();
+  });
+  root.querySelector('.sd-storyboard-cancel-preset-item')?.addEventListener('click', () => { state.editingPromptItemId = ''; state.promptItemDraft = null; saveSettings(); renderModal(); });
+  root.querySelector('.sd-storyboard-save-preset-item')?.addEventListener('click', () => {
+    const preset = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId);
+    if (!preset) return;
+    const name = String(root.querySelector('.sd-storyboard-preset-item-name')?.value || '').trim().slice(0, 80);
+    const instruction = String(root.querySelector('.sd-storyboard-preset-item-instruction')?.value || '').trim().slice(0, 12000);
+    if (!name || !instruction) return toast('请填写条目名和取景指令。', 'warning');
+    let item = preset.items.find((entry) => entry.id === state.editingPromptItemId);
+    if (!item) { item = { id: uid('shotrule') }; preset.items.push(item); }
+    Object.assign(item, { name, instruction }); preset.instruction = preset.items.map((entry) => entry.instruction).join('\n\n').slice(0, 24000); preset.updatedAt = Date.now();
+    state.editingPromptItemId = ''; state.promptItemDraft = null; saveSettings(); renderModal();
+  });
+  const presetList = root.querySelector('.sd-storyboard-preset-list');
+  if (presetList) {
+    const preset = state.promptPresets.find((item) => item.id === presetList.dataset.storyboardPresetList);
+    presetList.querySelectorAll('.sd-storyboard-preset-entry').forEach((row) => {
+      const item = preset?.items?.find((entry) => entry.id === row.dataset.storyboardPresetEntry);
+      row.querySelector('.sd-storyboard-edit-preset-entry')?.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); if (item) { state.editingPromptPresetId = preset.id; state.editingPromptItemId = item.id; state.promptItemDraft = { name: item.name, instruction: item.instruction }; saveSettings(); renderModal(); } });
+      row.querySelector('.sd-storyboard-delete-preset-entry')?.addEventListener('click', async (event) => { event.preventDefault(); event.stopPropagation(); if (!item || !await confirmDialog('删除条目', `确定删除「${item.name}」？`)) return; preset.items = preset.items.filter((entry) => entry.id !== item.id); preset.instruction = preset.items.map((entry) => entry.instruction).join('\n\n').slice(0, 24000); preset.updatedAt = Date.now(); saveSettings(); renderModal(); });
+    });
     let dragged = null;
-    presetEntries.addEventListener('click', (event) => {
-      const button = event.target.closest('.sd-storyboard-delete-preset-entry');
-      if (!button) return;
-      const row = button.closest('.sd-storyboard-preset-entry');
-      if (presetEntries.querySelectorAll('.sd-storyboard-preset-entry').length <= 1) {
-        row.querySelector('.sd-storyboard-preset-entry-instruction').value = '';
-        return;
-      }
-      row.remove();
-    });
-    presetEntries.addEventListener('dragstart', (event) => {
-      dragged = event.target.closest('.sd-storyboard-preset-entry');
-      if (!dragged) return;
-      dragged.classList.add('dragging');
-      event.dataTransfer.effectAllowed = 'move';
-    });
-    presetEntries.addEventListener('dragover', (event) => {
-      if (!dragged) return;
-      event.preventDefault();
-      const target = event.target.closest('.sd-storyboard-preset-entry');
-      if (!target || target === dragged) return;
-      const rect = target.getBoundingClientRect();
-      presetEntries.insertBefore(dragged, event.clientY < rect.top + rect.height / 2 ? target : target.nextSibling);
-    });
-    presetEntries.addEventListener('dragend', () => { dragged?.classList.remove('dragging'); dragged = null; });
+    presetList.addEventListener('dragstart', (event) => { dragged = event.target.closest('.sd-storyboard-preset-entry'); dragged?.classList.add('dragging'); });
+    presetList.addEventListener('dragover', (event) => { if (!dragged) return; event.preventDefault(); const target = event.target.closest('.sd-storyboard-preset-entry'); if (!target || target === dragged) return; const rect = target.getBoundingClientRect(); presetList.insertBefore(dragged, event.clientY < rect.top + rect.height / 2 ? target : target.nextSibling); });
+    presetList.addEventListener('dragend', () => { if (!dragged || !preset) return; const order = Array.from(presetList.querySelectorAll('.sd-storyboard-preset-entry')).map((row) => row.dataset.storyboardPresetEntry); preset.items.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)); preset.instruction = preset.items.map((entry) => entry.instruction).join('\n\n').slice(0, 24000); preset.updatedAt = Date.now(); dragged.classList.remove('dragging'); dragged = null; saveSettings(); });
   }
-  root.querySelector('.sd-storyboard-save-prompt-instruction')?.addEventListener('click', () => storyboardSavePromptInstructionFromForm(root));
-  root.querySelector('.sd-storyboard-cancel-prompt-edit')?.addEventListener('click', () => { state.editingPromptPresetId = ''; saveSettings(); renderModal(); });
+  root.querySelector('.sd-storyboard-export-presets')?.addEventListener('click', () => {
+    const selected = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId);
+    const payload = { type: 'qianmu-storyboard-presets', version: 1, presets: clone(selected ? [selected] : state.promptPresets) };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a'); link.href = url; link.download = `qianmu-shot-presets-${fileStamp()}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  root.querySelector('.sd-storyboard-preset-import-file')?.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0]; if (!file) return;
+    try {
+      const data = JSON.parse(await file.text()); const incoming = Array.isArray(data?.presets) ? data.presets : (data?.id ? [data] : []);
+      const normalized = normalizeStoryboardState({ promptPresets: incoming }).promptPresets;
+      if (!normalized.length) throw new Error('没有可导入的取景预设');
+      state.promptPresets = storyboardMergeById(state.promptPresets, normalized, 200); state.promptCompiler.instructionPresetId = normalized[0].id; state.editingPromptPresetId = normalized[0].id;
+      saveSettings(); toast(`已导入 ${normalized.length} 个取景预设。`, 'success'); renderModal();
+    } catch (error) { toast(`导入失败：${error?.message || error}`, 'error'); }
+    finally { event.target.value = ''; }
+  });
   root.querySelector('.sd-storyboard-routing-enabled')?.addEventListener('change', (event) => {
     state.routing.enabled = Boolean(event.target.checked);
     state.routing.mode = state.routing.enabled ? 'ensemble' : 'single';
@@ -13582,52 +13332,6 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-check-connection')?.addEventListener('click', () => void storyboardCheckConnection(root));
   root.querySelector('.sd-storyboard-pack-export')?.addEventListener('click', () => void storyboardExportPackage());
   root.querySelector('.sd-storyboard-pack-import input')?.addEventListener('change', (event) => void storyboardImportPackage(event.target.files?.[0]));
-  root.querySelectorAll('[data-storyboard-capture]').forEach((button) => button.addEventListener('click', () => void storyboardCreateProfile(button.dataset.storyboardCapture)));
-  root.querySelector('.sd-storyboard-capture-cast')?.addEventListener('click', () => void storyboardCreateProfile('cast'));
-  root.querySelectorAll('[data-storyboard-character-id]').forEach((button) => button.addEventListener('click', () => {
-    const { entity, profile } = storyboardFindEntityProfile(state, button.dataset.storyboardCharacterId || '');
-    if (entity && profile) storyboardSetActiveProfile(state, entity, profile);
-    state.characterView = 'edit';
-    saveSettings(); renderModal();
-  }));
-  root.querySelector('.sd-storyboard-character-back')?.addEventListener('click', () => {
-    state.characterView = 'directory';
-    saveSettings(); renderModal();
-  });
-  root.querySelector('.sd-storyboard-duplicate-character')?.addEventListener('click', () => {
-    const item = state.characters.find((entry) => entry.id === state.selectedCharacterId);
-    if (item) void storyboardCreateProfile(item.subjectType, item);
-  });
-  root.querySelector('.sd-storyboard-character-reference-source')?.addEventListener('change', (event) => {
-    const captured = storyboardCaptureCharacterSheet(root, state);
-    if (!captured) return;
-    if (event.target.value === 'gallery') storyboardBeginReferencePicker(state, captured.entity, captured.profile);
-    else { saveSettings(); renderModal(); }
-  });
-  root.querySelector('.sd-storyboard-pick-reference')?.addEventListener('click', () => {
-    const captured = storyboardCaptureCharacterSheet(root, state);
-    if (captured) storyboardBeginReferencePicker(state, captured.entity, captured.profile);
-  });
-  root.querySelector('.sd-storyboard-save-character')?.addEventListener('click', () => {
-    if (!storyboardCaptureCharacterSheet(root, state)) return;
-    saveSettings(); toast('形象档案已保存。', 'success'); renderModal();
-  });
-  root.querySelector('.sd-storyboard-delete-character')?.addEventListener('click', async () => {
-    const { entity, profile } = storyboardFindEntityProfile(state, state.selectedCharacterId);
-    if (!entity || !profile || !await confirmDialog('删除形象档案', `确定删除「${entity.name || '未命名'} · ${profile.name || '默认档案'}」？已生成的图片不会被删除。`)) return;
-    entity.profiles = entity.profiles.filter((item) => item.id !== profile.id);
-    state.characters = state.characters.filter((item) => item.id !== profile.id);
-    const fallback = entity.profiles[0] || null;
-    if (fallback) {
-      storyboardSetActiveProfile(state, entity, fallback);
-    } else {
-      state.entities[entity.type] = state.entities[entity.type].filter((item) => item.id !== entity.id);
-      state.selectedCharacterId = '';
-    }
-    state.characterView = 'directory';
-    saveSettings();
-    renderModal();
-  });
   root.querySelectorAll('[data-storyboard-log-filter]').forEach((button) => button.addEventListener('click', () => {
     state.logFilter = button.dataset.storyboardLogFilter || 'all';
     saveSettings(); renderModal();
@@ -13670,8 +13374,6 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-gallery-source')?.addEventListener('change', (event) => {
     state.gallerySource = event.target.value || 'all'; storyboardGalleryVisibleCount = 40; saveSettings(); renderModal();
   });
-  root.querySelector('.sd-storyboard-reference-cancel')?.addEventListener('click', () => storyboardReturnFromReferencePicker());
-  root.querySelector('.sd-storyboard-reference-confirm')?.addEventListener('click', () => storyboardReturnFromReferencePicker({ commit: true }));
   root.querySelector('.sd-storyboard-gallery-folder-back')?.addEventListener('click', () => {
     storyboardGalleryOpenCollectionId = '';
     storyboardGalleryVisibleCount = 40;
@@ -13749,21 +13451,15 @@ function bindStoryboardTabEvents(root) {
       .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
     const toggleSelection = () => {
       if (!record) return;
-      if (storyboardReferencePicker) {
-        const alreadySelected = storyboardGallerySelection.has(record.id);
-        storyboardGallerySelection.clear();
-        if (!alreadySelected) storyboardGallerySelection.add(record.id);
-      } else {
-        const allSelected = memberIds.length && memberIds.every((id) => storyboardGallerySelection.has(id));
-        memberIds.forEach((id) => allSelected ? storyboardGallerySelection.delete(id) : storyboardGallerySelection.add(id));
-      }
+      const allSelected = memberIds.length && memberIds.every((id) => storyboardGallerySelection.has(id));
+      memberIds.forEach((id) => allSelected ? storyboardGallerySelection.delete(id) : storyboardGallerySelection.add(id));
       renderModal();
     };
     card.querySelector('.sd-storyboard-gallery-check')?.addEventListener('click', () => {
       toggleSelection();
     });
     card.querySelector('.sd-storyboard-preview-record')?.addEventListener('click', () => {
-      if (record && !storyboardGallerySelectMode && !storyboardReferencePicker) storyboardOpenLightbox(variants, record.id);
+      if (record && !storyboardGallerySelectMode) storyboardOpenLightbox(variants, record.id);
       else toggleSelection();
     });
     card.querySelector('.sd-storyboard-download')?.addEventListener('click', () => void storyboardDownloadRecord(record));
@@ -15091,6 +14787,7 @@ function bindActiveTabEvents(root) {
   bindTheaterTabEvents(root);
   bindFocusClockEvents(root);
   bindStoryboardTabEvents(root);
+  bindWorldFlipEvents(root);
   bindGeopoliticsTabEvents(root);
   bindTtsTabEvents(root);
   bindCoreadTabEvents(root);
@@ -25476,7 +25173,7 @@ async function stageTheaterScene() {
     segments.push('【输出格式】请把最终要呈现给读者的番外正文，完整包裹在 <幕外正文> 与 </幕外正文> 标签之间。任何思考、分析、自我提示都放在标签之外，标签内只保留纯净的正文本身。若输出 HTML 页面，则把整段 HTML 放进标签内即可。');
     const userPrompt = segments.join('\n\n');
     const messages = [{ role: 'user', content: userPrompt }];
-    log.request = clipLog(JSON.stringify(messages, null, 2));
+    log.request = JSON.stringify(messages, null, 2);
     saveSettings();
 
     const onDelta = settings.streamEnabled ? makeStreamLogUpdater(log) : null;
@@ -25485,7 +25182,7 @@ async function stageTheaterScene() {
       : await callExternalApi(messages, onDelta, cfg, theaterAbort);
     if (theaterCancel) throw new Error('USER_CANCELLED');
     const content = String(raw || '').trim();
-    log.response = clipLog(content);
+    log.response = content;
     if (!content) throw new Error('模型返回为空');
     t.lastOutput = { id: uid('scene'), source: theaterScriptSource || '', instruction, content, isHtml: looksLikeHtml(extractTheaterBody(content)), createdAt: new Date().toISOString() };
     log.status = 'success';

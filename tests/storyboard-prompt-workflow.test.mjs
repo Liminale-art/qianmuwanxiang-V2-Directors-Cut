@@ -17,7 +17,7 @@ assert.equal(defaults.manualParagraphIndex, null);
 assert.equal(defaults.promptDraft.artistString, '');
 assert.equal(Object.hasOwn(defaults.promptDraft, 'manual'), false);
 assert.equal(Object.hasOwn(defaults.promptDraft, 'autoInstruction'), false);
-assert.equal(defaults.promptCompiler.worldMode, 'auto');
+assert.equal(defaults.promptCompiler.worldMode, 'selected');
 assert.ok(defaults.promptCompiler.tagRules.some((rule) => rule.name === 'think' && rule.action === 'remove'));
 
 const normalized = normalizeStoryboardState({
@@ -62,27 +62,28 @@ assert.match(source, /dataset\.storyboardChatAction = 'capture-floor'/);
 assert.match(source, /button\.dataset\.storyboardChatAction === 'capture-floor'[\s\S]*storyboardChooseCaptureMode[\s\S]*storyboardCompilePrompt\(null, \{ plan, quiet: false \}\)[\s\S]*storyboardEditPrompt/);
 assert.match(source, /function storyboardHandleAutomaticCapture/);
 
-// A take preset is an ordered list; there is no one-off instruction field on the workbench.
-assert.match(source, /<b>取景预设<\/b>/);
+// A take preset is a dedicated ordered-list workspace; there is no one-off instruction field on the workbench.
+assert.match(source, /function renderStoryboardPresetLibrary/);
 assert.doesNotMatch(source, /本次取景指令/);
-assert.match(source, /\['presets', '取景预设'\]/);
-assert.match(source, /function storyboardSavePromptInstructionFromForm/);
+assert.match(source, /state\.view = 'presets'/);
+assert.doesNotMatch(source, /function storyboardSavePromptInstructionFromForm/);
 assert.match(source, /presetItems\.map\(\(item, index\) => `\$\{index \+ 1\}\. \$\{item\.name\}\\n\$\{item\.instruction\}`\)/,
   'ordered preset entries must enter the compiler exactly once');
-assert.match(source, /sd-storyboard-preset-entry[\s\S]*draggable="true"[\s\S]*sd-storyboard-add-preset-entry/);
-assert.match(source, /sd-storyboard-manual-generate[\s\S]*storyboardGenerate\(root, \{ automatic: false \}\)/,
-  'manual prompt edits need an explicit generation exit inside the prompt card');
+assert.match(source, /sd-storyboard-preset-entry[\s\S]*draggable="true"/);
+assert.match(source, /sd-storyboard-add-preset-item[\s\S]*editingPromptItemId = 'new'/);
+assert.match(source, /sd-storyboard-preset-import-file[\s\S]*sd-storyboard-export-presets/);
+assert.doesNotMatch(source, /sd-storyboard-manual-generate/,
+  'manual prompt edits remain drafts and generation is initiated from the chat image flow');
 assert.doesNotMatch(source, /class="[^\"]*sd-storyboard-generate/,
   'the removed floating storyboard generation button must not return');
 
-// Context controls and remove/extract rules must feed the actual compiler context.
-for (const selector of [
-  'sd-storyboard-context-character',
-  'sd-storyboard-context-user',
-  'sd-storyboard-context-world',
-  'sd-storyboard-context-recent',
-  'sd-storyboard-context-rule-action',
-]) assert.match(source, new RegExp(selector));
+// Character/persona context is unconditional; worldbook context is manual-only and always visible.
+for (const selector of ['sd-storyboard-context-recent', 'sd-storyboard-context-rule-action', 'sd-storyboard-world-entries']) assert.match(source, new RegExp(selector));
+for (const removed of ['sd-storyboard-context-character', 'sd-storyboard-context-user', 'sd-storyboard-context-world', 'sd-storyboard-world-mode']) assert.doesNotMatch(source, new RegExp(removed));
+assert.equal(normalized.promptCompiler.includeCharacterCards, true);
+assert.equal(normalized.promptCompiler.includeUserPersona, true);
+assert.equal(normalized.promptCompiler.worldMode, 'selected');
+assert.doesNotMatch(source, /storyboardWorldEntryScore/);
 assert.match(source, /function storyboardCleanWithTagRules[\s\S]*action === 'extract'[\s\S]*action === 'remove'/);
 assert.match(source, /storyboardCleanWithTagRules\(item\.mes, state\)/);
 assert.match(source, /storyboardCleanWithTagRules\(targetMessage\?\.mes \|\| '', state\)/);
@@ -92,10 +93,12 @@ assert.match(source, /画师串完全由用户另行控制。不得建议、生�
 assert.doesNotMatch(source, /"artist_string"|"artist_suggestion"/);
 assert.match(source, /const artistString = String\(state\.promptDraft\?\.artistString/);
 assert.match(source, /sourceId === 'novel' \? `\$\{artistString\}, \$\{scenePrompt\}`/);
-assert.match(source, /function storyboardSaveArtistPreset/);
+assert.doesNotMatch(source, /function storyboardSaveArtistPreset/);
 assert.match(source, /function renderStoryboardArtistLibrary[\s\S]*sd-storyboard-artist-waterfall/);
-assert.match(source, /querySelectorAll\('\.sd-storyboard-prompt, \.sd-storyboard-negative, \.sd-storyboard-artist-string/,
-  'manual prompt and artist-string edits must persist without triggering either automatic stage');
+assert.match(source, /sd-storyboard-edit-selected-artist[\s\S]*state\.editingArtistPresetId = state\.selectedArtistPresetId/);
+assert.match(source, /sd-storyboard-artist-edit-tags[\s\S]*artistCollections/);
+assert.match(source, /querySelectorAll\('\.sd-storyboard-prompt, \.sd-storyboard-negative/,
+  'manual prompt edits must persist without triggering either automatic stage');
 
 // Image data is server-backed for one ST instance; the explicit package remains a migration tool.
 assert.match(source, /<b>分镜数据打包<\/b><small>跨 SillyTavern 迁移，不包含 API Key<\/small>/);
@@ -105,7 +108,7 @@ assert.match(source, /storyboardImages[\s\S]*saveMetadata/);
 
 assert.match(style, /分镜第一阶段：无感自动化/);
 assert.match(style, /\.sd-storyboard-capsule-switch/);
-assert.match(style, /\.sd-storyboard-prompt-section/);
+assert.match(style, /\.sd-storyboard-prompt-stack/);
 assert.match(style, /\.sd-storyboard-artist-waterfall/);
 
 console.log('Storyboard prompt preprocessing workflow contract OK');

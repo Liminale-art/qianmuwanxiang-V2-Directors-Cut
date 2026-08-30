@@ -26,7 +26,9 @@ assert.equal(STORYBOARD_SOURCES.banana.secretKey, 'api_key_makersuite');
 const defaults = createStoryboardDefaults();
 assert.equal(defaults.profiles.novel.model, '', '千幕不得硬塞默认模型或画质预设');
 assert.equal(defaults.profiles.openai.openaiQuality, '', 'OpenAI 画质默认也必须留空/沿用 ST');
-assert.equal(defaults.characterView, 'directory');
+assert.equal(Object.hasOwn(defaults, 'characterView'), false);
+assert.equal(Object.hasOwn(defaults, 'characters'), false);
+assert.equal(Object.hasOwn(defaults, 'entities'), false);
 assert.deepEqual(defaults.logs, []);
 assert.deepEqual(defaults.parameterPresets, []);
 
@@ -66,11 +68,7 @@ assert.match(source, /if \(!storyboardState\(\)\.enabled\)[\s\S]*sd-storyboard-i
 assert.match(source, /paragraphAnchor: Number\.isInteger\(floor\)/, '第 0 楼也必须保留段落锚点');
 assert.match(source, /storyboardInlineAnchorNode\(text, records\)[\s\S]*text\.insertAdjacentElement\('afterend', wrapper\)[\s\S]*storyboardParagraphIndex/, '段落锚点必须保留定位元数据，可见控件仍须作为 mes_text 兄弟节点，避免污染配音与正则扫描');
 assert.match(source, /function storyboardInlineRecordValid[\s\S]*record\.messageHash[\s\S]*record\.swipeId/, '编辑或 reroll 后必须阻止旧图误挂');
-assert.match(css, /\.sd-storyboard-magazine[\s\S]*\.sd-storyboard-file-stack[\s\S]*\.sd-storyboard-profile-sheet/, '形象档案必须具备独立杂志纸页与叠档案布局');
-assert.match(source, /CAST DIRECTORY/, '形象档案必须有总目录');
-assert.match(source, /data-storyboard-capture="char"[\s\S]*>CHAR<[\s\S]*data-storyboard-capture="user"[\s\S]*>USER</, '形象档案必须同时捕获角色与 User');
 assert.doesNotMatch(source, /storyboardProfileBindings|绑定到当前聊天|selectedCharacters/, '形象档案不得再自动绑定或注入镜头任务');
-assert.match(source, /复制一套/, '同一人物必须支持多套方案');
 assert.match(source, /function storyboardGenerationPayload[\s\S]*const scenePrompt = String\(prompt \|\| ''\)\.trim\(\)[\s\S]*artistString/, '生图负载只能使用当前提示词与用户画师串，不得暗注入形象档案');
 assert.match(source, /function storyboardStartLog[\s\S]*function storyboardFinishLog[\s\S]*分镜日志/, '分镜必须记录成功、失败与诊断信息');
 assert.match(source, /STORYBOARD_QUEUE_LIMIT[\s\S]*storyboardQueueJob[\s\S]*storyboardPumpQueue/, '分镜必须使用有上限的生成队列');

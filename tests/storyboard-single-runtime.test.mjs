@@ -27,12 +27,10 @@ assert.doesNotMatch(source, /\bcleanupStoryboardIntegration\s*\(/, 'production c
 assert.doesNotMatch(source, /\binjectAllStoryboardStyles\s*\(/, 'prototype styles must not be injected over the stable storyboard UI');
 assert.doesNotMatch(source, /\bopenStoryboardConfigModal\s*\(/, 'the storyboard must not open a second configuration state store');
 
-const configBinding = source.slice(
-  source.indexOf("root.querySelector('.sd-storyboard-config-btn')"),
-  source.indexOf("root.querySelectorAll('[data-storyboard-source]')"),
-);
-assert.match(configBinding, /state\.view = 'create'/, 'the configuration button must stay inside the stable storyboard workbench');
-assert.match(configBinding, /saveSettings\(\)[\s\S]*renderModal\(\)/, 'the stable workbench remains the single persisted configuration surface');
+assert.doesNotMatch(source, /sd-storyboard-config-btn/, 'the redundant storyboard configuration gear must stay removed');
+assert.match(source, /const storyboardLayout = activeTab === 'imagegen'/, 'storyboard uses the existing single runtime in an exclusive panel layout');
+assert.match(source, /sd-storyboard-exit[\s\S]*storyboardReturnTab/, 'the exclusive panel must provide one stable return path');
+assert.match(source, /sd-storyboard-shortcut[\s\S]*activeTab = 'imagegen'/, 'the former world-map shortcut is now the storyboard entry');
 
 assert.match(source, /storyboardInjectMessageButtons/, 'the mature chat-floor entry point must remain available');
 assert.match(source, /storyboardHandleAutomaticCapture/, 'the mature automatic workflow must remain available');

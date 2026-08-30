@@ -25,7 +25,7 @@ import {
   scoreStoryboardParagraphAnchor,
 } from '../qianmu-storyboard.js';
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 8);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 9);
 assert.equal(STORYBOARD_PIPELINE_LOG_LIMIT, 20);
 assert.equal(STORYBOARD_PIPELINE_LOG_RETENTION_MS, 0);
 assert.deepEqual(Object.keys(STORYBOARD_PROVIDER_REGISTRY), ['novel', 'banana', 'openai', 'seedream', 'comfy']);
@@ -43,14 +43,15 @@ assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-5-full').vibe, fa
 assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-5-full').preciseReference, false, 'V5 launch must gate Precise Reference');
 
 const defaults = createStoryboardDefaults();
-assert.equal(defaults.schemaVersion, 8);
+assert.equal(defaults.schemaVersion, 9);
 assert.equal(defaults.enabled, false);
 assert.deepEqual(defaults.automation, { autoCapture: true, autoGenerate: true });
 assert.equal(defaults.promptCompiler.enabled, true);
 assert.equal(defaults.promptMode, 'manual');
 assert.equal(defaults.promptDraft.userEditedCompiled, false);
 assert.equal(Object.hasOwn(defaults, 'selectedCharacters'), false);
-assert.deepEqual(defaults.entities, { char: [], user: [], cast: [] });
+assert.equal(Object.hasOwn(defaults, 'characters'), false);
+assert.equal(Object.hasOwn(defaults, 'entities'), false);
 assert.deepEqual(Object.keys(defaults.connections), Object.keys(STORYBOARD_PROVIDER_REGISTRY));
 assert.notStrictEqual(defaults.connections.novel, defaults.connections.openai, 'provider connections must be isolated');
 
@@ -139,11 +140,11 @@ const migrated = normalizeStoryboardState({
   characters: [{ id: 'look-1', subjectType: 'char', subjectKey: 'card:a', subjectName: 'Alice', variantName: 'Winter', appearance: 'red coat' }],
   logs: [{ id: 'old-log', source: 'openai', status: 'success', prompt: 'old prompt', startedAt: now - 100, finishedAt: now }],
 });
-assert.equal(migrated.schemaVersion, 8);
+assert.equal(migrated.schemaVersion, 9);
 assert.equal(migrated.enabled, true, 'existing storyboard users must keep their pre-upgrade behavior');
 assert.equal(migrated.promptDraft.compiled, 'old prompt');
-assert.equal(migrated.entities.char[0].name, 'Alice');
-assert.equal(migrated.entities.char[0].profiles[0].appearance, 'red coat');
+assert.equal(Object.hasOwn(migrated, 'characters'), false, 'v9 must remove untested character archive data');
+assert.equal(Object.hasOwn(migrated, 'entities'), false, 'v9 must remove untested character entity data');
 assert.equal(Object.hasOwn(migrated, 'selectedCharacters'), false);
 assert.equal(migrated.connections.openai.presets[0].model, 'gpt-image-2', 'retired or arbitrary model IDs must migrate to the provider default');
 assert.equal(migrated.profiles.openai.openaiBackground, 'transparent');
@@ -163,9 +164,8 @@ const partiallyMigrated = normalizeStoryboardState({
     candidates: [{ id: 'cast:maybe', name: 'Maybe', evidence: 'mentioned nearby' }],
   },
 });
-assert.equal(partiallyMigrated.entities.char.length, 1, 'partially migrated entities must merge by subject identity');
-assert.deepEqual(partiallyMigrated.entities.char[0].profiles.map((profile) => profile.id), ['existing', 'legacy-winter', 'legacy-summer']);
-assert.equal(Object.hasOwn(partiallyMigrated.entities, 'candidates'), false);
+assert.equal(Object.hasOwn(partiallyMigrated, 'characters'), false);
+assert.equal(Object.hasOwn(partiallyMigrated, 'entities'), false);
 
 const entity = createStoryboardEntity({ id: 'cast:2', type: 'cast', name: '路人', profiles: [{ id: 'look-2', appearance: 'grey hair' }] });
 const normalized = normalizeStoryboardState({
@@ -175,7 +175,7 @@ const normalized = normalizeStoryboardState({
   entities: { cast: [entity] },
   selectedCharacters: [{ entityId: 'cast:2', profileId: 'look-2', consistency: 'hybrid', referenceStrategy: 'vibe' }],
 });
-assert.equal(normalized.entities.cast[0].profiles[0].id, 'look-2', '独立形象档案仍须正常保留');
+assert.equal(Object.hasOwn(normalized, 'entities'), false, 'removed character archives must not survive normalization');
 assert.equal(Object.hasOwn(normalized, 'selectedCharacters'), false, '旧出镜选择必须在 v8 直接切割');
 
 const selectionFallback = normalizeStoryboardState({
@@ -194,7 +194,8 @@ const selectionFallback = normalizeStoryboardState({
   apiKey: 'must-drop',
 });
 assert.equal(selectionFallback.view, 'assets');
-assert.equal(selectionFallback.characterView, 'folder');
+assert.equal(Object.hasOwn(selectionFallback, 'characterView'), false);
+assert.equal(Object.hasOwn(selectionFallback, 'entities'), false);
 assert.equal(Object.hasOwn(selectionFallback, 'selectedCharacters'), false);
 assert.equal(Object.hasOwn(selectionFallback.promptDraft, 'manual'), false, 'removed screen-intent fields must not survive normalization');
 assert.equal(selectionFallback.promptDraft.compilerMeta.requestId, 'compiler-1', 'safe compiler metadata must survive normalization');

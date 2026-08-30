@@ -145,11 +145,6 @@ export function sanitizeFolder(name) {
  * @param {number} limit - 长度限制
  * @returns {string} 截断后的文本
  */
-export function clipLog(text, limit = 1000) {
-  const value = String(text || '');
-  return value.length > limit ? `${value.slice(0, limit)}\n…[内容过长已截断]` : value;
-}
-
 /**
  * 估算文本的 token 数量
  * @param {string} text - 要估算的文本
