@@ -25,7 +25,7 @@ import {
   scoreStoryboardParagraphAnchor,
 } from '../qianmu-storyboard.js';
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 7);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 8);
 assert.equal(STORYBOARD_PIPELINE_LOG_LIMIT, 20);
 assert.equal(STORYBOARD_PIPELINE_LOG_RETENTION_MS, 0);
 assert.deepEqual(Object.keys(STORYBOARD_PROVIDER_REGISTRY), ['novel', 'banana', 'openai', 'seedream', 'comfy']);
@@ -43,16 +43,36 @@ assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-5-full').vibe, fa
 assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-5-full').preciseReference, false, 'V5 launch must gate Precise Reference');
 
 const defaults = createStoryboardDefaults();
-assert.equal(defaults.schemaVersion, 7);
+assert.equal(defaults.schemaVersion, 8);
 assert.equal(defaults.enabled, false);
 assert.deepEqual(defaults.automation, { autoCapture: true, autoGenerate: true });
 assert.equal(defaults.promptCompiler.enabled, true);
 assert.equal(defaults.promptMode, 'manual');
 assert.equal(defaults.promptDraft.userEditedCompiled, false);
-assert.deepEqual(defaults.selectedCharacters, []);
-assert.deepEqual(defaults.entities, { char: [], user: [], cast: [], candidates: [] });
+assert.equal(Object.hasOwn(defaults, 'selectedCharacters'), false);
+assert.deepEqual(defaults.entities, { char: [], user: [], cast: [] });
 assert.deepEqual(Object.keys(defaults.connections), Object.keys(STORYBOARD_PROVIDER_REGISTRY));
 assert.notStrictEqual(defaults.connections.novel, defaults.connections.openai, 'provider connections must be isolated');
+
+const rememberedModels = normalizeStoryboardState({
+  source: 'novel',
+  profiles: { novel: { model: 'nai-diffusion-5-full', steps: '31', cfg: '6.2' } },
+  modelProfiles: { novel: { 'nai-diffusion-4-5-full': { model: 'nai-diffusion-4-5-full', steps: '24', cfg: '5.5' } } },
+});
+assert.equal(rememberedModels.modelProfiles.novel['nai-diffusion-4-5-full'].steps, '24');
+assert.equal(rememberedModels.modelProfiles.novel['nai-diffusion-5-full'].steps, '31', '当前模型参数必须进入逐模型记忆');
+
+const takePresets = normalizeStoryboardState({
+  promptPresets: [
+    { id: 'legacy-take', name: '旧方案', instruction: '保留原顺序' },
+    { id: 'ordered-take', name: '镜头语言', items: [
+      { id: 'first', name: '先定主体', instruction: '确定主体与动作' },
+      { id: 'second', name: '再定镜头', instruction: '选择景别与构图' },
+    ] },
+  ],
+});
+assert.equal(takePresets.promptPresets[0].items[0].name, '基础指令', '旧单段指令必须无损迁移为一个条目');
+assert.deepEqual(takePresets.promptPresets[1].items.map((item) => item.id), ['first', 'second'], '取景预设条目顺序必须稳定');
 
 const workflowWithCredentials = {
   '1': {
@@ -119,12 +139,12 @@ const migrated = normalizeStoryboardState({
   characters: [{ id: 'look-1', subjectType: 'char', subjectKey: 'card:a', subjectName: 'Alice', variantName: 'Winter', appearance: 'red coat' }],
   logs: [{ id: 'old-log', source: 'openai', status: 'success', prompt: 'old prompt', startedAt: now - 100, finishedAt: now }],
 });
-assert.equal(migrated.schemaVersion, 7);
+assert.equal(migrated.schemaVersion, 8);
 assert.equal(migrated.enabled, true, 'existing storyboard users must keep their pre-upgrade behavior');
-assert.equal(migrated.promptDraft.manual, 'old prompt');
+assert.equal(migrated.promptDraft.compiled, 'old prompt');
 assert.equal(migrated.entities.char[0].name, 'Alice');
 assert.equal(migrated.entities.char[0].profiles[0].appearance, 'red coat');
-assert.equal(migrated.selectedCharacters[0].entityId, migrated.entities.char[0].id);
+assert.equal(Object.hasOwn(migrated, 'selectedCharacters'), false);
 assert.equal(migrated.connections.openai.presets[0].model, 'gpt-image-2', 'retired or arbitrary model IDs must migrate to the provider default');
 assert.equal(migrated.profiles.openai.openaiBackground, 'transparent');
 assert.equal(migrated.profiles.openai.openaiOutputFormat, 'webp');
@@ -145,7 +165,7 @@ const partiallyMigrated = normalizeStoryboardState({
 });
 assert.equal(partiallyMigrated.entities.char.length, 1, 'partially migrated entities must merge by subject identity');
 assert.deepEqual(partiallyMigrated.entities.char[0].profiles.map((profile) => profile.id), ['existing', 'legacy-winter', 'legacy-summer']);
-assert.equal(partiallyMigrated.entities.candidates[0].id, 'cast:maybe');
+assert.equal(Object.hasOwn(partiallyMigrated.entities, 'candidates'), false);
 
 const entity = createStoryboardEntity({ id: 'cast:2', type: 'cast', name: '路人', profiles: [{ id: 'look-2', appearance: 'grey hair' }] });
 const normalized = normalizeStoryboardState({
@@ -155,8 +175,8 @@ const normalized = normalizeStoryboardState({
   entities: { cast: [entity] },
   selectedCharacters: [{ entityId: 'cast:2', profileId: 'look-2', consistency: 'hybrid', referenceStrategy: 'vibe' }],
 });
-assert.equal(normalized.selectedCharacters[0].referenceStrategy, 'description', 'unsupported reference strategies must degrade visibly and deterministically');
-assert.equal(normalized.selectedCharacters[0].profileId, 'look-2');
+assert.equal(normalized.entities.cast[0].profiles[0].id, 'look-2', '独立形象档案仍须正常保留');
+assert.equal(Object.hasOwn(normalized, 'selectedCharacters'), false, '旧出镜选择必须在 v8 直接切割');
 
 const selectionFallback = normalizeStoryboardState({
   schemaVersion: 2,
@@ -175,8 +195,8 @@ const selectionFallback = normalizeStoryboardState({
 });
 assert.equal(selectionFallback.view, 'assets');
 assert.equal(selectionFallback.characterView, 'folder');
-assert.equal(selectionFallback.selectedCharacters.length, 1, 'an entity can appear at most once in a shot');
-assert.equal(selectionFallback.selectedCharacters[0].profileId, 'look-a', 'selection must use a profile owned by its entity');
+assert.equal(Object.hasOwn(selectionFallback, 'selectedCharacters'), false);
+assert.equal(Object.hasOwn(selectionFallback.promptDraft, 'manual'), false, 'removed screen-intent fields must not survive normalization');
 assert.equal(selectionFallback.promptDraft.compilerMeta.requestId, 'compiler-1', 'safe compiler metadata must survive normalization');
 assert.deepEqual(selectionFallback.runtimeExtension, { safe: 'kept' });
 assert.equal(selectionFallback.apiKey, undefined);
@@ -334,7 +354,7 @@ const snapshotState = normalizeStoryboardState({ schemaVersion: 2, logs: [{
 }] });
 assert.deepEqual(snapshotState.logs[0].recordIds, ['record-1', 'record-2']);
 assert.equal(snapshotState.logs[0].pipelineId, 'pipeline-1');
-assert.equal(snapshotState.logs[0].snapshot.selectedCharacters[0].name, 'Alice');
+assert.equal(Object.hasOwn(snapshotState.logs[0].snapshot, 'selectedCharacters'), false);
 assert.equal(snapshotState.logs[0].snapshot.paragraphAnchor.paragraphHash, anchor.paragraphHash);
 assert.equal(snapshotState.logs[0].snapshot.connection.credentialId, 'cred:openai');
 assert.equal(snapshotState.logs[0].snapshot.connection.apiKey, undefined);
@@ -343,4 +363,4 @@ assert.equal(snapshotState.logs[0].snapshot.payload.references[0].data, undefine
 assert.match(buildImagineCommand({ prompt: 'legacy remains' }), /^\/imagine /, 'legacy command must remain available for migration');
 assert.equal(migrateStoryboardState({ schemaVersion: 4, prompt: 'kept' }).prompt, 'kept', 'v4 migration must be idempotent');
 
-console.log('Storyboard v7 schema contract OK');
+console.log('Storyboard v8 schema contract OK');

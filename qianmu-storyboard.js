@@ -1,5 +1,5 @@
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
-export const STORYBOARD_SCHEMA_VERSION = 7;
+export const STORYBOARD_SCHEMA_VERSION = 8;
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -76,8 +76,6 @@ export const STORYBOARD_PROMPT_MODES = Object.freeze({
   combined: Object.freeze({ id: 'combined', label: '手写 + 自动取景', usesCompiler: true }),
 });
 export const STORYBOARD_ENTITY_TYPES = Object.freeze(['char', 'user', 'cast']);
-export const STORYBOARD_CONSISTENCY_STRATEGIES = Object.freeze({ scene: { id: 'scene', label: '以当前场景为准' }, archive: { id: 'archive', label: '以形象档案为准' }, hybrid: { id: 'hybrid', label: '当前场景优先，档案补全' }, none: { id: 'none', label: '不固定人物形象' } });
-export const STORYBOARD_REFERENCE_STRATEGIES = Object.freeze({ description: { id: 'description', label: '仅使用外貌特征', capability: '' }, avatar: { id: 'avatar', label: '角色头像', capability: 'reference' }, gallery: { id: 'gallery', label: '从阅片室选择', capability: 'reference' }, vibe: { id: 'vibe', label: 'Vibe', capability: 'vibe' }, precise: { id: 'precise', label: '精确参考', capability: 'preciseReference' }, none: { id: 'none', label: '不使用参考', capability: '' } });
 export const STORYBOARD_TAG_CATEGORIES = Object.freeze(['identity', 'appearance', 'wardrobe', 'state', 'action', 'expression', 'composition', 'camera', 'environment', 'props', 'lighting', 'color', 'style', 'quality', 'negative', 'custom']);
 export const STORYBOARD_STATE_PRECEDENCE = Object.freeze(['explicit', 'targetParagraph', 'scene', 'timeline', 'archive', 'worldInfo', 'global']);
 
@@ -86,7 +84,7 @@ export const getStoryboardModel = (providerId, modelId) => (STORYBOARD_MODEL_REG
 export const getStoryboardCapabilities = (providerId, modelId = '') => getStoryboardModel(providerId, modelId)?.capabilities || getStoryboardProvider(providerId)?.capabilities || caps();
 
 const legacyProfile = () => ({ loaded: false, model: '', sampler: '', scheduler: '', width: '', height: '', ratio: '1:1', count: '', steps: '', cfg: '', seed: '', comfyUrl: '', comfyWorkflow: '', comfyWorkflowNotice: '', openaiStyle: '', openaiQuality: '', openaiBackground: '', openaiOutputFormat: '', imageSize: '', watermark: false, seedreamGuidanceScale: '', seedreamSequential: false, googleEnhance: false, novelSm: false, novelSmDyn: false, novelDecrisper: false, novelVarietyBoost: false });
-const promptDraft = () => ({ manual: '', autoInstruction: '', compiled: '', negative: '', artistString: '', compiledAt: 0, compiledBy: '', userEditedCompiled: false, sourceSummary: [] });
+const promptDraft = () => ({ compiled: '', negative: '', artistString: '', compiledAt: 0, compiledBy: '', userEditedCompiled: false, sourceSummary: [] });
 const connection = (id) => ({ providerId: id, activePresetId: '', presets: [], draft: { baseUrl: getStoryboardProvider(id).defaultBaseUrl, model: getStoryboardProvider(id).defaultModel } });
 const routingDefaults = () => ({ enabled: false, mode: 'single', templateId: 'smart', single: { providerId: 'novel', modelId: 'nai-diffusion-5-full', connectionPresetId: '', parameterPresetId: '' }, rules: [], maxShotsPerFloor: 3, confirmMultipleRequests: true, providerConcurrency: 1 });
 const automationDefaults = () => ({ autoCapture: true, autoGenerate: true });
@@ -96,13 +94,13 @@ const compilerTagRuleDefaults = () => ['think', 'thinking', 'analysis', 'reasoni
 export function createStoryboardDefaults() {
   const ids = Object.keys(STORYBOARD_PROVIDER_REGISTRY);
   return {
-    schemaVersion: STORYBOARD_SCHEMA_VERSION, enabled: false, automation: automationDefaults(), view: 'create', workspaceView: 'workbench', characterView: 'directory', castPickerOpen: false, assetView: 'tags', assetSearch: '', logFilter: 'all', gallerySearch: '', gallerySource: 'all', source: 'novel', initialized: false,
+    schemaVersion: STORYBOARD_SCHEMA_VERSION, enabled: false, automation: automationDefaults(), view: 'create', workspaceView: 'workbench', characterView: 'directory', assetView: 'tags', assetSearch: '', logFilter: 'all', gallerySearch: '', gallerySource: 'all', source: 'novel', initialized: false,
     target: 'latest', floor: '', inlineByDefault: true, promptMode: 'manual', prompt: '', negative: '', contentRating: 'sfw', paragraphMode: 'auto', manualParagraphIndex: null, promptDraft: promptDraft(),
     promptCompiler: { enabled: true, apiProfileId: '', connectionPresetId: '', instructionPresetId: '', instruction: '', includeCurrentFloor: true, includeRecentFloors: 2, includeCharacterCards: true, includeUserPersona: true, includeActivatedWorldInfo: true, worldMode: 'auto', worldEntryIds: [], tagRules: compilerTagRuleDefaults(), excludedTags: 'think, thinking, analysis, reasoning, status, summary, script, style' },
-    selectedCharacterId: '', selectedCharacters: [], consistencyModes: Object.fromEntries(ids.map((id) => [id, 'description'])),
-    profiles: Object.fromEntries(ids.map((id) => [id, legacyProfile()])), parameterPresets: [], parameterPresetSelection: Object.fromEntries(ids.map((id) => [id, ''])),
-    connections: Object.fromEntries(ids.map((id) => [id, connection(id)])), characters: [], entities: { char: [], user: [], cast: [], candidates: [] },
-    promptPresets: [], artistPresets: [], selectedArtistPresetId: '', tagLibrary: [], vibeLibrary: [], selectedVibeIds: [], routing: routingDefaults(), shotPlans: [], collapsedCards: { model: true, prompt: true, cast: true, params: true, 'routing-rules': true }, logs: [], pipelineLogs: [],
+    selectedCharacterId: '',
+    profiles: Object.fromEntries(ids.map((id) => [id, legacyProfile()])), modelProfiles: Object.fromEntries(ids.map((id) => [id, {}])), parameterPresets: [], parameterPresetSelection: Object.fromEntries(ids.map((id) => [id, ''])),
+    connections: Object.fromEntries(ids.map((id) => [id, connection(id)])), characters: [], entities: { char: [], user: [], cast: [] },
+    promptPresets: [], artistPresets: [], selectedArtistPresetId: '', artistSearch: '', editingArtistPresetId: '', tagLibrary: [], vibeLibrary: [], selectedVibeIds: [], routing: routingDefaults(), shotPlans: [], collapsedCards: { model: true, context: true, prompt: true, params: true, 'routing-rules': true }, logs: [], pipelineLogs: [],
   };
 }
 
@@ -194,17 +192,13 @@ export function migrateStoryboardState(value) {
         if (!entity.activeProfileId || String(s.selectedCharacterId) === String(p.id)) entity.activeProfileId = profile.id;
       }
     }
-    s.entities = { char: [...maps.char.values()], user: [...maps.user.values()], cast: [...maps.cast.values()], candidates: currentEntities.candidates };
+    s.entities = { char: [...maps.char.values()], user: [...maps.user.values()], cast: [...maps.cast.values()] };
     s.connections ||= defaults.connections;
     for (const [providerId, p] of Object.entries(s.profiles || {})) if (getStoryboardProvider(providerId) && (p?.model || p?.comfyUrl) && !s.connections[providerId]?.presets?.length) {
       const id = `migrated-${providerId}`, preset = normalizeStoryboardConnectionProfile({ id, name: '原有连接', model: p.model, baseUrl: p.comfyUrl, options: p }, providerId);
       s.connections[providerId] = { providerId, activePresetId: id, presets: [preset], draft: { baseUrl: preset.baseUrl, model: preset.model } };
     }
-    s.promptMode ||= 'manual'; s.promptDraft ||= { ...promptDraft(), manual: s.prompt || '', negative: s.negative || '' };
-    if (!Array.isArray(s.selectedCharacters)) {
-      const entityId = s.selectedCharacterId ? findEntityByProfile(s.entities, s.selectedCharacterId) : '';
-      s.selectedCharacters = entityId ? [{ entityId, profileId: cleanId(s.selectedCharacterId), consistency: 'hybrid', referenceStrategy: 'description', referenceAssetIds: [] }] : [];
-    }
+    s.promptMode ||= 'manual'; s.promptDraft ||= { ...promptDraft(), compiled: s.prompt || '', negative: s.negative || '' };
     s.promptPresets ||= []; s.tagLibrary ||= []; s.vibeLibrary ||= []; s.routing ||= routingDefaults(); s.shotPlans ||= []; s.collapsedCards ||= {}; s.pipelineLogs ||= legacyPipelineLogs(s.logs);
   }
   if (fromVersion < 3) {
@@ -224,6 +218,14 @@ export function migrateStoryboardState(value) {
       return migratedRule;
     });
   }
+  if (fromVersion < 8) {
+    s.promptCompiler ||= {};
+    s.promptCompiler.enabled = true;
+    s.modelProfiles ||= {};
+    delete s.selectedCharacters;
+    delete s.castPickerOpen;
+    delete s.consistencyModes;
+  }
   s.schemaVersion = STORYBOARD_SCHEMA_VERSION;
   return s;
 }
@@ -231,18 +233,21 @@ export function migrateStoryboardState(value) {
 export function normalizeStoryboardState(value) {
   const migrated = migrateStoryboardState(value), defaults = createStoryboardDefaults(), state = obj(value) ? value : {};
   Object.assign(state, migrated); for (const [key, val] of Object.entries(defaults)) if (state[key] === undefined) state[key] = clone(val);
-  state.schemaVersion = STORYBOARD_SCHEMA_VERSION; state.enabled = Boolean(state.enabled); state.automation = normalizeStoryboardAutomation(state.automation); state.view = ['create', 'characters', 'assets', 'gallery', 'logs'].includes(state.view) ? state.view : 'create'; state.workspaceView = ['workbench', 'characters', 'assets', 'gallery', 'logs'].includes(state.workspaceView) ? state.workspaceView : 'workbench'; state.characterView = ['directory', 'folder', 'edit'].includes(state.characterView) ? state.characterView : 'directory'; state.castPickerOpen = Boolean(state.castPickerOpen); state.logFilter = ['all', 'success', 'failed'].includes(state.logFilter) ? state.logFilter : 'all';
-  state.assetView = ['tags', 'vibes', 'presets', 'routing'].includes(state.assetView) ? state.assetView : 'tags'; state.assetSearch = str(state.assetSearch, 120); state.gallerySearch = str(state.gallerySearch, 120); state.gallerySource = state.gallerySource === 'all' || getStoryboardProvider(state.gallerySource) ? state.gallerySource : 'all'; state.source = getStoryboardProvider(state.source) ? state.source : 'novel'; state.target = ['latest', 'floor', 'gallery'].includes(state.target) ? state.target : 'latest'; state.inlineByDefault = state.inlineByDefault !== false; state.promptMode = STORYBOARD_PROMPT_MODES[state.promptMode] ? state.promptMode : 'manual'; state.prompt = str(state.prompt, 24000); state.negative = str(state.negative, 12000); state.contentRating = state.contentRating === 'nsfw' ? 'nsfw' : 'sfw'; state.paragraphMode = state.paragraphMode === 'manual' ? 'manual' : 'auto'; state.manualParagraphIndex = Number.isInteger(Number(state.manualParagraphIndex)) && Number(state.manualParagraphIndex) >= 0 ? Number(state.manualParagraphIndex) : null;
-  const d = obj(state.promptDraft) ? state.promptDraft : {}, safeDraft = safeData(d, 5); state.promptDraft = { ...(obj(safeDraft) ? safeDraft : {}), manual: str(d.manual ?? state.prompt, 24000), autoInstruction: str(d.autoInstruction, 12000), compiled: str(d.compiled, 24000), negative: str(d.negative ?? state.negative, 12000), artistString: str(d.artistString, 6000), compiledAt: pos(d.compiledAt), compiledBy: str(d.compiledBy, 160), userEditedCompiled: Boolean(d.userEditedCompiled), sourceSummary: Array.isArray(d.sourceSummary) ? d.sourceSummary.slice(0, 40).map((x) => str(x, 240)).filter(Boolean) : [] };
+  state.schemaVersion = STORYBOARD_SCHEMA_VERSION; state.enabled = Boolean(state.enabled); state.automation = normalizeStoryboardAutomation(state.automation); state.view = ['create', 'characters', 'assets', 'artists', 'gallery', 'logs'].includes(state.view) ? state.view : 'create'; state.workspaceView = ['workbench', 'characters', 'assets', 'artists', 'gallery', 'logs'].includes(state.workspaceView) ? state.workspaceView : 'workbench'; state.characterView = ['directory', 'folder', 'edit'].includes(state.characterView) ? state.characterView : 'directory'; state.logFilter = ['all', 'success', 'failed'].includes(state.logFilter) ? state.logFilter : 'all';
+  state.assetView = ['tags', 'vibes', 'presets', 'routing'].includes(state.assetView) ? state.assetView : 'tags'; state.assetSearch = str(state.assetSearch, 120); state.artistSearch = str(state.artistSearch, 120); state.editingArtistPresetId = cleanId(state.editingArtistPresetId); state.gallerySearch = str(state.gallerySearch, 120); state.gallerySource = state.gallerySource === 'all' || getStoryboardProvider(state.gallerySource) ? state.gallerySource : 'all'; state.source = getStoryboardProvider(state.source) ? state.source : 'novel'; state.target = ['latest', 'floor', 'gallery'].includes(state.target) ? state.target : 'latest'; state.inlineByDefault = state.inlineByDefault !== false; state.promptMode = STORYBOARD_PROMPT_MODES[state.promptMode] ? state.promptMode : 'manual'; state.prompt = str(state.prompt, 24000); state.negative = str(state.negative, 12000); state.contentRating = state.contentRating === 'nsfw' ? 'nsfw' : 'sfw'; state.paragraphMode = state.paragraphMode === 'manual' ? 'manual' : 'auto'; state.manualParagraphIndex = Number.isInteger(Number(state.manualParagraphIndex)) && Number(state.manualParagraphIndex) >= 0 ? Number(state.manualParagraphIndex) : null;
+  const d = obj(state.promptDraft) ? state.promptDraft : {}, safeDraft = safeData(d, 5);
+  if (obj(safeDraft)) { delete safeDraft.manual; delete safeDraft.autoInstruction; }
+  state.promptDraft = { ...(obj(safeDraft) ? safeDraft : {}), compiled: str(d.compiled ?? state.prompt, 24000), negative: str(d.negative ?? state.negative, 12000), artistString: str(d.artistString, 6000), compiledAt: pos(d.compiledAt), compiledBy: str(d.compiledBy, 160), userEditedCompiled: Boolean(d.userEditedCompiled), sourceSummary: Array.isArray(d.sourceSummary) ? d.sourceSummary.slice(0, 40).map((x) => str(x, 240)).filter(Boolean) : [] };
   const c = obj(state.promptCompiler) ? state.promptCompiler : {}, safeCompiler = safeData(c, 5);
   const legacyCompilerTags = str(c.excludedTags, 2000).split(/[,，\s]+/).map((name) => ({ name, action: 'remove' }));
   const compilerTagRules = (Array.isArray(c.tagRules) ? c.tagRules : (legacyCompilerTags.some((item) => item.name) ? legacyCompilerTags : compilerTagRuleDefaults()))
     .filter(obj).map((rule) => ({ name: str(rule.name, 120).replace(/^<|>$/g, ''), action: rule.action === 'extract' ? 'extract' : 'remove' }))
     .filter((rule) => rule.name).slice(0, 80);
-  state.promptCompiler = { ...(obj(safeCompiler) ? safeCompiler : {}), enabled: Boolean(c.enabled), apiProfileId: cleanId(c.apiProfileId), connectionPresetId: cleanId(c.connectionPresetId), instructionPresetId: cleanId(c.instructionPresetId), instruction: str(c.instruction, 12000), includeCurrentFloor: true, includeRecentFloors: int(c.includeRecentFloors, 0, 20, 2), includeCharacterCards: c.includeCharacterCards !== false, includeUserPersona: c.includeUserPersona !== false, includeActivatedWorldInfo: c.includeActivatedWorldInfo !== false, worldMode: ['auto', 'selected', 'off'].includes(c.worldMode) ? c.worldMode : 'auto', worldEntryIds: ids(c.worldEntryIds, 300), tagRules: compilerTagRules, excludedTags: compilerTagRules.filter((rule) => rule.action === 'remove').map((rule) => rule.name).join(', ') };
-  state.profiles = legacyProfiles(state.profiles); state.consistencyModes = Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((id) => [id, id === 'comfy' && state.consistencyModes?.[id] === 'reference' ? 'reference' : 'description'])); state.parameterPresets = parameterPresets(state.parameterPresets); state.parameterPresetSelection = Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((id) => { const selected = cleanId(state.parameterPresetSelection?.[id]); return [id, state.parameterPresets.some((p) => p.id === selected && p.source === id) ? selected : '']; }));
-  state.connections = connections(state.connections); state.characters = legacyCharacters(state.characters); state.entities = entities(state.entities); state.selectedCharacters = selections(state.selectedCharacters, state.entities, state.source, activeModel(state)); if (!state.characters.some((p) => p.id === state.selectedCharacterId)) state.selectedCharacterId = '';
-  state.promptPresets = promptPresets(state.promptPresets); state.artistPresets = artistPresets(state.artistPresets); state.selectedArtistPresetId = state.artistPresets.some((item) => item.id === state.selectedArtistPresetId) ? cleanId(state.selectedArtistPresetId) : ''; state.tagLibrary = tags(state.tagLibrary); state.vibeLibrary = vibes(state.vibeLibrary);
+  state.promptCompiler = { ...(obj(safeCompiler) ? safeCompiler : {}), enabled: true, apiProfileId: cleanId(c.apiProfileId), connectionPresetId: cleanId(c.connectionPresetId), instructionPresetId: cleanId(c.instructionPresetId), instruction: str(c.instruction, 12000), includeCurrentFloor: true, includeRecentFloors: int(c.includeRecentFloors, 0, 20, 2), includeCharacterCards: c.includeCharacterCards !== false, includeUserPersona: c.includeUserPersona !== false, includeActivatedWorldInfo: c.includeActivatedWorldInfo !== false, worldMode: ['auto', 'selected', 'off'].includes(c.worldMode) ? c.worldMode : 'auto', worldEntryIds: ids(c.worldEntryIds, 300), tagRules: compilerTagRules, excludedTags: compilerTagRules.filter((rule) => rule.action === 'remove').map((rule) => rule.name).join(', ') };
+  state.profiles = legacyProfiles(state.profiles); state.modelProfiles = modelProfileMemory(state.modelProfiles, state.profiles); state.parameterPresets = parameterPresets(state.parameterPresets); state.parameterPresetSelection = Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((id) => { const selected = cleanId(state.parameterPresetSelection?.[id]); return [id, state.parameterPresets.some((p) => p.id === selected && p.source === id) ? selected : '']; }));
+  state.connections = connections(state.connections); state.characters = legacyCharacters(state.characters); state.entities = entities(state.entities); if (!state.characters.some((p) => p.id === state.selectedCharacterId)) state.selectedCharacterId = '';
+  delete state.selectedCharacters; delete state.castPickerOpen; delete state.consistencyModes;
+  state.promptPresets = promptPresets(state.promptPresets); state.artistPresets = artistPresets(state.artistPresets); state.selectedArtistPresetId = state.artistPresets.some((item) => item.id === state.selectedArtistPresetId) ? cleanId(state.selectedArtistPresetId) : ''; if (!state.artistPresets.some((item) => item.id === state.editingArtistPresetId)) state.editingArtistPresetId = ''; state.tagLibrary = tags(state.tagLibrary); state.vibeLibrary = vibes(state.vibeLibrary);
   const knownTagIds = new Set(state.tagLibrary.map((tag) => tag.id));
   for (const preset of state.promptPresets) preset.tagIds = preset.tagIds.filter((id) => knownTagIds.has(id));
   for (const vibe of state.vibeLibrary) vibe.tags = vibe.tags.filter((id) => knownTagIds.has(id));
@@ -276,43 +281,26 @@ function connections(value) {
 }
 
 function entities(value) {
-  const r = obj(value) ? value : {}, out = { char: [], user: [], cast: [], candidates: [] }, entityIds = new Set();
+  const r = obj(value) ? value : {}, out = { char: [], user: [], cast: [] }, entityIds = new Set();
   for (const type of STORYBOARD_ENTITY_TYPES) {
     const normalized = dedupeById((Array.isArray(r[type]) ? r[type] : []).filter(obj).map((entity) => createStoryboardEntity({ ...entity, type })).filter((entity) => entity.id));
     out[type] = normalized.filter((entity) => !entityIds.has(entity.id) && entityIds.add(entity.id)).slice(0, 300);
-  }
-  const candidates = dedupeById((Array.isArray(r.candidates) ? r.candidates : []).filter(obj).map((candidate) => ({ id: cleanId(candidate.id), name: str(candidate.name, 80), evidence: str(candidate.evidence, 1000), floor: Number.isInteger(candidate.floor) ? candidate.floor : null, detectedAt: pos(candidate.detectedAt) })).filter((candidate) => candidate.id && !entityIds.has(candidate.id)));
-  out.candidates = candidates.slice(0, 100);
-  return out;
-}
-
-function selections(value, es, providerId, modelId) {
-  if (!Array.isArray(value)) return [];
-  const entityMap = new Map(STORYBOARD_ENTITY_TYPES.flatMap((type) => es[type].map((entity) => [entity.id, entity]))), seen = new Set(), capability = getStoryboardCapabilities(providerId, modelId), out = [];
-  for (const raw of value.filter(obj)) {
-    const entityId = cleanId(raw.entityId), entity = entityMap.get(entityId);
-    if (!entity || seen.has(entityId)) continue;
-    seen.add(entityId);
-    const requestedProfileId = cleanId(raw.profileId);
-    const profileId = entity.profiles.some((profile) => profile.id === requestedProfileId) ? requestedProfileId : (entity.activeProfileId || entity.profiles[0]?.id || '');
-    const consistency = STORYBOARD_CONSISTENCY_STRATEGIES[raw.consistency] ? raw.consistency : 'hybrid';
-    let referenceStrategy = STORYBOARD_REFERENCE_STRATEGIES[raw.referenceStrategy] ? raw.referenceStrategy : 'description';
-    const required = STORYBOARD_REFERENCE_STRATEGIES[referenceStrategy].capability;
-    if (required && !capability[required]) referenceStrategy = 'description';
-    const origin = raw.origin === 'auto' || raw.origin === 'manual' ? raw.origin : 'legacy';
-    out.push({ entityId, profileId, consistency, referenceStrategy, referenceAssetIds: ids(raw.referenceAssetIds, 12), appearanceOverride: str(raw.appearanceOverride, 6000), locked: Boolean(raw.locked), origin });
-    if (out.length >= 30) break;
   }
   return out;
 }
 
 function promptPresets(value) {
-  const normalized = (Array.isArray(value) ? value : []).filter(obj).map((preset) => ({ id: cleanId(preset.id), name: str(preset.name || '未命名方案', 80) || '未命名方案', mode: STORYBOARD_PROMPT_MODES[preset.mode] ? preset.mode : 'combined', instruction: str(preset.instruction, 24000), positiveTemplate: str(preset.positiveTemplate, 24000), negativeTemplate: str(preset.negativeTemplate, 12000), providerIds: providers(preset.providerIds), tagIds: ids(preset.tagIds, 300), createdAt: pos(preset.createdAt || preset.updatedAt), updatedAt: pos(preset.updatedAt) })).filter((preset) => preset.id);
+  const normalized = (Array.isArray(value) ? value : []).filter(obj).map((preset) => {
+    const presetId = cleanId(preset.id);
+    const sourceItems = Array.isArray(preset.items) ? preset.items : (str(preset.instruction, 24000) ? [{ id: `${presetId}-legacy`, name: '基础指令', instruction: preset.instruction }] : []);
+    const items = dedupeById(sourceItems.filter(obj).map((item, index) => ({ id: cleanId(item.id || `${presetId}-item-${index + 1}`), name: str(item.name || `条目 ${index + 1}`, 80) || `条目 ${index + 1}`, instruction: str(item.instruction || item.content, 12000) })).filter((item) => item.id && item.instruction)).slice(0, 50);
+    return { id: presetId, name: str(preset.name || '未命名方案', 80) || '未命名方案', mode: STORYBOARD_PROMPT_MODES[preset.mode] ? preset.mode : 'combined', items, instruction: items.map((item) => item.instruction).join('\n\n').slice(0, 24000), positiveTemplate: str(preset.positiveTemplate, 24000), negativeTemplate: str(preset.negativeTemplate, 12000), providerIds: providers(preset.providerIds), tagIds: ids(preset.tagIds, 300), createdAt: pos(preset.createdAt || preset.updatedAt), updatedAt: pos(preset.updatedAt) };
+  }).filter((preset) => preset.id);
   return dedupeById(normalized).slice(0, 200);
 }
 
 function artistPresets(value) {
-  const normalized = (Array.isArray(value) ? value : []).filter(obj).map((preset) => ({ id: cleanId(preset.id), name: str(preset.name || '未命名画师串', 80), value: str(preset.value, 6000), createdAt: pos(preset.createdAt || preset.updatedAt), updatedAt: pos(preset.updatedAt) })).filter((preset) => preset.id && preset.value);
+  const normalized = (Array.isArray(value) ? value : []).filter(obj).map((preset) => ({ id: cleanId(preset.id), name: str(preset.name || '未命名画师串', 80), value: str(preset.value, 6000), previewUrl: str(preset.previewUrl, 4096), note: str(preset.note, 1000), createdAt: pos(preset.createdAt || preset.updatedAt), updatedAt: pos(preset.updatedAt) })).filter((preset) => preset.id && preset.value);
   return dedupeById(normalized).slice(0, 200);
 }
 
@@ -364,14 +352,13 @@ function workflowState(value, fallback = 'idle') {
 }
 
 function shotPlans(value, state = {}) {
-  const knownEntities = new Set(STORYBOARD_ENTITY_TYPES.flatMap((type) => (state.entities?.[type] || []).map((entity) => entity.id))), hasEntityCatalog = obj(state.entities);
   const normalized = (Array.isArray(value) ? value : []).filter(obj).map((plan) => {
     const shots = dedupeById((Array.isArray(plan.shots) ? plan.shots : []).filter(obj).map((shot) => {
       const providerId = getStoryboardProvider(shot.providerId) ? shot.providerId : '';
       const requestedConnection = cleanId(shot.connectionPresetId), requestedParameters = cleanId(shot.parameterPresetId);
       const connectionPresetId = providerId && state.connections?.[providerId]?.presets?.some((preset) => preset.id === requestedConnection) ? requestedConnection : '';
       const parameterPresetId = providerId && state.parameterPresets?.some((preset) => preset.id === requestedParameters && preset.source === providerId) ? requestedParameters : '';
-      return { id: cleanId(shot.id), shotType: str(shot.shotType || 'custom', 60), role: str(shot.role, 60), title: str(shot.title, 120), purpose: str(shot.purpose, 500), prompt: str(shot.prompt, 24000), safePrompt: str(shot.safePrompt, 24000), negative: str(shot.negative, 12000), selectedCharacters: ids(shot.selectedCharacters, 30).filter((id) => !hasEntityCatalog || knownEntities.has(id)), providerId, connectionPresetId, parameterPresetId, routeRuleId: cleanId(shot.routeRuleId), status: workflowState(shot.status), resultIds: ids(shot.resultIds, 20), error: str(shot.error, 4000), attempt: int(shot.attempt, 0, 20, 0), paragraphAnchor: shot.paragraphAnchor ? normalizeStoryboardParagraphAnchor(shot.paragraphAnchor) : null, sensitive: Boolean(shot.sensitive), safetyAdapted: Boolean(shot.safetyAdapted), userEdited: Boolean(shot.userEdited), promptLocked: Boolean(shot.promptLocked || shot.userEdited) };
+      return { id: cleanId(shot.id), shotType: str(shot.shotType || 'custom', 60), role: str(shot.role, 60), title: str(shot.title, 120), purpose: str(shot.purpose, 500), prompt: str(shot.prompt, 24000), safePrompt: str(shot.safePrompt, 24000), negative: str(shot.negative, 12000), providerId, connectionPresetId, parameterPresetId, routeRuleId: cleanId(shot.routeRuleId), status: workflowState(shot.status), resultIds: ids(shot.resultIds, 20), error: str(shot.error, 4000), attempt: int(shot.attempt, 0, 20, 0), paragraphAnchor: shot.paragraphAnchor ? normalizeStoryboardParagraphAnchor(shot.paragraphAnchor) : null, sensitive: Boolean(shot.sensitive), safetyAdapted: Boolean(shot.safetyAdapted), userEdited: Boolean(shot.userEdited), promptLocked: Boolean(shot.promptLocked || shot.userEdited) };
     }).filter((shot) => shot.id)).slice(0, 20);
     const messageRef = plan.messageRef ? normalizeStoryboardMessageReference(plan.messageRef) : null;
     return { id: cleanId(plan.id), chatKey: str(plan.chatKey || messageRef?.chatKey, 512), floor: Number.isInteger(plan.floor) ? plan.floor : (Number.isInteger(messageRef?.lastKnownFloor) ? messageRef.lastKnownFloor : null), swipeId: int(plan.swipeId ?? messageRef?.swipeId, 0, Number.MAX_SAFE_INTEGER, 0), messageRef, revisionId: str(plan.revisionId || messageRef?.revisionId, 80), idempotencyKey: str(plan.idempotencyKey, 80), origin: ['manual', 'automatic'].includes(plan.origin) ? plan.origin : 'manual', autoGenerate: Boolean(plan.autoGenerate), promptLocked: Boolean(plan.promptLocked), status: workflowState(plan.status), shots, createdAt: pos(plan.createdAt || plan.updatedAt), updatedAt: pos(plan.updatedAt) };
@@ -597,6 +584,22 @@ function legacyProfiles(value) {
     return [id, base];
   }));
 }
+function modelProfileMemory(value, currentProfiles = {}) {
+  const raw = obj(value) ? value : {};
+  return Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((providerId) => {
+    const knownModels = new Set((STORYBOARD_MODEL_REGISTRY[providerId] || []).map((item) => item.id));
+    const source = obj(raw[providerId]) ? raw[providerId] : {};
+    const remembered = {};
+    for (const [modelId, profile] of Object.entries(source).slice(0, 80)) {
+      if (!knownModels.has(modelId) || !obj(profile)) continue;
+      remembered[modelId] = legacyProfiles({ [providerId]: { ...profile, model: modelId } })[providerId];
+    }
+    const current = obj(currentProfiles[providerId]) ? currentProfiles[providerId] : {};
+    const currentModel = knownModels.has(current.model) ? current.model : '';
+    if (currentModel && !remembered[currentModel]) remembered[currentModel] = legacyProfiles({ [providerId]: current })[providerId];
+    return [providerId, remembered];
+  }));
+}
 function parameterPresets(value) { return Array.isArray(value) ? value.slice(0, 200).filter(obj).map((p) => ({ id: cleanId(p.id), name: str(p.name || '未命名样式', 80), source: getStoryboardProvider(p.source) ? p.source : '', profile: getStoryboardProvider(p.source) ? legacyProfiles({ [p.source]: p.profile })[p.source] : {}, createdAt: pos(p.createdAt || p.updatedAt), updatedAt: pos(p.updatedAt) })).filter((p) => p.id && p.source) : []; }
 function legacyCharacters(value) { return Array.isArray(value) ? value.slice(0, 500).filter(obj).map((p) => ({ id: cleanId(p.id), subjectType: p.subjectType === 'user' ? 'user' : (p.subjectType === 'cast' ? 'cast' : 'char'), subjectKey: str(p.subjectKey || `legacy:${p.id || ''}`, 512), subjectName: str(p.subjectName || p.name, 80), variantName: str(p.variantName || '默认档案', 80), name: str(p.name, 80), subtitle: str(p.subtitle, 120), appearance: str(p.appearance, 12000), negative: str(p.negative, 6000), referenceUrl: str(p.referenceUrl, 4096), createdAt: pos(p.createdAt || p.updatedAt), updatedAt: pos(p.updatedAt) })).filter((p) => p.id) : []; }
 function legacyLogs(value) {
@@ -616,13 +619,16 @@ function snapshot(value, fallback = {}) {
       profile.comfyWorkflowNotice = `已移除凭据字段：${result.removedFields.join('、')}`.slice(0, 2048);
     } else if (!result.ok && !profile.comfyWorkflowNotice) profile.comfyWorkflowNotice = result.message;
   }
-  return { ...(obj(safe) ? safe : {}), source, prompt: str(raw.prompt ?? fallback.prompt, 24000), negative: str(raw.negative ?? fallback.negative, 12000), target: ['latest', 'floor', 'gallery'].includes(raw.target) ? raw.target : (['latest', 'floor', 'gallery'].includes(fallback.target) ? fallback.target : 'gallery'), floor: Number.isInteger(raw.floor) ? raw.floor : (Number.isInteger(fallback.floor) ? fallback.floor : null), inlineByDefault: raw.inlineByDefault !== false, selectedCharacterId: cleanId(raw.selectedCharacterId), selectedCharacters: snapshotCharacters(raw.selectedCharacters), consistencyMode: source === 'comfy' && raw.consistencyMode === 'reference' ? 'reference' : 'description', referenceUrl: str(raw.referenceUrl, 4096), chatKey: str(raw.chatKey, 512), messageRef: raw.messageRef ? normalizeStoryboardMessageReference(raw.messageRef) : null, messageHash: str(raw.messageHash, 160), swipeId: Number.isInteger(raw.swipeId) ? raw.swipeId : 0, paragraphAnchor: raw.paragraphAnchor ? normalizeStoryboardParagraphAnchor(raw.paragraphAnchor) : null, shotType: str(raw.shotType || 'custom', 60), profile, connection: snapshotConnection(raw.connection, source), payload };
+  if (obj(safe)) {
+    delete safe.selectedCharacterId;
+    delete safe.selectedCharacters;
+    delete safe.consistencyMode;
+  }
+  if (obj(payload)) delete payload.characters;
+  return { ...(obj(safe) ? safe : {}), source, prompt: str(raw.prompt ?? fallback.prompt, 24000), negative: str(raw.negative ?? fallback.negative, 12000), target: ['latest', 'floor', 'gallery'].includes(raw.target) ? raw.target : (['latest', 'floor', 'gallery'].includes(fallback.target) ? fallback.target : 'gallery'), floor: Number.isInteger(raw.floor) ? raw.floor : (Number.isInteger(fallback.floor) ? fallback.floor : null), inlineByDefault: raw.inlineByDefault !== false, referenceUrl: str(raw.referenceUrl, 4096), chatKey: str(raw.chatKey, 512), messageRef: raw.messageRef ? normalizeStoryboardMessageReference(raw.messageRef) : null, messageHash: str(raw.messageHash, 160), swipeId: Number.isInteger(raw.swipeId) ? raw.swipeId : 0, paragraphAnchor: raw.paragraphAnchor ? normalizeStoryboardParagraphAnchor(raw.paragraphAnchor) : null, shotType: str(raw.shotType || 'custom', 60), profile, connection: snapshotConnection(raw.connection, source), payload };
 }
-function snapshotCharacters(value) { return Array.isArray(value) ? value.slice(0, 30).filter(obj).map((item) => ({ ...(safeData(item, 5) || {}), entityId: cleanId(item.entityId), profileId: cleanId(item.profileId), name: str(item.name, 80), appearance: str(item.appearance, 12000), negative: str(item.negative, 6000), consistency: STORYBOARD_CONSISTENCY_STRATEGIES[item.consistency] ? item.consistency : 'hybrid', referenceStrategy: STORYBOARD_REFERENCE_STRATEGIES[item.referenceStrategy] ? item.referenceStrategy : 'description', referenceUrl: str(item.referenceUrl, 4096), referenceAssetIds: ids(item.referenceAssetIds, 12) })) : []; }
 function snapshotConnection(value, providerId) { const raw = obj(value) ? value : {}, safe = safeData(raw, 5); return { ...(obj(safe) ? safe : {}), id: cleanId(raw.id), credentialId: cleanId(raw.credentialId), baseUrl: str(raw.baseUrl || getStoryboardProvider(providerId)?.defaultBaseUrl, 2048), model: str(raw.model, 240), allowPrivateNetwork: providerId === 'comfy' && Boolean(raw.allowPrivateNetwork) }; }
 
-function findEntityByProfile(es, id) { for (const type of STORYBOARD_ENTITY_TYPES) { const found = (es?.[type] || []).find((e) => (e.profiles || []).some((p) => p.id === id)); if (found) return found.id; } return ''; }
-function activeModel(state, providerId = state.source) { const c = state.connections?.[providerId]; return c?.draft?.model || c?.presets?.find((p) => p.id === c.activePresetId)?.model || ''; }
 function providers(value) { return Array.isArray(value) ? [...new Set(value.filter(getStoryboardProvider))].slice(0, 10) : []; }
 function providerSupports(providerId, capability) { return (STORYBOARD_MODEL_REGISTRY[providerId] || []).some((model) => Boolean(model.capabilities[capability])); }
 function providerStrings(value, max) { const out = {}; if (obj(value)) for (const id of Object.keys(STORYBOARD_PROVIDER_REGISTRY)) if (value[id] !== undefined) out[id] = str(value[id], max); return out; }

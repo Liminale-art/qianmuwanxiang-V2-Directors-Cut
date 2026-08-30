@@ -69,9 +69,9 @@ assert.match(source, /function storyboardInlineRecordValid[\s\S]*record\.message
 assert.match(css, /\.sd-storyboard-magazine[\s\S]*\.sd-storyboard-file-stack[\s\S]*\.sd-storyboard-profile-sheet/, '形象档案必须具备独立杂志纸页与叠档案布局');
 assert.match(source, /CAST DIRECTORY/, '形象档案必须有总目录');
 assert.match(source, /data-storyboard-capture="char"[\s\S]*>CHAR<[\s\S]*data-storyboard-capture="user"[\s\S]*>USER</, '形象档案必须同时捕获角色与 User');
-assert.match(source, /storyboardProfileBindings[\s\S]*绑定到当前聊天/, '档案必须支持聊天绑定');
+assert.doesNotMatch(source, /storyboardProfileBindings|绑定到当前聊天|selectedCharacters/, '形象档案不得再自动绑定或注入镜头任务');
 assert.match(source, /复制一套/, '同一人物必须支持多套方案');
-assert.match(source, /\['archive', 'hybrid'\]\.includes\(item\.consistency\)[\s\S]*state\.promptMode === 'manual'[\s\S]*sourceId === 'novel'/, '人物档案补全必须遵守一致性策略，并区分 NovelAI 标签与自然语言提示词');
+assert.match(source, /function storyboardGenerationPayload[\s\S]*const scenePrompt = String\(prompt \|\| ''\)\.trim\(\)[\s\S]*artistString/, '生图负载只能使用当前提示词与用户画师串，不得暗注入形象档案');
 assert.match(source, /function storyboardStartLog[\s\S]*function storyboardFinishLog[\s\S]*分镜日志/, '分镜必须记录成功、失败与诊断信息');
 assert.match(source, /STORYBOARD_QUEUE_LIMIT[\s\S]*storyboardQueueJob[\s\S]*storyboardPumpQueue/, '分镜必须使用有上限的生成队列');
 assert.match(source, /storyboardActiveJobs\.size < concurrency/, '镜组队列必须按配置执行真实并发');
@@ -86,12 +86,14 @@ assert.match(source, /原正文楼层已删除，未发起生图请求[\s\S]*正
 assert.match(source, /<b>API 设置<\/b>/, '镜头台接口卡应使用清楚的 API 设置标题');
 assert.doesNotMatch(source, /将此瞬，妥为留存/, '镜头台不得继续显示已移除的装饰文案');
 assert.doesNotMatch(source, /自定义兼容模型|输入兼容模型 ID|查看接口全部模型/, '模型工作台不得暴露低概率的任意模型入口');
-assert.match(source, /function renderStoryboardModelCard[\s\S]*sd-storyboard-compiler-api[\s\S]*function renderStoryboardModeSelector/, '画面整理模型必须与生图连接合并在同一工作台');
+assert.match(source, /function renderStoryboardModelCard[\s\S]*sd-storyboard-compiler-api[\s\S]*function renderStoryboardParameterVibes/, '画面整理模型必须与生图连接合并在同一工作台');
 assert.doesNotMatch(source, /function renderStoryboardConnection\(/, '旧的重复连接页面必须移除');
 assert.doesNotMatch(source, /千幕组织镜头，SillyTavern 负责连接与生成/, '镜头台不应展示尴尬的实现说明');
 assert.match(css, /#chat \.mes \.sd-storyboard-inline/, '正文分镜样式必须严格限定在聊天消息内');
 assert.match(source, /storyboardInjectMessageButtons[\s\S]*dataset\.storyboardChatAction = 'capture-floor'/, '正文每层必须提供半自动取景快捷入口');
+assert.match(source, /function storyboardChooseCaptureMode[\s\S]*智能选取画面[\s\S]*指定正文段落/, '正文取景入口必须支持智能与手动段落两种方式');
 assert.match(source, /storyboardParameterPresets[\s\S]*保存分镜样式[\s\S]*parameterPresetSelection/, '分镜参数样式必须可按模型保存和切换');
+assert.match(source, /modelProfiles\[sourceId\]\[previousModel\][\s\S]*modelProfiles\[sourceId\]\[requestedModel\]/, '每个具体模型必须记住最后一次参数修改');
 assert.doesNotMatch(source, /sd-storyboard-reuse-record|sd-storyboard-lightbox-reuse/, '阅片室不得保留复用或重新生成入口');
 assert.match(source, /getStoryboardCapabilities\(state\.source, profile\.model\)[\s\S]*capabilities\.negative[\s\S]*capabilities\.steps/, '绘制参数必须按供应商与具体模型能力裁剪');
 assert.match(source, /openaiBackground[\s\S]*openaiOutputFormat[\s\S]*seedreamGuidanceScale[\s\S]*seedreamSequential[\s\S]*novelSm[\s\S]*novelVarietyBoost/, '各模型的官方参数必须在前端可调且进入真实请求');

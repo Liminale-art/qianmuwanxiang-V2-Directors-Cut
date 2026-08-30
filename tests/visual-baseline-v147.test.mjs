@@ -14,11 +14,13 @@ assert.match(css, /\.sd-icon-btn i\s*\{[^}]*font-size:\s*14px/);
 assert.match(css, /sd-wheel-command i\s*\{[^}]*font-size:\s*clamp\(15px,[^}]*\.44[^}]*22px\)/);
 assert.match(source, /QUICK_ICON_OPTICAL_SCALE[\s\S]*tts:\s*1\.16[\s\S]*plug:\s*1\.04/);
 
-// 编辑正文不撤旧图；仅显式重绘且未被手动锁定的自动模式才重新调用 LLM。
+// 编辑正文不撤旧图；重绘沿用当前提示词，重新提取由正文相机入口显式负责。
 assert.match(source, /storyboardInlineRecordValid[\s\S]*\['active', 'stale'\]\.includes\(record\.linkState\)/);
 assert.doesNotMatch(source, /正文已更改 · 原图保留/);
 assert.match(source, /record\?\.linkState === 'stale'\) return Number\.isInteger\(record\?\.floor\)/);
-assert.match(source, /function storyboardRedrawRecord[\s\S]*shouldRecompile = !promptLocked && mode !== 'manual'[\s\S]*explicit-redraw-after-edit/);
+assert.match(source, /function storyboardRedrawRecord[\s\S]*snapshot\.payload\.prompt = finalPrompt[\s\S]*snapshot\.promptMode = 'manual'[\s\S]*snapshot\.promptLocked = true/);
+assert.doesNotMatch(source, /shouldRecompile = !promptLocked|explicit-redraw-after-edit/);
+assert.match(source, /function storyboardChooseCaptureMode[\s\S]*重新提取生成词/);
 assert.match(source, /record\.promptLocked = true/);
 assert.match(source, /promptMode: state\.promptMode[\s\S]*promptLocked: Boolean\(state\.promptDraft\?\.userEditedCompiled\)/);
 
