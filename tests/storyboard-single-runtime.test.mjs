@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 
@@ -20,6 +20,7 @@ for (const moduleName of quarantinedRuntimeModules) {
     new RegExp(`from ['"]\\./${escaped}`),
     `${moduleName} is an unfinished prototype and must not be linked into the production entry point`,
   );
+  await assert.rejects(access(new URL(`../${moduleName}`, import.meta.url)), undefined, `${moduleName} 已由生产主链取代，不应继续作为死代码留存`);
 }
 
 assert.doesNotMatch(source, /\binitStoryboardIntegration\s*\(/, 'the prototype integration must not create a second floor observer');
@@ -29,7 +30,10 @@ assert.doesNotMatch(source, /\bopenStoryboardConfigModal\s*\(/, 'the storyboard 
 
 assert.doesNotMatch(source, /sd-storyboard-config-btn/, 'the redundant storyboard configuration gear must stay removed');
 assert.match(source, /const storyboardLayout = activeTab === 'imagegen'/, 'storyboard uses the existing single runtime in an exclusive panel layout');
-assert.match(source, /sd-storyboard-exit[\s\S]*storyboardReturnTab/, 'the exclusive panel must provide one stable return path');
+assert.doesNotMatch(source, /sd-storyboard-exit/, 'the bottom navigation must not retain the old exit-as-back control');
+assert.match(source, /sd-storyboard-titlebar[\s\S]*sd-storyboard-back[\s\S]*sd-storyboard-close/, 'the fixed titlebar owns separate back and close controls');
+assert.match(source, /function storyboardBack[\s\S]*storyboardRouteStack\.pop/, 'back must restore the runtime route stack');
+assert.match(source, /sd-storyboard-close[\s\S]*storyboardReturnTab/, 'close must return to the Qianmu tab that opened the storyboard');
 assert.match(source, /sd-storyboard-shortcut[\s\S]*activeTab = 'imagegen'/, 'the former world-map shortcut is now the storyboard entry');
 
 assert.match(source, /storyboardInjectMessageButtons/, 'the mature chat-floor entry point must remain available');

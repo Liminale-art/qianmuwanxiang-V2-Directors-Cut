@@ -66,12 +66,12 @@ assert.match(source, /function storyboardHandleAutomaticCapture/);
 // A take preset is a dedicated ordered-list workspace; there is no one-off instruction field on the workbench.
 assert.match(source, /function renderStoryboardPresetLibrary/);
 assert.doesNotMatch(source, /本次取景指令/);
-assert.match(source, /state\.view = 'presets'/);
+assert.match(source, /storyboardNavigate\(root, \{ view: 'presets'/);
 assert.doesNotMatch(source, /function storyboardSavePromptInstructionFromForm/);
 assert.match(source, /presetItems\.map\(\(item, index\) => `\$\{index \+ 1\}\. \$\{item\.name\}\\n\$\{item\.instruction\}`\)/,
   'ordered preset entries must enter the compiler exactly once');
 assert.match(source, /sd-storyboard-preset-entry[\s\S]*draggable="true"/);
-assert.match(source, /sd-storyboard-add-preset-item[\s\S]*editingPromptItemId = 'new'/);
+assert.match(source, /sd-storyboard-add-preset-item[\s\S]*storyboardNavigate\(root, \{ view: 'presets',[\s\S]*editingPromptItemId: 'new'/);
 assert.match(source, /sd-storyboard-preset-import-file[\s\S]*sd-storyboard-export-presets/);
 assert.doesNotMatch(source, /sd-storyboard-manual-generate/,
   'manual prompt edits remain drafts and generation is initiated from the chat image flow');
@@ -97,7 +97,7 @@ assert.match(source, /storyboardJoinPrompt\(\[artistString, prompt, artistPositi
 assert.match(source, /const composed = storyboardEffectivePrompts/);
 assert.doesNotMatch(source, /function storyboardSaveArtistPreset/);
 assert.match(source, /function renderStoryboardArtistLibrary[\s\S]*sd-storyboard-artist-waterfall/);
-assert.match(source, /sd-storyboard-edit-selected-artist[\s\S]*state\.editingArtistPresetId = state\.selectedArtistPresetId/);
+assert.match(source, /sd-storyboard-edit-selected-artist[\s\S]*storyboardNavigate\(root, \{ view: 'artists', editingArtistPresetId: state\.selectedArtistPresetId/);
 assert.match(source, /storyboardMediaTagEditorMarkup\(editing\?\.tags \|\| \[\], knownTags, 'artist-draft'\)/);
 assert.match(source, /sd-media-collection-choices/);
 assert.match(source, /querySelectorAll\('\.sd-storyboard-prompt, \.sd-storyboard-negative/,

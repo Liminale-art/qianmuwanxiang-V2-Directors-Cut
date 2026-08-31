@@ -97,7 +97,7 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.56.4';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.57.0';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_MODEL_REGISTRY,
@@ -112,8 +112,10 @@ import {
   createStoryboardDefaults,
   createStoryboardMessageReference,
   createStoryboardWorkflowTicket,
+  getStoryboardBuiltinParameterPresets,
   getStoryboardCapabilities,
   getStoryboardModel,
+  getStoryboardNovelParameterSpec,
   normalizeStoryboardState,
   pruneStoryboardPipelineLogs,
   resolveStoryboardMessageReference,
@@ -124,11 +126,11 @@ import {
   scoreStoryboardParagraphAnchor,
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
-} from './qianmu-storyboard.js?v=1.56.4';
+} from './qianmu-storyboard.js?v=1.57.0';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.56.4';
+const VERSION = '1.57.0';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -839,6 +841,10 @@ const DEFAULT_SETTINGS = Object.freeze({
 let settings = null;
 let activeTab = 'dashboard';
 let storyboardReturnTab = 'dashboard';
+let storyboardRouteStack = [];
+let storyboardPendingRestoreScroll = null;
+let storyboardPresetUndo = null;
+let storyboardPresetUndoTimer = null;
 let worldPage = 'front';
 let theaterView = null; // null=常规；{mode:'read', scene}=阅读；{mode:'favorites'}=收藏夹
 let readerView = null;  // 伴读：null=书架；{ bookId, fullscreen, chapterIndex }=阅读器全屏子视图
@@ -3808,6 +3814,7 @@ function openModal(tab) {
   const requestedTab = tab != null ? tab : (settings.lastTab || 'dashboard');
   if (tab === 'imagegen') {
     storyboardReturnTab = resolveRestorableTab(settings.lastTab || 'dashboard');
+    storyboardBeginSession();
     activeTab = 'imagegen';
   } else if (requestedTab === 'geopolitics') {
     if (!settings.geopoliticsEnabled) {
@@ -3839,6 +3846,7 @@ function closeModal() {
     if (storyboardRoot && storyboardState().view === 'create') storyboardCaptureWorkbench(storyboardRoot);
     storyboardCloseLightbox();
     storyboardGallerySelection.clear();
+    storyboardEndSession();
   }
   focusClockCloseVoiceDrawer();
   document.getElementById(MODAL_ID)?.classList.remove('open');
@@ -5772,6 +5780,7 @@ function renderModal() {
   modal.querySelector('.sd-plug-shortcut')?.addEventListener('click', () => { activeTab = 'plug'; renderModal(); });
   modal.querySelector('.sd-storyboard-shortcut')?.addEventListener('click', () => {
     storyboardReturnTab = activeTab === 'imagegen' ? 'dashboard' : activeTab;
+    if (activeTab !== 'imagegen') storyboardBeginSession();
     activeTab = 'imagegen';
     renderModal();
   });
@@ -5816,7 +5825,19 @@ function renderModal() {
   renderBusyState();
   syncFontWithST();
   const body = modal.querySelector('.sd-body');
-  if (body) body.scrollTop = prevScroll;
+  const restoreBodyScroll = storyboardLayout && storyboardPendingRestoreScroll !== null
+    ? storyboardPendingRestoreScroll
+    : prevScroll;
+  if (body) {
+    body.scrollTop = restoreBodyScroll;
+    if (storyboardLayout && storyboardPendingRestoreScroll !== null) {
+      requestAnimationFrame(() => {
+        const currentBody = document.getElementById(MODAL_ID)?.querySelector('.sd-storyboard-body');
+        if (currentBody) currentBody.scrollTop = restoreBodyScroll;
+      });
+    }
+  }
+  if (storyboardLayout) storyboardPendingRestoreScroll = null;
   const theaterScroller = modal.querySelector('.sd-theater-reader-scroll');
   if (theaterScroller) theaterScroller.scrollTop = prevTheaterScroll;
   // 保留标签栏横向滚动位置，并确保激活标签可见；两端按可滚动方向显隐渐隐遮罩
@@ -10226,6 +10247,85 @@ function storyboardBasePromptsForArtistRedraw(record, snapshot) {
   return { prompt: prompt || String(record.prompt || snapshot.prompt || '').trim(), negative, sourceId, modelId };
 }
 
+function storyboardRouteSnapshot(root = document.querySelector('#story-director-modal .sd-storyboard-root')) {
+  const state = storyboardState();
+  return {
+    view: state.view,
+    assetView: state.assetView,
+    assetSearch: state.assetSearch,
+    artistSearch: state.artistSearch,
+    artistCollectionId: state.artistCollectionId,
+    editingArtistPresetId: state.editingArtistPresetId,
+    editingPromptPresetId: state.editingPromptPresetId,
+    editingPromptItemId: state.editingPromptItemId,
+    promptItemDraft: state.promptItemDraft ? clone(state.promptItemDraft) : null,
+    gallerySearch: state.gallerySearch,
+    gallerySource: state.gallerySource,
+    galleryCollectionId: storyboardGalleryOpenCollectionId,
+    galleryInspectorId: storyboardGalleryInspectorRecordId,
+    galleryVisibleCount: storyboardGalleryVisibleCount,
+    scrollTop: root?.closest('.sd-body')?.scrollTop || 0,
+  };
+}
+
+function storyboardApplyRoute(entry = {}) {
+  const state = storyboardState();
+  for (const key of ['view', 'assetView', 'assetSearch', 'artistSearch', 'artistCollectionId', 'editingArtistPresetId', 'editingPromptPresetId', 'editingPromptItemId', 'gallerySearch', 'gallerySource']) {
+    if (entry[key] !== undefined) state[key] = entry[key];
+  }
+  state.promptItemDraft = entry.promptItemDraft ? clone(entry.promptItemDraft) : null;
+  storyboardGalleryOpenCollectionId = String(entry.galleryCollectionId || '');
+  storyboardGalleryInspectorRecordId = String(entry.galleryInspectorId || '');
+  storyboardGalleryVisibleCount = Math.max(40, Number(entry.galleryVisibleCount) || 40);
+}
+
+function storyboardBeginSession() {
+  const state = storyboardState();
+  storyboardRouteStack = [];
+  storyboardPendingRestoreScroll = 0;
+  state.view = 'create';
+  state.editingArtistPresetId = '';
+  state.editingPromptItemId = '';
+  state.promptItemDraft = null;
+}
+
+function storyboardEndSession() {
+  storyboardRouteStack = [];
+  storyboardPendingRestoreScroll = null;
+  storyboardPresetUndo = null;
+  clearTimeout(storyboardPresetUndoTimer);
+  storyboardPresetUndoTimer = null;
+}
+
+function storyboardNavigate(root, patch = {}) {
+  const current = storyboardRouteSnapshot(root);
+  storyboardRouteStack.push(current);
+  if (storyboardRouteStack.length > 40) storyboardRouteStack.shift();
+  storyboardApplyRoute({ ...current, ...patch, scrollTop: 0 });
+  storyboardPendingRestoreScroll = 0;
+  saveSettings();
+  renderModal();
+}
+
+function storyboardBack(root) {
+  if (storyboardState().view === 'create') storyboardCaptureWorkbench(root);
+  const previous = storyboardRouteStack.pop();
+  if (previous) {
+    storyboardApplyRoute(previous);
+    storyboardPendingRestoreScroll = previous.scrollTop || 0;
+  } else {
+    storyboardApplyRoute({ view: 'create', editingArtistPresetId: '', editingPromptItemId: '', promptItemDraft: null, scrollTop: 0 });
+    storyboardPendingRestoreScroll = 0;
+  }
+  storyboardCloseLightbox();
+  saveSettings();
+  renderModal();
+}
+
+function storyboardCanGoBack(state = storyboardState()) {
+  return storyboardRouteStack.length > 0 || state.view !== 'create' || Boolean(state.editingArtistPresetId || state.editingPromptItemId);
+}
+
 function renderStoryboardNav(state) {
   const items = [
     ['create', '镜头台', 'fa-camera', 'qm-duotone-camera'],
@@ -10233,7 +10333,7 @@ function renderStoryboardNav(state) {
     ['gallery', '阅片室', 'fa-images', 'screening'],
     ['logs', '日志', 'fa-list-ul', 'qm-regular-list-bullets'],
   ];
-  return `<nav class="sd-storyboard-nav" aria-label="分镜功能">${items.map(([id, label, icon, phosphor]) => `<button type="button" aria-current="${state.view === id ? 'page' : 'false'}" aria-label="${label}" class="${state.view === id ? 'active' : ''}" data-storyboard-view="${id}"><i class="fa-solid ${icon}" data-qm-icon="${phosphor}"></i><span>${label}</span></button>`).join('')}<button type="button" class="sd-storyboard-exit" title="返回千幕" aria-label="返回千幕"><i class="fa-solid fa-arrow-left"></i><span>返回</span></button></nav>`;
+  return `<nav class="sd-storyboard-nav" aria-label="分镜功能">${items.map(([id, label, icon, phosphor]) => `<button type="button" aria-current="${state.view === id ? 'page' : 'false'}" aria-label="${label}" class="${state.view === id ? 'active' : ''}" data-storyboard-view="${id}"><i class="fa-solid ${icon}" data-qm-icon="${phosphor}"></i><span>${label}</span></button>`).join('')}</nav>`;
 }
 
 function storyboardConnectionState(state, providerId = state.source) {
@@ -10257,8 +10357,13 @@ function storyboardProviderProfile(state, providerId = state.source) {
   const fixedModel = (STORYBOARD_MODEL_REGISTRY[providerId] || []).some((item) => item.id === requestedModel)
     ? requestedModel
     : STORYBOARD_PROVIDER_REGISTRY[providerId]?.defaultModel || '';
+  const modelDefaults = providerId === 'novel' ? getStoryboardNovelParameterSpec(fixedModel).defaults : {};
+  const resolved = { ...legacy };
+  for (const [key, value] of Object.entries(modelDefaults)) {
+    if (!legacy.loaded || resolved[key] === '' || resolved[key] == null) resolved[key] = value;
+  }
   return {
-    ...legacy,
+    ...resolved,
     model: fixedModel,
     baseUrl: String(draft.baseUrl || STORYBOARD_PROVIDER_REGISTRY[providerId]?.defaultBaseUrl || ''),
     connectionPresetId: String(storyboardConnectionState(state, providerId).group?.activePresetId || ''),
@@ -10762,10 +10867,13 @@ function renderStoryboardCreate(state) {
   const artistPresets = state.artistPresets.map((item) => `<option value="${htmlEscape(item.id)}" ${state.selectedArtistPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
   const tagChips = state.tagLibrary.filter((item) => item.favorite).concat(state.tagLibrary.filter((item) => !item.favorite)).slice(0, 24)
     .map((item) => `<button type="button" class="${item.positive === false ? 'negative' : ''}" data-storyboard-add-tag="${htmlEscape(item.id)}" title="${item.positive === false ? '加入负面提示词' : '加入提示词'}"><span>${htmlEscape(item.name)}</span></button>`).join('');
+  const novelSpec = state.source === 'novel' ? getStoryboardNovelParameterSpec(profile.model) : null;
+  const novelSamplerOptions = novelSpec?.samplers.map((item) => `<option value="${htmlEscape(item.value)}" ${profile.sampler === item.value ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('') || '';
+  const novelSchedulerOptions = novelSpec?.schedulers.map((item) => `<option value="${htmlEscape(item.value)}" ${profile.scheduler === item.value ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('') || '';
   const sourceSpecific = state.source === 'openai' ? `<label><span>Quality</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiQuality"><option value="">auto</option>${['low', 'medium', 'high'].map((value) => `<option value="${value}" ${profile.openaiQuality === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label><span>Background</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiBackground"><option value="">auto</option>${['transparent', 'opaque'].map((value) => `<option value="${value}" ${profile.openaiBackground === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label><span>Output format</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiOutputFormat"><option value="">png</option>${['jpeg', 'webp'].map((value) => `<option value="${value}" ${profile.openaiOutputFormat === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>`
     : state.source === 'banana' ? `<label><span>Image size</span><select class="text_pole sd-storyboard-field" data-storyboard-field="imageSize"><option value="">默认</option>${['1K', '2K', '4K'].map((value) => `<option value="${value}" ${profile.imageSize === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>`
       : state.source === 'seedream' ? `<label><span>Guidance scale</span><input class="text_pole sd-storyboard-field" data-storyboard-field="seedreamGuidanceScale" type="number" min="0" max="20" step="0.1" value="${htmlEscape(profile.seedreamGuidanceScale)}" placeholder="默认"></label><label class="sd-switch-row"><span>Sequential generation</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="seedreamSequential" ${profile.seedreamSequential ? 'checked' : ''}></label><label class="sd-switch-row"><span>Watermark</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="watermark" ${profile.watermark ? 'checked' : ''}></label>`
-        : state.source === 'novel' ? `<label class="sd-switch-row"><span>SMEA</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelSm" ${profile.novelSm ? 'checked' : ''}></label><label class="sd-switch-row"><span>SMEA DYN</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelSmDyn" ${profile.novelSmDyn ? 'checked' : ''}></label><label class="sd-switch-row"><span>Decrisper</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelDecrisper" ${profile.novelDecrisper ? 'checked' : ''}></label><label class="sd-switch-row"><span>Variety Boost</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelVarietyBoost" ${profile.novelVarietyBoost ? 'checked' : ''}></label>` : '';
+        : state.source === 'novel' ? `${capabilities.cfgRescale ? `<label><span>Rescale</span><input class="text_pole sd-storyboard-field" data-storyboard-field="novelCfgRescale" type="number" min="0" max="1" step="0.05" value="${htmlEscape(profile.novelCfgRescale)}"></label>` : ''}${capabilities.sm ? `<label class="sd-switch-row"><span>SMEA</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelSm" ${profile.novelSm ? 'checked' : ''}></label>` : ''}${capabilities.smDyn ? `<label class="sd-switch-row"><span>SMEA DYN</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelSmDyn" ${profile.novelSmDyn ? 'checked' : ''}></label>` : ''}${capabilities.decrisper ? `<label class="sd-switch-row"><span>Decrisper</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelDecrisper" ${profile.novelDecrisper ? 'checked' : ''}></label>` : ''}${capabilities.varietyBoost ? `<label class="sd-switch-row"><span>Variety Boost</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelVarietyBoost" ${profile.novelVarietyBoost ? 'checked' : ''}></label>` : ''}` : '';
   return `<div class="sd-storyboard-create">
     ${renderStoryboardAutomationCard(state)}
     ${renderStoryboardModelCard(state)}
@@ -10794,8 +10902,8 @@ function renderStoryboardCreate(state) {
         ${capabilities.steps ? `<label><span>Steps</span><input class="text_pole sd-storyboard-field" data-storyboard-field="steps" type="number" min="1" max="300" value="${htmlEscape(profile.steps)}"></label>` : ''}
         ${capabilities.cfg ? `<label><span>CFG</span><input class="text_pole sd-storyboard-field" data-storyboard-field="cfg" type="number" min="0" max="100" step="0.1" value="${htmlEscape(profile.cfg)}"></label>` : ''}
         ${capabilities.seed ? `<label><span>Seed</span><input class="text_pole sd-storyboard-field" data-storyboard-field="seed" type="number" min="-1" value="${htmlEscape(profile.seed)}" placeholder="随机"></label>` : ''}
-        ${capabilities.sampler ? `<label><span>Sampler</span><input class="text_pole sd-storyboard-field" data-storyboard-field="sampler" value="${htmlEscape(profile.sampler)}"></label>` : ''}
-        ${capabilities.scheduler ? `<label><span>Scheduler</span><input class="text_pole sd-storyboard-field" data-storyboard-field="scheduler" value="${htmlEscape(profile.scheduler)}"></label>` : ''}
+        ${capabilities.sampler ? `<label><span>Sampler</span>${state.source === 'novel' ? `<select class="text_pole sd-storyboard-field" data-storyboard-field="sampler">${novelSamplerOptions}</select>` : `<input class="text_pole sd-storyboard-field" data-storyboard-field="sampler" value="${htmlEscape(profile.sampler)}">`}</label>` : ''}
+        ${capabilities.scheduler ? `<label><span>Scheduler</span>${state.source === 'novel' ? `<select class="text_pole sd-storyboard-field" data-storyboard-field="scheduler">${novelSchedulerOptions}</select>` : `<input class="text_pole sd-storyboard-field" data-storyboard-field="scheduler" value="${htmlEscape(profile.scheduler)}">`}</label>` : ''}
         ${sourceSpecific}
       </div>
       ${renderStoryboardParameterVibes(state, profile, capabilities)}
@@ -10830,7 +10938,7 @@ function storyboardRoutingTargetOptions(state, providerId, target = {}) {
     ? target.modelId
     : provider.defaultModel;
   const connections = state.connections[provider.id]?.presets || [];
-  const parameters = state.parameterPresets.filter((item) => item.source === provider.id && (!item.profile?.model || item.profile.model === modelId));
+  const parameters = storyboardParameterPresets(provider.id, modelId);
   return `<select class="text_pole sd-storyboard-route-provider" aria-label="生图渠道">${Object.values(STORYBOARD_PROVIDER_REGISTRY).map((item) => `<option value="${item.id}" ${provider.id === item.id ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('')}</select><select class="text_pole sd-storyboard-route-model" aria-label="模型">${storyboardModelOptions(provider.id, modelId)}</select><select class="text_pole sd-storyboard-route-connection" aria-label="API 预设"><option value="">当前渠道 API</option>${connections.map((item) => `<option value="${htmlEscape(item.id)}" ${target.connectionPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('')}</select><select class="text_pole sd-storyboard-route-style" aria-label="绘制样式"><option value="">不套用样式</option>${parameters.map((item) => `<option value="${htmlEscape(item.id)}" ${target.parameterPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('')}</select>`;
 }
 
@@ -10845,10 +10953,11 @@ function renderStoryboardRouting(state) {
   return `<div class="sd-storyboard-routing"><section class="sd-card sd-storyboard-routing-head"><div class="sd-card-title-row"><div><h3>镜组</h3><small>未命中分工时沿用 ${htmlEscape(currentProvider.label)} · ${htmlEscape(getStoryboardModel(state.source, currentProfile.model)?.label || currentProfile.model)}</small></div><label class="sd-switch-row"><span>${routing.enabled ? '已启用' : '未启用'}</span><input type="checkbox" class="sd-storyboard-routing-enabled" ${routing.enabled ? 'checked' : ''}></label></div><p class="sd-storyboard-safety-notice">内容适配由千幕在后台完成：NAI Full 保留原叙事尺度；分配到受限制模型时，会自动改写为安全但叙事一致的画面，不在生成结果下重复提示。</p>${routing.enabled ? `<div class="sd-storyboard-grid sd-storyboard-grid-two"><label><span>镜组模板</span><select class="text_pole sd-storyboard-route-template">${Object.values(STORYBOARD_SHOT_GROUP_TEMPLATES).map((template) => `<option value="${template.id}" ${routing.templateId === template.id ? 'selected' : ''}>${template.label}</option>`).join('')}</select></label><label><span>每层最多镜头</span><input class="text_pole sd-storyboard-route-max" type="number" min="1" max="4" value="${htmlEscape(routing.maxShotsPerFloor)}"></label><label><span>同时生成</span><select class="text_pole sd-storyboard-route-concurrency">${[1, 2, 3, 4].map((count) => `<option value="${count}" ${routing.providerConcurrency === count ? 'selected' : ''}>${count} 个镜头</option>`).join('')}</select></label><label class="sd-switch-row"><span>手动生成多镜头前确认</span><input type="checkbox" class="sd-storyboard-route-confirm" ${routing.confirmMultipleRequests !== false ? 'checked' : ''}></label></div>` : ''}</section>${routing.enabled ? `<details class="sd-card" data-storyboard-card="routing-rules" ${state.collapsedCards['routing-rules'] ? '' : 'open'}><summary><span><b>镜头分工</b><small>${routing.rules.length ? `${routing.rules.length} 条` : '按需添加'}</small></span></summary><div class="sd-storyboard-card-body"><div class="sd-storyboard-route-rules">${rows || '<div class="sd-storyboard-empty-inline">没有额外分工时，只使用模型卡中的当前模型。</div>'}</div><button type="button" class="sd-btn sd-primary sd-storyboard-add-route"><i class="fa-solid fa-plus"></i>添加分工</button></div></details>` : ''}</div>`;
 }
 
-function storyboardPromptPresetEntryMarkup(item = {}, index = 0) {
-  return `<details class="sd-card sd-storyboard-preset-entry" draggable="true" data-storyboard-preset-entry="${htmlEscape(item.id || `draft-${index + 1}`)}">
-    <summary><i class="fa-solid fa-grip-lines sd-storyboard-preset-entry-drag" aria-hidden="true"></i><b>${htmlEscape(item.name || `条目 ${index + 1}`)}</b><span>${index + 1}</span><div><button type="button" class="sd-icon-btn sd-storyboard-edit-preset-entry" title="编辑条目" aria-label="编辑条目"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-preset-entry" title="删除条目" aria-label="删除条目"><i class="fa-solid fa-trash-can"></i></button></div></summary>
-    <div class="sd-storyboard-preset-entry-preview">${htmlEscape(item.instruction || '')}</div>
+function storyboardPromptPresetEntryMarkup(item = {}, index = 0, total = 1) {
+  const tokenCount = Math.max(0, estimateTokens(item.instruction || ''));
+  return `<details class="sd-card sd-storyboard-preset-entry" data-storyboard-preset-entry="${htmlEscape(item.id || `draft-${index + 1}`)}">
+    <summary><button type="button" class="sd-storyboard-preset-entry-drag" draggable="true" title="拖动排序" aria-label="拖动排序"><i class="fa-solid fa-grip-lines"></i></button><b>${htmlEscape(item.name || `条目 ${index + 1}`)}</b><span class="sd-storyboard-preset-token" title="估算 token 数">${tokenCount}</span><div class="sd-storyboard-preset-entry-menu"><button type="button" class="sd-icon-btn sd-storyboard-preset-entry-more" title="更多" aria-label="更多" aria-expanded="false"><i class="fa-solid fa-ellipsis"></i></button><div role="menu" hidden><button type="button" class="sd-storyboard-edit-preset-entry" role="menuitem"><i class="fa-solid fa-pen"></i><span>编辑</span></button><button type="button" class="sd-storyboard-copy-preset-entry" role="menuitem"><i class="fa-regular fa-copy"></i><span>复制</span></button><button type="button" class="sd-storyboard-move-preset-entry-up" role="menuitem" ${index === 0 ? 'disabled' : ''}><i class="fa-solid fa-arrow-up"></i><span>上移</span></button><button type="button" class="sd-storyboard-move-preset-entry-down" role="menuitem" ${index >= total - 1 ? 'disabled' : ''}><i class="fa-solid fa-arrow-down"></i><span>下移</span></button><button type="button" class="sd-storyboard-delete-preset-entry sd-danger" role="menuitem"><i class="fa-solid fa-trash-can"></i><span>删除</span></button></div></div></summary>
+    <div class="sd-storyboard-preset-entry-preview sd-scroll">${htmlEscape(item.instruction || '')}</div>
   </details>`;
 }
 
@@ -10864,12 +10973,17 @@ function renderStoryboardPresetLibrary(state) {
     </div>`;
   }
   const options = state.promptPresets.map((item) => `<option value="${htmlEscape(item.id)}" ${selected?.id === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
-  const rows = (selected?.items || []).map(storyboardPromptPresetEntryMarkup).join('');
+  const selectedItems = selected?.items || [];
+  const rows = selectedItems.map((item, index) => storyboardPromptPresetEntryMarkup(item, index, selectedItems.length)).join('');
+  const undo = storyboardPresetUndo && storyboardPresetUndo.presetId === selected?.id && storyboardPresetUndo.expiresAt > Date.now()
+    ? `<div class="sd-storyboard-preset-undo" role="status"><span>已删除「${htmlEscape(storyboardPresetUndo.item?.name || '条目')}」</span><button type="button" class="sd-storyboard-undo-preset-entry">撤销</button></div>`
+    : '';
   return `<div class="sd-storyboard-presets-page">
     <section class="sd-card sd-storyboard-preset-controls">
-      <div class="sd-storyboard-preset-control-row"><label class="sd-icon-btn" title="导入取景预设" aria-label="导入取景预设"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-storyboard-preset-import-file" accept="application/json,.json" hidden></label><button type="button" class="sd-icon-btn sd-storyboard-export-presets" title="导出取景预设" aria-label="导出取景预设"><i class="fa-solid fa-file-export"></i></button><select class="text_pole sd-storyboard-preset-library-select"><option value="">选择取景预设</option>${options}</select></div>
-      <div class="sd-storyboard-preset-control-row"><button type="button" class="sd-btn sd-primary sd-storyboard-new-preset">新建预设</button><button type="button" class="sd-btn sd-storyboard-overwrite-preset" ${selected ? '' : 'disabled'}>保存覆盖</button><button type="button" class="sd-icon-btn sd-storyboard-rename-preset" title="编辑预设名" aria-label="编辑预设名" ${selected ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-preset" title="删除预设" aria-label="删除预设" ${selected ? '' : 'disabled'}><i class="fa-solid fa-trash-can"></i></button></div>
+      <div class="sd-storyboard-preset-control-row sd-storyboard-preset-select-row"><select class="text_pole sd-storyboard-preset-library-select"><option value="">选择取景预设</option>${options}</select><label class="sd-icon-btn" title="导入取景预设" aria-label="导入取景预设"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-storyboard-preset-import-file" accept="application/json,.json" hidden></label><button type="button" class="sd-icon-btn sd-storyboard-export-presets" title="导出取景预设" aria-label="导出取景预设"><i class="fa-solid fa-file-export"></i></button></div>
+      <div class="sd-storyboard-preset-control-row"><button type="button" class="sd-btn sd-primary sd-storyboard-new-preset">新建预设</button><button type="button" class="sd-icon-btn sd-storyboard-rename-preset" title="编辑预设名" aria-label="编辑预设名" ${selected ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-storyboard-overwrite-preset" title="保存覆盖" aria-label="保存覆盖" ${selected ? '' : 'disabled'}><i class="fa-solid fa-floppy-disk"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-preset" title="删除预设" aria-label="删除预设" ${selected ? '' : 'disabled'}><i class="fa-solid fa-trash-can"></i></button></div>
     </section>
+    ${undo}
     ${selected ? `<section class="sd-storyboard-preset-list" data-storyboard-preset-list="${htmlEscape(selected.id)}">${rows || '<div class="sd-storyboard-empty-inline">这个预设还没有条目。</div>'}</section><button type="button" class="sd-icon-btn sd-primary sd-storyboard-add-preset-item" title="添加条目" aria-label="添加条目"><i class="fa-solid fa-plus"></i></button>` : ''}
   </div>`;
 }
@@ -11087,7 +11201,7 @@ function renderStoryboardArtistLibrary(state) {
   });
   const inspector = selectedArtist ? `<details class="sd-media-inspector" open><summary><span>当前画师</span></summary><div>${selectedPreview ? `<img src="${htmlEscape(selectedPreview)}" alt="">` : '<div class="sd-media-inspector-placeholder"><i class="fa-regular fa-image"></i></div>'}<h4>${htmlEscape(selectedArtist.name)}</h4><p>${htmlEscape(snip(selectedArtist.value, 180))}</p><div class="sd-media-inspector-tags">${(selectedArtist.tags || []).map((tag) => `<em>${htmlEscape(tag)}</em>`).join('') || '<small>暂无标签</small>'}</div><button type="button" class="sd-btn sd-storyboard-inspector-edit-artist"><i class="fa-solid fa-pen"></i>编辑画师串</button></div></details>` : `<details class="sd-media-inspector" open><summary><span>详情</span></summary><div class="sd-storyboard-empty-inline">选择画师串后在此查看。</div></details>`;
   return `<div class="sd-storyboard-artist-page">
-    <section class="sd-card sd-storyboard-artist-head"><div><button type="button" class="sd-icon-btn sd-storyboard-artist-back" title="返回" aria-label="返回"><i class="fa-solid fa-arrow-left"></i></button><h3>ARTIST LIBRARY</h3><b>${artists.length}</b></div><div><input class="text_pole sd-storyboard-artist-search" value="${htmlEscape(state.artistSearch || '')}" placeholder="搜索画师串或标签"><button type="button" class="sd-icon-btn sd-storyboard-new-artist-collection" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button><button type="button" class="sd-icon-btn sd-storyboard-new-artist" title="新建画师串" aria-label="新建画师串"><i class="fa-solid fa-plus"></i></button></div></section>
+    <section class="sd-card sd-storyboard-artist-head"><div><h3>ARTIST LIBRARY</h3><b>${artists.length}</b></div><div><input class="text_pole sd-storyboard-artist-search" value="${htmlEscape(state.artistSearch || '')}" placeholder="搜索画师串或标签"><button type="button" class="sd-icon-btn sd-storyboard-new-artist-collection" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button><button type="button" class="sd-icon-btn sd-storyboard-new-artist" title="新建画师串" aria-label="新建画师串"><i class="fa-solid fa-plus"></i></button></div></section>
     <div class="sd-media-library-shell sd-media-artist-library">${sidebar}<main class="sd-media-library-main"><header><b>${htmlEscape(currentCollection?.name || '全部画师')}</b><span>${artists.length}</span></header><section class="sd-storyboard-artist-waterfall">${cards || '<div class="sd-storyboard-empty-inline">暂无画师串。</div>'}</section></main>${inspector}</div>
   </div>`;
 }
@@ -11144,18 +11258,23 @@ function storyboardProfileSnapshot(profile, sourceId) {
 function storyboardParameterPresets(sourceId = storyboardState().source, modelId = '') {
   const state = storyboardState();
   const currentModel = String(modelId || storyboardProviderProfile(state, sourceId).model || '');
-  return state.parameterPresets.filter((item) => item.source === sourceId
+  const builtins = getStoryboardBuiltinParameterPresets(sourceId, currentModel).map((item) => ({
+    ...item, source: sourceId, profile: { ...item.profile, model: currentModel }, builtin: true,
+  }));
+  const userPresets = state.parameterPresets.filter((item) => item.source === sourceId
     && (!item.profile?.model || !currentModel || item.profile.model === currentModel));
+  return [...builtins, ...userPresets];
 }
 
 function renderStoryboardParameterPresets(state) {
   const presets = storyboardParameterPresets(state.source);
   const requested = state.parameterPresetSelection[state.source] || '';
   const selected = presets.some((item) => item.id === requested) ? requested : '';
+  const selectedPreset = presets.find((item) => item.id === selected) || null;
   return `<div class="sd-storyboard-preset-row">
-    <label><span>样式</span><select class="text_pole sd-storyboard-preset-select"><option value="">选择参数</option>${presets.map((item) => `<option value="${htmlEscape(item.id)}" ${selected === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('')}</select></label>
+    <label><span>样式</span><select class="text_pole sd-storyboard-preset-select"><option value="">选择参数</option>${presets.map((item) => `<option value="${htmlEscape(item.id)}" ${selected === item.id ? 'selected' : ''}>${htmlEscape(item.name)}${item.experimental ? ' · 待实测' : ''}</option>`).join('')}</select></label>
     <button type="button" class="sd-icon-btn sd-storyboard-save-preset" title="保存当前设置为样式" aria-label="保存当前设置为样式"><i class="fa-solid fa-bookmark"></i></button>
-    <button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-preset" title="删除所选样式" aria-label="删除所选样式" ${selected ? '' : 'disabled'}><i class="fa-solid fa-trash-can"></i></button>
+    <button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-preset" title="删除所选样式" aria-label="删除所选样式" ${selected && !selectedPreset?.builtin ? '' : 'disabled'}><i class="fa-solid fa-trash-can"></i></button>
   </div>`;
 }
 
@@ -11210,10 +11329,13 @@ function storyboardGenerationPayload(state, profile, { sourceId = state.source, 
   const effectivePrompt = composed.prompt;
   const effectiveNegative = capabilities.negative ? composed.negative : '';
   const providerOptions = {};
-  if (sourceId === 'novel') Object.assign(providerOptions, {
-    sm: Boolean(profile.novelSm), sm_dyn: Boolean(profile.novelSmDyn), dynamic_thresholding: Boolean(profile.novelDecrisper),
-    variety_boost: Boolean(profile.novelVarietyBoost),
-  });
+  if (sourceId === 'novel') {
+    if (capabilities.cfgRescale && profile.novelCfgRescale !== '') providerOptions.cfg_rescale = Number(profile.novelCfgRescale);
+    if (capabilities.sm) providerOptions.sm = Boolean(profile.novelSm);
+    if (capabilities.smDyn) providerOptions.sm_dyn = Boolean(profile.novelSmDyn);
+    if (capabilities.decrisper) providerOptions.dynamic_thresholding = Boolean(profile.novelDecrisper);
+    if (capabilities.varietyBoost) providerOptions.variety_boost = Boolean(profile.novelVarietyBoost);
+  }
   return {
     prompt: effectivePrompt, negative: effectiveNegative, artistString,
     parameters: {
@@ -11474,7 +11596,7 @@ function renderStoryboardTab() {
           : state.view === 'gallery' ? renderStoryboardGallery(state)
             : state.view === 'logs' ? renderStoryboardLogs(state)
               : renderStoryboardCreate(state);
-  return `<div class="sd-storyboard-root"><header class="sd-storyboard-titlebar"><span>STORYBOARD</span></header>${body}${renderStoryboardNav(state)}</div>`;
+  return `<div class="sd-storyboard-root"><header class="sd-storyboard-titlebar"><span>STORYBOARD</span><div><button type="button" class="sd-icon-btn sd-storyboard-back" title="返回上一级" aria-label="返回上一级" ${storyboardCanGoBack(state) ? '' : 'disabled'}><i class="fa-solid fa-arrow-left"></i></button><button type="button" class="sd-icon-btn sd-storyboard-close" title="关闭分镜" aria-label="关闭分镜"><i class="fa-solid fa-xmark"></i></button></div></header>${body}${renderStoryboardNav(state)}</div>`;
 }
 
 function storyboardWorkflowIssue(result) {
@@ -12278,7 +12400,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false } = {})
     const route = routingEnabled ? routeStoryboardShot(shot, state.routing) : { providerId: state.source, modelId: profile.model, connectionPresetId: '', parameterPresetId: '' };
     const sourceId = STORYBOARD_PROVIDER_REGISTRY[route.providerId] ? route.providerId : state.source;
     let shotProfile = sourceId === state.source ? storyboardProfileSnapshot(profile, sourceId) : storyboardProfileSnapshot(storyboardProviderProfile(state, sourceId), sourceId);
-    const parameterPreset = state.parameterPresets.find((item) => item.id === route.parameterPresetId && item.source === sourceId);
+    const parameterPreset = storyboardParameterPresets(sourceId, route.modelId).find((item) => item.id === route.parameterPresetId);
     if (parameterPreset) shotProfile = { ...shotProfile, ...clone(parameterPreset.profile), loaded: true };
     if (route.modelId) shotProfile.model = route.modelId;
     const effectiveShot = storyboardAdaptShotForModel(shot, sourceId, shotProfile.model);
@@ -13206,11 +13328,16 @@ function bindStoryboardTabEvents(root) {
   if (activeTab !== 'imagegen') return;
   const state = storyboardState();
   storyboardBindMediaTagEditors(root);
-  root.querySelector('.sd-storyboard-exit')?.addEventListener('click', () => {
+  root.querySelector('.sd-storyboard-back')?.addEventListener('click', () => storyboardBack(root));
+  root.querySelector('.sd-storyboard-close')?.addEventListener('click', () => {
     if (state.view === 'create') storyboardCaptureWorkbench(root);
     storyboardCloseLightbox();
     state.view = 'create';
+    state.editingArtistPresetId = '';
+    state.editingPromptItemId = '';
+    state.promptItemDraft = null;
     saveSettings();
+    storyboardEndSession();
     activeTab = resolveRestorableTab(storyboardReturnTab || settings.lastTab || 'dashboard');
     renderModal();
   });
@@ -13288,8 +13415,9 @@ function bindStoryboardTabEvents(root) {
   }));
   root.querySelectorAll('[data-storyboard-view]').forEach((button) => button.addEventListener('click', () => {
     if (state.view === 'create') storyboardCaptureWorkbench(root);
-    state.view = button.dataset.storyboardView;
-    saveSettings(); renderModal();
+    const nextView = button.dataset.storyboardView;
+    if (!nextView || nextView === state.view) return;
+    storyboardNavigate(root, { view: nextView, editingArtistPresetId: '', editingPromptItemId: '', promptItemDraft: null });
   }));
   root.querySelectorAll('[data-storyboard-source]').forEach((button) => button.addEventListener('click', async () => {
     const id = button.dataset.storyboardSource;
@@ -13315,7 +13443,9 @@ function bindStoryboardTabEvents(root) {
     const captured = clone(state.profiles[sourceId]);
     if (previousModel) state.modelProfiles[sourceId][previousModel] = { ...clone(captured), model: previousModel };
     const remembered = state.modelProfiles[sourceId][requestedModel];
-    state.profiles[sourceId] = remembered ? { ...clone(remembered), model: requestedModel, loaded: true } : { ...captured, model: requestedModel, loaded: true };
+    state.profiles[sourceId] = remembered
+      ? { ...clone(remembered), model: requestedModel, loaded: true }
+      : { ...createStoryboardDefaults().profiles[sourceId], model: requestedModel, loaded: false };
     state.modelProfiles[sourceId][requestedModel] = clone(state.profiles[sourceId]);
     state.parameterPresetSelection[sourceId] = '';
     saveSettings();
@@ -13398,18 +13528,20 @@ function bindStoryboardTabEvents(root) {
   }));
   root.querySelector('.sd-storyboard-prompt-preset')?.addEventListener('change', (event) => storyboardLoadPromptPreset(String(event.target.value || '')));
   root.querySelector('.sd-storyboard-open-prompt-library')?.addEventListener('click', () => {
-    storyboardCaptureWorkbench(root); state.view = 'presets'; state.editingPromptItemId = ''; state.promptItemDraft = null; saveSettings(); renderModal();
+    storyboardCaptureWorkbench(root);
+    storyboardNavigate(root, { view: 'presets', editingPromptItemId: '', promptItemDraft: null });
   });
   root.querySelector('.sd-storyboard-open-artist-library')?.addEventListener('click', () => {
-    storyboardCaptureWorkbench(root); state.view = 'artists'; saveSettings(); renderModal();
+    storyboardCaptureWorkbench(root);
+    storyboardNavigate(root, { view: 'artists', editingArtistPresetId: '' });
   });
   root.querySelector('.sd-storyboard-artist-preset')?.addEventListener('change', (event) => storyboardLoadArtistPreset(String(event.target.value || '')));
   root.querySelector('.sd-storyboard-edit-selected-artist')?.addEventListener('click', () => {
     if (!state.selectedArtistPresetId) return;
-    storyboardCaptureWorkbench(root); state.view = 'artists'; state.editingArtistPresetId = state.selectedArtistPresetId; saveSettings(); renderModal();
+    storyboardCaptureWorkbench(root);
+    storyboardNavigate(root, { view: 'artists', editingArtistPresetId: state.selectedArtistPresetId });
   });
-  root.querySelector('.sd-storyboard-artist-back')?.addEventListener('click', () => { state.view = 'create'; state.editingArtistPresetId = ''; state.artistCollectionId = ''; saveSettings(); renderModal(); });
-  root.querySelector('.sd-storyboard-new-artist')?.addEventListener('click', () => { state.editingArtistPresetId = 'new'; saveSettings(); renderModal(); });
+  root.querySelector('.sd-storyboard-new-artist')?.addEventListener('click', () => storyboardNavigate(root, { view: 'artists', editingArtistPresetId: 'new' }));
   root.querySelector('.sd-storyboard-new-artist-collection')?.addEventListener('click', async () => {
     const answer = await promptInput('新建画师合集', '填写合集名称。', '');
     const name = String(answer ?? '').trim().slice(0, 80);
@@ -13418,7 +13550,7 @@ function bindStoryboardTabEvents(root) {
     const now = Date.now(); state.artistCollections.push({ id: uid('artist-folder'), name, createdAt: now, updatedAt: now });
     saveSettings(); renderModal();
   });
-  root.querySelector('.sd-storyboard-cancel-artist-edit')?.addEventListener('click', () => { state.editingArtistPresetId = ''; saveSettings(); renderModal(); });
+  root.querySelector('.sd-storyboard-cancel-artist-edit')?.addEventListener('click', () => storyboardBack(root));
   root.querySelector('.sd-storyboard-artist-preview-url-mode')?.addEventListener('click', () => root.querySelector('.sd-storyboard-artist-edit-preview')?.focus());
   root.querySelector('.sd-storyboard-artist-edit-preview')?.addEventListener('input', (event) => storyboardSetArtistPreview(root, event.target.value));
   root.querySelector('.sd-storyboard-artist-preview-gallery')?.addEventListener('change', (event) => {
@@ -13462,7 +13594,7 @@ function bindStoryboardTabEvents(root) {
     if (!state.promptDraft.userEditedCompiled) state.promptDraft.artistPositiveBaked = false;
     if (!state.promptDraft.userEditedNegative) state.promptDraft.artistNegativeBaked = false;
     state.editingArtistPresetId = '';
-    saveSettings(); renderModal();
+    saveSettings(); storyboardBack(root);
   });
   let artistSearchTimer = null;
   root.querySelector('.sd-storyboard-artist-search')?.addEventListener('input', (event) => {
@@ -13478,7 +13610,7 @@ function bindStoryboardTabEvents(root) {
       if (!state.promptDraft.userEditedNegative) state.promptDraft.artistNegativeBaked = false;
       saveSettings(); renderModal();
     });
-    card.querySelector('.sd-storyboard-edit-artist-card')?.addEventListener('click', () => { if (item) { state.editingArtistPresetId = item.id; saveSettings(); renderModal(); } });
+    card.querySelector('.sd-storyboard-edit-artist-card')?.addEventListener('click', () => { if (item) storyboardNavigate(root, { view: 'artists', editingArtistPresetId: item.id }); });
     card.querySelector('.sd-storyboard-delete-artist-card')?.addEventListener('click', async () => {
       if (!item || !await confirmDialog('删除画师串', `确定删除「${item.name}」？`)) return;
       state.artistPresets = state.artistPresets.filter((entry) => entry.id !== item.id);
@@ -13512,7 +13644,7 @@ function bindStoryboardTabEvents(root) {
   root.querySelectorAll('[data-artist-tag-filter]').forEach((button) => button.addEventListener('click', () => { state.artistSearch = button.dataset.artistTagFilter || ''; saveSettings(); renderModal(); }));
   root.querySelector('.sd-storyboard-inspector-edit-artist')?.addEventListener('click', () => {
     if (!state.selectedArtistPresetId) return;
-    state.editingArtistPresetId = state.selectedArtistPresetId; saveSettings(); renderModal();
+    storyboardNavigate(root, { view: 'artists', editingArtistPresetId: state.selectedArtistPresetId });
   });
   root.querySelectorAll('[data-storyboard-add-tag]').forEach((button) => button.addEventListener('click', () => storyboardAddLibraryTag(button.dataset.storyboardAddTag)));
   root.querySelectorAll('[data-storyboard-asset-section]').forEach((button) => button.addEventListener('click', () => {
@@ -13567,13 +13699,12 @@ function bindStoryboardTabEvents(root) {
   }));
   root.querySelector('.sd-storyboard-open-vibe-library')?.addEventListener('click', () => {
     storyboardCaptureWorkbench(root);
-    state.assetView = 'vibes'; state.view = 'assets';
-    saveSettings(); renderModal();
+    storyboardNavigate(root, { assetView: 'vibes', view: 'assets' });
   });
   root.querySelector('.sd-storyboard-preset-library-select')?.addEventListener('change', (event) => {
     state.promptCompiler.instructionPresetId = String(event.target.value || '');
     state.editingPromptPresetId = state.promptCompiler.instructionPresetId;
-    state.editingPromptItemId = ''; state.promptItemDraft = null; saveSettings(); renderModal();
+    state.editingPromptItemId = ''; state.promptItemDraft = null; storyboardBack(root);
   });
   root.querySelector('.sd-storyboard-new-preset')?.addEventListener('click', async () => {
     const answer = await promptInput('新建取景预设', '填写预设名称。', '');
@@ -13608,10 +13739,9 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-add-preset-item')?.addEventListener('click', () => {
     const preset = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId);
     if (!preset) return;
-    state.editingPromptPresetId = preset.id; state.editingPromptItemId = 'new'; state.promptItemDraft = { name: `条目 ${(preset.items?.length || 0) + 1}`, instruction: '' };
-    saveSettings(); renderModal();
+    storyboardNavigate(root, { view: 'presets', editingPromptPresetId: preset.id, editingPromptItemId: 'new', promptItemDraft: { name: `条目 ${(preset.items?.length || 0) + 1}`, instruction: '' } });
   });
-  root.querySelector('.sd-storyboard-cancel-preset-item')?.addEventListener('click', () => { state.editingPromptItemId = ''; state.promptItemDraft = null; saveSettings(); renderModal(); });
+  root.querySelector('.sd-storyboard-cancel-preset-item')?.addEventListener('click', () => storyboardBack(root));
   root.querySelector('.sd-storyboard-save-preset-item')?.addEventListener('click', () => {
     const preset = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId);
     if (!preset) return;
@@ -13621,20 +13751,152 @@ function bindStoryboardTabEvents(root) {
     let item = preset.items.find((entry) => entry.id === state.editingPromptItemId);
     if (!item) { item = { id: uid('shotrule') }; preset.items.push(item); }
     Object.assign(item, { name, instruction }); preset.instruction = preset.items.map((entry) => entry.instruction).join('\n\n').slice(0, 24000); preset.updatedAt = Date.now();
-    state.editingPromptItemId = ''; state.promptItemDraft = null; saveSettings(); renderModal();
+    state.editingPromptItemId = ''; state.promptItemDraft = null; storyboardBack(root);
+  });
+  root.querySelector('.sd-storyboard-undo-preset-entry')?.addEventListener('click', () => {
+    const undo = storyboardPresetUndo;
+    const preset = undo && state.promptPresets.find((entry) => entry.id === undo.presetId);
+    if (!preset || !undo.item) return;
+    preset.items.splice(Math.max(0, Math.min(preset.items.length, undo.index)), 0, undo.item);
+    preset.instruction = preset.items.map((entry) => entry.instruction).join('\n\n').slice(0, 24000);
+    preset.updatedAt = Date.now();
+    storyboardPresetUndo = null;
+    clearTimeout(storyboardPresetUndoTimer); storyboardPresetUndoTimer = null;
+    saveSettings(); renderModal();
   });
   const presetList = root.querySelector('.sd-storyboard-preset-list');
   if (presetList) {
     const preset = state.promptPresets.find((item) => item.id === presetList.dataset.storyboardPresetList);
+    const commitPresetItems = () => {
+      if (!preset) return;
+      preset.instruction = preset.items.map((entry) => entry.instruction).join('\n\n').slice(0, 24000);
+      preset.updatedAt = Date.now();
+      saveSettings(); renderModal();
+    };
+    const movePresetItem = (itemId, targetId, after = false) => {
+      if (!preset || itemId === targetId) return false;
+      const sourceIndex = preset.items.findIndex((entry) => entry.id === itemId);
+      if (sourceIndex < 0) return false;
+      const [moved] = preset.items.splice(sourceIndex, 1);
+      const targetIndex = preset.items.findIndex((entry) => entry.id === targetId);
+      if (targetIndex < 0) preset.items.push(moved);
+      else preset.items.splice(targetIndex + (after ? 1 : 0), 0, moved);
+      return true;
+    };
+    const closePresetMenus = (except = null) => {
+      presetList.querySelectorAll('.sd-storyboard-preset-entry-menu > div').forEach((menu) => {
+        if (menu === except) return;
+        menu.hidden = true;
+        menu.previousElementSibling?.setAttribute('aria-expanded', 'false');
+      });
+    };
     presetList.querySelectorAll('.sd-storyboard-preset-entry').forEach((row) => {
       const item = preset?.items?.find((entry) => entry.id === row.dataset.storyboardPresetEntry);
-      row.querySelector('.sd-storyboard-edit-preset-entry')?.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); if (item) { state.editingPromptPresetId = preset.id; state.editingPromptItemId = item.id; state.promptItemDraft = { name: item.name, instruction: item.instruction }; saveSettings(); renderModal(); } });
-      row.querySelector('.sd-storyboard-delete-preset-entry')?.addEventListener('click', async (event) => { event.preventDefault(); event.stopPropagation(); if (!item || !await confirmDialog('删除条目', `确定删除「${item.name}」？`)) return; preset.items = preset.items.filter((entry) => entry.id !== item.id); preset.instruction = preset.items.map((entry) => entry.instruction).join('\n\n').slice(0, 24000); preset.updatedAt = Date.now(); saveSettings(); renderModal(); });
+      const more = row.querySelector('.sd-storyboard-preset-entry-more');
+      const menu = row.querySelector('.sd-storyboard-preset-entry-menu > div');
+      more?.addEventListener('click', (event) => {
+        event.preventDefault(); event.stopPropagation();
+        const willOpen = Boolean(menu?.hidden);
+        closePresetMenus(willOpen ? menu : null);
+        if (menu) menu.hidden = !willOpen;
+        more.setAttribute('aria-expanded', String(willOpen));
+      });
+      row.querySelector('.sd-storyboard-edit-preset-entry')?.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); if (item) storyboardNavigate(root, { view: 'presets', editingPromptPresetId: preset.id, editingPromptItemId: item.id, promptItemDraft: { name: item.name, instruction: item.instruction } }); });
+      row.querySelector('.sd-storyboard-copy-preset-entry')?.addEventListener('click', (event) => {
+        event.preventDefault(); event.stopPropagation(); if (!item || !preset) return;
+        const index = preset.items.findIndex((entry) => entry.id === item.id);
+        preset.items.splice(index + 1, 0, { ...clone(item), id: uid('shotrule'), name: `${item.name} 副本`.slice(0, 80) });
+        commitPresetItems();
+      });
+      row.querySelector('.sd-storyboard-delete-preset-entry')?.addEventListener('click', (event) => {
+        event.preventDefault(); event.stopPropagation(); if (!item || !preset) return;
+        const index = preset.items.findIndex((entry) => entry.id === item.id);
+        if (index < 0) return;
+        const [removed] = preset.items.splice(index, 1);
+        storyboardPresetUndo = { presetId: preset.id, item: clone(removed), index, expiresAt: Date.now() + 6000 };
+        clearTimeout(storyboardPresetUndoTimer);
+        storyboardPresetUndoTimer = setTimeout(() => {
+          storyboardPresetUndo = null; storyboardPresetUndoTimer = null;
+          if (activeTab === 'imagegen' && storyboardState().view === 'presets') renderModal();
+        }, 6000);
+        commitPresetItems();
+      });
+      row.querySelector('.sd-storyboard-move-preset-entry-up')?.addEventListener('click', (event) => {
+        event.preventDefault(); event.stopPropagation(); if (!item || !preset) return;
+        const index = preset.items.findIndex((entry) => entry.id === item.id);
+        if (index > 0) { [preset.items[index - 1], preset.items[index]] = [preset.items[index], preset.items[index - 1]]; commitPresetItems(); }
+      });
+      row.querySelector('.sd-storyboard-move-preset-entry-down')?.addEventListener('click', (event) => {
+        event.preventDefault(); event.stopPropagation(); if (!item || !preset) return;
+        const index = preset.items.findIndex((entry) => entry.id === item.id);
+        if (index >= 0 && index < preset.items.length - 1) { [preset.items[index], preset.items[index + 1]] = [preset.items[index + 1], preset.items[index]]; commitPresetItems(); }
+      });
     });
-    let dragged = null;
-    presetList.addEventListener('dragstart', (event) => { dragged = event.target.closest('.sd-storyboard-preset-entry'); dragged?.classList.add('dragging'); });
-    presetList.addEventListener('dragover', (event) => { if (!dragged) return; event.preventDefault(); const target = event.target.closest('.sd-storyboard-preset-entry'); if (!target || target === dragged) return; const rect = target.getBoundingClientRect(); presetList.insertBefore(dragged, event.clientY < rect.top + rect.height / 2 ? target : target.nextSibling); });
-    presetList.addEventListener('dragend', () => { if (!dragged || !preset) return; const order = Array.from(presetList.querySelectorAll('.sd-storyboard-preset-entry')).map((row) => row.dataset.storyboardPresetEntry); preset.items.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)); preset.instruction = preset.items.map((entry) => entry.instruction).join('\n\n').slice(0, 24000); preset.updatedAt = Date.now(); dragged.classList.remove('dragging'); dragged = null; saveSettings(); });
+    presetList.addEventListener('click', (event) => { if (!event.target.closest('.sd-storyboard-preset-entry-menu')) closePresetMenus(); });
+    let dragState = null;
+    const clearDropMarker = () => presetList.querySelectorAll('.drop-before,.drop-after').forEach((row) => row.classList.remove('drop-before', 'drop-after'));
+    const updateDropTarget = (target, clientY) => {
+      clearDropMarker();
+      if (!dragState) return;
+      dragState.targetId = '';
+      dragState.after = false;
+      if (!target || target.dataset.storyboardPresetEntry === dragState.itemId) return;
+      const rect = target.getBoundingClientRect();
+      dragState.targetId = target.dataset.storyboardPresetEntry;
+      dragState.after = clientY >= rect.top + rect.height / 2;
+      target.classList.add(dragState.after ? 'drop-after' : 'drop-before');
+    };
+    const finishDrop = () => {
+      if (!dragState) return;
+      const changed = dragState?.targetId && movePresetItem(dragState.itemId, dragState.targetId, dragState.after);
+      presetList.querySelectorAll('.sd-storyboard-preset-entry.dragging').forEach((row) => row.classList.remove('dragging'));
+      clearDropMarker(); dragState = null;
+      if (changed) commitPresetItems();
+    };
+    presetList.addEventListener('dragstart', (event) => {
+      const handle = event.target.closest('.sd-storyboard-preset-entry-drag');
+      const row = handle?.closest('.sd-storyboard-preset-entry');
+      if (!row) { event.preventDefault(); return; }
+      dragState = { itemId: row.dataset.storyboardPresetEntry, targetId: '', after: false };
+      row.classList.add('dragging'); event.dataTransfer?.setData('text/plain', dragState.itemId);
+    });
+    presetList.addEventListener('dragover', (event) => {
+      if (!dragState) return; event.preventDefault();
+      updateDropTarget(event.target.closest('.sd-storyboard-preset-entry'), event.clientY);
+    });
+    presetList.addEventListener('drop', (event) => { if (!dragState) return; event.preventDefault(); finishDrop(); });
+    presetList.addEventListener('dragend', () => { if (dragState) finishDrop(); });
+    presetList.querySelectorAll('.sd-storyboard-preset-entry-drag').forEach((handle) => {
+      let holdTimer = null; let activePointer = null;
+      handle.addEventListener('pointerdown', (event) => {
+        if (event.pointerType === 'mouse') return;
+        event.stopPropagation();
+        const row = handle.closest('.sd-storyboard-preset-entry');
+        holdTimer = setTimeout(() => {
+          activePointer = event.pointerId;
+          dragState = { itemId: row.dataset.storyboardPresetEntry, targetId: '', after: false };
+          row.classList.add('dragging'); handle.setPointerCapture?.(event.pointerId);
+        }, 280);
+      });
+      handle.addEventListener('pointermove', (event) => {
+        if (event.pointerId !== activePointer || !dragState) return;
+        event.preventDefault();
+        const target = document.elementFromPoint(event.clientX, event.clientY)?.closest('.sd-storyboard-preset-entry');
+        updateDropTarget(target, event.clientY);
+        const scroller = root.closest('.sd-storyboard-body');
+        if (scroller) {
+          const rect = scroller.getBoundingClientRect();
+          if (event.clientY < rect.top + 54) scroller.scrollTop -= 16;
+          else if (event.clientY > rect.bottom - 54) scroller.scrollTop += 16;
+        }
+      }, { passive: false });
+      const finishPointer = (event) => {
+        clearTimeout(holdTimer); holdTimer = null;
+        if (event.pointerId === activePointer) { activePointer = null; finishDrop(); }
+      };
+      handle.addEventListener('pointerup', finishPointer);
+      handle.addEventListener('pointercancel', finishPointer);
+    });
   }
   root.querySelector('.sd-storyboard-export-presets')?.addEventListener('click', () => {
     const selected = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId);
@@ -13720,7 +13982,7 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-preset-select')?.addEventListener('change', (event) => {
     storyboardCaptureWorkbench(root);
     const id = String(event.target.value || '');
-    const preset = state.parameterPresets.find((item) => item.id === id && item.source === state.source);
+    const preset = storyboardParameterPresets(state.source).find((item) => item.id === id);
     state.parameterPresetSelection[state.source] = preset?.id || '';
     if (preset) Object.assign(state.profiles[state.source], clone(preset.profile), { loaded: true });
     saveSettings(); renderModal();

@@ -6134,6 +6134,153 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-vibe-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
+/* v1.57 · 闸门 A：固定分镜顶栏、运行时返回栈与紧凑取景预设。 */
+#story-director-modal .sd-storyboard-titlebar {
+  position: sticky;
+  z-index: 30;
+  top: 0;
+  min-height: 42px;
+  justify-content: space-between;
+  gap: 10px;
+  margin: -2px 0 0;
+  padding: 4px 5px 5px;
+  border-bottom: 1px solid color-mix(in srgb, var(--sd-hairline) 76%, transparent);
+  background: color-mix(in srgb, var(--sd-sticky-bg, var(--sd-bg)) 88%, transparent);
+  backdrop-filter: blur(22px) saturate(1.06);
+  -webkit-backdrop-filter: blur(22px) saturate(1.06);
+}
+#story-director-modal .sd-storyboard-titlebar > div { display: flex; align-items: center; gap: 5px; }
+#story-director-modal .sd-storyboard-titlebar .sd-icon-btn { width: 34px; min-width: 34px; height: 34px; margin: 0; }
+#story-director-modal .sd-storyboard-titlebar .sd-storyboard-close { color: var(--sd-muted); }
+#story-director-modal .sd-storyboard-titlebar .sd-storyboard-back:disabled { opacity: .28; }
+#story-director-modal .sd-storyboard-nav { grid-template-columns: repeat(4, minmax(0, 1fr)); padding-right: 4px; }
+
+#story-director-modal .sd-storyboard-presets-page { gap: 1px; }
+#story-director-modal .sd-storyboard-preset-controls { gap: 5px; padding: 8px !important; }
+#story-director-modal .sd-storyboard-preset-control-row { flex-wrap: nowrap; gap: 5px; }
+#story-director-modal .sd-storyboard-preset-control-row .sd-btn { min-height: 38px; margin: 0; }
+#story-director-modal .sd-storyboard-preset-control-row .sd-icon-btn { width: 38px; min-width: 38px; height: 38px; }
+#story-director-modal .sd-storyboard-preset-select-row .text_pole { order: 0; }
+#story-director-modal .sd-storyboard-preset-list { gap: 1px; padding-bottom: 68px; }
+#story-director-modal .sd-storyboard-preset-entry {
+  position: relative;
+  display: block;
+  padding: 0;
+  overflow: visible;
+  border-radius: 10px;
+  background: var(--sd-card);
+}
+#story-director-modal .sd-storyboard-preset-entry > summary {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+}
+#story-director-modal .sd-storyboard-preset-entry > summary > b { min-width: 0; flex: 1; }
+#story-director-modal .sd-storyboard-preset-entry-drag {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--sd-muted);
+  touch-action: none;
+}
+#story-director-modal .sd-storyboard-preset-token { min-width: 20px; color: var(--sd-muted); font-size: 10px; text-align: right; }
+#story-director-modal .sd-storyboard-preset-entry-menu { position: relative; display: block !important; }
+#story-director-modal .sd-storyboard-preset-entry-menu > .sd-icon-btn { width: 32px; min-width: 32px; height: 32px; }
+#story-director-modal .sd-storyboard-preset-entry-menu > div {
+  position: absolute;
+  z-index: 42;
+  top: -3px;
+  right: calc(100% + 5px);
+  min-width: 120px;
+  display: grid;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid var(--sd-hairline);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--sd-sticky-bg, var(--sd-card)) 94%, transparent);
+  box-shadow: 0 9px 25px rgba(0,0,0,.16);
+  backdrop-filter: blur(18px);
+}
+#story-director-modal .sd-storyboard-preset-entry-menu > div[hidden] { display: none; }
+#story-director-modal .sd-storyboard-preset-entry-menu > div button {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sd-text);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+}
+#story-director-modal .sd-storyboard-preset-entry-menu > div button:hover { background: var(--sd-folder-head); }
+#story-director-modal .sd-storyboard-preset-entry-menu > div button.sd-danger { color: var(--sd-danger, #b85d5d); }
+#story-director-modal .sd-storyboard-preset-entry-preview {
+  max-height: min(26vh, 190px);
+  overflow: auto;
+  padding: 2px 14px 13px;
+}
+#story-director-modal .sd-storyboard-preset-entry.drop-before::before,
+#story-director-modal .sd-storyboard-preset-entry.drop-after::after {
+  content: '';
+  position: absolute;
+  z-index: 45;
+  left: 5px;
+  right: 5px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--sd-accent);
+  box-shadow: 0 0 9px color-mix(in srgb, var(--sd-accent) 64%, transparent);
+}
+#story-director-modal .sd-storyboard-preset-entry.drop-before::before { top: -2px; }
+#story-director-modal .sd-storyboard-preset-entry.drop-after::after { bottom: -2px; }
+#story-director-modal .sd-storyboard-preset-undo {
+  position: sticky;
+  z-index: 25;
+  top: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--sd-accent) 13%, var(--sd-card));
+  font-size: 11px;
+}
+#story-director-modal .sd-storyboard-preset-undo button { border: 0; background: transparent; color: var(--sd-accent); font: inherit; font-weight: 650; }
+#story-director-modal .sd-storyboard-add-preset-item {
+  position: sticky;
+  z-index: 24;
+  bottom: 58px;
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  margin: auto 7px 4px auto;
+  border-color: var(--sd-accent) !important;
+  background: var(--sd-accent) !important;
+  color: var(--sd-on-accent, #fff) !important;
+  opacity: 1;
+}
+
+@media (max-width: 430px) {
+  #story-director-modal .sd-storyboard-titlebar { margin-top: 0; }
+  #story-director-modal .sd-storyboard-preset-control-row { flex-wrap: nowrap; }
+  #story-director-modal .sd-storyboard-preset-control-row .text_pole { flex-basis: auto; }
+  #story-director-modal .sd-storyboard-preset-entry-menu > div { min-width: 112px; }
+}
+
 /* v1.56.2 · 分镜顶栏、上下文与画师编辑精调。 */
 #story-director-modal .sd-storyboard-titlebar {
   min-height: 28px;
@@ -7437,4 +7584,21 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-artist-page { gap: 3px; }
   #story-director-modal .sd-storyboard-context-card .sd-storyboard-card-body,
   #story-director-modal .sd-storyboard-worldbook-card .sd-storyboard-card-body { padding-inline: 12px; }
+}
+
+/* v1.57 cascade guard：须位于历次分镜精调之后。 */
+#story-director-modal .sd-storyboard-titlebar { min-height: 42px; justify-content: space-between; padding: 4px 5px 5px; }
+#story-director-modal .sd-storyboard-nav { grid-template-columns: repeat(4, minmax(0, 1fr)); padding-right: 4px; }
+#story-director-modal .sd-storyboard-presets-page { gap: 1px; }
+#story-director-modal .sd-storyboard-preset-controls { gap: 5px; padding: 8px !important; }
+#story-director-modal .sd-storyboard-preset-control-row { flex-wrap: nowrap; gap: 5px; }
+#story-director-modal .sd-storyboard-preset-list { gap: 1px; padding-bottom: 68px; }
+#story-director-modal .sd-storyboard-preset-entry { display: block; padding: 0; overflow: visible; }
+#story-director-modal .sd-storyboard-preset-entry > summary { min-height: 46px; display: flex; align-items: center; gap: 8px; padding: 6px 8px; }
+#story-director-modal .sd-storyboard-preset-entry-drag { width: 34px; min-width: 34px; height: 34px; }
+#story-director-modal .sd-storyboard-preset-entry-preview { max-height: min(26vh, 190px); overflow: auto; padding: 2px 14px 13px; }
+#story-director-modal .sd-storyboard-add-preset-item { bottom: 58px; width: 48px; min-width: 48px; height: 48px; margin: auto 7px 4px auto; background: var(--sd-accent) !important; color: var(--sd-on-accent, #fff) !important; opacity: 1; }
+@media (max-width: 430px) {
+  #story-director-modal .sd-storyboard-preset-control-row { flex-wrap: nowrap; }
+  #story-director-modal .sd-storyboard-preset-control-row .text_pole { flex-basis: auto; }
 }

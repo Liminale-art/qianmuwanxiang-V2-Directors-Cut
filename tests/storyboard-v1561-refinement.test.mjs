@@ -14,7 +14,8 @@ assert.doesNotMatch(source, /\['imagegen', '分镜'\]/);
 assert.doesNotMatch(source, /sd-geo-shortcut/);
 assert.match(source, /sd-storyboard-shortcut[\s\S]*activeTab = 'imagegen'/);
 assert.match(source, /sd-storyboard-mode[\s\S]*sd-storyboard-body/);
-assert.match(source, /sd-storyboard-exit[\s\S]*storyboardReturnTab/);
+assert.match(source, /sd-storyboard-titlebar[\s\S]*sd-storyboard-back[\s\S]*sd-storyboard-close/);
+assert.match(source, /sd-storyboard-close[\s\S]*storyboardReturnTab/);
 assert.match(style, /\.sd-storyboard-mode \.sd-storyboard-body/);
 
 // World map is the swipeable reverse side of the World tab.
@@ -64,10 +65,11 @@ assert.match(source, /sd-storyboard-worldbook-card/);
 assert.match(source, /sd-storyboard-worldbook-picker/);
 assert.doesNotMatch(source, /自动筛选/);
 
-// v1.56.3 keeps the title and return action in the same quiet top system.
+// The fixed title system separates in-panel history from closing the storyboard.
 assert.match(source, /sd-storyboard-titlebar[\s\S]*STORYBOARD/);
-assert.match(source, /function renderStoryboardNav[\s\S]*sd-storyboard-exit/);
-assert.match(style, /sd-storyboard-nav \.sd-storyboard-exit[\s\S]*position: static/);
+assert.match(source, /function renderStoryboardNav[\s\S]*data-storyboard-view/);
+assert.doesNotMatch(source.match(/function renderStoryboardNav[\s\S]*?\n}/)?.[0] || '', /sd-storyboard-exit/);
+assert.match(style, /sd-storyboard-titlebar[\s\S]*position: sticky/);
 assert.doesNotMatch(source, /为 \$\{getStoryboardModel[\s\S]*连接起一个便于识别的名称/);
 
 // Storyboard worldbooks use the same all-books → multi-book → per-entry hierarchy as Context.

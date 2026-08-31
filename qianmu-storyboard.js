@@ -17,7 +17,7 @@ export const STORYBOARD_SHOT_GROUP_TEMPLATES = Object.freeze({
   atmosphere: Object.freeze({ id: 'atmosphere', label: '氛围组', instruction: '用环境、人物状态和细节物件共同建立情绪，镜头必须承担不同信息。' }),
 });
 
-const BASE_CAPS = { prompt: true, negative: false, size: true, ratio: true, seed: false, steps: false, cfg: false, sampler: false, scheduler: false, reference: false, multipleReferences: false, imageEdit: false, mask: false, vibe: false, preciseReference: false, multiCharacter: false, workflow: false, contentPolicy: 'filtered' };
+const BASE_CAPS = { prompt: true, negative: false, size: true, ratio: true, seed: false, steps: false, cfg: false, cfgRescale: false, sampler: false, scheduler: false, sm: false, smDyn: false, decrisper: false, varietyBoost: false, reference: false, multipleReferences: false, imageEdit: false, mask: false, vibe: false, preciseReference: false, multiCharacter: false, workflow: false, contentPolicy: 'filtered' };
 const caps = (extra = {}) => Object.freeze({ ...BASE_CAPS, ...extra });
 const model = (id, label, generation, extra = {}) => Object.freeze({
   id, label, generation,
@@ -37,14 +37,14 @@ export const STORYBOARD_PROVIDER_REGISTRY = Object.freeze({
 
 export const STORYBOARD_MODEL_REGISTRY = Object.freeze({
   novel: Object.freeze([
-    model('nai-diffusion-3', 'Anime V3 💕', 'V3', { negative: true, seed: true, steps: true, cfg: true, sampler: true, vibe: true }),
-    model('nai-diffusion-4-curated-preview', 'Anime Curated V4', 'V4', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
-    model('nai-diffusion-4-full', 'Anime Full V4 💕', 'V4', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
-    model('nai-diffusion-4-5-curated', 'Anime Curated V4.5', 'V4.5', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
-    model('nai-diffusion-4-5-full', 'Anime Full V4.5 💕', 'V4.5', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
+    model('nai-diffusion-3', 'Anime V3 💕', 'V3', { negative: true, seed: true, steps: true, cfg: true, cfgRescale: true, sampler: true, scheduler: true, sm: true, smDyn: true, decrisper: true, vibe: true }),
+    model('nai-diffusion-4-curated-preview', 'Anime Curated V4', 'V4', { negative: true, seed: true, steps: true, cfg: true, cfgRescale: true, sampler: true, scheduler: true, sm: true, smDyn: true, decrisper: true, varietyBoost: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
+    model('nai-diffusion-4-full', 'Anime Full V4 💕', 'V4', { negative: true, seed: true, steps: true, cfg: true, cfgRescale: true, sampler: true, scheduler: true, sm: true, smDyn: true, decrisper: true, varietyBoost: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
+    model('nai-diffusion-4-5-curated', 'Anime Curated V4.5', 'V4.5', { negative: true, seed: true, steps: true, cfg: true, cfgRescale: true, sampler: true, scheduler: true, sm: true, smDyn: true, decrisper: true, varietyBoost: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
+    model('nai-diffusion-4-5-full', 'Anime Full V4.5 💕', 'V4.5', { negative: true, seed: true, steps: true, cfg: true, cfgRescale: true, sampler: true, scheduler: true, sm: true, smDyn: true, decrisper: true, varietyBoost: true, multipleReferences: true, vibe: true, preciseReference: true, multiCharacter: true }),
     // V5 首发不暴露 Vibe / Precise Reference；后续只需更新能力表，无需迁移用户数据。
-    model('nai-diffusion-5-curated', 'Anime Curated V5', 'V5', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multiCharacter: true }),
-    model('nai-diffusion-5-full', 'Anime Full V5 💕', 'V5', { negative: true, seed: true, steps: true, cfg: true, sampler: true, multiCharacter: true }),
+    model('nai-diffusion-5-curated', 'Anime Curated V5', 'V5', { negative: true, seed: true, steps: true, cfg: true, cfgRescale: true, sampler: true, multiCharacter: true }),
+    model('nai-diffusion-5-full', 'Anime Full V5 💕', 'V5', { negative: true, seed: true, steps: true, cfg: true, cfgRescale: true, sampler: true, multiCharacter: true }),
   ]),
   banana: Object.freeze([
     model('gemini-3.1-flash-lite-image', 'Nano Banana 2 Lite', '3.1', { negative: true, reference: true, multipleReferences: true, imageEdit: true }),
@@ -60,6 +60,57 @@ export const STORYBOARD_MODEL_REGISTRY = Object.freeze({
   ]),
   comfy: Object.freeze([model('comfy-workflow', '自定义工作流', 'workflow', { negative: true, seed: true, steps: true, cfg: true, sampler: true, scheduler: true, reference: true, multipleReferences: true, imageEdit: true, mask: true, workflow: true })]),
 });
+
+const naiSampler = (value, label) => Object.freeze({ value, label });
+const NAI_LEGACY_SAMPLERS = Object.freeze([
+  naiSampler('k_dpmpp_2m', 'DPM++ 2M'),
+  naiSampler('k_euler_ancestral', 'Euler Ancestral'),
+  naiSampler('k_euler', 'Euler'),
+  naiSampler('k_dpm_2', 'DPM2'),
+  naiSampler('k_dpmpp_2s_ancestral', 'DPM++ 2S Ancestral'),
+  naiSampler('k_dpmpp_sde', 'DPM++ SDE'),
+  naiSampler('k_dpm_fast', 'DPM Fast'),
+  naiSampler('ddim', 'DDIM'),
+]);
+const NAI_V5_SAMPLERS = Object.freeze([
+  naiSampler('k_euler_ancestral', 'Euler Ancestral'),
+  naiSampler('k_euler', 'Euler'),
+  naiSampler('k_dpmpp_2s_ancestral', 'DPM++ 2S Ancestral'),
+  naiSampler('k_dpmpp_2m_sde', 'DPM++ 2M SDE'),
+  naiSampler('k_dpmpp_2m', 'DPM++ 2M'),
+  naiSampler('k_dpmpp_sde', 'DPM++ SDE'),
+]);
+const NAI_LEGACY_SCHEDULERS = Object.freeze([
+  naiSampler('native', 'Native'),
+  naiSampler('karras', 'Karras'),
+  naiSampler('exponential', 'Exponential'),
+  naiSampler('polyexponential', 'Polyexponential'),
+]);
+
+export const STORYBOARD_NAI_PARAMETER_SPECS = Object.freeze({
+  V3: Object.freeze({ samplers: NAI_LEGACY_SAMPLERS, schedulers: NAI_LEGACY_SCHEDULERS, defaults: Object.freeze({ width: '832', height: '1216', ratio: '2:3', count: '1', steps: '28', cfg: '5', novelCfgRescale: '0', sampler: 'k_euler_ancestral', scheduler: 'karras' }) }),
+  V4: Object.freeze({ samplers: NAI_LEGACY_SAMPLERS, schedulers: NAI_LEGACY_SCHEDULERS, defaults: Object.freeze({ width: '832', height: '1216', ratio: '2:3', count: '1', steps: '28', cfg: '5', novelCfgRescale: '0', sampler: 'k_euler_ancestral', scheduler: 'karras' }) }),
+  'V4.5': Object.freeze({ samplers: NAI_LEGACY_SAMPLERS, schedulers: NAI_LEGACY_SCHEDULERS, defaults: Object.freeze({ width: '832', height: '1216', ratio: '2:3', count: '1', steps: '28', cfg: '5', novelCfgRescale: '0', sampler: 'k_euler_ancestral', scheduler: 'karras' }) }),
+  V5: Object.freeze({ samplers: NAI_V5_SAMPLERS, schedulers: Object.freeze([]), defaults: Object.freeze({ width: '832', height: '1216', ratio: '2:3', count: '1', steps: '28', cfg: '8', novelCfgRescale: '0', sampler: 'k_euler_ancestral', scheduler: '' }) }),
+});
+
+export const STORYBOARD_NAI_BUILTIN_PRESETS = Object.freeze([
+  Object.freeze({ id: 'builtin:nai-v5-official', name: '官方默认', generation: 'V5', readonly: true, profile: Object.freeze({ steps: '28', cfg: '8', novelCfgRescale: '0', sampler: 'k_euler_ancestral', scheduler: '' }) }),
+  Object.freeze({ id: 'builtin:nai-v5-balanced', name: '千幕·均衡', generation: 'V5', readonly: true, experimental: true, profile: Object.freeze({ steps: '28', cfg: '6', novelCfgRescale: '0.3', sampler: 'k_euler_ancestral', scheduler: '' }) }),
+  Object.freeze({ id: 'builtin:nai-v5-draft', name: '千幕·草图', generation: 'V5', readonly: true, experimental: true, profile: Object.freeze({ steps: '16', cfg: '5', novelCfgRescale: '0.3', sampler: 'k_euler_ancestral', scheduler: '' }) }),
+  Object.freeze({ id: 'builtin:nai-v5-detail', name: '千幕·稳定细节', generation: 'V5', readonly: true, experimental: true, profile: Object.freeze({ steps: '28', cfg: '6', novelCfgRescale: '0.3', sampler: 'k_dpmpp_2m', scheduler: '' }) }),
+]);
+
+export function getStoryboardNovelParameterSpec(modelId = '') {
+  const generation = getStoryboardModel('novel', modelId)?.generation || 'V5';
+  return STORYBOARD_NAI_PARAMETER_SPECS[generation] || STORYBOARD_NAI_PARAMETER_SPECS.V5;
+}
+
+export function getStoryboardBuiltinParameterPresets(providerId, modelId = '') {
+  if (providerId !== 'novel') return [];
+  const generation = getStoryboardModel('novel', modelId)?.generation || '';
+  return STORYBOARD_NAI_BUILTIN_PRESETS.filter((preset) => preset.generation === generation);
+}
 
 // v1.44 UI compatibility.
 export const STORYBOARD_SOURCES = STORYBOARD_PROVIDER_REGISTRY;
@@ -83,7 +134,7 @@ export const getStoryboardProvider = (id) => STORYBOARD_PROVIDER_REGISTRY[id] ||
 export const getStoryboardModel = (providerId, modelId) => (STORYBOARD_MODEL_REGISTRY[providerId] || []).find((item) => item.id === modelId) || null;
 export const getStoryboardCapabilities = (providerId, modelId = '') => getStoryboardModel(providerId, modelId)?.capabilities || getStoryboardProvider(providerId)?.capabilities || caps();
 
-const legacyProfile = () => ({ loaded: false, model: '', sampler: '', scheduler: '', width: '', height: '', ratio: '1:1', count: '', steps: '', cfg: '', seed: '', comfyUrl: '', comfyWorkflow: '', comfyWorkflowNotice: '', openaiStyle: '', openaiQuality: '', openaiBackground: '', openaiOutputFormat: '', imageSize: '', watermark: false, seedreamGuidanceScale: '', seedreamSequential: false, googleEnhance: false, novelSm: false, novelSmDyn: false, novelDecrisper: false, novelVarietyBoost: false });
+const legacyProfile = () => ({ loaded: false, model: '', sampler: '', scheduler: '', width: '', height: '', ratio: '1:1', count: '', steps: '', cfg: '', seed: '', comfyUrl: '', comfyWorkflow: '', comfyWorkflowNotice: '', openaiStyle: '', openaiQuality: '', openaiBackground: '', openaiOutputFormat: '', imageSize: '', watermark: false, seedreamGuidanceScale: '', seedreamSequential: false, googleEnhance: false, novelCfgRescale: '', novelSm: false, novelSmDyn: false, novelDecrisper: false, novelVarietyBoost: false });
 const promptDraft = () => ({ compiled: '', negative: '', artistString: '', compiledAt: 0, compiledBy: '', userEditedCompiled: false, userEditedNegative: false, artistPositiveBaked: false, artistNegativeBaked: false, sourceSummary: [] });
 const connection = (id) => ({ providerId: id, activePresetId: '', presets: [], draft: { baseUrl: getStoryboardProvider(id).defaultBaseUrl, model: getStoryboardProvider(id).defaultModel } });
 const routingDefaults = () => ({ enabled: false, mode: 'single', templateId: 'smart', single: { providerId: 'novel', modelId: 'nai-diffusion-5-full', connectionPresetId: '', parameterPresetId: '' }, rules: [], maxShotsPerFloor: 3, confirmMultipleRequests: true, providerConcurrency: 1 });
@@ -268,7 +319,7 @@ export function normalizeStoryboardState(value) {
     .filter(obj).map((rule) => ({ name: str(rule.name, 120).replace(/^<|>$/g, ''), action: rule.action === 'extract' ? 'extract' : 'remove' }))
     .filter((rule) => rule.name).slice(0, 80);
   state.promptCompiler = { ...(obj(safeCompiler) ? safeCompiler : {}), enabled: true, apiProfileId: cleanId(c.apiProfileId), connectionPresetId: cleanId(c.connectionPresetId), instructionPresetId: cleanId(c.instructionPresetId), instruction: str(c.instruction, 12000), includeCurrentFloor: true, includeRecentFloors: int(c.includeRecentFloors, 0, 20, 2), includeCharacterCards: true, includeUserPersona: true, includeActivatedWorldInfo: true, worldMode: 'selected', worldBookNames: uniqueStrings(c.worldBookNames, 100, 200), worldBookView: str(c.worldBookView, 200), worldBookInitializedNames: uniqueStrings(c.worldBookInitializedNames, 100, 200), worldEntryIds: ids(c.worldEntryIds, 1000), tagRules: compilerTagRules, excludedTags: compilerTagRules.filter((rule) => rule.action === 'remove').map((rule) => rule.name).join(', ') };
-  state.profiles = legacyProfiles(state.profiles); state.modelProfiles = modelProfileMemory(state.modelProfiles, state.profiles); state.parameterPresets = parameterPresets(state.parameterPresets); state.parameterPresetSelection = Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((id) => { const selected = cleanId(state.parameterPresetSelection?.[id]); return [id, state.parameterPresets.some((p) => p.id === selected && p.source === id) ? selected : '']; }));
+  state.profiles = legacyProfiles(state.profiles); state.modelProfiles = modelProfileMemory(state.modelProfiles, state.profiles); state.parameterPresets = parameterPresets(state.parameterPresets); state.parameterPresetSelection = Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((id) => { const selected = cleanId(state.parameterPresetSelection?.[id]); const modelId = state.profiles[id]?.model || STORYBOARD_PROVIDER_REGISTRY[id].defaultModel; const builtin = getStoryboardBuiltinParameterPresets(id, modelId).some((preset) => preset.id === selected); return [id, builtin || state.parameterPresets.some((p) => p.id === selected && p.source === id) ? selected : '']; }));
   state.connections = connections(state.connections);
   delete state.characters; delete state.entities; delete state.selectedCharacterId; delete state.characterView;
   delete state.selectedCharacters; delete state.castPickerOpen; delete state.consistencyModes;
@@ -357,7 +408,8 @@ function normalizeRouting(value, catalogs = {}) {
     const connectionPresetId = hasConnectionCatalog && requestedConnection && !connectionPreset ? '' : requestedConnection;
     const requestedModel = str(input.modelId, 240);
     const modelId = getStoryboardModel(providerId, requestedModel) ? requestedModel : getStoryboardProvider(providerId).defaultModel;
-    const parameterPresetId = hasParameterCatalog && requestedParameters && !catalogs.parameterPresets.some((preset) => preset.id === requestedParameters && preset.source === providerId && (!preset.profile?.model || preset.profile.model === modelId)) ? '' : requestedParameters;
+    const builtinParameter = getStoryboardBuiltinParameterPresets(providerId, modelId).some((preset) => preset.id === requestedParameters);
+    const parameterPresetId = hasParameterCatalog && requestedParameters && !builtinParameter && !catalogs.parameterPresets.some((preset) => preset.id === requestedParameters && preset.source === providerId && (!preset.profile?.model || preset.profile.model === modelId)) ? '' : requestedParameters;
     return { providerId, modelId, connectionPresetId, parameterPresetId };
   };
   const rules = dedupeById((Array.isArray(r.rules) ? r.rules : []).filter(obj).map((rule) => ({ id: cleanId(rule.id), name: str(rule.name || '未命名分工', 80), shotTypes: uniqueStrings(rule.shotTypes, 30, 60), target: target(rule.target, ''), enabled: rule.enabled !== false, priority: int(rule.priority, -1000, 1000, 0) })).filter((rule) => rule.id && rule.target.providerId)).slice(0, 50).sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
@@ -418,7 +470,18 @@ export function buildStoryboardProviderPlan(input = {}) {
   const own = (...keys) => { for (const key of keys) if (Object.hasOwn(p, key)) return p[key]; return undefined; };
   const providerValue = (providerId, key, value) => { if (value === '' || value == null) return; if (provider.id === providerId) request[key] = value; else dropped.push(key); };
   const providerFlag = (providerId, key, value) => { if (value === undefined) return; if (provider.id === providerId) request[key] = flag(value); else if (flag(value)) dropped.push(key); };
-  accept(request, dropped, capability, 'negative', str(input.negative ?? p.negative, 12000)); accept(request, dropped, capability, 'seed', bounded(p.seed, -1, Number.MAX_SAFE_INTEGER, true)); accept(request, dropped, capability, 'steps', bounded(p.steps, 1, 300, true)); accept(request, dropped, capability, 'cfg', bounded(p.cfg ?? p.scale, 0, 100)); accept(request, dropped, capability, 'sampler', str(p.sampler, 120)); accept(request, dropped, capability, 'scheduler', str(p.scheduler, 120));
+  accept(request, dropped, capability, 'negative', str(input.negative ?? p.negative, 12000)); accept(request, dropped, capability, 'seed', bounded(p.seed, -1, Number.MAX_SAFE_INTEGER, true)); accept(request, dropped, capability, 'steps', bounded(p.steps, 1, 300, true)); accept(request, dropped, capability, 'cfg', bounded(p.cfg ?? p.scale, 0, 100));
+  const requestedSampler = str(p.sampler, 120), requestedScheduler = str(p.scheduler, 120);
+  if (provider.id === 'novel') {
+    const spec = getStoryboardNovelParameterSpec(modelId);
+    if (requestedSampler && spec.samplers.some((item) => item.value === requestedSampler)) request.sampler = requestedSampler;
+    else if (requestedSampler) dropped.push('sampler');
+    if (requestedScheduler && capability.scheduler && spec.schedulers.some((item) => item.value === requestedScheduler)) request.scheduler = requestedScheduler;
+    else if (requestedScheduler) dropped.push('scheduler');
+  } else {
+    accept(request, dropped, capability, 'sampler', requestedSampler);
+    accept(request, dropped, capability, 'scheduler', requestedScheduler);
+  }
   const width = bounded(p.width, 64, 8192, true), height = bounded(p.height, 64, 8192, true);
   accept(request, dropped, capability, 'size', width === '' ? '' : width, 'width'); accept(request, dropped, capability, 'size', height === '' ? '' : height, 'height');
   const requestedRatio = p.ratio || p.aspectRatio;
@@ -445,15 +508,27 @@ export function buildStoryboardProviderPlan(input = {}) {
   providerFlag('seedream', 'sequential', own('sequential', 'seedreamSequential'));
   providerFlag('seedream', 'watermark', own('watermark'));
   const novelOptions = [
-    ['sm', own('sm', 'novelSm')],
-    ['sm_dyn', own('sm_dyn', 'smDyn', 'novelSmDyn')],
-    ['dynamic_thresholding', own('dynamic_thresholding', 'decrisper', 'novelDecrisper')],
-    ['variety_boost', own('variety_boost', 'varietyBoost', 'novelVarietyBoost')],
+    ['cfg_rescale', 'cfgRescale', own('cfg_rescale', 'cfgRescale', 'novelCfgRescale'), 'number'],
+    ['sm', 'sm', own('sm', 'novelSm'), 'flag'],
+    ['sm_dyn', 'smDyn', own('sm_dyn', 'smDyn', 'novelSmDyn'), 'flag'],
+    ['dynamic_thresholding', 'decrisper', own('dynamic_thresholding', 'decrisper', 'novelDecrisper'), 'flag'],
+    ['variety_boost', 'varietyBoost', own('variety_boost', 'varietyBoost', 'novelVarietyBoost'), 'flag'],
   ];
-  for (const [key, value] of novelOptions) {
-    if (value === undefined) continue;
-    if (provider.id === 'novel') request.providerOptions[key] = flag(value);
-    else if (flag(value)) dropped.push(key);
+  if (provider.id === 'novel') {
+    const controlledNovelKeys = new Set(novelOptions.map(([key]) => key));
+    for (const key of controlledNovelKeys) delete request.providerOptions[key];
+    for (const [key, capabilityKey, value, kind] of novelOptions) {
+      if (value === undefined || value === '') continue;
+      if (!capability[capabilityKey]) {
+        if (kind !== 'flag' || flag(value)) dropped.push(key);
+        continue;
+      }
+      request.providerOptions[key] = kind === 'number' ? bounded(value, 0, 1) : flag(value);
+    }
+  } else {
+    for (const [key, , value, kind] of novelOptions) {
+      if ((kind === 'flag' && flag(value)) || (kind === 'number' && value !== undefined && value !== '')) dropped.push(key);
+    }
   }
   if (p.workflow !== undefined) { if (capability.workflow && obj(p.workflow)) request.workflow = safeData(p.workflow, 12); else dropped.push('workflow'); }
   if (input.mask !== undefined) { if (capability.mask) request.mask = reference(input.mask); else dropped.push('mask'); }
