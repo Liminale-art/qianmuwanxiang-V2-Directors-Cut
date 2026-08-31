@@ -43,8 +43,9 @@ assert.deepEqual(normalized.promptCompiler.worldEntryIds, ['book::1']);
 assert.deepEqual(normalized.promptCompiler.tagRules, [
   { name: 'thinking', action: 'remove' },
   { name: 'scene', action: 'extract' },
+  { name: 'think', action: 'remove' },
 ]);
-assert.equal(normalized.promptCompiler.excludedTags, 'thinking');
+assert.equal(normalized.promptCompiler.excludedTags, 'thinking, think');
 
 // Preprocessing is an implementation detail owned by the top automation card.
 assert.doesNotMatch(source, /class="sd-storyboard-compiler-toggle/);
@@ -78,7 +79,7 @@ assert.doesNotMatch(source, /class="[^\"]*sd-storyboard-generate/,
   'the removed floating storyboard generation button must not return');
 
 // Character/persona context is unconditional; worldbook context is manual-only and always visible.
-for (const selector of ['sd-storyboard-context-recent', 'sd-storyboard-context-rule-action', 'sd-storyboard-world-entries']) assert.match(source, new RegExp(selector));
+for (const selector of ['sd-storyboard-context-recent', 'sd-storyboard-context-rule-action', 'sd-storyboard-worldbook-picker']) assert.match(source, new RegExp(selector));
 for (const removed of ['sd-storyboard-context-character', 'sd-storyboard-context-user', 'sd-storyboard-context-world', 'sd-storyboard-world-mode']) assert.doesNotMatch(source, new RegExp(removed));
 assert.equal(normalized.promptCompiler.includeCharacterCards, true);
 assert.equal(normalized.promptCompiler.includeUserPersona, true);
@@ -91,8 +92,9 @@ assert.match(source, /storyboardCleanWithTagRules\(targetMessage\?\.mes \|\| '',
 // Artist strings remain entirely user-controlled and are appended only at image request time.
 assert.match(source, /画师串完全由用户另行控制。不得建议、生成、改写/);
 assert.doesNotMatch(source, /"artist_string"|"artist_suggestion"/);
-assert.match(source, /const artistString = String\(state\.promptDraft\?\.artistString/);
-assert.match(source, /sourceId === 'novel' \? `\$\{artistString\}, \$\{scenePrompt\}`/);
+assert.match(source, /function storyboardEffectivePrompts/);
+assert.match(source, /storyboardJoinPrompt\(\[artistString, prompt, artistPositive\], sourceId\)/);
+assert.match(source, /const composed = storyboardEffectivePrompts/);
 assert.doesNotMatch(source, /function storyboardSaveArtistPreset/);
 assert.match(source, /function renderStoryboardArtistLibrary[\s\S]*sd-storyboard-artist-waterfall/);
 assert.match(source, /sd-storyboard-edit-selected-artist[\s\S]*state\.editingArtistPresetId = state\.selectedArtistPresetId/);

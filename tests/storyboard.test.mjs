@@ -69,7 +69,7 @@ assert.match(source, /paragraphAnchor: Number\.isInteger\(floor\)/, '第 0 楼�
 assert.match(source, /storyboardInlineAnchorNode\(text, records\)[\s\S]*text\.insertAdjacentElement\('afterend', wrapper\)[\s\S]*storyboardParagraphIndex/, '段落锚点必须保留定位元数据，可见控件仍须作为 mes_text 兄弟节点，避免污染配音与正则扫描');
 assert.match(source, /function storyboardInlineRecordValid[\s\S]*record\.messageHash[\s\S]*record\.swipeId/, '编辑或 reroll 后必须阻止旧图误挂');
 assert.doesNotMatch(source, /storyboardProfileBindings|绑定到当前聊天|selectedCharacters/, '形象档案不得再自动绑定或注入镜头任务');
-assert.match(source, /function storyboardGenerationPayload[\s\S]*const scenePrompt = String\(prompt \|\| ''\)\.trim\(\)[\s\S]*artistString/, '生图负载只能使用当前提示词与用户画师串，不得暗注入形象档案');
+assert.match(source, /function storyboardGenerationPayload[\s\S]*storyboardEffectivePrompts\(state, sourceId, profile\.model, \{ prompt, negative \}\)[\s\S]*artistString/, '生图负载只能使用当前提示词与用户画师串，不得暗注入形象档案');
 assert.match(source, /function storyboardStartLog[\s\S]*function storyboardFinishLog[\s\S]*分镜日志/, '分镜必须记录成功、失败与诊断信息');
 assert.match(source, /STORYBOARD_QUEUE_LIMIT[\s\S]*storyboardQueueJob[\s\S]*storyboardPumpQueue/, '分镜必须使用有上限的生成队列');
 assert.match(source, /storyboardActiveJobs\.size < concurrency/, '镜组队列必须按配置执行真实并发');

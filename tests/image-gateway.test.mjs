@@ -333,6 +333,30 @@ await checkImageConnection({ provider: 'novel', apiKey: 'nai-key', model: 'nai-d
   },
 });
 
+const novelWithoutProbe = await checkImageConnection({ provider: 'novel', apiKey: 'nai-key', model: 'nai-diffusion-5-full' }, {
+  resolveHost: publicDns,
+  fetchImpl: async () => jsonResponse({ error: 'not found' }, { status: 404 }),
+});
+assert.equal(novelWithoutProbe.ok, true);
+assert.equal(novelWithoutProbe.verified, false);
+assert.match(novelWithoutProbe.message, /首次生图校验令牌/);
+
+await checkImageConnection({ provider: 'seedream', apiKey: 'ark-key', model: 'doubao-seedream-5-0-260128' }, {
+  resolveHost: publicDns,
+  fetchImpl: async (url, init) => {
+    assert.equal(String(url), 'https://ark.cn-beijing.volces.com/api/v3/models');
+    assert.equal(init.headers.Authorization, 'Bearer ark-key');
+    return jsonResponse({ data: [{ id: 'doubao-seedream-5-0-260128' }] });
+  },
+});
+
+await checkImageConnection({ provider: 'comfy', baseUrl: 'http://127.0.0.1:8188', allowPrivateNetwork: true }, {
+  fetchImpl: async (url) => {
+    assert.equal(String(url), 'http://127.0.0.1:8188/system_stats');
+    return jsonResponse({ system: { os: 'test' } });
+  },
+});
+
 const openaiModels = await listImageModels({ provider: 'openai', apiKey: 'key', baseUrl: 'https://relay.example/v1' }, {
   resolveHost: publicDns,
   fetchImpl: async (url, init) => {

@@ -1,5 +1,5 @@
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
-export const STORYBOARD_SCHEMA_VERSION = 9;
+export const STORYBOARD_SCHEMA_VERSION = 10;
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -84,11 +84,11 @@ export const getStoryboardModel = (providerId, modelId) => (STORYBOARD_MODEL_REG
 export const getStoryboardCapabilities = (providerId, modelId = '') => getStoryboardModel(providerId, modelId)?.capabilities || getStoryboardProvider(providerId)?.capabilities || caps();
 
 const legacyProfile = () => ({ loaded: false, model: '', sampler: '', scheduler: '', width: '', height: '', ratio: '1:1', count: '', steps: '', cfg: '', seed: '', comfyUrl: '', comfyWorkflow: '', comfyWorkflowNotice: '', openaiStyle: '', openaiQuality: '', openaiBackground: '', openaiOutputFormat: '', imageSize: '', watermark: false, seedreamGuidanceScale: '', seedreamSequential: false, googleEnhance: false, novelSm: false, novelSmDyn: false, novelDecrisper: false, novelVarietyBoost: false });
-const promptDraft = () => ({ compiled: '', negative: '', artistString: '', compiledAt: 0, compiledBy: '', userEditedCompiled: false, sourceSummary: [] });
+const promptDraft = () => ({ compiled: '', negative: '', artistString: '', compiledAt: 0, compiledBy: '', userEditedCompiled: false, userEditedNegative: false, artistPositiveBaked: false, artistNegativeBaked: false, sourceSummary: [] });
 const connection = (id) => ({ providerId: id, activePresetId: '', presets: [], draft: { baseUrl: getStoryboardProvider(id).defaultBaseUrl, model: getStoryboardProvider(id).defaultModel } });
 const routingDefaults = () => ({ enabled: false, mode: 'single', templateId: 'smart', single: { providerId: 'novel', modelId: 'nai-diffusion-5-full', connectionPresetId: '', parameterPresetId: '' }, rules: [], maxShotsPerFloor: 3, confirmMultipleRequests: true, providerConcurrency: 1 });
 const automationDefaults = () => ({ autoCapture: true, autoGenerate: true });
-const compilerTagRuleDefaults = () => ['think', 'thinking', 'analysis', 'reasoning', 'status', 'summary', 'script', 'style']
+const compilerTagRuleDefaults = () => ['think', 'thinking']
   .map((name) => ({ name, action: 'remove' }));
 
 export function createStoryboardDefaults() {
@@ -96,7 +96,7 @@ export function createStoryboardDefaults() {
   return {
     schemaVersion: STORYBOARD_SCHEMA_VERSION, enabled: false, automation: automationDefaults(), view: 'create', workspaceView: 'workbench', assetView: 'tags', assetSearch: '', logFilter: 'all', gallerySearch: '', gallerySource: 'all', source: 'novel', initialized: false,
     target: 'latest', floor: '', inlineByDefault: true, promptMode: 'manual', prompt: '', negative: '', contentRating: 'sfw', paragraphMode: 'auto', manualParagraphIndex: null, promptDraft: promptDraft(),
-    promptCompiler: { enabled: true, apiProfileId: '', connectionPresetId: '', instructionPresetId: '', instruction: '', includeCurrentFloor: true, includeRecentFloors: 2, includeCharacterCards: true, includeUserPersona: true, includeActivatedWorldInfo: true, worldMode: 'selected', worldEntryIds: [], tagRules: compilerTagRuleDefaults(), excludedTags: 'think, thinking, analysis, reasoning, status, summary, script, style' },
+    promptCompiler: { enabled: true, apiProfileId: '', connectionPresetId: '', instructionPresetId: '', instruction: '', includeCurrentFloor: true, includeRecentFloors: 2, includeCharacterCards: true, includeUserPersona: true, includeActivatedWorldInfo: true, worldMode: 'selected', worldBookNames: [], worldBookView: '', worldBookInitializedNames: [], worldEntryIds: [], tagRules: compilerTagRuleDefaults(), excludedTags: 'think, thinking' },
     profiles: Object.fromEntries(ids.map((id) => [id, legacyProfile()])), modelProfiles: Object.fromEntries(ids.map((id) => [id, {}])), parameterPresets: [], parameterPresetSelection: Object.fromEntries(ids.map((id) => [id, ''])),
     connections: Object.fromEntries(ids.map((id) => [id, connection(id)])),
     promptPresets: [], editingPromptPresetId: '', editingPromptItemId: '', promptItemDraft: null,
@@ -227,6 +227,21 @@ export function migrateStoryboardState(value) {
     delete s.selectedCharacterId;
     delete s.characterView;
   }
+  if (fromVersion < 10) {
+    s.promptCompiler ||= {};
+    const retiredDefaults = new Set(['analysis', 'reasoning', 'status', 'summary', 'script', 'style']);
+    const existingRules = Array.isArray(s.promptCompiler.tagRules) ? s.promptCompiler.tagRules : [];
+    const retainedRules = existingRules.filter((rule) => !retiredDefaults.has(str(rule?.name, 120).toLowerCase()));
+    for (const name of ['think', 'thinking']) {
+      if (!retainedRules.some((rule) => str(rule?.name, 120).toLowerCase() === name)) retainedRules.push({ name, action: 'remove' });
+    }
+    s.promptCompiler.tagRules = retainedRules;
+    s.promptCompiler.excludedTags = retainedRules.filter((rule) => rule?.action !== 'extract').map((rule) => str(rule?.name, 120)).filter(Boolean).join(', ');
+    const legacyBooks = uniqueStrings((s.promptCompiler.worldEntryIds || []).map((id) => str(id, 512).split('::')[0]), 100, 200);
+    s.promptCompiler.worldBookNames ||= legacyBooks;
+    s.promptCompiler.worldBookView ||= legacyBooks[0] || '';
+    s.promptCompiler.worldBookInitializedNames ||= legacyBooks;
+  }
   s.schemaVersion = STORYBOARD_SCHEMA_VERSION;
   return s;
 }
@@ -238,13 +253,13 @@ export function normalizeStoryboardState(value) {
   state.assetView = ['tags', 'vibes', 'routing'].includes(state.assetView) ? state.assetView : 'tags'; state.assetSearch = str(state.assetSearch, 120); state.artistSearch = str(state.artistSearch, 120); state.editingArtistPresetId = state.editingArtistPresetId === 'new' ? 'new' : cleanId(state.editingArtistPresetId); state.editingPromptPresetId = cleanId(state.editingPromptPresetId); state.editingPromptItemId = state.editingPromptItemId === 'new' ? 'new' : cleanId(state.editingPromptItemId); state.promptItemDraft = obj(state.promptItemDraft) ? { name: str(state.promptItemDraft.name, 80), instruction: str(state.promptItemDraft.instruction, 12000) } : null; state.artistCollectionId = cleanId(state.artistCollectionId); state.gallerySearch = str(state.gallerySearch, 120); state.gallerySource = state.gallerySource === 'all' || getStoryboardProvider(state.gallerySource) ? state.gallerySource : 'all'; state.source = getStoryboardProvider(state.source) ? state.source : 'novel'; state.target = ['latest', 'floor', 'gallery'].includes(state.target) ? state.target : 'latest'; state.inlineByDefault = state.inlineByDefault !== false; state.promptMode = STORYBOARD_PROMPT_MODES[state.promptMode] ? state.promptMode : 'manual'; state.prompt = str(state.prompt, 24000); state.negative = str(state.negative, 12000); state.contentRating = state.contentRating === 'nsfw' ? 'nsfw' : 'sfw'; state.paragraphMode = state.paragraphMode === 'manual' ? 'manual' : 'auto'; state.manualParagraphIndex = Number.isInteger(Number(state.manualParagraphIndex)) && Number(state.manualParagraphIndex) >= 0 ? Number(state.manualParagraphIndex) : null;
   const d = obj(state.promptDraft) ? state.promptDraft : {}, safeDraft = safeData(d, 5);
   if (obj(safeDraft)) { delete safeDraft.manual; delete safeDraft.autoInstruction; }
-  state.promptDraft = { ...(obj(safeDraft) ? safeDraft : {}), compiled: str(d.compiled ?? state.prompt, 24000), negative: str(d.negative ?? state.negative, 12000), artistString: str(d.artistString, 6000), compiledAt: pos(d.compiledAt), compiledBy: str(d.compiledBy, 160), userEditedCompiled: Boolean(d.userEditedCompiled), sourceSummary: Array.isArray(d.sourceSummary) ? d.sourceSummary.slice(0, 40).map((x) => str(x, 240)).filter(Boolean) : [] };
+  state.promptDraft = { ...(obj(safeDraft) ? safeDraft : {}), compiled: str(d.compiled ?? state.prompt, 24000), negative: str(d.negative ?? state.negative, 12000), artistString: str(d.artistString, 6000), compiledAt: pos(d.compiledAt), compiledBy: str(d.compiledBy, 160), userEditedCompiled: Boolean(d.userEditedCompiled), userEditedNegative: Boolean(d.userEditedNegative), artistPositiveBaked: Boolean(d.artistPositiveBaked), artistNegativeBaked: Boolean(d.artistNegativeBaked), sourceSummary: Array.isArray(d.sourceSummary) ? d.sourceSummary.slice(0, 40).map((x) => str(x, 240)).filter(Boolean) : [] };
   const c = obj(state.promptCompiler) ? state.promptCompiler : {}, safeCompiler = safeData(c, 5);
   const legacyCompilerTags = str(c.excludedTags, 2000).split(/[,，\s]+/).map((name) => ({ name, action: 'remove' }));
   const compilerTagRules = (Array.isArray(c.tagRules) ? c.tagRules : (legacyCompilerTags.some((item) => item.name) ? legacyCompilerTags : compilerTagRuleDefaults()))
     .filter(obj).map((rule) => ({ name: str(rule.name, 120).replace(/^<|>$/g, ''), action: rule.action === 'extract' ? 'extract' : 'remove' }))
     .filter((rule) => rule.name).slice(0, 80);
-  state.promptCompiler = { ...(obj(safeCompiler) ? safeCompiler : {}), enabled: true, apiProfileId: cleanId(c.apiProfileId), connectionPresetId: cleanId(c.connectionPresetId), instructionPresetId: cleanId(c.instructionPresetId), instruction: str(c.instruction, 12000), includeCurrentFloor: true, includeRecentFloors: int(c.includeRecentFloors, 0, 20, 2), includeCharacterCards: true, includeUserPersona: true, includeActivatedWorldInfo: true, worldMode: 'selected', worldEntryIds: ids(c.worldEntryIds, 300), tagRules: compilerTagRules, excludedTags: compilerTagRules.filter((rule) => rule.action === 'remove').map((rule) => rule.name).join(', ') };
+  state.promptCompiler = { ...(obj(safeCompiler) ? safeCompiler : {}), enabled: true, apiProfileId: cleanId(c.apiProfileId), connectionPresetId: cleanId(c.connectionPresetId), instructionPresetId: cleanId(c.instructionPresetId), instruction: str(c.instruction, 12000), includeCurrentFloor: true, includeRecentFloors: int(c.includeRecentFloors, 0, 20, 2), includeCharacterCards: true, includeUserPersona: true, includeActivatedWorldInfo: true, worldMode: 'selected', worldBookNames: uniqueStrings(c.worldBookNames, 100, 200), worldBookView: str(c.worldBookView, 200), worldBookInitializedNames: uniqueStrings(c.worldBookInitializedNames, 100, 200), worldEntryIds: ids(c.worldEntryIds, 1000), tagRules: compilerTagRules, excludedTags: compilerTagRules.filter((rule) => rule.action === 'remove').map((rule) => rule.name).join(', ') };
   state.profiles = legacyProfiles(state.profiles); state.modelProfiles = modelProfileMemory(state.modelProfiles, state.profiles); state.parameterPresets = parameterPresets(state.parameterPresets); state.parameterPresetSelection = Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((id) => { const selected = cleanId(state.parameterPresetSelection?.[id]); return [id, state.parameterPresets.some((p) => p.id === selected && p.source === id) ? selected : '']; }));
   state.connections = connections(state.connections);
   delete state.characters; delete state.entities; delete state.selectedCharacterId; delete state.characterView;
@@ -294,7 +309,7 @@ function promptPresets(value) {
 }
 
 function artistPresets(value) {
-  const normalized = (Array.isArray(value) ? value : []).filter(obj).map((preset) => ({ id: cleanId(preset.id), name: str(preset.name || '未命名画师串', 80), value: str(preset.value, 6000), previewUrl: str(preset.previewUrl, 4096), note: str(preset.note, 1000), tags: uniqueStrings(preset.tags, 30, 80), collectionId: cleanId(preset.collectionId), createdAt: pos(preset.createdAt || preset.updatedAt), updatedAt: pos(preset.updatedAt) })).filter((preset) => preset.id && preset.value);
+  const normalized = (Array.isArray(value) ? value : []).filter(obj).map((preset) => ({ id: cleanId(preset.id), name: str(preset.name || '未命名画师串', 80), value: str(preset.value, 6000), positivePrompt: str(preset.positivePrompt, 12000), negativePrompt: str(preset.negativePrompt, 12000), previewUrl: str(preset.previewUrl, 2_500_000), note: str(preset.note, 1000), tags: uniqueStrings(preset.tags, 30, 80), collectionId: cleanId(preset.collectionId), createdAt: pos(preset.createdAt || preset.updatedAt), updatedAt: pos(preset.updatedAt) })).filter((preset) => preset.id && preset.value);
   return dedupeById(normalized).slice(0, 200);
 }
 

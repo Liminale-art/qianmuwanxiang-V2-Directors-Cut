@@ -97,7 +97,7 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.56.1';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.56.2';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_MODEL_REGISTRY,
@@ -128,7 +128,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.56.1';
+const VERSION = '1.56.2';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -865,7 +865,7 @@ let focusClockVoiceDrawerEl = null;  // 专注角色语音二层抽屉；挂在�
 const STORYBOARD_QUEUE_LIMIT = 8;     // 仅本页运行态；刷新后不自动续跑，避免意外消耗生图额度
 let storyboardBusy = false;          // 分镜生成独立忙碌态，不占用推演/幕外请求锁
 let storyboardCompilerBusy = false;  // 自动取景是独立的一次 LLM 请求，不与正文生成共用返回
-let storyboardWorldEntryCache = { key: '', rows: [], loading: null }; // 仅缓存当前绑定世界书的可选条目，不写入千幕配置
+let storyboardWorldEntryCache = { key: '', names: [], boundNames: [], books: {}, rows: [], loading: null, error: '' }; // 分镜独立选择，读取链路与「取材」共用
 const storyboardActiveJobs = new Map(); // 正在生成的任务；放弃时不取消可能已计费的上游请求，只丢弃回传
 let storyboardQueue = [];            // 千幕内串行队列，避免同一连接并发误耗额度
 const storyboardApiKeys = new Map(); // credentialId -> Key；不进入设置、日志或分镜数据包
@@ -10137,6 +10137,66 @@ function storyboardSafeUrl(value) {
   return '';
 }
 
+const STORYBOARD_GENERIC_PROMPT_DEFAULTS = Object.freeze({
+  positive: 'high quality, detailed, coherent composition, natural lighting',
+  negative: 'low quality, blurry, distorted anatomy, extra limbs, malformed hands, text, watermark',
+});
+
+const STORYBOARD_NAI_QUALITY_DEFAULTS = Object.freeze({
+  'nai-diffusion-5-full': 'very aesthetic, masterpiece, no text',
+  'nai-diffusion-5-curated': 'very aesthetic, masterpiece, no text',
+  'nai-diffusion-4-5-full': 'location, very aesthetic, masterpiece, no text',
+  'nai-diffusion-4-5-curated': 'location, masterpiece, no text, -0.8::feet::, rating:general',
+  'nai-diffusion-4-full': 'no text, best quality, very aesthetic, absurdres',
+  'nai-diffusion-4-curated-preview': 'rating:general, amazing quality, very aesthetic, absurdres',
+  'nai-diffusion-3': 'best quality, amazing quality, very aesthetic, absurdres',
+});
+
+const STORYBOARD_NAI_NEGATIVE_DEFAULTS = Object.freeze({
+  'nai-diffusion-5-full': 'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page',
+  'nai-diffusion-5-curated': 'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page',
+  'nai-diffusion-4-5-full': 'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page',
+  'nai-diffusion-4-5-curated': 'blurry, lowres, upscaled, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, halftone, multiple views, logo, too many watermarks, negative space, blank page',
+  'nai-diffusion-4-full': 'blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks, white blank page, blank page',
+  'nai-diffusion-4-curated-preview': 'blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, logo, dated, signature, multiple views, white blank page, blank page',
+  'nai-diffusion-3': 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry',
+});
+
+function storyboardProviderPromptDefaults(sourceId, modelId) {
+  if (sourceId !== 'novel') return STORYBOARD_GENERIC_PROMPT_DEFAULTS;
+  return {
+    positive: STORYBOARD_NAI_QUALITY_DEFAULTS[modelId] || STORYBOARD_NAI_QUALITY_DEFAULTS['nai-diffusion-5-full'],
+    negative: STORYBOARD_NAI_NEGATIVE_DEFAULTS[modelId] || STORYBOARD_NAI_NEGATIVE_DEFAULTS['nai-diffusion-5-full'],
+  };
+}
+
+function storyboardSelectedArtistPreset(state) {
+  return state.artistPresets.find((item) => item.id === state.selectedArtistPresetId) || null;
+}
+
+function storyboardJoinPrompt(parts, sourceId) {
+  const values = uniqueClean(parts.map((item) => String(item || '').trim()).filter(Boolean));
+  return values.join(sourceId === 'novel' ? ', ' : '\n\n');
+}
+
+function storyboardEffectivePrompts(state, sourceId = state.source, modelId = storyboardProviderProfile(state, sourceId).model, { prompt = state.prompt, negative = state.negative } = {}) {
+  const artist = storyboardSelectedArtistPreset(state);
+  if (!artist) return { prompt: String(prompt || '').trim(), negative: String(negative || '').trim(), artistString: '' };
+  const defaults = storyboardProviderPromptDefaults(sourceId, modelId);
+  const artistString = String(artist.value || state.promptDraft?.artistString || '').trim();
+  const artistPositive = String(artist.positivePrompt || defaults.positive || '').trim();
+  const artistNegative = String(artist.negativePrompt || defaults.negative || '').trim();
+  return {
+    prompt: state.promptDraft?.artistPositiveBaked
+      ? String(prompt || '').trim()
+      : storyboardJoinPrompt([artistString, prompt, artistPositive], sourceId),
+    negative: state.promptDraft?.artistNegativeBaked
+      ? String(negative || '').trim()
+      : storyboardJoinPrompt([negative, artistNegative], sourceId),
+    artistString,
+  };
+}
+
 function renderStoryboardNav(state) {
   const items = [
     ['create', '镜头台', 'fa-camera', 'qm-duotone-camera'],
@@ -10144,7 +10204,7 @@ function renderStoryboardNav(state) {
     ['gallery', '阅片室', 'fa-images', 'screening'],
     ['logs', '日志', 'fa-list-ul', 'qm-regular-list-bullets'],
   ];
-  return `<nav class="sd-storyboard-nav" aria-label="分镜功能">${items.map(([id, label, icon, phosphor]) => `<button type="button" aria-current="${state.view === id ? 'page' : 'false'}" aria-label="${label}" class="${state.view === id ? 'active' : ''}" data-storyboard-view="${id}"><i class="fa-solid ${icon}" data-qm-icon="${phosphor}"></i><span>${label}</span></button>`).join('')}</nav>`;
+  return `<nav class="sd-storyboard-nav" aria-label="分镜功能">${items.map(([id, label, icon, phosphor]) => `<button type="button" aria-current="${state.view === id ? 'page' : 'false'}" aria-label="${label}" class="${state.view === id ? 'active' : ''}" data-storyboard-view="${id}"><i class="fa-solid ${icon}" data-qm-icon="${phosphor}"></i><span>${label}</span></button>`).join('')}<button type="button" class="sd-storyboard-exit" title="返回千幕" aria-label="返回千幕"><i class="fa-solid fa-arrow-left"></i><span>返回</span></button></nav>`;
 }
 
 function storyboardConnectionState(state, providerId = state.source) {
@@ -10202,7 +10262,7 @@ function renderStoryboardModelCard(state) {
       <label><span>API 地址</span><input class="text_pole sd-storyboard-base-url" value="${htmlEscape(profile.baseUrl)}" placeholder="${htmlEscape(provider.defaultBaseUrl || 'http://127.0.0.1:8188')}"></label>
       <label><span>${state.source === 'comfy' ? '访问令牌（可选）' : 'API Key'}</span><input class="text_pole sd-storyboard-api-key-memory" type="password" autocomplete="new-password" placeholder="${savedKey ? '已保存' : '输入 API Key'}"></label>
       ${state.source === 'comfy' ? `<label class="sd-switch-row"><span>允许本地网络</span><input type="checkbox" class="sd-storyboard-private-network" ${(connection.active?.options?.allowPrivateNetwork ?? connection.group?.draft?.options?.allowPrivateNetwork) ? 'checked' : ''}></label><label><span>API Workflow</span><textarea class="text_pole sd-storyboard-workflow" placeholder="粘贴 ComfyUI API Workflow JSON">${htmlEscape(typeof profile.comfyWorkflow === 'string' && profile.comfyWorkflow.trim().startsWith('{') ? profile.comfyWorkflow : '')}</textarea></label><div class="sd-storyboard-workflow-warning sd-storyboard-connection-result failed" ${profile.comfyWorkflowNotice ? '' : 'hidden'}><i class="fa-solid fa-triangle-exclamation"></i><span>${htmlEscape(profile.comfyWorkflowNotice || '')}</span></div>` : ''}
-      ${check ? `<div class="sd-storyboard-connection-result ${check.ok ? 'ok' : 'failed'}"><i class="fa-solid ${check.ok ? 'fa-circle-check' : 'fa-triangle-exclamation'}"></i><span>${htmlEscape(check.message)}</span></div>` : ''}
+      ${check ? `<div class="sd-storyboard-connection-result ${check.ok ? (check.verified === false ? 'partial' : 'ok') : 'failed'}"><i class="fa-solid ${check.ok && check.verified !== false ? 'fa-circle-check' : 'fa-triangle-exclamation'}"></i><span>${htmlEscape(check.message)}</span></div>` : ''}
       <div class="sd-storyboard-model-actions"><button type="button" class="sd-btn sd-storyboard-check-connection">测试连接</button><button type="button" class="sd-btn sd-primary sd-storyboard-save-connection">保存连接</button></div>
     </div>
   </details>`;
@@ -10448,30 +10508,71 @@ function storyboardWorldEntryTitle(item, index) {
   return String(item?.name || item?.comment || (Array.isArray(item?.key) ? item.key.join(', ') : item?.key) || `世界书条目 ${index + 1}`).trim().slice(0, 160);
 }
 
-async function storyboardWarmCompilerWorldEntries({ rerender = false } = {}) {
-  const names = uniqueClean([...detectBoundWorldBookNames(), ...(contextScanCache.boundWorldBookNames || [])]);
-  const key = names.slice().sort().join('\u0001');
-  if (storyboardWorldEntryCache.key === key && !storyboardWorldEntryCache.loading) return storyboardWorldEntryCache.rows;
-  if (storyboardWorldEntryCache.loading && storyboardWorldEntryCache.key === key) return storyboardWorldEntryCache.loading;
-  storyboardWorldEntryCache = { key, rows: [], loading: null };
+async function storyboardWarmCompilerWorldEntries({ rerender = false, force = false } = {}) {
+  const state = storyboardState();
+  const key = `${String(getChatKey() || '')}\u0001${String(ctx().characterId ?? '')}`;
+  if (!force && storyboardWorldEntryCache.key === key && !storyboardWorldEntryCache.loading) return storyboardWorldEntryCache.rows;
+  if (!force && storyboardWorldEntryCache.loading && storyboardWorldEntryCache.key === key) return storyboardWorldEntryCache.loading;
+  storyboardWorldEntryCache = { key, names: [], boundNames: [], books: {}, rows: [], loading: null, error: '' };
   const loading = (async () => {
-    const rows = [];
-    for (const book of names) {
-      let entries = contextScanCache.worldBooks?.[book];
-      if (!entries?.length) entries = await getWorldBookEntries(book).catch(() => []);
-      contextScanCache.worldBooks[book] = entries || [];
-      (entries || []).forEach((item, index) => {
-        if (item?.enabled === false || item?.disable === true) return;
-        rows.push({ id: storyboardWorldEntryId(book, item, index), book, title: storyboardWorldEntryTitle(item, index), item, index });
-      });
+    try {
+      const boundNames = uniqueClean([...detectBoundWorldBookNames(), ...(contextScanCache.boundWorldBookNames || [])]);
+      const names = uniqueClean([...boundNames, ...(await listWorldBooks())]);
+      const requestedBooks = uniqueClean([...(state.promptCompiler.worldBookNames || []), state.promptCompiler.worldBookView]).filter((name) => names.includes(name));
+      const books = {};
+      const rows = [];
+      for (const book of requestedBooks) {
+        let entries = contextScanCache.worldBooks?.[book];
+        if (!Array.isArray(entries)) entries = await getWorldBookEntries(book).catch(() => []);
+        contextScanCache.worldBooks[book] = entries || [];
+        books[book] = entries || [];
+        (entries || []).forEach((item, index) => {
+          if (item?.enabled === false || item?.disable === true) return;
+          rows.push({ id: storyboardWorldEntryId(book, item, index), book, title: storyboardWorldEntryTitle(item, index), item, index });
+        });
+      }
+      storyboardWorldEntryCache.names = names;
+      storyboardWorldEntryCache.boundNames = boundNames;
+      storyboardWorldEntryCache.books = books;
+      storyboardWorldEntryCache.rows = rows.slice(0, 1000);
+      storyboardWorldEntryCache.error = '';
+      state.promptCompiler.worldBookNames = (state.promptCompiler.worldBookNames || []).filter((name) => names.includes(name));
+      if (state.promptCompiler.worldBookView && !names.includes(state.promptCompiler.worldBookView)) state.promptCompiler.worldBookView = '';
+      saveSettings();
+      return storyboardWorldEntryCache.rows;
+    } catch (error) {
+      storyboardWorldEntryCache.error = String(error?.message || error || '世界书读取失败');
+      return [];
+    } finally {
+      storyboardWorldEntryCache.loading = null;
+      if (rerender && activeTab === 'imagegen' && document.getElementById(MODAL_ID)) renderModal();
     }
-    storyboardWorldEntryCache.rows = rows.slice(0, 500);
-    storyboardWorldEntryCache.loading = null;
-    if (rerender && activeTab === 'imagegen' && document.getElementById(MODAL_ID)) renderModal();
-    return storyboardWorldEntryCache.rows;
   })();
   storyboardWorldEntryCache.loading = loading;
   return loading;
+}
+
+async function storyboardLoadCompilerWorldBook(book, { initialize = false } = {}) {
+  const state = storyboardState();
+  const name = String(book || '').trim();
+  if (!name) return [];
+  let entries = storyboardWorldEntryCache.books[name];
+  if (!Array.isArray(entries)) {
+    entries = await getWorldBookEntries(name).catch(() => []);
+    storyboardWorldEntryCache.books[name] = entries;
+    contextScanCache.worldBooks[name] = entries;
+  }
+  const otherRows = storyboardWorldEntryCache.rows.filter((row) => row.book !== name);
+  const rows = (entries || []).map((item, index) => ({ id: storyboardWorldEntryId(name, item, index), book: name, title: storyboardWorldEntryTitle(item, index), item, index }))
+    .filter((row) => row.item?.enabled !== false && row.item?.disable !== true);
+  storyboardWorldEntryCache.rows = [...otherRows, ...rows].slice(0, 1000);
+  if (initialize && !state.promptCompiler.worldBookInitializedNames.includes(name)) {
+    const selected = new Set(state.promptCompiler.worldEntryIds || []);
+    rows.forEach((row) => selected.add(row.id));
+    state.promptCompiler.worldEntryIds = [...selected].slice(0, 1000);
+    state.promptCompiler.worldBookInitializedNames = uniqueClean([...(state.promptCompiler.worldBookInitializedNames || []), name]).slice(0, 100);
+  }
+  return rows;
 }
 
 function renderStoryboardAutomationCard(state) {
@@ -10500,25 +10601,37 @@ function renderStoryboardContextCard(state) {
   </details>`;
 }
 
-function renderStoryboardWorldbookCard(worldEntryRows) {
+function renderStoryboardWorldbookCard(state) {
+  const names = storyboardWorldEntryCache.names || [];
+  const selectedBooks = new Set(state.promptCompiler.worldBookNames || []);
+  const selectedEntries = new Set(state.promptCompiler.worldEntryIds || []);
+  const viewName = names.includes(state.promptCompiler.worldBookView)
+    ? state.promptCompiler.worldBookView
+    : [...selectedBooks].find((name) => names.includes(name)) || '';
+  const bookRows = names.map((name) => `<div class="sd-source-row sd-world-row ${viewName === name ? 'sd-world-viewing' : ''}">
+    <input type="checkbox" class="sd-storyboard-toggle-worldbook" data-name="${htmlEscape(name)}" ${selectedBooks.has(name) ? 'checked' : ''} title="选中作为分镜参考">
+    <button type="button" class="sd-storyboard-world-name" data-name="${htmlEscape(name)}"><span>${htmlEscape(name)}</span>${storyboardWorldEntryCache.boundNames.includes(name) ? badge('当前绑定') : ''}</button>
+  </div>`).join('');
+  const entryRows = viewName ? (storyboardWorldEntryCache.rows || []).filter((row) => row.book === viewName).map((row) => `<details class="sd-context-item"><summary><label class="sd-context-entry-label"><input type="checkbox" data-storyboard-world-entry="${htmlEscape(row.id)}" ${selectedEntries.has(row.id) ? 'checked' : ''} ${selectedBooks.has(viewName) ? '' : 'disabled'}><span>${htmlEscape(row.title)}</span></label></summary><pre>${htmlEscape(cleanContextText(row.item?.content || row.item?.text || '').slice(0, 2000))}</pre></details>`).join('') : '';
   const body = storyboardWorldEntryCache.loading
     ? '<div class="sd-storyboard-empty-inline">正在读取世界书…</div>'
-    : (worldEntryRows || '<div class="sd-storyboard-empty-inline">当前角色未绑定可选世界书条目。</div>');
+    : storyboardWorldEntryCache.error
+      ? `<div class="sd-storyboard-empty-inline">${htmlEscape(storyboardWorldEntryCache.error)}</div>`
+      : names.length ? `<div class="sd-context-source-pick sd-storyboard-worldbook-picker"><details class="sd-dropdown" open><summary class="sd-dropdown-head"><span>选择</span><b>${selectedBooks.size} 项</b></summary><div class="sd-dropdown-body sd-scroll">${bookRows}</div></details><button type="button" class="sd-icon-btn sd-storyboard-refresh-worldbooks" title="读取世界书" aria-label="读取世界书"><i class="fa-solid fa-rotate"></i></button></div>${viewName ? `<details class="sd-context-block" open><summary><b>${htmlEscape(`世界书条目 · ${viewName}`)}</b></summary><div class="sd-entry-scroll sd-scroll">${entryRows || '<p class="sd-muted">暂无条目</p>'}</div></details>` : '<div class="sd-storyboard-empty-inline">选择一本世界书后查看条目。</div>'}` : '<div class="sd-storyboard-empty-inline">未读取到世界书。</div>';
   return `<section class="sd-card sd-storyboard-worldbook-card">
     <div class="sd-storyboard-worldbook-title"><b>世界书</b></div>
-    <div class="sd-storyboard-card-body"><div class="sd-storyboard-world-entries">${body}</div></div>
+    <div class="sd-storyboard-card-body">${body}</div>
   </section>`;
 }
 
 function renderStoryboardCreate(state) {
   const profile = storyboardProviderProfile(state);
   const capabilities = getStoryboardCapabilities(state.source, profile.model);
+  const effectivePrompts = storyboardEffectivePrompts(state, state.source, profile.model);
   const last = [...storyboardGalleryRecords()].reverse().find((item) => storyboardSafeUrl(item.url));
   const draft = state.promptDraft;
   const promptPresets = state.promptPresets.map((item) => `<option value="${htmlEscape(item.id)}" ${state.promptCompiler.instructionPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
   const artistPresets = state.artistPresets.map((item) => `<option value="${htmlEscape(item.id)}" ${state.selectedArtistPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
-  const selectedWorldEntries = new Set(state.promptCompiler.worldEntryIds || []);
-  const worldEntryRows = storyboardWorldEntryCache.rows.slice(0, 500).map((row) => `<label><input type="checkbox" data-storyboard-world-entry="${htmlEscape(row.id)}" ${selectedWorldEntries.has(row.id) ? 'checked' : ''}><span><b>${htmlEscape(row.title)}</b><small>${htmlEscape(row.book)}</small></span></label>`).join('');
   const tagChips = state.tagLibrary.filter((item) => item.favorite).concat(state.tagLibrary.filter((item) => !item.favorite)).slice(0, 24)
     .map((item) => `<button type="button" class="${item.positive === false ? 'negative' : ''}" data-storyboard-add-tag="${htmlEscape(item.id)}" title="${item.positive === false ? '加入负面提示词' : '加入提示词'}"><span>${htmlEscape(item.name)}</span></button>`).join('');
   const sourceSpecific = state.source === 'openai' ? `<label><span>Quality</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiQuality"><option value="">auto</option>${['low', 'medium', 'high'].map((value) => `<option value="${value}" ${profile.openaiQuality === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label><span>Background</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiBackground"><option value="">auto</option>${['transparent', 'opaque'].map((value) => `<option value="${value}" ${profile.openaiBackground === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label><span>Output format</span><select class="text_pole sd-storyboard-field" data-storyboard-field="openaiOutputFormat"><option value="">png</option>${['jpeg', 'webp'].map((value) => `<option value="${value}" ${profile.openaiOutputFormat === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>`
@@ -10529,15 +10642,15 @@ function renderStoryboardCreate(state) {
     ${renderStoryboardAutomationCard(state)}
     ${renderStoryboardModelCard(state)}
     ${renderStoryboardContextCard(state)}
-    ${renderStoryboardWorldbookCard(worldEntryRows)}
+    ${renderStoryboardWorldbookCard(state)}
     <details class="sd-card sd-storyboard-prompt-card" data-storyboard-card="prompt" ${state.collapsedCards.prompt ? '' : 'open'}>
       <summary><b>提示词</b><i class="fa-solid fa-chevron-down"></i></summary>
       <div class="sd-storyboard-card-body">
         <div class="sd-storyboard-prompt-stack">
           <div class="sd-storyboard-inline-control"><select class="text_pole sd-storyboard-prompt-preset" aria-label="取景预设"><option value="">选择取景预设</option>${promptPresets}</select><button type="button" class="sd-icon-btn sd-storyboard-open-prompt-library" title="取景预设" aria-label="取景预设"><i class="fa-solid fa-folder"></i></button></div>
           <div class="sd-storyboard-inline-control"><button type="button" class="sd-icon-btn sd-storyboard-open-artist-library" title="画师库" aria-label="画师库"><i class="fa-solid fa-images"></i></button><select class="text_pole sd-storyboard-artist-preset" aria-label="画师串"><option value="">选择画师串</option>${artistPresets}</select><button type="button" class="sd-icon-btn sd-storyboard-edit-selected-artist" title="编辑所选画师串" aria-label="编辑所选画师串" ${state.selectedArtistPresetId ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button></div>
-          <label><span>正面提示词</span><textarea class="text_pole sd-storyboard-prompt" spellcheck="false">${htmlEscape(state.prompt || draft.compiled || '')}</textarea></label>
-          ${capabilities.negative ? `<label><span>负面提示词</span><textarea class="text_pole sd-storyboard-negative" spellcheck="false">${htmlEscape(draft.negative || state.negative)}</textarea></label>` : ''}
+          <label><span>正面提示词</span><textarea class="text_pole sd-storyboard-prompt" spellcheck="false">${htmlEscape(effectivePrompts.prompt || draft.compiled || '')}</textarea></label>
+          ${capabilities.negative ? `<label><span>负面提示词</span><textarea class="text_pole sd-storyboard-negative" spellcheck="false">${htmlEscape(effectivePrompts.negative)}</textarea></label>` : ''}
           ${tagChips ? `<div class="sd-storyboard-tag-quick">${tagChips}</div>` : ''}
         </div>
       </div>
@@ -10762,18 +10875,63 @@ function storyboardFilteredGalleryRecords(state) {
   });
 }
 
+function storyboardSetArtistPreview(root, value) {
+  const url = storyboardSafeUrl(value);
+  const editor = root?.querySelector('.sd-storyboard-artist-preview-editor');
+  const frame = editor?.querySelector('.sd-storyboard-artist-preview-frame');
+  const image = frame?.querySelector('img');
+  const empty = frame?.querySelector('span');
+  if (!editor || !image || !empty) return;
+  editor.classList.toggle('has-image', Boolean(url));
+  editor.classList.toggle('is-empty', !url);
+  image.hidden = !url;
+  empty.hidden = Boolean(url);
+  if (url) image.src = url; else image.removeAttribute('src');
+}
+
+async function storyboardArtistPreviewFromFile(file) {
+  if (!(file instanceof Blob) || !String(file.type || '').startsWith('image/')) throw new Error('请选择图片文件。');
+  if (file.size > 12 * 1024 * 1024) throw new Error('预览图不能超过 12 MB。');
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('图片读取失败。'));
+    reader.readAsDataURL(file);
+  });
+  const image = await new Promise((resolve, reject) => {
+    const element = new Image();
+    element.onload = () => resolve(element);
+    element.onerror = () => reject(new Error('图片无法读取。'));
+    element.src = dataUrl;
+  });
+  const scale = Math.min(1, 1600 / Math.max(1, image.naturalWidth), 1200 / Math.max(1, image.naturalHeight));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  canvas.getContext('2d')?.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const compressed = canvas.toDataURL('image/webp', .84);
+  if (compressed.length > 2_400_000) throw new Error('预览图压缩后仍过大，请换一张尺寸更小的图片。');
+  return compressed;
+}
+
 function renderStoryboardArtistLibrary(state) {
   const editing = state.artistPresets.find((item) => item.id === state.editingArtistPresetId) || null;
   const editingActive = Boolean(editing || state.editingArtistPresetId === 'new');
   if (editingActive) {
     const collectionOptions = state.artistCollections.map((item) => `<option value="${htmlEscape(item.id)}" ${(editing?.collectionId || state.artistCollectionId) === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
-    return `<div class="sd-storyboard-artist-editor-page"><header><b>${editing ? '编辑画师串' : '新建画师串'}</b></header><div class="sd-storyboard-artist-editor-fields">
+    const preview = storyboardSafeUrl(editing?.previewUrl);
+    const galleryOptions = [...storyboardGalleryRecords()].reverse().filter((item) => storyboardSafeUrl(item.url)).slice(0, 120)
+      .map((item, index) => `<option value="${htmlEscape(storyboardSafeUrl(item.url))}">${htmlEscape(snip(item.finalPrompt || item.prompt || `画面 ${index + 1}`, 46))}</option>`).join('');
+    const knownTags = uniqueClean(state.artistPresets.flatMap((item) => item.tags || [])).sort((a, b) => a.localeCompare(b));
+    return `<div class="sd-storyboard-artist-editor-page"><header><b>${editing ? '编辑画师串' : '新建画师串'}</b><div><button type="button" class="sd-icon-btn sd-storyboard-cancel-artist-edit" title="取消" aria-label="取消"><i class="fa-solid fa-xmark"></i></button><button type="button" class="sd-icon-btn sd-primary sd-storyboard-save-artist-card" title="保存" aria-label="保存"><i class="fa-solid fa-floppy-disk"></i></button></div></header><div class="sd-storyboard-artist-editor-fields">
+      <div class="sd-storyboard-artist-preview-editor ${preview ? 'has-image' : 'is-empty'}"><div class="sd-storyboard-artist-preview-frame">${preview ? `<img src="${htmlEscape(preview)}" alt="画师串预览">` : '<img alt="画师串预览" hidden>'}<span ${preview ? 'hidden' : ''}><i class="fa-regular fa-image"></i></span></div><div class="sd-storyboard-artist-preview-sources"><button type="button" class="sd-btn sd-storyboard-artist-preview-url-mode">URL</button><label class="sd-btn">本地上传<input type="file" class="sd-storyboard-artist-preview-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label><select class="text_pole sd-storyboard-artist-preview-gallery" aria-label="从阅片室选择"><option value="">阅片室选择</option>${galleryOptions}</select></div><input class="text_pole sd-storyboard-artist-edit-preview" value="${htmlEscape(editing?.previewUrl || '')}" placeholder="https://"></div>
       <label><span>名称</span><input class="text_pole sd-storyboard-artist-edit-name" maxlength="80" value="${htmlEscape(editing?.name || '')}"></label>
       <label><span>画师串</span><textarea class="text_pole sd-storyboard-artist-edit-value" spellcheck="false">${htmlEscape(editing?.value || '')}</textarea></label>
-      <label><span>标签</span><input class="text_pole sd-storyboard-artist-edit-tags" value="${htmlEscape((editing?.tags || []).join(', '))}"></label>
+      <label><span>正面提示词</span><textarea class="text_pole sd-storyboard-artist-edit-positive" spellcheck="false">${htmlEscape(editing?.positivePrompt || '')}</textarea></label>
+      <label><span>负面提示词</span><textarea class="text_pole sd-storyboard-artist-edit-negative" spellcheck="false">${htmlEscape(editing?.negativePrompt || '')}</textarea></label>
+      <label><span>标签</span><input class="text_pole sd-storyboard-artist-edit-tags" list="sd-storyboard-artist-known-tags" value="${htmlEscape((editing?.tags || []).join(', '))}"><datalist id="sd-storyboard-artist-known-tags">${knownTags.map((tag) => `<option value="${htmlEscape(tag)}"></option>`).join('')}</datalist></label>
       <label><span>合集</span><select class="text_pole sd-storyboard-artist-edit-collection"><option value="">未归入合集</option>${collectionOptions}</select></label>
-      <label><span>预览图 URL</span><input class="text_pole sd-storyboard-artist-edit-preview" value="${htmlEscape(editing?.previewUrl || '')}"></label>
-    </div><footer><button type="button" class="sd-btn sd-storyboard-cancel-artist-edit">取消</button><button type="button" class="sd-btn sd-primary sd-storyboard-save-artist-card">保存</button></footer></div>`;
+    </div></div>`;
   }
   const query = String(state.artistSearch || '').trim().toLocaleLowerCase();
   const currentCollection = state.artistCollections.find((item) => item.id === state.artistCollectionId) || null;
@@ -10796,7 +10954,7 @@ function renderStoryboardArtistLibrary(state) {
     return `<article class="sd-storyboard-artist-folder" data-storyboard-artist-collection="${htmlEscape(collection.id)}"><button type="button" class="sd-storyboard-artist-folder-open"><span>${[0, 1, 2, 3].map((index) => covers[index] ? `<img src="${htmlEscape(covers[index])}" loading="lazy" alt="">` : '<i class="fa-solid fa-image"></i>').join('')}</span><b>${htmlEscape(collection.name)}</b><em>${members.length}</em></button><div><button type="button" class="sd-icon-btn sd-storyboard-rename-artist-collection" title="重命名" aria-label="重命名"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-artist-collection" title="解散合集" aria-label="解散合集"><i class="fa-solid fa-trash-can"></i></button></div></article>`;
   }).join('') : '';
   return `<div class="sd-storyboard-artist-page">
-    <section class="sd-card sd-storyboard-artist-head"><div><button type="button" class="sd-icon-btn ${currentCollection ? 'sd-storyboard-artist-folder-back' : 'sd-storyboard-artist-back'}" title="返回" aria-label="返回"><i class="fa-solid fa-arrow-left"></i></button><span><span class="sd-storyboard-kicker">ARTIST LIBRARY</span><h3>${htmlEscape(currentCollection?.name || '画师库')}</h3></span><b>${currentCollection ? artists.length : state.artistPresets.length}</b></div><div><input class="text_pole sd-storyboard-artist-search" value="${htmlEscape(state.artistSearch || '')}" placeholder="搜索画师串或标签"><button type="button" class="sd-icon-btn sd-storyboard-new-artist-collection" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button><button type="button" class="sd-icon-btn sd-storyboard-new-artist" title="新建画师串" aria-label="新建画师串"><i class="fa-solid fa-plus"></i></button></div></section>
+    <section class="sd-card sd-storyboard-artist-head"><div><button type="button" class="sd-icon-btn ${currentCollection ? 'sd-storyboard-artist-folder-back' : 'sd-storyboard-artist-back'}" title="返回" aria-label="返回"><i class="fa-solid fa-arrow-left"></i></button><h3>${htmlEscape(currentCollection?.name || 'ARTIST LIBRARY')}</h3><b>${currentCollection ? artists.length : state.artistPresets.length}</b></div><div><input class="text_pole sd-storyboard-artist-search" value="${htmlEscape(state.artistSearch || '')}" placeholder="搜索画师串或标签"><button type="button" class="sd-icon-btn sd-storyboard-new-artist-collection" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button><button type="button" class="sd-icon-btn sd-storyboard-new-artist" title="新建画师串" aria-label="新建画师串"><i class="fa-solid fa-plus"></i></button></div></section>
     ${folders ? `<section class="sd-storyboard-artist-folders">${folders}</section>` : ''}
     <section class="sd-storyboard-artist-waterfall">${cards || '<div class="sd-storyboard-empty-inline">暂无画师串。</div>'}</section>
   </div>`;
@@ -10911,12 +11069,10 @@ function storyboardAnchorForMessage(message, floor, prompt, preferredIndex = nul
 
 function storyboardGenerationPayload(state, profile, { sourceId = state.source, prompt = state.prompt, negative = state.negative } = {}) {
   const capabilities = getStoryboardCapabilities(sourceId, profile.model);
-  const scenePrompt = String(prompt || '').trim();
-  const artistString = String(state.promptDraft?.artistString || '').trim();
-  const effectivePrompt = artistString
-    ? sourceId === 'novel' ? `${artistString}, ${scenePrompt}` : `${artistString}\n\n${scenePrompt}`
-    : scenePrompt;
-  const effectiveNegative = capabilities.negative ? String(negative || '').trim() : '';
+  const composed = storyboardEffectivePrompts(state, sourceId, profile.model, { prompt, negative });
+  const artistString = composed.artistString;
+  const effectivePrompt = composed.prompt;
+  const effectiveNegative = capabilities.negative ? composed.negative : '';
   const providerOptions = {};
   if (sourceId === 'novel') Object.assign(providerOptions, {
     sm: Boolean(profile.novelSm), sm_dyn: Boolean(profile.novelSmDyn), dynamic_thresholding: Boolean(profile.novelDecrisper),
@@ -11182,7 +11338,7 @@ function renderStoryboardTab() {
           : state.view === 'gallery' ? renderStoryboardGallery(state)
             : state.view === 'logs' ? renderStoryboardLogs(state)
               : renderStoryboardCreate(state);
-  return `<div class="sd-storyboard-root"><button type="button" class="sd-icon-btn sd-storyboard-exit" title="返回千幕" aria-label="返回千幕"><i class="fa-solid fa-arrow-left"></i></button>${renderStoryboardNav(state)}${body}</div>`;
+  return `<div class="sd-storyboard-root"><header class="sd-storyboard-titlebar"><span>STORYBOARD</span></header>${renderStoryboardNav(state)}${body}</div>`;
 }
 
 function storyboardWorkflowIssue(result) {
@@ -11233,20 +11389,26 @@ function storyboardCaptureWorkbench(root, sourceId = storyboardState().source, {
   }
   const prompt = root.querySelector('.sd-storyboard-prompt');
   const negative = root.querySelector('.sd-storyboard-negative');
+  const displayedPrompts = storyboardEffectivePrompts(state, sourceId, profile.model);
   if (prompt) {
     const nextPrompt = String(prompt.value || '').slice(0, 24000);
-    const compiledBeforeEdit = String(state.promptDraft.compiled || '');
-    state.promptDraft.userEditedCompiled = state.promptCompiler.enabled
-      ? !compiledBeforeEdit || nextPrompt !== compiledBeforeEdit
-      : true;
-    state.prompt = nextPrompt;
-    state.promptDraft.compiled = state.prompt;
+    if (nextPrompt !== displayedPrompts.prompt) {
+      state.promptDraft.userEditedCompiled = true;
+      state.promptDraft.artistPositiveBaked = true;
+      state.prompt = nextPrompt;
+      state.promptDraft.compiled = state.prompt;
+    }
   }
   if (negative) {
-    state.negative = String(negative.value || '').slice(0, 12000);
-    state.promptDraft.negative = state.negative;
+    const nextNegative = String(negative.value || '').slice(0, 12000);
+    if (nextNegative !== displayedPrompts.negative) {
+      state.promptDraft.userEditedNegative = true;
+      state.promptDraft.artistNegativeBaked = true;
+      state.negative = nextNegative;
+      state.promptDraft.negative = state.negative;
+    }
   }
-  state.promptMode = state.promptDraft.userEditedCompiled ? 'manual' : 'auto';
+  state.promptMode = state.promptDraft.userEditedCompiled || state.promptDraft.userEditedNegative ? 'manual' : 'auto';
   const shotRows = Array.from(root.querySelectorAll('[data-storyboard-shot-index]'));
   if (shotRows.length) {
     state.promptDraft.shots = shotRows.map((row, index) => {
@@ -11419,8 +11581,10 @@ async function storyboardCheckConnection(root) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) throw new Error(data.message || `连接失败（${response.status}）`);
-    storyboardConnectionStatus.set(sourceId, { ok: true, message: `连接通过 · ${profile.model || STORYBOARD_PROVIDER_REGISTRY[sourceId].label}` });
-    toast('连接检查通过。', 'success');
+    const verified = data.verified !== false;
+    const message = String(data.message || (verified ? `连接通过 · ${profile.model || STORYBOARD_PROVIDER_REGISTRY[sourceId].label}` : '地址可达；请以首次生图校验令牌'));
+    storyboardConnectionStatus.set(sourceId, { ok: true, verified, message });
+    toast(message, verified ? 'success' : 'warning');
   } catch (error) {
     storyboardConnectionStatus.set(sourceId, { ok: false, message: String(error?.message || error) });
     toast(`检查失败：${error?.message || error}`, 'error');
@@ -11501,28 +11665,32 @@ async function storyboardSaveConnection(root, { quiet = false } = {}) {
 }
 
 async function storyboardSaveConnectionPreset(root) {
-  const state = storyboardState();
-  const sourceId = state.source;
-  const group = state.connections[sourceId];
+  const sourceId = storyboardState().source;
   const { profile, workflowResult } = storyboardCaptureWorkbench(root, sourceId);
+  const state = storyboardState();
+  const group = state.connections[sourceId];
   const current = group.presets.find((item) => item.id === group.activePresetId && item.model === profile.model) || null;
   const sourceCredentialId = group.draft?.credentialId || current?.credentialId || storyboardCredentialId(sourceId, 'draft');
   if (sourceId === 'comfy' && (!workflowResult.ok || workflowResult.removedFields.length || profile.comfyWorkflowNotice)) {
     toast(profile.comfyWorkflowNotice || storyboardWorkflowIssue(workflowResult), 'warning');
     return false;
   }
-  const answer = await promptInput('保存 API 预设', `为 ${getStoryboardModel(sourceId, profile.model)?.label || profile.model} 的连接起一个便于识别的名称。`, current?.name || '');
-  const name = String(answer ?? '').trim().slice(0, 80);
-  if (!name) return;
-  const sameName = group.presets.find((item) => item.model === profile.model && item.name === name) || null;
-  if (sameName && sameName !== current && !await confirmDialog('覆盖 API 预设', `当前模型已存在「${name}」，是否覆盖？`)) return;
-  const now = Date.now();
-  const target = sameName || (current?.name === name ? current : null) || {
-    id: uid(`image-${sourceId}`), providerId: sourceId, createdAt: now,
+  const baseUrl = String(group.draft.baseUrl || '').trim();
+  let host = '';
+  try { host = new URL(baseUrl).hostname.replace(/^www\./, ''); } catch (_) { host = ''; }
+  const modelLabel = getStoryboardModel(sourceId, profile.model)?.label || profile.model || STORYBOARD_PROVIDER_REGISTRY[sourceId]?.label || '生图连接';
+  const sameEndpoint = group.presets.find((item) => item.model === profile.model && String(item.baseUrl || '').replace(/\/+$/, '') === baseUrl.replace(/\/+$/, '')) || null;
+  const target = current || sameEndpoint || {
+    id: uid(`image-${sourceId}`), providerId: sourceId, createdAt: Date.now(),
   };
+  const baseName = String(current?.name || sameEndpoint?.name || [modelLabel, host].filter(Boolean).join(' · ')).slice(0, 80) || '生图连接';
+  let name = baseName;
+  let suffix = 2;
+  while (group.presets.some((item) => item !== target && item.model === profile.model && item.name === name)) name = `${baseName} ${suffix++}`.slice(0, 80);
+  const now = Date.now();
   const credentialId = target.credentialId || storyboardCredentialId(sourceId, target.id);
   Object.assign(target, {
-    name, providerId: sourceId, baseUrl: String(group.draft.baseUrl || ''), model: String(profile.model || ''),
+    name, providerId: sourceId, baseUrl, model: String(profile.model || ''),
     customModel: false,
     credentialId, options: { allowPrivateNetwork: Boolean(group.draft.options?.allowPrivateNetwork) },
     updatedAt: now,
@@ -11583,8 +11751,11 @@ function storyboardTargetFloor(state) {
 
 async function storyboardCompilerWorldText(state) {
   const rows = await storyboardWarmCompilerWorldEntries();
+  for (const book of state.promptCompiler.worldBookNames || []) await storyboardLoadCompilerWorldBook(book);
+  const availableRows = storyboardWorldEntryCache.rows.length ? storyboardWorldEntryCache.rows : rows;
+  const requestedBooks = new Set(state.promptCompiler.worldBookNames || []);
   const requested = new Set(state.promptCompiler.worldEntryIds || []);
-  const selected = rows.filter((row) => requested.has(row.id));
+  const selected = availableRows.filter((row) => requestedBooks.has(row.book) && requested.has(row.id));
   const resolved = [];
   for (const row of selected.slice(0, 20)) {
     const content = cleanContextText(await resolveMacro(String(row.item?.content || ''))).slice(0, 5000);
@@ -11743,6 +11914,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
       Object.assign(state.promptDraft, {
         compiled: '', negative: '', compiledAt: Date.now(),
         compiledBy: state.promptCompiler.apiProfileId || 'current-api', userEditedCompiled: false,
+        userEditedNegative: false, artistPositiveBaked: false, artistNegativeBaked: false,
         sourceSummary: [`第 ${context.floor} 层`, '已判断无需配图'], shots: [],
       });
       if (plan) {
@@ -11776,6 +11948,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
     Object.assign(state.promptDraft, {
       compiled: result.prompt, negative: result.negative, compiledAt: Date.now(),
       compiledBy: state.promptCompiler.apiProfileId || 'current-api', userEditedCompiled: false,
+      userEditedNegative: false, artistPositiveBaked: false, artistNegativeBaked: false,
       sourceSummary: [`第 ${context.floor} 层`, `近景 ${context.messages.length} 条`, `世界书 ${context.worldRows.length} 条`],
       shots: compiledShots,
     });
@@ -11835,7 +12008,9 @@ function storyboardLoadArtistPreset(presetId) {
   const state = storyboardState();
   const preset = state.artistPresets.find((item) => item.id === presetId) || null;
   state.selectedArtistPresetId = preset?.id || '';
-  if (preset) state.promptDraft.artistString = preset.value || '';
+  state.promptDraft.artistString = preset?.value || '';
+  if (!state.promptDraft.userEditedCompiled) state.promptDraft.artistPositiveBaked = false;
+  if (!state.promptDraft.userEditedNegative) state.promptDraft.artistNegativeBaked = false;
   saveSettings(); renderModal();
 }
 
@@ -12717,6 +12892,9 @@ async function storyboardEditPrompt({ plan = null, record = null } = {}) {
   state.promptDraft.compiled = positive;
   state.promptDraft.negative = negative;
   state.promptDraft.userEditedCompiled = true;
+  state.promptDraft.userEditedNegative = true;
+  state.promptDraft.artistPositiveBaked = true;
+  state.promptDraft.artistNegativeBaked = true;
   if (state.promptDraft.shots?.length) {
     Object.assign(state.promptDraft.shots[0], { prompt: positive, safePrompt: '', negative, userEdited: true });
   }
@@ -12752,7 +12930,8 @@ async function storyboardOnChatClick(event) {
     state.promptCompiler.enabled = true;
     state.promptMode = 'auto'; state.prompt = ''; state.negative = '';
     state.promptDraft.compiled = ''; state.promptDraft.negative = '';
-    state.promptDraft.shots = []; state.promptDraft.userEditedCompiled = false;
+    state.promptDraft.shots = []; state.promptDraft.userEditedCompiled = false; state.promptDraft.userEditedNegative = false;
+    state.promptDraft.artistPositiveBaked = false; state.promptDraft.artistNegativeBaked = false;
     plan.origin = 'manual'; plan.autoGenerate = false; plan.status = 'screening'; plan.updatedAt = Date.now();
     saveSettings(); storyboardScheduleInlineRender(20);
     const compiled = await storyboardCompilePrompt(null, { plan, quiet: false });
@@ -12993,10 +13172,33 @@ function bindStoryboardTabEvents(root) {
     state.promptCompiler.excludedTags = state.promptCompiler.tagRules.filter((rule) => rule.action === 'remove').map((rule) => rule.name).join(', ');
     saveSettings(); renderModal();
   });
+  root.querySelector('.sd-storyboard-refresh-worldbooks')?.addEventListener('click', async () => {
+    await storyboardWarmCompilerWorldEntries({ rerender: true, force: true });
+  });
+  root.querySelectorAll('.sd-storyboard-toggle-worldbook').forEach((input) => input.addEventListener('change', async () => {
+    const name = String(input.dataset.name || '');
+    const selected = new Set(state.promptCompiler.worldBookNames || []);
+    if (input.checked) {
+      selected.add(name);
+      state.promptCompiler.worldBookView = name;
+      await storyboardLoadCompilerWorldBook(name, { initialize: true });
+    } else {
+      selected.delete(name);
+      if (state.promptCompiler.worldBookView === name) state.promptCompiler.worldBookView = [...selected][0] || '';
+    }
+    state.promptCompiler.worldBookNames = [...selected].slice(0, 100);
+    saveSettings(); renderModal();
+  }));
+  root.querySelectorAll('.sd-storyboard-world-name').forEach((button) => button.addEventListener('click', async () => {
+    const name = String(button.dataset.name || '');
+    await storyboardLoadCompilerWorldBook(name);
+    state.promptCompiler.worldBookView = name;
+    saveSettings(); renderModal();
+  }));
   root.querySelectorAll('[data-storyboard-world-entry]').forEach((input) => input.addEventListener('change', () => {
     const selected = new Set(state.promptCompiler.worldEntryIds || []);
     if (input.checked) selected.add(input.dataset.storyboardWorldEntry); else selected.delete(input.dataset.storyboardWorldEntry);
-    state.promptCompiler.worldEntryIds = [...selected].slice(0, 300);
+    state.promptCompiler.worldEntryIds = [...selected].slice(0, 1000);
     saveSettings();
   }));
   root.querySelector('.sd-storyboard-prompt-preset')?.addEventListener('change', (event) => storyboardLoadPromptPreset(String(event.target.value || '')));
@@ -13023,6 +13225,28 @@ function bindStoryboardTabEvents(root) {
     saveSettings(); renderModal();
   });
   root.querySelector('.sd-storyboard-cancel-artist-edit')?.addEventListener('click', () => { state.editingArtistPresetId = ''; saveSettings(); renderModal(); });
+  root.querySelector('.sd-storyboard-artist-preview-url-mode')?.addEventListener('click', () => root.querySelector('.sd-storyboard-artist-edit-preview')?.focus());
+  root.querySelector('.sd-storyboard-artist-edit-preview')?.addEventListener('input', (event) => storyboardSetArtistPreview(root, event.target.value));
+  root.querySelector('.sd-storyboard-artist-preview-gallery')?.addEventListener('change', (event) => {
+    const value = String(event.target.value || '');
+    if (!value) return;
+    const field = root.querySelector('.sd-storyboard-artist-edit-preview');
+    if (field) field.value = value;
+    storyboardSetArtistPreview(root, value);
+  });
+  root.querySelector('.sd-storyboard-artist-preview-file')?.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const value = await storyboardArtistPreviewFromFile(file);
+      const field = root.querySelector('.sd-storyboard-artist-edit-preview');
+      if (field) field.value = value;
+      storyboardSetArtistPreview(root, value);
+    } catch (error) {
+      toast(error?.message || '预览图读取失败。', 'warning');
+    }
+  });
   root.querySelector('.sd-storyboard-save-artist-card')?.addEventListener('click', () => {
     const name = String(root.querySelector('.sd-storyboard-artist-edit-name')?.value || '').trim().slice(0, 80);
     const value = String(root.querySelector('.sd-storyboard-artist-edit-value')?.value || '').trim().slice(0, 6000);
@@ -13032,9 +13256,17 @@ function bindStoryboardTabEvents(root) {
     if (!item) { item = { id: uid('artist'), createdAt: now }; state.artistPresets.push(item); }
     const tags = uniqueClean(String(root.querySelector('.sd-storyboard-artist-edit-tags')?.value || '').split(/[,，\n]+/)).slice(0, 30).map((tag) => tag.slice(0, 80));
     const collectionId = String(root.querySelector('.sd-storyboard-artist-edit-collection')?.value || '');
-    Object.assign(item, { name, value, previewUrl: String(root.querySelector('.sd-storyboard-artist-edit-preview')?.value || '').trim().slice(0, 4096), tags, collectionId: state.artistCollections.some((entry) => entry.id === collectionId) ? collectionId : '', updatedAt: now });
+    Object.assign(item, {
+      name, value,
+      positivePrompt: String(root.querySelector('.sd-storyboard-artist-edit-positive')?.value || '').trim().slice(0, 12000),
+      negativePrompt: String(root.querySelector('.sd-storyboard-artist-edit-negative')?.value || '').trim().slice(0, 12000),
+      previewUrl: String(root.querySelector('.sd-storyboard-artist-edit-preview')?.value || '').trim().slice(0, 2_500_000),
+      tags, collectionId: state.artistCollections.some((entry) => entry.id === collectionId) ? collectionId : '', updatedAt: now,
+    });
     state.selectedArtistPresetId = item.id;
     state.promptDraft.artistString = item.value;
+    if (!state.promptDraft.userEditedCompiled) state.promptDraft.artistPositiveBaked = false;
+    if (!state.promptDraft.userEditedNegative) state.promptDraft.artistNegativeBaked = false;
     state.editingArtistPresetId = '';
     saveSettings(); renderModal();
   });
@@ -13047,13 +13279,20 @@ function bindStoryboardTabEvents(root) {
     const item = state.artistPresets.find((entry) => entry.id === card.dataset.storyboardArtistCard);
     card.querySelector('.sd-storyboard-use-artist-card')?.addEventListener('click', () => {
       if (!item) return;
-      state.selectedArtistPresetId = item.id; state.promptDraft.artistString = item.value; saveSettings(); renderModal();
+      state.selectedArtistPresetId = item.id; state.promptDraft.artistString = item.value;
+      if (!state.promptDraft.userEditedCompiled) state.promptDraft.artistPositiveBaked = false;
+      if (!state.promptDraft.userEditedNegative) state.promptDraft.artistNegativeBaked = false;
+      saveSettings(); renderModal();
     });
     card.querySelector('.sd-storyboard-edit-artist-card')?.addEventListener('click', () => { if (item) { state.editingArtistPresetId = item.id; saveSettings(); renderModal(); } });
     card.querySelector('.sd-storyboard-delete-artist-card')?.addEventListener('click', async () => {
       if (!item || !await confirmDialog('删除画师串', `确定删除「${item.name}」？`)) return;
       state.artistPresets = state.artistPresets.filter((entry) => entry.id !== item.id);
-      if (state.selectedArtistPresetId === item.id) { state.selectedArtistPresetId = ''; state.promptDraft.artistString = ''; }
+      if (state.selectedArtistPresetId === item.id) {
+        state.selectedArtistPresetId = ''; state.promptDraft.artistString = '';
+        if (!state.promptDraft.userEditedCompiled) state.promptDraft.artistPositiveBaked = false;
+        if (!state.promptDraft.userEditedNegative) state.promptDraft.artistNegativeBaked = false;
+      }
       state.editingArtistPresetId = ''; saveSettings(); renderModal();
     });
   });
@@ -25700,6 +25939,9 @@ async function storyboardHandleAutomaticCapture() {
   state.promptDraft.negative = '';
   state.promptDraft.shots = [];
   state.promptDraft.userEditedCompiled = false;
+  state.promptDraft.userEditedNegative = false;
+  state.promptDraft.artistPositiveBaked = false;
+  state.promptDraft.artistNegativeBaked = false;
   saveSettings();
   storyboardScheduleInlineRender(20);
   const compiled = await storyboardCompilePrompt(null, { plan, quiet: true });

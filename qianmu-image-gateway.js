@@ -843,9 +843,18 @@ export async function checkImageConnection(input, options = {}) {
   }
   else { url = endpoint(base, 'models'); headers = authHeaders({ apiKey }); }
   const request = { apiKey, parameters: { timeoutMs: 20_000 } };
-  const response = await fetchUpstream(url, { method: 'GET', headers }, request, options.fetchImpl || fetch);
-  await readLimited(response, 2 * 1024 * 1024);
-  return { ok: true, provider, model, message: '连接通过' };
+  try {
+    const response = await fetchUpstream(url, { method: 'GET', headers }, request, options.fetchImpl || fetch);
+    await readLimited(response, 2 * 1024 * 1024);
+    return { ok: true, provider, model, verified: true, message: '连接通过' };
+  } catch (error) {
+    // NAI 官方与部分兼容站会允许生图，却不开放订阅/模型探测接口。404 能证明地址可达，
+    // 但不能证明令牌有效；与实际生图分开说明，避免把可用连接误判为失败。
+    if (provider === 'novel' && Number(error?.upstreamStatus) === 404) {
+      return { ok: true, provider, model, verified: false, message: '地址可达；该服务未开放连接探测，请以首次生图校验令牌' };
+    }
+    throw error;
+  }
 }
 
 export async function listImageModels(input, options = {}) {

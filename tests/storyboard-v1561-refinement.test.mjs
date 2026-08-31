@@ -7,7 +7,7 @@ const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const style = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 const utilities = await readFile(new URL('../qianmu-storyboard-utils.js', import.meta.url), 'utf8');
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 9);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 10);
 
 // Storyboard owns the whole Qianmu panel and replaces the former world-map shortcut.
 assert.doesNotMatch(source, /\['imagegen', '分镜'\]/);
@@ -51,6 +51,8 @@ assert.equal(normalized.promptCompiler.includeUserPersona, true);
 assert.equal(normalized.promptCompiler.includeActivatedWorldInfo, true);
 assert.equal(normalized.promptCompiler.worldMode, 'selected');
 assert.deepEqual(normalized.promptCompiler.worldEntryIds, ['book::entry']);
+assert.deepEqual(normalized.promptCompiler.worldBookNames, ['book']);
+assert.deepEqual(normalized.promptCompiler.tagRules.map((item) => item.name), ['think', 'thinking']);
 assert.equal(normalized.editingArtistPresetId, 'new', 'new artist editor survives normalization');
 assert.deepEqual(normalized.artistPresets[0].tags, ['柔光', '人像']);
 assert.equal(normalized.artistPresets[0].collectionId, 'folder-1');
@@ -58,8 +60,20 @@ assert.equal(normalized.artistPresets[0].collectionId, 'folder-1');
 assert.match(source, /<b>上下文处理<\/b>/);
 assert.match(source, /<span>参考层数<\/span>/);
 assert.match(source, /<b>提取规则<\/b>/);
-assert.match(source, /sd-storyboard-worldbook-card[\s\S]*sd-storyboard-world-entries/);
+assert.match(source, /sd-storyboard-worldbook-card/);
+assert.match(source, /sd-storyboard-worldbook-picker/);
 assert.doesNotMatch(source, /自动筛选/);
+
+// v1.56.2 keeps the title and return action in the same quiet top system.
+assert.match(source, /sd-storyboard-titlebar[\s\S]*STORYBOARD/);
+assert.match(source, /function renderStoryboardNav[\s\S]*sd-storyboard-exit/);
+assert.match(style, /sd-storyboard-nav \.sd-storyboard-exit[\s\S]*position: static/);
+assert.doesNotMatch(source, /为 \$\{getStoryboardModel[\s\S]*连接起一个便于识别的名称/);
+
+// Storyboard worldbooks use the same all-books → multi-book → per-entry hierarchy as Context.
+assert.match(source, /listWorldBooks\(\)[\s\S]*sd-storyboard-toggle-worldbook/);
+assert.match(source, /sd-storyboard-world-name[\s\S]*data-storyboard-world-entry/);
+assert.match(source, /sd-storyboard-refresh-worldbooks/);
 
 // Presets and artist strings use dedicated, full-panel editors.
 assert.match(source, /function renderStoryboardPresetLibrary/);
@@ -68,6 +82,12 @@ assert.match(source, /sd-storyboard-cancel-preset-item[\s\S]*sd-storyboard-save-
 assert.match(source, /sd-storyboard-edit-selected-artist/);
 assert.match(source, /sd-storyboard-new-artist-collection/);
 assert.match(source, /sd-storyboard-artist-edit-tags/);
+assert.match(source, /const verified = data\.verified !== false;[\s\S]*toast\(message, verified \? 'success' : 'warning'\)/, 'NAI 探测接口缺失时应保留网关说明，不得误报为已验证连接');
+assert.match(source, /sd-storyboard-artist-edit-positive/);
+assert.match(source, /sd-storyboard-artist-edit-negative/);
+assert.match(source, /sd-storyboard-artist-preview-file/);
+assert.match(source, /sd-storyboard-artist-preview-gallery/);
+assert.match(source, /fa-floppy-disk/);
 assert.doesNotMatch(source, /class="[^"]*sd-storyboard-artist-string/);
 
-console.log('Storyboard v1.56.1 refinement contract OK');
+console.log('Storyboard v1.56.2 refinement contract OK');
