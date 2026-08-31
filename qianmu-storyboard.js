@@ -1,5 +1,5 @@
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
-export const STORYBOARD_SCHEMA_VERSION = 10;
+export const STORYBOARD_SCHEMA_VERSION = 11;
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -242,6 +242,14 @@ export function migrateStoryboardState(value) {
     s.promptCompiler.worldBookView ||= legacyBooks[0] || '';
     s.promptCompiler.worldBookInitializedNames ||= legacyBooks;
   }
+  if (fromVersion < 11) {
+    s.artistPresets = (Array.isArray(s.artistPresets) ? s.artistPresets : []).map((preset) => ({
+      ...preset,
+      collectionIds: Array.isArray(preset?.collectionIds)
+        ? preset.collectionIds
+        : (preset?.collectionId ? [preset.collectionId] : []),
+    }));
+  }
   s.schemaVersion = STORYBOARD_SCHEMA_VERSION;
   return s;
 }
@@ -264,7 +272,7 @@ export function normalizeStoryboardState(value) {
   state.connections = connections(state.connections);
   delete state.characters; delete state.entities; delete state.selectedCharacterId; delete state.characterView;
   delete state.selectedCharacters; delete state.castPickerOpen; delete state.consistencyModes;
-  state.promptPresets = promptPresets(state.promptPresets); state.artistCollections = artistCollections(state.artistCollections); state.artistPresets = artistPresets(state.artistPresets); const knownArtistCollections = new Set(state.artistCollections.map((item) => item.id)); for (const artist of state.artistPresets) if (!knownArtistCollections.has(artist.collectionId)) artist.collectionId = ''; if (!knownArtistCollections.has(state.artistCollectionId)) state.artistCollectionId = ''; state.selectedArtistPresetId = state.artistPresets.some((item) => item.id === state.selectedArtistPresetId) ? cleanId(state.selectedArtistPresetId) : ''; if (state.editingArtistPresetId !== 'new' && !state.artistPresets.some((item) => item.id === state.editingArtistPresetId)) state.editingArtistPresetId = ''; state.tagLibrary = tags(state.tagLibrary); state.vibeLibrary = vibes(state.vibeLibrary);
+  state.promptPresets = promptPresets(state.promptPresets); state.artistCollections = artistCollections(state.artistCollections); state.artistPresets = artistPresets(state.artistPresets); const knownArtistCollections = new Set(state.artistCollections.map((item) => item.id)); for (const artist of state.artistPresets) { artist.collectionIds = artist.collectionIds.filter((id) => knownArtistCollections.has(id)); artist.collectionId = artist.collectionIds[0] || ''; } if (!knownArtistCollections.has(state.artistCollectionId)) state.artistCollectionId = ''; state.selectedArtistPresetId = state.artistPresets.some((item) => item.id === state.selectedArtistPresetId) ? cleanId(state.selectedArtistPresetId) : ''; if (state.editingArtistPresetId !== 'new' && !state.artistPresets.some((item) => item.id === state.editingArtistPresetId)) state.editingArtistPresetId = ''; state.tagLibrary = tags(state.tagLibrary); state.vibeLibrary = vibes(state.vibeLibrary);
   const knownTagIds = new Set(state.tagLibrary.map((tag) => tag.id));
   for (const preset of state.promptPresets) preset.tagIds = preset.tagIds.filter((id) => knownTagIds.has(id));
   for (const vibe of state.vibeLibrary) vibe.tags = vibe.tags.filter((id) => knownTagIds.has(id));
@@ -309,7 +317,10 @@ function promptPresets(value) {
 }
 
 function artistPresets(value) {
-  const normalized = (Array.isArray(value) ? value : []).filter(obj).map((preset) => ({ id: cleanId(preset.id), name: str(preset.name || '未命名画师串', 80), value: str(preset.value, 6000), positivePrompt: str(preset.positivePrompt, 12000), negativePrompt: str(preset.negativePrompt, 12000), previewUrl: str(preset.previewUrl, 2_500_000), note: str(preset.note, 1000), tags: uniqueStrings(preset.tags, 30, 80), collectionId: cleanId(preset.collectionId), createdAt: pos(preset.createdAt || preset.updatedAt), updatedAt: pos(preset.updatedAt) })).filter((preset) => preset.id && preset.value);
+  const normalized = (Array.isArray(value) ? value : []).filter(obj).map((preset) => {
+    const collectionIds = ids(Array.isArray(preset.collectionIds) ? preset.collectionIds : [preset.collectionId], 30);
+    return { id: cleanId(preset.id), name: str(preset.name || '未命名画师串', 80), value: str(preset.value, 6000), positivePrompt: str(preset.positivePrompt, 12000), negativePrompt: str(preset.negativePrompt, 12000), previewUrl: str(preset.previewUrl, 2_500_000), note: str(preset.note, 1000), tags: uniqueStrings(preset.tags, 30, 80), collectionIds, collectionId: collectionIds[0] || '', createdAt: pos(preset.createdAt || preset.updatedAt), updatedAt: pos(preset.updatedAt) };
+  }).filter((preset) => preset.id && preset.value);
   return dedupeById(normalized).slice(0, 200);
 }
 

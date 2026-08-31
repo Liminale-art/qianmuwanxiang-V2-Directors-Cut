@@ -98,7 +98,8 @@ assert.match(source, /const composed = storyboardEffectivePrompts/);
 assert.doesNotMatch(source, /function storyboardSaveArtistPreset/);
 assert.match(source, /function renderStoryboardArtistLibrary[\s\S]*sd-storyboard-artist-waterfall/);
 assert.match(source, /sd-storyboard-edit-selected-artist[\s\S]*state\.editingArtistPresetId = state\.selectedArtistPresetId/);
-assert.match(source, /sd-storyboard-artist-edit-tags[\s\S]*artistCollections/);
+assert.match(source, /storyboardMediaTagEditorMarkup\(editing\?\.tags \|\| \[\], knownTags, 'artist-draft'\)/);
+assert.match(source, /sd-media-collection-choices/);
 assert.match(source, /querySelectorAll\('\.sd-storyboard-prompt, \.sd-storyboard-negative/,
   'manual prompt edits must persist without triggering either automatic stage');
 

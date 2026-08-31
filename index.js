@@ -97,7 +97,7 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.56.2';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.56.3';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_MODEL_REGISTRY,
@@ -128,7 +128,7 @@ import {
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.56.2';
+const VERSION = '1.56.3';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -883,6 +883,7 @@ const storyboardGallerySelection = new Set();
 let storyboardGallerySelectMode = false;
 let storyboardGalleryVisibleCount = 40;
 let storyboardGalleryOpenCollectionId = '';
+let storyboardGalleryInspectorRecordId = '';
 let storyboardLightboxEl = null;
 let initialized = false;
 let duplicateRuntimeWarned = false;
@@ -5739,8 +5740,8 @@ function renderModal() {
         </div>
         <div class="sd-header-actions">
           ${COREAD_VISIBLE ? `<button class="sd-coread-shortcut ${activeTab === 'coread' ? 'active' : ''}" title="伴读" aria-label="伴读"><i class="fa-solid fa-book-open" data-qm-icon="coread-entry"></i></button>` : ''}
-          <button class="sd-storyboard-shortcut" title="分镜" aria-label="分镜"><i class="fa-solid fa-camera" data-qm-icon="qm-duotone-camera"></i></button>
-          <button class="sd-plug-shortcut" title="API与日志"><i class="fa-solid fa-gear" data-qm-icon="qm-duotone-gear"></i></button>
+          <button class="sd-storyboard-shortcut ${activeTab === 'imagegen' ? 'active' : ''}" title="分镜" aria-label="分镜"><i class="fa-solid fa-camera" data-qm-icon="qm-duotone-camera"></i></button>
+          <button class="sd-plug-shortcut ${activeTab === 'plug' ? 'active' : ''}" title="API与日志" aria-label="API与日志"><i class="fa-solid fa-gear" data-qm-icon="qm-duotone-gear"></i></button>
           <div class="sd-theme-pick">
             <button class="sd-theme-btn" title="外观主题" aria-label="外观主题" aria-haspopup="true"><i class="fa-solid fa-palette"></i></button>
             <div class="sd-theme-menu" role="menu" hidden>
@@ -10179,22 +10180,50 @@ function storyboardJoinPrompt(parts, sourceId) {
   return values.join(sourceId === 'novel' ? ', ' : '\n\n');
 }
 
-function storyboardEffectivePrompts(state, sourceId = state.source, modelId = storyboardProviderProfile(state, sourceId).model, { prompt = state.prompt, negative = state.negative } = {}) {
-  const artist = storyboardSelectedArtistPreset(state);
+function storyboardPromptsForArtist(state, artist, sourceId, modelId, { prompt = state.prompt, negative = state.negative, honorBaked = true } = {}) {
   if (!artist) return { prompt: String(prompt || '').trim(), negative: String(negative || '').trim(), artistString: '' };
   const defaults = storyboardProviderPromptDefaults(sourceId, modelId);
   const artistString = String(artist.value || state.promptDraft?.artistString || '').trim();
   const artistPositive = String(artist.positivePrompt || defaults.positive || '').trim();
   const artistNegative = String(artist.negativePrompt || defaults.negative || '').trim();
   return {
-    prompt: state.promptDraft?.artistPositiveBaked
+    prompt: honorBaked && state.promptDraft?.artistPositiveBaked
       ? String(prompt || '').trim()
       : storyboardJoinPrompt([artistString, prompt, artistPositive], sourceId),
-    negative: state.promptDraft?.artistNegativeBaked
+    negative: honorBaked && state.promptDraft?.artistNegativeBaked
       ? String(negative || '').trim()
       : storyboardJoinPrompt([negative, artistNegative], sourceId),
     artistString,
   };
+}
+
+function storyboardEffectivePrompts(state, sourceId = state.source, modelId = storyboardProviderProfile(state, sourceId).model, options = {}) {
+  return storyboardPromptsForArtist(state, storyboardSelectedArtistPreset(state), sourceId, modelId, options);
+}
+
+function storyboardRemovePromptLayer(value, layer) {
+  const source = String(value || '').trim();
+  const needle = String(layer || '').trim();
+  if (!source || !needle) return source;
+  return source.replace(needle, '').replace(/(?:\s*,\s*){2,}/g, ', ').replace(/^[\s,]+|[\s,]+$/g, '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function storyboardBasePromptsForArtistRedraw(record, snapshot) {
+  const state = storyboardState();
+  const sourceId = snapshot.source || record.source || state.source;
+  const modelId = snapshot.profile?.model || record.model || storyboardProviderProfile(state, sourceId).model;
+  const oldArtist = state.artistPresets.find((item) => item.id === record.artistPresetId)
+    || state.artistPresets.find((item) => item.value === record.artistString) || null;
+  const defaults = storyboardProviderPromptDefaults(sourceId, modelId);
+  let prompt = String(record.finalPrompt || snapshot.payload?.prompt || record.prompt || snapshot.prompt || '').trim();
+  let negative = String(record.effectiveNegative || snapshot.payload?.negative || record.negative || snapshot.negative || '').trim();
+  const oldArtistString = record.artistString || snapshot.artistString;
+  if (oldArtistString) {
+    prompt = storyboardRemovePromptLayer(prompt, oldArtistString);
+    prompt = storyboardRemovePromptLayer(prompt, oldArtist?.positivePrompt || defaults.positive);
+    negative = storyboardRemovePromptLayer(negative, oldArtist?.negativePrompt || defaults.negative);
+  }
+  return { prompt: prompt || String(record.prompt || snapshot.prompt || '').trim(), negative, sourceId, modelId };
 }
 
 function renderStoryboardNav(state) {
@@ -10296,6 +10325,114 @@ function storyboardGalleryCollections() {
   return store.storyboardCollections;
 }
 
+function storyboardItemCollectionIds(item) {
+  return uniqueClean([...(Array.isArray(item?.collectionIds) ? item.collectionIds : []), item?.collectionId])
+    .map((id) => String(id || '').trim()).filter(Boolean).slice(0, 30);
+}
+
+function storyboardAssignCollectionIds(item, values) {
+  const ids = uniqueClean(values).map((id) => String(id || '').trim()).filter(Boolean).slice(0, 30);
+  item.collectionIds = ids;
+  item.collectionId = ids[0] || '';
+  return ids;
+}
+
+function storyboardMediaTagChipMarkup(tag) {
+  const value = String(tag || '').trim().slice(0, 80);
+  if (!value) return '';
+  return `<span class="sd-media-tag-chip" data-media-tag="${htmlEscape(value)}"><button type="button" class="sd-media-tag-rename" title="编辑标签">${htmlEscape(value)}</button><button type="button" class="sd-media-tag-remove" title="删除标签" aria-label="删除标签 ${htmlEscape(value)}"><i class="fa-solid fa-xmark"></i></button></span>`;
+}
+
+function storyboardMediaTagEditorMarkup(tags, knownTags, scope) {
+  const selected = uniqueClean(tags || []).slice(0, 30);
+  const suggestions = uniqueClean(knownTags || []).filter((tag) => !selected.includes(tag)).slice(0, 40);
+  return `<div class="sd-media-tag-editor" data-media-tag-editor="${htmlEscape(scope)}"><div class="sd-media-tag-chips">${selected.map(storyboardMediaTagChipMarkup).join('')}</div><div class="sd-media-tag-input-row"><input class="text_pole sd-media-tag-input" maxlength="80" placeholder="添加标签"><div class="sd-media-tag-suggestions">${suggestions.map((tag) => `<button type="button" data-media-tag-suggestion="${htmlEscape(tag)}">${htmlEscape(tag)}</button>`).join('')}</div></div></div>`;
+}
+
+function storyboardMediaSidebarMarkup({ allCount, collections, currentId, countFor, tags, scope }) {
+  const collectionRows = collections.map((collection) => `<div class="sd-media-collection-row ${currentId === collection.id ? 'active' : ''}" data-${scope}-collection="${htmlEscape(collection.id)}"><button type="button" class="sd-media-collection-open"><i class="fa-regular fa-folder"></i><span>${htmlEscape(collection.name)}</span><em>${countFor(collection.id)}</em></button><div><button type="button" class="sd-icon-btn sd-media-collection-rename" title="重命名" aria-label="重命名"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-media-collection-delete" title="解散合集" aria-label="解散合集"><i class="fa-solid fa-xmark"></i></button></div></div>`).join('');
+  return `<aside class="sd-media-sidebar"><div class="sd-media-sidebar-section"><b>资料库</b><button type="button" class="sd-media-all ${currentId ? '' : 'active'}"><i class="fa-regular fa-images"></i><span>全部</span><em>${allCount}</em></button></div><div class="sd-media-sidebar-section"><b>合集</b><div class="sd-media-collection-list">${collectionRows || '<small>暂无合集</small>'}</div></div>${tags.length ? `<div class="sd-media-sidebar-section sd-media-sidebar-tags"><b>标签</b><div>${tags.slice(0, 18).map((tag) => `<button type="button" data-${scope}-tag-filter="${htmlEscape(tag)}">${htmlEscape(tag)}</button>`).join('')}</div></div>` : ''}</aside>`;
+}
+
+function storyboardMediaTagValues(editor) {
+  return uniqueClean(Array.from(editor?.querySelectorAll?.('[data-media-tag]') || []).map((chip) => String(chip.dataset.mediaTag || '').trim())).slice(0, 30);
+}
+
+function storyboardPersistMediaTagEditor(editor) {
+  const scope = String(editor?.dataset.mediaTagEditor || '');
+  if (!scope.startsWith('gallery:')) return;
+  const record = storyboardGalleryRecords().find((item) => item.id === scope.slice(8));
+  if (!record) return;
+  record.tags = storyboardMediaTagValues(editor);
+  void saveMetadata();
+}
+
+function storyboardMediaTagAdd(editor, rawValue) {
+  const value = String(rawValue || '').trim().replace(/^#+/, '').slice(0, 80);
+  if (!value) return false;
+  const values = storyboardMediaTagValues(editor);
+  if (values.some((tag) => tag.toLocaleLowerCase() === value.toLocaleLowerCase()) || values.length >= 30) return false;
+  editor.querySelector('.sd-media-tag-chips')?.insertAdjacentHTML('beforeend', storyboardMediaTagChipMarkup(value));
+  editor.querySelector(`[data-media-tag-suggestion="${CSS.escape(value)}"]`)?.setAttribute('hidden', '');
+  applyQianmuIcons(editor);
+  storyboardPersistMediaTagEditor(editor);
+  return true;
+}
+
+function storyboardMediaTagFilterSuggestions(editor, query) {
+  const value = String(query || '').trim().toLocaleLowerCase();
+  editor.querySelectorAll('[data-media-tag-suggestion]').forEach((button) => {
+    const selected = storyboardMediaTagValues(editor).some((tag) => tag.toLocaleLowerCase() === String(button.dataset.mediaTagSuggestion || '').toLocaleLowerCase());
+    button.hidden = selected || Boolean(value && !String(button.dataset.mediaTagSuggestion || '').toLocaleLowerCase().includes(value));
+  });
+}
+
+function storyboardBindMediaTagEditors(root) {
+  root.querySelectorAll('[data-media-tag-editor]').forEach((editor) => {
+    const input = editor.querySelector('.sd-media-tag-input');
+    const commit = (value) => {
+      String(value || '').split(/[,，\n]+/).forEach((tag) => storyboardMediaTagAdd(editor, tag));
+      if (input) { input.value = ''; storyboardMediaTagFilterSuggestions(editor, ''); input.focus(); }
+    };
+    input?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ',') return;
+      event.preventDefault(); commit(input.value);
+    });
+    input?.addEventListener('input', () => {
+      if (/[,，\n]/.test(input.value)) {
+        const parts = input.value.split(/[,，\n]+/);
+        const tail = parts.pop() || '';
+        parts.forEach((tag) => storyboardMediaTagAdd(editor, tag));
+        input.value = tail;
+      }
+      storyboardMediaTagFilterSuggestions(editor, input.value);
+    });
+    editor.querySelectorAll('[data-media-tag-suggestion]').forEach((button) => button.addEventListener('click', () => commit(button.dataset.mediaTagSuggestion)));
+    editor.addEventListener('click', async (event) => {
+      const remove = event.target.closest('.sd-media-tag-remove');
+      if (remove) {
+        remove.closest('[data-media-tag]')?.remove();
+        storyboardPersistMediaTagEditor(editor);
+        storyboardMediaTagFilterSuggestions(editor, input?.value || '');
+        return;
+      }
+      const rename = event.target.closest('.sd-media-tag-rename');
+      if (!rename) return;
+      const chip = rename.closest('[data-media-tag]');
+      const oldValue = String(chip?.dataset.mediaTag || '');
+      const answer = await promptInput('编辑标签', '输入新的标签名。', oldValue);
+      const value = String(answer ?? '').trim().replace(/^#+/, '').slice(0, 80);
+      if (!chip || !value || value === oldValue) return;
+      if (storyboardMediaTagValues(editor).some((tag) => tag !== oldValue && tag.toLocaleLowerCase() === value.toLocaleLowerCase())) return toast('已有同名标签。', 'warning');
+      chip.dataset.mediaTag = value;
+      rename.textContent = value;
+      chip.querySelector('.sd-media-tag-remove')?.setAttribute('aria-label', `删除标签 ${value}`);
+      storyboardPersistMediaTagEditor(editor);
+      storyboardMediaTagFilterSuggestions(editor, input?.value || '');
+    });
+  });
+}
+
 function storyboardGalleryGroupId(record) {
   return String(record?.variantRootId || record?.planShotId || record?.groupId || record?.id || '');
 }
@@ -10312,13 +10449,6 @@ function storyboardGalleryGroups(records) {
     id,
     variants: variants.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0)),
   })).sort((a, b) => Number(b.variants[0]?.createdAt || 0) - Number(a.variants[0]?.createdAt || 0));
-}
-
-function storyboardGalleryCollectionCovers(collectionId) {
-  return [...storyboardGalleryRecords()]
-    .filter((item) => String(item.collectionId || '') === String(collectionId || '') && storyboardSafeUrl(item.url))
-    .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
-    .slice(0, 4);
 }
 
 function storyboardPlanCompilerSignature(state = storyboardState()) {
@@ -10617,11 +10747,11 @@ function renderStoryboardWorldbookCard(state) {
     ? '<div class="sd-storyboard-empty-inline">正在读取世界书…</div>'
     : storyboardWorldEntryCache.error
       ? `<div class="sd-storyboard-empty-inline">${htmlEscape(storyboardWorldEntryCache.error)}</div>`
-      : names.length ? `<div class="sd-context-source-pick sd-storyboard-worldbook-picker"><details class="sd-dropdown" open><summary class="sd-dropdown-head"><span>选择</span><b>${selectedBooks.size} 项</b></summary><div class="sd-dropdown-body sd-scroll">${bookRows}</div></details><button type="button" class="sd-icon-btn sd-storyboard-refresh-worldbooks" title="读取世界书" aria-label="读取世界书"><i class="fa-solid fa-rotate"></i></button></div>${viewName ? `<details class="sd-context-block" open><summary><b>${htmlEscape(`世界书条目 · ${viewName}`)}</b></summary><div class="sd-entry-scroll sd-scroll">${entryRows || '<p class="sd-muted">暂无条目</p>'}</div></details>` : '<div class="sd-storyboard-empty-inline">选择一本世界书后查看条目。</div>'}` : '<div class="sd-storyboard-empty-inline">未读取到世界书。</div>';
-  return `<section class="sd-card sd-storyboard-worldbook-card">
-    <div class="sd-storyboard-worldbook-title"><b>世界书</b></div>
+      : names.length ? `<div class="sd-context-source-pick sd-storyboard-worldbook-picker"><details class="sd-dropdown" open><summary class="sd-dropdown-head"><span>世界书目录</span><b>${selectedBooks.size} 项</b></summary><div class="sd-dropdown-body sd-scroll">${bookRows}</div></details></div>${viewName ? `<details class="sd-context-block sd-storyboard-worldbook-entries" open><summary><b>${htmlEscape(`世界书条目 · ${viewName}`)}</b></summary><div class="sd-entry-scroll sd-scroll">${entryRows || '<p class="sd-muted">暂无条目</p>'}</div></details>` : '<div class="sd-storyboard-empty-inline">选择一本世界书后查看条目。</div>'}` : '<div class="sd-storyboard-empty-inline">未读取到世界书。</div>';
+  return `<details class="sd-card sd-storyboard-worldbook-card" data-storyboard-card="worldbook" ${state.collapsedCards.worldbook ? '' : 'open'}>
+    <summary><span><b>世界书</b></span><button type="button" class="sd-icon-btn sd-storyboard-refresh-worldbooks" title="重新读取世界书" aria-label="重新读取世界书"><i class="fa-solid fa-rotate"></i></button><i class="fa-solid fa-chevron-down"></i></summary>
     <div class="sd-storyboard-card-body">${body}</div>
-  </section>`;
+  </details>`;
 }
 
 function renderStoryboardCreate(state) {
@@ -10649,8 +10779,8 @@ function renderStoryboardCreate(state) {
         <div class="sd-storyboard-prompt-stack">
           <div class="sd-storyboard-inline-control"><select class="text_pole sd-storyboard-prompt-preset" aria-label="取景预设"><option value="">选择取景预设</option>${promptPresets}</select><button type="button" class="sd-icon-btn sd-storyboard-open-prompt-library" title="取景预设" aria-label="取景预设"><i class="fa-solid fa-folder"></i></button></div>
           <div class="sd-storyboard-inline-control"><button type="button" class="sd-icon-btn sd-storyboard-open-artist-library" title="画师库" aria-label="画师库"><i class="fa-solid fa-images"></i></button><select class="text_pole sd-storyboard-artist-preset" aria-label="画师串"><option value="">选择画师串</option>${artistPresets}</select><button type="button" class="sd-icon-btn sd-storyboard-edit-selected-artist" title="编辑所选画师串" aria-label="编辑所选画师串" ${state.selectedArtistPresetId ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button></div>
-          <label><span>正面提示词</span><textarea class="text_pole sd-storyboard-prompt" spellcheck="false">${htmlEscape(effectivePrompts.prompt || draft.compiled || '')}</textarea></label>
-          ${capabilities.negative ? `<label><span>负面提示词</span><textarea class="text_pole sd-storyboard-negative" spellcheck="false">${htmlEscape(effectivePrompts.negative)}</textarea></label>` : ''}
+          <label><span>正面提示词</span><textarea class="text_pole sd-storyboard-prompt sd-storyboard-prompt-textarea" spellcheck="false">${htmlEscape(effectivePrompts.prompt || draft.compiled || '')}</textarea></label>
+          ${capabilities.negative ? `<label><span>负面提示词</span><textarea class="text_pole sd-storyboard-negative sd-storyboard-prompt-textarea" spellcheck="false">${htmlEscape(effectivePrompts.negative)}</textarea></label>` : ''}
           ${tagChips ? `<div class="sd-storyboard-tag-quick">${tagChips}</div>` : ''}
         </div>
       </div>
@@ -10866,11 +10996,9 @@ function storyboardFilteredGalleryRecords(state) {
   const allRecords = [...storyboardGalleryRecords()].reverse();
   return allRecords.filter((record) => {
     if (state.gallerySource !== 'all' && record.source !== state.gallerySource) return false;
-    if (storyboardGalleryOpenCollectionId) {
-      if (String(record.collectionId || '') !== storyboardGalleryOpenCollectionId) return false;
-    } else if (!query && record.collectionId) return false;
+    if (storyboardGalleryOpenCollectionId && !storyboardItemCollectionIds(record).includes(storyboardGalleryOpenCollectionId)) return false;
     if (!query) return true;
-    return [record.prompt, record.finalPrompt, record.model, record.artistString, STORYBOARD_SOURCES[record.source]?.label]
+    return [record.prompt, record.finalPrompt, record.model, record.artistString, ...(record.tags || []), STORYBOARD_SOURCES[record.source]?.label]
       .some((value) => String(value || '').toLowerCase().includes(query));
   });
 }
@@ -10918,7 +11046,8 @@ function renderStoryboardArtistLibrary(state) {
   const editing = state.artistPresets.find((item) => item.id === state.editingArtistPresetId) || null;
   const editingActive = Boolean(editing || state.editingArtistPresetId === 'new');
   if (editingActive) {
-    const collectionOptions = state.artistCollections.map((item) => `<option value="${htmlEscape(item.id)}" ${(editing?.collectionId || state.artistCollectionId) === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
+    const selectedCollections = new Set(editing ? storyboardItemCollectionIds(editing) : (state.artistCollectionId ? [state.artistCollectionId] : []));
+    const collectionOptions = state.artistCollections.map((item) => `<label class="sd-media-collection-choice"><input type="checkbox" value="${htmlEscape(item.id)}" ${selectedCollections.has(item.id) ? 'checked' : ''}><span>${htmlEscape(item.name)}</span></label>`).join('');
     const preview = storyboardSafeUrl(editing?.previewUrl);
     const galleryOptions = [...storyboardGalleryRecords()].reverse().filter((item) => storyboardSafeUrl(item.url)).slice(0, 120)
       .map((item, index) => `<option value="${htmlEscape(storyboardSafeUrl(item.url))}">${htmlEscape(snip(item.finalPrompt || item.prompt || `画面 ${index + 1}`, 46))}</option>`).join('');
@@ -10929,15 +11058,15 @@ function renderStoryboardArtistLibrary(state) {
       <label><span>画师串</span><textarea class="text_pole sd-storyboard-artist-edit-value" spellcheck="false">${htmlEscape(editing?.value || '')}</textarea></label>
       <label><span>正面提示词</span><textarea class="text_pole sd-storyboard-artist-edit-positive" spellcheck="false">${htmlEscape(editing?.positivePrompt || '')}</textarea></label>
       <label><span>负面提示词</span><textarea class="text_pole sd-storyboard-artist-edit-negative" spellcheck="false">${htmlEscape(editing?.negativePrompt || '')}</textarea></label>
-      <label><span>标签</span><input class="text_pole sd-storyboard-artist-edit-tags" list="sd-storyboard-artist-known-tags" value="${htmlEscape((editing?.tags || []).join(', '))}"><datalist id="sd-storyboard-artist-known-tags">${knownTags.map((tag) => `<option value="${htmlEscape(tag)}"></option>`).join('')}</datalist></label>
-      <label><span>合集</span><select class="text_pole sd-storyboard-artist-edit-collection"><option value="">未归入合集</option>${collectionOptions}</select></label>
+      <label><span>标签</span>${storyboardMediaTagEditorMarkup(editing?.tags || [], knownTags, 'artist-draft')}</label>
+      <label><span>合集</span><div class="sd-media-collection-choices">${collectionOptions || '<small>可先返回画师库新建合集</small>'}</div></label>
     </div></div>`;
   }
   const query = String(state.artistSearch || '').trim().toLocaleLowerCase();
   const currentCollection = state.artistCollections.find((item) => item.id === state.artistCollectionId) || null;
+  const allTags = uniqueClean(state.artistPresets.flatMap((item) => item.tags || [])).sort((a, b) => a.localeCompare(b));
   const artists = state.artistPresets.filter((item) => {
-    if (currentCollection && item.collectionId !== currentCollection.id) return false;
-    if (!currentCollection && !query && item.collectionId) return false;
+    if (currentCollection && !storyboardItemCollectionIds(item).includes(currentCollection.id)) return false;
     return !query || `${item.name}\n${item.value}\n${(item.tags || []).join(' ')}`.toLocaleLowerCase().includes(query);
   });
   const cards = artists.map((item) => {
@@ -10948,15 +11077,20 @@ function renderStoryboardArtistLibrary(state) {
       <div><button type="button" class="sd-icon-btn sd-storyboard-edit-artist-card" title="编辑" aria-label="编辑"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-artist-card" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div>
     </article>`;
   }).join('');
-  const folders = !currentCollection && !query ? state.artistCollections.map((collection) => {
-    const members = state.artistPresets.filter((item) => item.collectionId === collection.id);
-    const covers = members.map((item) => storyboardSafeUrl(item.previewUrl)).filter(Boolean).slice(0, 4);
-    return `<article class="sd-storyboard-artist-folder" data-storyboard-artist-collection="${htmlEscape(collection.id)}"><button type="button" class="sd-storyboard-artist-folder-open"><span>${[0, 1, 2, 3].map((index) => covers[index] ? `<img src="${htmlEscape(covers[index])}" loading="lazy" alt="">` : '<i class="fa-solid fa-image"></i>').join('')}</span><b>${htmlEscape(collection.name)}</b><em>${members.length}</em></button><div><button type="button" class="sd-icon-btn sd-storyboard-rename-artist-collection" title="重命名" aria-label="重命名"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-artist-collection" title="解散合集" aria-label="解散合集"><i class="fa-solid fa-trash-can"></i></button></div></article>`;
-  }).join('') : '';
+  const selectedArtist = state.artistPresets.find((item) => item.id === state.selectedArtistPresetId) || null;
+  const selectedPreview = storyboardSafeUrl(selectedArtist?.previewUrl);
+  const sidebar = storyboardMediaSidebarMarkup({
+    allCount: state.artistPresets.length,
+    collections: state.artistCollections,
+    currentId: currentCollection?.id || '',
+    countFor: (id) => state.artistPresets.filter((item) => storyboardItemCollectionIds(item).includes(id)).length,
+    tags: allTags,
+    scope: 'artist',
+  });
+  const inspector = selectedArtist ? `<details class="sd-media-inspector" open><summary><span>当前画师</span><i class="fa-solid fa-chevron-down"></i></summary><div>${selectedPreview ? `<img src="${htmlEscape(selectedPreview)}" alt="">` : '<div class="sd-media-inspector-placeholder"><i class="fa-regular fa-image"></i></div>'}<h4>${htmlEscape(selectedArtist.name)}</h4><p>${htmlEscape(snip(selectedArtist.value, 180))}</p><div class="sd-media-inspector-tags">${(selectedArtist.tags || []).map((tag) => `<em>${htmlEscape(tag)}</em>`).join('') || '<small>暂无标签</small>'}</div><button type="button" class="sd-btn sd-storyboard-inspector-edit-artist"><i class="fa-solid fa-pen"></i>编辑画师串</button></div></details>` : `<details class="sd-media-inspector" open><summary><span>详情</span><i class="fa-solid fa-chevron-down"></i></summary><div class="sd-storyboard-empty-inline">选择画师串后在此查看。</div></details>`;
   return `<div class="sd-storyboard-artist-page">
-    <section class="sd-card sd-storyboard-artist-head"><div><button type="button" class="sd-icon-btn ${currentCollection ? 'sd-storyboard-artist-folder-back' : 'sd-storyboard-artist-back'}" title="返回" aria-label="返回"><i class="fa-solid fa-arrow-left"></i></button><h3>${htmlEscape(currentCollection?.name || 'ARTIST LIBRARY')}</h3><b>${currentCollection ? artists.length : state.artistPresets.length}</b></div><div><input class="text_pole sd-storyboard-artist-search" value="${htmlEscape(state.artistSearch || '')}" placeholder="搜索画师串或标签"><button type="button" class="sd-icon-btn sd-storyboard-new-artist-collection" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button><button type="button" class="sd-icon-btn sd-storyboard-new-artist" title="新建画师串" aria-label="新建画师串"><i class="fa-solid fa-plus"></i></button></div></section>
-    ${folders ? `<section class="sd-storyboard-artist-folders">${folders}</section>` : ''}
-    <section class="sd-storyboard-artist-waterfall">${cards || '<div class="sd-storyboard-empty-inline">暂无画师串。</div>'}</section>
+    <section class="sd-card sd-storyboard-artist-head"><div><button type="button" class="sd-icon-btn sd-storyboard-artist-back" title="返回" aria-label="返回"><i class="fa-solid fa-arrow-left"></i></button><h3>ARTIST LIBRARY</h3><b>${artists.length}</b></div><div><input class="text_pole sd-storyboard-artist-search" value="${htmlEscape(state.artistSearch || '')}" placeholder="搜索画师串或标签"><button type="button" class="sd-icon-btn sd-storyboard-new-artist-collection" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button><button type="button" class="sd-icon-btn sd-storyboard-new-artist" title="新建画师串" aria-label="新建画师串"><i class="fa-solid fa-plus"></i></button></div></section>
+    <div class="sd-media-library-shell sd-media-artist-library">${sidebar}<main class="sd-media-library-main"><header><b>${htmlEscape(currentCollection?.name || '全部画师')}</b><span>${artists.length}</span></header><section class="sd-storyboard-artist-waterfall">${cards || '<div class="sd-storyboard-empty-inline">暂无画师串。</div>'}</section></main>${inspector}</div>
   </div>`;
 }
 
@@ -10971,32 +11105,36 @@ function renderStoryboardGallery(state) {
   const visible = groups.slice(0, storyboardGalleryVisibleCount);
   const currentCollection = collections.find((item) => item.id === storyboardGalleryOpenCollectionId) || null;
   const selectionMode = storyboardGallerySelectMode;
-  const collectionCards = !storyboardGalleryOpenCollectionId && !String(state.gallerySearch || '').trim()
-    ? collections.map((collection) => {
-      const covers = storyboardGalleryCollectionCovers(collection.id);
-      const count = allRecords.filter((item) => String(item.collectionId || '') === collection.id).length;
-      return `<article class="sd-storyboard-gallery-folder" data-storyboard-collection="${htmlEscape(collection.id)}">
-        <button type="button" class="sd-storyboard-gallery-folder-open" aria-label="打开合集 ${htmlEscape(collection.name)}"><span class="sd-storyboard-folder-covers">${[0, 1, 2, 3].map((index) => covers[index] ? `<img src="${htmlEscape(storyboardSafeUrl(covers[index].url))}" loading="lazy" alt="">` : '<i class="fa-solid fa-image"></i>').join('')}</span><span><b>${htmlEscape(collection.name)}</b><small>${count} 张</small></span></button>
-        <div><button type="button" class="sd-icon-btn sd-storyboard-gallery-folder-rename" title="重命名" aria-label="重命名"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-gallery-folder-delete" title="解散合集" aria-label="解散合集"><i class="fa-solid fa-trash-can"></i></button></div>
-      </article>`;
-    }).join('') : '';
+  if (storyboardGalleryInspectorRecordId && !allRecords.some((item) => item.id === storyboardGalleryInspectorRecordId)) storyboardGalleryInspectorRecordId = '';
+  const inspected = allRecords.find((item) => item.id === storyboardGalleryInspectorRecordId) || null;
+  const knownTags = uniqueClean(allRecords.flatMap((item) => item.tags || [])).sort((a, b) => a.localeCompare(b));
+  const sidebar = storyboardMediaSidebarMarkup({
+    allCount: allRecords.length,
+    collections,
+    currentId: currentCollection?.id || '',
+    countFor: (id) => allRecords.filter((item) => storyboardItemCollectionIds(item).includes(id)).length,
+    tags: knownTags,
+    scope: 'gallery',
+  });
+  const inspectorCollections = inspected ? new Set(storyboardItemCollectionIds(inspected)) : new Set();
+  const inspector = inspected ? `<details class="sd-media-inspector" open><summary><span>画面详情</span><i class="fa-solid fa-chevron-down"></i></summary><div><img src="${htmlEscape(storyboardSafeUrl(inspected.url))}" alt=""><h4>${htmlEscape(STORYBOARD_SOURCES[inspected.source]?.label || inspected.source || '分镜')}</h4><p>${htmlEscape(snip(inspected.finalPrompt || inspected.prompt || '', 240))}</p><label><span>标签</span>${storyboardMediaTagEditorMarkup(inspected.tags || [], knownTags, `gallery:${inspected.id}`)}</label><label><span>合集</span><div class="sd-media-collection-choices">${collections.map((item) => `<label class="sd-media-collection-choice"><input type="checkbox" class="sd-gallery-inspector-collection" value="${htmlEscape(item.id)}" ${inspectorCollections.has(item.id) ? 'checked' : ''}><span>${htmlEscape(item.name)}</span></label>`).join('') || '<small>暂无合集</small>'}</div></label><button type="button" class="sd-btn sd-storyboard-preview-inspected"><i class="fa-solid fa-expand"></i>查看大图</button></div></details>` : `<details class="sd-media-inspector" open><summary><span>画面详情</span><i class="fa-solid fa-chevron-down"></i></summary><div class="sd-storyboard-empty-inline">点击画面信息按钮后在此整理。</div></details>`;
   return `<div class="sd-storyboard-gallery-page">
-    <section class="sd-card sd-storyboard-gallery-head"><div class="sd-storyboard-gallery-title">${currentCollection ? '<button type="button" class="sd-icon-btn sd-storyboard-gallery-folder-back" title="返回阅片室" aria-label="返回阅片室"><i class="fa-solid fa-arrow-left"></i></button>' : ''}<span><span class="sd-storyboard-kicker">TAKES</span><h3>${currentCollection?.name || '阅片室'}</h3></span><b>${currentCollection ? records.length : allRecords.length}</b></div><div class="sd-storyboard-gallery-tools"><select class="text_pole sd-storyboard-gallery-source" aria-label="筛选模型"><option value="all">全部模型</option>${Object.values(STORYBOARD_SOURCES).map((item) => `<option value="${item.id}" ${state.gallerySource === item.id ? 'selected' : ''}>${item.label}</option>`).join('')}</select><input class="text_pole sd-storyboard-gallery-search" value="${htmlEscape(state.gallerySearch)}" placeholder="搜索画面、模型或画师"><button type="button" class="sd-icon-btn sd-storyboard-gallery-select-mode" aria-pressed="${storyboardGallerySelectMode}" title="${storyboardGallerySelectMode ? '完成多选' : '多选'}" aria-label="${storyboardGallerySelectMode ? '完成多选' : '多选'}"><i class="fa-solid ${storyboardGallerySelectMode ? 'fa-check' : 'fa-list-check'}"></i></button><button type="button" class="sd-icon-btn sd-storyboard-gallery-new-folder" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button></div></section>
-    ${collectionCards ? `<section class="sd-storyboard-gallery-folders">${collectionCards}</section>` : ''}
-    ${storyboardGallerySelectMode ? `<section class="sd-card sd-storyboard-gallery-bulk"><span>已选 <b>${storyboardGallerySelection.size}</b> 张</span><div><select class="text_pole sd-storyboard-gallery-move-target" aria-label="目标合集"><option value="">移出合集</option>${collections.map((item) => `<option value="${htmlEscape(item.id)}">${htmlEscape(item.name)}</option>`).join('')}</select><button type="button" class="sd-btn sd-storyboard-gallery-move-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>归入合集</button><button type="button" class="sd-btn sd-storyboard-gallery-select-all" ${records.length ? '' : 'disabled'}>全选结果</button><button type="button" class="sd-btn sd-danger sd-storyboard-gallery-delete-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>删除选中</button></div></section>` : ''}
+    <section class="sd-card sd-storyboard-gallery-head"><div class="sd-storyboard-gallery-title"><span><span class="sd-storyboard-kicker">TAKES</span><h3>${currentCollection?.name || '阅片室'}</h3></span><b>${records.length}</b></div><div class="sd-storyboard-gallery-tools"><select class="text_pole sd-storyboard-gallery-source" aria-label="筛选模型"><option value="all">全部模型</option>${Object.values(STORYBOARD_SOURCES).map((item) => `<option value="${item.id}" ${state.gallerySource === item.id ? 'selected' : ''}>${item.label}</option>`).join('')}</select><input class="text_pole sd-storyboard-gallery-search" value="${htmlEscape(state.gallerySearch)}" placeholder="搜索画面、模型、画师或标签"><button type="button" class="sd-icon-btn sd-storyboard-gallery-select-mode" aria-pressed="${storyboardGallerySelectMode}" title="${storyboardGallerySelectMode ? '完成多选' : '多选'}" aria-label="${storyboardGallerySelectMode ? '完成多选' : '多选'}"><i class="fa-solid ${storyboardGallerySelectMode ? 'fa-check' : 'fa-list-check'}"></i></button><button type="button" class="sd-icon-btn sd-storyboard-gallery-new-folder" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button></div></section>
+    <div class="sd-media-library-shell sd-media-gallery-library">${sidebar}<main class="sd-media-library-main"><header><b>${htmlEscape(currentCollection?.name || '全部画面')}</b><span>${records.length}</span></header>
+    ${storyboardGallerySelectMode ? `<section class="sd-card sd-storyboard-gallery-bulk"><span>已选 <b>${storyboardGallerySelection.size}</b> 张</span><div><select class="text_pole sd-storyboard-gallery-move-target" aria-label="目标合集"><option value="">移出全部合集</option>${collections.map((item) => `<option value="${htmlEscape(item.id)}">${htmlEscape(item.name)}</option>`).join('')}</select><button type="button" class="sd-btn sd-storyboard-gallery-move-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>加入合集</button><button type="button" class="sd-btn sd-storyboard-gallery-select-all" ${records.length ? '' : 'disabled'}>全选结果</button><button type="button" class="sd-btn sd-danger sd-storyboard-gallery-delete-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>删除选中</button></div></section>` : ''}
     ${groups.length ? `<div class="sd-storyboard-gallery">${visible.map((group) => {
       const record = group.variants[0];
       const url = storyboardSafeUrl(record.url);
       const status = storyboardRecordStatus(record);
       const memberIds = group.variants.map((item) => item.id);
       const selected = memberIds.length > 0 && memberIds.every((id) => storyboardGallerySelection.has(id));
-      return `<article class="sd-storyboard-gallery-card ${selected ? 'selected' : ''} ${group.variants.length > 1 ? 'is-stack' : ''}" data-storyboard-record="${htmlEscape(record.id)}" data-storyboard-group="${htmlEscape(group.id)}" data-storyboard-members="${htmlEscape(memberIds.join(','))}">
+      return `<article class="sd-storyboard-gallery-card ${selected ? 'selected' : ''} ${storyboardGalleryInspectorRecordId === record.id ? 'inspected' : ''} ${group.variants.length > 1 ? 'is-stack' : ''}" data-storyboard-record="${htmlEscape(record.id)}" data-storyboard-group="${htmlEscape(group.id)}" data-storyboard-members="${htmlEscape(memberIds.join(','))}">
         ${selectionMode ? `<button type="button" class="sd-storyboard-gallery-check" aria-label="${selected ? '取消选择' : '选择'}"><i class="fa-solid ${selected ? 'fa-circle-check' : 'fa-circle'}"></i></button>` : ''}
         <button type="button" class="sd-storyboard-preview-record" ${url ? '' : 'disabled'}>${url ? `<img src="${htmlEscape(url)}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 40))}">` : '<span class="sd-storyboard-image-missing"><i class="fa-solid fa-image"></i></span>'}${group.variants.length > 1 ? `<span class="sd-storyboard-stack-count">${group.variants.length}</span>` : ''}</button>
-        <div class="sd-storyboard-gallery-caption"><span>${htmlEscape(STORYBOARD_SOURCES[record.source]?.label || record.source || '分镜')}</span><small>${htmlEscape(status || formatDateTime(record.createdAt))}</small><p>${htmlEscape(snip(record.finalPrompt || record.prompt || '', 110))}</p></div>
-        <div class="sd-storyboard-gallery-actions"><button type="button" class="sd-icon-btn sd-storyboard-download" title="下载当前图片" aria-label="下载当前图片"><i class="fa-solid fa-download"></i></button>${Number.isInteger(record.floor) ? `<button type="button" class="sd-icon-btn sd-storyboard-inline-toggle" title="${record.inline === false ? '插回正文' : '移出正文'}" aria-label="${record.inline === false ? '插回正文' : '移出正文'}"><i class="fa-solid ${record.inline === false ? 'fa-eye' : 'fa-eye-slash'}"></i></button>` : ''}<button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-record" title="删除当前图片" aria-label="删除当前图片"><i class="fa-solid fa-trash-can"></i></button></div>
+        <div class="sd-storyboard-gallery-caption"><span>${htmlEscape(STORYBOARD_SOURCES[record.source]?.label || record.source || '分镜')}</span><small>${htmlEscape(status || formatDateTime(record.createdAt))}</small><p>${htmlEscape(snip(record.finalPrompt || record.prompt || '', 110))}</p>${record.tags?.length ? `<div class="sd-storyboard-gallery-card-tags">${record.tags.slice(0, 4).map((tag) => `<em>${htmlEscape(tag)}</em>`).join('')}</div>` : ''}</div>
+        <div class="sd-storyboard-gallery-actions"><button type="button" class="sd-icon-btn sd-storyboard-gallery-inspect" title="整理详情" aria-label="整理详情"><i class="fa-solid fa-circle-info"></i></button><button type="button" class="sd-icon-btn sd-storyboard-download" title="下载当前图片" aria-label="下载当前图片"><i class="fa-solid fa-download"></i></button>${Number.isInteger(record.floor) ? `<button type="button" class="sd-icon-btn sd-storyboard-inline-toggle" title="${record.inline === false ? '插回正文' : '移出正文'}" aria-label="${record.inline === false ? '插回正文' : '移出正文'}"><i class="fa-solid ${record.inline === false ? 'fa-eye' : 'fa-eye-slash'}"></i></button>` : ''}<button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-record" title="删除当前图片" aria-label="删除当前图片"><i class="fa-solid fa-trash-can"></i></button></div>
       </article>`;
-    }).join('')}</div>${groups.length > visible.length ? `<button type="button" class="sd-btn sd-storyboard-gallery-more">再显示 ${Math.min(40, groups.length - visible.length)} 组</button>` : ''}` : `${collectionCards ? '' : `<section class="sd-card sd-storyboard-empty"><i class="fa-solid fa-film"></i><p>${allRecords.length ? '这里暂时没有符合条件的画面。' : '阅片室还是空的。生成后的画面会完整保留在这里。'}</p></section>`}`}
+    }).join('')}</div>${groups.length > visible.length ? `<button type="button" class="sd-btn sd-storyboard-gallery-more">再显示 ${Math.min(40, groups.length - visible.length)} 组</button>` : ''}` : `<section class="sd-card sd-storyboard-empty"><i class="fa-solid fa-film"></i><p>${allRecords.length ? '这里暂时没有符合条件的画面。' : '阅片室还是空的。生成后的画面会完整保留在这里。'}</p></section>`}</main>${inspector}</div>
   </div>`;
 }
 
@@ -11125,7 +11263,7 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
   const messageRef = message ? createStoryboardMessageReference({ message, chatKey: String(getChatKey() || ''), floor }) : null;
   const snapshot = {
     source: sourceId, prompt, negative,
-    artistString: String(state.promptDraft?.artistString || ''), contentRating: state.contentRating,
+    artistString: String(payload.artistString || state.promptDraft?.artistString || ''), artistPresetId: storyboardSelectedArtistPreset(state)?.id || '', contentRating: state.contentRating,
     promptMode: state.promptMode,
     promptLocked: Boolean(state.promptDraft?.userEditedCompiled),
     target: state.target, floor, inlineByDefault: state.inlineByDefault !== false,
@@ -11163,7 +11301,7 @@ function storyboardStartLog(job) {
     error: '', recordId: '', recordIds: [], pipelineId: '', queuedAt: now, startedAt: 0, finishedAt: 0, durationMs: 0,
     attempt: job.attempt, snapshot: clone({
       source: job.source, prompt: job.prompt, negative: job.negative, target: job.target, floor: job.floor,
-      artistString: job.artistString, contentRating: job.contentRating,
+      artistString: job.artistString, artistPresetId: job.artistPresetId || '', contentRating: job.contentRating,
       promptMode: job.promptMode, promptLocked: Boolean(job.promptLocked),
       inlineByDefault: job.inlineByDefault, chatKey: job.chatKey,
       messageRef: job.messageRef, messageHash: job.messageHash, swipeId: job.swipeId,
@@ -12316,8 +12454,8 @@ function storyboardCreateRecord(job, log, url, index, anchorState, response) {
   const { floor, message } = anchorState;
   return {
     id: uid('shot'), groupId: job.id, variantRootId: job.variantRootId || job.planShotId || job.id,
-    collectionId: job.collectionId || '', planId: job.planId || '', planShotId: job.planShotId || '', imageIndex: index, url, prompt: job.prompt, finalPrompt: job.payload?.prompt,
-    artistString: job.artistString || job.payload?.artistString || '', contentRating: job.contentRating || 'sfw',
+    collectionId: job.collectionId || '', collectionIds: storyboardItemCollectionIds(job), tags: uniqueClean(job.tags || []).slice(0, 30), planId: job.planId || '', planShotId: job.planShotId || '', imageIndex: index, url, prompt: job.prompt, finalPrompt: job.payload?.prompt,
+    artistString: job.artistString || job.payload?.artistString || '', artistPresetId: job.artistPresetId || '', contentRating: job.contentRating || 'sfw',
     negative: job.negative, effectiveNegative: job.payload?.negative || '', source: job.source,
     floor, inline: Boolean(job.inlineByDefault && Number.isInteger(floor)), paragraphAnchor: Number.isInteger(floor) ? clone(job.paragraphAnchor || null) : null,
     messageRef: job.messageRef ? clone(job.messageRef) : null,
@@ -12513,7 +12651,7 @@ function storyboardInlineRecordMarkup(record) {
   return `<figure data-storyboard-record="${htmlEscape(record.id)}">
     <button type="button" class="sd-storyboard-inline-preview" data-storyboard-chat-action="preview" title="查看画面"><img src="${htmlEscape(url)}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 48))}"></button>
     <button type="button" class="sd-storyboard-inline-more" data-storyboard-chat-action="toggle-actions" title="更多操作" aria-label="更多操作" aria-expanded="false"><i class="fa-solid fa-ellipsis"></i></button>
-    <div class="sd-storyboard-inline-actions" aria-hidden="true"><button type="button" data-storyboard-chat-action="edit" title="编辑当前提示词" aria-label="编辑当前提示词"><i class="fa-solid fa-pen"></i></button><button type="button" data-storyboard-chat-action="redraw" title="重新生成" aria-label="重新生成"><i class="fa-solid fa-rotate-right" data-qm-icon="image-regenerate"></i></button><button type="button" data-storyboard-chat-action="collapse" title="折叠正文插图" aria-label="折叠正文插图"><i class="fa-solid fa-compress"></i></button><button type="button" data-storyboard-chat-action="copy" title="复制提示词" aria-label="复制提示词"><i class="fa-solid fa-copy"></i></button><button type="button" data-storyboard-chat-action="download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button><button type="button" data-storyboard-chat-action="detach" title="移出正文" aria-label="移出正文"><i class="fa-solid fa-eye-slash"></i></button></div>
+    <div class="sd-storyboard-inline-actions" aria-hidden="true"><button type="button" data-storyboard-chat-action="edit" title="编辑当前提示词" aria-label="编辑当前提示词"><i class="fa-solid fa-pen"></i></button><button type="button" data-storyboard-chat-action="artist" title="更换画师并重绘" aria-label="更换画师并重绘"><i class="fa-solid fa-palette"></i></button><button type="button" data-storyboard-chat-action="redraw" title="重新生成" aria-label="重新生成"><i class="fa-solid fa-rotate-right" data-qm-icon="image-regenerate"></i></button><button type="button" data-storyboard-chat-action="collapse" title="折叠正文插图" aria-label="折叠正文插图"><i class="fa-solid fa-compress"></i></button><button type="button" data-storyboard-chat-action="copy" title="复制提示词" aria-label="复制提示词"><i class="fa-solid fa-copy"></i></button><button type="button" data-storyboard-chat-action="download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button><button type="button" data-storyboard-chat-action="detach" title="移出正文" aria-label="移出正文"><i class="fa-solid fa-eye-slash"></i></button></div>
   </figure>`;
 }
 
@@ -12781,7 +12919,46 @@ function storyboardRelinkRedrawSnapshot(snapshot, record, floor, message, paragr
   return snapshot;
 }
 
-async function storyboardRedrawRecord(record) {
+async function storyboardChooseArtistForRecord(record) {
+  const state = storyboardState();
+  const artists = state.artistPresets.slice().sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+  if (!artists.length) {
+    toast('画师库还是空的，请先在分镜中建立画师串。', 'info');
+    return null;
+  }
+  const currentId = record.artistPresetId || artists.find((item) => item.value === record.artistString)?.id || '';
+  const context = ctx();
+  if (context.Popup && context.POPUP_TYPE) {
+    const wrap = document.createElement('div');
+    wrap.className = 'sd-storyboard-inline-artist-picker';
+    wrap.innerHTML = `<header><b>换画师重绘</b><small>沿用当前画面的提示词与绘制参数，只替换画师层</small></header><input class="text_pole sd-inline-artist-search" placeholder="搜索名称或标签"><div class="sd-inline-artist-options"><label class="sd-inline-artist-option ${currentId ? '' : 'selected'}"><input type="radio" name="sd-inline-artist" value="" ${currentId ? '' : 'checked'}><span class="sd-inline-artist-empty"><i class="fa-solid fa-circle-minus"></i></span><span><b>不使用画师串</b><small>保留纯画面提示词</small></span></label>${artists.map((artist) => {
+      const preview = storyboardSafeUrl(artist.previewUrl);
+      return `<label class="sd-inline-artist-option ${currentId === artist.id ? 'selected' : ''}" data-search="${htmlEscape(`${artist.name} ${(artist.tags || []).join(' ')}`.toLocaleLowerCase())}"><input type="radio" name="sd-inline-artist" value="${htmlEscape(artist.id)}" ${currentId === artist.id ? 'checked' : ''}>${preview ? `<img src="${htmlEscape(preview)}" alt="">` : `<span class="sd-inline-artist-empty"><b>${htmlEscape(artist.name.slice(0, 2))}</b></span>`}<span><b>${htmlEscape(artist.name)}</b><small>${htmlEscape((artist.tags || []).slice(0, 4).join(' · ') || snip(artist.value, 46))}</small></span></label>`;
+    }).join('')}</div>`;
+    applyQianmuIcons(wrap);
+    wrap.querySelectorAll('input[name="sd-inline-artist"]').forEach((input) => input.addEventListener('change', () => {
+      wrap.querySelectorAll('.sd-inline-artist-option').forEach((item) => item.classList.toggle('selected', item.contains(input)));
+    }));
+    wrap.querySelector('.sd-inline-artist-search')?.addEventListener('input', (event) => {
+      const query = String(event.target.value || '').trim().toLocaleLowerCase();
+      wrap.querySelectorAll('.sd-inline-artist-option[data-search]').forEach((item) => { item.hidden = Boolean(query && !item.dataset.search.includes(query)); });
+    });
+    try {
+      const popup = new context.Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '换画师重绘', cancelButton: '取消' });
+      const confirmed = await popup.show();
+      if (!confirmed) return null;
+      const id = String(wrap.querySelector('input[name="sd-inline-artist"]:checked')?.value || '');
+      return { artist: artists.find((item) => item.id === id) || null };
+    } catch (_) { return null; }
+  }
+  const answer = await promptInput('换画师重绘', `输入序号：\n0. 不使用画师串\n${artists.map((item, index) => `${index + 1}. ${item.name}`).join('\n')}`, currentId ? String(Math.max(0, artists.findIndex((item) => item.id === currentId)) + 1) : '0');
+  if (answer == null) return null;
+  const index = Number(answer);
+  if (!Number.isInteger(index) || index < 0 || index > artists.length) return toast('请输入列表中的有效序号。', 'warning');
+  return { artist: index ? artists[index - 1] : null };
+}
+
+async function storyboardRedrawRecord(record, { artistPreset = undefined } = {}) {
   const state = storyboardState();
   if (!state.enabled) return toast('请先启用分镜。', 'warning');
   storyboardReconcileGalleryLinks({ persist: false });
@@ -12798,10 +12975,22 @@ async function storyboardRedrawRecord(record) {
     return toast('这张旧图缺少完整生成设置，已载入镜头台，请确认后重绘。', 'info');
   }
 
-  const finalPrompt = String(record.finalPrompt || record.prompt || snapshot.payload.prompt || snapshot.prompt || '').trim();
+  const replacingArtist = artistPreset !== undefined;
+  const base = replacingArtist ? storyboardBasePromptsForArtistRedraw(record, snapshot) : null;
+  const composed = replacingArtist
+    ? storyboardPromptsForArtist(state, artistPreset, base.sourceId, base.modelId, { prompt: base.prompt, negative: base.negative, honorBaked: false })
+    : null;
+  const finalPrompt = String(composed?.prompt || record.finalPrompt || record.prompt || snapshot.payload.prompt || snapshot.prompt || '').trim();
   const paragraphIndex = record.paragraphAnchor?.paragraphIndex ?? snapshot.paragraphAnchor?.paragraphIndex ?? 0;
-  snapshot.prompt = finalPrompt;
+  snapshot.prompt = replacingArtist ? base.prompt : finalPrompt;
+  snapshot.negative = replacingArtist ? base.negative : snapshot.negative;
   snapshot.payload.prompt = finalPrompt;
+  if (replacingArtist) {
+    snapshot.payload.negative = getStoryboardCapabilities(base.sourceId, base.modelId).negative ? composed.negative : '';
+    snapshot.payload.artistString = composed.artistString;
+    snapshot.artistString = composed.artistString;
+    snapshot.artistPresetId = artistPreset?.id || '';
+  }
   snapshot.promptMode = 'manual';
   snapshot.promptLocked = true;
 
@@ -12812,7 +13001,8 @@ async function storyboardRedrawRecord(record) {
   const job = storyboardJobFromLog(redrawLog);
   if (!job) return toast('无法恢复这张图的生成设置。', 'warning');
   job.variantRootId = storyboardGalleryGroupId(record);
-  job.collectionId = String(record.collectionId || '');
+  storyboardAssignCollectionIds(job, storyboardItemCollectionIds(record));
+  job.tags = uniqueClean(record.tags || []).slice(0, 30);
   job.compilerStages = [];
   return storyboardQueueJob(job);
 }
@@ -12967,6 +13157,11 @@ async function storyboardOnChatClick(event) {
     return toast('提示词已复制。', 'success');
   }
   if (button.dataset.storyboardChatAction === 'edit') return storyboardEditPrompt({ record });
+  if (button.dataset.storyboardChatAction === 'artist') {
+    const choice = await storyboardChooseArtistForRecord(record);
+    if (choice) return storyboardRedrawRecord(record, { artistPreset: choice.artist });
+    return;
+  }
   if (button.dataset.storyboardChatAction === 'redraw') {
     return storyboardRedrawRecord(record);
   }
@@ -13011,6 +13206,7 @@ function storyboardUnbindChat() {
 function bindStoryboardTabEvents(root) {
   if (activeTab !== 'imagegen') return;
   const state = storyboardState();
+  storyboardBindMediaTagEditors(root);
   root.querySelector('.sd-storyboard-exit')?.addEventListener('click', () => {
     if (state.view === 'create') storyboardCaptureWorkbench(root);
     storyboardCloseLightbox();
@@ -13172,7 +13368,8 @@ function bindStoryboardTabEvents(root) {
     state.promptCompiler.excludedTags = state.promptCompiler.tagRules.filter((rule) => rule.action === 'remove').map((rule) => rule.name).join(', ');
     saveSettings(); renderModal();
   });
-  root.querySelector('.sd-storyboard-refresh-worldbooks')?.addEventListener('click', async () => {
+  root.querySelector('.sd-storyboard-refresh-worldbooks')?.addEventListener('click', async (event) => {
+    event.preventDefault(); event.stopPropagation();
     await storyboardWarmCompilerWorldEntries({ rerender: true, force: true });
   });
   root.querySelectorAll('.sd-storyboard-toggle-worldbook').forEach((input) => input.addEventListener('change', async () => {
@@ -13214,7 +13411,6 @@ function bindStoryboardTabEvents(root) {
     storyboardCaptureWorkbench(root); state.view = 'artists'; state.editingArtistPresetId = state.selectedArtistPresetId; saveSettings(); renderModal();
   });
   root.querySelector('.sd-storyboard-artist-back')?.addEventListener('click', () => { state.view = 'create'; state.editingArtistPresetId = ''; state.artistCollectionId = ''; saveSettings(); renderModal(); });
-  root.querySelector('.sd-storyboard-artist-folder-back')?.addEventListener('click', () => { state.artistCollectionId = ''; saveSettings(); renderModal(); });
   root.querySelector('.sd-storyboard-new-artist')?.addEventListener('click', () => { state.editingArtistPresetId = 'new'; saveSettings(); renderModal(); });
   root.querySelector('.sd-storyboard-new-artist-collection')?.addEventListener('click', async () => {
     const answer = await promptInput('新建画师合集', '填写合集名称。', '');
@@ -13254,14 +13450,14 @@ function bindStoryboardTabEvents(root) {
     const now = Date.now();
     let item = state.artistPresets.find((entry) => entry.id === state.editingArtistPresetId) || null;
     if (!item) { item = { id: uid('artist'), createdAt: now }; state.artistPresets.push(item); }
-    const tags = uniqueClean(String(root.querySelector('.sd-storyboard-artist-edit-tags')?.value || '').split(/[,，\n]+/)).slice(0, 30).map((tag) => tag.slice(0, 80));
-    const collectionId = String(root.querySelector('.sd-storyboard-artist-edit-collection')?.value || '');
+    const tags = Array.from(root.querySelectorAll('[data-media-tag-editor="artist-draft"] [data-media-tag]')).map((chip) => String(chip.dataset.mediaTag || '')).filter(Boolean).slice(0, 30);
+    const collectionIds = Array.from(root.querySelectorAll('.sd-media-collection-choice input:checked')).map((input) => String(input.value || '')).filter((id) => state.artistCollections.some((entry) => entry.id === id)).slice(0, 30);
     Object.assign(item, {
       name, value,
       positivePrompt: String(root.querySelector('.sd-storyboard-artist-edit-positive')?.value || '').trim().slice(0, 12000),
       negativePrompt: String(root.querySelector('.sd-storyboard-artist-edit-negative')?.value || '').trim().slice(0, 12000),
       previewUrl: String(root.querySelector('.sd-storyboard-artist-edit-preview')?.value || '').trim().slice(0, 2_500_000),
-      tags, collectionId: state.artistCollections.some((entry) => entry.id === collectionId) ? collectionId : '', updatedAt: now,
+      tags, collectionIds, collectionId: collectionIds[0] || '', updatedAt: now,
     });
     state.selectedArtistPresetId = item.id;
     state.promptDraft.artistString = item.value;
@@ -13296,23 +13492,29 @@ function bindStoryboardTabEvents(root) {
       state.editingArtistPresetId = ''; saveSettings(); renderModal();
     });
   });
-  root.querySelectorAll('[data-storyboard-artist-collection]').forEach((folder) => {
-    const collection = state.artistCollections.find((item) => item.id === folder.dataset.storyboardArtistCollection);
-    folder.querySelector('.sd-storyboard-artist-folder-open')?.addEventListener('click', () => { if (collection) { state.artistCollectionId = collection.id; saveSettings(); renderModal(); } });
-    folder.querySelector('.sd-storyboard-rename-artist-collection')?.addEventListener('click', async () => {
+  root.querySelector('.sd-media-artist-library .sd-media-all')?.addEventListener('click', () => { state.artistCollectionId = ''; saveSettings(); renderModal(); });
+  root.querySelectorAll('[data-artist-collection]').forEach((folder) => {
+    const collection = state.artistCollections.find((item) => item.id === folder.dataset.artistCollection);
+    folder.querySelector('.sd-media-collection-open')?.addEventListener('click', () => { if (collection) { state.artistCollectionId = collection.id; saveSettings(); renderModal(); } });
+    folder.querySelector('.sd-media-collection-rename')?.addEventListener('click', async () => {
       if (!collection) return;
       const answer = await promptInput('重命名画师合集', '填写新名称。', collection.name);
       const name = String(answer ?? '').trim().slice(0, 80);
       if (!name) return;
       collection.name = name; collection.updatedAt = Date.now(); saveSettings(); renderModal();
     });
-    folder.querySelector('.sd-storyboard-delete-artist-collection')?.addEventListener('click', async () => {
+    folder.querySelector('.sd-media-collection-delete')?.addEventListener('click', async () => {
       if (!collection || !await confirmDialog('解散画师合集', `解散「${collection.name}」？画师串不会删除。`)) return;
       state.artistCollections = state.artistCollections.filter((item) => item.id !== collection.id);
-      state.artistPresets.forEach((item) => { if (item.collectionId === collection.id) item.collectionId = ''; });
+      state.artistPresets.forEach((item) => storyboardAssignCollectionIds(item, storyboardItemCollectionIds(item).filter((id) => id !== collection.id)));
       if (state.artistCollectionId === collection.id) state.artistCollectionId = '';
       saveSettings(); renderModal();
     });
+  });
+  root.querySelectorAll('[data-artist-tag-filter]').forEach((button) => button.addEventListener('click', () => { state.artistSearch = button.dataset.artistTagFilter || ''; saveSettings(); renderModal(); }));
+  root.querySelector('.sd-storyboard-inspector-edit-artist')?.addEventListener('click', () => {
+    if (!state.selectedArtistPresetId) return;
+    state.editingArtistPresetId = state.selectedArtistPresetId; saveSettings(); renderModal();
   });
   root.querySelectorAll('[data-storyboard-add-tag]').forEach((button) => button.addEventListener('click', () => storyboardAddLibraryTag(button.dataset.storyboardAddTag)));
   root.querySelectorAll('[data-storyboard-asset-section]').forEach((button) => button.addEventListener('click', () => {
@@ -13613,10 +13815,8 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-gallery-source')?.addEventListener('change', (event) => {
     state.gallerySource = event.target.value || 'all'; storyboardGalleryVisibleCount = 40; saveSettings(); renderModal();
   });
-  root.querySelector('.sd-storyboard-gallery-folder-back')?.addEventListener('click', () => {
-    storyboardGalleryOpenCollectionId = '';
-    storyboardGalleryVisibleCount = 40;
-    renderModal();
+  root.querySelector('.sd-media-gallery-library .sd-media-all')?.addEventListener('click', () => {
+    storyboardGalleryOpenCollectionId = ''; storyboardGalleryVisibleCount = 40; renderModal();
   });
   root.querySelector('.sd-storyboard-gallery-new-folder')?.addEventListener('click', async () => {
     const answer = await promptInput('新建阅片合集', '输入合集名称。', '');
@@ -13627,15 +13827,15 @@ function bindStoryboardTabEvents(root) {
     collections.push({ id: uid('shotcollection'), name, createdAt: Date.now(), updatedAt: Date.now() });
     await saveMetadata(); renderModal();
   });
-  root.querySelectorAll('[data-storyboard-collection]').forEach((card) => {
-    const collection = storyboardGalleryCollections().find((item) => item.id === card.dataset.storyboardCollection);
-    card.querySelector('.sd-storyboard-gallery-folder-open')?.addEventListener('click', () => {
+  root.querySelectorAll('[data-gallery-collection]').forEach((card) => {
+    const collection = storyboardGalleryCollections().find((item) => item.id === card.dataset.galleryCollection);
+    card.querySelector('.sd-media-collection-open')?.addEventListener('click', () => {
       if (!collection) return;
       storyboardGalleryOpenCollectionId = collection.id;
       storyboardGalleryVisibleCount = 40;
       renderModal();
     });
-    card.querySelector('.sd-storyboard-gallery-folder-rename')?.addEventListener('click', async () => {
+    card.querySelector('.sd-media-collection-rename')?.addEventListener('click', async () => {
       if (!collection) return;
       const answer = await promptInput('重命名阅片合集', '输入新的合集名称。', collection.name);
       const name = String(answer ?? '').trim().slice(0, 80);
@@ -13644,15 +13844,28 @@ function bindStoryboardTabEvents(root) {
       collection.name = name; collection.updatedAt = Date.now();
       await saveMetadata(); renderModal();
     });
-    card.querySelector('.sd-storyboard-gallery-folder-delete')?.addEventListener('click', async () => {
+    card.querySelector('.sd-media-collection-delete')?.addEventListener('click', async () => {
       if (!collection || !await confirmDialog('解散阅片合集', `确定解散「${collection.name}」？图片会回到阅片室，不会被删除。`)) return;
-      storyboardGalleryRecords().forEach((record) => { if (record.collectionId === collection.id) record.collectionId = ''; });
+      storyboardGalleryRecords().forEach((record) => storyboardAssignCollectionIds(record, storyboardItemCollectionIds(record).filter((id) => id !== collection.id)));
       const store = getChatStore();
       store.storyboardCollections = storyboardGalleryCollections().filter((item) => item.id !== collection.id);
       if (storyboardGalleryOpenCollectionId === collection.id) storyboardGalleryOpenCollectionId = '';
       await saveMetadata(); renderModal();
     });
   });
+  root.querySelectorAll('[data-gallery-tag-filter]').forEach((button) => button.addEventListener('click', () => {
+    state.gallerySearch = button.dataset.galleryTagFilter || ''; storyboardGalleryVisibleCount = 40; saveSettings(); renderModal();
+  }));
+  root.querySelector('.sd-storyboard-preview-inspected')?.addEventListener('click', () => {
+    const record = storyboardGalleryRecords().find((item) => item.id === storyboardGalleryInspectorRecordId);
+    if (record) storyboardOpenLightbox(record);
+  });
+  root.querySelectorAll('.sd-gallery-inspector-collection').forEach((input) => input.addEventListener('change', async () => {
+    const record = storyboardGalleryRecords().find((item) => item.id === storyboardGalleryInspectorRecordId);
+    if (!record) return;
+    storyboardAssignCollectionIds(record, Array.from(root.querySelectorAll('.sd-gallery-inspector-collection:checked')).map((item) => item.value));
+    await saveMetadata();
+  }));
   root.querySelector('.sd-storyboard-gallery-select-mode')?.addEventListener('click', () => {
     storyboardGallerySelectMode = !storyboardGallerySelectMode;
     if (!storyboardGallerySelectMode) storyboardGallerySelection.clear();
@@ -13669,6 +13882,7 @@ function bindStoryboardTabEvents(root) {
     if (!count || !await confirmDialog('删除选中图片', `确定删除选中的 ${count} 条图片记录？SillyTavern 图片文件本身不会被清除。`)) return;
     const store = getChatStore();
     store.storyboardImages = storyboardGalleryRecords().filter((item) => !storyboardGallerySelection.has(item.id));
+    if (storyboardGallerySelection.has(storyboardGalleryInspectorRecordId)) storyboardGalleryInspectorRecordId = '';
     storyboardGallerySelection.clear(); storyboardGallerySelectMode = false;
     await saveMetadata(); storyboardRenderInlineImages(); renderModal();
   });
@@ -13676,11 +13890,12 @@ function bindStoryboardTabEvents(root) {
     if (!storyboardGallerySelection.size) return;
     const collectionId = String(root.querySelector('.sd-storyboard-gallery-move-target')?.value || '');
     storyboardGalleryRecords().forEach((record) => {
-      if (storyboardGallerySelection.has(record.id)) record.collectionId = collectionId;
+      if (!storyboardGallerySelection.has(record.id)) return;
+      storyboardAssignCollectionIds(record, collectionId ? [...storyboardItemCollectionIds(record), collectionId] : []);
     });
     const moved = storyboardGallerySelection.size;
     storyboardGallerySelection.clear(); storyboardGallerySelectMode = false;
-    await saveMetadata(); toast(collectionId ? `已将 ${moved} 张图片归入合集。` : `已将 ${moved} 张图片移出合集。`, 'success'); renderModal();
+    await saveMetadata(); toast(collectionId ? `已将 ${moved} 张图片加入合集。` : `已将 ${moved} 张图片移出全部合集。`, 'success'); renderModal();
   });
   root.querySelector('.sd-storyboard-gallery-more')?.addEventListener('click', () => { storyboardGalleryVisibleCount += 40; renderModal(); });
   root.querySelectorAll('.sd-storyboard-gallery-card[data-storyboard-record]').forEach((card) => {
@@ -13702,6 +13917,10 @@ function bindStoryboardTabEvents(root) {
       else toggleSelection();
     });
     card.querySelector('.sd-storyboard-download')?.addEventListener('click', () => void storyboardDownloadRecord(record));
+    card.querySelector('.sd-storyboard-gallery-inspect')?.addEventListener('click', () => {
+      if (!record) return;
+      storyboardGalleryInspectorRecordId = record.id; renderModal();
+    });
     card.querySelector('.sd-storyboard-inline-toggle')?.addEventListener('click', async () => {
       if (!record) return;
       record.inline = record.inline === false;
@@ -13710,6 +13929,7 @@ function bindStoryboardTabEvents(root) {
     card.querySelector('.sd-storyboard-delete-record')?.addEventListener('click', async () => {
       if (!record || !await confirmDialog('删除图片', `${variants.length > 1 ? '只删除当前显示的这一张；同组其他版本会继续保留。' : '确定删除这张图片记录？'} SillyTavern 图片文件本身不会被清除。`)) return;
       const store = getChatStore(); store.storyboardImages = store.storyboardImages.filter((item) => item.id !== record.id);
+      if (storyboardGalleryInspectorRecordId === record.id) storyboardGalleryInspectorRecordId = '';
       storyboardGallerySelection.delete(record.id);
       await saveMetadata(); storyboardRenderInlineImages(); renderModal();
     });
