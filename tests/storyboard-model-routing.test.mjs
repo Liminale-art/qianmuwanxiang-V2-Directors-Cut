@@ -67,15 +67,17 @@ const normalized = normalizeStoryboardState({
     enabled: true,
     rules: [{
       id: 'route',
-      target: { providerId: 'novel', modelId: 'nai-diffusion-4-5-full', connectionPresetId: 'v45-api', parameterPresetId: 'v5-style' },
+      target: { providerId: 'novel', modelId: 'nai-diffusion-4-5-full', connectionPresetId: 'v5-api', parameterPresetId: 'v5-style' },
     }],
   },
 });
-assert.equal(normalized.routing.rules[0].target.connectionPresetId, 'v45-api');
+assert.equal(normalized.routing.rules[0].target.connectionPresetId, 'v5-api', 'a channel preset must remain selectable across models in the same provider');
 assert.equal(normalized.routing.rules[0].target.parameterPresetId, '', 'a route cannot apply a style saved for another model');
 assert.equal(Object.hasOwn(normalized.routing.rules[0], 'sensitive'), false, 'content sensitivity is internal metadata, not a routing switch');
 
-assert.match(browserSource, /modelPresets[\s\S]*item\.model === profile\.model/, 'API presets must be isolated by concrete model');
+assert.doesNotMatch(browserSource, /modelPresets[\s\S]*item\.model === profile\.model/, 'API presets must not be filtered by concrete model');
+assert.match(browserSource, /const channelPresets = connection\.group\?\.presets \|\| \[\]/, 'API presets must be listed by image channel');
+assert.match(browserSource, /const requestedModel = String\(legacy\.model \|\| STORYBOARD_PROVIDER_REGISTRY/, 'the selected image model must come from drawing settings, not the connection preset');
 assert.doesNotMatch(browserSource, /data-storyboard-routing-mode=/, 'the old single-model versus ensemble selector must be removed');
 assert.match(browserSource, /class="sd-storyboard-routing-enabled"/, 'the router needs one master switch');
 assert.match(browserSource, /class="text_pole sd-storyboard-route-model"/, 'each shot assignment must choose a concrete model');

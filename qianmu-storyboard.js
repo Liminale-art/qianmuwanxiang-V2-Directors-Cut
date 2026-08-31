@@ -355,7 +355,7 @@ function normalizeRouting(value, catalogs = {}) {
     const requestedConnection = cleanId(input.connectionPresetId), requestedParameters = cleanId(input.parameterPresetId);
     const connectionPreset = hasConnectionCatalog && requestedConnection ? catalogs.connections[providerId]?.presets?.find((preset) => preset.id === requestedConnection) : null;
     const connectionPresetId = hasConnectionCatalog && requestedConnection && !connectionPreset ? '' : requestedConnection;
-    const requestedModel = str(input.modelId || connectionPreset?.model, 240);
+    const requestedModel = str(input.modelId, 240);
     const modelId = getStoryboardModel(providerId, requestedModel) ? requestedModel : getStoryboardProvider(providerId).defaultModel;
     const parameterPresetId = hasParameterCatalog && requestedParameters && !catalogs.parameterPresets.some((preset) => preset.id === requestedParameters && preset.source === providerId && (!preset.profile?.model || preset.profile.model === modelId)) ? '' : requestedParameters;
     return { providerId, modelId, connectionPresetId, parameterPresetId };
