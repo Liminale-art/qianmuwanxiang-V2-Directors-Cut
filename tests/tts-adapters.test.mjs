@@ -21,11 +21,11 @@ try {
   });
   assert.equal(await doubao.blob.text(), 'doubao-audio');
   assert.equal(doubao.blob.type, 'audio/ogg');
-  assert.equal(request.url, '/api/plugins/qianmu-tts/doubao/synthesize');
-  const proxyRequest = JSON.parse(request.init.body);
-  assert.equal(proxyRequest.apiKey, 'doubao-key');
-  assert.equal(proxyRequest.resourceId, 'seed-tts-2.0');
-  const doubaoBody = proxyRequest.request;
+  assert.equal(request.url, 'https://openspeech.bytedance.com/api/v3/tts/unidirectional');
+  assert.equal(request.init.headers['X-Api-Key'], 'doubao-key');
+  assert.equal(request.init.headers['X-Api-Resource-Id'], 'seed-tts-2.0');
+  assert.ok(request.init.headers['X-Api-Request-Id']);
+  const doubaoBody = JSON.parse(request.init.body);
   assert.equal(doubaoBody.req_params.speaker, 'voice-db');
   assert.equal(doubaoBody.req_params.audio_params.speech_rate, 20);
   assert.equal(doubaoBody.req_params.audio_params.sample_rate, 24000);
@@ -52,13 +52,14 @@ try {
 
   const detectedResources = [];
   globalThis.fetch = async (_url, init) => {
-    const outer = JSON.parse(init.body);
-    detectedResources.push(outer.resourceId);
-    if (outer.resourceId === 'seed-tts-2.0') {
+    const body = JSON.parse(init.body);
+    const resourceId = init.headers['X-Api-Resource-Id'];
+    detectedResources.push(resourceId);
+    if (resourceId === 'seed-tts-2.0') {
       return new Response(JSON.stringify({ code: 55000000, message: 'resource ID is mismatched with speaker related resource' }), { status: 200 });
     }
     const chunk = JSON.stringify({ code: 0, data: Buffer.from('icl2-audio').toString('base64') });
-    request = { outer };
+    request = { body, resourceId };
     return new Response(chunk, { status: 200, headers: { 'content-type': 'application/json' } });
   };
   const autoDetected = await synthesizeDoubao({
@@ -68,11 +69,11 @@ try {
   assert.deepEqual(detectedResources, ['seed-tts-2.0', 'seed-icl-2.0']);
   assert.equal(autoDetected.resolvedModel, 'seed-icl-2.0');
   assert.equal(await autoDetected.blob.text(), 'icl2-audio');
-  assert.equal(request.outer.request.req_params.model, 'seed-tts-2.0-expressive');
-  assert.deepEqual(JSON.parse(request.outer.request.req_params.additions).context_texts, ['悲伤地说']);
+  assert.equal(request.body.req_params.model, 'seed-tts-2.0-expressive');
+  assert.deepEqual(JSON.parse(request.body.req_params.additions).context_texts, ['悲伤地说']);
 
   globalThis.fetch = async (_url, init) => {
-    request = JSON.parse(init.body);
+    request = { body: JSON.parse(init.body), headers: init.headers };
     const chunk = JSON.stringify({ code: 0, data: Buffer.from('icl1-audio').toString('base64') });
     return new Response(chunk, { status: 200, headers: { 'content-type': 'application/json' } });
   };
@@ -81,9 +82,9 @@ try {
     text: '旧复刻', voiceId: 'S_old', delivery: '开心地说',
   });
   assert.equal(icl1.resolvedModel, 'seed-icl-1.0');
-  assert.equal(request.resourceId, 'seed-icl-1.0');
-  assert.equal(request.request.req_params.model, 'seed-tts-1.1');
-  assert.ok(!JSON.parse(request.request.req_params.additions).context_texts, '复刻 1.0 不应收到高级演绎参数');
+  assert.equal(request.headers['X-Api-Resource-Id'], 'seed-icl-1.0');
+  assert.equal(request.body.req_params.model, 'seed-tts-1.1');
+  assert.ok(!JSON.parse(request.body.req_params.additions).context_texts, '复刻 1.0 不应收到高级演绎参数');
 
   let ordinaryErrorRequests = 0;
   globalThis.fetch = async () => {
@@ -98,9 +99,20 @@ try {
 
   globalThis.fetch = async () => new Response('Not Found', { status: 404 });
   await assert.rejects(
-    () => synthesizeDoubao({ authMode: 'apiKey', apiKey: 'api-only', text: '本机中转', voiceId: 'voice', model: 'seed-tts-2.0' }),
-    /未检测到千幕豆包服务端插件/,
+    () => synthesizeDoubao({ authMode: 'apiKey', apiKey: 'api-only', text: '直连错误', voiceId: 'voice', model: 'seed-tts-2.0' }),
+    /豆包 HTTP 404/,
   );
+
+  const fallbackUrls = [];
+  globalThis.fetch = async (url) => {
+    fallbackUrls.push(url);
+    if (fallbackUrls.length === 1) throw new TypeError('CORS blocked');
+    const chunk = JSON.stringify({ code: 0, data: Buffer.from('fallback-audio').toString('base64') });
+    return new Response(chunk, { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const fallback = await synthesizeDoubao({ authMode: 'apiKey', apiKey: 'api-only', text: '直连回退', voiceId: 'voice', model: 'seed-tts-2.0' });
+  assert.deepEqual(fallbackUrls, ['https://openspeech.bytedance.com/api/v3/tts/unidirectional', '/api/plugins/qianmu-tts/doubao/synthesize']);
+  assert.equal(await fallback.blob.text(), 'fallback-audio');
 
   globalThis.fetch = async (url, init) => {
     request = { url, init };

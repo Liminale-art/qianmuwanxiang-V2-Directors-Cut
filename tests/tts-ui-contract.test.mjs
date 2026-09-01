@@ -48,7 +48,7 @@ assert.match(source, /<label>App ID<\/label>[\s\S]*<label>Access Key<\/label>/, 
 assert.doesNotMatch(source, /切换模型只替换连接/, '配音模型下方不应保留切换说明');
 assert.doesNotMatch(source, /App ID（浏览器直连）|Access Key（浏览器直连）|新版 API Key \/ 高级连接/, '豆包面板不应保留重复标注');
 assert.doesNotMatch(source, /TTS 反代地址|仅反代/, '内置中转启用后不应再要求用户配置反代');
-assert.match(doubaoSource, /未检测到千幕豆包服务端插件/, '服务端插件缺失时必须给出可行动提示');
+assert.match(doubaoSource, /浏览器直连被当前网络拦截/, '直连与可选网关都不可用时必须给出可行动提示');
 assert.match(source, /音色类型[\s\S]*自动识别/, '豆包音色条目必须提供资源类型与自动识别');
 assert.match(source, /ttsPersistResolvedDoubaoModel/, '正文首次识别成功后必须记住音色资源');
 assert.match(source, /voiceSourceType:[\s\S]*voiceSourceId:/, '正文音色解析必须携带可持久化的来源身份');

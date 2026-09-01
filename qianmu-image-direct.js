@@ -1,0 +1,460 @@
+// 千幕 · 浏览器生图直连适配层
+// 只放置已确认允许浏览器跨域请求的渠道；统一网关仍作为 CORS/网络受限时的回退。
+
+const MAX_IMAGES = 8;
+const NAI_IMAGE_RE = /\.(?:png|jpe?g|webp)$/i;
+
+function text(value, max = 24000) {
+  return String(value ?? '').trim().slice(0, max);
+}
+
+function number(value, min, max, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
+}
+
+function mimeFromName(name = '') {
+  const lower = String(name).toLowerCase();
+  if (/\.jpe?g$/.test(lower)) return 'image/jpeg';
+  if (/\.webp$/.test(lower)) return 'image/webp';
+  return 'image/png';
+}
+
+function bytesToBase64(buffer) {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(bytes.length, offset + 0x8000)));
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(value) {
+  const binary = atob(String(value || ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function providerEndpoint(baseUrl, suffix, provider = '') {
+  let url;
+  try { url = new URL(text(baseUrl, 2048)); }
+  catch (_) { throw new DirectImageError('API 地址无效', { code: 'invalid_base_url' }); }
+  if (provider === 'banana' && url.hostname.toLowerCase() === 'generativelanguage.googleapis.com' && /^\/?$/.test(url.pathname)) url.pathname = '/v1beta';
+  const cleanSuffix = `/${String(suffix || '').replace(/^\/+/, '')}`;
+  const current = url.pathname.replace(/\/+$/, '');
+  if (!current.endsWith(cleanSuffix)) url.pathname = `${current}${cleanSuffix}`.replace(/\/{2,}/g, '/');
+  return url.toString();
+}
+
+function combinedPrompt(input) {
+  const prompt = text(input.prompt, 48000), negative = text(input.negativePrompt, 24000);
+  return negative ? `${prompt}\n\nExclude from the image: ${negative}`.slice(0, 48000) : prompt;
+}
+
+function plainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function directReferences(input) {
+  const rows = Array.isArray(input.referenceImages) ? input.referenceImages : Array.isArray(input.references) ? input.references : [];
+  return rows.slice(0, 16).map((item, index) => ({
+    data: text(item?.data || item?.base64, 24 * 1024 * 1024),
+    mime: text(item?.mime || 'image/png', 80),
+    name: text(item?.name || `reference-${index + 1}.png`, 160),
+  })).filter((item) => item.data);
+}
+
+function directParameters(input) {
+  const source = plainObject(input.parameters);
+  return {
+    ...source,
+    count: Math.round(number(source.count, 1, 4, 1)),
+    providerOptions: { ...plainObject(source.providerOptions) },
+  };
+}
+
+export class DirectImageError extends Error {
+  constructor(message, { status = 0, code = 'direct_error', retryable = false } = {}) {
+    super(message);
+    this.name = 'DirectImageError';
+    this.status = status;
+    this.code = code;
+    this.retryable = retryable;
+  }
+}
+
+export function isDirectImageTransportError(error) {
+  return error?.code === 'direct_transport' || error?.name === 'TypeError';
+}
+
+export function novelDirectEndpoint(baseUrl, path) {
+  const base = text(baseUrl, 2048).replace(/\/+$/, '');
+  if (!base) throw new DirectImageError('请先填写 NovelAI API 地址', { code: 'missing_base_url' });
+  const segment = text(path, 160).replace(/^\/+/, '');
+  if (!segment) return base;
+  if (base.endsWith(`/ai/${segment}`) || base.endsWith(`/${segment}`)) return base;
+  return `${base}/ai/${segment}`;
+}
+
+async function responseError(response, label) {
+  const raw = await response.text().catch(() => '');
+  let detail = raw.trim();
+  try {
+    const parsed = JSON.parse(detail);
+    detail = text(parsed?.message || parsed?.error?.message || parsed?.error || detail, 500);
+  } catch (_) {}
+  const labels = {
+    400: '请求参数不被生图服务接受',
+    401: 'API Key 错误或已失效',
+    402: '账户余额或订阅不可用',
+    403: 'API Key 没有当前操作权限',
+    429: '请求过于频繁，请稍后重试',
+  };
+  const message = labels[response.status] || `${label}（${response.status}）`;
+  throw new DirectImageError(detail ? `${message}：${detail}` : message, {
+    status: response.status,
+    code: `upstream_${response.status}`,
+    retryable: response.status === 408 || response.status === 409 || response.status === 429 || response.status >= 500,
+  });
+}
+
+async function directFetch(url, options, fetchImpl) {
+  try {
+    return await fetchImpl(url, options);
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error;
+    throw new DirectImageError(`浏览器直连失败：${error?.message || error}`, { code: 'direct_transport', retryable: true });
+  }
+}
+
+export async function checkDirectImageConnection(input = {}, { fetchImpl = globalThis.fetch } = {}) {
+  const provider = text(input.provider, 40).toLowerCase();
+  if (!['novel', 'openai', 'banana', 'seedream', 'comfy'].includes(provider)) throw new DirectImageError('当前渠道尚未接入浏览器直连检查', { code: 'direct_unsupported' });
+  const apiKey = text(input.apiKey, 2048);
+  if (provider !== 'comfy' && !apiKey) throw new DirectImageError('请先填写 API Key', { code: 'missing_api_key' });
+  let url, headers = {};
+  if (provider === 'novel') { url = novelDirectEndpoint(input.baseUrl, 'user/subscription'); headers.Authorization = `Bearer ${apiKey}`; }
+  else if (provider === 'banana') { url = providerEndpoint(input.baseUrl, input.model ? `models/${encodeURIComponent(input.model)}` : 'models', provider); headers['x-goog-api-key'] = apiKey; }
+  else if (provider === 'comfy') { url = providerEndpoint(input.baseUrl, 'system_stats', provider); if (apiKey) headers.Authorization = `Bearer ${apiKey}`; }
+  else { url = providerEndpoint(input.baseUrl, 'models', provider); headers.Authorization = `Bearer ${apiKey}`; }
+  const response = await directFetch(url, { method: 'GET', headers, signal: input.signal }, fetchImpl);
+  // 第三方 NAI 兼容站常常只实现生图端点；404 代表地址可达，不再当作连接失败。
+  if (provider === 'novel' && response.status === 404) return { ok: true, verified: false, transport: 'direct', message: '地址可达，但未提供订阅检查；请以首次生图验证 Key' };
+  if (!response.ok) await responseError(response, `${provider} 连接失败`);
+  if (provider !== 'novel') return { ok: true, verified: true, transport: 'direct', message: `连接通过 · ${input.model || provider}` };
+  const data = await response.json().catch(() => ({}));
+  const tier = data?.subscription?.tier ?? data?.tier;
+  const active = data?.subscription?.active ?? data?.active;
+  const names = ['Free', 'Tablet', 'Scroll', 'Opus'];
+  const tierName = Number.isFinite(Number(tier)) ? (names[Number(tier)] || `Tier ${tier}`) : 'NovelAI';
+  return { ok: true, verified: true, transport: 'direct', message: `连接通过 · ${tierName}${active === false ? '（订阅未激活）' : ''}` };
+}
+
+async function unzipNovelImages(buffer, unzipImpl) {
+  if (typeof unzipImpl === 'function') return unzipImpl(buffer);
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let end = -1;
+  for (let cursor = Math.max(0, bytes.length - 65557); cursor <= bytes.length - 22; cursor++) {
+    if (view.getUint32(cursor, true) === 0x06054b50) end = cursor;
+  }
+  if (end < 0) throw new DirectImageError('NovelAI 返回的不是有效 ZIP 图片包', { code: 'invalid_zip' });
+  const count = Math.min(view.getUint16(end + 10, true), 128);
+  let cursor = view.getUint32(end + 16, true);
+  const entries = [];
+  const decoder = new TextDecoder('utf-8');
+  for (let index = 0; index < count && cursor + 46 <= bytes.length; index++) {
+    if (view.getUint32(cursor, true) !== 0x02014b50) break;
+    const method = view.getUint16(cursor + 10, true);
+    const compressedSize = view.getUint32(cursor + 20, true);
+    const uncompressedSize = view.getUint32(cursor + 24, true);
+    const nameLength = view.getUint16(cursor + 28, true);
+    const extraLength = view.getUint16(cursor + 30, true);
+    const commentLength = view.getUint16(cursor + 32, true);
+    const localOffset = view.getUint32(cursor + 42, true);
+    const name = decoder.decode(bytes.subarray(cursor + 46, cursor + 46 + nameLength));
+    cursor += 46 + nameLength + extraLength + commentLength;
+    if (!NAI_IMAGE_RE.test(name) || entries.length >= MAX_IMAGES || uncompressedSize > 32 * 1024 * 1024) continue;
+    if (localOffset + 30 > bytes.length || view.getUint32(localOffset, true) !== 0x04034b50) continue;
+    const localNameLength = view.getUint16(localOffset + 26, true);
+    const localExtraLength = view.getUint16(localOffset + 28, true);
+    const start = localOffset + 30 + localNameLength + localExtraLength;
+    if (start + compressedSize > bytes.length || ![0, 8].includes(method)) continue;
+    entries.push({ name, method, compressed: bytes.slice(start, start + compressedSize) });
+  }
+  const images = [];
+  for (const entry of entries) {
+    let imageBytes = entry.compressed;
+    if (entry.method === 8) {
+      if (typeof DecompressionStream !== 'function') throw new DirectImageError('当前浏览器不支持 NovelAI ZIP 解压', { code: 'zip_unavailable' });
+      try {
+        imageBytes = new Uint8Array(await new Response(new Blob([entry.compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+      } catch (_) { throw new DirectImageError('NovelAI ZIP 图片解压失败', { code: 'invalid_zip' }); }
+    }
+    images.push({ id: entry.name, mime: mimeFromName(entry.name), data: bytesToBase64(imageBytes), url: '' });
+  }
+  return images;
+}
+
+function novelParameters(request) {
+  const source = request.parameters && typeof request.parameters === 'object' ? request.parameters : {};
+  const providerOptions = source.providerOptions && typeof source.providerOptions === 'object' ? source.providerOptions : {};
+  const parameters = { ...providerOptions };
+  const assign = (key, value) => { if (value !== '' && value !== undefined && value !== null && !Number.isNaN(value)) parameters[key] = value; };
+  assign('width', number(source.width, 64, 8192, 1024));
+  assign('height', number(source.height, 64, 8192, 1024));
+  assign('n_samples', Math.round(number(source.count, 1, 4, 1)));
+  assign('steps', source.steps === '' ? undefined : Math.round(number(source.steps, 1, 300, undefined)));
+  assign('scale', source.scale === '' ? undefined : number(source.scale, 0, 100, undefined));
+  assign('seed', source.seed === '' ? undefined : Math.round(number(source.seed, -1, Number.MAX_SAFE_INTEGER, undefined)));
+  assign('sampler', text(source.sampler, 120) || undefined);
+  assign('noise_schedule', text(source.scheduler, 120) || undefined);
+  assign('negative_prompt', text(request.negativePrompt, 24000) || undefined);
+  const vibes = Array.isArray(request.vibes) ? request.vibes.slice(0, 8) : [];
+  if (vibes.length) {
+    parameters.reference_image_multiple = vibes.map((item) => text(item.data, 24 * 1024 * 1024));
+    parameters.reference_strength_multiple = vibes.map((item) => number(item.strength, 0, 2, 0.6));
+    parameters.reference_information_extracted_multiple = vibes.map((item) => number(item.information, 0, 1, 1));
+  }
+  return parameters;
+}
+
+function normalizeJsonImages(data) {
+  const rows = Array.isArray(data?.images) ? data.images : Array.isArray(data?.data) ? data.data : [];
+  return rows.slice(0, MAX_IMAGES).map((item, index) => ({
+    id: text(item?.id || `image-${index + 1}`, 160),
+    mime: text(item?.mime || item?.mime_type || 'image/png', 80),
+    data: text(item?.data || item?.base64 || item?.b64_json, 48 * 1024 * 1024),
+    url: text(item?.url, 4096),
+    width: Number(item?.width) || undefined,
+    height: Number(item?.height) || undefined,
+  })).filter((item) => item.data || /^https?:\/\//i.test(item.url));
+}
+
+async function responseJson(response, label) {
+  if (!response.ok) await responseError(response, label);
+  try { return await response.json(); }
+  catch (_) { throw new DirectImageError(`${label}：返回内容不是有效 JSON`, { status: response.status, code: 'invalid_json' }); }
+}
+
+function directResult(images, response, started, extra = {}) {
+  if (!images.length) throw new DirectImageError('生图服务没有返回可用图片', { code: 'empty_images' });
+  return {
+    ok: true, transport: 'direct', images, text: '',
+    durationMs: Date.now() - started,
+    ...extra,
+    upstreamId: text(extra.upstreamId || response?.headers?.get?.('x-request-id'), 240),
+  };
+}
+
+async function generateOpenAIDirect(input, fetchImpl) {
+  const started = Date.now(), parameters = directParameters(input), references = directReferences(input);
+  const headers = { Authorization: `Bearer ${text(input.apiKey, 2048)}` };
+  let body;
+  if (references.length) {
+    body = new FormData();
+    const providerOptions = { ...parameters.providerOptions };
+    delete providerOptions.image;
+    delete providerOptions['image[]'];
+    for (const [key, value] of Object.entries(providerOptions)) {
+      if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) body.append(key, String(value));
+    }
+    body.append('model', input.model);
+    body.append('prompt', combinedPrompt(input));
+    body.append('n', String(parameters.count));
+    if (parameters.size) body.append('size', String(parameters.size));
+    if (parameters.quality) body.append('quality', String(parameters.quality));
+    if (parameters.background) body.append('background', String(parameters.background));
+    if (parameters.outputFormat) body.append('output_format', String(parameters.outputFormat));
+    for (const reference of references) body.append('image[]', new Blob([base64ToBytes(reference.data)], { type: reference.mime }), reference.name);
+  } else {
+    headers['Content-Type'] = 'application/json';
+    body = JSON.stringify({
+      ...parameters.providerOptions,
+      model: input.model, prompt: combinedPrompt(input), n: parameters.count,
+      ...(parameters.size ? { size: parameters.size } : {}),
+      ...(parameters.quality ? { quality: parameters.quality } : {}),
+      ...(parameters.background ? { background: parameters.background } : {}),
+      ...(parameters.outputFormat ? { output_format: parameters.outputFormat } : {}),
+    });
+  }
+  const response = await directFetch(providerEndpoint(input.baseUrl, references.length ? 'images/edits' : 'images/generations', 'openai'), {
+    method: 'POST', headers, body, signal: input.signal,
+  }, fetchImpl);
+  const data = await responseJson(response, 'OpenAI 生图失败');
+  return directResult(normalizeJsonImages(data), response, started, { upstreamId: data.id || '' });
+}
+
+async function generateBananaDirect(input, fetchImpl) {
+  const started = Date.now(), parameters = directParameters(input), references = directReferences(input);
+  const providerOptions = { ...parameters.providerOptions };
+  const configured = plainObject(providerOptions.generationConfig);
+  delete providerOptions.generationConfig;
+  const imageConfig = {
+    ...(parameters.aspectRatio ? { aspectRatio: parameters.aspectRatio } : {}),
+    ...(parameters.imageSize ? { imageSize: parameters.imageSize } : {}),
+  };
+  const body = {
+    ...providerOptions,
+    contents: [{ role: 'user', parts: [
+      { text: combinedPrompt(input) },
+      ...references.map((item) => ({ inlineData: { mimeType: item.mime, data: item.data } })),
+    ] }],
+    generationConfig: {
+      ...configured,
+      responseModalities: ['TEXT', 'IMAGE'],
+      ...(parameters.count > 1 ? { candidateCount: parameters.count } : {}),
+      ...(Object.keys(imageConfig).length ? { imageConfig: { ...plainObject(configured.imageConfig), ...imageConfig } } : {}),
+    },
+  };
+  const response = await directFetch(providerEndpoint(input.baseUrl, `models/${encodeURIComponent(input.model)}:generateContent`, 'banana'), {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': text(input.apiKey, 2048) },
+    body: JSON.stringify(body), signal: input.signal,
+  }, fetchImpl);
+  const data = await responseJson(response, 'Banana / Gemini 生图失败');
+  const parts = (data.candidates || []).flatMap((candidate) => candidate?.content?.parts || []);
+  const images = parts.filter((item) => item.inlineData || item.inline_data).map((item, index) => {
+    const image = item.inlineData || item.inline_data;
+    return { id: `banana-${index + 1}`, data: text(image.data, 48 * 1024 * 1024), mime: text(image.mimeType || image.mime_type || 'image/png', 80), url: '' };
+  }).filter((item) => item.data);
+  return directResult(images, response, started, { text: parts.map((item) => text(item.text, 8000)).filter(Boolean).join('\n').slice(0, 8000) });
+}
+
+async function generateSeedreamDirect(input, fetchImpl) {
+  const started = Date.now(), parameters = directParameters(input), references = directReferences(input);
+  const body = {
+    ...parameters.providerOptions,
+    model: input.model, prompt: combinedPrompt(input), response_format: 'b64_json',
+    ...(parameters.size ? { size: parameters.size } : {}),
+    ...(parameters.seed !== undefined && parameters.seed !== '' ? { seed: Number(parameters.seed) } : {}),
+    ...(parameters.guidanceScale !== undefined && parameters.guidanceScale !== '' ? { guidance_scale: Number(parameters.guidanceScale) } : {}),
+    watermark: parameters.watermark === true,
+    ...(parameters.sequential || parameters.count > 1 ? {
+      sequential_image_generation: 'auto',
+      sequential_image_generation_options: {
+        ...plainObject(parameters.providerOptions.sequential_image_generation_options), max_images: parameters.count,
+      },
+    } : {}),
+    ...(references.length ? {
+      image: references.length === 1
+        ? `data:${references[0].mime};base64,${references[0].data}`
+        : references.map((item) => `data:${item.mime};base64,${item.data}`),
+    } : {}),
+  };
+  const response = await directFetch(providerEndpoint(input.baseUrl, 'images/generations', 'seedream'), {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${text(input.apiKey, 2048)}` },
+    body: JSON.stringify(body), signal: input.signal,
+  }, fetchImpl);
+  const data = await responseJson(response, 'Seedream 生图失败');
+  return directResult(normalizeJsonImages(data), response, started, { upstreamId: data.id || data.request_id || '' });
+}
+
+function replaceWorkflowValues(value, replacements) {
+  if (typeof value === 'string') {
+    for (const [key, replacement] of Object.entries(replacements)) if (value === `%${key}%`) return replacement;
+    let output = value;
+    for (const [key, replacement] of Object.entries(replacements)) output = output.split(`%${key}%`).join(String(replacement ?? ''));
+    return output;
+  }
+  if (Array.isArray(value)) return value.map((item) => replaceWorkflowValues(item, replacements));
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replaceWorkflowValues(item, replacements)]));
+  return value;
+}
+
+function directRequestId() {
+  return globalThis.crypto?.randomUUID?.() || `qianmu-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+async function generateComfyDirect(input, fetchImpl, waitImpl) {
+  const started = Date.now(), parameters = directParameters(input), references = directReferences(input);
+  const workflowSource = plainObject(parameters.workflow || input.workflow);
+  if (!Object.keys(workflowSource).length) throw new DirectImageError('请导入 ComfyUI API Workflow', { code: 'missing_workflow' });
+  const headers = text(input.apiKey, 2048) ? { Authorization: `Bearer ${text(input.apiKey, 2048)}` } : {};
+  const referenceNames = [];
+  for (const [index, reference] of references.entries()) {
+    const form = new FormData();
+    const extension = reference.mime.includes('jpeg') ? 'jpg' : reference.mime.includes('webp') ? 'webp' : 'png';
+    const name = `qianmu-${directRequestId()}-reference-${index + 1}.${extension}`;
+    form.append('image', new Blob([base64ToBytes(reference.data)], { type: reference.mime }), name);
+    form.append('overwrite', 'false');
+    const response = await directFetch(providerEndpoint(input.baseUrl, 'upload/image', 'comfy'), { method: 'POST', headers, body: form, signal: input.signal }, fetchImpl);
+    const uploaded = await responseJson(response, 'ComfyUI 参考图上传失败');
+    referenceNames.push(uploaded.subfolder ? `${String(uploaded.subfolder).replace(/^\/+|\/+$/g, '')}/${uploaded.name || name}` : uploaded.name || name);
+  }
+  const workflow = replaceWorkflowValues(workflowSource, {
+    qianmu_prompt: input.prompt, qianmu_negative: input.negativePrompt || '', qianmu_model: input.model || '',
+    qianmu_seed: parameters.seed ?? -1, qianmu_width: parameters.width ?? 1024, qianmu_height: parameters.height ?? 1024,
+    qianmu_steps: parameters.steps ?? 28, qianmu_scale: parameters.scale ?? 5, qianmu_cfg: parameters.scale ?? 5,
+    qianmu_sampler: parameters.sampler || '', qianmu_scheduler: parameters.scheduler || '', qianmu_count: parameters.count,
+    qianmu_reference: referenceNames[0] || '', qianmu_references: referenceNames,
+    ...Object.fromEntries(referenceNames.map((name, index) => [`qianmu_reference_${index + 1}`, name])),
+  });
+  const promptResponse = await directFetch(providerEndpoint(input.baseUrl, 'prompt', 'comfy'), {
+    method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: workflow, client_id: directRequestId() }), signal: input.signal,
+  }, fetchImpl);
+  const submitted = await responseJson(promptResponse, 'ComfyUI 工作流提交失败');
+  const promptId = text(submitted.prompt_id || submitted.promptId, 240);
+  if (!promptId) throw new DirectImageError('ComfyUI 未返回任务编号', { code: 'comfy_missing_prompt_id' });
+  const deadline = Date.now() + number(parameters.timeoutMs, 15000, 300000, 120000);
+  const interval = number(parameters.pollIntervalMs, 250, 3000, 700);
+  let history = null;
+  while (Date.now() < deadline) {
+    await waitImpl(interval);
+    const response = await directFetch(providerEndpoint(input.baseUrl, `history/${encodeURIComponent(promptId)}`, 'comfy'), { method: 'GET', headers, signal: input.signal }, fetchImpl);
+    const data = await responseJson(response, 'ComfyUI 状态读取失败');
+    history = data[promptId] || (data.prompt_id ? data : null);
+    if (history?.status?.status_str === 'error') throw new DirectImageError('ComfyUI 工作流执行失败', { code: 'comfy_execution_failed' });
+    if (history?.outputs && (history?.status?.completed === true || Object.keys(plainObject(history.outputs)).length)) break;
+  }
+  if (!history?.outputs) throw new DirectImageError('ComfyUI 工作流等待超时；任务可能仍在运行', { code: 'comfy_timeout', retryable: true });
+  const descriptors = Object.values(history.outputs).flatMap((output) => [...(output?.images || []), ...(output?.gifs || [])]).slice(0, MAX_IMAGES);
+  const images = [];
+  for (const descriptor of descriptors) {
+    if (!descriptor?.filename) continue;
+    const url = new URL(providerEndpoint(input.baseUrl, 'view', 'comfy'));
+    url.searchParams.set('filename', descriptor.filename);
+    if (descriptor.subfolder) url.searchParams.set('subfolder', descriptor.subfolder);
+    if (descriptor.type) url.searchParams.set('type', descriptor.type);
+    const response = await directFetch(url.toString(), { method: 'GET', headers, signal: input.signal }, fetchImpl);
+    if (!response.ok) await responseError(response, 'ComfyUI 图片读取失败');
+    const mime = text(response.headers?.get?.('content-type')?.split(';')[0] || 'image/png', 80);
+    images.push({ id: text(descriptor.filename, 240), mime, data: bytesToBase64(await response.arrayBuffer()), url: '' });
+  }
+  return directResult(images, promptResponse, started, { upstreamId: promptId });
+}
+
+export async function generateDirectImage(input = {}, { fetchImpl = globalThis.fetch, unzipImpl, waitImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
+  const provider = text(input.provider, 40).toLowerCase();
+  if (!['novel', 'openai', 'banana', 'seedream', 'comfy'].includes(provider)) throw new DirectImageError('当前渠道尚未接入浏览器直连生图', { code: 'direct_unsupported' });
+  const apiKey = text(input.apiKey, 2048), prompt = text(input.prompt, 48000), model = text(input.model, 240);
+  if (provider !== 'comfy' && !apiKey) throw new DirectImageError('请先填写 API Key', { code: 'missing_api_key' });
+  if (!prompt) throw new DirectImageError('提示词不能为空', { code: 'empty_prompt' });
+  if (provider !== 'comfy' && !model) throw new DirectImageError('请选择生图模型', { code: 'missing_model' });
+  if (provider === 'openai') return generateOpenAIDirect(input, fetchImpl);
+  if (provider === 'banana') return generateBananaDirect(input, fetchImpl);
+  if (provider === 'seedream') return generateSeedreamDirect(input, fetchImpl);
+  if (provider === 'comfy') return generateComfyDirect(input, fetchImpl, waitImpl);
+  if (/nai-diffusion-5/i.test(model) && (input.vibes?.length || input.referenceImages?.length)) {
+    throw new DirectImageError('当前 NovelAI V5 不支持 Vibe 或 Precise Reference', { code: 'novel_v5_reference_unsupported' });
+  }
+  const started = Date.now();
+  const response = await directFetch(novelDirectEndpoint(input.baseUrl, 'generate-image'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ input: prompt, model, action: 'generate', parameters: novelParameters(input), use_new_shared_trial: true }),
+    signal: input.signal,
+  }, fetchImpl);
+  if (!response.ok) await responseError(response, 'NovelAI 生图失败');
+  const contentType = String(response.headers?.get?.('content-type') || '').toLowerCase();
+  let images = [];
+  if (contentType.includes('json')) images = normalizeJsonImages(await response.json().catch(() => ({})));
+  else {
+    const buffer = await response.arrayBuffer();
+    if (contentType.startsWith('image/')) images = [{ id: `novel-${Date.now()}`, mime: contentType.split(';')[0], data: bytesToBase64(buffer), url: '' }];
+    else images = await unzipNovelImages(buffer, unzipImpl);
+  }
+  if (!images.length) throw new DirectImageError('NovelAI 未返回可用图片', { code: 'empty_images' });
+  return { ok: true, transport: 'direct', images, text: '', upstreamId: text(response.headers?.get?.('x-request-id'), 240), durationMs: Date.now() - started };
+}

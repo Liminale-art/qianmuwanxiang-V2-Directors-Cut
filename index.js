@@ -97,7 +97,8 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.0';
+import { checkDirectImageConnection, generateDirectImage, isDirectImageTransportError } from './qianmu-image-direct.js?v=1.58.1';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.1';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_COMPOSITION_RULE_ID,
@@ -135,11 +136,11 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
-} from './qianmu-storyboard.js?v=1.58.0';
+} from './qianmu-storyboard.js?v=1.58.1';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.0';
+const VERSION = '1.58.1';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -884,6 +885,8 @@ let storyboardWorldEntryCache = { key: '', names: [], boundNames: [], books: {},
 const storyboardActiveJobs = new Map(); // 正在生成的任务；放弃时不取消可能已计费的上游请求，只丢弃回传
 let storyboardQueue = [];            // 千幕内串行队列，避免同一连接并发误耗额度
 const storyboardApiKeys = new Map(); // credentialId -> Key；不进入设置、日志或分镜数据包
+const storyboardDraftApiKeys = new Map(); // 表单暂存：测试失败/页面重绘时不丢失用户刚输入的 Key
+const STORYBOARD_BROWSER_CREDENTIALS_KEY = 'qianmu.storyboard.credentials.v1';
 let storyboardRuntimeReconciled = false;
 const storyboardConnectionStatus = new Map();
 let storyboardSecrets = {};          // 只缓存“是否已配置”，绝不读取或缓存密钥正文
@@ -10403,9 +10406,9 @@ function renderStoryboardModelCard(state) {
         <label><span>生图渠道</span><select class="text_pole sd-storyboard-provider">${Object.values(STORYBOARD_PROVIDER_REGISTRY).map((item) => `<option value="${item.id}" ${state.source === item.id ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('')}</select></label>
         <label><span>模型</span><select class="text_pole sd-storyboard-model-select">${storyboardModelOptions(state.source, profile.model)}</select></label>
       </div>
-      <div class="sd-storyboard-preset-field"><span>API 预设</span><div class="sd-storyboard-connection-preset-row"><select class="text_pole sd-storyboard-connection-preset"><option value="">选择生图 API 预设</option>${presetOptions}</select><button type="button" class="sd-icon-btn sd-storyboard-save-connection-preset" title="保存当前渠道的 API 预设" aria-label="保存当前渠道的 API 预设"><i class="fa-solid fa-bookmark"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-connection-preset" ${activePreset ? '' : 'disabled'} title="删除所选 API 预设" aria-label="删除所选 API 预设"><i class="fa-solid fa-trash-can"></i></button></div></div>
+      <div class="sd-storyboard-preset-field"><span>API 预设${activePreset ? `<small>已载入 · ${htmlEscape(connection.active?.name || '')}</small>` : ''}</span><div class="sd-storyboard-connection-preset-row"><select class="text_pole sd-storyboard-connection-preset"><option value="">选择生图 API 预设</option>${presetOptions}</select><button type="button" class="sd-icon-btn sd-storyboard-save-connection-preset" title="保存当前渠道的 API 预设" aria-label="保存当前渠道的 API 预设"><i class="fa-solid fa-bookmark"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-connection-preset" ${activePreset ? '' : 'disabled'} title="删除所选 API 预设" aria-label="删除所选 API 预设"><i class="fa-solid fa-trash-can"></i></button></div></div>
       <label><span>API 地址</span><input class="text_pole sd-storyboard-base-url" value="${htmlEscape(profile.baseUrl)}" placeholder="${htmlEscape(provider.defaultBaseUrl || 'http://127.0.0.1:8188')}"></label>
-      <label><span>${state.source === 'comfy' ? '访问令牌（可选）' : 'API Key'}</span><input class="text_pole sd-storyboard-api-key-memory" type="password" autocomplete="new-password" placeholder="输入 API Key"></label>
+      <label><span>${state.source === 'comfy' ? '访问令牌（可选）' : 'API Key'}</span><input class="text_pole sd-storyboard-api-key-memory" type="password" autocomplete="new-password" value="${htmlEscape(storyboardDraftApiKeys.get(state.source) || '')}" placeholder="输入 API Key"></label>
       ${state.source === 'comfy' ? `<label class="sd-switch-row"><span>允许本地网络</span><input type="checkbox" class="sd-storyboard-private-network" ${(connection.active?.options?.allowPrivateNetwork ?? connection.group?.draft?.options?.allowPrivateNetwork) ? 'checked' : ''}></label><label><span>API Workflow</span><textarea class="text_pole sd-storyboard-workflow" placeholder="粘贴 ComfyUI API Workflow JSON">${htmlEscape(typeof profile.comfyWorkflow === 'string' && profile.comfyWorkflow.trim().startsWith('{') ? profile.comfyWorkflow : '')}</textarea></label><div class="sd-storyboard-workflow-warning sd-storyboard-connection-result failed" ${profile.comfyWorkflowNotice ? '' : 'hidden'}><i class="fa-solid fa-triangle-exclamation"></i><span>${htmlEscape(profile.comfyWorkflowNotice || '')}</span></div>` : ''}
       ${check ? `<div class="sd-storyboard-connection-result ${check.ok ? (check.verified === false ? 'partial' : 'ok') : 'failed'}"><i class="fa-solid ${check.ok && check.verified !== false ? 'fa-circle-check' : 'fa-triangle-exclamation'}"></i><span>${htmlEscape(check.message)}</span></div>` : ''}
       <div class="sd-storyboard-model-actions"><button type="button" class="sd-btn sd-storyboard-check-connection">测试连接</button><button type="button" class="sd-btn sd-primary sd-storyboard-save-connection">保存连接</button></div>
@@ -11859,11 +11862,37 @@ async function storyboardUtilsModule() {
   return storyboardUtilsModulePromise;
 }
 
+function storyboardBrowserCredentials() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORYBOARD_BROWSER_CREDENTIALS_KEY) || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (_) { return {}; }
+}
+
+function storyboardReadBrowserCredential(credentialId) {
+  const id = String(credentialId || '').trim();
+  if (!id) return '';
+  return String(storyboardBrowserCredentials()[id] || '').trim();
+}
+
+function storyboardWriteBrowserCredential(credentialId, value) {
+  const id = String(credentialId || '').trim();
+  if (!id) return false;
+  try {
+    const stored = storyboardBrowserCredentials();
+    if (String(value || '').trim()) stored[id] = String(value).trim();
+    else delete stored[id];
+    localStorage.setItem(STORYBOARD_BROWSER_CREDENTIALS_KEY, JSON.stringify(stored));
+    return true;
+  } catch (_) { return false; }
+}
+
 function storyboardSourceSecretConfigured(source) {
   const state = storyboardState();
   const connection = source?.id ? storyboardConnectionState(state, source.id) : null;
   const credentialId = connection?.draft?.credentialId || connection?.active?.credentialId || storyboardCredentialId(source?.id, 'draft');
   if (storyboardApiKeys.has(credentialId) || storyboardApiKeys.has(source?.id)) return true;
+  if (storyboardReadBrowserCredential(credentialId)) return true;
   if (source?.id === 'comfy') return true;
   const value = storyboardSecrets[credentialId];
   return Array.isArray(value) ? value.length > 0 : Boolean(value);
@@ -11879,6 +11908,8 @@ async function storyboardResolveApiKey(providerId, requestedCredentialId = '') {
   const credentialId = requestedCredentialId || draft?.credentialId || active?.credentialId || storyboardCredentialId(providerId, 'draft');
   if (storyboardApiKeys.has(credentialId)) return storyboardApiKeys.get(credentialId);
   if (storyboardApiKeys.has(providerId)) return storyboardApiKeys.get(providerId);
+  const browserValue = storyboardReadBrowserCredential(credentialId);
+  if (browserValue) { storyboardApiKeys.set(credentialId, browserValue); return browserValue; }
   try {
     const secrets = await storyboardSecretModule();
     const readStoredSecret = typeof secrets.readSecret === 'function'
@@ -11897,6 +11928,7 @@ async function storyboardRememberApiKey(providerId, key, credentialId) {
   if (!value) return false;
   const id = credentialId || storyboardCredentialId(providerId, 'draft');
   storyboardApiKeys.set(id, value);
+  storyboardWriteBrowserCredential(id, value);
   try {
     const secrets = await storyboardSecretModule();
     if (typeof secrets.writeSecret === 'function') await secrets.writeSecret(id, value, `千幕 · 分镜 · ${STORYBOARD_PROVIDER_REGISTRY[providerId]?.label || providerId}`);
@@ -11909,6 +11941,8 @@ async function storyboardRememberApiKey(providerId, key, credentialId) {
 async function storyboardForgetApiKey(providerId, credentialId) {
   const id = credentialId || storyboardCredentialId(providerId, 'draft');
   storyboardApiKeys.delete(id);
+  storyboardDraftApiKeys.delete(providerId);
+  storyboardWriteBrowserCredential(id, '');
   try {
     const secrets = await storyboardSecretModule();
     if (typeof secrets.deleteSecret === 'function') await secrets.deleteSecret(id);
@@ -11934,25 +11968,40 @@ async function storyboardRefreshSecretState(root = document.getElementById(MODAL
 async function storyboardCheckConnection(root) {
   const state = storyboardState();
   const sourceId = state.source;
+  const keyInput = root.querySelector('.sd-storyboard-api-key-memory');
+  const typedKey = String(keyInput?.value || '').trim();
+  if (typedKey) storyboardDraftApiKeys.set(sourceId, typedKey);
   try {
-    await storyboardSaveConnection(root, { quiet: true });
+    await storyboardSaveConnection(root, { quiet: true, clearKey: false });
     const profile = storyboardProviderProfile(state, sourceId);
     const apiKey = await storyboardResolveApiKey(sourceId);
     if (sourceId !== 'comfy' && !apiKey) throw new Error('请填写 API Key');
-    const headers = typeof ctx().getRequestHeaders === 'function' ? ctx().getRequestHeaders() : { 'Content-Type': 'application/json' };
-    const response = await fetch('/api/plugins/qianmu-tts/image/check', {
-      method: 'POST', headers, body: JSON.stringify({
-        provider: sourceId, apiKey, baseUrl: profile.baseUrl, model: profile.model,
-        allowPrivateNetwork: Boolean(state.connections[sourceId]?.draft?.options?.allowPrivateNetwork),
-      }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.ok) throw new Error(data.message || `连接失败（${response.status}）`);
+    const request = {
+      provider: sourceId, apiKey, baseUrl: profile.baseUrl, model: profile.model,
+      allowPrivateNetwork: Boolean(state.connections[sourceId]?.draft?.options?.allowPrivateNetwork),
+    };
+    let data = null;
+    try { data = await checkDirectImageConnection(request); }
+    catch (error) {
+      if (!isDirectImageTransportError(error) && error?.code !== 'direct_unsupported') throw error;
+    }
+    if (!data) {
+      const headers = typeof ctx().getRequestHeaders === 'function' ? ctx().getRequestHeaders() : { 'Content-Type': 'application/json' };
+      const response = await fetch('/api/plugins/qianmu-tts/image/check', {
+        method: 'POST', headers, body: JSON.stringify(request),
+      });
+      data = await response.json().catch(() => ({}));
+      if (response.status === 404) throw new Error(`${STORYBOARD_PROVIDER_REGISTRY[sourceId]?.label || sourceId} 浏览器直连被当前网络拦截，且未检测到可选的千幕网关`);
+      if (!response.ok || !data.ok) throw new Error(data.message || `连接失败（${response.status}）`);
+    }
     const verified = data.verified !== false;
     const message = String(data.message || (verified ? `连接通过 · ${profile.model || STORYBOARD_PROVIDER_REGISTRY[sourceId].label}` : '地址可达；请以首次生图校验令牌'));
     storyboardConnectionStatus.set(sourceId, { ok: true, verified, message });
+    storyboardDraftApiKeys.delete(sourceId);
+    if (keyInput) keyInput.value = '';
     toast(message, verified ? 'success' : 'warning');
   } catch (error) {
+    if (typedKey) storyboardDraftApiKeys.set(sourceId, typedKey);
     storyboardConnectionStatus.set(sourceId, { ok: false, message: String(error?.message || error) });
     toast(`检查失败：${error?.message || error}`, 'error');
   } finally {
@@ -12002,7 +12051,7 @@ function storyboardParseWorkflow(value) {
   return result.workflow;
 }
 
-async function storyboardSaveConnection(root, { quiet = false } = {}) {
+async function storyboardSaveConnection(root, { quiet = false, clearKey = true } = {}) {
   const state = storyboardState();
   const sourceId = state.source;
   const source = STORYBOARD_PROVIDER_REGISTRY[sourceId];
@@ -12024,7 +12073,10 @@ async function storyboardSaveConnection(root, { quiet = false } = {}) {
       : inheritedCredentialId || storyboardCredentialId(sourceId, 'draft');
     group.draft.credentialId = credentialId;
     await storyboardRememberApiKey(sourceId, keyValue, credentialId);
-    keyInput.value = '';
+    if (clearKey) {
+      storyboardDraftApiKeys.delete(sourceId);
+      keyInput.value = '';
+    } else storyboardDraftApiKeys.set(sourceId, keyValue);
   }
   saveSettings();
   if (!quiet) toast(keyValue ? `${source.label} 连接设置与 API Key 已保存。` : `${source.label} 连接设置已保存。`, 'success');
@@ -12079,21 +12131,30 @@ async function storyboardSaveConnectionPreset(root) {
   }
   group.activePresetId = target.id;
   group.draft = { ...clone(target), id: '', name: '当前编辑' };
+  storyboardDraftApiKeys.delete(sourceId);
   saveSettings();
-  toast(`API 预设「${name}」已保存${keyStored ? '，API Key 已安全保存' : ''}。`, 'success');
+  toast(`API 预设「${name}」已保存${keyStored ? '，API Key 已保存至当前浏览器' : ''}。`, 'success');
   renderModal();
   return true;
 }
 
-function storyboardLoadConnectionPreset(presetId) {
+async function storyboardLoadConnectionPreset(presetId) {
   const state = storyboardState();
-  const group = state.connections[state.source];
+  const sourceId = state.source;
+  const group = state.connections[sourceId];
   const preset = group.presets.find((item) => item.id === presetId) || null;
   group.activePresetId = preset?.id || '';
   if (preset) {
     group.draft = { ...clone(preset), id: '', name: '当前编辑' };
+    const keyLoaded = sourceId === 'comfy' || Boolean(await storyboardResolveApiKey(sourceId, preset.credentialId));
+    storyboardConnectionStatus.set(sourceId, {
+      ok: keyLoaded, verified: false,
+      message: keyLoaded ? `已载入 API 预设 · ${preset.name}` : `已载入「${preset.name}」，但当前浏览器未找到对应 API Key`,
+    });
+  } else {
+    storyboardConnectionStatus.delete(sourceId);
   }
-  storyboardConnectionStatus.delete(state.source);
+  storyboardDraftApiKeys.delete(sourceId);
   saveSettings();
   renderModal();
 }
@@ -12769,15 +12830,28 @@ async function storyboardRunJob(job, log) {
       prompt: gatewayRequest.prompt, negativePrompt: gatewayRequest.negativePrompt,
       referenceCount: assets.references.length, vibeCount: assets.vibes.length, parameters: gatewayRequest.parameters,
     });
-    const response = await fetch('/api/plugins/qianmu-tts/image/generate', {
-      method: 'POST', headers: storyboardRequestHeaders(), body: JSON.stringify(gatewayRequest),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.ok) {
-      storyboardPipelineStage(log, 'provider_request', 'failed', {}, {}, data.message || `HTTP ${response.status}`);
-      const error = new Error(data.message || `生图服务请求失败（${response.status}）`);
-      error.retryable = Boolean(data.retryable);
-      throw error;
+    let data = null;
+    try { data = await generateDirectImage(gatewayRequest); }
+    catch (error) {
+      if (!isDirectImageTransportError(error) && error?.code !== 'direct_unsupported') {
+        storyboardPipelineStage(log, 'provider_request', 'failed', {}, {}, error?.message || String(error));
+        throw error;
+      }
+    }
+    if (!data) {
+      const response = await fetch('/api/plugins/qianmu-tts/image/generate', {
+        method: 'POST', headers: storyboardRequestHeaders(), body: JSON.stringify(gatewayRequest),
+      });
+      data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) {
+        const message = response.status === 404
+          ? `${STORYBOARD_PROVIDER_REGISTRY[job.source]?.label || job.source} 浏览器直连被当前网络拦截，且未检测到可选的千幕网关`
+          : data.message || `生图服务请求失败（${response.status}）`;
+        storyboardPipelineStage(log, 'provider_request', 'failed', {}, {}, message);
+        const error = new Error(message);
+        error.retryable = Boolean(data.retryable);
+        throw error;
+      }
     }
     storyboardPipelineStage(log, 'provider_request', 'success', {}, {
       upstreamId: data.upstreamId || '', imageCount: data.images?.length || 0, durationMs: data.durationMs || 0,
@@ -13698,7 +13772,12 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-compiler-api')?.addEventListener('change', () => {
     storyboardCaptureWorkbench(root); saveSettings();
   });
-  root.querySelector('.sd-storyboard-connection-preset')?.addEventListener('change', (event) => storyboardLoadConnectionPreset(String(event.target.value || '')));
+  root.querySelector('.sd-storyboard-connection-preset')?.addEventListener('change', (event) => void storyboardLoadConnectionPreset(String(event.target.value || '')));
+  root.querySelector('.sd-storyboard-api-key-memory')?.addEventListener('input', (event) => {
+    const value = String(event.target.value || '').trim();
+    if (value) storyboardDraftApiKeys.set(state.source, value);
+    else storyboardDraftApiKeys.delete(state.source);
+  });
   root.querySelector('.sd-storyboard-save-connection-preset')?.addEventListener('click', () => void storyboardSaveConnectionPreset(root));
   root.querySelector('.sd-storyboard-delete-connection-preset')?.addEventListener('click', () => void storyboardDeleteConnectionPreset());
   root.querySelector('.sd-storyboard-context-recent')?.addEventListener('change', (event) => {

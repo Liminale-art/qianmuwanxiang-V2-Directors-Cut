@@ -79,7 +79,7 @@ assert.equal(outputExtensionForTts('doubao', { format: 'ogg_opus' }), 'ogg');
 assert.equal(outputExtensionForTts('elevenlabs', { format: 'pcm_24000' }), 'pcm');
 assert.equal(ttsProviderHasCredentials('doubao', { appId: 'app', accessKey: 'key' }), true);
 assert.equal(ttsProviderHasCredentials('doubao', { appId: 'app' }), false);
-assert.equal(ttsProviderHasCredentials('doubao', { authMode: 'apiKey', apiKey: 'key' }), true, '豆包 API Key 应交由本机服务端插件中转');
+assert.equal(ttsProviderHasCredentials('doubao', { authMode: 'apiKey', apiKey: 'key' }), true, '豆包 API Key 应支持浏览器直连');
 assert.equal(ttsProviderHasCredentials('doubao', { apiKey: 'key', proxyBase: 'https://tts-proxy.example' }), true);
 assert.equal(ttsProviderHasCredentials('doubao', { authMode: 'legacy', apiKey: 'key' }), false);
 assert.equal(ttsProviderHasCredentials('elevenlabs', { apiKey: 'key' }), true);

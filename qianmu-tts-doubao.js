@@ -46,6 +46,11 @@ function clamp(value, min, max, fallback) {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }
 
+function requestId() {
+  try { return globalThis.crypto?.randomUUID?.() || `qianmu-${Date.now()}-${Math.random().toString(36).slice(2)}`; }
+  catch (_) { return `qianmu-${Date.now()}`; }
+}
+
 function resolveUrl(endpoint, proxyBase) {
   // 1.9.0 曾保存 /sse 为默认值；自动收敛到可直连的 chunked JSON 端点，无需用户重填。
   const source = (String(endpoint || DOUBAO_ENDPOINT).trim() || DOUBAO_ENDPOINT)
@@ -156,6 +161,9 @@ async function synthesizeDoubaoResource(opts, credentials, model) {
     // 旧版火山凭证的正确头名是 App-Key，不是 App-Id（对齐 Siren-Voice 已验证实现）。
     headers['X-Api-App-Key'] = appId;
     headers['X-Api-Access-Key'] = accessKey;
+  } else {
+    headers['X-Api-Key'] = apiKey;
+    headers['X-Api-Request-Id'] = requestId();
   }
   const body = {
     user: { uid: String(opts.uid || 'qianmu-tts') },
@@ -172,19 +180,23 @@ async function synthesizeDoubaoResource(opts, credentials, model) {
   if (model === 'seed-icl-1.0') body.req_params.model = 'seed-tts-1.1';
 
   let response;
-  const useInternalProxy = !useLegacyCredentials;
+  let directError = null;
   try {
-    response = useInternalProxy
-      ? await fetch(QIANMU_DOUBAO_PROXY_ENDPOINT, {
+    response = await fetch(resolveUrl(opts.endpoint, ''), { method: 'POST', headers, body: JSON.stringify(body) });
+  } catch (error) { directError = error; }
+  // 官方端点允许时全程浏览器直连；只在 CORS/网络层根本没送达时，回退可选的千幕网关。
+  if (!response && !useLegacyCredentials) {
+    try {
+      response = await fetch(QIANMU_DOUBAO_PROXY_ENDPOINT, {
         method: 'POST', headers: stRequestHeaders(), body: JSON.stringify({ apiKey, resourceId: model, request: body }),
-      })
-      : await fetch(resolveUrl(opts.endpoint, ''), { method: 'POST', headers, body: JSON.stringify(body) });
-  } catch (error) {
-    const prefix = useInternalProxy ? '千幕豆包服务端插件请求失败' : '豆包网络请求失败（可能是跨域或网络问题）';
-    throw new Error(`${prefix}：${error?.message || error}`);
+      });
+      if (response.status === 404) throw new Error('浏览器直连被当前网络拦截，且未安装可选的千幕语音网关');
+    } catch (proxyError) {
+      throw new Error(`豆包语音连接失败：${proxyError?.message || directError?.message || proxyError || directError}`);
+    }
   }
-  if (useInternalProxy && response.status === 404) {
-    throw new Error('未检测到千幕豆包服务端插件，请按 INSTALL-DOUBAO-APIKEY.md 完成安装并重启 SillyTavern');
+  if (!response) {
+    throw new Error(`豆包网络请求失败（可能是跨域或网络问题）：${directError?.message || directError}`);
   }
   if (!response.ok) {
     const detail = await response.text().catch(() => '');
