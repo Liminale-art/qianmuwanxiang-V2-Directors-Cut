@@ -8,15 +8,21 @@ const iconRendererSource = await readFile(new URL('qianmu-icon-renderer.js', roo
 const manifest = JSON.parse(await readFile(new URL('manifest.json', root), 'utf8'));
 const packageJson = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
 const readme = await readFile(new URL('README.md', root), 'utf8');
+const license = await readFile(new URL('LICENSE', root), 'utf8');
 
 assert.equal(manifest.version, '1.58.1');
 assert.equal(packageJson.version, manifest.version, 'manifest 与 package 版本必须一致');
+assert.equal(packageJson.license, 'PolyForm-Noncommercial-1.0.0');
 assert.equal(manifest.js, `index.js?v=${manifest.version}`, '入口脚本必须按版本破除浏览器模块缓存');
 assert.equal(manifest.css, `style.css?v=${manifest.version}`, '样式必须按版本破除浏览器缓存');
 assert.equal(manifest.display_name, '千幕万象V2-导演剪辑版');
 assert.equal(manifest.homePage, 'https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git');
 assert.match(readme, /https:\/\/github\.com\/Liminale-art\/qianmuwanxiang-V2-Directors-Cut\.git/);
 assert.doesNotMatch(readme, /liminale1525\/Omniscene/);
+assert.match(readme, /PolyForm Noncommercial License 1\.0\.0/);
+assert.match(license, /^# PolyForm Noncommercial License 1\.0\.0/m);
+assert.match(license, /^Required Notice: Copyright © 2026 Liminale-art\./m);
+assert.doesNotMatch(license, /AGPL-3\.0-or-later/);
 assert.match(source, /const VERSION = '1\.58\.1';/);
 
 assert.match(source, /Symbol\.for\('qianmu\.omniscene\.runtime'\)/, '不同 URL 和安装目录必须共用一把运行锁');

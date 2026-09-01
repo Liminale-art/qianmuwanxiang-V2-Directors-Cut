@@ -75,3 +75,11 @@ https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git
 分镜生图与豆包 API Key 配音还需要启用同仓库附带的千幕服务端插件。Windows、本地 Linux、macOS、VPS 与 Docker 均可按[一键安装说明](./INSTALL-DOUBAO-APIKEY.md)操作；安装后必须重启 SillyTavern 后端服务，仅刷新网页不会加载插件。
 
 ---
+
+## 📜 许可
+
+本版本原创软件采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)：允许非商业使用、复制、修改和分发；分发原版或修改版时必须保留许可条款与其中的 `Required Notice`。任何商业使用均需另行取得书面授权。
+
+本项目属于 source-available，不以“开源软件”名义发布。`assets/PHOSPHOR-LICENSE.txt` 所列第三方 Phosphor 内容继续遵守 MIT License，不受本项目非商业许可覆盖。此前已按 AGPL-3.0-or-later 发布的历史版本继续适用其原许可，新许可不追溯撤销既有授权。
+
+---
