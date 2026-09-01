@@ -6769,9 +6769,8 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #chat .mes .sd-storyboard-inline figure { flex-basis: min(88%, 340px); }
   #chat .mes .sd-storyboard-inline-actions { right: 43px; max-width: calc(100% - 52px); }
 }
-/* Qianmu-owned Phosphor icon bridge. Icons are inserted explicitly by the
-   component that rendered them; no page-wide observer or Font Awesome override. */
-.qm-phosphor-icon {
+/* Qianmu Line: inline rounded strokes with no font/CDN/sprite request. */
+.qm-glyph-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -6781,23 +6780,25 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   font-style: normal;
   vertical-align: -0.125em;
 }
-.qm-phosphor-icon::before {
+.qm-glyph-icon::before {
   content: none !important;
   display: none !important;
 }
-.qm-phosphor-icon > svg.qm-phosphor-svg {
+.qm-glyph-icon > svg.qm-glyph-svg {
   display: block;
   width: 1em;
   height: 1em;
   flex: none;
   overflow: visible;
-  fill: currentColor;
+  fill: none;
+  stroke: currentColor;
   color: inherit;
+  vector-effect: non-scaling-stroke;
 }
-.qm-phosphor-icon.fa-spin {
-  animation: qm-phosphor-spin 1s linear infinite !important;
+.qm-glyph-icon.fa-spin {
+  animation: qm-glyph-spin 0.9s linear infinite !important;
 }
-@keyframes qm-phosphor-spin { to { transform: rotate(360deg); } }
+@keyframes qm-glyph-spin { to { transform: rotate(360deg); } }
 
 /* Storyboard S3: unified prompt workbench. Scoped to avoid changing the shared visual baseline. */
 #story-director-modal .sd-storyboard-toggle-pills,

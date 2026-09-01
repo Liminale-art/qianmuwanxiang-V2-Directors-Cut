@@ -104,8 +104,8 @@ import {
   saveQianmuNote,
 } from './qianmu-notes.js';
 import * as reader from './qianmu-reader.js';
-import { checkDirectImageConnection, generateDirectImage, isDirectImageTransportError } from './qianmu-image-direct.js?v=1.58.3';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.3';
+import { checkDirectImageConnection, generateDirectImage, isDirectImageTransportError } from './qianmu-image-direct.js?v=1.58.4';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.4';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_COMPOSITION_RULE_ID,
@@ -145,11 +145,11 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
-} from './qianmu-storyboard.js?v=1.58.3';
+} from './qianmu-storyboard.js?v=1.58.4';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.3';
+const VERSION = '1.58.4';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -4031,20 +4031,20 @@ function revealFloatButton(btn, { temporary = true } = {}) {
 }
 
 const QUICK_COMMANDS = Object.freeze([
-  { id: 'dashboard', label: '推演', icon: 'fa-clapperboard', phosphor: 'qm-duotone-film-slate' },
-  { id: 'focus', label: '专注', icon: 'fa-hourglass-half', phosphor: 'focus' },
-  { id: 'notes', label: '便笺', icon: 'fa-note-sticky', phosphor: 'qm-regular-note-pencil' },
-  { id: 'tasksnodes', label: '任务', icon: 'fa-list-check', phosphor: 'tasks' },
-  { id: 'castworld', label: '世界', icon: 'fa-earth-asia', phosphor: 'world' },
-  { id: 'context', label: '取材', icon: 'fa-box-archive', phosphor: 'context' },
-  { id: 'settings', label: '幕后', icon: 'fa-feather-pointed', phosphor: 'backstage' },
-  { id: 'theater', label: '幕外', icon: 'fa-masks-theater', phosphor: 'qm-duotone-mask-happy' },
-  { id: 'tts', label: '配音', icon: 'fa-microphone-lines', phosphor: 'qm-duotone-microphone-stage' },
-  { id: 'coread', label: '书架', icon: 'fa-book-open', phosphor: 'coread-entry' },
-  { id: 'geopolitics', label: '世界格局', icon: 'fa-atom', phosphor: 'world-map' },
-  { id: 'plug', label: 'API与日志', icon: 'fa-gear', phosphor: 'qm-duotone-gear' },
-  { id: 'imagegen', label: '分镜', icon: 'fa-video', phosphor: 'qm-duotone-video-camera' },
-  { id: 'floor', label: '楼层跳转', icon: 'fa-layer-group', phosphor: 'floor-tools' },
+  { id: 'dashboard', label: '推演', icon: 'fa-clapperboard', glyph: 'qm-duotone-film-slate' },
+  { id: 'focus', label: '专注', icon: 'fa-hourglass-half', glyph: 'focus' },
+  { id: 'notes', label: '便笺', icon: 'fa-note-sticky', glyph: 'qm-regular-note-pencil' },
+  { id: 'tasksnodes', label: '任务', icon: 'fa-list-check', glyph: 'tasks' },
+  { id: 'castworld', label: '世界', icon: 'fa-earth-asia', glyph: 'world' },
+  { id: 'context', label: '取材', icon: 'fa-box-archive', glyph: 'context' },
+  { id: 'settings', label: '幕后', icon: 'fa-feather-pointed', glyph: 'backstage' },
+  { id: 'theater', label: '幕外', icon: 'fa-masks-theater', glyph: 'qm-duotone-mask-happy' },
+  { id: 'tts', label: '配音', icon: 'fa-microphone-lines', glyph: 'qm-duotone-microphone-stage' },
+  { id: 'coread', label: '书架', icon: 'fa-book-open', glyph: 'coread-entry' },
+  { id: 'geopolitics', label: '世界格局', icon: 'fa-atom', glyph: 'world-map' },
+  { id: 'plug', label: 'API与日志', icon: 'fa-gear', glyph: 'qm-duotone-gear' },
+  { id: 'imagegen', label: '分镜', icon: 'fa-video', glyph: 'qm-duotone-video-camera' },
+  { id: 'floor', label: '楼层跳转', icon: 'fa-layer-group', glyph: 'floor-tools' },
 ]);
 const QUICK_COMMAND_IDS = QUICK_COMMANDS.map((item) => item.id);
 const QUICK_ICON_OPTICAL_SCALE = Object.freeze({
@@ -5553,7 +5553,7 @@ function openQuickWheel(btn) {
     button.title = item.pending ? `${item.label}（即将开放）` : item.label;
     button.setAttribute('aria-label', button.title);
     button.setAttribute('role', 'menuitem');
-    const iconMarkup = item.external ? quickDockIconMarkup(item) : `<i class="fa-solid ${item.icon}"${item.phosphor ? ` data-qm-icon="${item.phosphor}"` : ''}></i>`;
+    const iconMarkup = item.external ? quickDockIconMarkup(item) : `<i class="fa-solid ${item.icon}"${item.glyph ? ` data-qm-icon="${item.glyph}"` : ''}></i>`;
     button.innerHTML = `${iconMarkup}${QUICK_HEX_BORDER_SVG}`;
     holder.appendChild(button);
     if (item.id === 'notes') bindNotesHiveDetachDrag(button, item, layout);
@@ -10475,7 +10475,7 @@ function renderQuickWheelSettings() {
     </div>
     <details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑蜂巢入口</span><b>${occupied} 项</b></summary><div class="sd-wheel-custom-list">${ordered.map((item, index) => `
       <div class="sd-wheel-custom-row" data-command="${item.id}">
-        <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}"${item.phosphor ? ` data-qm-icon="${item.phosphor}"` : ''}></i><span>${htmlEscape(item.label)}</span></label>
+        <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}"${item.glyph ? ` data-qm-icon="${item.glyph}"` : ''}></i><span>${htmlEscape(item.label)}</span></label>
         <div><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="up" ${index === 0 ? 'disabled' : ''} title="上移"><i class="fa-solid fa-chevron-up"></i></button><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="down" ${index === ordered.length - 1 ? 'disabled' : ''} title="下移"><i class="fa-solid fa-chevron-down"></i></button></div>
       </div>`).join('')}</div>
     </details>
@@ -10832,7 +10832,7 @@ function renderStoryboardNav(state) {
     ['gallery', '阅片室', 'fa-images', 'screening'],
     ['logs', '日志', 'fa-list-ul', 'qm-regular-list-bullets'],
   ];
-  return `<nav class="sd-storyboard-nav" aria-label="分镜功能">${items.map(([id, label, icon, phosphor]) => `<button type="button" aria-current="${state.view === id ? 'page' : 'false'}" aria-label="${label}" class="${state.view === id ? 'active' : ''}" data-storyboard-view="${id}"><i class="fa-solid ${icon}" data-qm-icon="${phosphor}"></i><span>${label}</span></button>`).join('')}</nav>`;
+  return `<nav class="sd-storyboard-nav" aria-label="分镜功能">${items.map(([id, label, icon, glyph]) => `<button type="button" aria-current="${state.view === id ? 'page' : 'false'}" aria-label="${label}" class="${state.view === id ? 'active' : ''}" data-storyboard-view="${id}"><i class="fa-solid ${icon}" data-qm-icon="${glyph}"></i><span>${label}</span></button>`).join('')}</nav>`;
 }
 
 function storyboardConnectionState(state, providerId = state.source) {
