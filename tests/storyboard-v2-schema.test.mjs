@@ -35,7 +35,9 @@ assert.deepEqual(STORYBOARD_ENTITY_TYPES, ['char', 'user', 'cast']);
 const novelGenerations = new Set(STORYBOARD_MODEL_REGISTRY.novel.map((item) => item.generation));
 assert.deepEqual([...novelGenerations], ['V3', 'V4', 'V4.5', 'V5'], 'NovelAI must expose only V3 and later generations');
 assert.ok(STORYBOARD_MODEL_REGISTRY.novel.filter((item) => item.id.includes('full') || item.generation === 'V3').every((item) => item.label.includes('💕')), 'unfiltered NovelAI models must be visibly marked');
-assert.ok(Object.values(STORYBOARD_PROVIDER_REGISTRY).every((provider) => provider.customModelId === false), 'the workbench model IDs must be fixed');
+assert.equal(STORYBOARD_PROVIDER_REGISTRY.openai.customModelId, true, 'the custom OpenAI-compatible channel must accept third-party model IDs');
+assert.equal(STORYBOARD_PROVIDER_REGISTRY.openai.label, '自定义（兼容 OpenAI）');
+assert.ok(Object.entries(STORYBOARD_PROVIDER_REGISTRY).filter(([id]) => id !== 'openai').every(([, provider]) => provider.customModelId === false), 'official channels keep curated model IDs');
 assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-4-5-full').vibe, true);
 assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-4-5-full').preciseReference, true);
 assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-4-5-full').multipleReferences, true);
@@ -49,11 +51,16 @@ assert.deepEqual(defaults.automation, { autoCapture: true, autoGenerate: true })
 assert.equal(defaults.promptCompiler.enabled, true);
 assert.equal(defaults.promptMode, 'manual');
 assert.equal(defaults.promptDraft.userEditedCompiled, false);
+assert.deepEqual(defaults.promptDefaults, {});
 assert.equal(Object.hasOwn(defaults, 'selectedCharacters'), false);
 assert.equal(Object.hasOwn(defaults, 'characters'), false);
 assert.equal(Object.hasOwn(defaults, 'entities'), false);
 assert.deepEqual(Object.keys(defaults.connections), Object.keys(STORYBOARD_PROVIDER_REGISTRY));
 assert.notStrictEqual(defaults.connections.novel, defaults.connections.openai, 'provider connections must be isolated');
+
+const oneSidedPromptDefault = normalizeStoryboardState({ promptDefaults: { 'novel:nai-diffusion-5-full': { positive: '' } } });
+assert.equal(Object.hasOwn(oneSidedPromptDefault.promptDefaults['novel:nai-diffusion-5-full'], 'positive'), true, 'an explicitly cleared side must stay cleared');
+assert.equal(Object.hasOwn(oneSidedPromptDefault.promptDefaults['novel:nai-diffusion-5-full'], 'negative'), false, 'editing one prompt side must not suppress the other side fallback');
 
 const rememberedModels = normalizeStoryboardState({
   source: 'novel',
@@ -146,7 +153,7 @@ assert.equal(migrated.promptDraft.compiled, 'old prompt');
 assert.equal(Object.hasOwn(migrated, 'characters'), false, 'v9 must remove untested character archive data');
 assert.equal(Object.hasOwn(migrated, 'entities'), false, 'v9 must remove untested character entity data');
 assert.equal(Object.hasOwn(migrated, 'selectedCharacters'), false);
-assert.equal(migrated.connections.openai.presets[0].model, 'gpt-image-2', 'retired or arbitrary model IDs must migrate to the provider default');
+assert.equal(migrated.connections.openai.presets[0].model, 'gpt-image-1', 'existing OpenAI-compatible model IDs must survive migration');
 assert.equal(migrated.profiles.openai.openaiBackground, 'transparent');
 assert.equal(migrated.profiles.openai.openaiOutputFormat, 'webp');
 assert.equal(migrated.profiles.openai.count, '2');
@@ -211,8 +218,8 @@ const customPlan = buildStoryboardProviderPlan({
   references: [{ type: 'gallery', assetId: 'asset-1' }],
   mask: { type: 'asset', assetId: 'mask-1' },
 });
-assert.equal(customPlan.customModel, false);
-assert.equal(customPlan.model, 'gpt-image-2', 'a mirror may replace the base URL but not inject an arbitrary model ID');
+assert.equal(customPlan.customModel, true);
+assert.equal(customPlan.model, 'mirror-image-model', 'a compatible mirror must keep its concrete model ID');
 assert.equal(customPlan.baseUrl, 'https://mirror.example/v1');
 assert.equal(customPlan.request.references.length, 1);
 assert.ok(customPlan.droppedParameters.includes('negative'));

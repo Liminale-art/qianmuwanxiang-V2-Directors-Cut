@@ -30,7 +30,7 @@ const model = (id, label, generation, extra = {}) => Object.freeze({
 export const STORYBOARD_PROVIDER_REGISTRY = Object.freeze({
   novel: Object.freeze({ id: 'novel', label: 'NovelAI', protocol: 'novelai', defaultBaseUrl: 'https://image.novelai.net', customBaseUrl: true, customModelId: false, stSource: 'novel', secretKey: 'api_key_novel', defaultModel: 'nai-diffusion-5-full', capabilities: caps({ negative: true, seed: true, steps: true, cfg: true, sampler: true, scheduler: true, multiCharacter: true }) }),
   banana: Object.freeze({ id: 'banana', label: 'Banana', protocol: 'gemini-images', defaultBaseUrl: 'https://generativelanguage.googleapis.com', customBaseUrl: true, customModelId: false, stSource: 'google', secretKey: 'api_key_makersuite', defaultModel: 'gemini-3.1-flash-image', capabilities: caps({ negative: true, reference: true, multipleReferences: true, imageEdit: true }) }),
-  openai: Object.freeze({ id: 'openai', label: 'GPT Image 2', protocol: 'openai-images', defaultBaseUrl: 'https://api.openai.com/v1', customBaseUrl: true, customModelId: false, stSource: 'openai', secretKey: 'api_key_openai', defaultModel: 'gpt-image-2', capabilities: caps({ reference: true, multipleReferences: true, imageEdit: true }) }),
+  openai: Object.freeze({ id: 'openai', label: '自定义（兼容 OpenAI）', protocol: 'openai-images', defaultBaseUrl: 'https://api.openai.com/v1', customBaseUrl: true, customModelId: true, stSource: 'openai', secretKey: 'api_key_openai', defaultModel: 'gpt-image-2', capabilities: caps({ reference: true, multipleReferences: true, imageEdit: true }) }),
   seedream: Object.freeze({ id: 'seedream', label: 'Doubao Seedream', protocol: 'ark-images', defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3', customBaseUrl: true, customModelId: false, stSource: '', secretKey: '', defaultModel: 'doubao-seedream-5-0-260128', capabilities: caps({ seed: true, reference: true, multipleReferences: true, imageEdit: true }) }),
   comfy: Object.freeze({ id: 'comfy', label: 'ComfyUI', protocol: 'comfy-workflow', defaultBaseUrl: '', customBaseUrl: true, customModelId: false, stSource: 'comfy', secretKey: '', defaultModel: 'comfy-workflow', capabilities: caps({ negative: true, seed: true, steps: true, cfg: true, sampler: true, scheduler: true, reference: true, multipleReferences: true, imageEdit: true, mask: true, workflow: true }) }),
 });
@@ -148,6 +148,13 @@ export const STORYBOARD_CROPS = Object.freeze(['full', 'knees', 'waist', 'chest'
 export const getStoryboardProvider = (id) => STORYBOARD_PROVIDER_REGISTRY[id] || null;
 export const getStoryboardModel = (providerId, modelId) => (STORYBOARD_MODEL_REGISTRY[providerId] || []).find((item) => item.id === modelId) || null;
 export const getStoryboardCapabilities = (providerId, modelId = '') => getStoryboardModel(providerId, modelId)?.capabilities || getStoryboardProvider(providerId)?.capabilities || caps();
+const resolveStoryboardModelId = (providerId, value = '') => {
+  const provider = getStoryboardProvider(providerId);
+  if (!provider) return '';
+  const requested = str(value, 240);
+  if (getStoryboardModel(providerId, requested) || (provider.customModelId && requested)) return requested;
+  return provider.defaultModel;
+};
 
 const legacyProfile = () => ({ loaded: false, model: '', sampler: '', scheduler: '', width: '', height: '', ratio: '1:1', count: '', steps: '', cfg: '', seed: '', comfyUrl: '', comfyWorkflow: '', comfyWorkflowNotice: '', openaiStyle: '', openaiQuality: '', openaiBackground: '', openaiOutputFormat: '', imageSize: '', watermark: false, seedreamGuidanceScale: '', seedreamSequential: false, googleEnhance: false, novelCfgRescale: '', novelSm: false, novelSmDyn: false, novelDecrisper: false, novelVarietyBoost: false });
 const promptDraft = () => ({ compiled: '', negative: '', artistString: '', compiledAt: 0, compiledBy: '', userEditedCompiled: false, userEditedNegative: false, artistPositiveBaked: false, artistNegativeBaked: false, sourceSummary: [] });
@@ -173,7 +180,7 @@ export function createStoryboardDefaults() {
   const ids = Object.keys(STORYBOARD_PROVIDER_REGISTRY);
   return {
     schemaVersion: STORYBOARD_SCHEMA_VERSION, enabled: false, automation: automationDefaults(), view: 'create', workspaceView: 'workbench', assetView: 'tags', assetSearch: '', logFilter: 'all', gallerySearch: '', gallerySource: 'all', source: 'novel', initialized: false,
-    target: 'latest', floor: '', inlineByDefault: true, promptMode: 'manual', prompt: '', negative: '', contentRating: 'sfw', paragraphMode: 'auto', manualParagraphIndex: null, pendingParagraphSelection: null, promptDraft: promptDraft(),
+    target: 'latest', floor: '', inlineByDefault: true, promptMode: 'manual', prompt: '', negative: '', promptDefaults: {}, contentRating: 'sfw', paragraphMode: 'auto', manualParagraphIndex: null, pendingParagraphSelection: null, promptDraft: promptDraft(),
     promptCompiler: { enabled: true, apiProfileId: '', connectionPresetId: '', instructionPresetId: '', instruction: '', includeCurrentFloor: true, includeRecentFloors: 2, includeCharacterCards: true, includeUserPersona: true, includeActivatedWorldInfo: true, worldMode: 'selected', worldBookNames: [], worldBookView: '', worldBookInitializedNames: [], worldEntryIds: [], tagRules: compilerTagRuleDefaults(), excludedTags: 'think, thinking' },
     profiles: Object.fromEntries(ids.map((id) => [id, legacyProfile()])), modelProfiles: Object.fromEntries(ids.map((id) => [id, {}])), parameterPresets: [], parameterPresetSelection: Object.fromEntries(ids.map((id) => [id, ''])),
     connections: Object.fromEntries(ids.map((id) => [id, connection(id)])),
@@ -252,8 +259,9 @@ export function normalizeStoryboardConnectionProfile(value, providerId) {
   const provider = getStoryboardProvider(providerId);
   if (!provider) throw new Error(`未知生图供应商：${providerId}`);
   const r = obj(value) ? value : {}, requestedModel = str(r.model || provider.defaultModel, 240);
-  const modelId = getStoryboardModel(providerId, requestedModel) ? requestedModel : provider.defaultModel;
-  return { id: cleanId(r.id), name: str(r.name || '默认连接', 80) || '默认连接', providerId, baseUrl: str(r.baseUrl || provider.defaultBaseUrl, 2048), model: modelId, customModel: false, credentialId: cleanId(r.credentialId), headers: safeRecord(r.headers), options: safeRecord(r.options), createdAt: pos(r.createdAt || r.updatedAt), updatedAt: pos(r.updatedAt) };
+  const knownModel = getStoryboardModel(providerId, requestedModel);
+  const modelId = resolveStoryboardModelId(providerId, requestedModel);
+  return { id: cleanId(r.id), name: str(r.name || '默认连接', 80) || '默认连接', providerId, baseUrl: str(r.baseUrl || provider.defaultBaseUrl, 2048), model: modelId, customModel: Boolean(provider.customModelId && !knownModel), credentialId: cleanId(r.credentialId), headers: safeRecord(r.headers), options: safeRecord(r.options), createdAt: pos(r.createdAt || r.updatedAt), updatedAt: pos(r.updatedAt) };
 }
 
 export function migrateStoryboardState(value) {
@@ -344,6 +352,10 @@ export function normalizeStoryboardState(value) {
   Object.assign(state, migrated); for (const [key, val] of Object.entries(defaults)) if (state[key] === undefined) state[key] = clone(val);
   state.schemaVersion = STORYBOARD_SCHEMA_VERSION; state.enabled = Boolean(state.enabled); state.automation = normalizeStoryboardAutomation(state.automation); state.view = ['create', 'assets', 'artists', 'presets', 'gallery', 'logs'].includes(state.view) ? state.view : 'create'; state.workspaceView = ['workbench', 'assets', 'artists', 'presets', 'gallery', 'logs'].includes(state.workspaceView) ? state.workspaceView : 'workbench'; state.logFilter = ['all', 'success', 'failed'].includes(state.logFilter) ? state.logFilter : 'all';
   state.assetView = ['tags', 'vibes', 'routing'].includes(state.assetView) ? state.assetView : 'tags'; state.assetSearch = str(state.assetSearch, 120); state.artistSearch = str(state.artistSearch, 120); state.editingArtistPresetId = state.editingArtistPresetId === 'new' ? 'new' : cleanId(state.editingArtistPresetId); state.editingPromptPresetId = cleanId(state.editingPromptPresetId); state.editingPromptItemId = state.editingPromptItemId === 'new' ? 'new' : cleanId(state.editingPromptItemId); state.promptItemDraft = obj(state.promptItemDraft) ? { name: str(state.promptItemDraft.name, 80), instruction: str(state.promptItemDraft.instruction, 12000) } : null; state.artistCollectionId = cleanId(state.artistCollectionId); state.gallerySearch = str(state.gallerySearch, 120); state.gallerySource = state.gallerySource === 'all' || getStoryboardProvider(state.gallerySource) ? state.gallerySource : 'all'; state.source = getStoryboardProvider(state.source) ? state.source : 'novel'; state.target = ['latest', 'floor', 'gallery'].includes(state.target) ? state.target : 'latest'; state.inlineByDefault = state.inlineByDefault !== false; state.promptMode = STORYBOARD_PROMPT_MODES[state.promptMode] ? state.promptMode : 'manual'; state.prompt = str(state.prompt, 24000); state.negative = str(state.negative, 12000); state.contentRating = state.contentRating === 'nsfw' ? 'nsfw' : 'sfw'; state.paragraphMode = state.paragraphMode === 'manual' ? 'manual' : 'auto'; state.manualParagraphIndex = Number.isInteger(Number(state.manualParagraphIndex)) && Number(state.manualParagraphIndex) >= 0 ? Number(state.manualParagraphIndex) : null; state.pendingParagraphSelection = state.pendingParagraphSelection ? normalizeStoryboardParagraphSelection(state.pendingParagraphSelection) : null;
+  state.promptDefaults = Object.fromEntries(Object.entries(obj(state.promptDefaults) ? state.promptDefaults : {}).slice(0, 200).map(([key, value]) => [str(key, 500), {
+    ...(obj(value) && Object.hasOwn(value, 'positive') ? { positive: str(value.positive, 12000) } : {}),
+    ...(obj(value) && Object.hasOwn(value, 'negative') ? { negative: str(value.negative, 12000) } : {}),
+  }]).filter(([key]) => key));
   const d = obj(state.promptDraft) ? state.promptDraft : {}, safeDraft = safeData(d, 5);
   if (obj(safeDraft)) { delete safeDraft.manual; delete safeDraft.autoInstruction; }
   state.promptDraft = { ...(obj(safeDraft) ? safeDraft : {}), compiled: str(d.compiled ?? state.prompt, 24000), negative: str(d.negative ?? state.negative, 12000), artistString: str(d.artistString, 6000), compiledAt: pos(d.compiledAt), compiledBy: str(d.compiledBy, 160), userEditedCompiled: Boolean(d.userEditedCompiled), userEditedNegative: Boolean(d.userEditedNegative), artistPositiveBaked: Boolean(d.artistPositiveBaked), artistNegativeBaked: Boolean(d.artistNegativeBaked), sourceSummary: Array.isArray(d.sourceSummary) ? d.sourceSummary.slice(0, 40).map((x) => str(x, 240)).filter(Boolean) : [] };
@@ -762,7 +774,7 @@ function normalizeRouting(value, catalogs = {}) {
     const connectionPreset = hasConnectionCatalog && requestedConnection ? catalogs.connections[providerId]?.presets?.find((preset) => preset.id === requestedConnection) : null;
     const connectionPresetId = hasConnectionCatalog && requestedConnection && !connectionPreset ? '' : requestedConnection;
     const requestedModel = str(input.modelId, 240);
-    const modelId = getStoryboardModel(providerId, requestedModel) ? requestedModel : getStoryboardProvider(providerId).defaultModel;
+    const modelId = resolveStoryboardModelId(providerId, requestedModel);
     const builtinParameter = getStoryboardBuiltinParameterPresets(providerId, modelId).some((preset) => preset.id === requestedParameters);
     const parameterPresetId = hasParameterCatalog && requestedParameters && !builtinParameter && !catalogs.parameterPresets.some((preset) => preset.id === requestedParameters && preset.source === providerId && (!preset.profile?.model || preset.profile.model === modelId)) ? '' : requestedParameters;
     return { providerId, modelId, connectionPresetId, parameterPresetId };
@@ -822,7 +834,7 @@ function legacyPipelineLogs(value) {
 
 export function buildStoryboardProviderPlan(input = {}) {
   const provider = getStoryboardProvider(input.providerId); if (!provider) throw new Error('请选择有效的生图模型');
-  const conn = normalizeStoryboardConnectionProfile(input.connection || {}, provider.id), requestedModel = str(input.model || conn.model || provider.defaultModel, 240), modelId = getStoryboardModel(provider.id, requestedModel) ? requestedModel : provider.defaultModel, capability = getStoryboardCapabilities(provider.id, modelId), prompt = str(input.prompt, 24000); if (!prompt) throw new Error('提示词不能为空');
+  const conn = normalizeStoryboardConnectionProfile(input.connection || {}, provider.id), requestedModel = str(input.model || conn.model || provider.defaultModel, 240), knownModel = getStoryboardModel(provider.id, requestedModel), modelId = resolveStoryboardModelId(provider.id, requestedModel), capability = getStoryboardCapabilities(provider.id, modelId), prompt = str(input.prompt, 24000); if (!prompt) throw new Error('提示词不能为空');
   const p = obj(input.params) ? input.params : {}, request = { prompt }, dropped = [];
   const own = (...keys) => { for (const key of keys) if (Object.hasOwn(p, key)) return p[key]; return undefined; };
   const providerValue = (providerId, key, value) => { if (value === '' || value == null) return; if (provider.id === providerId) request[key] = value; else dropped.push(key); };
@@ -898,7 +910,7 @@ export function buildStoryboardProviderPlan(input = {}) {
   };
   for (const key of Object.keys(gatewayParameters)) if (gatewayParameters[key] === undefined || gatewayParameters[key] === '') delete gatewayParameters[key];
   const gatewayRequest = { provider: provider.id, baseUrl: conn.baseUrl, model: modelId, prompt, negativePrompt: request.negative || '', references: request.references, vibes: request.vibes, parameters: gatewayParameters };
-  return { version: 1, providerId: provider.id, protocol: provider.protocol, baseUrl: conn.baseUrl, credentialId: conn.credentialId, connectionPresetId: conn.id, model: modelId, customModel: false, capabilities: capability, request, gatewayRequest, droppedParameters: [...new Set(dropped)] };
+  return { version: 1, providerId: provider.id, protocol: provider.protocol, baseUrl: conn.baseUrl, credentialId: conn.credentialId, connectionPresetId: conn.id, model: modelId, customModel: Boolean(provider.customModelId && !knownModel), capabilities: capability, request, gatewayRequest, droppedParameters: [...new Set(dropped)] };
 }
 
 export function resolveStoryboardVisualState(facts) {
@@ -1049,14 +1061,15 @@ function modelProfileMemory(value, currentProfiles = {}) {
   const raw = obj(value) ? value : {};
   return Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((providerId) => {
     const knownModels = new Set((STORYBOARD_MODEL_REGISTRY[providerId] || []).map((item) => item.id));
+    const allowsCustomModel = Boolean(getStoryboardProvider(providerId)?.customModelId);
     const source = obj(raw[providerId]) ? raw[providerId] : {};
     const remembered = {};
     for (const [modelId, profile] of Object.entries(source).slice(0, 80)) {
-      if (!knownModels.has(modelId) || !obj(profile)) continue;
+      if ((!knownModels.has(modelId) && !allowsCustomModel) || !str(modelId, 240) || !obj(profile)) continue;
       remembered[modelId] = legacyProfiles({ [providerId]: { ...profile, model: modelId } })[providerId];
     }
     const current = obj(currentProfiles[providerId]) ? currentProfiles[providerId] : {};
-    const currentModel = knownModels.has(current.model) ? current.model : '';
+    const currentModel = knownModels.has(current.model) || allowsCustomModel ? str(current.model, 240) : '';
     if (currentModel && !remembered[currentModel]) remembered[currentModel] = legacyProfiles({ [providerId]: current })[providerId];
     return [providerId, remembered];
   }));

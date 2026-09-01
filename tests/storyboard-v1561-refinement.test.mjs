@@ -14,7 +14,8 @@ assert.doesNotMatch(source, /\['imagegen', '分镜'\]/);
 assert.doesNotMatch(source, /sd-geo-shortcut/);
 assert.match(source, /sd-storyboard-shortcut[\s\S]*activeTab = 'imagegen'/);
 assert.match(source, /sd-storyboard-mode[\s\S]*sd-storyboard-body/);
-assert.match(source, /sd-storyboard-titlebar[\s\S]*sd-storyboard-back[\s\S]*sd-storyboard-close/);
+assert.match(source, /sd-storyboard-titlebar[\s\S]*sd-storyboard-close/);
+assert.doesNotMatch(source, /sd-storyboard-back|function storyboardBack|storyboardRouteStack/);
 assert.match(source, /sd-storyboard-close[\s\S]*storyboardReturnTab/);
 assert.match(style, /\.sd-storyboard-mode \.sd-storyboard-body/);
 
@@ -65,11 +66,12 @@ assert.match(source, /sd-storyboard-worldbook-card/);
 assert.match(source, /sd-storyboard-worldbook-picker/);
 assert.doesNotMatch(source, /自动筛选/);
 
-// The fixed title system separates in-panel history from closing the storyboard.
+// The fixed title system reserves a real top region; closing is not overloaded as navigation.
 assert.match(source, /sd-storyboard-titlebar[\s\S]*STORYBOARD/);
 assert.match(source, /function renderStoryboardNav[\s\S]*data-storyboard-view/);
 assert.doesNotMatch(source.match(/function renderStoryboardNav[\s\S]*?\n}/)?.[0] || '', /sd-storyboard-exit/);
-assert.match(style, /sd-storyboard-titlebar[\s\S]*position: sticky/);
+assert.match(style, /\.sd-storyboard-root[\s\S]*grid-template-rows: 46px minmax\(0, 1fr\) auto/);
+assert.match(style, /\.sd-storyboard-scroll[\s\S]*overflow: auto/);
 assert.doesNotMatch(source, /为 \$\{getStoryboardModel[\s\S]*连接起一个便于识别的名称/);
 
 // Storyboard worldbooks use the same all-books → multi-book → per-entry hierarchy as Context.
@@ -91,5 +93,11 @@ assert.match(source, /sd-storyboard-artist-preview-file/);
 assert.match(source, /sd-storyboard-artist-preview-gallery/);
 assert.match(source, /fa-floppy-disk/);
 assert.doesNotMatch(source, /class="[^"]*sd-storyboard-artist-string/);
+
+// Prompt-card edits are remembered per concrete channel/model. Artist fields override one side at a time.
+assert.match(source, /function storyboardProviderPromptDefaults[\s\S]*Object\.hasOwn\(remembered, 'positive'\)[\s\S]*Object\.hasOwn\(remembered, 'negative'\)/);
+assert.match(source, /function storyboardPromptLayerForArtist[\s\S]*artist\?\.positivePrompt \|\| defaults\.positive[\s\S]*artist\?\.negativePrompt \|\| defaults\.negative/);
+assert.match(source, /function storyboardRememberPromptLayer[\s\S]*artist\[field === 'positive'[\s\S]*state\.promptDefaults\[key\] = current/);
+assert.match(source, /storyboardJoinPrompt\(\[artistString, layer\.positive, prompt\][\s\S]*storyboardJoinPrompt\(\[layer\.negative, negative\]/, 'artist string and positive defaults must precede the scene, with negative kept separate');
 
 console.log('Storyboard v1.56.3 refinement contract OK');

@@ -158,7 +158,6 @@ export const QIANMU_FA_ICON_MAP = Object.freeze({
   'fa-volume-high': 'qm-fill-speaker-high',
   'fa-wand-magic-sparkles': 'qm-duotone-magic-wand',
   'fa-wave-square': 'qm-regular-wave-sine',
-  'fa-window-restore': 'qm-duotone-squares-four',
   'fa-xmark': 'qm-regular-x',
 });
 

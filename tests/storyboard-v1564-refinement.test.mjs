@@ -39,8 +39,9 @@ assert.doesNotMatch(source, /sd-storyboard-route-model'[\s\S]{0,220}connectionPr
 assert.match(source, /promptInput\('保存 API 预设', '输入预设名称。'/);
 assert.match(source, /placeholder="输入 API Key"/);
 assert.doesNotMatch(source, /savedKey \? '已保存'/);
-assert.match(source, /renderStoryboardCreate\(state\)[\s\S]*\$\{body\}\$\{renderStoryboardNav\(state\)\}/);
-assert.match(style, /\.sd-storyboard-nav \{[\s\S]*bottom: 0;[\s\S]*margin-top: auto;/);
+assert.match(source, /function renderStoryboardTab[\s\S]*sd-storyboard-scroll[\s\S]*\$\{body\}<\/div>\$\{renderStoryboardNav\(state\)\}/);
+assert.match(style, /\.sd-storyboard-root[\s\S]*grid-template-rows: 46px minmax\(0, 1fr\) auto/);
+assert.match(style, /\.sd-storyboard-nav \{[\s\S]*bottom: auto;[\s\S]*background: var\(--sd-folder-head\)/);
 assert.match(style, /--sd-storyboard-gap: 4px/);
 assert.match(style, /\.sd-storyboard-automation-head[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto/);
 assert.match(style, /\.sd-storyboard-refresh-worldbooks[\s\S]*border-radius: 999px/);

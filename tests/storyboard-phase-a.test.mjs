@@ -77,10 +77,11 @@ assert.equal(v45Plan.request.providerOptions.cfg_rescale, 0.2);
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
-assert.match(source, /let storyboardRouteStack = \[\]/);
-assert.match(source, /function storyboardRouteSnapshot[\s\S]*scrollTop/);
-assert.match(source, /function storyboardBack[\s\S]*storyboardPendingRestoreScroll/);
-assert.match(source, /sd-storyboard-titlebar[\s\S]*sd-storyboard-back[\s\S]*sd-storyboard-close/);
+assert.match(source, /const storyboardPageScrolls = new Map\(\)/);
+assert.match(source, /function storyboardPageKey[\s\S]*function storyboardRememberPageScroll/);
+assert.match(source, /function storyboardNavigate[\s\S]*storyboardPageScrolls\.get/);
+assert.match(source, /sd-storyboard-titlebar[\s\S]*sd-storyboard-close/);
+assert.doesNotMatch(source, /sd-storyboard-back|function storyboardBack|storyboardRouteStack/);
 const navSource = source.slice(source.indexOf('function renderStoryboardNav'), source.indexOf('function storyboardConnectionState'));
 assert.doesNotMatch(navSource, /sd-storyboard-exit/);
 

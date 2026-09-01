@@ -108,8 +108,10 @@ assert.deepEqual(summarizeStoryboardGenerationDemand([
 ]), { requestCount: 2, imageCount: 5, hasMultiImageRequest: true }, 'confirmation math must match the one-to-four image request contract');
 
 assert.match(browserSource, /function storyboardConnectionState[\s\S]*draft: group\?\.draft \|\| active/, 'the UI must render the editable draft instead of the saved preset object');
-assert.match(browserSource, /function storyboardModelOptions[\s\S]*const options = STORYBOARD_MODEL_REGISTRY\[providerId\][\s\S]*fixedSelection/, 'the model picker must be limited to the fixed provider catalog');
-assert.doesNotMatch(browserSource, /storyboardFetchedModels|showAllFetchedModels|__custom__/, 'relay discovery and arbitrary model IDs must not leak back into the workbench');
+assert.match(browserSource, /function storyboardModelOptions[\s\S]*const options = STORYBOARD_MODEL_REGISTRY\[providerId\][\s\S]*fixedSelection/, 'official providers must use their curated model catalog');
+assert.match(browserSource, /provider\.customModelId \? `<input class="text_pole sd-storyboard-model-select"/, 'the custom OpenAI-compatible channel must accept a concrete third-party model ID');
+assert.match(browserSource, /function storyboardResolveModelId[\s\S]*provider\.customModelId/, 'custom IDs must pass through one explicit resolver');
+assert.doesNotMatch(browserSource, /storyboardFetchedModels|showAllFetchedModels|__custom__/, 'legacy relay-discovery state must not leak back into the workbench');
 assert.match(browserSource, /const connection = routedConnection \|\| connectionState\.draft \|\| connectionState\.active/, 'ordinary generation must use the current draft while an explicit ensemble route may use its saved preset');
 assert.match(browserSource, /function storyboardParameterPresets[\s\S]*item\.profile\.model === currentModel/, 'the style picker must isolate saved parameters by concrete model');
 const saveConnectionSource = browserSource.slice(browserSource.indexOf('async function storyboardSaveConnection'), browserSource.indexOf('async function storyboardSaveConnectionPreset'));

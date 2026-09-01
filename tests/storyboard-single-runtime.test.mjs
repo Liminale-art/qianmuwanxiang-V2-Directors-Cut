@@ -31,8 +31,9 @@ assert.doesNotMatch(source, /\bopenStoryboardConfigModal\s*\(/, 'the storyboard 
 assert.doesNotMatch(source, /sd-storyboard-config-btn/, 'the redundant storyboard configuration gear must stay removed');
 assert.match(source, /const storyboardLayout = activeTab === 'imagegen'/, 'storyboard uses the existing single runtime in an exclusive panel layout');
 assert.doesNotMatch(source, /sd-storyboard-exit/, 'the bottom navigation must not retain the old exit-as-back control');
-assert.match(source, /sd-storyboard-titlebar[\s\S]*sd-storyboard-back[\s\S]*sd-storyboard-close/, 'the fixed titlebar owns separate back and close controls');
-assert.match(source, /function storyboardBack[\s\S]*storyboardRouteStack\.pop/, 'back must restore the runtime route stack');
+assert.match(source, /sd-storyboard-titlebar[\s\S]*sd-storyboard-close/, 'the fixed titlebar owns the close control');
+assert.doesNotMatch(source, /sd-storyboard-back|function storyboardBack|storyboardRouteStack/, 'the obsolete back stack must stay removed');
+assert.match(source, /const storyboardPageScrolls = new Map\(\)[\s\S]*function storyboardNavigate[\s\S]*storyboardPageScrolls\.get/, 'storyboard pages remember their own location');
 assert.match(source, /sd-storyboard-close[\s\S]*storyboardReturnTab/, 'close must return to the Qianmu tab that opened the storyboard');
 assert.match(source, /sd-storyboard-shortcut[\s\S]*activeTab = 'imagegen'/, 'the former world-map shortcut is now the storyboard entry');
 

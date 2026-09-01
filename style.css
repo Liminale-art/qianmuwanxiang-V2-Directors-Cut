@@ -1641,34 +1641,6 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-storage-card .sd-card-title-row > div { min-width: 0; }
 #story-director-modal .sd-storage-card .sd-card-title-row h3 { margin: 0; }
 #story-director-modal .sd-storage-card .sd-card-title-row p { margin: 2px 0 0; }
-#story-director-modal .sd-storage-overview {
-  display: grid;
-  grid-template-columns: 104px minmax(0, 1fr);
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 15px;
-}
-#story-director-modal .sd-storage-ring {
-  width: 96px;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  display: grid;
-  place-content: center;
-  text-align: center;
-  position: relative;
-  background: conic-gradient(var(--sd-accent) var(--sd-storage-use), var(--sd-glass) 0);
-}
-#story-director-modal .sd-storage-ring::after {
-  content: '';
-  position: absolute;
-  inset: 9px;
-  border-radius: inherit;
-  background: var(--sd-card);
-}
-#story-director-modal .sd-storage-ring strong,
-#story-director-modal .sd-storage-ring span { position: relative; z-index: 1; }
-#story-director-modal .sd-storage-ring strong { font-size: 20px; line-height: 1.1; }
-#story-director-modal .sd-storage-ring span { margin-top: 4px; color: var(--sd-muted); font-size: 11px; }
 #story-director-modal .sd-storage-totals { display: grid; gap: 8px; min-width: 0; }
 #story-director-modal .sd-storage-totals span {
   display: flex;
@@ -1678,44 +1650,48 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   font-size: 12px;
 }
 #story-director-modal .sd-storage-totals b { color: var(--sd-text); text-align: right; font-weight: 650; }
-#story-director-modal .sd-storage-categories { display: grid; gap: 8px; }
-#story-director-modal .sd-storage-row {
-  display: grid;
-  grid-template-columns: minmax(70px, auto) minmax(70px, 1fr) minmax(64px, auto);
-  align-items: center;
-  gap: 9px;
-  font-size: 12px;
+#story-director-modal .sd-storage-ios-bar {
+  display: flex;
+  width: 100%;
+  height: 18px;
+  margin: 15px 0 13px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--sd-border) 76%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--sd-glass) 82%, transparent);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .12), 0 1px 2px rgba(0, 0, 0, .08);
 }
-#story-director-modal .sd-storage-row > span { color: var(--sd-muted); }
-#story-director-modal .sd-storage-row > b { text-align: right; font-weight: 550; }
-#story-director-modal .sd-storage-track { height: 6px; overflow: hidden; border-radius: 999px; background: var(--sd-glass); }
-#story-director-modal .sd-storage-track i { display: block; height: 100%; border-radius: inherit; background: var(--sd-accent); opacity: .8; }
+#story-director-modal .sd-storage-segment {
+  flex: var(--sd-storage-weight) 1 0;
+  min-width: 3px;
+  height: 100%;
+  background: var(--sd-storage-color);
+  border-right: 1px solid color-mix(in srgb, var(--sd-card) 58%, transparent);
+}
+#story-director-modal .sd-storage-segment:last-child { border-right: 0; }
+#story-director-modal .sd-storage-legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 14px;
+}
+#story-director-modal .sd-storage-legend > span {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 11px;
+}
+#story-director-modal .sd-storage-legend > span > i { width: 8px; height: 8px; border-radius: 3px; background: var(--sd-storage-color); }
+#story-director-modal .sd-storage-legend em { overflow: hidden; color: var(--sd-muted); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-storage-legend b { font-weight: 550; white-space: nowrap; }
 #story-director-modal .sd-storage-scope { margin: 13px 0 0; color: var(--sd-muted); font-size: 11px; line-height: 1.45; }
 #story-director-modal .sd-storage-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 13px; }
 
-/* 顶层便笺入口：固定在千幕右侧安全区，子页切换和分镜全屏都不会丢失。 */
-#story-director-modal .sd-notes-global-entry {
-  position: absolute !important;
-  z-index: 64;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 36px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 !important;
-  border: 1px solid var(--sd-border) !important;
-  border-radius: 10px !important;
-  background: color-mix(in srgb, var(--sd-card) 92%, var(--sd-accent) 8%) !important;
-  color: var(--sd-accent) !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .12) !important;
-  cursor: pointer;
-}
-#story-director-modal .sd-notes-global-entry:hover { background: color-mix(in srgb, var(--sd-card) 82%, var(--sd-accent) 18%) !important; }
-
+/* 便笺是完全不透明的独立工作页；蜂巢入口只有拖出后才在 ST 顶层出现。 */
 #story-director-modal .sd-notes-panel {
+  --sd-notes-surface: #f2ede5;
+  --sd-notes-card: #e7e0d6;
   position: absolute;
   z-index: 63;
   inset: 0;
@@ -1725,83 +1701,66 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   flex-direction: column;
   overflow: hidden;
   border-radius: inherit;
-  background: var(--sd-window-glow), var(--sd-window-bg);
+  background: var(--sd-notes-surface);
   color: var(--sd-text);
 }
+#story-director-modal.sd-theme-dark .sd-notes-panel { --sd-notes-surface: #202226; --sd-notes-card: #2c2e33; }
+#story-director-modal.sd-theme-summer .sd-notes-panel { --sd-notes-surface: #e7f4ef; --sd-notes-card: #d5e9e2; }
+#story-director-modal.sd-theme-candy .sd-notes-panel { --sd-notes-surface: #f7e9ef; --sd-notes-card: #ead9e1; }
+#story-director-modal.sd-theme-kraft .sd-notes-panel { --sd-notes-surface: #eee1c8; --sd-notes-card: #dfcfaf; }
+#story-director-modal.sd-theme-dream .sd-notes-panel { --sd-notes-surface: #f0eef6; --sd-notes-card: #e2dfee; }
 #story-director-modal .sd-notes-panel > header {
-  min-height: 62px;
+  min-height: 58px;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 18px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--sd-hairline);
-  background: var(--sd-glass-weak);
+  background: var(--sd-notes-surface);
 }
 #story-director-modal .sd-notes-panel > header > div { display: flex; align-items: center; gap: 8px; min-width: 0; }
-#story-director-modal .sd-notes-panel > header > div:first-child { flex-direction: column; align-items: flex-start; gap: 1px; }
 #story-director-modal .sd-notes-panel > header b { font: 600 21px/1.2 Georgia, serif; letter-spacing: .08em; }
-#story-director-modal .sd-notes-panel > header span { color: var(--sd-muted); font-size: 11px; }
-#story-director-modal .sd-notes-shell { min-height: 0; flex: 1 1 auto; display: grid; grid-template-columns: minmax(210px, 32%) minmax(0, 1fr); }
-#story-director-modal .sd-notes-shell > aside { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-right: 1px solid var(--sd-hairline); background: var(--sd-glass-weak); }
+#story-director-modal .sd-notes-list-view { min-width: 0; min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 14px; padding: 14px; background: var(--sd-notes-surface); }
+#story-director-modal .sd-notes-search { flex: 0 0 auto; background: var(--sd-notes-card) !important; }
 #story-director-modal .sd-note-list { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 7px; scrollbar-width: none; }
 #story-director-modal .sd-note-list::-webkit-scrollbar { display: none; }
-#story-director-modal .sd-note-list-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 7px; border: 1px solid transparent; border-radius: 12px; background: var(--sd-glass-weak); }
-#story-director-modal .sd-note-list-item.active { border-color: color-mix(in srgb, var(--sd-accent) 50%, var(--sd-border)); background: color-mix(in srgb, var(--sd-accent) 9%, var(--sd-card)); }
-#story-director-modal .sd-note-select { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 3px !important; border: 0 !important; background: transparent !important; color: inherit !important; text-align: left; box-shadow: none !important; }
-#story-director-modal .sd-note-select strong,
-#story-director-modal .sd-note-select span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#story-director-modal .sd-note-select span { color: var(--sd-muted); font-size: 11px; }
-#story-director-modal .sd-note-list-item > div { display: flex; flex-direction: column; gap: 5px; color: var(--sd-muted); font-size: 10px; }
-#story-director-modal .sd-note-editor { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; padding: 16px; }
-#story-director-modal .sd-note-editor .sd-note-title { font-weight: 650; }
-#story-director-modal .sd-note-editor .sd-note-body { width: 100%; height: 100%; min-height: 180px; resize: none; padding: 16px !important; line-height: 1.75; }
-#story-director-modal .sd-note-editor footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-#story-director-modal .sd-note-editor footer > div { display: flex; gap: 7px; }
-#story-director-modal .sd-note-editor .sd-icon-btn.active { color: var(--sd-accent) !important; border-color: color-mix(in srgb, var(--sd-accent) 50%, var(--sd-border)) !important; background: color-mix(in srgb, var(--sd-accent) 10%, var(--sd-card)) !important; }
-#story-director-modal .sd-notes-empty { min-height: 0; display: grid; place-content: center; justify-items: center; color: var(--sd-muted); text-align: center; }
-#story-director-modal .sd-notes-empty i { font-size: 34px; }
+#story-director-modal .sd-note-list-item { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 74px; padding: 8px 9px 8px 12px; border: 1px solid transparent; border-top: 4px solid color-mix(in srgb, var(--sd-accent) 82%, white); border-radius: 4px; background: var(--sd-notes-card); }
+#story-director-modal .sd-note-select { min-width: 0; align-self: stretch; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 4px !important; border: 0 !important; background: transparent !important; color: inherit !important; text-align: left; box-shadow: none !important; }
+#story-director-modal .sd-note-select span { width: 100%; min-height: 1.45em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+#story-director-modal .sd-note-select time { color: var(--sd-accent); font-size: 10px; }
+#story-director-modal .sd-note-list-actions { position: relative; display: flex; align-items: center; gap: 4px; color: var(--sd-muted); }
+#story-director-modal .sd-note-pinned-mark { font-size: 10px; }
+#story-director-modal .sd-note-tools-toggle,
+#story-director-modal .sd-note-item-tools button { width: 29px; height: 29px; display: inline-flex; align-items: center; justify-content: center; padding: 0 !important; border: 0 !important; border-radius: 8px !important; background: transparent !important; color: var(--sd-muted) !important; box-shadow: none !important; }
+#story-director-modal .sd-note-tools-toggle:hover,
+#story-director-modal .sd-note-item-tools button:hover,
+#story-director-modal .sd-note-item-tools button.active { background: color-mix(in srgb, var(--sd-accent) 13%, var(--sd-notes-card)) !important; color: var(--sd-accent) !important; }
+#story-director-modal .sd-note-item-tools { position: absolute; z-index: 3; right: 34px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; padding: 3px; border: 1px solid var(--sd-hairline); border-radius: 10px; background: var(--sd-notes-surface); box-shadow: 0 8px 22px rgba(0, 0, 0, .16); }
+#story-director-modal .sd-note-item-tools[hidden] { display: none; }
+#story-director-modal .sd-note-editor { min-width: 0; min-height: 0; flex: 1 1 auto; display: flex; padding: 0; background: var(--sd-notes-surface); }
+#story-director-modal .sd-note-editor .sd-note-body { width: 100%; height: 100%; min-height: 0; resize: none; padding: 20px !important; border: 0 !important; border-radius: 0 !important; outline: 0; background: var(--sd-notes-surface) !important; color: var(--sd-text) !important; font: inherit; font-size: 15px; line-height: 1.78; box-shadow: none !important; }
 
-/* ST 页面浮贴层：低于千幕/楼层弹窗，容器不拦截正文，只让便笺自身接收事件。 */
+/* ST 页面只浮贴一个便笺蜂巢入口；容器不拦截正文。 */
 #qianmu-notes-float-layer {
-  --qm-note-text: #3c352e;
-  --qm-note-muted: rgba(60, 53, 46, .62);
-  --qm-note-border: rgba(70, 60, 50, .18);
-  --qm-note-bg: rgba(250, 246, 222, .94);
   position: fixed;
   inset: 0;
   z-index: 9000;
   pointer-events: none;
   font-family: var(--mainFontFamily, system-ui, sans-serif);
 }
-#qianmu-notes-float-layer.sd-theme-dark { --qm-note-text: #eceae5; --qm-note-muted: rgba(236, 234, 229, .64); --qm-note-border: rgba(255, 255, 255, .14); --qm-note-bg: rgba(45, 46, 43, .94); }
-#qianmu-notes-float-layer.sd-theme-summer { --qm-note-text: #2c5560; --qm-note-bg: rgba(230, 247, 242, .95); }
-#qianmu-notes-float-layer.sd-theme-candy { --qm-note-text: #6f5161; --qm-note-bg: rgba(251, 235, 242, .95); }
-#qianmu-notes-float-layer.sd-theme-kraft { --qm-note-text: #5a4a30; --qm-note-bg: rgba(244, 231, 197, .95); }
-#qianmu-notes-float-layer.sd-theme-dream { --qm-note-text: #565377; --qm-note-bg: rgba(240, 237, 250, .95); }
-.sd-floating-note { position: fixed; min-width: 220px; min-height: 120px; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; pointer-events: auto; border: 1px solid var(--qm-note-border); border-radius: 14px; background: var(--qm-note-bg); color: var(--qm-note-text); box-shadow: 0 14px 42px rgba(0, 0, 0, .24); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
-.sd-floating-note > header { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 7px 6px 12px; border-bottom: 1px solid var(--qm-note-border); cursor: grab; touch-action: none; }
-.sd-floating-note > header:active { cursor: grabbing; }
-.sd-floating-note > header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.sd-floating-note > header div { display: flex; gap: 3px; }
-.sd-floating-note > header button { width: 27px; height: 27px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--qm-note-muted); }
-.sd-floating-note > header button:hover { background: rgba(127, 127, 127, .12); color: var(--qm-note-text); }
-.sd-floating-note > textarea { min-width: 0; min-height: 0; width: 100%; height: 100%; padding: 12px; border: 0; outline: 0; resize: none; background: transparent; color: var(--qm-note-text); font: inherit; font-size: 13px; line-height: 1.65; }
-.sd-floating-note.is-minimized { min-height: 42px; height: 42px !important; grid-template-rows: 42px; }
-.sd-floating-note.is-minimized > header { border-bottom: 0; }
-.sd-floating-note.is-minimized > textarea { display: none; }
+.sd-detached-notes-entry { position: fixed; width: 46px; height: 46px; display: inline-flex; align-items: center; justify-content: center; pointer-events: auto; touch-action: none; padding: 0; border: 1px solid rgba(255, 255, 255, .24); border-radius: 13px; background: #2c2e33; color: #f1eee8; box-shadow: 0 10px 30px rgba(0, 0, 0, .28); cursor: grab; transition: transform .14s ease, background .14s ease, box-shadow .14s ease; }
+#qianmu-notes-float-layer:not(.sd-theme-dark) .sd-detached-notes-entry { background: #f2ede5; color: #4e4a43; border-color: rgba(70, 60, 50, .18); }
+.sd-detached-notes-entry:active,
+.sd-detached-notes-entry.is-dragging { cursor: grabbing; transform: scale(.96); }
+.sd-detached-notes-entry.is-return-ready { background: #5f7a68; color: white; box-shadow: 0 0 0 4px rgba(95, 122, 104, .22), 0 12px 34px rgba(0, 0, 0, .3); }
 
 @media (max-width: 520px) {
-  #story-director-modal .sd-storage-overview { grid-template-columns: 82px minmax(0, 1fr); gap: 12px; }
-  #story-director-modal .sd-storage-ring { width: 78px; }
-  #story-director-modal .sd-storage-ring strong { font-size: 17px; }
-  #story-director-modal .sd-storage-row { grid-template-columns: 70px minmax(54px, 1fr) minmax(58px, auto); gap: 7px; }
-  #story-director-modal .sd-notes-global-entry { right: 5px; width: 32px; height: 32px; }
-  #story-director-modal .sd-notes-shell { grid-template-columns: 1fr; grid-template-rows: minmax(130px, 34%) minmax(0, 1fr); }
-  #story-director-modal .sd-notes-shell > aside { padding: 10px; border-right: 0; border-bottom: 1px solid var(--sd-hairline); }
-  #story-director-modal .sd-note-editor { padding: 10px; }
-  .sd-floating-note { max-width: calc(100vw - 16px); }
+  #story-director-modal .sd-storage-legend { grid-template-columns: minmax(0, 1fr); }
+  #story-director-modal .sd-notes-list-view { padding: 10px; }
+  #story-director-modal .sd-note-editor .sd-note-body { padding: 16px !important; }
+  #story-director-modal .sd-note-item-tools { right: 32px; }
 }
 
 #story-director-modal .sd-item-card {
@@ -7800,6 +7759,46 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 @media (max-width: 430px) {
   #story-director-modal .sd-storyboard-preset-control-row { flex-wrap: nowrap; }
   #story-director-modal .sd-storyboard-preset-control-row .text_pole { flex-basis: auto; }
+}
+
+/* v1.58.3 · 顶栏、内容、底栏各占独立区域，正文不再从固定栏下穿过。 */
+#story-director-modal.sd-storyboard-mode .sd-window { display: block; overflow: hidden; }
+#story-director-modal.sd-storyboard-mode .sd-storyboard-body {
+  width: 100%; height: 100%; min-height: 0; max-height: none;
+  padding: 0 !important; overflow: hidden !important;
+}
+#story-director-modal .sd-storyboard-root {
+  width: 100%; height: 100%; min-height: 0;
+  display: grid; grid-template-rows: 46px minmax(0, 1fr) auto;
+  gap: 0; padding: 0; overflow: hidden;
+}
+#story-director-modal .sd-storyboard-titlebar {
+  position: relative; z-index: 2; top: auto;
+  min-height: 46px; margin: 0; padding: 5px 12px;
+  border: 0; background: transparent;
+  backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none;
+}
+#story-director-modal .sd-storyboard-titlebar > .sd-storyboard-close {
+  width: 34px; min-width: 34px; height: 34px; margin: 0;
+}
+#story-director-modal .sd-storyboard-scroll {
+  min-width: 0; min-height: 0; overflow: auto;
+  display: block; padding: 4px 12px 8px;
+  scrollbar-width: none; overscroll-behavior: contain;
+}
+#story-director-modal .sd-storyboard-scroll::-webkit-scrollbar { display: none; }
+#story-director-modal .sd-storyboard-nav {
+  position: relative; z-index: 2; top: auto; bottom: auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0 10px max(8px, env(safe-area-inset-bottom)); padding: 4px;
+  border-radius: 14px; background: var(--sd-folder-head);
+  backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: 0 4px 14px rgba(0, 0, 0, .05);
+}
+#story-director-modal .sd-storyboard-add-preset-item { bottom: 8px; }
+
+@media (max-width: 430px) {
+  #story-director-modal .sd-storyboard-scroll { padding: 3px 8px 7px; }
+  #story-director-modal .sd-storyboard-nav { margin-inline: 7px; }
 }
 
 /* v1.58 · 构景之律、多人编译与正文选段补图。 */
