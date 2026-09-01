@@ -22,6 +22,9 @@ const tick = source.slice(source.indexOf('function focusClockRuntimeTick'), sour
 assert.doesNotMatch(tick, /saveSettings/, '每秒刷新不得持续写入 ST 设置');
 assert.match(source, /startFocusClockRuntime\(\)/, '扩展初始化时必须恢复专注时钟');
 assert.match(source, /stopFocusClockRuntime\(\)/, '扩展停用或热更新时必须清理计时器');
+assert.match(source, /function startFocusClockRuntime[\s\S]*focusClockTicker = null[\s\S]*if \(f\.status !== 'running'\) return[\s\S]*setInterval\(focusClockRuntimeTick, 500\)/, '闲置与暂停状态不得保留 500ms 常驻轮询');
+assert.match(source, /focusClockRuntimeSyncing[\s\S]*if \(focusClockRuntimeSyncing\) return;[\s\S]*finally \{[\s\S]*focusClockRuntimeSyncing = false/, '启动恢复触发到期结算时不得递归建立两份 ticker');
+assert.match(source, /function focusClockStart[\s\S]*startFocusClockRuntime\(\{ prepareVoice: false \}\)[\s\S]*function focusClockPause[\s\S]*startFocusClockRuntime\(\{ prepareVoice: false \}\)/, '开始与暂停必须同步计时器生命周期且不得重复预生成语音');
 
 assert.match(source, /activity: 'task'[\s\S]*bookId: ''/, '专注时钟必须支持普通任务与伴读两种活动');
 assert.match(source, /data-focus-activity="reading"[\s\S]*sd-focus-book[\s\S]*进入阅读/, '伴读模式必须能够绑定并打开具体书籍');

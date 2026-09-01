@@ -1635,7 +1635,33 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 /* ---------- 9. 条目卡 ---------- */
 #story-director-modal .sd-plan-section { padding: 16px !important; }
 
-/* 任务页 · 手机式储存空间盘点。浏览器来源总量与千幕可归因量分开展示。 */
+/* API 与日志 · 本次页面生命周期的运行基线；不持久化诊断明细。 */
+#story-director-modal .sd-runtime-health-card { break-inside: avoid; }
+#story-director-modal .sd-runtime-health-card > details > summary { align-items: center; }
+#story-director-modal .sd-runtime-health-card > details > summary .sd-summary-note {
+  max-width: min(62%, 420px);
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#story-director-modal .sd-runtime-health-body { display: grid; gap: 12px; padding-top: 12px; }
+#story-director-modal .sd-runtime-health-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 14px; }
+#story-director-modal .sd-runtime-health-grid > span {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--sd-muted);
+  font-size: 11px;
+}
+#story-director-modal .sd-runtime-health-grid b { color: var(--sd-text); font-weight: 620; text-align: right; white-space: nowrap; }
+#story-director-modal .sd-runtime-health-line { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; margin: 0; color: var(--sd-muted); font-size: 11px; line-height: 1.45; }
+#story-director-modal .sd-runtime-health-line > span { color: var(--sd-text); font-weight: 620; white-space: nowrap; }
+#story-director-modal .sd-runtime-health-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+#story-director-modal .sd-runtime-health-actions small { color: var(--sd-muted); font-size: 10px; line-height: 1.4; }
+
+/* API 与日志 · 手机式储存空间盘点。浏览器来源总量与千幕可归因量分开展示。 */
 #story-director-modal .sd-storage-card { break-inside: avoid; }
 #story-director-modal .sd-storage-card .sd-card-title-row { margin-bottom: 14px; }
 #story-director-modal .sd-storage-card .sd-card-title-row > div { min-width: 0; }
@@ -1746,17 +1772,55 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #qianmu-notes-float-layer {
   position: fixed;
   inset: 0;
-  z-index: 9000;
+  z-index: 2147483002;
   pointer-events: none;
   font-family: var(--mainFontFamily, system-ui, sans-serif);
 }
-.sd-detached-notes-entry { position: fixed; width: 46px; height: 46px; display: inline-flex; align-items: center; justify-content: center; pointer-events: auto; touch-action: none; padding: 0; border: 1px solid rgba(255, 255, 255, .24); border-radius: 13px; background: #2c2e33; color: #f1eee8; box-shadow: 0 10px 30px rgba(0, 0, 0, .28); cursor: grab; transition: transform .14s ease, background .14s ease, box-shadow .14s ease; }
-#qianmu-notes-float-layer:not(.sd-theme-dark) .sd-detached-notes-entry { background: #f2ede5; color: #4e4a43; border-color: rgba(70, 60, 50, .18); }
+.sd-detached-notes-entry {
+  position: fixed;
+  width: 39.837px;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  touch-action: none;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 1.2px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  background: var(--sd-wheel-glass-fill) !important;
+  color: var(--sd-wheel-icon) !important;
+  box-shadow: none !important;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, .24));
+  backdrop-filter: blur(20px) saturate(1.12) brightness(1.04);
+  -webkit-backdrop-filter: blur(20px) saturate(1.12) brightness(1.04);
+  cursor: grab;
+  transition: transform .14s ease, filter .14s ease;
+}
+.sd-detached-notes-entry::before {
+  content: '';
+  position: absolute;
+  inset: 1.2px;
+  z-index: 0;
+  clip-path: inherit;
+  background: linear-gradient(145deg, rgba(255, 255, 255, .3), rgba(255, 255, 255, .04));
+  pointer-events: none;
+}
+.sd-detached-notes-entry > i { position: relative; z-index: 2; font-size: 18px; }
+.sd-detached-notes-entry > .sd-hive-hex-outline { position: absolute; inset: .65px; z-index: 3; width: calc(100% - 1.3px); height: calc(100% - 1.3px); pointer-events: none; overflow: visible; }
+.sd-detached-notes-entry > .sd-hive-hex-outline polygon { fill: none; stroke: var(--sd-wheel-edge); stroke-width: 1.2px; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+#qianmu-notes-float-layer.sd-hive-theme-dream .sd-detached-notes-entry > .sd-hive-hex-outline polygon { animation: sd-hive-dream-edge 12s ease-in-out infinite; }
 .sd-detached-notes-entry:active,
 .sd-detached-notes-entry.is-dragging { cursor: grabbing; transform: scale(.96); }
-.sd-detached-notes-entry.is-return-ready { background: #5f7a68; color: white; box-shadow: 0 0 0 4px rgba(95, 122, 104, .22), 0 12px 34px rgba(0, 0, 0, .3); }
+.sd-detached-notes-entry.is-return-ready { filter: brightness(1.18) drop-shadow(0 0 8px var(--sd-wheel-edge)); transform: scale(.9); }
 
 @media (max-width: 520px) {
+  #story-director-modal .sd-runtime-health-grid { grid-template-columns: minmax(0, 1fr); }
+  #story-director-modal .sd-runtime-health-card > details > summary .sd-summary-note { max-width: 52%; }
+  #story-director-modal .sd-runtime-health-actions { align-items: flex-start; flex-direction: column; }
   #story-director-modal .sd-storage-legend { grid-template-columns: minmax(0, 1fr); }
   #story-director-modal .sd-notes-list-view { padding: 10px; }
   #story-director-modal .sd-note-editor .sd-note-body { padding: 16px !important; }

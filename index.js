@@ -103,9 +103,10 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.5';
 import * as reader from './qianmu-reader.js';
-import { checkDirectImageConnection, generateDirectImage, isDirectImageTransportError } from './qianmu-image-direct.js?v=1.58.4';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.4';
+import { checkDirectImageConnection, generateDirectImage, isDirectImageTransportError } from './qianmu-image-direct.js?v=1.58.5';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.5';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_COMPOSITION_RULE_ID,
@@ -145,11 +146,12 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
-} from './qianmu-storyboard.js?v=1.58.4';
+} from './qianmu-storyboard.js?v=1.58.5';
 
+const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.4';
+const VERSION = '1.58.5';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -169,6 +171,8 @@ const FLOAT_ID = 'story-director-float';
 const QUICK_WHEEL_ID = 'story-director-quick-wheel';
 const FLOOR_NAV_ID = 'story-director-floor-nav';
 const NOTES_FLOAT_LAYER_ID = 'qianmu-notes-float-layer';
+const DETACHED_NOTES_HEIGHT = 46;
+const DETACHED_NOTES_WIDTH = DETACHED_NOTES_HEIGHT * QUICK_HEX_WIDTH_RATIO;
 const INPUT_ENTRY_ID = 'story-director-input-entry';
 const INPUT_BUTTON_ID = 'story-director-input-button';
 const FLOAT_SIZE_MIN = 32;
@@ -625,7 +629,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   outputSchemaBackup: null,       // 「恢复上次」：同上，备份用户上一份输出格式
   logHistory: [],
   logOpenState: {},               // API 与日志：按日志 ID 记忆展开状态，默认折叠
-  notes: { enabled: true, detached: false, position: { x: null, y: null } }, // 便笺蜂巢入口可拖出到 ST 顶层；关闭只隐藏，不删除固定便笺
+  notes: { enabled: true, detached: false, position: { x: null, y: null }, appearance: { tone: 'dark', edgeIndex: 0 } }, // 便笺蜂巢格可整格拖出到 ST 顶层；关闭只隐藏，不删除固定便笺
   // 专注时钟：全局轻量状态，与聊天、推演和伴读存储完全隔离。运行态保存绝对截止时间，后台挂起/刷新后按真实时间续算。
   focusClock: {
     phase: 'focus',               // focus | shortBreak | longBreak
@@ -883,6 +887,7 @@ let theaterBusy = false;           // 幕外忙碌态（与推演独立，允许
 let theaterAbort = null;           // 幕外中止句柄
 let theaterCancel = false;         // 幕外取消标记
 let focusClockTicker = null;        // 专注时钟只负责刷新显示；真实进度由持久化 endsAt 计算
+let focusClockRuntimeSyncing = false; // 防止启动恢复时“到期结算→下一阶段”递归建立两份 ticker
 let focusClockMedia = null;         // 内置/外链提示音复用同一 Audio 元素，开始计时时由用户手势预热
 let focusClockPreviewMode = false;  // 试听可暂停后继续；完成提醒播放不占用试听按钮状态
 let focusClockPreviewFrame = 0;     // requestAnimationFrame 驱动试听圆环，避免 timeupdate 的阶梯感
@@ -906,6 +911,20 @@ let storyboardStModulePromise = null;
 let storyboardUtilsModulePromise = null;
 let storyboardChatClickBound = false;
 let storageInventoryState = { status: 'idle', data: null, error: '', sampledAt: 0 };
+// 仅驻留于当前页面生命周期的轻量诊断，不写入 ST 设置、日志或聊天元数据。
+// 第一阶段先建立可量化基线，避免在没有证据时贸然拆分巨型入口造成回归链。
+const performanceRuntime = {
+  initMs: 0,
+  readyMs: 0,
+  modalOpenCount: 0,
+  modalRenderCount: 0,
+  modalRenderTotalMs: 0,
+  modalRenderLastMs: 0,
+  modalRenderMaxMs: 0,
+  slowModalRenderCount: 0,
+  lastNodeCount: 0,
+  rendersByTab: {},
+};
 let notesPanelOpen = false;
 let notesLoaded = false;
 let notesLoading = null;
@@ -1118,7 +1137,10 @@ function ttsDoubaoVoiceModelLabel(value) {
 function getSettings() {
   const context = ctx();
   const extensionSettings = context.extensionSettings || (context.extensionSettings = {});
-  if (!extensionSettings[MODULE_NAME]) extensionSettings[MODULE_NAME] = clone(DEFAULT_SETTINGS);
+  if (!isPlainObject(extensionSettings[MODULE_NAME])) extensionSettings[MODULE_NAME] = clone(DEFAULT_SETTINGS);
+  // 仓库名、插件显示名可更新，但持久化命名空间永远保持 story_director_liminale。
+  // 先跑只增不删的 V2 兼容门面，再补新默认，避免默认值抢占旧字段的迁移目标。
+  extensionSettings[MODULE_NAME] = migrateQianmuSettingsV2(extensionSettings[MODULE_NAME]).value;
   mergeDefaults(extensionSettings[MODULE_NAME], DEFAULT_SETTINGS);
   const cachedProse = readCachedProseLayout();
   const storedProse = extensionSettings[MODULE_NAME].proseLayout;
@@ -1291,6 +1313,7 @@ function getChatStore() {
   if (!meta[MODULE_NAME]) {
     meta[MODULE_NAME] = { blueprint: DEFAULT_BLUEPRINT, plan: null, history: [], lastPlanIdx: -1, planAtLen: 0, updatedAt: '', threads: [], threadSeq: 0, factions: [], worldEvents: [], geoSeq: 0 };
   }
+  meta[MODULE_NAME] = migrateQianmuChatStoreV2(meta[MODULE_NAME]).value;
   mergeDefaults(meta[MODULE_NAME], { blueprint: DEFAULT_BLUEPRINT, plan: null, history: [], lastPlanIdx: -1, planAtLen: 0, updatedAt: '', threads: [], threadSeq: 0, factions: [], worldEvents: [], geoSeq: 0 });
   if (!Array.isArray(meta[MODULE_NAME].threads)) meta[MODULE_NAME].threads = [];   // 活幕·伏笔显影档案层
   if (!Array.isArray(meta[MODULE_NAME].factions)) meta[MODULE_NAME].factions = [];   // 活幕·势：势力/地缘格局层
@@ -1302,7 +1325,7 @@ function getChatStore() {
   if (Array.isArray(meta[MODULE_NAME].ttsVoiceMap) && !Array.isArray(meta[MODULE_NAME].ttsVoiceMaps.minimax)) {
     meta[MODULE_NAME].ttsVoiceMaps.minimax = meta[MODULE_NAME].ttsVoiceMap;   // 1.8.1 旧映射无损迁移
   }
-  delete meta[MODULE_NAME].ttsVoiceMap;
+  // 首个 V2 周期保留旧 ttsVoiceMap 作为回退读口；新代码只使用 ttsVoiceMaps，不再写旧键。
   if (isLegacyBlueprint(meta[MODULE_NAME].blueprint) && !meta[MODULE_NAME].blueprintEdited) {
     meta[MODULE_NAME].blueprint = DEFAULT_BLUEPRINT;
   }
@@ -3841,6 +3864,7 @@ function resolveRestorableTab(tab) {
 
 function openModal(tab) {
   if (!settings.enabled) return toast('千幕已关闭。', 'warning');
+  performanceRuntime.modalOpenCount += 1;
   seedBuiltinTheaters();   // 开窗渲染前补种：根除「更新后首开剧札为空、需重开才显示」（幂等，两组 revision 最新即早退）
   // tab 显式传入则用之；否则恢复上次停留的标签（校验回退）——修「不管上次停在哪，重开都回首页」。
   const requestedTab = tab != null ? tab : (settings.lastTab || 'dashboard');
@@ -5055,7 +5079,11 @@ function bindNotesHiveDetachDrag(button, item, layout) {
     if (!completed) return;
     const noteSettings = notesFeatureSettings();
     noteSettings.detached = true;
-    noteSettings.position = { x: x - 22, y: y - 22 };
+    noteSettings.position = { x: x - DETACHED_NOTES_WIDTH / 2, y: y - DETACHED_NOTES_HEIGHT / 2 };
+    noteSettings.appearance = {
+      tone: button.dataset.hiveTone === 'light' ? 'light' : 'dark',
+      edgeIndex: Math.max(0, Math.trunc(Number(button.dataset.hiveEdgeIndex) || 0)),
+    };
     saveSettings();
     closeQuickWheel();
     renderFloatingNotes();
@@ -5520,15 +5548,18 @@ function openQuickWheel(btn) {
     button.type = 'button';
     // 毛玻璃始终只取灰白明暗；主题只改变边线组合，图标根据玻璃明暗保持深灰/白色可读性。
     const darkGlass = Math.random() >= .5;
+    const edgeIndex = Math.floor(Math.random() * palette.edges.length);
     const visual = {
       classes: darkGlass ? 'is-glass-dark' : 'is-glass-light',
       fill: darkGlass ? palette.darkFill : palette.lightFill,
-      edge: palette.edges[Math.floor(Math.random() * palette.edges.length)],
+      edge: palette.edges[edgeIndex],
       icon: darkGlass ? palette.darkIcon : palette.lightIcon,
     };
     button.className = `sd-wheel-command ${visual.classes}${item.external ? ' is-external' : ''}${item.pending ? ' is-pending' : ''}`;
     if (item.external) button.setAttribute('data-qm-icon-preserve', '');
     button.dataset.command = item.id;
+    button.dataset.hiveTone = darkGlass ? 'dark' : 'light';
+    button.dataset.hiveEdgeIndex = String(edgeIndex);
     button.style.setProperty('--sd-wheel-item-size', `${layout.itemSize}px`, 'important');
     button.style.setProperty('--sd-wheel-item-height', `${layout.itemHeight}px`, 'important');
     button.style.setProperty('--sd-wheel-glass-fill', visual.fill, 'important');
@@ -5807,8 +5838,11 @@ function notesFeatureSettings() {
   if (!isPlainObject(settings.notes)) settings.notes = clone(DEFAULT_SETTINGS.notes);
   mergeDefaults(settings.notes, DEFAULT_SETTINGS.notes);
   if (!isPlainObject(settings.notes.position)) settings.notes.position = { x: null, y: null };
+  if (!isPlainObject(settings.notes.appearance)) settings.notes.appearance = { tone: 'dark', edgeIndex: 0 };
   settings.notes.enabled = settings.notes.enabled !== false;
   settings.notes.detached = Boolean(settings.notes.detached);
+  settings.notes.appearance.tone = settings.notes.appearance.tone === 'light' ? 'light' : 'dark';
+  settings.notes.appearance.edgeIndex = Math.max(0, Math.trunc(Number(settings.notes.appearance.edgeIndex) || 0));
   return settings.notes;
 }
 
@@ -5925,10 +5959,9 @@ function clampDetachedNotesEntry(position = {}) {
   const top = Number(viewport?.offsetTop || 0);
   const width = Math.max(1, Number(viewport?.width || window.innerWidth));
   const height = Math.max(1, Number(viewport?.height || window.innerHeight));
-  const size = 46;
   return {
-    x: Math.max(left + 8, Math.min(left + width - size - 8, position.x != null && Number.isFinite(Number(position.x)) ? Number(position.x) : left + width - size - 18)),
-    y: Math.max(top + 8, Math.min(top + height - size - 8, position.y != null && Number.isFinite(Number(position.y)) ? Number(position.y) : top + Math.max(76, height * .45))),
+    x: Math.max(left + 8, Math.min(left + width - DETACHED_NOTES_WIDTH - 8, position.x != null && Number.isFinite(Number(position.x)) ? Number(position.x) : left + width - DETACHED_NOTES_WIDTH - 18)),
+    y: Math.max(top + 8, Math.min(top + height - DETACHED_NOTES_HEIGHT - 8, position.y != null && Number.isFinite(Number(position.y)) ? Number(position.y) : top + Math.max(76, height * .45))),
   };
 }
 
@@ -5937,10 +5970,16 @@ function renderFloatingNotes() {
   const noteSettings = notesFeatureSettings();
   if (!noteSettings.enabled || !noteSettings.detached || notesPanelOpen) return;
   const position = clampDetachedNotesEntry(noteSettings.position);
+  const palette = currentHivePalette();
+  const tone = noteSettings.appearance.tone === 'light' ? 'light' : 'dark';
+  const edge = palette.edges[noteSettings.appearance.edgeIndex % palette.edges.length];
+  const fill = tone === 'light' ? palette.lightFill : palette.darkFill;
+  const icon = tone === 'light' ? palette.lightIcon : palette.darkIcon;
+  const themeKey = currentHiveThemeKey();
   const layer = document.createElement('div');
   layer.id = NOTES_FLOAT_LAYER_ID;
-  layer.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
-  layer.innerHTML = `<button type="button" class="sd-detached-notes-entry" style="left:${position.x}px;top:${position.y}px" title="便笺（拖回千幕归巢）" aria-label="打开便笺"><i class="fa-solid fa-note-sticky"></i></button>`;
+  layer.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'} sd-hive-theme-${themeKey}`;
+  layer.innerHTML = `<button type="button" class="sd-detached-notes-entry is-glass-${tone}" style="left:${position.x}px;top:${position.y}px;--sd-wheel-glass-fill:${htmlEscape(fill)};--sd-wheel-edge:${htmlEscape(edge)};--sd-wheel-icon:${htmlEscape(icon)}" title="便笺（拖回千幕归巢）" aria-label="打开便笺"><i class="fa-solid fa-note-sticky" data-qm-icon="qm-regular-note-pencil"></i>${QUICK_HEX_BORDER_SVG}</button>`;
   document.body.appendChild(layer);
   applyQianmuIcons(layer);
   bindFloatingNoteEvents(layer);
@@ -6066,6 +6105,7 @@ function bindNotesPanelEvents(root) {
 function renderModal() {
   const modal = document.getElementById(MODAL_ID);
   if (!modal) return;
+  const renderStartedAt = globalThis.performance?.now?.() ?? Date.now();
   // 记录当前 tab 供下次打开恢复。只在真变化且非临时视图时落盘，避免每次静默重渲染都写。
   // theater 的阅读/收藏子视图（theaterView）是临时态，仍记 tab='theater' 无妨；editorView 是行内编辑、不改 activeTab。
   if (activeTab && !['imagegen', 'geopolitics'].includes(activeTab) && settings.lastTab !== activeTab) {
@@ -6213,6 +6253,15 @@ function renderModal() {
       bindTabsScrollControls(tabsBar);
     }
   }
+  const renderFinishedAt = globalThis.performance?.now?.() ?? Date.now();
+  const renderMs = Math.max(0, renderFinishedAt - renderStartedAt);
+  performanceRuntime.modalRenderCount += 1;
+  performanceRuntime.modalRenderTotalMs += renderMs;
+  performanceRuntime.modalRenderLastMs = renderMs;
+  performanceRuntime.modalRenderMaxMs = Math.max(performanceRuntime.modalRenderMaxMs, renderMs);
+  if (renderMs >= 50) performanceRuntime.slowModalRenderCount += 1;
+  performanceRuntime.lastNodeCount = modal.querySelectorAll('*').length;
+  performanceRuntime.rendersByTab[activeTab || 'dashboard'] = (performanceRuntime.rendersByTab[activeTab || 'dashboard'] || 0) + 1;
 }
 
 // 标签栏横向滚动增强：滚轮纵→横、PC 鼠标按住拖动。移动端触摸滑动由 CSS overflow-x 原生承担，不在此干预。
@@ -7027,6 +7076,64 @@ function formatStorageBytes(value) {
     unit = units[index];
   }
   return `${amount >= 100 ? amount.toFixed(0) : amount >= 10 ? amount.toFixed(1) : amount.toFixed(2)} ${unit}`;
+}
+
+function runtimeHealthSnapshot() {
+  const observers = [
+    ['输入菜单', inputMenuObserver],
+    ['正文排版', proseLayoutObserver],
+    ['配音楼层', ttsChatObserver],
+    ['伴读面板', readerPanelObserver],
+    ['蜂巢归位', quickDockObserver],
+    ...[...quickDockShadowObservers.keys()].map((_, index) => [`蜂巢影子根 ${index + 1}`, true]),
+  ].filter(([, active]) => Boolean(active)).map(([label]) => label);
+  const timers = [
+    ['专注时钟', focusClockTicker],
+    ['分镜正文同步', storyboardInlineTimer],
+    ['配音扫描', ttsScanTimer],
+    ['配音变更', ttsMutationTimer],
+    ['蜂巢恢复', quickDockRestoreTimer],
+    ['蜂巢重试', quickDockRetryTimer],
+  ].filter(([, active]) => Boolean(active)).map(([label]) => label);
+  if (notesSaveTimers.size) timers.push(`便笺保存 ${notesSaveTimers.size}`);
+  const settingsBytes = storageJsonBytes(settings || {});
+  const chatBytes = storageJsonBytes(ctx().chatMetadata?.[MODULE_NAME] || {});
+  const renderAverageMs = performanceRuntime.modalRenderCount
+    ? performanceRuntime.modalRenderTotalMs / performanceRuntime.modalRenderCount
+    : 0;
+  const warnings = [];
+  if (settingsBytes >= 1024 * 1024) warnings.push('设置数据已超过 1 MB');
+  if (chatBytes >= 1024 * 1024) warnings.push('当前聊天数据已超过 1 MB');
+  if (performanceRuntime.modalRenderLastMs >= 50) warnings.push('最近一次界面重绘超过 50 ms');
+  if (performanceRuntime.lastNodeCount >= 3500) warnings.push('当前千幕界面节点较多');
+  return { observers, timers, settingsBytes, chatBytes, renderAverageMs, warnings };
+}
+
+function renderRuntimeHealthCard() {
+  const snapshot = runtimeHealthSnapshot();
+  const status = snapshot.warnings.length ? snapshot.warnings.join('；') : '当前未发现明显压力信号';
+  return `<section class="sd-card sd-runtime-health-card">
+    <details class="sd-plain-fold" data-acc="runtime-health">
+      <summary><b>运行与性能</b><span class="sd-summary-note">${htmlEscape(status)}</span></summary>
+      <div class="sd-runtime-health-body">
+        <div class="sd-runtime-health-grid">
+          <span>启动初始化<b>${htmlEscape(performanceRuntime.initMs.toFixed(1))} ms</b></span>
+          <span>模块至就绪<b>${htmlEscape(performanceRuntime.readyMs.toFixed(1))} ms</b></span>
+          <span>最近重绘<b>${htmlEscape(performanceRuntime.modalRenderLastMs.toFixed(1))} ms</b></span>
+          <span>平均重绘<b>${htmlEscape(snapshot.renderAverageMs.toFixed(1))} ms</b></span>
+          <span>最慢重绘<b>${htmlEscape(performanceRuntime.modalRenderMaxMs.toFixed(1))} ms</b></span>
+          <span>慢重绘<b>${htmlEscape(performanceRuntime.slowModalRenderCount)}</b></span>
+          <span>界面节点<b>${htmlEscape(performanceRuntime.lastNodeCount)}</b></span>
+          <span>重绘 / 打开<b>${htmlEscape(performanceRuntime.modalRenderCount)} / ${htmlEscape(performanceRuntime.modalOpenCount)}</b></span>
+          <span>设置数据<b>${htmlEscape(formatStorageBytes(snapshot.settingsBytes))}</b></span>
+          <span>当前聊天<b>${htmlEscape(formatStorageBytes(snapshot.chatBytes))}</b></span>
+        </div>
+        <p class="sd-runtime-health-line"><span>活动观察器 ${snapshot.observers.length}</span>${htmlEscape(snapshot.observers.join(' · ') || '无')}</p>
+        <p class="sd-runtime-health-line"><span>活动计时器 ${snapshot.timers.length}</span>${htmlEscape(snapshot.timers.join(' · ') || '无')}</p>
+        <div class="sd-runtime-health-actions"><small>数据只保留在本次页面，不写入日志或用户设置。</small><button type="button" class="sd-btn sd-mini-btn sd-runtime-health-refresh">刷新诊断</button></div>
+      </div>
+    </details>
+  </section>`;
 }
 
 function storageDiagnosticSnapshot() {
@@ -10547,6 +10654,7 @@ function renderPlugTab() {
         <input type="file" class="sd-import-config-file" accept="application/json,.json" hidden>
       </div>
     </section>
+    ${renderRuntimeHealthCard()}
     ${renderStorageManagementCard()}`;
 }
 
@@ -15873,6 +15981,7 @@ function focusClockStart() {
   f.endsAt = now + remaining;
   focusClockPrimeSound();
   saveSettings();
+  startFocusClockRuntime({ prepareVoice: false });
   focusClockUpdateDom();
   if (prepareVoice) void focusClockPrepareVoiceCues(f.sessionToken);
 }
@@ -15888,6 +15997,8 @@ function focusClockPause() {
   f.runStartedAt = 0;
   f.status = 'paused';
   saveSettings();
+  startFocusClockRuntime({ prepareVoice: false });
+  focusClockUpdateDom();
 }
 
 function focusClockReset() {
@@ -15905,6 +16016,8 @@ function focusClockReset() {
   f.sessionVoiceCues = [];
   focusClockVoicePrepareSeq += 1;
   saveSettings();
+  startFocusClockRuntime({ prepareVoice: false });
+  focusClockUpdateDom();
 }
 
 function focusClockComplete() {
@@ -15948,6 +16061,7 @@ function focusClockComplete() {
   f.sessionVoiceCues = [];
   focusClockVoicePrepareSeq += 1;
   saveSettings();
+  startFocusClockRuntime({ prepareVoice: false });
   void focusClockPlayCompletionAlert(completionCue);
   if (f.sessionToken && focusClockVoiceContext(f).enabled) void focusClockPrepareVoiceCues(f.sessionToken);
   const nextLabel = FOCUS_CLOCK_PHASES[f.phase].label;
@@ -15986,18 +16100,28 @@ function focusClockVisibilitySync() {
   if (document.visibilityState === 'visible') focusClockRuntimeTick();
 }
 
-function startFocusClockRuntime() {
-  if (focusClockTicker) clearInterval(focusClockTicker);
-  document.removeEventListener('visibilitychange', focusClockVisibilitySync);
-  window.removeEventListener('pageshow', focusClockRuntimeTick);
-  window.removeEventListener('focus', focusClockRuntimeTick);
-  focusClockRuntimeTick();
-  focusClockTicker = setInterval(focusClockRuntimeTick, 500);
-  document.addEventListener('visibilitychange', focusClockVisibilitySync, { passive: true });
-  window.addEventListener('pageshow', focusClockRuntimeTick, { passive: true });
-  window.addEventListener('focus', focusClockRuntimeTick, { passive: true });
-  const f = focusClockState();
-  if (f.status === 'running' && f.phase === 'focus' && f.sessionToken && !f.sessionVoiceCues.length && focusClockVoiceContext(f).enabled) void focusClockPrepareVoiceCues(f.sessionToken);
+function startFocusClockRuntime({ prepareVoice = true } = {}) {
+  if (focusClockRuntimeSyncing) return;
+  focusClockRuntimeSyncing = true;
+  try {
+    if (focusClockTicker) clearInterval(focusClockTicker);
+    focusClockTicker = null;
+    document.removeEventListener('visibilitychange', focusClockVisibilitySync);
+    window.removeEventListener('pageshow', focusClockRuntimeTick);
+    window.removeEventListener('focus', focusClockRuntimeTick);
+    focusClockRuntimeTick();
+    const f = focusClockState();
+    // 闲置或暂停时完全停掉常驻轮询；绝对 endsAt 仍能在恢复运行后准确续算。
+    // 这让未使用专注功能的绝大多数会话不再每 500ms 做一次无意义 DOM 查询。
+    if (f.status !== 'running') return;
+    focusClockTicker = setInterval(focusClockRuntimeTick, 500);
+    document.addEventListener('visibilitychange', focusClockVisibilitySync, { passive: true });
+    window.addEventListener('pageshow', focusClockRuntimeTick, { passive: true });
+    window.addEventListener('focus', focusClockRuntimeTick, { passive: true });
+    if (prepareVoice && f.phase === 'focus' && f.sessionToken && !f.sessionVoiceCues.length && focusClockVoiceContext(f).enabled) void focusClockPrepareVoiceCues(f.sessionToken);
+  } finally {
+    focusClockRuntimeSyncing = false;
+  }
 }
 
 function stopFocusClockRuntime() {
@@ -16424,6 +16548,7 @@ function bindActiveTabEvents(root) {
   bindCoreadTabEvents(root);
   if (activeTab === 'plug') {
     void refreshStorageInventory(false);
+    root.querySelector('.sd-runtime-health-refresh')?.addEventListener('click', () => renderModal());
     root.querySelector('.sd-storage-refresh')?.addEventListener('click', () => void refreshStorageInventory(true));
     root.querySelector('.sd-storage-persist')?.addEventListener('click', async () => {
       const storageApi = globalThis.navigator?.storage;
@@ -27504,6 +27629,7 @@ function bindEvents() {
 function init() {
   if (initialized || !acquireRuntimeOwnership()) return;
   try {
+    const initStartedAt = globalThis.performance?.now?.() ?? Date.now();
     settings = getSettings();
     if (isPlainObject(settings.imagegen)) normalizeStoryboardState(settings.imagegen);
     focusClockState();
@@ -27536,6 +27662,9 @@ function init() {
     void hydrateNotesRuntime();
     registerRuntimeInterceptor();
     initialized = true;
+    const initFinishedAt = globalThis.performance?.now?.() ?? Date.now();
+    performanceRuntime.initMs = Math.max(0, initFinishedAt - initStartedAt);
+    performanceRuntime.readyMs = Math.max(0, initFinishedAt - MODULE_EXECUTION_STARTED_AT);
     console.log(`[${EXTENSION_NAME}] v${VERSION} loaded`);
   } catch (error) {
     console.error(`[${EXTENSION_NAME}] v${VERSION} initialization failed`, error);
