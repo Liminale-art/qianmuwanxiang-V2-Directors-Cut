@@ -1635,6 +1635,175 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 /* ---------- 9. 条目卡 ---------- */
 #story-director-modal .sd-plan-section { padding: 16px !important; }
 
+/* 任务页 · 手机式储存空间盘点。浏览器来源总量与千幕可归因量分开展示。 */
+#story-director-modal .sd-storage-card { break-inside: avoid; }
+#story-director-modal .sd-storage-card .sd-card-title-row { margin-bottom: 14px; }
+#story-director-modal .sd-storage-card .sd-card-title-row > div { min-width: 0; }
+#story-director-modal .sd-storage-card .sd-card-title-row h3 { margin: 0; }
+#story-director-modal .sd-storage-card .sd-card-title-row p { margin: 2px 0 0; }
+#story-director-modal .sd-storage-overview {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 15px;
+}
+#story-director-modal .sd-storage-ring {
+  width: 96px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  position: relative;
+  background: conic-gradient(var(--sd-accent) var(--sd-storage-use), var(--sd-glass) 0);
+}
+#story-director-modal .sd-storage-ring::after {
+  content: '';
+  position: absolute;
+  inset: 9px;
+  border-radius: inherit;
+  background: var(--sd-card);
+}
+#story-director-modal .sd-storage-ring strong,
+#story-director-modal .sd-storage-ring span { position: relative; z-index: 1; }
+#story-director-modal .sd-storage-ring strong { font-size: 20px; line-height: 1.1; }
+#story-director-modal .sd-storage-ring span { margin-top: 4px; color: var(--sd-muted); font-size: 11px; }
+#story-director-modal .sd-storage-totals { display: grid; gap: 8px; min-width: 0; }
+#story-director-modal .sd-storage-totals span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--sd-muted);
+  font-size: 12px;
+}
+#story-director-modal .sd-storage-totals b { color: var(--sd-text); text-align: right; font-weight: 650; }
+#story-director-modal .sd-storage-categories { display: grid; gap: 8px; }
+#story-director-modal .sd-storage-row {
+  display: grid;
+  grid-template-columns: minmax(70px, auto) minmax(70px, 1fr) minmax(64px, auto);
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+}
+#story-director-modal .sd-storage-row > span { color: var(--sd-muted); }
+#story-director-modal .sd-storage-row > b { text-align: right; font-weight: 550; }
+#story-director-modal .sd-storage-track { height: 6px; overflow: hidden; border-radius: 999px; background: var(--sd-glass); }
+#story-director-modal .sd-storage-track i { display: block; height: 100%; border-radius: inherit; background: var(--sd-accent); opacity: .8; }
+#story-director-modal .sd-storage-scope { margin: 13px 0 0; color: var(--sd-muted); font-size: 11px; line-height: 1.45; }
+#story-director-modal .sd-storage-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 13px; }
+
+/* 顶层便笺入口：固定在千幕右侧安全区，子页切换和分镜全屏都不会丢失。 */
+#story-director-modal .sd-notes-global-entry {
+  position: absolute !important;
+  z-index: 64;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+  border: 1px solid var(--sd-border) !important;
+  border-radius: 10px !important;
+  background: color-mix(in srgb, var(--sd-card) 92%, var(--sd-accent) 8%) !important;
+  color: var(--sd-accent) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .12) !important;
+  cursor: pointer;
+}
+#story-director-modal .sd-notes-global-entry:hover { background: color-mix(in srgb, var(--sd-card) 82%, var(--sd-accent) 18%) !important; }
+
+#story-director-modal .sd-notes-panel {
+  position: absolute;
+  z-index: 63;
+  inset: 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: inherit;
+  background: var(--sd-window-glow), var(--sd-window-bg);
+  color: var(--sd-text);
+}
+#story-director-modal .sd-notes-panel > header {
+  min-height: 62px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--sd-hairline);
+  background: var(--sd-glass-weak);
+}
+#story-director-modal .sd-notes-panel > header > div { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#story-director-modal .sd-notes-panel > header > div:first-child { flex-direction: column; align-items: flex-start; gap: 1px; }
+#story-director-modal .sd-notes-panel > header b { font: 600 21px/1.2 Georgia, serif; letter-spacing: .08em; }
+#story-director-modal .sd-notes-panel > header span { color: var(--sd-muted); font-size: 11px; }
+#story-director-modal .sd-notes-shell { min-height: 0; flex: 1 1 auto; display: grid; grid-template-columns: minmax(210px, 32%) minmax(0, 1fr); }
+#story-director-modal .sd-notes-shell > aside { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-right: 1px solid var(--sd-hairline); background: var(--sd-glass-weak); }
+#story-director-modal .sd-note-list { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 7px; scrollbar-width: none; }
+#story-director-modal .sd-note-list::-webkit-scrollbar { display: none; }
+#story-director-modal .sd-note-list-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 7px; border: 1px solid transparent; border-radius: 12px; background: var(--sd-glass-weak); }
+#story-director-modal .sd-note-list-item.active { border-color: color-mix(in srgb, var(--sd-accent) 50%, var(--sd-border)); background: color-mix(in srgb, var(--sd-accent) 9%, var(--sd-card)); }
+#story-director-modal .sd-note-select { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 3px !important; border: 0 !important; background: transparent !important; color: inherit !important; text-align: left; box-shadow: none !important; }
+#story-director-modal .sd-note-select strong,
+#story-director-modal .sd-note-select span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-note-select span { color: var(--sd-muted); font-size: 11px; }
+#story-director-modal .sd-note-list-item > div { display: flex; flex-direction: column; gap: 5px; color: var(--sd-muted); font-size: 10px; }
+#story-director-modal .sd-note-editor { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; padding: 16px; }
+#story-director-modal .sd-note-editor .sd-note-title { font-weight: 650; }
+#story-director-modal .sd-note-editor .sd-note-body { width: 100%; height: 100%; min-height: 180px; resize: none; padding: 16px !important; line-height: 1.75; }
+#story-director-modal .sd-note-editor footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+#story-director-modal .sd-note-editor footer > div { display: flex; gap: 7px; }
+#story-director-modal .sd-note-editor .sd-icon-btn.active { color: var(--sd-accent) !important; border-color: color-mix(in srgb, var(--sd-accent) 50%, var(--sd-border)) !important; background: color-mix(in srgb, var(--sd-accent) 10%, var(--sd-card)) !important; }
+#story-director-modal .sd-notes-empty { min-height: 0; display: grid; place-content: center; justify-items: center; color: var(--sd-muted); text-align: center; }
+#story-director-modal .sd-notes-empty i { font-size: 34px; }
+
+/* ST 页面浮贴层：低于千幕/楼层弹窗，容器不拦截正文，只让便笺自身接收事件。 */
+#qianmu-notes-float-layer {
+  --qm-note-text: #3c352e;
+  --qm-note-muted: rgba(60, 53, 46, .62);
+  --qm-note-border: rgba(70, 60, 50, .18);
+  --qm-note-bg: rgba(250, 246, 222, .94);
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  pointer-events: none;
+  font-family: var(--mainFontFamily, system-ui, sans-serif);
+}
+#qianmu-notes-float-layer.sd-theme-dark { --qm-note-text: #eceae5; --qm-note-muted: rgba(236, 234, 229, .64); --qm-note-border: rgba(255, 255, 255, .14); --qm-note-bg: rgba(45, 46, 43, .94); }
+#qianmu-notes-float-layer.sd-theme-summer { --qm-note-text: #2c5560; --qm-note-bg: rgba(230, 247, 242, .95); }
+#qianmu-notes-float-layer.sd-theme-candy { --qm-note-text: #6f5161; --qm-note-bg: rgba(251, 235, 242, .95); }
+#qianmu-notes-float-layer.sd-theme-kraft { --qm-note-text: #5a4a30; --qm-note-bg: rgba(244, 231, 197, .95); }
+#qianmu-notes-float-layer.sd-theme-dream { --qm-note-text: #565377; --qm-note-bg: rgba(240, 237, 250, .95); }
+.sd-floating-note { position: fixed; min-width: 220px; min-height: 120px; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; pointer-events: auto; border: 1px solid var(--qm-note-border); border-radius: 14px; background: var(--qm-note-bg); color: var(--qm-note-text); box-shadow: 0 14px 42px rgba(0, 0, 0, .24); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+.sd-floating-note > header { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 7px 6px 12px; border-bottom: 1px solid var(--qm-note-border); cursor: grab; touch-action: none; }
+.sd-floating-note > header:active { cursor: grabbing; }
+.sd-floating-note > header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.sd-floating-note > header div { display: flex; gap: 3px; }
+.sd-floating-note > header button { width: 27px; height: 27px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--qm-note-muted); }
+.sd-floating-note > header button:hover { background: rgba(127, 127, 127, .12); color: var(--qm-note-text); }
+.sd-floating-note > textarea { min-width: 0; min-height: 0; width: 100%; height: 100%; padding: 12px; border: 0; outline: 0; resize: none; background: transparent; color: var(--qm-note-text); font: inherit; font-size: 13px; line-height: 1.65; }
+.sd-floating-note.is-minimized { min-height: 42px; height: 42px !important; grid-template-rows: 42px; }
+.sd-floating-note.is-minimized > header { border-bottom: 0; }
+.sd-floating-note.is-minimized > textarea { display: none; }
+
+@media (max-width: 520px) {
+  #story-director-modal .sd-storage-overview { grid-template-columns: 82px minmax(0, 1fr); gap: 12px; }
+  #story-director-modal .sd-storage-ring { width: 78px; }
+  #story-director-modal .sd-storage-ring strong { font-size: 17px; }
+  #story-director-modal .sd-storage-row { grid-template-columns: 70px minmax(54px, 1fr) minmax(58px, auto); gap: 7px; }
+  #story-director-modal .sd-notes-global-entry { right: 5px; width: 32px; height: 32px; }
+  #story-director-modal .sd-notes-shell { grid-template-columns: 1fr; grid-template-rows: minmax(130px, 34%) minmax(0, 1fr); }
+  #story-director-modal .sd-notes-shell > aside { padding: 10px; border-right: 0; border-bottom: 1px solid var(--sd-hairline); }
+  #story-director-modal .sd-note-editor { padding: 10px; }
+  .sd-floating-note { max-width: calc(100vw - 16px); }
+}
+
 #story-director-modal .sd-item-card {
   border: 1px solid var(--sd-border) !important;
   border-radius: 14px !important;
@@ -7459,6 +7628,36 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-gallery-page,
 #story-director-modal .sd-storyboard-logs-page,
 #story-director-modal .sd-storyboard-artist-page { gap: 4px; }
+
+/* V2 · 画师方案：图库内保存随机/轮换组合，并保持移动端可编辑。 */
+#story-director-modal .sd-storyboard-artist-head > div:nth-child(2) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(2, 38px);
+  gap: 6px;
+}
+#story-director-modal .sd-storyboard-artist-head > .sd-storyboard-artist-pool-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(3, 38px);
+  gap: 6px;
+}
+.sd-storyboard-artist-pool-editor { width: min(680px, calc(100vw - 28px)); display: grid; gap: 12px; text-align: left; }
+.sd-storyboard-artist-pool-editor > header { display: grid; gap: 4px; }
+.sd-storyboard-artist-pool-editor > header small { color: var(--SmartThemeBodyColor, currentColor); opacity: .62; line-height: 1.45; }
+.sd-storyboard-artist-pool-editor > label { display: grid; grid-template-columns: 92px minmax(0, 1fr); align-items: center; gap: 10px; }
+.sd-storyboard-artist-pool-editor > section { max-height: min(46vh, 420px); overflow: auto; display: grid; gap: 6px; padding-right: 3px; }
+.sd-storyboard-artist-pool-editor article {
+  display: grid; grid-template-columns: minmax(130px, .8fr) 82px minmax(150px, 1.2fr); align-items: center; gap: 7px;
+  padding: 7px; border: 1px solid color-mix(in srgb, currentColor 13%, transparent); border-radius: 11px; opacity: .58;
+}
+.sd-storyboard-artist-pool-editor article.selected { opacity: 1; border-color: color-mix(in srgb, var(--sd-accent, currentColor) 56%, transparent); }
+.sd-storyboard-artist-pool-editor article .text_pole { min-width: 0; width: 100%; margin: 0 !important; }
+.sd-storyboard-artist-pool-editor .sd-switch-row { min-width: 0; }
+@media (max-width: 540px) {
+  .sd-storyboard-artist-pool-editor { width: calc(100vw - 22px); }
+  .sd-storyboard-artist-pool-editor > label { grid-template-columns: 1fr; gap: 4px; }
+  .sd-storyboard-artist-pool-editor article { grid-template-columns: minmax(0, 1fr) 78px; }
+  .sd-storyboard-artist-pool-editor article .sd-artist-pool-roles { grid-column: 1 / -1; }
+}
 
 #story-director-modal .sd-storyboard-nav {
   position: sticky;

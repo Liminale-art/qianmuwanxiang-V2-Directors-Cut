@@ -72,6 +72,7 @@ export const QIANMU_FA_ICON_MAP = Object.freeze({
   'fa-database': 'qm-duotone-database',
   'fa-diagram-project': 'qm-duotone-graph',
   'fa-download': 'qm-regular-download-simple',
+  'fa-dice': 'qm-regular-arrows-clockwise',
   'fa-earth-asia': Object.freeze({ default: 'qm-duotone-globe-hemisphere-east', regular: 'qm-regular-globe-hemisphere-east', solid: 'qm-fill-globe-hemisphere-east' }),
   'fa-ellipsis': 'qm-regular-dots-three',
   'fa-eraser': 'qm-regular-eraser',
@@ -114,6 +115,7 @@ export const QIANMU_FA_ICON_MAP = Object.freeze({
   'fa-microphone-lines': 'qm-duotone-microphone-stage',
   'fa-minus': 'qm-regular-minus',
   'fa-mug-hot': 'qm-duotone-coffee',
+  'fa-note-sticky': 'qm-regular-note-pencil',
   'fa-palette': 'qm-duotone-palette',
   'fa-pause': 'qm-fill-pause',
   'fa-pen': 'qm-regular-pen',
@@ -156,6 +158,7 @@ export const QIANMU_FA_ICON_MAP = Object.freeze({
   'fa-volume-high': 'qm-fill-speaker-high',
   'fa-wand-magic-sparkles': 'qm-duotone-magic-wand',
   'fa-wave-square': 'qm-regular-wave-sine',
+  'fa-window-restore': 'qm-duotone-squares-four',
   'fa-xmark': 'qm-regular-x',
 });
 
@@ -174,6 +177,7 @@ export const QIANMU_ICON_ROOT_SELECTOR = [
   '#story-director-float',
   '#story-director-quick-wheel',
   '#story-director-floor-nav',
+  '#qianmu-notes-float-layer',
   '#story-director-input-entry',
   '#story-director-input-button',
   '#sd-reader-portal',

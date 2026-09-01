@@ -62,6 +62,31 @@ assert.equal(body.parameters.noise_schedule, 'karras');
 assert.deepEqual(body.parameters.v4_prompt.caption.char_captions[0].centers, [{ x: 0.25, y: 0.5 }]);
 assert.equal(generated.transport, 'direct');
 assert.equal(generated.images[0].data, 'aW1hZ2U=');
+assert.equal(generated.sequential, true);
+
+const sequentialBodies = [];
+const waitDurations = [];
+let novelAttempt = 0;
+const sequential = await generateDirectImage({
+  provider: 'novel', apiKey: 'nai-key', baseUrl: 'https://image.novelai.net', model: 'nai-diffusion-4-full',
+  prompt: 'three sequential frames', parameters: { count: 3, seed: 20 },
+}, {
+  waitImpl: async (ms) => waitDurations.push(ms),
+  fetchImpl: async (_url, init) => {
+    novelAttempt++;
+    sequentialBodies.push(JSON.parse(init.body));
+    if (novelAttempt === 1) return new Response('busy', { status: 429, headers: { 'retry-after': '2' } });
+    return new Response(JSON.stringify({ images: [{ id: `seq-${novelAttempt}`, data: `aW1hZ2Ut${novelAttempt}` }] }), {
+      status: 200, headers: { 'content-type': 'application/json', 'x-request-id': `req-${novelAttempt}` },
+    });
+  },
+});
+assert.equal(sequential.images.length, 3);
+assert.equal(sequential.requestCount, 3);
+assert.equal(sequentialBodies.length, 4, '首张 429 后重试，其余图片各自单独请求');
+assert.deepEqual(sequentialBodies.map((item) => item.parameters.n_samples), [1, 1, 1, 1]);
+assert.deepEqual(sequentialBodies.map((item) => item.parameters.seed), [20, 20, 21, 22]);
+assert.deepEqual(waitDurations, [2000]);
 
 function storedZip(name, payload) {
   const encoder = new TextEncoder(), file = encoder.encode(name), data = new Uint8Array(payload);

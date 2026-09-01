@@ -4,7 +4,7 @@
 // localStorage 存不下二进制大对象，故独立走 IndexedDB；存 Blob，播放时再 createObjectURL。
 
 const DB_NAME = 'qianmu-blobstore';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 const STORE_AUDIO = 'audio';         // key: 缓存键   value: { blob, meta, createdAt }
 const STORE_FAVORITES = 'favorites'; // key: 收藏 id  value: { blob, meta, label, createdAt }
 // ── 伴读模块（v2 新增）──
@@ -18,6 +18,21 @@ const STORE_IMAGES = 'reader_images';      // key: `${bookId}::${n}` value: Blob
 const STORE_VECTORS = 'reader_vectors';    // key: bucketKey value: { dim, model, vecs:{ sliceId:[...] }, fps:{ sliceId:指纹 } }（切片嵌入向量·独立于会话·仅变化时写）
 // ── 配音模块（v5 新增）──
 const STORE_TTS_LINES = 'tts_lines';       // key: chatKey value: { lines:{contentKey:[]}, keyByMes:{mesid:contentKey}, updatedAt }
+// ── 便笺模块（v6 新增）──
+const STORE_NOTES = 'notes';               // key: noteId value: QianmuNote（只存 pinned=true；临时便笺留在本次页面运行态）
+
+const STORAGE_STORE_INFO = Object.freeze({
+  [STORE_AUDIO]: { label: '语音缓存', category: 'audio', recoverable: true },
+  [STORE_FAVORITES]: { label: '语音收藏', category: 'audio', recoverable: false },
+  [STORE_BOOKS]: { label: '伴读书籍', category: 'reader', recoverable: false },
+  [STORE_COVERS]: { label: '书籍封面', category: 'reader', recoverable: false },
+  [STORE_CHATS]: { label: '伴读会话', category: 'reader', recoverable: false },
+  [STORE_RETLOG]: { label: '伴读检索日志', category: 'logs', recoverable: true },
+  [STORE_IMAGES]: { label: '书内插图', category: 'images', recoverable: false },
+  [STORE_VECTORS]: { label: '伴读检索向量', category: 'reader', recoverable: false },
+  [STORE_TTS_LINES]: { label: '台词提取缓存', category: 'cache', recoverable: true },
+  [STORE_NOTES]: { label: '固定便笺', category: 'notes', recoverable: false },
+});
 
 let dbPromise = null;
 
@@ -38,6 +53,7 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE_IMAGES)) db.createObjectStore(STORE_IMAGES);
       if (!db.objectStoreNames.contains(STORE_VECTORS)) db.createObjectStore(STORE_VECTORS);
       if (!db.objectStoreNames.contains(STORE_TTS_LINES)) db.createObjectStore(STORE_TTS_LINES);
+      if (!db.objectStoreNames.contains(STORE_NOTES)) db.createObjectStore(STORE_NOTES);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => { dbPromise = null; reject(req.error); };
@@ -414,4 +430,130 @@ export async function listRetLog() {
 export async function clearRetLog() {
   const s = await store(STORE_RETLOG, 'readwrite');
   await reqP(s.clear());
+}
+
+// ── 便笺：仅固定条目跨 ST 重启持久保存 ───────────────────────
+
+export async function putNote(noteId, record) {
+  const s = await store(STORE_NOTES, 'readwrite');
+  await reqP(s.put({ ...record, id: String(noteId), pinned: true, updatedAt: Date.now() }, String(noteId)));
+  return noteId;
+}
+
+export async function deleteNote(noteId) {
+  const s = await store(STORE_NOTES, 'readwrite');
+  await reqP(s.delete(String(noteId)));
+}
+
+export async function listNotes() {
+  const s = await store(STORE_NOTES, 'readonly');
+  const out = [];
+  await new Promise((resolve, reject) => {
+    const cursor = s.openCursor();
+    cursor.onsuccess = () => {
+      const current = cursor.result;
+      if (!current) { resolve(); return; }
+      out.push({ ...(current.value || {}), id: String(current.key), pinned: true });
+      current.continue();
+    };
+    cursor.onerror = () => reject(cursor.error);
+  });
+  return out.sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+}
+
+// ── 存储治理：只读盘点与严格白名单清理 ──────────────────────
+
+function utf8ByteLength(value) {
+  let bytes = 0;
+  for (const char of String(value || '')) {
+    const code = char.codePointAt(0);
+    bytes += code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
+  }
+  return bytes;
+}
+
+// 估算 structured-clone 值的有效载荷大小。Blob/ArrayBuffer 使用真实字节数，
+// 普通对象逐字段累加，不把二进制 stringify 成巨型字符串。仅用于容量可视化，
+// 浏览器最终占用仍以 navigator.storage.estimate() 的整个 ST 来源统计为准。
+export function estimateStoredValueBytes(value, seen = new WeakSet()) {
+  if (value == null) return 0;
+  if (typeof value === 'string') return utf8ByteLength(value);
+  if (typeof value === 'number' || typeof value === 'bigint' || value instanceof Date) return 8;
+  if (typeof value === 'boolean') return 1;
+  if (typeof Blob !== 'undefined' && value instanceof Blob) return Number(value.size) || 0;
+  if (value instanceof ArrayBuffer) return value.byteLength;
+  if (ArrayBuffer.isView(value)) return value.byteLength;
+  if (typeof value !== 'object') return 0;
+  if (seen.has(value)) return 0;
+  seen.add(value);
+  if (Array.isArray(value)) return value.reduce((sum, item) => sum + estimateStoredValueBytes(item, seen), 0);
+  if (value instanceof Map) {
+    let bytes = 0;
+    for (const [key, item] of value) bytes += estimateStoredValueBytes(key, seen) + estimateStoredValueBytes(item, seen);
+    return bytes;
+  }
+  if (value instanceof Set) {
+    let bytes = 0;
+    for (const item of value) bytes += estimateStoredValueBytes(item, seen);
+    return bytes;
+  }
+  return Object.entries(value).reduce((sum, [key, item]) => (
+    sum + utf8ByteLength(key) + estimateStoredValueBytes(item, seen)
+  ), 0);
+}
+
+async function estimateStoreUsage(name) {
+  const info = STORAGE_STORE_INFO[name] || { label: name, category: 'other', recoverable: false };
+  const s = await store(name, 'readonly');
+  let count = 0;
+  let bytes = 0;
+  await new Promise((resolve, reject) => {
+    const cursor = s.openCursor();
+    cursor.onsuccess = () => {
+      const current = cursor.result;
+      if (!current) { resolve(); return; }
+      count++;
+      bytes += estimateStoredValueBytes(current.key) + estimateStoredValueBytes(current.value);
+      current.continue();
+    };
+    cursor.onerror = () => reject(cursor.error);
+  });
+  return { name, ...info, count, bytes };
+}
+
+export async function estimateBlobStoreUsage() {
+  if (!blobStoreAvailable()) return { available: false, stores: [], categories: [], totalBytes: 0, recoverableBytes: 0 };
+  const stores = [];
+  for (const name of Object.keys(STORAGE_STORE_INFO)) stores.push(await estimateStoreUsage(name));
+  const categoryMap = new Map();
+  for (const item of stores) {
+    const current = categoryMap.get(item.category) || { category: item.category, count: 0, bytes: 0, recoverableBytes: 0 };
+    current.count += item.count;
+    current.bytes += item.bytes;
+    if (item.recoverable) current.recoverableBytes += item.bytes;
+    categoryMap.set(item.category, current);
+  }
+  return {
+    available: true,
+    stores,
+    categories: [...categoryMap.values()],
+    totalBytes: stores.reduce((sum, item) => sum + item.bytes, 0),
+    recoverableBytes: stores.reduce((sum, item) => sum + (item.recoverable ? item.bytes : 0), 0),
+  };
+}
+
+// “安全清理”只允许进入此处写死的可再生数据；调用者不能传 store 名扩大范围。
+export async function clearRecoverableStorage() {
+  if (!blobStoreAvailable()) return { cleared: [], beforeBytes: 0 };
+  const before = await estimateBlobStoreUsage();
+  const recoverableNames = Object.entries(STORAGE_STORE_INFO)
+    .filter(([, info]) => info.recoverable)
+    .map(([name]) => name);
+  const cleared = [];
+  for (const name of recoverableNames) {
+    const s = await store(name, 'readwrite');
+    await reqP(s.clear());
+    cleared.push(name);
+  }
+  return { cleared, beforeBytes: before.recoverableBytes };
 }

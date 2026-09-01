@@ -12,7 +12,7 @@ import {
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 12);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 13);
 assert.deepEqual(Object.keys(STORYBOARD_SHOT_GROUP_TEMPLATES), ['smart', 'threeBeat', 'dialogue', 'action', 'atmosphere']);
 
 const defaults = createStoryboardDefaults();

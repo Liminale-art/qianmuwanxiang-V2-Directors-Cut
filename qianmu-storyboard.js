@@ -1,5 +1,5 @@
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
-export const STORYBOARD_SCHEMA_VERSION = 12;
+export const STORYBOARD_SCHEMA_VERSION = 13;
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -179,6 +179,7 @@ export function createStoryboardDefaults() {
     connections: Object.fromEntries(ids.map((id) => [id, connection(id)])),
     promptPresets: [], editingPromptPresetId: '', editingPromptItemId: '', promptItemDraft: null,
     artistPresets: [], artistCollections: [], artistCollectionId: '', selectedArtistPresetId: '', artistSearch: '', editingArtistPresetId: '',
+    artistPools: [], selectedArtistPoolId: '',
     tagLibrary: [], vibeLibrary: [], selectedVibeIds: [], compositionPolicy: compositionDefaults(), routing: routingDefaults(), shotPlans: [], collapsedCards: { model: true, context: true, prompt: true, params: true, composition: true, 'routing-rules': true }, logs: [], pipelineLogs: [],
   };
 }
@@ -356,7 +357,7 @@ export function normalizeStoryboardState(value) {
   state.connections = connections(state.connections);
   delete state.characters; delete state.entities; delete state.selectedCharacterId; delete state.characterView;
   delete state.selectedCharacters; delete state.castPickerOpen; delete state.consistencyModes;
-  state.promptPresets = promptPresets(state.promptPresets); state.artistCollections = artistCollections(state.artistCollections); state.artistPresets = artistPresets(state.artistPresets); const knownArtistCollections = new Set(state.artistCollections.map((item) => item.id)); for (const artist of state.artistPresets) { artist.collectionIds = artist.collectionIds.filter((id) => knownArtistCollections.has(id)); artist.collectionId = artist.collectionIds[0] || ''; } if (!knownArtistCollections.has(state.artistCollectionId)) state.artistCollectionId = ''; state.selectedArtistPresetId = state.artistPresets.some((item) => item.id === state.selectedArtistPresetId) ? cleanId(state.selectedArtistPresetId) : ''; if (state.editingArtistPresetId !== 'new' && !state.artistPresets.some((item) => item.id === state.editingArtistPresetId)) state.editingArtistPresetId = ''; state.tagLibrary = tags(state.tagLibrary); state.vibeLibrary = vibes(state.vibeLibrary);
+  state.promptPresets = promptPresets(state.promptPresets); state.artistCollections = artistCollections(state.artistCollections); state.artistPresets = artistPresets(state.artistPresets); const knownArtistCollections = new Set(state.artistCollections.map((item) => item.id)); for (const artist of state.artistPresets) { artist.collectionIds = artist.collectionIds.filter((id) => knownArtistCollections.has(id)); artist.collectionId = artist.collectionIds[0] || ''; } if (!knownArtistCollections.has(state.artistCollectionId)) state.artistCollectionId = ''; state.selectedArtistPresetId = state.artistPresets.some((item) => item.id === state.selectedArtistPresetId) ? cleanId(state.selectedArtistPresetId) : ''; if (state.editingArtistPresetId !== 'new' && !state.artistPresets.some((item) => item.id === state.editingArtistPresetId)) state.editingArtistPresetId = ''; const knownArtistIds = new Set(state.artistPresets.map((item) => item.id)); state.artistPools = artistPools(state.artistPools, knownArtistIds); state.selectedArtistPoolId = state.artistPools.some((item) => item.id === state.selectedArtistPoolId) ? cleanId(state.selectedArtistPoolId) : ''; state.tagLibrary = tags(state.tagLibrary); state.vibeLibrary = vibes(state.vibeLibrary);
   const knownTagIds = new Set(state.tagLibrary.map((tag) => tag.id));
   for (const preset of state.promptPresets) preset.tagIds = preset.tagIds.filter((id) => knownTagIds.has(id));
   for (const vibe of state.vibeLibrary) vibe.tags = vibe.tags.filter((id) => knownTagIds.has(id));
@@ -414,6 +415,78 @@ function artistCollections(value) {
     createdAt: pos(collection.createdAt || collection.updatedAt), updatedAt: pos(collection.updatedAt),
   })).filter((collection) => collection.id);
   return dedupeById(normalized).slice(0, 100);
+}
+
+export function normalizeStoryboardArtistPool(value = {}, knownArtistIds = null) {
+  const known = knownArtistIds instanceof Set ? knownArtistIds : new Set(Array.isArray(knownArtistIds) ? knownArtistIds.map(cleanId) : []);
+  const accepts = (id) => id && (!known.size || known.has(id));
+  const members = dedupeById((Array.isArray(value.members) ? value.members : []).filter(obj).map((member) => ({
+    id: cleanId(member.id || member.artistId), artistId: cleanId(member.artistId || member.id),
+    weight: num(member.weight, 0.1, 100, 1),
+    shotRoles: uniqueStrings(member.shotRoles, 30, 80),
+  })).filter((member) => accepts(member.artistId)).map((member) => ({ ...member, id: member.artistId }))).slice(0, 100);
+  const roleAssignments = Object.fromEntries(Object.entries(obj(value.roleAssignments) ? value.roleAssignments : {})
+    .slice(0, 80).map(([role, artistId]) => [str(role, 80), cleanId(artistId)])
+    .filter(([role, artistId]) => role && accepts(artistId)));
+  return {
+    id: cleanId(value.id), name: str(value.name || '未命名画师方案', 80), enabled: value.enabled !== false,
+    mode: ['weighted_random', 'sequential', 'shuffle_bag'].includes(value.mode) ? value.mode : 'shuffle_bag',
+    members, roleAssignments, createdAt: pos(value.createdAt || value.updatedAt), updatedAt: pos(value.updatedAt),
+  };
+}
+
+function artistPools(value, knownArtistIds) {
+  return dedupeById((Array.isArray(value) ? value : []).filter(obj)
+    .map((pool) => normalizeStoryboardArtistPool(pool, knownArtistIds))
+    .filter((pool) => pool.id && pool.members.length)).slice(0, 100);
+}
+
+function artistRouteHash(value) {
+  let hash = 2166136261;
+  const source = String(value || 'qianmu');
+  for (let index = 0; index < source.length; index++) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function artistRoutePick(members, mode, seed) {
+  if (!members.length) return null;
+  const hash = artistRouteHash(seed);
+  if (mode === 'sequential') return members[hash % members.length];
+  const total = members.reduce((sum, member) => sum + Math.max(0.1, Number(member.weight) || 1), 0);
+  let cursor = (hash / 0x100000000) * total;
+  for (const member of members) {
+    cursor -= Math.max(0.1, Number(member.weight) || 1);
+    if (cursor <= 0) return member;
+  }
+  return members.at(-1);
+}
+
+export function resolveStoryboardArtistAssignment({
+  artistPresets: presets = [], artistPools: pools = [], selectedArtistPresetId = '', selectedArtistPoolId = '',
+  shot = {}, seed = '', recentArtistIds = [],
+} = {}) {
+  const artists = new Map((Array.isArray(presets) ? presets : []).filter((item) => cleanId(item?.id)).map((item) => [cleanId(item.id), item]));
+  const requestedArtistId = cleanId(shot.artistPresetId || shot.artistId);
+  if (artists.has(requestedArtistId)) return { artistId: requestedArtistId, artist: artists.get(requestedArtistId), poolId: '', source: 'shot_override', seed: String(seed || '') };
+  const pool = (Array.isArray(pools) ? pools : []).map((item) => normalizeStoryboardArtistPool(item, new Set(artists.keys())))
+    .find((item) => item.id === cleanId(selectedArtistPoolId) && item.enabled) || null;
+  const role = str(shot.shotRole || shot.role || shot.shotType, 80);
+  const assignedId = cleanId(pool?.roleAssignments?.[role]);
+  if (artists.has(assignedId)) return { artistId: assignedId, artist: artists.get(assignedId), poolId: pool.id, source: 'shot_role', seed: String(seed || '') };
+  if (pool) {
+    const roleMembers = role ? pool.members.filter((member) => member.shotRoles.includes(role)) : [];
+    const candidates = roleMembers.length ? roleMembers : pool.members;
+    const recent = new Set(ids(recentArtistIds, 100));
+    const fresh = pool.mode === 'shuffle_bag' ? candidates.filter((member) => !recent.has(member.artistId)) : candidates;
+    const picked = artistRoutePick(fresh.length ? fresh : candidates, pool.mode, `${pool.id}:${seed}:${role}`);
+    if (picked && artists.has(picked.artistId)) return { artistId: picked.artistId, artist: artists.get(picked.artistId), poolId: pool.id, source: roleMembers.length ? 'pool_role' : 'pool', seed: String(seed || '') };
+  }
+  const selectedId = cleanId(selectedArtistPresetId);
+  if (artists.has(selectedId)) return { artistId: selectedId, artist: artists.get(selectedId), poolId: '', source: 'selected', seed: String(seed || '') };
+  return { artistId: '', artist: null, poolId: pool?.id || '', source: 'default', seed: String(seed || '') };
 }
 
 function tags(value) {

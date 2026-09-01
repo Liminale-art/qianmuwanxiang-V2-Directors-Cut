@@ -96,9 +96,16 @@ import {
   ttsProviderSupports,
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
+import {
+  clearTemporaryQianmuNotes,
+  createQianmuNote,
+  deleteQianmuNote,
+  listQianmuNotes,
+  saveQianmuNote,
+} from './qianmu-notes.js';
 import * as reader from './qianmu-reader.js';
-import { checkDirectImageConnection, generateDirectImage, isDirectImageTransportError } from './qianmu-image-direct.js?v=1.58.1';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.1';
+import { checkDirectImageConnection, generateDirectImage, isDirectImageTransportError } from './qianmu-image-direct.js?v=1.58.2';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.2';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_COMPOSITION_RULE_ID,
@@ -121,6 +128,7 @@ import {
   getStoryboardModel,
   getStoryboardNovelParameterSpec,
   normalizeStoryboardState,
+  normalizeStoryboardArtistPool,
   normalizeStoryboardParagraphSelection,
   normalizeStoryboardShotSpec,
   prepareStoryboardShotGroup,
@@ -128,6 +136,7 @@ import {
   resolveStoryboardMessageReference,
   resolveStoryboardComposition,
   restoreStoryboardCompositionPolicy,
+  resolveStoryboardArtistAssignment,
   routeStoryboardShot,
   sanitizeStoryboardDiagnosticData,
   sanitizeStoryboardSnapshot,
@@ -136,11 +145,11 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
-} from './qianmu-storyboard.js?v=1.58.1';
+} from './qianmu-storyboard.js?v=1.58.2';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.1';
+const VERSION = '1.58.2';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -159,6 +168,7 @@ const MODAL_ID = 'story-director-modal';
 const FLOAT_ID = 'story-director-float';
 const QUICK_WHEEL_ID = 'story-director-quick-wheel';
 const FLOOR_NAV_ID = 'story-director-floor-nav';
+const NOTES_FLOAT_LAYER_ID = 'qianmu-notes-float-layer';
 const INPUT_ENTRY_ID = 'story-director-input-entry';
 const INPUT_BUTTON_ID = 'story-director-input-button';
 const FLOAT_SIZE_MIN = 32;
@@ -589,8 +599,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   proseLayout: { ...PROSE_LAYOUT_DEFAULTS },
   quickWheelEnabled: true,
   quickWheelScheme: 'custom',   // 兼容旧配置字段；蜂巢快捷盘从 1.27 起仅使用用户自定义入口
-  quickWheelCustomOrder: ['dashboard', 'focus', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
-  quickWheelCustomEnabled: ['dashboard', 'focus', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
+  quickWheelCustomOrder: ['dashboard', 'focus', 'notes', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
+  quickWheelCustomEnabled: ['dashboard', 'focus', 'notes', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
   quickWheelDockedPlugins: [],
   quickWheelCustomExpanded: false,
   theme: 'light',
@@ -615,6 +625,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   outputSchemaBackup: null,       // 「恢复上次」：同上，备份用户上一份输出格式
   logHistory: [],
   logOpenState: {},               // API 与日志：按日志 ID 记忆展开状态，默认折叠
+  notes: { enabled: true },       // 便笺入口/浮贴总开关；关闭只隐藏，不删除固定便笺
   // 专注时钟：全局轻量状态，与聊天、推演和伴读存储完全隔离。运行态保存绝对截止时间，后台挂起/刷新后按真实时间续算。
   focusClock: {
     phase: 'focus',               // focus | shortBreak | longBreak
@@ -894,6 +905,16 @@ let storyboardSecretModulePromise = null;
 let storyboardStModulePromise = null;
 let storyboardUtilsModulePromise = null;
 let storyboardChatClickBound = false;
+let storageInventoryState = { status: 'idle', data: null, error: '', sampledAt: 0 };
+let notesPanelOpen = false;
+let notesLoaded = false;
+let notesLoading = null;
+let notesRuntime = [];
+let notesActiveId = '';
+let notesSearch = '';
+let notesDragId = '';
+let notesZCounter = 10;
+const notesSaveTimers = new Map();
 let storyboardInlineTimer = null;
 const storyboardCollapsedInlineFloors = new Set();
 let storyboardLinkSaveQueued = false;
@@ -3861,6 +3882,7 @@ function closeModal() {
     storyboardEndSession();
   }
   focusClockCloseVoiceDrawer();
+  notesPanelOpen = false;
   document.getElementById(MODAL_ID)?.classList.remove('open');
   document.body.classList.remove('sd-qm-modal-open');
   unmountReaderPortal();   // 关模态连带收掉全屏阅读 portal
@@ -4012,6 +4034,7 @@ function revealFloatButton(btn, { temporary = true } = {}) {
 const QUICK_COMMANDS = Object.freeze([
   { id: 'dashboard', label: '推演', icon: 'fa-clapperboard', phosphor: 'qm-duotone-film-slate' },
   { id: 'focus', label: '专注', icon: 'fa-hourglass-half', phosphor: 'focus' },
+  { id: 'notes', label: '便笺', icon: 'fa-note-sticky', phosphor: '' },
   { id: 'tasksnodes', label: '任务', icon: 'fa-list-check', phosphor: 'tasks' },
   { id: 'castworld', label: '世界', icon: 'fa-earth-asia', phosphor: 'world' },
   { id: 'context', label: '取材', icon: 'fa-box-archive', phosphor: 'context' },
@@ -5391,6 +5414,7 @@ async function runQuickWheelCommand(id) {
     return openModal('coread');
   }
   if (id === 'floor') return openFloorNavigator();
+  if (id === 'notes') return openNotesPanel();
   if (id === 'geopolitics') return openModal('geopolitics');
   if (QUICK_COMMAND_IDS.includes(id)) return openModal(id);
 }
@@ -5469,7 +5493,7 @@ function openQuickWheel(btn) {
     button.title = item.pending ? `${item.label}（即将开放）` : item.label;
     button.setAttribute('aria-label', button.title);
     button.setAttribute('role', 'menuitem');
-    const iconMarkup = item.external ? quickDockIconMarkup(item) : `<i class="fa-solid ${item.icon}" data-qm-icon="${item.phosphor}"></i>`;
+    const iconMarkup = item.external ? quickDockIconMarkup(item) : `<i class="fa-solid ${item.icon}"${item.phosphor ? ` data-qm-icon="${item.phosphor}"` : ''}></i>`;
     button.innerHTML = `${iconMarkup}${QUICK_HEX_BORDER_SVG}`;
     holder.appendChild(button);
     if (item.external) {
@@ -5718,6 +5742,258 @@ function setQianmuIconClass(icon, className) {
   refreshQianmuIcon(icon);
 }
 
+function notesFeatureEnabled() {
+  return settings?.notes?.enabled !== false;
+}
+
+function notesSortRuntime() {
+  notesRuntime.sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+}
+
+function notesFind(noteId) {
+  return notesRuntime.find((note) => note.id === String(noteId || '')) || null;
+}
+
+function notesReplaceLocal(input) {
+  const index = notesRuntime.findIndex((note) => note.id === input.id);
+  if (index >= 0) notesRuntime[index] = input;
+  else notesRuntime.push(input);
+  notesSortRuntime();
+  return input;
+}
+
+async function hydrateNotesRuntime(force = false) {
+  if (notesLoading) return notesLoading;
+  if (notesLoaded && !force) return notesRuntime;
+  notesLoading = listQianmuNotes().then((notes) => {
+    notesRuntime = Array.isArray(notes) ? notes : [];
+    notesSortRuntime();
+    notesZCounter = Math.max(1, ...notesRuntime.map((note) => Number(note.zOrder) || 0)) + 1;
+    notesLoaded = true;
+    if (!notesFind(notesActiveId)) notesActiveId = notesRuntime[0]?.id || '';
+    renderFloatingNotes();
+    if (notesPanelOpen && document.getElementById(MODAL_ID)?.classList.contains('open')) renderModal();
+    return notesRuntime;
+  }).catch((error) => {
+    console.warn(`[${MODULE_NAME}] notes load failed`, error);
+    notesLoaded = true;
+    return notesRuntime;
+  }).finally(() => { notesLoading = null; });
+  return notesLoading;
+}
+
+async function persistNoteRuntime(note, { renderPanel = false } = {}) {
+  const saved = await saveQianmuNote(note);
+  notesReplaceLocal(saved);
+  renderFloatingNotes();
+  if (renderPanel && notesPanelOpen) renderModal();
+  return saved;
+}
+
+function scheduleNoteSave(note) {
+  clearTimeout(notesSaveTimers.get(note.id));
+  notesSaveTimers.set(note.id, setTimeout(() => {
+    notesSaveTimers.delete(note.id);
+    void persistNoteRuntime(note).catch((error) => console.warn(`[${MODULE_NAME}] note save failed`, error));
+  }, 320));
+}
+
+function openNotesPanel() {
+  if (!settings.enabled) return toast('千幕已关闭。', 'warning');
+  if (!notesFeatureEnabled()) return toast('便笺功能已在 API 与日志中关闭。', 'info');
+  closeQuickWheel();
+  if (!document.getElementById(MODAL_ID)?.classList.contains('open')) openModal();
+  notesPanelOpen = true;
+  renderModal();
+  void hydrateNotesRuntime();
+}
+
+function closeNotesPanel() {
+  notesPanelOpen = false;
+  renderModal();
+}
+
+function noteExcerpt(note) {
+  return String(note.body || '').trim().replace(/\s+/g, ' ').slice(0, 80) || '空白便笺';
+}
+
+function renderNotesPanel() {
+  const query = String(notesSearch || '').trim().toLowerCase();
+  const visible = notesRuntime.filter((note) => !query || `${note.title}\n${note.body}`.toLowerCase().includes(query));
+  const active = notesFind(notesActiveId);
+  const list = visible.map((note) => `<article class="sd-note-list-item ${note.id === notesActiveId ? 'active' : ''}" data-note-id="${htmlEscape(note.id)}" draggable="true">
+    <button type="button" class="sd-note-select"><strong>${htmlEscape(note.title || '便笺')}</strong><span>${htmlEscape(noteExcerpt(note))}</span></button>
+    <div><i class="fa-solid ${note.pinned ? 'fa-thumbtack' : 'fa-clock'}" title="${note.pinned ? '已固定' : '临时'}"></i>${note.floating ? '<i class="fa-solid fa-window-restore" title="已浮贴"></i>' : ''}</div>
+  </article>`).join('');
+  const editor = active ? `<div class="sd-note-editor" data-note-id="${htmlEscape(active.id)}">
+    <input class="text_pole sd-note-title" value="${htmlEscape(active.title)}" maxlength="120" aria-label="便笺标题">
+    <textarea class="sd-textarea sd-note-body" maxlength="20000" aria-label="便笺内容">${htmlEscape(active.body)}</textarea>
+    <footer>
+      <div><button type="button" class="sd-icon-btn sd-note-copy" title="复制" aria-label="复制"><i class="fa-solid fa-copy"></i></button><button type="button" class="sd-icon-btn sd-note-float ${active.floating ? 'active' : ''}" title="${active.floating ? '收回浮贴' : '浮贴到 ST 页面'}" aria-label="浮贴"><i class="fa-solid fa-window-restore"></i></button><button type="button" class="sd-icon-btn sd-note-pin ${active.pinned ? 'active' : ''}" title="${active.pinned ? '取消固定' : '固定并跨重启保存'}" aria-label="固定"><i class="fa-solid fa-thumbtack"></i></button></div>
+      <button type="button" class="sd-icon-btn sd-danger sd-note-delete" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button>
+    </footer>
+  </div>` : '<div class="sd-notes-empty"><i class="fa-regular fa-note-sticky"></i><p>新建一张便笺，随手记下此刻。</p></div>';
+  return `<section class="sd-notes-panel" role="dialog" aria-label="便笺">
+    <header><div><b>便笺</b><span>${notesRuntime.filter((note) => note.pinned).length} 固定 · ${notesRuntime.filter((note) => !note.pinned).length} 临时</span></div><div><button type="button" class="sd-icon-btn sd-note-new" title="新建便笺" aria-label="新建便笺"><i class="fa-solid fa-plus"></i></button><button type="button" class="sd-icon-btn sd-notes-close" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></div></header>
+    <div class="sd-notes-shell"><aside><input class="text_pole sd-notes-search" value="${htmlEscape(notesSearch)}" placeholder="搜索便笺" aria-label="搜索便笺"><div class="sd-note-list">${list || '<p class="sd-muted">暂无匹配便笺。</p>'}</div></aside>${editor}</div>
+  </section>`;
+}
+
+function clampFloatingNote(note) {
+  const viewport = window.visualViewport;
+  const left = Number(viewport?.offsetLeft || 0);
+  const top = Number(viewport?.offsetTop || 0);
+  const width = Math.max(1, Number(viewport?.width || window.innerWidth));
+  const height = Math.max(1, Number(viewport?.height || window.innerHeight));
+  const cardWidth = Math.min(note.width, Math.max(220, width - 16));
+  const cardHeight = note.minimized ? 46 : Math.min(note.height, Math.max(120, height - 16));
+  return {
+    x: Math.max(left + 8, Math.min(left + width - cardWidth - 8, Number(note.x) || left + 24)),
+    y: Math.max(top + 8, Math.min(top + height - cardHeight - 8, Number(note.y) || top + 96)),
+    width: cardWidth,
+    height: cardHeight,
+  };
+}
+
+function renderFloatingNotes() {
+  document.getElementById(NOTES_FLOAT_LAYER_ID)?.remove();
+  if (!notesFeatureEnabled() || !notesLoaded) return;
+  const floating = notesRuntime.filter((note) => note.floating).sort((a, b) => Number(a.zOrder || 0) - Number(b.zOrder || 0));
+  if (!floating.length) return;
+  const expanded = new Set(floating.filter((note) => !note.minimized).slice(-4).map((note) => note.id));
+  const layer = document.createElement('div');
+  layer.id = NOTES_FLOAT_LAYER_ID;
+  layer.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
+  layer.innerHTML = floating.map((note) => {
+    const geometry = clampFloatingNote(note);
+    const minimized = note.minimized || !expanded.has(note.id);
+    return `<article class="sd-floating-note ${minimized ? 'is-minimized' : ''}" data-note-id="${htmlEscape(note.id)}" style="left:${geometry.x}px;top:${geometry.y}px;width:${geometry.width}px;${minimized ? '' : `height:${geometry.height}px;`}z-index:${1000 + Number(note.zOrder || 1)}">
+      <header><strong>${htmlEscape(note.title || '便笺')}</strong><div><button type="button" class="sd-floating-note-copy" title="复制"><i class="fa-solid fa-copy"></i></button><button type="button" class="sd-floating-note-minimize" title="${minimized ? '展开' : '收起'}"><i class="fa-solid ${minimized ? 'fa-chevron-down' : 'fa-minus'}"></i></button><button type="button" class="sd-floating-note-close" title="收回"><i class="fa-solid fa-xmark"></i></button></div></header>
+      <textarea maxlength="20000" aria-label="便笺内容">${htmlEscape(note.body)}</textarea>
+    </article>`;
+  }).join('');
+  document.body.appendChild(layer);
+  applyQianmuIcons(layer);
+  bindFloatingNoteEvents(layer);
+}
+
+function bindFloatingNoteEvents(layer) {
+  layer.querySelectorAll('.sd-floating-note').forEach((card) => {
+    const note = notesFind(card.dataset.noteId);
+    if (!note) return;
+    card.addEventListener('pointerdown', () => {
+      note.zOrder = ++notesZCounter;
+      card.style.zIndex = String(1000 + note.zOrder);
+      scheduleNoteSave(note);
+    });
+    card.querySelector('textarea')?.addEventListener('input', (event) => {
+      note.body = event.target.value;
+      note.updatedAt = Date.now();
+      scheduleNoteSave(note);
+    });
+    card.querySelector('.sd-floating-note-copy')?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      void coreadCopyText(note.body || '').then(() => toast('便笺已复制。', 'success'));
+    });
+    card.querySelector('.sd-floating-note-minimize')?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      note.minimized = !note.minimized;
+      void persistNoteRuntime(note);
+    });
+    card.querySelector('.sd-floating-note-close')?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      note.floating = false;
+      void persistNoteRuntime(note);
+    });
+    const header = card.querySelector('header');
+    header?.addEventListener('pointerdown', (event) => {
+      if (event.target.closest('button')) return;
+      const rect = card.getBoundingClientRect();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const originX = rect.left;
+      const originY = rect.top;
+      header.setPointerCapture?.(event.pointerId);
+      const move = (moveEvent) => {
+        note.x = originX + moveEvent.clientX - startX;
+        note.y = originY + moveEvent.clientY - startY;
+        const geometry = clampFloatingNote(note);
+        card.style.left = `${geometry.x}px`;
+        card.style.top = `${geometry.y}px`;
+      };
+      const end = () => {
+        header.removeEventListener('pointermove', move);
+        header.removeEventListener('pointerup', end);
+        header.removeEventListener('pointercancel', end);
+        const rectNow = card.getBoundingClientRect();
+        note.x = rectNow.left;
+        note.y = rectNow.top;
+        void persistNoteRuntime(note);
+      };
+      header.addEventListener('pointermove', move);
+      header.addEventListener('pointerup', end);
+      header.addEventListener('pointercancel', end);
+      event.preventDefault();
+    });
+  });
+}
+
+function bindNotesPanelEvents(root) {
+  root.querySelector('.sd-notes-global-entry')?.addEventListener('click', openNotesPanel);
+  if (!notesPanelOpen) return;
+  root.querySelector('.sd-notes-close')?.addEventListener('click', closeNotesPanel);
+  root.querySelector('.sd-note-new')?.addEventListener('click', () => {
+    const note = createQianmuNote({ title: '', body: '', pinned: false });
+    notesReplaceLocal(note);
+    notesActiveId = note.id;
+    void saveQianmuNote(note);
+    renderModal();
+  });
+  root.querySelector('.sd-notes-search')?.addEventListener('input', (event) => {
+    notesSearch = event.target.value;
+    const list = root.querySelector('.sd-note-list');
+    if (!list) return;
+    const query = notesSearch.trim().toLowerCase();
+    list.querySelectorAll('.sd-note-list-item').forEach((item) => {
+      const note = notesFind(item.dataset.noteId);
+      item.hidden = Boolean(query && !`${note?.title || ''}\n${note?.body || ''}`.toLowerCase().includes(query));
+    });
+  });
+  root.querySelectorAll('.sd-note-list-item').forEach((item) => {
+    item.querySelector('.sd-note-select')?.addEventListener('click', () => { notesActiveId = item.dataset.noteId; renderModal(); });
+    item.addEventListener('dragstart', () => { notesDragId = item.dataset.noteId || ''; });
+    item.addEventListener('dragend', (event) => {
+      const note = notesFind(notesDragId);
+      notesDragId = '';
+      const windowRect = root.querySelector('.sd-window')?.getBoundingClientRect();
+      const missingPointer = !event.clientX && !event.clientY;
+      const insideQianmu = windowRect && windowRect.left <= event.clientX && event.clientX <= windowRect.right
+        && windowRect.top <= event.clientY && event.clientY <= windowRect.bottom;
+      if (!note || !windowRect || missingPointer || insideQianmu) return;
+      note.floating = true;
+      note.x = Math.max(8, event.clientX - note.width / 2);
+      note.y = Math.max(8, event.clientY - 24);
+      note.zOrder = ++notesZCounter;
+      void persistNoteRuntime(note, { renderPanel: true }).then(() => toast('便笺已浮贴到 ST 页面。', 'success'));
+    });
+  });
+  const editor = root.querySelector('.sd-note-editor');
+  const note = notesFind(editor?.dataset.noteId);
+  if (!note) return;
+  editor.querySelector('.sd-note-title')?.addEventListener('input', (event) => { note.title = event.target.value; note.updatedAt = Date.now(); scheduleNoteSave(note); });
+  editor.querySelector('.sd-note-body')?.addEventListener('input', (event) => { note.body = event.target.value; note.updatedAt = Date.now(); scheduleNoteSave(note); });
+  editor.querySelector('.sd-note-copy')?.addEventListener('click', () => void coreadCopyText(note.body || '').then(() => toast('便笺已复制。', 'success')));
+  editor.querySelector('.sd-note-pin')?.addEventListener('click', () => { note.pinned = !note.pinned; void persistNoteRuntime(note, { renderPanel: true }); });
+  editor.querySelector('.sd-note-float')?.addEventListener('click', () => { note.floating = !note.floating; note.zOrder = ++notesZCounter; void persistNoteRuntime(note, { renderPanel: true }); });
+  editor.querySelector('.sd-note-delete')?.addEventListener('click', async () => {
+    await deleteQianmuNote(note.id);
+    notesRuntime = notesRuntime.filter((item) => item.id !== note.id);
+    notesActiveId = notesRuntime[0]?.id || '';
+    renderFloatingNotes();
+    renderModal();
+  });
+}
+
 function renderModal() {
   const modal = document.getElementById(MODAL_ID);
   if (!modal) return;
@@ -5781,6 +6057,8 @@ function renderModal() {
       <main class="sd-body${editorLayout ? ' sd-editor-body' : ''}">${['tasksnodes', 'context'].includes(activeTab) || (activeTab === 'castworld' && worldPage === 'front') ? (!editorView ? `<div class="sd-cols-inner">${renderActiveTab()}</div>` : renderActiveTab()) : renderActiveTab()}</main>
       ${renderInjectDock()}
       `}
+      ${notesFeatureEnabled() ? '<button type="button" class="sd-notes-global-entry" title="便笺" aria-label="便笺"><i class="fa-solid fa-note-sticky"></i></button>' : ''}
+      ${notesPanelOpen ? renderNotesPanel() : ''}
     </section>`;
   applyQianmuIcons(modal);
   // 以整个视口层判断点外关闭；比只绑 backdrop 更能抵抗 ST 美化重排或透明覆盖层抢占点击。
@@ -5833,6 +6111,7 @@ function renderModal() {
     renderModal();
   }));
   bindActiveTabEvents(modal);
+  bindNotesPanelEvents(modal);
   applyAccState(modal);
   renderBusyState();
   syncFontWithST();
@@ -6659,10 +6938,137 @@ function renderHistorySection() {
 //   try { return new Date(date).toLocaleString(); } catch (_) { return String(date); }
 // }
 
+function storageJsonBytes(value) {
+  try {
+    const text = JSON.stringify(value);
+    if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(text).byteLength;
+    return new Blob([text]).size;
+  } catch (_) { return 0; }
+}
+
+function formatStorageBytes(value) {
+  const bytes = Math.max(0, Number(value) || 0);
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let amount = bytes / 1024;
+  let unit = units[0];
+  for (let index = 1; index < units.length && amount >= 1024; index++) {
+    amount /= 1024;
+    unit = units[index];
+  }
+  return `${amount >= 100 ? amount.toFixed(0) : amount >= 10 ? amount.toFixed(1) : amount.toFixed(2)} ${unit}`;
+}
+
+function storageDiagnosticSnapshot() {
+  const storyboard = settings?.imagegen || {};
+  return {
+    apiLogs: Array.isArray(settings?.logHistory) ? settings.logHistory : [],
+    storyboardLogs: Array.isArray(storyboard.logs) ? storyboard.logs : [],
+    storyboardPipelineLogs: Array.isArray(storyboard.pipelineLogs) ? storyboard.pipelineLogs : [],
+  };
+}
+
+function storageSettingsSnapshotWithoutDiagnostics() {
+  const storyboard = settings?.imagegen || {};
+  return {
+    ...settings,
+    logHistory: [],
+    logOpenState: {},
+    imagegen: { ...storyboard, logs: [], pipelineLogs: [] },
+  };
+}
+
+async function collectStorageInventory() {
+  const storageApi = globalThis.navigator?.storage;
+  const [originEstimate, persisted, idb] = await Promise.all([
+    storageApi?.estimate?.().catch(() => null) || Promise.resolve(null),
+    storageApi?.persisted?.().catch(() => false) || Promise.resolve(false),
+    blobStore.estimateBlobStoreUsage(),
+  ]);
+  const settingsBytes = storageJsonBytes(storageSettingsSnapshotWithoutDiagnostics());
+  const currentChatBytes = storageJsonBytes(getChatStore());
+  const diagnosticsBytes = storageJsonBytes(storageDiagnosticSnapshot());
+  const categoryMap = new Map();
+  const addCategory = (category, bytes, count = 0, recoverableBytes = 0) => {
+    const current = categoryMap.get(category) || { category, bytes: 0, count: 0, recoverableBytes: 0 };
+    current.bytes += Math.max(0, Number(bytes) || 0);
+    current.count += Math.max(0, Number(count) || 0);
+    current.recoverableBytes += Math.max(0, Number(recoverableBytes) || 0);
+    categoryMap.set(category, current);
+  };
+  for (const item of idb.categories || []) addCategory(item.category, item.bytes, item.count, item.recoverableBytes);
+  addCategory('settings', settingsBytes, 1, 0);
+  addCategory('chat', currentChatBytes, 1, 0);
+  addCategory('logs', diagnosticsBytes, 0, diagnosticsBytes);
+  const trackedBytes = Number(idb.totalBytes || 0) + settingsBytes + currentChatBytes + diagnosticsBytes;
+  const recoverableBytes = Number(idb.recoverableBytes || 0) + diagnosticsBytes;
+  return {
+    sampledAt: Date.now(),
+    origin: {
+      usage: Math.max(0, Number(originEstimate?.usage) || 0),
+      quota: Math.max(0, Number(originEstimate?.quota) || 0),
+      persisted: Boolean(persisted),
+      available: Boolean(originEstimate),
+    },
+    idb,
+    categories: [...categoryMap.values()].sort((a, b) => b.bytes - a.bytes),
+    trackedBytes,
+    recoverableBytes,
+  };
+}
+
+async function refreshStorageInventory(force = false) {
+  if (storageInventoryState.status === 'loading') return storageInventoryState.data;
+  if (!force && storageInventoryState.data && Date.now() - storageInventoryState.sampledAt < 30000) return storageInventoryState.data;
+  storageInventoryState = { ...storageInventoryState, status: 'loading', error: '' };
+  try {
+    const data = await collectStorageInventory();
+    storageInventoryState = { status: 'ready', data, error: '', sampledAt: data.sampledAt };
+  } catch (error) {
+    storageInventoryState = { ...storageInventoryState, status: 'error', error: error?.message || String(error), sampledAt: Date.now() };
+  }
+  if (activeTab === 'tasksnodes' && document.getElementById(MODAL_ID)?.classList.contains('open')) renderModal();
+  return storageInventoryState.data;
+}
+
+const STORAGE_CATEGORY_LABELS = Object.freeze({
+  images: '图片', audio: '音频', reader: '伴读资料', notes: '固定便笺', logs: '日志', cache: '临时缓存', settings: '设置与预设', chat: '当前聊天数据', other: '其他',
+});
+
+function renderStorageManagementCard() {
+  const { status, data, error } = storageInventoryState;
+  if (!data) {
+    const message = status === 'error' ? `盘点失败：${htmlEscape(error || '当前环境不可用')}` : '正在盘点本机数据…';
+    return `<section class="sd-card sd-storage-card"><div class="sd-card-title-row"><h3>储存空间</h3><button type="button" class="sd-icon-btn sd-storage-refresh" title="刷新" aria-label="刷新"><i class="fa-solid fa-rotate"></i></button></div><p class="sd-muted">${message}</p></section>`;
+  }
+  const usagePercent = data.origin.quota > 0 ? Math.min(100, data.origin.usage / data.origin.quota * 100) : 0;
+  const maxCategory = Math.max(1, ...data.categories.map((item) => Number(item.bytes) || 0));
+  const categories = data.categories.filter((item) => item.bytes > 0).map((item) => `
+    <div class="sd-storage-row">
+      <span>${htmlEscape(STORAGE_CATEGORY_LABELS[item.category] || item.category)}</span>
+      <div class="sd-storage-track"><i style="width:${Math.max(2, item.bytes / maxCategory * 100).toFixed(1)}%"></i></div>
+      <b>${htmlEscape(formatStorageBytes(item.bytes))}</b>
+    </div>`).join('');
+  const originText = data.origin.available
+    ? `${formatStorageBytes(data.origin.usage)} / ${formatStorageBytes(data.origin.quota)}`
+    : '浏览器未提供配额信息';
+  return `<section class="sd-card sd-storage-card">
+    <div class="sd-card-title-row"><div><h3>储存空间</h3><p class="sd-summary-note">${htmlEscape(new Date(data.sampledAt).toLocaleTimeString())}</p></div><button type="button" class="sd-icon-btn sd-storage-refresh" title="刷新" aria-label="刷新"><i class="fa-solid fa-rotate${status === 'loading' ? ' fa-spin' : ''}"></i></button></div>
+    <div class="sd-storage-overview">
+      <div class="sd-storage-ring" style="--sd-storage-use:${usagePercent.toFixed(1)}%"><strong>${Math.round(usagePercent)}%</strong><span>ST 总空间</span></div>
+      <div class="sd-storage-totals"><span>浏览器 / ST 来源<b>${htmlEscape(originText)}</b></span><span>千幕已盘点<b>${htmlEscape(formatStorageBytes(data.trackedBytes))}</b></span><span>可安全清理<b>${htmlEscape(formatStorageBytes(data.recoverableBytes))}</b></span></div>
+    </div>
+    <div class="sd-storage-categories">${categories || '<p class="sd-muted">暂未发现千幕本地数据。</p>'}</div>
+    <p class="sd-storage-scope">ST 总空间包含同一站点及其他扩展；千幕数据只统计可明确归因的本地内容。</p>
+    <div class="sd-storage-actions"><button type="button" class="sd-btn sd-storage-persist" ${data.origin.persisted ? 'disabled' : ''}>${data.origin.persisted ? '已持久保存' : '申请持久保存'}</button><button type="button" class="sd-btn sd-primary sd-storage-clean" ${data.recoverableBytes > 0 ? '' : 'disabled'}>安全清理</button></div>
+  </section>`;
+}
+
 function renderTasksNodesTab() {
+  const storageCard = renderStorageManagementCard();
   const p = currentPlan();
-  if (!p) return renderNoPlan('任务尚未生成');
-  return `${renderPlanSectionFold('任务', p.quests || [], 'quest', 'tnfold-quest')}${renderChainReactionsCard(p)}`;
+  if (!p) return `${storageCard}${renderNoPlan('任务尚未生成')}`;
+  return `${storageCard}${renderPlanSectionFold('任务', p.quests || [], 'quest', 'tnfold-quest')}${renderChainReactionsCard(p)}`;
 }
 
 function renderCastWorldTab() {
@@ -9992,7 +10398,7 @@ function renderQuickWheelSettings() {
     </div>
     <details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑蜂巢入口</span><b>${occupied} 项</b></summary><div class="sd-wheel-custom-list">${ordered.map((item, index) => `
       <div class="sd-wheel-custom-row" data-command="${item.id}">
-        <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}" data-qm-icon="${item.phosphor}"></i><span>${htmlEscape(item.label)}</span></label>
+        <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}"${item.phosphor ? ` data-qm-icon="${item.phosphor}"` : ''}></i><span>${htmlEscape(item.label)}</span></label>
         <div><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="up" ${index === 0 ? 'disabled' : ''} title="上移"><i class="fa-solid fa-chevron-up"></i></button><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="down" ${index === ordered.length - 1 ? 'disabled' : ''} title="下移"><i class="fa-solid fa-chevron-down"></i></button></div>
       </div>`).join('')}</div>
     </details>
@@ -10043,6 +10449,7 @@ function renderPlugTab() {
     <section class="sd-card">
       <h3>悬浮球设置</h3>
       <label class="checkbox_label sd-float-toggle-row"><input type="checkbox" class="sd-float-toggle" ${settings.floatingButton ? 'checked' : ''}> 显示悬浮球</label>
+      <label class="checkbox_label"><input type="checkbox" class="sd-notes-toggle" ${notesFeatureEnabled() ? 'checked' : ''}> 启用便笺</label>
       <div class="sd-float-size-control" ${settings.floatingButton ? '' : 'hidden'}>
         <label for="sd-float-size">悬浮球大小 <b class="sd-float-size-value">${floatSize} px</b></label>
         <input id="sd-float-size" class="sd-float-size" type="range" min="${FLOAT_SIZE_MIN}" max="${FLOAT_SIZE_MAX}" step="2" value="${floatSize}">
@@ -10905,7 +11312,9 @@ function renderStoryboardCreate(state) {
   const last = [...storyboardGalleryRecords()].reverse().find((item) => storyboardSafeUrl(item.url));
   const draft = state.promptDraft;
   const promptPresets = state.promptPresets.map((item) => `<option value="${htmlEscape(item.id)}" ${state.promptCompiler.instructionPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
-  const artistPresets = state.artistPresets.map((item) => `<option value="${htmlEscape(item.id)}" ${state.selectedArtistPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
+  const artistPresets = state.artistPresets.map((item) => `<option value="artist:${htmlEscape(item.id)}" ${!state.selectedArtistPoolId && state.selectedArtistPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
+  const artistPools = state.source === 'novel' && state.artistPools.length
+    ? `<optgroup label="画师方案">${state.artistPools.map((item) => `<option value="pool:${htmlEscape(item.id)}" ${state.selectedArtistPoolId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('')}</optgroup>` : '';
   const tagChips = state.tagLibrary.filter((item) => item.favorite).concat(state.tagLibrary.filter((item) => !item.favorite)).slice(0, 24)
     .map((item) => `<button type="button" class="${item.positive === false ? 'negative' : ''}" data-storyboard-add-tag="${htmlEscape(item.id)}" title="${item.positive === false ? '加入负面提示词' : '加入提示词'}"><span>${htmlEscape(item.name)}</span></button>`).join('');
   const novelSpec = state.source === 'novel' ? getStoryboardNovelParameterSpec(profile.model) : null;
@@ -10925,7 +11334,7 @@ function renderStoryboardCreate(state) {
       <div class="sd-storyboard-card-body">
         <div class="sd-storyboard-prompt-stack">
           <div class="sd-storyboard-inline-control"><select class="text_pole sd-storyboard-prompt-preset" aria-label="取景预设"><option value="">选择取景预设</option>${promptPresets}</select><button type="button" class="sd-icon-btn sd-storyboard-open-prompt-library" title="取景预设" aria-label="取景预设"><i class="fa-solid fa-folder"></i></button></div>
-          <div class="sd-storyboard-inline-control"><button type="button" class="sd-icon-btn sd-storyboard-open-artist-library" title="画师库" aria-label="画师库"><i class="fa-solid fa-images"></i></button><select class="text_pole sd-storyboard-artist-preset" aria-label="画师串"><option value="">选择画师串</option>${artistPresets}</select><button type="button" class="sd-icon-btn sd-storyboard-edit-selected-artist" title="编辑所选画师串" aria-label="编辑所选画师串" ${state.selectedArtistPresetId ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button></div>
+          <div class="sd-storyboard-inline-control"><button type="button" class="sd-icon-btn sd-storyboard-open-artist-library" title="画师库" aria-label="画师库"><i class="fa-solid fa-images"></i></button><select class="text_pole sd-storyboard-artist-preset" aria-label="画师串或方案"><option value="">选择画师串或方案</option>${artistPools}${artistPresets ? `<optgroup label="画师串">${artistPresets}</optgroup>` : ''}</select><button type="button" class="sd-icon-btn sd-storyboard-edit-selected-artist" title="编辑当前画师设置" aria-label="编辑当前画师设置" ${state.selectedArtistPresetId || state.selectedArtistPoolId ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button></div>
           <label><span>正面提示词</span><textarea class="text_pole sd-storyboard-prompt sd-storyboard-prompt-textarea" spellcheck="false">${htmlEscape(effectivePrompts.prompt || draft.compiled || '')}</textarea></label>
           ${capabilities.negative ? `<label><span>负面提示词</span><textarea class="text_pole sd-storyboard-negative sd-storyboard-prompt-textarea" spellcheck="false">${htmlEscape(effectivePrompts.negative)}</textarea></label>` : ''}
           ${tagChips ? `<div class="sd-storyboard-tag-quick">${tagChips}</div>` : ''}
@@ -11250,10 +11659,51 @@ function renderStoryboardArtistLibrary(state) {
     scope: 'artist',
   });
   const inspector = selectedArtist ? `<details class="sd-media-inspector" open><summary><span>当前画师</span></summary><div>${selectedPreview ? `<img src="${htmlEscape(selectedPreview)}" alt="">` : '<div class="sd-media-inspector-placeholder"><i class="fa-regular fa-image"></i></div>'}<h4>${htmlEscape(selectedArtist.name)}</h4><p>${htmlEscape(snip(selectedArtist.value, 180))}</p><div class="sd-media-inspector-tags">${(selectedArtist.tags || []).map((tag) => `<em>${htmlEscape(tag)}</em>`).join('') || '<small>暂无标签</small>'}</div><button type="button" class="sd-btn sd-storyboard-inspector-edit-artist"><i class="fa-solid fa-pen"></i>编辑画师串</button></div></details>` : `<details class="sd-media-inspector" open><summary><span>详情</span></summary><div class="sd-storyboard-empty-inline">选择画师串后在此查看。</div></details>`;
+  const poolOptions = state.artistPools.map((item) => `<option value="${htmlEscape(item.id)}" ${state.selectedArtistPoolId === item.id ? 'selected' : ''}>${htmlEscape(item.name)} · ${item.members.length}</option>`).join('');
   return `<div class="sd-storyboard-artist-page">
-    <section class="sd-card sd-storyboard-artist-head"><div><h3>ARTIST LIBRARY</h3><b>${artists.length}</b></div><div><input class="text_pole sd-storyboard-artist-search" value="${htmlEscape(state.artistSearch || '')}" placeholder="搜索画师串或标签"><button type="button" class="sd-icon-btn sd-storyboard-new-artist-collection" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button><button type="button" class="sd-icon-btn sd-storyboard-new-artist" title="新建画师串" aria-label="新建画师串"><i class="fa-solid fa-plus"></i></button></div></section>
+    <section class="sd-card sd-storyboard-artist-head"><div><h3>ARTIST LIBRARY</h3><b>${artists.length}</b></div><div><input class="text_pole sd-storyboard-artist-search" value="${htmlEscape(state.artistSearch || '')}" placeholder="搜索画师串或标签"><button type="button" class="sd-icon-btn sd-storyboard-new-artist-collection" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button><button type="button" class="sd-icon-btn sd-storyboard-new-artist" title="新建画师串" aria-label="新建画师串"><i class="fa-solid fa-plus"></i></button></div><div class="sd-storyboard-artist-pool-tools"><select class="text_pole sd-storyboard-artist-pool-select" aria-label="画师方案"><option value="">不启用画师方案</option>${poolOptions}</select><button type="button" class="sd-icon-btn sd-storyboard-new-artist-pool" title="新建画师方案" aria-label="新建画师方案"><i class="fa-solid fa-dice"></i></button><button type="button" class="sd-icon-btn sd-storyboard-edit-artist-pool" title="编辑当前方案" aria-label="编辑当前方案" ${state.selectedArtistPoolId ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-artist-pool" title="删除当前方案" aria-label="删除当前方案" ${state.selectedArtistPoolId ? '' : 'disabled'}><i class="fa-solid fa-trash-can"></i></button></div></section>
     <div class="sd-media-library-shell sd-media-artist-library">${sidebar}<main class="sd-media-library-main"><header><b>${htmlEscape(currentCollection?.name || '全部画师')}</b><span>${artists.length}</span></header><section class="sd-storyboard-artist-waterfall">${cards || '<div class="sd-storyboard-empty-inline">暂无画师串。</div>'}</section></main>${inspector}</div>
   </div>`;
+}
+
+async function storyboardEditArtistPool(poolId = '') {
+  const state = storyboardState();
+  const editing = state.artistPools.find((item) => item.id === poolId) || null;
+  if (!state.artistPresets.length) return toast('请先在画师库新建至少一个画师串。', 'warning');
+  const selected = new Map((editing?.members || []).map((item) => [item.artistId, item]));
+  const context = ctx();
+  const wrap = document.createElement('div');
+  wrap.className = 'sd-storyboard-artist-pool-editor';
+  wrap.innerHTML = `<header><b>${editing ? '编辑画师方案' : '新建画师方案'}</b><small>镜头职责可填写 establishing、character、insert、atmosphere 等；多个职责用逗号分隔。</small></header><label><span>方案名</span><input class="text_pole sd-artist-pool-name" maxlength="80" value="${htmlEscape(editing?.name || '')}"></label><label><span>调用方式</span><select class="text_pole sd-artist-pool-mode"><option value="shuffle_bag" ${editing?.mode !== 'weighted_random' && editing?.mode !== 'sequential' ? 'selected' : ''}>洗牌不重复</option><option value="weighted_random" ${editing?.mode === 'weighted_random' ? 'selected' : ''}>按权重随机</option><option value="sequential" ${editing?.mode === 'sequential' ? 'selected' : ''}>稳定轮换</option></select></label><section>${state.artistPresets.map((artist) => { const member = selected.get(artist.id); return `<article data-artist-pool-member="${htmlEscape(artist.id)}"><label class="sd-switch-row"><input type="checkbox" ${member ? 'checked' : ''}><span>${htmlEscape(artist.name)}</span></label><input class="text_pole sd-artist-pool-weight" type="number" min="0.1" max="100" step="0.1" value="${htmlEscape(member?.weight || 1)}" aria-label="权重"><input class="text_pole sd-artist-pool-roles" value="${htmlEscape((member?.shotRoles || []).join(', '))}" placeholder="适用镜头职责" aria-label="适用镜头职责"></article>`; }).join('')}</section>`;
+  wrap.querySelectorAll('[data-artist-pool-member]').forEach((row) => {
+    const refresh = () => row.classList.toggle('selected', row.querySelector('input[type="checkbox"]')?.checked);
+    row.querySelector('input[type="checkbox"]')?.addEventListener('change', refresh); refresh();
+  });
+  applyQianmuIcons(wrap);
+  let confirmed = false;
+  try {
+    const popup = new context.Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '保存方案', cancelButton: '取消' });
+    confirmed = Boolean(await popup.show());
+  } catch (_) { return; }
+  if (!confirmed) return;
+  const name = String(wrap.querySelector('.sd-artist-pool-name')?.value || '').trim().slice(0, 80);
+  const members = [...wrap.querySelectorAll('[data-artist-pool-member]')].filter((row) => row.querySelector('input[type="checkbox"]')?.checked).map((row) => ({
+    artistId: row.dataset.artistPoolMember,
+    weight: Number(row.querySelector('.sd-artist-pool-weight')?.value) || 1,
+    shotRoles: String(row.querySelector('.sd-artist-pool-roles')?.value || '').split(/[,，]/).map((item) => item.trim()).filter(Boolean),
+  }));
+  if (!name || !members.length) return toast('请填写方案名并至少选择一个画师串。', 'warning');
+  const now = Date.now();
+  const pool = normalizeStoryboardArtistPool({
+    ...editing, id: editing?.id || uid('artist-pool'), name,
+    mode: wrap.querySelector('.sd-artist-pool-mode')?.value, members,
+    createdAt: editing?.createdAt || now, updatedAt: now,
+  }, new Set(state.artistPresets.map((item) => item.id)));
+  if (editing) Object.assign(editing, pool); else state.artistPools.push(pool);
+  state.selectedArtistPoolId = pool.id;
+  state.selectedArtistPresetId = '';
+  state.promptDraft.artistString = '';
+  saveSettings(); renderModal();
 }
 
 function renderStoryboardGallery(state) {
@@ -11382,9 +11832,9 @@ function storyboardShotSpecForSelection(shot, selection) {
   return spec;
 }
 
-function storyboardGenerationPayload(state, profile, { sourceId = state.source, prompt = state.prompt, negative = state.negative, shot = null } = {}) {
+function storyboardGenerationPayload(state, profile, { sourceId = state.source, prompt = state.prompt, negative = state.negative, shot = null, artistAssignment = null } = {}) {
   const capabilities = getStoryboardCapabilities(sourceId, profile.model);
-  const artist = storyboardSelectedArtistPreset(state);
+  const artist = artistAssignment?.artist || storyboardSelectedArtistPreset(state);
   const defaults = storyboardProviderPromptDefaults(sourceId, profile.model);
   const artistString = String(artist?.value || state.promptDraft?.artistString || '').trim();
   const shotSpec = normalizeStoryboardShotSpec(shot?.shotSpec || {
@@ -11435,7 +11885,7 @@ function storyboardGenerationPayload(state, profile, { sourceId = state.source, 
   };
 }
 
-function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceId = state.source, modelId = '', connectionPresetId = '', planId = '', planShotId = '' } = {}) {
+function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceId = state.source, modelId = '', connectionPresetId = '', planId = '', planShotId = '', recentArtistIds = [] } = {}) {
   const rawFloor = String(state.floor ?? '').trim();
   const requestedFloor = Number.isInteger(Number(rawFloor)) && rawFloor ? Number(rawFloor) : null;
   const floor = state.target === 'latest' ? storyboardCurrentAssistantFloor() : (state.target === 'floor' ? requestedFloor : null);
@@ -11466,7 +11916,15 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
   providerProfile.ratio = compositionDecision.ratioId;
   if (compositionDecision.dimensions.width) providerProfile.width = String(compositionDecision.dimensions.width);
   if (compositionDecision.dimensions.height) providerProfile.height = String(compositionDecision.dimensions.height);
-  const payload = storyboardGenerationPayload(state, providerProfile, { sourceId, prompt, negative, shot: { ...shot, shotSpec: { ...shotSpec, composition: { ...shotSpec.composition, ratioId: compositionDecision.ratioId } } } });
+  const artistAssignment = resolveStoryboardArtistAssignment({
+    artistPresets: state.artistPresets, artistPools: state.artistPools,
+    selectedArtistPresetId: state.selectedArtistPresetId,
+    selectedArtistPoolId: sourceId === 'novel' ? state.selectedArtistPoolId : '',
+    shot: { ...shot, shotRole: shotSpec.shotRole || shot?.role || shot?.shotType },
+    seed: `${getChatKey() || 'gallery'}:${floor ?? 'gallery'}:${planShotId || shot?.id || prompt}:${attempt}`,
+    recentArtistIds,
+  });
+  const payload = storyboardGenerationPayload(state, providerProfile, { sourceId, prompt, negative, artistAssignment, shot: { ...shot, shotSpec: { ...shotSpec, composition: { ...shotSpec.composition, ratioId: compositionDecision.ratioId } } } });
   const credentialId = connection?.credentialId || storyboardCredentialId(sourceId, connection?.id || 'draft');
   const preferredParagraph = state.paragraphMode === 'manual' && Number.isInteger(state.manualParagraphIndex)
     ? state.manualParagraphIndex
@@ -11475,7 +11933,7 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
   const messageRef = message ? createStoryboardMessageReference({ message, chatKey: String(getChatKey() || ''), floor }) : null;
   const snapshot = {
     source: sourceId, prompt, negative,
-    artistString: String(payload.artistString || state.promptDraft?.artistString || ''), artistPresetId: storyboardSelectedArtistPreset(state)?.id || '', contentRating: state.contentRating,
+    artistString: String(payload.artistString || state.promptDraft?.artistString || ''), artistPresetId: artistAssignment.artistId, artistPoolId: artistAssignment.poolId, artistRouteSource: artistAssignment.source, contentRating: state.contentRating,
     promptMode: state.promptMode,
     promptLocked: Boolean(state.promptDraft?.userEditedCompiled),
     target: state.target, floor, inlineByDefault: state.inlineByDefault !== false,
@@ -11515,7 +11973,7 @@ function storyboardStartLog(job) {
     error: '', recordId: '', recordIds: [], pipelineId: '', queuedAt: now, startedAt: 0, finishedAt: 0, durationMs: 0,
     attempt: job.attempt, snapshot: clone({
       source: job.source, prompt: job.prompt, negative: job.negative, target: job.target, floor: job.floor,
-      artistString: job.artistString, artistPresetId: job.artistPresetId || '', contentRating: job.contentRating,
+      artistString: job.artistString, artistPresetId: job.artistPresetId || '', artistPoolId: job.artistPoolId || '', artistRouteSource: job.artistRouteSource || '', contentRating: job.contentRating,
       promptMode: job.promptMode, promptLocked: Boolean(job.promptLocked),
       inlineByDefault: job.inlineByDefault, chatKey: job.chatKey,
       messageRef: job.messageRef, messageHash: job.messageHash, swipeId: job.swipeId,
@@ -12452,11 +12910,28 @@ function storyboardLoadPromptPreset(presetId) {
 function storyboardLoadArtistPreset(presetId) {
   const state = storyboardState();
   const preset = state.artistPresets.find((item) => item.id === presetId) || null;
+  state.selectedArtistPoolId = '';
   state.selectedArtistPresetId = preset?.id || '';
   state.promptDraft.artistString = preset?.value || '';
   if (!state.promptDraft.userEditedCompiled) state.promptDraft.artistPositiveBaked = false;
   if (!state.promptDraft.userEditedNegative) state.promptDraft.artistNegativeBaked = false;
   saveSettings(); renderModal();
+}
+
+function storyboardLoadArtistChoice(value) {
+  const state = storyboardState();
+  const requested = String(value || '');
+  if (requested.startsWith('pool:')) {
+    const pool = state.artistPools.find((item) => item.id === requested.slice(5)) || null;
+    state.selectedArtistPoolId = pool?.id || '';
+    state.selectedArtistPresetId = '';
+    state.promptDraft.artistString = '';
+    if (!state.promptDraft.userEditedCompiled) state.promptDraft.artistPositiveBaked = false;
+    if (!state.promptDraft.userEditedNegative) state.promptDraft.artistNegativeBaked = false;
+    saveSettings(); renderModal();
+    return;
+  }
+  storyboardLoadArtistPreset(requested.startsWith('artist:') ? requested.slice(7) : requested);
 }
 
 function storyboardAddLibraryTag(tagId) {
@@ -12592,6 +13067,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false } = {})
     plan.updatedAt = Date.now();
   }
   const jobs = [];
+  const resolvedArtistIds = [];
   for (let index = 0; index < planned.length; index++) {
     const shot = planned[index];
     const route = routingEnabled ? routeStoryboardShot(shot, state.routing) : { providerId: state.source, modelId: profile.model, connectionPresetId: '', parameterPresetId: '' };
@@ -12606,8 +13082,9 @@ async function storyboardGenerate(root, { plan = null, automatic = false } = {})
     if (planShot) Object.assign(planShot, { providerId: sourceId, connectionPresetId: route.connectionPresetId || '', parameterPresetId: route.parameterPresetId || '', routeRuleId: route.ruleId || '', safetyAdapted: effectiveShot.safetyAdapted });
     const job = storyboardCreateJob(state, shotProfile, {
       shot: effectiveShot, sourceId, modelId: route.modelId, connectionPresetId: route.connectionPresetId,
-      planId: plan?.id || '', planShotId: planShot?.id || '',
+      planId: plan?.id || '', planShotId: planShot?.id || '', recentArtistIds: resolvedArtistIds,
     });
+    if (job.artistPresetId) resolvedArtistIds.push(job.artistPresetId);
     if (planShot) Object.assign(planShot, {
       shotSpec: clone(job.shotSpec), compiledPrompt: clone(job.compiledPrompt), compositionDecision: clone(job.compositionDecision),
       paragraphSelection: clone(job.paragraphSelection || plan.paragraphSelection || null),
@@ -12778,7 +13255,7 @@ function storyboardCreateRecord(job, log, url, index, anchorState, response) {
   return {
     id: uid('shot'), groupId: job.id, variantRootId: job.variantRootId || job.planShotId || job.id,
     collectionId: job.collectionId || '', collectionIds: storyboardItemCollectionIds(job), tags: uniqueClean(job.tags || []).slice(0, 30), planId: job.planId || '', planShotId: job.planShotId || '', imageIndex: index, url, prompt: job.prompt, finalPrompt: job.payload?.prompt,
-    artistString: job.artistString || job.payload?.artistString || '', artistPresetId: job.artistPresetId || '', contentRating: job.contentRating || 'sfw',
+    artistString: job.artistString || job.payload?.artistString || '', artistPresetId: job.artistPresetId || '', artistPoolId: job.artistPoolId || '', artistRouteSource: job.artistRouteSource || '', contentRating: job.contentRating || 'sfw',
     negative: job.negative, effectiveNegative: job.payload?.negative || '', source: job.source,
     floor, inline: Boolean(job.inlineByDefault && Number.isInteger(floor)), paragraphAnchor: Number.isInteger(floor) ? clone(job.paragraphAnchor || null) : null,
     paragraphSelection: Number.isInteger(floor) ? clone(job.paragraphSelection || null) : null,
@@ -12914,7 +13391,10 @@ function storyboardPumpQueue() {
   const configured = Number(storyboardState().routing?.providerConcurrency) || 1;
   const concurrency = Math.max(1, Math.min(4, Math.round(configured)));
   while (storyboardQueue.length && storyboardActiveJobs.size < concurrency) {
-    const job = storyboardQueue.shift();
+    const novelBusy = [...storyboardActiveJobs.values()].some((item) => item.source === 'novel');
+    const nextIndex = storyboardQueue.findIndex((item) => item.source !== 'novel' || !novelBusy);
+    if (nextIndex < 0) break;
+    const [job] = storyboardQueue.splice(nextIndex, 1);
     storyboardActiveJobs.set(job.id, job);
     storyboardBusy = true;
     void storyboardRunQueuedJob(job);
@@ -13220,6 +13700,7 @@ async function storyboardImportPackage(file) {
   state.promptPresets = storyboardMergeById(state.promptPresets, normalized.promptPresets, 200);
   state.artistPresets = storyboardMergeById(state.artistPresets, normalized.artistPresets, 200);
   state.artistCollections = storyboardMergeById(state.artistCollections, normalized.artistCollections, 100);
+  state.artistPools = storyboardMergeById(state.artistPools, normalized.artistPools, 100);
   state.tagLibrary = storyboardMergeById(state.tagLibrary, normalized.tagLibrary, 2000);
   state.vibeLibrary = storyboardMergeById(state.vibeLibrary, normalized.vibeLibrary, 500);
   state.logs = storyboardMergeById(state.logs, normalized.logs, STORYBOARD_PIPELINE_LOG_LIMIT);
@@ -13863,13 +14344,31 @@ function bindStoryboardTabEvents(root) {
     storyboardCaptureWorkbench(root);
     storyboardNavigate(root, { view: 'artists', editingArtistPresetId: '' });
   });
-  root.querySelector('.sd-storyboard-artist-preset')?.addEventListener('change', (event) => storyboardLoadArtistPreset(String(event.target.value || '')));
+  root.querySelector('.sd-storyboard-artist-preset')?.addEventListener('change', (event) => storyboardLoadArtistChoice(String(event.target.value || '')));
   root.querySelector('.sd-storyboard-edit-selected-artist')?.addEventListener('click', () => {
+    if (state.selectedArtistPoolId) return void storyboardEditArtistPool(state.selectedArtistPoolId);
     if (!state.selectedArtistPresetId) return;
     storyboardCaptureWorkbench(root);
     storyboardNavigate(root, { view: 'artists', editingArtistPresetId: state.selectedArtistPresetId });
   });
   root.querySelector('.sd-storyboard-new-artist')?.addEventListener('click', () => storyboardNavigate(root, { view: 'artists', editingArtistPresetId: 'new' }));
+  root.querySelector('.sd-storyboard-artist-pool-select')?.addEventListener('change', (event) => {
+    const pool = state.artistPools.find((item) => item.id === String(event.target.value || '')) || null;
+    state.selectedArtistPoolId = pool?.id || '';
+    if (pool) { state.selectedArtistPresetId = ''; state.promptDraft.artistString = ''; }
+    saveSettings(); renderModal();
+  });
+  root.querySelector('.sd-storyboard-new-artist-pool')?.addEventListener('click', () => void storyboardEditArtistPool(''));
+  root.querySelector('.sd-storyboard-edit-artist-pool')?.addEventListener('click', () => {
+    if (state.selectedArtistPoolId) void storyboardEditArtistPool(state.selectedArtistPoolId);
+  });
+  root.querySelector('.sd-storyboard-delete-artist-pool')?.addEventListener('click', async () => {
+    const pool = state.artistPools.find((item) => item.id === state.selectedArtistPoolId);
+    if (!pool || !await confirmDialog('删除画师方案', `确定删除「${pool.name}」？画师串不会删除。`)) return;
+    state.artistPools = state.artistPools.filter((item) => item.id !== pool.id);
+    state.selectedArtistPoolId = '';
+    saveSettings(); renderModal();
+  });
   root.querySelector('.sd-storyboard-new-artist-collection')?.addEventListener('click', async () => {
     const answer = await promptInput('新建画师合集', '填写合集名称。', '');
     const name = String(answer ?? '').trim().slice(0, 80);
@@ -13933,7 +14432,7 @@ function bindStoryboardTabEvents(root) {
     const item = state.artistPresets.find((entry) => entry.id === card.dataset.storyboardArtistCard);
     card.querySelector('.sd-storyboard-use-artist-card')?.addEventListener('click', () => {
       if (!item) return;
-      state.selectedArtistPresetId = item.id; state.promptDraft.artistString = item.value;
+      state.selectedArtistPoolId = ''; state.selectedArtistPresetId = item.id; state.promptDraft.artistString = item.value;
       if (!state.promptDraft.userEditedCompiled) state.promptDraft.artistPositiveBaked = false;
       if (!state.promptDraft.userEditedNegative) state.promptDraft.artistNegativeBaked = false;
       saveSettings(); renderModal();
@@ -13947,6 +14446,7 @@ function bindStoryboardTabEvents(root) {
         if (!state.promptDraft.userEditedCompiled) state.promptDraft.artistPositiveBaked = false;
         if (!state.promptDraft.userEditedNegative) state.promptDraft.artistNegativeBaked = false;
       }
+      normalizeStoryboardState(state);
       state.editingArtistPresetId = ''; saveSettings(); renderModal();
     });
   });
@@ -15853,6 +16353,36 @@ function bindActiveTabEvents(root) {
   bindGeopoliticsTabEvents(root);
   bindTtsTabEvents(root);
   bindCoreadTabEvents(root);
+  if (activeTab === 'tasksnodes') {
+    void refreshStorageInventory(false);
+    root.querySelector('.sd-storage-refresh')?.addEventListener('click', () => void refreshStorageInventory(true));
+    root.querySelector('.sd-storage-persist')?.addEventListener('click', async () => {
+      const storageApi = globalThis.navigator?.storage;
+      if (!storageApi?.persist) return toast('当前浏览器不支持持久化存储申请。', 'warning');
+      const granted = await storageApi.persist().catch(() => false);
+      toast(granted ? '浏览器已允许千幕数据持久保存。' : '浏览器暂未授予持久保存；数据仍可正常使用。', granted ? 'success' : 'info');
+      await refreshStorageInventory(true);
+    });
+    root.querySelector('.sd-storage-clean')?.addEventListener('click', async () => {
+      const expected = storageInventoryState.data?.recoverableBytes || 0;
+      const yes = await confirmDialog('安全清理', `将清理可再生成的语音/台词缓存与诊断日志，预计 ${formatStorageBytes(expected)}。成片、收藏、书籍、预设和聊天数据不会被删除。是否继续？`);
+      if (!yes) return;
+      try {
+        await blobStore.clearRecoverableStorage();
+        settings.logHistory = [];
+        settings.logOpenState = {};
+        const storyboard = storyboardState();
+        storyboard.logs = [];
+        storyboard.pipelineLogs = [];
+        saveSettings();
+        await refreshStorageInventory(true);
+        toast('安全清理已完成，受保护内容未改动。', 'success');
+      } catch (error) {
+        toast(`清理未完成：${error?.message || error}`, 'error');
+        await refreshStorageInventory(true);
+      }
+    });
+  }
   root.querySelector('.sd-edit-injection')?.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -16365,6 +16895,15 @@ function bindActiveTabEvents(root) {
     renderFloatButton();
     syncQuickDockOriginVisibility();
     toast(settings.floatingButton ? '悬浮球已显示。' : '悬浮球已隐藏。', 'info');
+  });
+  root.querySelector('.sd-notes-toggle')?.addEventListener('change', (event) => {
+    settings.notes = isPlainObject(settings.notes) ? settings.notes : { enabled: true };
+    settings.notes.enabled = Boolean(event.target.checked);
+    if (!settings.notes.enabled) notesPanelOpen = false;
+    saveSettings();
+    renderFloatingNotes();
+    renderModal();
+    toast(settings.notes.enabled ? '便笺已启用。' : '便笺已隐藏，固定内容仍安全保留。', 'info');
   });
   root.querySelector('.sd-float-size')?.addEventListener('input', (e) => {
     settings.floatSize = Math.max(FLOAT_SIZE_MIN, Math.min(FLOAT_SIZE_MAX, Number(e.target.value) || 48));
@@ -26919,11 +27458,13 @@ function init() {
       if (btn) applyFloatPosition(btn);
       const tabsBar = document.getElementById(MODAL_ID)?.querySelector('.sd-tabs');
       if (tabsBar) updateTabsFade(tabsBar);
+      renderFloatingNotes();
     };
     window.addEventListener('resize', resizeHandler);
     bindEvents();
     void applyDirectorInjection();
     ttsStartChat();   // 若 ST 已就绪则即刻挂注入；未就绪由 APP_READY 兜底
+    void hydrateNotesRuntime();
     registerRuntimeInterceptor();
     initialized = true;
     console.log(`[${EXTENSION_NAME}] v${VERSION} loaded`);
@@ -26980,6 +27521,7 @@ function cleanupRuntime(resetSettings = false) {
       document.getElementById(FLOAT_ID)?.remove();
       document.getElementById(INPUT_ENTRY_ID)?.remove();
       document.getElementById(INPUT_BUTTON_ID)?.remove();
+      document.getElementById(NOTES_FLOAT_LAYER_ID)?.remove();
     });
     clean('wheel', () => closeQuickWheel());
     clean('floor navigator', () => closeFloorNavigator());
@@ -26998,6 +27540,15 @@ function cleanupRuntime(resetSettings = false) {
     });
     clean('storyboard events', () => storyboardUnbindChat());
     clean('focus clock', () => stopFocusClockRuntime());
+    clean('notes', () => {
+      for (const timer of notesSaveTimers.values()) clearTimeout(timer);
+      notesSaveTimers.clear();
+      clearTemporaryQianmuNotes();
+      notesRuntime = [];
+      notesLoaded = false;
+      notesLoading = null;
+      notesPanelOpen = false;
+    });
     clean('prose layout', () => stopProseLayout(true));
     clean('resize', () => {
       if (resizeHandler) window.removeEventListener('resize', resizeHandler);

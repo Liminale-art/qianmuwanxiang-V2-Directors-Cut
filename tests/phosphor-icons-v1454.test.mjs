@@ -45,8 +45,8 @@ const currentFaNames = [...new Set(
     .filter((name) => !faUtilityClasses.has(name)),
 )].sort();
 
-assert.equal(currentFaNames.length, 131, '入口当前发出的 Font Awesome 图标名基线必须保持为 131 个');
-assert.equal(QIANMU_CURRENT_FA_ICON_COUNT, 131);
+assert.equal(currentFaNames.length, 134, '入口当前发出的 Font Awesome 图标名基线必须保持为 134 个');
+assert.equal(QIANMU_CURRENT_FA_ICON_COUNT, 134);
 assert.deepEqual(Object.keys(QIANMU_FA_ICON_MAP).sort(), currentFaNames, '映射表必须精确覆盖入口实际使用的每个 FA 名');
 
 for (const name of currentFaNames) {
@@ -90,11 +90,11 @@ assert.doesNotMatch(
 assert.match(rendererSource, /export function applyQianmuIcons\(root\)/, 'apply 必须要求调用方显式传入局部根');
 assert.doesNotMatch(indexSource, /applyQianmuIcons\(\s*(?:document|document\.body|globalThis\.document)\s*\)/, '入口不得把全页传给图标渲染器');
 
-assert.equal(manifest.version, '1.58.1');
+assert.equal(manifest.version, '1.58.2');
 assert.equal(packageJson.version, manifest.version);
 assert.equal(manifest.js, `index.js?v=${manifest.version}`);
 assert.equal(manifest.css, `style.css?v=${manifest.version}`);
-assert.match(indexSource, /from '\.\/qianmu-icon-renderer\.js\?v=1\.58\.1';/, '图标渲染器 import 必须按发布版本破缓存');
+assert.match(indexSource, /from '\.\/qianmu-icon-renderer\.js\?v=1\.58\.2';/, '图标渲染器 import 必须按发布版本破缓存');
 assert.doesNotMatch(indexSource, /from '\.\/qianmu-icon-renderer\.js';/, '不得保留未版本化的渲染器 import');
 assert.match(indexSource, /b\.innerHTML = '<i class="fa-regular fa-circle-play"><\/i>';\s*applyQianmuIcons\(b\);/, '停止连播后的播放图标必须原位刷新');
 assert.match(indexSource, /button\.innerHTML = '<i class="fa-solid fa-spinner fa-spin"><\/i>保存中';\s*applyQianmuIcons\(button\);/, '切片保存状态必须使用局部图标刷新');

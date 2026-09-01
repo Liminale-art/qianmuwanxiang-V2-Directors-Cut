@@ -75,12 +75,13 @@ function directParameters(input) {
 }
 
 export class DirectImageError extends Error {
-  constructor(message, { status = 0, code = 'direct_error', retryable = false } = {}) {
+  constructor(message, { status = 0, code = 'direct_error', retryable = false, retryAfterMs = 0 } = {}) {
     super(message);
     this.name = 'DirectImageError';
     this.status = status;
     this.code = code;
     this.retryable = retryable;
+    this.retryAfterMs = Math.max(0, Number(retryAfterMs) || 0);
   }
 }
 
@@ -112,10 +113,16 @@ async function responseError(response, label) {
     429: '请求过于频繁，请稍后重试',
   };
   const message = labels[response.status] || `${label}（${response.status}）`;
+  const retryAfter = String(response.headers?.get?.('retry-after') || '').trim();
+  const retryAfterSeconds = Number(retryAfter);
+  const retryAfterMs = Number.isFinite(retryAfterSeconds)
+    ? Math.max(0, retryAfterSeconds * 1000)
+    : retryAfter ? Math.max(0, Date.parse(retryAfter) - Date.now()) : 0;
   throw new DirectImageError(detail ? `${message}：${detail}` : message, {
     status: response.status,
     code: `upstream_${response.status}`,
     retryable: response.status === 408 || response.status === 409 || response.status === 429 || response.status >= 500,
+    retryAfterMs,
   });
 }
 
@@ -218,6 +225,63 @@ function novelParameters(request) {
     parameters.reference_information_extracted_multiple = vibes.map((item) => number(item.information, 0, 1, 1));
   }
   return parameters;
+}
+
+function novelSingleRequest(input, index = 0) {
+  const parameters = { ...plainObject(input.parameters), count: 1 };
+  const seed = Number(parameters.seed);
+  if (index > 0 && parameters.seed !== '' && parameters.seed !== undefined && Number.isFinite(seed)) {
+    parameters.seed = Math.min(Number.MAX_SAFE_INTEGER, Math.max(-1, Math.round(seed) + index));
+  }
+  return { ...input, parameters };
+}
+
+function novelRetryDelay(error, attempt) {
+  const requested = Number(error?.retryAfterMs) || 0;
+  return Math.min(30000, Math.max(500, requested || 1500 * (2 ** attempt)));
+}
+
+async function generateNovelDirect(input, fetchImpl, unzipImpl, waitImpl) {
+  const started = Date.now();
+  const apiKey = text(input.apiKey, 2048), prompt = text(input.prompt, 48000), model = text(input.model, 240);
+  const count = Math.round(number(input.parameters?.count, 1, 4, 1));
+  const images = [];
+  const requestIds = [];
+  for (let index = 0; index < count; index++) {
+    const singleInput = novelSingleRequest(input, index);
+    let response = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      response = await directFetch(novelDirectEndpoint(input.baseUrl, 'generate-image'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ input: prompt, model, action: 'generate', parameters: novelParameters(singleInput), use_new_shared_trial: true }),
+        signal: input.signal,
+      }, fetchImpl);
+      if (response.ok) break;
+      try { await responseError(response, 'NovelAI 生图失败'); }
+      catch (error) {
+        if (error?.status !== 429 || attempt >= 2) throw error;
+        await waitImpl(novelRetryDelay(error, attempt));
+      }
+    }
+    const contentType = String(response?.headers?.get?.('content-type') || '').toLowerCase();
+    let received = [];
+    if (contentType.includes('json')) received = normalizeJsonImages(await response.json().catch(() => ({})));
+    else {
+      const buffer = await response.arrayBuffer();
+      if (contentType.startsWith('image/')) received = [{ id: `novel-${Date.now()}-${index + 1}`, mime: contentType.split(';')[0], data: bytesToBase64(buffer), url: '' }];
+      else received = await unzipNovelImages(buffer, unzipImpl);
+    }
+    if (!received.length) throw new DirectImageError(`NovelAI 第 ${index + 1} 张未返回可用图片`, { code: 'empty_images' });
+    images.push(received[0]);
+    const requestId = text(response?.headers?.get?.('x-request-id'), 240);
+    if (requestId) requestIds.push(requestId);
+  }
+  return {
+    ok: true, transport: 'direct', images, text: '',
+    upstreamId: requestIds.join(',').slice(0, 240), durationMs: Date.now() - started,
+    requestCount: count, sequential: true,
+  };
 }
 
 function normalizeJsonImages(data) {
@@ -439,22 +503,5 @@ export async function generateDirectImage(input = {}, { fetchImpl = globalThis.f
   if (/nai-diffusion-5/i.test(model) && (input.vibes?.length || input.referenceImages?.length)) {
     throw new DirectImageError('当前 NovelAI V5 不支持 Vibe 或 Precise Reference', { code: 'novel_v5_reference_unsupported' });
   }
-  const started = Date.now();
-  const response = await directFetch(novelDirectEndpoint(input.baseUrl, 'generate-image'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ input: prompt, model, action: 'generate', parameters: novelParameters(input), use_new_shared_trial: true }),
-    signal: input.signal,
-  }, fetchImpl);
-  if (!response.ok) await responseError(response, 'NovelAI 生图失败');
-  const contentType = String(response.headers?.get?.('content-type') || '').toLowerCase();
-  let images = [];
-  if (contentType.includes('json')) images = normalizeJsonImages(await response.json().catch(() => ({})));
-  else {
-    const buffer = await response.arrayBuffer();
-    if (contentType.startsWith('image/')) images = [{ id: `novel-${Date.now()}`, mime: contentType.split(';')[0], data: bytesToBase64(buffer), url: '' }];
-    else images = await unzipNovelImages(buffer, unzipImpl);
-  }
-  if (!images.length) throw new DirectImageError('NovelAI 未返回可用图片', { code: 'empty_images' });
-  return { ok: true, transport: 'direct', images, text: '', upstreamId: text(response.headers?.get?.('x-request-id'), 240), durationMs: Date.now() - started };
+  return generateNovelDirect(input, fetchImpl, unzipImpl, waitImpl);
 }
