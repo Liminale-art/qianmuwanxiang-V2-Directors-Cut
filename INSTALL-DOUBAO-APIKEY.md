@@ -12,7 +12,7 @@
 通过 SSH 进入服务器，并进入 SillyTavern 的安装目录后，整行复制并回车：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/liminale1525/Omniscene/main/install-server-plugin.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/main/install-server-plugin.sh | sh
 ```
 
 这条命令会自动识别：
@@ -29,7 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/liminale1525/Omniscene/main/install
 先关闭 SillyTavern，在 **SillyTavern 根目录**打开 PowerShell，整行复制并回车：
 
 ```powershell
-irm https://raw.githubusercontent.com/liminale1525/Omniscene/main/install-server-plugin.ps1 | iex
+irm https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/main/install-server-plugin.ps1 | iex
 ```
 
 ### macOS / Linux / Git Bash
@@ -37,7 +37,7 @@ irm https://raw.githubusercontent.com/liminale1525/Omniscene/main/install-server
 关闭 SillyTavern，在 **SillyTavern 根目录**打开终端，整行复制并回车：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/liminale1525/Omniscene/main/install-server-plugin.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/main/install-server-plugin.sh | sh
 ```
 
 ## 安装完成后

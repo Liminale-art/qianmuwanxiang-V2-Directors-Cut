@@ -175,7 +175,7 @@ const FLOAT_LOGO_URLS = Object.freeze({
   kraft: FLOAT_LOGO_URL,
   dream: new URL('./qianmulogo-dream.png', import.meta.url).href,
 });
-const DOUBAO_APIKEY_GUIDE_URL = 'https://github.com/liminale1525/Omniscene/blob/main/INSTALL-DOUBAO-APIKEY.md';
+const DOUBAO_APIKEY_GUIDE_URL = 'https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/blob/main/INSTALL-DOUBAO-APIKEY.md';
 
 const PROMPT_REVISION = 24;
 const BLUEPRINT_REVISION = 1;          // 默认剧本模板版本，升一档即用新默认覆盖各聊天剧本（旧 DIY 自动备份进「恢复上次」）

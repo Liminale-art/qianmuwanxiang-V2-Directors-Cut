@@ -4,5 +4,5 @@
   "private": true,
   "type": "module",
   "main": "server-plugin.js",
-  "description": "千幕万象前端扩展与语音、分镜同源服务插件"
+  "description": "千幕万象V2-导演剪辑版前端扩展与语音、分镜同源服务插件"
 }

@@ -1,4 +1,4 @@
-# 千幕
+# 千幕万象V2-导演剪辑版
 
 
 🎬 一个 SillyTavern 第三方界面扩展，做你故事的**幕后导演**：埋线推演、递送创作灵感，不设定向日程与线性叙事路径，不替User做选择，最大化叙事自由度与演变弹性。
@@ -69,7 +69,7 @@
 SillyTavern → **扩展（Extensions）→ 安装扩展（Install Extension）**，填入本仓库地址：
 
 ```
-https://github.com/liminale1525/Omniscene.git
+https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git
 ```
 
 分镜生图与豆包 API Key 配音还需要启用同仓库附带的千幕服务端插件。Windows、本地 Linux、macOS、VPS 与 Docker 均可按[一键安装说明](./INSTALL-DOUBAO-APIKEY.md)操作；安装后必须重启 SillyTavern 后端服务，仅刷新网页不会加载插件。

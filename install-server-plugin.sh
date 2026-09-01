@@ -55,7 +55,7 @@ elif [ -e "$PLUGIN_DIR" ]; then
   exit 1
 else
   printf '\n正在安装千幕服务端插件……\n'
-  git clone https://github.com/liminale1525/Omniscene.git "$PLUGIN_DIR"
+  git clone https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git "$PLUGIN_DIR"
 fi
 
 if [ "$DEPLOYMENT" = "docker" ]; then

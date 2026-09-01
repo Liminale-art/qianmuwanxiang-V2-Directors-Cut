@@ -36,7 +36,7 @@ if (Test-Path -LiteralPath (Join-Path $pluginDir '.git') -PathType Container) {
     throw '安装失败：plugins/Omniscene 已存在但不是 Git 仓库。请先将该文件夹改名，再重新运行。'
 } else {
     Write-Host "`n正在安装千幕服务端插件……" -ForegroundColor Cyan
-    & git clone https://github.com/liminale1525/Omniscene.git $pluginDir
+    & git clone https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git $pluginDir
     if ($LASTEXITCODE -ne 0) { throw '插件安装失败，请检查上方 Git 提示。' }
 }
 
