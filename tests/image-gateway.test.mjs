@@ -162,6 +162,27 @@ assert.equal(JSON.parse(captured.init.body).parameters.negative_prompt, 'bad ana
 assert.equal(novel.images[0].mime, 'image/png');
 
 await generateImage({
+  provider: 'novel', apiKey: 'nai-key', model: 'nai-diffusion-5-full', prompt: '2girls at a station', negativePrompt: 'bad anatomy',
+  parameters: { providerOptions: {
+    v4_prompt: { caption: { base_caption: '2girls at a station', char_captions: [
+      { char_caption: 'Alice, red hair', centers: [{ x: 0.25, y: 0.5 }] },
+      { char_caption: 'Bob, blue hair', centers: [{ x: 0.75, y: 0.5 }] },
+    ] }, use_coords: true, use_order: true },
+    v4_negative_prompt: { caption: { base_caption: 'bad anatomy', char_captions: [] }, legacy_uc: false },
+  } },
+}, {
+  resolveHost: publicDns,
+  fetchImpl: async (_url, init) => {
+    const body = JSON.parse(init.body);
+    assert.equal(body.parameters.v4_prompt.caption.base_caption, '2girls at a station');
+    assert.equal(body.parameters.v4_prompt.caption.char_captions.length, 2);
+    assert.deepEqual(body.parameters.v4_prompt.caption.char_captions[1].centers[0], { x: 0.75, y: 0.5 });
+    assert.equal(body.parameters.v4_negative_prompt.legacy_uc, false);
+    return new Response(archive, { status: 200, headers: { 'content-type': 'application/zip' } });
+  },
+});
+
+await generateImage({
   provider: 'novel', apiKey: 'nai-key', model: 'nai-diffusion-4-5-full', prompt: 'portrait',
   referenceImages: [{ data: tinyPng.toString('base64'), mime: 'image/png', strength: 0.7, information: 0.8, fidelity: 0.75, referenceType: 'character&style' }],
   parameters: { providerOptions: { precise_reference: true } },

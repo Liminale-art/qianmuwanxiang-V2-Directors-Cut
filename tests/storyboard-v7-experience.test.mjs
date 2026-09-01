@@ -12,7 +12,7 @@ import {
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 11);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 12);
 assert.deepEqual(Object.keys(STORYBOARD_SHOT_GROUP_TEMPLATES), ['smart', 'threeBeat', 'dialogue', 'action', 'atmosphere']);
 
 const defaults = createStoryboardDefaults();
@@ -54,7 +54,9 @@ assert.match(source, /function storyboardAdaptShotForModel[\s\S]*policy !== 'fil
 assert.match(source, /const storyboardActiveJobs = new Map\(\)/);
 assert.match(source, /storyboardActiveJobs\.size < concurrency[\s\S]*storyboardRunQueuedJob/, 'configured generation concurrency must control real workers');
 assert.doesNotMatch(source, /const latestFloor = storyboardCurrentAssistantFloor\(\);[\s\S]*byFloor\.set\(latestFloor/, 'an empty storyboard strip must not appear under every reply');
-assert.doesNotMatch(source.slice(source.indexOf('function storyboardRenderInlineImages'), source.indexOf('function storyboardScheduleInlineRender')), /plan\.status|is-compiling|is-queued/, 'automatic intermediate states stay out of the immersive chat surface');
+const inlineRender = source.slice(source.indexOf('function storyboardRenderInlineImages'), source.indexOf('function storyboardScheduleInlineRender'));
+assert.match(inlineRender, /plan\.origin !== 'manual_supplement'/, 'only an explicitly requested manual supplement may expose an intermediate placeholder');
+assert.doesNotMatch(inlineRender, /plan\.origin === 'automatic'[\s\S]*is-pending/, 'automatic intermediate states stay out of the immersive chat surface');
 assert.match(source, /data-storyboard-chat-action="edit"[\s\S]*data-storyboard-chat-action="redraw"/, 'completed images retain edit and redraw escape hatches');
 assert.match(source, /sd-storyboard-safety-notice[\s\S]*不在生成结果下重复提示/);
 assert.match(css, /\.sd-storyboard-safety-notice/);

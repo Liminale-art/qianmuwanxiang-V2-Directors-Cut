@@ -9,7 +9,7 @@ import {
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 11);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 12);
 const defaults = createStoryboardDefaults();
 assert.deepEqual(defaults.automation, { autoCapture: true, autoGenerate: true });
 assert.equal(defaults.promptCompiler.enabled, true);
@@ -24,9 +24,9 @@ const normalized = normalizeStoryboardState({
 assert.equal(normalized.shotPlans[0].status, 'prompt_ready');
 assert.equal(normalized.shotPlans[0].shots[0].status, 'queued');
 
-// Inline nodes are DOM-only siblings of .mes_text: no message mutation or regex dependency.
-assert.match(source, /正文镜头节点|Keep the frame outside \.mes_text/);
-assert.match(source, /text\.insertAdjacentElement\('afterend', wrapper\)/);
+// Inline nodes remain DOM-only and never mutate chat[].mes; a valid anchor now inserts after the exact paragraph.
+assert.match(source, /dataset\.qianmuTransient = 'storyboard'/);
+assert.match(source, /anchor\.node\.insertAdjacentElement\('afterend', wrapper\)[\s\S]*text\.insertAdjacentElement\('afterend', wrapper\)/);
 const inlineRender = source.slice(source.indexOf('function storyboardRenderInlineImages'), source.indexOf('function storyboardScheduleInlineRender'));
 assert.doesNotMatch(inlineRender, /\.mes\s*=|ctx\(\)\.chat\[[^\]]+\]\.mes\s*=/);
 assert.match(source, /if \(!storyboardState\(\)\.enabled\)[\s\S]*sd-storyboard-inline, \.sd-storyboard-message-action/);
@@ -57,7 +57,7 @@ assert.match(css, /figure\.actions-open \.sd-storyboard-inline-actions/);
 assert.match(source, /原楼层原地编辑时保留已接受的旧图/);
 assert.match(source, /function storyboardRedrawRecord[\s\S]*snapshot\.promptMode = 'manual'[\s\S]*snapshot\.promptLocked = true/);
 assert.doesNotMatch(source, /shouldRecompile = !promptLocked/);
-assert.match(source, /function storyboardChooseCaptureMode[\s\S]*智能选取画面[\s\S]*指定正文段落/);
+assert.match(source, /function storyboardChooseCaptureMode[\s\S]*智能提取[\s\S]*手动选段补图/);
 assert.match(source, /原正文楼层已删除，未发起生图请求/);
 assert.match(source, /linkState === 'inactive_swipe'/);
 

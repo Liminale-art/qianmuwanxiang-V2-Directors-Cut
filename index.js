@@ -97,9 +97,11 @@ import {
 } from './qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.57.0';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.0';
 import {
   STORYBOARD_CAPABILITIES,
+  STORYBOARD_COMPOSITION_RULE_ID,
+  STORYBOARD_GROUP_FRAME_STRATEGIES,
   STORYBOARD_MODEL_REGISTRY,
   STORYBOARD_PIPELINE_LOG_LIMIT,
   STORYBOARD_PROVIDER_REGISTRY,
@@ -108,6 +110,7 @@ import {
   STORYBOARD_SOURCES,
   STORYBOARD_TAG_CATEGORIES,
   buildStoryboardProviderPlan,
+  compileStoryboardPrompt,
   createStoryboardParagraphAnchor,
   createStoryboardDefaults,
   createStoryboardMessageReference,
@@ -117,8 +120,13 @@ import {
   getStoryboardModel,
   getStoryboardNovelParameterSpec,
   normalizeStoryboardState,
+  normalizeStoryboardParagraphSelection,
+  normalizeStoryboardShotSpec,
+  prepareStoryboardShotGroup,
   pruneStoryboardPipelineLogs,
   resolveStoryboardMessageReference,
+  resolveStoryboardComposition,
+  restoreStoryboardCompositionPolicy,
   routeStoryboardShot,
   sanitizeStoryboardDiagnosticData,
   sanitizeStoryboardSnapshot,
@@ -126,11 +134,12 @@ import {
   scoreStoryboardParagraphAnchor,
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
-} from './qianmu-storyboard.js?v=1.57.0';
+  storyboardProviderRatioDimensions,
+} from './qianmu-storyboard.js?v=1.58.0';
 
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.57.0';
+const VERSION = '1.58.0';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -10202,18 +10211,22 @@ function storyboardJoinPrompt(parts, sourceId) {
 }
 
 function storyboardPromptsForArtist(state, artist, sourceId, modelId, { prompt = state.prompt, negative = state.negative, honorBaked = true } = {}) {
-  if (!artist) return { prompt: String(prompt || '').trim(), negative: String(negative || '').trim(), artistString: '' };
   const defaults = storyboardProviderPromptDefaults(sourceId, modelId);
+  if (!artist) return {
+    prompt: storyboardJoinPrompt([defaults.positive, prompt], sourceId),
+    negative: storyboardJoinPrompt([defaults.negative, negative], sourceId),
+    artistString: '',
+  };
   const artistString = String(artist.value || state.promptDraft?.artistString || '').trim();
   const artistPositive = String(artist.positivePrompt || defaults.positive || '').trim();
   const artistNegative = String(artist.negativePrompt || defaults.negative || '').trim();
   return {
     prompt: honorBaked && state.promptDraft?.artistPositiveBaked
       ? String(prompt || '').trim()
-      : storyboardJoinPrompt([artistString, prompt, artistPositive], sourceId),
+      : storyboardJoinPrompt([artistString, artistPositive, prompt], sourceId),
     negative: honorBaked && state.promptDraft?.artistNegativeBaked
       ? String(negative || '').trim()
-      : storyboardJoinPrompt([negative, artistNegative], sourceId),
+      : storyboardJoinPrompt([artistNegative, negative], sourceId),
     artistString,
   };
 }
@@ -10574,16 +10587,17 @@ function storyboardPlanForMessage(state, floor, message) {
   const reference = createStoryboardMessageReference({ message, chatKey, floor });
   return (state.shotPlans || []).find((plan) => plan.chatKey === chatKey
     && plan.messageRef?.messageKey === reference.messageKey
-    && plan.revisionId === reference.revisionId) || null;
+    && plan.revisionId === reference.revisionId
+    && plan.origin !== 'manual_supplement') || null;
 }
 
-function storyboardEnsurePlan(state, floor, message, { origin = 'manual', autoGenerate = false } = {}) {
-  let plan = storyboardPlanForMessage(state, floor, message);
+function storyboardEnsurePlan(state, floor, message, { origin = 'manual', autoGenerate = false, forceNew = false, paragraphSelection = null } = {}) {
+  let plan = forceNew ? null : storyboardPlanForMessage(state, floor, message);
   if (plan) return plan;
   const chatKey = String(getChatKey() || '');
   const messageRef = createStoryboardMessageReference({ message, chatKey, floor });
   const ticket = createStoryboardWorkflowTicket({
-    messageRef, chatKey, floor, origin, autoGenerate,
+    id: forceNew ? uid('story') : '', messageRef, chatKey, floor, origin, autoGenerate, paragraphSelection,
     compilerSignature: storyboardPlanCompilerSignature(state), createdAt: Date.now(),
   });
   plan = { ...ticket, shots: [], status: 'idle' };
@@ -10857,6 +10871,30 @@ function renderStoryboardWorldbookCard(state) {
   </details>`;
 }
 
+function renderStoryboardCompositionCard(state) {
+  const policy = state.compositionPolicy;
+  const allowed = new Set(policy.allowedRatioIds || []);
+  const ratioOptions = STORYBOARD_RATIOS.map((item) => `<option value="${item.id}" ${policy.fixedRatioId === item.id ? 'selected' : ''}>${item.label}</option>`).join('');
+  const preferredOptions = STORYBOARD_RATIOS.filter((item) => allowed.has(item.id)).map((item) => `<option value="${item.id}" ${policy.preferredRatioId === item.id ? 'selected' : ''}>${item.label}</option>`).join('');
+  const ratioChips = STORYBOARD_RATIOS.map((item) => `<label class="sd-option-chip"><input type="checkbox" class="sd-storyboard-composition-allowed" value="${item.id}" ${allowed.has(item.id) ? 'checked' : ''}><span>${item.label}</span></label>`).join('');
+  const strategyLabels = { single: '单幅', main_secondary: '主画幅 + 强调画幅', montage: '自由蒙太奇' };
+  return `<details class="sd-card sd-storyboard-composition-card" data-storyboard-card="composition" ${state.collapsedCards.composition ? '' : 'open'}>
+    <summary><span><b>画面比例</b><small>构景之律</small></span></summary>
+    <div class="sd-storyboard-card-body">
+      <div class="sd-storyboard-composition-mode" role="radiogroup" aria-label="比例分配方式">
+        <label class="sd-option-chip"><input type="radio" name="sd-storyboard-composition-mode" value="smart" ${policy.mode === 'smart' ? 'checked' : ''}><span>智能分配</span></label>
+        <label class="sd-option-chip"><input type="radio" name="sd-storyboard-composition-mode" value="fixed" ${policy.mode === 'fixed' ? 'checked' : ''}><span>固定比例</span></label>
+      </div>
+      ${policy.mode === 'fixed'
+        ? `<label><span>固定比例</span><select class="text_pole sd-storyboard-composition-fixed">${ratioOptions}</select></label>`
+        : `<label><span>优先主画幅</span><select class="text_pole sd-storyboard-composition-preferred">${preferredOptions}</select></label><div class="sd-storyboard-composition-ratios" aria-label="允许的画幅">${ratioChips}</div>`}
+      <label><span>镜组画幅策略</span><select class="text_pole sd-storyboard-composition-strategy">${STORYBOARD_GROUP_FRAME_STRATEGIES.map((id) => `<option value="${id}" ${policy.groupStrategy === id ? 'selected' : ''}>${strategyLabels[id]}</option>`).join('')}</select></label>
+      <label><span>构景之律 · 个人修订</span><textarea class="text_pole sd-storyboard-composition-override" spellcheck="false">${htmlEscape(policy.ruleOverride || '')}</textarea></label>
+      <div class="sd-storyboard-composition-actions"><small>${policy.userEdited ? '正在使用个人修订' : '正在使用千幕默认规则'}</small><button type="button" class="sd-btn sd-storyboard-restore-composition" ${policy.userEdited ? '' : 'disabled'}>恢复默认</button></div>
+    </div>
+  </details>`;
+}
+
 function renderStoryboardCreate(state) {
   const profile = storyboardProviderProfile(state);
   const capabilities = getStoryboardCapabilities(state.source, profile.model);
@@ -10895,7 +10933,6 @@ function renderStoryboardCreate(state) {
       <summary><span><b>绘制参数</b><small>${htmlEscape(profile.model)}</small></span></summary><div class="sd-storyboard-card-body">
       ${renderStoryboardParameterPresets(state)}
       <div class="sd-storyboard-grid sd-storyboard-grid-two">
-        <label><span>比例</span><select class="text_pole sd-storyboard-ratio">${STORYBOARD_RATIOS.map((item) => `<option value="${item.id}" ${profile.ratio === item.id ? 'selected' : ''}>${item.label}</option>`).join('')}</select></label>
         <label><span>Width</span><input class="text_pole sd-storyboard-field sd-storyboard-width" data-storyboard-field="width" type="number" min="64" max="8192" step="64" value="${htmlEscape(profile.width)}"></label>
         <label><span>Height</span><input class="text_pole sd-storyboard-field sd-storyboard-height" data-storyboard-field="height" type="number" min="64" max="8192" step="64" value="${htmlEscape(profile.height)}"></label>
         <label><span>Count</span><input class="text_pole sd-storyboard-field" data-storyboard-field="count" type="number" min="1" max="4" step="1" value="${htmlEscape(profile.count)}" placeholder="1"></label>
@@ -10908,6 +10945,7 @@ function renderStoryboardCreate(state) {
       </div>
       ${renderStoryboardParameterVibes(state, profile, capabilities)}
       </div></details>
+    ${renderStoryboardCompositionCard(state)}
     ${renderStoryboardQueue()}
     ${last ? `<section class="sd-card sd-storyboard-last"><div class="sd-card-title-row"><h3>最近画面</h3><button type="button" data-storyboard-view="gallery">查看全部</button></div><img src="${htmlEscape(storyboardSafeUrl(last.url))}" alt="最近生成的分镜" loading="lazy"></section>` : ''}
   </div>`;
@@ -10961,6 +10999,15 @@ function storyboardPromptPresetEntryMarkup(item = {}, index = 0, total = 1) {
   </details>`;
 }
 
+function storyboardCompositionLawEntryMarkup(state) {
+  const policy = state.compositionPolicy;
+  const mode = policy.mode === 'fixed' ? `固定 ${policy.fixedRatioId}` : `智能 · ${policy.allowedRatioIds.length} 种可用画幅`;
+  return `<details class="sd-card sd-storyboard-preset-entry sd-storyboard-system-rule" data-storyboard-preset-entry="${STORYBOARD_COMPOSITION_RULE_ID}">
+    <summary><span class="sd-storyboard-system-rule-lock" aria-label="系统固定条目">◆</span><b>构景之律</b><span class="sd-storyboard-preset-token" title="系统固定条目">1</span><button type="button" class="sd-icon-btn sd-storyboard-open-composition" title="编辑构景设置" aria-label="编辑构景设置"><i class="fa-solid fa-pen"></i></button></summary>
+    <div class="sd-storyboard-preset-entry-preview sd-scroll">${htmlEscape(mode)}${policy.userEdited ? ' · 已应用个人修订' : ' · 千幕默认规则'}</div>
+  </details>`;
+}
+
 function renderStoryboardPresetLibrary(state) {
   const selected = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId) || null;
   const editingItem = selected?.items?.find((item) => item.id === state.editingPromptItemId) || null;
@@ -10984,7 +11031,7 @@ function renderStoryboardPresetLibrary(state) {
       <div class="sd-storyboard-preset-control-row"><button type="button" class="sd-btn sd-primary sd-storyboard-new-preset">新建预设</button><button type="button" class="sd-icon-btn sd-storyboard-rename-preset" title="编辑预设名" aria-label="编辑预设名" ${selected ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-storyboard-overwrite-preset" title="保存覆盖" aria-label="保存覆盖" ${selected ? '' : 'disabled'}><i class="fa-solid fa-floppy-disk"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-preset" title="删除预设" aria-label="删除预设" ${selected ? '' : 'disabled'}><i class="fa-solid fa-trash-can"></i></button></div>
     </section>
     ${undo}
-    ${selected ? `<section class="sd-storyboard-preset-list" data-storyboard-preset-list="${htmlEscape(selected.id)}">${rows || '<div class="sd-storyboard-empty-inline">这个预设还没有条目。</div>'}</section><button type="button" class="sd-icon-btn sd-primary sd-storyboard-add-preset-item" title="添加条目" aria-label="添加条目"><i class="fa-solid fa-plus"></i></button>` : ''}
+    ${selected ? `<section class="sd-storyboard-preset-list" data-storyboard-preset-list="${htmlEscape(selected.id)}">${storyboardCompositionLawEntryMarkup(state)}${rows || '<div class="sd-storyboard-empty-inline">这个预设还没有自定义条目。</div>'}</section><button type="button" class="sd-icon-btn sd-primary sd-storyboard-add-preset-item" title="添加条目" aria-label="添加条目"><i class="fa-solid fa-plus"></i></button>` : ''}
   </div>`;
 }
 
@@ -11322,12 +11369,41 @@ function storyboardAnchorForMessage(message, floor, prompt, preferredIndex = nul
   });
 }
 
-function storyboardGenerationPayload(state, profile, { sourceId = state.source, prompt = state.prompt, negative = state.negative } = {}) {
+function storyboardShotSpecForSelection(shot, selection) {
+  const spec = normalizeStoryboardShotSpec(shot?.shotSpec || shot || {});
+  const normalizedSelection = selection ? normalizeStoryboardParagraphSelection(selection) : null;
+  if (normalizedSelection?.paragraphIds?.length) {
+    spec.sourceParagraphIds = [...normalizedSelection.paragraphIds];
+    spec.insertAfter = normalizedSelection.paragraphIds.at(-1);
+  }
+  return spec;
+}
+
+function storyboardGenerationPayload(state, profile, { sourceId = state.source, prompt = state.prompt, negative = state.negative, shot = null } = {}) {
   const capabilities = getStoryboardCapabilities(sourceId, profile.model);
-  const composed = storyboardEffectivePrompts(state, sourceId, profile.model, { prompt, negative });
-  const artistString = composed.artistString;
-  const effectivePrompt = composed.prompt;
-  const effectiveNegative = capabilities.negative ? composed.negative : '';
+  const artist = storyboardSelectedArtistPreset(state);
+  const defaults = storyboardProviderPromptDefaults(sourceId, profile.model);
+  const artistString = String(artist?.value || state.promptDraft?.artistString || '').trim();
+  const shotSpec = normalizeStoryboardShotSpec(shot?.shotSpec || {
+    ...shot,
+    promptAtoms: { global: [prompt], negative: [negative] },
+    composition: { ratioId: profile.ratio || state.compositionPolicy?.preferredRatioId || '3:2', ratioLocked: Boolean(shot?.ratioLocked) },
+  });
+  const manuallyLocked = Boolean(shot?.userEdited || shot?.promptLocked || state.promptDraft?.userEditedCompiled);
+  const compiled = manuallyLocked
+    ? (() => {
+      const exact = storyboardPromptsForArtist(state, artist, sourceId, profile.model, { prompt, negative, honorBaked: true });
+      return { prompt: exact.prompt, negative: exact.negative, providerOptions: {}, characterBlocks: [], validation: { valid: true, shot: shotSpec, errors: [], warnings: [] }, degradation: { mode: 'manual_flat', reason: 'user_locked_prompt' } };
+    })()
+    : compileStoryboardPrompt({
+      providerId: sourceId, modelId: profile.model, shot: shotSpec, artistString,
+      artistPositive: artist ? String(artist.positivePrompt || defaults.positive || '') : '',
+      artistNegative: artist ? String(artist.negativePrompt || defaults.negative || '') : '',
+      modelPositive: artist ? '' : defaults.positive,
+      modelNegative: artist ? '' : defaults.negative,
+    });
+  const effectivePrompt = compiled.prompt;
+  const effectiveNegative = capabilities.negative ? compiled.negative : '';
   const providerOptions = {};
   if (sourceId === 'novel') {
     if (capabilities.cfgRescale && profile.novelCfgRescale !== '') providerOptions.cfg_rescale = Number(profile.novelCfgRescale);
@@ -11336,8 +11412,9 @@ function storyboardGenerationPayload(state, profile, { sourceId = state.source, 
     if (capabilities.decrisper) providerOptions.dynamic_thresholding = Boolean(profile.novelDecrisper);
     if (capabilities.varietyBoost) providerOptions.variety_boost = Boolean(profile.novelVarietyBoost);
   }
+  Object.assign(providerOptions, compiled.providerOptions || {});
   return {
-    prompt: effectivePrompt, negative: effectiveNegative, artistString,
+    prompt: effectivePrompt, negative: effectiveNegative, artistString, compiledPrompt: compiled, shotSpec,
     parameters: {
       width: profile.width, height: profile.height,
       size: profile.width && profile.height ? `${profile.width}x${profile.height}` : '',
@@ -11374,7 +11451,19 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
     ...baseProviderProfile,
     model: fixedModel,
   };
-  const payload = storyboardGenerationPayload(state, providerProfile, { sourceId, prompt, negative });
+  const shotSpec = normalizeStoryboardShotSpec(shot?.shotSpec || {
+    ...shot,
+    promptAtoms: { global: [prompt], negative: [negative] },
+    composition: { ratioId: shot?.compositionDecision?.ratioId || providerProfile.ratio || '', ratioLocked: Boolean(shot?.ratioLocked) },
+  });
+  const compositionDecision = resolveStoryboardComposition({
+    policy: state.compositionPolicy, shot: shotSpec, providerId: sourceId,
+    width: providerProfile.width, height: providerProfile.height,
+  });
+  providerProfile.ratio = compositionDecision.ratioId;
+  if (compositionDecision.dimensions.width) providerProfile.width = String(compositionDecision.dimensions.width);
+  if (compositionDecision.dimensions.height) providerProfile.height = String(compositionDecision.dimensions.height);
+  const payload = storyboardGenerationPayload(state, providerProfile, { sourceId, prompt, negative, shot: { ...shot, shotSpec: { ...shotSpec, composition: { ...shotSpec.composition, ratioId: compositionDecision.ratioId } } } });
   const credentialId = connection?.credentialId || storyboardCredentialId(sourceId, connection?.id || 'draft');
   const preferredParagraph = state.paragraphMode === 'manual' && Number.isInteger(state.manualParagraphIndex)
     ? state.manualParagraphIndex
@@ -11391,6 +11480,8 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
     messageRef, messageHash: message ? hashText(String(message.mes || '')) : '', swipeId: Number(message?.swipe_id || 0),
     profile: storyboardProfileSnapshot(providerProfile, sourceId),
     paragraphAnchor, shotType: String(shot?.shotType || state.pendingShotType || 'custom'),
+    paragraphSelection: clone(shot?.paragraphSelection || state.pendingParagraphSelection || null),
+    shotSpec: clone(payload.shotSpec || shotSpec), compiledPrompt: clone(payload.compiledPrompt || null), compositionDecision: clone(compositionDecision),
     sensitive: Boolean(shot?.sensitive ?? (state.contentRating === 'nsfw')),
     safetyAdapted: Boolean(shot?.safetyAdapted), originalPrompt: String(shot?.originalPrompt || shot?.prompt || '').slice(0, 24000),
     connection: {
@@ -11425,7 +11516,8 @@ function storyboardStartLog(job) {
       promptMode: job.promptMode, promptLocked: Boolean(job.promptLocked),
       inlineByDefault: job.inlineByDefault, chatKey: job.chatKey,
       messageRef: job.messageRef, messageHash: job.messageHash, swipeId: job.swipeId,
-      profile: job.profile, paragraphAnchor: job.paragraphAnchor,
+      profile: job.profile, paragraphAnchor: job.paragraphAnchor, paragraphSelection: job.paragraphSelection,
+      shotSpec: job.shotSpec, compiledPrompt: job.compiledPrompt, compositionDecision: job.compositionDecision,
       shotType: job.shotType, sensitive: job.sensitive, safetyAdapted: job.safetyAdapted, originalPrompt: job.originalPrompt,
       connection: job.connection, payload: job.payload,
       planId: job.planId || '', planShotId: job.planShotId || '',
@@ -11701,6 +11793,24 @@ function storyboardCaptureWorkbench(root, sourceId = storyboardState().source, {
       : key === 'watermark' ? String(field.value) === 'true' : String(field.value || '').trim();
   });
   profile.ratio = String(root.querySelector('.sd-storyboard-ratio')?.value || profile.ratio || '');
+  const compositionMode = root.querySelector('input[name="sd-storyboard-composition-mode"]:checked');
+  if (compositionMode) state.compositionPolicy.mode = compositionMode.value === 'fixed' ? 'fixed' : 'smart';
+  const fixedRatio = root.querySelector('.sd-storyboard-composition-fixed');
+  if (fixedRatio) state.compositionPolicy.fixedRatioId = String(fixedRatio.value || '3:2');
+  const allowedRatios = [...root.querySelectorAll('.sd-storyboard-composition-allowed:checked')].map((field) => String(field.value || '')).filter(Boolean);
+  if (root.querySelector('.sd-storyboard-composition-allowed') && allowedRatios.length) state.compositionPolicy.allowedRatioIds = allowedRatios;
+  const preferredRatio = root.querySelector('.sd-storyboard-composition-preferred');
+  if (preferredRatio) state.compositionPolicy.preferredRatioId = String(preferredRatio.value || allowedRatios[0] || '3:2');
+  const strategy = root.querySelector('.sd-storyboard-composition-strategy');
+  if (strategy) {
+    state.compositionPolicy.groupStrategy = STORYBOARD_GROUP_FRAME_STRATEGIES.includes(strategy.value) ? strategy.value : 'main_secondary';
+    state.routing.frameStrategy = state.compositionPolicy.groupStrategy;
+  }
+  const ruleOverride = root.querySelector('.sd-storyboard-composition-override');
+  if (ruleOverride) {
+    state.compositionPolicy.ruleOverride = String(ruleOverride.value || '').trim().slice(0, 12000);
+    state.compositionPolicy.userEdited = Boolean(state.compositionPolicy.ruleOverride);
+  }
   profile.loaded = true;
   const providerModel = root.querySelector('.sd-storyboard-model-select');
   if (providerModel) {
@@ -12043,14 +12153,18 @@ async function storyboardCompilerContext(state) {
     ? cleanContextText(await resolveMacro(getPersonaDescription())).slice(0, 8000) : '';
   const targetMessage = Number.isInteger(floor) ? chat[floor] : null;
   const paragraphs = storyboardMessageParagraphs(storyboardCleanWithTagRules(targetMessage?.mes || '', state));
-  const forcedParagraphIndex = state.paragraphMode === 'manual' && Number.isInteger(state.manualParagraphIndex)
+  const pendingSelection = state.pendingParagraphSelection ? normalizeStoryboardParagraphSelection(state.pendingParagraphSelection) : null;
+  const forcedParagraphIndexes = pendingSelection?.mode === 'manual_supplement'
+    ? pendingSelection.indexes.filter((index) => index < paragraphs.length)
+    : [];
+  const forcedParagraphIndex = forcedParagraphIndexes.length ? forcedParagraphIndexes.at(-1) : state.paragraphMode === 'manual' && Number.isInteger(state.manualParagraphIndex)
     ? Math.max(0, Math.min(Math.max(0, paragraphs.length - 1), state.manualParagraphIndex))
     : null;
   const worldResult = await storyboardCompilerWorldText(state);
   return {
     floor, messages, currentCharacter, persona, world: worldResult.text,
     worldRows: worldResult.rows, worldFallback: worldResult.fallback,
-    paragraphs, forcedParagraphIndex,
+    paragraphs, forcedParagraphIndex, forcedParagraphIndexes,
   };
 }
 
@@ -12080,7 +12194,9 @@ ${ensemble ? `当前启用「${groupTemplate.label}」。根据正文确有需�
 }
 
 function storyboardCompilerUserPrompt(state, context) {
-  const paragraphRule = Number.isInteger(context.forcedParagraphIndex)
+  const paragraphRule = context.forcedParagraphIndexes?.length
+    ? `【手动补图选段】${context.forcedParagraphIndexes.join('、')}。只整理一张画面，综合所有选中段落，并在最后选中段落 ${context.forcedParagraphIndex} 后插入。paragraph_index 必须返回 ${context.forcedParagraphIndex}。\n`
+    : Number.isInteger(context.forcedParagraphIndex)
     ? `【目标段落】第 ${context.forcedParagraphIndex} 段。paragraph_index 必须返回 ${context.forcedParagraphIndex}。\n`
     : '【目标段落】请判断最具画面价值且能承接叙事的一段。\n';
   return `【目标楼层】${context.floor}\n
@@ -12110,7 +12226,8 @@ function storyboardCompilerResult(raw, context, capabilities, state) {
   let parsed = null;
   try { parsed = extractJson(raw); } catch (_) {}
   const object = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  if (object.should_generate === false) {
+  const manualSupplement = state.pendingParagraphSelection?.mode === 'manual_supplement';
+  if (object.should_generate === false && !manualSupplement) {
     return {
       shouldGenerate: false,
       skipReason: String(object.skip_reason || '当前楼层没有新增的画面价值').trim().slice(0, 500),
@@ -12121,10 +12238,16 @@ function storyboardCompilerResult(raw, context, capabilities, state) {
   const allowedTypes = new Set(['portrait', 'group', 'environment', 'object', 'action', 'closeup', 'custom']);
   const allowedRoles = new Set(['establishing', 'medium', 'closeup', 'reaction', 'detail', 'action', 'atmosphere', 'custom']);
   const rawShots = Array.isArray(object.shots) ? object.shots : [object];
-  const limit = state.routing.enabled ? Math.max(1, Math.min(4, Number(state.routing.maxShotsPerFloor) || 1)) : 1;
+  const limit = manualSupplement ? 1 : state.routing.enabled ? Math.max(1, Math.min(4, Number(state.routing.maxShotsPerFloor) || 1)) : 1;
   const shots = rawShots.slice(0, limit).map((item, index) => {
-    const prompt = String(item?.prompt || item?.positive_prompt || item?.final_prompt || (index === 0 && !Object.keys(object).length ? raw : '') || '')
+    const rawPrompt = String(item?.prompt || item?.positive_prompt || item?.final_prompt || (index === 0 && !Object.keys(object).length ? raw : '') || '')
       .replace(/^```(?:json)?|```$/gi, '').trim().slice(0, 24000);
+    const shotSpec = normalizeStoryboardShotSpec({
+      ...item,
+      id: item?.id || uid('shotspec'),
+      promptAtoms: item?.prompt_atoms || item?.promptAtoms || { global: rawPrompt ? [rawPrompt] : [], negative: [item?.negative || item?.negative_prompt || ''].filter(Boolean) },
+    });
+    const prompt = rawPrompt || compileStoryboardPrompt({ providerId: state.source, modelId: storyboardProviderProfile(state).model, shot: shotSpec }).prompt;
     if (!prompt) return null;
     return {
       id: uid('shotdraft'), prompt,
@@ -12137,7 +12260,7 @@ function storyboardCompilerResult(raw, context, capabilities, state) {
         ? context.forcedParagraphIndex
         : Math.max(0, Math.min(maxIndex, Math.round(Number(item?.paragraph_index) || 0))),
       shotType: allowedTypes.has(item?.shot_type) ? item.shot_type : 'custom',
-      sensitive: Boolean(item?.sensitive), order: index,
+      shotSpec, sensitive: Boolean(item?.sensitive), order: index,
     };
   }).filter(Boolean);
   if (!shots.length) throw new Error('画面整理没有返回可用提示词');
@@ -12166,6 +12289,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
     const raw = await storyboardCallCompiler([
       { role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt },
     ], state.promptCompiler.apiProfileId);
+    if (plan?.status === 'cancelled') return false;
     const result = storyboardCompilerResult(raw, context, getStoryboardCapabilities(state.source, profile.model), state);
     if (!result.shouldGenerate) {
       state.prompt = '';
@@ -12223,6 +12347,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
         providerId: '', connectionPresetId: '', parameterPresetId: '', routeRuleId: '',
         status: 'prompt_ready', resultIds: [], error: '', attempt: 0,
         paragraphAnchor: storyboardAnchorForMessage(ctx().chat?.[context.floor], context.floor, shot.prompt, shot.paragraphIndex),
+        paragraphSelection: clone(plan.paragraphSelection || state.pendingParagraphSelection || null), shotSpec: storyboardShotSpecForSelection(shot, plan.paragraphSelection || state.pendingParagraphSelection), compiledPrompt: null, compositionDecision: null,
         sensitive: Boolean(shot.sensitive ?? state.contentRating === 'nsfw'), userEdited: false, promptLocked: false,
       }));
       plan.updatedAt = Date.now();
@@ -12368,7 +12493,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false } = {})
   }
   state.routing.single = { providerId: state.source, modelId: profile.model, connectionPresetId: '', parameterPresetId: '' };
   const routingEnabled = Boolean(state.routing.enabled);
-  const planned = routingEnabled && Array.isArray(state.promptDraft.shots) && state.promptDraft.shots.length
+  const plannedSource = routingEnabled && Array.isArray(state.promptDraft.shots) && state.promptDraft.shots.length
     ? state.promptDraft.shots.filter((item) => String(item.prompt || '').trim()).slice(0, Math.max(1, Number(state.routing.maxShotsPerFloor) || 1))
     : [{
       id: uid('shotdraft'), prompt: state.prompt, negative: state.negative,
@@ -12376,6 +12501,16 @@ async function storyboardGenerate(root, { plan = null, automatic = false } = {})
       paragraphIndex: state.paragraphMode === 'manual' ? state.manualParagraphIndex : state.pendingParagraphIndex,
       shotType: state.pendingShotType || 'custom', sensitive: state.contentRating === 'nsfw',
     }];
+  const manualSupplement = plan?.origin === 'manual_supplement';
+  const coverage = prepareStoryboardShotGroup({
+    shots: plannedSource.map((shot) => ({ ...shot.shotSpec, id: shot.id, subject: shot.shotSpec?.subject || shot.title || shot.prompt, narrativePurpose: shot.shotSpec?.narrativePurpose || shot.purpose || shot.prompt, shotRole: shot.shotSpec?.shotRole || shot.role })),
+    policy: state.compositionPolicy, maxShots: state.routing.maxShotsPerFloor, manual: manualSupplement,
+  });
+  const allowedShotIds = new Set(coverage.shots.map((shot) => shot.id));
+  const preparedSpecs = new Map(coverage.shots.map((shot) => [shot.id, shot]));
+  const planned = (manualSupplement ? plannedSource.slice(0, 1) : plannedSource.filter((shot) => allowedShotIds.has(shot.id)))
+    .map((shot) => ({ ...shot, shotSpec: preparedSpecs.get(shot.id) || shot.shotSpec }));
+  if (plan) plan.continuityLedger = clone(coverage.continuityLedger || plan.continuityLedger || {});
   if (plan) {
     plan.status = 'prompt_ready';
     plan.autoGenerate = Boolean(plan.autoGenerate || automatic);
@@ -12389,6 +12524,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false } = {})
       providerId: '', connectionPresetId: '', parameterPresetId: '', routeRuleId: '',
       status: 'prompt_ready', resultIds: [], error: '', attempt: 0,
       paragraphAnchor: storyboardAnchorForMessage(ctx().chat?.[targetFloor], targetFloor, shot.prompt, shot.paragraphIndex),
+      paragraphSelection: clone(plan.paragraphSelection || state.pendingParagraphSelection || null), shotSpec: storyboardShotSpecForSelection(shot, plan.paragraphSelection || state.pendingParagraphSelection), compiledPrompt: null, compositionDecision: null,
       sensitive: Boolean(shot.sensitive), userEdited: Boolean(state.promptDraft?.userEditedCompiled),
       promptLocked: Boolean(state.promptDraft?.userEditedCompiled),
     }));
@@ -12403,12 +12539,17 @@ async function storyboardGenerate(root, { plan = null, automatic = false } = {})
     const parameterPreset = storyboardParameterPresets(sourceId, route.modelId).find((item) => item.id === route.parameterPresetId);
     if (parameterPreset) shotProfile = { ...shotProfile, ...clone(parameterPreset.profile), loaded: true };
     if (route.modelId) shotProfile.model = route.modelId;
+    if (manualSupplement) shotProfile.count = '1';
     const effectiveShot = storyboardAdaptShotForModel(shot, sourceId, shotProfile.model);
     const planShot = plan?.shots?.[index] || null;
     if (planShot) Object.assign(planShot, { providerId: sourceId, connectionPresetId: route.connectionPresetId || '', parameterPresetId: route.parameterPresetId || '', routeRuleId: route.ruleId || '', safetyAdapted: effectiveShot.safetyAdapted });
     const job = storyboardCreateJob(state, shotProfile, {
       shot: effectiveShot, sourceId, modelId: route.modelId, connectionPresetId: route.connectionPresetId,
       planId: plan?.id || '', planShotId: planShot?.id || '',
+    });
+    if (planShot) Object.assign(planShot, {
+      shotSpec: clone(job.shotSpec), compiledPrompt: clone(job.compiledPrompt), compositionDecision: clone(job.compositionDecision),
+      paragraphSelection: clone(job.paragraphSelection || plan.paragraphSelection || null),
     });
     job.automatic = Boolean(automatic);
     jobs.push(job);
@@ -12579,6 +12720,9 @@ function storyboardCreateRecord(job, log, url, index, anchorState, response) {
     artistString: job.artistString || job.payload?.artistString || '', artistPresetId: job.artistPresetId || '', contentRating: job.contentRating || 'sfw',
     negative: job.negative, effectiveNegative: job.payload?.negative || '', source: job.source,
     floor, inline: Boolean(job.inlineByDefault && Number.isInteger(floor)), paragraphAnchor: Number.isInteger(floor) ? clone(job.paragraphAnchor || null) : null,
+    paragraphSelection: Number.isInteger(floor) ? clone(job.paragraphSelection || null) : null,
+    origin: job.paragraphSelection?.mode === 'manual_supplement' ? 'manual_supplement' : (job.automatic ? 'automatic' : 'manual'),
+    shotSpec: clone(job.shotSpec || null), compiledPrompt: clone(job.compiledPrompt || null), compositionDecision: clone(job.compositionDecision || null),
     messageRef: job.messageRef ? clone(job.messageRef) : null,
     messageHash: message ? hashText(String(message.mes || '')) : '', swipeId: message ? Number(message.swipe_id || 0) : 0,
     promptMode: job.promptMode || 'manual', promptLocked: Boolean(job.promptLocked),
@@ -12776,6 +12920,12 @@ function storyboardInlineRecordMarkup(record) {
   </figure>`;
 }
 
+function storyboardInlinePlaceholderMarkup(plan) {
+  const labels = { screening: '正在准备选段', compiling: '正在提取生成词', queued: '等待生图', generating: '正在生成画面', failed: '补图失败' };
+  const failed = plan.status === 'failed';
+  return `<div class="sd-storyboard-inline-placeholder" data-storyboard-plan="${htmlEscape(plan.id)}"><span class="sd-storyboard-queue-pulse"></span><b>${labels[plan.status] || '正在处理补图'}</b><small>${plan.paragraphSelection?.indexes?.length || 1} 段正文</small><div>${failed ? '<button type="button" data-storyboard-chat-action="retry-plan">重试</button>' : '<button type="button" data-storyboard-chat-action="cancel-plan">取消</button>'}</div></div>`;
+}
+
 function storyboardRenderInlineImages() {
   const chatRoot = document.getElementById('chat');
   if (!chatRoot) return;
@@ -12789,32 +12939,56 @@ function storyboardRenderInlineImages() {
   const byFloor = new Map();
   for (const record of storyboardGalleryRecords()) {
     if (!storyboardInlineRecordValid(record)) continue;
-    if (!byFloor.has(record.floor)) byFloor.set(record.floor, { records: [], plan: null });
+    if (!byFloor.has(record.floor)) byFloor.set(record.floor, { records: [], plans: [] });
     byFloor.get(record.floor).records.push(record);
+  }
+  for (const plan of storyboardState().shotPlans || []) {
+    if (plan.origin !== 'manual_supplement' || !Number.isInteger(plan.floor) || !['screening', 'compiling', 'queued', 'generating', 'failed'].includes(plan.status)) continue;
+    if (!byFloor.has(plan.floor)) byFloor.set(plan.floor, { records: [], plans: [] });
+    byFloor.get(plan.floor).plans.push(plan);
   }
   chatRoot.querySelectorAll('.sd-storyboard-inline').forEach((node) => node.remove());
   for (const [floor, group] of byFloor) {
-    const { records } = group;
     const message = chatRoot.querySelector(`.mes[mesid="${floor}"], .mes[data-message-id="${floor}"]`);
     const text = message?.querySelector('.mes_text');
     if (!message || !text) continue;
-    const wrapper = document.createElement('div');
-    wrapper.className = 'sd-storyboard-inline is-completed';
-    wrapper.dataset.storyboardFloor = String(floor);
-    if (records.length > 1) wrapper.classList.add('sd-storyboard-filmstrip');
-    wrapper.innerHTML = `<button type="button" class="sd-storyboard-inline-title" data-storyboard-chat-action="expand" title="展开正文插图" hidden><span class="sd-storyboard-inline-mark">${STORYBOARD_INLINE_MARK}</span><span class="sd-storyboard-inline-rule"></span><b>刻瞬于光</b><small>${records.length > 1 ? `${records.length} 幅画面` : '画面已折叠'}</small></button><div class="sd-storyboard-inline-reel">${records.map(storyboardInlineRecordMarkup).join('')}</div>`;
-    if (storyboardCollapsedInlineFloors.has(floor)) {
-      wrapper.classList.add('is-collapsed');
-      wrapper.querySelector('.sd-storyboard-inline-title')?.removeAttribute('hidden');
-      wrapper.querySelector('.sd-storyboard-inline-reel')?.setAttribute('hidden', '');
+    const anchorGroups = new Map();
+    for (const record of group.records) {
+      const index = Number(record.paragraphAnchor?.paragraphIndex ?? record.paragraphSelection?.insertAfterIndex ?? -1);
+      const key = Number.isInteger(index) ? index : -1;
+      if (!anchorGroups.has(key)) anchorGroups.set(key, { records: [], plans: [] });
+      anchorGroups.get(key).records.push(record);
     }
-    applyQianmuIcons(wrapper);
-    const anchor = storyboardInlineAnchorNode(text, records);
-    // Keep the frame outside .mes_text. Paragraph anchoring is metadata-driven; placing
-    // controls inside rendered message text would expose them to TTS and third-party regex scanners.
-    text.insertAdjacentElement('afterend', wrapper);
-    wrapper.dataset.storyboardParagraphIndex = String(records.find((record) => record.paragraphAnchor)?.paragraphAnchor?.paragraphIndex ?? '');
-    wrapper.dataset.storyboardAnchorFallback = String(anchor.fallback);
+    for (const plan of group.plans) {
+      const index = Number(plan.paragraphSelection?.insertAfterIndex ?? plan.shots?.[0]?.paragraphAnchor?.paragraphIndex ?? -1);
+      const key = Number.isInteger(index) ? index : -1;
+      if (!anchorGroups.has(key)) anchorGroups.set(key, { records: [], plans: [] });
+      anchorGroups.get(key).plans.push(plan);
+    }
+    for (const [paragraphIndex, items] of [...anchorGroups.entries()].sort((a, b) => a[0] - b[0])) {
+      const wrapper = document.createElement('div');
+      wrapper.className = `sd-storyboard-inline ${items.records.length ? 'is-completed' : 'is-pending'}`;
+      wrapper.dataset.qianmuTransient = 'storyboard';
+      wrapper.dataset.storyboardFloor = String(floor);
+      wrapper.dataset.storyboardParagraphIndex = String(paragraphIndex);
+      if (items.records.length > 1) wrapper.classList.add('sd-storyboard-filmstrip');
+      wrapper.innerHTML = `${items.records.length ? `<button type="button" class="sd-storyboard-inline-title" data-storyboard-chat-action="expand" title="展开正文插图" hidden><span class="sd-storyboard-inline-mark">${STORYBOARD_INLINE_MARK}</span><span class="sd-storyboard-inline-rule"></span><b>刻瞬于光</b><small>${items.records.length > 1 ? `${items.records.length} 幅画面` : '画面已折叠'}</small></button><div class="sd-storyboard-inline-reel">${items.records.map(storyboardInlineRecordMarkup).join('')}</div>` : ''}${items.plans.map(storyboardInlinePlaceholderMarkup).join('')}`;
+      if (items.records.length && storyboardCollapsedInlineFloors.has(floor)) {
+        wrapper.classList.add('is-collapsed');
+        wrapper.querySelector('.sd-storyboard-inline-title')?.removeAttribute('hidden');
+        wrapper.querySelector('.sd-storyboard-inline-reel')?.setAttribute('hidden', '');
+      }
+      applyQianmuIcons(wrapper);
+      const anchorRecords = items.records.length ? items.records : [{ paragraphAnchor: group.plans.find((plan) => plan.paragraphSelection?.insertAfterIndex === paragraphIndex)?.shots?.[0]?.paragraphAnchor }];
+      const anchor = storyboardInlineAnchorNode(text, anchorRecords);
+      if (!anchor.fallback && anchor.node !== text) anchor.node.insertAdjacentElement('afterend', wrapper);
+      else text.insertAdjacentElement('afterend', wrapper);
+      wrapper.dataset.storyboardAnchorFallback = String(anchor.fallback);
+      if (anchor.fallback && items.records.some((record) => !record.paragraphAnchorFallback)) {
+        items.records.forEach((record) => { record.paragraphAnchorFallback = true; });
+        storyboardScheduleLinkSave();
+      }
+    }
   }
 }
 
@@ -13134,21 +13308,42 @@ async function storyboardChooseCaptureMode(floor, message, { reextract = false }
   if (context.Popup && context.POPUP_TYPE) {
     const wrap = document.createElement('div');
     wrap.className = 'sd-storyboard-capture-dialog';
-    wrap.innerHTML = `<div class="sd-storyboard-capture-dialog-head"><b>${reextract ? '重新提取生成词' : '提取生成词'}</b><small>只整理提示词，不会自动生图</small></div><div class="sd-storyboard-capture-choices"><label class="sd-option-chip"><input type="radio" name="storyboard-capture-mode" value="auto" checked><span>智能选取画面</span></label><label class="sd-option-chip"><input type="radio" name="storyboard-capture-mode" value="manual" ${paragraphs.length ? '' : 'disabled'}><span>指定正文段落</span></label></div><label class="sd-storyboard-capture-paragraph" hidden><span>目标段落</span><select class="text_pole">${paragraphs.map((item, index) => `<option value="${index}">${index + 1}. ${htmlEscape(snip(item, 92))}</option>`).join('')}</select></label>`;
-    const paragraph = wrap.querySelector('.sd-storyboard-capture-paragraph');
-    wrap.querySelectorAll('input[name="storyboard-capture-mode"]').forEach((input) => input.addEventListener('change', () => { paragraph.hidden = wrap.querySelector('input[name="storyboard-capture-mode"]:checked')?.value !== 'manual'; }));
+    wrap.innerHTML = `<div class="sd-storyboard-capture-dialog-head"><b>${reextract ? '重新提取生成词' : '提取生成词'}</b><small>智能提取只更新生成词；手动补图会在选中范围末尾直接生成一幅新画面。</small></div><div class="sd-storyboard-capture-choices"><label class="sd-option-chip"><input type="radio" name="storyboard-capture-mode" value="auto" checked><span>智能提取</span></label><label class="sd-option-chip"><input type="radio" name="storyboard-capture-mode" value="manual_supplement" ${paragraphs.length ? '' : 'disabled'}><span>手动选段补图</span></label></div><section class="sd-storyboard-capture-paragraphs" hidden><header><span>点选一个或多个段落</span><b>已选 <em>0</em> 段</b></header><div class="sd-storyboard-capture-paragraph-list sd-scroll">${paragraphs.map((item, index) => `<label class="sd-storyboard-capture-paragraph-row"><input type="checkbox" value="${index}"><span><b>${index + 1}</b><span>${htmlEscape(item)}</span></span></label>`).join('')}</div></section>`;
+    const paragraphPanel = wrap.querySelector('.sd-storyboard-capture-paragraphs');
+    const count = paragraphPanel.querySelector('header em');
+    const rows = [...wrap.querySelectorAll('.sd-storyboard-capture-paragraph-row input')];
+    let lastIndex = -1;
+    const refresh = () => {
+      const selected = rows.filter((input) => input.checked);
+      count.textContent = String(selected.length);
+      rows.forEach((input) => input.closest('label')?.classList.toggle('selected', input.checked));
+    };
+    rows.forEach((input, index) => input.addEventListener('click', (event) => {
+      if (event.shiftKey && lastIndex >= 0) {
+        const checked = input.checked;
+        for (let cursor = Math.min(lastIndex, index); cursor <= Math.max(lastIndex, index); cursor++) rows[cursor].checked = checked;
+      }
+      lastIndex = index; refresh();
+    }));
+    wrap.querySelectorAll('input[name="storyboard-capture-mode"]').forEach((input) => input.addEventListener('change', () => {
+      paragraphPanel.hidden = wrap.querySelector('input[name="storyboard-capture-mode"]:checked')?.value !== 'manual_supplement';
+    }));
     try {
-      const popup = new context.Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '提取提示词', cancelButton: '取消' });
+      const popup = new context.Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '继续', cancelButton: '取消' });
       const ok = await popup.show();
       if (!ok) return null;
-      const mode = wrap.querySelector('input[name="storyboard-capture-mode"]:checked')?.value === 'manual' ? 'manual' : 'auto';
-      return { mode, paragraphIndex: mode === 'manual' ? Math.max(0, Number(paragraph.querySelector('select')?.value) || 0) : null };
+      const mode = wrap.querySelector('input[name="storyboard-capture-mode"]:checked')?.value === 'manual_supplement' ? 'manual_supplement' : 'auto';
+      const indexes = rows.filter((input) => input.checked).map((input) => Number(input.value)).sort((a, b) => a - b);
+      if (mode === 'manual_supplement' && !indexes.length) { toast('请至少选择一个正文段落。', 'warning'); return null; }
+      return { mode, paragraphIndex: mode === 'manual_supplement' ? indexes.at(-1) : null, selection: mode === 'manual_supplement' ? normalizeStoryboardParagraphSelection({ mode, indexes, createdAt: Date.now() }) : null };
     } catch (_) { return null; }
   }
-  const mode = String(await promptInput(reextract ? '重新提取生成词' : '提取生成词', '输入 auto 智能选取，或输入段落序号。', 'auto') ?? '').trim();
+  const mode = String(await promptInput(reextract ? '重新提取生成词' : '提取生成词', '输入 auto 智能提取，或用逗号分隔要补图的段落序号。', 'auto') ?? '').trim();
   if (!mode) return null;
-  const paragraphIndex = Number(mode);
-  return Number.isInteger(paragraphIndex) ? { mode: 'manual', paragraphIndex: Math.max(0, Math.min(paragraphs.length - 1, paragraphIndex - 1)) } : { mode: 'auto', paragraphIndex: null };
+  if (mode.toLowerCase() === 'auto') return { mode: 'auto', paragraphIndex: null, selection: null };
+  const indexes = [...new Set(mode.split(/[,，\s]+/).map((item) => Number(item) - 1).filter((item) => Number.isInteger(item) && item >= 0 && item < paragraphs.length))].sort((a, b) => a - b);
+  if (!indexes.length) return toast('没有识别到有效段落序号。', 'warning');
+  return { mode: 'manual_supplement', paragraphIndex: indexes.at(-1), selection: normalizeStoryboardParagraphSelection({ mode: 'manual_supplement', indexes, createdAt: Date.now() }) };
 }
 
 async function storyboardEditPrompt({ plan = null, record = null } = {}) {
@@ -13215,6 +13410,40 @@ async function storyboardEditPrompt({ plan = null, record = null } = {}) {
   return generate ? storyboardGenerate(null, { plan, automatic: false }) : true;
 }
 
+function storyboardCancelPlan(plan) {
+  if (!plan) return;
+  for (let index = storyboardQueue.length - 1; index >= 0; index--) {
+    if (storyboardQueue[index]?.planId !== plan.id) continue;
+    const [job] = storyboardQueue.splice(index, 1);
+    const log = storyboardState().logs.find((item) => item.id === job.logId);
+    storyboardFinishLog(log, 'cancelled', { error: '用户取消补图' });
+  }
+  for (const job of storyboardActiveJobs.values()) if (job.planId === plan.id) job.discardRequested = true;
+  plan.status = 'cancelled';
+  for (const shot of plan.shots || []) if (!['completed', 'failed'].includes(shot.status)) shot.status = 'cancelled';
+  plan.updatedAt = Date.now();
+  saveSettings(); storyboardScheduleInlineRender(20); renderModal();
+}
+
+async function storyboardRetryPlan(plan) {
+  const state = storyboardState();
+  const floor = Number(plan?.floor);
+  const message = Number.isInteger(floor) ? ctx().chat?.[floor] : null;
+  if (!plan || plan.origin !== 'manual_supplement' || !message) return toast('原正文位置已不存在，无法原位重试。', 'warning');
+  state.target = 'floor'; state.floor = String(floor); state.paragraphMode = 'manual';
+  state.pendingParagraphSelection = clone(plan.paragraphSelection);
+  state.manualParagraphIndex = plan.paragraphSelection?.insertAfterIndex ?? null;
+  state.prompt = ''; state.negative = ''; state.promptMode = 'auto';
+  state.promptDraft.compiled = ''; state.promptDraft.negative = ''; state.promptDraft.shots = [];
+  plan.status = 'screening'; plan.updatedAt = Date.now();
+  saveSettings(); storyboardScheduleInlineRender(20);
+  const compiled = await storyboardCompilePrompt(null, { plan, quiet: false });
+  if (!compiled) return false;
+  const generated = await storyboardGenerate(null, { plan, automatic: false });
+  if (generated) { state.pendingParagraphSelection = null; saveSettings(); }
+  return generated;
+}
+
 async function storyboardOnChatClick(event) {
   const button = event.target.closest?.('[data-storyboard-chat-action]');
   if (!button || !button.closest('#chat')) {
@@ -13232,21 +13461,30 @@ async function storyboardOnChatClick(event) {
     const chatMessage = Number.isInteger(floor) ? ctx().chat?.[floor] : null;
     if (!chatMessage || chatMessage.is_system) return toast('这一层当前不可用于分镜。', 'warning');
     const state = storyboardState();
-    const plan = storyboardEnsurePlan(state, floor, chatMessage, { origin: 'manual', autoGenerate: false });
-    if (['screening', 'compiling', 'queued', 'generating'].includes(plan.status)) return toast('这一层的分镜任务正在进行。', 'info');
-    const reextract = plan.status === 'prompt_ready' || plan.shots?.some((shot) => String(shot.prompt || '').trim());
+    const existingPlan = storyboardPlanForMessage(state, floor, chatMessage);
+    if (['screening', 'compiling', 'queued', 'generating'].includes(existingPlan?.status)) return toast('这一层的分镜任务正在进行。', 'info');
+    const reextract = existingPlan?.status === 'prompt_ready' || existingPlan?.shots?.some((shot) => String(shot.prompt || '').trim());
     const choice = await storyboardChooseCaptureMode(floor, chatMessage, { reextract });
     if (!choice) return;
-    state.target = 'floor'; state.floor = String(floor); state.paragraphMode = choice.mode; state.manualParagraphIndex = choice.paragraphIndex;
+    const manualSupplement = choice.mode === 'manual_supplement';
+    const plan = storyboardEnsurePlan(state, floor, chatMessage, {
+      origin: manualSupplement ? 'manual_supplement' : 'manual', autoGenerate: false,
+      forceNew: manualSupplement, paragraphSelection: choice.selection,
+    });
+    state.target = 'floor'; state.floor = String(floor); state.paragraphMode = manualSupplement ? 'manual' : 'auto'; state.manualParagraphIndex = choice.paragraphIndex;
+    state.pendingParagraphSelection = choice.selection;
     state.promptCompiler.enabled = true;
     state.promptMode = 'auto'; state.prompt = ''; state.negative = '';
     state.promptDraft.compiled = ''; state.promptDraft.negative = '';
     state.promptDraft.shots = []; state.promptDraft.userEditedCompiled = false; state.promptDraft.userEditedNegative = false;
     state.promptDraft.artistPositiveBaked = false; state.promptDraft.artistNegativeBaked = false;
-    plan.origin = 'manual'; plan.autoGenerate = false; plan.status = 'screening'; plan.updatedAt = Date.now();
+    plan.origin = manualSupplement ? 'manual_supplement' : 'manual'; plan.paragraphSelection = clone(choice.selection); plan.autoGenerate = false; plan.status = 'screening'; plan.updatedAt = Date.now();
     saveSettings(); storyboardScheduleInlineRender(20);
     const compiled = await storyboardCompilePrompt(null, { plan, quiet: false });
-    if (compiled) await storyboardEditPrompt({ plan });
+    if (compiled && manualSupplement) {
+      const generated = await storyboardGenerate(null, { plan, automatic: false });
+      if (generated) { state.pendingParagraphSelection = null; saveSettings(); }
+    }
     return;
   }
   if (button.dataset.storyboardChatAction === 'expand') {
@@ -13257,6 +13495,12 @@ async function storyboardOnChatClick(event) {
     wrapper.querySelector('.sd-storyboard-inline-title')?.setAttribute('hidden', '');
     wrapper.querySelector('.sd-storyboard-inline-reel')?.removeAttribute('hidden');
     return;
+  }
+  if (button.dataset.storyboardChatAction === 'cancel-plan' || button.dataset.storyboardChatAction === 'retry-plan') {
+    const planId = button.closest('[data-storyboard-plan]')?.dataset.storyboardPlan;
+    const plan = storyboardState().shotPlans.find((item) => item.id === planId);
+    if (button.dataset.storyboardChatAction === 'cancel-plan') return storyboardCancelPlan(plan);
+    return storyboardRetryPlan(plan);
   }
   const id = button.closest('[data-storyboard-record]')?.dataset.storyboardRecord;
   const record = storyboardGalleryRecords().find((item) => item.id === id);
@@ -13530,6 +13774,11 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-open-prompt-library')?.addEventListener('click', () => {
     storyboardCaptureWorkbench(root);
     storyboardNavigate(root, { view: 'presets', editingPromptItemId: '', promptItemDraft: null });
+  });
+  root.querySelector('.sd-storyboard-open-composition')?.addEventListener('click', (event) => {
+    event.preventDefault(); event.stopPropagation();
+    storyboardNavigate(root, { view: 'create', editingPromptItemId: '', promptItemDraft: null });
+    setTimeout(() => document.querySelector('.sd-storyboard-composition-card')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60);
   });
   root.querySelector('.sd-storyboard-open-artist-library')?.addEventListener('click', () => {
     storyboardCaptureWorkbench(root);
@@ -13900,7 +14149,7 @@ function bindStoryboardTabEvents(root) {
   }
   root.querySelector('.sd-storyboard-export-presets')?.addEventListener('click', () => {
     const selected = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId);
-    const payload = { type: 'qianmu-storyboard-presets', version: 1, presets: clone(selected ? [selected] : state.promptPresets) };
+    const payload = { type: 'qianmu-storyboard-presets', version: 2, presets: clone(selected ? [selected] : state.promptPresets), compositionLaw: { id: STORYBOARD_COMPOSITION_RULE_ID, version: state.compositionPolicy.systemRuleVersion, ruleOverride: state.compositionPolicy.ruleOverride || '' } };
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
     const link = document.createElement('a'); link.href = url; link.download = `qianmu-shot-presets-${fileStamp()}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
@@ -13911,6 +14160,10 @@ function bindStoryboardTabEvents(root) {
       const normalized = normalizeStoryboardState({ promptPresets: incoming }).promptPresets;
       if (!normalized.length) throw new Error('没有可导入的取景预设');
       state.promptPresets = storyboardMergeById(state.promptPresets, normalized, 200); state.promptCompiler.instructionPresetId = normalized[0].id; state.editingPromptPresetId = normalized[0].id;
+      if (data?.compositionLaw?.id === STORYBOARD_COMPOSITION_RULE_ID) {
+        state.compositionPolicy.ruleOverride = String(data.compositionLaw.ruleOverride || '').trim().slice(0, 12000);
+        state.compositionPolicy.userEdited = Boolean(state.compositionPolicy.ruleOverride);
+      }
       saveSettings(); toast(`已导入 ${normalized.length} 个取景预设。`, 'success'); renderModal();
     } catch (error) { toast(`导入失败：${error?.message || error}`, 'error'); }
     finally { event.target.value = ''; }
@@ -13969,6 +14222,17 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-target')?.addEventListener('change', (event) => {
     storyboardCaptureWorkbench(root);
     state.target = event.target.value;
+    saveSettings(); renderModal();
+  });
+  root.querySelectorAll('input[name="sd-storyboard-composition-mode"]').forEach((field) => field.addEventListener('change', () => {
+    storyboardCaptureWorkbench(root); saveSettings(); renderModal();
+  }));
+  root.querySelectorAll('.sd-storyboard-composition-fixed, .sd-storyboard-composition-preferred, .sd-storyboard-composition-strategy, .sd-storyboard-composition-allowed').forEach((field) => field.addEventListener('change', () => {
+    storyboardCaptureWorkbench(root); saveSettings(); renderModal();
+  }));
+  root.querySelector('.sd-storyboard-composition-override')?.addEventListener('change', () => { storyboardCaptureWorkbench(root); saveSettings(); });
+  root.querySelector('.sd-storyboard-restore-composition')?.addEventListener('click', () => {
+    state.compositionPolicy = restoreStoryboardCompositionPolicy(state.compositionPolicy);
     saveSettings(); renderModal();
   });
   root.querySelector('.sd-storyboard-ratio')?.addEventListener('change', (event) => {

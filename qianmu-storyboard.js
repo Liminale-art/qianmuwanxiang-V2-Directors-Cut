@@ -1,5 +1,5 @@
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
-export const STORYBOARD_SCHEMA_VERSION = 11;
+export const STORYBOARD_SCHEMA_VERSION = 12;
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -129,6 +129,21 @@ export const STORYBOARD_PROMPT_MODES = Object.freeze({
 export const STORYBOARD_ENTITY_TYPES = Object.freeze(['char', 'user', 'cast']);
 export const STORYBOARD_TAG_CATEGORIES = Object.freeze(['identity', 'appearance', 'wardrobe', 'state', 'action', 'expression', 'composition', 'camera', 'environment', 'props', 'lighting', 'color', 'style', 'quality', 'negative', 'custom']);
 export const STORYBOARD_STATE_PRECEDENCE = Object.freeze(['explicit', 'targetParagraph', 'scene', 'timeline', 'archive', 'worldInfo', 'global']);
+export const STORYBOARD_PLAN_SCHEMA = 'qianmu.storyboard.plan.v1';
+export const STORYBOARD_COMPOSITION_RULE_ID = 'qianmu:composition-law';
+export const STORYBOARD_COMPOSITION_RULE_VERSION = 1;
+export const STORYBOARD_COMPOSITION_MODES = Object.freeze(['smart', 'fixed']);
+export const STORYBOARD_GROUP_FRAME_STRATEGIES = Object.freeze(['single', 'main_secondary', 'montage']);
+export const STORYBOARD_NARRATIVE_LAYERS = Object.freeze(['present', 'memory', 'fantasy', 'dream', 'imagined']);
+export const STORYBOARD_SHOT_ROLES = Object.freeze(['establishing', 'relationship', 'action', 'reaction', 'detail', 'turn']);
+export const STORYBOARD_SHOT_SCALES = Object.freeze([
+  'extreme_close_up', 'close_up', 'medium_close_up', 'medium_shot', 'medium_full',
+  'full_shot', 'wide_shot', 'extreme_wide_shot', 'insert',
+]);
+export const STORYBOARD_SPATIAL_REGIONS = Object.freeze([
+  'far_left', 'left', 'center_left', 'center', 'center_right', 'right', 'far_right', 'background',
+]);
+export const STORYBOARD_CROPS = Object.freeze(['full', 'knees', 'waist', 'chest', 'shoulders', 'face', 'detail']);
 
 export const getStoryboardProvider = (id) => STORYBOARD_PROVIDER_REGISTRY[id] || null;
 export const getStoryboardModel = (providerId, modelId) => (STORYBOARD_MODEL_REGISTRY[providerId] || []).find((item) => item.id === modelId) || null;
@@ -137,8 +152,20 @@ export const getStoryboardCapabilities = (providerId, modelId = '') => getStoryb
 const legacyProfile = () => ({ loaded: false, model: '', sampler: '', scheduler: '', width: '', height: '', ratio: '1:1', count: '', steps: '', cfg: '', seed: '', comfyUrl: '', comfyWorkflow: '', comfyWorkflowNotice: '', openaiStyle: '', openaiQuality: '', openaiBackground: '', openaiOutputFormat: '', imageSize: '', watermark: false, seedreamGuidanceScale: '', seedreamSequential: false, googleEnhance: false, novelCfgRescale: '', novelSm: false, novelSmDyn: false, novelDecrisper: false, novelVarietyBoost: false });
 const promptDraft = () => ({ compiled: '', negative: '', artistString: '', compiledAt: 0, compiledBy: '', userEditedCompiled: false, userEditedNegative: false, artistPositiveBaked: false, artistNegativeBaked: false, sourceSummary: [] });
 const connection = (id) => ({ providerId: id, activePresetId: '', presets: [], draft: { baseUrl: getStoryboardProvider(id).defaultBaseUrl, model: getStoryboardProvider(id).defaultModel } });
-const routingDefaults = () => ({ enabled: false, mode: 'single', templateId: 'smart', single: { providerId: 'novel', modelId: 'nai-diffusion-5-full', connectionPresetId: '', parameterPresetId: '' }, rules: [], maxShotsPerFloor: 3, confirmMultipleRequests: true, providerConcurrency: 1 });
+const routingDefaults = () => ({ enabled: false, mode: 'single', templateId: 'smart', frameStrategy: 'main_secondary', single: { providerId: 'novel', modelId: 'nai-diffusion-5-full', connectionPresetId: '', parameterPresetId: '' }, rules: [], maxShotsPerFloor: 3, confirmMultipleRequests: true, providerConcurrency: 1 });
 const automationDefaults = () => ({ autoCapture: true, autoGenerate: true });
+const compositionDefaults = () => ({
+  schemaVersion: 1,
+  systemRuleId: STORYBOARD_COMPOSITION_RULE_ID,
+  systemRuleVersion: STORYBOARD_COMPOSITION_RULE_VERSION,
+  mode: 'smart',
+  fixedRatioId: '3:2',
+  allowedRatioIds: STORYBOARD_RATIOS.map((item) => item.id),
+  preferredRatioId: '3:2',
+  groupStrategy: 'main_secondary',
+  ruleOverride: '',
+  userEdited: false,
+});
 const compilerTagRuleDefaults = () => ['think', 'thinking']
   .map((name) => ({ name, action: 'remove' }));
 
@@ -146,13 +173,13 @@ export function createStoryboardDefaults() {
   const ids = Object.keys(STORYBOARD_PROVIDER_REGISTRY);
   return {
     schemaVersion: STORYBOARD_SCHEMA_VERSION, enabled: false, automation: automationDefaults(), view: 'create', workspaceView: 'workbench', assetView: 'tags', assetSearch: '', logFilter: 'all', gallerySearch: '', gallerySource: 'all', source: 'novel', initialized: false,
-    target: 'latest', floor: '', inlineByDefault: true, promptMode: 'manual', prompt: '', negative: '', contentRating: 'sfw', paragraphMode: 'auto', manualParagraphIndex: null, promptDraft: promptDraft(),
+    target: 'latest', floor: '', inlineByDefault: true, promptMode: 'manual', prompt: '', negative: '', contentRating: 'sfw', paragraphMode: 'auto', manualParagraphIndex: null, pendingParagraphSelection: null, promptDraft: promptDraft(),
     promptCompiler: { enabled: true, apiProfileId: '', connectionPresetId: '', instructionPresetId: '', instruction: '', includeCurrentFloor: true, includeRecentFloors: 2, includeCharacterCards: true, includeUserPersona: true, includeActivatedWorldInfo: true, worldMode: 'selected', worldBookNames: [], worldBookView: '', worldBookInitializedNames: [], worldEntryIds: [], tagRules: compilerTagRuleDefaults(), excludedTags: 'think, thinking' },
     profiles: Object.fromEntries(ids.map((id) => [id, legacyProfile()])), modelProfiles: Object.fromEntries(ids.map((id) => [id, {}])), parameterPresets: [], parameterPresetSelection: Object.fromEntries(ids.map((id) => [id, ''])),
     connections: Object.fromEntries(ids.map((id) => [id, connection(id)])),
     promptPresets: [], editingPromptPresetId: '', editingPromptItemId: '', promptItemDraft: null,
     artistPresets: [], artistCollections: [], artistCollectionId: '', selectedArtistPresetId: '', artistSearch: '', editingArtistPresetId: '',
-    tagLibrary: [], vibeLibrary: [], selectedVibeIds: [], routing: routingDefaults(), shotPlans: [], collapsedCards: { model: true, context: true, prompt: true, params: true, 'routing-rules': true }, logs: [], pipelineLogs: [],
+    tagLibrary: [], vibeLibrary: [], selectedVibeIds: [], compositionPolicy: compositionDefaults(), routing: routingDefaults(), shotPlans: [], collapsedCards: { model: true, context: true, prompt: true, params: true, composition: true, 'routing-rules': true }, logs: [], pipelineLogs: [],
   };
 }
 
@@ -301,6 +328,12 @@ export function migrateStoryboardState(value) {
         : (preset?.collectionId ? [preset.collectionId] : []),
     }));
   }
+  if (fromVersion < 12) {
+    s.compositionPolicy ||= compositionDefaults();
+    s.routing ||= routingDefaults();
+    s.routing.frameStrategy ||= s.compositionPolicy.groupStrategy || 'main_secondary';
+    s.pendingParagraphSelection ||= null;
+  }
   s.schemaVersion = STORYBOARD_SCHEMA_VERSION;
   return s;
 }
@@ -309,7 +342,7 @@ export function normalizeStoryboardState(value) {
   const migrated = migrateStoryboardState(value), defaults = createStoryboardDefaults(), state = obj(value) ? value : {};
   Object.assign(state, migrated); for (const [key, val] of Object.entries(defaults)) if (state[key] === undefined) state[key] = clone(val);
   state.schemaVersion = STORYBOARD_SCHEMA_VERSION; state.enabled = Boolean(state.enabled); state.automation = normalizeStoryboardAutomation(state.automation); state.view = ['create', 'assets', 'artists', 'presets', 'gallery', 'logs'].includes(state.view) ? state.view : 'create'; state.workspaceView = ['workbench', 'assets', 'artists', 'presets', 'gallery', 'logs'].includes(state.workspaceView) ? state.workspaceView : 'workbench'; state.logFilter = ['all', 'success', 'failed'].includes(state.logFilter) ? state.logFilter : 'all';
-  state.assetView = ['tags', 'vibes', 'routing'].includes(state.assetView) ? state.assetView : 'tags'; state.assetSearch = str(state.assetSearch, 120); state.artistSearch = str(state.artistSearch, 120); state.editingArtistPresetId = state.editingArtistPresetId === 'new' ? 'new' : cleanId(state.editingArtistPresetId); state.editingPromptPresetId = cleanId(state.editingPromptPresetId); state.editingPromptItemId = state.editingPromptItemId === 'new' ? 'new' : cleanId(state.editingPromptItemId); state.promptItemDraft = obj(state.promptItemDraft) ? { name: str(state.promptItemDraft.name, 80), instruction: str(state.promptItemDraft.instruction, 12000) } : null; state.artistCollectionId = cleanId(state.artistCollectionId); state.gallerySearch = str(state.gallerySearch, 120); state.gallerySource = state.gallerySource === 'all' || getStoryboardProvider(state.gallerySource) ? state.gallerySource : 'all'; state.source = getStoryboardProvider(state.source) ? state.source : 'novel'; state.target = ['latest', 'floor', 'gallery'].includes(state.target) ? state.target : 'latest'; state.inlineByDefault = state.inlineByDefault !== false; state.promptMode = STORYBOARD_PROMPT_MODES[state.promptMode] ? state.promptMode : 'manual'; state.prompt = str(state.prompt, 24000); state.negative = str(state.negative, 12000); state.contentRating = state.contentRating === 'nsfw' ? 'nsfw' : 'sfw'; state.paragraphMode = state.paragraphMode === 'manual' ? 'manual' : 'auto'; state.manualParagraphIndex = Number.isInteger(Number(state.manualParagraphIndex)) && Number(state.manualParagraphIndex) >= 0 ? Number(state.manualParagraphIndex) : null;
+  state.assetView = ['tags', 'vibes', 'routing'].includes(state.assetView) ? state.assetView : 'tags'; state.assetSearch = str(state.assetSearch, 120); state.artistSearch = str(state.artistSearch, 120); state.editingArtistPresetId = state.editingArtistPresetId === 'new' ? 'new' : cleanId(state.editingArtistPresetId); state.editingPromptPresetId = cleanId(state.editingPromptPresetId); state.editingPromptItemId = state.editingPromptItemId === 'new' ? 'new' : cleanId(state.editingPromptItemId); state.promptItemDraft = obj(state.promptItemDraft) ? { name: str(state.promptItemDraft.name, 80), instruction: str(state.promptItemDraft.instruction, 12000) } : null; state.artistCollectionId = cleanId(state.artistCollectionId); state.gallerySearch = str(state.gallerySearch, 120); state.gallerySource = state.gallerySource === 'all' || getStoryboardProvider(state.gallerySource) ? state.gallerySource : 'all'; state.source = getStoryboardProvider(state.source) ? state.source : 'novel'; state.target = ['latest', 'floor', 'gallery'].includes(state.target) ? state.target : 'latest'; state.inlineByDefault = state.inlineByDefault !== false; state.promptMode = STORYBOARD_PROMPT_MODES[state.promptMode] ? state.promptMode : 'manual'; state.prompt = str(state.prompt, 24000); state.negative = str(state.negative, 12000); state.contentRating = state.contentRating === 'nsfw' ? 'nsfw' : 'sfw'; state.paragraphMode = state.paragraphMode === 'manual' ? 'manual' : 'auto'; state.manualParagraphIndex = Number.isInteger(Number(state.manualParagraphIndex)) && Number(state.manualParagraphIndex) >= 0 ? Number(state.manualParagraphIndex) : null; state.pendingParagraphSelection = state.pendingParagraphSelection ? normalizeStoryboardParagraphSelection(state.pendingParagraphSelection) : null;
   const d = obj(state.promptDraft) ? state.promptDraft : {}, safeDraft = safeData(d, 5);
   if (obj(safeDraft)) { delete safeDraft.manual; delete safeDraft.autoInstruction; }
   state.promptDraft = { ...(obj(safeDraft) ? safeDraft : {}), compiled: str(d.compiled ?? state.prompt, 24000), negative: str(d.negative ?? state.negative, 12000), artistString: str(d.artistString, 6000), compiledAt: pos(d.compiledAt), compiledBy: str(d.compiledBy, 160), userEditedCompiled: Boolean(d.userEditedCompiled), userEditedNegative: Boolean(d.userEditedNegative), artistPositiveBaked: Boolean(d.artistPositiveBaked), artistNegativeBaked: Boolean(d.artistNegativeBaked), sourceSummary: Array.isArray(d.sourceSummary) ? d.sourceSummary.slice(0, 40).map((x) => str(x, 240)).filter(Boolean) : [] };
@@ -330,7 +363,7 @@ export function normalizeStoryboardState(value) {
   const knownVibeIds = new Set(state.vibeLibrary.map((vibe) => vibe.id)); state.selectedVibeIds = ids(state.selectedVibeIds, 16).filter((id) => knownVibeIds.has(id));
   if (!state.promptPresets.some((preset) => preset.id === state.promptCompiler.instructionPresetId)) state.promptCompiler.instructionPresetId = '';
   if (!state.promptPresets.some((preset) => preset.id === state.editingPromptPresetId)) { state.editingPromptPresetId = ''; state.editingPromptItemId = ''; state.promptItemDraft = null; }
-  state.routing = normalizeRouting(state.routing, { connections: state.connections, parameterPresets: state.parameterPresets }); state.shotPlans = shotPlans(state.shotPlans, state); state.collapsedCards = Object.fromEntries(Object.entries(obj(state.collapsedCards) ? state.collapsedCards : {}).slice(0, 200).map(([k, v]) => [str(k, 120), Boolean(v)]).filter(([k]) => k)); state.logs = legacyLogs(state.logs); state.pipelineLogs = pipelineLogs(state.pipelineLogs);
+  state.compositionPolicy = normalizeStoryboardCompositionPolicy(state.compositionPolicy); state.routing = normalizeRouting(state.routing, { connections: state.connections, parameterPresets: state.parameterPresets }); state.shotPlans = shotPlans(state.shotPlans, state); state.collapsedCards = Object.fromEntries(Object.entries(obj(state.collapsedCards) ? state.collapsedCards : {}).slice(0, 200).map(([k, v]) => [str(k, 120), Boolean(v)]).filter(([k]) => k)); state.logs = legacyLogs(state.logs); state.pipelineLogs = pipelineLogs(state.pipelineLogs);
   const visiblePipelineIds = new Set(state.logs.map((log) => log.pipelineId).filter(Boolean));
   // v1/v2 日志没有 pipelineId；旧数据先按相同上限保留，只有新契约完整时才做一一配对裁剪。
   if (visiblePipelineIds.size) state.pipelineLogs = state.pipelineLogs.filter((log) => visiblePipelineIds.has(log.id));
@@ -398,6 +431,255 @@ function vibes(value) {
   return dedupeById(normalized).slice(0, 500);
 }
 
+export function normalizeStoryboardCompositionPolicy(value) {
+  const raw = obj(value) ? value : {}, defaults = compositionDefaults();
+  const allowedRatioIds = ids(raw.allowedRatioIds, STORYBOARD_RATIOS.length).filter((id) => STORYBOARD_RATIOS.some((ratio) => ratio.id === id));
+  const safeAllowed = allowedRatioIds.length ? allowedRatioIds : [...defaults.allowedRatioIds];
+  const fixedRatioId = STORYBOARD_RATIOS.some((ratio) => ratio.id === raw.fixedRatioId) ? raw.fixedRatioId : defaults.fixedRatioId;
+  const preferredRatioId = safeAllowed.includes(raw.preferredRatioId) ? raw.preferredRatioId : (safeAllowed.includes(defaults.preferredRatioId) ? defaults.preferredRatioId : safeAllowed[0]);
+  return {
+    schemaVersion: 1,
+    systemRuleId: STORYBOARD_COMPOSITION_RULE_ID,
+    systemRuleVersion: STORYBOARD_COMPOSITION_RULE_VERSION,
+    mode: STORYBOARD_COMPOSITION_MODES.includes(raw.mode) ? raw.mode : defaults.mode,
+    fixedRatioId,
+    allowedRatioIds: safeAllowed,
+    preferredRatioId,
+    groupStrategy: STORYBOARD_GROUP_FRAME_STRATEGIES.includes(raw.groupStrategy) ? raw.groupStrategy : defaults.groupStrategy,
+    ruleOverride: str(raw.ruleOverride, 12000),
+    userEdited: Boolean(raw.userEdited && str(raw.ruleOverride, 12000)),
+  };
+}
+
+export function restoreStoryboardCompositionPolicy(value = {}) {
+  const current = normalizeStoryboardCompositionPolicy(value);
+  return { ...current, ruleOverride: '', userEdited: false, systemRuleVersion: STORYBOARD_COMPOSITION_RULE_VERSION };
+}
+
+export function normalizeStoryboardParagraphSelection(value) {
+  const raw = obj(value) ? value : {};
+  const indexes = [...new Set((Array.isArray(raw.indexes) ? raw.indexes : []).map((item) => int(item, 0, Number.MAX_SAFE_INTEGER, -1)).filter((item) => item >= 0))].sort((a, b) => a - b).slice(0, 80);
+  const paragraphIds = indexes.map((index) => `p${index + 1}`);
+  return {
+    version: 1,
+    mode: raw.mode === 'manual_supplement' ? 'manual_supplement' : 'automatic',
+    indexes,
+    paragraphIds,
+    insertAfterIndex: indexes.length ? indexes[indexes.length - 1] : int(raw.insertAfterIndex, 0, Number.MAX_SAFE_INTEGER, 0),
+    createdAt: pos(raw.createdAt) || Date.now(),
+  };
+}
+
+const shotStringList = (value, max = 40, length = 500) => uniqueStrings(Array.isArray(value) ? value : (str(value, length) ? [value] : []), max, length);
+const normalizeSpatial = (value, index = 0) => {
+  const raw = obj(value) ? value : {};
+  const fallbackRegion = ['left', 'right', 'center_left', 'center_right', 'center'][index] || 'center';
+  const region = STORYBOARD_SPATIAL_REGIONS.includes(raw.region) ? raw.region : fallbackRegion;
+  const centerMap = { far_left: [0.08, 0.5], left: [0.22, 0.5], center_left: [0.36, 0.5], center: [0.5, 0.5], center_right: [0.64, 0.5], right: [0.78, 0.5], far_right: [0.92, 0.5], background: [0.5, 0.28] };
+  const rawCenter = Array.isArray(raw.center) ? raw.center : centerMap[region];
+  return {
+    order: int(raw.order, 0, 99, index),
+    region,
+    center: [num(rawCenter?.[0], 0.02, 0.98, centerMap[region][0]), num(rawCenter?.[1], 0.02, 0.98, centerMap[region][1])],
+    crop: STORYBOARD_CROPS.includes(raw.crop) ? raw.crop : 'full',
+  };
+};
+
+export function normalizeStoryboardCharacterVisualState(value, index = 0) {
+  const raw = obj(value) ? value : {};
+  const id = cleanId(raw.id || raw.characterId || raw.name || `character-${index + 1}`);
+  return {
+    id,
+    name: str(raw.name || raw.label || id, 120),
+    identity: shotStringList(raw.identity || raw.appearance, 30, 500),
+    outfit: shotStringList(raw.outfit || raw.wardrobe, 20, 500),
+    temporaryState: shotStringList(raw.temporaryState || raw.state, 20, 500),
+    expression: shotStringList(raw.expression, 12, 300),
+    pose: shotStringList(raw.pose, 12, 500),
+    action: shotStringList(raw.action, 12, 500),
+    gaze: shotStringList(raw.gaze, 8, 300),
+    props: shotStringList(raw.props, 20, 300),
+    spatial: normalizeSpatial(raw.spatial, index),
+  };
+}
+
+function normalizePromptAtoms(value) {
+  const raw = obj(value) ? value : {};
+  return {
+    global: shotStringList(raw.global, 40, 800),
+    camera: shotStringList(raw.camera, 20, 500),
+    environment: shotStringList(raw.environment, 40, 800),
+    quality: shotStringList(raw.quality, 20, 500),
+    negative: shotStringList(raw.negative, 40, 500),
+  };
+}
+
+function normalizeContinuity(value) {
+  const raw = obj(value) ? value : {};
+  return {
+    axis: str(raw.axis, 240), leftRight: str(raw.leftRight || raw.left_right, 500), gaze: str(raw.gaze, 500),
+    time: str(raw.time, 240), weather: str(raw.weather, 240), light: str(raw.light, 500), color: str(raw.color, 500),
+    outfit: safeRecord(raw.outfit), injuries: safeRecord(raw.injuries), props: safeRecord(raw.props), actionState: safeRecord(raw.actionState || raw.action_state),
+    mainRatioId: STORYBOARD_RATIOS.some((ratio) => ratio.id === raw.mainRatioId) ? raw.mainRatioId : '',
+    emphasisRatioId: STORYBOARD_RATIOS.some((ratio) => ratio.id === raw.emphasisRatioId) ? raw.emphasisRatioId : '',
+  };
+}
+
+export function normalizeStoryboardShotSpec(value = {}) {
+  const raw = obj(value) ? value : {}, composition = obj(raw.composition) ? raw.composition : {};
+  const characters = (Array.isArray(raw.characters) ? raw.characters : []).filter(obj).slice(0, 12).map(normalizeStoryboardCharacterVisualState).filter((item) => item.id);
+  return {
+    schema: STORYBOARD_PLAN_SCHEMA,
+    id: cleanId(raw.id),
+    sourceParagraphIds: ids(raw.sourceParagraphIds || raw.source_paragraph_ids, 80),
+    insertAfter: cleanId(raw.insertAfter || raw.insert_after),
+    narrativeLayer: STORYBOARD_NARRATIVE_LAYERS.includes(raw.narrativeLayer || raw.narrative_layer) ? (raw.narrativeLayer || raw.narrative_layer) : 'present',
+    narrativePurpose: str(raw.narrativePurpose || raw.narrative_purpose || raw.purpose, 800),
+    shotRole: STORYBOARD_SHOT_ROLES.includes(raw.shotRole || raw.shot_role || raw.role) ? (raw.shotRole || raw.shot_role || raw.role) : 'action',
+    shotScale: STORYBOARD_SHOT_SCALES.includes(raw.shotScale || raw.shot_scale || raw.shotType) ? (raw.shotScale || raw.shot_scale || raw.shotType) : 'medium_shot',
+    subject: str(raw.subject, 1000), scene: str(raw.scene, 4000), characters,
+    sharedRelations: shotStringList(raw.sharedRelations || raw.shared_relations, 30, 800),
+    composition: {
+      ratioId: STORYBOARD_RATIOS.some((ratio) => ratio.id === composition.ratioId || ratio.id === composition.ratio_id) ? (composition.ratioId || composition.ratio_id) : '',
+      ratioLocked: Boolean(composition.ratioLocked || composition.ratio_locked),
+      framing: shotStringList(composition.framing, 20, 500),
+      negativeSpace: str(composition.negativeSpace || composition.negative_space, 500),
+      rationale: str(composition.rationale, 1000),
+    },
+    promptAtoms: normalizePromptAtoms(raw.promptAtoms || raw.prompt_atoms),
+    sensitive: Boolean(raw.sensitive), safetyNotes: shotStringList(raw.safetyNotes || raw.safety_notes, 20, 500),
+    continuityUpdates: normalizeContinuity(raw.continuityUpdates || raw.continuity_updates),
+    decisions: shotStringList(raw.decisions, 40, 1000),
+  };
+}
+
+export function resolveStoryboardComposition(value = {}) {
+  const policy = normalizeStoryboardCompositionPolicy(value.policy), shot = normalizeStoryboardShotSpec(value.shot);
+  const requested = shot.composition.ratioId;
+  let ratioId = policy.preferredRatioId, source = 'preferred';
+  if (shot.composition.ratioLocked && requested) { ratioId = requested; source = 'manual_locked'; }
+  else if (policy.mode === 'fixed') { ratioId = policy.fixedRatioId; source = 'fixed'; }
+  else if (requested && policy.allowedRatioIds.includes(requested)) { ratioId = requested; source = 'director'; }
+  else if (!policy.allowedRatioIds.includes(ratioId)) { ratioId = policy.allowedRatioIds[0]; source = 'allowed_fallback'; }
+  const dimensions = storyboardProviderRatioDimensions(value.providerId, ratioId, value.width, value.height);
+  return { ratioId, ratioLocked: shot.composition.ratioLocked, source, dimensions, rationale: shot.composition.rationale, policyVersion: policy.systemRuleVersion };
+}
+
+export function storyboardProviderRatioDimensions(providerId, ratioId, currentWidth, currentHeight) {
+  const ratio = STORYBOARD_RATIOS.find((item) => item.id === ratioId);
+  if (!ratio) return { width: numeric(currentWidth), height: numeric(currentHeight), size: '', aspectRatio: '' };
+  if (providerId === 'openai') {
+    const size = ratio.value > 1.08 ? '1536x1024' : ratio.value < 0.92 ? '1024x1536' : '1024x1024';
+    const [width, height] = size.split('x').map(Number);
+    return { width, height, size, aspectRatio: ratioId };
+  }
+  const { width, height } = storyboardRatioDimensions(ratioId, currentWidth, currentHeight);
+  return { width, height, size: '', aspectRatio: ratioId };
+}
+
+const promptPart = (value) => shotStringList(value, 80, 1000).join(', ');
+const characterPrompt = (character) => [character.name, ...character.identity, ...character.outfit, ...character.temporaryState, ...character.expression, ...character.pose, ...character.action, ...character.gaze, ...character.props, character.spatial.region, character.spatial.crop].filter(Boolean).join(', ');
+
+export function validateStoryboardShotSpec(value = {}, options = {}) {
+  const shot = normalizeStoryboardShotSpec(value), errors = [], warnings = [];
+  const centers = new Set(), traitOwners = new Map();
+  for (const character of shot.characters) {
+    const center = character.spatial.center.map((item) => item.toFixed(2)).join(':');
+    if (centers.has(center)) errors.push(`角色 ${character.name || character.id} 与其他角色占用了同一空间中心`);
+    centers.add(center);
+    for (const trait of [...character.identity, ...character.outfit, ...character.props]) {
+      const key = trait.toLowerCase();
+      if (key.length < 3) continue;
+      if (!traitOwners.has(key)) traitOwners.set(key, []);
+      traitOwners.get(key).push(character.name || character.id);
+    }
+  }
+  for (const [trait, owners] of traitOwners) if (new Set(owners).size > 1) warnings.push(`角色专属特征未保持唯一：${trait}（${[...new Set(owners)].join('、')}）`);
+  const publicText = shot.promptAtoms.global.join(' ').toLowerCase();
+  for (const character of shot.characters) {
+    for (const trait of [...character.identity, ...character.outfit, ...character.action, ...character.props]) {
+      if (trait.length >= 3 && publicText.includes(trait.toLowerCase())) warnings.push(`公共层包含角色专属内容：${trait}`);
+    }
+    for (const action of character.action) {
+      const foreignNames = shot.characters.filter((item) => item.id !== character.id && item.name).map((item) => item.name).filter((name) => action.toLowerCase().includes(name.toLowerCase()));
+      if (foreignNames.length && !action.toLowerCase().includes((character.name || character.id).toLowerCase())) warnings.push(`动作主语可能错绑：${character.name || character.id} 的动作提及 ${foreignNames.join('、')}`);
+    }
+  }
+  const capabilities = getStoryboardCapabilities(options.providerId, options.modelId);
+  if (shot.characters.length > 1 && !capabilities.multiCharacter) warnings.push('当前渠道不支持原生角色分区，将使用命名角色块降级编译');
+  return { valid: errors.length === 0, shot, errors: [...new Set(errors)], warnings: [...new Set(warnings)] };
+}
+
+export function compileStoryboardPrompt(input = {}) {
+  const validation = validateStoryboardShotSpec(input.shot, { providerId: input.providerId, modelId: input.modelId });
+  const shot = validation.shot, common = [
+    str(input.artistString, 6000), str(input.artistPositive, 12000), str(input.modelPositive, 12000),
+    promptPart(shot.promptAtoms.global), shot.scene,
+    promptPart(shot.promptAtoms.camera), shot.shotScale, promptPart(shot.composition.framing),
+    shot.composition.ratioId, shot.composition.negativeSpace, promptPart(shot.sharedRelations),
+  ].filter(Boolean).join(', ');
+  const characterBlocks = shot.characters.map(characterPrompt).filter(Boolean);
+  const environment = promptPart(shot.promptAtoms.environment), quality = promptPart(shot.promptAtoms.quality);
+  const capability = getStoryboardCapabilities(input.providerId, input.modelId);
+  const useNativeCharacters = input.providerId === 'novel' && capability.multiCharacter && characterBlocks.length > 0;
+  const prompt = [common, ...(useNativeCharacters ? [] : characterBlocks), environment, quality].filter(Boolean).join(', ');
+  const antiMix = shot.characters.length > 1 ? 'distinct character traits, correct character actions, no mixed identities, no merged bodies' : '';
+  const negative = [str(input.artistNegative, 12000), str(input.modelNegative, 12000), promptPart(shot.promptAtoms.negative), antiMix].filter(Boolean).join(', ');
+  const providerOptions = {};
+  if (useNativeCharacters) {
+    providerOptions.v4_prompt = {
+      caption: {
+        base_caption: [common, environment, quality].filter(Boolean).join(', '),
+        char_captions: shot.characters.map((character) => ({ char_caption: characterPrompt(character), centers: [{ x: character.spatial.center[0], y: character.spatial.center[1] }] })),
+      },
+      use_coords: true,
+      use_order: true,
+    };
+    providerOptions.v4_negative_prompt = { caption: { base_caption: negative, char_captions: [] }, legacy_uc: false };
+  }
+  return {
+    prompt, negative, providerOptions, characterBlocks, validation,
+    degradation: shot.characters.length > 1 && !useNativeCharacters ? { mode: 'named_character_blocks', reason: capability.multiCharacter ? 'provider_adapter_unavailable' : 'capability_unavailable' } : null,
+  };
+}
+
+export function prepareStoryboardShotGroup(value = {}) {
+  const policy = normalizeStoryboardCompositionPolicy(value.policy), manual = Boolean(value.manual);
+  const source = (Array.isArray(value.shots) ? value.shots : []).map(normalizeStoryboardShotSpec);
+  const kept = [], skipped = [], seen = new Set(), limit = int(value.maxShots, 1, 12, 4);
+  let continuityLedger = normalizeContinuity(value.continuityLedger);
+  const alternateRatio = (shot) => {
+    if (continuityLedger.emphasisRatioId && policy.allowedRatioIds.includes(continuityLedger.emphasisRatioId)) return continuityLedger.emphasisRatioId;
+    const portraitPreferred = ['reaction', 'detail'].includes(shot.shotRole);
+    const candidates = policy.allowedRatioIds.filter((id) => id !== policy.preferredRatioId);
+    return candidates.find((id) => portraitPreferred ? STORYBOARD_RATIOS.find((ratio) => ratio.id === id)?.value < 1 : STORYBOARD_RATIOS.find((ratio) => ratio.id === id)?.value > 1) || candidates[0] || policy.preferredRatioId;
+  };
+  const mergeContinuity = (update) => {
+    const next = normalizeContinuity(update);
+    continuityLedger = {
+      ...continuityLedger,
+      ...Object.fromEntries(['axis', 'leftRight', 'gaze', 'time', 'weather', 'light', 'color', 'mainRatioId', 'emphasisRatioId'].map((key) => [key, next[key] || continuityLedger[key]])),
+      outfit: { ...continuityLedger.outfit, ...next.outfit }, injuries: { ...continuityLedger.injuries, ...next.injuries },
+      props: { ...continuityLedger.props, ...next.props }, actionState: { ...continuityLedger.actionState, ...next.actionState },
+    };
+  };
+  for (const shot of source) {
+    const signature = [shot.shotRole, shot.subject.toLowerCase(), shot.narrativePurpose.toLowerCase()].join('|');
+    if (!manual && seen.has(signature)) { skipped.push({ shot, reason: 'duplicate_coverage' }); continue; }
+    if (!manual && kept.length >= limit) { skipped.push({ shot, reason: 'coverage_budget' }); continue; }
+    if (!manual && policy.groupStrategy === 'single' && kept.length) { skipped.push({ shot, reason: 'single_frame_strategy' }); continue; }
+    const order = kept.length;
+    if (!shot.composition.ratioId) {
+      shot.composition.ratioId = policy.groupStrategy === 'main_secondary' && order > 0 ? alternateRatio(shot) : (continuityLedger.mainRatioId || policy.preferredRatioId);
+      shot.composition.rationale ||= order === 0 ? '镜组主画幅' : policy.groupStrategy === 'main_secondary' ? '镜组强调画幅' : '镜组画幅连续性';
+    }
+    if (order === 0 && !continuityLedger.mainRatioId) continuityLedger.mainRatioId = shot.composition.ratioId;
+    if (order > 0 && policy.groupStrategy === 'main_secondary' && !continuityLedger.emphasisRatioId) continuityLedger.emphasisRatioId = shot.composition.ratioId;
+    seen.add(signature); kept.push(shot); mergeContinuity(shot.continuityUpdates);
+  }
+  return { shots: kept, skipped, strategy: policy.groupStrategy, manualOverride: manual, continuityLedger };
+}
+
 function normalizeRouting(value, catalogs = {}) {
   const r = obj(value) ? value : {}, hasConnectionCatalog = obj(catalogs.connections), hasParameterCatalog = Array.isArray(catalogs.parameterPresets);
   const target = (input = {}, fallbackProviderId = 'novel') => {
@@ -415,7 +697,8 @@ function normalizeRouting(value, catalogs = {}) {
   const rules = dedupeById((Array.isArray(r.rules) ? r.rules : []).filter(obj).map((rule) => ({ id: cleanId(rule.id), name: str(rule.name || '未命名分工', 80), shotTypes: uniqueStrings(rule.shotTypes, 30, 60), target: target(rule.target, ''), enabled: rule.enabled !== false, priority: int(rule.priority, -1000, 1000, 0) })).filter((rule) => rule.id && rule.target.providerId)).slice(0, 50).sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
   const enabled = r.enabled === undefined ? r.mode === 'ensemble' : Boolean(r.enabled);
   const templateId = STORYBOARD_SHOT_GROUP_TEMPLATES[r.templateId] ? r.templateId : 'smart';
-  return { enabled, mode: enabled ? 'ensemble' : 'single', templateId, single: target(r.single), rules, maxShotsPerFloor: int(r.maxShotsPerFloor, 1, 4, 3), confirmMultipleRequests: r.confirmMultipleRequests !== false, providerConcurrency: int(r.providerConcurrency, 1, 4, 1) };
+  const frameStrategy = STORYBOARD_GROUP_FRAME_STRATEGIES.includes(r.frameStrategy) ? r.frameStrategy : 'main_secondary';
+  return { enabled, mode: enabled ? 'ensemble' : 'single', templateId, frameStrategy, single: target(r.single), rules, maxShotsPerFloor: int(r.maxShotsPerFloor, 1, 4, 3), confirmMultipleRequests: r.confirmMultipleRequests !== false, providerConcurrency: int(r.providerConcurrency, 1, 4, 1) };
 }
 
 export function normalizeStoryboardAutomation(value) {
@@ -438,10 +721,11 @@ function shotPlans(value, state = {}) {
       const requestedConnection = cleanId(shot.connectionPresetId), requestedParameters = cleanId(shot.parameterPresetId);
       const connectionPresetId = providerId && state.connections?.[providerId]?.presets?.some((preset) => preset.id === requestedConnection) ? requestedConnection : '';
       const parameterPresetId = providerId && state.parameterPresets?.some((preset) => preset.id === requestedParameters && preset.source === providerId) ? requestedParameters : '';
-      return { id: cleanId(shot.id), shotType: str(shot.shotType || 'custom', 60), role: str(shot.role, 60), title: str(shot.title, 120), purpose: str(shot.purpose, 500), prompt: str(shot.prompt, 24000), safePrompt: str(shot.safePrompt, 24000), negative: str(shot.negative, 12000), providerId, connectionPresetId, parameterPresetId, routeRuleId: cleanId(shot.routeRuleId), status: workflowState(shot.status), resultIds: ids(shot.resultIds, 20), error: str(shot.error, 4000), attempt: int(shot.attempt, 0, 20, 0), paragraphAnchor: shot.paragraphAnchor ? normalizeStoryboardParagraphAnchor(shot.paragraphAnchor) : null, sensitive: Boolean(shot.sensitive), safetyAdapted: Boolean(shot.safetyAdapted), userEdited: Boolean(shot.userEdited), promptLocked: Boolean(shot.promptLocked || shot.userEdited) };
+      const shotSpec = normalizeStoryboardShotSpec(shot.shotSpec || shot);
+      return { id: cleanId(shot.id), shotType: str(shot.shotType || shotSpec.shotScale || 'custom', 60), role: str(shot.role || shotSpec.shotRole, 60), title: str(shot.title, 120), purpose: str(shot.purpose || shotSpec.narrativePurpose, 500), prompt: str(shot.prompt, 24000), safePrompt: str(shot.safePrompt, 24000), negative: str(shot.negative, 12000), providerId, connectionPresetId, parameterPresetId, routeRuleId: cleanId(shot.routeRuleId), status: workflowState(shot.status), resultIds: ids(shot.resultIds, 20), error: str(shot.error, 4000), attempt: int(shot.attempt, 0, 20, 0), paragraphAnchor: shot.paragraphAnchor ? normalizeStoryboardParagraphAnchor(shot.paragraphAnchor) : null, paragraphSelection: shot.paragraphSelection ? normalizeStoryboardParagraphSelection(shot.paragraphSelection) : null, shotSpec, compiledPrompt: safeData(shot.compiledPrompt, 10) || null, compositionDecision: safeData(shot.compositionDecision, 6) || null, sensitive: Boolean(shot.sensitive || shotSpec.sensitive), safetyAdapted: Boolean(shot.safetyAdapted), userEdited: Boolean(shot.userEdited), promptLocked: Boolean(shot.promptLocked || shot.userEdited) };
     }).filter((shot) => shot.id)).slice(0, 20);
     const messageRef = plan.messageRef ? normalizeStoryboardMessageReference(plan.messageRef) : null;
-    return { id: cleanId(plan.id), chatKey: str(plan.chatKey || messageRef?.chatKey, 512), floor: Number.isInteger(plan.floor) ? plan.floor : (Number.isInteger(messageRef?.lastKnownFloor) ? messageRef.lastKnownFloor : null), swipeId: int(plan.swipeId ?? messageRef?.swipeId, 0, Number.MAX_SAFE_INTEGER, 0), messageRef, revisionId: str(plan.revisionId || messageRef?.revisionId, 80), idempotencyKey: str(plan.idempotencyKey, 80), origin: ['manual', 'automatic'].includes(plan.origin) ? plan.origin : 'manual', autoGenerate: Boolean(plan.autoGenerate), promptLocked: Boolean(plan.promptLocked), status: workflowState(plan.status), shots, createdAt: pos(plan.createdAt || plan.updatedAt), updatedAt: pos(plan.updatedAt) };
+    return { id: cleanId(plan.id), chatKey: str(plan.chatKey || messageRef?.chatKey, 512), floor: Number.isInteger(plan.floor) ? plan.floor : (Number.isInteger(messageRef?.lastKnownFloor) ? messageRef.lastKnownFloor : null), swipeId: int(plan.swipeId ?? messageRef?.swipeId, 0, Number.MAX_SAFE_INTEGER, 0), messageRef, revisionId: str(plan.revisionId || messageRef?.revisionId, 80), idempotencyKey: str(plan.idempotencyKey, 80), origin: ['manual', 'automatic', 'manual_supplement'].includes(plan.origin) ? plan.origin : 'manual', paragraphSelection: plan.paragraphSelection ? normalizeStoryboardParagraphSelection(plan.paragraphSelection) : null, continuityLedger: normalizeContinuity(plan.continuityLedger), autoGenerate: Boolean(plan.autoGenerate), promptLocked: Boolean(plan.promptLocked), status: workflowState(plan.status), shots, createdAt: pos(plan.createdAt || plan.updatedAt), updatedAt: pos(plan.updatedAt) };
   }).filter((plan) => plan.id);
   return dedupeById(normalized).slice(0, 300);
 }
@@ -650,15 +934,16 @@ export function resolveStoryboardMessageReference(value, chat, options = {}) {
 
 export function createStoryboardWorkflowTicket(input = {}) {
   const messageRef = normalizeStoryboardMessageReference(input.messageRef);
-  const origin = input.origin === 'automatic' ? 'automatic' : 'manual';
+  const origin = ['automatic', 'manual_supplement'].includes(input.origin) ? input.origin : 'manual';
   const compilerSignature = str(input.compilerSignature, 240);
+  const paragraphSelection = input.paragraphSelection ? normalizeStoryboardParagraphSelection(input.paragraphSelection) : null;
   return {
     id: cleanId(input.id) || `story-${messageRef.revisionId || hash(String(input.createdAt || Date.now()))}`,
     chatKey: str(input.chatKey || messageRef.chatKey, 512), floor: Number.isInteger(input.floor) ? input.floor : messageRef.lastKnownFloor,
     swipeId: messageRef.swipeId, messageRef, revisionId: messageRef.revisionId,
-    idempotencyKey: hash([input.chatKey || messageRef.chatKey, messageRef.messageKey, messageRef.revisionId, compilerSignature].join('\u241f')),
+    idempotencyKey: hash([input.chatKey || messageRef.chatKey, messageRef.messageKey, messageRef.revisionId, compilerSignature, paragraphSelection?.paragraphIds?.join(',') || '', input.id || ''].join('\u241f')),
     origin, autoGenerate: origin === 'automatic' && Boolean(input.autoGenerate), promptLocked: Boolean(input.promptLocked),
-    status: workflowState(input.status), shots: Array.isArray(input.shots) ? input.shots : [],
+    paragraphSelection, continuityLedger: normalizeContinuity(input.continuityLedger), status: workflowState(input.status), shots: Array.isArray(input.shots) ? input.shots : [],
     createdAt: pos(input.createdAt) || Date.now(), updatedAt: pos(input.updatedAt) || Date.now(),
   };
 }
@@ -740,7 +1025,7 @@ function safeRecord(value, { reserved = false } = {}) {
   for (const [rawKey, rawValue] of Object.entries(value).slice(0, 100)) {
     const key = str(rawKey, 120);
     if (!key || isUnsafeObjectKey(key) || isSensitiveField(key) || reserved && isReservedProviderField(key)) continue;
-    const normalized = safeData(rawValue, 5);
+    const normalized = safeData(rawValue, 10);
     if (normalized !== undefined) out[key] = normalized;
   }
   return out;

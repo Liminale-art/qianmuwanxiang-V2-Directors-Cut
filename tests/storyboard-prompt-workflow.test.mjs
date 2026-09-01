@@ -60,7 +60,7 @@ assert.doesNotMatch(source, /<span>提示词预处理<\/span>/);
 assert.match(source, /sd-storyboard-capsule-switch[\s\S]*自动提取生成词[\s\S]*自动生图/);
 assert.doesNotMatch(source, /sd-storyboard-auto-flow/);
 assert.match(source, /dataset\.storyboardChatAction = 'capture-floor'/);
-assert.match(source, /button\.dataset\.storyboardChatAction === 'capture-floor'[\s\S]*storyboardChooseCaptureMode[\s\S]*storyboardCompilePrompt\(null, \{ plan, quiet: false \}\)[\s\S]*storyboardEditPrompt/);
+assert.match(source, /button\.dataset\.storyboardChatAction === 'capture-floor'[\s\S]*storyboardChooseCaptureMode[\s\S]*storyboardCompilePrompt\(null, \{ plan, quiet: false \}\)[\s\S]*manualSupplement[\s\S]*storyboardGenerate\(null, \{ plan, automatic: false \}\)/);
 assert.match(source, /function storyboardHandleAutomaticCapture/);
 
 // A take preset is a dedicated ordered-list workspace; there is no one-off instruction field on the workbench.
@@ -89,12 +89,13 @@ assert.match(source, /function storyboardCleanWithTagRules[\s\S]*action === 'ext
 assert.match(source, /storyboardCleanWithTagRules\(item\.mes, state\)/);
 assert.match(source, /storyboardCleanWithTagRules\(targetMessage\?\.mes \|\| '', state\)/);
 
-// Artist strings remain entirely user-controlled and are appended only at image request time.
+// Artist strings remain entirely user-controlled and lead the provider prompt at request time.
 assert.match(source, /画师串完全由用户另行控制。不得建议、生成、改写/);
 assert.doesNotMatch(source, /"artist_string"|"artist_suggestion"/);
 assert.match(source, /function storyboardEffectivePrompts/);
-assert.match(source, /storyboardJoinPrompt\(\[artistString, prompt, artistPositive\], sourceId\)/);
-assert.match(source, /const composed = storyboardEffectivePrompts/);
+assert.match(source, /storyboardJoinPrompt\(\[artistString, artistPositive, prompt\], sourceId\)/);
+assert.match(source, /compileStoryboardPrompt\(\{[\s\S]*artistString/);
+assert.match(source, /const compiled = manuallyLocked[\s\S]*compileStoryboardPrompt/);
 assert.doesNotMatch(source, /function storyboardSaveArtistPreset/);
 assert.match(source, /function renderStoryboardArtistLibrary[\s\S]*sd-storyboard-artist-waterfall/);
 assert.match(source, /sd-storyboard-edit-selected-artist[\s\S]*storyboardNavigate\(root, \{ view: 'artists', editingArtistPresetId: state\.selectedArtistPresetId/);

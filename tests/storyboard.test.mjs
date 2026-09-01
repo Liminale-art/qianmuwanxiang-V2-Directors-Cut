@@ -66,10 +66,10 @@ assert.match(source, /storyboardImages[\s\S]*messageHash[\s\S]*swipeId/, '正文
 assert.match(source, /createStoryboardMessageReference[\s\S]*resolveStoryboardMessageReference/, '正文挂载必须以稳定消息身份协调删楼、改楼与 swipe');
 assert.match(source, /if \(!storyboardState\(\)\.enabled\)[\s\S]*sd-storyboard-inline, \.sd-storyboard-message-action/, '分镜总开关关闭后必须清理全部正文入口与成片');
 assert.match(source, /paragraphAnchor: Number\.isInteger\(floor\)/, '第 0 楼也必须保留段落锚点');
-assert.match(source, /storyboardInlineAnchorNode\(text, records\)[\s\S]*text\.insertAdjacentElement\('afterend', wrapper\)[\s\S]*storyboardParagraphIndex/, '段落锚点必须保留定位元数据，可见控件仍须作为 mes_text 兄弟节点，避免污染配音与正则扫描');
+assert.match(source, /storyboardInlineAnchorNode\(text, anchorRecords\)[\s\S]*anchor\.node\.insertAdjacentElement\('afterend', wrapper\)[\s\S]*text\.insertAdjacentElement\('afterend', wrapper\)/, '命中段落锚点时必须原位插图，失配时才回退到整层末尾');
 assert.match(source, /function storyboardInlineRecordValid[\s\S]*record\.messageHash[\s\S]*record\.swipeId/, '编辑或 reroll 后必须阻止旧图误挂');
 assert.doesNotMatch(source, /storyboardProfileBindings|绑定到当前聊天|selectedCharacters/, '形象档案不得再自动绑定或注入镜头任务');
-assert.match(source, /function storyboardGenerationPayload[\s\S]*storyboardEffectivePrompts\(state, sourceId, profile\.model, \{ prompt, negative \}\)[\s\S]*artistString/, '生图负载只能使用当前提示词与用户画师串，不得暗注入形象档案');
+assert.match(source, /function storyboardGenerationPayload[\s\S]*compileStoryboardPrompt\([\s\S]*artistString/, '生图负载必须经角色隔离编译器合成，且画师串仍只来自用户选择');
 assert.match(source, /function storyboardStartLog[\s\S]*function storyboardFinishLog[\s\S]*分镜日志/, '分镜必须记录成功、失败与诊断信息');
 assert.match(source, /STORYBOARD_QUEUE_LIMIT[\s\S]*storyboardQueueJob[\s\S]*storyboardPumpQueue/, '分镜必须使用有上限的生成队列');
 assert.match(source, /storyboardActiveJobs\.size < concurrency/, '镜组队列必须按配置执行真实并发');
@@ -89,7 +89,7 @@ assert.doesNotMatch(source, /function renderStoryboardConnection\(/, '旧的重�
 assert.doesNotMatch(source, /千幕组织镜头，SillyTavern 负责连接与生成/, '镜头台不应展示尴尬的实现说明');
 assert.match(css, /#chat \.mes \.sd-storyboard-inline/, '正文分镜样式必须严格限定在聊天消息内');
 assert.match(source, /storyboardInjectMessageButtons[\s\S]*dataset\.storyboardChatAction = 'capture-floor'/, '正文每层必须提供半自动取景快捷入口');
-assert.match(source, /function storyboardChooseCaptureMode[\s\S]*智能选取画面[\s\S]*指定正文段落/, '正文取景入口必须支持智能与手动段落两种方式');
+assert.match(source, /function storyboardChooseCaptureMode[\s\S]*智能提取[\s\S]*手动选段补图/, '正文取景入口必须支持智能提取与多段手动补图');
 assert.match(source, /storyboardParameterPresets[\s\S]*保存分镜样式[\s\S]*parameterPresetSelection/, '分镜参数样式必须可按模型保存和切换');
 assert.match(source, /modelProfiles\[sourceId\]\[previousModel\][\s\S]*modelProfiles\[sourceId\]\[requestedModel\]/, '每个具体模型必须记住最后一次参数修改');
 assert.doesNotMatch(source, /sd-storyboard-reuse-record|sd-storyboard-lightbox-reuse/, '阅片室不得保留复用或重新生成入口');
