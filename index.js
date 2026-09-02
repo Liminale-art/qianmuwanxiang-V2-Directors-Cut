@@ -96,10 +96,10 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.23';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.24';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.23';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.23';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.24';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.24';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -121,6 +121,7 @@ import {
   createStoryboardParagraphAnchor,
   createStoryboardDefaults,
   createStoryboardMessageReference,
+  createStoryboardTaskState,
   createStoryboardWorkflowTicket,
   getStoryboardBuiltinParameterPresets,
   getStoryboardCapabilities,
@@ -144,24 +145,25 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
-} from './qianmu-storyboard.js?v=1.58.23';
+  transitionStoryboardTaskState,
+} from './qianmu-storyboard.js?v=1.58.24';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.23';
+const VERSION = '1.58.24';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.23'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.24'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.23'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.24'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.23'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.24'),
   },
 });
 function directImageRuntime() {
@@ -935,6 +937,8 @@ let notesSearch = '';
 let notesZCounter = 10;
 const notesSaveTimers = new Map();
 let storyboardInlineTimer = null;
+const storyboardInlinePendingFloors = new Set();
+let storyboardInlineFullRenderPending = false;
 const storyboardCollapsedInlineFloors = new Set();
 let storyboardLinkSaveQueued = false;
 const storyboardGallerySelection = new Set();
@@ -10643,6 +10647,11 @@ function storyboardState() {
       log.error = '页面刷新后未自动续跑';
       changed = true;
     }
+    state.taskStates = (state.taskStates || []).map((task) => {
+      if (!['queued', 'generating'].includes(task.status)) return task;
+      changed = true;
+      return transitionStoryboardTaskState(task, 'cancelled', { error: '页面刷新后未自动续跑' });
+    });
     if (changed) queueMicrotask(() => saveSettings());
   }
   if (!state.initialized) {
@@ -11205,29 +11214,56 @@ function storyboardPlanForJob(job) {
   return storyboardState().shotPlans.find((plan) => plan.id === job.planId) || null;
 }
 
-function storyboardSetPlanStatus(plan, status, { error = '', resultIds = null, job = null } = {}) {
-  if (!plan) return;
-  const shot = job?.planShotId ? plan.shots?.find((item) => item.id === job.planShotId) : null;
-  if (shot) {
-    shot.status = status;
-    shot.error = String(error || '').slice(0, 4000);
-    shot.attempt = Math.max(Number(shot.attempt) || 0, Number(job?.attempt) || 0);
-    if (Array.isArray(resultIds)) shot.resultIds = resultIds.map(String).slice(0, 20);
+function storyboardSyncTaskState(job, status, { error = '', resultIds = null, floor = null, stage = '', progress = null, plan = null } = {}) {
+  if (!job?.id) return null;
+  const state = storyboardState();
+  const current = (state.taskStates || []).find((item) => item.id === job.id);
+  const targetFloor = Number.isInteger(floor) ? floor : (Number.isInteger(job.floor) ? job.floor : null);
+  const base = current || createStoryboardTaskState({
+    id: job.id, planId: job.planId, shotId: job.planShotId, logId: job.logId,
+    chatKey: job.chatKey, floor: targetFloor, messageRef: job.messageRef,
+    paragraphAnchor: job.paragraphAnchor, paragraphSelection: job.paragraphSelection,
+    uiVisible: plan?.origin === 'manual_supplement', status: 'queued',
+  });
+  const next = transitionStoryboardTaskState(base, status, {
+    planId: job.planId, shotId: job.planShotId, logId: job.logId,
+    chatKey: job.chatKey, floor: targetFloor, messageRef: job.messageRef,
+    paragraphAnchor: job.paragraphAnchor, paragraphSelection: job.paragraphSelection,
+    uiVisible: current?.uiVisible ?? plan?.origin === 'manual_supplement',
+    ...(stage ? { stage } : {}), ...(progress == null ? {} : { progress }),
+    ...(error ? { error: String(error).slice(0, 4000) } : {}),
+    ...(Array.isArray(resultIds) ? { resultIds } : {}),
+  });
+  state.taskStates = [next, ...(state.taskStates || []).filter((item) => item.id !== next.id)].slice(0, 300);
+  return next;
+}
+
+function storyboardSetPlanStatus(plan, status, { error = '', resultIds = null, job = null, floor = null, stage = '', progress = null } = {}) {
+  if (plan) {
+    const shot = job?.planShotId ? plan.shots?.find((item) => item.id === job.planShotId) : null;
+    if (shot) {
+      shot.status = status;
+      shot.error = String(error || '').slice(0, 4000);
+      shot.attempt = Math.max(Number(shot.attempt) || 0, Number(job?.attempt) || 0);
+      if (Array.isArray(resultIds)) shot.resultIds = resultIds.map(String).slice(0, 20);
+    }
+    const shotStates = (plan.shots || []).map((item) => item.status);
+    if (!shot || !shotStates.length) plan.status = status;
+    else if (shotStates.includes('generating')) plan.status = 'generating';
+    else if (shotStates.includes('queued')) plan.status = 'queued';
+    else if (shotStates.includes('compiling')) plan.status = 'compiling';
+    else if (shotStates.includes('prompt_ready')) plan.status = 'prompt_ready';
+    else if (shotStates.every((item) => item === 'completed')) plan.status = 'completed';
+    else if (shotStates.some((item) => item === 'completed')) plan.status = 'completed';
+    else if (shotStates.every((item) => ['failed', 'cancelled', 'orphaned', 'stale'].includes(item))) plan.status = status;
+    else plan.status = status;
+    plan.updatedAt = Date.now();
+    if (error && !shot) plan.error = String(error).slice(0, 4000);
   }
-  const shotStates = (plan.shots || []).map((item) => item.status);
-  if (!shot || !shotStates.length) plan.status = status;
-  else if (shotStates.includes('generating')) plan.status = 'generating';
-  else if (shotStates.includes('queued')) plan.status = 'queued';
-  else if (shotStates.includes('compiling')) plan.status = 'compiling';
-  else if (shotStates.includes('prompt_ready')) plan.status = 'prompt_ready';
-  else if (shotStates.every((item) => item === 'completed')) plan.status = 'completed';
-  else if (shotStates.some((item) => item === 'completed')) plan.status = 'completed';
-  else if (shotStates.every((item) => ['failed', 'cancelled', 'orphaned', 'stale'].includes(item))) plan.status = status;
-  else plan.status = status;
-  plan.updatedAt = Date.now();
-  if (error && !shot) plan.error = String(error).slice(0, 4000);
+  const task = storyboardSyncTaskState(job, status, { error, resultIds, floor, stage, progress, plan });
+  if (!plan && !task) return;
   saveSettings();
-  storyboardScheduleInlineRender(30);
+  storyboardScheduleInlineRender(30, task?.floor ?? plan?.floor ?? null);
 }
 
 function storyboardReconcileShotPlans() {
@@ -13031,7 +13067,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
         output: { skipped: true, reason: result.skipReason }, decisions: [], error: '',
       }];
       saveSettings();
-      storyboardScheduleInlineRender(30);
+      storyboardScheduleInlineRender(30, plan?.floor ?? context.floor);
       if (!quiet) toast(result.skipReason || '这一层没有需要单独成画的新增画面。', 'info');
       return false;
     }
@@ -13082,7 +13118,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
       decisions: result.decisions, error: '',
     }];
     saveSettings();
-    storyboardScheduleInlineRender(30);
+    storyboardScheduleInlineRender(30, plan?.floor ?? context.floor);
     if (!quiet) toast('生成词已提取，可继续修改或手动生成。', 'success');
     return true;
   } catch (error) {
@@ -13333,7 +13369,11 @@ function storyboardRetryLog(log) {
 function storyboardDiscardActive() {
   const activeJobs = [...storyboardActiveJobs.values()].filter((job) => !job.discardRequested);
   if (!activeJobs.length) return;
-  for (const job of activeJobs) job.discardRequested = true;
+  for (const job of activeJobs) {
+    job.discardRequested = true;
+    storyboardSyncTaskState(job, 'cancelled', { error: '用户放弃收片', plan: storyboardPlanForJob(job) });
+  }
+  saveSettings();
   toast('已放弃进行中的收片；后端若已提交，返回结果将不会写入成片或正文。', 'info');
   renderModal();
 }
@@ -13373,7 +13413,10 @@ function storyboardHandleChatChanged() {
   const keep = [];
   for (const job of storyboardQueue) {
     if (!job.chatKey || job.chatKey === currentChatKey) keep.push(job);
-    else storyboardFinishLog(state.logs.find((item) => item.id === job.logId), 'cancelled', { error: '切换聊天后已自动移除等待任务' });
+    else {
+      storyboardFinishLog(state.logs.find((item) => item.id === job.logId), 'cancelled', { error: '切换聊天后已自动移除等待任务' });
+      storyboardSyncTaskState(job, 'cancelled', { error: '切换聊天后已自动移除等待任务', plan: storyboardPlanForJob(job) });
+    }
   }
   storyboardQueue = keep;
   saveSettings();
@@ -13460,7 +13503,7 @@ function storyboardValidatedAnchor(job) {
 function storyboardCreateRecord(job, log, url, index, anchorState, response) {
   const { floor, message } = anchorState;
   return {
-    id: uid('shot'), groupId: job.id, variantRootId: job.variantRootId || job.planShotId || job.id,
+    id: uid('shot'), taskId: job.id, groupId: job.id, variantRootId: job.variantRootId || job.planShotId || job.id,
     collectionId: job.collectionId || '', collectionIds: storyboardItemCollectionIds(job), tags: uniqueClean(job.tags || []).slice(0, 30), planId: job.planId || '', planShotId: job.planShotId || '', imageIndex: index, url, prompt: job.prompt, finalPrompt: job.payload?.prompt,
     artistString: job.artistString || job.payload?.artistString || '', artistPresetId: job.artistPresetId || '', artistPoolId: job.artistPoolId || '', artistRouteSource: job.artistRouteSource || '', contentRating: job.contentRating || 'sfw',
     negative: job.negative, effectiveNegative: job.payload?.negative || '', source: job.source,
@@ -13501,7 +13544,7 @@ async function storyboardRunJob(job, log) {
     }
     if (beforeRequestAnchor.valid && beforeRequestAnchor.relocated) job.floor = beforeRequestAnchor.floor;
     storyboardMarkLogGenerating(log);
-    storyboardSetPlanStatus(plan, 'generating', { job });
+    storyboardSetPlanStatus(plan, 'generating', { job, stage: 'provider', progress: 0.35 });
     storyboardPipelineStage(log, 'context', 'success', {}, {
       floor: job.floor, chatKey: job.chatKey, paragraphAnchor: job.paragraphAnchor,
     });
@@ -13549,6 +13592,7 @@ async function storyboardRunJob(job, log) {
     const images = Array.isArray(data.images) ? data.images.slice(0, 8) : [];
     if (!images.length) throw new Error('生图服务没有返回可用图片');
     const anchorState = storyboardValidatedAnchor(job);
+    storyboardSetPlanStatus(plan, 'generating', { job, floor: anchorState.floor, stage: 'persistence', progress: 0.8 });
     storyboardPipelineStage(log, 'asset_persistence', 'running', {}, { imageCount: images.length });
     const urls = [];
     for (let index = 0; index < images.length; index++) urls.push(await storyboardPersistGatewayImage(images[index], job, index));
@@ -13557,13 +13601,13 @@ async function storyboardRunJob(job, log) {
     gallery.push(...records);
     if (gallery.length > 400) gallery.splice(0, gallery.length - 400);
     await saveMetadata();
+    storyboardSetPlanStatus(plan, 'generating', { job, floor: anchorState.floor, stage: 'attachment', progress: 0.92 });
     storyboardPipelineStage(log, 'asset_persistence', 'success', {}, { recordIds: records.map((item) => item.id) });
     storyboardPipelineStage(log, 'paragraph_anchor', 'success', {}, {
       requestedFloor: job.floor, finalFloor: anchorState.floor, fallback: !anchorState.valid && job.target !== 'gallery',
     });
     storyboardFinishLog(log, 'success', { recordId: records[0].id, recordIds: records.map((item) => item.id), floor: anchorState.floor });
-    storyboardSetPlanStatus(plan, 'completed', { resultIds: records.map((item) => item.id), job });
-    storyboardScheduleInlineRender(30);
+    storyboardSetPlanStatus(plan, 'completed', { resultIds: records.map((item) => item.id), job, floor: anchorState.floor, stage: 'complete', progress: 1 });
     if (!anchorState.valid && job.target !== 'gallery') toast(`${records.length} 张分镜已生成；原楼层变化，已安全转存阅片室。`, 'warning');
     else if (!job.automatic) toast(records[0].inline ? `${records.length} 张分镜已穿插至第 ${anchorState.floor} 层。` : `${records.length} 张分镜已存入阅片室。`, 'success');
   } catch (error) {
@@ -13675,7 +13719,7 @@ const STORYBOARD_INLINE_MARK = '<svg viewBox="0 0 256 256" aria-hidden="true"><p
 
 function storyboardInlineRecordMarkup(record) {
   const url = storyboardSafeUrl(record.url);
-  return `<figure data-storyboard-record="${htmlEscape(record.id)}">
+  return `<figure data-storyboard-record="${htmlEscape(record.id)}" data-storyboard-task="${htmlEscape(record.taskId || record.groupId || '')}">
     <button type="button" class="sd-storyboard-inline-preview" data-storyboard-chat-action="preview" title="查看画面"><img src="${htmlEscape(url)}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 48))}"></button>
     <button type="button" class="sd-storyboard-inline-more" data-storyboard-chat-action="toggle-actions" title="更多操作" aria-label="更多操作" aria-expanded="false"><i class="fa-solid fa-ellipsis"></i></button>
     <div class="sd-storyboard-inline-actions" aria-hidden="true"><button type="button" data-storyboard-chat-action="edit" title="编辑当前提示词" aria-label="编辑当前提示词"><i class="fa-solid fa-pen"></i></button><button type="button" data-storyboard-chat-action="artist" title="更换画师并重绘" aria-label="更换画师并重绘"><i class="fa-solid fa-palette"></i></button><button type="button" data-storyboard-chat-action="redraw" title="重新生成" aria-label="重新生成"><i class="fa-solid fa-rotate-right" data-qm-icon="image-regenerate"></i></button><button type="button" data-storyboard-chat-action="collapse" title="折叠正文插图" aria-label="折叠正文插图"><i class="fa-solid fa-compress"></i></button><button type="button" data-storyboard-chat-action="copy" title="复制提示词" aria-label="复制提示词"><i class="fa-solid fa-copy"></i></button><button type="button" data-storyboard-chat-action="download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button><button type="button" data-storyboard-chat-action="detach" title="移出正文" aria-label="移出正文"><i class="fa-solid fa-eye-slash"></i></button></div>
@@ -13685,10 +13729,12 @@ function storyboardInlineRecordMarkup(record) {
 function storyboardInlinePlaceholderMarkup(plan) {
   const labels = { screening: '正在准备选段', compiling: '正在提取生成词', queued: '等待生图', generating: '正在生成画面', failed: '补图失败' };
   const failed = plan.status === 'failed';
-  return `<div class="sd-storyboard-inline-placeholder" data-storyboard-plan="${htmlEscape(plan.id)}"><span class="sd-storyboard-queue-pulse"></span><b>${labels[plan.status] || '正在处理补图'}</b><small>${plan.paragraphSelection?.indexes?.length || 1} 段正文</small><div>${failed ? '<button type="button" data-storyboard-chat-action="retry-plan">重试</button>' : '<button type="button" data-storyboard-chat-action="cancel-plan">取消</button>'}</div></div>`;
+  const taskIds = (storyboardState().taskStates || []).filter((task) => task.planId === plan.id && task.uiVisible).map((task) => task.id);
+  const taskAttribute = taskIds.length ? ` data-storyboard-task="${htmlEscape(taskIds[0])}" data-storyboard-task-ids="${htmlEscape(taskIds.join(','))}"` : '';
+  return `<div class="sd-storyboard-inline-placeholder" data-storyboard-plan="${htmlEscape(plan.id)}"${taskAttribute}><span class="sd-storyboard-queue-pulse"></span><b>${labels[plan.status] || '正在处理补图'}</b><small>${plan.paragraphSelection?.indexes?.length || 1} 段正文</small><div>${failed ? '<button type="button" data-storyboard-chat-action="retry-plan">重试</button>' : '<button type="button" data-storyboard-chat-action="cancel-plan">取消</button>'}</div></div>`;
 }
 
-function storyboardRenderInlineImages() {
+function storyboardRenderInlineImages(targetFloor = null) {
   const chatRoot = document.getElementById('chat');
   if (!chatRoot) return;
   if (!storyboardState().enabled) {
@@ -13698,18 +13744,22 @@ function storyboardRenderInlineImages() {
   storyboardReconcileGalleryLinks();
   storyboardReconcileShotPlans();
   storyboardInjectMessageButtons(chatRoot);
+  const scopedFloor = Number.isInteger(targetFloor) ? targetFloor : null;
   const byFloor = new Map();
   for (const record of storyboardGalleryRecords()) {
     if (!storyboardInlineRecordValid(record)) continue;
+    if (scopedFloor !== null && record.floor !== scopedFloor) continue;
     if (!byFloor.has(record.floor)) byFloor.set(record.floor, { records: [], plans: [] });
     byFloor.get(record.floor).records.push(record);
   }
   for (const plan of storyboardState().shotPlans || []) {
     if (plan.origin !== 'manual_supplement' || !Number.isInteger(plan.floor) || !['screening', 'compiling', 'queued', 'generating', 'failed'].includes(plan.status)) continue;
+    if (scopedFloor !== null && plan.floor !== scopedFloor) continue;
     if (!byFloor.has(plan.floor)) byFloor.set(plan.floor, { records: [], plans: [] });
     byFloor.get(plan.floor).plans.push(plan);
   }
-  chatRoot.querySelectorAll('.sd-storyboard-inline').forEach((node) => node.remove());
+  const existingSelector = scopedFloor === null ? '.sd-storyboard-inline' : `.sd-storyboard-inline[data-storyboard-floor="${scopedFloor}"]`;
+  chatRoot.querySelectorAll(existingSelector).forEach((node) => node.remove());
   for (const [floor, group] of byFloor) {
     const message = chatRoot.querySelector(`.mes[mesid="${floor}"], .mes[data-message-id="${floor}"]`);
     const text = message?.querySelector('.mes_text');
@@ -13754,9 +13804,22 @@ function storyboardRenderInlineImages() {
   }
 }
 
-function storyboardScheduleInlineRender(delay = 80) {
+function storyboardScheduleInlineRender(delay = 80, floor = null) {
+  if (Number.isInteger(floor) && !storyboardInlineFullRenderPending) storyboardInlinePendingFloors.add(floor);
+  else {
+    storyboardInlineFullRenderPending = true;
+    storyboardInlinePendingFloors.clear();
+  }
   if (storyboardInlineTimer) clearTimeout(storyboardInlineTimer);
-  storyboardInlineTimer = setTimeout(() => { storyboardInlineTimer = null; storyboardRenderInlineImages(); }, delay);
+  storyboardInlineTimer = setTimeout(() => {
+    storyboardInlineTimer = null;
+    const renderAll = storyboardInlineFullRenderPending;
+    const floors = [...storyboardInlinePendingFloors];
+    storyboardInlineFullRenderPending = false;
+    storyboardInlinePendingFloors.clear();
+    if (renderAll || !floors.length) storyboardRenderInlineImages();
+    else floors.forEach((target) => storyboardRenderInlineImages(target));
+  }, delay);
 }
 
 function storyboardCloseLightbox() {
@@ -13807,7 +13870,7 @@ function storyboardOpenLightbox(input, initialId = '') {
       storyboardGallerySelection.delete(record.id);
       variants = variants.filter((item) => item.id !== record.id);
       await saveMetadata();
-      storyboardRenderInlineImages();
+      storyboardRenderInlineImages(Number.isInteger(record.floor) ? record.floor : null);
       rerenderIfOpen();
       if (!variants.length) storyboardCloseLightbox();
       else { currentIndex = Math.min(currentIndex, variants.length - 1); render(); }
@@ -14152,7 +14215,7 @@ async function storyboardEditPrompt({ plan = null, record = null } = {}) {
       if (record.snapshot.payload) { record.snapshot.payload.prompt = positive; record.snapshot.payload.negative = negative; }
     }
     await saveMetadata();
-    storyboardRenderInlineImages();
+    storyboardRenderInlineImages(Number.isInteger(record.floor) ? record.floor : null);
     return generate ? storyboardRedrawRecord(record) : true;
   }
   state.prompt = positive;
@@ -14180,12 +14243,16 @@ function storyboardCancelPlan(plan) {
     const [job] = storyboardQueue.splice(index, 1);
     const log = storyboardState().logs.find((item) => item.id === job.logId);
     storyboardFinishLog(log, 'cancelled', { error: '用户取消补图' });
+    storyboardSyncTaskState(job, 'cancelled', { error: '用户取消补图', plan });
   }
-  for (const job of storyboardActiveJobs.values()) if (job.planId === plan.id) job.discardRequested = true;
+  for (const job of storyboardActiveJobs.values()) if (job.planId === plan.id) {
+    job.discardRequested = true;
+    storyboardSyncTaskState(job, 'cancelled', { error: '用户取消补图', plan });
+  }
   plan.status = 'cancelled';
   for (const shot of plan.shots || []) if (!['completed', 'failed'].includes(shot.status)) shot.status = 'cancelled';
   plan.updatedAt = Date.now();
-  saveSettings(); storyboardScheduleInlineRender(20); renderModal();
+  saveSettings(); storyboardScheduleInlineRender(20, plan.floor); renderModal();
 }
 
 async function storyboardRetryPlan(plan) {
@@ -14199,7 +14266,7 @@ async function storyboardRetryPlan(plan) {
   state.prompt = ''; state.negative = ''; state.promptMode = 'auto';
   state.promptDraft.compiled = ''; state.promptDraft.negative = ''; state.promptDraft.shots = [];
   plan.status = 'screening'; plan.updatedAt = Date.now();
-  saveSettings(); storyboardScheduleInlineRender(20);
+  saveSettings(); storyboardScheduleInlineRender(20, plan.floor);
   const compiled = await storyboardCompilePrompt(null, { plan, quiet: false });
   if (!compiled) return false;
   const generated = await storyboardGenerate(null, { plan, automatic: false });
@@ -14242,7 +14309,7 @@ async function storyboardOnChatClick(event) {
     state.promptDraft.shots = []; state.promptDraft.userEditedCompiled = false; state.promptDraft.userEditedNegative = false;
     state.promptDraft.artistPositiveBaked = false; state.promptDraft.artistNegativeBaked = false;
     plan.origin = manualSupplement ? 'manual_supplement' : 'manual'; plan.paragraphSelection = clone(choice.selection); plan.autoGenerate = false; plan.status = 'screening'; plan.updatedAt = Date.now();
-    saveSettings(); storyboardScheduleInlineRender(20);
+    saveSettings(); storyboardScheduleInlineRender(20, floor);
     const compiled = await storyboardCompilePrompt(null, { plan, quiet: false });
     if (compiled && manualSupplement) {
       const generated = await storyboardGenerate(null, { plan, automatic: false });
@@ -14297,7 +14364,7 @@ async function storyboardOnChatClick(event) {
   if (button.dataset.storyboardChatAction === 'detach') {
     record.inline = false;
     await saveMetadata();
-    storyboardRenderInlineImages();
+    storyboardRenderInlineImages(Number.isInteger(record.floor) ? record.floor : null);
     rerenderIfOpen();
   }
   if (button.dataset.storyboardChatAction === 'collapse') {
@@ -14322,6 +14389,8 @@ function storyboardUnbindChat() {
   storyboardChatClickBound = false;
   if (storyboardInlineTimer) clearTimeout(storyboardInlineTimer);
   storyboardInlineTimer = null;
+  storyboardInlineFullRenderPending = false;
+  storyboardInlinePendingFloors.clear();
   document.querySelectorAll('#chat .sd-storyboard-inline').forEach((node) => node.remove());
   document.querySelectorAll('#chat .sd-storyboard-message-action').forEach((node) => node.remove());
   storyboardCloseLightbox();
@@ -15232,14 +15301,14 @@ function bindStoryboardTabEvents(root) {
     card.querySelector('.sd-storyboard-inline-toggle')?.addEventListener('click', async () => {
       if (!record) return;
       record.inline = record.inline === false;
-      await saveMetadata(); storyboardRenderInlineImages(); renderModal();
+      await saveMetadata(); storyboardRenderInlineImages(Number.isInteger(record.floor) ? record.floor : null); renderModal();
     });
     card.querySelector('.sd-storyboard-delete-record')?.addEventListener('click', async () => {
       if (!record || !await confirmDialog('删除图片', `${variants.length > 1 ? '只删除当前显示的这一张；同组其他版本会继续保留。' : '确定删除这张图片记录？'} SillyTavern 图片文件本身不会被清除。`)) return;
       const store = getChatStore(); store.storyboardImages = store.storyboardImages.filter((item) => item.id !== record.id);
       if (storyboardGalleryInspectorRecordId === record.id) storyboardGalleryInspectorRecordId = '';
       storyboardGallerySelection.delete(record.id);
-      await saveMetadata(); storyboardRenderInlineImages(); renderModal();
+      await saveMetadata(); storyboardRenderInlineImages(Number.isInteger(record.floor) ? record.floor : null); renderModal();
     });
   });
   void storyboardRefreshSecretState(root);
@@ -27419,7 +27488,7 @@ async function storyboardHandleAutomaticCapture() {
   state.promptDraft.artistPositiveBaked = false;
   state.promptDraft.artistNegativeBaked = false;
   saveSettings();
-  storyboardScheduleInlineRender(20);
+  storyboardScheduleInlineRender(20, floor);
   const compiled = await storyboardCompilePrompt(null, { plan, quiet: true });
   if (!compiled || !plan.autoGenerate) return compiled;
   return storyboardGenerate(null, { plan, automatic: true });

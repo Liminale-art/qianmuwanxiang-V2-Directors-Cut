@@ -1,7 +1,7 @@
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
-export const STORYBOARD_SCHEMA_VERSION = 20;
+export const STORYBOARD_SCHEMA_VERSION = 21;
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -207,7 +207,7 @@ export function createStoryboardDefaults() {
     promptPresets: [], editingPromptPresetId: '', editingPromptItemId: '', promptItemDraft: null,
     artistPresets: [], artistCollections: [], artistCollectionId: '', selectedArtistPresetId: '', artistSearch: '', editingArtistPresetId: '',
     artistPools: [], selectedArtistPoolId: '',
-    tagLibrary: [], vibeLibrary: [], selectedVibeIds: [], compositionPolicy: compositionDefaults(), routing: routingDefaults(), shotPlans: [], collapsedCards: { model: true, context: true, prompt: true, params: true, composition: true, 'routing-rules': true }, logs: [], pipelineLogs: [],
+    tagLibrary: [], vibeLibrary: [], selectedVibeIds: [], compositionPolicy: compositionDefaults(), routing: routingDefaults(), shotPlans: [], taskStates: [], collapsedCards: { model: true, context: true, prompt: true, params: true, composition: true, 'routing-rules': true }, logs: [], pipelineLogs: [],
   };
 }
 
@@ -404,7 +404,7 @@ export function normalizeStoryboardState(value) {
   const knownVibeIds = new Set(state.vibeLibrary.map((vibe) => vibe.id)); state.selectedVibeIds = ids(state.selectedVibeIds, 16).filter((id) => knownVibeIds.has(id));
   if (!state.promptPresets.some((preset) => preset.id === state.promptCompiler.instructionPresetId)) state.promptCompiler.instructionPresetId = '';
   if (!state.promptPresets.some((preset) => preset.id === state.editingPromptPresetId)) { state.editingPromptPresetId = ''; state.editingPromptItemId = ''; state.promptItemDraft = null; }
-  state.compositionPolicy = normalizeStoryboardCompositionPolicy(state.compositionPolicy); state.routing = normalizeRouting(state.routing, { connections: state.connections, parameterPresets: state.parameterPresets }); state.shotPlans = shotPlans(state.shotPlans, state); state.collapsedCards = Object.fromEntries(Object.entries(obj(state.collapsedCards) ? state.collapsedCards : {}).slice(0, 200).map(([k, v]) => [str(k, 120), Boolean(v)]).filter(([k]) => k)); state.logs = legacyLogs(state.logs); state.pipelineLogs = pipelineLogs(state.pipelineLogs);
+  state.compositionPolicy = normalizeStoryboardCompositionPolicy(state.compositionPolicy); state.routing = normalizeRouting(state.routing, { connections: state.connections, parameterPresets: state.parameterPresets }); state.shotPlans = shotPlans(state.shotPlans, state); state.taskStates = taskStates(state.taskStates); state.collapsedCards = Object.fromEntries(Object.entries(obj(state.collapsedCards) ? state.collapsedCards : {}).slice(0, 200).map(([k, v]) => [str(k, 120), Boolean(v)]).filter(([k]) => k)); state.logs = legacyLogs(state.logs); state.pipelineLogs = pipelineLogs(state.pipelineLogs);
   const visiblePipelineIds = new Set(state.logs.map((log) => log.pipelineId).filter(Boolean));
   // v1/v2 日志没有 pipelineId；旧数据先按相同上限保留，只有新契约完整时才做一一配对裁剪。
   if (visiblePipelineIds.size) state.pipelineLogs = state.pipelineLogs.filter((log) => visiblePipelineIds.has(log.id));
@@ -1253,6 +1253,83 @@ function workflowState(value, fallback = 'idle') {
   const aliases = { draft: 'idle', ready: 'prompt_ready', running: 'generating', success: 'completed', complete: 'completed', partial: 'completed' };
   const normalized = aliases[value] || value;
   return STORYBOARD_WORKFLOW_STATES.includes(normalized) ? normalized : fallback;
+}
+
+const STORYBOARD_TASK_STAGES = Object.freeze([
+  'screening', 'compiler', 'queue', 'provider', 'persistence', 'attachment', 'complete', 'failed', 'cancelled',
+]);
+
+function taskStage(value, statusValue = 'idle') {
+  const stage = str(value, 40);
+  if (STORYBOARD_TASK_STAGES.includes(stage)) return stage;
+  if (statusValue === 'screening') return 'screening';
+  if (['compiling', 'prompt_ready'].includes(statusValue)) return 'compiler';
+  if (statusValue === 'queued') return 'queue';
+  if (statusValue === 'generating') return 'provider';
+  if (statusValue === 'completed') return 'complete';
+  if (statusValue === 'failed') return 'failed';
+  if (statusValue === 'cancelled') return 'cancelled';
+  return 'queue';
+}
+
+function taskProgress(value, statusValue = 'idle', stage = '') {
+  const defaults = {
+    idle: 0, screening: 0.05, compiling: 0.12, prompt_ready: 0.18, queued: 0.2,
+    generating: stage === 'persistence' ? 0.8 : (stage === 'attachment' ? 0.92 : 0.35),
+    completed: 1, skipped: 1, failed: 1, cancelled: 1, stale: 1, orphaned: 1,
+  };
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.max(0, Math.min(1, numeric)) : defaults[statusValue] ?? 0;
+}
+
+export function normalizeStoryboardTaskState(value) {
+  const raw = obj(value) ? value : {};
+  const statusValue = workflowState(raw.status, 'queued');
+  const stage = taskStage(raw.stage, statusValue);
+  const hasFloor = raw.floor !== null && raw.floor !== undefined && raw.floor !== '';
+  const floor = hasFloor && Number.isInteger(Number(raw.floor)) && Number(raw.floor) >= 0 ? Number(raw.floor) : null;
+  return {
+    id: cleanId(raw.id), planId: cleanId(raw.planId), shotId: cleanId(raw.shotId), logId: cleanId(raw.logId),
+    chatKey: str(raw.chatKey || raw.messageRef?.chatKey, 512), floor,
+    messageRef: raw.messageRef ? normalizeStoryboardMessageReference(raw.messageRef) : null,
+    paragraphAnchor: raw.paragraphAnchor ? normalizeStoryboardParagraphAnchor(raw.paragraphAnchor) : null,
+    paragraphSelection: raw.paragraphSelection ? normalizeStoryboardParagraphSelection(raw.paragraphSelection) : null,
+    status: statusValue, stage, progress: taskProgress(raw.progress, statusValue, stage),
+    resultIds: ids(raw.resultIds, 20), error: str(raw.error, 4000), uiVisible: Boolean(raw.uiVisible),
+    requestedAt: pos(raw.requestedAt || raw.createdAt), startedAt: pos(raw.startedAt), finishedAt: pos(raw.finishedAt), updatedAt: pos(raw.updatedAt || raw.finishedAt || raw.startedAt || raw.requestedAt || raw.createdAt),
+  };
+}
+
+export function createStoryboardTaskState(input = {}) {
+  const now = pos(input.now) || Date.now();
+  return normalizeStoryboardTaskState({
+    ...input, status: input.status || 'queued', requestedAt: input.requestedAt || now,
+    updatedAt: input.updatedAt || now,
+  });
+}
+
+export function transitionStoryboardTaskState(value, nextStatus, details = {}) {
+  const current = normalizeStoryboardTaskState(value);
+  const now = pos(details.now) || Date.now();
+  const statusValue = workflowState(nextStatus, current.status || 'queued');
+  const terminal = ['completed', 'skipped', 'failed', 'cancelled', 'stale', 'orphaned'].includes(statusValue);
+  return normalizeStoryboardTaskState({
+    ...current, ...details, id: current.id || cleanId(details.id), status: statusValue,
+    stage: details.stage || taskStage('', statusValue),
+    progress: details.progress ?? taskProgress(undefined, statusValue, details.stage || ''),
+    error: Object.hasOwn(details, 'error') ? details.error : (['queued', 'generating', 'completed'].includes(statusValue) ? '' : current.error),
+    resultIds: Array.isArray(details.resultIds) ? details.resultIds : current.resultIds,
+    startedAt: current.startedAt || (statusValue === 'generating' ? now : 0),
+    finishedAt: terminal ? (current.finishedAt || now) : 0,
+    updatedAt: now,
+  });
+}
+
+function taskStates(value) {
+  return dedupeById((Array.isArray(value) ? value : [])
+    .filter(obj).map(normalizeStoryboardTaskState).filter((task) => task.id))
+    .sort((left, right) => Number(right.updatedAt || right.requestedAt) - Number(left.updatedAt || left.requestedAt))
+    .slice(0, 300);
 }
 
 function shotPlans(value, state = {}) {
