@@ -96,10 +96,10 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.25';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.26';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.25';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.25';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.26';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.26';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -111,6 +111,7 @@ import {
   STORYBOARD_GROUP_FRAME_STRATEGIES,
   STORYBOARD_MODEL_REGISTRY,
   STORYBOARD_PIPELINE_LOG_LIMIT,
+  STORYBOARD_PLAN_SCHEMA,
   STORYBOARD_PROVIDER_REGISTRY,
   STORYBOARD_RATIOS,
   STORYBOARD_SHOT_GROUP_TEMPLATES,
@@ -146,24 +147,28 @@ import {
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.25';
+} from './qianmu-storyboard.js?v=1.58.26';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.25';
+const VERSION = '1.58.26';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.25'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.26'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.25'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.26'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.25'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.26'),
+  },
+  storyboardContract: {
+    label: '分镜返回协议',
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.26'),
   },
 });
 function directImageRuntime() {
@@ -13100,10 +13105,43 @@ async function storyboardCallCompiler(messages, profileId) {
   });
 }
 
-function storyboardCompilerResult(raw, context, capabilities, state) {
-  let parsed = null;
-  try { parsed = extractJson(raw); } catch (_) {}
-  const object = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+async function storyboardCompilerResult(raw, context, capabilities, state) {
+  let object = null;
+  const rawText = String(raw || '');
+  const declaresPlanContract = /"schema"\s*:\s*"qianmu\.storyboard\.plan\.v1"/.test(rawText);
+  if (declaresPlanContract) {
+    const contract = await featureRuntime.load('storyboardContract');
+    const paragraphIds = context.paragraphs.map((_, index) => `P${index + 1}`);
+    const paragraphIndexById = Object.fromEntries(paragraphIds.map((id, index) => [id, index]));
+    const manualSupplement = state.pendingParagraphSelection?.mode === 'manual_supplement';
+    const requiredInsertAfter = Number.isInteger(context.forcedParagraphIndex)
+      ? paragraphIds[context.forcedParagraphIndex] || ''
+      : '';
+    const allowedRatioIds = state.compositionPolicy?.mode === 'fixed' && state.compositionPolicy?.fixedRatioId
+      ? [state.compositionPolicy.fixedRatioId]
+      : state.compositionPolicy?.allowedRatioIds || STORYBOARD_RATIOS.map((item) => item.id);
+    const result = contract.parseStoryboardContractResponse(rawText, {
+      kind: 'plan',
+      allowedParagraphIds: paragraphIds,
+      allowedRatioIds,
+      maxShots: manualSupplement ? 1 : state.routing.enabled ? state.routing.maxShotsPerFloor : 1,
+      manualSupplement,
+      requiredInsertAfter,
+    });
+    if (!result.ok) {
+      const details = contract.formatStoryboardContractErrors(result.errors, 8);
+      throw new Error(`镜头协议校验失败${details ? `：\n${details}` : ''}`);
+    }
+    object = contract.adaptStoryboardPlanContract(result.data, {
+      paragraphIndexById,
+      fallbackParagraphIndex: context.forcedParagraphIndex,
+    });
+  } else {
+    let parsed = null;
+    try { parsed = extractJson(rawText); } catch (_) {}
+    object = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  }
+  if (!object || typeof object !== 'object' || Array.isArray(object)) object = {};
   const manualSupplement = state.pendingParagraphSelection?.mode === 'manual_supplement';
   if (object.should_generate === false && !manualSupplement) {
     return {
@@ -13114,17 +13152,18 @@ function storyboardCompilerResult(raw, context, capabilities, state) {
   }
   const maxIndex = Math.max(0, context.paragraphs.length - 1);
   const allowedTypes = new Set(['portrait', 'group', 'environment', 'object', 'action', 'closeup', 'custom']);
-  const allowedRoles = new Set(['establishing', 'medium', 'closeup', 'reaction', 'detail', 'action', 'atmosphere', 'custom']);
+  const allowedRoles = new Set(['establishing', 'relationship', 'medium', 'closeup', 'reaction', 'detail', 'action', 'atmosphere', 'turn', 'custom']);
   const rawShots = Array.isArray(object.shots) ? object.shots : [object];
   const limit = manualSupplement ? 1 : state.routing.enabled ? Math.max(1, Math.min(4, Number(state.routing.maxShotsPerFloor) || 1)) : 1;
   const shots = rawShots.slice(0, limit).map((item, index) => {
     const rawPrompt = String(item?.prompt || item?.positive_prompt || item?.final_prompt || (index === 0 && !Object.keys(object).length ? raw : '') || '')
       .replace(/^```(?:json)?|```$/gi, '').trim().slice(0, 24000);
-    const shotSpec = normalizeStoryboardShotSpec({
+    const shotSpec = normalizeStoryboardShotSpec(item?.shotSpec || {
       ...item,
       id: item?.id || uid('shotspec'),
       promptAtoms: item?.prompt_atoms || item?.promptAtoms || { global: rawPrompt ? [rawPrompt] : [], negative: [item?.negative || item?.negative_prompt || ''].filter(Boolean) },
     });
+    if (!shotSpec.id) shotSpec.id = item?.id || uid('shotspec');
     const prompt = rawPrompt || compileStoryboardPrompt({ providerId: state.source, modelId: storyboardProviderProfile(state).model, shot: shotSpec }).prompt;
     if (!prompt) return null;
     return {
@@ -13168,7 +13207,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
       { role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt },
     ], state.promptCompiler.apiProfileId);
     if (plan?.status === 'cancelled') return false;
-    const result = storyboardCompilerResult(raw, context, getStoryboardCapabilities(state.source, profile.model), state);
+    const result = await storyboardCompilerResult(raw, context, getStoryboardCapabilities(state.source, profile.model), state);
     if (!result.shouldGenerate) {
       state.prompt = '';
       state.negative = '';
