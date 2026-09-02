@@ -10,7 +10,7 @@ import {
 const indexSource = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const blobSource = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 22);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 23);
 const pending = transitionStoryboardTaskState(createStoryboardTaskState({ id: 'job-a', chatKey: 'chat-a', floor: 5, now: 100 }), 'completed', {
   stage: 'delivery_pending', progress: 0.96, floor: null, deliveryState: 'pending_chat', linkState: 'foreign', resultIds: ['image-a'], now: 200,
 });
@@ -28,11 +28,11 @@ assert.equal(delivered.deliveryState, 'delivered');
 assert.equal(delivered.linkState, 'active');
 
 const migrated = normalizeStoryboardState({ schemaVersion: 21, taskStates: [pending] });
-assert.equal(migrated.schemaVersion, 22);
+assert.equal(migrated.schemaVersion, 23);
 assert.equal(migrated.taskStates[0].deliveryState, 'pending_chat');
 
 // Cross-chat results use a durable local inbox because ST only safely saves the current chat metadata.
-assert.match(blobSource, /const DB_VERSION = 9/);
+assert.match(blobSource, /const DB_VERSION = 10/);
 assert.match(blobSource, /STORE_STORYBOARD_INBOX = 'storyboard_inbox'/);
 assert.match(blobSource, /export async function putStoryboardDelivery/);
 assert.match(blobSource, /export async function listStoryboardDeliveries/);

@@ -4,7 +4,7 @@
 // localStorage 存不下二进制大对象，故独立走 IndexedDB；存 Blob，播放时再 createObjectURL。
 
 const DB_NAME = 'qianmu-blobstore';
-const DB_VERSION = 9;
+const DB_VERSION = 10;
 const STORE_AUDIO = 'audio';         // key: 缓存键   value: { blob, meta, createdAt }
 const STORE_FAVORITES = 'favorites'; // key: 收藏 id  value: { blob, meta, label, createdAt }
 // ── 伴读模块（v2 新增）──
@@ -24,6 +24,7 @@ const STORE_NOTES = 'notes';               // key: noteId value: QianmuNote（�
 const STORE_STORYBOARD_INBOX = 'storyboard_inbox'; // key: taskId value: 跨聊天完成后等待原聊天接收的轻量成片记录
 const STORE_STORYBOARD_PIPELINE_LOGS = 'storyboard_pipeline_logs'; // key: pipelineId value: 已结束的完整生成流水；轻摘要仍留设置
 const STORE_STORYBOARD_SNAPSHOTS = 'storyboard_snapshots'; // key: chatKey + recordId value: 阅片记录的完整精确重绘快照
+const STORE_STORYBOARD_PLAN_ARCHIVES = 'storyboard_plan_archives'; // key: chatKey + planId value: 已结束分镜计划的完整重数据
 
 const STORAGE_STORE_INFO = Object.freeze({
   [STORE_AUDIO]: { label: '语音缓存', category: 'audio', recoverable: true },
@@ -39,6 +40,7 @@ const STORAGE_STORE_INFO = Object.freeze({
   [STORE_STORYBOARD_INBOX]: { label: '分镜待归档', category: 'images', recoverable: false },
   [STORE_STORYBOARD_PIPELINE_LOGS]: { label: '分镜详细日志', category: 'logs', recoverable: true },
   [STORE_STORYBOARD_SNAPSHOTS]: { label: '阅片重绘快照', category: 'cache', recoverable: false },
+  [STORE_STORYBOARD_PLAN_ARCHIVES]: { label: '分镜历史计划', category: 'cache', recoverable: false },
 });
 
 let dbPromise = null;
@@ -64,6 +66,7 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE_STORYBOARD_INBOX)) db.createObjectStore(STORE_STORYBOARD_INBOX);
       if (!db.objectStoreNames.contains(STORE_STORYBOARD_PIPELINE_LOGS)) db.createObjectStore(STORE_STORYBOARD_PIPELINE_LOGS);
       if (!db.objectStoreNames.contains(STORE_STORYBOARD_SNAPSHOTS)) db.createObjectStore(STORE_STORYBOARD_SNAPSHOTS);
+      if (!db.objectStoreNames.contains(STORE_STORYBOARD_PLAN_ARCHIVES)) db.createObjectStore(STORE_STORYBOARD_PLAN_ARCHIVES);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => { dbPromise = null; reject(req.error); };
@@ -617,6 +620,63 @@ export async function deleteStoryboardSnapshots(keys = []) {
   return { deleted: unique };
 }
 
+// ── 分镜：结束态计划重数据 ───────────────────────────────
+export async function putStoryboardPlanArchives(records = []) {
+  const normalized = (Array.isArray(records) ? records : [])
+    .filter((item) => item && String(item.key || '').trim() && item.plan && typeof item.plan === 'object')
+    .map((item) => ({
+      key: String(item.key), chatKey: String(item.chatKey || ''), planId: String(item.planId || ''),
+      plan: item.plan, updatedAt: Number(item.updatedAt) || Date.now(),
+    }));
+  if (!normalized.length) return { stored: [] };
+  const db = await openDB();
+  const transaction = db.transaction(STORE_STORYBOARD_PLAN_ARCHIVES, 'readwrite');
+  const done = new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('storyboard plan archive failed'));
+    transaction.onabort = () => reject(transaction.error || new Error('storyboard plan archive aborted'));
+  });
+  const target = transaction.objectStore(STORE_STORYBOARD_PLAN_ARCHIVES);
+  try {
+    for (const record of normalized) target.put(record, record.key);
+  } catch (error) {
+    try { transaction.abort(); } catch (_) {}
+    await done.catch(() => {});
+    throw error;
+  }
+  await done;
+  return { stored: normalized.map((item) => item.key) };
+}
+
+export async function getStoryboardPlanArchives(keys = []) {
+  const unique = [...new Set((Array.isArray(keys) ? keys : []).map((value) => String(value || '').trim()).filter(Boolean))].slice(0, 300);
+  if (!unique.length) return [];
+  const target = await store(STORE_STORYBOARD_PLAN_ARCHIVES, 'readonly');
+  const values = await Promise.all(unique.map((key) => reqP(target.get(key))));
+  return values.filter(Boolean);
+}
+
+export async function deleteStoryboardPlanArchives(keys = []) {
+  const unique = [...new Set((Array.isArray(keys) ? keys : []).map((value) => String(value || '').trim()).filter(Boolean))].slice(0, 300);
+  if (!unique.length) return { deleted: [] };
+  const db = await openDB();
+  const transaction = db.transaction(STORE_STORYBOARD_PLAN_ARCHIVES, 'readwrite');
+  const done = new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('storyboard plan archive delete failed'));
+    transaction.onabort = () => reject(transaction.error || new Error('storyboard plan archive delete aborted'));
+  });
+  const target = transaction.objectStore(STORE_STORYBOARD_PLAN_ARCHIVES);
+  for (const key of unique) target.delete(key);
+  await done;
+  return { deleted: unique };
+}
+
+export async function clearStoryboardPlanArchives() {
+  const target = await store(STORE_STORYBOARD_PLAN_ARCHIVES, 'readwrite');
+  await reqP(target.clear());
+}
+
 // ── 存储治理：只读盘点与严格白名单清理 ──────────────────────
 
 function readerImageBookId(key) {
@@ -742,6 +802,7 @@ function storageRecordChatKey(name, key, value) {
   if (name === STORE_CHATS || name === STORE_VECTORS) return readerBucketScope(key, value).slice(0, 512);
   if (name === STORE_STORYBOARD_INBOX) return String(value?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_STORYBOARD_SNAPSHOTS) return String(value?.chatKey || '').trim().slice(0, 512);
+  if (name === STORE_STORYBOARD_PLAN_ARCHIVES) return String(value?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_AUDIO) return String(value?.meta?.chatKey || '').trim().slice(0, 512);
   return '';
 }
@@ -911,6 +972,7 @@ const CHAT_SCOPED_CLEARABLE_STORES = Object.freeze([
   STORE_CHATS,
   STORE_VECTORS,
   STORE_STORYBOARD_SNAPSHOTS,
+  STORE_STORYBOARD_PLAN_ARCHIVES,
 ]);
 
 async function clearStoreChatScope(name, chatKey) {

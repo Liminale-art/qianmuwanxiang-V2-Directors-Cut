@@ -95,11 +95,11 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.42';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.43';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.42';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.42';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.42';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.43';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.43';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.43';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -152,35 +152,35 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.42';
+} from './qianmu-storyboard.js?v=1.58.43';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.42';
+const VERSION = '1.58.43';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.42'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.43'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.42'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.43'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.42'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.43'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.42'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.43'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.42'),
-        import('./qianmu-theaters.js?v=1.58.42'),
+        import('./builtin-theaters.js?v=1.58.43'),
+        import('./qianmu-theaters.js?v=1.58.43'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -951,6 +951,9 @@ let storyboardPipelineArchiveEpoch = 0;
 const storyboardSnapshotCache = new Map(); // key -> 精确重绘 snapshot；聊天 metadata 只留轻量 record
 const storyboardSnapshotReads = new Map();
 let storyboardSnapshotEpoch = 0;
+const storyboardPlanArchiveCache = new Map(); // key -> 已结束计划的完整重数据；settings 只留状态索引
+let storyboardPlanArchiveEpoch = 0;
+let storyboardPlanArchiveTimer = null;
 const storyboardApiKeys = new Map(); // credentialId -> Key；不进入设置、日志或分镜数据包
 const storyboardDraftApiKeys = new Map(); // 表单暂存：测试失败/页面重绘时不丢失用户刚输入的 Key
 const STORYBOARD_BROWSER_CREDENTIALS_KEY = 'qianmu.storyboard.credentials.v1';
@@ -7195,6 +7198,7 @@ const STORAGE_ITEM_RISK = Object.freeze({
   notes: ['不可恢复 · 固定便笺', true],
   storyboard_pipeline_logs: ['可清理 · 分镜详细流水', false],
   storyboard_snapshots: ['不可恢复 · 阅片精确重绘设置', true],
+  storyboard_plan_archives: ['不可恢复 · 分镜历史计划', true],
   __orphan_reader_blobs__: ['无书籍主体引用 · 删除前重查', false],
   __diagnostics__: ['千幕与分镜日志', false],
 });
@@ -7420,7 +7424,7 @@ async function importTtsFavoritesBackup(event) {
   }
 }
 
-const STORAGE_CHAT_CLEARABLE = new Set(['audio', 'tts_lines', 'reader_chats', 'reader_vectors', 'storyboard_snapshots']);
+const STORAGE_CHAT_CLEARABLE = new Set(['audio', 'tts_lines', 'reader_chats', 'reader_vectors', 'storyboard_snapshots', 'storyboard_plan_archives']);
 
 function storageChatScopeLabel(chatKey, index = 0) {
   const value = String(chatKey || '');
@@ -7545,7 +7549,36 @@ function reconcileClearedStorageItems(selected) {
       chatMetadataChanged = true;
     }
   }
+  if (cleared.has('storyboard_plan_archives')) {
+    storyboardPlanArchiveEpoch++;
+    if (storyboardPlanArchiveTimer) clearTimeout(storyboardPlanArchiveTimer);
+    storyboardPlanArchiveTimer = null;
+    storyboardPlanArchiveCache.clear();
+    for (const plan of storyboardState().shotPlans || []) {
+      delete plan.archiveRef;
+      delete plan.archiveVersion;
+      delete plan.archivedAt;
+    }
+  }
   return { chatMetadataChanged };
+}
+
+function reconcileClearedStoryboardPlanChats(chatKeys = []) {
+  const keys = new Set((Array.isArray(chatKeys) ? chatKeys : []).map((value) => String(value || '')).filter(Boolean));
+  if (!keys.size) return false;
+  storyboardPlanArchiveEpoch++;
+  if (storyboardPlanArchiveTimer) clearTimeout(storyboardPlanArchiveTimer);
+  storyboardPlanArchiveTimer = null;
+  storyboardPlanArchiveCache.clear();
+  let changed = false;
+  for (const plan of storyboardState().shotPlans || []) {
+    if (!keys.has(String(plan.chatKey || plan.messageRef?.chatKey || '')) || !plan.archiveRef) continue;
+    delete plan.archiveRef;
+    delete plan.archiveVersion;
+    delete plan.archivedAt;
+    changed = true;
+  }
+  return changed;
 }
 
 function paintStorageManagementCard() {
@@ -7571,6 +7604,11 @@ function bindStorageManagementEvents(root) {
     if (!selected?.length) return;
     try {
       const stores = selected.filter((item) => !item.startsWith('__'));
+      if (stores.includes('storyboard_plan_archives')) {
+        storyboardPlanArchiveEpoch++;
+        if (storyboardPlanArchiveTimer) clearTimeout(storyboardPlanArchiveTimer);
+        storyboardPlanArchiveTimer = null;
+      }
       const storageResult = await blobStore.clearStorageItems(stores);
       const reconciled = reconcileClearedStorageItems(storageResult.cleared);
       let orphanResult = null;
@@ -7605,11 +7643,19 @@ function bindStorageManagementEvents(root) {
     const selected = await openStorageChatCleanupDialog(storageInventoryState.data);
     if (!selected?.length) return;
     try {
+      const planArchiveChats = selected.filter((item) => item.name === 'storyboard_plan_archives').map((item) => item.chatKey);
+      if (planArchiveChats.length) {
+        storyboardPlanArchiveEpoch++;
+        if (storyboardPlanArchiveTimer) clearTimeout(storyboardPlanArchiveTimer);
+        storyboardPlanArchiveTimer = null;
+      }
       const result = await blobStore.clearChatScopedStorage(selected);
       const currentStores = [...new Set(result.cleared
         .filter((item) => item.count > 0 && item.chatKey === String(getChatKey() || ''))
-        .map((item) => item.name))];
+        .map((item) => item.name)
+        .filter((name) => name !== 'storyboard_plan_archives'))];
       const reconciled = currentStores.length ? reconcileClearedStorageItems(currentStores) : { chatMetadataChanged: false };
+      reconcileClearedStoryboardPlanChats(planArchiveChats);
       if (reconciled.chatMetadataChanged) await saveMetadata();
       saveSettings();
       await refreshStorageInventory(true);
@@ -11685,6 +11731,161 @@ async function storyboardDeleteRecordSnapshots(records) {
   }
 }
 
+function storyboardPlanIsTerminal(plan) {
+  return Boolean(plan?.id) && ['completed', 'skipped', 'failed', 'cancelled', 'stale', 'orphaned'].includes(String(plan.status || ''));
+}
+
+function storyboardPlanArchiveKey(plan) {
+  const planId = String(plan?.id || '').trim();
+  const chatKey = String(plan?.chatKey || plan?.messageRef?.chatKey || 'unscoped').trim() || 'unscoped';
+  return planId ? `${chatKey}\u241f${planId}` : '';
+}
+
+function storyboardPlanHasHeavyPayload(plan) {
+  if (!plan || !storyboardPlanIsTerminal(plan)) return false;
+  if (plan.continuityLedger && typeof plan.continuityLedger === 'object') return true;
+  return (plan.shots || []).some((shot) => (
+    String(shot?.prompt || '').trim() || String(shot?.safePrompt || '').trim() || String(shot?.negative || '').trim()
+      || shot?.shotSpec || shot?.compiledPrompt || shot?.compositionDecision
+  ));
+}
+
+function storyboardPlanArchivePayload(plan) {
+  const payload = clone(plan);
+  delete payload.archiveRef;
+  delete payload.archiveVersion;
+  delete payload.archivedAt;
+  return payload;
+}
+
+function storyboardPlanLightweightSummary(plan, key) {
+  return {
+    id: plan.id, chatKey: plan.chatKey, floor: plan.floor, swipeId: plan.swipeId,
+    messageRef: clone(plan.messageRef || null), revisionId: plan.revisionId, idempotencyKey: plan.idempotencyKey,
+    origin: plan.origin, paragraphSelection: clone(plan.paragraphSelection || null),
+    continuityLedger: null, hasContinuityLedger: Boolean(plan.hasContinuityLedger || plan.continuityLedger),
+    autoGenerate: Boolean(plan.autoGenerate), promptLocked: Boolean(plan.promptLocked), manualReviewRequired: Boolean(plan.manualReviewRequired),
+    status: plan.status, linkState: plan.linkState || '',
+    shots: (plan.shots || []).map((shot) => ({
+      id: shot.id, shotType: shot.shotType, role: shot.role, title: shot.title, purpose: '',
+      prompt: '', safePrompt: '', negative: '', hasPrompt: Boolean(shot.hasPrompt || String(shot.prompt || '').trim() || String(shot.safePrompt || '').trim()),
+      providerId: shot.providerId, connectionPresetId: shot.connectionPresetId, parameterPresetId: shot.parameterPresetId, routeRuleId: shot.routeRuleId,
+      status: shot.status, resultIds: clone(shot.resultIds || []), error: String(shot.error || '').slice(0, 400),
+      partialFailureCount: shot.partialFailureCount, attempt: shot.attempt,
+      paragraphAnchor: clone(shot.paragraphAnchor || null), paragraphSelection: clone(shot.paragraphSelection || null),
+      shotSpec: null, compiledPrompt: null, compositionDecision: null,
+      sensitive: Boolean(shot.sensitive), safetyAdapted: Boolean(shot.safetyAdapted), userEdited: Boolean(shot.userEdited),
+      promptLocked: Boolean(shot.promptLocked), requiresManualConfirmation: Boolean(shot.requiresManualConfirmation),
+    })),
+    archiveRef: key, archiveVersion: 1, archivedAt: Date.now(), createdAt: plan.createdAt, updatedAt: plan.updatedAt,
+  };
+}
+
+async function storyboardArchiveShotPlans(plans = storyboardState().shotPlans) {
+  if (!blobStore.blobStoreAvailable()) return 0;
+  const candidates = (Array.isArray(plans) ? plans : []).filter((plan) => storyboardPlanHasHeavyPayload(plan));
+  if (!candidates.length) return 0;
+  const epoch = storyboardPlanArchiveEpoch;
+  const captures = candidates.map((plan) => ({
+    id: String(plan.id), key: storyboardPlanArchiveKey(plan), chatKey: String(plan.chatKey || plan.messageRef?.chatKey || ''),
+    updatedAt: Number(plan.updatedAt) || 0, status: String(plan.status || ''), plan: storyboardPlanArchivePayload(plan),
+  })).filter((item) => item.key);
+  if (!captures.length) return 0;
+  try {
+    await blobStore.putStoryboardPlanArchives(captures.map((item) => ({
+      key: item.key, chatKey: item.chatKey, planId: item.id, plan: clone(item.plan), updatedAt: item.updatedAt,
+    })));
+    if (epoch !== storyboardPlanArchiveEpoch) return 0;
+    const state = storyboardState();
+    let archived = 0;
+    for (const item of captures) {
+      const index = state.shotPlans.findIndex((plan) => String(plan.id) === item.id);
+      const current = index >= 0 ? state.shotPlans[index] : null;
+      if (!current || Number(current.updatedAt || 0) !== item.updatedAt || String(current.status || '') !== item.status || !storyboardPlanIsTerminal(current)) continue;
+      storyboardPlanArchiveCache.set(item.key, clone(item.plan));
+      state.shotPlans[index] = storyboardPlanLightweightSummary(current, item.key);
+      archived++;
+    }
+    if (archived) saveSettings();
+    return archived;
+  } catch (error) {
+    console.warn('[千幕] 分镜历史计划暂未归档，已保留设置内原数据。', error);
+    return 0;
+  }
+}
+
+function storyboardSchedulePlanArchive(delay = 180) {
+  if (storyboardPlanArchiveTimer) clearTimeout(storyboardPlanArchiveTimer);
+  storyboardPlanArchiveTimer = setTimeout(() => {
+    storyboardPlanArchiveTimer = null;
+    void storyboardArchiveShotPlans();
+  }, Math.max(0, Number(delay) || 0));
+}
+
+async function storyboardReleasePlanArchive(plan) {
+  if (!plan) return;
+  const key = String(plan.archiveRef || storyboardPlanArchiveKey(plan));
+  delete plan.archiveRef;
+  delete plan.archiveVersion;
+  delete plan.archivedAt;
+  plan.continuityLedger ||= null;
+  if (!key) return;
+  storyboardPlanArchiveCache.delete(key);
+  if (!blobStore.blobStoreAvailable()) return;
+  try { await blobStore.deleteStoryboardPlanArchives([key]); }
+  catch (error) { console.warn('[千幕] 分镜历史计划恢复为工作态时，旧归档稍后可由储存空间清理。', error); }
+}
+
+async function storyboardPlansForPortableExport(plans = []) {
+  const list = Array.isArray(plans) ? plans : [];
+  const keys = [...new Set(list.map((plan) => String(plan?.archiveRef || '')).filter(Boolean))];
+  const missing = keys.filter((key) => !storyboardPlanArchiveCache.has(key));
+  if (missing.length && blobStore.blobStoreAvailable()) {
+    try {
+      const rows = await blobStore.getStoryboardPlanArchives(missing);
+      for (const row of rows) if (row?.key && row.plan) storyboardPlanArchiveCache.set(String(row.key), row.plan);
+    } catch (error) {
+      console.warn('[千幕] 分镜历史计划读取失败，将导出仍可用的轻量索引。', error);
+    }
+  }
+  return list.map((summary) => {
+    const archived = summary?.archiveRef ? storyboardPlanArchiveCache.get(String(summary.archiveRef)) : null;
+    const output = archived ? clone(archived) : clone(summary);
+    if (archived) {
+      Object.assign(output, {
+        id: summary.id, chatKey: summary.chatKey, floor: summary.floor, swipeId: summary.swipeId,
+        messageRef: clone(summary.messageRef || null), revisionId: summary.revisionId, idempotencyKey: summary.idempotencyKey,
+        origin: summary.origin, paragraphSelection: clone(summary.paragraphSelection || null), autoGenerate: summary.autoGenerate,
+        promptLocked: summary.promptLocked, manualReviewRequired: summary.manualReviewRequired,
+        status: summary.status, linkState: summary.linkState || '', createdAt: summary.createdAt, updatedAt: summary.updatedAt,
+      });
+      const currentShots = new Map((summary.shots || []).map((shot) => [String(shot.id || ''), shot]));
+      output.shots = (archived.shots || []).map((shot) => {
+        const current = currentShots.get(String(shot.id || ''));
+        return current ? { ...shot, status: current.status, resultIds: clone(current.resultIds || []), error: current.error, attempt: current.attempt, partialFailureCount: current.partialFailureCount } : shot;
+      });
+    }
+    delete output.archiveRef;
+    delete output.archiveVersion;
+    delete output.archivedAt;
+    return output;
+  });
+}
+
+async function storyboardDeletePlanArchives(plans) {
+  const list = (Array.isArray(plans) ? plans : [plans]).filter(Boolean);
+  const keys = [...new Set(list.map((plan) => String(plan.archiveRef || storyboardPlanArchiveKey(plan))).filter(Boolean))];
+  for (const key of keys) storyboardPlanArchiveCache.delete(key);
+  if (!keys.length || !blobStore.blobStoreAvailable()) return 0;
+  try {
+    await blobStore.deleteStoryboardPlanArchives(keys);
+    return keys.length;
+  } catch (error) {
+    console.warn('[千幕] 过期分镜计划索引已移除，残留归档可在储存空间继续清理。', error);
+    return 0;
+  }
+}
+
 function storyboardGalleryCollections() {
   const store = getChatStore();
   if (!Array.isArray(store.storyboardCollections)) store.storyboardCollections = [];
@@ -11976,8 +12177,10 @@ function storyboardEnsurePlan(state, floor, message, { origin = 'manual', autoGe
     compilerSignature: storyboardPlanCompilerSignature(state), createdAt: Date.now(),
   });
   plan = { ...ticket, shots: [], status: 'idle' };
-  state.shotPlans.unshift(plan);
-  state.shotPlans = state.shotPlans.slice(0, 300);
+  const next = [plan, ...(state.shotPlans || []).filter((item) => item.id !== plan.id)];
+  const dropped = next.slice(300);
+  state.shotPlans = next.slice(0, 300);
+  if (dropped.length) void storyboardDeletePlanArchives(dropped);
   return plan;
 }
 
@@ -12039,6 +12242,7 @@ function storyboardSetPlanStatus(plan, status, { error = '', resultIds = null, j
   }
   if (!plan && !task) return;
   saveSettings();
+  if (storyboardPlanIsTerminal(plan)) storyboardSchedulePlanArchive();
   const renderFloor = Number.isInteger(task?.floor) ? task.floor : (Number.isInteger(plan?.floor) ? plan.floor : null);
   const currentOwnsTask = !job?.chatKey || job.chatKey === String(getChatKey() || '');
   if (currentOwnsTask && Number.isInteger(renderFloor)) storyboardScheduleInlineRender(30, renderFloor);
@@ -12066,7 +12270,10 @@ function storyboardReconcileShotPlans() {
     }
     if (previousFloor !== plan.floor || previousState !== plan.linkState) changed = true;
   }
-  if (changed) queueMicrotask(() => saveSettings());
+  if (changed) {
+    queueMicrotask(() => saveSettings());
+    storyboardSchedulePlanArchive();
+  }
   return changed;
 }
 
@@ -14016,6 +14223,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
         output: { skipped: true, reason: result.skipReason, contract: result.contractMeta }, decisions: [], error: '',
       }];
       saveSettings();
+      storyboardSchedulePlanArchive();
       storyboardScheduleInlineRender(30, plan?.floor ?? context.floor);
       if (!quiet) toast(result.skipReason || '这一层没有需要单独成画的新增画面。', 'info');
       return false;
@@ -14261,6 +14469,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false } = {})
   if (!plan && deliveryPolicy.target !== 'gallery' && Number.isInteger(targetFloor) && ctx().chat?.[targetFloor]) {
     plan = storyboardEnsurePlan(state, targetFloor, ctx().chat[targetFloor], { origin: automatic ? 'automatic' : 'manual', autoGenerate: automatic });
   }
+  if (plan?.archiveRef) await storyboardReleasePlanArchive(plan);
   if (!state.prompt.trim() && state.promptCompiler.enabled) await storyboardCompilePrompt(root, { plan });
   if (!state.prompt.trim()) return toast('请先写下画面描述，或开启 LLM 协作自动取景。', 'warning');
   if (deliveryPolicy.target === 'floor' && (!String(state.floor || '').trim() || !Number.isInteger(Number(state.floor)))) {
@@ -14725,7 +14934,7 @@ function storyboardInjectMessageButtons(chatRoot) {
     button.className = 'mes_button interactable sd-storyboard-message-action';
     button.dataset.storyboardChatAction = 'capture-floor';
     const plan = storyboardPlanForMessage(storyboardState(), floor, chatMessage);
-    button.title = plan?.shots?.some((shot) => String(shot.prompt || '').trim()) ? `重新提取第 ${floor} 层生成词` : `提取第 ${floor} 层生成词`;
+    button.title = plan?.shots?.some((shot) => shot.hasPrompt || String(shot.prompt || '').trim()) ? `重新提取第 ${floor} 层生成词` : `提取第 ${floor} 层生成词`;
     button.setAttribute('aria-label', button.title);
     button.innerHTML = '<i class="fa-solid fa-video" data-qm-icon="qm-duotone-video-camera"></i>';
     toolbar.appendChild(button);
@@ -14931,6 +15140,9 @@ async function storyboardExportPackage() {
   await storyboardHydrateGallerySnapshots();
   const state = normalizeStoryboardState(clone(storyboardState()));
   const pipelineLogs = state.logs.map((log) => storyboardPipelineForLog(log)).filter(Boolean);
+  const chatKey = String(getChatKey() || '');
+  const shotPlans = await storyboardPlansForPortableExport((state.shotPlans || []).filter((plan) => !plan.chatKey || plan.chatKey === chatKey));
+  const taskStates = (state.taskStates || []).filter((task) => !task.chatKey || task.chatKey === chatKey);
   const records = storyboardGalleryRecords().map((item) => ({
     ...clone(item),
     snapshot: sanitizeStoryboardSnapshot(storyboardSnapshotForRecord(item) || {}, { source: item?.source, prompt: item?.prompt, negative: item?.negative }),
@@ -14950,13 +15162,14 @@ async function storyboardExportPackage() {
     } catch (_) { skipped++; }
   }
   const payload = {
-    type: 'qianmu-storyboard', version: 5, exportedAt: new Date().toISOString(), credentialsIncluded: false,
+    type: 'qianmu-storyboard', version: 6, exportedAt: new Date().toISOString(), credentialsIncluded: false,
     settings: {
       schemaVersion: state.schemaVersion, enabled: state.enabled, automation: clone(state.automation), source: state.source, inlineByDefault: state.inlineByDefault,
       promptMode: state.promptMode, promptCompiler: clone(state.promptCompiler),
       profiles: clone(state.profiles), parameterPresets: clone(state.parameterPresets),
       promptPresets: clone(state.promptPresets), artistPresets: clone(state.artistPresets), artistCollections: clone(state.artistCollections), tagLibrary: clone(state.tagLibrary),
       vibeLibrary: clone(state.vibeLibrary), routing: clone(state.routing), logs: clone(state.logs), pipelineLogs: clone(pipelineLogs),
+      shotPlans: clone(shotPlans), taskStates: clone(taskStates),
       connections: Object.fromEntries(Object.entries(state.connections).map(([providerId, group]) => [providerId, {
         ...clone(group), presets: (group.presets || []).map((item) => ({ ...clone(item), credentialId: '' })),
         draft: { ...clone(group.draft), credentialId: '' },
@@ -15000,6 +15213,19 @@ async function storyboardImportPackage(file) {
   state.vibeLibrary = storyboardMergeById(state.vibeLibrary, normalized.vibeLibrary, 500);
   state.logs = storyboardMergeById(state.logs, normalized.logs, STORYBOARD_PIPELINE_LOG_LIMIT);
   state.pipelineLogs = storyboardMergeById(state.pipelineLogs, normalized.pipelineLogs, STORYBOARD_PIPELINE_LOG_LIMIT);
+  const currentChatKey = String(getChatKey() || '');
+  const incomingPlans = (normalized.shotPlans || []).map((plan) => ({
+    ...clone(plan), chatKey: currentChatKey, archiveRef: '', archiveVersion: 0, archivedAt: 0,
+    messageRef: plan.messageRef ? { ...clone(plan.messageRef), chatKey: currentChatKey } : null,
+  }));
+  const incomingPlanIds = new Set(incomingPlans.map((plan) => String(plan.id || '')).filter(Boolean));
+  const replacedPlans = (state.shotPlans || []).filter((plan) => incomingPlanIds.has(String(plan.id || '')));
+  if (replacedPlans.length) await storyboardDeletePlanArchives(replacedPlans);
+  state.shotPlans = storyboardMergeById(state.shotPlans, incomingPlans, 300);
+  state.taskStates = storyboardMergeById(state.taskStates, (normalized.taskStates || []).map((task) => ({
+    ...clone(task), chatKey: currentChatKey,
+    messageRef: task.messageRef ? { ...clone(task.messageRef), chatKey: currentChatKey } : null,
+  })), 300);
   state.enabled = normalized.enabled;
   state.automation = clone(normalized.automation);
   for (const sourceId of Object.keys(STORYBOARD_SOURCES)) Object.assign(state.profiles[sourceId], normalized.profiles[sourceId], { loaded: true });
@@ -15056,6 +15282,7 @@ async function storyboardImportPackage(file) {
     }));
   normalizeStoryboardState(state);
   saveSettings(); await saveMetadata();
+  storyboardSchedulePlanArchive(600);
   void storyboardArchiveGallerySnapshots(store.storyboardImages);
   if (prunedRecords.length) void storyboardDeleteRecordSnapshots(prunedRecords);
   storyboardScheduleInlineRender(30); renderModal();
@@ -15288,7 +15515,7 @@ function storyboardCancelPlan(plan) {
   plan.status = 'cancelled';
   for (const shot of plan.shots || []) if (!['completed', 'failed'].includes(shot.status)) shot.status = 'cancelled';
   plan.updatedAt = Date.now();
-  saveSettings(); storyboardScheduleInlineRender(20, plan.floor); renderModal();
+  saveSettings(); storyboardSchedulePlanArchive(); storyboardScheduleInlineRender(20, plan.floor); renderModal();
 }
 
 async function storyboardRetryPlan(plan) {
@@ -15296,6 +15523,7 @@ async function storyboardRetryPlan(plan) {
   const floor = Number(plan?.floor);
   const message = Number.isInteger(floor) ? ctx().chat?.[floor] : null;
   if (!plan || plan.origin !== 'manual_supplement' || !message) return toast('原正文位置已不存在，无法原位重试。', 'warning');
+  if (plan.archiveRef) await storyboardReleasePlanArchive(plan);
   state.target = 'floor'; state.floor = String(floor); state.paragraphMode = 'manual';
   state.pendingParagraphSelection = clone(plan.paragraphSelection);
   state.manualParagraphIndex = plan.paragraphSelection?.insertAfterIndex ?? null;
@@ -15329,7 +15557,7 @@ async function storyboardOnChatClick(event) {
     const state = storyboardState();
     const existingPlan = storyboardPlanForMessage(state, floor, chatMessage);
     if (['screening', 'compiling', 'queued', 'generating'].includes(existingPlan?.status)) return toast('这一层的分镜任务正在进行。', 'info');
-    const reextract = existingPlan?.status === 'prompt_ready' || existingPlan?.shots?.some((shot) => String(shot.prompt || '').trim());
+    const reextract = existingPlan?.status === 'prompt_ready' || existingPlan?.shots?.some((shot) => shot.hasPrompt || String(shot.prompt || '').trim());
     const choice = await storyboardChooseCaptureMode(floor, chatMessage, { reextract });
     if (!choice) return;
     const manualSupplement = choice.mode === 'manual_supplement';
@@ -15337,6 +15565,7 @@ async function storyboardOnChatClick(event) {
       origin: manualSupplement ? 'manual_supplement' : 'manual', autoGenerate: false,
       forceNew: manualSupplement, paragraphSelection: choice.selection,
     });
+    if (plan.archiveRef) await storyboardReleasePlanArchive(plan);
     state.target = 'floor'; state.floor = String(floor); state.paragraphMode = manualSupplement ? 'manual' : 'auto'; state.manualParagraphIndex = choice.paragraphIndex;
     state.pendingParagraphSelection = choice.selection;
     state.promptCompiler.enabled = true;
@@ -18348,7 +18577,10 @@ const API_CONFIG_KEYS = ['apiUrl', 'apiKey', 'model', 'availableModels', 'apiPro
 async function exportConfig() {
   const includeApi = await confirmDialog('导出配置', '是否一并导出API配置？');
   const snapshot = clone(settings);
-  if (isPlainObject(snapshot.imagegen)) snapshot.imagegen = normalizeStoryboardState(snapshot.imagegen);
+  if (isPlainObject(snapshot.imagegen)) {
+    snapshot.imagegen = normalizeStoryboardState(snapshot.imagegen);
+    snapshot.imagegen.shotPlans = await storyboardPlansForPortableExport(snapshot.imagegen.shotPlans);
+  }
   if (!includeApi) {
     for (const key of API_CONFIG_KEYS) delete snapshot[key];
   }
@@ -18386,7 +18618,14 @@ async function importConfig(event) {
   // mergeDefaults 只在键缺失时填默认、对嵌套 plain object 递归，故导入内容里已有的值保留、新版新增字段用默认补上。
   const merged = clone(incoming);
   mergeDefaults(merged, DEFAULT_SETTINGS);
-  if (isPlainObject(merged.imagegen)) merged.imagegen = normalizeStoryboardState(merged.imagegen);
+  if (isPlainObject(merged.imagegen)) {
+    merged.imagegen = normalizeStoryboardState(merged.imagegen);
+    for (const plan of merged.imagegen.shotPlans || []) {
+      delete plan.archiveRef;
+      delete plan.archiveVersion;
+      delete plan.archivedAt;
+    }
+  }
   const hasApi = API_CONFIG_KEYS.some((key) => typeof incoming[key] !== 'undefined');
   if (!hasApi) {
     for (const key of API_CONFIG_KEYS) merged[key] = settings[key];
@@ -18395,10 +18634,19 @@ async function importConfig(event) {
     merged.proseLayout.updatedAt = Date.now();
     cacheProseLayout(merged.proseLayout);
   }
+  storyboardPlanArchiveEpoch++;
+  if (storyboardPlanArchiveTimer) clearTimeout(storyboardPlanArchiveTimer);
+  storyboardPlanArchiveTimer = null;
+  storyboardPlanArchiveCache.clear();
+  if (blobStore.blobStoreAvailable()) {
+    try { await blobStore.clearStoryboardPlanArchives(); }
+    catch (error) { console.warn('[千幕] 配置已导入，但旧分镜历史计划归档稍后需由储存空间清理。', error); }
+  }
   extensionSettings[MODULE_NAME] = merged;
   settings = getSettings();
   seedBuiltinTheaters();   // 导入的配置可能早于内置剧场组，补种一次
   saveSettings();
+  storyboardSchedulePlanArchive(600);
   await applyDirectorInjection();
   renderFloatButton();
   renderModal();
@@ -28562,6 +28810,7 @@ async function storyboardHandleAutomaticCapture() {
   const plan = existing || storyboardEnsurePlan(state, floor, message, {
     origin: 'automatic', autoGenerate: state.automation.autoGenerate,
   });
+  if (plan.archiveRef) await storyboardReleasePlanArchive(plan);
   plan.origin = 'automatic';
   plan.autoGenerate = Boolean(state.automation.autoGenerate);
   plan.status = 'screening';
@@ -28649,6 +28898,7 @@ function bindEvents() {
     companionWorldView = '';   // 切聊天：世界书已按聊天分存，查看视图回到未选·避免跨聊天残留
     await refreshCoreadPersonaAvatar();
     void storyboardHandleChatChanged();
+    storyboardSchedulePlanArchive(1200);
     applyProseLayout();
     renderFloatButton();
     renderInputMenuEntry();
@@ -28666,6 +28916,7 @@ function bindEvents() {
     focusClockRuntimeTick();
     await refreshCoreadPersonaAvatar();
     void storyboardHandleChatChanged();
+    storyboardSchedulePlanArchive(1200);
     applyProseLayout();
     renderFloatButton();
     restoreQuickDockedPlugins();
@@ -28833,6 +29084,10 @@ function cleanupRuntime(resetSettings = false) {
       storyboardSnapshotEpoch++;
       storyboardSnapshotCache.clear();
       storyboardSnapshotReads.clear();
+      storyboardPlanArchiveEpoch++;
+      if (storyboardPlanArchiveTimer) clearTimeout(storyboardPlanArchiveTimer);
+      storyboardPlanArchiveTimer = null;
+      storyboardPlanArchiveCache.clear();
     });
     clean('storyboard events', () => storyboardUnbindChat());
     clean('focus clock', () => stopFocusClockRuntime());

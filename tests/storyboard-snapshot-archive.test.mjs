@@ -6,7 +6,7 @@ const source = readFileSync(new URL('../index.js', import.meta.url), 'utf8');
 const store = readFileSync(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
 
 test('storyboard redraw snapshots use an additive private IndexedDB store', () => {
-  assert.match(store, /const DB_VERSION = 9/);
+  assert.match(store, /const DB_VERSION = 10/);
   assert.match(store, /STORE_STORYBOARD_SNAPSHOTS = 'storyboard_snapshots'/);
   assert.match(store, /if \(!db\.objectStoreNames\.contains\(STORE_STORYBOARD_SNAPSHOTS\)\) db\.createObjectStore\(STORE_STORYBOARD_SNAPSHOTS\)/);
   assert.match(store, /STORE_STORYBOARD_SNAPSHOTS\]: \{[^}]*recoverable: false/);

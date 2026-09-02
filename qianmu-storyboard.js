@@ -1,7 +1,7 @@
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
-export const STORYBOARD_SCHEMA_VERSION = 22;
+export const STORYBOARD_SCHEMA_VERSION = 23;
 export const STORYBOARD_PRODUCTION_TRACK_LABELS = Object.freeze({ main_camera: '本段正文', second_camera: '世界背面' });
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
@@ -1380,16 +1380,44 @@ function taskStates(value) {
 
 function shotPlans(value, state = {}) {
   const normalized = (Array.isArray(value) ? value : []).filter(obj).map((plan) => {
+    const archiveRef = str(plan.archiveRef, 900);
+    const archivedSummary = Boolean(archiveRef);
     const shots = dedupeById((Array.isArray(plan.shots) ? plan.shots : []).filter(obj).map((shot) => {
       const providerId = getStoryboardProvider(shot.providerId) ? shot.providerId : '';
       const requestedConnection = cleanId(shot.connectionPresetId), requestedParameters = cleanId(shot.parameterPresetId);
       const connectionPresetId = providerId && state.connections?.[providerId]?.presets?.some((preset) => preset.id === requestedConnection) ? requestedConnection : '';
       const parameterPresetId = providerId && state.parameterPresets?.some((preset) => preset.id === requestedParameters && preset.source === providerId) ? requestedParameters : '';
-      const shotSpec = normalizeStoryboardShotSpec(shot.shotSpec || shot);
-      return { id: cleanId(shot.id), shotType: str(shot.shotType || shotSpec.shotScale || 'custom', 60), role: str(shot.role || shotSpec.shotRole, 60), title: str(shot.title, 120), purpose: str(shot.purpose || shotSpec.narrativePurpose, 500), prompt: str(shot.prompt, 24000), safePrompt: str(shot.safePrompt, 24000), negative: str(shot.negative, 12000), providerId, connectionPresetId, parameterPresetId, routeRuleId: cleanId(shot.routeRuleId), status: workflowState(shot.status), resultIds: ids(shot.resultIds, 20), error: str(shot.error, 4000), partialFailureCount: int(shot.partialFailureCount, 0, 20, 0), attempt: int(shot.attempt, 0, 20, 0), paragraphAnchor: shot.paragraphAnchor ? normalizeStoryboardParagraphAnchor(shot.paragraphAnchor) : null, paragraphSelection: shot.paragraphSelection ? normalizeStoryboardParagraphSelection(shot.paragraphSelection) : null, shotSpec, compiledPrompt: safeData(shot.compiledPrompt, 10) || null, compositionDecision: safeData(shot.compositionDecision, 6) || null, sensitive: Boolean(shot.sensitive || shotSpec.sensitive), safetyAdapted: Boolean(shot.safetyAdapted), userEdited: Boolean(shot.userEdited), promptLocked: Boolean(shot.promptLocked || shot.userEdited), requiresManualConfirmation: Boolean(shot.requiresManualConfirmation) };
+      const shotSpec = !archivedSummary || obj(shot.shotSpec) ? normalizeStoryboardShotSpec(shot.shotSpec || shot) : null;
+      const hasPrompt = Boolean(shot.hasPrompt || str(shot.prompt, 24000).trim() || str(shot.safePrompt, 24000).trim());
+      return {
+        id: cleanId(shot.id), shotType: str(shot.shotType || shotSpec?.shotScale || 'custom', 60), role: str(shot.role || shotSpec?.shotRole, 60),
+        title: str(shot.title, 120), purpose: str(shot.purpose || shotSpec?.narrativePurpose, 500), prompt: str(shot.prompt, 24000), safePrompt: str(shot.safePrompt, 24000), negative: str(shot.negative, 12000), hasPrompt,
+        providerId, connectionPresetId, parameterPresetId, routeRuleId: cleanId(shot.routeRuleId), status: workflowState(shot.status), resultIds: ids(shot.resultIds, 20),
+        error: str(shot.error, 4000), partialFailureCount: int(shot.partialFailureCount, 0, 20, 0), attempt: int(shot.attempt, 0, 20, 0),
+        paragraphAnchor: shot.paragraphAnchor ? normalizeStoryboardParagraphAnchor(shot.paragraphAnchor) : null,
+        paragraphSelection: shot.paragraphSelection ? normalizeStoryboardParagraphSelection(shot.paragraphSelection) : null,
+        shotSpec, compiledPrompt: safeData(shot.compiledPrompt, 10) || null, compositionDecision: safeData(shot.compositionDecision, 6) || null,
+        sensitive: Boolean(shot.sensitive || shotSpec?.sensitive), safetyAdapted: Boolean(shot.safetyAdapted), userEdited: Boolean(shot.userEdited),
+        promptLocked: Boolean(shot.promptLocked || shot.userEdited), requiresManualConfirmation: Boolean(shot.requiresManualConfirmation),
+      };
     }).filter((shot) => shot.id)).slice(0, 20);
     const messageRef = plan.messageRef ? normalizeStoryboardMessageReference(plan.messageRef) : null;
-    return { id: cleanId(plan.id), chatKey: str(plan.chatKey || messageRef?.chatKey, 512), floor: Number.isInteger(plan.floor) ? plan.floor : (Number.isInteger(messageRef?.lastKnownFloor) ? messageRef.lastKnownFloor : null), swipeId: int(plan.swipeId ?? messageRef?.swipeId, 0, Number.MAX_SAFE_INTEGER, 0), messageRef, revisionId: str(plan.revisionId || messageRef?.revisionId, 80), idempotencyKey: str(plan.idempotencyKey, 80), origin: ['manual', 'automatic', 'manual_supplement'].includes(plan.origin) ? plan.origin : 'manual', paragraphSelection: plan.paragraphSelection ? normalizeStoryboardParagraphSelection(plan.paragraphSelection) : null, continuityLedger: normalizeContinuity(plan.continuityLedger), autoGenerate: Boolean(plan.autoGenerate), promptLocked: Boolean(plan.promptLocked), manualReviewRequired: Boolean(plan.manualReviewRequired || shots.some((shot) => shot.requiresManualConfirmation)), status: workflowState(plan.status), shots, createdAt: pos(plan.createdAt || plan.updatedAt), updatedAt: pos(plan.updatedAt) };
+    const continuityInput = obj(plan.continuityLedger) ? plan.continuityLedger : null;
+    return {
+      id: cleanId(plan.id), chatKey: str(plan.chatKey || messageRef?.chatKey, 512),
+      floor: Number.isInteger(plan.floor) ? plan.floor : (Number.isInteger(messageRef?.lastKnownFloor) ? messageRef.lastKnownFloor : null),
+      swipeId: int(plan.swipeId ?? messageRef?.swipeId, 0, Number.MAX_SAFE_INTEGER, 0), messageRef,
+      revisionId: str(plan.revisionId || messageRef?.revisionId, 80), idempotencyKey: str(plan.idempotencyKey, 80),
+      origin: ['manual', 'automatic', 'manual_supplement'].includes(plan.origin) ? plan.origin : 'manual',
+      paragraphSelection: plan.paragraphSelection ? normalizeStoryboardParagraphSelection(plan.paragraphSelection) : null,
+      continuityLedger: archivedSummary && !continuityInput ? null : normalizeContinuity(continuityInput),
+      hasContinuityLedger: Boolean(plan.hasContinuityLedger || continuityInput),
+      autoGenerate: Boolean(plan.autoGenerate), promptLocked: Boolean(plan.promptLocked),
+      manualReviewRequired: Boolean(plan.manualReviewRequired || shots.some((shot) => shot.requiresManualConfirmation)),
+      status: workflowState(plan.status), linkState: str(plan.linkState, 40), shots,
+      archiveRef, archiveVersion: archiveRef ? int(plan.archiveVersion, 1, 100, 1) : 0, archivedAt: archiveRef ? pos(plan.archivedAt) : 0,
+      createdAt: pos(plan.createdAt || plan.updatedAt), updatedAt: pos(plan.updatedAt),
+    };
   }).filter((plan) => plan.id);
   return dedupeById(normalized).slice(0, 300);
 }

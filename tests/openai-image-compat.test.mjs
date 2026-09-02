@@ -14,7 +14,7 @@ const publicDns = async () => [{ address: '8.8.8.8', family: 4 }];
 const imageBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1]);
 const imageBase64 = Buffer.from(imageBytes).toString('base64');
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 22);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 23);
 
 const compatibility = normalizeOpenAIImageCompatibility({
   modelDiscovery: 'off',
