@@ -23,4 +23,7 @@ assert.match(source, /delete s\.liveStageEnabled[\s\S]*delete s\.injectSections\
 assert.match(source, /delete meta\[MODULE_NAME\]\.threads[\s\S]*delete meta\[MODULE_NAME\]\.threadQuality/, '旧聊天档案必须惰性清理');
 assert.match(source, /delete plan\.threads/, '模型遗留的伏笔字段不得重新进入推演结果');
 
+assert.match(source, /推演完成，下一幕已就位。/, '推演成功提示应使用当前功能语义');
+assert.doesNotMatch(source, /暗线已就位/, '退役的伏笔显影文案不得残留');
+
 console.log('Director continuity and retired-thread contract OK');

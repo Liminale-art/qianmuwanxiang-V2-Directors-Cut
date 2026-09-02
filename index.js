@@ -96,10 +96,10 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.21';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.22';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.21';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.21';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.22';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.22';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_COMPOSITION_RULE_ID,
@@ -139,24 +139,24 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
-} from './qianmu-storyboard.js?v=1.58.21';
+} from './qianmu-storyboard.js?v=1.58.22';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.21';
+const VERSION = '1.58.22';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.21'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.22'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.21'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.22'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.21'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.22'),
   },
 });
 function directImageRuntime() {
@@ -3361,7 +3361,7 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     log.status = 'success';
     log.duration = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
     saveSettings();
-    if (showSuccessToast) toast('推演完成，暗线已就位。', 'success');
+    if (showSuccessToast) toast('推演完成，下一幕已就位。', 'success');
   } catch (error) {
     const msg = error?.name === 'AbortError' ? 'USER_CANCELLED' : (error?.message || String(error));
     const isJsonFail = msg.startsWith('JSON_PARSE_FAILED::');

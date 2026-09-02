@@ -1,5 +1,5 @@
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
-export const STORYBOARD_SCHEMA_VERSION = 18;
+export const STORYBOARD_SCHEMA_VERSION = 19;
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -148,7 +148,7 @@ export const STORYBOARD_CONTINUITY_FACT_CATEGORIES = Object.freeze(['outfit', 'i
 export const STORYBOARD_CONTINUITY_FACT_PERSISTENCE = Object.freeze(['momentary', 'persistent']);
 export const STORYBOARD_CONTINUITY_FACT_STATES = Object.freeze(['active', 'superseded', 'expired']);
 export const STORYBOARD_SCENE_FINGERPRINT_SCHEMA = 'qianmu.storyboard.scene-fingerprint.v1';
-export const STORYBOARD_SHOT_PATTERNS = Object.freeze(['master', 'two_shot', 'over_shoulder', 'single_reaction', 'action', 'insert', 'atmosphere']);
+export const STORYBOARD_SHOT_PATTERNS = Object.freeze(['master', 'two_shot', 'over_shoulder', 'single_reaction', 'action', 'insert', 'atmosphere', 'montage']);
 export const STORYBOARD_STATIC_SCENE_TYPES = Object.freeze(['dialogue', 'activity', 'atmosphere']);
 export const STORYBOARD_VISUAL_DUTIES = Object.freeze(['space', 'relationship', 'action', 'reaction', 'detail', 'atmosphere', 'motif', 'transition']);
 export const STORYBOARD_SUBJECT_KINDS = Object.freeze(['character', 'object', 'environment', 'symbolic', 'mixed']);
@@ -813,6 +813,7 @@ export function normalizeStoryboardShotSpec(value = {}) {
   const evidenceType = STORYBOARD_EVIDENCE_TYPES.includes(evidenceRaw.type || evidenceRaw.claimType || evidenceRaw.claim_type)
     ? (evidenceRaw.type || evidenceRaw.claimType || evidenceRaw.claim_type)
     : 'explicit';
+  const productionRaw = obj(raw.productionContext || raw.production_context) ? (raw.productionContext || raw.production_context) : {};
   return {
     schema: STORYBOARD_PLAN_SCHEMA,
     id: cleanId(raw.id),
@@ -846,9 +847,54 @@ export function normalizeStoryboardShotSpec(value = {}) {
       floor: Number.isInteger(evidenceRaw.floor) ? Math.max(0, Number(evidenceRaw.floor)) : null,
       rationale: str(evidenceRaw.rationale || raw.visualRationale || raw.visual_rationale, 1000),
     },
+    productionContext: {
+      packetId: cleanId(productionRaw.packetId || productionRaw.packet_id),
+      eventId: cleanId(productionRaw.eventId || productionRaw.event_id),
+      track: ['main_camera', 'second_camera'].includes(productionRaw.track) ? productionRaw.track : '',
+      canonLevel: ['canon', 'director', 'draft'].includes(productionRaw.canonLevel || productionRaw.canon_level) ? (productionRaw.canonLevel || productionRaw.canon_level) : '',
+      autoInsert: productionRaw.autoInsert === true,
+    },
     continuityUpdates,
     decisions: shotStringList(raw.decisions, 40, 1000),
   };
+}
+
+export function adaptProductionPacketToStoryboardShotSpec(value = {}, overrides = {}) {
+  const packet = obj(value) ? value : {}, visual = obj(packet.visualIntent) ? packet.visualIntent : {}, sceneState = obj(packet.sceneState) ? packet.sceneState : {};
+  const pattern = STORYBOARD_SHOT_PATTERNS.includes(visual.shotPattern) ? visual.shotPattern : 'action';
+  const duty = STORYBOARD_VISUAL_DUTIES.includes(visual.duty) ? visual.duty : 'action';
+  const role = ({ space: 'establishing', relationship: 'relationship', action: 'action', reaction: 'reaction', detail: 'detail', atmosphere: 'establishing', motif: 'detail', transition: 'turn' })[duty] || 'action';
+  const scale = ({ master: 'wide_shot', two_shot: 'medium_shot', over_shoulder: 'medium_close_up', single_reaction: 'close_up', action: 'medium_full', insert: 'insert', atmosphere: 'extreme_wide_shot', montage: 'wide_shot' })[pattern] || 'medium_shot';
+  const characters = (Array.isArray(packet.characterState) ? packet.characterState : []).slice(0, 12).map((character, index) => ({
+    id: character?.id || character?.name || `character-${index + 1}`,
+    name: character?.name || character?.id || '',
+    temporaryState: [character?.state].filter(Boolean),
+  }));
+  const evidenceRefs = ids(visual.evidenceRefs, 80);
+  const environment = [sceneState.location, sceneState.time, sceneState.weather, ...(Array.isArray(sceneState.environment) ? sceneState.environment : [])].filter(Boolean);
+  return normalizeStoryboardShotSpec({
+    id: packet.packetId || packet.eventId,
+    sourceParagraphIds: evidenceRefs,
+    narrativeLayer: visual.narrativeLayer || 'present',
+    narrativePurpose: visual.description || visual.subject || '',
+    shotPattern: pattern,
+    visualDuty: duty,
+    shotRole: role,
+    shotScale: scale,
+    subject: visual.subject || '',
+    subjectKind: characters.length ? 'character' : (['atmosphere', 'space'].includes(duty) ? 'environment' : duty === 'motif' ? 'symbolic' : 'mixed'),
+    sceneId: packet.sceneId || '',
+    location: sceneState.location || '',
+    scene: environment.join(', '),
+    characters,
+    composition: { cameraSide: visual.cameraSide || '', angle: visual.angle || '', focus: visual.focus || '', framing: visual.framing || [] },
+    promptAtoms: { environment },
+    continuityUpdates: { time: sceneState.time, weather: sceneState.weather, props: Object.fromEntries((Array.isArray(sceneState.props) ? sceneState.props : []).map((prop) => [String(prop), true])) },
+    evidence: { type: 'inferred', paragraphIds: evidenceRefs, quote: visual.evidenceQuote || '', rationale: visual.rationale || '由制片包映射，需在镜头详情确认后提交。' },
+    productionContext: { packetId: packet.packetId, eventId: packet.eventId, track: packet.track, canonLevel: packet.canonLevel, autoInsert: false },
+    decisions: [`制片包来源：${packet.sourceRef?.field || 'unknown'}`],
+    ...overrides,
+  });
 }
 
 export function validateStoryboardShotGrounding(value = {}, options = {}) {
@@ -1066,7 +1112,8 @@ export function validateStoryboardShotSpec(value = {}, options = {}) {
 }
 
 export function compileStoryboardPrompt(input = {}) {
-  const validation = validateStoryboardShotSpec(input.shot, { providerId: input.providerId, modelId: input.modelId });
+  const shotInput = input.productionPacket ? adaptProductionPacketToStoryboardShotSpec(input.productionPacket, input.shotOverrides) : input.shot;
+  const validation = validateStoryboardShotSpec(shotInput, { providerId: input.providerId, modelId: input.modelId });
   const shot = validation.shot, common = [
     str(input.artistString, 6000), str(input.artistPositive, 12000), str(input.modelPositive, 12000),
     promptPart(shot.promptAtoms.global), shot.scene,
@@ -1094,6 +1141,7 @@ export function compileStoryboardPrompt(input = {}) {
   }
   return {
     prompt, negative, providerOptions, characterBlocks, validation,
+    productionContext: shot.productionContext,
     degradation: shot.characters.length > 1 && !useNativeCharacters ? { mode: 'named_character_blocks', reason: capability.multiCharacter ? 'provider_adapter_unavailable' : 'capability_unavailable' } : null,
   };
 }

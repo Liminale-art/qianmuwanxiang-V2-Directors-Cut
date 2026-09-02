@@ -6,7 +6,7 @@ import {
   validateStoryboardShotGrounding,
 } from '../qianmu-storyboard.js';
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 18);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 19);
 
 const grounded = normalizeStoryboardShotSpec({
   id: 'flower',

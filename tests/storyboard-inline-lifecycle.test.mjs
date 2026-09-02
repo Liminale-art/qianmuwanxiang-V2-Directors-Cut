@@ -9,7 +9,7 @@ import {
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 18);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 19);
 const defaults = createStoryboardDefaults();
 assert.deepEqual(defaults.automation, { autoCapture: true, autoGenerate: true });
 assert.equal(defaults.promptCompiler.enabled, true);
