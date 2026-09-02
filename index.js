@@ -96,11 +96,11 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.32';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.33';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.32';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.32';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.32';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.33';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.33';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.33';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,28 +151,28 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.32';
+} from './qianmu-storyboard.js?v=1.58.33';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.32';
+const VERSION = '1.58.33';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.32'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.33'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.32'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.33'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.32'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.33'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.32'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.33'),
   },
 });
 function directImageRuntime() {
@@ -7103,7 +7103,7 @@ function renderStorageManagementCard() {
     <div class="sd-storage-ios-bar" role="img" aria-label="储存空间分布">${storageBar}</div>
     <div class="sd-storage-legend">${legend || '<p class="sd-muted">暂未发现千幕本地数据。</p>'}</div>
     <p class="sd-storage-scope">此处是浏览器分配给当前 ST 站点来源的空间，不代表 VPS 磁盘总容量；千幕仅统计可明确归因的本地内容。</p>
-    <div class="sd-storage-actions"><button type="button" class="sd-btn sd-primary sd-storage-clean" ${data.manageableBytes > 0 ? '' : 'disabled'}><i class="fa-solid fa-sliders"></i>选择清理模块</button></div>
+    <div class="sd-storage-actions"><button type="button" class="sd-btn sd-primary sd-storage-clean" ${data.manageableBytes > 0 ? '' : 'disabled'}><i class="fa-solid fa-sliders"></i>选择清理模块</button><button type="button" class="sd-btn sd-storage-chat-clean" ${data.idb?.chatScopes?.length ? '' : 'disabled'}><i class="fa-solid fa-message"></i>按聊天管理</button></div>
   </section>`;
 }
 
@@ -7168,6 +7168,71 @@ function openStorageCleanupDialog(data) {
     };
     layer.querySelectorAll('input[type="checkbox"]').forEach((input) => input.addEventListener('change', sync));
     layer.querySelector('.sd-storage-cleanup-confirm')?.addEventListener('click', () => finish([...layer.querySelectorAll('input:checked')].map((input) => input.value)));
+    layer.querySelector('.sd-storage-cleanup-backdrop')?.addEventListener('click', () => finish(null));
+    layer.querySelector('.sd-storage-cleanup-close')?.addEventListener('click', () => finish(null));
+    layer.querySelector('.sd-storage-cleanup-cancel')?.addEventListener('click', () => finish(null));
+  });
+}
+
+const STORAGE_CHAT_CLEARABLE = new Set(['audio', 'tts_lines', 'reader_chats', 'reader_vectors']);
+
+function storageChatScopeLabel(chatKey, index = 0) {
+  const value = String(chatKey || '');
+  if (value === String(getChatKey() || '')) return '当前聊天';
+  const compact = value.length > 30 ? `${value.slice(0, 14)}…${value.slice(-10)}` : value;
+  return compact || `聊天 ${index + 1}`;
+}
+
+function openStorageChatCleanupDialog(data) {
+  document.getElementById(STORAGE_CLEANUP_LAYER_ID)?.remove();
+  const groups = (Array.isArray(data?.idb?.chatScopes) ? data.idb.chatScopes : [])
+    .map((scope, index) => ({
+      ...scope,
+      index,
+      stores: (Array.isArray(scope.stores) ? scope.stores : []).filter((item) => STORAGE_CHAT_CLEARABLE.has(item.name)),
+    }))
+    .filter((scope) => scope.chatKey && scope.stores.length);
+  return new Promise((resolve) => {
+    const layer = document.createElement('div');
+    layer.id = STORAGE_CLEANUP_LAYER_ID;
+    layer.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
+    const modal = document.getElementById(MODAL_ID);
+    const sourceStyle = modal ? getComputedStyle(modal) : null;
+    for (const variable of NOTES_THEME_VARIABLES) {
+      const value = sourceStyle?.getPropertyValue(variable);
+      if (value) layer.style.setProperty(variable, value);
+    }
+    const rows = groups.map((scope) => `<details class="sd-storage-chat-group" ${scope.chatKey === String(getChatKey() || '') ? 'open' : ''}>
+      <summary><span><b>${htmlEscape(storageChatScopeLabel(scope.chatKey, scope.index))}</b><small>${scope.stores.reduce((sum, item) => sum + Number(item.count || 0), 0)} 项 · ${htmlEscape(formatStorageBytes(scope.stores.reduce((sum, item) => sum + Number(item.bytes || 0), 0)))}</small></span></summary>
+      <div>${scope.stores.map((item) => {
+        const [risk, destructive] = STORAGE_ITEM_RISK[item.name] || ['本地项目', true];
+        return `<label class="${destructive ? 'is-destructive' : ''}"><input type="checkbox" data-chat-index="${scope.index}" data-store="${htmlEscape(item.name)}"><span><span><b>${htmlEscape(item.label || item.name)}</b><em>${htmlEscape(risk)}</em></span><small>${Number(item.count || 0)} 项 · ${htmlEscape(formatStorageBytes(item.bytes))}</small></span></label>`;
+      }).join('')}</div>
+    </details>`).join('');
+    layer.innerHTML = `<button type="button" class="sd-storage-cleanup-backdrop" aria-label="取消"></button><section class="sd-storage-cleanup-dialog sd-storage-chat-cleanup-dialog" role="dialog" aria-modal="true" aria-label="按聊天管理">
+      <header><div><h3>按聊天管理</h3><p>逐聊天、逐项勾选。伴读会话删除后不可恢复，可先导出伴读整包；未归档分镜不在可删范围。</p></div><button type="button" class="sd-icon-btn sd-storage-cleanup-close" title="取消" aria-label="取消"><i class="fa-solid fa-xmark"></i></button></header>
+      <div class="sd-storage-chat-groups">${rows || '<p class="sd-muted">暂无可按聊天管理的本地记录。</p>'}</div>
+      <div class="sd-storage-backup-actions"><button type="button" class="sd-btn sd-storage-export-reader"><i class="fa-solid fa-file-export"></i>导出伴读整包</button><button type="button" class="sd-btn sd-storage-export-audio"><i class="fa-solid fa-headphones-simple"></i>导出语音缓存</button></div>
+      <footer><button type="button" class="sd-btn sd-storage-cleanup-cancel">取消</button><button type="button" class="sd-btn sd-primary sd-storage-cleanup-confirm" disabled><i class="fa-solid fa-trash-can"></i>清理所选</button></footer>
+    </section>`;
+    document.body.appendChild(layer);
+    applyQianmuIcons(layer);
+    const finish = (value) => { layer.remove(); resolve(value); };
+    const sync = () => {
+      const count = layer.querySelectorAll('input:checked').length;
+      const confirm = layer.querySelector('.sd-storage-cleanup-confirm');
+      if (confirm) confirm.disabled = count === 0;
+    };
+    layer.querySelectorAll('input[type="checkbox"]').forEach((input) => input.addEventListener('change', sync));
+    layer.querySelector('.sd-storage-cleanup-confirm')?.addEventListener('click', () => {
+      const selected = [...layer.querySelectorAll('input:checked')].map((input) => {
+        const scope = groups.find((item) => item.index === Number(input.dataset.chatIndex));
+        return { chatKey: scope?.chatKey || '', name: input.dataset.store || '' };
+      }).filter((item) => item.chatKey && item.name);
+      finish(selected);
+    });
+    layer.querySelector('.sd-storage-export-reader')?.addEventListener('click', () => void coreadExportData());
+    layer.querySelector('.sd-storage-export-audio')?.addEventListener('click', (event) => void ttsExportAudioCache(event.currentTarget));
     layer.querySelector('.sd-storage-cleanup-backdrop')?.addEventListener('click', () => finish(null));
     layer.querySelector('.sd-storage-cleanup-close')?.addEventListener('click', () => finish(null));
     layer.querySelector('.sd-storage-cleanup-cancel')?.addEventListener('click', () => finish(null));
@@ -7260,6 +7325,29 @@ function bindStorageManagementEvents(root) {
       }
     } catch (error) {
       toast(`清理未完成：${error?.message || error}`, 'error');
+      await refreshStorageInventory(true);
+    }
+  });
+  root.querySelector('.sd-storage-chat-clean')?.addEventListener('click', async () => {
+    const selected = await openStorageChatCleanupDialog(storageInventoryState.data);
+    if (!selected?.length) return;
+    try {
+      const result = await blobStore.clearChatScopedStorage(selected);
+      const currentStores = [...new Set(result.cleared
+        .filter((item) => item.count > 0 && item.chatKey === String(getChatKey() || ''))
+        .map((item) => item.name))];
+      if (currentStores.length) reconcileClearedStorageItems(currentStores);
+      saveSettings();
+      await refreshStorageInventory(true);
+      if (result.failed.length) {
+        const stores = storageInventoryState.data?.idb?.stores || [];
+        const details = result.failed.slice(0, 3).map((item) => `${stores.find((store) => store.name === item.name)?.label || item.name}：${item.error}`).join('；');
+        toast(`已清理 ${result.count} 项，${result.failed.length} 个分组失败已保留。${details ? ` ${details}` : ''}`, 'warning');
+      } else {
+        toast(`已按聊天清理 ${result.count} 项，释放约 ${formatStorageBytes(result.bytes)}。`, 'success');
+      }
+    } catch (error) {
+      toast(`按聊天清理未完成：${error?.message || error}`, 'error');
       await refreshStorageInventory(true);
     }
   });

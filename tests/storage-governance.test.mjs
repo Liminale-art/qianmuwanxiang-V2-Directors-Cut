@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { estimateStoredValueBytes } from '../qianmu-blobstore.js';
+import { estimateStoredValueBytes, normalizeChatScopedStorageSelections } from '../qianmu-blobstore.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../style.css', import.meta.url), 'utf8');
@@ -12,6 +12,13 @@ assert.equal(estimateStoredValueBytes(new Uint8Array(9)), 9, 'Typed arrays must 
 const cyclic = { label: 'ok' };
 cyclic.self = cyclic;
 assert.doesNotThrow(() => estimateStoredValueBytes(cyclic), 'cyclic settings must not break inventory');
+assert.deepEqual(normalizeChatScopedStorageSelections([
+  { name: 'tts_lines', chatKey: 'chat-a' },
+  { store: 'tts_lines', chatKey: 'chat-a' },
+  { name: 'storyboard_inbox', chatKey: 'chat-a' },
+  { name: 'notes', chatKey: 'chat-a' },
+  { name: 'audio', chatKey: '' },
+]), [{ name: 'tts_lines', chatKey: 'chat-a' }], 'chat cleanup must deduplicate valid scopes and reject unfiled/protected stores');
 
 assert.match(storeSource, /STORE_AUDIO.*recoverable: true/s);
 assert.match(storeSource, /STORE_TTS_LINES.*recoverable: true/s);
@@ -31,6 +38,9 @@ assert.match(storeSource, /\u4f34\u8bfb\u4f1a\u8bdd\/\u5411\u91cf[\s\S]*\u7edd\u
 assert.match(storeSource, /export async function clearOrphanedReaderBlobs\(\)[\s\S]*await getBook\(item\.bookId\)/, 'orphan deletion must re-check the canonical book immediately before deletion');
 assert.match(storeSource, /function storageRecordChatKey\(name, key, value\)[\s\S]*STORE_TTS_LINES[\s\S]*STORE_CHATS[\s\S]*STORE_VECTORS[\s\S]*STORE_STORYBOARD_INBOX[\s\S]*STORE_AUDIO/, 'chat-scoped stores must use an explicit scope extractor');
 assert.match(storeSource, /estimateStoreUsage\(name\)[\s\S]*scopeMap[\s\S]*recordBytes[\s\S]*chatScopes:/, 'chat scope sizes must be collected during the existing store inventory pass');
+assert.match(storeSource, /CHAT_SCOPED_CLEARABLE_STORES[\s\S]*STORE_AUDIO[\s\S]*STORE_TTS_LINES[\s\S]*STORE_CHATS[\s\S]*STORE_VECTORS/, 'chat cleanup must use an explicit store allow-list');
+assert.doesNotMatch(storeSource.slice(storeSource.indexOf('const CHAT_SCOPED_CLEARABLE_STORES'), storeSource.indexOf('async function clearStoreChatScope')), /STORE_STORYBOARD_INBOX/, 'unfiled storyboard deliveries must not be chat-cleanable');
+assert.match(storeSource, /export function normalizeChatScopedStorageSelections\(selections = \[\]\)[\s\S]*allowed\.has\(name\)[\s\S]*export async function clearChatScopedStorage[\s\S]*clearStoreChatScope/, 'chat cleanup must reject stores outside the allow-list');
 
 const plugTab = source.slice(source.indexOf('function renderPlugTab'), source.indexOf('/* ============================================================', source.indexOf('function renderPlugTab')));
 const tasksTab = source.slice(source.indexOf('function renderTasksNodesTab'), source.indexOf('function renderCastWorldTab'));
@@ -48,6 +58,8 @@ assert.match(source, /portableTtsBytes[\s\S]*item\.name === 'tts_lines'[\s\S]*cl
 assert.match(source, /orphanReaderBlobs[\s\S]*\u5b64\u513f\u56fe\u7247[\s\S]*__orphan_reader_blobs__/, 'orphaned reader blobs must be visible as a separate cleanup choice');
 assert.match(source, /selected\.includes\('__orphan_reader_blobs__'\)[\s\S]*clearOrphanedReaderBlobs\(\)/, 'orphan cleanup must only run after explicit selection');
 assert.match(source, /scopeCount: Array\.isArray\(item\.scopes\)[\s\S]*item\.scopeCount[\s\S]*个聊天/, 'cleanup rows must reveal how many chat buckets each registered store contains');
+assert.match(source, /openStorageChatCleanupDialog[\s\S]*导出伴读整包[\s\S]*导出语音缓存[\s\S]*clearChatScopedStorage\(selected\)/, 'chat cleanup must offer module backups before explicit per-item deletion');
+assert.match(source, /STORAGE_CHAT_CLEARABLE[\s\S]*reader_chats[\s\S]*reader_vectors/, 'the UI must expose only the same chat-scoped store subset');
 assert.doesNotMatch(source, /navigator\.storage\.persist|申请持久保存/, 'persistent-storage prompts must be removed');
 const refreshInventory = source.slice(source.indexOf('async function refreshStorageInventory'), source.indexOf('const STORAGE_CATEGORY_LABELS'));
 assert.match(refreshInventory, /paintStorageManagementCard\(\)/, 'inventory completion must patch only its own card');

@@ -760,3 +760,66 @@ export async function clearStorageItems(storeNames = []) {
     beforeBytes: targets.reduce((sum, item) => sum + Math.max(0, Number(item.bytes) || 0), 0),
   };
 }
+
+const CHAT_SCOPED_CLEARABLE_STORES = Object.freeze([
+  STORE_AUDIO,
+  STORE_TTS_LINES,
+  STORE_CHATS,
+  STORE_VECTORS,
+]);
+
+async function clearStoreChatScope(name, chatKey) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(name, 'readwrite');
+    const target = transaction.objectStore(name);
+    let count = 0;
+    let bytes = 0;
+    const cursor = target.openCursor();
+    cursor.onsuccess = () => {
+      const current = cursor.result;
+      if (!current) return;
+      if (storageRecordChatKey(name, current.key, current.value) === chatKey) {
+        count++;
+        bytes += estimateStoredValueBytes(current.key) + estimateStoredValueBytes(current.value);
+        current.delete();
+      }
+      current.continue();
+    };
+    cursor.onerror = () => reject(cursor.error);
+    transaction.oncomplete = () => resolve({ name, chatKey, count, bytes });
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error || new Error(`${name} cleanup aborted`));
+  });
+}
+
+// 按聊天删除只接受已盘点且有明确 chatKey 的四类记录。
+// 分镜收片箱即使能识别 chatKey 也不进白名单，避免删掉未归档成片。
+export function normalizeChatScopedStorageSelections(selections = []) {
+  const allowed = new Set(CHAT_SCOPED_CLEARABLE_STORES);
+  const unique = new Map();
+  for (const selection of Array.isArray(selections) ? selections : []) {
+    const chatKey = String(selection?.chatKey || '').trim().slice(0, 512);
+    const name = String(selection?.name || selection?.store || '');
+    if (!chatKey || !allowed.has(name)) continue;
+    unique.set(`${name}\n${chatKey}`, { name, chatKey });
+  }
+  return [...unique.values()];
+}
+
+export async function clearChatScopedStorage(selections = []) {
+  if (!blobStoreAvailable()) return { cleared: [], failed: [], count: 0, bytes: 0 };
+  const normalized = normalizeChatScopedStorageSelections(selections);
+  const cleared = [];
+  const failed = [];
+  for (const selection of normalized) {
+    try { cleared.push(await clearStoreChatScope(selection.name, selection.chatKey)); }
+    catch (error) { failed.push({ ...selection, error: error?.message || String(error) }); }
+  }
+  return {
+    cleared,
+    failed,
+    count: cleared.reduce((sum, item) => sum + item.count, 0),
+    bytes: cleared.reduce((sum, item) => sum + item.bytes, 0),
+  };
+}
