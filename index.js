@@ -95,11 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.43';
-import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.43';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.43';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.43';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.44';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.44';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.44';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.44';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -152,35 +151,43 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.43';
+} from './qianmu-storyboard.js?v=1.58.44';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.43';
+const VERSION = '1.58.44';
+let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.43'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.44'),
+  },
+  readerCore: {
+    label: '伴读解析器',
+    load: () => import('./qianmu-reader.js?v=1.58.44').then((module) => {
+      reader = module;
+      return module;
+    }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.43'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.44'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.43'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.44'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.43'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.44'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.43'),
-        import('./qianmu-theaters.js?v=1.58.43'),
+        import('./builtin-theaters.js?v=1.58.44'),
+        import('./qianmu-theaters.js?v=1.58.44'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -188,6 +195,20 @@ const featureRuntime = createFeatureRuntime({
 });
 function directImageRuntime() {
   return featureRuntime.load('imageDirect');
+}
+function coreadReaderRuntimeStatus() {
+  return featureRuntime.snapshot().find((item) => item.key === 'readerCore') || { status: 'idle', error: null };
+}
+async function ensureCoreadReaderRuntime({ rerender = false } = {}) {
+  if (reader) return reader;
+  try {
+    reader = await featureRuntime.load('readerCore');
+    if (rerender && activeTab === 'coread' && document.getElementById(MODAL_ID)?.classList.contains('open')) renderModal();
+    return reader;
+  } catch (error) {
+    if (rerender && activeTab === 'coread' && document.getElementById(MODAL_ID)?.classList.contains('open')) renderModal();
+    throw error;
+  }
 }
 let directorProductionPacketState = { chatKey: '', updatedAt: '', packets: [], error: '' };
 async function refreshDirectorProductionPackets(plan, context = {}) {
@@ -6235,6 +6256,17 @@ function currentPlan() {
   return getChatStore().plan;
 }
 
+function renderCoreadRuntimeGate() {
+  const runtime = coreadReaderRuntimeStatus();
+  const failed = runtime.status === 'error';
+  if (runtime.status === 'idle') void ensureCoreadReaderRuntime({ rerender: true }).catch(() => {});
+  return `<section class="sd-card sd-coread-runtime-gate">
+    <div class="sd-section-title"><h3>伴读中心</h3></div>
+    <p class="sd-muted">${failed ? '阅读组件暂时未能加载，可重试，不影响千幕其他功能。' : '正在准备书架与阅读器…'}</p>
+    ${failed ? '<button type="button" class="sd-btn sd-coread-runtime-retry">重试</button>' : ''}
+  </section>`;
+}
+
 function renderActiveTab() {
   if (editorView) return renderEditorView();
   switch (activeTab) {
@@ -6247,7 +6279,7 @@ function renderActiveTab() {
     case 'tts': return renderTtsTab();
     case 'imagegen': return renderStoryboardTab();
     case 'geopolitics': return renderGeopoliticsTab();
-    case 'coread': return COREAD_ENABLED ? renderCoreadTab() : renderDashboardTab();   // 功能沉睡时误入 coread 回落仪表盘
+    case 'coread': return COREAD_ENABLED ? (reader ? renderCoreadTab() : renderCoreadRuntimeGate()) : renderDashboardTab();   // 功能沉睡时误入 coread 回落仪表盘
     case 'plug': return renderPlugTab();
     default: return renderDashboardTab();
   }
@@ -17939,6 +17971,12 @@ function bindActiveTabEvents(root) {
   bindGeopoliticsTabEvents(root);
   bindTtsTabEvents(root);
   bindCoreadTabEvents(root);
+  root.querySelector('.sd-coread-runtime-retry')?.addEventListener('click', () => {
+    void ensureCoreadReaderRuntime({ rerender: true }).catch((error) => {
+      console.warn('[千幕] 伴读解析器重试加载失败。', error);
+      toast('伴读组件仍未能加载，请检查插件文件后重试。', 'error');
+    });
+  });
   if (activeTab === 'plug') {
     bindStorageManagementEvents(root);
     void refreshStorageInventory(false);
@@ -21179,6 +21217,7 @@ async function coreadBuildMainlineInjection() {
   const m = coreadMemory();
   if (!m.mainlineFeedback) return '';
   if ((m.mainlineRecall || 0) <= 0 && (m.mainlineRecent || 0) <= 0) return '';
+  await ensureCoreadReaderRuntime();
   const pool = await coreadMainlinePool();
   if (!pool.length) return '';
   // 查询语境＝主线近期双方发言（user + char 都要·召回按「当下在聊什么」而非单侧）。取末尾若干条清洗拼接。
@@ -25585,6 +25624,7 @@ async function coreadSaveExcerptImage(stageRoot) {
 
 function bindCoreadTabEvents(root) {
   if (activeTab !== 'coread') { unmountReaderPortal(); return; }
+  if (!reader) return;
   if (readerView) {
     // portal 由 coreadOpenBook/refreshReaderPortal 维护；切回 tab 时确保它在
     if (!document.getElementById('sd-reader-portal')) refreshReaderPortal();
