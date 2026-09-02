@@ -1,0 +1,150 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import test from 'node:test';
+
+import {
+  QIANMU_H3_MODE_FAMILIES,
+  QIANMU_H3_MODES,
+  QIANMU_MULTIMODAL_MANIFEST_SCHEMA,
+  QIANMU_VIDEO_SHOT_SCHEMA,
+  normalizeMultimodalAssetManifest,
+  normalizeVideoShotSpec,
+  resolveH3VideoMode,
+  validateMultimodalAssetManifest,
+  validateVideoShotSpec,
+} from '../qianmu-video-contract.js';
+
+const asset = (assetId, kind, roles, extra = {}) => ({
+  assetId,
+  kind,
+  roles,
+  locator: { kind: 'indexeddb', ref: `asset:${assetId}` },
+  ...extra,
+});
+
+test('the video contract keeps the five official prompt modes separate from auto routing', () => {
+  assert.deepEqual(QIANMU_H3_MODES, ['t2va', 'i2va', 'fl2va', 'l2va', 'ref2va']);
+  assert.deepEqual(QIANMU_H3_MODE_FAMILIES, {
+    t2va: 'fl2va', i2va: 'fl2va', fl2va: 'fl2va', l2va: 'fl2va', ref2va: 'ref2va',
+  });
+});
+
+test('a normalized shot keeps character identity, wardrobe and performance in separate lanes', () => {
+  const spec = normalizeVideoShotSpec({
+    shotId: 'shot-a',
+    durationSeconds: 6,
+    summary: 'Two people cross a kitchen.',
+    characters: [
+      { id: 'a', appearance: { identity: ['red hair'], wardrobe: ['coat removed'] }, performance: { action: 'opens the door' } },
+      { id: 'b', appearance: { identity: ['black hair'], wardrobe: ['blue apron'] }, performance: { action: 'keeps stirring' } },
+    ],
+  });
+  assert.equal(spec.schema, QIANMU_VIDEO_SHOT_SCHEMA);
+  assert.equal(spec.characters[0].appearance.wardrobe[0], 'coat removed');
+  assert.equal(spec.characters[0].performance.action, 'opens the door');
+  assert.equal(spec.characters[1].appearance.identity[0], 'black hair');
+  assert.equal(spec.characters[1].performance.action, 'keeps stirring');
+  assert.notDeepEqual(spec.characters[0], spec.characters[1]);
+});
+
+test('duration and delivery defaults remain conservative for the first H3 phase', () => {
+  assert.equal(normalizeVideoShotSpec({ durationSeconds: 1 }).durationSeconds, 4);
+  assert.equal(normalizeVideoShotSpec({}).durationSeconds, 6);
+  assert.equal(normalizeVideoShotSpec({ durationSeconds: 99 }).durationSeconds, 15);
+  assert.equal(normalizeVideoShotSpec({}).resolution, '768p');
+  assert.equal(normalizeVideoShotSpec({}).fps, 24);
+});
+
+test('auto routing selects text, first, last, first-last and full-reference modes deterministically', () => {
+  const route = (assets, keyframes = {}, references = {}) => {
+    const manifest = normalizeMultimodalAssetManifest({ shotId: 'shot', assets });
+    return resolveH3VideoMode({ keyframes, references }, manifest, 'auto');
+  };
+  assert.equal(route([]).mode, 't2va');
+  assert.equal(route([asset('first', 'image', ['first_frame'])]).mode, 'i2va');
+  assert.equal(route([asset('last', 'image', ['last_frame'])]).mode, 'l2va');
+  assert.equal(route([asset('first', 'image', ['first_frame']), asset('last', 'image', ['last_frame'])]).mode, 'fl2va');
+  assert.equal(route([asset('subject', 'image', ['subject_reference'], { subjectLabel: '<Subject 1>' })]).mode, 'ref2va');
+});
+
+test('manual mode overrides are preserved but never pretend missing inputs are ready', () => {
+  const route = resolveH3VideoMode({}, { assets: [] }, 'fl2va');
+  assert.equal(route.mode, 'fl2va');
+  assert.equal(route.ready, false);
+  assert.equal(route.reasonCode, 'manual_override_missing_inputs');
+  assert.deepEqual(route.missingRequirements, ['first_frame', 'last_frame']);
+});
+
+test('duplicate assets merge by fingerprint without duplicating upload or reference budgets', () => {
+  const manifest = normalizeMultimodalAssetManifest({
+    shotId: 'shot-a',
+    assets: [
+      asset('a', 'image', ['first_frame'], { fingerprint: 'same' }),
+      asset('b', 'image', ['subject_reference'], { fingerprint: 'same', subjectLabel: '<Subject 1>' }),
+    ],
+  });
+  assert.equal(manifest.schema, QIANMU_MULTIMODAL_MANIFEST_SCHEMA);
+  assert.equal(manifest.assets.length, 1);
+  assert.deepEqual(manifest.assets[0].roles, ['first_frame', 'subject_reference']);
+  assert.equal(manifest.assets[0].subjectLabel, '<Subject 1>');
+  assert.equal(manifest.usage.images, 1);
+});
+
+test('the manifest strips binary payloads and unstable browser blob URLs', () => {
+  const manifest = normalizeMultimodalAssetManifest({
+    shotId: 'safe',
+    imageData: 'data:image/png;base64,SHOULD_NOT_SURVIVE',
+    assets: [{
+      assetId: 'a', kind: 'image', roles: ['first_frame'],
+      locator: { kind: 'chat', ref: 'blob:https://example.invalid/session' },
+      bytes: new Uint8Array([1, 2, 3]),
+      base64: 'SHOULD_NOT_SURVIVE',
+    }],
+  });
+  assert.equal(manifest.assets[0].locator.ref, '');
+  assert.doesNotMatch(JSON.stringify(manifest), /SHOULD_NOT_SURVIVE|imageData|base64|Uint8Array/);
+});
+
+test('manifest budgets and rights produce explicit submission blockers', () => {
+  const result = validateMultimodalAssetManifest({
+    assets: [asset('a', 'image', ['subject_reference'], { rights: { status: 'restricted' } })],
+    budget: { maxAssets: 1, maxImages: 0 },
+  });
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.includes('budget_images_exceeded'));
+  assert.ok(result.issues.includes('asset_rights_restricted:a'));
+});
+
+test('a provider-ready remote asset may use its opaque upload id instead of a local locator', () => {
+  const result = validateMultimodalAssetManifest({
+    assets: [{
+      assetId: 'remote-audio', kind: 'audio', roles: ['audio_reference'],
+      locator: { kind: 'upload', ref: '' },
+      upload: { state: 'ready', providerId: 'future-h3-provider', remoteId: 'opaque-file-id' },
+    }],
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.manifest.assets[0].upload.remoteId, 'opaque-file-id');
+});
+
+test('shot validation catches missing routed inputs and dialogue ownership', () => {
+  const result = validateVideoShotSpec({
+    summary: 'A short exchange.',
+    requestedMode: 'i2va',
+    characters: [{ id: 'a' }],
+    audio: { dialogue: [{ characterId: 'b', text: 'Hello.' }] },
+  }, { assets: [] });
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.includes('route_input_missing:first_frame'));
+  assert.ok(result.issues.some((issue) => issue.startsWith('dialogue_character_missing:')));
+});
+
+test('the unfinished video contract ships as an idle feature chunk, not a startup dependency', async () => {
+  const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+  const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
+  assert.doesNotMatch(source, /^import[^\n]*qianmu-video-contract\.js/m);
+  assert.match(source, /videoContract:\s*\{[\s\S]*import\('\.\/qianmu-video-contract\.js\?v=1\.58\.45'\)/);
+  assert.ok(release.files.includes('qianmu-video-contract.js'));
+  const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
+  assert.doesNotMatch(initSource, /featureRuntime\.load\('videoContract'\)/);
+});
