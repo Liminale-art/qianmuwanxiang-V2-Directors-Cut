@@ -4,6 +4,7 @@
 
 - 配音中的豆包 API Key 接入；
 - 分镜中的 NovelAI、Banana / Gemini、GPT Image 2 / OpenAI 兼容中转、Doubao Seedream 与 ComfyUI。
+- MiniMax H3 音视频任务的创建、查询与排队态取消（前端入口完成接线后启用）。
 
 安装程序会自动备份并修改 `config.yaml`、开启服务端插件、创建插件文件夹，并自动判断是首次安装还是更新。不需要手动编辑配置，也不需要执行 `npm install`。
 
@@ -49,7 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Dire
 - 打开千幕 → 配音 → 豆包语音，接入方式选择“API Key”，粘贴 API Key 并测试连接；
 - 打开千幕 → 分镜，在所选模型的连接卡中填写官方接口或自定义中转并测试连接。自定义或第三方中转仍可拉取模型、查看接口全部模型；若中转不提供模型列表，也可以手动填写模型 ID。
 
-安装成功后，健康检查地址会显示 `"ok":true`，并在 `services` 中列出 `doubao-tts` 与 `storyboard-image`：
+安装成功后，健康检查地址会显示 `"ok":true`，并在 `services` 中列出 `doubao-tts`、`storyboard-image` 与 `minimax-h3`：
 
 - 本地部署：`http://127.0.0.1:8000/api/plugins/qianmu-tts/health`
 - VPS 部署：在你的 SillyTavern 访问地址后加 `/api/plugins/qianmu-tts/health`，例如 `https://st.example.com/api/plugins/qianmu-tts/health`
@@ -65,3 +66,4 @@ curl -fsSL https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Dire
 - 旧版 App ID 仍可使用：在“接入方式”中选择“App ID + Access Key”。
 - 分镜连接失败：检查 Base URL、API Key 与模型 ID。VPS 或 Docker 部署时，ComfyUI 地址必须能从 SillyTavern 后端所在的主机或容器访问，不能直接把仅宿主机可见的 `127.0.0.1` 当作容器内地址。
 - 第三方中转无法拉取模型：部分中转不提供标准模型列表，仍可在千幕中手动填写该中转支持的模型 ID。
+- MiniMax H3 连接失败：确认使用的是 Pay-as-you-go API Key，并选择正确的全球区或中国区。官方接口不走浏览器直连，须先安装并重启本服务端插件。

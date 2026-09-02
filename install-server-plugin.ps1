@@ -40,5 +40,5 @@ if (Test-Path -LiteralPath (Join-Path $pluginDir '.git') -PathType Container) {
     if ($LASTEXITCODE -ne 0) { throw '插件安装失败，请检查上方 Git 提示。' }
 }
 
-Write-Host "`n千幕服务端插件（豆包 API Key 配音 / 分镜生图）已安装完成。现在请重启 SillyTavern 后端服务（不是只刷新或重新打开网页）。" -ForegroundColor Green
+Write-Host "`n千幕服务端插件（豆包 API Key 配音 / 分镜生图 / MiniMax H3）已安装完成。现在请重启 SillyTavern 后端服务（不是只刷新或重新打开网页）。" -ForegroundColor Green
 Write-Host '启动后可访问：http://127.0.0.1:8000/api/plugins/qianmu-tts/health'

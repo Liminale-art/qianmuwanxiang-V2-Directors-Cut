@@ -28,6 +28,10 @@ assert.ok(routes.has('GET /image/capabilities'));
 assert.ok(routes.has('POST /image/check'));
 assert.ok(routes.has('POST /image/models'));
 assert.ok(routes.has('POST /image/generate'));
+assert.ok(routes.has('GET /video/minimax/capabilities'));
+assert.ok(routes.has('POST /video/minimax/create'));
+assert.ok(routes.has('POST /video/minimax/query'));
+assert.ok(routes.has('POST /video/minimax/cancel'));
 
 const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
@@ -60,7 +64,19 @@ assert.equal(health.body.plugin, 'qianmu-tts');
 assert.equal(health.body.version, packageJson.version);
 assert.equal(health.body.schemaVersion, 1);
 assert.equal(health.body.delivery, 'optional');
-assert.deepEqual(health.body.services, ['doubao-tts', 'storyboard-image']);
+assert.deepEqual(health.body.services, ['doubao-tts', 'storyboard-image', 'minimax-h3']);
+
+const videoCapabilities = mockResponse();
+await routes.get('GET /video/minimax/capabilities')({}, videoCapabilities);
+assert.equal(videoCapabilities.body.provider, 'minimax-h3');
+assert.equal(videoCapabilities.body.transport, 'same_origin_gateway');
+assert.equal(videoCapabilities.body.browserDirect, false);
+assert.equal(videoCapabilities.headers['cache-control'], 'no-store');
+
+const missingVideoKey = mockResponse();
+await routes.get('POST /video/minimax/query')({ body: { taskId: 'remote-a' } }, missingVideoKey);
+assert.equal(missingVideoKey.statusCode, 400);
+assert.equal(missingVideoKey.body.code, 'missing_api_key');
 
 const capabilities = mockResponse();
 await routes.get('GET /image/capabilities')({}, capabilities);

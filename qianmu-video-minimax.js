@@ -47,8 +47,10 @@ function endpoint(baseUrl, pathname) {
   return `${String(baseUrl || '').replace(/\/+$/, '')}/${String(pathname || '').replace(/^\/+/, '')}`;
 }
 
-function mediaUrl(value) {
-  const source = text(value, 4096);
+function mediaUrl(value, allowInline = false) {
+  const source = String(value ?? '').trim();
+  if (allowInline && /^data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/]+={0,2}$/i.test(source)) return source;
+  if (source.length > 4096) return '';
   try {
     const url = new URL(source);
     return url.protocol === 'https:' ? url.toString() : '';
@@ -57,9 +59,9 @@ function mediaUrl(value) {
   }
 }
 
-function urlForAsset(assetId, mediaUrls) {
-  if (mediaUrls instanceof Map) return mediaUrl(mediaUrls.get(assetId));
-  if (plain(mediaUrls)) return mediaUrl(mediaUrls[assetId]);
+function urlForAsset(assetId, mediaUrls, allowInline = false) {
+  if (mediaUrls instanceof Map) return mediaUrl(mediaUrls.get(assetId), allowInline);
+  if (plain(mediaUrls)) return mediaUrl(mediaUrls[assetId], allowInline);
   return '';
 }
 
@@ -135,7 +137,7 @@ export function buildMiniMaxH3CreateRequest(specValue = {}, manifestValue = {}, 
       issues.push(`provider_asset_missing:${item.assetId}`);
       continue;
     }
-    const url = urlForAsset(item.assetId, runtime.mediaUrls);
+    const url = urlForAsset(item.assetId, runtime.mediaUrls, runtime.allowInlineMedia === true);
     if (!url) {
       issues.push(`provider_asset_url_missing:${item.assetId}`);
       continue;

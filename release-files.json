@@ -35,6 +35,7 @@
     "qianmu-tts.js",
     "qianmu-video-contract.js",
     "qianmu-video-budget.js",
+    "qianmu-video-gateway.js",
     "qianmu-video-minimax.js",
     "qianmu-video-task.js",
     "qianmulogo-candy.png",

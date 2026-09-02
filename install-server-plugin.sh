@@ -62,14 +62,14 @@ if [ "$DEPLOYMENT" = "docker" ]; then
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
     printf '\n正在重启 SillyTavern Docker 容器……\n'
     if docker compose restart sillytavern; then
-      printf '\n千幕服务端插件（豆包 API Key 配音 / 分镜生图）已安装，Docker 容器已重启。\n'
+      printf '\n千幕服务端插件（豆包 API Key 配音 / 分镜生图 / MiniMax H3）已安装，Docker 容器已重启。\n'
     else
       printf '\n插件已安装，但自动重启失败。请手动执行：docker compose restart sillytavern\n'
     fi
   else
-    printf '\n千幕服务端插件（豆包 API Key 配音 / 分镜生图）已安装。请手动重启 SillyTavern Docker 容器。\n'
+    printf '\n千幕服务端插件（豆包 API Key 配音 / 分镜生图 / MiniMax H3）已安装。请手动重启 SillyTavern Docker 容器。\n'
   fi
 else
-  printf '\n千幕服务端插件（豆包 API Key 配音 / 分镜生图）已安装完成。现在请重启 SillyTavern 后端服务（不是只刷新或重新打开网页）。\n'
+  printf '\n千幕服务端插件（豆包 API Key 配音 / 分镜生图 / MiniMax H3）已安装完成。现在请重启 SillyTavern 后端服务（不是只刷新或重新打开网页）。\n'
 fi
 printf '启动后可访问：http://127.0.0.1:8000/api/plugins/qianmu-tts/health\n\n'

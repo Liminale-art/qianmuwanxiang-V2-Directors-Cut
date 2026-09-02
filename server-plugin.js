@@ -9,6 +9,13 @@ import {
   imageGatewayErrorPayload,
   listImageModels,
 } from './qianmu-image-gateway.js';
+import {
+  cancelMiniMaxH3Video,
+  createMiniMaxH3Video,
+  queryMiniMaxH3Video,
+  videoGatewayErrorPayload,
+} from './qianmu-video-gateway.js';
+import { MINIMAX_H3_PROVIDER_CAPABILITY } from './qianmu-video-minimax.js';
 
 const DOUBAO_ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional';
 const MAX_TEXT_LENGTH = 10000;
@@ -29,7 +36,7 @@ async function pluginVersion() {
 export const info = Object.freeze({
   id: 'qianmu-tts',
   name: '千幕同源服务',
-  description: '为千幕提供豆包语音与分镜图像供应商的同源网关。',
+  description: '为千幕提供豆包语音、分镜图像与 MiniMax H3 的同源网关。',
 });
 
 function asString(value, max = 500) {
@@ -85,7 +92,7 @@ export async function init(router) {
     version: await pluginVersion(),
     schemaVersion: 1,
     delivery: 'optional',
-    services: ['doubao-tts', 'storyboard-image'],
+    services: ['doubao-tts', 'storyboard-image', 'minimax-h3'],
   }));
 
   router.get('/image/capabilities', (_req, res) => res.json({
@@ -130,6 +137,51 @@ export async function init(router) {
     } catch (error) {
       const result = imageGatewayErrorPayload(error);
       console.warn('[千幕分镜网关] 生成失败', result.body.code, result.body.upstreamStatus || '');
+      return res.status(result.status).json(result.body);
+    }
+  });
+
+  router.get('/video/minimax/capabilities', (_req, res) => prepareImageResponse(res).json({
+    ok: true,
+    provider: MINIMAX_H3_PROVIDER_CAPABILITY.id,
+    model: MINIMAX_H3_PROVIDER_CAPABILITY.model,
+    modes: [...MINIMAX_H3_PROVIDER_CAPABILITY.modes],
+    resolutions: [...MINIMAX_H3_PROVIDER_CAPABILITY.resolutions],
+    duration: { ...MINIMAX_H3_PROVIDER_CAPABILITY.duration },
+    transport: MINIMAX_H3_PROVIDER_CAPABILITY.transport,
+    browserDirect: MINIMAX_H3_PROVIDER_CAPABILITY.browserDirect,
+    keyType: MINIMAX_H3_PROVIDER_CAPABILITY.keyType,
+  }));
+
+  router.post('/video/minimax/create', async (req, res) => {
+    prepareImageResponse(res);
+    try {
+      return res.json(await createMiniMaxH3Video(req.body));
+    } catch (error) {
+      const result = videoGatewayErrorPayload(error);
+      console.warn('[千幕 H3 网关] 创建失败', result.body.code, result.body.upstreamStatus || '');
+      return res.status(result.status).json(result.body);
+    }
+  });
+
+  router.post('/video/minimax/query', async (req, res) => {
+    prepareImageResponse(res);
+    try {
+      return res.json(await queryMiniMaxH3Video(req.body));
+    } catch (error) {
+      const result = videoGatewayErrorPayload(error);
+      console.warn('[千幕 H3 网关] 查询失败', result.body.code, result.body.upstreamStatus || '');
+      return res.status(result.status).json(result.body);
+    }
+  });
+
+  router.post('/video/minimax/cancel', async (req, res) => {
+    prepareImageResponse(res);
+    try {
+      return res.json(await cancelMiniMaxH3Video(req.body));
+    } catch (error) {
+      const result = videoGatewayErrorPayload(error);
+      console.warn('[千幕 H3 网关] 取消失败', result.body.code, result.body.upstreamStatus || '');
       return res.status(result.status).json(result.body);
     }
   });
