@@ -204,8 +204,10 @@ export function buildStoryboardFrameManifest(records = [], options = {}) {
     const roles = [];
     if (recordId === firstRecordId) roles.push('first_frame');
     if (recordId === lastRecordId) roles.push('last_frame');
-    if (referenceRecordIds.has(recordId)) roles.push('subject_reference');
-    unique(referenceRoles[recordId], QIANMU_VIDEO_ASSET_ROLES.length, 80).forEach((role) => roles.push(role));
+    const explicitReferenceRoles = unique(referenceRoles[recordId], QIANMU_VIDEO_ASSET_ROLES.length, 80)
+      .filter((role) => ['subject_reference', 'style_reference', 'motion_reference'].includes(role));
+    if (referenceRecordIds.has(recordId) && !explicitReferenceRoles.length) roles.push('subject_reference');
+    explicitReferenceRoles.forEach((role) => roles.push(role));
     const normalizedRoles = [...new Set(roles)].filter((role) => QIANMU_VIDEO_ASSET_ROLES.includes(role));
     if (!normalizedRoles.length) continue;
     const chatKey = text(rawRecord.chatKey || rawRecord.messageRef?.chatKey || config.chatKey || config.chat_key, 512);

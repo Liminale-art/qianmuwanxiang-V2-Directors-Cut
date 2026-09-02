@@ -25,6 +25,10 @@ test('the draft editor only revises and saves local draft contracts', () => {
   const editor = section('async function storyboardOpenVideoDraftEditor', 'function renderStoryboardVideoDraftShelf');
   assert.match(editor, /reviseVideoDraft/);
   assert.match(editor, /await store\.save\(revised\.draft\)/);
+  assert.match(editor, /referenceRecordIds: referenceIds/);
+  assert.match(source, /subject_reference: '主体'/);
+  assert.match(source, /style_reference: '风格'/);
+  assert.match(source, /motion_reference: '动作'/);
   assert.doesNotMatch(editor, /storyboardGenerate|videoCoordinator|submit|fetch\(|apiKey|quote/i);
   const init = section('function init()', 'export async function onActivate');
   assert.doesNotMatch(init, /storyboardEnsureVideoDraftRuntime|featureRuntime\.load\('videoDraft/);
@@ -43,4 +47,13 @@ test('draft overlays are mobile-safe and cleaned up across runtime boundaries', 
   assert.match(style, /@media \(max-width: 640px\)[\s\S]*\.sd-storyboard-video-draft-editor/);
   assert.match(source, /function storyboardUnbindChat\([\s\S]*storyboardCloseVideoDraftEditor\(\)/);
   assert.match(source, /clean\('video gallery',[\s\S]*storyboardCloseVideoDraftEditor\(\)/);
+});
+
+test('frame picking remains bounded, chat-scoped and stores stable ids only', () => {
+  const candidates = section('function storyboardVideoDraftCandidateRecords', 'function storyboardVideoDraftEditorMarkup');
+  const editor = section('async function storyboardOpenVideoDraftEditor', 'function renderStoryboardVideoDraftShelf');
+  assert.match(candidates, /storyboardRecordChatKey\(record, chatKey\) === chatKey/);
+  assert.match(candidates, /slice\(0, 120\)/);
+  assert.match(editor, /selected\.size >= 9/);
+  assert.doesNotMatch(editor, /\.url\s*=|base64|Blob|createObjectURL/i);
 });

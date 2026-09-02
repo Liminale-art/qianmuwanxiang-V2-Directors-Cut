@@ -72,7 +72,7 @@ test('reference selections route to Ref2VA while owner mismatches fail closed', 
   const compiled = compileVideoDraftSelection(draft, [frame('frame-b')]);
   assert.equal(compiled.ok, true);
   assert.equal(compiled.spec.route.mode, 'ref2va');
-  assert.deepEqual(compiled.manifest.assets[0].roles, ['subject_reference', 'style_reference']);
+  assert.deepEqual(compiled.manifest.assets[0].roles, ['style_reference']);
 });
 
 test('draft revision keeps ownership immutable and strips unstable fields', () => {
@@ -109,7 +109,7 @@ test('blank drafts stay valid for future text planning but never become submissi
 test('the draft contract is an idle release chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(source, /videoDraft:\s*\{[\s\S]*import\('\.\/qianmu-video-draft\.js\?v=1\.58\.61'\)/);
+  assert.match(source, /videoDraft:\s*\{[\s\S]*import\('\.\/qianmu-video-draft\.js\?v=1\.58\.62'\)/);
   assert.ok(release.files.includes('qianmu-video-draft.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoDraft'\)/);

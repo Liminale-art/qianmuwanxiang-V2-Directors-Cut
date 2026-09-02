@@ -8744,7 +8744,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 }
 #story-director-modal .sd-structured-output-toggle :is(i, .qm-glyph-icon) { width: 15px; height: 15px; font-size: 15px; }
 
-/* v1.58.61 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
+/* v1.58.62 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
 #story-director-modal .sd-storyboard-gallery-kind-switch {
   min-height: 36px;
   display: grid;
@@ -9077,8 +9077,129 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 }
 .sd-storyboard-video-draft-fields select.text_pole { padding: 0 10px; }
 .sd-storyboard-video-draft-fields select.text_pole option { background: #222426; color: #f5f5f3; }
+.sd-storyboard-video-draft-assets { min-width: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sd-storyboard-video-draft-assets .sd-video-draft-slot {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 5px;
+  padding: 8px 9px;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 9px;
+  background: rgba(255,255,255,.045);
+  color: inherit;
+  text-align: left;
+}
+.sd-storyboard-video-draft-assets .sd-video-draft-slot > span { color: rgba(255,255,255,.56); font-size: 9px; }
+.sd-storyboard-video-draft-assets .sd-video-draft-slot > b { min-width: 0; display: flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 520; }
+.sd-storyboard-video-draft-assets .sd-video-draft-slot > b > img { width: 29px; height: 29px; flex: 0 0 auto; border-radius: 6px; object-fit: cover; }
+.sd-storyboard-video-draft-assets .sd-video-draft-slot > b > :is(i, .qm-glyph-icon) { width: 15px; height: 15px; flex: 0 0 auto; font-size: 15px; color: var(--sd-accent, #9fcbb5); }
+.sd-storyboard-video-draft-assets .sd-video-draft-slot em { min-width: 0; overflow: hidden; color: inherit; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 .sd-storyboard-video-draft-grid { min-width: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .sd-storyboard-video-draft-direction textarea { min-height: 112px !important; padding: 9px 10px; resize: vertical; }
+.sd-storyboard-video-draft-route {
+  min-height: 14px;
+  margin: 0;
+  color: var(--sd-accent, #9fcbb5);
+  font-size: 9px;
+}
+.sd-storyboard-video-draft-route.is-missing { color: #d9ae63; }
+.sd-storyboard-video-draft-picker {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+.sd-storyboard-video-draft-picker[hidden] { display: none !important; }
+.sd-storyboard-video-draft-picker > header {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 15px 10px;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+}
+.sd-storyboard-video-draft-picker > header h3 { margin: 2px 0 0; font-size: 15px; font-weight: 560; }
+.sd-storyboard-video-draft-picker > header > button {
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 8px;
+  background: rgba(255,255,255,.05);
+  color: inherit;
+  font: inherit;
+  font-size: 10px;
+}
+.sd-storyboard-video-draft-picker > header > button:first-child { width: 34px; padding: 0; }
+.sd-storyboard-video-draft-picker-grid {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-content: start;
+  gap: 7px;
+  overflow: auto;
+  padding: 11px 15px;
+  scrollbar-width: thin;
+}
+.sd-storyboard-video-draft-picker-grid > p { grid-column: 1 / -1; margin: 48px 0; color: rgba(255,255,255,.5); font-size: 10px; text-align: center; }
+.sd-storyboard-video-draft-pick-card { min-width: 0; display: grid; gap: 4px; }
+.sd-storyboard-video-draft-pick-card > button {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 9px;
+  background: rgba(255,255,255,.05);
+  color: #fff;
+}
+.sd-storyboard-video-draft-pick-card:is(.is-tail, .is-reference) > button { border-color: var(--sd-accent, #9fcbb5); }
+.sd-storyboard-video-draft-pick-card > button img { width: 100%; height: 100%; object-fit: cover; }
+.sd-storyboard-video-draft-pick-card > button span {
+  position: absolute;
+  left: 5px;
+  bottom: 5px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: rgba(13,14,15,.68);
+  font-size: 8px;
+}
+.sd-storyboard-video-draft-pick-card > button > :is(i, .qm-glyph-icon) {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 18px;
+  height: 18px;
+  display: none;
+  place-items: center;
+  border-radius: 5px;
+  background: var(--sd-accent, #9fcbb5);
+  color: #17201c;
+  font-size: 11px;
+}
+.sd-storyboard-video-draft-pick-card:is(.is-tail, .is-reference) > button > :is(i, .qm-glyph-icon) { display: grid; }
+.sd-storyboard-video-draft-pick-card > select {
+  width: 100%;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 7px;
+  background: #292b2e;
+  color: #f5f5f3;
+  font: inherit;
+  font-size: 9px;
+}
+.sd-storyboard-video-draft-picker > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 15px 11px;
+  border-top: 1px solid rgba(255,255,255,.1);
+}
+.sd-storyboard-video-draft-picker > footer > span { color: rgba(255,255,255,.52); font-size: 9px; }
+.sd-storyboard-video-draft-picker > footer .sd-btn { min-width: 82px; min-height: 34px; border: 0; border-radius: 8px; font: inherit; font-size: 10px; }
 .sd-storyboard-video-draft-editor > footer {
   display: flex;
   align-items: center;
@@ -9182,6 +9303,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   .sd-storyboard-video-draft-body > figure { display: grid; grid-template-columns: minmax(110px, .45fr) minmax(0, .55fr); }
   .sd-storyboard-video-draft-body > figure > img { height: 104px; aspect-ratio: auto; object-fit: cover; }
   .sd-storyboard-video-draft-body > figure figcaption { align-content: center; }
+  .sd-storyboard-video-draft-picker-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 9px 11px; }
   .sd-storyboard-video-draft-editor > footer { align-items: stretch; flex-direction: column; padding: 10px 12px max(10px, env(safe-area-inset-bottom)); }
   .sd-storyboard-video-draft-editor > footer > div { display: grid; grid-template-columns: 1fr 1fr; }
 }
