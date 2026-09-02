@@ -557,3 +557,26 @@ export async function clearRecoverableStorage() {
   }
   return { cleared, beforeBytes: before.recoverableBytes };
 }
+
+// 按用户明确勾选的模块清理可再生数据。类别与 recoverable 双重白名单，
+// 调用方无法借此触及收藏、书籍、图片、便笺等不可恢复内容。
+export async function clearRecoverableCategories(categories = []) {
+  if (!blobStoreAvailable()) return { cleared: [], beforeBytes: 0 };
+  const allowedCategories = new Set(['audio', 'logs', 'cache']);
+  const selected = new Set((Array.isArray(categories) ? categories : [])
+    .map((value) => String(value || ''))
+    .filter((value) => allowedCategories.has(value)));
+  if (!selected.size) return { cleared: [], beforeBytes: 0 };
+  const before = await estimateBlobStoreUsage();
+  const targets = before.stores.filter((item) => item.recoverable && selected.has(item.category));
+  const cleared = [];
+  for (const item of targets) {
+    const targetStore = await store(item.name, 'readwrite');
+    await reqP(targetStore.clear());
+    cleared.push(item.name);
+  }
+  return {
+    cleared,
+    beforeBytes: targets.reduce((sum, item) => sum + Math.max(0, Number(item.bytes) || 0), 0),
+  };
+}

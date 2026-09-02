@@ -8179,3 +8179,201 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-nav button { min-height: 32px !important; height: 32px; }
   #story-director-modal .sd-notes-panel { width: 100%; height: 74%; }
 }
+
+/* v1.58.13 · 精调视觉标尺与独立便笺工作层 */
+#story-director-modal {
+  --qm-type-card-title: 13px;
+  --qm-type-body: 12px;
+  --qm-type-label: 11px;
+  --qm-control-height: 30px;
+  --qm-icon-size: 16px;
+}
+
+/* 顶层标签提高一档；卡片与折叠标题分出明确层级。 */
+#story-director-modal .sd-tabs button { font-size: 13.5px !important; }
+#story-director-modal .sd-card h3,
+#story-director-modal .sd-card > h3,
+#story-director-modal .sd-card-title-row > h3,
+#story-director-modal .sd-template-head h3,
+#story-director-modal .sd-section-title h3 { font-size: var(--qm-type-card-title) !important; }
+#story-director-modal .sd-plain-fold > summary > b,
+#story-director-modal .sd-accordion > summary > b,
+#story-director-modal .sd-storyboard-preset-entry > summary b,
+#story-director-modal .sd-focus-settings > summary { font-size: 12px !important; }
+#story-director-modal .sd-btn,
+#story-director-modal button.sd-btn,
+#story-director-modal label.sd-btn { min-height: var(--qm-control-height); font-size: 12px !important; }
+#story-director-modal input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+#story-director-modal select,
+#story-director-modal .text_pole:not(textarea) {
+  min-height: var(--qm-control-height) !important;
+  height: var(--qm-control-height);
+  padding-block: 4px !important;
+  font-size: 12px !important;
+}
+#story-director-modal textarea,
+#story-director-modal textarea.text_pole { font-size: 12px !important; }
+#story-director-modal input::placeholder,
+#story-director-modal textarea::placeholder { font-size: 11px !important; }
+#story-director-modal .sd-icon-btn:not(.sd-storyboard-close),
+#story-director-modal .sd-top-action { width: 32px; min-width: 32px; height: 32px; }
+#story-director-modal .sd-icon-sm { width: 28px !important; min-width: 28px !important; height: 28px !important; }
+#story-director-modal .sd-icon-sm :is(i, .qm-glyph-icon) { width: 14px !important; height: 14px !important; font-size: 14px !important; }
+#story-director-modal .sd-card { margin-bottom: 8px !important; }
+#story-director-modal button:not(.sd-backdrop):not(.sd-world-edge) { border-radius: 9px !important; }
+
+/* 标识组改为竖向三级：标语 / 千幕 / 版本；更新后的小绿点由版本确认状态驱动。 */
+#story-director-modal .sd-header { min-height: 61px; padding-block: 8px !important; }
+#story-director-modal .sd-titlebox {
+  display: grid !important;
+  grid-template-columns: auto;
+  grid-template-areas: "tagline" "title" "version";
+  justify-items: start;
+  align-items: center !important;
+  gap: 0 !important;
+}
+#story-director-modal .sd-titlebox > p { grid-area: tagline; flex: none; font-size: 9px !important; line-height: 1.15; letter-spacing: .12em; }
+#story-director-modal .sd-titlebox > h2 { grid-area: title; font-size: 20px !important; line-height: 1.05 !important; }
+#story-director-modal .sd-version-line { grid-area: version; min-height: 14px; display: inline-flex; align-items: center; }
+#story-director-modal .sd-version-tag { position: relative; min-height: 14px; padding: 0 6px !important; border-radius: 6px !important; font-size: 8.5px !important; line-height: 13px; cursor: pointer; }
+#story-director-modal .sd-version-new-dot {
+  position: absolute; right: -4px; top: -4px; width: 6px; height: 6px; border-radius: 50%;
+  background: #58c878; box-shadow: 0 0 0 2px var(--sd-sticky-bg), 0 0 8px rgba(88, 200, 120, .7);
+  animation: sd-version-notice 1.65s ease-in-out infinite;
+}
+#story-director-modal .sd-version-new-dot[hidden] { display: none; }
+@keyframes sd-version-notice { 50% { opacity: .42; transform: scale(.78); } }
+#story-director-modal .sd-tabs { padding-top: 6px; }
+
+/* 顶栏入口保持同框，分镜相机做光学校正。 */
+#story-director-modal .sd-coread-shortcut,
+#story-director-modal .sd-storyboard-shortcut,
+#story-director-modal .sd-plug-shortcut,
+#story-director-modal .sd-theme-btn,
+#story-director-modal .sd-close { border-radius: 9px !important; }
+#story-director-modal .sd-storyboard-shortcut :is(i, .qm-glyph-icon) {
+  width: 20px !important; height: 20px !important; font-size: 20px !important; transform: scale(1.08);
+}
+
+/* 小组件用同排标签态，不再混用原生勾选框。 */
+#story-director-modal .sd-widget-card { display: grid; gap: 9px; }
+#story-director-modal .sd-widget-card > h3 { margin: 0; }
+#story-director-modal .sd-widget-toggle-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+#story-director-modal .sd-widget-toggle {
+  min-width: 0; min-height: 31px; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 4px 7px !important; border: 1px solid var(--sd-hairline) !important; border-radius: 8px !important;
+  background: var(--sd-glass-weak) !important; color: var(--sd-muted) !important; font: inherit; font-size: 10.5px; cursor: pointer;
+}
+#story-director-modal .sd-widget-toggle.active { border-color: color-mix(in srgb, var(--sd-accent) 40%, var(--sd-hairline)) !important; background: color-mix(in srgb, var(--sd-accent) 13%, var(--sd-card)) !important; color: var(--sd-accent) !important; }
+#story-director-modal .sd-widget-toggle :is(i, .qm-glyph-icon) { width: 14px; height: 14px; font-size: 14px; }
+#story-director-modal .sd-wheel-settings { margin-top: 0; }
+#story-director-modal .sd-wheel-custom-details > summary { min-height: 31px; padding-block: 4px; }
+#story-director-modal .sd-wheel-custom-list { gap: 4px; padding-top: 5px; }
+#story-director-modal .sd-wheel-custom-row { min-height: 35px; padding-block: 3px; }
+
+/* 专注页沿用圆弧矩形，不再出现与系统规范割裂的大胶囊或圆形播放底框。 */
+#story-director-modal :is(.sd-focus-phase-tabs, .sd-focus-activity-tabs, .sd-focus-sound-sources, .sd-focus-segments) { border-radius: 10px !important; }
+#story-director-modal :is(.sd-focus-phase, .sd-focus-activity, .sd-focus-sound-source, .sd-focus-segments button) { border-radius: 8px !important; }
+#story-director-modal .sd-focus-sound-preview { width: 32px !important; min-width: 32px !important; height: 32px !important; border-radius: 9px !important; }
+#story-director-modal .sd-focus-sound-preview::before { border-radius: 9px; }
+
+/* 伴读中心标题提高一级，卡片题名略收；对话操作区提升双端可读性。 */
+.sd-reader-morepage-title { font-size: 1.18em; }
+#sd-reader-portal .sd-reader-morepage h3 { font-size: .95em; }
+#sd-reader-portal .sd-reader-dialog { font-size: 1.04em; }
+#sd-reader-portal .sd-reader-inbtn { width: 38px; height: 38px; border-radius: 9px; }
+#sd-reader-portal .sd-reader-inbtn :is(i, .qm-glyph-icon) { width: 17px; height: 17px; font-size: 17px; }
+.sd-reader-dialog-input { position: relative; }
+.sd-reader-send-tip {
+  position: absolute; z-index: 4; right: 10px; bottom: calc(100% + 7px); max-width: min(340px, calc(100vw - 34px));
+  display: flex; align-items: center; gap: 7px; padding: 8px 10px; border: 1px solid var(--sd-border); border-radius: 9px;
+  background: var(--sd-sticky-bg); color: var(--sd-text); box-shadow: 0 8px 24px rgba(0, 0, 0, .16);
+  font-size: 11px; line-height: 1.4; opacity: 0; transform: translateY(5px); pointer-events: none;
+  transition: opacity .2s ease, transform .2s ease;
+}
+.sd-reader-send-tip.is-visible { opacity: 1; transform: none; }
+.sd-reader-send-tip :is(i, .qm-glyph-icon) { flex: 0 0 auto; color: var(--sd-accent); }
+
+/* 储存条增强可读性；清理改为模块选择。 */
+#story-director-modal .sd-storage-ios-bar { height: 36px; }
+#story-director-modal .sd-storage-actions { grid-template-columns: minmax(0, 1fr); }
+#qianmu-storage-cleanup-layer {
+  position: fixed; inset: 0; z-index: 2147483006; display: grid; place-items: center;
+  padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  color: var(--sd-text); font-family: var(--mainFontFamily, system-ui, sans-serif); box-sizing: border-box;
+}
+#qianmu-storage-cleanup-layer * { box-sizing: border-box; }
+.sd-storage-cleanup-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 0 !important; background: rgba(12, 13, 14, .5); backdrop-filter: blur(6px); }
+.sd-storage-cleanup-dialog { position: relative; width: min(480px, 100%); overflow: hidden; border: 1px solid var(--sd-border); border-radius: 14px; background: var(--sd-sticky-bg); box-shadow: 0 22px 70px rgba(0, 0, 0, .32); }
+.sd-storage-cleanup-dialog > header { display: flex; justify-content: space-between; gap: 12px; padding: 14px; border-bottom: 1px solid var(--sd-hairline); }
+.sd-storage-cleanup-dialog h3 { margin: 0; font-size: 14px; }
+.sd-storage-cleanup-dialog header p { margin: 4px 0 0; color: var(--sd-muted); font-size: 11px; line-height: 1.45; }
+.sd-storage-cleanup-dialog .sd-icon-btn { width: 32px; min-width: 32px; height: 32px; padding: 0; border: 1px solid var(--sd-hairline); border-radius: 9px; background: var(--sd-glass-weak); color: inherit; }
+.sd-storage-cleanup-list { display: grid; gap: 6px; padding: 12px 14px; }
+.sd-storage-cleanup-list label { min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid var(--sd-hairline); border-radius: 9px; background: var(--sd-glass-weak); cursor: pointer; }
+.sd-storage-cleanup-list input { accent-color: var(--sd-accent); }
+.sd-storage-cleanup-list span { min-width: 0; display: flex; flex: 1; align-items: center; justify-content: space-between; gap: 12px; }
+.sd-storage-cleanup-list b { font-size: 12px; }
+.sd-storage-cleanup-list small { color: var(--sd-muted); font-size: 10.5px; }
+.sd-storage-cleanup-dialog footer { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding: 10px 14px 14px; }
+.sd-storage-cleanup-dialog .sd-btn { min-height: 32px; border: 1px solid var(--sd-border); border-radius: 9px; background: var(--sd-glass-weak); color: inherit; }
+.sd-storage-cleanup-dialog .sd-primary { border-color: transparent; background: var(--sd-primary); color: var(--sd-primary-text); }
+
+/* 便笺完全脱离千幕主窗口：只让不透明工作板拦截输入，周围区域可继续操作 ST 或其他插件。 */
+#qianmu-notes-panel-layer {
+  position: fixed; inset: 0; z-index: 2147483004; pointer-events: none; color: var(--sd-text);
+  font-family: var(--sd-font, var(--mainFontFamily, system-ui, sans-serif)); font-size: 12px; box-sizing: border-box;
+}
+#qianmu-notes-panel-layer * { box-sizing: border-box; }
+#qianmu-notes-panel-layer .sd-notes-stage { position: fixed; inset: 0; display: grid; place-items: center; padding: 18px; pointer-events: none; }
+#qianmu-notes-panel-layer .sd-notes-panel {
+  --sd-notes-surface: #f2ede5; --sd-notes-card: #e7e0d6;
+  width: min(60vw, 720px); height: min(60vh, 560px); min-width: 280px; min-height: 250px;
+  display: flex; flex-direction: column; overflow: hidden; pointer-events: auto;
+  border: 1px solid var(--sd-border); border-radius: 14px; background: var(--sd-notes-surface); color: var(--sd-text);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, .24);
+}
+#qianmu-notes-panel-layer.sd-theme-dark .sd-notes-panel { --sd-notes-surface: #202226; --sd-notes-card: #2c2e33; }
+#qianmu-notes-panel-layer.sd-theme-summer .sd-notes-panel { --sd-notes-surface: #e7f4ef; --sd-notes-card: #d5e9e2; }
+#qianmu-notes-panel-layer.sd-theme-candy .sd-notes-panel { --sd-notes-surface: #f7e9ef; --sd-notes-card: #ead9e1; }
+#qianmu-notes-panel-layer.sd-theme-kraft .sd-notes-panel { --sd-notes-surface: #eee1c8; --sd-notes-card: #dfcfaf; }
+#qianmu-notes-panel-layer.sd-theme-dream .sd-notes-panel { --sd-notes-surface: #f0eef6; --sd-notes-card: #e2dfee; }
+#qianmu-notes-panel-layer .sd-notes-panel > header { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--sd-hairline); background: var(--sd-notes-surface); }
+#qianmu-notes-panel-layer .sd-notes-panel > header > div { display: flex; align-items: center; gap: 6px; }
+#qianmu-notes-panel-layer .sd-notes-panel > header b { font: 600 14px/1.2 Georgia, serif; letter-spacing: .08em; }
+#qianmu-notes-panel-layer .sd-icon-btn { width: 32px; min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--sd-hairline); border-radius: 9px; background: var(--sd-glass-weak); color: inherit; }
+#qianmu-notes-panel-layer .sd-notes-list-view { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 7px; padding: 9px; background: var(--sd-notes-surface); }
+#qianmu-notes-panel-layer .sd-notes-search-row { display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 6px; }
+#qianmu-notes-panel-layer .sd-notes-search { width: 100%; min-height: 32px; margin: 0; padding: 5px 9px; border: 1px solid var(--sd-border); border-radius: 9px; outline: 0; background: var(--sd-notes-card); color: inherit; font: inherit; }
+#qianmu-notes-panel-layer .sd-note-list { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; scrollbar-width: none; }
+#qianmu-notes-panel-layer .sd-note-list::-webkit-scrollbar { display: none; }
+#qianmu-notes-panel-layer .sd-note-list-item { position: relative; min-height: 62px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 7px 8px 7px 10px; border-top: 3px solid color-mix(in srgb, var(--sd-accent) 82%, white); border-radius: 5px; background: var(--sd-notes-card); }
+#qianmu-notes-panel-layer .sd-note-select { min-width: 0; align-self: stretch; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 6px; padding: 3px; border: 0; background: transparent; color: inherit; text-align: left; }
+#qianmu-notes-panel-layer .sd-note-select span { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+#qianmu-notes-panel-layer .sd-note-select time { color: var(--sd-accent); font-size: 9px; }
+#qianmu-notes-panel-layer .sd-note-list-actions { position: relative; display: flex; align-items: center; gap: 3px; color: var(--sd-muted); }
+#qianmu-notes-panel-layer .sd-note-pinned-mark,
+#qianmu-notes-panel-layer .sd-note-tools-toggle,
+#qianmu-notes-panel-layer .sd-note-item-tools button { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--sd-muted); }
+#qianmu-notes-panel-layer .sd-note-pinned-mark[hidden] { display: none; }
+#qianmu-notes-panel-layer .sd-note-item-tools { position: absolute; z-index: 3; right: 31px; top: 50%; transform: translateY(-50%); display: flex; gap: 1px; }
+#qianmu-notes-panel-layer .sd-note-item-tools[hidden] { display: none; }
+#qianmu-notes-panel-layer .sd-note-item-tools button:hover,
+#qianmu-notes-panel-layer .sd-note-item-tools button.active { background: color-mix(in srgb, var(--sd-accent) 13%, var(--sd-notes-card)); color: var(--sd-accent); }
+#qianmu-notes-panel-layer .sd-note-editor { min-height: 0; flex: 1; display: flex; background: var(--sd-notes-surface); }
+#qianmu-notes-panel-layer .sd-note-body { width: 100%; height: 100%; min-height: 0; resize: none; padding: 14px; border: 0; border-radius: 0; outline: 0; background: var(--sd-notes-surface); color: var(--sd-text); font: inherit; font-size: 12px; line-height: 1.68; }
+
+/* 浮贴蜂巢与悬浮球严格共用尺寸；Lucide SVG 不再继承错误的图标字号。 */
+.sd-detached-notes-entry > :is(i, .qm-glyph-icon) { position: relative; z-index: 2; width: calc(var(--sd-notes-entry-height, 48px) * .34) !important; height: calc(var(--sd-notes-entry-height, 48px) * .34) !important; font-size: calc(var(--sd-notes-entry-height, 48px) * .34) !important; }
+
+@media (max-width: 620px) {
+  #story-director-modal { --qm-control-height: 32px; }
+  #story-director-modal .sd-widget-toggle-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #qianmu-notes-panel-layer .sd-notes-stage { place-items: end center; padding: 10px; }
+  #qianmu-notes-panel-layer .sd-notes-panel { width: 100%; height: min(68vh, 540px); min-width: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #story-director-modal .sd-version-new-dot { animation: none; }
+  .sd-reader-send-tip { transition: none; }
+}

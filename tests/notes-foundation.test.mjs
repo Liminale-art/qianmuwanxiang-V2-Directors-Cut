@@ -38,9 +38,17 @@ assert.match(source, /sd-notes-search-row[\s\S]*sd-notes-search[\s\S]*sd-note-ne
 assert.match(source, /is-editor[\s\S]*sd-note-new[\s\S]*sd-notes-list/, 'new note must sit before the list control in the editor');
 assert.match(source, /function detachedNotesGeometry\(\)[\s\S]*getFloatSize\(\)/, 'detached notes must follow the configured hive size');
 assert.match(source, /closeNoteTools[\s\S]*sd-notes-stage[\s\S]*addEventListener\('click'/, 'clicking outside the more toggle closes row actions');
+assert.match(source, /function openNotesPanel\(\)[\s\S]*notesPanelOpen = true;[\s\S]*renderNotesPanelPortal\(\)/, 'opening notes must mount its own page layer');
+const openNotesPanel = source.slice(source.indexOf('function openNotesPanel()'), source.indexOf('function closeNotesPanel()'));
+assert.doesNotMatch(openNotesPanel, /openModal|renderModal/, 'opening notes must not open or rebuild the Qianmu main panel');
+assert.match(source, /function renderNotesPanel\(\)[\s\S]*aria-modal="false"/, 'the notes workspace must remain non-modal so ST stays usable');
+assert.match(source, /function renderNotesPanelPortal\(\)[\s\S]*document\.body\.appendChild\(layer\)/, 'notes must live in an independent body portal');
+assert.match(source, /function qianmuDockingSurfaceBusy\(\)[\s\S]*\[role="dialog"\]\[aria-modal="true"\][\s\S]*function detachedNoteCanReturnHome/, 'docking must be disabled while another modal or panel is active');
+assert.match(source, /function detachedNoteCanReturnHome[\s\S]*getElementById\(FLOAT_ID\)[\s\S]*noteRect\.left >= logoRect\.left[\s\S]*noteRect\.right <= logoRect\.right/, 'a detached note must be fully placed over the real Qianmu logo before returning home');
 assert.match(source, /pinned \? '便笺已保存'/, 'pinning a note confirms durable storage');
 assert.match(styles, /\.sd-notes-panel[\s\S]*background: var\(--sd-notes-surface\)/, 'the notes page must use an opaque theme surface');
-assert.match(styles, /\.sd-notes-panel \{[\s\S]*width: 60%;[\s\S]*height: 60%/, 'desktop notes use the compact sixty-percent workspace');
+assert.match(styles, /#qianmu-notes-panel-layer \.sd-notes-panel \{[\s\S]*width: min\(60vw,[\s\S]*height: min\(60vh,/, 'desktop notes use the compact sixty-percent workspace');
+assert.match(styles, /\.sd-note-pinned-mark,[\s\S]*\.sd-note-tools-toggle,[\s\S]*width: 28px; height: 28px/, 'pin state and more control must occupy the same visual slot');
 assert.match(styles, /\.sd-note-item-tools \{[\s\S]*border: 0;[\s\S]*background: transparent/, 'the expanded more menu remains visually unboxed');
 assert.match(styles, /#qianmu-notes-float-layer[\s\S]*z-index: 2147483002/, 'the detached hive cell must sit above the Qianmu panel but below critical overlays');
 assert.match(styles, /\.sd-detached-notes-entry[\s\S]*clip-path: polygon\(50% 0,[\s\S]*sd-hive-hex-outline/, 'the detached entry must keep the hive hexagon silhouette and edge');

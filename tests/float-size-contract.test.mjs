@@ -20,12 +20,12 @@ assert.match(source, /sd-float-size-control[\s\S]*settings\.floatingButton \? ''
 assert.match(source, /sd-float-size[^]*addEventListener\('input'[^]*renderFloatButton\(\)/, '拖动尺寸滑块必须实时刷新悬浮球');
 assert.match(source, /sd-float-size[^]*addEventListener\('change', \(\) => saveSettings\(\)\)/, '最终尺寸必须持久化');
 assert.match(css, /\.sd-float-size-control\[hidden\][^}]*display: none !important/, '关闭悬浮球时尺寸面板必须真正隐藏');
-const apiCard = source.slice(source.indexOf('<h3>API</h3>'), source.indexOf('<h3>悬浮球设置</h3>'));
+const apiCard = source.slice(source.indexOf('<h3>API</h3>'), source.indexOf('<h3>小组件</h3>'));
 assert.match(apiCard, /sd-api-generation-row[\s\S]*温度[\s\S]*最大输出[\s\S]*上下文长度/, '三个简化标题的生成参数必须收进同一排');
 assert.doesNotMatch(apiCard, /Temperature|最大输出 token/);
 assert.match(apiCard, /sd-api-action-row[\s\S]*sd-save-api[\s\S]*sd-save-api-profile[\s\S]*sd-test-api[\s\S]*sd-stream-toggle[\s\S]*>流式传输<\/button>[\s\S]*sd-stream-scope-hint">仅支持自定义<\/small>/, '保存操作须在第一排，测试与流式传输依次位于第二排');
 assert.doesNotMatch(apiCard, /仅支持自定义API/);
-assert.match(source, /<section class="sd-card">\s*<h3>悬浮球设置<\/h3>[\s\S]*sd-float-toggle[\s\S]*sd-float-size-control[\s\S]*renderQuickWheelSettings/, '悬浮球与蜂巢设置必须独立成卡');
+assert.match(source, /<section class="sd-card sd-widget-card">\s*<h3>小组件<\/h3>[\s\S]*data-widget-toggle="floating"[\s\S]*data-widget-toggle="notes"[\s\S]*data-widget-toggle="wheel"[\s\S]*data-widget-toggle="dock"[\s\S]*sd-float-size-control[\s\S]*renderQuickWheelSettings/, '小组件卡必须以标签态统一管理悬浮球、便笺、快捷盘和蜂巢收纳');
 assert.match(css, /\.sd-api-generation-row\s*\{[^}]*grid-template-columns:\s*repeat\(3/, '三个生成参数必须三列同排');
 assert.match(css, /\.sd-api-action-row\s*\{[^}]*grid-template-columns:\s*repeat\(2/, 'API四项操作必须两列等宽、固定两排');
 assert.match(css, /\.sd-api-stream-action\s*\{[^}]*display:\s*grid[^}]*gap:\s*4px/, '流式说明必须稳定显示在按钮下方');

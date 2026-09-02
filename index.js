@@ -103,10 +103,10 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.12';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.13';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.12';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.12';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.13';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.13';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_COMPOSITION_RULE_ID,
@@ -146,20 +146,20 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
-} from './qianmu-storyboard.js?v=1.58.12';
+} from './qianmu-storyboard.js?v=1.58.13';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.12';
+const VERSION = '1.58.13';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.12'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.13'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.12'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.13'),
   },
 });
 function directImageRuntime() {
@@ -184,6 +184,8 @@ const FLOAT_ID = 'story-director-float';
 const QUICK_WHEEL_ID = 'story-director-quick-wheel';
 const FLOOR_NAV_ID = 'story-director-floor-nav';
 const NOTES_FLOAT_LAYER_ID = 'qianmu-notes-float-layer';
+const NOTES_PANEL_LAYER_ID = 'qianmu-notes-panel-layer';
+const STORAGE_CLEANUP_LAYER_ID = 'qianmu-storage-cleanup-layer';
 const INPUT_ENTRY_ID = 'story-director-input-entry';
 const INPUT_BUTTON_ID = 'story-director-input-button';
 const FLOAT_SIZE_MIN = 32;
@@ -609,6 +611,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   contextBudget: 1000000,
   streamEnabled: false,
   floatingButton: true,
+  seenVersion: '',
+  quickDockEnabled: true,
   floatSize: null,   // null=沿用原响应式默认（桌面48 / 移动44）；用户拖动滑块后保存明确像素值
   floatPosition: { x: null, y: null },
   proseLayout: { ...PROSE_LAYOUT_DEFAULTS },
@@ -761,6 +765,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     bubbleCustom: '',               // 对话气泡自定义 CSS（DIY，1B 接线）
     drawerHeight: 320,              // 目录 / 笔记 / 书签共用抽屉高度(px)，可拖拽并记忆
     dialogHeight: 300,              // 伴读对话抽屉高度(px)，独立记忆
+    dialogTipSeen: false,           // 首次打开对话抽屉时显示发送键手势提示
     retainedMemoryBooks: [],        // 已删正文但由用户选择保留的长期记忆书目轻档案
     excerptCard: {                  // 摘录图片卡：少量内置方案 + 用户微调，随伴读数据打包迁移
       preset: 'paper',              // paper | night | mist | custom
@@ -3919,7 +3924,6 @@ function closeModal() {
     storyboardEndSession();
   }
   focusClockCloseVoiceDrawer();
-  notesPanelOpen = false;
   document.getElementById(MODAL_ID)?.classList.remove('open');
   document.body.classList.remove('sd-qm-modal-open');
   unmountReaderPortal();   // 关模态连带收掉全屏阅读 portal
@@ -4360,8 +4364,9 @@ function quickWheelPrimaryItems() {
 }
 
 function quickWheelItems() {
-  if (settings.quickWheelDockedPlugins?.length) quickDockScanStored();
+  if (settings.quickDockEnabled !== false && settings.quickWheelDockedPlugins?.length) quickDockScanStored();
   const primary = quickWheelPrimaryItems();
+  if (settings.quickDockEnabled === false) return primary;
   const room = Math.max(0, QUICK_HIVE_SAFETY_LIMIT - primary.length);
   const docked = [...quickDockRuntime.values()].filter((record) => record.host?.isConnected).slice(0, room).map((record) => ({
     id: `dock:${record.key}`,
@@ -4555,8 +4560,8 @@ function quickDockCandidate(event) {
   const path = typeof event?.composedPath === 'function' ? event.composedPath() : [event?.target];
   const elements = path.filter((node) => node instanceof Element);
   if (!elements.length) return null;
-  if (elements.some((node) => node.matches?.(`#${FLOAT_ID}, #${MODAL_ID}, #${QUICK_WHEEL_ID}, #${FLOOR_NAV_ID}, #sd-reader-portal, .sd-toast`)
-    || node.closest?.(`#${FLOAT_ID}, #${MODAL_ID}, #${QUICK_WHEEL_ID}, #${FLOOR_NAV_ID}, #sd-reader-portal, .sd-toast`))) return null;
+  if (elements.some((node) => node.matches?.(`#${FLOAT_ID}, #${MODAL_ID}, #${QUICK_WHEEL_ID}, #${FLOOR_NAV_ID}, #${NOTES_FLOAT_LAYER_ID}, #${NOTES_PANEL_LAYER_ID}, #sd-reader-portal, .sd-toast`)
+    || node.closest?.(`#${FLOAT_ID}, #${MODAL_ID}, #${QUICK_WHEEL_ID}, #${FLOOR_NAV_ID}, #${NOTES_FLOAT_LAYER_ID}, #${NOTES_PANEL_LAYER_ID}, #sd-reader-portal, .sd-toast`))) return null;
   const preferred = elements.find((node) => node.matches?.('button, a, [role="button"], [tabindex]')) || null;
   for (const node of elements) {
     if (node === document.body || node === document.documentElement) continue;
@@ -4622,7 +4627,7 @@ function quickDockReservedCount() {
 }
 
 function syncQuickDockOriginVisibility() {
-  const hidden = settings.quickWheelEnabled !== false && settings.floatingButton !== false;
+  const hidden = settings.quickDockEnabled !== false && settings.quickWheelEnabled !== false && settings.floatingButton !== false;
   for (const record of quickDockRuntime.values()) quickDockSetOriginState(record, hidden ? 'hidden' : 'normal');
 }
 
@@ -4672,7 +4677,7 @@ function quickDockSetOriginState(record, state) {
 }
 
 function quickDockAttach(host, activator, descriptor = null, fromRestore = false) {
-  if (!(host instanceof Element) || quickDockComposedAncestors(host).some((node) => node.matches?.(`#${FLOAT_ID}, #${MODAL_ID}, #${QUICK_WHEEL_ID}, #${FLOOR_NAV_ID}, #sd-reader-portal`))) return false;
+  if (!(host instanceof Element) || quickDockComposedAncestors(host).some((node) => node.matches?.(`#${FLOAT_ID}, #${MODAL_ID}, #${QUICK_WHEEL_ID}, #${FLOOR_NAV_ID}, #${NOTES_FLOAT_LAYER_ID}, #${NOTES_PANEL_LAYER_ID}, #sd-reader-portal`))) return false;
   normalizeQuickWheelSettings();
   const shadowPath = quickDockNormalizePath(descriptor?.shadowPath).length
     ? quickDockNormalizePath(descriptor.shadowPath) : quickDockStablePath(host);
@@ -4860,6 +4865,11 @@ function quickDockObserveShadowRoots() {
 
 function restoreQuickDockedPlugins() {
   normalizeQuickWheelSettings();
+  if (settings.quickDockEnabled === false) {
+    quickDockStopRestoreWatchers();
+    for (const record of quickDockRuntime.values()) quickDockSetOriginState(record, 'normal');
+    return;
+  }
   const savedKeys = new Set(settings.quickWheelDockedPlugins.map((item) => item.key));
   for (const [key, record] of quickDockRuntime) {
     if ((record.selector || record.shadowPath?.length) && !savedKeys.has(key)) {
@@ -4911,7 +4921,8 @@ function quickDockClearDrag() {
 }
 
 function quickDockOnPointerDown(event) {
-  if (!settings.quickWheelEnabled || settings.floatingButton === false || (event.button != null && event.button !== 0)) return;
+  if (settings.quickDockEnabled === false || !settings.quickWheelEnabled || settings.floatingButton === false
+    || qianmuDockingSurfaceBusy() || (event.button != null && event.button !== 0)) return;
   const candidate = quickDockCandidate(event);
   if (!candidate || candidate.host.classList.contains('sd-quick-docked-origin')) return;
   quickDockDrag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, moved: false, ready: false, ...candidate };
@@ -4925,8 +4936,10 @@ function quickDockOnPointerMove(event) {
   const float = document.getElementById(FLOAT_ID);
   if (!float) return quickDockClearDrag();
   const rect = float.getBoundingClientRect();
-  const radius = Math.max(46, getFloatSize() * 1.4);
-  quickDockDrag.ready = Math.hypot(event.clientX - (rect.left + rect.width / 2), event.clientY - (rect.top + rect.height / 2)) <= radius;
+  const insetX = rect.width * .18;
+  const insetY = rect.height * .18;
+  quickDockDrag.ready = event.clientX >= rect.left + insetX && event.clientX <= rect.right - insetX
+    && event.clientY >= rect.top + insetY && event.clientY <= rect.bottom - insetY;
   float.classList.toggle('sd-dock-ready', quickDockDrag.ready);
 }
 
@@ -5891,7 +5904,7 @@ async function hydrateNotesRuntime(force = false) {
     notesLoaded = true;
     if (!notesFind(notesActiveId)) notesActiveId = '';
     renderFloatingNotes();
-    if (notesPanelOpen && document.getElementById(MODAL_ID)?.classList.contains('open')) renderModal();
+    if (notesPanelOpen) renderNotesPanelPortal();
     return notesRuntime;
   }).catch((error) => {
     console.warn(`[${MODULE_NAME}] notes load failed`, error);
@@ -5905,7 +5918,7 @@ async function persistNoteRuntime(note, { renderPanel = false } = {}) {
   const saved = await saveQianmuNote(note);
   notesReplaceLocal(saved);
   renderFloatingNotes();
-  if (renderPanel && notesPanelOpen) renderModal();
+  if (renderPanel && notesPanelOpen) renderNotesPanelPortal();
   return saved;
 }
 
@@ -5921,17 +5934,16 @@ function openNotesPanel() {
   if (!settings.enabled) return toast('千幕已关闭。', 'warning');
   if (!notesFeatureEnabled()) return toast('便笺功能已在 API 与日志中关闭。', 'info');
   closeQuickWheel();
-  if (!document.getElementById(MODAL_ID)?.classList.contains('open')) openModal();
   notesActiveId = '';
   notesPanelOpen = true;
-  renderModal();
+  renderNotesPanelPortal();
   renderFloatingNotes();
   void hydrateNotesRuntime();
 }
 
 function closeNotesPanel() {
   notesPanelOpen = false;
-  renderModal();
+  document.getElementById(NOTES_PANEL_LAYER_ID)?.remove();
   renderFloatingNotes();
 }
 
@@ -5958,14 +5970,55 @@ function renderNotesPanel() {
       <div class="sd-note-item-tools" hidden><button type="button" class="sd-note-copy" title="复制" aria-label="复制"><i class="fa-solid fa-copy"></i></button><button type="button" class="sd-note-pin ${note.pinned ? 'active' : ''}" title="${note.pinned ? '取消固定' : '固定'}" aria-label="固定"><i class="fa-solid fa-thumbtack"></i></button><button type="button" class="sd-note-delete" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div>
     </div>
   </article>`).join('');
-  if (active) return `<div class="sd-notes-stage"><section class="sd-notes-panel is-editor" role="dialog" aria-modal="true" aria-label="编辑便笺">
+  if (active) return `<div class="sd-notes-stage"><section class="sd-notes-panel is-editor" role="dialog" aria-modal="false" aria-label="编辑便笺">
     <header><b>便笺</b><div><button type="button" class="sd-icon-btn sd-note-new" title="新建便笺" aria-label="新建便笺"><i class="fa-solid fa-plus"></i></button><button type="button" class="sd-icon-btn sd-notes-list" title="便笺列表" aria-label="便笺列表"><i class="fa-solid fa-list"></i></button><button type="button" class="sd-icon-btn sd-notes-close" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></div></header>
     <div class="sd-note-editor" data-note-id="${htmlEscape(active.id)}"><textarea class="sd-note-body" maxlength="20000" aria-label="便笺内容">${htmlEscape(active.body)}</textarea></div>
   </section></div>`;
-  return `<div class="sd-notes-stage"><section class="sd-notes-panel" role="dialog" aria-modal="true" aria-label="便笺">
+  return `<div class="sd-notes-stage"><section class="sd-notes-panel" role="dialog" aria-modal="false" aria-label="便笺">
     <header><b>便笺</b><button type="button" class="sd-icon-btn sd-notes-close" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
     <div class="sd-notes-list-view"><div class="sd-notes-search-row"><input class="text_pole sd-notes-search" value="${htmlEscape(notesSearch)}" placeholder="搜索" aria-label="搜索便笺"><button type="button" class="sd-icon-btn sd-note-new" title="新建便笺" aria-label="新建便笺"><i class="fa-solid fa-plus"></i></button></div><div class="sd-note-list">${list}</div></div>
   </section></div>`;
+}
+
+const NOTES_THEME_VARIABLES = Object.freeze([
+  '--sd-text', '--sd-muted', '--sd-border', '--sd-hairline', '--sd-glass', '--sd-glass-weak',
+  '--sd-card', '--sd-folder-head', '--sd-sticky-bg', '--sd-pre', '--sd-input-bg', '--sd-accent',
+  '--sd-check-mark', '--sd-primary', '--sd-primary-text',
+]);
+
+function renderNotesPanelPortal() {
+  let layer = document.getElementById(NOTES_PANEL_LAYER_ID);
+  if (!notesPanelOpen || !notesFeatureEnabled()) {
+    layer?.remove();
+    return null;
+  }
+  let themeSource = document.getElementById(MODAL_ID);
+  let removeThemeSource = false;
+  if (!themeSource) {
+    themeSource = document.createElement('div');
+    themeSource.id = MODAL_ID;
+    document.body.appendChild(themeSource);
+    removeThemeSource = true;
+  }
+  const themeKey = THEME_KEYS.includes(settings.theme) ? settings.theme : 'light';
+  for (const key of THEME_KEYS) themeSource.classList.toggle(`sd-theme-${key}`, key === themeKey);
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.id = NOTES_PANEL_LAYER_ID;
+    document.body.appendChild(layer);
+  }
+  layer.className = `sd-theme-${themeKey}`;
+  const sourceStyle = getComputedStyle(themeSource);
+  for (const variable of NOTES_THEME_VARIABLES) {
+    const value = sourceStyle.getPropertyValue(variable);
+    if (value) layer.style.setProperty(variable, value);
+  }
+  if (removeThemeSource) themeSource.remove();
+  layer.style.setProperty('--sd-font', getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif');
+  layer.innerHTML = renderNotesPanel();
+  applyQianmuIcons(layer);
+  bindNotesPanelEvents(layer);
+  return layer;
 }
 
 function detachedNotesGeometry() {
@@ -6028,9 +6081,7 @@ function bindFloatingNoteEvents(layer) {
     entry.style.left = `${position.x}px`;
     entry.style.top = `${position.y}px`;
     entry.classList.add('is-dragging');
-    const windowRect = document.querySelector(`#${MODAL_ID}.open .sd-window`)?.getBoundingClientRect();
-    const inside = windowRect && windowRect.left <= event.clientX && event.clientX <= windowRect.right
-      && windowRect.top <= event.clientY && event.clientY <= windowRect.bottom;
+    const inside = detachedNoteCanReturnHome(entry);
     entry.classList.toggle('is-return-ready', Boolean(inside));
     event.preventDefault();
   });
@@ -6038,9 +6089,7 @@ function bindFloatingNoteEvents(layer) {
     if (!drag || (event?.pointerId != null && event.pointerId !== drag.pointerId)) return;
     const moved = drag.moved;
     try { entry.releasePointerCapture?.(drag.pointerId); } catch (_) {}
-    const windowRect = document.querySelector(`#${MODAL_ID}.open .sd-window`)?.getBoundingClientRect();
-    const inside = !cancelled && moved && windowRect && windowRect.left <= event.clientX && event.clientX <= windowRect.right
-      && windowRect.top <= event.clientY && event.clientY <= windowRect.bottom;
+    const inside = !cancelled && moved && detachedNoteCanReturnHome(entry);
     const position = clampDetachedNotesEntry({ x: Number.parseFloat(entry.style.left), y: Number.parseFloat(entry.style.top) });
     drag = null;
     entry.classList.remove('is-dragging', 'is-return-ready');
@@ -6054,7 +6103,6 @@ function bindFloatingNoteEvents(layer) {
     saveSettings();
     if (inside) {
       renderFloatingNotes();
-      renderModal();
       toast('便笺入口已回到千幕蜂巢。', 'success');
     }
   };
@@ -6066,24 +6114,53 @@ function bindFloatingNoteEvents(layer) {
   });
 }
 
+function qianmuDockingSurfaceBusy() {
+  if (notesPanelOpen) return true;
+  if (document.getElementById(MODAL_ID)?.classList.contains('open')) return true;
+  const selectors = [
+    '[role="dialog"][aria-modal="true"]', '.drawer-content.open', '.drawer-content.openDrawer',
+    '#options.is-open', '#rm_extensions_block.open', '.popup[style*="display: block"]',
+  ];
+  return selectors.some((selector) => [...document.querySelectorAll(selector)].some((node) => {
+    if (!(node instanceof Element) || node.closest(`#${NOTES_PANEL_LAYER_ID}`)) return false;
+    const style = getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 20 && rect.height > 20;
+  }));
+}
+
+function detachedNoteCanReturnHome(entry) {
+  if (!(entry instanceof Element) || qianmuDockingSurfaceBusy()) return false;
+  const logo = document.getElementById(FLOAT_ID);
+  if (!(logo instanceof Element)) return false;
+  const noteRect = entry.getBoundingClientRect();
+  const logoRect = logo.getBoundingClientRect();
+  const pixelTolerance = 2;
+  return noteRect.left >= logoRect.left - pixelTolerance
+    && noteRect.right <= logoRect.right + pixelTolerance
+    && noteRect.top >= logoRect.top - pixelTolerance
+    && noteRect.bottom <= logoRect.bottom + pixelTolerance;
+}
+
 function bindNotesPanelEvents(root) {
   if (!notesPanelOpen) return;
   const closeNoteTools = () => {
     root.querySelectorAll('.sd-note-item-tools').forEach((node) => { node.hidden = true; });
     root.querySelectorAll('.sd-note-tools-toggle').forEach((node) => node.setAttribute('aria-expanded', 'false'));
+    root.querySelectorAll('.sd-note-pinned-mark').forEach((node) => { node.hidden = false; });
   };
   root.querySelector('.sd-notes-stage')?.addEventListener('click', (event) => {
     if (event.target.closest?.('.sd-note-tools-toggle')) return;
     closeNoteTools();
   });
   root.querySelector('.sd-notes-close')?.addEventListener('click', closeNotesPanel);
-  root.querySelector('.sd-notes-list')?.addEventListener('click', () => { notesActiveId = ''; renderModal(); });
+  root.querySelector('.sd-notes-list')?.addEventListener('click', () => { notesActiveId = ''; renderNotesPanelPortal(); });
   root.querySelector('.sd-note-new')?.addEventListener('click', () => {
     const note = createQianmuNote({ title: '', body: '', pinned: false });
     notesReplaceLocal(note);
     notesActiveId = note.id;
     void saveQianmuNote(note);
-    renderModal();
+    renderNotesPanelPortal();
   });
   root.querySelector('.sd-notes-search')?.addEventListener('input', (event) => {
     notesSearch = event.target.value;
@@ -6096,7 +6173,7 @@ function bindNotesPanelEvents(root) {
     });
   });
   root.querySelectorAll('.sd-note-list-item').forEach((item) => {
-    item.querySelector('.sd-note-select')?.addEventListener('click', () => { notesActiveId = item.dataset.noteId; renderModal(); });
+    item.querySelector('.sd-note-select')?.addEventListener('click', () => { notesActiveId = item.dataset.noteId; renderNotesPanelPortal(); });
     const toolsToggle = item.querySelector('.sd-note-tools-toggle');
     const tools = item.querySelector('.sd-note-item-tools');
     toolsToggle?.addEventListener('click', (event) => {
@@ -6104,6 +6181,8 @@ function bindNotesPanelEvents(root) {
       const willOpen = Boolean(tools?.hidden);
       closeNoteTools();
       if (tools) tools.hidden = !willOpen;
+      const pinnedMark = item.querySelector('.sd-note-pinned-mark');
+      if (pinnedMark) pinnedMark.hidden = willOpen;
       toolsToggle.setAttribute('aria-expanded', String(willOpen));
     });
     item.querySelector('.sd-note-copy')?.addEventListener('click', () => {
@@ -6125,7 +6204,7 @@ function bindNotesPanelEvents(root) {
       await deleteQianmuNote(note.id);
       notesRuntime = notesRuntime.filter((entry) => entry.id !== note.id);
       if (notesActiveId === note.id) notesActiveId = '';
-      renderModal();
+      renderNotesPanelPortal();
     });
   });
   const editor = root.querySelector('.sd-note-editor');
@@ -6173,9 +6252,9 @@ function renderModal() {
       ${storyboardLayout ? `<main class="sd-body sd-storyboard-body">${renderActiveTab()}</main>` : `
       <header class="sd-header">
         <div class="sd-titlebox">
-          <h2>${EXTENSION_NAME}</h2>
-          <span class="sd-version-tag">v${VERSION}</span>
           <p>一蝶振翅&nbsp;&nbsp;万象入幕</p>
+          <h2>${EXTENSION_NAME}</h2>
+          <span class="sd-version-line"><button type="button" class="sd-version-tag" title="${settings.seenVersion === VERSION ? `当前版本 v${VERSION}` : `v${VERSION} 已就绪，点击确认`}">v${VERSION}<i class="sd-version-new-dot" ${settings.seenVersion === VERSION ? 'hidden' : ''}></i></button></span>
         </div>
         <div class="sd-header-actions">
           ${COREAD_VISIBLE ? `<button class="sd-coread-shortcut ${activeTab === 'coread' ? 'active' : ''}" title="伴读" aria-label="伴读"><i class="fa-solid fa-book-open" data-qm-icon="coread-entry"></i></button>` : ''}
@@ -6200,7 +6279,6 @@ function renderModal() {
       <main class="sd-body${editorLayout ? ' sd-editor-body' : ''}">${['tasksnodes', 'context'].includes(activeTab) || (activeTab === 'castworld' && worldPage === 'front') ? (!editorView ? `<div class="sd-cols-inner">${renderActiveTab()}</div>` : renderActiveTab()) : renderActiveTab()}</main>
       ${renderInjectDock()}
       `}
-      ${notesPanelOpen ? renderNotesPanel() : ''}
     </section>`;
   applyQianmuIcons(modal);
   // 以整个视口层判断点外关闭；比只绑 backdrop 更能抵抗 ST 美化重排或透明覆盖层抢占点击。
@@ -6209,6 +6287,12 @@ function renderModal() {
   };
   modal.querySelector('.sd-window')?.addEventListener('click', (event) => event.stopPropagation());
   modal.querySelector('.sd-close')?.addEventListener('click', closeModal);
+  modal.querySelector('.sd-version-tag')?.addEventListener('click', (event) => {
+    settings.seenVersion = VERSION;
+    event.currentTarget.querySelector('.sd-version-new-dot')?.setAttribute('hidden', '');
+    event.currentTarget.title = `当前版本 v${VERSION}`;
+    saveSettings();
+  });
   modal.querySelector('.sd-plug-shortcut')?.addEventListener('click', () => { activeTab = 'plug'; renderModal(); });
   modal.querySelector('.sd-storyboard-shortcut')?.addEventListener('click', () => {
     storyboardReturnTab = activeTab === 'imagegen' ? 'dashboard' : activeTab;
@@ -6244,6 +6328,7 @@ function renderModal() {
     if (next && next !== settings.theme) { settings.theme = next; saveSettings(); }
     renderFloatButton();
     renderModal();   // 重渲染会重建菜单（默认收起态）
+    if (notesPanelOpen) renderNotesPanelPortal();
   }));
   modal.querySelectorAll('.sd-tab').forEach((el) => el.addEventListener('click', () => {
     focusClockCloseVoiceDrawer();
@@ -7252,9 +7337,8 @@ function storageSettingsSnapshotWithoutDiagnostics() {
 
 async function collectStorageInventory() {
   const storageApi = globalThis.navigator?.storage;
-  const [originEstimate, persisted, idb] = await Promise.all([
+  const [originEstimate, idb] = await Promise.all([
     storageApi?.estimate?.().catch(() => null) || Promise.resolve(null),
-    storageApi?.persisted?.().catch(() => false) || Promise.resolve(false),
     blobStore.estimateBlobStoreUsage(),
   ]);
   const settingsBytes = storageJsonBytes(storageSettingsSnapshotWithoutDiagnostics());
@@ -7279,7 +7363,7 @@ async function collectStorageInventory() {
     origin: {
       usage: Math.max(0, Number(originEstimate?.usage) || 0),
       quota: Math.max(0, Number(originEstimate?.quota) || 0),
-      persisted: Boolean(persisted),
+      persisted: false,
       available: Boolean(originEstimate),
     },
     idb,
@@ -7337,12 +7421,50 @@ function renderStorageManagementCard() {
     : '浏览器未提供配额信息';
   return `<section class="sd-card sd-storage-card">
     <div class="sd-card-title-row"><div><h3>储存空间</h3><p class="sd-summary-note">${htmlEscape(new Date(data.sampledAt).toLocaleTimeString())}</p></div><button type="button" class="sd-icon-btn sd-storage-refresh" title="刷新" aria-label="刷新"><i class="fa-solid fa-rotate${status === 'loading' ? ' fa-spin' : ''}"></i></button></div>
-    <div class="sd-storage-totals"><span>浏览器 / ST 来源<b>${htmlEscape(originText)}</b></span><span>千幕已盘点<b>${htmlEscape(formatStorageBytes(data.trackedBytes))}</b></span><span>可安全清理<b>${htmlEscape(formatStorageBytes(data.recoverableBytes))}</b></span></div>
+    <div class="sd-storage-totals"><span>浏览器 / ST 来源<b>${htmlEscape(originText)}</b></span><span>千幕已盘点<b>${htmlEscape(formatStorageBytes(data.trackedBytes))}</b></span><span>可选清理<b>${htmlEscape(formatStorageBytes(data.recoverableBytes))}</b></span></div>
     <div class="sd-storage-ios-bar" role="img" aria-label="储存空间分布">${storageBar}</div>
     <div class="sd-storage-legend">${legend || '<p class="sd-muted">暂未发现千幕本地数据。</p>'}</div>
-    <p class="sd-storage-scope">ST 总空间包含同一站点及其他扩展；千幕数据只统计可明确归因的本地内容。</p>
-    <div class="sd-storage-actions"><button type="button" class="sd-btn sd-storage-persist" ${data.origin.persisted ? 'disabled' : ''}>${data.origin.persisted ? '已持久保存' : '申请持久保存'}</button><button type="button" class="sd-btn sd-primary sd-storage-clean" ${data.recoverableBytes > 0 ? '' : 'disabled'}>安全清理</button></div>
+    <p class="sd-storage-scope">此处是浏览器分配给当前 ST 站点来源的空间，不代表 VPS 磁盘总容量；千幕仅统计可明确归因的本地内容。</p>
+    <div class="sd-storage-actions"><button type="button" class="sd-btn sd-primary sd-storage-clean" ${data.recoverableBytes > 0 ? '' : 'disabled'}><i class="fa-solid fa-sliders"></i>选择清理模块</button></div>
   </section>`;
+}
+
+function openStorageCleanupDialog(data) {
+  document.getElementById(STORAGE_CLEANUP_LAYER_ID)?.remove();
+  const modules = (data?.categories || []).filter((item) => ['audio', 'logs', 'cache'].includes(item.category) && Number(item.recoverableBytes) > 0);
+  if (!modules.length) {
+    toast('当前没有可单独清理的缓存模块。', 'info');
+    return Promise.resolve([]);
+  }
+  return new Promise((resolve) => {
+    const layer = document.createElement('div');
+    layer.id = STORAGE_CLEANUP_LAYER_ID;
+    layer.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
+    const modal = document.getElementById(MODAL_ID);
+    const sourceStyle = modal ? getComputedStyle(modal) : null;
+    for (const variable of NOTES_THEME_VARIABLES) {
+      const value = sourceStyle?.getPropertyValue(variable);
+      if (value) layer.style.setProperty(variable, value);
+    }
+    layer.innerHTML = `<button type="button" class="sd-storage-cleanup-backdrop" aria-label="取消"></button><section class="sd-storage-cleanup-dialog" role="dialog" aria-modal="true" aria-label="选择清理模块">
+      <header><div><h3>选择清理模块</h3><p>只列出可重新生成的缓存，收藏、书籍、图片、便笺与聊天不会出现于此。</p></div><button type="button" class="sd-icon-btn sd-storage-cleanup-close" title="取消" aria-label="取消"><i class="fa-solid fa-xmark"></i></button></header>
+      <div class="sd-storage-cleanup-list">${modules.map((item) => `<label><input type="checkbox" value="${htmlEscape(item.category)}"><span><b>${htmlEscape(STORAGE_CATEGORY_LABELS[item.category] || item.category)}</b><small>${htmlEscape(formatStorageBytes(item.recoverableBytes))}${item.count ? ` · ${item.count} 项` : ''}</small></span></label>`).join('')}</div>
+      <footer><button type="button" class="sd-btn sd-storage-cleanup-cancel">取消</button><button type="button" class="sd-btn sd-primary sd-storage-cleanup-confirm" disabled><i class="fa-solid fa-trash-can"></i>清理所选</button></footer>
+    </section>`;
+    document.body.appendChild(layer);
+    applyQianmuIcons(layer);
+    const finish = (value) => { layer.remove(); resolve(value); };
+    const sync = () => {
+      const count = layer.querySelectorAll('input:checked').length;
+      const confirm = layer.querySelector('.sd-storage-cleanup-confirm');
+      if (confirm) confirm.disabled = count === 0;
+    };
+    layer.querySelectorAll('input[type="checkbox"]').forEach((input) => input.addEventListener('change', sync));
+    layer.querySelector('.sd-storage-cleanup-confirm')?.addEventListener('click', () => finish([...layer.querySelectorAll('input:checked')].map((input) => input.value)));
+    layer.querySelector('.sd-storage-cleanup-backdrop')?.addEventListener('click', () => finish(null));
+    layer.querySelector('.sd-storage-cleanup-close')?.addEventListener('click', () => finish(null));
+    layer.querySelector('.sd-storage-cleanup-cancel')?.addEventListener('click', () => finish(null));
+  });
 }
 
 function paintStorageManagementCard() {
@@ -7363,27 +7485,21 @@ function paintStorageManagementCard() {
 
 function bindStorageManagementEvents(root) {
   root.querySelector('.sd-storage-refresh')?.addEventListener('click', () => void refreshStorageInventory(true));
-  root.querySelector('.sd-storage-persist')?.addEventListener('click', async () => {
-    const storageApi = globalThis.navigator?.storage;
-    if (!storageApi?.persist) return toast('当前浏览器不支持持久化存储申请。', 'warning');
-    const granted = await storageApi.persist().catch(() => false);
-    toast(granted ? '浏览器已允许千幕数据持久保存。' : '浏览器暂未授予持久保存；数据仍可正常使用。', granted ? 'success' : 'info');
-    await refreshStorageInventory(true);
-  });
   root.querySelector('.sd-storage-clean')?.addEventListener('click', async () => {
-    const expected = storageInventoryState.data?.recoverableBytes || 0;
-    const yes = await confirmDialog('安全清理', `将清理可再生成的语音/台词缓存与诊断日志，预计 ${formatStorageBytes(expected)}。成片、收藏、书籍、预设和聊天数据不会被删除。是否继续？`);
-    if (!yes) return;
+    const categories = await openStorageCleanupDialog(storageInventoryState.data);
+    if (!categories?.length) return;
     try {
-      await blobStore.clearRecoverableStorage();
-      settings.logHistory = [];
-      settings.logOpenState = {};
-      const storyboard = storyboardState();
-      storyboard.logs = [];
-      storyboard.pipelineLogs = [];
+      await blobStore.clearRecoverableCategories(categories);
+      if (categories.includes('logs')) {
+        settings.logHistory = [];
+        settings.logOpenState = {};
+        const storyboard = storyboardState();
+        storyboard.logs = [];
+        storyboard.pipelineLogs = [];
+      }
       saveSettings();
       await refreshStorageInventory(true);
-      toast('安全清理已完成，受保护内容未改动。', 'success');
+      toast('所选缓存已清理，受保护内容未改动。', 'success');
     } catch (error) {
       toast(`清理未完成：${error?.message || error}`, 'error');
       await refreshStorageInventory(true);
@@ -10719,9 +10835,6 @@ function renderQuickWheelSettings() {
   const ordered = settings.quickWheelCustomOrder.map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
   const occupied = settings.quickWheelCustomEnabled.length;
   return `<div class="sd-wheel-settings">
-    <div class="sd-wheel-setting-head">
-      <label class="checkbox_label"><input type="checkbox" class="sd-wheel-toggle" ${settings.quickWheelEnabled !== false ? 'checked' : ''}> 长按展开蜂巢快捷盘</label>
-    </div>
     <details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑蜂巢入口</span><b>${occupied} 项</b></summary><div class="sd-wheel-custom-list">${ordered.map((item, index) => `
       <div class="sd-wheel-custom-row" data-command="${item.id}">
         <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}"${item.glyph ? ` data-qm-icon="${item.glyph}"` : ''}></i><span>${htmlEscape(item.label)}</span></label>
@@ -10772,10 +10885,14 @@ function renderPlugTab() {
         </div>
       </div>
     </section>
-    <section class="sd-card">
-      <h3>悬浮球设置</h3>
-      <label class="checkbox_label sd-float-toggle-row"><input type="checkbox" class="sd-float-toggle" ${settings.floatingButton ? 'checked' : ''}> 显示悬浮球</label>
-      <label class="checkbox_label"><input type="checkbox" class="sd-notes-toggle" ${notesFeatureEnabled() ? 'checked' : ''}> 启用便笺</label>
+    <section class="sd-card sd-widget-card">
+      <h3>小组件</h3>
+      <div class="sd-widget-toggle-row" role="group" aria-label="小组件开关">
+        <button type="button" class="sd-widget-toggle ${settings.floatingButton ? 'active' : ''}" data-widget-toggle="floating" aria-pressed="${settings.floatingButton ? 'true' : 'false'}"><i class="fa-solid fa-film"></i><span>悬浮球</span></button>
+        <button type="button" class="sd-widget-toggle ${notesFeatureEnabled() ? 'active' : ''}" data-widget-toggle="notes" aria-pressed="${notesFeatureEnabled() ? 'true' : 'false'}"><i class="fa-solid fa-note-sticky" data-qm-icon="qm-regular-note-pencil"></i><span>便笺</span></button>
+        <button type="button" class="sd-widget-toggle ${settings.quickWheelEnabled !== false ? 'active' : ''}" data-widget-toggle="wheel" aria-pressed="${settings.quickWheelEnabled !== false ? 'true' : 'false'}"><i class="fa-solid fa-table-cells-large"></i><span>快捷盘</span></button>
+        <button type="button" class="sd-widget-toggle ${settings.quickDockEnabled !== false ? 'active' : ''}" data-widget-toggle="dock" aria-pressed="${settings.quickDockEnabled !== false ? 'true' : 'false'}"><i class="fa-solid fa-box-archive"></i><span>蜂巢收纳</span></button>
+      </div>
       <div class="sd-float-size-control" ${settings.floatingButton ? '' : 'hidden'}>
         <label for="sd-float-size">悬浮球大小 <b class="sd-float-size-value">${floatSize} px</b></label>
         <input id="sd-float-size" class="sd-float-size" type="range" min="${FLOAT_SIZE_MIN}" max="${FLOAT_SIZE_MAX}" step="2" value="${floatSize}">
@@ -16364,7 +16481,7 @@ function renderFocusClockTab() {
       ${f.activity === 'reading' ? `<div class="sd-focus-reading-link"><label><span>选择书籍</span><select class="text_pole sd-focus-book" ${locked ? 'disabled' : ''}>${books.length ? books.map((book) => `<option value="${htmlEscape(book.id)}" ${book.id === f.bookId ? 'selected' : ''}>${htmlEscape(book.title || '未命名书籍')}</option>`).join('') : '<option value="">书架还是空的</option>'}</select></label>${linkedBook ? `<button type="button" class="sd-btn sd-focus-open-reading"><i class="fa-solid fa-book-open"></i>进入阅读</button>` : ''}</div>` : `<label class="sd-focus-task-label"><span>这一程想完成什么</span><input class="text_pole sd-focus-task" maxlength="120" placeholder="写下一个清楚、够小的目标" value="${htmlEscape(f.task)}" ${f.status === 'running' ? 'disabled' : ''}></label>`}
       <div class="sd-focus-actions">
         <button type="button" class="sd-btn sd-primary sd-focus-main"><i class="fa-solid ${mainIcon}"></i>${mainLabel}</button>
-        <button type="button" class="sd-btn sd-focus-reset">${f.status === 'idle' ? '重置' : '结束本轮'}</button>
+        <button type="button" class="sd-btn sd-focus-reset"><i class="fa-solid fa-arrow-rotate-left"></i>${f.status === 'idle' ? '重置' : '结束本轮'}</button>
       </div>
     </section>
     ${finaleMarkup}
@@ -17203,37 +17320,42 @@ function bindActiveTabEvents(root) {
     saveSettings();
     renderModal();
   }));
-  root.querySelector('.sd-float-toggle')?.addEventListener('change', (e) => {
-    settings.floatingButton = !!e.target.checked;
-    const sizeControl = root.querySelector('.sd-float-size-control');
-    if (sizeControl) sizeControl.hidden = !settings.floatingButton;
+  root.querySelectorAll('.sd-widget-toggle').forEach((button) => button.addEventListener('click', () => {
+    const kind = button.dataset.widgetToggle;
+    if (kind === 'floating') {
+      settings.floatingButton = !settings.floatingButton;
+      renderFloatButton();
+      renderFloatingNotes();
+      syncQuickDockOriginVisibility();
+      toast(settings.floatingButton ? '悬浮球已显示。' : '悬浮球已隐藏。', 'info');
+    } else if (kind === 'notes') {
+      settings.notes = isPlainObject(settings.notes) ? settings.notes : { enabled: true };
+      settings.notes.enabled = !notesFeatureEnabled();
+      if (!settings.notes.enabled) closeNotesPanel();
+      renderFloatingNotes();
+      toast(settings.notes.enabled ? '便笺已启用。' : '便笺已隐藏，固定内容仍安全保留。', 'info');
+    } else if (kind === 'wheel') {
+      settings.quickWheelEnabled = settings.quickWheelEnabled === false;
+      if (!settings.quickWheelEnabled) closeQuickWheel();
+      syncQuickDockOriginVisibility();
+    } else if (kind === 'dock') {
+      settings.quickDockEnabled = settings.quickDockEnabled === false;
+      closeQuickWheel();
+      syncQuickDockOriginVisibility();
+      if (settings.quickDockEnabled) restoreQuickDockedPlugins();
+      else quickDockStopRestoreWatchers();
+    }
     saveSettings();
-    renderFloatButton();
-    syncQuickDockOriginVisibility();
-    toast(settings.floatingButton ? '悬浮球已显示。' : '悬浮球已隐藏。', 'info');
-  });
-  root.querySelector('.sd-notes-toggle')?.addEventListener('change', (event) => {
-    settings.notes = isPlainObject(settings.notes) ? settings.notes : { enabled: true };
-    settings.notes.enabled = Boolean(event.target.checked);
-    if (!settings.notes.enabled) notesPanelOpen = false;
-    saveSettings();
-    renderFloatingNotes();
     renderModal();
-    toast(settings.notes.enabled ? '便笺已启用。' : '便笺已隐藏，固定内容仍安全保留。', 'info');
-  });
+  }));
   root.querySelector('.sd-float-size')?.addEventListener('input', (e) => {
     settings.floatSize = Math.max(FLOAT_SIZE_MIN, Math.min(FLOAT_SIZE_MAX, Number(e.target.value) || 48));
     const out = root.querySelector('.sd-float-size-value');
     if (out) out.textContent = `${settings.floatSize} px`;
     renderFloatButton();
+    renderFloatingNotes();
   });
   root.querySelector('.sd-float-size')?.addEventListener('change', () => saveSettings());
-  root.querySelector('.sd-wheel-toggle')?.addEventListener('change', (e) => {
-    settings.quickWheelEnabled = !!e.target.checked;
-    if (!settings.quickWheelEnabled) closeQuickWheel();
-    syncQuickDockOriginVisibility();
-    saveSettings();
-  });
   root.querySelector('.sd-wheel-custom-details')?.addEventListener('toggle', (e) => {
     settings.quickWheelCustomExpanded = !!e.currentTarget.open;
     saveSettings();
@@ -17584,6 +17706,7 @@ let coreadMainlineFocusFloor = 0;
 
 function coread() {
   if (!isPlainObject(settings.coread)) settings.coread = clone(DEFAULT_SETTINGS.coread);
+  if (typeof settings.coread.dialogTipSeen !== 'boolean') settings.coread.dialogTipSeen = false;
   return settings.coread;
 }
 
@@ -23039,6 +23162,7 @@ function buildReaderStage() {
         <div class="sd-reader-dialog-body sd-reader-dtab-chat${assistantMode ? ' sd-reader-assistant-body' : ''}"${dTab === 'chat' ? '' : ' hidden'}>${assistantMode ? renderReaderAssistantMessages() : renderReaderDialogMessages()}</div>
         <div class="sd-reader-dialog-body sd-reader-dtab-voice"${dTab === 'voice' ? '' : ' hidden'}>${renderReaderVoiceClips()}</div>
         <div class="sd-reader-dialog-input${assistantMode ? ' is-assistant' : ''}"${dTab === 'chat' ? '' : ' hidden'}>
+          ${!c.dialogTipSeen ? '<div class="sd-reader-send-tip" role="status"><i class="fa-regular fa-lightbulb"></i><span>单击发送 · 长按邀请 AI 回应 · 桌面双击或移动端上滑可添加图片</span></div>' : ''}
           <div class="sd-reader-assistant-quote"${assistantMode && readerAssistant.quote ? '' : ' hidden'}><i class="fa-solid fa-quote-left"></i><span>${htmlEscape(readerAssistant.quote || '')}</span><button class="sd-reader-assistant-quote-remove" title="移除引用"><i class="fa-solid fa-xmark"></i></button></div>
           ${coreadPendingImagesHtml()}
           <button class="sd-reader-inbtn sd-reader-assistant-switch${assistantMode ? ' active' : ''}" title="${assistantMode ? '返回书友对话' : '切换至幕伴小助手'}"><i class="fa-solid ${assistantMode ? 'fa-user' : 'fa-lightbulb'}"></i></button>
@@ -24706,6 +24830,13 @@ function bindReaderStageEvents(stageRoot) {
     const wasOpen = readerView.activePanel === name;
     const fallback = readerView.dialogPinned && name !== 'dialog' ? 'dialog' : '';
     coreadSetReaderActivePanel(wasOpen ? fallback : name);
+    if (name === 'dialog' && !wasOpen && !coread().dialogTipSeen) {
+      const tip = q('.sd-reader-send-tip');
+      tip?.classList.add('is-visible');
+      coread().dialogTipSeen = true;
+      saveSettings();
+      setTimeout(() => tip?.classList.remove('is-visible'), 5600);
+    }
   };
   q('.sd-reader-back')?.addEventListener('click', () => coreadCloseReader());
   q('.sd-reader-comic-scan')?.addEventListener('click', () => void coreadAnalyzeComicPages());
@@ -27868,6 +27999,9 @@ function cleanupRuntime(resetSettings = false) {
       document.getElementById(INPUT_ENTRY_ID)?.remove();
       document.getElementById(INPUT_BUTTON_ID)?.remove();
       document.getElementById(NOTES_FLOAT_LAYER_ID)?.remove();
+      document.getElementById(NOTES_PANEL_LAYER_ID)?.remove();
+      document.getElementById(STORAGE_CLEANUP_LAYER_ID)?.remove();
+      notesPanelOpen = false;
     });
     clean('wheel', () => closeQuickWheel());
     clean('floor navigator', () => closeFloorNavigator());

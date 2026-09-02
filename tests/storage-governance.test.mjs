@@ -20,6 +20,8 @@ assert.match(storeSource, /STORE_FAVORITES.*recoverable: false/s);
 assert.match(storeSource, /STORE_BOOKS.*recoverable: false/s);
 assert.match(storeSource, /export async function clearRecoverableStorage\(\)/);
 assert.match(storeSource, /Object\.entries\(STORAGE_STORE_INFO\)[\s\S]*filter\(\(\[, info\]\) => info\.recoverable\)/);
+assert.match(storeSource, /export async function clearRecoverableCategories\(categories = \[\]\)/, 'must expose category-scoped cleanup');
+assert.match(storeSource, /allowedCategories = new Set\(\['audio', 'logs', 'cache'\]\)/, 'category cleanup must use an explicit allow-list');
 
 const plugTab = source.slice(source.indexOf('function renderPlugTab'), source.indexOf('/* ============================================================', source.indexOf('function renderPlugTab')));
 const tasksTab = source.slice(source.indexOf('function renderTasksNodesTab'), source.indexOf('function renderCastWorldTab'));
@@ -27,10 +29,13 @@ assert.match(plugTab, /配置备份[\s\S]*renderStorageManagementCard\(\)/, 'sto
 assert.doesNotMatch(tasksTab, /renderStorageManagementCard|storageCard/, 'the task page must remain focused on task data');
 assert.match(source, /sd-storage-ios-bar[\s\S]*sd-storage-legend/, 'storage must use an iOS-style multicolor bar and legend');
 assert.match(styles, /\.sd-storage-ios-bar[\s\S]*\.sd-storage-segment[\s\S]*--sd-storage-color/, 'each category must own a visual segment');
-assert.match(source, /浏览器 \/ ST 来源[\s\S]*千幕已盘点[\s\S]*可安全清理/, 'origin, attributable, and recoverable totals must remain separate');
-assert.match(source, /ST 总空间包含同一站点及其他扩展/, 'origin use must never be mislabeled as Qianmu-only storage');
+assert.match(source, /浏览器 \/ ST 来源[\s\S]*千幕已盘点[\s\S]*可选清理/, 'origin, attributable, and recoverable totals must remain separate');
+assert.match(source, /浏览器分配给当前 ST 站点来源的空间[\s\S]*千幕仅统计可明确归因的本地内容/, 'origin use must never be mislabeled as Qianmu-only storage');
+assert.match(source, /不代表 VPS 磁盘总容量/, 'browser quota must not be confused with server disk capacity');
 assert.match(source, /if \(activeTab === 'plug'\)[\s\S]*refreshStorageInventory/, 'inventory refresh belongs to API and logs');
-assert.match(source, /blobStore\.clearRecoverableStorage\(\)[\s\S]*storyboard\.logs = \[\][\s\S]*storyboard\.pipelineLogs = \[\]/, 'safe cleanup may clear diagnostics but never protected media');
+assert.match(source, /openStorageCleanupDialog[\s\S]*\['audio', 'logs', 'cache'\][\s\S]*input type="checkbox"/, 'cleanup must show recoverable occupancy and require explicit module selection');
+assert.match(source, /blobStore\.clearRecoverableCategories\(categories\)[\s\S]*categories\.includes\('logs'\)[\s\S]*storyboard\.pipelineLogs = \[\]/, 'selected log cleanup may clear diagnostics but never protected media');
+assert.doesNotMatch(source, /navigator\.storage\.persist|申请持久保存/, 'persistent-storage prompts must be removed');
 const refreshInventory = source.slice(source.indexOf('async function refreshStorageInventory'), source.indexOf('const STORAGE_CATEGORY_LABELS'));
 assert.match(refreshInventory, /paintStorageManagementCard\(\)/, 'inventory completion must patch only its own card');
 assert.doesNotMatch(refreshInventory, /renderModal\(\)/, 'inventory completion must not rebuild the full Qianmu window');

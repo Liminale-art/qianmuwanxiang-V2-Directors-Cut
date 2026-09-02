@@ -18,7 +18,7 @@ const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 assert.match(source, /quickWheelCustomOrder/);
 assert.match(source, /quickWheelCustomEnabled/);
 assert.match(source, /quickWheelScheme: 'custom'/);
-assert.match(source, /长按展开蜂巢快捷盘/);
+assert.match(source, /<h3>小组件<\/h3>[\s\S]*>快捷盘<\/span>[\s\S]*>蜂巢收纳<\/span>/, '快捷盘和第三方收纳必须改为同排标签态开关');
 for (const id of ['dashboard', 'focus', 'tasksnodes', 'castworld', 'context', 'settings', 'theater', 'tts', 'coread', 'geopolitics', 'plug', 'imagegen', 'floor']) {
   assert.match(source, new RegExp(`id: '${id}'`));
 }
@@ -59,6 +59,9 @@ assert.match(source, /function quickDockCleanLabel[\s\S]*第三方[\s\S]*functio
 assert.match(source, /function quickDockExtensionApi[\s\S]*import\('\.\.\/\.\.\/\.\.\/extensions\.js'\)[\s\S]*getExtensionManifest/, '蜂巢应优先从 ST 扩展清单读取真实插件名称');
 assert.match(source, /function quickDockResolvePluginLabel[\s\S]*manifest\?\.display_name[\s\S]*function quickDockApplyResolvedLabel/, '识别到扩展归属后必须用 manifest 名称替换编号占位');
 assert.match(source, /document\.addEventListener\('pointerdown', quickDockOnPointerDown, true\)/);
+assert.match(source, /quickDockEnabled:\s*true/, '蜂巢收纳必须拥有独立开关并保持旧用户默认启用');
+assert.match(source, /function quickDockOnPointerDown[\s\S]*settings\.quickDockEnabled === false[\s\S]*qianmuDockingSurfaceBusy\(\)/, '页面或插件面板打开时不得误触发蜂巢收纳');
+assert.match(source, /function quickDockOnPointerMove[\s\S]*const insetX = rect\.width \* \.18[\s\S]*rect\.left \+ insetX[\s\S]*rect\.right - insetX/, '第三方入口必须完全移入 Logo 中央收纳区才显示就绪');
 assert.match(source, /drag\.moved && drag\.ready[\s\S]*quickDockAttach\(drag\.host, drag\.activator\)/);
 assert.match(source, /host\.classList\.add\('sd-quick-docked-origin'\)|classList\.toggle\('sd-quick-docked-origin'/);
 assert.match(source, /function quickDockDispatchActivation[\s\S]*requestAnimationFrame[\s\S]*KeyboardEvent\('keydown'[\s\S]*KeyboardEvent\('keyup'[\s\S]*pointerdown[\s\S]*mousedown[\s\S]*pointerup[\s\S]*mouseup/, '代理蜂巢片须按 role=button 键盘语义或自定义指针序列唤起');
