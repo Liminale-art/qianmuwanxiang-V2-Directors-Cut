@@ -96,10 +96,11 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.28';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.29';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.28';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.28';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.29';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.29';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.29';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -150,28 +151,28 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.28';
+} from './qianmu-storyboard.js?v=1.58.29';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.28';
+const VERSION = '1.58.29';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.28'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.29'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.28'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.29'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.28'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.29'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.28'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.29'),
   },
 });
 function directImageRuntime() {
@@ -599,6 +600,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   model: '',
   availableModels: [],
   apiProfiles: [],
+  structuredOutputMode: 'none',
   temperature: 0.75,
   maxOutputTokens: 32000,
   contextBudget: 1000000,
@@ -1252,6 +1254,10 @@ function migrateSettings(s) {
   }
 
   if (!Array.isArray(s.apiProfiles)) s.apiProfiles = [];
+  s.structuredOutputMode = normalizeQianmuStructuredOutputMode(s.structuredOutputMode);
+  s.apiProfiles = s.apiProfiles.map((profile) => isPlainObject(profile)
+    ? { ...profile, structuredOutputMode: normalizeQianmuStructuredOutputMode(profile.structuredOutputMode) }
+    : profile);
   s.selectedPresetNamesByChat ||= {};
   s.selectedPresetItemsByChat ||= {};
   s.selectedWorldBookNamesByChat ||= {};
@@ -2978,6 +2984,14 @@ async function callExternalApi(messages, onDelta = null, cfg = null, controller 
   const body = { model, messages, temperature: Number(temperature || 0.75), stream };
   const maxTokens = Number(cfg?.maxTokens != null ? cfg.maxTokens : settings.maxOutputTokens || 0);
   if (maxTokens > 0) body.max_tokens = maxTokens;
+  if (!stream && cfg?.jsonSchema) {
+    const responseFormat = createQianmuChatCompletionResponseFormat(cfg.jsonSchema, {
+      mode: cfg.structuredOutputMode ?? settings.structuredOutputMode,
+      name: cfg.jsonSchemaName,
+      strict: cfg.jsonSchemaStrict,
+    });
+    if (responseFormat) body.response_format = responseFormat;
+  }
   const res = await fetch(`${base}/v1/chat/completions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -10596,6 +10610,7 @@ function renderPlugTab() {
         <label><span>最大输出</span><input class="text_pole sd-max-output" type="number" min="0" step="256" placeholder="0 表示不限" value="${htmlEscape(settings.maxOutputTokens ?? 32000)}"></label>
         <label><span>上下文长度</span><input class="text_pole sd-context-budget" type="number" min="0" step="1000" placeholder="0 表示不限" value="${htmlEscape(settings.contextBudget ?? 1000000)}"></label>
       </div>
+      <button type="button" class="sd-structured-output-toggle ${settings.structuredOutputMode === 'json_schema' ? 'active' : ''}" aria-pressed="${settings.structuredOutputMode === 'json_schema' ? 'true' : 'false'}"><i class="fa-solid fa-check-double"></i><span>严格结构化输出</span></button>
       <div class="sd-button-row sd-api-action-row">
         <button class="sd-btn sd-save-api">保存API</button>
         <button class="sd-btn sd-save-api-profile">保存为预设</button>
@@ -13188,7 +13203,17 @@ async function storyboardCallCompiler(messages, profileId, requestOptions = {}) 
     const cfg = apiProfile ? {
       apiUrl: apiProfile.apiUrl, apiKey: apiProfile.apiKey, model: apiProfile.model,
       temperature, stream: false, maxTokens,
-    } : { temperature, stream: false, maxTokens };
+      structuredOutputMode: apiProfile.structuredOutputMode,
+      jsonSchema: requestOptions.jsonSchema,
+      jsonSchemaName: requestOptions.jsonSchemaName,
+      jsonSchemaStrict: requestOptions.jsonSchemaStrict,
+    } : {
+      temperature, stream: false, maxTokens,
+      structuredOutputMode: settings.structuredOutputMode,
+      jsonSchema: requestOptions.jsonSchema,
+      jsonSchemaName: requestOptions.jsonSchemaName,
+      jsonSchemaStrict: requestOptions.jsonSchemaStrict,
+    };
     return callExternalApi(messages, null, cfg, new AbortController());
   }
   return callSillyTavernModel(messages.at(-1)?.content || '', messages[0]?.content || '', null, {
@@ -13228,6 +13253,9 @@ async function storyboardCompilerResult(raw, context, capabilities, state) {
       request: (messages) => storyboardCallCompiler(messages, state.promptCompiler.apiProfileId, {
         temperature: 0,
         maxTokens: 1800,
+        jsonSchema: contract.STORYBOARD_PLAN_RESPONSE_SCHEMA,
+        jsonSchemaName: contract.STORYBOARD_PLAN_RESPONSE_SCHEMA_ID,
+        jsonSchemaStrict: true,
       }),
     });
     contractMeta = {
@@ -17362,6 +17390,11 @@ function bindActiveTabEvents(root) {
     saveSettings();
     renderModal();
   }));
+  root.querySelector('.sd-structured-output-toggle')?.addEventListener('click', () => {
+    settings.structuredOutputMode = settings.structuredOutputMode === 'json_schema' ? 'none' : 'json_schema';
+    saveSettings();
+    renderModal();
+  });
   root.querySelectorAll('.sd-widget-toggle').forEach((button) => button.addEventListener('click', () => {
     const kind = button.dataset.widgetToggle;
     if (kind === 'floating') {
@@ -17487,7 +17520,7 @@ function bindActiveTabEvents(root) {
     if (!name) return;
     settings.apiProfiles ||= [];
     const existing = settings.apiProfiles.find((x) => x.name === name);
-    const profile = { id: existing?.id || uid('api'), name, apiUrl, apiKey, model, temperature };
+    const profile = { id: existing?.id || uid('api'), name, apiUrl, apiKey, model, temperature, structuredOutputMode: normalizeQianmuStructuredOutputMode(settings.structuredOutputMode) };
     settings.apiProfiles = existing ? settings.apiProfiles.map((x) => x.id === existing.id ? profile : x) : [...settings.apiProfiles, profile];
     saveSettings();
     toast('API预设已保存。', 'success');
@@ -17502,6 +17535,7 @@ function bindActiveTabEvents(root) {
     settings.apiKey = profile.apiKey || '';
     settings.model = profile.model || '';
     settings.temperature = Number(profile.temperature || 0.75);
+    settings.structuredOutputMode = normalizeQianmuStructuredOutputMode(profile.structuredOutputMode);
     if (settings.model && !settings.availableModels.includes(settings.model)) settings.availableModels = uniqueClean([settings.model, ...(settings.availableModels || [])]);
     saveSettings();
     toast('API预设已载入。', 'success');

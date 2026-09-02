@@ -8686,3 +8686,24 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-production-item > div { grid-column: 1; grid-row: 2; }
   #story-director-modal .sd-storyboard-production-item > .sd-storyboard-load-production { grid-column: 2; grid-row: 1 / span 2; }
 }
+
+#story-director-modal .sd-structured-output-toggle {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 0 2px;
+  padding: 6px 10px;
+  border: 1px solid var(--sd-hairline);
+  border-radius: 9px;
+  background: var(--sd-glass-weak);
+  color: var(--sd-muted);
+  font: inherit;
+  font-size: 11px;
+}
+#story-director-modal .sd-structured-output-toggle.active {
+  border-color: color-mix(in srgb, var(--sd-accent) 42%, var(--sd-hairline));
+  background: color-mix(in srgb, var(--sd-accent) 10%, var(--sd-glass-weak));
+  color: var(--sd-accent);
+}
+#story-director-modal .sd-structured-output-toggle :is(i, .qm-glyph-icon) { width: 15px; height: 15px; font-size: 15px; }
