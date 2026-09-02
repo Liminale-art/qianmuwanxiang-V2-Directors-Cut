@@ -1,5 +1,5 @@
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
-export const STORYBOARD_SCHEMA_VERSION = 16;
+export const STORYBOARD_SCHEMA_VERSION = 17;
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -148,6 +148,8 @@ export const STORYBOARD_CONTINUITY_FACT_CATEGORIES = Object.freeze(['outfit', 'i
 export const STORYBOARD_CONTINUITY_FACT_PERSISTENCE = Object.freeze(['momentary', 'persistent']);
 export const STORYBOARD_CONTINUITY_FACT_STATES = Object.freeze(['active', 'superseded', 'expired']);
 export const STORYBOARD_SCENE_FINGERPRINT_SCHEMA = 'qianmu.storyboard.scene-fingerprint.v1';
+export const STORYBOARD_SHOT_PATTERNS = Object.freeze(['master', 'two_shot', 'over_shoulder', 'single_reaction', 'action', 'insert', 'atmosphere']);
+export const STORYBOARD_STATIC_SCENE_TYPES = Object.freeze(['dialogue', 'activity', 'atmosphere']);
 
 export const getStoryboardProvider = (id) => STORYBOARD_PROVIDER_REGISTRY[id] || null;
 export const getStoryboardModel = (providerId, modelId) => (STORYBOARD_MODEL_REGISTRY[providerId] || []).find((item) => item.id === modelId) || null;
@@ -778,6 +780,15 @@ export function normalizeStoryboardShotSpec(value = {}) {
     weather: continuityUpdates.weather,
     anchors: raw.sourceParagraphIds || raw.source_paragraph_ids,
   });
+  const inferredPattern = raw.shotRole === 'detail' || raw.shot_role === 'detail' || raw.shotScale === 'insert' || raw.shot_scale === 'insert'
+    ? 'insert'
+    : raw.shotRole === 'reaction' || raw.shot_role === 'reaction'
+      ? 'single_reaction'
+      : raw.shotRole === 'relationship' || raw.shot_role === 'relationship'
+        ? 'two_shot'
+        : raw.shotRole === 'establishing' || raw.shot_role === 'establishing'
+          ? 'master'
+          : 'action';
   return {
     schema: STORYBOARD_PLAN_SCHEMA,
     id: cleanId(raw.id),
@@ -785,6 +796,7 @@ export function normalizeStoryboardShotSpec(value = {}) {
     insertAfter: cleanId(raw.insertAfter || raw.insert_after),
     narrativeLayer,
     narrativePurpose: str(raw.narrativePurpose || raw.narrative_purpose || raw.purpose, 800),
+    shotPattern: STORYBOARD_SHOT_PATTERNS.includes(raw.shotPattern || raw.shot_pattern) ? (raw.shotPattern || raw.shot_pattern) : inferredPattern,
     shotRole: STORYBOARD_SHOT_ROLES.includes(raw.shotRole || raw.shot_role || raw.role) ? (raw.shotRole || raw.shot_role || raw.role) : 'action',
     shotScale: STORYBOARD_SHOT_SCALES.includes(raw.shotScale || raw.shot_scale || raw.shotType) ? (raw.shotScale || raw.shot_scale || raw.shotType) : 'medium_shot',
     subject: str(raw.subject, 1000), scene, sceneId: sceneFingerprint.sceneId, sceneFingerprint, characters,
@@ -803,6 +815,85 @@ export function normalizeStoryboardShotSpec(value = {}) {
     sensitive: Boolean(raw.sensitive), safetyNotes: shotStringList(raw.safetyNotes || raw.safety_notes, 20, 500),
     continuityUpdates,
     decisions: shotStringList(raw.decisions, 40, 1000),
+  };
+}
+
+const STATIC_SCENE_PATTERN_ORDER = Object.freeze({
+  dialogue: Object.freeze(['master', 'two_shot', 'over_shoulder', 'single_reaction', 'insert', 'atmosphere']),
+  activity: Object.freeze(['master', 'action', 'insert', 'single_reaction', 'over_shoulder', 'atmosphere']),
+  atmosphere: Object.freeze(['master', 'atmosphere', 'insert', 'single_reaction', 'two_shot', 'over_shoulder']),
+});
+
+const STATIC_PATTERN_SPECS = Object.freeze({
+  master: Object.freeze({ shotRole: 'establishing', shotScale: 'wide_shot', cameraSide: 'neutral', angle: 'eye_level', narrativeDuty: '建立空间、人物站位与行动关系' }),
+  two_shot: Object.freeze({ shotRole: 'relationship', shotScale: 'medium_shot', cameraSide: 'axis_side_a', angle: 'eye_level', narrativeDuty: '呈现人物之间的距离与交流关系' }),
+  over_shoulder: Object.freeze({ shotRole: 'relationship', shotScale: 'medium_close_up', cameraSide: 'axis_side_a', angle: 'eye_level', narrativeDuty: '把信息重心交给当前说话或行动者' }),
+  single_reaction: Object.freeze({ shotRole: 'reaction', shotScale: 'close_up', cameraSide: 'axis_side_a', angle: 'eye_level', narrativeDuty: '捕捉另一人物对叙事信息的反应' }),
+  action: Object.freeze({ shotRole: 'action', shotScale: 'medium_full', cameraSide: 'axis_side_a', angle: 'eye_level', narrativeDuty: '推进一个可见且有结果的动作' }),
+  insert: Object.freeze({ shotRole: 'detail', shotScale: 'insert', cameraSide: 'neutral', angle: 'detail_driven', narrativeDuty: '用手部、器物或局部细节提供叙事证据' }),
+  atmosphere: Object.freeze({ shotRole: 'establishing', shotScale: 'extreme_wide_shot', cameraSide: 'neutral', angle: 'environment_driven', narrativeDuty: '用环境空镜承接空间、情绪或母题' }),
+});
+
+export function planStoryboardStaticSceneRhythm(value = {}) {
+  const raw = obj(value) ? value : {};
+  const sceneType = STORYBOARD_STATIC_SCENE_TYPES.includes(raw.sceneType || raw.scene_type) ? (raw.sceneType || raw.scene_type) : 'dialogue';
+  const castIds = ids(raw.castIds || raw.cast_ids, 12);
+  const axis = str(raw.axis, 240);
+  const maxShots = int(raw.maxShots, 1, 6, 4);
+  let order = [...STATIC_SCENE_PATTERN_ORDER[sceneType]];
+  const lastPattern = STORYBOARD_SHOT_PATTERNS.includes(raw.lastPattern || raw.last_pattern) ? (raw.lastPattern || raw.last_pattern) : '';
+  if (raw.sceneContinuation && lastPattern && order[0] === lastPattern) order = [...order.slice(1), order[0]];
+  const beats = order.slice(0, maxShots).map((pattern, index) => {
+    const spec = STATIC_PATTERN_SPECS[pattern];
+    const subjectIds = pattern === 'master' || pattern === 'two_shot'
+      ? castIds.slice(0, Math.max(1, Math.min(3, castIds.length)))
+      : pattern === 'over_shoulder'
+        ? castIds.slice(0, 2).reverse().slice(0, 1)
+        : pattern === 'single_reaction'
+          ? castIds.slice(index % Math.max(1, castIds.length), (index % Math.max(1, castIds.length)) + 1)
+          : [];
+    return {
+      id: `beat-${index + 1}`,
+      pattern,
+      ...spec,
+      subjectIds,
+      foregroundIds: pattern === 'over_shoulder' ? castIds.slice(0, 1) : [],
+      axisRule: ['master', 'insert', 'atmosphere'].includes(pattern) ? 'neutral_reset_allowed' : 'preserve',
+    };
+  });
+  return {
+    sceneType,
+    castIds,
+    axis,
+    beats,
+    guidance: { sightlineContinuity: true, axisContinuity: true, thirtyDegreeRule: 'heuristic' },
+  };
+}
+
+export function evaluateStoryboardShotRhythm(value = []) {
+  const shots = (Array.isArray(value) ? value : []).map(normalizeStoryboardShotSpec);
+  const violations = [];
+  for (let index = 1; index < shots.length; index += 1) {
+    const previous = shots[index - 1], shot = shots[index];
+    if (previous.shotPattern === shot.shotPattern) violations.push({ index, code: 'repeated_pattern', pattern: shot.shotPattern });
+    const previousAxis = previous.continuityUpdates.axis;
+    const currentAxis = shot.continuityUpdates.axis;
+    if (previousAxis && currentAxis && previousAxis !== currentAxis && !['master', 'insert', 'atmosphere'].includes(shot.shotPattern)) {
+      violations.push({ index, code: 'axis_change_without_neutral_reset', from: previousAxis, to: currentAxis });
+    }
+  }
+  const patterns = shots.map((shot) => shot.shotPattern);
+  return {
+    valid: violations.length === 0,
+    patterns,
+    violations,
+    coverage: {
+      spatial: patterns.some((pattern) => pattern === 'master'),
+      relationship: patterns.some((pattern) => ['two_shot', 'over_shoulder'].includes(pattern)),
+      reaction: patterns.some((pattern) => pattern === 'single_reaction'),
+      detail: patterns.some((pattern) => pattern === 'insert'),
+      atmosphere: patterns.some((pattern) => pattern === 'atmosphere'),
+    },
   };
 }
 
@@ -1007,7 +1098,7 @@ export function prepareStoryboardShotGroup(value = {}) {
     if (!active || active.id !== entry.sceneGroupId) sceneGroups.push({ id: entry.sceneGroupId, sceneFingerprint: entry.sceneFingerprint, shotIds: [entry.shotId] });
     else active.shotIds.push(entry.shotId);
   }
-  return { shots: kept, skipped, strategy: policy.groupStrategy, manualOverride: manual, continuityLedger, coverageMap, sceneGroups };
+  return { shots: kept, skipped, strategy: policy.groupStrategy, manualOverride: manual, continuityLedger, coverageMap, sceneGroups, rhythm: evaluateStoryboardShotRhythm(kept) };
 }
 
 function normalizeRouting(value, catalogs = {}) {

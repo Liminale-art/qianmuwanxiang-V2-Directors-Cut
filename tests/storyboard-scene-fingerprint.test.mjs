@@ -7,7 +7,7 @@ import {
   prepareStoryboardShotGroup,
 } from '../qianmu-storyboard.js';
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 16);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 17);
 
 const kitchenA = normalizeStoryboardSceneFingerprint({
   location: 'restaurant kitchen', time: 'evening', narrativeLayer: 'present', castIds: ['Alice', 'Bob'], anchors: ['floor-10'],
