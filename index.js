@@ -96,11 +96,11 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.34';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.35';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.34';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.34';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.34';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.35';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.35';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.35';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -153,28 +153,28 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.34';
+} from './qianmu-storyboard.js?v=1.58.35';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.34';
+const VERSION = '1.58.35';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.34'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.35'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.34'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.35'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.34'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.35'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.34'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.35'),
   },
 });
 function directImageRuntime() {
@@ -7142,6 +7142,7 @@ function openStorageCleanupDialog(data) {
     }] : []),
     { id: '__diagnostics__', label: '生成与运行日志', bytes: Number(data?.diagnosticsBytes) || 0, count: 0 },
   ];
+  const fixedNotes = modules.find((item) => item.id === 'notes');
   return new Promise((resolve) => {
     const layer = document.createElement('div');
     layer.id = STORAGE_CLEANUP_LAYER_ID;
@@ -7158,6 +7159,7 @@ function openStorageCleanupDialog(data) {
         const [risk, destructive] = STORAGE_ITEM_RISK[item.id] || ['本地项目', true];
         return `<label class="${destructive ? 'is-destructive' : ''}"><input type="checkbox" value="${htmlEscape(item.id)}" ${item.bytes > 0 ? '' : 'disabled'}><span><span><b>${htmlEscape(item.label)}</b><em>${htmlEscape(risk)}</em></span><small>${htmlEscape(formatStorageBytes(item.bytes))}${item.count ? ` · ${item.count} 项` : ''}${item.scopeCount ? ` · ${item.scopeCount} 个聊天` : ''}</small></span></label>`;
       }).join('')}</div>
+      ${Number(fixedNotes?.count) > 0 ? '<div class="sd-storage-backup-actions is-single"><button type="button" class="sd-btn sd-storage-export-notes"><i class="fa-solid fa-file-export"></i>导出固定便笺</button></div>' : ''}
       <footer><button type="button" class="sd-btn sd-storage-cleanup-cancel">取消</button><button type="button" class="sd-btn sd-primary sd-storage-cleanup-confirm" disabled><i class="fa-solid fa-trash-can"></i>清理所选</button></footer>
     </section>`;
     document.body.appendChild(layer);
@@ -7169,11 +7171,38 @@ function openStorageCleanupDialog(data) {
       if (confirm) confirm.disabled = count === 0;
     };
     layer.querySelectorAll('input[type="checkbox"]').forEach((input) => input.addEventListener('change', sync));
+    layer.querySelector('.sd-storage-export-notes')?.addEventListener('click', (event) => void exportPinnedNotesBackup(event.currentTarget));
     layer.querySelector('.sd-storage-cleanup-confirm')?.addEventListener('click', () => finish([...layer.querySelectorAll('input:checked')].map((input) => input.value)));
     layer.querySelector('.sd-storage-cleanup-backdrop')?.addEventListener('click', () => finish(null));
     layer.querySelector('.sd-storage-cleanup-close')?.addEventListener('click', () => finish(null));
     layer.querySelector('.sd-storage-cleanup-cancel')?.addEventListener('click', () => finish(null));
   });
+}
+
+async function exportPinnedNotesBackup(button = null) {
+  const icon = button?.querySelector('i');
+  const previousIcon = icon?.className || '';
+  if (button) button.disabled = true;
+  if (icon) setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
+  try {
+    const notes = (await blobStore.listNotes()).filter((note) => note.pinned);
+    if (!notes.length) return toast('没有可导出的固定便笺。', 'info');
+    const payload = {
+      type: 'qianmu-notes', version: 1, exportedAt: new Date().toISOString(), credentialsIncluded: false,
+      notes: notes.map((note) => clone(note)),
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url; link.download = `qianmu-notes-${fileStamp()}.json`;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast(`已导出 ${notes.length} 条固定便笺。`, 'success');
+  } catch (error) {
+    toast(`便笺导出失败：${error?.message || error}`, 'error');
+  } finally {
+    if (icon && previousIcon) setQianmuIconClass(icon, previousIcon);
+    if (button) button.disabled = false;
+  }
 }
 
 const STORAGE_CHAT_CLEARABLE = new Set(['audio', 'tts_lines', 'reader_chats', 'reader_vectors']);
@@ -7305,8 +7334,8 @@ function bindStorageManagementEvents(root) {
     if (!selected?.length) return;
     try {
       const stores = selected.filter((item) => !item.startsWith('__'));
-      await blobStore.clearStorageItems(stores);
-      reconcileClearedStorageItems(stores);
+      const storageResult = await blobStore.clearStorageItems(stores);
+      reconcileClearedStorageItems(storageResult.cleared);
       let orphanResult = null;
       if (selected.includes('__orphan_reader_blobs__')) orphanResult = await blobStore.clearOrphanedReaderBlobs();
       if (selected.includes('__diagnostics__')) {
@@ -7318,7 +7347,11 @@ function bindStorageManagementEvents(root) {
       }
       saveSettings();
       await refreshStorageInventory(true);
-      if (orphanResult?.failed?.length) {
+      if (storageResult.failed.length) {
+        const knownStores = storageInventoryState.data?.idb?.stores || [];
+        const details = storageResult.failed.slice(0, 3).map((item) => `${knownStores.find((store) => store.name === item.name)?.label || item.name}：${item.error}`).join('；');
+        toast(`已清理 ${storageResult.cleared.length} 个项目，${storageResult.failed.length} 个项目失败并保留。${details ? ` ${details}` : ''}`, 'warning');
+      } else if (orphanResult?.failed?.length) {
         toast(`已清理 ${orphanResult.cleared.length} 项孤儿资源，${orphanResult.failed.length} 项失败已保留。`, 'warning');
       } else if (orphanResult?.skipped?.length) {
         toast(`所选项目已清理；${orphanResult.skipped.length} 项因书籍已恢复而保留。`, 'success');

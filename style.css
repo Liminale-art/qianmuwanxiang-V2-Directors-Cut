@@ -8471,6 +8471,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #qianmu-storage-cleanup-layer .sd-storage-chat-group label.is-destructive { border-color: color-mix(in srgb, #d35c5c 34%, var(--sd-hairline)); }
 #qianmu-storage-cleanup-layer .sd-storage-chat-group label.is-destructive em { color: #c65252; }
 #qianmu-storage-cleanup-layer .sd-storage-backup-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 0 14px 4px; }
+#qianmu-storage-cleanup-layer .sd-storage-backup-actions.is-single { grid-template-columns: minmax(0, 1fr); }
 
 #qianmu-notes-panel-layer {
   position: fixed !important;
