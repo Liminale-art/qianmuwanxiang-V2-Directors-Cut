@@ -1,5 +1,5 @@
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
-export const STORYBOARD_SCHEMA_VERSION = 17;
+export const STORYBOARD_SCHEMA_VERSION = 18;
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -150,6 +150,9 @@ export const STORYBOARD_CONTINUITY_FACT_STATES = Object.freeze(['active', 'super
 export const STORYBOARD_SCENE_FINGERPRINT_SCHEMA = 'qianmu.storyboard.scene-fingerprint.v1';
 export const STORYBOARD_SHOT_PATTERNS = Object.freeze(['master', 'two_shot', 'over_shoulder', 'single_reaction', 'action', 'insert', 'atmosphere']);
 export const STORYBOARD_STATIC_SCENE_TYPES = Object.freeze(['dialogue', 'activity', 'atmosphere']);
+export const STORYBOARD_VISUAL_DUTIES = Object.freeze(['space', 'relationship', 'action', 'reaction', 'detail', 'atmosphere', 'motif', 'transition']);
+export const STORYBOARD_SUBJECT_KINDS = Object.freeze(['character', 'object', 'environment', 'symbolic', 'mixed']);
+export const STORYBOARD_EVIDENCE_TYPES = Object.freeze(['explicit', 'inferred', 'symbolic']);
 
 export const getStoryboardProvider = (id) => STORYBOARD_PROVIDER_REGISTRY[id] || null;
 export const getStoryboardModel = (providerId, modelId) => (STORYBOARD_MODEL_REGISTRY[providerId] || []).find((item) => item.id === modelId) || null;
@@ -789,14 +792,37 @@ export function normalizeStoryboardShotSpec(value = {}) {
         : raw.shotRole === 'establishing' || raw.shot_role === 'establishing'
           ? 'master'
           : 'action';
+  const shotPattern = STORYBOARD_SHOT_PATTERNS.includes(raw.shotPattern || raw.shot_pattern) ? (raw.shotPattern || raw.shot_pattern) : inferredPattern;
+  const inferredDuty = ({
+    master: 'space', two_shot: 'relationship', over_shoulder: 'relationship', single_reaction: 'reaction',
+    action: 'action', insert: 'detail', atmosphere: 'atmosphere',
+  })[shotPattern] || 'action';
+  const visualDuty = STORYBOARD_VISUAL_DUTIES.includes(raw.visualDuty || raw.visual_duty) ? (raw.visualDuty || raw.visual_duty) : inferredDuty;
+  const inferredSubjectKind = characters.length
+    ? (shotPattern === 'insert' ? 'mixed' : 'character')
+    : shotPattern === 'insert'
+      ? 'object'
+      : shotPattern === 'atmosphere' || shotPattern === 'master'
+        ? 'environment'
+        : narrativeLayer === 'imagined' || narrativeLayer === 'dream'
+          ? 'symbolic'
+          : 'mixed';
+  const subjectKind = STORYBOARD_SUBJECT_KINDS.includes(raw.subjectKind || raw.subject_kind) ? (raw.subjectKind || raw.subject_kind) : inferredSubjectKind;
+  const evidenceRaw = obj(raw.evidence) ? raw.evidence : {};
+  const evidenceParagraphIds = ids(evidenceRaw.paragraphIds || evidenceRaw.paragraph_ids || raw.sourceParagraphIds || raw.source_paragraph_ids, 80);
+  const evidenceType = STORYBOARD_EVIDENCE_TYPES.includes(evidenceRaw.type || evidenceRaw.claimType || evidenceRaw.claim_type)
+    ? (evidenceRaw.type || evidenceRaw.claimType || evidenceRaw.claim_type)
+    : 'explicit';
   return {
     schema: STORYBOARD_PLAN_SCHEMA,
     id: cleanId(raw.id),
-    sourceParagraphIds: ids(raw.sourceParagraphIds || raw.source_paragraph_ids, 80),
+    sourceParagraphIds: evidenceParagraphIds,
     insertAfter: cleanId(raw.insertAfter || raw.insert_after),
     narrativeLayer,
     narrativePurpose: str(raw.narrativePurpose || raw.narrative_purpose || raw.purpose, 800),
-    shotPattern: STORYBOARD_SHOT_PATTERNS.includes(raw.shotPattern || raw.shot_pattern) ? (raw.shotPattern || raw.shot_pattern) : inferredPattern,
+    shotPattern,
+    visualDuty,
+    subjectKind,
     shotRole: STORYBOARD_SHOT_ROLES.includes(raw.shotRole || raw.shot_role || raw.role) ? (raw.shotRole || raw.shot_role || raw.role) : 'action',
     shotScale: STORYBOARD_SHOT_SCALES.includes(raw.shotScale || raw.shot_scale || raw.shotType) ? (raw.shotScale || raw.shot_scale || raw.shotType) : 'medium_shot',
     subject: str(raw.subject, 1000), scene, sceneId: sceneFingerprint.sceneId, sceneFingerprint, characters,
@@ -813,9 +839,31 @@ export function normalizeStoryboardShotSpec(value = {}) {
     },
     promptAtoms: normalizePromptAtoms(raw.promptAtoms || raw.prompt_atoms),
     sensitive: Boolean(raw.sensitive), safetyNotes: shotStringList(raw.safetyNotes || raw.safety_notes, 20, 500),
+    evidence: {
+      type: evidenceType,
+      paragraphIds: evidenceParagraphIds,
+      quote: str(evidenceRaw.quote || evidenceRaw.text, 2000),
+      floor: Number.isInteger(evidenceRaw.floor) ? Math.max(0, Number(evidenceRaw.floor)) : null,
+      rationale: str(evidenceRaw.rationale || raw.visualRationale || raw.visual_rationale, 1000),
+    },
     continuityUpdates,
     decisions: shotStringList(raw.decisions, 40, 1000),
   };
+}
+
+export function validateStoryboardShotGrounding(value = {}, options = {}) {
+  const shot = normalizeStoryboardShotSpec(value);
+  const errors = [], warnings = [];
+  const hasEvidence = shot.evidence.paragraphIds.length > 0 || Boolean(shot.evidence.quote);
+  if (!hasEvidence) errors.push('镜头缺少正文段落或原文证据');
+  if (!shot.narrativePurpose) errors.push('镜头缺少叙事目的');
+  if (!shot.visualDuty) errors.push('镜头缺少画面职责');
+  if (['environment', 'symbolic'].includes(shot.subjectKind) && !shot.narrativePurpose) errors.push('空镜或意象镜头必须说明服务的空间、情绪或母题');
+  if (['inferred', 'symbolic'].includes(shot.evidence.type) && !shot.evidence.rationale) {
+    const message = '推断或意象镜头必须说明与正文证据的连接';
+    if (options.strict) errors.push(message); else warnings.push(message);
+  }
+  return { valid: errors.length === 0, shot, errors: [...new Set(errors)], warnings: [...new Set(warnings)] };
 }
 
 const STATIC_SCENE_PATTERN_ORDER = Object.freeze({
@@ -1072,6 +1120,11 @@ export function prepareStoryboardShotGroup(value = {}) {
     };
   };
   for (const shot of source) {
+    const grounding = validateStoryboardShotGrounding(shot, { strict: true });
+    if (!manual && !grounding.valid) {
+      skipped.push({ shot, reason: 'ungrounded_shot', issues: grounding.errors, requiresReplan: true });
+      continue;
+    }
     const signature = [shot.sceneFingerprint.id, shot.shotRole, shot.shotScale, shot.subject.toLowerCase(), shot.narrativePurpose.toLowerCase(), shot.composition.cameraSide, shot.composition.angle, shot.composition.focus, shot.composition.framing.join('|')].join('|');
     if (!manual && seen.has(signature)) { skipped.push({ shot, reason: 'duplicate_coverage' }); continue; }
     if (!manual && kept.length >= limit) { skipped.push({ shot, reason: 'coverage_budget' }); continue; }
