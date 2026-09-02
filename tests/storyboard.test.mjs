@@ -65,7 +65,7 @@ assert.match(source, /sourceCredentialId[\s\S]*storyboardResolveApiKey\(sourceId
 assert.match(source, /storyboardImages[\s\S]*messageHash[\s\S]*swipeId/, '正文挂载必须带楼层内容与 swipe 锚点');
 assert.match(source, /createStoryboardMessageReference[\s\S]*resolveStoryboardMessageReference/, '正文挂载必须以稳定消息身份协调删楼、改楼与 swipe');
 assert.match(source, /if \(!storyboardState\(\)\.enabled\)[\s\S]*sd-storyboard-inline, \.sd-storyboard-message-action/, '分镜总开关关闭后必须清理全部正文入口与成片');
-assert.match(source, /paragraphAnchor: Number\.isInteger\(floor\)/, '第 0 楼也必须保留段落锚点');
+assert.match(source, /paragraphAnchor: clone\(job\.paragraphAnchor \|\| null\)/, '第 0 楼与跨聊天待归档结果都必须保留段落锚点');
 assert.match(source, /storyboardInlineAnchorNode\(text, anchorRecords\)[\s\S]*anchor\.node\.insertAdjacentElement\('afterend', wrapper\)[\s\S]*text\.insertAdjacentElement\('afterend', wrapper\)/, '命中段落锚点时必须原位插图，失配时才回退到整层末尾');
 assert.match(source, /function storyboardInlineRecordValid[\s\S]*record\.messageHash[\s\S]*record\.swipeId/, '编辑或 reroll 后必须阻止旧图误挂');
 assert.doesNotMatch(source, /storyboardProfileBindings|绑定到当前聊天|selectedCharacters/, '形象档案不得再自动绑定或注入镜头任务');
@@ -79,7 +79,7 @@ assert.match(source, /移出等待/, '日志必须提供明确的移出等待操
 assert.match(source, /storyboardDiscardActive[\s\S]*discardRequested[\s\S]*放弃进行中/, '斩断未暴露的 ST 请求时必须明确为放弃收片');
 assert.match(source, /storyboardLoadLogToWorkbench[\s\S]*storyboardRetryLog[\s\S]*载入镜头台/, '日志必须可载入与再生成');
 assert.match(source, /storyboardCheckConnection[\s\S]*\/api\/plugins\/qianmu-tts\/image\/check/, '所有供应商必须走千幕同源网关实测连接');
-assert.match(source, /storyboardHandleChatChanged[\s\S]*切换聊天后已自动移除等待任务/, '队列不得把旧聊天的分镜写入新聊天');
+assert.match(source, /storyboardHandleChatChanged[\s\S]*storyboardDrainPendingDeliveries/, '跨聊天队列必须先进入原聊天收片箱，不能写入当前聊天');
 assert.match(source, /原正文楼层已删除，未发起生图请求[\s\S]*正文已更改，未发起生图请求/, '请求送出前若正文删除或改写，必须停止而非继续消耗额度');
 assert.match(source, /<b>API 设置<\/b>/, '镜头台接口卡应使用清楚的 API 设置标题');
 assert.doesNotMatch(source, /将此瞬，妥为留存/, '镜头台不得继续显示已移除的装饰文案');

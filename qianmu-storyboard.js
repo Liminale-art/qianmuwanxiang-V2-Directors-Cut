@@ -1,7 +1,7 @@
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
-export const STORYBOARD_SCHEMA_VERSION = 21;
+export const STORYBOARD_SCHEMA_VERSION = 22;
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -1256,8 +1256,9 @@ function workflowState(value, fallback = 'idle') {
 }
 
 const STORYBOARD_TASK_STAGES = Object.freeze([
-  'screening', 'compiler', 'queue', 'provider', 'persistence', 'attachment', 'complete', 'failed', 'cancelled',
+  'screening', 'compiler', 'queue', 'provider', 'persistence', 'delivery_pending', 'attachment', 'complete', 'failed', 'cancelled',
 ]);
+const STORYBOARD_TASK_DELIVERY_STATES = Object.freeze(['none', 'pending_chat', 'delivered', 'gallery_fallback', 'volatile_pending']);
 
 function taskStage(value, statusValue = 'idle') {
   const stage = str(value, 40);
@@ -1295,6 +1296,8 @@ export function normalizeStoryboardTaskState(value) {
     paragraphAnchor: raw.paragraphAnchor ? normalizeStoryboardParagraphAnchor(raw.paragraphAnchor) : null,
     paragraphSelection: raw.paragraphSelection ? normalizeStoryboardParagraphSelection(raw.paragraphSelection) : null,
     status: statusValue, stage, progress: taskProgress(raw.progress, statusValue, stage),
+    deliveryState: STORYBOARD_TASK_DELIVERY_STATES.includes(raw.deliveryState) ? raw.deliveryState : 'none',
+    linkState: STORYBOARD_MESSAGE_LINK_STATES.includes(raw.linkState) ? raw.linkState : '',
     resultIds: ids(raw.resultIds, 20), error: str(raw.error, 4000), uiVisible: Boolean(raw.uiVisible),
     requestedAt: pos(raw.requestedAt || raw.createdAt), startedAt: pos(raw.startedAt), finishedAt: pos(raw.finishedAt), updatedAt: pos(raw.updatedAt || raw.finishedAt || raw.startedAt || raw.requestedAt || raw.createdAt),
   };

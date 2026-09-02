@@ -96,10 +96,10 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.24';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.25';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.24';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.24';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.25';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.25';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -146,24 +146,24 @@ import {
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.24';
+} from './qianmu-storyboard.js?v=1.58.25';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.24';
+const VERSION = '1.58.25';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.24'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.25'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.24'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.25'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.24'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.25'),
   },
 });
 function directImageRuntime() {
@@ -939,6 +939,8 @@ const notesSaveTimers = new Map();
 let storyboardInlineTimer = null;
 const storyboardInlinePendingFloors = new Set();
 let storyboardInlineFullRenderPending = false;
+const storyboardVolatileDeliveries = new Map();
+let storyboardDeliveryDrainPromise = null;
 const storyboardCollapsedInlineFloors = new Set();
 let storyboardLinkSaveQueued = false;
 const storyboardGallerySelection = new Set();
@@ -11044,6 +11046,124 @@ function storyboardGalleryCollections() {
   return store.storyboardCollections;
 }
 
+async function storyboardStoreDeferredDelivery(job, records) {
+  const delivery = {
+    taskId: job.id, chatKey: String(job.chatKey || ''), target: job.target || 'gallery',
+    planId: job.planId || '', shotId: job.planShotId || '', records: clone(records || []), createdAt: Date.now(),
+  };
+  try {
+    await blobStore.putStoryboardDelivery(job.id, delivery);
+    storyboardVolatileDeliveries.delete(job.id);
+    return 'pending_chat';
+  } catch (error) {
+    storyboardVolatileDeliveries.set(job.id, delivery);
+    console.warn(`[${MODULE_NAME}] storyboard delivery inbox unavailable; keeping this result for the current page`, error);
+    return 'volatile_pending';
+  }
+}
+
+async function storyboardDrainPendingDeliveries(chatKey = String(getChatKey() || '')) {
+  const expectedChatKey = String(chatKey || '');
+  if (!expectedChatKey) return 0;
+  const previousDrain = storyboardDeliveryDrainPromise;
+  const runDrain = async () => {
+    let durable = [];
+    try { durable = await blobStore.listStoryboardDeliveries(expectedChatKey); }
+    catch (error) { console.warn(`[${MODULE_NAME}] storyboard delivery inbox read failed`, error); }
+    const deliveries = new Map();
+    for (const item of durable) if (item?.taskId) deliveries.set(String(item.taskId), item);
+    for (const item of storyboardVolatileDeliveries.values()) {
+      if (item?.chatKey === expectedChatKey && item.taskId) deliveries.set(String(item.taskId), item);
+    }
+    if (!deliveries.size || String(getChatKey() || '') !== expectedChatKey) return 0;
+    const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
+    const gallery = storyboardGalleryRecords();
+    const knownIds = new Set(gallery.map((item) => String(item.id || '')));
+    const galleryById = new Map(gallery.map((item) => [String(item.id || ''), item]));
+    const state = storyboardState();
+    const changedTasks = new Map();
+    const touchedFloors = new Set();
+    let received = 0;
+    for (const delivery of deliveries.values()) {
+      let deliveryLinkState = '';
+      const deliveryFloors = new Set();
+      const resultIds = [];
+      for (const raw of Array.isArray(delivery.records) ? delivery.records : []) {
+        if (!raw?.id) continue;
+        if (knownIds.has(String(raw.id))) {
+          const existing = galleryById.get(String(raw.id));
+          resultIds.push(String(raw.id));
+          if (Number.isInteger(existing?.floor)) deliveryFloors.add(existing.floor);
+          deliveryLinkState ||= existing?.linkState || '';
+          continue;
+        }
+        const record = clone(raw);
+        const resolved = record.messageRef?.messageKey
+          ? resolveStoryboardMessageReference(record.messageRef, chat, { chatKey: expectedChatKey })
+          : null;
+        if (resolved?.state === 'active') {
+          record.floor = resolved.floor;
+          record.inline = record.requestedInline !== false;
+          record.messageHash = hashText(String(resolved.message?.mes || ''));
+          record.swipeId = Number(resolved.message?.swipe_id || 0);
+          record.linkState = 'active';
+          touchedFloors.add(resolved.floor);
+          deliveryFloors.add(resolved.floor);
+          deliveryLinkState = 'active';
+        } else {
+          record.lastKnownFloor = Number.isInteger(record.lastKnownFloor) ? record.lastKnownFloor : (Number.isInteger(record.floor) ? record.floor : null);
+          record.floor = null;
+          record.inline = false;
+          record.linkState = resolved?.state || (delivery.target === 'gallery' ? '' : 'orphaned');
+          deliveryLinkState ||= record.linkState;
+        }
+        gallery.push(record);
+        knownIds.add(String(record.id));
+        galleryById.set(String(record.id), record);
+        resultIds.push(String(record.id));
+        received++;
+      }
+      const task = (state.taskStates || []).find((item) => item.id === delivery.taskId);
+      if (task) changedTasks.set(task.id, transitionStoryboardTaskState(task, 'completed', {
+        stage: 'complete', progress: 1, resultIds: resultIds.length ? resultIds : task.resultIds,
+        floor: deliveryFloors.size ? [...deliveryFloors].at(-1) : null,
+        deliveryState: deliveryFloors.size || delivery.target === 'gallery' ? 'delivered' : 'gallery_fallback',
+        linkState: deliveryLinkState,
+      }));
+    }
+    if (!received) {
+      if (changedTasks.size) {
+        state.taskStates = state.taskStates.map((task) => changedTasks.get(task.id) || task);
+        saveSettings();
+      }
+      for (const delivery of deliveries.values()) {
+        storyboardVolatileDeliveries.delete(delivery.taskId);
+        try { await blobStore.deleteStoryboardDelivery(delivery.taskId); } catch (_) {}
+      }
+      return 0;
+    }
+    if (gallery.length > 400) gallery.splice(0, gallery.length - 400);
+    await saveMetadata();
+    if (String(getChatKey() || '') !== expectedChatKey) return 0;
+    if (changedTasks.size) state.taskStates = state.taskStates.map((task) => changedTasks.get(task.id) || task);
+    saveSettings();
+    for (const delivery of deliveries.values()) {
+      storyboardVolatileDeliveries.delete(delivery.taskId);
+      try { await blobStore.deleteStoryboardDelivery(delivery.taskId); }
+      catch (error) { console.warn(`[${MODULE_NAME}] storyboard delivery inbox cleanup failed`, error); }
+    }
+    if (touchedFloors.size) touchedFloors.forEach((floor) => storyboardScheduleInlineRender(40, floor));
+    else storyboardScheduleInlineRender(40);
+    rerenderIfOpen();
+    toast(`已接收 ${received} 张跨聊天完成的分镜。`, 'success');
+    return received;
+  };
+  const scheduledDrain = (previousDrain ? previousDrain.catch(() => 0) : Promise.resolve()).then(runDrain);
+  storyboardDeliveryDrainPromise = scheduledDrain;
+  try { return await scheduledDrain; }
+  finally { if (storyboardDeliveryDrainPromise === scheduledDrain) storyboardDeliveryDrainPromise = null; }
+}
+
 function storyboardItemCollectionIds(item) {
   return uniqueClean([...(Array.isArray(item?.collectionIds) ? item.collectionIds : []), item?.collectionId])
     .map((id) => String(id || '').trim()).filter(Boolean).slice(0, 30);
@@ -11214,11 +11334,11 @@ function storyboardPlanForJob(job) {
   return storyboardState().shotPlans.find((plan) => plan.id === job.planId) || null;
 }
 
-function storyboardSyncTaskState(job, status, { error = '', resultIds = null, floor = null, stage = '', progress = null, plan = null } = {}) {
+function storyboardSyncTaskState(job, status, { error = '', resultIds = null, floor = undefined, stage = '', progress = null, plan = null, deliveryState = '', linkState = '' } = {}) {
   if (!job?.id) return null;
   const state = storyboardState();
   const current = (state.taskStates || []).find((item) => item.id === job.id);
-  const targetFloor = Number.isInteger(floor) ? floor : (Number.isInteger(job.floor) ? job.floor : null);
+  const targetFloor = floor === null ? null : (Number.isInteger(floor) ? floor : (Number.isInteger(job.floor) ? job.floor : null));
   const base = current || createStoryboardTaskState({
     id: job.id, planId: job.planId, shotId: job.planShotId, logId: job.logId,
     chatKey: job.chatKey, floor: targetFloor, messageRef: job.messageRef,
@@ -11231,6 +11351,7 @@ function storyboardSyncTaskState(job, status, { error = '', resultIds = null, fl
     paragraphAnchor: job.paragraphAnchor, paragraphSelection: job.paragraphSelection,
     uiVisible: current?.uiVisible ?? plan?.origin === 'manual_supplement',
     ...(stage ? { stage } : {}), ...(progress == null ? {} : { progress }),
+    ...(deliveryState ? { deliveryState } : {}), ...(linkState ? { linkState } : {}),
     ...(error ? { error: String(error).slice(0, 4000) } : {}),
     ...(Array.isArray(resultIds) ? { resultIds } : {}),
   });
@@ -11238,7 +11359,7 @@ function storyboardSyncTaskState(job, status, { error = '', resultIds = null, fl
   return next;
 }
 
-function storyboardSetPlanStatus(plan, status, { error = '', resultIds = null, job = null, floor = null, stage = '', progress = null } = {}) {
+function storyboardSetPlanStatus(plan, status, { error = '', resultIds = null, job = null, floor = undefined, stage = '', progress = null, deliveryState = '', linkState = '' } = {}) {
   if (plan) {
     const shot = job?.planShotId ? plan.shots?.find((item) => item.id === job.planShotId) : null;
     if (shot) {
@@ -11260,10 +11381,12 @@ function storyboardSetPlanStatus(plan, status, { error = '', resultIds = null, j
     plan.updatedAt = Date.now();
     if (error && !shot) plan.error = String(error).slice(0, 4000);
   }
-  const task = storyboardSyncTaskState(job, status, { error, resultIds, floor, stage, progress, plan });
+  const task = storyboardSyncTaskState(job, status, { error, resultIds, floor, stage, progress, plan, deliveryState, linkState });
   if (!plan && !task) return;
   saveSettings();
-  storyboardScheduleInlineRender(30, task?.floor ?? plan?.floor ?? null);
+  const renderFloor = Number.isInteger(task?.floor) ? task.floor : (Number.isInteger(plan?.floor) ? plan.floor : null);
+  const currentOwnsTask = !job?.chatKey || job.chatKey === String(getChatKey() || '');
+  if (currentOwnsTask && Number.isInteger(renderFloor)) storyboardScheduleInlineRender(30, renderFloor);
 }
 
 function storyboardReconcileShotPlans() {
@@ -13399,27 +13522,14 @@ function storyboardRemoveQueuedLog(log) {
   renderModal();
 }
 
-function storyboardHandleChatChanged() {
+async function storyboardHandleChatChanged() {
   const currentChatKey = String(getChatKey() || '');
-  const state = storyboardState();
   storyboardCloseLightbox();
   storyboardGallerySelection.clear();
   storyboardGallerySelectMode = false;
   storyboardGalleryOpenCollectionId = '';
   storyboardGalleryVisibleCount = 40;
-  for (const job of storyboardActiveJobs.values()) {
-    if (job.chatKey && job.chatKey !== currentChatKey) job.discardRequested = true;
-  }
-  const keep = [];
-  for (const job of storyboardQueue) {
-    if (!job.chatKey || job.chatKey === currentChatKey) keep.push(job);
-    else {
-      storyboardFinishLog(state.logs.find((item) => item.id === job.logId), 'cancelled', { error: '切换聊天后已自动移除等待任务' });
-      storyboardSyncTaskState(job, 'cancelled', { error: '切换聊天后已自动移除等待任务', plan: storyboardPlanForJob(job) });
-    }
-  }
-  storyboardQueue = keep;
-  saveSettings();
+  return storyboardDrainPendingDeliveries(currentChatKey);
 }
 
 async function storyboardPrepareGatewayAssets(job) {
@@ -13507,8 +13617,8 @@ function storyboardCreateRecord(job, log, url, index, anchorState, response) {
     collectionId: job.collectionId || '', collectionIds: storyboardItemCollectionIds(job), tags: uniqueClean(job.tags || []).slice(0, 30), planId: job.planId || '', planShotId: job.planShotId || '', imageIndex: index, url, prompt: job.prompt, finalPrompt: job.payload?.prompt,
     artistString: job.artistString || job.payload?.artistString || '', artistPresetId: job.artistPresetId || '', artistPoolId: job.artistPoolId || '', artistRouteSource: job.artistRouteSource || '', contentRating: job.contentRating || 'sfw',
     negative: job.negative, effectiveNegative: job.payload?.negative || '', source: job.source,
-    floor, inline: Boolean(job.inlineByDefault && Number.isInteger(floor)), paragraphAnchor: Number.isInteger(floor) ? clone(job.paragraphAnchor || null) : null,
-    paragraphSelection: Number.isInteger(floor) ? clone(job.paragraphSelection || null) : null,
+    floor, requestedInline: Boolean(job.inlineByDefault), inline: Boolean(job.inlineByDefault && Number.isInteger(floor)), paragraphAnchor: clone(job.paragraphAnchor || null),
+    paragraphSelection: clone(job.paragraphSelection || null),
     origin: job.paragraphSelection?.mode === 'manual_supplement' ? 'manual_supplement' : (job.automatic ? 'automatic' : 'manual'),
     shotSpec: clone(job.shotSpec || null), compiledPrompt: clone(job.compiledPrompt || null), compositionDecision: clone(job.compositionDecision || null),
     messageRef: job.messageRef ? clone(job.messageRef) : null,
@@ -13531,13 +13641,8 @@ async function storyboardRunJob(job, log) {
       storyboardSetPlanStatus(plan, 'cancelled', { error: '分镜总开关已关闭', job });
       return;
     }
-    if (job.chatKey && job.chatKey !== getChatKey()) {
-      storyboardFinishLog(log, 'cancelled', { error: '聊天已切换，任务未执行' });
-      storyboardSetPlanStatus(plan, 'cancelled', { error: '聊天已切换，任务未执行', job });
-      return;
-    }
     const beforeRequestAnchor = storyboardValidatedAnchor(job);
-    if (job.target !== 'gallery' && job.messageRef?.messageKey && !beforeRequestAnchor.valid) {
+    if (job.target !== 'gallery' && job.messageRef?.messageKey && !beforeRequestAnchor.valid && beforeRequestAnchor.linkState !== 'foreign') {
       storyboardFinishLog(log, 'cancelled', { error: beforeRequestAnchor.linkState === 'orphaned' ? '原正文楼层已删除，未发起生图请求' : '正文已更改，未发起生图请求' });
       storyboardSetPlanStatus(plan, beforeRequestAnchor.linkState === 'orphaned' ? 'orphaned' : 'stale', { error: '正文引用已变化', job });
       return;
@@ -13584,9 +13689,9 @@ async function storyboardRunJob(job, log) {
     storyboardPipelineStage(log, 'provider_request', 'success', {}, {
       upstreamId: data.upstreamId || '', imageCount: data.images?.length || 0, durationMs: data.durationMs || 0,
     });
-    if (job.discardRequested || job.chatKey && job.chatKey !== getChatKey()) {
-      storyboardFinishLog(log, 'cancelled', { error: job.discardRequested ? '用户放弃收片' : '生成期间切换了聊天' });
-      storyboardSetPlanStatus(plan, 'cancelled', { error: job.discardRequested ? '用户放弃收片' : '生成期间切换了聊天', job });
+    if (job.discardRequested) {
+      storyboardFinishLog(log, 'cancelled', { error: '用户放弃收片' });
+      storyboardSetPlanStatus(plan, 'cancelled', { error: '用户放弃收片', job });
       return;
     }
     const images = Array.isArray(data.images) ? data.images.slice(0, 8) : [];
@@ -13597,18 +13702,32 @@ async function storyboardRunJob(job, log) {
     const urls = [];
     for (let index = 0; index < images.length; index++) urls.push(await storyboardPersistGatewayImage(images[index], job, index));
     const records = urls.map((url, index) => storyboardCreateRecord(job, log, url, index, anchorState, data));
-    const gallery = storyboardGalleryRecords();
-    gallery.push(...records);
-    if (gallery.length > 400) gallery.splice(0, gallery.length - 400);
-    await saveMetadata();
-    storyboardSetPlanStatus(plan, 'generating', { job, floor: anchorState.floor, stage: 'attachment', progress: 0.92 });
+    const currentOwnsResult = !job.chatKey || job.chatKey === String(getChatKey() || '');
+    let deliveryState = anchorState.valid || job.target === 'gallery' ? 'delivered' : 'gallery_fallback';
+    const resultLinkState = job.target === 'gallery' ? '' : anchorState.linkState;
+    if (currentOwnsResult) {
+      const gallery = storyboardGalleryRecords();
+      gallery.push(...records);
+      if (gallery.length > 400) gallery.splice(0, gallery.length - 400);
+      await saveMetadata();
+      storyboardSetPlanStatus(plan, 'generating', { job, floor: anchorState.floor, stage: 'attachment', progress: 0.92, deliveryState, linkState: resultLinkState });
+    } else {
+      deliveryState = await storyboardStoreDeferredDelivery(job, records);
+      storyboardSetPlanStatus(plan, 'generating', { job, floor: null, stage: 'delivery_pending', progress: 0.96, deliveryState, linkState: 'foreign' });
+    }
     storyboardPipelineStage(log, 'asset_persistence', 'success', {}, { recordIds: records.map((item) => item.id) });
     storyboardPipelineStage(log, 'paragraph_anchor', 'success', {}, {
       requestedFloor: job.floor, finalFloor: anchorState.floor, fallback: !anchorState.valid && job.target !== 'gallery',
+      deliveryState, deferredToOriginalChat: !currentOwnsResult,
     });
     storyboardFinishLog(log, 'success', { recordId: records[0].id, recordIds: records.map((item) => item.id), floor: anchorState.floor });
-    storyboardSetPlanStatus(plan, 'completed', { resultIds: records.map((item) => item.id), job, floor: anchorState.floor, stage: 'complete', progress: 1 });
-    if (!anchorState.valid && job.target !== 'gallery') toast(`${records.length} 张分镜已生成；原楼层变化，已安全转存阅片室。`, 'warning');
+    storyboardSetPlanStatus(plan, 'completed', {
+      resultIds: records.map((item) => item.id), job, floor: currentOwnsResult ? anchorState.floor : null,
+      stage: currentOwnsResult ? 'complete' : 'delivery_pending', progress: currentOwnsResult ? 1 : 0.96,
+      deliveryState, linkState: currentOwnsResult ? resultLinkState : 'foreign',
+    });
+    if (!currentOwnsResult && !job.automatic) toast(`${records.length} 张分镜已生成；返回原聊天后会自动归档。`, 'info');
+    else if (!anchorState.valid && job.target !== 'gallery') toast(`${records.length} 张分镜已生成；原楼层变化，已安全转存阅片室。`, 'warning');
     else if (!job.automatic) toast(records[0].inline ? `${records.length} 张分镜已穿插至第 ${anchorState.floor} 层。` : `${records.length} 张分镜已存入阅片室。`, 'success');
   } catch (error) {
     console.error(`[${MODULE_NAME}] storyboard generation failed`, error);
@@ -13752,7 +13871,9 @@ function storyboardRenderInlineImages(targetFloor = null) {
     if (!byFloor.has(record.floor)) byFloor.set(record.floor, { records: [], plans: [] });
     byFloor.get(record.floor).records.push(record);
   }
+  const currentChatKey = String(getChatKey() || '');
   for (const plan of storyboardState().shotPlans || []) {
+    if (plan.chatKey && plan.chatKey !== currentChatKey) continue;
     if (plan.origin !== 'manual_supplement' || !Number.isInteger(plan.floor) || !['screening', 'compiling', 'queued', 'generating', 'failed'].includes(plan.status)) continue;
     if (scopedFloor !== null && plan.floor !== scopedFloor) continue;
     if (!byFloor.has(plan.floor)) byFloor.set(plan.floor, { records: [], plans: [] });
@@ -27555,7 +27676,7 @@ function bindEvents() {
     coreadInvalidatePool();    // 切聊天：反哺主线切片池随新聊天的绑定档案重算
     companionWorldView = '';   // 切聊天：世界书已按聊天分存，查看视图回到未选·避免跨聊天残留
     await refreshCoreadPersonaAvatar();
-    storyboardHandleChatChanged();
+    void storyboardHandleChatChanged();
     applyProseLayout();
     renderFloatButton();
     renderInputMenuEntry();
@@ -27572,6 +27693,7 @@ function bindEvents() {
     focusClockState();
     focusClockRuntimeTick();
     await refreshCoreadPersonaAvatar();
+    void storyboardDrainPendingDeliveries(String(getChatKey() || ''));
     applyProseLayout();
     renderFloatButton();
     restoreQuickDockedPlugins();
@@ -27722,11 +27844,18 @@ function cleanupRuntime(resetSettings = false) {
     });
     clean('speech', () => ttsStopChat());
     clean('storyboard queue', () => {
-      for (const job of storyboardActiveJobs.values()) job.discardRequested = true;
+      for (const job of storyboardActiveJobs.values()) {
+        job.discardRequested = true;
+        storyboardSyncTaskState(job, 'cancelled', { error: '扩展已停用或更新', plan: storyboardPlanForJob(job) });
+      }
       if (storyboardQueue.length && settings?.imagegen?.logs) {
-        for (const job of storyboardQueue) storyboardFinishLog(settings.imagegen.logs.find((item) => item.id === job.logId), 'cancelled', { error: '扩展已停用或更新' });
+        for (const job of storyboardQueue) {
+          storyboardSyncTaskState(job, 'cancelled', { error: '扩展已停用或更新', plan: storyboardPlanForJob(job) });
+          storyboardFinishLog(settings.imagegen.logs.find((item) => item.id === job.logId), 'cancelled', { error: '扩展已停用或更新' });
+        }
       }
       storyboardQueue = [];
+      saveSettings();
       storyboardRuntimeReconciled = false;
     });
     clean('storyboard events', () => storyboardUnbindChat());

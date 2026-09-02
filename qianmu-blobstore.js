@@ -4,7 +4,7 @@
 // localStorage 存不下二进制大对象，故独立走 IndexedDB；存 Blob，播放时再 createObjectURL。
 
 const DB_NAME = 'qianmu-blobstore';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 const STORE_AUDIO = 'audio';         // key: 缓存键   value: { blob, meta, createdAt }
 const STORE_FAVORITES = 'favorites'; // key: 收藏 id  value: { blob, meta, label, createdAt }
 // ── 伴读模块（v2 新增）──
@@ -20,6 +20,8 @@ const STORE_VECTORS = 'reader_vectors';    // key: bucketKey value: { dim, model
 const STORE_TTS_LINES = 'tts_lines';       // key: chatKey value: { lines:{contentKey:[]}, keyByMes:{mesid:contentKey}, updatedAt }
 // ── 便笺模块（v6 新增）──
 const STORE_NOTES = 'notes';               // key: noteId value: QianmuNote（只存 pinned=true；临时便笺留在本次页面运行态）
+// ── 分镜模块（v7 新增）──
+const STORE_STORYBOARD_INBOX = 'storyboard_inbox'; // key: taskId value: 跨聊天完成后等待原聊天接收的轻量成片记录
 
 const STORAGE_STORE_INFO = Object.freeze({
   [STORE_AUDIO]: { label: '语音缓存', category: 'audio', recoverable: true },
@@ -32,6 +34,7 @@ const STORAGE_STORE_INFO = Object.freeze({
   [STORE_VECTORS]: { label: '伴读检索向量', category: 'reader', recoverable: false },
   [STORE_TTS_LINES]: { label: '台词提取缓存', category: 'cache', recoverable: true },
   [STORE_NOTES]: { label: '固定便笺', category: 'notes', recoverable: false },
+  [STORE_STORYBOARD_INBOX]: { label: '分镜待归档', category: 'images', recoverable: false },
 });
 
 let dbPromise = null;
@@ -54,6 +57,7 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE_VECTORS)) db.createObjectStore(STORE_VECTORS);
       if (!db.objectStoreNames.contains(STORE_TTS_LINES)) db.createObjectStore(STORE_TTS_LINES);
       if (!db.objectStoreNames.contains(STORE_NOTES)) db.createObjectStore(STORE_NOTES);
+      if (!db.objectStoreNames.contains(STORE_STORYBOARD_INBOX)) db.createObjectStore(STORE_STORYBOARD_INBOX);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => { dbPromise = null; reject(req.error); };
@@ -459,6 +463,42 @@ export async function listNotes() {
     cursor.onerror = () => reject(cursor.error);
   });
   return out.sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+}
+
+// ── 分镜：跨聊天完成后的待归档收片箱 ───────────────────────
+// ST 只允许扩展安全保存“当前聊天”的 metadata。用户在生图期间切走时，先把已经落盘的
+// 成片记录按原 chatKey 放进本地收片箱；返回原聊天后再校验 messageRef 并写回该聊天。
+export async function putStoryboardDelivery(taskId, record) {
+  const id = String(taskId || '').trim();
+  if (!id) throw new Error('storyboard delivery task id is required');
+  const s = await store(STORE_STORYBOARD_INBOX, 'readwrite');
+  await reqP(s.put({ ...(record || {}), taskId: id, createdAt: Number(record?.createdAt) || Date.now(), updatedAt: Date.now() }, id));
+  return id;
+}
+
+export async function listStoryboardDeliveries(chatKey = '') {
+  const expected = String(chatKey || '');
+  const s = await store(STORE_STORYBOARD_INBOX, 'readonly');
+  const out = [];
+  await new Promise((resolve, reject) => {
+    const cursor = s.openCursor();
+    cursor.onsuccess = () => {
+      const current = cursor.result;
+      if (!current) { resolve(); return; }
+      const value = current.value || {};
+      if (!expected || String(value.chatKey || '') === expected) out.push({ ...value, taskId: String(current.key) });
+      current.continue();
+    };
+    cursor.onerror = () => reject(cursor.error);
+  });
+  return out.sort((left, right) => Number(left.createdAt || 0) - Number(right.createdAt || 0));
+}
+
+export async function deleteStoryboardDelivery(taskId) {
+  const id = String(taskId || '').trim();
+  if (!id) return;
+  const s = await store(STORE_STORYBOARD_INBOX, 'readwrite');
+  await reqP(s.delete(id));
 }
 
 // ── 存储治理：只读盘点与严格白名单清理 ──────────────────────

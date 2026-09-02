@@ -10,7 +10,7 @@ import {
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 21);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 22);
 assert.deepEqual(createStoryboardDefaults().taskStates, []);
 
 const queued = createStoryboardTaskState({
@@ -41,14 +41,16 @@ const normalized = normalizeStoryboardState({
   schemaVersion: 20,
   taskStates: [completed, { ...completed, id: 'job-b', status: 'failed', error: 'provider error', updatedAt: 400 }],
 });
-assert.equal(normalized.schemaVersion, 21);
+assert.equal(normalized.schemaVersion, 22);
 assert.deepEqual(normalized.taskStates.map((task) => task.id), ['job-b', 'job-a']);
 assert.equal(normalized.taskStates[0].error, 'provider error');
 
 // Queue and provider lifecycle use the persistent task id, while automatic work stays visually silent.
 assert.match(source, /function storyboardSyncTaskState[\s\S]*id: job\.id[\s\S]*state\.taskStates = \[next/);
 assert.match(source, /storyboardQueue\.push\(job\);[\s\S]*storyboardSetPlanStatus\(storyboardPlanForJob\(job\), 'queued'/);
-assert.match(source, /stage: 'provider'[\s\S]*stage: 'persistence'[\s\S]*stage: 'attachment'[\s\S]*stage: 'complete'/);
+for (const stage of ['provider', 'persistence', 'attachment', 'delivery_pending', 'complete']) {
+  assert.match(source, new RegExp(`['"]${stage}['"]`));
+}
 assert.match(source, /uiVisible: current\?\.uiVisible \?\? plan\?\.origin === 'manual_supplement'/);
 assert.match(source, /data-storyboard-task=/);
 assert.match(source, /id: uid\('shot'\), taskId: job\.id, groupId: job\.id/);
@@ -58,7 +60,7 @@ assert.match(source, /function storyboardRenderInlineImages\(targetFloor = null\
 assert.match(source, /sd-storyboard-inline\[data-storyboard-floor=/);
 assert.match(source, /const storyboardInlinePendingFloors = new Set\(\)/);
 assert.match(source, /floors\.forEach\(\(target\) => storyboardRenderInlineImages\(target\)\)/);
-assert.match(source, /storyboardSetPlanStatus\(plan, 'completed',[\s\S]*floor: anchorState\.floor/);
+assert.match(source, /storyboardSetPlanStatus\(plan, 'completed',[\s\S]*floor: currentOwnsResult \? anchorState\.floor : null/);
 
 const queueBlock = source.slice(source.indexOf('function storyboardQueueJob'), source.indexOf('function storyboardSafePromptFallback'));
 assert.doesNotMatch(queueBlock, /is_send_press|generation_started|streamingProcessor/, 'storyboard jobs must not depend on the ST reply generation lock');
