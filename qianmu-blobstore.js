@@ -4,7 +4,7 @@
 // localStorage 存不下二进制大对象，故独立走 IndexedDB；存 Blob，播放时再 createObjectURL。
 
 const DB_NAME = 'qianmu-blobstore';
-const DB_VERSION = 11;
+const DB_VERSION = 12;
 const STORE_AUDIO = 'audio';         // key: 缓存键   value: { blob, meta, createdAt }
 const STORE_FAVORITES = 'favorites'; // key: 收藏 id  value: { blob, meta, label, createdAt }
 // ── 伴读模块（v2 新增）──
@@ -28,6 +28,7 @@ const STORE_STORYBOARD_PLAN_ARCHIVES = 'storyboard_plan_archives'; // key: chatK
 // ── 动态镜头模块（v11 新增）──
 const STORE_VIDEO_TASKS = 'video_tasks'; // key: taskId value: 轻量异步任务合同；不含密钥、提示词、媒体或结果外链
 const STORE_VIDEO_BUDGET = 'video_budget'; // key: reservationId value: 视频费用预留/结算流水
+const STORE_VIDEO_MEDIA = 'video_media'; // key: assetId value: 本地成片 Blob + 白名单元数据；不保留远端地址、密钥或提示词
 
 const STORAGE_STORE_INFO = Object.freeze({
   [STORE_AUDIO]: { label: '语音缓存', category: 'audio', recoverable: true },
@@ -46,6 +47,7 @@ const STORAGE_STORE_INFO = Object.freeze({
   [STORE_STORYBOARD_PLAN_ARCHIVES]: { label: '分镜历史计划', category: 'cache', recoverable: false },
   [STORE_VIDEO_TASKS]: { label: '动态镜头任务', category: 'video', recoverable: false },
   [STORE_VIDEO_BUDGET]: { label: '视频费用流水', category: 'video', recoverable: false },
+  [STORE_VIDEO_MEDIA]: { label: '动态镜头成片', category: 'video', recoverable: false },
 });
 
 let dbPromise = null;
@@ -74,6 +76,7 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE_STORYBOARD_PLAN_ARCHIVES)) db.createObjectStore(STORE_STORYBOARD_PLAN_ARCHIVES);
       if (!db.objectStoreNames.contains(STORE_VIDEO_TASKS)) db.createObjectStore(STORE_VIDEO_TASKS);
       if (!db.objectStoreNames.contains(STORE_VIDEO_BUDGET)) db.createObjectStore(STORE_VIDEO_BUDGET);
+      if (!db.objectStoreNames.contains(STORE_VIDEO_MEDIA)) db.createObjectStore(STORE_VIDEO_MEDIA);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => { dbPromise = null; reject(req.error); };
@@ -814,6 +817,111 @@ export async function deleteVideoRuntimeTasks(taskIds = []) {
   return { deleted: ids, budgetDeleted };
 }
 
+// ── 动态镜头：本地成片仓 ─────────────────────────────────
+// 成片只保存在浏览器 IndexedDB；远端下载地址、API Key、提示词和供应商原始响应均不落盘。
+export const VIDEO_MEDIA_MAX_BYTES = 768 * 1024 * 1024;
+const VIDEO_MEDIA_MIME_TYPES = new Set([
+  'video/mp4', 'video/webm', 'video/quicktime', 'video/x-matroska', 'application/octet-stream',
+]);
+
+function videoMediaId(value, field = 'assetId') {
+  const id = String(value || '').trim();
+  if (!/^[A-Za-z0-9._:-]{1,200}$/.test(id)) throw new Error(`video media ${field} is invalid`);
+  return id;
+}
+
+function boundedVideoMediaNumber(value, max) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(max, Math.max(0, number)) : 0;
+}
+
+export function normalizeVideoMediaMeta(value = {}) {
+  const raw = value && typeof value === 'object' ? value : {};
+  return {
+    schema: 'qianmu.video-media.v1',
+    recordId: String(raw.recordId || raw.record_id || '').trim().slice(0, 200),
+    taskId: String(raw.taskId || raw.task_id || '').trim().slice(0, 200),
+    shotId: String(raw.shotId || raw.shot_id || '').trim().slice(0, 200),
+    chatKey: String(raw.chatKey || raw.chat_key || '').trim().slice(0, 512),
+    floor: Math.round(boundedVideoMediaNumber(raw.floor, 1_000_000)),
+    messageId: String(raw.messageId || raw.message_id || '').trim().slice(0, 200),
+    remoteTaskId: String(raw.remoteTaskId || raw.remote_task_id || '').trim().slice(0, 400),
+    durationSeconds: boundedVideoMediaNumber(raw.durationSeconds || raw.duration_seconds, 3600),
+    resolution: String(raw.resolution || '').trim().slice(0, 40),
+    ratio: String(raw.ratio || '').trim().slice(0, 40),
+    mimeType: String(raw.mimeType || raw.mime_type || '').trim().toLowerCase().slice(0, 100),
+    size: Math.round(boundedVideoMediaNumber(raw.size, VIDEO_MEDIA_MAX_BYTES)),
+    createdAt: Math.round(boundedVideoMediaNumber(raw.createdAt || raw.created_at, Number.MAX_SAFE_INTEGER)),
+    updatedAt: Math.round(boundedVideoMediaNumber(raw.updatedAt || raw.updated_at, Number.MAX_SAFE_INTEGER)),
+  };
+}
+
+export async function putVideoMedia(assetIdValue, blob, metaValue = {}) {
+  const assetId = videoMediaId(assetIdValue);
+  if (typeof Blob === 'undefined' || !(blob instanceof Blob)) throw new Error('video media must be a Blob');
+  if (!blob.size || blob.size > VIDEO_MEDIA_MAX_BYTES) throw new Error('video media size is invalid');
+  const mimeType = String(blob.type || metaValue?.mimeType || '').trim().toLowerCase().split(';')[0];
+  if (!VIDEO_MEDIA_MIME_TYPES.has(mimeType)) throw new Error('video media type is invalid');
+  const now = Date.now();
+  const meta = normalizeVideoMediaMeta({ ...metaValue, mimeType, size: blob.size });
+  const createdAt = meta.createdAt || now;
+  const updatedAt = now;
+  const target = await store(STORE_VIDEO_MEDIA, 'readwrite');
+  await reqP(target.put({
+    schema: 'qianmu.video-media-record.v1', assetId, blob,
+    meta: { ...meta, createdAt, updatedAt }, createdAt, updatedAt,
+  }, assetId));
+  return { assetId, recordId: meta.recordId, size: blob.size, mimeType };
+}
+
+export async function hasVideoMedia(assetIdValue) {
+  const assetId = videoMediaId(assetIdValue);
+  const target = await store(STORE_VIDEO_MEDIA, 'readonly');
+  const key = await reqP(target.getKey ? target.getKey(assetId) : target.get(assetId));
+  return key !== undefined && key !== null;
+}
+
+export async function getVideoMedia(assetIdValue) {
+  const assetId = videoMediaId(assetIdValue);
+  const target = await store(STORE_VIDEO_MEDIA, 'readonly');
+  return (await reqP(target.get(assetId))) || null;
+}
+
+export async function listVideoMedia(chatKey = '', options = {}) {
+  const expectedChat = String(chatKey || '').trim().slice(0, 512);
+  const limit = Math.min(1000, Math.max(1, Math.round(Number(options.limit) || 300)));
+  const target = await store(STORE_VIDEO_MEDIA, 'readonly');
+  const records = [];
+  await new Promise((resolve, reject) => {
+    const cursor = target.openCursor();
+    cursor.onsuccess = () => {
+      const current = cursor.result;
+      if (!current) { resolve(); return; }
+      const value = current.value || {};
+      const meta = normalizeVideoMediaMeta(value.meta);
+      if (!expectedChat || meta.chatKey === expectedChat) {
+        records.push({
+          assetId: String(current.key), recordId: meta.recordId, meta,
+          size: Math.max(0, Number(value.blob?.size) || meta.size),
+          mimeType: String(value.blob?.type || meta.mimeType || ''),
+          createdAt: Math.max(0, Number(value.createdAt) || meta.createdAt),
+          updatedAt: Math.max(0, Number(value.updatedAt) || meta.updatedAt),
+        });
+      }
+      current.continue();
+    };
+    cursor.onerror = () => reject(cursor.error);
+  });
+  return records.sort((left, right) => right.updatedAt - left.updatedAt).slice(0, limit);
+}
+
+export async function deleteVideoMedia(assetIdValue) {
+  const assetId = videoMediaId(assetIdValue);
+  const target = await store(STORE_VIDEO_MEDIA, 'readwrite');
+  await reqP(target.delete(assetId));
+  return { deleted: assetId };
+}
+
 // ── 存储治理：只读盘点与严格白名单清理 ──────────────────────
 
 function readerImageBookId(key) {
@@ -941,6 +1049,7 @@ function storageRecordChatKey(name, key, value) {
   if (name === STORE_STORYBOARD_SNAPSHOTS) return String(value?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_STORYBOARD_PLAN_ARCHIVES) return String(value?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_VIDEO_TASKS || name === STORE_VIDEO_BUDGET) return String(value?.chatKey || '').trim().slice(0, 512);
+  if (name === STORE_VIDEO_MEDIA) return String(value?.meta?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_AUDIO) return String(value?.meta?.chatKey || '').trim().slice(0, 512);
   return '';
 }
@@ -1113,6 +1222,7 @@ const CHAT_SCOPED_CLEARABLE_STORES = Object.freeze([
   STORE_STORYBOARD_PLAN_ARCHIVES,
   STORE_VIDEO_TASKS,
   STORE_VIDEO_BUDGET,
+  STORE_VIDEO_MEDIA,
 ]);
 
 async function clearStoreChatScope(name, chatKey) {

@@ -30,6 +30,7 @@ assert.match(storeSource, /STORE_AUDIO.*recoverable: true/s);
 assert.match(storeSource, /STORE_TTS_LINES.*recoverable: true/s);
 assert.match(storeSource, /STORE_RETLOG.*recoverable: true/s);
 assert.match(storeSource, /STORE_STORYBOARD_PIPELINE_LOGS.*category: 'logs'.*recoverable: true/s);
+assert.match(storeSource, /STORE_VIDEO_MEDIA.*category: 'video'.*recoverable: false/s);
 assert.match(storeSource, /STORE_FAVORITES.*recoverable: false/s);
 assert.match(storeSource, /STORE_BOOKS.*recoverable: false/s);
 assert.match(storeSource, /export async function clearRecoverableStorage\(\)/);
@@ -47,6 +48,7 @@ assert.match(storeSource, /export async function clearOrphanedReaderBlobs\(\)[\s
 assert.match(storeSource, /function storageRecordChatKey\(name, key, value\)[\s\S]*STORE_TTS_LINES[\s\S]*STORE_CHATS[\s\S]*STORE_VECTORS[\s\S]*STORE_STORYBOARD_INBOX[\s\S]*STORE_AUDIO/, 'chat-scoped stores must use an explicit scope extractor');
 assert.match(storeSource, /estimateStoreUsage\(name\)[\s\S]*scopeMap[\s\S]*recordBytes[\s\S]*chatScopes:/, 'chat scope sizes must be collected during the existing store inventory pass');
 assert.match(storeSource, /CHAT_SCOPED_CLEARABLE_STORES[\s\S]*STORE_AUDIO[\s\S]*STORE_TTS_LINES[\s\S]*STORE_CHATS[\s\S]*STORE_VECTORS/, 'chat cleanup must use an explicit store allow-list');
+assert.match(storeSource, /CHAT_SCOPED_CLEARABLE_STORES[\s\S]*STORE_VIDEO_TASKS[\s\S]*STORE_VIDEO_BUDGET[\s\S]*STORE_VIDEO_MEDIA/, 'video tasks, ledgers and media must remain independently chat-cleanable');
 assert.doesNotMatch(storeSource.slice(storeSource.indexOf('const CHAT_SCOPED_CLEARABLE_STORES'), storeSource.indexOf('async function clearStoreChatScope')), /STORE_STORYBOARD_INBOX/, 'unfiled storyboard deliveries must not be chat-cleanable');
 assert.match(storeSource, /export function normalizeChatScopedStorageSelections\(selections = \[\]\)[\s\S]*allowed\.has\(name\)[\s\S]*export async function clearChatScopedStorage[\s\S]*clearStoreChatScope/, 'chat cleanup must reject stores outside the allow-list');
 

@@ -12,6 +12,7 @@ import {
 import {
   cancelMiniMaxH3Video,
   createMiniMaxH3Video,
+  openMiniMaxH3VideoResult,
   queryMiniMaxH3Video,
   videoGatewayErrorPayload,
 } from './qianmu-video-gateway.js';
@@ -25,6 +26,7 @@ const ALLOWED_FORMATS = new Set(['mp3', 'ogg_opus', 'pcm']);
 const ALLOWED_SAMPLE_RATES = new Set([16000, 24000, 32000, 48000]);
 const ALLOWED_RESOURCE_IDS = new Set(['seed-tts-2.0', 'seed-icl-2.0', 'seed-icl-1.0']);
 const ALLOWED_INFERENCE_MODELS = new Set(['seed-tts-2.0-expressive', 'seed-tts-1.1']);
+const VIDEO_STREAM_TIMEOUT_MS = 15 * 60_000;
 
 async function pluginVersion() {
   try {
@@ -83,6 +85,65 @@ function sanitizeRequest(input) {
       ...(inferenceModel ? { model: inferenceModel } : {}),
     },
   };
+}
+
+async function waitForDrain(res) {
+  if (typeof res.once !== 'function') return;
+  await new Promise((resolve, reject) => {
+    const cleanup = () => {
+      res.off?.('drain', onDrain);
+      res.off?.('close', onClose);
+      res.off?.('error', onError);
+    };
+    const onDrain = () => { cleanup(); resolve(); };
+    const onClose = () => { cleanup(); reject(new Error('video result client disconnected')); };
+    const onError = (error) => { cleanup(); reject(error); };
+    res.once('drain', onDrain);
+    res.once('close', onClose);
+    res.once('error', onError);
+  });
+}
+
+export async function streamMiniMaxH3VideoResult(opened, res) {
+  const reader = opened?.response?.body?.getReader?.();
+  if (!reader || typeof res?.write !== 'function') throw new Error('video result stream is unavailable');
+  let bytes = 0;
+  let timedOut = false;
+  let closed = false;
+  const onClose = () => {
+    closed = true;
+    void reader.cancel().catch(() => {});
+  };
+  res.once?.('close', onClose);
+  const timer = setTimeout(() => {
+    timedOut = true;
+    void reader.cancel().catch(() => {});
+  }, VIDEO_STREAM_TIMEOUT_MS);
+  try {
+    res.status(200);
+    res.set('Content-Type', opened.contentType);
+    res.set('Content-Disposition', `inline; filename="${opened.fileName}"`);
+    res.set('Cross-Origin-Resource-Policy', 'same-origin');
+    if (opened.contentLength > 0) res.set('Content-Length', String(opened.contentLength));
+    while (!closed) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = Buffer.from(value);
+      bytes += chunk.length;
+      if (bytes > opened.maxBytes) {
+        await reader.cancel().catch(() => {});
+        throw new Error('video result stream exceeded its size limit');
+      }
+      if (!res.write(chunk)) await waitForDrain(res);
+    }
+    if (timedOut) throw new Error('video result stream timed out');
+    if (!closed) res.end();
+    return { bytes, completed: !closed };
+  } finally {
+    clearTimeout(timer);
+    res.off?.('close', onClose);
+    try { reader.releaseLock(); } catch (_) {}
+  }
 }
 
 export async function init(router) {
@@ -182,6 +243,23 @@ export async function init(router) {
     } catch (error) {
       const result = videoGatewayErrorPayload(error);
       console.warn('[千幕 H3 网关] 取消失败', result.body.code, result.body.upstreamStatus || '');
+      return res.status(result.status).json(result.body);
+    }
+  });
+
+  router.post('/video/minimax/result', async (req, res) => {
+    prepareImageResponse(res);
+    try {
+      const opened = await openMiniMaxH3VideoResult(req.body);
+      return await streamMiniMaxH3VideoResult(opened, res);
+    } catch (error) {
+      if (res.headersSent) {
+        console.warn('[千幕 H3 网关] 成片流传输中断');
+        res.destroy?.();
+        return undefined;
+      }
+      const result = videoGatewayErrorPayload(error);
+      console.warn('[千幕 H3 网关] 成片读取失败', result.body.code, result.body.upstreamStatus || '');
       return res.status(result.status).json(result.body);
     }
   });

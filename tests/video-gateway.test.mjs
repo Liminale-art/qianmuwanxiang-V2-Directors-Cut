@@ -3,8 +3,10 @@ import test from 'node:test';
 
 import {
   VideoGatewayError,
+  MINIMAX_H3_RESULT_MAX_BYTES,
   cancelMiniMaxH3Video,
   createMiniMaxH3Video,
+  openMiniMaxH3VideoResult,
   queryMiniMaxH3Video,
   sanitizeMiniMaxH3GatewayCreate,
   sanitizeMiniMaxH3MediaInputs,
@@ -221,6 +223,83 @@ test('upstream errors return bounded public diagnostics without exposing credent
   );
   const fallback = videoGatewayErrorPayload(new VideoGatewayError(500, 'test_error', 'safe'));
   assert.deepEqual(fallback.body, { ok: false, code: 'test_error', message: 'safe', retryable: false });
+});
+
+test('completed media is re-queried from MiniMax and downloaded without forwarding its API key', async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init });
+    if (calls.length === 1) {
+      return new Response(JSON.stringify({ task: {
+        id: 'remote-a', status: 'succeeded', content: { url: 'https://cdn.minimax.example/result.mp4' },
+        resolution: '768P', duration: 6,
+      } }), { status: 200 });
+    }
+    return new Response(Buffer.from('small-video'), {
+      status: 200,
+      headers: { 'content-type': 'video/mp4', 'content-length': '11' },
+    });
+  };
+  const opened = await openMiniMaxH3VideoResult({ apiKey: 'private-api-key', taskId: 'remote-a' }, {
+    fetchImpl,
+    resolveHost: async () => [{ address: '93.184.216.34' }],
+  });
+  assert.match(calls[0].url, /\/v2\/query\/video_generation\/remote-a$/);
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer private-api-key');
+  assert.equal(calls[1].url, 'https://cdn.minimax.example/result.mp4');
+  assert.equal(Object.hasOwn(calls[1].init.headers, 'Authorization'), false);
+  assert.equal(opened.contentType, 'video/mp4');
+  assert.equal(opened.contentLength, 11);
+  assert.equal(opened.maxBytes, MINIMAX_H3_RESULT_MAX_BYTES);
+  assert.match(opened.fileName, /^qianmu-h3-[a-f0-9]{16}\.mp4$/);
+  assert.equal(Buffer.from(await opened.response.arrayBuffer()).toString(), 'small-video');
+});
+
+test('result download rejects unfinished tasks, literal hosts, non-video content and oversized files', async () => {
+  let mediaCalls = 0;
+  await assert.rejects(openMiniMaxH3VideoResult({ apiKey: 'key', taskId: 'remote-a' }, {
+    fetchImpl: async () => new Response(JSON.stringify({ task: { id: 'remote-a', status: 'running' } }), { status: 200 }),
+  }), (error) => error.code === 'video_result_not_ready' && error.retryable === true);
+
+  await assert.rejects(openMiniMaxH3VideoResult({ apiKey: 'key', taskId: 'remote-a' }, {
+    fetchImpl: async () => {
+      mediaCalls += 1;
+      return new Response(JSON.stringify({ task: { id: 'remote-a', status: 'succeeded', content: { url: 'https://127.0.0.1/private.mp4' } } }), { status: 200 });
+    },
+  }), (error) => error.code === 'result_url_unsafe');
+  assert.equal(mediaCalls, 1, 'unsafe provider URLs are rejected before a second fetch');
+
+  let calls = 0;
+  await assert.rejects(openMiniMaxH3VideoResult({ apiKey: 'key', taskId: 'remote-a' }, {
+    resolveHost: async () => [{ address: '93.184.216.34' }],
+    fetchImpl: async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response(JSON.stringify({ task: { id: 'remote-a', status: 'succeeded', content: { url: 'https://cdn.example/result' } } }), { status: 200 })
+        : new Response('<html>error</html>', { status: 200, headers: { 'content-type': 'text/html' } });
+    },
+  }), (error) => error.code === 'result_content_type_invalid');
+
+  calls = 0;
+  await assert.rejects(openMiniMaxH3VideoResult({ apiKey: 'key', taskId: 'remote-a' }, {
+    resolveHost: async () => [{ address: '93.184.216.34' }],
+    fetchImpl: async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response(JSON.stringify({ task: { id: 'remote-a', status: 'succeeded', content: { url: 'https://cdn.example/result.mp4' } } }), { status: 200 })
+        : new Response('x', { status: 200, headers: { 'content-type': 'video/mp4', 'content-length': String(MINIMAX_H3_RESULT_MAX_BYTES + 1) } });
+    },
+  }), (error) => error.code === 'video_result_too_large' && error.status === 413);
+
+  calls = 0;
+  await assert.rejects(openMiniMaxH3VideoResult({ apiKey: 'key', taskId: 'remote-a' }, {
+    resolveHost: async () => [{ address: '10.0.0.8' }],
+    fetchImpl: async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ task: { id: 'remote-a', status: 'succeeded', content: { url: 'https://cdn.example/result.mp4' } } }), { status: 200 });
+    },
+  }), (error) => error.code === 'result_url_unsafe');
+  assert.equal(calls, 1, 'private DNS results are rejected before downloading media');
 });
 
 test('gateway input normalization returns only bounded execution fields', () => {

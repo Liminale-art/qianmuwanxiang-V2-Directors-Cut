@@ -1,5 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
+import { lookup as dnsLookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import {
   buildMiniMaxH3CancelRequest,
   buildMiniMaxH3CreateRequest,
@@ -15,12 +17,14 @@ const MAX_INLINE_IMAGE_BYTES = 30 * 1024 * 1024;
 const MAX_INLINE_TOTAL_BYTES = 45 * 1024 * 1024;
 const MAX_REQUEST_BYTES = 64 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+export const MINIMAX_H3_RESULT_MAX_BYTES = 768 * 1024 * 1024;
 const CREATE_TIMEOUT_MS = 45_000;
 const QUERY_TIMEOUT_MS = 20_000;
 const CACHE_TTL_MS = 30 * 60_000;
 const CACHE_MAX_ITEMS = 200;
 const INLINE_IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const DEFAULT_SUBMISSION_CACHE = new Map();
+const VIDEO_RESULT_MIMES = new Set(['video/mp4', 'video/webm', 'video/quicktime', 'video/x-matroska', 'application/octet-stream']);
 
 const plain = (value) => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 const text = (value, max = 1000) => String(value ?? '').trim().slice(0, max);
@@ -83,6 +87,75 @@ function httpsUrl(value) {
   } catch (_) {
     return '';
   }
+}
+
+function privateLiteralAddress(hostname) {
+  const host = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  return isIP(host) !== 0;
+}
+
+function privateNetworkAddress(address) {
+  const value = String(address || '').toLowerCase().replace(/^\[|\]$/g, '').split('%')[0];
+  if (!value || value === '::1' || value === '0.0.0.0' || value === '::') return true;
+  if (value.startsWith('::ffff:')) return privateNetworkAddress(value.slice(7));
+  if (isIP(value) === 6) return value.startsWith('fc') || value.startsWith('fd') || value.startsWith('fe8') || value.startsWith('fe9')
+    || value.startsWith('fea') || value.startsWith('feb') || value.startsWith('ff') || value.startsWith('2001:db8')
+    || value.startsWith('2001:0:') || value.startsWith('2001:10') || value.startsWith('2001:2:')
+    || value.startsWith('2002:') || value.startsWith('64:ff9b:');
+  const parts = value.split('.').map(Number);
+  if (parts.length !== 4 || parts.some((item) => !Number.isInteger(item) || item < 0 || item > 255)) return true;
+  return parts[0] === 10 || parts[0] === 127 || parts[0] === 0 || (parts[0] === 169 && parts[1] === 254)
+    || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) || (parts[0] === 192 && parts[1] === 168)
+    || (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) || (parts[0] === 198 && (parts[1] === 18 || parts[1] === 19))
+    || (parts[0] === 192 && parts[1] === 0 && (parts[2] === 0 || parts[2] === 2))
+    || (parts[0] === 198 && parts[1] === 51 && parts[2] === 100) || (parts[0] === 203 && parts[1] === 0 && parts[2] === 113)
+    || parts[0] >= 224;
+}
+
+function safeProviderResultUrl(value) {
+  const source = String(value ?? '').trim();
+  if (!source || source.length > 4096) return '';
+  try {
+    const url = new URL(source);
+    const hostname = url.hostname.toLowerCase();
+    if (url.protocol !== 'https:' || !hostname || hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local') || privateLiteralAddress(hostname)) return '';
+    url.username = '';
+    url.password = '';
+    return url.toString();
+  } catch (_) {
+    return '';
+  }
+}
+
+async function validatedResultUrl(value, resolveHost) {
+  const safe = safeProviderResultUrl(value);
+  if (!safe) throw new VideoGatewayError(502, 'result_url_unsafe', 'MiniMax H3 返回了不安全的成片地址');
+  const url = new URL(safe);
+  let addresses;
+  try { addresses = await resolveHost(url.hostname, { all: true, verbatim: true }); }
+  catch (_) { throw new VideoGatewayError(502, 'result_url_unreachable', 'MiniMax H3 成片地址无法解析', { retryable: true }); }
+  const list = Array.isArray(addresses) ? addresses : [addresses];
+  if (!list.length || list.some((item) => privateNetworkAddress(item?.address || item))) {
+    throw new VideoGatewayError(502, 'result_url_unsafe', 'MiniMax H3 成片地址指向了不安全的网络');
+  }
+  return url.toString();
+}
+
+async function fetchVideoResult(urlValue, options, init) {
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  const resolveHost = options.resolveHost || dnsLookup;
+  let currentUrl = urlValue;
+  for (let redirects = 0; redirects <= 5; redirects++) {
+    currentUrl = await validatedResultUrl(currentUrl, resolveHost);
+    const response = await fetchImpl(currentUrl, { ...init, redirect: 'manual' });
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+    const location = response.headers.get('location');
+    try { await response.body?.cancel?.(); } catch (_) {}
+    if (!location || redirects === 5) throw new VideoGatewayError(502, 'result_redirect_invalid', 'MiniMax H3 成片跳转无效');
+    try { currentUrl = new URL(location, currentUrl).toString(); }
+    catch (_) { throw new VideoGatewayError(502, 'result_redirect_invalid', 'MiniMax H3 成片跳转无效'); }
+  }
+  throw new VideoGatewayError(502, 'result_redirect_invalid', 'MiniMax H3 成片跳转过多');
 }
 
 export function sanitizeMiniMaxH3MediaInputs(value = []) {
@@ -260,6 +333,58 @@ export async function cancelMiniMaxH3Video(value = {}, options = {}) {
     ? 'MiniMax H3 运行中的任务无法由官方接口强制取消'
     : '当前 MiniMax H3 任务不可取消');
   return upstreamRequest(descriptor.request, key, parseMiniMaxH3CancelResponse, options);
+}
+
+export async function openMiniMaxH3VideoResult(value = {}, options = {}) {
+  const raw = plain(value) ? value : {};
+  const task = await queryMiniMaxH3Video(raw, options);
+  if (task.state !== 'succeeded') {
+    throw new VideoGatewayError(409, 'video_result_not_ready', 'MiniMax H3 成片尚未完成', { retryable: ['submitted', 'polling'].includes(task.state) });
+  }
+  const resultUrl = safeProviderResultUrl(task.result?.downloadUrl);
+  if (!resultUrl) throw new VideoGatewayError(502, 'result_url_unsafe', 'MiniMax H3 返回了不安全的成片地址');
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  if (typeof fetchImpl !== 'function') throw new VideoGatewayError(500, 'fetch_unavailable', '当前服务端不支持网络请求');
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  const timeoutMs = Math.min(60_000, Math.max(1000, Number(options.resultHeaderTimeoutMs) || 30_000));
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  let response;
+  try {
+    response = await fetchVideoResult(resultUrl, { ...options, fetchImpl }, {
+      method: 'GET',
+      headers: { Accept: 'video/*,application/octet-stream;q=0.8' },
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+  } catch (error) {
+    if (error instanceof VideoGatewayError) throw error;
+    const timedOut = error?.name === 'AbortError';
+    throw new VideoGatewayError(502, timedOut ? 'result_download_timeout' : 'result_download_failed', timedOut ? 'MiniMax H3 成片下载连接超时' : 'MiniMax H3 成片下载连接失败', { retryable: true });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+  if (!response.ok || !response.body) {
+    try { await response.body?.cancel?.(); } catch (_) {}
+    throw new VideoGatewayError(502, 'result_download_failed', `MiniMax H3 成片下载失败（${response.status}）`, { retryable: response.status === 429 || response.status >= 500, upstreamStatus: response.status });
+  }
+  const contentType = String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  if (!VIDEO_RESULT_MIMES.has(contentType)) {
+    try { await response.body.cancel(); } catch (_) {}
+    throw new VideoGatewayError(502, 'result_content_type_invalid', 'MiniMax H3 成片返回了非视频内容');
+  }
+  const contentLength = Math.max(0, Number(response.headers.get('content-length')) || 0);
+  if (contentLength > MINIMAX_H3_RESULT_MAX_BYTES) {
+    try { await response.body.cancel(); } catch (_) {}
+    throw new VideoGatewayError(413, 'video_result_too_large', 'MiniMax H3 成片超过 768 MB 上限');
+  }
+  const extension = contentType === 'video/webm' ? 'webm' : contentType === 'video/quicktime' ? 'mov' : contentType === 'video/x-matroska' ? 'mkv' : 'mp4';
+  return {
+    response,
+    remoteTaskId: task.remoteTaskId,
+    contentType,
+    contentLength,
+    fileName: `qianmu-h3-${hash(task.remoteTaskId).slice(0, 16)}.${extension}`,
+    maxBytes: MINIMAX_H3_RESULT_MAX_BYTES,
+  };
 }
 
 export function videoGatewayErrorPayload(error) {

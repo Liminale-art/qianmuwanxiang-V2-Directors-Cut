@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-import { info, init } from '../server-plugin.js';
+import { info, init, streamMiniMaxH3VideoResult } from '../server-plugin.js';
 
 const routes = new Map();
 await init({
@@ -32,6 +32,7 @@ assert.ok(routes.has('GET /video/minimax/capabilities'));
 assert.ok(routes.has('POST /video/minimax/create'));
 assert.ok(routes.has('POST /video/minimax/query'));
 assert.ok(routes.has('POST /video/minimax/cancel'));
+assert.ok(routes.has('POST /video/minimax/result'));
 
 const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
@@ -77,6 +78,30 @@ const missingVideoKey = mockResponse();
 await routes.get('POST /video/minimax/query')({ body: { taskId: 'remote-a' } }, missingVideoKey);
 assert.equal(missingVideoKey.statusCode, 400);
 assert.equal(missingVideoKey.body.code, 'missing_api_key');
+
+const missingVideoResultKey = mockResponse();
+await routes.get('POST /video/minimax/result')({ body: { taskId: 'remote-a' } }, missingVideoResultKey);
+assert.equal(missingVideoResultKey.statusCode, 400);
+assert.equal(missingVideoResultKey.body.code, 'missing_api_key');
+
+const streamedChunks = [];
+const streamResponse = {
+  headers: {}, statusCode: 0, ended: false,
+  status(code) { this.statusCode = code; return this; },
+  set(name, value) { this.headers[String(name).toLowerCase()] = value; return this; },
+  write(chunk) { streamedChunks.push(Buffer.from(chunk)); return true; },
+  end() { this.ended = true; },
+};
+const streamed = await streamMiniMaxH3VideoResult({
+  response: new Response(Buffer.from('streamed-video')),
+  contentType: 'video/mp4', contentLength: 14, fileName: 'qianmu-h3-test.mp4', maxBytes: 100,
+}, streamResponse);
+assert.equal(streamResponse.statusCode, 200);
+assert.equal(streamResponse.headers['content-type'], 'video/mp4');
+assert.equal(streamResponse.headers['content-length'], '14');
+assert.equal(streamResponse.headers['cross-origin-resource-policy'], 'same-origin');
+assert.equal(Buffer.concat(streamedChunks).toString(), 'streamed-video');
+assert.equal(streamed.completed, true);
 
 const capabilities = mockResponse();
 await routes.get('GET /image/capabilities')({}, capabilities);
