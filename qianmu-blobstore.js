@@ -503,6 +503,88 @@ export async function deleteStoryboardDelivery(taskId) {
 
 // ── 存储治理：只读盘点与严格白名单清理 ──────────────────────
 
+function readerImageBookId(key) {
+  const value = String(key ?? '');
+  const separator = value.lastIndexOf('::');
+  return separator > 0 ? value.slice(0, separator) : '';
+}
+
+async function auditOrphanedStore(name, kind, bookIdForKey, books) {
+  const s = await store(name, 'readonly');
+  const records = [];
+  await new Promise((resolve, reject) => {
+    const cursor = s.openCursor();
+    cursor.onsuccess = () => {
+      const current = cursor.result;
+      if (!current) { resolve(); return; }
+      const bookId = bookIdForKey(current.key);
+      if (!bookId || !books.has(bookId)) {
+        records.push({
+          store: name,
+          key: current.key,
+          bookId,
+          kind,
+          bytes: estimateStoredValueBytes(current.key) + estimateStoredValueBytes(current.value),
+          reason: bookId ? '对应书籍主体已不存在' : '无法识别书籍引用',
+        });
+      }
+      current.continue();
+    };
+    cursor.onerror = () => reject(cursor.error);
+  });
+  return records;
+}
+
+// 仅将“已无 reader_books 主体”的封面和书内插图判为孤儿。
+// 伴读会话/向量可以在删书后作为用户保留的记忆继续存在，故绝不自动判孤。
+export async function auditOrphanedReaderBlobs() {
+  if (!blobStoreAvailable()) return { available: false, records: [], count: 0, bytes: 0, scannedAt: Date.now() };
+  const bookIds = await listBookIds();
+  const books = new Set(bookIds.map((value) => String(value)));
+  const [covers, images] = await Promise.all([
+    auditOrphanedStore(STORE_COVERS, 'cover', (key) => String(key ?? ''), books),
+    auditOrphanedStore(STORE_IMAGES, 'image', readerImageBookId, books),
+  ]);
+  const records = [...covers, ...images];
+  return {
+    available: true,
+    records,
+    count: records.length,
+    bytes: records.reduce((sum, item) => sum + Math.max(0, Number(item.bytes) || 0), 0),
+    scannedAt: Date.now(),
+  };
+}
+
+// 删除前逐项重查书籍主体；若盘点后书籍被重新导入，该资源会被跳过。
+export async function clearOrphanedReaderBlobs() {
+  if (!blobStoreAvailable()) return { cleared: [], skipped: [], failed: [], beforeBytes: 0, remaining: 0 };
+  const audit = await auditOrphanedReaderBlobs();
+  const cleared = [];
+  const skipped = [];
+  const failed = [];
+  for (const item of audit.records) {
+    try {
+      if (item.bookId && await getBook(item.bookId)) {
+        skipped.push({ ...item, reason: '书籍已恢复，保留资源' });
+        continue;
+      }
+      const target = await store(item.store, 'readwrite');
+      await reqP(target.delete(item.key));
+      cleared.push(item);
+    } catch (error) {
+      failed.push({ ...item, error: error?.message || String(error) });
+    }
+  }
+  const remainingAudit = await auditOrphanedReaderBlobs();
+  return {
+    cleared,
+    skipped,
+    failed,
+    beforeBytes: audit.bytes,
+    remaining: remainingAudit.count,
+  };
+}
+
 function utf8ByteLength(value) {
   let bytes = 0;
   for (const char of String(value || '')) {

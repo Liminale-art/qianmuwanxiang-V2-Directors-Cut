@@ -24,6 +24,11 @@ assert.match(storeSource, /export async function clearRecoverableCategories\(cat
 assert.match(storeSource, /allowedCategories = new Set\(\['audio', 'logs', 'cache'\]\)/, 'category cleanup must use an explicit allow-list');
 assert.match(storeSource, /export async function clearStorageItems\(storeNames = \[\]\)/, 'explicit per-store cleanup must be available');
 assert.match(storeSource, /allowedNames = new Set\(Object\.keys\(STORAGE_STORE_INFO\)\)/, 'per-store cleanup must remain constrained to registered Qianmu stores');
+assert.match(storeSource, /export async function auditOrphanedReaderBlobs\(\)/, 'reader blob orphan audit must be available');
+assert.match(storeSource, /STORE_COVERS[\s\S]*STORE_IMAGES[\s\S]*books\.has\(bookId\)/, 'only reader cover/image records without a canonical book may be marked orphaned');
+assert.match(storeSource, /auditOrphanedStore[\s\S]*openCursor\(\)[\s\S]*estimateStoredValueBytes\(current\.value\)/, 'blob audit must stream values through a cursor instead of retaining the full library in memory');
+assert.match(storeSource, /\u4f34\u8bfb\u4f1a\u8bdd\/\u5411\u91cf[\s\S]*\u7edd\u4e0d\u81ea\u52a8\u5224\u5b64/, 'retained reader memories and vectors must not be treated as orphaned blobs');
+assert.match(storeSource, /export async function clearOrphanedReaderBlobs\(\)[\s\S]*await getBook\(item\.bookId\)/, 'orphan deletion must re-check the canonical book immediately before deletion');
 
 const plugTab = source.slice(source.indexOf('function renderPlugTab'), source.indexOf('/* ============================================================', source.indexOf('function renderPlugTab')));
 const tasksTab = source.slice(source.indexOf('function renderTasksNodesTab'), source.indexOf('function renderCastWorldTab'));
@@ -38,6 +43,8 @@ assert.match(source, /if \(activeTab === 'plug'\)[\s\S]*refreshStorageInventory/
 assert.match(source, /openStorageCleanupDialog[\s\S]*data\?\.idb\?\.stores[\s\S]*不可恢复[\s\S]*input type="checkbox"/, 'cleanup must list every registered store and require explicit item selection');
 assert.match(source, /blobStore\.clearStorageItems\(stores\)[\s\S]*selected\.includes\('__diagnostics__'\)[\s\S]*storyboard\.pipelineLogs = \[\]/, 'selected stores and diagnostics must be cleared independently');
 assert.match(source, /portableTtsBytes[\s\S]*item\.name === 'tts_lines'[\s\S]*cleared\.has\('tts_lines'\)[\s\S]*ttsLineCache\.clear\(\)/, 'the TTS cache item must include and clear its portable chat snapshot');
+assert.match(source, /orphanReaderBlobs[\s\S]*\u5b64\u513f\u56fe\u7247[\s\S]*__orphan_reader_blobs__/, 'orphaned reader blobs must be visible as a separate cleanup choice');
+assert.match(source, /selected\.includes\('__orphan_reader_blobs__'\)[\s\S]*clearOrphanedReaderBlobs\(\)/, 'orphan cleanup must only run after explicit selection');
 assert.doesNotMatch(source, /navigator\.storage\.persist|申请持久保存/, 'persistent-storage prompts must be removed');
 const refreshInventory = source.slice(source.indexOf('async function refreshStorageInventory'), source.indexOf('const STORAGE_CATEGORY_LABELS'));
 assert.match(refreshInventory, /paintStorageManagementCard\(\)/, 'inventory completion must patch only its own card');

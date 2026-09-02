@@ -96,11 +96,11 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.30';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.31';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.30';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.30';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.30';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.31';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.31';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.31';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,28 +151,28 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.30';
+} from './qianmu-storyboard.js?v=1.58.31';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.30';
+const VERSION = '1.58.31';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.30'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.31'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.30'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.31'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.30'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.31'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.30'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.31'),
   },
 });
 function directImageRuntime() {
@@ -7000,9 +7000,10 @@ function storageSettingsSnapshotWithoutDiagnostics() {
 
 async function collectStorageInventory() {
   const storageApi = globalThis.navigator?.storage;
-  const [originEstimate, idb] = await Promise.all([
+  const [originEstimate, idb, orphanReaderBlobs] = await Promise.all([
     storageApi?.estimate?.().catch(() => null) || Promise.resolve(null),
     blobStore.estimateBlobStoreUsage(),
+    blobStore.auditOrphanedReaderBlobs(),
   ]);
   const settingsBytes = storageJsonBytes(storageSettingsSnapshotWithoutDiagnostics());
   const currentChatBytes = storageJsonBytes(getChatStore());
@@ -7042,6 +7043,7 @@ async function collectStorageInventory() {
     diagnosticsBytes,
     portableTtsBytes,
     manageableBytes,
+    orphanReaderBlobs,
   };
 }
 
@@ -7091,9 +7093,13 @@ function renderStorageManagementCard() {
   const originText = data.origin.available
     ? `${formatStorageBytes(data.origin.usage)} / ${formatStorageBytes(data.origin.quota)}`
     : '浏览器未提供配额信息';
+  const orphanCount = Math.max(0, Number(data.orphanReaderBlobs?.count) || 0);
+  const orphanText = orphanCount
+    ? `${orphanCount} 项 · ${formatStorageBytes(data.orphanReaderBlobs?.bytes)}`
+    : '未发现';
   return `<section class="sd-card sd-storage-card">
     <div class="sd-card-title-row"><div><h3>储存空间</h3><p class="sd-summary-note">${htmlEscape(new Date(data.sampledAt).toLocaleTimeString())}</p></div><button type="button" class="sd-icon-btn sd-storage-refresh" title="刷新" aria-label="刷新"><i class="fa-solid fa-rotate${status === 'loading' ? ' fa-spin' : ''}"></i></button></div>
-    <div class="sd-storage-totals"><span>浏览器 / ST 来源<b>${htmlEscape(originText)}</b></span><span>千幕已盘点<b>${htmlEscape(formatStorageBytes(data.trackedBytes))}</b></span><span>可管理项目<b>${htmlEscape(formatStorageBytes(data.manageableBytes))}</b></span></div>
+    <div class="sd-storage-totals"><span>浏览器 / ST 来源<b>${htmlEscape(originText)}</b></span><span>千幕已盘点<b>${htmlEscape(formatStorageBytes(data.trackedBytes))}</b></span><span>可管理项目<b>${htmlEscape(formatStorageBytes(data.manageableBytes))}</b></span><span>孤儿图片<b>${htmlEscape(orphanText)}</b></span></div>
     <div class="sd-storage-ios-bar" role="img" aria-label="储存空间分布">${storageBar}</div>
     <div class="sd-storage-legend">${legend || '<p class="sd-muted">暂未发现千幕本地数据。</p>'}</div>
     <p class="sd-storage-scope">此处是浏览器分配给当前 ST 站点来源的空间，不代表 VPS 磁盘总容量；千幕仅统计可明确归因的本地内容。</p>
@@ -7112,6 +7118,7 @@ const STORAGE_ITEM_RISK = Object.freeze({
   reader_vectors: ['可重新计算', false],
   tts_lines: ['可重新提取', false],
   notes: ['不可恢复 · 固定便笺', true],
+  __orphan_reader_blobs__: ['无书籍主体引用 · 删除前重查', false],
   __diagnostics__: ['千幕与分镜日志', false],
 });
 
@@ -7124,6 +7131,12 @@ function openStorageCleanupDialog(data) {
       bytes: (Number(item.bytes) || 0) + (item.name === 'tts_lines' ? Number(data?.portableTtsBytes) || 0 : 0),
       count: Number(item.count) || 0,
     })),
+    ...(Number(data?.orphanReaderBlobs?.count) > 0 ? [{
+      id: '__orphan_reader_blobs__',
+      label: '孤儿封面与书内插图',
+      bytes: Number(data?.orphanReaderBlobs?.bytes) || 0,
+      count: Number(data?.orphanReaderBlobs?.count) || 0,
+    }] : []),
     { id: '__diagnostics__', label: '生成与运行日志', bytes: Number(data?.diagnosticsBytes) || 0, count: 0 },
   ];
   return new Promise((resolve) => {
@@ -7223,9 +7236,11 @@ function bindStorageManagementEvents(root) {
     const selected = await openStorageCleanupDialog(storageInventoryState.data);
     if (!selected?.length) return;
     try {
-      const stores = selected.filter((item) => item !== '__diagnostics__');
+      const stores = selected.filter((item) => !item.startsWith('__'));
       await blobStore.clearStorageItems(stores);
       reconcileClearedStorageItems(stores);
+      let orphanResult = null;
+      if (selected.includes('__orphan_reader_blobs__')) orphanResult = await blobStore.clearOrphanedReaderBlobs();
       if (selected.includes('__diagnostics__')) {
         settings.logHistory = [];
         settings.logOpenState = {};
@@ -7235,7 +7250,13 @@ function bindStorageManagementEvents(root) {
       }
       saveSettings();
       await refreshStorageInventory(true);
-      toast('所选本地项目已清理。', 'success');
+      if (orphanResult?.failed?.length) {
+        toast(`已清理 ${orphanResult.cleared.length} 项孤儿资源，${orphanResult.failed.length} 项失败已保留。`, 'warning');
+      } else if (orphanResult?.skipped?.length) {
+        toast(`所选项目已清理；${orphanResult.skipped.length} 项因书籍已恢复而保留。`, 'success');
+      } else {
+        toast('所选本地项目已清理。', 'success');
+      }
     } catch (error) {
       toast(`清理未完成：${error?.message || error}`, 'error');
       await refreshStorageInventory(true);
