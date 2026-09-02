@@ -96,10 +96,10 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.26';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.27';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.26';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.26';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.27';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.27';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -147,28 +147,28 @@ import {
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.26';
+} from './qianmu-storyboard.js?v=1.58.27';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.26';
+const VERSION = '1.58.27';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.26'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.27'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.26'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.27'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.26'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.27'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.26'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.27'),
   },
 });
 function directImageRuntime() {
@@ -13091,22 +13091,26 @@ function storyboardCompilerUserPrompt(state, context) {
 ${paragraphRule}请整理为一张最能承接当前叙事的画面。`;
 }
 
-async function storyboardCallCompiler(messages, profileId) {
+async function storyboardCallCompiler(messages, profileId, requestOptions = {}) {
   const apiProfile = (settings.apiProfiles || []).find((item) => item.id === profileId) || null;
+  const temperatureSource = requestOptions.temperature ?? apiProfile?.temperature ?? 0.35;
+  const temperature = Number.isFinite(Number(temperatureSource)) ? Number(temperatureSource) : 0.35;
+  const maxTokens = Math.max(256, Math.min(4000, Number(requestOptions.maxTokens) || 2200));
   if (apiProfile || settings.providerMode === 'external') {
     const cfg = apiProfile ? {
       apiUrl: apiProfile.apiUrl, apiKey: apiProfile.apiKey, model: apiProfile.model,
-      temperature: Number(apiProfile.temperature ?? 0.35), stream: false, maxTokens: 2200,
-    } : { temperature: 0.35, stream: false, maxTokens: 2200 };
+      temperature, stream: false, maxTokens,
+    } : { temperature, stream: false, maxTokens };
     return callExternalApi(messages, null, cfg, new AbortController());
   }
   return callSillyTavernModel(messages.at(-1)?.content || '', messages[0]?.content || '', null, {
-    stream_response: false, max_tokens: 2200, temperature: 0.35,
+    stream_response: false, max_tokens: maxTokens, temperature,
   });
 }
 
 async function storyboardCompilerResult(raw, context, capabilities, state) {
   let object = null;
+  let contractMeta = null;
   const rawText = String(raw || '');
   const declaresPlanContract = /"schema"\s*:\s*"qianmu\.storyboard\.plan\.v1"/.test(rawText);
   if (declaresPlanContract) {
@@ -13120,14 +13124,31 @@ async function storyboardCompilerResult(raw, context, capabilities, state) {
     const allowedRatioIds = state.compositionPolicy?.mode === 'fixed' && state.compositionPolicy?.fixedRatioId
       ? [state.compositionPolicy.fixedRatioId]
       : state.compositionPolicy?.allowedRatioIds || STORYBOARD_RATIOS.map((item) => item.id);
-    const result = contract.parseStoryboardContractResponse(rawText, {
+    const contractOptions = {
       kind: 'plan',
       allowedParagraphIds: paragraphIds,
       allowedRatioIds,
       maxShots: manualSupplement ? 1 : state.routing.enabled ? state.routing.maxShotsPerFloor : 1,
       manualSupplement,
       requiredInsertAfter,
+    };
+    const initial = contract.parseStoryboardContractResponse(rawText, contractOptions);
+    const result = initial.ok ? initial : await contract.repairStoryboardContractOnce({
+      raw: rawText,
+      validation: initial,
+      options: contractOptions,
+      request: (messages) => storyboardCallCompiler(messages, state.promptCompiler.apiProfileId, {
+        temperature: 0,
+        maxTokens: 1800,
+      }),
     });
+    contractMeta = {
+      schema: STORYBOARD_PLAN_SCHEMA,
+      repairAttempted: result.repairAttempted === true,
+      repairCalls: Number(result.repairCalls || 0),
+      initialErrors: (result.originalErrors || []).slice(0, 24),
+      finalErrors: (result.errors || []).slice(0, 24),
+    };
     if (!result.ok) {
       const details = contract.formatStoryboardContractErrors(result.errors, 8);
       throw new Error(`镜头协议校验失败${details ? `：\n${details}` : ''}`);
@@ -13147,7 +13168,7 @@ async function storyboardCompilerResult(raw, context, capabilities, state) {
     return {
       shouldGenerate: false,
       skipReason: String(object.skip_reason || '当前楼层没有新增的画面价值').trim().slice(0, 500),
-      shots: [], decisions: [],
+      shots: [], decisions: [], contractMeta,
     };
   }
   const maxIndex = Math.max(0, context.paragraphs.length - 1);
@@ -13186,6 +13207,7 @@ async function storyboardCompilerResult(raw, context, capabilities, state) {
     shouldGenerate: true, skipReason: '',
     prompt: first.prompt, safePrompt: first.safePrompt, negative: first.negative, paragraphIndex: first.paragraphIndex, shotType: first.shotType, shots,
     decisions: Array.isArray(object.decisions) ? object.decisions.map((item) => String(item).slice(0, 500)).slice(0, 12) : [],
+    contractMeta,
   };
 }
 
@@ -13226,7 +13248,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
       state.pendingCompilerStages = [{
         id: uid('stage-compiler'), type: 'prompt_compiler', status: 'success', startedAt,
         finishedAt: Date.now(), input: { floor: context.floor, mode: state.promptMode },
-        output: { skipped: true, reason: result.skipReason }, decisions: [], error: '',
+        output: { skipped: true, reason: result.skipReason, contract: result.contractMeta }, decisions: [], error: '',
       }];
       saveSettings();
       storyboardScheduleInlineRender(30, plan?.floor ?? context.floor);
@@ -13276,7 +13298,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
         paragraphMode: state.paragraphMode,
         worldMode: state.promptCompiler.worldMode, worldFallback: context.worldFallback,
         sourceSummary: state.promptDraft.sourceSummary,
-      }, output: { prompt: result.prompt, negative: result.negative, paragraphIndex: result.paragraphIndex, shotType: result.shotType, shots: compiledShots },
+      }, output: { prompt: result.prompt, negative: result.negative, paragraphIndex: result.paragraphIndex, shotType: result.shotType, shots: compiledShots, contract: result.contractMeta },
       decisions: result.decisions, error: '',
     }];
     saveSettings();
