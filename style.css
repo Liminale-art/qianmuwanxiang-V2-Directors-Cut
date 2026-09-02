@@ -8744,7 +8744,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 }
 #story-director-modal .sd-structured-output-toggle :is(i, .qm-glyph-icon) { width: 15px; height: 15px; font-size: 15px; }
 
-/* v1.58.57 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
+/* v1.58.58 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
 #story-director-modal .sd-storyboard-gallery-kind-switch {
   min-height: 36px;
   display: grid;
@@ -8783,6 +8783,65 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 }
 #story-director-modal .sd-storyboard-video-head .sd-storyboard-gallery-title { flex: 1; }
 #story-director-modal .sd-storyboard-video-head > .sd-icon-btn { flex: 0 0 auto; width: 34px; min-width: 34px; height: 34px; }
+#story-director-modal .sd-storyboard-video-tasks { display: grid; gap: 8px; }
+#story-director-modal .sd-storyboard-video-tasks > header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+}
+#story-director-modal .sd-storyboard-video-tasks > header > span { min-width: 0; }
+#story-director-modal .sd-storyboard-video-tasks > header h3 { margin: 2px 0 0; font-size: 13px; font-weight: 650; }
+#story-director-modal .sd-storyboard-video-tasks > header > b { color: var(--sd-accent); font-size: 18px; font-weight: 520; }
+#story-director-modal .sd-storyboard-video-tasks > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 6px;
+}
+#story-director-modal .sd-storyboard-video-task {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 8px 9px;
+  border: 1px solid var(--sd-hairline);
+  border-left: 3px solid color-mix(in srgb, var(--sd-muted) 54%, transparent);
+  border-radius: 9px;
+  background: var(--sd-glass-weak);
+}
+#story-director-modal .sd-storyboard-video-task.is-active { border-left-color: var(--sd-accent); }
+#story-director-modal .sd-storyboard-video-task.is-attention { border-left-color: #d5a85a; }
+#story-director-modal .sd-storyboard-video-task.is-danger { border-left-color: #d66f6f; }
+#story-director-modal .sd-storyboard-video-task-status {
+  grid-column: 1 / -1;
+  width: max-content;
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--sd-muted) 10%, transparent);
+  color: var(--sd-muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+#story-director-modal .sd-storyboard-video-task.is-active .sd-storyboard-video-task-status { background: color-mix(in srgb, var(--sd-accent) 12%, transparent); color: var(--sd-accent); }
+#story-director-modal .sd-storyboard-video-task.is-attention .sd-storyboard-video-task-status { color: #b7893e; }
+#story-director-modal .sd-storyboard-video-task.is-danger .sd-storyboard-video-task-status { color: #c15b5b; }
+#story-director-modal .sd-storyboard-video-task strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+#story-director-modal .sd-storyboard-video-task :is(small, time) { color: var(--sd-muted); font-size: 9px; }
+#story-director-modal .sd-storyboard-video-task time { white-space: nowrap; }
+#story-director-modal .sd-storyboard-video-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, #d5a85a 32%, var(--sd-hairline));
+  border-radius: 8px;
+  color: var(--sd-muted);
+  font-size: 10px;
+}
+#story-director-modal .sd-storyboard-video-warning :is(i, .qm-glyph-icon) { width: 14px; height: 14px; font-size: 14px; color: #b7893e; }
 #story-director-modal .sd-storyboard-video-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(205px, 1fr));
@@ -8927,6 +8986,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-storyboard-video-viewer aside footer .sd-icon-btn { width: 38px; min-width: 38px; height: 38px; border-radius: 9px !important; color: #fff; }
 
 @media (max-width: 640px) {
+  #story-director-modal .sd-storyboard-video-tasks > div { grid-template-columns: 1fr; }
   #story-director-modal .sd-storyboard-video-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   #story-director-modal .sd-storyboard-video-card > div { grid-template-columns: minmax(0, 1fr); }
   #story-director-modal .sd-storyboard-video-card small { grid-column: 1; grid-row: auto; }

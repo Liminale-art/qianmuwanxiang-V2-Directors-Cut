@@ -1,4 +1,6 @@
-// 千幕动态阅片室轻索引与播放会话。列表不读取 Blob；只有打开单条成片时才创建临时 Object URL。
+// 千幕动态阅片室轻索引、任务摘要与播放会话。列表不读取 Blob；只有打开单条成片时才创建临时 Object URL。
+import { normalizeVideoTask } from './qianmu-video-task.js';
+
 export const QIANMU_VIDEO_GALLERY_SCHEMA = 'qianmu.video-gallery.v1';
 export const QIANMU_VIDEO_GALLERY_MAX_BYTES = 768 * 1024 * 1024;
 
@@ -82,6 +84,50 @@ export function buildVideoVersionChains(values = []) {
       count: chain.items.length,
     };
   }).sort((left, right) => right.latest.updatedAt - left.latest.updatedAt);
+}
+
+const TASK_PRESENTATION = Object.freeze({
+  queued: { label: '待提交', tone: 'pending' },
+  preparing: { label: '准备中', tone: 'active' },
+  uploading: { label: '素材处理中', tone: 'active' },
+  submitted: { label: '已提交', tone: 'active' },
+  polling: { label: '生成中', tone: 'active' },
+  cancel_requested: { label: '取消处理中', tone: 'pending' },
+  succeeded: { label: '成片待归档', tone: 'attention' },
+  failed: { label: '生成失败', tone: 'danger' },
+  cancelled: { label: '已取消', tone: 'muted' },
+  expired: { label: '已过期', tone: 'muted' },
+});
+
+export function buildVideoTaskGalleryStatuses(values = [], availableAssetIds = [], options = {}) {
+  const available = new Set((Array.isArray(availableAssetIds) ? availableAssetIds : []).map((value) => id(value)).filter(Boolean));
+  const limit = Math.min(200, Math.max(1, Math.round(Number(options.limit) || 40)));
+  return (Array.isArray(values) ? values : [])
+    .map(normalizeVideoTask)
+    .filter((task) => task.taskId && task.owner.chatKey)
+    .filter((task) => task.state !== 'succeeded'
+      || ![task.result.assetId, task.result.recordId].some((value) => available.has(id(value))))
+    .map((task) => {
+      const unknownSubmission = task.state === 'submitted' && !task.provider.remoteTaskId;
+      const base = TASK_PRESENTATION[task.state] || TASK_PRESENTATION.queued;
+      const progress = Math.min(99, Math.max(0, Math.round(Number(task.progress.percent) || 0)));
+      return {
+        taskId: task.taskId,
+        shotId: task.shotId,
+        state: task.state,
+        statusLabel: unknownSubmission ? '待核对提交' : base.label,
+        tone: unknownSubmission ? 'attention' : base.tone,
+        owner: { ...task.owner },
+        attempt: task.attempt,
+        progress: ['preparing', 'uploading', 'submitted', 'polling'].includes(task.state) ? progress : 0,
+        retryable: task.state === 'failed' && task.failure.retryable,
+        chargeUnknown: task.budget.settlement === 'unknown'
+          || (task.state === 'failed' && task.failure.chargeState === 'unknown'),
+        updatedAt: task.timing.updatedAt || task.timing.createdAt,
+      };
+    })
+    .sort((left, right) => right.updatedAt - left.updatedAt || left.taskId.localeCompare(right.taskId))
+    .slice(0, limit);
 }
 
 function assertStorage(storage) {

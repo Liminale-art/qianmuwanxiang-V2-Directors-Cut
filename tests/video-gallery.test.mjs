@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
+  buildVideoTaskGalleryStatuses,
   buildVideoVersionChains,
   createVideoGallerySession,
   normalizeVideoGalleryItem,
@@ -56,6 +57,29 @@ test('versions group by chat and stable root while preserving attempt order', ()
   const chain = chains.find((item) => item.chatKey === 'chat-a');
   assert.deepEqual(chain.items.map((item) => item.attempt), [1, 2]);
   assert.equal(chain.latest.assetId, 'video-asset-b');
+});
+
+test('task summaries are local-only, concise, and hide already archived successes', () => {
+  const task = (state, extra = {}) => ({
+    taskId: `task-${state}`, shotId: 'shot-a', state, attempt: 1,
+    owner: { chatKey: 'chat-a', floor: null, messageId: 'message-a' },
+    timing: { createdAt: 1000, updatedAt: 2000 },
+    ...extra,
+  });
+  const statuses = buildVideoTaskGalleryStatuses([
+    task('submitted'),
+    task('polling', { progress: { percent: 62 } }),
+    task('failed', { failure: { retryable: true, chargeState: 'unknown', message: 'private diagnostics' } }),
+    task('succeeded', { result: { assetId: 'archived-asset' } }),
+    task('succeeded', { taskId: 'task-missing-media', result: { assetId: 'missing-asset' } }),
+  ], ['archived-asset']);
+  assert.deepEqual(statuses.map((item) => item.taskId), ['task-failed', 'task-missing-media', 'task-polling', 'task-submitted']);
+  assert.equal(statuses.find((item) => item.taskId === 'task-submitted').statusLabel, '待核对提交');
+  assert.equal(statuses.find((item) => item.taskId === 'task-polling').progress, 62);
+  assert.equal(statuses.find((item) => item.taskId === 'task-failed').retryable, true);
+  assert.equal(statuses.find((item) => item.taskId === 'task-missing-media').statusLabel, '成片待归档');
+  assert.equal(statuses.every((item) => item.owner.floor === null), true);
+  assert.doesNotMatch(JSON.stringify(statuses), /private diagnostics|idempotency|remoteTaskId/);
 });
 
 test('the playback session reads Blobs only on demand and reference-counts Object URLs', async () => {
@@ -114,8 +138,9 @@ test('chat ownership is checked before exposing a playable URL and deletion revo
 test('the dynamic gallery ships as an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(source, /videoGallery:\s*\{[\s\S]*import\('\.\/qianmu-video-gallery\.js\?v=1\.58\.57'\)/);
+  assert.match(source, /videoGallery:\s*\{[\s\S]*import\('\.\/qianmu-video-gallery\.js\?v=1\.58\.58'\)/);
+  assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/qianmu-video-store\.js\?v=1\.58\.58'\)/);
   assert.ok(release.files.includes('qianmu-video-gallery.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
-  assert.doesNotMatch(initSource, /featureRuntime\.load\('videoGallery'\)/);
+  assert.doesNotMatch(initSource, /featureRuntime\.load\('videoGallery'\)|featureRuntime\.load\('videoStore'\)/);
 });

@@ -63,10 +63,11 @@ function idempotencyKey(taskId, attempt) {
 
 function normalizeOwner(value = {}) {
   const raw = plain(value) ? value : {};
-  const floor = Number(raw.floor);
+  const rawFloor = raw.floor;
+  const floor = Number(rawFloor);
   return {
     chatKey: text(raw.chatKey || raw.chat_key, 512),
-    floor: Number.isInteger(floor) && floor >= 0 ? floor : null,
+    floor: rawFloor !== '' && rawFloor !== null && rawFloor !== undefined && Number.isInteger(floor) && floor >= 0 ? floor : null,
     messageId: text(raw.messageId || raw.message_id, 200),
   };
 }

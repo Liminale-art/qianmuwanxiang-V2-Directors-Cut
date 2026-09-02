@@ -27,6 +27,18 @@ test('motion storage is loaded only in the selected gallery view and never at st
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('export async function onActivate'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoGallery'\)|storyboardRefreshVideoGallery/);
   assert.match(source, /featureRuntime\.load\('videoGallery'\)/);
+  assert.match(source, /featureRuntime\.load\('videoStore'\)/);
+  assert.match(source, /storyboardVideoTaskStore\.listTasks\(chatKey, \{ limit: 200 \}\)/);
+});
+
+test('task status is read from local storage without polling or submission', () => {
+  const refreshStart = source.indexOf('async function storyboardRefreshVideoGallery');
+  const openStart = source.indexOf('async function storyboardOpenVideoViewer', refreshStart);
+  const refreshBlock = source.slice(refreshStart, openStart);
+  assert.match(source, /function renderStoryboardVideoTaskShelf\(tasks = \[\], warning = ''\)/);
+  assert.match(source, /待核对提交|动态任务/);
+  assert.doesNotMatch(refreshBlock, /\.drive\(|\.submit\(|resumePlans|pollMiniMax|setInterval|setTimeout/);
+  assert.match(refreshBlock, /Promise\.allSettled\(\[mediaPromise, taskPromise\]\)/);
 });
 
 test('playback URLs are released on close, chat switch, modal close and extension cleanup', () => {

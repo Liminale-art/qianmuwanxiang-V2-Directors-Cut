@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.57';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.57';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.57';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.57';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.58';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.58';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.58';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.58';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,83 +151,83 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.57';
+} from './qianmu-storyboard.js?v=1.58.58';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.57';
+const VERSION = '1.58.58';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.57'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.58'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.58.57').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.58.58').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.57'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.58'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.57'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.58'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.58.57'),
+    load: () => import('./qianmu-video-contract.js?v=1.58.58'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.58.57'),
+    load: () => import('./qianmu-video-task.js?v=1.58.58'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.58.57'),
+    load: () => import('./qianmu-video-budget.js?v=1.58.58'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.58.57'),
+    load: () => import('./qianmu-video-minimax.js?v=1.58.58'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.58.57'),
+    load: () => import('./qianmu-video-runtime.js?v=1.58.58'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.58.57'),
+    load: () => import('./qianmu-video-store.js?v=1.58.58'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.58.57'),
+    load: () => import('./qianmu-video-result.js?v=1.58.58'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.58.57'),
+    load: () => import('./qianmu-video-gallery.js?v=1.58.58'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.58.57'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.58.58'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.58.57'),
+    load: () => import('./qianmu-video-media.js?v=1.58.58'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.57'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.58'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.57'),
-        import('./qianmu-theaters.js?v=1.58.57'),
+        import('./builtin-theaters.js?v=1.58.58'),
+        import('./qianmu-theaters.js?v=1.58.58'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -1072,10 +1072,11 @@ let storyboardLightboxEl = null;
 let storyboardGalleryKind = 'stills';
 let storyboardVideoGalleryVisibleCount = 24;
 let storyboardVideoGallerySession = null;
+let storyboardVideoTaskStore = null;
 let storyboardVideoViewerEl = null;
 let storyboardVideoPlayback = null;
 const storyboardVideoGalleryRuntime = {
-  chatKey: '', status: 'idle', requestId: 0, chains: [], error: '',
+  chatKey: '', status: 'idle', requestId: 0, chains: [], tasks: [], error: '', mediaError: '', taskError: '',
 };
 let initialized = false;
 let duplicateRuntimeWarned = false;
@@ -13142,10 +13143,21 @@ function storyboardVideoMetaLabel(item) {
   return [item?.technical?.resolution || '', duration ? `${duration} 秒` : '', item?.technical?.audioMode ? '含声' : ''].filter(Boolean).join(' · ') || '本地成片';
 }
 
+function renderStoryboardVideoTaskShelf(tasks = [], warning = '') {
+  const items = Array.isArray(tasks) ? tasks : [];
+  if (!items.length && !warning) return '';
+  return `<section class="sd-card sd-storyboard-video-tasks"><header><span><span class="sd-storyboard-kicker">QUEUE</span><h3>动态任务</h3></span><b>${items.length}</b></header>${warning ? `<p class="sd-storyboard-video-warning"><i class="fa-solid fa-triangle-exclamation"></i>${htmlEscape(warning)}</p>` : ''}${items.length ? `<div>${items.map((item) => {
+    const floor = Number.isInteger(item.owner.floor) ? `第 ${item.owner.floor} 层` : '阅片室';
+    const suffix = [item.attempt > 1 ? `第 ${item.attempt} 次` : '', item.progress > 0 ? `${item.progress}%` : '', item.retryable ? '可重试' : '', item.chargeUnknown ? '费用待核对' : ''].filter(Boolean).join(' · ');
+    return `<article class="sd-storyboard-video-task is-${htmlEscape(item.tone)}"><span class="sd-storyboard-video-task-status">${htmlEscape(item.statusLabel)}</span><strong>${htmlEscape(floor)}</strong>${suffix ? `<small>${htmlEscape(suffix)}</small>` : ''}<time>${htmlEscape(formatDateTime(item.updatedAt))}</time></article>`;
+  }).join('')}</div>` : ''}</section>`;
+}
+
 function renderStoryboardVideoGallery() {
   const chatKey = String(getChatKey() || '');
-  const current = storyboardVideoGalleryRuntime.chatKey === chatKey ? storyboardVideoGalleryRuntime : { status: 'idle', chains: [], error: '' };
+  const current = storyboardVideoGalleryRuntime.chatKey === chatKey ? storyboardVideoGalleryRuntime : { status: 'idle', chains: [], tasks: [], error: '', mediaError: '', taskError: '' };
   const chains = Array.isArray(current.chains) ? current.chains : [];
+  const tasks = Array.isArray(current.tasks) ? current.tasks : [];
   const visible = chains.slice(0, storyboardVideoGalleryVisibleCount);
   const content = current.status === 'loading'
     ? '<section class="sd-card sd-storyboard-video-empty is-loading"><i class="fa-solid fa-spinner fa-spin"></i><p>正在读取本地动态成片…</p></section>'
@@ -13158,7 +13170,9 @@ function renderStoryboardVideoGallery() {
           return `<article class="sd-storyboard-video-card" data-storyboard-video-asset="${htmlEscape(item.assetId)}"><button type="button" class="sd-storyboard-video-open ${storyboardVideoRatioClass(item.technical.ratio)}" aria-label="播放${htmlEscape(floor)}动态成片"><span><i class="fa-solid fa-play"></i></span><em>${htmlEscape(item.technical.ratio || 'AUTO')}</em>${chain.count > 1 ? `<b>${chain.count} 版</b>` : ''}</button><div><strong>${htmlEscape(floor)}</strong><span>${htmlEscape(storyboardVideoMetaLabel(item))}</span><small>${htmlEscape(formatDateTime(item.updatedAt || item.createdAt))}</small></div></article>`;
         }).join('')}</div>${chains.length > visible.length ? `<button type="button" class="sd-btn sd-storyboard-video-more">再显示 ${Math.min(24, chains.length - visible.length)} 组</button>` : ''}`
         : '<section class="sd-card sd-storyboard-video-empty"><i class="fa-solid fa-film"></i><p>当前聊天还没有本地动态成片。</p></section>';
-  return `<div class="sd-storyboard-gallery-page sd-storyboard-video-page">${renderStoryboardGalleryKindSwitch()}<section class="sd-card sd-storyboard-gallery-head sd-storyboard-video-head"><div class="sd-storyboard-gallery-title"><span><span class="sd-storyboard-kicker">MOTION</span><h3>动态阅片室</h3></span><b>${chains.length}</b></div><button type="button" class="sd-icon-btn sd-storyboard-video-refresh" title="刷新本地成片" aria-label="刷新本地成片" ${current.status === 'loading' ? 'disabled' : ''}><i class="fa-solid fa-rotate"></i></button></section>${content}</div>`;
+  const taskWarning = current.taskError ? '部分任务状态暂时无法读取。' : '';
+  const mediaWarning = current.mediaError && current.status !== 'error' ? '<p class="sd-storyboard-video-warning"><i class="fa-solid fa-triangle-exclamation"></i>部分本地成片暂时无法读取。</p>' : '';
+  return `<div class="sd-storyboard-gallery-page sd-storyboard-video-page">${renderStoryboardGalleryKindSwitch()}<section class="sd-card sd-storyboard-gallery-head sd-storyboard-video-head"><div class="sd-storyboard-gallery-title"><span><span class="sd-storyboard-kicker">MOTION</span><h3>动态阅片室</h3></span><b>${chains.length}</b></div><button type="button" class="sd-icon-btn sd-storyboard-video-refresh" title="刷新本地成片与任务状态" aria-label="刷新本地成片与任务状态" ${current.status === 'loading' ? 'disabled' : ''}><i class="fa-solid fa-rotate"></i></button></section>${renderStoryboardVideoTaskShelf(tasks, taskWarning)}${mediaWarning}${content}</div>`;
 }
 
 function storyboardCloseVideoViewer() {
@@ -13171,7 +13185,7 @@ function storyboardCloseVideoViewer() {
 async function storyboardRefreshVideoGallery({ rerender = false, force = false } = {}) {
   const chatKey = String(getChatKey() || '');
   if (!chatKey) {
-    Object.assign(storyboardVideoGalleryRuntime, { chatKey: '', status: 'ready', chains: [], error: '' });
+    Object.assign(storyboardVideoGalleryRuntime, { chatKey: '', status: 'ready', chains: [], tasks: [], error: '', mediaError: '', taskError: '' });
     if (rerender) renderModal();
     return [];
   }
@@ -13179,20 +13193,33 @@ async function storyboardRefreshVideoGallery({ rerender = false, force = false }
     return storyboardVideoGalleryRuntime.chains;
   }
   const requestId = storyboardVideoGalleryRuntime.requestId + 1;
-  Object.assign(storyboardVideoGalleryRuntime, { chatKey, status: 'loading', requestId, chains: [], error: '' });
+  Object.assign(storyboardVideoGalleryRuntime, { chatKey, status: 'loading', requestId, chains: [], tasks: [], error: '', mediaError: '', taskError: '' });
   if (rerender && storyboardGalleryKind === 'motion') renderModal();
   try {
     const runtime = await featureRuntime.load('videoGallery');
     if (!storyboardVideoGallerySession) storyboardVideoGallerySession = runtime.createVideoGallerySession(blobStore);
-    const items = await storyboardVideoGallerySession.list(chatKey, { limit: 300 });
-    const chains = runtime.buildVideoVersionChains(items);
+    const mediaPromise = storyboardVideoGallerySession.list(chatKey, { limit: 300 });
+    const taskPromise = featureRuntime.load('videoStore').then((storeRuntime) => {
+      if (!storyboardVideoTaskStore) storyboardVideoTaskStore = storeRuntime.createVideoRuntimeStoreAdapter(blobStore);
+      return storyboardVideoTaskStore.listTasks(chatKey, { limit: 200 });
+    });
+    const [mediaResult, taskResult] = await Promise.allSettled([mediaPromise, taskPromise]);
+    if (mediaResult.status === 'rejected' && taskResult.status === 'rejected') throw new Error('video gallery stores are unavailable');
+    const mediaItems = mediaResult.status === 'fulfilled' ? mediaResult.value : [];
+    const chains = runtime.buildVideoVersionChains(mediaItems);
+    const availableIds = mediaItems.flatMap((item) => [item.assetId, item.recordId]);
+    const tasks = runtime.buildVideoTaskGalleryStatuses(taskResult.status === 'fulfilled' ? taskResult.value : [], availableIds, { limit: 40 });
     if (requestId !== storyboardVideoGalleryRuntime.requestId || chatKey !== String(getChatKey() || '')) return [];
-    Object.assign(storyboardVideoGalleryRuntime, { chatKey, status: 'ready', chains, error: '' });
+    Object.assign(storyboardVideoGalleryRuntime, {
+      chatKey, status: 'ready', chains, tasks, error: '',
+      mediaError: mediaResult.status === 'rejected' ? 'video_media_unavailable' : '',
+      taskError: taskResult.status === 'rejected' ? 'video_tasks_unavailable' : '',
+    });
     if (rerender && activeTab === 'imagegen' && storyboardState().view === 'gallery' && storyboardGalleryKind === 'motion') renderModal();
     return chains;
   } catch (_) {
     if (requestId !== storyboardVideoGalleryRuntime.requestId) return [];
-    Object.assign(storyboardVideoGalleryRuntime, { chatKey, status: 'error', chains: [], error: '动态成片仓暂时无法读取。' });
+    Object.assign(storyboardVideoGalleryRuntime, { chatKey, status: 'error', chains: [], tasks: [], error: '动态成片与任务仓暂时无法读取。', mediaError: 'video_media_unavailable', taskError: 'video_tasks_unavailable' });
     if (rerender && activeTab === 'imagegen' && storyboardState().view === 'gallery' && storyboardGalleryKind === 'motion') renderModal();
     return [];
   }
@@ -29351,7 +29378,8 @@ function cleanupRuntime(resetSettings = false) {
       storyboardCloseVideoViewer();
       storyboardVideoGallerySession?.dispose?.();
       storyboardVideoGallerySession = null;
-      Object.assign(storyboardVideoGalleryRuntime, { chatKey: '', status: 'idle', requestId: storyboardVideoGalleryRuntime.requestId + 1, chains: [], error: '' });
+      storyboardVideoTaskStore = null;
+      Object.assign(storyboardVideoGalleryRuntime, { chatKey: '', status: 'idle', requestId: storyboardVideoGalleryRuntime.requestId + 1, chains: [], tasks: [], error: '', mediaError: '', taskError: '' });
     });
     clean('focus clock', () => stopFocusClockRuntime());
     clean('notes', () => {
