@@ -594,6 +594,23 @@ function utf8ByteLength(value) {
   return bytes;
 }
 
+function readerBucketScope(key, value = {}) {
+  const rawKey = String(key ?? '');
+  const bookId = String(value?.bookId || '').trim();
+  const suffix = bookId ? `::${bookId}` : '';
+  if (suffix && rawKey.endsWith(suffix)) return rawKey.slice(0, -suffix.length);
+  const separator = rawKey.lastIndexOf('::');
+  return separator > 0 ? rawKey.slice(0, separator) : '';
+}
+
+function storageRecordChatKey(name, key, value) {
+  if (name === STORE_TTS_LINES) return String(key ?? '').trim().slice(0, 512);
+  if (name === STORE_CHATS || name === STORE_VECTORS) return readerBucketScope(key, value).slice(0, 512);
+  if (name === STORE_STORYBOARD_INBOX) return String(value?.chatKey || '').trim().slice(0, 512);
+  if (name === STORE_AUDIO) return String(value?.meta?.chatKey || '').trim().slice(0, 512);
+  return '';
+}
+
 // 估算 structured-clone 值的有效载荷大小。Blob/ArrayBuffer 使用真实字节数，
 // 普通对象逐字段累加，不把二进制 stringify 成巨型字符串。仅用于容量可视化，
 // 浏览器最终占用仍以 navigator.storage.estimate() 的整个 ST 来源统计为准。
@@ -629,18 +646,27 @@ async function estimateStoreUsage(name) {
   const s = await store(name, 'readonly');
   let count = 0;
   let bytes = 0;
+  const scopeMap = new Map();
   await new Promise((resolve, reject) => {
     const cursor = s.openCursor();
     cursor.onsuccess = () => {
       const current = cursor.result;
       if (!current) { resolve(); return; }
       count++;
-      bytes += estimateStoredValueBytes(current.key) + estimateStoredValueBytes(current.value);
+      const recordBytes = estimateStoredValueBytes(current.key) + estimateStoredValueBytes(current.value);
+      bytes += recordBytes;
+      const chatKey = storageRecordChatKey(name, current.key, current.value);
+      if (chatKey) {
+        const scope = scopeMap.get(chatKey) || { chatKey, count: 0, bytes: 0 };
+        scope.count++;
+        scope.bytes += recordBytes;
+        scopeMap.set(chatKey, scope);
+      }
       current.continue();
     };
     cursor.onerror = () => reject(cursor.error);
   });
-  return { name, ...info, count, bytes };
+  return { name, ...info, count, bytes, scopes: [...scopeMap.values()].sort((left, right) => right.bytes - left.bytes) };
 }
 
 export async function estimateBlobStoreUsage() {
@@ -648,17 +674,26 @@ export async function estimateBlobStoreUsage() {
   const stores = [];
   for (const name of Object.keys(STORAGE_STORE_INFO)) stores.push(await estimateStoreUsage(name));
   const categoryMap = new Map();
+  const chatScopeMap = new Map();
   for (const item of stores) {
     const current = categoryMap.get(item.category) || { category: item.category, count: 0, bytes: 0, recoverableBytes: 0 };
     current.count += item.count;
     current.bytes += item.bytes;
     if (item.recoverable) current.recoverableBytes += item.bytes;
     categoryMap.set(item.category, current);
+    for (const scope of item.scopes || []) {
+      const currentScope = chatScopeMap.get(scope.chatKey) || { chatKey: scope.chatKey, count: 0, bytes: 0, stores: [] };
+      currentScope.count += scope.count;
+      currentScope.bytes += scope.bytes;
+      currentScope.stores.push({ name: item.name, label: item.label, count: scope.count, bytes: scope.bytes, recoverable: item.recoverable });
+      chatScopeMap.set(scope.chatKey, currentScope);
+    }
   }
   return {
     available: true,
     stores,
     categories: [...categoryMap.values()],
+    chatScopes: [...chatScopeMap.values()].sort((left, right) => right.bytes - left.bytes),
     totalBytes: stores.reduce((sum, item) => sum + item.bytes, 0),
     recoverableBytes: stores.reduce((sum, item) => sum + (item.recoverable ? item.bytes : 0), 0),
   };

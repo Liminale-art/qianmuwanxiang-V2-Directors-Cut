@@ -96,11 +96,11 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.31';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.32';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.31';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.31';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.31';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.32';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.32';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.32';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,28 +151,28 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.31';
+} from './qianmu-storyboard.js?v=1.58.32';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.31';
+const VERSION = '1.58.32';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.31'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.32'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.31'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.32'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.31'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.32'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.31'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.32'),
   },
 });
 function directImageRuntime() {
@@ -7130,6 +7130,7 @@ function openStorageCleanupDialog(data) {
       label: item.label || item.name,
       bytes: (Number(item.bytes) || 0) + (item.name === 'tts_lines' ? Number(data?.portableTtsBytes) || 0 : 0),
       count: Number(item.count) || 0,
+      scopeCount: Array.isArray(item.scopes) ? item.scopes.length : 0,
     })),
     ...(Number(data?.orphanReaderBlobs?.count) > 0 ? [{
       id: '__orphan_reader_blobs__',
@@ -7153,7 +7154,7 @@ function openStorageCleanupDialog(data) {
       <header><div><h3>选择清理模块</h3><p>这里列出千幕各功能保存的本地项目；带“不可恢复”的内容由你决定是否删除。</p></div><button type="button" class="sd-icon-btn sd-storage-cleanup-close" title="取消" aria-label="取消"><i class="fa-solid fa-xmark"></i></button></header>
       <div class="sd-storage-cleanup-list">${modules.map((item) => {
         const [risk, destructive] = STORAGE_ITEM_RISK[item.id] || ['本地项目', true];
-        return `<label class="${destructive ? 'is-destructive' : ''}"><input type="checkbox" value="${htmlEscape(item.id)}" ${item.bytes > 0 ? '' : 'disabled'}><span><span><b>${htmlEscape(item.label)}</b><em>${htmlEscape(risk)}</em></span><small>${htmlEscape(formatStorageBytes(item.bytes))}${item.count ? ` · ${item.count} 项` : ''}</small></span></label>`;
+        return `<label class="${destructive ? 'is-destructive' : ''}"><input type="checkbox" value="${htmlEscape(item.id)}" ${item.bytes > 0 ? '' : 'disabled'}><span><span><b>${htmlEscape(item.label)}</b><em>${htmlEscape(risk)}</em></span><small>${htmlEscape(formatStorageBytes(item.bytes))}${item.count ? ` · ${item.count} 项` : ''}${item.scopeCount ? ` · ${item.scopeCount} 个聊天` : ''}</small></span></label>`;
       }).join('')}</div>
       <footer><button type="button" class="sd-btn sd-storage-cleanup-cancel">取消</button><button type="button" class="sd-btn sd-primary sd-storage-cleanup-confirm" disabled><i class="fa-solid fa-trash-can"></i>清理所选</button></footer>
     </section>`;
