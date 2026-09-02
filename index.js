@@ -1,6 +1,4 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import { BUILTIN_THEATERS, BUILTIN_THEATER_FOLDER } from './builtin-theaters.js';
-import { QIANMU_THEATERS, QIANMU_THEATER_FOLDER } from './qianmu-theaters.js';
 import {
   clone,
   isPlainObject,
@@ -97,11 +95,11 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.36';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.37';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.36';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.36';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.36';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.37';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.37';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.37';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -154,28 +152,38 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.36';
+} from './qianmu-storyboard.js?v=1.58.37';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.36';
+const VERSION = '1.58.37';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.36'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.37'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.36'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.37'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.36'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.37'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.36'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.37'),
+  },
+  theaterCatalog: {
+    label: '内置剧札',
+    load: async () => {
+      const [zizi, qianmu] = await Promise.all([
+        import('./builtin-theaters.js?v=1.58.37'),
+        import('./qianmu-theaters.js?v=1.58.37'),
+      ]);
+      return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
+    },
   },
 });
 function directImageRuntime() {
@@ -209,6 +217,30 @@ const COREAD_ENABLED = true;
 // 开发库=true；正式库开放记忆前可置 false，只隐藏记忆相关 tab，不拆回重复入口。
 const COREAD_MEMORY_ENABLED = true;
 const COREAD_TEASER = '伴读 · 小火慢炖中……';   // 正式版点击图标时的预告文案
+const BUILTIN_THEATER_FOLDER = '吱吱小剧场';
+const QIANMU_THEATER_FOLDER = '千幕小剧场';
+let BUILTIN_THEATERS = [];
+let QIANMU_THEATERS = [];
+let theaterCatalogReady = false;
+let theaterCatalogLoading = null;
+let theaterCatalogError = '';
+async function ensureTheaterCatalog() {
+  if (theaterCatalogReady) return true;
+  if (theaterCatalogLoading) return theaterCatalogLoading;
+  theaterCatalogLoading = featureRuntime.load('theaterCatalog').then((catalog) => {
+    if (!Array.isArray(catalog?.builtinTheaters) || !Array.isArray(catalog?.qianmuTheaters)) throw new Error('内置剧札目录格式无效');
+    BUILTIN_THEATERS = catalog.builtinTheaters;
+    QIANMU_THEATERS = catalog.qianmuTheaters;
+    theaterCatalogReady = true;
+    theaterCatalogError = '';
+    seedBuiltinTheaters();
+    return true;
+  }).catch((error) => {
+    theaterCatalogError = error?.message || String(error);
+    return false;
+  }).finally(() => { theaterCatalogLoading = null; });
+  return theaterCatalogLoading;
+}
 const SETTINGS_PANEL_ID = 'story-director-settings';
 const MODAL_ID = 'story-director-modal';
 const FLOAT_ID = 'story-director-float';
@@ -27385,6 +27417,15 @@ function theaterScriptLibraryCfg() {
 }
 
 function renderTheaterTab() {
+  if (!theaterCatalogReady) {
+    if (!theaterCatalogLoading && !theaterCatalogError) {
+      void ensureTheaterCatalog().then(() => {
+        if (activeTab === 'theater' && document.getElementById(MODAL_ID)?.classList.contains('open')) renderModal();
+      });
+    }
+    const failed = Boolean(theaterCatalogError);
+    return `<section class="sd-card sd-theater-catalog-state"><h3>幕外</h3><p class="sd-muted">${failed ? `内置剧札载入失败：${htmlEscape(theaterCatalogError)}` : '正在载入内置剧札…'}</p>${failed ? '<button type="button" class="sd-btn sd-theater-catalog-retry"><i class="fa-solid fa-rotate"></i>重新载入</button>' : ''}</section>`;
+  }
   if (theaterView?.mode === 'read') return renderTheaterReadView(theaterView.scene);
   if (theaterView?.mode === 'favorites') return renderTheaterFavoritesView();
   const t = getTheater();
@@ -27767,6 +27808,17 @@ function openTheaterFavorites() {
 }
 
 function bindTheaterTabEvents(root) {
+  const retryCatalog = root.querySelector('.sd-theater-catalog-retry');
+  if (retryCatalog) {
+    retryCatalog.addEventListener('click', async () => {
+      theaterCatalogError = '';
+      retryCatalog.disabled = true;
+      await ensureTheaterCatalog();
+      if (activeTab === 'theater') renderModal();
+    });
+    return;
+  }
+  if (!theaterCatalogReady) return;
   // 阅读 / 收藏夹 内嵌视图
   if (theaterView) {
     root.querySelector('.sd-theater-reader-back')?.addEventListener('click', () => {
@@ -28304,7 +28356,6 @@ function init() {
       .then(() => rerenderIfOpen())
       .catch((error) => console.warn(`[${MODULE_NAME}] persona initialization failed`, error));
     applyProseLayout();
-    seedBuiltinTheaters();
     renderSettingsPanel();
     renderFloatButton();
     bindQuickDockCapture();
