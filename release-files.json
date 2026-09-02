@@ -36,6 +36,7 @@
     "qianmu-video-contract.js",
     "qianmu-video-budget.js",
     "qianmu-video-gateway.js",
+    "qianmu-video-gallery.js",
     "qianmu-video-minimax.js",
     "qianmu-video-result.js",
     "qianmu-video-runtime.js",

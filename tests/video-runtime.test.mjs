@@ -278,6 +278,9 @@ test('completed media is archived idempotently while task storage keeps only sta
   assert.equal(complete.task.result.assetId, 'video-asset-a');
   assert.equal(complete.task.budget.settlement, 'committed');
   assert.match(archiveInput.idempotencyKey, /video-task-.*attempt-1/);
+  assert.equal(archiveInput.attempt, 1);
+  assert.equal(archiveInput.versionRootId, complete.task.taskId);
+  assert.equal(archiveInput.budgetReservationId, complete.task.budget.reservationId);
   assert.equal(archiveInput.downloadUrl, 'https://media.example/result.mp4');
   assert.doesNotMatch(JSON.stringify(complete.task), /media\.example|downloadUrl|private-payg-key/);
 });
@@ -355,7 +358,7 @@ test('the client runtime ships as an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   assert.doesNotMatch(source, /^import[^\n]*qianmu-video-runtime\.js/m);
-  assert.match(source, /minimaxH3Runtime:\s*\{[\s\S]*import\('\.\/qianmu-video-runtime\.js\?v=1\.58\.53'\)/);
+  assert.match(source, /minimaxH3Runtime:\s*\{[\s\S]*import\('\.\/qianmu-video-runtime\.js\?v=1\.58\.54'\)/);
   assert.ok(release.files.includes('qianmu-video-runtime.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('minimaxH3Runtime'\)/);

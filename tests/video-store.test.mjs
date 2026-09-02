@@ -137,8 +137,8 @@ test('storage UI identifies video records as destructive and the adapter stays i
   assert.match(source, /video_media: \['不可恢复 · H3 动态成片', true\]/);
   assert.match(source, /STORAGE_CHAT_CLEARABLE[^\n]*video_tasks[^\n]*video_budget[^\n]*video_media/);
   assert.doesNotMatch(source, /^import[^\n]*qianmu-video-store\.js/m);
-  assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/qianmu-video-store\.js\?v=1\.58\.53'\)/);
-  assert.match(source, /videoResult:\s*\{[\s\S]*import\('\.\/qianmu-video-result\.js\?v=1\.58\.53'\)/);
+  assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/qianmu-video-store\.js\?v=1\.58\.54'\)/);
+  assert.match(source, /videoResult:\s*\{[\s\S]*import\('\.\/qianmu-video-result\.js\?v=1\.58\.54'\)/);
   assert.ok(release.files.includes('qianmu-video-store.js'));
   assert.ok(release.files.includes('qianmu-video-result.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));

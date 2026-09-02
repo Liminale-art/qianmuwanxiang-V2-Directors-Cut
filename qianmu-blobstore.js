@@ -842,6 +842,11 @@ export function normalizeVideoMediaMeta(value = {}) {
     recordId: String(raw.recordId || raw.record_id || '').trim().slice(0, 200),
     taskId: String(raw.taskId || raw.task_id || '').trim().slice(0, 200),
     shotId: String(raw.shotId || raw.shot_id || '').trim().slice(0, 200),
+    versionRootId: String(raw.versionRootId || raw.version_root_id || '').trim().slice(0, 200),
+    parentRecordId: String(raw.parentRecordId || raw.parent_record_id || '').trim().slice(0, 200),
+    manifestId: String(raw.manifestId || raw.manifest_id || '').trim().slice(0, 200),
+    budgetReservationId: String(raw.budgetReservationId || raw.budget_reservation_id || '').trim().slice(0, 200),
+    attempt: Math.round(Math.min(99, Math.max(1, Number(raw.attempt) || 1))),
     chatKey: String(raw.chatKey || raw.chat_key || '').trim().slice(0, 512),
     floor: Math.round(boundedVideoMediaNumber(raw.floor, 1_000_000)),
     messageId: String(raw.messageId || raw.message_id || '').trim().slice(0, 200),
@@ -849,6 +854,10 @@ export function normalizeVideoMediaMeta(value = {}) {
     durationSeconds: boundedVideoMediaNumber(raw.durationSeconds || raw.duration_seconds, 3600),
     resolution: String(raw.resolution || '').trim().slice(0, 40),
     ratio: String(raw.ratio || '').trim().slice(0, 40),
+    audioMode: String(raw.audioMode || raw.audio_mode || '').trim().slice(0, 80),
+    referenceAssetIds: [...new Set((Array.isArray(raw.referenceAssetIds || raw.reference_asset_ids)
+      ? (raw.referenceAssetIds || raw.reference_asset_ids) : [])
+      .map((item) => String(item || '').trim().slice(0, 200)).filter(Boolean))].slice(0, 12),
     mimeType: String(raw.mimeType || raw.mime_type || '').trim().toLowerCase().slice(0, 100),
     size: Math.round(boundedVideoMediaNumber(raw.size, VIDEO_MEDIA_MAX_BYTES)),
     createdAt: Math.round(boundedVideoMediaNumber(raw.createdAt || raw.created_at, Number.MAX_SAFE_INTEGER)),
