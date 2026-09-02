@@ -96,10 +96,10 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.20';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.21';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.20';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.20';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.21';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.21';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_COMPOSITION_RULE_ID,
@@ -139,24 +139,43 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
-} from './qianmu-storyboard.js?v=1.58.20';
+} from './qianmu-storyboard.js?v=1.58.21';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.20';
+const VERSION = '1.58.21';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.20'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.21'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.20'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.21'),
+  },
+  productionPacket: {
+    label: '第二摄影机制片包',
+    load: () => import('./qianmu-production-packet.js?v=1.58.21'),
   },
 });
 function directImageRuntime() {
   return featureRuntime.load('imageDirect');
+}
+let directorProductionPacketState = { chatKey: '', updatedAt: '', packets: [], error: '' };
+async function refreshDirectorProductionPackets(plan, context = {}) {
+  const chatKey = String(context.chatKey || '');
+  try {
+    const runtime = await featureRuntime.load('productionPacket');
+    const packets = runtime.adaptDirectorPlanToProductionPackets(plan, context);
+    if (chatKey && chatKey !== String(getChatKey() || '')) return [];
+    directorProductionPacketState = { chatKey, updatedAt: new Date().toISOString(), packets, error: '' };
+    return packets;
+  } catch (error) {
+    directorProductionPacketState = { chatKey, updatedAt: new Date().toISOString(), packets: [], error: error?.message || String(error) };
+    console.warn('[千幕] 第二摄影机制片包暂不可用，不影响本次推演结果。', error);
+    return [];
+  }
 }
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
@@ -3332,6 +3351,7 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     store.planAtLen = Array.isArray(ctx().chat) ? ctx().chat.length : 0;            // 记下推演时的聊天长度：若日后删楼回退到此长度之前，则注入的暗线已悬空，自动清空待下次推演
     if (settings.geopoliticsEnabled) mergeGeopolitics(store, newPlan);   // 活幕·势：承接势力格局/世界事件档案
     delete newPlan.factions; delete newPlan.faction_relations; delete newPlan.world_events;   // 已并入 store（唯一真源），从 plan 剔除避免重复注入
+    void refreshDirectorProductionPackets(newPlan, { chatKey: getChatKey(), floor: store.lastPlanIdx, sceneId: newPlan.story_status?.title || '', time: newPlan.story_status?.cycle || '' });
     // 历史快照须在剔除活档案字段之后再 clone：world 格局/伏笔是跨幕累积的活档案，绝不能随「载入历史」回滚复活，
     // 否则旧 factions/world_events/threads 会被重新塞回 store.plan、经【上次审片状态】喂回模型，导致清空后仍复刻旧格局。
     store.history = [{ id: uid('hist'), createdAt: now, plan: clone(newPlan) }, ...(Array.isArray(store.history) ? store.history : [])].slice(0, 5);
@@ -6892,7 +6912,7 @@ function runtimeHealthSnapshot() {
   if (chatBytes >= 1024 * 1024) warnings.push('当前聊天数据已超过 1 MB');
   if (performanceRuntime.modalRenderLastMs >= 50) warnings.push('最近一次界面重绘超过 50 ms');
   if (performanceRuntime.lastNodeCount >= 3500) warnings.push('当前千幕界面节点较多');
-  return { observers, timers, settingsBytes, chatBytes, renderAverageMs, lazyFeatures, warnings };
+  return { observers, timers, settingsBytes, chatBytes, renderAverageMs, lazyFeatures, productionPackets: directorProductionPacketState.packets.length, warnings };
 }
 
 function renderRuntimeHealthCard() {
@@ -6913,6 +6933,7 @@ function renderRuntimeHealthCard() {
           <span>重绘 / 打开<b>${htmlEscape(performanceRuntime.modalRenderCount)} / ${htmlEscape(performanceRuntime.modalOpenCount)}</b></span>
           <span>设置数据<b>${htmlEscape(formatStorageBytes(snapshot.settingsBytes))}</b></span>
           <span>当前聊天<b>${htmlEscape(formatStorageBytes(snapshot.chatBytes))}</b></span>
+          <span>制片包缓存<b>${htmlEscape(snapshot.productionPackets)}</b></span>
           <span>增强服务<b class="sd-optional-service-label" data-status="${htmlEscape(optionalServiceState.status)}">${htmlEscape(optionalServiceLabel())}</b></span>
         </div>
         <p class="sd-runtime-health-line"><span>活动观察器 ${snapshot.observers.length}</span>${htmlEscape(snapshot.observers.join(' · ') || '无')}</p>
