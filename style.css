@@ -5712,6 +5712,42 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   min-width: 0;
   margin: 0;
 }
+#story-director-modal .sd-storyboard-openai-compat {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--sd-border) 82%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--sd-glass-weak) 74%, transparent);
+  overflow: hidden;
+}
+#story-director-modal .sd-storyboard-openai-compat > summary {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  color: var(--sd-muted);
+  cursor: pointer;
+}
+#story-director-modal .sd-storyboard-openai-compat > summary > span { font-size: 12px; font-weight: 650; }
+#story-director-modal .sd-storyboard-openai-compat > summary > small { font-size: 10px; font-weight: 500; }
+#story-director-modal .sd-storyboard-openai-compat-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--sd-hairline) 70%, transparent);
+}
+#story-director-modal .sd-storyboard-openai-compat-body > label,
+#story-director-modal .sd-storyboard-openai-compat-body > div:not(.sd-storyboard-grid) {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--sd-muted);
+  font-size: 12px;
+}
+#story-director-modal .sd-storyboard-openai-capability-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+#story-director-modal .sd-storyboard-openai-headers { min-height: 58px !important; resize: vertical; }
 #story-director-modal .sd-storyboard-connection-result {
   margin: 0;
   padding: 9px 11px;

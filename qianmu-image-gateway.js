@@ -3,6 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { inflateRawSync } from 'node:zlib';
+import {
+  filterOpenAIProviderOptions,
+  normalizeOpenAICompatibleHeaders,
+  normalizeOpenAIImageCompatibility,
+  openAICompatibilityAllows,
+} from './qianmu-openai-image-compat.js';
 
 const MAX_PROMPT_LENGTH = 32_000;
 const MAX_NEGATIVE_LENGTH = 16_000;
@@ -37,7 +43,7 @@ export const IMAGE_GATEWAY_PROVIDERS = Object.freeze({
     id: 'banana', label: 'Banana', defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta', protocol: 'gemini', requiresKey: true,
   }),
   openai: Object.freeze({
-    id: 'openai', label: 'GPT Image', defaultBaseUrl: 'https://api.openai.com/v1', protocol: 'openai-images', requiresKey: true,
+    id: 'openai', label: '自定义（兼容 OpenAI）', defaultBaseUrl: 'https://api.openai.com/v1', protocol: 'openai-images', requiresKey: true,
   }),
   seedream: Object.freeze({
     id: 'seedream', label: 'Doubao Seedream', defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3', protocol: 'ark-images', requiresKey: true,
@@ -168,6 +174,7 @@ export function sanitizeImageRequest(input) {
   const references = normalizeReferences(source.referenceImages || source.references, referenceBudget);
   const vibes = normalizeReferences(source.vibes, referenceBudget);
   const workflow = plainObject(parameters.workflow || source.workflow);
+  const compatibility = provider === 'openai' ? normalizeOpenAIImageCompatibility(source.compatibility) : null;
   return {
     provider,
     apiKey,
@@ -178,6 +185,10 @@ export function sanitizeImageRequest(input) {
     negativePrompt: asString(source.negativePrompt, MAX_NEGATIVE_LENGTH),
     references,
     vibes,
+    ...(compatibility ? {
+      compatibility,
+      customHeaders: normalizeOpenAICompatibleHeaders(source.customHeaders, compatibility),
+    } : {}),
     parameters: {
       width: clampNumber(parameters.width, 64, 8192, undefined, true),
       height: clampNumber(parameters.height, 64, 8192, undefined, true),
@@ -520,42 +531,45 @@ export function extractZipImages(buffer) {
 
 async function generateOpenAI(request, base, fetchImpl) {
   const hasReferences = request.references.length > 0;
-  const url = endpoint(base, hasReferences ? 'images/edits' : 'images/generations');
+  const compatibility = normalizeOpenAIImageCompatibility(request.compatibility);
+  const url = endpoint(base, hasReferences ? compatibility.endpoints.edit : compatibility.endpoints.generation);
   let body;
   let headers;
   if (hasReferences) {
     body = new FormData();
-    const providerOptions = { ...request.parameters.providerOptions };
-    delete providerOptions.image;
-    delete providerOptions['image[]'];
+    const providerOptions = filterOpenAIProviderOptions(request.parameters.providerOptions, compatibility);
     for (const [key, value] of Object.entries(providerOptions)) {
       if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) body.append(key, String(value));
     }
     body.append('model', request.model);
     body.append('prompt', combinedPrompt(request));
-    body.append('n', String(request.parameters.count));
-    if (request.parameters.size) body.append('size', request.parameters.size);
-    if (request.parameters.quality) body.append('quality', request.parameters.quality);
-    if (request.parameters.background) body.append('background', request.parameters.background);
-    if (request.parameters.outputFormat) body.append('output_format', request.parameters.outputFormat);
-    for (const reference of request.references) body.append('image[]', new Blob([Buffer.from(reference.data, 'base64')], { type: reference.mime }), reference.name);
-    headers = authHeaders(request);
+    if (openAICompatibilityAllows(compatibility, 'n')) body.append('n', String(request.parameters.count));
+    if (request.parameters.size && openAICompatibilityAllows(compatibility, 'size')) body.append('size', request.parameters.size);
+    if (request.parameters.quality && openAICompatibilityAllows(compatibility, 'quality')) body.append('quality', request.parameters.quality);
+    if (request.parameters.background && openAICompatibilityAllows(compatibility, 'background')) body.append('background', request.parameters.background);
+    if (request.parameters.outputFormat && openAICompatibilityAllows(compatibility, 'output_format')) body.append('output_format', request.parameters.outputFormat);
+    const acceptedReferences = compatibility.referenceField === 'image' ? request.references.slice(0, 1) : request.references;
+    for (const reference of acceptedReferences) body.append(compatibility.referenceField, new Blob([Buffer.from(reference.data, 'base64')], { type: reference.mime }), reference.name);
+    headers = authHeaders(request, normalizeOpenAICompatibleHeaders(request.customHeaders, compatibility));
   } else {
     const options = {
-      ...request.parameters.providerOptions,
-      model: request.model, prompt: combinedPrompt(request), n: request.parameters.count,
-      ...(request.parameters.size ? { size: request.parameters.size } : {}),
-      ...(request.parameters.quality ? { quality: request.parameters.quality } : {}),
-      ...(request.parameters.background ? { background: request.parameters.background } : {}),
-      ...(request.parameters.outputFormat ? { output_format: request.parameters.outputFormat } : {}),
+      ...filterOpenAIProviderOptions(request.parameters.providerOptions, compatibility),
+      model: request.model, prompt: combinedPrompt(request),
+      ...(openAICompatibilityAllows(compatibility, 'n') ? { n: request.parameters.count } : {}),
+      ...(request.parameters.size && openAICompatibilityAllows(compatibility, 'size') ? { size: request.parameters.size } : {}),
+      ...(request.parameters.quality && openAICompatibilityAllows(compatibility, 'quality') ? { quality: request.parameters.quality } : {}),
+      ...(request.parameters.background && openAICompatibilityAllows(compatibility, 'background') ? { background: request.parameters.background } : {}),
+      ...(request.parameters.outputFormat && openAICompatibilityAllows(compatibility, 'output_format') ? { output_format: request.parameters.outputFormat } : {}),
     };
     body = JSON.stringify(options);
-    headers = authHeaders(request, { 'Content-Type': 'application/json' });
+    headers = authHeaders(request, { ...normalizeOpenAICompatibleHeaders(request.customHeaders, compatibility), 'Content-Type': 'application/json' });
   }
   const response = await fetchUpstream(url, { method: 'POST', headers, body }, request, fetchImpl);
   const json = parseUpstreamJson(await readLimited(response));
-  const images = normalizeImageData((json.data || json.images || []).map((item) => ({
-    data: item.b64_json || item.b64 || item.base64 || '', url: item.url || '', mime: item.mime_type || `image/${request.parameters.outputFormat || 'png'}`,
+  const responseKinds = new Set(compatibility.responseKinds);
+  const images = normalizeImageData((json.data || json.images || json.output || []).map((item) => ({
+    data: (responseKinds.has('b64_json') && item.b64_json) || (responseKinds.has('base64') && (item.b64 || item.base64 || item.data)) || '',
+    url: responseKinds.has('url') ? item.url || '' : '', mime: item.mime_type || `image/${request.parameters.outputFormat || 'png'}`,
   })));
   return { images, text: '', upstreamId: asString(json.id || response.headers.get('x-request-id'), 240) };
 }
@@ -827,6 +841,10 @@ export async function checkImageConnection(input, options = {}) {
   const validatedBase = await validateGatewayBaseUrl(source.baseUrl || definition.defaultBaseUrl, { allowPrivateNetwork, resolveHost: options.resolveHost || dnsLookup });
   const base = normalizeProviderBase(validatedBase, provider);
   const model = asString(source.model, 240);
+  const compatibility = provider === 'openai' ? normalizeOpenAIImageCompatibility(source.compatibility) : null;
+  if (provider === 'openai' && compatibility.modelDiscovery === 'off') {
+    return { ok: true, provider, model, verified: false, message: '已保存连接；当前预设关闭模型列表探测，请以首次生图验证 Key 与模型名' };
+  }
   let url;
   let headers = {};
   if (provider === 'comfy') url = endpoint(base, 'system_stats');
@@ -841,7 +859,10 @@ export async function checkImageConnection(input, options = {}) {
     url = endpoint(base, isOfficialGemini && model ? `models/${encodeURIComponent(model)}` : 'models');
     headers = { 'x-goog-api-key': apiKey };
   }
-  else { url = endpoint(base, 'models'); headers = authHeaders({ apiKey }); }
+  else {
+    url = endpoint(base, compatibility?.endpoints.models || 'models');
+    headers = authHeaders({ apiKey }, normalizeOpenAICompatibleHeaders(source.customHeaders, compatibility));
+  }
   const request = { apiKey, parameters: { timeoutMs: 20_000 } };
   try {
     const response = await fetchUpstream(url, { method: 'GET', headers }, request, options.fetchImpl || fetch);
@@ -852,6 +873,9 @@ export async function checkImageConnection(input, options = {}) {
     // 但不能证明令牌有效；与实际生图分开说明，避免把可用连接误判为失败。
     if (provider === 'novel' && Number(error?.upstreamStatus) === 404) {
       return { ok: true, provider, model, verified: false, message: '地址可达；该服务未开放连接探测，请以首次生图校验令牌' };
+    }
+    if (provider === 'openai' && Number(error?.upstreamStatus) === 404 && compatibility.modelDiscovery !== 'required') {
+      return { ok: true, provider, model, verified: false, message: '地址可达，但未提供模型列表；请以首次生图验证 Key 与模型名' };
     }
     throw error;
   }
@@ -870,6 +894,10 @@ export async function listImageModels(input, options = {}) {
     resolveHost: options.resolveHost || dnsLookup,
   });
   const base = normalizeProviderBase(validatedBase, provider);
+  const compatibility = provider === 'openai' ? normalizeOpenAIImageCompatibility(source.compatibility) : null;
+  if (provider === 'openai' && compatibility.modelDiscovery === 'off') {
+    return finalizeModelList(provider, [], { source: 'disabled' });
+  }
   const request = { apiKey, parameters: { timeoutMs: 20_000 } };
   const fetchImpl = options.fetchImpl || fetch;
 
@@ -897,13 +925,15 @@ export async function listImageModels(input, options = {}) {
     return finalizeModelList(provider, models, { source: 'remote' });
   }
 
-  const headers = provider === 'banana' ? { 'x-goog-api-key': apiKey } : authHeaders({ apiKey });
+  const headers = provider === 'banana'
+    ? { 'x-goog-api-key': apiKey }
+    : authHeaders({ apiKey }, provider === 'openai' ? normalizeOpenAICompatibleHeaders(source.customHeaders, compatibility) : {});
   const models = [];
   let nextPageToken = '';
   let pages = 0;
   let truncated = false;
   do {
-    const url = endpoint(base, 'models');
+    const url = endpoint(base, provider === 'openai' ? compatibility.endpoints.models : 'models');
     if (provider === 'banana') {
       url.searchParams.set('pageSize', '1000');
       if (nextPageToken) url.searchParams.set('pageToken', nextPageToken);

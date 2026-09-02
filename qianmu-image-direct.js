@@ -1,6 +1,13 @@
 // 千幕 · 浏览器生图直连适配层
 // 只放置已确认允许浏览器跨域请求的渠道；统一网关仍作为 CORS/网络受限时的回退。
 
+import {
+  filterOpenAIProviderOptions,
+  normalizeOpenAICompatibleHeaders,
+  normalizeOpenAIImageCompatibility,
+  openAICompatibilityAllows,
+} from './qianmu-openai-image-compat.js';
+
 const MAX_IMAGES = 8;
 const NAI_IMAGE_RE = /\.(?:png|jpe?g|webp)$/i;
 
@@ -144,11 +151,19 @@ export async function checkDirectImageConnection(input = {}, { fetchImpl = globa
   if (provider === 'novel') { url = novelDirectEndpoint(input.baseUrl, 'user/subscription'); headers.Authorization = `Bearer ${apiKey}`; }
   else if (provider === 'banana') { url = providerEndpoint(input.baseUrl, input.model ? `models/${encodeURIComponent(input.model)}` : 'models', provider); headers['x-goog-api-key'] = apiKey; }
   else if (provider === 'comfy') { url = providerEndpoint(input.baseUrl, 'system_stats', provider); if (apiKey) headers.Authorization = `Bearer ${apiKey}`; }
-  else { url = providerEndpoint(input.baseUrl, 'models', provider); headers.Authorization = `Bearer ${apiKey}`; }
+  else {
+    const compatibility = normalizeOpenAIImageCompatibility(input.compatibility);
+    if (compatibility.modelDiscovery === 'off') {
+      providerEndpoint(input.baseUrl, compatibility.endpoints.generation, provider);
+      return { ok: true, verified: false, transport: 'configured', message: '已保存连接；当前预设关闭模型列表探测，请以首次生图验证 Key 与模型名' };
+    }
+    url = providerEndpoint(input.baseUrl, compatibility.endpoints.models, provider);
+    headers = { Authorization: `Bearer ${apiKey}`, ...normalizeOpenAICompatibleHeaders(input.customHeaders, compatibility) };
+  }
   const response = await directFetch(url, { method: 'GET', headers, signal: input.signal }, fetchImpl);
   // 第三方兼容站常常只实现生图端点；探测端点 404 代表地址可达，不再误报成连接失败。
   if (provider === 'novel' && response.status === 404) return { ok: true, verified: false, transport: 'direct', message: '地址可达，但未提供订阅检查；请以首次生图验证 Key' };
-  if (provider === 'openai' && response.status === 404) return { ok: true, verified: false, transport: 'direct', message: '地址可达，但未提供模型列表；请以首次生图验证 Key 与模型名' };
+  if (provider === 'openai' && response.status === 404 && normalizeOpenAIImageCompatibility(input.compatibility).modelDiscovery !== 'required') return { ok: true, verified: false, transport: 'direct', message: '地址可达，但未提供模型列表；请以首次生图验证 Key 与模型名' };
   if (!response.ok) await responseError(response, `${provider} 连接失败`);
   if (provider !== 'novel') return { ok: true, verified: true, transport: 'direct', message: `连接通过 · ${input.model || provider}` };
   const data = await response.json().catch(() => ({}));
@@ -285,13 +300,15 @@ async function generateNovelDirect(input, fetchImpl, unzipImpl, waitImpl) {
   };
 }
 
-function normalizeJsonImages(data) {
-  const rows = Array.isArray(data?.images) ? data.images : Array.isArray(data?.data) ? data.data : [];
+function normalizeJsonImages(data, compatibility = {}) {
+  const profile = normalizeOpenAIImageCompatibility(compatibility);
+  const responseKinds = new Set(profile.responseKinds);
+  const rows = Array.isArray(data?.images) ? data.images : Array.isArray(data?.data) ? data.data : Array.isArray(data?.output) ? data.output : [];
   return rows.slice(0, MAX_IMAGES).map((item, index) => ({
     id: text(item?.id || `image-${index + 1}`, 160),
     mime: text(item?.mime || item?.mime_type || 'image/png', 80),
-    data: text(item?.data || item?.base64 || item?.b64_json, 48 * 1024 * 1024),
-    url: text(item?.url, 4096),
+    data: text((responseKinds.has('base64') && (item?.data || item?.base64)) || (responseKinds.has('b64_json') && item?.b64_json), 48 * 1024 * 1024),
+    url: responseKinds.has('url') ? text(item?.url, 4096) : '',
     width: Number(item?.width) || undefined,
     height: Number(item?.height) || undefined,
   })).filter((item) => item.data || /^https?:\/\//i.test(item.url));
@@ -315,40 +332,41 @@ function directResult(images, response, started, extra = {}) {
 
 async function generateOpenAIDirect(input, fetchImpl) {
   const started = Date.now(), parameters = directParameters(input), references = directReferences(input);
-  const headers = { Authorization: `Bearer ${text(input.apiKey, 2048)}` };
+  const compatibility = normalizeOpenAIImageCompatibility(input.compatibility);
+  const headers = { Authorization: `Bearer ${text(input.apiKey, 2048)}`, ...normalizeOpenAICompatibleHeaders(input.customHeaders, compatibility) };
   let body;
   if (references.length) {
     body = new FormData();
-    const providerOptions = { ...parameters.providerOptions };
-    delete providerOptions.image;
-    delete providerOptions['image[]'];
+    const providerOptions = filterOpenAIProviderOptions(parameters.providerOptions, compatibility);
     for (const [key, value] of Object.entries(providerOptions)) {
       if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) body.append(key, String(value));
     }
     body.append('model', input.model);
     body.append('prompt', combinedPrompt(input));
-    body.append('n', String(parameters.count));
-    if (parameters.size) body.append('size', String(parameters.size));
-    if (parameters.quality) body.append('quality', String(parameters.quality));
-    if (parameters.background) body.append('background', String(parameters.background));
-    if (parameters.outputFormat) body.append('output_format', String(parameters.outputFormat));
-    for (const reference of references) body.append('image[]', new Blob([base64ToBytes(reference.data)], { type: reference.mime }), reference.name);
+    if (openAICompatibilityAllows(compatibility, 'n')) body.append('n', String(parameters.count));
+    if (parameters.size && openAICompatibilityAllows(compatibility, 'size')) body.append('size', String(parameters.size));
+    if (parameters.quality && openAICompatibilityAllows(compatibility, 'quality')) body.append('quality', String(parameters.quality));
+    if (parameters.background && openAICompatibilityAllows(compatibility, 'background')) body.append('background', String(parameters.background));
+    if (parameters.outputFormat && openAICompatibilityAllows(compatibility, 'output_format')) body.append('output_format', String(parameters.outputFormat));
+    const acceptedReferences = compatibility.referenceField === 'image' ? references.slice(0, 1) : references;
+    for (const reference of acceptedReferences) body.append(compatibility.referenceField, new Blob([base64ToBytes(reference.data)], { type: reference.mime }), reference.name);
   } else {
     headers['Content-Type'] = 'application/json';
     body = JSON.stringify({
-      ...parameters.providerOptions,
-      model: input.model, prompt: combinedPrompt(input), n: parameters.count,
-      ...(parameters.size ? { size: parameters.size } : {}),
-      ...(parameters.quality ? { quality: parameters.quality } : {}),
-      ...(parameters.background ? { background: parameters.background } : {}),
-      ...(parameters.outputFormat ? { output_format: parameters.outputFormat } : {}),
+      ...filterOpenAIProviderOptions(parameters.providerOptions, compatibility),
+      model: input.model, prompt: combinedPrompt(input),
+      ...(openAICompatibilityAllows(compatibility, 'n') ? { n: parameters.count } : {}),
+      ...(parameters.size && openAICompatibilityAllows(compatibility, 'size') ? { size: parameters.size } : {}),
+      ...(parameters.quality && openAICompatibilityAllows(compatibility, 'quality') ? { quality: parameters.quality } : {}),
+      ...(parameters.background && openAICompatibilityAllows(compatibility, 'background') ? { background: parameters.background } : {}),
+      ...(parameters.outputFormat && openAICompatibilityAllows(compatibility, 'output_format') ? { output_format: parameters.outputFormat } : {}),
     });
   }
-  const response = await directFetch(providerEndpoint(input.baseUrl, references.length ? 'images/edits' : 'images/generations', 'openai'), {
+  const response = await directFetch(providerEndpoint(input.baseUrl, references.length ? compatibility.endpoints.edit : compatibility.endpoints.generation, 'openai'), {
     method: 'POST', headers, body, signal: input.signal,
   }, fetchImpl);
   const data = await responseJson(response, 'OpenAI 生图失败');
-  return directResult(normalizeJsonImages(data), response, started, { upstreamId: data.id || '' });
+  return directResult(normalizeJsonImages(data, compatibility), response, started, { upstreamId: data.id || '' });
 }
 
 async function generateBananaDirect(input, fetchImpl) {

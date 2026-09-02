@@ -96,10 +96,15 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.22';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.23';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.22';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.22';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.23';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.23';
+import {
+  normalizeOpenAIImageCompatibility,
+  parseOpenAICompatibleHeaders,
+  serializeOpenAICompatibleHeaders,
+} from './qianmu-openai-image-compat.js';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_COMPOSITION_RULE_ID,
@@ -139,24 +144,24 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
-} from './qianmu-storyboard.js?v=1.58.22';
+} from './qianmu-storyboard.js?v=1.58.23';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.22';
+const VERSION = '1.58.23';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.22'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.23'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.22'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.23'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.22'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.23'),
   },
 });
 function directImageRuntime() {
@@ -10945,6 +10950,32 @@ function storyboardProviderProfile(state, providerId = state.source) {
   };
 }
 
+function renderStoryboardOpenAICompatibility(connection) {
+  const compatibility = normalizeOpenAIImageCompatibility(connection?.compatibility);
+  const responses = new Set(compatibility.responseKinds);
+  const parameters = new Set(compatibility.allowedParameters);
+  const optionKeys = (compatibility.providerOptionKeys || []).join(', ');
+  const customHeaders = serializeOpenAICompatibleHeaders(connection?.headers, compatibility);
+  const responseLabels = { b64_json: 'b64_json', base64: 'base64', url: 'URL' };
+  const parameterLabels = { n: '多图 n', size: '尺寸', quality: '质量', background: '背景', output_format: '格式' };
+  return `<details class="sd-storyboard-openai-compat">
+    <summary><span>兼容能力</span><small>第三方端点按需调整</small></summary>
+    <div class="sd-storyboard-openai-compat-body">
+      <div class="sd-storyboard-grid sd-storyboard-grid-two">
+        <label><span>生成端点</span><input class="text_pole sd-storyboard-openai-generation-endpoint" value="${htmlEscape(compatibility.endpoints.generation)}" spellcheck="false"></label>
+        <label><span>编辑端点</span><input class="text_pole sd-storyboard-openai-edit-endpoint" value="${htmlEscape(compatibility.endpoints.edit)}" spellcheck="false"></label>
+        <label><span>模型列表</span><select class="text_pole sd-storyboard-openai-model-discovery"><option value="optional" ${compatibility.modelDiscovery === 'optional' ? 'selected' : ''}>可选探测</option><option value="off" ${compatibility.modelDiscovery === 'off' ? 'selected' : ''}>不探测</option><option value="required" ${compatibility.modelDiscovery === 'required' ? 'selected' : ''}>必须可用</option></select></label>
+        <label><span>参考图字段</span><select class="text_pole sd-storyboard-openai-reference-field"><option value="image[]" ${compatibility.referenceField === 'image[]' ? 'selected' : ''}>image[] · 多图</option><option value="image" ${compatibility.referenceField === 'image' ? 'selected' : ''}>image · 单图</option></select></label>
+      </div>
+      <label><span>模型列表端点</span><input class="text_pole sd-storyboard-openai-models-endpoint" value="${htmlEscape(compatibility.endpoints.models)}" spellcheck="false"></label>
+      <div><span>可接收返回</span><div class="sd-storyboard-openai-capability-chips">${['b64_json', 'base64', 'url'].map((kind) => `<label class="sd-option-chip"><input type="checkbox" class="sd-storyboard-openai-response-kind" value="${kind}" ${responses.has(kind) ? 'checked' : ''}><span>${responseLabels[kind]}</span></label>`).join('')}</div></div>
+      <div><span>可发送参数</span><div class="sd-storyboard-openai-capability-chips">${['n', 'size', 'quality', 'background', 'output_format'].map((key) => `<label class="sd-option-chip"><input type="checkbox" class="sd-storyboard-openai-parameter" value="${key}" ${parameters.has(key) ? 'checked' : ''}><span>${parameterLabels[key]}</span></label>`).join('')}</div></div>
+      <label><span>额外字段白名单</span><input class="text_pole sd-storyboard-openai-provider-options" value="${htmlEscape(optionKeys)}" spellcheck="false"></label>
+      <label><span>自定义请求头</span><textarea class="text_pole sd-storyboard-openai-headers" spellcheck="false">${htmlEscape(customHeaders)}</textarea></label>
+    </div>
+  </details>`;
+}
+
 function storyboardCompilerProfileOptions(state) {
   return (settings.apiProfiles || []).map((item) => `<option value="${htmlEscape(item.id)}" ${state.promptCompiler.apiProfileId === item.id ? 'selected' : ''}>${htmlEscape(item.name || item.model || '未命名预设')}</option>`).join('');
 }
@@ -10968,6 +10999,7 @@ function renderStoryboardModelCard(state) {
       <div class="sd-storyboard-preset-field"><span>API 预设${activePreset ? `<small>已载入 · ${htmlEscape(connection.active?.name || '')}</small>` : ''}</span><div class="sd-storyboard-connection-preset-row"><select class="text_pole sd-storyboard-connection-preset"><option value="">选择生图 API 预设</option>${presetOptions}</select><button type="button" class="sd-icon-btn sd-storyboard-save-connection-preset" title="保存当前渠道的 API 预设" aria-label="保存当前渠道的 API 预设"><i class="fa-solid fa-bookmark"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-connection-preset" ${activePreset ? '' : 'disabled'} title="删除所选 API 预设" aria-label="删除所选 API 预设"><i class="fa-solid fa-trash-can"></i></button></div></div>
       <label><span>API 地址</span><input class="text_pole sd-storyboard-base-url" value="${htmlEscape(profile.baseUrl)}" placeholder="${htmlEscape(provider.defaultBaseUrl || 'http://127.0.0.1:8188')}"></label>
       <label><span>${state.source === 'comfy' ? '访问令牌（可选）' : 'API Key'}</span><input class="text_pole sd-storyboard-api-key-memory" type="password" autocomplete="new-password" value="${htmlEscape(storyboardDraftApiKeys.get(state.source) || '')}" placeholder="输入 API Key"></label>
+      ${state.source === 'openai' ? renderStoryboardOpenAICompatibility(connection.draft) : ''}
       ${state.source === 'comfy' ? `<label class="sd-switch-row"><span>允许本地网络</span><input type="checkbox" class="sd-storyboard-private-network" ${(connection.active?.options?.allowPrivateNetwork ?? connection.group?.draft?.options?.allowPrivateNetwork) ? 'checked' : ''}></label><label><span>API Workflow</span><textarea class="text_pole sd-storyboard-workflow" placeholder="粘贴 ComfyUI API Workflow JSON">${htmlEscape(typeof profile.comfyWorkflow === 'string' && profile.comfyWorkflow.trim().startsWith('{') ? profile.comfyWorkflow : '')}</textarea></label><div class="sd-storyboard-workflow-warning sd-storyboard-connection-result failed" ${profile.comfyWorkflowNotice ? '' : 'hidden'}><i class="fa-solid fa-triangle-exclamation"></i><span>${htmlEscape(profile.comfyWorkflowNotice || '')}</span></div>` : ''}
       ${check ? `<div class="sd-storyboard-connection-result ${check.ok ? (check.verified === false ? 'partial' : 'ok') : 'failed'}"><i class="fa-solid ${check.ok && check.verified !== false ? 'fa-circle-check' : 'fa-triangle-exclamation'}"></i><span>${htmlEscape(check.message)}</span></div>` : ''}
       <div class="sd-storyboard-model-actions"><button type="button" class="sd-btn sd-storyboard-check-connection">测试连接</button><button type="button" class="sd-btn sd-primary sd-storyboard-save-connection">保存连接</button></div>
@@ -12099,6 +12131,10 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
       id: connection?.id || '', credentialId, baseUrl: String(connection?.baseUrl || ''),
       model: String(providerProfile.model || ''),
       allowPrivateNetwork: Boolean(connection?.options?.allowPrivateNetwork ?? connectionState.group?.draft?.options?.allowPrivateNetwork),
+      ...(sourceId === 'openai' ? {
+        compatibility: clone(connection?.compatibility || connectionState.group?.draft?.compatibility || {}),
+        headers: clone(connection?.headers || connectionState.group?.draft?.headers || {}),
+      } : {}),
     },
   };
   return {
@@ -12430,6 +12466,23 @@ function storyboardCaptureWorkbench(root, sourceId = storyboardState().source, {
     connection.draft.baseUrl = String(root.querySelector('.sd-storyboard-base-url')?.value || connection.draft.baseUrl || STORYBOARD_PROVIDER_REGISTRY[sourceId]?.defaultBaseUrl || '').trim();
     connection.draft.options ||= {};
     connection.draft.options.allowPrivateNetwork = Boolean(root.querySelector('.sd-storyboard-private-network')?.checked);
+    if (sourceId === 'openai') {
+      const parsedHeaders = parseOpenAICompatibleHeaders(root.querySelector('.sd-storyboard-openai-headers')?.value || '');
+      connection.draft.compatibility = normalizeOpenAIImageCompatibility({
+        modelDiscovery: root.querySelector('.sd-storyboard-openai-model-discovery')?.value,
+        referenceField: root.querySelector('.sd-storyboard-openai-reference-field')?.value,
+        endpoints: {
+          models: root.querySelector('.sd-storyboard-openai-models-endpoint')?.value,
+          generation: root.querySelector('.sd-storyboard-openai-generation-endpoint')?.value,
+          edit: root.querySelector('.sd-storyboard-openai-edit-endpoint')?.value,
+        },
+        responseKinds: [...root.querySelectorAll('.sd-storyboard-openai-response-kind:checked')].map((field) => field.value),
+        allowedParameters: [...root.querySelectorAll('.sd-storyboard-openai-parameter:checked')].map((field) => field.value),
+        providerOptionKeys: String(root.querySelector('.sd-storyboard-openai-provider-options')?.value || '').split(/[,，\n]+/),
+        customHeaderNames: parsedHeaders.names,
+      });
+      connection.draft.headers = parsedHeaders.headers;
+    }
   }
   const workflowResult = sourceId === 'comfy'
     ? storyboardCaptureComfyWorkflow(root, profile)
@@ -12575,6 +12628,10 @@ async function storyboardCheckConnection(root) {
     const request = {
       provider: sourceId, apiKey, baseUrl: profile.baseUrl, model: profile.model,
       allowPrivateNetwork: Boolean(state.connections[sourceId]?.draft?.options?.allowPrivateNetwork),
+      ...(sourceId === 'openai' ? {
+        compatibility: clone(state.connections[sourceId]?.draft?.compatibility || {}),
+        customHeaders: clone(state.connections[sourceId]?.draft?.headers || {}),
+      } : {}),
     };
     const directImage = await directImageRuntime();
     let data = null;
@@ -12709,6 +12766,10 @@ async function storyboardSaveConnectionPreset(root) {
     name, providerId: sourceId, baseUrl, model: String(profile.model || ''),
     customModel: Boolean(STORYBOARD_PROVIDER_REGISTRY[sourceId]?.customModelId && !getStoryboardModel(sourceId, profile.model)),
     credentialId, options: { allowPrivateNetwork: Boolean(group.draft.options?.allowPrivateNetwork) },
+    ...(sourceId === 'openai' ? {
+      compatibility: normalizeOpenAIImageCompatibility(group.draft.compatibility),
+      headers: clone(group.draft.headers || {}),
+    } : {}),
     updatedAt: now,
   });
   if (!group.presets.some((item) => item.id === target.id)) group.presets.push(target);
@@ -13337,6 +13398,10 @@ function storyboardGatewayRequest(job, apiKey, assets) {
   return {
     provider: job.source, apiKey, baseUrl: job.connection?.baseUrl, model: job.profile?.model || job.connection?.model,
     allowPrivateNetwork: Boolean(job.connection?.allowPrivateNetwork), prompt: job.payload?.prompt,
+    ...(job.source === 'openai' ? {
+      compatibility: clone(job.connection?.compatibility || {}),
+      customHeaders: clone(job.connection?.headers || {}),
+    } : {}),
     negativePrompt: job.payload?.negative || '', referenceImages: assets.references, vibes: assets.vibes,
     parameters,
   };
@@ -14343,7 +14408,7 @@ function bindStoryboardTabEvents(root) {
     };
     const workflowField = root.querySelector('.sd-storyboard-workflow');
     workflowField?.addEventListener('input', () => { workflowField.dataset.storyboardWorkflowEdited = 'true'; });
-    root.querySelectorAll('.sd-storyboard-prompt, .sd-storyboard-negative, .sd-storyboard-floor, .sd-storyboard-field, .sd-storyboard-base-url, .sd-storyboard-workflow').forEach((field) => {
+    root.querySelectorAll('.sd-storyboard-prompt, .sd-storyboard-negative, .sd-storyboard-floor, .sd-storyboard-field, .sd-storyboard-base-url, .sd-storyboard-workflow, .sd-storyboard-openai-compat input, .sd-storyboard-openai-compat select, .sd-storyboard-openai-compat textarea').forEach((field) => {
       field.addEventListener(field.type === 'checkbox' || field.tagName === 'SELECT' ? 'change' : 'input', saveDraft);
     });
   }

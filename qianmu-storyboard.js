@@ -1,5 +1,7 @@
+import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
+
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
-export const STORYBOARD_SCHEMA_VERSION = 19;
+export const STORYBOARD_SCHEMA_VERSION = 20;
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -167,7 +169,16 @@ const resolveStoryboardModelId = (providerId, value = '') => {
 
 const legacyProfile = () => ({ loaded: false, model: '', sampler: '', scheduler: '', width: '', height: '', ratio: '1:1', count: '', steps: '', cfg: '', seed: '', comfyUrl: '', comfyWorkflow: '', comfyWorkflowNotice: '', openaiStyle: '', openaiQuality: '', openaiBackground: '', openaiOutputFormat: '', imageSize: '', watermark: false, seedreamGuidanceScale: '', seedreamSequential: false, googleEnhance: false, novelCfgRescale: '', novelSm: false, novelSmDyn: false, novelDecrisper: false, novelVarietyBoost: false });
 const promptDraft = () => ({ compiled: '', negative: '', artistString: '', compiledAt: 0, compiledBy: '', userEditedCompiled: false, userEditedNegative: false, artistPositiveBaked: false, artistNegativeBaked: false, sourceSummary: [] });
-const connection = (id) => ({ providerId: id, activePresetId: '', presets: [], draft: { baseUrl: getStoryboardProvider(id).defaultBaseUrl, model: getStoryboardProvider(id).defaultModel } });
+const connection = (id) => ({
+  providerId: id,
+  activePresetId: '',
+  presets: [],
+  draft: {
+    baseUrl: getStoryboardProvider(id).defaultBaseUrl,
+    model: getStoryboardProvider(id).defaultModel,
+    ...(id === 'openai' ? { compatibility: normalizeOpenAIImageCompatibility(), headers: {} } : {}),
+  },
+});
 const routingDefaults = () => ({ enabled: false, mode: 'single', templateId: 'smart', frameStrategy: 'main_secondary', single: { providerId: 'novel', modelId: 'nai-diffusion-5-full', connectionPresetId: '', parameterPresetId: '' }, rules: [], maxShotsPerFloor: 3, confirmMultipleRequests: true, providerConcurrency: 1 });
 const automationDefaults = () => ({ autoCapture: true, autoGenerate: true });
 const compositionDefaults = () => ({
@@ -270,7 +281,15 @@ export function normalizeStoryboardConnectionProfile(value, providerId) {
   const r = obj(value) ? value : {}, requestedModel = str(r.model || provider.defaultModel, 240);
   const knownModel = getStoryboardModel(providerId, requestedModel);
   const modelId = resolveStoryboardModelId(providerId, requestedModel);
-  return { id: cleanId(r.id), name: str(r.name || '默认连接', 80) || '默认连接', providerId, baseUrl: str(r.baseUrl || provider.defaultBaseUrl, 2048), model: modelId, customModel: Boolean(provider.customModelId && !knownModel), credentialId: cleanId(r.credentialId), headers: safeRecord(r.headers), options: safeRecord(r.options), createdAt: pos(r.createdAt || r.updatedAt), updatedAt: pos(r.updatedAt) };
+  const compatibility = providerId === 'openai' ? normalizeOpenAIImageCompatibility(r.compatibility) : null;
+  return {
+    id: cleanId(r.id), name: str(r.name || '默认连接', 80) || '默认连接', providerId,
+    baseUrl: str(r.baseUrl || provider.defaultBaseUrl, 2048), model: modelId,
+    customModel: Boolean(provider.customModelId && !knownModel), credentialId: cleanId(r.credentialId),
+    headers: providerId === 'openai' ? normalizeOpenAICompatibleHeaders(r.headers, compatibility) : {},
+    ...(compatibility ? { compatibility } : {}), options: safeRecord(r.options),
+    createdAt: pos(r.createdAt || r.updatedAt), updatedAt: pos(r.updatedAt),
+  };
 }
 
 export function migrateStoryboardState(value) {
