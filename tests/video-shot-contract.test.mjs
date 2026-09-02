@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   QIANMU_H3_MODE_FAMILIES,
   QIANMU_H3_MODES,
+  QIANMU_H3_ASPECT_RATIOS,
   QIANMU_MULTIMODAL_MANIFEST_SCHEMA,
   QIANMU_VIDEO_SHOT_SCHEMA,
   buildStoryboardFrameManifest,
@@ -53,9 +54,12 @@ test('a normalized shot keeps character identity, wardrobe and performance in se
 test('duration and delivery defaults remain conservative for the first H3 phase', () => {
   assert.equal(normalizeVideoShotSpec({ durationSeconds: 1 }).durationSeconds, 4);
   assert.equal(normalizeVideoShotSpec({}).durationSeconds, 6);
+  assert.equal(normalizeVideoShotSpec({ durationSeconds: 5.6 }).durationSeconds, 6);
   assert.equal(normalizeVideoShotSpec({ durationSeconds: 99 }).durationSeconds, 15);
   assert.equal(normalizeVideoShotSpec({}).resolution, '768p');
   assert.equal(normalizeVideoShotSpec({}).fps, 24);
+  assert.equal(normalizeVideoShotSpec({}).aspectRatio, '16:9');
+  assert.ok(QIANMU_H3_ASPECT_RATIOS.includes('adaptive'));
 });
 
 test('auto routing selects text, first, last, first-last and full-reference modes deterministically', () => {
@@ -193,7 +197,7 @@ test('the unfinished video contract ships as an idle feature chunk, not a startu
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   assert.doesNotMatch(source, /^import[^\n]*qianmu-video-contract\.js/m);
-  assert.match(source, /videoContract:\s*\{[\s\S]*import\('\.\/qianmu-video-contract\.js\?v=1\.58\.48'\)/);
+  assert.match(source, /videoContract:\s*\{[\s\S]*import\('\.\/qianmu-video-contract\.js\?v=1\.58\.49'\)/);
   assert.ok(release.files.includes('qianmu-video-contract.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoContract'\)/);

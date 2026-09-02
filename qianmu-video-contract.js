@@ -3,6 +3,7 @@ export const QIANMU_VIDEO_SHOT_SCHEMA = 'qianmu.video-shot.v1';
 export const QIANMU_MULTIMODAL_MANIFEST_SCHEMA = 'qianmu.multimodal-asset-manifest.v1';
 export const QIANMU_H3_MODES = Object.freeze(['t2va', 'i2va', 'fl2va', 'l2va', 'ref2va']);
 export const QIANMU_H3_ROUTE_MODES = Object.freeze(['auto', ...QIANMU_H3_MODES]);
+export const QIANMU_H3_ASPECT_RATIOS = Object.freeze(['adaptive', '21:9', '16:9', '4:3', '1:1', '3:4', '9:16']);
 export const QIANMU_H3_MODE_FAMILIES = Object.freeze({
   t2va: 'fl2va',
   i2va: 'fl2va',
@@ -381,7 +382,7 @@ export function resolveH3VideoMode(specValue = {}, manifestValue = {}, requested
 
 export function normalizeVideoShotSpec(value = {}, manifestValue = {}) {
   const raw = plain(value) ? value : {};
-  const durationSeconds = clamp(raw.durationSeconds ?? raw.duration_seconds, 4, 15, 6);
+  const durationSeconds = Math.round(clamp(raw.durationSeconds ?? raw.duration_seconds, 4, 15, 6));
   const keyframesRaw = plain(raw.keyframes) ? raw.keyframes : {};
   const referencesRaw = plain(raw.references) ? raw.references : {};
   const cameraRaw = plain(raw.camera) ? raw.camera : {};
@@ -397,6 +398,9 @@ export function normalizeVideoShotSpec(value = {}, manifestValue = {}) {
     durationSeconds,
     fps: Math.round(clamp(raw.fps, 1, 60, 24)),
     resolution: RESOLUTIONS.includes(String(raw.resolution || '').toLowerCase()) ? String(raw.resolution).toLowerCase() : '768p',
+    aspectRatio: QIANMU_H3_ASPECT_RATIOS.includes(String(raw.aspectRatio || raw.aspect_ratio || '').toLowerCase())
+      ? String(raw.aspectRatio || raw.aspect_ratio).toLowerCase()
+      : '16:9',
     intent: {
       summary: text(raw.intent?.summary || raw.summary, 2000),
       scene: text(raw.intent?.scene || raw.scene, 2000),
