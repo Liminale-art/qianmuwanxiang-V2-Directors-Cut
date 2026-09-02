@@ -8234,15 +8234,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 }
 #story-director-modal .sd-titlebox > p { grid-area: tagline; flex: none; font-size: 9px !important; line-height: 1.15; letter-spacing: .12em; }
 #story-director-modal .sd-titlebox > h2 { grid-area: title; font-size: 20px !important; line-height: 1.05 !important; }
-#story-director-modal .sd-version-line { grid-area: version; min-height: 14px; display: inline-flex; align-items: center; }
 #story-director-modal .sd-version-tag { position: relative; min-height: 14px; padding: 0 6px !important; border-radius: 6px !important; font-size: 8.5px !important; line-height: 13px; cursor: pointer; }
-#story-director-modal .sd-version-new-dot {
-  position: absolute; right: -4px; top: -4px; width: 6px; height: 6px; border-radius: 50%;
-  background: #58c878; box-shadow: 0 0 0 2px var(--sd-sticky-bg), 0 0 8px rgba(88, 200, 120, .7);
-  animation: sd-version-notice 1.65s ease-in-out infinite;
-}
-#story-director-modal .sd-version-new-dot[hidden] { display: none; }
-@keyframes sd-version-notice { 50% { opacity: .42; transform: scale(.78); } }
 #story-director-modal .sd-tabs { padding-top: 6px; }
 
 /* 顶栏入口保持同框，分镜相机做光学校正。 */
@@ -8374,6 +8366,173 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #story-director-modal .sd-version-new-dot { animation: none; }
   .sd-reader-send-tip { transition: none; }
+}
+
+/* v1.58.14 · floating workspace stability and compact legacy header */
+#story-director-modal .sd-titlebox {
+  display: flex !important;
+  flex-flow: row wrap !important;
+  align-items: baseline !important;
+  justify-content: flex-start;
+  align-content: center;
+  column-gap: 8px !important;
+  row-gap: 2px !important;
+}
+#story-director-modal .sd-titlebox > h2 {
+  flex: 0 0 auto;
+  font-size: 20px !important;
+  line-height: 1.08 !important;
+}
+#story-director-modal .sd-titlebox > p {
+  flex: 1 0 100%;
+  font-size: 9px !important;
+  line-height: 1.2;
+  letter-spacing: .12em;
+}
+#story-director-modal .sd-version-tag {
+  position: relative;
+  align-self: center;
+  min-height: 16px;
+  padding: 0 7px !important;
+  border-radius: 7px !important;
+  font-size: 8.5px !important;
+  line-height: 15px;
+  cursor: pointer;
+}
+#story-director-modal .sd-version-tag.is-update-available {
+  border-color: color-mix(in srgb, var(--sd-accent) 72%, var(--sd-border)) !important;
+  background: color-mix(in srgb, var(--sd-accent) 18%, var(--sd-glass-weak)) !important;
+  color: var(--sd-accent) !important;
+  animation: sd-version-new-breathe 1.75s ease-in-out infinite;
+}
+@keyframes sd-version-new-breathe {
+  0%, 100% { opacity: .72; box-shadow: 0 0 0 rgba(0, 0, 0, 0); }
+  50% { opacity: 1; box-shadow: 0 0 10px color-mix(in srgb, var(--sd-accent) 42%, transparent); }
+}
+#story-director-modal .sd-header-actions :is(.sd-coread-shortcut, .sd-storyboard-shortcut, .sd-plug-shortcut, .sd-theme-btn, .sd-close) :is(i, .qm-glyph-icon) {
+  width: 20px !important;
+  height: 20px !important;
+  font-size: 20px !important;
+  transform: scale(1.08);
+}
+
+#qianmu-storage-cleanup-layer {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  transform: none !important;
+  overflow: hidden;
+  isolation: isolate;
+}
+#qianmu-storage-cleanup-layer .sd-storage-cleanup-backdrop {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  transform: none !important;
+}
+#qianmu-storage-cleanup-layer .sd-storage-cleanup-dialog {
+  position: relative !important;
+  inset: auto !important;
+  width: min(480px, 100%) !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  margin: auto !important;
+  transform: none !important;
+  display: flex;
+  flex-direction: column;
+}
+#qianmu-storage-cleanup-layer .sd-storage-cleanup-list {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+#qianmu-storage-cleanup-layer .sd-storage-cleanup-list label:has(input:disabled) {
+  opacity: .5;
+  cursor: default;
+}
+#qianmu-storage-cleanup-layer .sd-storage-cleanup-list label.is-destructive {
+  border-color: color-mix(in srgb, #d35c5c 34%, var(--sd-hairline));
+}
+#qianmu-storage-cleanup-layer .sd-storage-cleanup-list > label > span {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+#qianmu-storage-cleanup-layer .sd-storage-cleanup-list > label > span > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+#qianmu-storage-cleanup-layer .sd-storage-cleanup-list em {
+  color: var(--sd-muted);
+  font-size: 9.5px;
+  font-style: normal;
+}
+#qianmu-storage-cleanup-layer .sd-storage-cleanup-list .is-destructive em { color: #c65252; }
+
+#qianmu-notes-panel-layer {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  transform: none !important;
+  overflow: hidden;
+  isolation: isolate;
+}
+#qianmu-notes-panel-layer .sd-notes-stage {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  transform: none !important;
+  display: grid;
+  place-items: center !important;
+}
+#qianmu-notes-panel-layer .sd-notes-panel {
+  position: relative !important;
+  inset: auto !important;
+  max-width: 100%;
+  max-height: 100%;
+  margin: auto !important;
+  transform: none !important;
+}
+
+@media (max-width: 620px) {
+  #qianmu-storage-cleanup-layer {
+    padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  }
+  #qianmu-storage-cleanup-layer .sd-storage-cleanup-dialog {
+    width: 100% !important;
+    max-height: min(82dvh, 620px) !important;
+  }
+  #qianmu-notes-panel-layer .sd-notes-stage {
+    place-items: center !important;
+    padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  }
+  #qianmu-notes-panel-layer .sd-notes-panel {
+    width: 100%;
+    height: min(68dvh, 540px);
+    max-height: 100%;
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #story-director-modal .sd-version-tag.is-update-available { animation: none; }
 }

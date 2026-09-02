@@ -103,10 +103,10 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.13';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.14';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.13';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.13';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.14';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.14';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_COMPOSITION_RULE_ID,
@@ -146,20 +146,20 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
-} from './qianmu-storyboard.js?v=1.58.13';
+} from './qianmu-storyboard.js?v=1.58.14';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.13';
+const VERSION = '1.58.14';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.13'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.14'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.13'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.14'),
   },
 });
 function directImageRuntime() {
@@ -611,7 +611,6 @@ const DEFAULT_SETTINGS = Object.freeze({
   contextBudget: 1000000,
   streamEnabled: false,
   floatingButton: true,
-  seenVersion: '',
   quickDockEnabled: true,
   floatSize: null,   // null=沿用原响应式默认（桌面48 / 移动44）；用户拖动滑块后保存明确像素值
   floatPosition: { x: null, y: null },
@@ -929,6 +928,8 @@ let storyboardChatClickBound = false;
 let storageInventoryState = { status: 'idle', data: null, error: '', sampledAt: 0 };
 let optionalServiceState = { status: 'idle', available: false, version: '', services: [], message: '', checkedAt: 0 };
 let optionalServiceProbePromise = null;
+let qianmuUpdateState = { status: 'idle', available: false, checkedAt: 0 };
+let qianmuUpdatePromise = null;
 // 仅驻留于当前页面生命周期的轻量诊断，不写入 ST 设置、日志或聊天元数据。
 // 第一阶段先建立可量化基线，避免在没有证据时贸然拆分巨型入口造成回归链。
 const performanceRuntime = {
@@ -3913,6 +3914,7 @@ function openModal(tab) {
   modal.classList.add('open');
   document.body.classList.add('sd-qm-modal-open');   // 压制 ST 快捷回复栏：搜索框聚焦不再牵出 QR 栏（CSS 端按此类隐藏）
   renderModal();
+  void refreshQianmuUpdateStatus();
 }
 
 function closeModal() {
@@ -6016,6 +6018,12 @@ function renderNotesPanelPortal() {
   if (removeThemeSource) themeSource.remove();
   layer.style.setProperty('--sd-font', getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif');
   layer.innerHTML = renderNotesPanel();
+  const isolateFromHostMenus = (event) => event.stopPropagation();
+  layer.onpointerdown = isolateFromHostMenus;
+  layer.onpointerup = isolateFromHostMenus;
+  layer.onmousedown = isolateFromHostMenus;
+  layer.ontouchstart = isolateFromHostMenus;
+  layer.onclick = isolateFromHostMenus;
   applyQianmuIcons(layer);
   bindNotesPanelEvents(layer);
   return layer;
@@ -6063,15 +6071,20 @@ function renderFloatingNotes() {
 function bindFloatingNoteEvents(layer) {
   const entry = layer.querySelector('.sd-detached-notes-entry');
   if (!entry) return;
+  const isolateFromHostMenus = (event) => event.stopPropagation();
+  entry.addEventListener('mousedown', isolateFromHostMenus);
+  entry.addEventListener('touchstart', isolateFromHostMenus, { passive: true });
   let drag = null;
   let suppressClick = false;
   entry.addEventListener('pointerdown', (event) => {
+    event.stopPropagation();
     if (event.button != null && event.button !== 0) return;
     const rect = entry.getBoundingClientRect();
     drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, originX: rect.left, originY: rect.top, moved: false };
     entry.setPointerCapture?.(event.pointerId);
   });
   entry.addEventListener('pointermove', (event) => {
+    event.stopPropagation();
     if (!drag || event.pointerId !== drag.pointerId) return;
     const dx = event.clientX - drag.startX;
     const dy = event.clientY - drag.startY;
@@ -6106,9 +6119,10 @@ function bindFloatingNoteEvents(layer) {
       toast('便笺入口已回到千幕蜂巢。', 'success');
     }
   };
-  entry.addEventListener('pointerup', (event) => finish(event));
-  entry.addEventListener('pointercancel', (event) => finish(event, true));
+  entry.addEventListener('pointerup', (event) => { event.stopPropagation(); finish(event); });
+  entry.addEventListener('pointercancel', (event) => { event.stopPropagation(); finish(event, true); });
   entry.addEventListener('click', (event) => {
+    event.stopPropagation();
     if (suppressClick) return;
     openNotesPanel();
   });
@@ -6213,6 +6227,74 @@ function bindNotesPanelEvents(root) {
   editor.querySelector('.sd-note-body')?.addEventListener('input', (event) => { note.body = event.target.value; note.updatedAt = Date.now(); scheduleNoteSave(note); });
 }
 
+function qianmuInstalledExtensionName() {
+  try {
+    const path = decodeURIComponent(new URL(import.meta.url).pathname);
+    const match = path.match(/\/extensions\/third-party\/([^/]+)\//i);
+    if (match?.[1]) return match[1];
+  } catch (_) {}
+  return 'Omniscene';
+}
+
+function qianmuVersionBadgeMarkup() {
+  const hasUpdate = qianmuUpdateState.status === 'ready' && qianmuUpdateState.available;
+  const label = hasUpdate ? 'NEW' : `v${VERSION}`;
+  const title = hasUpdate ? '发现新版本，请前往 SillyTavern 扩展管理器更新' : `当前版本 v${VERSION}；点击检查更新`;
+  return `<button type="button" class="sd-version-tag${hasUpdate ? ' is-update-available' : ''}" title="${title}" aria-label="${title}">${label}</button>`;
+}
+
+function paintQianmuVersionBadge() {
+  const current = document.getElementById(MODAL_ID)?.querySelector('.sd-version-tag');
+  if (!current) return;
+  const template = document.createElement('template');
+  template.innerHTML = qianmuVersionBadgeMarkup();
+  const next = template.content.firstElementChild;
+  if (!next) return;
+  current.replaceWith(next);
+  bindQianmuVersionBadge(next);
+}
+
+function bindQianmuVersionBadge(button) {
+  button?.addEventListener('click', () => {
+    if (qianmuUpdateState.available) {
+      toast('发现千幕新版本，请前往 SillyTavern 扩展管理器更新。', 'info');
+      return;
+    }
+    void refreshQianmuUpdateStatus(true);
+  });
+}
+
+async function refreshQianmuUpdateStatus(force = false) {
+  const freshness = 30 * 60 * 1000;
+  if (!force && qianmuUpdateState.checkedAt && Date.now() - qianmuUpdateState.checkedAt < freshness) return qianmuUpdateState;
+  if (qianmuUpdatePromise) return qianmuUpdatePromise;
+  qianmuUpdateState = { ...qianmuUpdateState, status: 'checking' };
+  qianmuUpdatePromise = (async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    try {
+      const headers = typeof ctx().getRequestHeaders === 'function'
+        ? ctx().getRequestHeaders()
+        : { 'Content-Type': 'application/json', 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || globalThis.token || '' };
+      const response = await fetch('/api/extensions/version', {
+        method: 'POST', headers, signal: controller.signal,
+        body: JSON.stringify({ extensionName: qianmuInstalledExtensionName(), global: false }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      qianmuUpdateState = { status: 'ready', available: data?.isUpToDate === false, checkedAt: Date.now() };
+    } catch (_) {
+      qianmuUpdateState = { status: 'unknown', available: false, checkedAt: Date.now() };
+    } finally {
+      clearTimeout(timeout);
+      qianmuUpdatePromise = null;
+      paintQianmuVersionBadge();
+    }
+    return qianmuUpdateState;
+  })();
+  return qianmuUpdatePromise;
+}
+
 function renderModal() {
   const modal = document.getElementById(MODAL_ID);
   if (!modal) return;
@@ -6252,9 +6334,9 @@ function renderModal() {
       ${storyboardLayout ? `<main class="sd-body sd-storyboard-body">${renderActiveTab()}</main>` : `
       <header class="sd-header">
         <div class="sd-titlebox">
-          <p>一蝶振翅&nbsp;&nbsp;万象入幕</p>
           <h2>${EXTENSION_NAME}</h2>
-          <span class="sd-version-line"><button type="button" class="sd-version-tag" title="${settings.seenVersion === VERSION ? `当前版本 v${VERSION}` : `v${VERSION} 已就绪，点击确认`}">v${VERSION}<i class="sd-version-new-dot" ${settings.seenVersion === VERSION ? 'hidden' : ''}></i></button></span>
+          ${qianmuVersionBadgeMarkup()}
+          <p>一蝶振翅&nbsp;&nbsp;万象入幕</p>
         </div>
         <div class="sd-header-actions">
           ${COREAD_VISIBLE ? `<button class="sd-coread-shortcut ${activeTab === 'coread' ? 'active' : ''}" title="伴读" aria-label="伴读"><i class="fa-solid fa-book-open" data-qm-icon="coread-entry"></i></button>` : ''}
@@ -6287,12 +6369,7 @@ function renderModal() {
   };
   modal.querySelector('.sd-window')?.addEventListener('click', (event) => event.stopPropagation());
   modal.querySelector('.sd-close')?.addEventListener('click', closeModal);
-  modal.querySelector('.sd-version-tag')?.addEventListener('click', (event) => {
-    settings.seenVersion = VERSION;
-    event.currentTarget.querySelector('.sd-version-new-dot')?.setAttribute('hidden', '');
-    event.currentTarget.title = `当前版本 v${VERSION}`;
-    saveSettings();
-  });
+  bindQianmuVersionBadge(modal.querySelector('.sd-version-tag'));
   modal.querySelector('.sd-plug-shortcut')?.addEventListener('click', () => { activeTab = 'plug'; renderModal(); });
   modal.querySelector('.sd-storyboard-shortcut')?.addEventListener('click', () => {
     storyboardReturnTab = activeTab === 'imagegen' ? 'dashboard' : activeTab;
@@ -7344,6 +7421,11 @@ async function collectStorageInventory() {
   const settingsBytes = storageJsonBytes(storageSettingsSnapshotWithoutDiagnostics());
   const currentChatBytes = storageJsonBytes(getChatStore());
   const diagnosticsBytes = storageJsonBytes(storageDiagnosticSnapshot());
+  const currentChat = getChatStore();
+  const portableTtsBytes = storageJsonBytes({
+    ttsLines: currentChat.ttsLines || {},
+    ttsLineKeyByMes: currentChat.ttsLineKeyByMes || {},
+  });
   const categoryMap = new Map();
   const addCategory = (category, bytes, count = 0, recoverableBytes = 0) => {
     const current = categoryMap.get(category) || { category, bytes: 0, count: 0, recoverableBytes: 0 };
@@ -7358,6 +7440,7 @@ async function collectStorageInventory() {
   addCategory('logs', diagnosticsBytes, 0, diagnosticsBytes);
   const trackedBytes = Number(idb.totalBytes || 0) + settingsBytes + currentChatBytes + diagnosticsBytes;
   const recoverableBytes = Number(idb.recoverableBytes || 0) + diagnosticsBytes;
+  const manageableBytes = Number(idb.totalBytes || 0) + diagnosticsBytes + portableTtsBytes;
   return {
     sampledAt: Date.now(),
     origin: {
@@ -7370,6 +7453,9 @@ async function collectStorageInventory() {
     categories: [...categoryMap.values()].sort((a, b) => b.bytes - a.bytes),
     trackedBytes,
     recoverableBytes,
+    diagnosticsBytes,
+    portableTtsBytes,
+    manageableBytes,
   };
 }
 
@@ -7421,21 +7507,39 @@ function renderStorageManagementCard() {
     : '浏览器未提供配额信息';
   return `<section class="sd-card sd-storage-card">
     <div class="sd-card-title-row"><div><h3>储存空间</h3><p class="sd-summary-note">${htmlEscape(new Date(data.sampledAt).toLocaleTimeString())}</p></div><button type="button" class="sd-icon-btn sd-storage-refresh" title="刷新" aria-label="刷新"><i class="fa-solid fa-rotate${status === 'loading' ? ' fa-spin' : ''}"></i></button></div>
-    <div class="sd-storage-totals"><span>浏览器 / ST 来源<b>${htmlEscape(originText)}</b></span><span>千幕已盘点<b>${htmlEscape(formatStorageBytes(data.trackedBytes))}</b></span><span>可选清理<b>${htmlEscape(formatStorageBytes(data.recoverableBytes))}</b></span></div>
+    <div class="sd-storage-totals"><span>浏览器 / ST 来源<b>${htmlEscape(originText)}</b></span><span>千幕已盘点<b>${htmlEscape(formatStorageBytes(data.trackedBytes))}</b></span><span>可管理项目<b>${htmlEscape(formatStorageBytes(data.manageableBytes))}</b></span></div>
     <div class="sd-storage-ios-bar" role="img" aria-label="储存空间分布">${storageBar}</div>
     <div class="sd-storage-legend">${legend || '<p class="sd-muted">暂未发现千幕本地数据。</p>'}</div>
     <p class="sd-storage-scope">此处是浏览器分配给当前 ST 站点来源的空间，不代表 VPS 磁盘总容量；千幕仅统计可明确归因的本地内容。</p>
-    <div class="sd-storage-actions"><button type="button" class="sd-btn sd-primary sd-storage-clean" ${data.recoverableBytes > 0 ? '' : 'disabled'}><i class="fa-solid fa-sliders"></i>选择清理模块</button></div>
+    <div class="sd-storage-actions"><button type="button" class="sd-btn sd-primary sd-storage-clean" ${data.manageableBytes > 0 ? '' : 'disabled'}><i class="fa-solid fa-sliders"></i>选择清理模块</button></div>
   </section>`;
 }
 
+const STORAGE_ITEM_RISK = Object.freeze({
+  audio: ['可重新生成', false],
+  favorites: ['不可恢复 · 语音收藏', true],
+  reader_books: ['不可恢复 · 书籍正文', true],
+  reader_covers: ['不可恢复 · 书籍封面', true],
+  reader_chats: ['不可恢复 · 伴读会话', true],
+  reader_retlog: ['诊断记录', false],
+  reader_images: ['不可恢复 · 书内插图', true],
+  reader_vectors: ['可重新计算', false],
+  tts_lines: ['可重新提取', false],
+  notes: ['不可恢复 · 固定便笺', true],
+  __diagnostics__: ['千幕与分镜日志', false],
+});
+
 function openStorageCleanupDialog(data) {
   document.getElementById(STORAGE_CLEANUP_LAYER_ID)?.remove();
-  const modules = (data?.categories || []).filter((item) => ['audio', 'logs', 'cache'].includes(item.category) && Number(item.recoverableBytes) > 0);
-  if (!modules.length) {
-    toast('当前没有可单独清理的缓存模块。', 'info');
-    return Promise.resolve([]);
-  }
+  const modules = [
+    ...(data?.idb?.stores || []).map((item) => ({
+      id: item.name,
+      label: item.label || item.name,
+      bytes: (Number(item.bytes) || 0) + (item.name === 'tts_lines' ? Number(data?.portableTtsBytes) || 0 : 0),
+      count: Number(item.count) || 0,
+    })),
+    { id: '__diagnostics__', label: '生成与运行日志', bytes: Number(data?.diagnosticsBytes) || 0, count: 0 },
+  ];
   return new Promise((resolve) => {
     const layer = document.createElement('div');
     layer.id = STORAGE_CLEANUP_LAYER_ID;
@@ -7447,8 +7551,11 @@ function openStorageCleanupDialog(data) {
       if (value) layer.style.setProperty(variable, value);
     }
     layer.innerHTML = `<button type="button" class="sd-storage-cleanup-backdrop" aria-label="取消"></button><section class="sd-storage-cleanup-dialog" role="dialog" aria-modal="true" aria-label="选择清理模块">
-      <header><div><h3>选择清理模块</h3><p>只列出可重新生成的缓存，收藏、书籍、图片、便笺与聊天不会出现于此。</p></div><button type="button" class="sd-icon-btn sd-storage-cleanup-close" title="取消" aria-label="取消"><i class="fa-solid fa-xmark"></i></button></header>
-      <div class="sd-storage-cleanup-list">${modules.map((item) => `<label><input type="checkbox" value="${htmlEscape(item.category)}"><span><b>${htmlEscape(STORAGE_CATEGORY_LABELS[item.category] || item.category)}</b><small>${htmlEscape(formatStorageBytes(item.recoverableBytes))}${item.count ? ` · ${item.count} 项` : ''}</small></span></label>`).join('')}</div>
+      <header><div><h3>选择清理模块</h3><p>这里列出千幕各功能保存的本地项目；带“不可恢复”的内容由你决定是否删除。</p></div><button type="button" class="sd-icon-btn sd-storage-cleanup-close" title="取消" aria-label="取消"><i class="fa-solid fa-xmark"></i></button></header>
+      <div class="sd-storage-cleanup-list">${modules.map((item) => {
+        const [risk, destructive] = STORAGE_ITEM_RISK[item.id] || ['本地项目', true];
+        return `<label class="${destructive ? 'is-destructive' : ''}"><input type="checkbox" value="${htmlEscape(item.id)}" ${item.bytes > 0 ? '' : 'disabled'}><span><span><b>${htmlEscape(item.label)}</b><em>${htmlEscape(risk)}</em></span><small>${htmlEscape(formatStorageBytes(item.bytes))}${item.count ? ` · ${item.count} 项` : ''}</small></span></label>`;
+      }).join('')}</div>
       <footer><button type="button" class="sd-btn sd-storage-cleanup-cancel">取消</button><button type="button" class="sd-btn sd-primary sd-storage-cleanup-confirm" disabled><i class="fa-solid fa-trash-can"></i>清理所选</button></footer>
     </section>`;
     document.body.appendChild(layer);
@@ -7465,6 +7572,47 @@ function openStorageCleanupDialog(data) {
     layer.querySelector('.sd-storage-cleanup-close')?.addEventListener('click', () => finish(null));
     layer.querySelector('.sd-storage-cleanup-cancel')?.addEventListener('click', () => finish(null));
   });
+}
+
+function reconcileClearedStorageItems(selected) {
+  const cleared = new Set(selected);
+  if (cleared.has('reader_books')) {
+    coread().books = [];
+    coread().collections = [];
+    readerView = null;
+    readerContentCache = null;
+  } else {
+    if (cleared.has('reader_covers')) for (const book of coread().books || []) book.hasCover = false;
+    if (cleared.has('reader_images')) for (const book of coread().books || []) book.imageCount = 0;
+  }
+  if (cleared.has('reader_chats')) {
+    readerDialog = { bucket: '', bookId: '', messages: [], summaries: [], slices: [], cursor: 0, summaryFloor: 0, lastInjected: null, pipelineStatus: null, readBoundary: null, loaded: false };
+    readerAssistant = { bucket: '', bookId: '', messages: [], quote: '', loaded: false };
+    readerAssistantSessions.clear();
+    coreadInvalidatePool();
+  }
+  if (cleared.has('reader_vectors')) {
+    coreadVecCache = null;
+    coreadVectorStates.clear();
+  }
+  if (cleared.has('tts_lines')) {
+    if (ttsLineStoreSaveTimer) clearTimeout(ttsLineStoreSaveTimer);
+    ttsLineStoreSaveTimer = null;
+    ttsLineStoreToken++;
+    ttsLineStorePromise = null;
+    ttsLineCache.clear();
+    ttsLineStoreState = { chatKey: getChatKey(), lines: {}, keyByMes: {}, loaded: true };
+    const chatStore = getChatStore();
+    chatStore.ttsLines = {};
+    chatStore.ttsLineKeyByMes = {};
+  }
+  if (cleared.has('notes')) {
+    notesRuntime = notesRuntime.filter((note) => !note.pinned);
+    notesLoaded = true;
+    if (!notesFind(notesActiveId)) notesActiveId = '';
+    renderFloatingNotes();
+    if (notesPanelOpen) renderNotesPanelPortal();
+  }
 }
 
 function paintStorageManagementCard() {
@@ -7486,11 +7634,13 @@ function paintStorageManagementCard() {
 function bindStorageManagementEvents(root) {
   root.querySelector('.sd-storage-refresh')?.addEventListener('click', () => void refreshStorageInventory(true));
   root.querySelector('.sd-storage-clean')?.addEventListener('click', async () => {
-    const categories = await openStorageCleanupDialog(storageInventoryState.data);
-    if (!categories?.length) return;
+    const selected = await openStorageCleanupDialog(storageInventoryState.data);
+    if (!selected?.length) return;
     try {
-      await blobStore.clearRecoverableCategories(categories);
-      if (categories.includes('logs')) {
+      const stores = selected.filter((item) => item !== '__diagnostics__');
+      await blobStore.clearStorageItems(stores);
+      reconcileClearedStorageItems(stores);
+      if (selected.includes('__diagnostics__')) {
         settings.logHistory = [];
         settings.logOpenState = {};
         const storyboard = storyboardState();
@@ -7499,7 +7649,7 @@ function bindStorageManagementEvents(root) {
       }
       saveSettings();
       await refreshStorageInventory(true);
-      toast('所选缓存已清理，受保护内容未改动。', 'success');
+      toast('所选本地项目已清理。', 'success');
     } catch (error) {
       toast(`清理未完成：${error?.message || error}`, 'error');
       await refreshStorageInventory(true);

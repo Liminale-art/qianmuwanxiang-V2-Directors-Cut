@@ -29,7 +29,7 @@ const currentFaNames = [...new Set(
     .filter((name) => !faUtilityClasses.has(name)),
 )].sort();
 
-assert.equal(QIANMU_ICON_SYSTEM_NAME, 'Lucide · 千幕 2.75');
+assert.equal(QIANMU_ICON_SYSTEM_NAME, 'Lucide · 千幕 2.5');
 assert.equal(QIANMU_ICON_SYSTEM_VERSION, 'lucide-1.39.0');
 assert.ok(QIANMU_INLINE_GLYPH_COUNT >= 120, 'Lucide 本地子集应覆盖语义入口与高频工具');
 assert.equal(currentFaNames.length, 133);
@@ -56,7 +56,7 @@ for (const [semantic, symbol] of Object.entries(QIANMU_SEMANTIC_ICONS)) {
 }
 
 assert.doesNotMatch(rendererSource, /new URL\(|fetch\(|XMLHttpRequest|<use\b|xlink:href/i, '图标渲染器不得依赖任何二次资源请求');
-assert.match(rendererSource, /LUCIDE_STROKE_WIDTH = 2\.75/);
+assert.match(rendererSource, /LUCIDE_STROKE_WIDTH = 2\.5/);
 assert.doesNotMatch(rendererSource, /stroke-width=['"](?:1\.65|2)['"]/, '千幕图标不得退回旧描边粗细');
 assert.doesNotMatch(rendererSource, /\bMutationObserver\b/);
 assert.doesNotMatch(
@@ -71,11 +71,11 @@ await assert.rejects(access(new URL('assets/PHOSPHOR-LICENSE.txt', rootUrl)));
 assert.match(thirdPartyNotices, /Lucide Static `1\.39\.0`/);
 assert.match(thirdPartyNotices, /ISC License[\s\S]*Lucide Icons and Contributors/);
 
-assert.equal(manifest.version, '1.58.13');
+assert.equal(manifest.version, '1.58.14');
 assert.equal(packageJson.version, manifest.version);
 assert.equal(manifest.js, `index.js?v=${manifest.version}`);
 assert.equal(manifest.css, `style.css?v=${manifest.version}`);
-assert.match(indexSource, /from '\.\/qianmu-icon-renderer\.js\?v=1\.58\.13';/);
+assert.match(indexSource, /from '\.\/qianmu-icon-renderer\.js\?v=1\.58\.14';/);
 
 class FakeClassList {
   constructor(host, initial = '') { this.host = host; this.set(initial); }

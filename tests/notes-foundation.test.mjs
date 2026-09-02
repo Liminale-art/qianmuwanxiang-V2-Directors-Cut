@@ -50,6 +50,10 @@ assert.match(styles, /\.sd-notes-panel[\s\S]*background: var\(--sd-notes-surface
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-notes-panel \{[\s\S]*width: min\(60vw,[\s\S]*height: min\(60vh,/, 'desktop notes use the compact sixty-percent workspace');
 assert.match(styles, /\.sd-note-pinned-mark,[\s\S]*\.sd-note-tools-toggle,[\s\S]*width: 28px; height: 28px/, 'pin state and more control must occupy the same visual slot');
 assert.match(styles, /\.sd-note-item-tools \{[\s\S]*border: 0;[\s\S]*background: transparent/, 'the expanded more menu remains visually unboxed');
+assert.match(source, /layer\.onpointerdown = isolateFromHostMenus;[\s\S]*layer\.onclick = isolateFromHostMenus;/, 'the independent notes page must not bubble clicks into ST menu dismiss handlers');
+assert.match(source, /entry\.addEventListener\('pointerdown',[\s\S]*event\.stopPropagation\(\)[\s\S]*entry\.addEventListener\('click',[\s\S]*event\.stopPropagation\(\)/, 'the detached note entry must remain usable above an open ST menu');
+assert.match(styles, /#qianmu-notes-panel-layer \{[\s\S]*position: fixed !important;[\s\S]*height: 100dvh !important;[\s\S]*transform: none !important;/, 'the note workspace must anchor to the mobile viewport instead of an ST container');
+assert.match(styles, /@media \(max-width: 620px\)[\s\S]*#qianmu-notes-panel-layer \.sd-notes-stage \{[\s\S]*place-items: center !important;/, 'narrow notes remain centered');
 assert.match(styles, /#qianmu-notes-float-layer[\s\S]*z-index: 2147483002/, 'the detached hive cell must sit above the Qianmu panel but below critical overlays');
 assert.match(styles, /\.sd-detached-notes-entry[\s\S]*clip-path: polygon\(50% 0,[\s\S]*sd-hive-hex-outline/, 'the detached entry must keep the hive hexagon silhouette and edge');
 assert.doesNotMatch(styles, /\.sd-floating-note\b/, 'individual notes must never become top-level floating windows');

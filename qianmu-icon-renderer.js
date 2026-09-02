@@ -4,7 +4,7 @@
 // Callers must pass a narrow Qianmu root; there is deliberately no page-wide scan.
 
 export const LUCIDE_SOURCE_VERSION = '1.39.0';
-export const LUCIDE_STROKE_WIDTH = 2.75;
+export const LUCIDE_STROKE_WIDTH = 2.5;
 
 export const LUCIDE_GLYPH_NAMES = Object.freeze({
   "anchor": "anchor",
@@ -282,7 +282,7 @@ export const LUCIDE_ICON_MARKUP = Object.freeze({
 });
 
 export const QIANMU_ICON_SYSTEM_VERSION = `lucide-${LUCIDE_SOURCE_VERSION}`;
-export const QIANMU_ICON_SYSTEM_NAME = 'Lucide · 千幕 2.75';
+export const QIANMU_ICON_SYSTEM_NAME = 'Lucide · 千幕 2.5';
 
 export const QIANMU_SEMANTIC_ICONS = Object.freeze({
   'coread-entry': 'qm-signature-coread',

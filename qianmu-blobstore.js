@@ -580,3 +580,26 @@ export async function clearRecoverableCategories(categories = []) {
     beforeBytes: targets.reduce((sum, item) => sum + Math.max(0, Number(item.bytes) || 0), 0),
   };
 }
+
+// 储存管理页按 IndexedDB 项目逐项清理。目标仍只能来自本模块登记过的 store，
+// 但不再替用户隐去不可恢复项目；是否删除由界面上的风险说明与用户勾选决定。
+export async function clearStorageItems(storeNames = []) {
+  if (!blobStoreAvailable()) return { cleared: [], beforeBytes: 0 };
+  const allowedNames = new Set(Object.keys(STORAGE_STORE_INFO));
+  const selected = new Set((Array.isArray(storeNames) ? storeNames : [])
+    .map((value) => String(value || ''))
+    .filter((value) => allowedNames.has(value)));
+  if (!selected.size) return { cleared: [], beforeBytes: 0 };
+  const before = await estimateBlobStoreUsage();
+  const targets = before.stores.filter((item) => selected.has(item.name));
+  const cleared = [];
+  for (const item of targets) {
+    const targetStore = await store(item.name, 'readwrite');
+    await reqP(targetStore.clear());
+    cleared.push(item.name);
+  }
+  return {
+    cleared,
+    beforeBytes: targets.reduce((sum, item) => sum + Math.max(0, Number(item.bytes) || 0), 0),
+  };
+}
