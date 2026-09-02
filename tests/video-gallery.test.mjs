@@ -7,6 +7,7 @@ import {
   createVideoGallerySession,
   normalizeVideoGalleryItem,
 } from '../qianmu-video-gallery.js';
+import { normalizeVideoMediaMeta } from '../qianmu-blobstore.js';
 
 function descriptor(extra = {}) {
   return {
@@ -36,6 +37,13 @@ test('gallery list records are metadata-only and reject unstable fields', () => 
   assert.equal(item.owner.chatKey, 'chat-a');
   assert.deepEqual(item.referenceAssetIds, ['image-a']);
   assert.doesNotMatch(JSON.stringify(item), /video-bytes|media\.example|private-key|secret prompt|downloadUrl|blob/);
+});
+
+test('gallery-only videos keep a null floor instead of appearing on floor zero', () => {
+  const withoutFloor = descriptor({ meta: { ...descriptor().meta, floor: null } });
+  assert.equal(normalizeVideoMediaMeta(withoutFloor.meta).floor, null);
+  assert.equal(normalizeVideoGalleryItem(withoutFloor).owner.floor, null);
+  assert.equal(normalizeVideoGalleryItem(descriptor({ meta: { ...descriptor().meta, floor: 0 } })).owner.floor, 0);
 });
 
 test('versions group by chat and stable root while preserving attempt order', () => {
@@ -106,7 +114,7 @@ test('chat ownership is checked before exposing a playable URL and deletion revo
 test('the dynamic gallery ships as an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(source, /videoGallery:\s*\{[\s\S]*import\('\.\/qianmu-video-gallery\.js\?v=1\.58\.56'\)/);
+  assert.match(source, /videoGallery:\s*\{[\s\S]*import\('\.\/qianmu-video-gallery\.js\?v=1\.58\.57'\)/);
   assert.ok(release.files.includes('qianmu-video-gallery.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoGallery'\)/);

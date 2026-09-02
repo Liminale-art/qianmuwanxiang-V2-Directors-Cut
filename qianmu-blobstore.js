@@ -837,6 +837,8 @@ function boundedVideoMediaNumber(value, max) {
 
 export function normalizeVideoMediaMeta(value = {}) {
   const raw = value && typeof value === 'object' ? value : {};
+  const floorValue = raw.floor;
+  const floorNumber = Number(floorValue);
   return {
     schema: 'qianmu.video-media.v1',
     recordId: String(raw.recordId || raw.record_id || '').trim().slice(0, 200),
@@ -848,7 +850,8 @@ export function normalizeVideoMediaMeta(value = {}) {
     budgetReservationId: String(raw.budgetReservationId || raw.budget_reservation_id || '').trim().slice(0, 200),
     attempt: Math.round(Math.min(99, Math.max(1, Number(raw.attempt) || 1))),
     chatKey: String(raw.chatKey || raw.chat_key || '').trim().slice(0, 512),
-    floor: Math.round(boundedVideoMediaNumber(raw.floor, 1_000_000)),
+    floor: floorValue !== '' && floorValue !== null && floorValue !== undefined && Number.isInteger(floorNumber) && floorNumber >= 0
+      ? Math.min(1_000_000, floorNumber) : null,
     messageId: String(raw.messageId || raw.message_id || '').trim().slice(0, 200),
     remoteTaskId: String(raw.remoteTaskId || raw.remote_task_id || '').trim().slice(0, 400),
     durationSeconds: boundedVideoMediaNumber(raw.durationSeconds || raw.duration_seconds, 3600),

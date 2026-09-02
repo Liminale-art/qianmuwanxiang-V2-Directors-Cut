@@ -31,7 +31,8 @@ export function normalizeVideoGalleryItem(value = {}) {
   const shotId = id(meta.shotId || meta.shot_id);
   const versionRootId = id(meta.versionRootId || meta.version_root_id) || taskId || shotId || recordId || assetId;
   const mimeType = text(raw.mimeType || raw.mime_type || meta.mimeType || meta.mime_type, 100).toLowerCase().split(';')[0].trim();
-  const floorValue = Number(meta.floor);
+  const rawFloor = meta.floor;
+  const floorValue = Number(rawFloor);
   return {
     schema: QIANMU_VIDEO_GALLERY_SCHEMA,
     assetId,
@@ -45,7 +46,7 @@ export function normalizeVideoGalleryItem(value = {}) {
     attempt: Math.round(number(meta.attempt, 1, 99)),
     owner: {
       chatKey: text(meta.chatKey || meta.chat_key, 512),
-      floor: Number.isInteger(floorValue) && floorValue >= 0 ? floorValue : null,
+      floor: rawFloor !== '' && rawFloor !== null && rawFloor !== undefined && Number.isInteger(floorValue) && floorValue >= 0 ? floorValue : null,
       messageId: id(meta.messageId || meta.message_id),
     },
     technical: {
