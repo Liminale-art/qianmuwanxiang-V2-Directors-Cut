@@ -103,9 +103,9 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.7';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.8';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.7';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.8';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_COMPOSITION_RULE_ID,
@@ -145,16 +145,16 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
-} from './qianmu-storyboard.js?v=1.58.7';
+} from './qianmu-storyboard.js?v=1.58.8';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.7';
+const VERSION = '1.58.8';
 let directImageRuntimePromise = null;
 function directImageRuntime() {
   if (!directImageRuntimePromise) {
-    directImageRuntimePromise = import('./qianmu-image-direct.js?v=1.58.7')
+    directImageRuntimePromise = import('./qianmu-image-direct.js?v=1.58.8')
       .catch((error) => {
         directImageRuntimePromise = null;
         throw error;
@@ -957,6 +957,7 @@ let startupFallbackTimer = null;
 let startupFallbackListening = false;
 let eventBound = false;
 let inputMenuObserver = null;
+let inputMenuObserverTarget = null;
 let templateExportMode = false;
 let templateExportSelection = new Set();
 let templateSearch = '';
@@ -27449,9 +27450,18 @@ async function importTheaterScripts(event) {
 }
 
 function renderInputMenuEntry() {
-  document.getElementById(INPUT_ENTRY_ID)?.remove();
-  document.getElementById(INPUT_BUTTON_ID)?.remove();
-  if (!settings.enabled) return;
+  const existingEntry = document.getElementById(INPUT_ENTRY_ID);
+  const existingButton = document.getElementById(INPUT_BUTTON_ID);
+  if (!settings.enabled) {
+    existingEntry?.remove();
+    existingButton?.remove();
+    startInputMenuObserver();
+    return;
+  }
+  if (existingEntry?.isConnected || existingButton?.isConnected) {
+    startInputMenuObserver();
+    return;
+  }
 
   const menu = document.querySelector('#extensionsMenu, #extensions_menu, #input_extra_menu, #send_form_menu, .extensionsMenu');
   if (menu) {
@@ -27463,6 +27473,7 @@ function renderInputMenuEntry() {
     entry.addEventListener('click', () => openModal());   // 恢复上次 tab
     menu.appendChild(entry);
     applyQianmuIcons(entry);
+    startInputMenuObserver();
     return;
   }
 
@@ -27479,15 +27490,31 @@ function renderInputMenuEntry() {
   if (textarea && textarea.parentElement === parent) parent.insertBefore(button, textarea);
   else parent.insertBefore(button, parent.firstChild);
   applyQianmuIcons(button);
+  startInputMenuObserver();
+}
+
+function inputMenuObservationRoot() {
+  const sendForm = document.querySelector('#send_form, #form_sheld, #chat-input, .send_form');
+  const menu = document.querySelector('#extensionsMenu, #extensions_menu, #input_extra_menu, #send_form_menu, .extensionsMenu');
+  return sendForm || menu?.parentElement || document.body;
 }
 
 function startInputMenuObserver() {
-  if (inputMenuObserver) return;
+  if (!settings.enabled || !document.body) {
+    inputMenuObserver?.disconnect();
+    inputMenuObserver = null;
+    inputMenuObserverTarget = null;
+    return;
+  }
+  const target = inputMenuObservationRoot();
+  if (inputMenuObserver && inputMenuObserverTarget === target) return;
+  inputMenuObserver?.disconnect();
   inputMenuObserver = new MutationObserver(() => {
-    if (document.getElementById(INPUT_ENTRY_ID) || document.getElementById(INPUT_BUTTON_ID)) return;
-    renderInputMenuEntry();
+    if (!document.getElementById(INPUT_ENTRY_ID) && !document.getElementById(INPUT_BUTTON_ID)) renderInputMenuEntry();
+    if (inputMenuObservationRoot() !== inputMenuObserverTarget) startInputMenuObserver();
   });
-  inputMenuObserver.observe(document.body, { childList: true, subtree: true });
+  inputMenuObserverTarget = target;
+  inputMenuObserver.observe(target, { childList: true, subtree: true });
 }
 
 let resizeHandler = null;
@@ -27754,6 +27781,7 @@ function cleanupRuntime(resetSettings = false) {
     clean('input observer', () => {
       inputMenuObserver?.disconnect?.();
       inputMenuObserver = null;
+      inputMenuObserverTarget = null;
     });
     clean('speech', () => ttsStopChat());
     clean('storyboard queue', () => {

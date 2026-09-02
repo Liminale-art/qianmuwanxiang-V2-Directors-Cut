@@ -66,11 +66,11 @@ assert.doesNotMatch(styleSource, /qm-phosphor-spin/);
 await assert.rejects(access(new URL('assets/qianmu-phosphor-v1454.svg', rootUrl)));
 await assert.rejects(access(new URL('assets/PHOSPHOR-LICENSE.txt', rootUrl)));
 
-assert.equal(manifest.version, '1.58.7');
+assert.equal(manifest.version, '1.58.8');
 assert.equal(packageJson.version, manifest.version);
 assert.equal(manifest.js, `index.js?v=${manifest.version}`);
 assert.equal(manifest.css, `style.css?v=${manifest.version}`);
-assert.match(indexSource, /from '\.\/qianmu-icon-renderer\.js\?v=1\.58\.7';/);
+assert.match(indexSource, /from '\.\/qianmu-icon-renderer\.js\?v=1\.58\.8';/);
 
 class FakeClassList {
   constructor(host, initial = '') { this.host = host; this.set(initial); }
