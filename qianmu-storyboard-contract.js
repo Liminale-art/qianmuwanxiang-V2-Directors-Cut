@@ -650,6 +650,64 @@ export async function repairStoryboardContractOnce({ raw, validation = null, req
   };
 }
 
+export function createStoryboardContractManualFallback(context = {}, options = {}) {
+  const paragraphs = Array.isArray(context.paragraphs)
+    ? context.paragraphs.map((item) => String(item || '').trim().slice(0, 12000))
+    : [];
+  const forced = Number.isInteger(context.forcedParagraphIndex)
+    ? Math.max(0, Math.min(paragraphs.length - 1, context.forcedParagraphIndex))
+    : null;
+  const fallbackIndex = paragraphs.reduce((last, item, index) => item ? index : last, 0);
+  const paragraphIndex = forced ?? fallbackIndex;
+  const prompt = paragraphs[paragraphIndex] || '当前楼层画面（请手动补充）';
+  const paragraphId = `P${paragraphIndex + 1}`;
+  const shotSpec = normalizeStoryboardShotSpec({
+    id: `manual-fallback-${paragraphId.toLowerCase()}`,
+    sourceParagraphIds: [paragraphId],
+    insertAfter: paragraphId,
+    narrativeLayer: 'present',
+    narrativePurpose: '严格合同校验失败后保留的正文单镜头草稿，必须由用户确认。',
+    shotPattern: 'action',
+    visualDuty: 'action',
+    shotRole: 'custom',
+    shotScale: 'medium_shot',
+    subject: prompt,
+    subjectKind: 'mixed',
+    scene: '',
+    characters: [],
+    composition: { ratioId: String(options.ratioId || ''), ratioLocked: Boolean(options.ratioId) },
+    promptAtoms: { global: [prompt] },
+    evidence: { type: 'explicit', paragraphIds: [paragraphId], quote: prompt, floor: Number.isInteger(context.floor) ? context.floor : null },
+    decisions: ['自动合同修复失败，已停止自动生图并降级为单镜头手动草稿。'],
+  });
+  return {
+    shouldGenerate: true,
+    manualRequired: true,
+    skipReason: '',
+    prompt,
+    safePrompt: '',
+    negative: '',
+    paragraphIndex,
+    shotType: 'custom',
+    shots: [{
+      id: shotSpec.id,
+      title: '待确认镜头',
+      role: 'custom',
+      purpose: shotSpec.narrativePurpose,
+      prompt,
+      safePrompt: '',
+      negative: '',
+      paragraphIndex,
+      shotType: 'custom',
+      shotSpec,
+      sensitive: false,
+      order: 0,
+      requiresManualConfirmation: true,
+    }],
+    decisions: [...shotSpec.decisions],
+  };
+}
+
 function spatialRegionForShotSpec(value) {
   return String(value || 'center').replaceAll('-', '_');
 }

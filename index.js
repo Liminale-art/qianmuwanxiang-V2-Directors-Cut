@@ -96,11 +96,11 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.29';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.30';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.29';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.29';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.29';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.30';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.30';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.30';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,28 +151,28 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.29';
+} from './qianmu-storyboard.js?v=1.58.30';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.29';
+const VERSION = '1.58.30';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.29'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.30'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.29'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.30'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.29'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.30'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.29'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.30'),
   },
 });
 function directImageRuntime() {
@@ -13266,8 +13266,11 @@ async function storyboardCompilerResult(raw, context, capabilities, state) {
       finalErrors: (result.errors || []).slice(0, 24),
     };
     if (!result.ok) {
-      const details = contract.formatStoryboardContractErrors(result.errors, 8);
-      throw new Error(`镜头协议校验失败${details ? `：\n${details}` : ''}`);
+      const fallback = contract.createStoryboardContractManualFallback(context, {
+        ratioId: state.compositionPolicy?.mode === 'fixed' ? state.compositionPolicy.fixedRatioId : '',
+      });
+      fallback.contractMeta = { ...contractMeta, fallback: 'manual_single' };
+      return fallback;
     }
     object = contract.adaptStoryboardPlanContract(result.data, {
       paragraphIndexById,
@@ -13371,6 +13374,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
       if (!quiet) toast(result.skipReason || '这一层没有需要单独成画的新增画面。', 'info');
       return false;
     }
+    const manualRequired = result.manualRequired === true;
     const compiledShots = Array.isArray(result.shots) && result.shots.length
       ? result.shots
       : [{
@@ -13385,9 +13389,9 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
     state.negative = result.negative;
     Object.assign(state.promptDraft, {
       compiled: result.prompt, negative: result.negative, compiledAt: Date.now(),
-      compiledBy: state.promptCompiler.apiProfileId || 'current-api', userEditedCompiled: false,
+      compiledBy: manualRequired ? 'local-contract-fallback' : (state.promptCompiler.apiProfileId || 'current-api'), userEditedCompiled: false,
       userEditedNegative: false, artistPositiveBaked: false, artistNegativeBaked: false,
-      sourceSummary: [`第 ${context.floor} 层`, `近景 ${context.messages.length} 条`, `世界书 ${context.worldRows.length} 条`],
+      sourceSummary: [`第 ${context.floor} 层`, `近景 ${context.messages.length} 条`, `世界书 ${context.worldRows.length} 条`, ...(manualRequired ? ['待手动确认'] : [])],
       shots: compiledShots,
     });
     state.pendingParagraphIndex = result.paragraphIndex;
@@ -13396,6 +13400,8 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
       plan.floor = context.floor;
       plan.status = 'prompt_ready';
       plan.promptLocked = false;
+      plan.manualReviewRequired = manualRequired;
+      if (manualRequired) plan.autoGenerate = false;
       plan.shots = compiledShots.map((shot, index) => ({
         id: shot.id || uid('shotplan'), title: shot.title || `镜头 ${index + 1}`,
         role: shot.role || 'custom', purpose: shot.purpose || '', shotType: shot.shotType || 'custom', prompt: shot.prompt || '', safePrompt: shot.safePrompt || '', negative: shot.negative || '',
@@ -13404,23 +13410,24 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
         paragraphAnchor: storyboardAnchorForMessage(ctx().chat?.[context.floor], context.floor, shot.prompt, shot.paragraphIndex),
         paragraphSelection: clone(plan.paragraphSelection || state.pendingParagraphSelection || null), shotSpec: storyboardShotSpecForSelection(shot, plan.paragraphSelection || state.pendingParagraphSelection), compiledPrompt: null, compositionDecision: null,
         sensitive: Boolean(shot.sensitive ?? state.contentRating === 'nsfw'), userEdited: false, promptLocked: false,
+        requiresManualConfirmation: Boolean(shot.requiresManualConfirmation || manualRequired),
       }));
       plan.updatedAt = Date.now();
     }
     state.pendingCompilerStages = [{
-      id: uid('stage-compiler'), type: 'prompt_compiler', status: 'success', startedAt,
+      id: uid('stage-compiler'), type: 'prompt_compiler', status: manualRequired ? 'failed' : 'success', startedAt,
       finishedAt: Date.now(), input: {
         floor: context.floor, mode: state.promptMode, provider: state.source, contentRating: state.contentRating,
         paragraphMode: state.paragraphMode,
         worldMode: state.promptCompiler.worldMode, worldFallback: context.worldFallback,
         sourceSummary: state.promptDraft.sourceSummary,
       }, output: { prompt: result.prompt, negative: result.negative, paragraphIndex: result.paragraphIndex, shotType: result.shotType, shots: compiledShots, contract: result.contractMeta },
-      decisions: result.decisions, error: '',
+      decisions: result.decisions, error: manualRequired ? '严格合同修复失败；已停止自动生图并保留正文单镜头草稿。' : '',
     }];
     saveSettings();
     storyboardScheduleInlineRender(30, plan?.floor ?? context.floor);
-    if (!quiet) toast('生成词已提取，可继续修改或手动生成。', 'success');
-    return true;
+    if (!quiet) toast(manualRequired ? '自动整理未通过校验；已停止自动生图并保留一份待确认草稿。' : '生成词已提取，可继续修改或手动生成。', manualRequired ? 'warning' : 'success');
+    return !manualRequired;
   } catch (error) {
     console.error(`[${MODULE_NAME}] storyboard prompt compiler failed`, error);
     storyboardSetPlanStatus(plan, 'failed', { error: error?.message || error });
@@ -13598,6 +13605,7 @@ async function storyboardGenerateProductionPacket(root, packetId) {
 async function storyboardGenerate(root, { plan = null, automatic = false } = {}) {
   const { state, profile, workflowResult } = storyboardCaptureWorkbench(root);
   if (!state.enabled) return toast('请先启用分镜。', 'warning');
+  if (automatic && plan?.manualReviewRequired) return false;
   if (state.source === 'comfy' && (!workflowResult.ok || workflowResult.removedFields.length || profile.comfyWorkflowNotice)) {
     return toast(profile.comfyWorkflowNotice || storyboardWorkflowIssue(workflowResult), 'warning');
   }
@@ -13696,6 +13704,11 @@ async function storyboardGenerate(root, { plan = null, automatic = false } = {})
   }
   let queued = 0;
   for (const job of jobs) if (storyboardQueueJob(job)) queued++;
+  if (queued > 0 && !automatic && plan?.manualReviewRequired) {
+    plan.manualReviewRequired = false;
+    for (const shot of plan.shots || []) shot.requiresManualConfirmation = false;
+    saveSettings();
+  }
   return queued > 0;
 }
 

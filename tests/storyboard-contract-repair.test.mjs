@@ -4,6 +4,7 @@ import {
   STORYBOARD_CONTRACT_REPAIR_MAX_BYTES,
   STORYBOARD_PLAN_RESPONSE_SCHEMA_ID,
   buildStoryboardContractRepairMessages,
+  createStoryboardContractManualFallback,
   parseStoryboardContractResponse,
   repairStoryboardContractOnce,
 } from '../qianmu-storyboard-contract.js';
@@ -116,10 +117,26 @@ assert.equal(requestFailure.repairCalls, 1);
 assert.equal(requestFailure.errors[0].code, 'repair_request_failed');
 assert.match(requestFailure.errors[0].message, /offline/);
 
+const fallback = createStoryboardContractManualFallback({
+  floor: 12,
+  paragraphs: ['较早段落', '她把湿透的信按在桌上，雨声骤然加重。'],
+  forcedParagraphIndex: 1,
+}, { ratioId: '3:2' });
+assert.equal(fallback.manualRequired, true);
+assert.equal(fallback.shots.length, 1);
+assert.equal(fallback.paragraphIndex, 1);
+assert.equal(fallback.shots[0].shotSpec.insertAfter, 'P2');
+assert.equal(fallback.shots[0].shotSpec.composition.ratioId, '3:2');
+assert.match(fallback.prompt, /湿透的信/);
+assert.doesNotMatch(JSON.stringify(fallback), /still invalid|offline/, '手动草稿只能来自可信正文，不能复用失败模型输出');
+
 const indexSource = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 assert.match(indexSource, /initial\.ok \? initial : await contract\.repairStoryboardContractOnce/);
 assert.match(indexSource, /temperatureSource = requestOptions\.temperature \?\? apiProfile\?\.temperature \?\? 0\.35/, 'ordinary compiler calls must retain the saved profile temperature');
 assert.match(indexSource, /request: \(messages\) => storyboardCallCompiler\(messages,[\s\S]*temperature: 0,[\s\S]*maxTokens: 1800/);
 assert.match(indexSource, /initialErrors:[\s\S]*finalErrors:/, 'repair diagnostics must remain attached to the compiler stage');
+assert.match(indexSource, /createStoryboardContractManualFallback[\s\S]*fallback: 'manual_single'/, '修复失败必须进入确定性单镜头手动草稿');
+assert.match(indexSource, /plan\.manualReviewRequired = manualRequired[\s\S]*plan\.autoGenerate = false/, '合同失败不得继续自动生图');
+assert.match(indexSource, /return !manualRequired/, '自动调用方必须收到停止信号');
 
 console.log('Storyboard one-shot contract repair OK');
