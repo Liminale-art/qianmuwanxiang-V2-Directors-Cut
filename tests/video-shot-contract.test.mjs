@@ -7,9 +7,12 @@ import {
   QIANMU_H3_MODES,
   QIANMU_MULTIMODAL_MANIFEST_SCHEMA,
   QIANMU_VIDEO_SHOT_SCHEMA,
+  buildStoryboardFrameManifest,
+  createVideoShotFromStoryboardFrames,
   normalizeMultimodalAssetManifest,
   normalizeVideoShotSpec,
   resolveH3VideoMode,
+  storyboardFrameAssetId,
   validateMultimodalAssetManifest,
   validateVideoShotSpec,
 } from '../qianmu-video-contract.js';
@@ -139,11 +142,58 @@ test('shot validation catches missing routed inputs and dialogue ownership', () 
   assert.ok(result.issues.some((issue) => issue.startsWith('dialogue_character_missing:')));
 });
 
+test('storyboard frames become stable gallery references without copying image payloads', () => {
+  const record = {
+    id: 'record-a', chatKey: 'chat-a', floor: 12, width: 1216, height: 832,
+    url: 'data:image/png;base64,SHOULD_NOT_SURVIVE',
+    finalPrompt: 'SHOULD_NOT_ENTER_THE_ASSET_MANIFEST',
+    snapshot: { payload: { image: new Uint8Array([1, 2, 3]) } },
+  };
+  const manifest = buildStoryboardFrameManifest([record], { shotId: 'video-a', firstRecordId: 'record-a' });
+  assert.equal(manifest.assets[0].assetId, storyboardFrameAssetId(record));
+  assert.equal(manifest.assets[0].locator.kind, 'gallery');
+  assert.equal(manifest.assets[0].locator.ref, 'chat-a\u241frecord-a');
+  assert.deepEqual(manifest.assets[0].roles, ['first_frame']);
+  assert.doesNotMatch(JSON.stringify(manifest), /SHOULD_NOT_SURVIVE|SHOULD_NOT_ENTER|snapshot|finalPrompt|data:image/);
+});
+
+test('the frame bridge feeds existing first and last images into FL2VA routing', () => {
+  const records = [
+    { id: 'first', chatKey: 'chat-a', floor: 4, width: 832, height: 1216 },
+    { id: 'last', chatKey: 'chat-a', floor: 5, width: 1216, height: 832 },
+  ];
+  const bridged = createVideoShotFromStoryboardFrames({ summary: 'A continuous turn.' }, records, {
+    shotId: 'video-shot', firstRecordId: 'first', lastRecordId: 'last', requestedMode: 'auto',
+  });
+  assert.equal(bridged.spec.route.mode, 'fl2va');
+  assert.equal(bridged.spec.route.ready, true);
+  assert.equal(bridged.spec.keyframes.firstAssetId, bridged.manifest.assets.find((item) => item.sourceRef.recordId === 'first').assetId);
+  assert.equal(bridged.spec.keyframes.lastAssetId, bridged.manifest.assets.find((item) => item.sourceRef.recordId === 'last').assetId);
+});
+
+test('one storyboard image may deliberately serve as both loop endpoints without duplicate storage', () => {
+  const bridged = createVideoShotFromStoryboardFrames({ summary: 'A seamless loop.' }, [{ id: 'loop', chatKey: 'chat-a' }], {
+    firstRecordId: 'loop', lastRecordId: 'loop',
+  });
+  assert.equal(bridged.manifest.assets.length, 1);
+  assert.deepEqual(bridged.manifest.assets[0].roles, ['first_frame', 'last_frame']);
+  assert.equal(bridged.spec.route.mode, 'fl2va');
+});
+
+test('missing storyboard selections remain explicit instead of embedding stale image URLs', () => {
+  const bridged = createVideoShotFromStoryboardFrames({ summary: 'A transition.' }, [{ id: 'first', chatKey: 'chat-a' }], {
+    firstRecordId: 'first', lastRecordId: 'deleted-record', requestedMode: 'fl2va',
+  });
+  assert.equal(bridged.spec.route.mode, 'fl2va');
+  assert.equal(bridged.spec.route.ready, false);
+  assert.deepEqual(bridged.spec.route.missingRequirements, ['last_frame']);
+});
+
 test('the unfinished video contract ships as an idle feature chunk, not a startup dependency', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   assert.doesNotMatch(source, /^import[^\n]*qianmu-video-contract\.js/m);
-  assert.match(source, /videoContract:\s*\{[\s\S]*import\('\.\/qianmu-video-contract\.js\?v=1\.58\.45'\)/);
+  assert.match(source, /videoContract:\s*\{[\s\S]*import\('\.\/qianmu-video-contract\.js\?v=1\.58\.46'\)/);
   assert.ok(release.files.includes('qianmu-video-contract.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoContract'\)/);

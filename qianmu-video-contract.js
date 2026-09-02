@@ -180,6 +180,88 @@ export function validateMultimodalAssetManifest(value = {}) {
   return { ok: issues.length === 0, issues: [...new Set(issues)], manifest };
 }
 
+export function storyboardFrameAssetId(record = {}, fallbackChatKey = '') {
+  const raw = plain(record) ? record : {};
+  const recordId = text(raw.id || raw.recordId || raw.record_id, 200);
+  const chatKey = text(raw.chatKey || raw.messageRef?.chatKey || fallbackChatKey, 512);
+  return recordId ? `storyboard-frame-${hash(`${chatKey}|${recordId}`)}` : '';
+}
+
+export function buildStoryboardFrameManifest(records = [], options = {}) {
+  const config = plain(options) ? options : {};
+  const firstRecordId = text(config.firstRecordId || config.first_record_id, 200);
+  const lastRecordId = text(config.lastRecordId || config.last_record_id, 200);
+  const referenceRecordIds = new Set(unique(config.referenceRecordIds || config.reference_record_ids, 32, 200));
+  const referenceRoles = plain(config.referenceRoles || config.reference_roles) ? (config.referenceRoles || config.reference_roles) : {};
+  const subjectLabels = plain(config.subjectLabels || config.subject_labels) ? (config.subjectLabels || config.subject_labels) : {};
+  const assets = [];
+  for (const rawRecord of (Array.isArray(records) ? records : []).filter(plain).slice(0, 64)) {
+    const recordId = text(rawRecord.id || rawRecord.recordId || rawRecord.record_id, 200);
+    if (!recordId) continue;
+    const roles = [];
+    if (recordId === firstRecordId) roles.push('first_frame');
+    if (recordId === lastRecordId) roles.push('last_frame');
+    if (referenceRecordIds.has(recordId)) roles.push('subject_reference');
+    unique(referenceRoles[recordId], QIANMU_VIDEO_ASSET_ROLES.length, 80).forEach((role) => roles.push(role));
+    const normalizedRoles = [...new Set(roles)].filter((role) => QIANMU_VIDEO_ASSET_ROLES.includes(role));
+    if (!normalizedRoles.length) continue;
+    const chatKey = text(rawRecord.chatKey || rawRecord.messageRef?.chatKey || config.chatKey || config.chat_key, 512);
+    const assetId = storyboardFrameAssetId(rawRecord, chatKey);
+    assets.push({
+      assetId,
+      kind: 'image',
+      roles: normalizedRoles,
+      subjectLabel: text(subjectLabels[recordId], 80),
+      fingerprint: text(rawRecord.assetFingerprint || rawRecord.asset_fingerprint, 200) || `storyboard:${chatKey}:${recordId}`,
+      locator: { kind: 'gallery', ref: `${chatKey}\u241f${recordId}` },
+      sourceRef: {
+        type: 'storyboard_record',
+        chatKey,
+        floor: rawRecord.floor,
+        recordId,
+        versionId: rawRecord.variantRootId || rawRecord.variant_root_id || rawRecord.groupId || rawRecord.group_id || rawRecord.taskId || rawRecord.task_id,
+      },
+      rights: plain(rawRecord.rights) ? rawRecord.rights : { status: 'unknown' },
+      technical: {
+        mimeType: rawRecord.mimeType || rawRecord.mime_type,
+        width: rawRecord.width,
+        height: rawRecord.height,
+        bytes: rawRecord.bytes,
+      },
+      upload: { state: 'local' },
+    });
+  }
+  return normalizeMultimodalAssetManifest({
+    manifestId: config.manifestId || config.manifest_id,
+    shotId: config.shotId || config.shot_id,
+    assets,
+    budget: config.budget,
+  });
+}
+
+export function createVideoShotFromStoryboardFrames(shotValue = {}, records = [], options = {}) {
+  const config = plain(options) ? options : {};
+  const manifest = buildStoryboardFrameManifest(records, config);
+  const assetForRecord = (recordId) => manifest.assets.find((asset) => asset.sourceRef.recordId === text(recordId, 200)) || null;
+  const first = assetForRecord(config.firstRecordId || config.first_record_id);
+  const last = assetForRecord(config.lastRecordId || config.last_record_id);
+  const references = new Set(unique(config.referenceRecordIds || config.reference_record_ids, 32, 200));
+  const referenceAssetIds = manifest.assets
+    .filter((asset) => references.has(asset.sourceRef.recordId)
+      || asset.roles.some((role) => ['subject_reference', 'style_reference', 'motion_reference', 'video_reference', 'audio_reference'].includes(role)))
+    .map((asset) => asset.assetId);
+  const rawShot = plain(shotValue) ? shotValue : {};
+  const spec = normalizeVideoShotSpec({
+    ...rawShot,
+    shotId: config.shotId || config.shot_id || rawShot.shotId || rawShot.shot_id,
+    sourceShotId: config.sourceShotId || config.source_shot_id || rawShot.sourceShotId || rawShot.source_shot_id,
+    keyframes: { ...(plain(rawShot.keyframes) ? rawShot.keyframes : {}), firstAssetId: first?.assetId || '', lastAssetId: last?.assetId || '' },
+    references: { ...(plain(rawShot.references) ? rawShot.references : {}), assetIds: referenceAssetIds },
+    requestedMode: config.requestedMode || config.requested_mode || rawShot.requestedMode || rawShot.route?.requestedMode || 'auto',
+  }, manifest);
+  return { spec, manifest };
+}
+
 function normalizeCharacterPerformance(value, index = 0) {
   const raw = plain(value) ? value : {};
   const appearance = plain(raw.appearance) ? raw.appearance : {};
