@@ -1,5 +1,5 @@
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
-export const STORYBOARD_SCHEMA_VERSION = 14;
+export const STORYBOARD_SCHEMA_VERSION = 15;
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -147,6 +147,7 @@ export const STORYBOARD_CROPS = Object.freeze(['full', 'knees', 'waist', 'chest'
 export const STORYBOARD_CONTINUITY_FACT_CATEGORIES = Object.freeze(['outfit', 'injury', 'prop', 'action', 'scene', 'other']);
 export const STORYBOARD_CONTINUITY_FACT_PERSISTENCE = Object.freeze(['momentary', 'persistent']);
 export const STORYBOARD_CONTINUITY_FACT_STATES = Object.freeze(['active', 'superseded', 'expired']);
+export const STORYBOARD_SCENE_FINGERPRINT_SCHEMA = 'qianmu.storyboard.scene-fingerprint.v1';
 
 export const getStoryboardProvider = (id) => STORYBOARD_PROVIDER_REGISTRY[id] || null;
 export const getStoryboardModel = (providerId, modelId) => (STORYBOARD_MODEL_REGISTRY[providerId] || []).find((item) => item.id === modelId) || null;
@@ -602,6 +603,74 @@ function normalizePromptAtoms(value) {
   };
 }
 
+function sceneSignal(value) {
+  return String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+function castOverlap(left, right) {
+  const a = new Set(left || []), b = new Set(right || []);
+  if (!a.size || !b.size) return 0;
+  let shared = 0;
+  for (const id of a) if (b.has(id)) shared += 1;
+  return shared / Math.max(a.size, b.size);
+}
+
+export function normalizeStoryboardSceneFingerprint(value = {}, fallback = {}) {
+  const raw = obj(value) ? value : {}, base = obj(fallback) ? fallback : {};
+  const sceneId = cleanId(raw.sceneId || raw.scene_id || base.sceneId || base.scene_id);
+  const location = str(raw.location || base.location, 1000);
+  const sceneText = str(raw.sceneText || raw.scene_text || raw.scene || base.sceneText || base.scene_text || base.scene, 2000);
+  const time = str(raw.time || base.time, 240);
+  const weather = str(raw.weather || base.weather, 240);
+  const narrativeLayer = STORYBOARD_NARRATIVE_LAYERS.includes(raw.narrativeLayer || raw.narrative_layer || base.narrativeLayer || base.narrative_layer)
+    ? (raw.narrativeLayer || raw.narrative_layer || base.narrativeLayer || base.narrative_layer)
+    : 'present';
+  const fallbackCast = Array.isArray(base.characters) ? base.characters.map((item) => item?.id || item?.name) : [];
+  const castIds = ids(raw.castIds || raw.cast_ids || base.castIds || base.cast_ids || fallbackCast, 24).sort();
+  const anchors = ids(raw.anchors || raw.anchorIds || raw.anchor_ids || base.anchors, 40).sort();
+  const signature = [sceneId, sceneSignal(location), sceneSignal(time), sceneSignal(weather), narrativeLayer, castIds.join(','), anchors.join(','), sceneSignal(sceneText)].join('|');
+  return {
+    schema: STORYBOARD_SCENE_FINGERPRINT_SCHEMA,
+    id: sceneId ? `scene:${sceneId}` : `scene-${hash(signature)}`,
+    sceneId,
+    location,
+    sceneText,
+    time,
+    weather,
+    narrativeLayer,
+    castIds,
+    anchors,
+    explicit: Boolean(sceneId),
+  };
+}
+
+export function compareStoryboardSceneFingerprints(left, right) {
+  const a = normalizeStoryboardSceneFingerprint(left), b = normalizeStoryboardSceneFingerprint(right);
+  const reasons = [];
+  if (a.explicit && b.explicit) {
+    const sameScene = a.sceneId === b.sceneId;
+    return { sameScene, score: sameScene ? 1 : 0, reasons: [sameScene ? 'explicit_scene_id' : 'scene_id_changed'], left: a, right: b };
+  }
+  if (a.narrativeLayer !== b.narrativeLayer) return { sameScene: false, score: 0, reasons: ['narrative_layer_changed'], left: a, right: b };
+  const locationScore = a.location && b.location ? similarity(sceneSignal(a.location), sceneSignal(b.location)) : 0;
+  const sceneTextScore = a.sceneText && b.sceneText ? similarity(sceneSignal(a.sceneText), sceneSignal(b.sceneText)) : 0;
+  const castScore = castOverlap(a.castIds, b.castIds);
+  const timeScore = a.time && b.time ? similarity(sceneSignal(a.time), sceneSignal(b.time)) : 0;
+  const weatherScore = a.weather && b.weather ? similarity(sceneSignal(a.weather), sceneSignal(b.weather)) : 0;
+  if (a.location && b.location && locationScore < .34) return { sameScene: false, score: 0, reasons: ['location_changed'], left: a, right: b };
+  const hasSceneEvidence = Boolean((a.location && b.location) || (a.sceneText && b.sceneText) || (a.anchors.length && b.anchors.length));
+  const anchorScore = castOverlap(a.anchors, b.anchors);
+  const score = locationScore * .38 + sceneTextScore * .25 + anchorScore * .14 + timeScore * .08 + weatherScore * .05 + castScore * .10;
+  if (locationScore >= .55) reasons.push('location_match');
+  if (sceneTextScore >= .58) reasons.push('scene_match');
+  if (anchorScore > 0) reasons.push('anchor_match');
+  if (castScore > 0) reasons.push('cast_overlap');
+  const sameScene = hasSceneEvidence && score >= .46 && (locationScore >= .55 || sceneTextScore >= .58 || anchorScore >= .5);
+  if (!sameScene && castScore > 0 && !hasSceneEvidence) reasons.push('cast_only_is_insufficient');
+  if (!sameScene && !reasons.length) reasons.push('insufficient_scene_evidence');
+  return { sameScene, score: Math.round(score * 1000) / 1000, reasons, left: a, right: b };
+}
+
 function continuityFactSlot(fact) {
   return [fact.category, fact.subject, fact.key].map((item) => String(item || '').trim().toLowerCase()).join(':');
 }
@@ -696,29 +765,80 @@ const normalizeContinuity = normalizeStoryboardContinuityLedger;
 export function normalizeStoryboardShotSpec(value = {}) {
   const raw = obj(value) ? value : {}, composition = obj(raw.composition) ? raw.composition : {};
   const characters = (Array.isArray(raw.characters) ? raw.characters : []).filter(obj).slice(0, 12).map(normalizeStoryboardCharacterVisualState).filter((item) => item.id);
+  const narrativeLayer = STORYBOARD_NARRATIVE_LAYERS.includes(raw.narrativeLayer || raw.narrative_layer) ? (raw.narrativeLayer || raw.narrative_layer) : 'present';
+  const scene = str(raw.scene, 4000);
+  const continuityUpdates = normalizeContinuity(raw.continuityUpdates || raw.continuity_updates);
+  const sceneFingerprint = normalizeStoryboardSceneFingerprint(raw.sceneFingerprint || raw.scene_fingerprint, {
+    sceneId: raw.sceneId || raw.scene_id,
+    location: raw.location || raw.sceneLocation || raw.scene_location,
+    scene,
+    narrativeLayer,
+    characters,
+    time: continuityUpdates.time,
+    weather: continuityUpdates.weather,
+    anchors: raw.sourceParagraphIds || raw.source_paragraph_ids,
+  });
   return {
     schema: STORYBOARD_PLAN_SCHEMA,
     id: cleanId(raw.id),
     sourceParagraphIds: ids(raw.sourceParagraphIds || raw.source_paragraph_ids, 80),
     insertAfter: cleanId(raw.insertAfter || raw.insert_after),
-    narrativeLayer: STORYBOARD_NARRATIVE_LAYERS.includes(raw.narrativeLayer || raw.narrative_layer) ? (raw.narrativeLayer || raw.narrative_layer) : 'present',
+    narrativeLayer,
     narrativePurpose: str(raw.narrativePurpose || raw.narrative_purpose || raw.purpose, 800),
     shotRole: STORYBOARD_SHOT_ROLES.includes(raw.shotRole || raw.shot_role || raw.role) ? (raw.shotRole || raw.shot_role || raw.role) : 'action',
     shotScale: STORYBOARD_SHOT_SCALES.includes(raw.shotScale || raw.shot_scale || raw.shotType) ? (raw.shotScale || raw.shot_scale || raw.shotType) : 'medium_shot',
-    subject: str(raw.subject, 1000), scene: str(raw.scene, 4000), characters,
+    subject: str(raw.subject, 1000), scene, sceneId: sceneFingerprint.sceneId, sceneFingerprint, characters,
     sharedRelations: shotStringList(raw.sharedRelations || raw.shared_relations, 30, 800),
     composition: {
       ratioId: STORYBOARD_RATIOS.some((ratio) => ratio.id === composition.ratioId || ratio.id === composition.ratio_id) ? (composition.ratioId || composition.ratio_id) : '',
       ratioLocked: Boolean(composition.ratioLocked || composition.ratio_locked),
       framing: shotStringList(composition.framing, 20, 500),
+      cameraSide: str(composition.cameraSide || composition.camera_side, 120),
+      angle: str(composition.angle, 120),
+      focus: str(composition.focus || composition.compositionFocus || composition.composition_focus, 300),
       negativeSpace: str(composition.negativeSpace || composition.negative_space, 500),
       rationale: str(composition.rationale, 1000),
     },
     promptAtoms: normalizePromptAtoms(raw.promptAtoms || raw.prompt_atoms),
     sensitive: Boolean(raw.sensitive), safetyNotes: shotStringList(raw.safetyNotes || raw.safety_notes, 20, 500),
-    continuityUpdates: normalizeContinuity(raw.continuityUpdates || raw.continuity_updates),
+    continuityUpdates,
     decisions: shotStringList(raw.decisions, 40, 1000),
   };
+}
+
+export function buildStoryboardSceneCoverageMap(value = []) {
+  const shots = (Array.isArray(value) ? value : []).map(normalizeStoryboardShotSpec);
+  let previous = null, group = 0;
+  return shots.map((shot, index) => {
+    const comparison = previous ? compareStoryboardSceneFingerprints(previous.sceneFingerprint, shot.sceneFingerprint) : null;
+    const transition = !previous || !comparison.sameScene;
+    if (transition) group += 1;
+    const visualChanges = [];
+    if (previous) {
+      if (previous.shotRole !== shot.shotRole) visualChanges.push('role');
+      if (previous.shotScale !== shot.shotScale) visualChanges.push('scale');
+      if (sceneSignal(previous.subject) !== sceneSignal(shot.subject)) visualChanges.push('subject');
+      if (previous.composition.cameraSide !== shot.composition.cameraSide) visualChanges.push('camera_side');
+      if (previous.composition.angle !== shot.composition.angle) visualChanges.push('angle');
+      if (previous.composition.focus !== shot.composition.focus) visualChanges.push('focus');
+      if (previous.composition.framing.join('|') !== shot.composition.framing.join('|')) visualChanges.push('framing');
+    }
+    const informationChanged = !previous
+      || previous.sourceParagraphIds.join('|') !== shot.sourceParagraphIds.join('|')
+      || similarity(previous.narrativePurpose, shot.narrativePurpose) < .9;
+    const entry = {
+      shotId: shot.id || `shot-${index + 1}`,
+      sceneGroupId: `scene-group-${group}`,
+      sceneFingerprint: shot.sceneFingerprint,
+      transition,
+      transitionReasons: comparison?.reasons || ['first_shot'],
+      informationChanged,
+      visualChanges,
+      duplicateCoverage: Boolean(previous && comparison.sameScene && !informationChanged && !visualChanges.length),
+    };
+    previous = shot;
+    return entry;
+  });
 }
 
 export function resolveStoryboardComposition(value = {}) {
@@ -833,7 +953,7 @@ export function prepareStoryboardShotGroup(value = {}) {
     };
   };
   for (const shot of source) {
-    const signature = [shot.shotRole, shot.subject.toLowerCase(), shot.narrativePurpose.toLowerCase()].join('|');
+    const signature = [shot.sceneFingerprint.id, shot.shotRole, shot.shotScale, shot.subject.toLowerCase(), shot.narrativePurpose.toLowerCase(), shot.composition.cameraSide, shot.composition.angle, shot.composition.focus, shot.composition.framing.join('|')].join('|');
     if (!manual && seen.has(signature)) { skipped.push({ shot, reason: 'duplicate_coverage' }); continue; }
     if (!manual && kept.length >= limit) { skipped.push({ shot, reason: 'coverage_budget' }); continue; }
     if (!manual && policy.groupStrategy === 'single' && kept.length) { skipped.push({ shot, reason: 'single_frame_strategy' }); continue; }
@@ -847,7 +967,14 @@ export function prepareStoryboardShotGroup(value = {}) {
     if (order > 0 && policy.groupStrategy === 'main_secondary' && !continuityLedger.emphasisRatioId) continuityLedger.emphasisRatioId = shot.composition.ratioId;
     seen.add(signature); kept.push(shot); mergeContinuity(shot.continuityUpdates);
   }
-  return { shots: kept, skipped, strategy: policy.groupStrategy, manualOverride: manual, continuityLedger };
+  const coverageMap = buildStoryboardSceneCoverageMap(kept);
+  const sceneGroups = [];
+  for (const entry of coverageMap) {
+    const active = sceneGroups[sceneGroups.length - 1];
+    if (!active || active.id !== entry.sceneGroupId) sceneGroups.push({ id: entry.sceneGroupId, sceneFingerprint: entry.sceneFingerprint, shotIds: [entry.shotId] });
+    else active.shotIds.push(entry.shotId);
+  }
+  return { shots: kept, skipped, strategy: policy.groupStrategy, manualOverride: manual, continuityLedger, coverageMap, sceneGroups };
 }
 
 function normalizeRouting(value, catalogs = {}) {
