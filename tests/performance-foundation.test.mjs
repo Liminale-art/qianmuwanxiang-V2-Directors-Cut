@@ -10,7 +10,8 @@ assert.match(source, /function runtimeHealthSnapshot\([\s\S]*settingsBytes[\s\S]
 assert.match(source, /数据只保留在本次页面，不写入日志或用户设置/, 'diagnostics must explicitly remain session-only');
 assert.match(source, /if \(f\.status !== 'running'\) return;[\s\S]*setInterval\(focusClockRuntimeTick, 500\)/, 'the focus clock must not poll while idle or paused');
 assert.doesNotMatch(source, /^import[^\n]*qianmu-image-direct/m, 'image provider transports must stay outside the startup module graph');
-assert.match(source, /function directImageRuntime\(\)[\s\S]*import\('\.\/qianmu-image-direct\.js\?v=1\.58\.8'\)[\s\S]*directImageRuntimePromise = null/, 'the direct image runtime must load on demand and remain retryable after a failed chunk load');
+assert.match(source, /createFeatureRuntime\(\{[\s\S]*imageDirect:[\s\S]*import\('\.\/qianmu-image-direct\.js\?v=1\.58\.9'\)[\s\S]*featureRuntime\.load\('imageDirect'\)/, 'the direct image runtime must enter the shared on-demand feature boundary');
+assert.match(source, /function runtimeHealthSnapshot\(\)[\s\S]*featureRuntime\.snapshot\(\)[\s\S]*lazyFeatures/, 'session diagnostics must expose feature chunk state without persisting it');
 assert.match(source, /function inputMenuObservationRoot\(\)[\s\S]*return sendForm \|\| menu\?\.parentElement \|\| document\.body/, 'the input entry observer must prefer the narrow input-shell boundary');
 assert.match(source, /inputMenuObserverTarget = target;[\s\S]*inputMenuObserver\.observe\(target, \{ childList: true, subtree: true \}\)/, 'the input entry observer must not remain hard-wired to the entire document body');
 assert.match(source, /storyboardCheckConnection[\s\S]*await directImageRuntime\(\)[\s\S]*directImage\.checkDirectImageConnection/, 'connection tests must enter the lazy image boundary');

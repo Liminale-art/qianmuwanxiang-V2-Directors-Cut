@@ -103,9 +103,10 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.8';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.9';
 import * as reader from './qianmu-reader.js';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.8';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.9';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.9';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_COMPOSITION_RULE_ID,
@@ -145,22 +146,20 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
-} from './qianmu-storyboard.js?v=1.58.8';
+} from './qianmu-storyboard.js?v=1.58.9';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.8';
-let directImageRuntimePromise = null;
+const VERSION = '1.58.9';
+const featureRuntime = createFeatureRuntime({
+  imageDirect: {
+    label: '生图传输',
+    load: () => import('./qianmu-image-direct.js?v=1.58.9'),
+  },
+});
 function directImageRuntime() {
-  if (!directImageRuntimePromise) {
-    directImageRuntimePromise = import('./qianmu-image-direct.js?v=1.58.8')
-      .catch((error) => {
-        directImageRuntimePromise = null;
-        throw error;
-      });
-  }
-  return directImageRuntimePromise;
+  return featureRuntime.load('imageDirect');
 }
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
@@ -7129,11 +7128,12 @@ function runtimeHealthSnapshot() {
     ? performanceRuntime.modalRenderTotalMs / performanceRuntime.modalRenderCount
     : 0;
   const warnings = [];
+  const lazyFeatures = featureRuntime.snapshot();
   if (settingsBytes >= 1024 * 1024) warnings.push('设置数据已超过 1 MB');
   if (chatBytes >= 1024 * 1024) warnings.push('当前聊天数据已超过 1 MB');
   if (performanceRuntime.modalRenderLastMs >= 50) warnings.push('最近一次界面重绘超过 50 ms');
   if (performanceRuntime.lastNodeCount >= 3500) warnings.push('当前千幕界面节点较多');
-  return { observers, timers, settingsBytes, chatBytes, renderAverageMs, warnings };
+  return { observers, timers, settingsBytes, chatBytes, renderAverageMs, lazyFeatures, warnings };
 }
 
 function renderRuntimeHealthCard() {
@@ -7157,6 +7157,7 @@ function renderRuntimeHealthCard() {
         </div>
         <p class="sd-runtime-health-line"><span>活动观察器 ${snapshot.observers.length}</span>${htmlEscape(snapshot.observers.join(' · ') || '无')}</p>
         <p class="sd-runtime-health-line"><span>活动计时器 ${snapshot.timers.length}</span>${htmlEscape(snapshot.timers.join(' · ') || '无')}</p>
+        <p class="sd-runtime-health-line"><span>按需功能 ${snapshot.lazyFeatures.filter((feature) => feature.status === 'ready').length}/${snapshot.lazyFeatures.length}</span>${snapshot.lazyFeatures.map((feature) => `${htmlEscape(feature.label)} · ${feature.status === 'ready' ? '已加载' : feature.status === 'loading' ? '加载中' : feature.status === 'error' ? '可重试' : '待命'}`).join(' · ') || '无'}</p>
         <div class="sd-runtime-health-actions"><small>数据只保留在本次页面，不写入日志或用户设置。</small><button type="button" class="sd-btn sd-mini-btn sd-runtime-health-refresh">刷新诊断</button></div>
       </div>
     </details>
