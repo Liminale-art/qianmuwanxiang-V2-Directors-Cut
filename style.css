@@ -1711,6 +1711,20 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-storage-legend > span > i { width: 8px; height: 8px; border-radius: 3px; background: var(--sd-storage-color); }
 #story-director-modal .sd-storage-legend em { overflow: hidden; color: var(--sd-muted); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 #story-director-modal .sd-storage-legend b { font-weight: 550; white-space: nowrap; }
+#story-director-modal .sd-storage-pressure {
+  margin: 12px 0 0;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, #d69a3b 48%, var(--sd-border));
+  border-radius: var(--sd-radius-control);
+  background: color-mix(in srgb, #d69a3b 10%, transparent);
+  color: var(--sd-text);
+  font-size: 11px;
+  line-height: 1.45;
+}
+#story-director-modal .sd-storage-pressure.is-critical {
+  border-color: color-mix(in srgb, #d85b64 58%, var(--sd-border));
+  background: color-mix(in srgb, #d85b64 12%, transparent);
+}
 #story-director-modal .sd-storage-scope { margin: 13px 0 0; color: var(--sd-muted); font-size: 11px; line-height: 1.45; }
 #story-director-modal .sd-storage-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 13px; }
 

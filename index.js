@@ -95,11 +95,11 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.38';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.39';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.38';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.38';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.38';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.39';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.39';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.39';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -152,35 +152,35 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.38';
+} from './qianmu-storyboard.js?v=1.58.39';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.38';
+const VERSION = '1.58.39';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.38'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.39'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.38'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.39'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.38'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.39'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.38'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.39'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.38'),
-        import('./qianmu-theaters.js?v=1.58.38'),
+        import('./builtin-theaters.js?v=1.58.39'),
+        import('./qianmu-theaters.js?v=1.58.39'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -959,6 +959,10 @@ let optionalServiceState = { status: 'idle', available: false, version: '', serv
 let optionalServiceProbePromise = null;
 let qianmuUpdateState = { status: 'idle', available: false, checkedAt: 0 };
 let qianmuUpdatePromise = null;
+const migrationRuntime = {
+  settings: { status: 'idle', error: '', at: 0 },
+  chat: { status: 'idle', error: '', at: 0 },
+};
 // 仅驻留于当前页面生命周期的轻量诊断，不写入 ST 设置、日志或聊天元数据。
 // 第一阶段先建立可量化基线，避免在没有证据时贸然拆分巨型入口造成回归链。
 const performanceRuntime = {
@@ -1193,7 +1197,7 @@ function getSettings() {
   if (!isPlainObject(extensionSettings[MODULE_NAME])) extensionSettings[MODULE_NAME] = clone(DEFAULT_SETTINGS);
   // 仓库名、插件显示名可更新，但持久化命名空间永远保持 story_director_liminale。
   // 先跑只增不删的 V2 兼容门面，再补新默认，避免默认值抢占旧字段的迁移目标。
-  extensionSettings[MODULE_NAME] = migrateQianmuSettingsV2(extensionSettings[MODULE_NAME]).value;
+  extensionSettings[MODULE_NAME] = acceptMigrationResult('settings', migrateQianmuSettingsV2(extensionSettings[MODULE_NAME]));
   mergeDefaults(extensionSettings[MODULE_NAME], DEFAULT_SETTINGS);
   const cachedProse = readCachedProseLayout();
   const storedProse = extensionSettings[MODULE_NAME].proseLayout;
@@ -1202,6 +1206,20 @@ function getSettings() {
   }
   migrateSettings(extensionSettings[MODULE_NAME]);
   return extensionSettings[MODULE_NAME];
+}
+
+function acceptMigrationResult(scope, result) {
+  const previous = migrationRuntime[scope] || { status: 'idle', error: '', at: 0 };
+  if (result?.failed) {
+    const error = String(result.error || '未知迁移错误').slice(0, 500);
+    migrationRuntime[scope] = { status: 'rolled_back', error, at: Date.now() };
+    if (previous.status !== 'rolled_back' || previous.error !== error) {
+      console.warn(`[千幕] ${scope === 'settings' ? '设置' : '聊天'}数据迁移失败，已保留原数据并回退。`, error);
+    }
+  } else {
+    migrationRuntime[scope] = { status: result?.changed ? 'migrated' : 'ready', error: '', at: Date.now() };
+  }
+  return result?.value;
 }
 
 function migrateSettings(s) {
@@ -1373,7 +1391,7 @@ function getChatStore() {
   if (!meta[MODULE_NAME]) {
     meta[MODULE_NAME] = { blueprint: DEFAULT_BLUEPRINT, plan: null, history: [], lastPlanIdx: -1, planAtLen: 0, updatedAt: '', factions: [], worldEvents: [], geoSeq: 0 };
   }
-  meta[MODULE_NAME] = migrateQianmuChatStoreV2(meta[MODULE_NAME]).value;
+  meta[MODULE_NAME] = acceptMigrationResult('chat', migrateQianmuChatStoreV2(meta[MODULE_NAME]));
   mergeDefaults(meta[MODULE_NAME], { blueprint: DEFAULT_BLUEPRINT, plan: null, history: [], lastPlanIdx: -1, planAtLen: 0, updatedAt: '', factions: [], worldEvents: [], geoSeq: 0 });
   // v1.58.15：伏笔显影已退役。聊天在被打开时惰性清理旧档案，避免继续占用元数据或误入提示词。
   delete meta[MODULE_NAME].threads;
@@ -6976,11 +6994,15 @@ function runtimeHealthSnapshot() {
     : 0;
   const warnings = [];
   const lazyFeatures = featureRuntime.snapshot();
+  const migrationFailures = Object.entries(migrationRuntime)
+    .filter(([, item]) => item.status === 'rolled_back')
+    .map(([scope]) => scope === 'settings' ? '设置' : '当前聊天');
   if (settingsBytes >= 1024 * 1024) warnings.push('设置数据已超过 1 MB');
   if (chatBytes >= 1024 * 1024) warnings.push('当前聊天数据已超过 1 MB');
   if (performanceRuntime.modalRenderLastMs >= 50) warnings.push('最近一次界面重绘超过 50 ms');
   if (performanceRuntime.lastNodeCount >= 3500) warnings.push('当前千幕界面节点较多');
-  return { observers, timers, settingsBytes, chatBytes, renderAverageMs, lazyFeatures, productionPackets: directorProductionPacketState.packets.length, warnings };
+  if (migrationFailures.length) warnings.push(`${migrationFailures.join('、')}迁移已回退`);
+  return { observers, timers, settingsBytes, chatBytes, renderAverageMs, lazyFeatures, migrationFailures, productionPackets: directorProductionPacketState.packets.length, warnings };
 }
 
 function renderRuntimeHealthCard() {
@@ -7001,6 +7023,7 @@ function renderRuntimeHealthCard() {
           <span>重绘 / 打开<b>${htmlEscape(performanceRuntime.modalRenderCount)} / ${htmlEscape(performanceRuntime.modalOpenCount)}</b></span>
           <span>设置数据<b>${htmlEscape(formatStorageBytes(snapshot.settingsBytes))}</b></span>
           <span>当前聊天<b>${htmlEscape(formatStorageBytes(snapshot.chatBytes))}</b></span>
+          <span>迁移保护<b>${snapshot.migrationFailures.length ? `已回退 · ${htmlEscape(snapshot.migrationFailures.join('、'))}` : '正常'}</b></span>
           <span>制片包缓存<b>${htmlEscape(snapshot.productionPackets)}</b></span>
           <span>增强服务<b class="sd-optional-service-label" data-status="${htmlEscape(optionalServiceState.status)}">${htmlEscape(optionalServiceLabel())}</b></span>
         </div>
@@ -7040,6 +7063,7 @@ async function collectStorageInventory() {
     blobStore.estimateBlobStoreUsage(),
     blobStore.auditOrphanedReaderBlobs(),
   ]);
+  const pressure = blobStore.classifyStoragePressure(originEstimate || {});
   const settingsBytes = storageJsonBytes(storageSettingsSnapshotWithoutDiagnostics());
   const currentChatBytes = storageJsonBytes(getChatStore());
   const diagnosticsBytes = storageJsonBytes(storageDiagnosticSnapshot());
@@ -7070,6 +7094,7 @@ async function collectStorageInventory() {
       quota: Math.max(0, Number(originEstimate?.quota) || 0),
       persisted: false,
       available: Boolean(originEstimate),
+      pressure,
     },
     idb,
     categories: [...categoryMap.values()].sort((a, b) => b.bytes - a.bytes),
@@ -7132,11 +7157,19 @@ function renderStorageManagementCard() {
   const orphanText = orphanCount
     ? `${orphanCount} 项 · ${formatStorageBytes(data.orphanReaderBlobs?.bytes)}`
     : '未发现';
+  const pressure = data.origin.pressure || blobStore.classifyStoragePressure(data.origin);
+  const pressurePercent = Math.min(999, Math.max(0, Math.round(Number(pressure.ratio || 0) * 100)));
+  const pressureNotice = pressure.level === 'critical'
+    ? `<p class="sd-storage-pressure is-critical" role="status">浏览器来源空间已使用 ${pressurePercent}% · 剩余约 ${htmlEscape(formatStorageBytes(pressure.freeBytes))}。建议先备份再按模块整理；千幕不会自动清理。</p>`
+    : pressure.level === 'warning'
+      ? `<p class="sd-storage-pressure is-warning" role="status">浏览器来源空间已使用 ${pressurePercent}% · 剩余约 ${htmlEscape(formatStorageBytes(pressure.freeBytes))}。可按需整理，千幕不会自动清理。</p>`
+      : '';
   return `<section class="sd-card sd-storage-card">
     <div class="sd-card-title-row"><div><h3>储存空间</h3><p class="sd-summary-note">${htmlEscape(new Date(data.sampledAt).toLocaleTimeString())}</p></div><button type="button" class="sd-icon-btn sd-storage-refresh" title="刷新" aria-label="刷新"><i class="fa-solid fa-rotate${status === 'loading' ? ' fa-spin' : ''}"></i></button></div>
     <div class="sd-storage-totals"><span>浏览器 / ST 来源<b>${htmlEscape(originText)}</b></span><span>千幕已盘点<b>${htmlEscape(formatStorageBytes(data.trackedBytes))}</b></span><span>可管理项目<b>${htmlEscape(formatStorageBytes(data.manageableBytes))}</b></span><span>孤儿图片<b>${htmlEscape(orphanText)}</b></span></div>
     <div class="sd-storage-ios-bar" role="img" aria-label="储存空间分布">${storageBar}</div>
     <div class="sd-storage-legend">${legend || '<p class="sd-muted">暂未发现千幕本地数据。</p>'}</div>
+    ${pressureNotice}
     <p class="sd-storage-scope">此处是浏览器分配给当前 ST 站点来源的空间，不代表 VPS 磁盘总容量；千幕仅统计可明确归因的本地内容。</p>
     <div class="sd-storage-actions"><button type="button" class="sd-btn sd-primary sd-storage-clean" ${data.manageableBytes > 0 ? '' : 'disabled'}><i class="fa-solid fa-sliders"></i>选择清理模块</button><button type="button" class="sd-btn sd-storage-chat-clean" ${data.idb?.chatScopes?.length ? '' : 'disabled'}><i class="fa-solid fa-message"></i>按聊天管理</button></div>
   </section>`;

@@ -594,6 +594,24 @@ function utf8ByteLength(value) {
   return bytes;
 }
 
+// 浏览器配额是“当前 ST 站点来源”的动态预算，不是 VPS/磁盘容量。
+// 这里只给出高水位信号，绝不自动删除、降级或申请持久化权限。
+export function classifyStoragePressure(estimate = {}) {
+  const usage = Math.max(0, Number(estimate?.usage) || 0);
+  const quota = Math.max(0, Number(estimate?.quota) || 0);
+  if (!quota) return { available: false, level: 'unknown', usage, quota, ratio: 0, freeBytes: 0 };
+  const ratio = usage / quota;
+  const level = ratio >= 0.9 ? 'critical' : ratio >= 0.8 ? 'warning' : 'normal';
+  return {
+    available: true,
+    level,
+    usage,
+    quota,
+    ratio,
+    freeBytes: Math.max(0, quota - usage),
+  };
+}
+
 function readerBucketScope(key, value = {}) {
   const rawKey = String(key ?? '');
   const bookId = String(value?.bookId || '').trim();

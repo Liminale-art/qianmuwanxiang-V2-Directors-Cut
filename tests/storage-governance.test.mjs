@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { estimateStoredValueBytes, normalizeChatScopedStorageSelections } from '../qianmu-blobstore.js';
+import { classifyStoragePressure, estimateStoredValueBytes, normalizeChatScopedStorageSelections } from '../qianmu-blobstore.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../style.css', import.meta.url), 'utf8');
@@ -12,6 +12,12 @@ assert.equal(estimateStoredValueBytes(new Uint8Array(9)), 9, 'Typed arrays must 
 const cyclic = { label: 'ok' };
 cyclic.self = cyclic;
 assert.doesNotThrow(() => estimateStoredValueBytes(cyclic), 'cyclic settings must not break inventory');
+assert.deepEqual(classifyStoragePressure({ usage: 79, quota: 100 }), {
+  available: true, level: 'normal', usage: 79, quota: 100, ratio: 0.79, freeBytes: 21,
+});
+assert.equal(classifyStoragePressure({ usage: 80, quota: 100 }).level, 'warning', '80% origin usage must become a non-destructive warning');
+assert.equal(classifyStoragePressure({ usage: 90, quota: 100 }).level, 'critical', '90% origin usage must become a critical warning');
+assert.equal(classifyStoragePressure({ usage: 20, quota: 0 }).level, 'unknown', 'missing browser quota must not manufacture pressure');
 assert.deepEqual(normalizeChatScopedStorageSelections([
   { name: 'tts_lines', chatKey: 'chat-a' },
   { store: 'tts_lines', chatKey: 'chat-a' },
@@ -52,6 +58,8 @@ assert.match(styles, /\.sd-storage-ios-bar[\s\S]*\.sd-storage-segment[\s\S]*--sd
 assert.match(source, /浏览器 \/ ST 来源[\s\S]*千幕已盘点[\s\S]*可管理项目/, 'origin, attributable, and manageable totals must remain separate');
 assert.match(source, /浏览器分配给当前 ST 站点来源的空间[\s\S]*千幕仅统计可明确归因的本地内容/, 'origin use must never be mislabeled as Qianmu-only storage');
 assert.match(source, /不代表 VPS 磁盘总容量/, 'browser quota must not be confused with server disk capacity');
+assert.match(source, /classifyStoragePressure\(originEstimate \|\| \{\}\)[\s\S]*pressureNotice[\s\S]*千幕不会自动清理/, 'high origin usage must produce a visible warning without automatic cleanup');
+assert.match(styles, /\.sd-storage-pressure[\s\S]*\.sd-storage-pressure\.is-critical/, 'warning and critical storage pressure need distinct restrained styles');
 assert.match(source, /if \(activeTab === 'plug'\)[\s\S]*refreshStorageInventory/, 'inventory refresh belongs to API and logs');
 assert.match(source, /openStorageCleanupDialog[\s\S]*data\?\.idb\?\.stores[\s\S]*不可恢复[\s\S]*input type="checkbox"/, 'cleanup must list every registered store and require explicit item selection');
 assert.match(source, /blobStore\.clearStorageItems\(stores\)[\s\S]*selected\.includes\('__diagnostics__'\)[\s\S]*storyboard\.pipelineLogs = \[\]/, 'selected stores and diagnostics must be cleared independently');
