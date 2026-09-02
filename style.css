@@ -2411,6 +2411,34 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-video-channel-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 34px; gap: 7px; }
 #story-director-modal .sd-video-channel-actions > .sd-btn { width: 100%; min-width: 0; }
 #story-director-modal .sd-video-channel-actions > .sd-icon-btn { width: 34px; height: 34px; }
+#story-director-modal .sd-video-budget-card { display: grid; gap: 8px; }
+#story-director-modal .sd-video-budget-card .sd-field-head { margin: 0; }
+#story-director-modal .sd-video-budget-card > label { min-width: 0; display: grid; gap: 5px; margin: 0 !important; }
+#story-director-modal .sd-video-budget-card > label > span,
+#story-director-modal .sd-video-budget-grid label > span { color: var(--sd-muted); font-size: 10px; }
+#story-director-modal .sd-video-budget-card .text_pole { width: 100% !important; min-width: 0; margin: 0 !important; }
+#story-director-modal .sd-video-budget-locks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+#story-director-modal .sd-video-budget-locks > span {
+  min-width: 0;
+  min-height: 29px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 7px;
+  border: 1px solid color-mix(in srgb, var(--sd-accent) 30%, var(--sd-hairline));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--sd-accent) 8%, var(--sd-glass-weak));
+  color: var(--sd-accent);
+  font-size: 9px;
+}
+#story-director-modal .sd-video-budget-locks :is(i, .qm-glyph-icon) { width: 13px; height: 13px; flex: 0 0 auto; font-size: 13px; }
+#story-director-modal .sd-video-budget-automatic { border-top: 1px solid var(--sd-hairline); border-bottom: 1px solid var(--sd-hairline); }
+#story-director-modal .sd-video-budget-automatic > summary { min-height: 32px; padding: 4px 0; }
+#story-director-modal .sd-video-budget-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding: 4px 0 9px; }
+#story-director-modal .sd-video-budget-grid > label { min-width: 0; display: grid; gap: 4px; margin: 0 !important; }
+#story-director-modal .sd-video-budget-card > p { margin: 0 !important; font-size: 9px !important; }
+#story-director-modal .sd-video-budget-save { width: 100%; }
 
 #story-director-modal .sd-model-select { min-height: 36px !important; }
 #story-director-modal .sd-model-select option { white-space: normal; }
@@ -2576,6 +2604,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   #story-director-modal .sd-api-generation-row label > span { font-size: 10.5px; }
   #story-director-modal .sd-api-generation-row .text_pole { padding-inline: 6px !important; font-size: 11px !important; }
   #story-director-modal .sd-video-channel-grid { grid-template-columns: 1fr; }
+  #story-director-modal .sd-video-budget-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-height: 620px) {
@@ -8786,7 +8815,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 }
 #story-director-modal .sd-structured-output-toggle :is(i, .qm-glyph-icon) { width: 15px; height: 15px; font-size: 15px; }
 
-/* v1.58.65 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
+/* v1.58.66 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
 #story-director-modal .sd-storyboard-gallery-kind-switch {
   min-height: 36px;
   display: grid;

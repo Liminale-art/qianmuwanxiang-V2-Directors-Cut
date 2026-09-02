@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.65';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.65';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.65';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.65';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.66';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.66';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.66';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.66';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,99 +151,99 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.65';
+} from './qianmu-storyboard.js?v=1.58.66';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.65';
+const VERSION = '1.58.66';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.65'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.66'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.58.65').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.58.66').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.65'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.66'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.65'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.66'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.58.65'),
+    load: () => import('./qianmu-video-contract.js?v=1.58.66'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.58.65'),
+    load: () => import('./qianmu-video-draft.js?v=1.58.66'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.58.65'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.58.66'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.58.65'),
+    load: () => import('./qianmu-video-readiness.js?v=1.58.66'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.58.65'),
+    load: () => import('./qianmu-video-pricing.js?v=1.58.66'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.58.65'),
+    load: () => import('./qianmu-video-task.js?v=1.58.66'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.58.65'),
+    load: () => import('./qianmu-video-budget.js?v=1.58.66'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.58.65'),
+    load: () => import('./qianmu-video-minimax.js?v=1.58.66'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.58.65'),
+    load: () => import('./qianmu-video-runtime.js?v=1.58.66'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.58.65'),
+    load: () => import('./qianmu-video-store.js?v=1.58.66'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.58.65'),
+    load: () => import('./qianmu-video-result.js?v=1.58.66'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.58.65'),
+    load: () => import('./qianmu-video-gallery.js?v=1.58.66'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.58.65'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.58.66'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.58.65'),
+    load: () => import('./qianmu-video-media.js?v=1.58.66'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.65'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.66'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.65'),
-        import('./qianmu-theaters.js?v=1.58.65'),
+        import('./builtin-theaters.js?v=1.58.66'),
+        import('./qianmu-theaters.js?v=1.58.66'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -749,7 +749,17 @@ const DEFAULT_SETTINGS = Object.freeze({
   outputSchemaBackup: null,       // 「恢复上次」：同上，备份用户上一份输出格式
   logHistory: [],
   logOpenState: {},               // API 与日志：按日志 ID 记忆展开状态，默认折叠
-  videoH3: { region: 'global' },  // 动态渠道只保存非敏感区域偏好；凭据独立进入 ST 密钥库/浏览器凭据仓
+  videoH3: {
+    region: 'global',
+    budgetPolicy: {
+      unit: 'usd',
+      timezoneOffsetMinutes: 480,
+      totalDailyLimitUnits: 0,
+      automatic: { enabled: false, maxPerTaskUnits: 0, dailyLimitUnits: 0, perChatDailyLimitUnits: 0, maxDurationSeconds: 8 },
+      manual: { requireCostConfirmation: true },
+      highResolution: { requireExplicitConfirmation: true },
+    },
+  },  // 动态渠道只保存非敏感区域/费用偏好；凭据独立进入 ST 密钥库/浏览器凭据仓
   notes: { enabled: true, detached: false, position: { x: null, y: null }, appearance: { tone: 'dark', edgeIndex: 0 } }, // 便笺蜂巢格可整格拖出到 ST 顶层；关闭只隐藏，不删除固定便笺
   // 专注时钟：全局轻量状态，与聊天、推演和伴读存储完全隔离。运行态保存绝对截止时间，后台挂起/刷新后按真实时间续算。
   focusClock: {
@@ -11130,6 +11140,38 @@ function storyboardVideoGatewayKnown() {
   return optionalServiceState.status === 'ready' && optionalServiceState.services.includes('minimax-h3');
 }
 
+function storyboardVideoBudgetPolicy() {
+  const raw = isPlainObject(settings.videoH3?.budgetPolicy) ? settings.videoH3.budgetPolicy : {};
+  const automatic = isPlainObject(raw.automatic) ? raw.automatic : {};
+  const amount = (value) => Math.max(0, Number(value) || 0);
+  return {
+    unit: 'usd',
+    timezoneOffsetMinutes: Number.isFinite(Number(raw.timezoneOffsetMinutes)) ? Number(raw.timezoneOffsetMinutes) : 480,
+    totalDailyLimitUnits: amount(raw.totalDailyLimitUnits),
+    automatic: {
+      enabled: false,
+      maxPerTaskUnits: amount(automatic.maxPerTaskUnits),
+      dailyLimitUnits: amount(automatic.dailyLimitUnits),
+      perChatDailyLimitUnits: amount(automatic.perChatDailyLimitUnits),
+      maxDurationSeconds: Math.min(15, Math.max(4, Math.round(Number(automatic.maxDurationSeconds) || 8))),
+    },
+    manual: { requireCostConfirmation: true },
+    highResolution: { requireExplicitConfirmation: true },
+  };
+}
+
+function renderStoryboardVideoBudgetCard() {
+  const policy = storyboardVideoBudgetPolicy();
+  return `<section class="sd-card sd-video-budget-card">
+    <div class="sd-field-head"><h3>动态费用保护</h3><span class="sd-summary-note">USD · 预估上限</span></div>
+    <label><span>每日总额提醒线</span><input class="text_pole sd-video-budget-total" type="number" min="0" step="0.01" value="${htmlEscape(policy.totalDailyLimitUnits)}"></label>
+    <div class="sd-video-budget-locks"><span><i class="fa-solid fa-shield-halved"></i>每次手动生成均确认</span><span><i class="fa-solid fa-check-double"></i>2K 单独确认</span></div>
+    <details class="sd-plain-fold sd-video-budget-automatic"><summary><b>自动化预设</b><span class="sd-summary-note">尚未开放</span></summary><div class="sd-video-budget-grid"><label><span>单次上限</span><input class="text_pole sd-video-budget-per-task" type="number" min="0" step="0.01" value="${htmlEscape(policy.automatic.maxPerTaskUnits)}"></label><label><span>自动每日上限</span><input class="text_pole sd-video-budget-daily" type="number" min="0" step="0.01" value="${htmlEscape(policy.automatic.dailyLimitUnits)}"></label><label><span>单聊天每日上限</span><input class="text_pole sd-video-budget-chat" type="number" min="0" step="0.01" value="${htmlEscape(policy.automatic.perChatDailyLimitUnits)}"></label><label><span>最长时长</span><select class="text_pole sd-video-budget-duration">${[4, 5, 6, 8, 10, 12, 15].map((seconds) => `<option value="${seconds}" ${policy.automatic.maxDurationSeconds === seconds ? 'selected' : ''}>${seconds} 秒</option>`).join('')}</select></label></div></details>
+    <p class="sd-muted">0 表示不设置该提醒线。价格来自公开快照，不能替代供应商余额或最终账单。</p>
+    <button type="button" class="sd-btn sd-video-budget-save"><i class="fa-solid fa-floppy-disk"></i>保存费用保护</button>
+  </section>`;
+}
+
 function renderStoryboardVideoConnectionCard() {
   const configured = storyboardVideoCredentialKnown();
   const gatewayReady = storyboardVideoGatewayKnown();
@@ -11189,6 +11231,7 @@ function renderPlugTab() {
       </div>
     </section>
     ${renderStoryboardVideoConnectionCard()}
+    ${renderStoryboardVideoBudgetCard()}
     <section class="sd-card sd-widget-card">
       <h3>小组件</h3>
       <div class="sd-widget-toggle-row" role="group" aria-label="小组件开关">
@@ -18786,6 +18829,36 @@ function bindActiveTabEvents(root) {
       await storyboardForgetVideoCredential();
       await storyboardPaintVideoConnectionState(root);
       toast('MiniMax H3 凭据已删除。', 'success');
+    });
+    root.querySelector('.sd-video-budget-save')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      try {
+        const budgetRuntime = await featureRuntime.load('videoBudget');
+        const value = (selector) => Math.max(0, Number(root.querySelector(selector)?.value) || 0);
+        const normalized = budgetRuntime.normalizeVideoBudgetPolicy({
+          unit: 'usd',
+          timezoneOffsetMinutes: -new Date().getTimezoneOffset(),
+          totalDailyLimitUnits: value('.sd-video-budget-total'),
+          automatic: {
+            enabled: false,
+            maxPerTaskUnits: value('.sd-video-budget-per-task'),
+            dailyLimitUnits: value('.sd-video-budget-daily'),
+            perChatDailyLimitUnits: value('.sd-video-budget-chat'),
+            maxDurationSeconds: Number(root.querySelector('.sd-video-budget-duration')?.value || 8),
+          },
+          manual: { requireCostConfirmation: true },
+          highResolution: { requireExplicitConfirmation: true },
+        });
+        settings.videoH3 ||= { region: 'global' };
+        settings.videoH3.budgetPolicy = normalized;
+        saveSettings();
+        toast('动态费用保护已保存；自动生成仍未开放。', 'success');
+      } catch (_) {
+        toast('费用保护保存失败，请稍后重试。', 'error');
+      } finally {
+        if (button.isConnected) button.disabled = false;
+      }
     });
   }
   root.querySelector('.sd-edit-injection')?.addEventListener('click', (event) => {

@@ -15,7 +15,7 @@ function section(start, end) {
 test('H3 settings persist only non-sensitive regional preferences', () => {
   const defaults = section('const DEFAULT_SETTINGS', 'let settings = null');
   const card = section('function renderStoryboardVideoConnectionCard', 'function renderPlugTab');
-  assert.match(defaults, /videoH3: \{ region: 'global' \}/);
+  assert.match(defaults, /videoH3: \{[\s\S]*?region: 'global'/);
   assert.match(card, /sd-video-h3-region/);
   assert.match(card, /sd-video-h3-secret/);
   assert.match(card, /value=""/);
