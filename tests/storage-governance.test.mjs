@@ -29,6 +29,7 @@ assert.deepEqual(normalizeChatScopedStorageSelections([
 assert.match(storeSource, /STORE_AUDIO.*recoverable: true/s);
 assert.match(storeSource, /STORE_TTS_LINES.*recoverable: true/s);
 assert.match(storeSource, /STORE_RETLOG.*recoverable: true/s);
+assert.match(storeSource, /STORE_STORYBOARD_PIPELINE_LOGS.*category: 'logs'.*recoverable: true/s);
 assert.match(storeSource, /STORE_FAVORITES.*recoverable: false/s);
 assert.match(storeSource, /STORE_BOOKS.*recoverable: false/s);
 assert.match(storeSource, /export async function clearRecoverableStorage\(\)/);
@@ -63,6 +64,7 @@ assert.match(styles, /\.sd-storage-pressure[\s\S]*\.sd-storage-pressure\.is-crit
 assert.match(source, /if \(activeTab === 'plug'\)[\s\S]*refreshStorageInventory/, 'inventory refresh belongs to API and logs');
 assert.match(source, /openStorageCleanupDialog[\s\S]*data\?\.idb\?\.stores[\s\S]*不可恢复[\s\S]*input type="checkbox"/, 'cleanup must list every registered store and require explicit item selection');
 assert.match(source, /blobStore\.clearStorageItems\(stores\)[\s\S]*selected\.includes\('__diagnostics__'\)[\s\S]*storyboard\.pipelineLogs = \[\]/, 'selected stores and diagnostics must be cleared independently');
+assert.match(source, /cleared\.has\('storyboard_pipeline_logs'\)[\s\S]*storyboardPipelineArchiveEpoch\+\+[\s\S]*filter\(\(item\) => !storyboardPipelineIsTerminal\(item\)\)/, 'clearing detailed logs must invalidate archive callbacks while preserving active pipelines');
 assert.match(source, /portableTtsBytes[\s\S]*item\.name === 'tts_lines'[\s\S]*cleared\.has\('tts_lines'\)[\s\S]*ttsLineCache\.clear\(\)/, 'the TTS cache item must include and clear its portable chat snapshot');
 assert.match(source, /orphanReaderBlobs[\s\S]*\u5b64\u513f\u56fe\u7247[\s\S]*__orphan_reader_blobs__/, 'orphaned reader blobs must be visible as a separate cleanup choice');
 assert.match(source, /selected\.includes\('__orphan_reader_blobs__'\)[\s\S]*clearOrphanedReaderBlobs\(\)/, 'orphan cleanup must only run after explicit selection');

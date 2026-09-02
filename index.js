@@ -95,11 +95,11 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.39';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.40';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.39';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.39';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.39';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.40';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.40';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.40';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -152,35 +152,35 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.39';
+} from './qianmu-storyboard.js?v=1.58.40';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.39';
+const VERSION = '1.58.40';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.39'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.40'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.39'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.40'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.39'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.40'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.39'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.40'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.39'),
-        import('./qianmu-theaters.js?v=1.58.39'),
+        import('./builtin-theaters.js?v=1.58.40'),
+        import('./qianmu-theaters.js?v=1.58.40'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -944,6 +944,10 @@ let storyboardCompilerBusy = false;  // 自动取景是独立的一次 LLM 请�
 let storyboardWorldEntryCache = { key: '', names: [], boundNames: [], books: {}, rows: [], loading: null, error: '' }; // 分镜独立选择，读取链路与「取材」共用
 const storyboardActiveJobs = new Map(); // 正在生成的任务；放弃时不取消可能已计费的上游请求，只丢弃回传
 let storyboardQueue = [];            // 千幕内串行队列，避免同一连接并发误耗额度
+const storyboardPipelineArchiveCache = new Map(); // 已结束的完整流水；settings 只保留轻量日志摘要
+const storyboardPipelineArchiveWrites = new Map();
+let storyboardPipelineArchiveHydration = null;
+let storyboardPipelineArchiveEpoch = 0;
 const storyboardApiKeys = new Map(); // credentialId -> Key；不进入设置、日志或分镜数据包
 const storyboardDraftApiKeys = new Map(); // 表单暂存：测试失败/页面重绘时不丢失用户刚输入的 Key
 const STORYBOARD_BROWSER_CREDENTIALS_KEY = 'qianmu.storyboard.credentials.v1';
@@ -7186,6 +7190,7 @@ const STORAGE_ITEM_RISK = Object.freeze({
   reader_vectors: ['可重新计算', false],
   tts_lines: ['可重新提取', false],
   notes: ['不可恢复 · 固定便笺', true],
+  storyboard_pipeline_logs: ['可清理 · 分镜详细流水', false],
   __orphan_reader_blobs__: ['无书籍主体引用 · 删除前重查', false],
   __diagnostics__: ['千幕与分镜日志', false],
 });
@@ -7514,6 +7519,14 @@ function reconcileClearedStorageItems(selected) {
     if (!notesFind(notesActiveId)) notesActiveId = '';
     renderFloatingNotes();
     if (notesPanelOpen) renderNotesPanelPortal();
+  }
+  if (cleared.has('storyboard_pipeline_logs')) {
+    storyboardPipelineArchiveEpoch++;
+    storyboardPipelineArchiveCache.clear();
+    storyboardPipelineArchiveWrites.clear();
+    storyboardPipelineArchiveHydration = null;
+    const storyboard = storyboardState();
+    storyboard.pipelineLogs = (storyboard.pipelineLogs || []).filter((item) => !storyboardPipelineIsTerminal(item));
   }
 }
 
@@ -11021,6 +11034,13 @@ function storyboardState() {
       log.finishedAt = Date.now();
       log.durationMs = Math.max(0, log.finishedAt - Number(log.startedAt || log.queuedAt || log.finishedAt));
       log.error = '页面刷新后未自动续跑';
+      const pipelineId = String(log.pipelineId || '');
+      const pipeline = (state.pipelineLogs || []).find((item) => String(item.id) === pipelineId);
+      if (pipeline && !storyboardPipelineIsTerminal(pipeline)) {
+        pipeline.status = 'cancelled';
+        pipeline.finishedAt = log.finishedAt;
+        pipeline.durationMs = log.durationMs;
+      }
       changed = true;
     }
     state.taskStates = (state.taskStates || []).map((task) => {
@@ -11045,6 +11065,92 @@ function storyboardState() {
   state.pendingShotType = String(state.pendingShotType || 'custom');
   state.pendingCompilerStages = Array.isArray(state.pendingCompilerStages) ? state.pendingCompilerStages : [];
   return state;
+}
+
+function storyboardPipelineForLog(log, state = storyboardState()) {
+  const pipelineId = String(log?.pipelineId || '');
+  if (!pipelineId) return null;
+  return (state.pipelineLogs || []).find((item) => item.id === pipelineId)
+    || storyboardPipelineArchiveCache.get(pipelineId)
+    || null;
+}
+
+function storyboardPipelineIsTerminal(pipeline) {
+  return Boolean(pipeline?.id) && !['queued', 'running'].includes(String(pipeline.status || ''));
+}
+
+async function storyboardArchiveCompletedPipelines(state = storyboardState()) {
+  const visiblePipelineIds = new Set((state.logs || []).map((log) => String(log.pipelineId || '')).filter(Boolean));
+  const completed = (state.pipelineLogs || []).filter((pipeline) => (
+    visiblePipelineIds.has(String(pipeline?.id || '')) && storyboardPipelineIsTerminal(pipeline)
+  ));
+  if (!completed.length) return 0;
+  const epoch = storyboardPipelineArchiveEpoch;
+  await blobStore.putStoryboardPipelineLogs(completed.map((item) => clone(item)));
+  if (epoch !== storyboardPipelineArchiveEpoch) return 0;
+  const archivedIds = new Set(completed.map((item) => String(item.id)));
+  for (const pipeline of completed) storyboardPipelineArchiveCache.set(String(pipeline.id), clone(pipeline));
+  state.pipelineLogs = (state.pipelineLogs || []).filter((item) => !archivedIds.has(String(item.id)));
+  saveSettings();
+  return archivedIds.size;
+}
+
+function storyboardArchivePipelineLog(log) {
+  const pipelineId = String(log?.pipelineId || '');
+  if (!pipelineId) return Promise.resolve(false);
+  if (storyboardPipelineArchiveWrites.has(pipelineId)) return storyboardPipelineArchiveWrites.get(pipelineId);
+  const epoch = storyboardPipelineArchiveEpoch;
+  const task = (async () => {
+    const state = storyboardState();
+    const pipeline = (state.pipelineLogs || []).find((item) => item.id === pipelineId);
+    if (!storyboardPipelineIsTerminal(pipeline)) return false;
+    await blobStore.putStoryboardPipelineLogs([clone(pipeline)]);
+    if (epoch !== storyboardPipelineArchiveEpoch) return false;
+    storyboardPipelineArchiveCache.set(pipelineId, clone(pipeline));
+    state.pipelineLogs = (state.pipelineLogs || []).filter((item) => item.id !== pipelineId);
+    saveSettings();
+    return true;
+  })().catch((error) => {
+    // IndexedDB 不可用时保留 settings 中的完整流水，绝不为了瘦身丢失诊断。
+    console.warn('[千幕] 分镜详细日志暂未归档，已保留原数据。', error);
+    return false;
+  }).finally(() => storyboardPipelineArchiveWrites.delete(pipelineId));
+  storyboardPipelineArchiveWrites.set(pipelineId, task);
+  return task;
+}
+
+async function storyboardHydratePipelineArchive({ rerender = false } = {}) {
+  if (storyboardPipelineArchiveHydration) return storyboardPipelineArchiveHydration;
+  const epoch = storyboardPipelineArchiveEpoch;
+  storyboardPipelineArchiveHydration = (async () => {
+    const state = storyboardState();
+    let changed = false;
+    try {
+      changed = (await storyboardArchiveCompletedPipelines(state)) > 0;
+    } catch (error) {
+      console.warn('[千幕] 旧分镜详细日志迁移未完成，继续使用设置内原数据。', error);
+    }
+    if (epoch !== storyboardPipelineArchiveEpoch) return false;
+    const current = storyboardState();
+    const inlineIds = new Set((current.pipelineLogs || []).map((item) => String(item.id)));
+    const missingIds = (current.logs || []).map((log) => String(log.pipelineId || '')).filter((id) => (
+      id && !inlineIds.has(id) && !storyboardPipelineArchiveCache.has(id)
+    ));
+    if (missingIds.length) {
+      try {
+        const archived = await blobStore.getStoryboardPipelineLogs(missingIds);
+        if (epoch !== storyboardPipelineArchiveEpoch) return false;
+        for (const pipeline of archived) storyboardPipelineArchiveCache.set(String(pipeline.id), pipeline);
+        changed ||= archived.length > 0;
+      } catch (error) {
+        console.warn('[千幕] 分镜详细日志读取失败，摘要与重试设置仍可使用。', error);
+      }
+    }
+    if (rerender && changed && activeTab === 'imagegen' && storyboardState().view === 'logs'
+      && document.getElementById(MODAL_ID)?.classList.contains('open')) renderModal();
+    return changed;
+  })().finally(() => { storyboardPipelineArchiveHydration = null; });
+  return storyboardPipelineArchiveHydration;
 }
 
 function storyboardProfile(sourceId = storyboardState().source) {
@@ -12769,6 +12875,7 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
 function storyboardStartLog(job) {
   const state = storyboardState();
   const now = Date.now();
+  const previousPipelineIds = new Set((state.logs || []).map((item) => String(item.pipelineId || '')).filter(Boolean));
   const log = {
     id: uid('shotlog'), status: 'queued', source: job.source, model: String(job.profile.model || ''),
     prompt: String(job.prompt || '').slice(0, 800), negative: String(job.negative || '').slice(0, 400),
@@ -12808,6 +12915,11 @@ function storyboardStartLog(job) {
     .slice(0, STORYBOARD_PIPELINE_LOG_LIMIT);
   const visiblePipelineIds = new Set(state.logs.map((item) => item.pipelineId).filter(Boolean));
   state.pipelineLogs = state.pipelineLogs.filter((item) => visiblePipelineIds.has(item.id));
+  const droppedPipelineIds = [...previousPipelineIds].filter((id) => !visiblePipelineIds.has(id));
+  for (const id of droppedPipelineIds) storyboardPipelineArchiveCache.delete(id);
+  if (droppedPipelineIds.length) void blobStore.deleteStoryboardPipelineLogs(droppedPipelineIds).catch((error) => {
+    console.warn('[千幕] 过期分镜详细日志未能立即清理，将留待储存管理处理。', error);
+  });
   saveSettings();
   return log;
 }
@@ -12817,7 +12929,7 @@ function storyboardMarkLogGenerating(log) {
   log.status = 'generating';
   log.startedAt = Date.now();
   log.error = '';
-  const pipeline = storyboardState().pipelineLogs.find((item) => item.id === log.pipelineId);
+  const pipeline = storyboardPipelineForLog(log);
   if (pipeline) { pipeline.status = 'running'; pipeline.startedAt = log.startedAt; }
   saveSettings();
 }
@@ -12831,17 +12943,18 @@ function storyboardFinishLog(log, status, details = {}) {
   if (details.recordId) log.recordId = String(details.recordId);
   if (Array.isArray(details.recordIds)) log.recordIds = details.recordIds.map(String).slice(0, 8);
   if (Object.hasOwn(details, 'floor')) log.floor = Number.isInteger(details.floor) ? details.floor : null;
-  const pipeline = storyboardState().pipelineLogs.find((item) => item.id === log.pipelineId);
+  const pipeline = storyboardPipelineForLog(log);
   if (pipeline) {
     pipeline.status = status === 'generating' ? 'running' : status;
     pipeline.finishedAt = log.finishedAt;
     pipeline.durationMs = log.durationMs;
   }
   saveSettings();
+  if (status !== 'generating') void storyboardArchivePipelineLog(log);
 }
 
 function storyboardPipelineStage(log, type, status, input = {}, output = {}, error = '') {
-  const pipeline = storyboardState().pipelineLogs.find((item) => item.id === log?.pipelineId);
+  const pipeline = storyboardPipelineForLog(log);
   if (!pipeline) return null;
   let stage = [...pipeline.stages].reverse().find((item) => item.type === type && item.status === 'running');
   if (!stage || status === 'running') {
@@ -12857,7 +12970,7 @@ function storyboardPipelineStage(log, type, status, input = {}, output = {}, err
 }
 
 function storyboardLogText(log) {
-  const pipeline = storyboardState().pipelineLogs.find((item) => item.id === log.pipelineId);
+  const pipeline = storyboardPipelineForLog(log);
   return JSON.stringify({
     time: formatDateTime(log.startedAt || log.queuedAt), status: log.status, provider: STORYBOARD_SOURCES[log.source]?.label || log.source,
     model: log.model || '(current)', target: log.target, floor: log.floor, durationMs: log.durationMs,
@@ -12927,7 +13040,7 @@ function renderStoryboardLogs(state) {
   const rows = logs.map((log) => {
     const source = STORYBOARD_SOURCES[log.source]?.label || log.source;
     const statusLabel = log.status === 'success' ? '完成' : log.status === 'failed' ? '失败' : log.status === 'cancelled' ? '已放弃' : log.status === 'queued' ? '等待' : '生成中';
-    const pipeline = state.pipelineLogs.find((item) => item.id === log.pipelineId);
+    const pipeline = storyboardPipelineForLog(log, state);
     const stageRows = (pipeline?.stages || []).map((stage) => `<li class="${stage.status}"><span>${htmlEscape({ context: '上下文', prompt_compiler: '画面整理', provider_request: '模型请求', asset_persistence: '图片落盘', paragraph_anchor: '段落定位' }[stage.type] || stage.type)}</span><b>${htmlEscape(stage.status === 'success' ? '完成' : stage.status === 'failed' ? '失败' : '进行中')}</b>${stage.error ? `<small>${htmlEscape(stage.error)}</small>` : ''}</li>`).join('');
     const runAction = log.status === 'queued'
       ? '<button type="button" class="sd-btn sd-storyboard-cancel-queued-log">移出等待</button>'
@@ -14339,7 +14452,7 @@ async function storyboardRunJob(job, log) {
       storyboardSetPlanStatus(plan, 'cancelled', { error: '用户放弃收片', job });
     }
     else {
-      const pipeline = storyboardState().pipelineLogs.find((item) => item.id === log?.pipelineId);
+      const pipeline = storyboardPipelineForLog(log);
       const runningStage = [...(pipeline?.stages || [])].reverse().find((item) => item.status === 'running');
       if (runningStage) storyboardPipelineStage(log, runningStage.type, 'failed', {}, {}, error?.message || error);
       storyboardFinishLog(log, 'failed', { error: error?.message || error });
@@ -14630,7 +14743,9 @@ async function storyboardDownloadRecord(record) {
 }
 
 async function storyboardExportPackage() {
+  await storyboardHydratePipelineArchive();
   const state = normalizeStoryboardState(clone(storyboardState()));
+  const pipelineLogs = state.logs.map((log) => storyboardPipelineForLog(log)).filter(Boolean);
   const records = storyboardGalleryRecords().map((item) => ({
     ...clone(item),
     snapshot: sanitizeStoryboardSnapshot(item?.snapshot || {}, { source: item?.source, prompt: item?.prompt, negative: item?.negative }),
@@ -14656,7 +14771,7 @@ async function storyboardExportPackage() {
       promptMode: state.promptMode, promptCompiler: clone(state.promptCompiler),
       profiles: clone(state.profiles), parameterPresets: clone(state.parameterPresets),
       promptPresets: clone(state.promptPresets), artistPresets: clone(state.artistPresets), artistCollections: clone(state.artistCollections), tagLibrary: clone(state.tagLibrary),
-      vibeLibrary: clone(state.vibeLibrary), routing: clone(state.routing), logs: clone(state.logs), pipelineLogs: clone(state.pipelineLogs),
+      vibeLibrary: clone(state.vibeLibrary), routing: clone(state.routing), logs: clone(state.logs), pipelineLogs: clone(pipelineLogs),
       connections: Object.fromEntries(Object.entries(state.connections).map(([providerId, group]) => [providerId, {
         ...clone(group), presets: (group.presets || []).map((item) => ({ ...clone(item), credentialId: '' })),
         draft: { ...clone(group.draft), credentialId: '' },
@@ -15127,6 +15242,7 @@ function storyboardUnbindChat() {
 function bindStoryboardTabEvents(root) {
   if (activeTab !== 'imagegen') return;
   const state = storyboardState();
+  if (state.view === 'logs') void storyboardHydratePipelineArchive({ rerender: true });
   storyboardBindMediaTagEditors(root);
   root.querySelector('.sd-storyboard-close')?.addEventListener('click', () => {
     if (state.view === 'create') storyboardCaptureWorkbench(root);
@@ -15881,10 +15997,12 @@ function bindStoryboardTabEvents(root) {
     state.logFilter = button.dataset.storyboardLogFilter || 'all';
     saveSettings(); renderModal();
   }));
-  root.querySelector('.sd-storyboard-export-logs')?.addEventListener('click', () => {
+  root.querySelector('.sd-storyboard-export-logs')?.addEventListener('click', async () => {
+    await storyboardHydratePipelineArchive();
+    const currentState = storyboardState();
     const payload = {
       type: 'qianmu-storyboard-log', version: 2, exportedAt: new Date().toISOString(),
-      logs: state.logs.map((log) => JSON.parse(storyboardLogText(log))),
+      logs: currentState.logs.map((log) => JSON.parse(storyboardLogText(log))),
     };
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
     const link = document.createElement('a'); link.href = url; link.download = `qianmu-storyboard-log-${fileStamp()}.json`;
@@ -15892,6 +16010,17 @@ function bindStoryboardTabEvents(root) {
   });
   root.querySelector('.sd-storyboard-clear-logs')?.addEventListener('click', async () => {
     if (!await confirmDialog('清空分镜日志', '确定清空全部分镜日志？成片不会被删除。')) return;
+    const archiveEpoch = ++storyboardPipelineArchiveEpoch;
+    if (blobStore.blobStoreAvailable()) {
+      try { await blobStore.clearStoryboardPipelineLogs(); }
+      catch (error) {
+        if (archiveEpoch === storyboardPipelineArchiveEpoch) storyboardPipelineArchiveEpoch--;
+        return toast(`详细日志清理失败，原记录已保留：${error?.message || error}`, 'error');
+      }
+    }
+    storyboardPipelineArchiveCache.clear();
+    storyboardPipelineArchiveWrites.clear();
+    storyboardPipelineArchiveHydration = null;
     state.logs = [];
     state.pipelineLogs = [];
     saveSettings(); renderModal();
@@ -28495,6 +28624,9 @@ function cleanupRuntime(resetSettings = false) {
       storyboardQueue = [];
       saveSettings();
       storyboardRuntimeReconciled = false;
+      storyboardPipelineArchiveEpoch++;
+      storyboardPipelineArchiveCache.clear();
+      storyboardPipelineArchiveWrites.clear();
     });
     clean('storyboard events', () => storyboardUnbindChat());
     clean('focus clock', () => stopFocusClockRuntime());

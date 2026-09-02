@@ -4,7 +4,7 @@
 // localStorage 存不下二进制大对象，故独立走 IndexedDB；存 Blob，播放时再 createObjectURL。
 
 const DB_NAME = 'qianmu-blobstore';
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 const STORE_AUDIO = 'audio';         // key: 缓存键   value: { blob, meta, createdAt }
 const STORE_FAVORITES = 'favorites'; // key: 收藏 id  value: { blob, meta, label, createdAt }
 // ── 伴读模块（v2 新增）──
@@ -22,6 +22,7 @@ const STORE_TTS_LINES = 'tts_lines';       // key: chatKey value: { lines:{conte
 const STORE_NOTES = 'notes';               // key: noteId value: QianmuNote（只存 pinned=true；临时便笺留在本次页面运行态）
 // ── 分镜模块（v7 新增）──
 const STORE_STORYBOARD_INBOX = 'storyboard_inbox'; // key: taskId value: 跨聊天完成后等待原聊天接收的轻量成片记录
+const STORE_STORYBOARD_PIPELINE_LOGS = 'storyboard_pipeline_logs'; // key: pipelineId value: 已结束的完整生成流水；轻摘要仍留设置
 
 const STORAGE_STORE_INFO = Object.freeze({
   [STORE_AUDIO]: { label: '语音缓存', category: 'audio', recoverable: true },
@@ -35,6 +36,7 @@ const STORAGE_STORE_INFO = Object.freeze({
   [STORE_TTS_LINES]: { label: '台词提取缓存', category: 'cache', recoverable: true },
   [STORE_NOTES]: { label: '固定便笺', category: 'notes', recoverable: false },
   [STORE_STORYBOARD_INBOX]: { label: '分镜待归档', category: 'images', recoverable: false },
+  [STORE_STORYBOARD_PIPELINE_LOGS]: { label: '分镜详细日志', category: 'logs', recoverable: true },
 });
 
 let dbPromise = null;
@@ -58,6 +60,7 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE_TTS_LINES)) db.createObjectStore(STORE_TTS_LINES);
       if (!db.objectStoreNames.contains(STORE_NOTES)) db.createObjectStore(STORE_NOTES);
       if (!db.objectStoreNames.contains(STORE_STORYBOARD_INBOX)) db.createObjectStore(STORE_STORYBOARD_INBOX);
+      if (!db.objectStoreNames.contains(STORE_STORYBOARD_PIPELINE_LOGS)) db.createObjectStore(STORE_STORYBOARD_PIPELINE_LOGS);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => { dbPromise = null; reject(req.error); };
@@ -499,6 +502,62 @@ export async function deleteStoryboardDelivery(taskId) {
   if (!id) return;
   const s = await store(STORE_STORYBOARD_INBOX, 'readwrite');
   await reqP(s.delete(id));
+}
+
+// ── 分镜：已结束的详细流水日志 ──────────────────────────────
+// 生成中的流水仍由内存/settings 运行态持有；只有终态日志成功写入这里后，调用方才会
+// 收缩 settings 中的完整 stages。该顺序保证 IndexedDB 不可用时仍保留旧数据。
+export async function putStoryboardPipelineLogs(records = []) {
+  const normalized = (Array.isArray(records) ? records : [])
+    .filter((item) => item && String(item.id || '').trim())
+    .map((item) => ({ ...item, id: String(item.id), archivedAt: Date.now() }));
+  if (!normalized.length) return { stored: [] };
+  const db = await openDB();
+  const transaction = db.transaction(STORE_STORYBOARD_PIPELINE_LOGS, 'readwrite');
+  const done = new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('storyboard pipeline archive failed'));
+    transaction.onabort = () => reject(transaction.error || new Error('storyboard pipeline archive aborted'));
+  });
+  const target = transaction.objectStore(STORE_STORYBOARD_PIPELINE_LOGS);
+  try {
+    for (const record of normalized) target.put(record, record.id);
+  } catch (error) {
+    try { transaction.abort(); } catch (_) {}
+    await done.catch(() => {});
+    throw error;
+  }
+  await done;
+  return { stored: normalized.map((item) => item.id) };
+}
+
+export async function getStoryboardPipelineLogs(ids = []) {
+  const unique = [...new Set((Array.isArray(ids) ? ids : []).map((value) => String(value || '').trim()).filter(Boolean))].slice(0, 200);
+  if (!unique.length) return [];
+  const target = await store(STORE_STORYBOARD_PIPELINE_LOGS, 'readonly');
+  const values = await Promise.all(unique.map((id) => reqP(target.get(id))));
+  return values.filter(Boolean);
+}
+
+export async function deleteStoryboardPipelineLogs(ids = []) {
+  const unique = [...new Set((Array.isArray(ids) ? ids : []).map((value) => String(value || '').trim()).filter(Boolean))].slice(0, 200);
+  if (!unique.length) return { deleted: [] };
+  const db = await openDB();
+  const transaction = db.transaction(STORE_STORYBOARD_PIPELINE_LOGS, 'readwrite');
+  const done = new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('storyboard pipeline delete failed'));
+    transaction.onabort = () => reject(transaction.error || new Error('storyboard pipeline delete aborted'));
+  });
+  const target = transaction.objectStore(STORE_STORYBOARD_PIPELINE_LOGS);
+  for (const id of unique) target.delete(id);
+  await done;
+  return { deleted: unique };
+}
+
+export async function clearStoryboardPipelineLogs() {
+  const target = await store(STORE_STORYBOARD_PIPELINE_LOGS, 'readwrite');
+  await reqP(target.clear());
 }
 
 // ── 存储治理：只读盘点与严格白名单清理 ──────────────────────
