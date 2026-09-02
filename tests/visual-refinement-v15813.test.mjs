@@ -6,7 +6,7 @@ const source = await readFile(new URL('index.js', root), 'utf8');
 const styles = await readFile(new URL('style.css', root), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('manifest.json', root), 'utf8'));
 
-assert.equal(manifest.version, '1.58.14');
+assert.equal(manifest.version, '1.58.15');
 assert.match(styles, /v1\.58\.13 · 精调视觉标尺与独立便笺工作层/);
 assert.match(styles, /--qm-type-card-title: 13px;[\s\S]*--qm-type-body: 12px;[\s\S]*--qm-type-label: 11px;[\s\S]*--qm-control-height: 30px;/, 'visual hierarchy must use the refined compact scale');
 assert.match(styles, /\.sd-tabs button \{ font-size: 13\.5px !important; \}/, 'main tabs must gain one visual step');
@@ -31,4 +31,4 @@ assert.match(styles, /\.sd-focus-sound-preview \{[^}]*border-radius: 9px !import
 assert.match(source, /dialogTipSeen: false[\s\S]*sd-reader-send-tip[\s\S]*长按邀请 AI 回应/, 'Coread must provide a one-time send gesture tip');
 assert.match(styles, /#story-director-modal \.sd-storage-ios-bar \{ height: 36px; \}/, 'the storage visualization must use the taller readable bar');
 
-console.log('V1.58.14 visual refinement contract OK');
+console.log('V1.58.15 visual refinement contract OK');

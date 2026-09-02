@@ -2817,68 +2817,6 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   filter: none !important;
 }
 
-/* 伏笔显影 */
-#story-director-modal .sd-threads-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  cursor: pointer;
-}
-#story-director-modal .sd-threads-summary .sd-tpl-count { margin-right: auto; }
-#story-director-modal .sd-threads-clear { flex: 0 0 auto; }
-#story-director-modal .sd-threads-body { margin-top: 10px; }
-#story-director-modal .sd-thread-row {
-  padding: 10px 12px;
-  border: 1px solid var(--sd-border);
-  border-radius: 12px;
-  background: var(--sd-glass-weak);
-  margin-bottom: 8px;
-}
-#story-director-modal .sd-thread-row.sd-thread-pinned { border-color: var(--sd-primary); }
-#story-director-modal .sd-thread-row.sd-thread-dormant { opacity: .62; }
-#story-director-modal .sd-thread-row.sd-thread-closed { opacity: .55; margin-bottom: 6px; }
-#story-director-modal .sd-thread-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-#story-director-modal .sd-thread-head h4 { margin: 0; flex: 1 1 auto; font-size: .96em; }
-/* 钉子选中态：实心 + 主题强调色 + 轻微旋转，与未选中拉开差异（连同 <i> 一起着色，压过 .sd-icon-btn 的 text 色与 FA 默认色） */
-#story-director-modal .sd-thread-pin,
-#story-director-modal .sd-thread-pin i { color: var(--sd-muted) !important; }
-#story-director-modal .sd-thread-pin-on,
-#story-director-modal .sd-thread-pin-on i { color: var(--sd-accent) !important; }
-#story-director-modal .sd-thread-pin-on { border-color: var(--sd-accent) !important; background: var(--sd-pre) !important; }
-#story-director-modal .sd-thread-pin-on i { transform: rotate(-30deg); }
-#story-director-modal .sd-thread-stage {
-  flex: 0 0 auto;
-  font-size: .78em;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--sd-primary);
-  color: var(--sd-primary-text);
-  opacity: .85;
-}
-#story-director-modal .sd-thread-bar { margin: 8px 0 6px; color: var(--sd-primary); }
-#story-director-modal .sd-thread-essence { margin: 0; font-size: .86em; color: var(--sd-muted); }
-#story-director-modal .sd-thread-evidence,
-#story-director-modal .sd-thread-decision { margin: 7px 0 0; display: flex; align-items: flex-start; gap: 6px; color: var(--sd-muted); font-size: .72em; line-height: 1.5; }
-#story-director-modal .sd-thread-evidence i { margin-top: 2px; color: var(--sd-accent); }
-#story-director-modal .sd-thread-decision i { margin-top: 2px; color: color-mix(in srgb, var(--sd-accent) 70%, var(--sd-muted)); }
-#story-director-modal .sd-thread-quality { flex: 0 0 auto; padding: 3px 7px; border-radius: 999px; background: color-mix(in srgb, var(--sd-accent) 11%, transparent); color: var(--sd-accent); font-size: .66em; font-weight: 500; }
-#story-director-modal .sd-threads-closed-fold { margin-top: 6px; }
-.sd-thread-edit-form > label { display: block; margin: 0 0 4px; text-align: left; }
-.sd-thread-edit-form > input,
-.sd-thread-edit-form > textarea { width: 100%; margin: 0 0 10px !important; }
-.sd-thread-edit-form > textarea { resize: vertical; }
-.sd-thread-edit-form .sd-thread-edit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
-.sd-thread-edit-form .sd-thread-edit-grid label { min-width: 0; display: flex; flex-direction: column; gap: 5px; text-align: left; }
-.sd-thread-edit-form .sd-thread-edit-grid select { width: 100%; margin: 0 !important; }
-@media (max-width: 420px) {
-  .sd-thread-edit-form .sd-thread-edit-grid { grid-template-columns: minmax(0, 1fr); }
-}
-
 /* 可折叠分区（角色动向 / 世界回声）的展开体留白 */
 #story-director-modal .sd-fold-body { margin-top: 8px; }
 
@@ -8535,4 +8473,118 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 
 @media (prefers-reduced-motion: reduce) {
   #story-director-modal .sd-version-tag.is-update-available { animation: none; }
+}
+
+/* v1.58.15 · 审片 / 任务 / 世界精调与取材同构 */
+#story-director-modal { --qm-type-card-title: 14px; }
+
+/* 顶栏图形按视觉重心微调：相机偏矮，书本与调色盘偏满。 */
+#story-director-modal .sd-header-actions .sd-storyboard-shortcut :is(i, .qm-glyph-icon) { transform: scale(1.091); }
+#story-director-modal .sd-header-actions :is(.sd-coread-shortcut, .sd-theme-btn) :is(i, .qm-glyph-icon) { transform: scale(1.069); }
+
+/* 审片：当前幕回归信息行；任务/世界仅保留同排跳转标签。 */
+#story-director-modal .sd-hero .sd-scene-current { margin-top: 3px; }
+#story-director-modal .sd-hero .sd-two {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 4px;
+  font-size: 12px;
+}
+#story-director-modal .sd-hero .sd-two > b { font-size: 12px; }
+#story-director-modal .sd-hero .sd-two > span { min-width: 0; font-size: 11.5px; line-height: 1.55; }
+#story-director-modal .sd-status-card { padding: 8px 10px !important; }
+#story-director-modal .sd-status-card .sd-count-tags { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; gap: 6px; }
+#story-director-modal .sd-status-card .sd-count-tag { justify-content: center; min-height: 30px; padding: 4px 8px !important; }
+
+/* 众声固定三席，分别置于克制的底色分区内。 */
+#story-director-modal .sd-voices-list { display: grid; gap: 5px; }
+#story-director-modal .sd-voices-list > p {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--sd-hairline);
+  border-radius: 9px;
+  background: var(--sd-glass-weak);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+#story-director-modal .sd-voices-list > p:nth-child(even) { background: var(--sd-glass); }
+#story-director-modal .sd-lib-main h4 { font-size: 11.5px; font-weight: 600; }
+
+/* 任务与世界共用的条目层级。 */
+#story-director-modal .sd-item-summary-main h4,
+#story-director-modal .sd-item-detail dt,
+#story-director-modal .sd-item-detail dd,
+#story-director-modal .sd-inject-preview pre,
+#story-director-modal .sd-chain-node { font-size: 11.5px; }
+#story-director-modal .sd-relus-parties { font-size: 11.5px; font-weight: 600; }
+
+/* 分镜与取材共用目录—条目形态；所有宽度采用 border-box 防止窄屏右缘溢出。 */
+#story-director-modal .sd-storyboard-worldbook-card,
+#story-director-modal .sd-storyboard-worldbook-card *,
+#story-director-modal .sd-context-source-pick,
+#story-director-modal .sd-context-source-pick *,
+#story-director-modal .sd-unified-source-block,
+#story-director-modal .sd-unified-source-block * { box-sizing: border-box; min-width: 0; }
+#story-director-modal .sd-storyboard-worldbook-card {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+#story-director-modal .sd-storyboard-worldbook-card .sd-storyboard-card-body,
+#story-director-modal .sd-storyboard-worldbook-picker,
+#story-director-modal .sd-storyboard-worldbook-picker > .sd-dropdown,
+#story-director-modal .sd-storyboard-worldbook-entries { width: 100%; max-width: 100%; }
+#story-director-modal .sd-storyboard-worldbook-card > summary .sd-storyboard-refresh-worldbooks {
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+}
+#story-director-modal .sd-storyboard-worldbook-card > summary .sd-storyboard-refresh-worldbooks :is(i, .qm-glyph-icon) {
+  width: 14px !important;
+  height: 14px !important;
+  font-size: 14px !important;
+}
+#story-director-modal .sd-unified-source-block { overflow: hidden !important; }
+#story-director-modal .sd-unified-source-block > .sd-dropdown-body,
+#story-director-modal .sd-storyboard-worldbook-entries > .sd-dropdown-body {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  margin: 0 !important;
+  padding: 6px 10px 10px !important;
+}
+#story-director-modal .sd-unified-source-entry {
+  display: block !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 6px 8px;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+}
+#story-director-modal .sd-unified-source-entry:hover,
+#story-director-modal .sd-unified-source-entry[open] { background: var(--sd-glass) !important; }
+#story-director-modal .sd-unified-source-entry > summary { width: 100%; }
+#story-director-modal .sd-unified-source-entry > pre {
+  width: 100%;
+  max-height: 180px;
+  margin: 7px 0 1px;
+  padding: 8px 9px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-radius: 8px;
+  background: var(--sd-pre);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+@media (max-width: 430px) {
+  #story-director-modal .sd-storyboard-worldbook-card .sd-storyboard-card-body { padding-inline: 8px !important; }
+  #story-director-modal .sd-context-source-pick,
+  #story-director-modal .sd-unified-source-block { margin-inline: 10px !important; }
+  #story-director-modal .sd-status-card .sd-count-group { gap: 3px 5px; }
+  #story-director-modal .sd-status-card .sd-count-tag { padding-inline: 6px !important; }
 }

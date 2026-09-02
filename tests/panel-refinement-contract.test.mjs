@@ -6,15 +6,16 @@ const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
 // 取材：身份独立成卡，上下文与层数同排；读取动作贴在选择栏尾部。
 assert.match(source, /sd-context-identity-card[\s\S]*当前角色[\s\S]*当前用户[\s\S]*sd-context-reference-row[\s\S]*上下文参考[\s\S]*参考层数/);
-assert.match(source, /sd-context-source-pick[\s\S]*<span>选择<\/span>[\s\S]*sd-refresh-presets/);
-assert.match(source, /sd-context-source-pick[\s\S]*<span>选择<\/span>[\s\S]*sd-refresh-worldbooks/);
+assert.match(source, /sd-context-source-pick[\s\S]*<span>预设目录<\/span>[\s\S]*sd-refresh-presets/);
+assert.match(source, /sd-context-source-pick[\s\S]*<span>世界书目录<\/span>[\s\S]*sd-refresh-worldbooks/);
 assert.match(css, /\.sd-context-reference-row\s*\{[^}]*flex-wrap:\s*nowrap/);
 
 // 幕后：注入范围与衍生模块使用同款选择标签；提示词与输出格式收进同一折叠卡。
 assert.match(source, /sd-card-title-row[\s\S]*<h3>刷新<\/h3>[\s\S]*仅计入角色回复层/);
 assert.match(source, /<h3>暗线注入正文<\/h3>/);
 assert.doesNotMatch(source, /checkbox_label sd-inject-section/);
-assert.match(source, /<h3>衍生模块<\/h3>[\s\S]*sd-derivative-options[\s\S]*<span>伏笔显影<\/span>[\s\S]*<span>尘寰群生<\/span>[\s\S]*<span>世界格局<\/span>/);
+assert.match(source, /<h3>衍生模块<\/h3>[\s\S]*sd-derivative-options[\s\S]*<span>尘寰群生<\/span>[\s\S]*<span>世界格局<\/span>/);
+assert.doesNotMatch(source, /sd-livestage-enabled|<span>伏笔显影<\/span>/);
 assert.match(source, /data-acc="director-law"[\s\S]*<b>剧组之律<\/b>[\s\S]*一般无需改动[\s\S]*sd-system-prompt[\s\S]*sd-output-schema[\s\S]*sd-save-director-settings/);
 
 // 幕外：设置可折叠、读取按钮图标化，指令与剧札独立；剧札数量紧随标题。

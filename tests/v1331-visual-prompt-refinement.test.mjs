@@ -4,9 +4,8 @@ import { readFile } from 'node:fs/promises';
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
-// 取材身份向中间收束、长名字可自适应；提示文案按反馈精确替换。
-assert.match(source, /避免左右脑互搏建议只开所需/);
-assert.doesNotMatch(source, /建议只开所需条目，避免冲突导致模型左右脑互搏/);
+// 取材身份向中间收束、长名字可自适应；已按后续精调移除冗余提示文案。
+assert.doesNotMatch(source, /避免左右脑互搏建议只开所需|建议只开所需条目，避免冲突导致模型左右脑互搏/);
 assert.match(css, /\.sd-context-identity-card \.sd-base-row\s*\{[^}]*width:\s*min\(100%, 540px\)[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
 assert.match(css, /\.sd-fixed-ref \.sd-info-tag\s*\{[^}]*overflow-wrap:\s*anywhere/);
 
@@ -18,7 +17,8 @@ assert.doesNotMatch(source, /推荐方案随配音模型自动切换/);
 
 // 注入范围与衍生模块共享选择标签，选中态用主题强调色；子折叠有独立视觉区域。
 assert.match(source, /sd-option-chip sd-inject-section/);
-assert.match(source, /sd-derivative-options[\s\S]*sd-option-chip[\s\S]*伏笔显影[\s\S]*尘寰群生[\s\S]*世界格局/);
+assert.match(source, /sd-derivative-options[\s\S]*sd-option-chip[\s\S]*尘寰群生[\s\S]*世界格局/);
+assert.doesNotMatch(source, /sd-livestage-enabled|<span>伏笔显影<\/span>/);
 assert.match(css, /\.sd-option-chip:has\(input:checked\)\s*\{[^}]*--sd-accent/);
 assert.match(css, /\.sd-inject-subfold\s*\{[^}]*border:[^}]*background:/);
 assert.match(css, /\.sd-inject-subfold \+ \.sd-inject-subfold\s*\{[^}]*margin-top:\s*4px/, '注入范围与当前注入内容的间距须由 20px 缩减 80%');
@@ -37,7 +37,7 @@ assert.match(css, /\.sd-geo-focused \.sd-geo-node\.sd-on \.sd-geo-node-focus-rin
 
 // 任务仅变更叙述人称：四个任务视角锚点一致为第三人称，原有核心约束仍在。
 const systemPrompt = source.slice(source.indexOf('const DEFAULT_SYSTEM_PROMPT'), source.indexOf('const JSON_SCHEMA_TEXT'));
-const schemaPrompt = source.slice(source.indexOf('const JSON_SCHEMA_TEXT'), source.indexOf('const STAGE_LADDER'));
+const schemaPrompt = source.slice(source.indexOf('const JSON_SCHEMA_TEXT'), source.indexOf('const DIRECTOR_SECTION_RULES'));
 const finalPrompt = source.slice(source.indexOf('【最终任务·发送前重申'), source.indexOf('【势·关系网·最后重申】'));
 assert.match(systemPrompt, /第三人称向心视角/);
 assert.match(systemPrompt, /quests采用以\{\{user\}\}为中心的第三人称/);

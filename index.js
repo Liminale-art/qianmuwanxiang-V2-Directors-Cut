@@ -23,15 +23,10 @@ import {
   normalizeUrl,
   processRandomMacros,
   quickDockCleanLabel,
-  STAGE_LADDER,
   EVENT_STAGE_LADDER,
-  sanitizeStage,
-  advanceStage,
   sanitizeEventStage,
   advanceEventStage,
   directorEvidenceNorm,
-  directorBigrams,
-  directorOverlapRatio,
   quickDockAttrEscape,
   quickDockNormalizePath,
   quickDockSelectorEscape,
@@ -76,9 +71,7 @@ import {
   readerCoverPlaceholder,
   extractTheaterBody,
   parseModelList,
-  countGroupTag,
   normalizeScripts,
-  validateThreadEvidence,
 } from './qianmu-storyboard-utils.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
@@ -103,10 +96,10 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.14';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.15';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.14';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.14';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.15';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.15';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_COMPOSITION_RULE_ID,
@@ -146,20 +139,20 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
-} from './qianmu-storyboard.js?v=1.58.14';
+} from './qianmu-storyboard.js?v=1.58.15';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.14';
+const VERSION = '1.58.15';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.14'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.15'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.14'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.15'),
   },
 });
 function directImageRuntime() {
@@ -318,7 +311,7 @@ const DEFAULT_SYSTEM_PROMPT = `你是千幕——观世间百态、阅人性幽�
    - world_updates（世界回声）：唯一职能为「系统与集体层面的宏观趋势变动」。最远全景视角，无明确主角，属于结构性背景推移。覆盖势力消长、天候、经济、公共事件、舆论等范畴，不聚焦任何个体的私人事务。
    - chain_reactions（因果链）：唯一职能为「串联上述各模块事件，呈现可感知的连锁传导效应」。本模块是全局唯一可书写蝴蝶效应的版块，其余模块禁止凭空提及连锁效应。【硬性规则】链条须由世界内部的某桩小事发起、自主流转，全程与{{user}}无关；绝不以{{user}}的行动或言论为起点，也绝不最终回转落到{{user}}身上——至多在某一环被事件涟漪擦到其视野边缘。】
    - 各模块inject_prompt须匹配对应视角书写：quests采用以{{user}}为中心的第三人称；npc、world类模块采用全知导演视角，{{user}}在场与否均可。
-12. director_comment（众声）是一段随机化身某个带个性身份（故事外的任意视角/戏中NPC等且不限于此）人物的旁观议论，须像真人闲聊，有态度、有私心、有该身份独有的视角，开头点明身份，绝不能是助手腔或客观总结，详见输出格式中的说明。
+12. director_comment（众声）固定返回 3 条，由 3 个身份与立场各异的旁观者发言。每条须像真人闲聊，有态度、有私心、有该身份独有的视角，开头点明身份，绝不能是助手腔或客观总结，详见输出格式中的说明。
 13. 行文务必精炼直接。禁用「不是……而是……」这类否定对比句式；禁止反复使用破折号来补充说明或制造停顿；不堆砌冗余解释与排比铺陈。以上均属偷懒且易致读者审美疲劳的措辞，应代之以具体、有信息量的表达。
 14. 输出为一个 JSON 对象，字段名完整保留。quests、npc_updates、world_updates、chain_reactions、relation_undercurrents 五个核心数组必须达到第 10 条的数量下限；仅没有可用内容的可选扩展字段允许为空数组。`;
 
@@ -385,56 +378,22 @@ const JSON_SCHEMA_TEXT = `固定输出格式：
       "user_awareness": "{{user}} 对此的知情程度：unaware(浑然不知)/rumor(仅有耳闻)/witness(恰好在场旁观) 之一，多数应为 unaware 或 rumor"
     }
   ],
-  "director_comment": "众声："随机选取一位身份个性鲜明的发言者聊本幕，每次身份、视角均不重复。句首以【身份名】标注，全程彻底入戏，用对应身份独有的口吻、情绪与带私心的主观立场闲聊式表达，90-150字，鲜活如真人临场碎语。严禁助手腔、总结式话术。"
+  "director_comment": [
+    "【身份名】第一位旁观者的临场碎语",
+    "【身份名】第二位旁观者的临场碎语",
+    "【身份名】第三位旁观者的临场碎语"
+  ]
 }`;
 
-// 活幕·伏笔显影：五档刻度（线性顺势升降，由戏剧因果驱动）
-// STAGE_LADDER - 已迁移到 qianmu-storyboard-utils.js
-// const STAGE_LADDER = ['铺陈', '升温', '临界', '高潮', '落幕'];
 const DIRECTOR_SECTION_RULES = Object.freeze({
   quests: '用户可主动选择、执行或放弃的行动入口；不代写 NPC 私生活或宏观局势。',
   npc_updates: '单个角色为自身目标采取的自主行动；不写成用户任务或集体趋势。',
   world_updates: '环境、社会、组织与公共层面的结构变化；不聚焦个人私事。',
   chain_reactions: '不同事件之间可验证的因果传导；不复述任一单点事件。',
   relation_undercurrents: '多个非用户角色之间尚未明说的关系张力；不写成单人动向。',
-  threads: '正文已有细节中尚未兑现、未来可能回响的潜在线索；必须附正文证据。',
+  director_comment: '三个身份、阅历与立场不同的旁观者各说一句临场碎语；不写成客观总结。',
 });
-const DIRECTOR_MIN_COUNTS = Object.freeze({ quests: 5, npc_updates: 5, world_updates: 3, chain_reactions: 3, relation_undercurrents: 3 });
-const THREAD_ACTIVE_TARGET_MIN = 3;
-const THREAD_ACTIVE_TARGET_MAX = 5;
-const THREAD_RECALL_LIMIT = 2;
-const THREAD_RECALL_COOLDOWN = 2;
-
-// 活幕开启时追加到推演输出格式：暗线档案的回传结构
-const THREADS_SCHEMA_TEXT = `【活幕·伏笔显影·额外输出字段】
-在上方 JSON 对象中追加 "threads" 数组字段，承接并更新正在故事中存活的暗线：
-伏笔暗线埋设准则：暗线是潜藏在文本之下、尚未挑明的隐性张力。它不是对正文明面待办的复述（那些交给任务、世界回声推进），而是从既有素材里提炼出的、值得日后回味的伏笔。
-融合取材：把正文细节与本次推演其余板块的产出打通来读 —— 关系暗涌里悄然滋长的纠葛、因果链中尚未发作的连锁、角色动向中欲言又止的举动、世界回声里一笔带过的异常，都可成为暗线的源头；将它们与正文字缝中的线索（未尽的话语、反常的反应、被刻意略过的人事、表面平和下的算计）结合，提炼成一条有张力的暗线，而非凭空另起。
-暗线允许暂时与主线脱钩，按自身节奏独立潜伏，待时机成熟再浮出推动剧情。
-"threads": [
-  {
-    "id": "沿用已有暗线的 id；全新暗线留空，由系统分配",
-    "title": "暗线名，4-12字",
-    "essence": "一句话勾出这条暗线水面下悬着的那点张力，点到即止。只留下一个引人遐想的落点，不替读者解释它意味着什么、更不预告后续会如何发展，把想象空间整个留给取用它的人",
-    "stage": "铺陈/升温/临界/高潮/落幕 五档之一",
-    "touched": "本幕近期对话是否触碰了这条线：advance(确有推进)/mention(仅被提及)/idle(无人问津)",
-    "evidence_floor": "advance/mention/closed 时必填：近期对话中的真实楼层号；idle 填 -1",
-    "evidence_quote": "advance/mention/closed 时必填：从该楼层原文摘取 6-36 字，不得概括或虚构；idle 留空",
-    "resolution": "仅申请 closed 时填写：正文如何明确兑现、揭晓或终止了这条伏笔；其余留空",
-    "note": "本幕这条线发生了什么的一句话，写入显影轨迹",
-    "status": "active/dormant/closed —— 持续追踪/暂时沉睡/已收场归档"
-  }
-]
-判定规则（务必遵守）：
-- 【在演储备目标·3 至 5 条】3 至 5 条是档案健康储备，不是本轮必须调用的数量，也不代表每条都要注入正文。低于 3 条时须认真扫描近期对话中的潜在线索，但新增暗线必须同时给出可核验的 evidence_floor 与 evidence_quote；确无证据时宁可暂低于目标，禁止凑数硬造。
-- 暗线贵在「暗」与「伏」：埋时只露张力、不点破，绝不把正文已挑明的进展直接登记成暗线。stage 升降只反映这条暗线自身的酝酿火候，不必跟着正文主线的节奏走。
-- stage 只可维持或在 advance 时顺势升一档，由近期对话的戏剧因果决定，绝不跨档、倒退、靠概率或为了推进而推进；明确收束时才进入落幕。
-- touched=advance → 最多顺势升一档；mention → 档位不变；idle 仅表示本次已审阅但正文未触及，连续多幕才可沉睡。模型漏回传某个既有 id 不等于 idle。
-- 每个既有 id 都必须回传一次审阅结论。advance/mention/closed 必须有真实楼层原句作证；无证据则回传 idle，系统不会接受无依据升档。
-- closed 只用于正文已明确兑现、揭晓或终止的伏笔，必须填写 resolution 与正文证据；事件只是暂时离场时用 dormant。
-- 标注 pinned(钉住)的暗线不得擅自 dormant/closed，除非正文已明确将其了结。
-- 暗线是可取用的可能性而非必须引爆的剧本，{{user}} 始终自由介入或无视。
-- 既有暗线全部回传以证明已逐条审阅；新增暗线只回传确有正文证据者。`;
+const DIRECTOR_MIN_COUNTS = Object.freeze({ quests: 5, npc_updates: 5, world_updates: 3, chain_reactions: 3, relation_undercurrents: 3, director_comment: 3 });
 
 const THEATER_INSTRUCTION_PLACEHOLDER = '在此撰写剧场指令';
 
@@ -630,12 +589,11 @@ const DEFAULT_SETTINGS = Object.freeze({
   injectEnabled: true,
   injectDepth: 2,
   newcomerMode: false,
-  liveStageEnabled: false,   // 活幕·伏笔显影：暗线跨推演持续身份与显影刻度，默认关
   worldChatterEnabled: false,   // 活幕·尘寰群生：世间百态喊话墙，随推演刷新、不进注入，默认关
   geopoliticsEnabled: false,   // 活幕·势：势力/地缘格局与世界事件跨推演演进，作为世界回声上游源头，默认关
   geopoliticsView: 'map',      // 世界格局视图：map 星图 / list 势力列表
   geopoliticsRelationKinds: [...FACTION_RELATION_KINDS], // 关系分层显示偏好
-  injectSections: { quests: true, nodes: true, npc: true, relations: true, world: true, threads: true, geopolitics: true },   // 注入方向开关（控 token）
+  injectSections: { quests: true, nodes: true, npc: true, relations: true, world: true, geopolitics: true },   // 注入方向开关（控 token）
   promptRevision: 0,
   systemPromptHash: '',
   outputSchemaHash: '',
@@ -1173,6 +1131,9 @@ function getSettings() {
 
 function migrateSettings(s) {
   migrateTtsProviderSettings(s);
+  // v1.58.15：退役伏笔显影的全局开关与注入位，避免旧设置继续影响提示词构建。
+  delete s.liveStageEnabled;
+  if (isPlainObject(s.injectSections)) delete s.injectSections.threads;
   if (typeof s.maxContextMessages !== 'undefined' && typeof s.contextOptions?.contextDepth === 'undefined') {
     s.contextOptions.contextDepth = Number(s.maxContextMessages) || 5;
   }
@@ -1331,11 +1292,15 @@ function getChatStore() {
   const context = ctx();
   const meta = context.chatMetadata || (context.chatMetadata = {});
   if (!meta[MODULE_NAME]) {
-    meta[MODULE_NAME] = { blueprint: DEFAULT_BLUEPRINT, plan: null, history: [], lastPlanIdx: -1, planAtLen: 0, updatedAt: '', threads: [], threadSeq: 0, factions: [], worldEvents: [], geoSeq: 0 };
+    meta[MODULE_NAME] = { blueprint: DEFAULT_BLUEPRINT, plan: null, history: [], lastPlanIdx: -1, planAtLen: 0, updatedAt: '', factions: [], worldEvents: [], geoSeq: 0 };
   }
   meta[MODULE_NAME] = migrateQianmuChatStoreV2(meta[MODULE_NAME]).value;
-  mergeDefaults(meta[MODULE_NAME], { blueprint: DEFAULT_BLUEPRINT, plan: null, history: [], lastPlanIdx: -1, planAtLen: 0, updatedAt: '', threads: [], threadSeq: 0, factions: [], worldEvents: [], geoSeq: 0 });
-  if (!Array.isArray(meta[MODULE_NAME].threads)) meta[MODULE_NAME].threads = [];   // 活幕·伏笔显影档案层
+  mergeDefaults(meta[MODULE_NAME], { blueprint: DEFAULT_BLUEPRINT, plan: null, history: [], lastPlanIdx: -1, planAtLen: 0, updatedAt: '', factions: [], worldEvents: [], geoSeq: 0 });
+  // v1.58.15：伏笔显影已退役。聊天在被打开时惰性清理旧档案，避免继续占用元数据或误入提示词。
+  delete meta[MODULE_NAME].threads;
+  delete meta[MODULE_NAME].threadSeq;
+  delete meta[MODULE_NAME].threadRecallIds;
+  delete meta[MODULE_NAME].threadQuality;
   if (!Array.isArray(meta[MODULE_NAME].factions)) meta[MODULE_NAME].factions = [];   // 活幕·势：势力/地缘格局层
   if (!Array.isArray(meta[MODULE_NAME].worldEvents)) meta[MODULE_NAME].worldEvents = [];   // 活幕·势：世界事件层
   if (!meta[MODULE_NAME].ttsLines || typeof meta[MODULE_NAME].ttsLines !== 'object') meta[MODULE_NAME].ttsLines = {};   // 有声：已提取台词列表 内容指纹key→lines，持久化跨刷新
@@ -1797,38 +1762,6 @@ async function promptNameAndFolder({ dialogTitle, namePlaceholder, name = '', fo
   const newFolder = await promptInput(dialogTitle, '文件夹（留空不分类）：', folder || '');
   if (newFolder === null) return null;
   return { name: String(newName || '').trim(), folder: sanitizeFolder(newFolder) };
-}
-
-async function promptThreadEdit(thread) {
-  const context = ctx();
-  const Popup = context.Popup;
-  if (Popup && context.POPUP_TYPE) {
-    const wrap = document.createElement('div');
-    wrap.className = 'sd-lib-edit-form sd-thread-edit-form';
-    wrap.innerHTML = `<label>伏笔标题</label><input type="text" class="text_pole sd-thread-edit-title" maxlength="24">
-      <label>伏笔内容</label><textarea class="text_pole sd-thread-edit-essence" rows="5" maxlength="240"></textarea>
-      <div class="sd-thread-edit-grid"><label>显影阶段<select class="text_pole sd-thread-edit-stage">${STAGE_LADDER.map((stage) => `<option value="${stage}">${stage}</option>`).join('')}</select></label>
-      <label>档案状态<select class="text_pole sd-thread-edit-status"><option value="active">在演</option><option value="dormant">沉睡</option><option value="closed">已落幕</option></select></label></div>`;
-    wrap.querySelector('.sd-thread-edit-title').value = thread.title || '';
-    wrap.querySelector('.sd-thread-edit-essence').value = thread.essence || '';
-    wrap.querySelector('.sd-thread-edit-stage').value = sanitizeStage(thread.stage);
-    wrap.querySelector('.sd-thread-edit-status').value = ['active', 'dormant', 'closed'].includes(thread.status) ? thread.status : 'active';
-    try {
-      const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '保存', cancelButton: '取消' });
-      if (!await popup.show()) return null;
-      return {
-        title: String(wrap.querySelector('.sd-thread-edit-title').value || '').trim().slice(0, 24),
-        essence: String(wrap.querySelector('.sd-thread-edit-essence').value || '').trim().slice(0, 240),
-        stage: sanitizeStage(wrap.querySelector('.sd-thread-edit-stage').value),
-        status: ['active', 'dormant', 'closed'].includes(wrap.querySelector('.sd-thread-edit-status').value) ? wrap.querySelector('.sd-thread-edit-status').value : 'active',
-      };
-    } catch (_) {}
-  }
-  const title = await promptInput('编辑伏笔', '伏笔标题：', thread.title || '');
-  if (title === null) return null;
-  const essence = await promptInput('编辑伏笔', '伏笔内容：', thread.essence || '');
-  if (essence === null) return null;
-  return { title: String(title).trim().slice(0, 24), essence: String(essence).trim().slice(0, 240), stage: thread.stage, status: thread.status };
 }
 
 // 音色库条目弹窗：音色名 + 音色 ID（沿用剧札 Popup 交互，无 textarea）
@@ -2573,263 +2506,8 @@ const INJ_LEN = {
 };
 
 /* ============================================================
-   活幕·伏笔显影：暗线档案承接（跨推演的持续身份层）
-   纯函数，无副作用；store 来自 chatMetadata，与 plan 平级、独立累积。
-   ============================================================ */
-// sanitizeStage - 已迁移到 qianmu-storyboard-utils.js
-// function sanitizeStage(stage) {
-//   return STAGE_LADDER.includes(stage) ? stage : '铺陈';
-// }
-
-// 顺势升一档（不越过「落幕」）
-// advanceStage - 已迁移到 qianmu-storyboard-utils.js
-// function advanceStage(stage) {
-//   const idx = STAGE_LADDER.indexOf(sanitizeStage(stage));
-//   return STAGE_LADDER[Math.min(idx + 1, STAGE_LADDER.length - 1)];
-// }
-
-// directorEvidenceNorm - 已迁移到 qianmu-storyboard-utils.js
-// function directorEvidenceNorm(value) {
-//   return String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
-// }
-
-function directorRecentEvidenceRows() {
-  const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
-  const depth = Math.max(1, Math.min(200, Number(settings.contextOptions.contextDepth || 5)));
-  const first = Math.max(0, chat.length - depth);
-  return chat.slice(first).map((message, offset) => ({
-    floor: first + offset,
-    text: cleanContextText(message?.mes || ''),
-  })).filter((row) => row.text);
-}
-
-// MIGRATED to qianmu-storyboard-utils.js (commit 21)
-// function validateThreadEvidence(raw) {
-//   const quote = String(raw?.evidence_quote || '').replace(/\s+/g, ' ').trim().slice(0, 80);
-//   const quoteNorm = directorEvidenceNorm(quote);
-//   if (quoteNorm.length < 4) return { valid: false, floor: -1, quote, reason: '未提供可核验原句' };
-//   const rows = directorRecentEvidenceRows();
-//   let floor = Number.parseInt(String(raw?.evidence_floor ?? ''), 10);
-//   let row = rows.find((item) => item.floor === floor);
-//   if (!row || !directorEvidenceNorm(row.text).includes(quoteNorm)) {
-//     row = rows.find((item) => directorEvidenceNorm(item.text).includes(quoteNorm));
-//     floor = row?.floor ?? -1;
-//   }
-//   return row
-//     ? { valid: true, floor, quote, reason: `楼层${floor}原句命中` }
-//     : { valid: false, floor: -1, quote, reason: '原句不在近期对话中' };
-// }
-
-function validateThreadEvidenceWrapper(raw) {
-  return validateThreadEvidence(raw, directorRecentEvidenceRows);
-}
-
-// directorBigrams - 已迁移到 qianmu-storyboard-utils.js
-// function directorBigrams(value) {
-//   const text = directorEvidenceNorm(value);
-//   const out = new Set();
-//   if (text.length < 2) { if (text) out.add(text); return out; }
-//   for (let index = 0; index < text.length - 1; index++) out.add(text.slice(index, index + 2));
-//   return out;
-// }
-
-// directorOverlapRatio - 已迁移到 qianmu-storyboard-utils.js
-// function directorOverlapRatio(needle, haystack) {
-//   const left = directorBigrams(needle);
-//   const right = directorBigrams(haystack);
-//   if (!left.size || !right.size) return 0;
-//   let hit = 0;
-//   for (const token of left) if (right.has(token)) hit += 1;
-//   return hit / left.size;
-// }
-
-function selectThreadsForRecall(store, round = Number(store?.threadSeq || 0), commit = false) {
-  const recentText = directorRecentEvidenceRows().map((row) => row.text).join('\n');
-  const evaluated = (Array.isArray(store?.threads) ? store.threads : [])
-    .filter((thread) => thread.status === 'active')
-    .map((thread) => {
-      const cooldown = Number(thread.lastInjectedRound || 0) > 0
-        && round - Number(thread.lastInjectedRound || 0) < THREAD_RECALL_COOLDOWN
-        && Number(thread.lastTouched || 0) !== round;
-      const semantic = directorOverlapRatio(`${thread.title || ''}${thread.essence || ''}${thread.lastEvidenceQuote || ''}`, recentText);
-      const fresh = Number(thread.lastTouched || 0) === round ? 1 : 0;
-      const stage = Math.max(0, STAGE_LADDER.indexOf(sanitizeStage(thread.stage))) / 20;
-      const score = fresh + semantic + stage + (thread.pinned ? .04 : 0);
-      return { thread, cooldown, semantic, fresh, score };
-    });
-  const candidates = evaluated
-    .filter((entry) => !entry.cooldown && (entry.fresh || entry.semantic >= (entry.thread.pinned ? .08 : .12)))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, THREAD_RECALL_LIMIT);
-  if (commit) {
-    const selected = new Set(candidates.map((entry) => entry.thread.id));
-    for (const thread of (store.threads || [])) {
-      if (selected.has(thread.id)) {
-        thread.lastInjectedRound = round;
-        thread.recallReason = Number(thread.lastTouched || 0) === round
-          ? (Number.isFinite(Number(thread.lastEvidenceFloor)) ? `本轮正文证据 · 楼层${thread.lastEvidenceFloor}` : '本轮正文证据')
-          : '近期语境命中';
-      } else if (thread.status === 'active') {
-        const entry = evaluated.find((item) => item.thread.id === thread.id);
-        const eligible = entry && !entry.cooldown && (entry.fresh || entry.semantic >= (thread.pinned ? .08 : .12));
-        thread.recallReason = entry?.cooldown
-          ? '本轮未召回 · 冷却中'
-          : eligible ? '本轮未召回 · 召回预算已满' : '本轮未召回 · 语境未命中';
-      }
-    }
-    store.threadRecallIds = candidates.map((entry) => entry.thread.id);
-  }
-  return candidates.map((entry) => entry.thread);
-}
-
-// 把本次推演返回的 threads 合并进档案：按 id 承接旧线、升降显影、归档终局、收纳新线。
-// store：getChatStore() 结果；incoming：plan.threads（模型回传，可空）。原地更新 store.threads。
-function mergeThreads(store, incoming) {
-  const round = Number(store.threadSeq || 0) + 1;
-  store.threadSeq = round;
-  const list = Array.isArray(store.threads) ? store.threads : (store.threads = []);
-  const byId = new Map(list.map((t) => [t.id, t]));
-  const seen = new Set();
-  const newFingerprints = new Set();
-  const accepted = [];
-  const rejected = [];
-
-  const incomingRows = (Array.isArray(incoming) ? incoming : []).filter(Boolean);
-  // 先审阅既有档案、再接纳新线：若本轮恰有旧线落幕，空出的储备位不会受模型数组顺序影响。
-  const orderedRows = [
-    ...incomingRows.filter((raw) => raw?.id && byId.has(raw.id)),
-    ...incomingRows.filter((raw) => !raw?.id || !byId.has(raw.id)),
-  ];
-  for (const raw of orderedRows) {
-    if (!raw || (!raw.title && !raw.id)) continue;
-    const touched = ['advance', 'mention', 'idle'].includes(raw.touched) ? raw.touched : 'mention';
-    const reqStatus = ['active', 'dormant', 'closed'].includes(raw.status) ? raw.status : 'active';
-    const evidence = touched === 'idle' ? { valid: true, floor: -1, quote: '', reason: '已审阅·正文未触及' } : validateThreadEvidenceWrapper(raw);
-    let t = raw.id ? byId.get(raw.id) : null;
-    if (t) {
-      if (seen.has(t.id)) {
-        rejected.push({ id: t.id, reason: '同一伏笔 id 在本轮重复回传' });
-        continue;
-      }
-      seen.add(t.id);
-      if (t.status === 'closed') {
-        t.lastDecision = '已落幕档案 · 拒绝模型重新开启';
-        rejected.push({ id: t.id, reason: '已落幕档案不可由模型复活' });
-        continue;
-      }
-      t.reviewedRound = round;
-      t.unreviewedRounds = 0;
-      t.trail = Array.isArray(t.trail) ? t.trail : [];
-      if (!evidence.valid) {
-        t.rejectedRounds = Number(t.rejectedRounds || 0) + 1;
-        t.lastDecision = `保持原状 · ${evidence.reason}`;
-        rejected.push({ id: t.id, reason: evidence.reason });
-        continue;
-      }
-      if (touched === 'idle') {
-        t.silentRounds = Number(t.silentRounds || 0) + 1;
-        if (!t.pinned && t.status === 'active' && t.silentRounds >= 4) t.status = 'dormant';
-        t.lastDecision = t.status === 'dormant' ? '连续四轮确认为未触及，转入沉睡' : '已审阅 · 本轮未触及';
-        accepted.push({ id: t.id, touched });
-        continue;
-      }
-      const previousStage = sanitizeStage(t.stage);
-      t.silentRounds = 0;
-      t.lastTouched = round;
-      t.lastEvidenceFloor = evidence.floor;
-      t.lastEvidenceQuote = evidence.quote;
-      if (raw.essence && touched === 'advance') t.essence = String(raw.essence).slice(0, 120);
-      const wantsClose = reqStatus === 'closed' || sanitizeStage(raw.stage) === '落幕';
-      const resolution = String(raw.resolution || '').replace(/\s+/g, ' ').trim().slice(0, 120);
-      if (wantsClose && resolution.length >= 4) {
-        t.stage = '落幕';
-        t.status = 'closed';
-        t.resolution = resolution;
-        t.lastDecision = `已落幕 · ${evidence.reason}`;
-      } else if (touched === 'advance') {
-        // 模型可能已把 raw.stage 写成下一档；程序只允许相对旧档最多前进一步，杜绝双重升档与跨档跳跃。
-        t.stage = advanceStage(previousStage);
-        if (t.stage === '落幕') {
-          t.status = 'closed';
-          t.resolution = resolution || String(raw.note || '正文已完成最后一次推进').slice(0, 120);
-          t.lastDecision = `推进至落幕并归档 · ${evidence.reason}`;
-        } else {
-          t.status = 'active';
-          t.lastDecision = `推进一档 · ${evidence.reason}`;
-        }
-      } else {
-        if (t.status !== 'dormant') t.status = 'active';
-        t.stage = previousStage;
-        t.lastDecision = `仅被提及 · ${evidence.reason}`;
-      }
-      const note = snip(raw.note || t.lastDecision, 60);
-      t.trail.push({ round, stage: t.stage, note, floor: evidence.floor, quote: evidence.quote });
-      if (t.trail.length > 12) t.trail = t.trail.slice(-12);
-      accepted.push({ id: t.id, touched, floor: evidence.floor });
-    } else {
-      if (raw.id) {
-        rejected.push({ id: String(raw.id), title: String(raw.title || ''), reason: '回传了不存在的伏笔 id' });
-        continue;
-      }
-      // 新伏笔必须源自近期正文原句；无证据候选直接拒绝，不为凑 3—5 条制造空线。
-      if (!evidence.valid || touched === 'idle' || reqStatus === 'closed') {
-        rejected.push({ id: String(raw.id || ''), title: String(raw.title || ''), reason: evidence.reason || '新线状态无效' });
-        continue;
-      }
-      const fingerprint = `${directorEvidenceNorm(raw.title)}|${evidence.floor}|${directorEvidenceNorm(evidence.quote)}`;
-      if (newFingerprints.has(fingerprint)) {
-        rejected.push({ id: '', title: String(raw.title || ''), reason: '本轮重复的新伏笔候选' });
-        continue;
-      }
-      newFingerprints.add(fingerprint);
-      if (list.filter((thread) => thread.status === 'active').length >= THREAD_ACTIVE_TARGET_MAX) {
-        rejected.push({ id: '', title: String(raw.title || ''), reason: `在演储备已达 ${THREAD_ACTIVE_TARGET_MAX} 条` });
-        continue;
-      }
-      t = {
-        id: uid('thread'),
-        title: String(raw.title || '未命名暗线').slice(0, 24),
-        essence: String(raw.essence || '').slice(0, 120),
-        stage: '铺陈',
-        pinned: false,
-        origin: round,
-        lastTouched: round,
-        reviewedRound: round,
-        silentRounds: 0,
-        status: 'active',
-        originFloor: evidence.floor,
-        originQuote: evidence.quote,
-        lastEvidenceFloor: evidence.floor,
-        lastEvidenceQuote: evidence.quote,
-        lastDecision: `新埋伏笔 · ${evidence.reason}`,
-        trail: [{ round, stage: '铺陈', note: snip(raw.note || '初次埋线', 60), floor: evidence.floor, quote: evidence.quote }],
-      };
-      list.unshift(t);
-      byId.set(t.id, t);
-      accepted.push({ id: t.id, touched: 'new', floor: evidence.floor });
-    }
-    seen.add(t.id);
-  }
-
-  // 模型漏回传只记录漏审，不等同于正文 idle；状态、沉寂轮数与显影刻度全部保持。
-  for (const t of list) {
-    if (seen.has(t.id) || t.status === 'closed') continue;
-    t.unreviewedRounds = Number(t.unreviewedRounds || 0) + 1;
-    t.lastDecision = '模型本轮漏审 · 状态保持';
-    rejected.push({ id: t.id, reason: '模型漏回传既有 id' });
-  }
-
-  // 归档落幕：已 closed 的保留少量供回看，超量裁掉最旧的
-  const active = list.filter((t) => t.status !== 'closed');
-  const closed = list.filter((t) => t.status === 'closed');
-  store.threads = [...active.slice(0, 24), ...closed.slice(0, 8)];
-  store.threadQuality = { round, accepted, rejected, activeCount: active.filter((t) => t.status === 'active').length };
-  selectThreadsForRecall(store, round, true);
-}
-
-/* ============================================================
    活幕·势：势力格局 / 世界事件的跨推演续命（自成脉络的世界引擎）
-   思路同伏笔显影：用 LLM 当「推演引擎」吐质性局势变化，不做数值模拟；
+   用 LLM 当「推演引擎」吐质性局势变化，不做数值模拟；
    状态跨幕续命，「你不看也在变」靠推演时世界时钟往前演——零后台循环、零 tick。
    ============================================================ */
 // sanitizeEventStage - 已迁移到 qianmu-storyboard-utils.js
@@ -2988,7 +2666,7 @@ function mergeGeopolitics(store, plan) {
 
 function buildPlanDigest(plan) {
   if (!plan) return '';
-  const sec = settings?.injectSections || { quests: true, nodes: true, npc: true, relations: true, world: true, threads: true };
+  const sec = settings?.injectSections || { quests: true, nodes: true, npc: true, relations: true, world: true };
   const st = plan.story_status || {};
   const lines = [];
   lines.push('【千幕·暗线灵感池】');
@@ -3020,11 +2698,6 @@ function buildPlanDigest(plan) {
   if (sec.world !== false) {
     const worlds = (plan.world_updates || []).map((w) => `- ${snip(w.title, INJ_LEN.label)}：${snip(w.content, INJ_LEN.line)}${w.timing ? `（${snip(w.timing, INJ_LEN.label)}）` : ''}`).filter(Boolean);
     if (worlds.length) lines.push(`世界涟漪（在背景中持续发酵）：\n${worlds.join('\n')}`);
-  }
-  // 活幕·伏笔显影：把存活暗线的显影火候作为「取用时机」灵感注入（钉住与高潮临近者优先）
-  if (settings?.liveStageEnabled && sec.threads !== false) {
-    const threadsLine = buildThreadsDigest();
-    if (threadsLine) lines.push(threadsLine);
   }
   // 活幕·势：把势力格局与世界事件作为「上游源头」注入（L1→L4：大势如何流转，余波才如何砸到街角个体）
   if (settings?.geopoliticsEnabled && sec.geopolitics !== false) {
@@ -3062,22 +2735,6 @@ function buildGeopoliticsDigest() {
   const evLines = events.map((e) => `- ${snip(e.title, INJ_LEN.label)}【${e.stage}】：${snip(e.essence, INJ_LEN.line)}${e.drift ? `（走向：${snip(e.drift, INJ_LEN.line)}）` : ''}`);
   if (evLines.length) out.push('进行中的世界事件：\n' + evLines.slice(0, 5).join('\n'));
   return out.join('\n');
-}
-
-// 伏笔显影注入段：档案可以保有 3—5 条在演储备，但每轮只注入语境命中的 0—2 条。
-function buildThreadsDigest() {
-  const store = getChatStore();
-  const ids = Array.isArray(store.threadRecallIds) ? store.threadRecallIds : [];
-  const selected = ids.length
-    ? ids.map((id) => (store.threads || []).find((thread) => thread.id === id)).filter((thread) => thread?.status === 'active')
-    : selectThreadsForRecall(store, Number(store.threadSeq || 0), false);
-  if (!selected.length) return '';
-  const rows = selected.slice(0, THREAD_RECALL_LIMIT).map((t) => {
-    const heat = t.stage === '临界' || t.stage === '高潮' ? '，火候渐起，可择机让它浮现' : '';
-    const evidence = Number.isFinite(Number(t.lastEvidenceFloor)) ? `（依据：楼层${t.lastEvidenceFloor}）` : '';
-    return `- ${t.pinned ? '（重点）' : ''}${snip(t.title, INJ_LEN.label)}【${t.stage}】${evidence}：${snip(t.essence, INJ_LEN.line)}${heat}`;
-  });
-  return `伏笔显影（仅列本轮语境命中的候选，最多两条；可自然取用，也可完全不触发）：\n${rows.join('\n')}`;
 }
 
 function getInjectApi() {
@@ -3190,44 +2847,19 @@ async function buildPrompt() {
     segments.push('【新角入场指令】\n本次推演必须为角色世界注入新鲜血液：npc_updates 中至少包含1-2位此前从未出现过的全新NPC（给出姓名、定位、动机，以及与现有关系网或交际圈的自然接驳点）；world_updates 中至少包含1-2件全新的世界事件或公共变化。新角与新事件需贴合当前世界观与剧情密度，像是世界自然生长出来的，而非凭空插入。');
   }
 
-  // 活幕·伏笔显影：把存活暗线档案喂回，让模型对照近期对话承接显影火候
-  if (settings.liveStageEnabled) {
-    const archive = buildThreadsArchiveSegment(store);
-    if (archive) segments.push(archive);
-  }
-
   // 活幕·势：把现有势力格局与世界事件喂回，让模型对照近期对话推动大势演进
   if (settings.geopoliticsEnabled) {
     const geo = buildGeopoliticsArchiveSegment(store);
     if (geo) segments.push(geo);
   }
 
-  segments.push(`【叙事辖区·防板块串台】\n${Object.entries(DIRECTOR_SECTION_RULES).filter(([field]) => field !== 'threads' || settings.liveStageEnabled).map(([field, rule]) => `- ${field}：${rule}`).join('\n')}\n同一事件可以在多个板块形成有机呼应，但必须分别承担行动入口、人物自主性、结构背景、因果传导、关系张力或潜在线索中的不同职能；若只是换词复述，视为缺项。`);
+  segments.push(`【叙事辖区·防板块串台】\n${Object.entries(DIRECTOR_SECTION_RULES).map(([field, rule]) => `- ${field}：${rule}`).join('\n')}\n同一事件可以在多个板块形成有机呼应，但必须分别承担行动入口、人物自主性、结构背景、因果传导或关系张力中的不同职能；若只是换词复述，视为缺项。`);
   segments.push(settings.outputSchemaText || JSON_SCHEMA_TEXT);
-  if (settings.liveStageEnabled) segments.push(THREADS_SCHEMA_TEXT);
   if (settings.worldChatterEnabled) segments.push(WORLD_CHATTER_SCHEMA_TEXT);
   if (settings.geopoliticsEnabled) segments.push(GEOPOLITICS_SCHEMA_TEXT);
-  segments.push('【最终任务·发送前重申，违则失职】\n依据上方编剧方案与全部参考，推演当前故事的下一幕，只输出 JSON 对象，所有百分比数值范围 0-100。\n硬约束（务必逐条满足）：\n1. 数量下限不可破：任务≥5、角色动向≥5、世界回声 3-5（最低 3）、因果链≥3、关系暗涌≥3，剧情密度高时再自然上浮，绝不允许以「剧情平淡」为由缩水。\n2. 视角分工不可串：任务用以 {{user}} 为中心的第三人称；角色动向、世界回声、因果链、关系暗涌用全知导演镜头。关系暗涌的 parties 写 2-5 个角色（主要角色/NPC 皆可），绝不含 {{user}}，且负面/中立/正向基调都要有；各条人数务必有别、勿齐刷一个数，至少一条仅 2 人（一对一）、其余须各取不同规模。\n3. 辐射扩散：相当一部分 npc_updates 与 world_updates 须与 {{user}} 此刻无关，是角色各自生活在推进的事；让其中一些因果相连、彼此波及，再借传闻/偶遇/委托/误会辐射到 {{user}} 视野边缘——避免一切围着 {{user}} 打转。因果链一律由世界内部起头、自行流转，绝不以 {{user}} 为源头或收束点。同时提供不同参与距离的事件（可介入、间接波及、纯属背景）。\n4. 文风铁律（全字段强制）：禁用「不是……而是……」否定对比句式；禁止用破折号补充说明或制造停顿；情绪、氛围等短句须客观精炼、点明由来，不写空标签、不堆解释性补白。\n5. progress 为本幕进度；当前主线 summary 写成勾人的楔子式引子，不作流水账复述。');
+  segments.push('【最终任务·发送前重申，违则失职】\n依据上方编剧方案与全部参考，推演当前故事的下一幕，只输出 JSON 对象，所有百分比数值范围 0-100。\n硬约束（务必逐条满足）：\n1. 数量下限不可破：任务≥5、角色动向≥5、世界回声 3-5（最低 3）、因果链≥3、关系暗涌≥3；director_comment 固定 3 条且身份、立场互不重复。剧情密度高时核心数组再自然上浮，绝不允许以「剧情平淡」为由缩水。\n2. 视角分工不可串：任务用以 {{user}} 为中心的第三人称；角色动向、世界回声、因果链、关系暗涌用全知导演镜头。关系暗涌的 parties 写 2-5 个角色（主要角色/NPC 皆可），绝不含 {{user}}，且负面/中立/正向基调都要有；各条人数务必有别、勿齐刷一个数，至少一条仅 2 人（一对一）、其余须各取不同规模。\n3. 辐射扩散：相当一部分 npc_updates 与 world_updates 须与 {{user}} 此刻无关，是角色各自生活在推进的事；让其中一些因果相连、彼此波及，再借传闻/偶遇/委托/误会辐射到 {{user}} 视野边缘——避免一切围着 {{user}} 打转。因果链一律由世界内部起头、自行流转，绝不以 {{user}} 为源头或收束点。同时提供不同参与距离的事件（可介入、间接波及、纯属背景）。\n4. 文风铁律（全字段强制）：禁用「不是……而是……」否定对比句式；禁止用破折号补充说明或制造停顿；情绪、氛围等短句须客观精炼、点明由来，不写空标签、不堆解释性补白。\n5. progress 为本幕进度；当前主线 summary 写成勾人的楔子式引子，不作流水账复述。');
   if (settings.geopoliticsEnabled) segments.push('【势·关系网·最后重申】\n输出 factions 后，务必同步输出 faction_relations 数组。容许极少数势力作孤立局外方，但孤点至多不超过势力总数的三分之一（4 股≤1、5-6 股≤2），其余势力都要连入关系网。这是星图能否成形的命门，你必须把该连的势力都连上，绝不会交一盘大半悬空的散点。');
   return segments.join('\n\n');
-}
-
-// 活幕：构建「在演伏笔档案」段——逐条列出存活暗线供模型承接（钉住者标记，附沉寂幕数）
-function buildThreadsArchiveSegment(store) {
-  const active = (store.threads || []).filter((t) => t.status !== 'closed');
-  if (!active.length) return '';
-  const rows = active.map((t) => {
-    const tag = t.pinned ? '（重点·勿擅自了结）' : '';
-    const sleep = t.status === 'dormant' ? '（已沉睡，正文重新触及可唤醒）' : (t.silentRounds ? `（已沉寂${t.silentRounds}幕）` : '');
-    const evidence = t.lastEvidenceQuote ? `（最近证据：楼层${t.lastEvidenceFloor}「${snip(t.lastEvidenceQuote, 28)}」）` : '';
-    return `- [id:${t.id}] ${tag}${snip(t.title, 24)}【${t.stage}】：${snip(t.essence, 60)}${sleep}${evidence}`;
-  });
-  // 3—5 是档案储备，不是注入配额。低于目标时强制扫描，但程序会拒绝没有楼层原句的新线。
-  const liveCount = active.filter((t) => t.status === 'active').length;
-  const tally = liveCount < THREAD_ACTIVE_TARGET_MIN
-    ? `\n⚠️ 当前在演储备 ${liveCount} 条，低于 ${THREAD_ACTIVE_TARGET_MIN}—${THREAD_ACTIVE_TARGET_MAX} 条健康区间。请认真扫描近期对话中的潜在线索；每条新增候选必须引用真实 evidence_floor 与 evidence_quote。没有证据就不要补足。`
-    : `\n（当前在演储备 ${liveCount} 条。储备不等于调用，本轮仅审阅状态；不要为维持数字而重复改写或强行引爆。）`;
-  return `【在演伏笔显影档案】\n以下暗线已在故事中存活。必须逐条沿用 id 回传审阅结果：正文有证据才可 advance/mention/closed，否则回传 idle；遗漏 id 不会被当作 idle，只会被质量门控判为漏审。钉住表示保留身份，不代表必须在正文调用。\n${rows.join('\n')}${tally}`;
 }
 
 // 活幕·势：构建「在演格局档案」段——把现有势力/关系/世界事件喂回，让模型对照近期对话推动大势演进
@@ -3500,7 +3132,7 @@ async function callSillyTavernModel(userPrompt, systemPrompt = '', onDelta = nul
 function normalizePlan(plan) {
   const base = {
     story_status: { title: '当前故事', current_arc: '', current_stage: '', cycle: '', progress: 0, mood: '', summary: '' },
-    quests: [], npc_updates: [], world_updates: [], chain_reactions: [], relation_undercurrents: [], director_comment: '',
+    quests: [], npc_updates: [], world_updates: [], chain_reactions: [], relation_undercurrents: [], director_comment: [],
   };
   if (!isPlainObject(plan)) plan = {};
   mergeDefaults(plan, base);
@@ -3509,7 +3141,12 @@ function normalizePlan(plan) {
   plan.world_updates = Array.isArray(plan.world_updates) ? plan.world_updates : [];
   plan.chain_reactions = Array.isArray(plan.chain_reactions) ? plan.chain_reactions : [];
   plan.relation_undercurrents = Array.isArray(plan.relation_undercurrents) ? plan.relation_undercurrents : [];
-  if (typeof plan.threads !== 'undefined' && !Array.isArray(plan.threads)) plan.threads = [];   // 活幕回传，保留原样供 mergeThreads 处理
+  plan.director_comment = (Array.isArray(plan.director_comment) ? plan.director_comment : [plan.director_comment])
+    .map((item) => typeof item === 'string' ? item : item?.text || item?.content || '')
+    .map((item) => String(item || '').replace(/^\s*众声\s*[:：]?\s*/, '').trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  delete plan.threads;   // 伏笔显影已退役；忽略旧提示词或第三方模型偶发回传的遗留字段。
   if (typeof plan.world_chatter !== 'undefined' && !Array.isArray(plan.world_chatter)) plan.world_chatter = [];   // 尘寰群生：纯展示，留在 plan 上随推演刷新
   if (typeof plan.factions !== 'undefined' && !Array.isArray(plan.factions)) plan.factions = [];   // 活幕·势：势力格局回传，供 mergeGeopolitics 处理
   if (typeof plan.world_events !== 'undefined' && !Array.isArray(plan.world_events)) plan.world_events = [];   // 活幕·势：世界事件回传
@@ -3585,39 +3222,11 @@ function directorQualityNeeds(plan, previousPlan, store) {
       if (current && previous && directorSimilarity(current, previous) >= .96) stagnantFields.push(field);
     }
   }
-  const existingIds = settings.liveStageEnabled
-    ? (Array.isArray(store?.threads) ? store.threads : []).filter((thread) => thread.status !== 'closed').map((thread) => thread.id)
-    : [];
-  const returnedThreads = Array.isArray(plan.threads) ? plan.threads : [];
-  const returnedIds = new Set(returnedThreads.filter((thread) => {
-    if (!thread?.id) return false;
-    if (thread.touched === 'idle') return true;
-    const evidence = validateThreadEvidenceWrapper(thread);
-    return evidence.valid && (thread.status !== 'closed' || String(thread.resolution || '').trim().length >= 4);
-  }).map((thread) => String(thread.id)));
-  const missingThreadIds = existingIds.filter((id) => !returnedIds.has(id));
-  const storedThreads = Array.isArray(store?.threads) ? store.threads : [];
-  const activeThreads = storedThreads.filter((thread) => thread.status === 'active');
-  const activeById = new Map(activeThreads.map((thread) => [String(thread.id), thread]));
-  const projectedExits = new Set(returnedThreads.filter((thread) => {
-    const stored = activeById.get(String(thread?.id || ''));
-    if (!stored) return false;
-    if (thread?.touched === 'idle') return !stored.pinned && Number(stored.silentRounds || 0) >= 3;
-    const evidence = validateThreadEvidenceWrapper(thread);
-    if (!evidence.valid) return false;
-    const explicitClose = thread?.status === 'closed' || sanitizeStage(thread?.stage) === '落幕';
-    const advancesToClose = thread?.touched === 'advance' && sanitizeStage(stored.stage) === '高潮';
-    return (explicitClose && String(thread?.resolution || '').trim().length >= 4) || advancesToClose;
-  }).map((thread) => String(thread.id)));
-  const validNewCandidates = returnedThreads.filter((thread) => !thread?.id && thread?.touched !== 'idle' && thread?.status !== 'closed' && validateThreadEvidenceWrapper(thread).valid).length;
-  const projectedActiveCount = activeThreads.length - projectedExits.size + validNewCandidates;
-  const needsThreadCandidates = settings.liveStageEnabled && projectedActiveCount < THREAD_ACTIVE_TARGET_MIN;
-  return { gaps, stagnantFields: stagnantFields.slice(0, 2), missingThreadIds, needsThreadCandidates };
+  return { gaps, stagnantFields: stagnantFields.slice(0, 2) };
 }
 
 function directorHasQualityNeeds(needs) {
-  return Object.keys(needs.gaps || {}).length > 0 || (needs.stagnantFields || []).length > 0
-    || (needs.missingThreadIds || []).length > 0 || needs.needsThreadCandidates;
+  return Object.keys(needs.gaps || {}).length > 0 || (needs.stagnantFields || []).length > 0;
 }
 
 async function repairDirectorPlanQuality(plan, previousPlan, store) {
@@ -3625,11 +3234,8 @@ async function repairDirectorPlanQuality(plan, previousPlan, store) {
   if (!directorHasQualityNeeds(needs)) return { plan, needs, repaired: false, raw: '', error: '' };
   const requestedFields = uniqueClean([...Object.keys(needs.gaps), ...needs.stagnantFields]);
   const jurisdiction = requestedFields.map((field) => `- ${field}：${DIRECTOR_SECTION_RULES[field]}`).join('\n');
-  const threadInstruction = settings.liveStageEnabled && (needs.missingThreadIds.length || needs.needsThreadCandidates)
-    ? `\n- threads：逐条补审既有 id ${needs.missingThreadIds.join('、') || '（无漏审）'}。每条结构至少包含 id、title、essence、stage、touched、evidence_floor、evidence_quote、resolution、note、status。低于储备目标时可新增候选（id 留空），但必须逐字引用近期对话中真实的 evidence_floor 与 evidence_quote；无证据不要新增。`
-    : '';
-  const systemPrompt = `你是千幕推演的“缺口补写器”。已有合格字段绝不可改写，只输出被点名字段组成的 JSON 对象，不输出解释、Markdown 或思考过程。\n叙事辖区：\n${jurisdiction || '- 本次只补 threads 审阅'}${threadInstruction}\n同一事件可以在不同板块形成因果呼应，但每个板块必须提供本职角度，禁止换词复述。`;
-  const userPrompt = `【近期对话】\n${getChatHistoryText() || '暂无对话'}\n\n【当前已生成结果】\n${JSON.stringify(plan)}\n\n【需要修复的缺口】\n数量不足：${JSON.stringify(needs.gaps)}\n疑似沿用上轮、须整体换成贴合新正文的新内容：${needs.stagnantFields.join('、') || '无'}\n漏审伏笔 id：${needs.missingThreadIds.join('、') || '无'}\n伏笔储备扫描：${needs.needsThreadCandidates ? '需要，但新增必须有正文原句证据' : '不需要'}\n\n只返回上述必要字段。数量不足的字段补到既定下限；疑似沿用上轮的字段返回完整替换数组。`;
+  const systemPrompt = `你是千幕推演的“缺口补写器”。已有合格字段绝不可改写，只输出被点名字段组成的 JSON 对象，不输出解释、Markdown 或思考过程。\n叙事辖区：\n${jurisdiction}\n同一事件可以在不同板块形成因果呼应，但每个板块必须提供本职角度，禁止换词复述。`;
+  const userPrompt = `【近期对话】\n${getChatHistoryText() || '暂无对话'}\n\n【当前已生成结果】\n${JSON.stringify(plan)}\n\n【需要修复的缺口】\n数量不足：${JSON.stringify(needs.gaps)}\n疑似沿用上轮、须整体换成贴合新正文的新内容：${needs.stagnantFields.join('、') || '无'}\n\n只返回上述必要字段。数量不足的字段补到既定下限；疑似沿用上轮的字段返回完整替换数组。`;
   try {
     const raw = settings.providerMode === 'sillytavern'
       ? await callSillyTavernModel(userPrompt, systemPrompt, null, { stream_response: false, max_tokens: Math.min(4200, Math.max(1400, Number(settings.maxOutputTokens || 2600))) })
@@ -3647,14 +3253,6 @@ async function repairDirectorPlanQuality(plan, previousPlan, store) {
         // 缺几条只收几条，避免“补写器”误回整套数组后把主结果反向撑得臃肿。
         const missing = Math.max(0, Number(needs.gaps[field] || 0));
         plan[field] = [...(plan[field] || []), ...returned.slice(0, missing)];
-      }
-    }
-    if (settings.liveStageEnabled && Array.isArray(patch.threads)) {
-      const byId = new Map((plan.threads || []).map((thread) => [String(thread?.id || ''), thread]));
-      for (const thread of patch.threads) {
-        const id = String(thread?.id || '');
-        if (id && byId.has(id)) Object.assign(byId.get(id), thread);
-        else (plan.threads ||= []).push(thread);
       }
     }
     const removed = directorDedupePlan(plan);
@@ -3732,8 +3330,6 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     store.updatedAt = now;
     store.lastPlanIdx = (Array.isArray(ctx().chat) ? ctx().chat.length : 1) - 1;   // 任何推演（手动/自动）后都以当前末尾为新基准，自动推演从此重新累积
     store.planAtLen = Array.isArray(ctx().chat) ? ctx().chat.length : 0;            // 记下推演时的聊天长度：若日后删楼回退到此长度之前，则注入的暗线已悬空，自动清空待下次推演
-    if (settings.liveStageEnabled) mergeThreads(store, newPlan.threads);   // 活幕：承接伏笔显影档案
-    delete newPlan.threads;   // 档案已并入 store.threads（唯一真源），从 plan 剔除避免「上次审片状态」重复注入
     if (settings.geopoliticsEnabled) mergeGeopolitics(store, newPlan);   // 活幕·势：承接势力格局/世界事件档案
     delete newPlan.factions; delete newPlan.faction_relations; delete newPlan.world_events;   // 已并入 store（唯一真源），从 plan 剔除避免重复注入
     // 历史快照须在剔除活档案字段之后再 clone：world 格局/伏笔是跨幕累积的活档案，绝不能随「载入历史」回滚复活，
@@ -7091,11 +6687,6 @@ function renderInjectDock() {
   return '<div class="sd-inject-dock"><button class="sd-btn sd-primary sd-inject-selected" type="button" disabled>写入已选 (<span>0</span>)</button></div>';
 }
 
-function metricBar(label, value) {
-  const n = Math.max(0, Math.min(100, Number(value || 0)));
-  return `<div class="sd-metric sd-progress-metric"><div class="sd-metric-top"><span>${htmlEscape(label)}</span><b>${n}%</b></div><div class="sd-bar"><i style="width:${n}%"></i></div></div>`;
-}
-
 function renderInjectBadge() {
   const on = !!settings.injectEnabled;
   return `<button type="button" class="sd-inject-badge ${on ? 'on' : ''}" title="点击${on ? '关闭' : '开启'}暗线注入"><i class="sd-dot"></i>${on ? '暗线注入中' : '暗线注入已关'}</button>`;
@@ -7121,32 +6712,32 @@ function renderGenerateRow() {
 function renderDashboardTab() {
   const p = currentPlan();
   if (!p) {
-    // 无 plan 时仍渲染历史区 + 伏笔卡——清空当前推演不应连带把历史审片记录、伏笔活档案也藏掉
-    // （伏笔是跨幕活档案、独立于单次推演结果；扫帚只管推演结果，伏笔有自己的一键清空）
     return `<section class="sd-card sd-plan-card"><div class="sd-hero-top"><h3 style="margin:0">剧情推演</h3>${renderHeroActions(false)}</div><div class="sd-empty">尚未推演剧情</div>${renderGenerateRow()}</section>
-    ${renderThreadsCard()}
     ${renderHistorySection()}`;
   }
   const st = p.story_status || {};
+  const voices = (Array.isArray(p.director_comment) ? p.director_comment : [p.director_comment])
+    .map((item) => typeof item === 'string' ? item : item?.text || item?.content || '')
+    .map((item) => String(item || '').replace(/^\s*众声\s*[:：]?\s*/, '').trim())
+    .filter(Boolean)
+    .slice(0, 3);
   return `
     <section class="sd-card sd-hero">
       <div class="sd-hero-top"><div class="sd-kicker">${htmlEscape(st.cycle || '下一幕')}</div>${renderHeroActions(true)}</div>
-      <h3>${htmlEscape(st.title || '当前故事')}</h3>
+      <div class="sd-two sd-scene-current"><b>当前幕：</b><span>${htmlEscape(st.title || '当前故事')}</span></div>
       <p>${htmlEscape(st.summary || '')}</p>
-      <div class="sd-two"><b>主线：</b>${htmlEscape(st.current_arc || '-')}</div>
-      <div class="sd-two"><b>阶段：</b>${htmlEscape(st.current_stage || '-')}</div>
-      <div class="sd-two"><b>氛围：</b>${htmlEscape(st.mood || '-')}</div>
+      <div class="sd-two"><b>主线：</b><span>${htmlEscape(st.current_arc || '-')}</span></div>
+      <div class="sd-two"><b>阶段：</b><span>${htmlEscape(st.current_stage || '-')}</span></div>
+      <div class="sd-two"><b>氛围：</b><span>${htmlEscape(st.mood || '-')}</span></div>
       ${renderGenerateRow()}
     </section>
     <section class="sd-card sd-status-card">
-      ${metricBar('本幕进度', st.progress)}
       <div class="sd-count-tags">
-        ${countGroupTag('任务', 'tasksnodes', [['任务', p.quests?.length || 0], ['因果', p.chain_reactions?.length || 0]])}
-        ${countGroupTag('世界', 'castworld', [['角色', p.npc_updates?.length || 0], ['关系', p.relation_undercurrents?.length || 0], ['世界', p.world_updates?.length || 0]])}
+        <button class="sd-count-tag sd-count-group" data-jump="tasksnodes"><span class="sd-ct-label">任务</span></button>
+        <button class="sd-count-tag sd-count-group" data-jump="castworld"><span class="sd-ct-label">世界</span></button>
       </div>
     </section>
-    <section class="sd-card"><h3>众声</h3><p>${htmlEscape((p.director_comment || '').replace(/^\s*众声\s*[:：]?\s*/, '') || '暂无')}</p></section>
-    ${renderThreadsCard()}
+    <section class="sd-card sd-voices-card"><h3>众声</h3><div class="sd-voices-list">${(voices.length ? voices : ['暂无']).map((voice) => `<p>${htmlEscape(voice)}</p>`).join('')}</div></section>
     ${renderHistorySection()}`;
 }
 
@@ -7172,65 +6763,6 @@ function renderChainReactionsCard(p) {
     </details>
   </section>`;
 }
-
-// 伏笔显影卡：列出存活暗线及显影刻度，可钉住/唤醒/归档；整卡可折叠并记忆开合
-function renderThreadsCard() {
-  if (!settings.liveStageEnabled) return '';
-  const store = getChatStore();
-  const all = Array.isArray(store.threads) ? store.threads : [];
-  const live = all.filter((t) => t.status !== 'closed');
-  const activeCount = live.filter((t) => t.status === 'active').length;
-  const closed = all.filter((t) => t.status === 'closed');
-  const quality = store.threadQuality || {};
-  const stageIdx = (s) => STAGE_LADDER.indexOf(sanitizeStage(s));
-  const evidenceHtml = (thread) => {
-    if (!thread.lastEvidenceQuote) return '';
-    const floor = Number.isFinite(Number(thread.lastEvidenceFloor)) ? `楼层 ${Number(thread.lastEvidenceFloor)}` : '近期正文';
-    return `<p class="sd-thread-evidence"><i class="fa-solid fa-quote-left"></i><span>${floor} · ${htmlEscape(snip(thread.lastEvidenceQuote, 48))}</span></p>`;
-  };
-  const sorted = [...live].sort((a, b) => (Number(a.origin || 0) - Number(b.origin || 0)) || String(a.id).localeCompare(String(b.id)));
-  const rowHtml = (t) => {
-    const pct = Math.round((stageIdx(t.stage) / (STAGE_LADDER.length - 1)) * 100);
-    const dormant = t.status === 'dormant';
-    return `<article class="sd-thread-row${dormant ? ' sd-thread-dormant' : ''}${t.pinned ? ' sd-thread-pinned' : ''}">
-      <div class="sd-thread-head">
-        <button type="button" class="sd-icon-btn sd-icon-sm sd-thread-pin${t.pinned ? ' sd-thread-pin-on' : ''}" data-id="${htmlEscape(t.id)}" title="${t.pinned ? '已钉住，点击取消' : '钉住（重点追踪，不被自动归档）'}" aria-pressed="${t.pinned ? 'true' : 'false'}"><i class="fa-${t.pinned ? 'solid' : 'regular'} fa-thumbtack"></i></button>
-        <h4>${htmlEscape(snip(t.title, 24))}</h4>
-        <span class="sd-thread-stage">${htmlEscape(t.stage)}${dormant ? ' · 沉睡' : ''}</span>
-        ${dormant ? `<button type="button" class="sd-icon-btn sd-icon-sm sd-thread-wake" data-id="${htmlEscape(t.id)}" title="唤醒"><i class="fa-solid fa-rotate-right"></i></button>` : ''}
-        <button type="button" class="sd-icon-btn sd-icon-sm sd-thread-edit" data-id="${htmlEscape(t.id)}" title="修改伏笔"><i class="fa-solid fa-pencil"></i></button>
-        <button type="button" class="sd-icon-btn sd-icon-sm sd-thread-close" data-id="${htmlEscape(t.id)}" title="归档"><i class="fa-solid fa-box-archive"></i></button>
-      </div>
-      <div class="sd-bar sd-thread-bar"><i style="width:${pct}%"></i></div>
-      ${t.essence ? `<p class="sd-thread-essence">${htmlEscape(snip(t.essence, 70))}</p>` : ''}
-      ${evidenceHtml(t)}
-      ${t.lastDecision ? `<p class="sd-thread-decision"><i class="fa-solid ${String(t.recallReason || '').includes('本轮正文证据') ? 'fa-link' : 'fa-shield-halved'}"></i><span>${htmlEscape(t.lastDecision)}${t.recallReason ? ` · ${htmlEscape(t.recallReason)}` : ''}</span></p>` : ''}
-    </article>`;
-  };
-  const body = sorted.length
-    ? sorted.map(rowHtml).join('')
-    : '<p class="sd-muted">暂无在演伏笔。</p>';
-  const closedFold = closed.length
-    ? `<details class="sd-plain-fold sd-threads-closed-fold" data-acc="threads-closed"><summary><b>已落幕</b><span class="sd-summary-note">${closed.length} 条</span></summary>${closed.map((t) => `<article class="sd-thread-row sd-thread-closed"><div class="sd-thread-head"><h4>${htmlEscape(snip(t.title, 24))}</h4><span class="sd-thread-stage">${htmlEscape(t.stage)}</span><button type="button" class="sd-icon-btn sd-icon-sm sd-thread-purge" data-id="${htmlEscape(t.id)}" title="彻底删除"><i class="fa-solid fa-trash-can"></i></button></div>${t.essence ? `<p class="sd-thread-essence">${htmlEscape(snip(t.essence, 70))}</p>` : ''}${t.resolution ? `<p class="sd-thread-decision"><i class="fa-solid fa-circle-check"></i><span>${htmlEscape(snip(t.resolution, 80))}</span></p>` : ''}${evidenceHtml(t)}</article>`).join('')}</details>`
-    : '';
-  return `<section class="sd-card sd-threads-card">
-    <details class="sd-threads-fold" data-acc="threads-card" open>
-      <summary class="sd-threads-summary"><b>伏笔显影</b><span class="sd-tpl-count">${activeCount} 条在演${live.length > activeCount ? ` · ${live.length - activeCount} 条沉睡` : ''}</span>${quality.round ? `<span class="sd-thread-quality" title="本轮接受 ${quality.accepted?.length || 0} 项状态判断，拦截 ${quality.rejected?.length || 0} 项无证据或漏审变更">已核验</span>` : ''}${all.length ? '<button type="button" class="sd-icon-btn sd-icon-sm sd-threads-clear" title="清空全部伏笔（在演与已落幕）" aria-label="清空全部伏笔"><i class="fa-solid fa-broom"></i></button>' : ''}</summary>
-      <div class="sd-threads-body">
-        ${body}
-        ${closedFold}
-      </div>
-    </details>
-  </section>`;
-}
-
-// 审片页跳转标签：按版块（任务线/角色世界）各一枚，标功能合并名 + 该版块各分项条数，点击跳到对应标签页。
-// 任务线 = 任务标签页（任务 + 因果链）；角色世界 = 角色世界标签页（角色 + 关系 + 世界）。
-// MIGRATED to qianmu-storyboard-utils.js (commit 19)
-// function countGroupTag(label, jump, parts) {
-//   const inner = parts.map(([name, count]) => `<span class="sd-ct-part">${htmlEscape(name)}<b>${count}</b></span>`).join('');
-//   return `<button class="sd-count-tag sd-count-group" data-jump="${jump}"><span class="sd-ct-label">${htmlEscape(label)}</span>${inner}</button>`;
-// }
 
 function renderHistorySection() {
   const history = Array.isArray(getChatStore().history) ? getChatStore().history : [];
@@ -7820,7 +7352,7 @@ function renderItemCard(item, kind, idx) {
     fields.push(['内容', item.content], ['波及', item.scope]);
   }
   const checked = injectSelection.has(injectId) ? 'checked' : '';
-  return `<details class="sd-item-card sd-item-fold" data-acc="item-${htmlEscape(injectId)}">
+  return `<details class="sd-item-card sd-item-fold sd-item-${htmlEscape(kind)}" data-acc="item-${htmlEscape(injectId)}">
     <summary>
       <div class="sd-item-summary-main"><h4>${htmlEscape(title)}</h4>${chips ? `<div class="sd-mini-chip-row">${chips}</div>` : ''}</div>
       ${prompt ? `<label class="sd-inject-select-label" title="加入写入队列"><input type="checkbox" class="sd-select-inject" data-text="${htmlEscape(prompt)}" data-id="${htmlEscape(injectId)}" ${checked}></label>` : ''}
@@ -7953,7 +7485,7 @@ function renderPresetSourcePanel() {
   return `
     <div class="sd-context-source-pick">
       <details class="sd-dropdown" data-acc="dd-preset">
-        <summary class="sd-dropdown-head"><span>选择</span><b>${htmlEscape(headLabel)}</b></summary>
+        <summary class="sd-dropdown-head"><span>预设目录</span><b>${htmlEscape(headLabel)}</b></summary>
         <div class="sd-dropdown-body sd-scroll">
           <label class="sd-source-row"><input type="radio" name="sd-preset-radio" class="sd-pick-preset" data-name="" ${active ? '' : 'checked'}><span class="sd-muted">不使用预设</span></label>
           ${rows}
@@ -7970,7 +7502,8 @@ function renderSelectedPresetEntries(selectedNames) {
     const items = contextScanCache.presets?.[name] || getPresetEntries(name);
     (items || []).forEach((item, index) => rows.push(renderContextEntry('preset', name, item, index, selectedNames.length > 1 ? name : '')));
   }
-  return `<details class="sd-context-block" data-acc="blk-preset-entries" open><summary><b>预设条目</b><span class="sd-summary-note">避免左右脑互搏建议只开所需</span></summary><div class="sd-entry-scroll sd-scroll">${rows.join('') || '<p class="sd-muted">暂无条目</p>'}</div></details>`;
+  const label = selectedNames.length === 1 ? selectedNames[0] : `${selectedNames.length} 项`;
+  return `<details class="sd-dropdown sd-context-block sd-unified-source-block" data-acc="blk-preset-entries" open><summary class="sd-dropdown-head"><span>预设条目</span><b>${htmlEscape(label)}</b></summary><div class="sd-dropdown-body sd-entry-scroll sd-scroll">${rows.join('') || '<p class="sd-muted">暂无条目</p>'}</div></details>`;
 }
 
 // 世界书：下拉勾选（多选），下方滚动容器呈现「最后选择」的世界书条目
@@ -7990,7 +7523,7 @@ function renderWorldBookSourcePanel() {
   return `
     <div class="sd-context-source-pick">
       <details class="sd-dropdown" data-acc="dd-world">
-        <summary class="sd-dropdown-head"><span>选择</span><b>${selected.length} 项</b></summary>
+        <summary class="sd-dropdown-head"><span>世界书目录</span><b>${selected.length} 项</b></summary>
         <div class="sd-dropdown-body sd-scroll">${rows}</div>
       </details>
       <button type="button" class="sd-icon-btn sd-refresh-worldbooks" title="读取世界书" aria-label="读取世界书"><i class="fa-solid fa-rotate"></i></button>
@@ -8004,8 +7537,8 @@ function renderSelectedWorldBookEntries(selectedNames) {
     const items = contextScanCache.worldBooks?.[name] || [];
     (items || []).forEach((item, index) => rows.push(renderContextEntry('world', name, item, index, selectedNames.length > 1 ? name : '')));
   }
-  const label = selectedNames.length === 1 ? `世界书条目 · ${selectedNames[0]}` : '世界书条目';
-  return `<details class="sd-context-block" data-acc="blk-world-entries" open><summary><b>${htmlEscape(label)}</b></summary><div class="sd-entry-scroll sd-scroll">${rows.join('') || '<p class="sd-muted">暂无条目</p>'}</div></details>`;
+  const label = selectedNames.length === 1 ? selectedNames[0] : `${selectedNames.length} 项`;
+  return `<details class="sd-dropdown sd-context-block sd-unified-source-block" data-acc="blk-world-entries" open><summary class="sd-dropdown-head"><span>世界书条目</span><b>${htmlEscape(label)}</b></summary><div class="sd-dropdown-body sd-entry-scroll sd-scroll">${rows.join('') || '<p class="sd-muted">暂无条目</p>'}</div></details>`;
 }
 
 function renderContextEntry(kind, groupName, item, index, sourceLabel = '') {
@@ -8013,7 +7546,7 @@ function renderContextEntry(kind, groupName, item, index, sourceLabel = '') {
   const title = item.name || item.identifier || item.comment || item.role || (Array.isArray(item.key) ? item.key.join(', ') : item.key) || `条目 ${index + 1}`;
   const content = item.content || item.prompt || item.message || item.text || '';
   const checked = kind === 'preset' ? isPresetItemSelected(groupName, id) : isWorldItemSelected(groupName, id);
-  return `<details class="sd-context-item" data-acc="ci-${kind}-${htmlEscape(String(groupName))}-${htmlEscape(String(id))}"><summary><label class="sd-context-entry-label"><input type="checkbox" class="sd-context-check" data-kind="${kind}" data-group="${htmlEscape(groupName)}" data-id="${htmlEscape(String(id))}" ${checked ? 'checked' : ''}><span>${htmlEscape(title)}</span>${sourceLabel ? infoTag(sourceLabel) : ''}</label></summary><pre>${htmlEscape(cleanContextText(content).slice(0, 2000))}</pre></details>`;
+  return `<details class="sd-source-row sd-context-item sd-unified-source-entry" data-acc="ci-${kind}-${htmlEscape(String(groupName))}-${htmlEscape(String(id))}"><summary><label class="sd-context-entry-label"><input type="checkbox" class="sd-context-check" data-kind="${kind}" data-group="${htmlEscape(groupName)}" data-id="${htmlEscape(String(id))}" ${checked ? 'checked' : ''}><span>${htmlEscape(title)}</span>${sourceLabel ? infoTag(sourceLabel) : ''}</label></summary><pre>${htmlEscape(cleanContextText(content).slice(0, 2000))}</pre></details>`;
 }
 
 // 注入范围开关：勾选哪些类别会被写进暗线灵感池（控注入 token）
@@ -8026,7 +7559,6 @@ function renderInjectSections() {
     ['relations', '关系暗涌'],
     ['world', '世界涟漪'],
   ];
-  if (settings.liveStageEnabled) items.push(['threads', '伏笔显影']);
   if (settings.geopoliticsEnabled) items.push(['geopolitics', '世界格局']);
   const boxes = items.map(([key, label]) => `<label class="sd-option-chip sd-inject-section"><input type="checkbox" class="sd-inject-section-toggle" data-key="${key}" ${sec[key] !== false ? 'checked' : ''}><span>${label}</span></label>`).join('');
   return `<details class="sd-plain-fold sd-inject-subfold" data-acc="inject-sections"><summary><b>注入范围</b></summary><div class="sd-inject-section-grid">${boxes}</div></details>`;
@@ -8070,7 +7602,6 @@ function renderDirectorSettingsTab() {
     <section class="sd-card sd-derivative-card">
       <h3>衍生模块</h3>
       <div class="sd-derivative-options">
-        <label class="sd-option-chip"><input type="checkbox" class="sd-livestage-enabled" ${settings.liveStageEnabled ? 'checked' : ''}><span>伏笔显影</span></label>
         <label class="sd-option-chip"><input type="checkbox" class="sd-worldchatter-enabled" ${settings.worldChatterEnabled ? 'checked' : ''}><span>尘寰群生</span></label>
         <label class="sd-option-chip"><input type="checkbox" class="sd-geopolitics-enabled" ${settings.geopoliticsEnabled ? 'checked' : ''}><span>世界格局</span></label>
       </div>
@@ -11869,14 +11400,14 @@ function renderStoryboardWorldbookCard(state) {
     <input type="checkbox" class="sd-storyboard-toggle-worldbook" data-name="${htmlEscape(name)}" ${selectedBooks.has(name) ? 'checked' : ''} title="选中作为分镜参考">
     <button type="button" class="sd-storyboard-world-name" data-name="${htmlEscape(name)}"><span>${htmlEscape(name)}</span>${storyboardWorldEntryCache.boundNames.includes(name) ? badge('当前绑定') : ''}</button>
   </div>`).join('');
-  const entryRows = viewName ? (storyboardWorldEntryCache.rows || []).filter((row) => row.book === viewName).map((row) => `<details class="sd-context-item"><summary><label class="sd-context-entry-label"><input type="checkbox" data-storyboard-world-entry="${htmlEscape(row.id)}" ${selectedEntries.has(row.id) ? 'checked' : ''} ${selectedBooks.has(viewName) ? '' : 'disabled'}><span>${htmlEscape(row.title)}</span></label></summary><pre>${htmlEscape(cleanContextText(row.item?.content || row.item?.text || '').slice(0, 2000))}</pre></details>`).join('') : '';
+  const entryRows = viewName ? (storyboardWorldEntryCache.rows || []).filter((row) => row.book === viewName).map((row) => `<details class="sd-source-row sd-context-item sd-unified-source-entry"><summary><label class="sd-context-entry-label"><input type="checkbox" data-storyboard-world-entry="${htmlEscape(row.id)}" ${selectedEntries.has(row.id) ? 'checked' : ''} ${selectedBooks.has(viewName) ? '' : 'disabled'}><span>${htmlEscape(row.title)}</span></label></summary><pre>${htmlEscape(cleanContextText(row.item?.content || row.item?.text || '').slice(0, 2000))}</pre></details>`).join('') : '';
   const body = storyboardWorldEntryCache.loading
     ? '<div class="sd-storyboard-empty-inline">正在读取世界书…</div>'
     : storyboardWorldEntryCache.error
       ? `<div class="sd-storyboard-empty-inline">${htmlEscape(storyboardWorldEntryCache.error)}</div>`
       : names.length ? `<div class="sd-storyboard-worldbook-picker"><details class="sd-dropdown" open><summary class="sd-dropdown-head"><span>世界书目录</span><b>${selectedBooks.size} 项</b></summary><div class="sd-dropdown-body sd-scroll">${bookRows}</div></details></div>${viewName ? `<details class="sd-dropdown sd-storyboard-worldbook-entries" open><summary class="sd-dropdown-head"><span>世界书条目</span><b>${htmlEscape(viewName)}</b></summary><div class="sd-dropdown-body sd-scroll sd-storyboard-worldbook-entry-list">${entryRows || '<p class="sd-muted">暂无条目</p>'}</div></details>` : '<div class="sd-storyboard-empty-inline">选择一本世界书后查看条目。</div>'}` : '<div class="sd-storyboard-empty-inline">未读取到世界书。</div>';
   return `<details class="sd-card sd-storyboard-worldbook-card" data-storyboard-card="worldbook" ${state.collapsedCards.worldbook ? '' : 'open'}>
-    <summary><span><b>世界书</b></span><button type="button" class="sd-storyboard-refresh-worldbooks" title="重新读取世界书" aria-label="重新读取世界书">刷新</button></summary>
+    <summary><span><b>世界书</b></span><button type="button" class="sd-icon-btn sd-icon-sm sd-storyboard-refresh-worldbooks" title="重新读取世界书" aria-label="重新读取世界书"><i class="fa-solid fa-rotate"></i></button></summary>
     <div class="sd-storyboard-card-body">${body}</div>
   </details>`;
 }
@@ -17021,124 +16552,6 @@ function bindActiveTabEvents(root) {
   root.querySelectorAll('.sd-count-tag').forEach((el) => el.addEventListener('click', () => { activeTab = el.dataset.jump; renderModal(); }));
   // 尘寰群生：浮现舞台 ⇄ 完整台本列表
   root.querySelector('.sd-chatter-toggle')?.addEventListener('click', () => { chatterExpanded = !chatterExpanded; renderModal(); });
-  // 活幕·伏笔显影卡：钉住 / 唤醒 / 归档
-  // 钉住与唤醒不重排行（列表按 origin 固定），故走定点 DOM 更新，避免整屏 renderModal 造成界面闪烁
-  root.querySelectorAll('.sd-thread-pin').forEach((el) => el.addEventListener('click', async () => {
-    const store = getChatStore();
-    const t = (store.threads || []).find((x) => x.id === el.dataset.id);
-    if (!t) return;
-    t.pinned = !t.pinned;
-    if (t.pinned && t.status === 'dormant') {
-      t.status = 'active';
-      t.silentRounds = 0;
-      t.lastDecision = '用户钉住并唤醒';
-    }
-    // —— 就地更新此行视觉，不重绘 ——
-    const row = el.closest('.sd-thread-row');
-    el.classList.toggle('sd-thread-pin-on', t.pinned);
-    el.setAttribute('aria-pressed', t.pinned ? 'true' : 'false');
-    el.title = t.pinned ? '已钉住，点击取消' : '钉住（重点追踪，不被自动归档）';
-    const icon = el.querySelector('i');
-    setQianmuIconClass(icon, `fa-${t.pinned ? 'solid' : 'regular'} fa-thumbtack`);
-    if (row) {
-      row.classList.toggle('sd-thread-pinned', t.pinned);
-      if (t.status === 'active') {
-        row.classList.remove('sd-thread-dormant');
-        const stage = row.querySelector('.sd-thread-stage');
-        if (stage) stage.textContent = t.stage;
-        row.querySelector('.sd-thread-wake')?.remove();
-      }
-    }
-    selectThreadsForRecall(store, Number(store.threadSeq || 0), true);
-    await saveMetadata();
-    await applyDirectorInjection();
-  }));
-  root.querySelectorAll('.sd-thread-wake').forEach((el) => el.addEventListener('click', async () => {
-    const store = getChatStore();
-    const t = (store.threads || []).find((x) => x.id === el.dataset.id);
-    if (!t) return;
-    t.status = 'active';
-    t.silentRounds = 0;
-    t.lastDecision = '用户手动唤醒';
-    // —— 就地更新此行视觉，不重绘 ——
-    const row = el.closest('.sd-thread-row');
-    if (row) {
-      row.classList.remove('sd-thread-dormant');
-      const stage = row.querySelector('.sd-thread-stage');
-      if (stage) stage.textContent = t.stage;
-    }
-    el.remove();
-    selectThreadsForRecall(store, Number(store.threadSeq || 0), true);
-    await saveMetadata();
-    await applyDirectorInjection();
-    toast('已唤醒这条伏笔，下次推演将重新追踪。', 'success');
-  }));
-  root.querySelectorAll('.sd-thread-edit').forEach((el) => el.addEventListener('click', async () => {
-    const store = getChatStore();
-    const thread = (store.threads || []).find((item) => item.id === el.dataset.id);
-    if (!thread) return;
-    const edited = await promptThreadEdit(thread);
-    if (!edited) return;
-    if (!edited.title) return toast('伏笔标题不能为空。', 'warning');
-    thread.title = edited.title;
-    thread.essence = edited.essence;
-    thread.stage = edited.status === 'closed' ? '落幕' : edited.stage;
-    thread.status = edited.status;
-    if (thread.status === 'closed') thread.pinned = false;
-    thread.lastDecision = '用户手动校正';
-    thread.trail = Array.isArray(thread.trail) ? thread.trail : [];
-    thread.trail.push({ round: Number(store.threadSeq || 0), stage: thread.stage, note: '用户手动校正' });
-    if (thread.trail.length > 12) thread.trail = thread.trail.slice(-12);
-    selectThreadsForRecall(store, Number(store.threadSeq || 0), true);
-    await saveMetadata();
-    await applyDirectorInjection();
-    toast('伏笔已更新。', 'success');
-    renderModal();
-  }));
-  root.querySelectorAll('.sd-thread-close').forEach((el) => el.addEventListener('click', async () => {
-    const store = getChatStore();
-    const t = (store.threads || []).find((x) => x.id === el.dataset.id);
-    if (!t) return;
-    const yes = await confirmDialog('归档伏笔', `确认将「${snip(t.title, 20)}」归档？归档后不再注入，可在「已落幕」中回看。`);
-    if (!yes) return;
-    t.status = 'closed';
-    t.stage = '落幕';
-    t.pinned = false;
-    t.lastDecision = '用户手动归档';
-    store.threadRecallIds = (store.threadRecallIds || []).filter((id) => id !== t.id);
-    await saveMetadata();
-    await applyDirectorInjection();
-    toast('已归档。', 'success');
-    renderModal();
-  }));
-  root.querySelectorAll('.sd-thread-purge').forEach((el) => el.addEventListener('click', async () => {
-    const store = getChatStore();
-    const t = (store.threads || []).find((x) => x.id === el.dataset.id);
-    if (!t) return;
-    const yes = await confirmDialog('彻底删除', `将「${snip(t.title, 20)}」从档案中永久删除？此操作不可撤销。`);
-    if (!yes) return;
-    store.threads = (store.threads || []).filter((x) => x.id !== el.dataset.id);
-    store.threadRecallIds = (store.threadRecallIds || []).filter((id) => id !== el.dataset.id);
-    await saveMetadata();
-    await applyDirectorInjection();
-    toast('已删除。', 'success');
-    renderModal();
-  }));
-  // 伏笔一键清空：伏笔是跨幕活档案、独立于扫帚（扫帚只管推演结果），故单独提供清空入口
-  root.querySelector('.sd-threads-clear')?.addEventListener('click', async (e) => {
-    e.preventDefault(); e.stopPropagation();   // 按钮在 summary 内，拦掉折叠开合
-    const store = getChatStore();
-    const n = (store.threads || []).length;
-    if (!n) return;
-    const yes = await confirmDialog('清空伏笔', `将清空全部 ${n} 条伏笔（含在演与已落幕），此操作不可撤销。确认清空？`);
-    if (!yes) return;
-    store.threads = [];
-    store.threadRecallIds = [];
-    await saveMetadata();
-    await applyDirectorInjection();   // 伏笔参与注入，清空后同步刷新注入
-    toast('伏笔已清空。', 'success');
-    renderModal();
-  });
   root.querySelectorAll('.sd-load-history').forEach((el) => el.addEventListener('click', async () => {
     const record = (getChatStore().history || []).find((x) => x.id === el.dataset.id);
     if (!record?.plan) return;
@@ -17382,13 +16795,6 @@ function bindActiveTabEvents(root) {
     saveSettings();
     await applyDirectorInjection();
   });
-  root.querySelector('.sd-livestage-enabled')?.addEventListener('change', async (e) => {
-    settings.liveStageEnabled = !!e.target.checked;
-    saveSettings();
-    await applyDirectorInjection();
-    toast(settings.liveStageEnabled ? '伏笔显影已开启：下次推演起，暗线将跨幕承接。' : '伏笔显影已关闭。', 'info');
-    renderModal();
-  });
   root.querySelector('.sd-worldchatter-enabled')?.addEventListener('change', (e) => {
     settings.worldChatterEnabled = !!e.target.checked;
     saveSettings();
@@ -17430,7 +16836,6 @@ function bindActiveTabEvents(root) {
     settings.autoRefreshEvery = Math.max(2, Math.min(50, Number(root.querySelector('.sd-auto-every')?.value || 10)));
     settings.injectEnabled = !!root.querySelector('.sd-inject-enabled')?.checked;
     settings.injectDepth = Math.max(0, Math.min(20, Number(root.querySelector('.sd-inject-depth')?.value ?? 2)));
-    if (root.querySelector('.sd-livestage-enabled')) settings.liveStageEnabled = !!root.querySelector('.sd-livestage-enabled').checked;
     if (root.querySelector('.sd-worldchatter-enabled')) settings.worldChatterEnabled = !!root.querySelector('.sd-worldchatter-enabled').checked;
     if (root.querySelector('.sd-geopolitics-enabled')) settings.geopoliticsEnabled = !!root.querySelector('.sd-geopolitics-enabled').checked;
     settings.systemPrompt = root.querySelector('.sd-system-prompt')?.value || DEFAULT_SYSTEM_PROMPT;
