@@ -105,13 +105,14 @@ test('delete requests are bounded and deduplicated before reaching storage', asy
   assert.equal(result.budgetDeleted, 2);
 });
 
-test('IndexedDB adds atomic task, budget and local media stores without changing old store names', async () => {
+test('IndexedDB adds task, budget, local media and draft stores without changing old store names', async () => {
   const source = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
-  assert.match(source, /const DB_VERSION = 12/);
+  assert.match(source, /const DB_VERSION = 13/);
   assert.match(source, /STORE_VIDEO_TASKS = 'video_tasks'/);
   assert.match(source, /STORE_VIDEO_BUDGET = 'video_budget'/);
   assert.match(source, /STORE_VIDEO_MEDIA = 'video_media'/);
-  assert.match(source, /onupgradeneeded[\s\S]*createObjectStore\(STORE_VIDEO_TASKS\)[\s\S]*createObjectStore\(STORE_VIDEO_BUDGET\)[\s\S]*createObjectStore\(STORE_VIDEO_MEDIA\)/);
+  assert.match(source, /STORE_VIDEO_DRAFTS = 'video_drafts'/);
+  assert.match(source, /onupgradeneeded[\s\S]*createObjectStore\(STORE_VIDEO_TASKS\)[\s\S]*createObjectStore\(STORE_VIDEO_BUDGET\)[\s\S]*createObjectStore\(STORE_VIDEO_MEDIA\)[\s\S]*createObjectStore\(STORE_VIDEO_DRAFTS\)/);
   const checkpoint = source.slice(source.indexOf('export async function putVideoRuntimeCheckpoint'), source.indexOf('export async function getVideoRuntimeTask'));
   assert.match(checkpoint, /db\.transaction\(\[STORE_VIDEO_TASKS, STORE_VIDEO_BUDGET\], 'readwrite'\)/);
   assert.match(checkpoint, /transaction\.oncomplete/);
@@ -124,8 +125,9 @@ test('IndexedDB adds atomic task, budget and local media stores without changing
   assert.match(source, /STORE_VIDEO_TASKS\]: \{ label: '动态镜头任务', category: 'video', recoverable: false \}/);
   assert.match(source, /STORE_VIDEO_BUDGET\]: \{ label: '视频费用流水', category: 'video', recoverable: false \}/);
   assert.match(source, /STORE_VIDEO_MEDIA\]: \{ label: '动态镜头成片', category: 'video', recoverable: false \}/);
+  assert.match(source, /STORE_VIDEO_DRAFTS\]: \{ label: '动态镜头草稿', category: 'video', recoverable: false \}/);
   assert.match(source, /export async function putVideoMedia[\s\S]*VIDEO_MEDIA_MAX_BYTES[\s\S]*export async function listVideoMedia/);
-  assert.match(source, /CHAT_SCOPED_CLEARABLE_STORES[\s\S]*STORE_VIDEO_TASKS[\s\S]*STORE_VIDEO_BUDGET[\s\S]*STORE_VIDEO_MEDIA/);
+  assert.match(source, /CHAT_SCOPED_CLEARABLE_STORES[\s\S]*STORE_VIDEO_TASKS[\s\S]*STORE_VIDEO_BUDGET[\s\S]*STORE_VIDEO_MEDIA[\s\S]*STORE_VIDEO_DRAFTS/);
 });
 
 test('storage UI identifies video records as destructive and the adapter stays idle at startup', async () => {
@@ -135,10 +137,11 @@ test('storage UI identifies video records as destructive and the adapter stays i
   assert.match(source, /video_tasks: \['可能含进行中任务 · 清理后无法恢复追踪', true\]/);
   assert.match(source, /video_budget: \['费用与预算流水 · 清理后无法对账', true\]/);
   assert.match(source, /video_media: \['不可恢复 · H3 动态成片', true\]/);
-  assert.match(source, /STORAGE_CHAT_CLEARABLE[^\n]*video_tasks[^\n]*video_budget[^\n]*video_media/);
+  assert.match(source, /video_drafts: \['不可恢复 · 动态镜头编辑草稿', true\]/);
+  assert.match(source, /STORAGE_CHAT_CLEARABLE[^\n]*video_tasks[^\n]*video_budget[^\n]*video_media[^\n]*video_drafts/);
   assert.doesNotMatch(source, /^import[^\n]*qianmu-video-store\.js/m);
-  assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/qianmu-video-store\.js\?v=1\.58\.59'\)/);
-  assert.match(source, /videoResult:\s*\{[\s\S]*import\('\.\/qianmu-video-result\.js\?v=1\.58\.59'\)/);
+  assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/qianmu-video-store\.js\?v=1\.58\.60'\)/);
+  assert.match(source, /videoResult:\s*\{[\s\S]*import\('\.\/qianmu-video-result\.js\?v=1\.58\.60'\)/);
   assert.ok(release.files.includes('qianmu-video-store.js'));
   assert.ok(release.files.includes('qianmu-video-result.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));

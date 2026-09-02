@@ -8,7 +8,7 @@ const store = await readFile(new URL('../qianmu-blobstore.js', import.meta.url),
 
 test('terminal storyboard plans use an additive private archive store', () => {
   assert.equal(STORYBOARD_SCHEMA_VERSION, 23);
-assert.match(store, /const DB_VERSION = 12/);
+assert.match(store, /const DB_VERSION = 13/);
   assert.match(store, /STORE_STORYBOARD_PLAN_ARCHIVES = 'storyboard_plan_archives'/);
   assert.match(store, /onupgradeneeded[\s\S]*createObjectStore\(STORE_STORYBOARD_PLAN_ARCHIVES\)/);
   assert.match(store, /STORE_STORYBOARD_PLAN_ARCHIVES\]: \{[^}]*recoverable: false/);

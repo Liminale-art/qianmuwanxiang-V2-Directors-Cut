@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const store = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
 
-assert.match(store, /DB_VERSION = 12/);
+assert.match(store, /DB_VERSION = 13/);
 assert.match(store, /STORE_STORYBOARD_PIPELINE_LOGS = 'storyboard_pipeline_logs'/);
 assert.match(store, /STORE_STORYBOARD_PIPELINE_LOGS\]: \{ label: '分镜详细日志', category: 'logs', recoverable: true \}/);
 assert.match(store, /onupgradeneeded[\s\S]*createObjectStore\(STORE_STORYBOARD_PIPELINE_LOGS\)/, 'the existing database must upgrade additively');

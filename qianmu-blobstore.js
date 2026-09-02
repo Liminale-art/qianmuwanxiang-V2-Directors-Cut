@@ -4,7 +4,7 @@
 // localStorage 存不下二进制大对象，故独立走 IndexedDB；存 Blob，播放时再 createObjectURL。
 
 const DB_NAME = 'qianmu-blobstore';
-const DB_VERSION = 12;
+const DB_VERSION = 13;
 const STORE_AUDIO = 'audio';         // key: 缓存键   value: { blob, meta, createdAt }
 const STORE_FAVORITES = 'favorites'; // key: 收藏 id  value: { blob, meta, label, createdAt }
 // ── 伴读模块（v2 新增）──
@@ -29,6 +29,7 @@ const STORE_STORYBOARD_PLAN_ARCHIVES = 'storyboard_plan_archives'; // key: chatK
 const STORE_VIDEO_TASKS = 'video_tasks'; // key: taskId value: 轻量异步任务合同；不含密钥、提示词、媒体或结果外链
 const STORE_VIDEO_BUDGET = 'video_budget'; // key: reservationId value: 视频费用预留/结算流水
 const STORE_VIDEO_MEDIA = 'video_media'; // key: assetId value: 本地成片 Blob + 白名单元数据；不保留远端地址、密钥或提示词
+const STORE_VIDEO_DRAFTS = 'video_drafts'; // key: draftId value: 动态镜头本地编辑草稿；只含稳定引用与配置
 
 const STORAGE_STORE_INFO = Object.freeze({
   [STORE_AUDIO]: { label: '语音缓存', category: 'audio', recoverable: true },
@@ -48,6 +49,7 @@ const STORAGE_STORE_INFO = Object.freeze({
   [STORE_VIDEO_TASKS]: { label: '动态镜头任务', category: 'video', recoverable: false },
   [STORE_VIDEO_BUDGET]: { label: '视频费用流水', category: 'video', recoverable: false },
   [STORE_VIDEO_MEDIA]: { label: '动态镜头成片', category: 'video', recoverable: false },
+  [STORE_VIDEO_DRAFTS]: { label: '动态镜头草稿', category: 'video', recoverable: false },
 });
 
 let dbPromise = null;
@@ -77,6 +79,7 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE_VIDEO_TASKS)) db.createObjectStore(STORE_VIDEO_TASKS);
       if (!db.objectStoreNames.contains(STORE_VIDEO_BUDGET)) db.createObjectStore(STORE_VIDEO_BUDGET);
       if (!db.objectStoreNames.contains(STORE_VIDEO_MEDIA)) db.createObjectStore(STORE_VIDEO_MEDIA);
+      if (!db.objectStoreNames.contains(STORE_VIDEO_DRAFTS)) db.createObjectStore(STORE_VIDEO_DRAFTS);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => { dbPromise = null; reject(req.error); };
@@ -817,6 +820,136 @@ export async function deleteVideoRuntimeTasks(taskIds = []) {
   return { deleted: ids, budgetDeleted };
 }
 
+// ── 动态镜头：本地编辑草稿 ───────────────────────────────
+// 即使调用方误传额外字段，本层也只允许草稿合同的白名单字段落盘。
+function boundedVideoDraftText(value, max = 1000) {
+  return String(value ?? '').trim().slice(0, max);
+}
+
+function videoDraftStorageId(value) {
+  const result = boundedVideoDraftText(value, 200);
+  return /^[A-Za-z0-9._:-]+$/.test(result) ? result : '';
+}
+
+function normalizeStoredVideoDraft(value = {}) {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const owner = raw.owner && typeof raw.owner === 'object' ? raw.owner : {};
+  const source = raw.source && typeof raw.source === 'object' ? raw.source : {};
+  const selection = raw.selection && typeof raw.selection === 'object' ? raw.selection : {};
+  const settings = raw.settings && typeof raw.settings === 'object' ? raw.settings : {};
+  const timing = raw.timing && typeof raw.timing === 'object' ? raw.timing : {};
+  const roles = selection.referenceRoles && typeof selection.referenceRoles === 'object' ? selection.referenceRoles : {};
+  const labels = selection.subjectLabels && typeof selection.subjectLabels === 'object' ? selection.subjectLabels : {};
+  const rawFloor = owner.floor;
+  const floor = Number(rawFloor);
+  const draftId = videoDraftStorageId(raw.draftId || raw.draft_id || raw.id);
+  return {
+    schema: 'qianmu.video-draft.v1',
+    draftId,
+    revision: Math.min(9999, Math.max(1, Math.round(Number(raw.revision) || 1))),
+    owner: {
+      chatKey: boundedVideoDraftText(owner.chatKey || owner.chat_key, 512),
+      floor: rawFloor !== '' && rawFloor !== null && rawFloor !== undefined && Number.isInteger(floor) && floor >= 0 ? Math.min(1_000_000, floor) : null,
+      messageId: videoDraftStorageId(owner.messageId || owner.message_id),
+      paragraphAnchorId: videoDraftStorageId(owner.paragraphAnchorId || owner.paragraph_anchor_id),
+    },
+    source: {
+      kind: ['storyboard_frame', 'inline_frame', 'director_frame', 'blank'].includes(source.kind) ? source.kind : 'blank',
+      track: ['main_camera', 'second_camera'].includes(source.track) ? source.track : 'main_camera',
+      recordId: videoDraftStorageId(source.recordId || source.record_id),
+      sourceShotId: videoDraftStorageId(source.sourceShotId || source.source_shot_id),
+    },
+    selection: {
+      firstRecordId: videoDraftStorageId(selection.firstRecordId || selection.first_record_id),
+      lastRecordId: videoDraftStorageId(selection.lastRecordId || selection.last_record_id),
+      referenceRecordIds: [...new Set((Array.isArray(selection.referenceRecordIds || selection.reference_record_ids)
+        ? (selection.referenceRecordIds || selection.reference_record_ids) : []).map(videoDraftStorageId).filter(Boolean))].slice(0, 32),
+      referenceRoles: Object.fromEntries(Object.entries(roles).slice(0, 32).flatMap(([key, value]) => {
+        const id = videoDraftStorageId(key);
+        const allowed = [...new Set((Array.isArray(value) ? value : []).map((item) => boundedVideoDraftText(item, 80))
+          .filter((role) => ['subject_reference', 'style_reference', 'motion_reference'].includes(role)))].slice(0, 3);
+        return id && allowed.length ? [[id, allowed]] : [];
+      })),
+      subjectLabels: Object.fromEntries(Object.entries(labels).slice(0, 16).flatMap(([key, value]) => {
+        const id = videoDraftStorageId(key);
+        const label = boundedVideoDraftText(value, 80);
+        return id && /^<Subject [1-9]\d*>$/.test(label) ? [[id, label]] : [];
+      })),
+    },
+    settings: {
+      requestedMode: ['auto', 't2va', 'i2va', 'fl2va', 'l2va', 'ref2va'].includes(settings.requestedMode || settings.requested_mode)
+        ? (settings.requestedMode || settings.requested_mode) : 'auto',
+      durationSeconds: Math.min(15, Math.max(4, Math.round(Number(settings.durationSeconds ?? settings.duration_seconds) || 6))),
+      resolution: ['768p', '2k'].includes(String(settings.resolution || '').toLowerCase()) ? String(settings.resolution).toLowerCase() : '768p',
+      aspectRatio: ['adaptive', '21:9', '16:9', '4:3', '1:1', '3:4', '9:16'].includes(String(settings.aspectRatio || settings.aspect_ratio || '').toLowerCase())
+        ? String(settings.aspectRatio || settings.aspect_ratio).toLowerCase() : '16:9',
+      fps: Math.min(60, Math.max(1, Math.round(Number(settings.fps) || 24))),
+    },
+    direction: boundedVideoDraftText(raw.direction || raw.userDirection || raw.user_direction, 1600),
+    timing: {
+      createdAt: Math.max(0, Math.round(Number(timing.createdAt || timing.created_at || raw.createdAt || raw.created_at) || 0)),
+      updatedAt: Math.max(0, Math.round(Number(timing.updatedAt || timing.updated_at || raw.updatedAt || raw.updated_at) || 0)),
+    },
+  };
+}
+
+export async function putVideoDraft(value = {}) {
+  const draft = normalizeStoredVideoDraft(value);
+  if (!draft.draftId || !draft.owner.chatKey) throw new Error('video draft requires draftId and chatKey');
+  const now = Date.now();
+  const createdAt = draft.timing.createdAt || now;
+  const updatedAt = Math.max(createdAt, draft.timing.updatedAt || now);
+  draft.timing = { createdAt, updatedAt };
+  const target = await store(STORE_VIDEO_DRAFTS, 'readwrite');
+  await reqP(target.put({
+    schema: 'qianmu.video-draft-record.v1', draftId: draft.draftId,
+    chatKey: draft.owner.chatKey, updatedAt, draft,
+  }, draft.draftId));
+  return { draftId: draft.draftId, chatKey: draft.owner.chatKey, updatedAt };
+}
+
+export async function getVideoDraft(draftIdValue) {
+  const draftId = videoDraftStorageId(draftIdValue);
+  if (!draftId) return null;
+  const target = await store(STORE_VIDEO_DRAFTS, 'readonly');
+  return (await reqP(target.get(draftId))) || null;
+}
+
+export async function listVideoDrafts(chatKey = '', options = {}) {
+  const expectedChat = boundedVideoDraftText(chatKey, 512);
+  const limit = Math.min(500, Math.max(1, Math.round(Number(options.limit) || 100)));
+  const target = await store(STORE_VIDEO_DRAFTS, 'readonly');
+  const records = [];
+  await new Promise((resolve, reject) => {
+    const cursor = target.openCursor();
+    cursor.onsuccess = () => {
+      const current = cursor.result;
+      if (!current) { resolve(); return; }
+      const value = current.value || {};
+      if (!expectedChat || String(value.chatKey || '') === expectedChat) records.push(value);
+      current.continue();
+    };
+    cursor.onerror = () => reject(cursor.error);
+  });
+  return records.sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0)).slice(0, limit);
+}
+
+export async function deleteVideoDrafts(draftIds = []) {
+  const ids = [...new Set((Array.isArray(draftIds) ? draftIds : []).map(videoDraftStorageId).filter(Boolean))].slice(0, 500);
+  if (!ids.length) return { deleted: [] };
+  const db = await openDB();
+  const transaction = db.transaction(STORE_VIDEO_DRAFTS, 'readwrite');
+  const done = new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('video draft delete failed'));
+    transaction.onabort = () => reject(transaction.error || new Error('video draft delete aborted'));
+  });
+  const target = transaction.objectStore(STORE_VIDEO_DRAFTS);
+  for (const draftId of ids) target.delete(draftId);
+  await done;
+  return { deleted: ids };
+}
+
 // ── 动态镜头：本地成片仓 ─────────────────────────────────
 // 成片只保存在浏览器 IndexedDB；远端下载地址、API Key、提示词和供应商原始响应均不落盘。
 export const VIDEO_MEDIA_MAX_BYTES = 768 * 1024 * 1024;
@@ -1060,7 +1193,7 @@ function storageRecordChatKey(name, key, value) {
   if (name === STORE_STORYBOARD_INBOX) return String(value?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_STORYBOARD_SNAPSHOTS) return String(value?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_STORYBOARD_PLAN_ARCHIVES) return String(value?.chatKey || '').trim().slice(0, 512);
-  if (name === STORE_VIDEO_TASKS || name === STORE_VIDEO_BUDGET) return String(value?.chatKey || '').trim().slice(0, 512);
+  if (name === STORE_VIDEO_TASKS || name === STORE_VIDEO_BUDGET || name === STORE_VIDEO_DRAFTS) return String(value?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_VIDEO_MEDIA) return String(value?.meta?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_AUDIO) return String(value?.meta?.chatKey || '').trim().slice(0, 512);
   return '';
@@ -1235,6 +1368,7 @@ const CHAT_SCOPED_CLEARABLE_STORES = Object.freeze([
   STORE_VIDEO_TASKS,
   STORE_VIDEO_BUDGET,
   STORE_VIDEO_MEDIA,
+  STORE_VIDEO_DRAFTS,
 ]);
 
 async function clearStoreChatScope(name, chatKey) {

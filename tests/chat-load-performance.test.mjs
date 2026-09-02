@@ -17,7 +17,7 @@ assert.match(queue, /record\.addedNodes[\s\S]*ttsPendingMessageRoots/, 'Mutation
 
 assert.match(source, /TTS_LOCAL_LINE_LIMIT = 100[\s\S]*TTS_PORTABLE_LINE_LIMIT = 12/, '完整本机缓存与聊天轻量快照必须分层限额');
 assert.ok(source.includes('blobStore.getTtsLineCache') && source.includes('blobStore.putTtsLineCache'), '台词列表必须按聊天分桶存入 IndexedDB');
-assert.match(blob, /DB_VERSION = 12[\s\S]*STORE_TTS_LINES = 'tts_lines'[\s\S]*STORE_NOTES = 'notes'/, 'IndexedDB 必须包含台词缓存与固定便笺仓');
+assert.match(blob, /DB_VERSION = 13[\s\S]*STORE_TTS_LINES = 'tts_lines'[\s\S]*STORE_NOTES = 'notes'/, 'IndexedDB 必须包含台词缓存与固定便笺仓');
 
 assert.match(source, /worldSyncMode: 'none'/, '新用户必须默认使用千幕档案主存储且不占用世界书');
 assert.match(source, /if \(m\.worldSyncMode === 'none'\) return ''/, '关闭世界书同步时不得创建镜像目标');

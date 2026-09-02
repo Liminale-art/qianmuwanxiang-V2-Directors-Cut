@@ -128,8 +128,13 @@ export function createVideoDraftFromStoryboardFrame(recordValue = {}, options = 
   const chatKey = text(record.chatKey || record.messageRef?.chatKey || config.chatKey || config.chat_key, 512);
   const now = Math.max(0, Math.round(finite(config.now, Date.now())));
   const loop = config.loop === true;
+  let nonce = text(config.clientNonce || config.client_nonce, 160);
+  if (!nonce) {
+    try { nonce = globalThis.crypto?.randomUUID?.() || `${now}-${Math.random().toString(16).slice(2)}`; }
+    catch (_) { nonce = `${now}-${Math.random().toString(16).slice(2)}`; }
+  }
   return normalizeVideoDraft({
-    draftId: config.draftId || config.draft_id,
+    draftId: config.draftId || config.draft_id || `video-draft-${hash(`${chatKey}|${recordId}|${now}|${nonce}`)}`,
     owner: {
       chatKey,
       floor: record.floor ?? config.floor,
