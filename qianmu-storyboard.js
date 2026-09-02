@@ -1,5 +1,5 @@
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
-export const STORYBOARD_SCHEMA_VERSION = 15;
+export const STORYBOARD_SCHEMA_VERSION = 16;
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -806,35 +806,63 @@ export function normalizeStoryboardShotSpec(value = {}) {
   };
 }
 
+function storyboardShotDifference(previous, shot) {
+  const comparison = previous ? compareStoryboardSceneFingerprints(previous.sceneFingerprint, shot.sceneFingerprint) : null;
+  const transition = !previous || !comparison.sameScene;
+  const visualChanges = [];
+  if (previous) {
+    if (previous.shotRole !== shot.shotRole) visualChanges.push('role');
+    if (previous.shotScale !== shot.shotScale) visualChanges.push('scale');
+    if (sceneSignal(previous.subject) !== sceneSignal(shot.subject)) visualChanges.push('subject');
+    if (previous.composition.cameraSide !== shot.composition.cameraSide) visualChanges.push('camera_side');
+    if (previous.composition.angle !== shot.composition.angle) visualChanges.push('angle');
+    if (previous.composition.focus !== shot.composition.focus) visualChanges.push('focus');
+    if (previous.composition.framing.join('|') !== shot.composition.framing.join('|')) visualChanges.push('framing');
+  }
+  const informationChanged = !previous
+    || previous.sourceParagraphIds.join('|') !== shot.sourceParagraphIds.join('|')
+    || similarity(previous.narrativePurpose, shot.narrativePurpose) < .9;
+  const effectiveVisualChanges = visualChanges.filter((change) => change !== 'role');
+  const issues = [];
+  if (previous && !transition) {
+    if (!informationChanged) issues.push('no_narrative_increment');
+    if (!effectiveVisualChanges.length) issues.push('no_visual_variation');
+  }
+  return {
+    comparison,
+    transition,
+    informationChanged,
+    visualChanges,
+    effectiveVisualChanges,
+    acceptable: transition || !issues.length,
+    issues,
+  };
+}
+
+export function evaluateStoryboardShotDifference(previousValue, shotValue) {
+  const previous = previousValue ? normalizeStoryboardShotSpec(previousValue) : null;
+  const shot = normalizeStoryboardShotSpec(shotValue);
+  return storyboardShotDifference(previous, shot);
+}
+
 export function buildStoryboardSceneCoverageMap(value = []) {
   const shots = (Array.isArray(value) ? value : []).map(normalizeStoryboardShotSpec);
   let previous = null, group = 0;
   return shots.map((shot, index) => {
-    const comparison = previous ? compareStoryboardSceneFingerprints(previous.sceneFingerprint, shot.sceneFingerprint) : null;
-    const transition = !previous || !comparison.sameScene;
-    if (transition) group += 1;
-    const visualChanges = [];
-    if (previous) {
-      if (previous.shotRole !== shot.shotRole) visualChanges.push('role');
-      if (previous.shotScale !== shot.shotScale) visualChanges.push('scale');
-      if (sceneSignal(previous.subject) !== sceneSignal(shot.subject)) visualChanges.push('subject');
-      if (previous.composition.cameraSide !== shot.composition.cameraSide) visualChanges.push('camera_side');
-      if (previous.composition.angle !== shot.composition.angle) visualChanges.push('angle');
-      if (previous.composition.focus !== shot.composition.focus) visualChanges.push('focus');
-      if (previous.composition.framing.join('|') !== shot.composition.framing.join('|')) visualChanges.push('framing');
-    }
-    const informationChanged = !previous
-      || previous.sourceParagraphIds.join('|') !== shot.sourceParagraphIds.join('|')
-      || similarity(previous.narrativePurpose, shot.narrativePurpose) < .9;
+    const difference = storyboardShotDifference(previous, shot);
+    if (difference.transition) group += 1;
     const entry = {
       shotId: shot.id || `shot-${index + 1}`,
       sceneGroupId: `scene-group-${group}`,
       sceneFingerprint: shot.sceneFingerprint,
-      transition,
-      transitionReasons: comparison?.reasons || ['first_shot'],
-      informationChanged,
-      visualChanges,
-      duplicateCoverage: Boolean(previous && comparison.sameScene && !informationChanged && !visualChanges.length),
+      transition: difference.transition,
+      transitionReasons: difference.comparison?.reasons || ['first_shot'],
+      informationChanged: difference.informationChanged,
+      visualChanges: difference.visualChanges,
+      effectiveVisualChanges: difference.effectiveVisualChanges,
+      acceptable: difference.acceptable,
+      issues: difference.issues,
+      duplicateCoverage: Boolean(previous && !difference.transition && !difference.informationChanged && !difference.visualChanges.length),
     };
     previous = shot;
     return entry;
@@ -957,6 +985,11 @@ export function prepareStoryboardShotGroup(value = {}) {
     if (!manual && seen.has(signature)) { skipped.push({ shot, reason: 'duplicate_coverage' }); continue; }
     if (!manual && kept.length >= limit) { skipped.push({ shot, reason: 'coverage_budget' }); continue; }
     if (!manual && policy.groupStrategy === 'single' && kept.length) { skipped.push({ shot, reason: 'single_frame_strategy' }); continue; }
+    const difference = kept.length ? storyboardShotDifference(kept[kept.length - 1], shot) : null;
+    if (!manual && difference && !difference.acceptable) {
+      skipped.push({ shot, reason: 'difference_budget', issues: difference.issues, requiresReplan: true });
+      continue;
+    }
     continuityLedger.facts = expireMomentaryContinuityFacts(continuityLedger.facts);
     const order = kept.length;
     if (!shot.composition.ratioId) {

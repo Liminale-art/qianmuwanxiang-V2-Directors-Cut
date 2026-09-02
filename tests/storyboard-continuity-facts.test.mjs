@@ -6,7 +6,7 @@ import {
   prepareStoryboardShotGroup,
 } from '../qianmu-storyboard.js';
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 15);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 16);
 
 const legacy = normalizeStoryboardContinuityLedger({
   outfit: { Alice: 'black coat' },

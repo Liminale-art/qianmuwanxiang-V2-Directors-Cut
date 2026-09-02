@@ -25,7 +25,7 @@ import {
   scoreStoryboardParagraphAnchor,
 } from '../qianmu-storyboard.js';
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 15);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 16);
 assert.equal(STORYBOARD_PIPELINE_LOG_LIMIT, 20);
 assert.equal(STORYBOARD_PIPELINE_LOG_RETENTION_MS, 0);
 assert.deepEqual(Object.keys(STORYBOARD_PROVIDER_REGISTRY), ['novel', 'banana', 'openai', 'seedream', 'comfy']);
@@ -45,7 +45,7 @@ assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-5-full').vibe, fa
 assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-5-full').preciseReference, false, 'V5 launch must gate Precise Reference');
 
 const defaults = createStoryboardDefaults();
-assert.equal(defaults.schemaVersion, 15);
+assert.equal(defaults.schemaVersion, 16);
 assert.equal(defaults.enabled, false);
 assert.deepEqual(defaults.automation, { autoCapture: true, autoGenerate: true });
 assert.equal(defaults.promptCompiler.enabled, true);
@@ -147,7 +147,7 @@ const migrated = normalizeStoryboardState({
   characters: [{ id: 'look-1', subjectType: 'char', subjectKey: 'card:a', subjectName: 'Alice', variantName: 'Winter', appearance: 'red coat' }],
   logs: [{ id: 'old-log', source: 'openai', status: 'success', prompt: 'old prompt', startedAt: now - 100, finishedAt: now }],
 });
-assert.equal(migrated.schemaVersion, 15);
+assert.equal(migrated.schemaVersion, 16);
 assert.equal(migrated.enabled, true, 'existing storyboard users must keep their pre-upgrade behavior');
 assert.equal(migrated.promptDraft.compiled, 'old prompt');
 assert.equal(Object.hasOwn(migrated, 'characters'), false, 'v9 must remove untested character archive data');
