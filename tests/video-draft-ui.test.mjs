@@ -26,6 +26,9 @@ test('the draft editor only revises and saves local draft contracts', () => {
   assert.match(editor, /reviseVideoDraft/);
   assert.match(editor, /await store\.save\(revised\.draft\)/);
   assert.match(editor, /referenceRecordIds: referenceIds/);
+  assert.match(source, /sd-storyboard-video-readiness/);
+  assert.match(editor, /evaluateVideoReadiness/);
+  assert.match(editor, /submissionEnabled: false/);
   assert.match(source, /subject_reference: '主体'/);
   assert.match(source, /style_reference: '风格'/);
   assert.match(source, /motion_reference: '动作'/);

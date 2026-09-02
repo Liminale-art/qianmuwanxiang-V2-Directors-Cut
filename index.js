@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.62';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.62';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.62';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.62';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.63';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.63';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.63';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.63';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,91 +151,95 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.62';
+} from './qianmu-storyboard.js?v=1.58.63';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.62';
+const VERSION = '1.58.63';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.62'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.63'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.58.62').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.58.63').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.62'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.63'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.62'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.63'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.58.62'),
+    load: () => import('./qianmu-video-contract.js?v=1.58.63'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.58.62'),
+    load: () => import('./qianmu-video-draft.js?v=1.58.63'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.58.62'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.58.63'),
+  },
+  videoReadiness: {
+    label: '动态渠道准备检查',
+    load: () => import('./qianmu-video-readiness.js?v=1.58.63'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.58.62'),
+    load: () => import('./qianmu-video-task.js?v=1.58.63'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.58.62'),
+    load: () => import('./qianmu-video-budget.js?v=1.58.63'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.58.62'),
+    load: () => import('./qianmu-video-minimax.js?v=1.58.63'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.58.62'),
+    load: () => import('./qianmu-video-runtime.js?v=1.58.63'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.58.62'),
+    load: () => import('./qianmu-video-store.js?v=1.58.63'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.58.62'),
+    load: () => import('./qianmu-video-result.js?v=1.58.63'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.58.62'),
+    load: () => import('./qianmu-video-gallery.js?v=1.58.63'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.58.62'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.58.63'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.58.62'),
+    load: () => import('./qianmu-video-media.js?v=1.58.63'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.62'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.63'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.62'),
-        import('./qianmu-theaters.js?v=1.58.62'),
+        import('./builtin-theaters.js?v=1.58.63'),
+        import('./qianmu-theaters.js?v=1.58.63'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -7028,7 +7032,7 @@ function optionalServiceLabel() {
 
 function optionalServiceDetail() {
   if (optionalServiceState.status === 'ready') {
-    const labels = { 'doubao-tts': '豆包语音网关', 'storyboard-image': '分镜跨域网关' };
+    const labels = { 'doubao-tts': '豆包语音网关', 'storyboard-image': '分镜跨域网关', 'minimax-h3': 'MiniMax H3 动态网关' };
     return optionalServiceState.services.map((service) => labels[service] || service).join(' · ') || '服务已连接';
   }
   return optionalServiceState.message || '浏览器直连与本地数据不受影响';
@@ -13238,6 +13242,7 @@ function storyboardVideoDraftEditorMarkup(draft) {
         <label><span>画幅</span><select class="text_pole sd-video-draft-ratio">${ratios.map((ratio) => `<option value="${ratio}" ${draft.settings.aspectRatio === ratio ? 'selected' : ''}>${ratio === 'adaptive' ? '自适应' : ratio}</option>`).join('')}</select></label>
         <label class="sd-storyboard-video-draft-direction"><span>想让画面如何动起来</span><textarea class="text_pole" maxlength="1600" placeholder="可留空，之后仍可继续修改">${htmlEscape(draft.direction || '')}</textarea></label>
         <p class="sd-storyboard-video-draft-route" role="status"></p>
+        <section class="sd-storyboard-video-readiness" aria-label="动态渠道准备状态"><header><span>动态渠道准备</span><button type="button" class="sd-video-readiness-refresh">重新检查</button></header><ul aria-live="polite"><li data-video-readiness="gateway" data-status="checking"><i class="fa-solid fa-rotate"></i><span><b>同源服务</b><small>正在检查动态网关</small></span><em>检查中</em></li><li data-video-readiness="credential" data-status="checking"><i class="fa-solid fa-shield-halved"></i><span><b>渠道凭据</b><small>正在读取安全保存状态</small></span><em>检查中</em></li><li data-video-readiness="materials" data-status="checking"><i class="fa-solid fa-images"></i><span><b>镜头素材</b><small>正在核对当前选择</small></span><em>检查中</em></li><li data-video-readiness="quality" data-status="checking"><i class="fa-solid fa-film"></i><span><b>生成规格</b><small>正在核对确认要求</small></span><em>检查中</em></li><li data-video-readiness="submission" data-status="locked"><i class="fa-solid fa-shield-halved"></i><span><b>提交闸门</b><small>当前版本仅保存草稿，不会提交任务</small></span><em>未开放</em></li></ul><p class="sd-video-readiness-summary">准备检查不会发起报价或生成请求。</p></section>
       </div>
     </div>
     <section class="sd-storyboard-video-draft-picker" hidden><header><button type="button" class="sd-video-draft-picker-close" title="返回" aria-label="返回"><i class="fa-solid fa-arrow-left"></i></button><div><span class="sd-storyboard-kicker">FRAME LIBRARY</span><h3>选择画面</h3></div><button type="button" class="sd-video-draft-picker-clear">清除</button></header><div class="sd-storyboard-video-draft-picker-grid">${pickerRows || '<p>当前聊天还没有可选画面。</p>'}</div><footer><span class="sd-video-draft-picker-count"></span><button type="button" class="sd-btn sd-primary sd-video-draft-picker-done">完成</button></footer></section>
@@ -13275,6 +13280,10 @@ async function storyboardOpenVideoDraftEditor(source) {
       referenceRecordIds: [...storyboardVideoDraftEditor.selection.referenceRecordIds],
       referenceRoles: Object.fromEntries(Object.entries(storyboardVideoDraftEditor.selection.referenceRoles || {}).map(([id, roles]) => [id, [...roles]])),
     };
+    let readinessRuntime = null;
+    let readinessService = { ...optionalServiceState };
+    let readinessCredentialConfigured = false;
+    let readinessSequence = 0;
     let pickerMode = '';
     const picker = layer.querySelector('.sd-storyboard-video-draft-picker');
     const draftSelectionPatch = () => {
@@ -13299,12 +13308,64 @@ async function storyboardOpenVideoDraftEditor(source) {
       resolution: String(layer.querySelector('.sd-video-draft-resolution')?.value || '768p'),
       aspectRatio: String(layer.querySelector('.sd-video-draft-ratio')?.value || 'adaptive'),
     });
-    const updateRouteStatus = () => {
+    const currentCompiledDraft = () => {
       const candidate = draftModule.reviseVideoDraft(storyboardVideoDraftEditor, {
         selection: draftSelectionPatch(),
         settings: draftSettingsPatch(),
       }).draft;
-      const compiled = draftModule.compileVideoDraftSelection(candidate, candidates);
+      return draftModule.compileVideoDraftSelection(candidate, candidates);
+    };
+    const paintReadiness = () => {
+      if (!readinessRuntime) return;
+      const compiled = currentCompiledDraft();
+      const report = readinessRuntime.evaluateVideoReadiness({
+        service: readinessService,
+        credentialConfigured: readinessCredentialConfigured,
+        compiled,
+        resolution: compiled.draft.settings.resolution,
+        submissionEnabled: false,
+      });
+      for (const item of report.items) {
+        const row = layer.querySelector(`[data-video-readiness="${item.id}"]`);
+        if (!row) continue;
+        row.dataset.status = item.status;
+        const detail = row.querySelector('small');
+        const status = row.querySelector('em');
+        if (detail) detail.textContent = item.detail;
+        if (status) status.textContent = item.statusLabel;
+      }
+      const summary = layer.querySelector('.sd-video-readiness-summary');
+      if (summary) summary.textContent = report.prerequisitesReady
+        ? '基础条件已齐全；生成与报价仍由安全闸门锁定。'
+        : '补齐未就绪项目后，才可进入后续报价确认。';
+    };
+    const refreshReadiness = async (force = false) => {
+      const sequence = ++readinessSequence;
+      const button = layer.querySelector('.sd-video-readiness-refresh');
+      if (button) button.disabled = true;
+      readinessService = { ...readinessService, status: 'checking', message: '' };
+      paintReadiness();
+      try {
+        readinessRuntime ||= await featureRuntime.load('videoReadiness');
+        const [service, configured] = await Promise.all([
+          refreshOptionalServiceState(force),
+          storyboardVideoCredentialConfigured(),
+        ]);
+        if (sequence !== readinessSequence || !layer.isConnected) return;
+        readinessService = service;
+        readinessCredentialConfigured = configured;
+      } catch (_) {
+        if (sequence !== readinessSequence || !layer.isConnected) return;
+        readinessService = { status: 'error', services: [], message: '准备检查模块暂不可用' };
+      } finally {
+        if (sequence === readinessSequence && layer.isConnected) {
+          if (button) button.disabled = false;
+          paintReadiness();
+        }
+      }
+    };
+    const updateRouteStatus = () => {
+      const compiled = currentCompiledDraft();
       const route = compiled.spec.route;
       const missingLabels = { first_frame: '首帧', last_frame: '尾帧', reference_asset: '参考素材' };
       const missing = route.missingRequirements.map((item) => missingLabels[item] || item);
@@ -13315,6 +13376,7 @@ async function storyboardOpenVideoDraftEditor(source) {
           ? `将使用「${storyboardVideoDraftModeLabel(route.mode)}」`
           : `还需选择：${missing.join('、')}`;
       }
+      paintReadiness();
     };
     const syncPicker = () => {
       const referenceIds = new Set(selection.referenceRecordIds);
@@ -13393,6 +13455,7 @@ async function storyboardOpenVideoDraftEditor(source) {
     });
     layer.querySelector('.sd-video-draft-picker-close')?.addEventListener('click', closePicker);
     layer.querySelector('.sd-video-draft-picker-done')?.addEventListener('click', closePicker);
+    layer.querySelector('.sd-video-readiness-refresh')?.addEventListener('click', () => void refreshReadiness(true));
     layer.querySelectorAll('.sd-video-draft-mode, .sd-video-draft-duration, .sd-video-draft-resolution, .sd-video-draft-ratio').forEach((field) => field.addEventListener('change', () => {
       if (field.classList.contains('sd-video-draft-mode') && field.value === 'fl2va' && !selection.lastRecordId) openPicker('tail');
       else if (field.classList.contains('sd-video-draft-mode') && field.value === 'ref2va' && !selection.referenceRecordIds.length) openPicker('references');
@@ -13431,6 +13494,7 @@ async function storyboardOpenVideoDraftEditor(source) {
     document.body.appendChild(layer);
     storyboardVideoDraftEditorEl = layer;
     syncPicker();
+    void refreshReadiness(false);
     layer.focus({ preventScroll: true });
   } catch (_) {
     storyboardCloseVideoDraftEditor();
@@ -14230,6 +14294,21 @@ function storyboardSourceSecretConfigured(source) {
 
 function storyboardCredentialId(providerId, presetId = '') {
   return `qianmu_storyboard_${String(providerId || 'image').replace(/[^a-z0-9_-]/gi, '_')}_${String(presetId || 'draft').replace(/[^a-z0-9_-]/gi, '_')}`.slice(0, 180);
+}
+
+const STORYBOARD_VIDEO_H3_CREDENTIAL_ID = 'qianmu_video_minimax_h3';
+
+async function storyboardVideoCredentialConfigured() {
+  if (storyboardApiKeys.has(STORYBOARD_VIDEO_H3_CREDENTIAL_ID)) return true;
+  if (storyboardReadBrowserCredential(STORYBOARD_VIDEO_H3_CREDENTIAL_ID)) return true;
+  try {
+    const secrets = await storyboardSecretModule();
+    const state = secrets.secret_state || {};
+    const value = state[STORYBOARD_VIDEO_H3_CREDENTIAL_ID];
+    return Array.isArray(value) ? value.length > 0 : Boolean(value);
+  } catch (_) {
+    return false;
+  }
 }
 
 async function storyboardResolveApiKey(providerId, requestedCredentialId = '') {

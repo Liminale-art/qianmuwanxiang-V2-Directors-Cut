@@ -42,6 +42,7 @@
     "qianmu-video-gallery.js",
     "qianmu-video-media.js",
     "qianmu-video-minimax.js",
+    "qianmu-video-readiness.js",
     "qianmu-video-result.js",
     "qianmu-video-runtime.js",
     "qianmu-video-store.js",
