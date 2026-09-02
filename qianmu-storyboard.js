@@ -2,6 +2,7 @@ import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } f
 
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
 export const STORYBOARD_SCHEMA_VERSION = 22;
+export const STORYBOARD_PRODUCTION_TRACK_LABELS = Object.freeze({ main_camera: '本段正文', second_camera: '世界背面' });
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -199,7 +200,7 @@ const compilerTagRuleDefaults = () => ['think', 'thinking']
 export function createStoryboardDefaults() {
   const ids = Object.keys(STORYBOARD_PROVIDER_REGISTRY);
   return {
-    schemaVersion: STORYBOARD_SCHEMA_VERSION, enabled: false, automation: automationDefaults(), view: 'create', workspaceView: 'workbench', assetView: 'tags', assetSearch: '', logFilter: 'all', gallerySearch: '', gallerySource: 'all', source: 'novel', initialized: false,
+    schemaVersion: STORYBOARD_SCHEMA_VERSION, enabled: false, automation: automationDefaults(), view: 'create', workspaceView: 'workbench', assetView: 'tags', assetSearch: '', logFilter: 'all', gallerySearch: '', gallerySource: 'all', galleryTrack: 'all', source: 'novel', initialized: false,
     target: 'latest', floor: '', inlineByDefault: true, promptMode: 'manual', prompt: '', negative: '', promptDefaults: {}, contentRating: 'sfw', paragraphMode: 'auto', manualParagraphIndex: null, pendingParagraphSelection: null, promptDraft: promptDraft(),
     promptCompiler: { enabled: true, apiProfileId: '', connectionPresetId: '', instructionPresetId: '', instruction: '', includeCurrentFloor: true, includeRecentFloors: 2, includeCharacterCards: true, includeUserPersona: true, includeActivatedWorldInfo: true, worldMode: 'selected', worldBookNames: [], worldBookView: '', worldBookInitializedNames: [], worldEntryIds: [], tagRules: compilerTagRuleDefaults(), excludedTags: 'think, thinking' },
     profiles: Object.fromEntries(ids.map((id) => [id, legacyProfile()])), modelProfiles: Object.fromEntries(ids.map((id) => [id, {}])), parameterPresets: [], parameterPresetSelection: Object.fromEntries(ids.map((id) => [id, ''])),
@@ -207,7 +208,7 @@ export function createStoryboardDefaults() {
     promptPresets: [], editingPromptPresetId: '', editingPromptItemId: '', promptItemDraft: null,
     artistPresets: [], artistCollections: [], artistCollectionId: '', selectedArtistPresetId: '', artistSearch: '', editingArtistPresetId: '',
     artistPools: [], selectedArtistPoolId: '',
-    tagLibrary: [], vibeLibrary: [], selectedVibeIds: [], compositionPolicy: compositionDefaults(), routing: routingDefaults(), shotPlans: [], taskStates: [], collapsedCards: { model: true, context: true, prompt: true, params: true, composition: true, 'routing-rules': true }, logs: [], pipelineLogs: [],
+    tagLibrary: [], vibeLibrary: [], selectedVibeIds: [], compositionPolicy: compositionDefaults(), routing: routingDefaults(), shotPlans: [], taskStates: [], collapsedCards: { model: true, context: true, prompt: true, params: true, composition: true, production: true, 'routing-rules': true }, logs: [], pipelineLogs: [],
   };
 }
 
@@ -379,7 +380,7 @@ export function normalizeStoryboardState(value) {
   const migrated = migrateStoryboardState(value), defaults = createStoryboardDefaults(), state = obj(value) ? value : {};
   Object.assign(state, migrated); for (const [key, val] of Object.entries(defaults)) if (state[key] === undefined) state[key] = clone(val);
   state.schemaVersion = STORYBOARD_SCHEMA_VERSION; state.enabled = Boolean(state.enabled); state.automation = normalizeStoryboardAutomation(state.automation); state.view = ['create', 'assets', 'artists', 'presets', 'gallery', 'logs'].includes(state.view) ? state.view : 'create'; state.workspaceView = ['workbench', 'assets', 'artists', 'presets', 'gallery', 'logs'].includes(state.workspaceView) ? state.workspaceView : 'workbench'; state.logFilter = ['all', 'success', 'failed'].includes(state.logFilter) ? state.logFilter : 'all';
-  state.assetView = ['tags', 'vibes', 'routing'].includes(state.assetView) ? state.assetView : 'tags'; state.assetSearch = str(state.assetSearch, 120); state.artistSearch = str(state.artistSearch, 120); state.editingArtistPresetId = state.editingArtistPresetId === 'new' ? 'new' : cleanId(state.editingArtistPresetId); state.editingPromptPresetId = cleanId(state.editingPromptPresetId); state.editingPromptItemId = state.editingPromptItemId === 'new' ? 'new' : cleanId(state.editingPromptItemId); state.promptItemDraft = obj(state.promptItemDraft) ? { name: str(state.promptItemDraft.name, 80), instruction: str(state.promptItemDraft.instruction, 12000) } : null; state.artistCollectionId = cleanId(state.artistCollectionId); state.gallerySearch = str(state.gallerySearch, 120); state.gallerySource = state.gallerySource === 'all' || getStoryboardProvider(state.gallerySource) ? state.gallerySource : 'all'; state.source = getStoryboardProvider(state.source) ? state.source : 'novel'; state.target = ['latest', 'floor', 'gallery'].includes(state.target) ? state.target : 'latest'; state.inlineByDefault = state.inlineByDefault !== false; state.promptMode = STORYBOARD_PROMPT_MODES[state.promptMode] ? state.promptMode : 'manual'; state.prompt = str(state.prompt, 24000); state.negative = str(state.negative, 12000); state.contentRating = state.contentRating === 'nsfw' ? 'nsfw' : 'sfw'; state.paragraphMode = state.paragraphMode === 'manual' ? 'manual' : 'auto'; state.manualParagraphIndex = Number.isInteger(Number(state.manualParagraphIndex)) && Number(state.manualParagraphIndex) >= 0 ? Number(state.manualParagraphIndex) : null; state.pendingParagraphSelection = state.pendingParagraphSelection ? normalizeStoryboardParagraphSelection(state.pendingParagraphSelection) : null;
+  state.assetView = ['tags', 'vibes', 'routing'].includes(state.assetView) ? state.assetView : 'tags'; state.assetSearch = str(state.assetSearch, 120); state.artistSearch = str(state.artistSearch, 120); state.editingArtistPresetId = state.editingArtistPresetId === 'new' ? 'new' : cleanId(state.editingArtistPresetId); state.editingPromptPresetId = cleanId(state.editingPromptPresetId); state.editingPromptItemId = state.editingPromptItemId === 'new' ? 'new' : cleanId(state.editingPromptItemId); state.promptItemDraft = obj(state.promptItemDraft) ? { name: str(state.promptItemDraft.name, 80), instruction: str(state.promptItemDraft.instruction, 12000) } : null; state.artistCollectionId = cleanId(state.artistCollectionId); state.gallerySearch = str(state.gallerySearch, 120); state.gallerySource = state.gallerySource === 'all' || getStoryboardProvider(state.gallerySource) ? state.gallerySource : 'all'; state.galleryTrack = ['all', 'main_camera', 'second_camera'].includes(state.galleryTrack) ? state.galleryTrack : 'all'; state.source = getStoryboardProvider(state.source) ? state.source : 'novel'; state.target = ['latest', 'floor', 'gallery'].includes(state.target) ? state.target : 'latest'; state.inlineByDefault = state.inlineByDefault !== false; state.promptMode = STORYBOARD_PROMPT_MODES[state.promptMode] ? state.promptMode : 'manual'; state.prompt = str(state.prompt, 24000); state.negative = str(state.negative, 12000); state.contentRating = state.contentRating === 'nsfw' ? 'nsfw' : 'sfw'; state.paragraphMode = state.paragraphMode === 'manual' ? 'manual' : 'auto'; state.manualParagraphIndex = Number.isInteger(Number(state.manualParagraphIndex)) && Number(state.manualParagraphIndex) >= 0 ? Number(state.manualParagraphIndex) : null; state.pendingParagraphSelection = state.pendingParagraphSelection ? normalizeStoryboardParagraphSelection(state.pendingParagraphSelection) : null;
   state.promptDefaults = Object.fromEntries(Object.entries(obj(state.promptDefaults) ? state.promptDefaults : {}).slice(0, 200).map(([key, value]) => [str(key, 500), {
     ...(obj(value) && Object.hasOwn(value, 'positive') ? { positive: str(value.positive, 12000) } : {}),
     ...(obj(value) && Object.hasOwn(value, 'negative') ? { negative: str(value.negative, 12000) } : {}),
@@ -404,7 +405,7 @@ export function normalizeStoryboardState(value) {
   const knownVibeIds = new Set(state.vibeLibrary.map((vibe) => vibe.id)); state.selectedVibeIds = ids(state.selectedVibeIds, 16).filter((id) => knownVibeIds.has(id));
   if (!state.promptPresets.some((preset) => preset.id === state.promptCompiler.instructionPresetId)) state.promptCompiler.instructionPresetId = '';
   if (!state.promptPresets.some((preset) => preset.id === state.editingPromptPresetId)) { state.editingPromptPresetId = ''; state.editingPromptItemId = ''; state.promptItemDraft = null; }
-  state.compositionPolicy = normalizeStoryboardCompositionPolicy(state.compositionPolicy); state.routing = normalizeRouting(state.routing, { connections: state.connections, parameterPresets: state.parameterPresets }); state.shotPlans = shotPlans(state.shotPlans, state); state.taskStates = taskStates(state.taskStates); state.collapsedCards = Object.fromEntries(Object.entries(obj(state.collapsedCards) ? state.collapsedCards : {}).slice(0, 200).map(([k, v]) => [str(k, 120), Boolean(v)]).filter(([k]) => k)); state.logs = legacyLogs(state.logs); state.pipelineLogs = pipelineLogs(state.pipelineLogs);
+  state.compositionPolicy = normalizeStoryboardCompositionPolicy(state.compositionPolicy); state.routing = normalizeRouting(state.routing, { connections: state.connections, parameterPresets: state.parameterPresets }); state.shotPlans = shotPlans(state.shotPlans, state); state.taskStates = taskStates(state.taskStates); const collapsedInput = obj(state.collapsedCards) ? state.collapsedCards : {}; state.collapsedCards = Object.fromEntries(Object.entries(collapsedInput).slice(0, 200).map(([k, v]) => [str(k, 120), Boolean(v)]).filter(([k]) => k)); if (!Object.hasOwn(collapsedInput, 'production')) state.collapsedCards.production = true; state.logs = legacyLogs(state.logs); state.pipelineLogs = pipelineLogs(state.pipelineLogs);
   const visiblePipelineIds = new Set(state.logs.map((log) => log.pipelineId).filter(Boolean));
   // v1/v2 日志没有 pipelineId；旧数据先按相同上限保留，只有新契约完整时才做一一配对裁剪。
   if (visiblePipelineIds.size) state.pipelineLogs = state.pipelineLogs.filter((log) => visiblePipelineIds.has(log.id));
@@ -907,13 +908,55 @@ export function adaptProductionPacketToStoryboardShotSpec(value = {}, overrides 
     scene: environment.join(', '),
     characters,
     composition: { cameraSide: visual.cameraSide || '', angle: visual.angle || '', focus: visual.focus || '', framing: visual.framing || [] },
-    promptAtoms: { environment },
+    promptAtoms: { global: [visual.description, visual.subject].filter(Boolean), environment },
     continuityUpdates: { time: sceneState.time, weather: sceneState.weather, props: Object.fromEntries((Array.isArray(sceneState.props) ? sceneState.props : []).map((prop) => [String(prop), true])) },
     evidence: { type: 'inferred', paragraphIds: evidenceRefs, quote: visual.evidenceQuote || '', rationale: visual.rationale || '由制片包映射，需在镜头详情确认后提交。' },
     productionContext: { packetId: packet.packetId, eventId: packet.eventId, track: packet.track, canonLevel: packet.canonLevel, autoInsert: false },
     decisions: [`制片包来源：${packet.sourceRef?.field || 'unknown'}`],
     ...overrides,
   });
+}
+
+export function storyboardProductionContext(value = {}) {
+  const source = obj(value) ? value : {};
+  const candidates = [
+    source.packetId || source.packet_id || source.track ? source : null,
+    source.productionContext,
+    source.production_context,
+    source.shotSpec?.productionContext,
+    source.shotSpec?.production_context,
+    source.compiledPrompt?.productionContext,
+    source.snapshot?.productionContext,
+    source.snapshot?.shotSpec?.productionContext,
+    source.snapshot?.compiledPrompt?.productionContext,
+  ];
+  const raw = candidates.find(obj) || {};
+  const track = ['main_camera', 'second_camera'].includes(raw.track) ? raw.track : 'main_camera';
+  const canonLevel = ['canon', 'director', 'draft'].includes(raw.canonLevel || raw.canon_level)
+    ? (raw.canonLevel || raw.canon_level)
+    : '';
+  return {
+    packetId: cleanId(raw.packetId || raw.packet_id),
+    eventId: cleanId(raw.eventId || raw.event_id),
+    track,
+    canonLevel,
+    autoInsert: raw.autoInsert === true,
+  };
+}
+
+export function storyboardProductionDeliveryPolicy(value = {}, requested = {}) {
+  const productionContext = storyboardProductionContext(value);
+  const fromProductionPacket = Boolean(productionContext.packetId || productionContext.eventId);
+  const requiresExplicitInsert = fromProductionPacket && productionContext.autoInsert !== true;
+  const requestedTarget = ['latest', 'floor', 'gallery'].includes(requested.target) ? requested.target : 'latest';
+  return {
+    productionContext,
+    track: productionContext.track,
+    sourceLabel: STORYBOARD_PRODUCTION_TRACK_LABELS[productionContext.track],
+    target: requiresExplicitInsert ? 'gallery' : requestedTarget,
+    inlineByDefault: requiresExplicitInsert ? false : requested.inlineByDefault !== false,
+    requiresExplicitInsert,
+  };
 }
 
 export function validateStoryboardShotGrounding(value = {}, options = {}) {

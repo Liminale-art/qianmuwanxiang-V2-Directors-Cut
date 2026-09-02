@@ -8624,3 +8624,65 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-status-card .sd-count-group { gap: 3px 5px; }
   #story-director-modal .sd-status-card .sd-count-tag { padding-inline: 6px !important; }
 }
+
+/* v1.58.28 · 第二摄影机候选与导演轨媒体标识。 */
+#story-director-modal .sd-storyboard-production-card .sd-storyboard-card-body { padding: 8px 10px 10px; }
+#story-director-modal .sd-storyboard-production-list { display: grid; gap: 5px; }
+#story-director-modal .sd-storyboard-production-item {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--sd-glass-weak);
+}
+#story-director-modal .sd-storyboard-production-item.active { border-color: color-mix(in srgb, var(--sd-accent) 50%, transparent); }
+#story-director-modal .sd-storyboard-production-item > div { min-width: 0; display: grid; gap: 2px; }
+#story-director-modal .sd-storyboard-production-item b,
+#story-director-modal .sd-storyboard-production-item p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-storyboard-production-item b { font-size: 11.5px; font-weight: 600; }
+#story-director-modal .sd-storyboard-production-item p { color: var(--sd-muted); font-size: 10px; }
+#story-director-modal .sd-storyboard-production-item .sd-storyboard-load-production { width: 32px; min-width: 32px; height: 32px; margin: 0; }
+#story-director-modal .sd-storyboard-production-label {
+  width: max-content;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--sd-accent) 24%, var(--sd-hairline));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--sd-accent) 8%, transparent);
+  color: var(--sd-accent);
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+#story-director-modal .sd-storyboard-production-label.second-camera {
+  border-color: color-mix(in srgb, var(--sd-text) 18%, var(--sd-hairline));
+  background: var(--sd-glass-weak);
+  color: var(--sd-muted);
+}
+#story-director-modal .sd-storyboard-gallery-tools {
+  grid-template-columns: minmax(100px, .28fr) minmax(100px, .28fr) minmax(0, 1fr) auto auto;
+}
+#story-director-modal .sd-storyboard-gallery-caption > .sd-storyboard-production-label { grid-column: 1 / -1; }
+#story-director-modal .sd-storyboard-gallery-caption > p,
+#story-director-modal .sd-storyboard-gallery-caption > .sd-storyboard-gallery-card-tags { grid-column: 1 / -1; }
+#story-director-modal .sd-storyboard-inspector-source { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#story-director-modal .sd-storyboard-inspector-source h4 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 640px) {
+  #story-director-modal .sd-storyboard-gallery-tools { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; }
+  #story-director-modal .sd-storyboard-gallery-search { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (max-width: 430px) {
+  #story-director-modal .sd-storyboard-production-item { grid-template-columns: minmax(0, 1fr) 32px; }
+  #story-director-modal .sd-storyboard-production-item > .sd-storyboard-production-label { grid-column: 1; grid-row: 1; }
+  #story-director-modal .sd-storyboard-production-item > div { grid-column: 1; grid-row: 2; }
+  #story-director-modal .sd-storyboard-production-item > .sd-storyboard-load-production { grid-column: 2; grid-row: 1 / span 2; }
+}

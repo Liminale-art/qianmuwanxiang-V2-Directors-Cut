@@ -96,10 +96,10 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.27';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.28';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.27';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.27';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.28';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.28';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -117,6 +117,7 @@ import {
   STORYBOARD_SHOT_GROUP_TEMPLATES,
   STORYBOARD_SOURCES,
   STORYBOARD_TAG_CATEGORIES,
+  adaptProductionPacketToStoryboardShotSpec,
   buildStoryboardProviderPlan,
   compileStoryboardPrompt,
   createStoryboardParagraphAnchor,
@@ -146,29 +147,31 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
+  storyboardProductionContext,
+  storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.27';
+} from './qianmu-storyboard.js?v=1.58.28';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.27';
+const VERSION = '1.58.28';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.27'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.28'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.27'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.28'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.27'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.28'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.27'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.28'),
   },
 });
 function directImageRuntime() {
@@ -11491,6 +11494,44 @@ function storyboardRecordStatus(record) {
   return `第 ${record.floor} 层`;
 }
 
+async function storyboardAttachProductionRecord(record) {
+  const policy = storyboardProductionDeliveryPolicy(record);
+  if (!record || !policy.requiresExplicitInsert) return false;
+  const floor = storyboardCurrentAssistantFloor();
+  const message = Number.isInteger(floor) ? ctx().chat?.[floor] : null;
+  if (!message) return toast('当前聊天没有可承接画面的正文。', 'warning');
+  const accepted = await confirmDialog(
+    `引用${policy.sourceLabel}`,
+    `将这张画面作为导演剪辑插画放入第 ${floor} 层；只改变画面展示，不会把幕后信息写入正文或角色记忆。是否继续？`,
+  );
+  if (!accepted) return false;
+  const chatKey = String(getChatKey() || '');
+  record.floor = floor;
+  record.lastKnownFloor = floor;
+  record.inline = true;
+  record.requestedInline = true;
+  record.linkState = 'active';
+  record.messageHash = hashText(String(message.mes || ''));
+  record.swipeId = Number(message.swipe_id || 0);
+  record.messageRef = createStoryboardMessageReference({ message, chatKey, floor });
+  record.paragraphAnchor = storyboardAnchorForMessage(message, floor, record.finalPrompt || record.prompt || '', null);
+  if (record.snapshot) {
+    record.snapshot.target = 'floor';
+    record.snapshot.floor = floor;
+    record.snapshot.chatKey = chatKey;
+    record.snapshot.inlineByDefault = true;
+    record.snapshot.messageRef = clone(record.messageRef);
+    record.snapshot.messageHash = record.messageHash;
+    record.snapshot.swipeId = record.swipeId;
+    record.snapshot.paragraphAnchor = clone(record.paragraphAnchor);
+  }
+  await saveMetadata();
+  storyboardRenderInlineImages(floor);
+  renderModal();
+  toast(`${policy.sourceLabel}已引用至第 ${floor} 层。`, 'success');
+  return true;
+}
+
 function renderStoryboardQueue() {
   const activeJobs = [...storyboardActiveJobs.values()];
   if (!activeJobs.length && !storyboardQueue.length) return '';
@@ -11653,6 +11694,44 @@ function renderStoryboardCompositionCard(state) {
   </details>`;
 }
 
+function storyboardProductionPacketTitle(packet) {
+  return String(packet?.visualIntent?.subject || packet?.characterState?.[0]?.name || packet?.sceneState?.location || '未命名镜头').trim().slice(0, 120);
+}
+
+function storyboardProductionPacketDescription(packet) {
+  return String(packet?.visualIntent?.description || packet?.perceivedConsequence?.summary || '').trim().slice(0, 4000);
+}
+
+function storyboardProductionSourceLabel(value) {
+  return storyboardProductionDeliveryPolicy(value).sourceLabel;
+}
+
+function renderStoryboardProductionSources(state) {
+  const currentChatKey = String(getChatKey() || '');
+  const available = !directorProductionPacketState.chatKey || directorProductionPacketState.chatKey === currentChatKey;
+  const packets = available ? (directorProductionPacketState.packets || []) : [];
+  const selectedId = storyboardProductionContext(state.promptDraft?.shots?.[0] || {}).packetId;
+  if (!packets.length && !directorProductionPacketState.error) return '';
+  const rows = packets.map((packet) => {
+    const label = storyboardProductionSourceLabel(packet);
+    const title = storyboardProductionPacketTitle(packet);
+    const description = storyboardProductionPacketDescription(packet);
+    const active = selectedId && selectedId === packet.packetId;
+    return `<article class="sd-storyboard-production-item ${active ? 'active' : ''}">
+      <span class="sd-storyboard-production-label ${packet.track === 'second_camera' ? 'second-camera' : ''}">${htmlEscape(label)}</span>
+      <div><b>${htmlEscape(title)}</b><p>${htmlEscape(snip(description, 150))}</p></div>
+      <button type="button" class="sd-icon-btn sd-storyboard-load-production" data-storyboard-production-packet="${htmlEscape(packet.packetId)}" title="载入镜头台" aria-label="载入${htmlEscape(title)}"><i class="fa-solid fa-clapperboard"></i></button>
+    </article>`;
+  }).join('');
+  const body = directorProductionPacketState.error
+    ? `<div class="sd-storyboard-empty-inline">${htmlEscape(directorProductionPacketState.error)}</div>`
+    : rows;
+  return `<details class="sd-card sd-storyboard-production-card" data-storyboard-card="production" ${state.collapsedCards.production ? '' : 'open'}>
+    <summary><span><b>导演素材</b><small>${packets.length} 个候选</small></span></summary>
+    <div class="sd-storyboard-card-body"><div class="sd-storyboard-production-list">${body}</div></div>
+  </details>`;
+}
+
 function renderStoryboardCreate(state) {
   const profile = storyboardProviderProfile(state);
   const capabilities = getStoryboardCapabilities(state.source, profile.model);
@@ -11674,6 +11753,7 @@ function renderStoryboardCreate(state) {
         : state.source === 'novel' ? `${capabilities.cfgRescale ? `<label><span>Rescale</span><input class="text_pole sd-storyboard-field" data-storyboard-field="novelCfgRescale" type="number" min="0" max="1" step="0.05" value="${htmlEscape(profile.novelCfgRescale)}"></label>` : ''}${capabilities.sm ? `<label class="sd-switch-row"><span>SMEA</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelSm" ${profile.novelSm ? 'checked' : ''}></label>` : ''}${capabilities.smDyn ? `<label class="sd-switch-row"><span>SMEA DYN</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelSmDyn" ${profile.novelSmDyn ? 'checked' : ''}></label>` : ''}${capabilities.decrisper ? `<label class="sd-switch-row"><span>Decrisper</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelDecrisper" ${profile.novelDecrisper ? 'checked' : ''}></label>` : ''}${capabilities.varietyBoost ? `<label class="sd-switch-row"><span>Variety Boost</span><input type="checkbox" class="sd-storyboard-field" data-storyboard-field="novelVarietyBoost" ${profile.novelVarietyBoost ? 'checked' : ''}></label>` : ''}` : '';
   return `<div class="sd-storyboard-create">
     ${renderStoryboardAutomationCard(state)}
+    ${renderStoryboardProductionSources(state)}
     ${renderStoryboardModelCard(state)}
     ${renderStoryboardContextCard(state)}
     ${renderStoryboardWorldbookCard(state)}
@@ -11915,9 +11995,11 @@ function storyboardFilteredGalleryRecords(state) {
   const allRecords = [...storyboardGalleryRecords()].reverse();
   return allRecords.filter((record) => {
     if (state.gallerySource !== 'all' && record.source !== state.gallerySource) return false;
+    const production = storyboardProductionDeliveryPolicy(record);
+    if (state.galleryTrack !== 'all' && production.track !== state.galleryTrack) return false;
     if (storyboardGalleryOpenCollectionId && !storyboardItemCollectionIds(record).includes(storyboardGalleryOpenCollectionId)) return false;
     if (!query) return true;
-    return [record.prompt, record.finalPrompt, record.model, record.artistString, ...(record.tags || []), STORYBOARD_SOURCES[record.source]?.label]
+    return [record.prompt, record.finalPrompt, record.model, record.artistString, ...(record.tags || []), STORYBOARD_SOURCES[record.source]?.label, production.sourceLabel]
       .some((value) => String(value || '').toLowerCase().includes(query));
   });
 }
@@ -12077,21 +12159,23 @@ function renderStoryboardGallery(state) {
     scope: 'gallery',
   });
   const inspectorCollections = inspected ? new Set(storyboardItemCollectionIds(inspected)) : new Set();
-  const inspector = inspected ? `<details class="sd-media-inspector" open><summary><span>画面详情</span></summary><div><img src="${htmlEscape(storyboardSafeUrl(inspected.url))}" alt=""><h4>${htmlEscape(STORYBOARD_SOURCES[inspected.source]?.label || inspected.source || '分镜')}</h4><p>${htmlEscape(snip(inspected.finalPrompt || inspected.prompt || '', 240))}</p><label><span>标签</span>${storyboardMediaTagEditorMarkup(inspected.tags || [], knownTags, `gallery:${inspected.id}`)}</label><label><span>合集</span><div class="sd-media-collection-choices">${collections.map((item) => `<label class="sd-media-collection-choice"><input type="checkbox" class="sd-gallery-inspector-collection" value="${htmlEscape(item.id)}" ${inspectorCollections.has(item.id) ? 'checked' : ''}><span>${htmlEscape(item.name)}</span></label>`).join('') || '<small>暂无合集</small>'}</div></label><button type="button" class="sd-btn sd-storyboard-preview-inspected"><i class="fa-solid fa-expand"></i>查看大图</button></div></details>` : `<details class="sd-media-inspector" open><summary><span>画面详情</span></summary><div class="sd-storyboard-empty-inline">点击画面信息按钮后在此整理。</div></details>`;
+  const inspectedProduction = inspected ? storyboardProductionDeliveryPolicy(inspected) : null;
+  const inspector = inspected ? `<details class="sd-media-inspector" open><summary><span>画面详情</span></summary><div><img src="${htmlEscape(storyboardSafeUrl(inspected.url))}" alt=""><div class="sd-storyboard-inspector-source"><h4>${htmlEscape(STORYBOARD_SOURCES[inspected.source]?.label || inspected.source || '分镜')}</h4><span class="sd-storyboard-production-label ${inspectedProduction.track === 'second_camera' ? 'second-camera' : ''}">${htmlEscape(inspectedProduction.sourceLabel)}</span></div><p>${htmlEscape(snip(inspected.finalPrompt || inspected.prompt || '', 240))}</p><label><span>标签</span>${storyboardMediaTagEditorMarkup(inspected.tags || [], knownTags, `gallery:${inspected.id}`)}</label><label><span>合集</span><div class="sd-media-collection-choices">${collections.map((item) => `<label class="sd-media-collection-choice"><input type="checkbox" class="sd-gallery-inspector-collection" value="${htmlEscape(item.id)}" ${inspectorCollections.has(item.id) ? 'checked' : ''}><span>${htmlEscape(item.name)}</span></label>`).join('') || '<small>暂无合集</small>'}</div></label>${inspectedProduction.requiresExplicitInsert && !Number.isInteger(inspected.floor) ? '<button type="button" class="sd-btn sd-storyboard-attach-production"><i class="fa-solid fa-link"></i>引用至当前正文</button>' : ''}<button type="button" class="sd-btn sd-storyboard-preview-inspected"><i class="fa-solid fa-expand"></i>查看大图</button></div></details>` : `<details class="sd-media-inspector" open><summary><span>画面详情</span></summary><div class="sd-storyboard-empty-inline">点击画面信息按钮后在此整理。</div></details>`;
   return `<div class="sd-storyboard-gallery-page">
-    <section class="sd-card sd-storyboard-gallery-head"><div class="sd-storyboard-gallery-title"><span><span class="sd-storyboard-kicker">TAKES</span><h3>${currentCollection?.name || '阅片室'}</h3></span><b>${records.length}</b></div><div class="sd-storyboard-gallery-tools"><select class="text_pole sd-storyboard-gallery-source" aria-label="筛选模型"><option value="all">全部模型</option>${Object.values(STORYBOARD_SOURCES).map((item) => `<option value="${item.id}" ${state.gallerySource === item.id ? 'selected' : ''}>${item.label}</option>`).join('')}</select><input class="text_pole sd-storyboard-gallery-search" value="${htmlEscape(state.gallerySearch)}" placeholder="搜索画面、模型、画师或标签"><button type="button" class="sd-icon-btn sd-storyboard-gallery-select-mode" aria-pressed="${storyboardGallerySelectMode}" title="${storyboardGallerySelectMode ? '完成多选' : '多选'}" aria-label="${storyboardGallerySelectMode ? '完成多选' : '多选'}"><i class="fa-solid ${storyboardGallerySelectMode ? 'fa-check' : 'fa-list-check'}"></i></button><button type="button" class="sd-icon-btn sd-storyboard-gallery-new-folder" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button></div></section>
+    <section class="sd-card sd-storyboard-gallery-head"><div class="sd-storyboard-gallery-title"><span><span class="sd-storyboard-kicker">TAKES</span><h3>${currentCollection?.name || '阅片室'}</h3></span><b>${records.length}</b></div><div class="sd-storyboard-gallery-tools"><select class="text_pole sd-storyboard-gallery-source" aria-label="筛选模型"><option value="all">全部模型</option>${Object.values(STORYBOARD_SOURCES).map((item) => `<option value="${item.id}" ${state.gallerySource === item.id ? 'selected' : ''}>${item.label}</option>`).join('')}</select><select class="text_pole sd-storyboard-gallery-track" aria-label="筛选画面来源"><option value="all" ${state.galleryTrack === 'all' ? 'selected' : ''}>全部来源</option><option value="main_camera" ${state.galleryTrack === 'main_camera' ? 'selected' : ''}>本段正文</option><option value="second_camera" ${state.galleryTrack === 'second_camera' ? 'selected' : ''}>世界背面</option></select><input class="text_pole sd-storyboard-gallery-search" value="${htmlEscape(state.gallerySearch)}" placeholder="搜索画面、模型、画师或标签"><button type="button" class="sd-icon-btn sd-storyboard-gallery-select-mode" aria-pressed="${storyboardGallerySelectMode}" title="${storyboardGallerySelectMode ? '完成多选' : '多选'}" aria-label="${storyboardGallerySelectMode ? '完成多选' : '多选'}"><i class="fa-solid ${storyboardGallerySelectMode ? 'fa-check' : 'fa-list-check'}"></i></button><button type="button" class="sd-icon-btn sd-storyboard-gallery-new-folder" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button></div></section>
     <div class="sd-media-library-shell sd-media-gallery-library">${sidebar}<main class="sd-media-library-main"><header><b>${htmlEscape(currentCollection?.name || '全部画面')}</b><span>${records.length}</span></header>
     ${storyboardGallerySelectMode ? `<section class="sd-card sd-storyboard-gallery-bulk"><span>已选 <b>${storyboardGallerySelection.size}</b> 张</span><div><select class="text_pole sd-storyboard-gallery-move-target" aria-label="目标合集"><option value="">移出全部合集</option>${collections.map((item) => `<option value="${htmlEscape(item.id)}">${htmlEscape(item.name)}</option>`).join('')}</select><button type="button" class="sd-btn sd-storyboard-gallery-move-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>加入合集</button><button type="button" class="sd-btn sd-storyboard-gallery-select-all" ${records.length ? '' : 'disabled'}>全选结果</button><button type="button" class="sd-btn sd-danger sd-storyboard-gallery-delete-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>删除选中</button></div></section>` : ''}
     ${groups.length ? `<div class="sd-storyboard-gallery">${visible.map((group) => {
       const record = group.variants[0];
       const url = storyboardSafeUrl(record.url);
       const status = storyboardRecordStatus(record);
+      const production = storyboardProductionDeliveryPolicy(record);
       const memberIds = group.variants.map((item) => item.id);
       const selected = memberIds.length > 0 && memberIds.every((id) => storyboardGallerySelection.has(id));
       return `<article class="sd-storyboard-gallery-card ${selected ? 'selected' : ''} ${storyboardGalleryInspectorRecordId === record.id ? 'inspected' : ''} ${group.variants.length > 1 ? 'is-stack' : ''}" data-storyboard-record="${htmlEscape(record.id)}" data-storyboard-group="${htmlEscape(group.id)}" data-storyboard-members="${htmlEscape(memberIds.join(','))}">
         ${selectionMode ? `<button type="button" class="sd-storyboard-gallery-check" aria-label="${selected ? '取消选择' : '选择'}"><i class="fa-solid ${selected ? 'fa-circle-check' : 'fa-circle'}"></i></button>` : ''}
         <button type="button" class="sd-storyboard-preview-record" ${url ? '' : 'disabled'}>${url ? `<img src="${htmlEscape(url)}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 40))}">` : '<span class="sd-storyboard-image-missing"><i class="fa-solid fa-image"></i></span>'}${group.variants.length > 1 ? `<span class="sd-storyboard-stack-count">${group.variants.length}</span>` : ''}</button>
-        <div class="sd-storyboard-gallery-caption"><span>${htmlEscape(STORYBOARD_SOURCES[record.source]?.label || record.source || '分镜')}</span><small>${htmlEscape(status || formatDateTime(record.createdAt))}</small><p>${htmlEscape(snip(record.finalPrompt || record.prompt || '', 110))}</p>${record.tags?.length ? `<div class="sd-storyboard-gallery-card-tags">${record.tags.slice(0, 4).map((tag) => `<em>${htmlEscape(tag)}</em>`).join('')}</div>` : ''}</div>
+        <div class="sd-storyboard-gallery-caption"><span>${htmlEscape(STORYBOARD_SOURCES[record.source]?.label || record.source || '分镜')}</span><small>${htmlEscape(status || formatDateTime(record.createdAt))}</small><span class="sd-storyboard-production-label ${production.track === 'second_camera' ? 'second-camera' : ''}">${htmlEscape(production.sourceLabel)}</span><p>${htmlEscape(snip(record.finalPrompt || record.prompt || '', 110))}</p>${record.tags?.length ? `<div class="sd-storyboard-gallery-card-tags">${record.tags.slice(0, 4).map((tag) => `<em>${htmlEscape(tag)}</em>`).join('')}</div>` : ''}</div>
         <div class="sd-storyboard-gallery-actions"><button type="button" class="sd-icon-btn sd-storyboard-gallery-inspect" title="整理详情" aria-label="整理详情"><i class="fa-solid fa-circle-info"></i></button><button type="button" class="sd-icon-btn sd-storyboard-download" title="下载当前图片" aria-label="下载当前图片"><i class="fa-solid fa-download"></i></button>${Number.isInteger(record.floor) ? `<button type="button" class="sd-icon-btn sd-storyboard-inline-toggle" title="${record.inline === false ? '插回正文' : '移出正文'}" aria-label="${record.inline === false ? '插回正文' : '移出正文'}"><i class="fa-solid ${record.inline === false ? 'fa-eye' : 'fa-eye-slash'}"></i></button>` : ''}<button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-record" title="删除当前图片" aria-label="删除当前图片"><i class="fa-solid fa-trash-can"></i></button></div>
       </article>`;
     }).join('')}</div>${groups.length > visible.length ? `<button type="button" class="sd-btn sd-storyboard-gallery-more">再显示 ${Math.min(40, groups.length - visible.length)} 组</button>` : ''}` : `<section class="sd-card sd-storyboard-empty"><i class="fa-solid fa-film"></i><p>${allRecords.length ? '这里暂时没有符合条件的画面。' : '阅片室还是空的。生成后的画面会完整保留在这里。'}</p></section>`}</main>${inspector}</div>
@@ -12234,9 +12318,13 @@ function storyboardGenerationPayload(state, profile, { sourceId = state.source, 
 }
 
 function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceId = state.source, modelId = '', connectionPresetId = '', planId = '', planShotId = '', recentArtistIds = [] } = {}) {
+  const deliveryPolicy = storyboardProductionDeliveryPolicy(shot || {}, {
+    target: state.target,
+    inlineByDefault: state.inlineByDefault,
+  });
   const rawFloor = String(state.floor ?? '').trim();
   const requestedFloor = Number.isInteger(Number(rawFloor)) && rawFloor ? Number(rawFloor) : null;
-  const floor = state.target === 'latest' ? storyboardCurrentAssistantFloor() : (state.target === 'floor' ? requestedFloor : null);
+  const floor = deliveryPolicy.target === 'latest' ? storyboardCurrentAssistantFloor() : (deliveryPolicy.target === 'floor' ? requestedFloor : null);
   const message = Number.isInteger(floor) ? ctx().chat?.[floor] : null;
   const prompt = String(shot?.prompt || state.prompt || '').trim();
   const negative = String(shot?.negative || state.negative || '').trim();
@@ -12282,7 +12370,7 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
     artistString: String(payload.artistString || state.promptDraft?.artistString || ''), artistPresetId: artistAssignment.artistId, artistPoolId: artistAssignment.poolId, artistRouteSource: artistAssignment.source, contentRating: state.contentRating,
     promptMode: state.promptMode,
     promptLocked: Boolean(state.promptDraft?.userEditedCompiled),
-    target: state.target, floor, inlineByDefault: state.inlineByDefault !== false,
+    target: deliveryPolicy.target, floor, inlineByDefault: deliveryPolicy.inlineByDefault,
     chatKey: String(getChatKey() || ''),
     messageRef, messageHash: message ? hashText(String(message.mes || '')) : '', swipeId: Number(message?.swipe_id || 0),
     profile: storyboardProfileSnapshot(providerProfile, sourceId),
@@ -13435,25 +13523,74 @@ function storyboardAdaptShotForModel(shot, sourceId, modelId) {
   };
 }
 
+async function storyboardGenerateProductionPacket(root, packetId) {
+  const state = storyboardState();
+  const packet = (directorProductionPacketState.packets || []).find((item) => item.packetId === packetId);
+  if (!packet) return toast('这条导演素材已失效，请重新推演后再试。', 'warning');
+  const profile = storyboardProviderProfile(state);
+  const shotSpec = adaptProductionPacketToStoryboardShotSpec(packet);
+  const compiled = compileStoryboardPrompt({ providerId: state.source, modelId: profile.model, shot: shotSpec });
+  const prompt = String(compiled.prompt || storyboardProductionPacketDescription(packet)).trim();
+  if (!prompt) return toast('这条导演素材暂时没有可生成的画面信息。', 'warning');
+  const title = storyboardProductionPacketTitle(packet);
+  state.prompt = prompt;
+  state.negative = String(compiled.negative || '');
+  state.promptMode = 'manual';
+  state.pendingParagraphSelection = null;
+  state.manualParagraphIndex = null;
+  Object.assign(state.promptDraft, {
+    compiled: prompt,
+    negative: state.negative,
+    compiledAt: Date.now(),
+    compiledBy: 'production-packet',
+    userEditedCompiled: false,
+    userEditedNegative: false,
+    artistPositiveBaked: false,
+    artistNegativeBaked: false,
+    sourceSummary: [storyboardProductionSourceLabel(packet), title],
+    shots: [{
+      id: shotSpec.id || uid('shotdraft'),
+      title,
+      purpose: shotSpec.narrativePurpose || storyboardProductionPacketDescription(packet),
+      role: shotSpec.shotRole || 'custom',
+      shotType: shotSpec.subjectKind === 'character' ? 'portrait' : shotSpec.subjectKind === 'environment' ? 'environment' : 'custom',
+      prompt,
+      negative: state.negative,
+      safePrompt: '',
+      sensitive: false,
+      shotSpec,
+      userEdited: false,
+      promptLocked: false,
+    }],
+  });
+  saveSettings();
+  return storyboardGenerate(root, { automatic: false });
+}
+
 async function storyboardGenerate(root, { plan = null, automatic = false } = {}) {
   const { state, profile, workflowResult } = storyboardCaptureWorkbench(root);
   if (!state.enabled) return toast('请先启用分镜。', 'warning');
   if (state.source === 'comfy' && (!workflowResult.ok || workflowResult.removedFields.length || profile.comfyWorkflowNotice)) {
     return toast(profile.comfyWorkflowNotice || storyboardWorkflowIssue(workflowResult), 'warning');
   }
-  const targetFloor = storyboardTargetFloor(state);
-  if (!plan && state.target !== 'gallery' && Number.isInteger(targetFloor) && ctx().chat?.[targetFloor]) {
+  const productionDraft = state.promptDraft?.shots?.find((item) => storyboardProductionContext(item).packetId) || null;
+  const deliveryPolicy = storyboardProductionDeliveryPolicy(productionDraft || {}, { target: state.target, inlineByDefault: state.inlineByDefault });
+  const targetFloor = deliveryPolicy.target === 'gallery' ? null : storyboardTargetFloor(state);
+  if (!plan && deliveryPolicy.target !== 'gallery' && Number.isInteger(targetFloor) && ctx().chat?.[targetFloor]) {
     plan = storyboardEnsurePlan(state, targetFloor, ctx().chat[targetFloor], { origin: automatic ? 'automatic' : 'manual', autoGenerate: automatic });
   }
   if (!state.prompt.trim() && state.promptCompiler.enabled) await storyboardCompilePrompt(root, { plan });
   if (!state.prompt.trim()) return toast('请先写下画面描述，或开启 LLM 协作自动取景。', 'warning');
-  if (state.target === 'floor' && (!String(state.floor || '').trim() || !Number.isInteger(Number(state.floor)))) {
+  if (deliveryPolicy.target === 'floor' && (!String(state.floor || '').trim() || !Number.isInteger(Number(state.floor)))) {
     return toast('请输入有效的正文楼层。', 'warning');
   }
   state.routing.single = { providerId: state.source, modelId: profile.model, connectionPresetId: '', parameterPresetId: '' };
   const routingEnabled = Boolean(state.routing.enabled);
-  const plannedSource = routingEnabled && Array.isArray(state.promptDraft.shots) && state.promptDraft.shots.length
-    ? state.promptDraft.shots.filter((item) => String(item.prompt || '').trim()).slice(0, Math.max(1, Number(state.routing.maxShotsPerFloor) || 1))
+  const availableDrafts = Array.isArray(state.promptDraft.shots)
+    ? state.promptDraft.shots.filter((item) => String(item.prompt || '').trim())
+    : [];
+  const plannedSource = availableDrafts.length
+    ? availableDrafts.slice(0, routingEnabled ? Math.max(1, Number(state.routing.maxShotsPerFloor) || 1) : 1)
     : [{
       id: uid('shotdraft'), prompt: state.prompt, negative: state.negative,
       safePrompt: '',
@@ -13673,6 +13810,7 @@ function storyboardValidatedAnchor(job) {
 
 function storyboardCreateRecord(job, log, url, index, anchorState, response) {
   const { floor, message } = anchorState;
+  const production = storyboardProductionDeliveryPolicy(job);
   return {
     id: uid('shot'), taskId: job.id, groupId: job.id, variantRootId: job.variantRootId || job.planShotId || job.id,
     collectionId: job.collectionId || '', collectionIds: storyboardItemCollectionIds(job), tags: uniqueClean(job.tags || []).slice(0, 30), planId: job.planId || '', planShotId: job.planShotId || '', imageIndex: index, url, prompt: job.prompt, finalPrompt: job.payload?.prompt,
@@ -13682,6 +13820,7 @@ function storyboardCreateRecord(job, log, url, index, anchorState, response) {
     paragraphSelection: clone(job.paragraphSelection || null),
     origin: job.paragraphSelection?.mode === 'manual_supplement' ? 'manual_supplement' : (job.automatic ? 'automatic' : 'manual'),
     shotSpec: clone(job.shotSpec || null), compiledPrompt: clone(job.compiledPrompt || null), compositionDecision: clone(job.compositionDecision || null),
+    productionContext: production.productionContext, sourceLabel: production.sourceLabel,
     messageRef: job.messageRef ? clone(job.messageRef) : null,
     messageHash: message ? hashText(String(message.mes || '')) : '', swipeId: message ? Number(message.swipe_id || 0) : 0,
     promptMode: job.promptMode || 'manual', promptLocked: Boolean(job.promptLocked),
@@ -14667,6 +14806,9 @@ function bindStoryboardTabEvents(root) {
     state.collapsedCards[card.dataset.storyboardCard] = !card.open;
     saveSettings();
   }));
+  root.querySelectorAll('[data-storyboard-production-packet]').forEach((button) => button.addEventListener('click', () => {
+    void storyboardGenerateProductionPacket(root, String(button.dataset.storyboardProductionPacket || ''));
+  }));
   root.querySelectorAll('[data-storyboard-view]').forEach((button) => button.addEventListener('click', () => {
     if (state.view === 'create') storyboardCaptureWorkbench(root);
     const nextView = button.dataset.storyboardView;
@@ -15374,6 +15516,10 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-gallery-source')?.addEventListener('change', (event) => {
     state.gallerySource = event.target.value || 'all'; storyboardGalleryVisibleCount = 40; saveSettings(); renderModal();
   });
+  root.querySelector('.sd-storyboard-gallery-track')?.addEventListener('change', (event) => {
+    state.galleryTrack = ['main_camera', 'second_camera'].includes(event.target.value) ? event.target.value : 'all';
+    storyboardGalleryVisibleCount = 40; saveSettings(); renderModal();
+  });
   root.querySelector('.sd-media-gallery-library .sd-media-all')?.addEventListener('click', () => {
     storyboardGalleryOpenCollectionId = ''; storyboardGalleryVisibleCount = 40; renderModal();
   });
@@ -15418,6 +15564,10 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-preview-inspected')?.addEventListener('click', () => {
     const record = storyboardGalleryRecords().find((item) => item.id === storyboardGalleryInspectorRecordId);
     if (record) storyboardOpenLightbox(record);
+  });
+  root.querySelector('.sd-storyboard-attach-production')?.addEventListener('click', () => {
+    const record = storyboardGalleryRecords().find((item) => item.id === storyboardGalleryInspectorRecordId);
+    if (record) void storyboardAttachProductionRecord(record);
   });
   root.querySelectorAll('.sd-gallery-inspector-collection').forEach((input) => input.addEventListener('change', async () => {
     const record = storyboardGalleryRecords().find((item) => item.id === storyboardGalleryInspectorRecordId);
