@@ -91,6 +91,28 @@ export function createMiniMaxH3Coordinator(config = {}) {
     return taskStore.restoreTask(taskId);
   }
 
+  async function submissionMedia(raw, task) {
+    const explicit = raw.mediaInputs ?? raw.media_inputs;
+    if (Array.isArray(explicit)) return { ok: true, mediaInputs: explicit };
+    const resolver = raw.resolveMediaInputs || raw.resolve_media_inputs || config.resolveMediaInputs || config.resolve_media_inputs;
+    if (typeof resolver !== 'function') return { ok: true, mediaInputs: [] };
+    try {
+      const resolvedMedia = await resolver({
+        spec: raw.spec,
+        manifest: raw.manifest,
+        chatKey: task.owner.chatKey,
+        taskId: task.taskId,
+        attempt: task.attempt,
+        signal: raw.signal,
+      });
+      if (!resolvedMedia?.ok) return { ok: false, issue: text(resolvedMedia?.issues?.[0], 260) || 'media_resolution_failed' };
+      if (!Array.isArray(resolvedMedia.mediaInputs)) return { ok: false, issue: 'media_resolution_invalid' };
+      return { ok: true, mediaInputs: resolvedMedia.mediaInputs };
+    } catch (_) {
+      return { ok: false, issue: 'media_resolution_failed' };
+    }
+  }
+
   async function exclusive(taskIdValue, work) {
     const taskId = text(taskIdValue, 200);
     if (disposed) return blocked('coordinator_disposed');
@@ -138,6 +160,8 @@ export function createMiniMaxH3Coordinator(config = {}) {
         if (!task) return blocked('task_not_found');
         const context = await requestContext(raw);
         if (!context.apiKey) return blocked('missing_api_key', task, restored?.reservations);
+        const media = await submissionMedia(raw, task);
+        if (!media.ok) return blocked(media.issue, task, restored?.reservations);
         const reservations = await taskStore.listBudget({}, { limit: config.budgetScanLimit || 2000 });
         return submitMiniMaxH3VideoTask({
           ...raw,
@@ -145,6 +169,7 @@ export function createMiniMaxH3Coordinator(config = {}) {
           reservations,
           apiKey: context.apiKey,
           connection: context.connection,
+          mediaInputs: media.mediaInputs,
         }, runtimeOptions(context, raw));
       });
     },

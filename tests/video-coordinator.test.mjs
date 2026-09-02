@@ -118,6 +118,50 @@ test('missing credentials and same-tab duplicate operations stop before another 
   assert.equal(calls, 1);
 });
 
+test('the coordinator resolves gallery media before budget checkpoints and never persists the transient payload', async () => {
+  const storage = memoryStorage();
+  const seen = [];
+  const coordinator = createMiniMaxH3Coordinator({
+    storage,
+    workerId: 'tab-a',
+    getApiKey: () => 'private-key',
+    connection: { region: 'global', connectionId: 'connection-a' },
+    resolveMediaInputs: async (value) => {
+      seen.push(value);
+      return { ok: true, mediaInputs: [{ assetId: 'first', mime: 'image/png', data: 'private-base64' }] };
+    },
+    fetchImpl: async (_url, init) => {
+      const body = JSON.parse(init.body);
+      assert.equal(body.mediaInputs[0].data, 'private-base64');
+      return jsonResponse({ ok: true, remoteTaskId: 'remote-a' });
+    },
+  });
+  const created = await draft(coordinator);
+  const result = await coordinator.submit({ ...submission(created.task.taskId), mediaInputs: undefined, now: 2000 });
+  assert.equal(result.action, 'submitted');
+  assert.equal(seen[0].chatKey, 'chat-a');
+  assert.equal(seen[0].taskId, created.task.taskId);
+  assert.doesNotMatch(JSON.stringify([...storage.tasks.values(), ...storage.budgets.values()]), /private-base64/);
+});
+
+test('media resolution failure blocks before any reservation or network request', async () => {
+  const storage = memoryStorage();
+  let requests = 0;
+  const coordinator = createMiniMaxH3Coordinator({
+    storage,
+    workerId: 'tab-a',
+    getApiKey: () => 'private-key',
+    resolveMediaInputs: async () => ({ ok: false, issues: ['asset_gallery_record_missing:first'] }),
+    fetchImpl: async () => { requests += 1; throw new Error('not expected'); },
+  });
+  const created = await draft(coordinator);
+  const writesBefore = storage.checkpointWrites;
+  const result = await coordinator.submit({ ...submission(created.task.taskId), mediaInputs: undefined, now: 2000 });
+  assert.equal(result.issue, 'asset_gallery_record_missing:first');
+  assert.equal(storage.checkpointWrites, writesBefore);
+  assert.equal(requests, 0);
+});
+
 test('resume planning is inert, chat ownership is enforced, and explicit drive archives a result', async () => {
   const storage = memoryStorage();
   let requests = 0;
@@ -188,7 +232,7 @@ test('retry stays a separate confirmed state change and never submits by itself'
 test('the coordinator remains an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(source, /videoCoordinator:\s*\{[\s\S]*import\('\.\/qianmu-video-coordinator\.js\?v=1\.58\.55'\)/);
+  assert.match(source, /videoCoordinator:\s*\{[\s\S]*import\('\.\/qianmu-video-coordinator\.js\?v=1\.58\.56'\)/);
   assert.ok(release.files.includes('qianmu-video-coordinator.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoCoordinator'\)/);
