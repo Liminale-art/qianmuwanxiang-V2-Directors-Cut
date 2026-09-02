@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.60';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.60';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.60';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.60';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.61';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.61';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.61';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.61';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,91 +151,91 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.60';
+} from './qianmu-storyboard.js?v=1.58.61';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.60';
+const VERSION = '1.58.61';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.60'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.61'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.58.60').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.58.61').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.60'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.61'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.60'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.61'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.58.60'),
+    load: () => import('./qianmu-video-contract.js?v=1.58.61'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.58.60'),
+    load: () => import('./qianmu-video-draft.js?v=1.58.61'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.58.60'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.58.61'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.58.60'),
+    load: () => import('./qianmu-video-task.js?v=1.58.61'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.58.60'),
+    load: () => import('./qianmu-video-budget.js?v=1.58.61'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.58.60'),
+    load: () => import('./qianmu-video-minimax.js?v=1.58.61'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.58.60'),
+    load: () => import('./qianmu-video-runtime.js?v=1.58.61'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.58.60'),
+    load: () => import('./qianmu-video-store.js?v=1.58.61'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.58.60'),
+    load: () => import('./qianmu-video-result.js?v=1.58.61'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.58.60'),
+    load: () => import('./qianmu-video-gallery.js?v=1.58.61'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.58.60'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.58.61'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.58.60'),
+    load: () => import('./qianmu-video-media.js?v=1.58.61'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.60'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.61'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.60'),
-        import('./qianmu-theaters.js?v=1.58.60'),
+        import('./builtin-theaters.js?v=1.58.61'),
+        import('./qianmu-theaters.js?v=1.58.61'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -1081,10 +1081,13 @@ let storyboardGalleryKind = 'stills';
 let storyboardVideoGalleryVisibleCount = 24;
 let storyboardVideoGallerySession = null;
 let storyboardVideoTaskStore = null;
+let storyboardVideoDraftStore = null;
 let storyboardVideoViewerEl = null;
 let storyboardVideoPlayback = null;
+let storyboardVideoDraftEditorEl = null;
+let storyboardVideoDraftEditor = null;
 const storyboardVideoGalleryRuntime = {
-  chatKey: '', status: 'idle', requestId: 0, chains: [], tasks: [], error: '', mediaError: '', taskError: '',
+  chatKey: '', status: 'idle', requestId: 0, chains: [], tasks: [], drafts: [], error: '', mediaError: '', taskError: '', draftError: '',
 };
 let initialized = false;
 let duplicateRuntimeWarned = false;
@@ -13152,6 +13155,156 @@ function storyboardVideoMetaLabel(item) {
   return [item?.technical?.resolution || '', duration ? `${duration} 秒` : '', item?.technical?.audioMode ? '含声' : ''].filter(Boolean).join(' · ') || '本地成片';
 }
 
+const STORYBOARD_VIDEO_DRAFT_MODE_LABELS = Object.freeze({
+  auto: '自动匹配',
+  i2va: '当前画面为首帧',
+  fl2va: '首尾循环',
+  t2va: '纯文本引导',
+  l2va: '尾帧引导',
+  ref2va: '参考素材',
+});
+
+function storyboardVideoDraftModeLabel(mode) {
+  return STORYBOARD_VIDEO_DRAFT_MODE_LABELS[String(mode || '')] || '自动匹配';
+}
+
+function storyboardVideoDraftMetaLabel(draft) {
+  const settings = draft?.settings || {};
+  return [
+    storyboardVideoDraftModeLabel(settings.requestedMode),
+    `${Number(settings.durationSeconds) || 6} 秒`,
+    String(settings.resolution || '768p').toUpperCase(),
+    settings.aspectRatio === 'adaptive' ? '自适应' : settings.aspectRatio,
+  ].filter(Boolean).join(' · ');
+}
+
+async function storyboardEnsureVideoDraftRuntime() {
+  const [draftModule, storeModule] = await Promise.all([
+    featureRuntime.load('videoDraft'),
+    featureRuntime.load('videoDraftStore'),
+  ]);
+  if (!storyboardVideoDraftStore) storyboardVideoDraftStore = storeModule.createVideoDraftStoreAdapter(blobStore);
+  return { draftModule, store: storyboardVideoDraftStore };
+}
+
+function storyboardCloseVideoDraftEditor() {
+  storyboardVideoDraftEditorEl?.remove();
+  storyboardVideoDraftEditorEl = null;
+  storyboardVideoDraftEditor = null;
+}
+
+function storyboardVideoDraftSourceRecord(draft) {
+  const sourceId = String(draft?.source?.recordId || '');
+  return storyboardGalleryRecords().find((item) => item.id === sourceId) || null;
+}
+
+function storyboardVideoDraftEditorMarkup(draft) {
+  const record = storyboardVideoDraftSourceRecord(draft);
+  const url = storyboardSafeUrl(record?.url);
+  const floor = Number.isInteger(draft?.owner?.floor) ? `第 ${draft.owner.floor} 层` : '当前聊天';
+  const modes = ['auto', 'i2va', 'fl2va', 't2va'];
+  const ratios = ['adaptive', '21:9', '16:9', '4:3', '1:1', '3:4', '9:16'];
+  return `<section class="sd-storyboard-video-draft-editor" role="dialog" aria-modal="true" aria-labelledby="sd-video-draft-title">
+    <header><div><span class="sd-storyboard-kicker">MOTION DRAFT</span><h2 id="sd-video-draft-title">让镜头动起来</h2></div><button type="button" class="sd-storyboard-video-draft-close" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
+    <div class="sd-storyboard-video-draft-body">
+      <figure class="${url ? '' : 'is-empty'}">${url ? `<img src="${htmlEscape(url)}" alt="动态镜头首帧" loading="lazy">` : '<i class="fa-solid fa-image"></i>'}<figcaption><b>${htmlEscape(floor)}</b><span>当前画面 · 主镜</span></figcaption></figure>
+      <div class="sd-storyboard-video-draft-fields">
+        <label><span>动态方式</span><select class="text_pole sd-video-draft-mode">${modes.map((mode) => `<option value="${mode}" ${draft.settings.requestedMode === mode ? 'selected' : ''}>${STORYBOARD_VIDEO_DRAFT_MODE_LABELS[mode]}</option>`).join('')}</select></label>
+        <div class="sd-storyboard-video-draft-grid"><label><span>时长</span><select class="text_pole sd-video-draft-duration">${[4, 5, 6, 8, 10, 12, 15].map((seconds) => `<option value="${seconds}" ${draft.settings.durationSeconds === seconds ? 'selected' : ''}>${seconds} 秒</option>`).join('')}</select></label><label><span>清晰度</span><select class="text_pole sd-video-draft-resolution"><option value="768p" ${draft.settings.resolution === '768p' ? 'selected' : ''}>768P</option><option value="2k" ${draft.settings.resolution === '2k' ? 'selected' : ''}>2K</option></select></label></div>
+        <label><span>画幅</span><select class="text_pole sd-video-draft-ratio">${ratios.map((ratio) => `<option value="${ratio}" ${draft.settings.aspectRatio === ratio ? 'selected' : ''}>${ratio === 'adaptive' ? '自适应' : ratio}</option>`).join('')}</select></label>
+        <label class="sd-storyboard-video-draft-direction"><span>想让画面如何动起来</span><textarea class="text_pole" maxlength="1600" placeholder="可留空，之后仍可继续修改">${htmlEscape(draft.direction || '')}</textarea></label>
+      </div>
+    </div>
+    <footer><small><i class="fa-solid fa-shield-halved"></i>仅保存本地草稿，不会生成、报价或提交付费任务。</small><div><button type="button" class="sd-btn sd-storyboard-video-draft-cancel">取消</button><button type="button" class="sd-btn sd-primary sd-storyboard-video-draft-save"><i class="fa-solid fa-floppy-disk"></i>保存草稿</button></div></footer>
+  </section>`;
+}
+
+async function storyboardOpenVideoDraftEditor(source) {
+  const chatKey = String(getChatKey() || '');
+  if (!chatKey) return toast('请先进入一个聊天。', 'warning');
+  try {
+    const { draftModule, store } = await storyboardEnsureVideoDraftRuntime();
+    let draft = null;
+    if (typeof source === 'string') {
+      draft = await store.load(source);
+    } else if (source?.id) {
+      const drafts = await store.list(chatKey, { limit: 100 });
+      draft = drafts.find((item) => item.source.recordId === source.id) || draftModule.createVideoDraftFromStoryboardFrame(source, {
+        sourceKind: 'inline_frame',
+        chatKey,
+      });
+    }
+    if (!draft || draft.owner.chatKey !== chatKey) return toast('这份动态草稿不属于当前聊天。', 'warning');
+    storyboardCloseVideoDraftEditor();
+    storyboardVideoDraftEditor = draftModule.normalizeVideoDraft(draft);
+    const layer = document.createElement('div');
+    layer.className = 'sd-storyboard-video-draft-layer';
+    layer.tabIndex = -1;
+    layer.innerHTML = storyboardVideoDraftEditorMarkup(storyboardVideoDraftEditor);
+    applyQianmuIcons(layer);
+    const close = () => storyboardCloseVideoDraftEditor();
+    layer.querySelector('.sd-storyboard-video-draft-close')?.addEventListener('click', close);
+    layer.querySelector('.sd-storyboard-video-draft-cancel')?.addEventListener('click', close);
+    layer.querySelector('.sd-storyboard-video-draft-save')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      const mode = String(layer.querySelector('.sd-video-draft-mode')?.value || 'auto');
+      const firstRecordId = storyboardVideoDraftEditor.source.recordId;
+      const revised = draftModule.reviseVideoDraft(storyboardVideoDraftEditor, {
+        selection: {
+          ...storyboardVideoDraftEditor.selection,
+          firstRecordId,
+          lastRecordId: mode === 'fl2va' ? firstRecordId : '',
+        },
+        settings: {
+          ...storyboardVideoDraftEditor.settings,
+          requestedMode: mode,
+          durationSeconds: Number(layer.querySelector('.sd-video-draft-duration')?.value || 6),
+          resolution: String(layer.querySelector('.sd-video-draft-resolution')?.value || '768p'),
+          aspectRatio: String(layer.querySelector('.sd-video-draft-ratio')?.value || 'adaptive'),
+        },
+        direction: String(layer.querySelector('.sd-storyboard-video-draft-direction textarea')?.value || ''),
+      });
+      if (!revised.ok) return toast('草稿归属校验失败，未保存。', 'warning');
+      button.disabled = true;
+      try {
+        const saved = await store.save(revised.draft);
+        if (chatKey !== String(getChatKey() || '')) return close();
+        storyboardVideoDraftEditor = saved;
+        if (storyboardVideoGalleryRuntime.chatKey === chatKey) {
+          storyboardVideoGalleryRuntime.drafts = [saved, ...storyboardVideoGalleryRuntime.drafts.filter((item) => item.draftId !== saved.draftId)]
+            .sort((left, right) => right.timing.updatedAt - left.timing.updatedAt);
+        }
+        close();
+        toast('动态镜头草稿已保存。', 'success');
+        if (activeTab === 'imagegen' && storyboardState().view === 'gallery' && storyboardGalleryKind === 'motion') renderModal();
+      } catch (_) {
+        button.disabled = false;
+        toast('动态镜头草稿保存失败，请稍后重试。', 'warning');
+      }
+    });
+    layer.addEventListener('click', (event) => { if (event.target === layer) close(); });
+    layer.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
+    document.body.appendChild(layer);
+    storyboardVideoDraftEditorEl = layer;
+    layer.focus({ preventScroll: true });
+  } catch (_) {
+    storyboardCloseVideoDraftEditor();
+    toast('动态镜头草稿暂时无法打开。', 'warning');
+  }
+}
+
+function renderStoryboardVideoDraftShelf(drafts = [], warning = '') {
+  const items = Array.isArray(drafts) ? drafts : [];
+  if (!items.length && !warning) return '';
+  const records = new Map(storyboardGalleryRecords().map((record) => [String(record.id || ''), record]));
+  return `<section class="sd-card sd-storyboard-video-drafts"><header><span><span class="sd-storyboard-kicker">DRAFTS</span><h3>动态草稿</h3></span><b>${items.length}</b></header>${warning ? `<p class="sd-storyboard-video-warning"><i class="fa-solid fa-triangle-exclamation"></i>${htmlEscape(warning)}</p>` : ''}${items.length ? `<div>${items.map((draft) => {
+    const record = records.get(draft.source.recordId);
+    const url = storyboardSafeUrl(record?.url);
+    const floor = Number.isInteger(draft.owner.floor) ? `第 ${draft.owner.floor} 层` : '当前聊天';
+    return `<article class="sd-storyboard-video-draft-card" data-storyboard-video-draft="${htmlEscape(draft.draftId)}"><button type="button" aria-label="编辑${htmlEscape(floor)}动态草稿">${url ? `<img src="${htmlEscape(url)}" alt="" loading="lazy">` : '<i class="fa-solid fa-video"></i>'}<span><i class="fa-solid fa-pen"></i></span></button><div><strong>${htmlEscape(floor)}</strong><small>${htmlEscape(storyboardVideoDraftMetaLabel(draft))}</small><p>${htmlEscape(draft.direction || '尚未填写运动意图')}</p><time>${htmlEscape(formatDateTime(draft.timing.updatedAt))}</time></div></article>`;
+  }).join('')}</div>` : ''}</section>`;
+}
+
 function renderStoryboardVideoTaskShelf(tasks = [], warning = '') {
   const items = Array.isArray(tasks) ? tasks : [];
   if (!items.length && !warning) return '';
@@ -13164,9 +13317,10 @@ function renderStoryboardVideoTaskShelf(tasks = [], warning = '') {
 
 function renderStoryboardVideoGallery() {
   const chatKey = String(getChatKey() || '');
-  const current = storyboardVideoGalleryRuntime.chatKey === chatKey ? storyboardVideoGalleryRuntime : { status: 'idle', chains: [], tasks: [], error: '', mediaError: '', taskError: '' };
+  const current = storyboardVideoGalleryRuntime.chatKey === chatKey ? storyboardVideoGalleryRuntime : { status: 'idle', chains: [], tasks: [], drafts: [], error: '', mediaError: '', taskError: '', draftError: '' };
   const chains = Array.isArray(current.chains) ? current.chains : [];
   const tasks = Array.isArray(current.tasks) ? current.tasks : [];
+  const drafts = Array.isArray(current.drafts) ? current.drafts : [];
   const visible = chains.slice(0, storyboardVideoGalleryVisibleCount);
   const content = current.status === 'loading'
     ? '<section class="sd-card sd-storyboard-video-empty is-loading"><i class="fa-solid fa-spinner fa-spin"></i><p>正在读取本地动态成片…</p></section>'
@@ -13180,8 +13334,9 @@ function renderStoryboardVideoGallery() {
         }).join('')}</div>${chains.length > visible.length ? `<button type="button" class="sd-btn sd-storyboard-video-more">再显示 ${Math.min(24, chains.length - visible.length)} 组</button>` : ''}`
         : '<section class="sd-card sd-storyboard-video-empty"><i class="fa-solid fa-film"></i><p>当前聊天还没有本地动态成片。</p></section>';
   const taskWarning = current.taskError ? '部分任务状态暂时无法读取。' : '';
+  const draftWarning = current.draftError ? '部分动态草稿暂时无法读取。' : '';
   const mediaWarning = current.mediaError && current.status !== 'error' ? '<p class="sd-storyboard-video-warning"><i class="fa-solid fa-triangle-exclamation"></i>部分本地成片暂时无法读取。</p>' : '';
-  return `<div class="sd-storyboard-gallery-page sd-storyboard-video-page">${renderStoryboardGalleryKindSwitch()}<section class="sd-card sd-storyboard-gallery-head sd-storyboard-video-head"><div class="sd-storyboard-gallery-title"><span><span class="sd-storyboard-kicker">MOTION</span><h3>动态阅片室</h3></span><b>${chains.length}</b></div><button type="button" class="sd-icon-btn sd-storyboard-video-refresh" title="刷新本地成片与任务状态" aria-label="刷新本地成片与任务状态" ${current.status === 'loading' ? 'disabled' : ''}><i class="fa-solid fa-rotate"></i></button></section>${renderStoryboardVideoTaskShelf(tasks, taskWarning)}${mediaWarning}${content}</div>`;
+  return `<div class="sd-storyboard-gallery-page sd-storyboard-video-page">${renderStoryboardGalleryKindSwitch()}<section class="sd-card sd-storyboard-gallery-head sd-storyboard-video-head"><div class="sd-storyboard-gallery-title"><span><span class="sd-storyboard-kicker">MOTION</span><h3>动态阅片室</h3></span><b>${chains.length}</b></div><button type="button" class="sd-icon-btn sd-storyboard-video-refresh" title="刷新本地成片、草稿与任务状态" aria-label="刷新本地成片、草稿与任务状态" ${current.status === 'loading' ? 'disabled' : ''}><i class="fa-solid fa-rotate"></i></button></section>${renderStoryboardVideoDraftShelf(drafts, draftWarning)}${renderStoryboardVideoTaskShelf(tasks, taskWarning)}${mediaWarning}${content}</div>`;
 }
 
 function storyboardCloseVideoViewer() {
@@ -13194,7 +13349,7 @@ function storyboardCloseVideoViewer() {
 async function storyboardRefreshVideoGallery({ rerender = false, force = false } = {}) {
   const chatKey = String(getChatKey() || '');
   if (!chatKey) {
-    Object.assign(storyboardVideoGalleryRuntime, { chatKey: '', status: 'ready', chains: [], tasks: [], error: '', mediaError: '', taskError: '' });
+    Object.assign(storyboardVideoGalleryRuntime, { chatKey: '', status: 'ready', chains: [], tasks: [], drafts: [], error: '', mediaError: '', taskError: '', draftError: '' });
     if (rerender) renderModal();
     return [];
   }
@@ -13202,7 +13357,7 @@ async function storyboardRefreshVideoGallery({ rerender = false, force = false }
     return storyboardVideoGalleryRuntime.chains;
   }
   const requestId = storyboardVideoGalleryRuntime.requestId + 1;
-  Object.assign(storyboardVideoGalleryRuntime, { chatKey, status: 'loading', requestId, chains: [], tasks: [], error: '', mediaError: '', taskError: '' });
+  Object.assign(storyboardVideoGalleryRuntime, { chatKey, status: 'loading', requestId, chains: [], tasks: [], drafts: [], error: '', mediaError: '', taskError: '', draftError: '' });
   if (rerender && storyboardGalleryKind === 'motion') renderModal();
   try {
     const runtime = await featureRuntime.load('videoGallery');
@@ -13212,23 +13367,29 @@ async function storyboardRefreshVideoGallery({ rerender = false, force = false }
       if (!storyboardVideoTaskStore) storyboardVideoTaskStore = storeRuntime.createVideoRuntimeStoreAdapter(blobStore);
       return storyboardVideoTaskStore.listTasks(chatKey, { limit: 200 });
     });
-    const [mediaResult, taskResult] = await Promise.allSettled([mediaPromise, taskPromise]);
-    if (mediaResult.status === 'rejected' && taskResult.status === 'rejected') throw new Error('video gallery stores are unavailable');
+    const draftPromise = featureRuntime.load('videoDraftStore').then((storeRuntime) => {
+      if (!storyboardVideoDraftStore) storyboardVideoDraftStore = storeRuntime.createVideoDraftStoreAdapter(blobStore);
+      return storyboardVideoDraftStore.list(chatKey, { limit: 120 });
+    });
+    const [mediaResult, taskResult, draftResult] = await Promise.allSettled([mediaPromise, taskPromise, draftPromise]);
+    if (mediaResult.status === 'rejected' && taskResult.status === 'rejected' && draftResult.status === 'rejected') throw new Error('video gallery stores are unavailable');
     const mediaItems = mediaResult.status === 'fulfilled' ? mediaResult.value : [];
     const chains = runtime.buildVideoVersionChains(mediaItems);
     const availableIds = mediaItems.flatMap((item) => [item.assetId, item.recordId]);
     const tasks = runtime.buildVideoTaskGalleryStatuses(taskResult.status === 'fulfilled' ? taskResult.value : [], availableIds, { limit: 40 });
+    const drafts = draftResult.status === 'fulfilled' ? draftResult.value : [];
     if (requestId !== storyboardVideoGalleryRuntime.requestId || chatKey !== String(getChatKey() || '')) return [];
     Object.assign(storyboardVideoGalleryRuntime, {
-      chatKey, status: 'ready', chains, tasks, error: '',
+      chatKey, status: 'ready', chains, tasks, drafts, error: '',
       mediaError: mediaResult.status === 'rejected' ? 'video_media_unavailable' : '',
       taskError: taskResult.status === 'rejected' ? 'video_tasks_unavailable' : '',
+      draftError: draftResult.status === 'rejected' ? 'video_drafts_unavailable' : '',
     });
     if (rerender && activeTab === 'imagegen' && storyboardState().view === 'gallery' && storyboardGalleryKind === 'motion') renderModal();
     return chains;
   } catch (_) {
     if (requestId !== storyboardVideoGalleryRuntime.requestId) return [];
-    Object.assign(storyboardVideoGalleryRuntime, { chatKey, status: 'error', chains: [], tasks: [], error: '动态成片与任务仓暂时无法读取。', mediaError: 'video_media_unavailable', taskError: 'video_tasks_unavailable' });
+    Object.assign(storyboardVideoGalleryRuntime, { chatKey, status: 'error', chains: [], tasks: [], drafts: [], error: '动态阅片室的本地数据暂时无法读取。', mediaError: 'video_media_unavailable', taskError: 'video_tasks_unavailable', draftError: 'video_drafts_unavailable' });
     if (rerender && activeTab === 'imagegen' && storyboardState().view === 'gallery' && storyboardGalleryKind === 'motion') renderModal();
     return [];
   }
@@ -15205,7 +15366,7 @@ function storyboardInlineRecordMarkup(record) {
   return `<figure data-storyboard-record="${htmlEscape(record.id)}" data-storyboard-task="${htmlEscape(record.taskId || record.groupId || '')}">
     <button type="button" class="sd-storyboard-inline-preview" data-storyboard-chat-action="preview" title="查看画面"><img src="${htmlEscape(url)}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 48))}"></button>
     <button type="button" class="sd-storyboard-inline-more" data-storyboard-chat-action="toggle-actions" title="更多操作" aria-label="更多操作" aria-expanded="false"><i class="fa-solid fa-ellipsis"></i></button>
-    <div class="sd-storyboard-inline-actions" aria-hidden="true"><button type="button" data-storyboard-chat-action="edit" title="编辑当前提示词" aria-label="编辑当前提示词"><i class="fa-solid fa-pen"></i></button><button type="button" data-storyboard-chat-action="artist" title="更换画师并重绘" aria-label="更换画师并重绘"><i class="fa-solid fa-palette"></i></button><button type="button" data-storyboard-chat-action="redraw" title="重新生成" aria-label="重新生成"><i class="fa-solid fa-rotate-right" data-qm-icon="image-regenerate"></i></button><button type="button" data-storyboard-chat-action="collapse" title="折叠正文插图" aria-label="折叠正文插图"><i class="fa-solid fa-compress"></i></button><button type="button" data-storyboard-chat-action="copy" title="复制提示词" aria-label="复制提示词"><i class="fa-solid fa-copy"></i></button><button type="button" data-storyboard-chat-action="download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button><button type="button" data-storyboard-chat-action="detach" title="移出正文" aria-label="移出正文"><i class="fa-solid fa-eye-slash"></i></button></div>
+    <div class="sd-storyboard-inline-actions" aria-hidden="true"><button type="button" data-storyboard-chat-action="edit" title="编辑当前提示词" aria-label="编辑当前提示词"><i class="fa-solid fa-pen"></i></button><button type="button" data-storyboard-chat-action="artist" title="更换画师并重绘" aria-label="更换画师并重绘"><i class="fa-solid fa-palette"></i></button><button type="button" data-storyboard-chat-action="redraw" title="重新生成" aria-label="重新生成"><i class="fa-solid fa-rotate-right" data-qm-icon="image-regenerate"></i></button><button type="button" data-storyboard-chat-action="motion" title="让镜头动起来" aria-label="让镜头动起来"><i class="fa-solid fa-video"></i></button><button type="button" data-storyboard-chat-action="collapse" title="折叠正文插图" aria-label="折叠正文插图"><i class="fa-solid fa-compress"></i></button><button type="button" data-storyboard-chat-action="copy" title="复制提示词" aria-label="复制提示词"><i class="fa-solid fa-copy"></i></button><button type="button" data-storyboard-chat-action="download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button><button type="button" data-storyboard-chat-action="detach" title="移出正文" aria-label="移出正文"><i class="fa-solid fa-eye-slash"></i></button></div>
   </figure>`;
 }
 
@@ -15868,6 +16029,7 @@ async function storyboardOnChatClick(event) {
     return;
   }
   if (button.dataset.storyboardChatAction === 'preview') return storyboardOpenLightbox(record);
+  if (button.dataset.storyboardChatAction === 'motion') return storyboardOpenVideoDraftEditor(record);
   if (button.dataset.storyboardChatAction === 'copy') {
     await coreadCopyText(record.finalPrompt || record.prompt || '');
     return toast('提示词已复制。', 'success');
@@ -15916,6 +16078,7 @@ function storyboardUnbindChat() {
   document.querySelectorAll('#chat .sd-storyboard-message-action').forEach((node) => node.remove());
   storyboardCloseLightbox();
   storyboardCloseVideoViewer();
+  storyboardCloseVideoDraftEditor();
   storyboardGallerySelection.clear();
   storyboardGallerySelectMode = false;
   storyboardGalleryVisibleCount = 40;
@@ -16041,6 +16204,10 @@ function bindStoryboardTabEvents(root) {
   root.querySelectorAll('[data-storyboard-video-asset] .sd-storyboard-video-open').forEach((button) => button.addEventListener('click', () => {
     const assetId = button.closest('[data-storyboard-video-asset]')?.dataset.storyboardVideoAsset;
     if (assetId) void storyboardOpenVideoViewer(assetId);
+  }));
+  root.querySelectorAll('[data-storyboard-video-draft] > button').forEach((button) => button.addEventListener('click', () => {
+    const draftId = button.closest('[data-storyboard-video-draft]')?.dataset.storyboardVideoDraft;
+    if (draftId) void storyboardOpenVideoDraftEditor(draftId);
   }));
   root.querySelector('.sd-storyboard-video-more')?.addEventListener('click', () => {
     storyboardVideoGalleryVisibleCount += 24;
@@ -29179,6 +29346,7 @@ function bindEvents() {
     void storyboardHandleAutomaticCapture();
   };
   const rerenderHandler = async () => {
+    storyboardCloseVideoDraftEditor();
     settings = getSettings();
     if (isPlainObject(settings.imagegen)) normalizeStoryboardState(settings.imagegen);
     injectSelection.clear();   // 切换聊天后旧写入勾选失效
@@ -29385,10 +29553,12 @@ function cleanupRuntime(resetSettings = false) {
     clean('storyboard events', () => storyboardUnbindChat());
     clean('video gallery', () => {
       storyboardCloseVideoViewer();
+      storyboardCloseVideoDraftEditor();
       storyboardVideoGallerySession?.dispose?.();
       storyboardVideoGallerySession = null;
       storyboardVideoTaskStore = null;
-      Object.assign(storyboardVideoGalleryRuntime, { chatKey: '', status: 'idle', requestId: storyboardVideoGalleryRuntime.requestId + 1, chains: [], tasks: [], error: '', mediaError: '', taskError: '' });
+      storyboardVideoDraftStore = null;
+      Object.assign(storyboardVideoGalleryRuntime, { chatKey: '', status: 'idle', requestId: storyboardVideoGalleryRuntime.requestId + 1, chains: [], tasks: [], drafts: [], error: '', mediaError: '', taskError: '', draftError: '' });
     });
     clean('focus clock', () => stopFocusClockRuntime());
     clean('notes', () => {

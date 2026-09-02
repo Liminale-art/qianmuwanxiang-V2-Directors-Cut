@@ -38,7 +38,7 @@ test('task status is read from local storage without polling or submission', () 
   assert.match(source, /function renderStoryboardVideoTaskShelf\(tasks = \[\], warning = ''\)/);
   assert.match(source, /待核对提交|动态任务/);
   assert.doesNotMatch(refreshBlock, /\.drive\(|\.submit\(|resumePlans|pollMiniMax|setInterval|setTimeout/);
-  assert.match(refreshBlock, /Promise\.allSettled\(\[mediaPromise, taskPromise\]\)/);
+  assert.match(refreshBlock, /Promise\.allSettled\(\[mediaPromise, taskPromise, draftPromise\]\)/);
 });
 
 test('playback URLs are released on close, chat switch, modal close and extension cleanup', () => {
