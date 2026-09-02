@@ -95,11 +95,11 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.41';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.42';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.41';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.41';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.41';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.42';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.42';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.42';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -152,35 +152,35 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.41';
+} from './qianmu-storyboard.js?v=1.58.42';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.41';
+const VERSION = '1.58.42';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.41'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.42'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.41'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.42'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.41'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.42'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.41'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.42'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.41'),
-        import('./qianmu-theaters.js?v=1.58.41'),
+        import('./builtin-theaters.js?v=1.58.42'),
+        import('./qianmu-theaters.js?v=1.58.42'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -948,6 +948,9 @@ const storyboardPipelineArchiveCache = new Map(); // 已结束的完整流水；
 const storyboardPipelineArchiveWrites = new Map();
 let storyboardPipelineArchiveHydration = null;
 let storyboardPipelineArchiveEpoch = 0;
+const storyboardSnapshotCache = new Map(); // key -> 精确重绘 snapshot；聊天 metadata 只留轻量 record
+const storyboardSnapshotReads = new Map();
+let storyboardSnapshotEpoch = 0;
 const storyboardApiKeys = new Map(); // credentialId -> Key；不进入设置、日志或分镜数据包
 const storyboardDraftApiKeys = new Map(); // 表单暂存：测试失败/页面重绘时不丢失用户刚输入的 Key
 const STORYBOARD_BROWSER_CREDENTIALS_KEY = 'qianmu.storyboard.credentials.v1';
@@ -2597,7 +2600,7 @@ async function buildWorldContextText() {
 
 // 注入预览/注入段的字数弹性档：按各字段要求生成字数的约 2 倍设上限，留足溢出余地。
 // 生成那点字数本就 OK，截断纯属显示问题——统一抬到弹性档，根除「人物暗流/关系暗涌/世界大势」等显示不全。
-// 改这一处即可整体调节，三个 digest 函数（buildPlanDigest/buildThreadsDigest/buildGeopoliticsDigest）共用。
+// 改这一处即可整体调节，推演与世界格局 digest 共用。
 const INJ_LEN = {
   label: 60,    // 短名/标题/起点/时机/阶段名：title、name、spark、timing
   line: 150,    // 一句话字段：objective、content、tension、drift、essence、hidden_agenda、note、next_action、mood
@@ -7191,6 +7194,7 @@ const STORAGE_ITEM_RISK = Object.freeze({
   tts_lines: ['可重新提取', false],
   notes: ['不可恢复 · 固定便笺', true],
   storyboard_pipeline_logs: ['可清理 · 分镜详细流水', false],
+  storyboard_snapshots: ['不可恢复 · 阅片精确重绘设置', true],
   __orphan_reader_blobs__: ['无书籍主体引用 · 删除前重查', false],
   __diagnostics__: ['千幕与分镜日志', false],
 });
@@ -7416,7 +7420,7 @@ async function importTtsFavoritesBackup(event) {
   }
 }
 
-const STORAGE_CHAT_CLEARABLE = new Set(['audio', 'tts_lines', 'reader_chats', 'reader_vectors']);
+const STORAGE_CHAT_CLEARABLE = new Set(['audio', 'tts_lines', 'reader_chats', 'reader_vectors', 'storyboard_snapshots']);
 
 function storageChatScopeLabel(chatKey, index = 0) {
   const value = String(chatKey || '');
@@ -7483,6 +7487,7 @@ function openStorageChatCleanupDialog(data) {
 
 function reconcileClearedStorageItems(selected) {
   const cleared = new Set(selected);
+  let chatMetadataChanged = false;
   if (cleared.has('reader_books')) {
     coread().books = [];
     coread().collections = [];
@@ -7528,6 +7533,19 @@ function reconcileClearedStorageItems(selected) {
     const storyboard = storyboardState();
     storyboard.pipelineLogs = (storyboard.pipelineLogs || []).filter((item) => !storyboardPipelineIsTerminal(item));
   }
+  if (cleared.has('storyboard_snapshots')) {
+    storyboardSnapshotEpoch++;
+    storyboardSnapshotCache.clear();
+    storyboardSnapshotReads.clear();
+    for (const record of storyboardGalleryRecords()) {
+      if (!record?.snapshot && !record?.snapshotRef && !record?.snapshotVersion) continue;
+      delete record.snapshot;
+      delete record.snapshotRef;
+      delete record.snapshotVersion;
+      chatMetadataChanged = true;
+    }
+  }
+  return { chatMetadataChanged };
 }
 
 function paintStorageManagementCard() {
@@ -7554,7 +7572,7 @@ function bindStorageManagementEvents(root) {
     try {
       const stores = selected.filter((item) => !item.startsWith('__'));
       const storageResult = await blobStore.clearStorageItems(stores);
-      reconcileClearedStorageItems(storageResult.cleared);
+      const reconciled = reconcileClearedStorageItems(storageResult.cleared);
       let orphanResult = null;
       if (selected.includes('__orphan_reader_blobs__')) orphanResult = await blobStore.clearOrphanedReaderBlobs();
       if (selected.includes('__diagnostics__')) {
@@ -7565,6 +7583,7 @@ function bindStorageManagementEvents(root) {
         storyboard.pipelineLogs = [];
       }
       saveSettings();
+      if (reconciled.chatMetadataChanged) await saveMetadata();
       await refreshStorageInventory(true);
       if (storageResult.failed.length) {
         const knownStores = storageInventoryState.data?.idb?.stores || [];
@@ -7590,7 +7609,8 @@ function bindStorageManagementEvents(root) {
       const currentStores = [...new Set(result.cleared
         .filter((item) => item.count > 0 && item.chatKey === String(getChatKey() || ''))
         .map((item) => item.name))];
-      if (currentStores.length) reconcileClearedStorageItems(currentStores);
+      const reconciled = currentStores.length ? reconcileClearedStorageItems(currentStores) : { chatMetadataChanged: false };
+      if (reconciled.chatMetadataChanged) await saveMetadata();
       saveSettings();
       await refreshStorageInventory(true);
       if (result.failed.length) {
@@ -11517,6 +11537,154 @@ function storyboardGalleryRecords() {
   return store.storyboardImages;
 }
 
+function storyboardRecordChatKey(record, fallback = String(getChatKey() || '')) {
+  return String(record?.chatKey || record?.messageRef?.chatKey || record?.snapshot?.chatKey || fallback || '');
+}
+
+function storyboardSnapshotKey(record, chatKey = storyboardRecordChatKey(record)) {
+  const recordId = String(record?.id || '').trim();
+  const owner = String(chatKey || '').trim();
+  return recordId && owner ? `${owner}\u241f${recordId}` : '';
+}
+
+function storyboardSnapshotForRecord(record) {
+  if (record?.snapshot && typeof record.snapshot === 'object') return record.snapshot;
+  const key = String(record?.snapshotRef || storyboardSnapshotKey(record));
+  return key ? storyboardSnapshotCache.get(key) || null : null;
+}
+
+async function storyboardReadSnapshotForRecord(record) {
+  const immediate = storyboardSnapshotForRecord(record);
+  if (immediate || !record || !blobStore.blobStoreAvailable()) return immediate;
+  const expectedChatKey = storyboardRecordChatKey(record);
+  const key = String(record.snapshotRef || storyboardSnapshotKey(record, expectedChatKey));
+  if (!key || expectedChatKey !== String(getChatKey() || '')) return null;
+  if (storyboardSnapshotReads.has(key)) return storyboardSnapshotReads.get(key);
+  const epoch = storyboardSnapshotEpoch;
+  const task = blobStore.getStoryboardSnapshots([key]).then((rows) => {
+    if (epoch !== storyboardSnapshotEpoch || expectedChatKey !== String(getChatKey() || '')) return null;
+    const snapshot = rows.find((item) => item?.key === key)?.snapshot || null;
+    if (snapshot) {
+      storyboardSnapshotCache.set(key, snapshot);
+      record.snapshotRef = key;
+      record.snapshotVersion = 1;
+    }
+    return snapshot;
+  }).catch((error) => {
+    console.warn('[千幕] 阅片重绘快照读取失败，继续使用画面轻量参数。', error);
+    return null;
+  }).finally(() => {
+    if (storyboardSnapshotReads.get(key) === task) storyboardSnapshotReads.delete(key);
+  });
+  storyboardSnapshotReads.set(key, task);
+  return task;
+}
+
+async function storyboardStoreSnapshotForRecord(record, snapshot) {
+  if (!record || !snapshot || typeof snapshot !== 'object') return false;
+  const expectedChatKey = storyboardRecordChatKey(record);
+  const key = storyboardSnapshotKey(record, expectedChatKey);
+  const safe = sanitizeStoryboardSnapshot(snapshot, { source: record.source, prompt: record.prompt, negative: record.negative });
+  record.snapshot = safe;
+  if (!key || !blobStore.blobStoreAvailable()) return false;
+  const epoch = storyboardSnapshotEpoch;
+  try {
+    await blobStore.putStoryboardSnapshots([{ key, chatKey: expectedChatKey, recordId: record.id, snapshot: clone(safe) }]);
+    if (epoch !== storyboardSnapshotEpoch || expectedChatKey !== String(getChatKey() || '') || record.snapshot !== safe) return false;
+    storyboardSnapshotCache.set(key, clone(safe));
+    record.chatKey = expectedChatKey;
+    record.snapshotRef = key;
+    record.snapshotVersion = 1;
+    delete record.snapshot;
+    return true;
+  } catch (error) {
+    console.warn('[千幕] 阅片重绘快照暂未归档，已保留聊天内原数据。', error);
+    return false;
+  }
+}
+
+async function storyboardArchiveGallerySnapshots(records = storyboardGalleryRecords()) {
+  const expectedChatKey = String(getChatKey() || '');
+  const epoch = storyboardSnapshotEpoch;
+  const captures = (Array.isArray(records) ? records : []).filter((record) => (
+    record?.id && record.snapshot && typeof record.snapshot === 'object'
+      && storyboardRecordChatKey(record, expectedChatKey) === expectedChatKey
+  )).map((record) => ({
+    record,
+    source: record.snapshot,
+    key: storyboardSnapshotKey(record, expectedChatKey),
+    snapshot: sanitizeStoryboardSnapshot(record.snapshot, { source: record.source, prompt: record.prompt, negative: record.negative }),
+  })).filter((item) => item.key);
+  if (!captures.length || !blobStore.blobStoreAvailable()) return 0;
+  try {
+    await blobStore.putStoryboardSnapshots(captures.map((item) => ({
+      key: item.key, chatKey: expectedChatKey, recordId: item.record.id, snapshot: clone(item.snapshot),
+    })));
+    if (epoch !== storyboardSnapshotEpoch || expectedChatKey !== String(getChatKey() || '')) return 0;
+    const stripped = [];
+    const currentById = new Map(storyboardGalleryRecords().map((record) => [String(record?.id || ''), record]));
+    const abandonedKeys = [];
+    for (const item of captures) {
+      const current = currentById.get(String(item.record.id || ''));
+      if (current !== item.record) {
+        if (!current) abandonedKeys.push(item.key);
+        continue;
+      }
+      if (item.record.snapshot !== item.source) continue;
+      storyboardSnapshotCache.set(item.key, clone(item.snapshot));
+      item.record.chatKey = expectedChatKey;
+      item.record.snapshotRef = item.key;
+      item.record.snapshotVersion = 1;
+      delete item.record.snapshot;
+      stripped.push(item);
+    }
+    if (abandonedKeys.length) void blobStore.deleteStoryboardSnapshots(abandonedKeys).catch(() => {});
+    if (!stripped.length) return 0;
+    try { await saveMetadata(); }
+    catch (error) {
+      for (const item of stripped) item.record.snapshot = item.source;
+      throw error;
+    }
+    return stripped.length;
+  } catch (error) {
+    console.warn('[千幕] 阅片快照渐进迁移未完成，旧聊天数据保持原样。', error);
+    return 0;
+  }
+}
+
+async function storyboardHydrateGallerySnapshots(records = storyboardGalleryRecords(), { migrate = true } = {}) {
+  if (migrate) await storyboardArchiveGallerySnapshots(records);
+  const expectedChatKey = String(getChatKey() || '');
+  const epoch = storyboardSnapshotEpoch;
+  const missing = (Array.isArray(records) ? records : []).map((record) => ({
+    record, key: String(record?.snapshotRef || storyboardSnapshotKey(record, expectedChatKey)),
+  })).filter((item) => item.record && !item.record.snapshot && item.key && !storyboardSnapshotCache.has(item.key));
+  if (!missing.length || !blobStore.blobStoreAvailable()) return 0;
+  try {
+    const rows = await blobStore.getStoryboardSnapshots(missing.map((item) => item.key));
+    if (epoch !== storyboardSnapshotEpoch || expectedChatKey !== String(getChatKey() || '')) return 0;
+    for (const row of rows) if (row?.key && row.snapshot) storyboardSnapshotCache.set(String(row.key), row.snapshot);
+    return rows.length;
+  } catch (error) {
+    console.warn('[千幕] 阅片重绘快照批量读取失败，图片浏览仍可继续。', error);
+    return 0;
+  }
+}
+
+async function storyboardDeleteRecordSnapshots(records) {
+  const list = (Array.isArray(records) ? records : [records]).filter(Boolean);
+  const keys = [...new Set(list.map((record) => String(record.snapshotRef || storyboardSnapshotKey(record))).filter(Boolean))];
+  for (const key of keys) storyboardSnapshotCache.delete(key);
+  if (!keys.length || !blobStore.blobStoreAvailable()) return 0;
+  try {
+    await blobStore.deleteStoryboardSnapshots(keys);
+    return keys.length;
+  } catch (error) {
+    console.warn('[千幕] 已删除画面记录，但残留重绘快照需由储存空间继续清理。', error);
+    return 0;
+  }
+}
+
 function storyboardGalleryCollections() {
   const store = getChatStore();
   if (!Array.isArray(store.storyboardCollections)) store.storyboardCollections = [];
@@ -11563,6 +11731,7 @@ async function storyboardDrainPendingDeliveries(chatKey = String(getChatKey() ||
     const state = storyboardState();
     const changedTasks = new Map();
     const touchedFloors = new Set();
+    const receivedRecords = [];
     let received = 0;
     for (const delivery of deliveries.values()) {
       let deliveryLinkState = '';
@@ -11598,6 +11767,7 @@ async function storyboardDrainPendingDeliveries(chatKey = String(getChatKey() ||
           deliveryLinkState ||= record.linkState;
         }
         gallery.push(record);
+        receivedRecords.push(record);
         knownIds.add(String(record.id));
         galleryById.set(String(record.id), record);
         resultIds.push(String(record.id));
@@ -11622,8 +11792,10 @@ async function storyboardDrainPendingDeliveries(chatKey = String(getChatKey() ||
       }
       return 0;
     }
-    if (gallery.length > 400) gallery.splice(0, gallery.length - 400);
+    const prunedRecords = gallery.length > 400 ? gallery.splice(0, gallery.length - 400) : [];
     await saveMetadata();
+    void storyboardArchiveGallerySnapshots(receivedRecords);
+    if (prunedRecords.length) void storyboardDeleteRecordSnapshots(prunedRecords);
     if (String(getChatKey() || '') !== expectedChatKey) return 0;
     if (changedTasks.size) state.taskStates = state.taskStates.map((task) => changedTasks.get(task.id) || task);
     saveSettings();
@@ -11932,7 +12104,7 @@ function storyboardReconcileGalleryLinks({ persist = true } = {}) {
   const chatKey = String(getChatKey() || '');
   let changed = false;
   for (const record of storyboardGalleryRecords()) {
-    if (!record || record.snapshot?.chatKey && record.snapshot.chatKey !== chatKey) continue;
+    if (!record || storyboardRecordChatKey(record, chatKey) !== chatKey) continue;
     if (!record.messageRef?.messageKey) {
       const recovered = storyboardRecoverLegacyMessageReference(record, chat, chatKey);
       if (recovered) { record.messageRef = recovered; changed = true; }
@@ -11990,15 +12162,19 @@ async function storyboardAttachProductionRecord(record) {
   record.swipeId = Number(message.swipe_id || 0);
   record.messageRef = createStoryboardMessageReference({ message, chatKey, floor });
   record.paragraphAnchor = storyboardAnchorForMessage(message, floor, record.finalPrompt || record.prompt || '', null);
-  if (record.snapshot) {
-    record.snapshot.target = 'floor';
-    record.snapshot.floor = floor;
-    record.snapshot.chatKey = chatKey;
-    record.snapshot.inlineByDefault = true;
-    record.snapshot.messageRef = clone(record.messageRef);
-    record.snapshot.messageHash = record.messageHash;
-    record.snapshot.swipeId = record.swipeId;
-    record.snapshot.paragraphAnchor = clone(record.paragraphAnchor);
+  record.chatKey = chatKey;
+  const snapshot = await storyboardReadSnapshotForRecord(record);
+  if (snapshot) {
+    const nextSnapshot = clone(snapshot);
+    nextSnapshot.target = 'floor';
+    nextSnapshot.floor = floor;
+    nextSnapshot.chatKey = chatKey;
+    nextSnapshot.inlineByDefault = true;
+    nextSnapshot.messageRef = clone(record.messageRef);
+    nextSnapshot.messageHash = record.messageHash;
+    nextSnapshot.swipeId = record.swipeId;
+    nextSnapshot.paragraphAnchor = clone(record.paragraphAnchor);
+    await storyboardStoreSnapshotForRecord(record, nextSnapshot);
   }
   await saveMetadata();
   storyboardRenderInlineImages(floor);
@@ -13003,12 +13179,12 @@ function storyboardLoadLogToWorkbench(log) {
   return sameChat;
 }
 
-function storyboardLoadRecordToWorkbench(record) {
+async function storyboardLoadRecordToWorkbench(record) {
   if (!record) return false;
   const linkedLog = storyboardState().logs.find((item) => item.recordId === record.id);
   if (linkedLog?.snapshot) return storyboardLoadLogToWorkbench(linkedLog);
   const state = storyboardState();
-  const snap = record.snapshot && typeof record.snapshot === 'object' ? record.snapshot : null;
+  const snap = await storyboardReadSnapshotForRecord(record);
   const source = STORYBOARD_SOURCES[snap?.source] ? snap.source : (STORYBOARD_SOURCES[record.source] ? record.source : state.source);
   state.source = source;
   if (snap?.profile) Object.assign(state.profiles[source], clone(snap.profile), { loaded: true });
@@ -14238,12 +14414,17 @@ function storyboardRemoveQueuedLog(log) {
 
 async function storyboardHandleChatChanged() {
   const currentChatKey = String(getChatKey() || '');
+  storyboardSnapshotEpoch++;
+  storyboardSnapshotCache.clear();
+  storyboardSnapshotReads.clear();
   storyboardCloseLightbox();
   storyboardGallerySelection.clear();
   storyboardGallerySelectMode = false;
   storyboardGalleryOpenCollectionId = '';
   storyboardGalleryVisibleCount = 40;
-  return storyboardDrainPendingDeliveries(currentChatKey);
+  const received = await storyboardDrainPendingDeliveries(currentChatKey);
+  if (currentChatKey === String(getChatKey() || '')) void storyboardArchiveGallerySnapshots();
+  return received;
 }
 
 async function storyboardPrepareGatewayAssets(job) {
@@ -14332,7 +14513,7 @@ function storyboardCreateRecord(job, log, url, index, anchorState, response) {
     collectionId: job.collectionId || '', collectionIds: storyboardItemCollectionIds(job), tags: uniqueClean(job.tags || []).slice(0, 30), planId: job.planId || '', planShotId: job.planShotId || '', imageIndex: index, url, prompt: job.prompt, finalPrompt: job.payload?.prompt,
     artistString: job.artistString || job.payload?.artistString || '', artistPresetId: job.artistPresetId || '', artistPoolId: job.artistPoolId || '', artistRouteSource: job.artistRouteSource || '', contentRating: job.contentRating || 'sfw',
     negative: job.negative, effectiveNegative: job.payload?.negative || '', source: job.source,
-    floor, requestedInline: Boolean(job.inlineByDefault), inline: Boolean(job.inlineByDefault && Number.isInteger(floor)), paragraphAnchor: clone(job.paragraphAnchor || null),
+    chatKey: String(job.chatKey || ''), floor, requestedInline: Boolean(job.inlineByDefault), inline: Boolean(job.inlineByDefault && Number.isInteger(floor)), paragraphAnchor: clone(job.paragraphAnchor || null),
     paragraphSelection: clone(job.paragraphSelection || null),
     origin: job.paragraphSelection?.mode === 'manual_supplement' ? 'manual_supplement' : (job.automatic ? 'automatic' : 'manual'),
     shotSpec: clone(job.shotSpec || null), compiledPrompt: clone(job.compiledPrompt || null), compositionDecision: clone(job.compositionDecision || null),
@@ -14424,8 +14605,10 @@ async function storyboardRunJob(job, log) {
     if (currentOwnsResult) {
       const gallery = storyboardGalleryRecords();
       gallery.push(...records);
-      if (gallery.length > 400) gallery.splice(0, gallery.length - 400);
+      const prunedRecords = gallery.length > 400 ? gallery.splice(0, gallery.length - 400) : [];
       await saveMetadata();
+      void storyboardArchiveGallerySnapshots(records);
+      if (prunedRecords.length) void storyboardDeleteRecordSnapshots(prunedRecords);
       storyboardSetPlanStatus(plan, 'generating', { job, floor: anchorState.floor, stage: 'attachment', progress: 0.92, deliveryState, linkState: resultLinkState });
     } else {
       deliveryState = await storyboardStoreDeferredDelivery(job, records);
@@ -14692,8 +14875,8 @@ function storyboardOpenLightbox(input, initialId = '') {
     const sourceFloor = Number.isInteger(record.floor) ? `第 ${record.floor} 层` : (record.lastKnownFloor != null ? `原第 ${record.lastKnownFloor} 层` : '仅存于阅片室');
     const positive = String(record.prompt || '').trim() || '—';
     const negative = String(record.effectiveNegative || record.negative || '').trim() || '—';
-    const finalPrompt = String(record.finalPrompt || record.snapshot?.payload?.prompt || record.prompt || '').trim() || '—';
-    const artist = String(record.artistString || record.snapshot?.artistString || '').trim() || '—';
+    const finalPrompt = String(record.finalPrompt || record.prompt || '').trim() || '—';
+    const artist = String(record.artistString || '').trim() || '—';
     layer.innerHTML = `<button type="button" class="sd-storyboard-lightbox-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button><div class="sd-storyboard-lightbox-stage"><img src="${htmlEscape(url)}" alt="${htmlEscape(snip(finalPrompt, 80))}">${variants.length > 1 ? `<button type="button" class="sd-storyboard-lightbox-prev" aria-label="上一张"><i class="fa-solid fa-chevron-left"></i></button><button type="button" class="sd-storyboard-lightbox-next" aria-label="下一张"><i class="fa-solid fa-chevron-right"></i></button><span class="sd-storyboard-lightbox-index">${currentIndex + 1} / ${variants.length}</span>` : ''}</div><aside class="sd-storyboard-lightbox-detail"><dl><div><dt>来源楼层</dt><dd>${htmlEscape(sourceFloor)}</dd></div><div><dt>正面提示词</dt><dd>${htmlEscape(positive)}</dd></div><div><dt>负面提示词</dt><dd>${htmlEscape(negative)}</dd></div><div><dt>画师串</dt><dd>${htmlEscape(artist)}</dd></div><div><dt>模型与参数</dt><dd>${htmlEscape(`${STORYBOARD_SOURCES[record.source]?.label || record.source || '分镜'} · ${record.model || '默认模型'} · ${storyboardRecordParameterLabel(record)}`)}</dd></div><div><dt>种子</dt><dd>${htmlEscape(record.seed == null || record.seed === '' ? '随机' : String(record.seed))}</dd></div></dl><footer><button type="button" class="sd-btn sd-storyboard-lightbox-download">下载</button><button type="button" class="sd-btn sd-danger sd-storyboard-lightbox-delete">删除</button></footer></aside>`;
     applyQianmuIcons(layer);
     layer.querySelector('.sd-storyboard-lightbox-close')?.addEventListener('click', storyboardCloseLightbox);
@@ -14707,6 +14890,7 @@ function storyboardOpenLightbox(input, initialId = '') {
       storyboardGallerySelection.delete(record.id);
       variants = variants.filter((item) => item.id !== record.id);
       await saveMetadata();
+      void storyboardDeleteRecordSnapshots(record);
       storyboardRenderInlineImages(Number.isInteger(record.floor) ? record.floor : null);
       rerenderIfOpen();
       if (!variants.length) storyboardCloseLightbox();
@@ -14744,11 +14928,12 @@ async function storyboardDownloadRecord(record) {
 
 async function storyboardExportPackage() {
   await storyboardHydratePipelineArchive();
+  await storyboardHydrateGallerySnapshots();
   const state = normalizeStoryboardState(clone(storyboardState()));
   const pipelineLogs = state.logs.map((log) => storyboardPipelineForLog(log)).filter(Boolean);
   const records = storyboardGalleryRecords().map((item) => ({
     ...clone(item),
-    snapshot: sanitizeStoryboardSnapshot(item?.snapshot || {}, { source: item?.source, prompt: item?.prompt, negative: item?.negative }),
+    snapshot: sanitizeStoryboardSnapshot(storyboardSnapshotForRecord(item) || {}, { source: item?.source, prompt: item?.prompt, negative: item?.negative }),
   }));
   toast('正在打包分镜数据…', 'info');
   const media = [];
@@ -14836,6 +15021,9 @@ async function storyboardImportPackage(file) {
     const raw = incomingImages[index];
     if (!raw?.id || !STORYBOARD_SOURCES[raw.source]) continue;
     const record = clone(raw);
+    record.chatKey = String(getChatKey() || '');
+    delete record.snapshotRef;
+    delete record.snapshotVersion;
     record.snapshot = sanitizeStoryboardSnapshot(record.snapshot || {}, { source: record.source, prompt: record.prompt, negative: record.negative });
     const embedded = media.get(String(record.id));
     if (embedded && typeof utils?.saveBase64AsFile === 'function') {
@@ -14857,14 +15045,20 @@ async function storyboardImportPackage(file) {
     imported.push(record);
   }
   const store = getChatStore();
-  store.storyboardImages = storyboardMergeById(storyboardGalleryRecords(), imported, 400);
+  const existingRecords = storyboardGalleryRecords();
+  store.storyboardImages = storyboardMergeById(existingRecords, imported, 400);
+  const retainedRecordIds = new Set(store.storyboardImages.map((item) => String(item.id || '')));
+  const prunedRecords = existingRecords.filter((item) => !retainedRecordIds.has(String(item.id || '')));
   store.storyboardCollections = storyboardMergeById(storyboardGalleryCollections(), incomingCollections, 120)
     .filter((item) => String(item.name || '').trim()).map((item) => ({
       id: String(item.id), name: String(item.name).trim().slice(0, 80),
       createdAt: Number(item.createdAt) || Date.now(), updatedAt: Number(item.updatedAt) || Date.now(),
     }));
   normalizeStoryboardState(state);
-  saveSettings(); await saveMetadata(); storyboardScheduleInlineRender(30); renderModal();
+  saveSettings(); await saveMetadata();
+  void storyboardArchiveGallerySnapshots(store.storyboardImages);
+  if (prunedRecords.length) void storyboardDeleteRecordSnapshots(prunedRecords);
+  storyboardScheduleInlineRender(30); renderModal();
   toast(`分镜数据已导入：${imported.length} 条成片${restored ? ` · ${restored} 张图片已落盘` : ''}${metadataOnly ? ` · ${metadataOnly} 张沿用原地址` : ''}。`, 'success');
 }
 
@@ -14923,15 +15117,15 @@ async function storyboardRedrawRecord(record, { artistPreset = undefined } = {})
   if (!state.enabled) return toast('请先启用分镜。', 'warning');
   storyboardReconcileGalleryLinks({ persist: false });
   if (!Number.isInteger(record?.floor) || !ctx().chat?.[record.floor]) {
-    storyboardLoadRecordToWorkbench(record);
+    await storyboardLoadRecordToWorkbench(record);
     return toast('原正文楼层已不存在，已载入镜头台并改为安全确认后生成。', 'info');
   }
   if (record.linkState === 'inactive_swipe') return toast('请先切回这张图对应的回复版本。', 'warning');
 
   const linkedLog = state.logs.find((item) => item.recordId === record.id || item.recordIds?.includes(record.id));
-  const snapshot = clone(linkedLog?.snapshot || record.snapshot || {});
+  const snapshot = clone(linkedLog?.snapshot || await storyboardReadSnapshotForRecord(record) || {});
   if (!snapshot?.source || !snapshot?.profile || !snapshot?.payload) {
-    storyboardLoadRecordToWorkbench(record);
+    await storyboardLoadRecordToWorkbench(record);
     return toast('这张旧图缺少完整生成设置，已载入镜头台，请确认后重绘。', 'info');
   }
 
@@ -15013,8 +15207,9 @@ async function storyboardChooseCaptureMode(floor, message, { reextract = false }
 
 async function storyboardEditPrompt({ plan = null, record = null } = {}) {
   const state = storyboardState();
+  const recordSnapshot = record ? await storyboardReadSnapshotForRecord(record) : null;
   const initialPrompt = String(record?.finalPrompt || record?.prompt || state.prompt || '').trim();
-  const initialNegative = String(record?.snapshot?.payload?.negative || record?.effectiveNegative || record?.negative || state.negative || '').trim();
+  const initialNegative = String(recordSnapshot?.payload?.negative || record?.effectiveNegative || record?.negative || state.negative || '').trim();
   const context = ctx();
   let positive = initialPrompt;
   let negative = initialNegative;
@@ -15046,12 +15241,14 @@ async function storyboardEditPrompt({ plan = null, record = null } = {}) {
     record.finalPrompt = positive;
     record.negative = negative;
     record.promptLocked = true;
-    if (record.snapshot) {
-      record.snapshot.prompt = positive;
-      record.snapshot.negative = negative;
-      record.snapshot.promptMode = 'manual';
-      record.snapshot.promptLocked = true;
-      if (record.snapshot.payload) { record.snapshot.payload.prompt = positive; record.snapshot.payload.negative = negative; }
+    if (recordSnapshot) {
+      const nextSnapshot = clone(recordSnapshot);
+      nextSnapshot.prompt = positive;
+      nextSnapshot.negative = negative;
+      nextSnapshot.promptMode = 'manual';
+      nextSnapshot.promptLocked = true;
+      if (nextSnapshot.payload) { nextSnapshot.payload.prompt = positive; nextSnapshot.payload.negative = negative; }
+      await storyboardStoreSnapshotForRecord(record, nextSnapshot);
     }
     await saveMetadata();
     storyboardRenderInlineImages(Number.isInteger(record.floor) ? record.floor : null);
@@ -15243,6 +15440,7 @@ function bindStoryboardTabEvents(root) {
   if (activeTab !== 'imagegen') return;
   const state = storyboardState();
   if (state.view === 'logs') void storyboardHydratePipelineArchive({ rerender: true });
+  if (state.view === 'gallery') void storyboardHydrateGallerySnapshots();
   storyboardBindMediaTagEditors(root);
   root.querySelector('.sd-storyboard-close')?.addEventListener('click', () => {
     if (state.view === 'create') storyboardCaptureWorkbench(root);
@@ -16122,10 +16320,13 @@ function bindStoryboardTabEvents(root) {
     const count = storyboardGallerySelection.size;
     if (!count || !await confirmDialog('删除选中图片', `确定删除选中的 ${count} 条图片记录？SillyTavern 图片文件本身不会被清除。`)) return;
     const store = getChatStore();
+    const removedRecords = storyboardGalleryRecords().filter((item) => storyboardGallerySelection.has(item.id));
     store.storyboardImages = storyboardGalleryRecords().filter((item) => !storyboardGallerySelection.has(item.id));
     if (storyboardGallerySelection.has(storyboardGalleryInspectorRecordId)) storyboardGalleryInspectorRecordId = '';
     storyboardGallerySelection.clear(); storyboardGallerySelectMode = false;
-    await saveMetadata(); storyboardRenderInlineImages(); renderModal();
+    await saveMetadata();
+    void storyboardDeleteRecordSnapshots(removedRecords);
+    storyboardRenderInlineImages(); renderModal();
   });
   root.querySelector('.sd-storyboard-gallery-move-selected')?.addEventListener('click', async () => {
     if (!storyboardGallerySelection.size) return;
@@ -16172,7 +16373,9 @@ function bindStoryboardTabEvents(root) {
       const store = getChatStore(); store.storyboardImages = store.storyboardImages.filter((item) => item.id !== record.id);
       if (storyboardGalleryInspectorRecordId === record.id) storyboardGalleryInspectorRecordId = '';
       storyboardGallerySelection.delete(record.id);
-      await saveMetadata(); storyboardRenderInlineImages(Number.isInteger(record.floor) ? record.floor : null); renderModal();
+      await saveMetadata();
+      void storyboardDeleteRecordSnapshots(record);
+      storyboardRenderInlineImages(Number.isInteger(record.floor) ? record.floor : null); renderModal();
     });
   });
   void storyboardRefreshSecretState(root);
@@ -28462,7 +28665,7 @@ function bindEvents() {
     focusClockState();
     focusClockRuntimeTick();
     await refreshCoreadPersonaAvatar();
-    void storyboardDrainPendingDeliveries(String(getChatKey() || ''));
+    void storyboardHandleChatChanged();
     applyProseLayout();
     renderFloatButton();
     restoreQuickDockedPlugins();
@@ -28627,6 +28830,9 @@ function cleanupRuntime(resetSettings = false) {
       storyboardPipelineArchiveEpoch++;
       storyboardPipelineArchiveCache.clear();
       storyboardPipelineArchiveWrites.clear();
+      storyboardSnapshotEpoch++;
+      storyboardSnapshotCache.clear();
+      storyboardSnapshotReads.clear();
     });
     clean('storyboard events', () => storyboardUnbindChat());
     clean('focus clock', () => stopFocusClockRuntime());

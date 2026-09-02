@@ -24,7 +24,7 @@ assert.ok((await listQianmuNotes()).some((note) => note.id === temporary.id));
 await deleteQianmuNote(temporary.id);
 assert.ok(!(await listQianmuNotes()).some((note) => note.id === temporary.id));
 
-assert.match(storeSource, /DB_VERSION = 8[\s\S]*STORE_NOTES = 'notes'/, 'notes keep an isolated database store');
+assert.match(storeSource, /DB_VERSION = 9[\s\S]*STORE_NOTES = 'notes'/, 'notes keep an isolated database store');
 assert.match(storeSource, /STORE_NOTES.*recoverable: false/, 'pinned notes must not enter safe cleanup');
 assert.match(source, /id: 'notes', label: '便笺'[\s\S]*qm-regular-note-pencil/, 'the hive owns a local bundled note icon');
 assert.match(source, /function bindNotesHiveDetachDrag[\s\S]*noteSettings\.detached = true/, 'dragging the hive cell out detaches the entry itself');

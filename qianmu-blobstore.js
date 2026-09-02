@@ -4,7 +4,7 @@
 // localStorage 存不下二进制大对象，故独立走 IndexedDB；存 Blob，播放时再 createObjectURL。
 
 const DB_NAME = 'qianmu-blobstore';
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 const STORE_AUDIO = 'audio';         // key: 缓存键   value: { blob, meta, createdAt }
 const STORE_FAVORITES = 'favorites'; // key: 收藏 id  value: { blob, meta, label, createdAt }
 // ── 伴读模块（v2 新增）──
@@ -23,6 +23,7 @@ const STORE_NOTES = 'notes';               // key: noteId value: QianmuNote（�
 // ── 分镜模块（v7 新增）──
 const STORE_STORYBOARD_INBOX = 'storyboard_inbox'; // key: taskId value: 跨聊天完成后等待原聊天接收的轻量成片记录
 const STORE_STORYBOARD_PIPELINE_LOGS = 'storyboard_pipeline_logs'; // key: pipelineId value: 已结束的完整生成流水；轻摘要仍留设置
+const STORE_STORYBOARD_SNAPSHOTS = 'storyboard_snapshots'; // key: chatKey + recordId value: 阅片记录的完整精确重绘快照
 
 const STORAGE_STORE_INFO = Object.freeze({
   [STORE_AUDIO]: { label: '语音缓存', category: 'audio', recoverable: true },
@@ -37,6 +38,7 @@ const STORAGE_STORE_INFO = Object.freeze({
   [STORE_NOTES]: { label: '固定便笺', category: 'notes', recoverable: false },
   [STORE_STORYBOARD_INBOX]: { label: '分镜待归档', category: 'images', recoverable: false },
   [STORE_STORYBOARD_PIPELINE_LOGS]: { label: '分镜详细日志', category: 'logs', recoverable: true },
+  [STORE_STORYBOARD_SNAPSHOTS]: { label: '阅片重绘快照', category: 'cache', recoverable: false },
 });
 
 let dbPromise = null;
@@ -61,6 +63,7 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE_NOTES)) db.createObjectStore(STORE_NOTES);
       if (!db.objectStoreNames.contains(STORE_STORYBOARD_INBOX)) db.createObjectStore(STORE_STORYBOARD_INBOX);
       if (!db.objectStoreNames.contains(STORE_STORYBOARD_PIPELINE_LOGS)) db.createObjectStore(STORE_STORYBOARD_PIPELINE_LOGS);
+      if (!db.objectStoreNames.contains(STORE_STORYBOARD_SNAPSHOTS)) db.createObjectStore(STORE_STORYBOARD_SNAPSHOTS);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => { dbPromise = null; reject(req.error); };
@@ -560,6 +563,60 @@ export async function clearStoryboardPipelineLogs() {
   await reqP(target.clear());
 }
 
+// ── 分镜：阅片记录的完整精确重绘快照 ────────────────────────
+// 图片 URL、正文锚点与可视参数继续留在聊天 metadata；这里只承接 profile、connection、
+// payload 等体积较大的可重放请求。调用方必须在事务成功后才移除旧内联 snapshot。
+export async function putStoryboardSnapshots(records = []) {
+  const normalized = (Array.isArray(records) ? records : [])
+    .filter((item) => item && String(item.key || '').trim() && item.snapshot && typeof item.snapshot === 'object')
+    .map((item) => ({
+      key: String(item.key), chatKey: String(item.chatKey || ''), recordId: String(item.recordId || ''),
+      snapshot: item.snapshot, updatedAt: Number(item.updatedAt) || Date.now(),
+    }));
+  if (!normalized.length) return { stored: [] };
+  const db = await openDB();
+  const transaction = db.transaction(STORE_STORYBOARD_SNAPSHOTS, 'readwrite');
+  const done = new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('storyboard snapshot archive failed'));
+    transaction.onabort = () => reject(transaction.error || new Error('storyboard snapshot archive aborted'));
+  });
+  const target = transaction.objectStore(STORE_STORYBOARD_SNAPSHOTS);
+  try {
+    for (const record of normalized) target.put(record, record.key);
+  } catch (error) {
+    try { transaction.abort(); } catch (_) {}
+    await done.catch(() => {});
+    throw error;
+  }
+  await done;
+  return { stored: normalized.map((item) => item.key) };
+}
+
+export async function getStoryboardSnapshots(keys = []) {
+  const unique = [...new Set((Array.isArray(keys) ? keys : []).map((value) => String(value || '').trim()).filter(Boolean))].slice(0, 500);
+  if (!unique.length) return [];
+  const target = await store(STORE_STORYBOARD_SNAPSHOTS, 'readonly');
+  const values = await Promise.all(unique.map((key) => reqP(target.get(key))));
+  return values.filter(Boolean);
+}
+
+export async function deleteStoryboardSnapshots(keys = []) {
+  const unique = [...new Set((Array.isArray(keys) ? keys : []).map((value) => String(value || '').trim()).filter(Boolean))].slice(0, 500);
+  if (!unique.length) return { deleted: [] };
+  const db = await openDB();
+  const transaction = db.transaction(STORE_STORYBOARD_SNAPSHOTS, 'readwrite');
+  const done = new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('storyboard snapshot delete failed'));
+    transaction.onabort = () => reject(transaction.error || new Error('storyboard snapshot delete aborted'));
+  });
+  const target = transaction.objectStore(STORE_STORYBOARD_SNAPSHOTS);
+  for (const key of unique) target.delete(key);
+  await done;
+  return { deleted: unique };
+}
+
 // ── 存储治理：只读盘点与严格白名单清理 ──────────────────────
 
 function readerImageBookId(key) {
@@ -684,6 +741,7 @@ function storageRecordChatKey(name, key, value) {
   if (name === STORE_TTS_LINES) return String(key ?? '').trim().slice(0, 512);
   if (name === STORE_CHATS || name === STORE_VECTORS) return readerBucketScope(key, value).slice(0, 512);
   if (name === STORE_STORYBOARD_INBOX) return String(value?.chatKey || '').trim().slice(0, 512);
+  if (name === STORE_STORYBOARD_SNAPSHOTS) return String(value?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_AUDIO) return String(value?.meta?.chatKey || '').trim().slice(0, 512);
   return '';
 }
@@ -852,6 +910,7 @@ const CHAT_SCOPED_CLEARABLE_STORES = Object.freeze([
   STORE_TTS_LINES,
   STORE_CHATS,
   STORE_VECTORS,
+  STORE_STORYBOARD_SNAPSHOTS,
 ]);
 
 async function clearStoreChatScope(name, chatKey) {
@@ -879,7 +938,7 @@ async function clearStoreChatScope(name, chatKey) {
   });
 }
 
-// 按聊天删除只接受已盘点且有明确 chatKey 的四类记录。
+// 按聊天删除只接受已盘点且有明确 chatKey 的可安全分桶记录。
 // 分镜收片箱即使能识别 chatKey 也不进白名单，避免删掉未归档成片。
 export function normalizeChatScopedStorageSelections(selections = []) {
   const allowed = new Set(CHAT_SCOPED_CLEARABLE_STORES);

@@ -32,7 +32,7 @@ assert.equal(migrated.schemaVersion, 22);
 assert.equal(migrated.taskStates[0].deliveryState, 'pending_chat');
 
 // Cross-chat results use a durable local inbox because ST only safely saves the current chat metadata.
-assert.match(blobSource, /const DB_VERSION = 8/);
+assert.match(blobSource, /const DB_VERSION = 9/);
 assert.match(blobSource, /STORE_STORYBOARD_INBOX = 'storyboard_inbox'/);
 assert.match(blobSource, /export async function putStoryboardDelivery/);
 assert.match(blobSource, /export async function listStoryboardDeliveries/);
@@ -51,6 +51,7 @@ assert.doesNotMatch(runJob, /聊天已切换，任务未执行|生成期间切�
 // Foreign plans cannot leak a placeholder into an unrelated chat with the same floor number.
 assert.match(indexSource, /if \(plan\.chatKey && plan\.chatKey !== currentChatKey\) continue/);
 assert.match(indexSource, /void storyboardHandleChatChanged\(\)/, 'chat rendering must not wait for IndexedDB delivery');
-assert.match(indexSource, /void storyboardDrainPendingDeliveries\(String\(getChatKey\(\) \|\| ''\)\)/, 'startup delivery must remain non-blocking');
+const appReady = indexSource.slice(indexSource.indexOf('const appReadyHandler'), indexSource.indexOf('const personaChangedHandler'));
+assert.match(appReady, /void storyboardHandleChatChanged\(\)/, 'startup delivery and snapshot migration must remain non-blocking');
 
 console.log('Storyboard cross-chat delivery and ownership contract OK');
