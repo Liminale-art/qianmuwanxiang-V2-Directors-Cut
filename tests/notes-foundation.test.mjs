@@ -34,7 +34,14 @@ assert.match(source, /notesPanelOpen\) return[\s\S]*sd-detached-notes-entry/, 't
 assert.match(source, /sd-detached-notes-entry[\s\S]*QUICK_HEX_BORDER_SVG/, 'the detached entry must retain the complete hive-cell shape');
 assert.doesNotMatch(source, /sd-notes-global-entry|sd-note-title|sd-note-float/, 'the obsolete permanent entry, title field, and per-note floating control must stay removed');
 assert.match(source, /sd-note-tools-toggle[\s\S]*sd-note-copy[\s\S]*sd-note-pin[\s\S]*sd-note-delete/, 'row actions belong to the compact more menu');
+assert.match(source, /sd-notes-search-row[\s\S]*sd-notes-search[\s\S]*sd-note-new/, 'new note belongs beside search on the list page');
+assert.match(source, /is-editor[\s\S]*sd-note-new[\s\S]*sd-notes-list/, 'new note must sit before the list control in the editor');
+assert.match(source, /function detachedNotesGeometry\(\)[\s\S]*getFloatSize\(\)/, 'detached notes must follow the configured hive size');
+assert.match(source, /closeNoteTools[\s\S]*sd-notes-stage[\s\S]*addEventListener\('click'/, 'clicking outside the more toggle closes row actions');
+assert.match(source, /pinned \? '便笺已保存'/, 'pinning a note confirms durable storage');
 assert.match(styles, /\.sd-notes-panel[\s\S]*background: var\(--sd-notes-surface\)/, 'the notes page must use an opaque theme surface');
+assert.match(styles, /\.sd-notes-panel \{[\s\S]*width: 60%;[\s\S]*height: 60%/, 'desktop notes use the compact sixty-percent workspace');
+assert.match(styles, /\.sd-note-item-tools \{[\s\S]*border: 0;[\s\S]*background: transparent/, 'the expanded more menu remains visually unboxed');
 assert.match(styles, /#qianmu-notes-float-layer[\s\S]*z-index: 2147483002/, 'the detached hive cell must sit above the Qianmu panel but below critical overlays');
 assert.match(styles, /\.sd-detached-notes-entry[\s\S]*clip-path: polygon\(50% 0,[\s\S]*sd-hive-hex-outline/, 'the detached entry must keep the hive hexagon silhouette and edge');
 assert.doesNotMatch(styles, /\.sd-floating-note\b/, 'individual notes must never become top-level floating windows');

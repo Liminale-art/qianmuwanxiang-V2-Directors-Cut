@@ -103,10 +103,10 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.5';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.6';
 import * as reader from './qianmu-reader.js';
-import { checkDirectImageConnection, generateDirectImage, isDirectImageTransportError } from './qianmu-image-direct.js?v=1.58.5';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.5';
+import { checkDirectImageConnection, generateDirectImage, isDirectImageTransportError } from './qianmu-image-direct.js?v=1.58.6';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.6';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_COMPOSITION_RULE_ID,
@@ -146,12 +146,12 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
-} from './qianmu-storyboard.js?v=1.58.5';
+} from './qianmu-storyboard.js?v=1.58.6';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.5';
+const VERSION = '1.58.6';
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -171,8 +171,6 @@ const FLOAT_ID = 'story-director-float';
 const QUICK_WHEEL_ID = 'story-director-quick-wheel';
 const FLOOR_NAV_ID = 'story-director-floor-nav';
 const NOTES_FLOAT_LAYER_ID = 'qianmu-notes-float-layer';
-const DETACHED_NOTES_HEIGHT = 46;
-const DETACHED_NOTES_WIDTH = DETACHED_NOTES_HEIGHT * QUICK_HEX_WIDTH_RATIO;
 const INPUT_ENTRY_ID = 'story-director-input-entry';
 const INPUT_BUTTON_ID = 'story-director-input-button';
 const FLOAT_SIZE_MIN = 32;
@@ -5078,8 +5076,9 @@ function bindNotesHiveDetachDrag(button, item, layout) {
     }
     if (!completed) return;
     const noteSettings = notesFeatureSettings();
+    const geometry = detachedNotesGeometry();
     noteSettings.detached = true;
-    noteSettings.position = { x: x - DETACHED_NOTES_WIDTH / 2, y: y - DETACHED_NOTES_HEIGHT / 2 };
+    noteSettings.position = { x: x - geometry.width / 2, y: y - geometry.height / 2 };
     noteSettings.appearance = {
       tone: button.dataset.hiveTone === 'light' ? 'light' : 'dark',
       edgeIndex: Math.max(0, Math.trunc(Number(button.dataset.hiveEdgeIndex) || 0)),
@@ -5943,14 +5942,19 @@ function renderNotesPanel() {
       <div class="sd-note-item-tools" hidden><button type="button" class="sd-note-copy" title="复制" aria-label="复制"><i class="fa-solid fa-copy"></i></button><button type="button" class="sd-note-pin ${note.pinned ? 'active' : ''}" title="${note.pinned ? '取消固定' : '固定'}" aria-label="固定"><i class="fa-solid fa-thumbtack"></i></button><button type="button" class="sd-note-delete" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div>
     </div>
   </article>`).join('');
-  if (active) return `<section class="sd-notes-panel is-editor" role="dialog" aria-label="编辑便笺">
-    <header><button type="button" class="sd-icon-btn sd-note-new" title="新建便笺" aria-label="新建便笺"><i class="fa-solid fa-plus"></i></button><div><button type="button" class="sd-icon-btn sd-notes-list" title="便笺列表" aria-label="便笺列表"><i class="fa-solid fa-list"></i></button><button type="button" class="sd-icon-btn sd-notes-close" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></div></header>
+  if (active) return `<div class="sd-notes-stage"><section class="sd-notes-panel is-editor" role="dialog" aria-modal="true" aria-label="编辑便笺">
+    <header><b>便笺</b><div><button type="button" class="sd-icon-btn sd-note-new" title="新建便笺" aria-label="新建便笺"><i class="fa-solid fa-plus"></i></button><button type="button" class="sd-icon-btn sd-notes-list" title="便笺列表" aria-label="便笺列表"><i class="fa-solid fa-list"></i></button><button type="button" class="sd-icon-btn sd-notes-close" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></div></header>
     <div class="sd-note-editor" data-note-id="${htmlEscape(active.id)}"><textarea class="sd-note-body" maxlength="20000" aria-label="便笺内容">${htmlEscape(active.body)}</textarea></div>
-  </section>`;
-  return `<section class="sd-notes-panel" role="dialog" aria-label="便笺">
-    <header><div><button type="button" class="sd-icon-btn sd-note-new" title="新建便笺" aria-label="新建便笺"><i class="fa-solid fa-plus"></i></button><b>便笺</b></div><button type="button" class="sd-icon-btn sd-notes-close" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
-    <div class="sd-notes-list-view"><input class="text_pole sd-notes-search" value="${htmlEscape(notesSearch)}" placeholder="搜索" aria-label="搜索便笺"><div class="sd-note-list">${list}</div></div>
-  </section>`;
+  </section></div>`;
+  return `<div class="sd-notes-stage"><section class="sd-notes-panel" role="dialog" aria-modal="true" aria-label="便笺">
+    <header><b>便笺</b><button type="button" class="sd-icon-btn sd-notes-close" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
+    <div class="sd-notes-list-view"><div class="sd-notes-search-row"><input class="text_pole sd-notes-search" value="${htmlEscape(notesSearch)}" placeholder="搜索" aria-label="搜索便笺"><button type="button" class="sd-icon-btn sd-note-new" title="新建便笺" aria-label="新建便笺"><i class="fa-solid fa-plus"></i></button></div><div class="sd-note-list">${list}</div></div>
+  </section></div>`;
+}
+
+function detachedNotesGeometry() {
+  const height = getFloatSize();
+  return { height, width: height * QUICK_HEX_WIDTH_RATIO };
 }
 
 function clampDetachedNotesEntry(position = {}) {
@@ -5959,9 +5963,10 @@ function clampDetachedNotesEntry(position = {}) {
   const top = Number(viewport?.offsetTop || 0);
   const width = Math.max(1, Number(viewport?.width || window.innerWidth));
   const height = Math.max(1, Number(viewport?.height || window.innerHeight));
+  const entry = detachedNotesGeometry();
   return {
-    x: Math.max(left + 8, Math.min(left + width - DETACHED_NOTES_WIDTH - 8, position.x != null && Number.isFinite(Number(position.x)) ? Number(position.x) : left + width - DETACHED_NOTES_WIDTH - 18)),
-    y: Math.max(top + 8, Math.min(top + height - DETACHED_NOTES_HEIGHT - 8, position.y != null && Number.isFinite(Number(position.y)) ? Number(position.y) : top + Math.max(76, height * .45))),
+    x: Math.max(left + 8, Math.min(left + width - entry.width - 8, position.x != null && Number.isFinite(Number(position.x)) ? Number(position.x) : left + width - entry.width - 18)),
+    y: Math.max(top + 8, Math.min(top + height - entry.height - 8, position.y != null && Number.isFinite(Number(position.y)) ? Number(position.y) : top + Math.max(76, height * .45))),
   };
 }
 
@@ -5970,6 +5975,7 @@ function renderFloatingNotes() {
   const noteSettings = notesFeatureSettings();
   if (!noteSettings.enabled || !noteSettings.detached || notesPanelOpen) return;
   const position = clampDetachedNotesEntry(noteSettings.position);
+  const geometry = detachedNotesGeometry();
   const palette = currentHivePalette();
   const tone = noteSettings.appearance.tone === 'light' ? 'light' : 'dark';
   const edge = palette.edges[noteSettings.appearance.edgeIndex % palette.edges.length];
@@ -5979,7 +5985,7 @@ function renderFloatingNotes() {
   const layer = document.createElement('div');
   layer.id = NOTES_FLOAT_LAYER_ID;
   layer.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'} sd-hive-theme-${themeKey}`;
-  layer.innerHTML = `<button type="button" class="sd-detached-notes-entry is-glass-${tone}" style="left:${position.x}px;top:${position.y}px;--sd-wheel-glass-fill:${htmlEscape(fill)};--sd-wheel-edge:${htmlEscape(edge)};--sd-wheel-icon:${htmlEscape(icon)}" title="便笺（拖回千幕归巢）" aria-label="打开便笺"><i class="fa-solid fa-note-sticky" data-qm-icon="qm-regular-note-pencil"></i>${QUICK_HEX_BORDER_SVG}</button>`;
+  layer.innerHTML = `<button type="button" class="sd-detached-notes-entry is-glass-${tone}" style="left:${position.x}px;top:${position.y}px;--sd-notes-entry-width:${geometry.width}px;--sd-notes-entry-height:${geometry.height}px;--sd-wheel-glass-fill:${htmlEscape(fill)};--sd-wheel-edge:${htmlEscape(edge)};--sd-wheel-icon:${htmlEscape(icon)}" title="便笺（拖回千幕归巢）" aria-label="打开便笺"><i class="fa-solid fa-note-sticky" data-qm-icon="qm-regular-note-pencil"></i>${QUICK_HEX_BORDER_SVG}</button>`;
   document.body.appendChild(layer);
   applyQianmuIcons(layer);
   bindFloatingNoteEvents(layer);
@@ -6046,6 +6052,14 @@ function bindFloatingNoteEvents(layer) {
 
 function bindNotesPanelEvents(root) {
   if (!notesPanelOpen) return;
+  const closeNoteTools = () => {
+    root.querySelectorAll('.sd-note-item-tools').forEach((node) => { node.hidden = true; });
+    root.querySelectorAll('.sd-note-tools-toggle').forEach((node) => node.setAttribute('aria-expanded', 'false'));
+  };
+  root.querySelector('.sd-notes-stage')?.addEventListener('click', (event) => {
+    if (event.target.closest?.('.sd-note-tools-toggle')) return;
+    closeNoteTools();
+  });
   root.querySelector('.sd-notes-close')?.addEventListener('click', closeNotesPanel);
   root.querySelector('.sd-notes-list')?.addEventListener('click', () => { notesActiveId = ''; renderModal(); });
   root.querySelector('.sd-note-new')?.addEventListener('click', () => {
@@ -6072,8 +6086,7 @@ function bindNotesPanelEvents(root) {
     toolsToggle?.addEventListener('click', (event) => {
       event.stopPropagation();
       const willOpen = Boolean(tools?.hidden);
-      root.querySelectorAll('.sd-note-item-tools').forEach((node) => { node.hidden = true; });
-      root.querySelectorAll('.sd-note-tools-toggle').forEach((node) => node.setAttribute('aria-expanded', 'false'));
+      closeNoteTools();
       if (tools) tools.hidden = !willOpen;
       toolsToggle.setAttribute('aria-expanded', String(willOpen));
     });
@@ -6085,7 +6098,10 @@ function bindNotesPanelEvents(root) {
       const note = notesFind(item.dataset.noteId);
       if (!note) return;
       note.pinned = !note.pinned;
-      void persistNoteRuntime(note, { renderPanel: true });
+      const pinned = note.pinned;
+      void persistNoteRuntime(note, { renderPanel: true })
+        .then(() => toast(pinned ? '便笺已保存' : '便笺已取消固定', 'success'))
+        .catch((error) => console.warn(`[${MODULE_NAME}] note pin save failed`, error));
     });
     item.querySelector('.sd-note-delete')?.addEventListener('click', async () => {
       const note = notesFind(item.dataset.noteId);

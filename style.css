@@ -1714,21 +1714,36 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-storage-scope { margin: 13px 0 0; color: var(--sd-muted); font-size: 11px; line-height: 1.45; }
 #story-director-modal .sd-storage-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 13px; }
 
-/* 便笺是完全不透明的独立工作页；蜂巢入口只有拖出后才在 ST 顶层出现。 */
-#story-director-modal .sd-notes-panel {
-  --sd-notes-surface: #f2ede5;
-  --sd-notes-card: #e7e0d6;
+/* 便笺是完全不透明的紧凑工作页；舞台拦住下层操作，蜂巢入口只有拖出后才在 ST 顶层出现。 */
+#story-director-modal .sd-notes-stage {
   position: absolute;
   z-index: 63;
   inset: 0;
   min-width: 0;
   min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: color-mix(in srgb, var(--sd-sticky-bg) 52%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+#story-director-modal .sd-notes-panel {
+  --sd-notes-surface: #f2ede5;
+  --sd-notes-card: #e7e0d6;
+  position: relative;
+  width: 60%;
+  height: 60%;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-radius: inherit;
+  border: 1px solid var(--sd-border);
+  border-radius: 16px;
   background: var(--sd-notes-surface);
   color: var(--sd-text);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, .22);
 }
 #story-director-modal.sd-theme-dark .sd-notes-panel { --sd-notes-surface: #202226; --sd-notes-card: #2c2e33; }
 #story-director-modal.sd-theme-summer .sd-notes-panel { --sd-notes-surface: #e7f4ef; --sd-notes-card: #d5e9e2; }
@@ -1736,20 +1751,22 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal.sd-theme-kraft .sd-notes-panel { --sd-notes-surface: #eee1c8; --sd-notes-card: #dfcfaf; }
 #story-director-modal.sd-theme-dream .sd-notes-panel { --sd-notes-surface: #f0eef6; --sd-notes-card: #e2dfee; }
 #story-director-modal .sd-notes-panel > header {
-  min-height: 58px;
+  min-height: 48px;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 14px;
+  padding: 7px 11px;
   border-bottom: 1px solid var(--sd-hairline);
   background: var(--sd-notes-surface);
 }
 #story-director-modal .sd-notes-panel > header > div { display: flex; align-items: center; gap: 8px; min-width: 0; }
-#story-director-modal .sd-notes-panel > header b { font: 600 21px/1.2 Georgia, serif; letter-spacing: .08em; }
-#story-director-modal .sd-notes-list-view { min-width: 0; min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 14px; padding: 14px; background: var(--sd-notes-surface); }
-#story-director-modal .sd-notes-search { flex: 0 0 auto; background: var(--sd-notes-card) !important; }
+#story-director-modal .sd-notes-panel > header b { font: 600 16px/1.2 Georgia, serif; letter-spacing: .08em; }
+#story-director-modal .sd-notes-list-view { min-width: 0; min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 10px; padding: 11px; background: var(--sd-notes-surface); }
+#story-director-modal .sd-notes-search-row { display: grid; grid-template-columns: minmax(0, 1fr) 38px; align-items: center; gap: 7px; }
+#story-director-modal .sd-notes-search-row .sd-icon-btn { width: 38px; min-width: 38px; height: 38px; }
+#story-director-modal .sd-notes-search { min-height: 38px; margin: 0 !important; background: var(--sd-notes-card) !important; }
 #story-director-modal .sd-note-list { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 7px; scrollbar-width: none; }
 #story-director-modal .sd-note-list::-webkit-scrollbar { display: none; }
 #story-director-modal .sd-note-list-item { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 74px; padding: 8px 9px 8px 12px; border: 1px solid transparent; border-top: 4px solid color-mix(in srgb, var(--sd-accent) 82%, white); border-radius: 4px; background: var(--sd-notes-card); }
@@ -1763,10 +1780,10 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-note-tools-toggle:hover,
 #story-director-modal .sd-note-item-tools button:hover,
 #story-director-modal .sd-note-item-tools button.active { background: color-mix(in srgb, var(--sd-accent) 13%, var(--sd-notes-card)) !important; color: var(--sd-accent) !important; }
-#story-director-modal .sd-note-item-tools { position: absolute; z-index: 3; right: 34px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; padding: 3px; border: 1px solid var(--sd-hairline); border-radius: 10px; background: var(--sd-notes-surface); box-shadow: 0 8px 22px rgba(0, 0, 0, .16); }
+#story-director-modal .sd-note-item-tools { position: absolute; z-index: 3; right: 34px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 #story-director-modal .sd-note-item-tools[hidden] { display: none; }
 #story-director-modal .sd-note-editor { min-width: 0; min-height: 0; flex: 1 1 auto; display: flex; padding: 0; background: var(--sd-notes-surface); }
-#story-director-modal .sd-note-editor .sd-note-body { width: 100%; height: 100%; min-height: 0; resize: none; padding: 20px !important; border: 0 !important; border-radius: 0 !important; outline: 0; background: var(--sd-notes-surface) !important; color: var(--sd-text) !important; font: inherit; font-size: 15px; line-height: 1.78; box-shadow: none !important; }
+#story-director-modal .sd-note-editor .sd-note-body { width: 100%; height: 100%; min-height: 0; resize: none; padding: 16px !important; border: 0 !important; border-radius: 0 !important; outline: 0; background: var(--sd-notes-surface) !important; color: var(--sd-text) !important; font: inherit; font-size: 13px; line-height: 1.72; box-shadow: none !important; }
 
 /* ST 页面只浮贴一个便笺蜂巢入口；容器不拦截正文。 */
 #qianmu-notes-float-layer {
@@ -1778,8 +1795,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 .sd-detached-notes-entry {
   position: fixed;
-  width: 39.837px;
-  height: 46px;
+  width: var(--sd-notes-entry-width, 41.57px);
+  height: var(--sd-notes-entry-height, 48px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1809,7 +1826,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   background: linear-gradient(145deg, rgba(255, 255, 255, .3), rgba(255, 255, 255, .04));
   pointer-events: none;
 }
-.sd-detached-notes-entry > i { position: relative; z-index: 2; font-size: 18px; }
+.sd-detached-notes-entry > i { position: relative; z-index: 2; font-size: calc(var(--sd-notes-entry-height, 48px) * .39); }
 .sd-detached-notes-entry > .sd-hive-hex-outline { position: absolute; inset: .65px; z-index: 3; width: calc(100% - 1.3px); height: calc(100% - 1.3px); pointer-events: none; overflow: visible; }
 .sd-detached-notes-entry > .sd-hive-hex-outline polygon { fill: none; stroke: var(--sd-wheel-edge); stroke-width: 1.2px; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 #qianmu-notes-float-layer.sd-hive-theme-dream .sd-detached-notes-entry > .sd-hive-hex-outline polygon { animation: sd-hive-dream-edge 12s ease-in-out infinite; }
@@ -1823,6 +1840,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   #story-director-modal .sd-runtime-health-actions { align-items: flex-start; flex-direction: column; }
   #story-director-modal .sd-storage-legend { grid-template-columns: minmax(0, 1fr); }
   #story-director-modal .sd-notes-list-view { padding: 10px; }
+  #story-director-modal .sd-notes-stage { padding: 10px; }
+  #story-director-modal .sd-notes-panel { width: 100%; height: 74%; }
   #story-director-modal .sd-note-editor .sd-note-body { padding: 16px !important; }
   #story-director-modal .sd-note-item-tools { right: 32px; }
 }
@@ -7908,4 +7927,255 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   .sd-storyboard-capture-dialog { min-width: min(90vw, 520px); }
   .sd-storyboard-capture-paragraph-list { max-height: 52vh; }
   #story-director-modal .sd-storyboard-composition-ratios .sd-option-chip { flex: 1 0 calc(33.333% - 6px); }
+}
+
+/* v1.58.6 · 千幕视觉基线
+ * 历史模块保留各自布局与主题，只在最终级联层统一字号、控件、图标和交互密度。
+ */
+#story-director-modal {
+  --qm-type-page-title: 20px;
+  --qm-type-feature-title: 17px;
+  --qm-type-card-title: 14px;
+  --qm-type-body: 13px;
+  --qm-type-label: 12px;
+  --qm-type-caption: 11px;
+  --qm-type-micro: 10px;
+  --qm-control-height: 38px;
+  --qm-control-radius: 10px;
+  --qm-button-radius: 9px;
+  --qm-card-radius: 14px;
+  --qm-icon-size: 18px;
+  font-size: var(--qm-type-body) !important;
+  line-height: 1.5;
+}
+
+/* 标题与正文层级 */
+#story-director-modal .sd-brand-title,
+#story-director-modal .sd-header-title,
+#story-director-modal .sd-storyboard-titlebar > h2 {
+  font-size: var(--qm-type-page-title) !important;
+  line-height: 1.2 !important;
+}
+#story-director-modal .sd-page-title,
+#story-director-modal .sd-reader-title,
+#story-director-modal .sd-theater-title {
+  font-size: var(--qm-type-feature-title) !important;
+  line-height: 1.3 !important;
+}
+#story-director-modal .sd-card h3,
+#story-director-modal .sd-card > h3,
+#story-director-modal .sd-card-title-row > h3,
+#story-director-modal .sd-template-head h3,
+#story-director-modal .sd-section-title h3,
+#story-director-modal .sd-plain-fold > summary > b,
+#story-director-modal .sd-accordion > summary > b,
+#story-director-modal .sd-storyboard-preset-entry > summary b {
+  font-size: var(--qm-type-card-title) !important;
+  line-height: 1.35 !important;
+  letter-spacing: .025em;
+}
+#story-director-modal label,
+#story-director-modal .sd-field-label,
+#story-director-modal .sd-form-label,
+#story-director-modal .sd-storyboard-field > span,
+#story-director-modal .sd-storyboard-field > b {
+  font-size: var(--qm-type-label);
+}
+#story-director-modal .sd-hint-sm,
+#story-director-modal .sd-summary-note,
+#story-director-modal .sd-tts-sub,
+#story-director-modal .sd-section-title span,
+#story-director-modal .sd-card-title-row small,
+#story-director-modal .sd-card-title-row p,
+#story-director-modal .sd-accordion > summary > span,
+#story-director-modal .sd-storyboard-routing-head .sd-card-title-row small {
+  font-size: var(--qm-type-caption) !important;
+  line-height: 1.45 !important;
+}
+#story-director-modal .sd-badge,
+#story-director-modal .sd-tag,
+#story-director-modal .sd-chip,
+#story-director-modal .sd-pill {
+  font-size: var(--qm-type-micro);
+}
+
+/* 编辑框、选择框与按钮统一到舒适的 38px 基线。 */
+#story-director-modal input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+#story-director-modal select,
+#story-director-modal .text_pole:not(textarea) {
+  min-height: var(--qm-control-height) !important;
+  height: var(--qm-control-height);
+  padding: 7px 11px !important;
+  border-radius: var(--qm-control-radius) !important;
+  font-size: var(--qm-type-body) !important;
+  line-height: 1.35 !important;
+}
+#story-director-modal textarea,
+#story-director-modal textarea.text_pole {
+  min-height: 78px;
+  padding: 9px 11px !important;
+  border-radius: var(--qm-control-radius) !important;
+  font-size: var(--qm-type-body) !important;
+  line-height: 1.5 !important;
+}
+#story-director-modal input::placeholder,
+#story-director-modal textarea::placeholder {
+  color: var(--sd-muted) !important;
+  font-size: var(--qm-type-label) !important;
+  opacity: .56;
+}
+#story-director-modal .sd-btn,
+#story-director-modal button.sd-btn,
+#story-director-modal label.sd-btn {
+  min-height: var(--qm-control-height);
+  padding: 7px 13px !important;
+  border-radius: var(--qm-button-radius) !important;
+  font-size: var(--qm-type-body) !important;
+}
+
+/* 普通按钮一律圆弧矩形；胶囊仅保留给开关、标签和状态。 */
+#story-director-modal button,
+#story-director-modal .sd-mini-btn,
+#story-director-modal .sd-action-btn {
+  border-radius: var(--qm-button-radius) !important;
+}
+#story-director-modal button.sd-focus-voice-drawer-backdrop {
+  border-radius: 0 !important;
+}
+#story-director-modal .sd-icon-btn,
+#story-director-modal .sd-header-shortcut,
+#story-director-modal .sd-top-action,
+#story-director-modal .sd-storyboard-titlebar > .sd-storyboard-close {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 !important;
+  border-radius: var(--qm-button-radius) !important;
+}
+#story-director-modal .sd-icon-btn > i,
+#story-director-modal .sd-icon-btn .qm-glyph-icon,
+#story-director-modal .sd-header-shortcut > i,
+#story-director-modal .sd-header-shortcut .qm-glyph-icon,
+#story-director-modal .sd-top-action .qm-glyph-icon,
+#story-director-modal .sd-storyboard-nav .qm-glyph-icon {
+  width: var(--qm-icon-size) !important;
+  height: var(--qm-icon-size) !important;
+  font-size: var(--qm-icon-size) !important;
+}
+#story-director-modal .sd-btn .qm-glyph-icon,
+#story-director-modal .sd-mini-btn .qm-glyph-icon,
+#story-director-modal .sd-action-btn .qm-glyph-icon {
+  width: 16px !important;
+  height: 16px !important;
+  font-size: 16px !important;
+}
+
+/* 统一内容密度，避免取材、配音与分镜卡片产生松散断层。 */
+#story-director-modal .sd-card {
+  border-radius: var(--qm-card-radius) !important;
+  padding: 13px !important;
+  margin-bottom: 9px !important;
+}
+#story-director-modal .sd-card-title-row,
+#story-director-modal .sd-section-title {
+  gap: 9px;
+  margin-bottom: 8px;
+}
+#story-director-modal .sd-tab-content,
+#story-director-modal .sd-panel-content {
+  font-size: var(--qm-type-body);
+}
+#story-director-modal .sd-tabs button,
+#story-director-modal .sd-subtabs button,
+#story-director-modal .sd-storyboard-library-tabs button {
+  min-height: 36px;
+  font-size: 12.5px !important;
+}
+
+/* 伴读中心原有微型信息提高一档易读性，正文阅读字号仍由用户设置控制。 */
+#sd-reader-portal,
+.sd-reader-portal {
+  font-size: 14px;
+}
+#sd-reader-portal .sd-btn,
+.sd-reader-portal .sd-btn,
+.sd-tts-popup button,
+.sd-storyboard-lightbox button,
+.sd-storyboard-capture-dialog button,
+.sd-storyboard-prompt-editor-dialog button {
+  border-radius: 9px !important;
+}
+#sd-reader-portal .sd-btn,
+.sd-reader-portal .sd-btn {
+  min-height: 36px;
+  padding: 7px 12px;
+  font-size: 12px;
+}
+#sd-reader-portal small,
+#sd-reader-portal .sd-reader-meta,
+#sd-reader-portal .sd-reader-sub,
+.sd-reader-portal small,
+.sd-reader-portal .sd-reader-meta,
+.sd-reader-portal .sd-reader-sub {
+  font-size: 11px !important;
+  line-height: 1.45;
+}
+.sd-tts-popup {
+  font-size: 13px;
+}
+.sd-tts-popup select,
+.sd-tts-popup input:not([type="range"]) {
+  min-height: 36px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+
+/* 分镜标题与底栏是固定区域；导航贴底、无悬浮缝隙。 */
+#story-director-modal .sd-storyboard-root {
+  grid-template-rows: 42px minmax(0, 1fr) 38px !important;
+}
+#story-director-modal .sd-storyboard-titlebar {
+  min-height: 42px;
+  padding: 3px 10px;
+}
+#story-director-modal .sd-storyboard-scroll {
+  padding: 4px 10px 6px;
+}
+#story-director-modal .sd-storyboard-nav {
+  min-height: 38px;
+  margin: 0 !important;
+  padding: 2px max(4px, env(safe-area-inset-right)) max(2px, env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left)) !important;
+  border: 0 !important;
+  border-top: 1px solid var(--sd-hairline) !important;
+  border-radius: 0 !important;
+  background: var(--sd-folder-head) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+#story-director-modal .sd-storyboard-nav button {
+  min-height: 32px !important;
+  height: 32px;
+  padding: 2px 4px !important;
+  border-radius: 8px !important;
+  font-size: 11px !important;
+}
+#story-director-modal .sd-storyboard-nav button i,
+#story-director-modal .sd-storyboard-nav button .qm-glyph-icon {
+  width: 18px !important;
+  height: 18px !important;
+  font-size: 18px !important;
+}
+
+@media (max-width: 520px) {
+  #story-director-modal {
+    --qm-type-page-title: 19px;
+    --qm-control-height: 40px;
+    --qm-icon-size: 19px;
+  }
+  #story-director-modal .sd-card { padding: 12px !important; }
+  #story-director-modal .sd-storyboard-scroll { padding-inline: 8px; }
+  #story-director-modal .sd-storyboard-nav { margin: 0 !important; }
+  #story-director-modal .sd-storyboard-nav button { min-height: 32px !important; height: 32px; }
+  #story-director-modal .sd-notes-panel { width: 100%; height: 74%; }
 }
