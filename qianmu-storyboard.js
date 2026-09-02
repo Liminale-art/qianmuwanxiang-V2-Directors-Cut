@@ -1386,7 +1386,7 @@ function shotPlans(value, state = {}) {
       const connectionPresetId = providerId && state.connections?.[providerId]?.presets?.some((preset) => preset.id === requestedConnection) ? requestedConnection : '';
       const parameterPresetId = providerId && state.parameterPresets?.some((preset) => preset.id === requestedParameters && preset.source === providerId) ? requestedParameters : '';
       const shotSpec = normalizeStoryboardShotSpec(shot.shotSpec || shot);
-      return { id: cleanId(shot.id), shotType: str(shot.shotType || shotSpec.shotScale || 'custom', 60), role: str(shot.role || shotSpec.shotRole, 60), title: str(shot.title, 120), purpose: str(shot.purpose || shotSpec.narrativePurpose, 500), prompt: str(shot.prompt, 24000), safePrompt: str(shot.safePrompt, 24000), negative: str(shot.negative, 12000), providerId, connectionPresetId, parameterPresetId, routeRuleId: cleanId(shot.routeRuleId), status: workflowState(shot.status), resultIds: ids(shot.resultIds, 20), error: str(shot.error, 4000), attempt: int(shot.attempt, 0, 20, 0), paragraphAnchor: shot.paragraphAnchor ? normalizeStoryboardParagraphAnchor(shot.paragraphAnchor) : null, paragraphSelection: shot.paragraphSelection ? normalizeStoryboardParagraphSelection(shot.paragraphSelection) : null, shotSpec, compiledPrompt: safeData(shot.compiledPrompt, 10) || null, compositionDecision: safeData(shot.compositionDecision, 6) || null, sensitive: Boolean(shot.sensitive || shotSpec.sensitive), safetyAdapted: Boolean(shot.safetyAdapted), userEdited: Boolean(shot.userEdited), promptLocked: Boolean(shot.promptLocked || shot.userEdited), requiresManualConfirmation: Boolean(shot.requiresManualConfirmation) };
+      return { id: cleanId(shot.id), shotType: str(shot.shotType || shotSpec.shotScale || 'custom', 60), role: str(shot.role || shotSpec.shotRole, 60), title: str(shot.title, 120), purpose: str(shot.purpose || shotSpec.narrativePurpose, 500), prompt: str(shot.prompt, 24000), safePrompt: str(shot.safePrompt, 24000), negative: str(shot.negative, 12000), providerId, connectionPresetId, parameterPresetId, routeRuleId: cleanId(shot.routeRuleId), status: workflowState(shot.status), resultIds: ids(shot.resultIds, 20), error: str(shot.error, 4000), partialFailureCount: int(shot.partialFailureCount, 0, 20, 0), attempt: int(shot.attempt, 0, 20, 0), paragraphAnchor: shot.paragraphAnchor ? normalizeStoryboardParagraphAnchor(shot.paragraphAnchor) : null, paragraphSelection: shot.paragraphSelection ? normalizeStoryboardParagraphSelection(shot.paragraphSelection) : null, shotSpec, compiledPrompt: safeData(shot.compiledPrompt, 10) || null, compositionDecision: safeData(shot.compositionDecision, 6) || null, sensitive: Boolean(shot.sensitive || shotSpec.sensitive), safetyAdapted: Boolean(shot.safetyAdapted), userEdited: Boolean(shot.userEdited), promptLocked: Boolean(shot.promptLocked || shot.userEdited), requiresManualConfirmation: Boolean(shot.requiresManualConfirmation) };
     }).filter((shot) => shot.id)).slice(0, 20);
     const messageRef = plan.messageRef ? normalizeStoryboardMessageReference(plan.messageRef) : null;
     return { id: cleanId(plan.id), chatKey: str(plan.chatKey || messageRef?.chatKey, 512), floor: Number.isInteger(plan.floor) ? plan.floor : (Number.isInteger(messageRef?.lastKnownFloor) ? messageRef.lastKnownFloor : null), swipeId: int(plan.swipeId ?? messageRef?.swipeId, 0, Number.MAX_SAFE_INTEGER, 0), messageRef, revisionId: str(plan.revisionId || messageRef?.revisionId, 80), idempotencyKey: str(plan.idempotencyKey, 80), origin: ['manual', 'automatic', 'manual_supplement'].includes(plan.origin) ? plan.origin : 'manual', paragraphSelection: plan.paragraphSelection ? normalizeStoryboardParagraphSelection(plan.paragraphSelection) : null, continuityLedger: normalizeContinuity(plan.continuityLedger), autoGenerate: Boolean(plan.autoGenerate), promptLocked: Boolean(plan.promptLocked), manualReviewRequired: Boolean(plan.manualReviewRequired || shots.some((shot) => shot.requiresManualConfirmation)), status: workflowState(plan.status), shots, createdAt: pos(plan.createdAt || plan.updatedAt), updatedAt: pos(plan.updatedAt) };
@@ -1508,6 +1508,40 @@ export function summarizeStoryboardGenerationDemand(jobs) {
     requestCount: requests.length,
     imageCount: outputsByRequest.reduce((total, count) => total + count, 0),
     hasMultiImageRequest: outputsByRequest.some((count) => count > 1),
+  };
+}
+
+// NovelAI 对并发与单次多图更敏感。把“生成 N 张”在进入运行队列前拆成
+// N 个可独立落盘、独立失败与独立重试的请求；其他渠道仍保留原生多图请求。
+export function planStoryboardProviderRequests(providerId, requestedCount) {
+  const imageCount = int(requestedCount, 1, 4, 1);
+  const requestCount = providerId === 'novel' ? imageCount : 1;
+  return Array.from({ length: requestCount }, (_, index) => ({
+    requestIndex: index + 1,
+    requestTotal: requestCount,
+    imageCount: providerId === 'novel' ? 1 : imageCount,
+  }));
+}
+
+export function aggregateStoryboardShotTasks(value, fallbackStatus = 'queued') {
+  const tasks = (Array.isArray(value) ? value : []).filter(obj).map(normalizeStoryboardTaskState);
+  const statuses = tasks.map((task) => task.status);
+  let status = workflowState(fallbackStatus, 'queued');
+  if (statuses.includes('generating')) status = 'generating';
+  else if (statuses.includes('queued')) status = 'queued';
+  else if (statuses.includes('compiling')) status = 'compiling';
+  else if (statuses.includes('prompt_ready')) status = 'prompt_ready';
+  else if (statuses.includes('completed')) status = 'completed';
+  const resultIds = ids(tasks.flatMap((task) => task.resultIds || []), 20);
+  const failedTasks = tasks.filter((task) => ['failed', 'cancelled', 'stale', 'orphaned'].includes(task.status));
+  const matchingError = [...tasks].reverse().find((task) => task.status === status && task.error)?.error
+    || [...failedTasks].reverse().find((task) => task.error)?.error
+    || '';
+  return {
+    status,
+    resultIds,
+    error: str(matchingError, 4000),
+    partialFailureCount: status === 'completed' ? failedTasks.length : 0,
   };
 }
 

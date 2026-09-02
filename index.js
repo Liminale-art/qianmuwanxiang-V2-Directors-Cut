@@ -96,11 +96,11 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.33';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.34';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.33';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.33';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.33';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.34';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.34';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.34';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -119,6 +119,7 @@ import {
   STORYBOARD_SOURCES,
   STORYBOARD_TAG_CATEGORIES,
   adaptProductionPacketToStoryboardShotSpec,
+  aggregateStoryboardShotTasks,
   buildStoryboardProviderPlan,
   compileStoryboardPrompt,
   createStoryboardParagraphAnchor,
@@ -134,6 +135,7 @@ import {
   normalizeStoryboardArtistPool,
   normalizeStoryboardParagraphSelection,
   normalizeStoryboardShotSpec,
+  planStoryboardProviderRequests,
   prepareStoryboardShotGroup,
   pruneStoryboardPipelineLogs,
   resolveStoryboardMessageReference,
@@ -151,28 +153,28 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.33';
+} from './qianmu-storyboard.js?v=1.58.34';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.33';
+const VERSION = '1.58.34';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.33'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.34'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.33'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.34'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.33'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.34'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.33'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.34'),
   },
 });
 function directImageRuntime() {
@@ -11493,13 +11495,17 @@ function storyboardSyncTaskState(job, status, { error = '', resultIds = null, fl
 }
 
 function storyboardSetPlanStatus(plan, status, { error = '', resultIds = null, job = null, floor = undefined, stage = '', progress = null, deliveryState = '', linkState = '' } = {}) {
+  const task = storyboardSyncTaskState(job, status, { error, resultIds, floor, stage, progress, plan, deliveryState, linkState });
   if (plan) {
     const shot = job?.planShotId ? plan.shots?.find((item) => item.id === job.planShotId) : null;
     if (shot) {
-      shot.status = status;
-      shot.error = String(error || '').slice(0, 4000);
+      const siblingTasks = (storyboardState().taskStates || []).filter((item) => item.planId === plan.id && item.shotId === shot.id);
+      const aggregate = aggregateStoryboardShotTasks(siblingTasks, status);
+      shot.status = aggregate.status;
+      shot.error = aggregate.error;
+      shot.partialFailureCount = aggregate.partialFailureCount;
       shot.attempt = Math.max(Number(shot.attempt) || 0, Number(job?.attempt) || 0);
-      if (Array.isArray(resultIds)) shot.resultIds = resultIds.map(String).slice(0, 20);
+      shot.resultIds = [...new Set([...(shot.resultIds || []), ...aggregate.resultIds].map(String))].slice(-20);
     }
     const shotStates = (plan.shots || []).map((item) => item.status);
     if (!shot || !shotStates.length) plan.status = status;
@@ -11514,7 +11520,6 @@ function storyboardSetPlanStatus(plan, status, { error = '', resultIds = null, j
     plan.updatedAt = Date.now();
     if (error && !shot) plan.error = String(error).slice(0, 4000);
   }
-  const task = storyboardSyncTaskState(job, status, { error, resultIds, floor, stage, progress, plan, deliveryState, linkState });
   if (!plan && !task) return;
   saveSettings();
   const renderFloor = Number.isInteger(task?.floor) ? task.floor : (Number.isInteger(plan?.floor) ? plan.floor : null);
@@ -12442,7 +12447,7 @@ function storyboardGenerationPayload(state, profile, { sourceId = state.source, 
   };
 }
 
-function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceId = state.source, modelId = '', connectionPresetId = '', planId = '', planShotId = '', recentArtistIds = [] } = {}) {
+function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceId = state.source, modelId = '', connectionPresetId = '', planId = '', planShotId = '', recentArtistIds = [], requestIndex = 1, requestTotal = 1 } = {}) {
   const deliveryPolicy = storyboardProductionDeliveryPolicy(shot || {}, {
     target: state.target,
     inlineByDefault: state.inlineByDefault,
@@ -12480,7 +12485,7 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
     selectedArtistPresetId: state.selectedArtistPresetId,
     selectedArtistPoolId: sourceId === 'novel' ? state.selectedArtistPoolId : '',
     shot: { ...shot, shotRole: shotSpec.shotRole || shot?.role || shot?.shotType },
-    seed: `${getChatKey() || 'gallery'}:${floor ?? 'gallery'}:${planShotId || shot?.id || prompt}:${attempt}`,
+    seed: `${getChatKey() || 'gallery'}:${floor ?? 'gallery'}:${planShotId || shot?.id || prompt}:${attempt}:${requestIndex}`,
     recentArtistIds,
   });
   const payload = storyboardGenerationPayload(state, providerProfile, { sourceId, prompt, negative, artistAssignment, shot: { ...shot, shotSpec: { ...shotSpec, composition: { ...shotSpec.composition, ratioId: compositionDecision.ratioId } } } });
@@ -12504,6 +12509,7 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
     shotSpec: clone(payload.shotSpec || shotSpec), compiledPrompt: clone(payload.compiledPrompt || null), compositionDecision: clone(compositionDecision),
     sensitive: Boolean(shot?.sensitive ?? (state.contentRating === 'nsfw')),
     safetyAdapted: Boolean(shot?.safetyAdapted), originalPrompt: String(shot?.originalPrompt || shot?.prompt || '').slice(0, 24000),
+    requestIndex: Math.max(1, Number(requestIndex) || 1), requestTotal: Math.max(1, Number(requestTotal) || 1),
     connection: {
       id: connection?.id || '', credentialId, baseUrl: String(connection?.baseUrl || ''),
       model: String(providerProfile.model || ''),
@@ -12532,6 +12538,7 @@ function storyboardStartLog(job) {
     params: {
       width: job.profile.width || '', height: job.profile.height || '', steps: job.profile.steps || '', cfg: job.profile.cfg || '',
       seed: job.profile.seed || '', sampler: job.profile.sampler || '', scheduler: job.profile.scheduler || '',
+      requestIndex: job.requestIndex || 1, requestTotal: job.requestTotal || 1,
     },
     error: '', recordId: '', recordIds: [], pipelineId: '', queuedAt: now, startedAt: 0, finishedAt: 0, durationMs: 0,
     attempt: job.attempt, snapshot: clone({
@@ -12543,6 +12550,7 @@ function storyboardStartLog(job) {
       profile: job.profile, paragraphAnchor: job.paragraphAnchor, paragraphSelection: job.paragraphSelection,
       shotSpec: job.shotSpec, compiledPrompt: job.compiledPrompt, compositionDecision: job.compositionDecision,
       shotType: job.shotType, sensitive: job.sensitive, safetyAdapted: job.safetyAdapted, originalPrompt: job.originalPrompt,
+      requestIndex: job.requestIndex || 1, requestTotal: job.requestTotal || 1,
       connection: job.connection, payload: job.payload,
       planId: job.planId || '', planShotId: job.planShotId || '',
     }),
@@ -13764,7 +13772,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false } = {})
       role: shot.role || 'custom', purpose: shot.purpose || '',
       prompt: String(shot.prompt || '').trim(), safePrompt: String(shot.safePrompt || '').trim(), negative: String(shot.negative || '').trim(),
       providerId: '', connectionPresetId: '', parameterPresetId: '', routeRuleId: '',
-      status: 'prompt_ready', resultIds: [], error: '', attempt: 0,
+      status: 'prompt_ready', resultIds: [], error: '', partialFailureCount: 0, attempt: 0,
       paragraphAnchor: storyboardAnchorForMessage(ctx().chat?.[targetFloor], targetFloor, shot.prompt, shot.paragraphIndex),
       paragraphSelection: clone(plan.paragraphSelection || state.pendingParagraphSelection || null), shotSpec: storyboardShotSpecForSelection(shot, plan.paragraphSelection || state.pendingParagraphSelection), compiledPrompt: null, compositionDecision: null,
       sensitive: Boolean(shot.sensitive), userEdited: Boolean(state.promptDraft?.userEditedCompiled),
@@ -13786,17 +13794,22 @@ async function storyboardGenerate(root, { plan = null, automatic = false } = {})
     const effectiveShot = storyboardAdaptShotForModel(shot, sourceId, shotProfile.model);
     const planShot = plan?.shots?.[index] || null;
     if (planShot) Object.assign(planShot, { providerId: sourceId, connectionPresetId: route.connectionPresetId || '', parameterPresetId: route.parameterPresetId || '', routeRuleId: route.ruleId || '', safetyAdapted: effectiveShot.safetyAdapted });
-    const job = storyboardCreateJob(state, shotProfile, {
-      shot: effectiveShot, sourceId, modelId: route.modelId, connectionPresetId: route.connectionPresetId,
-      planId: plan?.id || '', planShotId: planShot?.id || '', recentArtistIds: resolvedArtistIds,
-    });
-    if (job.artistPresetId) resolvedArtistIds.push(job.artistPresetId);
-    if (planShot) Object.assign(planShot, {
-      shotSpec: clone(job.shotSpec), compiledPrompt: clone(job.compiledPrompt), compositionDecision: clone(job.compositionDecision),
-      paragraphSelection: clone(job.paragraphSelection || plan.paragraphSelection || null),
-    });
-    job.automatic = Boolean(automatic);
-    jobs.push(job);
+    const providerRequests = planStoryboardProviderRequests(sourceId, shotProfile.count);
+    for (const request of providerRequests) {
+      const requestProfile = { ...shotProfile, count: String(request.imageCount) };
+      const job = storyboardCreateJob(state, requestProfile, {
+        shot: effectiveShot, sourceId, modelId: route.modelId, connectionPresetId: route.connectionPresetId,
+        planId: plan?.id || '', planShotId: planShot?.id || '', recentArtistIds: resolvedArtistIds,
+        requestIndex: request.requestIndex, requestTotal: request.requestTotal,
+      });
+      if (job.artistPresetId) resolvedArtistIds.push(job.artistPresetId);
+      if (planShot && request.requestIndex === 1) Object.assign(planShot, {
+        shotSpec: clone(job.shotSpec), compiledPrompt: clone(job.compiledPrompt), compositionDecision: clone(job.compositionDecision),
+        paragraphSelection: clone(job.paragraphSelection || plan.paragraphSelection || null),
+      });
+      job.automatic = Boolean(automatic);
+      jobs.push(job);
+    }
   }
   const remainingSlots = STORYBOARD_QUEUE_LIMIT - storyboardQueue.length - storyboardActiveJobs.size;
   if (jobs.length > remainingSlots) {

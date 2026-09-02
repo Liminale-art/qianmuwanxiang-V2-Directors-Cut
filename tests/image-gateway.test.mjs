@@ -63,6 +63,12 @@ assert.equal(sanitized.parameters.width, 64);
 assert.equal(sanitized.parameters.providerOptions.moderation, 'low');
 assert.equal(sanitized.parameters.providerOptions.apiKey, undefined);
 
+const sanitizedNovelBatch = sanitizeImageRequest({
+  provider: 'novel', apiKey: 'secret', model: 'nai-diffusion-5-full', prompt: 'portrait',
+  parameters: { count: 4 },
+});
+assert.equal(sanitizedNovelBatch.parameters.count, 1, 'the gateway must never merge NovelAI outputs into one unrecoverable request');
+
 const nestedSecrets = sanitizeImageRequest({
   provider: 'openai', apiKey: 'secret', model: 'gpt-image-2', prompt: 'test',
   parameters: { providerOptions: { metadata: { token: 'hidden', style: 'soft' }, headers: { authorization: 'hidden' } } },
@@ -149,7 +155,7 @@ const archive = storedZip('image_1.png', tinyPng);
 assert.equal(extractZipImages(archive).length, 1);
 const novel = await generateImage({
   provider: 'novel', apiKey: 'nai-key', model: 'nai-diffusion-4-5-full', prompt: '1girl', negativePrompt: 'bad anatomy',
-  parameters: { width: 832, height: 1216, steps: 28, scale: 5 },
+  parameters: { width: 832, height: 1216, steps: 28, scale: 5, count: 4 },
 }, {
   resolveHost: publicDns,
   fetchImpl: async (url, init) => {
@@ -159,6 +165,7 @@ const novel = await generateImage({
 });
 assert.match(captured.url, /ai\/generate-image$/);
 assert.equal(JSON.parse(captured.init.body).parameters.negative_prompt, 'bad anatomy');
+assert.equal(JSON.parse(captured.init.body).parameters.n_samples, 1);
 assert.equal(novel.images[0].mime, 'image/png');
 
 await generateImage({

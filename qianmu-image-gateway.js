@@ -198,7 +198,9 @@ export function sanitizeImageRequest(input) {
       quality: asString(parameters.quality, 40),
       background: asString(parameters.background, 40),
       outputFormat: asString(parameters.outputFormat, 20).toLowerCase(),
-      count: clampNumber(parameters.count, 1, 4, 1, true),
+      // NovelAI 的批量数在镜头台入队前拆成独立任务。网关继续强制单张，
+      // 防止旧前端或第三方调用重新把多张合并成一次不可恢复的请求。
+      count: provider === 'novel' ? 1 : clampNumber(parameters.count, 1, 4, 1, true),
       seed: clampNumber(parameters.seed, -1, Number.MAX_SAFE_INTEGER, undefined, true),
       steps: clampNumber(parameters.steps, 1, 300, undefined, true),
       scale: clampNumber(parameters.scale ?? parameters.cfg, 0, 100, undefined),
@@ -662,7 +664,7 @@ async function generateNovel(request, base, fetchImpl) {
   const parameters = {
     ...providerOptions,
     width, height,
-    n_samples: request.parameters.count,
+    n_samples: 1,
     ...(request.parameters.steps !== undefined ? { steps: request.parameters.steps } : {}),
     ...(request.parameters.scale !== undefined ? { scale: request.parameters.scale } : {}),
     ...(request.parameters.seed !== undefined ? { seed: request.parameters.seed } : {}),

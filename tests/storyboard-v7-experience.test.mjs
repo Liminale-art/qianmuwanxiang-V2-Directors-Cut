@@ -3,9 +3,11 @@ import { readFile } from 'node:fs/promises';
 import {
   STORYBOARD_SCHEMA_VERSION,
   STORYBOARD_SHOT_GROUP_TEMPLATES,
+  aggregateStoryboardShotTasks,
   createStoryboardDefaults,
   getStoryboardCapabilities,
   normalizeStoryboardState,
+  planStoryboardProviderRequests,
   routeStoryboardShot,
 } from '../qianmu-storyboard.js';
 
@@ -41,6 +43,25 @@ assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-5-curated').conte
 assert.equal(getStoryboardCapabilities('openai', 'gpt-image-2').contentPolicy, 'filtered');
 assert.equal(getStoryboardCapabilities('comfy', 'comfy-workflow').contentPolicy, 'custom');
 
+assert.deepEqual(planStoryboardProviderRequests('novel', 3), [
+  { requestIndex: 1, requestTotal: 3, imageCount: 1 },
+  { requestIndex: 2, requestTotal: 3, imageCount: 1 },
+  { requestIndex: 3, requestTotal: 3, imageCount: 1 },
+]);
+assert.deepEqual(planStoryboardProviderRequests('openai', 3), [
+  { requestIndex: 1, requestTotal: 1, imageCount: 3 },
+]);
+assert.deepEqual(aggregateStoryboardShotTasks([
+  { id: 'a', status: 'completed', resultIds: ['image-a'] },
+  { id: 'b', status: 'failed', error: 'rate limited' },
+], 'failed'), {
+  status: 'completed', resultIds: ['image-a'], error: 'rate limited', partialFailureCount: 1,
+}, 'a later NAI failure must not hide an earlier independently persisted image');
+assert.equal(aggregateStoryboardShotTasks([
+  { id: 'a', status: 'completed', resultIds: ['image-a'] },
+  { id: 'b', status: 'queued' },
+], 'queued').status, 'queued', 'a shared shot remains active until every split request settles');
+
 const route = routeStoryboardShot({ shotType: 'closeup', sensitive: true }, {
   enabled: true,
   rules: [{ id: 'closeup', sensitive: false, shotTypes: ['closeup'], target: { providerId: 'openai', modelId: 'gpt-image-2' } }],
@@ -53,6 +74,7 @@ assert.match(source, /STORYBOARD_SHOT_GROUP_TEMPLATES[\s\S]*groupTemplate\.instr
 assert.match(source, /function storyboardAdaptShotForModel[\s\S]*policy !== 'filtered'[\s\S]*shot\.safePrompt/, 'only known filtered models receive the safe equivalent');
 assert.match(source, /const storyboardActiveJobs = new Map\(\)/);
 assert.match(source, /storyboardActiveJobs\.size < concurrency[\s\S]*storyboardRunQueuedJob/, 'configured generation concurrency must control real workers');
+assert.match(source, /novelBusy[\s\S]*item\.source !== 'novel' \|\| !novelBusy/, 'NovelAI jobs remain strictly serial even when other providers use concurrency');
 assert.doesNotMatch(source, /const latestFloor = storyboardCurrentAssistantFloor\(\);[\s\S]*byFloor\.set\(latestFloor/, 'an empty storyboard strip must not appear under every reply');
 const inlineRender = source.slice(source.indexOf('function storyboardRenderInlineImages'), source.indexOf('function storyboardScheduleInlineRender'));
 assert.match(inlineRender, /plan\.origin !== 'manual_supplement'/, 'only an explicitly requested manual supplement may expose an intermediate placeholder');
