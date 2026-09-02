@@ -35,3 +35,6 @@ pnpm-lock.yaml
 
 # 日志
 *.log
+
+# 本地发行快照（由 scripts/build-release.mjs 可重复生成）
+dist/
