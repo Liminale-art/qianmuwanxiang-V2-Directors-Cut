@@ -4,7 +4,7 @@
 // localStorage 存不下二进制大对象，故独立走 IndexedDB；存 Blob，播放时再 createObjectURL。
 
 const DB_NAME = 'qianmu-blobstore';
-const DB_VERSION = 10;
+const DB_VERSION = 11;
 const STORE_AUDIO = 'audio';         // key: 缓存键   value: { blob, meta, createdAt }
 const STORE_FAVORITES = 'favorites'; // key: 收藏 id  value: { blob, meta, label, createdAt }
 // ── 伴读模块（v2 新增）──
@@ -25,6 +25,9 @@ const STORE_STORYBOARD_INBOX = 'storyboard_inbox'; // key: taskId value: 跨聊�
 const STORE_STORYBOARD_PIPELINE_LOGS = 'storyboard_pipeline_logs'; // key: pipelineId value: 已结束的完整生成流水；轻摘要仍留设置
 const STORE_STORYBOARD_SNAPSHOTS = 'storyboard_snapshots'; // key: chatKey + recordId value: 阅片记录的完整精确重绘快照
 const STORE_STORYBOARD_PLAN_ARCHIVES = 'storyboard_plan_archives'; // key: chatKey + planId value: 已结束分镜计划的完整重数据
+// ── 动态镜头模块（v11 新增）──
+const STORE_VIDEO_TASKS = 'video_tasks'; // key: taskId value: 轻量异步任务合同；不含密钥、提示词、媒体或结果外链
+const STORE_VIDEO_BUDGET = 'video_budget'; // key: reservationId value: 视频费用预留/结算流水
 
 const STORAGE_STORE_INFO = Object.freeze({
   [STORE_AUDIO]: { label: '语音缓存', category: 'audio', recoverable: true },
@@ -41,6 +44,8 @@ const STORAGE_STORE_INFO = Object.freeze({
   [STORE_STORYBOARD_PIPELINE_LOGS]: { label: '分镜详细日志', category: 'logs', recoverable: true },
   [STORE_STORYBOARD_SNAPSHOTS]: { label: '阅片重绘快照', category: 'cache', recoverable: false },
   [STORE_STORYBOARD_PLAN_ARCHIVES]: { label: '分镜历史计划', category: 'cache', recoverable: false },
+  [STORE_VIDEO_TASKS]: { label: '动态镜头任务', category: 'video', recoverable: false },
+  [STORE_VIDEO_BUDGET]: { label: '视频费用流水', category: 'video', recoverable: false },
 });
 
 let dbPromise = null;
@@ -67,6 +72,8 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE_STORYBOARD_PIPELINE_LOGS)) db.createObjectStore(STORE_STORYBOARD_PIPELINE_LOGS);
       if (!db.objectStoreNames.contains(STORE_STORYBOARD_SNAPSHOTS)) db.createObjectStore(STORE_STORYBOARD_SNAPSHOTS);
       if (!db.objectStoreNames.contains(STORE_STORYBOARD_PLAN_ARCHIVES)) db.createObjectStore(STORE_STORYBOARD_PLAN_ARCHIVES);
+      if (!db.objectStoreNames.contains(STORE_VIDEO_TASKS)) db.createObjectStore(STORE_VIDEO_TASKS);
+      if (!db.objectStoreNames.contains(STORE_VIDEO_BUDGET)) db.createObjectStore(STORE_VIDEO_BUDGET);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => { dbPromise = null; reject(req.error); };
@@ -677,6 +684,136 @@ export async function clearStoryboardPlanArchives() {
   await reqP(target.clear());
 }
 
+// ── 动态镜头：任务与费用检查点 ─────────────────────────────
+// 调用方先把任务和费用记录规整为白名单合同；本层只负责让两类数据在一个事务内共同落盘。
+export async function putVideoRuntimeCheckpoint(taskValue, reservationsValue = []) {
+  const task = taskValue && typeof taskValue === 'object' ? taskValue : {};
+  const taskId = String(task.taskId || '').trim().slice(0, 200);
+  const chatKey = String(task.owner?.chatKey || '').trim().slice(0, 512);
+  if (!taskId || !chatKey) throw new Error('video task checkpoint requires taskId and chatKey');
+  const reservations = (Array.isArray(reservationsValue) ? reservationsValue : [])
+    .filter((item) => item && String(item.taskId || '').trim() === taskId && String(item.reservationId || '').trim())
+    .slice(0, 100);
+  const db = await openDB();
+  const transaction = db.transaction([STORE_VIDEO_TASKS, STORE_VIDEO_BUDGET], 'readwrite');
+  const done = new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('video runtime checkpoint failed'));
+    transaction.onabort = () => reject(transaction.error || new Error('video runtime checkpoint aborted'));
+  });
+  const taskStore = transaction.objectStore(STORE_VIDEO_TASKS);
+  const budgetStore = transaction.objectStore(STORE_VIDEO_BUDGET);
+  const updatedAt = Math.max(0, Number(task.timing?.updatedAt) || Date.now());
+  try {
+    taskStore.put({
+      schema: 'qianmu.video-task-record.v1', taskId, chatKey,
+      state: String(task.state || ''), attempt: Math.max(1, Number(task.attempt) || 1), updatedAt, task,
+    }, taskId);
+    for (const reservation of reservations) {
+      const reservationId = String(reservation.reservationId).trim().slice(0, 200);
+      budgetStore.put({
+        schema: 'qianmu.video-budget-record.v1', reservationId, taskId,
+        chatKey: String(reservation.chatKey || chatKey).trim().slice(0, 512),
+        dayKey: String(reservation.dayKey || '').trim().slice(0, 20),
+        settlement: String(reservation.settlement || ''), updatedAt, reservation,
+      }, reservationId);
+    }
+  } catch (error) {
+    try { transaction.abort(); } catch (_) {}
+    await done.catch(() => {});
+    throw error;
+  }
+  await done;
+  return { taskId, reservations: reservations.map((item) => String(item.reservationId)) };
+}
+
+export async function getVideoRuntimeTask(taskId) {
+  const id = String(taskId || '').trim().slice(0, 200);
+  if (!id) return null;
+  const target = await store(STORE_VIDEO_TASKS, 'readonly');
+  return (await reqP(target.get(id))) || null;
+}
+
+export async function listVideoRuntimeTasks(chatKey = '', options = {}) {
+  const expected = String(chatKey || '').trim().slice(0, 512);
+  const limit = Math.min(1000, Math.max(1, Math.round(Number(options.limit) || 300)));
+  const target = await store(STORE_VIDEO_TASKS, 'readonly');
+  const records = [];
+  await new Promise((resolve, reject) => {
+    const cursor = target.openCursor();
+    cursor.onsuccess = () => {
+      const current = cursor.result;
+      if (!current) { resolve(); return; }
+      const value = current.value || {};
+      if (!expected || String(value.chatKey || '') === expected) records.push(value);
+      current.continue();
+    };
+    cursor.onerror = () => reject(cursor.error);
+  });
+  return records.sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0)).slice(0, limit);
+}
+
+export async function listVideoBudgetRecords(filters = {}, options = {}) {
+  const expectedTask = String(filters?.taskId || '').trim().slice(0, 200);
+  const expectedChat = String(filters?.chatKey || '').trim().slice(0, 512);
+  const expectedDay = String(filters?.dayKey || '').trim().slice(0, 20);
+  const limit = Math.min(5000, Math.max(1, Math.round(Number(options.limit) || 2000)));
+  const target = await store(STORE_VIDEO_BUDGET, 'readonly');
+  const records = [];
+  let overflow = false;
+  await new Promise((resolve, reject) => {
+    const cursor = target.openCursor();
+    cursor.onsuccess = () => {
+      const current = cursor.result;
+      if (!current) { resolve(); return; }
+      const value = current.value || {};
+      if ((!expectedTask || String(value.taskId || '') === expectedTask)
+        && (!expectedChat || String(value.chatKey || '') === expectedChat)
+        && (!expectedDay || String(value.dayKey || '') === expectedDay)) {
+        if (records.length >= limit) { overflow = true; resolve(); return; }
+        records.push(value);
+      }
+      current.continue();
+    };
+    cursor.onerror = () => reject(cursor.error);
+  });
+  if (overflow) throw new Error('video budget ledger exceeds the safe scan limit');
+  return records.sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0));
+}
+
+export async function deleteVideoRuntimeTasks(taskIds = []) {
+  const ids = [...new Set((Array.isArray(taskIds) ? taskIds : [])
+    .map((value) => String(value || '').trim().slice(0, 200)).filter(Boolean))].slice(0, 500);
+  if (!ids.length) return { deleted: [], budgetDeleted: 0 };
+  const idSet = new Set(ids);
+  const db = await openDB();
+  const transaction = db.transaction([STORE_VIDEO_TASKS, STORE_VIDEO_BUDGET], 'readwrite');
+  const done = new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('video runtime delete failed'));
+    transaction.onabort = () => reject(transaction.error || new Error('video runtime delete aborted'));
+  });
+  const taskStore = transaction.objectStore(STORE_VIDEO_TASKS);
+  const budgetStore = transaction.objectStore(STORE_VIDEO_BUDGET);
+  let budgetDeleted = 0;
+  for (const id of ids) taskStore.delete(id);
+  const cursor = budgetStore.openCursor();
+  cursor.onsuccess = () => {
+    const current = cursor.result;
+    if (!current) return;
+    if (idSet.has(String(current.value?.taskId || ''))) {
+      current.delete();
+      budgetDeleted++;
+    }
+    current.continue();
+  };
+  cursor.onerror = () => {
+    try { transaction.abort(); } catch (_) {}
+  };
+  await done;
+  return { deleted: ids, budgetDeleted };
+}
+
 // ── 存储治理：只读盘点与严格白名单清理 ──────────────────────
 
 function readerImageBookId(key) {
@@ -803,6 +940,7 @@ function storageRecordChatKey(name, key, value) {
   if (name === STORE_STORYBOARD_INBOX) return String(value?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_STORYBOARD_SNAPSHOTS) return String(value?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_STORYBOARD_PLAN_ARCHIVES) return String(value?.chatKey || '').trim().slice(0, 512);
+  if (name === STORE_VIDEO_TASKS || name === STORE_VIDEO_BUDGET) return String(value?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_AUDIO) return String(value?.meta?.chatKey || '').trim().slice(0, 512);
   return '';
 }
@@ -973,6 +1111,8 @@ const CHAT_SCOPED_CLEARABLE_STORES = Object.freeze([
   STORE_VECTORS,
   STORE_STORYBOARD_SNAPSHOTS,
   STORE_STORYBOARD_PLAN_ARCHIVES,
+  STORE_VIDEO_TASKS,
+  STORE_VIDEO_BUDGET,
 ]);
 
 async function clearStoreChatScope(name, chatKey) {

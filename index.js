@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.51';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.51';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.51';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.51';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.52';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.52';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.52';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.52';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,63 +151,67 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.51';
+} from './qianmu-storyboard.js?v=1.58.52';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.51';
+const VERSION = '1.58.52';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.51'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.52'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.58.51').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.58.52').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.51'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.52'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.51'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.52'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.58.51'),
+    load: () => import('./qianmu-video-contract.js?v=1.58.52'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.58.51'),
+    load: () => import('./qianmu-video-task.js?v=1.58.52'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.58.51'),
+    load: () => import('./qianmu-video-budget.js?v=1.58.52'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.58.51'),
+    load: () => import('./qianmu-video-minimax.js?v=1.58.52'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.58.51'),
+    load: () => import('./qianmu-video-runtime.js?v=1.58.52'),
+  },
+  videoStore: {
+    label: '动态镜头任务仓',
+    load: () => import('./qianmu-video-store.js?v=1.58.52'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.51'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.52'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.51'),
-        import('./qianmu-theaters.js?v=1.58.51'),
+        import('./builtin-theaters.js?v=1.58.52'),
+        import('./qianmu-theaters.js?v=1.58.52'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -7185,11 +7189,11 @@ async function refreshStorageInventory(force = false) {
 }
 
 const STORAGE_CATEGORY_LABELS = Object.freeze({
-  images: '图片', audio: '音频', reader: '伴读资料', notes: '固定便笺', logs: '日志', cache: '临时缓存', settings: '设置与预设', chat: '当前聊天数据', other: '其他',
+  images: '图片', audio: '音频', video: '动态影片', reader: '伴读资料', notes: '固定便笺', logs: '日志', cache: '临时缓存', settings: '设置与预设', chat: '当前聊天数据', other: '其他',
 });
 
 const STORAGE_CATEGORY_COLORS = Object.freeze({
-  images: '#5aa9ff', audio: '#ff9f43', reader: '#9b7cff', notes: '#f2c94c', logs: '#ff647c', cache: '#3dc7c9', settings: '#65c466', chat: '#8d94a6', other: '#747b88',
+  images: '#5aa9ff', audio: '#ff9f43', video: '#6f8fff', reader: '#9b7cff', notes: '#f2c94c', logs: '#ff647c', cache: '#3dc7c9', settings: '#65c466', chat: '#8d94a6', other: '#747b88',
 });
 
 function renderStorageManagementCard() {
@@ -7251,6 +7255,8 @@ const STORAGE_ITEM_RISK = Object.freeze({
   storyboard_pipeline_logs: ['可清理 · 分镜详细流水', false],
   storyboard_snapshots: ['不可恢复 · 阅片精确重绘设置', true],
   storyboard_plan_archives: ['不可恢复 · 分镜历史计划', true],
+  video_tasks: ['可能含进行中任务 · 清理后无法恢复追踪', true],
+  video_budget: ['费用与预算流水 · 清理后无法对账', true],
   __orphan_reader_blobs__: ['无书籍主体引用 · 删除前重查', false],
   __diagnostics__: ['千幕与分镜日志', false],
 });
@@ -7476,7 +7482,7 @@ async function importTtsFavoritesBackup(event) {
   }
 }
 
-const STORAGE_CHAT_CLEARABLE = new Set(['audio', 'tts_lines', 'reader_chats', 'reader_vectors', 'storyboard_snapshots', 'storyboard_plan_archives']);
+const STORAGE_CHAT_CLEARABLE = new Set(['audio', 'tts_lines', 'reader_chats', 'reader_vectors', 'storyboard_snapshots', 'storyboard_plan_archives', 'video_tasks', 'video_budget']);
 
 function storageChatScopeLabel(chatKey, index = 0) {
   const value = String(chatKey || '');

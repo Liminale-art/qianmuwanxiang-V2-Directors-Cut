@@ -38,6 +38,7 @@
     "qianmu-video-gateway.js",
     "qianmu-video-minimax.js",
     "qianmu-video-runtime.js",
+    "qianmu-video-store.js",
     "qianmu-video-task.js",
     "qianmulogo-candy.png",
     "qianmulogo-dark.png",
