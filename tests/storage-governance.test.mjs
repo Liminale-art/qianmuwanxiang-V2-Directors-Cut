@@ -31,5 +31,9 @@ assert.match(source, /浏览器 \/ ST 来源[\s\S]*千幕已盘点[\s\S]*可安�
 assert.match(source, /ST 总空间包含同一站点及其他扩展/, 'origin use must never be mislabeled as Qianmu-only storage');
 assert.match(source, /if \(activeTab === 'plug'\)[\s\S]*refreshStorageInventory/, 'inventory refresh belongs to API and logs');
 assert.match(source, /blobStore\.clearRecoverableStorage\(\)[\s\S]*storyboard\.logs = \[\][\s\S]*storyboard\.pipelineLogs = \[\]/, 'safe cleanup may clear diagnostics but never protected media');
+const refreshInventory = source.slice(source.indexOf('async function refreshStorageInventory'), source.indexOf('const STORAGE_CATEGORY_LABELS'));
+assert.match(refreshInventory, /paintStorageManagementCard\(\)/, 'inventory completion must patch only its own card');
+assert.doesNotMatch(refreshInventory, /renderModal\(\)/, 'inventory completion must not rebuild the full Qianmu window');
+assert.match(source, /function paintStorageManagementCard\(\)[\s\S]*current\.replaceWith\(next\)[\s\S]*bindStorageManagementEvents\(next\)/, 'a replaced storage card must restore its own controls');
 
 console.log('Storage governance contract OK');

@@ -103,10 +103,10 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.11';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.12';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.11';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.11';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.12';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.12';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_COMPOSITION_RULE_ID,
@@ -146,20 +146,20 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
-} from './qianmu-storyboard.js?v=1.58.11';
+} from './qianmu-storyboard.js?v=1.58.12';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.11';
+const VERSION = '1.58.12';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.11'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.12'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.11'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.12'),
   },
 });
 function directImageRuntime() {
@@ -7293,13 +7293,14 @@ async function refreshStorageInventory(force = false) {
   if (storageInventoryState.status === 'loading') return storageInventoryState.data;
   if (!force && storageInventoryState.data && Date.now() - storageInventoryState.sampledAt < 30000) return storageInventoryState.data;
   storageInventoryState = { ...storageInventoryState, status: 'loading', error: '' };
+  paintStorageManagementCard();
   try {
     const data = await collectStorageInventory();
     storageInventoryState = { status: 'ready', data, error: '', sampledAt: data.sampledAt };
   } catch (error) {
     storageInventoryState = { ...storageInventoryState, status: 'error', error: error?.message || String(error), sampledAt: Date.now() };
   }
-  if (activeTab === 'plug' && document.getElementById(MODAL_ID)?.classList.contains('open')) renderModal();
+  paintStorageManagementCard();
   return storageInventoryState.data;
 }
 
@@ -7342,6 +7343,52 @@ function renderStorageManagementCard() {
     <p class="sd-storage-scope">ST 总空间包含同一站点及其他扩展；千幕数据只统计可明确归因的本地内容。</p>
     <div class="sd-storage-actions"><button type="button" class="sd-btn sd-storage-persist" ${data.origin.persisted ? 'disabled' : ''}>${data.origin.persisted ? '已持久保存' : '申请持久保存'}</button><button type="button" class="sd-btn sd-primary sd-storage-clean" ${data.recoverableBytes > 0 ? '' : 'disabled'}>安全清理</button></div>
   </section>`;
+}
+
+function paintStorageManagementCard() {
+  if (activeTab !== 'plug') return false;
+  const modal = document.getElementById(MODAL_ID);
+  if (!modal?.classList.contains('open')) return false;
+  const current = modal.querySelector('.sd-storage-card');
+  if (!current) return false;
+  const template = document.createElement('template');
+  template.innerHTML = renderStorageManagementCard().trim();
+  const next = template.content.firstElementChild;
+  if (!next) return false;
+  current.replaceWith(next);
+  applyQianmuIcons(next);
+  bindStorageManagementEvents(next);
+  return true;
+}
+
+function bindStorageManagementEvents(root) {
+  root.querySelector('.sd-storage-refresh')?.addEventListener('click', () => void refreshStorageInventory(true));
+  root.querySelector('.sd-storage-persist')?.addEventListener('click', async () => {
+    const storageApi = globalThis.navigator?.storage;
+    if (!storageApi?.persist) return toast('当前浏览器不支持持久化存储申请。', 'warning');
+    const granted = await storageApi.persist().catch(() => false);
+    toast(granted ? '浏览器已允许千幕数据持久保存。' : '浏览器暂未授予持久保存；数据仍可正常使用。', granted ? 'success' : 'info');
+    await refreshStorageInventory(true);
+  });
+  root.querySelector('.sd-storage-clean')?.addEventListener('click', async () => {
+    const expected = storageInventoryState.data?.recoverableBytes || 0;
+    const yes = await confirmDialog('安全清理', `将清理可再生成的语音/台词缓存与诊断日志，预计 ${formatStorageBytes(expected)}。成片、收藏、书籍、预设和聊天数据不会被删除。是否继续？`);
+    if (!yes) return;
+    try {
+      await blobStore.clearRecoverableStorage();
+      settings.logHistory = [];
+      settings.logOpenState = {};
+      const storyboard = storyboardState();
+      storyboard.logs = [];
+      storyboard.pipelineLogs = [];
+      saveSettings();
+      await refreshStorageInventory(true);
+      toast('安全清理已完成，受保护内容未改动。', 'success');
+    } catch (error) {
+      toast(`清理未完成：${error?.message || error}`, 'error');
+      await refreshStorageInventory(true);
+    }
+  });
 }
 
 function renderTasksNodesTab() {
@@ -16644,38 +16691,12 @@ function bindActiveTabEvents(root) {
   bindTtsTabEvents(root);
   bindCoreadTabEvents(root);
   if (activeTab === 'plug') {
+    bindStorageManagementEvents(root);
     void refreshStorageInventory(false);
     void refreshOptionalServiceState(false);
     root.querySelector('.sd-runtime-health-refresh')?.addEventListener('click', () => {
       renderModal();
       void refreshOptionalServiceState(true);
-    });
-    root.querySelector('.sd-storage-refresh')?.addEventListener('click', () => void refreshStorageInventory(true));
-    root.querySelector('.sd-storage-persist')?.addEventListener('click', async () => {
-      const storageApi = globalThis.navigator?.storage;
-      if (!storageApi?.persist) return toast('当前浏览器不支持持久化存储申请。', 'warning');
-      const granted = await storageApi.persist().catch(() => false);
-      toast(granted ? '浏览器已允许千幕数据持久保存。' : '浏览器暂未授予持久保存；数据仍可正常使用。', granted ? 'success' : 'info');
-      await refreshStorageInventory(true);
-    });
-    root.querySelector('.sd-storage-clean')?.addEventListener('click', async () => {
-      const expected = storageInventoryState.data?.recoverableBytes || 0;
-      const yes = await confirmDialog('安全清理', `将清理可再生成的语音/台词缓存与诊断日志，预计 ${formatStorageBytes(expected)}。成片、收藏、书籍、预设和聊天数据不会被删除。是否继续？`);
-      if (!yes) return;
-      try {
-        await blobStore.clearRecoverableStorage();
-        settings.logHistory = [];
-        settings.logOpenState = {};
-        const storyboard = storyboardState();
-        storyboard.logs = [];
-        storyboard.pipelineLogs = [];
-        saveSettings();
-        await refreshStorageInventory(true);
-        toast('安全清理已完成，受保护内容未改动。', 'success');
-      } catch (error) {
-        toast(`清理未完成：${error?.message || error}`, 'error');
-        await refreshStorageInventory(true);
-      }
     });
   }
   root.querySelector('.sd-edit-injection')?.addEventListener('click', (event) => {
