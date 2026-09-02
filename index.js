@@ -95,11 +95,11 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.37';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.38';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.37';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.37';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.37';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.38';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.38';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.38';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -152,35 +152,35 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.37';
+} from './qianmu-storyboard.js?v=1.58.38';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.37';
+const VERSION = '1.58.38';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.37'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.38'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.37'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.38'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.37'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.38'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.37'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.38'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.37'),
-        import('./qianmu-theaters.js?v=1.58.37'),
+        import('./builtin-theaters.js?v=1.58.38'),
+        import('./qianmu-theaters.js?v=1.58.38'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -28376,7 +28376,6 @@ function init() {
     bindEvents();
     void applyDirectorInjection();
     ttsStartChat();   // 若 ST 已就绪则即刻挂注入；未就绪由 APP_READY 兜底
-    void hydrateNotesRuntime();
     registerRuntimeInterceptor();
     initialized = true;
     const initFinishedAt = globalThis.performance?.now?.() ?? Date.now();
