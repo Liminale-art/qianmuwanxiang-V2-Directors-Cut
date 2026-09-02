@@ -80,6 +80,6 @@ https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git
 
 本版本原创软件采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)：允许非商业使用、复制、修改和分发；分发原版或修改版时必须保留许可条款与其中的 `Required Notice`。任何商业使用均需另行取得书面授权。
 
-本项目属于 source-available，不以“开源软件”名义发布。`assets/PHOSPHOR-LICENSE.txt` 所列第三方 Phosphor 内容继续遵守 MIT License，不受本项目非商业许可覆盖。此前已按 AGPL-3.0-or-later 发布的历史版本继续适用其原许可，新许可不追溯撤销既有授权。
+本项目属于 source-available，不以“开源软件”名义发布。随插件本地打包的 Lucide 图标子集继续遵守 ISC License，部分源自 Feather 的图标遵守 MIT License，详见 [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)，不受本项目非商业许可覆盖。此前已按 AGPL-3.0-or-later 发布的历史版本继续适用其原许可，新许可不追溯撤销既有授权。
 
 ---

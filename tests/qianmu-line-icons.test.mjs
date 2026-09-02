@@ -20,6 +20,7 @@ const indexSource = await readFile(new URL('index.js', rootUrl), 'utf8');
 const styleSource = await readFile(new URL('style.css', rootUrl), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('manifest.json', rootUrl), 'utf8'));
 const packageJson = JSON.parse(await readFile(new URL('package.json', rootUrl), 'utf8'));
+const thirdPartyNotices = await readFile(new URL('THIRD_PARTY_NOTICES.md', rootUrl), 'utf8');
 
 const faUtilityClasses = new Set(['fa-brands', 'fa-regular', 'fa-solid', 'fa-spin', 'fa-xs']);
 const currentFaNames = [...new Set(
@@ -28,9 +29,9 @@ const currentFaNames = [...new Set(
     .filter((name) => !faUtilityClasses.has(name)),
 )].sort();
 
-assert.equal(QIANMU_ICON_SYSTEM_NAME, '千幕线描');
-assert.equal(QIANMU_ICON_SYSTEM_VERSION, '1.0.0');
-assert.ok(QIANMU_INLINE_GLYPH_COUNT >= 90, '内联图形库应覆盖语义入口与高频工具');
+assert.equal(QIANMU_ICON_SYSTEM_NAME, 'Lucide · 千幕 2.75');
+assert.equal(QIANMU_ICON_SYSTEM_VERSION, 'lucide-1.39.0');
+assert.ok(QIANMU_INLINE_GLYPH_COUNT >= 120, 'Lucide 本地子集应覆盖语义入口与高频工具');
 assert.equal(currentFaNames.length, 133);
 assert.equal(QIANMU_CURRENT_FA_ICON_COUNT, currentFaNames.length);
 assert.deepEqual(Object.keys(QIANMU_FA_ICON_MAP).sort(), currentFaNames, '所有实际使用的 FA 类名必须有确定语义');
@@ -55,6 +56,8 @@ for (const [semantic, symbol] of Object.entries(QIANMU_SEMANTIC_ICONS)) {
 }
 
 assert.doesNotMatch(rendererSource, /new URL\(|fetch\(|XMLHttpRequest|<use\b|xlink:href/i, '图标渲染器不得依赖任何二次资源请求');
+assert.match(rendererSource, /LUCIDE_STROKE_WIDTH = 2\.75/);
+assert.doesNotMatch(rendererSource, /stroke-width=['"](?:1\.65|2)['"]/, '千幕图标不得退回旧描边粗细');
 assert.doesNotMatch(rendererSource, /\bMutationObserver\b/);
 assert.doesNotMatch(
   rendererSource,
@@ -65,12 +68,14 @@ assert.match(styleSource, /\.qm-glyph-icon > svg\.qm-glyph-svg/);
 assert.doesNotMatch(styleSource, /qm-phosphor-spin/);
 await assert.rejects(access(new URL('assets/qianmu-phosphor-v1454.svg', rootUrl)));
 await assert.rejects(access(new URL('assets/PHOSPHOR-LICENSE.txt', rootUrl)));
+assert.match(thirdPartyNotices, /Lucide Static `1\.39\.0`/);
+assert.match(thirdPartyNotices, /ISC License[\s\S]*Lucide Icons and Contributors/);
 
-assert.equal(manifest.version, '1.58.9');
+assert.equal(manifest.version, '1.58.10');
 assert.equal(packageJson.version, manifest.version);
 assert.equal(manifest.js, `index.js?v=${manifest.version}`);
 assert.equal(manifest.css, `style.css?v=${manifest.version}`);
-assert.match(indexSource, /from '\.\/qianmu-icon-renderer\.js\?v=1\.58\.9';/);
+assert.match(indexSource, /from '\.\/qianmu-icon-renderer\.js\?v=1\.58\.10';/);
 
 class FakeClassList {
   constructor(host, initial = '') { this.host = host; this.set(initial); }
@@ -193,12 +198,14 @@ camera.className = 'fa-solid fa-play qm-glyph-icon';
 assert.equal(refreshQianmuIcon(camera), true);
 assert.equal(camera.children[0], firstSvg);
 assert.equal(camera.getAttribute('data-qm-glyph'), 'qm-fill-play');
-assert.match(firstSvg.innerHTML, /10 6\.5/);
+const playGlyph = firstSvg.innerHTML;
+assert.match(playGlyph, /<path|<polygon/);
 camera.className = 'fa-solid fa-pause qm-glyph-icon';
 assert.equal(refreshQianmuIcon(camera), true);
 assert.equal(camera.children[0], firstSvg);
 assert.equal(camera.getAttribute('data-qm-glyph'), 'qm-fill-pause');
-assert.match(firstSvg.innerHTML, /M9 6v12/);
+assert.match(firstSvg.innerHTML, /<path|<rect/);
+assert.notEqual(firstSvg.innerHTML, playGlyph);
 
 const external = makeOwnedRoot('story-director-quick-wheel');
 const boundary = external.root.appendChild(new FakeElement('span', { className: 'sd-preserve-external-icon', ownerDocument: external.document, stats: external.stats }));
@@ -219,4 +226,4 @@ assert.equal(applyQianmuIcons(largeDocument), 0);
 assert.equal(applyQianmuIcons(largeDocument.body), 0);
 assert.equal(largeStats.queries, 0, '拒绝 document/body 时不得执行全页查询');
 
-console.log('Qianmu Line inline icon boundary and coverage contract OK');
+console.log('Lucide local icon boundary and coverage contract OK');
