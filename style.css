@@ -8471,7 +8471,9 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #qianmu-storage-cleanup-layer .sd-storage-chat-group label.is-destructive { border-color: color-mix(in srgb, #d35c5c 34%, var(--sd-hairline)); }
 #qianmu-storage-cleanup-layer .sd-storage-chat-group label.is-destructive em { color: #c65252; }
 #qianmu-storage-cleanup-layer .sd-storage-backup-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 0 14px 4px; }
-#qianmu-storage-cleanup-layer .sd-storage-backup-actions.is-single { grid-template-columns: minmax(0, 1fr); }
+#qianmu-storage-cleanup-layer .sd-storage-backups { margin: 0 14px 4px; border: 1px solid var(--sd-hairline); border-radius: var(--sd-radius-control); }
+#qianmu-storage-cleanup-layer .sd-storage-backups > summary { padding: 9px 11px; color: var(--sd-muted); cursor: pointer; font-size: var(--sd-font-secondary); }
+#qianmu-storage-cleanup-layer .sd-storage-backups .sd-storage-backup-actions { padding: 0 9px 9px; }
 
 #qianmu-notes-panel-layer {
   position: fixed !important;

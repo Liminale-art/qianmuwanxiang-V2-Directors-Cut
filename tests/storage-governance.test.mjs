@@ -60,8 +60,14 @@ assert.match(source, /orphanReaderBlobs[\s\S]*\u5b64\u513f\u56fe\u7247[\s\S]*__o
 assert.match(source, /selected\.includes\('__orphan_reader_blobs__'\)[\s\S]*clearOrphanedReaderBlobs\(\)/, 'orphan cleanup must only run after explicit selection');
 assert.match(source, /scopeCount: Array\.isArray\(item\.scopes\)[\s\S]*item\.scopeCount[\s\S]*个聊天/, 'cleanup rows must reveal how many chat buckets each registered store contains');
 assert.match(source, /openStorageChatCleanupDialog[\s\S]*导出伴读整包[\s\S]*导出语音缓存[\s\S]*clearChatScopedStorage\(selected\)/, 'chat cleanup must offer module backups before explicit per-item deletion');
-assert.match(source, /openStorageCleanupDialog[\s\S]*导出固定便笺[\s\S]*exportPinnedNotesBackup/, 'fixed notes must have a backup path beside destructive module cleanup');
+assert.match(source, /openStorageCleanupDialog[\s\S]*导出固定便笺[\s\S]*导入固定便笺[\s\S]*exportPinnedNotesBackup/, 'fixed notes must have backup and restore paths beside destructive module cleanup');
 assert.match(source, /function exportPinnedNotesBackup[\s\S]*filter\(\(note\) => note\.pinned\)[\s\S]*type: 'qianmu-notes'/, 'the notes backup must exclude temporary session-only notes');
+assert.match(source, /function importPinnedNotesBackup[\s\S]*12 \* 1024 \* 1024[\s\S]*payload\?\.type !== 'qianmu-notes'[\s\S]*slice\(0, 1000\)/, 'notes restore must validate format and bound file and entry counts');
+assert.match(source, /occupiedIds\.has\(id\)[\s\S]*uid\('note-import'\)[\s\S]*pinned: true, floating: false/, 'restoring notes must preserve local collisions as independent safe copies');
+assert.match(source, /function exportTtsFavoritesBackup[\s\S]*qianmu-tts-favorites[\s\S]*credentialsIncluded: false/, 'voice favorites need a credential-free binary backup before destructive cleanup');
+assert.match(source, /function importTtsFavoritesBackup[\s\S]*256 \* 1024 \* 1024[\s\S]*slice\(0, 2000\)[\s\S]*hasFavorite\(id\)[\s\S]*uid\('fav-import'\)/, 'favorite restore must bound input and preserve ID collisions as copies');
+assert.match(source, /storageSafeFavoriteMeta[\s\S]*const allowed = \['speaker'[\s\S]*credentialsIncluded: false/, 'favorite packages must use an explicit metadata allow-list');
+assert.match(source, /sd-storage-export-reader-pack[\s\S]*coreadExportData\(\)[\s\S]*sd-storage-import-reader-pack[\s\S]*coreadImportDataFile/, 'the general destructive cleanup dialog must expose the existing complete reader backup round trip');
 assert.match(source, /STORAGE_CHAT_CLEARABLE[\s\S]*reader_chats[\s\S]*reader_vectors/, 'the UI must expose only the same chat-scoped store subset');
 assert.doesNotMatch(source, /navigator\.storage\.persist|申请持久保存/, 'persistent-storage prompts must be removed');
 const refreshInventory = source.slice(source.indexOf('async function refreshStorageInventory'), source.indexOf('const STORAGE_CATEGORY_LABELS'));

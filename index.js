@@ -94,13 +94,14 @@ import {
   createQianmuNote,
   deleteQianmuNote,
   listQianmuNotes,
+  normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.35';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.36';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.35';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.35';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.35';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.36';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.36';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.36';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -153,28 +154,28 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.35';
+} from './qianmu-storyboard.js?v=1.58.36';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.35';
+const VERSION = '1.58.36';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.35'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.36'),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.35'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.36'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.35'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.36'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.35'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.36'),
   },
 });
 function directImageRuntime() {
@@ -7143,6 +7144,8 @@ function openStorageCleanupDialog(data) {
     { id: '__diagnostics__', label: '生成与运行日志', bytes: Number(data?.diagnosticsBytes) || 0, count: 0 },
   ];
   const fixedNotes = modules.find((item) => item.id === 'notes');
+  const favorites = modules.find((item) => item.id === 'favorites');
+  const hasReaderData = modules.some((item) => item.id.startsWith('reader_') && Number(item.count) > 0);
   return new Promise((resolve) => {
     const layer = document.createElement('div');
     layer.id = STORAGE_CLEANUP_LAYER_ID;
@@ -7159,7 +7162,11 @@ function openStorageCleanupDialog(data) {
         const [risk, destructive] = STORAGE_ITEM_RISK[item.id] || ['本地项目', true];
         return `<label class="${destructive ? 'is-destructive' : ''}"><input type="checkbox" value="${htmlEscape(item.id)}" ${item.bytes > 0 ? '' : 'disabled'}><span><span><b>${htmlEscape(item.label)}</b><em>${htmlEscape(risk)}</em></span><small>${htmlEscape(formatStorageBytes(item.bytes))}${item.count ? ` · ${item.count} 项` : ''}${item.scopeCount ? ` · ${item.scopeCount} 个聊天` : ''}</small></span></label>`;
       }).join('')}</div>
-      ${Number(fixedNotes?.count) > 0 ? '<div class="sd-storage-backup-actions is-single"><button type="button" class="sd-btn sd-storage-export-notes"><i class="fa-solid fa-file-export"></i>导出固定便笺</button></div>' : ''}
+      <details class="sd-storage-backups"><summary>备份与恢复</summary><div class="sd-storage-backup-actions">
+        <button type="button" class="sd-btn sd-storage-export-notes" ${Number(fixedNotes?.count) > 0 ? '' : 'disabled'}><i class="fa-solid fa-file-export"></i>导出固定便笺</button><label class="sd-btn"><i class="fa-solid fa-file-import"></i>导入固定便笺<input type="file" class="sd-storage-import-notes" accept="application/json,.json" hidden></label>
+        <button type="button" class="sd-btn sd-storage-export-favorites" ${Number(favorites?.count) > 0 ? '' : 'disabled'}><i class="fa-solid fa-file-export"></i>导出语音收藏</button><label class="sd-btn"><i class="fa-solid fa-file-import"></i>导入语音收藏<input type="file" class="sd-storage-import-favorites" accept="application/json,.json" hidden></label>
+        <button type="button" class="sd-btn sd-storage-export-reader-pack" ${hasReaderData ? '' : 'disabled'}><i class="fa-solid fa-file-export"></i>导出伴读整包</button><label class="sd-btn"><i class="fa-solid fa-file-import"></i>导入伴读整包<input type="file" class="sd-storage-import-reader-pack" accept="application/json,.json" hidden></label>
+      </div></details>
       <footer><button type="button" class="sd-btn sd-storage-cleanup-cancel">取消</button><button type="button" class="sd-btn sd-primary sd-storage-cleanup-confirm" disabled><i class="fa-solid fa-trash-can"></i>清理所选</button></footer>
     </section>`;
     document.body.appendChild(layer);
@@ -7172,6 +7179,15 @@ function openStorageCleanupDialog(data) {
     };
     layer.querySelectorAll('input[type="checkbox"]').forEach((input) => input.addEventListener('change', sync));
     layer.querySelector('.sd-storage-export-notes')?.addEventListener('click', (event) => void exportPinnedNotesBackup(event.currentTarget));
+    layer.querySelector('.sd-storage-import-notes')?.addEventListener('change', (event) => void importPinnedNotesBackup(event));
+    layer.querySelector('.sd-storage-export-favorites')?.addEventListener('click', (event) => void exportTtsFavoritesBackup(event.currentTarget));
+    layer.querySelector('.sd-storage-import-favorites')?.addEventListener('change', (event) => void importTtsFavoritesBackup(event));
+    layer.querySelector('.sd-storage-export-reader-pack')?.addEventListener('click', () => void coreadExportData());
+    layer.querySelector('.sd-storage-import-reader-pack')?.addEventListener('change', async (event) => {
+      const input = event.currentTarget;
+      try { await coreadImportDataFile(input.files?.[0]); }
+      finally { input.value = ''; }
+    });
     layer.querySelector('.sd-storage-cleanup-confirm')?.addEventListener('click', () => finish([...layer.querySelectorAll('input:checked')].map((input) => input.value)));
     layer.querySelector('.sd-storage-cleanup-backdrop')?.addEventListener('click', () => finish(null));
     layer.querySelector('.sd-storage-cleanup-close')?.addEventListener('click', () => finish(null));
@@ -7202,6 +7218,131 @@ async function exportPinnedNotesBackup(button = null) {
   } finally {
     if (icon && previousIcon) setQianmuIconClass(icon, previousIcon);
     if (button) button.disabled = false;
+  }
+}
+
+async function importPinnedNotesBackup(event) {
+  const input = event?.currentTarget;
+  const file = input?.files?.[0];
+  if (!file) return;
+  try {
+    if (Number(file.size) > 12 * 1024 * 1024) throw new Error('便笺备份文件超过 12 MB');
+    const payload = JSON.parse(await file.text());
+    if (payload?.type !== 'qianmu-notes' || Number(payload?.version) !== 1 || !Array.isArray(payload?.notes)) {
+      throw new Error('不是有效的千幕固定便笺备份');
+    }
+    const incoming = payload.notes.slice(0, 1000);
+    const occupiedIds = new Set((await listQianmuNotes()).map((note) => note.id));
+    let imported = 0;
+    const failed = [];
+    for (let index = 0; index < incoming.length; index++) {
+      const raw = incoming[index];
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { failed.push(`第 ${index + 1} 条格式无效`); continue; }
+      let id = String(raw.id || '').trim().slice(0, 120);
+      if (!id || occupiedIds.has(id)) id = uid('note-import');
+      occupiedIds.add(id);
+      try {
+        await saveQianmuNote(normalizeQianmuNote({ ...raw, id, pinned: true, floating: false }));
+        imported++;
+      } catch (error) {
+        failed.push(`第 ${index + 1} 条：${error?.message || error}`);
+      }
+    }
+    notesRuntime = await listQianmuNotes();
+    notesLoaded = true;
+    if (notesPanelOpen) renderNotesPanelPortal();
+    renderFloatingNotes();
+    await refreshStorageInventory(true);
+    if (failed.length) toast(`已导入 ${imported} 条固定便笺，${failed.length} 条失败并跳过。${failed.slice(0, 2).join('；')}`, 'warning');
+    else toast(`已导入 ${imported} 条固定便笺；同 ID 条目已作为副本保留。`, 'success');
+  } catch (error) {
+    toast(`便笺导入失败：${error?.message || error}`, 'error');
+  } finally {
+    if (input) input.value = '';
+  }
+}
+
+function storageSafeFavoriteMeta(value = {}) {
+  const allowed = ['speaker', 'text', 'format', 'provider', 'folder', 'fileNameBase', 'chatKey', 'messageIndex', 'lineIndex', 'sourceTime', 'source'];
+  const output = {};
+  for (const key of allowed) {
+    const item = value?.[key];
+    if (typeof item === 'string') output[key] = item.slice(0, key === 'text' ? 12000 : 512);
+    else if (typeof item === 'number' && Number.isFinite(item)) output[key] = item;
+    else if (typeof item === 'boolean') output[key] = item;
+  }
+  return output;
+}
+
+async function exportTtsFavoritesBackup(button = null) {
+  const icon = button?.querySelector('i');
+  const previousIcon = icon?.className || '';
+  if (button) button.disabled = true;
+  if (icon) setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
+  try {
+    const favorites = await blobStore.listFavorites();
+    if (!favorites.length) return toast('没有可导出的语音收藏。', 'info');
+    const entries = [];
+    for (const favorite of favorites) {
+      if (!favorite?.blob) continue;
+      entries.push({
+        id: String(favorite.id || '').slice(0, 240), label: String(favorite.label || '').slice(0, 1000),
+        mime: String(favorite.blob.type || 'audio/mpeg').slice(0, 120), data: await blobToBase64(favorite.blob),
+        meta: storageSafeFavoriteMeta(favorite.meta), createdAt: Number(favorite.createdAt) || 0,
+      });
+    }
+    const payload = { type: 'qianmu-tts-favorites', version: 1, exportedAt: new Date().toISOString(), credentialsIncluded: false, entries };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url; link.download = `qianmu-语音收藏-${fileStamp()}.json`;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast(`已导出 ${entries.length} 条语音收藏。`, 'success');
+  } catch (error) {
+    toast(`语音收藏导出失败：${error?.message || error}`, 'error');
+  } finally {
+    if (icon && previousIcon) setQianmuIconClass(icon, previousIcon);
+    if (button) button.disabled = false;
+  }
+}
+
+async function importTtsFavoritesBackup(event) {
+  const input = event?.currentTarget;
+  const file = input?.files?.[0];
+  if (!file) return;
+  try {
+    if (Number(file.size) > 256 * 1024 * 1024) throw new Error('语音收藏备份文件超过 256 MB');
+    const payload = JSON.parse(await file.text());
+    if (payload?.type !== 'qianmu-tts-favorites' || Number(payload?.version) !== 1 || !Array.isArray(payload?.entries)) {
+      throw new Error('不是有效的千幕语音收藏备份');
+    }
+    const entries = payload.entries.slice(0, 2000);
+    let imported = 0;
+    const failed = [];
+    for (let index = 0; index < entries.length; index++) {
+      const item = entries[index];
+      try {
+        if (!item || typeof item !== 'object' || typeof item.data !== 'string' || item.data.length > 64 * 1024 * 1024) throw new Error('条目格式或体积无效');
+        let id = String(item.id || '').trim().slice(0, 240) || uid('fav-import');
+        if (await blobStore.hasFavorite(id)) id = uid('fav-import');
+        const mime = /^audio\/[a-z0-9.+-]+$/i.test(String(item.mime || '')) ? String(item.mime) : 'audio/mpeg';
+        const audioBlob = base64ToBlob(item.data, mime);
+        if (audioBlob.size > 48 * 1024 * 1024) throw new Error('单条音频超过 48 MB');
+        await blobStore.addFavorite(id, audioBlob, storageSafeFavoriteMeta(item.meta), String(item.label || '').slice(0, 1000));
+        imported++;
+      } catch (error) {
+        failed.push(`第 ${index + 1} 条：${error?.message || error}`);
+      }
+    }
+    const modal = document.getElementById(MODAL_ID);
+    if (activeTab === 'voicing' && modal) await ttsRefreshFavorites(modal);
+    await refreshStorageInventory(true);
+    if (failed.length) toast(`已导入 ${imported} 条语音收藏，${failed.length} 条失败并跳过。${failed.slice(0, 2).join('；')}`, 'warning');
+    else toast(`已导入 ${imported} 条语音收藏；同 ID 条目已作为副本保留。`, 'success');
+  } catch (error) {
+    toast(`语音收藏导入失败：${error?.message || error}`, 'error');
+  } finally {
+    if (input) input.value = '';
   }
 }
 
