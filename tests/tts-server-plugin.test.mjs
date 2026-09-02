@@ -58,6 +58,8 @@ await routes.get('GET /health')({}, health);
 assert.equal(health.body.ok, true);
 assert.equal(health.body.plugin, 'qianmu-tts');
 assert.equal(health.body.version, packageJson.version);
+assert.equal(health.body.schemaVersion, 1);
+assert.equal(health.body.delivery, 'optional');
 assert.deepEqual(health.body.services, ['doubao-tts', 'storyboard-image']);
 
 const capabilities = mockResponse();

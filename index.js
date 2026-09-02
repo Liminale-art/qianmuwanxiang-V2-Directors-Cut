@@ -103,10 +103,10 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.10';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.11';
 import * as reader from './qianmu-reader.js';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.10';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.10';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.11';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.11';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_COMPOSITION_RULE_ID,
@@ -146,16 +146,20 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
-} from './qianmu-storyboard.js?v=1.58.10';
+} from './qianmu-storyboard.js?v=1.58.11';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.10';
+const VERSION = '1.58.11';
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.10'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.11'),
+  },
+  optionalService: {
+    label: '增强服务检测',
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.11'),
   },
 });
 function directImageRuntime() {
@@ -918,6 +922,8 @@ let storyboardStModulePromise = null;
 let storyboardUtilsModulePromise = null;
 let storyboardChatClickBound = false;
 let storageInventoryState = { status: 'idle', data: null, error: '', sampledAt: 0 };
+let optionalServiceState = { status: 'idle', available: false, version: '', services: [], message: '', checkedAt: 0 };
+let optionalServiceProbePromise = null;
 // 仅驻留于当前页面生命周期的轻量诊断，不写入 ST 设置、日志或聊天元数据。
 // 第一阶段先建立可量化基线，避免在没有证据时贸然拆分巨型入口造成回归链。
 const performanceRuntime = {
@@ -7104,6 +7110,65 @@ function formatStorageBytes(value) {
   return `${amount >= 100 ? amount.toFixed(0) : amount >= 10 ? amount.toFixed(1) : amount.toFixed(2)} ${unit}`;
 }
 
+function lazyFeatureDetail(features = featureRuntime.snapshot()) {
+  return features.map((feature) => `${feature.label} · ${feature.status === 'ready' ? '已加载' : feature.status === 'loading' ? '加载中' : feature.status === 'error' ? '可重试' : '待命'}`).join(' · ') || '无';
+}
+
+function optionalServiceLabel() {
+  if (optionalServiceState.status === 'checking') return '检测中';
+  if (optionalServiceState.status === 'ready') return optionalServiceState.version ? `可用 · v${optionalServiceState.version}` : '可用';
+  if (optionalServiceState.status === 'missing') return '未安装（可选）';
+  if (optionalServiceState.status === 'unsupported') return '当前环境不支持';
+  if (optionalServiceState.status === 'error') return '暂不可达';
+  return '尚未检查';
+}
+
+function optionalServiceDetail() {
+  if (optionalServiceState.status === 'ready') {
+    const labels = { 'doubao-tts': '豆包语音网关', 'storyboard-image': '分镜跨域网关' };
+    return optionalServiceState.services.map((service) => labels[service] || service).join(' · ') || '服务已连接';
+  }
+  return optionalServiceState.message || '浏览器直连与本地数据不受影响';
+}
+
+function paintOptionalServiceState() {
+  const modal = document.getElementById(MODAL_ID);
+  if (!modal?.classList.contains('open')) return;
+  const label = modal.querySelector('.sd-optional-service-label');
+  const detail = modal.querySelector('.sd-optional-service-detail');
+  const lazyCount = modal.querySelector('.sd-lazy-feature-count');
+  const lazyDetail = modal.querySelector('.sd-lazy-feature-detail');
+  if (label) {
+    label.textContent = optionalServiceLabel();
+    label.dataset.status = optionalServiceState.status;
+  }
+  if (detail) detail.textContent = optionalServiceDetail();
+  const lazyFeatures = featureRuntime.snapshot();
+  if (lazyCount) lazyCount.textContent = `按需功能 ${lazyFeatures.filter((feature) => feature.status === 'ready').length}/${lazyFeatures.length}`;
+  if (lazyDetail) lazyDetail.textContent = lazyFeatureDetail(lazyFeatures);
+}
+
+async function refreshOptionalServiceState(force = false) {
+  if (optionalServiceProbePromise) return optionalServiceProbePromise;
+  if (!force && optionalServiceState.checkedAt && Date.now() - optionalServiceState.checkedAt < 60000) return optionalServiceState;
+  optionalServiceState = { ...optionalServiceState, status: 'checking', message: '' };
+  paintOptionalServiceState();
+  optionalServiceProbePromise = (async () => {
+    try {
+      const capabilityRuntime = await featureRuntime.load('optionalService');
+      const headers = typeof ctx().getRequestHeaders === 'function' ? ctx().getRequestHeaders() : {};
+      optionalServiceState = await capabilityRuntime.probeQianmuOptionalService({ headers });
+    } catch (_) {
+      optionalServiceState = { status: 'error', available: false, version: '', services: [], message: '增强服务检测模块暂不可用', checkedAt: Date.now() };
+    } finally {
+      optionalServiceProbePromise = null;
+      paintOptionalServiceState();
+    }
+    return optionalServiceState;
+  })();
+  return optionalServiceProbePromise;
+}
+
 function runtimeHealthSnapshot() {
   const observers = [
     ['输入菜单', inputMenuObserver],
@@ -7154,10 +7219,12 @@ function renderRuntimeHealthCard() {
           <span>重绘 / 打开<b>${htmlEscape(performanceRuntime.modalRenderCount)} / ${htmlEscape(performanceRuntime.modalOpenCount)}</b></span>
           <span>设置数据<b>${htmlEscape(formatStorageBytes(snapshot.settingsBytes))}</b></span>
           <span>当前聊天<b>${htmlEscape(formatStorageBytes(snapshot.chatBytes))}</b></span>
+          <span>增强服务<b class="sd-optional-service-label" data-status="${htmlEscape(optionalServiceState.status)}">${htmlEscape(optionalServiceLabel())}</b></span>
         </div>
         <p class="sd-runtime-health-line"><span>活动观察器 ${snapshot.observers.length}</span>${htmlEscape(snapshot.observers.join(' · ') || '无')}</p>
         <p class="sd-runtime-health-line"><span>活动计时器 ${snapshot.timers.length}</span>${htmlEscape(snapshot.timers.join(' · ') || '无')}</p>
-        <p class="sd-runtime-health-line"><span>按需功能 ${snapshot.lazyFeatures.filter((feature) => feature.status === 'ready').length}/${snapshot.lazyFeatures.length}</span>${snapshot.lazyFeatures.map((feature) => `${htmlEscape(feature.label)} · ${feature.status === 'ready' ? '已加载' : feature.status === 'loading' ? '加载中' : feature.status === 'error' ? '可重试' : '待命'}`).join(' · ') || '无'}</p>
+        <p class="sd-runtime-health-line"><span class="sd-lazy-feature-count">按需功能 ${snapshot.lazyFeatures.filter((feature) => feature.status === 'ready').length}/${snapshot.lazyFeatures.length}</span><span class="sd-lazy-feature-detail">${htmlEscape(lazyFeatureDetail(snapshot.lazyFeatures))}</span></p>
+        <p class="sd-runtime-health-line"><span>增强能力</span><span class="sd-optional-service-detail">${htmlEscape(optionalServiceDetail())}</span></p>
         <div class="sd-runtime-health-actions"><small>数据只保留在本次页面，不写入日志或用户设置。</small><button type="button" class="sd-btn sd-mini-btn sd-runtime-health-refresh">刷新诊断</button></div>
       </div>
     </details>
@@ -16578,7 +16645,11 @@ function bindActiveTabEvents(root) {
   bindCoreadTabEvents(root);
   if (activeTab === 'plug') {
     void refreshStorageInventory(false);
-    root.querySelector('.sd-runtime-health-refresh')?.addEventListener('click', () => renderModal());
+    void refreshOptionalServiceState(false);
+    root.querySelector('.sd-runtime-health-refresh')?.addEventListener('click', () => {
+      renderModal();
+      void refreshOptionalServiceState(true);
+    });
     root.querySelector('.sd-storage-refresh')?.addEventListener('click', () => void refreshStorageInventory(true));
     root.querySelector('.sd-storage-persist')?.addEventListener('click', async () => {
       const storageApi = globalThis.navigator?.storage;

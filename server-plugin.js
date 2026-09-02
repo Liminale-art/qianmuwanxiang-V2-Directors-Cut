@@ -83,6 +83,8 @@ export async function init(router) {
     ok: true,
     plugin: info.id,
     version: await pluginVersion(),
+    schemaVersion: 1,
+    delivery: 'optional',
     services: ['doubao-tts', 'storyboard-image'],
   }));
 
