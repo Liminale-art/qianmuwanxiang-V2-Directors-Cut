@@ -8786,7 +8786,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 }
 #story-director-modal .sd-structured-output-toggle :is(i, .qm-glyph-icon) { width: 15px; height: 15px; font-size: 15px; }
 
-/* v1.58.64 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
+/* v1.58.65 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
 #story-director-modal .sd-storyboard-gallery-kind-switch {
   min-height: 36px;
   display: grid;
@@ -9196,6 +9196,38 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-storyboard-video-readiness li[data-status="blocked"] > :is(i, .qm-glyph-icon),
 .sd-storyboard-video-readiness li[data-status="blocked"] em { color: #d7867d; }
 .sd-video-readiness-summary { margin: 0; padding: 7px 9px 8px; border-top: 1px solid rgba(255,255,255,.07); color: rgba(255,255,255,.42); font-size: 8px; }
+.sd-storyboard-video-estimate {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 10px;
+  background: rgba(255,255,255,.025);
+}
+.sd-storyboard-video-estimate > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 9px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.sd-storyboard-video-estimate > header > span { font-size: 10px; font-weight: 650; }
+.sd-storyboard-video-estimate > header > b { color: var(--sd-accent, #9fcbb5); font-size: 12px; font-weight: 700; }
+.sd-video-estimate-breakdown { display: grid; gap: 0; }
+.sd-video-estimate-breakdown > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 9px;
+  border-bottom: 1px solid rgba(255,255,255,.055);
+  color: rgba(255,255,255,.52);
+  font-size: 8px;
+}
+.sd-video-estimate-breakdown em { min-width: 0; overflow: hidden; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.sd-video-estimate-breakdown b { color: rgba(255,255,255,.72); font-size: 8px; font-weight: 600; white-space: nowrap; }
+.sd-storyboard-video-estimate > small { display: block; padding: 7px 9px 8px; color: rgba(255,255,255,.4); font-size: 8px; }
 .sd-storyboard-video-draft-picker {
   min-height: 0;
   display: grid;
