@@ -35,6 +35,7 @@
     "qianmu-tts.js",
     "qianmu-video-contract.js",
     "qianmu-video-coordinator.js",
+    "qianmu-video-draft.js",
     "qianmu-video-budget.js",
     "qianmu-video-gateway.js",
     "qianmu-video-gallery.js",

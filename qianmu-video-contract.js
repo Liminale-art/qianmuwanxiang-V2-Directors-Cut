@@ -52,10 +52,11 @@ function safeLocatorRef(value) {
 
 function normalizeTimelineAnchor(value = {}) {
   const raw = plain(value) ? value : {};
-  const floor = Number(raw.floor);
+  const rawFloor = raw.floor;
+  const floor = Number(rawFloor);
   return {
     chatKey: text(raw.chatKey || raw.chat_key, 512),
-    floor: Number.isInteger(floor) && floor >= 0 ? floor : null,
+    floor: rawFloor !== '' && rawFloor !== null && rawFloor !== undefined && Number.isInteger(floor) && floor >= 0 ? floor : null,
     messageId: text(raw.messageId || raw.message_id, 200),
     paragraphAnchorId: text(raw.paragraphAnchorId || raw.paragraph_anchor_id, 200),
   };
@@ -88,7 +89,8 @@ function normalizeAsset(value, index = 0) {
     sourceRef: {
       type: text(sourceRaw.type, 80),
       chatKey: text(sourceRaw.chatKey || sourceRaw.chat_key, 512),
-      floor: Number.isInteger(Number(sourceRaw.floor)) && Number(sourceRaw.floor) >= 0 ? Number(sourceRaw.floor) : null,
+      floor: sourceRaw.floor !== '' && sourceRaw.floor !== null && sourceRaw.floor !== undefined
+        && Number.isInteger(Number(sourceRaw.floor)) && Number(sourceRaw.floor) >= 0 ? Number(sourceRaw.floor) : null,
       recordId: text(sourceRaw.recordId || sourceRaw.record_id, 200),
       versionId: text(sourceRaw.versionId || sourceRaw.version_id, 200),
     },

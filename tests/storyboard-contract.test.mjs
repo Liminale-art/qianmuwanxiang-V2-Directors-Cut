@@ -222,7 +222,7 @@ assert.ok(manualAnchor.errors.some((entry) => entry.code === 'manual_insert_anch
 assert.match(formatStoryboardContractErrors(wrongParagraph.errors, 1), /^\$\.shots\[0\]/);
 
 const indexSource = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-assert.match(indexSource, /storyboardContract:[\s\S]*import\('\.\/qianmu-storyboard-contract\.js\?v=1\.58\.58'\)/, 'the contract validator must stay outside the startup graph');
+assert.match(indexSource, /storyboardContract:[\s\S]*import\('\.\/qianmu-storyboard-contract\.js\?v=1\.58\.59'\)/, 'the contract validator must stay outside the startup graph');
 assert.match(indexSource, /async function storyboardCompilerResult[\s\S]*const declaresPlanContract = \/"schema"[\s\S]*featureRuntime\.load\('storyboardContract'\)/, 'only explicitly versioned contract responses should enter strict validation');
 assert.match(indexSource, /const result = await storyboardCompilerResult\(/, 'the lazy validator must finish before compiler output is accepted');
 
