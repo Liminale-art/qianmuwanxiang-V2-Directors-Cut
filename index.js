@@ -103,10 +103,9 @@ import {
   listQianmuNotes,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.6';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.7';
 import * as reader from './qianmu-reader.js';
-import { checkDirectImageConnection, generateDirectImage, isDirectImageTransportError } from './qianmu-image-direct.js?v=1.58.6';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.6';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.7';
 import {
   STORYBOARD_CAPABILITIES,
   STORYBOARD_COMPOSITION_RULE_ID,
@@ -146,12 +145,23 @@ import {
   summarizeStoryboardGenerationDemand,
   storyboardRatioDimensions,
   storyboardProviderRatioDimensions,
-} from './qianmu-storyboard.js?v=1.58.6';
+} from './qianmu-storyboard.js?v=1.58.7';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.6';
+const VERSION = '1.58.7';
+let directImageRuntimePromise = null;
+function directImageRuntime() {
+  if (!directImageRuntimePromise) {
+    directImageRuntimePromise = import('./qianmu-image-direct.js?v=1.58.7')
+      .catch((error) => {
+        directImageRuntimePromise = null;
+        throw error;
+      });
+  }
+  return directImageRuntimePromise;
+}
 const RUNTIME_LOCK_KEY = Symbol.for('qianmu.omniscene.runtime');
 const RUNTIME_OWNER = Symbol('qianmu.omniscene.owner');
 const RUNTIME_URL = import.meta.url;
@@ -12631,10 +12641,11 @@ async function storyboardCheckConnection(root) {
       provider: sourceId, apiKey, baseUrl: profile.baseUrl, model: profile.model,
       allowPrivateNetwork: Boolean(state.connections[sourceId]?.draft?.options?.allowPrivateNetwork),
     };
+    const directImage = await directImageRuntime();
     let data = null;
-    try { data = await checkDirectImageConnection(request); }
+    try { data = await directImage.checkDirectImageConnection(request); }
     catch (error) {
-      if (!isDirectImageTransportError(error) && error?.code !== 'direct_unsupported') throw error;
+      if (!directImage.isDirectImageTransportError(error) && error?.code !== 'direct_unsupported') throw error;
     }
     if (!data) {
       const headers = typeof ctx().getRequestHeaders === 'function' ? ctx().getRequestHeaders() : { 'Content-Type': 'application/json' };
@@ -13503,10 +13514,11 @@ async function storyboardRunJob(job, log) {
       prompt: gatewayRequest.prompt, negativePrompt: gatewayRequest.negativePrompt,
       referenceCount: assets.references.length, vibeCount: assets.vibes.length, parameters: gatewayRequest.parameters,
     });
+    const directImage = await directImageRuntime();
     let data = null;
-    try { data = await generateDirectImage(gatewayRequest); }
+    try { data = await directImage.generateDirectImage(gatewayRequest); }
     catch (error) {
-      if (!isDirectImageTransportError(error) && error?.code !== 'direct_unsupported') {
+      if (!directImage.isDirectImageTransportError(error) && error?.code !== 'direct_unsupported') {
         storyboardPipelineStage(log, 'provider_request', 'failed', {}, {}, error?.message || String(error));
         throw error;
       }

@@ -9,6 +9,10 @@ assert.match(source, /function renderModal\([\s\S]*renderStartedAt[\s\S]*modalRe
 assert.match(source, /function runtimeHealthSnapshot\([\s\S]*settingsBytes[\s\S]*chatBytes[\s\S]*observers[\s\S]*timers/, 'health snapshot must cover data size and active background work');
 assert.match(source, /数据只保留在本次页面，不写入日志或用户设置/, 'diagnostics must explicitly remain session-only');
 assert.match(source, /if \(f\.status !== 'running'\) return;[\s\S]*setInterval\(focusClockRuntimeTick, 500\)/, 'the focus clock must not poll while idle or paused');
+assert.doesNotMatch(source, /^import[^\n]*qianmu-image-direct/m, 'image provider transports must stay outside the startup module graph');
+assert.match(source, /function directImageRuntime\(\)[\s\S]*import\('\.\/qianmu-image-direct\.js\?v=1\.58\.7'\)[\s\S]*directImageRuntimePromise = null/, 'the direct image runtime must load on demand and remain retryable after a failed chunk load');
+assert.match(source, /storyboardCheckConnection[\s\S]*await directImageRuntime\(\)[\s\S]*directImage\.checkDirectImageConnection/, 'connection tests must enter the lazy image boundary');
+assert.match(source, /storyboardRunJob[\s\S]*await directImageRuntime\(\)[\s\S]*directImage\.generateDirectImage/, 'generation jobs must enter the lazy image boundary');
 assert.match(styles, /\.sd-runtime-health-grid[\s\S]*grid-template-columns: repeat\(2/, 'desktop diagnostics need a compact two-column layout');
 assert.match(styles, /@media \(max-width: 520px\)[\s\S]*\.sd-runtime-health-grid \{ grid-template-columns: minmax\(0, 1fr\)/, 'mobile diagnostics must collapse to one column');
 
