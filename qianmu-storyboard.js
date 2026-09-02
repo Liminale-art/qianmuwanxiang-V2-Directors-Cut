@@ -1,5 +1,5 @@
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
-export const STORYBOARD_SCHEMA_VERSION = 13;
+export const STORYBOARD_SCHEMA_VERSION = 14;
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -144,6 +144,9 @@ export const STORYBOARD_SPATIAL_REGIONS = Object.freeze([
   'far_left', 'left', 'center_left', 'center', 'center_right', 'right', 'far_right', 'background',
 ]);
 export const STORYBOARD_CROPS = Object.freeze(['full', 'knees', 'waist', 'chest', 'shoulders', 'face', 'detail']);
+export const STORYBOARD_CONTINUITY_FACT_CATEGORIES = Object.freeze(['outfit', 'injury', 'prop', 'action', 'scene', 'other']);
+export const STORYBOARD_CONTINUITY_FACT_PERSISTENCE = Object.freeze(['momentary', 'persistent']);
+export const STORYBOARD_CONTINUITY_FACT_STATES = Object.freeze(['active', 'superseded', 'expired']);
 
 export const getStoryboardProvider = (id) => STORYBOARD_PROVIDER_REGISTRY[id] || null;
 export const getStoryboardModel = (providerId, modelId) => (STORYBOARD_MODEL_REGISTRY[providerId] || []).find((item) => item.id === modelId) || null;
@@ -599,16 +602,96 @@ function normalizePromptAtoms(value) {
   };
 }
 
-function normalizeContinuity(value) {
+function continuityFactSlot(fact) {
+  return [fact.category, fact.subject, fact.key].map((item) => String(item || '').trim().toLowerCase()).join(':');
+}
+
+export function normalizeStoryboardContinuityFact(value, index = 0) {
+  const raw = obj(value) ? value : {};
+  const category = STORYBOARD_CONTINUITY_FACT_CATEGORIES.includes(raw.category || raw.domain)
+    ? (raw.category || raw.domain)
+    : 'other';
+  const subject = str(raw.subject || raw.entity || raw.character || raw.owner, 160);
+  const key = str(raw.key || raw.attribute || raw.slot || category, 120);
+  const factValue = str(raw.value ?? raw.state ?? raw.description, 1000);
+  const sourceParagraphIds = ids(raw.sourceParagraphIds || raw.source_paragraph_ids, 80);
+  const persistence = STORYBOARD_CONTINUITY_FACT_PERSISTENCE.includes(raw.persistence)
+    ? raw.persistence
+    : (raw.momentary || raw.transient ? 'momentary' : 'persistent');
+  const status = STORYBOARD_CONTINUITY_FACT_STATES.includes(raw.status) ? raw.status : 'active';
+  const fallbackId = `fact-${hash([category, subject, key, factValue, sourceParagraphIds.join(',')].join('|'))}`;
+  return {
+    id: cleanId(raw.id) || fallbackId,
+    category,
+    subject,
+    key,
+    value: factValue,
+    persistence,
+    status,
+    sourceParagraphIds,
+    sourceFloor: Number.isInteger(raw.sourceFloor ?? raw.source_floor) ? Math.max(0, Number(raw.sourceFloor ?? raw.source_floor)) : null,
+    evidence: str(raw.evidence, 1000),
+    supersedes: ids(raw.supersedes || raw.replaces, 20),
+    replacedBy: cleanId(raw.replacedBy || raw.replaced_by),
+    order: int(raw.order, 0, 1000000, index),
+  };
+}
+
+function normalizeContinuityFacts(value) {
+  const list = Array.isArray(value) ? value : [];
+  return dedupeById(list.slice(0, 240).map(normalizeStoryboardContinuityFact).filter((fact) => fact.id && fact.value));
+}
+
+function expireMomentaryContinuityFacts(value) {
+  return normalizeContinuityFacts(value).map((fact) => fact.status === 'active' && fact.persistence === 'momentary'
+    ? { ...fact, status: 'expired' }
+    : fact);
+}
+
+function mergeContinuityFacts(previous, updates) {
+  const merged = normalizeContinuityFacts(previous);
+  const positions = new Map(merged.map((fact, index) => [fact.id, index]));
+  for (const incoming of normalizeContinuityFacts(updates)) {
+    const existingIndex = positions.get(incoming.id);
+    if (existingIndex !== undefined) {
+      merged[existingIndex] = incoming;
+    } else {
+      positions.set(incoming.id, merged.length);
+      merged.push(incoming);
+    }
+    if (incoming.status === 'active') {
+      const slot = continuityFactSlot(incoming);
+      for (let index = 0; index < merged.length; index += 1) {
+        const current = merged[index];
+        if (current.id === incoming.id) continue;
+        if (current.status !== 'active' || continuityFactSlot(current) !== slot) continue;
+        merged[index] = { ...current, status: 'superseded', replacedBy: incoming.id };
+        if (!incoming.supersedes.includes(current.id)) incoming.supersedes.push(current.id);
+      }
+      for (const replacedId of incoming.supersedes) {
+        const replacedIndex = positions.get(replacedId);
+        if (replacedIndex === undefined) continue;
+        const replaced = merged[replacedIndex];
+        if (replaced.status === 'active') merged[replacedIndex] = { ...replaced, status: 'superseded', replacedBy: incoming.id };
+      }
+    }
+  }
+  return merged.slice(-240);
+}
+
+export function normalizeStoryboardContinuityLedger(value) {
   const raw = obj(value) ? value : {};
   return {
     axis: str(raw.axis, 240), leftRight: str(raw.leftRight || raw.left_right, 500), gaze: str(raw.gaze, 500),
     time: str(raw.time, 240), weather: str(raw.weather, 240), light: str(raw.light, 500), color: str(raw.color, 500),
     outfit: safeRecord(raw.outfit), injuries: safeRecord(raw.injuries), props: safeRecord(raw.props), actionState: safeRecord(raw.actionState || raw.action_state),
+    facts: normalizeContinuityFacts(raw.facts || raw.continuityFacts || raw.continuity_facts),
     mainRatioId: STORYBOARD_RATIOS.some((ratio) => ratio.id === raw.mainRatioId) ? raw.mainRatioId : '',
     emphasisRatioId: STORYBOARD_RATIOS.some((ratio) => ratio.id === raw.emphasisRatioId) ? raw.emphasisRatioId : '',
   };
 }
+
+const normalizeContinuity = normalizeStoryboardContinuityLedger;
 
 export function normalizeStoryboardShotSpec(value = {}) {
   const raw = obj(value) ? value : {}, composition = obj(raw.composition) ? raw.composition : {};
@@ -746,6 +829,7 @@ export function prepareStoryboardShotGroup(value = {}) {
       ...Object.fromEntries(['axis', 'leftRight', 'gaze', 'time', 'weather', 'light', 'color', 'mainRatioId', 'emphasisRatioId'].map((key) => [key, next[key] || continuityLedger[key]])),
       outfit: { ...continuityLedger.outfit, ...next.outfit }, injuries: { ...continuityLedger.injuries, ...next.injuries },
       props: { ...continuityLedger.props, ...next.props }, actionState: { ...continuityLedger.actionState, ...next.actionState },
+      facts: mergeContinuityFacts(continuityLedger.facts, next.facts),
     };
   };
   for (const shot of source) {
@@ -753,6 +837,7 @@ export function prepareStoryboardShotGroup(value = {}) {
     if (!manual && seen.has(signature)) { skipped.push({ shot, reason: 'duplicate_coverage' }); continue; }
     if (!manual && kept.length >= limit) { skipped.push({ shot, reason: 'coverage_budget' }); continue; }
     if (!manual && policy.groupStrategy === 'single' && kept.length) { skipped.push({ shot, reason: 'single_frame_strategy' }); continue; }
+    continuityLedger.facts = expireMomentaryContinuityFacts(continuityLedger.facts);
     const order = kept.length;
     if (!shot.composition.ratioId) {
       shot.composition.ratioId = policy.groupStrategy === 'main_secondary' && order > 0 ? alternateRatio(shot) : (continuityLedger.mainRatioId || policy.preferredRatioId);

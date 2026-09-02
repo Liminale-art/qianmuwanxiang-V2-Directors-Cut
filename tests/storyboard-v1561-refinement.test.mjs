@@ -7,7 +7,7 @@ const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const style = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 const utilities = await readFile(new URL('../qianmu-storyboard-utils.js', import.meta.url), 'utf8');
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 13);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 14);
 
 // Storyboard owns the whole Qianmu panel and replaces the former world-map shortcut.
 assert.doesNotMatch(source, /\['imagegen', '分镜'\]/);
