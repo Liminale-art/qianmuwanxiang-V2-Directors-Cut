@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.63';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.63';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.63';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.63';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.64';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.64';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.64';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.64';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,95 +151,95 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.63';
+} from './qianmu-storyboard.js?v=1.58.64';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.63';
+const VERSION = '1.58.64';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.63'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.64'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.58.63').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.58.64').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.63'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.64'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.63'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.64'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.58.63'),
+    load: () => import('./qianmu-video-contract.js?v=1.58.64'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.58.63'),
+    load: () => import('./qianmu-video-draft.js?v=1.58.64'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.58.63'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.58.64'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.58.63'),
+    load: () => import('./qianmu-video-readiness.js?v=1.58.64'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.58.63'),
+    load: () => import('./qianmu-video-task.js?v=1.58.64'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.58.63'),
+    load: () => import('./qianmu-video-budget.js?v=1.58.64'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.58.63'),
+    load: () => import('./qianmu-video-minimax.js?v=1.58.64'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.58.63'),
+    load: () => import('./qianmu-video-runtime.js?v=1.58.64'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.58.63'),
+    load: () => import('./qianmu-video-store.js?v=1.58.64'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.58.63'),
+    load: () => import('./qianmu-video-result.js?v=1.58.64'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.58.63'),
+    load: () => import('./qianmu-video-gallery.js?v=1.58.64'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.58.63'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.58.64'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.58.63'),
+    load: () => import('./qianmu-video-media.js?v=1.58.64'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.63'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.64'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.63'),
-        import('./qianmu-theaters.js?v=1.58.63'),
+        import('./builtin-theaters.js?v=1.58.64'),
+        import('./qianmu-theaters.js?v=1.58.64'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -745,6 +745,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   outputSchemaBackup: null,       // 「恢复上次」：同上，备份用户上一份输出格式
   logHistory: [],
   logOpenState: {},               // API 与日志：按日志 ID 记忆展开状态，默认折叠
+  videoH3: { region: 'global' },  // 动态渠道只保存非敏感区域偏好；凭据独立进入 ST 密钥库/浏览器凭据仓
   notes: { enabled: true, detached: false, position: { x: null, y: null }, appearance: { tone: 'dark', edgeIndex: 0 } }, // 便笺蜂巢格可整格拖出到 ST 顶层；关闭只隐藏，不删除固定便笺
   // 专注时钟：全局轻量状态，与聊天、推演和伴读存储完全隔离。运行态保存绝对截止时间，后台挂起/刷新后按真实时间续算。
   focusClock: {
@@ -11110,6 +11111,37 @@ function renderQuickWheelSettings() {
   </div>`;
 }
 
+function storyboardVideoRegion() {
+  return settings.videoH3?.region === 'china' ? 'china' : 'global';
+}
+
+function storyboardVideoCredentialKnown() {
+  if (storyboardApiKeys.has(STORYBOARD_VIDEO_H3_CREDENTIAL_ID)) return true;
+  if (storyboardReadBrowserCredential(STORYBOARD_VIDEO_H3_CREDENTIAL_ID)) return true;
+  const value = storyboardSecrets[STORYBOARD_VIDEO_H3_CREDENTIAL_ID];
+  return Array.isArray(value) ? value.length > 0 : Boolean(value);
+}
+
+function storyboardVideoGatewayKnown() {
+  return optionalServiceState.status === 'ready' && optionalServiceState.services.includes('minimax-h3');
+}
+
+function renderStoryboardVideoConnectionCard() {
+  const configured = storyboardVideoCredentialKnown();
+  const gatewayReady = storyboardVideoGatewayKnown();
+  const serviceLabel = optionalServiceState.status === 'checking'
+    ? '检查中'
+    : gatewayReady ? '网关已连接' : optionalServiceState.status === 'idle' ? '尚未检查' : '网关未就绪';
+  return `<section class="sd-card sd-video-channel-card">
+    <div class="sd-field-head"><h3>动态渠道</h3><span class="sd-video-channel-badge ${configured && gatewayReady ? 'ready' : ''}">${configured && gatewayReady ? '已准备' : '待配置'}</span></div>
+    <div class="sd-video-channel-grid"><label><span>渠道</span><select class="text_pole" disabled><option>MiniMax H3</option></select></label><label><span>服务区域</span><select class="text_pole sd-video-h3-region"><option value="global" ${storyboardVideoRegion() === 'global' ? 'selected' : ''}>全球区</option><option value="china" ${storyboardVideoRegion() === 'china' ? 'selected' : ''}>中国区</option></select></label></div>
+    <label><span>API Key</span><input class="text_pole sd-video-h3-secret" type="password" autocomplete="new-password" value=""></label>
+    <div class="sd-video-channel-state"><span data-video-channel-state="gateway" data-status="${htmlEscape(optionalServiceState.status)}"><i class="fa-solid fa-plug-circle-check"></i><b>${htmlEscape(serviceLabel)}</b></span><span data-video-channel-state="credential" data-status="${configured ? 'ready' : 'missing'}"><i class="fa-solid fa-shield-halved"></i><b>${configured ? '凭据已保存' : '凭据未配置'}</b></span></div>
+    <p class="sd-muted sd-video-channel-detail">网关检测不会向 MiniMax 发起任务，也不能代替首次生成时的授权校验。</p>
+    <div class="sd-button-row sd-video-channel-actions"><button type="button" class="sd-btn sd-video-h3-check"><i class="fa-solid fa-rotate"></i>检查网关</button><button type="button" class="sd-btn sd-primary sd-video-h3-save"><i class="fa-solid fa-floppy-disk"></i>保存连接</button><button type="button" class="sd-icon-btn sd-danger sd-video-h3-forget" ${configured ? '' : 'disabled'} title="删除 H3 凭据" aria-label="删除 H3 凭据"><i class="fa-solid fa-trash-can"></i></button></div>
+  </section>`;
+}
+
 function renderPlugTab() {
   const isExternal = settings.providerMode === 'external';
   const logs = Array.isArray(settings.logHistory) ? settings.logHistory : [];
@@ -11152,6 +11184,7 @@ function renderPlugTab() {
         </div>
       </div>
     </section>
+    ${renderStoryboardVideoConnectionCard()}
     <section class="sd-card sd-widget-card">
       <h3>小组件</h3>
       <div class="sd-widget-toggle-row" role="group" aria-label="小组件开关">
@@ -14309,6 +14342,66 @@ async function storyboardVideoCredentialConfigured() {
   } catch (_) {
     return false;
   }
+}
+
+async function storyboardRememberVideoCredential(value) {
+  const secret = String(value || '').trim();
+  if (!secret) return false;
+  let stored = storyboardWriteBrowserCredential(STORYBOARD_VIDEO_H3_CREDENTIAL_ID, secret);
+  storyboardApiKeys.set(STORYBOARD_VIDEO_H3_CREDENTIAL_ID, secret);
+  try {
+    const secrets = await storyboardSecretModule();
+    if (typeof secrets.writeSecret === 'function') {
+      await secrets.writeSecret(STORYBOARD_VIDEO_H3_CREDENTIAL_ID, secret, '千幕 · 动态 · MiniMax H3');
+      stored = true;
+      storyboardSecrets = secrets.secret_state || storyboardSecrets;
+    }
+  } catch (error) {
+    console.warn(`[${MODULE_NAME}] video credential persistence unavailable`, error);
+  }
+  if (!stored) storyboardApiKeys.delete(STORYBOARD_VIDEO_H3_CREDENTIAL_ID);
+  return stored;
+}
+
+async function storyboardForgetVideoCredential() {
+  storyboardApiKeys.delete(STORYBOARD_VIDEO_H3_CREDENTIAL_ID);
+  storyboardWriteBrowserCredential(STORYBOARD_VIDEO_H3_CREDENTIAL_ID, '');
+  delete storyboardSecrets[STORYBOARD_VIDEO_H3_CREDENTIAL_ID];
+  try {
+    const secrets = await storyboardSecretModule();
+    if (typeof secrets.deleteSecret === 'function') await secrets.deleteSecret(STORYBOARD_VIDEO_H3_CREDENTIAL_ID);
+    storyboardSecrets = secrets.secret_state || storyboardSecrets;
+  } catch (error) {
+    console.warn(`[${MODULE_NAME}] video credential removal unavailable`, error);
+  }
+}
+
+async function storyboardPaintVideoConnectionState(root = document.getElementById(MODAL_ID)) {
+  if (!root || activeTab !== 'plug') return;
+  const configured = await storyboardVideoCredentialConfigured();
+  if (!root.isConnected || activeTab !== 'plug') return;
+  const gatewayReady = storyboardVideoGatewayKnown();
+  const badge = root.querySelector('.sd-video-channel-badge');
+  if (badge) {
+    badge.textContent = configured && gatewayReady ? '已准备' : '待配置';
+    badge.classList.toggle('ready', configured && gatewayReady);
+  }
+  const gateway = root.querySelector('[data-video-channel-state="gateway"]');
+  if (gateway) {
+    gateway.dataset.status = optionalServiceState.status;
+    const label = gateway.querySelector('b');
+    if (label) label.textContent = optionalServiceState.status === 'checking'
+      ? '检查中'
+      : gatewayReady ? '网关已连接' : optionalServiceState.status === 'idle' ? '尚未检查' : '网关未就绪';
+  }
+  const credential = root.querySelector('[data-video-channel-state="credential"]');
+  if (credential) {
+    credential.dataset.status = configured ? 'ready' : 'missing';
+    const label = credential.querySelector('b');
+    if (label) label.textContent = configured ? '凭据已保存' : '凭据未配置';
+  }
+  const remove = root.querySelector('.sd-video-h3-forget');
+  if (remove) remove.disabled = !configured;
 }
 
 async function storyboardResolveApiKey(providerId, requestedCredentialId = '') {
@@ -18624,10 +18717,47 @@ function bindActiveTabEvents(root) {
   if (activeTab === 'plug') {
     bindStorageManagementEvents(root);
     void refreshStorageInventory(false);
-    void refreshOptionalServiceState(false);
+    void refreshOptionalServiceState(false).finally(() => void storyboardPaintVideoConnectionState(root));
+    void storyboardPaintVideoConnectionState(root);
     root.querySelector('.sd-runtime-health-refresh')?.addEventListener('click', () => {
       renderModal();
       void refreshOptionalServiceState(true);
+    });
+    root.querySelector('.sd-video-h3-check')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      try {
+        await refreshOptionalServiceState(true);
+        await storyboardPaintVideoConnectionState(root);
+        toast(storyboardVideoGatewayKnown() ? 'MiniMax H3 同源网关已连接。' : 'MiniMax H3 同源网关尚未就绪。', storyboardVideoGatewayKnown() ? 'success' : 'warning');
+      } finally {
+        if (button.isConnected) button.disabled = false;
+      }
+    });
+    root.querySelector('.sd-video-h3-save')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      const input = root.querySelector('.sd-video-h3-secret');
+      const secret = String(input?.value || '').trim();
+      const alreadyConfigured = await storyboardVideoCredentialConfigured();
+      if (!secret && !alreadyConfigured) return toast('请先填写 MiniMax H3 API Key。', 'warning');
+      button.disabled = true;
+      try {
+        if (secret && !await storyboardRememberVideoCredential(secret)) return toast('凭据保存失败，请保留输入内容后重试。', 'error');
+        settings.videoH3 = { region: root.querySelector('.sd-video-h3-region')?.value === 'china' ? 'china' : 'global' };
+        saveSettings();
+        if (input) input.value = '';
+        await storyboardPaintVideoConnectionState(root);
+        toast('MiniMax H3 连接设置已保存。', 'success');
+      } finally {
+        if (button.isConnected) button.disabled = false;
+      }
+    });
+    root.querySelector('.sd-video-h3-forget')?.addEventListener('click', async () => {
+      const yes = await confirmDialog('删除动态渠道凭据', '确认删除已保存的 MiniMax H3 API Key？区域设置和本地草稿不会受影响。');
+      if (!yes) return;
+      await storyboardForgetVideoCredential();
+      await storyboardPaintVideoConnectionState(root);
+      toast('MiniMax H3 凭据已删除。', 'success');
     });
   }
   root.querySelector('.sd-edit-injection')?.addEventListener('click', (event) => {
