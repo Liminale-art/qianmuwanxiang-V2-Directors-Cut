@@ -8840,7 +8840,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 }
 #story-director-modal .sd-structured-output-toggle :is(i, .qm-glyph-icon) { width: 15px; height: 15px; font-size: 15px; }
 
-/* v1.58.85 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
+/* v1.58.86 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
 #story-director-modal .sd-storyboard-gallery-kind-switch {
   min-height: 36px;
   display: grid;
@@ -9640,7 +9640,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   .sd-storyboard-video-confirmation > footer .sd-btn { width: 100%; }
 }
 
-/* v1.58.85 · 完整影片编排：只编辑稳定引用与播放顺序，素材媒体保持按需读取。 */
+/* v1.58.86 · 完整影片编排：只编辑稳定引用与播放顺序，素材媒体保持按需读取。 */
 #story-director-modal .sd-storyboard-film-head > div:last-child { display: flex; align-items: center; gap: 6px; }
 #story-director-modal .sd-storyboard-film-head .sd-icon-btn { width: 34px; min-width: 34px; height: 34px; }
 #story-director-modal .sd-storyboard-film-head .sd-btn,
@@ -9664,7 +9664,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
   gap: 3px 9px;
-  padding: 10px 42px 10px 10px;
+  padding: 10px 76px 10px 10px;
   border: 0;
   background: transparent;
   color: var(--sd-text);
@@ -9675,7 +9675,9 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-film-edit :is(strong, small, time) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #story-director-modal .sd-storyboard-film-edit strong { font-size: 11px; }
 #story-director-modal .sd-storyboard-film-edit :is(small, time) { color: var(--sd-muted); font-size: 9px; }
-#story-director-modal .sd-storyboard-film-delete { position: absolute; top: 10px; right: 9px; width: 30px; min-width: 30px; height: 30px; }
+#story-director-modal .sd-storyboard-film-card-actions { position: absolute; top: 10px; right: 9px; display: flex; align-items: center; gap: 4px; }
+#story-director-modal .sd-storyboard-film-card-actions .sd-icon-btn { width: 30px; min-width: 30px; height: 30px; border-radius: 8px !important; }
+#story-director-modal .sd-storyboard-film-preview { color: var(--sd-accent); }
 #story-director-modal .sd-storyboard-film-editor-head {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -9737,6 +9739,111 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-film-source > :is(strong, small) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 6px; }
 #story-director-modal .sd-storyboard-film-source > strong { font-size: 9px; }
 #story-director-modal .sd-storyboard-film-source > small { color: var(--sd-muted); font-size: 8px; }
+
+/* v1.58.86 · 完整影片按需顺序预览：一次只持有当前片段的媒体资源。 */
+.sd-storyboard-film-viewer {
+  position: fixed;
+  z-index: 100003;
+  inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(260px, .45fr);
+  gap: 12px;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: rgba(8, 9, 10, .9);
+  color: #f5f5f3;
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+.sd-storyboard-film-viewer-close {
+  position: fixed;
+  z-index: 2;
+  top: max(18px, env(safe-area-inset-top));
+  right: max(18px, env(safe-area-inset-right));
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 10px;
+  background: rgba(26,27,29,.78);
+  color: #fff;
+}
+.sd-storyboard-film-viewer-stage {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 14px;
+  background: rgba(0,0,0,.52);
+}
+.sd-storyboard-film-viewer-stage :is(img, video) {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+.sd-storyboard-film-viewer-message { display: grid; justify-items: center; gap: 10px; padding: 24px; color: rgba(255,255,255,.62); font-size: 11px; text-align: center; }
+.sd-storyboard-film-viewer-message :is(i, .qm-glyph-icon) { width: 24px; height: 24px; font-size: 24px; }
+.sd-storyboard-film-viewer-message.is-error { color: #e0a2a2; }
+.sd-storyboard-film-viewer > aside {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  padding: 50px 14px 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 14px;
+  background: rgba(25,26,28,.72);
+}
+.sd-storyboard-film-viewer > aside header { min-width: 0; }
+.sd-storyboard-film-viewer .sd-storyboard-kicker { color: var(--sd-accent, #9fcbb5); font-size: 9px; font-weight: 800; letter-spacing: .18em; }
+.sd-storyboard-film-viewer h3 { margin: 5px 0 4px; overflow: hidden; color: #fff; font-size: 18px; font-weight: 560; text-overflow: ellipsis; white-space: nowrap; }
+.sd-storyboard-film-viewer header p { margin: 0; color: rgba(255,255,255,.55); font-size: 10px; }
+.sd-storyboard-film-viewer-segments { align-content: start; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; overflow: auto; padding-right: 2px; scrollbar-width: thin; }
+.sd-storyboard-film-viewer-segments button {
+  min-width: 0;
+  height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 8px;
+  background: rgba(255,255,255,.05);
+  color: rgba(255,255,255,.58);
+  font: inherit;
+  font-size: 9px;
+}
+.sd-storyboard-film-viewer-segments button.active { border-color: var(--sd-accent, #9fcbb5); background: color-mix(in srgb, var(--sd-accent, #9fcbb5) 14%, transparent); color: var(--sd-accent, #9fcbb5); }
+.sd-storyboard-film-viewer-segments button :is(i, .qm-glyph-icon) { width: 11px; height: 11px; font-size: 11px; }
+.sd-storyboard-film-viewer > aside > footer { display: grid; grid-template-columns: repeat(3, 40px); justify-content: center; gap: 7px; }
+.sd-storyboard-film-viewer > aside > footer button {
+  width: 40px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 9px;
+  background: rgba(255,255,255,.06);
+  color: #fff;
+}
+.sd-storyboard-film-viewer > aside > footer .sd-storyboard-film-viewer-toggle { border-color: color-mix(in srgb, var(--sd-accent, #9fcbb5) 55%, transparent); background: var(--sd-accent, #9fcbb5); color: #17201c; }
+.sd-storyboard-film-viewer > aside > footer button:disabled { opacity: .28; }
+
+@media (max-width: 640px) {
+  .sd-storyboard-film-viewer { grid-template-columns: 1fr; grid-template-rows: minmax(43dvh, 1fr) auto; gap: 8px; padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)); }
+  .sd-storyboard-film-viewer-close { top: max(14px, env(safe-area-inset-top)); right: 14px; }
+  .sd-storyboard-film-viewer > aside { max-height: 36dvh; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; gap: 9px; padding: 11px; overflow: auto; }
+  .sd-storyboard-film-viewer > aside header { padding-right: 44px; }
+  .sd-storyboard-film-viewer-segments { grid-column: 1 / -1; grid-row: 2; display: flex; overflow-x: auto; }
+  .sd-storyboard-film-viewer-segments button { min-width: 42px; }
+  .sd-storyboard-film-viewer > aside > footer { align-self: center; grid-column: 2; grid-row: 1; }
+}
 
 @media (max-width: 760px) {
   #story-director-modal .sd-storyboard-film-workspace { grid-template-columns: 1fr; }

@@ -54,6 +54,34 @@ test('film deletion removes only the timeline and never its source media', () =>
   assert.doesNotMatch(block, /deleteVideoMedia|storyboardDeleteRecord|removeFavorite/);
 });
 
+test('saved films expose an explicit on-demand sequential preview', () => {
+  assert.match(source, /class="sd-icon-btn sd-storyboard-film-preview"/);
+  const start = source.indexOf('async function storyboardOpenFilmViewer');
+  const end = source.indexOf('function renderStoryboardVideoGallery', start);
+  const block = source.slice(start, end);
+  assert.ok(start > 0 && end > start);
+  assert.match(block, /featureRuntime\.load\('videoTimelinePlayer'\)/);
+  assert.match(block, /createVideoTimelinePlaybackSession\(\{/);
+  assert.match(block, /openMotion: \(assetId, options\) => storyboardVideoGallerySession\.open\(assetId, options\)/);
+  assert.match(block, /await storyboardFilmPlaybackSession\.open\(timeline, \{ chatKey \}\)/);
+  assert.match(block, /openRequest !== storyboardFilmViewerPaintSeq/);
+  const paintStart = source.indexOf('function storyboardPaintFilmViewer');
+  const paintBlock = source.slice(paintStart, start);
+  assert.match(paintBlock, /<video src="\$\{htmlEscape\(frame\.url\)\}" playsinline preload="metadata"/);
+  assert.match(paintBlock, /storyboardFilmPlaybackSession\?\.ended\?\.\(\)/);
+  assert.doesNotMatch(block, /fetch\(|Worker|ffmpeg|transcod/i);
+});
+
+test('film playback resources are disposed at every ownership boundary', () => {
+  assert.match(source, /function storyboardCloseFilmViewer\(\) \{[\s\S]*storyboardFilmPlaybackSession\?\.dispose\?\.\(\)/);
+  const chatChange = source.slice(source.indexOf('async function storyboardHandleChatChanged'), source.indexOf('async function storyboardPrepareGatewayAssets'));
+  assert.match(chatChange, /storyboardCloseFilmViewer\(\)/);
+  const closeModal = source.slice(source.indexOf('function closeModal()'), source.indexOf('function openTextEditor'));
+  assert.match(closeModal, /storyboardCloseFilmViewer\(\)/);
+  const cleanup = source.slice(source.indexOf('function cleanupRuntime'));
+  assert.match(cleanup, /storyboardCloseFilmViewer\(\)/);
+});
+
 test('chat changes invalidate the volatile editor before another chat can render it', () => {
   const start = source.indexOf('async function storyboardHandleChatChanged');
   const end = source.indexOf('async function storyboardPrepareGatewayAssets', start);
@@ -67,4 +95,6 @@ test('film workspace is bounded and collapses to one column on narrow screens', 
   assert.match(css, /\.sd-storyboard-film-workspace\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1\.08fr\) minmax\(250px, \.92fr\)/);
   assert.match(css, /\.sd-storyboard-film-source-grid\s*\{[\s\S]*max-height:\s*260px;[\s\S]*overflow:\s*auto/);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.sd-storyboard-film-workspace\s*\{\s*grid-template-columns:\s*1fr/);
+  assert.match(css, /\.sd-storyboard-film-viewer\s*\{[\s\S]*position:\s*fixed;[\s\S]*inset:\s*0/);
+  assert.match(css, /@media \(max-width: 640px\)[\s\S]*\.sd-storyboard-film-viewer\s*\{[\s\S]*grid-template-columns:\s*1fr/);
 });

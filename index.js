@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.85';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.85';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.85';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.85';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.86';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.86';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.86';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.86';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,115 +151,119 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.85';
+} from './qianmu-storyboard.js?v=1.58.86';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.85';
+const VERSION = '1.58.86';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.85'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.86'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.58.85').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.58.86').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.85'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.86'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.85'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.86'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.58.85'),
+    load: () => import('./qianmu-video-contract.js?v=1.58.86'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.58.85'),
+    load: () => import('./qianmu-video-draft.js?v=1.58.86'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.58.85'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.58.86'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.58.85'),
+    load: () => import('./qianmu-video-readiness.js?v=1.58.86'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.58.85'),
+    load: () => import('./qianmu-video-pricing.js?v=1.58.86'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.58.85'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.58.86'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.58.85'),
+    load: () => import('./qianmu-video-prompt.js?v=1.58.86'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.58.85'),
+    load: () => import('./qianmu-video-task.js?v=1.58.86'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.58.85'),
+    load: () => import('./qianmu-video-budget.js?v=1.58.86'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.58.85'),
+    load: () => import('./qianmu-video-minimax.js?v=1.58.86'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.58.85'),
+    load: () => import('./qianmu-video-runtime.js?v=1.58.86'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.58.85'),
+    load: () => import('./qianmu-video-store.js?v=1.58.86'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.58.85'),
+    load: () => import('./qianmu-video-result.js?v=1.58.86'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.58.85'),
+    load: () => import('./qianmu-video-gallery.js?v=1.58.86'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.58.85'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.58.86'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.58.85'),
+    load: () => import('./qianmu-video-media.js?v=1.58.86'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.58.85'),
+    load: () => import('./qianmu-video-timeline.js?v=1.58.86'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.58.85'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.58.86'),
+  },
+  videoTimelinePlayer: {
+    label: '完整影片顺序预览',
+    load: () => import('./qianmu-video-timeline-player.js?v=1.58.86'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.85'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.86'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.85'),
-        import('./qianmu-theaters.js?v=1.58.85'),
+        import('./builtin-theaters.js?v=1.58.86'),
+        import('./qianmu-theaters.js?v=1.58.86'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -1125,6 +1129,10 @@ let storyboardVideoCoordinator = null;
 let storyboardVideoCoordinatorLoading = null;
 let storyboardVideoViewerEl = null;
 let storyboardVideoPlayback = null;
+let storyboardFilmViewerEl = null;
+let storyboardFilmPlaybackSession = null;
+let storyboardFilmPlaybackState = null;
+let storyboardFilmViewerPaintSeq = 0;
 let storyboardVideoDraftEditorEl = null;
 let storyboardVideoDraftEditor = null;
 const storyboardVideoGalleryRuntime = {
@@ -3761,6 +3769,7 @@ function closeModal() {
     if (storyboardRoot && storyboardState().view === 'create') storyboardCaptureWorkbench(storyboardRoot);
     storyboardCloseLightbox();
     storyboardCloseVideoViewer();
+    storyboardCloseFilmViewer();
     storyboardGallerySelection.clear();
     storyboardEndSession();
   }
@@ -14245,7 +14254,7 @@ function renderStoryboardFilmGallery() {
     : current.status === 'error'
       ? `<section class="sd-card sd-storyboard-video-empty"><i class="fa-solid fa-triangle-exclamation"></i><p>${htmlEscape(current.error || '影片草稿暂时无法读取。')}</p><button type="button" class="sd-btn sd-storyboard-film-refresh">重试</button></section>`
       : timelines.length
-        ? `<div class="sd-storyboard-film-grid">${timelines.map((timeline) => `<article data-storyboard-film-id="${htmlEscape(timeline.timelineId)}"><button type="button" class="sd-storyboard-film-edit"><span><i class="fa-solid fa-film"></i></span><strong>${htmlEscape(timeline.title || '未命名影片')}</strong><small>${timeline.clips.length} 段 · ${htmlEscape(storyboardFilmDurationLabel(timeline.durationSeconds))}</small><time>${htmlEscape(formatDateTime(timeline.updatedAt))}</time></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-film-delete" title="删除影片时间线" aria-label="删除影片时间线"><i class="fa-solid fa-trash-can"></i></button></article>`).join('')}</div>`
+        ? `<div class="sd-storyboard-film-grid">${timelines.map((timeline) => `<article data-storyboard-film-id="${htmlEscape(timeline.timelineId)}"><button type="button" class="sd-storyboard-film-edit"><span><i class="fa-solid fa-film"></i></span><strong>${htmlEscape(timeline.title || '未命名影片')}</strong><small>${timeline.clips.length} 段 · ${htmlEscape(storyboardFilmDurationLabel(timeline.durationSeconds))}</small><time>${htmlEscape(formatDateTime(timeline.updatedAt))}</time></button><nav class="sd-storyboard-film-card-actions"><button type="button" class="sd-icon-btn sd-storyboard-film-preview" title="顺序预览" aria-label="顺序预览"><i class="fa-solid fa-play"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-film-delete" title="删除影片时间线" aria-label="删除影片时间线"><i class="fa-solid fa-trash-can"></i></button></nav></article>`).join('')}</div>`
         : '<section class="sd-card sd-storyboard-video-empty"><i class="fa-solid fa-film"></i><p>当前聊天还没有影片时间线。</p></section>';
   const warning = [current.timelineError ? '部分影片草稿暂时无法读取。' : '', current.mediaError ? '动态素材索引暂时无法读取。' : ''].filter(Boolean).join(' ');
   return `<div class="sd-storyboard-gallery-page sd-storyboard-film-page">${renderStoryboardGalleryKindSwitch()}<section class="sd-card sd-storyboard-gallery-head sd-storyboard-film-head"><div class="sd-storyboard-gallery-title"><span><span class="sd-storyboard-kicker">FILMS</span><h3>影片</h3></span><b>${timelines.length}</b></div><div><button type="button" class="sd-icon-btn sd-storyboard-film-refresh" title="刷新影片与素材索引" aria-label="刷新影片与素材索引" ${current.status === 'loading' ? 'disabled' : ''}><i class="fa-solid fa-rotate"></i></button><button type="button" class="sd-btn sd-primary sd-storyboard-film-new"><i class="fa-solid fa-plus"></i><span>新建影片</span></button></div></section>${warning ? `<p class="sd-storyboard-video-warning"><i class="fa-solid fa-triangle-exclamation"></i>${htmlEscape(warning)}</p>` : ''}${content}</div>`;
@@ -14366,6 +14375,146 @@ async function storyboardDeleteFilmTimeline(timelineId) {
     toast('影片时间线已删除，素材仍保留。', 'success');
   } catch (_) {
     toast('影片时间线删除失败，请稍后重试。', 'warning');
+  }
+}
+
+function storyboardCloseFilmViewer() {
+  storyboardFilmViewerPaintSeq++;
+  storyboardFilmPlaybackSession?.dispose?.();
+  storyboardFilmPlaybackSession = null;
+  storyboardFilmPlaybackState = null;
+  storyboardFilmViewerEl?.remove();
+  storyboardFilmViewerEl = null;
+}
+
+async function storyboardFilmResolveStill(recordId, options = {}) {
+  const chatKey = String(options.chatKey || '');
+  if (!chatKey || chatKey !== String(getChatKey() || '')) throw new Error('still owner mismatch');
+  const record = storyboardFilmStillRecords(chatKey).find((item) => String(item.id) === String(recordId));
+  const url = storyboardSafeUrl(record?.url);
+  if (!record || !url) throw new Error('still source unavailable');
+  return { recordId: String(record.id), url };
+}
+
+function storyboardSyncFilmViewerControls(snapshot) {
+  const layer = storyboardFilmViewerEl;
+  if (!layer?.isConnected || !snapshot) return;
+  const toggle = layer.querySelector('.sd-storyboard-film-viewer-toggle');
+  if (toggle) {
+    const ended = snapshot.status === 'ended';
+    const playing = snapshot.status === 'ready' && snapshot.playing;
+    toggle.disabled = !['ready', 'ended'].includes(snapshot.status);
+    toggle.setAttribute('aria-label', ended ? '重播' : (playing ? '暂停' : '播放'));
+    toggle.title = ended ? '重播' : (playing ? '暂停' : '播放');
+    toggle.innerHTML = `<i class="fa-solid ${playing ? 'fa-pause' : 'fa-play'}"></i>`;
+    applyQianmuIcons(toggle);
+  }
+  const video = layer.querySelector('.sd-storyboard-film-viewer-stage video');
+  if (!video || snapshot.frame?.kind !== 'motion' || snapshot.status !== 'ready') return;
+  if (snapshot.playing && video.paused) {
+    const paintSeq = storyboardFilmViewerPaintSeq;
+    void video.play().catch(() => {
+      if (paintSeq !== storyboardFilmViewerPaintSeq || !video.isConnected || !storyboardFilmPlaybackState?.playing) return;
+      storyboardFilmPlaybackSession?.pause?.();
+      toast('浏览器需要再次点击播放。', 'info');
+    });
+  } else if (!snapshot.playing && !video.paused) {
+    video.pause();
+  }
+}
+
+function storyboardPaintFilmViewer(snapshot) {
+  const layer = storyboardFilmViewerEl;
+  if (!layer?.isConnected || !snapshot) return;
+  const previous = storyboardFilmPlaybackState;
+  storyboardFilmPlaybackState = snapshot;
+  const sameFrame = previous?.status === 'ready' && snapshot.status === 'ready'
+    && previous.index === snapshot.index && previous.frame?.url === snapshot.frame?.url;
+  if (sameFrame) {
+    storyboardSyncFilmViewerControls(snapshot);
+    return;
+  }
+  const paintSeq = ++storyboardFilmViewerPaintSeq;
+  const timeline = snapshot.timeline;
+  const clips = Array.isArray(timeline?.clips) ? timeline.clips : [];
+  const index = Number.isInteger(snapshot.index) ? snapshot.index : 0;
+  const clip = clips[index] || null;
+  const count = clips.length;
+  const isLoading = snapshot.status === 'loading' || snapshot.status === 'idle';
+  const isError = snapshot.status === 'error';
+  const frame = snapshot.frame;
+  const stage = isLoading
+    ? '<div class="sd-storyboard-film-viewer-message"><i class="fa-solid fa-spinner fa-spin"></i><span>正在读取当前片段…</span></div>'
+    : isError
+      ? '<div class="sd-storyboard-film-viewer-message is-error"><i class="fa-solid fa-triangle-exclamation"></i><span>当前片段暂时无法读取，可跳到其他片段。</span></div>'
+      : frame?.kind === 'motion'
+        ? `<video src="${htmlEscape(frame.url)}" playsinline preload="metadata" ${clip?.playback?.audio === 'mute' ? 'muted' : ''}></video>`
+        : frame?.kind === 'still'
+          ? `<img src="${htmlEscape(storyboardSafeUrl(frame.url))}" alt="${htmlEscape(frame.title || '影片静帧')}">`
+          : '<div class="sd-storyboard-film-viewer-message"><i class="fa-solid fa-film"></i><span>暂无可预览内容。</span></div>';
+  const segments = clips.map((item, itemIndex) => `<button type="button" data-storyboard-film-viewer-seek="${itemIndex}" class="${itemIndex === index ? 'active' : ''}" aria-label="跳到第 ${itemIndex + 1} 段"><span>${itemIndex + 1}</span><i class="fa-solid ${item.kind === 'motion' ? 'fa-video' : 'fa-image'}"></i></button>`).join('');
+  const clipLabel = clip ? `${clip.kind === 'motion' ? '动态' : '静帧'}${clip.kind === 'still' ? ` · ${storyboardFilmDurationLabel(clip.playback?.durationSeconds)}` : (clip.playback?.audio === 'mute' ? ' · 静音' : ' · 原声')}` : '未读取';
+  layer.innerHTML = `<button type="button" class="sd-storyboard-film-viewer-close" aria-label="关闭影片预览"><i class="fa-solid fa-xmark"></i></button><main class="sd-storyboard-film-viewer-stage">${stage}</main><aside><header><span class="sd-storyboard-kicker">SEQUENCE PREVIEW</span><h3>${htmlEscape(timeline?.title || '未命名影片')}</h3><p>${count ? `第 ${Math.min(index + 1, count)} / ${count} 段` : '影片时间线'} · ${htmlEscape(clipLabel)}</p></header><div class="sd-storyboard-film-viewer-segments" aria-label="影片片段">${segments}</div><footer><button type="button" class="sd-storyboard-film-viewer-previous" title="上一段" aria-label="上一段" ${index <= 0 || isLoading ? 'disabled' : ''}><i class="fa-solid fa-backward-step"></i></button><button type="button" class="sd-storyboard-film-viewer-toggle" title="播放" aria-label="播放" ${!['ready', 'ended'].includes(snapshot.status) ? 'disabled' : ''}><i class="fa-solid fa-play"></i></button><button type="button" class="sd-storyboard-film-viewer-next" title="下一段" aria-label="下一段" ${index >= count - 1 || isLoading ? 'disabled' : ''}><i class="fa-solid fa-forward-step"></i></button></footer></aside>`;
+  applyQianmuIcons(layer);
+  layer.querySelector('.sd-storyboard-film-viewer-close')?.addEventListener('click', storyboardCloseFilmViewer);
+  layer.querySelector('.sd-storyboard-film-viewer-previous')?.addEventListener('click', () => void storyboardFilmPlaybackSession?.previous?.());
+  layer.querySelector('.sd-storyboard-film-viewer-next')?.addEventListener('click', () => void storyboardFilmPlaybackSession?.next?.());
+  layer.querySelector('.sd-storyboard-film-viewer-toggle')?.addEventListener('click', () => {
+    if (storyboardFilmPlaybackState?.playing) storyboardFilmPlaybackSession?.pause?.();
+    else void storyboardFilmPlaybackSession?.play?.();
+  });
+  layer.querySelectorAll('[data-storyboard-film-viewer-seek]').forEach((button) => button.addEventListener('click', () => {
+    const nextIndex = Number(button.dataset.storyboardFilmViewerSeek);
+    if (nextIndex !== storyboardFilmPlaybackState?.index) void storyboardFilmPlaybackSession?.seek?.(nextIndex);
+  }));
+  const video = layer.querySelector('.sd-storyboard-film-viewer-stage video');
+  video?.addEventListener('ended', () => {
+    if (paintSeq === storyboardFilmViewerPaintSeq && video.isConnected) void storyboardFilmPlaybackSession?.ended?.();
+  });
+  video?.addEventListener('play', () => {
+    if (paintSeq === storyboardFilmViewerPaintSeq && video.isConnected && !storyboardFilmPlaybackState?.playing) void storyboardFilmPlaybackSession?.play?.();
+  });
+  video?.addEventListener('pause', () => {
+    if (paintSeq === storyboardFilmViewerPaintSeq && video.isConnected && !video.ended && storyboardFilmPlaybackState?.playing) storyboardFilmPlaybackSession?.pause?.();
+  });
+  storyboardSyncFilmViewerControls(snapshot);
+}
+
+async function storyboardOpenFilmViewer(timelineId) {
+  const chatKey = String(getChatKey() || '');
+  if (!chatKey || !timelineId) return;
+  storyboardCloseFilmViewer();
+  const openRequest = storyboardFilmViewerPaintSeq;
+  try {
+    const [{ store }, playerRuntime, galleryRuntime] = await Promise.all([
+      storyboardEnsureFilmRuntime(),
+      featureRuntime.load('videoTimelinePlayer'),
+      featureRuntime.load('videoGallery'),
+    ]);
+    const timeline = storyboardFilmRuntime.timelines.find((item) => item.timelineId === timelineId) || await store.load(timelineId, chatKey);
+    if (openRequest !== storyboardFilmViewerPaintSeq) return;
+    if (!timeline || timeline.owner?.chatKey !== chatKey || chatKey !== String(getChatKey() || '')) throw new Error('timeline owner mismatch');
+    if (!storyboardVideoGallerySession) storyboardVideoGallerySession = galleryRuntime.createVideoGallerySession(blobStore);
+    const layer = document.createElement('div');
+    layer.className = 'sd-storyboard-film-viewer';
+    layer.tabIndex = -1;
+    layer.setAttribute('role', 'dialog');
+    layer.setAttribute('aria-modal', 'true');
+    layer.setAttribute('aria-label', '完整影片顺序预览');
+    document.body.appendChild(layer);
+    storyboardFilmViewerEl = layer;
+    storyboardFilmPlaybackSession = playerRuntime.createVideoTimelinePlaybackSession({
+      openMotion: (assetId, options) => storyboardVideoGallerySession.open(assetId, options),
+      resolveStill: storyboardFilmResolveStill,
+      onChange: storyboardPaintFilmViewer,
+    });
+    layer.addEventListener('click', (event) => { if (event.target === layer) storyboardCloseFilmViewer(); });
+    layer.addEventListener('keydown', (event) => { if (event.key === 'Escape') storyboardCloseFilmViewer(); });
+    await storyboardFilmPlaybackSession.open(timeline, { chatKey });
+    layer.focus({ preventScroll: true });
+  } catch (_) {
+    storyboardCloseFilmViewer();
+    toast('这份影片暂时无法预览。', 'warning');
   }
 }
 
@@ -16207,6 +16356,7 @@ async function storyboardHandleChatChanged() {
   storyboardSnapshotReads.clear();
   storyboardCloseLightbox();
   storyboardCloseVideoViewer();
+  storyboardCloseFilmViewer();
   storyboardCloseVideoDraftEditor();
   storyboardFilmEditor = null;
   Object.assign(storyboardFilmRuntime, { chatKey: '', status: 'idle', requestId: storyboardFilmRuntime.requestId + 1, timelines: [], motionChains: [], error: '', timelineError: '', mediaError: '' });
@@ -17348,6 +17498,7 @@ function storyboardUnbindChat() {
   document.querySelectorAll('#chat .sd-storyboard-message-action').forEach((node) => node.remove());
   storyboardCloseLightbox();
   storyboardCloseVideoViewer();
+  storyboardCloseFilmViewer();
   storyboardCloseVideoDraftEditor();
   storyboardGallerySelection.clear();
   storyboardGallerySelectMode = false;
@@ -17376,6 +17527,7 @@ function bindStoryboardTabEvents(root) {
     storyboardRememberPageScroll(root);
     storyboardCloseLightbox();
     storyboardCloseVideoViewer();
+    storyboardCloseFilmViewer();
     saveSettings();
     storyboardEndSession();
     activeTab = resolveRestorableTab(storyboardReturnTab || settings.lastTab || 'dashboard');
@@ -17473,6 +17625,7 @@ function bindStoryboardTabEvents(root) {
     storyboardVideoGalleryVisibleCount = 24;
     storyboardCloseLightbox();
     storyboardCloseVideoViewer();
+    storyboardCloseFilmViewer();
     renderModal();
   }));
   root.querySelectorAll('.sd-storyboard-film-refresh').forEach((button) => button.addEventListener('click', () => {
@@ -17482,6 +17635,10 @@ function bindStoryboardTabEvents(root) {
   root.querySelectorAll('[data-storyboard-film-id] .sd-storyboard-film-edit').forEach((button) => button.addEventListener('click', () => {
     const timelineId = button.closest('[data-storyboard-film-id]')?.dataset.storyboardFilmId;
     if (timelineId) void storyboardOpenFilmEditor(timelineId);
+  }));
+  root.querySelectorAll('[data-storyboard-film-id] .sd-storyboard-film-preview').forEach((button) => button.addEventListener('click', () => {
+    const timelineId = button.closest('[data-storyboard-film-id]')?.dataset.storyboardFilmId;
+    if (timelineId) void storyboardOpenFilmViewer(timelineId);
   }));
   root.querySelectorAll('[data-storyboard-film-id] .sd-storyboard-film-delete').forEach((button) => button.addEventListener('click', () => {
     const timelineId = button.closest('[data-storyboard-film-id]')?.dataset.storyboardFilmId;
@@ -30972,6 +31129,7 @@ function cleanupRuntime(resetSettings = false) {
     clean('storyboard events', () => storyboardUnbindChat());
     clean('video gallery', () => {
       storyboardCloseVideoViewer();
+      storyboardCloseFilmViewer();
       storyboardCloseVideoDraftEditor();
       storyboardVideoGallerySession?.dispose?.();
       storyboardVideoGallerySession = null;
