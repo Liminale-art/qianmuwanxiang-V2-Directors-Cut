@@ -6853,6 +6853,31 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   cursor: zoom-in;
 }
 #chat .mes .sd-storyboard-inline-preview img { width: 100%; max-height: min(72vh, 760px); object-fit: contain; }
+#chat .mes .sd-storyboard-inline-preview[hidden] { display: none; }
+#chat .mes .sd-storyboard-inline-video {
+  display: block;
+  width: 100%;
+  max-height: min(72vh, 760px);
+  background: #050505;
+  object-fit: contain;
+}
+#chat .mes .sd-storyboard-inline-motion {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(255, 255, 255, .32);
+  border-radius: 12px;
+  background: rgba(20, 21, 22, .54);
+  color: rgba(255, 255, 255, .94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+#chat .mes .sd-storyboard-inline-motion[hidden] { display: none; }
+#chat .mes .sd-storyboard-inline-motion :is(i, .qm-glyph-icon) { width: 19px; height: 19px; }
 #chat .mes .sd-storyboard-inline-more {
   position: absolute;
   right: 9px;
@@ -8815,7 +8840,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 }
 #story-director-modal .sd-structured-output-toggle :is(i, .qm-glyph-icon) { width: 15px; height: 15px; font-size: 15px; }
 
-/* v1.58.79 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
+/* v1.58.80 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
 #story-director-modal .sd-storyboard-gallery-kind-switch {
   min-height: 36px;
   display: grid;

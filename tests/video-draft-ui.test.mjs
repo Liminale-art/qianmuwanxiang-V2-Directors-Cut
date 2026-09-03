@@ -87,6 +87,24 @@ test('draft overlays are mobile-safe and cleaned up across runtime boundaries', 
   assert.match(source, /clean\('video gallery',[\s\S]*storyboardCloseVideoDraftEditor\(\)/);
 });
 
+test('completed motion stays a poster until an explicit inline play action', () => {
+  const markup = section('function storyboardInlineRecordMarkup', 'function storyboardInlinePlaceholderMarkup');
+  const player = section('async function storyboardPlayInlineVideo', 'function storyboardInlinePlaceholderMarkup');
+  assert.match(markup, /storyboardInlineVideoForRecord\(record\.id\)/);
+  assert.match(markup, /data-storyboard-chat-action="play-motion"/);
+  assert.match(player, /storyboardVideoGallerySession\.open\(assetId, \{ chatKey \}\)/);
+  assert.match(player, /playback\.sourceRecordId !== record\.id/);
+  assert.match(player, /video\.controls = true/);
+  assert.match(player, /video\.playsInline = true/);
+  assert.match(player, /video\.preload = 'metadata'/);
+  assert.doesNotMatch(player, /autoplay\s*=\s*true/);
+  assert.match(source, /storyboardScheduleInlineVideoHydration\(Math\.max\(700, delay\)\)/);
+  const hydration = section('function storyboardScheduleInlineVideoHydration', 'function storyboardCloseLightbox');
+  assert.match(hydration, /storyboardVideoGallerySession\.list\(chatKey, \{ limit: 300 \}\)/);
+  assert.match(hydration, /runtime\.buildVideoVersionChains\(mediaItems\)/);
+  assert.doesNotMatch(hydration, /videoStore|videoDraftStore|listTasks|listBudget/);
+});
+
 test('frame picking remains bounded, chat-scoped and stores stable ids only', () => {
   const candidates = section('function storyboardVideoDraftCandidateRecords', 'function storyboardVideoDraftEditorMarkup');
   const editor = section('async function storyboardOpenVideoDraftEditor', 'function renderStoryboardVideoDraftShelf');

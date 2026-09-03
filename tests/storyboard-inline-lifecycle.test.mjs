@@ -50,6 +50,12 @@ assert.match(source, /data-storyboard-chat-action="collapse"/);
 assert.match(source, /data-storyboard-chat-action="expand"/);
 assert.match(source, /data-storyboard-chat-action="toggle-actions"/);
 assert.match(source, /figure\.classList\.toggle\('actions-open', open\)/);
+assert.match(source, /data-storyboard-chat-action="play-motion"/);
+assert.match(source, /storyboardPlayInlineVideo\(record, button\)/);
+assert.match(source, /video\.playsInline = true/);
+assert.match(source, /video\.preload = 'metadata'/);
+assert.match(source, /storyboardReleaseInlineVideoPlaybacks/);
+assert.match(css, /sd-storyboard-inline-video/);
 assert.match(css, /sd-storyboard-inline-title/);
 assert.match(css, /figure\.actions-open \.sd-storyboard-inline-actions/);
 
