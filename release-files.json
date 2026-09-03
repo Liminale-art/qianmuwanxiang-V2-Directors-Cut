@@ -44,6 +44,7 @@
     "qianmu-video-media.js",
     "qianmu-video-minimax.js",
     "qianmu-video-pricing.js",
+    "qianmu-video-postproduction.js",
     "qianmu-video-prompt.js",
     "qianmu-video-readiness.js",
     "qianmu-video-result.js",
