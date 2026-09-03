@@ -4,7 +4,7 @@
 // localStorage 存不下二进制大对象，故独立走 IndexedDB；存 Blob，播放时再 createObjectURL。
 
 const DB_NAME = 'qianmu-blobstore';
-const DB_VERSION = 13;
+const DB_VERSION = 14;
 const STORE_AUDIO = 'audio';         // key: 缓存键   value: { blob, meta, createdAt }
 const STORE_FAVORITES = 'favorites'; // key: 收藏 id  value: { blob, meta, label, createdAt }
 // ── 伴读模块（v2 新增）──
@@ -30,6 +30,7 @@ const STORE_VIDEO_TASKS = 'video_tasks'; // key: taskId value: 轻量异步任�
 const STORE_VIDEO_BUDGET = 'video_budget'; // key: reservationId value: 视频费用预留/结算流水
 const STORE_VIDEO_MEDIA = 'video_media'; // key: assetId value: 本地成片 Blob + 白名单元数据；不保留远端地址、密钥或提示词
 const STORE_VIDEO_DRAFTS = 'video_drafts'; // key: draftId value: 动态镜头本地编辑草稿；只含稳定引用与配置
+const STORE_VIDEO_TIMELINES = 'video_timelines'; // key: timelineId value: 完整影片顺序草稿；只含稳定媒体引用与播放配置
 
 const STORAGE_STORE_INFO = Object.freeze({
   [STORE_AUDIO]: { label: '语音缓存', category: 'audio', recoverable: true },
@@ -50,6 +51,7 @@ const STORAGE_STORE_INFO = Object.freeze({
   [STORE_VIDEO_BUDGET]: { label: '视频费用流水', category: 'video', recoverable: false },
   [STORE_VIDEO_MEDIA]: { label: '动态镜头成片', category: 'video', recoverable: false },
   [STORE_VIDEO_DRAFTS]: { label: '动态镜头草稿', category: 'video', recoverable: false },
+  [STORE_VIDEO_TIMELINES]: { label: '影片时间线', category: 'video', recoverable: false },
 });
 
 let dbPromise = null;
@@ -80,6 +82,7 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE_VIDEO_BUDGET)) db.createObjectStore(STORE_VIDEO_BUDGET);
       if (!db.objectStoreNames.contains(STORE_VIDEO_MEDIA)) db.createObjectStore(STORE_VIDEO_MEDIA);
       if (!db.objectStoreNames.contains(STORE_VIDEO_DRAFTS)) db.createObjectStore(STORE_VIDEO_DRAFTS);
+      if (!db.objectStoreNames.contains(STORE_VIDEO_TIMELINES)) db.createObjectStore(STORE_VIDEO_TIMELINES);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => { dbPromise = null; reject(req.error); };
@@ -950,6 +953,122 @@ export async function deleteVideoDrafts(draftIds = []) {
   return { deleted: ids };
 }
 
+// ── 完整影片：时间线草稿 ─────────────────────────────────
+// 时间线仅保存本地素材的稳定引用与播放顺序。媒体 Blob、对象 URL、提示词及连接信息均不进入本仓。
+function normalizeStoredVideoTimeline(value = {}) {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const rawOwner = raw.owner && typeof raw.owner === 'object' ? raw.owner : {};
+  const ownerFloor = Number(rawOwner.floor);
+  const chatKey = boundedVideoDraftText(rawOwner.chatKey || rawOwner.chat_key, 512);
+  const clips = (Array.isArray(raw.clips) ? raw.clips : []).slice(0, 120).map((value, index) => {
+    const clip = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const clipOwner = clip.owner && typeof clip.owner === 'object' ? clip.owner : {};
+    const source = clip.source && typeof clip.source === 'object' ? clip.source : {};
+    const playback = clip.playback && typeof clip.playback === 'object' ? clip.playback : {};
+    const kind = clip.kind === 'motion' ? 'motion' : 'still';
+    const clipFloor = Number(clipOwner.floor);
+    const duration = Number(playback.durationSeconds ?? playback.duration_seconds);
+    return {
+      clipId: videoDraftStorageId(clip.clipId || clip.clip_id) || `clip-${index + 1}`,
+      kind,
+      title: boundedVideoDraftText(clip.title, 160),
+      source: {
+        assetId: kind === 'motion' ? videoDraftStorageId(source.assetId || source.asset_id) : '',
+        recordId: videoDraftStorageId(source.recordId || source.record_id),
+        posterRecordId: videoDraftStorageId(source.posterRecordId || source.poster_record_id),
+      },
+      owner: {
+        chatKey: boundedVideoDraftText(clipOwner.chatKey || clipOwner.chat_key, 512),
+        floor: Number.isInteger(clipFloor) && clipFloor >= 0 ? Math.min(1_000_000, clipFloor) : null,
+        messageId: videoDraftStorageId(clipOwner.messageId || clipOwner.message_id),
+      },
+      playback: {
+        durationSeconds: Number.isFinite(duration) ? Math.min(3600, Math.max(0.1, duration)) : (kind === 'motion' ? 0.1 : 3),
+        audio: kind === 'motion' && playback.audio !== 'mute' ? 'native' : 'mute',
+      },
+    };
+  });
+  const createdAt = Math.max(0, Math.round(Number(raw.createdAt || raw.created_at) || 0));
+  const updatedAt = Math.max(createdAt, Math.round(Number(raw.updatedAt || raw.updated_at) || createdAt));
+  return {
+    schema: 'qianmu.video-timeline.v1',
+    timelineId: videoDraftStorageId(raw.timelineId || raw.timeline_id || raw.id),
+    title: boundedVideoDraftText(raw.title, 160),
+    owner: {
+      chatKey,
+      floor: Number.isInteger(ownerFloor) && ownerFloor >= 0 ? Math.min(1_000_000, ownerFloor) : null,
+      messageId: videoDraftStorageId(rawOwner.messageId || rawOwner.message_id),
+    },
+    status: raw.status === 'ready' ? 'ready' : 'draft',
+    playbackMode: 'sequential',
+    clips,
+    durationSeconds: Number(clips.reduce((sum, clip) => sum + clip.playback.durationSeconds, 0).toFixed(3)),
+    createdAt,
+    updatedAt,
+  };
+}
+
+export async function putVideoTimeline(value = {}) {
+  const timeline = normalizeStoredVideoTimeline(value);
+  if (!timeline.timelineId || !timeline.owner.chatKey || !timeline.clips.length) {
+    throw new Error('video timeline requires timelineId, chatKey and clips');
+  }
+  const now = Date.now();
+  timeline.createdAt = timeline.createdAt || now;
+  timeline.updatedAt = Math.max(timeline.createdAt, timeline.updatedAt || now);
+  const target = await store(STORE_VIDEO_TIMELINES, 'readwrite');
+  await reqP(target.put({
+    schema: 'qianmu.video-timeline-record.v1',
+    timelineId: timeline.timelineId,
+    chatKey: timeline.owner.chatKey,
+    updatedAt: timeline.updatedAt,
+    timeline,
+  }, timeline.timelineId));
+  return { timelineId: timeline.timelineId, chatKey: timeline.owner.chatKey, updatedAt: timeline.updatedAt };
+}
+
+export async function getVideoTimeline(timelineIdValue) {
+  const timelineId = videoDraftStorageId(timelineIdValue);
+  if (!timelineId) return null;
+  const target = await store(STORE_VIDEO_TIMELINES, 'readonly');
+  return (await reqP(target.get(timelineId))) || null;
+}
+
+export async function listVideoTimelines(chatKey = '', options = {}) {
+  const expectedChat = boundedVideoDraftText(chatKey, 512);
+  const limit = Math.min(500, Math.max(1, Math.round(Number(options.limit) || 100)));
+  const target = await store(STORE_VIDEO_TIMELINES, 'readonly');
+  const records = [];
+  await new Promise((resolve, reject) => {
+    const cursor = target.openCursor();
+    cursor.onsuccess = () => {
+      const current = cursor.result;
+      if (!current) { resolve(); return; }
+      const value = current.value || {};
+      if (!expectedChat || String(value.chatKey || '') === expectedChat) records.push(value);
+      current.continue();
+    };
+    cursor.onerror = () => reject(cursor.error);
+  });
+  return records.sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0)).slice(0, limit);
+}
+
+export async function deleteVideoTimelines(timelineIds = []) {
+  const ids = [...new Set((Array.isArray(timelineIds) ? timelineIds : []).map(videoDraftStorageId).filter(Boolean))].slice(0, 500);
+  if (!ids.length) return { deleted: [] };
+  const db = await openDB();
+  const transaction = db.transaction(STORE_VIDEO_TIMELINES, 'readwrite');
+  const done = new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('video timeline delete failed'));
+    transaction.onabort = () => reject(transaction.error || new Error('video timeline delete aborted'));
+  });
+  const target = transaction.objectStore(STORE_VIDEO_TIMELINES);
+  for (const timelineId of ids) target.delete(timelineId);
+  await done;
+  return { deleted: ids };
+}
+
 // ── 动态镜头：本地成片仓 ─────────────────────────────────
 // 成片只保存在浏览器 IndexedDB；远端下载地址、API Key、提示词和供应商原始响应均不落盘。
 export const VIDEO_MEDIA_MAX_BYTES = 768 * 1024 * 1024;
@@ -1200,7 +1319,7 @@ function storageRecordChatKey(name, key, value) {
   if (name === STORE_STORYBOARD_INBOX) return String(value?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_STORYBOARD_SNAPSHOTS) return String(value?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_STORYBOARD_PLAN_ARCHIVES) return String(value?.chatKey || '').trim().slice(0, 512);
-  if (name === STORE_VIDEO_TASKS || name === STORE_VIDEO_BUDGET || name === STORE_VIDEO_DRAFTS) return String(value?.chatKey || '').trim().slice(0, 512);
+  if (name === STORE_VIDEO_TASKS || name === STORE_VIDEO_BUDGET || name === STORE_VIDEO_DRAFTS || name === STORE_VIDEO_TIMELINES) return String(value?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_VIDEO_MEDIA) return String(value?.meta?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_AUDIO) return String(value?.meta?.chatKey || '').trim().slice(0, 512);
   return '';
@@ -1376,6 +1495,7 @@ const CHAT_SCOPED_CLEARABLE_STORES = Object.freeze([
   STORE_VIDEO_BUDGET,
   STORE_VIDEO_MEDIA,
   STORE_VIDEO_DRAFTS,
+  STORE_VIDEO_TIMELINES,
 ]);
 
 async function clearStoreChatScope(name, chatKey) {
