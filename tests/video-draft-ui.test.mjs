@@ -21,7 +21,7 @@ test('inline frames expose an isolated motion-draft action', () => {
   assert.match(handler, /storyboardChatAction === 'motion'[^\n]+storyboardOpenVideoDraftEditor\(record\)/);
 });
 
-test('the draft editor only revises and saves local draft contracts', () => {
+test('the draft editor keeps prompt work local and submits only through the explicit confirmation gate', () => {
   const editor = section('async function storyboardOpenVideoDraftEditor', 'function renderStoryboardVideoDraftShelf');
   assert.match(editor, /reviseVideoDraft/);
   assert.match(editor, /await store\.save\(revised\.draft\)/);
@@ -30,7 +30,7 @@ test('the draft editor only revises and saves local draft contracts', () => {
   assert.match(source, /data-video-readiness="prompt"/);
   assert.match(editor, /evaluateVideoReadiness/);
   assert.match(editor, /promptValidation: videoPromptValidation/);
-  assert.match(editor, /submissionEnabled: false/);
+  assert.match(editor, /submissionEnabled: true/);
   assert.match(source, /sd-storyboard-video-prompt-preview/);
   assert.match(editor, /featureRuntime\.load\('videoPrompt'\)/);
   assert.match(editor, /createVideoPromptPlanFromShotSpec\(compiled\.spec\)/);
@@ -40,7 +40,14 @@ test('the draft editor only revises and saves local draft contracts', () => {
   assert.match(editor, /featureRuntime\.load\('videoConfirmation'\)/);
   assert.match(editor, /createVideoGenerationConfirmation\(confirmationInput/);
   assert.match(editor, /videoConfirmationFingerprint/);
-  assert.match(editor, /当前版本仍不会创建或发送视频任务/);
+  assert.match(source, /只有点按“确认生成”才会创建并发送付费任务/);
+  assert.match(editor, /review\.fingerprint !== videoConfirmationFingerprint/);
+  assert.match(editor, /await coordinator\.createTask/);
+  assert.match(editor, /await coordinator\.submit/);
+  assert.match(editor, /costConfirmed: true/);
+  assert.match(editor, /automatic: false/);
+  assert.match(editor, /videoSubmissionPending/);
+  assert.match(editor, /请勿重复生成/);
   assert.match(style, /\.sd-storyboard-video-confirmation\s*\{[\s\S]*position:\s*absolute/);
   assert.match(source, /sd-video-prompt-intelligent/);
   assert.match(editor, /buildVideoPromptPlanRequest\(compiled\.spec/);
@@ -54,7 +61,7 @@ test('the draft editor only revises and saves local draft contracts', () => {
   assert.match(source, /subject_reference: '主体'/);
   assert.match(source, /style_reference: '风格'/);
   assert.match(source, /motion_reference: '动作'/);
-  assert.doesNotMatch(editor, /storyboardGenerate|videoCoordinator|submit|fetch\(|apiKey|quote/i);
+  assert.doesNotMatch(editor, /storyboardGenerate|fetch\(|apiKey/i);
   const init = section('function init()', 'export async function onActivate');
   assert.doesNotMatch(init, /storyboardEnsureVideoDraftRuntime|featureRuntime\.load\('videoDraft/);
 });

@@ -105,12 +105,18 @@ test('the confirmation fingerprint invalidates any changed prompt or generation 
   assert.notEqual(base.quote.quoteId, changedPrompt.quote.quoteId);
 });
 
-test('the confirmation contract stays lazy and ships without a visible submit action', async () => {
+test('the confirmation contract stays lazy and only submits after the explicit fingerprinted gate', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   assert.doesNotMatch(source, /^import[^\n]*qianmu-video-confirmation\.js/m);
-  assert.match(source, /videoConfirmation:\s*\{[\s\S]*qianmu-video-confirmation\.js\?v=1\.58\.75/);
+  assert.match(source, /videoConfirmation:\s*\{[\s\S]*qianmu-video-confirmation\.js\?v=1\.58\.76/);
   assert.ok(release.files.includes('qianmu-video-confirmation.js'));
   const editor = source.slice(source.indexOf('async function storyboardOpenVideoDraftEditor'), source.indexOf('function renderStoryboardVideoDraftShelf'));
-  assert.doesNotMatch(editor, /videoCoordinator|createTask\(|\.submit\(/);
+  assert.match(editor, /storyboardEnsureVideoCoordinator\(\)/);
+  assert.match(editor, /!guard\.confirmed \|\| guard\.fingerprint !== videoConfirmationFingerprint/);
+  assert.match(editor, /costConfirmed: true/);
+  assert.match(editor, /automatic: false/);
+  assert.match(editor, /videoSubmissionPending = true/);
+  assert.match(editor, /videoSubmissionOutcomeUnknown = true/);
+  assert.doesNotMatch(editor, /fetch\(|apiKey/);
 });
