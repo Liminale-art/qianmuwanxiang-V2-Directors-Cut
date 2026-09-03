@@ -50,6 +50,7 @@
     "qianmu-video-runtime.js",
     "qianmu-video-store.js",
     "qianmu-video-task.js",
+    "qianmu-video-timeline.js",
     "qianmulogo-candy.png",
     "qianmulogo-dark.png",
     "qianmulogo-dream.png",
