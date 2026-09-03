@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.6';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.6';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.6';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.59.6';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.7';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.7';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.7';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.59.7';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,143 +151,143 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.6';
+} from './qianmu-storyboard.js?v=1.59.7';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.6';
+const VERSION = '1.59.7';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.6'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.7'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.6').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.7').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.6'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.7'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.6'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.7'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.6'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.7'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.6'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.7'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.6'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.7'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.6'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.7'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.6'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.7'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.6'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.7'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.6'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.7'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.6'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.7'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.6'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.7'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.6'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.7'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.6'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.7'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.6'),
+    load: () => import('./qianmu-video-task.js?v=1.59.7'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.6'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.7'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.6'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.7'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.6'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.7'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.6'),
+    load: () => import('./qianmu-video-store.js?v=1.59.7'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.6'),
+    load: () => import('./qianmu-video-result.js?v=1.59.7'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.6'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.7'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.6'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.7'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.6'),
+    load: () => import('./qianmu-video-media.js?v=1.59.7'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.6'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.7'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.6'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.7'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.6'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.7'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.6'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.7'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.6'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.7'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.6'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.7'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.6'),
-        import('./qianmu-theaters.js?v=1.59.6'),
+        import('./builtin-theaters.js?v=1.59.7'),
+        import('./qianmu-theaters.js?v=1.59.7'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -15605,6 +15605,7 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
   return {
     id: uid('shotjob'), ...snapshot, payload, planId, planShotId,
     compilerStages: clone(state.pendingCompilerStages || []),
+    safetyTrace: sanitizeStoryboardDiagnosticData(shot?.safetyTrace || null),
     discardRequested: false, attempt: Math.max(1, Number(attempt) || 1),
   };
 }
@@ -15641,7 +15642,35 @@ function storyboardStartLog(job) {
   const pipeline = {
     id: uid('shotpipe'), taskId: job.id, status: 'queued', providerId: job.source,
     model: String(job.profile.model || ''), startedAt: 0, finishedAt: 0, durationMs: 0,
-    stages: clone(job.compilerStages || []), migrated: false,
+    stages: sanitizeStoryboardDiagnosticData([
+      ...clone(job.compilerStages || []),
+      ...(job.safetyTrace ? [{
+        id: uid('stage-safety-adaptation'), type: 'safety_adaptation', status: 'success',
+        startedAt: now, finishedAt: now,
+        input: job.safetyTrace.input || {},
+        output: job.safetyTrace.output || {},
+        decisions: [String(job.safetyMethod || job.safetyTrace.method || 'adapted')], error: '',
+      }] : []),
+      {
+        id: uid('stage-prompt-compilation'), type: 'prompt_compilation', status: 'success',
+        startedAt: now, finishedAt: now,
+        input: {
+          shotSpec: job.shotSpec,
+          compositionDecision: job.compositionDecision,
+          artistAssignment: {
+            artistPresetId: job.artistPresetId || '',
+            artistPoolId: job.artistPoolId || '',
+            routeSource: job.artistRouteSource || '',
+          },
+        },
+        output: {
+          prompt: job.payload?.prompt || '',
+          negativePrompt: job.payload?.negative || '',
+          compiledPrompt: job.compiledPrompt,
+        },
+        decisions: [], error: '',
+      },
+    ]), migrated: false,
   };
   log.pipelineId = pipeline.id;
   state.pipelineLogs.unshift(pipeline);
@@ -15778,7 +15807,7 @@ function renderStoryboardLogs(state) {
     const source = STORYBOARD_SOURCES[log.source]?.label || log.source;
     const statusLabel = log.status === 'success' ? '完成' : log.status === 'failed' ? '失败' : log.status === 'cancelled' ? '已放弃' : log.status === 'queued' ? '等待' : '生成中';
     const pipeline = storyboardPipelineForLog(log, state);
-    const stageRows = (pipeline?.stages || []).map((stage) => `<li class="${stage.status}"><span>${htmlEscape({ context: '上下文', prompt_compiler: '画面整理', provider_request: '模型请求', asset_persistence: '图片落盘', paragraph_anchor: '段落定位' }[stage.type] || stage.type)}</span><b>${htmlEscape(stage.status === 'success' ? '完成' : stage.status === 'failed' ? '失败' : '进行中')}</b>${stage.error ? `<small>${htmlEscape(stage.error)}</small>` : ''}</li>`).join('');
+    const stageRows = (pipeline?.stages || []).map((stage) => `<li class="${stage.status}"><span>${htmlEscape({ context: '上下文', prompt_compiler: '镜头规划', safety_adaptation: '安全适配', prompt_compilation: '生图编译', provider_request: '模型请求', asset_persistence: '图片落盘', paragraph_anchor: '段落定位' }[stage.type] || stage.type)}</span><b>${htmlEscape(stage.status === 'success' ? '完成' : stage.status === 'failed' ? '失败' : '进行中')}</b>${stage.error ? `<small>${htmlEscape(stage.error)}</small>` : ''}</li>`).join('');
     const runAction = log.status === 'queued'
       ? '<button type="button" class="sd-btn sd-storyboard-cancel-queued-log">移出等待</button>'
       : `<button type="button" class="sd-btn sd-storyboard-retry-log" ${log.status === 'generating' ? 'disabled' : ''}>${log.status === 'failed' ? '重试' : '再生成'}</button>`;
@@ -16521,6 +16550,7 @@ async function storyboardCallCompiler(messages, profileId, requestOptions = {}) 
 async function storyboardCompilerResult(raw, context, capabilities, state, contractRequest = null) {
   let object = null;
   let contractMeta = null;
+  let contractTrace = null;
   const rawText = String(raw || '');
   const declaresPlanContract = /"schema"\s*:\s*"qianmu\.storyboard\.plan\.v1"/.test(rawText);
   if (contractRequest || declaresPlanContract) {
@@ -16544,17 +16574,21 @@ async function storyboardCompilerResult(raw, context, capabilities, state, contr
       requiredSourceParagraphIds: contractRequest?.requiredSourceParagraphIds || [],
     };
     const initial = contract.parseStoryboardContractResponse(rawText, contractOptions);
+    let repairMessages = [];
     const result = initial.ok ? initial : await contract.repairStoryboardContractOnce({
       raw: rawText,
       validation: initial,
       options: contractOptions,
-      request: (messages) => storyboardCallCompiler(messages, state.promptCompiler.apiProfileId, {
-        temperature: 0,
-        maxTokens: 1800,
-        jsonSchema: contract.STORYBOARD_PLAN_RESPONSE_SCHEMA,
-        jsonSchemaName: contract.STORYBOARD_PLAN_RESPONSE_SCHEMA_ID,
-        jsonSchemaStrict: true,
-      }),
+      request: (messages) => {
+        repairMessages = messages;
+        return storyboardCallCompiler(messages, state.promptCompiler.apiProfileId, {
+          temperature: 0,
+          maxTokens: 1800,
+          jsonSchema: contract.STORYBOARD_PLAN_RESPONSE_SCHEMA,
+          jsonSchemaName: contract.STORYBOARD_PLAN_RESPONSE_SCHEMA_ID,
+          jsonSchemaStrict: true,
+        });
+      },
     });
     contractMeta = {
       schema: STORYBOARD_PLAN_SCHEMA,
@@ -16564,11 +16598,18 @@ async function storyboardCompilerResult(raw, context, capabilities, state, contr
       initialErrors: (result.originalErrors || []).slice(0, 24),
       finalErrors: (result.errors || []).slice(0, 24),
     };
+    contractTrace = {
+      initialResponse: rawText,
+      repairMessages,
+      repairResponse: String(result.repairedRaw || ''),
+      parsedStructure: result.data || null,
+    };
     if (!result.ok) {
       const fallback = contract.createStoryboardContractManualFallback(context, {
         ratioId: state.compositionPolicy?.mode === 'fixed' ? state.compositionPolicy.fixedRatioId : '',
       });
       fallback.contractMeta = { ...contractMeta, fallback: 'manual_single' };
+      fallback.contractTrace = contractTrace;
       return fallback;
     }
     object = contract.adaptStoryboardPlanContract(result.data, {
@@ -16586,7 +16627,7 @@ async function storyboardCompilerResult(raw, context, capabilities, state, contr
     return {
       shouldGenerate: false,
       skipReason: String(object.skip_reason || '当前楼层没有新增的画面价值').trim().slice(0, 500),
-      shots: [], decisions: [], contractMeta,
+      shots: [], decisions: [], contractMeta, contractTrace,
     };
   }
   const maxIndex = Math.max(0, context.paragraphs.length - 1);
@@ -16625,7 +16666,7 @@ async function storyboardCompilerResult(raw, context, capabilities, state, contr
     shouldGenerate: true, skipReason: '',
     prompt: first.prompt, safePrompt: first.safePrompt, negative: first.negative, paragraphIndex: first.paragraphIndex, shotType: first.shotType, shots,
     decisions: Array.isArray(object.decisions) ? object.decisions.map((item) => String(item).slice(0, 500)).slice(0, 12) : [],
-    contractMeta,
+    contractMeta, contractTrace,
   };
 }
 
@@ -16653,6 +16694,12 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
     });
     if (plan?.status === 'cancelled') return false;
     const result = await storyboardCompilerResult(raw, context, getStoryboardCapabilities(state.source, profile.model), state, contractRequest);
+    const compilerInput = {
+      floor: context.floor,
+      mode: state.promptMode,
+      schemaId: contractRequest.schemaId,
+      messages: contractRequest.messages,
+    };
     if (!result.shouldGenerate) {
       state.prompt = '';
       state.negative = '';
@@ -16668,11 +16715,11 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
         plan.shots = [];
         plan.updatedAt = Date.now();
       }
-      state.pendingCompilerStages = [{
+      state.pendingCompilerStages = [sanitizeStoryboardDiagnosticData({
         id: uid('stage-compiler'), type: 'prompt_compiler', status: 'success', startedAt,
-        finishedAt: Date.now(), input: { floor: context.floor, mode: state.promptMode },
-        output: { skipped: true, reason: result.skipReason, contract: result.contractMeta }, decisions: [], error: '',
-      }];
+        finishedAt: Date.now(), input: compilerInput,
+        output: { skipped: true, reason: result.skipReason, contract: result.contractMeta, trace: result.contractTrace }, decisions: [], error: '',
+      })];
       saveSettings();
       storyboardSchedulePlanArchive();
       storyboardScheduleInlineRender(30, plan?.floor ?? context.floor);
@@ -16719,16 +16766,16 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
       }));
       plan.updatedAt = Date.now();
     }
-    state.pendingCompilerStages = [{
+    state.pendingCompilerStages = [sanitizeStoryboardDiagnosticData({
       id: uid('stage-compiler'), type: 'prompt_compiler', status: manualRequired ? 'failed' : 'success', startedAt,
       finishedAt: Date.now(), input: {
-        floor: context.floor, mode: state.promptMode, provider: state.source, contentRating: state.contentRating,
+        ...compilerInput, provider: state.source, contentRating: state.contentRating,
         paragraphMode: state.paragraphMode,
         worldMode: state.promptCompiler.worldMode, worldFallback: context.worldFallback,
         sourceSummary: state.promptDraft.sourceSummary,
-      }, output: { prompt: result.prompt, negative: result.negative, paragraphIndex: result.paragraphIndex, shotType: result.shotType, shots: compiledShots, contract: result.contractMeta },
+      }, output: { prompt: result.prompt, negative: result.negative, paragraphIndex: result.paragraphIndex, shotType: result.shotType, shots: compiledShots, contract: result.contractMeta, trace: result.contractTrace },
       decisions: result.decisions, error: manualRequired ? '严格合同修复失败；已停止自动生图并保留正文单镜头草稿。' : '',
-    }];
+    })];
     saveSettings();
     storyboardScheduleInlineRender(30, plan?.floor ?? context.floor);
     if (!quiet) toast(manualRequired ? '自动整理未通过校验；已停止自动生图并保留一份待确认草稿。' : '生成词已提取，可继续修改或手动生成。', manualRequired ? 'warning' : 'success');
@@ -16898,6 +16945,7 @@ async function storyboardAdaptShotForModel(shot, sourceId, modelId, state = stor
       safetyMethod: 'legacy_safe_prompt',
     };
   }
+  let safetyTrace = null;
   try {
     const contract = await featureRuntime.load('storyboardContract');
     const provider = STORYBOARD_PROVIDER_REGISTRY[sourceId];
@@ -16913,27 +16961,56 @@ async function storyboardAdaptShotForModel(shot, sourceId, modelId, state = stor
       requiredCharacterIds: request.requiredCharacterIds,
       characterTermsById: request.characterTermsById,
     };
-    const raw = await storyboardCallCompiler(request.messages, state.promptCompiler.apiProfileId, {
-      temperature: 0.1,
-      maxTokens: 1800,
-      jsonSchema: request.schema,
-      jsonSchemaName: request.schemaId,
-      jsonSchemaStrict: true,
-    });
+    const traceInput = {
+      providerId: sourceId,
+      modelId,
+      schemaId: request.schemaId,
+      messages: request.messages,
+    };
+    let raw = '';
+    try {
+      raw = await storyboardCallCompiler(request.messages, state.promptCompiler.apiProfileId, {
+        temperature: 0.1,
+        maxTokens: 1800,
+        jsonSchema: request.schema,
+        jsonSchemaName: request.schemaId,
+        jsonSchemaStrict: true,
+      });
+    } catch (error) {
+      safetyTrace = { input: traceInput, output: { method: 'local_fallback', failure: String(error?.message || error) } };
+      throw error;
+    }
     if (!stillCurrent()) return { ...shot, originalPrompt, safetyAdapted: false, safetyAborted: true };
     const initial = contract.parseStoryboardContractResponse(raw, contractOptions);
+    let repairMessages = [];
     const result = initial.ok ? initial : await contract.repairStoryboardContractOnce({
       raw,
       validation: initial,
       options: contractOptions,
-      request: (messages) => storyboardCallCompiler(messages, state.promptCompiler.apiProfileId, {
-        temperature: 0,
-        maxTokens: 1400,
-        jsonSchema: request.schema,
-        jsonSchemaName: request.schemaId,
-        jsonSchemaStrict: true,
-      }),
+      request: (messages) => {
+        repairMessages = messages;
+        return storyboardCallCompiler(messages, state.promptCompiler.apiProfileId, {
+          temperature: 0,
+          maxTokens: 1400,
+          jsonSchema: request.schema,
+          jsonSchemaName: request.schemaId,
+          jsonSchemaStrict: true,
+        });
+      },
     });
+    safetyTrace = {
+      input: traceInput,
+      output: {
+        initialResponse: String(raw || ''),
+        repairMessages,
+        repairResponse: String(result.repairedRaw || ''),
+        parsedStructure: result.data || null,
+        repairAttempted: result.repairAttempted === true,
+        localNormalization: (result.normalization || []).slice(0, 8),
+        initialErrors: (result.originalErrors || []).slice(0, 24),
+        finalErrors: (result.errors || []).slice(0, 24),
+      },
+    };
     if (!stillCurrent()) return { ...shot, originalPrompt, safetyAdapted: false, safetyAborted: true };
     if (result.ok) {
       const safeSpec = contract.adaptStoryboardSafetyContract(result.data, shot.shotSpec || shot);
@@ -16949,6 +17026,11 @@ async function storyboardAdaptShotForModel(shot, sourceId, modelId, state = stor
           sensitive: true,
           safetyAdapted: true,
           safetyMethod: result.repairAttempted ? 'contract_repaired' : 'contract',
+          safetyTrace: sanitizeStoryboardDiagnosticData({
+            ...safetyTrace,
+            method: result.repairAttempted ? 'contract_repaired' : 'contract',
+            output: { ...safetyTrace.output, compiledStructure: safeSpec, compiledPrompt: compiled },
+          }),
         };
       }
     }
@@ -16964,6 +17046,14 @@ async function storyboardAdaptShotForModel(shot, sourceId, modelId, state = stor
     negative: 'explicit content, nudity',
     safetyAdapted: true,
     safetyMethod: 'local_fallback',
+    safetyTrace: sanitizeStoryboardDiagnosticData({
+      ...(safetyTrace || {}),
+      method: 'local_fallback',
+      output: {
+        ...(safetyTrace?.output || {}),
+        fallbackPrompt,
+      },
+    }),
   };
 }
 
@@ -17374,13 +17464,10 @@ async function storyboardRunJob(job, log) {
     const apiKey = await storyboardResolveApiKey(job.source, job.connection?.credentialId);
     if (job.source !== 'comfy' && !apiKey) throw new Error('当前连接没有可用的 API Key');
     const gatewayRequest = storyboardGatewayRequest(job, apiKey, assets);
-    storyboardPipelineStage(log, 'provider_request', 'running', {
-      provider: job.source, model: gatewayRequest.model, baseUrl: gatewayRequest.baseUrl,
-      prompt: gatewayRequest.prompt, negativePrompt: gatewayRequest.negativePrompt,
-      referenceCount: assets.references.length, vibeCount: assets.vibes.length, parameters: gatewayRequest.parameters,
-    });
+    storyboardPipelineStage(log, 'provider_request', 'running', { request: gatewayRequest });
     const directImage = await directImageRuntime();
     let data = null;
+    let transport = 'browser_direct';
     try { data = await directImage.generateDirectImage(gatewayRequest); }
     catch (error) {
       if (!directImage.isDirectImageTransportError(error) && error?.code !== 'direct_unsupported') {
@@ -17389,6 +17476,7 @@ async function storyboardRunJob(job, log) {
       }
     }
     if (!data) {
+      transport = 'same_origin_gateway';
       const response = await fetch('/api/plugins/qianmu-tts/image/generate', {
         method: 'POST', headers: storyboardRequestHeaders(), body: JSON.stringify(gatewayRequest),
       });
@@ -17404,6 +17492,8 @@ async function storyboardRunJob(job, log) {
       }
     }
     storyboardPipelineStage(log, 'provider_request', 'success', {}, {
+      transport,
+      response: data,
       upstreamId: data.upstreamId || '', imageCount: data.images?.length || 0, durationMs: data.durationMs || 0,
     });
     if (job.discardRequested) {

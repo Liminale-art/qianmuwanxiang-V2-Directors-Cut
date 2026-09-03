@@ -4,6 +4,7 @@ import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } f
 export const STORYBOARD_SCHEMA_VERSION = 24;
 export const STORYBOARD_PRODUCTION_TRACK_LABELS = Object.freeze({ main_camera: '本段正文', second_camera: '世界背面' });
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
+export const STORYBOARD_DIAGNOSTIC_TEXT_LIMIT = 256 * 1024;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
 
@@ -264,7 +265,7 @@ export function sanitizeStoryboardWorkflow(value) {
 }
 
 export function sanitizeStoryboardDiagnosticData(value) {
-  return redact(value);
+  return redact(value, 0, STORYBOARD_DIAGNOSTIC_TEXT_LIMIT, 16);
 }
 
 export function sanitizeStoryboardSnapshot(value, fallback = {}) {
@@ -1502,7 +1503,7 @@ export function pruneStoryboardPipelineLogs(value, options = {}) {
 }
 
 function normalizePipelineLog(log) {
-  const stages = dedupeById((Array.isArray(log.stages) ? log.stages : []).filter(obj).map((stage) => ({ id: cleanId(stage.id), type: str(stage.type, 80), status: status(stage.status), startedAt: pos(stage.startedAt), finishedAt: pos(stage.finishedAt), input: redact(stage.input), output: redact(stage.output), decisions: uniqueStrings(stage.decisions, 100, 1000), error: redactString(stage.error).slice(0, 4000) })).filter((stage) => stage.id)).slice(0, 30);
+  const stages = dedupeById((Array.isArray(log.stages) ? log.stages : []).filter(obj).map((stage) => ({ id: cleanId(stage.id), type: str(stage.type, 80), status: status(stage.status), startedAt: pos(stage.startedAt), finishedAt: pos(stage.finishedAt), input: redact(stage.input, 0, STORYBOARD_DIAGNOSTIC_TEXT_LIMIT, 16), output: redact(stage.output, 0, STORYBOARD_DIAGNOSTIC_TEXT_LIMIT, 16), decisions: uniqueStrings(stage.decisions, 100, 1000), error: redactString(stage.error).slice(0, 4000) })).filter((stage) => stage.id)).slice(0, 30);
   return { id: cleanId(log.id), taskId: cleanId(log.taskId || log.id), status: status(log.status), providerId: getStoryboardProvider(log.providerId) ? log.providerId : '', model: str(log.model, 240), startedAt: pos(log.startedAt), finishedAt: pos(log.finishedAt), durationMs: pos(log.durationMs), stages, migrated: Boolean(log.migrated) };
 }
 function legacyPipelineLogs(value) {
@@ -1845,11 +1846,12 @@ function safeData(value, depth = 5) {
   }
   return out;
 }
-function redact(value, depth = 0) {
-  if (depth > 6 || value == null) return value ?? null;
-  if (typeof value === 'string') return redactString(value);
+function redact(value, depth = 0, maxString = 24000, maxDepth = 6) {
+  if (value == null) return value ?? null;
+  if (depth > maxDepth) return '[depth omitted]';
+  if (typeof value === 'string') return redactString(value, maxString);
   if (typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.slice(0, 100).map((item) => redact(item, depth + 1));
+  if (Array.isArray(value)) return value.slice(0, 100).map((item) => redact(item, depth + 1, maxString, maxDepth));
   const out = {};
   for (const [rawKey, rawValue] of Object.entries(value).slice(0, 150)) {
     const key = str(rawKey, 120);
@@ -1859,12 +1861,12 @@ function redact(value, depth = 0) {
       out[key] = result.ok ? result.workflow : '[invalid workflow omitted]';
     } else if (isSensitiveField(key)) out[key] = '[redacted]';
     else if (isBinaryField(key) && (typeof rawValue !== 'string' || looksLikeBase64(rawValue))) out[key] = '[image omitted]';
-    else out[key] = redact(rawValue, depth + 1);
+    else out[key] = redact(rawValue, depth + 1, maxString, maxDepth);
   }
   return out;
 }
-function redactString(value) {
-  const text = str(value, 24000);
+function redactString(value, max = 24000) {
+  const text = str(value, max);
   if (/^data:image\/[^;]+;base64,/i.test(text) || looksLikeBase64(text)) return '[image omitted]';
   return text.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=\s]+/gi, '[image omitted]').replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]').replace(/(["']?(?:api[-_ ]?key|access[-_ ]?token|authorization|password|secret)["']?\s*[:=]\s*)["']?[^\s,"'}]+/gi, '$1[redacted]');
 }

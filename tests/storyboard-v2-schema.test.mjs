@@ -5,6 +5,7 @@ import {
   STORYBOARD_PROMPT_MODES,
   STORYBOARD_PROVIDER_REGISTRY,
   STORYBOARD_SCHEMA_VERSION,
+  STORYBOARD_DIAGNOSTIC_TEXT_LIMIT,
   STORYBOARD_PIPELINE_LOG_LIMIT,
   STORYBOARD_PIPELINE_LOG_RETENTION_MS,
   buildImagineCommand,
@@ -27,6 +28,7 @@ import {
 
 assert.equal(STORYBOARD_SCHEMA_VERSION, 24);
 assert.equal(STORYBOARD_PIPELINE_LOG_LIMIT, 20);
+assert.equal(STORYBOARD_DIAGNOSTIC_TEXT_LIMIT, 256 * 1024);
 assert.equal(STORYBOARD_PIPELINE_LOG_RETENTION_MS, 0);
 assert.deepEqual(Object.keys(STORYBOARD_PROVIDER_REGISTRY), ['novel', 'banana', 'openai', 'seedream', 'comfy']);
 assert.deepEqual(Object.keys(STORYBOARD_PROMPT_MODES), ['manual', 'auto', 'combined']);
@@ -135,6 +137,18 @@ assert.match(invalidWorkflowState.profiles.comfy.comfyWorkflowNotice, /有效的
 const safeDiagnostic = sanitizeStoryboardDiagnosticData({ parameters: { workflow: JSON.stringify(workflowWithCredentials) } });
 assert.equal(safeDiagnostic.parameters.workflow['1'].inputs.api_key, undefined);
 assert.equal(safeDiagnostic.parameters.workflow['1'].inputs.prompt, workflowWithCredentials['1'].inputs.prompt);
+const longDiagnosticText = '镜'.repeat(100_000);
+const completeDiagnostic = sanitizeStoryboardDiagnosticData({ messages: [{ content: longDiagnosticText }] });
+assert.equal(completeDiagnostic.messages[0].content.length, longDiagnosticText.length, 'contract-sized diagnostic text must not be clipped');
+const deepSecret = sanitizeStoryboardDiagnosticData({
+  a: { b: { c: { d: { e: { f: { g: { apiKey: 'must-not-survive' } } } } } } },
+});
+assert.doesNotMatch(JSON.stringify(deepSecret), /must-not-survive/);
+const normalizedDetailedLog = pruneStoryboardPipelineLogs([{
+  id: 'pipeline-complete', taskId: 'task-complete', status: 'success', providerId: 'novel',
+  stages: [{ id: 'compiler', type: 'prompt_compiler', status: 'success', input: { messages: [{ content: longDiagnosticText }] }, output: {} }],
+}]);
+assert.equal(normalizedDetailedLog[0].stages[0].input.messages[0].content.length, longDiagnosticText.length, 'archived diagnostics must retain full contract-sized text');
 const safeSnapshot = sanitizeStoryboardSnapshot({ source: 'comfy', payload: { parameters: { workflow: JSON.stringify(workflowWithCredentials) } } });
 assert.doesNotMatch(JSON.stringify(safeSnapshot), /secret-api-key|secret-token/);
 assert.match(safeSnapshot.profile.comfyWorkflowNotice, /已移除凭据字段/);

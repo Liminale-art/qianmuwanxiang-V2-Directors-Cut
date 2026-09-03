@@ -13,6 +13,13 @@ assert.match(source, /分镜日志<\/h3><small>\$\{state\.logs\.length\} \/ \$\{
 assert.match(source, /const visiblePipelineIds = new Set\(state\.logs\.map[\s\S]*state\.pipelineLogs = state\.pipelineLogs\.filter/, '新增日志后必须同步移除不可见的管线缓存');
 assert.match(source, /sd-storyboard-pipeline-stages/, '日志仍需保留阶段定位');
 assert.match(source, /sd-storyboard-copy-log/, '日志仍需保留脱敏诊断复制');
+assert.match(source, /schemaId: contractRequest\.schemaId,[\s\S]*messages: contractRequest\.messages/, '镜头规划日志必须保留实际注入消息');
+assert.match(source, /initialResponse: rawText,[\s\S]*repairMessages,[\s\S]*repairResponse:[\s\S]*parsedStructure:/, '镜头规划日志必须区分原始返回、短修复注入与返回、结构结果');
+assert.match(source, /state\.pendingCompilerStages = \[sanitizeStoryboardDiagnosticData\(\{/, '镜头规划轨迹必须在写入设置前完成脱敏');
+assert.match(source, /type: 'safety_adaptation'[\s\S]*job\.safetyTrace\.input[\s\S]*job\.safetyTrace\.output/, '受限渠道的二次安全适配也必须保留独立诊断阶段');
+assert.match(source, /type: 'prompt_compilation'[\s\S]*shotSpec:[\s\S]*compiledPrompt:/, '生图编译层必须作为独立阶段留痕');
+assert.match(source, /storyboardPipelineStage\(log, 'provider_request', 'running', \{ request: gatewayRequest \}\)/, '模型请求阶段必须记录最终请求体并交由统一脱敏器处理');
+assert.match(source, /transport,[\s\S]*response: data,[\s\S]*upstreamId:/, '模型返回必须记录传输路径和脱敏后的完整结构');
 assert.match(css, /\.sd-storyboard-log-tools \{ grid-template-columns: minmax\(0, 1fr\)/, '移除搜索后筛选栏必须独占一行');
 
 const logs = Array.from({ length: 25 }, (_, index) => ({
