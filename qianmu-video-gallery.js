@@ -113,6 +113,7 @@ export function buildVideoTaskGalleryStatuses(values = [], availableAssetIds = [
       const progress = Math.min(99, Math.max(0, Math.round(Number(task.progress.percent) || 0)));
       return {
         taskId: task.taskId,
+        draftId: task.draftId,
         shotId: task.shotId,
         state: task.state,
         statusLabel: unknownSubmission ? '待核对提交' : base.label,
@@ -121,6 +122,7 @@ export function buildVideoTaskGalleryStatuses(values = [], availableAssetIds = [
         attempt: task.attempt,
         progress: ['preparing', 'uploading', 'submitted', 'polling'].includes(task.state) ? progress : 0,
         retryable: task.state === 'failed' && task.failure.retryable,
+        canReopenDraft: task.state === 'failed' && Boolean(task.draftId),
         canRefresh: (['submitted', 'polling'].includes(task.state) && Boolean(task.provider.remoteTaskId))
           || task.state === 'cancel_requested',
         canCancel: ['queued', 'preparing', 'uploading'].includes(task.state)

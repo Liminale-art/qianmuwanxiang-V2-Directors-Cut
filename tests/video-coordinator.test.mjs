@@ -57,6 +57,7 @@ const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), 
 
 async function draft(coordinator, extra = {}) {
   return coordinator.createTask({
+    draftId: 'draft-a',
     shotId: 'shot-a', manifestId: 'manifest-a',
     owner: { chatKey: 'chat-a', floor: 8, messageId: 'message-a' },
     connection: { connectionId: 'connection-a' },
@@ -81,6 +82,7 @@ test('draft and submit use one façade while credentials and prompts stay out of
   });
   const created = await draft(coordinator);
   assert.equal(created.action, 'created');
+  assert.equal(created.task.draftId, 'draft-a');
   const result = await coordinator.submit(submission(created.task.taskId, { now: 2000 }));
   assert.equal(result.action, 'submitted');
   assert.equal(requests.length, 1);
@@ -232,7 +234,7 @@ test('retry stays a separate confirmed state change and never submits by itself'
 test('the coordinator remains an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(source, /videoCoordinator:\s*\{[\s\S]*import\('\.\/qianmu-video-coordinator\.js\?v=1\.58\.77'\)/);
+  assert.match(source, /videoCoordinator:\s*\{[\s\S]*import\('\.\/qianmu-video-coordinator\.js\?v=1\.58\.78'\)/);
   assert.ok(release.files.includes('qianmu-video-coordinator.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoCoordinator'\)/);

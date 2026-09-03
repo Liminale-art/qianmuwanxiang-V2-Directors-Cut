@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.77';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.77';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.77';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.77';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.78';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.78';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.78';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.78';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,107 +151,107 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.77';
+} from './qianmu-storyboard.js?v=1.58.78';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.77';
+const VERSION = '1.58.78';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.77'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.78'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.58.77').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.58.78').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.77'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.78'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.77'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.78'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.58.77'),
+    load: () => import('./qianmu-video-contract.js?v=1.58.78'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.58.77'),
+    load: () => import('./qianmu-video-draft.js?v=1.58.78'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.58.77'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.58.78'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.58.77'),
+    load: () => import('./qianmu-video-readiness.js?v=1.58.78'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.58.77'),
+    load: () => import('./qianmu-video-pricing.js?v=1.58.78'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.58.77'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.58.78'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.58.77'),
+    load: () => import('./qianmu-video-prompt.js?v=1.58.78'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.58.77'),
+    load: () => import('./qianmu-video-task.js?v=1.58.78'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.58.77'),
+    load: () => import('./qianmu-video-budget.js?v=1.58.78'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.58.77'),
+    load: () => import('./qianmu-video-minimax.js?v=1.58.78'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.58.77'),
+    load: () => import('./qianmu-video-runtime.js?v=1.58.78'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.58.77'),
+    load: () => import('./qianmu-video-store.js?v=1.58.78'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.58.77'),
+    load: () => import('./qianmu-video-result.js?v=1.58.78'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.58.77'),
+    load: () => import('./qianmu-video-gallery.js?v=1.58.78'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.58.77'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.58.78'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.58.77'),
+    load: () => import('./qianmu-video-media.js?v=1.58.78'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.77'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.78'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.77'),
-        import('./qianmu-theaters.js?v=1.58.77'),
+        import('./builtin-theaters.js?v=1.58.78'),
+        import('./qianmu-theaters.js?v=1.58.78'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -13430,7 +13430,8 @@ async function storyboardOpenVideoDraftEditor(source) {
         chatKey,
       });
     }
-    if (!draft || draft.owner.chatKey !== chatKey) return toast('这份动态草稿不属于当前聊天。', 'warning');
+    if (!draft) return toast('找不到这份动态草稿，可能已被清理。', 'warning');
+    if (draft.owner.chatKey !== chatKey) return toast('这份动态草稿不属于当前聊天。', 'warning');
     storyboardCloseVideoDraftEditor();
     storyboardVideoDraftEditor = draftModule.normalizeVideoDraft(draft);
     const layer = document.createElement('div');
@@ -13922,6 +13923,7 @@ async function storyboardOpenVideoDraftEditor(source) {
         let task = activeVideoTaskId ? await coordinator.getTask(activeVideoTaskId) : null;
         if (!task || !['queued', 'preparing'].includes(task.state)) {
           const created = await coordinator.createTask({
+            draftId: storyboardVideoDraftEditor.draftId,
             shotId: compiled.spec.shotId,
             manifestId: compiled.manifest.manifestId,
             owner: compiled.draft.owner,
@@ -14064,6 +14066,7 @@ function renderStoryboardVideoTaskShelf(tasks = [], warning = '') {
     const floor = Number.isInteger(item.owner.floor) ? `第 ${item.owner.floor} 层` : '阅片室';
     const suffix = [item.attempt > 1 ? `第 ${item.attempt} 次` : '', item.progress > 0 ? `${item.progress}%` : '', item.retryable ? '可重新准备' : '', item.chargeUnknown ? '费用待核对' : ''].filter(Boolean).join(' · ');
     const controls = [
+      item.canReopenDraft ? `<button type="button" class="sd-storyboard-video-task-draft" data-storyboard-video-draft="${htmlEscape(item.draftId)}"><i class="fa-solid fa-pen"></i><span>回到草稿</span></button>` : '',
       item.canRefresh ? `<button type="button" class="sd-storyboard-video-task-refresh"><i class="fa-solid fa-rotate"></i><span>${item.state === 'cancel_requested' ? '继续取消' : '刷新进度'}</span></button>` : '',
       item.canCancel ? '<button type="button" class="sd-storyboard-video-task-cancel"><i class="fa-solid fa-ban"></i><span>停止任务</span></button>' : '',
     ].filter(Boolean).join('');
@@ -17128,6 +17131,10 @@ function bindStoryboardTabEvents(root) {
   root.querySelectorAll('[data-storyboard-video-task] .sd-storyboard-video-task-cancel').forEach((button) => button.addEventListener('click', () => {
     const taskId = button.closest('[data-storyboard-video-task]')?.dataset.storyboardVideoTask;
     if (taskId) void storyboardRequestVideoTaskCancellation(taskId, button);
+  }));
+  root.querySelectorAll('[data-storyboard-video-task] .sd-storyboard-video-task-draft').forEach((button) => button.addEventListener('click', () => {
+    const draftId = button.dataset.storyboardVideoDraft;
+    if (draftId) void storyboardOpenVideoDraftEditor(draftId);
   }));
   root.querySelector('.sd-storyboard-video-more')?.addEventListener('click', () => {
     storyboardVideoGalleryVisibleCount += 24;

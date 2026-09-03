@@ -17,6 +17,7 @@ import {
 } from '../qianmu-video-task.js';
 
 const create = (extra = {}) => createVideoTask({
+  draftId: 'draft-a',
   shotId: 'shot-a',
   manifestId: 'manifest-a',
   owner: { chatKey: 'chat-a', floor: 8, messageId: 'message-a' },
@@ -28,11 +29,13 @@ test('video tasks keep stable ownership and an attempt-scoped idempotency key', 
   const task = create();
   assert.equal(task.schema, QIANMU_VIDEO_TASK_SCHEMA);
   assert.equal(task.state, 'queued');
+  assert.equal(task.draftId, 'draft-a');
   assert.equal(task.owner.chatKey, 'chat-a');
   assert.equal(task.owner.floor, 8);
   assert.equal(task.timing.createdAt, 1000);
   assert.match(task.submission.idempotencyKey, /^qianmu-video-/);
   const restored = normalizeVideoTask(task);
+  assert.equal(restored.draftId, 'draft-a');
   assert.equal(restored.submission.idempotencyKey, task.submission.idempotencyKey);
   assert.equal(restored.timing.createdAt, 1000);
 });
@@ -115,6 +118,14 @@ test('persisted diagnostics are bounded, redact credentials and omit arbitrary m
   assert.match(serialized, /REDACTED/);
 });
 
+test('legacy tasks without a draft reference remain compatible', () => {
+  const task = normalizeVideoTask({
+    taskId: 'legacy-task', shotId: 'shot-a', owner: { chatKey: 'chat-a' }, state: 'failed',
+  });
+  assert.equal(task.draftId, '');
+  assert.equal(validateVideoTask(task).ok, true);
+});
+
 test('task lookup and validation enforce chat isolation and stable record references', () => {
   const a = create();
   const b = createVideoTask({ shotId: 'shot-b', owner: { chatKey: 'chat-b' } }, { now: 1000, clientNonce: 'nonce-b' });
@@ -127,7 +138,7 @@ test('the unfinished task engine ships as an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   assert.doesNotMatch(source, /^import[^\n]*qianmu-video-task\.js/m);
-  assert.match(source, /videoTask:\s*\{[\s\S]*import\('\.\/qianmu-video-task\.js\?v=1\.58\.77'\)/);
+  assert.match(source, /videoTask:\s*\{[\s\S]*import\('\.\/qianmu-video-task\.js\?v=1\.58\.78'\)/);
   assert.ok(release.files.includes('qianmu-video-task.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoTask'\)/);

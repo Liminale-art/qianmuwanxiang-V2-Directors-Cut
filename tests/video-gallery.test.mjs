@@ -69,7 +69,7 @@ test('task summaries are local-only, concise, and hide already archived successe
   const statuses = buildVideoTaskGalleryStatuses([
     task('submitted'),
     task('polling', { progress: { percent: 62 } }),
-    task('failed', { failure: { retryable: true, chargeState: 'unknown', message: 'private diagnostics' } }),
+    task('failed', { draftId: 'draft-a', failure: { retryable: true, chargeState: 'unknown', message: 'private diagnostics' } }),
     task('succeeded', { result: { assetId: 'archived-asset' } }),
     task('succeeded', { taskId: 'task-missing-media', result: { assetId: 'missing-asset' } }),
   ], ['archived-asset']);
@@ -80,6 +80,8 @@ test('task summaries are local-only, concise, and hide already archived successe
   assert.equal(statuses.find((item) => item.taskId === 'task-submitted').canCancel, false);
   assert.equal(statuses.find((item) => item.taskId === 'task-polling').progress, 62);
   assert.equal(statuses.find((item) => item.taskId === 'task-failed').retryable, true);
+  assert.equal(statuses.find((item) => item.taskId === 'task-failed').draftId, 'draft-a');
+  assert.equal(statuses.find((item) => item.taskId === 'task-failed').canReopenDraft, true);
   assert.equal(statuses.find((item) => item.taskId === 'task-missing-media').statusLabel, '成片待归档');
   assert.equal(statuses.every((item) => item.owner.floor === null), true);
   assert.doesNotMatch(JSON.stringify(statuses), /private diagnostics|idempotency|remoteTaskId/);
@@ -153,8 +155,8 @@ test('chat ownership is checked before exposing a playable URL and deletion revo
 test('the dynamic gallery ships as an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(source, /videoGallery:\s*\{[\s\S]*import\('\.\/qianmu-video-gallery\.js\?v=1\.58\.77'\)/);
-  assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/qianmu-video-store\.js\?v=1\.58\.77'\)/);
+  assert.match(source, /videoGallery:\s*\{[\s\S]*import\('\.\/qianmu-video-gallery\.js\?v=1\.58\.78'\)/);
+  assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/qianmu-video-store\.js\?v=1\.58\.78'\)/);
   assert.ok(release.files.includes('qianmu-video-gallery.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoGallery'\)|featureRuntime\.load\('videoStore'\)/);
