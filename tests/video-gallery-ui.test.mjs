@@ -20,6 +20,8 @@ test('the motion list stays metadata-only and loads media only after a card is o
   assert.doesNotMatch(renderBlock, /<video|\.open\(|getVideoMedia|createObjectURL/);
   assert.match(source, /async function storyboardOpenVideoViewer\(assetId\)[\s\S]*storyboardVideoGallerySession\.open\(assetId, \{ chatKey \}\)/);
   assert.match(source, /<video src="\$\{htmlEscape\(playback\.url\)\}" controls autoplay playsinline preload="metadata">/);
+  assert.match(source, /sd-storyboard-video-origin/);
+  assert.match(source, /AI 生成 · \$\{htmlEscape\(generatedBy\)\}/);
 });
 
 test('motion storage is loaded only in the selected gallery view and never at startup', () => {

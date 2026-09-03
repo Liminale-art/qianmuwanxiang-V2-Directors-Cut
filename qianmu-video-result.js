@@ -167,6 +167,8 @@ export function createMiniMaxH3ResultArchiver(storageValue = defaultStorage, con
       resolution: result.resolution,
       ratio: result.ratio,
       audioMode: result.audioMode || result.audio_mode,
+      aiGenerated: true,
+      generator: 'MiniMax H3',
       referenceAssetIds: raw.referenceAssetIds || raw.reference_asset_ids,
       mimeType: blob.type,
       size: blob.size,

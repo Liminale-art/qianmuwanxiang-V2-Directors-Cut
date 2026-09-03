@@ -33,6 +33,7 @@ export function normalizeVideoGalleryItem(value = {}) {
   const shotId = id(meta.shotId || meta.shot_id);
   const versionRootId = id(meta.versionRootId || meta.version_root_id) || taskId || shotId || recordId || assetId;
   const mimeType = text(raw.mimeType || raw.mime_type || meta.mimeType || meta.mime_type, 100).toLowerCase().split(';')[0].trim();
+  const h3LegacyRecord = Boolean(text(meta.remoteTaskId || meta.remote_task_id, 400));
   const rawFloor = meta.floor;
   const floorValue = Number(rawFloor);
   return {
@@ -60,6 +61,10 @@ export function normalizeVideoGalleryItem(value = {}) {
       mimeType,
       size: Math.round(number(raw.size || meta.size, 0, QIANMU_VIDEO_GALLERY_MAX_BYTES)),
       audioMode: text(meta.audioMode || meta.audio_mode, 80),
+    },
+    provenance: {
+      aiGenerated: meta.aiGenerated === true || meta.ai_generated === true || h3LegacyRecord,
+      generator: text(meta.generator, 120) || (h3LegacyRecord ? 'MiniMax H3' : ''),
     },
     referenceAssetIds: referenceIds(meta.referenceAssetIds || meta.reference_asset_ids),
     createdAt: Math.round(number(raw.createdAt || raw.created_at || meta.createdAt || meta.created_at)),

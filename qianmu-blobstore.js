@@ -972,6 +972,9 @@ export function normalizeVideoMediaMeta(value = {}) {
   const raw = value && typeof value === 'object' ? value : {};
   const floorValue = raw.floor;
   const floorNumber = Number(floorValue);
+  const remoteTaskId = String(raw.remoteTaskId || raw.remote_task_id || '').trim().slice(0, 400);
+  const aiGenerated = raw.aiGenerated === true || raw.ai_generated === true || Boolean(remoteTaskId);
+  const generator = String(raw.generator || (remoteTaskId ? 'MiniMax H3' : '')).trim().slice(0, 120);
   return {
     schema: 'qianmu.video-media.v1',
     recordId: String(raw.recordId || raw.record_id || '').trim().slice(0, 200),
@@ -988,11 +991,13 @@ export function normalizeVideoMediaMeta(value = {}) {
     floor: floorValue !== '' && floorValue !== null && floorValue !== undefined && Number.isInteger(floorNumber) && floorNumber >= 0
       ? Math.min(1_000_000, floorNumber) : null,
     messageId: String(raw.messageId || raw.message_id || '').trim().slice(0, 200),
-    remoteTaskId: String(raw.remoteTaskId || raw.remote_task_id || '').trim().slice(0, 400),
+    remoteTaskId,
     durationSeconds: boundedVideoMediaNumber(raw.durationSeconds || raw.duration_seconds, 3600),
     resolution: String(raw.resolution || '').trim().slice(0, 40),
     ratio: String(raw.ratio || '').trim().slice(0, 40),
     audioMode: String(raw.audioMode || raw.audio_mode || '').trim().slice(0, 80),
+    aiGenerated,
+    generator,
     referenceAssetIds: [...new Set((Array.isArray(raw.referenceAssetIds || raw.reference_asset_ids)
       ? (raw.referenceAssetIds || raw.reference_asset_ids) : [])
       .map((item) => String(item || '').trim().slice(0, 200)).filter(Boolean))].slice(0, 12),

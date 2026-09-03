@@ -23,6 +23,7 @@ function descriptor(extra = {}) {
       draftId: 'video-draft-a', sourceRecordId: 'image-record-a',
       chatKey: 'chat-a', floor: 4, messageId: 'message-a', durationSeconds: 6,
       resolution: '768P', ratio: '16:9', referenceAssetIds: ['image-a'],
+      aiGenerated: true, generator: 'MiniMax H3',
     },
     ...extra,
   };
@@ -39,6 +40,7 @@ test('gallery list records are metadata-only and reject unstable fields', () => 
   assert.equal(item.owner.chatKey, 'chat-a');
   assert.equal(item.draftId, 'video-draft-a');
   assert.equal(item.sourceRecordId, 'image-record-a');
+  assert.deepEqual(item.provenance, { aiGenerated: true, generator: 'MiniMax H3' });
   assert.deepEqual(item.referenceAssetIds, ['image-a']);
   assert.doesNotMatch(JSON.stringify(item), /video-bytes|media\.example|private-key|secret prompt|downloadUrl|blob/);
 });
@@ -48,6 +50,12 @@ test('gallery-only videos keep a null floor instead of appearing on floor zero',
   assert.equal(normalizeVideoMediaMeta(withoutFloor.meta).floor, null);
   assert.equal(normalizeVideoGalleryItem(withoutFloor).owner.floor, null);
   assert.equal(normalizeVideoGalleryItem(descriptor({ meta: { ...descriptor().meta, floor: 0 } })).owner.floor, 0);
+});
+
+test('legacy H3 media infers disclosure from its stable remote task id without rewriting storage', () => {
+  const legacy = descriptor({ meta: { ...descriptor().meta, aiGenerated: undefined, generator: '', remoteTaskId: 'remote-old' } });
+  assert.deepEqual(normalizeVideoGalleryItem(legacy).provenance, { aiGenerated: true, generator: 'MiniMax H3' });
+  assert.equal(normalizeVideoMediaMeta(legacy.meta).generator, 'MiniMax H3');
 });
 
 test('versions group by chat and stable root while preserving attempt order', () => {
@@ -158,8 +166,8 @@ test('chat ownership is checked before exposing a playable URL and deletion revo
 test('the dynamic gallery ships as an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(source, /videoGallery:\s*\{[\s\S]*import\('\.\/qianmu-video-gallery\.js\?v=1\.58\.81'\)/);
-  assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/qianmu-video-store\.js\?v=1\.58\.81'\)/);
+  assert.match(source, /videoGallery:\s*\{[\s\S]*import\('\.\/qianmu-video-gallery\.js\?v=1\.58\.82'\)/);
+  assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/qianmu-video-store\.js\?v=1\.58\.82'\)/);
   assert.ok(release.files.includes('qianmu-video-gallery.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoGallery'\)|featureRuntime\.load\('videoStore'\)/);

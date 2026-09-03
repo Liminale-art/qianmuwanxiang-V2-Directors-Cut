@@ -71,6 +71,8 @@ test('a completed result uses only the same-origin endpoint and stores credentia
   assert.equal(written.meta.draftId, 'video-draft-a');
   assert.equal(written.meta.sourceRecordId, 'image-record-a');
   assert.equal(written.meta.versionRootId, 'video-task-a');
+  assert.equal(written.meta.aiGenerated, true);
+  assert.equal(written.meta.generator, 'MiniMax H3');
   assert.equal(result.assetId, written.assetId);
   assert.doesNotMatch(JSON.stringify({ result, meta: written.meta }), /private-key|attacker\.example|downloadUrl/);
 });
