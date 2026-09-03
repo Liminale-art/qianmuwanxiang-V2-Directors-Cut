@@ -317,6 +317,7 @@ export const QIANMU_FA_ICON_MAP = Object.freeze({
   'fa-arrow-trend-up': 'qm-duotone-trend-up',
   'fa-arrow-up': 'qm-regular-arrow-up',
   'fa-atom': 'qm-user-world-map',
+  'fa-ban': 'qm-regular-stop-circle',
   'fa-backward-step': 'qm-fill-skip-back',
   'fa-book': 'qm-duotone-book',
   'fa-book-bookmark': 'qm-duotone-book-bookmark',

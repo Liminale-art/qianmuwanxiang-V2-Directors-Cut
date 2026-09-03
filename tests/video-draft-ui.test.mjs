@@ -72,6 +72,9 @@ test('dynamic screening room restores drafts independently from tasks and films'
   assert.match(refresh, /video_drafts_unavailable/);
   assert.match(source, /data-storyboard-video-draft=/);
   assert.match(source, /storyboardOpenVideoDraftEditor\(draftId\)/);
+  assert.match(source, /storyboardRequestVideoTaskCancellation\(taskId, button\)/);
+  assert.match(source, /coordinator\.requestCancellation\(\{ taskId, chatKey \}\)/);
+  assert.match(source, /继续取消/);
 });
 
 test('draft overlays are mobile-safe and cleaned up across runtime boundaries', () => {

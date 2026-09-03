@@ -77,6 +77,7 @@ test('task summaries are local-only, concise, and hide already archived successe
   assert.equal(statuses.find((item) => item.taskId === 'task-submitted').statusLabel, '待核对提交');
   assert.equal(statuses.find((item) => item.taskId === 'task-submitted').needsReconciliation, true);
   assert.equal(statuses.find((item) => item.taskId === 'task-submitted').canRefresh, false);
+  assert.equal(statuses.find((item) => item.taskId === 'task-submitted').canCancel, false);
   assert.equal(statuses.find((item) => item.taskId === 'task-polling').progress, 62);
   assert.equal(statuses.find((item) => item.taskId === 'task-failed').retryable, true);
   assert.equal(statuses.find((item) => item.taskId === 'task-missing-media').statusLabel, '成片待归档');
@@ -92,6 +93,7 @@ test('only provider-backed active tasks expose an explicit one-shot refresh acti
     timing: { createdAt: 1000, updatedAt: 2000 },
   }]);
   assert.equal(statuses[0].canRefresh, true);
+  assert.equal(statuses[0].canCancel, true);
   assert.equal(statuses[0].needsReconciliation, false);
 });
 
@@ -151,8 +153,8 @@ test('chat ownership is checked before exposing a playable URL and deletion revo
 test('the dynamic gallery ships as an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(source, /videoGallery:\s*\{[\s\S]*import\('\.\/qianmu-video-gallery\.js\?v=1\.58\.76'\)/);
-  assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/qianmu-video-store\.js\?v=1\.58\.76'\)/);
+  assert.match(source, /videoGallery:\s*\{[\s\S]*import\('\.\/qianmu-video-gallery\.js\?v=1\.58\.77'\)/);
+  assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/qianmu-video-store\.js\?v=1\.58\.77'\)/);
   assert.ok(release.files.includes('qianmu-video-gallery.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoGallery'\)|featureRuntime\.load\('videoStore'\)/);

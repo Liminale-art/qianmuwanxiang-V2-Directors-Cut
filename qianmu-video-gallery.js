@@ -123,6 +123,8 @@ export function buildVideoTaskGalleryStatuses(values = [], availableAssetIds = [
         retryable: task.state === 'failed' && task.failure.retryable,
         canRefresh: (['submitted', 'polling'].includes(task.state) && Boolean(task.provider.remoteTaskId))
           || task.state === 'cancel_requested',
+        canCancel: ['queued', 'preparing', 'uploading'].includes(task.state)
+          || (['submitted', 'polling'].includes(task.state) && Boolean(task.provider.remoteTaskId)),
         needsReconciliation: unknownSubmission || task.budget.settlement === 'unknown',
         chargeUnknown: task.budget.settlement === 'unknown'
           || (task.state === 'failed' && task.failure.chargeState === 'unknown'),
