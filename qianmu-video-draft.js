@@ -24,6 +24,7 @@ const stableId = (value, max = 200) => {
   const result = text(value, max);
   return /^[A-Za-z0-9._:-]+$/.test(result) ? result : '';
 };
+const stableSubjectId = (value, max = 160) => text(value, max).replace(/\s+/g, '-').replace(/[^\p{L}\p{N}._:-]/gu, '');
 const uniqueIds = (value, max = 32) => [...new Set((Array.isArray(value) ? value : [])
   .map((item) => stableId(item)).filter(Boolean))].slice(0, max);
 
@@ -72,6 +73,15 @@ function normalizedSubjectLabels(value = {}) {
   }));
 }
 
+function normalizedSubjectBindings(value = {}) {
+  const raw = plain(value) ? value : {};
+  return Object.fromEntries(Object.entries(raw).slice(0, 16).flatMap(([recordId, characterId]) => {
+    const id = stableId(recordId);
+    const character = stableSubjectId(characterId);
+    return id && character ? [[id, character]] : [];
+  }));
+}
+
 export function normalizeVideoDraft(value = {}) {
   const raw = plain(value) ? value : {};
   const owner = normalizeOwner(raw.owner || raw.timelineAnchor || raw.timeline_anchor);
@@ -86,6 +96,7 @@ export function normalizeVideoDraft(value = {}) {
   const firstRecordId = stableId(selectionRaw.firstRecordId || selectionRaw.first_record_id);
   const lastRecordId = stableId(selectionRaw.lastRecordId || selectionRaw.last_record_id);
   const referenceRecordIds = uniqueIds(selectionRaw.referenceRecordIds || selectionRaw.reference_record_ids);
+  const rawSubjectBindings = normalizedSubjectBindings(selectionRaw.subjectBindings || selectionRaw.subject_bindings);
   return {
     schema: QIANMU_VIDEO_DRAFT_SCHEMA,
     draftId: stableId(raw.draftId || raw.draft_id || raw.id) || `video-draft-${hash(draftSeed)}`,
@@ -103,6 +114,8 @@ export function normalizeVideoDraft(value = {}) {
       referenceRecordIds,
       referenceRoles: normalizedRoleMap(selectionRaw.referenceRoles || selectionRaw.reference_roles),
       subjectLabels: normalizedSubjectLabels(selectionRaw.subjectLabels || selectionRaw.subject_labels),
+      subjectBindings: Object.fromEntries(referenceRecordIds.flatMap((recordId) => rawSubjectBindings[recordId]
+        ? [[recordId, rawSubjectBindings[recordId]]] : [])),
     },
     settings: {
       requestedMode: QIANMU_H3_ROUTE_MODES.includes(settingsRaw.requestedMode || settingsRaw.requested_mode)
@@ -221,6 +234,10 @@ export function compileVideoDraftSelection(value = {}, recordsValue = [], option
   }
   for (const recordId of requestedIds) if (!recordById.has(recordId) && !issues.includes(`record_owner_mismatch:${recordId}`)) issues.push(`record_missing:${recordId}`);
   const usable = requestedIds.map((recordId) => recordById.get(recordId)).filter(Boolean);
+  const characterLabels = Object.fromEntries(Object.entries(draft.selection.subjectBindings).flatMap(([recordId, characterId]) => {
+    const label = draft.selection.subjectLabels[recordId];
+    return label ? [[characterId, label]] : [];
+  }));
   const sourceSpec = plain(options.sourceShot || options.source_shot)
     ? adaptStoryboardShotToVideoShotSpec(options.sourceShot || options.source_shot, {
       durationSeconds: draft.settings.durationSeconds,
@@ -229,8 +246,27 @@ export function compileVideoDraftSelection(value = {}, recordsValue = [], option
       fps: draft.settings.fps,
       direction: draft.direction,
       timelineAnchor: draft.owner,
+      characterLabels,
     })
     : {};
+  const subjectReferenceIds = draft.selection.referenceRecordIds.filter((recordId) => {
+    const roles = draft.selection.referenceRoles[recordId];
+    return !Array.isArray(roles) || !roles.length || roles.includes('subject_reference');
+  });
+  if (sourceSpec.characters?.length) {
+    const knownCharacters = new Set(sourceSpec.characters.map((character) => character.characterId));
+    const boundCharacters = new Set();
+    for (const recordId of subjectReferenceIds) {
+      const characterId = draft.selection.subjectBindings[recordId];
+      if (!characterId) {
+        issues.push(`subject_binding_missing:${recordId}`);
+        continue;
+      }
+      if (!knownCharacters.has(characterId)) issues.push(`subject_binding_character_missing:${recordId}`);
+      if (boundCharacters.has(characterId)) issues.push(`subject_binding_duplicate:${characterId}`);
+      boundCharacters.add(characterId);
+    }
+  }
   const built = createVideoShotFromStoryboardFrames({
     ...sourceSpec,
     sourceShotId: draft.source.sourceShotId || sourceSpec.sourceShotId,

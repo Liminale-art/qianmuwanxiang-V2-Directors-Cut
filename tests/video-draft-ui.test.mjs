@@ -64,5 +64,9 @@ test('frame picking remains bounded, chat-scoped and stores stable ids only', ()
   assert.match(candidates, /storyboardRecordChatKey\(record, chatKey\) === chatKey/);
   assert.match(candidates, /slice\(0, 120\)/);
   assert.match(editor, /selected\.size >= 9/);
+  assert.match(source, /sd-video-draft-subject-binding/);
+  assert.match(editor, /subjectBindings: \{ \.\.\.\(storyboardVideoDraftEditor\.selection\.subjectBindings/);
+  assert.match(editor, /boundId === characterId/);
+  assert.match(editor, /主体参考还需绑定对应人物/);
   assert.doesNotMatch(editor, /\.url\s*=|base64|Blob|createObjectURL/i);
 });

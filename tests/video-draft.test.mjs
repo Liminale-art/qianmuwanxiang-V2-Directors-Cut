@@ -75,6 +75,44 @@ test('reference selections route to Ref2VA while owner mismatches fail closed', 
   assert.deepEqual(compiled.manifest.assets[0].roles, ['style_reference']);
 });
 
+test('subject references bind explicitly to one storyboard character', () => {
+  const source = frame('frame-a', { planShotId: 'shot-a' });
+  const sourceShot = {
+    id: 'shot-a', scene: 'kitchen', characters: [
+      { id: 'a', name: '阿绫', identity: ['red hair'], action: ['opens door'] },
+      { id: 'b', name: '白榆', identity: ['black hair'], action: ['stirs soup'] },
+    ],
+  };
+  const base = createVideoDraftFromStoryboardFrame(source, { now: 1000, clientNonce: 'bindings' });
+  const selected = reviseVideoDraft(base, {
+    selection: {
+      firstRecordId: 'frame-a',
+      referenceRecordIds: ['frame-b'],
+      referenceRoles: { 'frame-b': ['subject_reference'] },
+      subjectLabels: { 'frame-b': '<Subject 1>' },
+      subjectBindings: { 'frame-b': 'b' },
+    },
+    settings: { requestedMode: 'ref2va' },
+  }, { now: 2000 }).draft;
+  const compiled = compileVideoDraftSelection(selected, [source, frame('frame-b')], { sourceShot });
+  assert.equal(compiled.ok, true);
+  assert.equal(compiled.spec.characters.find((item) => item.characterId === 'b').subjectLabel, '<Subject 1>');
+  assert.equal(compiled.spec.characters.find((item) => item.characterId === 'a').subjectLabel, '');
+
+  const missing = reviseVideoDraft(selected, { selection: { subjectBindings: {} } }, { now: 3000 }).draft;
+  assert.ok(compileVideoDraftSelection(missing, [source, frame('frame-b')], { sourceShot }).issues.includes('subject_binding_missing:frame-b'));
+
+  const duplicate = reviseVideoDraft(selected, {
+    selection: {
+      referenceRecordIds: ['frame-b', 'frame-c'],
+      referenceRoles: { 'frame-b': ['subject_reference'], 'frame-c': ['subject_reference'] },
+      subjectLabels: { 'frame-b': '<Subject 1>', 'frame-c': '<Subject 2>' },
+      subjectBindings: { 'frame-b': 'b', 'frame-c': 'b' },
+    },
+  }, { now: 4000 }).draft;
+  assert.ok(compileVideoDraftSelection(duplicate, [source, frame('frame-b'), frame('frame-c')], { sourceShot }).issues.includes('subject_binding_duplicate:b'));
+});
+
 test('draft revision keeps ownership immutable and strips unstable fields', () => {
   const draft = normalizeVideoDraft({
     owner: { chatKey: 'chat-a', floor: null },
@@ -91,6 +129,14 @@ test('draft revision keeps ownership immutable and strips unstable fields', () =
   assert.equal(blocked.ok, false);
   assert.equal(blocked.issue, 'draft_owner_immutable');
   assert.equal(blocked.draft.owner.chatKey, 'chat-a');
+  const bounded = normalizeVideoDraft({
+    ...draft,
+    selection: {
+      referenceRecordIds: ['frame-b'],
+      subjectBindings: { 'frame-b': '阿绫', 'not-selected': '白榆' },
+    },
+  });
+  assert.deepEqual(bounded.selection.subjectBindings, { 'frame-b': '阿绫' });
 });
 
 test('blank drafts stay valid for future text planning but never become submission-ready', () => {
@@ -109,7 +155,7 @@ test('blank drafts stay valid for future text planning but never become submissi
 test('the draft contract is an idle release chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(source, /videoDraft:\s*\{[\s\S]*import\('\.\/qianmu-video-draft\.js\?v=1\.58\.69'\)/);
+  assert.match(source, /videoDraft:\s*\{[\s\S]*import\('\.\/qianmu-video-draft\.js\?v=1\.58\.70'\)/);
   assert.ok(release.files.includes('qianmu-video-draft.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoDraft'\)/);

@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.69';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.69';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.69';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.69';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.70';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.70';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.70';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.70';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,103 +151,103 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.69';
+} from './qianmu-storyboard.js?v=1.58.70';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.69';
+const VERSION = '1.58.70';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.69'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.70'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.58.69').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.58.70').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.69'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.70'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.69'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.70'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.58.69'),
+    load: () => import('./qianmu-video-contract.js?v=1.58.70'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.58.69'),
+    load: () => import('./qianmu-video-draft.js?v=1.58.70'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.58.69'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.58.70'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.58.69'),
+    load: () => import('./qianmu-video-readiness.js?v=1.58.70'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.58.69'),
+    load: () => import('./qianmu-video-pricing.js?v=1.58.70'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.58.69'),
+    load: () => import('./qianmu-video-prompt.js?v=1.58.70'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.58.69'),
+    load: () => import('./qianmu-video-task.js?v=1.58.70'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.58.69'),
+    load: () => import('./qianmu-video-budget.js?v=1.58.70'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.58.69'),
+    load: () => import('./qianmu-video-minimax.js?v=1.58.70'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.58.69'),
+    load: () => import('./qianmu-video-runtime.js?v=1.58.70'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.58.69'),
+    load: () => import('./qianmu-video-store.js?v=1.58.70'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.58.69'),
+    load: () => import('./qianmu-video-result.js?v=1.58.70'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.58.69'),
+    load: () => import('./qianmu-video-gallery.js?v=1.58.70'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.58.69'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.58.70'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.58.69'),
+    load: () => import('./qianmu-video-media.js?v=1.58.70'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.69'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.70'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.69'),
-        import('./qianmu-theaters.js?v=1.58.69'),
+        import('./builtin-theaters.js?v=1.58.70'),
+        import('./qianmu-theaters.js?v=1.58.70'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -13315,6 +13315,8 @@ function storyboardVideoDraftEditorMarkup(draft) {
   const modes = ['auto', 'i2va', 'fl2va', 'l2va', 'ref2va', 't2va'];
   const ratios = ['adaptive', '21:9', '16:9', '4:3', '1:1', '3:4', '9:16'];
   const candidates = storyboardVideoDraftCandidateRecords(draft);
+  const sourceShot = normalizeStoryboardShotSpec(storyboardVideoDraftSourceShot(draft) || {});
+  const sourceCharacters = sourceShot.characters || [];
   const selectedReferences = new Set(draft.selection.referenceRecordIds || []);
   const tailRecord = candidates.find((item) => item.id === draft.selection.lastRecordId) || null;
   const tailUrl = storyboardSafeUrl(tailRecord?.url);
@@ -13322,7 +13324,9 @@ function storyboardVideoDraftEditorMarkup(draft) {
     const selected = selectedReferences.has(item.id);
     const role = draft.selection.referenceRoles?.[item.id]?.[0] || 'subject_reference';
     const itemFloor = Number.isInteger(item.floor) ? `第 ${item.floor} 层` : '阅片室';
-    return `<article class="sd-storyboard-video-draft-pick-card ${selected ? 'is-reference' : ''} ${item.id === draft.selection.lastRecordId ? 'is-tail' : ''}" data-video-draft-record="${htmlEscape(item.id)}"><button type="button" aria-label="选择${htmlEscape(itemFloor)}画面"><img src="${htmlEscape(storyboardSafeUrl(item.url))}" alt="" loading="lazy"><span>${htmlEscape(itemFloor)}</span><i class="fa-solid fa-check"></i></button><select class="sd-video-draft-reference-role" aria-label="参考用途" ${selected ? '' : 'hidden'}>${Object.entries(STORYBOARD_VIDEO_REFERENCE_ROLE_LABELS).map(([id, label]) => `<option value="${id}" ${role === id ? 'selected' : ''}>${label}</option>`).join('')}</select></article>`;
+    const binding = String(draft.selection.subjectBindings?.[item.id] || '');
+    const bindingOptions = sourceCharacters.map((character) => `<option value="${htmlEscape(character.id)}" ${binding === character.id ? 'selected' : ''}>${htmlEscape(character.name || character.id)}</option>`).join('');
+    return `<article class="sd-storyboard-video-draft-pick-card ${selected ? 'is-reference' : ''} ${item.id === draft.selection.lastRecordId ? 'is-tail' : ''}" data-video-draft-record="${htmlEscape(item.id)}"><button type="button" aria-label="选择${htmlEscape(itemFloor)}画面"><img src="${htmlEscape(storyboardSafeUrl(item.url))}" alt="" loading="lazy"><span>${htmlEscape(itemFloor)}</span><i class="fa-solid fa-check"></i></button><select class="sd-video-draft-reference-role" aria-label="参考用途" ${selected ? '' : 'hidden'}>${Object.entries(STORYBOARD_VIDEO_REFERENCE_ROLE_LABELS).map(([id, label]) => `<option value="${id}" ${role === id ? 'selected' : ''}>${label}</option>`).join('')}</select>${sourceCharacters.length ? `<select class="sd-video-draft-subject-binding" aria-label="绑定人物" ${selected && role === 'subject_reference' ? '' : 'hidden'}><option value="">选择人物</option>${bindingOptions}</select>` : ''}</article>`;
   }).join('');
   return `<section class="sd-storyboard-video-draft-editor" role="dialog" aria-modal="true" aria-labelledby="sd-video-draft-title">
     <header><div><span class="sd-storyboard-kicker">MOTION DRAFT</span><h2 id="sd-video-draft-title">让镜头动起来</h2></div><button type="button" class="sd-storyboard-video-draft-close" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
@@ -13370,11 +13374,13 @@ async function storyboardOpenVideoDraftEditor(source) {
     applyQianmuIcons(layer);
     const candidates = storyboardVideoDraftCandidateRecords(storyboardVideoDraftEditor);
     const sourceShot = storyboardVideoDraftSourceShot(storyboardVideoDraftEditor);
+    const sourceCharacterIds = new Set(normalizeStoryboardShotSpec(sourceShot || {}).characters.map((character) => character.id));
     const candidateById = new Map(candidates.map((record) => [String(record.id || ''), record]));
     const selection = {
       lastRecordId: String(storyboardVideoDraftEditor.selection.lastRecordId || ''),
       referenceRecordIds: [...storyboardVideoDraftEditor.selection.referenceRecordIds],
       referenceRoles: Object.fromEntries(Object.entries(storyboardVideoDraftEditor.selection.referenceRoles || {}).map(([id, roles]) => [id, [...roles]])),
+      subjectBindings: { ...(storyboardVideoDraftEditor.selection.subjectBindings || {}) },
     };
     let readinessRuntime = null;
     let pricingRuntime = null;
@@ -13390,6 +13396,8 @@ async function storyboardOpenVideoDraftEditor(source) {
         STORYBOARD_VIDEO_REFERENCE_ROLE_LABELS[selection.referenceRoles[id]?.[0]] ? selection.referenceRoles[id][0] : 'subject_reference',
       ]]));
       const subjectIds = referenceIds.filter((id) => referenceRoles[id][0] === 'subject_reference');
+      const subjectBindings = Object.fromEntries(subjectIds.flatMap((id) => sourceCharacterIds.has(selection.subjectBindings[id])
+        ? [[id, selection.subjectBindings[id]]] : []));
       return {
         ...storyboardVideoDraftEditor.selection,
         firstRecordId: storyboardVideoDraftEditor.source.recordId,
@@ -13397,6 +13405,7 @@ async function storyboardOpenVideoDraftEditor(source) {
         referenceRecordIds: referenceIds,
         referenceRoles,
         subjectLabels: Object.fromEntries(subjectIds.map((id, index) => [id, `<Subject ${index + 1}>`])),
+        subjectBindings,
       };
     };
     const draftSettingsPatch = () => ({
@@ -13527,11 +13536,14 @@ async function storyboardOpenVideoDraftEditor(source) {
       const route = compiled.spec.route;
       const missingLabels = { first_frame: '首帧', last_frame: '尾帧', reference_asset: '参考素材' };
       const missing = route.missingRequirements.map((item) => missingLabels[item] || item);
+      const bindingIssue = compiled.issues.find((item) => item.startsWith('subject_binding_'));
       const status = layer.querySelector('.sd-storyboard-video-draft-route');
       if (status) {
-        status.classList.toggle('is-missing', !route.ready);
-        status.textContent = route.ready
-          ? `将使用「${storyboardVideoDraftModeLabel(route.mode)}」`
+        status.classList.toggle('is-missing', !route.ready || Boolean(bindingIssue));
+        status.textContent = bindingIssue
+          ? '主体参考还需绑定对应人物'
+          : route.ready
+            ? `将使用「${storyboardVideoDraftModeLabel(route.mode)}」`
           : `还需选择：${missing.join('、')}`;
       }
       paintReadiness();
@@ -13545,9 +13557,15 @@ async function storyboardOpenVideoDraftEditor(source) {
         card.classList.toggle('is-reference', isReference);
         card.classList.toggle('is-tail', selection.lastRecordId === id);
         const role = card.querySelector('.sd-video-draft-reference-role');
+        const binding = card.querySelector('.sd-video-draft-subject-binding');
         if (role) {
           role.hidden = !isReference || pickerMode !== 'references';
           role.value = STORYBOARD_VIDEO_REFERENCE_ROLE_LABELS[selection.referenceRoles[id]?.[0]] ? selection.referenceRoles[id][0] : 'subject_reference';
+        }
+        if (binding) {
+          const isSubject = (selection.referenceRoles[id]?.[0] || 'subject_reference') === 'subject_reference';
+          binding.hidden = !isReference || pickerMode !== 'references' || !isSubject;
+          binding.value = sourceCharacterIds.has(selection.subjectBindings[id]) ? selection.subjectBindings[id] : '';
         }
       });
       const tailRecord = candidateById.get(selection.lastRecordId);
@@ -13594,6 +13612,7 @@ async function storyboardOpenVideoDraftEditor(source) {
       if (selected.has(id)) {
         selected.delete(id);
         delete selection.referenceRoles[id];
+        delete selection.subjectBindings[id];
       } else {
         if (selected.size >= 9) return toast('参考素材最多选择 9 幅。', 'warning');
         selected.add(id);
@@ -13604,12 +13623,27 @@ async function storyboardOpenVideoDraftEditor(source) {
     }));
     layer.querySelectorAll('.sd-video-draft-reference-role').forEach((field) => field.addEventListener('change', () => {
       const id = field.closest('[data-video-draft-record]')?.dataset.videoDraftRecord;
-      if (selection.referenceRecordIds.includes(id) && STORYBOARD_VIDEO_REFERENCE_ROLE_LABELS[field.value]) selection.referenceRoles[id] = [field.value];
-      updateRouteStatus();
+      if (selection.referenceRecordIds.includes(id) && STORYBOARD_VIDEO_REFERENCE_ROLE_LABELS[field.value]) {
+        selection.referenceRoles[id] = [field.value];
+        if (field.value !== 'subject_reference') delete selection.subjectBindings[id];
+      }
+      syncPicker();
+    }));
+    layer.querySelectorAll('.sd-video-draft-subject-binding').forEach((field) => field.addEventListener('change', () => {
+      const id = field.closest('[data-video-draft-record]')?.dataset.videoDraftRecord;
+      const characterId = String(field.value || '');
+      if (!selection.referenceRecordIds.includes(id) || !sourceCharacterIds.has(characterId)) delete selection.subjectBindings[id];
+      else {
+        for (const [otherId, boundId] of Object.entries(selection.subjectBindings)) {
+          if (otherId !== id && boundId === characterId) delete selection.subjectBindings[otherId];
+        }
+        selection.subjectBindings[id] = characterId;
+      }
+      syncPicker();
     }));
     layer.querySelector('.sd-video-draft-picker-clear')?.addEventListener('click', () => {
       if (pickerMode === 'tail') selection.lastRecordId = '';
-      else { selection.referenceRecordIds = []; selection.referenceRoles = {}; }
+      else { selection.referenceRecordIds = []; selection.referenceRoles = {}; selection.subjectBindings = {}; }
       syncPicker();
     });
     layer.querySelector('.sd-video-draft-picker-close')?.addEventListener('click', closePicker);
