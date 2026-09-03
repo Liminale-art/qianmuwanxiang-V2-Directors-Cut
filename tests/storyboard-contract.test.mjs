@@ -6,6 +6,7 @@ import {
   STORYBOARD_PLAN_RESPONSE_SCHEMA_ID,
   STORYBOARD_SAFETY_RESPONSE_SCHEMA,
   STORYBOARD_SAFETY_RESPONSE_SCHEMA_ID,
+  STORYBOARD_SHOT_SCALE_GUIDE,
   adaptStoryboardPlanContract,
   adaptStoryboardSafetyContract,
   buildStoryboardPlanContractRequest,
@@ -34,7 +35,7 @@ const character = (id, x, overrides = {}) => ({
     order: id === 'character-a' ? 1 : 2,
     region: id === 'character-a' ? 'center-left' : 'center-right',
     center: { x, y: 0.52 },
-    visible_crop: 'hands-and-lower-face',
+    visible_crop: 'detail',
   },
   ...overrides,
 });
@@ -58,6 +59,10 @@ const shot = (overrides = {}) => ({
   composition: {
     ratio_id: '3:2',
     orientation: 'landscape',
+    camera_side: 'axis-side-a',
+    angle: 'table-level',
+    focus: '角色A的手与信封',
+    negative_space: '信封前方',
     intent: '保留信封前方的负空间',
     continuity_key: 'scene-12',
   },
@@ -104,6 +109,8 @@ assert.equal(STORYBOARD_PLAN_RESPONSE_SCHEMA.properties.shots.maxItems, 4);
 assert.equal(Object.isFrozen(STORYBOARD_PLAN_RESPONSE_SCHEMA.properties.shots.items), true);
 assert.equal(STORYBOARD_SAFETY_RESPONSE_SCHEMA.additionalProperties, false);
 assert.equal(STORYBOARD_CONTRACT_MAX_BYTES, 256 * 1024);
+assert.match(STORYBOARD_SHOT_SCALE_GUIDE.extreme_close_up, /局部/);
+assert.match(STORYBOARD_SHOT_SCALE_GUIDE.insert, /物件/);
 
 const valid = validateStoryboardPlanContract(plan(), validationOptions);
 assert.equal(valid.ok, true, formatStoryboardContractErrors(valid.errors));
@@ -119,6 +126,10 @@ assert.equal(adapted.shots[0].paragraph_index, 1);
 assert.equal(adapted.shots[0].shotSpec.narrativeLayer, 'present');
 assert.equal(adapted.shots[0].shotSpec.shotScale, 'close_up');
 assert.equal(adapted.shots[0].shotSpec.composition.ratioId, '3:2');
+assert.equal(adapted.shots[0].shotSpec.composition.cameraSide, 'axis-side-a');
+assert.equal(adapted.shots[0].shotSpec.composition.angle, 'table-level');
+assert.equal(adapted.shots[0].shotSpec.composition.focus, '角色A的手与信封');
+assert.equal(adapted.shots[0].shotSpec.composition.negativeSpace, '信封前方');
 assert.deepEqual(adapted.shots[0].shotSpec.characters[0].identity, ['silver hair']);
 assert.deepEqual(adapted.shots[0].shotSpec.characters[0].spatial.center, [0.38, 0.52]);
 assert.equal(adapted.shots[0].shotSpec.characters[0].spatial.crop, 'detail');
@@ -242,6 +253,11 @@ const badRatio = validateStoryboardPlanContract(plan({
 }), validationOptions);
 assert.ok(badRatio.errors.some((entry) => entry.code === 'ratio_orientation'));
 
+const invalidCrop = validateStoryboardPlanContract(plan({
+  shots: [shot({ characters: [character('character-a', 0.38, { spatial: { ...character('character-a', 0.38).spatial, visible_crop: 'half-body' } })] })],
+}), validationOptions);
+assert.ok(invalidCrop.errors.some((entry) => entry.path.endsWith('.visible_crop')));
+
 const overlapping = validateStoryboardPlanContract(plan({
   shots: [shot({
     characters: [character('character-a', 0.5), character('character-b', 0.51)],
@@ -300,6 +316,9 @@ const contractRequest = buildStoryboardPlanContractRequest({
   maxShots: 4,
   manualSupplement: true,
   allowedRatioIds: ['3:2'],
+  compositionMode: 'fixed',
+  preferredRatioId: '3:2',
+  compositionRuleOverride: '人物视线前方保留呼吸空间。',
   groupLabel: '智能镜组',
   groupInstruction: '镜头职责不得重复。',
   extraInstructions: '优先表现动作变化。',
@@ -313,6 +332,9 @@ assert.equal(contractRequest.requiredInsertAfter, 'P3');
 assert.match(contractRequest.messages[0].content, /【任务】[\s\S]*【可信输入】[\s\S]*【执行规则】[\s\S]*【输出合同】/);
 assert.match(contractRequest.messages[0].content, /qianmu\.storyboard\.plan\.v1/);
 assert.match(contractRequest.messages[0].content, /人物专属外貌、服装、动作和道具不得放入 prompt_atoms\.global/);
+assert.match(contractRequest.messages[0].content, /特写不是半身人像/);
+assert.match(contractRequest.messages[0].content, /同场景相邻镜头至少改变主体、景别、机位侧、角度、焦点、构图中的两项/);
+assert.match(contractRequest.messages[0].content, /构景个人修订[\s\S]*人物视线前方保留呼吸空间/);
 assert.doesNotMatch(contractRequest.messages[0].content, /paragraph_index|safe_prompt|"negative":/);
 const requestPayload = JSON.parse(contractRequest.messages[1].content);
 assert.equal(requestPayload.task, 'manual_supplement');
@@ -320,11 +342,22 @@ assert.equal(requestPayload.constraints.required_insert_after, 'P3');
 assert.deepEqual(requestPayload.constraints.required_source_paragraph_ids, ['P1', 'P3']);
 assert.deepEqual(requestPayload.target_paragraphs.map((item) => item.id), ['P1', 'P2', 'P3']);
 assert.equal(requestPayload.constraints.image_model, 'nai-diffusion-5-full');
+assert.equal(requestPayload.constraints.composition_mode, 'fixed');
+assert.equal(requestPayload.constraints.preferred_ratio_id, '3:2');
+assert.deepEqual(requestPayload.constraints.allowed_ratio_ids, ['3:2']);
+
+const smartRequest = buildStoryboardPlanContractRequest({ paragraphs: ['单人站在横向延伸的长廊中。'] }, {
+  allowedRatioIds: ['16:9', '2:3'],
+  preferredRatioId: '16:9',
+  compositionMode: 'smart',
+});
+assert.match(smartRequest.messages[0].content, /不得按单人竖幅\/多人横幅机械映射/);
+assert.match(smartRequest.messages[0].content, /16:9 只是主画幅偏好，不是强制值/);
 
 assert.match(formatStoryboardContractErrors(wrongParagraph.errors, 1), /^\$\.shots\[0\]/);
 
 const indexSource = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-assert.match(indexSource, /storyboardContract:[\s\S]*import\('\.\/qianmu-storyboard-contract\.js\?v=1\.59\.4'\)/, 'the contract validator must stay outside the startup graph');
+assert.match(indexSource, /storyboardContract:[\s\S]*import\('\.\/qianmu-storyboard-contract\.js\?v=1\.59\.5'\)/, 'the contract validator must stay outside the startup graph');
 assert.match(indexSource, /buildStoryboardPlanContractRequest\(context, storyboardCompilerRequestConfig\(state, profile\)\)/, 'the first planning call must use the strict request contract');
 assert.match(indexSource, /storyboardCallCompiler\(contractRequest\.messages[\s\S]*jsonSchema: contractRequest\.schema[\s\S]*jsonSchemaStrict: true/, 'capable external channels must receive the structured response schema');
 assert.match(indexSource, /if \(contractRequest \|\| declaresPlanContract\)/, 'new requests must validate strictly while versioned legacy responses remain supported');

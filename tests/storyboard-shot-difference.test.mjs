@@ -34,8 +34,10 @@ const valid = shot('valid', {
   composition: { cameraSide: 'counter side', angle: 'top down', focus: 'trembling hand', framing: ['tight insert'] },
 });
 
-assert.deepEqual(evaluateStoryboardShotDifference(base, scaleOnly).issues, ['no_narrative_increment'], '只换焦段但没有新信息仍属无效镜头');
+assert.deepEqual(evaluateStoryboardShotDifference(base, scaleOnly).issues, ['no_narrative_increment', 'insufficient_visual_variation'], '只换焦段但没有新信息仍属无效镜头');
 assert.deepEqual(evaluateStoryboardShotDifference(base, infoOnly).issues, ['no_visual_variation'], '只换描述而画面组织不变仍须重规划');
+const subjectOnly = shot('subject-only', { sourceParagraphIds: ['p2'], subject: 'Alice', narrativePurpose: 'Alice decides to leave.' });
+assert.deepEqual(evaluateStoryboardShotDifference(base, subjectOnly).issues, ['insufficient_visual_variation'], '同场镜头只有一个视觉维度变化仍视为高度近似');
 const validDifference = evaluateStoryboardShotDifference(base, valid);
 assert.equal(validDifference.acceptable, true);
 assert.equal(validDifference.informationChanged, true);

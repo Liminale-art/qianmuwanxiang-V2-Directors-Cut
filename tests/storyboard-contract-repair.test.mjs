@@ -24,7 +24,7 @@ const validPlan = {
     scene: { location: '房间', time: '夜晚', lighting: ['窗外冷光'], environment: ['雨痕'] },
     characters: [],
     shared_relations: [],
-    composition: { ratio_id: '3:2', orientation: 'landscape', intent: '保留环境纵深', continuity_key: 'room-night' },
+    composition: { ratio_id: '3:2', orientation: 'landscape', camera_side: 'axis-side-a', angle: 'eye-level', focus: '人物与房间纵深', negative_space: '', intent: '保留环境纵深', continuity_key: 'room-night' },
     prompt_atoms: { global: ['rainy room'], character_ids: [], scene_negative: ['people'] },
     sensitive: false,
     safety_notes: [],

@@ -134,7 +134,7 @@ export const STORYBOARD_TAG_CATEGORIES = Object.freeze(['identity', 'appearance'
 export const STORYBOARD_STATE_PRECEDENCE = Object.freeze(['explicit', 'targetParagraph', 'scene', 'timeline', 'archive', 'worldInfo', 'global']);
 export const STORYBOARD_PLAN_SCHEMA = 'qianmu.storyboard.plan.v1';
 export const STORYBOARD_COMPOSITION_RULE_ID = 'qianmu:composition-law';
-export const STORYBOARD_COMPOSITION_RULE_VERSION = 1;
+export const STORYBOARD_COMPOSITION_RULE_VERSION = 2;
 export const STORYBOARD_COMPOSITION_MODES = Object.freeze(['smart', 'fixed']);
 export const STORYBOARD_GROUP_FRAME_STRATEGIES = Object.freeze(['single', 'main_secondary', 'montage']);
 export const STORYBOARD_NARRATIVE_LAYERS = Object.freeze(['present', 'memory', 'fantasy', 'dream', 'imagined']);
@@ -1144,6 +1144,7 @@ function storyboardShotDifference(previous, shot) {
   if (previous && !transition) {
     if (!informationChanged) issues.push('no_narrative_increment');
     if (!effectiveVisualChanges.length) issues.push('no_visual_variation');
+    else if (effectiveVisualChanges.length < 2) issues.push('insufficient_visual_variation');
   }
   return {
     comparison,

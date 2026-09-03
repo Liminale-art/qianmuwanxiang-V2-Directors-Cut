@@ -32,7 +32,7 @@ const policy = normalizeStoryboardCompositionPolicy({
   preferredRatioId: '16:9', groupStrategy: 'montage', ruleOverride: '保留更多负空间', userEdited: true,
 });
 assert.equal(policy.systemRuleId, STORYBOARD_COMPOSITION_RULE_ID, 'system rule identity is immutable');
-assert.equal(policy.systemRuleVersion, 1, 'system rule version comes from the runtime, not imported data');
+assert.equal(policy.systemRuleVersion, 2, 'system rule version comes from the runtime, not imported data');
 assert.deepEqual(policy.allowedRatioIds, ['16:9', '3:2']);
 assert.equal(restoreStoryboardCompositionPolicy(policy).ruleOverride, '');
 
@@ -95,7 +95,7 @@ assert.equal(manualGroup.shots.length, 2, 'manual supplements are never denied b
 const sequence = prepareStoryboardShotGroup({
   shots: [
     { ...shot, id: 'establish', shotRole: 'establishing', subject: 'station', narrativePurpose: 'establish space', composition: {}, continuityUpdates: { axis: 'platform axis', mainRatioId: '16:9', props: { umbrella: 'Alice' } } },
-    { ...shot, id: 'reaction', shotRole: 'reaction', subject: 'Alice', narrativePurpose: 'hold on her reaction', composition: {}, continuityUpdates: { actionState: { Alice: 'stops walking' } } },
+    { ...shot, id: 'reaction', shotRole: 'reaction', shotScale: 'close_up', subject: 'Alice', narrativePurpose: 'hold on her reaction', composition: { focus: 'Alice reaction' }, continuityUpdates: { actionState: { Alice: 'stops walking' } } },
   ],
   policy: { groupStrategy: 'main_secondary', allowedRatioIds: ['16:9', '4:5'], preferredRatioId: '16:9' }, maxShots: 4,
 });
