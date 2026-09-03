@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.70';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.70';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.70';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.70';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.71';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.71';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.71';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.71';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,103 +151,103 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.70';
+} from './qianmu-storyboard.js?v=1.58.71';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.70';
+const VERSION = '1.58.71';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.70'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.71'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.58.70').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.58.71').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.70'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.71'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.70'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.71'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.58.70'),
+    load: () => import('./qianmu-video-contract.js?v=1.58.71'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.58.70'),
+    load: () => import('./qianmu-video-draft.js?v=1.58.71'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.58.70'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.58.71'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.58.70'),
+    load: () => import('./qianmu-video-readiness.js?v=1.58.71'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.58.70'),
+    load: () => import('./qianmu-video-pricing.js?v=1.58.71'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.58.70'),
+    load: () => import('./qianmu-video-prompt.js?v=1.58.71'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.58.70'),
+    load: () => import('./qianmu-video-task.js?v=1.58.71'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.58.70'),
+    load: () => import('./qianmu-video-budget.js?v=1.58.71'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.58.70'),
+    load: () => import('./qianmu-video-minimax.js?v=1.58.71'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.58.70'),
+    load: () => import('./qianmu-video-runtime.js?v=1.58.71'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.58.70'),
+    load: () => import('./qianmu-video-store.js?v=1.58.71'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.58.70'),
+    load: () => import('./qianmu-video-result.js?v=1.58.71'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.58.70'),
+    load: () => import('./qianmu-video-gallery.js?v=1.58.71'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.58.70'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.58.71'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.58.70'),
+    load: () => import('./qianmu-video-media.js?v=1.58.71'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.70'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.71'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.70'),
-        import('./qianmu-theaters.js?v=1.58.70'),
+        import('./builtin-theaters.js?v=1.58.71'),
+        import('./qianmu-theaters.js?v=1.58.71'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -13300,6 +13300,25 @@ function storyboardVideoDraftSourceShot(draft) {
   return plan?.shots?.find((item) => String(item?.id || '') === shotId)?.shotSpec || null;
 }
 
+function storyboardVideoPromptSourceText(draft, sourceShot = storyboardVideoDraftSourceShot(draft)) {
+  const record = storyboardVideoDraftSourceRecord(draft);
+  const floor = Number.isInteger(record?.floor) ? record.floor : draft?.owner?.floor;
+  const message = Number.isInteger(floor) ? ctx().chat?.[floor] : null;
+  const paragraphs = message
+    ? storyboardMessageParagraphs(storyboardCleanWithTagRules(message.mes || '', storyboardState()))
+    : [];
+  const selectedIndexes = Array.isArray(record?.paragraphSelection?.indexes)
+    ? record.paragraphSelection.indexes.filter((index) => Number.isInteger(index) && index >= 0 && index < paragraphs.length)
+    : [];
+  const selected = selectedIndexes.map((index) => paragraphs[index]).filter(Boolean).join('\n\n');
+  return String(selected
+    || record?.paragraphAnchor?.paragraphText
+    || sourceShot?.evidence?.quote
+    || sourceShot?.intent?.summary
+    || sourceShot?.intent?.scene
+    || '').trim().slice(0, 16000);
+}
+
 function storyboardVideoDraftCandidateRecords(draft) {
   const chatKey = String(draft?.owner?.chatKey || getChatKey() || '');
   return [...storyboardGalleryRecords()].reverse().filter((record) => {
@@ -13339,7 +13358,7 @@ function storyboardVideoDraftEditorMarkup(draft) {
         <label><span>画幅</span><select class="text_pole sd-video-draft-ratio">${ratios.map((ratio) => `<option value="${ratio}" ${draft.settings.aspectRatio === ratio ? 'selected' : ''}>${ratio === 'adaptive' ? '自适应' : ratio}</option>`).join('')}</select></label>
         <label class="sd-storyboard-video-draft-direction"><span>想让画面如何动起来</span><textarea class="text_pole" maxlength="1600" placeholder="可留空，之后仍可继续修改">${htmlEscape(draft.direction || '')}</textarea></label>
         <p class="sd-storyboard-video-draft-route" role="status"></p>
-        <section class="sd-storyboard-video-prompt-preview" aria-label="动态提示词预览"><header><span>动态提示词</span><button type="button" class="sd-video-prompt-prepare">整理预览</button></header><textarea class="text_pole sd-video-prompt-text" maxlength="7000" spellcheck="false" hidden></textarea><small class="sd-video-prompt-status">点按后根据当前分镜结构在本地整理，不会提交任务。</small></section>
+        <section class="sd-storyboard-video-prompt-preview" aria-label="动态提示词预览"><header><span>动态提示词</span><div><button type="button" class="sd-video-prompt-prepare">本地整理</button><button type="button" class="sd-video-prompt-intelligent" title="显式调用当前取景整理 LLM">智能整理</button></div></header><textarea class="text_pole sd-video-prompt-text" maxlength="7000" spellcheck="false" hidden></textarea><small class="sd-video-prompt-status">本地整理不消耗 token；智能整理仅在点按后调用当前取景 API。</small></section>
         <section class="sd-storyboard-video-readiness" aria-label="动态渠道准备状态"><header><span>动态渠道准备</span><button type="button" class="sd-video-readiness-refresh">重新检查</button></header><ul aria-live="polite"><li data-video-readiness="gateway" data-status="checking"><i class="fa-solid fa-rotate"></i><span><b>同源服务</b><small>正在检查动态网关</small></span><em>检查中</em></li><li data-video-readiness="credential" data-status="checking"><i class="fa-solid fa-shield-halved"></i><span><b>渠道凭据</b><small>正在读取安全保存状态</small></span><em>检查中</em></li><li data-video-readiness="materials" data-status="checking"><i class="fa-solid fa-images"></i><span><b>镜头素材</b><small>正在核对当前选择</small></span><em>检查中</em></li><li data-video-readiness="quality" data-status="checking"><i class="fa-solid fa-film"></i><span><b>生成规格</b><small>正在核对确认要求</small></span><em>检查中</em></li><li data-video-readiness="submission" data-status="locked"><i class="fa-solid fa-shield-halved"></i><span><b>提交闸门</b><small>当前版本仅保存草稿，不会提交任务</small></span><em>未开放</em></li></ul><p class="sd-video-readiness-summary">准备检查不会发起报价或生成请求。</p></section>
         <section class="sd-storyboard-video-estimate" aria-label="动态镜头费用预估"><header><span>费用预估</span><b class="sd-video-estimate-total">计算中</b></header><div class="sd-video-estimate-breakdown"><span>读取当前镜头规格</span></div><small>仅供参考，最终以 MiniMax 实际结算为准。</small></section>
       </div>
@@ -13388,6 +13407,7 @@ async function storyboardOpenVideoDraftEditor(source) {
     let readinessService = { ...optionalServiceState };
     let readinessCredentialConfigured = false;
     let readinessSequence = 0;
+    let videoPromptSequence = 0;
     let pickerMode = '';
     const picker = layer.querySelector('.sd-storyboard-video-draft-picker');
     const draftSelectionPatch = () => {
@@ -13426,6 +13446,7 @@ async function storyboardOpenVideoDraftEditor(source) {
     const videoPromptTextarea = layer.querySelector('.sd-video-prompt-text');
     const videoPromptStatus = layer.querySelector('.sd-video-prompt-status');
     const markVideoPromptStale = () => {
+      videoPromptSequence++;
       if (!videoPromptTextarea?.value) return;
       videoPromptTextarea.dataset.stale = 'true';
       if (videoPromptStatus) videoPromptStatus.textContent = videoPromptTextarea.dataset.userEdited === 'true'
@@ -13433,6 +13454,7 @@ async function storyboardOpenVideoDraftEditor(source) {
         : '镜头设置已变化，请重新整理预览。';
     };
     const prepareVideoPromptPreview = async (event) => {
+      const sequence = ++videoPromptSequence;
       const button = event?.currentTarget || layer.querySelector('.sd-video-prompt-prepare');
       if (button) button.disabled = true;
       if (videoPromptStatus) videoPromptStatus.textContent = '正在整理当前镜头结构…';
@@ -13440,12 +13462,13 @@ async function storyboardOpenVideoDraftEditor(source) {
         const compiled = currentCompiledDraft();
         if (!compiled.readyForPrompt) throw new Error(compiled.issues[0] || 'prompt_source_incomplete');
         videoPromptRuntime ||= await featureRuntime.load('videoPrompt');
-        if (!layer.isConnected) return;
+        if (sequence !== videoPromptSequence || !layer.isConnected) return;
         const plan = videoPromptRuntime.createVideoPromptPlanFromShotSpec(compiled.spec);
         const result = videoPromptRuntime.compileH3VideoPrompt(plan, compiled.spec, {
           manualDirection: String(layer.querySelector('.sd-storyboard-video-draft-direction textarea')?.value || ''),
         });
         if (!result.ok || !result.prompt) throw new Error(result.issues?.[0] || 'prompt_compile_failed');
+        if (sequence !== videoPromptSequence || !layer.isConnected) return;
         if (videoPromptTextarea) {
           videoPromptTextarea.hidden = false;
           videoPromptTextarea.value = result.prompt;
@@ -13458,6 +13481,58 @@ async function storyboardOpenVideoDraftEditor(source) {
         if (videoPromptStatus) videoPromptStatus.textContent = '当前镜头信息不足，请先补充运动方向或镜头素材。';
       } finally {
         if (button && layer.isConnected) button.disabled = false;
+      }
+    };
+    const prepareIntelligentVideoPrompt = async (event) => {
+      const sequence = ++videoPromptSequence;
+      const button = event?.currentTarget || layer.querySelector('.sd-video-prompt-intelligent');
+      const buttons = [...layer.querySelectorAll('.sd-video-prompt-prepare, .sd-video-prompt-intelligent')];
+      const previousPrompt = String(videoPromptTextarea?.value || '');
+      buttons.forEach((item) => { item.disabled = true; });
+      if (videoPromptStatus) videoPromptStatus.textContent = '正在调用当前取景整理 LLM；不会提交视频任务…';
+      try {
+        const compiled = currentCompiledDraft();
+        if (!compiled.readyForPrompt) throw new Error(compiled.issues[0] || 'prompt_source_incomplete');
+        videoPromptRuntime ||= await featureRuntime.load('videoPrompt');
+        if (sequence !== videoPromptSequence || !layer.isConnected) return;
+        const manualDirection = String(layer.querySelector('.sd-storyboard-video-draft-direction textarea')?.value || '');
+        const request = videoPromptRuntime.buildVideoPromptPlanRequest(compiled.spec, {
+          selectedText: storyboardVideoPromptSourceText(storyboardVideoDraftEditor, sourceShot),
+          manualDirection,
+          structuredOutputMode: 'json_schema',
+        });
+        const raw = await storyboardCallCompiler(request.messages, storyboardState().promptCompiler.apiProfileId, {
+          temperature: 0.15,
+          maxTokens: 2600,
+          jsonSchema: videoPromptRuntime.QIANMU_VIDEO_PROMPT_RESPONSE_SCHEMA,
+          jsonSchemaName: videoPromptRuntime.QIANMU_VIDEO_PROMPT_PLAN_SCHEMA_ID,
+          jsonSchemaStrict: true,
+        });
+        if (sequence !== videoPromptSequence || !layer.isConnected) return;
+        const parsed = videoPromptRuntime.parseVideoPromptPlanResponse(raw, compiled.spec);
+        if (!parsed.ok) throw new Error(parsed.issues?.[0] || 'prompt_response_invalid');
+        const result = videoPromptRuntime.compileH3VideoPrompt(parsed.plan, compiled.spec, { manualDirection });
+        if (!result.ok || !result.prompt) throw new Error(result.issues?.[0] || 'prompt_compile_failed');
+        if (sequence !== videoPromptSequence || !layer.isConnected) return;
+        if (videoPromptTextarea) {
+          videoPromptTextarea.hidden = false;
+          videoPromptTextarea.value = result.prompt;
+          videoPromptTextarea.dataset.userEdited = 'false';
+          videoPromptTextarea.dataset.stale = 'false';
+        }
+        if (videoPromptStatus) videoPromptStatus.textContent = `智能整理完成，共 ${result.length} 字；结果只保留在本次编辑中。`;
+        if (button) button.textContent = '重新智能整理';
+      } catch (_) {
+        if (sequence !== videoPromptSequence || !layer.isConnected) return;
+        if (videoPromptTextarea && previousPrompt) {
+          videoPromptTextarea.hidden = false;
+          videoPromptTextarea.value = previousPrompt;
+        }
+        if (videoPromptStatus) videoPromptStatus.textContent = previousPrompt
+          ? '智能整理调用失败或返回结构不完整，已保留当前预览。'
+          : '智能整理调用失败或未得到有效结构；草稿未变更，可先使用本地整理。';
+      } finally {
+        if (layer.isConnected) buttons.forEach((item) => { item.disabled = false; });
       }
     };
     const paintReadiness = () => {
@@ -13650,7 +13725,9 @@ async function storyboardOpenVideoDraftEditor(source) {
     layer.querySelector('.sd-video-draft-picker-done')?.addEventListener('click', closePicker);
     layer.querySelector('.sd-video-readiness-refresh')?.addEventListener('click', () => void refreshReadiness(true));
     layer.querySelector('.sd-video-prompt-prepare')?.addEventListener('click', (event) => void prepareVideoPromptPreview(event));
+    layer.querySelector('.sd-video-prompt-intelligent')?.addEventListener('click', (event) => void prepareIntelligentVideoPrompt(event));
     videoPromptTextarea?.addEventListener('input', () => {
+      videoPromptSequence++;
       videoPromptTextarea.dataset.userEdited = 'true';
       videoPromptTextarea.dataset.stale = 'false';
       if (videoPromptStatus) videoPromptStatus.textContent = '已手动修改；只保留在本次编辑中，不会自动提交。';

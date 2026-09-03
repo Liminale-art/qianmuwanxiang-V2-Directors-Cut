@@ -33,6 +33,13 @@ test('the draft editor only revises and saves local draft contracts', () => {
   assert.match(editor, /featureRuntime\.load\('videoPrompt'\)/);
   assert.match(editor, /createVideoPromptPlanFromShotSpec\(compiled\.spec\)/);
   assert.match(editor, /compileH3VideoPrompt\(plan, compiled\.spec/);
+  assert.match(source, /sd-video-prompt-intelligent/);
+  assert.match(editor, /buildVideoPromptPlanRequest\(compiled\.spec/);
+  assert.match(editor, /storyboardCallCompiler\(request\.messages/);
+  assert.match(editor, /parseVideoPromptPlanResponse\(raw, compiled\.spec\)/);
+  assert.match(editor, /const previousPrompt = String\(videoPromptTextarea\?\.value/);
+  assert.match(editor, /sequence !== videoPromptSequence/);
+  assert.match(editor, /智能整理调用失败或返回结构不完整，已保留当前预览/);
   assert.match(editor, /dataset\.userEdited = 'true'/);
   assert.match(editor, /只保留在本次编辑中，不会自动提交/);
   assert.match(source, /subject_reference: '主体'/);
