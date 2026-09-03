@@ -20,6 +20,7 @@
     "qianmu-image-direct.js",
     "qianmu-image-gateway.js",
     "qianmu-llm-output.js",
+    "qianmu-narrative-ledger.js",
     "qianmu-notes.js",
     "qianmu-openai-image-compat.js",
     "qianmu-production-packet.js",
