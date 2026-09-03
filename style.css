@@ -8840,11 +8840,11 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 }
 #story-director-modal .sd-structured-output-toggle :is(i, .qm-glyph-icon) { width: 15px; height: 15px; font-size: 15px; }
 
-/* v1.58.84 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
+/* v1.58.85 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
 #story-director-modal .sd-storyboard-gallery-kind-switch {
   min-height: 36px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 3px;
   padding: 3px;
   border: 1px solid var(--sd-hairline);
@@ -9638,4 +9638,117 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   .sd-video-confirmation-summary dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sd-storyboard-video-confirmation > footer { align-items: stretch; flex-direction: column; padding: 10px 12px max(10px, env(safe-area-inset-bottom)); }
   .sd-storyboard-video-confirmation > footer .sd-btn { width: 100%; }
+}
+
+/* v1.58.85 · 完整影片编排：只编辑稳定引用与播放顺序，素材媒体保持按需读取。 */
+#story-director-modal .sd-storyboard-film-head > div:last-child { display: flex; align-items: center; gap: 6px; }
+#story-director-modal .sd-storyboard-film-head .sd-icon-btn { width: 34px; min-width: 34px; height: 34px; }
+#story-director-modal .sd-storyboard-film-head .sd-btn,
+#story-director-modal .sd-storyboard-film-editor-head .sd-btn { min-height: 34px; margin: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+#story-director-modal .sd-storyboard-film-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+#story-director-modal .sd-storyboard-film-grid > article {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--sd-hairline);
+  border-radius: 11px;
+  background: var(--sd-glass-weak);
+}
+#story-director-modal .sd-storyboard-film-edit {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 3px 9px;
+  padding: 10px 42px 10px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--sd-text);
+  text-align: left;
+}
+#story-director-modal .sd-storyboard-film-edit > span { grid-row: 1 / 4; width: 42px; height: 42px; display: grid; place-items: center; border-radius: 9px; background: color-mix(in srgb, var(--sd-accent) 10%, var(--sd-glass-strong)); color: var(--sd-accent); }
+#story-director-modal .sd-storyboard-film-edit > span :is(i, .qm-glyph-icon) { width: 19px; height: 19px; font-size: 19px; }
+#story-director-modal .sd-storyboard-film-edit :is(strong, small, time) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-storyboard-film-edit strong { font-size: 11px; }
+#story-director-modal .sd-storyboard-film-edit :is(small, time) { color: var(--sd-muted); font-size: 9px; }
+#story-director-modal .sd-storyboard-film-delete { position: absolute; top: 10px; right: 9px; width: 30px; min-width: 30px; height: 30px; }
+#story-director-modal .sd-storyboard-film-editor-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+#story-director-modal .sd-storyboard-film-editor-head > .sd-icon-btn { width: 34px; min-width: 34px; height: 34px; }
+#story-director-modal .sd-storyboard-film-editor-head > label { min-width: 0; display: grid; gap: 4px; }
+#story-director-modal .sd-storyboard-film-editor-head > label > span { color: var(--sd-muted); font-size: 9px; }
+#story-director-modal .sd-storyboard-film-editor-head .text_pole { width: 100%; height: 34px; min-height: 34px; margin: 0 !important; }
+#story-director-modal .sd-storyboard-film-workspace { min-width: 0; display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(250px, .92fr); gap: 8px; align-items: start; }
+#story-director-modal .sd-storyboard-film-timeline,
+#story-director-modal .sd-storyboard-film-sources { min-width: 0; display: grid; gap: 7px; }
+#story-director-modal .sd-storyboard-film-timeline > header,
+#story-director-modal .sd-storyboard-film-sources > header { display: flex; align-items: flex-end; justify-content: space-between; gap: 9px; }
+#story-director-modal .sd-storyboard-film-timeline > header h3,
+#story-director-modal .sd-storyboard-film-sources > header h3 { margin: 2px 0 0; font-size: 13px; }
+#story-director-modal .sd-storyboard-film-timeline > header > b { color: var(--sd-accent); font-size: 18px; font-weight: 520; }
+#story-director-modal .sd-storyboard-film-sources > header > small { color: var(--sd-muted); font-size: 9px; text-align: right; }
+#story-director-modal .sd-storyboard-film-empty { min-height: 110px; display: grid; place-items: center; padding: 18px; border: 1px dashed var(--sd-hairline); border-radius: 10px; color: var(--sd-muted); font-size: 10px; text-align: center; }
+#story-director-modal .sd-storyboard-film-clip {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 22px 58px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding: 7px;
+  border: 1px solid var(--sd-hairline);
+  border-radius: 10px;
+  background: var(--sd-glass-weak);
+}
+#story-director-modal .sd-storyboard-film-clip.is-missing { border-color: color-mix(in srgb, #d66f6f 48%, var(--sd-hairline)); }
+#story-director-modal .sd-storyboard-film-order { color: var(--sd-accent); font-size: 10px; font-weight: 750; text-align: center; }
+#story-director-modal .sd-storyboard-film-clip > figure { width: 58px; height: 42px; display: grid; place-items: center; overflow: hidden; margin: 0; border-radius: 8px; background: var(--sd-folder-head); color: var(--sd-muted); }
+#story-director-modal .sd-storyboard-film-clip > figure img { width: 100%; height: 100%; object-fit: cover; }
+#story-director-modal .sd-storyboard-film-clip > figure :is(i, .qm-glyph-icon) { width: 17px; height: 17px; font-size: 17px; }
+#story-director-modal .sd-storyboard-film-clip > div { min-width: 0; display: grid; gap: 3px; }
+#story-director-modal .sd-storyboard-film-clip > div > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+#story-director-modal .sd-storyboard-film-clip > div > small { color: var(--sd-muted); font-size: 8px; }
+#story-director-modal .sd-storyboard-film-clip label { width: max-content; display: flex; align-items: center; gap: 4px; color: var(--sd-muted); font-size: 8px; }
+#story-director-modal .sd-storyboard-film-clip label input { width: 48px; height: 25px; margin: 0; padding: 2px 5px; border: 1px solid var(--sd-hairline); border-radius: 6px; background: var(--sd-glass-strong); color: var(--sd-text); font: inherit; }
+#story-director-modal .sd-storyboard-film-audio { width: max-content; min-height: 25px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px; border: 1px solid var(--sd-hairline); border-radius: 6px; background: transparent; color: var(--sd-muted); font-size: 8px; }
+#story-director-modal .sd-storyboard-film-audio.active { border-color: color-mix(in srgb, var(--sd-accent) 38%, var(--sd-hairline)); color: var(--sd-accent); }
+#story-director-modal .sd-storyboard-film-audio :is(i, .qm-glyph-icon) { width: 11px; height: 11px; font-size: 11px; }
+#story-director-modal .sd-storyboard-film-clip > nav { display: grid; gap: 3px; }
+#story-director-modal .sd-storyboard-film-clip > nav button { width: 25px; height: 25px; display: grid; place-items: center; padding: 0; border: 1px solid var(--sd-hairline); border-radius: 6px; background: transparent; color: var(--sd-muted); }
+#story-director-modal .sd-storyboard-film-clip > nav button:disabled { opacity: .28; }
+#story-director-modal .sd-storyboard-film-clip > nav :is(i, .qm-glyph-icon) { width: 11px; height: 11px; font-size: 11px; }
+#story-director-modal .sd-storyboard-film-sources details { border: 1px solid var(--sd-hairline); border-radius: 9px; overflow: clip; }
+#story-director-modal .sd-storyboard-film-sources summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 9px; background: var(--sd-folder-head); font-size: 10px; cursor: pointer; }
+#story-director-modal .sd-storyboard-film-sources summary::marker { content: ''; }
+#story-director-modal .sd-storyboard-film-sources summary b { color: var(--sd-accent); font-size: 10px; }
+#story-director-modal .sd-storyboard-film-source-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; max-height: 260px; overflow: auto; padding: 7px; scrollbar-width: thin; }
+#story-director-modal .sd-storyboard-film-source-grid > p { grid-column: 1 / -1; margin: 24px 0; color: var(--sd-muted); font-size: 9px; text-align: center; }
+#story-director-modal .sd-storyboard-film-source { min-width: 0; display: grid; gap: 3px; padding: 0 0 6px; overflow: hidden; border: 1px solid var(--sd-hairline); border-radius: 8px; background: var(--sd-glass-weak); color: var(--sd-text); text-align: left; }
+#story-director-modal .sd-storyboard-film-source > span { position: relative; width: 100%; aspect-ratio: 4 / 3; display: grid; place-items: center; overflow: hidden; background: var(--sd-folder-head); color: var(--sd-muted); }
+#story-director-modal .sd-storyboard-film-source > span img { width: 100%; height: 100%; object-fit: cover; }
+#story-director-modal .sd-storyboard-film-source > span > :last-child { position: absolute; right: 5px; bottom: 5px; width: 20px; height: 20px; display: grid; place-items: center; padding: 4px; border-radius: 6px; background: var(--sd-accent); color: var(--sd-bg); }
+#story-director-modal .sd-storyboard-film-source > :is(strong, small) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 6px; }
+#story-director-modal .sd-storyboard-film-source > strong { font-size: 9px; }
+#story-director-modal .sd-storyboard-film-source > small { color: var(--sd-muted); font-size: 8px; }
+
+@media (max-width: 760px) {
+  #story-director-modal .sd-storyboard-film-workspace { grid-template-columns: 1fr; }
+  #story-director-modal .sd-storyboard-film-source-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); max-height: 220px; }
+}
+@media (max-width: 520px) {
+  #story-director-modal .sd-storyboard-gallery-kind-switch button { gap: 4px; padding-inline: 5px; }
+  #story-director-modal .sd-storyboard-film-head .sd-btn span,
+  #story-director-modal .sd-storyboard-film-editor-head .sd-btn span { display: none; }
+  #story-director-modal .sd-storyboard-film-editor-head { grid-template-columns: 34px minmax(0, 1fr) 34px; }
+  #story-director-modal .sd-storyboard-film-editor-head .sd-btn { width: 34px; min-width: 34px; padding: 0; }
+  #story-director-modal .sd-storyboard-film-clip { grid-template-columns: 18px 46px minmax(0, 1fr) auto; gap: 5px; padding: 6px; }
+  #story-director-modal .sd-storyboard-film-clip > figure { width: 46px; height: 36px; }
+  #story-director-modal .sd-storyboard-film-source-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
