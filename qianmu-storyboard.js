@@ -510,23 +510,37 @@ function artistRoutePick(members, mode, seed) {
 
 export function resolveStoryboardArtistAssignment({
   artistPresets: presets = [], artistPools: pools = [], selectedArtistPresetId = '', selectedArtistPoolId = '',
-  shot = {}, seed = '', recentArtistIds = [],
+  shot = {}, seed = '', recentArtistIds = [], excludedArtistIds = [], reroll = false,
 } = {}) {
   const artists = new Map((Array.isArray(presets) ? presets : []).filter((item) => cleanId(item?.id)).map((item) => [cleanId(item.id), item]));
   const requestedArtistId = cleanId(shot.artistPresetId || shot.artistId);
-  if (artists.has(requestedArtistId)) return { artistId: requestedArtistId, artist: artists.get(requestedArtistId), poolId: '', source: 'shot_override', seed: String(seed || '') };
+  if (!reroll && artists.has(requestedArtistId)) return { artistId: requestedArtistId, artist: artists.get(requestedArtistId), poolId: '', source: 'shot_override', seed: String(seed || '') };
   const pool = (Array.isArray(pools) ? pools : []).map((item) => normalizeStoryboardArtistPool(item, new Set(artists.keys())))
     .find((item) => item.id === cleanId(selectedArtistPoolId) && item.enabled) || null;
   const role = str(shot.shotRole || shot.role || shot.shotType, 80);
   const assignedId = cleanId(pool?.roleAssignments?.[role]);
-  if (artists.has(assignedId)) return { artistId: assignedId, artist: artists.get(assignedId), poolId: pool.id, source: 'shot_role', seed: String(seed || '') };
+  if (!reroll && artists.has(assignedId)) return { artistId: assignedId, artist: artists.get(assignedId), poolId: pool.id, source: 'shot_role', seed: String(seed || '') };
   if (pool) {
     const roleMembers = role ? pool.members.filter((member) => member.shotRoles.includes(role)) : [];
     const candidates = roleMembers.length ? roleMembers : pool.members;
+    const excluded = new Set(ids(excludedArtistIds, 100));
+    let alternatives = candidates.filter((member) => !excluded.has(member.artistId));
+    let relaxedRoleForReroll = false;
+    if (reroll && !alternatives.length) {
+      const poolAlternatives = pool.members.filter((member) => !excluded.has(member.artistId));
+      if (poolAlternatives.length) { alternatives = poolAlternatives; relaxedRoleForReroll = true; }
+    }
+    const eligible = alternatives.length ? alternatives : candidates;
     const recent = new Set(ids(recentArtistIds, 100));
-    const fresh = pool.mode === 'shuffle_bag' ? candidates.filter((member) => !recent.has(member.artistId)) : candidates;
-    const picked = artistRoutePick(fresh.length ? fresh : candidates, pool.mode, `${pool.id}:${seed}:${role}`);
-    if (picked && artists.has(picked.artistId)) return { artistId: picked.artistId, artist: artists.get(picked.artistId), poolId: pool.id, source: roleMembers.length ? 'pool_role' : 'pool', seed: String(seed || '') };
+    const fresh = pool.mode === 'shuffle_bag' ? eligible.filter((member) => !recent.has(member.artistId)) : eligible;
+    const picked = artistRoutePick(fresh.length ? fresh : eligible, pool.mode, `${pool.id}:${seed}:${role}`);
+    if (picked && artists.has(picked.artistId)) return {
+      artistId: picked.artistId,
+      artist: artists.get(picked.artistId),
+      poolId: pool.id,
+      source: reroll ? (roleMembers.length && !relaxedRoleForReroll ? 'pool_reroll_role' : 'pool_reroll') : (roleMembers.length ? 'pool_role' : 'pool'),
+      seed: String(seed || ''),
+    };
   }
   const selectedId = cleanId(selectedArtistPresetId);
   if (artists.has(selectedId)) return { artistId: selectedId, artist: artists.get(selectedId), poolId: '', source: 'selected', seed: String(seed || '') };

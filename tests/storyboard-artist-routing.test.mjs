@@ -26,6 +26,28 @@ assert.equal(resolveStoryboardArtistAssignment({ artistPresets: artists, artistP
 const first = resolveStoryboardArtistAssignment({ artistPresets: artists, artistPools: [pool], selectedArtistPoolId: 'cinema', shot: { shotRole: 'custom' }, seed: 'floor-12-shot-1' });
 const second = resolveStoryboardArtistAssignment({ artistPresets: artists, artistPools: [pool], selectedArtistPoolId: 'cinema', shot: { shotRole: 'custom' }, seed: 'floor-12-shot-2', recentArtistIds: [first.artistId] });
 assert.notEqual(first.artistId, second.artistId, 'shuffle bag 在仍有候选项时不得连续重复');
+const rerolled = resolveStoryboardArtistAssignment({
+  artistPresets: artists,
+  artistPools: [pool],
+  selectedArtistPoolId: 'cinema',
+  shot: { artistPresetId: first.artistId, shotRole: 'custom' },
+  seed: 'floor-12-shot-1:reroll:1',
+  excludedArtistIds: [first.artistId],
+  reroll: true,
+});
+assert.notEqual(rerolled.artistId, first.artistId, '用户明确换画师时必须在方案仍有候选的情况下排除当前画师');
+assert.equal(rerolled.source, 'pool_reroll');
+const roleRerolled = resolveStoryboardArtistAssignment({
+  artistPresets: artists,
+  artistPools: [pool],
+  selectedArtistPoolId: 'cinema',
+  shot: { artistPresetId: 'landscape', shotRole: 'establishing' },
+  seed: 'establishing:reroll:1',
+  excludedArtistIds: ['landscape'],
+  reroll: true,
+});
+assert.notEqual(roleRerolled.artistId, 'landscape', '显式重抽时若职责内只有当前画师，应放宽到同方案其他成员而不是伪装已换');
+assert.equal(roleRerolled.source, 'pool_reroll');
 assert.deepEqual(
   resolveStoryboardArtistAssignment({ artistPresets: artists, artistPools: [pool], selectedArtistPoolId: 'cinema', shot: { shotRole: 'custom' }, seed: 'stable' }),
   resolveStoryboardArtistAssignment({ artistPresets: artists, artistPools: [pool], selectedArtistPoolId: 'cinema', shot: { shotRole: 'custom' }, seed: 'stable' }),

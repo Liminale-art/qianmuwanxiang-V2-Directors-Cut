@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.8';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.8';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.8';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.59.8';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.9';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.9';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.9';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.59.9';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,143 +151,143 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.8';
+} from './qianmu-storyboard.js?v=1.59.9';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.8';
+const VERSION = '1.59.9';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.8'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.9'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.8').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.9').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.8'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.9'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.8'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.9'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.8'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.9'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.8'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.9'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.8'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.9'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.8'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.9'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.8'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.9'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.8'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.9'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.8'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.9'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.8'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.9'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.8'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.9'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.8'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.9'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.8'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.9'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.8'),
+    load: () => import('./qianmu-video-task.js?v=1.59.9'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.8'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.9'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.8'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.9'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.8'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.9'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.8'),
+    load: () => import('./qianmu-video-store.js?v=1.59.9'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.8'),
+    load: () => import('./qianmu-video-result.js?v=1.59.9'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.8'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.9'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.8'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.9'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.8'),
+    load: () => import('./qianmu-video-media.js?v=1.59.9'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.8'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.9'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.8'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.9'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.8'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.9'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.8'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.9'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.8'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.9'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.8'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.9'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.8'),
-        import('./qianmu-theaters.js?v=1.59.8'),
+        import('./builtin-theaters.js?v=1.59.9'),
+        import('./qianmu-theaters.js?v=1.59.9'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -11695,9 +11695,9 @@ function storyboardRememberPromptLayer(state, artist, sourceId, modelId, field, 
   state.promptDefaults[key] = current;
 }
 
-function storyboardPromptsForArtist(state, artist, sourceId, modelId, { prompt = state.prompt, negative = state.negative, honorBaked = true } = {}) {
+function storyboardPromptsForArtist(state, artist, sourceId, modelId, { prompt = state.prompt, negative = state.negative, honorBaked = true, fallbackToStateArtist = true } = {}) {
   const layer = storyboardPromptLayerForArtist(state, artist, sourceId, modelId);
-  const artistString = String(artist?.value || state.promptDraft?.artistString || '').trim();
+  const artistString = String(artist?.value ?? (fallbackToStateArtist ? state.promptDraft?.artistString : '') ?? '').trim();
   return {
     prompt: honorBaked && state.promptDraft?.artistPositiveBaked
       ? String(prompt || '').trim()
@@ -15580,6 +15580,7 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
   const snapshot = {
     source: sourceId, prompt, negative,
     artistString: String(payload.artistString || state.promptDraft?.artistString || ''), artistPresetId: artistAssignment.artistId, artistPoolId: artistAssignment.poolId, artistRouteSource: artistAssignment.source, contentRating: state.contentRating,
+    artistRerollCount: Math.max(0, Number(shot?.artistRerollCount) || 0),
     promptMode: state.promptMode,
     promptLocked: Boolean(state.promptDraft?.userEditedCompiled),
     target: deliveryPolicy.target, floor, inlineByDefault: deliveryPolicy.inlineByDefault,
@@ -15628,6 +15629,7 @@ function storyboardStartLog(job) {
     attempt: job.attempt, snapshot: clone({
       source: job.source, prompt: job.prompt, negative: job.negative, target: job.target, floor: job.floor,
       artistString: job.artistString, artistPresetId: job.artistPresetId || '', artistPoolId: job.artistPoolId || '', artistRouteSource: job.artistRouteSource || '', contentRating: job.contentRating,
+      artistRerollCount: Math.max(0, Number(job.artistRerollCount) || 0),
       promptMode: job.promptMode, promptLocked: Boolean(job.promptLocked),
       inlineByDefault: job.inlineByDefault, chatKey: job.chatKey,
       messageRef: job.messageRef, messageHash: job.messageHash, swipeId: job.swipeId,
@@ -15661,6 +15663,7 @@ function storyboardStartLog(job) {
             artistPresetId: job.artistPresetId || '',
             artistPoolId: job.artistPoolId || '',
             routeSource: job.artistRouteSource || '',
+            rerollCount: Math.max(0, Number(job.artistRerollCount) || 0),
           },
         },
         output: {
@@ -17447,7 +17450,7 @@ function storyboardCreateRecord(job, log, url, index, anchorState, response) {
   return {
     id: uid('shot'), taskId: job.id, groupId: job.id, variantRootId: job.variantRootId || job.planShotId || job.id,
     collectionId: job.collectionId || '', collectionIds: storyboardItemCollectionIds(job), tags: uniqueClean(job.tags || []).slice(0, 30), planId: job.planId || '', planShotId: job.planShotId || '', imageIndex: index, url, prompt: job.prompt, finalPrompt: job.payload?.prompt,
-    artistString: job.artistString || job.payload?.artistString || '', artistPresetId: job.artistPresetId || '', artistPoolId: job.artistPoolId || '', artistRouteSource: job.artistRouteSource || '', contentRating: job.contentRating || 'sfw',
+    artistString: job.artistString || job.payload?.artistString || '', artistPresetId: job.artistPresetId || '', artistPoolId: job.artistPoolId || '', artistRouteSource: job.artistRouteSource || '', artistRerollCount: Math.max(0, Number(job.artistRerollCount) || 0), contentRating: job.contentRating || 'sfw',
     negative: job.negative, effectiveNegative: job.payload?.negative || '', source: job.source,
     chatKey: String(job.chatKey || ''), floor, requestedInline: Boolean(job.inlineByDefault), inline: Boolean(job.inlineByDefault && Number.isInteger(floor)), paragraphAnchor: clone(job.paragraphAnchor || null),
     paragraphSelection: clone(job.paragraphSelection || null),
@@ -18134,13 +18137,15 @@ async function storyboardChooseArtistForRecord(record) {
     return null;
   }
   const currentId = record.artistPresetId || artists.find((item) => item.value === record.artistString)?.id || '';
+  const currentPool = state.artistPools.find((item) => item.id === record.artistPoolId && item.enabled) || null;
+  const canRerollPool = Boolean(currentPool?.members?.length > 1);
   const context = ctx();
   if (context.Popup && context.POPUP_TYPE) {
     const wrap = document.createElement('div');
     wrap.className = 'sd-storyboard-inline-artist-picker';
-    wrap.innerHTML = `<header><b>换画师重绘</b><small>沿用当前画面的提示词与绘制参数，只替换画师层</small></header><input class="text_pole sd-inline-artist-search" placeholder="搜索名称或标签"><div class="sd-inline-artist-options"><label class="sd-inline-artist-option ${currentId ? '' : 'selected'}"><input type="radio" name="sd-inline-artist" value="" ${currentId ? '' : 'checked'}><span class="sd-inline-artist-empty"><i class="fa-solid fa-circle-minus"></i></span><span><b>不使用画师串</b><small>保留纯画面提示词</small></span></label>${artists.map((artist) => {
+    wrap.innerHTML = `<header><b>换画师重绘</b><small>沿用当前画面的提示词与绘制参数，只替换画师层</small></header><input class="text_pole sd-inline-artist-search" placeholder="搜索名称或标签"><div class="sd-inline-artist-options">${canRerollPool ? `<label class="sd-inline-artist-option selected" data-search="${htmlEscape(`${currentPool.name} 方案 换一个`.toLocaleLowerCase())}"><input type="radio" name="sd-inline-artist" value="__reroll_pool__" checked><span class="sd-inline-artist-empty"><i class="fa-solid fa-rotate"></i></span><span><b>从「${htmlEscape(currentPool.name)}」换一个</b><small>排除当前画师，重新按方案抽取</small></span></label>` : ''}<label class="sd-inline-artist-option ${!canRerollPool && !currentId ? 'selected' : ''}"><input type="radio" name="sd-inline-artist" value="" ${!canRerollPool && !currentId ? 'checked' : ''}><span class="sd-inline-artist-empty"><i class="fa-solid fa-circle-minus"></i></span><span><b>不使用画师串</b><small>改用当前渠道的默认正负词</small></span></label>${artists.map((artist) => {
       const preview = storyboardSafeUrl(artist.previewUrl);
-      return `<label class="sd-inline-artist-option ${currentId === artist.id ? 'selected' : ''}" data-search="${htmlEscape(`${artist.name} ${(artist.tags || []).join(' ')}`.toLocaleLowerCase())}"><input type="radio" name="sd-inline-artist" value="${htmlEscape(artist.id)}" ${currentId === artist.id ? 'checked' : ''}>${preview ? `<img src="${htmlEscape(preview)}" alt="">` : `<span class="sd-inline-artist-empty"><b>${htmlEscape(artist.name.slice(0, 2))}</b></span>`}<span><b>${htmlEscape(artist.name)}</b><small>${htmlEscape((artist.tags || []).slice(0, 4).join(' · ') || snip(artist.value, 46))}</small></span></label>`;
+      return `<label class="sd-inline-artist-option ${!canRerollPool && currentId === artist.id ? 'selected' : ''}" data-search="${htmlEscape(`${artist.name} ${(artist.tags || []).join(' ')}`.toLocaleLowerCase())}"><input type="radio" name="sd-inline-artist" value="${htmlEscape(artist.id)}" ${!canRerollPool && currentId === artist.id ? 'checked' : ''}>${preview ? `<img src="${htmlEscape(preview)}" alt="">` : `<span class="sd-inline-artist-empty"><b>${htmlEscape(artist.name.slice(0, 2))}</b></span>`}<span><b>${htmlEscape(artist.name)}</b><small>${htmlEscape((artist.tags || []).slice(0, 4).join(' · ') || snip(artist.value, 46))}</small></span></label>`;
     }).join('')}</div>`;
     applyQianmuIcons(wrap);
     wrap.querySelectorAll('input[name="sd-inline-artist"]').forEach((input) => input.addEventListener('change', () => {
@@ -18155,17 +18160,19 @@ async function storyboardChooseArtistForRecord(record) {
       const confirmed = await popup.show();
       if (!confirmed) return null;
       const id = String(wrap.querySelector('input[name="sd-inline-artist"]:checked')?.value || '');
+      if (id === '__reroll_pool__') return { artistPool: currentPool, rerollArtist: true };
       return { artist: artists.find((item) => item.id === id) || null };
     } catch (_) { return null; }
   }
-  const answer = await promptInput('换画师重绘', `输入序号：\n0. 不使用画师串\n${artists.map((item, index) => `${index + 1}. ${item.name}`).join('\n')}`, currentId ? String(Math.max(0, artists.findIndex((item) => item.id === currentId)) + 1) : '0');
+  const answer = await promptInput('换画师重绘', `输入序号：\n${canRerollPool ? `R. 从「${currentPool.name}」换一个\n` : ''}0. 不使用画师串\n${artists.map((item, index) => `${index + 1}. ${item.name}`).join('\n')}`, canRerollPool ? 'R' : currentId ? String(Math.max(0, artists.findIndex((item) => item.id === currentId)) + 1) : '0');
   if (answer == null) return null;
+  if (canRerollPool && String(answer).trim().toLocaleLowerCase() === 'r') return { artistPool: currentPool, rerollArtist: true };
   const index = Number(answer);
   if (!Number.isInteger(index) || index < 0 || index > artists.length) return toast('请输入列表中的有效序号。', 'warning');
   return { artist: index ? artists[index - 1] : null };
 }
 
-async function storyboardRedrawRecord(record, { artistPreset = undefined } = {}) {
+async function storyboardRedrawRecord(record, { artistPreset = undefined, artistPool = null, rerollArtist = false } = {}) {
   const state = storyboardState();
   if (!state.enabled) return toast('请先启用分镜。', 'warning');
   storyboardReconcileGalleryLinks({ persist: false });
@@ -18182,10 +18189,28 @@ async function storyboardRedrawRecord(record, { artistPreset = undefined } = {})
     return toast('这张旧图缺少完整生成设置，已载入镜头台，请确认后重绘。', 'info');
   }
 
-  const replacingArtist = artistPreset !== undefined;
+  const replacingArtist = artistPreset !== undefined || rerollArtist;
+  const artistRerollCount = Math.max(0, Number(record.artistRerollCount ?? snapshot.artistRerollCount) || 0) + (replacingArtist ? 1 : 0);
+  let resolvedArtist = artistPreset;
+  let artistRouteSource = artistPreset ? 'inline_override' : 'inline_clear';
+  if (rerollArtist) {
+    const assignment = resolveStoryboardArtistAssignment({
+      artistPresets: state.artistPresets,
+      artistPools: state.artistPools,
+      selectedArtistPoolId: artistPool?.id || record.artistPoolId || snapshot.artistPoolId || '',
+      shot: snapshot.shotSpec || record.shotSpec || {},
+      seed: `${storyboardGalleryGroupId(record)}:artist-reroll:${artistRerollCount}`,
+      excludedArtistIds: [record.artistPresetId || snapshot.artistPresetId || ''],
+      reroll: true,
+    });
+    if (!assignment.artist) return toast('这个画师方案暂时没有可用候选。', 'warning');
+    resolvedArtist = assignment.artist;
+    artistPool = state.artistPools.find((item) => item.id === assignment.poolId) || artistPool;
+    artistRouteSource = assignment.source;
+  }
   const base = replacingArtist ? storyboardBasePromptsForArtistRedraw(record, snapshot) : null;
   const composed = replacingArtist
-    ? storyboardPromptsForArtist(state, artistPreset, base.sourceId, base.modelId, { prompt: base.prompt, negative: base.negative, honorBaked: false })
+    ? storyboardPromptsForArtist(state, resolvedArtist, base.sourceId, base.modelId, { prompt: base.prompt, negative: base.negative, honorBaked: false, fallbackToStateArtist: false })
     : null;
   const finalPrompt = String(composed?.prompt || record.finalPrompt || record.prompt || snapshot.payload.prompt || snapshot.prompt || '').trim();
   const paragraphIndex = record.paragraphAnchor?.paragraphIndex ?? snapshot.paragraphAnchor?.paragraphIndex ?? 0;
@@ -18196,7 +18221,10 @@ async function storyboardRedrawRecord(record, { artistPreset = undefined } = {})
     snapshot.payload.negative = getStoryboardCapabilities(base.sourceId, base.modelId).negative ? composed.negative : '';
     snapshot.payload.artistString = composed.artistString;
     snapshot.artistString = composed.artistString;
-    snapshot.artistPresetId = artistPreset?.id || '';
+    snapshot.artistPresetId = resolvedArtist?.id || '';
+    snapshot.artistPoolId = rerollArtist ? (artistPool?.id || record.artistPoolId || '') : '';
+    snapshot.artistRouteSource = artistRouteSource;
+    snapshot.artistRerollCount = artistRerollCount;
   }
   snapshot.promptMode = 'manual';
   snapshot.promptLocked = true;
@@ -18447,7 +18475,7 @@ async function storyboardOnChatClick(event) {
   if (button.dataset.storyboardChatAction === 'edit') return storyboardEditPrompt({ record });
   if (button.dataset.storyboardChatAction === 'artist') {
     const choice = await storyboardChooseArtistForRecord(record);
-    if (choice) return storyboardRedrawRecord(record, { artistPreset: choice.artist });
+    if (choice) return storyboardRedrawRecord(record, { artistPreset: choice.artist, artistPool: choice.artistPool, rerollArtist: choice.rerollArtist });
     return;
   }
   if (button.dataset.storyboardChatAction === 'redraw') {
