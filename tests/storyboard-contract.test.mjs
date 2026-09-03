@@ -7,7 +7,9 @@ import {
   STORYBOARD_SAFETY_RESPONSE_SCHEMA,
   STORYBOARD_SAFETY_RESPONSE_SCHEMA_ID,
   adaptStoryboardPlanContract,
+  adaptStoryboardSafetyContract,
   buildStoryboardPlanContractRequest,
+  buildStoryboardSafetyContractRequest,
   formatStoryboardContractErrors,
   parseStoryboardContractJson,
   parseStoryboardContractResponse,
@@ -156,6 +158,57 @@ const safety = {
 };
 assert.equal(validateStoryboardSafetyContract(safety, validationOptions).ok, true);
 assert.equal(parseStoryboardContractResponse(JSON.stringify(safety), validationOptions).kind, 'safety');
+const safetyRequest = buildStoryboardSafetyContractRequest(adapted.shots[0].shotSpec, {
+  providerId: 'banana',
+  providerLabel: 'Banana',
+  modelId: 'gemini-3.1-flash-image',
+  sourcePrompt: 'original sensitive visual description',
+});
+assert.equal(safetyRequest.schemaId, STORYBOARD_SAFETY_RESPONSE_SCHEMA_ID);
+assert.deepEqual(safetyRequest.allowedCharacterIds, ['character-a']);
+assert.deepEqual(safetyRequest.requiredCharacterIds, ['character-a']);
+assert.match(safetyRequest.messages[0].content, /【任务】[\s\S]*【可信输入】[\s\S]*【执行规则】[\s\S]*【输出合同】/);
+const safetyPayload = JSON.parse(safetyRequest.messages[1].content);
+assert.equal(safetyPayload.visual_description, 'original sensitive visual description');
+assert.equal(safetyPayload.characters[0].character_id, 'character-a');
+const safeAdapted = adaptStoryboardSafetyContract(safety, adapted.shots[0].shotSpec);
+assert.equal(safeAdapted.subject, '两人隔着雨幕对望');
+assert.equal(safeAdapted.characters[0].id, 'character-a');
+assert.deepEqual(safeAdapted.characters[0].identity, ['silver hair']);
+assert.deepEqual(safeAdapted.characters[0].outfit, ['buttoned coat']);
+assert.deepEqual(safeAdapted.promptAtoms.global, ['rainy window']);
+assert.equal(safeAdapted.sensitive, false);
+const safeCompiled = compileStoryboardPrompt({
+  providerId: 'banana',
+  modelId: 'gemini-3.1-flash-image',
+  shot: safeAdapted,
+});
+assert.match(safeCompiled.prompt, /rainy window/);
+assert.doesNotMatch(safeCompiled.prompt, /未寄出的信|书桌旁|pressing an envelope/, 'unsafe source atoms must not leak back into the adapted provider prompt');
+
+const missingSafetyCharacter = validateStoryboardSafetyContract({
+  ...safety,
+  character_updates: [],
+}, {
+  ...validationOptions,
+  requiredCharacterIds: ['character-a'],
+});
+assert.ok(missingSafetyCharacter.errors.some((entry) => entry.code === 'missing_character_update'));
+
+const emptySafetyVisual = validateStoryboardSafetyContract({
+  ...safety,
+  prompt_atoms: { global: [], scene_negative: [] },
+}, validationOptions);
+assert.ok(emptySafetyVisual.errors.some((entry) => entry.code === 'min_items' && entry.path === '$.prompt_atoms.global'));
+
+const crossedSafetyCharacter = validateStoryboardSafetyContract({
+  ...safety,
+  character_updates: [{ ...safety.character_updates[0], outfit: ['black hair'] }],
+}, {
+  ...validationOptions,
+  requiredCharacterIds: ['character-a'],
+});
+assert.ok(crossedSafetyCharacter.errors.some((entry) => entry.code === 'character_cross_assignment'));
 
 const narration = parseStoryboardContractJson(`以下是结果：\n${JSON.stringify(plan())}`);
 assert.equal(narration.ok, false, 'strict contract parser must reject prose outside JSON');
@@ -271,10 +324,13 @@ assert.equal(requestPayload.constraints.image_model, 'nai-diffusion-5-full');
 assert.match(formatStoryboardContractErrors(wrongParagraph.errors, 1), /^\$\.shots\[0\]/);
 
 const indexSource = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-assert.match(indexSource, /storyboardContract:[\s\S]*import\('\.\/qianmu-storyboard-contract\.js\?v=1\.59\.3'\)/, 'the contract validator must stay outside the startup graph');
+assert.match(indexSource, /storyboardContract:[\s\S]*import\('\.\/qianmu-storyboard-contract\.js\?v=1\.59\.4'\)/, 'the contract validator must stay outside the startup graph');
 assert.match(indexSource, /buildStoryboardPlanContractRequest\(context, storyboardCompilerRequestConfig\(state, profile\)\)/, 'the first planning call must use the strict request contract');
 assert.match(indexSource, /storyboardCallCompiler\(contractRequest\.messages[\s\S]*jsonSchema: contractRequest\.schema[\s\S]*jsonSchemaStrict: true/, 'capable external channels must receive the structured response schema');
 assert.match(indexSource, /if \(contractRequest \|\| declaresPlanContract\)/, 'new requests must validate strictly while versioned legacy responses remain supported');
+assert.match(indexSource, /async function storyboardAdaptShotForModel[\s\S]*policy !== 'filtered'[\s\S]*buildStoryboardSafetyContractRequest[\s\S]*repairStoryboardContractOnce[\s\S]*local_fallback/, 'filtered sensitive shots must use one bounded safety-contract pass before the deterministic fallback');
+assert.match(indexSource, /const effectiveShot = await storyboardAdaptShotForModel/, 'generation must finish safety adaptation before compiling the provider request');
+assert.match(indexSource, /const stillCurrent = \(\)[\s\S]*guard\.chatKey[\s\S]*guard\.cancelled[\s\S]*storyboardState\(\)\.enabled[\s\S]*safetyAborted/, 'late safety responses must fail closed across cancellation, chat changes and storyboard opt-out');
 assert.match(indexSource, /const result = await storyboardCompilerResult\(/, 'the lazy validator must finish before compiler output is accepted');
 
 console.log('Storyboard strict response contract OK');

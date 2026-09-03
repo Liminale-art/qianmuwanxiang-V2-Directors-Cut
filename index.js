@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.3';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.3';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.3';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.59.3';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.4';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.4';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.4';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.59.4';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,143 +151,143 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.3';
+} from './qianmu-storyboard.js?v=1.59.4';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.3';
+const VERSION = '1.59.4';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.3'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.4'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.3').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.4').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.3'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.4'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.3'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.4'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.3'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.4'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.3'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.4'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.3'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.4'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.3'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.4'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.3'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.4'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.3'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.4'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.3'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.4'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.3'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.4'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.3'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.4'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.3'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.4'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.3'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.4'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.3'),
+    load: () => import('./qianmu-video-task.js?v=1.59.4'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.3'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.4'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.3'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.4'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.3'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.4'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.3'),
+    load: () => import('./qianmu-video-store.js?v=1.59.4'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.3'),
+    load: () => import('./qianmu-video-result.js?v=1.59.4'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.3'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.4'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.3'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.4'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.3'),
+    load: () => import('./qianmu-video-media.js?v=1.59.4'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.3'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.4'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.3'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.4'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.3'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.4'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.3'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.4'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.3'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.4'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.3'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.4'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.3'),
-        import('./qianmu-theaters.js?v=1.59.3'),
+        import('./builtin-theaters.js?v=1.59.4'),
+        import('./qianmu-theaters.js?v=1.59.4'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -12109,7 +12109,7 @@ function storyboardPlanLightweightSummary(plan, key) {
       partialFailureCount: shot.partialFailureCount, attempt: shot.attempt,
       paragraphAnchor: clone(shot.paragraphAnchor || null), paragraphSelection: clone(shot.paragraphSelection || null),
       shotSpec: null, compiledPrompt: null, compositionDecision: null,
-      sensitive: Boolean(shot.sensitive), safetyAdapted: Boolean(shot.safetyAdapted), userEdited: Boolean(shot.userEdited),
+      sensitive: Boolean(shot.sensitive), safetyAdapted: Boolean(shot.safetyAdapted), safetyMethod: String(shot.safetyMethod || '').slice(0, 40), userEdited: Boolean(shot.userEdited),
       promptLocked: Boolean(shot.promptLocked), requiresManualConfirmation: Boolean(shot.requiresManualConfirmation),
     })),
     archiveRef: key, archiveVersion: 1, archivedAt: Date.now(), createdAt: plan.createdAt, updatedAt: plan.updatedAt,
@@ -15590,7 +15590,7 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
     paragraphSelection: clone(shot?.paragraphSelection || state.pendingParagraphSelection || null),
     shotSpec: clone(payload.shotSpec || shotSpec), compiledPrompt: clone(payload.compiledPrompt || null), compositionDecision: clone(compositionDecision),
     sensitive: Boolean(shot?.sensitive ?? (state.contentRating === 'nsfw')),
-    safetyAdapted: Boolean(shot?.safetyAdapted), originalPrompt: String(shot?.originalPrompt || shot?.prompt || '').slice(0, 24000),
+    safetyAdapted: Boolean(shot?.safetyAdapted), safetyMethod: String(shot?.safetyMethod || '').slice(0, 40), originalPrompt: String(shot?.originalPrompt || shot?.prompt || '').slice(0, 24000),
     requestIndex: Math.max(1, Number(requestIndex) || 1), requestTotal: Math.max(1, Number(requestTotal) || 1),
     connection: {
       id: connection?.id || '', credentialId, baseUrl: String(connection?.baseUrl || ''),
@@ -15632,7 +15632,7 @@ function storyboardStartLog(job) {
       messageRef: job.messageRef, messageHash: job.messageHash, swipeId: job.swipeId,
       profile: job.profile, paragraphAnchor: job.paragraphAnchor, paragraphSelection: job.paragraphSelection,
       shotSpec: job.shotSpec, compiledPrompt: job.compiledPrompt, compositionDecision: job.compositionDecision,
-      shotType: job.shotType, sensitive: job.sensitive, safetyAdapted: job.safetyAdapted, originalPrompt: job.originalPrompt,
+      shotType: job.shotType, sensitive: job.sensitive, safetyAdapted: job.safetyAdapted, safetyMethod: job.safetyMethod, originalPrompt: job.originalPrompt,
       requestIndex: job.requestIndex || 1, requestTotal: job.requestTotal || 1,
       connection: job.connection, payload: job.payload,
       planId: job.planId || '', planShotId: job.planShotId || '',
@@ -16843,17 +16843,121 @@ function storyboardQueueJob(job) {
 
 function storyboardSafePromptFallback(shot) {
   const framing = STORYBOARD_SHOT_TYPE_LABELS[shot?.shotType] || '电影感镜头';
-  return `${framing}。保持当前场景、成年人物关系、情绪张力、动作结果与视觉连续性；人物穿着完整，使用非露骨构图、表情、距离、环境和关键物件承接叙事，避免任何明确成人表现。`;
+  const spec = normalizeStoryboardShotSpec(shot?.shotSpec || shot || {});
+  const cast = spec.characters.map((character) => character.name || character.id).filter(Boolean).join('与');
+  return [
+    framing,
+    spec.sceneFingerprint?.location,
+    spec.continuityUpdates?.time,
+    cast ? `${cast}保持原有人物关系与情绪方向` : '',
+    '人物使用符合年龄与场景的完整衣着，以非露骨构图、距离、遮挡、表情、环境和关键物件承接叙事结果',
+    '保持场景与视觉连续性，排除明确成人表现',
+  ].filter(Boolean).join('，');
 }
 
-function storyboardAdaptShotForModel(shot, sourceId, modelId) {
+function storyboardSafeShotSpecFromPrompt(shot, prompt) {
+  const spec = normalizeStoryboardShotSpec(shot?.shotSpec || shot || {});
+  return normalizeStoryboardShotSpec({
+    ...spec,
+    subject: prompt,
+    scene: '',
+    characters: [],
+    promptAtoms: {
+      global: [prompt],
+      camera: spec.promptAtoms.camera,
+      environment: [],
+      quality: spec.promptAtoms.quality,
+      negative: ['explicit content', 'nudity'],
+    },
+    sensitive: false,
+    safetyNotes: ['安全适配使用已存在或本地确定性提示词。'],
+  });
+}
+
+async function storyboardAdaptShotForModel(shot, sourceId, modelId, state = storyboardState(), guard = {}) {
+  const stillCurrent = () => (!guard.chatKey || guard.chatKey === String(getChatKey() || ''))
+    && !guard.cancelled?.()
+    && storyboardState().enabled;
   const policy = getStoryboardCapabilities(sourceId, modelId).contentPolicy;
   if (!shot?.sensitive || policy !== 'filtered') return { ...shot, originalPrompt: String(shot?.prompt || ''), safetyAdapted: false };
+  const originalPrompt = String(shot.prompt || '');
+  const legacySafePrompt = String(shot.safePrompt || '').trim();
+  if (legacySafePrompt) {
+    return {
+      ...shot,
+      shotSpec: storyboardSafeShotSpecFromPrompt(shot, legacySafePrompt),
+      originalPrompt,
+      prompt: legacySafePrompt,
+      safetyAdapted: true,
+      safetyMethod: 'legacy_safe_prompt',
+    };
+  }
+  try {
+    const contract = await featureRuntime.load('storyboardContract');
+    const provider = STORYBOARD_PROVIDER_REGISTRY[sourceId];
+    const request = contract.buildStoryboardSafetyContractRequest(shot.shotSpec || shot, {
+      providerId: sourceId,
+      providerLabel: provider?.label || sourceId,
+      modelId,
+      sourcePrompt: originalPrompt,
+    });
+    const contractOptions = {
+      kind: 'safety',
+      allowedCharacterIds: request.allowedCharacterIds,
+      requiredCharacterIds: request.requiredCharacterIds,
+      characterTermsById: request.characterTermsById,
+    };
+    const raw = await storyboardCallCompiler(request.messages, state.promptCompiler.apiProfileId, {
+      temperature: 0.1,
+      maxTokens: 1800,
+      jsonSchema: request.schema,
+      jsonSchemaName: request.schemaId,
+      jsonSchemaStrict: true,
+    });
+    if (!stillCurrent()) return { ...shot, originalPrompt, safetyAdapted: false, safetyAborted: true };
+    const initial = contract.parseStoryboardContractResponse(raw, contractOptions);
+    const result = initial.ok ? initial : await contract.repairStoryboardContractOnce({
+      raw,
+      validation: initial,
+      options: contractOptions,
+      request: (messages) => storyboardCallCompiler(messages, state.promptCompiler.apiProfileId, {
+        temperature: 0,
+        maxTokens: 1400,
+        jsonSchema: request.schema,
+        jsonSchemaName: request.schemaId,
+        jsonSchemaStrict: true,
+      }),
+    });
+    if (!stillCurrent()) return { ...shot, originalPrompt, safetyAdapted: false, safetyAborted: true };
+    if (result.ok) {
+      const safeSpec = contract.adaptStoryboardSafetyContract(result.data, shot.shotSpec || shot);
+      const compiled = safeSpec ? compileStoryboardPrompt({ providerId: sourceId, modelId, shot: safeSpec }) : null;
+      if (compiled?.prompt) {
+        return {
+          ...shot,
+          shotSpec: safeSpec,
+          originalPrompt,
+          prompt: compiled.prompt,
+          negative: compiled.negative,
+          safePrompt: compiled.prompt,
+          sensitive: true,
+          safetyAdapted: true,
+          safetyMethod: result.repairAttempted ? 'contract_repaired' : 'contract',
+        };
+      }
+    }
+  } catch (error) {
+    console.warn(`[${MODULE_NAME}] storyboard safety adaptation used local fallback`, error);
+  }
+  const fallbackPrompt = storyboardSafePromptFallback(shot);
   return {
     ...shot,
-    originalPrompt: String(shot.prompt || ''),
-    prompt: String(shot.safePrompt || '').trim() || storyboardSafePromptFallback(shot),
+    shotSpec: storyboardSafeShotSpecFromPrompt(shot, fallbackPrompt),
+    originalPrompt,
+    prompt: fallbackPrompt,
+    negative: 'explicit content, nudity',
     safetyAdapted: true,
+    safetyMethod: 'local_fallback',
   };
 }
 
@@ -16942,6 +17046,7 @@ async function storyboardGenerateProductionPacket(root, packetId) {
 
 async function storyboardGenerate(root, { plan = null, automatic = false } = {}) {
   const { state, profile, workflowResult } = storyboardCaptureWorkbench(root);
+  const generationChatKey = String(getChatKey() || '');
   if (!state.enabled) return toast('请先启用分镜。', 'warning');
   if (automatic && plan?.manualReviewRequired) return false;
   if (state.source === 'comfy' && (!workflowResult.ok || workflowResult.removedFields.length || profile.comfyWorkflowNotice)) {
@@ -17019,9 +17124,13 @@ async function storyboardGenerate(root, { plan = null, automatic = false } = {})
     if (parameterPreset) shotProfile = { ...shotProfile, ...clone(parameterPreset.profile), loaded: true };
     if (route.modelId) shotProfile.model = route.modelId;
     if (manualSupplement) shotProfile.count = '1';
-    const effectiveShot = storyboardAdaptShotForModel(shot, sourceId, shotProfile.model);
+    const effectiveShot = await storyboardAdaptShotForModel(shot, sourceId, shotProfile.model, state, {
+      chatKey: generationChatKey,
+      cancelled: () => plan?.status === 'cancelled',
+    });
+    if (effectiveShot.safetyAborted || plan?.status === 'cancelled' || generationChatKey !== String(getChatKey() || '') || !storyboardState().enabled) return false;
     const planShot = plan?.shots?.[index] || null;
-    if (planShot) Object.assign(planShot, { providerId: sourceId, connectionPresetId: route.connectionPresetId || '', parameterPresetId: route.parameterPresetId || '', routeRuleId: route.ruleId || '', safetyAdapted: effectiveShot.safetyAdapted });
+    if (planShot) Object.assign(planShot, { providerId: sourceId, connectionPresetId: route.connectionPresetId || '', parameterPresetId: route.parameterPresetId || '', routeRuleId: route.ruleId || '', safetyAdapted: effectiveShot.safetyAdapted, safetyMethod: effectiveShot.safetyMethod || '' });
     const providerRequests = planStoryboardProviderRequests(sourceId, shotProfile.count);
     for (const request of providerRequests) {
       const requestProfile = { ...shotProfile, count: String(request.imageCount) };
