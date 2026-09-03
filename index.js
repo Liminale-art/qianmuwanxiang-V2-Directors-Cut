@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.71';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.71';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.71';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.71';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.72';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.72';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.72';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.72';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,103 +151,103 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.71';
+} from './qianmu-storyboard.js?v=1.58.72';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.71';
+const VERSION = '1.58.72';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.71'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.72'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.58.71').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.58.72').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.71'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.72'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.71'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.72'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.58.71'),
+    load: () => import('./qianmu-video-contract.js?v=1.58.72'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.58.71'),
+    load: () => import('./qianmu-video-draft.js?v=1.58.72'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.58.71'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.58.72'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.58.71'),
+    load: () => import('./qianmu-video-readiness.js?v=1.58.72'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.58.71'),
+    load: () => import('./qianmu-video-pricing.js?v=1.58.72'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.58.71'),
+    load: () => import('./qianmu-video-prompt.js?v=1.58.72'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.58.71'),
+    load: () => import('./qianmu-video-task.js?v=1.58.72'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.58.71'),
+    load: () => import('./qianmu-video-budget.js?v=1.58.72'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.58.71'),
+    load: () => import('./qianmu-video-minimax.js?v=1.58.72'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.58.71'),
+    load: () => import('./qianmu-video-runtime.js?v=1.58.72'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.58.71'),
+    load: () => import('./qianmu-video-store.js?v=1.58.72'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.58.71'),
+    load: () => import('./qianmu-video-result.js?v=1.58.72'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.58.71'),
+    load: () => import('./qianmu-video-gallery.js?v=1.58.72'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.58.71'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.58.72'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.58.71'),
+    load: () => import('./qianmu-video-media.js?v=1.58.72'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.71'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.72'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.71'),
-        import('./qianmu-theaters.js?v=1.58.71'),
+        import('./builtin-theaters.js?v=1.58.72'),
+        import('./qianmu-theaters.js?v=1.58.72'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -13466,6 +13466,7 @@ async function storyboardOpenVideoDraftEditor(source) {
         const plan = videoPromptRuntime.createVideoPromptPlanFromShotSpec(compiled.spec);
         const result = videoPromptRuntime.compileH3VideoPrompt(plan, compiled.spec, {
           manualDirection: String(layer.querySelector('.sd-storyboard-video-draft-direction textarea')?.value || ''),
+          manifest: compiled.manifest,
         });
         if (!result.ok || !result.prompt) throw new Error(result.issues?.[0] || 'prompt_compile_failed');
         if (sequence !== videoPromptSequence || !layer.isConnected) return;
@@ -13475,7 +13476,9 @@ async function storyboardOpenVideoDraftEditor(source) {
           videoPromptTextarea.dataset.userEdited = 'false';
           videoPromptTextarea.dataset.stale = 'false';
         }
-        if (videoPromptStatus) videoPromptStatus.textContent = `已在本地整理 ${result.length} 字；可临时手改，不随草稿保存。`;
+        if (videoPromptStatus) videoPromptStatus.textContent = result.submissionReady
+          ? `已按 H3 官方格式在本地整理 ${result.length} 字；可临时手改。`
+          : `已在本地整理 ${result.length} 字；正式生成前建议再做一次智能整理。`;
         if (button) button.textContent = '重新整理';
       } catch (_) {
         if (videoPromptStatus) videoPromptStatus.textContent = '当前镜头信息不足，请先补充运动方向或镜头素材。';
@@ -13511,7 +13514,7 @@ async function storyboardOpenVideoDraftEditor(source) {
         if (sequence !== videoPromptSequence || !layer.isConnected) return;
         const parsed = videoPromptRuntime.parseVideoPromptPlanResponse(raw, compiled.spec);
         if (!parsed.ok) throw new Error(parsed.issues?.[0] || 'prompt_response_invalid');
-        const result = videoPromptRuntime.compileH3VideoPrompt(parsed.plan, compiled.spec, { manualDirection });
+        const result = videoPromptRuntime.compileH3VideoPrompt(parsed.plan, compiled.spec, { manualDirection, manifest: compiled.manifest });
         if (!result.ok || !result.prompt) throw new Error(result.issues?.[0] || 'prompt_compile_failed');
         if (sequence !== videoPromptSequence || !layer.isConnected) return;
         if (videoPromptTextarea) {
@@ -13520,7 +13523,9 @@ async function storyboardOpenVideoDraftEditor(source) {
           videoPromptTextarea.dataset.userEdited = 'false';
           videoPromptTextarea.dataset.stale = 'false';
         }
-        if (videoPromptStatus) videoPromptStatus.textContent = `智能整理完成，共 ${result.length} 字；结果只保留在本次编辑中。`;
+        if (videoPromptStatus) videoPromptStatus.textContent = result.submissionReady
+          ? `智能整理已通过 H3 官方格式校验，共 ${result.length} 字。`
+          : `智能整理完成，共 ${result.length} 字；提交前仍需检查非英文说明。`;
         if (button) button.textContent = '重新智能整理';
       } catch (_) {
         if (sequence !== videoPromptSequence || !layer.isConnected) return;

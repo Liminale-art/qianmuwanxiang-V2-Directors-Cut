@@ -4,6 +4,8 @@ import test from 'node:test';
 
 import {
   QIANMU_H3_PROMPT_MAX_CHARS,
+  QIANMU_H3_BASE_PROMPT_SECTIONS,
+  QIANMU_H3_REFERENCE_PROMPT_SECTIONS,
   QIANMU_VIDEO_PROMPT_PLAN_SCHEMA_ID,
   QIANMU_VIDEO_PROMPT_RESPONSE_SCHEMA,
   buildVideoPromptPlanRequest,
@@ -11,6 +13,7 @@ import {
   createVideoPromptPlanFromShotSpec,
   normalizeVideoPromptPlan,
   parseVideoPromptPlanResponse,
+  validateH3CompiledPrompt,
   validateVideoPromptPlan,
 } from '../qianmu-video-prompt.js';
 
@@ -94,7 +97,8 @@ test('stable subject ids support Chinese character names without collapsing owne
   };
   const result = compileH3VideoPrompt(chinesePlan, chineseShot);
   assert.equal(result.ok, true);
-  assert.match(result.prompt, /\[SUBJECT 阿绫 <Subject 1>\]/);
+  assert.match(result.prompt, /阿绫 \(S1\), identity: red hair/);
+  assert.match(result.prompt, /阿绫 \(S1\) quietly: <d>\[English\] You are late\.<\/d>/);
 });
 
 test('beats and dialogue may only reference declared subject ids', () => {
@@ -106,15 +110,117 @@ test('beats and dialogue may only reference declared subject ids', () => {
   assert.ok(result.issues.includes('dialogue_subject_unknown:0:ghost'));
 });
 
-test('manual direction is first and character ownership stays separated in the H3 prompt', () => {
-  const result = compileH3VideoPrompt(plan, shot, { manualDirection: 'Keep B motionless until second 3.' });
+test('manual direction stays in the official body and character ownership remains separated', () => {
+  const manualDirection = 'Keep B motionless until second 3.';
+  const directedShot = { ...shot, intent: { ...shot.intent, summary: manualDirection } };
+  const directedPlan = { ...structuredClone(plan), shot_summary: manualDirection };
+  const result = compileH3VideoPrompt(directedPlan, directedShot, { manualDirection });
   assert.equal(result.ok, true);
   assert.equal(result.manualDirectionApplied, true);
-  assert.ok(result.prompt.startsWith('[USER DIRECTION — HIGHEST PRIORITY]'));
-  assert.match(result.prompt, /\[SUBJECT a <Subject 1>\][^\n]*red hair[^\n]*white shirt[^\n]*opens door/);
-  assert.match(result.prompt, /\[SUBJECT b <Subject 2>\][^\n]*black hair[^\n]*blue apron[^\n]*stirs soup/);
-  assert.match(result.prompt, /\[DIALOGUE 4-5\.5s \| b\] You are late\./);
+  assert.ok(result.prompt.startsWith('integrated_multimodal_description: [Shot 1]'));
+  assert.match(result.prompt, /Keep B motionless until second 3\./);
+  assert.match(result.prompt, /A, identity: red hair[^\n]*wardrobe: white shirt[^\n]*action: opens door/);
+  assert.match(result.prompt, /B \(S1\), identity: black hair[^\n]*wardrobe: blue apron[^\n]*action: stirs soup/);
+  assert.match(result.prompt, /B \(S1\) quietly: <d>\[English\] You are late\.<\/d>/);
+  assert.deepEqual(result.promptValidation.sections, QIANMU_H3_BASE_PROMPT_SECTIONS);
+  assert.equal(result.submissionReady, true);
   assert.ok(result.length <= QIANMU_H3_PROMPT_MAX_CHARS);
+});
+
+test('base modes use the official three-section structure and exact keyframe alignment line', () => {
+  const firstManifest = {
+    shotId: 'shot-1',
+    assets: [{ assetId: 'first', kind: 'image', roles: ['first_frame'], locator: { kind: 'gallery', ref: 'chat␟first' } }],
+  };
+  const firstShot = { ...shot, keyframes: { firstAssetId: 'first' }, requestedMode: 'i2va' };
+  const i2va = compileH3VideoPrompt(plan, firstShot, { manifest: firstManifest });
+  assert.equal(i2va.ok, true);
+  assert.match(i2va.prompt, /^For the target video, at 0\.00 seconds into the target video, <Picture 1> \(from \[Shot 1\]\) is fully referenced\.\n\nintegrated_multimodal_description:/);
+  assert.ok(i2va.prompt.indexOf('integrated_multimodal_description:') < i2va.prompt.indexOf('overall_soundscape:'));
+  assert.ok(i2va.prompt.indexOf('overall_soundscape:') < i2va.prompt.indexOf('non_diegetic_music:'));
+  assert.equal(i2va.format, 'official_base_three_section');
+
+  const lastManifest = {
+    shotId: 'shot-1',
+    assets: [{ assetId: 'last', kind: 'image', roles: ['last_frame'], locator: { kind: 'gallery', ref: 'chat␟last' } }],
+  };
+  const l2va = compileH3VideoPrompt(plan, { ...shot, keyframes: { lastAssetId: 'last' }, requestedMode: 'l2va' }, { manifest: lastManifest });
+  assert.match(l2va.prompt, /^How the reference pictures align with the target video — <Picture 1> \(from \[Shot 1\]\) aligns with the 6\.00-second mark/);
+
+  const bothManifest = {
+    shotId: 'shot-1',
+    assets: [
+      { assetId: 'first', kind: 'image', roles: ['first_frame'], locator: { kind: 'gallery', ref: 'chat␟first' } },
+      { assetId: 'last', kind: 'image', roles: ['last_frame'], locator: { kind: 'gallery', ref: 'chat␟last' } },
+    ],
+  };
+  const fl2va = compileH3VideoPrompt(plan, { ...shot, keyframes: { firstAssetId: 'first', lastAssetId: 'last' }, requestedMode: 'fl2va' }, { manifest: bothManifest });
+  assert.match(fl2va.prompt, /^How the reference pictures align with the target video — Picture 1 \(from Shot 1\).*Picture 2 \(from Shot 1\).*6\.00-second mark/);
+});
+
+test('Ref2VA uses the official six-section order with stable reference labels', () => {
+  const manifest = {
+    shotId: 'shot-ref',
+    assets: [
+      { assetId: 'subject-a', kind: 'image', roles: ['subject_reference'], subjectLabel: '<Subject 1>', locator: { kind: 'gallery', ref: 'chat␟subject-a' } },
+      { assetId: 'subject-b', kind: 'image', roles: ['subject_reference'], subjectLabel: '<Subject 2>', locator: { kind: 'gallery', ref: 'chat␟subject-b' } },
+      { assetId: 'style', kind: 'image', roles: ['style_reference'], locator: { kind: 'gallery', ref: 'chat␟style' } },
+    ],
+  };
+  const refShot = {
+    ...shot,
+    shotId: 'shot-ref',
+    references: { assetIds: ['subject-a', 'subject-b', 'style'] },
+    requestedMode: 'ref2va',
+  };
+  const result = compileH3VideoPrompt(plan, refShot, { manifest });
+  assert.equal(result.ok, true);
+  assert.equal(result.format, 'official_ref_six_section');
+  assert.deepEqual(result.promptValidation.sections, QIANMU_H3_REFERENCE_PROMPT_SECTIONS);
+  assert.match(result.prompt, /^subject_definitions:\n<Subject 1> is A[^\n]*<Picture 1>/);
+  assert.match(result.prompt, /<Subject 2> is B[^\n]*<Picture 2>/);
+  assert.match(result.prompt, /<Picture 3> is the reference for visual style and treatment/);
+  let previous = -1;
+  for (const section of QIANMU_H3_REFERENCE_PROMPT_SECTIONS) {
+    const index = result.prompt.indexOf(`${section}:`);
+    assert.ok(index > previous, `${section} should follow the previous section`);
+    previous = index;
+  }
+});
+
+test('the compiled prompt validator rejects wrong order, unresolved labels and out-of-range timing', () => {
+  const base = compileH3VideoPrompt(plan, shot);
+  assert.equal(base.promptValidation.ok, true);
+  assert.equal(validateH3CompiledPrompt(base.prompt.replace('overall_soundscape:', 'broken_soundscape:'), shot).ok, false);
+  assert.ok(validateH3CompiledPrompt(`${base.prompt}\n<Picture 9>\nAt 00:09.000`, shot).issues.includes('h3_reference_unresolved:<Picture 9>'));
+  assert.ok(validateH3CompiledPrompt(`${base.prompt}\nAt 00:09.000`, shot).issues.includes('h3_time_out_of_range:00:09.000'));
+});
+
+test('non-English generated prose is visible but cannot become submission-ready', () => {
+  const localized = structuredClone(plan);
+  localized.shot_summary = '镜头缓慢推进，两人保持各自的位置和动作，不得交换服装与外貌。';
+  localized.environment.location = '安静的厨房，窗外正在下雨，室内只有暖色灯光。';
+  localized.temporal_beats[0].visual = '人物A推开门并停在画面左侧，人物B继续在右侧搅拌汤锅。';
+  const result = compileH3VideoPrompt(localized, shot);
+  assert.equal(result.ok, true);
+  assert.equal(result.submissionReady, false);
+  assert.ok(result.promptValidation.warnings.includes('h3_english_rewrite_required'));
+});
+
+test('the official prompt is rejected instead of silently truncated beyond the provider limit', () => {
+  const oversized = structuredClone(plan);
+  const longLine = 'A complete spoken sentence must stay attached to the same speaker and exact timeline. '.repeat(12);
+  oversized.dialogue = Array.from({ length: 8 }, (_, index) => ({
+    subject_id: index % 2 ? 'a' : 'b',
+    text: `${index} ${longLine}`,
+    delivery: longLine,
+    start_seconds: index * 0.5,
+    end_seconds: Math.min(6, index * 0.5 + 1),
+  }));
+  const result = compileH3VideoPrompt(oversized, shot);
+  assert.equal(result.ok, false);
+  assert.ok(result.length > QIANMU_H3_PROMPT_MAX_CHARS);
+  assert.ok(result.promptValidation.issues.includes('h3_prompt_too_long'));
 });
 
 test('an existing structured shot creates a deterministic zero-network prompt plan', () => {
@@ -163,7 +269,7 @@ test('the prompt contract stays lazy and is included in the release whitelist', 
     readFile(new URL('../index.js', import.meta.url), 'utf8'),
     readFile(new URL('../release-files.json', import.meta.url), 'utf8'),
   ]);
-  assert.match(indexSource, /videoPrompt:\s*\{[\s\S]*import\('\.\/qianmu-video-prompt\.js\?v=1\.58\.71'\)/);
+  assert.match(indexSource, /videoPrompt:\s*\{[\s\S]*import\('\.\/qianmu-video-prompt\.js\?v=1\.58\.72'\)/);
   assert.equal(JSON.parse(releaseSource).files.includes('qianmu-video-prompt.js'), true);
   assert.doesNotMatch(indexSource.slice(0, indexSource.indexOf('const featureRuntime')), /qianmu-video-prompt/);
 });

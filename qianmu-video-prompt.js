@@ -1,6 +1,6 @@
 // Qianmu video prompt contract. Pure data only: no DOM, storage, network or task submission.
 import { createQianmuChatCompletionResponseFormat } from './qianmu-llm-output.js';
-import { normalizeVideoShotSpec } from './qianmu-video-contract.js';
+import { normalizeMultimodalAssetManifest, normalizeVideoShotSpec } from './qianmu-video-contract.js';
 
 export const QIANMU_VIDEO_PROMPT_PLAN_SCHEMA_ID = 'qianmu.video-prompt-plan.v1';
 export const QIANMU_VIDEO_PROMPT_MAX_BYTES = 96 * 1024;
@@ -406,6 +406,7 @@ export function buildVideoPromptPlanRequest(shotSpecValue = {}, options = {}) {
     'Preserve current wardrobe and physical state unless the selected narrative explicitly changes them.',
     'Write one compact, filmable shot. Use temporal beats for visible change; do not invent unseen plot facts.',
     'manual_direction has highest priority when it conflicts with automatic fields.',
+    'Write generated visual, camera, atmosphere and sound fields in English. Preserve only dialogue, lyrics and visible scene text in their original language.',
     'Root keys: schema, shot_summary, subjects, environment, camera, temporal_beats, dialogue, ambient_audio, negative_constraints.',
     'Subject keys: subject_id, name, reference_label, identity, wardrobe, physical_state, blocking, action, expression, eye_line.',
     'Beat keys: start_seconds, end_seconds, subject_ids, visual, camera, sound. Dialogue keys: subject_id, text, delivery, start_seconds, end_seconds.',
@@ -425,43 +426,254 @@ export function buildVideoPromptPlanRequest(shotSpecValue = {}, options = {}) {
   };
 }
 
-function addLine(lines, value, maxChars) {
-  const clean = text(value, maxChars);
-  if (!clean) return;
-  const used = lines.reduce((sum, line) => sum + line.length + 1, 0);
-  const remaining = QIANMU_H3_PROMPT_MAX_CHARS - used;
-  if (remaining <= 1) return;
-  lines.push(clean.length <= remaining ? clean : `${clean.slice(0, Math.max(0, remaining - 1))}…`);
+export const QIANMU_H3_BASE_PROMPT_SECTIONS = Object.freeze([
+  'integrated_multimodal_description', 'overall_soundscape', 'non_diegetic_music',
+]);
+export const QIANMU_H3_REFERENCE_PROMPT_SECTIONS = Object.freeze([
+  'subject_definitions', 'summary', 'retention_analysis', 'detailed_description',
+  'overall_soundscape', 'non_diegetic_music',
+]);
+
+const sentence = (value, max = 900) => text(value, max).replace(/\s*([.;!?])\s*/g, '$1 ').trim();
+const sentenceList = (values, maxItems = 8, maxItem = 180) => list(values, maxItems, maxItem).join('; ');
+const timecode = (seconds) => {
+  const millis = Math.max(0, Math.round(finite(seconds, 0) * 1000));
+  const minutes = Math.floor(millis / 60000);
+  const remainder = millis % 60000;
+  return `${String(minutes).padStart(2, '0')}:${String(Math.floor(remainder / 1000)).padStart(2, '0')}.${String(remainder % 1000).padStart(3, '0')}`;
+};
+const languageLabel = (value) => {
+  const source = String(value || '');
+  if (/\p{Script=Hiragana}|\p{Script=Katakana}/u.test(source)) return 'Japanese';
+  if (/\p{Script=Hangul}/u.test(source)) return 'Korean';
+  if (/\p{Script=Han}/u.test(source)) return 'Chinese';
+  return 'English';
+};
+
+function referenceLabels(spec, manifestValue = {}) {
+  const manifest = normalizeMultimodalAssetManifest(manifestValue);
+  const selected = new Set(spec.route.inputs.referenceAssetIds || []);
+  const counters = { image: 0, video: 0, audio: 0 };
+  const prefix = { image: 'Picture', video: 'Video', audio: 'Audio' };
+  return manifest.assets.filter((asset) => selected.has(asset.assetId)).map((asset) => {
+    counters[asset.kind] += 1;
+    return { asset, label: `<${prefix[asset.kind]} ${counters[asset.kind]}>` };
+  });
 }
 
-function joined(values) {
-  return list(values, 12, 180).join('; ');
+function subjectSpeakerMap(plan) {
+  const speaking = new Set(plan.dialogue.map((line) => line.subject_id));
+  return new Map(plan.subjects.filter((subject) => speaking.has(subject.subject_id)).map((subject, index) => [subject.subject_id, `S${index + 1}`]));
+}
+
+function subjectDescription(subject, speakerMap, { reference = false } = {}) {
+  const label = reference && subject.reference_label ? subject.reference_label : (subject.name || subject.subject_id);
+  const speaker = speakerMap.get(subject.subject_id);
+  const identity = sentenceList(subject.identity, 8, 150);
+  const wardrobe = sentenceList(subject.wardrobe, 8, 150);
+  const state = sentenceList(subject.physical_state, 8, 150);
+  return `${label}${speaker ? ` (${speaker})` : ''}, ${[
+    identity && `identity: ${identity}`,
+    wardrobe && `wardrobe: ${wardrobe}`,
+    state && `current physical state: ${state}`,
+    subject.blocking && `position: ${sentence(subject.blocking, 360)}`,
+    subject.action && `action: ${sentence(subject.action, 500)}`,
+    subject.expression && `expression: ${sentence(subject.expression, 220)}`,
+    subject.eye_line && `eye line: ${sentence(subject.eye_line, 180)}`,
+  ].filter(Boolean).join('; ') || 'preserving the established appearance and position'}`;
+}
+
+function cameraDescription(plan) {
+  return [
+    plan.camera.shot_size && `${plan.camera.shot_size} framing`,
+    sentence(plan.camera.angle, 180),
+    sentence(plan.camera.lens, 180),
+    sentence(plan.camera.composition, 420),
+    sentence(plan.camera.focus, 240),
+    sentence(plan.camera.movement, 360),
+    sentence(plan.camera.axis, 220),
+  ].filter(Boolean).join(', ');
+}
+
+function dialogueDescriptions(plan, speakerMap, { reference = false } = {}) {
+  return plan.dialogue.map((line) => {
+    const subject = plan.subjects.find((item) => item.subject_id === line.subject_id);
+    const owner = reference && subject?.reference_label ? subject.reference_label : (subject?.name || line.subject_id);
+    const speaker = speakerMap.get(line.subject_id) || 'S1';
+    const spoken = sentence(line.text, 600);
+    return `From ${timecode(line.start_seconds)} to ${timecode(line.end_seconds)}, ${owner} (${speaker}) ${sentence(line.delivery, 220) || 'speaks naturally'}: <d>[${languageLabel(spoken)}] ${spoken}</d>.`;
+  });
+}
+
+function timelineDescription(plan, shot, { reference = false, references = [] } = {}) {
+  const speakerMap = subjectSpeakerMap(plan);
+  const visualStyle = sentence(shot.intent.visualStyle, 420);
+  const atmosphere = sentence(plan.environment.atmosphere, 320);
+  const style = visualStyle || (atmosphere ? `Cinematic audiovisual scene with ${atmosphere}` : 'Cinematic audiovisual scene');
+  const opening = [
+    `[Shot 1] ${style}.`,
+    sentence(plan.shot_summary || shot.intent.summary || shot.intent.scene, 900),
+    cameraDescription(plan) && `The camera uses ${cameraDescription(plan)}.`,
+    sentence(plan.environment.location, 420) && `The location is ${sentence(plan.environment.location, 420)}.`,
+    sentence(plan.environment.time_light, 300) && `Time and lighting: ${sentence(plan.environment.time_light, 300)}.`,
+    sentence(plan.environment.continuity, 520) && `Continuity remains: ${sentence(plan.environment.continuity, 520)}.`,
+    plan.negative_constraints.length && `Visual continuity constraints: ${sentenceList(plan.negative_constraints, 8, 220)}.`,
+    ...plan.subjects.map((subject) => `${subjectDescription(subject, speakerMap, { reference })}.`),
+  ].filter(Boolean);
+  if (reference) {
+    const styleRefs = references.filter(({ asset }) => asset.roles.includes('style_reference')).map(({ label }) => label);
+    const motionRefs = references.filter(({ asset }) => asset.roles.includes('motion_reference')).map(({ label }) => label);
+    if (styleRefs.length) opening.push(`The visual treatment follows ${styleRefs.join(' and ')} as style references.`);
+    if (motionRefs.length) opening.push(`Visible motion follows ${motionRefs.join(' and ')} as motion references without transferring identity.`);
+  } else if (shot.route.mode === 'i2va') {
+    opening.push('The opening composition, identities, wardrobe, objects, lighting and spatial relationships are anchored to <Picture 1>.');
+  } else if (shot.route.mode === 'fl2va') {
+    opening.push('The shot begins from <Picture 1> and develops continuously toward the final state and composition in <Picture 2>.');
+  } else if (shot.route.mode === 'l2va') {
+    opening.push('The action and composition progressively converge on <Picture 1> at the end of the shot.');
+  }
+  const beats = plan.temporal_beats.map((beat) => {
+    const owners = beat.subject_ids.map((id) => {
+      const subject = plan.subjects.find((item) => item.subject_id === id);
+      return reference && subject?.reference_label ? subject.reference_label : (subject?.name || id);
+    }).filter(Boolean);
+    return `From ${timecode(beat.start_seconds)} to ${timecode(beat.end_seconds)}, ${owners.length ? `${owners.join(' and ')}: ` : ''}${sentence(beat.visual, 650)}${beat.camera ? ` The camera movement is ${sentence(beat.camera, 320)}.` : ''}${beat.sound ? ` Synchronized sound: ${sentence(beat.sound, 300)}.` : ''}`;
+  });
+  return [...opening, ...beats, ...dialogueDescriptions(plan, speakerMap, { reference })].join(' ');
+}
+
+function baseAlignment(mode, durationSeconds) {
+  if (mode === 'i2va') return 'For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.';
+  if (mode === 'fl2va') return `How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 1) aligns with the ${Number(durationSeconds).toFixed(2)}-second mark of the target video.`;
+  if (mode === 'l2va') return `How the reference pictures align with the target video — <Picture 1> (from [Shot 1]) aligns with the ${Number(durationSeconds).toFixed(2)}-second mark of the target video.`;
+  return '';
+}
+
+function soundscape(plan) {
+  const sounds = [...plan.ambient_audio, ...plan.temporal_beats.map((beat) => beat.sound).filter(Boolean)];
+  return sounds.slice(0, 12).map((item) => sentence(item, 260)).filter(Boolean).join('. ') || 'Ambient sound follows the described location and visible physical actions.';
+}
+
+function referenceSections(plan, shot, manifestValue) {
+  const references = referenceLabels(shot, manifestValue);
+  const speakerMap = subjectSpeakerMap(plan);
+  const refBySubject = new Map(references.filter(({ asset }) => asset.subjectLabel).map(({ asset, label }) => [asset.subjectLabel, label]));
+  const subjectDefinitions = [];
+  const retention = [];
+  for (const subject of plan.subjects.filter((item) => item.reference_label)) {
+    const source = refBySubject.get(subject.reference_label);
+    subjectDefinitions.push(`${subject.reference_label} is ${subjectDescription(subject, speakerMap, { reference: false })}${source ? `, with visible identity and wardrobe drawn from ${source}` : ''}.`);
+    retention.push(`${subject.reference_label} (appears in [Shot 1]): fully_preserved - identity, wardrobe and distinguishing features remain assigned only to this subject.`);
+  }
+  for (const { asset, label } of references) {
+    if (asset.subjectLabel && refBySubject.get(asset.subjectLabel) === label) continue;
+    const role = asset.roles.includes('style_reference') ? 'visual style and treatment'
+      : asset.roles.includes('motion_reference') ? 'visible motion and action rhythm'
+        : asset.kind === 'video' ? 'temporal and camera structure'
+          : asset.kind === 'audio' ? 'audio character and timing'
+            : 'shot planning and composition';
+    subjectDefinitions.push(`${label} is the reference for ${role} in [Shot 1].`);
+    retention.push(`${label} (${role}): ${asset.kind === 'audio' ? 'reference' : 'weak_reference'} - only the defined reference role is carried into the target video.`);
+  }
+  const labels = references.map((item) => item.label);
+  const subjectLabels = plan.subjects.map((item) => item.reference_label).filter(Boolean);
+  const summaryLabels = [...subjectLabels, ...labels].join(', ');
+  return {
+    subject_definitions: subjectDefinitions.join('\n'),
+    summary: `[reference generation] ${sentence(plan.shot_summary || shot.intent.summary || shot.intent.scene, 1000)}${summaryLabels ? ` The target video uses ${summaryLabels} only for their defined reference roles.` : ''}`,
+    retention_analysis: retention.join('\n'),
+    detailed_description: timelineDescription(plan, shot, { reference: true, references }),
+    overall_soundscape: soundscape(plan),
+    non_diegetic_music: sentence(shot.audio.music, 900) || 'N/A',
+  };
+}
+
+function baseSections(plan, shot) {
+  return {
+    integrated_multimodal_description: timelineDescription(plan, shot),
+    overall_soundscape: soundscape(plan),
+    non_diegetic_music: sentence(shot.audio.music, 900) || 'N/A',
+  };
+}
+
+function sectionPrompt(sections, order, prefix = '') {
+  const blockSections = new Set(['subject_definitions', 'retention_analysis', 'detailed_description']);
+  const body = order.map((key) => `${key}:${blockSections.has(key) ? '\n' : ' '}${sections[key] || 'N/A'}`).join('\n\n');
+  return prefix ? `${prefix}\n\n${body}` : body;
+}
+
+function timecodeSeconds(value) {
+  const match = String(value || '').match(/^(\d{2}):(\d{2})\.(\d{3})$/);
+  return match ? Number(match[1]) * 60 + Number(match[2]) + Number(match[3]) / 1000 : NaN;
+}
+
+export function validateH3CompiledPrompt(promptValue, shotSpecValue = {}, manifestValue = {}) {
+  const prompt = String(promptValue || '').trim();
+  const shot = normalizeVideoShotSpec(shotSpecValue, manifestValue);
+  const order = shot.route.mode === 'ref2va' ? QIANMU_H3_REFERENCE_PROMPT_SECTIONS : QIANMU_H3_BASE_PROMPT_SECTIONS;
+  const issues = [];
+  const warnings = [];
+  if (!prompt) issues.push('h3_prompt_missing');
+  if (prompt.length > QIANMU_H3_PROMPT_MAX_CHARS) issues.push('h3_prompt_too_long');
+  let previous = -1;
+  for (const key of order) {
+    const index = prompt.indexOf(`${key}:`);
+    if (index < 0) issues.push(`h3_section_missing:${key}`);
+    else if (index <= previous) issues.push(`h3_section_order_invalid:${key}`);
+    previous = Math.max(previous, index);
+  }
+  const alignment = baseAlignment(shot.route.mode, shot.durationSeconds);
+  if (alignment && !prompt.startsWith(`${alignment}\n\n`)) issues.push(`h3_alignment_invalid:${shot.route.mode}`);
+  if (shot.route.mode === 't2va' && !prompt.startsWith('integrated_multimodal_description:')) issues.push('h3_t2va_prefix_invalid');
+  if (shot.route.mode === 'ref2va' && !prompt.startsWith('subject_definitions:')) issues.push('h3_ref_prefix_invalid');
+  const allowedLabels = new Set([
+    ...(shot.route.mode === 'ref2va' ? referenceLabels(shot, manifestValue).map((item) => item.label) : []),
+    ...(shot.route.mode === 'i2va' || shot.route.mode === 'l2va' ? ['<Picture 1>'] : []),
+    ...(shot.route.mode === 'fl2va' ? ['<Picture 1>', '<Picture 2>'] : []),
+    ...shot.characters.map((character) => character.subjectLabel).filter(Boolean),
+  ]);
+  for (const label of prompt.match(/<(?:Subject|Picture|Video|Audio) [1-9]\d*>/g) || []) {
+    if (!allowedLabels.has(label)) issues.push(`h3_reference_unresolved:${label}`);
+  }
+  for (const match of prompt.matchAll(/\b(\d{2}:\d{2}\.\d{3})\b/g)) {
+    if (timecodeSeconds(match[1]) > shot.durationSeconds) issues.push(`h3_time_out_of_range:${match[1]}`);
+  }
+  const withoutDialogue = prompt.replace(/<d>\[[^\]]+\][\s\S]*?<\/d>/g, '').replace(/"[^"\n]*"/g, '');
+  const cjkCount = (withoutDialogue.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu) || []).length;
+  if (cjkCount > Math.max(12, Math.round(withoutDialogue.length * 0.02))) warnings.push('h3_english_rewrite_required');
+  return {
+    ok: issues.length === 0,
+    submissionReady: issues.length === 0 && warnings.length === 0,
+    issues: [...new Set(issues)],
+    warnings: [...new Set(warnings)],
+    prompt,
+    mode: shot.route.mode,
+    sections: order,
+  };
 }
 
 export function compileH3VideoPrompt(planValue = {}, shotSpecValue = {}, options = {}) {
   const validation = validateVideoPromptPlan(planValue, shotSpecValue);
   if (!validation.ok) return { ...validation, prompt: '', length: 0 };
-  const { plan, shot } = validation;
-  const lines = [];
-  const manualDirection = text(options.manualDirection, 1800);
-  if (manualDirection) addLine(lines, `[USER DIRECTION — HIGHEST PRIORITY] ${manualDirection}`, 1900);
-  addLine(lines, `[SHOT] ${plan.shot_summary || shot.intent.summary || shot.intent.scene}`, 1400);
-  addLine(lines, '[OWNERSHIP] Every identity, wardrobe, state, action and spoken line belongs exclusively to its subject_id. Never transfer them between subjects.', 300);
-  plan.subjects.forEach((subject) => {
-    const label = subject.reference_label ? ` ${subject.reference_label}` : '';
-    addLine(lines, `[SUBJECT ${subject.subject_id}${label}] name=${subject.name || subject.subject_id}; identity=${joined(subject.identity) || 'preserve reference'}; wardrobe=${joined(subject.wardrobe) || 'preserve current'}; physical_state=${joined(subject.physical_state) || 'preserve current'}; blocking=${subject.blocking || 'preserve spatial relation'}; action=${subject.action || 'natural stillness'}; expression=${subject.expression || 'contextual'}; eye_line=${subject.eye_line || 'contextual'}`, 1700);
-  });
-  plan.temporal_beats.forEach((beat) => addLine(lines,
-    `[BEAT ${beat.start_seconds}-${beat.end_seconds}s | ${beat.subject_ids.join('+') || 'environment'}] visual=${beat.visual}; camera=${beat.camera || 'continue'}; sound=${beat.sound || 'continue'}`,
-    1200));
-  addLine(lines, `[CAMERA] size=${plan.camera.shot_size}; angle=${plan.camera.angle}; lens=${plan.camera.lens}; movement=${plan.camera.movement}; composition=${plan.camera.composition}; focus=${plan.camera.focus}; axis=${plan.camera.axis}`, 1400);
-  addLine(lines, `[ENVIRONMENT] location=${plan.environment.location}; time_light=${plan.environment.time_light}; atmosphere=${plan.environment.atmosphere}; continuity=${plan.environment.continuity}`, 1500);
-  plan.dialogue.forEach((line) => addLine(lines,
-    `[DIALOGUE ${line.start_seconds}-${line.end_seconds}s | ${line.subject_id}] ${line.text}; delivery=${line.delivery || 'natural'}`,
-    1000));
-  addLine(lines, `[AUDIO] ${joined(plan.ambient_audio)}`, 900);
-  addLine(lines, `[CONTINUITY] required=${joined(shot.continuityLedger.requiredFacts)}; forbidden_regressions=${joined(shot.continuityLedger.forbiddenRegressions)}; motion_handoff=${shot.continuityLedger.motionHandoff}; audio_handoff=${shot.continuityLedger.audioHandoff}`, 1600);
-  addLine(lines, `[AVOID] ${joined(plan.negative_constraints)}`, 1000);
-  const prompt = lines.join('\n').slice(0, QIANMU_H3_PROMPT_MAX_CHARS);
-  return { ...validation, prompt, length: prompt.length, manualDirectionApplied: Boolean(manualDirection) };
+  const { plan } = validation;
+  const manifest = normalizeMultimodalAssetManifest(options.manifest);
+  const shot = normalizeVideoShotSpec(shotSpecValue, manifest);
+  const sections = shot.route.mode === 'ref2va' ? referenceSections(plan, shot, manifest) : baseSections(plan, shot);
+  const prompt = sectionPrompt(
+    sections,
+    shot.route.mode === 'ref2va' ? QIANMU_H3_REFERENCE_PROMPT_SECTIONS : QIANMU_H3_BASE_PROMPT_SECTIONS,
+    shot.route.mode === 'ref2va' ? '' : baseAlignment(shot.route.mode, shot.durationSeconds),
+  );
+  const promptValidation = validateH3CompiledPrompt(prompt, shot, manifest);
+  return {
+    ...validation,
+    ok: validation.ok && promptValidation.ok,
+    prompt,
+    length: prompt.length,
+    mode: shot.route.mode,
+    format: shot.route.mode === 'ref2va' ? 'official_ref_six_section' : 'official_base_three_section',
+    promptValidation,
+    submissionReady: promptValidation.submissionReady,
+    manualDirectionApplied: Boolean(text(options.manualDirection, 1800)),
+  };
 }
