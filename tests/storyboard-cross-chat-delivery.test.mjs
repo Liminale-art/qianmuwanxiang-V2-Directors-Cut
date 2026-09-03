@@ -32,7 +32,7 @@ assert.equal(migrated.schemaVersion, 23);
 assert.equal(migrated.taskStates[0].deliveryState, 'pending_chat');
 
 // Cross-chat results use a durable local inbox because ST only safely saves the current chat metadata.
-assert.match(blobSource, /const DB_VERSION = 14/);
+assert.match(blobSource, /const DB_VERSION = 15/);
 assert.match(blobSource, /STORE_STORYBOARD_INBOX = 'storyboard_inbox'/);
 assert.match(blobSource, /export async function putStoryboardDelivery/);
 assert.match(blobSource, /export async function listStoryboardDeliveries/);

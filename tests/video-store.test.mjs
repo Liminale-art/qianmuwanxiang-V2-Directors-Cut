@@ -107,7 +107,7 @@ test('delete requests are bounded and deduplicated before reaching storage', asy
 
 test('IndexedDB adds task, budget, local media, draft and timeline stores without changing old store names', async () => {
   const source = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
-  assert.match(source, /const DB_VERSION = 14/);
+  assert.match(source, /const DB_VERSION = 15/);
   assert.match(source, /STORE_VIDEO_TASKS = 'video_tasks'/);
   assert.match(source, /STORE_VIDEO_BUDGET = 'video_budget'/);
   assert.match(source, /STORE_VIDEO_MEDIA = 'video_media'/);
@@ -143,8 +143,8 @@ test('storage UI identifies video records as destructive and the adapter stays i
   assert.match(source, /video_timelines: \['不可恢复 · 完整影片时间线', true\]/);
   assert.match(source, /STORAGE_CHAT_CLEARABLE[^\n]*video_tasks[^\n]*video_budget[^\n]*video_media[^\n]*video_drafts[^\n]*video_timelines/);
   assert.doesNotMatch(source, /^import[^\n]*qianmu-video-store\.js/m);
-  assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/qianmu-video-store\.js\?v=1\.58\.87'\)/);
-  assert.match(source, /videoResult:\s*\{[\s\S]*import\('\.\/qianmu-video-result\.js\?v=1\.58\.87'\)/);
+  assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/qianmu-video-store\.js\?v=1\.58\.88'\)/);
+  assert.match(source, /videoResult:\s*\{[\s\S]*import\('\.\/qianmu-video-result\.js\?v=1\.58\.88'\)/);
   assert.ok(release.files.includes('qianmu-video-store.js'));
   assert.ok(release.files.includes('qianmu-video-result.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));

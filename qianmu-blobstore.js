@@ -4,7 +4,7 @@
 // localStorage 存不下二进制大对象，故独立走 IndexedDB；存 Blob，播放时再 createObjectURL。
 
 const DB_NAME = 'qianmu-blobstore';
-const DB_VERSION = 14;
+const DB_VERSION = 15;
 const STORE_AUDIO = 'audio';         // key: 缓存键   value: { blob, meta, createdAt }
 const STORE_FAVORITES = 'favorites'; // key: 收藏 id  value: { blob, meta, label, createdAt }
 // ── 伴读模块（v2 新增）──
@@ -31,6 +31,7 @@ const STORE_VIDEO_BUDGET = 'video_budget'; // key: reservationId value: 视频�
 const STORE_VIDEO_MEDIA = 'video_media'; // key: assetId value: 本地成片 Blob + 白名单元数据；不保留远端地址、密钥或提示词
 const STORE_VIDEO_DRAFTS = 'video_drafts'; // key: draftId value: 动态镜头本地编辑草稿；只含稳定引用与配置
 const STORE_VIDEO_TIMELINES = 'video_timelines'; // key: timelineId value: 完整影片顺序草稿；只含稳定媒体引用与播放配置
+const STORE_VIDEO_POSTPRODUCTION = 'video_postproduction'; // key: timelineId value: 完整影片字幕/声轨/转场决策；不含媒体本体
 
 const STORAGE_STORE_INFO = Object.freeze({
   [STORE_AUDIO]: { label: '语音缓存', category: 'audio', recoverable: true },
@@ -52,6 +53,7 @@ const STORAGE_STORE_INFO = Object.freeze({
   [STORE_VIDEO_MEDIA]: { label: '动态镜头成片', category: 'video', recoverable: false },
   [STORE_VIDEO_DRAFTS]: { label: '动态镜头草稿', category: 'video', recoverable: false },
   [STORE_VIDEO_TIMELINES]: { label: '影片时间线', category: 'video', recoverable: false },
+  [STORE_VIDEO_POSTPRODUCTION]: { label: '影片后期分层', category: 'video', recoverable: false },
 });
 
 let dbPromise = null;
@@ -83,6 +85,7 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE_VIDEO_MEDIA)) db.createObjectStore(STORE_VIDEO_MEDIA);
       if (!db.objectStoreNames.contains(STORE_VIDEO_DRAFTS)) db.createObjectStore(STORE_VIDEO_DRAFTS);
       if (!db.objectStoreNames.contains(STORE_VIDEO_TIMELINES)) db.createObjectStore(STORE_VIDEO_TIMELINES);
+      if (!db.objectStoreNames.contains(STORE_VIDEO_POSTPRODUCTION)) db.createObjectStore(STORE_VIDEO_POSTPRODUCTION);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => { dbPromise = null; reject(req.error); };
@@ -1071,6 +1074,136 @@ export async function deleteVideoTimelines(timelineIds = []) {
 
 // ── 动态镜头：本地成片仓 ─────────────────────────────────
 // 成片只保存在浏览器 IndexedDB；远端下载地址、API Key、提示词和供应商原始响应均不落盘。
+// 上方时间线结束；下方先定义完整影片后期分层仓，只保存毫秒时间码和稳定资产编号。
+// ── 完整影片：后期分层决策仓 ──
+function storedPostproductionNumber(value, min = 0, max = Number.MAX_SAFE_INTEGER, fallback = min) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
+}
+
+function normalizeStoredVideoPostproduction(value = {}) {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const rawOwner = raw.owner && typeof raw.owner === 'object' ? raw.owner : {};
+  const durationMs = Math.round(storedPostproductionNumber(raw.durationMs ?? raw.duration_ms, 0, 432_000_000, 0));
+  const transitions = (Array.isArray(raw.transitions) ? raw.transitions : []).slice(0, 119).map((value, index) => {
+    const item = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const type = ['cut', 'crossfade', 'dip_black'].includes(item.type) ? item.type : 'cut';
+    return {
+      transitionId: videoDraftStorageId(item.transitionId || item.transition_id) || `transition-${index + 1}`,
+      fromClipId: videoDraftStorageId(item.fromClipId || item.from_clip_id),
+      toClipId: videoDraftStorageId(item.toClipId || item.to_clip_id),
+      type,
+      durationMs: type === 'cut' ? 0 : Math.round(storedPostproductionNumber(item.durationMs ?? item.duration_ms, 100, 2000, 400)),
+    };
+  });
+  const subtitles = (Array.isArray(raw.subtitles) ? raw.subtitles : []).slice(0, 500).map((value, index) => {
+    const item = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const source = item.source && typeof item.source === 'object' ? item.source : {};
+    const startMs = Math.round(storedPostproductionNumber(item.startMs ?? item.start_ms, 0, durationMs, 0));
+    return {
+      cueId: videoDraftStorageId(item.cueId || item.cue_id || item.id) || `subtitle-${index + 1}`,
+      startMs,
+      endMs: Math.round(storedPostproductionNumber(item.endMs ?? item.end_ms, 0, durationMs, startMs)),
+      text: boundedVideoDraftText(item.text, 1200),
+      language: boundedVideoDraftText(item.language, 40),
+      speakerId: videoDraftStorageId(item.speakerId || item.speaker_id),
+      kind: ['dialogue', 'narration', 'caption'].includes(item.kind) ? item.kind : 'dialogue',
+      source: { kind: source.kind === 'dialogue' ? 'dialogue' : 'manual', refId: videoDraftStorageId(source.refId || source.ref_id) },
+    };
+  });
+  const rawAudio = raw.audio && typeof raw.audio === 'object' && !Array.isArray(raw.audio) ? raw.audio : {};
+  let remainingAudio = 500;
+  const audio = {};
+  for (const role of ['dialogue', 'ambience', 'music']) {
+    const items = (Array.isArray(rawAudio[role]) ? rawAudio[role] : []).slice(0, Math.min(240, remainingAudio));
+    audio[role] = items.map((value, index) => {
+      const item = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+      const source = item.source && typeof item.source === 'object' ? item.source : {};
+      const startMs = Math.round(storedPostproductionNumber(item.startMs ?? item.start_ms, 0, durationMs, 0));
+      const endMs = Math.round(storedPostproductionNumber(item.endMs ?? item.end_ms, 0, durationMs, startMs));
+      const span = Math.max(0, endMs - startMs);
+      return {
+        audioId: videoDraftStorageId(item.audioId || item.audio_id || item.id) || `${role}-${index + 1}`,
+        role,
+        label: boundedVideoDraftText(item.label, 160),
+        source: { kind: 'audio_asset', assetId: videoDraftStorageId(source.assetId || source.asset_id) },
+        startMs,
+        endMs,
+        sourceOffsetMs: Math.round(storedPostproductionNumber(item.sourceOffsetMs ?? item.source_offset_ms, 0, 86_400_000, 0)),
+        gainDb: Number(storedPostproductionNumber(item.gainDb ?? item.gain_db, -60, 12, 0).toFixed(2)),
+        fadeInMs: Math.round(storedPostproductionNumber(item.fadeInMs ?? item.fade_in_ms, 0, span, 0)),
+        fadeOutMs: Math.round(storedPostproductionNumber(item.fadeOutMs ?? item.fade_out_ms, 0, span, 0)),
+        loop: role !== 'dialogue' && Boolean(item.loop),
+        duckUnderDialogue: role !== 'dialogue' && item.duckUnderDialogue !== false,
+        speakerId: role === 'dialogue' ? videoDraftStorageId(item.speakerId || item.speaker_id) : '',
+        dialogueText: role === 'dialogue' ? boundedVideoDraftText(item.dialogueText || item.dialogue_text, 1200) : '',
+      };
+    });
+    remainingAudio -= audio[role].length;
+  }
+  const rawMix = raw.mix && typeof raw.mix === 'object' && !Array.isArray(raw.mix) ? raw.mix : {};
+  const createdAt = Math.max(0, Math.round(Number(raw.createdAt || raw.created_at) || 0));
+  const updatedAt = Math.max(createdAt, Math.round(Number(raw.updatedAt || raw.updated_at) || createdAt));
+  return {
+    schema: 'qianmu.video-postproduction.v1',
+    timelineId: videoDraftStorageId(raw.timelineId || raw.timeline_id || raw.id),
+    owner: { chatKey: boundedVideoDraftText(rawOwner.chatKey || rawOwner.chat_key, 512) },
+    durationMs,
+    mode: raw.mode === 'layered' ? 'layered' : 'native_only',
+    transitions,
+    subtitles,
+    audio,
+    mix: {
+      nativeAudio: 'timeline',
+      duckMusicOnDialogue: rawMix.duckMusicOnDialogue !== false,
+      masterGainDb: Number(storedPostproductionNumber(rawMix.masterGainDb ?? rawMix.master_gain_db, -24, 6, 0).toFixed(2)),
+    },
+    createdAt,
+    updatedAt,
+  };
+}
+
+export async function putVideoPostproduction(value = {}) {
+  const project = normalizeStoredVideoPostproduction(value);
+  if (!project.timelineId || !project.owner.chatKey || !project.durationMs) throw new Error('video postproduction requires timelineId, chatKey and duration');
+  const now = Date.now();
+  project.createdAt = project.createdAt || now;
+  project.updatedAt = Math.max(project.createdAt, project.updatedAt || now);
+  const target = await store(STORE_VIDEO_POSTPRODUCTION, 'readwrite');
+  await reqP(target.put({
+    schema: 'qianmu.video-postproduction-record.v1',
+    timelineId: project.timelineId,
+    chatKey: project.owner.chatKey,
+    updatedAt: project.updatedAt,
+    project,
+  }, project.timelineId));
+  return { timelineId: project.timelineId, chatKey: project.owner.chatKey, updatedAt: project.updatedAt };
+}
+
+export async function getVideoPostproduction(timelineIdValue) {
+  const timelineId = videoDraftStorageId(timelineIdValue);
+  if (!timelineId) return null;
+  const target = await store(STORE_VIDEO_POSTPRODUCTION, 'readonly');
+  return (await reqP(target.get(timelineId))) || null;
+}
+
+export async function deleteVideoPostproduction(timelineIds = []) {
+  const ids = [...new Set((Array.isArray(timelineIds) ? timelineIds : []).map(videoDraftStorageId).filter(Boolean))].slice(0, 500);
+  if (!ids.length) return { deleted: [] };
+  const db = await openDB();
+  const transaction = db.transaction(STORE_VIDEO_POSTPRODUCTION, 'readwrite');
+  const done = new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('video postproduction delete failed'));
+    transaction.onabort = () => reject(transaction.error || new Error('video postproduction delete aborted'));
+  });
+  const target = transaction.objectStore(STORE_VIDEO_POSTPRODUCTION);
+  for (const timelineId of ids) target.delete(timelineId);
+  await done;
+  return { deleted: ids };
+}
+
+// 动态成片媒体从此处开始；与上方只含决策的后期分层仓严格隔离。
 export const VIDEO_MEDIA_MAX_BYTES = 768 * 1024 * 1024;
 const VIDEO_MEDIA_MIME_TYPES = new Set([
   'video/mp4', 'video/webm', 'video/quicktime', 'video/x-matroska', 'application/octet-stream',
@@ -1319,7 +1452,7 @@ function storageRecordChatKey(name, key, value) {
   if (name === STORE_STORYBOARD_INBOX) return String(value?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_STORYBOARD_SNAPSHOTS) return String(value?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_STORYBOARD_PLAN_ARCHIVES) return String(value?.chatKey || '').trim().slice(0, 512);
-  if (name === STORE_VIDEO_TASKS || name === STORE_VIDEO_BUDGET || name === STORE_VIDEO_DRAFTS || name === STORE_VIDEO_TIMELINES) return String(value?.chatKey || '').trim().slice(0, 512);
+  if (name === STORE_VIDEO_TASKS || name === STORE_VIDEO_BUDGET || name === STORE_VIDEO_DRAFTS || name === STORE_VIDEO_TIMELINES || name === STORE_VIDEO_POSTPRODUCTION) return String(value?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_VIDEO_MEDIA) return String(value?.meta?.chatKey || '').trim().slice(0, 512);
   if (name === STORE_AUDIO) return String(value?.meta?.chatKey || '').trim().slice(0, 512);
   return '';
@@ -1496,6 +1629,7 @@ const CHAT_SCOPED_CLEARABLE_STORES = Object.freeze([
   STORE_VIDEO_MEDIA,
   STORE_VIDEO_DRAFTS,
   STORE_VIDEO_TIMELINES,
+  STORE_VIDEO_POSTPRODUCTION,
 ]);
 
 async function clearStoreChatScope(name, chatKey) {

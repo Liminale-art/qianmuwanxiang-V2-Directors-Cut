@@ -134,6 +134,8 @@ export function normalizeVideoPostproduction(value = {}, timelineValue = {}) {
   const rawOwner = plain(raw.owner) ? raw.owner : {};
   const rawAudio = plain(raw.audio) ? raw.audio : {};
   const durationMs = context.durationMs || Math.round(number(raw.durationMs ?? raw.duration_ms, 0, 432_000_000, 0));
+  const createdAt = Math.round(number(raw.createdAt ?? raw.created_at, 0, Number.MAX_SAFE_INTEGER, 0));
+  const updatedAt = Math.round(number(raw.updatedAt ?? raw.updated_at, createdAt, Number.MAX_SAFE_INTEGER, createdAt));
   let remainingAudio = QIANMU_VIDEO_POSTPRODUCTION_LIMITS.totalAudio;
   const audio = Object.fromEntries(QIANMU_VIDEO_AUDIO_ROLES.map((role) => {
     const items = (Array.isArray(rawAudio[role]) ? rawAudio[role] : [])
@@ -159,6 +161,8 @@ export function normalizeVideoPostproduction(value = {}, timelineValue = {}) {
       duckMusicOnDialogue: mixRaw.duckMusicOnDialogue !== false && mixRaw.duck_music_on_dialogue !== false,
       masterGainDb: Number(number(mixRaw.masterGainDb ?? mixRaw.master_gain_db, -24, 6, 0).toFixed(2)),
     },
+    createdAt,
+    updatedAt,
   };
 }
 
