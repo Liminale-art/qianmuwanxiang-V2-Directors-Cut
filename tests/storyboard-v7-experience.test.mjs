@@ -13,6 +13,7 @@ import {
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+const contractSource = await readFile(new URL('../qianmu-storyboard-contract.js', import.meta.url), 'utf8');
 
 assert.equal(STORYBOARD_SCHEMA_VERSION, 24);
 assert.deepEqual(Object.keys(STORYBOARD_SHOT_GROUP_TEMPLATES), ['smart', 'threeBeat', 'dialogue', 'action', 'atmosphere']);
@@ -68,8 +69,8 @@ const route = routeStoryboardShot({ shotType: 'closeup', sensitive: true }, {
 });
 assert.equal(route.ruleId, 'closeup', 'model assignment depends on cinematic role, not a visible content-rating switch');
 
-assert.match(source, /should_generate[\s\S]*纯状态说明[\s\S]*避免打断正文与刷屏/, 'the compiler must silently skip replies without new visual value');
-assert.match(source, /safe_prompt[\s\S]*安全、非露骨但叙事等价/, 'the compiler must prepare a safe narrative equivalent in the same pass');
+assert.match(contractSource, /新增视觉价值[\s\S]*状态复述、重复画面[\s\S]*避免打断正文/, 'the compiler must silently skip replies without new visual value');
+assert.match(source, /function storyboardSafePromptFallback[\s\S]*非露骨构图[\s\S]*storyboardAdaptShotForModel/, 'filtered image models must retain a safe deterministic fallback');
 assert.match(source, /STORYBOARD_SHOT_GROUP_TEMPLATES[\s\S]*groupTemplate\.instruction/, 'the selected cinematic template must guide shot planning');
 assert.match(source, /function storyboardAdaptShotForModel[\s\S]*policy !== 'filtered'[\s\S]*shot\.safePrompt/, 'only known filtered models receive the safe equivalent');
 assert.match(source, /const storyboardActiveJobs = new Map\(\)/);

@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.2';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.2';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.2';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.59.2';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.3';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.3';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.3';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.59.3';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,143 +151,143 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.2';
+} from './qianmu-storyboard.js?v=1.59.3';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.2';
+const VERSION = '1.59.3';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.2'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.3'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.2').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.3').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.2'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.3'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.2'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.3'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.2'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.3'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.2'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.3'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.2'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.3'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.2'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.3'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.2'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.3'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.2'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.3'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.2'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.3'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.2'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.3'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.2'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.3'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.2'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.3'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.2'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.3'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.2'),
+    load: () => import('./qianmu-video-task.js?v=1.59.3'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.2'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.3'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.2'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.3'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.2'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.3'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.2'),
+    load: () => import('./qianmu-video-store.js?v=1.59.3'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.2'),
+    load: () => import('./qianmu-video-result.js?v=1.59.3'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.2'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.3'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.2'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.3'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.2'),
+    load: () => import('./qianmu-video-media.js?v=1.59.3'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.2'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.3'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.2'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.3'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.2'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.3'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.2'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.3'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.2'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.3'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.2'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.3'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.2'),
-        import('./qianmu-theaters.js?v=1.59.2'),
+        import('./builtin-theaters.js?v=1.59.3'),
+        import('./qianmu-theaters.js?v=1.59.3'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -16461,9 +16461,8 @@ async function storyboardCompilerContext(state) {
   };
 }
 
-function storyboardCompilerSystemPrompt(state, profile) {
+function storyboardCompilerRequestConfig(state, profile) {
   const provider = STORYBOARD_PROVIDER_REGISTRY[state.source];
-  const novel = state.source === 'novel';
   const preset = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId);
   const presetItems = Array.isArray(preset?.items) ? preset.items : [];
   const extra = presetItems.length
@@ -16471,34 +16470,20 @@ function storyboardCompilerSystemPrompt(state, profile) {
     : String(preset?.instruction || '').trim();
   const ensemble = Boolean(state.routing.enabled);
   const groupTemplate = STORYBOARD_SHOT_GROUP_TEMPLATES[state.routing.templateId] || STORYBOARD_SHOT_GROUP_TEMPLATES.smart;
-  return `你是千幕的镜头编排器。只负责把既有叙事转换为可执行的生图提示词，不续写剧情，不替人物新增事实。\n
-信息取舍顺序：用户本次明确要求 > 目标段落已发生的外貌/服装/年龄/动作 > 当前场景与时间线 > 角色卡与世界书。冲突时必须采用优先级更高且更接近目标楼层的信息。\n
-画面须能单独成立：明确主体、人物数量、动作、表情、构图、镜头、环境、光线与视觉风格。不得把说明文字、分析、对白、标签标题或 JSON 之外的内容塞进 prompt。\n
-\n
-先判断这一层是否值得配图。只有出现新的场景、重要动作、关系变化、鲜明情绪落点、关键物件或强视觉氛围时 should_generate 才为 true；纯状态说明、重复信息、元叙事、无视觉变化的过渡应返回 false，避免打断正文与刷屏。\n
-内容尺度与表现边界服从目标正文和当前取景预设，不擅自升级或弱化；不得把未成年或年龄不明人物置于成人内容中。\n
-\n
-如果画面包含明确成人内容，sensitive 必须为 true，并额外给出 safe_prompt：它应改写为完全安全、非露骨但叙事等价的画面，保留人物关系、情绪张力、场景连续性和情节结果，不得只做机械删词。非敏感画面的 safe_prompt 返回空字符串。\n
-画师串完全由用户另行控制。不得建议、生成、改写或在 prompt、negative、decisions 中加入画师名、artist:、by artist 或相近内容。\n
-当前图像模型：${provider?.label || state.source} / ${profile.model || ''}。${novel ? '正向提示词使用精确、简洁、逗号分隔的英文视觉标签；不要写散文句子。' : '提示词使用清晰、具体的自然语言，保留必要的官方参数术语；不要虚构模型参数。'}\n
-negative 仅填写当前模型适合规避的视觉缺陷或明确排除项；不支持负面提示词时返回空字符串。paragraph_index 是插图应位于其后的目标段落序号，从 0 开始。shot_type 仅用 portrait、group、environment、object、action、closeup、custom 之一。\n
-${ensemble ? `当前启用「${groupTemplate.label}」。根据正文确有需要时规划 1-${Math.max(1, Math.min(4, Number(state.routing.maxShotsPerFloor) || 3))} 个彼此有价值且不重复的镜头。${groupTemplate.instruction} 每个镜头必须给出简短 title、shot_role 与 purpose。` : '只规划一个独立关键画面，不建立镜头序列。'}\n
- 只输出一个 JSON 对象：${ensemble ? '{"should_generate":true,"skip_reason":"","shots":[{"title":"建立场景","shot_role":"establishing","purpose":"交代空间与人物关系","prompt":"...","safe_prompt":"","negative":"...","paragraph_index":0,"shot_type":"environment","sensitive":false}],"decisions":["..."]}' : '{"should_generate":true,"skip_reason":"","prompt":"...","safe_prompt":"","negative":"...","paragraph_index":0,"shot_type":"custom","sensitive":false,"decisions":["..."]}'}。若 should_generate 为 false，shots 可为空且 prompt 可为空。sensitive 只作为内部模型适配依据，不用于前台分类或镜头分工；decisions 只简短记录冲突取舍，不输出思维过程。${extra ? `\n\n本次整理要求：\n${extra}` : ''}`;
-}
-
-function storyboardCompilerUserPrompt(state, context) {
-  const paragraphRule = context.forcedParagraphIndexes?.length
-    ? `【手动补图选段】${context.forcedParagraphIndexes.join('、')}。只整理一张画面，综合所有选中段落，并在最后选中段落 ${context.forcedParagraphIndex} 后插入。paragraph_index 必须返回 ${context.forcedParagraphIndex}。\n`
-    : Number.isInteger(context.forcedParagraphIndex)
-    ? `【目标段落】第 ${context.forcedParagraphIndex} 段。paragraph_index 必须返回 ${context.forcedParagraphIndex}。\n`
-    : '【目标段落】请判断最具画面价值且能承接叙事的一段。\n';
-  return `【目标楼层】${context.floor}\n
-【近景正文】\n${context.messages.map((item) => `[${item.floor} · ${item.role}] ${item.text}`).join('\n\n') || '（无可用正文）'}\n
-【目标楼层段落】\n${context.paragraphs.map((item, index) => `${index}. ${item}`).join('\n') || '0. （整层末尾）'}\n
-【当前角色设定】\n${context.currentCharacter || '（未提供）'}\n
-【当前用户人设】\n${context.persona || '（未提供）'}\n
-【手动选择的世界书】\n${context.world || '（未选择）'}\n
-${paragraphRule}请整理为一张最能承接当前叙事的画面。`;
+  const allowedRatioIds = state.compositionPolicy?.mode === 'fixed' && state.compositionPolicy?.fixedRatioId
+    ? [state.compositionPolicy.fixedRatioId]
+    : state.compositionPolicy?.allowedRatioIds || STORYBOARD_RATIOS.map((item) => item.id);
+  return {
+    providerId: state.source,
+    providerLabel: provider?.label || state.source,
+    modelId: profile.model || '',
+    maxShots: ensemble ? Math.max(1, Math.min(4, Number(state.routing.maxShotsPerFloor) || 3)) : 1,
+    manualSupplement: state.pendingParagraphSelection?.mode === 'manual_supplement',
+    allowedRatioIds,
+    groupLabel: ensemble ? groupTemplate.label : '独立关键画面',
+    groupInstruction: ensemble ? groupTemplate.instruction : '只规划一个独立关键画面，不建立镜头序列。',
+    extraInstructions: extra,
+  };
 }
 
 async function storyboardCallCompiler(messages, profileId, requestOptions = {}) {
@@ -16528,19 +16513,19 @@ async function storyboardCallCompiler(messages, profileId, requestOptions = {}) 
   });
 }
 
-async function storyboardCompilerResult(raw, context, capabilities, state) {
+async function storyboardCompilerResult(raw, context, capabilities, state, contractRequest = null) {
   let object = null;
   let contractMeta = null;
   const rawText = String(raw || '');
   const declaresPlanContract = /"schema"\s*:\s*"qianmu\.storyboard\.plan\.v1"/.test(rawText);
-  if (declaresPlanContract) {
-    const contract = await featureRuntime.load('storyboardContract');
-    const paragraphIds = context.paragraphs.map((_, index) => `P${index + 1}`);
+  if (contractRequest || declaresPlanContract) {
+    const contract = contractRequest?.runtime || await featureRuntime.load('storyboardContract');
+    const paragraphIds = contractRequest?.paragraphIds || context.paragraphs.map((_, index) => `P${index + 1}`);
     const paragraphIndexById = Object.fromEntries(paragraphIds.map((id, index) => [id, index]));
-    const manualSupplement = state.pendingParagraphSelection?.mode === 'manual_supplement';
-    const requiredInsertAfter = Number.isInteger(context.forcedParagraphIndex)
+    const manualSupplement = contractRequest?.manualSupplement ?? state.pendingParagraphSelection?.mode === 'manual_supplement';
+    const requiredInsertAfter = contractRequest?.requiredInsertAfter || (Number.isInteger(context.forcedParagraphIndex)
       ? paragraphIds[context.forcedParagraphIndex] || ''
-      : '';
+      : '');
     const allowedRatioIds = state.compositionPolicy?.mode === 'fixed' && state.compositionPolicy?.fixedRatioId
       ? [state.compositionPolicy.fixedRatioId]
       : state.compositionPolicy?.allowedRatioIds || STORYBOARD_RATIOS.map((item) => item.id);
@@ -16551,6 +16536,7 @@ async function storyboardCompilerResult(raw, context, capabilities, state) {
       maxShots: manualSupplement ? 1 : state.routing.enabled ? state.routing.maxShotsPerFloor : 1,
       manualSupplement,
       requiredInsertAfter,
+      requiredSourceParagraphIds: contractRequest?.requiredSourceParagraphIds || [],
     };
     const initial = contract.parseStoryboardContractResponse(rawText, contractOptions);
     const result = initial.ok ? initial : await contract.repairStoryboardContractOnce({
@@ -16649,13 +16635,18 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false } = {}
   const startedAt = Date.now();
   try {
     const context = await storyboardCompilerContext(state);
-    const systemPrompt = storyboardCompilerSystemPrompt(state, profile);
-    const userPrompt = storyboardCompilerUserPrompt(state, context);
-    const raw = await storyboardCallCompiler([
-      { role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt },
-    ], state.promptCompiler.apiProfileId);
+    const contract = await featureRuntime.load('storyboardContract');
+    const contractRequest = {
+      ...contract.buildStoryboardPlanContractRequest(context, storyboardCompilerRequestConfig(state, profile)),
+      runtime: contract,
+    };
+    const raw = await storyboardCallCompiler(contractRequest.messages, state.promptCompiler.apiProfileId, {
+      jsonSchema: contractRequest.schema,
+      jsonSchemaName: contractRequest.schemaId,
+      jsonSchemaStrict: true,
+    });
     if (plan?.status === 'cancelled') return false;
-    const result = await storyboardCompilerResult(raw, context, getStoryboardCapabilities(state.source, profile.model), state);
+    const result = await storyboardCompilerResult(raw, context, getStoryboardCapabilities(state.source, profile.model), state, contractRequest);
     if (!result.shouldGenerate) {
       state.prompt = '';
       state.negative = '';

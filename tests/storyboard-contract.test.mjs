@@ -7,6 +7,7 @@ import {
   STORYBOARD_SAFETY_RESPONSE_SCHEMA,
   STORYBOARD_SAFETY_RESPONSE_SCHEMA_ID,
   adaptStoryboardPlanContract,
+  buildStoryboardPlanContractRequest,
   formatStoryboardContractErrors,
   parseStoryboardContractJson,
   parseStoryboardContractResponse,
@@ -219,11 +220,61 @@ const manualAnchor = validateStoryboardPlanContract(plan({
 }), { ...validationOptions, manualSupplement: true, requiredInsertAfter: 'P2', maxShots: 1 });
 assert.ok(manualAnchor.errors.some((entry) => entry.code === 'manual_insert_anchor'));
 
+const manualMissingSelectedParagraph = validateStoryboardPlanContract(plan({
+  shots: [shot({ source_paragraph_ids: ['P2'], insert_after: 'P2' })],
+}), {
+  ...validationOptions,
+  manualSupplement: true,
+  requiredInsertAfter: 'P2',
+  requiredSourceParagraphIds: ['P1', 'P2'],
+  maxShots: 1,
+});
+assert.ok(manualMissingSelectedParagraph.errors.some((entry) => entry.code === 'manual_source_paragraph'));
+
+const contractRequest = buildStoryboardPlanContractRequest({
+  floor: 12,
+  paragraphs: ['角色A脱下外套。', '角色B把杯子递给她。', '两人望向窗外。'],
+  forcedParagraphIndexes: [0, 2],
+  forcedParagraphIndex: 2,
+  messages: [{ floor: 11, role: 'character', text: '前一层正文' }],
+  currentCharacter: '角色A：银发。',
+  persona: '用户人设',
+  world: '世界书内容',
+}, {
+  providerId: 'novel',
+  providerLabel: 'NovelAI',
+  modelId: 'nai-diffusion-5-full',
+  maxShots: 4,
+  manualSupplement: true,
+  allowedRatioIds: ['3:2'],
+  groupLabel: '智能镜组',
+  groupInstruction: '镜头职责不得重复。',
+  extraInstructions: '优先表现动作变化。',
+});
+assert.equal(contractRequest.schemaId, STORYBOARD_PLAN_RESPONSE_SCHEMA_ID);
+assert.equal(contractRequest.schema, STORYBOARD_PLAN_RESPONSE_SCHEMA);
+assert.equal(contractRequest.maxShots, 1);
+assert.deepEqual(contractRequest.paragraphIds, ['P1', 'P2', 'P3']);
+assert.deepEqual(contractRequest.requiredSourceParagraphIds, ['P1', 'P3']);
+assert.equal(contractRequest.requiredInsertAfter, 'P3');
+assert.match(contractRequest.messages[0].content, /【任务】[\s\S]*【可信输入】[\s\S]*【执行规则】[\s\S]*【输出合同】/);
+assert.match(contractRequest.messages[0].content, /qianmu\.storyboard\.plan\.v1/);
+assert.match(contractRequest.messages[0].content, /人物专属外貌、服装、动作和道具不得放入 prompt_atoms\.global/);
+assert.doesNotMatch(contractRequest.messages[0].content, /paragraph_index|safe_prompt|"negative":/);
+const requestPayload = JSON.parse(contractRequest.messages[1].content);
+assert.equal(requestPayload.task, 'manual_supplement');
+assert.equal(requestPayload.constraints.required_insert_after, 'P3');
+assert.deepEqual(requestPayload.constraints.required_source_paragraph_ids, ['P1', 'P3']);
+assert.deepEqual(requestPayload.target_paragraphs.map((item) => item.id), ['P1', 'P2', 'P3']);
+assert.equal(requestPayload.constraints.image_model, 'nai-diffusion-5-full');
+
 assert.match(formatStoryboardContractErrors(wrongParagraph.errors, 1), /^\$\.shots\[0\]/);
 
 const indexSource = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-assert.match(indexSource, /storyboardContract:[\s\S]*import\('\.\/qianmu-storyboard-contract\.js\?v=1\.59\.2'\)/, 'the contract validator must stay outside the startup graph');
-assert.match(indexSource, /async function storyboardCompilerResult[\s\S]*const declaresPlanContract = \/"schema"[\s\S]*featureRuntime\.load\('storyboardContract'\)/, 'only explicitly versioned contract responses should enter strict validation');
+assert.match(indexSource, /storyboardContract:[\s\S]*import\('\.\/qianmu-storyboard-contract\.js\?v=1\.59\.3'\)/, 'the contract validator must stay outside the startup graph');
+assert.match(indexSource, /buildStoryboardPlanContractRequest\(context, storyboardCompilerRequestConfig\(state, profile\)\)/, 'the first planning call must use the strict request contract');
+assert.match(indexSource, /storyboardCallCompiler\(contractRequest\.messages[\s\S]*jsonSchema: contractRequest\.schema[\s\S]*jsonSchemaStrict: true/, 'capable external channels must receive the structured response schema');
+assert.match(indexSource, /if \(contractRequest \|\| declaresPlanContract\)/, 'new requests must validate strictly while versioned legacy responses remain supported');
 assert.match(indexSource, /const result = await storyboardCompilerResult\(/, 'the lazy validator must finish before compiler output is accepted');
 
 console.log('Storyboard strict response contract OK');

@@ -9,6 +9,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const source = fs.readFileSync(path.join(root, 'index.js'), 'utf8');
 const style = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
+const contractSource = fs.readFileSync(path.join(root, 'qianmu-storyboard-contract.js'), 'utf8');
 
 const defaults = createStoryboardDefaults();
 assert.equal(defaults.contentRating, 'sfw');
@@ -90,7 +91,7 @@ assert.match(source, /storyboardCleanWithTagRules\(item\.mes, state\)/);
 assert.match(source, /storyboardCleanWithTagRules\(targetMessage\?\.mes \|\| '', state\)/);
 
 // Artist strings remain entirely user-controlled and lead the provider prompt at request time.
-assert.match(source, /画师串完全由用户另行控制。不得建议、生成、改写/);
+assert.match(contractSource, /画师串由用户另行管理，任何字段都不得写画师名/);
 assert.doesNotMatch(source, /"artist_string"|"artist_suggestion"/);
 assert.match(source, /function storyboardEffectivePrompts/);
 assert.match(source, /storyboardJoinPrompt\(\[artistString, layer\.positive, prompt\], sourceId\)/);
