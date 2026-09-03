@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.9';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.9';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.9';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.59.9';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.10';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.10';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.10';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.59.10';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,143 +151,143 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.9';
+} from './qianmu-storyboard.js?v=1.59.10';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.9';
+const VERSION = '1.59.10';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.9'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.10'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.9').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.10').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.9'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.10'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.9'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.10'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.9'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.10'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.9'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.10'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.9'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.10'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.9'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.10'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.9'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.10'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.9'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.10'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.9'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.10'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.9'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.10'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.9'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.10'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.9'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.10'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.9'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.10'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.9'),
+    load: () => import('./qianmu-video-task.js?v=1.59.10'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.9'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.10'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.9'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.10'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.9'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.10'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.9'),
+    load: () => import('./qianmu-video-store.js?v=1.59.10'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.9'),
+    load: () => import('./qianmu-video-result.js?v=1.59.10'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.9'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.10'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.9'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.10'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.9'),
+    load: () => import('./qianmu-video-media.js?v=1.59.10'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.9'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.10'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.9'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.10'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.9'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.10'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.9'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.10'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.9'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.10'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.9'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.10'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.9'),
-        import('./qianmu-theaters.js?v=1.59.9'),
+        import('./builtin-theaters.js?v=1.59.10'),
+        import('./qianmu-theaters.js?v=1.59.10'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -9511,8 +9511,40 @@ function ttsExtractApiConfig() {
   return null;
 }
 
-// 调用模型做提取：与幕外同样的分发逻辑（cfg 存在或 external 走直连，否则走 ST generateRaw）。
-// 不走流式（提取要完整 JSON），独立 AbortController，避免干扰推演/幕外。
+function ttsExtractProxyUnavailable(error) {
+  const message = String(error?.message || error || '');
+  return /Failed to fetch|NetworkError|Load failed|Cannot\s+(?:POST|GET)|HTTP\s*(?:404|405|501)\b/i.test(message);
+}
+
+// 台词提取的连接测试本来就经 ST 内置代理完成；实际提取也必须走同一路径，否则“测试成功”后，
+// 浏览器仍可能在真正生成时被第三方接口的 CORS 拦下。旧版 ST 没有生成代理时才回落浏览器直连。
+async function callTtsExternalExtractModel(messages, config) {
+  const controller = new AbortController();
+  const apiUrl = String(config?.apiUrl || '').trim().replace(/\/+$/, '');
+  const apiKey = String(config?.apiKey || '').trim();
+  const model = String(config?.model || '').trim();
+  if (!(normalizeUrl(apiUrl) && apiKey && model)) throw new Error('INVALID_API_SETTINGS');
+  const options = {
+    temperature: config?.temperature ?? settings.temperature,
+    signal: controller.signal,
+  };
+  try {
+    try {
+      return await generateViaSTProxy(apiUrl, `Authorization: Bearer ${apiKey}`, model, messages, options);
+    } catch (error) {
+      if (/HTTP\s*(?:401|403)\b/i.test(String(error?.message || ''))) {
+        return await generateViaSTProxy(apiUrl, `Authorization: ${apiKey}`, model, messages, options);
+      }
+      throw error;
+    }
+  } catch (proxyError) {
+    if (!ttsExtractProxyUnavailable(proxyError)) throw proxyError;
+    return callExternalApi(messages, null, { ...config, stream: false }, controller);
+  }
+}
+
+// 调用模型做提取：cfg 存在或主模式为 external 时走千幕 API；否则走 ST generateRaw。
+// 不走流式（提取要完整 JSON），并与推演/幕外的中止句柄隔离。
 async function callTtsExtractModel(systemPrompt, userPrompt, cfg) {
   const useExternal = settings.providerMode === 'external' || cfg;
   if (useExternal) {
@@ -9522,7 +9554,7 @@ async function callTtsExtractModel(systemPrompt, userPrompt, cfg) {
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
     ];
-    return await callExternalApi(messages, null, cfg, new AbortController());
+    return await callTtsExternalExtractModel(messages, eff);
   }
   if (!getGenerateRaw()) throw new Error('INVALID_API_SETTINGS');
   return await callSillyTavernModel(userPrompt, systemPrompt, null);
