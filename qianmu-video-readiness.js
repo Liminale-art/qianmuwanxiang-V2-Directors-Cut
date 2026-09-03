@@ -66,13 +66,22 @@ function qualityItem(resolution, confirmed) {
     : item('quality', '生成规格', 'attention', '2K 将在报价后要求单独确认');
 }
 
+function promptItem(value = null) {
+  if (!plain(value)) return item('prompt', '动态提示词', 'blocked', '请先完成本地整理或智能整理');
+  if (value.ok !== true) return item('prompt', '动态提示词', 'blocked', '当前文本未通过 H3 官方格式校验');
+  if (value.submissionReady !== true) return item('prompt', '动态提示词', 'attention', '请用智能整理转换为英文生成说明');
+  return item('prompt', '动态提示词', 'ready', '已通过 H3 官方格式与引用校验');
+}
+
 export function evaluateVideoReadiness(value = {}) {
   const raw = plain(value) ? value : {};
   const gateway = gatewayItem(raw.service);
   const credential = credentialItem(Boolean(raw.credentialConfigured));
   const materials = materialItem(raw.compiled);
+  const prompt = promptItem(raw.promptValidation);
   const quality = qualityItem(raw.resolution || raw.compiled?.draft?.settings?.resolution, Boolean(raw.highResolutionConfirmed));
-  const prerequisitesReady = [gateway, credential, materials].every((entry) => entry.status === 'ready');
+  const infrastructureReady = [gateway, credential, materials].every((entry) => entry.status === 'ready');
+  const prerequisitesReady = infrastructureReady && prompt.status === 'ready';
   const confirmationReady = quality.status === 'ready';
   const submissionEnabled = raw.submissionEnabled === true;
   const submission = item(
@@ -83,9 +92,11 @@ export function evaluateVideoReadiness(value = {}) {
   );
   return {
     schema: QIANMU_VIDEO_READINESS_SCHEMA,
-    items: [gateway, credential, materials, quality, submission],
+    items: [gateway, credential, materials, prompt, quality, submission],
+    infrastructureReady,
     prerequisitesReady,
-    readyForQuote: prerequisitesReady,
+    readyForQuote: infrastructureReady,
+    readyForConfirmation: prerequisitesReady && confirmationReady,
     readyForSubmission: submissionEnabled && prerequisitesReady && confirmationReady,
     submissionLocked: !submissionEnabled,
   };

@@ -8,13 +8,17 @@ const compiled = (resolution = '768p') => ({
   spec: { route: { ready: true, mode: 'i2va', missingRequirements: [] } },
 });
 
+const promptValidation = (submissionReady = true, ok = true) => ({ ok, submissionReady });
+
 test('readiness remains submission-locked even when prerequisites are complete', () => {
   const report = evaluateVideoReadiness({
     service: { status: 'ready', services: ['minimax-h3'], version: '1.0.0' },
     credentialConfigured: true,
     compiled: compiled(),
+    promptValidation: promptValidation(),
   });
   assert.equal(report.readyForQuote, true);
+  assert.equal(report.readyForConfirmation, true);
   assert.equal(report.readyForSubmission, false);
   assert.equal(report.submissionLocked, true);
   assert.equal(report.items.find((item) => item.id === 'submission')?.status, 'locked');
@@ -41,8 +45,30 @@ test('2K is visible as a separate confirmation without hiding other readiness', 
     service: { status: 'ready', services: ['minimax-h3'] },
     credentialConfigured: true,
     compiled: compiled('2k'),
+    promptValidation: promptValidation(),
   });
   assert.equal(report.readyForQuote, true);
   assert.equal(report.items.find((item) => item.id === 'quality')?.status, 'attention');
   assert.match(report.items.find((item) => item.id === 'quality')?.detail || '', /单独确认/);
+});
+
+test('prompt validation is distinct from infrastructure and confirmation readiness', () => {
+  const base = {
+    service: { status: 'ready', services: ['minimax-h3'] },
+    credentialConfigured: true,
+    compiled: compiled(),
+  };
+  const missing = evaluateVideoReadiness(base);
+  assert.equal(missing.infrastructureReady, true);
+  assert.equal(missing.readyForQuote, true);
+  assert.equal(missing.prerequisitesReady, false);
+  assert.equal(missing.readyForConfirmation, false);
+  assert.equal(missing.items.find((item) => item.id === 'prompt')?.status, 'blocked');
+
+  const needsEnglish = evaluateVideoReadiness({ ...base, promptValidation: promptValidation(false) });
+  assert.equal(needsEnglish.items.find((item) => item.id === 'prompt')?.status, 'attention');
+  assert.equal(needsEnglish.readyForConfirmation, false);
+
+  const invalid = evaluateVideoReadiness({ ...base, promptValidation: promptValidation(false, false) });
+  assert.equal(invalid.items.find((item) => item.id === 'prompt')?.status, 'blocked');
 });

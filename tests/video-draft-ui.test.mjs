@@ -27,12 +27,15 @@ test('the draft editor only revises and saves local draft contracts', () => {
   assert.match(editor, /await store\.save\(revised\.draft\)/);
   assert.match(editor, /referenceRecordIds: referenceIds/);
   assert.match(source, /sd-storyboard-video-readiness/);
+  assert.match(source, /data-video-readiness="prompt"/);
   assert.match(editor, /evaluateVideoReadiness/);
+  assert.match(editor, /promptValidation: videoPromptValidation/);
   assert.match(editor, /submissionEnabled: false/);
   assert.match(source, /sd-storyboard-video-prompt-preview/);
   assert.match(editor, /featureRuntime\.load\('videoPrompt'\)/);
   assert.match(editor, /createVideoPromptPlanFromShotSpec\(compiled\.spec\)/);
   assert.match(editor, /compileH3VideoPrompt\(plan, compiled\.spec/);
+  assert.match(editor, /validateH3CompiledPrompt/);
   assert.match(source, /sd-video-prompt-intelligent/);
   assert.match(editor, /buildVideoPromptPlanRequest\(compiled\.spec/);
   assert.match(editor, /storyboardCallCompiler\(request\.messages/);
