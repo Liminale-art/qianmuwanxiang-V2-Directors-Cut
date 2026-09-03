@@ -26,6 +26,10 @@ const LOCATOR_KINDS = Object.freeze(['indexeddb', 'gallery', 'chat', 'remote', '
 const RIGHTS_STATES = Object.freeze(['unknown', 'owned', 'licensed', 'consented', 'restricted']);
 const UPLOAD_STATES = Object.freeze(['local', 'pending', 'uploading', 'ready', 'failed', 'expired']);
 const RESOLUTIONS = Object.freeze(['768p', '2k']);
+const STORYBOARD_TO_VIDEO_SHOT_SIZE = Object.freeze({
+  extreme_close_up: 'ECU', close_up: 'CU', medium_close_up: 'MCU', medium_shot: 'MS',
+  medium_full: 'MLS', full_shot: 'WS', wide_shot: 'WS', extreme_wide_shot: 'EWS', insert: 'insert',
+});
 
 const plain = (value) => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 const text = (value, max = 2000) => String(value ?? '').trim().slice(0, max);
@@ -35,6 +39,7 @@ const boolOrNull = (value) => value == null ? null : Boolean(value);
 const unique = (value, max = 40, itemMax = 240) => Array.isArray(value)
   ? [...new Set(value.map((item) => text(item, itemMax)).filter(Boolean))].slice(0, max)
   : [];
+const subjectLabel = (value) => /^<Subject [1-9]\d*>$/.test(text(value, 80)) ? text(value, 80) : '';
 
 function hash(value) {
   let result = 2166136261;
@@ -316,6 +321,119 @@ function normalizeDialogue(value, durationSeconds, index = 0) {
     endSeconds: end,
     delivery: text(raw.delivery, 600),
   };
+}
+
+function recordValues(value, max = 40) {
+  if (!plain(value)) return [];
+  return Object.entries(value).slice(0, max).flatMap(([key, item]) => {
+    const result = text(plain(item) ? (item.value ?? item.state ?? item.description) : item, 500);
+    return result ? [`${text(key, 120)}=${result}`] : [];
+  });
+}
+
+function storyboardContinuityFacts(value = {}) {
+  const raw = plain(value) ? value : {};
+  const structured = (Array.isArray(raw.facts) ? raw.facts : []).slice(0, 80).flatMap((fact) => {
+    if (!plain(fact) || fact.status === 'expired' || fact.status === 'superseded') return [];
+    const valueText = text(fact.value ?? fact.state ?? fact.description, 500);
+    if (!valueText) return [];
+    const owner = text(fact.subject || fact.entity || fact.character, 160);
+    const key = text(fact.key || fact.attribute || fact.category, 120);
+    return [[owner, key, valueText].filter(Boolean).join(':')];
+  });
+  return unique([
+    ...structured,
+    ...recordValues(raw.outfit).map((item) => `outfit:${item}`),
+    ...recordValues(raw.injuries).map((item) => `injury:${item}`),
+    ...recordValues(raw.props).map((item) => `prop:${item}`),
+    ...recordValues(raw.actionState || raw.action_state).map((item) => `action:${item}`),
+  ], 80, 500);
+}
+
+/**
+ * Converts a still-storyboard ShotSpec into the semantic base for a motion shot.
+ * Unknown legacy fields are discarded, while character ownership remains separate.
+ */
+export function adaptStoryboardShotToVideoShotSpec(value = {}, options = {}) {
+  const source = plain(value?.shotSpec || value?.shot_spec) ? (value.shotSpec || value.shot_spec) : value;
+  const raw = plain(source) ? source : {};
+  const config = plain(options) ? options : {};
+  const composition = plain(raw.composition) ? raw.composition : {};
+  const promptAtoms = plain(raw.promptAtoms || raw.prompt_atoms) ? (raw.promptAtoms || raw.prompt_atoms) : {};
+  const continuity = plain(raw.continuityUpdates || raw.continuity_updates) ? (raw.continuityUpdates || raw.continuity_updates) : {};
+  const labelMap = plain(config.characterLabels || config.character_labels) ? (config.characterLabels || config.character_labels) : {};
+  const durationSeconds = Math.round(clamp(config.durationSeconds ?? config.duration_seconds, 4, 15, 6));
+  const characters = (Array.isArray(raw.characters) ? raw.characters : []).slice(0, 16).flatMap((character, index) => {
+    if (!plain(character)) return [];
+    const id = text(character.id || character.characterId || character.character_id || character.name, 160) || `character-${index + 1}`;
+    const spatial = plain(character.spatial) ? character.spatial : {};
+    const poses = unique(character.pose, 12, 500);
+    const blocking = [
+      text(spatial.region, 120), text(spatial.crop, 120), ...poses,
+    ].filter(Boolean).join('; ');
+    return [{
+      characterId: id,
+      name: text(character.name || id, 160),
+      subjectLabel: subjectLabel(labelMap[id]),
+      appearance: {
+        identity: unique(character.identity || character.appearance, 20, 300),
+        wardrobe: unique(character.outfit || character.wardrobe, 20, 300),
+        physicalState: unique(character.temporaryState || character.temporary_state || character.state, 20, 300),
+      },
+      performance: {
+        action: unique(character.action, 12, 500).join('; '),
+        expression: unique(character.expression, 12, 300).join('; '),
+        eyeLine: unique(character.gaze || character.eyeLine || character.eye_line, 8, 300).join('; '),
+        blocking,
+      },
+    }];
+  });
+  const visual = text(config.direction, 1600)
+    || text(raw.narrativePurpose || raw.narrative_purpose || raw.subject || raw.evidence?.rationale, 1600)
+    || characters.map((character) => `${character.name}: ${character.performance.action}`).filter((item) => !item.endsWith(': ')).join('; ')
+    || text(raw.scene, 1600);
+  const cameraText = unique(promptAtoms.camera, 20, 500).join('; ');
+  const motionState = recordValues(continuity.actionState || continuity.action_state).join('; ');
+  const aspectRatio = QIANMU_H3_ASPECT_RATIOS.includes(String(config.aspectRatio || config.aspect_ratio || composition.ratioId || composition.ratio_id || '').toLowerCase())
+    ? String(config.aspectRatio || config.aspect_ratio || composition.ratioId || composition.ratio_id).toLowerCase()
+    : 'adaptive';
+  return normalizeVideoShotSpec({
+    shotId: config.shotId || config.shot_id,
+    sourceShotId: raw.id || config.sourceShotId || config.source_shot_id,
+    timelineAnchor: config.timelineAnchor || config.timeline_anchor,
+    durationSeconds,
+    fps: config.fps,
+    resolution: config.resolution,
+    aspectRatio,
+    intent: {
+      summary: visual,
+      scene: text(raw.scene, 2000),
+      visualStyle: unique([...(Array.isArray(promptAtoms.quality) ? promptAtoms.quality : []), ...(Array.isArray(promptAtoms.global) ? promptAtoms.global : [])], 20, 300).join('; '),
+    },
+    beats: [{
+      beatId: 'source-beat-1', startSeconds: 0, endSeconds: durationSeconds,
+      visual, camera: cameraText, sound: '',
+    }],
+    characters,
+    camera: {
+      shotSize: STORYBOARD_TO_VIDEO_SHOT_SIZE[raw.shotScale || raw.shot_scale] || 'MS',
+      angle: composition.angle,
+      movement: cameraText,
+      lens: config.lens,
+      axis: continuity.axis,
+      framing: unique(composition.framing, 20, 500).join('; ') || text(composition.focus, 500),
+    },
+    audio: config.audio,
+    referencePolicy: config.referencePolicy || config.reference_policy,
+    continuityLedger: {
+      previousShotId: config.previousShotId || config.previous_shot_id,
+      requiredFacts: storyboardContinuityFacts(continuity),
+      forbiddenRegressions: unique(config.forbiddenRegressions || config.forbidden_regressions, 80, 500),
+      axisRule: text(continuity.axis, 500),
+      motionHandoff: motionState,
+      audioHandoff: text(config.audioHandoff || config.audio_handoff, 800),
+    },
+  }, config.manifest);
 }
 
 function referencedAssets(spec, manifest) {

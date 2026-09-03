@@ -2,6 +2,7 @@
 import {
   QIANMU_H3_ASPECT_RATIOS,
   QIANMU_H3_ROUTE_MODES,
+  adaptStoryboardShotToVideoShotSpec,
   createVideoShotFromStoryboardFrames,
 } from './qianmu-video-contract.js';
 
@@ -146,7 +147,7 @@ export function createVideoDraftFromStoryboardFrame(recordValue = {}, options = 
         ? (config.sourceKind || config.source_kind) : 'storyboard_frame',
       track: record.productionTrack || record.production_track || config.track,
       recordId,
-      sourceShotId: record.sourceShotId || record.source_shot_id || record.shotId || record.shot_id,
+      sourceShotId: record.sourceShotId || record.source_shot_id || record.planShotId || record.plan_shot_id || record.shotId || record.shot_id,
     },
     selection: {
       firstRecordId: recordId,
@@ -197,7 +198,7 @@ export function validateVideoDraft(value = {}) {
   return { ok: issues.length === 0, issues: [...new Set(issues)], draft };
 }
 
-export function compileVideoDraftSelection(value = {}, recordsValue = []) {
+export function compileVideoDraftSelection(value = {}, recordsValue = [], options = {}) {
   const validation = validateVideoDraft(value);
   const draft = validation.draft;
   const records = (Array.isArray(recordsValue) ? recordsValue : []).filter(plain);
@@ -220,14 +221,28 @@ export function compileVideoDraftSelection(value = {}, recordsValue = []) {
   }
   for (const recordId of requestedIds) if (!recordById.has(recordId) && !issues.includes(`record_owner_mismatch:${recordId}`)) issues.push(`record_missing:${recordId}`);
   const usable = requestedIds.map((recordId) => recordById.get(recordId)).filter(Boolean);
+  const sourceSpec = plain(options.sourceShot || options.source_shot)
+    ? adaptStoryboardShotToVideoShotSpec(options.sourceShot || options.source_shot, {
+      durationSeconds: draft.settings.durationSeconds,
+      resolution: draft.settings.resolution,
+      aspectRatio: draft.settings.aspectRatio,
+      fps: draft.settings.fps,
+      direction: draft.direction,
+      timelineAnchor: draft.owner,
+    })
+    : {};
   const built = createVideoShotFromStoryboardFrames({
-    sourceShotId: draft.source.sourceShotId,
+    ...sourceSpec,
+    sourceShotId: draft.source.sourceShotId || sourceSpec.sourceShotId,
     timelineAnchor: draft.owner,
     durationSeconds: draft.settings.durationSeconds,
     resolution: draft.settings.resolution,
     aspectRatio: draft.settings.aspectRatio,
     fps: draft.settings.fps,
-    intent: { summary: draft.direction },
+    intent: {
+      ...(plain(sourceSpec.intent) ? sourceSpec.intent : {}),
+      summary: draft.direction || sourceSpec.intent?.summary || '',
+    },
   }, usable, {
     chatKey: draft.owner.chatKey,
     shotId: draft.source.sourceShotId || `video-shot-${hash(draft.draftId)}`,
