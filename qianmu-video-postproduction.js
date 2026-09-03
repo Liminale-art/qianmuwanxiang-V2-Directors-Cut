@@ -118,8 +118,15 @@ function normalizeAudioItem(value = {}, role = 'dialogue', index = 0, durationMs
     role,
     label: text(raw.label, 160),
     source: {
-      kind: 'audio_asset',
+      kind: source.kind === 'director_voice' ? 'director_voice' : 'audio_asset',
       assetId: stableId(source.assetId || source.asset_id || raw.assetId || raw.asset_id),
+      refId: stableId(source.refId || source.ref_id),
+      decisionId: stableId(source.decisionId || source.decision_id),
+      workOrderId: stableId(source.workOrderId || source.work_order_id),
+      recordId: stableId(source.recordId || source.record_id),
+      clipId: stableId(source.clipId || source.clip_id),
+      relativeStartMs: Math.round(number(source.relativeStartMs ?? source.relative_start_ms, 0, 432_000_000, 0)),
+      relativeEndMs: Math.round(number(source.relativeEndMs ?? source.relative_end_ms, 0, 432_000_000, 0)),
     },
     startMs,
     endMs,
@@ -228,6 +235,12 @@ export function validateVideoPostproduction(value = {}, timelineValue = {}) {
     project.audio[role].forEach((item, index) => {
       if (!item.source.assetId) issues.push(`postproduction_audio_source_missing:${role}:${index}`);
       if (item.endMs <= item.startMs) issues.push(`postproduction_audio_range_invalid:${role}:${index}`);
+      if (item.source.kind === 'director_voice') {
+        if (role !== 'dialogue') issues.push(`postproduction_audio_director_role_invalid:${role}:${index}`);
+        if (!item.source.refId || !item.source.decisionId || !item.source.workOrderId || !item.source.recordId || !item.source.clipId) issues.push(`postproduction_audio_director_source_missing:${role}:${index}`);
+        if (context.clipIds.length && !context.clipIds.includes(item.source.clipId)) issues.push(`postproduction_audio_director_clip_missing:${role}:${index}`);
+        if (item.source.relativeEndMs <= item.source.relativeStartMs) issues.push(`postproduction_audio_director_range_invalid:${role}:${index}`);
+      }
       if (audioIds.has(item.audioId)) issues.push(`postproduction_audio_id_duplicate:${role}:${index}`);
       audioIds.add(item.audioId);
     });

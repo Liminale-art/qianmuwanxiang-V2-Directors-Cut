@@ -109,10 +109,38 @@ test('director subtitles retain a bounded decision and clip provenance chain', (
   assert.ok(invalid.issues.includes('postproduction_subtitle_director_clip_missing:0'));
 });
 
+test('director voice tracks retain only a bounded audio and decision source', () => {
+  const result = validateVideoPostproduction({
+    timelineId: 'timeline-a', owner: { chatKey: 'chat-a' }, mode: 'layered',
+    audio: { dialogue: [{
+      audioId: 'voice-work-a', role: 'dialogue', label: 'Alice', startMs: 100, endMs: 1200,
+      speakerId: 'alice', dialogueText: '到此为止。',
+      source: {
+        kind: 'director_voice', assetId: 'tts:abc', refId: 'work-a:clip-a:line-1', decisionId: 'decision-a',
+        workOrderId: 'work-a', recordId: 'record-a', clipId: 'clip-a', relativeStartMs: 100, relativeEndMs: 1200,
+        apiKey: 'discard', url: 'https://private.invalid/audio',
+      },
+    }] },
+  }, timeline());
+  assert.equal(result.ok, true, result.issues.join(','));
+  assert.equal(result.project.audio.dialogue[0].source.kind, 'director_voice');
+  assert.equal(result.project.audio.dialogue[0].source.assetId, 'tts:abc');
+  assert.doesNotMatch(JSON.stringify(result.project), /discard|private\.invalid|apiKey|url/);
+
+  const invalid = validateVideoPostproduction({
+    timelineId: 'timeline-a', owner: { chatKey: 'chat-a' }, mode: 'layered',
+    audio: { ambience: [{ audioId: 'voice-a', startMs: 0, endMs: 500, source: { kind: 'director_voice', assetId: 'tts:a', clipId: 'missing' } }] },
+  }, timeline());
+  assert.equal(invalid.ok, false);
+  assert.ok(invalid.issues.includes('postproduction_audio_director_role_invalid:ambience:0'));
+  assert.ok(invalid.issues.includes('postproduction_audio_director_source_missing:ambience:0'));
+  assert.ok(invalid.issues.includes('postproduction_audio_director_clip_missing:ambience:0'));
+});
+
 test('the postproduction contract is an idle release chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(source, /videoPostproduction:\s*\{[\s\S]*import\('\.\/qianmu-video-postproduction\.js\?v=1\.58\.99'\)/);
+  assert.match(source, /videoPostproduction:\s*\{[\s\S]*import\('\.\/qianmu-video-postproduction\.js\?v=1\.59\.0'\)/);
   assert.ok(release.files.includes('qianmu-video-postproduction.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoPostproduction'\)/);

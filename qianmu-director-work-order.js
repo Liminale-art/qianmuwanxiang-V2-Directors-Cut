@@ -226,3 +226,39 @@ export function directorWorkOrderToSubtitleCues(value = {}, chatKey = '', option
     };
   });
 }
+
+export function directorWorkOrderToVoiceLines(value = {}, chatKey = '', options = {}) {
+  const result = validateDirectorWorkOrder(value, 'voice', chatKey);
+  if (!result.ok) return [];
+  const order = result.workOrder;
+  const startMs = Math.max(0, Math.floor(Number(options.startMs) || 0));
+  const endMs = Math.max(startMs + 100, Math.floor(Number(options.endMs) || startMs + 100));
+  const recordId = stableId(options.recordId);
+  const clipId = stableId(options.clipId);
+  const lines = order.payload.dialogue;
+  const span = Math.max(100, endMs - startMs);
+  const step = span / Math.max(1, lines.length);
+  return lines.map((line, index) => {
+    const lineStart = Math.round(startMs + (step * index));
+    const lineEnd = index === lines.length - 1 ? endMs : Math.max(lineStart + 100, Math.round(startMs + (step * (index + 1))));
+    const refId = stableId(`${order.workOrderId}:${clipId || 'clip'}:${line.lineId}`);
+    return {
+      lineId: stableId(`voice-${refId}`),
+      speaker: line.speaker,
+      text: line.text,
+      emotion: 'auto',
+      startMs: lineStart,
+      endMs: lineEnd,
+      source: {
+        kind: 'director_voice',
+        refId,
+        decisionId: order.source.decisionId,
+        workOrderId: order.workOrderId,
+        recordId,
+        clipId,
+        relativeStartMs: Math.max(0, lineStart - startMs),
+        relativeEndMs: Math.max(100, lineEnd - startMs),
+      },
+    };
+  });
+}

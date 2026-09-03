@@ -9753,7 +9753,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-film-post-title > b { font-size: 10px; font-weight: 650; }
 #story-director-modal .sd-storyboard-film-post-title > small { color: var(--sd-muted); font-size: 9px; }
 #story-director-modal .sd-storyboard-film-post-title > div { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
-#story-director-modal .sd-storyboard-film-director-subtitles { min-height: 28px; margin: 0; padding: 4px 8px; border: 1px solid color-mix(in srgb, var(--sd-accent) 34%, var(--sd-hairline)); border-radius: 7px; background: color-mix(in srgb, var(--sd-accent) 10%, transparent); color: var(--sd-accent); font-size: 8.5px; font-weight: 650; white-space: nowrap; }
+#story-director-modal :is(.sd-storyboard-film-director-subtitles, .sd-storyboard-film-director-voice) { min-height: 28px; margin: 0; padding: 4px 8px; border: 1px solid color-mix(in srgb, var(--sd-accent) 34%, var(--sd-hairline)); border-radius: 7px; background: color-mix(in srgb, var(--sd-accent) 10%, transparent); color: var(--sd-accent); font-size: 8.5px; font-weight: 650; white-space: nowrap; }
 #story-director-modal .sd-storyboard-film-post-title .sd-icon-btn { width: 28px; min-width: 28px; height: 28px; margin: 0; border-radius: 7px !important; }
 #story-director-modal .sd-storyboard-film-transition-list,
 #story-director-modal .sd-storyboard-film-subtitle-list { min-width: 0; display: grid; gap: 5px; }
@@ -9770,6 +9770,12 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-film-subtitle > label { min-width: 0; display: grid; grid-template-columns: 14px minmax(0, 1fr); align-items: center; gap: 3px; color: var(--sd-muted); font-size: 8px; }
 #story-director-modal .sd-storyboard-film-subtitle textarea.text_pole { height: 48px; min-height: 48px; resize: vertical; line-height: 1.45 !important; }
 #story-director-modal .sd-storyboard-film-subtitle > .sd-icon-btn { width: 28px; min-width: 28px; height: 28px; margin: 1px 0 0; border-radius: 7px !important; }
+#story-director-modal .sd-storyboard-film-voice-list { min-width: 0; display: grid; gap: 5px; }
+#story-director-modal .sd-storyboard-film-voice { min-width: 0; display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--sd-hairline); border-radius: 9px; background: var(--sd-card); }
+#story-director-modal .sd-storyboard-film-voice > .sd-icon-btn { width: 28px; min-width: 28px; height: 28px; margin: 0; border-radius: 7px !important; }
+#story-director-modal .sd-storyboard-film-voice > span { min-width: 0; display: grid; gap: 2px; }
+#story-director-modal .sd-storyboard-film-voice > span b { overflow: hidden; font-size: 9px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-storyboard-film-voice > span small { overflow: hidden; color: var(--sd-muted); font-size: 8.5px; text-overflow: ellipsis; white-space: nowrap; }
 
 /* v1.58.88 · 完整影片按需顺序预览：一次只持有当前片段的媒体资源。 */
 .sd-storyboard-film-viewer {

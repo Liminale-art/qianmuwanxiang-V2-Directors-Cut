@@ -7,6 +7,7 @@ import {
   createDirectorWorkOrder,
   directorWorkOrderToSubtitleCues,
   directorWorkOrderToStoryboardShot,
+  directorWorkOrderToVoiceLines,
   normalizeDirectorWorkOrder,
 } from '../qianmu-director-work-order.js';
 import { normalizeStoryboardShotSpec, storyboardProductionContext } from '../qianmu-storyboard.js';
@@ -105,6 +106,22 @@ test('subtitle adapter creates timed, clip-owned cues from the approved projecti
   assert.equal(directorWorkOrderToSubtitleCues(workOrder, 'chat-b', { startMs: 0, endMs: 1000 }).length, 0);
 });
 
+test('voice adapter creates bounded lines without exposing visual or provider state', () => {
+  const decision = approvedDecision({ voice: true });
+  const { workOrder } = createDirectorWorkOrder(decision, 'voice', 'chat-a', { createdAt: 200 });
+  const lines = directorWorkOrderToVoiceLines(workOrder, 'chat-a', {
+    startMs: 1000, endMs: 3000, recordId: 'record-a', clipId: 'clip-a', apiKey: 'discard',
+  });
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].speaker, 'Alice');
+  assert.equal(lines[0].text, '到此为止。');
+  assert.equal(lines[0].source.kind, 'director_voice');
+  assert.equal(lines[0].source.clipId, 'clip-a');
+  assert.equal(lines[0].source.decisionId, decision.decisionId);
+  assert.doesNotMatch(JSON.stringify(lines), /discard|旧车站|雨声|烧焦/);
+  assert.equal(directorWorkOrderToVoiceLines(workOrder, 'chat-b').length, 0);
+});
+
 test('world-side storyboard runtime dispatches a validated work order before prompt compilation', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const generate = source.slice(source.indexOf('async function storyboardGenerateProductionPacket'), source.indexOf('async function storyboardGenerate(root'));
@@ -119,7 +136,7 @@ test('world-side storyboard runtime dispatches a validated work order before pro
 test('director work orders remain lazy and ship inside the release boundary', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(source, /directorWorkOrders:\s*\{[\s\S]*import\('\.\/qianmu-director-work-order\.js\?v=1\.58\.99'\)/);
+  assert.match(source, /directorWorkOrders:\s*\{[\s\S]*import\('\.\/qianmu-director-work-order\.js\?v=1\.59\.0'\)/);
   const init = source.slice(source.indexOf('function init()'), source.indexOf('function cleanupRuntime'));
   assert.doesNotMatch(init, /featureRuntime\.load\('directorWorkOrders'\)/);
   assert.ok(release.files.includes('qianmu-director-work-order.js'));
