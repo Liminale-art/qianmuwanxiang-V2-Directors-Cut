@@ -96,8 +96,8 @@ test('chat switches and extension cleanup discard all ephemeral bridge state', (
 });
 
 test('message mutations and plan clearing release stale candidates without treating lazy loading as a mutation', () => {
-  const handlers = source.slice(source.indexOf('const refreshHandler = async'), source.indexOf('function init()'));
-  assert.match(handlers, /const refreshHandler = async \(\) => \{\s*resetDirectorNarrativeBridge\(\)/);
+  const handlers = source.slice(source.indexOf('const runBackgroundDirectorRefresh = async'), source.indexOf('function init()'));
+  assert.match(handlers, /const refreshHandler = \(\) => \{\s*resetDirectorNarrativeBridge\(\)/);
   assert.match(handlers, /const ttsMessageEditedHandler = \(messageRef\) => \{\s*resetDirectorNarrativeBridge\(\)/);
   assert.match(handlers, /const storyboardMessageDeletedHandler = async \(\) => \{\s*resetDirectorNarrativeBridge\(\)/);
   assert.match(handlers, /const storyboardMessageVersionHandler = \(\) => \{\s*resetDirectorNarrativeBridge\(\)/);

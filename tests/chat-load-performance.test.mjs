@@ -8,7 +8,7 @@ const observer = source.slice(source.indexOf('function ttsStartChat'), source.in
 assert.match(observer, /MutationObserver\(\(records\) => ttsQueueMutationRecords\(records\)\)/, '聊天观察器必须把新增节点交给增量队列');
 assert.doesNotMatch(observer, /MutationObserver\(\(\) => ttsScanDebounced/, '聊天新增楼层不得触发全聊天回扫');
 assert.match(source, /ttsMessageEditedHandler = \(messageRef\)[\s\S]*ttsScheduleEditedMessage\(messageRef/, '正文编辑必须只重查对应楼层');
-const refresh = source.slice(source.indexOf('const refreshHandler = async'), source.indexOf('const rerenderHandler = async'));
+const refresh = source.slice(source.indexOf('const runBackgroundDirectorRefresh = async'), source.indexOf('const refreshHandler ='));
 assert.match(refresh, /if \(metadataChanged\) await saveMetadata\(\)/, '新消息未改变推演状态时不得重写整份聊天 metadata');
 
 const queue = source.slice(source.indexOf('function ttsScheduleInitialScan'), source.indexOf('// 委托点击'));
