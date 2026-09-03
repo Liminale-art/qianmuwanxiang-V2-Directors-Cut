@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.0';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.0';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.0';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.59.0';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.1';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.1';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.1';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.59.1';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,143 +151,143 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.0';
+} from './qianmu-storyboard.js?v=1.59.1';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.0';
+const VERSION = '1.59.1';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.0'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.1'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.0').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.1').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.0'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.1'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.0'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.1'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.0'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.1'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.0'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.1'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.0'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.1'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.0'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.1'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.0'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.1'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.0'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.1'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.0'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.1'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.0'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.1'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.0'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.1'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.0'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.1'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.0'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.1'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.0'),
+    load: () => import('./qianmu-video-task.js?v=1.59.1'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.0'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.1'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.0'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.1'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.0'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.1'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.0'),
+    load: () => import('./qianmu-video-store.js?v=1.59.1'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.0'),
+    load: () => import('./qianmu-video-result.js?v=1.59.1'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.0'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.1'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.0'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.1'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.0'),
+    load: () => import('./qianmu-video-media.js?v=1.59.1'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.0'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.1'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.0'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.1'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.0'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.1'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.0'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.1'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.0'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.1'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.0'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.1'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.0'),
-        import('./qianmu-theaters.js?v=1.59.0'),
+        import('./builtin-theaters.js?v=1.59.1'),
+        import('./qianmu-theaters.js?v=1.59.1'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -1200,6 +1200,10 @@ let storyboardFilmPlaybackSession = null;
 let storyboardFilmPlaybackState = null;
 let storyboardFilmViewerPostproduction = null;
 let storyboardFilmSubtitleTimer = null;
+let storyboardFilmVoicePlayback = null;
+let storyboardFilmVoiceLoadSeq = 0;
+let storyboardFilmVoiceAutoplayWarned = false;
+const storyboardFilmVoiceFailures = new Set();
 let storyboardFilmViewerLastReadyIndex = -1;
 let storyboardFilmViewerPaintSeq = 0;
 let storyboardVideoDraftEditorEl = null;
@@ -14891,6 +14895,8 @@ function storyboardCloseFilmViewer() {
   storyboardFilmViewerPaintSeq++;
   if (storyboardFilmSubtitleTimer) clearTimeout(storyboardFilmSubtitleTimer);
   storyboardFilmSubtitleTimer = null;
+  storyboardReleaseFilmVoicePlayback();
+  storyboardFilmVoiceFailures.clear();
   storyboardFilmPlaybackSession?.dispose?.();
   storyboardFilmPlaybackSession = null;
   storyboardFilmPlaybackState = null;
@@ -14917,6 +14923,118 @@ function storyboardFilmViewerTimelineOffsetMs(snapshot) {
   ), 0);
 }
 
+function storyboardFilmViewerAbsoluteMs(snapshot) {
+  const layer = storyboardFilmViewerEl;
+  const video = layer?.querySelector('.sd-storyboard-film-viewer-stage video');
+  const clipElapsedMs = snapshot?.frame?.kind === 'motion' && video
+    ? Math.max(0, Math.round((Number(video.currentTime) || 0) * 1000))
+    : Math.max(0, Number(snapshot?.clipElapsedMs) || 0);
+  return storyboardFilmViewerTimelineOffsetMs(snapshot) + clipElapsedMs;
+}
+
+function storyboardSetFilmNativeAudioDuck(active) {
+  const video = storyboardFilmViewerEl?.querySelector('.sd-storyboard-film-viewer-stage video');
+  if (!video || video.muted) return;
+  video.volume = active ? .28 : 1;
+}
+
+function storyboardReleaseFilmVoicePlayback() {
+  storyboardFilmVoiceLoadSeq++;
+  const current = storyboardFilmVoicePlayback;
+  storyboardFilmVoicePlayback = null;
+  if (current?.audio) {
+    try { current.audio.pause(); } catch (_) {}
+    current.audio.removeAttribute('src');
+  }
+  if (current?.url) {
+    try { URL.revokeObjectURL(current.url); } catch (_) {}
+  }
+  storyboardSetFilmNativeAudioDuck(false);
+}
+
+function storyboardSyncFilmVoiceAudio(current, track, snapshot, absoluteMs) {
+  const audio = current?.audio;
+  if (!audio) return;
+  const offsetMs = Math.max(0, Number(track.sourceOffsetMs) || 0) + Math.max(0, absoluteMs - Number(track.startMs || 0));
+  const targetSeconds = offsetMs / 1000;
+  if (Number.isFinite(targetSeconds) && Math.abs((Number(audio.currentTime) || 0) - targetSeconds) > .35) {
+    try { audio.currentTime = targetSeconds; } catch (_) {}
+  }
+  const baseDb = (Number(track.gainDb) || 0) + (Number(storyboardFilmViewerPostproduction?.mix?.masterGainDb) || 0);
+  const elapsedMs = Math.max(0, absoluteMs - Number(track.startMs || 0));
+  const remainingMs = Math.max(0, Number(track.endMs || 0) - absoluteMs);
+  const fadeIn = Number(track.fadeInMs) > 0 ? Math.min(1, elapsedMs / Number(track.fadeInMs)) : 1;
+  const fadeOut = Number(track.fadeOutMs) > 0 ? Math.min(1, remainingMs / Number(track.fadeOutMs)) : 1;
+  audio.volume = Math.max(0, Math.min(1, (10 ** (baseDb / 20)) * fadeIn * fadeOut));
+  if (!snapshot?.playing) {
+    if (!audio.paused) audio.pause();
+    storyboardSetFilmNativeAudioDuck(false);
+    return;
+  }
+  if (!audio.paused) {
+    storyboardSetFilmNativeAudioDuck(true);
+    return;
+  }
+  void audio.play().then(() => {
+    if (storyboardFilmVoicePlayback === current && storyboardFilmPlaybackState?.playing) storyboardSetFilmNativeAudioDuck(true);
+  }).catch(() => {
+    storyboardSetFilmNativeAudioDuck(false);
+    if (!storyboardFilmVoiceAutoplayWarned) {
+      storyboardFilmVoiceAutoplayWarned = true;
+      toast('浏览器拦截了影片对白，请暂停后再次点击播放。', 'info');
+    }
+  });
+}
+
+async function storyboardUpdateFilmViewerVoice(snapshot = storyboardFilmPlaybackState) {
+  const project = storyboardFilmViewerPostproduction;
+  const layer = storyboardFilmViewerEl;
+  if (!layer?.isConnected || project?.mode !== 'layered' || snapshot?.status !== 'ready') {
+    storyboardReleaseFilmVoicePlayback();
+    return;
+  }
+  const absoluteMs = storyboardFilmViewerAbsoluteMs(snapshot);
+  const track = (project.audio?.dialogue || []).find((item) => (
+    item?.source?.assetId
+    && absoluteMs >= Number(item.startMs)
+    && absoluteMs < Number(item.endMs)
+  ));
+  if (!track || storyboardFilmVoiceFailures.has(track.source.assetId)) {
+    storyboardReleaseFilmVoicePlayback();
+    return;
+  }
+  const key = `${track.audioId}:${track.source.assetId}:${track.startMs}:${track.endMs}`;
+  if (storyboardFilmVoicePlayback?.key === key) {
+    storyboardSyncFilmVoiceAudio(storyboardFilmVoicePlayback, track, snapshot, absoluteMs);
+    return;
+  }
+  storyboardReleaseFilmVoicePlayback();
+  if (!snapshot.playing) return;
+  const pending = { key, assetId: track.source.assetId, audio: null, url: '' };
+  const loadSeq = ++storyboardFilmVoiceLoadSeq;
+  storyboardFilmVoicePlayback = pending;
+  try {
+    const hit = await blobStore.getAudio(track.source.assetId);
+    if (loadSeq !== storyboardFilmVoiceLoadSeq || storyboardFilmVoicePlayback !== pending || !layer.isConnected) return;
+    if (!hit?.blob) throw new Error('director_voice_cache_missing');
+    pending.url = URL.createObjectURL(hit.blob);
+    pending.audio = new Audio(pending.url);
+    pending.audio.preload = 'auto';
+    const currentSnapshot = storyboardFilmPlaybackSession?.snapshot?.() || snapshot;
+    storyboardSyncFilmVoiceAudio(pending, track, currentSnapshot, storyboardFilmViewerAbsoluteMs(currentSnapshot));
+    pending.audio.addEventListener('loadedmetadata', () => {
+      if (storyboardFilmVoicePlayback !== pending) return;
+      const latest = storyboardFilmPlaybackSession?.snapshot?.() || storyboardFilmPlaybackState;
+      storyboardSyncFilmVoiceAudio(pending, track, latest, storyboardFilmViewerAbsoluteMs(latest));
+    }, { once: true });
+  } catch (_) {
+    if (storyboardFilmVoicePlayback !== pending) return;
+    storyboardFilmVoiceFailures.add(track.source.assetId);
+    storyboardReleaseFilmVoicePlayback();
+    toast('一条导演配音缓存已缺失，可回到完整影片重新生成。', 'warning');
+  }
+}
+
 function storyboardUpdateFilmViewerSubtitle(snapshot = storyboardFilmPlaybackState) {
   const layer = storyboardFilmViewerEl;
   const overlay = layer?.querySelector('.sd-storyboard-film-viewer-subtitles');
@@ -14928,11 +15046,7 @@ function storyboardUpdateFilmViewerSubtitle(snapshot = storyboardFilmPlaybackSta
     delete overlay.dataset.signature;
     return;
   }
-  const video = layer.querySelector('.sd-storyboard-film-viewer-stage video');
-  const clipElapsedMs = snapshot.frame?.kind === 'motion' && video
-    ? Math.max(0, Math.round((Number(video.currentTime) || 0) * 1000))
-    : Math.max(0, Number(snapshot.clipElapsedMs) || 0);
-  const absoluteMs = storyboardFilmViewerTimelineOffsetMs(snapshot) + clipElapsedMs;
+  const absoluteMs = storyboardFilmViewerAbsoluteMs(snapshot);
   const cues = project.subtitles.filter((cue) => absoluteMs >= Number(cue.startMs) && absoluteMs < Number(cue.endMs)).slice(0, 3);
   const signature = cues.map((cue) => `${cue.cueId}:${cue.kind}:${cue.text}`).join('\n');
   if (!cues.length) {
@@ -14959,12 +15073,14 @@ function storyboardSyncFilmViewerSubtitleClock(snapshot = storyboardFilmPlayback
   if (storyboardFilmSubtitleTimer) clearTimeout(storyboardFilmSubtitleTimer);
   storyboardFilmSubtitleTimer = null;
   storyboardUpdateFilmViewerSubtitle(snapshot);
+  void storyboardUpdateFilmViewerVoice(snapshot);
   if (!snapshot?.playing || snapshot.status !== 'ready' || storyboardFilmViewerPostproduction?.mode !== 'layered') return;
   const tick = () => {
     storyboardFilmSubtitleTimer = null;
     if (!storyboardFilmViewerEl?.isConnected || !storyboardFilmPlaybackSession) return;
     const current = storyboardFilmPlaybackSession.snapshot();
     storyboardUpdateFilmViewerSubtitle(current);
+    void storyboardUpdateFilmViewerVoice(current);
     if (current.playing && current.status === 'ready') storyboardFilmSubtitleTimer = setTimeout(tick, 120);
   };
   storyboardFilmSubtitleTimer = setTimeout(tick, 120);
@@ -15018,6 +15134,7 @@ function storyboardPaintFilmViewer(snapshot) {
     storyboardSyncFilmViewerControls(snapshot);
     return;
   }
+  storyboardReleaseFilmVoicePlayback();
   const paintSeq = ++storyboardFilmViewerPaintSeq;
   const timeline = snapshot.timeline;
   const clips = Array.isArray(timeline?.clips) ? timeline.clips : [];
@@ -15067,7 +15184,10 @@ function storyboardPaintFilmViewer(snapshot) {
     if (paintSeq === storyboardFilmViewerPaintSeq && video.isConnected && !video.ended && storyboardFilmPlaybackState?.playing) storyboardFilmPlaybackSession?.pause?.();
   });
   video?.addEventListener('timeupdate', () => {
-    if (paintSeq === storyboardFilmViewerPaintSeq && video.isConnected) storyboardUpdateFilmViewerSubtitle(storyboardFilmPlaybackState);
+    if (paintSeq === storyboardFilmViewerPaintSeq && video.isConnected) {
+      storyboardUpdateFilmViewerSubtitle(storyboardFilmPlaybackState);
+      void storyboardUpdateFilmViewerVoice(storyboardFilmPlaybackState);
+    }
   });
   storyboardSyncFilmViewerControls(snapshot);
 }
@@ -15094,6 +15214,8 @@ async function storyboardOpenFilmViewer(timelineId) {
       storyboardFilmViewerPostproduction = postproduction.postproductionModule.createEmptyVideoPostproduction(timeline);
     }
     storyboardFilmViewerLastReadyIndex = -1;
+    storyboardFilmVoiceAutoplayWarned = false;
+    storyboardFilmVoiceFailures.clear();
     if (!storyboardVideoGallerySession) storyboardVideoGallerySession = galleryRuntime.createVideoGallerySession(blobStore);
     const layer = document.createElement('div');
     layer.className = 'sd-storyboard-film-viewer';

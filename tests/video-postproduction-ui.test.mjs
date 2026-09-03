@@ -50,9 +50,11 @@ test('film preview reads layered subtitles on demand and renders them as text', 
   const open = source.slice(source.indexOf('async function storyboardOpenFilmViewer'), source.indexOf('function renderStoryboardVideoGallery'));
   assert.match(open, /storyboardEnsureFilmPostproductionRuntime\(\)/);
   assert.match(open, /postproduction\.store\.load\(timeline\.timelineId, chatKey, timeline\)/);
+  const clock = source.slice(source.indexOf('function storyboardFilmViewerAbsoluteMs'), source.indexOf('function storyboardSetFilmNativeAudioDuck'));
+  assert.match(clock, /video\.currentTime/);
+  assert.match(clock, /storyboardFilmViewerTimelineOffsetMs\(snapshot\)/);
   const subtitles = source.slice(source.indexOf('function storyboardUpdateFilmViewerSubtitle'), source.indexOf('function storyboardFilmViewerTransition'));
-  assert.match(subtitles, /video\.currentTime/);
-  assert.match(subtitles, /storyboardFilmViewerTimelineOffsetMs\(snapshot\)/);
+  assert.match(subtitles, /storyboardFilmViewerAbsoluteMs\(snapshot\)/);
   assert.match(subtitles, /line\.className = 'sd-storyboard-film-viewer-subtitle-line'/);
   assert.match(subtitles, /line\.textContent = String\(cue\.text \|\| ''\)/);
   assert.doesNotMatch(subtitles, /innerHTML\s*=\s*cue\.text/);
