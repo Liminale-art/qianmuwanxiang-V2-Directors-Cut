@@ -89,6 +89,8 @@ export function createVideoGenerationConfirmation(value = {}, options = {}) {
   const fingerprint = fingerprintFor(checked.spec, checked.manifest, promptSource, estimate, raw.owner);
   const confirmationIssues = [];
   if (!acknowledgements.cost) confirmationIssues.push('cost_confirmation_required');
+  if (!acknowledgements.materialRights) confirmationIssues.push('material_rights_confirmation_required');
+  if (!acknowledgements.h3License) confirmationIssues.push('h3_license_confirmation_required');
   if (checked.spec.resolution === '2k' && !acknowledgements.highResolution) {
     confirmationIssues.push('high_resolution_confirmation_required');
   }
@@ -122,6 +124,8 @@ export function createVideoGenerationConfirmation(value = {}, options = {}) {
     confirmationIssues: readyForConfirmation ? confirmationIssues : [],
     acknowledgements: {
       cost: Boolean(acknowledgements.cost),
+      materialRights: Boolean(acknowledgements.materialRights),
+      h3License: Boolean(acknowledgements.h3License),
       highResolution: Boolean(acknowledgements.highResolution),
     },
     summary: {

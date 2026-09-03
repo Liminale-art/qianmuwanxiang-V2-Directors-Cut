@@ -47,6 +47,8 @@ const submission = (taskId, extra = {}) => ({
   quote,
   budgetPolicy: policy,
   costConfirmed: true,
+  materialRightsConfirmed: true,
+  h3LicenseConfirmed: true,
   spec: { shotId: 'shot-a', summary: 'A quiet room.', durationSeconds: 6, resolution: '768p' },
   manifest: { shotId: 'shot-a', assets: [] },
   prompt: 'A quiet room.',
@@ -236,7 +238,7 @@ test('retry stays a separate confirmed state change and never submits by itself'
 test('the coordinator remains an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(source, /videoCoordinator:\s*\{[\s\S]*import\('\.\/qianmu-video-coordinator\.js\?v=1\.58\.80'\)/);
+  assert.match(source, /videoCoordinator:\s*\{[\s\S]*import\('\.\/qianmu-video-coordinator\.js\?v=1\.58\.81'\)/);
   assert.ok(release.files.includes('qianmu-video-coordinator.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoCoordinator'\)/);

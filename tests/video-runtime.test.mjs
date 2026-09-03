@@ -42,6 +42,8 @@ const submission = (extra = {}) => ({
   quote,
   budgetPolicy: policy,
   costConfirmed: true,
+  materialRightsConfirmed: true,
+  h3LicenseConfirmed: true,
   apiKey: 'private-payg-key',
   spec: { shotId: 'shot-a', summary: 'A quiet room.', durationSeconds: 6, resolution: '768p' },
   manifest: { shotId: 'shot-a', assets: [] },
@@ -104,6 +106,21 @@ test('paid submission uses two durable checkpoints and stays reserved until prov
   assert.equal(checkpoints[1].task.submission.providerAccepted, false);
   assert.doesNotMatch(JSON.stringify(result), /private-payg-key|A quiet room|mediaInputs/);
   assert.doesNotMatch(JSON.stringify(checkpoints), /private-payg-key|A quiet room/);
+});
+
+test('paid H3 submission requires rights and license confirmations before any network call', async () => {
+  let calls = 0;
+  const options = {
+    now: 2000,
+    workerId: 'tab-a',
+    persistCheckpoint: async () => {},
+    fetchImpl: async () => { calls += 1; return response({ ok: true, remoteTaskId: 'unexpected' }); },
+  };
+  const rights = await submitMiniMaxH3VideoTask(submission({ materialRightsConfirmed: false }), options);
+  assert.equal(rights.issue, 'material_rights_confirmation_required');
+  const license = await submitMiniMaxH3VideoTask(submission({ h3LicenseConfirmed: false }), options);
+  assert.equal(license.issue, 'h3_license_confirmation_required');
+  assert.equal(calls, 0);
 });
 
 test('missing or failed pre-network checkpoints prevent every paid request', async () => {
@@ -358,7 +375,7 @@ test('the client runtime ships as an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   assert.doesNotMatch(source, /^import[^\n]*qianmu-video-runtime\.js/m);
-  assert.match(source, /minimaxH3Runtime:\s*\{[\s\S]*import\('\.\/qianmu-video-runtime\.js\?v=1\.58\.80'\)/);
+  assert.match(source, /minimaxH3Runtime:\s*\{[\s\S]*import\('\.\/qianmu-video-runtime\.js\?v=1\.58\.81'\)/);
   assert.ok(release.files.includes('qianmu-video-runtime.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('minimaxH3Runtime'\)/);

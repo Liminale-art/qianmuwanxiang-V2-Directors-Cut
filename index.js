@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.80';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.80';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.80';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.80';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.81';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.81';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.81';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.81';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,107 +151,107 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.80';
+} from './qianmu-storyboard.js?v=1.58.81';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.80';
+const VERSION = '1.58.81';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.80'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.81'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.58.80').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.58.81').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.80'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.81'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.80'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.81'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.58.80'),
+    load: () => import('./qianmu-video-contract.js?v=1.58.81'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.58.80'),
+    load: () => import('./qianmu-video-draft.js?v=1.58.81'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.58.80'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.58.81'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.58.80'),
+    load: () => import('./qianmu-video-readiness.js?v=1.58.81'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.58.80'),
+    load: () => import('./qianmu-video-pricing.js?v=1.58.81'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.58.80'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.58.81'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.58.80'),
+    load: () => import('./qianmu-video-prompt.js?v=1.58.81'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.58.80'),
+    load: () => import('./qianmu-video-task.js?v=1.58.81'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.58.80'),
+    load: () => import('./qianmu-video-budget.js?v=1.58.81'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.58.80'),
+    load: () => import('./qianmu-video-minimax.js?v=1.58.81'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.58.80'),
+    load: () => import('./qianmu-video-runtime.js?v=1.58.81'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.58.80'),
+    load: () => import('./qianmu-video-store.js?v=1.58.81'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.58.80'),
+    load: () => import('./qianmu-video-result.js?v=1.58.81'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.58.80'),
+    load: () => import('./qianmu-video-gallery.js?v=1.58.81'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.58.80'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.58.81'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.58.80'),
+    load: () => import('./qianmu-video-media.js?v=1.58.81'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.80'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.81'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.80'),
-        import('./qianmu-theaters.js?v=1.58.80'),
+        import('./builtin-theaters.js?v=1.58.81'),
+        import('./qianmu-theaters.js?v=1.58.81'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -13413,7 +13413,7 @@ function storyboardVideoDraftEditorMarkup(draft) {
       </div>
     </div>
     <section class="sd-storyboard-video-draft-picker" hidden><header><button type="button" class="sd-video-draft-picker-close" title="返回" aria-label="返回"><i class="fa-solid fa-arrow-left"></i></button><div><span class="sd-storyboard-kicker">FRAME LIBRARY</span><h3>选择画面</h3></div><button type="button" class="sd-video-draft-picker-clear">清除</button></header><div class="sd-storyboard-video-draft-picker-grid">${pickerRows || '<p>当前聊天还没有可选画面。</p>'}</div><footer><span class="sd-video-draft-picker-count"></span><button type="button" class="sd-btn sd-primary sd-video-draft-picker-done">完成</button></footer></section>
-    <section class="sd-storyboard-video-confirmation" role="dialog" aria-modal="true" aria-label="生成前核对" hidden><header><button type="button" class="sd-video-confirmation-close" title="返回草稿" aria-label="返回草稿"><i class="fa-solid fa-arrow-left"></i></button><div><span class="sd-storyboard-kicker">FINAL CHECK</span><h3>生成前核对</h3></div></header><div class="sd-video-confirmation-body"><section class="sd-video-confirmation-summary"></section><section class="sd-video-confirmation-cost"></section><div class="sd-video-confirmation-blockers" role="status"></div><div class="sd-video-confirmation-checks"><label><input type="checkbox" class="sd-video-confirmation-cost-check"><span>我已核对当前预计费用；它不是供应商锁价</span></label><label class="sd-video-confirmation-2k-check" hidden><input type="checkbox"><span>我确认本次使用 2K 高画质</span></label></div></div><footer><small><i class="fa-solid fa-shield-halved"></i>只有点按“确认生成”才会创建并发送付费任务。</small><button type="button" class="sd-btn sd-primary sd-video-confirmation-accept" disabled>确认生成</button></footer></section>
+    <section class="sd-storyboard-video-confirmation" role="dialog" aria-modal="true" aria-label="生成前核对" hidden><header><button type="button" class="sd-video-confirmation-close" title="返回草稿" aria-label="返回草稿"><i class="fa-solid fa-arrow-left"></i></button><div><span class="sd-storyboard-kicker">FINAL CHECK</span><h3>生成前核对</h3></div></header><div class="sd-video-confirmation-body"><section class="sd-video-confirmation-summary"></section><section class="sd-video-confirmation-cost"></section><div class="sd-video-confirmation-blockers" role="status"></div><div class="sd-video-confirmation-checks"><label><input type="checkbox" class="sd-video-confirmation-cost-check"><span>我已核对当前预计费用；它不是供应商锁价</span></label><label><input type="checkbox" class="sd-video-confirmation-rights-check"><span>我确认对本次使用的人物、图像、视频与声音素材拥有必要权利或许可</span></label><label><input type="checkbox" class="sd-video-confirmation-license-check"><span>我确认使用与展示地区符合 MiniMax H3 许可，或已取得单独授权，并遵守其使用限制</span></label><label class="sd-video-confirmation-2k-check" hidden><input type="checkbox"><span>我确认本次使用 2K 高画质</span></label><small class="sd-video-confirmation-provider">AI 生成 · MiniMax H3 · <a href="https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">查看许可</a></small></div></div><footer><small><i class="fa-solid fa-shield-halved"></i>只有点按“确认生成”才会创建并发送付费任务。</small><button type="button" class="sd-btn sd-primary sd-video-confirmation-accept" disabled>确认生成</button></footer></section>
     <footer><small><i class="fa-solid fa-shield-halved"></i>保存草稿不联网；付费生成必须进入核对页确认。</small><div><button type="button" class="sd-btn sd-storyboard-video-draft-cancel">取消</button><button type="button" class="sd-btn sd-video-confirmation-open"><i class="fa-solid fa-check-double"></i>生成前核对</button><button type="button" class="sd-btn sd-primary sd-storyboard-video-draft-save"><i class="fa-solid fa-floppy-disk"></i>保存草稿</button></div></footer>
   </section>`;
 }
@@ -13729,6 +13729,8 @@ async function storyboardOpenVideoDraftEditor(source) {
       const cost = confirmationPanel.querySelector('.sd-video-confirmation-cost');
       const blockers = confirmationPanel.querySelector('.sd-video-confirmation-blockers');
       const costCheck = confirmationPanel.querySelector('.sd-video-confirmation-cost-check');
+      const rightsCheck = confirmationPanel.querySelector('.sd-video-confirmation-rights-check');
+      const licenseCheck = confirmationPanel.querySelector('.sd-video-confirmation-license-check');
       const highResolutionRow = confirmationPanel.querySelector('.sd-video-confirmation-2k-check');
       const highResolutionCheck = highResolutionRow?.querySelector('input');
       const accept = confirmationPanel.querySelector('.sd-video-confirmation-accept');
@@ -13743,6 +13745,8 @@ async function storyboardOpenVideoDraftEditor(source) {
           : issues.length ? `<b>还不能进入确认</b><ul>${issues.map((item) => `<li>${htmlEscape(item)}</li>`).join('')}</ul>` : '';
       }
       if (costCheck) costCheck.disabled = !review.readyForConfirmation;
+      if (rightsCheck) rightsCheck.disabled = !review.readyForConfirmation;
+      if (licenseCheck) licenseCheck.disabled = !review.readyForConfirmation;
       if (highResolutionRow) highResolutionRow.hidden = review.summary.resolution !== '2k';
       if (highResolutionCheck) highResolutionCheck.disabled = !review.readyForConfirmation;
       if (accept) {
@@ -13755,8 +13759,10 @@ async function storyboardOpenVideoDraftEditor(source) {
     const refreshVideoConfirmation = () => {
       if (!confirmationRuntime) return null;
       const cost = Boolean(confirmationPanel?.querySelector('.sd-video-confirmation-cost-check')?.checked);
+      const materialRights = Boolean(confirmationPanel?.querySelector('.sd-video-confirmation-rights-check')?.checked);
+      const h3License = Boolean(confirmationPanel?.querySelector('.sd-video-confirmation-license-check')?.checked);
       const highResolution = Boolean(confirmationPanel?.querySelector('.sd-video-confirmation-2k-check input')?.checked);
-      const review = confirmationRuntime.createVideoGenerationConfirmation(confirmationInput({ cost, highResolution }));
+      const review = confirmationRuntime.createVideoGenerationConfirmation(confirmationInput({ cost, materialRights, h3License, highResolution }));
       paintVideoConfirmation(review);
       return review;
     };
@@ -13774,10 +13780,7 @@ async function storyboardOpenVideoDraftEditor(source) {
         if (sequence !== videoConfirmationSequence || !layer.isConnected) return;
         videoSubmissionOutcomeUnknown = false;
         videoSubmissionNotice = null;
-        const costCheck = confirmationPanel?.querySelector('.sd-video-confirmation-cost-check');
-        const highResolutionCheck = confirmationPanel?.querySelector('.sd-video-confirmation-2k-check input');
-        if (costCheck) costCheck.checked = false;
-        if (highResolutionCheck) highResolutionCheck.checked = false;
+        confirmationPanel?.querySelectorAll('.sd-video-confirmation-checks input').forEach((field) => { field.checked = false; });
         const review = confirmationRuntime.createVideoGenerationConfirmation(confirmationInput());
         videoConfirmationFingerprint = review.fingerprint;
         paintVideoConfirmation(review);
@@ -13909,6 +13912,8 @@ async function storyboardOpenVideoDraftEditor(source) {
         const prompt = String(videoPromptTextarea?.value || '');
         const guard = confirmationRuntime.createVideoGenerationConfirmation(confirmationInput({
           cost: true,
+          materialRights: review.acknowledgements.materialRights,
+          h3License: review.acknowledgements.h3License,
           highResolution: review.acknowledgements.highResolution,
         }));
         if (!guard.confirmed || guard.fingerprint !== videoConfirmationFingerprint || guard.fingerprint !== review.fingerprint) {
@@ -13943,6 +13948,8 @@ async function storyboardOpenVideoDraftEditor(source) {
           quote: guard.quote,
           budgetPolicy: storyboardVideoBudgetPolicy(),
           costConfirmed: true,
+          materialRightsConfirmed: guard.acknowledgements.materialRights,
+          h3LicenseConfirmed: guard.acknowledgements.h3License,
           highResolutionConfirmed: guard.acknowledgements.highResolution,
           spec: compiled.spec,
           manifest: compiled.manifest,
@@ -13962,18 +13969,12 @@ async function storyboardOpenVideoDraftEditor(source) {
           videoSubmissionNotice = { title: '提交结果需要人工核对', items: ['供应商可能已经接收任务，请勿重复生成；本任务会保留在动态阅片室'] };
         } else {
           if (result.task?.state === 'failed') activeVideoTaskId = '';
-          const costCheck = confirmationPanel.querySelector('.sd-video-confirmation-cost-check');
-          const highResolutionCheck = confirmationPanel.querySelector('.sd-video-confirmation-2k-check input');
-          if (costCheck) costCheck.checked = false;
-          if (highResolutionCheck) highResolutionCheck.checked = false;
+          confirmationPanel.querySelectorAll('.sd-video-confirmation-checks input').forEach((field) => { field.checked = false; });
           videoSubmissionNotice = { title: '本次没有完成提交', items: [storyboardVideoOperationIssueLabel(result.issue), '请处理后重新核对费用再试'] };
         }
         await storyboardRefreshVideoGallery({ force: true });
       } catch (error) {
-        const costCheck = confirmationPanel.querySelector('.sd-video-confirmation-cost-check');
-        const highResolutionCheck = confirmationPanel.querySelector('.sd-video-confirmation-2k-check input');
-        if (costCheck) costCheck.checked = false;
-        if (highResolutionCheck) highResolutionCheck.checked = false;
+        confirmationPanel.querySelectorAll('.sd-video-confirmation-checks input').forEach((field) => { field.checked = false; });
         videoSubmissionNotice = { title: '本次没有发送任务', items: [storyboardVideoOperationIssueLabel(error?.message)] };
       } finally {
         videoSubmissionPending = false;
@@ -14082,6 +14083,8 @@ function renderStoryboardVideoTaskShelf(tasks = [], warning = '') {
 function storyboardVideoOperationIssueLabel(issue) {
   const code = String(issue || '');
   if (code === 'missing_api_key') return 'MiniMax H3 凭据不可用，请重新保存后再试';
+  if (code === 'material_rights_confirmation_required') return '请重新确认本次素材与人物所需权利';
+  if (code === 'h3_license_confirmation_required') return '请重新确认 MiniMax H3 许可与使用限制';
   if (code === 'confirmation_changed') return '镜头内容或费用快照已经变化，请重新打开核对页';
   if (code === 'draft_validation_failed') return '当前草稿归属校验失败';
   if (code.includes('gateway') || code === 'provider_unavailable') return '千幕增强服务或 MiniMax H3 暂时不可达';

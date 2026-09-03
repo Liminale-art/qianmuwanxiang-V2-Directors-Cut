@@ -346,6 +346,12 @@ export async function submitMiniMaxH3VideoTask(value = {}, options = {}) {
   if (normalizedQuote.model && normalizedQuote.model !== 'MiniMax-H3') {
     return { ok: false, action: 'blocked', issue: 'quote_model_mismatch', task: originalTask, reservations: originalReservations };
   }
+  if (raw.materialRightsConfirmed !== true && raw.material_rights_confirmed !== true) {
+    return { ok: false, action: 'blocked', issue: 'material_rights_confirmation_required', task: originalTask, reservations: originalReservations };
+  }
+  if (raw.h3LicenseConfirmed !== true && raw.h3_license_confirmed !== true) {
+    return { ok: false, action: 'blocked', issue: 'h3_license_confirmation_required', task: originalTask, reservations: originalReservations };
+  }
   const lease = claimRuntimeLease(originalTask, options, now);
   if (!lease.ok) return { ok: false, action: 'blocked', issue: lease.issue, task: lease.task, reservations: originalReservations };
   const spec = plain(raw.spec) ? raw.spec : {};
