@@ -7374,7 +7374,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   background: var(--sd-accent);
 }
 #story-director-modal .sd-storyboard-capsule-switch:focus-within { outline: 2px solid color-mix(in srgb, var(--sd-accent) 44%, transparent); outline-offset: 3px; border-radius: 999px; }
-#story-director-modal .sd-storyboard-automation-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+#story-director-modal .sd-storyboard-automation-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 #story-director-modal .sd-storyboard-automation-options .sd-option-chip { min-height: 38px; }
 
 #story-director-modal .sd-storyboard-prompt-section {

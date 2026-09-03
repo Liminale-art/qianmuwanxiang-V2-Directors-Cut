@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.92';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.92';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.92';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.92';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.93';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.93';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.93';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.93';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,135 +151,135 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.92';
+} from './qianmu-storyboard.js?v=1.58.93';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.92';
+const VERSION = '1.58.93';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.92'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.93'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.58.92').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.58.93').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.92'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.93'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.92'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.93'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.58.92'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.58.93'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.58.92'),
+    load: () => import('./qianmu-director-candidate.js?v=1.58.93'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.58.92'),
+    load: () => import('./qianmu-video-contract.js?v=1.58.93'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.58.92'),
+    load: () => import('./qianmu-video-draft.js?v=1.58.93'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.58.92'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.58.93'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.58.92'),
+    load: () => import('./qianmu-video-readiness.js?v=1.58.93'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.58.92'),
+    load: () => import('./qianmu-video-pricing.js?v=1.58.93'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.58.92'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.58.93'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.58.92'),
+    load: () => import('./qianmu-video-prompt.js?v=1.58.93'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.58.92'),
+    load: () => import('./qianmu-video-task.js?v=1.58.93'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.58.92'),
+    load: () => import('./qianmu-video-budget.js?v=1.58.93'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.58.92'),
+    load: () => import('./qianmu-video-minimax.js?v=1.58.93'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.58.92'),
+    load: () => import('./qianmu-video-runtime.js?v=1.58.93'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.58.92'),
+    load: () => import('./qianmu-video-store.js?v=1.58.93'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.58.92'),
+    load: () => import('./qianmu-video-result.js?v=1.58.93'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.58.92'),
+    load: () => import('./qianmu-video-gallery.js?v=1.58.93'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.58.92'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.58.93'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.58.92'),
+    load: () => import('./qianmu-video-media.js?v=1.58.93'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.58.92'),
+    load: () => import('./qianmu-video-timeline.js?v=1.58.93'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.58.92'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.58.93'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.58.92'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.58.93'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.58.92'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.58.93'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.58.92'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.58.93'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.92'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.93'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.92'),
-        import('./qianmu-theaters.js?v=1.58.92'),
+        import('./builtin-theaters.js?v=1.58.93'),
+        import('./qianmu-theaters.js?v=1.58.93'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -303,15 +303,56 @@ async function ensureCoreadReaderRuntime({ rerender = false } = {}) {
   }
 }
 let directorProductionPacketState = { chatKey: '', updatedAt: '', packets: [], error: '' };
+let directorCandidatePoolState = { chatKey: '', updatedAt: '', ledger: null, pool: null, error: '' };
+let directorNarrativeBridgeEpoch = 0;
+function resetDirectorNarrativeBridge() {
+  directorNarrativeBridgeEpoch++;
+  directorProductionPacketState = { chatKey: '', updatedAt: '', packets: [], error: '' };
+  directorCandidatePoolState = { chatKey: '', updatedAt: '', ledger: null, pool: null, error: '' };
+}
+async function refreshDirectorCandidatePool(packets, context = {}, requestEpoch = directorNarrativeBridgeEpoch) {
+  const chatKey = String(context.chatKey || '');
+  try {
+    const [ledgerRuntime, candidateRuntime] = await Promise.all([
+      featureRuntime.load('narrativeLedger'),
+      featureRuntime.load('directorCandidates'),
+    ]);
+    const entries = (Array.isArray(packets) ? packets : []).map(ledgerRuntime.adaptProductionPacketToNarrativeLedgerEntry);
+    const ledger = ledgerRuntime.normalizeNarrativeLedger({ owner: { chatKey }, entries, revision: 0, updatedAt: new Date().toISOString() });
+    const pool = candidateRuntime.buildNarrativeDirectorCandidatePool(ledger.entries, {
+      chatKey, viewerId: 'user', currentFloor: Number(context.floor), recentShotSignatures: [],
+    });
+    const storyboard = storyboardState();
+    if (requestEpoch !== directorNarrativeBridgeEpoch || !storyboard.enabled || !storyboard.directorBridge?.worldSideShotsEnabled) return null;
+    if (chatKey && chatKey !== String(getChatKey() || '')) return null;
+    directorCandidatePoolState = { chatKey, updatedAt: new Date().toISOString(), ledger, pool, error: '' };
+    return pool;
+  } catch (error) {
+    if (requestEpoch !== directorNarrativeBridgeEpoch) return null;
+    directorCandidatePoolState = { chatKey, updatedAt: new Date().toISOString(), ledger: null, pool: null, error: error?.message || String(error) };
+    console.warn('[千幕] 导演候选暂不可用，不影响本次推演结果。', error);
+    return null;
+  }
+}
 async function refreshDirectorProductionPackets(plan, context = {}) {
   const chatKey = String(context.chatKey || '');
+  const storyboard = storyboardState();
+  if (!storyboard.enabled || !storyboard.directorBridge?.worldSideShotsEnabled) {
+    resetDirectorNarrativeBridge();
+    return [];
+  }
+  const requestEpoch = ++directorNarrativeBridgeEpoch;
   try {
     const runtime = await featureRuntime.load('productionPacket');
     const packets = runtime.adaptDirectorPlanToProductionPackets(plan, context);
+    const currentStoryboard = storyboardState();
+    if (requestEpoch !== directorNarrativeBridgeEpoch || !currentStoryboard.enabled || !currentStoryboard.directorBridge?.worldSideShotsEnabled) return [];
     if (chatKey && chatKey !== String(getChatKey() || '')) return [];
     directorProductionPacketState = { chatKey, updatedAt: new Date().toISOString(), packets, error: '' };
+    await refreshDirectorCandidatePool(packets, context, requestEpoch);
     return packets;
   } catch (error) {
+    if (requestEpoch !== directorNarrativeBridgeEpoch) return [];
     directorProductionPacketState = { chatKey, updatedAt: new Date().toISOString(), packets: [], error: error?.message || String(error) };
     console.warn('[千幕] 第二摄影机制片包暂不可用，不影响本次推演结果。', error);
     return [];
@@ -12763,6 +12804,7 @@ function renderStoryboardAutomationCard(state) {
     <div class="sd-storyboard-automation-options">
       <label class="sd-option-chip"><input type="checkbox" class="sd-storyboard-auto-capture" ${state.automation.autoCapture ? 'checked' : ''} ${!state.enabled ? 'disabled' : ''}><span>自动提取生成词</span></label>
       <label class="sd-option-chip"><input type="checkbox" class="sd-storyboard-auto-generate" ${state.automation.autoGenerate ? 'checked' : ''} ${!state.enabled || !state.automation.autoCapture ? 'disabled' : ''}><span>自动生图</span></label>
+      <label class="sd-option-chip"><input type="checkbox" class="sd-storyboard-world-side" ${state.directorBridge.worldSideShotsEnabled ? 'checked' : ''} ${!state.enabled ? 'disabled' : ''}><span>世界侧镜头</span></label>
     </div>
   </section>`;
 }
@@ -12843,6 +12885,7 @@ function storyboardProductionSourceLabel(value) {
 }
 
 function renderStoryboardProductionSources(state) {
+  if (!state.directorBridge?.worldSideShotsEnabled) return '';
   const currentChatKey = String(getChatKey() || '');
   const available = !directorProductionPacketState.chatKey || directorProductionPacketState.chatKey === currentChatKey;
   const packets = available ? (directorProductionPacketState.packets || []) : [];
@@ -16416,8 +16459,14 @@ function storyboardAdaptShotForModel(shot, sourceId, modelId) {
 
 async function storyboardGenerateProductionPacket(root, packetId) {
   const state = storyboardState();
+  if (!state.directorBridge?.worldSideShotsEnabled) return toast('请先启用世界侧镜头。', 'warning');
+  const currentChatKey = String(getChatKey() || '');
+  if (!currentChatKey || directorProductionPacketState.chatKey !== currentChatKey || directorCandidatePoolState.chatKey !== currentChatKey) return toast('这条导演素材不属于当前聊天。', 'warning');
   const packet = (directorProductionPacketState.packets || []).find((item) => item.packetId === packetId);
   if (!packet) return toast('这条导演素材已失效，请重新推演后再试。', 'warning');
+  const ledgerEntry = directorCandidatePoolState.ledger?.entries?.find((item) => item.source?.recordId === packet.packetId);
+  const candidate = directorCandidatePoolState.pool?.candidates?.find((item) => item.entryId === ledgerEntry?.entryId);
+  if (!candidate || candidate.recommendation === 'reject') return toast('这条导演素材未通过连续性与差异检查。', 'warning');
   const profile = storyboardProviderProfile(state);
   const shotSpec = adaptProductionPacketToStoryboardShotSpec(packet);
   const compiled = compileStoryboardPrompt({ providerId: state.source, modelId: profile.model, shot: shotSpec });
@@ -17842,6 +17891,7 @@ function bindStoryboardTabEvents(root) {
     if (!state.enabled) {
       for (const job of storyboardActiveJobs.values()) job.discardRequested = true;
       if (storyboardQueue.length) storyboardClearWaitingQueue('分镜总开关已关闭');
+      resetDirectorNarrativeBridge();
     }
     saveSettings();
     storyboardRenderInlineImages();
@@ -17857,6 +17907,18 @@ function bindStoryboardTabEvents(root) {
     state.automation.autoGenerate = state.automation.autoCapture && Boolean(event.target.checked);
     state.promptCompiler.enabled = true;
     saveSettings(); renderModal();
+  });
+  root.querySelector('.sd-storyboard-world-side')?.addEventListener('change', (event) => {
+    state.directorBridge.worldSideShotsEnabled = Boolean(event.target.checked);
+    if (!state.directorBridge.worldSideShotsEnabled) resetDirectorNarrativeBridge();
+    saveSettings(); renderModal();
+    if (state.directorBridge.worldSideShotsEnabled) {
+      const store = getChatStore();
+      const plan = store?.plan;
+      if (plan) void refreshDirectorProductionPackets(plan, {
+        chatKey: getChatKey(), floor: store.lastPlanIdx, sceneId: plan.story_status?.title || '', time: plan.story_status?.cycle || '',
+      }).then(() => rerenderIfOpen());
+    }
   });
   if (state.view === 'create') {
     const sourceAtBind = state.source;
@@ -31239,6 +31301,7 @@ function bindEvents() {
   };
   const rerenderHandler = async () => {
     storyboardCloseVideoDraftEditor();
+    resetDirectorNarrativeBridge();
     settings = getSettings();
     if (isPlainObject(settings.imagegen)) normalizeStoryboardState(settings.imagegen);
     injectSelection.clear();   // 切换聊天后旧写入勾选失效
@@ -31443,6 +31506,7 @@ function cleanupRuntime(resetSettings = false) {
       storyboardPlanArchiveCache.clear();
     });
     clean('storyboard events', () => storyboardUnbindChat());
+    clean('director candidate pool', () => resetDirectorNarrativeBridge());
     clean('video gallery', () => {
       storyboardCloseVideoViewer();
       storyboardCloseFilmViewer();

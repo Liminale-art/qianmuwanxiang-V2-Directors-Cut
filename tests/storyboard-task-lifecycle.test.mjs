@@ -10,7 +10,7 @@ import {
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 23);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 24);
 assert.deepEqual(createStoryboardDefaults().taskStates, []);
 
 const queued = createStoryboardTaskState({
@@ -41,7 +41,7 @@ const normalized = normalizeStoryboardState({
   schemaVersion: 20,
   taskStates: [completed, { ...completed, id: 'job-b', status: 'failed', error: 'provider error', updatedAt: 400 }],
 });
-assert.equal(normalized.schemaVersion, 23);
+assert.equal(normalized.schemaVersion, 24);
 assert.deepEqual(normalized.taskStates.map((task) => task.id), ['job-b', 'job-a']);
 assert.equal(normalized.taskStates[0].error, 'provider error');
 

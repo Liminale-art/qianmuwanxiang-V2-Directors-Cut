@@ -5,7 +5,7 @@ import {
   prepareStoryboardShotGroup,
 } from '../qianmu-storyboard.js';
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 23);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 24);
 
 const shot = (id, overrides = {}) => ({
   id,

@@ -169,3 +169,38 @@ export function canExposeNarrativeLedgerEntryToMainline(value = {}, viewerId = '
   if (entry.readerVisibility.scope === 'mainline') return true;
   return entry.readerVisibility.scope === 'limited' && Boolean(viewer && entry.readerVisibility.viewerIds.includes(viewer));
 }
+
+export function adaptProductionPacketToNarrativeLedgerEntry(value = {}) {
+  const packet = plain(value) ? value : {};
+  const anchor = plain(packet.timelineAnchor) ? packet.timelineAnchor : {};
+  const source = plain(packet.sourceRef) ? packet.sourceRef : {};
+  const visual = plain(packet.visualIntent) ? packet.visualIntent : {};
+  const characters = Array.isArray(packet.characterState) ? packet.characterState.slice(0, 24) : [];
+  const recordId = text(packet.packetId || packet.eventId, 200);
+  return normalizeNarrativeLedgerEntry({
+    entryId: recordId ? `simulation-${recordId}` : '',
+    owner: { chatKey: anchor.chatKey },
+    source: {
+      kind: 'simulation', recordId, floor: anchor.floor, messageId: anchor.messageId,
+      revisionId: anchor.revisionId, field: source.field, itemId: source.itemId,
+    },
+    fact: {
+      subjectIds: characters.map((item) => item?.id || item?.name),
+      predicate: visual.duty,
+      object: visual.subject,
+      summary: visual.description || visual.subject,
+    },
+    temporalState: /未来|稍后|将要|next|future/i.test(String(anchor.time || '')) ? 'future' : 'present',
+    confidence: { state: 'possible', score: .6 },
+    readerVisibility: { scope: 'director_only' },
+    continuity: {
+      state: 'active',
+      conditions: [
+        { kind: 'source_deleted', refId: recordId },
+        ...(anchor.revisionId ? [{ kind: 'swipe_changed', refId: anchor.revisionId }] : []),
+      ],
+    },
+    evidenceRefs: visual.evidenceRefs,
+    originRefs: [packet.eventId, ...list(packet.continuityRefs, 40, 200)],
+  });
+}

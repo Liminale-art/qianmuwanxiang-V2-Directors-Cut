@@ -6,7 +6,7 @@ import {
   prepareStoryboardShotGroup,
 } from '../qianmu-storyboard.js';
 
-assert.equal(STORYBOARD_SCHEMA_VERSION, 23);
+assert.equal(STORYBOARD_SCHEMA_VERSION, 24);
 
 const dialogue = planStoryboardStaticSceneRhythm({
   sceneType: 'dialogue', castIds: ['Alice', 'Bob'], axis: 'kitchen counter', maxShots: 6,
