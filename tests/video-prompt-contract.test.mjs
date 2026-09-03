@@ -8,6 +8,7 @@ import {
   QIANMU_VIDEO_PROMPT_RESPONSE_SCHEMA,
   buildVideoPromptPlanRequest,
   compileH3VideoPrompt,
+  createVideoPromptPlanFromShotSpec,
   normalizeVideoPromptPlan,
   parseVideoPromptPlanResponse,
   validateVideoPromptPlan,
@@ -116,6 +117,27 @@ test('manual direction is first and character ownership stays separated in the H
   assert.ok(result.length <= QIANMU_H3_PROMPT_MAX_CHARS);
 });
 
+test('an existing structured shot creates a deterministic zero-network prompt plan', () => {
+  const planFromShot = createVideoPromptPlanFromShotSpec({
+    ...shot,
+    camera: { shotSize: 'MCU', angle: 'eye level', movement: 'slow dolly', framing: 'A left, B right', axis: 'hall side' },
+    beats: [{ startSeconds: 0, endSeconds: 3, visual: 'A opens the door', camera: 'hold', sound: 'latch' }],
+    audio: { dialogue: [{ characterId: 'b', text: 'You are late.', startSeconds: 4, endSeconds: 5, delivery: 'quietly' }], ambience: ['simmering'] },
+    continuityLedger: { requiredFacts: ['A:coat:removed'], forbiddenRegressions: ['no coat reset'] },
+  });
+  const result = validateVideoPromptPlan(planFromShot, {
+    ...shot,
+    camera: { shotSize: 'MCU' },
+    beats: [{ startSeconds: 0, endSeconds: 3, visual: 'A opens the door' }],
+    audio: { dialogue: [{ characterId: 'b', text: 'You are late.' }] },
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(planFromShot.temporal_beats[0].subject_ids, ['a']);
+  assert.ok(planFromShot.temporal_beats.some((beat) => beat.subject_ids.includes('b') && /stirring/.test(beat.visual)));
+  assert.equal(planFromShot.dialogue[0].subject_id, 'b');
+  assert.equal(planFromShot.subjects[0].wardrobe[0], 'white shirt, coat removed');
+});
+
 test('the LLM request is compact, JSON-only and does not perform network work', () => {
   const request = buildVideoPromptPlanRequest(shot, {
     selectedText: 'A enters the kitchen. B keeps stirring.',
@@ -141,7 +163,7 @@ test('the prompt contract stays lazy and is included in the release whitelist', 
     readFile(new URL('../index.js', import.meta.url), 'utf8'),
     readFile(new URL('../release-files.json', import.meta.url), 'utf8'),
   ]);
-  assert.match(indexSource, /videoPrompt:\s*\{[\s\S]*import\('\.\/qianmu-video-prompt\.js\?v=1\.58\.68'\)/);
+  assert.match(indexSource, /videoPrompt:\s*\{[\s\S]*import\('\.\/qianmu-video-prompt\.js\?v=1\.58\.69'\)/);
   assert.equal(JSON.parse(releaseSource).files.includes('qianmu-video-prompt.js'), true);
   assert.doesNotMatch(indexSource.slice(0, indexSource.indexOf('const featureRuntime')), /qianmu-video-prompt/);
 });

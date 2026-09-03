@@ -279,6 +279,95 @@ export function parseVideoPromptPlanResponse(raw, shotSpecValue = {}) {
   }
 }
 
+function inferredBeatSubjectIds(beat, subjects) {
+  const visual = text(beat?.visual, 700).toLocaleLowerCase();
+  if (!visual) return [];
+  const matched = subjects.filter((subject) => {
+    const names = [subject.subject_id, subject.name].map((item) => text(item, 120).toLocaleLowerCase()).filter(Boolean);
+    const actions = [subject.action].map((item) => text(item, 700).toLocaleLowerCase()).filter((item) => item.length >= 3);
+    return names.some((item) => visual.includes(item)) || actions.some((item) => visual.includes(item));
+  }).map((subject) => subject.subject_id);
+  return matched.length ? matched : (subjects.length === 1 ? [subjects[0].subject_id] : []);
+}
+
+/** Creates a zero-network prompt plan from an already structured storyboard shot. */
+export function createVideoPromptPlanFromShotSpec(shotSpecValue = {}) {
+  const shot = normalizeVideoShotSpec(shotSpecValue);
+  const subjects = shot.characters.map((character) => ({
+    subject_id: character.characterId,
+    name: character.name,
+    reference_label: character.subjectLabel,
+    identity: character.appearance.identity,
+    wardrobe: character.appearance.wardrobe,
+    physical_state: character.appearance.physicalState,
+    blocking: character.performance.blocking,
+    action: character.performance.action,
+    expression: character.performance.expression,
+    eye_line: character.performance.eyeLine,
+  }));
+  const beats = shot.beats.slice(0, 6).map((beat) => ({
+    start_seconds: beat.startSeconds,
+    end_seconds: beat.endSeconds,
+    subject_ids: inferredBeatSubjectIds(beat, subjects),
+    visual: beat.visual,
+    camera: beat.camera,
+    sound: beat.sound,
+  }));
+  const represented = new Set(beats.flatMap((beat) => beat.subject_ids));
+  for (const subject of subjects) {
+    if (beats.length >= 6 || represented.has(subject.subject_id) || !subject.action) continue;
+    beats.push({
+      start_seconds: 0,
+      end_seconds: shot.durationSeconds,
+      subject_ids: [subject.subject_id],
+      visual: `${subject.name || subject.subject_id}: ${subject.action}`,
+      camera: '',
+      sound: '',
+    });
+  }
+  if (!beats.length) {
+    beats.push({
+      start_seconds: 0,
+      end_seconds: shot.durationSeconds,
+      subject_ids: subjects.length === 1 ? [subjects[0].subject_id] : [],
+      visual: shot.intent.summary || shot.intent.scene,
+      camera: shot.camera.movement,
+      sound: '',
+    });
+  }
+  const lightFacts = shot.continuityLedger.requiredFacts.filter((item) => /(?:time|light|weather|时间|光|天气)/i.test(item));
+  return normalizeVideoPromptPlan({
+    schema: QIANMU_VIDEO_PROMPT_PLAN_SCHEMA_ID,
+    shot_summary: shot.intent.summary || shot.intent.scene,
+    subjects,
+    environment: {
+      location: shot.intent.scene,
+      time_light: lightFacts.join('; '),
+      atmosphere: shot.intent.visualStyle,
+      continuity: shot.continuityLedger.requiredFacts.join('; '),
+    },
+    camera: {
+      shot_size: QIANMU_VIDEO_SHOT_SIZES.includes(shot.camera.shotSize) ? shot.camera.shotSize : 'MS',
+      angle: shot.camera.angle,
+      lens: shot.camera.lens,
+      movement: shot.camera.movement,
+      composition: shot.camera.framing,
+      focus: '',
+      axis: shot.camera.axis || shot.continuityLedger.axisRule,
+    },
+    temporal_beats: beats,
+    dialogue: shot.audio.dialogue.map((line) => ({
+      subject_id: line.characterId,
+      text: line.text,
+      delivery: line.delivery,
+      start_seconds: line.startSeconds,
+      end_seconds: line.endSeconds,
+    })),
+    ambient_audio: shot.audio.ambience,
+    negative_constraints: shot.continuityLedger.forbiddenRegressions,
+  }, shot);
+}
+
 function compactShotInput(shot, options = {}) {
   return {
     schema: 'qianmu.video-prompt-input.v1',

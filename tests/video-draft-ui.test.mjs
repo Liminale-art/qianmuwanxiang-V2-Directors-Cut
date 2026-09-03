@@ -29,6 +29,12 @@ test('the draft editor only revises and saves local draft contracts', () => {
   assert.match(source, /sd-storyboard-video-readiness/);
   assert.match(editor, /evaluateVideoReadiness/);
   assert.match(editor, /submissionEnabled: false/);
+  assert.match(source, /sd-storyboard-video-prompt-preview/);
+  assert.match(editor, /featureRuntime\.load\('videoPrompt'\)/);
+  assert.match(editor, /createVideoPromptPlanFromShotSpec\(compiled\.spec\)/);
+  assert.match(editor, /compileH3VideoPrompt\(plan, compiled\.spec/);
+  assert.match(editor, /dataset\.userEdited = 'true'/);
+  assert.match(editor, /只保留在本次编辑中，不会自动提交/);
   assert.match(source, /subject_reference: '主体'/);
   assert.match(source, /style_reference: '风格'/);
   assert.match(source, /motion_reference: '动作'/);
