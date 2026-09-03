@@ -8815,7 +8815,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 }
 #story-director-modal .sd-structured-output-toggle :is(i, .qm-glyph-icon) { width: 15px; height: 15px; font-size: 15px; }
 
-/* v1.58.78 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
+/* v1.58.79 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
 #story-director-modal .sd-storyboard-gallery-kind-switch {
   min-height: 36px;
   display: grid;

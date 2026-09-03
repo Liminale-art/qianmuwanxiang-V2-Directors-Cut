@@ -467,6 +467,8 @@ async function archiveSucceededTask(taskValue, provider, reservations, options =
     reference = await options.storeResult({
       idempotencyKey: `qianmu-video-result-${task.taskId}-attempt-${task.attempt}`,
       taskId: task.taskId,
+      draftId: task.draftId,
+      sourceRecordId: task.sourceRecordId,
       shotId: task.shotId,
       attempt: task.attempt,
       manifestId: task.manifestId,

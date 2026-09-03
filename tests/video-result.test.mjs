@@ -20,6 +20,8 @@ function storage(overrides = {}) {
 const callback = (extra = {}) => ({
   idempotencyKey: 'qianmu-video-result-video-task-a-attempt-1',
   taskId: 'video-task-a',
+  draftId: 'video-draft-a',
+  sourceRecordId: 'image-record-a',
   shotId: 'shot-a',
   owner: { chatKey: 'chat-a', floor: 6, messageId: 'message-a' },
   remoteTaskId: 'remote-a',
@@ -66,6 +68,8 @@ test('a completed result uses only the same-origin endpoint and stores credentia
   assert.equal(written.blob.type, 'video/mp4');
   assert.equal(written.meta.chatKey, 'chat-a');
   assert.equal(written.meta.floor, 6);
+  assert.equal(written.meta.draftId, 'video-draft-a');
+  assert.equal(written.meta.sourceRecordId, 'image-record-a');
   assert.equal(written.meta.versionRootId, 'video-task-a');
   assert.equal(result.assetId, written.assetId);
   assert.doesNotMatch(JSON.stringify({ result, meta: written.meta }), /private-key|attacker\.example|downloadUrl/);

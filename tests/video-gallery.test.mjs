@@ -20,6 +20,7 @@ function descriptor(extra = {}) {
     updatedAt: 1200,
     meta: {
       taskId: 'video-task-a', shotId: 'shot-a', versionRootId: 'video-task-a', attempt: 1,
+      draftId: 'video-draft-a', sourceRecordId: 'image-record-a',
       chatKey: 'chat-a', floor: 4, messageId: 'message-a', durationSeconds: 6,
       resolution: '768P', ratio: '16:9', referenceAssetIds: ['image-a'],
     },
@@ -36,6 +37,8 @@ test('gallery list records are metadata-only and reject unstable fields', () => 
     meta: { ...descriptor().meta, prompt: 'secret prompt', referenceAssetIds: ['image-a', 'image-a', 'bad id'] },
   });
   assert.equal(item.owner.chatKey, 'chat-a');
+  assert.equal(item.draftId, 'video-draft-a');
+  assert.equal(item.sourceRecordId, 'image-record-a');
   assert.deepEqual(item.referenceAssetIds, ['image-a']);
   assert.doesNotMatch(JSON.stringify(item), /video-bytes|media\.example|private-key|secret prompt|downloadUrl|blob/);
 });
@@ -155,8 +158,8 @@ test('chat ownership is checked before exposing a playable URL and deletion revo
 test('the dynamic gallery ships as an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(source, /videoGallery:\s*\{[\s\S]*import\('\.\/qianmu-video-gallery\.js\?v=1\.58\.78'\)/);
-  assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/qianmu-video-store\.js\?v=1\.58\.78'\)/);
+  assert.match(source, /videoGallery:\s*\{[\s\S]*import\('\.\/qianmu-video-gallery\.js\?v=1\.58\.79'\)/);
+  assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/qianmu-video-store\.js\?v=1\.58\.79'\)/);
   assert.ok(release.files.includes('qianmu-video-gallery.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoGallery'\)|featureRuntime\.load\('videoStore'\)/);

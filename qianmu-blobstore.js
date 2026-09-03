@@ -976,6 +976,8 @@ export function normalizeVideoMediaMeta(value = {}) {
     schema: 'qianmu.video-media.v1',
     recordId: String(raw.recordId || raw.record_id || '').trim().slice(0, 200),
     taskId: String(raw.taskId || raw.task_id || '').trim().slice(0, 200),
+    draftId: String(raw.draftId || raw.draft_id || '').trim().slice(0, 200),
+    sourceRecordId: String(raw.sourceRecordId || raw.source_record_id || '').trim().slice(0, 200),
     shotId: String(raw.shotId || raw.shot_id || '').trim().slice(0, 200),
     versionRootId: String(raw.versionRootId || raw.version_root_id || '').trim().slice(0, 200),
     parentRecordId: String(raw.parentRecordId || raw.parent_record_id || '').trim().slice(0, 200),

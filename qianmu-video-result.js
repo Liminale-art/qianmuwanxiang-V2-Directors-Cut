@@ -151,6 +151,8 @@ export function createMiniMaxH3ResultArchiver(storageValue = defaultStorage, con
     await storage.putVideoMedia(assetId, blob, {
       recordId,
       taskId: text(raw.taskId || raw.task_id, 200),
+      draftId: text(raw.draftId || raw.draft_id, 200),
+      sourceRecordId: text(raw.sourceRecordId || raw.source_record_id, 200),
       shotId: text(raw.shotId || raw.shot_id, 200),
       versionRootId: text(raw.versionRootId || raw.version_root_id || raw.taskId || raw.task_id, 200),
       parentRecordId: text(raw.parentRecordId || raw.parent_record_id, 200),

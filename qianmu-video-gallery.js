@@ -40,6 +40,8 @@ export function normalizeVideoGalleryItem(value = {}) {
     assetId,
     recordId,
     taskId,
+    draftId: id(meta.draftId || meta.draft_id),
+    sourceRecordId: id(meta.sourceRecordId || meta.source_record_id),
     shotId,
     versionRootId,
     parentRecordId: id(meta.parentRecordId || meta.parent_record_id),

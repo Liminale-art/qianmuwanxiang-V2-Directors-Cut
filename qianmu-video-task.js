@@ -109,6 +109,7 @@ export function normalizeVideoTask(value = {}) {
     schema: QIANMU_VIDEO_TASK_SCHEMA,
     taskId,
     draftId: text(raw.draftId || raw.draft_id, 200),
+    sourceRecordId: text(raw.sourceRecordId || raw.source_record_id, 200),
     shotId,
     manifestId: text(raw.manifestId || raw.manifest_id, 200),
     owner,
