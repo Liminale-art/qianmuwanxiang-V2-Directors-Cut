@@ -20,6 +20,10 @@ assert.match(source, /type: 'safety_adaptation'[\s\S]*job\.safetyTrace\.input[\s
 assert.match(source, /type: 'prompt_compilation'[\s\S]*shotSpec:[\s\S]*compiledPrompt:/, '生图编译层必须作为独立阶段留痕');
 assert.match(source, /storyboardPipelineStage\(log, 'provider_request', 'running', \{ request: gatewayRequest \}\)/, '模型请求阶段必须记录最终请求体并交由统一脱敏器处理');
 assert.match(source, /transport,[\s\S]*response: data,[\s\S]*upstreamId:/, '模型返回必须记录传输路径和脱敏后的完整结构');
+assert.match(source, /class="sd-storyboard-stage-toggle"[\s\S]*class="sd-storyboard-stage-detail" hidden/, '完整阶段详情必须按需展开，不能预先把长诊断灌入 DOM');
+assert.match(source, /detailBody\.textContent = storyboardStageText\(stage\)/, '阶段详情必须用纯文本完整显示脱敏后的输入与输出');
+assert.match(source, /detailBody\.textContent = ''/, '折叠阶段详情后必须释放长文本 DOM');
+assert.match(css, /\.sd-storyboard-stage-detail pre \{[\s\S]*max-height: min\(54vh, 560px\)[\s\S]*overflow: auto[\s\S]*white-space: pre-wrap/, '完整日志应使用可滚动详情框而非截断文本');
 assert.match(css, /\.sd-storyboard-log-tools \{ grid-template-columns: minmax\(0, 1fr\)/, '移除搜索后筛选栏必须独占一行');
 
 const logs = Array.from({ length: 25 }, (_, index) => ({

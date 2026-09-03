@@ -6248,10 +6248,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 }
 #story-director-modal .sd-storyboard-pipeline-stages li {
   min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px 9px;
-  padding: 7px 0 7px 17px;
+  padding: 0 0 0 17px;
   border-bottom: 1px solid color-mix(in srgb, var(--sd-hairline) 68%, transparent);
   position: relative;
 }
@@ -6267,8 +6264,55 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 }
 #story-director-modal .sd-storyboard-pipeline-stages li.success::before { background: var(--sd-accent); }
 #story-director-modal .sd-storyboard-pipeline-stages li.failed::before { background: #c85e5e; }
-#story-director-modal .sd-storyboard-pipeline-stages li b { color: var(--sd-muted); font-size: 10px; font-weight: 600; }
-#story-director-modal .sd-storyboard-pipeline-stages li small { grid-column: 1 / -1; color: #c85e5e; font-size: 10px; line-height: 1.45; }
+#story-director-modal .sd-storyboard-stage-toggle {
+  width: 100%;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 16px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: var(--sd-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+#story-director-modal .sd-storyboard-stage-toggle b { color: var(--sd-muted); font-size: 10px; font-weight: 600; }
+#story-director-modal .sd-storyboard-stage-toggle i { color: var(--sd-muted); font-size: 11px; transition: color .18s ease, opacity .18s ease; }
+#story-director-modal .sd-storyboard-stage-toggle[aria-expanded="true"] i { color: var(--sd-accent); opacity: 1; }
+#story-director-modal .sd-storyboard-pipeline-stages li small { display: block; padding: 0 0 7px; color: #c85e5e; font-size: 10px; line-height: 1.45; }
+#story-director-modal .sd-storyboard-stage-detail {
+  min-width: 0;
+  border: 1px solid var(--sd-hairline);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--sd-card) 88%, var(--sd-folder-head));
+  overflow: hidden;
+}
+#story-director-modal .sd-storyboard-stage-detail[hidden] { display: none; }
+#story-director-modal .sd-storyboard-stage-detail header {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 4px 11px;
+  border-bottom: 1px solid var(--sd-hairline);
+}
+#story-director-modal .sd-storyboard-stage-detail header b { font-size: 11px; font-weight: 650; }
+#story-director-modal .sd-storyboard-stage-detail header .sd-icon-btn { width: 30px; height: 30px; min-height: 30px; }
+#story-director-modal .sd-storyboard-log-body .sd-storyboard-stage-detail pre {
+  max-height: min(54vh, 560px);
+  margin: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 11px;
+  line-height: 1.55;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 
 /* Gallery controls stay on one line; image tools reveal without moving cards. */
 #story-director-modal .sd-storyboard-gallery-head {
