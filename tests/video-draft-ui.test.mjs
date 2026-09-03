@@ -36,6 +36,12 @@ test('the draft editor only revises and saves local draft contracts', () => {
   assert.match(editor, /createVideoPromptPlanFromShotSpec\(compiled\.spec\)/);
   assert.match(editor, /compileH3VideoPrompt\(plan, compiled\.spec/);
   assert.match(editor, /validateH3CompiledPrompt/);
+  assert.match(source, /sd-storyboard-video-confirmation/);
+  assert.match(editor, /featureRuntime\.load\('videoConfirmation'\)/);
+  assert.match(editor, /createVideoGenerationConfirmation\(confirmationInput/);
+  assert.match(editor, /videoConfirmationFingerprint/);
+  assert.match(editor, /当前版本仍不会创建或发送视频任务/);
+  assert.match(style, /\.sd-storyboard-video-confirmation\s*\{[\s\S]*position:\s*absolute/);
   assert.match(source, /sd-video-prompt-intelligent/);
   assert.match(editor, /buildVideoPromptPlanRequest\(compiled\.spec/);
   assert.match(editor, /storyboardCallCompiler\(request\.messages/);

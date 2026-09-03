@@ -8815,7 +8815,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 }
 #story-director-modal .sd-structured-output-toggle :is(i, .qm-glyph-icon) { width: 15px; height: 15px; font-size: 15px; }
 
-/* v1.58.74 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
+/* v1.58.75 · 动态阅片室只读视图：列表阶段不读取 Blob，播放时才创建本地 URL。 */
 #story-director-modal .sd-storyboard-gallery-kind-switch {
   min-height: 36px;
   display: grid;
@@ -9075,6 +9075,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   -webkit-backdrop-filter: blur(20px);
 }
 .sd-storyboard-video-draft-editor {
+  position: relative;
   width: min(760px, 100%);
   max-height: min(760px, 100%);
   display: grid;
@@ -9086,6 +9087,67 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   color: #f5f5f3;
   box-shadow: 0 28px 90px rgba(0,0,0,.48);
 }
+.sd-storyboard-video-confirmation {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background: #242629;
+}
+.sd-storyboard-video-confirmation[hidden] { display: none !important; }
+.sd-storyboard-video-confirmation > header {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  padding: 12px 15px 10px;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+}
+.sd-storyboard-video-confirmation > header button {
+  width: 34px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 8px;
+  background: rgba(255,255,255,.05);
+  color: inherit;
+}
+.sd-storyboard-video-confirmation > header h3 { margin: 2px 0 0; font-size: 15px; font-weight: 560; }
+.sd-video-confirmation-body { min-height: 0; display: grid; align-content: start; gap: 10px; overflow: auto; padding: 13px 15px; }
+.sd-video-confirmation-body > section,
+.sd-video-confirmation-blockers,
+.sd-video-confirmation-checks { border: 1px solid rgba(255,255,255,.12); border-radius: 10px; background: rgba(255,255,255,.025); }
+.sd-video-confirmation-summary { padding: 10px; }
+.sd-video-confirmation-summary h4 { margin: 0 0 8px; font-size: 11px; font-weight: 650; }
+.sd-video-confirmation-summary dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 0; }
+.sd-video-confirmation-summary dl > div { min-width: 0; display: grid; gap: 2px; padding: 7px 8px; border-radius: 7px; background: rgba(255,255,255,.04); }
+.sd-video-confirmation-summary dt { color: rgba(255,255,255,.45); font-size: 8px; }
+.sd-video-confirmation-summary dd { min-width: 0; overflow: hidden; margin: 0; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.sd-video-confirmation-cost { overflow: hidden; }
+.sd-video-confirmation-cost > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.sd-video-confirmation-cost > header span { font-size: 10px; font-weight: 650; }
+.sd-video-confirmation-cost > header b { color: var(--sd-accent, #9fcbb5); font-size: 14px; }
+.sd-video-confirmation-cost > div { display: grid; }
+.sd-video-confirmation-cost > div > span { display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,.055); color: rgba(255,255,255,.58); font-size: 9px; }
+.sd-video-confirmation-cost em { font-style: normal; }
+.sd-video-confirmation-cost > small { display: block; padding: 7px 10px 8px; color: rgba(255,255,255,.42); font-size: 8px; }
+.sd-video-confirmation-blockers { padding: 9px 10px; color: #ddb06a; }
+.sd-video-confirmation-blockers[hidden] { display: none; }
+.sd-video-confirmation-blockers b { font-size: 10px; }
+.sd-video-confirmation-blockers ul { display: grid; gap: 3px; margin: 6px 0 0; padding-left: 17px; font-size: 9px; }
+.sd-video-confirmation-checks { display: grid; overflow: hidden; }
+.sd-video-confirmation-checks label { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 8px; padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,.07); font-size: 9px; }
+.sd-video-confirmation-checks label:last-child { border-bottom: 0; }
+.sd-video-confirmation-checks input { width: 16px; height: 16px; margin: 0; accent-color: var(--sd-accent, #9fcbb5); }
+.sd-storyboard-video-confirmation > footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 15px max(10px, env(safe-area-inset-bottom)); border-top: 1px solid rgba(255,255,255,.1); }
+.sd-storyboard-video-confirmation > footer small { display: flex; align-items: center; gap: 6px; color: rgba(255,255,255,.48); font-size: 9px; }
+.sd-storyboard-video-confirmation > footer small :is(i, .qm-glyph-icon) { width: 13px; height: 13px; color: var(--sd-accent, #9fcbb5); }
+.sd-storyboard-video-confirmation > footer .sd-btn { min-width: 96px; min-height: 34px; border-radius: 8px; font-size: 10px; }
 .sd-storyboard-video-draft-editor > header {
   display: flex;
   align-items: center;
@@ -9501,5 +9563,9 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   .sd-storyboard-video-draft-body > figure figcaption { align-content: center; }
   .sd-storyboard-video-draft-picker-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 9px 11px; }
   .sd-storyboard-video-draft-editor > footer { align-items: stretch; flex-direction: column; padding: 10px 12px max(10px, env(safe-area-inset-bottom)); }
-  .sd-storyboard-video-draft-editor > footer > div { display: grid; grid-template-columns: 1fr 1fr; }
+  .sd-storyboard-video-draft-editor > footer > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .sd-storyboard-video-draft-editor > footer .sd-btn { min-width: 0; padding-inline: 8px; }
+  .sd-video-confirmation-summary dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sd-storyboard-video-confirmation > footer { align-items: stretch; flex-direction: column; padding: 10px 12px max(10px, env(safe-area-inset-bottom)); }
+  .sd-storyboard-video-confirmation > footer .sd-btn { width: 100%; }
 }

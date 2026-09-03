@@ -109,7 +109,7 @@ test('the confirmation contract stays lazy and ships without a visible submit ac
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   assert.doesNotMatch(source, /^import[^\n]*qianmu-video-confirmation\.js/m);
-  assert.match(source, /videoConfirmation:\s*\{[\s\S]*qianmu-video-confirmation\.js\?v=1\.58\.74/);
+  assert.match(source, /videoConfirmation:\s*\{[\s\S]*qianmu-video-confirmation\.js\?v=1\.58\.75/);
   assert.ok(release.files.includes('qianmu-video-confirmation.js'));
   const editor = source.slice(source.indexOf('async function storyboardOpenVideoDraftEditor'), source.indexOf('function renderStoryboardVideoDraftShelf'));
   assert.doesNotMatch(editor, /videoCoordinator|createTask\(|\.submit\(/);
