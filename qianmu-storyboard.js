@@ -789,6 +789,55 @@ export function normalizeStoryboardContinuityLedger(value) {
 
 const normalizeContinuity = normalizeStoryboardContinuityLedger;
 
+function normalizeStoryboardDirectorDecisionSnapshot(value) {
+  if (!obj(value)) return null;
+  const raw = value, source = obj(raw.source) ? raw.source : {}, approval = obj(raw.approval) ? raw.approval : {};
+  const outputs = obj(raw.outputs) ? raw.outputs : {}, lanes = obj(raw.lanes) ? raw.lanes : {};
+  const visual = obj(lanes.visual) ? lanes.visual : {}, scene = obj(visual.scene) ? visual.scene : {};
+  const decisionId = cleanId(raw.decisionId || raw.decision_id);
+  if (!decisionId) return null;
+  return {
+    schema: 'qianmu.director-decision.v1',
+    decisionId,
+    owner: { chatKey: str(raw.owner?.chatKey || raw.owner?.chat_key, 512) },
+    status: raw.status === 'approved' ? 'approved' : 'revoked',
+    truthMode: raw.truthMode === 'canon' ? 'canon' : 'speculative',
+    source: {
+      candidateId: cleanId(source.candidateId || source.candidate_id),
+      ledgerEntryId: cleanId(source.ledgerEntryId || source.ledger_entry_id),
+      packetId: cleanId(source.packetId || source.packet_id),
+      eventId: cleanId(source.eventId || source.event_id),
+      track: ['main_camera', 'second_camera'].includes(source.track) ? source.track : '',
+      canonLevel: ['canon', 'director', 'draft'].includes(source.canonLevel || source.canon_level) ? (source.canonLevel || source.canon_level) : '',
+    },
+    approval: {
+      mode: approval.mode === 'explicit' ? 'explicit' : 'none',
+      approvedAt: pos(approval.approvedAt || approval.approved_at),
+      revokedAt: pos(approval.revokedAt || approval.revoked_at),
+      revision: int(approval.revision, 1, 1000, 1),
+    },
+    outputs: Object.fromEntries(['storyboard', 'voice', 'subtitle', 'film'].map((consumer) => [consumer, outputs[consumer] === true])),
+    lanes: {
+      visual: {
+        duty: str(visual.duty, 80), shotPattern: str(visual.shotPattern || visual.shot_pattern, 80),
+        subject: str(visual.subject, 1000), description: str(visual.description, 4000),
+        characters: (Array.isArray(visual.characters) ? visual.characters : []).filter(obj).slice(0, 24).map((character, index) => {
+          const id = str(character.id || character.name || `character-${index + 1}`, 160);
+          return { id, name: str(character.name || id, 160), state: str(character.state, 1000) };
+        }).filter((character) => character.id),
+        scene: {
+          location: str(scene.location, 1000), time: str(scene.time, 240), weather: str(scene.weather, 240),
+          environment: uniqueStrings(scene.environment, 40, 240), props: uniqueStrings(scene.props, 40, 240),
+        },
+        evidenceRefs: ids(visual.evidenceRefs || visual.evidence_refs, 80),
+      },
+      dialogue: uniqueStrings(lanes.dialogue, 40, 1000),
+      ambience: uniqueStrings(lanes.ambience, 40, 1000),
+      caption: str(lanes.caption, 1200),
+    },
+  };
+}
+
 export function normalizeStoryboardShotSpec(value = {}) {
   const raw = obj(value) ? value : {}, composition = obj(raw.composition) ? raw.composition : {};
   const characters = (Array.isArray(raw.characters) ? raw.characters : []).filter(obj).slice(0, 12).map(normalizeStoryboardCharacterVisualState).filter((item) => item.id);
@@ -879,6 +928,7 @@ export function normalizeStoryboardShotSpec(value = {}) {
       decisionStatus: productionRaw.decisionStatus === 'approved' ? 'approved' : productionRaw.decisionStatus === 'revoked' ? 'revoked' : '',
       truthMode: productionRaw.truthMode === 'canon' ? 'canon' : productionRaw.truthMode === 'speculative' ? 'speculative' : '',
     },
+    directorDecision: normalizeStoryboardDirectorDecisionSnapshot(raw.directorDecision || raw.director_decision),
     continuityUpdates,
     decisions: shotStringList(raw.decisions, 40, 1000),
   };
@@ -950,6 +1000,18 @@ export function storyboardProductionContext(value = {}) {
     decisionStatus: raw.decisionStatus === 'approved' ? 'approved' : raw.decisionStatus === 'revoked' ? 'revoked' : '',
     truthMode: raw.truthMode === 'canon' ? 'canon' : raw.truthMode === 'speculative' ? 'speculative' : '',
   };
+}
+
+export function storyboardDirectorDecisionSnapshot(value = {}) {
+  const source = obj(value) ? value : {};
+  const candidates = [
+    source.directorDecision, source.director_decision,
+    source.shotSpec?.directorDecision, source.shotSpec?.director_decision,
+    source.compiledPrompt?.validation?.shot?.directorDecision,
+    source.snapshot?.shotSpec?.directorDecision,
+    source.snapshot?.compiledPrompt?.validation?.shot?.directorDecision,
+  ];
+  return normalizeStoryboardDirectorDecisionSnapshot(candidates.find(obj));
 }
 
 export function storyboardProductionDeliveryPolicy(value = {}, requested = {}) {
