@@ -17,6 +17,7 @@
     "qianmu-data-migrations.js",
     "qianmu-director-candidate.js",
     "qianmu-director-decision.js",
+    "qianmu-director-work-order.js",
     "qianmu-feature-runtime.js",
     "qianmu-icon-renderer.js",
     "qianmu-image-direct.js",

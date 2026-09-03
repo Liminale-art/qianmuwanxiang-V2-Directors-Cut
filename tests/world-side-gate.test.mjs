@@ -45,7 +45,7 @@ test('late async bridge results cannot repopulate state after opt-out or chat ch
 test('slow decision confirmation rechecks source epoch, chat and explicit switch', () => {
   const generate = source.slice(source.indexOf('async function storyboardGenerateProductionPacket'), source.indexOf('async function storyboardGenerate(root'));
   assert.match(generate, /const actionEpoch = directorNarrativeBridgeEpoch/);
-  const decisionLoad = generate.indexOf("await featureRuntime.load('directorDecision')");
+  const decisionLoad = generate.indexOf("featureRuntime.load('directorDecision')");
   const epochCheck = generate.indexOf('actionEpoch !== directorNarrativeBridgeEpoch');
   assert.ok(decisionLoad >= 0 && epochCheck > decisionLoad);
   assert.match(generate, /currentChatKey !== String\(getChatKey\(\) \|\| ''\)/);

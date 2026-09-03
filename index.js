@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.95';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.95';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.95';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.95';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.96';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.96';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.96';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.96';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -116,7 +116,6 @@ import {
   STORYBOARD_SHOT_GROUP_TEMPLATES,
   STORYBOARD_SOURCES,
   STORYBOARD_TAG_CATEGORIES,
-  adaptProductionPacketToStoryboardShotSpec,
   aggregateStoryboardShotTasks,
   buildStoryboardProviderPlan,
   compileStoryboardPrompt,
@@ -151,139 +150,143 @@ import {
   storyboardProductionContext,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.95';
+} from './qianmu-storyboard.js?v=1.58.96';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.95';
+const VERSION = '1.58.96';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.95'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.96'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.58.95').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.58.96').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.95'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.96'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.95'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.96'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.58.95'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.58.96'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.58.95'),
+    load: () => import('./qianmu-director-candidate.js?v=1.58.96'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.58.95'),
+    load: () => import('./qianmu-director-decision.js?v=1.58.96'),
+  },
+  directorWorkOrders: {
+    label: '导演工作单',
+    load: () => import('./qianmu-director-work-order.js?v=1.58.96'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.58.95'),
+    load: () => import('./qianmu-video-contract.js?v=1.58.96'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.58.95'),
+    load: () => import('./qianmu-video-draft.js?v=1.58.96'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.58.95'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.58.96'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.58.95'),
+    load: () => import('./qianmu-video-readiness.js?v=1.58.96'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.58.95'),
+    load: () => import('./qianmu-video-pricing.js?v=1.58.96'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.58.95'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.58.96'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.58.95'),
+    load: () => import('./qianmu-video-prompt.js?v=1.58.96'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.58.95'),
+    load: () => import('./qianmu-video-task.js?v=1.58.96'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.58.95'),
+    load: () => import('./qianmu-video-budget.js?v=1.58.96'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.58.95'),
+    load: () => import('./qianmu-video-minimax.js?v=1.58.96'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.58.95'),
+    load: () => import('./qianmu-video-runtime.js?v=1.58.96'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.58.95'),
+    load: () => import('./qianmu-video-store.js?v=1.58.96'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.58.95'),
+    load: () => import('./qianmu-video-result.js?v=1.58.96'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.58.95'),
+    load: () => import('./qianmu-video-gallery.js?v=1.58.96'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.58.95'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.58.96'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.58.95'),
+    load: () => import('./qianmu-video-media.js?v=1.58.96'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.58.95'),
+    load: () => import('./qianmu-video-timeline.js?v=1.58.96'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.58.95'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.58.96'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.58.95'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.58.96'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.58.95'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.58.96'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.58.95'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.58.96'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.95'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.96'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.95'),
-        import('./qianmu-theaters.js?v=1.58.95'),
+        import('./builtin-theaters.js?v=1.58.96'),
+        import('./qianmu-theaters.js?v=1.58.96'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -16473,8 +16476,14 @@ async function storyboardGenerateProductionPacket(root, packetId) {
   if (!candidate || candidate.recommendation === 'reject') return toast('这条导演素材未通过连续性与差异检查。', 'warning');
   const actionEpoch = directorNarrativeBridgeEpoch;
   let decision;
+  let workOrder;
+  let workOrderRuntime;
   try {
-    const decisionRuntime = await featureRuntime.load('directorDecision');
+    const [decisionRuntime, loadedWorkOrderRuntime] = await Promise.all([
+      featureRuntime.load('directorDecision'),
+      featureRuntime.load('directorWorkOrders'),
+    ]);
+    workOrderRuntime = loadedWorkOrderRuntime;
     const currentState = storyboardState();
     if (actionEpoch !== directorNarrativeBridgeEpoch
       || currentChatKey !== String(getChatKey() || '')
@@ -16488,22 +16497,21 @@ async function storyboardGenerateProductionPacket(root, packetId) {
     });
     if (!result.ok || !decisionRuntime.canConsumeDirectorDecision(result.decision, 'storyboard', currentChatKey)) return toast('这条导演素材尚未形成有效决策。', 'warning');
     decision = result.decision;
+    const dispatch = workOrderRuntime.createDirectorWorkOrder(decision, 'storyboard', currentChatKey, { createdAt: Date.now() });
+    if (!dispatch.ok || !workOrderRuntime.canConsumeDirectorWorkOrder(dispatch.workOrder, 'storyboard', currentChatKey)) return toast('这条导演素材尚未形成有效工作单。', 'warning');
+    workOrder = dispatch.workOrder;
   } catch (error) {
     console.warn('[千幕] 导演决策单暂不可用。', error);
     return toast('这条导演素材暂时无法确认。', 'warning');
   }
   const profile = storyboardProviderProfile(state);
-  const shotSpec = adaptProductionPacketToStoryboardShotSpec(packet, {
-    productionContext: {
-      packetId: packet.packetId, eventId: packet.eventId, track: packet.track, canonLevel: packet.canonLevel,
-      autoInsert: false, decisionId: decision.decisionId, decisionStatus: decision.status, truthMode: decision.truthMode,
-    },
-    decisions: [`导演决策：${decision.decisionId}`, `制片包来源：${packet.sourceRef?.field || 'unknown'}`],
-  });
+  const shotInput = workOrderRuntime.directorWorkOrderToStoryboardShot(workOrder, currentChatKey);
+  if (!shotInput) return toast('导演工作单无法映射为分镜。', 'warning');
+  const shotSpec = normalizeStoryboardShotSpec(shotInput);
   const compiled = compileStoryboardPrompt({ providerId: state.source, modelId: profile.model, shot: shotSpec });
-  const prompt = String(compiled.prompt || storyboardProductionPacketDescription(packet)).trim();
+  const prompt = String(compiled.prompt || workOrder.payload.visual.description || workOrder.payload.visual.subject || '').trim();
   if (!prompt) return toast('这条导演素材暂时没有可生成的画面信息。', 'warning');
-  const title = storyboardProductionPacketTitle(packet);
+  const title = String(workOrder.payload.visual.subject || '世界侧镜头').trim();
   state.prompt = prompt;
   state.negative = String(compiled.negative || '');
   state.promptMode = 'manual';
@@ -16513,16 +16521,16 @@ async function storyboardGenerateProductionPacket(root, packetId) {
     compiled: prompt,
     negative: state.negative,
     compiledAt: Date.now(),
-    compiledBy: 'production-packet',
+    compiledBy: 'director-work-order',
     userEditedCompiled: false,
     userEditedNegative: false,
     artistPositiveBaked: false,
     artistNegativeBaked: false,
-    sourceSummary: [storyboardProductionSourceLabel(packet), title],
+    sourceSummary: ['导演工作单', title],
     shots: [{
       id: shotSpec.id || uid('shotdraft'),
       title,
-      purpose: shotSpec.narrativePurpose || storyboardProductionPacketDescription(packet),
+      purpose: shotSpec.narrativePurpose || workOrder.payload.visual.description || workOrder.payload.visual.subject,
       role: shotSpec.shotRole || 'custom',
       shotType: shotSpec.subjectKind === 'character' ? 'portrait' : shotSpec.subjectKind === 'environment' ? 'environment' : 'custom',
       prompt,

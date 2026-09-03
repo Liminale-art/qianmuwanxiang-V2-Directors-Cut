@@ -89,7 +89,8 @@ test('world-side storyboard generation creates and consumes the decision before 
   assert.match(generate, /createDirectorDecision\(candidate, packet/);
   assert.match(generate, /canConsumeDirectorDecision\(result\.decision, 'storyboard', currentChatKey\)/);
   assert.ok(generate.indexOf('createDirectorDecision(candidate, packet') < generate.indexOf('compileStoryboardPrompt'));
-  assert.match(generate, /decisionStatus: decision\.status/);
+  assert.match(generate, /createDirectorWorkOrder\(decision, 'storyboard', currentChatKey/);
+  assert.match(generate, /directorWorkOrderToStoryboardShot\(workOrder, currentChatKey\)/);
   const commonGenerate = source.slice(source.indexOf('async function storyboardGenerate(root'), source.indexOf('async function storyboardRunQueuedJob'));
   assert.match(commonGenerate, /productionDraft[\s\S]*decisionStatus !== 'approved'/);
 });
@@ -114,7 +115,7 @@ test('approved decision identity survives storyboard shot normalization', () => 
 test('director decision stays lazy and ships in the release boundary', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(source, /directorDecision:\s*\{[\s\S]*import\('\.\/qianmu-director-decision\.js\?v=1\.58\.95'\)/);
+  assert.match(source, /directorDecision:\s*\{[\s\S]*import\('\.\/qianmu-director-decision\.js\?v=1\.58\.96'\)/);
   const init = source.slice(source.indexOf('function init()'), source.indexOf('function cleanupRuntime'));
   assert.doesNotMatch(init, /featureRuntime\.load\('directorDecision'\)/);
   assert.ok(release.files.includes('qianmu-director-decision.js'));
