@@ -94,8 +94,14 @@ function normalizeSubtitle(value = {}, index = 0, durationMs = 0) {
     speakerId: stableId(raw.speakerId || raw.speaker_id, 160),
     kind,
     source: {
-      kind: source.kind === 'dialogue' ? 'dialogue' : 'manual',
+      kind: ['dialogue', 'director'].includes(source.kind) ? source.kind : 'manual',
       refId: stableId(source.refId || source.ref_id),
+      decisionId: stableId(source.decisionId || source.decision_id),
+      workOrderId: stableId(source.workOrderId || source.work_order_id),
+      recordId: stableId(source.recordId || source.record_id),
+      clipId: stableId(source.clipId || source.clip_id),
+      relativeStartMs: Math.round(number(source.relativeStartMs ?? source.relative_start_ms, 0, 432_000_000, 0)),
+      relativeEndMs: Math.round(number(source.relativeEndMs ?? source.relative_end_ms, 0, 432_000_000, 0)),
     },
   };
 }
@@ -197,9 +203,16 @@ export function validateVideoPostproduction(value = {}, timelineValue = {}) {
   const subtitleIds = new Set();
   project.subtitles.forEach((cue, index) => {
     const sourceKind = raw.subtitles?.[index]?.kind;
+    const rawSourceKind = raw.subtitles?.[index]?.source?.kind;
     if (sourceKind && !['dialogue', 'narration', 'caption'].includes(sourceKind)) issues.push(`postproduction_subtitle_kind_invalid:${index}`);
+    if (rawSourceKind && !['manual', 'dialogue', 'director'].includes(rawSourceKind)) issues.push(`postproduction_subtitle_source_invalid:${index}`);
     if (!cue.text) issues.push(`postproduction_subtitle_text_missing:${index}`);
     if (cue.endMs <= cue.startMs) issues.push(`postproduction_subtitle_range_invalid:${index}`);
+    if (cue.source.kind === 'director') {
+      if (!cue.source.refId || !cue.source.decisionId || !cue.source.workOrderId || !cue.source.recordId || !cue.source.clipId) issues.push(`postproduction_subtitle_director_source_missing:${index}`);
+      if (context.clipIds.length && !context.clipIds.includes(cue.source.clipId)) issues.push(`postproduction_subtitle_director_clip_missing:${index}`);
+      if (cue.source.relativeEndMs <= cue.source.relativeStartMs) issues.push(`postproduction_subtitle_director_range_invalid:${index}`);
+    }
     if (subtitleIds.has(cue.cueId)) issues.push(`postproduction_subtitle_id_duplicate:${index}`);
     subtitleIds.add(cue.cueId);
   });

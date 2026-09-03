@@ -181,3 +181,48 @@ export function directorWorkOrderToStoryboardShot(value = {}, chatKey = '') {
     decisions: [`导演工作单：${order.workOrderId}`],
   };
 }
+
+export function directorWorkOrderToSubtitleCues(value = {}, chatKey = '', options = {}) {
+  const result = validateDirectorWorkOrder(value, 'subtitle', chatKey);
+  if (!result.ok) return [];
+  const order = result.workOrder;
+  const startMs = Math.max(0, Math.floor(Number(options.startMs) || 0));
+  const endMs = Math.max(startMs + 100, Math.floor(Number(options.endMs) || startMs + 100));
+  const recordId = stableId(options.recordId);
+  const clipId = stableId(options.clipId);
+  const items = [
+    ...order.payload.dialogue.map((line) => ({
+      id: line.lineId,
+      kind: 'dialogue',
+      speakerId: stableId(line.speaker, 160),
+      text: line.text,
+    })),
+    ...(order.payload.caption ? [{ id: 'caption', kind: 'caption', speakerId: '', text: order.payload.caption }] : []),
+  ];
+  const span = Math.max(100, endMs - startMs);
+  const step = span / Math.max(1, items.length);
+  return items.map((item, index) => {
+    const cueStart = Math.round(startMs + (step * index));
+    const cueEnd = index === items.length - 1 ? endMs : Math.max(cueStart + 100, Math.round(startMs + (step * (index + 1))));
+    const refId = stableId(`${order.workOrderId}:${clipId || 'clip'}:${item.id}`);
+    return {
+      cueId: stableId(`cue-${refId}`),
+      startMs: cueStart,
+      endMs: cueEnd,
+      text: item.text,
+      language: '',
+      speakerId: item.speakerId,
+      kind: item.kind,
+      source: {
+        kind: 'director',
+        refId,
+        decisionId: order.source.decisionId,
+        workOrderId: order.workOrderId,
+        recordId,
+        clipId,
+        relativeStartMs: Math.max(0, cueStart - startMs),
+        relativeEndMs: Math.max(100, cueEnd - startMs),
+      },
+    };
+  });
+}

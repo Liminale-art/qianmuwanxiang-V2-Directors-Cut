@@ -95,10 +95,10 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.98';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.98';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.98';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.98';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.58.99';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.58.99';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.58.99';
+import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.58.99';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,143 +151,143 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.58.98';
+} from './qianmu-storyboard.js?v=1.58.99';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.58.98';
+const VERSION = '1.58.99';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.58.98'),
+    load: () => import('./qianmu-image-direct.js?v=1.58.99'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.58.98').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.58.99').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.58.98'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.58.99'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.58.98'),
+    load: () => import('./qianmu-production-packet.js?v=1.58.99'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.58.98'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.58.99'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.58.98'),
+    load: () => import('./qianmu-director-candidate.js?v=1.58.99'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.58.98'),
+    load: () => import('./qianmu-director-decision.js?v=1.58.99'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.58.98'),
+    load: () => import('./qianmu-director-work-order.js?v=1.58.99'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.58.98'),
+    load: () => import('./qianmu-video-contract.js?v=1.58.99'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.58.98'),
+    load: () => import('./qianmu-video-draft.js?v=1.58.99'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.58.98'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.58.99'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.58.98'),
+    load: () => import('./qianmu-video-readiness.js?v=1.58.99'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.58.98'),
+    load: () => import('./qianmu-video-pricing.js?v=1.58.99'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.58.98'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.58.99'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.58.98'),
+    load: () => import('./qianmu-video-prompt.js?v=1.58.99'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.58.98'),
+    load: () => import('./qianmu-video-task.js?v=1.58.99'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.58.98'),
+    load: () => import('./qianmu-video-budget.js?v=1.58.99'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.58.98'),
+    load: () => import('./qianmu-video-minimax.js?v=1.58.99'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.58.98'),
+    load: () => import('./qianmu-video-runtime.js?v=1.58.99'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.58.98'),
+    load: () => import('./qianmu-video-store.js?v=1.58.99'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.58.98'),
+    load: () => import('./qianmu-video-result.js?v=1.58.99'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.58.98'),
+    load: () => import('./qianmu-video-gallery.js?v=1.58.99'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.58.98'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.58.99'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.58.98'),
+    load: () => import('./qianmu-video-media.js?v=1.58.99'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.58.98'),
+    load: () => import('./qianmu-video-timeline.js?v=1.58.99'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.58.98'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.58.99'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.58.98'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.58.99'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.58.98'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.58.99'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.58.98'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.58.99'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.58.98'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.58.99'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.58.98'),
-        import('./qianmu-theaters.js?v=1.58.98'),
+        import('./builtin-theaters.js?v=1.58.99'),
+        import('./qianmu-theaters.js?v=1.58.99'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -14282,6 +14282,38 @@ function storyboardFilmStillRecords(chatKey = String(getChatKey() || '')) {
     .map((record) => ({ ...record, chatKey }));
 }
 
+function storyboardFilmSourceRecordForSelection(selection, chatKey = String(getChatKey() || '')) {
+  if (!selection || !chatKey) return null;
+  const recordId = selection.kind === 'motion'
+    ? storyboardFilmMotionItems().find((item) => item.assetId === selection.assetId)?.recordId || selection.recordId
+    : selection.recordId;
+  return storyboardFilmStillRecords(chatKey).find((record) => record.id === recordId) || null;
+}
+
+function storyboardFilmClipTimings(selections = storyboardFilmEditor?.selections) {
+  const timings = new Map();
+  let cursor = 0;
+  (Array.isArray(selections) ? selections : []).forEach((selection) => {
+    const durationMs = Math.max(100, Math.round((Number(selection?.durationSeconds) || (selection?.kind === 'still' ? 3 : .1)) * 1000));
+    timings.set(String(selection?.clipId || ''), { startMs: cursor, endMs: cursor + durationMs });
+    cursor += durationMs;
+  });
+  return timings;
+}
+
+function storyboardFilmDirectorSubtitleCount(editor = storyboardFilmEditor) {
+  const chatKey = String(editor?.owner?.chatKey || getChatKey() || '');
+  return (editor?.selections || []).filter((selection) => {
+    const record = storyboardFilmSourceRecordForSelection(selection, chatKey);
+    const production = storyboardProductionContext(record || {});
+    const decision = storyboardDirectorDecisionSnapshot(record || {});
+    return Boolean((production.packetId || production.eventId)
+      && decision?.status === 'approved'
+      && decision.outputs?.subtitle
+      && (decision.lanes?.dialogue?.length || decision.lanes?.caption));
+  }).length;
+}
+
 function storyboardFilmEditorFromTimeline(timeline = null, postproduction = null) {
   const chatKey = String(getChatKey() || '');
   if (!timeline) return {
@@ -14357,6 +14389,21 @@ function storyboardReconcileFilmPostproduction(editor = storyboardFilmEditor) {
     .map((selection, index) => `${selection.clipId}\n${editor.selections[index + 1].clipId}`));
   project.transitions = project.transitions.filter((transition) => boundaries.has(`${transition.fromClipId}\n${transition.toClipId}`));
   project.durationMs = storyboardFilmDurationMs(editor.selections);
+  const clipTimings = storyboardFilmClipTimings(editor.selections);
+  project.subtitles = project.subtitles.flatMap((cue) => {
+    if (cue.source?.kind !== 'director') return [cue];
+    const timing = clipTimings.get(String(cue.source.clipId || ''));
+    if (!timing) return [];
+    const durationMs = Math.max(100, timing.endMs - timing.startMs);
+    const relativeStartMs = Math.min(durationMs - 100, Math.max(0, Number(cue.source.relativeStartMs) || 0));
+    const relativeEndMs = Math.min(durationMs, Math.max(relativeStartMs + 100, Number(cue.source.relativeEndMs) || 100));
+    return [{
+      ...cue,
+      startMs: timing.startMs + relativeStartMs,
+      endMs: timing.startMs + relativeEndMs,
+      source: { ...cue.source, relativeStartMs, relativeEndMs },
+    }];
+  });
 }
 
 function storyboardCaptureFilmPostproduction(root) {
@@ -14380,17 +14427,26 @@ function storyboardCaptureFilmPostproduction(root) {
     }];
   });
   const previousSubtitles = new Map(project.subtitles.map((item) => [String(item.cueId || ''), item]));
+  const clipTimings = storyboardFilmClipTimings(storyboardFilmEditor.selections);
   project.subtitles = [...root.querySelectorAll('[data-storyboard-film-subtitle]')].map((row) => {
     const cueId = String(row.dataset.storyboardFilmSubtitle || uid('subtitle'));
     const previous = previousSubtitles.get(cueId) || {};
+    const startMs = Math.round(Math.max(0, Number(row.querySelector('[data-storyboard-film-subtitle-start]')?.value) || 0) * 1000);
+    const endMs = Math.round(Math.max(0, Number(row.querySelector('[data-storyboard-film-subtitle-end]')?.value) || 0) * 1000);
+    const previousSource = previous.source || { kind: 'manual', refId: '' };
+    const clipTiming = previousSource.kind === 'director' ? clipTimings.get(String(previousSource.clipId || '')) : null;
     return {
       ...previous,
       cueId,
       kind: String(row.querySelector('[data-storyboard-film-subtitle-kind]')?.value || 'dialogue'),
-      startMs: Math.round(Math.max(0, Number(row.querySelector('[data-storyboard-film-subtitle-start]')?.value) || 0) * 1000),
-      endMs: Math.round(Math.max(0, Number(row.querySelector('[data-storyboard-film-subtitle-end]')?.value) || 0) * 1000),
+      startMs,
+      endMs,
       text: String(row.querySelector('[data-storyboard-film-subtitle-text]')?.value || '').trim().slice(0, 1200),
-      source: previous.source || { kind: 'manual', refId: '' },
+      source: clipTiming ? {
+        ...previousSource,
+        relativeStartMs: Math.max(0, startMs - clipTiming.startMs),
+        relativeEndMs: Math.max(0, endMs - clipTiming.startMs),
+      } : previousSource,
     };
   });
   project.durationMs = storyboardFilmDurationMs(storyboardFilmEditor.selections);
@@ -14398,13 +14454,15 @@ function storyboardCaptureFilmPostproduction(root) {
 
 function storyboardCaptureFilmEditor(root) {
   if (!storyboardFilmEditor) return;
+  // 先按旧片段位置保存字幕的片内相对时间，再应用新的时长并重新对齐导演字幕。
+  storyboardCaptureFilmPostproduction(root);
   storyboardFilmEditor.title = String(root?.querySelector('.sd-storyboard-film-title')?.value ?? storyboardFilmEditor.title ?? '').trim().slice(0, 160);
   root?.querySelectorAll('[data-storyboard-film-duration]').forEach((input) => {
     const index = Number(input.dataset.storyboardFilmDuration);
     if (!Number.isInteger(index) || !storyboardFilmEditor.selections[index] || storyboardFilmEditor.selections[index].kind !== 'still') return;
     storyboardFilmEditor.selections[index].durationSeconds = Math.min(30, Math.max(1, Number(input.value) || 3));
   });
-  storyboardCaptureFilmPostproduction(root);
+  storyboardReconcileFilmPostproduction(storyboardFilmEditor);
 }
 
 function renderStoryboardFilmPostproduction(editor) {
@@ -14420,9 +14478,10 @@ function renderStoryboardFilmPostproduction(editor) {
     return `<div class="sd-storyboard-film-transition" data-storyboard-film-transition="${htmlEscape(transitionId)}" data-from-clip-id="${htmlEscape(selection.clipId)}" data-to-clip-id="${htmlEscape(next.clipId)}"><span>${index + 1}<i class="fa-solid fa-arrow-right"></i>${index + 2}</span><select class="text_pole" data-storyboard-film-transition-type aria-label="第 ${index + 1} 与 ${index + 2} 段转场"><option value="cut" ${type === 'cut' ? 'selected' : ''}>硬切</option><option value="crossfade" ${type === 'crossfade' ? 'selected' : ''}>叠化</option><option value="dip_black" ${type === 'dip_black' ? 'selected' : ''}>淡黑</option></select>${type === 'cut' ? '' : `<label><input class="text_pole" type="number" min="0.1" max="2" step="0.1" value="${Number(((transition?.durationMs || 400) / 1000).toFixed(1))}" data-storyboard-film-transition-duration aria-label="转场时长"><em>秒</em></label>`}</div>`;
   }).join('');
   const durationSeconds = Math.max(.1, project.durationMs / 1000);
+  const directorSubtitleCount = storyboardFilmDirectorSubtitleCount(editor);
   const subtitleRows = project.subtitles.map((cue, index) => `<div class="sd-storyboard-film-subtitle" data-storyboard-film-subtitle="${htmlEscape(cue.cueId || `subtitle-${index + 1}`)}"><select class="text_pole" data-storyboard-film-subtitle-kind aria-label="字幕类型"><option value="dialogue" ${cue.kind === 'dialogue' ? 'selected' : ''}>对白</option><option value="narration" ${cue.kind === 'narration' ? 'selected' : ''}>旁白</option><option value="caption" ${cue.kind === 'caption' ? 'selected' : ''}>说明</option></select><label><span>起</span><input class="text_pole" type="number" min="0" max="${durationSeconds}" step="0.1" value="${Number((Number(cue.startMs || 0) / 1000).toFixed(1))}" data-storyboard-film-subtitle-start></label><label><span>止</span><input class="text_pole" type="number" min="0" max="${durationSeconds}" step="0.1" value="${Number((Number(cue.endMs || 0) / 1000).toFixed(1))}" data-storyboard-film-subtitle-end></label><textarea class="text_pole" maxlength="1200" rows="2" data-storyboard-film-subtitle-text aria-label="字幕正文">${htmlEscape(cue.text || '')}</textarea><button type="button" class="sd-icon-btn sd-danger" data-storyboard-film-subtitle-remove="${index}" title="删除字幕" aria-label="删除字幕"><i class="fa-solid fa-trash-can"></i></button></div>`).join('');
   const layered = project.mode === 'layered';
-  return `<section class="sd-card sd-storyboard-film-postproduction"><header><span><span class="sd-storyboard-kicker">POST</span><h3>后期</h3></span><div role="group" aria-label="影片后期模式"><button type="button" class="${layered ? '' : 'active'}" data-storyboard-film-post-mode="native_only">原生</button><button type="button" class="${layered ? 'active' : ''}" data-storyboard-film-post-mode="layered">字幕与转场</button></div></header>${layered ? `<div class="sd-storyboard-film-post-body"><section><div class="sd-storyboard-film-post-title"><b>转场</b><small>${Math.max(0, selections.length - 1)}</small></div><div class="sd-storyboard-film-transition-list">${transitionRows || '<div class="sd-storyboard-film-post-empty">加入两段以上素材后可设置转场。</div>'}</div></section><section><div class="sd-storyboard-film-post-title"><b>字幕</b><button type="button" class="sd-icon-btn" data-storyboard-film-subtitle-add title="添加字幕" aria-label="添加字幕"><i class="fa-solid fa-plus"></i></button></div><div class="sd-storyboard-film-subtitle-list">${subtitleRows}</div></section></div>` : ''}</section>`;
+  return `<section class="sd-card sd-storyboard-film-postproduction"><header><span><span class="sd-storyboard-kicker">POST</span><h3>后期</h3></span><div role="group" aria-label="影片后期模式"><button type="button" class="${layered ? '' : 'active'}" data-storyboard-film-post-mode="native_only">原生</button><button type="button" class="${layered ? 'active' : ''}" data-storyboard-film-post-mode="layered">字幕与转场</button></div></header>${layered ? `<div class="sd-storyboard-film-post-body"><section><div class="sd-storyboard-film-post-title"><b>转场</b><small>${Math.max(0, selections.length - 1)}</small></div><div class="sd-storyboard-film-transition-list">${transitionRows || '<div class="sd-storyboard-film-post-empty">加入两段以上素材后可设置转场。</div>'}</div></section><section><div class="sd-storyboard-film-post-title"><b>字幕</b><div>${directorSubtitleCount ? `<button type="button" class="sd-storyboard-film-director-subtitles" data-storyboard-film-director-subtitles>导入导演字幕 · ${directorSubtitleCount}</button>` : ''}<button type="button" class="sd-icon-btn" data-storyboard-film-subtitle-add title="添加字幕" aria-label="添加字幕"><i class="fa-solid fa-plus"></i></button></div></div><div class="sd-storyboard-film-subtitle-list">${subtitleRows}</div></section></div>` : ''}</section>`;
 }
 
 function renderStoryboardFilmEditor(current) {
@@ -14488,6 +14547,57 @@ async function storyboardEnsureFilmPostproductionRuntime() {
   ]);
   if (!storyboardVideoPostproductionStore) storyboardVideoPostproductionStore = storeModule.createVideoPostproductionStoreAdapter(blobStore);
   return { postproductionModule, store: storyboardVideoPostproductionStore };
+}
+
+async function storyboardImportDirectorSubtitles(root, button) {
+  if (!storyboardFilmEditor) return;
+  storyboardCaptureFilmEditor(root);
+  const project = storyboardFilmPostproductionDraft(storyboardFilmEditor);
+  if (project.subtitles.length >= 500) return toast('一条影片最多保存 500 条字幕。', 'warning');
+  if (button) button.disabled = true;
+  try {
+    const runtime = await featureRuntime.load('directorWorkOrders');
+    const chatKey = String(storyboardFilmEditor.owner?.chatKey || '');
+    const clipTimings = storyboardFilmClipTimings(storyboardFilmEditor.selections);
+    const existingRefs = new Set(project.subtitles.map((cue) => String(cue.source?.refId || '')).filter(Boolean));
+    const additions = [];
+    let eligible = 0;
+    for (const selection of storyboardFilmEditor.selections) {
+      const record = storyboardFilmSourceRecordForSelection(selection, chatKey);
+      const production = storyboardProductionContext(record || {});
+      const decision = storyboardDirectorDecisionSnapshot(record || {});
+      if ((!production.packetId && !production.eventId)
+        || !decision?.outputs?.subtitle
+        || (!decision.lanes?.dialogue?.length && !decision.lanes?.caption)) continue;
+      eligible += 1;
+      const timing = clipTimings.get(String(selection.clipId || ''));
+      if (!timing) continue;
+      const workOrder = await storyboardDirectorWorkOrderForRecord(record, 'subtitle');
+      const cues = runtime.directorWorkOrderToSubtitleCues(workOrder, chatKey, {
+        startMs: timing.startMs,
+        endMs: timing.endMs,
+        recordId: record.id,
+        clipId: selection.clipId,
+      });
+      for (const cue of cues) {
+        if (!cue.source?.refId || existingRefs.has(cue.source.refId)) continue;
+        existingRefs.add(cue.source.refId);
+        additions.push(cue);
+      }
+    }
+    if (!eligible) return toast('当前影片没有可导入的导演字幕。', 'info');
+    if (!additions.length) return toast('导演字幕已经全部导入。', 'info');
+    const available = Math.max(0, 500 - project.subtitles.length);
+    project.mode = 'layered';
+    project.subtitles.push(...additions.slice(0, available));
+    storyboardReconcileFilmPostproduction(storyboardFilmEditor);
+    toast(`已导入 ${Math.min(available, additions.length)} 条导演字幕。`, 'success');
+    renderModal();
+  } catch (error) {
+    toast(storyboardVideoOperationIssueLabel(error?.message), 'warning');
+  } finally {
+    if (button?.isConnected) button.disabled = false;
+  }
 }
 
 async function storyboardRefreshFilmGallery({ rerender = false, force = false } = {}) {
@@ -18089,6 +18199,9 @@ function bindStoryboardTabEvents(root) {
     storyboardFilmPostproductionDraft(storyboardFilmEditor).mode = 'layered';
     renderModal();
   }));
+  root.querySelector('[data-storyboard-film-director-subtitles]')?.addEventListener('click', (event) => {
+    void storyboardImportDirectorSubtitles(root, event.currentTarget);
+  });
   root.querySelector('[data-storyboard-film-subtitle-add]')?.addEventListener('click', () => {
     if (!storyboardFilmEditor) return;
     storyboardCaptureFilmEditor(root);
