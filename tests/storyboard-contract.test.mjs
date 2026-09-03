@@ -118,6 +118,15 @@ assert.equal(valid.ok, true, formatStoryboardContractErrors(valid.errors));
 const fenced = parseStoryboardContractResponse(`\`\`\`json\n${JSON.stringify(plan())}\n\`\`\``, validationOptions);
 assert.equal(fenced.ok, true, formatStoryboardContractErrors(fenced.errors));
 assert.equal(fenced.kind, 'plan');
+assert.deepEqual(fenced.normalization, ['code_fence']);
+
+const proseWrapped = parseStoryboardContractResponse(`以下是结果：\n${JSON.stringify(plan())}\n请查收。`, validationOptions);
+assert.equal(proseWrapped.ok, true, formatStoryboardContractErrors(proseWrapped.errors));
+assert.deepEqual(proseWrapped.normalization, ['extracted_object']);
+
+const ambiguous = parseStoryboardContractJson(`${JSON.stringify(plan())}\n${JSON.stringify(plan())}`);
+assert.equal(ambiguous.ok, false);
+assert.equal(ambiguous.errors[0].code, 'ambiguous_json');
 
 const adapted = adaptStoryboardPlanContract(fenced.data, {
   paragraphIndexById: { P1: 0, P2: 1, P3: 2 },
@@ -222,10 +231,11 @@ const crossedSafetyCharacter = validateStoryboardSafetyContract({
 assert.ok(crossedSafetyCharacter.errors.some((entry) => entry.code === 'character_cross_assignment'));
 
 const narration = parseStoryboardContractJson(`以下是结果：\n${JSON.stringify(plan())}`);
-assert.equal(narration.ok, false, 'strict contract parser must reject prose outside JSON');
-assert.equal(narration.errors[0].code, 'json_syntax');
+assert.equal(narration.ok, true, 'a single balanced contract object may be extracted locally before validation');
+assert.deepEqual(narration.normalization, ['extracted_object']);
 const missingComma = parseStoryboardContractJson('{"schema":"qianmu.storyboard.plan.v1" "shots":[]}');
-assert.equal(missingComma.ok, false, 'contract parser must not guess missing punctuation');
+assert.equal(missingComma.ok, true, 'an unambiguous missing property comma should be repaired locally');
+assert.ok(missingComma.normalization.includes('missing_comma'));
 assert.equal(parseStoryboardContractJson('x'.repeat(STORYBOARD_CONTRACT_MAX_BYTES + 1)).errors[0].code, 'max_bytes');
 
 const unknownRoot = validateStoryboardPlanContract({ ...plan(), explanation: 'hidden reasoning' }, validationOptions);
@@ -357,7 +367,7 @@ assert.match(smartRequest.messages[0].content, /16:9 只是主画幅偏好，不
 assert.match(formatStoryboardContractErrors(wrongParagraph.errors, 1), /^\$\.shots\[0\]/);
 
 const indexSource = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-assert.match(indexSource, /storyboardContract:[\s\S]*import\('\.\/qianmu-storyboard-contract\.js\?v=1\.59\.5'\)/, 'the contract validator must stay outside the startup graph');
+assert.match(indexSource, /storyboardContract:[\s\S]*import\('\.\/qianmu-storyboard-contract\.js\?v=1\.59\.6'\)/, 'the contract validator must stay outside the startup graph');
 assert.match(indexSource, /buildStoryboardPlanContractRequest\(context, storyboardCompilerRequestConfig\(state, profile\)\)/, 'the first planning call must use the strict request contract');
 assert.match(indexSource, /storyboardCallCompiler\(contractRequest\.messages[\s\S]*jsonSchema: contractRequest\.schema[\s\S]*jsonSchemaStrict: true/, 'capable external channels must receive the structured response schema');
 assert.match(indexSource, /if \(contractRequest \|\| declaresPlanContract\)/, 'new requests must validate strictly while versioned legacy responses remain supported');

@@ -44,6 +44,16 @@ const malformed = '{"schema":"qianmu.storyboard.plan.v1" "should_generate":true}
 const initial = parseStoryboardContractResponse(malformed, options);
 assert.equal(initial.ok, false);
 
+const missingCommaPlan = JSON.stringify(validPlan).replace(',"should_generate"', ' "should_generate"');
+const locallyCommaRepaired = parseStoryboardContractResponse(missingCommaPlan, options);
+assert.equal(locallyCommaRepaired.ok, true);
+assert.ok(locallyCommaRepaired.normalization.includes('missing_comma'));
+
+const trailingCommaPlan = JSON.stringify(validPlan).replace('"decisions":["建立场景"]}', '"decisions":["建立场景"],}');
+const locallyTrailingRepaired = parseStoryboardContractResponse(trailingCommaPlan, options);
+assert.equal(locallyTrailingRepaired.ok, true);
+assert.ok(locallyTrailingRepaired.normalization.includes('trailing_comma'));
+
 const repairMessages = buildStoryboardContractRepairMessages(malformed, initial, options);
 assert.equal(repairMessages.length, 2);
 assert.equal(repairMessages[0].role, 'system');
@@ -70,7 +80,7 @@ assert.equal(repaired.ok, true);
 assert.equal(repaired.repairAttempted, true);
 assert.equal(repaired.repairCalls, 1);
 assert.equal(repaired.data.shots[0].insert_after, 'P1');
-assert.ok(repaired.originalErrors.some((entry) => entry.code === 'json_syntax'));
+assert.ok(repaired.originalErrors.some((entry) => entry.code === 'required'));
 
 calls = 0;
 const failedRepair = await repairStoryboardContractOnce({
@@ -96,6 +106,16 @@ const alreadyValid = await repairStoryboardContractOnce({
 assert.equal(alreadyValid.ok, true);
 assert.equal(alreadyValid.repairCalls, 0);
 assert.equal(calls, 0, 'valid JSON must not spend a repair call');
+
+calls = 0;
+const locallyRepairedWithoutRequest = await repairStoryboardContractOnce({
+  raw: missingCommaPlan,
+  options,
+  request: async () => { calls += 1; return ''; },
+});
+assert.equal(locallyRepairedWithoutRequest.ok, true);
+assert.equal(locallyRepairedWithoutRequest.repairCalls, 0);
+assert.equal(calls, 0, 'deterministic local normalization must run before a paid repair call');
 
 calls = 0;
 const oversized = await repairStoryboardContractOnce({
@@ -135,6 +155,7 @@ assert.match(indexSource, /initial\.ok \? initial : await contract\.repairStoryb
 assert.match(indexSource, /temperatureSource = requestOptions\.temperature \?\? apiProfile\?\.temperature \?\? 0\.35/, 'ordinary compiler calls must retain the saved profile temperature');
 assert.match(indexSource, /request: \(messages\) => storyboardCallCompiler\(messages,[\s\S]*temperature: 0,[\s\S]*maxTokens: 1800/);
 assert.match(indexSource, /initialErrors:[\s\S]*finalErrors:/, 'repair diagnostics must remain attached to the compiler stage');
+assert.match(indexSource, /localNormalization: \(result\.normalization \|\| \[\]\)\.slice\(0, 8\)/, 'deterministic local repairs must be visible in bounded diagnostics');
 assert.match(indexSource, /createStoryboardContractManualFallback[\s\S]*fallback: 'manual_single'/, '修复失败必须进入确定性单镜头手动草稿');
 assert.match(indexSource, /plan\.manualReviewRequired = manualRequired[\s\S]*plan\.autoGenerate = false/, '合同失败不得继续自动生图');
 assert.match(indexSource, /return !manualRequired/, '自动调用方必须收到停止信号');

@@ -594,22 +594,147 @@ export function validateStoryboardSafetyContract(value, rawOptions = {}) {
   return { ok: errors.length === 0, data: errors.length ? null : value, errors };
 }
 
+function jsonObjectCandidates(source) {
+  const candidates = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+    if (character === '"') { inString = true; continue; }
+    if (character === '{') {
+      if (depth === 0) start = index;
+      depth += 1;
+      continue;
+    }
+    if (character !== '}' || depth === 0) continue;
+    depth -= 1;
+    if (depth === 0 && start >= 0) {
+      candidates.push(source.slice(start, index + 1));
+      start = -1;
+    }
+  }
+  return candidates;
+}
+
+function stripJsonTrailingCommas(source) {
+  let output = '';
+  let inString = false;
+  let escaped = false;
+  let changed = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (inString) {
+      output += character;
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+    if (character === '"') { inString = true; output += character; continue; }
+    if (character === ',') {
+      let cursor = index + 1;
+      while (/\s/.test(source[cursor] || '')) cursor += 1;
+      if (source[cursor] === '}' || source[cursor] === ']') { changed = true; continue; }
+    }
+    output += character;
+  }
+  return { text: output, changed };
+}
+
+function insertCertainMissingJsonCommas(source) {
+  let output = '';
+  let inString = false;
+  let escaped = false;
+  let stringWasKey = false;
+  let previousSignificant = '';
+  let changed = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    output += character;
+    if (inString) {
+      if (escaped) { escaped = false; continue; }
+      if (character === '\\') { escaped = true; continue; }
+      if (character !== '"') continue;
+      inString = false;
+      if (!stringWasKey) {
+        let cursor = index + 1;
+        while (/\s/.test(source[cursor] || '')) cursor += 1;
+        if (source[cursor] === '"') {
+          let keyEnd = cursor + 1;
+          let keyEscaped = false;
+          for (; keyEnd < source.length; keyEnd += 1) {
+            if (keyEscaped) { keyEscaped = false; continue; }
+            if (source[keyEnd] === '\\') { keyEscaped = true; continue; }
+            if (source[keyEnd] === '"') break;
+          }
+          let colon = keyEnd + 1;
+          while (/\s/.test(source[colon] || '')) colon += 1;
+          if (source[colon] === ':') { output += ','; changed = true; }
+        }
+      }
+      previousSignificant = '"';
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+      stringWasKey = previousSignificant === '{' || previousSignificant === ',';
+      continue;
+    }
+    if (!/\s/.test(character)) previousSignificant = character;
+  }
+  return { text: output, changed };
+}
+
+function parseLocalJsonCandidate(text, normalization = []) {
+  const attempts = [{ text, normalization }];
+  const trailing = stripJsonTrailingCommas(text);
+  if (trailing.changed) attempts.push({ text: trailing.text, normalization: [...normalization, 'trailing_comma'] });
+  for (const attempt of [...attempts]) {
+    const missing = insertCertainMissingJsonCommas(attempt.text);
+    if (missing.changed) attempts.push({ text: missing.text, normalization: [...attempt.normalization, 'missing_comma'] });
+  }
+  let lastError = null;
+  for (const attempt of attempts) {
+    try {
+      const data = JSON.parse(attempt.text);
+      if (!object(data)) return { ok: false, data: null, normalization: attempt.normalization, errors: [{ code: 'root_type', path: '$', message: 'JSON 顶层必须是对象' }] };
+      return { ok: true, data, normalization: attempt.normalization, errors: [] };
+    } catch (error) { lastError = error; }
+  }
+  return { ok: false, data: null, normalization, errors: [{ code: 'json_syntax', path: '$', message: String(lastError?.message || 'JSON 语法错误').slice(0, 500) }] };
+}
+
 export function parseStoryboardContractJson(raw) {
-  const source = String(raw ?? '');
+  const source = String(raw ?? '').replace(/^\uFEFF/, '');
   if (new TextEncoder().encode(source).byteLength > STORYBOARD_CONTRACT_MAX_BYTES) {
-    return { ok: false, data: null, errors: [{ code: 'max_bytes', path: '$', message: `返回内容不得超过 ${STORYBOARD_CONTRACT_MAX_BYTES} 字节` }] };
+    return { ok: false, data: null, normalization: [], errors: [{ code: 'max_bytes', path: '$', message: `返回内容不得超过 ${STORYBOARD_CONTRACT_MAX_BYTES} 字节` }] };
   }
-  let text = source.trim();
+  const text = source.trim();
+  if (!text) return { ok: false, data: null, normalization: [], errors: [{ code: 'empty', path: '$', message: '模型没有返回 JSON' }] };
+  const exact = parseLocalJsonCandidate(text);
+  if (exact.ok) return exact;
   const fenced = text.match(/^```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```$/i);
-  if (fenced) text = fenced[1].trim();
-  if (!text) return { ok: false, data: null, errors: [{ code: 'empty', path: '$', message: '模型没有返回 JSON' }] };
-  try {
-    const data = JSON.parse(text);
-    if (!object(data)) return { ok: false, data: null, errors: [{ code: 'root_type', path: '$', message: 'JSON 顶层必须是对象' }] };
-    return { ok: true, data, errors: [] };
-  } catch (error) {
-    return { ok: false, data: null, errors: [{ code: 'json_syntax', path: '$', message: String(error?.message || 'JSON 语法错误').slice(0, 500) }] };
+  if (fenced) {
+    const parsed = parseLocalJsonCandidate(fenced[1].trim(), ['code_fence']);
+    if (parsed.ok) return parsed;
   }
+  const candidates = jsonObjectCandidates(text);
+  if (candidates.length > 1) {
+    return { ok: false, data: null, normalization: [], errors: [{ code: 'ambiguous_json', path: '$', message: '返回中包含多个 JSON 对象，无法安全判定目标合同' }] };
+  }
+  if (candidates.length === 1 && candidates[0] !== text) {
+    const parsed = parseLocalJsonCandidate(candidates[0], ['extracted_object']);
+    if (parsed.ok) return parsed;
+  }
+  return exact;
 }
 
 export function parseStoryboardContractResponse(raw, options = {}) {
@@ -619,7 +744,7 @@ export function parseStoryboardContractResponse(raw, options = {}) {
   const validated = kind === 'safety'
     ? validateStoryboardSafetyContract(parsed.data, options)
     : validateStoryboardPlanContract(parsed.data, options);
-  return { ...validated, kind, requiresRepair: !validated.ok };
+  return { ...validated, kind, normalization: parsed.normalization || [], requiresRepair: !validated.ok };
 }
 
 function clippedText(value, max = 12000) {
