@@ -45,3 +45,35 @@ test('deleting a film removes only the timeline sidecar and leaves source media 
   assert.match(remove, /postproduction\.store\.remove\(\[timelineId\]\)/);
   assert.doesNotMatch(remove, /deleteVideoMedia|deleteStoryboard|removeVideo/);
 });
+
+test('film preview reads layered subtitles on demand and renders them as text', () => {
+  const open = source.slice(source.indexOf('async function storyboardOpenFilmViewer'), source.indexOf('function renderStoryboardVideoGallery'));
+  assert.match(open, /storyboardEnsureFilmPostproductionRuntime\(\)/);
+  assert.match(open, /postproduction\.store\.load\(timeline\.timelineId, chatKey, timeline\)/);
+  const subtitles = source.slice(source.indexOf('function storyboardUpdateFilmViewerSubtitle'), source.indexOf('function storyboardFilmViewerTransition'));
+  assert.match(subtitles, /video\.currentTime/);
+  assert.match(subtitles, /storyboardFilmViewerTimelineOffsetMs\(snapshot\)/);
+  assert.match(subtitles, /line\.className = 'sd-storyboard-film-viewer-subtitle-line'/);
+  assert.match(subtitles, /line\.textContent = String\(cue\.text \|\| ''\)/);
+  assert.doesNotMatch(subtitles, /innerHTML\s*=\s*cue\.text/);
+  assert.match(subtitles, /setTimeout\(tick, 120\)/);
+});
+
+test('film preview applies bounded transition effects without opening a second media resource', () => {
+  const paint = source.slice(source.indexOf('function storyboardFilmViewerTransition'), source.indexOf('async function storyboardOpenFilmViewer'));
+  assert.match(paint, /item\.type !== 'cut'/);
+  assert.match(paint, /is-transition-\$\{transition\.type\}/);
+  assert.match(paint, /Math\.max\(100, Math\.min\(2000,/);
+  assert.match(styles, /is-transition-crossfade[\s\S]*sd-storyboard-viewer-crossfade/);
+  assert.match(styles, /is-transition-dip_black::after[\s\S]*sd-storyboard-viewer-dip-black/);
+  assert.match(styles, /sd-storyboard-film-viewer-subtitles[\s\S]*pointer-events: none/);
+  assert.match(styles, /prefers-reduced-motion: reduce[\s\S]*is-transition-crossfade/);
+});
+
+test('closing film preview releases subtitle timing and postproduction state', () => {
+  const close = source.slice(source.indexOf('function storyboardCloseFilmViewer'), source.indexOf('async function storyboardFilmResolveStill'));
+  assert.match(close, /clearTimeout\(storyboardFilmSubtitleTimer\)/);
+  assert.match(close, /storyboardFilmPlaybackSession\?\.dispose\?\.\(\)/);
+  assert.match(close, /storyboardFilmViewerPostproduction = null/);
+  assert.match(close, /storyboardFilmViewerLastReadyIndex = -1/);
+});

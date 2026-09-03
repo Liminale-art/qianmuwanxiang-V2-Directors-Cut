@@ -15,17 +15,36 @@ export function createVideoTimelinePlaybackSession(dependencies = {}) {
   const deps = assertDependencies(dependencies);
   const schedule = typeof deps.setTimeout === 'function' ? deps.setTimeout : globalThis.setTimeout.bind(globalThis);
   const cancelSchedule = typeof deps.clearTimeout === 'function' ? deps.clearTimeout : globalThis.clearTimeout.bind(globalThis);
+  const now = typeof deps.now === 'function' ? deps.now : Date.now;
   const onChange = typeof deps.onChange === 'function' ? deps.onChange : () => {};
   let disposed = false;
   let sequence = 0;
   let timer = null;
   let activeResource = null;
+  let stillStartedAt = null;
   let state = {
     schema: QIANMU_VIDEO_TIMELINE_PLAYER_SCHEMA,
-    status: 'idle', issue: '', timeline: null, index: -1, playing: false, frame: null,
+    status: 'idle', issue: '', timeline: null, index: -1, playing: false, frame: null, clipElapsedMs: 0,
   };
 
+  function clipDurationMs(index = state.index) {
+    return Math.max(100, Math.round((Number(state.timeline?.clips?.[index]?.playback?.durationSeconds) || .1) * 1000));
+  }
+
+  function currentClipElapsedMs() {
+    const live = state.playing && state.timeline?.clips?.[state.index]?.kind === 'still' && stillStartedAt != null
+      ? state.clipElapsedMs + Math.max(0, Number(now()) - stillStartedAt)
+      : state.clipElapsedMs;
+    return Math.min(clipDurationMs(), Math.max(0, Math.round(live || 0)));
+  }
+
+  function timelineElapsedMs(clipElapsedMs = currentClipElapsedMs()) {
+    const previous = (state.timeline?.clips || []).slice(0, Math.max(0, state.index));
+    return previous.reduce((sum, clip) => sum + Math.max(100, Math.round((Number(clip.playback?.durationSeconds) || .1) * 1000)), 0) + clipElapsedMs;
+  }
+
   function snapshot() {
+    const clipElapsedMs = currentClipElapsedMs();
     return {
       schema: state.schema,
       status: state.status,
@@ -34,6 +53,8 @@ export function createVideoTimelinePlaybackSession(dependencies = {}) {
       index: state.index,
       playing: state.playing,
       frame: state.frame ? { ...state.frame } : null,
+      clipElapsedMs,
+      timelineElapsedMs: timelineElapsedMs(clipElapsedMs),
     };
   }
 
@@ -48,6 +69,12 @@ export function createVideoTimelinePlaybackSession(dependencies = {}) {
     timer = null;
   }
 
+  function commitStillElapsed() {
+    if (stillStartedAt == null || state.timeline?.clips?.[state.index]?.kind !== 'still') return;
+    state = { ...state, clipElapsedMs: currentClipElapsedMs() };
+    stillStartedAt = null;
+  }
+
   function releaseActive() {
     const resource = activeResource;
     activeResource = null;
@@ -58,9 +85,12 @@ export function createVideoTimelinePlaybackSession(dependencies = {}) {
     clearTimer();
     const clip = state.timeline?.clips?.[state.index];
     if (!state.playing || state.status !== 'ready' || clip?.kind !== 'still') return;
-    const milliseconds = Math.max(100, Math.round((Number(clip.playback?.durationSeconds) || 3) * 1000));
+    if (stillStartedAt == null) stillStartedAt = Number(now());
+    const milliseconds = Math.max(1, clipDurationMs() - Math.max(0, Number(state.clipElapsedMs) || 0));
     timer = schedule(() => {
       timer = null;
+      state = { ...state, clipElapsedMs: clipDurationMs() };
+      stillStartedAt = null;
       void advance(true);
     }, milliseconds);
   }
@@ -71,8 +101,9 @@ export function createVideoTimelinePlaybackSession(dependencies = {}) {
     if (!timeline || !Number.isInteger(index) || index < 0 || index >= timeline.clips.length) return snapshot();
     const requestId = ++sequence;
     clearTimer();
+    stillStartedAt = null;
     releaseActive();
-    state = { ...state, status: 'loading', issue: '', index, playing: false, frame: null };
+    state = { ...state, status: 'loading', issue: '', index, playing: false, frame: null, clipElapsedMs: 0 };
     emit();
     const clip = timeline.clips[index];
     try {
@@ -102,7 +133,7 @@ export function createVideoTimelinePlaybackSession(dependencies = {}) {
           posterRecordId: clip.source.posterRecordId, mimeType: '', title: clip.title,
         };
       }
-      state = { ...state, status: 'ready', issue: '', index, playing: Boolean(keepPlaying), frame };
+      state = { ...state, status: 'ready', issue: '', index, playing: Boolean(keepPlaying), frame, clipElapsedMs: 0 };
       emit();
       scheduleStill();
       return snapshot();
@@ -136,7 +167,7 @@ export function createVideoTimelinePlaybackSession(dependencies = {}) {
       sequence++;
       clearTimer();
       releaseActive();
-      state = { ...state, status: 'idle', issue: '', timeline: validation.timeline, index: -1, playing: false, frame: null };
+      state = { ...state, status: 'idle', issue: '', timeline: validation.timeline, index: -1, playing: false, frame: null, clipElapsedMs: 0 };
       return loadIndex(0, false);
     },
 
@@ -145,6 +176,7 @@ export function createVideoTimelinePlaybackSession(dependencies = {}) {
       if (state.status === 'ended') return loadIndex(0, true);
       if (state.status !== 'ready' || !state.frame) return snapshot();
       state = { ...state, playing: true };
+      if (state.timeline.clips[state.index]?.kind === 'still') stillStartedAt = Number(now());
       emit();
       scheduleStill();
       return snapshot();
@@ -153,6 +185,7 @@ export function createVideoTimelinePlaybackSession(dependencies = {}) {
     pause() {
       clearTimer();
       if (!disposed && state.playing) {
+        commitStillElapsed();
         state = { ...state, playing: false };
         emit();
       }
@@ -184,7 +217,8 @@ export function createVideoTimelinePlaybackSession(dependencies = {}) {
       sequence++;
       clearTimer();
       releaseActive();
-      state = { ...state, status: 'disposed', issue: '', timeline: null, index: -1, playing: false, frame: null };
+      state = { ...state, status: 'disposed', issue: '', timeline: null, index: -1, playing: false, frame: null, clipElapsedMs: 0 };
+      stillStartedAt = null;
     },
   });
 }

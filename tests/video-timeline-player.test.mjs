@@ -60,6 +60,34 @@ test('still playback uses its bounded duration and advances without preloading l
   session.dispose();
 });
 
+test('still playhead remains monotonic across pause and resume for timed subtitles', async () => {
+  let clock = 1000;
+  const timers = [];
+  const session = createVideoTimelinePlaybackSession({
+    openMotion: async (assetId) => ({ assetId, url: `blob:${assetId}`, release() {} }),
+    resolveStill: async (recordId) => ({ recordId, url: `/images/${recordId}.png` }),
+    now: () => clock,
+    setTimeout: (callback, milliseconds) => { timers.push({ callback, milliseconds, cleared: false }); return timers.length - 1; },
+    clearTimeout: (id) => { if (timers[id]) timers[id].cleared = true; },
+  });
+  await session.open(timeline([
+    { kind: 'still', recordId: 'still-a', durationSeconds: 2 },
+    { kind: 'motion', assetId: 'asset-a' },
+  ]), { chatKey: 'chat-a' });
+  await session.play();
+  clock = 1600;
+  assert.equal(session.snapshot().clipElapsedMs, 600);
+  assert.equal(session.snapshot().timelineElapsedMs, 600);
+  session.pause();
+  clock = 2400;
+  assert.equal(session.snapshot().clipElapsedMs, 600, 'paused playhead must not drift');
+  await session.play();
+  assert.equal(timers.at(-1).milliseconds, 1400, 'resume schedules only the remaining still duration');
+  clock = 2700;
+  assert.equal(session.snapshot().clipElapsedMs, 900);
+  session.dispose();
+});
+
 test('motion ended advances only while playing and the last segment stops cleanly', async () => {
   const session = createVideoTimelinePlaybackSession({
     openMotion: async (assetId) => ({ assetId, url: `blob:${assetId}`, release() {} }),

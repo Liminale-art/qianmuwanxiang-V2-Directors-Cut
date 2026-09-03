@@ -9798,6 +9798,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   color: #fff;
 }
 .sd-storyboard-film-viewer-stage {
+  position: relative;
   min-width: 0;
   min-height: 0;
   display: grid;
@@ -9807,6 +9808,8 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   background: rgba(0,0,0,.52);
 }
 .sd-storyboard-film-viewer-stage :is(img, video) {
+  position: relative;
+  z-index: 0;
   display: block;
   width: 100%;
   height: 100%;
@@ -9814,6 +9817,53 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   max-height: 100%;
   object-fit: contain;
   background: #000;
+}
+.sd-storyboard-film-viewer-stage.is-transition-crossfade :is(img, video) {
+  animation: sd-storyboard-viewer-crossfade var(--sd-film-transition-ms, 420ms) ease-out both;
+}
+.sd-storyboard-film-viewer-stage.is-transition-dip_black::after {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: #000;
+  content: '';
+  pointer-events: none;
+  animation: sd-storyboard-viewer-dip-black var(--sd-film-transition-ms, 420ms) ease-out both;
+}
+.sd-storyboard-film-viewer-subtitles {
+  position: absolute;
+  z-index: 2;
+  right: clamp(18px, 7vw, 92px);
+  bottom: clamp(18px, 5vh, 52px);
+  left: clamp(18px, 7vw, 92px);
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  pointer-events: none;
+}
+.sd-storyboard-film-viewer-subtitles[hidden] { display: none; }
+.sd-storyboard-film-viewer-subtitle-line {
+  max-width: min(82%, 760px);
+  padding: 4px 10px;
+  border-radius: 5px;
+  background: rgba(0,0,0,.68);
+  box-shadow: 0 1px 7px rgba(0,0,0,.3);
+  color: #fff;
+  font-size: clamp(12px, 1.6vw, 18px);
+  line-height: 1.45;
+  text-align: center;
+  overflow-wrap: anywhere;
+  text-shadow: 0 1px 2px #000;
+}
+.sd-storyboard-film-viewer-subtitle-line[data-kind="narration"] { color: rgba(255,255,255,.84); font-style: italic; }
+.sd-storyboard-film-viewer-subtitle-line[data-kind="caption"] { color: var(--sd-accent, #9fcbb5); font-size: clamp(11px, 1.35vw, 15px); }
+@keyframes sd-storyboard-viewer-crossfade {
+  from { opacity: .18; filter: blur(4px); transform: scale(1.012); }
+  to { opacity: 1; filter: blur(0); transform: scale(1); }
+}
+@keyframes sd-storyboard-viewer-dip-black {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 .sd-storyboard-film-viewer-message { display: grid; justify-items: center; gap: 10px; padding: 24px; color: rgba(255,255,255,.62); font-size: 11px; text-align: center; }
 .sd-storyboard-film-viewer-message :is(i, .qm-glyph-icon) { width: 24px; height: 24px; font-size: 24px; }
@@ -9891,4 +9941,10 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-film-postproduction > header { align-items: center; }
   #story-director-modal .sd-storyboard-film-subtitle { grid-template-columns: 56px minmax(0, 1fr) minmax(0, 1fr) 28px; }
   #story-director-modal .sd-storyboard-film-subtitle textarea.text_pole { grid-column: 1 / -1; grid-row: 2; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sd-storyboard-film-viewer-stage.is-transition-crossfade :is(img, video),
+  .sd-storyboard-film-viewer-stage.is-transition-dip_black::after { animation: none; }
+  .sd-storyboard-film-viewer-stage.is-transition-dip_black::after { opacity: 0; }
 }
