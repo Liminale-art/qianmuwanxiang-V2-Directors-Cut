@@ -875,6 +875,9 @@ export function normalizeStoryboardShotSpec(value = {}) {
       track: ['main_camera', 'second_camera'].includes(productionRaw.track) ? productionRaw.track : '',
       canonLevel: ['canon', 'director', 'draft'].includes(productionRaw.canonLevel || productionRaw.canon_level) ? (productionRaw.canonLevel || productionRaw.canon_level) : '',
       autoInsert: productionRaw.autoInsert === true,
+      decisionId: cleanId(productionRaw.decisionId || productionRaw.decision_id),
+      decisionStatus: productionRaw.decisionStatus === 'approved' ? 'approved' : productionRaw.decisionStatus === 'revoked' ? 'revoked' : '',
+      truthMode: productionRaw.truthMode === 'canon' ? 'canon' : productionRaw.truthMode === 'speculative' ? 'speculative' : '',
     },
     continuityUpdates,
     decisions: shotStringList(raw.decisions, 40, 1000),
@@ -913,7 +916,7 @@ export function adaptProductionPacketToStoryboardShotSpec(value = {}, overrides 
     promptAtoms: { global: [visual.description, visual.subject].filter(Boolean), environment },
     continuityUpdates: { time: sceneState.time, weather: sceneState.weather, props: Object.fromEntries((Array.isArray(sceneState.props) ? sceneState.props : []).map((prop) => [String(prop), true])) },
     evidence: { type: 'inferred', paragraphIds: evidenceRefs, quote: visual.evidenceQuote || '', rationale: visual.rationale || '由制片包映射，需在镜头详情确认后提交。' },
-    productionContext: { packetId: packet.packetId, eventId: packet.eventId, track: packet.track, canonLevel: packet.canonLevel, autoInsert: false },
+    productionContext: { packetId: packet.packetId, eventId: packet.eventId, track: packet.track, canonLevel: packet.canonLevel, autoInsert: false, decisionId: '', decisionStatus: '', truthMode: '' },
     decisions: [`制片包来源：${packet.sourceRef?.field || 'unknown'}`],
     ...overrides,
   });
@@ -943,6 +946,9 @@ export function storyboardProductionContext(value = {}) {
     track,
     canonLevel,
     autoInsert: raw.autoInsert === true,
+    decisionId: cleanId(raw.decisionId || raw.decision_id),
+    decisionStatus: raw.decisionStatus === 'approved' ? 'approved' : raw.decisionStatus === 'revoked' ? 'revoked' : '',
+    truthMode: raw.truthMode === 'canon' ? 'canon' : raw.truthMode === 'speculative' ? 'speculative' : '',
   };
 }
 

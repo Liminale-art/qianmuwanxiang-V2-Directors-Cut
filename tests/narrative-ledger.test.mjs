@@ -90,7 +90,7 @@ test('normalization strips prompts, credentials, URLs and arbitrary payloads', (
 test('the ledger contract remains a lazy release chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(source, /narrativeLedger:\s*\{[\s\S]*import\('\.\/qianmu-narrative-ledger\.js\?v=1\.58\.93'\)/);
+  assert.match(source, /narrativeLedger:\s*\{[\s\S]*import\('\.\/qianmu-narrative-ledger\.js\?v=1\.58\.94'\)/);
   const init = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(init, /featureRuntime\.load\('narrativeLedger'\)/);
   assert.ok(release.files.includes('qianmu-narrative-ledger.js'));

@@ -16,6 +16,7 @@
     "qianmu-blobstore.js",
     "qianmu-data-migrations.js",
     "qianmu-director-candidate.js",
+    "qianmu-director-decision.js",
     "qianmu-feature-runtime.js",
     "qianmu-icon-renderer.js",
     "qianmu-image-direct.js",
