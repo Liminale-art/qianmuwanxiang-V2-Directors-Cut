@@ -5,6 +5,7 @@ import {
   QIANMU_NARRATIVE_ENTRY_SCHEMA,
   QIANMU_NARRATIVE_LEDGER_SCHEMA,
   canExposeNarrativeLedgerEntryToMainline,
+  invalidateNarrativeLedgerEntries,
   normalizeNarrativeLedgerEntry,
   validateNarrativeLedger,
   validateNarrativeLedgerEntry,
@@ -87,10 +88,46 @@ test('normalization strips prompts, credentials, URLs and arbitrary payloads', (
   assert.doesNotMatch(serialized, /secret prompt|secret-key|example\.invalid|provider data|base64/);
 });
 
+test('source lifecycle events invalidate matching facts but retain their audit trail', () => {
+  const swipeFact = normalizeNarrativeLedgerEntry(proseFact);
+  const otherFact = normalizeNarrativeLedgerEntry({
+    ...proseFact,
+    entryId: 'other-fact',
+    source: { ...proseFact.source, recordId: 'message-15', floor: 15, revisionId: 'swipe-8' },
+    continuity: { state: 'active', conditions: [{ kind: 'source_deleted', refId: 'message-15' }] },
+  });
+  const original = { owner: { chatKey: 'chat-a' }, entries: [swipeFact, otherFact], revision: 3 };
+  const result = invalidateNarrativeLedgerEntries(original, {
+    chatKey: 'chat-a', kind: 'swipe_changed', revisionId: 'swipe-2', updatedAt: '2026-09-03T10:00:00Z',
+  });
+  assert.deepEqual(result.invalidatedEntryIds, [swipeFact.entryId]);
+  assert.equal(result.ledger.revision, 4);
+  assert.equal(result.ledger.entries[0].continuity.state, 'invalidated');
+  assert.deepEqual(result.ledger.entries[0].continuity.invalidatedBy, ['swipe_changed:swipe-2']);
+  assert.equal(result.ledger.entries[1].continuity.state, 'active');
+  assert.equal(canExposeNarrativeLedgerEntryToMainline(result.ledger.entries[0], 'user'), false);
+  assert.equal(original.entries[0].continuity.state, 'active', 'the source ledger is not mutated');
+});
+
+test('floor deletion, explicit supersession and cross-chat requests fail safely', () => {
+  const ledger = { owner: { chatKey: 'chat-a' }, entries: [proseFact], revision: 1 };
+  const foreign = invalidateNarrativeLedgerEntries(ledger, { chatKey: 'chat-b', kind: 'source_deleted', floor: 12 });
+  assert.equal(foreign.issue, 'owner_chat_mismatch');
+  assert.equal(foreign.ledger.entries[0].continuity.state, 'active');
+  const deleted = invalidateNarrativeLedgerEntries(ledger, { chatKey: 'chat-a', kind: 'source_deleted', floor: 12 });
+  assert.equal(deleted.ledger.entries[0].continuity.state, 'invalidated');
+  const superseded = invalidateNarrativeLedgerEntries(ledger, {
+    chatKey: 'chat-a', kind: 'superseded', entryIds: [deleted.ledger.entries[0].entryId],
+  });
+  assert.equal(superseded.ledger.entries[0].continuity.state, 'superseded');
+  const repeated = invalidateNarrativeLedgerEntries(deleted.ledger, { chatKey: 'chat-a', kind: 'source_deleted', floor: 12 });
+  assert.equal(repeated.ledger.revision, deleted.ledger.revision, 'repeated events remain idempotent');
+});
+
 test('the ledger contract remains a lazy release chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(source, /narrativeLedger:\s*\{[\s\S]*import\('\.\/qianmu-narrative-ledger\.js\?v=1\.58\.94'\)/);
+  assert.match(source, /narrativeLedger:\s*\{[\s\S]*import\('\.\/qianmu-narrative-ledger\.js\?v=1\.58\.95'\)/);
   const init = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(init, /featureRuntime\.load\('narrativeLedger'\)/);
   assert.ok(release.files.includes('qianmu-narrative-ledger.js'));

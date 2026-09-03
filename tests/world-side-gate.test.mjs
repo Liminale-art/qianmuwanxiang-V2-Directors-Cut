@@ -42,6 +42,16 @@ test('late async bridge results cannot repopulate state after opt-out or chat ch
   assert.match(reset, /directorNarrativeBridgeEpoch\+\+/);
 });
 
+test('slow decision confirmation rechecks source epoch, chat and explicit switch', () => {
+  const generate = source.slice(source.indexOf('async function storyboardGenerateProductionPacket'), source.indexOf('async function storyboardGenerate(root'));
+  assert.match(generate, /const actionEpoch = directorNarrativeBridgeEpoch/);
+  const decisionLoad = generate.indexOf("await featureRuntime.load('directorDecision')");
+  const epochCheck = generate.indexOf('actionEpoch !== directorNarrativeBridgeEpoch');
+  assert.ok(decisionLoad >= 0 && epochCheck > decisionLoad);
+  assert.match(generate, /currentChatKey !== String\(getChatKey\(\) \|\| ''\)/);
+  assert.match(generate, /!currentState\.directorBridge\?\.worldSideShotsEnabled/);
+});
+
 test('the workbench exposes one compact switch and hides stale director material while disabled', () => {
   const card = source.slice(source.indexOf('function renderStoryboardAutomationCard'), source.indexOf('function renderStoryboardCompilerContextPanel'));
   assert.match(card, /class="sd-storyboard-world-side"[\s\S]*<span>世界侧镜头<\/span>/);
@@ -83,4 +93,18 @@ test('chat switches and extension cleanup discard all ephemeral bridge state', (
   const cleanupStart = source.indexOf('function cleanupRuntime');
   const cleanup = source.slice(cleanupStart, source.indexOf('installStartupFallback', cleanupStart));
   assert.match(cleanup, /clean\('director candidate pool', \(\) => resetDirectorNarrativeBridge\(\)\)/);
+});
+
+test('message mutations and plan clearing release stale candidates without treating lazy loading as a mutation', () => {
+  const handlers = source.slice(source.indexOf('const refreshHandler = async'), source.indexOf('function init()'));
+  assert.match(handlers, /const refreshHandler = async \(\) => \{\s*resetDirectorNarrativeBridge\(\)/);
+  assert.match(handlers, /const ttsMessageEditedHandler = \(messageRef\) => \{\s*resetDirectorNarrativeBridge\(\)/);
+  assert.match(handlers, /const storyboardMessageDeletedHandler = async \(\) => \{\s*resetDirectorNarrativeBridge\(\)/);
+  assert.match(handlers, /const storyboardMessageVersionHandler = \(\) => \{\s*resetDirectorNarrativeBridge\(\)/);
+  assert.match(handlers, /MORE_MESSAGES_LOADED[^\n]*storyboardMoreMessagesLoadedHandler/);
+  const moreLoaded = handlers.slice(handlers.indexOf('const storyboardMoreMessagesLoadedHandler'), handlers.indexOf('const pairs'));
+  assert.doesNotMatch(moreLoaded, /resetDirectorNarrativeBridge/);
+  const reviewBindings = source.slice(source.indexOf("root.querySelector('.sd-clear-plan')"), source.indexOf("root.querySelectorAll('.sd-delete-history')"));
+  assert.match(reviewBindings, /store\.plan = null;\s*resetDirectorNarrativeBridge\(\)/);
+  assert.match(reviewBindings, /getChatStore\(\)\.plan = restored;[\s\S]*resetDirectorNarrativeBridge\(\)/);
 });

@@ -170,6 +170,78 @@ export function canExposeNarrativeLedgerEntryToMainline(value = {}, viewerId = '
   return entry.readerVisibility.scope === 'limited' && Boolean(viewer && entry.readerVisibility.viewerIds.includes(viewer));
 }
 
+function invalidationEventRefs(value = {}) {
+  const raw = plain(value) ? value : {};
+  return list([
+    ...(Array.isArray(raw.refIds || raw.ref_ids) ? (raw.refIds || raw.ref_ids) : []),
+    raw.refId || raw.ref_id,
+    raw.recordId || raw.record_id,
+    raw.messageId || raw.message_id,
+    raw.revisionId || raw.revision_id,
+    raw.itemId || raw.item_id,
+  ], 80, 200);
+}
+
+function entryMatchesInvalidation(entry, kind, refs, entryIds, floor) {
+  if (entryIds.has(entry.entryId)) return true;
+  const sourceRefs = [entry.source.recordId, entry.source.messageId, entry.source.revisionId, entry.source.itemId].filter(Boolean);
+  const sourceMatch = sourceRefs.some((ref) => refs.has(ref));
+  const floorMatch = floor != null && entry.source.floor === floor;
+  const conditionMatch = entry.continuity.conditions.some((condition) => (
+    condition.kind === kind && (!condition.refId || refs.has(condition.refId))
+  ));
+  if (conditionMatch) return true;
+  if (kind === 'source_deleted') return sourceMatch || floorMatch;
+  if (kind === 'message_revised') return refs.has(entry.source.messageId) || refs.has(entry.source.recordId) || floorMatch;
+  if (kind === 'swipe_changed') return refs.has(entry.source.revisionId) || refs.has(entry.source.messageId) || floorMatch;
+  if (kind === 'superseded') return refs.has(entry.entryId) || refs.has(entry.source.recordId);
+  return false;
+}
+
+/**
+ * Close ledger entries whose source changed without deleting their audit trail.
+ * The caller must provide the owning chat key; cross-chat invalidation fails closed.
+ */
+export function invalidateNarrativeLedgerEntries(value = {}, event = {}) {
+  const ledger = normalizeNarrativeLedger(value);
+  const raw = plain(event) ? event : {};
+  const chatKey = text(raw.chatKey || raw.chat_key, 512);
+  if (!chatKey) return { ledger, invalidatedEntryIds: [], issue: 'owner_chat_missing' };
+  if (chatKey !== ledger.owner.chatKey) return { ledger, invalidatedEntryIds: [], issue: 'owner_chat_mismatch' };
+  const kind = choice(raw.kind, QIANMU_NARRATIVE_INVALIDATION_KINDS, 'manual');
+  const refs = new Set(invalidationEventRefs(raw));
+  const entryIds = new Set(list(raw.entryIds || raw.entry_ids, MAX_LEDGER_ENTRIES, 200));
+  const floor = integer(raw.floor);
+  const invalidatedEntryIds = [];
+  const reasonRef = [...entryIds, ...refs][0] || (floor != null ? `floor-${floor}` : 'manual');
+  const reason = `${kind}:${reasonRef}`;
+  const entries = ledger.entries.map((entry) => {
+    if (entry.owner.chatKey !== chatKey || entry.continuity.state !== 'active') return entry;
+    if (!entryMatchesInvalidation(entry, kind, refs, entryIds, floor)) return entry;
+    invalidatedEntryIds.push(entry.entryId);
+    return {
+      ...entry,
+      continuity: {
+        ...entry.continuity,
+        state: kind === 'superseded' ? 'superseded' : 'invalidated',
+        invalidatedBy: list([...entry.continuity.invalidatedBy, reason], 40, 200),
+      },
+      updatedAt: text(raw.updatedAt || raw.updated_at, 64) || entry.updatedAt,
+    };
+  });
+  if (!invalidatedEntryIds.length) return { ledger, invalidatedEntryIds, issue: '' };
+  return {
+    ledger: {
+      ...ledger,
+      entries,
+      revision: ledger.revision + 1,
+      updatedAt: text(raw.updatedAt || raw.updated_at, 64) || ledger.updatedAt,
+    },
+    invalidatedEntryIds,
+    issue: '',
+  };
+}
+
 export function adaptProductionPacketToNarrativeLedgerEntry(value = {}) {
   const packet = plain(value) ? value : {};
   const anchor = plain(packet.timelineAnchor) ? packet.timelineAnchor : {};
