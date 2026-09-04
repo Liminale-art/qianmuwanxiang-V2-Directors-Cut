@@ -647,9 +647,9 @@ html body.sd-prose-layout #chat .mes .mes_text {
   margin-inline: auto !important;
   margin-left: auto !important;
   margin-right: auto !important;
-  /* 不复用 ST 的桌面单侧留白：由千幕提供对称且有上限的正文安全边距。 */
-  padding-left: clamp(12px, 2.2vw, 24px) !important;
-  padding-right: clamp(12px, 2.2vw, 24px) !important;
+  /* 不复用 ST 的桌面单侧留白；左右始终同值，并允许用户按设备与主题自行微调。 */
+  padding-left: var(--sd-prose-side-padding, 10px) !important;
+  padding-right: var(--sd-prose-side-padding, 10px) !important;
   inset-inline: auto !important;
   transform: none !important;
   font-size: var(--sd-prose-font-size) !important;
@@ -659,8 +659,6 @@ html body.sd-prose-layout #chat .mes .mes_text {
 @media screen and (max-width: 720px) {
   html body.sd-prose-layout #chat .mes .mes_text {
     width: min(var(--sd-prose-content-width), var(--sd-prose-mobile-content-width, 100%), 100%) !important;
-    padding-left: clamp(7px, 2.4vw, 10px) !important;
-    padding-right: clamp(7px, 2.4vw, 10px) !important;
   }
 }
 html body.sd-prose-layout #chat .mes .mes_text > p {
@@ -1812,7 +1810,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-note-item-tools { position: absolute; z-index: 3; right: 34px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 #story-director-modal .sd-note-item-tools[hidden] { display: none; }
 #story-director-modal .sd-note-editor { min-width: 0; min-height: 0; flex: 1 1 auto; display: flex; padding: 0; background: var(--sd-notes-surface); }
-#story-director-modal .sd-note-editor .sd-note-body { width: 100%; height: 100%; min-height: 0; resize: none; padding: 16px !important; border: 0 !important; border-radius: 0 !important; outline: 0; background: var(--sd-notes-surface) !important; color: var(--sd-text) !important; font: inherit; font-size: 14px; line-height: 1.72; box-shadow: none !important; }
+#story-director-modal .sd-note-editor .sd-note-body { width: 100%; height: 100%; min-height: 0; resize: none; padding: 16px !important; border: 0 !important; border-radius: 0 !important; outline: 0; background: var(--sd-notes-surface) !important; color: var(--sd-text) !important; font: inherit; font-size: var(--sd-note-editor-font-size, 14px); line-height: 1.72; box-shadow: none !important; }
 
 /* ST 页面只浮贴一个便笺蜂巢入口；容器不拦截正文。 */
 #qianmu-notes-float-layer {
@@ -8477,6 +8475,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #qianmu-notes-panel-layer .sd-notes-panel > header > div { display: flex; align-items: center; gap: 6px; }
 #qianmu-notes-panel-layer .sd-notes-panel > header b { font: 600 14px/1.2 Georgia, serif; letter-spacing: .08em; }
 #qianmu-notes-panel-layer .sd-icon-btn { width: 32px; min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--sd-hairline); border-radius: 9px; background: var(--sd-glass-weak); color: inherit; }
+#qianmu-notes-panel-layer .sd-note-font-size { width: 58px; min-width: 58px; height: 32px; padding: 0 7px; border: 1px solid var(--sd-hairline); border-radius: 9px; outline: 0; background: var(--sd-notes-card); color: inherit; font: 600 11px/1 var(--sd-font, system-ui, sans-serif); text-align: center; }
 #qianmu-notes-panel-layer .sd-notes-list-view { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 7px; padding: 9px; background: var(--sd-notes-surface); }
 #qianmu-notes-panel-layer .sd-notes-search-row { display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 6px; }
 #qianmu-notes-panel-layer .sd-notes-search { width: 100%; min-height: 32px; margin: 0; padding: 5px 9px; border: 1px solid var(--sd-border); border-radius: 9px; outline: 0; background: var(--sd-notes-card); color: inherit; font: inherit; }
@@ -8496,7 +8495,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #qianmu-notes-panel-layer .sd-note-item-tools button:hover,
 #qianmu-notes-panel-layer .sd-note-item-tools button.active { background: color-mix(in srgb, var(--sd-accent) 13%, var(--sd-notes-card)); color: var(--sd-accent); }
 #qianmu-notes-panel-layer .sd-note-editor { min-height: 0; flex: 1; display: flex; background: var(--sd-notes-surface); }
-#qianmu-notes-panel-layer .sd-note-body { width: 100%; height: 100%; min-height: 0; resize: none; padding: 14px; border: 0; border-radius: 0; outline: 0; background: var(--sd-notes-surface); color: var(--sd-text); font: inherit; font-size: 13px; line-height: 1.68; }
+#qianmu-notes-panel-layer .sd-note-body { width: 100%; height: 100%; min-height: 0; resize: none; padding: 14px; border: 0; border-radius: 0; outline: 0; background: var(--sd-notes-surface); color: var(--sd-text); font: inherit; font-size: var(--sd-note-editor-font-size, 13px); line-height: 1.68; }
 
 /* 浮贴蜂巢与悬浮球严格共用尺寸；Lucide SVG 不再继承错误的图标字号。 */
 .sd-detached-notes-entry > :is(i, .qm-glyph-icon) { position: relative; z-index: 2; width: calc(var(--sd-notes-entry-height, 48px) * .34) !important; height: calc(var(--sd-notes-entry-height, 48px) * .34) !important; font-size: calc(var(--sd-notes-entry-height, 48px) * .34) !important; }
