@@ -59,6 +59,9 @@ vm.runInNewContext(`${source.slice(floatStart, floatEnd)}\nglobalThis.floatContr
 const halfHidden = sandbox.floatContract.clampFloatPosition();
 assert.equal(halfHidden.x, -(48 * Math.sqrt(3) / 2) / 2, '左边最多隐藏半个 Logo');
 assert.equal(halfHidden.y, 4, '顶部不得半隐藏或落入 ST 顶栏，左上角仍须保留完整拖动面');
+assert.equal(halfHidden.height, 48, '位置结果中的 height 必须保持悬浮格高度，不能被视口高度覆盖');
+assert.equal(halfHidden.viewportHeight, 800, '视口高度必须使用独立字段返回');
+assert.notEqual(halfHidden.height, halfHidden.viewportHeight, '悬浮格高度与视口高度不得再发生字段碰撞');
 sandbox.settings.floatPosition = { x: 399, y: 300 };
 const rightHidden = sandbox.floatContract.clampFloatPosition();
 assert.equal(rightHidden.x, 400 - (48 * Math.sqrt(3) / 2) / 2, '右边最多隐藏半个 Logo');
