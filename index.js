@@ -95,9 +95,9 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.14';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.14';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.14';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.15';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.15';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.15';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -105,7 +105,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.14';
+} from './qianmu-llm-output.js?v=1.59.15';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -158,143 +158,143 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.14';
+} from './qianmu-storyboard.js?v=1.59.15';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.14';
+const VERSION = '1.59.15';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.14'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.15'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.14').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.15').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.14'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.15'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.14'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.15'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.14'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.15'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.14'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.15'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.14'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.15'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.14'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.15'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.14'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.15'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.14'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.15'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.14'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.15'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.14'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.15'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.14'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.15'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.14'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.15'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.14'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.15'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.14'),
+    load: () => import('./qianmu-video-task.js?v=1.59.15'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.14'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.15'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.14'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.15'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.14'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.15'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.14'),
+    load: () => import('./qianmu-video-store.js?v=1.59.15'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.14'),
+    load: () => import('./qianmu-video-result.js?v=1.59.15'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.14'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.15'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.14'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.15'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.14'),
+    load: () => import('./qianmu-video-media.js?v=1.59.15'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.14'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.15'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.14'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.15'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.14'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.15'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.14'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.15'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.14'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.15'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.14'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.15'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.14'),
-        import('./qianmu-theaters.js?v=1.59.14'),
+        import('./builtin-theaters.js?v=1.59.15'),
+        import('./qianmu-theaters.js?v=1.59.15'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -5141,7 +5141,7 @@ function bindNotesHiveDetachDrag(button, item, layout) {
 }
 
 const PROSE_LAYOUT_BODY_CLASSES = ['sd-prose-layout', 'sd-prose-justify', 'sd-prose-split-breaks'];
-const PROSE_LAYOUT_CSS_VARS = ['--sd-prose-font-size', '--sd-prose-line-height', '--sd-prose-paragraph-gap', '--sd-prose-indent', '--sd-prose-content-width', '--sd-prose-side-padding'];
+const PROSE_LAYOUT_CSS_VARS = ['--sd-prose-font-size', '--sd-prose-line-height', '--sd-prose-paragraph-gap', '--sd-prose-indent', '--sd-prose-content-width', '--sd-prose-mobile-content-width'];
 let proseLayoutObserver = null;
 let proseLayoutFrame = 0;
 let proseLayoutPendingRoots = new Set();
@@ -5167,6 +5167,15 @@ function proseLayoutSettings() {
 function proseLayoutFormatValue(key, value) {
   if (['fontSize', 'contentWidth'].includes(key)) return String(Math.round(Number(value) || 0));
   return String(Number(Number(value).toFixed(2)));
+}
+
+// 桌面继续按字符数控制舒适行长；窄屏无法容纳 80ch 以上的物理宽度，直接使用同一
+// max-width 会让大部分滑块区间看起来失效。将 36–80ch 映射为 45–100% 的可视宽度，
+// 80ch 以上保持满宽，既让手机端调节真实可见，也不允许正文溢出当前消息容器。
+function proseLayoutMobileContentWidth(contentWidth) {
+  const width = Number(contentWidth);
+  if (!Number.isFinite(width)) return 100;
+  return Math.min(100, Math.max(45, Number((width * 1.25).toFixed(2))));
 }
 
 function proseLayoutMessageRoots(root = document) {
@@ -5317,6 +5326,7 @@ function applyProseLayout(refreshBreaks = true) {
   rootStyle.setProperty('--sd-prose-paragraph-gap', `${layout.paragraphGap}em`);
   rootStyle.setProperty('--sd-prose-indent', `${layout.indent}em`);
   rootStyle.setProperty('--sd-prose-content-width', `${layout.contentWidth}ch`);
+  rootStyle.setProperty('--sd-prose-mobile-content-width', `${proseLayoutMobileContentWidth(layout.contentWidth)}%`);
   if (layout.splitBreaks) {
     if (refreshBreaks) proseLayoutMarkBreaks(document);
   } else {

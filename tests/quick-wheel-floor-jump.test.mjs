@@ -207,8 +207,10 @@ assert.match(source, /input\[type="number"\]\[data-prose-key\][\s\S]*addEventLis
 assert.match(source, /querySelectorAll\('#chat \.mes_text'\)/, '排版功能必须严格限制在聊天正文');
 assert.doesNotMatch(source.slice(source.indexOf('function proseLayoutMarkBreaks'), source.indexOf('function proseLayoutSchedule')), /innerHTML|outerHTML|wrap|replaceWith/, '换行整理不得重建正文或复制参考实现');
 assert.match(css, /html body\.sd-prose-layout #chat \.mes \.mes_text[\s\S]*line-height:\s*var\(--sd-prose-line-height\) !important/, '正文排版必须以高优先级覆盖 ST 美化');
-assert.match(css, /html body\.sd-prose-layout #chat \.mes \.mes_text[\s\S]*padding-left:\s*var\(--sd-prose-side-padding, var\(--mes-right-spacing, 30px\)\) !important;[\s\S]*padding-right:\s*var\(--sd-prose-side-padding, var\(--mes-right-spacing, 30px\)\) !important;/, '正文排版必须把 ST 单侧留白归一为左右完全对称');
+assert.match(css, /html body\.sd-prose-layout #chat \.mes \.mes_text[\s\S]*padding-left:\s*clamp\(12px, 2\.2vw, 24px\) !important;[\s\S]*padding-right:\s*clamp\(12px, 2\.2vw, 24px\) !important;/, '正文排版必须使用独立于 ST 单侧桌面留白的对称安全边距');
 assert.match(css, /html body\.sd-prose-layout #chat \.mes \.mes_text[\s\S]*box-sizing:\s*border-box !important;/, '正文的对称留白必须计入内容宽度，避免主题盒模型造成右侧溢出');
+assert.match(source, /function proseLayoutMobileContentWidth[\s\S]*Math\.min\(100,[\s\S]*width \* 1\.25[\s\S]*--sd-prose-mobile-content-width/, '窄屏必须将字符行宽映射为真实可见的相对宽度');
+assert.match(css, /@media screen and \(max-width: 720px\)[\s\S]*html body\.sd-prose-layout #chat \.mes \.mes_text[\s\S]*width:\s*min\(var\(--sd-prose-content-width\), var\(--sd-prose-mobile-content-width, 100%\), 100%\) !important;[\s\S]*padding-left:\s*clamp\(7px, 2\.4vw, 10px\) !important;[\s\S]*padding-right:\s*clamp\(7px, 2\.4vw, 10px\) !important;/, '移动正文宽度必须可调且使用紧凑对称留白');
 assert.match(css, /html body\.sd-prose-justify #chat \.mes \.mes_text/);
 assert.match(css, /body\.sd-prose-split-breaks #chat \.mes \.mes_text \[data-sd-prose-gap="1"\][\s\S]*height:\s*var\(--sd-prose-paragraph-gap\) !important/, '段距必须使用稳定的间隔元素而非无效的 br margin');
 assert.match(css, /\.sd-floor-search\s*\{[^}]*grid-template-columns:\s*auto minmax\(0, 1fr\) auto auto/);

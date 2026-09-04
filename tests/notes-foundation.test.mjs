@@ -49,6 +49,7 @@ assert.match(source, /pinned \? '便笺已保存'/, 'pinning a note confirms dur
 assert.match(styles, /\.sd-notes-panel[\s\S]*background: var\(--sd-notes-surface\)/, 'the notes page must use an opaque theme surface');
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-notes-panel \{[\s\S]*width: min\(60vw,[\s\S]*height: min\(60vh,/, 'desktop notes use the compact sixty-percent workspace');
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-notes-panel \{[\s\S]*resize: both/, 'desktop notes must expose native two-axis drag resizing');
+assert.match(styles, /#qianmu-notes-panel-layer \.sd-note-body \{[^}]*font-size: 13px;/, 'the detached note editor uses the enlarged readable type size');
 assert.match(source, /panelSize: \{ width: null, height: null \}/, 'desktop note size must have a backward-compatible persisted setting');
 assert.match(source, /function bindNotesPanelResize[\s\S]*new ResizeObserver[\s\S]*noteSettings\.panelSize = size;[\s\S]*saveSettings\(\)/, 'desktop note resizing must persist without rebuilding the editor');
 assert.match(styles, /\.sd-note-pinned-mark,[\s\S]*\.sd-note-tools-toggle,[\s\S]*width: 28px; height: 28px/, 'pin state and more control must occupy the same visual slot');

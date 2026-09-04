@@ -641,20 +641,27 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 /* 正文排版只在用户实际调整后生效；提高优先级以覆盖 ST 美化，但不越出聊天正文。 */
 html body.sd-prose-layout #chat .mes .mes_text {
   box-sizing: border-box !important;
-  width: 100% !important;
-  max-width: min(var(--sd-prose-content-width), 100%) !important;
+  width: min(var(--sd-prose-content-width), 100%) !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
   margin-inline: auto !important;
   margin-left: auto !important;
   margin-right: auto !important;
-  /* ST 默认只在右侧预留 --mes-right-spacing；在不同主题下会把正文视觉重心推向左侧。 */
-  padding-left: var(--sd-prose-side-padding, var(--mes-right-spacing, 30px)) !important;
-  padding-right: var(--sd-prose-side-padding, var(--mes-right-spacing, 30px)) !important;
-  box-sizing: border-box !important;
+  /* 不复用 ST 的桌面单侧留白：由千幕提供对称且有上限的正文安全边距。 */
+  padding-left: clamp(12px, 2.2vw, 24px) !important;
+  padding-right: clamp(12px, 2.2vw, 24px) !important;
   inset-inline: auto !important;
   transform: none !important;
   font-size: var(--sd-prose-font-size) !important;
   line-height: var(--sd-prose-line-height) !important;
   text-indent: var(--sd-prose-indent) !important;
+}
+@media screen and (max-width: 720px) {
+  html body.sd-prose-layout #chat .mes .mes_text {
+    width: min(var(--sd-prose-content-width), var(--sd-prose-mobile-content-width, 100%), 100%) !important;
+    padding-left: clamp(7px, 2.4vw, 10px) !important;
+    padding-right: clamp(7px, 2.4vw, 10px) !important;
+  }
 }
 html body.sd-prose-layout #chat .mes .mes_text > p {
   margin-block: 0 var(--sd-prose-paragraph-gap) !important;
@@ -1805,7 +1812,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-note-item-tools { position: absolute; z-index: 3; right: 34px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 #story-director-modal .sd-note-item-tools[hidden] { display: none; }
 #story-director-modal .sd-note-editor { min-width: 0; min-height: 0; flex: 1 1 auto; display: flex; padding: 0; background: var(--sd-notes-surface); }
-#story-director-modal .sd-note-editor .sd-note-body { width: 100%; height: 100%; min-height: 0; resize: none; padding: 16px !important; border: 0 !important; border-radius: 0 !important; outline: 0; background: var(--sd-notes-surface) !important; color: var(--sd-text) !important; font: inherit; font-size: 13px; line-height: 1.72; box-shadow: none !important; }
+#story-director-modal .sd-note-editor .sd-note-body { width: 100%; height: 100%; min-height: 0; resize: none; padding: 16px !important; border: 0 !important; border-radius: 0 !important; outline: 0; background: var(--sd-notes-surface) !important; color: var(--sd-text) !important; font: inherit; font-size: 14px; line-height: 1.72; box-shadow: none !important; }
 
 /* ST 页面只浮贴一个便笺蜂巢入口；容器不拦截正文。 */
 #qianmu-notes-float-layer {
@@ -8489,7 +8496,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #qianmu-notes-panel-layer .sd-note-item-tools button:hover,
 #qianmu-notes-panel-layer .sd-note-item-tools button.active { background: color-mix(in srgb, var(--sd-accent) 13%, var(--sd-notes-card)); color: var(--sd-accent); }
 #qianmu-notes-panel-layer .sd-note-editor { min-height: 0; flex: 1; display: flex; background: var(--sd-notes-surface); }
-#qianmu-notes-panel-layer .sd-note-body { width: 100%; height: 100%; min-height: 0; resize: none; padding: 14px; border: 0; border-radius: 0; outline: 0; background: var(--sd-notes-surface); color: var(--sd-text); font: inherit; font-size: 12px; line-height: 1.68; }
+#qianmu-notes-panel-layer .sd-note-body { width: 100%; height: 100%; min-height: 0; resize: none; padding: 14px; border: 0; border-radius: 0; outline: 0; background: var(--sd-notes-surface); color: var(--sd-text); font: inherit; font-size: 13px; line-height: 1.68; }
 
 /* 浮贴蜂巢与悬浮球严格共用尺寸；Lucide SVG 不再继承错误的图标字号。 */
 .sd-detached-notes-entry > :is(i, .qm-glyph-icon) { position: relative; z-index: 2; width: calc(var(--sd-notes-entry-height, 48px) * .34) !important; height: calc(var(--sd-notes-entry-height, 48px) * .34) !important; font-size: calc(var(--sd-notes-entry-height, 48px) * .34) !important; }
