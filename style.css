@@ -659,7 +659,7 @@ html body.sd-prose-layout #chat .mes .mes_text {
 }
 @media screen and (max-width: 720px) {
   html body.sd-prose-layout #chat .mes .mes_text {
-    --sd-prose-auto-side-padding: clamp(7px, 2.4vw, 10px);
+    --sd-prose-auto-side-padding: clamp(4px, 1.4vw, 7px);
     width: min(var(--sd-prose-content-width), var(--sd-prose-mobile-content-width, 100%), 100%) !important;
   }
 }

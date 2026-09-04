@@ -211,6 +211,7 @@ assert.match(css, /html body\.sd-prose-layout #chat \.mes \.mes_text[\s\S]*paddi
 assert.match(css, /html body\.sd-prose-layout #chat \.mes \.mes_text[\s\S]*box-sizing:\s*border-box !important;/, '正文安全留白必须计入内容宽度，避免主题盒模型造成右侧溢出');
 assert.match(source, /function proseLayoutMobileContentWidth[\s\S]*Math\.min\(100,[\s\S]*width \* 1\.25[\s\S]*--sd-prose-mobile-content-width/, '窄屏必须将字符行宽映射为真实可见的相对宽度');
 assert.match(css, /@media screen and \(max-width: 720px\)[\s\S]*html body\.sd-prose-layout #chat \.mes \.mes_text[\s\S]*width:\s*min\(var\(--sd-prose-content-width\), var\(--sd-prose-mobile-content-width, 100%\), 100%\) !important;/, '移动正文宽度必须映射为可调的相对宽度');
+assert.match(css, /@media screen and \(max-width: 720px\)[\s\S]*--sd-prose-auto-side-padding:\s*clamp\(4px, 1\.4vw, 7px\)/, '窄屏默认正文应尽量展开，同时保留最小安全留白');
 assert.match(source, /rootStyle\.setProperty\('--sd-prose-horizontal-offset', `\$\{layout\.horizontalOffset\}px`\)/, '横向偏移必须即时写入正文 CSS 变量');
 assert.match(source, /delete layout\.sidePadding/, '旧版边距字段不得继续影响横向偏移');
 assert.match(css, /html body\.sd-prose-justify #chat \.mes \.mes_text/);
