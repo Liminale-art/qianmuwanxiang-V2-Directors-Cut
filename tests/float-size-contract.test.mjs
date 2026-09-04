@@ -11,8 +11,11 @@ assert.match(source, /function getFloatSize\(\)[\s\S]*Math\.max\(FLOAT_SIZE_MIN,
 assert.match(source, /class="sd-float-size"[^>]*min="\$\{FLOAT_SIZE_MIN\}" max="\$\{FLOAT_SIZE_MAX\}"/, '尺寸滑块最大值必须使用80像素上限');
 assert.match(source, /requestedSize = Math\.max\(FLOAT_SIZE_MIN, Math\.min\(FLOAT_SIZE_MAX, Math\.round\(floatSize\)\)\)/, '蜂巢展开尺寸必须与悬浮球共用80像素上限');
 assert.match(source, /btn\.style\.width = `\$\{pos\.size\}px`[\s\S]*btn\.style\.height/, '实际悬浮球宽高必须使用尺寸真源');
-assert.match(source, /const minX = -width \/ 2;[\s\S]*const minY = -height \/ 2;/, '主 Logo 可由用户手动拖到四边并最多隐藏一半');
+assert.match(source, /const minX = viewport\.left - width \/ 2;[\s\S]*const minY = Math\.min\(viewport\.safeTop/, '主 Logo 仅允许左右半隐藏，顶部必须避让 ST 顶栏');
 assert.match(source, /if \(hiddenX && hiddenY\)[\s\S]*xDepth[\s\S]*yDepth/, '角落位置只能隐藏一条边，主 Logo 的可见面积不得少于一半');
+assert.match(source, /Number\.isFinite\(rawX\)[\s\S]*Number\.isFinite\(rawY\)/, '损坏或漂移产生的非有限坐标必须恢复为安全默认位置');
+assert.match(source, /#top-settings-holder[\s\S]*spansHeader[\s\S]*safeTop/, '顶部安全区必须识别 ST 横向顶栏且忽略纵向侧栏主题');
+assert.match(source, /function startFloatHostGuard[\s\S]*MutationObserver[\s\S]*childList: true/, '悬浮入口被宿主重建误删后必须用轻量直属观察恢复');
 assert.match(source, /function revealFloatButton[\s\S]*sd-float-revealed[\s\S]*function bindFloatDrag[\s\S]*pointerenter[\s\S]*revealFloatButton/, '桌面悬停半隐藏 Logo 时必须滑出完整');
 assert.match(source, /if \(!btn\.classList\.contains\('sd-float-revealed'\) && revealFloatButton\(btn\)\)/, '触屏第一次点半隐藏 Logo 只滑出完整，不得直接打开面板');
 assert.match(css, /#story-director-float\.sd-float-dragging\s*\{[^}]*transition:\s*none/, '拖动 Logo 时必须关闭位置缓动，保持跟手');
@@ -32,11 +35,17 @@ assert.match(css, /\.sd-api-stream-action\s*\{[^}]*display:\s*grid[^}]*gap:\s*4p
 
 const floatStart = source.indexOf('function getFloatSize()');
 const floatEnd = source.indexOf('const QUICK_COMMANDS');
+class FakeElement {
+  constructor(rect) { this.rect = rect; }
+  getBoundingClientRect() { return this.rect; }
+}
+const topBars = [];
 const sandbox = {
   settings: { floatSize: 48, floatPosition: { x: -100, y: -100 } },
   window: { innerWidth: 400, innerHeight: 800, matchMedia: () => ({ matches: false }) },
-  document: { getElementById: () => null },
-  Element: class {},
+  document: { getElementById: () => null, querySelectorAll: () => topBars },
+  getComputedStyle: () => ({ display: 'flex', visibility: 'visible' }),
+  Element: FakeElement,
   QUICK_HEX_WIDTH_RATIO: Math.sqrt(3) / 2,
   FLOAT_SIZE_MIN: 32,
   FLOAT_SIZE_MAX: 80,
@@ -47,10 +56,22 @@ const sandbox = {
 vm.runInNewContext(`${source.slice(floatStart, floatEnd)}\nglobalThis.floatContract = { clampFloatPosition };`, sandbox);
 const halfHidden = sandbox.floatContract.clampFloatPosition();
 assert.equal(halfHidden.x, -(48 * Math.sqrt(3) / 2) / 2, '左边最多隐藏半个 Logo');
-assert.equal(halfHidden.y, 0, '落在角落时另一轴必须完整可见，不能只剩四分之一 Logo');
+assert.equal(halfHidden.y, 4, '顶部不得半隐藏或落入 ST 顶栏，左上角仍须保留完整拖动面');
 sandbox.settings.floatPosition = { x: 399, y: 300 };
 const rightHidden = sandbox.floatContract.clampFloatPosition();
 assert.equal(rightHidden.x, 400 - (48 * Math.sqrt(3) / 2) / 2, '右边最多隐藏半个 Logo');
 assert.equal(rightHidden.y, 300);
+sandbox.settings.floatPosition = { x: Number.NaN, y: Number.POSITIVE_INFINITY };
+const repaired = sandbox.floatContract.clampFloatPosition();
+assert.equal(Number.isFinite(repaired.x), true, 'NaN 横坐标必须修回可见区域');
+assert.equal(Number.isFinite(repaired.y), true, 'Infinity 纵坐标必须修回可见区域');
+assert.ok(repaired.y >= repaired.minY, '修复后的坐标不得位于顶部安全区之外');
+sandbox.settings.floatPosition = { x: null, y: null };
+const initial = sandbox.floatContract.clampFloatPosition();
+assert.ok(initial.x > 300 && initial.y > 600, '首次安装的空坐标必须落在右下安全默认位，不能被 Number(null) 推到左上角');
+topBars.push(new FakeElement({ left: 0, right: 400, top: 0, bottom: 52, width: 400, height: 52 }));
+sandbox.settings.floatPosition = { x: 8, y: 0 };
+const belowToolbar = sandbox.floatContract.clampFloatPosition();
+assert.equal(belowToolbar.y, 56, '保存坐标落入 ST 顶栏时必须迁回顶栏下方安全区');
 
 console.log('Floating button size contract OK');

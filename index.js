@@ -95,9 +95,9 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.11';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.11';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.11';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.12';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.12';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.12';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -105,7 +105,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.11';
+} from './qianmu-llm-output.js?v=1.59.12';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -158,143 +158,143 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.11';
+} from './qianmu-storyboard.js?v=1.59.12';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.11';
+const VERSION = '1.59.12';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.11'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.12'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.11').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.12').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.11'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.12'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.11'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.12'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.11'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.12'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.11'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.12'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.11'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.12'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.11'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.12'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.11'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.12'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.11'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.12'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.11'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.12'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.11'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.12'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.11'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.12'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.11'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.12'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.11'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.12'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.11'),
+    load: () => import('./qianmu-video-task.js?v=1.59.12'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.11'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.12'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.11'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.12'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.11'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.12'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.11'),
+    load: () => import('./qianmu-video-store.js?v=1.59.12'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.11'),
+    load: () => import('./qianmu-video-result.js?v=1.59.12'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.11'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.12'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.11'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.12'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.11'),
+    load: () => import('./qianmu-video-media.js?v=1.59.12'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.11'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.12'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.11'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.12'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.11'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.12'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.11'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.12'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.11'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.12'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.11'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.12'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.11'),
-        import('./qianmu-theaters.js?v=1.59.11'),
+        import('./builtin-theaters.js?v=1.59.12'),
+        import('./qianmu-theaters.js?v=1.59.12'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -1227,6 +1227,10 @@ let duplicateRuntimeWarned = false;
 let lifecycleHandled = false;
 let startupFallbackTimer = null;
 let startupFallbackListening = false;
+let floatHostObserver = null;
+let floatHostObserverTarget = null;
+let floatRecoveryTimer = null;
+let floatRecoveryHandler = null;
 let eventBound = false;
 let inputMenuObserver = null;
 let inputMenuObserverTarget = null;
@@ -3933,6 +3937,35 @@ function getFloatSize() {
     : responsiveDefault;
 }
 
+function floatViewportBounds() {
+  const viewport = window.visualViewport;
+  const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+  const left = finite(viewport?.offsetLeft, 0);
+  const top = finite(viewport?.offsetTop, 0);
+  const width = Math.max(1, finite(viewport?.width, finite(window.innerWidth, 1)));
+  const height = Math.max(1, finite(viewport?.height, finite(window.innerHeight, 1)));
+  let safeTop = top + 4;
+  // ST 顶栏层级高于千幕悬浮格。只识别横向、贴顶且高度有限的栏，避免把侧栏主题误判成整页安全区。
+  if (typeof document?.querySelectorAll === 'function' && typeof globalThis.getComputedStyle === 'function') {
+    const selectors = ['#top-settings-holder', '#top-bar', '.top-settings-holder', '.top-bar'];
+    const seen = new Set();
+    for (const element of document.querySelectorAll(selectors.join(','))) {
+      if (!(element instanceof Element) || seen.has(element)) continue;
+      seen.add(element);
+      const style = globalThis.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      const overlap = Math.max(0, Math.min(left + width, rect.right) - Math.max(left, rect.left));
+      const shallow = rect.height > 0 && rect.height <= Math.min(140, height * .28);
+      const touchesTop = rect.top <= top + 12 && rect.bottom > top;
+      const spansHeader = overlap >= Math.min(width * .42, 280);
+      if (style.display !== 'none' && style.visibility !== 'hidden' && shallow && touchesTop && spansHeader) {
+        safeTop = Math.max(safeTop, Math.min(top + height, rect.bottom + 4));
+      }
+    }
+  }
+  return { left, top, width, height, right: left + width, bottom: top + height, safeTop };
+}
+
 function clampFloatPosition() {
   settings.floatPosition ||= { x: null, y: null };
   const size = getFloatSize();
@@ -3940,35 +3973,40 @@ function clampFloatPosition() {
   const width = size * QUICK_HEX_WIDTH_RATIO;
   const height = size;
   const margin = 4;
-  // 用户可手动把主 Logo 拖到四边并最多隐藏一半；这里只限制安全范围，不进行自动吸附。
-  const minX = -width / 2;
-  const minY = -height / 2;
-  const maxX = Math.max(minX, window.innerWidth - width / 2);
-  const maxY = Math.max(minY, window.innerHeight - height / 2);
-  if (typeof settings.floatPosition.x !== 'number') settings.floatPosition.x = Math.max(margin, window.innerWidth - width - margin);
-  if (typeof settings.floatPosition.y !== 'number') settings.floatPosition.y = Math.max(margin, window.innerHeight - height - 84);
-  settings.floatPosition.x = Math.min(maxX, Math.max(minX, Number(settings.floatPosition.x)));
-  settings.floatPosition.y = Math.min(maxY, Math.max(minY, Number(settings.floatPosition.y)));
-  const hiddenX = settings.floatPosition.x < 0 || settings.floatPosition.x + width > window.innerWidth;
-  const hiddenY = settings.floatPosition.y < 0 || settings.floatPosition.y + height > window.innerHeight;
+  const viewport = floatViewportBounds();
+  // 左右与底边仍可半隐藏；顶部必须避开 ST 顶栏，否则 Logo 虽存在却会被盖住且失去可拖区域。
+  const minX = viewport.left - width / 2;
+  const minY = Math.min(viewport.safeTop, Math.max(viewport.top, viewport.bottom - height));
+  const maxX = Math.max(minX, viewport.right - width / 2);
+  const maxY = Math.max(minY, viewport.bottom - height / 2);
+  const rawXValue = settings.floatPosition.x;
+  const rawYValue = settings.floatPosition.y;
+  const rawX = rawXValue == null || rawXValue === '' ? Number.NaN : Number(rawXValue);
+  const rawY = rawYValue == null || rawYValue === '' ? Number.NaN : Number(rawYValue);
+  const fallbackX = Math.max(viewport.left + margin, viewport.right - width - margin);
+  const fallbackY = Math.max(minY, viewport.bottom - height - 84);
+  settings.floatPosition.x = Math.min(maxX, Math.max(minX, Number.isFinite(rawX) ? rawX : fallbackX));
+  settings.floatPosition.y = Math.min(maxY, Math.max(minY, Number.isFinite(rawY) ? rawY : fallbackY));
+  const hiddenX = settings.floatPosition.x < viewport.left || settings.floatPosition.x + width > viewport.right;
+  const hiddenY = settings.floatPosition.y < minY || settings.floatPosition.y + height > viewport.bottom;
   if (hiddenX && hiddenY) {
-    const xDepth = Math.max(-settings.floatPosition.x, settings.floatPosition.x + width - window.innerWidth) / width;
-    const yDepth = Math.max(-settings.floatPosition.y, settings.floatPosition.y + height - window.innerHeight) / height;
-    if (xDepth >= yDepth) settings.floatPosition.y = Math.min(window.innerHeight - height, Math.max(0, settings.floatPosition.y));
-    else settings.floatPosition.x = Math.min(window.innerWidth - width, Math.max(0, settings.floatPosition.x));
+    const xDepth = Math.max(viewport.left - settings.floatPosition.x, settings.floatPosition.x + width - viewport.right) / width;
+    const yDepth = Math.max(minY - settings.floatPosition.y, settings.floatPosition.y + height - viewport.bottom) / height;
+    if (xDepth >= yDepth) settings.floatPosition.y = Math.min(viewport.bottom - height, Math.max(minY, settings.floatPosition.y));
+    else settings.floatPosition.x = Math.min(viewport.right - width, Math.max(viewport.left, settings.floatPosition.x));
   }
-  return { x: settings.floatPosition.x, y: settings.floatPosition.y, size: width, height, margin, minX, minY, maxX, maxY };
+  return { x: settings.floatPosition.x, y: settings.floatPosition.y, size: width, height, margin, minX, minY, maxX, maxY, ...viewport };
 }
 
 function floatPositionIsHidden(pos = clampFloatPosition()) {
-  return pos.x < 0 || pos.y < 0 || pos.x + pos.size > window.innerWidth || pos.y + pos.height > window.innerHeight;
+  return pos.x < pos.left || pos.y < pos.minY || pos.x + pos.size > pos.right || pos.y + pos.height > pos.bottom;
 }
 
 function applyFloatPosition(btn) {
   const pos = clampFloatPosition();
   const revealed = btn?.classList.contains('sd-float-revealed');
-  const x = revealed ? Math.min(window.innerWidth - pos.size, Math.max(0, pos.x)) : pos.x;
-  const y = revealed ? Math.min(window.innerHeight - pos.height, Math.max(0, pos.y)) : pos.y;
+  const x = revealed ? Math.min(pos.right - pos.size, Math.max(pos.left, pos.x)) : pos.x;
+  const y = revealed ? Math.min(pos.bottom - pos.height, Math.max(pos.minY, pos.y)) : pos.y;
   btn.style.width = `${pos.size}px`;
   btn.style.height = `${pos.height}px`;
   btn.style.left = `${x}px`;
@@ -5729,8 +5767,56 @@ function renderFloatButton() {
   btn.style.setProperty('backdrop-filter', 'blur(22px) saturate(1.12) brightness(1.04)', 'important');
   btn.style.setProperty('-webkit-backdrop-filter', 'blur(22px) saturate(1.12) brightness(1.04)', 'important');
   btn.style.setProperty('clip-path', 'polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%)', 'important');
+  btn.style.setProperty('position', 'fixed', 'important');
+  btn.style.setProperty('display', 'inline-flex', 'important');
+  btn.style.setProperty('visibility', 'visible', 'important');
+  btn.style.setProperty('opacity', '1', 'important');
+  btn.style.setProperty('pointer-events', 'auto', 'important');
   bindFloatDrag(btn);
   applyFloatPosition(btn);
+}
+
+function scheduleFloatButtonRecovery(delay = 80) {
+  if (floatRecoveryTimer || !initialized || !isRuntimeOwner()) return;
+  floatRecoveryTimer = setTimeout(() => {
+    floatRecoveryTimer = null;
+    if (!initialized || !isRuntimeOwner() || !settings?.enabled || !settings?.floatingButton) return;
+    renderFloatButton();
+    if (floatHostObserverTarget !== document.body) startFloatHostGuard();
+  }, delay);
+}
+
+function stopFloatHostGuard() {
+  floatHostObserver?.disconnect?.();
+  floatHostObserver = null;
+  floatHostObserverTarget = null;
+  if (floatRecoveryTimer) clearTimeout(floatRecoveryTimer);
+  floatRecoveryTimer = null;
+  if (floatRecoveryHandler) {
+    document.removeEventListener('visibilitychange', floatRecoveryHandler);
+    window.removeEventListener('pageshow', floatRecoveryHandler);
+  }
+  floatRecoveryHandler = null;
+}
+
+function startFloatHostGuard() {
+  const target = document.body;
+  if (!target || typeof MutationObserver !== 'function') return;
+  if (floatHostObserver && floatHostObserverTarget === target) return;
+  floatHostObserver?.disconnect?.();
+  floatHostObserver = new MutationObserver(() => {
+    if (settings?.enabled && settings?.floatingButton && !document.getElementById(FLOAT_ID)) scheduleFloatButtonRecovery();
+  });
+  floatHostObserver.observe(target, { childList: true });
+  floatHostObserverTarget = target;
+  if (!floatRecoveryHandler) {
+    floatRecoveryHandler = () => {
+      if (document.visibilityState === 'hidden') return;
+      scheduleFloatButtonRecovery(0);
+    };
+    document.addEventListener('visibilitychange', floatRecoveryHandler);
+    window.addEventListener('pageshow', floatRecoveryHandler);
+  }
 }
 
 function renderBusyState() {
@@ -6168,6 +6254,23 @@ function qianmuInstalledExtensionName() {
   return 'Omniscene';
 }
 
+async function qianmuInstalledExtensionScope(extensionName, signal) {
+  try {
+    const response = await fetch('/api/extensions/discover', { signal });
+    if (!response.ok) return null;
+    const entries = await response.json();
+    if (!Array.isArray(entries)) return null;
+    const normalized = String(extensionName || '').toLowerCase();
+    const match = entries.find((entry) => {
+      const name = String(entry?.name || '').replace(/^third-party\//i, '').toLowerCase();
+      return name === normalized;
+    });
+    if (match?.type === 'global') return true;
+    if (match?.type === 'local') return false;
+  } catch (_) {}
+  return null;
+}
+
 function qianmuVersionBadgeMarkup() {
   const hasUpdate = qianmuUpdateState.status === 'ready' && qianmuUpdateState.available;
   const label = hasUpdate ? 'NEW' : `v${VERSION}`;
@@ -6208,12 +6311,24 @@ async function refreshQianmuUpdateStatus(force = false) {
       const headers = typeof ctx().getRequestHeaders === 'function'
         ? ctx().getRequestHeaders()
         : { 'Content-Type': 'application/json', 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || globalThis.token || '' };
-      const response = await fetch('/api/extensions/version', {
-        method: 'POST', headers, signal: controller.signal,
-        body: JSON.stringify({ extensionName: qianmuInstalledExtensionName(), global: false }),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
+      const extensionName = qianmuInstalledExtensionName();
+      const resolvedScope = await qianmuInstalledExtensionScope(extensionName, controller.signal);
+      const scopes = resolvedScope == null ? [false, true] : [resolvedScope, !resolvedScope];
+      let data = null;
+      let lastStatus = 0;
+      for (const globalInstall of scopes) {
+        const response = await fetch('/api/extensions/version', {
+          method: 'POST', headers, signal: controller.signal,
+          body: JSON.stringify({ extensionName, global: globalInstall }),
+        });
+        lastStatus = response.status;
+        if (response.ok) {
+          data = await response.json();
+          break;
+        }
+        if (response.status !== 404) throw new Error(`HTTP ${response.status}`);
+      }
+      if (!data) throw new Error(`HTTP ${lastStatus || 404}`);
       qianmuUpdateState = { status: 'ready', available: data?.isUpToDate === false, checkedAt: Date.now() };
     } catch (_) {
       qianmuUpdateState = { status: 'unknown', available: false, checkedAt: Date.now() };
@@ -32242,6 +32357,7 @@ function init() {
     ttsStartChat();   // 若 ST 已就绪则即刻挂注入；未就绪由 APP_READY 兜底
     registerRuntimeInterceptor();
     initialized = true;
+    startFloatHostGuard();
     const initFinishedAt = globalThis.performance?.now?.() ?? Date.now();
     performanceRuntime.initMs = Math.max(0, initFinishedAt - initStartedAt);
     performanceRuntime.readyMs = Math.max(0, initFinishedAt - MODULE_EXECUTION_STARTED_AT);
@@ -32269,9 +32385,12 @@ export async function onDisable() {
 
 export async function onUpdate() {
   handleLifecycle();
-  const wasOwner = isRuntimeOwner();
-  cleanupRuntime(false);
-  if (wasOwner) console.info(`[${EXTENSION_NAME}] 更新已安装，刷新页面后加载新版本。`);
+  // ST 在拉取新文件后调用 update，但现有 ES module 仍驻留内存，真正切换版本必须刷新页面。
+  // 保留旧运行时到刷新完成，避免更新提示出现后悬浮入口、任务和面板被提前拆除。
+  if (!isRuntimeOwner()) return;
+  renderFloatButton();
+  startFloatHostGuard();
+  console.info(`[${EXTENSION_NAME}] 更新已安装；当前页面继续由 v${VERSION} 运行，刷新后加载新版本。`);
 }
 
 export async function onDelete() {
@@ -32287,6 +32406,7 @@ function cleanupRuntime(resetSettings = false) {
     try { callback(); } catch (error) { console.warn(`[${MODULE_NAME}] cleanup ${label} failed`, error); }
   };
   try {
+    clean('float host guard', () => stopFloatHostGuard());
     clean('quick dock', () => unbindQuickDockCapture());
     clean('float reveal', () => {
       if (floatRevealOutsideHandler) document.removeEventListener('pointerdown', floatRevealOutsideHandler, true);

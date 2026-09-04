@@ -644,6 +644,14 @@ html body.sd-prose-layout #chat .mes .mes_text {
   width: 100% !important;
   max-width: min(var(--sd-prose-content-width), 100%) !important;
   margin-inline: auto !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  /* ST 默认只在右侧预留 --mes-right-spacing；在不同主题下会把正文视觉重心推向左侧。 */
+  padding-left: var(--sd-prose-side-padding, var(--mes-right-spacing, 30px)) !important;
+  padding-right: var(--sd-prose-side-padding, var(--mes-right-spacing, 30px)) !important;
+  box-sizing: border-box !important;
+  inset-inline: auto !important;
+  transform: none !important;
   font-size: var(--sd-prose-font-size) !important;
   line-height: var(--sd-prose-line-height) !important;
   text-indent: var(--sd-prose-indent) !important;
