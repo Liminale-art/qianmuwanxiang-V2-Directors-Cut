@@ -8457,7 +8457,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #qianmu-notes-panel-layer .sd-notes-panel {
   --sd-notes-surface: #f2ede5; --sd-notes-card: #e7e0d6;
   width: min(60vw, 720px); height: min(60vh, 560px); min-width: 280px; min-height: 250px;
-  display: flex; flex-direction: column; overflow: hidden; pointer-events: auto;
+  display: flex; flex-direction: column; overflow: hidden; resize: both; pointer-events: auto;
   border: 1px solid var(--sd-border); border-radius: 14px; background: var(--sd-notes-surface); color: var(--sd-text);
   box-shadow: 0 18px 54px rgba(0, 0, 0, .24);
 }
@@ -8498,7 +8498,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal { --qm-control-height: 32px; }
   #story-director-modal .sd-widget-toggle-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #qianmu-notes-panel-layer .sd-notes-stage { place-items: end center; padding: 10px; }
-  #qianmu-notes-panel-layer .sd-notes-panel { width: 100%; height: min(68vh, 540px); min-width: 0; }
+  #qianmu-notes-panel-layer .sd-notes-panel { width: min(88vw, 360px) !important; height: min(60dvh, 480px) !important; min-width: 0; resize: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -8684,10 +8684,11 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
     padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
   }
   #qianmu-notes-panel-layer .sd-notes-panel {
-    width: 100%;
-    height: min(68dvh, 540px);
+    width: min(88vw, 360px) !important;
+    height: min(60dvh, 480px) !important;
     max-height: 100%;
     min-width: 0;
+    resize: none;
   }
 }
 

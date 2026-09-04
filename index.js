@@ -95,9 +95,9 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.12';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.12';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.12';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.13';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.13';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.13';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -105,7 +105,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.12';
+} from './qianmu-llm-output.js?v=1.59.13';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -158,143 +158,143 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.12';
+} from './qianmu-storyboard.js?v=1.59.13';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.12';
+const VERSION = '1.59.13';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.12'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.13'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.12').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.13').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.12'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.13'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.12'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.13'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.12'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.13'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.12'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.13'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.12'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.13'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.12'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.13'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.12'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.13'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.12'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.13'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.12'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.13'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.12'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.13'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.12'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.13'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.12'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.13'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.12'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.13'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.12'),
+    load: () => import('./qianmu-video-task.js?v=1.59.13'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.12'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.13'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.12'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.13'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.12'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.13'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.12'),
+    load: () => import('./qianmu-video-store.js?v=1.59.13'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.12'),
+    load: () => import('./qianmu-video-result.js?v=1.59.13'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.12'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.13'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.12'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.13'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.12'),
+    load: () => import('./qianmu-video-media.js?v=1.59.13'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.12'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.13'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.12'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.13'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.12'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.13'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.12'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.13'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.12'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.13'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.12'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.13'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.12'),
-        import('./qianmu-theaters.js?v=1.59.12'),
+        import('./builtin-theaters.js?v=1.59.13'),
+        import('./qianmu-theaters.js?v=1.59.13'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -852,7 +852,7 @@ const DEFAULT_SETTINGS = Object.freeze({
       highResolution: { requireExplicitConfirmation: true },
     },
   },  // 动态渠道只保存非敏感区域/费用偏好；凭据独立进入 ST 密钥库/浏览器凭据仓
-  notes: { enabled: true, detached: false, position: { x: null, y: null }, appearance: { tone: 'dark', edgeIndex: 0 } }, // 便笺蜂巢格可整格拖出到 ST 顶层；关闭只隐藏，不删除固定便笺
+  notes: { enabled: true, detached: false, position: { x: null, y: null }, panelSize: { width: null, height: null }, appearance: { tone: 'dark', edgeIndex: 0 } }, // 便笺蜂巢格可整格拖出到 ST 顶层；关闭只隐藏，不删除固定便笺
   // 专注时钟：全局轻量状态，与聊天、推演和伴读存储完全隔离。运行态保存绝对截止时间，后台挂起/刷新后按真实时间续算。
   focusClock: {
     phase: 'focus',               // focus | shortBreak | longBreak
@@ -1174,6 +1174,7 @@ let notesRuntime = [];
 let notesActiveId = '';
 let notesSearch = '';
 let notesZCounter = 10;
+let notesPanelResizeObserver = null;
 const notesSaveTimers = new Map();
 let storyboardInlineTimer = null;
 let storyboardInlineVideoHydrationTimer = null;
@@ -3974,15 +3975,25 @@ function clampFloatPosition() {
   const height = size;
   const margin = 4;
   const viewport = floatViewportBounds();
-  // 左右与底边仍可半隐藏；顶部必须避开 ST 顶栏，否则 Logo 虽存在却会被盖住且失去可拖区域。
+  // 跨 PC / 窄屏时按相对位置重算；仍允许用户主动半藏一条边，但任何尺寸下至少保留半格可拖区域。
   const minX = viewport.left - width / 2;
   const minY = Math.min(viewport.safeTop, Math.max(viewport.top, viewport.bottom - height));
   const maxX = Math.max(minX, viewport.right - width / 2);
   const maxY = Math.max(minY, viewport.bottom - height / 2);
   const rawXValue = settings.floatPosition.x;
   const rawYValue = settings.floatPosition.y;
-  const rawX = rawXValue == null || rawXValue === '' ? Number.NaN : Number(rawXValue);
-  const rawY = rawYValue == null || rawYValue === '' ? Number.NaN : Number(rawYValue);
+  let rawX = rawXValue == null || rawXValue === '' ? Number.NaN : Number(rawXValue);
+  let rawY = rawYValue == null || rawYValue === '' ? Number.NaN : Number(rawYValue);
+  const previousWidth = Number(settings.floatPosition.viewportWidth);
+  const previousHeight = Number(settings.floatPosition.viewportHeight);
+  const ratioX = Number(settings.floatPosition.ratioX);
+  const ratioY = Number(settings.floatPosition.ratioY);
+  const viewportChanged = Number.isFinite(previousWidth) && Number.isFinite(previousHeight)
+    && (Math.abs(previousWidth - viewport.width) > 1 || Math.abs(previousHeight - viewport.height) > 1);
+  if (viewportChanged && Number.isFinite(ratioX) && Number.isFinite(ratioY)) {
+    rawX = minX + Math.max(0, Math.min(1, ratioX)) * Math.max(0, maxX - minX);
+    rawY = minY + Math.max(0, Math.min(1, ratioY)) * Math.max(0, maxY - minY);
+  }
   const fallbackX = Math.max(viewport.left + margin, viewport.right - width - margin);
   const fallbackY = Math.max(minY, viewport.bottom - height - 84);
   settings.floatPosition.x = Math.min(maxX, Math.max(minX, Number.isFinite(rawX) ? rawX : fallbackX));
@@ -3995,6 +4006,10 @@ function clampFloatPosition() {
     if (xDepth >= yDepth) settings.floatPosition.y = Math.min(viewport.bottom - height, Math.max(minY, settings.floatPosition.y));
     else settings.floatPosition.x = Math.min(viewport.right - width, Math.max(viewport.left, settings.floatPosition.x));
   }
+  settings.floatPosition.ratioX = maxX > minX ? (settings.floatPosition.x - minX) / (maxX - minX) : 0;
+  settings.floatPosition.ratioY = maxY > minY ? (settings.floatPosition.y - minY) / (maxY - minY) : 0;
+  settings.floatPosition.viewportWidth = viewport.width;
+  settings.floatPosition.viewportHeight = viewport.height;
   return { x: settings.floatPosition.x, y: settings.floatPosition.y, size: width, height, margin, minX, minY, maxX, maxY, ...viewport };
 }
 
@@ -4007,12 +4022,21 @@ function applyFloatPosition(btn) {
   const revealed = btn?.classList.contains('sd-float-revealed');
   const x = revealed ? Math.min(pos.right - pos.size, Math.max(pos.left, pos.x)) : pos.x;
   const y = revealed ? Math.min(pos.bottom - pos.height, Math.max(pos.minY, pos.y)) : pos.y;
-  btn.style.width = `${pos.size}px`;
-  btn.style.height = `${pos.height}px`;
-  btn.style.left = `${x}px`;
-  btn.style.top = `${y}px`;
-  btn.style.right = 'auto';
-  btn.style.bottom = 'auto';
+  const width = `${pos.size}px`;
+  const height = `${pos.height}px`;
+  // 第三方主题常给 button 写 width:100% 或 min-width；六边形尺寸与坐标必须由千幕内联锁定。
+  btn.style.setProperty('width', width, 'important');
+  btn.style.setProperty('min-width', width, 'important');
+  btn.style.setProperty('max-width', width, 'important');
+  btn.style.setProperty('height', height, 'important');
+  btn.style.setProperty('min-height', height, 'important');
+  btn.style.setProperty('max-height', height, 'important');
+  btn.style.setProperty('left', `${x}px`, 'important');
+  btn.style.setProperty('top', `${y}px`, 'important');
+  btn.style.setProperty('right', 'auto', 'important');
+  btn.style.setProperty('bottom', 'auto', 'important');
+  btn.style.setProperty('box-sizing', 'border-box', 'important');
+  btn.style.setProperty('flex', '0 0 auto', 'important');
 }
 
 function clearFloatRevealTimer(btn) {
@@ -5886,9 +5910,14 @@ function notesFeatureSettings() {
   if (!isPlainObject(settings.notes)) settings.notes = clone(DEFAULT_SETTINGS.notes);
   mergeDefaults(settings.notes, DEFAULT_SETTINGS.notes);
   if (!isPlainObject(settings.notes.position)) settings.notes.position = { x: null, y: null };
+  if (!isPlainObject(settings.notes.panelSize)) settings.notes.panelSize = { width: null, height: null };
   if (!isPlainObject(settings.notes.appearance)) settings.notes.appearance = { tone: 'dark', edgeIndex: 0 };
   settings.notes.enabled = settings.notes.enabled !== false;
   settings.notes.detached = Boolean(settings.notes.detached);
+  for (const key of ['width', 'height']) {
+    const value = Number(settings.notes.panelSize[key]);
+    settings.notes.panelSize[key] = Number.isFinite(value) && value > 0 ? Math.round(value) : null;
+  }
   settings.notes.appearance.tone = settings.notes.appearance.tone === 'light' ? 'light' : 'dark';
   settings.notes.appearance.edgeIndex = Math.max(0, Math.trunc(Number(settings.notes.appearance.edgeIndex) || 0));
   return settings.notes;
@@ -5963,6 +5992,7 @@ function openNotesPanel() {
 
 function closeNotesPanel() {
   notesPanelOpen = false;
+  stopNotesPanelResizeTracking();
   document.getElementById(NOTES_PANEL_LAYER_ID)?.remove();
   renderFloatingNotes();
 }
@@ -6006,9 +6036,68 @@ const NOTES_THEME_VARIABLES = Object.freeze([
   '--sd-check-mark', '--sd-primary', '--sd-primary-text',
 ]);
 
+function notesPanelUsesCompactLayout() {
+  return window.matchMedia?.('(max-width: 620px)')?.matches ?? window.innerWidth <= 620;
+}
+
+function clampNotesPanelSize(size = {}) {
+  const viewport = window.visualViewport;
+  const viewportWidth = Math.max(1, Number(viewport?.width || window.innerWidth || 1));
+  const viewportHeight = Math.max(1, Number(viewport?.height || window.innerHeight || 1));
+  const maxWidth = Math.max(1, viewportWidth - 36);
+  const maxHeight = Math.max(1, viewportHeight - 36);
+  const minWidth = Math.min(280, maxWidth);
+  const minHeight = Math.min(250, maxHeight);
+  const width = Math.max(minWidth, Math.min(maxWidth, Number(size.width) || Math.min(viewportWidth * .6, 720)));
+  const height = Math.max(minHeight, Math.min(maxHeight, Number(size.height) || Math.min(viewportHeight * .6, 560)));
+  return { width: Math.round(width), height: Math.round(height) };
+}
+
+function stopNotesPanelResizeTracking() {
+  notesPanelResizeObserver?.disconnect?.();
+  notesPanelResizeObserver = null;
+}
+
+function syncNotesPanelSizeToViewport(layer = document.getElementById(NOTES_PANEL_LAYER_ID)) {
+  const panel = layer?.querySelector?.('.sd-notes-panel');
+  if (!(panel instanceof Element)) return;
+  if (notesPanelUsesCompactLayout()) {
+    panel.style.removeProperty('width');
+    panel.style.removeProperty('height');
+    return;
+  }
+  const saved = notesFeatureSettings().panelSize;
+  if (!Number.isFinite(Number(saved.width)) || !Number.isFinite(Number(saved.height))) return;
+  const size = clampNotesPanelSize(saved);
+  panel.style.width = `${size.width}px`;
+  panel.style.height = `${size.height}px`;
+}
+
+function bindNotesPanelResize(layer) {
+  stopNotesPanelResizeTracking();
+  syncNotesPanelSizeToViewport(layer);
+  if (notesPanelUsesCompactLayout() || typeof ResizeObserver !== 'function') return;
+  const panel = layer?.querySelector?.('.sd-notes-panel');
+  if (!(panel instanceof Element)) return;
+  const initialRect = panel.getBoundingClientRect();
+  let previous = clampNotesPanelSize({ width: initialRect.width, height: initialRect.height });
+  notesPanelResizeObserver = new ResizeObserver(() => {
+    if (notesPanelUsesCompactLayout() || !panel.isConnected) return;
+    const rect = panel.getBoundingClientRect();
+    const size = clampNotesPanelSize({ width: rect.width, height: rect.height });
+    if (Math.abs(previous.width - size.width) < 1 && Math.abs(previous.height - size.height) < 1) return;
+    previous = size;
+    const noteSettings = notesFeatureSettings();
+    noteSettings.panelSize = size;
+    saveSettings();
+  });
+  notesPanelResizeObserver.observe(panel);
+}
+
 function renderNotesPanelPortal() {
   let layer = document.getElementById(NOTES_PANEL_LAYER_ID);
   if (!notesPanelOpen || !notesFeatureEnabled()) {
+    stopNotesPanelResizeTracking();
     layer?.remove();
     return null;
   }
@@ -6035,6 +6124,7 @@ function renderNotesPanelPortal() {
   }
   if (removeThemeSource) themeSource.remove();
   layer.style.setProperty('--sd-font', getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif');
+  stopNotesPanelResizeTracking();
   layer.innerHTML = renderNotesPanel();
   const isolateFromHostMenus = (event) => event.stopPropagation();
   layer.onpointerdown = isolateFromHostMenus;
@@ -6044,6 +6134,7 @@ function renderNotesPanelPortal() {
   layer.onclick = isolateFromHostMenus;
   applyQianmuIcons(layer);
   bindNotesPanelEvents(layer);
+  bindNotesPanelResize(layer);
   return layer;
 }
 
@@ -32350,6 +32441,7 @@ function init() {
       const tabsBar = document.getElementById(MODAL_ID)?.querySelector('.sd-tabs');
       if (tabsBar) updateTabsFade(tabsBar);
       renderFloatingNotes();
+      if (notesPanelOpen) syncNotesPanelSizeToViewport();
     };
     window.addEventListener('resize', resizeHandler);
     bindEvents();
@@ -32479,6 +32571,7 @@ function cleanupRuntime(resetSettings = false) {
     });
     clean('focus clock', () => stopFocusClockRuntime());
     clean('notes', () => {
+      stopNotesPanelResizeTracking();
       for (const timer of notesSaveTimers.values()) clearTimeout(timer);
       notesSaveTimers.clear();
       clearTemporaryQianmuNotes();

@@ -10,11 +10,13 @@ assert.match(source, /const FLOAT_SIZE_MIN = 32;[\s\S]*const FLOAT_SIZE_MAX = 80
 assert.match(source, /function getFloatSize\(\)[\s\S]*Math\.max\(FLOAT_SIZE_MIN, Math\.min\(FLOAT_SIZE_MAX, configured\)\)/, '已保存的悬浮球尺寸必须限制在32至80像素');
 assert.match(source, /class="sd-float-size"[^>]*min="\$\{FLOAT_SIZE_MIN\}" max="\$\{FLOAT_SIZE_MAX\}"/, '尺寸滑块最大值必须使用80像素上限');
 assert.match(source, /requestedSize = Math\.max\(FLOAT_SIZE_MIN, Math\.min\(FLOAT_SIZE_MAX, Math\.round\(floatSize\)\)\)/, '蜂巢展开尺寸必须与悬浮球共用80像素上限');
-assert.match(source, /btn\.style\.width = `\$\{pos\.size\}px`[\s\S]*btn\.style\.height/, '实际悬浮球宽高必须使用尺寸真源');
-assert.match(source, /const minX = viewport\.left - width \/ 2;[\s\S]*const minY = Math\.min\(viewport\.safeTop/, '主 Logo 仅允许左右半隐藏，顶部必须避让 ST 顶栏');
+assert.match(source, /const width = `\$\{pos\.size\}px`;[\s\S]*const height = `\$\{pos\.height\}px`;/, '实际悬浮球宽高必须使用尺寸真源');
+assert.match(source, /const minX = viewport\.left - width \/ 2;[\s\S]*const maxX = Math\.max\(minX, viewport\.right - width \/ 2\)/, '主 Logo 可主动半隐藏，但任何视口下必须至少保留半格可拖区域');
 assert.match(source, /if \(hiddenX && hiddenY\)[\s\S]*xDepth[\s\S]*yDepth/, '角落位置只能隐藏一条边，主 Logo 的可见面积不得少于一半');
 assert.match(source, /Number\.isFinite\(rawX\)[\s\S]*Number\.isFinite\(rawY\)/, '损坏或漂移产生的非有限坐标必须恢复为安全默认位置');
 assert.match(source, /#top-settings-holder[\s\S]*spansHeader[\s\S]*safeTop/, '顶部安全区必须识别 ST 横向顶栏且忽略纵向侧栏主题');
+assert.match(source, /viewportChanged[\s\S]*ratioX[\s\S]*ratioY[\s\S]*settings\.floatPosition\.viewportWidth/, 'PC 与移动端切换时必须按相对方位重算坐标');
+assert.match(source, /style\.setProperty\('width', width, 'important'\)[\s\S]*style\.setProperty\('max-width', width, 'important'\)[\s\S]*style\.setProperty\('height', height, 'important'\)/, '悬浮入口宽高必须抵抗第三方主题的按钮全宽样式');
 assert.match(source, /function startFloatHostGuard[\s\S]*MutationObserver[\s\S]*childList: true/, '悬浮入口被宿主重建误删后必须用轻量直属观察恢复');
 assert.match(source, /function revealFloatButton[\s\S]*sd-float-revealed[\s\S]*function bindFloatDrag[\s\S]*pointerenter[\s\S]*revealFloatButton/, '桌面悬停半隐藏 Logo 时必须滑出完整');
 assert.match(source, /if \(!btn\.classList\.contains\('sd-float-revealed'\) && revealFloatButton\(btn\)\)/, '触屏第一次点半隐藏 Logo 只滑出完整，不得直接打开面板');
@@ -73,5 +75,12 @@ topBars.push(new FakeElement({ left: 0, right: 400, top: 0, bottom: 52, width: 4
 sandbox.settings.floatPosition = { x: 8, y: 0 };
 const belowToolbar = sandbox.floatContract.clampFloatPosition();
 assert.equal(belowToolbar.y, 56, '保存坐标落入 ST 顶栏时必须迁回顶栏下方安全区');
+
+sandbox.settings.floatPosition = { ...sandbox.settings.floatPosition, ratioX: 1, ratioY: .5, viewportWidth: 400, viewportHeight: 800 };
+sandbox.window.innerWidth = 260;
+sandbox.window.innerHeight = 520;
+const mobileMapped = sandbox.floatContract.clampFloatPosition();
+assert.equal(mobileMapped.x, mobileMapped.maxX, '切到窄屏时右侧方位必须保持并至少留下半格可见');
+assert.ok(mobileMapped.y >= mobileMapped.minY && mobileMapped.y <= mobileMapped.maxY, '切到窄屏后的纵坐标必须保持可操作');
 
 console.log('Floating button size contract OK');
