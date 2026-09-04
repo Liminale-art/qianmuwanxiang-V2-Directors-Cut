@@ -95,9 +95,9 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.17';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.17';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.17';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.18';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.18';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.18';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -105,7 +105,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.17';
+} from './qianmu-llm-output.js?v=1.59.18';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -158,143 +158,143 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.17';
+} from './qianmu-storyboard.js?v=1.59.18';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.17';
+const VERSION = '1.59.18';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.17'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.18'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.17').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.18').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.17'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.18'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.17'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.18'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.17'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.18'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.17'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.18'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.17'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.18'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.17'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.18'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.17'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.18'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.17'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.18'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.17'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.18'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.17'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.18'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.17'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.18'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.17'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.18'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.17'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.18'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.17'),
+    load: () => import('./qianmu-video-task.js?v=1.59.18'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.17'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.18'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.17'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.18'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.17'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.18'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.17'),
+    load: () => import('./qianmu-video-store.js?v=1.59.18'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.17'),
+    load: () => import('./qianmu-video-result.js?v=1.59.18'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.17'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.18'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.17'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.18'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.17'),
+    load: () => import('./qianmu-video-media.js?v=1.59.18'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.17'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.18'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.17'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.18'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.17'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.18'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.17'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.18'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.17'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.18'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.17'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.18'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.17'),
-        import('./qianmu-theaters.js?v=1.59.17'),
+        import('./builtin-theaters.js?v=1.59.18'),
+        import('./qianmu-theaters.js?v=1.59.18'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -783,7 +783,7 @@ const PROSE_LAYOUT_CONTROLS = Object.freeze([
   { key: 'paragraphGap', label: '段距', min: 0, max: 2, step: 0.05, unit: 'em' },
   { key: 'indent', label: '缩进', min: 0, max: 4, step: 0.1, unit: 'em' },
   { key: 'contentWidth', label: '宽度', min: 36, max: 160, step: 2, unit: 'ch' },
-  { key: 'horizontalOffset', label: '横向偏移', min: -20, max: 20, step: 0.1, unit: 'px' },
+  { key: 'horizontalOffset', label: '横移', min: -20, max: 20, step: 0.1, unit: 'px' },
 ]);
 const PROSE_LAYOUT_STORAGE_KEY = `${MODULE_NAME}:prose-layout`;
 
@@ -6058,7 +6058,7 @@ function renderNotesPanel() {
     </div>
   </article>`).join('');
   if (active) return `<div class="sd-notes-stage"><section class="sd-notes-panel is-editor" role="dialog" aria-modal="false" aria-label="编辑便笺">
-    <header><b>便笺</b><div><select class="sd-note-font-size" aria-label="便笺字号" title="便笺字号">${editorFontOptions}</select><button type="button" class="sd-icon-btn sd-note-new" title="新建便笺" aria-label="新建便笺"><i class="fa-solid fa-plus"></i></button><button type="button" class="sd-icon-btn sd-notes-list" title="便笺列表" aria-label="便笺列表"><i class="fa-solid fa-list"></i></button><button type="button" class="sd-icon-btn sd-notes-close" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></div></header>
+    <header><b>便笺</b><div><label class="sd-icon-btn sd-note-font-size-control" title="字号：${editorFontSize}px"><i class="fa-solid fa-font" aria-hidden="true"></i><select class="sd-note-font-size" aria-label="便笺字号">${editorFontOptions}</select></label><button type="button" class="sd-icon-btn sd-note-new" title="新建便笺" aria-label="新建便笺"><i class="fa-solid fa-plus"></i></button><button type="button" class="sd-icon-btn sd-notes-list" title="便笺列表" aria-label="便笺列表"><i class="fa-solid fa-list"></i></button><button type="button" class="sd-icon-btn sd-notes-close" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></div></header>
     <div class="sd-note-editor" data-note-id="${htmlEscape(active.id)}"><textarea class="sd-note-body" maxlength="20000" aria-label="便笺内容">${htmlEscape(active.body)}</textarea></div>
   </section></div>`;
   return `<div class="sd-notes-stage"><section class="sd-notes-panel" role="dialog" aria-modal="false" aria-label="便笺">
@@ -6321,6 +6321,7 @@ function bindNotesPanelEvents(root) {
     if (!NOTES_EDITOR_FONT_SIZES.includes(requested)) return;
     notesFeatureSettings().editorFontSize = requested;
     root.style.setProperty('--sd-note-editor-font-size', `${requested}px`);
+    event.target.closest('.sd-note-font-size-control')?.setAttribute('title', `字号：${requested}px`);
     saveSettings();
   });
   root.querySelector('.sd-note-new')?.addEventListener('click', () => {

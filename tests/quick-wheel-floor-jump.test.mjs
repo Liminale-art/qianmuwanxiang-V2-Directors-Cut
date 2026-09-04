@@ -193,10 +193,10 @@ assert.match(css, /\.mes\.sd-floor-jump-hit/);
 
 // 楼层工具新增独立正文排版页：默认零介入，三项开关置于滑动条组上方。
 assert.match(source, /const PROSE_LAYOUT_DEFAULTS[\s\S]*active:\s*false/);
-for (const label of ['开启排版', '字号', '行高', '段距', '缩进', '宽度', '横向偏移', '换行整理为段落', '两端对齐']) {
+for (const label of ['开启排版', '字号', '行高', '段距', '缩进', '宽度', '横移', '换行整理为段落', '两端对齐']) {
   assert.match(source, new RegExp(label));
 }
-assert.match(source.slice(source.indexOf('const PROSE_LAYOUT_CONTROLS'), source.indexOf('const PROSE_LAYOUT_STORAGE_KEY')), /key: 'horizontalOffset', label: '横向偏移', min: -20, max: 20, step: 0\.1, unit: 'px'/, '正文必须允许用户以小数精度校正主题造成的水平偏心');
+assert.match(source.slice(source.indexOf('const PROSE_LAYOUT_CONTROLS'), source.indexOf('const PROSE_LAYOUT_STORAGE_KEY')), /key: 'horizontalOffset', label: '横移', min: -20, max: 20, step: 0\.1, unit: 'px'/, '正文必须允许用户以小数精度校正主题造成的水平偏心');
 assert.match(source, /data-floor-tab="jump"[\s\S]*data-floor-tab="layout"/);
 assert.match(source, /data-prose-toggle="active"[\s\S]*开启排版/);
 assert.doesNotMatch(source, /已应用正文排版|跟随 SillyTavern 默认|恢复正文默认/);

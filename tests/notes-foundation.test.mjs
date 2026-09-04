@@ -35,7 +35,7 @@ assert.match(source, /sd-detached-notes-entry[\s\S]*QUICK_HEX_BORDER_SVG/, 'the 
 assert.doesNotMatch(source, /sd-notes-global-entry|sd-note-title|sd-note-float/, 'the obsolete permanent entry, title field, and per-note floating control must stay removed');
 assert.match(source, /sd-note-tools-toggle[\s\S]*sd-note-copy[\s\S]*sd-note-pin[\s\S]*sd-note-delete/, 'row actions belong to the compact more menu');
 assert.match(source, /sd-notes-search-row[\s\S]*sd-notes-search[\s\S]*sd-note-new/, 'new note belongs beside search on the list page');
-assert.match(source, /is-editor[\s\S]*sd-note-font-size[\s\S]*sd-note-new[\s\S]*sd-notes-list/, 'font size, new note, and list controls must share the editor header');
+assert.match(source, /is-editor[\s\S]*sd-note-font-size-control[\s\S]*fa-font[\s\S]*sd-note-font-size[\s\S]*sd-note-new[\s\S]*sd-notes-list/, 'the icon-only font selector, new note, and list controls must share the editor header');
 assert.match(source, /NOTES_EDITOR_FONT_SIZES = Object\.freeze\(\[13, 14, 16, 18, 20, 24\]\)/, 'note font choices must start at the current thirteen-pixel size');
 assert.match(source, /editorFontSize: 13/, 'old note settings must inherit the smallest current editor size');
 assert.match(source, /\.sd-note-font-size'\)\?\.addEventListener\('change'[\s\S]*editorFontSize = requested[\s\S]*saveSettings\(\)/, 'changing the note font size must apply immediately and persist');
@@ -52,7 +52,8 @@ assert.match(source, /pinned \? '便笺已保存'/, 'pinning a note confirms dur
 assert.match(styles, /\.sd-notes-panel[\s\S]*background: var\(--sd-notes-surface\)/, 'the notes page must use an opaque theme surface');
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-notes-panel \{[\s\S]*width: min\(60vw,[\s\S]*height: min\(60vh,/, 'desktop notes use the compact sixty-percent workspace');
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-notes-panel \{[\s\S]*resize: both/, 'desktop notes must expose native two-axis drag resizing');
-assert.match(styles, /#qianmu-notes-panel-layer \.sd-note-font-size \{[^}]*width: 58px;[^}]*height: 32px;/, 'the note font selector must remain compact beside header actions');
+assert.match(styles, /#qianmu-notes-panel-layer \.sd-note-font-size-control \{[^}]*position: relative;[^}]*overflow: hidden;[^}]*cursor: pointer;/, 'the note font selector must reuse the compact icon-button shell');
+assert.match(styles, /#qianmu-notes-panel-layer \.sd-note-font-size \{[^}]*position: absolute;[^}]*inset: 0;[^}]*opacity: 0;/, 'the native font selector must remain accessible over the icon without changing its visual size');
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-note-body \{[^}]*font-size: var\(--sd-note-editor-font-size, 13px\);/, 'the detached note editor uses the persisted readable type size');
 assert.match(source, /panelSize: \{ width: null, height: null \}/, 'desktop note size must have a backward-compatible persisted setting');
 assert.match(source, /function bindNotesPanelResize[\s\S]*new ResizeObserver[\s\S]*noteSettings\.panelSize = size;[\s\S]*saveSettings\(\)/, 'desktop note resizing must persist without rebuilding the editor');

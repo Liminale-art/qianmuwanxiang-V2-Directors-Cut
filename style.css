@@ -8477,7 +8477,9 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #qianmu-notes-panel-layer .sd-notes-panel > header > div { display: flex; align-items: center; gap: 6px; }
 #qianmu-notes-panel-layer .sd-notes-panel > header b { font: 600 14px/1.2 Georgia, serif; letter-spacing: .08em; }
 #qianmu-notes-panel-layer .sd-icon-btn { width: 32px; min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--sd-hairline); border-radius: 9px; background: var(--sd-glass-weak); color: inherit; }
-#qianmu-notes-panel-layer .sd-note-font-size { width: 58px; min-width: 58px; height: 32px; padding: 0 7px; border: 1px solid var(--sd-hairline); border-radius: 9px; outline: 0; background: var(--sd-notes-card); color: inherit; font: 600 11px/1 var(--sd-font, system-ui, sans-serif); text-align: center; }
+#qianmu-notes-panel-layer .sd-note-font-size-control { position: relative; overflow: hidden; cursor: pointer; }
+#qianmu-notes-panel-layer .sd-note-font-size-control > :is(i, .qm-glyph-icon) { pointer-events: none; }
+#qianmu-notes-panel-layer .sd-note-font-size { position: absolute; z-index: 2; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; appearance: none; }
 #qianmu-notes-panel-layer .sd-notes-list-view { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 7px; padding: 9px; background: var(--sd-notes-surface); }
 #qianmu-notes-panel-layer .sd-notes-search-row { display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 6px; }
 #qianmu-notes-panel-layer .sd-notes-search { width: 100%; min-height: 32px; margin: 0; padding: 5px 9px; border: 1px solid var(--sd-border); border-radius: 9px; outline: 0; background: var(--sd-notes-card); color: inherit; font: inherit; }
