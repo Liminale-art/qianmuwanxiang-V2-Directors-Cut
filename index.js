@@ -95,10 +95,17 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.10';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.10';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.10';
-import { createQianmuChatCompletionResponseFormat, normalizeQianmuStructuredOutputMode } from './qianmu-llm-output.js?v=1.59.10';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.11';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.11';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.11';
+import {
+  createQianmuChatCompletionResponseFormat,
+  normalizeQianmuStructuredOutputMode,
+  normalizeQianmuChatApiRoot,
+  parseQianmuDialoguePayload,
+  qianmuChatCompletionError,
+  qianmuChatCompletionText,
+} from './qianmu-llm-output.js?v=1.59.11';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -151,143 +158,143 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.10';
+} from './qianmu-storyboard.js?v=1.59.11';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.10';
+const VERSION = '1.59.11';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.10'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.11'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.10').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.11').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.10'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.11'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.10'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.11'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.10'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.11'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.10'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.11'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.10'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.11'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.10'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.11'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.10'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.11'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.10'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.11'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.10'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.11'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.10'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.11'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.10'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.11'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.10'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.11'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.10'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.11'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.10'),
+    load: () => import('./qianmu-video-task.js?v=1.59.11'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.10'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.11'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.10'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.11'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.10'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.11'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.10'),
+    load: () => import('./qianmu-video-store.js?v=1.59.11'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.10'),
+    load: () => import('./qianmu-video-result.js?v=1.59.11'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.10'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.11'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.10'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.11'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.10'),
+    load: () => import('./qianmu-video-media.js?v=1.59.11'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.10'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.11'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.10'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.11'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.10'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.11'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.10'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.11'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.10'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.11'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.10'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.11'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.10'),
-        import('./qianmu-theaters.js?v=1.59.10'),
+        import('./builtin-theaters.js?v=1.59.11'),
+        import('./qianmu-theaters.js?v=1.59.11'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -3245,7 +3252,7 @@ async function callExternalApi(messages, onDelta = null, cfg = null, controller 
   const apiKey = cfg?.apiKey ?? settings.apiKey;
   const model = cfg?.model ?? settings.model;
   const temperature = cfg?.temperature ?? settings.temperature;
-  const base = normalizeUrl(apiUrl);
+  const base = normalizeUrl(normalizeQianmuChatApiRoot(apiUrl));
   if (!(base && apiKey && model)) throw new Error('INVALID_API_SETTINGS');
   const ac = controller || (abortController = new AbortController());   // 调用方可传入独立句柄（幕外/推演各管各的）
   // stream/max_tokens 默认取全局设置，cfg 可逐调用覆盖（伴读总结卡自带 gen-params）
@@ -9520,7 +9527,7 @@ function ttsExtractProxyUnavailable(error) {
 // 浏览器仍可能在真正生成时被第三方接口的 CORS 拦下。旧版 ST 没有生成代理时才回落浏览器直连。
 async function callTtsExternalExtractModel(messages, config) {
   const controller = new AbortController();
-  const apiUrl = String(config?.apiUrl || '').trim().replace(/\/+$/, '');
+  const apiUrl = normalizeQianmuChatApiRoot(config?.apiUrl);
   const apiKey = String(config?.apiKey || '').trim();
   const model = String(config?.model || '').trim();
   if (!(normalizeUrl(apiUrl) && apiKey && model)) throw new Error('INVALID_API_SETTINGS');
@@ -9532,7 +9539,7 @@ async function callTtsExternalExtractModel(messages, config) {
     try {
       return await generateViaSTProxy(apiUrl, `Authorization: Bearer ${apiKey}`, model, messages, options);
     } catch (error) {
-      if (/HTTP\s*(?:401|403)\b/i.test(String(error?.message || ''))) {
+      if (/HTTP\s*(?:401|403)\b|\b(?:Unauthorized|Forbidden)\b/i.test(String(error?.message || ''))) {
         return await generateViaSTProxy(apiUrl, `Authorization: ${apiKey}`, model, messages, options);
       }
       throw error;
@@ -9546,7 +9553,9 @@ async function callTtsExternalExtractModel(messages, config) {
 // 调用模型做提取：cfg 存在或主模式为 external 时走千幕 API；否则走 ST generateRaw。
 // 不走流式（提取要完整 JSON），并与推演/幕外的中止句柄隔离。
 async function callTtsExtractModel(systemPrompt, userPrompt, cfg) {
-  const useExternal = settings.providerMode === 'external' || cfg;
+  const mainExternalReady = settings.providerMode === 'external'
+    && !!(normalizeUrl(normalizeQianmuChatApiRoot(settings.apiUrl)) && settings.apiKey && settings.model);
+  const useExternal = !!cfg || mainExternalReady;
   if (useExternal) {
     const eff = cfg || { apiUrl: settings.apiUrl, apiKey: settings.apiKey, model: settings.model };
     if (!(normalizeUrl(eff.apiUrl) && eff.apiKey && eff.model)) throw new Error('INVALID_API_SETTINGS');
@@ -9556,7 +9565,9 @@ async function callTtsExtractModel(systemPrompt, userPrompt, cfg) {
     ];
     return await callTtsExternalExtractModel(messages, eff);
   }
-  if (!getGenerateRaw()) throw new Error('INVALID_API_SETTINGS');
+  // 只配置了语音渠道、没有另配千幕文本 API 时，自动沿用 ST 当前聊天模型。
+  // 语音“测试连接”验证的是合成渠道，不应让台词提取因此被困在空的外部配置上。
+  if (!getGenerateRaw()) throw new Error('请先连接 SillyTavern 文本模型，或为台词分析选择一个千幕 API 预设');
   return await callSillyTavernModel(userPrompt, systemPrompt, null);
 }
 
@@ -9659,9 +9670,13 @@ async function extractDialogue(text) {
   const raw = await callTtsExtractModel(sysPrompt, userPrompt, cfg);
   const content = String(raw || '').trim();
   if (!content) return [];
-  let parsed;
-  try { parsed = extractJson(content); }
-  catch (_) { throw new Error('台词提取结果无法解析'); }
+  let parsed = parseQianmuDialoguePayload(content);
+  if (!parsed) {
+    // 保留千幕既有的截断 JSON 修复能力；严格候选解析负责避开思考块与顶层数组，
+    // 旧修复器只在模型确实少了尾括号/逗号时兜底。
+    try { parsed = extractJson(content); } catch (_) {}
+  }
+  if (!parsed) throw new Error('台词提取结果无法解析');
   const lines = Array.isArray(parsed?.lines) ? parsed.lines : (Array.isArray(parsed) ? parsed : []);
   const validEmotions = new Set(getTtsEmotionOptions(ttsProviderId(), p).map((option) => option.value).filter((value) => value !== 'auto'));
   const fxOn = !!p.soundFxAuto;
@@ -22183,8 +22198,8 @@ async function generateViaSTProxy(url, authHeaderStr, model, messages, opts = {}
   const stHeaders = typeof ctx().getRequestHeaders === 'function' ? ctx().getRequestHeaders() : {};
   const body = {
     chat_completion_source: 'custom',
-    custom_url: url,
-    reverse_proxy: url,
+    custom_url: normalizeQianmuChatApiRoot(url),
+    reverse_proxy: '',
     proxy_password: '',
     custom_include_headers: authHeaderStr || '',
     model,
@@ -22204,10 +22219,14 @@ async function generateViaSTProxy(url, authHeaderStr, model, messages, opts = {}
     throw new Error(`HTTP ${res.status}${text ? ` · ${text.slice(0, 300)}` : ''}`);
   }
   const data = await res.json().catch(() => ({}));
+  const upstreamError = qianmuChatCompletionError(data);
+  if (upstreamError) throw new Error(`上游模型请求失败：${upstreamError}`);
   const message = data?.choices?.[0]?.message || {};
   const reasoning = modelMessageReasoning(message);
   if (reasoning && typeof opts.onReasoning === 'function') opts.onReasoning(reasoning);
-  return message.content || data?.choices?.[0]?.text || '';
+  const content = qianmuChatCompletionText(data);
+  if (!content.trim()) throw new Error('上游模型未返回可用正文');
+  return content;
 }
 
 async function coreadFetchMemModels(kind, btn) {
