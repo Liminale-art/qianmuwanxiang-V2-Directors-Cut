@@ -193,10 +193,10 @@ assert.match(css, /\.mes\.sd-floor-jump-hit/);
 
 // 楼层工具新增独立正文排版页：默认零介入，三项开关置于滑动条组上方。
 assert.match(source, /const PROSE_LAYOUT_DEFAULTS[\s\S]*active:\s*false/);
-for (const label of ['开启排版', '字号', '行高', '段距', '缩进', '宽度', '左右边距', '换行整理为段落', '两端对齐']) {
+for (const label of ['开启排版', '字号', '行高', '段距', '缩进', '宽度', '横向偏移', '换行整理为段落', '两端对齐']) {
   assert.match(source, new RegExp(label));
 }
-assert.match(source.slice(source.indexOf('const PROSE_LAYOUT_CONTROLS'), source.indexOf('const PROSE_LAYOUT_STORAGE_KEY')), /key: 'sidePadding', label: '左右边距', min: 0, max: 40, step: 1, unit: 'px'/, '正文必须允许用户按主题与设备调节对称边距');
+assert.match(source.slice(source.indexOf('const PROSE_LAYOUT_CONTROLS'), source.indexOf('const PROSE_LAYOUT_STORAGE_KEY')), /key: 'horizontalOffset', label: '横向偏移', min: -20, max: 20, step: 0\.1, unit: 'px'/, '正文必须允许用户以小数精度校正主题造成的水平偏心');
 assert.match(source, /data-floor-tab="jump"[\s\S]*data-floor-tab="layout"/);
 assert.match(source, /data-prose-toggle="active"[\s\S]*开启排版/);
 assert.doesNotMatch(source, /已应用正文排版|跟随 SillyTavern 默认|恢复正文默认/);
@@ -207,11 +207,12 @@ assert.match(source, /input\[type="number"\]\[data-prose-key\][\s\S]*addEventLis
 assert.match(source, /querySelectorAll\('#chat \.mes_text'\)/, '排版功能必须严格限制在聊天正文');
 assert.doesNotMatch(source.slice(source.indexOf('function proseLayoutMarkBreaks'), source.indexOf('function proseLayoutSchedule')), /innerHTML|outerHTML|wrap|replaceWith/, '换行整理不得重建正文或复制参考实现');
 assert.match(css, /html body\.sd-prose-layout #chat \.mes \.mes_text[\s\S]*line-height:\s*var\(--sd-prose-line-height\) !important/, '正文排版必须以高优先级覆盖 ST 美化');
-assert.match(css, /html body\.sd-prose-layout #chat \.mes \.mes_text[\s\S]*padding-left:\s*var\(--sd-prose-side-padding, 10px\) !important;[\s\S]*padding-right:\s*var\(--sd-prose-side-padding, 10px\) !important;/, '正文排版必须使用用户可调且独立于 ST 单侧桌面留白的对称边距');
-assert.match(css, /html body\.sd-prose-layout #chat \.mes \.mes_text[\s\S]*box-sizing:\s*border-box !important;/, '正文的对称留白必须计入内容宽度，避免主题盒模型造成右侧溢出');
+assert.match(css, /html body\.sd-prose-layout #chat \.mes \.mes_text[\s\S]*padding-left:\s*max\(0px, calc\(var\(--sd-prose-auto-side-padding\) \+ var\(--sd-prose-horizontal-offset, 0px\)\)\) !important;[\s\S]*padding-right:\s*max\(0px, calc\(var\(--sd-prose-auto-side-padding\) - var\(--sd-prose-horizontal-offset, 0px\)\)\) !important;/, '正文偏移必须在固定列宽内反向调节两侧留白，避免父层裁切');
+assert.match(css, /html body\.sd-prose-layout #chat \.mes \.mes_text[\s\S]*box-sizing:\s*border-box !important;/, '正文安全留白必须计入内容宽度，避免主题盒模型造成右侧溢出');
 assert.match(source, /function proseLayoutMobileContentWidth[\s\S]*Math\.min\(100,[\s\S]*width \* 1\.25[\s\S]*--sd-prose-mobile-content-width/, '窄屏必须将字符行宽映射为真实可见的相对宽度');
 assert.match(css, /@media screen and \(max-width: 720px\)[\s\S]*html body\.sd-prose-layout #chat \.mes \.mes_text[\s\S]*width:\s*min\(var\(--sd-prose-content-width\), var\(--sd-prose-mobile-content-width, 100%\), 100%\) !important;/, '移动正文宽度必须映射为可调的相对宽度');
-assert.match(source, /rootStyle\.setProperty\('--sd-prose-side-padding', `\$\{layout\.sidePadding\}px`\)/, '边距滑条必须即时写入正文 CSS 变量');
+assert.match(source, /rootStyle\.setProperty\('--sd-prose-horizontal-offset', `\$\{layout\.horizontalOffset\}px`\)/, '横向偏移必须即时写入正文 CSS 变量');
+assert.match(source, /delete layout\.sidePadding/, '旧版边距字段不得继续影响横向偏移');
 assert.match(css, /html body\.sd-prose-justify #chat \.mes \.mes_text/);
 assert.match(css, /body\.sd-prose-split-breaks #chat \.mes \.mes_text \[data-sd-prose-gap="1"\][\s\S]*height:\s*var\(--sd-prose-paragraph-gap\) !important/, '段距必须使用稳定的间隔元素而非无效的 br margin');
 assert.match(css, /\.sd-floor-search\s*\{[^}]*grid-template-columns:\s*auto minmax\(0, 1fr\) auto auto/);

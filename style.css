@@ -619,7 +619,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .sd-floor-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 #story-director-floor-nav .sd-floor-actions button { min-height: 42px; border: 1px solid var(--sd-border); border-radius: 999px; background: var(--sd-glass-weak); color: inherit; display: inline-flex; align-items: center; justify-content: center; }
 #story-director-floor-nav .sd-prose-controls { display: grid; gap: 7px; }
-#story-director-floor-nav .sd-prose-control { display: grid; grid-template-columns: 50px minmax(90px, 1fr) 70px 30px; align-items: center; gap: 9px; min-height: 43px; padding: 5px 11px; border: 1px solid var(--sd-hairline); border-radius: 13px; background: var(--sd-card); }
+#story-director-floor-nav .sd-prose-control { display: grid; grid-template-columns: 64px minmax(90px, 1fr) 70px 30px; align-items: center; gap: 9px; min-height: 43px; padding: 5px 11px; border: 1px solid var(--sd-hairline); border-radius: 13px; background: var(--sd-card); }
 #story-director-floor-nav .sd-prose-control > span { white-space: nowrap; color: var(--sd-text); font-size: 13px; }
 #story-director-floor-nav .sd-prose-control input[type="range"] { width: 100%; min-width: 0; accent-color: var(--sd-accent); }
 #story-director-floor-nav .sd-prose-control input[type="number"] { width: 100%; min-width: 0; box-sizing: border-box; padding: 6px 5px; border: 0; border-bottom: 1px solid var(--sd-hairline); border-radius: 7px 7px 2px 2px; outline: 0; background: var(--sd-input-bg); color: inherit; text-align: center; font-variant-numeric: tabular-nums; }
@@ -633,13 +633,14 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 @media (max-width: 520px) {
   #story-director-floor-nav .sd-floor-shell { padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
   #story-director-floor-nav .sd-floor-panel { padding: 15px; border-radius: 18px; }
-  #story-director-floor-nav .sd-prose-control { grid-template-columns: 42px minmax(70px, 1fr) 58px 24px; gap: 6px; padding-inline: 8px; }
+  #story-director-floor-nav .sd-prose-control { grid-template-columns: 56px minmax(70px, 1fr) 58px 24px; gap: 6px; padding-inline: 8px; }
   #story-director-floor-nav .sd-prose-checks { grid-template-columns: .9fr 1.35fr .9fr; gap: 5px; }
   #story-director-floor-nav .sd-prose-checks label { min-height: 39px; gap: 5px; padding-inline: 5px; font-size: 11px; white-space: nowrap; }
 }
 
 /* 正文排版只在用户实际调整后生效；提高优先级以覆盖 ST 美化，但不越出聊天正文。 */
 html body.sd-prose-layout #chat .mes .mes_text {
+  --sd-prose-auto-side-padding: clamp(12px, 2.2vw, 24px);
   box-sizing: border-box !important;
   width: min(var(--sd-prose-content-width), 100%) !important;
   min-width: 0 !important;
@@ -647,9 +648,9 @@ html body.sd-prose-layout #chat .mes .mes_text {
   margin-inline: auto !important;
   margin-left: auto !important;
   margin-right: auto !important;
-  /* 不复用 ST 的桌面单侧留白；左右始终同值，并允许用户按设备与主题自行微调。 */
-  padding-left: var(--sd-prose-side-padding, 10px) !important;
-  padding-right: var(--sd-prose-side-padding, 10px) !important;
+  /* 保持列宽不变，以一增一减的内边距移动整段内容，避免 transform 被父层裁切。 */
+  padding-left: max(0px, calc(var(--sd-prose-auto-side-padding) + var(--sd-prose-horizontal-offset, 0px))) !important;
+  padding-right: max(0px, calc(var(--sd-prose-auto-side-padding) - var(--sd-prose-horizontal-offset, 0px))) !important;
   inset-inline: auto !important;
   transform: none !important;
   font-size: var(--sd-prose-font-size) !important;
@@ -658,6 +659,7 @@ html body.sd-prose-layout #chat .mes .mes_text {
 }
 @media screen and (max-width: 720px) {
   html body.sd-prose-layout #chat .mes .mes_text {
+    --sd-prose-auto-side-padding: clamp(7px, 2.4vw, 10px);
     width: min(var(--sd-prose-content-width), var(--sd-prose-mobile-content-width, 100%), 100%) !important;
   }
 }
