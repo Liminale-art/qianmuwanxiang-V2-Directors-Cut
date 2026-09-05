@@ -95,9 +95,9 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.19';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.19';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.19';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.20';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.20';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.20';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -105,7 +105,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.19';
+} from './qianmu-llm-output.js?v=1.59.20';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -158,143 +158,143 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.19';
+} from './qianmu-storyboard.js?v=1.59.20';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.19';
+const VERSION = '1.59.20';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.19'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.20'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.19').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.20').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.19'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.20'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.19'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.20'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.19'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.20'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.19'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.20'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.19'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.20'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.19'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.20'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.19'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.20'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.19'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.20'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.19'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.20'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.19'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.20'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.19'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.20'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.19'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.20'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.19'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.20'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.19'),
+    load: () => import('./qianmu-video-task.js?v=1.59.20'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.19'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.20'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.19'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.20'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.19'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.20'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.19'),
+    load: () => import('./qianmu-video-store.js?v=1.59.20'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.19'),
+    load: () => import('./qianmu-video-result.js?v=1.59.20'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.19'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.20'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.19'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.20'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.19'),
+    load: () => import('./qianmu-video-media.js?v=1.59.20'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.19'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.20'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.19'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.20'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.19'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.20'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.19'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.20'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.19'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.20'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.19'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.20'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.19'),
-        import('./qianmu-theaters.js?v=1.59.19'),
+        import('./builtin-theaters.js?v=1.59.20'),
+        import('./qianmu-theaters.js?v=1.59.20'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -1097,6 +1097,7 @@ let storyboardPendingRestoreScroll = null;
 let storyboardPresetUndo = null;
 let storyboardPresetUndoTimer = null;
 let worldPage = 'front';
+const worldPageScrolls = new Map();
 let theaterView = null; // null=常规；{mode:'read', scene}=阅读；{mode:'favorites'}=收藏夹
 let readerView = null;  // 伴读：null=书架；{ bookId, fullscreen, chapterIndex }=阅读器全屏子视图
 let editorView = null;  // null=常规；{target, title, value, returnTab}=行内全屏编辑（沿用阅读页逻辑，不另开 body 窗口）
@@ -1140,6 +1141,7 @@ const storyboardApiKeys = new Map(); // credentialId -> Key；不进入设置、
 const storyboardDraftApiKeys = new Map(); // 表单暂存：测试失败/页面重绘时不丢失用户刚输入的 Key
 const STORYBOARD_BROWSER_CREDENTIALS_KEY = 'qianmu.storyboard.credentials.v1';
 let storyboardRuntimeReconciled = false;
+const storyboardNormalizedStates = new WeakSet();
 const storyboardConnectionStatus = new Map();
 let storyboardSecrets = {};          // 只缓存“是否已配置”，绝不读取或缓存密钥正文
 let storyboardSecretModulePromise = null;
@@ -4096,12 +4098,12 @@ const QUICK_COMMANDS = Object.freeze([
   { id: 'castworld', label: '世界', icon: 'fa-earth-asia', glyph: 'world' },
   { id: 'context', label: '取材', icon: 'fa-box-archive', glyph: 'context' },
   { id: 'settings', label: '幕后', icon: 'fa-feather-pointed', glyph: 'backstage' },
-  { id: 'theater', label: '幕外', icon: 'fa-masks-theater', glyph: 'qm-duotone-mask-happy' },
+  { id: 'theater', label: '幕外', icon: 'fa-masks-theater', glyph: 'qm-regular-tv' },
   { id: 'tts', label: '配音', icon: 'fa-microphone-lines', glyph: 'qm-duotone-microphone-stage' },
   { id: 'coread', label: '书架', icon: 'fa-book-open', glyph: 'coread-entry' },
   { id: 'geopolitics', label: '世界格局', icon: 'fa-atom', glyph: 'world-map' },
   { id: 'plug', label: 'API与日志', icon: 'fa-gear', glyph: 'qm-duotone-gear' },
-  { id: 'imagegen', label: '分镜', icon: 'fa-video', glyph: 'qm-duotone-video-camera' },
+  { id: 'imagegen', label: '分镜', icon: 'fa-video', glyph: 'qm-regular-aperture' },
   { id: 'floor', label: '楼层跳转', icon: 'fa-layer-group', glyph: 'floor-tools' },
 ]);
 const QUICK_COMMAND_IDS = QUICK_COMMANDS.map((item) => item.id);
@@ -5896,7 +5898,28 @@ function renderBusyState() {
 }
 
 // 折叠面板开合状态记忆
+function storyboardRememberCardState(state, card) {
+  const key = card.dataset.storyboardCard;
+  if (!key || !state?.collapsedCards) return false;
+  if (!Object.hasOwn(state.collapsedCards, key) && card.open === card._sdInitialOpen) return false;
+  if (state.collapsedCards[key] === !card.open) return false;
+  // Only touched entries are remembered; cap detail memory independently of the main cards.
+  delete state.collapsedCards[key];
+  state.collapsedCards[key] = !card.open;
+  const entries = Object.keys(state.collapsedCards).filter((item) => item.startsWith('worldbook-entry-'));
+  for (const expired of entries.slice(0, Math.max(0, entries.length - 120))) delete state.collapsedCards[expired];
+  return true;
+}
+
 function snapshotAccState(modal) {
+  // Native toggle can be queued after a rerender. Snapshot the visible cards before detaching them.
+  const storyboard = settings.imagegen;
+  let changed = false;
+  modal.querySelectorAll('details[data-storyboard-card]').forEach((card) => {
+    if (!storyboard?.collapsedCards || modal._sdStoryboardState !== storyboard) return;
+    changed = storyboardRememberCardState(storyboard, card) || changed;
+  });
+  if (changed) saveSettings();
   modal.querySelectorAll('details[data-acc]').forEach((el) => {
     const key = el.dataset.acc;
     if (key?.startsWith('log-')) {
@@ -6524,7 +6547,7 @@ function renderModal() {
         </div>
         <div class="sd-header-actions">
           ${COREAD_VISIBLE ? `<button class="sd-coread-shortcut ${activeTab === 'coread' ? 'active' : ''}" title="伴读" aria-label="伴读"><i class="fa-solid fa-book-open" data-qm-icon="coread-entry"></i></button>` : ''}
-          <button class="sd-storyboard-shortcut ${activeTab === 'imagegen' ? 'active' : ''}" title="分镜" aria-label="分镜"><i class="fa-solid fa-camera" data-qm-icon="qm-duotone-camera"></i></button>
+          <button class="sd-storyboard-shortcut ${activeTab === 'imagegen' ? 'active' : ''}" title="分镜" aria-label="分镜"><i class="fa-solid fa-camera" data-qm-icon="qm-regular-aperture"></i></button>
           <button class="sd-plug-shortcut ${activeTab === 'plug' ? 'active' : ''}" title="API与日志" aria-label="API与日志"><i class="fa-solid fa-gear" data-qm-icon="qm-duotone-gear"></i></button>
           <div class="sd-theme-pick">
             <button class="sd-theme-btn" title="外观主题" aria-label="外观主题" aria-haspopup="true"><i class="fa-solid fa-palette"></i></button>
@@ -6542,7 +6565,9 @@ function renderModal() {
       <nav class="sd-tabs">
         ${tabs.map(([id, label]) => `<button class="sd-tab ${activeTab === id ? 'active' : ''}" data-tab="${id}">${label}</button>`).join('')}
       </nav>
+      ${activeTab === 'castworld' && !editorLayout ? '<div class="sd-world-viewport">' : ''}
       <main class="sd-body${editorLayout ? ' sd-editor-body' : ''}">${['tasksnodes', 'context'].includes(activeTab) || (activeTab === 'castworld' && worldPage === 'front') ? (!editorView ? `<div class="sd-cols-inner">${renderActiveTab()}</div>` : renderActiveTab()) : renderActiveTab()}</main>
+      ${activeTab === 'castworld' && !editorLayout ? `${renderWorldPageEdges()}</div>` : ''}
       ${renderInjectDock()}
       `}
     </section>`;
@@ -8171,12 +8196,18 @@ function renderTasksNodesTab() {
 function renderCastWorldTab() {
   const side = worldPage === 'geopolitics' ? 'geopolitics' : 'front';
   const content = side === 'geopolitics' ? renderGeopoliticsTab() : renderCastWorldFront();
-  const targetLabel = side === 'front' ? '翻到世界背面' : '返回世界正面';
   return `<div class="sd-world-flip-shell" data-world-side="${side}">
-    <button type="button" class="sd-world-edge sd-world-edge-left" title="${targetLabel}" aria-label="${targetLabel}"><i class="fa-solid fa-chevron-left"></i></button>
     <div class="sd-world-page">${content}</div>
-    <button type="button" class="sd-world-edge sd-world-edge-right" title="${targetLabel}" aria-label="${targetLabel}"><i class="fa-solid fa-chevron-right"></i></button>
   </div>`;
+}
+
+function renderWorldPageEdges() {
+  const store = getChatStore();
+  const hasContent = !!(store.factions?.length || store.worldEvents?.length);
+  const available = settings.geopoliticsEnabled || worldPage === 'geopolitics';
+  if (!available) return '';
+  const label = worldPage === 'geopolitics' ? '返回世界正面' : '查看世界格局';
+  return ['left', 'right'].map((side) => `<button type="button" class="sd-world-edge sd-world-edge-${side}${hasContent ? ' has-content' : ''}" title="${label}" aria-label="${label}"><i class="fa-solid ${side === 'left' ? 'fa-chevron-left' : 'fa-chevron-right'}"></i></button>`).join('');
 }
 
 function renderCastWorldFront() {
@@ -8191,27 +8222,45 @@ function bindWorldFlipEvents(root) {
   const shell = root.querySelector('.sd-world-flip-shell');
   if (!shell) return;
   const flip = () => {
+    if (!shell.isConnected) return;
     if (worldPage === 'front' && !settings.geopoliticsEnabled) {
       toast('请先在幕后开启「活幕·势」。', 'info');
       return;
     }
+    const scrollKey = `${getChatKey()}:${worldPage}`;
+    worldPageScrolls.set(scrollKey, root.querySelector('.sd-body')?.scrollTop || 0);
+    if (worldPageScrolls.size > 20) worldPageScrolls.delete(worldPageScrolls.keys().next().value);
     worldPage = worldPage === 'geopolitics' ? 'front' : 'geopolitics';
     renderModal();
+    const body = root.querySelector('.sd-body');
+    if (body) body.scrollTop = worldPageScrolls.get(`${getChatKey()}:${worldPage}`) || 0;
   };
-  shell.querySelectorAll('.sd-world-edge').forEach((button) => button.addEventListener('click', flip));
-  let startX = 0, startY = 0, pointerId = null;
+  root.querySelectorAll('.sd-world-edge').forEach((button) => button.addEventListener('click', flip));
+  // Horizontal touch intent only. Controls, text selection and the interactive map own their gestures.
+  let gesture = null;
+  const interactive = 'button, input, select, textarea, a, summary, [contenteditable], [role="slider"], svg, canvas, .sd-geo-map';
   shell.addEventListener('pointerdown', (event) => {
-    if (event.button !== undefined && event.button !== 0) return;
-    if (event.target.closest('button, input, select, textarea, a, summary')) return;
-    pointerId = event.pointerId; startX = event.clientX; startY = event.clientY;
+    gesture = null;
+    if (event.isPrimary === false || !['touch', 'pen'].includes(event.pointerType)) return;
+    if (event.target.closest(interactive) || globalThis.getSelection?.()?.toString()) return;
+    gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, at: event.timeStamp, horizontal: false };
+  });
+  shell.addEventListener('pointermove', (event) => {
+    if (!gesture || gesture.id !== event.pointerId) return;
+    const dx = Math.abs(event.clientX - gesture.x), dy = Math.abs(event.clientY - gesture.y);
+    if (!gesture.horizontal && dy > 10 && dy > dx) { gesture = null; return; }
+    if (dx > 12 && dx > dy * 1.6) gesture.horizontal = true;
   });
   shell.addEventListener('pointerup', (event) => {
-    if (pointerId !== event.pointerId) return;
-    const dx = event.clientX - startX, dy = event.clientY - startY;
-    pointerId = null;
-    if (Math.abs(dx) >= 52 && Math.abs(dx) > Math.abs(dy) * 1.25) flip();
+    if (!gesture || gesture.id !== event.pointerId) return;
+    const current = gesture;
+    gesture = null;
+    const dx = event.clientX - current.x, dy = event.clientY - current.y;
+    if (event.timeStamp - current.at > 700 || globalThis.getSelection?.()?.toString()) return;
+    if (current.horizontal && Math.abs(dx) >= 38 && Math.abs(dx) > Math.abs(dy) * 1.6) flip();
   });
-  shell.addEventListener('pointercancel', () => { pointerId = null; });
+  shell.addEventListener('pointercancel', () => { gesture = null; });
+  shell.addEventListener('lostpointercapture', () => { gesture = null; });
 }
 
 // 关系暗涌：角色之间自行纠缠的张力（可负可中可正），独立于 {{user}} 演变。一行一簇关系，标出基调、走势与 user 知情程度。
@@ -11724,7 +11773,12 @@ function renderPlugTab() {
    ============================================================ */
 function storyboardState() {
   if (!isPlainObject(settings.imagegen)) settings.imagegen = createStoryboardDefaults();
-  const state = normalizeStoryboardState(settings.imagegen);
+  // Migrate once per loaded settings object; a read must not detach live form/job references.
+  if (!storyboardNormalizedStates.has(settings.imagegen)) {
+    normalizeStoryboardState(settings.imagegen);
+    storyboardNormalizedStates.add(settings.imagegen);
+  }
+  const state = settings.imagegen;
   if (!storyboardRuntimeReconciled) {
     storyboardRuntimeReconciled = true;
     let changed = false;
@@ -12092,7 +12146,7 @@ function storyboardReturnTo(root, view, patch = {}) {
 
 function renderStoryboardNav(state) {
   const items = [
-    ['create', '镜头台', 'fa-camera', 'qm-duotone-camera'],
+    ['create', '镜头台', 'fa-camera', 'qm-regular-aperture'],
     ['assets', '素材库', 'fa-tags', 'qm-duotone-tag'],
     ['gallery', '阅片室', 'fa-images', 'screening'],
     ['logs', '日志', 'fa-list-ul', 'qm-regular-list-bullets'],
@@ -13151,12 +13205,12 @@ function renderStoryboardWorldbookCard(state) {
     <input type="checkbox" class="sd-storyboard-toggle-worldbook" data-name="${htmlEscape(name)}" ${selectedBooks.has(name) ? 'checked' : ''} title="选中作为分镜参考">
     <button type="button" class="sd-storyboard-world-name" data-name="${htmlEscape(name)}"><span>${htmlEscape(name)}</span>${storyboardWorldEntryCache.boundNames.includes(name) ? badge('当前绑定') : ''}</button>
   </div>`).join('');
-  const entryRows = viewName ? (storyboardWorldEntryCache.rows || []).filter((row) => row.book === viewName).map((row) => `<details class="sd-source-row sd-context-item sd-unified-source-entry"><summary><label class="sd-context-entry-label"><input type="checkbox" data-storyboard-world-entry="${htmlEscape(row.id)}" ${selectedEntries.has(row.id) ? 'checked' : ''} ${selectedBooks.has(viewName) ? '' : 'disabled'}><span>${htmlEscape(row.title)}</span></label></summary><pre>${htmlEscape(cleanContextText(row.item?.content || row.item?.text || '').slice(0, 2000))}</pre></details>`).join('') : '';
+  const entryRows = viewName ? (storyboardWorldEntryCache.rows || []).filter((row) => row.book === viewName).map((row) => `<details class="sd-source-row sd-context-item sd-unified-source-entry" data-storyboard-card="worldbook-entry-${hashText(row.id)}" ${state.collapsedCards[`worldbook-entry-${hashText(row.id)}`] === false ? 'open' : ''}><summary><label class="sd-context-entry-label"><input type="checkbox" data-storyboard-world-entry="${htmlEscape(row.id)}" ${selectedEntries.has(row.id) ? 'checked' : ''} ${selectedBooks.has(viewName) ? '' : 'disabled'}><span>${htmlEscape(row.title)}</span></label></summary><pre>${htmlEscape(cleanContextText(row.item?.content || row.item?.text || '').slice(0, 2000))}</pre></details>`).join('') : '';
   const body = storyboardWorldEntryCache.loading
     ? '<div class="sd-storyboard-empty-inline">正在读取世界书…</div>'
     : storyboardWorldEntryCache.error
       ? `<div class="sd-storyboard-empty-inline">${htmlEscape(storyboardWorldEntryCache.error)}</div>`
-      : names.length ? `<div class="sd-storyboard-worldbook-picker"><details class="sd-dropdown" open><summary class="sd-dropdown-head"><span>世界书目录</span><b>${selectedBooks.size} 项</b></summary><div class="sd-dropdown-body sd-scroll">${bookRows}</div></details></div>${viewName ? `<details class="sd-dropdown sd-storyboard-worldbook-entries" open><summary class="sd-dropdown-head"><span>世界书条目</span><b>${htmlEscape(viewName)}</b></summary><div class="sd-dropdown-body sd-scroll sd-storyboard-worldbook-entry-list">${entryRows || '<p class="sd-muted">暂无条目</p>'}</div></details>` : '<div class="sd-storyboard-empty-inline">选择一本世界书后查看条目。</div>'}` : '<div class="sd-storyboard-empty-inline">未读取到世界书。</div>';
+      : names.length ? `<div class="sd-storyboard-worldbook-picker"><details class="sd-dropdown" data-storyboard-card="worldbook-directory" ${state.collapsedCards['worldbook-directory'] ? '' : 'open'}><summary class="sd-dropdown-head"><span>世界书目录</span><b>${selectedBooks.size} 项</b></summary><div class="sd-dropdown-body sd-scroll">${bookRows}</div></details></div>${viewName ? `<details class="sd-dropdown sd-storyboard-worldbook-entries" data-storyboard-card="worldbook-entries" ${state.collapsedCards['worldbook-entries'] ? '' : 'open'}><summary class="sd-dropdown-head"><span>世界书条目</span><b>${htmlEscape(viewName)}</b></summary><div class="sd-dropdown-body sd-scroll sd-storyboard-worldbook-entry-list">${entryRows || '<p class="sd-muted">暂无条目</p>'}</div></details>` : '<div class="sd-storyboard-empty-inline">选择一本世界书后查看条目。</div>'}` : '<div class="sd-storyboard-empty-inline">未读取到世界书。</div>';
   return `<details class="sd-card sd-storyboard-worldbook-card" data-storyboard-card="worldbook" ${state.collapsedCards.worldbook ? '' : 'open'}>
     <summary><span><b>世界书</b></span><button type="button" class="sd-icon-btn sd-icon-sm sd-storyboard-refresh-worldbooks" title="重新读取世界书" aria-label="重新读取世界书"><i class="fa-solid fa-rotate"></i></button></summary>
     <div class="sd-storyboard-card-body">${body}</div>
@@ -13443,6 +13497,11 @@ async function storyboardDeleteTag(item) {
   saveSettings(); renderModal();
 }
 
+function storyboardVibeAmount(value, fallback) {
+  const amount = String(value ?? '').trim() === '' ? NaN : Number(value);
+  return Number.isFinite(amount) ? Math.max(0, Math.min(1, amount)) : fallback;
+}
+
 async function storyboardSaveVibeFromForm(root) {
   const state = storyboardState();
   const name = String(root.querySelector('.sd-storyboard-vibe-name')?.value || '').trim().slice(0, 100);
@@ -13467,8 +13526,8 @@ async function storyboardSaveVibeFromForm(root) {
   }
   Object.assign(item, {
     name, previewUrl: storyboardSafeUrl(previewUrl), providerIds: [state.source], modelIds: [],
-    strength: Math.max(0, Math.min(1, Number(root.querySelector('.sd-storyboard-vibe-strength')?.value) || 0.6)),
-    informationExtracted: Math.max(0, Math.min(1, Number(root.querySelector('.sd-storyboard-vibe-info')?.value) || 1)),
+    strength: storyboardVibeAmount(root.querySelector('.sd-storyboard-vibe-strength')?.value, 0.6),
+    informationExtracted: storyboardVibeAmount(root.querySelector('.sd-storyboard-vibe-info')?.value, 1),
     updatedAt: now,
   });
   state.editingVibeId = '';
@@ -17965,7 +18024,7 @@ function storyboardInjectMessageButtons(chatRoot) {
     const plan = storyboardPlanForMessage(storyboardState(), floor, chatMessage);
     button.title = plan?.shots?.some((shot) => shot.hasPrompt || String(shot.prompt || '').trim()) ? `重新提取第 ${floor} 层生成词` : `提取第 ${floor} 层生成词`;
     button.setAttribute('aria-label', button.title);
-    button.innerHTML = '<i class="fa-solid fa-video" data-qm-icon="qm-duotone-video-camera"></i>';
+    button.innerHTML = '<i class="fa-solid fa-video" data-qm-icon="qm-regular-aperture"></i>';
     toolbar.appendChild(button);
     applyQianmuIcons(button);
   });
@@ -18832,6 +18891,8 @@ function storyboardUnbindChat() {
 function bindStoryboardTabEvents(root) {
   if (activeTab !== 'imagegen') return;
   const state = storyboardState();
+  root._sdStoryboardState = state;
+  const boundPage = root.querySelector('.sd-storyboard-root');
   if (state.view === 'logs') void storyboardHydratePipelineArchive({ rerender: true });
   if (state.view === 'gallery' && storyboardGalleryKind === 'stills') void storyboardHydrateGallerySnapshots();
   if (state.view === 'gallery' && storyboardGalleryKind === 'motion'
@@ -18925,7 +18986,7 @@ function bindStoryboardTabEvents(root) {
       clearTimeout(draftTimer);
       draftTimer = setTimeout(() => {
         // 路由切换会替换整棵 root；旧计时器绝不能用脱离 DOM 的旧表单覆盖新页面。
-        if (!root.isConnected) return;
+        if (!root.isConnected || !boundPage?.isConnected || storyboardState() !== state) return;
         storyboardCaptureWorkbench(root, sourceAtBind);
       }, 320);
     };
@@ -18935,10 +18996,13 @@ function bindStoryboardTabEvents(root) {
       field.addEventListener(field.type === 'checkbox' || field.tagName === 'SELECT' ? 'change' : 'input', saveDraft);
     });
   }
-  root.querySelectorAll('details[data-storyboard-card]').forEach((card) => card.addEventListener('toggle', () => {
-    state.collapsedCards[card.dataset.storyboardCard] = !card.open;
-    saveSettings();
-  }));
+  root.querySelectorAll('details[data-storyboard-card]').forEach((card) => {
+    card._sdInitialOpen = card.open;
+    card.addEventListener('toggle', () => {
+      if (!card.isConnected || !root.isConnected || storyboardState() !== state) return;
+      if (storyboardRememberCardState(state, card)) saveSettings();
+    });
+  });
   root.querySelectorAll('[data-storyboard-production-packet]').forEach((button) => button.addEventListener('click', () => {
     void storyboardGenerateProductionPacket(root, String(button.dataset.storyboardProductionPacket || ''));
   }));
@@ -19680,10 +19744,13 @@ function bindStoryboardTabEvents(root) {
   });
   root.querySelector('.sd-storyboard-route-confirm')?.addEventListener('change', (event) => { state.routing.confirmMultipleRequests = event.target.checked; saveSettings(); });
   root.querySelector('.sd-storyboard-add-route')?.addEventListener('click', () => {
-    state.routing.rules.push({
-      id: uid('shotroute'), name: `分工 ${state.routing.rules.length + 1}`, shotTypes: [],
-      target: { providerId: state.source, modelId: storyboardProviderProfile(state).model, connectionPresetId: '', parameterPresetId: '' }, enabled: true,
-      priority: state.routing.rules.length,
+    if (!root.isConnected || storyboardState() !== state) return;
+    const modelId = storyboardProviderProfile(state).model;
+    const rules = state.routing.rules;
+    rules.push({
+      id: uid('shotroute'), name: `分工 ${rules.length + 1}`, shotTypes: [],
+      target: { providerId: state.source, modelId, connectionPresetId: '', parameterPresetId: '' }, enabled: true,
+      priority: rules.length,
     });
     saveSettings(); renderModal();
   });

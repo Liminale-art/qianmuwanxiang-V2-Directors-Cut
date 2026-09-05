@@ -4,7 +4,7 @@
 // Callers must pass a narrow Qianmu root; there is deliberately no page-wide scan.
 
 export const LUCIDE_SOURCE_VERSION = '1.39.0';
-export const LUCIDE_STROKE_WIDTH = 2.5;
+export const LUCIDE_STROKE_WIDTH = 2.25;
 
 export const LUCIDE_GLYPH_NAMES = Object.freeze({
   "anchor": "anchor",
@@ -20,7 +20,8 @@ export const LUCIDE_GLYPH_NAMES = Object.freeze({
   "arrows-left-right": "arrow-left-right",
   "arrows-out": "maximize-2",
   "arrows-out-simple": "maximize",
-  "backstage": "drama",
+  "backstage": "feather",
+  "aperture": "aperture",
   "book": "book",
   "book-bookmark": "book-marked",
   "book-open": "book-open",
@@ -62,9 +63,9 @@ export const LUCIDE_GLYPH_NAMES = Object.freeze({
   "film-slate": "clapperboard",
   "film-strip": "film",
   "flask": "flask-conical",
-  "floor-tools": "layout-dashboard",
+  "floor-tools": "text-align-start",
   "floppy-disk": "save",
-  "focus": "hourglass",
+  "focus": "leaf",
   "folder": "folder",
   "folder-minus": "folder-minus",
   "folder-plus": "folder-plus",
@@ -129,6 +130,8 @@ export const LUCIDE_GLYPH_NAMES = Object.freeze({
   "target": "target",
   "tasks": "list-checks",
   "text-aa": "type",
+  "text-align-start": "text-align-start",
+  "tv": "tv",
   "text-underline": "underline",
   "trash": "trash-2",
   "trend-up": "trending-up",
@@ -143,11 +146,16 @@ export const LUCIDE_GLYPH_NAMES = Object.freeze({
   "warning": "triangle-alert",
   "wave-sine": "audio-waveform",
   "world": "globe",
-  "world-map": "map",
+  "world-map": "orbit",
   "x": "x"
 });
 
 export const LUCIDE_ICON_MARKUP = Object.freeze({
+  "aperture": "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"m14.31 8 5.74 9.94\"/><path d=\"M9.69 8h11.48\"/><path d=\"m7.38 12 5.74-9.94\"/><path d=\"M9.69 16 3.95 6.06\"/><path d=\"M14.31 16H2.83\"/><path d=\"m16.62 12-5.74 9.94\"/>",
+  "leaf": "<path d=\"M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z\"/><path d=\"M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12\"/>",
+  "orbit": "<path d=\"M20.341 6.484A10 10 0 0 1 10.266 21.85\"/><path d=\"M3.659 17.516A10 10 0 0 1 13.74 2.152\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/><circle cx=\"19\" cy=\"5\" r=\"2\"/><circle cx=\"5\" cy=\"19\" r=\"2\"/>",
+  "text-align-start": "<path d=\"M21 5H3\"/><path d=\"M15 12H3\"/><path d=\"M17 19H3\"/>",
+  "tv": "<path d=\"m17 2-5 5-5-5\"/><rect width=\"20\" height=\"15\" x=\"2\" y=\"7\" rx=\"2\"/>",
   "anchor": "<path d=\"M12 6v16\"/><path d=\"m19 13 2-1a9 9 0 0 1-18 0l2 1\"/><path d=\"M9 11h6\"/><circle cx=\"12\" cy=\"4\" r=\"2\"/>",
   "archive": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"/><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"/><path d=\"M10 12h4\"/>",
   "arrow-down": "<path d=\"M12 5v14\"/><path d=\"m19 12-7 7-7-7\"/>",
@@ -282,7 +290,7 @@ export const LUCIDE_ICON_MARKUP = Object.freeze({
 });
 
 export const QIANMU_ICON_SYSTEM_VERSION = `lucide-${LUCIDE_SOURCE_VERSION}`;
-export const QIANMU_ICON_SYSTEM_NAME = 'Lucide · 千幕 2.5';
+export const QIANMU_ICON_SYSTEM_NAME = 'Lucide · 千幕 2.25';
 
 export const QIANMU_SEMANTIC_ICONS = Object.freeze({
   'coread-entry': 'qm-signature-coread',

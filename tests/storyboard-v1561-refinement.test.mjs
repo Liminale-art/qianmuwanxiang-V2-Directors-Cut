@@ -21,7 +21,7 @@ assert.match(style, /\.sd-storyboard-mode \.sd-storyboard-body/);
 
 // World map is the swipeable reverse side of the World tab.
 assert.match(source, /function renderCastWorldTab[\s\S]*sd-world-flip-shell/);
-assert.match(source, /function bindWorldFlipEvents[\s\S]*Math\.abs\(dx\) >= 52/);
+assert.match(source, /function bindWorldFlipEvents[\s\S]*Math\.abs\(dx\) >= 38/);
 assert.match(source, /worldPage = worldPage === 'geopolitics' \? 'front' : 'geopolitics'/);
 assert.match(source, /activeTab === 'castworld' && worldPage === 'geopolitics'/);
 assert.match(style, /sd-world-edge-breathe/);
