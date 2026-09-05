@@ -95,9 +95,9 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.23';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.23';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.23';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.24';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.24';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.24';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -105,7 +105,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.23';
+} from './qianmu-llm-output.js?v=1.59.24';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -134,6 +134,7 @@ import {
   getStoryboardBuiltinParameterPresets,
   getStoryboardCapabilities,
   getStoryboardModel,
+  getStoryboardRememberedProfile,
   getStoryboardNovelParameterSpec,
   normalizeStoryboardState,
   normalizeStoryboardArtistPool,
@@ -142,6 +143,7 @@ import {
   planStoryboardProviderRequests,
   prepareStoryboardShotGroup,
   pruneStoryboardPipelineLogs,
+  rememberStoryboardModelProfile,
   resolveStoryboardMessageReference,
   resolveStoryboardComposition,
   restoreStoryboardCompositionPolicy,
@@ -158,143 +160,143 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.23';
+} from './qianmu-storyboard.js?v=1.59.24';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.23';
+const VERSION = '1.59.24';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.23'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.24'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.23').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.24').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.23'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.24'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.23'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.24'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.23'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.24'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.23'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.24'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.23'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.24'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.23'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.24'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.23'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.24'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.23'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.24'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.23'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.24'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.23'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.24'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.23'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.24'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.23'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.24'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.23'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.24'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.23'),
+    load: () => import('./qianmu-video-task.js?v=1.59.24'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.23'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.24'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.23'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.24'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.23'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.24'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.23'),
+    load: () => import('./qianmu-video-store.js?v=1.59.24'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.23'),
+    load: () => import('./qianmu-video-result.js?v=1.59.24'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.23'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.24'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.23'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.24'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.23'),
+    load: () => import('./qianmu-video-media.js?v=1.59.24'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.23'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.24'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.23'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.24'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.23'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.24'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.23'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.24'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.23'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.24'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.23'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.24'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.23'),
-        import('./qianmu-theaters.js?v=1.59.23'),
+        import('./builtin-theaters.js?v=1.59.24'),
+        import('./qianmu-theaters.js?v=1.59.24'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -16393,8 +16395,7 @@ function storyboardCaptureWorkbench(root, sourceId = storyboardState().source, {
     : { ok: true, workflow: {}, serialized: '', removedFields: [], message: '' };
   if (rememberModel && profile.model) {
     state.modelProfiles ||= {};
-    state.modelProfiles[sourceId] ||= {};
-    state.modelProfiles[sourceId][profile.model] = clone(profile);
+    rememberStoryboardModelProfile(state.modelProfiles, sourceId, profile);
   }
   saveSettings();
   return { state, profile, workflowResult };
@@ -19227,18 +19228,17 @@ function bindStoryboardTabEvents(root) {
   });
   root.querySelector('.sd-storyboard-model-select')?.addEventListener('change', (event) => {
     const sourceId = state.source;
-    const previousModel = String(state.profiles[sourceId]?.model || '');
+    const previousModel = String(state.profiles[sourceId]?.model || STORYBOARD_PROVIDER_REGISTRY[sourceId]?.defaultModel || '');
     const requestedModel = String(event.target.value || '');
     storyboardCaptureWorkbench(root, sourceId, { rememberModel: false });
     state.modelProfiles ||= {};
-    state.modelProfiles[sourceId] ||= {};
     const captured = clone(state.profiles[sourceId]);
-    if (previousModel) state.modelProfiles[sourceId][previousModel] = { ...clone(captured), model: previousModel };
-    const remembered = state.modelProfiles[sourceId][requestedModel];
+    if (previousModel) rememberStoryboardModelProfile(state.modelProfiles, sourceId, { ...captured, model: previousModel });
+    const remembered = getStoryboardRememberedProfile(state.modelProfiles, sourceId, requestedModel);
     state.profiles[sourceId] = remembered
       ? { ...clone(remembered), model: requestedModel, loaded: true }
       : { ...createStoryboardDefaults().profiles[sourceId], model: requestedModel, loaded: false };
-    state.modelProfiles[sourceId][requestedModel] = clone(state.profiles[sourceId]);
+    rememberStoryboardModelProfile(state.modelProfiles, sourceId, state.profiles[sourceId]);
     state.parameterPresetSelection[sourceId] = '';
     saveSettings();
     renderModal();

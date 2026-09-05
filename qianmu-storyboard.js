@@ -4,6 +4,7 @@ import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } f
 export const STORYBOARD_SCHEMA_VERSION = 24;
 export const STORYBOARD_PRODUCTION_TRACK_LABELS = Object.freeze({ main_camera: '本段正文', second_camera: '世界背面' });
 export const STORYBOARD_PIPELINE_LOG_LIMIT = 20;
+export const STORYBOARD_MODEL_PROFILE_LIMIT = 80;
 export const STORYBOARD_DIAGNOSTIC_TEXT_LIMIT = 256 * 1024;
 // v3 起日志只按固定条数轮换，不再因为经过若干天而静默消失。保留导出名供旧调用兼容。
 export const STORYBOARD_PIPELINE_LOG_RETENTION_MS = 0;
@@ -1796,50 +1797,83 @@ export function storyboardRatioDimensions(ratioId, currentWidth, currentHeight) 
 // Kept for v1.44 migration/tests.
 export function buildImagineCommand({ prompt, negative = '', width = '', height = '', steps = '', cfg = '', seed = '' }) { const clean = slash(prompt, 24000); if (!clean) throw new Error('画面描述不能为空'); const parts = ['/imagine', 'quiet=true', 'gallery=false']; if (String(negative || '').trim()) parts.push(`negative="${slash(negative, 12000)}"`); add(parts, 'width', width, 64, 4096, true); add(parts, 'height', height, 64, 4096, true); add(parts, 'steps', steps, 1, 300, true); add(parts, 'cfg', cfg, 0, 100, false); add(parts, 'seed', seed, -1, Number.MAX_SAFE_INTEGER, true); parts.push(`"${clean}"`); return parts.join(' '); }
 
+export function normalizeStoryboardParameterProfile(value, providerId) {
+  if (!getStoryboardProvider(providerId)) throw new Error('请选择有效的生图系列');
+  const base = legacyProfile(), p = obj(value) ? value : {};
+  for (const [key, fallback] of Object.entries(base)) {
+    const value = Object.hasOwn(p, key) ? p[key] : undefined;
+    base[key] = value === undefined ? fallback : (typeof fallback === 'boolean' ? flag(value) : str(value, key === 'comfyWorkflow' ? 2 * 1024 * 1024 : 2048));
+  }
+  if (providerId === 'comfy') {
+    const rawWorkflow = Object.hasOwn(p, 'comfyWorkflow') ? p.comfyWorkflow : '';
+    const result = sanitizeStoryboardWorkflow(rawWorkflow);
+    base.comfyWorkflow = result.ok ? result.serialized : '';
+    if (result.removedFields.length) base.comfyWorkflowNotice = `已移除凭据字段：${result.removedFields.join('、')}`.slice(0, 2048);
+    else if (!result.ok && String(rawWorkflow || '').trim()) base.comfyWorkflowNotice = result.message;
+  }
+  if (!STORYBOARD_RATIOS.some((item) => item.id === base.ratio)) base.ratio = '1:1';
+  return base;
+}
+
 function legacyProfiles(value) {
   const r = obj(value) ? value : {};
-  return Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((id) => {
-    const base = legacyProfile(), p = obj(r[id]) ? r[id] : {};
-    for (const [k, v] of Object.entries(base)) {
-      base[k] = p[k] === undefined ? v : (typeof v === 'boolean' ? flag(p[k]) : str(p[k], k === 'comfyWorkflow' ? 2 * 1024 * 1024 : 2048));
-    }
-    if (id === 'comfy') {
-      const rawWorkflow = p.comfyWorkflow;
-      const result = sanitizeStoryboardWorkflow(rawWorkflow);
-      base.comfyWorkflow = result.ok ? result.serialized : '';
-      if (result.removedFields.length) base.comfyWorkflowNotice = `已移除凭据字段：${result.removedFields.join('、')}`.slice(0, 2048);
-      else if (!result.ok && String(rawWorkflow || '').trim()) base.comfyWorkflowNotice = result.message;
-      else base.comfyWorkflowNotice = str(p.comfyWorkflowNotice, 2048);
-    }
-    if (!STORYBOARD_RATIOS.some((item) => item.id === base.ratio)) base.ratio = '1:1';
-    return [id, base];
-  }));
+  return Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((id) => [id, normalizeStoryboardParameterProfile(Object.hasOwn(r, id) ? r[id] : {}, id)]));
 }
+
+function rememberedModelId(providerId, value) {
+  const provider = getStoryboardProvider(providerId);
+  if (!provider || typeof value !== 'string' || /[\u0000-\u001f\u007f]/.test(value)) return '';
+  const id = value.trim();
+  return id && id.length <= 240 && (getStoryboardModel(providerId, id) || provider.customModelId) ? id : '';
+}
+
+export function getStoryboardRememberedProfile(memory, providerId, modelId) {
+  const id = rememberedModelId(providerId, modelId);
+  const bucket = id && obj(memory) && Object.hasOwn(memory, providerId) ? memory[providerId] : null;
+  if (!obj(bucket) || !Object.hasOwn(bucket, id) || !obj(bucket[id])) return null;
+  // Return a detached, whitelisted value. Reading never creates or reorders settings.
+  return normalizeStoryboardParameterProfile({ ...bucket[id], model: id }, providerId);
+}
+
+export function rememberStoryboardModelProfile(memory, providerId, profile) {
+  const id = obj(profile) && rememberedModelId(providerId, profile.model);
+  if (!obj(memory) || !id) return false;
+  const remembered = normalizeStoryboardParameterProfile({ ...profile, model: id }, providerId);
+  let bucket = Object.hasOwn(memory, providerId) && obj(memory[providerId]) ? memory[providerId] : null;
+  if (!bucket) {
+    bucket = {};
+    Object.defineProperty(memory, providerId, { value: bucket, configurable: true, enumerable: true, writable: true });
+  }
+  // Define data properties even for __proto__; never invoke inherited setters.
+  if (Object.hasOwn(bucket, id)) delete bucket[id];
+  Object.defineProperty(bucket, id, { value: remembered, configurable: true, enumerable: true, writable: true });
+  const keys = Object.keys(bucket), overflow = keys.length - STORYBOARD_MODEL_PROFILE_LIMIT;
+  for (const key of keys.filter((key) => key !== id).slice(0, Math.max(0, overflow))) delete bucket[key];
+  return true;
+}
+
 function modelProfileMemory(value, currentProfiles = {}) {
   const raw = obj(value) ? value : {};
-  return Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((providerId) => {
-    const knownModels = new Set((STORYBOARD_MODEL_REGISTRY[providerId] || []).map((item) => item.id));
-    const allowsCustomModel = Boolean(getStoryboardProvider(providerId)?.customModelId);
-    const source = obj(raw[providerId]) ? raw[providerId] : {};
-    const remembered = {};
-    for (const [modelId, profile] of Object.entries(source).slice(0, 80)) {
-      if ((!knownModels.has(modelId) && !allowsCustomModel) || !str(modelId, 240) || !obj(profile)) continue;
-      remembered[modelId] = legacyProfiles({ [providerId]: { ...profile, model: modelId } })[providerId];
+  const memory = Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((id) => [id, {}]));
+  for (const providerId of Object.keys(STORYBOARD_PROVIDER_REGISTRY)) {
+    const source = Object.hasOwn(raw, providerId) && obj(raw[providerId]) ? raw[providerId] : {};
+    for (const [modelId, profile] of Object.entries(source).slice(-STORYBOARD_MODEL_PROFILE_LIMIT)) {
+      if (obj(profile)) rememberStoryboardModelProfile(memory, providerId, { ...profile, model: modelId });
     }
-    const current = obj(currentProfiles[providerId]) ? currentProfiles[providerId] : {};
-    const currentModel = knownModels.has(current.model) || allowsCustomModel ? str(current.model, 240) : '';
-    if (currentModel && !remembered[currentModel]) remembered[currentModel] = legacyProfiles({ [providerId]: current })[providerId];
-    return [providerId, remembered];
-  }));
+    const current = Object.hasOwn(currentProfiles, providerId) && obj(currentProfiles[providerId]) ? currentProfiles[providerId] : {};
+    const currentModel = rememberedModelId(providerId, current.model);
+    if (currentModel && !Object.hasOwn(memory[providerId], currentModel)) rememberStoryboardModelProfile(memory, providerId, current);
+  }
+  return memory;
 }
-function parameterPresets(value) { return Array.isArray(value) ? value.slice(0, 200).filter(obj).map((p) => ({ id: cleanId(p.id), name: str(p.name || '未命名样式', 80), source: getStoryboardProvider(p.source) ? p.source : '', profile: getStoryboardProvider(p.source) ? legacyProfiles({ [p.source]: p.profile })[p.source] : {}, createdAt: pos(p.createdAt || p.updatedAt), updatedAt: pos(p.updatedAt) })).filter((p) => p.id && p.source) : []; }
+function parameterPresets(value) { return Array.isArray(value) ? value.slice(0, 200).filter(obj).map((p) => ({ id: cleanId(p.id), name: str(p.name || '未命名样式', 80), source: getStoryboardProvider(p.source) ? p.source : '', profile: getStoryboardProvider(p.source) ? normalizeStoryboardParameterProfile(p.profile, p.source) : {}, createdAt: pos(p.createdAt || p.updatedAt), updatedAt: pos(p.updatedAt) })).filter((p) => p.id && p.source) : []; }
 function legacyLogs(value) {
   const normalized = dedupeById((Array.isArray(value) ? value : []).filter(obj).map((log) => ({ id: cleanId(log.id), status: ['queued', 'generating', 'success', 'failed', 'cancelled'].includes(log.status) ? log.status : 'failed', source: getStoryboardProvider(log.source) ? log.source : 'novel', model: str(log.model, 240), prompt: str(log.prompt, 800), negative: str(log.negative, 400), effectivePrompt: str(log.effectivePrompt || log.prompt, 24000), effectiveNegative: str(log.effectiveNegative || log.negative, 12000), target: str(log.target, 40), floor: Number.isInteger(log.floor) ? log.floor : null, params: safeData(log.params, 5) || {}, error: redactString(log.error).slice(0, 1600), recordId: cleanId(log.recordId), recordIds: ids(log.recordIds, 20), pipelineId: cleanId(log.pipelineId), queuedAt: pos(log.queuedAt || log.startedAt), startedAt: pos(log.startedAt), finishedAt: pos(log.finishedAt), durationMs: pos(log.durationMs), attempt: int(log.attempt, 1, 20, 1), snapshot: snapshot(log.snapshot, log) })).filter((log) => log.id));
   return normalized.map((log, index) => ({ log, index, activityAt: log.finishedAt || log.startedAt || log.queuedAt })).sort((a, b) => b.activityAt - a.activityAt || a.index - b.index).slice(0, STORYBOARD_PIPELINE_LOG_LIMIT).map(({ log }) => log);
 }
 function snapshot(value, fallback = {}) {
   const raw = obj(value) ? value : {}, source = getStoryboardProvider(raw.source) ? raw.source : (getStoryboardProvider(fallback.source) ? fallback.source : 'novel'), safe = safeData(raw, 8);
-  const profile = legacyProfiles({ [source]: raw.profile })[source];
+  const profile = normalizeStoryboardParameterProfile(raw.profile, source);
   const payload = safeData(raw.payload, 12) || {};
   if (source === 'comfy' && raw.payload?.parameters?.workflow !== undefined) {
     const result = sanitizeStoryboardWorkflow(raw.payload.parameters.workflow);
