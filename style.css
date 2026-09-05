@@ -6695,8 +6695,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-#story-director-modal .sd-storyboard-artist-head > div:last-child { grid-template-columns: minmax(0, 1fr) 38px 38px; gap: 6px; }
-#story-director-modal .sd-storyboard-artist-editor-page > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+#story-director-modal .sd-storyboard-artist-editor-page > header { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 #story-director-modal .sd-storyboard-artist-editor-page > header > div { display: flex; gap: 7px; }
 #story-director-modal .sd-storyboard-artist-editor-page > header .sd-icon-btn { width: 38px; min-width: 38px; height: 38px; margin: 0; }
 #story-director-modal .sd-storyboard-artist-edit-value { min-height: 112px; resize: vertical; }
@@ -6806,7 +6805,6 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-preset-editor-page > footer,
 #story-director-modal .sd-storyboard-artist-editor-page > footer { position: sticky; bottom: 0; display: flex; justify-content: space-between; gap: 10px; margin-top: auto; padding: 10px 0 2px; background: var(--sd-sticky-bg, var(--sd-bg)); }
 
-#story-director-modal .sd-storyboard-artist-head > div:last-child { grid-template-columns: minmax(0, 1fr) 38px 38px; gap: 6px; }
 #story-director-modal .sd-storyboard-artist-folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 9px; }
 #story-director-modal .sd-storyboard-artist-folder { position: relative; overflow: hidden; border: 1px solid var(--sd-hairline); border-radius: 13px; background: var(--sd-card); }
 #story-director-modal .sd-storyboard-artist-folder-open { width: 100%; display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 9px; border: 0; background: transparent; color: inherit; text-align: left; }
@@ -6829,9 +6827,9 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   display: grid; place-items: center; touch-action: pan-y pinch-zoom;
 }
 #story-director-modal .sd-world-edge::before {
-  content: ''; position: absolute; top: 0; bottom: 0; width: 3px; border-radius: 3px; pointer-events: none;
-  background: var(--sd-accent); opacity: .4;
-  box-shadow: 0 0 2px var(--sd-text), 0 0 8px var(--sd-accent), 0 0 17px color-mix(in srgb, var(--sd-accent) 65%, transparent);
+  content: ''; position: absolute; top: 0; bottom: 0; width: 1.5px; border-radius: 3px; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--sd-accent) 12%, transparent) 8%, color-mix(in srgb, var(--sd-accent) 55%, transparent) 20%, var(--sd-accent) 36%, var(--sd-accent) 64%, color-mix(in srgb, var(--sd-accent) 55%, transparent) 80%, color-mix(in srgb, var(--sd-accent) 12%, transparent) 92%, transparent); opacity: .4;
+  filter: drop-shadow(0 0 2px var(--sd-text)) drop-shadow(0 0 5px var(--sd-accent));
 }
 #story-director-modal .sd-world-edge.has-content::before { animation: sd-world-edge-breathe 2.8s ease-in-out infinite; }
 #story-director-modal .sd-world-edge-left { left: 0; border-radius: 0; }
@@ -7513,7 +7511,6 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-artist-head > div:first-child > span { min-width: 0; flex: 1; }
 #story-director-modal .sd-storyboard-artist-head h3 { margin: 2px 0 0; font-size: 23px; font-weight: 550; }
 #story-director-modal .sd-storyboard-artist-head > div:first-child > b { color: var(--sd-accent); font-size: 18px; }
-#story-director-modal .sd-storyboard-artist-head > div:last-child { display: grid; grid-template-columns: minmax(0, 1fr) 38px; }
 #story-director-modal .sd-storyboard-artist-head .text_pole { width: 100%; min-width: 0; margin: 0 !important; }
 #story-director-modal .sd-storyboard-artist-head .sd-icon-btn { width: 38px; min-width: 38px; height: 38px; margin: 0; }
 #story-director-modal .sd-storyboard-artist-waterfall { columns: 3 180px; column-gap: 10px; }
@@ -7621,8 +7618,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-context-rules > header b { font-size: 13px; font-weight: 600; }
 #story-director-modal .sd-storyboard-context-rule { grid-template-columns: minmax(0, 1fr) 88px 38px; }
 #story-director-modal .sd-storyboard-artist-head h3 { margin: 0; color: var(--sd-accent); font-size: 16px; font-weight: 600; letter-spacing: .12em; }
-#story-director-modal .sd-storyboard-artist-head > div:last-child { grid-template-columns: minmax(0, 1fr) 38px 38px; gap: 6px; }
-#story-director-modal .sd-storyboard-artist-editor-page > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+#story-director-modal .sd-storyboard-artist-editor-page > header { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 #story-director-modal .sd-storyboard-artist-edit-value { min-height: 112px; resize: vertical; }
 #story-director-modal .sd-storyboard-artist-edit-positive,
 #story-director-modal .sd-storyboard-artist-edit-negative { min-height: 88px; resize: vertical; }
@@ -7657,6 +7653,11 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   border-color: color-mix(in srgb, var(--sd-accent) 34%, var(--sd-hairline)) !important;
   background: var(--sd-glass) !important; color: var(--sd-accent) !important;
 }
+/* Keep inline SVGs on the button's state color even when a host theme colors i/svg directly. */
+#story-director-modal .sd-header-actions :is(.sd-coread-shortcut, .sd-storyboard-shortcut, .sd-plug-shortcut, .sd-theme-btn, .sd-close) :is(i, .qm-glyph-svg) {
+  color: inherit !important;
+}
+#story-director-modal .sd-header-actions .qm-glyph-svg { stroke: currentColor !important; }
 
 #story-director-modal .sd-storyboard-root { --sd-storyboard-gap: 6px; gap: 6px; }
 #story-director-modal .sd-storyboard-create,
@@ -7667,26 +7668,33 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-artist-page { gap: 6px; }
 #story-director-modal .sd-storyboard-assets-page { display: flex; flex-direction: column; }
 
+/* ST2-01: one local form baseline. Shared modal/reader/notes controls keep their own sizing. */
+#story-director-modal .sd-storyboard-root { --qm-control-height: 40px; --qm-control-radius: 9px; }
+#story-director-modal .sd-storyboard-root :is(label, label > span, label > b, .sd-storyboard-field-label) { text-align: left; min-width: 0; }
+#story-director-modal .sd-storyboard-root :is(.sd-storyboard-connection-preset-row, .sd-storyboard-inline-control, .sd-storyboard-preset-row, .sd-storyboard-preset-control-row, .sd-storyboard-artist-search-row, .sd-storyboard-artist-pool-tools) > .sd-icon-btn {
+  box-sizing: border-box; width: var(--qm-control-height) !important; min-width: var(--qm-control-height) !important;
+  height: var(--qm-control-height) !important; min-height: var(--qm-control-height) !important; margin: 0 !important;
+}
+#story-director-modal .sd-storyboard-root :is(.sd-storyboard-preset-control-row, .sd-storyboard-connection-actions, .sd-storyboard-model-actions, .sd-storyboard-artist-preview-sources) > .sd-btn {
+  box-sizing: border-box; height: var(--qm-control-height); min-height: var(--qm-control-height); margin: 0 !important;
+  display: inline-flex; align-items: center; justify-content: center; padding-block: 0 !important;
+}
+
 #story-director-modal .sd-storyboard-root input.text_pole:not([type="file"]),
 #story-director-modal .sd-storyboard-root select.text_pole {
-  min-height: 42px !important; height: 42px; padding: 8px 11px !important;
-  border-radius: 11px !important; font-size: 13px !important; line-height: 1.2 !important;
+  box-sizing: border-box; width: 100%; min-width: 0; margin: 0 !important;
+  min-height: var(--qm-control-height) !important; height: var(--qm-control-height); padding: 8px 11px !important;
+  border-radius: var(--qm-control-radius) !important; font-size: 12px !important; line-height: 1.35 !important;
 }
 #story-director-modal .sd-storyboard-root textarea.text_pole {
-  padding: 10px 11px !important; border-radius: 11px !important; font-size: 13px !important; line-height: 1.55 !important;
+  box-sizing: border-box; width: 100%; min-width: 0; margin: 0 !important; resize: vertical;
+  padding: 10px 11px !important; border-radius: var(--qm-control-radius) !important; font-size: 12px !important; line-height: 1.55 !important;
 }
 #story-director-modal .sd-storyboard-card-body > label > span,
 #story-director-modal .sd-storyboard-grid > label > span,
 #story-director-modal .sd-storyboard-preset-field > span,
 #story-director-modal .sd-storyboard-artist-editor-fields > label > span { min-height: 17px; font-size: 12px; line-height: 17px; }
-#story-director-modal .sd-storyboard-connection-preset-row .sd-icon-btn,
-#story-director-modal .sd-storyboard-inline-control .sd-icon-btn,
-#story-director-modal .sd-storyboard-preset-row .sd-icon-btn,
-#story-director-modal .sd-storyboard-context-rule .sd-icon-btn { width: 42px; min-width: 42px; height: 42px; }
 #story-director-modal .sd-storyboard-prompt-textarea { min-height: 96px !important; resize: vertical; }
-#story-director-modal .sd-storyboard-context-depth { min-height: 42px; grid-template-columns: minmax(0, 1fr) 88px; }
-#story-director-modal .sd-storyboard-context-rule { grid-template-columns: minmax(0, 1fr) 112px 42px; align-items: center; }
-#story-director-modal .sd-storyboard-context-rule .text_pole { min-height: 42px !important; height: 42px; font-size: 13px !important; }
 
 #story-director-modal .sd-storyboard-worldbook-card > summary .sd-storyboard-refresh-worldbooks {
   width: 34px; min-width: 34px; height: 34px; margin: 0 2px 0 auto !important;
@@ -7830,14 +7838,14 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-artist-page { gap: 4px; }
 
 /* V2 · 画师方案：图库内保存随机/轮换组合，并保持移动端可编辑。 */
-#story-director-modal .sd-storyboard-artist-head > div:nth-child(2) {
+#story-director-modal .sd-storyboard-artist-head > .sd-storyboard-artist-search-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(2, 38px);
+  grid-template-columns: minmax(0, 1fr) repeat(2, var(--qm-control-height));
   gap: 6px;
 }
 #story-director-modal .sd-storyboard-artist-head > .sd-storyboard-artist-pool-tools {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(3, 38px);
+  grid-template-columns: minmax(0, 1fr) repeat(3, var(--qm-control-height));
   gap: 6px;
 }
 .sd-storyboard-artist-pool-editor { width: min(680px, calc(100vw - 28px)); display: grid; gap: 12px; text-align: left; }
@@ -7903,7 +7911,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-worldbook-card .sd-storyboard-card-body { padding: 12px 14px 14px; }
 #story-director-modal .sd-storyboard-compiler-sources { width: 100%; gap: 8px; }
 #story-director-modal .sd-storyboard-context-depth {
-  min-height: 42px;
+  min-height: var(--qm-control-height);
   grid-template-columns: minmax(0, 1fr) 88px;
   gap: 8px;
   color: var(--sd-muted);
@@ -7911,7 +7919,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   font-weight: 500;
 }
 #story-director-modal .sd-storyboard-context-rules { gap: 8px; }
-#story-director-modal .sd-storyboard-context-rules > header { min-height: 42px; }
+#story-director-modal .sd-storyboard-context-rules > header { min-height: var(--qm-control-height); }
 #story-director-modal .sd-storyboard-context-rules > header b,
 #story-director-modal .sd-storyboard-context-depth > span,
 #story-director-modal .sd-storyboard-card-body > label > span,
@@ -7925,16 +7933,15 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   line-height: 17px;
 }
 #story-director-modal .sd-storyboard-context-rule {
-  grid-template-columns: minmax(0, 1fr) 88px 42px;
+  grid-template-columns: minmax(0, 1fr) 88px var(--qm-control-height);
+  align-items: center;
   gap: 8px;
 }
-#story-director-modal .sd-storyboard-context-rule .text_pole,
-#story-director-modal .sd-storyboard-context-depth .text_pole { min-height: 42px !important; height: 42px; font-size: 13px !important; }
 #story-director-modal .sd-storyboard-add-context-rule,
 #story-director-modal .sd-storyboard-delete-context-rule {
-  width: 42px !important;
-  min-width: 42px !important;
-  height: 42px !important;
+  width: var(--qm-control-height) !important;
+  min-width: var(--qm-control-height) !important;
+  height: var(--qm-control-height) !important;
   margin: 0 !important;
 }
 
@@ -8722,9 +8729,13 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 /* v1.58.15 · 审片 / 任务 / 世界精调与取材同构 */
 #story-director-modal { --qm-type-card-title: 14px; }
 
-/* 顶栏图形按视觉重心微调：相机偏矮，书本与调色盘偏满。 */
-#story-director-modal .sd-header-actions .sd-storyboard-shortcut :is(i, .qm-glyph-icon) { transform: scale(1.091); }
-#story-director-modal .sd-header-actions :is(.sd-coread-shortcut, .sd-theme-btn) :is(i, .qm-glyph-icon) { transform: scale(1.069); }
+/* 顶栏光学比例：在 1.59.20 基线上伴读/分镜 -9%，设置/外观 -8%；点击框不缩小。 */
+#story-director-modal .sd-header-actions .sd-storyboard-shortcut :is(i, .qm-glyph-icon) { transform: scale(.99281); }
+#story-director-modal .sd-header-actions .sd-coread-shortcut :is(i, .qm-glyph-icon) { transform: scale(.97279); }
+#story-director-modal .sd-header-actions .sd-plug-shortcut :is(i, .qm-glyph-icon) { transform: scale(.9936); }
+#story-director-modal .sd-header-actions .sd-theme-btn :is(i, .qm-glyph-icon) { transform: scale(.98348); }
+/* 仅正文配音工具，不影响正文分镜入口、播放中旋转动画或按钮命中范围。 */
+.sd-tts-toolbar > :is(.sd-tts-trigger, .sd-tts-reextract, .sd-tts-regenall, .sd-tts-playall) > .qm-glyph-icon { font-size: 1.02em; }
 
 /* 审片：当前幕回归信息行；任务/世界仅保留同排跳转标签。 */
 #story-director-modal .sd-hero .sd-scene-current { margin-top: 3px; }

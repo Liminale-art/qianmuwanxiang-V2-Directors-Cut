@@ -12,8 +12,10 @@ assert.match(dashboard, /sd-scene-current[\s\S]*当前幕：[\s\S]*sd-voices-lis
 assert.match(source, /director_comment（众声）固定返回 3 条/);
 
 assert.match(styles, /--qm-type-card-title:\s*14px/);
-assert.match(styles, /sd-storyboard-shortcut[\s\S]*scale\(1\.091\)/);
-assert.match(styles, /sd-coread-shortcut, \.sd-theme-btn[\s\S]*scale\(1\.069\)/);
+assert.match(styles, /sd-storyboard-shortcut[\s\S]*scale\(\.99281\)/);
+assert.match(styles, /sd-coread-shortcut[\s\S]*scale\(\.97279\)/);
+assert.match(styles, /sd-theme-btn[\s\S]*scale\(\.98348\)/);
+assert.match(styles, /sd-plug-shortcut[\s\S]*scale\(\.9936\)/);
 assert.match(styles, /sd-voices-list > p[\s\S]*font-size:\s*11\.5px/);
 assert.match(styles, /sd-status-card \.sd-count-tags\s*\{[^}]*grid-template-columns:\s*repeat\(2/);
 

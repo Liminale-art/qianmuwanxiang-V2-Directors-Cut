@@ -95,9 +95,9 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.20';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.20';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.20';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.21';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.21';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.21';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -105,7 +105,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.20';
+} from './qianmu-llm-output.js?v=1.59.21';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -158,143 +158,143 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.20';
+} from './qianmu-storyboard.js?v=1.59.21';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.20';
+const VERSION = '1.59.21';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.20'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.21'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.20').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.21').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.20'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.21'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.20'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.21'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.20'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.21'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.20'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.21'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.20'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.21'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.20'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.21'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.20'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.21'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.20'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.21'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.20'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.21'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.20'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.21'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.20'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.21'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.20'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.21'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.20'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.21'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.20'),
+    load: () => import('./qianmu-video-task.js?v=1.59.21'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.20'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.21'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.20'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.21'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.20'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.21'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.20'),
+    load: () => import('./qianmu-video-store.js?v=1.59.21'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.20'),
+    load: () => import('./qianmu-video-result.js?v=1.59.21'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.20'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.21'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.20'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.21'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.20'),
+    load: () => import('./qianmu-video-media.js?v=1.59.21'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.20'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.21'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.20'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.21'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.20'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.21'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.20'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.21'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.20'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.21'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.20'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.21'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.20'),
-        import('./qianmu-theaters.js?v=1.59.20'),
+        import('./builtin-theaters.js?v=1.59.21'),
+        import('./qianmu-theaters.js?v=1.59.21'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -12144,6 +12144,21 @@ function storyboardReturnTo(root, view, patch = {}) {
   renderModal();
 }
 
+function storyboardPageTitle(state) {
+  // Read only: opening a title must never normalize settings or discard an editor draft.
+  if (state.view === 'artists') {
+    const editing = state.editingArtistPresetId === 'new' || state.artistPresets?.some((item) => item.id === state.editingArtistPresetId);
+    return editing ? 'ARTIST PROFILE' : 'ARTIST LIBRARY';
+  }
+  if (state.view === 'presets') {
+    const preset = state.promptPresets?.find((item) => item.id === state.promptCompiler?.instructionPresetId);
+    return preset && state.editingPromptItemId ? 'FRAMING ENTRY' : 'FRAMING PRESETS';
+  }
+  if (state.view === 'assets') return ({ tags: 'TAG LIBRARY', vibes: 'VIBE LIBRARY', routing: 'SHOT GROUPS' })[state.assetView] || 'TAG LIBRARY';
+  // Character route is reserved for ST2-07; do not expose an empty navigation entry yet.
+  return ({ create: 'STORYBOARD', characters: 'CHARACTERS', gallery: 'SCREENING ROOM', logs: 'LOGS' })[state.view] || 'STORYBOARD';
+}
+
 function renderStoryboardNav(state) {
   const items = [
     ['create', '镜头台', 'fa-camera', 'qm-regular-aperture'],
@@ -13402,7 +13417,6 @@ function renderStoryboardPresetLibrary(state) {
   if (selected && state.editingPromptItemId) {
     const draft = state.promptItemDraft || { name: editingItem?.name || '', instruction: editingItem?.instruction || '' };
     return `<div class="sd-storyboard-preset-editor-page">
-      <header><b>${editingItem ? '编辑条目' : '新建条目'}</b></header>
       <div class="sd-storyboard-preset-editor-fields"><label><span>条目名</span><input class="text_pole sd-storyboard-preset-item-name" maxlength="80" value="${htmlEscape(draft.name || '')}"></label><label><span>取景指令</span><textarea class="text_pole sd-storyboard-preset-item-instruction" spellcheck="false">${htmlEscape(draft.instruction || '')}</textarea></label></div>
       <footer><button type="button" class="sd-btn sd-storyboard-cancel-preset-item">取消</button><button type="button" class="sd-btn sd-primary sd-storyboard-save-preset-item">保存</button></footer>
     </div>`;
@@ -13606,7 +13620,7 @@ function renderStoryboardArtistLibrary(state) {
     const galleryOptions = [...storyboardGalleryRecords()].reverse().filter((item) => storyboardSafeUrl(item.url)).slice(0, 120)
       .map((item, index) => `<option value="${htmlEscape(storyboardSafeUrl(item.url))}">${htmlEscape(snip(item.finalPrompt || item.prompt || `画面 ${index + 1}`, 46))}</option>`).join('');
     const knownTags = uniqueClean(state.artistPresets.flatMap((item) => item.tags || [])).sort((a, b) => a.localeCompare(b));
-    return `<div class="sd-storyboard-artist-editor-page"><header><b>${editing ? '编辑画师串' : '新建画师串'}</b><div><button type="button" class="sd-icon-btn sd-storyboard-cancel-artist-edit" title="取消" aria-label="取消"><i class="fa-solid fa-xmark"></i></button><button type="button" class="sd-icon-btn sd-primary sd-storyboard-save-artist-card" title="保存" aria-label="保存"><i class="fa-solid fa-floppy-disk"></i></button></div></header><div class="sd-storyboard-artist-editor-fields">
+    return `<div class="sd-storyboard-artist-editor-page"><header><div><button type="button" class="sd-icon-btn sd-storyboard-cancel-artist-edit" title="取消" aria-label="取消"><i class="fa-solid fa-xmark"></i></button><button type="button" class="sd-icon-btn sd-primary sd-storyboard-save-artist-card" title="保存" aria-label="保存"><i class="fa-solid fa-floppy-disk"></i></button></div></header><div class="sd-storyboard-artist-editor-fields">
       <div class="sd-storyboard-artist-preview-editor ${preview ? 'has-image' : 'is-empty'}"><div class="sd-storyboard-artist-preview-frame">${preview ? `<img src="${htmlEscape(preview)}" alt="画师串预览">` : '<img alt="画师串预览" hidden>'}<span ${preview ? 'hidden' : ''}><i class="fa-regular fa-image"></i></span></div><div class="sd-storyboard-artist-preview-sources"><button type="button" class="sd-btn sd-storyboard-artist-preview-url-mode">URL</button><label class="sd-btn">本地上传<input type="file" class="sd-storyboard-artist-preview-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label><select class="text_pole sd-storyboard-artist-preview-gallery" aria-label="从阅片室选择"><option value="">阅片室选择</option>${galleryOptions}</select></div><input class="text_pole sd-storyboard-artist-edit-preview" value="${htmlEscape(editing?.previewUrl || '')}" placeholder="https://"></div>
       <label><span>名称</span><input class="text_pole sd-storyboard-artist-edit-name" maxlength="80" value="${htmlEscape(editing?.name || '')}"></label>
       <label><span>画师串</span><textarea class="text_pole sd-storyboard-artist-edit-value" spellcheck="false">${htmlEscape(editing?.value || '')}</textarea></label>
@@ -13644,7 +13658,7 @@ function renderStoryboardArtistLibrary(state) {
   const inspector = selectedArtist ? `<details class="sd-media-inspector" open><summary><span>当前画师</span></summary><div>${selectedPreview ? `<img src="${htmlEscape(selectedPreview)}" alt="">` : '<div class="sd-media-inspector-placeholder"><i class="fa-regular fa-image"></i></div>'}<h4>${htmlEscape(selectedArtist.name)}</h4><p>${htmlEscape(snip(selectedArtist.value, 180))}</p><div class="sd-media-inspector-tags">${(selectedArtist.tags || []).map((tag) => `<em>${htmlEscape(tag)}</em>`).join('') || '<small>暂无标签</small>'}</div><button type="button" class="sd-btn sd-storyboard-inspector-edit-artist"><i class="fa-solid fa-pen"></i>编辑画师串</button></div></details>` : `<details class="sd-media-inspector" open><summary><span>详情</span></summary><div class="sd-storyboard-empty-inline">选择画师串后在此查看。</div></details>`;
   const poolOptions = state.artistPools.map((item) => `<option value="${htmlEscape(item.id)}" ${state.selectedArtistPoolId === item.id ? 'selected' : ''}>${htmlEscape(item.name)} · ${item.members.length}</option>`).join('');
   return `<div class="sd-storyboard-artist-page">
-    <section class="sd-card sd-storyboard-artist-head"><div><h3>ARTIST LIBRARY</h3><b>${artists.length}</b></div><div><input class="text_pole sd-storyboard-artist-search" value="${htmlEscape(state.artistSearch || '')}" placeholder="搜索画师串或标签"><button type="button" class="sd-icon-btn sd-storyboard-new-artist-collection" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button><button type="button" class="sd-icon-btn sd-storyboard-new-artist" title="新建画师串" aria-label="新建画师串"><i class="fa-solid fa-plus"></i></button></div><div class="sd-storyboard-artist-pool-tools"><select class="text_pole sd-storyboard-artist-pool-select" aria-label="画师方案"><option value="">不启用画师方案</option>${poolOptions}</select><button type="button" class="sd-icon-btn sd-storyboard-new-artist-pool" title="新建画师方案" aria-label="新建画师方案"><i class="fa-solid fa-dice"></i></button><button type="button" class="sd-icon-btn sd-storyboard-edit-artist-pool" title="编辑当前方案" aria-label="编辑当前方案" ${state.selectedArtistPoolId ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-artist-pool" title="删除当前方案" aria-label="删除当前方案" ${state.selectedArtistPoolId ? '' : 'disabled'}><i class="fa-solid fa-trash-can"></i></button></div></section>
+    <section class="sd-card sd-storyboard-artist-head"><div class="sd-storyboard-artist-search-row"><input class="text_pole sd-storyboard-artist-search" value="${htmlEscape(state.artistSearch || '')}" placeholder="搜索画师串或标签"><button type="button" class="sd-icon-btn sd-storyboard-new-artist-collection" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button><button type="button" class="sd-icon-btn sd-storyboard-new-artist" title="新建画师串" aria-label="新建画师串"><i class="fa-solid fa-plus"></i></button></div><div class="sd-storyboard-artist-pool-tools"><select class="text_pole sd-storyboard-artist-pool-select" aria-label="画师方案"><option value="">不启用画师方案</option>${poolOptions}</select><button type="button" class="sd-icon-btn sd-storyboard-new-artist-pool" title="新建画师方案" aria-label="新建画师方案"><i class="fa-solid fa-dice"></i></button><button type="button" class="sd-icon-btn sd-storyboard-edit-artist-pool" title="编辑当前方案" aria-label="编辑当前方案" ${state.selectedArtistPoolId ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-artist-pool" title="删除当前方案" aria-label="删除当前方案" ${state.selectedArtistPoolId ? '' : 'disabled'}><i class="fa-solid fa-trash-can"></i></button></div></section>
     <div class="sd-media-library-shell sd-media-artist-library">${sidebar}<main class="sd-media-library-main"><header><b>${htmlEscape(currentCollection?.name || '全部画师')}</b><span>${artists.length}</span></header><section class="sd-storyboard-artist-waterfall">${cards || '<div class="sd-storyboard-empty-inline">暂无画师串。</div>'}</section></main>${inspector}</div>
   </div>`;
 }
@@ -13718,7 +13732,7 @@ function renderStoryboardGallery(state) {
   const inspector = inspected ? `<details class="sd-media-inspector" open><summary><span>画面详情</span></summary><div><img src="${htmlEscape(storyboardSafeUrl(inspected.url))}" alt=""><div class="sd-storyboard-inspector-source"><h4>${htmlEscape(STORYBOARD_SOURCES[inspected.source]?.label || inspected.source || '分镜')}</h4><span class="sd-storyboard-production-label ${inspectedProduction.track === 'second_camera' ? 'second-camera' : ''}">${htmlEscape(inspectedProduction.sourceLabel)}</span></div><p>${htmlEscape(snip(inspected.finalPrompt || inspected.prompt || '', 240))}</p><label><span>标签</span>${storyboardMediaTagEditorMarkup(inspected.tags || [], knownTags, `gallery:${inspected.id}`)}</label><label><span>合集</span><div class="sd-media-collection-choices">${collections.map((item) => `<label class="sd-media-collection-choice"><input type="checkbox" class="sd-gallery-inspector-collection" value="${htmlEscape(item.id)}" ${inspectorCollections.has(item.id) ? 'checked' : ''}><span>${htmlEscape(item.name)}</span></label>`).join('') || '<small>暂无合集</small>'}</div></label>${inspectedProduction.requiresExplicitInsert && !Number.isInteger(inspected.floor) ? '<button type="button" class="sd-btn sd-storyboard-attach-production"><i class="fa-solid fa-link"></i>引用至当前正文</button>' : ''}<button type="button" class="sd-btn sd-storyboard-preview-inspected"><i class="fa-solid fa-expand"></i>查看大图</button></div></details>` : `<details class="sd-media-inspector" open><summary><span>画面详情</span></summary><div class="sd-storyboard-empty-inline">点击画面信息按钮后在此整理。</div></details>`;
   return `<div class="sd-storyboard-gallery-page">
     ${renderStoryboardGalleryKindSwitch()}
-    <section class="sd-card sd-storyboard-gallery-head"><div class="sd-storyboard-gallery-title"><span><span class="sd-storyboard-kicker">TAKES</span><h3>${currentCollection?.name || '阅片室'}</h3></span><b>${records.length}</b></div><div class="sd-storyboard-gallery-tools"><select class="text_pole sd-storyboard-gallery-source" aria-label="筛选模型"><option value="all">全部模型</option>${Object.values(STORYBOARD_SOURCES).map((item) => `<option value="${item.id}" ${state.gallerySource === item.id ? 'selected' : ''}>${item.label}</option>`).join('')}</select><select class="text_pole sd-storyboard-gallery-track" aria-label="筛选画面来源"><option value="all" ${state.galleryTrack === 'all' ? 'selected' : ''}>全部来源</option><option value="main_camera" ${state.galleryTrack === 'main_camera' ? 'selected' : ''}>本段正文</option><option value="second_camera" ${state.galleryTrack === 'second_camera' ? 'selected' : ''}>世界背面</option></select><input class="text_pole sd-storyboard-gallery-search" value="${htmlEscape(state.gallerySearch)}" placeholder="搜索画面、模型、画师或标签"><button type="button" class="sd-icon-btn sd-storyboard-gallery-select-mode" aria-pressed="${storyboardGallerySelectMode}" title="${storyboardGallerySelectMode ? '完成多选' : '多选'}" aria-label="${storyboardGallerySelectMode ? '完成多选' : '多选'}"><i class="fa-solid ${storyboardGallerySelectMode ? 'fa-check' : 'fa-list-check'}"></i></button><button type="button" class="sd-icon-btn sd-storyboard-gallery-new-folder" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button></div></section>
+    <section class="sd-card sd-storyboard-gallery-head"><div class="sd-storyboard-gallery-title">${currentCollection ? `<span><h3>${htmlEscape(currentCollection.name)}</h3></span>` : ''}<b>${records.length}</b></div><div class="sd-storyboard-gallery-tools"><select class="text_pole sd-storyboard-gallery-source" aria-label="筛选模型"><option value="all">全部模型</option>${Object.values(STORYBOARD_SOURCES).map((item) => `<option value="${item.id}" ${state.gallerySource === item.id ? 'selected' : ''}>${item.label}</option>`).join('')}</select><select class="text_pole sd-storyboard-gallery-track" aria-label="筛选画面来源"><option value="all" ${state.galleryTrack === 'all' ? 'selected' : ''}>全部来源</option><option value="main_camera" ${state.galleryTrack === 'main_camera' ? 'selected' : ''}>本段正文</option><option value="second_camera" ${state.galleryTrack === 'second_camera' ? 'selected' : ''}>世界背面</option></select><input class="text_pole sd-storyboard-gallery-search" value="${htmlEscape(state.gallerySearch)}" placeholder="搜索画面、模型、画师或标签"><button type="button" class="sd-icon-btn sd-storyboard-gallery-select-mode" aria-pressed="${storyboardGallerySelectMode}" title="${storyboardGallerySelectMode ? '完成多选' : '多选'}" aria-label="${storyboardGallerySelectMode ? '完成多选' : '多选'}"><i class="fa-solid ${storyboardGallerySelectMode ? 'fa-check' : 'fa-list-check'}"></i></button><button type="button" class="sd-icon-btn sd-storyboard-gallery-new-folder" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button></div></section>
     <div class="sd-media-library-shell sd-media-gallery-library">${sidebar}<main class="sd-media-library-main"><header><b>${htmlEscape(currentCollection?.name || '全部画面')}</b><span>${records.length}</span></header>
     ${storyboardGallerySelectMode ? `<section class="sd-card sd-storyboard-gallery-bulk"><span>已选 <b>${storyboardGallerySelection.size}</b> 张</span><div><select class="text_pole sd-storyboard-gallery-move-target" aria-label="目标合集"><option value="">移出全部合集</option>${collections.map((item) => `<option value="${htmlEscape(item.id)}">${htmlEscape(item.name)}</option>`).join('')}</select><button type="button" class="sd-btn sd-storyboard-gallery-move-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>加入合集</button><button type="button" class="sd-btn sd-storyboard-gallery-select-all" ${records.length ? '' : 'disabled'}>全选结果</button><button type="button" class="sd-btn sd-danger sd-storyboard-gallery-delete-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>删除选中</button></div></section>` : ''}
     ${groups.length ? `<div class="sd-storyboard-gallery">${visible.map((group) => {
@@ -14925,7 +14939,7 @@ function renderStoryboardFilmGallery() {
         ? `<div class="sd-storyboard-film-grid">${timelines.map((timeline) => `<article data-storyboard-film-id="${htmlEscape(timeline.timelineId)}"><button type="button" class="sd-storyboard-film-edit"><span><i class="fa-solid fa-film"></i></span><strong>${htmlEscape(timeline.title || '未命名影片')}</strong><small>${timeline.clips.length} 段 · ${htmlEscape(storyboardFilmDurationLabel(timeline.durationSeconds))}</small><time>${htmlEscape(formatDateTime(timeline.updatedAt))}</time></button><nav class="sd-storyboard-film-card-actions"><button type="button" class="sd-icon-btn sd-storyboard-film-preview" title="顺序预览" aria-label="顺序预览"><i class="fa-solid fa-play"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-film-delete" title="删除影片时间线" aria-label="删除影片时间线"><i class="fa-solid fa-trash-can"></i></button></nav></article>`).join('')}</div>`
         : '<section class="sd-card sd-storyboard-video-empty"><i class="fa-solid fa-film"></i><p>当前聊天还没有影片时间线。</p></section>';
   const warning = [current.timelineError ? '部分影片草稿暂时无法读取。' : '', current.mediaError ? '动态素材索引暂时无法读取。' : ''].filter(Boolean).join(' ');
-  return `<div class="sd-storyboard-gallery-page sd-storyboard-film-page">${renderStoryboardGalleryKindSwitch()}<section class="sd-card sd-storyboard-gallery-head sd-storyboard-film-head"><div class="sd-storyboard-gallery-title"><span><span class="sd-storyboard-kicker">FILMS</span><h3>影片</h3></span><b>${timelines.length}</b></div><div><button type="button" class="sd-icon-btn sd-storyboard-film-refresh" title="刷新影片与素材索引" aria-label="刷新影片与素材索引" ${current.status === 'loading' ? 'disabled' : ''}><i class="fa-solid fa-rotate"></i></button><button type="button" class="sd-btn sd-primary sd-storyboard-film-new"><i class="fa-solid fa-plus"></i><span>新建影片</span></button></div></section>${warning ? `<p class="sd-storyboard-video-warning"><i class="fa-solid fa-triangle-exclamation"></i>${htmlEscape(warning)}</p>` : ''}${content}</div>`;
+  return `<div class="sd-storyboard-gallery-page sd-storyboard-film-page">${renderStoryboardGalleryKindSwitch()}<section class="sd-card sd-storyboard-gallery-head sd-storyboard-film-head"><div class="sd-storyboard-gallery-title"><b>${timelines.length}</b></div><div><button type="button" class="sd-icon-btn sd-storyboard-film-refresh" title="刷新影片与素材索引" aria-label="刷新影片与素材索引" ${current.status === 'loading' ? 'disabled' : ''}><i class="fa-solid fa-rotate"></i></button><button type="button" class="sd-btn sd-primary sd-storyboard-film-new"><i class="fa-solid fa-plus"></i><span>新建影片</span></button></div></section>${warning ? `<p class="sd-storyboard-video-warning"><i class="fa-solid fa-triangle-exclamation"></i>${htmlEscape(warning)}</p>` : ''}${content}</div>`;
 }
 
 async function storyboardEnsureFilmRuntime() {
@@ -15624,7 +15638,7 @@ function renderStoryboardVideoGallery() {
   const taskWarning = current.taskError ? '部分任务状态暂时无法读取。' : '';
   const draftWarning = current.draftError ? '部分动态草稿暂时无法读取。' : '';
   const mediaWarning = current.mediaError && current.status !== 'error' ? '<p class="sd-storyboard-video-warning"><i class="fa-solid fa-triangle-exclamation"></i>部分本地成片暂时无法读取。</p>' : '';
-  return `<div class="sd-storyboard-gallery-page sd-storyboard-video-page">${renderStoryboardGalleryKindSwitch()}<section class="sd-card sd-storyboard-gallery-head sd-storyboard-video-head"><div class="sd-storyboard-gallery-title"><span><span class="sd-storyboard-kicker">MOTION</span><h3>动态阅片室</h3></span><b>${chains.length}</b></div><button type="button" class="sd-icon-btn sd-storyboard-video-refresh" title="刷新本地成片、草稿与任务状态" aria-label="刷新本地成片、草稿与任务状态" ${current.status === 'loading' ? 'disabled' : ''}><i class="fa-solid fa-rotate"></i></button></section>${renderStoryboardVideoDraftShelf(drafts, draftWarning)}${renderStoryboardVideoTaskShelf(tasks, taskWarning)}${mediaWarning}${content}</div>`;
+  return `<div class="sd-storyboard-gallery-page sd-storyboard-video-page">${renderStoryboardGalleryKindSwitch()}<section class="sd-card sd-storyboard-gallery-head sd-storyboard-video-head"><div class="sd-storyboard-gallery-title"><b>${chains.length}</b></div><button type="button" class="sd-icon-btn sd-storyboard-video-refresh" title="刷新本地成片、草稿与任务状态" aria-label="刷新本地成片、草稿与任务状态" ${current.status === 'loading' ? 'disabled' : ''}><i class="fa-solid fa-rotate"></i></button></section>${renderStoryboardVideoDraftShelf(drafts, draftWarning)}${renderStoryboardVideoTaskShelf(tasks, taskWarning)}${mediaWarning}${content}</div>`;
 }
 
 function storyboardCloseVideoViewer() {
@@ -16209,7 +16223,7 @@ function renderStoryboardLogs(state) {
     </details>`;
   }).join('');
   return `<div class="sd-storyboard-logs-page">
-      <section class="sd-card sd-storyboard-log-head"><div><span class="sd-storyboard-kicker">GENERATION LOG</span><h3>分镜日志</h3><small>${state.logs.length} / ${STORYBOARD_PIPELINE_LOG_LIMIT}</small></div>${state.logs.length ? `<div><button type="button" class="sd-btn sd-storyboard-export-logs">导出</button><button type="button" class="sd-btn sd-storyboard-clear-logs" ${storyboardActiveJobs.size || storyboardQueue.length ? 'disabled' : ''}>清空</button></div>` : ''}</section>
+      <section class="sd-card sd-storyboard-log-head"><div><small>${state.logs.length} / ${STORYBOARD_PIPELINE_LOG_LIMIT}</small></div>${state.logs.length ? `<div><button type="button" class="sd-btn sd-storyboard-export-logs">导出</button><button type="button" class="sd-btn sd-storyboard-clear-logs" ${storyboardActiveJobs.size || storyboardQueue.length ? 'disabled' : ''}>清空</button></div>` : ''}</section>
     <section class="sd-card sd-storyboard-pack-card"><div><b>分镜数据打包</b><small>跨 SillyTavern 迁移，不包含 API Key</small></div><div><button type="button" class="sd-icon-btn sd-storyboard-pack-export" title="导出分镜数据" aria-label="导出分镜数据"><i class="fa-solid fa-file-export"></i></button><label class="sd-icon-btn sd-storyboard-pack-import" title="导入分镜数据" aria-label="导入分镜数据"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-native-file sd-storyboard-pack-file" accept="application/json,.json"></label></div></section>
     <div class="sd-storyboard-log-tools"><div class="sd-storyboard-log-filters">${[['all', '全部'], ['success', '完成'], ['failed', '失败']].map(([id, label]) => `<button type="button" class="${state.logFilter === id ? 'active' : ''}" data-storyboard-log-filter="${id}">${label}<span>${counts[id]}</span></button>`).join('')}</div></div>
     ${rows || '<section class="sd-card sd-storyboard-empty"><i class="fa-solid fa-list-ul"></i><p>暂无对应日志。每次生成都会记录连接、参数、耗时与失败原因。</p></section>'}
@@ -16225,7 +16239,7 @@ function renderStoryboardTab() {
           : state.view === 'gallery' ? renderStoryboardGallery(state)
             : state.view === 'logs' ? renderStoryboardLogs(state)
               : renderStoryboardCreate(state);
-  return `<div class="sd-storyboard-root"><header class="sd-storyboard-titlebar"><span>STORYBOARD</span><button type="button" class="sd-icon-btn sd-storyboard-close" title="关闭分镜" aria-label="关闭分镜"><i class="fa-solid fa-xmark"></i></button></header><div class="sd-storyboard-scroll" data-storyboard-page="${htmlEscape(storyboardPageKey(state))}">${body}</div>${renderStoryboardNav(state)}</div>`;
+  return `<div class="sd-storyboard-root"><header class="sd-storyboard-titlebar"><span role="heading" aria-level="2">${htmlEscape(storyboardPageTitle(state))}</span><button type="button" class="sd-icon-btn sd-storyboard-close" title="关闭分镜" aria-label="关闭分镜"><i class="fa-solid fa-xmark"></i></button></header><div class="sd-storyboard-scroll" data-storyboard-page="${htmlEscape(storyboardPageKey(state))}">${body}</div>${renderStoryboardNav(state)}</div>`;
 }
 
 function storyboardWorkflowIssue(result) {

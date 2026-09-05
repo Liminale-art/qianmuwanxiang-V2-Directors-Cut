@@ -9,7 +9,7 @@ const css = await readFile(new URL('style.css', root), 'utf8');
 assert.equal(STORYBOARD_PIPELINE_LOG_LIMIT, 20);
 assert.doesNotMatch(source, /sd-storyboard-log-search/, '分镜日志不应保留搜索框或搜索监听');
 assert.doesNotMatch(source, /<p>\$\{htmlEscape\(log\.prompt/, '折叠日志不应直接展示发送提示词');
-assert.match(source, /分镜日志<\/h3><small>\$\{state\.logs\.length\} \/ \$\{STORYBOARD_PIPELINE_LOG_LIMIT\}/, '日志标题必须显示可见数量与固定上限');
+assert.match(source, /sd-storyboard-log-head"><div><small>\$\{state\.logs\.length\} \/ \$\{STORYBOARD_PIPELINE_LOG_LIMIT\}/, '日志工具栏保留可见数量与固定上限，标题交给页顶栏');
 assert.match(source, /const visiblePipelineIds = new Set\(state\.logs\.map[\s\S]*state\.pipelineLogs = state\.pipelineLogs\.filter/, '新增日志后必须同步移除不可见的管线缓存');
 assert.match(source, /sd-storyboard-pipeline-stages/, '日志仍需保留阶段定位');
 assert.match(source, /sd-storyboard-copy-log/, '日志仍需保留脱敏诊断复制');

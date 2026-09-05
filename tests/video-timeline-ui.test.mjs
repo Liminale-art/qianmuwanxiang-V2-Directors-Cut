@@ -10,7 +10,8 @@ test('the screening room exposes film as a distinct product route', () => {
   assert.match(source, /data-storyboard-gallery-kind="motion"/);
   assert.match(source, /data-storyboard-gallery-kind="film"/);
   assert.match(source, /if \(storyboardGalleryKind === 'film'\) return renderStoryboardFilmGallery\(\)/);
-  assert.match(source, /<span class="sd-storyboard-kicker">FILMS<\/span><h3>影片<\/h3>/);
+  assert.match(source, /gallery: 'SCREENING ROOM'/, 'gallery heading belongs to the shared page title');
+  assert.match(source, /sd-storyboard-gallery-page sd-storyboard-film-page/, 'film keeps its distinct content route');
   assert.match(source, /新建影片/);
 });
 
