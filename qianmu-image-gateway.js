@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer';
-import { NOVEL_STATIC_MODELS, finalizeModelList, collectImageModelPages, modelsFromComfyObjectInfo } from './qianmu-image-models.js';
+import { NOVEL_STATIC_MODELS, finalizeModelList, collectImageModelPages, modelsFromComfyObjectInfo, novelModelCapabilities, isImageModelMetadataField } from './qianmu-image-models.js';
 import { randomUUID } from 'node:crypto';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
@@ -89,7 +89,7 @@ function safeProviderOptions(value) {
     for (const [rawKey, rawValue] of Object.entries(item).slice(0, 64)) {
       const key = asString(rawKey, 80);
       const lower = key.toLowerCase();
-      if (!/^[a-zA-Z][\w.-]{0,79}$/.test(key) || sensitive.test(key) || dangerous.has(lower) || (depth === 0 && reserved.has(lower))) continue;
+      if (!/^[a-zA-Z][\w.-]{0,79}$/.test(key) || sensitive.test(key) || dangerous.has(lower) || (depth === 0 && (reserved.has(lower) || isImageModelMetadataField(key)))) continue;
       const next = clean(rawValue, depth + 1);
       if (next !== undefined) output[key] = next;
     }
@@ -154,6 +154,10 @@ export function sanitizeImageRequest(input) {
   if (!prompt) throw new ImageGatewayError(400, 'empty_prompt', '提示词不能为空');
   const model = asString(source.model, 240);
   if (!model && provider !== 'comfy') throw new ImageGatewayError(400, 'missing_model', '请选择生图模型');
+  if (provider === 'novel') {
+    const binding = novelModelCapabilities(source.model, source.capabilityModelId);
+    if (!binding.ok) throw new ImageGatewayError(400, binding.code, binding.message);
+  }
   const apiKey = asString(source.apiKey, 2048);
   if (definition.requiresKey && !apiKey) throw new ImageGatewayError(400, 'missing_api_key', '请先填写 API Key');
   const parameters = plainObject(source.parameters);
@@ -168,6 +172,7 @@ export function sanitizeImageRequest(input) {
     baseUrl: asString(source.baseUrl || definition.defaultBaseUrl, 2048),
     allowPrivateNetwork: provider === 'comfy' && source.allowPrivateNetwork === true,
     model,
+    ...(source.capabilityModelId ? { capabilityModelId: asString(source.capabilityModelId, 240) } : {}),
     prompt,
     negativePrompt: asString(source.negativePrompt, MAX_NEGATIVE_LENGTH),
     references,
@@ -576,10 +581,7 @@ async function generateSeedream(request, base, fetchImpl) {
 }
 
 async function generateNovel(request, base, fetchImpl) {
-  const isV5 = /(?:^|[-_])v5(?:[-_]|$)|nai-diffusion-5(?:[-_]|$)/i.test(request.model);
-  const isV4 = /nai-diffusion-4(?:-|$)/i.test(request.model);
-  const isV3 = /nai-diffusion-(?:furry-)?3(?:-|$)/i.test(request.model);
-  const knownNovelModel = NOVEL_STATIC_MODELS.some(([id]) => id === request.model);
+  const { isV5, isV4, isV3, known: knownNovelModel } = novelModelCapabilities(request.model, request.capabilityModelId);
   const hasReferenceOption = Object.keys(request.parameters.providerOptions).some((key) => /^(?:reference|director_reference|precise_reference)/i.test(key));
   if (isV5 && (request.vibes.length || request.references.length || hasReferenceOption)) {
     throw new ImageGatewayError(400, 'novel_v5_reference_unsupported', '当前 NovelAI V5 暂不支持 Vibe 或 Precise Reference');

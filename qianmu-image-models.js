@@ -20,6 +20,26 @@ export const NOVEL_STATIC_MODELS = Object.freeze([
 const object = (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 const firstText = (...values) => values.find((value) => typeof value === 'string' && value.trim())?.trim() || '';
 
+export function isImageModelMetadataField(value) {
+  return ['modelfamily', 'capabilitymodelid', 'remotemodelid', 'connectionpresetid', 'protocol'].includes(String(value).replace(/[-_]/g, '').toLowerCase());
+}
+
+export function novelModelCapabilities(model, capabilityModelId = '') {
+  const explicit = capabilityModelId !== '' && capabilityModelId != null;
+  const known = (id) => NOVEL_STATIC_MODELS.some(([modelId]) => modelId === id);
+  const invalid = (code, message) => ({ ok: false, code, message });
+  if (explicit && (typeof model !== 'string' || model.trim().length > IMAGE_MODEL_ID_LIMIT || /[\u0000-\u001f\u007f]/.test(model))) return invalid('invalid_model_id', '实际模型名称无效');
+  if (explicit && (typeof capabilityModelId !== 'string' || !known(capabilityModelId))) return invalid('invalid_capability_model', '请选择有效的 NovelAI 模型能力档');
+  const remote = typeof model === 'string' ? model.trim() : String(model || '');
+  if (explicit && known(remote) && remote !== capabilityModelId) return invalid('model_capability_conflict', '已知模型与所选能力档不一致');
+  // Preserve legacy direct calls. New aliases supply an explicit canonical capability ID.
+  const effective = explicit ? capabilityModelId : remote;
+  return { ok: true, capabilityModelId: effective, known: known(effective),
+    isV5: /(?:^|[-_])v5(?:[-_]|$)|nai-diffusion-5(?:[-_]|$)/i.test(effective),
+    isV4: /nai-diffusion-4(?:-|$)/i.test(effective),
+    isV3: /nai-diffusion-(?:furry-)?3(?:-|$)/i.test(effective) };
+}
+
 function imageModelHeuristic(provider, id, source) {
   if (provider === 'novel' || provider === 'comfy') return true;
   const text = `${id} ${firstText(source.displayName, source.display_name, source.label, source.title, source.name)}`.toLowerCase();

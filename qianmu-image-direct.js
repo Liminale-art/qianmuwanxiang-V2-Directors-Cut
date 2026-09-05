@@ -7,7 +7,7 @@ import {
   normalizeOpenAIImageCompatibility,
   openAICompatibilityAllows,
 } from './qianmu-openai-image-compat.js';
-import { NOVEL_STATIC_MODELS, finalizeModelList, collectImageModelPages, modelsFromComfyObjectInfo } from './qianmu-image-models.js';
+import { NOVEL_STATIC_MODELS, finalizeModelList, collectImageModelPages, modelsFromComfyObjectInfo, novelModelCapabilities, isImageModelMetadataField } from './qianmu-image-models.js';
 
 const MAX_IMAGES = 8;
 const NAI_IMAGE_RE = /\.(?:png|jpe?g|webp)$/i;
@@ -78,7 +78,7 @@ function directParameters(input) {
   return {
     ...source,
     count: Math.round(number(source.count, 1, 4, 1)),
-    providerOptions: { ...plainObject(source.providerOptions) },
+    providerOptions: Object.fromEntries(Object.entries(plainObject(source.providerOptions)).filter(([key]) => !isImageModelMetadataField(key))),
   };
 }
 
@@ -312,12 +312,14 @@ function novelParameters(request) {
   const source = request.parameters && typeof request.parameters === 'object' ? request.parameters : {};
   const providerOptions = source.providerOptions && typeof source.providerOptions === 'object' ? source.providerOptions : {};
   const parameters = { ...providerOptions };
+  for (const key of Object.keys(parameters)) if (isImageModelMetadataField(key)) delete parameters[key];
   const assign = (key, value) => { if (value !== '' && value !== undefined && value !== null && !Number.isNaN(value)) parameters[key] = value; };
   assign('width', number(source.width, 64, 8192, 1024));
   assign('height', number(source.height, 64, 8192, 1024));
   assign('n_samples', Math.round(number(source.count, 1, 4, 1)));
   assign('steps', source.steps === '' ? undefined : Math.round(number(source.steps, 1, 300, undefined)));
-  assign('scale', source.scale === '' ? undefined : number(source.scale, 0, 100, undefined));
+  const scale = source.scale ?? source.cfg;
+  assign('scale', scale === '' ? undefined : number(scale, 0, 100, undefined));
   assign('seed', source.seed === '' ? undefined : Math.round(number(source.seed, -1, Number.MAX_SAFE_INTEGER, undefined)));
   assign('sampler', text(source.sampler, 120) || undefined);
   assign('noise_schedule', text(source.scheduler, 120) || undefined);
@@ -607,8 +609,14 @@ export async function generateDirectImage(input = {}, { fetchImpl = globalThis.f
   if (provider === 'banana') return generateBananaDirect(input, fetchImpl);
   if (provider === 'seedream') return generateSeedreamDirect(input, fetchImpl);
   if (provider === 'comfy') return generateComfyDirect(input, fetchImpl, waitImpl);
-  if (/nai-diffusion-5/i.test(model) && (input.vibes?.length || input.referenceImages?.length)) {
+  const novelCaps = novelModelCapabilities(input.model, input.capabilityModelId);
+  if (!novelCaps.ok) throw new DirectImageError(novelCaps.message, { code: novelCaps.code });
+  const hasReferenceOption = Object.keys(plainObject(input.parameters?.providerOptions)).some((key) => /^(?:reference|director_reference|precise_reference)/i.test(key));
+  const isV5 = input.capabilityModelId ? novelCaps.isV5 : /nai-diffusion-5/i.test(model);
+  if (isV5 && (input.vibes?.length || input.referenceImages?.length || input.references?.length || hasReferenceOption)) {
     throw new DirectImageError('当前 NovelAI V5 不支持 Vibe 或 Precise Reference', { code: 'novel_v5_reference_unsupported' });
   }
+  if (novelCaps.known && input.vibes?.length && !novelCaps.isV3 && !novelCaps.isV4) throw new DirectImageError('当前 NovelAI 模型不支持 Vibe', { code: 'novel_vibe_unsupported' });
+  if (novelCaps.known && (input.referenceImages?.length || input.references?.length) && !novelCaps.isV4) throw new DirectImageError('当前 NovelAI 模型不支持 Precise Reference', { code: 'novel_precise_reference_unsupported' });
   return generateNovelDirect(input, fetchImpl, unzipImpl, waitImpl);
 }

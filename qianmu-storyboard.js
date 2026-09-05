@@ -158,8 +158,8 @@ export const STORYBOARD_VISUAL_DUTIES = Object.freeze(['space', 'relationship', 
 export const STORYBOARD_SUBJECT_KINDS = Object.freeze(['character', 'object', 'environment', 'symbolic', 'mixed']);
 export const STORYBOARD_EVIDENCE_TYPES = Object.freeze(['explicit', 'inferred', 'symbolic']);
 
-export const getStoryboardProvider = (id) => STORYBOARD_PROVIDER_REGISTRY[id] || null;
-export const getStoryboardModel = (providerId, modelId) => (STORYBOARD_MODEL_REGISTRY[providerId] || []).find((item) => item.id === modelId) || null;
+export const getStoryboardProvider = (id) => Object.hasOwn(STORYBOARD_PROVIDER_REGISTRY, id) ? STORYBOARD_PROVIDER_REGISTRY[id] : null;
+export const getStoryboardModel = (providerId, modelId) => (Object.hasOwn(STORYBOARD_MODEL_REGISTRY, providerId) ? STORYBOARD_MODEL_REGISTRY[providerId] : []).find((item) => item.id === modelId) || null;
 export const getStoryboardCapabilities = (providerId, modelId = '') => getStoryboardModel(providerId, modelId)?.capabilities || getStoryboardProvider(providerId)?.capabilities || caps();
 const resolveStoryboardModelId = (providerId, value = '') => {
   const provider = getStoryboardProvider(providerId);
@@ -168,6 +168,34 @@ const resolveStoryboardModelId = (providerId, value = '') => {
   if (getStoryboardModel(providerId, requested) || (provider.customModelId && requested)) return requested;
   return provider.defaultModel;
 };
+
+export function resolveStoryboardModelBinding(providerId, input = {}) {
+  const provider = getStoryboardProvider(providerId);
+  const fail = (code, message) => { const error = new Error(message); error.code = code; throw error; };
+  if (!provider) fail('invalid_model_family', '请选择有效的生图系列');
+  if (input.modelFamily && input.modelFamily !== provider.id) fail('model_family_mismatch', '模型能力档与当前生图系列不匹配');
+  if (input.protocol && input.protocol !== provider.protocol) fail('model_protocol_mismatch', '当前阶段尚未支持此系列与连接协议的组合');
+  const id = (value) => {
+    if (typeof value !== 'string') fail('invalid_model_id', '模型名称必须是文本');
+    const result = value.trim();
+    if (result.length > 240 || /[\u0000-\u001f\u007f]/.test(value)) fail('invalid_model_id', '模型名称过长或包含控制字符');
+    return result;
+  };
+  const hasCapability = input.capabilityModelId != null && input.capabilityModelId !== '';
+  const explicitCapability = hasCapability ? id(input.capabilityModelId) : '';
+  if (hasCapability && !getStoryboardModel(providerId, explicitCapability)) fail('invalid_capability_model', '请选择当前系列有效的模型能力档');
+  const explicitRemote = Object.hasOwn(input, 'remoteModelId');
+  // Legacy inputs retain their established fallback; explicit bindings are never silently renamed.
+  const requested = explicitRemote ? id(input.remoteModelId) : explicitCapability ? id(input.model || explicitCapability) : str(input.model || provider.defaultModel, 240);
+  if ((explicitRemote || explicitCapability) && !requested) fail('missing_remote_model', '请填写实际发送的模型名称');
+  const known = getStoryboardModel(providerId, requested);
+  if (known && explicitCapability && known.id !== explicitCapability) fail('model_capability_conflict', '已知模型与所选能力档不一致');
+  if (explicitRemote && !known && !explicitCapability && !provider.customModelId) fail('missing_capability_model', '第三方模型别名需要指定同系列能力档');
+  const remoteModelId = explicitRemote || explicitCapability ? requested : resolveStoryboardModelId(providerId, requested);
+  const capabilityModelId = explicitCapability || getStoryboardModel(providerId, remoteModelId)?.id || provider.defaultModel;
+  return { modelFamily: provider.id, capabilityModelId, remoteModelId, protocol: provider.protocol,
+    connectionPresetId: cleanId(input.connectionPresetId), customModel: !getStoryboardModel(providerId, remoteModelId) };
+}
 
 const legacyProfile = () => ({ loaded: false, model: '', sampler: '', scheduler: '', width: '', height: '', ratio: '1:1', count: '', steps: '', cfg: '', seed: '', comfyUrl: '', comfyWorkflow: '', comfyWorkflowNotice: '', openaiStyle: '', openaiQuality: '', openaiBackground: '', openaiOutputFormat: '', imageSize: '', watermark: false, seedreamGuidanceScale: '', seedreamSequential: false, googleEnhance: false, novelCfgRescale: '', novelSm: false, novelSmDyn: false, novelDecrisper: false, novelVarietyBoost: false });
 const promptDraft = () => ({ compiled: '', negative: '', artistString: '', compiledAt: 0, compiledBy: '', userEditedCompiled: false, userEditedNegative: false, artistPositiveBaked: false, artistNegativeBaked: false, sourceSummary: [] });
@@ -1527,7 +1555,10 @@ function legacyPipelineLogs(value) {
 
 export function buildStoryboardProviderPlan(input = {}) {
   const provider = getStoryboardProvider(input.providerId); if (!provider) throw new Error('请选择有效的生图模型');
-  const conn = normalizeStoryboardConnectionProfile(input.connection || {}, provider.id), requestedModel = str(input.model || conn.model || provider.defaultModel, 240), knownModel = getStoryboardModel(provider.id, requestedModel), modelId = resolveStoryboardModelId(provider.id, requestedModel), capability = getStoryboardCapabilities(provider.id, modelId), prompt = str(input.prompt, 24000); if (!prompt) throw new Error('提示词不能为空');
+  const conn = normalizeStoryboardConnectionProfile(input.connection || {}, provider.id);
+  const binding = resolveStoryboardModelBinding(provider.id, { ...input, model: input.model || input.capabilityModelId || conn.model || provider.defaultModel, connectionPresetId: conn.id });
+  const modelId = binding.remoteModelId, capability = getStoryboardCapabilities(provider.id, binding.capabilityModelId), prompt = str(input.prompt, 24000);
+  if (!prompt) throw new Error('提示词不能为空');
   const p = obj(input.params) ? input.params : {}, request = { prompt }, dropped = [];
   const own = (...keys) => { for (const key of keys) if (Object.hasOwn(p, key)) return p[key]; return undefined; };
   const providerValue = (providerId, key, value) => { if (value === '' || value == null) return; if (provider.id === providerId) request[key] = value; else dropped.push(key); };
@@ -1535,7 +1566,7 @@ export function buildStoryboardProviderPlan(input = {}) {
   accept(request, dropped, capability, 'negative', str(input.negative ?? p.negative, 12000)); accept(request, dropped, capability, 'seed', bounded(p.seed, -1, Number.MAX_SAFE_INTEGER, true)); accept(request, dropped, capability, 'steps', bounded(p.steps, 1, 300, true)); accept(request, dropped, capability, 'cfg', bounded(p.cfg ?? p.scale, 0, 100));
   const requestedSampler = str(p.sampler, 120), requestedScheduler = str(p.scheduler, 120);
   if (provider.id === 'novel') {
-    const spec = getStoryboardNovelParameterSpec(modelId);
+    const spec = getStoryboardNovelParameterSpec(binding.capabilityModelId);
     if (requestedSampler && spec.samplers.some((item) => item.value === requestedSampler)) request.sampler = requestedSampler;
     else if (requestedSampler) dropped.push('sampler');
     if (requestedScheduler && capability.scheduler && spec.schedulers.some((item) => item.value === requestedScheduler)) request.scheduler = requestedScheduler;
@@ -1602,8 +1633,8 @@ export function buildStoryboardProviderPlan(input = {}) {
     workflow: request.workflow, providerOptions: request.providerOptions,
   };
   for (const key of Object.keys(gatewayParameters)) if (gatewayParameters[key] === undefined || gatewayParameters[key] === '') delete gatewayParameters[key];
-  const gatewayRequest = { provider: provider.id, baseUrl: conn.baseUrl, model: modelId, prompt, negativePrompt: request.negative || '', references: request.references, vibes: request.vibes, parameters: gatewayParameters };
-  return { version: 1, providerId: provider.id, protocol: provider.protocol, baseUrl: conn.baseUrl, credentialId: conn.credentialId, connectionPresetId: conn.id, model: modelId, customModel: Boolean(provider.customModelId && !knownModel), capabilities: capability, request, gatewayRequest, droppedParameters: [...new Set(dropped)] };
+  const gatewayRequest = { provider: provider.id, baseUrl: conn.baseUrl, model: modelId, capabilityModelId: binding.capabilityModelId, prompt, negativePrompt: request.negative || '', references: request.references, vibes: request.vibes, parameters: gatewayParameters };
+  return { version: 1, providerId: provider.id, ...binding, baseUrl: conn.baseUrl, credentialId: conn.credentialId, model: modelId, capabilities: capability, request, gatewayRequest, droppedParameters: [...new Set(dropped)] };
 }
 
 export function resolveStoryboardVisualState(facts) {
@@ -1890,7 +1921,7 @@ function isSensitiveField(value) {
   if (/^(?:credential|secret)[-_.]?id$/.test(key)) return false;
   return key === 'key' || key === 'token' || /(^|[-_.])(api[-_.]?key|access[-_.]?key|secret[-_.]?key|access[-_.]?token|refresh[-_.]?token|bearer[-_.]?token|secret|authorization|auth|headers?|cookies?|password|passphrase|credential|credentials)(?:$|[-_.])/.test(key);
 }
-function isReservedProviderField(value) { return ['model', 'prompt', 'input', 'api-key', 'authorization', 'url', 'base-url'].includes(String(value || '').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()); }
+function isReservedProviderField(value) { return ['model', 'prompt', 'input', 'apikey', 'authorization', 'url', 'baseurl', 'modelfamily', 'capabilitymodelid', 'remotemodelid', 'connectionpresetid', 'protocol'].includes(String(value || '').replace(/[-_]/g, '').toLowerCase()); }
 function isBinaryField(value) { return /^(?:data|base64|b64|b64_json|imageData|image_data|bytes)$/i.test(String(value || '')); }
 function looksLikeBase64(value) { const text = String(value || '').replace(/\s+/g, ''); return /^data:image\/[^;]+;base64,/i.test(text) || text.length >= 256 && text.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(text); }
 function status(value) { if (value === 'generating') return 'running'; return ['queued', 'running', 'success', 'failed', 'cancelled', 'skipped'].includes(value) ? value : 'failed'; }
