@@ -198,6 +198,33 @@ export function resolveStoryboardModelBinding(providerId, input = {}) {
     connectionPresetId: cleanId(input.connectionPresetId), customModel: !getStoryboardModel(providerId, remoteModelId) };
 }
 
+export function resolveStoryboardJobModelIdentity(job = {}) {
+  const fail = (code, message) => { const error = new Error(message); error.code = code; throw error; };
+  const provider = getStoryboardProvider(job.source);
+  if (!provider) fail('invalid_model_family', '任务缺少有效的生图系列，请载入镜头台确认');
+  const model = job.profile?.model || (provider.id === 'comfy' ? provider.defaultModel : '');
+  if (typeof model !== 'string' || !model.trim()) fail('missing_model_snapshot', '记录缺少模型快照，请载入镜头台确认');
+  const presetId = cleanId(job.connection?.id);
+  const saved = job.modelIdentity;
+  let binding;
+  if (saved != null) {
+    if (!obj(saved) || saved.version !== 1
+      || !['modelFamily', 'capabilityModelId', 'remoteModelId', 'protocol'].every((key) => typeof saved[key] === 'string' && saved[key].trim())
+      || typeof saved.connectionPresetId !== 'string') fail('invalid_model_identity', '模型身份快照不完整或版本不支持，请载入镜头台确认');
+    binding = resolveStoryboardModelBinding(provider.id, saved);
+    if (model.trim() !== binding.remoteModelId) fail('model_snapshot_mismatch', '任务型号与原模型快照不一致，未发起生图');
+    if (presetId !== binding.connectionPresetId) fail('connection_snapshot_mismatch', '任务连接与原模型快照不一致，未发起生图');
+  } else {
+    // Use the historical request itself, never today's provider default for an unknown alias.
+    binding = resolveStoryboardModelBinding(provider.id, {
+      remoteModelId: model, capabilityModelId: job.profile?.capabilityModelId || '', connectionPresetId: presetId,
+    });
+  }
+  if (job.profile?.capabilityModelId && job.profile.capabilityModelId !== binding.capabilityModelId) fail('model_snapshot_mismatch', '任务能力档与原模型快照不一致，未发起生图');
+  return Object.freeze({ version: 1, modelFamily: binding.modelFamily, capabilityModelId: binding.capabilityModelId,
+    remoteModelId: binding.remoteModelId, protocol: binding.protocol, connectionPresetId: binding.connectionPresetId });
+}
+
 const legacyProfile = () => ({ loaded: false, model: '', sampler: '', scheduler: '', width: '', height: '', ratio: '1:1', count: '', steps: '', cfg: '', seed: '', comfyUrl: '', comfyWorkflow: '', comfyWorkflowNotice: '', openaiStyle: '', openaiQuality: '', openaiBackground: '', openaiOutputFormat: '', imageSize: '', watermark: false, seedreamGuidanceScale: '', seedreamSequential: false, googleEnhance: false, novelCfgRescale: '', novelSm: false, novelSmDyn: false, novelDecrisper: false, novelVarietyBoost: false });
 const promptDraft = () => ({ compiled: '', negative: '', artistString: '', compiledAt: 0, compiledBy: '', userEditedCompiled: false, userEditedNegative: false, artistPositiveBaked: false, artistNegativeBaked: false, sourceSummary: [] });
 const connection = (id) => ({

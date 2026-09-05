@@ -95,9 +95,9 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.24';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.24';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.24';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.25';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.25';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.25';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -105,7 +105,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.24';
+} from './qianmu-llm-output.js?v=1.59.25';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -144,6 +144,7 @@ import {
   prepareStoryboardShotGroup,
   pruneStoryboardPipelineLogs,
   rememberStoryboardModelProfile,
+  resolveStoryboardJobModelIdentity,
   resolveStoryboardMessageReference,
   resolveStoryboardComposition,
   restoreStoryboardCompositionPolicy,
@@ -160,143 +161,143 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.24';
+} from './qianmu-storyboard.js?v=1.59.25';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.24';
+const VERSION = '1.59.25';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.24'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.25'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.24').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.25').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.24'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.25'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.24'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.25'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.24'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.25'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.24'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.25'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.24'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.25'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.24'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.25'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.24'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.25'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.24'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.25'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.24'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.25'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.24'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.25'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.24'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.25'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.24'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.25'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.24'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.25'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.24'),
+    load: () => import('./qianmu-video-task.js?v=1.59.25'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.24'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.25'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.24'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.25'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.24'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.25'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.24'),
+    load: () => import('./qianmu-video-store.js?v=1.59.25'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.24'),
+    load: () => import('./qianmu-video-result.js?v=1.59.25'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.24'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.25'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.24'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.25'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.24'),
+    load: () => import('./qianmu-video-media.js?v=1.59.25'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.24'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.25'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.24'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.25'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.24'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.25'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.24'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.25'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.24'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.25'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.24'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.25'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.24'),
-        import('./qianmu-theaters.js?v=1.59.24'),
+        import('./builtin-theaters.js?v=1.59.25'),
+        import('./qianmu-theaters.js?v=1.59.25'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -15953,6 +15954,7 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
   const messageRef = message ? createStoryboardMessageReference({ message, chatKey: String(getChatKey() || ''), floor }) : null;
   const snapshot = {
     source: sourceId, prompt, negative,
+    modelIdentity: resolveStoryboardJobModelIdentity({ source: sourceId, profile: providerProfile, connection: { id: connection?.id || '' } }),
     artistString: String(payload.artistString || state.promptDraft?.artistString || ''), artistPresetId: artistAssignment.artistId, artistPoolId: artistAssignment.poolId, artistRouteSource: artistAssignment.source, contentRating: state.contentRating,
     artistRerollCount: Math.max(0, Number(shot?.artistRerollCount) || 0),
     promptMode: state.promptMode,
@@ -16002,6 +16004,7 @@ function storyboardStartLog(job) {
     error: '', recordId: '', recordIds: [], pipelineId: '', queuedAt: now, startedAt: 0, finishedAt: 0, durationMs: 0,
     attempt: job.attempt, snapshot: clone({
       source: job.source, prompt: job.prompt, negative: job.negative, target: job.target, floor: job.floor,
+      modelIdentity: job.modelIdentity,
       artistString: job.artistString, artistPresetId: job.artistPresetId || '', artistPoolId: job.artistPoolId || '', artistRouteSource: job.artistRouteSource || '', contentRating: job.contentRating,
       artistRerollCount: Math.max(0, Number(job.artistRerollCount) || 0),
       promptMode: job.promptMode, promptLocked: Boolean(job.promptLocked),
@@ -17252,15 +17255,14 @@ function storyboardAddLibraryTag(tagId) {
 function storyboardJobFromLog(log) {
   if (!log?.snapshot) return null;
   const snap = clone(log.snapshot);
-  const state = storyboardState();
-  const capabilities = getStoryboardCapabilities(snap.source, snap.profile?.model);
-  const fallbackPayload = storyboardGenerationPayload(state, snap.profile || storyboardProviderProfile(state, snap.source), {
-    sourceId: snap.source, prompt: log.effectivePrompt || snap.prompt, negative: log.effectiveNegative || snap.negative,
-  });
+  // Missing historical inputs require explicit workbench confirmation, not today's settings.
+  if (!Object.hasOwn(STORYBOARD_PROVIDER_REGISTRY, snap.source) || !snap.profile || typeof snap.payload?.prompt !== 'string' || !snap.payload.prompt.trim()
+    || !String(snap.connection?.baseUrl || '').trim()
+    || (snap.source !== 'comfy' && (!String(snap.profile.model || '').trim() || !String(snap.connection?.credentialId || '').trim()))) return null;
   return {
     id: uid('shotjob'), ...snap,
-    payload: clone(snap.payload || fallbackPayload),
-    connection: clone(snap.connection || storyboardCreateJob(state, snap.profile || storyboardProviderProfile(state, snap.source), { sourceId: snap.source }).connection),
+    payload: clone(snap.payload),
+    connection: clone(snap.connection),
     paragraphAnchor: clone(snap.paragraphAnchor || null),
     discardRequested: false, attempt: Math.max(1, Number(log.attempt || 1) + 1),
   };
@@ -17268,6 +17270,8 @@ function storyboardJobFromLog(log) {
 
 function storyboardQueueJob(job) {
   if (!job?.payload?.prompt?.trim()) return toast('请先写下画面描述。', 'warning');
+  try { job.modelIdentity = resolveStoryboardJobModelIdentity(job); }
+  catch (error) { toast(error?.message || '无法确认任务模型，请载入镜头台确认', 'warning'); return false; }
   if (job.source === 'openai' && job.payload?.parameters?.background === 'transparent'
     && job.payload?.parameters?.outputFormat === 'jpeg') {
     return toast('透明背景不支持 JPEG，请改用 PNG 或 WebP。', 'warning');
@@ -17672,7 +17676,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false } = {})
 
 function storyboardRetryLog(log) {
   const job = storyboardJobFromLog(log);
-  if (!job) return toast('这条日志缺少可复用设置。', 'warning');
+  if (!job) return toast('旧记录缺少完整模型或连接快照，请载入镜头台确认。', 'warning');
   const previous = storyboardGalleryRecords().find((item) => item.id === log.recordId || log.recordIds?.includes(item.id));
   if (previous) {
     job.variantRootId = storyboardGalleryGroupId(previous);
@@ -17753,10 +17757,12 @@ async function storyboardPrepareGatewayAssets(job) {
 }
 
 function storyboardGatewayRequest(job, apiKey, assets) {
+  const identity = resolveStoryboardJobModelIdentity(job);
   const parameters = clone(job.payload?.parameters || {});
   if (job.source === 'comfy') parameters.workflow = storyboardParseWorkflow(parameters.workflow);
   return {
-    provider: job.source, apiKey, baseUrl: job.connection?.baseUrl, model: job.profile?.model || job.connection?.model,
+    provider: identity.modelFamily, apiKey, baseUrl: job.connection?.baseUrl, model: identity.remoteModelId,
+    capabilityModelId: identity.capabilityModelId,
     allowPrivateNetwork: Boolean(job.connection?.allowPrivateNetwork), prompt: job.payload?.prompt,
     ...(job.source === 'openai' ? {
       compatibility: clone(job.connection?.compatibility || {}),
@@ -17857,6 +17863,7 @@ async function storyboardRunJob(job, log) {
       return;
     }
     if (beforeRequestAnchor.valid && beforeRequestAnchor.relocated) job.floor = beforeRequestAnchor.floor;
+    job.modelIdentity = resolveStoryboardJobModelIdentity(job);
     storyboardMarkLogGenerating(log);
     storyboardSetPlanStatus(plan, 'generating', { job, stage: 'provider', progress: 0.35 });
     storyboardPipelineStage(log, 'context', 'success', {}, {
@@ -17879,6 +17886,9 @@ async function storyboardRunJob(job, log) {
     }
     if (!data) {
       transport = 'same_origin_gateway';
+      if (job.source === 'novel' && !getStoryboardModel('novel', job.modelIdentity.remoteModelId)) {
+        throw new Error('尚未确认网关支持此 NAI 别名的能力档，未转发生图；请使用可直连的连接或先在镜头台确认型号');
+      }
       const response = await fetch('/api/plugins/qianmu-tts/image/generate', {
         method: 'POST', headers: storyboardRequestHeaders(), body: JSON.stringify(gatewayRequest),
       });
@@ -18607,7 +18617,7 @@ async function storyboardRedrawRecord(record, { artistPreset = undefined, artist
     ? { ...linkedLog, snapshot, effectivePrompt: snapshot.payload.prompt, effectiveNegative: snapshot.payload.negative }
     : { id: uid('shotlog'), attempt: 0, snapshot, effectivePrompt: snapshot.payload.prompt, effectiveNegative: snapshot.payload.negative };
   const job = storyboardJobFromLog(redrawLog);
-  if (!job) return toast('无法恢复这张图的生成设置。', 'warning');
+  if (!job) return toast('旧图缺少完整模型或连接快照，请载入镜头台确认。', 'warning');
   job.variantRootId = storyboardGalleryGroupId(record);
   storyboardAssignCollectionIds(job, storyboardItemCollectionIds(record));
   job.tags = uniqueClean(record.tags || []).slice(0, 30);
