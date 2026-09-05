@@ -7,6 +7,7 @@ import {
   normalizeOpenAIImageCompatibility,
   openAICompatibilityAllows,
 } from './qianmu-openai-image-compat.js';
+import { NOVEL_STATIC_MODELS, finalizeModelList, collectImageModelPages, modelsFromComfyObjectInfo } from './qianmu-image-models.js';
 
 const MAX_IMAGES = 8;
 const NAI_IMAGE_RE = /\.(?:png|jpe?g|webp)$/i;
@@ -139,6 +140,93 @@ async function directFetch(url, options, fetchImpl) {
   } catch (error) {
     if (error?.name === 'AbortError') throw error;
     throw new DirectImageError(`浏览器直连失败：${error?.message || error}`, { code: 'direct_transport', retryable: true });
+  }
+}
+
+async function readDirectModelJson(response, limit = 4 * 1024 * 1024) {
+  const tooLarge = () => new DirectImageError('模型列表响应过大，请缩小接口返回范围', { code: 'model_list_too_large' });
+  if (Number(response.headers?.get?.('content-length')) > limit) {
+    await response.body?.cancel?.().catch(() => {});
+    throw tooLarge();
+  }
+  const reader = response.body?.getReader?.();
+  let raw = '';
+  if (reader) {
+    const decoder = new TextDecoder();
+    const parts = [];
+    let bytes = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        if (bytes > limit) { await reader.cancel().catch(() => {}); throw tooLarge(); }
+        parts.push(decoder.decode(value, { stream: true }));
+      }
+      raw = parts.join('') + decoder.decode();
+    } finally { reader.releaseLock(); }
+  } else {
+    raw = await response.text();
+    if (new TextEncoder().encode(raw).byteLength > limit) throw tooLarge();
+  }
+  try { return JSON.parse(raw); }
+  catch (_) { throw new DirectImageError('模型列表未返回有效 JSON', { code: 'invalid_model_list' }); }
+}
+
+// Read-only catalog discovery. Choosing a family never guesses another protocol from its URL.
+// The selector is connected only after ST2-02's remote-ID/capability binding is in place.
+export async function listDirectImageModels(input = {}, { fetchImpl = globalThis.fetch, timeoutMs = 20_000 } = {}) {
+  const provider = text(input.provider, 40).toLowerCase();
+  if (!['novel', 'openai', 'banana', 'seedream', 'comfy'].includes(provider)) throw new DirectImageError('不支持的模型列表渠道', { code: 'direct_unsupported' });
+  const base = new URL(providerEndpoint(input.baseUrl, '', provider));
+  if (!['https:', 'http:'].includes(base.protocol) || base.username || base.password) throw new DirectImageError('API 地址需使用 HTTP(S)，且不能嵌入账号密码', { code: 'invalid_base_url' });
+  if (input.signal?.aborted) throw new DOMException('已取消模型列表读取', 'AbortError');
+  if (provider === 'novel' && base.hostname.toLowerCase() === 'image.novelai.net') {
+    return finalizeModelList(provider, NOVEL_STATIC_MODELS.map(([id, label]) => ({ id, label })), { source: 'builtin' });
+  }
+  const compatibility = normalizeOpenAIImageCompatibility(input.compatibility);
+  if (provider === 'openai' && compatibility.modelDiscovery === 'off') return finalizeModelList(provider, [], { source: 'disabled' });
+  const apiKey = text(input.apiKey, 2048);
+  if (provider !== 'comfy' && !apiKey) throw new DirectImageError('请先填写 API Key', { code: 'missing_api_key' });
+  const headers = provider === 'banana' ? { 'x-goog-api-key': apiKey }
+    : { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}), ...(provider === 'openai' ? normalizeOpenAICompatibleHeaders(input.customHeaders, compatibility) : {}) };
+  const controller = new AbortController();
+  let timedOut = false;
+  const cancel = () => controller.abort();
+  input.signal?.addEventListener('abort', cancel, { once: true });
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, number(timeoutMs, 100, 60_000, 20_000));
+  const fetchJson = async (url, limit) => {
+    const response = await directFetch(url, { method: 'GET', headers, signal: controller.signal, redirect: 'error', credentials: 'omit' }, fetchImpl);
+    if (!response.ok) {
+      await response.body?.cancel?.().catch(() => {});
+      const unavailable = response.status === 404 || response.status === 405;
+      const label = unavailable ? '此连接未提供模型列表；仍可手动填写模型名，列表不可用不代表生图失败'
+        : response.status === 401 ? '模型列表无权访问，请检查 API Key'
+          : response.status === 403 ? '此 Key 没有模型列表权限' : response.status === 429 ? '模型列表请求过于频繁，请稍后再试' : '模型列表读取失败';
+      throw new DirectImageError(`${label}（${response.status}）`, { status: response.status, code: unavailable ? 'models_unavailable' : `upstream_${response.status}` });
+    }
+    return readDirectModelJson(response, limit);
+  };
+  try {
+    if (provider === 'comfy') {
+      const json = await fetchJson(providerEndpoint(input.baseUrl, 'object_info', provider), 24 * 1024 * 1024);
+      controller.signal.throwIfAborted();
+      return modelsFromComfyObjectInfo(json);
+    }
+    return await collectImageModelPages(provider, (nextPageToken) => {
+      const url = new URL(providerEndpoint(input.baseUrl, provider === 'openai' ? compatibility.endpoints.models : 'models', provider));
+      if (provider === 'banana') {
+        url.searchParams.set('pageSize', '1000');
+        if (nextPageToken) url.searchParams.set('pageToken', nextPageToken);
+      }
+      return fetchJson(url.toString());
+    }, { signal: controller.signal });
+  } catch (error) {
+    if (timedOut) throw new DirectImageError('模型列表读取超时，请稍后重试', { code: 'model_list_timeout' });
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    input.signal?.removeEventListener('abort', cancel);
   }
 }
 

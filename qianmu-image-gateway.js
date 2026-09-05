@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { NOVEL_STATIC_MODELS, finalizeModelList, collectImageModelPages, modelsFromComfyObjectInfo } from './qianmu-image-models.js';
 import { randomUUID } from 'node:crypto';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
@@ -20,20 +21,6 @@ const MAX_WORKFLOW_BYTES = 2 * 1024 * 1024;
 const ALLOWED_REFERENCE_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const DEFAULT_TIMEOUT_MS = 180_000;
 const RESPONSE_GUARDS = new WeakMap();
-const NOVEL_STATIC_MODELS = Object.freeze([
-  ['safe-diffusion', 'Anime Curated V1'],
-  ['nai-diffusion', 'Anime Full V1'],
-  ['nai-diffusion-furry', 'Furry V1'],
-  ['nai-diffusion-2', 'Anime V2'],
-  ['nai-diffusion-3', 'Anime V3'],
-  ['nai-diffusion-furry-3', 'Furry V3'],
-  ['nai-diffusion-4-curated-preview', 'Anime Curated V4'],
-  ['nai-diffusion-4-full', 'Anime Full V4'],
-  ['nai-diffusion-4-5-curated', 'Anime Curated V4.5'],
-  ['nai-diffusion-4-5-full', 'Anime Full V4.5'],
-  ['nai-diffusion-5-curated', 'Anime Curated V5'],
-  ['nai-diffusion-5-full', 'Anime Full V5'],
-]);
 
 export const IMAGE_GATEWAY_PROVIDERS = Object.freeze({
   novel: Object.freeze({
@@ -277,58 +264,6 @@ function normalizeProviderBase(base, provider) {
   return url;
 }
 
-function imageModelHeuristic(provider, id, source = {}) {
-  if (provider === 'novel' || provider === 'comfy') return true;
-  const text = `${id} ${source.displayName || source.display_name || source.name || ''}`.toLowerCase();
-  if (provider === 'banana') return /(?:image|imagen|banana)/.test(text);
-  if (provider === 'seedream') return /(?:seedream|image|imagen|flux|sdxl|stable[-_ ]?diffusion|kolors)/.test(text);
-  return /(?:gpt[-_. ]?image|dall[-_. ]?e|image[-_. ]?(?:gen|generation)|imagen|flux|sdxl|stable[-_ ]?diffusion|ideogram|recraft|seedream|kolors|playground)/.test(text);
-}
-
-function normalizeModelEntry(raw, provider, kind = 'model') {
-  const source = typeof raw === 'string' ? { id: raw } : plainObject(raw);
-  let id = asString(source.id || source.name || source.model || source.model_id || source.modelId || source.model_name || source.modelName || source.value, 300);
-  if (provider === 'banana') id = id.replace(/^models\//, '');
-  if (!id) return null;
-  const label = asString(source.displayName || source.display_name || source.label || source.title || id, 300) || id;
-  return {
-    id,
-    label,
-    imageCapable: imageModelHeuristic(provider, id, source),
-    kind: asString(kind, 80) || 'model',
-  };
-}
-
-function finalizeModelList(provider, models, { source = 'remote', truncated = false } = {}) {
-  const unique = new Map();
-  for (const raw of models.slice(0, 4000)) {
-    const item = raw?.id ? raw : normalizeModelEntry(raw, provider);
-    if (!item?.id || unique.has(item.id)) continue;
-    unique.set(item.id, item);
-  }
-  const list = [...unique.values()].sort((a, b) => Number(b.imageCapable) - Number(a.imageCapable) || a.label.localeCompare(b.label));
-  return {
-    ok: true,
-    provider,
-    source,
-    models: list,
-    total: list.length,
-    imageCapableCount: list.filter((item) => item.imageCapable).length,
-    truncated: Boolean(truncated || models.length > 4000),
-  };
-}
-
-function modelArrayFromJson(json) {
-  if (Array.isArray(json)) return json;
-  for (const value of [
-    json?.data, json?.models, json?.items, json?.list, json?.results,
-    json?.data?.models, json?.data?.items, json?.data?.list,
-    json?.result?.data, json?.result?.models, json?.result?.items, json?.result?.list, json?.result,
-  ]) {
-    if (Array.isArray(value)) return value;
-  }
-  return [];
-}
 
 function combinedPrompt(request) {
   if (!request.negativePrompt) return request.prompt;
@@ -912,45 +847,21 @@ export async function listImageModels(input, options = {}) {
       method: 'GET', headers: apiKey ? authHeaders({ apiKey }) : {},
     }, request, fetchImpl);
     const json = parseUpstreamJson(await readLimited(response, 24 * 1024 * 1024));
-    const models = [];
-    for (const [loader, definition] of Object.entries(plainObject(json))) {
-      if (!/(?:checkpoint|ckpt|unet|diffusion.*model).*loader|loader.*(?:checkpoint|ckpt|unet|diffusion.*model)/i.test(loader)) continue;
-      const required = plainObject(definition?.input?.required);
-      for (const [field, descriptor] of Object.entries(required)) {
-        if (!/(?:ckpt|unet|model).*name/i.test(field) || !Array.isArray(descriptor?.[0])) continue;
-        for (const id of descriptor[0]) {
-          const item = normalizeModelEntry(String(id), provider, /ckpt/i.test(field) ? 'checkpoint' : 'diffusion-model');
-          if (item) models.push(item);
-        }
-      }
-    }
-    return finalizeModelList(provider, models, { source: 'remote' });
+    return modelsFromComfyObjectInfo(json);
   }
 
   const headers = provider === 'banana'
     ? { 'x-goog-api-key': apiKey }
     : authHeaders({ apiKey }, provider === 'openai' ? normalizeOpenAICompatibleHeaders(source.customHeaders, compatibility) : {});
-  const models = [];
-  let nextPageToken = '';
-  let pages = 0;
-  let truncated = false;
-  do {
+  return collectImageModelPages(provider, async (nextPageToken) => {
     const url = endpoint(base, provider === 'openai' ? compatibility.endpoints.models : 'models');
     if (provider === 'banana') {
       url.searchParams.set('pageSize', '1000');
       if (nextPageToken) url.searchParams.set('pageToken', nextPageToken);
     }
     const response = await fetchUpstream(url, { method: 'GET', headers }, request, fetchImpl);
-    const json = parseUpstreamJson(await readLimited(response, 4 * 1024 * 1024));
-    for (const raw of modelArrayFromJson(json)) {
-      const item = normalizeModelEntry(raw, provider);
-      if (item) models.push(item);
-    }
-    nextPageToken = provider === 'banana' ? asString(json?.nextPageToken || json?.next_page_token, 2000) : '';
-    pages += 1;
-    if (pages >= 10 && nextPageToken) { truncated = true; break; }
-  } while (nextPageToken);
-  return finalizeModelList(provider, models, { source: 'remote', truncated });
+    return parseUpstreamJson(await readLimited(response, 4 * 1024 * 1024));
+  });
 }
 
 export function imageGatewayErrorPayload(error) {

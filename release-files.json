@@ -22,6 +22,7 @@
     "qianmu-icon-renderer.js",
     "qianmu-image-direct.js",
     "qianmu-image-gateway.js",
+    "qianmu-image-models.js",
     "qianmu-llm-output.js",
     "qianmu-narrative-ledger.js",
     "qianmu-notes.js",
