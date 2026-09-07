@@ -107,6 +107,19 @@ test('actual adjacent shots in a single confirmed batch scene keep their first w
   }finally{await e.close();}
 });
 
+test('actual extraction with reused scene IDs keeps a memory cut out of the present scene lock',async()=>{
+  const e=await environment(),p=plan();
+  for(const shot of e.response.shots){shot.scene.location='kitchen';shot.composition.continuity_key='one-scene';}
+  e.response.shots[1].narrative_layer='memory';
+  try{
+    assert.equal(await e.context.storyboardCompilePrompt(null,{plan:p}),true,JSON.stringify(e.errors));
+    assert.equal(await e.context.storyboardGenerate(null,{plan:p,automatic:true}),true,JSON.stringify(e.notices));
+    assert.equal(e.jobs.length,3);assert.equal(e.records.size,3);
+    assert.deepEqual([...e.records.values()].map(row=>row.scope.narrativeLayer),['present','memory','present']);
+    assert.deepEqual(e.jobs.map(job=>job.profile.comfyRouteBinding.id),['portrait','landscape','portrait']);
+  }finally{await e.close();}
+});
+
 test('lost nodes or scope changes stop actual preparation without queued images or persistent claims',async()=>{
   for(const failure of ['nodes','account','mode']){
     const e=await environment(),p=plan();

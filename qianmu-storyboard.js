@@ -963,11 +963,11 @@ export function normalizeStoryboardSceneFingerprint(value = {}, fallback = {}) {
 export function compareStoryboardSceneFingerprints(left, right) {
   const a = normalizeStoryboardSceneFingerprint(left), b = normalizeStoryboardSceneFingerprint(right);
   const reasons = [];
+  if (a.narrativeLayer !== b.narrativeLayer) return { sameScene: false, score: 0, reasons: ['narrative_layer_changed'], left: a, right: b };
   if (a.explicit && b.explicit) {
     const sameScene = a.sceneId === b.sceneId;
     return { sameScene, score: sameScene ? 1 : 0, reasons: [sameScene ? 'explicit_scene_id' : 'scene_id_changed'], left: a, right: b };
   }
-  if (a.narrativeLayer !== b.narrativeLayer) return { sameScene: false, score: 0, reasons: ['narrative_layer_changed'], left: a, right: b };
   const locationScore = a.location && b.location ? similarity(sceneSignal(a.location), sceneSignal(b.location)) : 0;
   const sceneTextScore = a.sceneText && b.sceneText ? similarity(sceneSignal(a.sceneText), sceneSignal(b.sceneText)) : 0;
   const castScore = castOverlap(a.castIds, b.castIds);
@@ -1419,7 +1419,8 @@ export function evaluateStoryboardShotRhythm(value = []) {
 }
 
 function storyboardShotDifference(previous, shot) {
-  const comparison = previous ? compareStoryboardSceneFingerprints(previous.sceneFingerprint, shot.sceneFingerprint) : null;
+  // A copied fingerprint can outlive an edited shot. The normalized shot's layer is authoritative.
+  const comparison = previous ? compareStoryboardSceneFingerprints({...previous.sceneFingerprint,narrativeLayer:previous.narrativeLayer}, {...shot.sceneFingerprint,narrativeLayer:shot.narrativeLayer}) : null;
   const transition = !previous || !comparison.sameScene;
   const visualChanges = [];
   if (previous) {
@@ -1467,7 +1468,7 @@ export function buildStoryboardSceneCoverageMap(value = []) {
     const entry = {
       shotId: shot.id || `shot-${index + 1}`,
       sceneGroupId: `scene-group-${group}`,
-      sceneFingerprint: shot.sceneFingerprint,
+      sceneFingerprint: {...shot.sceneFingerprint,narrativeLayer:shot.narrativeLayer},
       transition: difference.transition,
       transitionReasons: difference.comparison?.reasons || ['first_shot'],
       informationChanged: difference.informationChanged,
@@ -1620,7 +1621,9 @@ export function prepareStoryboardShotGroup(value = {}) {
   const policy = normalizeStoryboardCompositionPolicy(value.policy), manual = Boolean(value.manual);
   const source = (Array.isArray(value.shots) ? value.shots : []).map(normalizeStoryboardShotSpec);
   const kept = [], skipped = [], seen = new Set(), limit = int(value.maxShots, 1, 12, 4);
-  let continuityLedger = normalizeContinuity(value.continuityLedger);
+  const continuityLedgerLayer=source.some(shot=>shot.narrativeLayer==='present')?'present':source[0]?.narrativeLayer || 'present';
+  const priorLayer=value.continuityLedgerLayer || continuityLedgerLayer;
+  let continuityLedger = normalizeContinuity(priorLayer===continuityLedgerLayer?value.continuityLedger:null);
   const alternateRatio = (shot) => {
     if (continuityLedger.emphasisRatioId && policy.allowedRatioIds.includes(continuityLedger.emphasisRatioId)) return continuityLedger.emphasisRatioId;
     const portraitPreferred = ['reaction', 'detail'].includes(shot.shotRole);
@@ -1643,7 +1646,7 @@ export function prepareStoryboardShotGroup(value = {}) {
       skipped.push({ shot, reason: 'ungrounded_shot', issues: grounding.errors, requiresReplan: true });
       continue;
     }
-    const signature = [shot.sceneFingerprint.id, shot.shotRole, shot.shotScale, shot.subject.toLowerCase(), shot.narrativePurpose.toLowerCase(), shot.composition.cameraSide, shot.composition.angle, shot.composition.focus, shot.composition.framing.join('|')].join('|');
+    const signature = [shot.narrativeLayer, shot.sceneFingerprint.id, shot.shotRole, shot.shotScale, shot.subject.toLowerCase(), shot.narrativePurpose.toLowerCase(), shot.composition.cameraSide, shot.composition.angle, shot.composition.focus, shot.composition.framing.join('|')].join('|');
     if (!manual && seen.has(signature)) { skipped.push({ shot, reason: 'duplicate_coverage' }); continue; }
     if (!manual && kept.length >= limit) { skipped.push({ shot, reason: 'coverage_budget' }); continue; }
     // A shared frame fixes composition, never the number of narrative shots.
@@ -1652,7 +1655,7 @@ export function prepareStoryboardShotGroup(value = {}) {
       skipped.push({ shot, reason: 'difference_budget', issues: difference.issues, requiresReplan: true });
       continue;
     }
-    continuityLedger.facts = expireMomentaryContinuityFacts(continuityLedger.facts);
+    if(shot.narrativeLayer===continuityLedgerLayer)continuityLedger.facts = expireMomentaryContinuityFacts(continuityLedger.facts);
     const order = kept.length;
     if (!shot.composition.ratioId) {
       shot.composition.ratioId = policy.groupStrategy === 'main_secondary' && order > 0 ? alternateRatio(shot) : (continuityLedger.mainRatioId || policy.preferredRatioId);
@@ -1660,7 +1663,10 @@ export function prepareStoryboardShotGroup(value = {}) {
     }
     if (order === 0 && !continuityLedger.mainRatioId) continuityLedger.mainRatioId = shot.composition.ratioId;
     if (order > 0 && policy.groupStrategy === 'main_secondary' && !continuityLedger.emphasisRatioId) continuityLedger.emphasisRatioId = shot.composition.ratioId;
-    seen.add(signature); kept.push(shot); mergeContinuity(shot.continuityUpdates);
+    seen.add(signature); kept.push(shot);
+    // A mixed batch keeps the present world; a memory-only batch keeps its own continuity.
+    // Other-layer facts stay on their shots and cannot overwrite or age the primary layer's state.
+    if(shot.narrativeLayer===continuityLedgerLayer)mergeContinuity(shot.continuityUpdates);
   }
   const coverageMap = buildStoryboardSceneCoverageMap(kept);
   const sceneGroups = [];
@@ -1669,7 +1675,7 @@ export function prepareStoryboardShotGroup(value = {}) {
     if (!active || active.id !== entry.sceneGroupId) sceneGroups.push({ id: entry.sceneGroupId, sceneFingerprint: entry.sceneFingerprint, shotIds: [entry.shotId] });
     else active.shotIds.push(entry.shotId);
   }
-  return { shots: kept, skipped, strategy: policy.groupStrategy, manualOverride: manual, continuityLedger, coverageMap, sceneGroups, rhythm: evaluateStoryboardShotRhythm(kept) };
+  return { shots: kept, skipped, strategy: policy.groupStrategy, manualOverride: manual, continuityLedger, continuityLedgerLayer, coverageMap, sceneGroups, rhythm: evaluateStoryboardShotRhythm(kept) };
 }
 
 function normalizeRouting(value) {
@@ -1834,6 +1840,7 @@ function shotPlans(value, state = {}) {
       origin: ['manual', 'automatic', 'manual_supplement'].includes(plan.origin) ? plan.origin : 'manual',
       paragraphSelection: plan.paragraphSelection ? normalizeStoryboardParagraphSelection(plan.paragraphSelection) : null,
       continuityLedger: archivedSummary && !continuityInput ? null : normalizeContinuity(continuityInput),
+      continuityLedgerLayer: plan.continuityLedgerLayer ? (STORYBOARD_NARRATIVE_LAYERS.includes(plan.continuityLedgerLayer)?plan.continuityLedgerLayer:'[invalid]') : '',
       hasContinuityLedger: Boolean(plan.hasContinuityLedger || continuityInput),
       autoGenerate: Boolean(plan.autoGenerate), promptLocked: Boolean(plan.promptLocked),
       manualReviewRequired: Boolean(plan.manualReviewRequired || shots.some((shot) => shot.requiresManualConfirmation)),
@@ -2119,7 +2126,9 @@ export function createStoryboardWorkflowTicket(input = {}) {
     swipeId: messageRef.swipeId, messageRef, revisionId: messageRef.revisionId,
     idempotencyKey: hash([input.chatKey || messageRef.chatKey, messageRef.messageKey, messageRef.revisionId, compilerSignature, paragraphSelection?.paragraphIds?.join(',') || '', input.id || ''].join('\u241f')),
     origin, autoGenerate: origin === 'automatic' && Boolean(input.autoGenerate), promptLocked: Boolean(input.promptLocked),
-    paragraphSelection, continuityLedger: normalizeContinuity(input.continuityLedger), status: workflowState(input.status), shots: Array.isArray(input.shots) ? input.shots : [],
+    paragraphSelection, continuityLedger: normalizeContinuity(input.continuityLedger),
+    continuityLedgerLayer: input.continuityLedgerLayer ? (STORYBOARD_NARRATIVE_LAYERS.includes(input.continuityLedgerLayer)?input.continuityLedgerLayer:'[invalid]') : '',
+    status: workflowState(input.status), shots: Array.isArray(input.shots) ? input.shots : [],
     createdAt: pos(input.createdAt) || Date.now(), updatedAt: pos(input.updatedAt) || Date.now(),
   };
 }
