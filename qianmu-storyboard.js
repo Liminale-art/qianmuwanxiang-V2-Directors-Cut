@@ -3,7 +3,7 @@ import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BIN
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
 import { retainComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
 import { normalizeComfyCharacterActivation } from './qianmu-comfy-character-contract.js';
-import { retainComfyRouteBinding, retainComfyRoutePromptLayer } from './qianmu-comfy-route-contract.js';
+import { retainComfyRouteBinding, retainComfyRoutePromptLayer, retainComfySceneOrigin } from './qianmu-comfy-route-contract.js';
 import { normalizeWorldSource } from './qianmu-world-source.js';
 import { normalizeCharacterCastingSnapshot, assertCharacterCastingSnapshots } from './qianmu-character-casting.js';
 import { STORYBOARD_PROMPT_FORMATS, retainStoryboardPromptRenderingPack } from './qianmu-prompt-formats.js';
@@ -2364,6 +2364,8 @@ function snapshot(value, fallback = {}) {
     } else if (!result.ok && !profile.comfyWorkflowNotice) profile.comfyWorkflowNotice = result.message;
   }
   if (obj(safe)) {
+    if (Object.hasOwn(raw, 'comfySceneOrigin')) safe.comfySceneOrigin = retainComfySceneOrigin(raw.comfySceneOrigin);
+    delete safe.comfySceneClaim;
     if (Object.hasOwn(raw, 'inlineOrder')) safe.inlineOrder = normalizeStoryboardInlineOrder(raw.inlineOrder);
     delete safe.selectedCharacterId;
     delete safe.selectedCharacters;

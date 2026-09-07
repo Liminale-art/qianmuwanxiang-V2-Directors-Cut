@@ -34,6 +34,7 @@ async function environment({mixed=false,styleLock=true}={}){
   const inspect=async scope=>({...inspectComfySceneRecord(records.get(comfySceneScopeKey(scope)),scope),generation:0});
   const write=async(scope,action)=>{const result=changeComfySceneRecord(records.get(comfySceneScopeKey(scope)),scope,action);records.set(comfySceneScopeKey(scope),result.row);writes.push(action.type);return {view:await inspect(scope),receipt:result.receipt};};
   const store={inspect,reserve:(scope,request)=>write(scope,{...request,type:'reserve'}),begin:receipt=>write(receipt.scope,{type:'begin',receipt}),settle:(receipt,outcome)=>write(receipt.scope,{type:'settle',receipt,outcome}),
+    unlock:(scope,request)=>write(scope,{...request,type:'unlock'}),
     linkStyle:async(from,to,request)=>{const result=copyComfySceneStyleRecord(records.get(comfySceneScopeKey(from)),records.get(comfySceneScopeKey(to)),captureComfySceneStyleLink(from,to,request));records.set(comfySceneScopeKey(to),result.row);return {view:await inspect(to)};},close(){}};
   const load=e.context.featureRuntime.load;
   const manager=locks.createComfySceneCoordinator({store,resolveNamespace:async()=>(await load('imageAdmission')).resolveImageAccountNamespace(),ownerId:'test-page',locks:fakeWebLocks()});
@@ -73,6 +74,33 @@ async function recoveryEnvironment(options={}){
   assert.equal(await e.context.storyboardCompilePrompt(null,{plan:p}),true,JSON.stringify(e.errors));
   return {...e,p,repair:()=>{rejected=false;},admissions:()=>admissions};
 }
+
+test('real frozen history retry restores current scene protection, then an unlocked scene offers independent single-mirror redraw',async()=>{
+  const e=await recoveryEnvironment();
+  try{
+    e.repair();assert.equal(await e.context.storyboardGenerate(null,{plan:e.p,automatic:true}),true,JSON.stringify(e.notices));
+    const first=e.context.storyboardQueue[0],scope=first.comfySceneOrigin.scope;
+    await e.manager.beforeSubmit(first);await e.manager.settle(first,'succeeded');
+    const initial=e.state.logs.find(row=>row.id===first.logId);e.context.storyboardFinishLog(initial,'success',{recordIds:['first-image']});
+    e.state.logs=core.normalizeStoryboardState(copy(e.state)).logs;
+    const log=e.state.logs.find(row=>row.id===first.logId),original=JSON.stringify(log.snapshot),calls=e.llmCalls.length;
+    e.context.storyboardQueue.splice(0,1);e.state.source='novel';e.state.comfyAutoEnabled=false;
+    assert.equal(await e.context.storyboardRetryLog(log),true,JSON.stringify(e.notices));
+    const retry=e.context.storyboardQueue.at(-1);assert.equal(retry.comfySceneClaim,true);assert.equal(retry.comfySceneOrigin.mode,'scene');
+    assert.equal(retry.profile.comfyRouteBinding.id,first.profile.comfyRouteBinding.id);assert.deepEqual(retry.inlineOrder,first.inlineOrder);
+    assert.equal(e.state.logs.find(row=>row.id===retry.logId).params.sceneStyle,'沿用原续场');
+    await e.manager.beforeSubmit(retry);await e.manager.settle(retry,'succeeded');
+    await e.manager.unlock(scope,await e.manager.inspect(scope));
+    let confirms=0;const count=e.context.storyboardQueue.length;e.context.confirmDialog=async()=>{confirms++;return false;};
+    assert.equal(await e.context.storyboardRetryLog(log),false);assert.equal(e.context.storyboardQueue.length,count);assert.equal(confirms,1);
+    e.context.confirmDialog=async()=>{confirms++;return true;};
+    assert.equal(await e.context.storyboardRetryLog(log),true,JSON.stringify(e.notices));
+    const detached=e.context.storyboardQueue.at(-1);assert.equal(detached.comfySceneClaim,undefined);assert.equal(detached.comfySceneOrigin.mode,'independent');
+    assert.deepEqual(detached.inlineOrder,first.inlineOrder);assert.equal((await e.manager.inspect(scope)).lock,null);
+    assert.equal(e.state.logs.find(row=>row.id===detached.logId).params.sceneStyle,'独立重绘（原续场来源）');
+    assert.equal(JSON.stringify(log.snapshot),original);assert.equal(e.llmCalls.length,calls);assert.equal(e.admissions(),5);assert.equal(e.state.source,'novel');
+  }finally{await e.close();}
+});
 
 test('one unselectable mirror preserves a distinct draft and actual independent re-preparation queues only that original slot',async()=>{
   const e=await recoveryEnvironment();

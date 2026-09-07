@@ -13,6 +13,7 @@ import {recipesFixture,namespace} from './helpers/comfy-route-fixture.mjs';
 import {captureComfySceneStyleLink,copyComfySceneStyleRecord} from '../qianmu-comfy-scene-lock.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {fakeWebLocks} from './helpers/web-locks-fixture.mjs';
+import {normalizeComfySceneOrigin,retainComfySceneOrigin} from '../qianmu-comfy-route-contract.js';
 const copy=value=>JSON.parse(JSON.stringify(value)),scope={namespace,chatKey:'chat',continuityId:'program-confirmed-scene',narrativeLayer:'present'};
 function memoryStore(){
   const records=new Map(),calls=[];let afterWrite=()=>{};
@@ -54,6 +55,98 @@ test('one batch proposes one style, attaches checked original facts, then reserv
     batch.close();await e.manager.beforeSubmit(j2);await e.manager.settle(j1,'succeeded');await e.manager.settle(j2,'not_submitted');
     const done=await e.store.inspect(scope);assert.equal(done.established,true);assert.equal(done.pending,0);
   }finally{batch.close();await e.close();}
+});
+
+test('historical provenance survives snapshot normalization but restores a fresh claim and never a historical receipt',async()=>{
+  const e=await fixture(),batch=e.manager.createBatch({prepared:e.prepared,probe:e.probe});
+  try{
+    const shot=await e.makeShot(),choice=await batch.choose(shot,scope),original=e.makeJob(choice,shot,'original');await batch.attach(original,choice);
+    await e.manager.reserve(original);await e.manager.beforeSubmit(original);await e.manager.settle(original,'succeeded');
+    const saved=core.sanitizeStoryboardSnapshot(original),before=JSON.stringify(saved);
+    assert.deepEqual(saved.comfySceneOrigin,original.comfySceneOrigin);assert.equal(saved.comfySceneClaim,undefined);
+    const job={...copy(saved),id:'retry',automatic:false};assert.equal(await e.manager.restore(job), 'linked');
+    await assert.rejects(()=>e.manager.beforeSubmit(job),/尚未取得/);
+    await e.manager.reserve(job);await e.manager.beforeSubmit(job);await e.manager.settle(job,'succeeded');
+    assert.equal((await e.manager.inspect(scope)).pending,0);assert.equal(JSON.stringify(saved),before);
+    assert.equal(e.store.calls.filter(x=>x==='reserve').length,2);assert.equal(job.comfySceneClaim,true);
+  }finally{batch.close();await e.close();}
+});
+
+test('released scene requires explicit independent redraw confirmation and never silently relocks or changes the original',async()=>{
+  const e=await fixture(),batch=e.manager.createBatch({prepared:e.prepared,probe:e.probe});
+  try{
+    const shot=await e.makeShot(),choice=await batch.choose(shot,scope),original=e.makeJob(choice,shot,'original');await batch.attach(original,choice);
+    const saved=core.sanitizeStoryboardSnapshot(original),before=JSON.stringify(saved),calls=e.store.calls.length;
+    const cancelled={...copy(saved),id:'cancelled',automatic:false};let confirmations=0;
+    assert.equal(await e.manager.restore(cancelled,{confirmIndependent:async()=>{confirmations++;return false;}}),'cancelled');
+    assert.equal(cancelled.comfySceneOrigin.mode,'scene');assert.equal(cancelled.comfySceneClaim,undefined);
+    const variant={...copy(saved),id:'variant',automatic:false};
+    assert.equal(await e.manager.restore(variant,{confirmIndependent:async()=>{confirmations++;return true;}}),'independent');
+    assert.equal(variant.comfySceneOrigin.mode,'independent');assert.equal(variant.comfySceneClaim,undefined);assert.equal(e.store.calls.length,calls);
+    assert.equal((await e.manager.inspect(scope)).lock,null);assert.equal(JSON.stringify(saved),before);assert.equal(confirmations,2);
+    const repeat={...core.sanitizeStoryboardSnapshot(variant),id:'repeat',automatic:false};
+    assert.equal(await e.manager.restore(repeat,{confirmIndependent:async()=>{throw Error('already independent');}}),'independent');
+    await assert.rejects(()=>e.manager.reserve(repeat),/预留已失效/);
+  }finally{batch.close();await e.close();}
+});
+
+test('confirmation races and historical account, narrative, fact or recipe mismatches never acquire a scene claim',async()=>{
+  for(const mutation of ['account','layer','facts','recipe','source','automatic','metadata','confirmation-race']){
+    const e=await fixture(),batch=e.manager.createBatch({prepared:e.prepared,probe:e.probe});
+    try{
+      const shot=await e.makeShot(),choice=await batch.choose(shot,scope),original=e.makeJob(choice,shot,'original');await batch.attach(original,choice);
+      const job={...core.sanitizeStoryboardSnapshot(original),id:'retry',automatic:false};
+      if(mutation==='account')e.setAccount('st-user:other');if(mutation==='layer')job.shotSpec.narrativeLayer='memory';
+      if(mutation==='facts')job.shotSpec.subject='changed';if(mutation==='recipe')job.profile.comfyRouteBinding.namespace='st-user:other';
+      if(mutation==='source')job.source='novel';if(mutation==='automatic')job.automatic=true;if(mutation==='metadata')job.comfySceneOrigin=null;
+      await assert.rejects(()=>e.manager.restore(job,{confirmIndependent:async()=>{
+        if(mutation==='confirmation-race')await e.manager.unlock(scope,await e.manager.inspect(scope));return true;
+      }}),undefined,mutation);
+      assert.equal(job.comfySceneClaim,undefined);assert.equal(e.store.calls.filter(x=>x==='reserve').length,0);
+    }finally{batch.close();await e.close();}
+  }
+});
+
+test('origin contract whitelists bounded metadata and keeps malformed-present data distinct from legacy absence',async()=>{
+  const origin={version:1,mode:'scene',scope,poolKey:'a'.repeat(64),candidateId:'first',executionKey:'b'.repeat(64),connectionPresetId:'',sourceHash:'c'.repeat(64)};
+  const dirty={...origin,ownerId:'secret-owner',receipt:{token:'permit'},workflow:'huge graph',scope:{...scope,token:'scope permit'}};
+  assert.deepEqual(normalizeComfySceneOrigin(dirty),origin);
+  assert.deepEqual(core.sanitizeStoryboardSnapshot({source:'comfy',comfySceneOrigin:dirty,comfySceneClaim:true}).comfySceneOrigin,origin);
+  for(const bad of [null,{}, {...origin,version:2},{...origin,sourceHash:''},{...origin,scope:{...scope,chatKey:'x'.repeat(513)}},{...origin,mode:'automatic'}]){
+    assert.deepEqual(retainComfySceneOrigin(bad),{invalid:true});assert.deepEqual(core.sanitizeStoryboardSnapshot({comfySceneOrigin:bad}).comfySceneOrigin,{invalid:true});
+  }
+  const e=await fixture();try{assert.equal(await e.manager.restore({source:'comfy'}),'legacy');assert.equal(e.store.calls.length,0);}finally{await e.close();}
+});
+
+test('valid edited character facts or implementation can be independently redrawn without overwriting the original scene style',async()=>{
+  for(const change of ['facts','implementation']){
+    const e=await fixture(),batch=e.manager.createBatch({prepared:e.prepared,probe:e.probe});
+    try{
+      const shot=await e.makeShot(),choice=await batch.choose(shot,scope),original=e.makeJob(choice,shot,'original');await batch.attach(original,choice);
+      await e.manager.reserve(original);await e.manager.beforeSubmit(original);await e.manager.settle(original,'succeeded');
+      const job={...core.sanitizeStoryboardSnapshot(original),id:'edit',automatic:false},before=JSON.stringify(await e.manager.inspect(scope));
+      if(change==='facts'){
+        job.shotSpec.subject='revised composition';job.shotSpec.promptRenderingPack=await bindStoryboardPromptRenderings(job.shotSpec,
+          {tags:{global:'revised',characters:[],negative:''},natural_language:{global:'Revised composition.',characters:[],negative:''}});
+      }else job.profile.comfyCharacterEnabled=true;
+      let confirmed=0;assert.equal(await e.manager.restore(job,{confirmIndependent:async()=>{confirmed++;return true;}}),'independent');
+      assert.equal(confirmed,1);assert.equal(job.comfySceneClaim,undefined);assert.equal(JSON.stringify(await e.manager.inspect(scope)),before);
+      assert.equal(original.comfySceneOrigin.mode,'scene');assert.equal(job.comfySceneOrigin.sourceHash,original.comfySceneOrigin.sourceHash);
+    }finally{batch.close();await e.close();}
+  }
+});
+
+test('a restored claim rechecks current revision and origin at reservation instead of trusting the displayed source',async()=>{
+  for(const change of ['unlock','origin']){
+    const e=await fixture(),batch=e.manager.createBatch({prepared:e.prepared,probe:e.probe});
+    try{
+      const shot=await e.makeShot(),choice=await batch.choose(shot,scope),first=e.makeJob(choice,shot,'first');await batch.attach(first,choice);
+      await e.manager.reserve(first);await e.manager.beforeSubmit(first);await e.manager.settle(first,'succeeded');
+      const job={...core.sanitizeStoryboardSnapshot(first),id:'retry',automatic:false};assert.equal(await e.manager.restore(job),'linked');
+      if(change==='unlock')await e.manager.unlock(scope,await e.manager.inspect(scope));else job.comfySceneOrigin.mode='independent';
+      await assert.rejects(()=>e.manager.reserve(job));assert.equal(e.store.calls.filter(x=>x==='reserve').length,1);
+    }finally{batch.close();await e.close();}
+  }
 });
 test('explicit cross-floor style is consumed by the actual selector and claims, not treated as a passed technical check',async()=>{
   const e=await fixture(),batch=e.manager.createBatch({prepared:e.prepared,probe:e.probe}),targetScope={...scope,continuityId:'next-floor'};

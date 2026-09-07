@@ -1,9 +1,9 @@
 // Scene claims surround, but never replace, the independent image-admission and provider gates.
 import {createComfySceneLockStore} from './qianmu-comfy-lock-store.js';
 import {comfySceneScope,comfySceneScopeKey,comfySceneLockError,captureComfySceneStyleLink} from './qianmu-comfy-scene-lock.js';
-import {comfyCandidateExecutionKey} from './qianmu-comfy-selection.js';
+import {comfyCandidateExecutionKey,COMFY_SELECTION_SCHEMA} from './qianmu-comfy-selection.js';
 import {resolveStoryboardPromptRendering} from './qianmu-prompt-formats.js';
-import {assertComfyRouteNamespace} from './qianmu-comfy-route-contract.js';
+import {assertComfyRouteNamespace,normalizeComfySceneOrigin} from './qianmu-comfy-route-contract.js';
 export {createComfyBatchSceneScopes,createComfyDraftSceneScopes} from './qianmu-comfy-scene-lock.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
@@ -12,7 +12,7 @@ const fail=(code,message)=>{throw comfySceneLockError(code,message);};
 const capture=value=>Array.isArray(value)?value.map(capture):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([k,v])=>[k,capture(v)])):value;
 const equal=(a,b)=>Object.is(a,b)||Boolean(a&&b&&typeof a==='object'&&typeof b==='object'&&Array.isArray(a)===Array.isArray(b)
   &&Object.keys(a).length===Object.keys(b).length&&Object.keys(a).every(key=>Object.hasOwn(b,key)&&equal(a[key],b[key])));
-const routeFacts=job=>[job.source,job.profile,job.connection,job.chatKey,job.planId,job.planShotId,job.shotSpec];
+const routeFacts=job=>[job.source,job.profile,job.connection,job.chatKey,job.planId,job.planShotId,job.shotSpec,job.comfySceneOrigin];
 // A page-owned Web Lock dies with the document; elapsed time is never used as evidence of death.
 export function createComfySceneOwnerLease({locks=globalThis.navigator?.locks,ownerId,timeoutMs=6000}={}){
   const leases=new Map();let closed=false;
@@ -84,12 +84,42 @@ export function createComfySceneCoordinator({resolveNamespace,store=createComfyS
           if(await comfyCandidateExecutionKey({target})!==choice.proposedLock.executionKey)fail('scope','本镜配置与选定工作流不符');await current();
           if(!selected.sourceHash||job.shotSpec?.promptRenderingPack?.sourceHash!==selected.sourceHash)fail('scope','本镜取景事实与选择时不符');
           await resolveStoryboardPromptRendering(job.shotSpec,job.shotSpec.promptRenderingPack,job.profile.comfyRoutePromptFormat,{guard:current});await current();
+          job.comfySceneOrigin=normalizeComfySceneOrigin({...choice.proposedLock,version:1,mode:'scene',
+            connectionPresetId:choice.target.connectionPresetId||'',sourceHash:selected.sourceHash});
           Object.defineProperty(job,'comfySceneClaim',{value:true,enumerable:false});
           const claim={namespace,observed:selected.observed,proposed:copy(choice.proposedLock),facts:capture(routeFacts(job)),receipt:null,begun:false};
           claims.set(job,claim);return true;
         },
         close(){ended=true;observations.clear();},
       };
+    },
+    async restore(job,{valid=()=>true,confirmIndependent=async()=>false}={}){
+      if(!Object.hasOwn(job,'comfySceneOrigin'))return 'legacy';
+      if(job.automatic||claims.has(job)||job.comfySceneClaim)fail('receipt','历史续场只可由本次手动重试重新核对');
+      const origin=normalizeComfySceneOrigin(job.comfySceneOrigin),scope=comfySceneScope(origin.scope),namespace=scope.namespace;
+      const facts=capture(routeFacts(job)),current=()=>valid()&&equal(facts,routeFacts(job));
+      const check=()=>guard(namespace,current);await check();
+      if(job.source!=='comfy'||!job.id||job.chatKey!==scope.chatKey||job.shotSpec?.narrativeLayer!==scope.narrativeLayer)fail('scope','原图聊天或叙事层与续场来源不符');
+      const target={providerId:'comfy',modelId:job.profile?.model,capabilityModelId:job.profile?.capabilityModelId,
+        connectionPresetId:origin.connectionPresetId,parameterPresetId:'',comfyWorkflowBinding:job.profile?.comfyRouteBinding,
+        comfyCharacterEnabled:job.profile?.comfyCharacterEnabled===true,comfyReferences:job.profile?.comfyReferences??null};
+      if(target.comfyWorkflowBinding?.namespace!==namespace||origin.connectionPresetId&&job.connection?.id!==origin.connectionPresetId)fail('scope','原图工作流与续场来源不符');
+      const matchesOrigin=await comfyCandidateExecutionKey({target})===origin.executionKey&&job.shotSpec?.promptRenderingPack?.sourceHash===origin.sourceHash;
+      await check();await resolveStoryboardPromptRendering(job.shotSpec,job.shotSpec.promptRenderingPack,job.profile.comfyRoutePromptFormat,{guard:check});await check();
+      if(origin.mode==='independent')return 'independent';
+      const proposed={schema:COMFY_SELECTION_SCHEMA,scope,poolKey:origin.poolKey,candidateId:origin.candidateId,executionKey:origin.executionKey};
+      const view=await store.inspect(scope);await check();
+      if(!matchesOrigin||!view.lock||!same(view.lock,proposed)){
+        if(!await confirmIndependent())return 'cancelled';
+        await check();const latest=await store.inspect(scope);await check();
+        if(latest.generation!==view.generation||latest.revision!==view.revision)fail('conflict','确认期间续场状态已变化，请重新核对');
+        job.comfySceneOrigin={...origin,mode:'independent'};
+        return 'independent'; // No write, relock, or historical receipt restoration.
+      }
+      Object.defineProperty(job,'comfySceneClaim',{value:true,enumerable:false});
+      claims.set(job,{namespace,observed:{generation:view.generation,lockRevision:view.lockRevision},proposed,
+        facts:capture(routeFacts(job)),receipt:null,begun:false});
+      return 'linked';
     },
     async reserve(job,valid=()=>true){
       const claim=claimFor(job),current=()=>valid()&&equal(claim.facts,routeFacts(job));await guard(claim.namespace,current);

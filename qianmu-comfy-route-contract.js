@@ -1,4 +1,5 @@
 // Lightweight, version-pinned route identity. Not a workflow, credential, permission or execution receipt.
+import {COMFY_CLASSIFICATION_VALUES} from './qianmu-comfy-classification.js';
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const identifier = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(value);
 const digest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -39,4 +40,23 @@ export function comfyRouteBindingKey(value) {
 export function retainComfyRoutePromptLayer(value) {
   if (!object(value) || ['positive','negative'].some(key => typeof value[key] !== 'string' || value[key].length > 12000)) return { invalid: true };
   return { positive: value.positive, negative: value.negative };
+}
+
+// Historical provenance only. Never retain a reservation, owner or execution receipt here.
+export function normalizeComfySceneOrigin(value) {
+  const scope=value?.scope;
+  if(!object(value)||value.version!==1||!['scene','independent'].includes(value.mode)||!object(scope)
+    ||typeof scope.chatKey!=='string'||!scope.chatKey||scope.chatKey.length>512||scope.chatKey!==scope.chatKey.trim()
+    ||/[\u0000-\u001f\u007f]/.test(scope.chatKey)||!identifier(scope.continuityId)
+    ||!COMFY_CLASSIFICATION_VALUES.narrativeLayers.includes(scope.narrativeLayer)
+    ||!digest(value.poolKey)||!digest(value.executionKey)||!digest(value.sourceHash)||!identifier(value.candidateId)
+    ||!(value.connectionPresetId===''||identifier(value.connectionPresetId))) {
+    throw comfyRouteError('原图续场来源无效，请载入镜头台重新确认');
+  }
+  return {version:1,mode:value.mode,scope:{namespace:assertComfyRouteNamespace(scope.namespace),chatKey:scope.chatKey,
+    continuityId:scope.continuityId,narrativeLayer:scope.narrativeLayer},poolKey:value.poolKey,candidateId:value.candidateId,
+    executionKey:value.executionKey,connectionPresetId:value.connectionPresetId,sourceHash:value.sourceHash};
+}
+export function retainComfySceneOrigin(value) {
+  try{return normalizeComfySceneOrigin(value);}catch(_){return {invalid:true};}
 }
