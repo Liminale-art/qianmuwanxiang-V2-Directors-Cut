@@ -62,6 +62,7 @@ async function prepareVibes(payload,{namespace,model,connection,apiKey,call,read
             const received=await service.result(prepared);await guard();
             used=ref(await rpc('attach-encoding',{...selection,encoding:received.encoding,expectedSourceId:prepared.identity.sourceId}));
             await rpc('remember-encoding',{...options,identity:prepared.identity,assetRef:used});
+            if(received.channelNeedsReview)notify('Vibe 编码已取回；NAI 共用渠道尚待核查');
           }else if(remoteState&&remoteState.status!=='rejected')throw blocked();
         }
       }
@@ -75,7 +76,7 @@ async function prepareVibes(payload,{namespace,model,connection,apiKey,call,read
         const attemptId=crypto.randomUUID(),reservation=await rpc('encoding-reserve',{...options,identity:prepared.identity,attemptId,retryAttemptId:cached?.attemptId||''});
         if(!reservation.owned){if(reservation.receipt?.status==='ready')used=ref(reservation.receipt.assetRef);else throw blocked();}
         else{
-          let authorized=false,completed=false,localOnly=false;
+          let authorized=false,completed=false,localOnly=false,channelNeedsReview=false;
           try{
             const deliver=service?(input,hooks)=>service.encode(input,hooks,remoteState?.status==='rejected'?remoteState.attemptId:''):encode;
             const encoded=await deliver(input,{guard,authorize:async(actual,key)=>{
@@ -84,7 +85,7 @@ async function prepareVibes(payload,{namespace,model,connection,apiKey,call,read
             }});
             // Once the upstream returned, preserve its result under the ORIGINAL account even if the UI changed.
             // This writes only immutable local recovery data; a stale job is never allowed to use it or generate an image.
-            completed=true;localOnly=encoded.serviceStored===false;
+            completed=true;localOnly=encoded.serviceStored===false;channelNeedsReview=encoded.channelNeedsReview===true;
             if(!authorized||encoded.cacheKey!==prepared.cacheKey||JSON.stringify(encoded.identity)!==JSON.stringify(prepared.identity))throw fail('result','编码返回身份不符，请核查原请求','unknown');
             used=ref(await call('attach-encoding',{namespace,...selection,encoding:encoded.encoding,expectedSourceId:prepared.identity.sourceId}));
             await call('encoding-transition',{namespace,...options,attemptId,status:'ready',assetRef:used});
@@ -95,7 +96,7 @@ async function prepareVibes(payload,{namespace,model,connection,apiKey,call,read
             throw fail('encoding',completed?'Vibe 编码已返回，但本地关联未完成；请保留缓存并核查，未重复扣费'
               :state==='unknown'?'Vibe 编码结果未确认，请核查渠道记录，勿重复提交':error?.message||'Vibe 编码未完成',state);
           }
-          await guard();notify(localOnly?'Vibe 编码已保存在本设备；服务暂存失败，请导出备份，勿重复编码':'Vibe 编码已缓存');
+          await guard();notify(localOnly?'Vibe 编码已保存在本设备；服务暂存失败，请导出备份，勿重复编码':channelNeedsReview?'Vibe 编码已缓存；NAI 共用渠道尚待核查':'Vibe 编码已缓存');
         }
       }
       // Resolve the durable asset, not the transient HTTP bytes. Corruption or deletion must not trigger another charge.

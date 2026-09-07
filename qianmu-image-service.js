@@ -4,6 +4,7 @@ import { createImageServiceStore } from './qianmu-image-service-store.js';
 import { createImageServiceQueue, imageServiceChannelKey, describeImageServiceRequest, normalizeImageServiceChannel } from './qianmu-image-service-queue.js';
 import { createImageServiceResults } from './qianmu-image-service-results.js';
 import { imageServiceAccount, imageServiceAccountStillMatches, imageServiceTaskView } from './qianmu-image-service-access.js';
+import {createNovelServiceChannel} from './qianmu-novel-service-channel.js';
 
 export const IMAGE_SERVICE_TASK_VERSION = 1;
 const fail = (code, message, state = 'not_submitted', status = 409) => Object.assign(new Error(message), {
@@ -26,7 +27,7 @@ export function imageServiceTaskErrorPayload(error) {
   }
   return result;
 }
-export function createImageService({ dataRoot, store = createImageServiceStore({ dataRoot }), results,
+export function createImageService({ dataRoot, store = createImageServiceStore({ dataRoot,lockWaitMs:2000 }), results, channel = createNovelServiceChannel({dataRoot}),
   generate = generateImage, materialize = materializeImageResult, gatewayOptions = {}, queueOptions = {} } = {}) {
   const cache = results || createImageServiceResults({ dataRoot, store });
   const queue = createImageServiceQueue({ ...queueOptions, store, ownerId: randomUUID() });
@@ -67,6 +68,8 @@ export function createImageService({ dataRoot, store = createImageServiceStore({
     }
     validAccount(request, value);
     let warning = '';
+    try{await channel.completeFromCache({namespace:value.namespace,kind:'image',attemptId:row.attemptId,requestDigest:row.requestDigest});}
+    catch(_){warning='原图已取回；NAI 共用渠道尚待核查';}
     if (!jobs.has(jobKey(value)) && ['submitting','uncertain','acknowledged'].includes(row.status)) {
       // A cached image with the exact request/fence proves completion. Do not
       // reconcile an actively running callback or overwrite a replaced request.
@@ -148,7 +151,9 @@ export function createImageService({ dataRoot, store = createImageServiceStore({
       }, async ticket => {
         const identity = { namespace: value.namespace, channelKey: value.channelKey, attemptId: value.attemptId, requestDigest: description.requestDigest, fence: ticket.fence };
         await cache.reserve(identity);
-        let result = await generate(frozen, { ...gatewayOptions, beforeSubmit: async () => { await ticket.beforeSubmit(); if (job) job.submitted = true; } });
+        let result = await channel.run({apiKey:frozen.apiKey,namespace:value.namespace,kind:'image',attemptId:value.attemptId,requestDigest:description.requestDigest,
+          signal,valid:()=>!closed&&imageServiceAccountStillMatches(request,value),onWarning:()=>{if(job)job.warning='图片已生成；NAI 共用渠道尚待核查';}},
+          shared=>generate(frozen, { ...gatewayOptions, beforeSubmit: async () => { await ticket.beforeSubmit();await shared.beforeSubmit(); if (job) job.submitted = true; } }));
         let stored, warning = '';
         try {
           stored = await cache.save(identity, result);
@@ -205,7 +210,7 @@ export function createImageService({ dataRoot, store = createImageServiceStore({
       return { ok: true, ...(await cache.discard(resultIdentity(value, row), input.receipt, { valid: () => imageServiceAccountStillMatches(request, value) })) };
     },
     async close() {
-      closed = true; queue.close(); await Promise.allSettled([...jobs.values()].map(job => job.done).concat([...retrieving.values()], [...catalogs])); await store.close();
+      closed = true; queue.close(); await Promise.allSettled([...jobs.values()].map(job => job.done).concat([...retrieving.values()], [...catalogs])); await channel.close();await store.close();
     },
     inspect() { return { ...queue.inspect(), tasks: jobs.size, admitted, admissionBytes }; },
   };

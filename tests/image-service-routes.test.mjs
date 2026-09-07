@@ -5,6 +5,8 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { init, exit } from '../server-plugin.js';
+import {encodeNovelVibe,prepareNovelVibeEncoding} from '../qianmu-vibe-encoding.js';
+import {imageServiceAccount} from '../qianmu-image-service-access.js';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=';
 const key = 'mock-route-key';
@@ -12,11 +14,12 @@ const input = attemptId => ({ schemaVersion: 1, attemptId, automatic: true, requ
 const query = attemptId => ({ schemaVersion: 1, attemptId, apiKey: key });
 const response = () => new Response(JSON.stringify({ data: [{ b64_json: PNG }] }), { headers: { 'Content-Type': 'application/json' } });
 const deferred = () => { let resolve; const promise = new Promise(yes => { resolve = yes; }); return { promise, resolve }; };
-async function fixture(t, { fetchImpl = response, shutdown = () => {} } = {}) {
+async function fixture(t, { fetchImpl = response, vibeFetchImpl, shutdown = () => {} } = {}) {
   const parent = await fs.realpath(os.tmpdir()), root = await fs.mkdtemp(path.join(parent, 'qianmu-http-test-'));
   const routes = new Map();
   await init({ get: (route, handler) => routes.set(`GET ${route}`, handler), post: (route, handler) => routes.set(`POST ${route}`, handler) }, {
     dataRoot: root, imageTaskOptions: { gatewayOptions: { resolveHost: async () => [{ address: '8.8.8.8', family: 4 }], fetchImpl } },
+    ...(vibeFetchImpl?{vibeServiceOptions:{encode:(input,hooks)=>encodeNovelVibe(input,{...hooks,fetchImpl:vibeFetchImpl})}}:{}),
   });
   const server = http.createServer(async (req, res) => {
     // An isolated host-auth stub; the production plugin receives Request.user
@@ -37,11 +40,12 @@ async function fixture(t, { fetchImpl = response, shutdown = () => {} } = {}) {
     const real = await fs.realpath(root); assert.equal(path.dirname(real), parent); assert.match(path.basename(real), /^qianmu-http-test-/); await fs.rm(real, { recursive: true });
   });
   const base = `http://127.0.0.1:${server.address().port}`;
-  const call = async (route, body, account = 'alice', options = {}) => fetch(`${base}/image/tasks/${route}`, {
+  const callEndpoint = async (route, body, account = 'alice', options = {}) => fetch(`${base}${route}`, {
     method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', ...(account ? { 'x-test-account': account } : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }), ...options,
   });
-  return { root, call };
+  const call=(route,...args)=>callEndpoint(`/image/tasks/${route}`,...args);
+  return { root, call, callEndpoint };
 }
 
 test('task capability handshake is authenticated, does not create storage, and names its coordination boundary', async t => {
@@ -50,8 +54,25 @@ test('task capability handshake is authenticated, does not create storage, and n
   const result = await call('capabilities');
   assert.equal(result.headers.get('cache-control'), 'no-store');
   const body = await result.json(); assert.equal(body.schemaVersion, 1); assert.equal(body.scope, 'coordinated-endpoints-only');
+  assert.equal(body.sharedNativeChannelVersion,1);
   assert.deepEqual(body.providers, ['novel']); assert.equal(body.automaticRestartReplay, false);
   assert.deepEqual(await fs.readdir(root), []);
+});
+
+test('legacy native image HTTP entry shares the Vibe channel, keeps its image response and cannot bypass authentication',async t=>{
+  const began=deferred(),release=deferred();let images=0,encodes=0;
+  const {call,callEndpoint}=await fixture(t,{fetchImpl:async()=>{images++;return response();},
+    vibeFetchImpl:async()=>{encodes++;began.resolve();await release.promise;return new Response('binary',{headers:{'content-type':'application/binary'}});},shutdown:release.resolve});
+  const image=input('legacy').request;
+  const unauthenticated=await callEndpoint('/image/generate',image,'');assert.equal(unauthenticated.status,401);assert.equal(images,0);
+  const raw={version:1,provider:'novel',baseUrl:'https://relay.example',model:'nai-diffusion-4-5-full',apiKey:key,information:0,
+    image:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg=='};
+  const envelope={version:1,request:raw,confirmed:true,cacheKey:(await prepareNovelVibeEncoding(raw)).cacheKey,expectedAccount:imageServiceAccount({user:{profile:{handle:'alice',enabled:true}}}).namespace};
+  const capability=await (await callEndpoint('/image/vibe/capabilities')).json();assert.equal(capability.sharedNativeChannelVersion,1);
+  const encoding=callEndpoint('/image/vibe/submit',envelope);await began.promise;const generation=callEndpoint('/image/generate',image);
+  await new Promise(resolve=>setTimeout(resolve,60));assert.equal(images,0);release.resolve();assert.equal((await encoding).status,200);
+  const generated=await (await generation).json();assert.equal(generated.images[0].data,PNG);assert.equal(images,1);assert.equal(encodes,1);
+  const original=await (await call('result',query(generated.serviceTask.attemptId))).json();assert.equal(original.images[0].data,PNG);assert.equal(images,1);
 });
 
 test('real HTTP submission survives normal request-body close and uses query/result/acknowledge routes', async t => {

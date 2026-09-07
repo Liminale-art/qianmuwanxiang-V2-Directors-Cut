@@ -5,6 +5,7 @@ import { constants } from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { normalizeImageServiceChannel } from './qianmu-image-service-queue.js';
+import {normalizeNovelServiceChannel} from './qianmu-novel-service-channel-state.js';
 
 const DISK_SCHEMA = 'qianmu.image-service-disk.v1';
 const HASH = /^[a-f0-9]{64}$/;
@@ -18,16 +19,18 @@ const isMissing = cause => cause?.code === 'ENOENT';
 const sameFile = (one, two) => one.dev === two.dev && one.ino === two.ino;
 
 export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels = 128, scope = 'novel',
-  maxRecordBytes = 2 * 1024 * 1024, maxPending = 64 } = {}) {
+  maxRecordBytes = 2 * 1024 * 1024, maxPending = 64, lockWaitMs = 0 } = {}) {
   if (typeof dataRoot !== 'string' || !path.isAbsolute(dataRoot) || dataRoot.includes('\0') || path.resolve(dataRoot) === path.parse(path.resolve(dataRoot)).root) {
     throw error('root', '增强服务缺少可信的 ST 数据目录');
   }
   // Host-only, closed choice. Existing NAI data stays at its original path.
-  if (!['novel', 'comfy', 'vibe'].includes(scope)) throw error('scope', '生图服务记录范围无效');
-  const queueDirectory = scope === 'vibe' ? 'vibe-queue-v1' : scope === 'comfy' ? 'comfy-queue-v1' : 'image-queue-v1';
+  if (!['novel', 'comfy', 'vibe', 'novel-channel'].includes(scope)) throw error('scope', '生图服务记录范围无效');
+  const queueDirectory = scope === 'novel-channel' ? 'novel-channel-v1' : scope === 'vibe' ? 'vibe-queue-v1' : scope === 'comfy' ? 'comfy-queue-v1' : 'image-queue-v1';
+  const normalize=scope==='novel-channel'?normalizeNovelServiceChannel:normalizeImageServiceChannel;
   const channelLimit = Math.max(1, Math.min(128, Math.trunc(Number(maxChannels) || 128)));
   const recordLimit = Math.max(1024, Math.min(2 * 1024 * 1024, Math.trunc(Number(maxRecordBytes) || 2 * 1024 * 1024)));
   const pendingLimit = Math.max(1, Math.min(64, Math.trunc(Number(maxPending) || 64)));
+  const lockWait = Math.max(0, Math.min(2000, Number(lockWaitMs) || 0));
   const io = fileSystem;
   let directory, initialization, tail = Promise.resolve(), pending = 0, closed = false, poisoned = false;
   const assertOpen = () => { if (closed || poisoned) throw error('closed', '生图服务记录已暂停，请先核查服务状态'); };
@@ -86,7 +89,7 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
       try { envelope = JSON.parse(buffer.toString('utf8', 0, length)); } catch (_) { throw error('corrupt', '生图服务记录损坏，请先核查原请求'); }
       if (envelope?.schema !== DISK_SCHEMA || envelope.channelKey !== key || !Number.isSafeInteger(envelope.revision) || envelope.revision < 1
         || !envelope.state || envelope.checksum !== sha(JSON.stringify(envelope.state))) throw error('corrupt', '生图服务记录校验失败，请先核查原请求');
-      return { revision: envelope.revision, state: normalizeImageServiceChannel(envelope.state, key) };
+      return { revision: envelope.revision, state: normalize(envelope.state, key) };
     } finally { await handle.close(); }
   }
   async function checkCapacity(existing) {
@@ -101,7 +104,7 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
   async function atomicWrite(key, previous, state) {
     const revision = (previous?.revision || 0) + 1;
     if (!Number.isSafeInteger(revision)) throw error('record', '生图服务记录版本已达到上限');
-    const normalized = normalizeImageServiceChannel(state, key);
+    const normalized = normalize(state, key);
     const body = JSON.stringify({ schema: DISK_SCHEMA, channelKey: key, revision, checksum: sha(JSON.stringify(normalized)), state: normalized });
     if (Buffer.byteLength(body) > recordLimit) throw error('full', '此生图连接记录已满，请先导出或整理');
     const temporary = path.join(directory, `.write-${randomUUID()}.tmp`), target = path.join(directory, `${key}.json`);
@@ -124,8 +127,16 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
     await checkMaintenance();
     const lock = path.join(directory, '.transaction.lock');
     let handle, identity;
-    try { handle = await io.open(lock, 'wx', 0o600); }
-    catch (cause) { if (cause?.code === 'EEXIST') throw error('busy', '生图服务记录正在使用或等待恢复，请先核查'); throw cause; }
+    const deadline=Date.now()+lockWait;
+    while(!handle){
+      try { handle = await io.open(lock, 'wx', 0o600); }
+      catch (cause) {
+        if(cause?.code!=='EEXIST')throw cause;
+        if(Date.now()>=deadline)throw error('busy', '生图服务记录正在使用或等待恢复，请先核查');
+        // Wait only for a lock not acquired by us. No expiry, deletion, committed transaction retry or provider replay.
+        await new Promise(resolve=>setTimeout(resolve,25));await initialize();await checkMaintenance();
+      }
+    }
     try {
       identity = await handle.stat();
       await handle.writeFile(JSON.stringify({ schema: 'qianmu.image-service-lock.v1', owner: randomUUID(), pid: process.pid }));

@@ -185,7 +185,7 @@ export async function init(router, options = {}) {
   router.get('/image/vibe/capabilities',(req,res)=>{
     prepareImageResponse(res);
     try{const account=imageServiceAccount(req);vibesFor(req);return res.json({ok:true,version:1,accountBindingVersion:1,expectedAccount:account.namespace,
-      nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024});}
+      nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024,sharedNativeChannelVersion:1});}
     catch(error){const result=vibeServiceErrorPayload(error);return res.status(result.status).json(result.body);}
   });
   for(const action of ['query','result','submit'])router.post(`/image/vibe/${action}`,async(req,res)=>{
@@ -255,7 +255,7 @@ export async function init(router, options = {}) {
       tasksFor(req);
       return res.json({ ok: true, schemaVersion: IMAGE_SERVICE_TASK_VERSION, taskLocatorVersion: 1, accountBindingVersion: 1, catalogVersion: 1, providers: ['novel'], protocols: ['novelai'],
         scope: 'coordinated-endpoints-only', resultRetrieval: true, resultAcknowledgement: true, explicitCacheCleanup: true,
-        maxPending: 32, maxActive: 2, automaticRestartReplay: false,
+        maxPending: 32, maxActive: 2, automaticRestartReplay: false, sharedNativeChannelVersion: 1,
       });
     } catch (error) { const result = imageServiceTaskErrorPayload(error); return res.status(result.status).json(result.body); }
   });
@@ -329,9 +329,15 @@ export async function init(router, options = {}) {
         if (!res.destroyed && !res.writableEnded) return res.json(result);
         return undefined;
       }
+      if(String(req.body?.provider||'').trim().toLowerCase()==='novel'&&['','novelai'].includes(String(req.body?.protocol||'').trim().toLowerCase())){
+        // Preserve the legacy image response, but never let this entry bypass the authenticated native queue.
+        // Old callers lack an idempotency ID; the returned serviceTask locates this original instead of replaying it.
+        const result=await tasksFor(req).submit(req,{schemaVersion:1,attemptId:randomUUID(),automatic:false,request:req.body},{signal:controller.signal});
+        if(!res.destroyed&&!res.writableEnded)return res.json(result);return undefined;
+      }
       return res.json(await generateImage(req.body, { prepareComfyTransport: (input, operation) => createComfyServerTransport(req, input, { ...comfyTransportOptions(), operation }) }));
     } catch (error) {
-      const result = imageGatewayErrorPayload(error);
+      const result = String(error?.code||'').startsWith('image_service_')?imageServiceTaskErrorPayload(error):imageGatewayErrorPayload(error);
       console.warn('[千幕分镜网关] 生成失败', result.body.code, result.body.upstreamStatus || '');
       if (!res.destroyed && !res.writableEnded) return res.status(result.status).json(result.body);
     } finally { res.off?.('close', onClose); }

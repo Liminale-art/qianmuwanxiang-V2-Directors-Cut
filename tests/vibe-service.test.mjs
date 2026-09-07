@@ -35,7 +35,7 @@ test('actual native encoder, durable ledger and private binary cache complete on
   const query={version:1,expectedAccount:input.expectedAccount,cacheKey:input.cacheKey};assert.equal((await e.service.query(actor(),query)).task.status,'ready');
   await e.service.close();const next=e.make();assert.deepEqual((await next.result(actor(),query)).result,result.result);
   assert.deepEqual((await next.submit(actor(),{...input,request:{...input.request,apiKey:'rotated-key'}})).result,result.result);assert.equal(e.posts(),1);
-  const folders=await fs.readdir(path.join(e.root,'.qianmu-service'));assert.deepEqual(folders.sort(),['vibe-queue-v1','vibe-results-v1']);
+  const folders=await fs.readdir(path.join(e.root,'.qianmu-service'));assert.deepEqual(folders.sort(),['novel-channel-v1','vibe-queue-v1','vibe-results-v1']);
   for(const folder of folders){for(const entry of await fs.readdir(path.join(e.root,'.qianmu-service',folder),{withFileTypes:true})){
     const files=entry.isDirectory()?await fs.readdir(path.join(e.root,'.qianmu-service',folder,entry.name)).then(names=>names.map(name=>path.join(e.root,'.qianmu-service',folder,entry.name,name))):[path.join(e.root,'.qianmu-service',folder,entry.name)];
     for(const file of files){const text=await fs.readFile(file,'utf8');assert.equal(text.includes('private-fixture-key'),false);assert.equal(text.includes(image),false);}
@@ -142,14 +142,14 @@ test('client refuses unavailable/forged capabilities and never tries a native UR
     await assert.rejects(()=>client.query(prepared));assert.equal(methods.length,1);assert.equal(methods[0][1],'GET');
   }
   let writes=0;const client=createVibeServiceClient({namespace:'st-user:alice',fetchImpl:async(_url,init)=>{
-    if(init.method!=='GET')writes++;return Response.json({ok:true,version:1,accountBindingVersion:1,expectedAccount:imageServiceAccount(actor()).namespace,nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024});
+    if(init.method!=='GET')writes++;return Response.json({ok:true,version:1,accountBindingVersion:1,expectedAccount:imageServiceAccount(actor()).namespace,nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024,sharedNativeChannelVersion:1});
   }});
   for(const authorize of [undefined,async()=>false,async()=>({yes:true})])await assert.rejects(()=>client.encode(request(),{authorize}));assert.equal(writes,0);
 });
 test('client captures the Key before consent and treats malformed or oversized responses as uncertain, never retrying',async()=>{
   const input=request(),prepared=await prepareNovelVibeEncoding(input);let body,writes=0;
   const client=createVibeServiceClient({namespace:'st-user:alice',fetchImpl:async(_url,init)=>{
-    if(init.method==='GET')return Response.json({ok:true,version:1,accountBindingVersion:1,expectedAccount:imageServiceAccount(actor()).namespace,nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024});
+    if(init.method==='GET')return Response.json({ok:true,version:1,accountBindingVersion:1,expectedAccount:imageServiceAccount(actor()).namespace,nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024,sharedNativeChannelVersion:1});
     writes++;body=JSON.parse(init.body);return Response.json({ok:true,version:1,result:{version:1,cacheKey:prepared.cacheKey,identity:prepared.identity,encoding:btoa('binary'),durationMs:1}});
   }});
   await client.encode(input,{authorize:async()=>{input.apiKey='replaced';return true;}});assert.equal(body.request.apiKey,'private-fixture-key');assert.equal(writes,1);
@@ -160,7 +160,7 @@ test('client captures the Key before consent and treats malformed or oversized r
 });
 test('client retains an unpersisted-server warning as delivery metadata without trusting arbitrary server warning text',async()=>{
   const input=request(),prepared=await prepareNovelVibeEncoding(input),client=createVibeServiceClient({namespace:'st-user:alice',fetchImpl:async(_url,init)=>{
-    if(init.method==='GET')return Response.json({ok:true,version:1,accountBindingVersion:1,expectedAccount:imageServiceAccount(actor()).namespace,nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024});
+    if(init.method==='GET')return Response.json({ok:true,version:1,accountBindingVersion:1,expectedAccount:imageServiceAccount(actor()).namespace,nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024,sharedNativeChannelVersion:1});
     return Response.json({ok:true,version:1,stored:false,warning:'untrusted warning',result:{version:1,cacheKey:prepared.cacheKey,identity:prepared.identity,encoding:btoa('binary'),durationMs:1}});
   }});
   const result=await client.encode(input,{authorize:async()=>true});assert.equal(result.serviceStored,false);assert.equal(JSON.stringify(result).includes('untrusted warning'),false);

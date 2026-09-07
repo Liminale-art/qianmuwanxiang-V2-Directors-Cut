@@ -3,6 +3,8 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-novel-service-channel.js",
+    "qianmu-novel-service-channel-state.js",
     "qianmu-novel-vibe.js",
     "qianmu-vibe-encoding.js",
     "qianmu-vibe-encoding-gateway.js",

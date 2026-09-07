@@ -31,7 +31,7 @@ export function createVibeServiceClient({namespace,headers=()=>({}),fetchImpl=gl
   const locate=async prepared=>{if(!HASH.test(prepared?.cacheKey||''))throw fail('Vibe 编码指纹无效');return {version:1,expectedAccount:await account,cacheKey:prepared.cacheKey};};
   async function capabilities(){
     const value=await call('capabilities');await guard();
-    if(value.accountBindingVersion!==1||value.expectedAccount!==await account||value.nativeEncoding!==true||value.resultRetrieval!==true||value.automaticReplay!==false||value.maxEncodingBytes!==VIBE_ENCODING_LIMIT)throw fail('增强服务尚未提供兼容的 Vibe 编码与领取功能，请更新后端');
+    if(value.accountBindingVersion!==1||value.expectedAccount!==await account||value.nativeEncoding!==true||value.resultRetrieval!==true||value.automaticReplay!==false||value.maxEncodingBytes!==VIBE_ENCODING_LIMIT||value.sharedNativeChannelVersion!==1)throw fail('增强服务尚未提供兼容的 Vibe 编码、串行与领取功能，请更新后端');
   }
   function result(value,prepared){
     const row=value.result;
@@ -41,7 +41,7 @@ export function createVibeServiceClient({namespace,headers=()=>({}),fetchImpl=gl
     if(decoded.length>VIBE_ENCODING_LIMIT||btoa(decoded)!==row.encoding||!Number.isFinite(row.durationMs)||row.durationMs<0)throw fail('服务编码大小或格式无效','unknown');
     // Storage health is delivery metadata, not part of the immutable encoding or its fingerprint.
     return {version:1,cacheKey:row.cacheKey,identity:row.identity,encoding:row.encoding,durationMs:row.durationMs,
-      ...(value.stored===false?{serviceStored:false}:{})};
+      ...(value.stored===false?{serviceStored:false}:{}),...(value.channelNeedsReview===true?{channelNeedsReview:true}:{})};
   }
   return {
     async query(prepared){
