@@ -5,7 +5,7 @@ export const COMFY_SCENE_STORE_LIMITS=Object.freeze({scopes:1024,bytes:4*1024*10
 const bytes=value=>new TextEncoder().encode(JSON.stringify(value)).byteLength;
 const copy=value=>JSON.parse(JSON.stringify(value));
 const problem=()=>comfySceneLockError('storage','续场记录暂不可用，请核查存储空间及原任务');
-export function createComfySceneLockStore({indexedDB=globalThis.indexedDB,dbName='qianmu-comfy-scene-locks',now=Date.now,timeoutMs=6000,limits=COMFY_SCENE_STORE_LIMITS}={}){
+export function createComfySceneLockStore({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-comfy-scene-locks',now=Date.now,timeoutMs=6000,limits=COMFY_SCENE_STORE_LIMITS}={}){
   const quota={};for(const key of Object.keys(COMFY_SCENE_STORE_LIMITS)){const value=limits[key]??COMFY_SCENE_STORE_LIMITS[key];if(!Number.isSafeInteger(value)||value<1||value>COMFY_SCENE_STORE_LIMITS[key])throw problem();quota[key]=value;}
   const timeout=Math.min(15000,Math.max(100,Number(timeoutMs)||6000)),transactions=new Set();let db=null,opening=null,closed=false;
   const closedError=()=>comfySceneLockError('closed','续场记录会话已结束');
@@ -35,8 +35,8 @@ export function createComfySceneLockStore({indexedDB=globalThis.indexedDB,dbName
       ||!Number.isSafeInteger(row.generation)||row.generation<0)throw problem();
     return {count:row.count,bytes:row.bytes,generation:row.generation};
   };
-  async function transaction(mode,work){
-    const connection=await open();if(closed)throw closedError();
+  async function transaction(mode,work,valid=()=>true){
+    const connection=await open();if(closed||!valid())throw closedError();
     return new Promise((resolve,reject)=>{
       let tx,output,error,done=false;
       const finish=cause=>{if(done)return;done=true;clearTimeout(timer);transactions.delete(tx);cause?reject(cause):resolve(output);};
@@ -79,6 +79,35 @@ export function createComfySceneLockStore({indexedDB=globalThis.indexedDB,dbName
         }catch(cause){abort(cause);}
       };
     });
+  }
+  async function clearScope(namespace,chatKey,{expectedGeneration=0,valid=()=>true}={}){
+    namespace=assertComfyRouteNamespace(namespace);
+    if(!Number.isSafeInteger(expectedGeneration)||expectedGeneration<0||typeof valid!=='function')throw problem();
+    if(!valid())throw closedError();
+    const range=chatKey===null?keyRange.bound([namespace],[namespace,[]]):[namespace,chatKey];
+    return transaction('readwrite',(tx,output,abort)=>{
+      let removed=0,removedBytes=0;const meta=tx.objectStore('usage'),read=meta.get(namespace);
+      read.onsuccess=()=>{try{
+        if(!valid())throw closedError();
+        const before=usage(read.result);if(expectedGeneration!==before.generation)throw comfySceneLockError('conflict','续场记录已变化，请重新核对');
+        const request=tx.objectStore('scopes').index('chat').openCursor(range);
+        request.onsuccess=()=>{try{
+          if(!valid())throw closedError();
+          const cursor=request.result;
+          if(!cursor){
+            if(!removed){output({removed,bytes:0,generation:before.generation});return;}
+            const next={count:before.count-removed,bytes:before.bytes-removedBytes,generation:before.generation+1};usage(next);meta.put(next,namespace);
+            output({removed,bytes:removedBytes,generation:next.generation});return;
+          }
+          const value=cursor.value;
+          if(++removed>quota.scopes||value.namespace!==namespace||chatKey!==null&&value.chatKey!==chatKey||value.bytes!==bytes(value.record))throw problem();
+          const view=inspectComfySceneRecord(value.record,value.record.scope,now());
+          if(view.scope.namespace!==namespace||view.scope.chatKey!==value.chatKey||comfySceneScopeKey(view.scope)!==cursor.primaryKey)throw problem();
+          if(view.pending||view.uncertain)throw comfySceneLockError('busy','所选范围仍有在途或结果未明任务，未清理续场记录');
+          removedBytes+=value.bytes;cursor.delete();cursor.continue();
+        }catch(error){abort(error);}};
+      }catch(error){abort(error);}};
+    },valid);
   }
   return {
     inspect:scope=>operate(scope),
@@ -130,31 +159,11 @@ export function createComfySceneLockStore({indexedDB=globalThis.indexedDB,dbName
       });
     },
     async usage(namespace){namespace=assertComfyRouteNamespace(namespace);return transaction('readonly',(tx,output,abort)=>{const request=tx.objectStore('usage').get(namespace);request.onsuccess=()=>{try{output({...usage(request.result),limit:quota.bytes});}catch(error){abort(error);}};});},
-    async clearChat(namespace,chatKey,{expectedGeneration=0}={}){
+    async clearChat(namespace,chatKey,options={}){
       namespace=assertComfyRouteNamespace(namespace);const sample=comfySceneScope({namespace,chatKey,continuityId:'clear',narrativeLayer:'present'});
-      if(!Number.isSafeInteger(expectedGeneration)||expectedGeneration<0)throw problem();
-      return transaction('readwrite',(tx,output,abort)=>{
-        let removed=0,removedBytes=0;const meta=tx.objectStore('usage'),read=meta.get(namespace);
-        read.onsuccess=()=>{try{
-          const before=usage(read.result);if(expectedGeneration!==before.generation)throw comfySceneLockError('conflict','续场记录已变化，请重新核对');
-          const request=tx.objectStore('scopes').index('chat').openCursor([namespace,sample.chatKey]);
-          request.onsuccess=()=>{try{
-            const cursor=request.result;
-            if(!cursor){
-              if(!removed){output({removed,bytes:0,generation:before.generation});return;}
-              const next={count:before.count-removed,bytes:before.bytes-removedBytes,generation:before.generation+1};usage(next);meta.put(next,namespace);
-              output({removed,bytes:removedBytes,generation:next.generation});return;
-            }
-            const value=cursor.value;
-            if(++removed>quota.scopes||value.namespace!==namespace||value.chatKey!==sample.chatKey||value.bytes!==bytes(value.record))throw problem();
-            const view=inspectComfySceneRecord(value.record,value.record.scope,now());
-            if(comfySceneScopeKey(view.scope)!==cursor.primaryKey)throw problem();
-            if(view.pending||view.uncertain)throw comfySceneLockError('busy','本聊天仍有在途或结果未明任务，未清理续场记录');
-            removedBytes+=value.bytes;cursor.delete();cursor.continue();
-          }catch(error){abort(error);}};
-        }catch(error){abort(error);}};
-      });
+      return clearScope(namespace,sample.chatKey,options);
     },
+    clearAccount(namespace,options={}){return clearScope(namespace,null,options);},
     close(){closed=true;for(const tx of transactions){try{tx.abort();}catch(_){}}db?.close();db=null;opening=null;},
   };
 }
