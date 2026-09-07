@@ -10405,3 +10405,24 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-style-recipe-fields input { flex: 0 0 18px; width: 18px; height: 18px; margin: 0; }
 .sd-style-recipe-fields pre { box-sizing: border-box; margin: 0; padding: 8px; max-height: 110px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; text-align: left; border: 1px solid var(--sd-border,#777); border-radius: 8px; font-size: 12px; }
 .sd-style-recipe-review [role=note] { text-align: left; color: var(--sd-muted,#aaa); font-size: 12px; }
+
+/* Logs: quiet summaries, four-state markers, full text only while expanded. */
+#story-director-modal .sd-storyboard-root details.sd-storyboard-log > summary { grid-template-columns: auto auto minmax(0,1fr); gap: 8px; }
+#story-director-modal .sd-storyboard-log > summary time { justify-self: end; min-width: 0; color: var(--sd-muted); font-size: 11px; overflow-wrap: anywhere; }
+#story-director-modal .sd-storyboard-log-kind { font-size: 11px; color: var(--sd-muted); }
+#story-director-modal .sd-storyboard-log { --sd-log-status-color: #92979b; }
+#story-director-modal .sd-storyboard-log[data-tone="green"] { --sd-log-status-color: #6da782; }
+#story-director-modal .sd-storyboard-log[data-tone="yellow"] { --sd-log-status-color: #b99a43; }
+#story-director-modal .sd-storyboard-log[data-tone="red"] { --sd-log-status-color: #ce7373; }
+#story-director-modal .sd-storyboard-log[data-tone] .sd-storyboard-log-status { color: var(--sd-log-status-color); background: color-mix(in srgb,var(--sd-log-status-color) 16%,var(--sd-card)); border-radius: 7px; font-size: 11px; }
+#story-director-modal .sd-storyboard-log .sd-storyboard-log-meta { margin-top: 9px; }
+#story-director-modal .sd-storyboard-log-meta span { max-width: 100%; overflow-wrap: anywhere; font-size: 11px; }
+#story-director-modal .sd-storyboard-log-actions .sd-btn { font-size: 11px; }
+#story-director-modal .sd-storyboard-log-exchange { display: grid; gap: 6px; min-width: 0; }
+#story-director-modal .sd-storyboard-log-exchange header { color: var(--sd-muted); font-size: 12px; text-align: left; }
+#story-director-modal .sd-storyboard-log-exchange pre { min-width: 0; max-height: min(36vh,320px); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; background: var(--sd-folder-head); }
+#story-director-modal .sd-storyboard-log-body .sd-storyboard-log-reason { margin: 0; font-size: 12px; color: var(--sd-log-status-color); overflow-wrap: anywhere; }
+#story-director-modal .sd-storyboard-log-maintenance { min-width: 0; margin-bottom: 8px; }
+#story-director-modal .sd-storyboard-log-maintenance > summary { padding: 4px 0; text-align: right; cursor: pointer; color: var(--sd-muted); font-size: 11px; list-style: none; }
+#story-director-modal .sd-storyboard-log-maintenance > summary::-webkit-details-marker { display: none; }
+#story-director-modal .sd-storyboard-log-maintenance > :not(summary) { margin-top: 8px; }
