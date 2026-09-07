@@ -12,9 +12,9 @@ export async function checkComfyCharacterReadiness(request,{transport,headers,fe
     await guard();
     if(!result){
       const response=await fetchImpl('/api/plugins/qianmu-tts/image/comfy/readiness',{method:'POST',headers,credentials:'same-origin',redirect:'error',signal:controller.signal,body:JSON.stringify(request)});
-      if(!response.ok) {await response.body?.cancel?.();throw Error(response.status===404?'请更新增强服务后使用 Comfy 角色节点检查':`Comfy 角色节点检查失败（${response.status}）`);}
+      if(!response.ok) {await response.body?.cancel?.();throw Error(response.status===404?'请更新增强服务后使用 Comfy 节点检查':`Comfy 节点检查失败（${response.status}）`);}
       const limit=256*1024;let raw='';const reader=response.body?.getReader();
-      if(!reader)throw Error('Comfy 角色节点检查没有返回内容');
+      if(!reader)throw Error('Comfy 节点检查没有返回内容');
       let size=0;const decoder=new TextDecoder();
       try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>limit)throw Error('Comfy 节点检查返回过大');raw+=decoder.decode(value,{stream:true});await guard();}raw+=decoder.decode();}
       catch(error){await reader.cancel().catch(()=>{});throw error;}finally{reader.releaseLock();}
@@ -22,7 +22,7 @@ export async function checkComfyCharacterReadiness(request,{transport,headers,fe
     }
     await guard();
     if(!result?.ok||result.schemaVersion!==1||result.actualGenerationVerified!==false||!Number.isSafeInteger(result.errors)||result.errors!==0
-      ||!Number.isSafeInteger(result.warnings)||result.warnings<0||result.ready!==(result.errors===0&&result.warnings===0))throw Error(String(result?.issues?.[0]?.message||result?.message||'Comfy 角色节点或模型未通过检查').replace(/[\r\n]/g,' ').slice(0,180));
+      ||!Number.isSafeInteger(result.warnings)||result.warnings<0||result.ready!==(result.errors===0&&result.warnings===0))throw Error(String(result?.issues?.[0]?.message||result?.message||'Comfy 节点或模型未通过检查').replace(/[\r\n]/g,' ').slice(0,180));
     const graph=typeof request.workflow==='string'?JSON.parse(request.workflow):request.workflow;
     const deferred=new Set((Array.isArray(result.issues)?result.issues:[]).filter(issue=>issue?.severity==='warning'&&issue.code==='reference_pending_upload'
       &&issue.field==='image'&&graph?.[issue.nodeId]?.class_type==='LoadImage'&&/^%qianmu_reference(?:_([1-9]|1[0-6]))?%$/.test(graph[issue.nodeId].inputs?.image||''))

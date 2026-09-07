@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import * as runtime from '../qianmu-image-direct.js';
 import * as capabilities from '../qianmu-service-capabilities.js';
 import * as storyboard from '../qianmu-storyboard.js';
+import {checkComfyCharacterReadiness} from '../qianmu-comfy-character-readiness.js';
 import {renderComfyLibrary} from '../qianmu-comfy-library-view.js';
 import { imageGatewayCapabilities } from '../qianmu-image-gateway.js';
 import { createStoryboardFormFixture, storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
@@ -12,7 +13,7 @@ const workflow = () => ({image:{class_type:'EmptyImage',inputs:{width:512,height
   prompt:{class_type:'CLIPTextEncode',inputs:{text:'%qianmu_prompt%'}},save:{class_type:'SaveImage',inputs:{images:['image',0]}}});
 function harness({ automatic = false, uncertain = false, batch = 1, choice = 'accept', output = '' } = {}) {
   const graph=workflow();graph.image.inputs.batch_size=batch;if(uncertain)graph.custom={class_type:'CustomNode',inputs:{}};
-  const job={source:'comfy',automatic,profile:{model:'comfy-workflow',comfyOutputNodeId:output},connection:{baseUrl:'https://comfy.example'},target:'gallery',
+  const job={source:'comfy',automatic,profile:{model:'comfy-workflow',comfyOutputNodeId:output},connection:{baseUrl:'https://comfy.example',comfyTransport:'browser'},target:'gallery',
     payload:{prompt:'garden',parameters:{workflow:graph,count:1}}};
   const state={enabled:true,automation:{autoCapture:true,autoGenerate:true},logs:[]},waiting=[],notices=[],confirmations=[],admissions=[];
   let chat='a';
@@ -21,6 +22,14 @@ function harness({ automatic = false, uncertain = false, batch = 1, choice = 'ac
     storyboardValidatedAnchor:()=>({valid:true}),getStoryboardGenerationPolicy:()=>({maxImages:1}),storyboardGalleryRecords:()=>[],
     resolveStoryboardJobModelIdentity:()=>({modelFamily:'comfy',remoteModelId:'comfy-workflow',protocol:'comfy'}),
     resolveStoryboardConnectionBinding:()=>({}),directImageRuntime:async()=>runtime,
+    storyboardAdmissionEpoch:1,storyboardCredentialRevision:0,storyboardResolveApiKey:async()=>'',storyboardRequestHeaders:()=>({}),
+    featureRuntime:{load:async key=>key==='imageAdmission'?{resolveImageAccountNamespace:async()=>'st-user:workbench-audit'}:
+      key==='comfyCharacterReadiness'?{checkComfyCharacterReadiness:(request,options)=>checkComfyCharacterReadiness(request,{...options,fetchImpl:async url=>{
+        const name=decodeURIComponent(new URL(url).pathname.split('/').at(-1));
+        const definitions={EmptyImage:{input:{required:{width:['INT'],height:['INT'],batch_size:['INT']}},output:['IMAGE']},
+          CLIPTextEncode:{input:{required:{text:['STRING']}},output:['CONDITIONING']},SaveImage:{input:{required:{images:['IMAGE']}},output:[],output_node:true}};
+        return new Response(JSON.stringify({[name]:definitions[name]}));
+      }})}:Promise.reject(Error(`unexpected ${key}`))},
     storyboardImageAdmissionRuntime:async()=>({admit:async job=>{admissions.push(job.id||'job');}}),
     storyboardStartLog:job=>{const log={id:'log',snapshot:structuredClone(job)};state.logs.push(log);return log;},
     storyboardPlanForJob:()=>null,storyboardSetPlanStatus:()=>{},saveSettings:()=>{},renderModal:()=>{},storyboardPumpQueue:()=>{},
@@ -31,7 +40,7 @@ function harness({ automatic = false, uncertain = false, batch = 1, choice = 'ac
       return choice!=='cancel';
     },
   });
-  vm.runInContext(['storyboardComfyReferenceMetadata','storyboardParseWorkflow','storyboardGatewayRequest','storyboardConfirmComfyExecution','storyboardQueueJob'].map(section).join('\n'),context);
+  vm.runInContext(['storyboardComfyReferenceMetadata','storyboardParseWorkflow','storyboardGatewayRequest','storyboardCheckComfyJobReadiness','storyboardConfirmComfyExecution','storyboardQueueJob'].map(section).join('\n'),context);
   return{job,state,context,waiting,notices,confirmations,admissions};
 }
 

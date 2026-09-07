@@ -20,7 +20,7 @@ const fetchDefinitions=(calls=[],defs=definitions)=>async(url,options)=>{
 };
 function harness({readReference}={}){
   const calls=[],warnings=[],state=storyboard.createStoryboardDefaults();state.enabled=true;state.source='comfy';let account=namespace,readinessError='';
-  const context=vm.createContext({...storyboard,clone:structuredClone,storyboardAdmissionEpoch:1,storyboardState:()=>state,
+  const context=vm.createContext({...storyboard,clone:structuredClone,storyboardAdmissionEpoch:1,storyboardCredentialRevision:0,storyboardState:()=>state,
     storyboardResolveApiKey:async(...args)=>{calls.push(['key',args]);return 'SECRET';},storyboardRequestHeaders:()=>({'x-csrf-token':'CSRF'}),
     featureRuntime:{load:async key=>key==='comfyCharacters'?roles:key==='comfyReferences'?{...references,...(readReference?{readComfyReferenceImages:options=>references.readComfyReferenceImages({...options,fetchImpl:readReference})}:{})}:key==='imageAdmission'?{resolveImageAccountNamespace:async()=>account}
       :key==='comfyCharacterReadiness'?{checkComfyCharacterReadiness:async(request,options)=>{calls.push(['readiness',copy(request)]);if(readinessError)throw Error(readinessError);return checkComfyCharacterReadiness(request,{...options,fetchImpl:fetchDefinitions()});}}:Promise.reject(Error(`unexpected ${key}`))},
@@ -28,7 +28,7 @@ function harness({readReference}={}){
     resolveStoryboardJobModelIdentity:()=>({modelFamily:'comfy',remoteModelId:'comfy-workflow',protocol:'comfy'}),resolveStoryboardConnectionBinding:()=>({}),
     confirmDialog:async(title,message)=>{calls.push(['confirm',message]);return true;},
   });
-  vm.runInContext(['storyboardPrepareComfyCharacterJob','storyboardComfyReferenceMetadata','storyboardParseWorkflow','storyboardGatewayRequest','storyboardConfirmComfyExecution','storyboardPrepareGatewayAssets'].map(section).join('\n'),context);
+  vm.runInContext(['storyboardPrepareComfyCharacterJob','storyboardComfyReferenceMetadata','storyboardParseWorkflow','storyboardGatewayRequest','storyboardCheckComfyJobReadiness','storyboardConfirmComfyExecution','storyboardPrepareGatewayAssets'].map(section).join('\n'),context);
   return {context,calls,warnings,state,setAccount:value=>account=value,setReadinessError:value=>readinessError=value};
 }
 

@@ -104,7 +104,12 @@ export async function prepareComfyAutoSession({binding,namespace,guard=async()=>
             const automaticEligible=result?.automaticEligible===true;
             eligibility.set(candidate.id,{preparationId,requestKey,executionKey,automaticEligible});
             if(!automaticEligible)diagnostics.push({candidateId:candidate.id,reason:'technical_gate',message:'当前镜头未通过技术检查'});
-          }catch(error){await live();diagnostics.push({candidateId:candidate.id,reason:error.code==='storyboard_prompt_format'?'prompt_format_unavailable':'technical_gate',message:message(error,'当前镜头未通过技术检查')});}
+          }catch(error){
+            await live();
+            // A global input/account cancellation is not an individual candidate failure to skip.
+            if(['storyboard_input_changed','image_attempt_account'].includes(error?.code))throw error;
+            diagnostics.push({candidateId:candidate.id,reason:error.code==='storyboard_prompt_format'?'prompt_format_unavailable':'technical_gate',message:message(error,'当前镜头未通过技术检查')});
+          }
         }
         const result=await choose();await live();
         return freeze({...result,preparationId,requestKey,diagnostics});
