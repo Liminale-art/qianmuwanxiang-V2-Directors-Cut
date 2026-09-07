@@ -8,6 +8,7 @@ import {
   normalizeStoryboardShotSpec,
 } from './qianmu-storyboard.js';
 import { characterCastingInput } from './qianmu-character-casting.js';
+import { normalizeStoryboardPromptFormats, storyboardPromptRenderingsSchema, validateStoryboardPromptRenderings } from './qianmu-prompt-formats.js';
 
 // LLM 返回协议只负责“把原始 JSON 变成可信结构”，不发请求，也不猜测缺失内容。
 export const STORYBOARD_PLAN_RESPONSE_SCHEMA_ID = 'qianmu.storyboard.plan.v1';
@@ -369,7 +370,8 @@ function validateShot(value, index, options, errors) {
     'shot_role', 'shot_scale', 'subject', 'scene', 'characters', 'shared_relations',
     'composition', 'prompt_atoms', 'sensitive', 'safety_notes',
   ];
-  if (!exactKeys(value, [...keys,'primary_subject_id'], options.requirePrimarySubject ? [...keys,'primary_subject_id'] : keys, path, errors)) return;
+  const renderingKeys = options.promptFormats.length ? ['prompt_renderings'] : [];
+  if (!exactKeys(value, [...keys,'primary_subject_id',...renderingKeys], [...keys,...(options.requirePrimarySubject ? ['primary_subject_id'] : []),...renderingKeys], path, errors)) return;
   const paragraphIds = stringArray(value.source_paragraph_ids, `${path}.source_paragraph_ids`, errors, { min: 1, max: 80, itemMax: 160 });
   const insertAfter = stringValue(value.insert_after, `${path}.insert_after`, errors, { max: 160 });
   for (const paragraphId of paragraphIds) {
@@ -474,6 +476,12 @@ function validateShot(value, index, options, errors) {
   }
   if (typeof value.sensitive !== 'boolean') issue(errors, 'type', `${path}.sensitive`, '必须是布尔值', 'boolean', value.sensitive);
   stringArray(value.safety_notes, `${path}.safety_notes`, errors, { max: 20, itemMax: 500 });
+  if (options.promptFormats.length) {
+    const renderings = validateStoryboardPromptRenderings(value.prompt_renderings, {
+      formats: options.promptFormats, characterIds, path: `${path}.prompt_renderings`,
+    });
+    errors.push(...renderings.errors);
+  }
 }
 
 function validateContinuityUpdate(value, index, options, errors) {
@@ -501,6 +509,7 @@ function normalizedOptions(options = {}) {
     : {};
   return {
     maxShots,
+    promptFormats: normalizeStoryboardPromptFormats(options.promptFormats),
     requirePrimarySubject: options.requirePrimarySubject === true,
     manualSupplement: options.manualSupplement === true,
     requiredInsertAfter: String(options.requiredInsertAfter || ''),
@@ -770,6 +779,7 @@ function orientationForRatioId(ratioId) {
  * 本函数不发请求，便于独立回归与后续替换模型渠道。
  */
 export function buildStoryboardPlanContractRequest(context = {}, config = {}) {
+  const promptFormats = normalizeStoryboardPromptFormats(config.promptFormats);
   const requirePrimarySubject = context.characterCasting?.referenceMode === 'novel-primary';
   const paragraphIds = paragraphIdsForContext(context);
   const maxShots = Math.max(1, Math.min(4, Number(config.maxShots) || 1));
@@ -828,6 +838,9 @@ export function buildStoryboardPlanContractRequest(context = {}, config = {}) {
     decisions: [],
   };
   if (requirePrimarySubject) example.shots[0].primary_subject_id = 'C1';
+  if (promptFormats.length) example.shots[0].prompt_renderings = Object.fromEntries(promptFormats.map(format => [format, {
+    global: '本镜共享场景、光线与构图的对应格式表达', characters: [{character_id:'C1',positive:'仅此人物的外貌、当前状态与位置'}], negative: '',
+  }]));
   const styleRule = config.providerId === 'novel'
     ? 'prompt_atoms 使用精确、简洁、逗号化的英文视觉标签。'
     : 'prompt_atoms 使用清晰、具体、可直接绘制的视觉短语。';
@@ -861,6 +874,8 @@ export function buildStoryboardPlanContractRequest(context = {}, config = {}) {
       composition_mode: compositionMode,
       preferred_ratio_id: preferredRatioId,
       allowed_ratio_ids: allowedRatioIds,
+      ...(promptFormats.length ? { prompt_formats: promptFormats, prompt_rendering_source: 'same_shot_facts_and_visible_character_ids',
+        prompt_rendering_scope: 'representation_only_no_new_facts_no_artist_syntax_no_routing_or_content_authority' } : {}),
     },
     target_paragraphs: (Array.isArray(context.paragraphs) ? context.paragraphs : []).map((text, index) => ({
       id: paragraphIds[index], text: clippedText(text),
@@ -884,10 +899,16 @@ export function buildStoryboardPlanContractRequest(context = {}, config = {}) {
   };
   return {
     messages: [{ role: 'system', content: system }, { role: 'user', content: JSON.stringify(payload) }],
-    schema: requirePrimarySubject ? (() => {
+    schema: requirePrimarySubject || promptFormats.length ? (() => {
       const schema = JSON.parse(JSON.stringify(STORYBOARD_PLAN_RESPONSE_SCHEMA));
-      schema.properties.shots.items.properties.primary_subject_id = {type:'string',description:'ID of the primary visible character in this shot; empty for a shot without characters.'};
-      schema.properties.shots.items.required.push('primary_subject_id');
+      if (requirePrimarySubject) {
+        schema.properties.shots.items.properties.primary_subject_id = {type:'string',description:'ID of the primary visible character in this shot; empty for a shot without characters.'};
+        schema.properties.shots.items.required.push('primary_subject_id');
+      }
+      if (promptFormats.length) {
+        schema.properties.shots.items.properties.prompt_renderings = storyboardPromptRenderingsSchema(promptFormats);
+        schema.properties.shots.items.required.push('prompt_renderings');
+      }
       return schema;
     })() : STORYBOARD_PLAN_RESPONSE_SCHEMA,
     schemaId: STORYBOARD_PLAN_RESPONSE_SCHEMA_ID,
@@ -897,6 +918,7 @@ export function buildStoryboardPlanContractRequest(context = {}, config = {}) {
     maxShots: manualSupplement ? 1 : maxShots,
     manualSupplement,
     requirePrimarySubject,
+    ...(promptFormats.length ? {promptFormats} : {}),
   };
 }
 
@@ -1021,6 +1043,7 @@ export function buildStoryboardContractRepairMessages(raw, validation, options =
   }));
   const payload = JSON.stringify({
     target_schema: targetSchema,
+    ...(kind === 'plan' && options.promptFormats?.length ? {prompt_formats:normalizeStoryboardPromptFormats(options.promptFormats)} : {}),
     validation_errors: errors,
     original_response: String(raw || ''),
   });
@@ -1239,6 +1262,14 @@ export function adaptStoryboardPlanContract(value, options = {}) {
       shot_type: legacyShotType(shot),
       sensitive: shot.sensitive,
       shotSpec,
+      ...(Object.hasOwn(shot, 'prompt_renderings') ? (() => {
+        const checked = validateStoryboardPromptRenderings(shot.prompt_renderings, {
+          formats: options.promptFormats || Object.keys(shot.prompt_renderings || {}), characterIds: characters.map(character => character.id),
+        });
+        if (!checked.ok) throw Object.assign(new Error(checked.errors[0].message), {code:'storyboard_prompt_format'});
+        // Unbound: the caller must reconcile casting IDs and reject visual changes before binding.
+        return {promptRenderings:checked.data};
+      })() : {}),
     };
   });
   return {
