@@ -5,6 +5,7 @@ import { createImageServiceQueue, imageServiceChannelKey, describeImageServiceRe
 import { createImageServiceResults } from './qianmu-image-service-results.js';
 import { imageServiceAccount, imageServiceAccountStillMatches, imageServiceTaskView } from './qianmu-image-service-access.js';
 import {createNovelServiceChannel} from './qianmu-novel-service-channel.js';
+import {createNativeRequestReview} from './qianmu-native-review-service.js';
 
 export const IMAGE_SERVICE_TASK_VERSION = 1;
 const fail = (code, message, state = 'not_submitted', status = 409) => Object.assign(new Error(message), {
@@ -30,6 +31,7 @@ export function imageServiceTaskErrorPayload(error) {
 export function createImageService({ dataRoot, store = createImageServiceStore({ dataRoot,lockWaitMs:2000 }), results, channel = createNovelServiceChannel({dataRoot}),
   generate = generateImage, materialize = materializeImageResult, gatewayOptions = {}, queueOptions = {} } = {}) {
   const cache = results || createImageServiceResults({ dataRoot, store });
+  const review=createNativeRequestReview({dataRoot,store,kind:'image',resultAvailable:async(value,row)=>{const result=await cache.load(resultIdentity(value,row),{metadataOnly:true});return Boolean(result?.ready||result?.remote);}});
   const queue = createImageServiceQueue({ ...queueOptions, store, ownerId: randomUUID() });
   const jobs = new Map(), retrieving = new Map(), catalogs = new Set(); let closed = false, admitted = 0, admissionBytes = 0;
   const context = (request, input, allowLocator = false) => {
@@ -146,6 +148,7 @@ export function createImageService({ dataRoot, store = createImageServiceStore({
       if (jobs.has(id)) throw fail('already_submitted', '原任务仍在等待，请查询原任务', 'accepted');
       let job;
       const work = queue.run({ apiKey: frozen.apiKey, ...value, ...description, automatic, confirmation,
+        nativeReceipt:{version:1,kind:'image',channelKey:value.channelKey},
         valid: () => !closed && imageServiceAccountStillMatches(request, value), signal,
         onWarning: () => { if (job) job.warning = '图片已生成；任务记录尚待核查'; },
       }, async ticket => {
@@ -203,6 +206,10 @@ export function createImageService({ dataRoot, store = createImageServiceStore({
       if (input.archived !== true || typeof input.receipt !== 'string' || !/^[a-f0-9]{64}$/.test(input.receipt)) throw fail('receipt', '请先确认图片已在本地保存');
       return { ok: true, ...(await cache.discard(resultIdentity(value, row), input.receipt, { valid: () => imageServiceAccountStillMatches(request, value) })) };
     },
+    async review(request,input){const value=context(request,input,true);validAccount(request,value);
+      return {ok:true,...await review.inspect(value,{valid:()=>imageServiceAccountStillMatches(request,value)})};},
+    async confirmReview(request,input){const value=context(request,input,true);validAccount(request,value);
+      return {ok:true,...await review.confirm(value,input,{valid:()=>imageServiceAccountStillMatches(request,value)})};},
     async discard(request, input) {
       const value = context(request, input, true), row = await find(value); validAccount(request, value);
       if (!row || ['reserved','submitting'].includes(row.status) || jobs.has(jobKey(value)) || retrieving.has(jobKey(value))) throw fail('not_complete', '原任务仍在运行或等待核查，未清理暂存');
@@ -210,7 +217,7 @@ export function createImageService({ dataRoot, store = createImageServiceStore({
       return { ok: true, ...(await cache.discard(resultIdentity(value, row), input.receipt, { valid: () => imageServiceAccountStillMatches(request, value) })) };
     },
     async close() {
-      closed = true; queue.close(); await Promise.allSettled([...jobs.values()].map(job => job.done).concat([...retrieving.values()], [...catalogs])); await channel.close();await store.close();
+      closed = true; queue.close(); await Promise.allSettled([...jobs.values()].map(job => job.done).concat([...retrieving.values()], [...catalogs])); await review.close();await channel.close();await store.close();
     },
     inspect() { return { ...queue.inspect(), tasks: jobs.size, admitted, admissionBytes }; },
   };

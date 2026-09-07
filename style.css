@@ -10487,6 +10487,10 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-vibe-review-rows article>div { display:flex;flex-wrap:wrap;gap:7px;min-width:0; }
 #story-director-modal .sd-vibe-review-rows [data-state="unknown"] { border-left-color:#cf9c43; }
 #story-director-modal .sd-vibe-review-rows [data-state="rejected"] { border-left-color:#cf7272; }
+#story-director-modal .sd-vibe-fee-history { font-size:12px;color:var(--sd-text-soft);min-width:0; }
+#story-director-modal .sd-vibe-fee-history summary { cursor:pointer;list-style:none; }
+#story-director-modal .sd-vibe-fee-history summary::-webkit-details-marker { display:none; }
+#story-director-modal .sd-vibe-fee-history p { margin:5px 0; }
 #story-director-modal .sd-vibe-file-cover:has(img) { min-height:0; }
 #story-director-modal .sd-vibe-waterfall { columns:2;column-gap:10px;min-width:0; }
 #story-director-modal .sd-vibe-tile,#story-director-modal .sd-vibe-gallery-picture { display:block;break-inside:avoid;margin:0 0 10px;width:100%;box-sizing:border-box;overflow:hidden;border:1px solid var(--sd-hairline);border-radius:9px;background:var(--sd-card);padding:0; }

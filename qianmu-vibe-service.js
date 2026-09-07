@@ -6,6 +6,7 @@ import {createVibeServiceCache,validateVibeServiceResult} from './qianmu-vibe-se
 import {prepareNovelVibeEncoding} from './qianmu-vibe-encoding.js';
 import {encodeGatewayNovelVibe} from './qianmu-vibe-encoding-gateway.js';
 import {createNovelServiceChannel} from './qianmu-novel-service-channel.js';
+import {createNativeRequestReview} from './qianmu-native-review-service.js';
 const hash=value=>createHash('sha256').update(value).digest('hex'),validHash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const fail=(code,message,submissionState='not_submitted',status=409)=>Object.assign(new Error(message),{code:`vibe_service_${code}`,message,submissionState,status,retryable:false});
 const resource=(namespace,key)=>`vibe:${namespace}:${key}`;
@@ -18,6 +19,7 @@ export function vibeServiceErrorPayload(error){
 export function createVibeEncodingService({dataRoot,store=createImageServiceStore({dataRoot,scope:'vibe',lockWaitMs:2000}),cache,channel=createNovelServiceChannel({dataRoot}),
   encode=encodeGatewayNovelVibe,gatewayOptions={},queueOptions={}}={}){
   const results=cache||createVibeServiceCache({dataRoot,store}),queue=createImageServiceQueue({...queueOptions,store,resourceLabel:'Vibe 编码'});
+  const review=createNativeRequestReview({dataRoot,store,kind:'vibe',resultAvailable:async(value,row)=>Boolean((await results.load(owner(value,row),{metadataOnly:true}))?.available)});
   const jobs=new Map();let closed=false,admitted=0,bytes=0;
   function binding(req,input){
     const account=imageServiceAccount(req);
@@ -26,8 +28,11 @@ export function createVibeEncodingService({dataRoot,store=createImageServiceStor
     const key=input.cacheKey;return {...account,cacheKey:key,channelKey:imageServiceChannelKey(resource(account.namespace,key))};
   }
   const check=(req,value)=>{if(!imageServiceAccountStillMatches(req,value))throw fail('account','ST 账户已变化，编码保留在原账户，请切回核查','unknown',401);};
-  const find=async value=>normalizeImageServiceChannel(await store.inspectChannel(value.channelKey),value.channelKey).entries
-    .filter(row=>row.namespace===value.namespace&&row.requestDigest===value.cacheKey).at(-1);
+  const find=async(value,attemptId)=>{
+    if(attemptId!==undefined&&!validHash(attemptId))throw fail('identity','原编码请求编号无效');
+    return normalizeImageServiceChannel(await store.inspectChannel(value.channelKey),value.channelKey).entries
+      .filter(row=>row.namespace===value.namespace&&row.requestDigest===value.cacheKey&&(attemptId===undefined||row.attemptId===attemptId)).at(-1);
+  };
   const owner=(value,row)=>({namespace:value.namespace,channelKey:value.channelKey,attemptId:row.attemptId,requestDigest:row.requestDigest,fence:row.fence});
   const packet=(result,stored=true,warning='',channelNeedsReview=false,attemptId)=>({ok:true,version:1,result,stored,...(attemptId?{attemptId}:{}),...(warning?{warning}:{}),...(channelNeedsReview?{channelNeedsReview:true}:{})});
   async function completed(req,value,row,result){
@@ -44,10 +49,14 @@ export function createVibeEncodingService({dataRoot,store=createImageServiceStor
       const value=binding(req,input),row=await find(value);check(req,value);if(!row)return {ok:true,version:1,task:null};
       const cached=await results.load(owner(value,row),{metadataOnly:true});check(req,value);
       return {ok:true,version:1,task:{cacheKey:value.cacheKey,attemptId:row.attemptId,status:cached?.available?'ready':
-        ['released','rejected'].includes(row.status)?'rejected':['reserved','submitting'].includes(row.status)?'pending':'unknown',
+        row.status==='acknowledged'&&row.nativeReview?.completedAt!==undefined?'reviewed':['released','rejected'].includes(row.status)?'rejected':['reserved','submitting'].includes(row.status)?'pending':'unknown',
         resultAvailable:Boolean(cached?.available),bytes:cached?.bytes||0,createdAt:row.createdAt,updatedAt:row.updatedAt}};
     },
     async result(req,input){const value=binding(req,input),row=await find(value);check(req,value);return retrieve(req,value,row);},
+    async review(req,input){const value=binding(req,input),row=await find(value,input.attemptId);check(req,value);if(!row)throw fail('missing','未找到当前账户的原编码');
+      return {ok:true,...await review.inspect({...value,attemptId:row.attemptId},{valid:()=>imageServiceAccountStillMatches(req,value)})};},
+    async confirmReview(req,input){const value=binding(req,input),row=await find(value,input.attemptId);check(req,value);if(!row)throw fail('missing','未找到当前账户的原编码');
+      return {ok:true,...await review.confirm({...value,attemptId:row.attemptId},input,{valid:()=>imageServiceAccountStillMatches(req,value)})};},
     async submit(req,input,{signal}={}){
       const value=binding(req,input);if(closed)throw fail('closed','编码服务正在停止');
       if(input.confirmed!==true)throw fail('consent','本次编码尚未获得明确费用确认');
@@ -68,12 +77,14 @@ export function createVibeEncodingService({dataRoot,store=createImageServiceStor
         const previous=await find(value);check(req,value);
         if(previous){
           const saved=await results.load(owner(value,previous));check(req,value);if(saved)return completed(req,value,previous,saved);
-          if(!['rejected','released'].includes(previous.status)||retryAttemptId!==previous.attemptId)throw fail('pending','此 Vibe 原请求尚待核查；未重复编码','unknown');
+          const reviewed=previous.status==='acknowledged'&&previous.nativeReview?.completedAt!==undefined;
+          if(!reviewed&&!['rejected','released'].includes(previous.status)||retryAttemptId!==previous.attemptId)throw fail('pending','此 Vibe 原请求尚待核查；未重复编码','unknown');
         }else if(retryAttemptId)throw fail('identity','原重试记录不存在，未发起新编码');
         // Identical new/retry intents have the SAME attempt ID across devices/processes, closing the query→claim race.
         const attemptId=previous?hash(`${value.cacheKey}:${previous.attemptId}`):value.cacheKey,id=`${value.namespace}:${value.cacheKey}`;
         if(jobs.has(id))throw fail('pending','此 Vibe 编码仍在处理，请领取原结果','unknown');
         const work=queue.run({apiKey:resource(value.namespace,value.cacheKey),namespace:value.namespace,attemptId,requestDigest:value.cacheKey,requestBytes:weight,
+          nativeReceipt:{version:1,kind:'vibe',channelKey:imageServiceChannelKey(captured.apiKey),...(clientAttemptId!==undefined?{clientAttemptId}:{})},
           automatic:false,signal,valid:()=>!closed&&imageServiceAccountStillMatches(req,value)},async ticket=>{
           const identity={namespace:value.namespace,channelKey:value.channelKey,attemptId,requestDigest:value.cacheKey,fence:ticket.fence};
           try{await results.reserve(identity);}catch(_){throw fail('storage','Vibe 服务暂存无法预留，请先整理；本次尚未提交编码');}
@@ -96,7 +107,7 @@ export function createVibeEncodingService({dataRoot,store=createImageServiceStor
         try{const result=await work;check(req,value);return result;}finally{if(jobs.get(id)===work)jobs.delete(id);}
       }finally{admitted--;bytes-=weight;}
     },
-    async close(){closed=true;queue.close();await Promise.allSettled([...jobs.values()]);await channel.close();await store.close();},
+    async close(){closed=true;queue.close();await Promise.allSettled([...jobs.values()]);await review.close();await channel.close();await store.close();},
     inspect(){return {closed,admitted,bytes,jobs:jobs.size,...queue.inspect()};},
   };
 }

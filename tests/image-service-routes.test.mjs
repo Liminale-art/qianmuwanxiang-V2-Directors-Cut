@@ -55,8 +55,18 @@ test('task capability handshake is authenticated, does not create storage, and n
   assert.equal(result.headers.get('cache-control'), 'no-store');
   const body = await result.json(); assert.equal(body.schemaVersion, 1); assert.equal(body.scope, 'coordinated-endpoints-only');
   assert.equal(body.sharedNativeChannelVersion,1);
+  assert.equal(body.nativeReviewVersion,1);
   assert.deepEqual(body.providers, ['novel']); assert.equal(body.automaticRestartReplay, false);
   assert.deepEqual(await fs.readdir(root), []);
+});
+
+test('actual image review HTTP routes require explicit acknowledgement and never issue a new generation',async t=>{
+  let posts=0;const {call}=await fixture(t,{fetchImpl:async()=>{posts++;return new Response('unknown',{status:500});}});
+  await call('submit',input('unknown-review'));assert.equal(posts,1);
+  const plan=await (await call('review',query('unknown-review'))).json();assert.equal(plan.canReview,true);
+  const denied=await call('confirmReview',{...query('unknown-review'),confirmation:plan.confirmation,ended:true});assert.notEqual(denied.status,200);assert.equal(posts,1);
+  const reviewed=await call('confirmReview',{...query('unknown-review'),confirmation:plan.confirmation,ended:true,possibleCharge:true});
+  assert.equal(reviewed.headers.get('cache-control'),'no-store');assert.equal((await reviewed.json()).reviewed,true);assert.equal(posts,1);
 });
 
 test('legacy native image HTTP entry shares the Vibe channel, keeps its image response and cannot bypass authentication',async t=>{

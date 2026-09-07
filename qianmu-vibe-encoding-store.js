@@ -8,6 +8,18 @@ const fail=(code,message)=>Object.assign(new Error(message),{code:`vibe_encoding
 const digest=async text=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),b=>b.toString(16).padStart(2,'0')).join('');
 const key=(namespace,cacheKey)=>{if(!account(namespace)||!hash(cacheKey))throw fail('identity','编码缓存账户或编号无效');return JSON.stringify([namespace,cacheKey]);};
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
+const equalReceipt=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+function checkFeeReview(value){
+  if(!object(value)||value.version!==1||!hash(value.confirmation)||!['reserved','submitting','unknown'].includes(value.previousStatus)
+    ||!Number.isSafeInteger(value.at)||value.at<0||Object.keys(value).some(key=>!['version','confirmation','previousStatus','at'].includes(key)))throw fail('corrupt','原费用核查记录不完整');return value;
+}
+function checkReviewHistory(rows){
+  if(!Array.isArray(rows)||rows.length>32)throw fail('capacity','原编码核查历史过多，请先导出整理');const seen=new Set();
+  for(const row of rows){
+    if(!object(row)||!attempt(row.attemptId)||seen.has(row.attemptId)||Object.keys(row).some(key=>!['attemptId','delivery','feeReview'].includes(key)))throw fail('corrupt','原费用核查历史不完整');
+    checkFeeReview(row.feeReview);validateVibeEncodingDelivery(row.delivery);seen.add(row.attemptId);
+  }return rows;
+}
 export const VIBE_ENCODING_RECEIPT_LIMIT=2048;
 export function validateVibeServiceDelivery(value){
   if(!object(value)||value.version!==1||!hash(value.channelKey)||!attempt(value.clientAttemptId)
@@ -68,14 +80,16 @@ export function createVibeEncodingStore({indexedDB=globalThis.indexedDB,keyRange
   }
   function normalize(row,namespace,cacheKey){
     if(!row)return null;
-    if(Object.keys(row).some(name=>!['key','namespace','cacheKey','identity','attemptId','status','revision','createdAt','updatedAt','assetRef','sourceAssetRef','delivery'].includes(name))
+    if(Object.keys(row).some(name=>!['key','namespace','cacheKey','identity','attemptId','status','revision','createdAt','updatedAt','assetRef','sourceAssetRef','delivery','feeReview','pastReviews'].includes(name))
       ||row.key!==key(namespace,cacheKey)||row.namespace!==namespace||row.cacheKey!==cacheKey||!attempt(row.attemptId)
-      ||!['reserved','submitting','ready','rejected','unknown'].includes(row.status)||!Number.isSafeInteger(row.revision)||row.revision<1
+      ||!['reserved','submitting','ready','rejected','unknown','reviewed'].includes(row.status)||!Number.isSafeInteger(row.revision)||row.revision<1
       ||![row.createdAt,row.updatedAt].every(value=>Number.isFinite(value)&&value>=0)||row.updatedAt<row.createdAt||!object(row.identity))throw fail('corrupt','编码记录不完整，请先保全数据');
     if(row.status==='ready'&&(retainVibeAssetRef(row.assetRef).invalid||row.assetRef.namespace!==namespace))throw fail('corrupt','编码原资产引用失效');
     if(row.status!=='ready'&&row.assetRef)throw fail('corrupt','未完成编码含错误资产引用');
     if(row.sourceAssetRef&&(retainVibeAssetRef(row.sourceAssetRef).invalid||row.sourceAssetRef.namespace!==namespace))throw fail('corrupt','原图资产归属不符');
-    if(row.delivery)validateVibeEncodingDelivery(row.delivery);return row;
+    if(row.delivery)validateVibeEncodingDelivery(row.delivery);
+    if(row.status==='reviewed')checkFeeReview(row.feeReview);else if(row.feeReview!==undefined)throw fail('corrupt','费用核查状态不符');
+    if(row.pastReviews!==undefined)checkReviewHistory(row.pastReviews);return row;
   }
   async function checked(row,namespace,cacheKey){if(!row)return null;normalize(row,namespace,cacheKey);await validateVibeEncodingIdentity(row.identity,cacheKey);return row;}
   const sameIdentity=(row,identity)=>{if(JSON.stringify(row.identity)!==JSON.stringify(identity))throw fail('corrupt','编码记录参数不一致，请先保全数据');};
@@ -89,10 +103,12 @@ export function createVibeEncodingStore({indexedDB=globalThis.indexedDB,keyRange
       if(source&&(source.invalid||source.namespace!==namespace))throw fail('identity','编码原图不属于当前账户');
       return transaction('readwrite',(table,read,set)=>read(table.get(id),existing=>{
         if(existing){normalize(existing,namespace,cacheKey);sameIdentity(existing,canonical);
-          if(existing.status!=='rejected'||!retryAttemptId||existing.attemptId!==retryAttemptId){set({owned:false,receipt:existing});return;}
+          if(!['rejected','reviewed'].includes(existing.status)||!retryAttemptId||existing.attemptId!==retryAttemptId){set({owned:false,receipt:existing});return;}
           if(existing.attemptId===attemptId)throw fail('identity','重试必须建立新编码请求');
         }
-        const create=()=>{const timestamp=now(),row={key:id,namespace,cacheKey,identity:canonical,attemptId,status:'reserved',revision:(existing?.revision||0)+1,createdAt:existing?.createdAt??timestamp,updatedAt:Math.max(timestamp,existing?.updatedAt||0),...(source?{sourceAssetRef:source}:{}),...(sending?{delivery:sending}:{})};
+        const pastReviews=checkReviewHistory([...(existing?.pastReviews||[]),...(existing?.status==='reviewed'?[{attemptId:existing.attemptId,delivery:existing.delivery,feeReview:existing.feeReview}]:[])]);
+        if(pastReviews.some(row=>row.attemptId===attemptId))throw fail('identity','新编码不能复用历史核查编号');
+        const create=()=>{const timestamp=now(),row={key:id,namespace,cacheKey,identity:canonical,attemptId,status:'reserved',revision:(existing?.revision||0)+1,createdAt:existing?.createdAt??timestamp,updatedAt:Math.max(timestamp,existing?.updatedAt||0),...(source?{sourceAssetRef:source}:{}),...(sending?{delivery:sending}:{}),...(pastReviews.length?{pastReviews}:{})};
           table.put(row);set({owned:true,receipt:row});};
         if(existing)create();else read(table.index('namespace').count(keyRange.only(namespace)),count=>{if(count>=VIBE_ENCODING_RECEIPT_LIMIT)throw fail('capacity','编码记录已满，请先整理；未提交收费请求');create();});
       }));
@@ -107,6 +123,17 @@ export function createVibeEncodingStore({indexedDB=globalThis.indexedDB,keyRange
         const next={...row,status,updatedAt:Math.max(now(),row.updatedAt),...(ref?{assetRef:ref}:{})};table.put(next);set(next);
       }));
     },
+    async review(namespace,cacheKey,expected,proof){
+      const original=await this.get(namespace,cacheKey),id=key(namespace,cacheKey);
+      if(!original||!equalReceipt(original,expected))throw fail('changed','原费用记录已变化，请刷新');
+      if(proof?.reviewed!==true||!hash(proof.confirmation)||proof.requestDigest!==cacheKey||!matchesVibeServiceDelivery(original,proof.attemptId,proof.serviceDelivery))throw fail('identity','服务核查凭据不属于原编码提交');
+      if(original.status==='reviewed')return original;
+      if(!['reserved','submitting','unknown'].includes(original.status))throw fail('changed','原费用状态不需要重新确认');
+      return transaction('readwrite',(table,read,set)=>read(table.get(id),row=>{
+        normalize(row,namespace,cacheKey);if(!equalReceipt(row,original))throw fail('changed','原费用记录已变化，未覆盖');
+        const at=Math.max(now(),row.updatedAt),next={...row,status:'reviewed',updatedAt:at,feeReview:{version:1,confirmation:proof.confirmation,previousStatus:row.status,at}};table.put(next);set(next);
+      }));
+    },
     async recover(namespace,cacheKey,expected,assetRef,serviceAttemptId,serviceDelivery){
       const original=await this.get(namespace,cacheKey),id=key(namespace,cacheKey),ref=retainVibeAssetRef(assetRef);
       if(!original||JSON.stringify(original)!==JSON.stringify(expected))throw fail('changed','原编码记录已变化，请刷新后领取');
@@ -114,7 +141,9 @@ export function createVibeEncodingStore({indexedDB=globalThis.indexedDB,keyRange
       if(!matchesVibeServiceDelivery(original,serviceAttemptId,serviceDelivery))return {reconciled:false,receipt:original};
       return transaction('readwrite',(table,read,set)=>read(table.get(id),row=>{
         normalize(row,namespace,cacheKey);if(JSON.stringify(row)!==JSON.stringify(original))throw fail('changed','原编码记录已变化，未覆盖');
-        const next={...row,status:'ready',assetRef:ref,updatedAt:Math.max(now(),row.updatedAt)};table.put(next);set({reconciled:true,receipt:next});
+        const next={...row,status:'ready',assetRef:ref,updatedAt:Math.max(now(),row.updatedAt)};
+        if(row.feeReview){next.pastReviews=checkReviewHistory([...(row.pastReviews||[]),{attemptId:row.attemptId,delivery:row.delivery,feeReview:row.feeReview}]);delete next.feeReview;}
+        table.put(next);set({reconciled:true,receipt:next});
       }));
     },
     async remember(namespace,cacheKey,identity,assetRef,{serviceAttemptId,serviceDelivery}={}){
@@ -127,7 +156,7 @@ export function createVibeEncodingStore({indexedDB=globalThis.indexedDB,keyRange
             const next={...existing,status:'ready',assetRef:ref,updatedAt:Math.max(now(),existing.updatedAt)};table.put(next);set(next);return;}
           if(existing.status!=='rejected'){set(existing);return;}}
         const create=()=>{const at=now(),row={key:id,namespace,cacheKey,identity:canonical,attemptId:`cached-${crypto.randomUUID()}`,status:'ready',
-          revision:(existing?.revision||0)+1,createdAt:existing?.createdAt??at,updatedAt:Math.max(at,existing?.updatedAt||0),assetRef:ref};table.put(row);set(row);};
+          revision:(existing?.revision||0)+1,createdAt:existing?.createdAt??at,updatedAt:Math.max(at,existing?.updatedAt||0),assetRef:ref,...(existing?.pastReviews?.length?{pastReviews:existing.pastReviews}:{})};table.put(row);set(row);};
         if(existing)create();else read(table.index('namespace').count(keyRange.only(namespace)),count=>{if(count>=VIBE_ENCODING_RECEIPT_LIMIT)throw fail('capacity','编码缓存已满，请先整理');create();});
       }));
     },

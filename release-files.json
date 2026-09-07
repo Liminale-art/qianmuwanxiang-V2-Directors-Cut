@@ -4,6 +4,8 @@
   "outputDirectory": "dist",
   "files": [
     "qianmu-vibe-review.js",
+    "qianmu-native-review-contract.js",
+    "qianmu-native-review-service.js",
     "qianmu-novel-service-channel.js",
     "qianmu-novel-service-channel-state.js",
     "qianmu-novel-vibe.js",

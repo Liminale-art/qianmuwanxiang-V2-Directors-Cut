@@ -2,6 +2,7 @@
 // never substitute an in-memory ledger when persistence is unavailable.
 import { createHash, randomUUID } from 'node:crypto';
 import { normalizeComfyReceipt } from './qianmu-comfy-receipt.js';
+import {normalizeNativeReceipt,normalizeNativeReview} from './qianmu-native-review-contract.js';
 
 export const IMAGE_SERVICE_QUEUE_VERSION = 1;
 const SCHEMA = 'qianmu.image-service-channel.v1';
@@ -70,6 +71,15 @@ export function normalizeImageServiceChannel(value, channelKey, maxEntries = 409
       ownerId: id(raw.ownerId, '服务会话'), fence: id(raw.fence, '服务请求票'), status: raw.status,
       automatic: raw.automatic, createdAt: time(raw.createdAt), updatedAt: time(raw.updatedAt),
     };
+    if(raw.nativeReceipt!==undefined)row.nativeReceipt=normalizeNativeReceipt(raw.nativeReceipt);
+    if(raw.nativeReview!==undefined){
+      row.nativeReview=normalizeNativeReview(raw.nativeReview);
+      const review=row.nativeReview,occupancy=review.occupancy;
+      if(!['uncertain','acknowledged','succeeded'].includes(row.status)||review.at<row.createdAt||review.at>row.updatedAt
+        ||review.completedAt!==undefined&&review.completedAt>row.updatedAt
+        ||occupancy&&(occupancy.namespace!==row.namespace||occupancy.attemptId!==row.attemptId||occupancy.requestDigest!==row.requestDigest
+          ||row.nativeReceipt&&(occupancy.kind!==row.nativeReceipt.kind||occupancy.channelKey!==row.nativeReceipt.channelKey)))throw fail('state','原核查凭据与请求身份或时间不符');
+    }
     if (Object.hasOwn(raw, 'upstreamId')) {
       if (typeof raw.upstreamId !== 'string' || !/^[a-zA-Z0-9_-]{1,240}$/.test(raw.upstreamId)
         || ['reserved', 'released', 'rejected'].includes(raw.status)) throw fail('state', '原任务编号或受理状态无效，请先核查');
@@ -130,6 +140,7 @@ export function createImageServiceQueue({ store, ownerId = randomUUID(), now = D
       // Only the persistent store's recovery procedure may mark old work uncertain.
       if (state.entries.some(row => PENDING.has(row.status))) throw fail('busy', `此 ${resourceLabel} 仍有在途请求，请查看原任务`);
       const uncertain = state.entries.filter(row => row.status === 'uncertain');
+      if(uncertain.some(row=>row.namespace!==identity.namespace))throw fail('review_other_account','同一连接有其他 ST 账户的待核查请求，请由原账户核查');
       const confirmation = uncertain.length ? hash(JSON.stringify(uncertain.map(row => JSON.stringify([row.namespace, row.attemptId, row.fence, row.updatedAt])).sort())) : '';
       if (confirmation && (identity.automatic || input.confirmation !== confirmation)) {
         throw fail('confirmation_required', '此连接有结果未确认的原请求，请核对后手动继续', { confirmation });
@@ -204,11 +215,12 @@ export function createImageServiceQueue({ store, ownerId = randomUUID(), now = D
   };
   const schedule = () => { for (const key of channels.keys()) { if (active >= activeLimit) break; advance(key); } };
   return {
-    run({ apiKey, namespace, attemptId, requestDigest, requestBytes, automatic = false, confirmation = '', valid = () => true, signal, onWarning = () => {} }, operation) {
+    run({ apiKey, namespace, attemptId, requestDigest, requestBytes, automatic = false, confirmation = '', valid = () => true, signal, onWarning = () => {},nativeReceipt }, operation) {
       try {
         check(valid, signal);
         const channelKey = imageServiceChannelKey(apiKey);
         const identity = { namespace: id(namespace, 'ST 账户'), attemptId: id(attemptId, '请求编号'), requestDigest: digest(requestDigest), automatic: Boolean(automatic) };
+        if(nativeReceipt!==undefined)identity.nativeReceipt=normalizeNativeReceipt(nativeReceipt);
         if (!Number.isSafeInteger(requestBytes) || requestBytes < 1 || requestBytes > 80 * 1024 * 1024) throw fail('request', '生图服务缺少有效的请求大小，未提交生图', { status: 400 });
         if (confirmation !== '') digest(confirmation);
         if (typeof operation !== 'function') throw fail('request', '缺少生图执行操作');

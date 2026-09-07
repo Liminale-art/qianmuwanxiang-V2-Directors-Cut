@@ -1,5 +1,6 @@
 import {prepareNovelVibeEncoding,VIBE_ENCODING_LIMIT} from './qianmu-vibe-encoding.js';
 import {validateVibeServiceDelivery} from './qianmu-vibe-encoding-store.js';
+import {normalizeNativeReviewView} from './qianmu-native-review-contract.js';
 const BASE='/api/plugins/qianmu-tts/image/vibe',HASH=/^[a-f0-9]{64}$/;
 const fail=(message,state='not_submitted')=>Object.assign(new Error(message),{code:'vibe_service_client',submissionState:state,retryable:false});
 const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),byte=>byte.toString(16).padStart(2,'0')).join('');
@@ -33,6 +34,7 @@ export function createVibeServiceClient({namespace,headers=()=>({}),fetchImpl=gl
   async function capabilities(){
     const value=await call('capabilities');await guard();
     if(value.accountBindingVersion!==1||value.expectedAccount!==await account||value.nativeEncoding!==true||value.resultRetrieval!==true||value.automaticReplay!==false||value.maxEncodingBytes!==VIBE_ENCODING_LIMIT||value.sharedNativeChannelVersion!==1||value.receiptBindingVersion!==1)throw fail('增强服务尚未提供兼容的 Vibe 编码、串行与领取功能，请更新后端');
+    return value;
   }
   function result(value,prepared){
     const row=value.result;
@@ -46,11 +48,16 @@ export function createVibeServiceClient({namespace,headers=()=>({}),fetchImpl=gl
       ...(HASH.test(value.attemptId||'')?{serviceAttemptId:value.attemptId}:{}),...(value.stored===false?{serviceStored:false}:{}),...(value.channelNeedsReview===true?{channelNeedsReview:true}:{})};
   }
   return {
-    async attempt(prepared,previous){return previous?.status==='rejected'?digest(`${prepared.cacheKey}:${previous.attemptId}`):prepared.cacheKey;},
+    async attempt(prepared,previous){return ['rejected','reviewed'].includes(previous?.status)?digest(`${prepared.cacheKey}:${previous.attemptId}`):prepared.cacheKey;},
+    async review(prepared){if((await capabilities()).nativeReviewVersion!==1)throw fail('增强服务尚未支持原请求联合核查，请先更新');
+      const value=await call('review',{...await locate(prepared),attemptId:prepared.delivery?.serviceAttemptId});await guard();
+      return {...normalizeNativeReviewView(value,'vibe'),...(value.serviceDelivery!==undefined?{serviceDelivery:validateVibeServiceDelivery(value.serviceDelivery)}:{})};},
+    async confirmReview(prepared,confirmation){const value=await call('confirmReview',{...await locate(prepared),attemptId:prepared.delivery?.serviceAttemptId,confirmation,ended:true,possibleCharge:true});await guard();
+      return {...normalizeNativeReviewView(value,'vibe'),...(value.serviceDelivery!==undefined?{serviceDelivery:validateVibeServiceDelivery(value.serviceDelivery)}:{})};},
     async query(prepared){
       await capabilities();const value=await call('query',await locate(prepared));await guard();
       if(value.task===null)return null;
-      const task=value.task;if(!task||task.cacheKey!==prepared.cacheKey||!HASH.test(task.attemptId||'')||!['ready','pending','unknown','rejected'].includes(task.status)||typeof task.resultAvailable!=='boolean'
+      const task=value.task;if(!task||task.cacheKey!==prepared.cacheKey||!HASH.test(task.attemptId||'')||!['ready','pending','unknown','rejected','reviewed'].includes(task.status)||typeof task.resultAvailable!=='boolean'
         ||(task.status==='ready')!==task.resultAvailable)throw fail('服务编码状态不完整，请先核查');return task;
     },
     async result(prepared){const value=await call('result',await locate(prepared),{maximum:12*1024*1024});await guard();return result(value,prepared);},

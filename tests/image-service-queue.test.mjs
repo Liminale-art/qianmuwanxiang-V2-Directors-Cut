@@ -37,6 +37,14 @@ test('service queue cannot activate without a durable atomic storage port', () =
   assert.equal(store.writes, 0); queue.close();
 });
 
+test('a second ST account sharing credentials cannot acknowledge the first account unknown fees',async()=>{
+  const store=fixture(),queue=createImageServiceQueue({store});
+  await assert.rejects(()=>queue.run(args('first'),async ticket=>{await ticket.beforeSubmit();throw Object.assign(Error('unknown'),{submissionState:'unknown'});}));
+  const before=structuredClone(rows(store));
+  await assert.rejects(()=>queue.run(args('second',{namespace:'account-b',automatic:false,confirmation:'a'.repeat(64)}),never),{code:'image_service_review_other_account'});
+  assert.deepEqual(rows(store),before);queue.close();
+});
+
 test('request identity is canonical, accounts for meaningful changes and excludes transport credentials', () => {
   assert.equal(imageServiceRequestDigest({ b: 2, a: 1, empty: undefined, apiKey: 'one' }), imageServiceRequestDigest({ apiKey: 'two', a: 1, b: 2 }));
   assert.notEqual(imageServiceRequestDigest({ a: 1 }), imageServiceRequestDigest({ a: 2 }));

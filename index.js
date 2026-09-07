@@ -14556,7 +14556,7 @@ async function storyboardMountVibeLibrary(root) {
         assets,modelId:()=>{const profile=storyboardProviderProfile(state);return profile.capabilityModelId||profile.model;},
         createReview:async onClose=>{const review=await featureRuntime.load('vibeReview');await guard();return review.createVibeReviewController({
           actions:review.createVibeReviewActions({namespace,call:assetRuntime.callVibeAsset,guard,service:review.createVibeServiceClient({namespace,headers:storyboardRequestHeaders,guard})}),
-          onClose,onAdd:(ref,selection)=>assets.adopt(ref,selection),isCurrent:same,icons:node=>applyQianmuIcons(node),onNotice:message=>{if(same())toast(message,'warning');},
+          onClose,confirm:(title,message)=>confirmDialog(title,htmlEscape(message)),onAdd:(ref,selection)=>assets.adopt(ref,selection),isCurrent:same,icons:node=>applyQianmuIcons(node),onNotice:message=>{if(same())toast(message,'warning');},
         });},
         items:()=>state.vibeLibrary,gallery:()=>storyboardGalleryRecords().filter(item=>item.mediaType!=='video'&&item.kind!=='film'),
         isCurrent:same,icons:node=>applyQianmuIcons(node),onNotice:message=>{if(same())toast(message,'warning');},

@@ -64,11 +64,11 @@ async function prepareVibes(payload,{namespace,model,connection,apiKey,call,read
             used=ref(await rpc('attach-encoding',{...selection,encoding:received.encoding,expectedSourceId:prepared.identity.sourceId}));
             await rpc('remember-encoding',{...options,identity:prepared.identity,assetRef:used,serviceAttemptId:received.serviceAttemptId,serviceDelivery:received.serviceDelivery});
             if(received.channelNeedsReview)notify('Vibe 编码已取回；NAI 共用渠道尚待核查');
-          }else if(remoteState&&remoteState.status!=='rejected')throw blocked();
+          }else if(remoteState&&!['rejected','reviewed'].includes(remoteState.status))throw blocked();
         }
       }
       if(!used){
-        if(cached&&cached.status!=='rejected')throw blocked();
+        if(cached&&!['rejected','reviewed'].includes(cached.status))throw blocked();
         if(!allowEncoding)throw fail('service','此 Vibe 尚需编码；当前增强服务的编码入口未接通，请先导入已有编码的 Vibe 文件');
         if(bytes>=48*1024*1024)throw fail('size','本次 Vibe 已达 48 MB 上限，请减少所选项；未追加编码');
         await guard();
@@ -82,7 +82,7 @@ async function prepareVibes(payload,{namespace,model,connection,apiKey,call,read
         else{
           let authorized=false,completed=false,localOnly=false,channelNeedsReview=false;
           try{
-            const deliver=service?(input,hooks)=>service.encode(input,hooks,remoteState?.status==='rejected'?remoteState.attemptId:''):encode;
+            const deliver=service?(input,hooks)=>service.encode(input,hooks,['rejected','reviewed'].includes(remoteState?.status)?remoteState.attemptId:''):encode;
             const encoded=await deliver(input,{guard,...(service?{clientAttemptId:attemptId}:{}),authorize:async(actual,key)=>{
               await guard();if(key!==prepared.cacheKey||JSON.stringify(actual)!==JSON.stringify(prepared.identity))throw fail('identity','Vibe 编码参数已变化');
               await rpc('encoding-transition',{...options,attemptId,status:'submitting'});authorized=true;return true;

@@ -185,10 +185,10 @@ export async function init(router, options = {}) {
   router.get('/image/vibe/capabilities',(req,res)=>{
     prepareImageResponse(res);
     try{const account=imageServiceAccount(req);vibesFor(req);return res.json({ok:true,version:1,accountBindingVersion:1,expectedAccount:account.namespace,
-      nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024,sharedNativeChannelVersion:1,receiptBindingVersion:1});}
+      nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024,sharedNativeChannelVersion:1,receiptBindingVersion:1,nativeReviewVersion:1});}
     catch(error){const result=vibeServiceErrorPayload(error);return res.status(result.status).json(result.body);}
   });
-  for(const action of ['query','result','submit'])router.post(`/image/vibe/${action}`,async(req,res)=>{
+  for(const action of ['query','result','submit','review','confirmReview'])router.post(`/image/vibe/${action}`,async(req,res)=>{
     prepareImageResponse(res);const controller=new AbortController(),onClose=()=>{if(!res.writableEnded)controller.abort();};res.once?.('close',onClose);
     try{const result=await vibesFor(req)[action](req,req.body,{signal:controller.signal});if(!res.destroyed&&!res.writableEnded)return res.json(result);}
     catch(error){const result=vibeServiceErrorPayload(error);if(!res.destroyed&&!res.writableEnded)return res.status(result.status).json(result.body);}
@@ -255,11 +255,11 @@ export async function init(router, options = {}) {
       tasksFor(req);
       return res.json({ ok: true, schemaVersion: IMAGE_SERVICE_TASK_VERSION, taskLocatorVersion: 1, accountBindingVersion: 1, catalogVersion: 1, providers: ['novel'], protocols: ['novelai'],
         scope: 'coordinated-endpoints-only', resultRetrieval: true, resultAcknowledgement: true, explicitCacheCleanup: true,
-        maxPending: 32, maxActive: 2, automaticRestartReplay: false, sharedNativeChannelVersion: 1,
+        maxPending: 32, maxActive: 2, automaticRestartReplay: false, sharedNativeChannelVersion: 1,nativeReviewVersion:1,
       });
     } catch (error) { const result = imageServiceTaskErrorPayload(error); return res.status(result.status).json(result.body); }
   });
-  for (const action of ['submit', 'query', 'result', 'acknowledge', 'discard', 'catalog']) {
+  for (const action of ['submit', 'query', 'result', 'acknowledge', 'discard', 'catalog','review','confirmReview']) {
     router.post(`/image/tasks/${action}`, async (req, res) => {
       prepareImageResponse(res);
       const controller = new AbortController();

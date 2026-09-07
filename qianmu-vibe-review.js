@@ -1,12 +1,33 @@
 import {createVibeServiceClient} from './qianmu-vibe-service-client.js';
+import {matchesVibeServiceDelivery} from './qianmu-vibe-encoding-store.js';
 export {createVibeServiceClient};
 const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
-const statuses={reserved:'等待核查',submitting:'提交状态待核查',unknown:'结果未确认',rejected:'已明确拒绝',ready:'已缓存'};
+const statuses={reserved:'等待核查',submitting:'提交状态待核查',unknown:'结果未确认',rejected:'已明确拒绝',ready:'已缓存',reviewed:'已核查 · 原费用未知'};
 const rowKey=row=>`${row.cacheKey}:${row.attemptId}`;
 export function createVibeReviewActions({namespace,call,guard,service,locks=globalThis.navigator?.locks}){
   const check=async()=>{await guard();};
   return {
     async list(){await check();const rows=await call('encoding-list',{namespace});await check();return rows.slice().sort((a,b)=>b.updatedAt-a.updatedAt);},
+    async review(row,confirm){
+      await check();if(row.namespace!==namespace||row.delivery?.transport!=='service')throw Error('此旧记录或直连记录尚不能关联服务核查，请保留原记录');
+      if(typeof locks?.request!=='function')throw Error('当前浏览器无法安全协调核查，请更换支持跨页协调的浏览器');
+      return locks.request('qianmu:nai-maintenance',{mode:'exclusive',ifAvailable:true},async lock=>{
+        if(!lock)throw Error('仍有 NAI 请求正在等待或生成，请结束后再核查');
+        await check();const expected=await call('encoding-get',{namespace,cacheKey:row.cacheKey});await check();
+        if(JSON.stringify(expected)!==JSON.stringify(row))throw Error('原费用记录已变化，请刷新');
+        let plan=await service.review(row);await check();
+        if(plan.requestDigest!==row.cacheKey||!matchesVibeServiceDelivery(row,plan.attemptId,plan.serviceDelivery))throw Error('此服务凭据不能对应原编码提交，未清除本机费用记录');
+        if(!plan.reviewed){
+          if(!plan.canReview)throw Error(plan.message);
+          const yes=await confirm('核查原编码','请先在渠道确认原任务已结束，并核对账单。\n原结果及费用仍可能无法确认，此事实会保留。\n继续只解除此原请求的限制，不会重新编码或生图；新编码仍须另行确认费用。');
+          await check();if(yes!==true)return {cancelled:true};
+          const latest=await call('encoding-get',{namespace,cacheKey:row.cacheKey});await check();if(JSON.stringify(latest)!==JSON.stringify(expected))throw Error('核查期间本机记录已变化，请刷新');
+          plan=await service.confirmReview(row,plan.confirmation);await check();
+        }
+        if(!plan.reviewed||plan.requestDigest!==row.cacheKey||!matchesVibeServiceDelivery(row,plan.attemptId,plan.serviceDelivery))throw Error('原核查结果尚未匹配，请刷新后续办；未重新编码');
+        const result=await call('encoding-review',{namespace,cacheKey:row.cacheKey,expected,delivery:plan});await check();return result;
+      });
+    },
     async receive(row){
       await check();if(row.namespace!==namespace)throw Error('编码记录不属于当前账户');
       if(typeof locks?.request!=='function')throw Error('当前浏览器无法安全核查在途请求，请换用支持跨页协调的浏览器');
@@ -34,7 +55,7 @@ export function createVibeReviewActions({namespace,call,guard,service,locks=glob
     async export(assetRef,selection){await check();if(assetRef?.namespace!==namespace)throw Error('编码文件不属于当前账户');const blob=await call('export-reviewed',{...selection,namespace,id:assetRef.id});await check();return blob;},
   };
 }
-export function createVibeReviewController({actions,onAdd,onClose,onNotice=()=>{},icons=()=>{},isCurrent=()=>true}){
+export function createVibeReviewController({actions,onAdd,onClose,confirm=async()=>false,onNotice=()=>{},icons=()=>{},isCurrent=()=>true}){
   let host,disposed=false,revision=0,rows=[],visible=40,busy=false,message='',loaded=false;const recovered=new Map(),urls=new Map();
   const live=()=>!disposed&&isCurrent()&&host?.isConnected;
   function download(blob){const url=URL.createObjectURL(blob),link=host.ownerDocument.createElement('a');link.href=url;link.download='qianmu-recovered.naiv4vibe';host.ownerDocument.body.append(link);link.click();link.remove();urls.set(url,setTimeout(()=>{URL.revokeObjectURL(url);urls.delete(url);},30000));}
@@ -44,7 +65,7 @@ export function createVibeReviewController({actions,onAdd,onClose,onNotice=()=>{
     if(!live())return;
     host.innerHTML=`<section class="sd-vibe-review"><header><h3>编码记录</h3><button type="button" class="sd-icon-btn sd-vibe-review-refresh" aria-label="刷新记录" ${busy?'disabled':''}><i class="fa-solid fa-rotate"></i></button><button type="button" class="sd-icon-btn sd-vibe-review-close" aria-label="返回 Vibe 库"><i class="fa-solid fa-xmark"></i></button></header><p class="sd-vibe-review-status" role="status">${escape(message||(busy?'正在读取…':'领取只读取原结果，不会重新编码。未确认的费用记录不会自动清除。'))}</p><div class="sd-vibe-review-rows">${rows.slice(0,visible).map((row,index)=>{
       const ref=row.status==='ready'?row.assetRef:recovered.get(rowKey(row)),transport=row.delivery?.transport==='service'?'增强服务':row.delivery?.transport==='direct'?'浏览器直连':'旧记录 · 来源未绑定';
-      return `<article data-vibe-review-row="${index}" data-state="${escape(row.status)}"><b>${escape(statuses[row.status]||'待核查')}</b><time>${escape(new Date(row.updatedAt).toLocaleString())}</time><span>${escape(row.identity.remoteModelId)}</span><span>信息提取 ${escape(row.identity.parameters.information_extracted)} · ${escape(transport)}</span><div>${row.status!=='ready'?`<button type="button" class="sd-btn sd-vibe-review-receive" ${busy?'disabled':''}>${row.delivery?.transport==='service'?'领取原结果':'查服务缓存'}</button>`:''}${ref?`<button type="button" class="sd-btn sd-vibe-review-add" ${busy?'disabled':''}>加入 Vibe 库</button><button type="button" class="sd-icon-btn sd-vibe-review-export" aria-label="导出编码文件" ${busy?'disabled':''}><i class="fa-solid fa-download"></i></button>`:''}</div>${row.status!=='ready'?'<small>仍在运行或没有完成证据的请求，不能在此清锁或直接重发。</small>':''}</article>`;
+      return `<article data-vibe-review-row="${index}" data-state="${escape(row.status)}"><b>${escape(statuses[row.status]||'待核查')}</b><time>${escape(new Date(row.updatedAt).toLocaleString())}</time><span>${escape(row.identity.remoteModelId)}</span><span>信息提取 ${escape(row.identity.parameters.information_extracted)} · ${escape(transport)}</span><div>${row.delivery?.transport==='service'&&['reserved','submitting','unknown'].includes(row.status)?`<button type="button" class="sd-btn sd-vibe-review-check" ${busy?'disabled':''}>核查后继续</button>`:''}${row.status!=='ready'?`<button type="button" class="sd-btn sd-vibe-review-receive" ${busy?'disabled':''}>${row.delivery?.transport==='service'?'领取原结果':'查服务缓存'}</button>`:''}${ref?`<button type="button" class="sd-btn sd-vibe-review-add" ${busy?'disabled':''}>加入 Vibe 库</button><button type="button" class="sd-icon-btn sd-vibe-review-export" aria-label="导出编码文件" ${busy?'disabled':''}><i class="fa-solid fa-download"></i></button>`:''}</div>${['reserved','submitting','unknown'].includes(row.status)?'<small>请先在渠道核查原任务和账单；仍在运行的请求不能解除占用。</small>':''}${row.feeReview||row.pastReviews?.length?`<details class="sd-vibe-fee-history"><summary>保留核查记录 ${(row.pastReviews?.length||0)+(row.feeReview?1:0)} 次</summary>${[...(row.pastReviews||[]),...(row.feeReview?[row]:[])].map(item=>`<p>${escape(new Date(item.feeReview.at).toLocaleString())} · 原结果及费用未知，已人工确认结束</p>`).join('')}</details>`:''}</article>`;
     }).join('')}</div>${rows.length>visible?'<button type="button" class="sd-btn sd-vibe-review-more">加载更多</button>':''}</section>`;
     host.querySelector('.sd-vibe-review-close').onclick=()=>{revision++;onClose();};host.querySelector('.sd-vibe-review-refresh').onclick=()=>void refresh();
     host.querySelector('.sd-vibe-review-more')?.addEventListener('click',()=>{visible+=40;render();});
@@ -55,6 +76,11 @@ export function createVibeReviewController({actions,onAdd,onClose,onNotice=()=>{
         if(result.blob){download(result.blob);message=result.warning;onNotice(message);return;}
         recovered.set(rowKey(row),result.assetRef);const next=await actions.list();if(!active())return;rows=next;
         message=result.reconciled?'原编码已领取并关联，无需再次编码':'已领取为独立素材；原记录的发送来源无法核实，费用状态仍保留';
+      }));
+      article.querySelector('.sd-vibe-review-check')?.addEventListener('click',run(async active=>{
+        const result=await actions.review(row,confirm);if(!active())return;
+        if(result.cancelled){message='已取消核查，原状态保留';return;}
+        const next=await actions.list();if(!active())return;rows=next;message='原未知费用事实已保留；新生成仍需正常授权，本次没有编码或生图';
       }));
       article.querySelector('.sd-vibe-review-add')?.addEventListener('click',run(async active=>{await onAdd(ref,selection);if(active())message='已加入 Vibe 库，未改变当前生成配置';}));
       article.querySelector('.sd-vibe-review-export')?.addEventListener('click',run(async active=>{const blob=await actions.export(ref,selection);if(active())download(blob);}));
