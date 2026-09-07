@@ -12,7 +12,8 @@ const integer=value=>Number.isSafeInteger(value)&&value>=0;
 const time=at=>{if(!integer(at)||at>Number.MAX_SAFE_INTEGER-COMFY_SCENE_RESERVATION_MS)fail('time','续场记录时间无效');return at;};
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const label=value=>({planId:typeof value?.planId==='string'?value.planId.slice(0,240):'',floor:Number.isInteger(value?.floor)&&value.floor>=0?value.floor:null,
-  workflowName:typeof value?.workflowName==='string'?value.workflowName.replace(/[\u0000-\u001f\u007f]/g,'').slice(0,80):''});
+  workflowName:typeof value?.workflowName==='string'?value.workflowName.replace(/[\u0000-\u001f\u007f]/g,'').slice(0,80):'',
+  ...(typeof value?.sceneTitle==='string'&&value.sceneTitle.trim()?{sceneTitle:value.sceneTitle.replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,80)}:{})});
 export function comfySceneScope(scope){const ns=assertComfyRouteNamespace(scope?.namespace);return normalizeComfySceneScope(scope,ns);}
 export const comfySceneScopeKey=scope=>{const s=comfySceneScope(scope);return JSON.stringify([s.namespace,s.chatKey,s.continuityId,s.narrativeLayer]);};
 function sceneStyleOrigin(value,scope){
@@ -64,6 +65,16 @@ export async function createComfyBatchSceneScopes({namespace,chatKey,batchKey,gr
     for(const id of group.shotIds){text(id,'镜头');if(scopes.has(id))fail('scope','本批次镜头重复归组');scopes.set(id,scope);}
   }
   if(source!==JSON.stringify(groups))fail('scope','本批次场景已变化，请重新准备');return scopes;
+}
+export async function createComfyDraftSceneScopes({namespace,chatKey,planId,revisionId,groups,shots,guard=async()=>{}}){
+  namespace=assertComfyRouteNamespace(namespace);text(chatKey,'聊天',512);text(planId,'取景计划',240);text(revisionId,'正文版本',80);
+  if(!Array.isArray(shots)||!shots.length||shots.length>32||!globalThis.crypto?.subtle)fail('scope','请先提取当前楼层');
+  const read=()=>JSON.stringify([namespace,chatKey,planId,revisionId,groups,shots.map(shot=>({id:shot.id,prompt:shot.prompt,negative:shot.negative,shotSpec:shot.shotSpec}))]);
+  const captured=read(),bytes=new TextEncoder().encode(captured);if(bytes.byteLength>2*1024*1024)fail('capacity','本次续场草稿过大，请拆分取景');
+  await guard();const digest=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(byte=>byte.toString(16).padStart(2,'0')).join('');await guard();
+  const scopes=await createComfyBatchSceneScopes({namespace,chatKey,batchKey:`draft_${digest}`,groups,guard});
+  if(scopes.size!==shots.length||shots.some(shot=>!scopes.has(shot.id))||read()!==captured)fail('scope','取景草稿已变化，请重新选择续场');
+  return scopes;
 }
 export function normalizeComfySceneRecord(value,scope){
   scope=comfySceneScope(scope);

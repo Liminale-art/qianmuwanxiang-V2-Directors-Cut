@@ -4,7 +4,7 @@ import {comfySceneScope,comfySceneScopeKey,comfySceneLockError,captureComfyScene
 import {comfyCandidateExecutionKey} from './qianmu-comfy-selection.js';
 import {resolveStoryboardPromptRendering} from './qianmu-prompt-formats.js';
 import {assertComfyRouteNamespace} from './qianmu-comfy-route-contract.js';
-export {createComfyBatchSceneScopes} from './qianmu-comfy-scene-lock.js';
+export {createComfyBatchSceneScopes,createComfyDraftSceneScopes} from './qianmu-comfy-scene-lock.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const fail=(code,message)=>{throw comfySceneLockError(code,message);};
@@ -99,7 +99,7 @@ export function createComfySceneCoordinator({resolveNamespace,store=createComfyS
       if(view.generation!==claim.observed.generation||view.lockRevision!==claim.observed.lockRevision)fail('conflict','续场在入队前已变化，请重新准备');
       if(view.lock&&!same(view.lock,claim.proposed))fail('conflict','当前场景已选择另一工作流');
       const result=await store.reserve(claim.proposed.scope,{expectedRevision:view.revision,expectedGeneration:view.generation,lock:claim.proposed,
-        label:{planId:job.planId,floor:job.floor,workflowName:job.profile.comfyRouteBinding?.name},
+        label:{planId:job.planId,floor:job.floor,workflowName:job.profile.comfyRouteBinding?.name,sceneTitle:job.shotSpec?.sceneFingerprint?.location||job.shotSpec?.subject},
         attemptId:job.id,ownerId,token:globalThis.crypto.randomUUID()});
       claim.receipt=result.receipt;live.add(claim);claim.observed.lockRevision=result.view.lockRevision;claim.observed.generation=result.view.generation;
       await guard(claim.namespace,current);

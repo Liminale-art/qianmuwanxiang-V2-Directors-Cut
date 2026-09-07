@@ -6,7 +6,8 @@ import * as auto from '../qianmu-comfy-auto-runtime.js';
 import * as routes from '../qianmu-comfy-route.js';
 import * as direct from '../qianmu-image-direct.js';
 import * as locks from '../qianmu-comfy-lock-runtime.js';
-import {changeComfySceneRecord,inspectComfySceneRecord,comfySceneScopeKey} from '../qianmu-comfy-scene-lock.js';
+import {hashText} from '../qianmu-storyboard-utils.js';
+import {changeComfySceneRecord,inspectComfySceneRecord,comfySceneScopeKey,captureComfySceneStyleLink,copyComfySceneStyleRecord} from '../qianmu-comfy-scene-lock.js';
 import {checkComfyCharacterReadiness,createComfyReadinessSession} from '../qianmu-comfy-character-readiness.js';
 import {normalizeComfyAutoPool,COMFY_SELECTION_SCHEMA} from '../qianmu-comfy-selection.js';
 import {compilerEnvironment} from './helpers/comfy-compiler-fixture.mjs';
@@ -32,7 +33,8 @@ async function environment({mixed=false,styleLock=true}={}){
   e.state.connections.comfy.draft.options.comfyTransport='browser';
   const inspect=async scope=>({...inspectComfySceneRecord(records.get(comfySceneScopeKey(scope)),scope),generation:0});
   const write=async(scope,action)=>{const result=changeComfySceneRecord(records.get(comfySceneScopeKey(scope)),scope,action);records.set(comfySceneScopeKey(scope),result.row);writes.push(action.type);return {view:await inspect(scope),receipt:result.receipt};};
-  const store={inspect,reserve:(scope,request)=>write(scope,{...request,type:'reserve'}),begin:receipt=>write(receipt.scope,{type:'begin',receipt}),settle:(receipt,outcome)=>write(receipt.scope,{type:'settle',receipt,outcome}),close(){}};
+  const store={inspect,reserve:(scope,request)=>write(scope,{...request,type:'reserve'}),begin:receipt=>write(receipt.scope,{type:'begin',receipt}),settle:(receipt,outcome)=>write(receipt.scope,{type:'settle',receipt,outcome}),
+    linkStyle:async(from,to,request)=>{const result=copyComfySceneStyleRecord(records.get(comfySceneScopeKey(from)),records.get(comfySceneScopeKey(to)),captureComfySceneStyleLink(from,to,request));records.set(comfySceneScopeKey(to),result.row);return {view:await inspect(to)};},close(){}};
   const load=e.context.featureRuntime.load;
   const manager=locks.createComfySceneCoordinator({store,resolveNamespace:async()=>(await load('imageAdmission')).resolveImageAccountNamespace(),ownerId:'test-page',locks:fakeWebLocks()});
   e.context.featureRuntime.load=async key=>{
@@ -73,6 +75,29 @@ test('actual one-shot extraction negotiates candidates, then routes, freezes and
     assert.ok([...e.records.values()].every(row=>row.established&&!row.holders.length));assert.ok(e.network.every(request=>request.method==='GET'));
     assert.equal(e.network.length,15,'two exact candidate reports once (6 GETs), followed by three fresh queue checks (9 GETs)');
     assert.ok(e.jobs.every(job=>!job.comfyProbeReadiness),'real jobs must not inherit exploration memo');
+  }finally{await e.close();}
+});
+
+test('a current compiled draft consumes the explicitly linked previous-floor style in the actual multi-shot generation chain',async()=>{
+  const e=await environment(),p=plan();
+  try{
+    assert.equal(await e.context.storyboardCompilePrompt(null,{plan:p}),true);assert.equal(e.state.promptDraft.planId,p.id);
+    core.normalizeStoryboardState(e.state);assert.equal(e.state.promptDraft.planId,p.id);
+    p.floor=1;e.context.storyboardTargetFloor=()=>1;e.context.hashText=hashText;
+    e.context.ctx().chat.push({...e.context.ctx().chat[0]});e.state.target='floor';e.state.floor='1';
+    p.revisionId=core.createStoryboardMessageReference({message:e.context.ctx().chat[1],chatKey:'chat-a',floor:1}).revisionId;
+    const autoModule=await e.context.featureRuntime.load('comfyAuto'),prepared=await autoModule.prepareComfyAutoSession({namespace,binding:e.state.comfyPoolSelection});
+    const priorScope={namespace,chatKey:'chat-a',continuityId:'previous-completed-scene',narrativeLayer:'present'};
+    const choice=await prepared.select({shotSpec:e.state.promptDraft.shots[0].shotSpec,scope:priorScope,probe:async()=>({automaticEligible:true})});
+    const prior=changeComfySceneRecord(null,priorScope,{type:'reserve',expectedRevision:0,lock:choice.proposedLock,label:{planId:'old-plan',floor:0,workflowName:'Portrait'},attemptId:'old',ownerId:'old-page',token:'old'});
+    const finished=changeComfySceneRecord(prior.row,priorScope,{type:'settle',receipt:prior.receipt,outcome:'succeeded'}).row;e.records.set(comfySceneScopeKey(priorScope),finished);prepared.close();
+    const {planned,coverage}=e.context.storyboardPrepareDraftGroup(e.state,p);
+    const scopes=await e.context.storyboardComfyPlanScopes(locks,{namespace,chatKey:'chat-a',plan:p,planned,coverage,draftPlanId:p.id,guard:async()=>{}}),target=scopes.get(planned[1].id);
+    const targetView=await e.manager.inspect(target);await e.manager.linkStyle(priorScope,target,{expectedSourceRevision:finished.revision,expectedRevision:targetView.revision,expectedGeneration:targetView.generation,label:{planId:p.id,floor:1}});
+    assert.equal(await e.context.storyboardGenerate(null,{plan:p,automatic:false}),true,JSON.stringify(e.notices));
+    assert.equal(e.jobs.length,3);assert.equal(e.jobs[1].profile.comfyRouteBinding.id,'portrait');assert.match(e.jobs[1].payload.prompt,/tag-scene-1/);
+    assert.equal((await e.manager.inspect(target)).pending,1);assert.equal((await e.manager.inspect(target)).styleOrigin.sourceFloor,0);
+    assert.deepEqual(e.jobs.map(job=>job.inlineOrder.shotIndex),[0,1,2]);assert.equal(e.llmCalls.length,1);
   }finally{await e.close();}
 });
 

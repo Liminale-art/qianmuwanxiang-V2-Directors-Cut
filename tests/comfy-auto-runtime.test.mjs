@@ -53,6 +53,19 @@ test('changed, archived, missing or foreign pool references stop with no workflo
     await assert.rejects(()=>runtime.prepareComfyAutoSession(f.options),/不符|归档|另一账户/);assert.equal(f.calls.length,0);
   }
 });
+
+test('style-link picker reads only pinned pool metadata and shares the active selector exact pool identity',async()=>{
+  const f=await fixture();f.calls.length=0;
+  const metadata=await runtime.readComfyStylePool(f.options);assert.equal(f.calls.length,0);assert.equal(metadata.styleLock,true);
+  assert.deepEqual(Object.keys(metadata).sort(),['binding','poolKey','styleLock']);
+  const session=await runtime.prepareComfyAutoSession(f.options);
+  try{
+    const selected=await session.select({shotSpec:await shot(),scope:{namespace,chatKey:'chat',continuityId:'scene',narrativeLayer:'present'},probe:actualProbe});
+    assert.equal(selected.proposedLock.poolKey,metadata.poolKey);assert.equal(selected.executionAuthorized,false);
+  }finally{session.close();}
+  f.rows[0].archived=true;f.calls.length=0;await assert.rejects(()=>runtime.readComfyStylePool(f.options),/归档/);assert.equal(f.calls.length,0);
+  await assert.rejects(()=>runtime.readComfyStylePool({...f.options,guard:async()=>{throw Error('page changed');}}),/page changed/);
+});
 test('session reads only enabled candidate fixed recipes and gathers the format union before any per-shot probe',async()=>{
   const f=await fixture();f.calls.length=0;
   const session=await runtime.prepareComfyAutoSession(f.options);assert.deepEqual(session.promptFormats,['tags','natural_language']);assert.equal(session.executionAuthorized,false);

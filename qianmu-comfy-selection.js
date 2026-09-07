@@ -75,6 +75,7 @@ export function normalizeComfySceneLock(value,namespace) {
   return {schema:COMFY_SELECTION_SCHEMA,scope:normalizeScope(value.scope,namespace),poolKey:value.poolKey,candidateId:id(value.candidateId,'锁定候选'),executionKey:value.executionKey};
 }
 const poolKey=pool=>digest([pool.namespace,pool.id,pool.revision,pool.enabled,pool.styleLock,pool.candidates]);
+export const comfyActiveScenePoolKey=raw=>poolKey({...normalizeComfyAutoPool(raw),enabled:true});
 export async function comfySelectionRequestKey(requirements,scope,namespace) {
   return digest([requirement(requirements),normalizeScope(scope,assertComfyRouteNamespace(namespace))]);
 }

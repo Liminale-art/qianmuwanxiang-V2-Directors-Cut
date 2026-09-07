@@ -1,6 +1,6 @@
 // Request-scoped candidate preparation. No provider submission, workflow edits, permanent locks or LLM calls.
 import { createComfyPoolStore } from './qianmu-comfy-pool-store.js';
-import { normalizeComfyAutoPool, selectComfyWorkflow, comfyCandidateExecutionKey, comfySelectionRequestKey } from './qianmu-comfy-selection.js';
+import { normalizeComfyAutoPool, selectComfyWorkflow, comfyCandidateExecutionKey, comfySelectionRequestKey, comfyActiveScenePoolKey } from './qianmu-comfy-selection.js';
 import { normalizeComfyClassification, COMFY_CLASSIFICATION_VALUES } from './qianmu-comfy-classification.js';
 import { normalizeComfyAutoBinding, comfyAutoError } from './qianmu-comfy-auto-binding.js';
 import { assertComfyRouteNamespace, normalizeComfyRouteSelection, comfyRouteBindingKey } from './qianmu-comfy-route-contract.js';
@@ -41,6 +41,10 @@ export async function readPinnedComfyAutoPool({binding,...options}) {
   const captured=normalizeComfyAutoBinding(binding);
   if(captured.namespace!==options.namespace)fail('候选方案属于另一账户，请重新选择');
   return readPool({...options,selection:captured},captured);
+}
+export async function readComfyStylePool(options){
+  const chosen=await readPinnedComfyAutoPool(options),poolKey=await comfyActiveScenePoolKey(chosen.pool);await options.guard?.();
+  return {binding:chosen.binding,poolKey,styleLock:chosen.pool.styleLock};
 }
 
 export async function prepareComfyAutoSession({binding,namespace,guard=async()=>{},createStore,readRecipe=readPinnedComfyRouteWorkflow,

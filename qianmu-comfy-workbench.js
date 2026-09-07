@@ -59,5 +59,5 @@ export function renderComfyWorkbench({profile, capabilities, collapsed={}, promp
     ${poolSelection?.invalid?'<p role="alert">候选方案来源待核对，请重新选择</p>':''}
     </div></details>`;
   return `<div class="sd-comfy-workbench">${shared.connection||''}${modes}${autoEnabled?automatic:fixed}
-    <button type="button" class="sd-btn sd-comfy-scene-toggle">续场记录</button><div class="sd-comfy-scene-list" hidden></div></div>`;
+    <div class="sd-comfy-scene-actions">${autoEnabled?'<button type="button" class="sd-btn sd-comfy-link-toggle">关联前层风格</button>':''}<button type="button" class="sd-btn sd-comfy-scene-toggle">续场记录</button></div><div class="sd-comfy-link-list" hidden></div><div class="sd-comfy-scene-list" hidden></div></div>`;
 }
