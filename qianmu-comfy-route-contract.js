@@ -32,3 +32,11 @@ export function retainComfyRouteBinding(value) {
   try { return normalizeComfyRouteBinding(value); }
   catch (_) { return { invalid: true }; }
 }
+export function comfyRouteBindingKey(value) {
+  const binding = normalizeComfyRouteBinding(value);
+  return JSON.stringify([binding.namespace,binding.id,binding.revision,binding.version,binding.workflowHash,binding.recipeHash]);
+}
+export function retainComfyRoutePromptLayer(value) {
+  if (!object(value) || ['positive','negative'].some(key => typeof value[key] !== 'string' || value[key].length > 12000)) return { invalid: true };
+  return { positive: value.positive, negative: value.negative };
+}

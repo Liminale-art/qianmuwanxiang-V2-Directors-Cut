@@ -42,6 +42,7 @@
     "qianmu-comfy-library.js",
     "qianmu-comfy-route-contract.js",
     "qianmu-comfy-route.js",
+    "qianmu-comfy-route-view.js",
     "qianmu-comfy-library-view.js",
     "qianmu-comfy-preflight.js",
     "qianmu-comfy-readiness.js",

@@ -72,7 +72,7 @@ function environment({automatic=false}={}) {
     storyboardCompilerResult:async()=>({shouldGenerate:false,skipReason:'no shot'}),sanitizeStoryboardDiagnosticData:value=>value,
     uid:()=> 'test-id',toast:message=>notices.push(message),MODULE_NAME:'test',console:{error:()=>{}},
   });
-  vm.runInContext(['storyboardUsesComfyCharacters','storyboardComfyReferenceMetadata','storyboardWorkflowIssue','storyboardCertainCompilerRoute','storyboardPreflightComfyForCompiler','storyboardCompilePrompt'].map(section).join('\n'),context);
+  vm.runInContext(['storyboardPrepareComfyRoutes','storyboardCompilerRoutes','storyboardUsesComfyCharacters','storyboardComfyReferenceMetadata','storyboardWorkflowIssue','storyboardCertainCompilerRoute','storyboardPreflightComfyForCompiler','storyboardCompilePrompt'].map(section).join('\n'),context);
   return {state,plan,calls,notices,context,guard,invalidate:()=>current=false};
 }
 const target=(providerId='comfy',parameterPresetId='')=>({providerId,modelId:providerId==='comfy'?'comfy-workflow':'nai-diffusion-5-full',parameterPresetId});

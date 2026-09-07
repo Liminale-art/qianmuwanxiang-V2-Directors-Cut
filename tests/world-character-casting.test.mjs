@@ -6,6 +6,8 @@ import * as world from '../qianmu-world-shot.js';
 import * as core from '../qianmu-storyboard.js';
 import * as decisions from '../qianmu-director-decision.js';
 import * as orders from '../qianmu-director-work-order.js';
+import * as comfyRoutes from '../qianmu-comfy-route.js';
+import { recipesFixture } from './helpers/comfy-route-fixture.mjs';
 import {normalizeQianmuProductionPacket} from '../qianmu-production-packet.js';
 import {newCharacterArchive,normalizeCharacterArchive} from '../qianmu-character-archive.js';
 import {createStoryboardFormFixture,storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
@@ -112,7 +114,7 @@ function harness({confirm=async options=>options.shot,family='novel'}={}) {
     }},saveSettings:()=>calls.push('save'),sanitizeStoryboardDiagnosticData:value=>value,toast:(text)=>{notices.push(text);return false;},
     storyboardGenerate:async(root,options)=>{options.productionGuard.assertCurrent();context.lastProductionOptions=options;calls.push('generate');assert.equal(root,null);assert.equal(options.automatic,false);return true;},
   });
-  vm.runInContext(['storyboardCreatePreparationGuard','storyboardCompilerCharacterCasting','storyboardGenerateProductionPacket'].map(section).join('\n'),context);
+  vm.runInContext(['storyboardPrepareComfyRoutes','storyboardCreatePreparationGuard','storyboardCompilerCharacterCasting','storyboardGenerateProductionPacket'].map(section).join('\n'),context);
   return {...e,state,context,calls,notices,packet,candidate,run:()=>context.storyboardGenerateProductionPacket({isConnected:true},'packet-a'),setAccount:value=>{account=value;},setChat:value=>{chat=value;}};
 }
 test('real entry awaits explicit confirmation, uses shared visible casting and hands one approved draft to the normal pipeline',async()=>{
@@ -160,6 +162,25 @@ test('world confirmation escapes imported names and all editable text, without r
   shot.characters[0].name='<img src=x onerror=alert(1)>';shot.characters[0].identity=['</textarea><script>alert(1)</script>'];
   const html=world.renderWorldShotConfirmation(shot,{title:'<script>bad</script>',model:'<svg/onload=alert(1)>'});
   assert.doesNotMatch(html,/<script|<img|<svg/);assert.match(html,/&lt;script/);assert.doesNotMatch(html,/PRIVATE-QUALIFICATION|sha256/);
+});
+
+for(const invalid of [false,true])test(`world fixed workflow ${invalid?'fails before confirmation if missing':'prepares an exact recipe and reaches shared gallery-only generation'}`,async()=>{
+  const e=harness(),f=await recipesFixture();f.rows.forEach(row=>row.namespace=e.namespace);
+  const recipe=await comfyRoutes.pinComfyRouteWorkflow({namespace:e.namespace,selection:f.rows[0],createStore:f.createStore});
+  e.state.routing.enabled=true;e.state.routing.rules=[{id:'fixed',enabled:true,shotTypes:[],target:{providerId:'comfy',modelId:'comfy-workflow',comfyWorkflowBinding:recipe.binding,comfyCharacterEnabled:false}}];
+  if(invalid)f.rows[0].archived=true;
+  const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>key==='comfyRoutes'?{...comfyRoutes,prepareComfyRouteRecipes:options=>comfyRoutes.prepareComfyRouteRecipes({...options,createStore:f.createStore})}:load(key);
+  vm.runInContext(['storyboardProfileSnapshot','storyboardResolveRoutingProfile'].map(section).join('\n'),e.context);
+  assert.equal(await e.run(),!invalid,e.notices.join(';'));
+  if(invalid){assert.equal(e.calls.includes('confirm'),false);assert.equal(e.calls.includes('generate'),false);return;}
+  const queued=[];Object.assign(e.context,{storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:20,storyboardQueueJob:async job=>{queued.push(job);return true;},
+    storyboardCredentialId:()=> 'test-key',storyboardAnchorForMessage:()=>null,uniqueClean:items=>[...new Set(items.filter(Boolean))],storyboardAdaptShotForModel:async shot=>shot,
+    confirmDialog:async()=>true,STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',environment:'',custom:''}});
+  vm.runInContext(['storyboardPromptsForArtist','storyboardJoinPrompt','storyboardCompilerRoutes','storyboardGenerationPayload','storyboardCreateJob','storyboardGenerate'].map(section).join('\n'),e.context);
+  assert.equal(await e.context.storyboardGenerate(null,e.context.lastProductionOptions),true,e.notices.join(';'));assert.equal(queued.length,1);
+  const job=queued[0];assert.equal(job.source,'comfy');assert.equal(job.target,'gallery');assert.equal(job.inlineByDefault,false);
+  assert.deepEqual(job.profile.comfyRouteBinding,recipe.binding);assert.equal(job.profile.comfyWorkflow,recipe.document.workflow);
+  assert.equal(job.profile.comfyCharacterEnabled,false);assert.equal(job.shotSpec.directorDecision.outputs.film,false);
 });
 
 for(const revoke of [false,'source','account'])test(`real normal pipeline ${revoke?`stops changed ${revoke}`:'freezes world casting in a gallery-only NAI job'}`,async()=>{

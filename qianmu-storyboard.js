@@ -3,7 +3,7 @@ import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BIN
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
 import { retainComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
 import { normalizeComfyCharacterActivation } from './qianmu-comfy-character-contract.js';
-import { retainComfyRouteBinding } from './qianmu-comfy-route-contract.js';
+import { retainComfyRouteBinding, retainComfyRoutePromptLayer } from './qianmu-comfy-route-contract.js';
 import { normalizeWorldSource } from './qianmu-world-source.js';
 import { normalizeCharacterCastingSnapshot, assertCharacterCastingSnapshots } from './qianmu-character-casting.js';
 export { assertCharacterCastingSnapshots } from './qianmu-character-casting.js';
@@ -1663,7 +1663,8 @@ function normalizeRouting(value) {
     // Keep broken references repairable. Clearing them would silently use today's draft connection/parameters.
     const connectionPresetId = cleanId(input.connectionPresetId), parameterPresetId = cleanId(input.parameterPresetId);
     const workflowBinding = providerId === 'comfy' && Object.hasOwn(input, 'comfyWorkflowBinding')
-      ? { comfyWorkflowBinding: retainComfyRouteBinding(input.comfyWorkflowBinding) } : {};
+      ? { comfyWorkflowBinding: retainComfyRouteBinding(input.comfyWorkflowBinding), comfyCharacterEnabled: input.comfyCharacterEnabled === true,
+        comfyReferences: input.comfyReferences == null ? null : retainComfyReferenceSelection(input.comfyReferences) } : {};
     try {
       const binding = resolveStoryboardProfileBinding(providerId, { model: input.modelId, capabilityModelId: input.capabilityModelId });
       return { providerId, modelId: binding.remoteModelId, capabilityModelId: binding.capabilityModelId, connectionPresetId, parameterPresetId, ...workflowBinding };
@@ -1792,6 +1793,7 @@ function shotPlans(value, state = {}) {
         id: cleanId(shot.id), shotType: str(shot.shotType || shotSpec?.shotScale || 'custom', 60), role: str(shot.role || shotSpec?.shotRole, 60),
         title: str(shot.title, 120), purpose: str(shot.purpose || shotSpec?.narrativePurpose, 500), prompt: str(shot.prompt, 24000), safePrompt: str(shot.safePrompt, 24000), negative: str(shot.negative, 12000), hasPrompt,
         providerId, connectionPresetId, parameterPresetId, routeRuleId: cleanId(shot.routeRuleId), status: workflowState(shot.status), resultIds: ids(shot.resultIds, 20),
+        ...(providerId === 'comfy' && Object.hasOwn(shot,'comfyRouteBinding') ? { comfyRouteBinding: retainComfyRouteBinding(shot.comfyRouteBinding) } : {}),
         error: str(shot.error, 4000), partialFailureCount: int(shot.partialFailureCount, 0, 20, 0), attempt: int(shot.attempt, 0, 20, 0),
         paragraphAnchor: shot.paragraphAnchor ? normalizeStoryboardParagraphAnchor(shot.paragraphAnchor) : null,
         paragraphSelection: shot.paragraphSelection ? normalizeStoryboardParagraphSelection(shot.paragraphSelection) : null,
@@ -2122,6 +2124,8 @@ export function normalizeStoryboardParameterProfile(value, providerId) {
     base.capabilityModelId = validId(capability) && Object.hasOwn(p, 'model') && validId(p.model) ? capability.trim() : '[invalid-capability]';
   }
   if (providerId === 'comfy') {
+    if (Object.hasOwn(p, 'comfyRouteBinding')) base.comfyRouteBinding = retainComfyRouteBinding(p.comfyRouteBinding);
+    if (Object.hasOwn(p, 'comfyRoutePromptLayer')) base.comfyRoutePromptLayer = retainComfyRoutePromptLayer(p.comfyRoutePromptLayer);
     if (Object.hasOwn(p, 'comfyReferences')) base.comfyReferences = retainComfyReferenceSelection(p.comfyReferences);
     if (Object.hasOwn(p,'comfyCharacterActivation')) {
       try { base.comfyCharacterActivation = normalizeComfyCharacterActivation(p.comfyCharacterActivation); }

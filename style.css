@@ -7025,6 +7025,22 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #chat .mes .sd-storyboard-inline-actions { right: 43px; max-width: calc(100% - 52px); }
 }
 /* Qianmu Line: inline rounded strokes with no font/CDN/sprite request. */
+.sd-comfy-route-picker { box-sizing: border-box; width: min(480px,calc(100vw - 64px)); max-width: 100%; min-width: 0; max-height: 70vh; overflow-y: auto; display: grid; gap: 10px; text-align: left; font-size: 12px; }
+.sd-comfy-route-picker h3 { margin: 0; font-size: 16px; }
+.sd-comfy-route-picker label { min-width: 0; display: grid; gap: 5px; margin: 0; text-align: left; }
+.sd-comfy-route-picker select { box-sizing: border-box; width: 100%; min-width: 0; height: 40px; min-height: 40px; margin: 0; font-size: 12px; border-radius: 8px; }
+.sd-comfy-route-picker .sd-comfy-route-check { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.sd-comfy-route-check input { flex: 0 0 18px; width: 18px; height: 18px; margin: 0; }
+.sd-comfy-route-picker :is(small,p) { font-size: 11px; line-height: 1.5; margin: 0; overflow-wrap: anywhere; }
+@media (min-width: 701px) {
+  #story-director-modal .sd-storyboard-route-rule > .sd-storyboard-route-target:has(.sd-storyboard-bind-route-workflow) { grid-template-columns: repeat(3,minmax(0,1fr)); }
+}
+#story-director-modal .sd-storyboard-route-target > label { min-width: 0; display: grid; gap: 5px; text-align: left; margin: 0; }
+#story-director-modal .sd-storyboard-route-target > label > :is(button,select) { min-width: 0; width: 100%; height: 40px; min-height: 40px; margin: 0; padding: 6px 8px; font-size: 12px; border-radius: 8px; }
+#story-director-modal .sd-storyboard-route-target > label > span { font-size: 12px; color: var(--sd-muted); text-align: left; }
+#story-director-modal .sd-storyboard-bind-route-workflow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-storyboard-route-fixed { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; grid-column: 1/-1; font-size: 12px; }
+#story-director-modal .sd-storyboard-route-fixed small { flex-basis: 100%; font-size: 11px; text-align: left; }
 .qm-glyph-icon {
   display: inline-flex;
   align-items: center;
