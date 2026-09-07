@@ -131,7 +131,7 @@ export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,
       if(name==='export'){const document=await loadDocument(row);await authorize();exportDocument(row.name,document);return;}
       if(name==='apply'){
         const document=await loadDocument(row);await authorize();
-        await onApply({id:row.id,revision:row.revision,name:row.name,version:row.version,document});return;
+          await onApply({namespace,id:row.id,revision:row.revision,name:row.name,version:row.version,document});return;
       }
       if(name==='archive'||name==='restore'){await store.archive(namespace,row.id,row.revision,name==='archive');await loadList();return;}
       if(name==='purge'){

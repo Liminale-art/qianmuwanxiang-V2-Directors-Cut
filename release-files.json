@@ -6,6 +6,8 @@
     "qianmu-comfy-pool-view.js",
     "qianmu-prompt-formats.js",
     "qianmu-comfy-prompt.js",
+    "qianmu-comfy-workbench-binding.js",
+    "qianmu-comfy-classification.js",
     "qianmu-comfy-pool-store.js",
     "qianmu-comfy-service.js",
     "qianmu-comfy-receipt.js",

@@ -49,7 +49,10 @@ export async function routeEnvironment(options={}) {
     storyboardQueueJob:async job=>{jobs.push(job);return true;},confirmDialog:async()=>true,
     featureRuntime:{load:async key=>{
       calls.push(key);
-      if(key==='comfyRoutes')return {...runtime,prepareComfyRouteRecipes:options=>runtime.prepareComfyRouteRecipes({...options,createStore:f.createStore})};
+      if(key==='comfyRoutes')return {...runtime,
+        pinComfyRouteWorkflow:options=>runtime.pinComfyRouteWorkflow({...options,createStore:f.createStore}),
+        prepareComfyWorkbenchBinding:(profile,options)=>runtime.prepareComfyWorkbenchBinding(profile,{...options,createStore:f.createStore}),
+        prepareComfyRouteRecipes:options=>runtime.prepareComfyRouteRecipes({...options,createStore:f.createStore})};
       if(key==='imageAdmission')return {resolveImageAccountNamespace:async()=>account};
       if(key==='comfyPreflight')return preflight;
       throw Error(`Unexpected external feature: ${key}`);

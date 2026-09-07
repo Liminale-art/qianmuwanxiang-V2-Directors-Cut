@@ -1,16 +1,11 @@
 // Pure selection contract. This module cannot open storage, call an LLM, mutate a graph or authorize execution.
 import { assertComfyRouteNamespace, normalizeComfyRouteBinding, comfyRouteBindingKey } from './qianmu-comfy-route-contract.js';
 import { normalizeComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
+import { COMFY_CLASSIFICATION_VALUES, normalizeComfyClassification, comfyClassificationChoices as choices } from './qianmu-comfy-classification.js';
+export { COMFY_CLASSIFICATION_VALUES, normalizeComfyClassification } from './qianmu-comfy-classification.js';
 
 export const COMFY_SELECTION_SCHEMA = 'qianmu.comfy.selection.v1';
 export const COMFY_SELECTION_LIMIT = 32;
-export const COMFY_CLASSIFICATION_VALUES = Object.freeze({
-  visualKinds: Object.freeze(['character','environment','object','symbolic','mixed']),
-  castSizes: Object.freeze(['none','one','many']),
-  narrativeLayers: Object.freeze(['present','memory','fantasy','dream','imagined']),
-  contentClasses: Object.freeze(['sfw','adult']),
-  promptFormats: Object.freeze(['tags','natural_language','character_blocks']),
-});
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const fail=message=>{throw Object.assign(new Error(message),{code:'comfy_selection_invalid',submissionState:'not_submitted'});};
 const id=(value,label='编号')=>{if(typeof value!=='string'||!/^[a-zA-Z0-9_-]{1,160}$/.test(value))fail(`${label}无效`);return value;};
@@ -22,26 +17,6 @@ async function digest(value) {
   if(data.byteLength>256*1024)fail('候选配置过大，请拆分方案');
   return [...new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256',data))].map(byte=>byte.toString(16).padStart(2,'0')).join('');
 }
-const choices=(value,allowed,label)=>{
-  if(value===undefined)return [];
-  if(!Array.isArray(value)||value.length>allowed.length||value.some(item=>!allowed.includes(item))||new Set(value).size!==value.length)fail(`${label}分类无效`);
-  return allowed.filter(item=>value.includes(item));
-};
-
-export function normalizeComfyClassification(value={}) {
-  if(!object(value)||value.version!==1)fail('工作流分类版本无效');
-  const maxSubjects=value.maxSubjects??null;
-  if(maxSubjects!==null&&(!Number.isInteger(maxSubjects)||maxSubjects<0||maxSubjects>12))fail('可见人物上限无效');
-  const promptFormat=value.promptFormat??'';
-  if(promptFormat!==''&&!COMFY_CLASSIFICATION_VALUES.promptFormats.includes(promptFormat))fail('提示输入格式无效');
-  return {version:1,
-    visualKinds:choices(value.visualKinds,COMFY_CLASSIFICATION_VALUES.visualKinds,'画面'),
-    castSizes:choices(value.castSizes,COMFY_CLASSIFICATION_VALUES.castSizes,'人数'),
-    narrativeLayers:choices(value.narrativeLayers,COMFY_CLASSIFICATION_VALUES.narrativeLayers,'叙事层'),
-    contentClasses:choices(value.contentClasses,COMFY_CLASSIFICATION_VALUES.contentClasses,'内容'),
-    promptFormat,maxSubjects};
-}
-
 function normalizeTarget(value,namespace) {
   if(!object(value)||value.providerId!=='comfy'||value.modelId!=='comfy-workflow'||value.parameterPresetId
     ||value.capabilityModelId!=null&&value.capabilityModelId!=='comfy-workflow')fail('候选须为独立固定 Comfy 工作流');

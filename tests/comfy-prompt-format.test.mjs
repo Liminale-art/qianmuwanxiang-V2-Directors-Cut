@@ -7,6 +7,7 @@ import * as formats from '../qianmu-prompt-formats.js';
 import * as contract from '../qianmu-storyboard-contract.js';
 import * as routes from '../qianmu-comfy-route.js';
 import * as prompts from '../qianmu-comfy-prompt.js';
+import * as workbench from '../qianmu-comfy-workbench-binding.js';
 import {applyCharacterCasting,CHARACTER_CASTING_SCHEMA} from '../qianmu-character-casting.js';
 import {prepareComfyWorkflow} from '../qianmu-comfy-workflow.js';
 import {routeEnvironment,recipesFixture,namespace} from './helpers/comfy-route-fixture.mjs';
@@ -39,6 +40,15 @@ async function environment(){
   vm.runInContext(['storyboardCompilerRequestConfig','storyboardCompilerResult','storyboardCompilePrompt','storyboardPrepareComfyPromptJob','storyboardPrepareGatewayAssets'].map(section).join('\n'),e.context);
   e.context.storyboardQueueJob=async job=>{if(job.source==='comfy') {await e.context.storyboardVerifyComfyRouteJob(job);await e.context.storyboardPrepareComfyPromptJob(job,{prepare:true});}e.jobs.push(job);return true;};
   return {...e,llmCalls:calls,errors,response:scene};
+}
+async function workbenchEnvironment(){
+  const e=await environment(); e.state.source='comfy';e.state.view='workflows';e.state.routing.enabled=false;
+  Object.assign(e.context,{storyboardNavigate:(_root,patch)=>Object.assign(e.state,patch)});
+  vm.runInContext(['storyboardRememberPromptLayer','storyboardApplyComfyLibraryRecipe','storyboardCurrentComfyRecipe'].map(section).join('\n'),e.context);
+  const root={isConnected:true};
+  await e.context.storyboardApplyComfyLibraryRecipe(root,e.state,e.rows[0]);
+  for(const shot of e.response.shots) delete shot.prompt_renderings.natural_language;
+  return {...e,root};
 }
 
 test('fixed recipes expose only their exact classification and unknown recipes clear stale format provenance',async()=>{
@@ -159,4 +169,116 @@ test('format text remains literal input, never a second workflow-template expans
   const shot=core.normalizeStoryboardShotSpec({scene:'letter'}),rendered=prompts.compileComfyPromptRendering({format:'natural_language',global:text,characters:[],negative:''},shot);
   const workflow={text:{class_type:'CLIPTextEncode',inputs:{text:'%qianmu_prompt%'}}};
   assert.equal(prepareComfyWorkflow(workflow,{prompt:rendered.prompt,negativePrompt:''}).bind().text.inputs.text,text);assert.equal(workflow.text.inputs.text,'%qianmu_prompt%');
+});
+
+test('applying a classified library version retains only bounded workbench provenance and preserves classification when saving current',async()=>{
+  const e=await workbenchEnvironment(),profile=e.state.profiles.comfy;
+  assert.equal(profile.comfyRouteBinding,undefined);assert.equal(profile.comfyRoutePromptFormat,undefined);
+  assert.equal(core.storyboardComfyPromptFormat(profile),'tags');assert.equal(profile.comfyWorkbenchBinding.binding.revision,'revision-portrait');
+  const recipe=e.context.storyboardCurrentComfyRecipe(e.state);
+  assert.equal(recipe.document.classification.promptFormat,'tags');assert.equal(recipe.document.workflow,e.recipes[0].document.workflow);
+  const restored=core.normalizeStoryboardState(plain(e.state));assert.deepEqual(restored.profiles.comfy.comfyWorkbenchBinding,plain(profile.comfyWorkbenchBinding));
+  assert.equal(core.getStoryboardRememberedProfile(restored.modelProfiles,'comfy','comfy-workflow').comfyWorkbenchBinding.classification.promptFormat,'tags');
+  assert.ok(JSON.stringify(profile.comfyWorkbenchBinding).length<1500);assert.doesNotMatch(JSON.stringify(profile.comfyWorkbenchBinding),/class_type|parameters|positivePrompt/);
+});
+test('ordinary workbench actual extraction and generation honor format plus current parameter and prompt edits',async()=>{
+  const e=await workbenchEnvironment(),profile=e.state.profiles.comfy;
+  profile.steps='19';profile.cfg='6';profile.width='768';profile.height='1024';
+  e.context.storyboardRememberPromptLayer(e.state,null,'comfy',profile.model,'positive','user edited prefix');
+  e.context.storyboardRememberPromptLayer(e.state,null,'comfy',profile.model,'negative','user edited exclusion');
+  const plan={id:'plan',chatKey:'chat-a',status:'screening',shots:[]};
+  assert.equal(await e.context.storyboardCompilePrompt(null,{plan}),true,JSON.stringify(e.errors));
+  assert.deepEqual(e.llmCalls[0].options.promptFormats,['tags']);assert.equal(e.llmCalls[0].options.maxTokens,7800);
+  core.normalizeStoryboardState(e.state);
+  assert.equal(await e.context.storyboardGenerate(null,{plan,automatic:true}),true,JSON.stringify({errors:e.errors,notices:e.notices}));
+  assert.equal(e.jobs.length,3);assert.ok(e.jobs.every(job=>job.source==='comfy'));
+  for(const job of e.jobs){
+    assert.equal(job.profile.steps,'19');assert.equal(job.profile.cfg,'6');assert.equal(job.profile.comfyRouteBinding,undefined);
+    assert.match(job.payload.prompt,/^user edited prefix, tag-scene-/);assert.equal(job.payload.negative,'user edited exclusion, extra people');
+    await e.context.storyboardPrepareGatewayAssets(job);
+    assert.equal(prepareComfyWorkflow(job.payload.parameters.workflow,{prompt:job.payload.prompt,negativePrompt:job.payload.negative,parameters:job.payload.parameters}).bind().negative.inputs.text,job.payload.negative);
+  }
+  assert.deepEqual(e.jobs.map(job=>job.inlineOrder.shotIndex),[0,1,2]);assert.equal(e.llmCalls.length,1);
+});
+test('ordinary and fixed routes negotiate only reachable formats, and a fixed route removes workbench provenance',async()=>{
+  const e=await workbenchEnvironment();e.state.routing.enabled=true;e.state.routing.rules=e.state.routing.rules.slice(1);
+  const input=e.context.storyboardCreatePreparationGuard(e.state),prepared=await e.context.storyboardPrepareComfyRoutes(e.state,input);
+  assert.deepEqual(plain(prepared.promptFormats),['tags','natural_language']);
+  const selected=e.context.storyboardResolveRoutingProfile(e.state,e.routes[1],null,prepared);
+  assert.equal(selected.comfyWorkbenchBinding,undefined);assert.equal(selected.comfyRoutePromptFormat,'natural_language');
+  e.state.routing.rules=[{id:'all',enabled:true,shotTypes:Object.keys(e.context.STORYBOARD_SHOT_TYPE_LABELS),target:e.routes[1]}];
+  const fixedOnly=await e.context.storyboardPrepareComfyRoutes(e.state,e.context.storyboardCreatePreparationGuard(e.state));
+  assert.deepEqual(plain(fixedOnly.promptFormats),['natural_language']);
+});
+test('changing a graph or classification stops before the actual LLM call, not by dropping to legacy tags',async()=>{
+  for(const change of [profile=>profile.comfyWorkflow=profile.comfyWorkflow.replace('portrait','modified'),profile=>profile.comfyWorkbenchBinding.classification.promptFormat='natural_language']){
+    const e=await workbenchEnvironment();change(e.state.profiles.comfy);
+    assert.equal(await e.context.storyboardCompilePrompt(null),false);assert.equal(e.llmCalls.length,0);assert.equal(e.jobs.length,0);
+    assert.match(e.errors.join(' '),/工作流图已修改|分类与原版本不符/);
+  }
+});
+test('workbench replay uses frozen classification and additions after library purge, not a fresh head or current UI defaults',async()=>{
+  const e=await workbenchEnvironment(),plan={id:'plan',chatKey:'chat-a',status:'screening',shots:[]};
+  await e.context.storyboardCompilePrompt(null,{plan});await e.context.storyboardGenerate(null,{plan,automatic:true});
+  const job=core.sanitizeStoryboardSnapshot(e.jobs[0]),before=job.payload.prompt;e.rows.length=0;
+  e.context.storyboardRememberPromptLayer(e.state,null,'comfy','comfy-workflow','positive','do not use this');
+  await prompts.prepareComfyPromptJob(job,{namespace});assert.equal(job.payload.prompt,before);
+  await routes.assertComfyRouteProfile(job.profile,{namespace});
+  await assert.rejects(()=>prompts.prepareComfyPromptJob(job,{namespace:'st-user:other'}),/另一账户/);
+  job.payload.comfyWorkbenchPromptLayer.positive='changed frozen prefix';
+  await assert.rejects(()=>prompts.prepareComfyPromptJob(job,{namespace}),/不符/);
+});
+test('loading an old unclassified recipe explicitly clears old provenance without altering queued jobs or the other provider',async()=>{
+  const e=await workbenchEnvironment(),before=plain(e.state.profiles.novel),old=plain(e.state.profiles.comfy);
+  e.state.view='workflows';delete e.rows[1].document.classification;
+  await e.context.storyboardApplyComfyLibraryRecipe(e.root,e.state,e.rows[1]);
+  assert.equal(e.state.profiles.comfy.comfyWorkbenchBinding,undefined);assert.equal(core.storyboardComfyPromptFormat(e.state.profiles.comfy),'');
+  assert.deepEqual(e.state.profiles.novel,before);assert.equal(old.comfyWorkbenchBinding.classification.promptFormat,'tags');
+  assert.equal(await e.context.storyboardPrepareComfyRoutes(e.state,e.context.storyboardCreatePreparationGuard(e.state)),null);
+});
+test('classification without a prompt declaration preserves compatibility but still checks graph/account provenance',async()=>{
+  const e=await workbenchEnvironment();e.rows[0].document.classification.promptFormat='';e.state.view='workflows';
+  await e.context.storyboardApplyComfyLibraryRecipe(e.root,e.state,e.rows[0]);
+  assert.equal(core.storyboardComfyPromptFormat(e.state.profiles.comfy),'');
+  const prepared=await e.context.storyboardPrepareComfyRoutes(e.state,e.context.storyboardCreatePreparationGuard(e.state));assert.deepEqual(plain(prepared.promptFormats),[]);
+  await assert.rejects(()=>prompts.prepareComfyPromptJob({source:'comfy',profile:e.state.profiles.comfy},{namespace:'st-user:other'}),/另一账户/);
+});
+test('late library application cannot replace another page, account, or concurrently edited workbench',async()=>{
+  for(const change of [e=>{e.state.view='create';},e=>e.setAccount('st-user:other'),e=>{e.state.profiles.comfy.steps='21';}]){
+    const e=await workbenchEnvironment();e.state.view='workflows';const prior=e.state.profiles.comfy,load=e.context.featureRuntime.load;
+    e.context.featureRuntime.load=async key=>{const module=await load(key);return key==='comfyRoutes'?{...module,pinComfyRouteWorkflow:async options=>{const value=await module.pinComfyRouteWorkflow(options);change(e);return value;}}:module;};
+    await assert.rejects(()=>e.context.storyboardApplyComfyLibraryRecipe(e.root,e.state,e.rows[1]),/已变化/);
+    assert.equal(e.state.profiles.comfy,prior);assert.equal(prior.comfyWorkbenchBinding.binding.id,'portrait');
+  }
+});
+test('malformed workbench provenance cannot disappear through normalization, even when manual text is present',async()=>{
+  for(const value of [null,{},{schemaVersion:2},{invalid:true}]){
+    const p=core.normalizeStoryboardParameterProfile({comfyWorkbenchBinding:value},'comfy');assert.equal(p.comfyWorkbenchBinding.invalid,true);
+    assert.equal(core.storyboardComfyPromptFormat(p),'[invalid]');
+    await assert.rejects(()=>prompts.prepareComfyPromptJob({source:'comfy',profile:p,promptLocked:true,payload:{prompt:'manual'}},{namespace,prepare:true}),/来源无效/);
+  }
+});
+test('in-flight workbench prompt preparation cannot sign payload text changed during graph verification',async()=>{
+  const e=await workbenchEnvironment(),job={source:'comfy',profile:e.state.profiles.comfy,promptLocked:true,payload:{prompt:'manual'}};let count=0;
+  await assert.rejects(()=>prompts.prepareComfyPromptJob(job,{namespace,prepare:true,guard:async()=>{if(++count===2)job.payload.prompt='late changed';}}),/已变化/);
+  assert.equal(job.payload.promptRendering,undefined);
+});
+test('light workbench declarations do not pull candidate selection or reference storage into startup',async()=>{
+  const source=await readFile(new URL('../qianmu-comfy-workbench-binding.js',import.meta.url),'utf8');
+  assert.doesNotMatch(source,/^import .*from ['"].*(?:selection|references|library)\.js['"]/m);
+  assert.equal(workbench.retainComfyWorkbenchBinding({schemaVersion:3}).invalid,true);
+  const declaration=await readFile(new URL('../qianmu-comfy-classification.js',import.meta.url),'utf8');assert.doesNotMatch(declaration,/\b(fetch|indexedDB|WebSocket)\b/);
+});
+test('workbench additions are typed and bounded, never object-to-string prompt coercion',async()=>{
+  const e=await workbenchEnvironment(),plan={id:'plan',chatKey:'chat-a',status:'screening',shots:[]};
+  await e.context.storyboardCompilePrompt(null,{plan});await e.context.storyboardGenerate(null,{plan,automatic:true});
+  for(const layer of [{positive:{text:'coerce me'},negative:''},{positive:'x'.repeat(12001),negative:''},{positive:'',negative:null},null]){
+    const job=plain(e.jobs[0]);delete job.payload.promptRendering;job.payload.comfyWorkbenchPromptLayer=layer;
+    await assert.rejects(()=>prompts.prepareComfyPromptJob(job,{prepare:true,namespace}),/提示补充无效/);assert.equal(job.payload.promptRendering,undefined);
+  }
+});
+test('library apply reads the verified version instead of trusting a changed callback document',async()=>{
+  const e=await workbenchEnvironment();e.state.view='workflows';
+  await e.context.storyboardApplyComfyLibraryRecipe(e.root,e.state,{...e.rows[1],document:{...e.rows[1].document,positivePrompt:'forged callback prefix'}});
+  assert.equal(e.context.storyboardCurrentComfyRecipe(e.state).document.positivePrompt,'landscape quality');
 });

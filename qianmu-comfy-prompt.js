@@ -1,6 +1,8 @@
-// Final prompt projection for an explicitly classified fixed workflow. Never rewrites a graph.
+// Final prompt projection for a classified workflow (fixed route or editable workbench). Never rewrites a graph.
 import { normalizeStoryboardShotSpec, getStoryboardCapabilities } from './qianmu-storyboard.js';
 import { normalizeStoryboardPromptFormats, resolveStoryboardPromptRendering } from './qianmu-prompt-formats.js';
+import { storyboardComfyPromptFormat, assertComfyWorkbenchProfile } from './qianmu-comfy-workbench-binding.js';
+import { retainComfyRoutePromptLayer } from './qianmu-comfy-route-contract.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const fail = message => { throw Object.assign(new Error(message), {code:'storyboard_prompt_format',submissionState:'not_submitted',retryable:false}); };
@@ -23,13 +25,16 @@ export function compileComfyPromptRendering(rendering, shot, {positive='',negati
   return {prompt,negative:exclusions,characterBlocks};
 }
 
-export async function prepareComfyPromptJob(job,{prepare=false,guard=async()=>{}}={}) {
-  if (job?.source !== 'comfy' || !Object.hasOwn(job.profile || {},'comfyRoutePromptFormat')) return null;
-  const format = job.profile.comfyRoutePromptFormat;
-  normalizeStoryboardPromptFormats([format]);
-  if (!job.profile.comfyRouteBinding || job.profile.comfyRouteBinding.invalid) fail('提示格式缺少对应的固定工作流版本');
+export async function prepareComfyPromptJob(job,{prepare=false,guard=async()=>{},namespace}={}) {
+  if (job?.source !== 'comfy') return null;
   const before = JSON.stringify([job.profile,job.payload,job.shotSpec,job.promptLocked,job.safetyAdapted]);
   const current = async () => { await guard(); if (before !== JSON.stringify([job.profile,job.payload,job.shotSpec,job.promptLocked,job.safetyAdapted])) fail('本镜提示配置已变化，未提交生成'); };
+  const workbench=Object.hasOwn(job.profile || {},'comfyWorkbenchBinding');
+  if (workbench) await assertComfyWorkbenchProfile(job.profile,{namespace,guard:current});
+  const format = storyboardComfyPromptFormat(job.profile);
+  if (!format) return null;
+  normalizeStoryboardPromptFormats([format]);
+  if (!workbench && (!job.profile.comfyRouteBinding || job.profile.comfyRouteBinding.invalid)) fail('提示格式缺少对应的固定工作流版本');
   const manual = job.promptLocked === true || job.payload?.compiledPrompt?.degradation?.mode === 'manual_flat';
   const mode = manual ? 'manual' : 'extracted';
   const shot = normalizeStoryboardShotSpec(job.payload?.shotSpec || job.shotSpec);
@@ -42,8 +47,8 @@ export async function prepareComfyPromptJob(job,{prepare=false,guard=async()=>{}
     if (job.safetyAdapted) fail('安全调整后旧表达已失效，请手动核对提示词或重新提取');
     const rendering = await resolveStoryboardPromptRendering(shot,shot.promptRenderingPack,format,{guard:current});
     sourceHash = rendering.sourceHash;
-    const layer = job.profile.comfyRoutePromptLayer;
-    if (!layer || layer.invalid) fail('固定工作流提示补充无效');
+    const layer = retainComfyRoutePromptLayer(workbench ? job.payload.comfyWorkbenchPromptLayer : job.profile.comfyRoutePromptLayer);
+    if (layer.invalid) fail('工作流提示补充无效');
     const capabilities = getStoryboardCapabilities('comfy',job.profile.capabilityModelId,job.profile.comfyWorkflow,job.connection);
     text = compileComfyPromptRendering(rendering,shot,{...layer,supportsNegative:capabilities.supportsNativeNegative === true});
   }

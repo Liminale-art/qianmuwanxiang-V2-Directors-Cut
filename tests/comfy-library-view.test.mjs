@@ -41,16 +41,17 @@ test('archived schemes expose explicit recovery/export/purge, not generation',()
   const html=renderComfyLibrary({archived:true,rows:[{id:'a',name:'x',nodes:1,version:1,totalBytes:100}]});
   for(const action of ['restore','export','purge'])assert.ok(html.includes(`data-comfy-action="${action}"`));assert.doesNotMatch(html,/data-comfy-action="apply"/);
 });
-test('applying a recipe changes only the active Comfy snapshot/additions, never connections or other engine/queued data',()=>{
+test('applying a recipe changes only the active Comfy snapshot/additions, never connections or other engine/queued data',async()=>{
   const state=storyboard.createStoryboardDefaults();state.source='comfy';state.view='workflows';const connections=structuredClone(state.connections),other=structuredClone(state.profiles.novel),queued=structuredClone(state.profiles.comfy);
-  const root={isConnected:true},notices=[],routes=[];const context=vm.createContext({...storyboard,storyboardState:()=>state,
+  const root={isConnected:true},notices=[],routes=[];const context=vm.createContext({...storyboard,storyboardState:()=>state,clone:structuredClone,storyboardAdmissionEpoch:1,getChatKey:()=> 'chat-a',
+    featureRuntime:{load:async key=>key==='imageAdmission'?{resolveImageAccountNamespace:async()=> 'st-user:test'}:{pinComfyRouteWorkflow:async({guard,selection})=>{await guard();return {binding:{...selection,name:'versioned'},document};}}},
     storyboardNavigate:(node,patch)=>{assert.equal(node,root);routes.push(patch);state.view=patch.view;},toast:message=>notices.push(message)});
   vm.runInContext(['storyboardPromptDefaultsKey','storyboardRememberPromptLayer','storyboardApplyComfyLibraryRecipe'].map(section).join('\n'),context);
-  context.storyboardApplyComfyLibraryRecipe(root,state,{id:'a',revision:'b',name:'versioned',version:2,document});
+  await context.storyboardApplyComfyLibraryRecipe(root,state,{namespace:'st-user:test',id:'a',revision:'b',name:'versioned',version:2,document});
   assert.equal(state.profiles.comfy.comfyWorkflow,document.workflow);assert.equal(state.profiles.comfy.width,'832');assert.equal(state.comfyLibrarySelection.version,2);
   assert.deepEqual(state.connections,connections);assert.deepEqual(state.profiles.novel,other);assert.equal(queued.comfyWorkflow,'');assert.equal(routes.length,1);assert.equal(notices.length,1);
   assert.equal(Object.values(state.promptDefaults)[0].positive,'prefix');assert.equal(Object.values(state.promptDefaults)[0].negative,'exclusion');
-  assert.throws(()=>context.storyboardApplyComfyLibraryRecipe(root,state,{document}),/已切换/);
+  await assert.rejects(()=>context.storyboardApplyComfyLibraryRecipe(root,state,{document}),/已切换/);
 });
 test('workflow route and selection survive reload without library documents in settings',()=>{
   const state=storyboard.createStoryboardDefaults();state.source='comfy';state.view='workflows';state.comfyLibrarySelection={id:'a',revision:'b',name:'x',version:2,workflow:'not-index-data'};

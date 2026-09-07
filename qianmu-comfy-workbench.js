@@ -1,5 +1,6 @@
 // Presentation-only, loaded on entry to the Comfy workbench. No network, storage or node execution.
 import { normalizeComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
+import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
 const escape = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const fields = [
   ['width','Width','number','min="64" max="8192" step="64"'],
@@ -30,10 +31,11 @@ export function renderComfyWorkbench({profile, capabilities, collapsed={}, promp
   const controls=fields.filter(([key])=>capabilities[key]).map(([key,label,type,attrs])=>
     `<label><span>${label}</span><input class="text_pole sd-storyboard-field${['width','height'].includes(key)?` sd-storyboard-${key}`:''}" data-storyboard-field="${key}" type="${type}" ${attrs} value="${escape(profile[key])}"></label>`).join('');
   const workflow=typeof profile.comfyWorkflow==='string'&&profile.comfyWorkflow.trim().startsWith('{')?profile.comfyWorkflow:'';
+  const formatLabel={tags:'标签',natural_language:'自然语言',character_blocks:'分角色文本','[invalid]':'分类待核对'}[storyboardComfyPromptFormat(profile)] || '';
   return `<div class="sd-comfy-workbench">
     ${shared.connection||''}
     <details class="sd-card sd-comfy-workflow-card" data-storyboard-card="comfy-workflow" ${!workflow||workflowNotice||collapsed['comfy-workflow']===false?'open':''}>
-      <summary><span><b>工作流</b><small>${workflowNodes?`${workflowNodes} 个节点`:'API Workflow'}</small></span><button type="button" class="sd-icon-btn sd-comfy-open-library" title="工作流库" aria-label="工作流库"><i data-qm-icon="qm-regular-folder"></i></button></summary>
+      <summary><span><b>工作流</b><small>${workflowNodes?`${workflowNodes} 个节点`:'API Workflow'}${formatLabel?` · ${formatLabel}`:''}</small></span><button type="button" class="sd-icon-btn sd-comfy-open-library" title="工作流库" aria-label="工作流库"><i data-qm-icon="qm-regular-folder"></i></button></summary>
       <div class="sd-storyboard-card-body">
         <button type="button" class="sd-btn sd-comfy-open-library">${librarySelection?.name?`基于 ${escape(librarySelection.name)} · v${Number(librarySelection.version)||1}`:workflow?'当前自定义工作流':'选择或导入工作流'}</button>
         <button type="button" class="sd-btn sd-comfy-check-workflow" ${workflow?'':'disabled'}>检查节点与模型</button>

@@ -4,6 +4,7 @@ import { comfyWorkflowReferenceHash } from './qianmu-comfy-references.js';
 import { assertComfyRouteNamespace, normalizeComfyRouteSelection, normalizeComfyRouteBinding, comfyRouteError, comfyRouteBindingKey, retainComfyRoutePromptLayer } from './qianmu-comfy-route-contract.js';
 import { normalizeComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
 import { normalizeStoryboardPromptFormats } from './qianmu-prompt-formats.js';
+import { assertComfyWorkbenchProfile } from './qianmu-comfy-workbench-binding.js';
 
 const freeze = value => { if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); } return value; };
 const sameVersion = (row, namespace, selection) => row?.namespace === namespace && row.id === selection.id
@@ -78,6 +79,7 @@ export function applyComfyRouteRecipe(base, route, recipe) {
     comfyWorkflowNotice: '', comfyReferences: references, comfyCharacterEnabled: route.comfyCharacterEnabled === true,
     comfyRouteBinding: binding, comfyRoutePromptLayer: { positive: document.positivePrompt, negative: document.negativePrompt } };
   delete profile.comfyCharacterActivation;
+  delete profile.comfyWorkbenchBinding;
   delete profile.comfyRoutePromptFormat;
   if (document.classification?.promptFormat) [profile.comfyRoutePromptFormat] = normalizeStoryboardPromptFormats([document.classification.promptFormat]);
   if (profile.comfyCharacterEnabled) profile.comfyCharacterActivation = { namespace: binding.namespace,
@@ -97,6 +99,7 @@ export async function prepareComfyRouteRecipes({ routes, namespace, guard, creat
   return Object.freeze({ promptFormats:Object.freeze(promptFormats), apply: (route, base) => applyComfyRouteRecipe(base, route, recipes.get(comfyRouteBindingKey(route.comfyWorkflowBinding))) });
 }
 export async function assertComfyRouteProfile(profile, { namespace, guard = async () => {} }) {
+  if (Object.hasOwn(profile,'comfyWorkbenchBinding')) return assertComfyWorkbenchProfile(profile,{namespace,guard});
   const binding = normalizeComfyRouteBinding(profile.comfyRouteBinding);
   if (assertComfyRouteNamespace(namespace) !== binding.namespace) throw comfyRouteError('此镜工作流分工属于另一账户，未提交生成');
   if (retainComfyRoutePromptLayer(profile.comfyRoutePromptLayer).invalid) throw comfyRouteError('此镜工作流提示补充无效，请核对原记录');
@@ -106,6 +109,13 @@ export async function assertComfyRouteProfile(profile, { namespace, guard = asyn
   if (hash !== binding.workflowHash) throw comfyRouteError('此镜原始工作流与固定版本不符，未提交生成');
   // Replay validates the frozen base graph, never today's library head. Role-derived graphs have their own checks.
   return binding;
+}
+export async function prepareComfyWorkbenchBinding(profile,{namespace,guard=async()=>{},createStore}={}) {
+  const captured=await assertComfyWorkbenchProfile(profile,{namespace,guard});
+  const recipe=await readPinnedComfyRouteWorkflow({namespace,binding:captured.binding,guard,createStore});
+  if (JSON.stringify(captured.classification)!==JSON.stringify(recipe.document.classification)) throw comfyRouteError('工作流分类与原版本不符，请从库重新应用');
+  await assertComfyWorkbenchProfile(profile,{namespace,guard});
+  return captured;
 }
 export async function openComfyRoutePicker(options) {
   const view = await import('./qianmu-comfy-route-view.js');

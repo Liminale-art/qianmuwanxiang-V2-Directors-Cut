@@ -7,6 +7,8 @@ import { retainComfyRouteBinding, retainComfyRoutePromptLayer } from './qianmu-c
 import { normalizeWorldSource } from './qianmu-world-source.js';
 import { normalizeCharacterCastingSnapshot, assertCharacterCastingSnapshots } from './qianmu-character-casting.js';
 import { STORYBOARD_PROMPT_FORMATS, retainStoryboardPromptRenderingPack } from './qianmu-prompt-formats.js';
+import { retainComfyWorkbenchBinding } from './qianmu-comfy-workbench-binding.js';
+export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
 export { assertCharacterCastingSnapshots } from './qianmu-character-casting.js';
 export { normalizeStoryboardPromptFormats } from './qianmu-prompt-formats.js';
 export { planCharacterReference, assertCharacterReferencePlan, characterReferenceNotice, characterReferenceChoice, renderCharacterReferencePicker, applyCharacterReferenceChoice } from './qianmu-character-reference.js';
@@ -2135,6 +2137,7 @@ export function normalizeStoryboardParameterProfile(value, providerId) {
     base.capabilityModelId = validId(capability) && Object.hasOwn(p, 'model') && validId(p.model) ? capability.trim() : '[invalid-capability]';
   }
   if (providerId === 'comfy') {
+    if (Object.hasOwn(p, 'comfyWorkbenchBinding')) base.comfyWorkbenchBinding = retainComfyWorkbenchBinding(p.comfyWorkbenchBinding);
     if (Object.hasOwn(p, 'comfyRouteBinding')) base.comfyRouteBinding = retainComfyRouteBinding(p.comfyRouteBinding);
     if (Object.hasOwn(p, 'comfyRoutePromptLayer')) base.comfyRoutePromptLayer = retainComfyRoutePromptLayer(p.comfyRoutePromptLayer);
     if (Object.hasOwn(p, 'comfyRoutePromptFormat')) base.comfyRoutePromptFormat = STORYBOARD_PROMPT_FORMATS.includes(p.comfyRoutePromptFormat) ? p.comfyRoutePromptFormat : '[invalid]';
