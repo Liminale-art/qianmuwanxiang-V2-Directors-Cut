@@ -659,8 +659,15 @@ html body.sd-prose-layout #chat .mes .mes_text {
 }
 @media screen and (max-width: 720px) {
   html body.sd-prose-layout #chat .mes .mes_text {
-    --sd-prose-auto-side-padding: clamp(4px, 1.4vw, 7px);
+    --sd-prose-auto-side-padding: clamp(1px, .4vw, 2px);
     width: min(var(--sd-prose-content-width), var(--sd-prose-mobile-content-width, 100%), 100%) !important;
+  }
+  html body.sd-prose-layout #chat .mes .sd-prose-expand-host { overflow: visible !important; }
+  html body.sd-prose-layout #chat .mes .mes_text[data-sd-prose-expanded="1"] {
+    width: var(--sd-prose-expanded-width) !important;
+    max-width: none !important;
+    margin-left: calc(0px - var(--sd-prose-expand-left, 0px)) !important;
+    margin-right: calc(0px - var(--sd-prose-expand-right, 0px)) !important;
   }
 }
 html body.sd-prose-layout #chat .mes .mes_text > p {
@@ -10391,3 +10398,10 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-character-binding-row small { display: block; font-size: 11px; color: var(--sd-muted); }
 @media (min-width: 700px) { #story-director-modal .sd-character-grid { grid-template-columns: repeat(auto-fill,minmax(112px,1fr)); } }
 @media (max-width: 340px) { #story-director-modal .sd-character-detail-grid { grid-template-columns: minmax(0,1fr); } #story-director-modal .sd-character-cover-upload { max-width: 120px; } }
+
+.sd-style-recipe-fields { display: grid; gap: 10px; min-width: 0; margin-top: 12px; }
+.sd-style-recipe-fields > label { display: grid; gap: 5px; min-width: 0; text-align: left; }
+.sd-style-recipe-fields > label > span { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.sd-style-recipe-fields input { flex: 0 0 18px; width: 18px; height: 18px; margin: 0; }
+.sd-style-recipe-fields pre { box-sizing: border-box; margin: 0; padding: 8px; max-height: 110px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; text-align: left; border: 1px solid var(--sd-border,#777); border-radius: 8px; font-size: 12px; }
+.sd-style-recipe-review [role=note] { text-align: left; color: var(--sd-muted,#aaa); font-size: 12px; }
