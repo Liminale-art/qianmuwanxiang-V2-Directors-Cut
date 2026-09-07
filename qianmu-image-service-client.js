@@ -203,6 +203,30 @@ export function createImageServiceClient({ store = createImageServiceClientStore
   }
   return {
     probe,
+    async historyReviews(scope, seeds) {
+      const namespace = await account(); await assertAccount(namespace);
+      if (scope?.namespace !== namespace || !Array.isArray(seeds) || seeds.length > 256) throw fail('identity', '原历史账户或镜头范围不完整');
+      // Read only original attempts referenced by this generation. A library
+      // can contain large snapshots; do not rescan every receipt per image.
+      const wanted = [...new Set(seeds.filter(seed => seed.serviceBacked && ['unknown','accepted'].includes(seed.status)).map(seed => seed.attemptId))];
+      const rows = new Map();
+      for (let offset = 0; offset < wanted.length; offset += 8) {
+        const batch = await Promise.all(wanted.slice(offset, offset + 8).map(attemptId => store.get(namespace, attemptId)));
+        await assertAccount(namespace);
+        for (const row of batch) if (row) rows.set(row.attemptId, row);
+      }
+      return seeds.map(seed => {
+        const copy = { ...seed }; delete copy.feeReview;
+        if (!seed.serviceBacked || !['unknown','accepted'].includes(seed.status)) return copy;
+        const row = rows.get(seed.attemptId), saved = row?.snapshot?.imageAdmission;
+        if (!row?.feeReview || row.originalOnly || !saved || saved.version !== 1 || saved.attemptId !== row.attemptId
+          || row.snapshot.source !== 'novel' || row.snapshot.connection?.imageTransport !== 'service'
+          || !['namespace','chatKey','messageKey','revisionId'].every(key => saved[key] === scope[key])
+          || saved.logicalShotId !== seed.logicalShotId || seed.operationKey !== saved.logicalShotId || saved.automaticSlot !== seed.automaticSlot) return copy;
+        copy.feeReview = { version: 1, confirmation: row.feeReview.confirmation, at: row.feeReview.at, previousStatus: 'unknown' };
+        return copy;
+      });
+    },
     async reviewOriginal(task, { namespace: expectedNamespace, onReviewed, valid = () => true } = {}) {
       task = structuredClone(task);
       const namespace = await account();
@@ -217,6 +241,7 @@ export function createImageServiceClient({ store = createImageServiceClientStore
           await check();
           const row = await store.get(namespace, task.attemptId);
           if (row && row.channelKey !== channelKey) throw fail('identity', '原请求对应另一连接，未修改本机记录');
+          if (row && ['available','archived'].includes(row.status)) throw fail('result_available', '本机已有原图领取或归档进度，请先继续领取原图，不改写为未知核查');
           const captured = JSON.stringify(row);
           const unchanged = async () => {
             await check();

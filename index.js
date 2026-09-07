@@ -19232,7 +19232,9 @@ async function storyboardImageAdmissionRuntime() {
   const epoch = storyboardAdmissionEpoch;
   const module = await featureRuntime.load('imageAdmission');
   if (epoch !== storyboardAdmissionEpoch) throw new Error('分镜会话已结束，未提交生图');
-  storyboardAdmission ||= module.createImageAdmission({ confirm: confirmDialog });
+  storyboardAdmission ||= module.createImageAdmission({ confirm: confirmDialog,
+    resolveHistoryReviews: async (scope, seeds) => (await storyboardImageServiceRuntime()).historyReviews(scope, seeds),
+  });
   return storyboardAdmission;
 }
 

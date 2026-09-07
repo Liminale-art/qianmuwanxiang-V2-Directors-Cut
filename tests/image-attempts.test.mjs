@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { IMAGE_ATTEMPT_SCHEMA, IMAGE_ATTEMPT_LIMIT, IMAGE_RESERVATION_TTL_MS, imageAttemptScopeKey, normalizeImageAttempts, claimImageAttempt, beginImageAttempt, settleImageAttempt, summarizeImageAttempts, reviewImageAttempt, confirmImageAttemptResult } from '../qianmu-image-attempts.js';
+import { IMAGE_ATTEMPT_SCHEMA, IMAGE_ATTEMPT_LIMIT, IMAGE_RESERVATION_TTL_MS, imageAttemptScopeKey, normalizeImageAttempts, claimImageAttempt, beginImageAttempt, settleImageAttempt, summarizeImageAttempts, reviewImageAttempt, confirmImageAttemptResult, importImageAttempts } from '../qianmu-image-attempts.js';
 
 const NOW = 1_780_000_000_000;
 const scope = { namespace: 'test-account', chatKey: 'chat', messageKey: 'floor-stable-id', revisionId: 'revision-a' };
@@ -9,6 +9,29 @@ const reserve = (ledger, input = request(), now = NOW) => claimImageAttempt(ledg
 const begin = (ledger, attemptId = 'attempt-a', ownerId = 'page-a', now = NOW + 1) => beginImageAttempt(ledger, scope, { attemptId, ownerId }, now);
 const finish = (ledger, outcome, attemptId = 'attempt-a', now = NOW + 2) => settleImageAttempt(ledger, scope, { attemptId, ownerId: 'page-a', outcome }, now);
 function submitted(extra = {}) { return begin(reserve(null, request(extra)).ledger).ledger; }
+
+test('exact saved service identity can restore a reviewed unknown budget after local scope cleanup, but missing identity cannot',()=>{
+  const details={attemptId:'original',logicalShotId:'a'.repeat(64),confirmation:'b'.repeat(64),restore:true,automaticSlot:true};
+  const restored=reviewImageAttempt(null,scope,details,NOW);assert.equal(restored.automaticUsed,1);
+  assert.equal(restored.ledger.entries[0].status,'unknown');assert.equal(restored.ledger.entries[0].feeReview.previousStatus,'unknown');
+  assert.equal(reserve(restored.ledger,request({maxAutomatic:1})).code,'budget_exhausted');
+  for(const patch of [{logicalShotId:'missing'},{automaticSlot:undefined}])assert.throws(()=>reviewImageAttempt(null,scope,{...details,...patch},NOW));
+  assert.deepEqual(reviewImageAttempt(restored.ledger,scope,details,NOW+1).ledger,restored.ledger);
+});
+test('historical review hydration is exact and never relaxes live work or loses the original unknown slot',()=>{
+  const seed={attemptId:'attempt-a',logicalShotId:'shot-a',operationKey:'operation-a',status:'unknown',automaticSlot:true,
+    feeReview:{version:1,confirmation:'a'.repeat(64),previousStatus:'unknown',at:NOW}};
+  for(const original of [null,finish(submitted(),'unknown').ledger]){
+    const next=importImageAttempts(original,scope,[seed],NOW+3);assert.ok(next.entries[0].feeReview);assert.equal(next.entries[0].status,'unknown');
+    assert.equal(reserve(next,request({attemptId:'manual-next',kind:'redraw'})).ok,true);
+    assert.equal(reserve(next,request({attemptId:'auto-next'})).code,'confirmation_required');
+    assert.equal(summarizeImageAttempts(next,scope,NOW+3).automaticUsed,1);
+  }
+  assert.equal(importImageAttempts(submitted(),scope,[seed],NOW+3).entries[0].feeReview,undefined);
+  for(const patch of [{logicalShotId:'wrong'},{operationKey:'wrong'},{automaticSlot:false}]){
+    const next=importImageAttempts(finish(submitted(),'unknown').ledger,scope,[{...seed,...patch}],NOW+3);assert.equal(next.entries[0].feeReview,undefined);
+  }
+});
 
 test('manual review retains unknown fee and occupied automatic slot, allowing only fresh manual work',()=>{
   const old=finish(submitted(),'unknown').ledger,details={attemptId:'attempt-a',logicalShotId:'shot-a',confirmation:'a'.repeat(64)};

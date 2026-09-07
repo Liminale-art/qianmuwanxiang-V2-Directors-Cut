@@ -170,7 +170,7 @@ export function createImageAttemptStore({ indexedDB = globalThis.indexedDB, dbNa
       return operate(capturedScope, (value, at) => {
         if (!valid()) throw problem('image_attempt_changed', '原请求会话已变化，核查未同步');
         return reviewImageAttempt(value, capturedScope, captured, at);
-      });
+      }, { create: captured.restore === true });
     },
     close() {
       disposed = true;

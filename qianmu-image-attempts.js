@@ -143,7 +143,15 @@ export function importImageAttempts(value, scope, seeds, now) {
   if (!Array.isArray(seeds) || seeds.length > IMAGE_ATTEMPT_LIMIT) fail('image_attempt_history', '旧生图记录过多，请先核查并整理');
   for (const seed of seeds) {
     const attemptId = id(seed?.attemptId, '旧请求编号');
-    if (ledger.entries.some(row => row.attemptId === attemptId)) continue;
+    const existing = ledger.entries.find(row => row.attemptId === attemptId);
+    if (existing) {
+      if (seed.feeReview && ['unknown','accepted'].includes(existing.status) && !existing.feeReview
+        && existing.logicalShotId === seed.logicalShotId && existing.operationKey === seed.operationKey && existing.automaticSlot === seed.automaticSlot) {
+        existing.feeReview = readEntry({ ...existing, feeReview: seed.feeReview }).feeReview;
+        existing.updatedAt = Math.max(now, existing.updatedAt); existing.revision++;
+      }
+      continue;
+    }
     if (!['unknown', 'accepted', 'succeeded'].includes(seed.status)) fail('image_attempt_history', '旧生图受理状态不完整');
     if (ledger.entries.length >= IMAGE_ATTEMPT_LIMIT) fail('image_attempt_history', '生图防重记录已满，请先核查并整理');
     ledger.entries.push(readEntry({ ...seed, ownerId: 'historical-import', revision: 1,
@@ -181,10 +189,15 @@ export function confirmImageAttemptResult(value, scope, { attemptId, logicalShot
   return result(ledger, true, 'succeeded');
 }
 
-export function reviewImageAttempt(value, scope, { attemptId, logicalShotId, confirmation }, now) {
-  const ledger = normalizeImageAttempts(value, scope);
+export function reviewImageAttempt(value, scope, { attemptId, logicalShotId, confirmation, restore = false, automaticSlot }, now) {
+  let ledger = normalizeImageAttempts(value, scope);
   if (!/^[a-f0-9]{64}$/.test(confirmation || '')) fail('image_attempt_identity', '原核查凭据无效');
-  const row = ledger.entries.find(entry => entry.attemptId === id(attemptId, '原请求编号'));
+  let row = ledger.entries.find(entry => entry.attemptId === id(attemptId, '原请求编号'));
+  if (!row && restore === true) {
+    if (typeof automaticSlot !== 'boolean' || !/^[a-f0-9]{64}$/.test(logicalShotId || '')) fail('image_attempt_identity', '原快照缺少预算归属，未复原记录');
+    ledger = importImageAttempts(ledger, scope, [{ attemptId, logicalShotId, operationKey: logicalShotId, automaticSlot, status: 'unknown' }], now);
+    row = ledger.entries.find(entry => entry.attemptId === attemptId);
+  }
   if (!row) return result(ledger, true, 'absent'); // Do not manufacture a narrative scope on another device.
   if (row.logicalShotId !== id(logicalShotId, '原镜头编号')) return result(ledger, false, 'identity_conflict');
   if (row.feeReview) return result(ledger, row.feeReview.confirmation === confirmation, 'reviewed');

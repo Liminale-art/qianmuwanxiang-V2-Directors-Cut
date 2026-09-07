@@ -87,6 +87,7 @@ export async function createImageHistorySeeds(rows, identity) {
     seen.add(attemptId);
     const derived = await createImageAdmissionIdentity({ ...job, messageRef: ref, chatKey: identity.scope.chatKey }, identity.scope.namespace);
     seeds.push({ attemptId, logicalShotId: derived.logicalShotId, operationKey: derived.operationKey, status: state,
+      ...(job.source === 'novel' && job.connection?.imageTransport === 'service' ? { serviceBacked: true } : {}),
       // Unknown legacy provenance is counted conservatively. Explicit manual
       // work from this version does not spend automatic slots.
       automaticSlot: saved?.version === 1 ? Boolean(saved.automaticSlot) : job.automatic !== false && !['manual', 'manual_supplement'].includes(job.origin) });
@@ -96,7 +97,7 @@ export async function createImageHistorySeeds(rows, identity) {
 }
 
 export function createImageAdmission({ store = createImageAttemptStore(), account = resolveImageAccountNamespace,
-  ownerId = globalThis.crypto?.randomUUID?.(), confirm = async () => false } = {}) {
+  ownerId = globalThis.crypto?.randomUUID?.(), confirm = async () => false, resolveHistoryReviews = async (_scope, seeds) => seeds } = {}) {
   const receipts = new WeakMap(), preparing = new WeakSet(), live = new Set();
   let closed = false;
   const current = (valid) => { if (closed || !valid()) throw error('cancelled', '生图上下文已变化，未继续提交'); };
@@ -108,7 +109,10 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
       try {
         current(valid);
         const identity = await createImageAdmissionIdentity(job, await account());
-        const seeds = await createImageHistorySeeds(history, identity);
+        let seeds = await createImageHistorySeeds(history, identity);
+        if (seeds.some(seed => seed.serviceBacked && ['unknown','accepted'].includes(seed.status))) {
+          seeds = await resolveHistoryReviews(identity.scope, seeds);
+        }
         current(valid);
         const kind = job.automatic ? 'automatic' : job.imageAdmission || job.variantRootId || Number(job.attempt) > 1 ? 'redraw' : job.manualSupplement ? 'supplement' : 'manual';
         const input = { attemptId: job.id, logicalShotId: identity.logicalShotId, operationKey: identity.operationKey,
@@ -180,7 +184,8 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
       if (proof?.kind !== 'image' || proof.reviewed !== true || proof.resultAvailable !== false || proof.attemptId !== saved.attemptId
         || !/^[a-f0-9]{64}$/.test(proof.confirmation || '')) throw error('identity', '原请求核查凭据不匹配');
       const decision = await store.review({ namespace: saved.namespace, chatKey: saved.chatKey, messageKey: saved.messageKey, revisionId: saved.revisionId },
-        { attemptId: saved.attemptId, logicalShotId: saved.logicalShotId, confirmation: proof.confirmation }, () => !closed && valid());
+        { attemptId: saved.attemptId, logicalShotId: saved.logicalShotId, confirmation: proof.confirmation,
+          restore: true, automaticSlot: saved.automaticSlot }, () => !closed && valid());
       if (!decision.ok) throw error('identity', '原镜头核查未同步，请保留记录后重试');
       return decision;
     },

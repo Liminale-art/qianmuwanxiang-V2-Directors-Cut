@@ -112,6 +112,29 @@ test('confirmation returns for a changed request digest or confirmation never sy
     await assert.rejects(s.review(),/已变化/);assert.equal(s.synced(),0);assert.equal((await s.client.list())[0].status,'submitted');
   }
 });
+test('history reimport reads existing local review proof without networking and only for exact original narrative provenance',async()=>{
+  const s=await reviewSetup();await s.review();
+  const scope={namespace:'st-user:alice',chatKey:'chat-a',messageKey:'floor-a',revisionId:'rev-a'};
+  const seed={attemptId:'job-a',logicalShotId:'d'.repeat(64),operationKey:'d'.repeat(64),status:'unknown',automaticSlot:true,serviceBacked:true};
+  const row=(await s.client.list())[0];row.snapshot.imageAdmission={version:1,...scope,attemptId:seed.attemptId,logicalShotId:seed.logicalShotId,automaticSlot:true};await s.store.put(row);
+  let reads=0;const get=s.store.get;s.store.get=async(...args)=>{reads++;return get(...args);};
+  s.store.list=()=>assert.fail('must not scan unrelated receipt snapshots');
+  const calls=s.calls.length,original=structuredClone(seed),matched=await s.client.historyReviews(scope,[seed,seed]);
+  assert.equal(reads,1);
+  assert.equal(matched[0].feeReview.confirmation,row.feeReview.confirmation);assert.equal(matched[0].feeReview.previousStatus,'unknown');
+  assert.deepEqual(seed,original);assert.equal(s.calls.length,calls);
+  for(const patch of [{messageKey:'other'},{revisionId:'other'},{chatKey:'other'}])assert.equal((await s.client.historyReviews({...scope,...patch},[seed]))[0].feeReview,undefined);
+  for(const patch of [{logicalShotId:'other'},{operationKey:'other'},{automaticSlot:false},{serviceBacked:false}])assert.equal((await s.client.historyReviews(scope,[{...seed,...patch}]))[0].feeReview,undefined);
+  await assert.rejects(s.client.historyReviews({...scope,namespace:'st-user:bob'},[seed]));
+  await s.store.remove(scope.namespace,seed.attemptId);assert.equal((await s.client.historyReviews(scope,[seed]))[0].feeReview,undefined);
+});
+test('local available or archived progress cannot be downgraded to a reviewed unknown receipt when server cache is absent',async()=>{
+  for(const status of ['available','archived']){
+    const s=await reviewSetup(),row=(await s.client.list())[0];await s.store.put({...row,status});
+    await assert.rejects(s.review(),/先继续领取原图/);assert.equal(s.synced(),0);assert.equal(s.prompts(),0);
+    assert.equal((await s.client.list())[0].status,status);assert.equal(s.calls.some(call=>call.action==='review'),false);
+  }
+});
 
 test('client is lazy; capability probe is read-only and sends no provider key', async () => {
   let opened = 0;

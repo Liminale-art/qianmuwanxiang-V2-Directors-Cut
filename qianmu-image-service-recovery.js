@@ -4,6 +4,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { normalizeImageServiceChannel } from './qianmu-image-service-queue.js';
+import { normalizeNovelServiceChannel } from './qianmu-novel-service-channel-state.js';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const recordName = /^[a-f0-9]{64}\.json$/;
@@ -11,17 +12,20 @@ const tempName = /^\.write-[a-f0-9-]{36}\.tmp$/;
 const fail = (code, message) => Object.assign(new Error(message), { name: 'ImageServiceRecoveryError', code: `image_service_recovery_${code}`, status: 409 });
 const safeError = cause => String(cause?.code || '').startsWith('image_service_') ? cause : fail('io', '记录恢复未完成，请保留备份并核查磁盘状态');
 const missing = cause => cause?.code === 'ENOENT';
+const SCOPES = { image: ['image-queue-v1', 'image-queue-recovery'], vibe: ['vibe-queue-v1', 'vibe-queue-recovery'], native: ['novel-channel-v1', 'novel-channel-recovery'] };
+const confirmationFor = (scope, files) => hash(JSON.stringify(scope === 'image' ? files : [scope, files]));
 async function directory(target) {
   const stat = await fs.lstat(target);
   if (!stat.isDirectory() || stat.isSymbolicLink() || path.resolve(await fs.realpath(target)) !== path.resolve(target)) throw fail('path', '恢复目录包含链接或路径变化');
 }
-async function locate(dataRoot) {
+async function locate(dataRoot, scope = 'image') {
+  if (typeof scope !== 'string' || !Object.hasOwn(SCOPES, scope)) throw fail('scope', '恢复范围仅支持 image、vibe、native 或 all');
   if (typeof dataRoot !== 'string' || !path.isAbsolute(dataRoot) || dataRoot.includes('\0') || path.resolve(dataRoot) === path.parse(path.resolve(dataRoot)).root) throw fail('root', '请指定实际 ST 数据目录');
-  const root = await fs.realpath(dataRoot), parent = path.join(root, '.qianmu-service'), active = path.join(parent, 'image-queue-v1');
+  const root = await fs.realpath(dataRoot), parent = path.join(root, '.qianmu-service'), active = path.join(parent, SCOPES[scope][0]);
   await directory(root);
   try { await directory(parent); await directory(active); }
-  catch (cause) { if (missing(cause)) return { root, parent, active, exists: false }; throw cause; }
-  return { root, parent, active, exists: true };
+  catch (cause) { if (missing(cause)) return { root, parent, active, scope, exists: false }; throw cause; }
+  return { root, parent, active, scope, exists: true };
 }
 async function read(target, max = 2 * 1024 * 1024) {
   const before = await fs.lstat(target);
@@ -36,13 +40,13 @@ async function read(target, max = 2 * 1024 * 1024) {
     return buffer.subarray(0, bytes);
   } finally { await handle.close(); }
 }
-function parseRecord(buffer, name) {
+function parseRecord(buffer, name, scope = 'image') {
   let value;
   try { value = JSON.parse(buffer.toString('utf8')); } catch (_) { throw fail('corrupt', '存在损坏记录，未覆盖原数据'); }
   const key = name.slice(0, -5);
   if (value?.schema !== 'qianmu.image-service-disk.v1' || value.channelKey !== key || !Number.isSafeInteger(value.revision) || value.revision < 1
     || !value.state || value.checksum !== hash(JSON.stringify(value.state))) throw fail('corrupt', '恢复记录校验失败，未覆盖原数据');
-  return { ...value, state: normalizeImageServiceChannel(value.state, key) };
+  return { ...value, state: (scope === 'native' ? normalizeNovelServiceChannel : normalizeImageServiceChannel)(value.state, key) };
 }
 function checkOwner(buffer) {
   let value;
@@ -53,7 +57,7 @@ function checkOwner(buffer) {
   throw fail('owner', '原写入进程仍存在，请先停止对应服务；不要终止无关进程');
 }
 async function scan(location) {
-  if (!location.exists) return { schemaVersion: 1, confirmation: hash('empty'), exists: false, maintenance: false, files: [], channels: 0, bytes: 0, reserved: 0, submitting: 0, uncertain: 0 };
+  if (!location.exists) return { schemaVersion: 1, scope: location.scope, confirmation: hash(location.scope === 'image' ? 'empty' : `empty:${location.scope}`), exists: false, maintenance: false, files: [], channels: 0, bytes: 0, reserved: 0, submitting: 0, uncertain: 0 };
   await directory(location.parent); await directory(location.active);
   const stream = await fs.opendir(location.active), names = []; let maintenance = false, count = 0;
   for await (const entry of stream) {
@@ -67,13 +71,13 @@ async function scan(location) {
     const buffer = await read(path.join(location.active, name));
     bytes += buffer.length; if (bytes > 256 * 1024 * 1024) throw fail('full', '恢复记录总量超过上限');
     if (recordName.test(name)) {
-      const record = parseRecord(buffer, name); channels++;
+      const record = parseRecord(buffer, name, location.scope); channels++;
       for (const item of record.state.entries) { if (item.status === 'reserved') reserved++; if (item.status === 'submitting') submitting++; if (item.status === 'uncertain') uncertain++; }
     }
     files.push({ name, bytes: buffer.length, checksum: hash(buffer) });
   }
   if (channels > 128) throw fail('full', '恢复连接数量超过上限');
-  return { schemaVersion: 1, confirmation: hash(JSON.stringify(files)), exists: true, maintenance, files, channels, bytes, reserved, submitting, uncertain };
+  return { schemaVersion: 1, scope: location.scope, confirmation: confirmationFor(location.scope, files), exists: true, maintenance, files, channels, bytes, reserved, submitting, uncertain };
 }
 async function write(target, body) {
   const handle = await fs.open(target, 'wx', 0o600);
@@ -84,23 +88,31 @@ async function sync(target) {
   const handle = await fs.open(target, 'r'); try { await handle.sync(); } finally { await handle.close(); }
 }
 async function newBackup(location) {
-  const parent = path.join(location.parent, 'image-queue-recovery');
+  const parent = path.join(location.parent, SCOPES[location.scope][1]);
   try { await fs.mkdir(parent, { mode: 0o700 }); } catch (cause) { if (cause?.code !== 'EEXIST') throw cause; }
   await directory(parent);
   const entries = await fs.opendir(parent); let count = 0;
   for await (const _entry of entries) if (++count >= 8) throw fail('backup_full', '恢复备份已满，请先自行归档旧备份');
   const backup = path.join(parent, randomUUID()); await fs.mkdir(backup, { mode: 0o700 }); return backup;
 }
-export async function inspectImageServiceRecovery({ dataRoot } = {}) {
-  try { return await scan(await locate(dataRoot)); } catch (cause) { throw safeError(cause); }
+export async function inspectImageServiceRecovery({ dataRoot, scope = 'image' } = {}) {
+  try {
+    if (scope !== 'all') return await scan(await locate(dataRoot, scope));
+    const scopes = [];
+    for (const name of Object.keys(SCOPES)) scopes.push(await scan(await locate(dataRoot, name)));
+    return { schemaVersion: 2, scope: 'all', scopes, confirmation: hash(JSON.stringify(scopes.map(item => [item.scope, item.confirmation]))),
+      exists: scopes.some(item => item.exists), maintenance: scopes.some(item => item.maintenance),
+      ...Object.fromEntries(['channels','bytes','reserved','submitting','uncertain'].map(key => [key, scopes.reduce((sum, item) => sum + item[key], 0)])) };
+  } catch (cause) { throw safeError(cause); }
 }
-export async function recoverImageServiceRecords({ dataRoot, confirmation, serverStopped = false } = {}) {
+export async function recoverImageServiceRecords({ dataRoot, confirmation, serverStopped = false, scope = 'image' } = {}) {
   // A local administrative assertion, NOT a field to accept from an HTTP client.
   if (serverStopped !== true) throw fail('offline_required', '请先停止所有使用此数据目录的 ST 和维护进程，再明确确认离线恢复');
   if (typeof confirmation !== 'string' || !/^[a-f0-9]{64}$/.test(confirmation)) throw fail('confirmation', '请先核查恢复计划');
+  if (scope === 'all') return recoverAll({ dataRoot, confirmation });
   let location, gate, owner, backup, modified = false, complete = false;
   try {
-    location = await locate(dataRoot); if (!location.exists) throw fail('empty', '此 ST 尚无服务生图记录');
+    location = await locate(dataRoot, scope); if (!location.exists) throw fail('empty', '此 ST 尚无所选范围的服务记录');
     gate = path.join(location.active, '.maintenance.lock'); owner = randomUUID();
     try { await write(gate, JSON.stringify({ schema: 'qianmu.image-service-maintenance.v1', owner, pid: process.pid })); }
     catch (cause) { if (cause?.code === 'EEXIST') throw fail('maintenance', '已有恢复操作或遗留恢复锁，请保留原备份'); throw cause; }
@@ -109,7 +121,7 @@ export async function recoverImageServiceRecords({ dataRoot, confirmation, serve
     const oldLock = plan.files.find(item => item.name === '.transaction.lock');
     if (oldLock) checkOwner(await read(path.join(location.active, oldLock.name)));
     if (!plan.reserved && !plan.submitting && plan.files.every(item => recordName.test(item.name))) {
-      complete = true; return { ok: true, backup: null, released: 0, uncertain: 0, automaticResubmissions: 0 };
+      complete = true; return { ok: true, scope, backup: null, released: 0, uncertain: 0, automaticResubmissions: 0 };
     }
     backup = await newBackup(location);
     for (const item of plan.files) {
@@ -117,14 +129,14 @@ export async function recoverImageServiceRecords({ dataRoot, confirmation, serve
       if (hash(buffer) !== item.checksum) throw fail('changed', '备份前记录已变化，未继续恢复');
       await write(path.join(backup, item.name), buffer);
     }
-    await write(path.join(backup, 'manifest.json'), JSON.stringify({ schema: 'qianmu.image-service-backup.v1', recoveryOwner: owner, confirmation, createdAt: Date.now(), files: plan.files }));
+    await write(path.join(backup, 'manifest.json'), JSON.stringify({ schema: 'qianmu.image-service-backup.v1', scope, recoveryOwner: owner, confirmation, createdAt: Date.now(), files: plan.files }));
     await sync(backup); await sync(path.dirname(backup));
     // Every original file is backed up before the first active record is changed.
     for (const item of plan.files) {
       const original = await read(path.join(location.active, item.name));
       if (hash(original) !== item.checksum) throw fail('changed', '恢复时原记录已变化，已保留备份');
       if (recordName.test(item.name)) {
-        const record = parseRecord(original, item.name); let changed = false;
+        const record = parseRecord(original, item.name, scope); let changed = false;
         for (const row of record.state.entries) {
           if (row.status === 'reserved' || row.status === 'submitting') {
             row.status = row.status === 'reserved' ? 'released' : 'uncertain';
@@ -146,7 +158,7 @@ export async function recoverImageServiceRecords({ dataRoot, confirmation, serve
     await sync(location.active); await sync(backup);
     await write(path.join(backup, 'completed.json'), JSON.stringify({ completedAt: Date.now(), released: plan.reserved, uncertain: plan.submitting }));
     await sync(backup); complete = true;
-    return { ok: true, backup, released: plan.reserved, uncertain: plan.submitting, automaticResubmissions: 0 };
+    return { ok: true, scope, backup, released: plan.reserved, uncertain: plan.submitting, automaticResubmissions: 0 };
   } catch (cause) {
     const failure = safeError(cause);
     if (backup) { failure.backupId = path.basename(backup); failure.recoveryInterrupted = modified; }
@@ -165,14 +177,40 @@ export async function recoverImageServiceRecords({ dataRoot, confirmation, serve
   }
 }
 
+// Scopes are independently durable, not a pretend three-directory transaction.
+// Inspect all before any write; fee ledgers first, shared occupancy last. Failure
+// reports completed scopes and the exact unfinished one for reinspection.
+async function recoverAll({ dataRoot, confirmation }) {
+  const plan = await inspectImageServiceRecovery({ dataRoot, scope: 'all' });
+  if (plan.confirmation !== confirmation) throw fail('changed', '联合恢复计划已变化，请重新核查');
+  if (plan.maintenance) throw fail('maintenance', '所选记录有中断恢复，请先按对应范围和备份还原');
+  for (const item of plan.scopes) {
+    const oldLock = item.files.find(file => file.name === '.transaction.lock');
+    if (oldLock) checkOwner(await read(path.join((await locate(dataRoot, item.scope)).active, oldLock.name)));
+  }
+  const completedScopes = [];
+  for (const item of plan.scopes.filter(item => item.exists)) {
+    try {
+      const result = await recoverImageServiceRecords({ dataRoot, scope: item.scope, confirmation: item.confirmation, serverStopped: true });
+      completedScopes.push(result);
+    } catch (cause) {
+      const error = safeError(cause); error.scope = item.scope;
+      error.completedScopes = completedScopes.map(result => ({ scope: result.scope, backupId: result.backup ? path.basename(result.backup) : null }));
+      throw error;
+    }
+  }
+  return { ok: true, scope: 'all', scopes: completedScopes, automaticResubmissions: 0, next: 'restart-and-review-originals' };
+}
+
 // Roll back only an interrupted recovery owned by this exact backup. This is not
 // a generic "restore old history" operation that could erase newer paid requests.
-export async function restoreInterruptedImageRecovery({ dataRoot, backupId, serverStopped = false } = {}) {
+export async function restoreInterruptedImageRecovery({ dataRoot, backupId, serverStopped = false, scope = 'image' } = {}) {
   if (serverStopped !== true) throw fail('offline_required', '请先停止所有使用此数据目录的 ST 和维护进程');
+  if (scope === 'all') throw fail('scope', '中断还原请按备份对应范围指定 image、vibe 或 native');
   if (typeof backupId !== 'string' || !/^[a-f0-9-]{36}$/.test(backupId)) throw fail('backup', '恢复备份编号无效');
   try {
-    const location = await locate(dataRoot); if (!location.exists) throw fail('empty', '服务记录目录不存在');
-    const parent = path.join(location.parent, 'image-queue-recovery'), backup = path.join(parent, backupId);
+    const location = await locate(dataRoot, scope); if (!location.exists) throw fail('empty', '服务记录目录不存在');
+    const parent = path.join(location.parent, SCOPES[scope][1]), backup = path.join(parent, backupId);
     await directory(parent); await directory(backup);
     try { await fs.lstat(path.join(backup, 'completed.json')); throw fail('completed', '此恢复已完成，不允许用旧备份覆盖后续任务'); }
     catch (cause) { if (!missing(cause)) throw cause; }
@@ -183,7 +221,8 @@ export async function restoreInterruptedImageRecovery({ dataRoot, backupId, serv
     } catch (cause) { throw fail('backup', '中断恢复的备份或恢复锁不完整，请保留原文件'); }
     if (manifest?.schema !== 'qianmu.image-service-backup.v1' || !/^[a-f0-9-]{36}$/.test(manifest.recoveryOwner || '')
       || gate?.schema !== 'qianmu.image-service-maintenance.v1' || gate.owner !== manifest.recoveryOwner
-      || !Array.isArray(manifest.files) || manifest.files.length > 160 || manifest.confirmation !== hash(JSON.stringify(manifest.files))) throw fail('backup', '备份与中断恢复不匹配，未还原');
+      || (manifest.scope ?? 'image') !== scope || !Array.isArray(manifest.files) || manifest.files.length > 160
+      || manifest.confirmation !== confirmationFor(scope, manifest.files)) throw fail('backup', '备份与中断恢复不匹配，未还原');
     checkOwner(Buffer.from(JSON.stringify(gate)));
     const expected = new Map();
     for (const item of manifest.files) {
@@ -191,7 +230,7 @@ export async function restoreInterruptedImageRecovery({ dataRoot, backupId, serv
         || !/^[a-f0-9]{64}$/.test(item.checksum || '') || !Number.isSafeInteger(item.bytes) || item.bytes < 0 || item.bytes > 2 * 1024 * 1024 || expected.has(item.name)) throw fail('backup', '备份文件清单无效');
       const buffer = await read(path.join(backup, item.name));
       if (buffer.length !== item.bytes || hash(buffer) !== item.checksum) throw fail('backup', '备份内容校验失败，未还原');
-      if (recordName.test(item.name)) parseRecord(buffer, item.name);
+      if (recordName.test(item.name)) parseRecord(buffer, item.name, scope);
       expected.set(item.name, item);
     }
     const current = await scan(location);
@@ -200,8 +239,8 @@ export async function restoreInterruptedImageRecovery({ dataRoot, backupId, serv
       if (!original) { if (tempName.test(item.name)) continue; throw fail('changed', '存在备份之外的新记录，未覆盖'); }
       if (item.checksum === original.checksum) continue;
       if (!recordName.test(item.name)) throw fail('changed', '原写锁或临时记录已变化，未覆盖');
-      const oldRecord = parseRecord(await read(path.join(backup, item.name)), item.name);
-      const changed = parseRecord(await read(path.join(location.active, item.name)), item.name);
+      const oldRecord = parseRecord(await read(path.join(backup, item.name)), item.name, scope);
+      const changed = parseRecord(await read(path.join(location.active, item.name)), item.name, scope);
       if (changed.revision !== oldRecord.revision + 1 || changed.state.entries.length !== oldRecord.state.entries.length) throw fail('changed', '记录存在其他任务变更，未覆盖');
       for (let n = 0; n < oldRecord.state.entries.length; n++) {
         const oldRow = oldRecord.state.entries[n], nextRow = changed.state.entries[n];
@@ -235,7 +274,7 @@ export async function restoreInterruptedImageRecovery({ dataRoot, backupId, serv
       const lock = JSON.parse((await read(path.join(location.active, '.maintenance.lock'), 4096)).toString('utf8'));
       if (lock.owner !== gate.owner) throw fail('changed', '恢复锁已变化，未移除');
       await fs.unlink(path.join(location.active, '.maintenance.lock')); await sync(location.active); completed = true;
-      return { ok: true, backup, restored: expected.size, automaticResubmissions: 0, next: 'inspect-before-recovery' };
+      return { ok: true, scope, backup, restored: expected.size, automaticResubmissions: 0, next: 'inspect-before-recovery' };
     } finally { if (completed || !modified) await fs.unlink(guard); }
   } catch (cause) { throw safeError(cause); }
 }
