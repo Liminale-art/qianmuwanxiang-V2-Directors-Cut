@@ -83,7 +83,7 @@ export function createComfyWorkflowStore({indexedDB=globalThis.indexedDB,keyRang
     return new Promise((resolve,reject)=>{
       let tx,output,failure,finished=false;
       const finish=cause=>{if(finished)return;finished=true;clearTimeout(timer);pending.delete(tx);cause||closed?reject(cause||comfyLibraryError('closed','工作流库会话已结束')):resolve(output);};
-      const abort=cause=>{failure=cause?.code?.startsWith('comfy_library_')?cause:error();try{tx.abort();}catch(_){finish(failure);}};
+      const abort=cause=>{failure=typeof cause?.code==='string'&&cause.code.startsWith('comfy_library_')?cause:error();try{tx.abort();}catch(_){finish(failure);}};
       const timer=setTimeout(()=>{failure=comfyLibraryError('timeout','工作流操作未确认，请刷新核对后再试');try{tx?.abort();}catch(_){}finish(failure);},timeout);
       try{tx=database.transaction(names,mode);pending.add(tx);}catch(_){finish(error());return;}
       tx.oncomplete=()=>finish();tx.onabort=()=>finish(failure||error());tx.onerror=()=>{failure||=error();};
