@@ -1,4 +1,6 @@
 import test from 'node:test';
+import {createHash} from 'node:crypto';
+import {appendNovelVibeEncoding} from '../qianmu-vibe-file.js';
 import assert from 'node:assert/strict';
 import {parseNovelVibeFile as parse,exportNovelVibeFile as serialize,vibeDigest as digest,vibeVariants,selectNovelVibeEncoding as select,VIBE_FILE_LIMITS} from '../qianmu-vibe-file.js';
 
@@ -35,6 +37,22 @@ test('encoded-only files have no fabricated image; absent params stay unknown, n
   assert.deepEqual((await parse(await serialize([asset.document])))[0].document,doc);
 });
 const own=(value,key)=>Object.hasOwn(value,key);
+test('new default encoding uses the official parameter hash, appends immutably and retains all prior variants',async()=>{
+  const doc=await fixture(),before=structuredClone(doc),newEncoding=bytes(9),variant=createHash('sha256').update('information_extracted:0.4').digest('hex');
+  const next=await appendNovelVibeEncoding(doc,'nai-diffusion-4-5-full',.4,newEncoding);
+  assert.deepEqual(doc,before);assert.deepEqual(next.document.encodings['v4-5full'][variant],{encoding:newEncoding,params:{information_extracted:.4}});
+  assert.deepEqual(next.document.encodings.v4full,doc.encodings.v4full);assert.deepEqual(next.document.encodings.futuremodel,doc.encodings.futuremodel);
+  assert.equal(select(next.document,'nai-diffusion-4-5-full',.4).encoding,newEncoding);
+  assert.equal((await parse(await serialize([next.document])))[0].assetId,next.assetId);
+  assert.equal((await appendNovelVibeEncoding(next.document,'nai-diffusion-4-5-full',.4,newEncoding)).assetId,next.assetId);
+  await assert.rejects(()=>appendNovelVibeEncoding(next.document,'nai-diffusion-4-5-full',.4,bytes(8)),{code:'vibe_file_conflict'});
+  const wrong=structuredClone(next.document);wrong.encodings['v4-5full'][variant].params.information_extracted=.6;
+  await assert.rejects(()=>appendNovelVibeEncoding(wrong,'nai-diffusion-4-5-full',.4,newEncoding),{code:'vibe_file_conflict'});
+});
+test('new encoding cannot invent an original, unsupported capability, or invalid IE',async()=>{
+  const doc=await fixture();for(const [model,info] of [['nai-diffusion-5-full',0],['nai-diffusion-4-full',-1],['nai-diffusion-4-full','0']])await assert.rejects(()=>appendNovelVibeEncoding(doc,model,info,bytes(9)));
+  await assert.rejects(()=>appendNovelVibeEncoding({...doc,type:'encoding'},'nai-diffusion-4-full',0,bytes(9)),{code:'vibe_file_image'});
+});
 test('selection uses canonical capabilities, exact IE, and refuses unknown model/seed/mask or ambiguous encodings',async()=>{
   const doc=await fixture();assert.equal(select(doc,'nai-diffusion-4-full',0).encoding,bytes(1));
   assert.equal(select(doc,'nai-diffusion-4-5-full',.7).encoding,bytes(3));

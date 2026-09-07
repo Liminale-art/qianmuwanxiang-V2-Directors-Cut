@@ -4,6 +4,17 @@ import {comfyReferenceStillMime} from './qianmu-comfy-results.js';
 export const NOVEL_VIBE_VERSION=1;
 const fail=(code,message)=>{throw Object.assign(new Error(message),{code,submissionState:'not_submitted'});};
 const amount=(value,fallback,max=1)=>value==null||value===''||!Number.isFinite(Number(value))?fallback:Math.max(0,Math.min(max,Number(value)));
+export function normalizeNovelVibeImage(row){
+  const raw=row?.data??row?.base64;
+  if(typeof raw!=='string'||raw.length>Math.ceil(16*1024*1024/3)*4+256)fail('invalid_reference_size','单张 Vibe 原图须小于 16 MB');
+  const data=raw.trim().replace(/^data:image\/(?:png|jpe?g|webp);base64,/i,'').replace(/\s+/g,'');
+  if(!data||data.length%4===1||!/^[A-Za-z0-9+/]*={0,2}$/.test(data))fail('invalid_reference','Vibe 原图数据无效');
+  let binary;try{binary=atob(data);}catch(_){fail('invalid_reference','Vibe 原图数据无效');}
+  if(!binary.length||binary.length>16*1024*1024)fail('invalid_reference_size','单张 Vibe 原图须小于 16 MB');
+  if(btoa(binary).replace(/=+$/,'')!==data.replace(/=+$/,''))fail('invalid_reference','Vibe 原图不完整');
+  let mime;try{mime=comfyReferenceStillMime(Uint8Array.from(binary,c=>c.charCodeAt(0)));}catch(_){fail('invalid_reference','Vibe 原图须为完整静态 PNG、JPEG 或 WebP');}
+  return {kind:'image',data:btoa(binary),mime,strength:amount(row.strength,.6,2),information:amount(row.information,1),byteLength:binary.length};
+}
 export function normalizeNovelVibeEntries(request){
   const entries=request.vibes??[];
   if(!Array.isArray(entries)||entries.length>16)fail('invalid_vibe_count','Vibe 须为最多 16 项的列表，未提交生成');
@@ -21,16 +32,7 @@ export function normalizeNovelVibeEntries(request){
     const encoded=row.kind==='novelai-vibe-encoding';
     if(capabilities.isV4&&!encoded)fail('novel_vibe_requires_encoding','V4 / V4.5 需要已编码 Vibe，请先完成对应档位编码');
     if(!encoded){
-      const raw=row.data??row.base64;
-      if(typeof raw!=='string'||raw.length>Math.ceil(16*1024*1024/3)*4+256)fail('invalid_reference_size','单张 Vibe 原图须小于 16 MB');
-      const data=raw.trim().replace(/^data:image\/(?:png|jpe?g|webp);base64,/i,'').replace(/\s+/g,'');
-      if(!data||data.length%4===1||!/^[A-Za-z0-9+/]*={0,2}$/.test(data))fail('invalid_reference','Vibe 原图数据无效');
-      let binary;try{binary=atob(data);}catch(_){fail('invalid_reference','Vibe 原图数据无效');}
-      if(!binary.length||binary.length>16*1024*1024)fail('invalid_reference_size','单张 Vibe 原图须小于 16 MB');
-      if(btoa(binary).replace(/=+$/,'')!==data.replace(/=+$/,''))fail('invalid_reference','Vibe 原图不完整');
-      total+=binary.length;if(total>48*1024*1024)fail('references_too_large','Vibe 合计须小于 48 MB');
-      let mime;try{mime=comfyReferenceStillMime(Uint8Array.from(binary,c=>c.charCodeAt(0)));}catch(_){fail('invalid_reference','Vibe 原图须为完整静态 PNG、JPEG 或 WebP');}
-      return {kind:'image',data:btoa(binary),mime,strength:amount(row.strength,.6,2),information:amount(row.information,1),byteLength:binary.length};
+      const image=normalizeNovelVibeImage(row);total+=image.byteLength;if(total>48*1024*1024)fail('references_too_large','Vibe 合计须小于 48 MB');return image;
     }
     if(request.novelVibeVersion!==NOVEL_VIBE_VERSION)fail('novel_vibe_version','Vibe 编码缺少传输版本，请同步更新千幕和增强服务');
     if(row.encodingModel!==VIBE_ENCODING_MODELS[capabilities.capabilityModelId]||!VIBE_ENCODING_MODELS[capabilities.capabilityModelId])fail('novel_vibe_model','Vibe 编码与当前模型不匹配');

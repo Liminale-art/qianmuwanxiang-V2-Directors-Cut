@@ -4,6 +4,9 @@
   "outputDirectory": "dist",
   "files": [
     "qianmu-novel-vibe.js",
+    "qianmu-vibe-encoding.js",
+    "qianmu-vibe-encoding-gateway.js",
+    "qianmu-vibe-encoding-store.js",
     "qianmu-vibe-asset-ref.js",
     "qianmu-vibe-assets-worker.js",
     "qianmu-vibe-assets.js",

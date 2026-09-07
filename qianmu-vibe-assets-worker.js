@@ -1,7 +1,12 @@
 import {createVibeAssetStore} from './qianmu-vibe-asset-store.js';
-import {exportNovelVibeFile,selectNovelVibeEncoding,vibeFilePreview,vibeFileError,vibeVariants,VIBE_FILE_LIMITS} from './qianmu-vibe-file.js';
-export function createVibeAssetOperations(store){
-return async function run({type,namespace,id,file,ids,settings,bundle,model,information}){
+import {createVibeEncodingStore} from './qianmu-vibe-encoding-store.js';
+import {exportNovelVibeFile,selectNovelVibeEncoding,vibeFilePreview,vibeFileError,vibeVariants,appendNovelVibeEncoding,VIBE_FILE_LIMITS} from './qianmu-vibe-file.js';
+export function createVibeAssetOperations(store,{encodings}={}){
+return async function run({type,namespace,id,file,ids,settings,bundle,model,information,encoding,cacheKey,identity,attemptId,retryAttemptId,status,assetRef}){
+  if(type==='encoding-get')return encodings.get(namespace,cacheKey);
+  if(type==='encoding-list')return encodings.list(namespace);
+  if(type==='encoding-reserve')return encodings.reserve(namespace,cacheKey,identity,attemptId,{retryAttemptId});
+  if(type==='encoding-transition')return encodings.transition(namespace,cacheKey,attemptId,status,{assetRef});
   if(type==='import'){
     if(!(file instanceof Blob)||file.size<1||file.size>VIBE_FILE_LIMITS.file)throw vibeFileError('size','Vibe 文件须在 64 MB 以内');
     return store.putFile(namespace,await file.text());
@@ -33,8 +38,12 @@ return async function run({type,namespace,id,file,ids,settings,bundle,model,info
     }
     return new Blob([await exportNovelVibeFile(docs,{bundle:bundle??ids.length!==1})],{type:'application/json'});
   }
-  if(!['original-preview','resolve','check'].includes(type))throw vibeFileError('operation','未知 Vibe 资产操作');
+  if(!['original-preview','resolve','check','attach-encoding'].includes(type))throw vibeFileError('operation','未知 Vibe 资产操作');
   const asset=await store.load(namespace,id);if(!asset)throw vibeFileError('missing','Vibe 原资产不存在，请重新导入');
+  if(type==='attach-encoding'){
+    const next=await appendNovelVibeEncoding(asset.document,model,information,encoding);
+    const [head]=await store.putFile(namespace,next.serialized);return {version:1,namespace,id:head.assetId};
+  }
   if(type==='original-preview')return vibeFilePreview(asset.document,{original:true});
   if(type==='resolve'||type==='check'){
     if(['nai-diffusion-3','nai-diffusion-furry-3'].includes(model)){
@@ -46,7 +55,7 @@ return async function run({type,namespace,id,file,ids,settings,bundle,model,info
   }
 };
 }
-const run=createVibeAssetOperations(createVibeAssetStore());let pending=Promise.resolve();
+const run=createVibeAssetOperations(createVibeAssetStore(),{encodings:createVibeEncodingStore()});let pending=Promise.resolve();
 if(typeof self!=='undefined')self.addEventListener('message',event=>{
   const message=event.data;if(!message||typeof message.ticket!=='number')return;
   // Serial reads/imports bound peak memory; only metadata, a preview or the selected encoding crosses back.

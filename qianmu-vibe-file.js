@@ -156,3 +156,17 @@ export function selectNovelVibeEncoding(document,capabilityModelId,information){
   if(encodings.size!==1)fail('ambiguous','同一档位存在不同编码，请明确选择后再使用');
   return {model,variant:choices[0].variant,encoding:encodings.values().next().value,information:choices[0].information};
 }
+
+// Official default-parameter key: SHA-256 of the single non-null "name:value" pair.
+// This writer supports only the declared, unmasked IE input; imported advanced variants remain untouched.
+export async function appendNovelVibeEncoding(document,capabilityModelId,information,encoding){
+  const model=VIBE_ENCODING_MODELS[capabilityModelId];
+  if(!model||!fraction(information))fail('params','新编码的模型或信息提取值无效');
+  if(document?.type!=='image')fail('image','纯编码 Vibe 没有原图，不能添加重新编码档位');
+  decodeBase64(encoding,VIBE_FILE_LIMITS.encoding,'新增 Vibe 编码');
+  const variant=await vibeDigest(`information_extracted:${information}`),existing=document.encodings?.[model]?.[variant];
+  if(existing&&(existing.encoding!==encoding||existing.params?.information_extracted!==information
+    ||Object.entries(existing.params||{}).some(([name,value])=>name!=='information_extracted'&&value!=null)))fail('conflict','此档位已有不同编码或参数，未覆盖原资产');
+  const next={...document,encodings:{...document.encodings,[model]:{...document.encodings?.[model],[variant]:existing||{encoding,params:{information_extracted:information}}}}};
+  const [asset]=await parseNovelVibeFile(JSON.stringify(next));return asset;
+}
