@@ -684,6 +684,8 @@ export function normalizeStoryboardState(value) {
   state.comfyLibrarySelection = obj(state.comfyLibrarySelection) ? { id: cleanId(state.comfyLibrarySelection.id), revision: cleanId(state.comfyLibrarySelection.revision), name: str(state.comfyLibrarySelection.name, 80), version: int(state.comfyLibrarySelection.version, 1, 64, 1) } : null;
   state.comfyPoolSelection = retainComfyAutoBinding(state.comfyPoolSelection);
   state.comfyAutoEnabled = state.comfyAutoEnabled === true;
+  state.tagSort = state.tagSort === 'used' ? 'used' : 'recent';
+  state.tagPage = int(state.tagPage, 0, 19, 0);
   state.promptDefaults = Object.fromEntries(Object.entries(obj(state.promptDefaults) ? state.promptDefaults : {}).slice(0, 200).map(([key, value]) => [str(key, 500), {
     ...(obj(value) && Object.hasOwn(value, 'positive') ? { positive: str(value.positive, 12000) } : {}),
     ...(obj(value) && Object.hasOwn(value, 'negative') ? { negative: str(value.negative, 12000) } : {}),
@@ -856,7 +858,7 @@ export function resolveStoryboardArtistAssignment({
 }
 
 function tags(value) {
-  const normalized = dedupeById((Array.isArray(value) ? value : []).filter(obj).map((tag) => ({ id: cleanId(tag.id), name: str(tag.name, 100), category: STORYBOARD_TAG_CATEGORIES.includes(tag.category) ? tag.category : 'custom', customCategory: str(tag.customCategory, 80), aliases: uniqueStrings(tag.aliases, 30, 100), positive: tag.positive !== false, scope: ['global', 'character', 'chat', 'shot'].includes(tag.scope) ? tag.scope : 'global', scopeId: cleanId(tag.scopeId), renderings: providerStrings(tag.renderings, 6000), naturalLanguage: str(tag.naturalLanguage || tag.description, 2000), weight: num(tag.weight, -10, 10, 1), conflictIds: ids(tag.conflictIds, 100), favorite: Boolean(tag.favorite), usageCount: int(tag.usageCount, 0, Number.MAX_SAFE_INTEGER, 0), createdAt: pos(tag.createdAt || tag.updatedAt), updatedAt: pos(tag.updatedAt) })).filter((tag) => tag.id && tag.name)).slice(0, 2000);
+  const normalized = dedupeById((Array.isArray(value) ? value : []).filter(obj).map((tag) => ({ id: cleanId(tag.id), name: str(tag.name, 100), content: str(tag.content, 6000), category: STORYBOARD_TAG_CATEGORIES.includes(tag.category) ? tag.category : 'custom', customCategory: str(tag.customCategory, 80), aliases: uniqueStrings(tag.aliases, 30, 100), positive: tag.positive !== false, scope: ['global', 'character', 'chat', 'shot'].includes(tag.scope) ? tag.scope : 'global', scopeId: cleanId(tag.scopeId), renderings: providerStrings(tag.renderings, 6000), naturalLanguage: str(tag.naturalLanguage || tag.description, 2000), weight: num(tag.weight, -10, 10, 1), conflictIds: ids(tag.conflictIds, 100), favorite: Boolean(tag.favorite), usageCount: int(tag.usageCount, 0, Number.MAX_SAFE_INTEGER, 0), createdAt: pos(tag.createdAt || tag.updatedAt), updatedAt: pos(tag.updatedAt) })).filter((tag) => tag.id && (tag.name || tag.content || tag.naturalLanguage || Object.values(tag.renderings).some(Boolean)))).slice(0, 2000);
   const known = new Set(normalized.map((tag) => tag.id));
   for (const tag of normalized) {
     if (tag.scope === 'global') tag.scopeId = '';

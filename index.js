@@ -1,4 +1,6 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
+import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
+import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
 import {
   clone,
   isPlainObject,
@@ -95,9 +97,9 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.101';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.101';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.101';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.102';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.102';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.102';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -105,7 +107,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.101';
+} from './qianmu-llm-output.js?v=1.59.102';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -187,255 +189,256 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.101';
+} from './qianmu-storyboard.js?v=1.59.102';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.101';
+const VERSION = '1.59.102';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
+  tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.102') },
   modelPicker: {
     label: '模型选择',
-    load: () => import('./qianmu-model-picker.js?v=1.59.101'),
+    load: () => import('./qianmu-model-picker.js?v=1.59.102'),
   },
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.101'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.102'),
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.101'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.102'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
-    load: () => import('./qianmu-image-channel.js?v=1.59.101'),
+    load: () => import('./qianmu-image-channel.js?v=1.59.102'),
   },
   imageServiceClient: {
     label: '增强生图任务',
-    load: () => import('./qianmu-image-service-client.js?v=1.59.101'),
+    load: () => import('./qianmu-image-service-client.js?v=1.59.102'),
   },
   comfySubmission: {
     label: 'Comfy 实例排队',
-    load: () => import('./qianmu-comfy-submission.js?v=1.59.101'),
+    load: () => import('./qianmu-comfy-submission.js?v=1.59.102'),
   },
   comfyRecovery: {
     label: 'Comfy 原图领取',
-    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.101'),
+    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.102'),
   },
   comfyInbox: {
     label: 'Comfy 收片管理',
-    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.101'),
+    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.102'),
   },
   comfyReferences: {
     label: 'Comfy 参考图',
-    load: () => import('./qianmu-comfy-references.js?v=1.59.101'),
+    load: () => import('./qianmu-comfy-references.js?v=1.59.102'),
   },
   characterArchive: {
     label: '角色档案',
-    load: () => import('./qianmu-character-archive-view.js?v=1.59.101'),
+    load: () => import('./qianmu-character-archive-view.js?v=1.59.102'),
   },
   characterCasting: {
     label: '角色取景绑定',
-    load: () => import('./qianmu-character-casting.js?v=1.59.101'),
+    load: () => import('./qianmu-character-casting.js?v=1.59.102'),
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.101'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.102'),
   },
   artistPromptReview: {
     label: '原画师层核对',
-    load: () => import('./qianmu-artist-prompt-review.js?v=1.59.101'),
+    load: () => import('./qianmu-artist-prompt-review.js?v=1.59.102'),
   },
   styleRecipe: {
     label: '图片风格配置',
-    load: () => import('./qianmu-style-recipe.js?v=1.59.101'),
+    load: () => import('./qianmu-style-recipe.js?v=1.59.102'),
   },
   characterShotEditor: {
     label: '本镜人物编辑',
-    load: () => import('./qianmu-character-shot-view.js?v=1.59.101'),
+    load: () => import('./qianmu-character-shot-view.js?v=1.59.102'),
   },
   characterReference: {
     label: '角色参考图',
-    load: () => import('./qianmu-character-reference.js?v=1.59.101'),
+    load: () => import('./qianmu-character-reference.js?v=1.59.102'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.101').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.102').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.101'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.102'),
   },
   comfyWorkbench: {
     label: 'Comfy 镜头台',
-    load: () => import('./qianmu-comfy-workbench.js?v=1.59.101'),
+    load: () => import('./qianmu-comfy-workbench.js?v=1.59.102'),
   },
   comfyCharacters: {
     label: 'Comfy 角色实现',
-    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.101'),
+    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.102'),
   },
   comfyRoutes: {
     label: 'Comfy 镜头分工',
-    load: () => import('./qianmu-comfy-route.js?v=1.59.101'),
+    load: () => import('./qianmu-comfy-route.js?v=1.59.102'),
   },
   comfyPrompt: {
     label: 'Comfy 提示表达',
-    load: () => import('./qianmu-comfy-prompt.js?v=1.59.101'),
+    load: () => import('./qianmu-comfy-prompt.js?v=1.59.102'),
   },
   comfyCharacterReadiness: {
     label: '角色节点检查',
-    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.101'),
+    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.102'),
   },
   comfyLibrary: {
     label: 'Comfy 工作流库',
-    load: () => import('./qianmu-comfy-library-view.js?v=1.59.101'),
+    load: () => import('./qianmu-comfy-library-view.js?v=1.59.102'),
   },
   comfyPools: {
     label: 'Comfy 候选方案',
-    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.101'),
+    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.102'),
   },
   comfyScene: {
     label: 'Comfy 续场锁',
-    load: () => import('./qianmu-comfy-lock-runtime.js?v=1.59.101'),
+    load: () => import('./qianmu-comfy-lock-runtime.js?v=1.59.102'),
   },
   comfyStorage: {
     label: 'Comfy 储存盘点',
-    load: () => import('./qianmu-comfy-storage.js?v=1.59.101'),
+    load: () => import('./qianmu-comfy-storage.js?v=1.59.102'),
   },
   comfyAuto: {
     label: 'Comfy 候选调度',
-    load: () => import('./qianmu-comfy-auto-runtime.js?v=1.59.101'),
+    load: () => import('./qianmu-comfy-auto-runtime.js?v=1.59.102'),
   },
   comfyPreflight: {
     label: 'Comfy 配置检查',
-    load: () => import('./qianmu-comfy-preflight.js?v=1.59.101'),
+    load: () => import('./qianmu-comfy-preflight.js?v=1.59.102'),
   },
   comfyReadiness: {
     label: 'Comfy 节点检查',
-    load: () => import('./qianmu-comfy-readiness.js?v=1.59.101'),
+    load: () => import('./qianmu-comfy-readiness.js?v=1.59.102'),
   },
   comfyTargets: {
     label: 'Comfy 可信连接',
-    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.101'),
+    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.102'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.101'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.102'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.101'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.102'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.101'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.102'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.101'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.102'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.101'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.102'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.101'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.102'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.101'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.102'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.101'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.102'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.101'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.102'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.101'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.102'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.101'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.102'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.101'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.102'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.101'),
+    load: () => import('./qianmu-video-task.js?v=1.59.102'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.101'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.102'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.101'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.102'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.101'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.102'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.101'),
+    load: () => import('./qianmu-video-store.js?v=1.59.102'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.101'),
+    load: () => import('./qianmu-video-result.js?v=1.59.102'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.101'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.102'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.101'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.102'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.101'),
+    load: () => import('./qianmu-video-media.js?v=1.59.102'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.101'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.102'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.101'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.102'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.101'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.102'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.101'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.102'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.101'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.102'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.101'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.102'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.101'),
-        import('./qianmu-theaters.js?v=1.59.101'),
+        import('./builtin-theaters.js?v=1.59.102'),
+        import('./qianmu-theaters.js?v=1.59.102'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -6788,6 +6791,9 @@ async function refreshQianmuUpdateStatus(force = false) {
 function renderModal() {
   const modal = document.getElementById(MODAL_ID);
   if (!modal) return;
+  storyboardCaptureTagDraft(modal);
+  modal._sdTagCompleteCleanup?.();
+  modal._sdTagLibraryCleanup?.();
   prepareDirectorWorldEntryLinks();
   const renderStartedAt = globalThis.performance?.now?.() ?? Date.now();
   // 记录当前 tab 供下次打开恢复。只在真变化且非临时视图时落盘，避免每次静默重渲染都写。
@@ -12467,6 +12473,9 @@ function storyboardBeginSession() {
 }
 
 function storyboardEndSession() {
+  if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdTagCompleteCleanup?.();
+  if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdTagLibraryCleanup?.();
+  storyboardTagDraft = null;
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdComfyReadinessCleanup?.();
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdComfyTargetsCleanup?.();
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdComfyInboxCleanup?.();
@@ -14308,8 +14317,6 @@ function renderStoryboardModelCreate(state) {
   const artistPresets = state.artistPresets.map((item) => `<option value="artist:${htmlEscape(item.id)}" ${!state.selectedArtistPoolId && state.selectedArtistPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('');
   const artistPools = state.source === 'novel' && state.artistPools.length
     ? `<optgroup label="画师方案">${state.artistPools.map((item) => `<option value="pool:${htmlEscape(item.id)}" ${state.selectedArtistPoolId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('')}</optgroup>` : '';
-  const tagChips = state.tagLibrary.filter((item) => item.favorite).concat(state.tagLibrary.filter((item) => !item.favorite)).slice(0, 24)
-    .map((item) => `<button type="button" class="${item.positive === false ? 'negative' : ''}" data-storyboard-add-tag="${htmlEscape(item.id)}" title="${item.positive === false ? '加入负面提示词' : '加入提示词'}"><span>${htmlEscape(item.name)}</span></button>`).join('');
   const novelSpec = state.source === 'novel' ? getStoryboardNovelParameterSpec(profile.capabilityModelId) : null;
   const novelSamplerOptions = novelSpec?.samplers.map((item) => `<option value="${htmlEscape(item.value)}" ${profile.sampler === item.value ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('') || '';
   const novelSchedulerOptions = novelSpec?.schedulers.map((item) => `<option value="${htmlEscape(item.value)}" ${profile.scheduler === item.value ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('') || '';
@@ -14326,7 +14333,6 @@ function renderStoryboardModelCreate(state) {
           ${capabilities.supportsArtistSyntax ? `<div class="sd-storyboard-inline-control"><button type="button" class="sd-icon-btn sd-storyboard-open-artist-library" title="画师库" aria-label="画师库"><i class="fa-solid fa-images"></i></button><select class="text_pole sd-storyboard-artist-preset" aria-label="画师串或方案"><option value="">选择画师串或方案</option>${artistPools}${artistPresets ? `<optgroup label="画师串">${artistPresets}</optgroup>` : ''}</select><button type="button" class="sd-icon-btn sd-storyboard-edit-selected-artist" title="编辑当前画师设置" aria-label="编辑当前画师设置" ${state.selectedArtistPresetId || state.selectedArtistPoolId ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button></div>` : ''}
           <label><span>${capabilities.supportsExclusionText ? '画面要求' : '正面提示词'}</span><textarea class="text_pole sd-storyboard-prompt sd-storyboard-prompt-textarea" spellcheck="false">${htmlEscape(promptLayer.positive)}</textarea></label>
           ${capabilities.supportsNativeNegative || capabilities.supportsExclusionText ? `<label><span>${capabilities.supportsNativeNegative ? '负面提示词' : '排除描述'}</span><textarea class="text_pole sd-storyboard-negative sd-storyboard-prompt-textarea" spellcheck="false">${htmlEscape(promptLayer.negative)}</textarea></label>` : ''}
-          ${tagChips ? `<div class="sd-storyboard-tag-quick">${tagChips}</div>` : ''}
         </div>
       </div>
     </details>
@@ -14357,14 +14363,37 @@ const STORYBOARD_TAG_CATEGORY_LABELS = Object.freeze({
 });
 
 function storyboardFilteredTags(state) {
-  const query = String(state.assetSearch || '').trim().toLowerCase();
-  const category = STORYBOARD_TAG_CATEGORIES.includes(state.assetCategory) ? state.assetCategory : 'all';
-  return [...state.tagLibrary].filter((item) => {
-    if (category !== 'all' && item.category !== category) return false;
-    if (!query) return true;
-    return [item.name, item.naturalLanguage, ...(item.aliases || []), ...Object.values(item.renderings || {})]
-      .some((value) => String(value || '').toLowerCase().includes(query));
-  }).sort((a, b) => Number(b.favorite) - Number(a.favorite) || Number(b.usageCount || 0) - Number(a.usageCount || 0) || a.name.localeCompare(b.name));
+  return searchStoryboardTags(createStoryboardTagIndex(state.tagLibrary,state.source),{query:state.assetSearch,category:state.assetCategory||'all',sort:state.tagSort,limit:2000}).rows.map(row=>row.item);
+}
+
+let storyboardTagDraft = null;
+function storyboardTagFormValues(root) {
+  const value=selector=>String(root.querySelector(selector)?.value||'').trim();
+  return {name:value('.sd-storyboard-tag-name'),content:value('.sd-storyboard-tag-rendering'),category:value('.sd-storyboard-tag-category'),
+    customCategory:value('.sd-storyboard-tag-custom-category input'),naturalLanguage:value('.sd-storyboard-tag-description'),rendering:value('.sd-storyboard-tag-override'),
+    aliases:value('.sd-storyboard-tag-aliases'),positive:root.querySelector('.sd-storyboard-tag-negative')?.getAttribute('aria-pressed')!=='true'};
+}
+function storyboardCaptureTagDraft(root) {
+  const editor=root.querySelector('[data-tag-editor]');if(!editor)return;
+  const state=storyboardState();
+  if(editor.dataset.tagEditor!==(state.editingTagId||'new')||editor.dataset.tagSource!==state.source)return;
+  storyboardTagDraft={state,id:editor.dataset.tagEditor,source:state.source,values:storyboardTagFormValues(editor)};
+}
+function renderStoryboardTagLibrary(state) {
+  const editing=state.tagLibrary.find(item=>item.id===state.editingTagId),id=editing?.id||'new';
+  const draft=storyboardTagDraft?.state===state&&storyboardTagDraft.id===id&&storyboardTagDraft.source===state.source?storyboardTagDraft.values:null;
+  const form=draft||{name:editing?.name||'',content:editing?storyboardTagContent(editing):'',category:editing?.category||'custom',customCategory:editing?.customCategory||'',positive:editing?.positive!==false,naturalLanguage:editing?.naturalLanguage||'',rendering:editing?.renderings?.[state.source]||'',aliases:(editing?.aliases||[]).join(', ')};
+  const tags=storyboardFilteredTags(state),page=Math.min(Math.max(0,Number(state.tagPage)||0),Math.max(0,Math.ceil(tags.length/100)-1));
+  const chips=tags.slice(page*100,page*100+100).map(item=>`<button type="button" class="sd-tag-library-chip ${item.positive===false?'negative':'positive'} ${item.name?'is-group':''}" data-storyboard-edit-tag="${htmlEscape(item.id)}" title="${htmlEscape(storyboardTagText(item,state.source))}">${htmlEscape(snip(item.name||storyboardTagContent(item),80))}</button>`).join('');
+  return `<details class="sd-card sd-storyboard-tag-editor" data-storyboard-card="asset-tag-create" data-tag-editor="${htmlEscape(id)}" data-tag-source="${state.source}" ${state.collapsedCards['asset-tag-create']?'':'open'}><summary><b>${editing?'编辑 Tag':'新建 Tag'}</b></summary><div class="sd-storyboard-card-body">
+    <div class="sd-storyboard-grid sd-storyboard-grid-two"><label><span>组名（可空）</span><input class="text_pole sd-storyboard-tag-name" maxlength="100" value="${htmlEscape(form.name)}"></label><label><span>分类</span><select class="text_pole sd-storyboard-tag-category">${STORYBOARD_TAG_CATEGORIES.map(key=>`<option value="${key}" ${form.category===key?'selected':''}>${STORYBOARD_TAG_CATEGORY_LABELS[key]}</option>`).join('')}</select></label></div>
+    <label class="sd-storyboard-tag-custom-category ${form.category==='custom'?'':'hidden'}"><span>自定义分类</span><input class="text_pole" maxlength="80" value="${htmlEscape(form.customCategory)}"></label>
+    <label><span>内容</span><textarea class="text_pole sd-storyboard-tag-rendering" maxlength="6000" spellcheck="false">${htmlEscape(form.content)}</textarea></label>
+    <details class="sd-tag-expressions"><summary>其他模型表达</summary><small>专属写法优先；只替换，不叠加。留空沿用内容。</small><label><span>${htmlEscape(STORYBOARD_PROVIDER_REGISTRY[state.source].label)} 专属写法</span><textarea class="text_pole sd-storyboard-tag-override" maxlength="6000">${htmlEscape(form.rendering)}</textarea></label><label><span>自然语言通用表达</span><textarea class="text_pole sd-storyboard-tag-description" maxlength="2000">${htmlEscape(form.naturalLanguage)}</textarea></label><label><span>搜索别名</span><input class="text_pole sd-storyboard-tag-aliases" maxlength="3000" value="${htmlEscape(form.aliases)}"></label></details>
+    <div class="sd-tag-save-row"><button type="button" class="sd-btn sd-storyboard-tag-negative ${form.positive?'':'active'}" aria-pressed="${!form.positive}">负面</button><button type="button" class="sd-btn sd-primary sd-storyboard-create-tag">保存</button></div>
+    ${editing?'<div class="sd-tag-edit-actions"><button type="button" class="sd-btn sd-storyboard-cancel-tag-edit">新建</button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-current-tag" aria-label="删除 Tag"><i class="fa-solid fa-trash-can"></i></button></div>':''}</div></details>
+    <div class="sd-tag-library-tools"><input class="text_pole sd-storyboard-asset-search" aria-label="搜索 Tag" value="${htmlEscape(state.assetSearch||'')}" placeholder="搜索 Tag"><select class="text_pole sd-storyboard-asset-category" aria-label="筛选分类"><option value="all">全部分类</option>${STORYBOARD_TAG_CATEGORIES.map(key=>`<option value="${key}" ${state.assetCategory===key?'selected':''}>${STORYBOARD_TAG_CATEGORY_LABELS[key]}</option>`).join('')}</select><button type="button" class="sd-btn sd-storyboard-tag-sort" title="切换最近添加 / 最多使用">${state.tagSort==='used'?'常用':'最近'}</button></div>
+    <div class="sd-tag-library-chips">${chips}</div>${tags.length>100?`<div class="sd-tag-library-pages"><button type="button" class="sd-btn" data-tag-page="${page-1}" ${page?'':'disabled'}>上一页</button><span>${page+1} / ${Math.ceil(tags.length/100)}</span><button type="button" class="sd-btn" data-tag-page="${page+1}" ${(page+1)*100>=tags.length?'disabled':''}>下一页</button></div>`:''}`;
 }
 
 const STORYBOARD_SHOT_TYPE_LABELS = Object.freeze({ portrait: '人物', group: '群像', environment: '场景', object: '物件', action: '动作', closeup: '特写', custom: '其他' });
@@ -14476,19 +14505,13 @@ function renderStoryboardPresetLibrary(state) {
 
 function renderStoryboardAssets(state) {
   const activeSection = ['tags', 'vibes', 'routing'].includes(state.assetView) ? state.assetView : 'tags';
-  const tags = storyboardFilteredTags(state);
   const profile = storyboardProviderProfile(state);
   const capabilities = getStoryboardCapabilities(state.source, profile.capabilityModelId || profile.model, state.source === 'comfy' ? (profile.comfyWorkflow || '') : undefined, storyboardConnectionState(state).draft);
-  const editingTag = state.tagLibrary.find((item) => item.id === state.editingTagId) || null;
   const editingVibe = state.vibeLibrary.find((item) => item.id === state.editingVibeId) || null;
   const selectedVibes = new Set(state.selectedVibeIds || []);
   const compatibleVibes = state.vibeLibrary.filter((item) => (!item.providerIds?.length || item.providerIds.includes(state.source))
     && (!item.modelIds?.length || item.modelIds.includes(profile.model)));
   const galleryOptions = [...storyboardGalleryRecords()].reverse().slice(0, 120).map((item, index) => `<option value="${htmlEscape(item.id)}">${htmlEscape(snip(item.prompt || `画面 ${index + 1}`, 52))}</option>`).join('');
-  const tagRows = tags.map((item) => `<article class="sd-storyboard-asset-row ${item.positive === false ? 'negative' : ''}" data-storyboard-tag-id="${htmlEscape(item.id)}">
-    <button type="button" class="sd-storyboard-asset-main sd-storyboard-use-tag"><span><b>${htmlEscape(item.name)}</b><small>${htmlEscape(STORYBOARD_TAG_CATEGORY_LABELS[item.category] || '自定义')} · ${item.positive === false ? '负面' : '正面'}</small></span><em>${htmlEscape(snip(item.renderings?.[state.source] || item.naturalLanguage || '', 80))}</em></button>
-    <div><button type="button" class="sd-icon-btn sd-storyboard-favorite-tag ${item.favorite ? 'active' : ''}" title="${item.favorite ? '取消收藏' : '收藏'}" aria-label="${item.favorite ? '取消收藏' : '收藏'}"><i class="fa-${item.favorite ? 'solid' : 'regular'} fa-star"></i></button><button type="button" class="sd-icon-btn sd-storyboard-edit-tag" title="编辑" aria-label="编辑"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-tag" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div>
-  </article>`).join('');
   const vibeRows = compatibleVibes.map((item) => {
     const selected = selectedVibes.has(item.id);
     return `<article class="sd-storyboard-vibe-row ${selected ? 'selected' : ''}" data-storyboard-vibe-id="${htmlEscape(item.id)}">
@@ -14498,53 +14521,60 @@ function renderStoryboardAssets(state) {
   }).join('');
   return `<div class="sd-storyboard-assets-page">
     <div class="sd-storyboard-assets-tabs" role="tablist">${[['tags', 'Tag 库'], ['vibes', 'Vibe 库'], ['routing', '镜组']].map(([id, label]) => `<button type="button" role="tab" aria-selected="${activeSection === id}" class="${activeSection === id ? 'active' : ''}" data-storyboard-asset-section="${id}">${label}</button>`).join('')}</div>
-    ${activeSection === 'tags' ? `<details class="sd-card sd-storyboard-asset-create" data-storyboard-card="asset-tag-create" ${state.collapsedCards['asset-tag-create'] ? '' : 'open'}><summary><span><b>${editingTag ? '编辑 Tag' : '新建 Tag'}</b><small>保存后可在任何镜头中复用</small></span></summary><div class="sd-storyboard-card-body"><div class="sd-storyboard-grid sd-storyboard-grid-two"><label><span>名称</span><input class="text_pole sd-storyboard-tag-name" maxlength="100" value="${htmlEscape(editingTag?.name || '')}" placeholder="例如：雨夜逆光"></label><label><span>分类</span><select class="text_pole sd-storyboard-tag-category">${STORYBOARD_TAG_CATEGORIES.map((id) => `<option value="${id}" ${editingTag?.category === id ? 'selected' : ''}>${STORYBOARD_TAG_CATEGORY_LABELS[id]}</option>`).join('')}</select></label></div><label><span>当前模型 Tag / 提示词</span><textarea class="text_pole sd-storyboard-tag-rendering" placeholder="写入发送给 ${htmlEscape(STORYBOARD_PROVIDER_REGISTRY[state.source].label)} 的内容">${htmlEscape(editingTag?.renderings?.[state.source] || '')}</textarea></label><label><span>自然语言说明</span><input class="text_pole sd-storyboard-tag-description" value="${htmlEscape(editingTag?.naturalLanguage || '')}" placeholder="可留空，用于其他模型回退"></label><div class="sd-storyboard-asset-create-actions"><label class="sd-switch-row"><span>负面 Tag</span><input type="checkbox" class="sd-storyboard-tag-negative" ${editingTag?.positive === false ? 'checked' : ''}></label><div>${editingTag ? '<button type="button" class="sd-btn sd-storyboard-cancel-tag-edit">取消</button>' : ''}<button type="button" class="sd-btn sd-primary sd-storyboard-create-tag">${editingTag ? '保存修改' : '保存 Tag'}</button></div></div></div></details>
-      <section class="sd-storyboard-asset-tools"><input class="text_pole sd-storyboard-asset-search" value="${htmlEscape(state.assetSearch || '')}" placeholder="搜索 Tag"><select class="text_pole sd-storyboard-asset-category"><option value="all">全部分类</option>${STORYBOARD_TAG_CATEGORIES.map((id) => `<option value="${id}" ${state.assetCategory === id ? 'selected' : ''}>${STORYBOARD_TAG_CATEGORY_LABELS[id]}</option>`).join('')}</select></section><div class="sd-storyboard-asset-list">${tagRows || '<div class="sd-storyboard-empty-inline">还没有符合条件的 Tag。</div>'}</div>` : ''}
+    ${activeSection === 'tags' ? renderStoryboardTagLibrary(state) : ''}
     ${activeSection === 'vibes' ? `<details class="sd-card sd-storyboard-asset-create" data-storyboard-card="asset-vibe-create" ${state.collapsedCards['asset-vibe-create'] ? '' : 'open'}><summary><span><b>${editingVibe ? '编辑 Vibe' : '新建 Vibe'}</b><small>${capabilities.vibe ? `${profile.model} 可用` : `${profile.model} 当前不支持`}</small></span></summary><div class="sd-storyboard-card-body"><label><span>名称</span><input class="text_pole sd-storyboard-vibe-name" maxlength="100" value="${htmlEscape(editingVibe?.name || '')}" placeholder="便于识别的名称"></label><label><span>参考图</span><div class="sd-storyboard-vibe-source"><input class="text_pole sd-storyboard-vibe-url" type="url" value="${htmlEscape(editingVibe?.previewUrl || '')}" placeholder="图片 URL"><select class="text_pole sd-storyboard-vibe-gallery"><option value="">或从阅片室选择</option>${galleryOptions}</select><label class="sd-icon-btn" title="选择本地图片" aria-label="选择本地图片"><i class="fa-solid fa-upload"></i><input class="sd-storyboard-vibe-file" type="file" accept="image/png,image/jpeg,image/webp" hidden></label></div></label><div class="sd-storyboard-grid sd-storyboard-grid-two"><label><span>强度</span><input class="text_pole sd-storyboard-vibe-strength" type="number" min="0" max="1" step="0.05" value="${htmlEscape(editingVibe?.strength ?? 0.6)}"></label><label><span>信息提取</span><input class="text_pole sd-storyboard-vibe-info" type="number" min="0" max="1" step="0.05" value="${htmlEscape(editingVibe?.informationExtracted ?? 1)}"></label></div><div class="sd-storyboard-asset-create-actions"><span></span><div>${editingVibe ? '<button type="button" class="sd-btn sd-storyboard-cancel-vibe-edit">取消</button>' : ''}<button type="button" class="sd-btn sd-primary sd-storyboard-create-vibe">${editingVibe ? '保存修改' : '保存 Vibe'}</button></div></div></div></details>${!capabilities.vibe ? '<div class="sd-storyboard-capability-note">当前模型不会发送 Vibe；素材仍会保留，切换到支持的 NovelAI 模型即可使用。</div>' : ''}<div class="sd-storyboard-vibe-list">${vibeRows || '<div class="sd-storyboard-empty-inline">还没有与当前模型匹配的 Vibe。</div>'}</div>` : ''}
     ${activeSection === 'routing' ? renderStoryboardRouting(state) : ''}
   </div>`;
 }
 
+function storyboardBindTagLibrary(root) {
+  root._sdTagLibraryCleanup?.();
+  const state=storyboardState(),editor=root.querySelector('[data-tag-editor]'),source=state.source;
+  if(!editor)return;
+  let timer=0;const current=()=>editor.isConnected&&state===storyboardState()&&source===state.source;
+  root._sdTagLibraryCleanup=()=>{clearTimeout(timer);root._sdTagLibraryCleanup=null;};
+  const listen=(selector,type,callback)=>root.querySelectorAll(selector).forEach(element=>element.addEventListener(type,event=>{if(current())callback(event);}));
+  listen('.sd-storyboard-asset-search','input',event=>{state.assetSearch=String(event.target.value||'').slice(0,120);state.tagPage=0;saveSettings();clearTimeout(timer);timer=setTimeout(()=>{if(current())renderModal();},220);});
+  listen('.sd-storyboard-asset-category','change',event=>{state.assetCategory=event.target.value||'all';state.tagPage=0;saveSettings();renderModal();});
+  listen('.sd-storyboard-create-tag','click',()=>storyboardSaveTagFromForm(root));
+  listen('.sd-storyboard-tag-category','change',event=>{root.querySelector('.sd-storyboard-tag-custom-category')?.classList.toggle('hidden',event.target.value!=='custom');});
+  listen('.sd-storyboard-tag-negative','click',event=>{const active=event.currentTarget.getAttribute('aria-pressed')!=='true';event.currentTarget.setAttribute('aria-pressed',String(active));event.currentTarget.classList.toggle('active',active);});
+  listen('.sd-storyboard-tag-sort','click',()=>{state.tagSort=state.tagSort==='used'?'recent':'used';state.tagPage=0;saveSettings();renderModal();});
+  listen('[data-tag-page]','click',event=>{state.tagPage=Math.max(0,Number(event.currentTarget.dataset.tagPage)||0);saveSettings();renderModal();});
+  listen('.sd-storyboard-cancel-tag-edit','click',()=>{state.editingTagId='';storyboardTagDraft=null;editor.dataset.tagEditor='cleared';saveSettings();renderModal();});
+  listen('.sd-storyboard-delete-current-tag','click',()=>void storyboardDeleteTag(state.tagLibrary.find(item=>item.id===state.editingTagId)));
+  listen('[data-storyboard-edit-tag]','click',event=>{const item=state.tagLibrary.find(entry=>entry.id===event.currentTarget.dataset.storyboardEditTag);if(!item)return;
+    state.editingTagId=item.id;storyboardTagDraft=null;state.collapsedCards['asset-tag-create']=false;storyboardPendingRestoreScroll=0;saveSettings();renderModal();root.querySelector('.sd-storyboard-tag-rendering')?.focus({preventScroll:true});});
+}
+
 function storyboardSaveTagFromForm(root) {
-  const state = storyboardState();
-  const name = String(root.querySelector('.sd-storyboard-tag-name')?.value || '').trim().slice(0, 100);
-  const rendering = String(root.querySelector('.sd-storyboard-tag-rendering')?.value || '').trim().slice(0, 6000);
-  const naturalLanguage = String(root.querySelector('.sd-storyboard-tag-description')?.value || '').trim().slice(0, 2000);
-  if (!name || (!rendering && !naturalLanguage)) return toast('请填写 Tag 名称及可复用内容。', 'warning');
-  const now = Date.now();
-  let item = state.tagLibrary.find((entry) => entry.id === state.editingTagId);
-  if (!item) {
-    item = {
-      id: uid('shottag'), aliases: [], renderings: {}, scope: 'global', scopeId: '', weight: 1,
-      conflictIds: [], favorite: false, usageCount: 0, createdAt: now,
-    };
-    state.tagLibrary.push(item);
-  }
-  item.name = name;
-  item.category = STORYBOARD_TAG_CATEGORIES.includes(root.querySelector('.sd-storyboard-tag-category')?.value)
-    ? root.querySelector('.sd-storyboard-tag-category').value : 'custom';
-  item.customCategory = item.category === 'custom'
-    ? String(root.querySelector('.sd-storyboard-tag-custom-category input')?.value || '').trim().slice(0, 80)
-    : '';
-  const negativeControl = root.querySelector('.sd-storyboard-tag-negative');
-  item.positive = negativeControl?.matches('input')
-    ? !negativeControl.checked
-    : negativeControl?.getAttribute('aria-pressed') !== 'true';
-  item.renderings ||= {};
-  if (rendering) item.renderings[state.source] = rendering; else delete item.renderings[state.source];
-  item.naturalLanguage = naturalLanguage;
-  item.updatedAt = now;
-  state.editingTagId = '';
-  saveSettings(); toast(`Tag「${name}」已保存。`, 'success'); renderModal();
+  const state=storyboardState(),editor=root.querySelector('[data-tag-editor]');
+  if(!editor||editor.dataset.tagEditor!==(state.editingTagId||'new')||editor.dataset.tagSource!==state.source)return toast('页面已变化，请重新打开 Tag','warning');
+  const values=storyboardTagFormValues(editor);let content;
+  try{content=validateStoryboardTagContent(values.name,values.content);}catch(error){return toast(error.message,'warning');}
+  if(values.rendering.length>6000||values.naturalLanguage.length>2000)return toast('其他模型表达超过长度上限','warning');
+  const existing=state.tagLibrary.find(item=>item.id===state.editingTagId),now=Date.now();
+  if(!existing&&state.tagLibrary.length>=2000)return toast('Tag 库已满，请先整理','warning');
+  const renderings={...(existing?.renderings||{})};
+  if(values.rendering)renderings[state.source]=values.rendering;else delete renderings[state.source];
+  const item={...(existing||{id:uid('shottag'),scope:'global',scopeId:'',weight:1,conflictIds:[],usageCount:0,createdAt:now}),...content,
+    category:STORYBOARD_TAG_CATEGORIES.includes(values.category)?values.category:'custom',customCategory:values.category==='custom'?values.customCategory.slice(0,80):'',
+    aliases:uniqueClean(values.aliases.split(/[,，\n]/).map(value=>value.trim().slice(0,100))).slice(0,30),positive:values.positive,
+    renderings,naturalLanguage:values.naturalLanguage,updatedAt:now};
+  if(existing)state.tagLibrary=state.tagLibrary.map(row=>row===existing?item:row);else state.tagLibrary=[...state.tagLibrary,item];
+  state.editingTagId='';storyboardTagDraft=null;editor.dataset.tagEditor='saved';
+  saveSettings();toast('Tag 已保存','success');renderModal();return true;
 }
 
 async function storyboardDeleteTag(item) {
-  if (!item || !await confirmDialog('删除 Tag', `确定删除「${item.name}」？`)) return;
   const state = storyboardState();
+  if (!item || !await confirmDialog('删除 Tag', `确定删除「${snip(item.name||storyboardTagContent(item),60)}」？`)) return;
+  if(state!==storyboardState()||!state.tagLibrary.includes(item))return toast('Tag 或页面已变化，未删除','warning');
   state.tagLibrary = state.tagLibrary.filter((entry) => entry.id !== item.id);
   for (const preset of state.promptPresets) preset.tagIds = (preset.tagIds || []).filter((id) => id !== item.id);
   for (const vibe of state.vibeLibrary) vibe.tags = (vibe.tags || []).filter((id) => id !== item.id);
   if (state.editingTagId === item.id) state.editingTagId = '';
+  storyboardTagDraft=null;
   saveSettings(); renderModal();
 }
 
@@ -14656,14 +14686,12 @@ function renderStoryboardArtistLibrary(state) {
     const preview = storyboardSafeUrl(editing?.previewUrl);
     const galleryOptions = [...storyboardGalleryRecords()].reverse().filter((item) => storyboardSafeUrl(item.url)).slice(0, 120)
       .map((item, index) => `<option value="${htmlEscape(storyboardSafeUrl(item.url))}">${htmlEscape(snip(item.finalPrompt || item.prompt || `画面 ${index + 1}`, 46))}</option>`).join('');
-    const knownTags = uniqueClean(state.artistPresets.flatMap((item) => item.tags || [])).sort((a, b) => a.localeCompare(b));
     return `<div class="sd-storyboard-artist-editor-page"><header><div><button type="button" class="sd-icon-btn sd-storyboard-cancel-artist-edit" title="取消" aria-label="取消"><i class="fa-solid fa-xmark"></i></button><button type="button" class="sd-icon-btn sd-primary sd-storyboard-save-artist-card" title="保存" aria-label="保存"><i class="fa-solid fa-floppy-disk"></i></button></div></header><div class="sd-storyboard-artist-editor-fields">
       <div class="sd-storyboard-artist-preview-editor ${preview ? 'has-image' : 'is-empty'}"><div class="sd-storyboard-artist-preview-frame">${preview ? `<img src="${htmlEscape(preview)}" alt="画师串预览">` : '<img alt="画师串预览" hidden>'}<span ${preview ? 'hidden' : ''}><i class="fa-regular fa-image"></i></span></div><div class="sd-storyboard-artist-preview-sources"><button type="button" class="sd-btn sd-storyboard-artist-preview-url-mode">URL</button><label class="sd-btn">本地上传<input type="file" class="sd-storyboard-artist-preview-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label><select class="text_pole sd-storyboard-artist-preview-gallery" aria-label="从阅片室选择"><option value="">阅片室选择</option>${galleryOptions}</select></div><input class="text_pole sd-storyboard-artist-edit-preview" value="${htmlEscape(editing?.previewUrl || '')}" placeholder="https://"></div>
       <label><span>名称</span><input class="text_pole sd-storyboard-artist-edit-name" maxlength="80" value="${htmlEscape(editing?.name || '')}"></label>
       <label><span>画师串</span><textarea class="text_pole sd-storyboard-artist-edit-value" spellcheck="false">${htmlEscape(editing?.value || '')}</textarea></label>
       <label><span>正面提示词</span><textarea class="text_pole sd-storyboard-artist-edit-positive" spellcheck="false">${htmlEscape(editing?.positivePrompt || '')}</textarea></label>
       <label><span>负面提示词</span><textarea class="text_pole sd-storyboard-artist-edit-negative" spellcheck="false">${htmlEscape(editing?.negativePrompt || '')}</textarea></label>
-      <label><span>标签</span>${storyboardMediaTagEditorMarkup(editing?.tags || [], knownTags, 'artist-draft')}</label>
       <label><span>合集</span><div class="sd-media-collection-choices">${collectionOptions || '<small>可先返回画师库新建合集</small>'}</div></label>
     </div></div>`;
   }
@@ -19054,23 +19082,22 @@ function storyboardLoadArtistChoice(value) {
   storyboardLoadArtistPreset(requested.startsWith('artist:') ? requested.slice(7) : requested);
 }
 
-function storyboardAddLibraryTag(tagId) {
-  const state = storyboardState();
-  const tag = state.tagLibrary.find((item) => item.id === tagId);
-  if (!tag) return;
-  const value = String(tag.renderings?.[state.source] || tag.naturalLanguage || tag.name || '').trim();
-  if (!value) return;
-  const field = tag.positive === false ? 'negative' : 'positive';
-  const profile = storyboardProviderProfile(state);
-  const artist = storyboardSelectedArtistPreset(state);
-  if (profile.modelBindingError) return toast(profile.modelBindingError, 'warning');
-  const layer = storyboardPromptLayerForArtist(state, artist, state.source, profile.model, profile.capabilityModelId);
-  const separator = state.source === 'novel' ? ', ' : '\n';
-  const next = [layer[field], value].map((item) => String(item || '').trim()).filter(Boolean).join(separator).slice(0, 12000);
-  storyboardRememberPromptLayer(state, artist, state.source, profile.model, field, next);
-  tag.usageCount = Number(tag.usageCount || 0) + 1;
-  tag.updatedAt = Date.now();
-  saveSettings(); renderModal();
+function storyboardBindTagCompletion(root) {
+  root._sdTagCompleteCleanup?.();
+  const page=root.querySelector('.sd-storyboard-root'),state=storyboardState(),epoch=storyboardAdmissionEpoch;
+  if(!page||!state.tagLibrary.length||!page.querySelector('.sd-storyboard-prompt,.sd-storyboard-negative,.sd-storyboard-artist-edit-positive,.sd-storyboard-artist-edit-negative'))return;
+  const ticket={};root._sdTagCompleteTicket=ticket;let dispose;
+  const current=()=>root._sdTagCompleteTicket===ticket&&page.isConnected&&state===storyboardState()&&activeTab==='imagegen'&&epoch===storyboardAdmissionEpoch;
+  const cleanup=()=>{dispose?.();if(root._sdTagCompleteTicket===ticket){root._sdTagCompleteTicket=null;root._sdTagCompleteCleanup=null;}};
+  root._sdTagCompleteCleanup=cleanup;
+  void featureRuntime.load('tagComplete').then(runtime=>{
+    if(!current())return;
+    const source=field=>field.classList.contains('sd-storyboard-artist-edit-positive')||field.classList.contains('sd-storyboard-artist-edit-negative')?'novel':state.source;
+    const format=field=>source(field)==='novel'||(source(field)==='comfy'&&storyboardComfyPromptFormat(state.profiles.comfy)==='tags')?'tags':'natural';
+    dispose=runtime.mountStoryboardTagComplete(page,{items:()=>state.tagLibrary,source,format,isCurrent:current,
+      onUse:item=>{if(!current()||!state.tagLibrary.includes(item))return;item.usageCount=Math.min(Number.MAX_SAFE_INTEGER,Number(item.usageCount||0)+1);saveSettings();},
+      onNotice:message=>{if(current())toast(message,'info');}});
+  }).catch(()=>{if(current())toast('Tag 联想暂未载入，仍可正常编辑','warning');});
 }
 
 function storyboardJobFromLog(log) {
@@ -22121,12 +22148,14 @@ function storyboardUnbindChat() {
 }
 
 function bindStoryboardTabEvents(root) {
+  root._sdTagCompleteCleanup?.();
   root._sdComfyReadinessCleanup?.();
   root._sdComfyTargetsCleanup?.();
   root._sdComfyInboxCleanup?.();
   if (activeTab !== 'imagegen') return;
   const state = storyboardState();
   root._sdStoryboardState = state;
+  storyboardBindTagCompletion(root);
   const boundPage = root.querySelector('.sd-storyboard-root');
   if (state.view === 'characters') void storyboardMountCharacterArchive(root);
   else storyboardCharacterArchiveController?.detach();
@@ -22185,24 +22214,6 @@ function bindStoryboardTabEvents(root) {
     renderModal();
   });
   root.querySelector('.sd-storyboard-compiler-settings > .sd-storyboard-paragraph-control')?.remove();
-  const tagCategory = root.querySelector('.sd-storyboard-tag-category');
-  if (tagCategory && !root.querySelector('.sd-storyboard-tag-custom-category')) {
-    const editingTag = state.tagLibrary.find((item) => item.id === state.editingTagId) || null;
-    const customLabel = document.createElement('label');
-    customLabel.className = `sd-storyboard-tag-custom-category ${tagCategory.value === 'custom' ? '' : 'hidden'}`;
-    customLabel.innerHTML = `<span>自定义分类</span><input class="text_pole" maxlength="80" placeholder="填写分类名" value="${htmlEscape(editingTag?.customCategory || '')}">`;
-    tagCategory.closest('.sd-storyboard-grid')?.insertAdjacentElement('afterend', customLabel);
-  }
-  const legacyNegative = root.querySelector('.sd-storyboard-tag-negative:is(input)');
-  if (legacyNegative) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = `sd-btn sd-storyboard-tag-negative ${legacyNegative.checked ? 'active' : ''}`;
-    button.setAttribute('aria-pressed', String(legacyNegative.checked));
-    button.textContent = '负面';
-    legacyNegative.closest('label')?.remove();
-    root.querySelector('.sd-storyboard-asset-create-actions > div')?.prepend(button);
-  }
   if (state.view === 'create' && state.promptCompiler.enabled) {
     void storyboardWarmCompilerWorldEntries({ rerender: true });
   }
@@ -22670,7 +22681,7 @@ function bindStoryboardTabEvents(root) {
     const now = Date.now();
     let item = state.artistPresets.find((entry) => entry.id === state.editingArtistPresetId) || null;
     if (!item) { item = { id: uid('artist'), createdAt: now }; state.artistPresets.push(item); }
-    const tags = Array.from(root.querySelectorAll('[data-media-tag-editor="artist-draft"] [data-media-tag]')).map((chip) => String(chip.dataset.mediaTag || '')).filter(Boolean).slice(0, 30);
+    const tags = [...(item.tags||[])]; // Historical library labels remain searchable, never inserted as prompt text.
     const collectionIds = Array.from(root.querySelectorAll('.sd-media-collection-choice input:checked')).map((input) => String(input.value || '')).filter((id) => state.artistCollections.some((entry) => entry.id === id)).slice(0, 30);
     Object.assign(item, {
       name, value,
@@ -22737,35 +22748,10 @@ function bindStoryboardTabEvents(root) {
     if (!state.selectedArtistPresetId) return;
     storyboardNavigate(root, { view: 'artists', editingArtistPresetId: state.selectedArtistPresetId });
   });
-  root.querySelectorAll('[data-storyboard-add-tag]').forEach((button) => button.addEventListener('click', () => storyboardAddLibraryTag(button.dataset.storyboardAddTag)));
   root.querySelectorAll('[data-storyboard-asset-section]').forEach((button) => button.addEventListener('click', () => {
     state.assetView = button.dataset.storyboardAssetSection || 'tags'; saveSettings(); renderModal();
   }));
-  let assetSearchTimer = null;
-  root.querySelector('.sd-storyboard-asset-search')?.addEventListener('input', (event) => {
-    state.assetSearch = String(event.target.value || '').slice(0, 120); saveSettings();
-    clearTimeout(assetSearchTimer); assetSearchTimer = setTimeout(() => renderModal(), 220);
-  });
-  root.querySelector('.sd-storyboard-asset-category')?.addEventListener('change', (event) => {
-    state.assetCategory = event.target.value || 'all'; saveSettings(); renderModal();
-  });
-  root.querySelector('.sd-storyboard-create-tag')?.addEventListener('click', () => storyboardSaveTagFromForm(root));
-  root.querySelector('.sd-storyboard-tag-category')?.addEventListener('change', (event) => {
-    root.querySelector('.sd-storyboard-tag-custom-category')?.classList.toggle('hidden', event.target.value !== 'custom');
-  });
-  root.querySelector('.sd-storyboard-tag-negative:not(input)')?.addEventListener('click', (event) => {
-    const active = event.currentTarget.getAttribute('aria-pressed') !== 'true';
-    event.currentTarget.setAttribute('aria-pressed', String(active));
-    event.currentTarget.classList.toggle('active', active);
-  });
-  root.querySelector('.sd-storyboard-cancel-tag-edit')?.addEventListener('click', () => { state.editingTagId = ''; saveSettings(); renderModal(); });
-  root.querySelectorAll('[data-storyboard-tag-id]').forEach((row) => {
-    const item = state.tagLibrary.find((entry) => entry.id === row.dataset.storyboardTagId);
-    row.querySelector('.sd-storyboard-use-tag')?.addEventListener('click', () => { if (item) storyboardAddLibraryTag(item.id); });
-    row.querySelector('.sd-storyboard-favorite-tag')?.addEventListener('click', () => { if (item) { item.favorite = !item.favorite; item.updatedAt = Date.now(); saveSettings(); renderModal(); } });
-    row.querySelector('.sd-storyboard-edit-tag')?.addEventListener('click', () => { if (item) { state.editingTagId = item.id; state.collapsedCards['asset-tag-create'] = false; saveSettings(); renderModal(); } });
-    row.querySelector('.sd-storyboard-delete-tag')?.addEventListener('click', () => void storyboardDeleteTag(item));
-  });
+  storyboardBindTagLibrary(root);
   root.querySelector('.sd-storyboard-create-vibe')?.addEventListener('click', () => void storyboardSaveVibeFromForm(root));
   root.querySelector('.sd-storyboard-cancel-vibe-edit')?.addEventListener('click', () => { state.editingVibeId = ''; saveSettings(); renderModal(); });
   root.querySelectorAll('[data-storyboard-vibe-id]').forEach((row) => {
@@ -36028,6 +36014,9 @@ function cleanupRuntime(resetSettings = false) {
     });
     clean('injection', () => clearDirectorInjection());
     clean('panels', () => {
+      document.getElementById(MODAL_ID)?._sdTagCompleteCleanup?.();
+      document.getElementById(MODAL_ID)?._sdTagLibraryCleanup?.();
+      storyboardTagDraft=null;
       storyboardComfyLibraryController?.dispose();
       storyboardComfyLibraryController = null;
       storyboardComfyPoolController?.dispose();

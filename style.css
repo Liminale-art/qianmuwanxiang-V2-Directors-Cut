@@ -10426,3 +10426,34 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-storyboard-log-maintenance > summary { padding: 4px 0; text-align: right; cursor: pointer; color: var(--sd-muted); font-size: 11px; list-style: none; }
 #story-director-modal .sd-storyboard-log-maintenance > summary::-webkit-details-marker { display: none; }
 #story-director-modal .sd-storyboard-log-maintenance > :not(summary) { margin-top: 8px; }
+
+/* Shared prompt writing aids; polarity is a visual category, never an insertion target. */
+#story-director-modal .sd-tag-library-tools { display:grid;grid-template-columns:minmax(0,1fr) minmax(88px,.65fr) auto;gap:6px;margin:8px 0;align-items:center; }
+#story-director-modal .sd-tag-library-tools > * { min-width:0;margin:0!important;height:36px;min-height:36px;font-size:12px; }
+#story-director-modal .sd-tag-library-tools .sd-btn { padding:4px 9px; }
+#story-director-modal .sd-tag-library-chips { display:flex;flex-wrap:wrap;align-items:center;gap:7px; }
+#story-director-modal .sd-tag-library-chip { max-width:100%;min-height:32px;padding:5px 10px;border:1px solid var(--sd-accent);border-radius:8px;background:color-mix(in srgb,var(--sd-accent) 9%,var(--sd-card));color:var(--sd-accent);font-size:12px;text-align:left;overflow-wrap:anywhere;cursor:pointer; }
+#story-director-modal .sd-tag-library-chip.negative { border-color:#c77986;color:#c77986;background:color-mix(in srgb,#c77986 9%,var(--sd-card)); }
+#story-director-modal .sd-tag-library-chip.is-group { border-width:3px;border-style:double; }
+#story-director-modal .sd-tag-save-row { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px; }
+#story-director-modal .sd-tag-save-row .sd-btn { width:100%;margin:0!important;min-height:36px; }
+#story-director-modal .sd-tag-save-row .sd-storyboard-tag-negative.active { color:#c77986;border-color:#c77986;background:color-mix(in srgb,#c77986 20%,var(--sd-card)); }
+#story-director-modal .sd-tag-edit-actions,#story-director-modal .sd-tag-library-pages { display:flex;justify-content:flex-end;align-items:center;gap:8px;font-size:12px; }
+#story-director-modal .sd-tag-expressions { margin:4px 0;min-width:0; }
+#story-director-modal .sd-tag-expressions>summary { list-style:none;color:var(--sd-muted);font-size:12px;cursor:pointer;padding:6px 0; }
+#story-director-modal .sd-tag-expressions>summary::-webkit-details-marker { display:none; }
+#story-director-modal .sd-tag-expressions>small { display:block;color:var(--sd-muted);font-size:11px;margin-bottom:8px; }
+#story-director-modal .sd-tag-expressions label { margin-bottom:8px; }
+#story-director-modal .sd-storyboard-tag-editor textarea { width:100%;box-sizing:border-box;min-height:76px;max-height:240px;resize:vertical; }
+.sd-tag-complete { position:fixed;z-index:2147483646;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid var(--sd-hairline,#777);border-radius:10px;background:var(--sd-card,#282b2d);color:var(--sd-text,#ddd);box-shadow:0 6px 24px #0005;font:12px/1.45 system-ui;overflow:hidden; }
+.sd-tag-complete header,.sd-tag-complete footer { display:flex;gap:6px;flex:0 0 auto; }
+.sd-tag-complete button { box-sizing:border-box;margin:0;min-height:32px;padding:5px 9px;border:1px solid var(--sd-hairline,#777);border-radius:7px;background:transparent;color:inherit;font:inherit;cursor:pointer;touch-action:pan-y; }
+.sd-tag-complete [data-polarity="positive"],.sd-tag-complete .positive { color:var(--sd-accent,#8fbaa2);border-color:var(--sd-accent,#8fbaa2); }
+.sd-tag-complete [data-polarity="negative"],.sd-tag-complete .negative { color:#cb8892;border-color:#cb8892; }
+.sd-tag-complete [aria-pressed="true"] { background:color-mix(in srgb,currentColor 16%,transparent); }
+.sd-tag-complete [aria-selected="true"] { outline:2px solid var(--sd-accent,#8fbaa2);outline-offset:1px; }
+.sd-tag-complete-options { display:flex;flex-wrap:wrap;align-content:flex-start;gap:7px;min-height:0;max-height:170px;overflow:auto;padding:3px;overscroll-behavior:contain; }
+.sd-tag-complete-options button { max-width:100%;text-align:left;overflow-wrap:anywhere;flex:0 1 auto; }
+.sd-tag-complete-options .is-group { border-width:3px;border-style:double; }
+.sd-tag-complete footer { justify-content:flex-end; }
+.sd-tag-complete button:disabled { opacity:.4;cursor:default; }

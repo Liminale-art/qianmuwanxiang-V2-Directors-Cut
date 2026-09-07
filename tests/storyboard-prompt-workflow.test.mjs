@@ -102,7 +102,8 @@ assert.match(source, /const compiled = manuallyLocked[\s\S]*compileStoryboardPro
 assert.doesNotMatch(source, /function storyboardSaveArtistPreset/);
 assert.match(source, /function renderStoryboardArtistLibrary[\s\S]*sd-storyboard-artist-waterfall/);
 assert.match(source, /sd-storyboard-edit-selected-artist[\s\S]*storyboardNavigate\(root, \{ view: 'artists', editingArtistPresetId: state\.selectedArtistPresetId/);
-assert.match(source, /storyboardMediaTagEditorMarkup\(editing\?\.tags \|\| \[\], knownTags, 'artist-draft'\)/);
+assert.doesNotMatch(source, /storyboardMediaTagEditorMarkup\(editing\?\.tags \|\| \[\], knownTags, 'artist-draft'\)/);
+assert.match(source, /function storyboardBindTagCompletion[\s\S]*sd-storyboard-artist-edit-positive[\s\S]*sd-storyboard-artist-edit-negative/, 'artist prompt inputs share caret completion rather than an unrelated classification editor');
 assert.match(source, /sd-media-collection-choices/);
 assert.match(source, /querySelectorAll\('\.sd-storyboard-prompt, \.sd-storyboard-negative/,
   'manual prompt edits must persist without triggering either automatic stage');

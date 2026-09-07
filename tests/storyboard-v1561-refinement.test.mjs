@@ -85,7 +85,8 @@ assert.match(source, /sd-storyboard-new-preset[\s\S]*sd-storyboard-overwrite-pre
 assert.match(source, /sd-storyboard-cancel-preset-item[\s\S]*sd-storyboard-save-preset-item/);
 assert.match(source, /sd-storyboard-edit-selected-artist/);
 assert.match(source, /sd-storyboard-new-artist-collection/);
-assert.match(source, /data-media-tag-editor="artist-draft"/);
+assert.doesNotMatch(source, /data-media-tag-editor="artist-draft"/);
+assert.match(source, /const tags = \[\.\.\.\(item.tags\|\|\[\]\)\]/, 'removing the artist label editor must not erase existing searchable labels');
 assert.match(source, /const verified = sourceId !== 'comfy' && data\.verified !== false;[\s\S]*toast\(message, verified \? 'success' : 'warning'\)/, 'NAI 缺失探测接口与 Comfy 地址可达均不得误报为生图已验证；实际入口另有协议回归');
 assert.match(source, /sd-storyboard-artist-edit-positive/);
 assert.match(source, /sd-storyboard-artist-edit-negative/);
