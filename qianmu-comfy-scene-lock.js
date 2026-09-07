@@ -15,6 +15,42 @@ const label=value=>({planId:typeof value?.planId==='string'?value.planId.slice(0
   workflowName:typeof value?.workflowName==='string'?value.workflowName.replace(/[\u0000-\u001f\u007f]/g,'').slice(0,80):''});
 export function comfySceneScope(scope){const ns=assertComfyRouteNamespace(scope?.namespace);return normalizeComfySceneScope(scope,ns);}
 export const comfySceneScopeKey=scope=>{const s=comfySceneScope(scope);return JSON.stringify([s.namespace,s.chatKey,s.continuityId,s.narrativeLayer]);};
+function sceneStyleOrigin(value,scope){
+  if(value==null)return null;
+  const sourceScope=comfySceneScope(value.sourceScope);
+  if(value.kind!=='explicit_link'||!sourceScope||sourceScope.namespace!==scope.namespace||sourceScope.chatKey!==scope.chatKey
+    ||sourceScope.narrativeLayer!==scope.narrativeLayer||same(sourceScope,scope)||!integer(value.sourceRevision)||value.sourceRevision<1
+    ||!integer(value.sourceFloor)||!integer(value.targetFloor)||value.sourceFloor>=value.targetFloor)fail('corrupt','续场来源记录无效');
+  return {kind:'explicit_link',sourceScope,sourceRevision:value.sourceRevision,sourceFloor:value.sourceFloor,targetFloor:value.targetFloor,linkedAt:time(value.linkedAt)};
+}
+// This is an explicit style copy, never a recursive alias or a generation permission.
+export function captureComfySceneStyleLink(sourceScope,targetScope,request){
+  sourceScope=comfySceneScope(sourceScope);targetScope=comfySceneScope(targetScope);
+  if(!sourceScope||!targetScope||sourceScope.namespace!==targetScope.namespace||sourceScope.chatKey!==targetScope.chatKey
+    ||sourceScope.narrativeLayer!==targetScope.narrativeLayer||same(sourceScope,targetScope))fail('scope','仅可关联本聊天同一叙事层的其他场景');
+  if(!integer(request?.expectedSourceRevision)||request.expectedSourceRevision<1||!integer(request?.expectedRevision)
+    ||!integer(request?.expectedGeneration))fail('revision','续场关联版本无效');
+  const targetLabel=label(request.label);
+  if(!targetLabel.planId||targetLabel.floor===null)fail('scope','请先提取目标楼层的镜头');
+  return {sourceScope,targetScope,expectedSourceRevision:request.expectedSourceRevision,expectedRevision:request.expectedRevision,
+    expectedGeneration:request.expectedGeneration,label:targetLabel};
+}
+export function copyComfySceneStyleRecord(sourceValue,targetValue,input,at=Date.now()){
+  const request=captureComfySceneStyleLink(input.sourceScope,input.targetScope,input),source=normalizeComfySceneRecord(sourceValue,request.sourceScope),target=normalizeComfySceneRecord(targetValue,request.targetScope);
+  time(at);
+  if(source.revision!==request.expectedSourceRevision||target.revision!==request.expectedRevision)fail('conflict','续场来源或目标已变化，请重新选择');
+  const from=inspectComfySceneRecord(sourceValue,request.sourceScope,at),to=inspectComfySceneRecord(targetValue,request.targetScope,at);
+  if(!from.lock||!source.established||from.pending||from.uncertain)fail('busy','来源场景须已结束且结果明确，请先核查原任务');
+  if(to.lock||to.pending||to.uncertain)fail('busy','目标场景已有风格或任务，请先核对并解锁');
+  if(source.label.floor===null||source.label.floor>=request.label.floor)fail('scope','请选择目标楼层之前的续场记录');
+  if(target.revision===Number.MAX_SAFE_INTEGER)fail('revision','续场版本已满，请整理记录');
+  target.revision++;target.lockRevision=target.revision;target.updatedAt=at;target.established=true;target.holders=[];
+  target.lock={...copy(from.lock),scope:copy(request.targetScope)};
+  target.label={...request.label,workflowName:source.label.workflowName};
+  target.styleOrigin=sceneStyleOrigin({kind:'explicit_link',sourceScope:request.sourceScope,sourceRevision:source.revision,
+    sourceFloor:source.label.floor,targetFloor:request.label.floor,linkedAt:at},request.targetScope);
+  return {row:target};
+}
 export async function createComfyBatchSceneScopes({namespace,chatKey,batchKey,groups,guard=async()=>{}}){
   namespace=assertComfyRouteNamespace(namespace);text(chatKey,'聊天',512);text(batchKey,'本批次',240);
   if(!Array.isArray(groups)||!groups.length||groups.length>32||!globalThis.crypto?.subtle)fail('scope','缺少本批次已划分的场景范围');
@@ -43,7 +79,10 @@ export function normalizeComfySceneRecord(value,scope){
     const until=time(row.expiresAt);if(row.status!=='reserved'&&until!==0)fail('corrupt','在途续场任务不能自动过期');
     return {attemptId:id,ownerId:text(row.ownerId,'页面'),token:text(row.token,'预留票据'),status:row.status,expiresAt:until};
   });
-  return {schema:COMFY_SCENE_LOCK_SCHEMA,scope,revision:value.revision,lockRevision:value.lockRevision,lock,label:label(value.label),established:value.established,holders,updatedAt:time(value.updatedAt)};
+  const styleOrigin=sceneStyleOrigin(value.styleOrigin,scope);
+  if(styleOrigin&&!lock)fail('corrupt','已解除风格仍残留续场来源');
+  if(styleOrigin&&(!value.established||styleOrigin.targetFloor!==label(value.label).floor))fail('corrupt','续场来源与目标楼层不符');
+  return {schema:COMFY_SCENE_LOCK_SCHEMA,scope,revision:value.revision,lockRevision:value.lockRevision,lock,label:label(value.label),established:value.established,holders,updatedAt:time(value.updatedAt),...(styleOrigin?{styleOrigin}:{})};
 }
 export function normalizeComfySceneReceipt(value){
   if(value?.schema!==COMFY_SCENE_LOCK_SCHEMA)fail('receipt','本镜缺少续场预留票据');
@@ -76,7 +115,7 @@ export function inspectComfySceneRecord(value,scope,at=Date.now()){
   const active=row.holders.filter(holder=>holder.status!=='reserved'||holder.expiresAt>at);
   return {revision:row.revision,lockRevision:row.lockRevision,lock:row.established||active.length?copy(row.lock):null,established:row.established,
     pending:active.filter(holder=>holder.status!=='uncertain').length,uncertain:active.filter(holder=>holder.status==='uncertain').length,
-    scope:copy(row.scope),label:copy(row.label),updatedAt:row.updatedAt};
+    scope:copy(row.scope),label:copy(row.label),updatedAt:row.updatedAt,...(row.styleOrigin?{styleOrigin:copy(row.styleOrigin)}:{})};
 }
 export function changeComfySceneRecord(value,scope,action,at=Date.now()){
   const row=normalizeComfySceneRecord(value,scope);action=captureComfySceneAction(action,scope);time(at);
@@ -118,7 +157,7 @@ export function changeComfySceneRecord(value,scope,action,at=Date.now()){
     const active=row.holders.filter(holder=>holder.status!=='reserved'||holder.expiresAt>at);
     if(active.some(holder=>holder.status!=='uncertain'))fail('busy','本场景仍有待提交或在途任务，暂不能解锁');
     if(active.length&&action.acknowledgeUncertain!==true)fail('uncertain','本场景有结果未明任务，请先核查渠道记录');
-    row.lock=null;row.lockRevision=row.revision+1;row.established=false;row.holders=[];return changed(); // Keep the revision tombstone: no ABA after unlock.
+    row.lock=null;row.lockRevision=row.revision+1;row.established=false;row.holders=[];delete row.styleOrigin;return changed(); // Keep the revision tombstone: no ABA after unlock.
   }
   const receipt=normalizeComfySceneReceipt(action.receipt);
   if(!same(receipt.scope,row.scope))fail('scope','续场票据不属于本场景');

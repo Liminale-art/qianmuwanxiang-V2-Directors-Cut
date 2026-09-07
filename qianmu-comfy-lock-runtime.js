@@ -1,6 +1,6 @@
 // Scene claims surround, but never replace, the independent image-admission and provider gates.
 import {createComfySceneLockStore} from './qianmu-comfy-lock-store.js';
-import {comfySceneScope,comfySceneScopeKey,comfySceneLockError} from './qianmu-comfy-scene-lock.js';
+import {comfySceneScope,comfySceneScopeKey,comfySceneLockError,captureComfySceneStyleLink} from './qianmu-comfy-scene-lock.js';
 import {comfyCandidateExecutionKey} from './qianmu-comfy-selection.js';
 import {resolveStoryboardPromptRendering} from './qianmu-prompt-formats.js';
 import {assertComfyRouteNamespace} from './qianmu-comfy-route-contract.js';
@@ -119,6 +119,10 @@ export function createComfySceneCoordinator({resolveNamespace,store=createComfyS
       if(!['accepted','unknown'].includes(outcome))claims.delete(job);
     },
     async inspect(scope){scope=comfySceneScope(scope);await guard(scope.namespace);const view=await store.inspect(scope);await guard(scope.namespace);return view;},
+    async linkStyle(sourceScope,targetScope,request,{valid=()=>true}={}){
+      const captured=captureComfySceneStyleLink(sourceScope,targetScope,request);await guard(captured.targetScope.namespace,valid);
+      const result=await store.linkStyle(captured.sourceScope,captured.targetScope,captured);await guard(captured.targetScope.namespace,valid);return result.view;
+    },
     async list(namespace,chatKey){namespace=assertComfyRouteNamespace(namespace);await guard(namespace);const rows=await store.list(namespace,chatKey);await guard(namespace);return rows;},
     async clearChat(namespace,chatKey,{valid=()=>true}={}){
       namespace=assertComfyRouteNamespace(namespace);await guard(namespace,valid);

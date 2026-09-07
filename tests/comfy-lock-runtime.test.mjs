@@ -10,6 +10,7 @@ import {pinComfyRouteWorkflow,readPinnedComfyRouteWorkflow} from '../qianmu-comf
 import {checkComfyConfiguration} from '../qianmu-comfy-preflight.js';
 import {bindStoryboardPromptRenderings} from '../qianmu-prompt-formats.js';
 import {recipesFixture,namespace} from './helpers/comfy-route-fixture.mjs';
+import {captureComfySceneStyleLink,copyComfySceneStyleRecord} from '../qianmu-comfy-scene-lock.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {fakeWebLocks} from './helpers/web-locks-fixture.mjs';
 const copy=value=>JSON.parse(JSON.stringify(value)),scope={namespace,chatKey:'chat',continuityId:'program-confirmed-scene',narrativeLayer:'present'};
@@ -18,6 +19,7 @@ function memoryStore(){
   const inspect=async scope=>({...inspectComfySceneRecord(records.get(comfySceneScopeKey(scope)),scope,100),generation:0});
   const write=async(scope,action)=>{calls.push(action.type);const result=changeComfySceneRecord(records.get(comfySceneScopeKey(scope)),scope,action,100);records.set(comfySceneScopeKey(scope),result.row);afterWrite(action.type);return {view:await inspect(scope),receipt:result.receipt};};
   return {records,calls,inspect,setAfterWrite:value=>afterWrite=value,
+    linkStyle:async(sourceScope,targetScope,request)=>{const result=copyComfySceneStyleRecord(records.get(comfySceneScopeKey(sourceScope)),records.get(comfySceneScopeKey(targetScope)),captureComfySceneStyleLink(sourceScope,targetScope,request),100);records.set(comfySceneScopeKey(targetScope),result.row);return {view:await inspect(targetScope)};},
     reserve:(scope,request)=>write(scope,{...request,type:'reserve'}),begin:receipt=>write(receipt.scope,{type:'begin',receipt}),
     settle:(receipt,outcome)=>write(receipt.scope,{type:'settle',receipt,outcome}),unlock:(scope,request)=>write(scope,{...request,type:'unlock'}),close:()=>calls.push('close')};
 }
@@ -53,6 +55,23 @@ test('one batch proposes one style, attaches checked original facts, then reserv
     const done=await e.store.inspect(scope);assert.equal(done.established,true);assert.equal(done.pending,0);
   }finally{batch.close();await e.close();}
 });
+test('explicit cross-floor style is consumed by the actual selector and claims, not treated as a passed technical check',async()=>{
+  const e=await fixture(),batch=e.manager.createBatch({prepared:e.prepared,probe:e.probe}),targetScope={...scope,continuityId:'next-floor'};
+  try{
+    const firstShot=await e.makeShot(),choice=await batch.choose(firstShot,scope),first=e.makeJob(choice,firstShot,'source');first.floor=1;
+    await batch.attach(first,choice);await e.manager.reserve(first);await e.manager.beforeSubmit(first);await e.manager.settle(first,'succeeded');
+    const from=await e.manager.inspect(scope),to=await e.manager.inspect(targetScope);
+    await e.manager.linkStyle(scope,targetScope,{expectedSourceRevision:from.revision,expectedRevision:to.revision,expectedGeneration:to.generation,label:{planId:'next-plan',floor:2}});
+    let probes=0;const later=e.manager.createBatch({prepared:e.prepared,probe:async options=>{probes++;return e.probe(options);}});
+    const scene=await e.makeShot('environment'),next=await later.choose(scene,targetScope);
+    assert.equal(next.candidateId,choice.candidateId);assert.equal(next.reason,'scene_locked');assert.equal(next.executionAuthorized,false);assert.ok(probes>0);
+    const job=e.makeJob(next,scene,'later');job.planId='next-plan';job.floor=2;await later.attach(job,next);await e.manager.reserve(job);await e.manager.beforeSubmit(job);await e.manager.settle(job,'succeeded');
+    assert.equal((await e.manager.inspect(targetScope)).styleOrigin.sourceFloor,1);later.close();
+    const unavailable=e.manager.createBatch({prepared:e.prepared,probe:async()=>({automaticEligible:false})});
+    const refused=await unavailable.choose(scene,targetScope);assert.equal(refused.status,'review');assert.equal(refused.reason,'locked_route_unavailable');unavailable.close();
+  }finally{batch.close();await e.close();}
+});
+
 test('closed local preparation, copied choices and altered character facts or routes cannot acquire claims',async()=>{
   for(const action of ['copy','facts','route','chat','closed']){
     const e=await fixture(),batch=e.manager.createBatch({prepared:e.prepared,probe:e.probe}),shot=await e.makeShot(),choice=await batch.choose(shot,scope),job=e.makeJob(choice,shot,'j');

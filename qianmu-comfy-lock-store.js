@@ -1,5 +1,5 @@
 // Independent lazy metadata store; never opens or upgrades voice, media or previous storyboard stores.
-import {comfySceneScope,comfySceneScopeKey,comfySceneLockError,normalizeComfySceneRecord,inspectComfySceneRecord,changeComfySceneRecord,normalizeComfySceneReceipt,captureComfySceneAction} from './qianmu-comfy-scene-lock.js';
+import {comfySceneScope,comfySceneScopeKey,comfySceneLockError,normalizeComfySceneRecord,inspectComfySceneRecord,changeComfySceneRecord,normalizeComfySceneReceipt,captureComfySceneAction,captureComfySceneStyleLink,copyComfySceneStyleRecord} from './qianmu-comfy-scene-lock.js';
 import {assertComfyRouteNamespace} from './qianmu-comfy-route-contract.js';
 export const COMFY_SCENE_STORE_LIMITS=Object.freeze({scopes:1024,bytes:4*1024*1024,rowBytes:32*1024});
 const bytes=value=>new TextEncoder().encode(JSON.stringify(value)).byteLength;
@@ -88,6 +88,34 @@ export function createComfySceneLockStore({indexedDB=globalThis.indexedDB,dbName
     begin(receipt){const captured=normalizeComfySceneReceipt(receipt);return operate(captured.scope,{type:'begin',receipt:captured});},
     settle(receipt,outcome){const captured=normalizeComfySceneReceipt(receipt);return operate(captured.scope,{type:'settle',receipt:captured,outcome});},
     unlock(scope,request){return operate(scope,{...copy(request),type:'unlock'});},
+    async linkStyle(sourceScope,targetScope,request){
+      const captured=captureComfySceneStyleLink(sourceScope,targetScope,request),namespace=captured.targetScope.namespace;
+      // Source validation and target write share one transaction: no stale copy after another page unlocks/clears.
+      return transaction('readwrite',(tx,output,abort)=>{
+        const store=tx.objectStore('scopes'),meta=tx.objectStore('usage');
+        const readSource=store.get(comfySceneScopeKey(captured.sourceScope));
+        readSource.onsuccess=()=>{
+          const readTarget=store.get(comfySceneScopeKey(captured.targetScope));
+          readTarget.onsuccess=()=>{
+            const readMeta=meta.get(namespace);
+            readMeta.onsuccess=()=>{try{
+              const before=usage(readMeta.result),source=readSource.result,target=readTarget.result;
+              if(before.generation!==captured.expectedGeneration)throw comfySceneLockError('conflict','续场记录已被清理，请重新选择');
+              for(const [value,scope] of [[source,captured.sourceScope],[target,captured.targetScope]]){
+                if(value!==undefined&&(!value||value.namespace!==scope.namespace||value.chatKey!==scope.chatKey||value.bytes!==bytes(value.record)))throw problem();
+              }
+              const result=copyComfySceneStyleRecord(source?.record,target?.record,captured,now()),size=bytes(result.row);
+              if(size>quota.rowBytes)throw comfySceneLockError('capacity','本场景续场记录过大，请整理任务');
+              if(!source||before.count<1+(target?1:0)||before.bytes<source.bytes+(target?.bytes||0))throw problem();
+              const next={count:before.count+(target?0:1),bytes:before.bytes-(target?.bytes||0)+size,generation:before.generation};
+              if(next.count>quota.scopes||next.bytes>quota.bytes)throw comfySceneLockError('capacity','续场存储已满，请先整理已结束场景');
+              usage(next);store.put({namespace,chatKey:captured.targetScope.chatKey,bytes:size,record:result.row},comfySceneScopeKey(captured.targetScope));meta.put(next,namespace);
+              output({view:{...inspectComfySceneRecord(result.row,captured.targetScope,now()),generation:before.generation}});
+            }catch(error){abort(error);}};
+          };
+        };
+      });
+    },
     async list(namespace,chatKey){
       namespace=assertComfyRouteNamespace(namespace);const sample=comfySceneScope({namespace,chatKey,continuityId:'list',narrativeLayer:'present'});
       return transaction('readonly',(tx,output,abort)=>{
