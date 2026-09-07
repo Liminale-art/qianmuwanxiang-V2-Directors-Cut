@@ -274,7 +274,7 @@ function generationEnvironment() {
     storyboardProductionContext: () => ({}), storyboardQueue: [], storyboardActiveJobs: new Map(), STORYBOARD_QUEUE_LIMIT: 100,
     storyboardQueueJob: (job) => { queued.push(job); return true; }, confirmDialog: async () => true,
   });
-  vm.runInContext(section('storyboardPrepareDraftGroup')+section('storyboardGenerate'), context);
+  vm.runInContext(section('storyboardPlanHasGeneration')+section('storyboardPrepareDraftGroup')+section('storyboardGenerate'), context);
   state.source = 'openai';
   state.profiles.openai = { ...state.profiles.openai, model: 'gpt-image-2' };
   state.promptDraft.shots = [{ id: 'garden', prompt: 'quiet garden', shotType: 'environment',
@@ -562,7 +562,7 @@ test('invalid profiles stop both compiler and generation before any external wor
   context.storyboardGenerationPreparing = new Set();
   context.storyboardCaptureWorkbench = () => ({ state, profile: state.profiles.novel, workflowResult: { ok: true, removedFields: [] } });
   context.featureRuntime = { load: () => assert.fail('external work must not begin') };
-  vm.runInContext(section('storyboardCompilePrompt') + section('storyboardPrepareDraftGroup') + section('storyboardGenerate'), context);
+  vm.runInContext(section('storyboardCompilePrompt') + section('storyboardPlanHasGeneration') + section('storyboardPrepareDraftGroup') + section('storyboardGenerate'), context);
   assert.equal(await context.storyboardCompilePrompt(null), false);
   assert.equal(await context.storyboardGenerate(null), false);
   assert.equal(notices.length, 2);

@@ -47,7 +47,7 @@ assert.equal(normalized.taskStates[0].error, 'provider error');
 
 // Queue and provider lifecycle use the persistent task id; only explicitly inline jobs expose state.
 assert.match(source, /function storyboardSyncTaskState[\s\S]*id: job\.id[\s\S]*state\.taskStates = \[next/);
-assert.match(source, /storyboardQueue\.push\(job\);[\s\S]*storyboardSetPlanStatus\(storyboardPlanForJob\(job\), 'queued'/);
+assert.match(source, /storyboardQueue\.push\(job\);[\s\S]*const plan=storyboardPlanForJob\(job\);if\(plan\)plan\.generationStarted=true;[\s\S]*storyboardSetPlanStatus\(plan, 'queued'/);
 for (const stage of ['provider', 'persistence', 'attachment', 'delivery_pending', 'complete']) {
   assert.match(source, new RegExp(`['"]${stage}['"]`));
 }

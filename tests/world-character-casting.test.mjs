@@ -176,7 +176,7 @@ for(const invalid of [false,true])test(`world fixed workflow ${invalid?'fails be
   const queued=[];Object.assign(e.context,{storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:20,storyboardQueueJob:async job=>{queued.push(job);return true;},
     storyboardCredentialId:()=> 'test-key',storyboardAnchorForMessage:()=>null,uniqueClean:items=>[...new Set(items.filter(Boolean))],storyboardAdaptShotForModel:async shot=>shot,
     confirmDialog:async()=>true,STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',environment:'',custom:''}});
-  vm.runInContext(['storyboardPromptsForArtist','storyboardJoinPrompt','storyboardCompilerRoutes','storyboardGenerationPayload','storyboardCreateJob','storyboardPrepareDraftGroup','storyboardGenerate'].map(section).join('\n'),e.context);
+  vm.runInContext(['storyboardPromptsForArtist','storyboardJoinPrompt','storyboardCompilerRoutes','storyboardGenerationPayload','storyboardCreateJob','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardGenerate'].map(section).join('\n'),e.context);
   assert.equal(await e.context.storyboardGenerate(null,e.context.lastProductionOptions),true,e.notices.join(';'));assert.equal(queued.length,1);
   const job=queued[0];assert.equal(job.source,'comfy');assert.equal(job.target,'gallery');assert.equal(job.inlineByDefault,false);
   assert.deepEqual(job.profile.comfyRouteBinding,recipe.binding);assert.equal(job.profile.comfyWorkflow,recipe.document.workflow);
@@ -191,7 +191,7 @@ for(const revoke of [false,'source','account'])test(`real normal pipeline ${revo
     sanitizeStoryboardDiagnosticData:value=>value,uniqueClean:items=>[...new Set(items.filter(Boolean))],
     storyboardAdaptShotForModel:async shot=>{if(revoke==='source')e.candidate.recommendation='reject';if(revoke==='account')e.setAccount('st-user:new');return shot;}});
   vm.runInContext(['storyboardPromptsForArtist','storyboardJoinPrompt','storyboardProfileSnapshot',
-    'storyboardResolveRoutingProfile','storyboardGenerationPayload','storyboardCreateJob','storyboardPrepareDraftGroup','storyboardGenerate'].map(section).join('\n'),e.context);
+    'storyboardResolveRoutingProfile','storyboardGenerationPayload','storyboardCreateJob','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardGenerate'].map(section).join('\n'),e.context);
   assert.equal(await e.context.storyboardGenerate(null,e.context.lastProductionOptions),!revoke,e.notices.join(';'));
   assert.equal(queued.length,revoke?0:1);
   if(!revoke){const job=queued[0];assert.equal(job.target,'gallery');assert.equal(job.floor,null);assert.equal(job.inlineByDefault,false);

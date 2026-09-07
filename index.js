@@ -95,9 +95,9 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.91';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.91';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.91';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.92';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.92';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.92';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -105,7 +105,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.91';
+} from './qianmu-llm-output.js?v=1.59.92';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -181,243 +181,243 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.91';
+} from './qianmu-storyboard.js?v=1.59.92';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.91';
+const VERSION = '1.59.92';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   modelPicker: {
     label: '模型选择',
-    load: () => import('./qianmu-model-picker.js?v=1.59.91'),
+    load: () => import('./qianmu-model-picker.js?v=1.59.92'),
   },
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.91'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.92'),
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.91'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.92'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
-    load: () => import('./qianmu-image-channel.js?v=1.59.91'),
+    load: () => import('./qianmu-image-channel.js?v=1.59.92'),
   },
   imageServiceClient: {
     label: '增强生图任务',
-    load: () => import('./qianmu-image-service-client.js?v=1.59.91'),
+    load: () => import('./qianmu-image-service-client.js?v=1.59.92'),
   },
   comfySubmission: {
     label: 'Comfy 实例排队',
-    load: () => import('./qianmu-comfy-submission.js?v=1.59.91'),
+    load: () => import('./qianmu-comfy-submission.js?v=1.59.92'),
   },
   comfyRecovery: {
     label: 'Comfy 原图领取',
-    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.91'),
+    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.92'),
   },
   comfyInbox: {
     label: 'Comfy 收片管理',
-    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.91'),
+    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.92'),
   },
   comfyReferences: {
     label: 'Comfy 参考图',
-    load: () => import('./qianmu-comfy-references.js?v=1.59.91'),
+    load: () => import('./qianmu-comfy-references.js?v=1.59.92'),
   },
   characterArchive: {
     label: '角色档案',
-    load: () => import('./qianmu-character-archive-view.js?v=1.59.91'),
+    load: () => import('./qianmu-character-archive-view.js?v=1.59.92'),
   },
   characterCasting: {
     label: '角色取景绑定',
-    load: () => import('./qianmu-character-casting.js?v=1.59.91'),
+    load: () => import('./qianmu-character-casting.js?v=1.59.92'),
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.91'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.92'),
   },
   characterShotEditor: {
     label: '本镜人物编辑',
-    load: () => import('./qianmu-character-shot-view.js?v=1.59.91'),
+    load: () => import('./qianmu-character-shot-view.js?v=1.59.92'),
   },
   characterReference: {
     label: '角色参考图',
-    load: () => import('./qianmu-character-reference.js?v=1.59.91'),
+    load: () => import('./qianmu-character-reference.js?v=1.59.92'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.91').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.92').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.91'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.92'),
   },
   comfyWorkbench: {
     label: 'Comfy 镜头台',
-    load: () => import('./qianmu-comfy-workbench.js?v=1.59.91'),
+    load: () => import('./qianmu-comfy-workbench.js?v=1.59.92'),
   },
   comfyCharacters: {
     label: 'Comfy 角色实现',
-    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.91'),
+    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.92'),
   },
   comfyRoutes: {
     label: 'Comfy 镜头分工',
-    load: () => import('./qianmu-comfy-route.js?v=1.59.91'),
+    load: () => import('./qianmu-comfy-route.js?v=1.59.92'),
   },
   comfyPrompt: {
     label: 'Comfy 提示表达',
-    load: () => import('./qianmu-comfy-prompt.js?v=1.59.91'),
+    load: () => import('./qianmu-comfy-prompt.js?v=1.59.92'),
   },
   comfyCharacterReadiness: {
     label: '角色节点检查',
-    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.91'),
+    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.92'),
   },
   comfyLibrary: {
     label: 'Comfy 工作流库',
-    load: () => import('./qianmu-comfy-library-view.js?v=1.59.91'),
+    load: () => import('./qianmu-comfy-library-view.js?v=1.59.92'),
   },
   comfyPools: {
     label: 'Comfy 候选方案',
-    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.91'),
+    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.92'),
   },
   comfyScene: {
     label: 'Comfy 续场锁',
-    load: () => import('./qianmu-comfy-lock-runtime.js?v=1.59.91'),
+    load: () => import('./qianmu-comfy-lock-runtime.js?v=1.59.92'),
   },
   comfyAuto: {
     label: 'Comfy 候选调度',
-    load: () => import('./qianmu-comfy-auto-runtime.js?v=1.59.91'),
+    load: () => import('./qianmu-comfy-auto-runtime.js?v=1.59.92'),
   },
   comfyPreflight: {
     label: 'Comfy 配置检查',
-    load: () => import('./qianmu-comfy-preflight.js?v=1.59.91'),
+    load: () => import('./qianmu-comfy-preflight.js?v=1.59.92'),
   },
   comfyReadiness: {
     label: 'Comfy 节点检查',
-    load: () => import('./qianmu-comfy-readiness.js?v=1.59.91'),
+    load: () => import('./qianmu-comfy-readiness.js?v=1.59.92'),
   },
   comfyTargets: {
     label: 'Comfy 可信连接',
-    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.91'),
+    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.92'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.91'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.92'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.91'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.92'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.91'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.92'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.91'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.92'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.91'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.92'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.91'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.92'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.91'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.92'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.91'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.92'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.91'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.92'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.91'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.92'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.91'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.92'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.91'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.92'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.91'),
+    load: () => import('./qianmu-video-task.js?v=1.59.92'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.91'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.92'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.91'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.92'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.91'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.92'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.91'),
+    load: () => import('./qianmu-video-store.js?v=1.59.92'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.91'),
+    load: () => import('./qianmu-video-result.js?v=1.59.92'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.91'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.92'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.91'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.92'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.91'),
+    load: () => import('./qianmu-video-media.js?v=1.59.92'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.91'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.92'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.91'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.92'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.91'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.92'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.91'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.92'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.91'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.92'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.91'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.92'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.91'),
-        import('./qianmu-theaters.js?v=1.59.91'),
+        import('./builtin-theaters.js?v=1.59.92'),
+        import('./qianmu-theaters.js?v=1.59.92'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -12889,6 +12889,7 @@ function storyboardPlanLightweightSummary(plan, key) {
     continuityLedger: null, hasContinuityLedger: Boolean(plan.hasContinuityLedger || plan.continuityLedger),
     continuityLedgerLayer: plan.continuityLedgerLayer || '',
     autoGenerate: Boolean(plan.autoGenerate), promptLocked: Boolean(plan.promptLocked), manualReviewRequired: Boolean(plan.manualReviewRequired),
+    ...(Object.hasOwn(plan,'generationStarted')?{generationStarted:plan.generationStarted===true}:{}),
     status: plan.status, linkState: plan.linkState || '',
     shots: (plan.shots || []).map((shot) => ({
       id: shot.id, shotType: shot.shotType, role: shot.role, title: shot.title, purpose: '',
@@ -12981,6 +12982,7 @@ async function storyboardPlansForPortableExport(plans = []) {
         messageRef: clone(summary.messageRef || null), revisionId: summary.revisionId, idempotencyKey: summary.idempotencyKey,
         origin: summary.origin, paragraphSelection: clone(summary.paragraphSelection || null), autoGenerate: summary.autoGenerate,
         promptLocked: summary.promptLocked, manualReviewRequired: summary.manualReviewRequired,
+        ...(Object.hasOwn(summary,'generationStarted')?{generationStarted:summary.generationStarted===true}:{}),
         status: summary.status, linkState: summary.linkState || '', createdAt: summary.createdAt, updatedAt: summary.updatedAt,
       });
       const currentShots = new Map((summary.shots || []).map((shot) => [String(shot.id || ''), shot]));
@@ -17008,12 +17010,13 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
   };
 }
 
-function storyboardStartLog(job) {
+function storyboardStartLog(job,{preparationError=''}={}) {
   const state = storyboardState();
   const now = Date.now();
   const previousPipelineIds = new Set((state.logs || []).map((item) => String(item.pipelineId || '')).filter(Boolean));
   const log = {
-    id: uid('shotlog'), status: 'queued', source: job.source, model: String(job.profile.model || ''),
+    id: uid('shotlog'), status: preparationError?'failed':'queued', source: job.source, model: String(job.profile.model || ''),
+    ...(preparationError?{submissionState:'not_submitted'}:{}),
     prompt: String(job.prompt || '').slice(0, 800), negative: String(job.negative || '').slice(0, 400),
     effectivePrompt: String(job.payload.prompt || '').slice(0, 24000), effectiveNegative: String(job.payload.negative || '').slice(0, 12000),
     target: job.target, floor: job.floor,
@@ -17023,7 +17026,7 @@ function storyboardStartLog(job) {
       requestIndex: job.requestIndex || 1, requestTotal: job.requestTotal || 1,
       ...(job.source === 'comfy' && job.profile.comfyRouteBinding ? { comfyRouteBinding: clone(job.profile.comfyRouteBinding) } : {}),
     },
-    error: '', recordId: '', recordIds: [], pipelineId: '', queuedAt: now, startedAt: 0, finishedAt: 0, durationMs: 0,
+    error: preparationError, recordId: '', recordIds: [], pipelineId: '', queuedAt: now, startedAt: 0, finishedAt: preparationError?now:0, durationMs: 0,
     attempt: job.attempt, snapshot: clone({
       source: job.source, prompt: job.prompt, negative: job.negative, target: job.target, floor: job.floor,
       modelIdentity: job.modelIdentity,
@@ -17044,8 +17047,8 @@ function storyboardStartLog(job) {
     }),
   };
   const pipeline = {
-    id: uid('shotpipe'), taskId: job.id, status: 'queued', providerId: job.source,
-    model: String(job.profile.model || ''), startedAt: 0, finishedAt: 0, durationMs: 0,
+    id: uid('shotpipe'), taskId: job.id, status: preparationError?'failed':'queued', providerId: job.source,
+    model: String(job.profile.model || ''), startedAt: 0, finishedAt: preparationError?now:0, durationMs: 0,
     stages: sanitizeStoryboardDiagnosticData([
       ...clone(job.compilerStages || []),
       ...(job.comfyAudit ? [{ id: uid('stage-comfy-audit'), type: 'comfy_workflow_audit', status: 'success', startedAt: now, finishedAt: now,
@@ -17080,20 +17083,20 @@ function storyboardStartLog(job) {
     ]), migrated: false,
   };
   log.pipelineId = pipeline.id;
-  state.pipelineLogs.unshift(pipeline);
-  state.pipelineLogs = pruneStoryboardPipelineLogs(state.pipelineLogs);
-  state.logs.unshift(log);
-  state.logs = state.logs
+  const previousLogs=state.logs, previousPipelines=state.pipelineLogs;
+  state.pipelineLogs = pruneStoryboardPipelineLogs([pipeline,...state.pipelineLogs]);
+  state.logs = [log,...state.logs]
     .sort((a, b) => Number(b.finishedAt || b.startedAt || b.queuedAt || 0) - Number(a.finishedAt || a.startedAt || a.queuedAt || 0))
     .slice(0, STORYBOARD_PIPELINE_LOG_LIMIT);
   const visiblePipelineIds = new Set(state.logs.map((item) => item.pipelineId).filter(Boolean));
   state.pipelineLogs = state.pipelineLogs.filter((item) => visiblePipelineIds.has(item.id));
+  try { saveSettings(); }
+  catch(error) { state.logs=previousLogs;state.pipelineLogs=previousPipelines;throw error; }
   const droppedPipelineIds = [...previousPipelineIds].filter((id) => !visiblePipelineIds.has(id));
   for (const id of droppedPipelineIds) storyboardPipelineArchiveCache.delete(id);
   if (droppedPipelineIds.length) void blobStore.deleteStoryboardPipelineLogs(droppedPipelineIds).catch((error) => {
     console.warn('[千幕] 过期分镜详细日志未能立即清理，将留待储存管理处理。', error);
   });
-  saveSettings();
   return log;
 }
 
@@ -17126,6 +17129,17 @@ function storyboardFinishLog(log, status, details = {}) {
   }
   saveSettings();
   if (status !== 'generating') void storyboardArchivePipelineLog(log);
+}
+
+function storyboardRecordPreparedJobFailure(job,message) {
+  if(!job?.id||job.logId||job.queueAccepted||storyboardQueue.some(item=>item.id===job.id)||storyboardActiveJobs.has(job.id))return null;
+  const error=String(sanitizeStoryboardDiagnosticData(String(message||'本镜未能入队，请核对连接与工作流'))).slice(0,1600);
+  job.compilerStages=[...(job.compilerStages||[]),{id:uid('stage-queue-preparation'),type:'queue_preparation',status:'failed',startedAt:Date.now(),finishedAt:Date.now(),
+    input:{shotIndex:job.inlineOrder?.shotIndex},output:{submissionState:'not_submitted'},decisions:['未进入执行队列，未发送生图请求'],error}];
+  const log=storyboardStartLog(job,{preparationError:error});job.logId=log.id;
+  storyboardFinishLog(log,'failed',{error,submissionState:'not_submitted'});
+  storyboardSetPlanStatus(storyboardPlanForJob(job),'failed',{job,error,stage:'queue'});
+  return log;
 }
 
 function storyboardPipelineStage(log, type, status, input = {}, output = {}, error = '') {
@@ -17164,6 +17178,7 @@ const STORYBOARD_PIPELINE_STAGE_LABELS = Object.freeze({
   world_confirmation: '造物之眼确认',
   safety_adaptation: '安全适配',
   prompt_compilation: '生图编译',
+  queue_preparation: '入队检查',
   provider_request: '模型请求',
   asset_persistence: '图片落盘',
   paragraph_anchor: '段落定位',
@@ -18734,6 +18749,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
       plan.floor = context.floor;
       plan.status = 'prompt_ready';
       plan.promptLocked = false;
+      plan.generationStarted = false;
       plan.manualReviewRequired = manualRequired;
       if (manualRequired) plan.autoGenerate = false;
       plan.shots = compiledShots.map((shot, index) => ({
@@ -19222,8 +19238,9 @@ async function storyboardPrepareComfyCharacterJob(job,{prepare=false,readiness=f
   return {...plan,definitionWarnings};
 }
 
-async function storyboardQueueJob(job, preparationCurrent = () => true) {
-  if (!job?.payload?.prompt?.trim()) return toast('请先写下画面描述。', 'warning');
+async function storyboardQueueJob(job, preparationCurrent = () => true, onFailure = () => {}) {
+  const refuse=message=>{const detail=String(message||'本镜未能入队');onFailure(detail);toast(detail,'warning');return false;};
+  if (!job?.payload?.prompt?.trim()) return refuse('请先写下画面描述。');
   try {
     for (const spec of [job.shotSpec, job.snapshot?.shotSpec, job.payload?.shotSpec]) {
       if (spec?.characters?.some(character => character.archiveSnapshot)) assertCharacterCastingSnapshots(spec);
@@ -19233,26 +19250,26 @@ async function storyboardQueueJob(job, preparationCurrent = () => true) {
       const notice = characterReferenceNotice(reference);
       if (notice) toast(notice,'info');
     }
-  } catch (error) { toast(error.message, 'warning'); return false; }
+  } catch (error) { return refuse(error.message); }
   try { job.modelIdentity = resolveStoryboardJobModelIdentity(job); }
-  catch (error) { toast(error?.message || '无法确认任务模型，请载入镜头台确认', 'warning'); return false; }
+  catch (error) { return refuse(error?.message || '无法确认任务模型，请载入镜头台确认'); }
   if (job.source === 'openai' && job.payload?.parameters?.background === 'transparent'
     && job.payload?.parameters?.outputFormat === 'jpeg') {
-    return toast('透明背景不支持 JPEG，请改用 PNG 或 WebP。', 'warning');
+    return refuse('透明背景不支持 JPEG，请改用 PNG 或 WebP。');
   }
   if (!String(job.connection?.baseUrl || '').trim()) {
-    return toast('请先填写当前模型的 API 地址。', 'warning');
+    return refuse('请先填写当前模型的 API 地址。');
   }
   if (job.source === 'comfy') {
-    if (job.profile?.comfyWorkflowNotice) return toast(job.profile.comfyWorkflowNotice, 'warning');
+    if (job.profile?.comfyWorkflowNotice) return refuse(job.profile.comfyWorkflowNotice);
     try { job.payload.parameters.workflow = storyboardParseWorkflow(job.payload?.parameters?.workflow); }
-    catch (error) { return toast(error.message, 'warning'); }
+    catch (error) { return refuse(error.message); }
   }
   if (job.source !== 'comfy' && !String(job.profile?.model || '').trim()) {
-    return toast('请先选择生图模型。', 'warning');
+    return refuse('请先选择生图模型。');
   }
   if (storyboardQueue.length + storyboardActiveJobs.size >= STORYBOARD_QUEUE_LIMIT) {
-    return toast(`等待队列最多 ${STORYBOARD_QUEUE_LIMIT} 项，请先完成或移除部分任务。`, 'warning');
+    return refuse(`等待队列最多 ${STORYBOARD_QUEUE_LIMIT} 项，请先完成或移除部分任务。`);
   }
   const state = storyboardState(), chatKey = String(getChatKey() || '');
   const valid = () => storyboardState() === state && state.enabled && !job.discardRequested
@@ -19272,21 +19289,23 @@ async function storyboardQueueJob(job, preparationCurrent = () => true) {
     }
   } catch (error) {
     if(job.comfySceneClaim)await storyboardSettleImageAdmission(job,'not_submitted');
-    toast(error?.message || '未取得生图授权，请核查原任务', 'warning');
-    return false;
+    return refuse(error?.message || '未取得生图授权，请核查原任务');
   }
   let log;
   try { log = storyboardStartLog(job); }
   catch (_) {
     await storyboardSettleImageAdmission(job, 'not_submitted');
-    return toast('生图日志未能保存，未提交本次请求', 'warning');
+    return refuse('生图日志未能保存，未提交本次请求');
   }
   job.logId = log.id;
   storyboardQueue.push(job);
-  storyboardSetPlanStatus(storyboardPlanForJob(job), 'queued', { job });
-  saveSettings();
-  renderModal();
-  void storyboardPumpQueue();
+  Object.defineProperty(job,'queueAccepted',{value:true,enumerable:false});
+  const plan=storyboardPlanForJob(job);if(plan)plan.generationStarted=true;
+  try {
+    storyboardSetPlanStatus(plan, 'queued', { job });
+    saveSettings();
+    renderModal();
+  } finally { void storyboardPumpQueue(); }
   return true;
 }
 
@@ -19599,6 +19618,12 @@ async function storyboardGenerateProductionPacket(root, packetId) {
   } finally {preparationGuard?.dispose();storyboardGenerationPreparing.delete(preparationKey);}
 }
 
+function storyboardPlanHasGeneration(plan) {
+  if(!plan)return false;
+  if(Object.hasOwn(plan,'generationStarted'))return plan.generationStarted===true;
+  return (plan.shots||[]).some(shot=>Number(shot.attempt)>0||shot.resultIds?.length||['queued','generating','completed'].includes(shot.status));
+}
+
 function storyboardPrepareDraftGroup(state,plan=null,productionDraft=null) {
   const availableDrafts=Array.isArray(state.promptDraft.shots)?state.promptDraft.shots.filter(shot=>String(shot.prompt||'').trim()):[];
   const generationPolicy=getStoryboardGenerationPolicy(state);
@@ -19691,9 +19716,11 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
       if (!plan && deliveryPolicy.target !== 'gallery' && Number.isInteger(targetFloor) && ctx().chat?.[targetFloor]) {
         plan = storyboardEnsurePlan(state, targetFloor, ctx().chat[targetFloor], { origin: automatic ? 'automatic' : 'manual', autoGenerate: automatic });
       }
-      if (plan?.archiveRef) await storyboardReleasePlanArchive(plan);
       preparationGuard.assertCurrent();
       if (['queued', 'generating'].includes(plan?.status)) return toast('本层画面已在等待或生成中', 'info');
+      if(storyboardPlanHasGeneration(plan))return toast('本轮已有生图请求，请在正文或日志中重试单镜；重新提取才会开启新一轮', 'info');
+      if (plan?.archiveRef) await storyboardReleasePlanArchive(plan);
+      preparationGuard.assertCurrent();
       if (!state.prompt.trim() && state.promptCompiler.enabled) {
         const compiled = await storyboardCompilePrompt(root, { plan, automatic });
         if (!compiled) return false;
@@ -19734,6 +19761,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
       plan.updatedAt = Date.now();
     }
     const inputGuard = storyboardCreatePreparationGuard(state, { plan, upstreamGuard:productionGuard });
+    let queued=0,queueFailures=0;
     try {
       let selectedRoutes = planned.map(shot => routingEnabled ? routeStoryboardShot(shot, state.routing) : state.routing.single);
       await storyboardPrepareComfyRoutes(state, inputGuard, selectedRoutes);
@@ -19808,21 +19836,36 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
           : `1 次生图请求，预计生成 ${generationDemand.imageCount} 张图片`;
         if (!await confirmDialog('确认生成数量', `本次将发起 ${detail}。是否继续？`)) return false;
       }
-      let queued = 0;
       inputGuard.assertCurrent();
       for (const job of jobs) {
         await inputGuard.comfyRoutes?.assertCurrent();
         if (productionGuard?.verify) await productionGuard.verify();
         inputGuard.assertCurrent();
-        if (await storyboardQueueJob(job, inputGuard.isCurrent)) queued++;
+        let reason='';
+        try {
+          if(await storyboardQueueJob(job,inputGuard.isCurrent,message=>{reason=message;}))queued++;
+          else if(reason&&inputGuard.isCurrent()){
+            queueFailures++;
+            try{storyboardRecordPreparedJobFailure(job,reason);}catch(_){toast('本镜未入队，失败记录未能完整保存；已入队镜头不受影响','warning');}
+          }
+        }catch(error){
+          if(job.queueAccepted||storyboardQueue.some(item=>item.id===job.id)||storyboardActiveJobs.has(job.id))queued++;
+          throw error;
+        }
       }
       if (queued > 0 && !automatic && plan?.manualReviewRequired) {
         plan.manualReviewRequired = false;
         for (const shot of plan.shots || []) shot.requiresManualConfirmation = false;
         saveSettings();
       }
+      if(queueFailures&&inputGuard.ownsCurrentContext())toast(`已入队 ${queued}/${jobs.length}；${queueFailures} 镜未提交，可从正文或日志单独重试`,'warning');
       return queued > 0;
     } catch (error) {
+      if(queued>0){
+        const detail=String(sanitizeStoryboardDiagnosticData(String(error?.message||'准备中断'))).slice(0,120);
+        if(inputGuard.ownsCurrentContext())toast(`${queued} 个请求已进入队列；${detail}。请勿整批重复生成`,'warning');
+        return true;
+      }
       if (/^comfy_(route|reference|library|auto|scene)/.test(error?.code || '') || error?.code === 'image_attempt_account') {
         if (inputGuard.ownsCurrentContext()) toast(error.message || '工作流分工未就绪，未提交生成', 'warning');
         return false;

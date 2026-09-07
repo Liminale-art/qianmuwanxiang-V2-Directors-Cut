@@ -63,7 +63,7 @@ export async function routeEnvironment(options={}) {
     'storyboardPromptDefaultsKey','storyboardProviderPromptDefaults','storyboardPromptLayerForArtist','storyboardPromptsForArtist','storyboardJoinPrompt',
     'storyboardCaptureWorkbench','storyboardResolveRoutingProfile','storyboardCreatePreparationGuard','storyboardPrepareComfyRoutes','storyboardCompilerRoutes','storyboardCertainCompilerRoute',
     'storyboardUsesComfyCharacters','storyboardPreflightComfyForCompiler','storyboardComfyReferenceMetadata','storyboardWorkflowIssue',
-    'storyboardGenerationPayload','storyboardCreateJob','storyboardShotSpecForSelection','storyboardAdaptShotForModel','storyboardPrepareDraftGroup','storyboardComfyPlanScopes','storyboardGenerate','storyboardVerifyComfyRouteJob','storyboardRoutingTargetOptions','storyboardBindRouteWorkflow'];
+    'storyboardGenerationPayload','storyboardCreateJob','storyboardShotSpecForSelection','storyboardAdaptShotForModel','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardComfyPlanScopes','storyboardGenerate','storyboardVerifyComfyRouteJob','storyboardRoutingTargetOptions','storyboardBindRouteWorkflow'];
   vm.runInContext(names.map(section).join('\n'),context);
   return {...f,state,context,jobs,notices,calls,setAccount:value=>account=value};
 }

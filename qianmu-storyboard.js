@@ -437,6 +437,12 @@ export function storyboardInlineSlotKey(value) {
   return order ? JSON.stringify([order.batchId, order.shotIndex, order.requestIndex]) : '';
 }
 
+function storyboardTaskIsNewer(task,previous) {
+  return !previous || Number(task.requestedAt || 0) > Number(previous.requestedAt || 0)
+    || (Number(task.requestedAt || 0) === Number(previous.requestedAt || 0) && (Number(task.attempt || 1) > Number(previous.attempt || 1)
+      || (Number(task.attempt || 1) === Number(previous.attempt || 1) && String(task.id) > String(previous.id))));
+}
+
 export function buildStoryboardInlineTasks(tasks, { chatKey = '', chat = [], logs = [], activeIds = new Set(), waitingIds = new Set(), records = [] } = {}) {
   if (!chatKey || !Array.isArray(chat)) return [];
   const latest = new Map(), logIndex = new Map(logs.map(log => [log.id, log]));
@@ -446,10 +452,7 @@ export function buildStoryboardInlineTasks(tasks, { chatKey = '', chat = [], log
     if (!slotKey || task.uiVisible !== true || task.chatKey !== chatKey || !task.id || !task.messageRef?.messageKey) continue;
     const key = JSON.stringify([slotKey, task.messageRef.messageKey, task.messageRef.revisionId, task.messageRef.swipeId]);
     const previous = latest.get(key);
-    const newer = !previous || Number(task.requestedAt || 0) > Number(previous.requestedAt || 0)
-      || (Number(task.requestedAt || 0) === Number(previous.requestedAt || 0) && (Number(task.attempt || 1) > Number(previous.attempt || 1)
-        || (Number(task.attempt || 1) === Number(previous.attempt || 1) && String(task.id) > String(previous.id))));
-    if (newer) latest.set(key, task);
+    if (storyboardTaskIsNewer(task,previous)) latest.set(key, task);
   }
   const entries = [], resolvedMessages = new Map();
   for (const task of latest.values()) {
@@ -471,7 +474,7 @@ export function buildStoryboardInlineTasks(tasks, { chatKey = '', chat = [], log
       messageHash: task.messageHash || '', swipeId: task.messageRef.swipeId,
       paragraphAnchor: task.paragraphAnchor, paragraphSelection: task.paragraphSelection,
       imageIndex: Number.MAX_SAFE_INTEGER, createdAt: Number(task.requestedAt || 0),
-      status, label: status === 'unconfirmed' ? '结果待核对' : status === 'failed' ? '本镜生成失败' : status === 'queued' ? '等待生图' : stageLabel,
+      status, label: status === 'unconfirmed' ? '结果待核对' : status === 'failed' ? (task.stage==='queue'&&log?.submissionState==='not_submitted'?'本镜尚未提交':'本镜生成失败') : status === 'queued' ? '等待生图' : stageLabel,
       detail: status === 'unconfirmed' ? '请先核查原任务，勿重复生成' : status === 'failed'
         ? str(sanitizeStoryboardDiagnosticData(task.error || '请查看日志'), 120).replace(/\s+/g, ' ').split('；')[0] : '',
       action: retry ? 'retry-task' : (waitingIds.has(task.id) ? 'cancel-task' : ''),
@@ -1843,6 +1846,7 @@ function shotPlans(value, state = {}) {
       continuityLedgerLayer: plan.continuityLedgerLayer ? (STORYBOARD_NARRATIVE_LAYERS.includes(plan.continuityLedgerLayer)?plan.continuityLedgerLayer:'[invalid]') : '',
       hasContinuityLedger: Boolean(plan.hasContinuityLedger || continuityInput),
       autoGenerate: Boolean(plan.autoGenerate), promptLocked: Boolean(plan.promptLocked),
+      ...(Object.hasOwn(plan,'generationStarted')?{generationStarted:plan.generationStarted===true}:{}),
       manualReviewRequired: Boolean(plan.manualReviewRequired || shots.some((shot) => shot.requiresManualConfirmation)),
       status: workflowState(plan.status), linkState: str(plan.linkState, 40), shots,
       archiveRef, archiveVersion: archiveRef ? int(plan.archiveVersion, 1, 100, 1) : 0, archivedAt: archiveRef ? pos(plan.archivedAt) : 0,
@@ -2009,15 +2013,25 @@ export function planStoryboardProviderRequests(providerId, requestedCount) {
 }
 
 export function aggregateStoryboardShotTasks(value, fallbackStatus = 'queued') {
-  const tasks = (Array.isArray(value) ? value : []).filter(obj).map(normalizeStoryboardTaskState);
+  const history = (Array.isArray(value) ? value : []).filter(obj).map(normalizeStoryboardTaskState);
+  const latest = new Map(), legacy = [];
+  for (const task of history) {
+    const slot = storyboardInlineSlotKey(task.inlineOrder);
+    if (!slot) { legacy.push(task); continue; }
+    const key = JSON.stringify([task.chatKey,task.planId,task.shotId,slot,task.messageRef?.messageKey,task.messageRef?.revisionId,task.messageRef?.swipeId]);
+    if (storyboardTaskIsNewer(task,latest.get(key))) latest.set(key,task);
+  }
+  // Retry replaces the state of its own slot, never another split request or its persisted images.
+  const tasks = [...legacy,...latest.values()];
   const statuses = tasks.map((task) => task.status);
-  let status = workflowState(fallbackStatus, 'queued');
+  const newest = tasks.reduce((previous,task)=>storyboardTaskIsNewer(task,previous)?task:previous,null);
+  let status = newest?.status || workflowState(fallbackStatus, 'queued');
   if (statuses.includes('generating')) status = 'generating';
   else if (statuses.includes('queued')) status = 'queued';
   else if (statuses.includes('compiling')) status = 'compiling';
   else if (statuses.includes('prompt_ready')) status = 'prompt_ready';
   else if (statuses.includes('completed')) status = 'completed';
-  const resultIds = ids(tasks.flatMap((task) => task.resultIds || []), 20);
+  const resultIds = ids(history.flatMap((task) => task.resultIds || []), 20);
   const failedTasks = tasks.filter((task) => ['failed', 'cancelled', 'stale', 'orphaned'].includes(task.status));
   const matchingError = [...tasks].reverse().find((task) => task.status === status && task.error)?.error
     || [...failedTasks].reverse().find((task) => task.error)?.error
