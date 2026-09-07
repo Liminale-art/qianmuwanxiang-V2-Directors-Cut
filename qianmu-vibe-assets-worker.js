@@ -8,6 +8,12 @@ return async function run({type,namespace,id,file,ids,settings,bundle,model,info
   if(type==='encoding-list')return encodings.list(namespace);
   if(type==='encoding-reserve')return encodings.reserve(namespace,cacheKey,identity,attemptId,{retryAttemptId});
   if(type==='encoding-transition')return encodings.transition(namespace,cacheKey,attemptId,status,{assetRef});
+  if(type==='remember-encoding'){
+    if(assetRef?.namespace!==namespace)throw vibeFileError('account','服务 Vibe 不能缓存到其他账户');
+    const asset=await store.load(namespace,assetRef.id);if(!asset||asset.document.id!==identity?.sourceId)throw vibeFileError('source','服务编码缓存与原图不符');
+    selectNovelVibeEncoding(asset.document,identity.capabilityModelId,identity.parameters?.information_extracted);
+    return encodings.remember(namespace,cacheKey,identity,assetRef);
+  }
   if(type==='freeze-original'){
     const original=normalizeNovelVibeImage(image);
     const document={identifier:'novelai-vibe-transfer',version:1,type:'image',id:await vibeDigest(original.data),image:original.data,

@@ -1,6 +1,7 @@
 import {resolveStoryboardVibeRecipe,retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {retainVibeAssetRef,VIBE_ENCODING_MODELS} from './qianmu-vibe-asset-ref.js';
 import {encodeNovelVibe,prepareNovelVibeEncoding} from './qianmu-vibe-encoding.js';
+export {createVibeServiceClient} from './qianmu-vibe-service-client.js';
 
 // This error describes the IMAGE submission. The separately persisted encoding may already have been charged.
 const fail=(code,message,encodingState='not_submitted')=>Object.assign(new Error(message),{
@@ -20,8 +21,8 @@ export async function confirmVibeEncoding(title,text,{popup,confirm=value=>globa
   return typeof confirm==='function'&&await confirm(`${title}\n${text}`)===true;
 }
 
-export async function prepareStoryboardVibes(payload,{namespace,model,connection,apiKey,call,readImage,checkpoint,
-  guard,confirm,encode=encodeNovelVibe,allowEncoding=true,notify=()=>{}}){
+async function prepareVibes(payload,{namespace,model,connection,apiKey,call,readImage,checkpoint,
+  guard,confirm,encode=encodeNovelVibe,service=null,allowEncoding=true,notify=()=>{}}){
   const items=resolveStoryboardVibeRecipe(payload);
   if(!items.length)return [];
   if(![call,readImage,checkpoint,guard,confirm,encode].every(fn=>typeof fn==='function'))throw fail('setup','Vibe 生成准备尚未接通');
@@ -52,9 +53,19 @@ export async function prepareStoryboardVibes(payload,{namespace,model,connection
       const input={...binding,version:1,provider:'novel',model:identity.remoteModelId,capabilityModelId:identity.capabilityModelId,apiKey,image:source.data,information:item.information};
       const prepared=await prepareNovelVibeEncoding(input);await guard();
       const options={cacheKey:prepared.cacheKey},cached=await rpc('encoding-get',options);
-      let used;
+      let used,remoteState=null;
       if(cached?.status==='ready')used=ref(cached.assetRef);
       else{
+        if(service){
+          remoteState=await service.query(prepared);await guard();
+          if(remoteState?.status==='ready'){
+            const received=await service.result(prepared);await guard();
+            used=ref(await rpc('attach-encoding',{...selection,encoding:received.encoding,expectedSourceId:prepared.identity.sourceId}));
+            await rpc('remember-encoding',{...options,identity:prepared.identity,assetRef:used});
+          }else if(remoteState&&remoteState.status!=='rejected')throw blocked();
+        }
+      }
+      if(!used){
         if(cached&&cached.status!=='rejected')throw blocked();
         if(!allowEncoding)throw fail('service','此 Vibe 尚需编码；当前增强服务的编码入口未接通，请先导入已有编码的 Vibe 文件');
         if(bytes>=48*1024*1024)throw fail('size','本次 Vibe 已达 48 MB 上限，请减少所选项；未追加编码');
@@ -64,15 +75,16 @@ export async function prepareStoryboardVibes(payload,{namespace,model,connection
         const attemptId=crypto.randomUUID(),reservation=await rpc('encoding-reserve',{...options,identity:prepared.identity,attemptId,retryAttemptId:cached?.attemptId||''});
         if(!reservation.owned){if(reservation.receipt?.status==='ready')used=ref(reservation.receipt.assetRef);else throw blocked();}
         else{
-          let authorized=false,completed=false;
+          let authorized=false,completed=false,localOnly=false;
           try{
-            const encoded=await encode(input,{guard,authorize:async(actual,key)=>{
+            const deliver=service?(input,hooks)=>service.encode(input,hooks,remoteState?.status==='rejected'?remoteState.attemptId:''):encode;
+            const encoded=await deliver(input,{guard,authorize:async(actual,key)=>{
               await guard();if(key!==prepared.cacheKey||JSON.stringify(actual)!==JSON.stringify(prepared.identity))throw fail('identity','Vibe 编码参数已变化');
               await rpc('encoding-transition',{...options,attemptId,status:'submitting'});authorized=true;return true;
             }});
             // Once the upstream returned, preserve its result under the ORIGINAL account even if the UI changed.
             // This writes only immutable local recovery data; a stale job is never allowed to use it or generate an image.
-            completed=true;
+            completed=true;localOnly=encoded.serviceStored===false;
             if(!authorized||encoded.cacheKey!==prepared.cacheKey||JSON.stringify(encoded.identity)!==JSON.stringify(prepared.identity))throw fail('result','编码返回身份不符，请核查原请求','unknown');
             used=ref(await call('attach-encoding',{namespace,...selection,encoding:encoded.encoding,expectedSourceId:prepared.identity.sourceId}));
             await call('encoding-transition',{namespace,...options,attemptId,status:'ready',assetRef:used});
@@ -83,7 +95,7 @@ export async function prepareStoryboardVibes(payload,{namespace,model,connection
             throw fail('encoding',completed?'Vibe 编码已返回，但本地关联未完成；请保留缓存并核查，未重复扣费'
               :state==='unknown'?'Vibe 编码结果未确认，请核查渠道记录，勿重复提交':error?.message||'Vibe 编码未完成',state);
           }
-          await guard();notify('Vibe 编码已缓存');
+          await guard();notify(localOnly?'Vibe 编码已保存在本设备；服务暂存失败，请导出备份，勿重复编码':'Vibe 编码已缓存');
         }
       }
       // Resolve the durable asset, not the transient HTTP bytes. Corruption or deletion must not trigger another charge.
@@ -94,4 +106,12 @@ export async function prepareStoryboardVibes(payload,{namespace,model,connection
     result.push({...image,strength:item.strength,information:item.information});
   }
   await guard();return result;
+}
+export async function prepareStoryboardVibes(payload,options){
+  try{return await prepareVibes(payload,options);}
+  catch(error){
+    // Even an uncertain service RESULT read happened before this image was submitted.
+    throw Object.assign(new Error(error?.message||'Vibe 准备未完成'),{code:error?.code||'storyboard_vibe_prepare',submissionState:'not_submitted',
+      encodingState:error?.encodingState||error?.submissionState||'not_submitted',retryable:false});
+  }
 }

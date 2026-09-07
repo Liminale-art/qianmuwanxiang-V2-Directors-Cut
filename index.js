@@ -20489,8 +20489,9 @@ async function storyboardPrepareGatewayAssets(job, { apiKey, log } = {}) {
     vibes=await preparation.prepareStoryboardVibes(job.payload,{namespace,model:resolveStoryboardJobModelIdentity(job),connection:job.connection,apiKey,
       call:runtime.callVibeAsset,readImage:storyboardReadImageReference,guard:vibeGuard,
       confirm:(title,text)=>preparation.confirmVibeEncoding(title,text,{popup:ctx().Popup}),
-      // No browser fallback for a configured service: the authenticated encoding endpoint must be negotiated first.
-      allowEncoding:job.connection?.imageTransport!=='service',notify:message=>toast(message,'info'),
+      // Service mode negotiates authenticated encoding/retrieval first; it never falls back to a paid browser request.
+      service:job.connection?.imageTransport==='service'?preparation.createVibeServiceClient({namespace,headers:storyboardRequestHeaders,guard:vibeGuard}):null,
+      notify:message=>toast(message,'info'),
       checkpoint:async recipe=>{
         await vibeGuard();
         // Image admission identifies the narrative shot, not mutable library selections. Its submission state remains untouched.
@@ -20895,7 +20896,7 @@ async function storyboardRunJob(job, log) {
     console.error(`[${MODULE_NAME}] storyboard generation failed`, error);
     const submissionState = error?.submissionState || job.submissionState || 'not_submitted';
     admissionOutcome = submissionState;
-    if (job.discardRequested || error?.code === 'storyboard_submission_cancelled') {
+    if (job.discardRequested || error?.code === 'storyboard_submission_cancelled' || error?.code === 'storyboard_vibe_cancelled') {
       const message = job.discardRequested ? '用户放弃收片' : error.message;
       storyboardFinishLog(log, 'cancelled', { error: message, submissionState });
       storyboardSetPlanStatus(plan, 'cancelled', { error: message, job });

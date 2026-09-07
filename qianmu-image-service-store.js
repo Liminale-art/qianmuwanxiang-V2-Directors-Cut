@@ -23,8 +23,8 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
     throw error('root', '增强服务缺少可信的 ST 数据目录');
   }
   // Host-only, closed choice. Existing NAI data stays at its original path.
-  if (!['novel', 'comfy'].includes(scope)) throw error('scope', '生图服务记录范围无效');
-  const queueDirectory = scope === 'comfy' ? 'comfy-queue-v1' : 'image-queue-v1';
+  if (!['novel', 'comfy', 'vibe'].includes(scope)) throw error('scope', '生图服务记录范围无效');
+  const queueDirectory = scope === 'vibe' ? 'vibe-queue-v1' : scope === 'comfy' ? 'comfy-queue-v1' : 'image-queue-v1';
   const channelLimit = Math.max(1, Math.min(128, Math.trunc(Number(maxChannels) || 128)));
   const recordLimit = Math.max(1024, Math.min(2 * 1024 * 1024, Math.trunc(Number(maxRecordBytes) || 2 * 1024 * 1024)));
   const pendingLimit = Math.max(1, Math.min(64, Math.trunc(Number(maxPending) || 64)));

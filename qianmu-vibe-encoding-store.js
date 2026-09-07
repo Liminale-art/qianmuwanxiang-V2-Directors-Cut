@@ -87,6 +87,18 @@ export function createVibeEncodingStore({indexedDB=globalThis.indexedDB,keyRange
         const next={...row,status,updatedAt:Math.max(now(),row.updatedAt),...(ref?{assetRef:ref}:{})};table.put(next);set(next);
       }));
     },
+    async remember(namespace,cacheKey,identity,assetRef){
+      const id=key(namespace,cacheKey),canonical=await validateVibeEncodingIdentity(identity,cacheKey),ref=retainVibeAssetRef(assetRef);
+      if(ref.invalid||ref.namespace!==namespace)throw fail('identity','服务编码缓存引用无效');
+      return transaction('readwrite',(table,read,set)=>read(table.get(id),existing=>{
+        if(existing){normalize(existing,namespace,cacheKey);sameIdentity(existing,canonical);
+          // A received service result does not settle a DIFFERENT uncertain browser fee attempt.
+          if(existing.status!=='rejected'){set(existing);return;}}
+        const create=()=>{const at=now(),row={key:id,namespace,cacheKey,identity:canonical,attemptId:`cached-${crypto.randomUUID()}`,status:'ready',
+          revision:(existing?.revision||0)+1,createdAt:existing?.createdAt??at,updatedAt:Math.max(at,existing?.updatedAt||0),assetRef:ref};table.put(row);set(row);};
+        if(existing)create();else read(table.index('namespace').count(keyRange.only(namespace)),count=>{if(count>=VIBE_ENCODING_RECEIPT_LIMIT)throw fail('capacity','编码缓存已满，请先整理');create();});
+      }));
+    },
     close(){closed=true;for(const tx of transactions)try{tx.abort();}catch(_){}db?.close();db=null;opening=null;},
   });
 }

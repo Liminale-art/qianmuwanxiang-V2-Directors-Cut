@@ -182,3 +182,13 @@ test('actual job runner keeps encoding consent separate from image admission and
     if(unknown){assert.equal(log.status,'failed');assert.equal([...e.receipts.values()][0].status,'unknown');}
   }
 });
+test('a failed service result read remains NOT an image submission even when its encoding outcome is unknown',async()=>{
+  const e=setup();e.options.service={query:async()=>({status:'ready'}),result:async()=>{throw Object.assign(Error('cached response lost'),{submissionState:'unknown'});}};
+  await assert.rejects(()=>prepareStoryboardVibes(payload(),e.options),{submissionState:'not_submitted',encodingState:'unknown'});assert.equal(e.posts(),0);assert.equal(e.confirmations(),0);
+});
+test('unpersisted service results are first saved locally and only then reported as needing a backup, without another encoding',async()=>{
+  const e=setup(),messages=[];e.options.service={query:async()=>null,encode:async(...args)=>({...await e.options.encode(...args),serviceStored:false})};
+  e.options.notify=message=>{assert.equal([...e.receipts.values()][0].status,'ready');messages.push(message);};
+  await prepareStoryboardVibes(payload(),e.options);assert.equal(e.posts(),1);assert.equal(messages.length,1);assert.match(messages[0],/本设备.*服务暂存失败.*备份/);
+  await prepareStoryboardVibes(payload(),e.options);assert.equal(e.posts(),1);assert.equal(messages.length,1);
+});

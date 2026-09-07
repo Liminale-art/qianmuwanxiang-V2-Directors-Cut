@@ -61,6 +61,8 @@ async function sync(directory) {
   if (process.platform === 'win32') return;
   const handle = await fs.open(directory, 'r'); try { await handle.sync(); } finally { await handle.close(); }
 }
+// Shared private file primitives, not an image-result protocol. Vibe binary data uses its own bounded schema and directory.
+export {checkedDirectory as checkPrivateResultDirectory,read as readPrivateResultFile,replace as replacePrivateResultFile,sync as syncPrivateResultDirectory};
 export function createImageServiceResults({ dataRoot, store, maxSlots = 128, maxBytes = 512 * 1024 * 1024, scope = 'novel' } = {}) {
   if (!store?.exclusive || typeof dataRoot !== 'string' || !path.isAbsolute(dataRoot) || dataRoot.includes('\0') || path.resolve(dataRoot) === path.parse(path.resolve(dataRoot)).root) throw fail('storage', '缺少可信的生图结果存储');
   if (!['novel', 'comfy'].includes(scope)) throw fail('scope', '生图结果范围无效');

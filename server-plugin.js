@@ -4,6 +4,7 @@ import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 import { createImageService, imageServiceTaskErrorPayload, IMAGE_SERVICE_TASK_VERSION } from './qianmu-image-service.js';
 import { imageServiceAccount } from './qianmu-image-service-access.js';
+import {createVibeEncodingService,vibeServiceErrorPayload} from './qianmu-vibe-service.js';
 import { checkServerComfyReadiness } from './qianmu-comfy-readiness-server.js';
 import { createComfyServerTransport } from './qianmu-comfy-server-transport.js';
 import { createComfyTargetStore } from './qianmu-comfy-target-store.js';
@@ -175,6 +176,24 @@ export async function init(router, options = {}) {
 
   let imageTasks;
   const hostDataRoot = () => options.dataRoot === undefined ? globalThis.DATA_ROOT : options.dataRoot;
+  let vibeService;
+  const vibesFor=req=>{
+    imageServiceAccount(req);
+    if(!vibeService){vibeService=createVibeEncodingService({dataRoot:hostDataRoot(),...(options.vibeServiceOptions||{})});imageTaskServices.add(vibeService);}
+    return vibeService;
+  };
+  router.get('/image/vibe/capabilities',(req,res)=>{
+    prepareImageResponse(res);
+    try{const account=imageServiceAccount(req);vibesFor(req);return res.json({ok:true,version:1,accountBindingVersion:1,expectedAccount:account.namespace,
+      nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024});}
+    catch(error){const result=vibeServiceErrorPayload(error);return res.status(result.status).json(result.body);}
+  });
+  for(const action of ['query','result','submit'])router.post(`/image/vibe/${action}`,async(req,res)=>{
+    prepareImageResponse(res);const controller=new AbortController(),onClose=()=>{if(!res.writableEnded)controller.abort();};res.once?.('close',onClose);
+    try{const result=await vibesFor(req)[action](req,req.body,{signal:controller.signal});if(!res.destroyed&&!res.writableEnded)return res.json(result);}
+    catch(error){const result=vibeServiceErrorPayload(error);if(!res.destroyed&&!res.writableEnded)return res.status(result.status).json(result.body);}
+    finally{res.off?.('close',onClose);}
+  });
   let comfyTargets;
   const targetsFor = req => {
     try { imageServiceAccount(req); } catch (_) { throw new ImageGatewayError(401, 'comfy_targets_authentication', '请先登录 ST 账户'); }
