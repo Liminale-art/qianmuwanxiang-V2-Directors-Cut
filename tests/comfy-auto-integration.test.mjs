@@ -7,7 +7,7 @@ import * as routes from '../qianmu-comfy-route.js';
 import * as direct from '../qianmu-image-direct.js';
 import * as locks from '../qianmu-comfy-lock-runtime.js';
 import {changeComfySceneRecord,inspectComfySceneRecord,comfySceneScopeKey} from '../qianmu-comfy-scene-lock.js';
-import {checkComfyCharacterReadiness} from '../qianmu-comfy-character-readiness.js';
+import {checkComfyCharacterReadiness,createComfyReadinessSession} from '../qianmu-comfy-character-readiness.js';
 import {normalizeComfyAutoPool,COMFY_SELECTION_SCHEMA} from '../qianmu-comfy-selection.js';
 import {compilerEnvironment} from './helpers/comfy-compiler-fixture.mjs';
 import {namespace} from './helpers/comfy-route-fixture.mjs';
@@ -38,7 +38,7 @@ async function environment({mixed=false,styleLock=true}={}){
   e.context.featureRuntime.load=async key=>{
     if(key==='comfyAuto')return {...auto,prepareComfyAutoSession:options=>auto.prepareComfyAutoSession({...options,createStore,readRecipe:request=>routes.readPinnedComfyRouteWorkflow({...request,createStore:e.createStore})})};
     if(key==='comfyScene')return locks;
-    if(key==='comfyCharacterReadiness')return {checkComfyCharacterReadiness:(request,options)=>checkComfyCharacterReadiness(request,{...options,fetchImpl:async(url,init)=>{
+    if(key==='comfyCharacterReadiness')return {createComfyReadinessSession(){return createComfyReadinessSession({check:this.checkComfyCharacterReadiness});},checkComfyCharacterReadiness:(request,options)=>checkComfyCharacterReadiness(request,{...options,fetchImpl:async(url,init)=>{
       network.push({url,method:init.method});await afterRequest();assert.equal(init.method,'GET');const name=decodeURIComponent(new URL(url).pathname.split('/').at(-1));return new Response(JSON.stringify(name===missing?{}:{[name]:definitions[name]}));
     }})};
     return load(key);
@@ -71,6 +71,8 @@ test('actual one-shot extraction negotiates candidates, then routes, freezes and
     assert.equal(e.writes.filter(type=>type==='reserve').length,3);assert.equal(JSON.stringify(e.state.profiles),original);
     for(const job of e.jobs){await e.manager.beforeSubmit(job);await e.manager.settle(job,'succeeded');}
     assert.ok([...e.records.values()].every(row=>row.established&&!row.holders.length));assert.ok(e.network.every(request=>request.method==='GET'));
+    assert.equal(e.network.length,15,'two exact candidate reports once (6 GETs), followed by three fresh queue checks (9 GETs)');
+    assert.ok(e.jobs.every(job=>!job.comfyProbeReadiness),'real jobs must not inherit exploration memo');
   }finally{await e.close();}
 });
 
