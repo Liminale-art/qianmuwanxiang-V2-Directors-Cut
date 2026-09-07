@@ -3,6 +3,8 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-vibe-file.js",
+    "qianmu-vibe-asset-store.js",
     "qianmu-vibe-library-view.js",
     "qianmu-tags.js",
     "qianmu-tag-complete.js",
