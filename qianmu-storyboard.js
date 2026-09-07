@@ -9,6 +9,8 @@ import { normalizeCharacterCastingSnapshot, assertCharacterCastingSnapshots } fr
 import { STORYBOARD_PROMPT_FORMATS, retainStoryboardPromptRenderingPack, resolveStoryboardPromptRendering } from './qianmu-prompt-formats.js';
 import { retainComfyWorkbenchBinding } from './qianmu-comfy-workbench-binding.js';
 import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
+import {retainStoryboardArtistPromptLayer} from './qianmu-artist-prompt-layer.js';
+export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
 export { assertCharacterCastingSnapshots } from './qianmu-character-casting.js';
 export { normalizeStoryboardPromptFormats } from './qianmu-prompt-formats.js';
@@ -2367,6 +2369,7 @@ function snapshot(value, fallback = {}) {
   const raw = obj(value) ? value : {}, source = getStoryboardProvider(raw.source) ? raw.source : (getStoryboardProvider(fallback.source) ? fallback.source : 'novel'), safe = safeData(raw, 8);
   const profile = normalizeStoryboardParameterProfile(raw.profile, source);
   const payload = safeData(raw.payload, 12) || {};
+  if(Object.hasOwn(raw.payload || {},'artistPromptLayer'))payload.artistPromptLayer=retainStoryboardArtistPromptLayer(raw.payload.artistPromptLayer);
   // Preserve the separately bounded role contract without raising the generic snapshot depth budget.
   // A truncated recipe must never later be interpreted as a role that has no Comfy configuration.
   for (const [original,clean] of [[raw.shotSpec,safe?.shotSpec],[raw.payload?.shotSpec,payload.shotSpec]]) {

@@ -3,6 +3,8 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-artist-prompt-layer.js",
+    "qianmu-artist-prompt-review.js",
     "qianmu-comfy-pool-view.js",
     "qianmu-comfy-auto-binding.js",
     "qianmu-comfy-auto-runtime.js",

@@ -9,6 +9,8 @@ import {
   getStoryboardCapabilities, synchronizeStoryboardCaptionBase,
   planCharacterReference, characterReferenceChoice,
   storyboardProductionContext,
+  captureStoryboardArtistPromptLayer, resolveStoryboardArtistPromptBase,
+  createStoryboardMessageReference,
 } from '../qianmu-storyboard.js';
 import { generateDirectImage } from '../qianmu-image-direct.js';
 import { generateImage } from '../qianmu-image-gateway.js';
@@ -40,6 +42,7 @@ function runtime(state = createStoryboardDefaults(), extra = {}, names = []) {
     resolveStoryboardJobModelIdentity, getStoryboardCapabilities, synchronizeStoryboardCaptionBase,
     resolveStoryboardConnectionBinding, projectStoryboardProtocolParameters,
     planCharacterReference, characterReferenceChoice,
+    captureStoryboardArtistPromptLayer, resolveStoryboardArtistPromptBase,
     STORYBOARD_GENERIC_PROMPT_DEFAULTS: { positive: 'generic quality', negative: 'generic exclusions' },
     STORYBOARD_NAI_QUALITY_DEFAULTS: { [V3]: 'quality v3', [V45]: 'quality v45', [V5]: 'quality v5' },
     STORYBOARD_NAI_NEGATIVE_DEFAULTS: { [V3]: 'negative v3', [V45]: 'negative v45', [V5]: 'negative v5' },
@@ -63,7 +66,8 @@ function snapshot() {
   const snap = {
     source: 'novel', profile: { model: 'relay/NAI-alias', capabilityModelId: V45 },
     connection: { id: 'original', credentialId: 'key-ref', baseUrl: 'https://relay.example' },
-    payload: { prompt: result.prompt, negative: result.negative, parameters: { providerOptions: result.providerOptions } },
+    payload: { prompt: result.prompt, negative: result.negative, parameters: { providerOptions: result.providerOptions },
+      artistPromptLayer:{version:1,positivePrefix:'old artist, old quality',negativePrefix:'old exclusions'} },
     prompt: result.prompt, negative: result.negative,
   };
   snap.modelIdentity = resolveStoryboardJobModelIdentity(snap);
@@ -161,6 +165,7 @@ test('artist redraw takes the historical capability, not current workbench or st
   const snap = snapshot();
   snap.payload.prompt = 'quality v45, garden';
   snap.payload.negative = '';
+  snap.payload.artistPromptLayer={version:1,positivePrefix:'quality v45',negativePrefix:''};
   const base = context.storyboardBasePromptsForArtistRedraw({ effectiveNegative: 'stale negative' }, snap);
   assert.equal(base.modelId, 'relay/NAI-alias');
   assert.equal(base.capabilityModelId, V45);
@@ -204,7 +209,7 @@ function redrawRuntime(archive, { mutate = null, archived = true } = {}) {
   const original = snapshot();
   state.logs = [{ id: 'old-log', recordId: 'image-a', snapshot: original }];
   const chat = [{ mes: 'original story', swipe_id: 0 }];
-  const queued = [], notices = [];
+  const queued = [], notices = [], queueGuards=[];
   let chatKey = 'chat-a';
   const context = runtime(state, {
     storyboardProductionContext, storyboardAdmissionEpoch: 1,
@@ -212,15 +217,16 @@ function redrawRuntime(archive, { mutate = null, archived = true } = {}) {
     storyboardReconcileGalleryLinks: () => {},
     storyboardLoadRecordToWorkbench: () => assert.fail('unexpected workbench fallback'),
     storyboardReadSnapshotForRecord: async () => { mutate?.({ chat, changeChat: () => { chatKey = 'chat-b'; } }); return archived ? archive : null; },
-    storyboardRelinkRedrawSnapshot: () => {}, storyboardGalleryGroupId: () => 'root-a',
+    createStoryboardMessageReference, hashText:value=>`fixture:${value}`, storyboardAnchorForMessage:()=>({paragraphIndex:0}),
+    storyboardGalleryGroupId: () => 'root-a',
     storyboardAssignCollectionIds: () => {}, storyboardItemCollectionIds: () => [],
-    storyboardQueueJob: (job) => { queued.push(job); return true; },
+    storyboardQueueJob: (job,guard) => { queued.push(job); queueGuards.push(guard); return true; },
     toast: (message) => { notices.push(message); return false; },
-  }, ['storyboardRedrawRecord', 'storyboardJobFromLog']);
+  }, ['storyboardRedrawRecord', 'storyboardJobFromLog','storyboardRelinkRedrawSnapshot']);
   // Job restoration also validates provider ownership through the real registry.
   context.STORYBOARD_PROVIDER_REGISTRY = { novel: {} };
   const record = { id: 'image-a', floor: 0, source: 'novel', finalPrompt: 'edited scene', tags: [] };
-  return { context, queued, notices, record, original, state };
+  return { context, queued, notices, record, original, state, queueGuards };
 }
 
 test('actual inline redraw prefers saved image edits over the old log and leaves history untouched', async () => {
@@ -251,6 +257,63 @@ test('actual inline artist replacement updates native request text using the his
   assert.match(payload.parameters.providerOptions.v4_negative_prompt.caption.base_caption, /^new exclusions/);
   assert.doesNotMatch(payload.negative, /old exclusions/);
   assert.equal(payload.parameters.providerOptions.v4_prompt.caption.char_captions.length, 2);
+});
+
+test('repeated inline restyling uses frozen layers after artist edits/deletion and retains native people, Vibe, params and variant grouping',async()=>{
+  let archive=snapshot();
+  archive.payload.parameters.steps=29;archive.payload.parameters.vibes=[{id:'vibe-a',strength:.7}];
+  archive.payload.parameters.providerOptions.v4_negative_prompt.caption.char_captions=[{char_caption:'Alice only excluded',centers:[{x:.2,y:.5}]}];
+  const original=structuredClone(archive),next=[{id:'new',value:'artist:new',positivePrompt:'new quality',negativePrompt:'new exclusions'},null];
+  for(const artistPreset of next){
+    const env=redrawRuntime(archive);env.state.artistPresets=[];
+    Object.assign(env.record,{finalPrompt:archive.payload.prompt,artistString:'today incorrect style',artistPresetId:'deleted'});
+    const before=structuredClone(env.record);
+    assert.equal(await env.context.storyboardRedrawRecord(env.record,{artistPreset}),true,env.notices.join(';'));
+    const job=env.queued[0];assert.equal(job.variantRootId,'root-a');assert.equal(job.floor,0);
+    assert.equal(job.payload.parameters.steps,29);assert.deepEqual(job.payload.parameters.vibes,original.payload.parameters.vibes);
+    for(const key of ['v4_prompt','v4_negative_prompt'])assert.deepEqual(job.payload.parameters.providerOptions[key].caption.char_captions,original.payload.parameters.providerOptions[key].caption.char_captions);
+    assert.deepEqual(env.record,before);assert.doesNotMatch(job.payload.prompt,/old artist|old quality|today incorrect/);
+    assert.equal(job.payload.artistPromptLayer.positivePrefix,artistPreset?'artist:new, new quality':'quality v45');
+    if(!artistPreset)assert.doesNotMatch(job.payload.prompt,/artist:new|new quality/);
+    archive=structuredClone(job);
+  }
+  assert.match(original.payload.prompt,/^old artist, old quality/);
+});
+
+test('legacy style review is explicit, editable, cancelable and never mutates the old picture',async()=>{
+  for(const confirm of [false,true]){
+    const archive=snapshot();delete archive.payload.artistPromptLayer;const before=structuredClone(archive);
+    const env=redrawRuntime(archive);env.record.finalPrompt=archive.payload.prompt;let opened=0;
+    env.context.featureRuntime={load:async name=>{assert.equal(name,'artistPromptReview');return {openArtistPromptReview:async options=>{
+      opened++;assert.equal(options.prompt,archive.payload.prompt);assert.equal(options.negative,archive.payload.negative);
+      await options.guard();return confirm?{prompt:'manually preserved scene, old quality sign',negative:'scene dust'}:null;
+    }};}};
+    assert.equal(await env.context.storyboardRedrawRecord(env.record,{artistPreset:null}),confirm,env.notices.join(';'));
+    assert.equal(opened,1);assert.equal(env.queued.length,Number(confirm));assert.deepEqual(archive,before);
+    if(confirm){assert.equal(env.queued[0].payload.prompt,'quality v45, manually preserved scene, old quality sign');assert.equal(env.queued[0].payload.negative,'negative v45, scene dust');}
+  }
+});
+
+test('editing the original image, selected artist or default layer while reviewing blocks late restyles, including admission waits',async()=>{
+  for(const change of [env=>env.record.finalPrompt='changed',env=>env.state.artistPresets[0].positivePrompt='changed',
+    env=>env.state.artistPresets=[],env=>{env.state.promptDefaults['novel:relay/NAI-alias']={positive:'changed'};}]){
+    const archive=snapshot();delete archive.payload.artistPromptLayer;const env=redrawRuntime(archive);
+    env.state.artistPresets=[{id:'a',value:'artist:a',positivePrompt:'quality A',negativePrompt:'exclude A'}];
+    env.context.featureRuntime={load:async()=>({openArtistPromptReview:async()=>{change(env);return {prompt:'scene',negative:''};}})};
+    assert.equal(await env.context.storyboardRedrawRecord(env.record,{artistPreset:env.state.artistPresets[0]}),false);
+    assert.equal(env.queued.length,0);assert.match(env.notices[0],/已变化/);
+  }
+  const env=redrawRuntime(snapshot());env.record.finalPrompt=env.original.payload.prompt;
+  env.state.artistPresets=[{id:'new',value:'new artist',positivePrompt:'quality',negativePrompt:'exclusions'}];
+  assert.equal(await env.context.storyboardRedrawRecord(env.record,{artistPreset:env.state.artistPresets[0]}),true);
+  assert.equal(env.queueGuards[0](),true);env.state.artistPresets[0].value='edited later';assert.equal(env.queueGuards[0](),false);
+});
+
+test('clearing the only style with empty defaults cannot resurrect the old style as a fallback scene',async()=>{
+  const archive=snapshot();archive.payload.prompt='old artist, old quality';archive.payload.negative='old exclusions';
+  const env=redrawRuntime(archive);env.record.finalPrompt=archive.payload.prompt;
+  env.state.promptDefaults['novel:relay/NAI-alias']={positive:'',negative:''};
+  assert.equal(await env.context.storyboardRedrawRecord(env.record,{artistPreset:null}),false);assert.equal(env.queued.length,0);assert.match(env.notices[0],/画面提示为空/);
 });
 
 test('a missing archive still permits a complete historical log without using current settings', async () => {

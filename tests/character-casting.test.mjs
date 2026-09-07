@@ -132,7 +132,8 @@ function payloadRuntime(state) {
   const context=vm.createContext({...storyboard,clone:structuredClone,storyboardSelectedArtistPreset:()=>null,
     storyboardProviderPromptDefaults:()=>({positive:'quality',negative:'low quality'}),
     storyboardPromptsForArtist:(s,a,p,m,{prompt,negative})=>({prompt,negative})});
-  vm.runInContext(section('storyboardGenerationPayload'),context);return context;
+  context.uniqueClean=items=>[...new Set(items.filter(Boolean))];
+  vm.runInContext(section('storyboardJoinPrompt')+'\n'+section('storyboardGenerationPayload'),context);return context;
 }
 test('actual manual generation payload remains exact and never reloads current archive',async()=>{
   const e=environment(),cast=casting.applyCharacterCasting(shot(),await e.prepare()).shot,state=storyboard.createStoryboardDefaults();
