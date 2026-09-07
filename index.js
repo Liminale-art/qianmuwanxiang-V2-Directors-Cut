@@ -95,9 +95,9 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.71';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.71';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.71';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.72';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.72';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.72';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -105,7 +105,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.71';
+} from './qianmu-llm-output.js?v=1.59.72';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -143,6 +143,8 @@ import {
   normalizeStoryboardArtistPool,
   normalizeStoryboardParagraphSelection,
   normalizeStoryboardShotSpec,
+  normalizeStoryboardInlineOrder,
+  sortStoryboardInlineRecords,
   assertCharacterCastingSnapshots,
   planCharacterReference, assertCharacterReferencePlan, characterReferenceNotice,
   characterReferenceChoice, renderCharacterReferencePicker, applyCharacterReferenceChoice,
@@ -175,223 +177,223 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.71';
+} from './qianmu-storyboard.js?v=1.59.72';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.71';
+const VERSION = '1.59.72';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   modelPicker: {
     label: '模型选择',
-    load: () => import('./qianmu-model-picker.js?v=1.59.71'),
+    load: () => import('./qianmu-model-picker.js?v=1.59.72'),
   },
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.71'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.72'),
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.71'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.72'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
-    load: () => import('./qianmu-image-channel.js?v=1.59.71'),
+    load: () => import('./qianmu-image-channel.js?v=1.59.72'),
   },
   imageServiceClient: {
     label: '增强生图任务',
-    load: () => import('./qianmu-image-service-client.js?v=1.59.71'),
+    load: () => import('./qianmu-image-service-client.js?v=1.59.72'),
   },
   comfySubmission: {
     label: 'Comfy 实例排队',
-    load: () => import('./qianmu-comfy-submission.js?v=1.59.71'),
+    load: () => import('./qianmu-comfy-submission.js?v=1.59.72'),
   },
   comfyRecovery: {
     label: 'Comfy 原图领取',
-    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.71'),
+    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.72'),
   },
   comfyInbox: {
     label: 'Comfy 收片管理',
-    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.71'),
+    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.72'),
   },
   comfyReferences: {
     label: 'Comfy 参考图',
-    load: () => import('./qianmu-comfy-references.js?v=1.59.71'),
+    load: () => import('./qianmu-comfy-references.js?v=1.59.72'),
   },
   characterArchive: {
     label: '角色档案',
-    load: () => import('./qianmu-character-archive-view.js?v=1.59.71'),
+    load: () => import('./qianmu-character-archive-view.js?v=1.59.72'),
   },
   characterCasting: {
     label: '角色取景绑定',
-    load: () => import('./qianmu-character-casting.js?v=1.59.71'),
+    load: () => import('./qianmu-character-casting.js?v=1.59.72'),
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.71'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.72'),
   },
   characterShotEditor: {
     label: '本镜人物编辑',
-    load: () => import('./qianmu-character-shot-view.js?v=1.59.71'),
+    load: () => import('./qianmu-character-shot-view.js?v=1.59.72'),
   },
   characterReference: {
     label: '角色参考图',
-    load: () => import('./qianmu-character-reference.js?v=1.59.71'),
+    load: () => import('./qianmu-character-reference.js?v=1.59.72'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.71').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.72').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.71'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.72'),
   },
   comfyWorkbench: {
     label: 'Comfy 镜头台',
-    load: () => import('./qianmu-comfy-workbench.js?v=1.59.71'),
+    load: () => import('./qianmu-comfy-workbench.js?v=1.59.72'),
   },
   comfyCharacters: {
     label: 'Comfy 角色实现',
-    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.71'),
+    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.72'),
   },
   comfyCharacterReadiness: {
     label: '角色节点检查',
-    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.71'),
+    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.72'),
   },
   comfyLibrary: {
     label: 'Comfy 工作流库',
-    load: () => import('./qianmu-comfy-library-view.js?v=1.59.71'),
+    load: () => import('./qianmu-comfy-library-view.js?v=1.59.72'),
   },
   comfyPreflight: {
     label: 'Comfy 配置检查',
-    load: () => import('./qianmu-comfy-preflight.js?v=1.59.71'),
+    load: () => import('./qianmu-comfy-preflight.js?v=1.59.72'),
   },
   comfyReadiness: {
     label: 'Comfy 节点检查',
-    load: () => import('./qianmu-comfy-readiness.js?v=1.59.71'),
+    load: () => import('./qianmu-comfy-readiness.js?v=1.59.72'),
   },
   comfyTargets: {
     label: 'Comfy 可信连接',
-    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.71'),
+    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.72'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.71'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.72'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.71'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.72'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.71'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.72'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.71'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.72'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.71'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.72'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.71'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.72'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.71'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.72'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.71'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.72'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.71'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.72'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.71'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.72'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.71'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.72'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.71'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.72'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.71'),
+    load: () => import('./qianmu-video-task.js?v=1.59.72'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.71'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.72'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.71'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.72'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.71'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.72'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.71'),
+    load: () => import('./qianmu-video-store.js?v=1.59.72'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.71'),
+    load: () => import('./qianmu-video-result.js?v=1.59.72'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.71'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.72'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.71'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.72'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.71'),
+    load: () => import('./qianmu-video-media.js?v=1.59.72'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.71'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.72'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.71'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.72'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.71'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.72'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.71'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.72'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.71'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.72'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.71'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.72'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.71'),
-        import('./qianmu-theaters.js?v=1.59.71'),
+        import('./builtin-theaters.js?v=1.59.72'),
+        import('./qianmu-theaters.js?v=1.59.72'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -16635,7 +16637,7 @@ function storyboardResolveRoutingProfile(state, route, baseProfile = null) {
   return storyboardProviderProfile(state, sourceId, { ...profile, model: binding.remoteModelId, capabilityModelId: binding.capabilityModelId });
 }
 
-function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceId = state.source, profileSourceId = state.source, modelId = '', capabilityModelId, connectionPresetId = '', planId = '', planShotId = '', recentArtistIds = [], requestIndex = 1, requestTotal = 1 } = {}) {
+function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceId = state.source, profileSourceId = state.source, modelId = '', capabilityModelId, connectionPresetId = '', planId = '', planShotId = '', recentArtistIds = [], requestIndex = 1, requestTotal = 1, inlineOrder = null } = {}) {
   const deliveryPolicy = storyboardProductionDeliveryPolicy(shot || {}, {
     target: state.target,
     inlineByDefault: state.inlineByDefault,
@@ -16685,6 +16687,7 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
   const messageRef = message ? createStoryboardMessageReference({ message, chatKey: String(getChatKey() || ''), floor }) : null;
   const snapshot = {
     source: sourceId, prompt, negative,
+    inlineOrder: normalizeStoryboardInlineOrder(inlineOrder),
     modelIdentity: resolveStoryboardJobModelIdentity({ source: sourceId, profile: providerProfile, connection: { ...connection, id: connection?.id || '' } }),
     artistString: String(payload.artistString || ''), artistPresetId: artistAssignment.artistId, artistPoolId: artistAssignment.poolId, artistRouteSource: artistAssignment.source, contentRating: state.contentRating,
     artistRerollCount: Math.max(0, Number(shot?.artistRerollCount) || 0),
@@ -16749,6 +16752,7 @@ function storyboardStartLog(job) {
       shotType: job.shotType, sensitive: job.sensitive, safetyAdapted: job.safetyAdapted, safetyMethod: job.safetyMethod, originalPrompt: job.originalPrompt,
       requestIndex: job.requestIndex || 1, requestTotal: job.requestTotal || 1,
       connection: job.connection, payload: job.payload,
+      inlineOrder: normalizeStoryboardInlineOrder(job.inlineOrder),
       planId: job.planId || '', planShotId: job.planShotId || '',
       imageAdmission: job.imageAdmission,
       ...(job.source === 'comfy' ? { comfyExecution: job.comfyExecution, comfyAudit: job.comfyAudit } : {}),
@@ -19216,6 +19220,8 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
     const inputGuard = storyboardCreatePreparationGuard(state, { plan, upstreamGuard:productionGuard });
     try {
       const jobs = [];
+      // Freeze narrative order before asynchronous preparation/submission, not when an engine finishes.
+      const inlineBatch = { version: 1, batchId: uid('shotbatch'), batchStartedAt: Date.now() };
       const resolvedArtistIds = [];
       for (let index = 0; index < planned.length; index++) {
         const shot = planned[index];
@@ -19244,6 +19250,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
               shot: effectiveShot, sourceId, profileSourceId: sourceId, modelId: route.modelId, capabilityModelId: shotProfile.capabilityModelId, connectionPresetId: route.connectionPresetId,
               planId: plan?.id || '', planShotId: planShot?.id || '', recentArtistIds: resolvedArtistIds,
               requestIndex: request.requestIndex, requestTotal: request.requestTotal,
+              inlineOrder: { ...inlineBatch, shotIndex: index, requestIndex: request.requestIndex },
             });
           } catch (error) { return toast(`镜组配置：${error.message}`, 'warning'); }
           if (job.artistPresetId) resolvedArtistIds.push(job.artistPresetId);
@@ -19528,6 +19535,7 @@ function storyboardCreateRecord(job, log, url, index, anchorState, response) {
   const production = storyboardProductionDeliveryPolicy(job);
   return {
     id: uid('shot'), taskId: job.id, groupId: job.id, variantRootId: job.variantRootId || job.planShotId || job.id,
+    inlineOrder: normalizeStoryboardInlineOrder(job.inlineOrder),
     collectionId: job.collectionId || '', collectionIds: storyboardItemCollectionIds(job), tags: uniqueClean(job.tags || []).slice(0, 30), planId: job.planId || '', planShotId: job.planShotId || '', imageIndex: index, url, prompt: job.prompt, finalPrompt: job.payload?.prompt,
     artistString: job.artistString || job.payload?.artistString || '', artistPresetId: job.artistPresetId || '', artistPoolId: job.artistPoolId || '', artistRouteSource: job.artistRouteSource || '', artistRerollCount: Math.max(0, Number(job.artistRerollCount) || 0), contentRating: job.contentRating || 'sfw',
     negative: job.negative, effectiveNegative: job.payload?.negative || '', source: job.source,
@@ -19850,10 +19858,11 @@ function storyboardMessageFloor(message) {
 
 function storyboardMessageParagraphNodes(text) {
   if (!text) return [];
-  const direct = Array.from(text.children || []).filter((node) => node.matches?.('p,div,li,blockquote'));
+  const proseOnly = (node) => !node.closest?.('[data-qianmu-transient="storyboard"]');
+  const direct = Array.from(text.children || []).filter((node) => node.matches?.('p,div,li,blockquote') && proseOnly(node));
   if (direct.length) return direct.filter((node) => storyboardCleanMessageText(node.textContent));
   const blocks = Array.from(text.querySelectorAll?.('p,li,blockquote') || []);
-  return blocks.filter((node) => storyboardCleanMessageText(node.textContent));
+  return blocks.filter((node) => proseOnly(node) && storyboardCleanMessageText(node.textContent));
 }
 
 function storyboardInlineAnchorNode(text, records) {
@@ -20026,7 +20035,9 @@ function storyboardRenderInlineImages(targetFloor = null) {
       if (!anchorGroups.has(key)) anchorGroups.set(key, { records: [], plans: [] });
       anchorGroups.get(key).plans.push(plan);
     }
+    const anchorTails = new Map();
     for (const [paragraphIndex, items] of [...anchorGroups.entries()].sort((a, b) => a[0] - b[0])) {
+      items.records = sortStoryboardInlineRecords(items.records);
       const wrapper = document.createElement('div');
       wrapper.className = `sd-storyboard-inline ${items.records.length ? 'is-completed' : 'is-pending'}`;
       wrapper.dataset.qianmuTransient = 'storyboard';
@@ -20042,8 +20053,7 @@ function storyboardRenderInlineImages(targetFloor = null) {
       applyQianmuIcons(wrapper);
       const anchorRecords = items.records.length ? items.records : [{ paragraphAnchor: group.plans.find((plan) => plan.paragraphSelection?.insertAfterIndex === paragraphIndex)?.shots?.[0]?.paragraphAnchor }];
       const anchor = storyboardInlineAnchorNode(text, anchorRecords);
-      if (!anchor.fallback && anchor.node !== text) anchor.node.insertAdjacentElement('afterend', wrapper);
-      else text.insertAdjacentElement('afterend', wrapper);
+      storyboardInsertInlineWrapper(text, anchor, wrapper, anchorTails);
       wrapper.dataset.storyboardAnchorFallback = String(anchor.fallback);
       if (anchor.fallback && items.records.some((record) => !record.paragraphAnchorFallback)) {
         items.records.forEach((record) => { record.paragraphAnchorFallback = true; });
@@ -20051,6 +20061,15 @@ function storyboardRenderInlineImages(targetFloor = null) {
       }
     }
   }
+}
+
+function storyboardInsertInlineWrapper(text, anchor, wrapper, tails) {
+  const target = !anchor.fallback && anchor.node !== text ? anchor.node : text;
+  // Multiple unresolved paragraphs (or anchors resolving to the same paragraph) share a tail.
+  // Repeated insertion immediately after the original node would reverse their narrative order.
+  const tail = tails.get(target) || target;
+  tail.insertAdjacentElement('afterend', wrapper);
+  tails.set(target, wrapper);
 }
 
 function storyboardScheduleInlineRender(delay = 80, floor = null) {

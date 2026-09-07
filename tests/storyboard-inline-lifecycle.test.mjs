@@ -26,7 +26,7 @@ assert.equal(normalized.shotPlans[0].shots[0].status, 'queued');
 
 // Inline nodes remain DOM-only and never mutate chat[].mes; a valid anchor now inserts after the exact paragraph.
 assert.match(source, /dataset\.qianmuTransient = 'storyboard'/);
-assert.match(source, /anchor\.node\.insertAdjacentElement\('afterend', wrapper\)[\s\S]*text\.insertAdjacentElement\('afterend', wrapper\)/);
+assert.match(source, /storyboardInsertInlineWrapper\(text, anchor, wrapper, anchorTails\)/);
 const inlineRender = source.slice(source.indexOf('function storyboardRenderInlineImages'), source.indexOf('function storyboardScheduleInlineRender'));
 assert.doesNotMatch(inlineRender, /\.mes\s*=|ctx\(\)\.chat\[[^\]]+\]\.mes\s*=/);
 assert.match(source, /if \(!storyboardState\(\)\.enabled\)[\s\S]*sd-storyboard-inline, \.sd-storyboard-message-action/);

@@ -310,6 +310,28 @@ test('automatic single shot also ignores saved variant count, but explicit manua
   }
 });
 
+test('real generation freezes batch/shot/request order independently of mutable plan and engine state', async () => {
+  const { state, context, queued } = generationEnvironment(); let sequence = 0;
+  context.uid = () => `order-${++sequence}`;
+  assert.equal(await context.storyboardGenerate(null), true);
+  assert.deepEqual(queued.map(job => job.inlineOrder.requestIndex), [1, 2]);
+  assert.equal(queued[0].inlineOrder.batchId, queued[1].inlineOrder.batchId);
+  assert.equal(queued[0].inlineOrder.batchStartedAt, queued[1].inlineOrder.batchStartedAt);
+  const first = structuredClone(queued[0].inlineOrder);
+  queued.length = 0;
+  state.routing.enabled = false;
+  state.promptDraft.shots = ['garden', 'river'].map(scene => ({ id: scene, prompt: scene, shotType: 'environment',
+    shotSpec: { sourceParagraphIds: ['p1'], scene, location: scene, narrativePurpose: `show ${scene}` } }));
+  assert.equal(await context.storyboardGenerate(null), true);
+  assert.deepEqual(queued.map(job => job.inlineOrder.shotIndex), [0, 1]);
+  assert.notEqual(queued[0].inlineOrder.batchId, first.batchId);
+  assert.equal(queued[0].inlineOrder.batchId, queued[1].inlineOrder.batchId);
+  const before = structuredClone(queued.map(job => job.inlineOrder));
+  state.promptDraft.shots.reverse(); state.source = 'comfy';
+  assert.deepEqual(queued.map(job => job.inlineOrder), before);
+  assert.deepEqual(storyboard.sanitizeStoryboardSnapshot(queued[0]).inlineOrder, JSON.parse(JSON.stringify(queued[0].inlineOrder)));
+});
+
 test('real generation and asynchronous queue preserve the preparation guard across a manual NAI variant batch', async () => {
   const { state, context } = generationEnvironment(), queued = []; let admitted = 0, sequence = 0;
   Object.assign(context, {

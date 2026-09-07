@@ -8,6 +8,7 @@ import {
   STORYBOARD_PROVIDER_REGISTRY, STORYBOARD_MODEL_REGISTRY, STORYBOARD_PIPELINE_LOG_LIMIT,
   createStoryboardDefaults, getStoryboardModel, resolveStoryboardJobModelIdentity,
   resolveStoryboardConnectionBinding,
+  normalizeStoryboardInlineOrder,
   sanitizeStoryboardSnapshot, sanitizeStoryboardDiagnosticData, pruneStoryboardPipelineLogs,
 } from '../qianmu-storyboard.js';
 
@@ -170,7 +171,7 @@ test('actual log creation retains identity and archive snapshots retain the same
   let seq = 0;
   const start = load('storyboardStartLog', {
     storyboardState: () => state, uid: () => `id-${++seq}`, sanitizeStoryboardDiagnosticData,
-    pruneStoryboardPipelineLogs, STORYBOARD_PIPELINE_LOG_LIMIT, saveSettings: () => {},
+    pruneStoryboardPipelineLogs, normalizeStoryboardInlineOrder, STORYBOARD_PIPELINE_LOG_LIMIT, saveSettings: () => {},
   });
   const job = makeJob({ id: 'job-a', attempt: 1 });
   job.modelIdentity = resolveStoryboardJobModelIdentity(job);

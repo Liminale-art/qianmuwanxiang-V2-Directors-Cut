@@ -121,7 +121,7 @@ assert.equal(state.shotPlans[0].shots[0].shotSpec.characters.length, 2);
 
 assert.match(source, /手动选段补图[\s\S]*sd-storyboard-capture-paragraph-list/);
 assert.match(source, /manualSupplement[\s\S]*shotProfile\.count = '1'/);
-assert.match(source, /anchor\.node\.insertAdjacentElement\('afterend', wrapper\)/);
+assert.match(source, /storyboardInsertInlineWrapper\(text, anchor, wrapper, anchorTails\)/);
 assert.match(source, /plan\.origin !== 'manual_supplement'/);
 assert.match(source, /compositionLaw: \{ id: STORYBOARD_COMPOSITION_RULE_ID[\s\S]*ruleOverride/);
 assert.match(gateway, /const parameters = \{[\s\S]*\.\.\.providerOptions/, 'the gateway must forward sanitized NAI character-caption structures');

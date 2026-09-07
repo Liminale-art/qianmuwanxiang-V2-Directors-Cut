@@ -414,6 +414,44 @@ export function sanitizeStoryboardSnapshot(value, fallback = {}) {
   return snapshot(value, fallback);
 }
 
+// Presentation metadata only: never used to associate an image with a message or authorize work.
+export function normalizeStoryboardInlineOrder(value) {
+  if (!obj(value) || value.version !== 1 || typeof value.batchId !== 'string'
+    || !value.batchId || value.batchId.length > 160 || /[\u0000-\u001f\u007f]/.test(value.batchId)
+    || !Number.isSafeInteger(value.batchStartedAt) || value.batchStartedAt < 1
+    || !Number.isSafeInteger(value.shotIndex) || value.shotIndex < 0 || value.shotIndex >= 20
+    || !Number.isSafeInteger(value.requestIndex) || value.requestIndex < 1 || value.requestIndex > 20) return null;
+  return { version: 1, batchId: value.batchId, batchStartedAt: value.batchStartedAt, shotIndex: value.shotIndex, requestIndex: value.requestIndex };
+}
+
+export function sortStoryboardInlineRecords(records) {
+  const groups = new Map();
+  const compareText = (left, right) => left < right ? -1 : left > right ? 1 : 0;
+  for (const [index, record] of (Array.isArray(records) ? records : []).entries()) {
+    if (!obj(record)) continue;
+    const order = normalizeStoryboardInlineOrder(record.inlineOrder);
+    // Keep different messages/batches separate even when old imported ids collide.
+    const scope = [record.chatKey || '', record.floor ?? null, record.swipeId ?? 0, record.messageHash || ''];
+    const key = JSON.stringify([...scope, ...(order ? ['batch', order.batchId, order.shotIndex]
+      : ['legacy', record.variantRootId || record.planShotId || record.groupId || record.id || index])]);
+    if (!groups.has(key)) groups.set(key, { order, index, records: [] });
+    groups.get(key).records.push({ record, order, index });
+  }
+  return [...groups.values()].sort((left, right) => {
+    // Missing historical intent is not guessed from model, image or current plan. Keep those
+    // groups in their existing order; newly frozen batches follow them in preparation order.
+    if (!left.order || !right.order) return Number(Boolean(left.order)) - Number(Boolean(right.order)) || left.index - right.index;
+    return left.order.batchStartedAt - right.order.batchStartedAt
+      || compareText(left.order.batchId, right.order.batchId) || left.order.shotIndex - right.order.shotIndex;
+  }).flatMap(group => group.records.sort((left, right) => {
+    if (!group.order) return left.index - right.index;
+    return left.order.requestIndex - right.order.requestIndex
+      || (Number(left.record.imageIndex) || 0) - (Number(right.record.imageIndex) || 0)
+      || (Number(left.record.createdAt) || 0) - (Number(right.record.createdAt) || 0)
+      || compareText(String(left.record.id || ''), String(right.record.id || '')) || left.index - right.index;
+  }).map(item => item.record));
+}
+
 function entityProfiles(value) {
   const normalized = Array.isArray(value) ? value.filter(obj).map((p) => ({ id: cleanId(p.id), name: str(p.name || p.variantName || '默认档案', 80) || '默认档案', appearance: str(p.appearance || p.description, 12000), negative: str(p.negative, 6000), reference: reference(p.reference || { type: p.referenceUrl ? 'url' : 'none', value: p.referenceUrl }), tags: ids(p.tags, 300), permanentState: safeData(p.permanentState, 4) || {}, createdAt: pos(p.createdAt || p.updatedAt), updatedAt: pos(p.updatedAt) })).filter((p) => p.id) : [];
   return dedupeById(normalized).slice(0, 100);
@@ -2183,6 +2221,7 @@ function snapshot(value, fallback = {}) {
     } else if (!result.ok && !profile.comfyWorkflowNotice) profile.comfyWorkflowNotice = result.message;
   }
   if (obj(safe)) {
+    if (Object.hasOwn(raw, 'inlineOrder')) safe.inlineOrder = normalizeStoryboardInlineOrder(raw.inlineOrder);
     delete safe.selectedCharacterId;
     delete safe.selectedCharacters;
     delete safe.consistencyMode;

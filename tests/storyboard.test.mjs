@@ -67,7 +67,7 @@ assert.match(source, /storyboardImages[\s\S]*messageHash[\s\S]*swipeId/, '正文
 assert.match(source, /createStoryboardMessageReference[\s\S]*resolveStoryboardMessageReference/, '正文挂载必须以稳定消息身份协调删楼、改楼与 swipe');
 assert.match(source, /if \(!storyboardState\(\)\.enabled\)[\s\S]*sd-storyboard-inline, \.sd-storyboard-message-action/, '分镜总开关关闭后必须清理全部正文入口与成片');
 assert.match(source, /paragraphAnchor: clone\(job\.paragraphAnchor \|\| null\)/, '第 0 楼与跨聊天待归档结果都必须保留段落锚点');
-assert.match(source, /storyboardInlineAnchorNode\(text, anchorRecords\)[\s\S]*anchor\.node\.insertAdjacentElement\('afterend', wrapper\)[\s\S]*text\.insertAdjacentElement\('afterend', wrapper\)/, '命中段落锚点时必须原位插图，失配时才回退到整层末尾');
+assert.match(source, /storyboardInlineAnchorNode\(text, anchorRecords\)[\s\S]*storyboardInsertInlineWrapper\(text, anchor, wrapper, anchorTails\)/, '命中段落锚点时必须原位插图，共用尾指针防止失配回退倒序');
 assert.match(source, /function storyboardInlineRecordValid[\s\S]*record\.messageHash[\s\S]*record\.swipeId/, '编辑或 reroll 后必须阻止旧图误挂');
 assert.doesNotMatch(source, /storyboardProfileBindings|绑定到当前聊天|selectedCharacters/, '形象档案不得再自动绑定或注入镜头任务');
 assert.match(source, /function storyboardGenerationPayload[\s\S]*compileStoryboardPrompt\([\s\S]*artistString/, '生图负载必须经角色隔离编译器合成，且画师串仍只来自用户选择');
