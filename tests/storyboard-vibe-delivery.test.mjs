@@ -5,6 +5,9 @@ import vm from 'node:vm';
 import { generateDirectImage } from '../qianmu-image-direct.js';
 import { generateImage } from '../qianmu-image-gateway.js';
 import * as core from '../qianmu-storyboard.js';
+import {prepareStoryboardVibes} from '../qianmu-vibe-prepare.js';
+import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
+import {parseNovelVibeFile} from '../qianmu-vibe-file.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 function section(name) {
@@ -15,11 +18,16 @@ function section(name) {
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==','base64');
 function environment(items, read = async () => ({ data: png.toString('base64'), mime: 'image/png' })) {
   const state = { enabled:true,vibeLibrary: items };
-  const job={source:'novel',profile:{model:'nai-diffusion-4-5-full'},payload:{selectedVibeIds:items.map(item=>item.id),vibeRecipe:core.captureStoryboardVibeRecipe(items.map(item=>item.id),items)}};
-  const ctx = vm.createContext({ ...core,storyboardAdmissionEpoch:1,featureRuntime:{load:async()=>({resolveImageAccountNamespace:async()=> 'st-user:test'})},
+  // This suite verifies the legacy raw/V3 path. V4/4.5's actual paid/cached path is covered in vibe-prepare.
+  const job={source:'novel',profile:{model:'nai-diffusion-3'},connection:{baseUrl:'https://relay.example'},payload:{selectedVibeIds:items.map(item=>item.id),vibeRecipe:core.captureStoryboardVibeRecipe(items.map(item=>item.id),items)}};
+  const files=new Map();let account='st-user:test';const run=createVibeAssetOperations({
+    putFile:async(_namespace,text)=>{const assets=await parseNovelVibeFile(text);assets.forEach(asset=>files.set(asset.assetId,asset));return assets;},load:async(_namespace,id)=>files.get(id),
+  });
+  const ctx = vm.createContext({ ...core,clone:structuredClone,confirmDialog:async()=>assert.fail('V3 should not request encoding fees'),storyboardAdmissionEpoch:1,
+    featureRuntime:{load:async key=>key==='vibePrepare'?{prepareStoryboardVibes}:key==='vibeAssets'?{callVibeAsset:(type,args)=>run({type,...args})}:{resolveImageAccountNamespace:async()=>account}},
     storyboardState: () => state, storyboardSafeUrl: value => /^https:\/\//.test(value) ? value : '', storyboardReadImageReference: read });
   vm.runInContext(section('storyboardVibeAmount') + section('storyboardPrepareGatewayAssets'), ctx);
-  return { state,job,context:ctx,prepare: () => ctx.storyboardPrepareGatewayAssets(job) };
+  return { state,job,context:ctx,setAccount:value=>account=value,prepare: () => ctx.storyboardPrepareGatewayAssets(job) };
 }
 for (const [value, strength, information] of [[0,0,0],['0',0,0],['',.6,1],[undefined,.6,1],[Infinity,.6,1]]) {
   test(`Vibe preparation preserves zero and defaults missing values (${String(value)} ${typeof value})`, async () => {
@@ -33,7 +41,7 @@ test('Vibe source/amounts are frozen before queueing and survive library replace
   const rows = [{id:'a',previewUrl:'https://image.example/a.png',strength:0,informationExtracted:0},
     {id:'b',previewUrl:'https://image.example/b.png',strength:.2,informationExtracted:.3}];
   const urls = [];
-  const { prepare, state } = environment(rows, async url => { urls.push(url); if(urls.length===1) await gate; return {data:'image'}; });
+  const { prepare, state } = environment(rows, async url => { urls.push(url); if(urls.length===1) await gate; return {data:png.toString('base64')}; });
   const work=prepare();
   rows[0].strength=.9; rows[1].previewUrl='https://other.example/replaced.png';rows[1].informationExtracted=1;
   state.vibeLibrary=[]; finish();
@@ -46,8 +54,9 @@ test('actual Vibe preparation after library deletion uses only frozen metadata, 
   const e=environment([{id:'a',name:'First',previewUrl:'https://image.example/a.png',strength:.2,informationExtracted:0}],async url=>({data:png.toString('base64'),url}));
   e.state.vibeLibrary=[];const original=structuredClone(e.job.payload.vibeRecipe);
   e.job.payload=core.sanitizeStoryboardSnapshot(e.job).payload;
-  const assets=await e.prepare();assert.equal(assets.vibes[0].url,'https://image.example/a.png');assert.equal(assets.vibes[0].strength,.2);assert.equal(assets.vibes[0].information,0);
-  assert.deepEqual(e.job.payload.vibeRecipe,original);
+  const assets=await e.prepare();assert.equal(assets.vibes[0].data,png.toString('base64'));assert.equal(assets.vibes[0].strength,.2);assert.equal(assets.vibes[0].information,0);
+  assert.equal(e.job.payload.vibeRecipe.version,2);assert.match(e.job.payload.vibeRecipe.items[0].assetRef.id,/^[a-f0-9]{64}$/);
+  assert.deepEqual(e.job.payload.vibeRecipe.items[0],{...original.items[0],previewUrl:'',assetRef:e.job.payload.vibeRecipe.items[0].assetRef});
 });
 
 test('legacy missing recipes, corrupt recipes and unsupported models stop before reading any Vibe',async()=>{
@@ -60,10 +69,8 @@ test('legacy missing recipes, corrupt recipes and unsupported models stop before
 
 test('in-flight cancellation, recipe changes and account switches discard prepared Vibe data before any image generation',async()=>{
   for(const change of [e=>e.job.discardRequested=true,e=>e.job.payload.vibeRecipe.items[0].strength=.8,
-    e=>e.job.payload.selectedVibeIds=[],e=>{e.context.featureRuntime.load=async()=>({resolveImageAccountNamespace:async()=> 'st-user:other'});}]){
-    let e;let account='st-user:test';const identity={resolveImageAccountNamespace:async()=>account};
-    e=environment([{id:'a',previewUrl:'https://image.example/a.png'}],async()=>{change(e);if(e.context.featureRuntime.load!==load)account='st-user:other';return {data:'image'};});
-    const load=async()=>identity;e.context.featureRuntime.load=load;
+    e=>e.job.payload.selectedVibeIds=[],e=>e.setAccount('st-user:other')]){
+    let e;e=environment([{id:'a',previewUrl:'https://image.example/a.png'}],async()=>{change(e);return {data:png.toString('base64')};});
     await assert.rejects(e.prepare(),/已变化/);
   }
 });

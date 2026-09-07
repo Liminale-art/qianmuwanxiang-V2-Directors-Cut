@@ -200,6 +200,7 @@ let reader = null;
 const featureRuntime = createFeatureRuntime({
   vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.104') },
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.104') },
+  vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.104') },
   tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.104') },
   modelPicker: {
     label: '模型选择',
@@ -20437,10 +20438,10 @@ function storyboardCharacterReferencePlan(job) {
   return plan;
 }
 
-async function storyboardPrepareGatewayAssets(job) {
+async function storyboardPrepareGatewayAssets(job, { apiKey, log } = {}) {
   const selected=resolveStoryboardVibeRecipe(job.payload || {});
   const vibeIdentity=()=>JSON.stringify([job.source,job.modelIdentity,job.profile,job.connection,job.imageAdmission?.namespace,job.payload?.vibeRecipe,job.payload?.selectedVibeIds]);
-  const originalVibeIdentity=selected.length ? vibeIdentity() : '';
+  let originalVibeIdentity=selected.length ? vibeIdentity() : '';
   let vibeGuard=async()=>{};
   if(selected.length){
     const model=resolveStoryboardJobModelIdentity(job);
@@ -20451,6 +20452,8 @@ async function storyboardPrepareGatewayAssets(job) {
       if(epoch!==storyboardAdmissionEpoch||job.discardRequested||!storyboardState().enabled||originalVibeIdentity!==vibeIdentity()
         ||job.imageAdmission?.namespace&&job.imageAdmission.namespace!==namespace||namespace!==await identity.resolveImageAccountNamespace())throw new Error('Vibe 任务或账户已变化，未提交生成');
       if(epoch!==storyboardAdmissionEpoch||job.discardRequested||!storyboardState().enabled||originalVibeIdentity!==vibeIdentity())throw new Error('Vibe 任务已变化，未提交生成');
+      if(job.automatic&&(storyboardState().automation?.autoCapture===false||storyboardState().automation?.autoGenerate===false))throw new Error('已停止自动生图，未继续编码');
+      if(job.target!=='gallery'&&job.messageRef?.messageKey){const anchor=storyboardValidatedAnchor(job);if(!anchor.valid&&anchor.linkState!=='foreign')throw new Error('原正文已变化，未继续编码');}
     };
     await vibeGuard();
   }
@@ -20477,19 +20480,25 @@ async function storyboardPrepareGatewayAssets(job) {
     const guard = async () => { if (epoch !== storyboardAdmissionEpoch || job.discardRequested || (job.imageAdmission?.namespace && job.imageAdmission.namespace !== namespace) || namespace !== await identity.resolveImageAccountNamespace()) throw new Error('参考图会话已变化，未提交生成'); };
     references = await runtime.readComfyReferenceImages({ workflow: job.payload?.parameters?.workflow, selection: comfyRole ? comfyRole.references : job.profile.comfyReferences, namespace, guard });
   }
-  const vibes = [];
-  // This image owns its recipe; deleting/editing the library never substitutes a different Vibe.
-  for (const vibe of selected) {
+  let vibes = [];
+  if(selected.length){
     await vibeGuard();
-    let image;
-    if(vibe.assetRef){
-      const identity=await featureRuntime.load('imageAdmission'),namespace=await identity.resolveImageAccountNamespace();await vibeGuard();
-      if(vibe.assetRef.namespace!==namespace)throw Error('Vibe 原资产来自其他账户，请重新导入');
-      const runtime=await featureRuntime.load('vibeAssets');await vibeGuard();
-      image=await runtime.callVibeAsset('resolve',{namespace,id:vibe.assetRef.id,model:resolveStoryboardJobModelIdentity(job).capabilityModelId,information:vibe.information});
-    }else image=await storyboardReadImageReference(vibe.previewUrl, vibe.name || 'Vibe');
-    await vibeGuard();
-    vibes.push({ ...image, strength: vibe.strength, information: vibe.information });
+    const [runtime,preparation,account]=await Promise.all([featureRuntime.load('vibeAssets'),featureRuntime.load('vibePrepare'),featureRuntime.load('imageAdmission')]);
+    const namespace=await account.resolveImageAccountNamespace();await vibeGuard();
+    if(selected.length>4)toast('超过 4 项 Vibe 时，NAI 官方另按额外项数增加每张图费用；第三方以渠道实际规则为准','warning');
+    vibes=await preparation.prepareStoryboardVibes(job.payload,{namespace,model:resolveStoryboardJobModelIdentity(job),connection:job.connection,apiKey,
+      call:runtime.callVibeAsset,readImage:storyboardReadImageReference,guard:vibeGuard,
+      confirm:(title,text)=>preparation.confirmVibeEncoding(title,text,{popup:ctx().Popup}),
+      // No browser fallback for a configured service: the authenticated encoding endpoint must be negotiated first.
+      allowEncoding:job.connection?.imageTransport!=='service',notify:message=>toast(message,'info'),
+      checkpoint:async recipe=>{
+        await vibeGuard();
+        // Image admission identifies the narrative shot, not mutable library selections. Its submission state remains untouched.
+        job.payload.vibeRecipe=clone(recipe);originalVibeIdentity=vibeIdentity();
+        if(job.snapshot?.payload)job.snapshot.payload.vibeRecipe=clone(recipe);
+        if(log?.snapshot){log.snapshot.payload||={};log.snapshot.payload.vibeRecipe=clone(recipe);saveSettings();}
+      },
+    });
   }
   return { references, vibes };
 }
@@ -20770,7 +20779,7 @@ async function storyboardRunJob(job, log) {
     const generateTransport = async () => {
       const comfyTransport = job.source === 'comfy' ? requireStoryboardComfyTransport(job.connection) : 'legacy-auto';
       // Do not expand reference images while another tab owns this NAI channel.
-      const assets = await storyboardPrepareGatewayAssets(job);
+      const assets = await storyboardPrepareGatewayAssets(job, { apiKey, log });
       const gatewayRequest = storyboardGatewayRequest(job, apiKey, assets);
       storyboardPipelineStage(log, 'provider_request', 'running', { request: gatewayRequest });
       if (job.source === 'novel' && job.connection?.imageTransport === 'service') {
