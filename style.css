@@ -10348,6 +10348,9 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-world-shot-dialog select { box-sizing: border-box; height: 40px; min-height: 40px; font-size: 12px; width: 100%; min-width: 0; border-radius: 8px; }
 .sd-world-shot-dialog .sd-world-shot-sensitive { display: flex; align-items: center; min-height: 40px; gap: 8px; margin-top: 8px; }
 .sd-world-shot-sensitive input { flex: 0 0 auto; }
+.sd-world-rendering-editor details { border: 1px solid var(--sd-border,#8886); border-radius: 10px; min-width: 0; margin-top: 10px; }
+.sd-world-rendering-editor summary { padding: 10px; cursor: pointer; list-style: none; }
+.sd-world-rendering-editor summary::-webkit-details-marker { display: none; }
 @media (min-width: 700px) { .sd-world-shot-fields { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 .sd-character-shot-dialog fieldset { margin: 0; padding: 0; border: 0; min-width: 0; display: grid; gap: 10px; }
 .sd-character-shot-person { border: 1px solid var(--sd-border,#8886); border-radius: 10px; min-width: 0; }

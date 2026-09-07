@@ -119,6 +119,8 @@ function captureProjection(shot) {
   if (new TextEncoder().encode(text).byteLength > 128 * 1024) fail('本镜事实过长，请精简后重新提取');
   return JSON.parse(text);
 }
+// Public visual facts only; excludes archives, private implementations, credentials and delivery authority.
+export function storyboardPromptRenderingSource(shot) { return captureProjection(shot); }
 async function digest(value) {
   if (!globalThis.crypto?.subtle) fail('当前环境无法核对提示表达，请使用 HTTPS 或本机地址');
   const result = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value)));

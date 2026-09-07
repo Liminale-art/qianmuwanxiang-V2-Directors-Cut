@@ -7,6 +7,8 @@ import * as core from '../qianmu-storyboard.js';
 import * as decisions from '../qianmu-director-decision.js';
 import * as orders from '../qianmu-director-work-order.js';
 import * as comfyRoutes from '../qianmu-comfy-route.js';
+import * as formats from '../qianmu-prompt-formats.js';
+import {prepareComfyPromptJob} from '../qianmu-comfy-prompt.js';
 import { recipesFixture } from './helpers/comfy-route-fixture.mjs';
 import {normalizeQianmuProductionPacket} from '../qianmu-production-packet.js';
 import {newCharacterArchive,normalizeCharacterArchive} from '../qianmu-character-archive.js';
@@ -117,6 +119,83 @@ function harness({confirm=async options=>options.shot,family='novel'}={}) {
   vm.runInContext(['storyboardPrepareComfyRoutes','storyboardCreatePreparationGuard','storyboardCompilerCharacterCasting','storyboardGenerateProductionPacket'].map(section).join('\n'),context);
   return {...e,state,context,calls,notices,packet,candidate,run:()=>context.storyboardGenerateProductionPacket({isConnected:true},'packet-a'),setAccount:value=>{account=value;},setChat:value=>{chat=value;}};
 }
+
+const renderingsFor=(shot,requested)=>Object.fromEntries(requested.map(format=>[format,{global:'kitchen, soft light',negative:'blurred details',
+  characters:shot.characters.map(row=>({character_id:row.id,positive:'blue hair, no coat, stirs soup'}))}]));
+async function classifiedWorld({confirm,format='tags'}={}){
+  const e=harness({confirm:confirm || (async options=>({...options.shot,promptRenderingPack:await formats.bindStoryboardPromptRenderings(options.shot,await options.prepareRenderings(options.shot),{formats:options.promptFormats,guard:options.guard})}))});
+  const f=await recipesFixture({formats:[format]});f.rows.forEach(row=>row.namespace=e.namespace);
+  const recipe=await comfyRoutes.pinComfyRouteWorkflow({namespace:e.namespace,selection:f.rows[0],createStore:f.createStore});
+  e.state.routing.enabled=true;e.state.routing.rules=[{id:'world-fixed',enabled:true,shotTypes:[],target:{providerId:'comfy',modelId:'comfy-workflow',comfyWorkflowBinding:recipe.binding,comfyCharacterEnabled:false}}];
+  const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>key==='comfyRoutes'?{...comfyRoutes,prepareComfyRouteRecipes:options=>comfyRoutes.prepareComfyRouteRecipes({...options,createStore:f.createStore})}:load(key);
+  e.context.storyboardCallCompiler=async(messages,profile,options)=>{
+    e.calls.push('llm');e.lastRequest={messages,profile,options};
+    return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(JSON.parse(messages[1].content).shot,options.promptFormats)});
+  };
+  vm.runInContext(['storyboardProfileSnapshot','storyboardResolveRoutingProfile'].map(section).join('\n'),e.context);
+  return {...e,f,recipe};
+}
+
+test('classified world confirmation prepares exact expressions and the real shared Comfy job consumes them without rewriting visual facts',async()=>{
+  const e=await classifiedWorld();assert.equal(await e.run(),true,e.notices.join(';'));
+  assert.equal(e.calls.filter(row=>row==='llm').length,1);
+  const stages=e.state.pendingCompilerStages;assert.equal(stages[1].type,'world_prompt_rendering');assert.equal(stages[1].status,'success');
+  assert.doesNotMatch(JSON.stringify(stages),/PRIVATE-QUALIFICATION/);
+  const shot=e.state.promptDraft.shots[0].shotSpec;await world.verifyWorldPromptRenderings(shot,['tags']);
+  assert.equal(shot.subject,'厨房');assert.equal(shot.characters[0].identity[0],'Alice silver hair');
+  const jobs=[];Object.assign(e.context,{storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:20,
+    storyboardQueueJob:async job=>{assert.deepEqual(formats.storyboardPromptRenderingSource(core.normalizeStoryboardShotSpec(job.payload.shotSpec)),formats.storyboardPromptRenderingSource(shot));await prepareComfyPromptJob(job,{prepare:true,namespace:e.namespace});await prepareComfyPromptJob(job,{namespace:e.namespace});jobs.push(job);return true;},
+    storyboardCredentialId:()=> 'test-key',storyboardAnchorForMessage:()=>null,uniqueClean:items=>[...new Set(items.filter(Boolean))],storyboardAdaptShotForModel:async shot=>shot,
+    confirmDialog:async()=>true,STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',environment:'',custom:''}});
+  vm.runInContext(['storyboardPromptsForArtist','storyboardJoinPrompt','storyboardCompilerRoutes','storyboardGenerationPayload','storyboardCreateJob','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardGenerate'].map(section).join('\n'),e.context);
+  assert.equal(await e.context.storyboardGenerate(null,e.context.lastProductionOptions),true,e.notices.join(';'));
+  assert.equal(jobs.length,1);const job=jobs[0];assert.equal(job.target,'gallery');assert.equal(job.payload.promptRendering.format,'tags');
+  assert.match(job.payload.prompt,/portrait quality, kitchen, soft light/);assert.match(job.payload.prompt,/"Alice":/);
+  assert.doesNotMatch(job.payload.prompt,/厨房|silver hair/);assert.match(job.payload.prompt,/blue hair, no coat, stirs soup/);
+  assert.equal(job.shotSpec.subject,'厨房');assert.equal(job.shotSpec.productionContext.truthMode,'speculative');
+});
+
+test('world manual expression works without LLM and cancellation or stale confirmation preserves previous draft',async()=>{
+  const e=await classifiedWorld({confirm:async options=>({...options.shot,promptRenderingPack:await formats.bindStoryboardPromptRenderings(options.shot,renderingsFor(options.shot,options.promptFormats),{formats:options.promptFormats})})});
+  assert.equal(await e.run(),true,e.notices.join(';'));assert.equal(e.calls.includes('llm'),false);
+  for(const reason of ['cancel','account','facts']){
+    let e;e=await classifiedWorld({confirm:async options=>{
+      const values=await options.prepareRenderings(options.shot);
+      const shot={...options.shot,promptRenderingPack:await formats.bindStoryboardPromptRenderings(options.shot,values,{formats:options.promptFormats})};
+      if(reason==='cancel')return null;if(reason==='account')e.setAccount('other');else shot.subject='different place';return shot;
+    }});
+    assert.equal(await e.run(),false);assert.equal(e.state.prompt,'original');assert.equal(e.calls.includes('generate'),false);
+  }
+});
+
+test('invalid world rendering can be manually repaired after explicit retry; trace stays bounded and final pack is independently checked',async()=>{
+  const e=await classifiedWorld({confirm:async options=>{
+    for(let i=0;i<6;i++)await assert.rejects(()=>options.prepareRenderings(options.shot),/JSON/);
+    return {...options.shot,promptRenderingPack:await formats.bindStoryboardPromptRenderings(options.shot,renderingsFor(options.shot,options.promptFormats),{formats:options.promptFormats})};
+  }});
+  e.context.storyboardCallCompiler=async()=>{e.calls.push('llm');return 'not json';};
+  assert.equal(await e.run(),true,e.notices.join(';'));assert.equal(e.calls.filter(row=>row==='llm').length,6);
+  assert.equal(e.state.pendingCompilerStages.length,5);assert.ok(e.state.pendingCompilerStages.slice(1).every(row=>row.status==='failed'&&row.output.raw==='not json'));
+  const logs=core.pruneStoryboardPipelineLogs([{id:'world-log',status:'success',stages:e.state.pendingCompilerStages}]);
+  assert.equal(logs[0].stages[1].type,'world_prompt_rendering');assert.equal(logs[0].stages[1].status,'failed');
+  const missing=await classifiedWorld({confirm:async options=>options.shot});assert.equal(await missing.run(),false);assert.equal(missing.calls.includes('generate'),false);
+});
+
+test('world auto candidates determine both prompt format union and casting, independently of the closed workbench and its inactive workflow',async()=>{
+  const e=await classifiedWorld({confirm:async options=>{
+    assert.deepEqual([...options.promptFormats],['tags','natural_language']);
+    assert.ok(options.shot.characters[0].archiveSnapshot.comfyImplementation);
+    const renderings=await options.prepareRenderings(options.shot);
+    return {...options.shot,promptRenderingPack:await formats.bindStoryboardPromptRenderings(options.shot,renderings,{formats:options.promptFormats})};
+  }});
+  e.state.comfyAutoEnabled=true;e.state.routing.rules[0].target={providerId:'comfy',modelId:'comfy-workflow'};
+  e.state.profiles.comfy.comfyCharacterEnabled=false;let closed=0;
+  const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>key==='comfyAuto'?{prepareComfyAutoSession:async()=>({
+    candidates:[{id:'a',target:{comfyCharacterEnabled:false}},{id:'b',target:{comfyCharacterEnabled:true}}],promptFormats:['tags','natural_language'],close:()=>{closed++;},
+  })}:load(key);
+  assert.equal(await e.run(),true,e.notices.join(';'));assert.equal(e.state.source,'novel');assert.equal(closed,1);
+  assert.deepEqual(Object.keys(e.state.promptDraft.shots[0].shotSpec.promptRenderingPack.renderings),['tags','natural_language']);
+});
 test('real entry awaits explicit confirmation, uses shared visible casting and hands one approved draft to the normal pipeline',async()=>{
   const e=harness();e.state.pendingCompilerStages=[{type:'prompt_compiler',input:'previous prose'}];assert.equal(await e.run(),true);assert.deepEqual(e.reads,['alice']);
   assert.ok(e.calls.indexOf('confirm')<e.calls.indexOf('generate'));assert.equal(e.calls.filter(x=>x==='generate').length,1);
