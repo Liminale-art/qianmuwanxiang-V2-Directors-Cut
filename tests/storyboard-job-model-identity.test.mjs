@@ -28,7 +28,7 @@ function section(name) {
   return next < 0 ? tail : tail.slice(0, next + 1);
 }
 function load(name, deps = {}) {
-  return vm.runInNewContext(`${section('storyboardConfirmGatewayProtocolBinding')}\n${section(name)}\n${name}`, {
+  return vm.runInNewContext(`${section('storyboardConfirmGatewayProtocolBinding')}\n${name==='storyboardStartLog'?section('storyboardStoreLog'):''}\n${section(name)}\n${name}`, {
     clone: structuredClone, STORYBOARD_PROVIDER_REGISTRY, resolveStoryboardJobModelIdentity, resolveStoryboardConnectionBinding, ...deps,
   });
 }

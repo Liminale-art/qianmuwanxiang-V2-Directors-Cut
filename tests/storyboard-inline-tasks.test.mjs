@@ -148,6 +148,14 @@ test('inline retry uses the exact original snapshot and adds one request, not a 
   assert.equal(f.button.disabled, false);
 });
 
+test('inline preparation action dispatches only the separate confirmation flow, never a fabricated frozen request',async()=>{
+  const f=actionFixture();f.entry.action='reprepare-task';f.button.dataset.storyboardChatAction='reprepare-task';
+  f.state.logs[0].kind='comfy_preparation';f.state.logs[0].snapshot=null;
+  f.context.storyboardReprepareComfyLog=async(log,{isCurrent})=>{assert.equal(log,f.state.logs[0]);assert.equal(isCurrent(),true);f.calls.push(['reprepare']);return true;};
+  assert.equal(await f.context.storyboardOnInlineTaskAction(f.button),true);assert.deepEqual(f.calls,[['reprepare']]);
+  assert.equal(f.context.storyboardInlineTaskActions.size,0);assert.equal(f.button.disabled,false);
+});
+
 test('double clicks are suppressed and late chat, epoch or task changes prevent retry submission', async () => {
   for (const change of [f => { f.entry.action = ''; }, f => { f.context.storyboardAdmissionEpoch++; }, f => { f.context.getChatKey = () => 'chat-b'; }]) {
     const f = actionFixture(); let release, started;

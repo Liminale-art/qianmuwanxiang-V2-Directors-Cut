@@ -2,6 +2,7 @@ import vm from 'node:vm';
 import * as storyboard from '../../qianmu-storyboard.js';
 import * as runtime from '../../qianmu-comfy-route.js';
 import * as preflight from '../../qianmu-comfy-preflight.js';
+import {hashText} from '../../qianmu-storyboard-utils.js';
 import { storyboardFunctionSource as section } from './storyboard-form-fixture.mjs';
 export const namespace = 'st-user:route-test';
 export const graph = label => ({
@@ -43,9 +44,11 @@ export async function routeEnvironment(options={}) {
     storyboardTargetFloor:()=>-1,storyboardCredentialRevision:0,storyboardAdmissionEpoch:1,storyboardDraftApiKeys:new Map(),
     storyboardSelectedArtistPreset:()=>null,storyboardGalleryRecords:()=>[],STORYBOARD_NAI_QUALITY_DEFAULTS:{},STORYBOARD_NAI_NEGATIVE_DEFAULTS:{},STORYBOARD_GENERIC_PROMPT_DEFAULTS:{positive:'global quality',negative:'global negative'},
     storyboardProductionDeliveryPolicy:(_shot,policy)=>policy,storyboardProductionContext:()=>({}),storyboardAnchorForMessage:()=>null,
-    storyboardCredentialId:()=> 'fixture-key',sanitizeStoryboardDiagnosticData:value=>value,uid:()=>`id-${++sequence}`,uniqueClean:items=>[...new Set(items.filter(Boolean))],
+    storyboardCredentialId:()=> 'fixture-key',hashText,sanitizeStoryboardDiagnosticData:value=>value,uid:()=>`id-${++sequence}`,uniqueClean:items=>[...new Set(items.filter(Boolean))],
     saveSettings(){},renderModal(){},toast:message=>{notices.push(message);return false;},
     storyboardGenerationPreparing:new Set(),storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:100,
+    storyboardPipelineArchiveCache:new Map(),storyboardPreparationRetries:new Set(),storyboardScheduleInlineRender(){},storyboardPlanIsTerminal:()=>false,
+    blobStore:{deleteStoryboardPipelineLogs:async()=>{}},storyboardArchivePipelineLog:async()=>{},storyboardPipelineForLog:log=>state.pipelineLogs.find(row=>row.id===log.pipelineId),
     storyboardQueueJob:async job=>{jobs.push(job);return true;},confirmDialog:async()=>true,
     featureRuntime:{load:async key=>{
       calls.push(key);
@@ -63,7 +66,8 @@ export async function routeEnvironment(options={}) {
     'storyboardPromptDefaultsKey','storyboardProviderPromptDefaults','storyboardPromptLayerForArtist','storyboardPromptsForArtist','storyboardJoinPrompt',
     'storyboardCaptureWorkbench','storyboardResolveRoutingProfile','storyboardCreatePreparationGuard','storyboardPrepareComfyRoutes','storyboardCompilerRoutes','storyboardCertainCompilerRoute',
     'storyboardUsesComfyCharacters','storyboardPreflightComfyForCompiler','storyboardComfyReferenceMetadata','storyboardWorkflowIssue',
-    'storyboardGenerationPayload','storyboardCreateJob','storyboardShotSpecForSelection','storyboardAdaptShotForModel','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardComfyPlanScopes','storyboardGenerate','storyboardVerifyComfyRouteJob','storyboardRoutingTargetOptions','storyboardBindRouteWorkflow'];
+    'storyboardGenerationPayload','storyboardCreateJob','storyboardShotSpecForSelection','storyboardAdaptShotForModel','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardComfyPlanScopes','storyboardGenerate','storyboardVerifyComfyRouteJob','storyboardRoutingTargetOptions','storyboardBindRouteWorkflow',
+    'storyboardComfySelectionMessage','storyboardComfyPreparationDraft','storyboardRecordComfyPreparationFailure','storyboardReprepareComfyLog','storyboardStoreLog','storyboardPlanForJob','storyboardSyncTaskState','storyboardSetPlanStatus'];
   vm.runInContext(names.map(section).join('\n'),context);
   return {...f,state,context,jobs,notices,calls,setAccount:value=>account=value};
 }

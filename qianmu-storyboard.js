@@ -443,6 +443,34 @@ function storyboardTaskIsNewer(task,previous) {
       || (Number(task.attempt || 1) === Number(previous.attempt || 1) && String(task.id) > String(previous.id))));
 }
 
+// A failed selection is a draft, not a provider request or a transferable execution permission.
+export function normalizeStoryboardComfyPreparation(value) {
+  if(!obj(value)||value.version!==1)return null;
+  try {
+    if(new TextEncoder().encode(JSON.stringify(value)).byteLength>128*1024)return null;
+    const pool=retainComfyAutoBinding(value.pool),order=normalizeStoryboardInlineOrder(value.inlineOrder);
+    const messageRef=normalizeStoryboardMessageReference(value.messageRef),shotSpec=normalizeStoryboardShotSpec(value.shotSpec);
+    if(!pool?.namespace||!order||!messageRef.messageKey||!messageRef.revisionId||!value.chatKey||messageRef.chatKey!==value.chatKey
+      ||!Number.isSafeInteger(value.floor)||value.floor<0||!['floor','gallery'].includes(value.target)
+      ||value.shotSpec?.schema!=='qianmu.storyboard.plan.v1'||!value.shotSpec.id||value.planId&&!value.planShotId
+      ||value.planShotId&&value.planShotId!==shotSpec.id
+      ||!shotSpec.id||!shotSpec.promptRenderingPack||shotSpec.promptRenderingPack.invalid||typeof value.styleLock!=='boolean'||!String(value.prompt||'').trim())return null;
+    let scope=null;
+    if(value.styleLock){
+      const raw=value.scope;
+      if(!obj(raw)||raw.namespace!==pool.namespace||raw.chatKey!==value.chatKey||raw.narrativeLayer!==shotSpec.narrativeLayer
+        ||typeof raw.continuityId!=='string'||!raw.continuityId||raw.continuityId.length>160||/[\u0000-\u001f\u007f]/.test(raw.continuityId))return null;
+      scope={namespace:pool.namespace,chatKey:value.chatKey,continuityId:raw.continuityId,narrativeLayer:raw.narrativeLayer};
+    }
+    return {version:1,pool,styleLock:value.styleLock,scope,chatKey:str(value.chatKey,512),floor:value.floor,target:value.target,
+      inlineByDefault:value.inlineByDefault===true,messageRef,inlineOrder:order,planId:cleanId(value.planId),planShotId:cleanId(value.planShotId),
+      paragraphAnchor:value.paragraphAnchor?normalizeStoryboardParagraphAnchor(value.paragraphAnchor):null,
+      paragraphSelection:value.paragraphSelection?normalizeStoryboardParagraphSelection(value.paragraphSelection):null,
+      compositionPolicy:normalizeStoryboardCompositionPolicy(value.compositionPolicy),shotSpec,
+      prompt:str(value.prompt,24000),negative:str(value.negative,12000),shotType:str(value.shotType,60)};
+  }catch(_){return null;}
+}
+
 export function buildStoryboardInlineTasks(tasks, { chatKey = '', chat = [], logs = [], activeIds = new Set(), waitingIds = new Set(), records = [] } = {}) {
   if (!chatKey || !Array.isArray(chat)) return [];
   const latest = new Map(), logIndex = new Map(logs.map(log => [log.id, log]));
@@ -468,16 +496,17 @@ export function buildStoryboardInlineTasks(tasks, { chatKey = '', chat = [], log
     const uncertain = !live && (['queued', 'generating'].includes(task.status) || !log || ['unknown', 'accepted'].includes(log.submissionState));
     const status = uncertain ? 'unconfirmed' : task.status;
     const retry = status === 'failed' && log?.status === 'failed' && ['not_submitted', 'rejected'].includes(log.submissionState);
+    const preparation=log?.kind==='comfy_preparation';
     const stageLabel = task.stage === 'persistence' ? '正在保存画面' : task.stage === 'attachment' ? '正在回填画面' : '正在生成画面';
     entries.push({ id: `inline-task:${task.id}`, taskId: task.id, logId: task.logId, planId: task.planId,
       slotKey, inlineOrder: normalizeStoryboardInlineOrder(task.inlineOrder), floor: resolved.floor, chatKey,
       messageHash: task.messageHash || '', swipeId: task.messageRef.swipeId,
       paragraphAnchor: task.paragraphAnchor, paragraphSelection: task.paragraphSelection,
       imageIndex: Number.MAX_SAFE_INTEGER, createdAt: Number(task.requestedAt || 0),
-      status, label: status === 'unconfirmed' ? '结果待核对' : status === 'failed' ? (task.stage==='queue'&&log?.submissionState==='not_submitted'?'本镜尚未提交':'本镜生成失败') : status === 'queued' ? '等待生图' : stageLabel,
+      status, label: status === 'unconfirmed' ? '结果待核对' : status === 'failed' ? (preparation?'本镜待选工作流':task.stage==='queue'&&log?.submissionState==='not_submitted'?'本镜尚未提交':'本镜生成失败') : status === 'queued' ? '等待生图' : stageLabel,
       detail: status === 'unconfirmed' ? '请先核查原任务，勿重复生成' : status === 'failed'
         ? str(sanitizeStoryboardDiagnosticData(task.error || '请查看日志'), 120).replace(/\s+/g, ' ').split('；')[0] : '',
-      action: retry ? 'retry-task' : (waitingIds.has(task.id) ? 'cancel-task' : ''),
+      action: retry ? (preparation?(log.preparation?.version===1?'reprepare-task':''):'retry-task') : (waitingIds.has(task.id) ? 'cancel-task' : ''),
     });
   }
   return entries;
@@ -2298,6 +2327,11 @@ function modelProfileMemory(value, currentProfiles = {}) {
 function parameterPresets(value) { return Array.isArray(value) ? value.slice(0, 200).filter(obj).map((p) => ({ id: cleanId(p.id), name: str(p.name || '未命名样式', 80), source: getStoryboardProvider(p.source) ? p.source : '', profile: getStoryboardProvider(p.source) ? normalizeStoryboardParameterProfile(p.profile, p.source) : {}, createdAt: pos(p.createdAt || p.updatedAt), updatedAt: pos(p.updatedAt) })).filter((p) => p.id && p.source) : []; }
 function legacyLogs(value) {
   const normalized = dedupeById((Array.isArray(value) ? value : []).filter(obj).map((log) => ({ id: cleanId(log.id), status: ['queued', 'generating', 'success', 'failed', 'cancelled'].includes(log.status) ? log.status : 'failed', submissionState: ['not_submitted', 'rejected', 'unknown', 'accepted'].includes(log.submissionState) ? log.submissionState : '', source: getStoryboardProvider(log.source) ? log.source : 'novel', model: str(log.model, 240), prompt: str(log.prompt, 800), negative: str(log.negative, 400), effectivePrompt: str(log.effectivePrompt || log.prompt, 24000), effectiveNegative: str(log.effectiveNegative || log.negative, 12000), target: str(log.target, 40), floor: Number.isInteger(log.floor) ? log.floor : null, params: safeData(log.params, 5) || {}, error: redactString(log.error).slice(0, 1600), recordId: cleanId(log.recordId), recordIds: ids(log.recordIds, 20), pipelineId: cleanId(log.pipelineId), queuedAt: pos(log.queuedAt || log.startedAt), startedAt: pos(log.startedAt), finishedAt: pos(log.finishedAt), durationMs: pos(log.durationMs), attempt: int(log.attempt, 1, 20, 1), snapshot: snapshot(log.snapshot, log) })).filter((log) => log.id));
+  const originals=new Map((Array.isArray(value)?value:[]).filter(obj).map(log=>[cleanId(log.id),log]));
+  for(const log of normalized){
+    const raw=originals.get(log.id);
+    if(raw?.kind==='comfy_preparation'){log.kind='comfy_preparation';log.preparation=normalizeStoryboardComfyPreparation(raw.preparation);log.snapshot=null;}
+  }
   return normalized.map((log, index) => ({ log, index, activityAt: log.finishedAt || log.startedAt || log.queuedAt })).sort((a, b) => b.activityAt - a.activityAt || a.index - b.index).slice(0, STORYBOARD_PIPELINE_LOG_LIMIT).map(({ log }) => log);
 }
 function snapshot(value, fallback = {}) {

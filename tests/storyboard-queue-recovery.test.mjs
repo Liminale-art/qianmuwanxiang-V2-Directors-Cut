@@ -17,7 +17,7 @@ async function fixture(){
     storyboardArchivePipelineLog:async()=>{},storyboardPipelineForLog:log=>e.state.pipelineLogs.find(p=>p.id===log.pipelineId),storyboardPlanIsTerminal:()=>false,
     storyboardValidatedAnchor:()=>({valid:true}),storyboardPumpQueue:()=>{},storyboardSettleImageAdmission:async()=>{},
     storyboardImageAdmissionRuntime:async()=>({admit:async(job)=>{attempts++;if(fail&&job.inlineOrder.shotIndex===1)throw Error('node service unavailable');postAdmission(job);}})});
-  vm.runInContext(['storyboardStartLog','storyboardFinishLog','storyboardRecordPreparedJobFailure','storyboardPlanForJob','storyboardSyncTaskState','storyboardSetPlanStatus',
+  vm.runInContext(['storyboardStoreLog','storyboardStartLog','storyboardFinishLog','storyboardRecordPreparedJobFailure','storyboardPlanForJob','storyboardSyncTaskState','storyboardSetPlanStatus',
     'storyboardQueueJob','storyboardJobFromLog','storyboardRetryLog'].map(section).join('\n'),e.context);
   assert.equal(await e.context.storyboardCompilePrompt(null,{plan}),true,JSON.stringify({errors:e.errors,notices:e.notices,plan}));
   return {...e,plan,chat,attempts:()=>attempts,repair:()=>{fail=false;},afterAdmission:fn=>postAdmission=fn};

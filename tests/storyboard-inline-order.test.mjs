@@ -82,7 +82,7 @@ test('record and log projections retain the order outside the removable heavy sn
     storyboardItemCollectionIds: () => [], uniqueClean: value => value, hashText: () => 'hash',
     storyboardPipelineArchiveCache: new Map(), saveSettings() {},
   });
-  vm.runInContext([section('storyboardCreateRecord'), section('storyboardStartLog')].join('\n'), context);
+  vm.runInContext([section('storyboardCreateRecord'), section('storyboardStoreLog'), section('storyboardStartLog')].join('\n'), context);
   const job = { id: 'job', source: 'novel', profile: { model: 'nai-diffusion-5-full' }, payload: { prompt: 'quiet garden' },
     planId: 'plan', planShotId: 'shot', inlineOrder: order(2), floor: 3, chatKey: 'chat-a', inlineByDefault: true,
     target: 'floor', prompt: 'quiet garden', compilerStages: [], attempt: 1 };

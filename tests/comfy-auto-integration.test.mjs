@@ -60,6 +60,137 @@ async function environment({mixed=false,styleLock=true}={}){
 }
 const plan=()=>({id:'plan',chatKey:'chat-a',status:'screening',shots:[]});
 
+async function recoveryEnvironment(options={}){
+  const e=await environment(options),chat=e.context.ctx().chat;
+  const p=core.createStoryboardWorkflowTicket({messageRef:core.createStoryboardMessageReference({message:chat[0],chatKey:'chat-a',floor:0}),chatKey:'chat-a',floor:0});
+  e.state.shotPlans=[p];e.state.target='floor';e.state.floor='0';let rejected=true,admissions=0;
+  const probe=e.context.storyboardProbeComfyCandidate;
+  if(options.sameScene)for(const shot of e.response.shots){shot.scene.location='kitchen';shot.composition.continuity_key='one-scene';}
+  e.context.storyboardProbeComfyCandidate=async(...args)=>{const request=args[3];if(rejected&&request.shot.subject.includes(options.failedText||'mountain'))throw Error('temporary node unavailable');return probe(...args);};
+  Object.assign(e.context,{storyboardPumpQueue(){},storyboardValidatedAnchor:()=>({valid:true}),storyboardImageAdmissionRuntime:async()=>({admit:async()=>{admissions++;}}),
+    storyboardSettleImageAdmission:(job,outcome)=>e.manager.settle(job,outcome)});
+  vm.runInContext(['storyboardStartLog','storyboardFinishLog','storyboardRecordPreparedJobFailure','storyboardQueueJob','storyboardJobFromLog','storyboardRetryLog','storyboardSetPlanStatus'].map(section).join('\n'),e.context);
+  assert.equal(await e.context.storyboardCompilePrompt(null,{plan:p}),true,JSON.stringify(e.errors));
+  return {...e,p,repair:()=>{rejected=false;},admissions:()=>admissions};
+}
+
+test('one unselectable mirror preserves a distinct draft and actual independent re-preparation queues only that original slot',async()=>{
+  const e=await recoveryEnvironment();
+  try{
+    assert.equal(await e.context.storyboardGenerate(null,{plan:e.p,automatic:true}),true,JSON.stringify(e.notices));
+    assert.deepEqual(e.context.storyboardQueue.map(job=>job.inlineOrder.shotIndex),[0,2]);assert.equal(e.admissions(),2);
+    const log=e.state.logs.find(row=>row.kind==='comfy_preparation');assert.equal(log.status,'failed');assert.equal(log.snapshot,null);assert.equal(e.context.storyboardJobFromLog(log),null);
+    assert.deepEqual(e.p.shots.map(shot=>shot.status),['queued','failed','queued']);
+    const saved=core.normalizeStoryboardState(copy(e.state)),persisted=saved.logs.find(row=>row.id===log.id);
+    assert.equal(persisted.snapshot,null);assert.deepEqual(persisted.preparation,copy(log.preparation));
+    const entry=core.buildStoryboardInlineTasks(e.state.taskStates,{chatKey:'chat-a',chat:e.context.ctx().chat,logs:e.state.logs,waitingIds:new Set(e.context.storyboardQueue.map(job=>job.id))}).find(row=>row.status==='failed');
+    assert.equal(entry.label,'本镜待选工作流');assert.equal(entry.action,'reprepare-task');
+    const original=JSON.stringify(log.preparation),before=e.context.storyboardQueue.map(job=>job.id);
+    e.repair();e.state.connections.comfy.draft.baseUrl='https://new-comfy.test/api';e.state.source='novel';e.state.comfyAutoEnabled=false;
+    assert.equal(await e.context.storyboardRetryLog(log),true,JSON.stringify(e.notices));
+    assert.equal(e.llmCalls.length,1);assert.equal(e.admissions(),3);assert.equal(e.context.storyboardQueue.length,3);
+    assert.deepEqual(e.context.storyboardQueue.slice(0,2).map(job=>job.id),before);
+    const retry=e.context.storyboardQueue[2];assert.equal(retry.inlineOrder.shotIndex,1);assert.deepEqual(retry.inlineOrder,log.preparation.inlineOrder);
+    assert.equal(retry.connection.baseUrl,'https://new-comfy.test/api');assert.equal(retry.profile.comfyRouteBinding.id,'landscape');assert.equal(retry.profile.count,'1');
+    assert.equal(retry.attempt,2);assert.equal(log.status,'success');assert.equal(JSON.stringify(log.preparation),original);
+    assert.equal(e.state.source,'novel');assert.equal(e.state.comfyAutoEnabled,false,'explicit recovery must not toggle the workbench mode');
+    assert.equal(await e.context.storyboardRetryLog(log),false);assert.equal(e.admissions(),3);
+  }finally{await e.close();}
+});
+
+test('re-preparation cancellation, source edit, account change and changed style-lock policy cannot queue a replacement',async()=>{
+  for(const kind of ['cancel','body','account','style']){
+    const e=await recoveryEnvironment();
+    try{
+      await e.context.storyboardGenerate(null,{plan:e.p,automatic:true});const log=e.state.logs.find(row=>row.kind==='comfy_preparation');e.repair();
+      e.context.confirmDialog=async()=>{if(kind==='body')e.context.ctx().chat[0].mes+=' edited';if(kind==='account')e.setAccount('st-user:other');return kind!=='cancel';};
+      if(kind==='style'){
+        const load=e.context.featureRuntime.load;
+        e.context.featureRuntime.load=async key=>{const module=await load(key);return key==='comfyAuto'?{...module,prepareComfyAutoSession:async args=>{const result=await module.prepareComfyAutoSession(args);return {...result,styleLock:false};}}:module;};
+      }
+      assert.equal(await e.context.storyboardRetryLog(log),false,kind);assert.equal(e.admissions(),2);assert.equal(e.context.storyboardQueue.length,2);assert.equal(log.status,'failed');
+      assert.equal(e.context.storyboardPreparationRetries.size,0);
+    }finally{await e.close();}
+  }
+});
+
+test('preparation drafts survive normalization without execution fields; corrupt, cross-layer and oversized drafts stay non-executable',async()=>{
+  const e=await recoveryEnvironment();
+  try{
+    await e.context.storyboardGenerate(null,{plan:e.p,automatic:true});const log=e.state.logs.find(row=>row.kind==='comfy_preparation');
+    const raw={...copy(log.preparation),apiKey:'not-a-real-key',workflow:{secret:'not-a-real-secret'},imageAdmission:{version:1},permit:true};
+    const clean=core.normalizeStoryboardComfyPreparation(raw);assert.ok(clean);assert.equal(clean.permit,undefined);assert.equal(clean.apiKey,undefined);assert.equal(clean.workflow,undefined);assert.equal(clean.imageAdmission,undefined);
+    for(const bad of [{...raw,version:2},{...raw,scope:null},{...raw,scope:{...raw.scope,narrativeLayer:'memory'}},
+      {...raw,pool:{...raw.pool,namespace:'another-user'}},{...raw,prompt:'长'.repeat(45000)},{...raw,shotSpec:{...raw.shotSpec,promptRenderingPack:null}}]){
+      assert.equal(core.normalizeStoryboardComfyPreparation(bad),null);
+      const normalized=core.normalizeStoryboardState({...copy(e.state),logs:[{...log,preparation:bad,snapshot:{source:'comfy',profile:{},payload:{prompt:'malicious fallback'},connection:{baseUrl:'https://example.test'}}}]}).logs[0];
+      assert.equal(normalized.kind,'comfy_preparation');assert.equal(normalized.preparation,null);assert.equal(normalized.snapshot,null);assert.equal(e.context.storyboardJobFromLog(normalized),null);
+    }
+  }finally{await e.close();}
+});
+
+test('double-click while confirming prepares only one mirror; same-scene retry consumes the surviving original scene lock',async()=>{
+  const e=await recoveryEnvironment({sameScene:true});
+  try{
+    await e.context.storyboardGenerate(null,{plan:e.p,automatic:true});const log=e.state.logs.find(row=>row.kind==='comfy_preparation');e.repair();
+    assert.equal(e.records.size,1);const scope=copy([...e.records.values()][0].scope);
+    let release;const confirmation=new Promise(resolve=>{release=resolve;});e.context.confirmDialog=()=>confirmation;
+    const first=e.context.storyboardRetryLog(log);await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(await e.context.storyboardRetryLog(log),false);release(true);assert.equal(await first,true,JSON.stringify(e.notices));
+    assert.equal(e.admissions(),3);assert.equal(e.records.size,1);assert.deepEqual(log.preparation.scope,scope);
+    assert.equal(e.context.storyboardQueue[2].profile.comfyRouteBinding.id,'portrait','landscape preference may not override the established same-scene style');
+  }finally{await e.close();}
+});
+
+test('re-extraction explicitly retires pending preparation drafts without replaying or removing accepted jobs',async()=>{
+  const e=await recoveryEnvironment();
+  try{
+    await e.context.storyboardGenerate(null,{plan:e.p,automatic:true});const log=e.state.logs.find(row=>row.kind==='comfy_preparation'),ids=e.context.storyboardQueue.map(job=>job.id);
+    assert.equal(await e.context.storyboardCompilePrompt(null,{plan:e.p}),true);assert.equal(log.status,'cancelled');
+    assert.equal(e.state.taskStates.find(task=>task.logId===log.id).status,'cancelled');assert.deepEqual(e.context.storyboardQueue.map(job=>job.id),ids);
+    assert.equal(await e.context.storyboardRetryLog(log),false);assert.equal(e.admissions(),2);
+  }finally{await e.close();}
+});
+
+test('re-preparation that reaches a complete request but fails admission hands recovery over to the frozen single-request log',async()=>{
+  const e=await recoveryEnvironment();
+  try{
+    await e.context.storyboardGenerate(null,{plan:e.p,automatic:true});const log=e.state.logs.find(row=>row.kind==='comfy_preparation');e.repair();
+    e.context.storyboardImageAdmissionRuntime=async()=>({admit:async()=>{throw Error('local permission unavailable');}});
+    assert.equal(await e.context.storyboardRetryLog(log),false);assert.equal(log.status,'success');assert.equal(e.context.storyboardQueue.length,2);
+    const failed=e.state.logs.find(row=>row.kind!=='comfy_preparation'&&row.status==='failed');assert.equal(failed.submissionState,'not_submitted');assert.ok(failed.snapshot.profile.comfyRouteBinding);
+    const entries=core.buildStoryboardInlineTasks(e.state.taskStates,{chatKey:'chat-a',chat:e.context.ctx().chat,logs:e.state.logs,waitingIds:new Set(e.context.storyboardQueue.map(job=>job.id))});
+    assert.equal(entries.find(row=>row.inlineOrder.shotIndex===1).action,'retry-task');assert.equal(failed.snapshot.inlineOrder.shotIndex,1);
+  }finally{await e.close();}
+});
+
+test('mixed closed/fixed-Comfy routes continue while an automatic mirror is unselectable; recovery does not replace their jobs',async()=>{
+  const e=await recoveryEnvironment({mixed:true,failedText:'cup'});
+  try{
+    assert.equal(await e.context.storyboardGenerate(null,{plan:e.p,automatic:true}),true,JSON.stringify(e.notices));
+    const before=e.context.storyboardQueue.map(job=>({id:job.id,source:job.source,profile:copy(job.profile)}));
+    assert.deepEqual(before.map(job=>job.source),['novel','comfy']);assert.equal(before[1].profile.comfyRouteBinding.id,'landscape');
+    const log=e.state.logs.find(row=>row.kind==='comfy_preparation');assert.equal(log.preparation.inlineOrder.shotIndex,2);e.repair();
+    assert.equal(await e.context.storyboardRetryLog(log),true,JSON.stringify(e.notices));
+    assert.deepEqual(e.context.storyboardQueue.slice(0,2).map(job=>({id:job.id,source:job.source,profile:copy(job.profile)})),before);
+    assert.equal(e.context.storyboardQueue[2].inlineOrder.shotIndex,2);assert.equal(e.llmCalls.length,1);
+  }finally{await e.close();}
+});
+
+test('all-unselectable rounds retain three recoverable drafts across reload and refuse whole-batch replay until re-extraction',async()=>{
+  const e=await recoveryEnvironment();
+  try{
+    e.setMissing('EmptyImage');assert.equal(await e.context.storyboardGenerate(null,{plan:e.p,automatic:true}),false);
+    assert.equal(e.admissions(),0);assert.equal(e.state.logs.filter(log=>log.kind==='comfy_preparation').length,3);
+    const count=e.network.length;assert.equal(await e.context.storyboardGenerate(null,{plan:e.p,automatic:true}),false);assert.equal(e.network.length,count);
+    Object.assign(e.state,core.normalizeStoryboardState(copy(e.state)));
+    e.setMissing('');e.repair();const log=e.state.logs.find(row=>row.preparation?.inlineOrder.shotIndex===1);
+    assert.equal(await e.context.storyboardRetryLog(log),true,JSON.stringify(e.notices));assert.equal(e.admissions(),1);
+    assert.equal(e.context.storyboardQueue.length,1);assert.equal(e.context.storyboardQueue[0].inlineOrder.shotIndex,1);
+    assert.equal(e.state.logs.filter(row=>row.kind==='comfy_preparation'&&row.status==='failed').length,2);
+  }finally{await e.close();}
+});
+
 test('actual one-shot extraction negotiates candidates, then routes, freezes and reserves each shot in narrative order',async()=>{
   const e=await environment(),p=plan(),original=JSON.stringify(e.state.profiles);
   try{
