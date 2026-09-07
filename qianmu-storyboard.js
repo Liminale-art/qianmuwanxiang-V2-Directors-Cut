@@ -3,6 +3,7 @@ import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BIN
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
 import { retainComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
 import { normalizeComfyCharacterActivation } from './qianmu-comfy-character-contract.js';
+import { retainComfyRouteBinding } from './qianmu-comfy-route-contract.js';
 import { normalizeWorldSource } from './qianmu-world-source.js';
 import { normalizeCharacterCastingSnapshot, assertCharacterCastingSnapshots } from './qianmu-character-casting.js';
 export { assertCharacterCastingSnapshots } from './qianmu-character-casting.js';
@@ -1661,15 +1662,17 @@ function normalizeRouting(value) {
     if (!providerId) return { providerId: '', modelId: '', connectionPresetId: '', parameterPresetId: '' };
     // Keep broken references repairable. Clearing them would silently use today's draft connection/parameters.
     const connectionPresetId = cleanId(input.connectionPresetId), parameterPresetId = cleanId(input.parameterPresetId);
+    const workflowBinding = providerId === 'comfy' && Object.hasOwn(input, 'comfyWorkflowBinding')
+      ? { comfyWorkflowBinding: retainComfyRouteBinding(input.comfyWorkflowBinding) } : {};
     try {
       const binding = resolveStoryboardProfileBinding(providerId, { model: input.modelId, capabilityModelId: input.capabilityModelId });
-      return { providerId, modelId: binding.remoteModelId, capabilityModelId: binding.capabilityModelId, connectionPresetId, parameterPresetId };
+      return { providerId, modelId: binding.remoteModelId, capabilityModelId: binding.capabilityModelId, connectionPresetId, parameterPresetId, ...workflowBinding };
     } catch {
       const safeId = (value, fallback) => typeof value === 'string' && value.trim().length <= 240 && !/[\u0000-\u001f\u007f]/.test(value) ? value.trim() : fallback;
       const modelId = safeId(input.modelId, '') || '[invalid-model]';
       return { providerId, modelId,
         capabilityModelId: modelId === '[invalid-model]' ? '[invalid-capability]' : input.capabilityModelId == null || input.capabilityModelId === '' ? '' : safeId(input.capabilityModelId, '[invalid-capability]') || '[invalid-capability]',
-        connectionPresetId, parameterPresetId };
+        connectionPresetId, parameterPresetId, ...workflowBinding };
     }
   };
   const rules = dedupeById((Array.isArray(r.rules) ? r.rules : []).filter(obj).map((rule) => ({ id: cleanId(rule.id), name: str(rule.name || '未命名分工', 80), shotTypes: uniqueStrings(rule.shotTypes, 30, 60), target: target(rule.target, ''), enabled: rule.enabled !== false, priority: int(rule.priority, -1000, 1000, 0) })).filter((rule) => rule.id && rule.target.providerId)).slice(0, 50).sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
