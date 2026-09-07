@@ -643,9 +643,17 @@ export function normalizeStoryboardState(value) {
     ...(obj(value) && Object.hasOwn(value, 'positive') ? { positive: str(value.positive, 12000) } : {}),
     ...(obj(value) && Object.hasOwn(value, 'negative') ? { negative: str(value.negative, 12000) } : {}),
   }]).filter(([key]) => key));
-  const d = obj(state.promptDraft) ? state.promptDraft : {}, safeDraft = safeData(d, 5);
+  const d = obj(state.promptDraft) ? state.promptDraft : {}, { shots: draftShots, ...draftMetadata } = d, safeDraft = safeData(draftMetadata, 5);
   if (obj(safeDraft)) { delete safeDraft.manual; delete safeDraft.autoInstruction; }
   state.promptDraft = { ...(obj(safeDraft) ? safeDraft : {}), compiled: str(d.compiled ?? state.prompt, 24000), negative: str(d.negative ?? state.negative, 12000), artistString: str(d.artistString, 6000), compiledAt: pos(d.compiledAt), compiledBy: str(d.compiledBy, 160), userEditedCompiled: Boolean(d.userEditedCompiled), userEditedNegative: Boolean(d.userEditedNegative), artistPositiveBaked: Boolean(d.artistPositiveBaked), artistNegativeBaked: Boolean(d.artistNegativeBaked), sourceSummary: Array.isArray(d.sourceSummary) ? d.sourceSummary.slice(0, 40).map((x) => str(x, 240)).filter(Boolean) : [] };
+  // A draft has two extra container levels versus a plan shot. Generic depth cleanup erased its cast.
+  // Preserve only the typed visual facts, not arbitrary deeply nested metadata or binary/secret fields.
+  if (Array.isArray(draftShots)) state.promptDraft.shots = draftShots.slice(0, 100).filter(obj).map(raw => {
+    const { shotSpec, ...metadata } = raw;
+    const row = safeData(metadata, 3) || {};
+    if (obj(shotSpec)) row.shotSpec = normalizeStoryboardShotSpec(shotSpec);
+    return row;
+  });
   const c = obj(state.promptCompiler) ? state.promptCompiler : {}, safeCompiler = safeData(c, 5);
   const legacyCompilerTags = str(c.excludedTags, 2000).split(/[,，\s]+/).map((name) => ({ name, action: 'remove' }));
   const compilerTagRules = (Array.isArray(c.tagRules) ? c.tagRules : (legacyCompilerTags.some((item) => item.name) ? legacyCompilerTags : compilerTagRuleDefaults()))
@@ -2260,6 +2268,10 @@ function snapshot(value, fallback = {}) {
   // Preserve the separately bounded role contract without raising the generic snapshot depth budget.
   // A truncated recipe must never later be interpreted as a role that has no Comfy configuration.
   for (const [original,clean] of [[raw.shotSpec,safe?.shotSpec],[raw.payload?.shotSpec,payload.shotSpec]]) {
+    // Here "key" names a typed continuity fact, not an API credential. Keep its bounded contract.
+    if (obj(clean?.continuityUpdates) && Array.isArray(original?.continuityUpdates?.facts)) {
+      clean.continuityUpdates.facts = normalizeContinuity(original.continuityUpdates).facts;
+    }
     if (!Array.isArray(original?.characters) || !Array.isArray(clean?.characters)) continue;
     clean.characters.forEach((character,index) => {
       const archive = original.characters[index]?.archiveSnapshot;
