@@ -8,7 +8,8 @@ import {
   normalizeStoryboardShotSpec,
 } from './qianmu-storyboard.js';
 import { characterCastingInput } from './qianmu-character-casting.js';
-import { normalizeStoryboardPromptFormats, storyboardPromptRenderingsSchema, validateStoryboardPromptRenderings } from './qianmu-prompt-formats.js';
+import { normalizeStoryboardPromptFormats, storyboardPromptRenderingsSchema, validateStoryboardPromptRenderings, storyboardPromptFormatBudget, STORYBOARD_PROMPT_FORMAT_DESCRIPTIONS } from './qianmu-prompt-formats.js';
+export { bindStoryboardPromptRenderings, remapStoryboardPromptRenderings, storyboardPromptFormatBudget } from './qianmu-prompt-formats.js';
 
 // LLM 返回协议只负责“把原始 JSON 变成可信结构”，不发请求，也不猜测缺失内容。
 export const STORYBOARD_PLAN_RESPONSE_SCHEMA_ID = 'qianmu.storyboard.plan.v1';
@@ -875,6 +876,8 @@ export function buildStoryboardPlanContractRequest(context = {}, config = {}) {
       preferred_ratio_id: preferredRatioId,
       allowed_ratio_ids: allowedRatioIds,
       ...(promptFormats.length ? { prompt_formats: promptFormats, prompt_rendering_source: 'same_shot_facts_and_visible_character_ids',
+        prompt_format_definitions:Object.fromEntries(promptFormats.map(format=>[format,STORYBOARD_PROMPT_FORMAT_DESCRIPTIONS[format]])),
+        prompt_rendering_geometry:'numeric_aspect_ratio_is_applied_by_workflow_not_prompt_text',
         prompt_rendering_scope: 'representation_only_no_new_facts_no_artist_syntax_no_routing_or_content_authority' } : {}),
     },
     target_paragraphs: (Array.isArray(context.paragraphs) ? context.paragraphs : []).map((text, index) => ({
@@ -918,7 +921,7 @@ export function buildStoryboardPlanContractRequest(context = {}, config = {}) {
     maxShots: manualSupplement ? 1 : maxShots,
     manualSupplement,
     requirePrimarySubject,
-    ...(promptFormats.length ? {promptFormats} : {}),
+    ...(promptFormats.length ? {promptFormats,maxTokens:storyboardPromptFormatBudget(promptFormats,manualSupplement ? 1 : maxShots)} : {}),
   };
 }
 

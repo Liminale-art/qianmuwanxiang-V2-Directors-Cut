@@ -6,7 +6,9 @@ import { normalizeComfyCharacterActivation } from './qianmu-comfy-character-cont
 import { retainComfyRouteBinding, retainComfyRoutePromptLayer } from './qianmu-comfy-route-contract.js';
 import { normalizeWorldSource } from './qianmu-world-source.js';
 import { normalizeCharacterCastingSnapshot, assertCharacterCastingSnapshots } from './qianmu-character-casting.js';
+import { STORYBOARD_PROMPT_FORMATS, retainStoryboardPromptRenderingPack } from './qianmu-prompt-formats.js';
 export { assertCharacterCastingSnapshots } from './qianmu-character-casting.js';
+export { normalizeStoryboardPromptFormats } from './qianmu-prompt-formats.js';
 export { planCharacterReference, assertCharacterReferencePlan, characterReferenceNotice, characterReferenceChoice, renderCharacterReferencePicker, applyCharacterReferenceChoice } from './qianmu-character-reference.js';
 
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
@@ -1193,6 +1195,7 @@ export function normalizeStoryboardShotSpec(value = {}) {
       rationale: str(composition.rationale, 1000),
     },
     promptAtoms: normalizePromptAtoms(raw.promptAtoms || raw.prompt_atoms),
+    ...(Object.hasOwn(raw,'promptRenderingPack') ? {promptRenderingPack:retainStoryboardPromptRenderingPack(raw.promptRenderingPack,characters.map(character=>character.id))} : {}),
     sensitive: Boolean(raw.sensitive), safetyNotes: shotStringList(raw.safetyNotes || raw.safety_notes, 20, 500),
     evidence: {
       type: evidenceType,
@@ -2134,6 +2137,7 @@ export function normalizeStoryboardParameterProfile(value, providerId) {
   if (providerId === 'comfy') {
     if (Object.hasOwn(p, 'comfyRouteBinding')) base.comfyRouteBinding = retainComfyRouteBinding(p.comfyRouteBinding);
     if (Object.hasOwn(p, 'comfyRoutePromptLayer')) base.comfyRoutePromptLayer = retainComfyRoutePromptLayer(p.comfyRoutePromptLayer);
+    if (Object.hasOwn(p, 'comfyRoutePromptFormat')) base.comfyRoutePromptFormat = STORYBOARD_PROMPT_FORMATS.includes(p.comfyRoutePromptFormat) ? p.comfyRoutePromptFormat : '[invalid]';
     if (Object.hasOwn(p, 'comfyReferences')) base.comfyReferences = retainComfyReferenceSelection(p.comfyReferences);
     if (Object.hasOwn(p,'comfyCharacterActivation')) {
       try { base.comfyCharacterActivation = normalizeComfyCharacterActivation(p.comfyCharacterActivation); }
@@ -2268,6 +2272,7 @@ function snapshot(value, fallback = {}) {
   // Preserve the separately bounded role contract without raising the generic snapshot depth budget.
   // A truncated recipe must never later be interpreted as a role that has no Comfy configuration.
   for (const [original,clean] of [[raw.shotSpec,safe?.shotSpec],[raw.payload?.shotSpec,payload.shotSpec]]) {
+    if (obj(clean) && Object.hasOwn(original || {},'promptRenderingPack')) clean.promptRenderingPack = retainStoryboardPromptRenderingPack(original.promptRenderingPack,(Array.isArray(original.characters) ? original.characters : []).map(character=>character?.id));
     // Here "key" names a typed continuity fact, not an API credential. Keep its bounded contract.
     if (obj(clean?.continuityUpdates) && Array.isArray(original?.continuityUpdates?.facts)) {
       clean.continuityUpdates.facts = normalizeContinuity(original.continuityUpdates).facts;

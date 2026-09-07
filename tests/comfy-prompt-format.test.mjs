@@ -1,0 +1,162 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import {readFile} from 'node:fs/promises';
+import * as core from '../qianmu-storyboard.js';
+import * as formats from '../qianmu-prompt-formats.js';
+import * as contract from '../qianmu-storyboard-contract.js';
+import * as routes from '../qianmu-comfy-route.js';
+import * as prompts from '../qianmu-comfy-prompt.js';
+import {applyCharacterCasting,CHARACTER_CASTING_SCHEMA} from '../qianmu-character-casting.js';
+import {prepareComfyWorkflow} from '../qianmu-comfy-workflow.js';
+import {routeEnvironment,recipesFixture,namespace} from './helpers/comfy-route-fixture.mjs';
+import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
+const plain=value=>JSON.parse(JSON.stringify(value));
+const casting={schema:CHARACTER_CASTING_SCHEMA,entries:[{identity:{subjectId:'archive:alice',archiveId:'alice',archiveVersion:1,category:'char',name:'Alice',appearance:'silver hair',aliases:[]},negative:''}],unboundNames:[]};
+const response=()=>({schema:contract.STORYBOARD_PLAN_RESPONSE_SCHEMA_ID,should_generate:true,skip_reason:'',continuity_updates:[],decisions:[],shots:['portrait','environment','object'].map((kind,index)=>{
+  const character=index===0?[{character_id:'A',name:'Alice',fixed_identity:['silver hair'],current_state:{outfit:['coat removed'],expression:[],pose:[],action:['reads a letter'],gaze:[],props:['letter']},spatial:{order:1,region:'center',center:{x:0.5,y:0.5},visible_crop:'waist'}}]:[];
+  const description=['Alice reads a letter','a wide mountain valley','a broken cup'][index];
+  return {source_paragraph_ids:[`P${index+1}`],insert_after:`P${index+1}`,narrative_layer:'present',narrative_purpose:description,shot_role:index===2?'detail':index===1?'establishing':'reaction',shot_scale:index===2?'insert':'medium_shot',subject:description,
+    scene:{location:['kitchen','mountains','table'][index],time:'day',lighting:[],environment:[]},characters:character,shared_relations:[],
+    composition:{ratio_id:'3:2',orientation:'landscape',camera_side:'axis-neutral',angle:'eye-level',focus:description,negative_space:'',intent:description,continuity_key:`scene-${index}`},
+    prompt_atoms:{global:[description],character_ids:character.map(row=>row.character_id),scene_negative:[]},sensitive:false,safety_notes:[],
+    prompt_renderings:Object.fromEntries(['tags','natural_language'].map(format=>[format,{global:format==='tags'?`tag-scene-${index}, soft light`:`Natural scene ${index} with gentle light.`,
+      characters:character.map(row=>({character_id:row.character_id,positive:format==='tags'?'silver hair, coat removed, reading a letter':'Alice, with silver hair and no coat, reads a letter.'})),negative:format==='tags'?'extra people':'No extra people.'}]))};
+})});
+async function environment(){
+  const e=await routeEnvironment({formats:['tags','natural_language']}),calls=[],errors=[];
+  const load=e.context.featureRuntime.load;
+  e.context.featureRuntime.load=async key=>key==='storyboardContract'?contract:key==='comfyPrompt'?prompts:load(key);
+  const scene=response(),chat=[{mes:'Alice reads a letter. A mountain valley. A broken cup.',is_user:false}];
+  Object.assign(e.context,{MODULE_NAME:'format-qa',storyboardCompilerBusy:false,STORYBOARD_SHOT_GROUP_TEMPLATES:{smart:{label:'test',instruction:''}},storyboardTargetFloor:()=>0,
+    ctx:()=>({chat}),
+    storyboardCompilerContext:async()=>({floor:0,paragraphs:scene.shots.map(row=>row.subject),messages:[],worldRows:[],currentCharacter:'Alice',persona:'',world:'',
+      characterCasting:casting,casting:{apply:applyCharacterCasting,assertCurrent:async()=>{}}}),
+    storyboardCallCompiler:async(messages,id,options)=>{calls.push({messages:plain(messages),options:plain(options)});return JSON.stringify(scene);},
+    storyboardScheduleInlineRender(){},storyboardScheduleAutomaticCapture(){},storyboardSchedulePlanArchive(){},
+    storyboardSetPlanStatus:(plan,status,extra={})=>{if(plan)Object.assign(plan,{status,...extra});},console:{error:(...args)=>errors.push(args.map(value=>value?.message||String(value)).join(' '))},
+  });
+  vm.runInContext(['storyboardCompilerRequestConfig','storyboardCompilerResult','storyboardCompilePrompt','storyboardPrepareComfyPromptJob','storyboardPrepareGatewayAssets'].map(section).join('\n'),e.context);
+  e.context.storyboardQueueJob=async job=>{if(job.source==='comfy') {await e.context.storyboardVerifyComfyRouteJob(job);await e.context.storyboardPrepareComfyPromptJob(job,{prepare:true});}e.jobs.push(job);return true;};
+  return {...e,llmCalls:calls,errors,response:scene};
+}
+
+test('fixed recipes expose only their exact classification and unknown recipes clear stale format provenance',async()=>{
+  const f=await recipesFixture({formats:['natural_language','tags']}),prepared=await routes.prepareComfyRouteRecipes({routes:f.routes,namespace,createStore:f.createStore});
+  assert.deepEqual(prepared.promptFormats,['tags','natural_language']);assert.ok(Object.isFrozen(prepared.promptFormats));
+  assert.equal(prepared.apply(f.routes[0],{}).comfyRoutePromptFormat,'natural_language');
+  const old=await recipesFixture();assert.equal(routes.applyComfyRouteRecipe({comfyRoutePromptFormat:'natural_language'},old.routes[0],old.recipes[0]).comfyRoutePromptFormat,undefined);
+});
+test('alias remapping allows only IDs; visual changes, reordered people and duplicate target IDs fail',()=>{
+  const before=core.normalizeStoryboardShotSpec({subject:'Alice reads',characters:[{id:'A',name:'Alice',identity:['silver hair']}],primarySubjectId:'A'});
+  const rendering={tags:{global:'kitchen',characters:[{character_id:'A',positive:'silver hair'}],negative:''}};
+  const after=core.normalizeStoryboardShotSpec(applyCharacterCasting(before,casting).shot),mapped=formats.remapStoryboardPromptRenderings(rendering,before,after);
+  assert.equal(mapped.tags.characters[0].character_id,'archive:alice');assert.equal(rendering.tags.characters[0].character_id,'A');
+  after.characters[0].identity=['black hair'];assert.throws(()=>formats.remapStoryboardPromptRenderings(rendering,before,after),/改变了画面事实/);
+});
+test('numeric output geometry does not stale a rendering; camera/framing changes still do',async()=>{
+  const shot=core.normalizeStoryboardShotSpec({scene:'garden',composition:{ratioId:'3:2',focus:'flower'}}),pack=await formats.bindStoryboardPromptRenderings(shot,{tags:{global:'garden',characters:[],negative:''}});
+  shot.composition.ratioId='';shot.composition.ratioLocked=true;assert.equal((await formats.resolveStoryboardPromptRendering(shot,pack,'tags')).global,'garden');
+  shot.composition.focus='person';await assert.rejects(formats.resolveStoryboardPromptRendering(shot,pack,'tags'),/旧提示表达已失效/);
+});
+test('single actual extraction requests the fixed-route format union and binds resolved archive IDs',async()=>{
+  const e=await environment(),plan={id:'plan',status:'screening',shots:[]};assert.equal(await e.context.storyboardCompilePrompt(null,{plan}),true,JSON.stringify(e.errors));
+  assert.equal(e.llmCalls.length,1);assert.deepEqual(e.llmCalls[0].options.promptFormats,['tags','natural_language']);assert.equal(e.llmCalls[0].options.maxTokens,10800);
+  assert.deepEqual(Object.keys(JSON.parse(e.llmCalls[0].messages[1].content).constraints.prompt_format_definitions),['tags','natural_language']);
+  const shot=e.state.promptDraft.shots[0].shotSpec;assert.equal(shot.characters[0].id,'archive:alice');assert.equal(shot.promptRenderingPack.renderings.tags.characters[0].character_id,'archive:alice');
+  assert.equal(shot.promptRenderings,undefined);assert.equal(e.state.promptDraft.shots[0].promptRenderings,undefined);
+  assert.equal(plan.shots[0].shotSpec.promptRenderingPack.sourceHash,shot.promptRenderingPack.sourceHash);
+});
+test('actual extraction -> settings reload -> mixed route jobs -> final workflow inputs preserves formats and narrative order',async()=>{
+  const e=await environment(),plan={id:'plan',chatKey:'chat-a',status:'screening',shots:[]};assert.equal(await e.context.storyboardCompilePrompt(null,{plan}),true,JSON.stringify(e.errors));
+  core.normalizeStoryboardState(e.state);
+  assert.equal(await e.context.storyboardGenerate(null,{plan,automatic:true}),true,JSON.stringify({notices:e.notices,errors:e.errors}));
+  assert.equal(e.jobs.length,3);assert.deepEqual(e.jobs.map(job=>job.source),['comfy','comfy','novel']);assert.equal(e.llmCalls.length,1);
+  const [tags,natural,nai]=e.jobs;
+  assert.match(tags.payload.prompt,/^portrait quality, tag-scene-0/);assert.match(tags.payload.prompt,/'Alice'|"Alice"/);assert.match(tags.payload.prompt,/coat removed/);
+  assert.match(natural.payload.prompt,/^landscape quality\n\nNatural scene 1/);assert.doesNotMatch(natural.payload.prompt,/tag-scene|portrait quality/);
+  assert.equal(tags.payload.negative,'portrait exclusions, extra people');assert.match(natural.payload.negative,/landscape exclusions\n\nNo extra people/);
+  assert.equal(nai.payload.promptRendering,undefined);assert.doesNotMatch(nai.payload.prompt,/landscape quality|Natural scene/);
+  assert.deepEqual(e.jobs.map(job=>job.inlineOrder.shotIndex),[0,1,2]);
+  for(const job of [tags,natural]) {
+    const graphBefore=job.profile.comfyWorkflow;
+    await e.context.storyboardPrepareGatewayAssets(job);assert.equal(job.profile.comfyWorkflow,graphBefore);
+    const workflow=prepareComfyWorkflow(job.payload.parameters.workflow,{prompt:job.payload.prompt,negativePrompt:job.payload.negative,parameters:job.payload.parameters,model:job.profile.model}).bind();
+    assert.ok(workflow.text.inputs.text.startsWith(job.payload.prompt));assert.equal(workflow.negative.inputs.text,job.payload.negative);
+  }
+});
+test('frozen history re-verifies the same expression without reading a newer library version or translating',async()=>{
+  const e=await environment();await e.context.storyboardCompilePrompt(null);await e.context.storyboardGenerate(null,{automatic:true});const job=e.jobs[0];
+  const saved=core.sanitizeStoryboardSnapshot(job),loads=e.calls.filter(call=>Array.isArray(call)&&call[0]==='load').length;
+  assert.equal(saved.profile.comfyRoutePromptFormat,'tags');assert.equal(saved.payload.shotSpec.promptRenderingPack.invalid,undefined);
+  const replay={...saved,payload:saved.payload};await prompts.prepareComfyPromptJob(replay);assert.equal(e.llmCalls.length,1);
+  replay.payload.promptRendering=Object.fromEntries(Object.entries(replay.payload.promptRendering).reverse());await prompts.prepareComfyPromptJob(replay);
+  assert.equal(e.calls.filter(call=>Array.isArray(call)&&call[0]==='load').length,loads);
+  replay.payload.prompt+=' changed';await assert.rejects(prompts.prepareComfyPromptJob(replay),/已准备的提示表达/);
+});
+test('bad/missing formats, visual edits and safety adaptation stop before a provider request',async()=>{
+  const e=await environment();await e.context.storyboardCompilePrompt(null);await e.context.storyboardGenerate(null,{automatic:true});
+  for(const mutate of [job=>delete job.payload.shotSpec.promptRenderingPack,job=>job.payload.shotSpec.characters[0].action=['dances'],job=>job.safetyAdapted=true,job=>job.profile.comfyRoutePromptFormat='guess']){
+    const job=plain(e.jobs[0]);mutate(job);await assert.rejects(prompts.prepareComfyPromptJob(job,{prepare:true}));
+  }
+  assert.equal(e.llmCalls.length,1);
+});
+test('explicit manual prompt editing bypasses extraction, but submission verifies the exact new text',async()=>{
+  const e=await environment();await e.context.storyboardCompilePrompt(null);await e.context.storyboardGenerate(null,{automatic:true});const job=plain(e.jobs[0]);
+  job.promptLocked=true;job.safetyAdapted=true;delete job.payload.shotSpec.promptRenderingPack;job.payload.prompt='my explicit manual wording';job.payload.negative='manual exclusions';
+  await prompts.prepareComfyPromptJob(job,{prepare:true});assert.equal(job.payload.promptRendering.mode,'manual');assert.equal(job.payload.compiledPrompt.prompt,job.payload.prompt);
+  await prompts.prepareComfyPromptJob(job);job.payload.prompt+=' changed';await assert.rejects(prompts.prepareComfyPromptJob(job),/已准备的提示表达/);assert.equal(e.llmCalls.length,1);
+});
+test('late async mutations, scope changes and malformed persisted packs cannot be blessed as newly prepared',async()=>{
+  const e=await environment();await e.context.storyboardCompilePrompt(null);await e.context.storyboardGenerate(null,{automatic:true});let job=plain(e.jobs[0]);
+  await assert.rejects(prompts.prepareComfyPromptJob(job,{guard:async()=>{job.profile.comfyRoutePromptLayer.positive='late';}}),/已变化/);
+  job=plain(e.jobs[0]);await assert.rejects(prompts.prepareComfyPromptJob(job,{guard:async()=>{throw Error('account changed');}}),/account changed/);
+  const spec=plain(job.shotSpec);spec.promptRenderingPack={schema:'v999'};const normalized=core.normalizeStoryboardShotSpec(spec);assert.equal(normalized.promptRenderingPack.invalid,true);
+  assert.equal(core.normalizeStoryboardParameterProfile({...job.profile,comfyRoutePromptFormat:'guess'},'comfy').comfyRoutePromptFormat,'[invalid]');
+});
+test('bounded output allowance reaches both API paths only for negotiated formats, without hidden per-shot calls',async()=>{
+  assert.equal(formats.storyboardPromptFormatBudget([],4),2200);assert.equal(formats.storyboardPromptFormatBudget(['tags'],1),2600);assert.equal(formats.storyboardPromptFormatBudget(['tags','natural_language','character_blocks'],4),16384);
+  const e=await environment(),requests=[];vm.runInContext(section('storyboardCallCompiler'),e.context);Object.assign(e.context,{AbortController,
+    callExternalApi:async(_messages,_unused,cfg)=>{requests.push(cfg);return 'ok';},callSillyTavernModel:async(_user,_system,_unused,cfg)=>{requests.push(cfg);return 'ok';}});
+  e.context.settings.providerMode='external';await e.context.storyboardCallCompiler([{role:'user',content:'x'}],null,{promptFormats:['tags'],maxTokens:999999});assert.equal(requests.at(-1).maxTokens,16384);
+  await e.context.storyboardCallCompiler([{role:'user',content:'x'}],null,{maxTokens:999999});assert.equal(requests.at(-1).maxTokens,4000);
+  e.context.settings.providerMode='st';await e.context.storyboardCallCompiler([{role:'user',content:'x'}],null,{promptFormats:['tags'],maxTokens:5200});assert.equal(requests.at(-1).max_tokens,5200);
+});
+test('format projection does not modify graphs, claim spatial isolation or duplicate character blocks',()=>{
+  const shot=core.normalizeStoryboardShotSpec({characters:[{id:'A',name:'Alice'},{id:'B',name:'Bob'}]});
+  const output=prompts.compileComfyPromptRendering({format:'character_blocks',global:'shared scene',negative:'no extras',characters:[{character_id:'A',positive:'reads a letter'},{character_id:'B',positive:'watches'}]},shot,{positive:'style',supportsNegative:false});
+  assert.equal((output.prompt.match(/reads a letter/g)||[]).length,1);assert.equal(output.characterBlocks.length,2);assert.equal(output.negative,'');assert.match(output.prompt,/"Alice": reads a letter\n\n"Bob": watches/);
+});
+test('both enqueue and pre-submission are wired; candidate auto-selection is still not activated',async()=>{
+  assert.match(section('storyboardConfirmComfyExecution'),/storyboardPrepareComfyPromptJob\(job,\{prepare:true,valid\}\)/);
+  assert.match(section('storyboardPrepareGatewayAssets'),/storyboardPrepareComfyPromptJob\(job\)/);
+  const source=await readFile(new URL('../qianmu-comfy-prompt.js',import.meta.url),'utf8');assert.doesNotMatch(source,/\b(fetch|XMLHttpRequest|WebSocket|indexedDB)\b/);
+  assert.doesNotMatch(section('storyboardGenerate'),/selectComfyWorkflow/);
+});
+test('the actual last-moment submission callback rejects altered expressions before admission',async()=>{
+  const e=await environment();await e.context.storyboardCompilePrompt(null);await e.context.storyboardGenerate(null,{automatic:true});const job=e.jobs[0];let admissions=0;
+  Object.assign(e.context,{job,log:{},storyboardValidatedAnchor:()=>({valid:true}),storyboardAdmission:{beforeSubmit:async()=>{admissions++;}},channelTicket:null,admissionOutcome:'not_submitted'});
+  const body=section('storyboardRunJob');const start=body.indexOf('  const beforeSubmit = async () => {'),end=body.indexOf('\n  };\n  try {',start)+5;
+  assert.ok(start>0&&end>start);vm.runInContext(`${body.slice(start,end)}\nglobalThis.checkSubmission=beforeSubmit;`,e.context);
+  job.payload.prompt+=' changed';await assert.rejects(e.context.checkSubmission(),/已准备的提示表达/);assert.equal(admissions,0);
+  job.payload.prompt=job.compiledPrompt.prompt;await e.context.checkSubmission();assert.equal(admissions,1);assert.equal(job.submissionState,'unknown');
+});
+test('queued plan details are updated with the actual selected-format compilation',async()=>{
+  const e=await environment();await e.context.storyboardCompilePrompt(null);await e.context.storyboardGenerate(null,{automatic:true});const job=e.jobs[0],plan={id:'p',shots:[{id:'s',compiledPrompt:{prompt:'legacy preview'}}]};job.planShotId='s';
+  Object.assign(e.context,{storyboardSyncTaskState:()=>null,aggregateStoryboardShotTasks:()=>({status:'queued',error:'',partialFailureCount:0,resultIds:[]}),storyboardPlanIsTerminal:()=>false});
+  vm.runInContext(section('storyboardSetPlanStatus'),e.context);e.context.storyboardSetPlanStatus(plan,'queued',{job});
+  assert.equal(plan.shots[0].compiledPrompt.prompt,job.payload.prompt);assert.equal(plan.shots[0].compiledPrompt.promptFormat,'tags');
+});
+test('actual compiler uses only its one bounded repair and retains the same format/output allowance',async()=>{
+  const e=await environment(),call=e.context.storyboardCallCompiler;let round=0;
+  e.context.storyboardCallCompiler=async(...args)=>{const raw=await call(...args);if(round++===0){const value=JSON.parse(raw);delete value.shots[0].prompt_renderings.tags;return JSON.stringify(value);}return raw;};
+  assert.equal(await e.context.storyboardCompilePrompt(null),true,JSON.stringify(e.errors));assert.equal(e.llmCalls.length,2);
+  assert.deepEqual(e.llmCalls[1].options.promptFormats,e.llmCalls[0].options.promptFormats);assert.equal(e.llmCalls[1].options.maxTokens,e.llmCalls[0].options.maxTokens);assert.equal(e.llmCalls[1].options.temperature,0);
+  assert.equal(e.state.promptDraft.shots[0].shotSpec.promptRenderingPack.invalid,undefined);
+});
+test('format text remains literal input, never a second workflow-template expansion',()=>{
+  const text='literal %qianmu_reference% and %qianmu_negative%';
+  const shot=core.normalizeStoryboardShotSpec({scene:'letter'}),rendered=prompts.compileComfyPromptRendering({format:'natural_language',global:text,characters:[],negative:''},shot);
+  const workflow={text:{class_type:'CLIPTextEncode',inputs:{text:'%qianmu_prompt%'}}};
+  assert.equal(prepareComfyWorkflow(workflow,{prompt:rendered.prompt,negativePrompt:''}).bind().text.inputs.text,text);assert.equal(workflow.text.inputs.text,'%qianmu_prompt%');
+});

@@ -10,9 +10,10 @@ export const graph = label => ({
   image: { class_type: 'EmptyImage', inputs: { width: '%qianmu_width%', height: '%qianmu_height%', batch_size: '%qianmu_count%' } },
   save: { class_type: 'SaveImage', inputs: { images: ['image', 0] } },
 });
-export async function recipesFixture() {
+export async function recipesFixture({formats=null}={}) {
   const rows = ['portrait','landscape'].map((name, index) => ({ namespace, id:name, revision:`revision-${name}`, version:1, name, archived:false,
     document:{ workflow:JSON.stringify(graph(name)), outputNodeId:'save', positivePrompt:`${name} quality`, negativePrompt:`${name} exclusions`,
+      ...(formats?.[index] ? {classification:{version:1,promptFormat:formats[index],contentClasses:['sfw']}} : {}),
       parameters:{width:index ? 1216 : 832,height:index ? 832 : 1216,count:4,steps:index ? 24 : 16,cfg:5,seed:0,sampler:'euler',scheduler:'normal'} } }));
   const calls=[];
   const createStore=()=>({
@@ -25,8 +26,8 @@ export async function recipesFixture() {
   const routes=recipes.map(recipe=>({providerId:'comfy',modelId:'comfy-workflow',capabilityModelId:'comfy-workflow',connectionPresetId:'',parameterPresetId:'',comfyWorkflowBinding:recipe.binding,comfyCharacterEnabled:false,comfyReferences:null}));
   return {rows,calls,createStore,recipes,routes};
 }
-export async function routeEnvironment() {
-  const f=await recipesFixture(),state=storyboard.createStoryboardDefaults(),jobs=[],notices=[],calls=[]; let account=namespace,sequence=0;
+export async function routeEnvironment(options={}) {
+  const f=await recipesFixture(options),state=storyboard.createStoryboardDefaults(),jobs=[],notices=[],calls=[]; let account=namespace,sequence=0;
   Object.assign(state,{enabled:true,target:'gallery',source:'novel',prompt:'one scene'});
   Object.assign(state.profiles.comfy,{comfyWorkflow:JSON.stringify(graph('global')),comfyOutputNodeId:'save',count:'3',width:'512',height:'512'});
   state.connections.comfy.draft.options.comfyTransport='browser';

@@ -3,6 +3,11 @@
 export const STORYBOARD_PROMPT_FORMATS = Object.freeze(['tags', 'natural_language', 'character_blocks']);
 export const STORYBOARD_RENDERINGS_SCHEMA = 'qianmu.storyboard.renderings.v1';
 export const STORYBOARD_RENDERINGS_MAX_BYTES = 48 * 1024;
+export const STORYBOARD_PROMPT_FORMAT_DESCRIPTIONS = Object.freeze({
+  tags: 'Concise English visual tags, comma-separated. Keep individual identity and current state in their own character entry.',
+  natural_language: 'Concrete visual sentences, with each character described separately by character_id.',
+  character_blocks: 'Self-contained named character descriptions; shared content stays global. This is text layout, not a request to create workflow nodes.',
+});
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_prompt_format' }); };
 const freeze = value => { if (object(value) || Array.isArray(value)) { Object.values(value).forEach(freeze); Object.freeze(value); } return value; };
@@ -33,17 +38,12 @@ export function negotiateStoryboardPromptFormats(destinations = []) {
 
 export function storyboardPromptRenderingsSchema(formatsInput) {
   const formats = normalizeStoryboardPromptFormats(formatsInput);
-  const descriptions = {
-    tags: 'Concise visual tags. Keep individual identity and current state in their own character entry.',
-    natural_language: 'Concrete visual sentences, with each character described separately by character_id.',
-    character_blocks: 'Self-contained named character descriptions, suitable for separate character inputs; shared content stays global.',
-  };
   return {
     type: 'object', additionalProperties: false, required: formats,
     properties: Object.fromEntries(formats.map(format => [format, {
-      type: 'object', additionalProperties: false, required: ['global', 'characters', 'negative'], description: descriptions[format],
+      type: 'object', additionalProperties: false, required: ['global', 'characters', 'negative'], description: STORYBOARD_PROMPT_FORMAT_DESCRIPTIONS[format],
       properties: {
-        global: { type: 'string', maxLength: 4000, description: 'Render this same shot: shared scene, lighting, camera, framing and relations only. No individual traits, artist names, or new narrative facts.' },
+        global: { type: 'string', maxLength: 4000, description: 'Render this same shot: shared scene, lighting, camera, framing and relations only. No individual traits, artist names, or new narrative facts. Do not encode numeric aspect ratio; output geometry is controlled by the workflow.' },
         characters: { type: 'array', maxItems: 12, items: {
           type: 'object', additionalProperties: false, required: ['character_id', 'positive'],
           properties: {
@@ -110,7 +110,8 @@ function shotProjection(shot) {
   if (!object(shot) || shot.schema !== 'qianmu.storyboard.plan.v1' || !Array.isArray(shot.characters) || shot.characters.length > 12) fail('镜头事实尚未规范化');
   const fields = ['subject', 'scene', 'narrativeLayer', 'narrativePurpose', 'shotRole', 'shotScale', 'shotPattern', 'visualDuty', 'subjectKind', 'primarySubjectId', 'sharedRelations', 'composition', 'promptAtoms', 'sensitive', 'safetyNotes'];
   const characterFields = ['id', 'name', 'identity', 'outfit', 'temporaryState', 'expression', 'pose', 'action', 'gaze', 'props', 'spatial'];
-  return { ...Object.fromEntries(fields.map(key => [key, shot[key]])), characters: shot.characters.map(character =>
+  const { ratioId: ignoredRatio, ratioLocked: ignoredLock, ...composition } = shot.composition || {};
+  return { ...Object.fromEntries(fields.map(key => [key, shot[key]])), composition, characters: shot.characters.map(character =>
     Object.fromEntries(characterFields.map(key => [key, character[key]]))) };
 }
 function captureProjection(shot) {
@@ -122,6 +123,40 @@ async function digest(value) {
   if (!globalThis.crypto?.subtle) fail('当前环境无法核对提示表达，请使用 HTTPS 或本机地址');
   const result = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value)));
   return [...new Uint8Array(result)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export function storyboardPromptFormatBudget(formats, maxShots = 1) {
+  const count = normalizeStoryboardPromptFormats(formats).length;
+  if (!count) return 2200;
+  if (!Number.isInteger(maxShots) || maxShots < 1 || maxShots > 4) fail('本次取景数量预算无效');
+  // A bounded output allowance, not a promise about model quality or a second translation request.
+  return Math.min(16384, maxShots * (1600 + 1000 * count));
+}
+
+export function retainStoryboardPromptRenderingPack(value, characterIds) {
+  try {
+    if (!object(value) || value.invalid || value.schema !== STORYBOARD_RENDERINGS_SCHEMA || !/^[a-f0-9]{64}$/.test(value.sourceHash || '')) fail('提示表达快照无效');
+    const formats = normalizeStoryboardPromptFormats(Object.keys(value.renderings || {}));
+    if (!formats.length) fail('提示表达为空');
+    const checked = validateStoryboardPromptRenderings(value.renderings, { formats, characterIds });
+    if (!checked.ok) fail(checked.errors[0].message);
+    return {schema:STORYBOARD_RENDERINGS_SCHEMA,sourceHash:value.sourceHash,renderings:checked.data};
+  } catch (_) { return {schema:STORYBOARD_RENDERINGS_SCHEMA,invalid:true}; }
+}
+
+// Casting may resolve aliases to archive IDs, but may not rewrite the extracted visual facts.
+export function remapStoryboardPromptRenderings(renderings, before, after) {
+  const source = captureProjection(before), target = captureProjection(after);
+  const checked = validateStoryboardPromptRenderings(renderings, {formats:Object.keys(renderings || {}),characterIds:source.characters.map(character=>character.id)});
+  if (!checked.ok || source.characters.length !== target.characters.length) fail('人物表达与本镜人物不一致，请重新提取');
+  const remap = new Map(source.characters.map((character,index)=>[character.id,target.characters[index].id]));
+  const expected = {...source,characters:source.characters.map(character=>({...character,id:remap.get(character.id)}))};
+  if (Object.hasOwn(expected,'primarySubjectId')) expected.primarySubjectId = remap.get(expected.primarySubjectId) || expected.primarySubjectId;
+  if (JSON.stringify(expected) !== JSON.stringify(target)) fail('人物归档改变了画面事实，不能沿用旧表达');
+  const mapped = Object.fromEntries(Object.entries(checked.data).map(([format,row])=>[format,{...row,characters:row.characters.map(character=>({...character,character_id:remap.get(character.character_id)}))}]));
+  const result = validateStoryboardPromptRenderings(mapped,{formats:Object.keys(mapped),characterIds:target.characters.map(character=>character.id)});
+  if (!result.ok) fail(result.errors[0].message);
+  return result.data;
 }
 
 export async function bindStoryboardPromptRenderings(shot, renderings, { formats = Object.keys(renderings || {}), guard = async () => {} } = {}) {
@@ -136,7 +171,7 @@ export async function bindStoryboardPromptRenderings(shot, renderings, { formats
 
 export async function resolveStoryboardPromptRendering(shot, pack, format, { guard = async () => {} } = {}) {
   normalizeStoryboardPromptFormats([format]);
-  if (!object(pack) || pack.schema !== STORYBOARD_RENDERINGS_SCHEMA || !/^[a-f0-9]{64}$/.test(pack.sourceHash || '')) fail('缺少有效的提示表达快照，请重新提取');
+  if (!object(pack) || pack.invalid || pack.schema !== STORYBOARD_RENDERINGS_SCHEMA || !/^[a-f0-9]{64}$/.test(pack.sourceHash || '')) fail('缺少有效的提示表达快照，请重新提取');
   const capturedHash = pack.sourceHash, source = captureProjection(shot);
   const checked = validateStoryboardPromptRenderings(pack.renderings, { formats: Object.keys(pack.renderings || {}), characterIds: source.characters.map(character => character.id) });
   if (!checked.ok) fail(checked.errors[0].message);

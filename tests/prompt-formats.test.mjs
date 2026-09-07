@@ -145,7 +145,7 @@ test('existing one-shot repair retains format requirements and cannot silently d
   const fixed=plan();fixed.shots[0].prompt_renderings={tags:forms().tags};
   const success=await repairStoryboardContractOnce({raw:JSON.stringify(value),options:{kind:'plan',promptFormats:['tags']},request:async()=>JSON.stringify(fixed)});assert.equal(success.ok,true);
 });
-test('format contract has no network, workflow mutation, provider queue or startup activation', async () => {
+test('format contract stays pure; automatic-candidate negotiation is not activated by fixed-route wiring', async () => {
   const source=await readFile(new URL('../qianmu-prompt-formats.js',import.meta.url),'utf8');assert.doesNotMatch(source,/\b(fetch|XMLHttpRequest|WebSocket|indexedDB)\b/);
   const index=await readFile(new URL('../index.js',import.meta.url),'utf8');assert.doesNotMatch(index,/promptFormats:\s*negotiateStoryboardPromptFormats/);
   const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));assert.ok(release.files.includes('qianmu-prompt-formats.js'));

@@ -367,8 +367,8 @@ assert.match(smartRequest.messages[0].content, /16:9 只是主画幅偏好，不
 assert.match(formatStoryboardContractErrors(wrongParagraph.errors, 1), /^\$\.shots\[0\]/);
 
 const indexSource = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-assert.match(indexSource, /storyboardContract:[\s\S]*import\('\.\/qianmu-storyboard-contract\.js\?v=1\.59\.82'\)/, 'the contract validator must stay outside the startup graph');
-assert.match(indexSource, /buildStoryboardPlanContractRequest\(context, storyboardCompilerRequestConfig\(state, profile\)\)/, 'the first planning call must use the strict request contract');
+assert.match(indexSource, /storyboardContract:[\s\S]*import\('\.\/qianmu-storyboard-contract\.js\?v=1\.59\.83'\)/, 'the contract validator must stay outside the startup graph');
+assert.match(indexSource, /buildStoryboardPlanContractRequest\(context, storyboardCompilerRequestConfig\(state, profile, inputGuard\.comfyRoutes\)\)/, 'the first planning call must use the strict request contract and verified route formats');
 assert.match(indexSource, /storyboardCallCompiler\(contractRequest\.messages[\s\S]*jsonSchema: contractRequest\.schema[\s\S]*jsonSchemaStrict: true/, 'capable external channels must receive the structured response schema');
 assert.match(indexSource, /if \(contractRequest \|\| declaresPlanContract\)/, 'new requests must validate strictly while versioned legacy responses remain supported');
 assert.match(indexSource, /async function storyboardAdaptShotForModel[\s\S]*policy !== 'filtered'[\s\S]*buildStoryboardSafetyContractRequest[\s\S]*repairStoryboardContractOnce[\s\S]*local_fallback/, 'filtered sensitive shots must use one bounded safety-contract pass before the deterministic fallback');

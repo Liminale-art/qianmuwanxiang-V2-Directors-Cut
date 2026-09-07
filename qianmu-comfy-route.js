@@ -3,6 +3,7 @@ import { createComfyWorkflowStore, normalizeComfyLibraryDocument } from './qianm
 import { comfyWorkflowReferenceHash } from './qianmu-comfy-references.js';
 import { assertComfyRouteNamespace, normalizeComfyRouteSelection, normalizeComfyRouteBinding, comfyRouteError, comfyRouteBindingKey, retainComfyRoutePromptLayer } from './qianmu-comfy-route-contract.js';
 import { normalizeComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
+import { normalizeStoryboardPromptFormats } from './qianmu-prompt-formats.js';
 
 const freeze = value => { if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); } return value; };
 const sameVersion = (row, namespace, selection) => row?.namespace === namespace && row.id === selection.id
@@ -77,6 +78,8 @@ export function applyComfyRouteRecipe(base, route, recipe) {
     comfyWorkflowNotice: '', comfyReferences: references, comfyCharacterEnabled: route.comfyCharacterEnabled === true,
     comfyRouteBinding: binding, comfyRoutePromptLayer: { positive: document.positivePrompt, negative: document.negativePrompt } };
   delete profile.comfyCharacterActivation;
+  delete profile.comfyRoutePromptFormat;
+  if (document.classification?.promptFormat) [profile.comfyRoutePromptFormat] = normalizeStoryboardPromptFormats([document.classification.promptFormat]);
   if (profile.comfyCharacterEnabled) profile.comfyCharacterActivation = { namespace: binding.namespace,
     workflow: { id: binding.id, revision: binding.revision, version: binding.version, hash: binding.workflowHash } };
   for (const key of ['width','height','count','steps','cfg','seed','sampler','scheduler']) profile[key] = document.parameters[key];
@@ -90,12 +93,14 @@ export async function prepareComfyRouteRecipes({ routes, namespace, guard, creat
     const binding = normalizeComfyRouteBinding(route.comfyWorkflowBinding), key = comfyRouteBindingKey(binding);
     if (!recipes.has(key)) recipes.set(key, await readPinnedComfyRouteWorkflow({ namespace, binding, guard, createStore }));
   }
-  return Object.freeze({ apply: (route, base) => applyComfyRouteRecipe(base, route, recipes.get(comfyRouteBindingKey(route.comfyWorkflowBinding))) });
+  const promptFormats = normalizeStoryboardPromptFormats([...new Set([...recipes.values()].map(recipe=>recipe.document.classification?.promptFormat).filter(Boolean))]);
+  return Object.freeze({ promptFormats:Object.freeze(promptFormats), apply: (route, base) => applyComfyRouteRecipe(base, route, recipes.get(comfyRouteBindingKey(route.comfyWorkflowBinding))) });
 }
 export async function assertComfyRouteProfile(profile, { namespace, guard = async () => {} }) {
   const binding = normalizeComfyRouteBinding(profile.comfyRouteBinding);
   if (assertComfyRouteNamespace(namespace) !== binding.namespace) throw comfyRouteError('此镜工作流分工属于另一账户，未提交生成');
   if (retainComfyRoutePromptLayer(profile.comfyRoutePromptLayer).invalid) throw comfyRouteError('此镜工作流提示补充无效，请核对原记录');
+  if (Object.hasOwn(profile,'comfyRoutePromptFormat')) normalizeStoryboardPromptFormats([profile.comfyRoutePromptFormat]);
   await guard();
   const hash = await comfyWorkflowReferenceHash(profile.comfyWorkflow); await guard();
   if (hash !== binding.workflowHash) throw comfyRouteError('此镜原始工作流与固定版本不符，未提交生成');
