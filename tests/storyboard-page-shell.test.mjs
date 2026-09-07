@@ -12,6 +12,7 @@ const fn = (name) => {
 };
 let state = createStoryboardDefaults();
 const sandbox = vm.createContext({
+  storyboardVibeLibraryController:null,storyboardVibeControllerContext:null,storyboardVibeSelection:null,
   storyboardState: () => state, htmlEscape: (v) => String(v), clone: structuredClone,
   storyboardPageScrolls: new Map(), storyboardPendingRestoreScroll: null,
   storyboardScroller: () => ({ scrollTop: 275 }), saveSettings() {}, renderModal() {},

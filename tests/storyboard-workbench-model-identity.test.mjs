@@ -113,9 +113,8 @@ test('actual workbench rendering chooses NAI sampler and Vibe controls from capa
     const html = context.renderStoryboardCreate(state);
     assert.ok(html.includes('sd-storyboard-params'));
     assert.equal(html.includes('data-storyboard-field="scheduler"'), capability !== V5);
-    const vibe = /<button[^>]*data-storyboard-param-vibe="vibe-a"[^>]*>/.exec(html)?.[0];
-    if (capability === V5) assert.equal(vibe, undefined);
-    else { assert.ok(vibe); assert.equal(vibe.includes('disabled'), capability !== V3); }
+    assert.equal(html.includes('sd-vibe-workbench-strip'),capability!==V5);
+    assert.doesNotMatch(html,/data-storyboard-param-vibe=/,'compatibility and selection now belong to the confirmed library session');
     assert.ok(html.includes(capability === V3 ? 'quality v3' : capability === V45 ? 'quality v45' : 'quality v5'));
   }
 });

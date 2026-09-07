@@ -97,9 +97,9 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.103';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.103';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.103';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.104';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.104';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.104';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -107,7 +107,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.103';
+} from './qianmu-llm-output.js?v=1.59.104';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -189,256 +189,258 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.103';
+} from './qianmu-storyboard.js?v=1.59.104';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.103';
+const VERSION = '1.59.104';
+let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let reader = null;
 const featureRuntime = createFeatureRuntime({
-  tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.103') },
+  vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.104') },
+  tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.104') },
   modelPicker: {
     label: '模型选择',
-    load: () => import('./qianmu-model-picker.js?v=1.59.103'),
+    load: () => import('./qianmu-model-picker.js?v=1.59.104'),
   },
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.103'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.104'),
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.103'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.104'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
-    load: () => import('./qianmu-image-channel.js?v=1.59.103'),
+    load: () => import('./qianmu-image-channel.js?v=1.59.104'),
   },
   imageServiceClient: {
     label: '增强生图任务',
-    load: () => import('./qianmu-image-service-client.js?v=1.59.103'),
+    load: () => import('./qianmu-image-service-client.js?v=1.59.104'),
   },
   comfySubmission: {
     label: 'Comfy 实例排队',
-    load: () => import('./qianmu-comfy-submission.js?v=1.59.103'),
+    load: () => import('./qianmu-comfy-submission.js?v=1.59.104'),
   },
   comfyRecovery: {
     label: 'Comfy 原图领取',
-    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.103'),
+    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.104'),
   },
   comfyInbox: {
     label: 'Comfy 收片管理',
-    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.103'),
+    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.104'),
   },
   comfyReferences: {
     label: 'Comfy 参考图',
-    load: () => import('./qianmu-comfy-references.js?v=1.59.103'),
+    load: () => import('./qianmu-comfy-references.js?v=1.59.104'),
   },
   characterArchive: {
     label: '角色档案',
-    load: () => import('./qianmu-character-archive-view.js?v=1.59.103'),
+    load: () => import('./qianmu-character-archive-view.js?v=1.59.104'),
   },
   characterCasting: {
     label: '角色取景绑定',
-    load: () => import('./qianmu-character-casting.js?v=1.59.103'),
+    load: () => import('./qianmu-character-casting.js?v=1.59.104'),
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.103'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.104'),
   },
   artistPromptReview: {
     label: '原画师层核对',
-    load: () => import('./qianmu-artist-prompt-review.js?v=1.59.103'),
+    load: () => import('./qianmu-artist-prompt-review.js?v=1.59.104'),
   },
   styleRecipe: {
     label: '图片风格配置',
-    load: () => import('./qianmu-style-recipe.js?v=1.59.103'),
+    load: () => import('./qianmu-style-recipe.js?v=1.59.104'),
   },
   characterShotEditor: {
     label: '本镜人物编辑',
-    load: () => import('./qianmu-character-shot-view.js?v=1.59.103'),
+    load: () => import('./qianmu-character-shot-view.js?v=1.59.104'),
   },
   characterReference: {
     label: '角色参考图',
-    load: () => import('./qianmu-character-reference.js?v=1.59.103'),
+    load: () => import('./qianmu-character-reference.js?v=1.59.104'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.103').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.104').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.103'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.104'),
   },
   comfyWorkbench: {
     label: 'Comfy 镜头台',
-    load: () => import('./qianmu-comfy-workbench.js?v=1.59.103'),
+    load: () => import('./qianmu-comfy-workbench.js?v=1.59.104'),
   },
   comfyCharacters: {
     label: 'Comfy 角色实现',
-    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.103'),
+    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.104'),
   },
   comfyRoutes: {
     label: 'Comfy 镜头分工',
-    load: () => import('./qianmu-comfy-route.js?v=1.59.103'),
+    load: () => import('./qianmu-comfy-route.js?v=1.59.104'),
   },
   comfyPrompt: {
     label: 'Comfy 提示表达',
-    load: () => import('./qianmu-comfy-prompt.js?v=1.59.103'),
+    load: () => import('./qianmu-comfy-prompt.js?v=1.59.104'),
   },
   comfyCharacterReadiness: {
     label: '角色节点检查',
-    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.103'),
+    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.104'),
   },
   comfyLibrary: {
     label: 'Comfy 工作流库',
-    load: () => import('./qianmu-comfy-library-view.js?v=1.59.103'),
+    load: () => import('./qianmu-comfy-library-view.js?v=1.59.104'),
   },
   comfyPools: {
     label: 'Comfy 候选方案',
-    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.103'),
+    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.104'),
   },
   comfyScene: {
     label: 'Comfy 续场锁',
-    load: () => import('./qianmu-comfy-lock-runtime.js?v=1.59.103'),
+    load: () => import('./qianmu-comfy-lock-runtime.js?v=1.59.104'),
   },
   comfyStorage: {
     label: 'Comfy 储存盘点',
-    load: () => import('./qianmu-comfy-storage.js?v=1.59.103'),
+    load: () => import('./qianmu-comfy-storage.js?v=1.59.104'),
   },
   comfyAuto: {
     label: 'Comfy 候选调度',
-    load: () => import('./qianmu-comfy-auto-runtime.js?v=1.59.103'),
+    load: () => import('./qianmu-comfy-auto-runtime.js?v=1.59.104'),
   },
   comfyPreflight: {
     label: 'Comfy 配置检查',
-    load: () => import('./qianmu-comfy-preflight.js?v=1.59.103'),
+    load: () => import('./qianmu-comfy-preflight.js?v=1.59.104'),
   },
   comfyReadiness: {
     label: 'Comfy 节点检查',
-    load: () => import('./qianmu-comfy-readiness.js?v=1.59.103'),
+    load: () => import('./qianmu-comfy-readiness.js?v=1.59.104'),
   },
   comfyTargets: {
     label: 'Comfy 可信连接',
-    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.103'),
+    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.104'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.103'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.104'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.103'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.104'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.103'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.104'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.103'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.104'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.103'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.104'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.103'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.104'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.103'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.104'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.103'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.104'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.103'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.104'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.103'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.104'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.103'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.104'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.103'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.104'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.103'),
+    load: () => import('./qianmu-video-task.js?v=1.59.104'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.103'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.104'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.103'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.104'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.103'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.104'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.103'),
+    load: () => import('./qianmu-video-store.js?v=1.59.104'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.103'),
+    load: () => import('./qianmu-video-result.js?v=1.59.104'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.103'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.104'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.103'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.104'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.103'),
+    load: () => import('./qianmu-video-media.js?v=1.59.104'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.103'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.104'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.103'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.104'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.103'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.104'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.103'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.104'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.103'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.104'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.103'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.104'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.103'),
-        import('./qianmu-theaters.js?v=1.59.103'),
+        import('./builtin-theaters.js?v=1.59.104'),
+        import('./qianmu-theaters.js?v=1.59.104'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -6794,6 +6796,7 @@ function renderModal() {
   storyboardCaptureTagDraft(modal);
   modal._sdTagCompleteCleanup?.();
   modal._sdTagLibraryCleanup?.();
+  storyboardVibeLibraryController?.detach();
   prepareDirectorWorldEntryLinks();
   const renderStartedAt = globalThis.performance?.now?.() ?? Date.now();
   // 记录当前 tab 供下次打开恢复。只在真变化且非临时视图时落盘，避免每次静默重渲染都写。
@@ -12473,6 +12476,7 @@ function storyboardBeginSession() {
 }
 
 function storyboardEndSession() {
+  storyboardVibeLibraryController?.dispose();storyboardVibeLibraryController=null;storyboardVibeControllerContext=null;storyboardVibeSelection=null;
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdTagCompleteCleanup?.();
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdTagLibraryCleanup?.();
   storyboardTagDraft = null;
@@ -12776,15 +12780,10 @@ function renderStoryboardComfyTransport(connection) {
 
 function renderStoryboardParameterVibes(state, profile, capabilities) {
   if (!capabilities.supportsVibe) return '';
-  const selected = new Set(state.selectedVibeIds || []);
-  const vibes = state.vibeLibrary.filter((item) => !item.providerIds?.length || item.providerIds.includes('novel'));
-  const rows = vibes.slice(0, 24).map((item) => {
-    const modelCompatible = !item.modelIds?.length || item.modelIds.includes(profile.capabilityModelId || profile.model);
-    const disabled = !capabilities.vibe || !modelCompatible;
-    return `<button type="button" class="sd-storyboard-param-vibe ${selected.has(item.id) ? 'active' : ''}" data-storyboard-param-vibe="${htmlEscape(item.id)}" ${disabled ? 'disabled' : ''} title="${disabled ? '当前 NovelAI 模型暂不支持这项 Vibe' : htmlEscape(item.name)}" aria-pressed="${selected.has(item.id)}">${storyboardSafeUrl(item.previewUrl) ? `<img src="${htmlEscape(storyboardSafeUrl(item.previewUrl))}" alt="">` : '<i class="fa-solid fa-image"></i>'}<span>${htmlEscape(item.name)}</span></button>`;
-  }).join('');
-  const status = capabilities.vibe ? (rows ? '选择后随本次绘制发送' : '尚未保存 Vibe') : '当前模型暂不支持';
-  return `<div class="sd-storyboard-param-vibes ${capabilities.vibe ? '' : 'disabled'}"><div><span><b>Vibe</b><small>${status}</small></span><button type="button" class="sd-icon-btn sd-storyboard-open-vibe-library" title="打开 Vibe 库" aria-label="打开 Vibe 库"><i class="fa-solid fa-plus"></i></button></div>${rows ? `<div class="sd-storyboard-param-vibe-list">${rows}</div>` : ''}</div>`;
+  const selected=state.selectedVibeIds||[];
+  const rows=selected.map(id=>{const item=state.vibeLibrary.find(row=>row.id===id),url=storyboardSafeUrl(item?.previewUrl);
+    return `<button type="button" class="sd-vibe-workbench-strip sd-storyboard-open-vibe-library" aria-label="选择 Vibe">${url?`<img src="${htmlEscape(url)}" alt="" loading="lazy">`:''}<span>${htmlEscape(item?.name||'素材已失效 · 重新选择')}</span></button>`;}).join('');
+  return `<div class="sd-vibe-workbench"><span>Vibe</span>${rows||'<button type="button" class="sd-vibe-workbench-strip sd-storyboard-open-vibe-library">选择 Vibe</button>'}</div>`;
 }
 
 function storyboardGalleryRecords() {
@@ -14503,28 +14502,71 @@ function renderStoryboardPresetLibrary(state) {
   </div>`;
 }
 
+function storyboardVibeSelectionKey(state) {
+  const profile=storyboardProviderProfile(state);
+  return JSON.stringify([state.source,profile.model,profile.capabilityModelId,profile.characterReferenceEnabled,storyboardConnectionState(state).draft]);
+}
+function storyboardFinishVibeSelection(root) {
+  const session=storyboardVibeSelection;storyboardVibeSelection=null;storyboardVibeLibraryController?.cancelSelection();
+  if(!session||session.state!==storyboardState()||session.epoch!==storyboardAdmissionEpoch)return;
+  storyboardRememberPageScroll(root);storyboardApplyRoute({view:'create'});storyboardPendingRestoreScroll=session.scroll;saveSettings();renderModal();
+}
+async function storyboardMountVibeLibrary(root) {
+  const host=root.querySelector('.sd-vibe-library-host');if(!host)return;
+  const state=storyboardState(),epoch=storyboardAdmissionEpoch,chat=String(getChatKey()||''),ticket={};root._sdVibeMountTicket=ticket;
+  const current=()=>host.isConnected&&root._sdVibeMountTicket===ticket&&state===storyboardState()&&epoch===storyboardAdmissionEpoch&&chat===String(getChatKey()||'')&&activeTab==='imagegen';
+  try{
+    const [runtime,identity]=await Promise.all([featureRuntime.load('vibeLibrary'),featureRuntime.load('imageAdmission')]);
+    const namespace=await identity.resolveImageAccountNamespace();if(!current())return;
+    const ctx=storyboardVibeControllerContext;
+    if(!ctx||ctx.state!==state||ctx.epoch!==epoch||ctx.chat!==chat||ctx.namespace!==namespace){
+      storyboardVibeLibraryController?.dispose();
+      if(ctx&&ctx.namespace!==namespace)storyboardVibeSelection=null;
+      storyboardVibeControllerContext={state,epoch,chat,namespace};
+      const same=()=>state===storyboardState()&&epoch===storyboardAdmissionEpoch&&chat===String(getChatKey()||'')&&activeTab==='imagegen';
+      const guard=async()=>{if(!same()||namespace!==await identity.resolveImageAccountNamespace()||!same())throw Error('Vibe 会话或账户已变化，请重新打开');};
+      storyboardVibeLibraryController=runtime.createStoryboardVibeLibraryController({
+        items:()=>state.vibeLibrary,gallery:()=>storyboardGalleryRecords().filter(item=>item.mediaType!=='video'&&item.kind!=='film'),
+        isCurrent:same,icons:node=>applyQianmuIcons(node),onNotice:message=>{if(same())toast(message,'warning');},
+        onEdit:id=>{if(same())state.editingVibeId=id;},
+        collapsed:()=>state.collapsedCards['asset-vibe-create']===true,onCollapse:value=>{if(same()&&state.collapsedCards['asset-vibe-create']!==value){state.collapsedCards['asset-vibe-create']=value;saveSettings();}},
+        save:async(node,options)=>{await guard();return storyboardSaveVibeFromForm(node,options);},
+        remove:async item=>{await guard();const session=storyboardVibeSelection,before=JSON.stringify(state.selectedVibeIds||[]);const deleted=await storyboardDeleteVibe(item,{onDeleted:()=>{}});
+          if(deleted&&session&&session===storyboardVibeSelection&&session.original===before)session.original=JSON.stringify(state.selectedVibeIds||[]);return deleted;},
+        onGallery:()=>{if(same())storyboardNavigate(root,{view:'gallery'});},
+        onGalleryDone:()=>{if(same())storyboardNavigate(root,{view:'assets',assetView:'vibes'});},
+        onCancel:()=>{if(same())storyboardFinishVibeSelection(root);},
+        selectionIssue:item=>{
+          const profile=storyboardProviderProfile(state);
+          try{runtime.checkStoryboardVibeSelection(state.vibeLibrary,[item.id],{supportsVibe:state.source==='novel'&&getStoryboardCapabilities(state.source,profile.capabilityModelId||profile.model,undefined,storyboardConnectionState(state).draft).supportsVibe,
+            modelId:profile.capabilityModelId||profile.model,preciseReference:profile.characterReferenceEnabled===true});return '';}catch(error){return error.message;}
+        },
+        onApply:async ids=>{
+          const session=storyboardVibeSelection;await guard();
+          if(!session||session!==storyboardVibeSelection||state.view!=='assets'||state.assetView!=='vibes'||session.state!==state||session.epoch!==epoch||session.chat!==chat||session.key!==storyboardVibeSelectionKey(state)||JSON.stringify(state.selectedVibeIds||[])!==session.original)throw Error('当前模型、参考方式或原选择已变化，请取消后重新选择');
+          const profile=storyboardProviderProfile(state);
+          const next=runtime.checkStoryboardVibeSelection(state.vibeLibrary,ids,{supportsVibe:state.source==='novel'&&getStoryboardCapabilities(state.source,profile.capabilityModelId||profile.model,undefined,storyboardConnectionState(state).draft).supportsVibe,
+            modelId:profile.capabilityModelId||profile.model,preciseReference:profile.characterReferenceEnabled===true});
+          state.selectedVibeIds=next;storyboardFinishVibeSelection(root);
+        },
+      });
+      const item=state.vibeLibrary.find(row=>row.id===state.editingVibeId);if(item)storyboardVibeLibraryController.edit(item);
+    }
+    if(storyboardVibeSelection&&(storyboardVibeSelection.state!==state||storyboardVibeSelection.epoch!==epoch||storyboardVibeSelection.chat!==chat)){storyboardVibeSelection=null;storyboardVibeLibraryController.cancelSelection();}
+    if(storyboardVibeSelection&&storyboardVibeLibraryController.selectionId!==storyboardVibeSelection.id)storyboardVibeLibraryController.beginSelection(storyboardVibeSelection);
+    storyboardVibeLibraryController.mount(host);
+  }catch(error){if(current()){host.innerHTML='<button type="button" class="sd-btn sd-vibe-retry">重新载入 Vibe 库</button>';host.querySelector('button').addEventListener('click',()=>void storyboardMountVibeLibrary(root));toast(error?.message||'Vibe 库载入失败','warning');}}
+}
+function storyboardOpenVibeSelection(root) {
+  const state=storyboardState();storyboardCaptureWorkbench(root);
+  storyboardVibeSelection={id:uid('vibe-select'),state,epoch:storyboardAdmissionEpoch,chat:String(getChatKey()||''),key:storyboardVibeSelectionKey(state),original:JSON.stringify(state.selectedVibeIds||[]),ids:[...(state.selectedVibeIds||[])],scroll:storyboardScroller(root)?.scrollTop||0};
+  storyboardNavigate(root,{view:'assets',assetView:'vibes'});
+}
+
 function renderStoryboardAssets(state) {
-  const activeSection = ['tags', 'vibes', 'routing'].includes(state.assetView) ? state.assetView : 'tags';
-  const profile = storyboardProviderProfile(state);
-  const capabilities = getStoryboardCapabilities(state.source, profile.capabilityModelId || profile.model, state.source === 'comfy' ? (profile.comfyWorkflow || '') : undefined, storyboardConnectionState(state).draft);
-  const editingVibe = state.vibeLibrary.find((item) => item.id === state.editingVibeId) || null;
-  const selectedVibes = new Set(state.selectedVibeIds || []);
-  const compatibleVibes = state.vibeLibrary.filter((item) => (!item.providerIds?.length || item.providerIds.includes(state.source))
-    && (!item.modelIds?.length || item.modelIds.includes(profile.model)));
-  const galleryOptions = [...storyboardGalleryRecords()].reverse().slice(0, 120).map((item, index) => `<option value="${htmlEscape(item.id)}">${htmlEscape(snip(item.prompt || `画面 ${index + 1}`, 52))}</option>`).join('');
-  const vibeRows = compatibleVibes.map((item) => {
-    const selected = selectedVibes.has(item.id);
-    return `<article class="sd-storyboard-vibe-row ${selected ? 'selected' : ''}" data-storyboard-vibe-id="${htmlEscape(item.id)}">
-      <button type="button" class="sd-storyboard-vibe-toggle" ${capabilities.vibe ? '' : 'disabled'} aria-pressed="${selected}">${storyboardSafeUrl(item.previewUrl) ? `<img src="${htmlEscape(storyboardSafeUrl(item.previewUrl))}" alt="">` : '<span><i class="fa-solid fa-image"></i></span>'}<div><b>${htmlEscape(item.name)}</b><small>强度 ${storyboardVibeAmount(item.strength, 0.6).toFixed(2)} · 信息 ${storyboardVibeAmount(item.informationExtracted, 1).toFixed(2)}</small></div><i class="fa-solid ${selected ? 'fa-circle-check' : 'fa-circle'}"></i></button>
-      <div><button type="button" class="sd-icon-btn sd-storyboard-edit-vibe" title="编辑" aria-label="编辑"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-vibe" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div>
-    </article>`;
-  }).join('');
-  return `<div class="sd-storyboard-assets-page">
-    <div class="sd-storyboard-assets-tabs" role="tablist">${[['tags', 'Tag 库'], ['vibes', 'Vibe 库'], ['routing', '镜组']].map(([id, label]) => `<button type="button" role="tab" aria-selected="${activeSection === id}" class="${activeSection === id ? 'active' : ''}" data-storyboard-asset-section="${id}">${label}</button>`).join('')}</div>
-    ${activeSection === 'tags' ? renderStoryboardTagLibrary(state) : ''}
-    ${activeSection === 'vibes' ? `<details class="sd-card sd-storyboard-asset-create" data-storyboard-card="asset-vibe-create" ${state.collapsedCards['asset-vibe-create'] ? '' : 'open'}><summary><span><b>${editingVibe ? '编辑 Vibe' : '新建 Vibe'}</b><small>${capabilities.vibe ? `${profile.model} 可用` : `${profile.model} 当前不支持`}</small></span></summary><div class="sd-storyboard-card-body"><label><span>名称</span><input class="text_pole sd-storyboard-vibe-name" maxlength="100" value="${htmlEscape(editingVibe?.name || '')}" placeholder="便于识别的名称"></label><label><span>参考图</span><div class="sd-storyboard-vibe-source"><input class="text_pole sd-storyboard-vibe-url" type="url" value="${htmlEscape(editingVibe?.previewUrl || '')}" placeholder="图片 URL"><select class="text_pole sd-storyboard-vibe-gallery"><option value="">或从阅片室选择</option>${galleryOptions}</select><label class="sd-icon-btn" title="选择本地图片" aria-label="选择本地图片"><i class="fa-solid fa-upload"></i><input class="sd-storyboard-vibe-file" type="file" accept="image/png,image/jpeg,image/webp" hidden></label></div></label><div class="sd-storyboard-grid sd-storyboard-grid-two"><label><span>强度</span><input class="text_pole sd-storyboard-vibe-strength" type="number" min="0" max="1" step="0.05" value="${htmlEscape(editingVibe?.strength ?? 0.6)}"></label><label><span>信息提取</span><input class="text_pole sd-storyboard-vibe-info" type="number" min="0" max="1" step="0.05" value="${htmlEscape(editingVibe?.informationExtracted ?? 1)}"></label></div><div class="sd-storyboard-asset-create-actions"><span></span><div>${editingVibe ? '<button type="button" class="sd-btn sd-storyboard-cancel-vibe-edit">取消</button>' : ''}<button type="button" class="sd-btn sd-primary sd-storyboard-create-vibe">${editingVibe ? '保存修改' : '保存 Vibe'}</button></div></div></div></details>${!capabilities.vibe ? '<div class="sd-storyboard-capability-note">当前模型不会发送 Vibe；素材仍会保留，切换到支持的 NovelAI 模型即可使用。</div>' : ''}<div class="sd-storyboard-vibe-list">${vibeRows || '<div class="sd-storyboard-empty-inline">还没有与当前模型匹配的 Vibe。</div>'}</div>` : ''}
-    ${activeSection === 'routing' ? renderStoryboardRouting(state) : ''}
-  </div>`;
+  const activeSection=['tags','vibes','routing'].includes(state.assetView)?state.assetView:'tags';
+  return `<div class="sd-storyboard-assets-page"><div class="sd-storyboard-assets-tabs" role="tablist">${[['tags','Tag 库'],['vibes','Vibe 库'],['routing','镜组']].map(([id,label])=>`<button type="button" role="tab" aria-selected="${activeSection===id}" class="${activeSection===id?'active':''}" data-storyboard-asset-section="${id}">${label}</button>`).join('')}</div>
+    ${activeSection==='tags'?renderStoryboardTagLibrary(state):activeSection==='vibes'?'<div class="sd-vibe-library-host" role="region" aria-label="Vibe 库"></div>':renderStoryboardRouting(state)}</div>`;
 }
 
 function storyboardBindTagLibrary(root) {
@@ -14583,18 +14625,19 @@ function storyboardVibeAmount(value, fallback) {
   return Number.isFinite(amount) ? Math.max(0, Math.min(1, amount)) : fallback;
 }
 
-async function storyboardSaveVibeFromForm(root) {
+async function storyboardSaveVibeFromForm(root, {readDraft,isCurrent=()=>true,onSaved} = {}) {
   if (root._sdVibeSaveBusy) return false;
   const state=storyboardState(),epoch=storyboardAdmissionEpoch,chat=String(getChatKey()||''),source=state.source,editingId=state.editingVibeId||'';
   const existing=state.vibeLibrary.find(item=>item.id===editingId),original=JSON.stringify(existing);
-  const values=()=>Object.fromEntries(['name','url','gallery','strength','info'].map(key=>[key,String(root.querySelector(`.sd-storyboard-vibe-${key}`)?.value||'')]));
-  const form=values(),formKey=JSON.stringify(form),file=root.querySelector('.sd-storyboard-vibe-file')?.files?.[0];
+  const values=()=>Object.fromEntries(['name','url','gallery','strength','info'].map(key=>[key,String((readDraft?readDraft()[key]:root.querySelector(`.sd-storyboard-vibe-${key}`)?.value)||'')]));
+  const currentFile=()=>readDraft?readDraft().file:root.querySelector('.sd-storyboard-vibe-file')?.files?.[0];
+  const form=values(),formKey=JSON.stringify(form),file=currentFile();
   const gallery=storyboardGalleryRecords().find(item=>item.id===form.gallery),galleryUrl=gallery?.url,folder=getCharacterName()||'Qianmu';
   const name=form.name.trim(),button=root.querySelector('.sd-storyboard-create-vibe');
-  const current=()=>root.isConnected&&activeTab==='imagegen'&&state===storyboardState()&&epoch===storyboardAdmissionEpoch&&chat===String(getChatKey()||'')
+  const current=()=>isCurrent()&&root.isConnected&&activeTab==='imagegen'&&state===storyboardState()&&epoch===storyboardAdmissionEpoch&&chat===String(getChatKey()||'')
     &&state.view==='assets'&&state.assetView==='vibes'&&state.source===source&&(state.editingVibeId||'')===editingId
     &&JSON.stringify(state.vibeLibrary.find(item=>item.id===editingId))===original&&formKey===JSON.stringify(values())
-    &&file===root.querySelector('.sd-storyboard-vibe-file')?.files?.[0]
+    &&file===currentFile()
     &&(!form.gallery||storyboardGalleryRecords().some(item=>item.id===form.gallery&&item.url===galleryUrl));
   root._sdVibeSaveBusy=true;if(button)button.disabled=true;
   try {
@@ -14618,12 +14661,12 @@ async function storyboardSaveVibeFromForm(root) {
     // Validate a persistent source before publishing an index entry; blob/data previews cannot survive reloads.
     captureStoryboardVibeRecipe([item.id],[item]);
     if(existing)state.vibeLibrary=state.vibeLibrary.map(row=>row.id===item.id?item:row);else state.vibeLibrary=[...state.vibeLibrary,item];
-    state.editingVibeId='';saveSettings();toast('Vibe 已保存','success');renderModal();return true;
+    state.editingVibeId='';saveSettings();toast('Vibe 已保存','success');if(onSaved)onSaved(item);else renderModal();return true;
   }catch(error){toast(error?.message||'Vibe 保存失败，原素材未修改','warning');return false;}
   finally{root._sdVibeSaveBusy=false;if(button)button.disabled=false;}
 }
 
-async function storyboardDeleteVibe(item) {
+async function storyboardDeleteVibe(item, {onDeleted} = {}) {
   if(!item)return false;
   const state=storyboardState(),epoch=storyboardAdmissionEpoch,chat=String(getChatKey()||''),original=JSON.stringify(item);
   const current=()=>state===storyboardState()&&epoch===storyboardAdmissionEpoch&&chat===String(getChatKey()||'')&&activeTab==='imagegen'
@@ -14635,7 +14678,7 @@ async function storyboardDeleteVibe(item) {
     if(!current()||namespace!==await identity.resolveImageAccountNamespace()||!current())throw Error('Vibe 页面、账户或素材已变化，未删除');
     state.vibeLibrary=state.vibeLibrary.filter(row=>row.id!==item.id);
     state.selectedVibeIds=(state.selectedVibeIds||[]).filter(id=>id!==item.id);
-    if(state.editingVibeId===item.id)state.editingVibeId='';saveSettings();renderModal();return true;
+    if(state.editingVibeId===item.id)state.editingVibeId='';saveSettings();if(onDeleted)onDeleted();else renderModal();return true;
   }catch(error){toast(error?.message||'Vibe 删除失败，原素材保留','warning');return false;}
 }
 
@@ -17569,7 +17612,7 @@ function renderStoryboardTab() {
     : state.view === 'assets' ? renderStoryboardAssets(state)
       : state.view === 'artists' ? renderStoryboardArtistLibrary(state)
         : state.view === 'presets' ? renderStoryboardPresetLibrary(state)
-          : state.view === 'gallery' ? renderStoryboardGallery(state)
+          : state.view === 'gallery' ? (storyboardVibeLibraryController?.isGallery ? '<div class="sd-vibe-library-host" data-vibe-gallery="true"></div>' : renderStoryboardGallery(state))
             : state.view === 'logs' ? renderStoryboardLogs(state)
               : renderStoryboardCreate(state);
   return `<div class="sd-storyboard-root"><header class="sd-storyboard-titlebar"><span role="heading" aria-level="2">${htmlEscape(storyboardPageTitle(state))}</span><button type="button" class="sd-icon-btn sd-storyboard-close" title="关闭分镜" aria-label="关闭分镜"><i class="fa-solid fa-xmark"></i></button></header><div class="sd-storyboard-scroll" data-storyboard-page="${htmlEscape(storyboardPageKey(state))}">${body}</div>${renderStoryboardNav(state)}</div>`;
@@ -22171,6 +22214,7 @@ function bindStoryboardTabEvents(root) {
   const state = storyboardState();
   root._sdStoryboardState = state;
   storyboardBindTagCompletion(root);
+  void storyboardMountVibeLibrary(root);
   const boundPage = root.querySelector('.sd-storyboard-root');
   if (state.view === 'characters') void storyboardMountCharacterArchive(root);
   else storyboardCharacterArchiveController?.detach();
@@ -22321,7 +22365,10 @@ function bindStoryboardTabEvents(root) {
   root.querySelectorAll('[data-storyboard-view]').forEach((button) => button.addEventListener('click', () => {
     if (state.view === 'create') storyboardCaptureWorkbench(root);
     const nextView = button.dataset.storyboardView;
-    if (!nextView || nextView === state.view) return;
+    if (!nextView) return;
+    const wasPicking=storyboardVibeLibraryController?.isGallery;
+    storyboardVibeSelection=null;storyboardVibeLibraryController?.cancelSelection();storyboardVibeLibraryController?.exitGallery();
+    if (nextView === state.view && !wasPicking) return;
     storyboardNavigate(root, { view: nextView, editingArtistPresetId: '', editingPromptItemId: '', promptItemDraft: null });
   }));
   root.querySelectorAll('[data-storyboard-gallery-kind]').forEach((button) => button.addEventListener('click', () => {
@@ -22764,35 +22811,11 @@ function bindStoryboardTabEvents(root) {
     storyboardNavigate(root, { view: 'artists', editingArtistPresetId: state.selectedArtistPresetId });
   });
   root.querySelectorAll('[data-storyboard-asset-section]').forEach((button) => button.addEventListener('click', () => {
+    if(button.dataset.storyboardAssetSection!=='vibes'){storyboardVibeSelection=null;storyboardVibeLibraryController?.cancelSelection();storyboardVibeLibraryController?.exitGallery();}
     state.assetView = button.dataset.storyboardAssetSection || 'tags'; saveSettings(); renderModal();
   }));
   storyboardBindTagLibrary(root);
-  root.querySelector('.sd-storyboard-create-vibe')?.addEventListener('click', () => void storyboardSaveVibeFromForm(root));
-  root.querySelector('.sd-storyboard-cancel-vibe-edit')?.addEventListener('click', () => { state.editingVibeId = ''; saveSettings(); renderModal(); });
-  root.querySelectorAll('[data-storyboard-vibe-id]').forEach((row) => {
-    const item = state.vibeLibrary.find((entry) => entry.id === row.dataset.storyboardVibeId);
-    row.querySelector('.sd-storyboard-vibe-toggle')?.addEventListener('click', () => {
-      if (!item) return;
-      const selected = new Set(state.selectedVibeIds || []);
-      if (selected.has(item.id)) selected.delete(item.id); else selected.add(item.id);
-      state.selectedVibeIds = [...selected].slice(0, 16); saveSettings(); renderModal();
-    });
-    row.querySelector('.sd-storyboard-edit-vibe')?.addEventListener('click', () => { if (item) { state.editingVibeId = item.id; state.collapsedCards['asset-vibe-create'] = false; saveSettings(); renderModal(); } });
-    row.querySelector('.sd-storyboard-delete-vibe')?.addEventListener('click', () => void storyboardDeleteVibe(item));
-  });
-  root.querySelectorAll('[data-storyboard-param-vibe]').forEach((button) => button.addEventListener('click', () => {
-    if (button.disabled) return;
-    const id = button.dataset.storyboardParamVibe;
-    if (!state.vibeLibrary.some((item) => item.id === id)) return;
-    const selected = new Set(state.selectedVibeIds || []);
-    if (selected.has(id)) selected.delete(id); else selected.add(id);
-    state.selectedVibeIds = [...selected].slice(0, 16);
-    saveSettings(); renderModal();
-  }));
-  root.querySelector('.sd-storyboard-open-vibe-library')?.addEventListener('click', () => {
-    storyboardCaptureWorkbench(root);
-    storyboardNavigate(root, { assetView: 'vibes', view: 'assets' });
-  });
+  root.querySelectorAll('.sd-storyboard-open-vibe-library').forEach(button=>button.addEventListener('click',()=>storyboardOpenVibeSelection(root)));
   root.querySelector('.sd-storyboard-preset-library-select')?.addEventListener('change', (event) => {
     state.promptCompiler.instructionPresetId = String(event.target.value || '');
     state.editingPromptPresetId = state.promptCompiler.instructionPresetId;
@@ -35854,6 +35877,9 @@ function bindEvents() {
     queueMicrotask(() => void runBackgroundDirectorRefresh());
   };
   const rerenderHandler = async () => {
+    if(storyboardVibeControllerContext&&storyboardVibeControllerContext.chat!==String(getChatKey()||'')){
+      storyboardVibeLibraryController?.dispose();storyboardVibeLibraryController=null;storyboardVibeControllerContext=null;storyboardVibeSelection=null;
+    }
     storyboardResetAutomaticCapture();
     storyboardCloseVideoDraftEditor();
     resetDirectorNarrativeBridge();
@@ -36029,6 +36055,7 @@ function cleanupRuntime(resetSettings = false) {
     });
     clean('injection', () => clearDirectorInjection());
     clean('panels', () => {
+      storyboardVibeLibraryController?.dispose();storyboardVibeLibraryController=null;storyboardVibeControllerContext=null;storyboardVibeSelection=null;
       document.getElementById(MODAL_ID)?._sdTagCompleteCleanup?.();
       document.getElementById(MODAL_ID)?._sdTagLibraryCleanup?.();
       storyboardTagDraft=null;

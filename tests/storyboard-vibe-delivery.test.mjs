@@ -83,7 +83,8 @@ test('actual prepared zero values reach both NAI transports unchanged', async ()
     assert.deepEqual(body.parameters.reference_information_extracted_multiple,[0]);
   }
 });
-test('the library display uses the same zero-preserving formatter as the sending path', () => {
-  assert.match(source,/强度 \$\{storyboardVibeAmount\(item.strength, 0.6\).toFixed\(2\)\}/);
-  assert.match(source,/信息 \$\{storyboardVibeAmount\(item.informationExtracted, 1\).toFixed\(2\)\}/);
+test('the lazy library display retains zero rather than replacing it with defaults', async () => {
+  const view=await readFile(new URL('../qianmu-vibe-library-view.js',import.meta.url),'utf8');
+  assert.match(view,/value==null\|\|value===''/);assert.match(view,/强度 \$\{amount\(item.strength,\.6\).toFixed\(2\)\}/);
+  assert.match(view,/信息 \$\{amount\(item.informationExtracted,1\).toFixed\(2\)\}/);
 });

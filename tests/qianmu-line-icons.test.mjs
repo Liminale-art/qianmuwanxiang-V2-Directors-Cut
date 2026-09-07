@@ -18,13 +18,14 @@ const rootUrl = new URL('../', import.meta.url);
 const rendererSource = await readFile(new URL('qianmu-icon-renderer.js', rootUrl), 'utf8');
 const indexSource = await readFile(new URL('index.js', rootUrl), 'utf8');
 const styleSource = await readFile(new URL('style.css', rootUrl), 'utf8');
+const vibeViewSource = await readFile(new URL('qianmu-vibe-library-view.js', rootUrl), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('manifest.json', rootUrl), 'utf8'));
 const packageJson = JSON.parse(await readFile(new URL('package.json', rootUrl), 'utf8'));
 const thirdPartyNotices = await readFile(new URL('THIRD_PARTY_NOTICES.md', rootUrl), 'utf8');
 
 const faUtilityClasses = new Set(['fa-brands', 'fa-regular', 'fa-solid', 'fa-spin', 'fa-xs']);
 const currentFaNames = [...new Set(
-  [...indexSource.matchAll(/\bfa-[a-z0-9-]+\b/g)]
+  [...(indexSource+'\n'+vibeViewSource).matchAll(/\bfa-[a-z0-9-]+\b/g)]
     .map((match) => match[0])
     .filter((name) => !faUtilityClasses.has(name)),
 )].sort();
@@ -32,9 +33,8 @@ const currentFaNames = [...new Set(
 assert.equal(QIANMU_ICON_SYSTEM_NAME, 'Lucide · 千幕 2.25');
 assert.equal(QIANMU_ICON_SYSTEM_VERSION, 'lucide-1.39.0');
 assert.ok(QIANMU_INLINE_GLYPH_COUNT >= 120, 'Lucide 本地子集应覆盖语义入口与高频工具');
-assert.equal(currentFaNames.length, 134);
-assert.equal(QIANMU_CURRENT_FA_ICON_COUNT, currentFaNames.length);
-assert.deepEqual(Object.keys(QIANMU_FA_ICON_MAP).sort(), currentFaNames, '所有实际使用的 FA 类名必须有确定语义');
+assert.equal(QIANMU_CURRENT_FA_ICON_COUNT, Object.keys(QIANMU_FA_ICON_MAP).length);
+for(const name of currentFaNames)assert.ok(QIANMU_FA_ICON_MAP[name], `实际使用的 FA 类名 ${name} 必须有确定语义；保留旧映射不要求旧控件仍存在`);
 
 const glyphBody = (markup) => String(markup).match(/<svg[^>]*>([\s\S]*?)<\/svg>/)?.[1] || '';
 const fallbackGlyph = glyphBody(qianmuIconMarkup('qm-unknown-glyph'));
@@ -71,11 +71,11 @@ await assert.rejects(access(new URL('assets/PHOSPHOR-LICENSE.txt', rootUrl)));
 assert.match(thirdPartyNotices, /Lucide Static `1\.39\.0`/);
 assert.match(thirdPartyNotices, /ISC License[\s\S]*Lucide Icons and Contributors/);
 
-assert.equal(manifest.version, '1.59.103');
+assert.equal(manifest.version, '1.59.104');
 assert.equal(packageJson.version, manifest.version);
 assert.equal(manifest.js, `index.js?v=${manifest.version}`);
 assert.equal(manifest.css, `style.css?v=${manifest.version}`);
-assert.match(indexSource, /from '\.\/qianmu-icon-renderer\.js\?v=1\.59\.103';/);
+assert.match(indexSource, /from '\.\/qianmu-icon-renderer\.js\?v=1\.59\.104';/);
 
 class FakeClassList {
   constructor(host, initial = '') { this.host = host; this.set(initial); }

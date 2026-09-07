@@ -84,7 +84,7 @@ assert.match(browserSource, /renderStoryboardModelPicker\(provider.id, modelId, 
 assert.doesNotMatch(browserSource, /sd-storyboard-route-rating|仅 SFW|仅 NSFW/, 'the configuration UI must not expose redundant SFW/NSFW routing states');
 assert.match(browserSource, /sd-storyboard-safety-notice[\s\S]*受限制模型[\s\S]*安全但叙事一致/, 'the safety policy must be explained once in configuration');
 assert.match(browserSource, /function storyboardAdaptShotForModel[\s\S]*contentPolicy[\s\S]*safePrompt/, 'filtered models must receive the compiler-provided safe narrative equivalent');
-assert.match(browserSource, /function renderStoryboardParameterVibes[\s\S]*!capabilities\.vibe[\s\S]*disabled/, 'Vibe selection must remain visible but disabled on unsupported NovelAI models');
+assert.match(browserSource, /function renderStoryboardParameterVibes[\s\S]*!capabilities\.supportsVibe[\s\S]*sd-vibe-workbench-strip/, 'only capable workbenches show Vibe selection entries; unsupported families can still manage the independent library');
 assert.match(browserSource, /modelId: route\.modelId[\s\S]*connectionPresetId: route\.connectionPresetId/, 'the routed concrete model must reach the generation job');
 
 console.log('Storyboard model and routing contract OK');
