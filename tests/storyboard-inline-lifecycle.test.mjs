@@ -44,7 +44,7 @@ assert.match(source, /storyboardReconcileShotPlans/);
 assert.match(source, /刻瞬于光/);
 assert.match(source, /STORYBOARD_INLINE_MARK/);
 assert.match(source, /sd-storyboard-inline-reel/);
-assert.match(source, /records\.map\(storyboardInlineRecordMarkup\)/);
+assert.match(source, /taskEntries.has\(entry\) \? storyboardInlineTaskMarkup\(entry\) : storyboardInlineRecordMarkup\(entry\)/);
 assert.match(source, /storyboardCollapsedInlineFloors\.has\(floor\)/);
 assert.match(source, /data-storyboard-chat-action="collapse"/);
 assert.match(source, /data-storyboard-chat-action="expand"/);

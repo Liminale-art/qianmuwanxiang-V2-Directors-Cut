@@ -6867,7 +6867,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   padding: 0;
   overflow: visible;
 }
-#chat .mes .sd-storyboard-inline-title {
+#chat .mes .sd-storyboard-inline > .sd-storyboard-inline-title {
   width: 100%;
   height: 34px;
   min-height: 34px;
@@ -6883,6 +6883,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   text-align: left;
   cursor: pointer;
 }
+#chat .mes .sd-storyboard-inline > :is(.sd-storyboard-inline-title,.sd-storyboard-inline-reel)[hidden] { display: none; }
 #chat .mes .sd-storyboard-inline-mark { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; }
 #chat .mes .sd-storyboard-inline-mark svg { width: 18px; height: 18px; display: block; }
 #chat .mes .sd-storyboard-inline-rule { height: 1px; background: currentColor; opacity: .28; }
@@ -6912,6 +6913,23 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   scroll-snap-align: start;
 }
 #chat .mes .sd-storyboard-inline figure:only-child { flex-basis: 100%; }
+#chat .mes .sd-storyboard-inline figure.sd-storyboard-inline-task {
+  box-sizing: border-box; min-height: 140px; padding: 16px; display: flex;
+  flex-direction: column; align-items: flex-start; justify-content: center; gap: 8px;
+  border-style: dashed; color: var(--sd-shot-ink); font-size: 12px; line-height: 1.5;
+}
+#chat .mes .sd-storyboard-inline-task > small { font-size: 11px; opacity: .65; }
+#chat .mes .sd-storyboard-inline-task > b { font-size: 12px; font-weight: 600; }
+#chat .mes .sd-storyboard-inline-task > span { font-size: 11px; opacity: .8; overflow-wrap: anywhere; }
+#chat .mes .sd-storyboard-inline-task.is-failed { border-color: color-mix(in srgb, #ce7777 75%, transparent); }
+#chat .mes .sd-storyboard-inline-task:is(.is-queued,.is-generating,.is-unconfirmed) { border-color: color-mix(in srgb, #bd9b63 65%, transparent); }
+#chat .mes .sd-storyboard-inline-task-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+#chat .mes .sd-storyboard-inline .sd-storyboard-inline-task-actions button {
+  width: auto; height: auto; min-height: 32px; box-sizing: border-box; white-space: nowrap;
+  padding: 5px 10px; border: 1px solid currentColor; border-radius: 8px;
+  background: transparent; color: inherit; font: inherit; cursor: pointer;
+}
+#chat .mes .sd-storyboard-inline-task-actions button:disabled { opacity: .5; cursor: wait; }
 #chat .mes .sd-storyboard-inline-preview {
   width: 100%;
   height: auto;
@@ -7001,7 +7019,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   color: inherit;
 }
 @media (max-width: 640px) {
-  #chat .mes .sd-storyboard-inline-title { grid-template-columns: 19px minmax(18px, 1fr) auto; }
+  #chat .mes .sd-storyboard-inline > .sd-storyboard-inline-title { grid-template-columns: 19px minmax(18px, 1fr) auto; }
   #chat .mes .sd-storyboard-inline-title small { display: none; }
   #chat .mes .sd-storyboard-inline figure { flex-basis: min(88%, 340px); }
   #chat .mes .sd-storyboard-inline-actions { right: 43px; max-width: calc(100% - 52px); }

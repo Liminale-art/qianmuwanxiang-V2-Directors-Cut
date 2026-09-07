@@ -45,13 +45,13 @@ assert.equal(normalized.schemaVersion, 24);
 assert.deepEqual(normalized.taskStates.map((task) => task.id), ['job-b', 'job-a']);
 assert.equal(normalized.taskStates[0].error, 'provider error');
 
-// Queue and provider lifecycle use the persistent task id, while automatic work stays visually silent.
+// Queue and provider lifecycle use the persistent task id; only explicitly inline jobs expose state.
 assert.match(source, /function storyboardSyncTaskState[\s\S]*id: job\.id[\s\S]*state\.taskStates = \[next/);
 assert.match(source, /storyboardQueue\.push\(job\);[\s\S]*storyboardSetPlanStatus\(storyboardPlanForJob\(job\), 'queued'/);
 for (const stage of ['provider', 'persistence', 'attachment', 'delivery_pending', 'complete']) {
   assert.match(source, new RegExp(`['"]${stage}['"]`));
 }
-assert.match(source, /uiVisible: current\?\.uiVisible \?\? plan\?\.origin === 'manual_supplement'/);
+assert.match(source, /uiVisible: current\?\.uiVisible \?\? Boolean\(job.inlineByDefault && job.target !== 'gallery' && Number.isInteger\(targetFloor\)\)/);
 assert.match(source, /data-storyboard-task=/);
 assert.match(source, /id: uid\('shot'\), taskId: job\.id, groupId: job\.id/);
 

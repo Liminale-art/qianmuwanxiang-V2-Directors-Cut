@@ -424,6 +424,54 @@ export function normalizeStoryboardInlineOrder(value) {
   return { version: 1, batchId: value.batchId, batchStartedAt: value.batchStartedAt, shotIndex: value.shotIndex, requestIndex: value.requestIndex };
 }
 
+export function storyboardInlineSlotKey(value) {
+  const order = normalizeStoryboardInlineOrder(value);
+  return order ? JSON.stringify([order.batchId, order.shotIndex, order.requestIndex]) : '';
+}
+
+export function buildStoryboardInlineTasks(tasks, { chatKey = '', chat = [], logs = [], activeIds = new Set(), waitingIds = new Set(), records = [] } = {}) {
+  if (!chatKey || !Array.isArray(chat)) return [];
+  const latest = new Map(), logIndex = new Map(logs.map(log => [log.id, log]));
+  const delivered = new Set(records.map(record => record.taskId).filter(Boolean));
+  for (const task of Array.isArray(tasks) ? tasks : []) {
+    const slotKey = storyboardInlineSlotKey(task?.inlineOrder);
+    if (!slotKey || task.uiVisible !== true || task.chatKey !== chatKey || !task.id || !task.messageRef?.messageKey) continue;
+    const key = JSON.stringify([slotKey, task.messageRef.messageKey, task.messageRef.revisionId, task.messageRef.swipeId]);
+    const previous = latest.get(key);
+    const newer = !previous || Number(task.requestedAt || 0) > Number(previous.requestedAt || 0)
+      || (Number(task.requestedAt || 0) === Number(previous.requestedAt || 0) && (Number(task.attempt || 1) > Number(previous.attempt || 1)
+        || (Number(task.attempt || 1) === Number(previous.attempt || 1) && String(task.id) > String(previous.id))));
+    if (newer) latest.set(key, task);
+  }
+  const entries = [], resolvedMessages = new Map();
+  for (const task of latest.values()) {
+    const slotKey = storyboardInlineSlotKey(task.inlineOrder);
+    if (!['queued', 'generating', 'failed'].includes(task.status)) continue;
+    const messageKey = JSON.stringify([task.messageRef.messageKey, task.messageRef.revisionId, task.messageRef.swipeId, task.messageRef.lastKnownFloor]);
+    if (!resolvedMessages.has(messageKey)) resolvedMessages.set(messageKey, resolveStoryboardMessageReference(task.messageRef, chat, { chatKey }));
+    const resolved = resolvedMessages.get(messageKey);
+    if (resolved.state !== 'active') continue;
+    if (task.status !== 'failed' && delivered.has(task.id)) continue;
+    const log = logIndex.get(task.logId);
+    const live = activeIds.has(task.id) || waitingIds.has(task.id);
+    const uncertain = !live && (['queued', 'generating'].includes(task.status) || !log || ['unknown', 'accepted'].includes(log.submissionState));
+    const status = uncertain ? 'unconfirmed' : task.status;
+    const retry = status === 'failed' && log?.status === 'failed' && ['not_submitted', 'rejected'].includes(log.submissionState);
+    const stageLabel = task.stage === 'persistence' ? '正在保存画面' : task.stage === 'attachment' ? '正在回填画面' : '正在生成画面';
+    entries.push({ id: `inline-task:${task.id}`, taskId: task.id, logId: task.logId, planId: task.planId,
+      slotKey, inlineOrder: normalizeStoryboardInlineOrder(task.inlineOrder), floor: resolved.floor, chatKey,
+      messageHash: task.messageHash || '', swipeId: task.messageRef.swipeId,
+      paragraphAnchor: task.paragraphAnchor, paragraphSelection: task.paragraphSelection,
+      imageIndex: Number.MAX_SAFE_INTEGER, createdAt: Number(task.requestedAt || 0),
+      status, label: status === 'unconfirmed' ? '结果待核对' : status === 'failed' ? '本镜生成失败' : status === 'queued' ? '等待生图' : stageLabel,
+      detail: status === 'unconfirmed' ? '请先核查原任务，勿重复生成' : status === 'failed'
+        ? str(sanitizeStoryboardDiagnosticData(task.error || '请查看日志'), 120).replace(/\s+/g, ' ').split('；')[0] : '',
+      action: retry ? 'retry-task' : (waitingIds.has(task.id) ? 'cancel-task' : ''),
+    });
+  }
+  return entries;
+}
+
 export function sortStoryboardInlineRecords(records) {
   const groups = new Map();
   const compareText = (left, right) => left < right ? -1 : left > right ? 1 : 0;
@@ -1682,8 +1730,10 @@ export function normalizeStoryboardTaskState(value) {
     id: cleanId(raw.id), planId: cleanId(raw.planId), shotId: cleanId(raw.shotId), logId: cleanId(raw.logId),
     chatKey: str(raw.chatKey || raw.messageRef?.chatKey, 512), floor,
     messageRef: raw.messageRef ? normalizeStoryboardMessageReference(raw.messageRef) : null,
+    messageHash: str(raw.messageHash, 160), swipeId: int(raw.swipeId ?? raw.messageRef?.swipeId, 0, Number.MAX_SAFE_INTEGER, 0),
     paragraphAnchor: raw.paragraphAnchor ? normalizeStoryboardParagraphAnchor(raw.paragraphAnchor) : null,
     paragraphSelection: raw.paragraphSelection ? normalizeStoryboardParagraphSelection(raw.paragraphSelection) : null,
+    inlineOrder: normalizeStoryboardInlineOrder(raw.inlineOrder), attempt: int(raw.attempt, 1, 10000, 1),
     status: statusValue, stage, progress: taskProgress(raw.progress, statusValue, stage),
     deliveryState: STORYBOARD_TASK_DELIVERY_STATES.includes(raw.deliveryState) ? raw.deliveryState : 'none',
     linkState: STORYBOARD_MESSAGE_LINK_STATES.includes(raw.linkState) ? raw.linkState : '',
