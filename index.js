@@ -95,9 +95,9 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.79';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.79';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.79';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.80';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.80';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.80';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -105,7 +105,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.79';
+} from './qianmu-llm-output.js?v=1.59.80';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -179,227 +179,231 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.79';
+} from './qianmu-storyboard.js?v=1.59.80';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.79';
+const VERSION = '1.59.80';
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   modelPicker: {
     label: '模型选择',
-    load: () => import('./qianmu-model-picker.js?v=1.59.79'),
+    load: () => import('./qianmu-model-picker.js?v=1.59.80'),
   },
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.79'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.80'),
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.79'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.80'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
-    load: () => import('./qianmu-image-channel.js?v=1.59.79'),
+    load: () => import('./qianmu-image-channel.js?v=1.59.80'),
   },
   imageServiceClient: {
     label: '增强生图任务',
-    load: () => import('./qianmu-image-service-client.js?v=1.59.79'),
+    load: () => import('./qianmu-image-service-client.js?v=1.59.80'),
   },
   comfySubmission: {
     label: 'Comfy 实例排队',
-    load: () => import('./qianmu-comfy-submission.js?v=1.59.79'),
+    load: () => import('./qianmu-comfy-submission.js?v=1.59.80'),
   },
   comfyRecovery: {
     label: 'Comfy 原图领取',
-    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.79'),
+    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.80'),
   },
   comfyInbox: {
     label: 'Comfy 收片管理',
-    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.79'),
+    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.80'),
   },
   comfyReferences: {
     label: 'Comfy 参考图',
-    load: () => import('./qianmu-comfy-references.js?v=1.59.79'),
+    load: () => import('./qianmu-comfy-references.js?v=1.59.80'),
   },
   characterArchive: {
     label: '角色档案',
-    load: () => import('./qianmu-character-archive-view.js?v=1.59.79'),
+    load: () => import('./qianmu-character-archive-view.js?v=1.59.80'),
   },
   characterCasting: {
     label: '角色取景绑定',
-    load: () => import('./qianmu-character-casting.js?v=1.59.79'),
+    load: () => import('./qianmu-character-casting.js?v=1.59.80'),
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.79'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.80'),
   },
   characterShotEditor: {
     label: '本镜人物编辑',
-    load: () => import('./qianmu-character-shot-view.js?v=1.59.79'),
+    load: () => import('./qianmu-character-shot-view.js?v=1.59.80'),
   },
   characterReference: {
     label: '角色参考图',
-    load: () => import('./qianmu-character-reference.js?v=1.59.79'),
+    load: () => import('./qianmu-character-reference.js?v=1.59.80'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.79').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.80').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.79'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.80'),
   },
   comfyWorkbench: {
     label: 'Comfy 镜头台',
-    load: () => import('./qianmu-comfy-workbench.js?v=1.59.79'),
+    load: () => import('./qianmu-comfy-workbench.js?v=1.59.80'),
   },
   comfyCharacters: {
     label: 'Comfy 角色实现',
-    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.79'),
+    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.80'),
   },
   comfyRoutes: {
     label: 'Comfy 镜头分工',
-    load: () => import('./qianmu-comfy-route.js?v=1.59.79'),
+    load: () => import('./qianmu-comfy-route.js?v=1.59.80'),
   },
   comfyCharacterReadiness: {
     label: '角色节点检查',
-    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.79'),
+    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.80'),
   },
   comfyLibrary: {
     label: 'Comfy 工作流库',
-    load: () => import('./qianmu-comfy-library-view.js?v=1.59.79'),
+    load: () => import('./qianmu-comfy-library-view.js?v=1.59.80'),
+  },
+  comfyPools: {
+    label: 'Comfy 候选方案',
+    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.80'),
   },
   comfyPreflight: {
     label: 'Comfy 配置检查',
-    load: () => import('./qianmu-comfy-preflight.js?v=1.59.79'),
+    load: () => import('./qianmu-comfy-preflight.js?v=1.59.80'),
   },
   comfyReadiness: {
     label: 'Comfy 节点检查',
-    load: () => import('./qianmu-comfy-readiness.js?v=1.59.79'),
+    load: () => import('./qianmu-comfy-readiness.js?v=1.59.80'),
   },
   comfyTargets: {
     label: 'Comfy 可信连接',
-    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.79'),
+    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.80'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.79'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.80'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.79'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.80'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.79'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.80'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.79'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.80'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.79'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.80'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.79'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.80'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.79'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.80'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.79'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.80'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.79'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.80'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.79'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.80'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.79'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.80'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.79'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.80'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.79'),
+    load: () => import('./qianmu-video-task.js?v=1.59.80'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.79'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.80'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.79'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.80'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.79'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.80'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.79'),
+    load: () => import('./qianmu-video-store.js?v=1.59.80'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.79'),
+    load: () => import('./qianmu-video-result.js?v=1.59.80'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.79'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.80'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.79'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.80'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.79'),
+    load: () => import('./qianmu-video-media.js?v=1.59.80'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.79'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.80'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.79'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.80'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.79'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.80'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.79'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.80'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.79'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.80'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.79'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.80'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.79'),
-        import('./qianmu-theaters.js?v=1.59.79'),
+        import('./builtin-theaters.js?v=1.59.80'),
+        import('./qianmu-theaters.js?v=1.59.80'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -1334,6 +1338,7 @@ let storyboardRuntimeReconciled = false;
 let storyboardComfyViewRuntime = null;
 let storyboardComfyViewError = '';
 let storyboardComfyLibraryController = null;
+let storyboardComfyPoolController = null;
 let storyboardCharacterArchiveController = null;
 let storyboardComfyLibraryError = '';
 const storyboardNormalizedStates = new WeakSet();
@@ -12371,6 +12376,7 @@ function storyboardEndSession() {
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdComfyTargetsCleanup?.();
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdComfyInboxCleanup?.();
   storyboardComfyLibraryController?.detach();
+  storyboardComfyPoolController?.detach();
   storyboardCharacterArchiveController?.detach();
   storyboardPendingRestoreScroll = null;
   storyboardPresetUndo = null;
@@ -12399,6 +12405,7 @@ function storyboardPageTitle(state) {
   // Read only: opening a title must never normalize settings or discard an editor draft.
   if (state.view === 'create' && state.source === 'comfy') return 'COMFY WORKBENCH';
   if (state.view === 'workflows') return 'WORKFLOW LIBRARY';
+  if (state.view === 'comfy-pools') return 'WORKFLOW CANDIDATES';
   if (state.view === 'artists') {
     const editing = state.editingArtistPresetId === 'new' || state.artistPresets?.some((item) => item.id === state.editingArtistPresetId);
     return editing ? 'ARTIST PROFILE' : 'ARTIST LIBRARY';
@@ -12412,7 +12419,7 @@ function storyboardPageTitle(state) {
 }
 
 function renderStoryboardNav(state) {
-  const selected = state.view === 'workflows' ? 'create' : state.view;
+  const selected = ['workflows', 'comfy-pools'].includes(state.view) ? 'create' : state.view;
   const items = [
     ['create', '镜头台', 'fa-camera', 'qm-regular-aperture'],
     ['characters', '角色库', 'fa-circle-user', 'qm-regular-user-circle'],
@@ -13934,6 +13941,7 @@ async function storyboardMountComfyLibrary(root, retry = false) {
         resolveNamespace: () => identity.resolveImageAccountNamespace(), getCurrentRecipe: () => storyboardCurrentComfyRecipe(state),
         isCurrent: () => activeTab === 'imagegen' && storyboardState() === state && state.view === 'workflows' && state.source === 'comfy',
         onApply: recipe => storyboardApplyComfyLibraryRecipe(document.querySelector('#story-director-modal'), state, recipe),
+        onCandidates: () => storyboardNavigate(document.querySelector('#story-director-modal'), { view: 'comfy-pools' }),
         notify: toast, confirm: message => confirmDialog('工作流库', htmlEscape(message)), onIcons: applyQianmuIcons, download: ttsDownloadBlob,
       });
       storyboardComfyLibraryController = { ...controller, state };
@@ -13944,6 +13952,46 @@ async function storyboardMountComfyLibrary(root, retry = false) {
     if (host.isConnected && storyboardState() === state && state.view === 'workflows') {
       host.innerHTML = '<div role="status">工作流库未能载入 <button type="button" class="sd-btn sd-comfy-library-retry">重试</button></div>';
       host.querySelector('.sd-comfy-library-retry')?.addEventListener('click', () => void storyboardMountComfyLibrary(root, true));
+    }
+  }
+}
+
+async function storyboardPickComfyPoolWorkflow(state, { namespace, previous, guard }) {
+  const references = clone(state.profiles.comfy.comfyReferences || null);
+  const check = async () => {
+    await guard();
+    if (storyboardState() !== state || JSON.stringify(references) !== JSON.stringify(state.profiles.comfy.comfyReferences || null)) throw Error('当前参考图已变化，请重新选择');
+  };
+  const runtime = await featureRuntime.load('comfyRoutes'); await check();
+  const picked = await runtime.openComfyRoutePicker({ context: ctx(), namespace, binding: previous?.target.comfyWorkflowBinding,
+    roles: previous?.target.comfyCharacterEnabled === true, hasReferences: references?.enabled === true, guard: check });
+  await check(); return picked ? { ...picked, references } : null;
+}
+
+async function storyboardMountComfyPools(root) {
+  const state = storyboardState(), host = root.querySelector('.sd-comfy-pool-host');
+  if (!host?.isConnected || state.view !== 'comfy-pools' || state.source !== 'comfy') return;
+  try {
+    const [module, identity] = await Promise.all([featureRuntime.load('comfyPools'), featureRuntime.load('imageAdmission')]);
+    if (!host.isConnected || storyboardState() !== state || state.view !== 'comfy-pools' || state.source !== 'comfy') return;
+    if (!storyboardComfyPoolController || storyboardComfyPoolController.state !== state) {
+      storyboardComfyPoolController?.dispose();
+      const controller = module.createComfyPoolController({
+        resolveNamespace: () => identity.resolveImageAccountNamespace(),
+        getScopeKey: () => JSON.stringify([storyboardAdmissionEpoch, String(getChatKey() || '')]),
+        getConnections: () => (state.connections.comfy?.presets || []).map(row => ({ id: row.id, name: row.name })),
+        pickWorkflow: options => storyboardPickComfyPoolWorkflow(state, options),
+        onLibrary: () => storyboardNavigate(document.querySelector('#story-director-modal'), { view: 'workflows' }),
+        isCurrent: () => activeTab === 'imagegen' && storyboardState() === state && state.view === 'comfy-pools' && state.source === 'comfy',
+        notify: toast, confirm: message => confirmDialog('候选方案', htmlEscape(message)), onIcons: applyQianmuIcons, download: ttsDownloadBlob,
+      });
+      storyboardComfyPoolController = { ...controller, state };
+    }
+    storyboardComfyPoolController.mount(host);
+  } catch (_) {
+    if (host.isConnected && storyboardState() === state && state.view === 'comfy-pools') {
+      host.innerHTML = '<div role="status">候选方案未能载入 <button type="button" class="sd-btn sd-comfy-pool-retry">重试</button></div>';
+      host.querySelector('.sd-comfy-pool-retry')?.addEventListener('click', () => void storyboardMountComfyPools(root));
     }
   }
 }
@@ -17081,6 +17129,7 @@ function renderStoryboardTab() {
   storyboardReconcileGalleryLinks();
   const body = state.view === 'characters' ? '<div class="sd-character-archive-host" role="region" aria-label="角色库"></div>'
     : state.view === 'workflows' ? '<div class="sd-comfy-library-host" role="region" aria-label="工作流库"></div>'
+    : state.view === 'comfy-pools' ? '<div class="sd-comfy-pool-host" role="region" aria-label="候选方案"></div>'
     : state.view === 'assets' ? renderStoryboardAssets(state)
       : state.view === 'artists' ? renderStoryboardArtistLibrary(state)
         : state.view === 'presets' ? renderStoryboardPresetLibrary(state)
@@ -21286,6 +21335,8 @@ function bindStoryboardTabEvents(root) {
     } else void storyboardMountComfyLibrary(root);
   }
   else storyboardComfyLibraryController?.detach();
+  if (state.view === 'comfy-pools') void storyboardMountComfyPools(root);
+  else storyboardComfyPoolController?.detach();
   root.querySelectorAll('.sd-comfy-open-library').forEach(button => button.addEventListener('click', event => {
     event.preventDefault(); storyboardCaptureWorkbench(root, 'comfy');
     storyboardNavigate(root, { view: 'workflows', editingArtistPresetId: '', editingPromptItemId: '' });
@@ -35170,6 +35221,8 @@ function cleanupRuntime(resetSettings = false) {
     clean('panels', () => {
       storyboardComfyLibraryController?.dispose();
       storyboardComfyLibraryController = null;
+      storyboardComfyPoolController?.dispose();
+      storyboardComfyPoolController = null;
       storyboardCharacterArchiveController?.dispose();
       storyboardCharacterArchiveController = null;
       document.getElementById(SETTINGS_PANEL_ID)?.remove();

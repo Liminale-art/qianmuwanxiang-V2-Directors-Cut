@@ -26,7 +26,7 @@ function classificationEditor(document){
     <div class="sd-comfy-library-tools"><span class="sd-comfy-library-note">分类仅用于候选匹配，保存不启用自动选择。人物上限留空为未声明。</span>${icon('clear-classification','清除分类声明','rotate-left',Object.hasOwn(document,'classification')?'':'disabled')}</div>
   </div></details>`;
 }
-function classificationBadges(row){
+export function renderComfyClassificationBadges(row){
   if(!Object.hasOwn(row,'classification'))return '';
   let value;try{value=normalizeComfyClassification(row.classification);}catch(_){return '<div class="sd-comfy-library-note">分类待核对</div>';}
   const labels=classificationGroups.flatMap(key=>value[key].map(choice=>classificationLabels[choice]));
@@ -62,17 +62,18 @@ export function renderComfyLibrary(view) {
   return `<div class="sd-comfy-library" aria-busy="${Boolean(view.busy)}"><fieldset ${disabled}>
     <div class="sd-comfy-library-tools"><input class="text_pole" data-comfy-search type="search" aria-label="搜索工作流" value="${escape(view.search||'')}">${icon('import','导入工作流','upload')}${icon('new','新建工作流','plus')}</div>
     <div class="sd-comfy-library-tools"><button type="button" class="sd-btn" data-comfy-action="from-current">保存当前配方到库</button><button type="button" class="sd-btn ${view.archived?'active':''}" aria-pressed="${Boolean(view.archived)}" data-comfy-action="archived">归档</button>${icon('refresh','刷新列表','rotate')}</div>
+    <button type="button" class="sd-btn" data-comfy-action="candidates">候选方案</button>
     ${view.usage?`<div class="sd-comfy-library-note">${view.usage.count} 个方案 · ${view.usage.versions} 个版本 · ${size(view.usage.bytes)} / ${size(view.usage.limit)}（当前浏览器 · 正文估算）</div>`:''}
     <div class="sd-comfy-library-rows">${(view.rows||[]).map(row=>`<section class="sd-card sd-comfy-library-row" data-comfy-id="${escape(row.id)}" data-comfy-name="${escape(row.name.toLocaleLowerCase())}" ${view.search&&!row.name.toLocaleLowerCase().includes(view.search.toLocaleLowerCase())?'hidden':''}>
       <div class="sd-comfy-library-row-head"><button type="button" class="sd-comfy-library-name" data-comfy-action="${view.archived?'export':'edit'}">${escape(row.name)}</button><span>v${row.version}</span></div>
       <div class="sd-comfy-library-note">${row.nodes} 个节点 · ${size(row.totalBytes)}${row.issue?` · ${escape(row.issue)}`:''}</div>
-      ${classificationBadges(row)}
+      ${renderComfyClassificationBadges(row)}
       <div class="sd-comfy-library-row-actions">${view.archived?`${icon('restore','恢复方案','rotate-left')}${icon('export','导出最新版本','download')}${icon('purge','永久清理全部版本','trash-can')}`:`<button type="button" class="sd-btn" data-comfy-action="apply">应用</button>${icon('edit','编辑版本','pen')}${icon('copy','复制为新方案','copy')}${icon('export','导出最新版本','download')}${icon('archive','归档方案','box-archive')}`}</div>
     </section>`).join('')}</div>
   </fieldset><input type="file" data-comfy-file accept=".json,application/json" hidden></div>`;
 }
 
-export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,onApply,isCurrent=()=>true,notify=()=>{},confirm=async()=>false,onIcons=()=>{},download,store=createComfyWorkflowStore()}={}) {
+export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,onApply,onCandidates=()=>{},isCurrent=()=>true,notify=()=>{},confirm=async()=>false,onIcons=()=>{},download,store=createComfyWorkflowStore()}={}) {
   const view={rows:[],usage:null,search:'',archived:false,draft:null,busy:false,error:''};
   let host=null,namespace='',disposed=false,loaded=false,entry=0,operationEntry=0,verifiedEntry=-1;const scrolls={list:0,editor:0};
   const visible=()=>!disposed&&host?.isConnected&&isCurrent()&&(!view.busy||operationEntry===entry);
@@ -102,6 +103,7 @@ export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,
     if(name==='import'){if(!view.busy)host.querySelector('[data-comfy-file]')?.click();return;}
     await guarded(async()=>{
       const row=view.rows.find(row=>row.id===id);
+      if(name==='candidates'){await authorize();onCandidates();return;}
       if(name==='refresh'){await loadList();return;}
       if(name==='archived'){view.archived=!view.archived;await loadList();return;}
       if(name==='new'){newDraft('',emptyDocument());return;}

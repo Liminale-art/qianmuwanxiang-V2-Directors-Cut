@@ -10217,6 +10217,20 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-comfy-classification-badges { margin-top: 8px; }
 #story-director-modal .sd-comfy-classification-badges > span { border: 1px solid var(--sd-hairline); border-radius: 6px; padding: 2px 6px; color: var(--sd-muted); font-size: 11px; }
 
+/* Candidate plans share library controls, with compact metadata-only cards and explicit membership. */
+#story-director-modal .sd-comfy-pool-tools { display: flex; align-items: center; gap: 6px; min-width: 0; }
+#story-director-modal .sd-comfy-pool-tools > :is(input,span) { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+#story-director-modal .sd-comfy-pool-tools .sd-btn { flex: 1; min-width: 0; padding: 4px 8px !important; font-size: 12px !important; }
+#story-director-modal .sd-comfy-pools .sd-btn[aria-pressed="true"] { color: var(--sd-accent) !important; border-color: var(--sd-accent) !important; background: color-mix(in srgb, var(--sd-accent) 15%, transparent) !important; }
+#story-director-modal .sd-comfy-pool-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+#story-director-modal .sd-comfy-pool-rows, #story-director-modal .sd-comfy-pool-members { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+#story-director-modal .sd-comfy-pool-rows > .sd-card { padding: 12px; }
+#story-director-modal .sd-comfy-pool-rows > .sd-card[hidden] { display: none !important; }
+#story-director-modal .sd-comfy-pool-member > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#story-director-modal .sd-comfy-pool-member > summary > b { min-width: 0; overflow-wrap: anywhere; }
+#story-director-modal .sd-comfy-pool-member > summary > small { flex-shrink: 0; font-size: 11px; color: var(--sd-muted); }
+#story-director-modal .sd-comfy-pool-row-actions { justify-content: flex-end; margin-top: 8px; }
+
 /* Connection trust is deliberately folded and loaded only on demand. */
 #story-director-modal .sd-comfy-targets { min-width: 0; margin-top: 8px; }
 #story-director-modal .sd-comfy-targets > summary { color: var(--sd-muted); font-size: 12px; text-align: left; cursor: pointer; }
