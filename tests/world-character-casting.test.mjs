@@ -94,7 +94,8 @@ test('confirmation edits only this image; explicit reference choice stays on a v
   assert.equal(world.captureWorldShotConfirmation({...shot,sensitive:true},{...edit,sensitive:false}).sensitive,true);
 });
 
-function harness({confirm=async options=>options.shot,family='novel'}={}) {
+function harness({confirm=async options=>options.promptFormats.length ? {...options.shot,promptRenderingPack:await formats.bindStoryboardPromptRenderings(options.shot,
+  Object.fromEntries(options.promptFormats.map(format=>[format,{global:'kitchen, soft light',negative:'blurred details',characters:options.shot.characters.map(row=>({character_id:row.id,positive:[...row.identity,...row.temporaryState].join(', ')}))}])),{formats:options.promptFormats})} : options.shot,family='novel'}={}) {
   const e=worldEnvironment(),{state,context}=createStoryboardFormFixture({family});
   state.directorBridge.worldSideShotsEnabled=true;state.prompt='original';state.promptDraft.shots=[{id:'old-shot',prompt:'original'}];
   const packet=normalizeQianmuProductionPacket({packetId:'packet-a',eventId:'event-a',timelineAnchor:{chatKey:'chat-a'},
@@ -195,6 +196,23 @@ test('world auto candidates determine both prompt format union and casting, inde
   })}:load(key);
   assert.equal(await e.run(),true,e.notices.join(';'));assert.equal(e.state.source,'novel');assert.equal(closed,1);
   assert.deepEqual(Object.keys(e.state.promptDraft.shots[0].shotSpec.promptRenderingPack.renderings),['tags','natural_language']);
+});
+
+test('each closed world entry uses its exact expression format through the real compiler callback and explicit confirmation',async()=>{
+  for(const family of ['novel','banana','openai','seedream']){
+    let calls=0;const expected=family==='novel'?'tags':'natural_language';
+    const e=harness({family,confirm:async options=>{
+      assert.deepEqual([...options.promptFormats],[expected]);
+      return {...options.shot,promptRenderingPack:await formats.bindStoryboardPromptRenderings(options.shot,await options.prepareRenderings(options.shot),{formats:options.promptFormats,guard:options.guard})};
+    }});
+    e.context.storyboardCallCompiler=async(messages,profile,options)=>{
+      calls++;assert.deepEqual([...options.promptFormats],[expected]);assert.equal(options.jsonSchemaStrict,true);
+      return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(JSON.parse(messages[1].content).shot,options.promptFormats)});
+    };
+    assert.equal(await e.run(),true,e.notices.join(';'));assert.equal(calls,1);assert.equal(e.state.source,family);
+    assert.match(e.state.prompt,/kitchen, soft light/);assert.doesNotMatch(e.state.prompt,/厨房/);
+    assert.equal(e.state.pendingCompilerStages[1].status,'success');
+  }
 });
 test('real entry awaits explicit confirmation, uses shared visible casting and hands one approved draft to the normal pipeline',async()=>{
   const e=harness();e.state.pendingCompilerStages=[{type:'prompt_compiler',input:'previous prose'}];assert.equal(await e.run(),true);assert.deepEqual(e.reads,['alice']);

@@ -6,7 +6,7 @@ import { normalizeComfyCharacterActivation } from './qianmu-comfy-character-cont
 import { retainComfyRouteBinding, retainComfyRoutePromptLayer, retainComfySceneOrigin } from './qianmu-comfy-route-contract.js';
 import { normalizeWorldSource } from './qianmu-world-source.js';
 import { normalizeCharacterCastingSnapshot, assertCharacterCastingSnapshots } from './qianmu-character-casting.js';
-import { STORYBOARD_PROMPT_FORMATS, retainStoryboardPromptRenderingPack } from './qianmu-prompt-formats.js';
+import { STORYBOARD_PROMPT_FORMATS, retainStoryboardPromptRenderingPack, resolveStoryboardPromptRendering } from './qianmu-prompt-formats.js';
 import { retainComfyWorkbenchBinding } from './qianmu-comfy-workbench-binding.js';
 import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -1594,13 +1594,26 @@ export function compileStoryboardPrompt(input = {}) {
   assertCharacterCastingSnapshots(shotInput);
   const validation = validateStoryboardShotSpec(shotInput, { providerId: input.providerId, modelId: modelBinding.capabilityModelId });
   const capability = getStoryboardCapabilities(input.providerId, modelBinding.capabilityModelId, input.workflow, input.connection);
-  const shot = validation.shot, common = [
+  const shot = validation.shot;
+  const format = input.providerId === 'novel' ? 'tags' : input.providerId === 'comfy' ? '' : 'natural_language';
+  let rendering;
+  if(format && Object.hasOwn(shot,'promptRenderingPack')) {
+    const pack=retainStoryboardPromptRenderingPack(shot.promptRenderingPack,shot.characters.map(character=>character.id));
+    if(pack.invalid || !pack.renderings[format])throw Object.assign(new Error('本镜缺少有效的渠道提示表达，请重新提取或手动编辑'),{code:'storyboard_prompt_format'});
+    rendering=pack.renderings[format];
+  }
+  const separator=rendering && format==='natural_language' ? '\n\n' : ', ';
+  const individual=new Map((rendering?.characters || []).map(character=>[character.character_id,character.positive]));
+  const describeCharacter=character=>rendering ? `${JSON.stringify(character.name || character.id)}: ${individual.get(character.id)}` : characterPrompt(character);
+  const common = [
     capability.supportsArtistSyntax ? str(input.artistString, 6000) : '',
     capability.supportsArtistSyntax ? str(input.artistPositive, 12000) : '', str(input.modelPositive, 12000),
+    ...(rendering ? [rendering.global] : [
     promptPart(shot.promptAtoms.global), shot.scene,
     promptPart(shot.promptAtoms.camera), shot.shotScale, promptPart(shot.composition.framing),
     capability.ratio ? shot.composition.ratioId : '', shot.composition.negativeSpace, promptPart(shot.sharedRelations),
-  ].filter(Boolean).join(', ');
+    ]),
+  ].filter(Boolean).join(separator);
   const useNativeCharacters = input.providerId === 'novel' && capability.multiCharacter && shot.characters.length > 0;
   // Shared identity is not a Comfy implementation. Model-interface exclusions never acquire node bindings.
   const characterNegatives = shot.characters.map(character => input.providerId === 'comfy' ? '' : Object.hasOwn(character,'negative') ? character.negative : character.archiveSnapshot?.negative || '');
@@ -1610,20 +1623,20 @@ export function compileStoryboardPrompt(input = {}) {
   if (characterNegatives.some(Boolean) && !useNativeCharacters && !capability.supportsExclusionText) {
     throw Object.assign(new Error('当前模型或工作流没有人物专属负面输入，请先调整角色配置'), {code:'character_archive_negative_capability'});
   }
-  const characterBlocks = shot.characters.map((character, index) => [characterPrompt(character),
+  const characterBlocks = shot.characters.map((character, index) => [describeCharacter(character),
     !useNativeCharacters && characterNegatives[index] ? `Undesired traits for ${JSON.stringify(character.name || character.id)} only: ${characterNegatives[index]}` : '',
   ].filter(Boolean).join('. ')).filter(Boolean);
-  const environment = promptPart(shot.promptAtoms.environment), quality = promptPart(shot.promptAtoms.quality);
-  const prompt = [common, ...(useNativeCharacters ? [] : characterBlocks), environment, quality].filter(Boolean).join(', ');
+  const environment = rendering ? '' : promptPart(shot.promptAtoms.environment), quality = rendering ? '' : promptPart(shot.promptAtoms.quality);
+  const prompt = [common, ...(useNativeCharacters ? [] : characterBlocks), environment, quality].filter(Boolean).join(separator);
   const antiMix = shot.characters.length > 1 ? 'mixed identities, merged bodies, swapped character traits, swapped character actions' : '';
   const negative = capability.supportsNativeNegative || capability.supportsExclusionText
-    ? [capability.supportsArtistSyntax ? str(input.artistNegative, 12000) : '', str(input.modelNegative, 12000), promptPart(shot.promptAtoms.negative), antiMix].filter(Boolean).join(', ') : '';
+    ? [capability.supportsArtistSyntax ? str(input.artistNegative, 12000) : '', str(input.modelNegative, 12000), rendering ? rendering.negative : promptPart(shot.promptAtoms.negative), antiMix].filter(Boolean).join(separator) : '';
   const providerOptions = {};
   if (useNativeCharacters) {
     providerOptions.v4_prompt = {
       caption: {
         base_caption: [common, environment, quality].filter(Boolean).join(', '),
-        char_captions: shot.characters.map((character) => ({ char_caption: characterPrompt(character), centers: [{ x: character.spatial.center[0], y: character.spatial.center[1] }] })),
+        char_captions: shot.characters.map((character) => ({ char_caption: describeCharacter(character), centers: [{ x: character.spatial.center[0], y: character.spatial.center[1] }] })),
       },
       use_coords: true,
       use_order: true,
@@ -1634,8 +1647,24 @@ export function compileStoryboardPrompt(input = {}) {
   return {
     prompt, negative, providerOptions, characterBlocks, validation, modelBinding,
     productionContext: shot.productionContext,
+    ...(rendering ? {promptFormat:format} : {}),
     degradation: shot.characters.length > 1 && !useNativeCharacters ? { mode: 'named_character_blocks', reason: capability.multiCharacter ? 'provider_adapter_unavailable' : 'capability_unavailable' } : null,
   };
+}
+
+// Representation proof is separate from request authorization. No model calls and no payload rewrites.
+// Historical closed-model snapshots without an expression marker keep their exact legacy text.
+export async function verifyStoryboardModelPromptJob(job,{guard=async()=>{}}={}) {
+  if(job?.source==='comfy' || !job?.payload?.compiledPrompt?.promptFormat)return null;
+  if(job.promptLocked===true || job.payload.compiledPrompt.degradation?.mode==='manual_flat')return null;
+  const fail=()=>{throw Object.assign(new Error('本镜提示表达或人物事实已变化，请重新核对'),{code:'storyboard_prompt_format',submissionState:'not_submitted'});};
+  const captured=()=>JSON.stringify([job.source,job.profile,job.connection,job.payload,job.shotSpec,job.promptLocked,job.safetyAdapted]);
+  const before=captured(),format=job.source==='novel'?'tags':'natural_language';
+  if(job.payload.compiledPrompt.promptFormat!==format || job.safetyAdapted)fail();
+  const current=async()=>{await guard();if(before!==captured())fail();};
+  const shot=normalizeStoryboardShotSpec(job.payload.shotSpec);
+  const rendering=await resolveStoryboardPromptRendering(shot,shot.promptRenderingPack,format,{guard:current});
+  await current();return rendering;
 }
 
 // Native NAI captions are the actual request text, not a second copy of the editor.

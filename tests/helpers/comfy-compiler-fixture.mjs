@@ -30,6 +30,6 @@ export async function compilerEnvironment(){
     storyboardSetPlanStatus:(plan,status,extra={})=>{if(plan)Object.assign(plan,{status,...extra});},console:{error:(...args)=>errors.push(args.map(value=>value?.message||String(value)).join(' '))},
   });
   vm.runInContext(['storyboardCompilerRequestConfig','storyboardCompilerResult','storyboardCompilePrompt','storyboardPrepareComfyPromptJob','storyboardPrepareGatewayAssets'].map(section).join('\n'),e.context);
-  e.context.storyboardQueueJob=async job=>{if(job.source==='comfy') {if(job.profile.comfyRouteBinding)await e.context.storyboardVerifyComfyRouteJob(job);await e.context.storyboardPrepareComfyPromptJob(job,{prepare:true});}e.jobs.push(job);return true;};
+  e.context.storyboardQueueJob=async job=>{if(job.source==='comfy') {if(job.profile.comfyRouteBinding)await e.context.storyboardVerifyComfyRouteJob(job);await e.context.storyboardPrepareComfyPromptJob(job,{prepare:true});}else await e.context.verifyStoryboardModelPromptJob(job);e.jobs.push(job);return true;};
   return {...e,llmCalls:calls,errors,response:scene};
 }

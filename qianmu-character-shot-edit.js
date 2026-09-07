@@ -77,9 +77,15 @@ export async function prepareCharacterShotEdit(snapshot,characters,{namespace,re
   assertCharacterCastingSnapshots(raw);
   if(characters.length!==raw.characters.length||characters.some((row,index)=>row.id!==raw.characters[index].id))fail('人物顺序或身份已变化，请重新打开本镜');
   assertCharacterCastingSnapshots({characters});
-  const shot=normalizeStoryboardShotSpec({...raw,characters});
-  if(JSON.stringify(shot.characters)===JSON.stringify(normalizeStoryboardShotSpec(raw).characters)){await guard();return {snapshot:next,mode:'unchanged',warnings:[]};}
-  const previous=compile(next,raw),compiled=compile(next,shot);
+  const original=normalizeStoryboardShotSpec(raw),shot=normalizeStoryboardShotSpec({...raw,characters});
+  if(JSON.stringify(shot.characters)===JSON.stringify(original.characters)){await guard();return {snapshot:next,mode:'unchanged',warnings:[]};}
+  const previous=compile(next,raw);
+  // This is an explicit human edit, not a request to reuse stale translated traits or call an LLM.
+  // Retain untouched characters' already-rendered text and only rebuild the changed person's block.
+  const unchanged=shot.characters.map((character,index)=>JSON.stringify(character)===JSON.stringify(original.characters[index]));
+  delete shot.promptRenderingPack;
+  const compiled=compile(next,shot);
+  compiled.characterBlocks=compiled.characterBlocks.map((block,index)=>unchanged[index]?previous.characterBlocks[index]:block);
   if(!compiled.validation.valid)fail(compiled.validation.errors[0]);
   const oldPrompt=String(next.payload.prompt||''),options=next.payload.parameters?.providerOptions;
   const native=Boolean(compiled.providerOptions.v4_prompt&&options?.v4_prompt?.caption?.char_captions?.length===raw.characters.length);
@@ -101,7 +107,7 @@ export async function prepareCharacterShotEdit(snapshot,characters,{namespace,re
         const captionAt=(result,index)=>result.providerOptions[key]?.caption?.char_captions?.[index]||{char_caption:'',centers:[{x:result.validation.shot.characters[index].spatial.center[0],y:result.validation.shot.characters[index].spatial.center[1]}]};
         proposed.caption.char_captions=shot.characters.map((_,index)=>{
           const before=captionAt(previous,index),after=captionAt(compiled,index);
-          return JSON.stringify(before)===JSON.stringify(after)&&oldCaptions[index]?clone(oldCaptions[index]):clone(after);
+          return (unchanged[index] || JSON.stringify(before)===JSON.stringify(after))&&oldCaptions[index]?clone(oldCaptions[index]):clone(after);
         });
       }
       next.payload.parameters.providerOptions[key]={...proposed,...existing,caption:{...existing.caption,...proposed.caption}};

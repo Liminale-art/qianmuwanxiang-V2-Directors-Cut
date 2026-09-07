@@ -987,6 +987,8 @@ export function buildStoryboardSafetyContractRequest(shotInput = {}, config = {}
 export function adaptStoryboardSafetyContract(value, shotInput = {}) {
   if (!object(value) || value.schema !== STORYBOARD_SAFETY_RESPONSE_SCHEMA_ID) return null;
   const shot = normalizeStoryboardShotSpec(shotInput);
+  // The approved replacement is a new visual description, never the old sensitive rendering.
+  delete shot.promptRenderingPack;
   const updates = new Map((Array.isArray(value.character_updates) ? value.character_updates : [])
     .filter((entry) => object(entry) && entry.character_id)
     .map((entry) => [String(entry.character_id), entry]));
