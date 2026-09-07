@@ -5,7 +5,7 @@ import {readFile} from 'node:fs/promises';
 import {vibeDigest} from '../qianmu-vibe-file.js';
 
 test('Vibe asset store opens lazily, uses its own DB, and closes permanently without touching old data',async()=>{
-  let calls=0;const store=createVibeAssetStore({indexedDB:{open(name,version){calls++;assert.equal(name,'qianmu-vibe-assets');assert.equal(version,1);throw Error('unavailable');}}});
+  let calls=0;const store=createVibeAssetStore({indexedDB:{open(name,version){calls++;assert.equal(name,'qianmu-vibe-assets');assert.equal(version,2);throw Error('unavailable');}}});
   assert.equal(calls,0);await assert.rejects(()=>store.list('st-user:one'),{code:'vibe_file_storage'});
   await assert.rejects(()=>store.usage('st-user:one'),{code:'vibe_file_storage'});assert.equal(calls,2);
   store.close();await assert.rejects(()=>store.list('st-user:one'),{code:'vibe_file_closed'});assert.equal(calls,2);

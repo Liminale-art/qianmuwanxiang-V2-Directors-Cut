@@ -8,6 +8,7 @@ import {
   openAICompatibilityAllows,
 } from './qianmu-openai-image-compat.js';
 import { NOVEL_STATIC_MODELS, finalizeModelList, collectImageModelPages, modelsFromComfyObjectInfo, novelModelCapabilities, novelReferenceIssue, novelPreciseReferenceParameters, isImageModelMetadataField } from './qianmu-image-models.js';
+import {normalizeNovelVibeEntries,novelVibeParameters} from './qianmu-novel-vibe.js';
 import { prepareComfyWorkflow } from './qianmu-comfy-workflow.js';
 import { collectComfyStillResults, comfyTaskId, comfyStillMime, comfyReferenceStillMime, readComfyImageBytes } from './qianmu-comfy-results.js';
 import { auditComfyWorkflow, requireComfyExecution } from './qianmu-comfy-audit.js';
@@ -338,12 +339,9 @@ function novelParameters(request) {
   assign('sampler', text(source.sampler, 120) || undefined);
   assign('noise_schedule', text(source.scheduler, 120) || undefined);
   assign('negative_prompt', text(request.negativePrompt, 24000) || undefined);
-  const vibes = Array.isArray(request.vibes) ? request.vibes.slice(0, 8) : [];
-  if (vibes.length) {
-    parameters.reference_image_multiple = vibes.map((item) => text(item.data, 24 * 1024 * 1024));
-    parameters.reference_strength_multiple = vibes.map((item) => number(item.strength, 0, 2, 0.6));
-    parameters.reference_information_extracted_multiple = vibes.map((item) => number(item.information, 0, 1, 1));
-  }
+  const vibes=request.vibes||[];
+  if(vibes.some(row=>row.kind==='novelai-vibe-encoding'))delete parameters.reference_information_extracted_multiple;
+  Object.assign(parameters,novelVibeParameters(vibes));
   const references = Array.isArray(request.referenceImages) ? request.referenceImages : Array.isArray(request.references) ? request.references : [];
   const prepared = references.slice(0, 16).map((item) => {
     const data = String(item?.data || item?.base64 || '').trim().replace(/^data:[^;,]+;base64,/, '').replace(/\s+/g, '');
@@ -665,6 +663,7 @@ export async function generateDirectImage(input = {}, { fetchImpl = globalThis.f
     if (!novelCaps.ok) throw new DirectImageError(novelCaps.message, { code: novelCaps.code });
     const referenceIssue = novelReferenceIssue(novelCaps, input.referenceImages || input.references || [], input.vibes || [], plainObject(input.parameters?.providerOptions));
     if (referenceIssue) throw new DirectImageError(referenceIssue.message, { code: referenceIssue.code });
+    try{input={...input,vibes:normalizeNovelVibeEntries(input)};}catch(error){throw new DirectImageError(error.message,{code:error.code});}
   }
   let probed = false, submissionState = 'not_submitted', acceptedWrites = 0;
   const guardedFetch = async (url, options = {}) => {

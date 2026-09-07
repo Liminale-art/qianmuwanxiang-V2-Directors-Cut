@@ -64,6 +64,7 @@ function imageCapabilityResult(status, body = {}) {
     serviceVersion: typeof body.serviceVersion === 'string' ? body.serviceVersion.slice(0, 80) : '',
     bindingVersion: status === 'ready' ? IMAGE_MODEL_BINDING_VERSION : 0,
     novel: status === 'ready' && novel?.protocol === 'novelai' ? { protocol: 'novelai', capabilityModelIds: ids } : null,
+    novelVibe: status==='ready'&&body.novelVibe?.version===1&&body.novelVibe.encoded===true&&body.novelVibe.maxReferences===16?{version:1,encoded:true,maxReferences:16}:null,
     protocolBinding: { version: status === 'ready' && body.protocolBinding?.version === IMAGE_PROTOCOL_BINDING_VERSION ? IMAGE_PROTOCOL_BINDING_VERSION : 0, providers: protocolProviders },
     comfyExecution: status === 'ready' && body.comfyExecution?.version === 1 && body.comfyExecution.outputSelection === true
       && body.comfyExecution.staticAccounting === true ? { version: 1, outputSelection: true, staticAccounting: true, staticReferencesVersion: body.comfyExecution.staticReferencesVersion === 1 ? 1 : 0 } : null,
@@ -115,6 +116,10 @@ export function checkQianmuImageModelBinding(capabilities, identity) {
     return fail('image_capability_unsupported', '增强服务尚未支持所选模型能力档，请更新服务或改用可直连的连接');
   }
   return { ok: true, bindingVersion: IMAGE_MODEL_BINDING_VERSION };
+}
+export function checkQianmuNovelVibeBinding(capabilities){
+  if(capabilities?.status==='ready'&&capabilities.novelVibe?.version===1&&capabilities.novelVibe.encoded===true&&capabilities.novelVibe.maxReferences===16)return {ok:true,version:1};
+  return {ok:false,code:'novel_vibe_incompatible',message:'增强服务尚未确认支持 NAI 编码 Vibe，请同步更新前后端并重启 ST；未发送生成'};
 }
 
 export function checkQianmuComfyExecutionBinding(capabilities, { references = false } = {}) {

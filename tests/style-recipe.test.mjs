@@ -22,6 +22,16 @@ function setup(){
 }
 const idFactory=()=>{let n=0;return prefix=>`${prefix}-${++n}`;};
 
+test('style application distinguishes immutable assets despite both having an empty URL and retains frozen IE and zero strength',()=>{
+  const e=setup(),assetRef={version:1,namespace:'st-user:one',id:'a'.repeat(64)},old={...assetRef,id:'b'.repeat(64)};
+  e.state.vibeLibrary=[{id:'today',previewUrl:'',assetRef:old,strength:0,informationExtracted:.7}];
+  const r={version:1,artist:'',positive:'',negative:'',warnings:[],vibes:[{id:'original',name:'Encoded',previewUrl:'',assetRef,strength:0,information:.7}]};
+  const patch=recipe.planStoryboardStyleApplication(e.state,r,e.target(),{vibes:true},{uid:idFactory()});
+  assert.equal(patch.vibeLibrary.length,2);assert.deepEqual(patch.vibeLibrary[1].assetRef,assetRef);assert.notEqual(patch.selectedVibeIds[0],'today');
+  assetRef.id='c'.repeat(64);assert.equal(patch.vibeLibrary[1].assetRef.id,'a'.repeat(64));
+  const normalized=core.normalizeStoryboardState({...e.state,...patch});assert.equal(normalized.vibeLibrary[1].informationExtracted,.7);
+});
+
 test('style extraction reads exact frozen front layers and excludes scene, person, seed and connection content',()=>{
   const snap=snapshot(),result=recipe.readStoryboardStyleRecipe(snap);assert.equal(result.artist,'artist:original');assert.equal(result.positive,'old quality');assert.equal(result.negative,'old exclude');assert.equal(result.vibes[0].strength,0);
   assert.doesNotMatch(JSON.stringify(result),/ORIGINAL SCENE|DO NOT COPY|do-not-copy|original.invalid/);assert.deepEqual(snap,snapshot());

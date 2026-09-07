@@ -3,6 +3,11 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-novel-vibe.js",
+    "qianmu-vibe-asset-ref.js",
+    "qianmu-vibe-assets-worker.js",
+    "qianmu-vibe-assets.js",
+    "qianmu-vibe-library-assets.js",
     "qianmu-vibe-file.js",
     "qianmu-vibe-asset-store.js",
     "qianmu-vibe-library-view.js",

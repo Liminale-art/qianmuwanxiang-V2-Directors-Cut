@@ -2,9 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {captureStoryboardVibeRecipe as capture,retainStoryboardVibeRecipe as retain,resolveStoryboardVibeRecipe as resolve} from '../qianmu-vibe-recipe.js';
-import {sanitizeStoryboardSnapshot} from '../qianmu-storyboard.js';
+import {sanitizeStoryboardSnapshot,normalizeStoryboardState} from '../qianmu-storyboard.js';
 import {createStoryboardFormFixture,storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const row=(id='a')=>({id,name:'Vibe A',previewUrl:'/user/images/vibe-a.png',strength:0,informationExtracted:0});
+const assetRef={version:1,namespace:'st-user:one',id:'a'.repeat(64)};
+
+test('v2 immutable sources survive queue, snapshot, library normalization and independent mutations without embedded bytes',()=>{
+  const rows=[{...row(),assetRef:{...assetRef},previewUrl:'',data:'must not retain'},row('url')],recipe=capture(['a','url'],rows);
+  assert.equal(recipe.version,2);assert.deepEqual(recipe.items[0].assetRef,assetRef);assert.equal(recipe.items[0].information,0);
+  rows[0].assetRef.id='b'.repeat(64);assert.equal(recipe.items[0].assetRef.id,'a'.repeat(64));
+  const payload={selectedVibeIds:['a','url'],vibeRecipe:recipe};assert.deepEqual(sanitizeStoryboardSnapshot({source:'novel',payload}).payload.vibeRecipe,recipe);
+  assert.deepEqual(resolve(payload),recipe.items);assert.equal(JSON.stringify(recipe).includes('must not retain'),false);
+  const state=normalizeStoryboardState({vibeLibrary:rows});assert.deepEqual(state.vibeLibrary[0].assetRef,rows[0].assetRef);assert.equal(state.vibeLibrary[0].previewUrl,'');
+  rows[0].assetRef.id='c'.repeat(64);assert.equal(state.vibeLibrary[0].assetRef.id,'b'.repeat(64));
+});
+test('v2 cannot smuggle bytes, bad account IDs or fall back to a URL from a broken immutable reference',()=>{
+  const valid=capture(['a'],[{...row(),assetRef}]);
+  for(const change of [v=>v.version=1,v=>v.items[0].previewUrl='/fallback.png',v=>v.items[0].assetRef.id='bad',
+    v=>v.items[0].assetRef.namespace='wrong',v=>v.items[0].assetRef.data='encoded',v=>v.items[0].assetRef.version=2]){
+    const broken=structuredClone(valid);change(broken);assert.equal(retain(broken).invalid,true);assert.throws(()=>resolve({selectedVibeIds:['a'],vibeRecipe:broken}));
+  }
+  assert.throws(()=>capture(['a'],[{...row(),assetRef:{...assetRef,id:'bad'}}]));
+  const state=normalizeStoryboardState({vibeLibrary:[{...row(),assetRef:{...assetRef,id:'bad'}}]});
+  assert.equal(state.vibeLibrary[0].assetRef.invalid,true);assert.equal(state.vibeLibrary[0].previewUrl,'');
+});
 
 test('Vibe source recipes are bounded plain metadata, preserve order and zeros, and do not retain library extras or bytes',()=>{
   const rows=[{...row('a'),privateNotes:'not in recipe',data:'binary',tags:['unrelated']},row('b')],recipe=capture(['b','a'],rows);

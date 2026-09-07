@@ -1,4 +1,4 @@
-import {parseNovelVibeFile,vibeFileError} from './qianmu-vibe-file.js';
+import {parseNovelVibeFile,vibeFileError,vibeFilePreview} from './qianmu-vibe-file.js';
 
 const fail=(code,message)=>{throw vibeFileError(code,message);};
 const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
@@ -9,7 +9,7 @@ export const VIBE_ASSET_LIMITS=Object.freeze({count:1024,bytes:512*1024*1024});
 // Immutable imported-file assets; settings hold only IDs. Open/list never deserialize image/encoding bodies.
 // No automatic eviction: a library deletion must not invalidate an existing shot's frozen source.
 export function createVibeAssetStore({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-vibe-assets',timeoutMs=8000,now=Date.now}={}){
-  let database=null,opening=null,closed=false;const pending=new Set(),stores=['heads','documents','usage'];
+  let database=null,opening=null,closed=false;const pending=new Set(),stores=['heads','documents','usage','previews'];
   const timeout=Math.max(100,Math.min(15000,Number(timeoutMs)||8000));
   const storageError=()=>vibeFileError('storage','Vibe 储存暂不可用，请检查浏览器空间');
   const ended=()=>vibeFileError('closed','Vibe 资产会话已结束');
@@ -19,8 +19,8 @@ export function createVibeAssetStore({indexedDB=globalThis.indexedDB,keyRange=gl
       let request,done=false;
       const finish=(error,value)=>{if(done){value?.close();return;}done=true;clearTimeout(timer);error?reject(error):resolve(value);};
       const timer=setTimeout(()=>finish(vibeFileError('timeout','Vibe 储存读取超时')),timeout);
-      try{request=indexedDB.open(dbName,1);}catch(_){finish(storageError());return;}
-      request.onupgradeneeded=()=>{if(done||closed){request.transaction?.abort();return;}for(const name of stores){const store=request.result.createObjectStore(name,{keyPath:'key'});if(name==='heads')store.createIndex('namespace','namespace');}};
+      try{request=indexedDB.open(dbName,2);}catch(_){finish(storageError());return;}
+      request.onupgradeneeded=()=>{if(done||closed){request.transaction?.abort();return;}for(const name of stores){if(request.result.objectStoreNames.contains(name))continue;const store=request.result.createObjectStore(name,{keyPath:'key'});if(name==='heads')store.createIndex('namespace','namespace');}};
       request.onerror=()=>finish(storageError());request.onblocked=()=>finish(vibeFileError('blocked','Vibe 储存正在升级，请关闭旧页面后重试'));
       request.onsuccess=()=>{const db=request.result;if(done||closed){db.close();finish(ended());return;}database=db;
         db.onversionchange=()=>{db.close();if(database===db){database=null;opening=null;}};
@@ -44,6 +44,7 @@ export function createVibeAssetStore({indexedDB=globalThis.indexedDB,keyRange=gl
   }
   function checkHead(head,account){
     if(!head||head.namespace!==account||head.key!==key(account,head.assetId)||!Number.isSafeInteger(head.bytes)||head.bytes<1||head.bytes>64*1024*1024
+      ||!Number.isSafeInteger(head.previewBytes??0)||(head.previewBytes??0)<0||(head.previewBytes??0)>2*1024*1024
       ||!head.summary||head.summary.assetId!==head.assetId||!Number.isFinite(head.createdAt))fail('index','Vibe 资产索引损坏，请先保全数据');
     const info=head.summary;
     if(!hash(info.sourceId)||!['image','encoding'].includes(info.type)||typeof info.name!=='string'||info.name.length>100
@@ -53,7 +54,8 @@ export function createVibeAssetStore({indexedDB=globalThis.indexedDB,keyRange=gl
   }
   function usage(tx,read,account,next){
     read(tx.objectStore('usage').get(account),row=>{
-      if(row){if(row.key!==account||!Number.isSafeInteger(row.count)||row.count<0||row.count>VIBE_ASSET_LIMITS.count||!Number.isSafeInteger(row.bytes)||row.bytes<0||row.bytes>VIBE_ASSET_LIMITS.bytes||(row.count===0)!==(row.bytes===0))fail('index','Vibe 储存计值异常');next(row);return;}
+      if(row){if(row.key!==account||!Number.isSafeInteger(row.count)||row.count<0||row.count>VIBE_ASSET_LIMITS.count||!Number.isSafeInteger(row.bytes)||row.bytes<0||row.bytes>VIBE_ASSET_LIMITS.bytes||(row.count===0)!==(row.bytes===0)
+        ||!Number.isSafeInteger(row.previewBytes??0)||(row.previewBytes??0)<0||(row.previewBytes??0)>row.count*2*1024*1024||row.bytes+(row.previewBytes??0)>VIBE_ASSET_LIMITS.bytes)fail('index','Vibe 储存计值异常');next({...row,previewBytes:row.previewBytes??0});return;}
       read(tx.objectStore('heads').index('namespace').count(keyRange.only(account)),count=>{if(count)fail('index','Vibe 储存计值缺失，请先保全数据');next({key:account,count:0,bytes:0});});
     });
   }
@@ -62,25 +64,35 @@ export function createVibeAssetStore({indexedDB=globalThis.indexedDB,keyRange=gl
       namespace(account);if(closed)throw ended();if(!isCurrent())fail('stale','Vibe 导入环境已变化');
       const parsed=await parseNovelVibeFile(text);if(closed)throw ended();if(!isCurrent())fail('stale','Vibe 导入环境已变化');
       const unique=[...new Map(parsed.map(asset=>[asset.assetId,asset])).values()];
+      // Only small supplied thumbnails are cached; no image decode or paid encoding happens here.
+      const previews=new Map(unique.map(asset=>[asset.assetId,vibeFilePreview(asset.document)]));
       return transaction('readwrite',(tx,read,set)=>usage(tx,read,account,totals=>{
         let at=0;const heads=new Map();
         const next=()=>{
-          if(at===unique.length){tx.objectStore('usage').put(totals);set(parsed.map(asset=>heads.get(asset.assetId)));return;}
+          if(at===unique.length){tx.objectStore('usage').put(totals);set(parsed.map(asset=>({...heads.get(asset.assetId),defaults:{
+            strength:asset.document.importInfo?.strength??.6,information:asset.document.importInfo?.information_extracted??asset.summary.variants.find(row=>row.information!==null)?.information??1,
+          }})));return;}
           const asset=unique[at++],assetKey=key(account,asset.assetId);
           read(tx.objectStore('heads').get(assetKey),existing=>{
             if(existing){checkHead(existing,account);if(existing.bytes!==asset.bytes)fail('index','Vibe 内容与原索引不一致');
               // Do not acknowledge a missing/corrupt body as a successful duplicate import.
               read(tx.objectStore('documents').get(assetKey),body=>{if(!body||body.namespace!==account||body.serialized!==asset.serialized)fail('index','Vibe 原资产正文损坏，请先导出保全');heads.set(asset.assetId,existing);next();});return;}
-            if(totals.count+1>VIBE_ASSET_LIMITS.count||totals.bytes+asset.bytes>VIBE_ASSET_LIMITS.bytes)fail('capacity','Vibe 资产达到 1024 份或 512 MB 上限，请先导出整理');
-            const head={key:assetKey,namespace:account,assetId:asset.assetId,bytes:asset.bytes,summary:asset.summary,createdAt:now()};
+            const previewBytes=previews.get(asset.assetId)?.size||0;
+            if(totals.count+1>VIBE_ASSET_LIMITS.count||totals.bytes+(totals.previewBytes||0)+asset.bytes+previewBytes>VIBE_ASSET_LIMITS.bytes)fail('capacity','Vibe 资产达到 1024 份或 512 MB 上限，请先导出整理');
+            const head={key:assetKey,namespace:account,assetId:asset.assetId,bytes:asset.bytes,previewBytes,summary:asset.summary,createdAt:now()};
             tx.objectStore('heads').add(head);tx.objectStore('documents').add({key:assetKey,namespace:account,serialized:asset.serialized});
-            totals={...totals,count:totals.count+1,bytes:totals.bytes+asset.bytes};heads.set(asset.assetId,head);next();
+            if(previews.get(asset.assetId))tx.objectStore('previews').add({key:assetKey,namespace:account,blob:previews.get(asset.assetId)});
+            totals={...totals,count:totals.count+1,bytes:totals.bytes+asset.bytes,previewBytes:(totals.previewBytes||0)+previewBytes};heads.set(asset.assetId,head);next();
           });
         };next();
       }),isCurrent);
     },
     async list(account){namespace(account);return transaction('readonly',(tx,read,set)=>read(tx.objectStore('heads').index('namespace').getAll(keyRange.only(account),VIBE_ASSET_LIMITS.count+1),rows=>{
       if(rows.length>VIBE_ASSET_LIMITS.count)fail('capacity','Vibe 资产条目过多');set(rows.map(row=>checkHead(row,account)));
+    }));},
+    async head(account,id){const assetKey=key(account,id);return transaction('readonly',(tx,read,set)=>read(tx.objectStore('heads').get(assetKey),row=>set(row?checkHead(row,account):null)));},
+    async preview(account,id){const assetKey=key(account,id);return transaction('readonly',(tx,read,set)=>read(tx.objectStore('previews').get(assetKey),row=>{
+      if(!row){set(null);return;}if(row.namespace!==account||!(row.blob instanceof Blob)||row.blob.size>2*1024*1024||!/^image\/(png|jpeg|webp)$/.test(row.blob.type))fail('index','Vibe 缩略图缓存无效');set(row.blob);
     }));},
     async load(account,id){
       const assetKey=key(account,id),row=await transaction('readonly',(tx,read,set)=>read(tx.objectStore('heads').get(assetKey),head=>{
@@ -90,7 +102,7 @@ export function createVibeAssetStore({indexedDB=globalThis.indexedDB,keyRange=gl
       if(!row)return null;const [asset]=await parseNovelVibeFile(row.text);if(closed)throw ended();
       if(asset.assetId!==id||asset.bytes!==row.head.bytes||asset.serialized!==row.text||JSON.stringify(asset.summary)!==JSON.stringify(row.head.summary))fail('digest','Vibe 资产内容已变化，未用于生成');return asset;
     },
-    async usage(account){namespace(account);return transaction('readonly',(tx,read,set)=>usage(tx,read,account,row=>set({...row,limit:VIBE_ASSET_LIMITS.bytes})));},
+    async usage(account){namespace(account);return transaction('readonly',(tx,read,set)=>usage(tx,read,account,row=>set({...row,previewBytes:row.previewBytes??0,estimatedBytes:row.bytes+(row.previewBytes||0),limit:VIBE_ASSET_LIMITS.bytes})));},
     // Only an explicit storage-manager selection may call this; never a normal library-item deletion.
     async remove(account,ids,{isCurrent=()=>true}={}){
       namespace(account);if(!Array.isArray(ids)||ids.length>VIBE_ASSET_LIMITS.count||new Set(ids).size!==ids.length)fail('asset','Vibe 清理选择无效');
@@ -99,9 +111,9 @@ export function createVibeAssetStore({indexedDB=globalThis.indexedDB,keyRange=gl
         let at=0,removed=0,bytes=0;
         const next=()=>{if(at===keys.length){tx.objectStore('usage').put(totals);set({removed,bytes});return;}
           const assetKey=keys[at++];read(tx.objectStore('heads').get(assetKey),head=>{
-            if(!head){next();return;}checkHead(head,account);if(totals.count<1||totals.bytes<head.bytes)fail('index','Vibe 计值异常，未删除');
-            totals={...totals,count:totals.count-1,bytes:totals.bytes-head.bytes};if((totals.count===0)!==(totals.bytes===0))fail('index','Vibe 计值不一致，未删除');
-            tx.objectStore('heads').delete(assetKey);tx.objectStore('documents').delete(assetKey);removed++;bytes+=head.bytes;next();
+            if(!head){next();return;}checkHead(head,account);if(totals.count<1||totals.bytes<head.bytes||(totals.previewBytes||0)<(head.previewBytes||0))fail('index','Vibe 计值异常，未删除');
+            totals={...totals,count:totals.count-1,bytes:totals.bytes-head.bytes,previewBytes:(totals.previewBytes||0)-(head.previewBytes||0)};if((totals.count===0)!==(totals.bytes===0)||totals.count===0&&totals.previewBytes!==0)fail('index','Vibe 计值不一致，未删除');
+            tx.objectStore('heads').delete(assetKey);tx.objectStore('documents').delete(assetKey);tx.objectStore('previews').delete(assetKey);removed++;bytes+=head.bytes+(head.previewBytes||0);next();
           });
         };next();
       }),isCurrent);

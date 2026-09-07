@@ -1,11 +1,9 @@
 import {comfyReferenceStillMime} from './qianmu-comfy-results.js';
+import {VIBE_ENCODING_MODELS} from './qianmu-vibe-asset-ref.js';
+export {retainVibeAssetRef,VIBE_ENCODING_MODELS} from './qianmu-vibe-asset-ref.js';
 
 // Independent implementation of the public NovelAI file envelope. No network, DOM or paid encoding.
 export const VIBE_FILE_LIMITS=Object.freeze({file:64*1024*1024,image:16*1024*1024,thumbnail:2*1024*1024,encoding:8*1024*1024,items:16,models:32,variants:256});
-export const VIBE_ENCODING_MODELS=Object.freeze({
-  'nai-diffusion-4-curated-preview':'v4curated','nai-diffusion-4-full':'v4full',
-  'nai-diffusion-4-5-curated':'v4-5curated','nai-diffusion-4-5-full':'v4-5full',
-});
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const own=(value,key)=>Object.hasOwn(value,key);
 const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
@@ -72,6 +70,11 @@ function image(value,limit,label,thumbnail=false){
   }
   if(!width||!height||width>16384||height>16384||width*height>(thumbnail?4:64)*1024*1024)fail('image',`${label}尺寸无效或过大`);
   return {data,mime:detected,bytes:bytes.length,width,height};
+}
+export function vibeFilePreview(document,{original=false}={}){
+  if(document.thumbnail){const info=image(document.thumbnail,VIBE_FILE_LIMITS.thumbnail,'Vibe 缩略图',true);return new Blob([decodeBase64(info.data,VIBE_FILE_LIMITS.thumbnail,'Vibe 缩略图')],{type:info.mime});}
+  if(original&&document.type==='image'){const info=image(document.image,VIBE_FILE_LIMITS.image,'Vibe 原图');return new Blob([decodeBase64(info.data,VIBE_FILE_LIMITS.image,'Vibe 原图')],{type:info.mime});}
+  return null;
 }
 function validateParams(params){
   if(params==null)return;

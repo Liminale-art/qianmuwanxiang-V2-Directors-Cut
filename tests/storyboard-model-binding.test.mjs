@@ -11,7 +11,7 @@ import { generateImage, sanitizeImageRequest } from '../qianmu-image-gateway.js'
 
 const V3 = 'nai-diffusion-3', V45 = 'nai-diffusion-4-5-full', V5 = 'nai-diffusion-5-full';
 const input = (extra = {}) => ({ providerId: 'novel', prompt: 'quiet garden', ...extra });
-const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 4]);
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==','base64');
 const reference = { data: png.toString('base64'), mime: 'image/png', strength: 0.4, information: 0.5 };
 const request = (extra = {}) => ({ provider: 'novel', apiKey: 'mock-key', baseUrl: 'https://relay.example', model: 'relay/custom', capabilityModelId: V45, prompt: 'quiet garden', ...extra });
 const transports = { direct: generateDirectImage, gateway: generateImage };

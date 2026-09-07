@@ -5,6 +5,7 @@ import { normalizeComfyReceipt } from './qianmu-comfy-receipt.js';
 import { auditComfyWorkflow, requireComfyExecution, normalizeComfyExecution, COMFY_EXECUTION_VERSION } from './qianmu-comfy-audit.js';
 import { imageTransportProvider, prepareImageTransportRequest, resolveImageTransportBinding } from './qianmu-image-transport.js';
 import { IMAGE_PROTOCOL_BINDING_VERSION, IMAGE_COMPATIBLE_PROTOCOLS } from './qianmu-image-models.js';
+import {normalizeNovelVibeEntries,novelVibeParameters,NOVEL_VIBE_VERSION} from './qianmu-novel-vibe.js';
 import { IMAGE_MODEL_BINDING_VERSION, NOVEL_STATIC_MODELS, finalizeModelList, collectImageModelPages, modelsFromComfyObjectInfo, novelModelCapabilities, novelReferenceIssue, novelPreciseReferenceParameters, isImageModelMetadataField } from './qianmu-image-models.js';
 import { randomUUID } from 'node:crypto';
 import { lookup as dnsLookup } from 'node:dns/promises';
@@ -68,6 +69,7 @@ export function imageGatewayCapabilities(serviceVersion = '') {
       providers: { novel: { protocol: 'novelai', capabilityModelIds: NOVEL_STATIC_MODELS.map(([id]) => id) } },
     },
     protocolBinding: { version: IMAGE_PROTOCOL_BINDING_VERSION, providers: IMAGE_COMPATIBLE_PROTOCOLS },
+    novelVibe: {version:NOVEL_VIBE_VERSION,encoded:true,maxReferences:16},
     comfyExecution: { version: COMFY_EXECUTION_VERSION, outputSelection: true, staticAccounting: true, staticReferencesVersion: 1 },
     comfyServerTransport: { version: 2, authenticated: true, privateAccess: 'administrator-opt-in', dnsPinning: 'operation', redirects: false, trustedTargetRegistry: true },
     comfyQueue: { version: 1, scope: 'st-api-root', durableAcceptance: true, originalTaskLookup: true, resultRetrieval: true, outputReceiptVersion: 1, cachedResults: true, catalogVersion: 1, taskLocatorVersion: 1, cacheCleanup: true },
@@ -204,7 +206,13 @@ export function sanitizeImageRequest(input) {
   const parameters = plainObject(source.parameters);
   const referenceBudget = { used: 0 };
   const references = normalizeReferences(source.referenceImages || source.references, referenceBudget);
-  const vibes = normalizeReferences(source.vibes, referenceBudget);
+  let vibes;
+  if(provider==='novel'){
+    try{vibes=normalizeNovelVibeEntries(source).map(row=>{
+      if(row.kind==='image')return {...normalizeReferences([row],referenceBudget)[0],kind:'image'};
+      referenceBudget.used+=row.byteLength;if(referenceBudget.used>MAX_REFERENCE_TOTAL_BYTES)throw new ImageGatewayError(400,'references_too_large','参考图与 Vibe 总计须小于 48 MB');return row;
+    });}catch(error){throw new ImageGatewayError(400,error.code,error.message);}
+  }else vibes=normalizeReferences(source.vibes, referenceBudget);
   const workflow = plainObject(parameters.workflow || source.workflow);
   const compatibility = imageTransportProvider(provider, binding) === 'openai' ? normalizeOpenAIImageCompatibility(source.compatibility) : null;
   let comfyExecution;
@@ -225,6 +233,7 @@ export function sanitizeImageRequest(input) {
     negativePrompt: asString(source.negativePrompt, MAX_NEGATIVE_LENGTH),
     references,
     vibes,
+    ...(provider==='novel'&&vibes.some(row=>row.kind==='novelai-vibe-encoding')?{novelVibeVersion:NOVEL_VIBE_VERSION}:{}),
     ...(compatibility ? {
       compatibility,
       customHeaders: normalizeOpenAICompatibleHeaders(source.customHeaders, compatibility),
@@ -648,13 +657,10 @@ async function generateNovel(request, base, fetchImpl) {
     ...(request.parameters.sampler ? { sampler: request.parameters.sampler } : {}),
     ...(request.parameters.scheduler ? { noise_schedule: request.parameters.scheduler } : {}),
     ...(request.negativePrompt ? { negative_prompt: request.negativePrompt } : {}),
-    ...(request.vibes.length ? {
-      reference_image_multiple: request.vibes.map((item) => item.data),
-      reference_strength_multiple: request.vibes.map((item) => item.strength),
-      reference_information_extracted_multiple: request.vibes.map((item) => item.information),
-    } : {}),
+    ...novelVibeParameters(request.vibes),
     ...novelPreciseReferenceParameters(request.references),
   };
+  if(request.vibes.some(row=>row.kind==='novelai-vibe-encoding'))delete parameters.reference_information_extracted_multiple;
   if (isV5) {
     delete parameters.reference_image_multiple;
     delete parameters.reference_strength_multiple;

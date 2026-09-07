@@ -199,6 +199,7 @@ let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,st
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.104') },
+  vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.104') },
   tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.104') },
   modelPicker: {
     label: '模型选择',
@@ -6795,6 +6796,7 @@ function renderModal() {
   if (!modal) return;
   storyboardCaptureTagDraft(modal);
   modal._sdTagCompleteCleanup?.();
+  modal._sdVibePreviewsCleanup?.();
   modal._sdTagLibraryCleanup?.();
   storyboardVibeLibraryController?.detach();
   prepareDirectorWorldEntryLinks();
@@ -12477,6 +12479,7 @@ function storyboardBeginSession() {
 
 function storyboardEndSession() {
   storyboardVibeLibraryController?.dispose();storyboardVibeLibraryController=null;storyboardVibeControllerContext=null;storyboardVibeSelection=null;
+  if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdVibePreviewsCleanup?.();
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdTagCompleteCleanup?.();
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdTagLibraryCleanup?.();
   storyboardTagDraft = null;
@@ -12782,8 +12785,28 @@ function renderStoryboardParameterVibes(state, profile, capabilities) {
   if (!capabilities.supportsVibe) return '';
   const selected=state.selectedVibeIds||[];
   const rows=selected.map(id=>{const item=state.vibeLibrary.find(row=>row.id===id),url=storyboardSafeUrl(item?.previewUrl);
-    return `<button type="button" class="sd-vibe-workbench-strip sd-storyboard-open-vibe-library" aria-label="选择 Vibe">${url?`<img src="${htmlEscape(url)}" alt="" loading="lazy">`:''}<span>${htmlEscape(item?.name||'素材已失效 · 重新选择')}</span></button>`;}).join('');
+    return `<button type="button" class="sd-vibe-workbench-strip sd-storyboard-open-vibe-library" ${item?.assetRef?`data-sd-vibe-asset="${htmlEscape(item.id)}"`:''} aria-label="选择 Vibe">${url?`<img src="${htmlEscape(url)}" alt="" loading="lazy">`:''}<span>${htmlEscape(item?.name||'素材已失效 · 重新选择')}</span></button>`;}).join('');
   return `<div class="sd-vibe-workbench"><span>Vibe</span>${rows||'<button type="button" class="sd-vibe-workbench-strip sd-storyboard-open-vibe-library">选择 Vibe</button>'}</div>`;
+}
+
+async function storyboardMountVibeWorkbenchPreviews(root) {
+  root._sdVibePreviewsCleanup?.();
+  if(!root.querySelector('[data-sd-vibe-asset]'))return;
+  const state=storyboardState(),epoch=storyboardAdmissionEpoch,chat=String(getChatKey()||''),ticket=Symbol('vibe-previews');let dispose;
+  root._sdVibePreviewsTicket=ticket;
+  const current=()=>root.isConnected&&root._sdVibePreviewsTicket===ticket&&state===storyboardState()&&epoch===storyboardAdmissionEpoch&&chat===String(getChatKey()||'');
+  root._sdVibePreviewsCleanup=()=>{dispose?.();if(root._sdVibePreviewsTicket===ticket){root._sdVibePreviewsTicket=null;root._sdVibePreviewsCleanup=null;}};
+  try{
+    const identity=await featureRuntime.load('imageAdmission');if(!current())return;
+    const namespace=await identity.resolveImageAccountNamespace();if(!current())return;
+    const assets=await featureRuntime.load('vibeAssets');if(!current())return;
+    dispose=assets.mountVibeWorkbenchPreviews(root,{items:state.vibeLibrary,isCurrent:current,preview:async ref=>{
+      if(ref.invalid||ref.namespace!==namespace)throw Error('Vibe 资产不属于当前账户，请重新导入');
+      if(await identity.resolveImageAccountNamespace()!==namespace||!current())throw Error('Vibe 预览环境已变化');
+      const blob=await assets.callVibeAsset('preview',{namespace,id:ref.id});
+      if(await identity.resolveImageAccountNamespace()!==namespace||!current())throw Error('Vibe 预览环境已变化');return blob;
+    }});
+  }catch(_){/* Keep the named selection usable when optional previews are unavailable. */}
 }
 
 function storyboardGalleryRecords() {
@@ -14522,10 +14545,13 @@ async function storyboardMountVibeLibrary(root) {
     if(!ctx||ctx.state!==state||ctx.epoch!==epoch||ctx.chat!==chat||ctx.namespace!==namespace){
       storyboardVibeLibraryController?.dispose();
       if(ctx&&ctx.namespace!==namespace)storyboardVibeSelection=null;
-      storyboardVibeControllerContext={state,epoch,chat,namespace};
       const same=()=>state===storyboardState()&&epoch===storyboardAdmissionEpoch&&chat===String(getChatKey()||'')&&activeTab==='imagegen';
       const guard=async()=>{if(!same()||namespace!==await identity.resolveImageAccountNamespace()||!same())throw Error('Vibe 会话或账户已变化，请重新打开');};
+      const assetRuntime=await featureRuntime.load('vibeAssets');if(!current())return;
+      storyboardVibeControllerContext={state,epoch,chat,namespace};
+      const assets=assetRuntime.createVibeLibraryAssets({state,namespace,guard,isCurrent:same,call:assetRuntime.callVibeAsset,publish:saveSettings,uid,notify:message=>toast(message,'success')});
       storyboardVibeLibraryController=runtime.createStoryboardVibeLibraryController({
+        assets,modelId:()=>{const profile=storyboardProviderProfile(state);return profile.capabilityModelId||profile.model;},
         items:()=>state.vibeLibrary,gallery:()=>storyboardGalleryRecords().filter(item=>item.mediaType!=='video'&&item.kind!=='film'),
         isCurrent:same,icons:node=>applyQianmuIcons(node),onNotice:message=>{if(same())toast(message,'warning');},
         onEdit:id=>{if(same())state.editingVibeId=id;},
@@ -14547,6 +14573,10 @@ async function storyboardMountVibeLibrary(root) {
           const profile=storyboardProviderProfile(state);
           const next=runtime.checkStoryboardVibeSelection(state.vibeLibrary,ids,{supportsVibe:state.source==='novel'&&getStoryboardCapabilities(state.source,profile.capabilityModelId||profile.model,undefined,storyboardConnectionState(state).draft).supportsVibe,
             modelId:profile.capabilityModelId||profile.model,preciseReference:profile.characterReferenceEnabled===true});
+          const selectedRows=next.map(id=>state.vibeLibrary.find(row=>row.id===id)),originalRows=JSON.stringify(selectedRows);
+          await assets.validate(selectedRows,profile.capabilityModelId||profile.model);await guard();
+          if(session!==storyboardVibeSelection||state.view!=='assets'||state.assetView!=='vibes'||session.key!==storyboardVibeSelectionKey(state)||JSON.stringify(state.selectedVibeIds||[])!==session.original
+            ||JSON.stringify(next.map(id=>state.vibeLibrary.find(row=>row.id===id)))!==originalRows)throw Error('验证期间模型、素材或选择已变化，请重新确认');
           state.selectedVibeIds=next;storyboardFinishVibeSelection(root);
         },
       });
@@ -14631,13 +14661,15 @@ async function storyboardSaveVibeFromForm(root, {readDraft,isCurrent=()=>true,on
   const existing=state.vibeLibrary.find(item=>item.id===editingId),original=JSON.stringify(existing);
   const values=()=>Object.fromEntries(['name','url','gallery','strength','info'].map(key=>[key,String((readDraft?readDraft()[key]:root.querySelector(`.sd-storyboard-vibe-${key}`)?.value)||'')]));
   const currentFile=()=>readDraft?readDraft().file:root.querySelector('.sd-storyboard-vibe-file')?.files?.[0];
+  const currentAsset=()=>readDraft?readDraft().assetRef:undefined;
   const form=values(),formKey=JSON.stringify(form),file=currentFile();
+  const assetRef=currentAsset(),assetKey=JSON.stringify(assetRef);
   const gallery=storyboardGalleryRecords().find(item=>item.id===form.gallery),galleryUrl=gallery?.url,folder=getCharacterName()||'Qianmu';
   const name=form.name.trim(),button=root.querySelector('.sd-storyboard-create-vibe');
   const current=()=>isCurrent()&&root.isConnected&&activeTab==='imagegen'&&state===storyboardState()&&epoch===storyboardAdmissionEpoch&&chat===String(getChatKey()||'')
     &&state.view==='assets'&&state.assetView==='vibes'&&state.source===source&&(state.editingVibeId||'')===editingId
     &&JSON.stringify(state.vibeLibrary.find(item=>item.id===editingId))===original&&formKey===JSON.stringify(values())
-    &&file===currentFile()
+    &&file===currentFile()&&assetKey===JSON.stringify(currentAsset())
     &&(!form.gallery||storyboardGalleryRecords().some(item=>item.id===form.gallery&&item.url===galleryUrl));
   root._sdVibeSaveBusy=true;if(button)button.disabled=true;
   try {
@@ -14648,6 +14680,13 @@ async function storyboardSaveVibeFromForm(root, {readDraft,isCurrent=()=>true,on
     const identity=await featureRuntime.load('imageAdmission'),namespace=await identity.resolveImageAccountNamespace();
     const guard=async()=>{if(!current()||namespace!==await identity.resolveImageAccountNamespace()||!current())throw Error('Vibe 页面、账户或内容已变化，未写入素材库');};
     await guard();let previewUrl=storyboardSafeUrl(gallery?galleryUrl:form.url);
+    if(assetRef){
+      if(assetRef.namespace!==namespace||file||form.url||form.gallery)throw Error('Vibe 文件来源或账户不匹配，请重新选择');
+      const runtime=await featureRuntime.load('vibeAssets'),head=await runtime.callVibeAsset('head',{namespace,id:assetRef.id});await guard();
+      if(!head)throw Error('Vibe 原资产不存在，请重新导入');
+      if(!head.summary.hasImage&&!head.summary.variants.some(row=>!row.customParams&&(row.information===null||row.information===storyboardVibeAmount(form.info,1))))throw Error('纯编码 Vibe 只能使用文件已有的信息档位');
+      previewUrl='';
+    }
     if(file){
       const [runtime,utils]=await Promise.all([featureRuntime.load('comfyReferences'),storyboardUtilsModule()]);await guard();
       if(typeof utils?.saveBase64AsFile!=='function')throw Error('当前 SillyTavern 无法保存本地图片');
@@ -14658,6 +14697,7 @@ async function storyboardSaveVibeFromForm(root, {readDraft,isCurrent=()=>true,on
     if(!existing&&state.vibeLibrary.length>=500)throw Error('Vibe 库已满，请先整理');
     const now=Date.now(),item={...(existing||{id:uid('shotvibe'),assetId:'',tags:[],notes:'',createdAt:now,providerIds:['novel'],modelIds:[]}),name,previewUrl,
       strength:storyboardVibeAmount(form.strength,.6),informationExtracted:storyboardVibeAmount(form.info,1),updatedAt:now};
+    if(assetRef)item.assetRef={...assetRef};else delete item.assetRef;
     // Validate a persistent source before publishing an index entry; blob/data previews cannot survive reloads.
     captureStoryboardVibeRecipe([item.id],[item]);
     if(existing)state.vibeLibrary=state.vibeLibrary.map(row=>row.id===item.id?item:row);else state.vibeLibrary=[...state.vibeLibrary,item];
@@ -20441,7 +20481,13 @@ async function storyboardPrepareGatewayAssets(job) {
   // This image owns its recipe; deleting/editing the library never substitutes a different Vibe.
   for (const vibe of selected) {
     await vibeGuard();
-    const image = await storyboardReadImageReference(vibe.previewUrl, vibe.name || 'Vibe');
+    let image;
+    if(vibe.assetRef){
+      const identity=await featureRuntime.load('imageAdmission'),namespace=await identity.resolveImageAccountNamespace();await vibeGuard();
+      if(vibe.assetRef.namespace!==namespace)throw Error('Vibe 原资产来自其他账户，请重新导入');
+      const runtime=await featureRuntime.load('vibeAssets');await vibeGuard();
+      image=await runtime.callVibeAsset('resolve',{namespace,id:vibe.assetRef.id,model:resolveStoryboardJobModelIdentity(job).capabilityModelId,information:vibe.information});
+    }else image=await storyboardReadImageReference(vibe.previewUrl, vibe.name || 'Vibe');
     await vibeGuard();
     vibes.push({ ...image, strength: vibe.strength, information: vibe.information });
   }
@@ -20462,6 +20508,7 @@ function storyboardGatewayRequest(job, apiKey, assets) {
       customHeaders: clone(job.connection?.headers || {}),
     } : {}),
     negativePrompt: job.payload?.negative || '', referenceImages: assets.references, vibes: assets.vibes,
+    ...((assets.vibes||[]).some(row=>row.kind==='novelai-vibe-encoding')?{novelVibeVersion:1}:{}),
     ...(job.source === 'comfy' && job.comfyExecution ? { comfyExecution: clone(job.comfyExecution) } : {}),
     parameters,
   };
@@ -20470,6 +20517,14 @@ function storyboardGatewayRequest(job, apiKey, assets) {
 async function storyboardConfirmGatewayModelBinding(job) {
   const identity = resolveStoryboardJobModelIdentity(job);
   await storyboardConfirmGatewayProtocolBinding(identity);
+  let verifiedNovelVibeCapabilities=null;
+  if(identity.modelFamily==='novel'&&/^nai-diffusion-4(?:-|$)/.test(identity.capabilityModelId)&&job.payload?.selectedVibeIds?.length){
+    const runtime=await featureRuntime.load('optionalService');
+    if(!storyboardGatewayCapabilityPromise)storyboardGatewayCapabilityPromise=runtime.probeQianmuImageCapabilities({headers:storyboardRequestHeaders()}).finally(()=>{storyboardGatewayCapabilityPromise=null;});
+    verifiedNovelVibeCapabilities=await storyboardGatewayCapabilityPromise;
+    const result=runtime.checkQianmuNovelVibeBinding(verifiedNovelVibeCapabilities);
+    if(!result.ok)throw Object.assign(new Error(result.message),{code:result.code,retryable:false,submissionState:'not_submitted'});
+  }
   if (identity.modelFamily === 'comfy') {
     if (!job.comfyExecution) throw Object.assign(new Error('Comfy 工作流尚未确认，请重新从镜头台提交'), { code: 'comfy_execution_missing', submissionState: 'not_submitted' });
     const runtime = await featureRuntime.load('optionalService');
@@ -20484,11 +20539,11 @@ async function storyboardConfirmGatewayModelBinding(job) {
   if (identity.modelFamily !== 'novel' || getStoryboardModel('novel', identity.remoteModelId)) return 0;
   const runtime = await featureRuntime.load('optionalService');
   // Share only an in-flight read. A later request must not trust a capability result from an older server process.
-  if (!storyboardGatewayCapabilityPromise) {
+  if (!verifiedNovelVibeCapabilities&&!storyboardGatewayCapabilityPromise) {
     storyboardGatewayCapabilityPromise = runtime.probeQianmuImageCapabilities({ headers: storyboardRequestHeaders() })
       .finally(() => { storyboardGatewayCapabilityPromise = null; });
   }
-  const capability = runtime.checkQianmuImageModelBinding(await storyboardGatewayCapabilityPromise, identity);
+  const capability = runtime.checkQianmuImageModelBinding(verifiedNovelVibeCapabilities||await storyboardGatewayCapabilityPromise, identity);
   if (!capability.ok) {
     const error = new Error(capability.message); error.code = capability.code; error.retryable = false; throw error;
   }
@@ -22215,6 +22270,7 @@ function bindStoryboardTabEvents(root) {
   root._sdStoryboardState = state;
   storyboardBindTagCompletion(root);
   void storyboardMountVibeLibrary(root);
+  void storyboardMountVibeWorkbenchPreviews(root);
   const boundPage = root.querySelector('.sd-storyboard-root');
   if (state.view === 'characters') void storyboardMountCharacterArchive(root);
   else storyboardCharacterArchiveController?.detach();
@@ -36056,6 +36112,7 @@ function cleanupRuntime(resetSettings = false) {
     clean('injection', () => clearDirectorInjection());
     clean('panels', () => {
       storyboardVibeLibraryController?.dispose();storyboardVibeLibraryController=null;storyboardVibeControllerContext=null;storyboardVibeSelection=null;
+      document.getElementById(MODAL_ID)?._sdVibePreviewsCleanup?.();
       document.getElementById(MODAL_ID)?._sdTagCompleteCleanup?.();
       document.getElementById(MODAL_ID)?._sdTagLibraryCleanup?.();
       storyboardTagDraft=null;

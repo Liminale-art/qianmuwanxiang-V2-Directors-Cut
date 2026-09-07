@@ -1,4 +1,5 @@
 // Bounded source metadata only. A URL is not an immutable content receipt.
+import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const text=(value,max)=>typeof value==='string'&&value.length<=max&&!/[\u0000-\u001f\u007f]/.test(value);
 const id=value=>text(value,160)&&Boolean(value.trim());
@@ -11,19 +12,22 @@ function source(value){
 }
 const amount=(value,fallback)=>{const number=Number(value);return value!==''&&value!=null&&Number.isFinite(number)?Math.max(0,Math.min(1,number)):fallback;};
 export function retainStoryboardVibeRecipe(value){
-  if(!keys(value,['version','items'])||value.version!==1||!Array.isArray(value.items)||value.items.length>16)return {version:1,invalid:true};
+  if(!keys(value,['version','items'])||![1,2].includes(value.version)||!Array.isArray(value.items)||value.items.length>16)return {version:1,invalid:true};
   const seen=new Set(),items=[];
   for(const row of value.items){
-    if(!keys(row,['id','name','previewUrl','strength','information'])||!id(row.id)||seen.has(row.id)||!text(row.name,100)||!source(row.previewUrl)
+    const asset=Object.hasOwn(row||{},'assetRef');
+    if(!keys(row,['id','name','previewUrl','strength','information',...(value.version===2?['assetRef']:[])])||!id(row.id)||seen.has(row.id)||!text(row.name,100)
+      ||(asset?row.previewUrl!==''||retainVibeAssetRef(row.assetRef).invalid:!source(row.previewUrl))
       ||![row.strength,row.information].every(value=>typeof value==='number'&&Number.isFinite(value)&&value>=0&&value<=1))return {version:1,invalid:true};
-    seen.add(row.id);items.push({id:row.id,name:row.name,previewUrl:row.previewUrl,strength:row.strength,information:row.information});
+    seen.add(row.id);items.push({id:row.id,name:row.name,previewUrl:row.previewUrl,strength:row.strength,information:row.information,...(asset?{assetRef:retainVibeAssetRef(row.assetRef)}:{})});
   }
-  return {version:1,items};
+  if(value.version===2&&!items.some(row=>row.assetRef))return {version:1,invalid:true};
+  return {version:value.version,items};
 }
 export function captureStoryboardVibeRecipe(selectedIds,library){
   if(!Array.isArray(selectedIds)||selectedIds.length>16||!Array.isArray(library))throw fail('Vibe 选择无效，请重新选择');
-  const recipe=retainStoryboardVibeRecipe({version:1,items:selectedIds.map(id=>{
-    const row=library.find(item=>item?.id===id);return row?{id:row.id,name:row.name||'Vibe',previewUrl:row.previewUrl,
+  const recipe=retainStoryboardVibeRecipe({version:selectedIds.some(id=>Object.hasOwn(library.find(item=>item?.id===id)||{},'assetRef'))?2:1,items:selectedIds.map(id=>{
+    const row=library.find(item=>item?.id===id);return row?{id:row.id,name:row.name||'Vibe',previewUrl:row.assetRef?'':row.previewUrl,...(Object.hasOwn(row,'assetRef')?{assetRef:row.assetRef}:{}),
       strength:amount(row.strength,.6),information:amount(row.informationExtracted,1)}:null;
   })});
   if(recipe.invalid)throw fail('所选 Vibe 缺失或图源不可保存，请重新选择或上传');

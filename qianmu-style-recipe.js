@@ -94,10 +94,11 @@ export function planStoryboardStyleApplication(state,recipe,target,choice,{uid,n
     const library=[...state.vibeLibrary],ids=[];
     for(const item of recipe.vibes){
       let saved=library.find(row=>!ids.includes(row.id)&&row.previewUrl===item.previewUrl&&row.strength===item.strength&&row.informationExtracted===item.information
+        &&JSON.stringify(row.assetRef||null)===JSON.stringify(item.assetRef||null)
         &&(!row.providerIds?.length||row.providerIds.includes('novel'))&&(!row.modelIds?.length||row.modelIds.includes(target.modelId)));
       if(!saved){
         if(library.length>=500)throw fail('Vibe 库已满，请先整理后套用');
-        saved={id:newId('shotvibe'),name:item.name,previewUrl:item.previewUrl,strength:item.strength,informationExtracted:item.information,providerIds:['novel'],modelIds:[],assetId:'',tags:[],notes:'',createdAt:now,updatedAt:now};library.push(saved);
+        saved={id:newId('shotvibe'),name:item.name,previewUrl:item.previewUrl,...(item.assetRef?{assetRef:{...item.assetRef}}:{}),strength:item.strength,informationExtracted:item.information,providerIds:['novel'],modelIds:[],assetId:'',tags:[],notes:'',createdAt:now,updatedAt:now};library.push(saved);
       }
       ids.push(saved.id);
     }

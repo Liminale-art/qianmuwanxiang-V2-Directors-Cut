@@ -12,7 +12,7 @@ function section(name) {
   const tail = source.slice(match.index), next = tail.slice(1).search(/^(?:async )?function /m);
   return tail.slice(0, next + 1);
 }
-const png = Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), Buffer.from('image')]);
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==','base64');
 function environment(items, read = async () => ({ data: png.toString('base64'), mime: 'image/png' })) {
   const state = { enabled:true,vibeLibrary: items };
   const job={source:'novel',profile:{model:'nai-diffusion-4-5-full'},payload:{selectedVibeIds:items.map(item=>item.id),vibeRecipe:core.captureStoryboardVibeRecipe(items.map(item=>item.id),items)}};

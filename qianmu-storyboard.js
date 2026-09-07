@@ -11,6 +11,7 @@ import { retainComfyWorkbenchBinding } from './qianmu-comfy-workbench-binding.js
 import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 import {retainStoryboardArtistPromptLayer} from './qianmu-artist-prompt-layer.js';
 import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
+import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
 export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -869,6 +870,8 @@ function tags(value) {
 
 function vibes(value) {
   const normalized = (Array.isArray(value) ? value : []).filter(obj).map((vibe) => ({ id: cleanId(vibe.id), name: str(vibe.name || '未命名 Vibe', 100), assetId: cleanId(vibe.assetId), previewUrl: str(vibe.previewUrl, 4096), providerIds: providers(vibe.providerIds).filter((providerId) => providerSupports(providerId, 'vibe')), modelIds: uniqueStrings(vibe.modelIds, 100, 240).filter((modelId) => Object.values(STORYBOARD_MODEL_REGISTRY).flat().some((model) => model.id === modelId && model.capabilities.vibe)), strength: num(vibe.strength, 0, 1, 0.6), informationExtracted: num(vibe.informationExtracted, 0, 1, 1), tags: ids(vibe.tags, 100), notes: str(vibe.notes, 4000), createdAt: pos(vibe.createdAt || vibe.updatedAt), updatedAt: pos(vibe.updatedAt) })).filter((vibe) => vibe.id);
+  const originals=new Map();for(const row of (Array.isArray(value)?value:[]).filter(obj)){const id=cleanId(row.id);if(!originals.has(id))originals.set(id,row);}
+  for(const row of normalized){const source=originals.get(row.id);if(source&&Object.hasOwn(source,'assetRef')){row.assetRef=retainVibeAssetRef(source.assetRef);row.previewUrl='';}}
   return dedupeById(normalized).slice(0, 500);
 }
 
