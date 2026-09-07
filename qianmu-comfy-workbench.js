@@ -27,13 +27,13 @@ export function renderComfyReferenceControls(profile, capabilities, collapsed = 
       <div class="sd-comfy-reference-status" role="status"></div>
     </div></details>`;
 }
-export function renderComfyWorkbench({profile, capabilities, collapsed={}, promptLayer={}, workflowNotice='', workflowNodes=0, librarySelection=null}, shared={}) {
+export function renderComfyWorkbench({profile, capabilities, collapsed={}, promptLayer={}, workflowNotice='', workflowNodes=0, librarySelection=null,autoEnabled=false,poolSelection=null}, shared={}) {
   const controls=fields.filter(([key])=>capabilities[key]).map(([key,label,type,attrs])=>
     `<label><span>${label}</span><input class="text_pole sd-storyboard-field${['width','height'].includes(key)?` sd-storyboard-${key}`:''}" data-storyboard-field="${key}" type="${type}" ${attrs} value="${escape(profile[key])}"></label>`).join('');
   const workflow=typeof profile.comfyWorkflow==='string'&&profile.comfyWorkflow.trim().startsWith('{')?profile.comfyWorkflow:'';
   const formatLabel={tags:'标签',natural_language:'自然语言',character_blocks:'分角色文本','[invalid]':'分类待核对'}[storyboardComfyPromptFormat(profile)] || '';
-  return `<div class="sd-comfy-workbench">
-    ${shared.connection||''}
+  const modes=`<div class="sd-storyboard-engine-modes" role="group" aria-label="Comfy 工作流方式"><button type="button" data-comfy-auto="false" aria-pressed="${!autoEnabled}" class="${!autoEnabled?'active':''}">固定工作流</button><button type="button" data-comfy-auto="true" aria-pressed="${autoEnabled}" class="${autoEnabled?'active':''}">自动择流</button></div>`;
+  const fixed=`
     <details class="sd-card sd-comfy-workflow-card" data-storyboard-card="comfy-workflow" ${!workflow||workflowNotice||collapsed['comfy-workflow']===false?'open':''}>
       <summary><span><b>工作流</b><small>${workflowNodes?`${workflowNodes} 个节点`:'API Workflow'}${formatLabel?` · ${formatLabel}`:''}</small></span><button type="button" class="sd-icon-btn sd-comfy-open-library" title="工作流库" aria-label="工作流库"><i data-qm-icon="qm-regular-folder"></i></button></summary>
       <div class="sd-storyboard-card-body">
@@ -52,6 +52,12 @@ export function renderComfyWorkbench({profile, capabilities, collapsed={}, promp
     <details class="sd-card sd-storyboard-params" data-storyboard-card="comfy-params" ${(collapsed['comfy-params'] ?? collapsed.params)?'':'open'}><summary><b>工作流参数</b></summary>
       <div class="sd-storyboard-card-body"><div class="sd-comfy-role-heading"><button type="button" class="sd-btn ${profile.comfyCharacterEnabled?'active':''}" data-comfy-character-action="toggle" aria-pressed="${Boolean(profile.comfyCharacterEnabled)}">角色实现</button>${profile.comfyCharacterEnabled?'<button type="button" class="sd-btn" data-comfy-character-action="bind">绑定当前方案</button>':''}</div>${shared.parameterPresets||''}${controls?`<div class="sd-storyboard-grid sd-storyboard-grid-two">${controls}</div>`:''}${shared.variants||''}</div>
     </details>
-    ${renderComfyReferenceControls(profile, capabilities, collapsed)}
-  </div>`;
+    ${renderComfyReferenceControls(profile, capabilities, collapsed)}`;
+  const automatic=`<details class="sd-card" data-storyboard-card="comfy-auto" ${collapsed['comfy-auto']?'':'open'}><summary><b>候选工作流</b></summary><div class="sd-storyboard-card-body">
+    <button type="button" class="sd-btn sd-comfy-open-pools">${poolSelection&&!poolSelection.invalid?`${escape(poolSelection.name)} · v${Number(poolSelection.version)}`:'选择候选方案'}</button>
+    <small class="sd-comfy-library-note">固定分工优先 · 一镜一张</small>
+    ${poolSelection?.invalid?'<p role="alert">候选方案来源待核对，请重新选择</p>':''}
+    </div></details>`;
+  return `<div class="sd-comfy-workbench">${shared.connection||''}${modes}${autoEnabled?automatic:fixed}
+    <button type="button" class="sd-btn sd-comfy-scene-toggle">续场记录</button><div class="sd-comfy-scene-list" hidden></div></div>`;
 }

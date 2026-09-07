@@ -12,35 +12,8 @@ import {applyCharacterCasting,CHARACTER_CASTING_SCHEMA} from '../qianmu-characte
 import {prepareComfyWorkflow} from '../qianmu-comfy-workflow.js';
 import {routeEnvironment,recipesFixture,namespace} from './helpers/comfy-route-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
+import {compilerEnvironment as environment,casting} from './helpers/comfy-compiler-fixture.mjs';
 const plain=value=>JSON.parse(JSON.stringify(value));
-const casting={schema:CHARACTER_CASTING_SCHEMA,entries:[{identity:{subjectId:'archive:alice',archiveId:'alice',archiveVersion:1,category:'char',name:'Alice',appearance:'silver hair',aliases:[]},negative:''}],unboundNames:[]};
-const response=()=>({schema:contract.STORYBOARD_PLAN_RESPONSE_SCHEMA_ID,should_generate:true,skip_reason:'',continuity_updates:[],decisions:[],shots:['portrait','environment','object'].map((kind,index)=>{
-  const character=index===0?[{character_id:'A',name:'Alice',fixed_identity:['silver hair'],current_state:{outfit:['coat removed'],expression:[],pose:[],action:['reads a letter'],gaze:[],props:['letter']},spatial:{order:1,region:'center',center:{x:0.5,y:0.5},visible_crop:'waist'}}]:[];
-  const description=['Alice reads a letter','a wide mountain valley','a broken cup'][index];
-  return {source_paragraph_ids:[`P${index+1}`],insert_after:`P${index+1}`,narrative_layer:'present',narrative_purpose:description,shot_role:index===2?'detail':index===1?'establishing':'reaction',shot_scale:index===2?'insert':'medium_shot',subject:description,
-    scene:{location:['kitchen','mountains','table'][index],time:'day',lighting:[],environment:[]},characters:character,shared_relations:[],
-    composition:{ratio_id:'3:2',orientation:'landscape',camera_side:'axis-neutral',angle:'eye-level',focus:description,negative_space:'',intent:description,continuity_key:`scene-${index}`},
-    prompt_atoms:{global:[description],character_ids:character.map(row=>row.character_id),scene_negative:[]},sensitive:false,safety_notes:[],
-    prompt_renderings:Object.fromEntries(['tags','natural_language'].map(format=>[format,{global:format==='tags'?`tag-scene-${index}, soft light`:`Natural scene ${index} with gentle light.`,
-      characters:character.map(row=>({character_id:row.character_id,positive:format==='tags'?'silver hair, coat removed, reading a letter':'Alice, with silver hair and no coat, reads a letter.'})),negative:format==='tags'?'extra people':'No extra people.'}]))};
-})});
-async function environment(){
-  const e=await routeEnvironment({formats:['tags','natural_language']}),calls=[],errors=[];
-  const load=e.context.featureRuntime.load;
-  e.context.featureRuntime.load=async key=>key==='storyboardContract'?contract:key==='comfyPrompt'?prompts:load(key);
-  const scene=response(),chat=[{mes:'Alice reads a letter. A mountain valley. A broken cup.',is_user:false}];
-  Object.assign(e.context,{MODULE_NAME:'format-qa',storyboardCompilerBusy:false,STORYBOARD_SHOT_GROUP_TEMPLATES:{smart:{label:'test',instruction:''}},storyboardTargetFloor:()=>0,
-    ctx:()=>({chat}),
-    storyboardCompilerContext:async()=>({floor:0,paragraphs:scene.shots.map(row=>row.subject),messages:[],worldRows:[],currentCharacter:'Alice',persona:'',world:'',
-      characterCasting:casting,casting:{apply:applyCharacterCasting,assertCurrent:async()=>{}}}),
-    storyboardCallCompiler:async(messages,id,options)=>{calls.push({messages:plain(messages),options:plain(options)});return JSON.stringify(scene);},
-    storyboardScheduleInlineRender(){},storyboardScheduleAutomaticCapture(){},storyboardSchedulePlanArchive(){},
-    storyboardSetPlanStatus:(plan,status,extra={})=>{if(plan)Object.assign(plan,{status,...extra});},console:{error:(...args)=>errors.push(args.map(value=>value?.message||String(value)).join(' '))},
-  });
-  vm.runInContext(['storyboardCompilerRequestConfig','storyboardCompilerResult','storyboardCompilePrompt','storyboardPrepareComfyPromptJob','storyboardPrepareGatewayAssets'].map(section).join('\n'),e.context);
-  e.context.storyboardQueueJob=async job=>{if(job.source==='comfy') {await e.context.storyboardVerifyComfyRouteJob(job);await e.context.storyboardPrepareComfyPromptJob(job,{prepare:true});}e.jobs.push(job);return true;};
-  return {...e,llmCalls:calls,errors,response:scene};
-}
 async function workbenchEnvironment(){
   const e=await environment(); e.state.source='comfy';e.state.view='workflows';e.state.routing.enabled=false;
   Object.assign(e.context,{storyboardNavigate:(_root,patch)=>Object.assign(e.state,patch)});
@@ -137,7 +110,7 @@ test('format projection does not modify graphs, claim spatial isolation or dupli
   const output=prompts.compileComfyPromptRendering({format:'character_blocks',global:'shared scene',negative:'no extras',characters:[{character_id:'A',positive:'reads a letter'},{character_id:'B',positive:'watches'}]},shot,{positive:'style',supportsNegative:false});
   assert.equal((output.prompt.match(/reads a letter/g)||[]).length,1);assert.equal(output.characterBlocks.length,2);assert.equal(output.negative,'');assert.match(output.prompt,/"Alice": reads a letter\n\n"Bob": watches/);
 });
-test('both enqueue and pre-submission are wired; candidate auto-selection is still not activated',async()=>{
+test('enqueue and pre-submission verify expressions; workflow selection stays outside the pure prompt compiler',async()=>{
   assert.match(section('storyboardConfirmComfyExecution'),/storyboardPrepareComfyPromptJob\(job,\{prepare:true,valid\}\)/);
   assert.match(section('storyboardPrepareGatewayAssets'),/storyboardPrepareComfyPromptJob\(job\)/);
   const source=await readFile(new URL('../qianmu-comfy-prompt.js',import.meta.url),'utf8');assert.doesNotMatch(source,/\b(fetch|XMLHttpRequest|WebSocket|indexedDB)\b/);

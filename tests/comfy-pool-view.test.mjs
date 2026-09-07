@@ -61,7 +61,7 @@ test('candidate maintenance has no generate/apply button, exposes fields with sa
   assert.doesNotMatch(html, /<script>|data-pool-action="(?:generate|apply|enable-auto)"/); assert.match(html, /&lt;script&gt;/);
   for (const field of ['connectionPresetId', 'priority']) assert.match(html, new RegExp(`data-pool-member-field="${field}"`));
   assert.match(html, /data-pool-action="toggle-roles"/); assert.match(html, /data-pool-action="toggle-member" aria-pressed="false"/);
-  assert.match(html, /分类随固定版本/); assert.match(html, /自动运行尚未开放/);
+  assert.match(html, /分类随固定版本/); assert.match(html, /在镜头台启用自动择流后使用/);
 });
 test('imported or missing connection names are escaped and retained for explicit correction', async () => {
   const f = await fixture(); f.candidate.target.connectionPresetId = 'missing';
@@ -100,7 +100,7 @@ test('candidate UI is lazy and all host lifecycle routes are connected without l
 test('saved versions may be selected without enabling automation, while dirty drafts and archived entries cannot',async()=>{
   const f=await fixture(),row={id:'pool',revision:'v1',version:1,name:'<pool>',candidateCount:1,totalBytes:100},selection={...row,namespace};
   const list=renderComfyPools({canSelect:true,rows:[row],selection});
-  assert.match(list,/data-pool-action="select" aria-pressed="true"/);assert.match(list,/待用：&lt;pool&gt; · v1/);assert.match(list,/data-pool-action="clear-selection"/);
+  assert.match(list,/data-pool-action="select" aria-pressed="true"/);assert.match(list,/已选：&lt;pool&gt; · v1/);assert.match(list,/data-pool-action="clear-selection"/);
   assert.doesNotMatch(renderComfyPools({canSelect:true,rows:[row],archived:true}),/data-pool-action="select"/);
   const draft=renderComfyPools({canSelect:true,draft:{...row,pool:f.pool,dirty:true}});assert.match(draft,/data-pool-action="select-version"[^>]*disabled/);
   assert.doesNotMatch(list,/data-pool-action="enable-auto"/);

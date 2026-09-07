@@ -61,12 +61,13 @@ function requirement(value) {
     narrativeLayer:valid('narrativeLayer',COMFY_CLASSIFICATION_VALUES.narrativeLayers),contentClass:valid('contentClass',COMFY_CLASSIFICATION_VALUES.contentClasses),
     promptFormats:choices(value.promptFormats,COMFY_CLASSIFICATION_VALUES.promptFormats,'已备提示格式')};
 }
-function normalizeScope(value,namespace) {
+export function normalizeComfySceneScope(value,namespace) {
   if(value==null)return null;
   if(!object(value)||value.namespace!==namespace)fail('连续场景范围不属于当前账户');
   return {namespace,chatKey:text(value.chatKey,512,'聊天'),continuityId:id(value.continuityId,'连续场景'),
     narrativeLayer:COMFY_CLASSIFICATION_VALUES.narrativeLayers.includes(value.narrativeLayer)?value.narrativeLayer:fail('连续场景叙事层无效')};
 }
+const normalizeScope=normalizeComfySceneScope;
 const scopeKey=scope=>JSON.stringify([scope.namespace,scope.chatKey,scope.continuityId,scope.narrativeLayer]);
 export function normalizeComfySceneLock(value,namespace) {
   if(!object(value)||value.schema!==COMFY_SELECTION_SCHEMA||!object(value.scope)

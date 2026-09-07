@@ -77,9 +77,12 @@ export async function prepareComfyAutoSession({binding,namespace,guard=async()=>
     // Release documents referenced only by rejected candidates; never keep a cross-request workflow cache.
     const used=new Set([...candidates.values()].map(row=>comfyRouteBindingKey(row.candidate.target.comfyWorkflowBinding)));
     for(const key of recipes.keys())if(!used.has(key))recipes.delete(key);
-    const promptFormats=freeze(normalizeStoryboardPromptFormats([...new Set([...candidates.values()].map(row=>row.candidate.classification.promptFormat))]));
+    const formats=()=>freeze(normalizeStoryboardPromptFormats([...new Set([...candidates.values()].map(row=>row.candidate.classification.promptFormat))]));
+    let promptFormats=formats();
     const preparationId=crypto.randomUUID();await current();
-    return Object.freeze({binding:chosen.binding,promptFormats,issues:freeze(issues),preparationId,executionAuthorized:false,
+    return Object.freeze({binding:chosen.binding,get promptFormats(){return promptFormats;},styleLock:pool.styleLock,issues:freeze(issues),preparationId,executionAuthorized:false,
+      get candidates(){return freeze([...candidates.values()].map(({candidate})=>({id:candidate.id,target:copy(candidate.target)})));},
+      exclude(id){if(closed)fail('候选准备已结束');candidates.delete(id);promptFormats=formats();},
       async select({shotSpec,scope=null,lock=null,adultAllowed=false,probe}={}) {
         if(typeof probe!=='function')fail('缺少逐镜技术检查');
         if(shotSpec?.schema!=='qianmu.storyboard.plan.v1'||!Array.isArray(shotSpec.characters)||shotSpec.characters.length>12||typeof shotSpec.sensitive!=='boolean')fail('此镜缺少完整取景事实，请先提取');

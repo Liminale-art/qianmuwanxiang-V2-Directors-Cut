@@ -354,6 +354,7 @@ export function createStoryboardDefaults() {
     profiles: Object.fromEntries(ids.map((id) => [id, legacyProfile()])), modelProfiles: Object.fromEntries(ids.map((id) => [id, {}])), parameterPresets: [], parameterPresetSelection: Object.fromEntries(ids.map((id) => [id, ''])),
     lastModelSource: 'novel',
     comfyPoolSelection: null,
+    comfyAutoEnabled: false,
     characterArchive: { schemaVersion: 1, collapsed: {} },
     connections: Object.fromEntries(ids.map((id) => [id, connection(id)])), generationPolicy: normalizeStoryboardGenerationPolicy(),
     promptPresets: [], editingPromptPresetId: '', editingPromptItemId: '', promptItemDraft: null,
@@ -646,6 +647,7 @@ export function normalizeStoryboardState(value) {
   if (['workflows', 'comfy-pools'].includes(state.view) && state.source !== 'comfy') state.view = 'create';
   state.comfyLibrarySelection = obj(state.comfyLibrarySelection) ? { id: cleanId(state.comfyLibrarySelection.id), revision: cleanId(state.comfyLibrarySelection.revision), name: str(state.comfyLibrarySelection.name, 80), version: int(state.comfyLibrarySelection.version, 1, 64, 1) } : null;
   state.comfyPoolSelection = retainComfyAutoBinding(state.comfyPoolSelection);
+  state.comfyAutoEnabled = state.comfyAutoEnabled === true;
   state.promptDefaults = Object.fromEntries(Object.entries(obj(state.promptDefaults) ? state.promptDefaults : {}).slice(0, 200).map(([key, value]) => [str(key, 500), {
     ...(obj(value) && Object.hasOwn(value, 'positive') ? { positive: str(value.positive, 12000) } : {}),
     ...(obj(value) && Object.hasOwn(value, 'negative') ? { negative: str(value.negative, 12000) } : {}),
@@ -1697,6 +1699,10 @@ function normalizeRouting(value) {
   const templateId = STORYBOARD_SHOT_GROUP_TEMPLATES[r.templateId] ? r.templateId : 'smart';
   const frameStrategy = STORYBOARD_GROUP_FRAME_STRATEGIES.includes(r.frameStrategy) ? r.frameStrategy : 'main_secondary';
   return { enabled, mode: enabled ? 'ensemble' : 'single', templateId, frameStrategy, single: target(r.single), rules, confirmMultipleRequests: r.confirmMultipleRequests !== false };
+}
+
+export function storyboardRouteUsesComfyAuto(state,route) {
+  return state.comfyAutoEnabled===true && route.providerId==='comfy' && route.comfyWorkflowBinding==null && !route.parameterPresetId;
 }
 
 export function normalizeStoryboardAutomation(value) {

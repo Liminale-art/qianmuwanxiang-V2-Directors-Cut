@@ -185,6 +185,6 @@ export async function prepareComfyCharacterJob(job,{namespace,guard=async()=>{}}
     shot:job.payload?.shotSpec||job.shotSpec,staticSelection:job.profile.comfyReferences,
     parameters:Object.fromEntries(['width','height','count','steps','scale','cfg','seed','sampler','scheduler'].map(key=>[key,job.payload?.parameters?.[key]])),model:job.profile.model,
     outputNodeId:job.profile.comfyOutputNodeId,safetyAdapted:job.safetyAdapted||job.sensitive,guard});
-  if(job.automatic&&plan.participants.length&&(job.payload?.shotSpec||job.shotSpec)?.characters?.filter(row=>row.visible!==false).length>1)fail('多人 Comfy 角色工作流尚未验证空间隔离，请改为手动确认生成');
+  if((job.automatic||job.comfyAutoSelected)&&plan.participants.length&&(job.payload?.shotSpec||job.shotSpec)?.characters?.filter(row=>row.visible!==false).length>1)fail('多人 Comfy 角色工作流尚未验证空间隔离，请改为手动确认生成');
   return plan;
 }

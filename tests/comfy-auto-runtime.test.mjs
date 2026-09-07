@@ -158,5 +158,7 @@ test('actual pool choice changes only selection and is cancelled after a late pa
 });
 test('runtime has no provider submission/LLM/lock writes and is not loaded at startup',async()=>{
   const source=await readFile(new URL('../qianmu-comfy-auto-runtime.js',import.meta.url),'utf8');assert.doesNotMatch(source,/\b(fetch|WebSocket|XMLHttpRequest)\b|store\.(save|archive|purge)\(/);
-  const index=await readFile(new URL('../index.js',import.meta.url),'utf8');assert.match(index,/comfyAuto:[\s\S]*?load: \(\) => import\('\.\/qianmu-comfy-auto-runtime/);assert.doesNotMatch(index,/\.prepareComfyAutoSession\(/);
+  const index=await readFile(new URL('../index.js',import.meta.url),'utf8');assert.match(index,/comfyAuto:[\s\S]*?load: \(\) => import\('\.\/qianmu-comfy-auto-runtime/);
+  assert.match(section('storyboardPrepareComfyRoutes'),/prepareComfyAutoSession/);assert.match(section('storyboardSetComfyAuto'),/prepareComfyAutoSession/);
+  assert.doesNotMatch(index,/^import .*qianmu-comfy-auto-runtime/m);
 });
