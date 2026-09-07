@@ -1,6 +1,7 @@
 // Account-scoped workflow documents. No generation, implicit migration or connection credentials.
 import { sanitizeStoryboardWorkflow } from './qianmu-storyboard.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
+import { normalizeComfyClassification } from './qianmu-comfy-selection.js';
 export const COMFY_LIBRARY_SCHEMA = 'qianmu.comfy.workflow.v1';
 export const COMFY_LIBRARY_PARAMETERS = Object.freeze(['width','height','count','steps','cfg','seed','sampler','scheduler']);
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -20,7 +21,13 @@ export function normalizeComfyLibraryDocument(value) {
   if(outputNodeId&&!/^[a-zA-Z0-9_:-]{1,120}$/.test(outputNodeId))throw comfyLibraryError('output','最终输出节点编号无效');
   const bounded=(value,max)=>{if(value!=null&&typeof value!=='string'&&typeof value!=='number')throw comfyLibraryError('document','参数与提示补充须为文字或数字');const result=String(value??'').trim();if(result.length>max)throw comfyLibraryError('document','参数或提示补充超出长度上限，请缩短后再保存');return result;};
   const parameters=Object.fromEntries(COMFY_LIBRARY_PARAMETERS.map(key=>[key,bounded(value.parameters?.[key],120)]));
-  return {workflow:result.serialized,outputNodeId,parameters,positivePrompt:bounded(value.positivePrompt,12000),negativePrompt:bounded(value.negativePrompt,12000)};
+  const document={workflow:result.serialized,outputNodeId,parameters,positivePrompt:bounded(value.positivePrompt,12000),negativePrompt:bounded(value.negativePrompt,12000)};
+  // Keep legacy documents byte-for-byte canonical: adding defaults would break their pinned recipe hash.
+  if(Object.hasOwn(value,'classification')){
+    try{document.classification=normalizeComfyClassification(value.classification);}
+    catch(error){throw comfyLibraryError('classification',error.message||'工作流分类无效');}
+  }
+  return document;
 }
 export function inspectComfyLibraryDocument(document) {
   const normalized=normalizeComfyLibraryDocument(document),inspection=inspectComfyWorkflow(normalized.workflow),nodes=JSON.parse(normalized.workflow);
@@ -114,6 +121,7 @@ export function createComfyWorkflowStore({indexedDB=globalThis.indexedDB,keyRang
             const at=now(),version=(previous?.version||0)+1,documentKey=revisionKey(namespace,workflowId,revision);
             const row={key,namespace,id:workflowId,name,revision,version,createdAt:previous?.createdAt||at,updatedAt:at,archived:false,
               bytes:inspection.bytes,totalBytes:(previous?.totalBytes||0)+inspection.bytes,nodes:inspection.nodes,slots:inspection.slots,issue:inspection.issue};
+            if(Object.hasOwn(normalized,'classification'))row.classification=normalized.classification;
             tx.objectStore('documents').add({key:documentKey,namespace,id:workflowId,revision,document:normalized});
             tx.objectStore('revisions').add({...row,key:documentKey,workflowKey:key,parentRevision:previous?.revision||''});
             heads.put(row);set(metadata(row));

@@ -10208,6 +10208,14 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-comfy-library-row-actions { margin-top: 8px; }
 #story-director-modal .sd-comfy-library-row-actions > .sd-btn { flex: 1; min-width: 0; }
 #story-director-modal .sd-comfy-library fieldset:disabled { opacity: .65; }
+#story-director-modal .sd-comfy-classification-group > span { display: block; margin-bottom: 6px; color: var(--sd-muted); font-size: 12px; text-align: start; }
+#story-director-modal .sd-comfy-classification-tags, #story-director-modal .sd-comfy-classification-badges { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+#story-director-modal .sd-comfy-classification-tags .sd-btn { flex: 1 1 64px; min-width: 0; border: 1px solid var(--sd-hairline) !important; padding: 4px 8px !important; font-size: 12px !important; }
+#story-director-modal .sd-comfy-classification-tags .sd-btn[aria-pressed="true"] { color: var(--sd-accent) !important; border-color: var(--sd-accent) !important; background: color-mix(in srgb, var(--sd-accent) 15%, transparent) !important; }
+#story-director-modal .sd-comfy-classification-tags .sd-btn:focus-visible { outline: 2px solid var(--sd-accent); outline-offset: 2px; }
+#story-director-modal .sd-comfy-classification-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+#story-director-modal .sd-comfy-classification-badges { margin-top: 8px; }
+#story-director-modal .sd-comfy-classification-badges > span { border: 1px solid var(--sd-hairline); border-radius: 6px; padding: 2px 6px; color: var(--sd-muted); font-size: 11px; }
 
 /* Connection trust is deliberately folded and loaded only on demand. */
 #story-director-modal .sd-comfy-targets { min-width: 0; margin-top: 8px; }

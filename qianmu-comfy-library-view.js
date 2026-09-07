@@ -1,11 +1,39 @@
 // Loaded only when opening the workflow library. Drafts never live in global ST settings.
 import {createComfyWorkflowStore,normalizeComfyLibraryDocument,inspectComfyLibraryDocument,importComfyLibraryDocument,exportComfyLibraryDocument,COMFY_LIBRARY_PARAMETERS} from './qianmu-comfy-library.js';
+import {COMFY_CLASSIFICATION_VALUES,normalizeComfyClassification} from './qianmu-comfy-selection.js';
 const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const icon=(action,label,glyph,extra='')=>`<button type="button" class="sd-icon-btn" data-comfy-action="${action}" aria-label="${escape(label)}" title="${escape(label)}" ${extra}><i class="fa-solid fa-${glyph}"></i></button>`;
 const clone=value=>JSON.parse(JSON.stringify(value));
 const size=bytes=>bytes<1024*1024?`${Math.ceil(bytes/1024)} KB`:`${(bytes/1024/1024).toFixed(1)} MB`;
 const emptyDocument=()=>({workflow:'',outputNodeId:'',parameters:{},positivePrompt:'',negativePrompt:''});
 const titles={width:'Width',height:'Height',count:'Count',steps:'Steps',cfg:'CFG',seed:'Seed',sampler:'Sampler',scheduler:'Scheduler'};
+const classificationLabels={visualKinds:'画面偏好',castSizes:'人数偏好',narrativeLayers:'叙事层',contentClasses:'内容范围',
+  character:'人物',environment:'环境',object:'静物',symbolic:'意象',mixed:'混合',none:'空镜',one:'单人',many:'多人',
+  present:'现实',memory:'回忆',fantasy:'幻想',dream:'梦境',imagined:'想象',sfw:'SFW',adult:'NSFW',
+  tags:'标签',natural_language:'自然语言',character_blocks:'分角色结构'};
+const classificationGroups=['visualKinds','castSizes','narrativeLayers','contentClasses'];
+const classificationOf=document=>{
+  const raw=Object.hasOwn(document,'classification')?document.classification:{version:1};
+  // A draft may have an invalid number. Keep its controls editable; only normalization on save accepts it.
+  const value=normalizeComfyClassification(raw&&typeof raw==='object'?{...raw,maxSubjects:null}:raw);
+  value.maxSubjects=raw.maxSubjects??null;return value;
+};
+function classificationEditor(document){
+  let value;try{value=classificationOf(document);}catch(error){return `<div role="alert">${escape(error.message)}</div>`;}
+  return `<details class="sd-card sd-comfy-classification"><summary><b>适用分类</b></summary><div class="sd-storyboard-card-body">
+    ${classificationGroups.map(key=>`<div class="sd-comfy-classification-group" role="group" aria-label="${classificationLabels[key]}"><span>${classificationLabels[key]}</span><div class="sd-comfy-classification-tags">${COMFY_CLASSIFICATION_VALUES[key].map(choice=>`<button type="button" class="sd-btn" data-comfy-class-group="${key}" data-comfy-class-choice="${choice}" aria-pressed="${value[key].includes(choice)}">${classificationLabels[choice]}</button>`).join('')}</div></div>`).join('')}
+    <div class="sd-comfy-classification-fields"><label><span>提示格式</span><select class="text_pole" data-comfy-class-field="promptFormat"><option value="">未声明</option>${COMFY_CLASSIFICATION_VALUES.promptFormats.map(format=>`<option value="${format}" ${value.promptFormat===format?'selected':''}>${classificationLabels[format]}</option>`).join('')}</select></label><label><span>人物硬上限</span><input class="text_pole" type="number" inputmode="numeric" min="0" max="12" step="1" data-comfy-class-field="maxSubjects" value="${escape(value.maxSubjects??'')}"></label></div>
+    <div class="sd-comfy-library-tools"><span class="sd-comfy-library-note">分类仅用于候选匹配，保存不启用自动选择。人物上限留空为未声明。</span>${icon('clear-classification','清除分类声明','rotate-left',Object.hasOwn(document,'classification')?'':'disabled')}</div>
+  </div></details>`;
+}
+function classificationBadges(row){
+  if(!Object.hasOwn(row,'classification'))return '';
+  let value;try{value=normalizeComfyClassification(row.classification);}catch(_){return '<div class="sd-comfy-library-note">分类待核对</div>';}
+  const labels=classificationGroups.flatMap(key=>value[key].map(choice=>classificationLabels[choice]));
+  if(value.promptFormat)labels.push(classificationLabels[value.promptFormat]);
+  if(value.maxSubjects!==null)labels.push(`人物 ≤ ${value.maxSubjects}`);
+  return labels.length?`<div class="sd-comfy-classification-badges">${labels.map(label=>`<span>${escape(label)}</span>`).join('')}</div>`:'';
+}
 const options=document=>{
   let nodes={};try{nodes=JSON.parse(document.workflow);}catch(_){}
   const selected=document.outputNodeId||'';
@@ -25,6 +53,7 @@ export function renderComfyLibrary(view) {
         <label><span>最终静帧输出</span><select class="text_pole" data-comfy-draft="outputNodeId">${options(draft.document)}</select></label>
         <div class="sd-comfy-library-note">${escape(inspection.issue||`${inspection.slots.length} 个输入槽位；本地接线检查不代表远端执行验证`)}</div>
       </div></section>
+      ${classificationEditor(draft.document)}
       <details class="sd-card"><summary><b>参数默认值</b></summary><div class="sd-storyboard-card-body sd-storyboard-grid sd-storyboard-grid-two">${COMFY_LIBRARY_PARAMETERS.map(key=>`<label><span>${titles[key]}</span><input class="text_pole" data-comfy-parameter="${key}" maxlength="120" value="${escape(draft.document.parameters[key]||'')}" ${['sampler','scheduler'].includes(key)?'':'inputmode="decimal"'}></label>`).join('')}</div></details>
       <details class="sd-card"><summary><b>提示补充</b></summary><div class="sd-storyboard-card-body"><label><span>正面补充</span><textarea class="text_pole" data-comfy-draft="positivePrompt" maxlength="12000">${escape(draft.document.positivePrompt)}</textarea></label><label><span>负面补充</span><textarea class="text_pole" data-comfy-draft="negativePrompt" maxlength="12000">${escape(draft.document.negativePrompt)}</textarea></label></div></details>
       <p class="sd-comfy-library-note">仅已接入工作流的参数生效。保存不切换当前配方；返回列表后可明确应用。</p>
@@ -37,6 +66,7 @@ export function renderComfyLibrary(view) {
     <div class="sd-comfy-library-rows">${(view.rows||[]).map(row=>`<section class="sd-card sd-comfy-library-row" data-comfy-id="${escape(row.id)}" data-comfy-name="${escape(row.name.toLocaleLowerCase())}" ${view.search&&!row.name.toLocaleLowerCase().includes(view.search.toLocaleLowerCase())?'hidden':''}>
       <div class="sd-comfy-library-row-head"><button type="button" class="sd-comfy-library-name" data-comfy-action="${view.archived?'export':'edit'}">${escape(row.name)}</button><span>v${row.version}</span></div>
       <div class="sd-comfy-library-note">${row.nodes} 个节点 · ${size(row.totalBytes)}${row.issue?` · ${escape(row.issue)}`:''}</div>
+      ${classificationBadges(row)}
       <div class="sd-comfy-library-row-actions">${view.archived?`${icon('restore','恢复方案','rotate-left')}${icon('export','导出最新版本','download')}${icon('purge','永久清理全部版本','trash-can')}`:`<button type="button" class="sd-btn" data-comfy-action="apply">应用</button>${icon('edit','编辑版本','pen')}${icon('copy','复制为新方案','copy')}${icon('export','导出最新版本','download')}${icon('archive','归档方案','box-archive')}`}</div>
     </section>`).join('')}</div>
   </fieldset><input type="file" data-comfy-file accept=".json,application/json" hidden></div>`;
@@ -65,6 +95,10 @@ export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,
   const exportDocument=(name,document)=>{const contents=JSON.stringify(exportComfyLibraryDocument(name,document),null,2);download(new Blob([contents],{type:'application/json'}),`${(name||'Comfy-workflow').replace(/[\\/:*?"<>|\u0000-\u001f]/g,'_')}.qianmu.json`);};
   const loadDocument=async row=>{const document=await store.load(namespace,row.id,row.revision);if(!document)throw Error('此版本已不存在，请刷新列表');return document;};
   async function action(name,id) {
+    if(name==='clear-classification'){
+      if(!visible()||view.busy||!view.draft)return;
+      delete view.draft.document.classification;view.draft.dirty=true;syncClassification();return;
+    }
     if(name==='import'){if(!view.busy)host.querySelector('[data-comfy-file]')?.click();return;}
     await guarded(async()=>{
       const row=view.rows.find(row=>row.id===id);
@@ -104,12 +138,33 @@ export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,
       }
     });
   }
+  function syncClassification(){
+    const value=classificationOf(view.draft.document);
+    host.querySelectorAll('[data-comfy-class-choice]').forEach(button=>button.setAttribute('aria-pressed',String(value[button.dataset.comfyClassGroup].includes(button.dataset.comfyClassChoice))));
+    host.querySelectorAll('[data-comfy-class-field]').forEach(field=>{field.value=value[field.dataset.comfyClassField]??'';});
+    const clear=host.querySelector('[data-comfy-action="clear-classification"]');if(clear)clear.disabled=!Object.hasOwn(view.draft.document,'classification');
+  }
   function bind() {
     const mounted=host,mountedEntry=entry;
     host.querySelectorAll('[data-comfy-action]').forEach(button=>button.addEventListener('click',()=>void action(button.dataset.comfyAction,button.closest('[data-comfy-id]')?.dataset.comfyId)));
     host.querySelector('[data-comfy-search]')?.addEventListener('input',event=>{view.search=event.target.value;host.querySelectorAll('[data-comfy-name]').forEach(row=>{row.hidden=!row.dataset.comfyName.includes(view.search.toLocaleLowerCase());});});
     host.querySelectorAll('[data-comfy-draft]').forEach(field=>field.addEventListener('input',()=>{if(!view.draft)return;const key=field.dataset.comfyDraft;view.draft.dirty=true;if(key==='name')view.draft.name=field.value;else view.draft.document[key]=field.value;}));
     host.querySelectorAll('[data-comfy-parameter]').forEach(field=>field.addEventListener('input',()=>{view.draft.dirty=true;view.draft.document.parameters[field.dataset.comfyParameter]=field.value;}));
+    host.querySelectorAll('[data-comfy-class-choice]').forEach(button=>button.addEventListener('click',()=>{
+      if(!visible()||view.busy||!view.draft)return;
+      const value=classificationOf(view.draft.document),key=button.dataset.comfyClassGroup,choice=button.dataset.comfyClassChoice;
+      value[key]=value[key].includes(choice)?value[key].filter(item=>item!==choice):[...value[key],choice];
+      value[key]=COMFY_CLASSIFICATION_VALUES[key].filter(item=>value[key].includes(item));
+      view.draft.document.classification=value;view.draft.dirty=true;syncClassification();
+    }));
+    host.querySelectorAll('[data-comfy-class-field]').forEach(field=>field.addEventListener('input',()=>{
+      if(!visible()||view.busy||!view.draft)return;
+      // Retain invalid numeric input until save reports it; never silently accept it as an absent limit.
+      const value=view.draft.document.classification??classificationOf(view.draft.document),key=field.dataset.comfyClassField;
+      value[key]=key==='maxSubjects'?(field.validity.badInput?NaN:field.value===''?null:Number(field.value)):field.value;
+      view.draft.document.classification=value;view.draft.dirty=true;
+      host.querySelector('[data-comfy-action="clear-classification"]').disabled=false;
+    }));
     host.querySelector('[data-comfy-version]')?.addEventListener('change',event=>{const revision=event.target.value;void guarded(async()=>{
       const draft=view.draft;if(draft.dirty&&!await confirm('切换版本会放弃未保存的编辑，继续？'))return;
       await authorize();const row=draft.versions.find(item=>item.revision===revision);if(!row)return;

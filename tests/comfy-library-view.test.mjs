@@ -6,6 +6,28 @@ import * as storyboard from '../qianmu-storyboard.js';
 import {renderComfyLibrary} from '../qianmu-comfy-library-view.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const document={workflow:JSON.stringify({save:{class_type:'SaveImage',inputs:{text:'%qianmu_prompt%'}}}),outputNodeId:'save',parameters:{width:'832',height:'1216'},positivePrompt:'prefix',negativePrompt:'exclusion'};
+test('classification editor uses accessible multi-selects and does not classify old documents by rendering',()=>{
+  const before=structuredClone(document),html=renderComfyLibrary({draft:{name:'old',document}});
+  for(const group of ['visualKinds','castSizes','narrativeLayers','contentClasses'])assert.match(html,new RegExp(`data-comfy-class-group="${group}"`));
+  assert.equal((html.match(/data-comfy-class-choice=/g)||[]).length,15);assert.doesNotMatch(html,/aria-pressed="true"/);
+  assert.match(html,/data-comfy-class-field="maxSubjects" value=""/);assert.match(html,/data-comfy-action="clear-classification"[^>]+disabled/);
+  assert.deepEqual(document,before);assert.doesNotMatch(html,/data-comfy-action="(?:generate|enable-auto)"/);
+});
+test('classification list uses safe light metadata while draft preserves format and zero limit',()=>{
+  const classification={version:1,visualKinds:['object'],castSizes:['none'],contentClasses:['sfw'],promptFormat:'natural_language',maxSubjects:0};
+  const html=renderComfyLibrary({rows:[{id:'a',name:'x',version:1,nodes:2,totalBytes:1,classification}]});
+  assert.match(html,/sd-comfy-classification-badges/);assert.match(html,/人物 ≤ 0/);assert.doesNotMatch(html,/API Workflow JSON/);
+  const draft=renderComfyLibrary({draft:{name:'x',document:{...document,classification}}});
+  assert.match(draft,/data-comfy-class-choice="object" aria-pressed="true"/);assert.match(draft,/value="natural_language" selected/);
+  assert.match(draft,/data-comfy-class-field="maxSubjects" value="0"/);
+  const invalid=renderComfyLibrary({rows:[{id:'a',name:'x',version:1,nodes:2,totalBytes:1,classification:{version:1,visualKinds:['<script>']}}]});
+  assert.match(invalid,/分类待核对/);assert.doesNotMatch(invalid,/<script>/);
+});
+test('invalid numeric draft remains editable after save rejection',()=>{
+  const html=renderComfyLibrary({draft:{name:'x',document:{...document,classification:{version:1,maxSubjects:13}}}});
+  assert.match(html,/人物上限|可见人物上限/);assert.match(html,/data-comfy-class-field="maxSubjects" value="13"/);
+  assert.match(html,/data-comfy-class-choice="one"/);
+});
 test('library list is metadata-only, escaped and blank without fabricated placeholder cards',()=>{
   const empty=renderComfyLibrary({rows:[]});assert.doesNotMatch(empty,/sd-comfy-library-row"|暂无|API Workflow JSON/);
   const html=renderComfyLibrary({rows:[{id:'a',name:'<script>bad</script>',version:1,nodes:4,totalBytes:100}]});

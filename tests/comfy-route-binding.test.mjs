@@ -52,6 +52,7 @@ for (const [field, change] of [
   ['graph', f => { const changed = copy(graph); changed.text.inputs.text += ' other'; f.document.workflow = JSON.stringify(changed); }],
   ['parameters', f => f.document.parameters.width = 1024], ['positive addition', f => f.document.positivePrompt = 'different'],
   ['negative addition', f => f.document.negativePrompt = 'other'], ['output', f => f.document.outputNodeId = 'text'],
+  ['classification', f => f.document.classification = { version: 1, contentClasses: ['sfw'] }],
 ]) test(`pinned ${field} change is rejected, never repaired or replaced with the current workbench`, async () => {
   const f = fixture(), pin = await pinComfyRouteWorkflow(f.options); change(f);
   await assert.rejects(readPinnedComfyRouteWorkflow({ ...f.options, binding: pin.binding }), { code: 'comfy_route_binding', submissionState: 'not_submitted' });

@@ -1,8 +1,39 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createComfyWorkflowStore,normalizeComfyLibraryDocument,inspectComfyLibraryDocument,importComfyLibraryDocument,exportComfyLibraryDocument,COMFY_LIBRARY_SCHEMA} from '../qianmu-comfy-library.js';
+import {normalizeComfyClassification} from '../qianmu-comfy-selection.js';
+import {createHash} from 'node:crypto';
 const graph={one:{class_type:'CLIPTextEncode',inputs:{text:'%qianmu_prompt%'}},two:{class_type:'SaveImage',inputs:{images:['one',0]}}};
 const document={workflow:JSON.stringify(graph),outputNodeId:'two',parameters:{width:832,seed:-1},positivePrompt:'added',negativePrompt:'excluded'};
+const classification={version:1,visualKinds:['object','character'],castSizes:['one'],narrativeLayers:['memory'],contentClasses:['sfw'],promptFormat:'tags',maxSubjects:1};
+test('legacy canonical recipe stays identical without implicitly adding classification',()=>{
+  const legacy={workflow:JSON.stringify(graph),outputNodeId:'two',parameters:{width:'832',height:'',count:'',steps:'',cfg:'',seed:'-1',sampler:'',scheduler:''},positivePrompt:'added',negativePrompt:'excluded'};
+  const result=normalizeComfyLibraryDocument(document),digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  assert.deepEqual(result,legacy);assert.equal(digest(result),digest(legacy));assert.ok(!Object.hasOwn(importComfyLibraryDocument(JSON.stringify(graph)).document,'classification'));
+});
+test('classification survives portable round trip, has bounded canonical fields and counts toward document storage',()=>{
+  const input={...document,classification:{...classification,apiKey:'secret',enabled:true,workflow:'not-a-class'}};
+  const normalized=normalizeComfyLibraryDocument(input),restored=importComfyLibraryDocument(JSON.stringify(exportComfyLibraryDocument('versioned',input))).document;
+  assert.deepEqual(restored.classification,normalizeComfyClassification(classification));assert.deepEqual(restored,normalized);
+  assert.doesNotMatch(JSON.stringify(normalized.classification),/secret|enabled|workflow/);
+  assert.deepEqual(classification.visualKinds,['object','character']);assert.notEqual(normalized.classification.visualKinds,classification.visualKinds);
+  assert.ok(inspectComfyLibraryDocument(input).bytes>inspectComfyLibraryDocument(document).bytes);
+  assert.equal(inspectComfyLibraryDocument(input).bytes,new TextEncoder().encode(JSON.stringify(normalized)).byteLength);
+});
+test('explicit malformed or future classification cannot be erased into an eligible legacy workflow',async()=>{
+  let opens=0;const store=createComfyWorkflowStore({indexedDB:{open(){opens++;}}});
+  for(const bad of [undefined,null,[],{}, {version:2}, {...classification,maxSubjects:13},{...classification,maxSubjects:NaN},{...classification,maxSubjects:.5},{...classification,promptFormat:'auto'},{...classification,contentClasses:['sfw','sfw']}]){
+    const input={...document,classification:bad};assert.throws(()=>normalizeComfyLibraryDocument(input),{code:'comfy_library_classification'});
+    await assert.rejects(()=>store.save('account',{name:'bad',document:input}),{code:'comfy_library_classification'});
+  }
+  assert.throws(()=>importComfyLibraryDocument(JSON.stringify({schema:COMFY_LIBRARY_SCHEMA,document:{...document,classification:{version:2}}})),{code:'comfy_library_classification'});
+  assert.equal(opens,0);store.close();
+});
+test('clearing the optional classification restores legacy canonical recipe without mutating the source version',()=>{
+  const source=normalizeComfyLibraryDocument({...document,classification}),draft=structuredClone(source);delete draft.classification;
+  assert.deepEqual(normalizeComfyLibraryDocument(draft),normalizeComfyLibraryDocument(document));assert.ok(source.classification);
+  assert.deepEqual(normalizeComfyLibraryDocument({...document,classification:{version:1}}).classification,normalizeComfyClassification({version:1}));
+});
 test('library documents copy only recipe fields, never connection credentials',()=>{
   const result=normalizeComfyLibraryDocument({...document,baseUrl:'https://private',apiKey:'secret',parameters:{...document.parameters,apiKey:'secret'}});
   assert.equal(result.parameters.width,'832');assert.equal(result.parameters.seed,'-1');assert.equal(result.outputNodeId,'two');
