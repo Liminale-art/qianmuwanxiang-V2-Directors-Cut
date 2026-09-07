@@ -8,6 +8,7 @@ import { normalizeWorldSource } from './qianmu-world-source.js';
 import { normalizeCharacterCastingSnapshot, assertCharacterCastingSnapshots } from './qianmu-character-casting.js';
 import { STORYBOARD_PROMPT_FORMATS, retainStoryboardPromptRenderingPack } from './qianmu-prompt-formats.js';
 import { retainComfyWorkbenchBinding } from './qianmu-comfy-workbench-binding.js';
+import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
 export { assertCharacterCastingSnapshots } from './qianmu-character-casting.js';
 export { normalizeStoryboardPromptFormats } from './qianmu-prompt-formats.js';
@@ -352,6 +353,7 @@ export function createStoryboardDefaults() {
     promptCompiler: { enabled: true, apiProfileId: '', connectionPresetId: '', instructionPresetId: '', instruction: '', includeCurrentFloor: true, includeRecentFloors: 2, includeCharacterCards: true, includeUserPersona: true, includeActivatedWorldInfo: true, worldMode: 'selected', worldBookNames: [], worldBookView: '', worldBookInitializedNames: [], worldEntryIds: [], tagRules: compilerTagRuleDefaults(), excludedTags: 'think, thinking' },
     profiles: Object.fromEntries(ids.map((id) => [id, legacyProfile()])), modelProfiles: Object.fromEntries(ids.map((id) => [id, {}])), parameterPresets: [], parameterPresetSelection: Object.fromEntries(ids.map((id) => [id, ''])),
     lastModelSource: 'novel',
+    comfyPoolSelection: null,
     characterArchive: { schemaVersion: 1, collapsed: {} },
     connections: Object.fromEntries(ids.map((id) => [id, connection(id)])), generationPolicy: normalizeStoryboardGenerationPolicy(),
     promptPresets: [], editingPromptPresetId: '', editingPromptItemId: '', promptItemDraft: null,
@@ -643,6 +645,7 @@ export function normalizeStoryboardState(value) {
   state.characterArchive = { schemaVersion: 1, collapsed: Object.fromEntries(['char','user','other'].map(key => [key, Boolean(state.characterArchive?.collapsed?.[key])])) };
   if (['workflows', 'comfy-pools'].includes(state.view) && state.source !== 'comfy') state.view = 'create';
   state.comfyLibrarySelection = obj(state.comfyLibrarySelection) ? { id: cleanId(state.comfyLibrarySelection.id), revision: cleanId(state.comfyLibrarySelection.revision), name: str(state.comfyLibrarySelection.name, 80), version: int(state.comfyLibrarySelection.version, 1, 64, 1) } : null;
+  state.comfyPoolSelection = retainComfyAutoBinding(state.comfyPoolSelection);
   state.promptDefaults = Object.fromEntries(Object.entries(obj(state.promptDefaults) ? state.promptDefaults : {}).slice(0, 200).map(([key, value]) => [str(key, 500), {
     ...(obj(value) && Object.hasOwn(value, 'positive') ? { positive: str(value.positive, 12000) } : {}),
     ...(obj(value) && Object.hasOwn(value, 'negative') ? { negative: str(value.negative, 12000) } : {}),

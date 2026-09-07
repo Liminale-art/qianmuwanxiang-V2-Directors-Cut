@@ -43,19 +43,23 @@ function renderMember(candidate, view) {
 export function renderComfyPools(view) {
   view = { connections: [], ...view };
   const draft = view.draft, disabled = view.busy ? 'disabled' : '';
+  const choose=row=>view.canSelect?`<button type="button" class="sd-btn" data-pool-action="${row===draft?'select-version':'select'}" aria-pressed="${view.selection?.id===row.id && view.selection?.revision===row.revision}" ${row===draft&&draft.dirty?'disabled':''}>选用此版本</button>`:'';
   const body = draft ? `<div class="sd-comfy-pool-tools">${icon('cancel','取消编辑','xmark')}<span>${escape(draft.name || '新候选方案')}${draft.version ? ` · v${draft.version}` : ''}</span>${icon('export-draft','导出草稿','download')}${icon('save-copy','另存新方案','copy')}${icon('save','保存方案版本','floppy-disk')}</div>
     <section class="sd-card"><div class="sd-storyboard-card-body"><label><span>方案名</span><input class="text_pole" data-pool-name maxlength="80" value="${escape(draft.name)}"></label>
     ${draft.versions?.length ? `<label><span>已保存版本</span><select class="text_pole" data-pool-version>${draft.versions.map(row => `<option value="${escape(row.revision)}" ${row.revision === draft.revision ? 'selected' : ''}>v${row.version} · ${escape(row.name)}</option>`).join('')}</select></label>` : ''}
     <div class="sd-comfy-pool-tools"><button type="button" class="sd-btn" data-pool-action="style-lock" aria-label="连续场景风格锁" title="连续场景风格锁" aria-pressed="${draft.pool.styleLock}">续场风格锁</button><button type="button" class="sd-btn" data-pool-action="check-members">核对版本</button>${icon('add-member','添加候选工作流','plus')}</div>
+    ${draft.id?choose(draft):''}
     <small class="sd-comfy-library-note">仅配置候选，不改变镜头台；自动运行尚未开放。保存前会核对参与候选的固定版本。</small></div></section>
     <div class="sd-comfy-pool-members">${draft.pool.candidates.map(candidate => renderMember(candidate, view)).join('')}</div>`
     : `<div class="sd-comfy-pool-tools"><button type="button" class="sd-btn" data-pool-action="library">工作流库</button><input class="text_pole" type="search" data-pool-search aria-label="搜索候选方案" value="${escape(view.search || '')}">${icon('import','导入候选方案','upload')}${icon('new','新建候选方案','plus')}</div>
     <div class="sd-comfy-pool-tools"><button type="button" class="sd-btn" data-pool-action="archived" aria-pressed="${Boolean(view.archived)}">归档</button><span class="sd-comfy-library-note">${view.usage ? `${view.usage.count} 个方案 · ${view.usage.versions} 个版本 · ${size(view.usage.bytes)} / ${size(view.usage.limit)}` : ''}</span>${icon('refresh','刷新候选方案','rotate')}</div>
-    <div class="sd-comfy-pool-rows">${(view.rows || []).map(row => `<section class="sd-card" data-pool-id="${escape(row.id)}" data-pool-search-name="${escape(row.name.toLocaleLowerCase())}" ${view.search && !row.name.toLocaleLowerCase().includes(view.search.toLocaleLowerCase()) ? 'hidden' : ''}><div class="sd-comfy-pool-tools"><button type="button" class="sd-comfy-library-name" data-pool-action="${view.archived ? 'export' : 'edit'}">${escape(row.name)}</button><span>v${row.version}</span></div><small class="sd-comfy-library-note">${row.candidateCount} 个候选 · ${size(row.totalBytes)}</small><div class="sd-comfy-pool-tools sd-comfy-pool-row-actions">${view.archived ? `${icon('restore','恢复候选方案','rotate-left')}${icon('export','导出最新版本','download')}${icon('purge','永久清理全部版本','trash-can')}` : `${icon('edit','编辑方案','pen')}${icon('copy','复制为新方案','copy')}${icon('export','导出最新版本','download')}${icon('archive','归档方案','box-archive')}`}</div></section>`).join('')}</div>`;
-  return `<div class="sd-comfy-library sd-comfy-pools" aria-busy="${Boolean(view.busy)}">${view.error ? `<p role="alert" class="sd-comfy-library-note">${escape(view.error)}</p>` : ''}<fieldset ${disabled}>${body}</fieldset><input type="file" data-pool-file accept=".json,application/json" hidden></div>`;
+    <div class="sd-comfy-pool-rows">${(view.rows || []).map(row => `<section class="sd-card" data-pool-id="${escape(row.id)}" data-pool-search-name="${escape(row.name.toLocaleLowerCase())}" ${view.search && !row.name.toLocaleLowerCase().includes(view.search.toLocaleLowerCase()) ? 'hidden' : ''}><div class="sd-comfy-pool-tools"><button type="button" class="sd-comfy-library-name" data-pool-action="${view.archived ? 'export' : 'edit'}">${escape(row.name)}</button><span>v${row.version}</span></div><small class="sd-comfy-library-note">${row.candidateCount} 个候选 · ${size(row.totalBytes)}</small><div class="sd-comfy-pool-tools sd-comfy-pool-row-actions">${view.archived ? `${icon('restore','恢复候选方案','rotate-left')}${icon('export','导出最新版本','download')}${icon('purge','永久清理全部版本','trash-can')}` : `${choose(row)}${icon('edit','编辑方案','pen')}${icon('copy','复制为新方案','copy')}${icon('export','导出最新版本','download')}${icon('archive','归档方案','box-archive')}`}</div></section>`).join('')}</div>`;
+  const selection=view.canSelect&&view.selection?`<div class="sd-comfy-pool-tools"><small>待用：${escape(view.selection.invalid?'方案待核对':`${view.selection.name} · v${view.selection.version}`)}</small>${icon('clear-selection','清除待用方案','xmark')}</div>`:'';
+  return `<div class="sd-comfy-library sd-comfy-pools" aria-busy="${Boolean(view.busy)}">${view.error ? `<p role="alert" class="sd-comfy-library-note">${escape(view.error)}</p>` : ''}<fieldset ${disabled}>${selection}${body}</fieldset><input type="file" data-pool-file accept=".json,application/json" hidden></div>`;
 }
 
 export function createComfyPoolController({ resolveNamespace, getScopeKey = () => '', getConnections = () => [], pickWorkflow,
+  getSelection=()=>null,onSelect=null,
   onLibrary = () => {}, isCurrent = () => true, notify = () => {}, confirm = async () => false, onIcons = () => {}, download,
   store = createComfyPoolStore(), readRecipe = readPinnedComfyRouteWorkflow } = {}) {
   const view = { rows: [], usage: null, search: '', archived: false, draft: null, busy: false, error: '', connections: [], openMembers: new Set(), checks: new Map() };
@@ -70,6 +74,7 @@ export function createComfyPoolController({ resolveNamespace, getScopeKey = () =
   const restore = () => { if (scroller()) scroller().scrollTop = scrolls[view.draft ? 'draft' : 'list']; };
   const render = () => {
     if (!visible()) return; view.connections = getConnections().map(row => ({ id: row.id, name: row.name }));
+    const selected=getSelection();view.canSelect=typeof onSelect==='function';view.selection=selected?.invalid || selected?.namespace===namespace ? selected:null;
     host.innerHTML = verifiedEntry === entry ? renderComfyPools(view) : `<div role="status">${escape(view.error || '正在读取候选方案')}${view.error ? '<button type="button" class="sd-btn" data-pool-action="refresh">重试</button>' : ''}</div>`;
     bind(); onIcons(host); restore();
   };
@@ -133,6 +138,12 @@ export function createComfyPoolController({ resolveNamespace, getScopeKey = () =
       const row = view.rows.find(row => row.id === id), draft = view.draft, member = draft?.pool.candidates.find(item => item.id === memberId);
       if (name === 'library') { await guard(); onLibrary(); return; }
       if (name === 'refresh') { await loadList(guard); return; }
+      if (name==='clear-selection' && onSelect) {await onSelect(null,guard);return;}
+      if ((name==='select'||name==='select-version') && onSelect) {
+        const selected=name==='select-version'?draft:row;
+        if(!selected?.id || selected.dirty || view.archived)throw Error('请先保存并核对此版本');
+        await guard();await onSelect({namespace,id:selected.id,revision:selected.revision,version:selected.version},guard);return;
+      }
       if (name === 'archived') { view.archived = !view.archived; await loadList(guard); return; }
       if (name === 'new') { draftFrom({ name: '', pool: { schema: COMFY_SELECTION_SCHEMA, namespace, id: freshId(), revision: freshId(), enabled: false, styleLock: true, candidates: [] } }); return; }
       if (name === 'cancel') { if (draft?.dirty && !await confirm('放弃尚未保存的候选方案编辑？')) return; await guard(); view.draft = null; view.checks.clear(); await loadList(guard); return; }

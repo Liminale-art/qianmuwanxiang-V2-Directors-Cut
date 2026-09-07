@@ -4,6 +4,8 @@
   "outputDirectory": "dist",
   "files": [
     "qianmu-comfy-pool-view.js",
+    "qianmu-comfy-auto-binding.js",
+    "qianmu-comfy-auto-runtime.js",
     "qianmu-prompt-formats.js",
     "qianmu-comfy-prompt.js",
     "qianmu-comfy-workbench-binding.js",
