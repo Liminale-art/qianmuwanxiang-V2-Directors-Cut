@@ -33,6 +33,14 @@ const setup = (options = {}) => {
 const admit = (runtime, value, extra = {}) => runtime.admit(value, { maxAutomatic: 3, ...extra });
 const scopeOf = value => ({ namespace: 'account-a', chatKey: value.chatKey, messageKey: value.messageRef.messageKey, revisionId: value.messageRef.revisionId });
 
+test('service-mode manual retries route to original review before fee consent or a fresh reservation',async()=>{
+  let prompts=0;const e=setup({confirm:async()=>{prompts++;return true;}}),old=job();
+  await admit(e.runtime,old);await e.runtime.beforeSubmit(old);await e.runtime.settle(old,'unknown');
+  const next=job({id:'manual-service',automatic:false,source:'novel',connection:{imageTransport:'service'}});
+  await assert.rejects(admit(e.runtime,next),{code:'image_attempt_service_review_required'});
+  assert.equal(prompts,0);assert.equal(e.store.inspect(scopeOf(old)).attempts,1);
+});
+
 test('account scope uses the real ST account, not an unresolved helper fallback or persona', async () => {
   const resolve = (module, fetchImpl = () => assert.fail('unnecessary account network')) => resolveImageAccountNamespace({ loadUser: async () => module, fetchImpl });
   assert.equal(await resolve({ currentUser: { handle: 'alice' }, accountsEnabled: true }), 'st-user:alice');

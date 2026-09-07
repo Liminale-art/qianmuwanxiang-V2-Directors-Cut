@@ -105,7 +105,7 @@ export function createBrowserImageChannel({ locks = globalThis.navigator?.locks,
 
   const checkLocks = () => { if (typeof locks?.request !== 'function') throw problem('unavailable', '当前浏览器不支持 NAI 跨页顺序生成，请使用支持此功能的浏览器'); };
   return {
-    async run({ apiKey, namespace, attemptId, automatic = false, confirmedAttempts = [], valid = () => true, confirm = async () => false, onAcquired = () => {}, onWarning = () => {} }, operation) {
+    async run({ apiKey, namespace, attemptId, automatic = false, confirmedAttempts = [], serviceReviewRequired = false, valid = () => true, confirm = async () => false, onAcquired = () => {}, onWarning = () => {} }, operation) {
       assertOpen(); checkLocks();
       identity(namespace, 'ST 账户'); identity(attemptId, '请求编号'); identity(ownerId, '页面会话');
       if (!Array.isArray(confirmedAttempts) || confirmedAttempts.length > 256) throw problem('identity', '原请求确认记录无效，未提交生图');
@@ -125,6 +125,7 @@ export function createBrowserImageChannel({ locks = globalThis.navigator?.locks,
           // submitting record therefore remains uncertain after a page crash.
           const previous = await change(key, () => undefined); check();
           if (previous && previous.status !== 'reserved') {
+            if (serviceReviewRequired) throw problem('review_required', 'NAI 原请求结果待核查，请到分镜日志 → NAI 收片核查原任务，再手动生成新图');
             const alreadyConfirmed = previous.namespace === namespace && confirmed.has(previous.attemptId);
             if (automatic || (!alreadyConfirmed && !await confirm('核对 NAI 原请求', '此连接有结果未确认的请求。请先核对渠道任务或账单；继续将发起新的生图请求。'))) {
               throw problem('uncertain', 'NAI 原请求结果未确认，已暂停此连接的后续自动生图');
@@ -177,6 +178,22 @@ export function createBrowserImageChannel({ locks = globalThis.navigator?.locks,
             if (!valid()) throw problem('cancelled', '原图账户已变化');
             return current?.namespace === namespace && current.attemptId === attemptId ? null : undefined;
           });
+        });
+      });
+    },
+    // The service review coordinator holds the global maintenance lock. Take
+    // only this channel lock here, so there is no recursive lock acquisition.
+    async confirmReview({ namespace, attemptId, channelKey, proof, valid = () => true }) {
+      identity(namespace, 'ST 账户'); identity(attemptId, '原请求编号'); assertOpen(); checkLocks();
+      if (!/^[a-f0-9]{64}$/.test(channelKey || '') || proof?.kind !== 'image' || proof.attemptId !== attemptId
+        || proof.reviewed !== true || proof.resultAvailable !== false || !/^[a-f0-9]{64}$/.test(proof.confirmation || '')) throw problem('identity', '原请求核查凭据无效');
+      return locks.request(`${PREFIX}${channelKey}`, { mode: 'exclusive', ifAvailable: true }, lock => {
+        if (!lock) throw problem('busy', 'NAI 连接仍在使用，请稍后同步核查');
+        return change(channelKey, current => {
+          if (!valid()) throw problem('cancelled', '原请求账户已变化');
+          if (!current || current.namespace !== namespace || current.attemptId !== attemptId) return undefined;
+          if (current.status === 'reserved') throw problem('changed', '本机原请求尚未提交，不能按未知结果解除');
+          return null; // Fee history remains in the original service and admission ledgers.
         });
       });
     },

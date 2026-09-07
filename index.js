@@ -17635,7 +17635,7 @@ function renderStoryboardLogs(state) {
         ${log.params?.sceneStyle ? `<div class="sd-storyboard-log-meta"><span>风格来源 · ${htmlEscape(log.params.sceneStyle)}</span><span>${htmlEscape(log.params.comfyRouteBinding?.name || '')}</span></div>` : ''}
         ${stageRows ? `<ol class="sd-storyboard-pipeline-stages">${stageRows}</ol>` : ''}
         ${stageRows ? '<section class="sd-storyboard-stage-detail" hidden><header><b></b><button type="button" class="sd-icon-btn sd-storyboard-copy-stage" title="复制当前阶段" aria-label="复制当前阶段"><i class="fa-solid fa-copy"></i></button></header><pre></pre></section>' : ''}
-        <div class="sd-storyboard-log-actions${storyboardCanReceiveComfyLog(log) ? ' sd-storyboard-comfy-log-actions' : ''}"><button type="button" class="sd-btn sd-storyboard-load-log">载入镜头台</button>${log.snapshot?.serviceTask?.attemptId ? '<button type="button" class="sd-btn sd-storyboard-receive-log">领取原图</button>' : ''}${storyboardCanReceiveComfyLog(log) ? '<button type="button" class="sd-btn sd-storyboard-receive-comfy" title="领取原任务图片，不重新生成">领取原图</button>' : ''}${runAction}<button type="button" class="sd-btn sd-storyboard-copy-log">复制诊断</button></div>
+        <div class="sd-storyboard-log-actions${storyboardCanReceiveComfyLog(log) ? ' sd-storyboard-comfy-log-actions' : ''}"><button type="button" class="sd-btn sd-storyboard-load-log">载入镜头台</button>${log.snapshot?.serviceTask?.attemptId ? '<button type="button" class="sd-btn sd-storyboard-receive-log">领取原图</button><button type="button" class="sd-btn sd-storyboard-review-log">核查原请求</button>' : ''}${storyboardCanReceiveComfyLog(log) ? '<button type="button" class="sd-btn sd-storyboard-receive-comfy" title="领取原任务图片，不重新生成">领取原图</button>' : ''}${runAction}<button type="button" class="sd-btn sd-storyboard-copy-log">复制诊断</button></div>
       </div>
     </details>`;
   }).join('');
@@ -19365,6 +19365,20 @@ async function storyboardReceiveServiceImage(attemptId, discovered = null, expec
   } catch (error) { toast(error.message || '原图暂不可领取，未重新生成', 'warning'); }
 }
 
+async function storyboardReviewServiceImage(task, namespace, valid = () => true) {
+  const epoch = storyboardAdmissionEpoch, current = () => epoch === storyboardAdmissionEpoch && valid();
+  const service = await storyboardImageServiceRuntime();
+  return service.reviewOriginal(task, { namespace, valid: current, onReviewed: async (original, guard) => {
+    await guard();
+    if (original.snapshot?.imageAdmission) {
+      const admission = await storyboardImageAdmissionRuntime(); await guard();
+      await admission.confirmReview(original.snapshot.imageAdmission, original.proof, current); await guard();
+    }
+    const channel = await storyboardImageChannelRuntime(); await guard();
+    await channel.confirmReview({ ...original, valid: current }); await guard();
+  } });
+}
+
 async function storyboardPaintServiceInbox(root, { server = false, cursor = null } = {}) {
   const host = root.querySelector('.sd-storyboard-service-inbox');
   if (!host) return;
@@ -19376,13 +19390,30 @@ async function storyboardPaintServiceInbox(root, { server = false, cursor = null
     const data = server ? await service.catalog({ cursor }) : null;
     const rows = server ? data.originals : await service.list();
     if (!current()) return;
-    const status = row => ({ reserved: '等待', submitting: '提交中', uncertain: '待核查', acknowledged: '已确认', succeeded: '完成', rejected: '已拒绝', released: '未提交', unverified: '记录待核查' }[row.status] || '待领取');
+    const status = row => ({ prepared: '未提交', submitted: '结果待核查', reviewed: '已核查 · 原费用未知', reserved: '等待', submitting: '提交中', uncertain: '待核查', acknowledged: '已核查 · 原费用未知', succeeded: '完成', rejected: '已拒绝', released: '未提交', unverified: '记录待核查' }[row.status] || '待领取');
+    const reviewRows = [];
+    const reviewButton = row => {
+      if (row.resultAvailable || row.live || !['submitted','uncertain','acknowledged','reviewed'].includes(row.status)) return '';
+      if (reviewRows.some(item => item.attemptId === row.attemptId && (item.channelKey || item.taskLocator?.channelKey) === (row.channelKey || row.taskLocator?.channelKey))) return '';
+      const index = reviewRows.push({ ...row, namespace: server ? data.namespace : row.namespace }) - 1;
+      return `<button type="button" class="sd-btn" data-service-review-index="${index}">${row.status === 'reviewed' ? '同步核查' : '核查原请求'}</button>`;
+    };
     const toolbar = `<div class="sd-service-inbox-toolbar"><button type="button" class="sd-btn ${server ? '' : 'active'}" data-service-scope="local">本机</button><button type="button" class="sd-btn ${server ? 'active' : ''}" data-service-scope="server">服务器</button></div>`;
     const totals = data?.totals;
     const usage = server ? `<p class="sd-service-inbox-usage">当前账户 · ${Number(totals.count) || 0} 项原图暂存 · ${formatStorageBytes((Number(totals.imageBytes)||0)+(Number(totals.metadataBytes)||0)+(Number(totals.temporaryBytes)||0))}<br>等待预留 ${formatStorageBytes(totals.reservedBytes)}（非实际磁盘占用）</p>` : '';
-    const content = rows.map((row, index) => `<div class="sd-storyboard-log-actions"><span>${htmlEscape(formatDateTime(row.createdAt))} · ${htmlEscape(server ? row.model || 'NAI' : row.originalOnly ? '原图找回' : row.snapshot.profile?.model || 'NAI')}${server ? `<small>${htmlEscape(status(row))} · ${formatStorageBytes(row.cacheBytes)}</small>` : ''}</span><button type="button" class="sd-btn" data-service-receive-index="${index}" ${server && (!row.resultAvailable || row.live) ? 'disabled' : ''}>${!server && row.status === 'archived' ? '确认归档' : '领取原图'}</button><button type="button" class="sd-icon-btn" data-service-remove-index="${index}" ${server && !row.canDiscard ? 'disabled' : ''} aria-label="${server ? '删除服务器暂存' : '移除此设备的领取记录'}" title="${server ? '删除服务器暂存' : '移除此设备的领取记录'}"><i class="fa-solid fa-trash-can"></i></button></div>`).join('');
-    const history = server && data.tasks.length ? `<details class="sd-service-inbox-history"><summary>任务记录 ${Number(totals.tasks)||0}</summary>${data.tasks.map(row => `<div><span>${htmlEscape(formatDateTime(row.createdAt))}</span><span>${htmlEscape(status(row))}</span></div>`).join('')}${data.nextCursor ? '<button type="button" class="sd-btn" data-service-next>下一页</button>' : ''}</details>` : '';
+    const content = rows.map((row, index) => `<div class="sd-storyboard-log-actions"><span>${htmlEscape(formatDateTime(row.createdAt))} · ${htmlEscape(server ? row.model || 'NAI' : row.originalOnly ? '原图找回' : row.snapshot.profile?.model || 'NAI')}<small>${htmlEscape(status(row))}${server ? ` · ${formatStorageBytes(row.cacheBytes)}` : ''}</small></span><button type="button" class="sd-btn" data-service-receive-index="${index}" ${server && (!row.resultAvailable || row.live) ? 'disabled' : ''}>${!server && row.status === 'archived' ? '确认归档' : '领取原图'}</button>${reviewButton(row)}<button type="button" class="sd-icon-btn" data-service-remove-index="${index}" ${server && !row.canDiscard ? 'disabled' : ''} aria-label="${server ? '删除服务器暂存' : '移除此设备的领取记录'}" title="${server ? '删除服务器暂存' : '移除此设备的领取记录'}"><i class="fa-solid fa-trash-can"></i></button></div>`).join('');
+    const history = server && data.tasks.length ? `<details class="sd-service-inbox-history"><summary>任务记录 ${Number(totals.tasks)||0}</summary>${data.tasks.map(row => `<div><span>${htmlEscape(formatDateTime(row.createdAt))}</span><span>${htmlEscape(status(row))}</span>${reviewButton(row)}</div>`).join('')}${data.nextCursor ? '<button type="button" class="sd-btn" data-service-next>下一页</button>' : ''}</details>` : '';
     host.innerHTML = toolbar + usage + content + history;
+    host.querySelectorAll('[data-service-review-index]').forEach(button => button.addEventListener('click', async () => {
+      const row = reviewRows[Number(button.dataset.serviceReviewIndex)]; button.disabled = true;
+      try {
+        const result = await storyboardReviewServiceImage(row, row.namespace, current);
+        if (!current()) return;
+        toast(result.cancelled ? '已取消核查，原状态保留' : result.message, result.cancelled ? 'info' : 'success');
+        if (!result.cancelled) await storyboardPaintServiceInbox(root, { server, cursor });
+      } catch (error) { if (current()) toast(error.message, 'warning'); }
+      finally { if (current()) button.disabled = false; }
+    }));
     host.querySelectorAll('[data-service-scope]').forEach(button => button.addEventListener('click', () => void storyboardPaintServiceInbox(root, { server: button.dataset.serviceScope === 'server' })));
     host.querySelector('[data-service-next]')?.addEventListener('click', () => void storyboardPaintServiceInbox(root, { server: true, cursor: data.nextCursor }));
     host.querySelectorAll('[data-service-receive-index]').forEach(button => button.addEventListener('click', async () => {
@@ -20862,6 +20893,7 @@ async function storyboardRunJob(job, log) {
       storyboardPipelineStage(log, 'channel_queue', 'running', {}, { reason: 'NAI 同连接顺序生成' });
       response = await channel.run({ apiKey, namespace: job.imageAdmission?.namespace, attemptId: job.id,
         automatic: Boolean(job.automatic), confirmedAttempts: job.confirmedImageAttempts || [], confirm: confirmDialog,
+        serviceReviewRequired: job.connection?.imageTransport === 'service',
         valid: () => !job.discardRequested && storyboardState().enabled
           && (!job.automatic || (storyboardState().automation?.autoCapture !== false && storyboardState().automation?.autoGenerate !== false))
           && (job.target === 'gallery' || storyboardValidatedAnchor(job).valid || storyboardValidatedAnchor(job).linkState === 'foreign'),
@@ -23326,6 +23358,24 @@ function bindStoryboardTabEvents(root) {
     });
     row.querySelector('.sd-storyboard-receive-log')?.addEventListener('click', () => {
       if (log?.snapshot?.serviceTask?.attemptId) void storyboardReceiveServiceImage(log.snapshot.serviceTask.attemptId);
+    });
+    row.querySelector('.sd-storyboard-review-log')?.addEventListener('click', async event => {
+      const button = event.currentTarget, epoch = storyboardAdmissionEpoch; button.disabled = true;
+      const current = () => root.isConnected && epoch === storyboardAdmissionEpoch;
+      try {
+        const service = await storyboardImageServiceRuntime();
+        const rows = await service.list(); if (!current()) return;
+        const original = rows.find(item => item.attemptId === log?.snapshot?.serviceTask?.attemptId);
+        if (!original) {
+          const nai = root.querySelector('.sd-storyboard-service-inbox'); if (nai) nai.hidden = false;
+          await storyboardPaintServiceInbox(root, { server: true });
+          if (current()) toast('本机原回执已缺失，请在服务器任务记录核查；不会套用当前连接', 'info');
+          return;
+        }
+        const result = await storyboardReviewServiceImage(original, original.namespace, current);
+        if (current()) toast(result.cancelled ? '已取消核查，原状态保留' : result.message, result.cancelled ? 'info' : 'success');
+      } catch (error) { if (current()) toast(error.message, 'warning'); }
+      finally { if (current()) button.disabled = false; }
     });
     row.querySelector('.sd-storyboard-receive-comfy')?.addEventListener('click', async event => {
       event.currentTarget.disabled = true;

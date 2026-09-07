@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { IMAGE_ATTEMPT_SCHEMA, IMAGE_ATTEMPT_LIMIT, IMAGE_RESERVATION_TTL_MS, imageAttemptScopeKey, normalizeImageAttempts, claimImageAttempt, beginImageAttempt, settleImageAttempt, summarizeImageAttempts } from '../qianmu-image-attempts.js';
+import { IMAGE_ATTEMPT_SCHEMA, IMAGE_ATTEMPT_LIMIT, IMAGE_RESERVATION_TTL_MS, imageAttemptScopeKey, normalizeImageAttempts, claimImageAttempt, beginImageAttempt, settleImageAttempt, summarizeImageAttempts, reviewImageAttempt, confirmImageAttemptResult } from '../qianmu-image-attempts.js';
 
 const NOW = 1_780_000_000_000;
 const scope = { namespace: 'test-account', chatKey: 'chat', messageKey: 'floor-stable-id', revisionId: 'revision-a' };
@@ -9,6 +9,31 @@ const reserve = (ledger, input = request(), now = NOW) => claimImageAttempt(ledg
 const begin = (ledger, attemptId = 'attempt-a', ownerId = 'page-a', now = NOW + 1) => beginImageAttempt(ledger, scope, { attemptId, ownerId }, now);
 const finish = (ledger, outcome, attemptId = 'attempt-a', now = NOW + 2) => settleImageAttempt(ledger, scope, { attemptId, ownerId: 'page-a', outcome }, now);
 function submitted(extra = {}) { return begin(reserve(null, request(extra)).ledger).ledger; }
+
+test('manual review retains unknown fee and occupied automatic slot, allowing only fresh manual work',()=>{
+  const old=finish(submitted(),'unknown').ledger,details={attemptId:'attempt-a',logicalShotId:'shot-a',confirmation:'a'.repeat(64)};
+  const result=reviewImageAttempt(old,scope,details,NOW+3),entry=result.ledger.entries[0];
+  assert.equal(result.ok,true);assert.equal(entry.status,'unknown');assert.equal(result.automaticUsed,1);
+  assert.equal(entry.feeReview.previousStatus,'unknown');assert.equal(old.entries[0].feeReview,undefined);
+  assert.equal(reserve(result.ledger,request({attemptId:'next'})).code,'confirmation_required');
+  assert.equal(reserve(result.ledger,request({attemptId:'next',kind:'redraw'})).ok,true);
+  assert.equal(reserve(result.ledger,request({attemptId:'next',logicalShotId:'other',operationKey:'other',maxAutomatic:1})).code,'budget_exhausted');
+  assert.deepEqual(reviewImageAttempt(result.ledger,scope,details,NOW+4).ledger,result.ledger);
+  assert.equal(reviewImageAttempt(result.ledger,scope,{...details,confirmation:'b'.repeat(64)},NOW+4).ok,false);
+  const done=confirmImageAttemptResult(result.ledger,scope,details,NOW+5);assert.equal(done.ledger.entries[0].status,'succeeded');assert.deepEqual(done.ledger.entries[0].feeReview,entry.feeReview);
+});
+test('original review refuses mismatches and invalid evidence without fabricating missing history',()=>{
+  const details={attemptId:'attempt-a',logicalShotId:'shot-a',confirmation:'a'.repeat(64)};
+  for(const state of [reserve(null).ledger,finish(submitted(),'rejected').ledger])assert.equal(reviewImageAttempt(state,scope,details,NOW+3).ok,false);
+  assert.equal(reviewImageAttempt(submitted(),scope,{...details,logicalShotId:'another'},NOW+3).ok,false);
+  assert.throws(()=>reviewImageAttempt(submitted(),scope,{...details,confirmation:'x'},NOW+3));
+  assert.equal(reviewImageAttempt(null,scope,details,NOW+3).ledger.entries.length,0);
+  const reviewed=reviewImageAttempt(submitted(),scope,details,NOW+3).ledger;
+  assert.equal(reviewed.entries[0].status,'unknown');assert.equal(reviewed.entries[0].feeReview.previousStatus,'submitting');
+  for(const patch of [{previousStatus:'refunded'},{apiKey:'secret'},{at:-1}]){
+    const malformed=structuredClone(reviewed);Object.assign(malformed.entries[0].feeReview,patch);assert.throws(()=>normalizeImageAttempts(malformed,scope));
+  }
+});
 
 test('scope is exact across account, chat, message and revision without ambiguous joining or truncation', () => {
   const original = imageAttemptScopeKey(scope);

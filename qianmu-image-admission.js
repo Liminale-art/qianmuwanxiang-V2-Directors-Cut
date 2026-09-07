@@ -114,6 +114,9 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
         const input = { attemptId: job.id, logicalShotId: identity.logicalShotId, operationKey: identity.operationKey,
           ownerId, kind, maxAutomatic, imageCount: Number(job.payload?.parameters?.count ?? job.profile?.count ?? 1) };
         let decision = await store.claim(identity.scope, input, seeds), confirmedAttempts = [];
+        if (!decision.ok && decision.code === 'confirmation_required' && !job.automatic && job.source === 'novel' && job.connection?.imageTransport === 'service') {
+          throw error('service_review_required', '原请求结果待核查，请到分镜日志 → NAI 收片核查原任务，再手动生成新图');
+        }
         if (!decision.ok && decision.code === 'confirmation_required' && !job.automatic) {
           current(valid);
           if (await confirm('确认重新生图', '原请求可能已受理或扣费。请先核对渠道记录；继续会发起一次新的生图请求。')) {
@@ -168,6 +171,17 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
       const decision = await store.confirmResult({ namespace: saved.namespace, chatKey: saved.chatKey, messageKey: saved.messageKey, revisionId: saved.revisionId },
         { attemptId: saved.attemptId, logicalShotId: saved.logicalShotId });
       if (!decision.ok) throw error('identity', '原图与本地请求记录不匹配，未修改保护记录');
+      return decision;
+    },
+    async confirmReview(saved, proof, valid = () => true) {
+      current(valid);
+      if (!saved || saved.version !== 1 || await account() !== saved.namespace) throw error('account_changed', '原生图账户不匹配');
+      current(valid);
+      if (proof?.kind !== 'image' || proof.reviewed !== true || proof.resultAvailable !== false || proof.attemptId !== saved.attemptId
+        || !/^[a-f0-9]{64}$/.test(proof.confirmation || '')) throw error('identity', '原请求核查凭据不匹配');
+      const decision = await store.review({ namespace: saved.namespace, chatKey: saved.chatKey, messageKey: saved.messageKey, revisionId: saved.revisionId },
+        { attemptId: saved.attemptId, logicalShotId: saved.logicalShotId, confirmation: proof.confirmation }, () => !closed && valid());
+      if (!decision.ok) throw error('identity', '原镜头核查未同步，请保留记录后重试');
       return decision;
     },
   };

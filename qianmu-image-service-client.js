@@ -2,11 +2,18 @@
 import { imageChannelKey } from './qianmu-image-channel.js';
 import { resolveImageAccountNamespace } from './qianmu-image-admission.js';
 import { sanitizeStoryboardSnapshot, sanitizeStoryboardDiagnosticData } from './qianmu-storyboard.js';
+import { normalizeNativeReviewView, normalizeNativeReceipt } from './qianmu-native-review-contract.js';
 
 const BASE = '/api/plugins/qianmu-tts/image/tasks';
 const fail = (code, message, state = 'not_submitted') => Object.assign(new Error(message), { code: `image_service_client_${code}`, submissionState: state, retryable: false });
 const id = value => typeof value === 'string' && value.length > 0 && value.length <= 240 && value.trim() === value && !/[\u0000-\u001f\u007f]/.test(value);
-const states = new Set(['prepared', 'submitted', 'available', 'archived', 'rejected']);
+const states = new Set(['prepared', 'submitted', 'available', 'archived', 'rejected', 'reviewed']);
+function checkedFeeReview(value) {
+  if (!value || value.version !== 1 || !/^[a-f0-9]{64}$/.test(value.confirmation || '')
+    || !Number.isSafeInteger(value.at) || value.at < 0 || value.previousStatus !== 'uncertain'
+    || Object.keys(value).some(key => !['version','confirmation','at','previousStatus'].includes(key))) throw fail('record', '原费用核查记录不完整');
+  return { version: 1, confirmation: value.confirmation, at: value.at, previousStatus: 'uncertain' };
+}
 function checkedRow(value, namespace) {
   if (!value || ![1,2].includes(value.version) || (value.version === 2 && value.originalOnly !== true) || value.namespace !== namespace || !id(value.attemptId) || !/^[a-f0-9]{64}$/.test(value.channelKey || '') || !states.has(value.status)) throw fail('record', '服务请求记录不完整或版本不兼容，请核查原任务');
   // Version 2 is intentionally unreadable by pre-recovery clients. Otherwise a
@@ -19,6 +26,8 @@ function checkedRow(value, namespace) {
       ...(record?.snapshot ? { snapshot: sanitizeStoryboardSnapshot(record.snapshot, { source: 'novel' }) } : {}),
     })) : [],
   };
+  if (value.feeReview !== undefined) row.feeReview = checkedFeeReview(value.feeReview);
+  if (row.status === 'reviewed' && !row.feeReview) throw fail('record', '原费用核查记录缺失');
   if (new TextEncoder().encode(JSON.stringify(row)).length > 256 * 1024) throw fail('size', '服务请求快照过大，未提交');
   return row;
 }
@@ -50,7 +59,7 @@ export function createImageServiceClientStore({ indexedDB = globalThis.indexedDB
     void opening.catch(() => { opening = null; });
     return opening;
   };
-  async function transaction(namespace, mutate, attemptId, row) {
+  async function transaction(namespace, mutate, attemptId, row, expected, valid = () => true) {
     if (!id(namespace) || (attemptId !== undefined && !id(attemptId))) throw fail('identity', '服务请求身份无效');
     const connection = await open();
     return new Promise((resolve, reject) => {
@@ -82,6 +91,7 @@ export function createImageServiceClientStore({ indexedDB = globalThis.indexedDB
             const previous = request.result === undefined ? null : checkedRow(request.result, namespace);
             if (previous && previous.attemptId !== attemptId) throw fail('record', '服务请求编号与存储键不符');
             if (!mutate) { output = previous; return; }
+            if (!valid() || expected !== undefined && JSON.stringify(previous) !== expected) throw fail('changed', '原请求记录已变化，请重新读取后核查');
             if (row === null) { target.delete(key); output = null; return; }
             const captured = checkedRow(row, namespace);
             if (previous) { target.put(captured, key); output = captured; return; }
@@ -97,6 +107,11 @@ export function createImageServiceClientStore({ indexedDB = globalThis.indexedDB
   }
   return { list: namespace => transaction(namespace, false), get: (namespace, attemptId) => transaction(namespace, false, attemptId),
     put: row => transaction(row.namespace, true, row.attemptId, checkedRow(row, row.namespace)),
+    review: (row, proof, valid = () => true) => {
+      const previous = checkedRow(row, row.namespace);
+      const next = checkedRow({ ...previous, status: 'reviewed', feeReview: checkedFeeReview(proof) }, row.namespace);
+      return transaction(row.namespace, true, row.attemptId, next, JSON.stringify(previous), valid);
+    },
     remove: (namespace, attemptId) => transaction(namespace, true, attemptId, null),
     close() { closed = true; db?.close(); db = null; },
   };
@@ -115,7 +130,18 @@ export function createImageServiceClient({ store = createImageServiceClientStore
         headers: headers(), credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal,
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
-      const data = await response.json().catch(() => null);
+      let data;
+      if (['review','confirmReview'].includes(action)) {
+        const reader = response.body?.getReader();
+        if (!reader) throw fail('result', '原请求核查响应不完整');
+        let size = 0, text = ''; const decoder = new TextDecoder();
+        try { while (true) {
+          const { value, done } = await reader.read(); if (done) break;
+          size += value.byteLength; if (size > 32768) throw fail('result', '原请求核查响应过大，未同步本机记录');
+          text += decoder.decode(value, { stream: true });
+        } text += decoder.decode(); data = JSON.parse(text); }
+        finally { await reader.cancel().catch(() => {}); }
+      } else data = await response.json().catch(() => null);
       if (!response.ok || !data?.ok) {
         const error = fail('response', action === 'capabilities' ? '增强服务未就绪，请更新后端并重启 ST'
           : action === 'catalog' && (!data || [404,405].includes(response.status)) ? '服务目录未就绪，请更新后端并重启 ST' : data?.message || '服务任务结果未确认，请查询原任务',
@@ -177,6 +203,59 @@ export function createImageServiceClient({ store = createImageServiceClientStore
   }
   return {
     probe,
+    async reviewOriginal(task, { namespace: expectedNamespace, onReviewed, valid = () => true } = {}) {
+      task = structuredClone(task);
+      const namespace = await account();
+      if (namespace !== expectedNamespace || !id(task?.attemptId)) throw fail('account', '原请求账户已变化，请重新读取');
+      const channelKey = task.channelKey || (task.taskLocator?.version === 1 ? task.taskLocator.channelKey : '');
+      if (!/^[a-f0-9]{64}$/.test(channelKey || '') || typeof onReviewed !== 'function') throw fail('identity', '原连接或本机核查入口不完整');
+      if (!locks?.request) throw fail('locks', '当前浏览器无法安全协调服务任务');
+      return locks.request('qianmu:nai-maintenance', { mode: 'exclusive', ifAvailable: true }, maintenance => {
+        if (!maintenance) throw fail('busy', '仍有等待或生成中的 NAI 请求，请结束后再核查');
+        return locked(namespace, task.attemptId, async () => {
+          const check = async () => { await assertAccount(namespace); if (!valid()) throw fail('changed', '核查页面已变化，请重新读取'); };
+          await check();
+          const row = await store.get(namespace, task.attemptId);
+          if (row && row.channelKey !== channelKey) throw fail('identity', '原请求对应另一连接，未修改本机记录');
+          const captured = JSON.stringify(row);
+          const unchanged = async () => {
+            await check();
+            if (JSON.stringify(await store.get(namespace, task.attemptId)) !== captured) throw fail('changed', '原请求记录已变化，请重新读取');
+            await check();
+          };
+          if ((await probe()).nativeReviewVersion !== 1) throw fail('version', '请更新增强服务并重启 ST 后再核查原请求');
+          await unchanged();
+          const body = await locator({ namespace, attemptId: task.attemptId, channelKey });
+          const view = data => {
+            const proof = normalizeNativeReviewView(data, 'image');
+            if (proof.attemptId !== task.attemptId || (proof.reviewed || proof.canReview) && !/^[a-f0-9]{64}$/.test(proof.confirmation)) throw fail('identity', '服务核查未对应原请求');
+            if (data.serviceDelivery !== undefined) {
+              const receipt = normalizeNativeReceipt(data.serviceDelivery);
+              if (receipt.kind !== 'image' || receipt.channelKey !== channelKey) throw fail('identity', '服务核查未对应原连接');
+            }
+            return proof;
+          };
+          let proof = view(await call('review', body)); await unchanged();
+          if (proof.resultAvailable) throw fail('result_available', '原图已可领取，请先领取原图，无需核查解锁');
+          if (!proof.reviewed) {
+            if (!proof.canReview) throw fail('pending', proof.message || '原请求仍在运行或需要离线恢复，暂不能在线解除');
+            if (!await confirm('核查原生图请求', '请先确认渠道中的原任务已经结束。它仍可能已收费；本操作仅解除原请求限制，保留费用未知记录，不会生成新图。')) return { cancelled: true };
+            await unchanged();
+            const original = proof;
+            proof = view(await call('confirmReview', { ...body, confirmation: original.confirmation, ended: true, possibleCharge: true }));
+            if (proof.confirmation !== original.confirmation || proof.requestDigest !== original.requestDigest) throw fail('changed', '原服务核查记录已变化，未同步本机');
+          }
+          await unchanged();
+          if (!proof.reviewed || proof.resultAvailable) throw fail('pending', '原服务核查尚未完成，请保留记录后重试');
+          // Lost replies resume only local bookkeeping, never the old POST.
+          await onReviewed({ namespace, attemptId: task.attemptId, channelKey, snapshot: row?.snapshot || null, proof }, check);
+          await unchanged();
+          if (row) await store.review(row, { version: 1, confirmation: proof.confirmation, at: proof.updatedAt, previousStatus: 'uncertain' }, () => !closed && valid());
+          await check();
+          return { reviewed: true, message: '核查已同步，原费用未知记录保留；新图请重新发起生成' };
+        });
+      });
+    },
     async catalog({ cursor = null } = {}) {
       const namespace = await account();
       const data = await call('catalog', { schemaVersion: 1, expectedAccount: await accountBinding(namespace), cursor, limit: 40 }, 30000);
@@ -241,14 +320,9 @@ export function createImageServiceClient({ store = createImageServiceClientStore
         let data;
         try { data = await send(); }
         catch (cause) {
-          // Only a proven pre-submission refusal permits this explicit consent.
-          if (!job.automatic && cause.submissionState === 'not_submitted' && cause.serviceCode === 'image_service_confirmation_required'
-            && /^[a-f0-9]{64}$/.test(cause.confirmation || '') && await confirm('确认服务连接继续生图', '此连接有结果未确认的请求。请先核查渠道记录；继续将生成新图，不是领取原图。')) {
-            body.confirmation = cause.confirmation; data = await send();
-          } else {
-            if (['not_submitted','rejected'].includes(cause.submissionState)) { row.status = 'rejected'; await store.put(row); }
-            throw cause;
-          }
+          if (['not_submitted','rejected'].includes(cause.submissionState)) { row.status = 'rejected'; await store.put(row); }
+          if (cause.serviceCode === 'image_service_confirmation_required') cause.message = '原请求结果待核查，请到分镜日志 → NAI 收片 → 服务器核查原任务，再手动生成新图';
+          throw cause;
         }
         try { return await receive(row, data, deliver); }
         catch (cause) { cause.submissionState = 'accepted'; throw cause; }

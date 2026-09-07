@@ -35,6 +35,14 @@ function readEntry(value) {
     kind: value.kind, automaticSlot: value.automaticSlot, status: value.status, revision: value.revision,
     createdAt: time(value.createdAt), updatedAt: time(value.updatedAt), expiresAt: time(value.expiresAt),
   };
+  if (value.feeReview !== undefined) {
+    const review = value.feeReview;
+    if (!plain(review) || review.version !== 1 || !/^[a-f0-9]{64}$/.test(review.confirmation || '')
+      || !['submitting', 'unknown', 'accepted'].includes(review.previousStatus)
+      || Object.keys(review).some(key => !['version','confirmation','previousStatus','at'].includes(key))) fail('image_attempt_corrupt', '原费用核查记录不完整');
+    row.feeReview = { version: 1, confirmation: review.confirmation, previousStatus: review.previousStatus, at: time(review.at) };
+    if (!['unknown','accepted','succeeded'].includes(row.status)) fail('image_attempt_corrupt', '原费用核查状态不一致');
+  }
   if (row.expiresAt < row.createdAt || (row.kind === 'automatic' && !row.automaticSlot)) fail('image_attempt_corrupt', '生图预留范围无效');
   return row;
 }
@@ -86,7 +94,9 @@ export function claimImageAttempt(value, scope, input, now) {
   }
   const related = ledger.entries.filter(row => row.logicalShotId === logicalShotId || row.operationKey === operationKey);
   if (related.some(row => row.status === 'reserved' || row.status === 'submitting')) return result(ledger, false, 'busy');
-  const uncertain = related.filter(row => UNCONFIRMED.has(row.status));
+  // A manual review is not a refund or an automatic replay permission. Keep
+  // unknown attempts occupying their old slot; only a new manual action proceeds.
+  const uncertain = related.filter(row => UNCONFIRMED.has(row.status) && (automatic || !row.feeReview));
   if (uncertain.length && (automatic || input.confirmation !== confirmationFor(uncertain))) {
     return result(ledger, false, 'confirmation_required', { confirmation: confirmationFor(uncertain) });
   }
@@ -169,6 +179,21 @@ export function confirmImageAttemptResult(value, scope, { attemptId, logicalShot
   if (!['submitting', 'unknown', 'accepted', 'succeeded'].includes(row.status)) return result(ledger, false, 'invalid_transition');
   row.status = 'succeeded'; row.updatedAt = time(now); row.revision++;
   return result(ledger, true, 'succeeded');
+}
+
+export function reviewImageAttempt(value, scope, { attemptId, logicalShotId, confirmation }, now) {
+  const ledger = normalizeImageAttempts(value, scope);
+  if (!/^[a-f0-9]{64}$/.test(confirmation || '')) fail('image_attempt_identity', '原核查凭据无效');
+  const row = ledger.entries.find(entry => entry.attemptId === id(attemptId, '原请求编号'));
+  if (!row) return result(ledger, true, 'absent'); // Do not manufacture a narrative scope on another device.
+  if (row.logicalShotId !== id(logicalShotId, '原镜头编号')) return result(ledger, false, 'identity_conflict');
+  if (row.feeReview) return result(ledger, row.feeReview.confirmation === confirmation, 'reviewed');
+  if (row.status === 'succeeded') return result(ledger, true, 'succeeded');
+  if (!['submitting','unknown','accepted'].includes(row.status)) return result(ledger, false, 'invalid_transition');
+  row.feeReview = { version: 1, confirmation, previousStatus: row.status, at: time(now) };
+  if (row.status === 'submitting') row.status = 'unknown';
+  row.updatedAt = now; row.revision++;
+  return result(ledger, true, 'reviewed');
 }
 
 export function summarizeImageAttempts(value, scope, now) {

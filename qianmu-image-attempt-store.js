@@ -1,4 +1,4 @@
-import { imageAttemptScopeKey, normalizeImageAttempts, claimImageAttempt, beginImageAttempt, continueImageAttempt, importImageAttempts, settleImageAttempt, confirmImageAttemptResult, summarizeImageAttempts } from './qianmu-image-attempts.js';
+import { imageAttemptScopeKey, normalizeImageAttempts, claimImageAttempt, beginImageAttempt, continueImageAttempt, importImageAttempts, settleImageAttempt, confirmImageAttemptResult, reviewImageAttempt, summarizeImageAttempts } from './qianmu-image-attempts.js';
 
 // Separate, lazy database: image budget upgrades must not block voice, reading or
 // legacy public data stores. No database is opened at module import/factory time.
@@ -164,6 +164,13 @@ export function createImageAttemptStore({ indexedDB = globalThis.indexedDB, dbNa
     async confirmResult(scope, details) {
       const capturedScope = { ...scope }, captured = { ...details };
       return operate(capturedScope, (value, at) => confirmImageAttemptResult(value, capturedScope, captured, at));
+    },
+    async review(scope, details, valid = () => true) {
+      const capturedScope = { ...scope }, captured = { ...details };
+      return operate(capturedScope, (value, at) => {
+        if (!valid()) throw problem('image_attempt_changed', '原请求会话已变化，核查未同步');
+        return reviewImageAttempt(value, capturedScope, captured, at);
+      });
     },
     close() {
       disposed = true;

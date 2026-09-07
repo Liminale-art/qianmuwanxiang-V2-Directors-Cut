@@ -6,7 +6,7 @@ import { createImageServiceClient, createImageServiceClientStore } from '../qian
 import { normalizeStoryboardState, sanitizeStoryboardSnapshot } from '../qianmu-storyboard.js';
 import { confirmImageAttemptResult, claimImageAttempt, beginImageAttempt } from '../qianmu-image-attempts.js';
 
-const capability = { ok: true, schemaVersion: 1, taskLocatorVersion: 1, accountBindingVersion: 1, scope: 'coordinated-endpoints-only', providers: ['novel'], protocols: ['novelai'], resultRetrieval: true, resultAcknowledgement: true };
+const capability = { ok: true, schemaVersion: 1, taskLocatorVersion: 1, accountBindingVersion: 1, nativeReviewVersion: 1, scope: 'coordinated-endpoints-only', providers: ['novel'], protocols: ['novelai'], resultRetrieval: true, resultAcknowledgement: true };
 const request = { provider: 'novel', protocol: 'novelai', apiKey: 'mock-only-key', model: 'nai-diffusion-5-full', prompt: 'garden' };
 const job = (extra = {}) => ({ id: 'job-a', source: 'novel', logId: 'log-a', prompt: 'garden', target: 'gallery', chatKey: 'chat-a', automatic: false,
   profile: { model: request.model }, payload: { prompt: 'garden', parameters: { count: 1 } }, connection: { credentialId: 'mock-credential', baseUrl: 'https://image.invalid', imageTransport: 'service' },
@@ -21,6 +21,10 @@ function setup(options = {}) {
     async get(ns, attempt) { return structuredClone(rows.get(key(ns, attempt)) || null); },
     async list(ns) { return [...rows.values()].filter(row => row.namespace === ns).map(row => structuredClone(row)); },
     async put(row) { rows.set(key(row.namespace, row.attemptId), structuredClone(row)); },
+    async review(row, feeReview, valid) {
+      assert.equal(valid(), true); assert.deepEqual(await this.get(row.namespace,row.attemptId),row);
+      await this.put({...row,status:'reviewed',feeReview});
+    },
     async remove(ns, attempt) { rows.delete(key(ns, attempt)); }, close() {},
   };
   const locks = { async request(name, options, work) {
@@ -41,6 +45,73 @@ function setup(options = {}) {
   return { client, rows, calls, store, locks, account, fetchImpl, changeAccount: value => { namespace = value; } };
 }
 const submit = (s, extra = {}) => s.client.submit(job(), request, { beforeSubmit: async () => {}, deliver: async () => true, ...extra });
+
+async function reviewSetup(options = {}) {
+  let confirmed = false, prompts = 0, synced = 0;
+  const s = setup({ confirm: async () => { prompts++; return options.confirm ? options.confirm(s) : true; }, fetch: async (action, body) => {
+    if (action === 'submit') throw Error('synthetic lost response');
+    if (action === 'capabilities') return response({...capability,...options.capability});
+    if (action === 'confirmReview') { confirmed = true; if (options.loseReply) { options.loseReply = false; throw Error('synthetic lost review response'); } }
+    const view = {ok:true,version:1,kind:'image',attemptId:'job-a',requestDigest:'b'.repeat(64),status:confirmed?'acknowledged':'uncertain',
+      updatedAt:1234,resultAvailable:false,canReview:!confirmed,reviewed:confirmed,confirmation:'c'.repeat(64),message:'fixture'};
+    return response({...view,...options.view?.(action,body)});
+  }});
+  await assert.rejects(submit(s));
+  const row=(await s.client.list())[0];
+  return {...s,row,review:(extra={})=>s.client.reviewOriginal(row,{namespace:row.namespace,onReviewed:async()=>{synced++;if(options.sync)await options.sync();},...extra}),
+    prompts:()=>prompts,synced:()=>synced};
+}
+
+test('original manual review coordinates service and local work without replaying or losing unknown fees', async()=>{
+  const s=await reviewSetup();assert.equal((await s.review()).reviewed,true);
+  const row=(await s.client.list())[0];assert.equal(row.status,'reviewed');assert.equal(row.feeReview.previousStatus,'uncertain');
+  assert.equal(s.prompts(),1);assert.equal(s.synced(),1);assert.equal(s.calls.filter(c=>c.action==='submit').length,1);
+  const body=s.calls.find(c=>c.action==='confirmReview').body;
+  assert.equal(body.ended,true);assert.equal(body.possibleCharge,true);assert.equal(body.apiKey,undefined);assert.equal(body.request,undefined);
+  await s.review();assert.equal(s.prompts(),1);assert.equal(s.calls.filter(c=>c.action==='confirmReview').length,1);
+});
+test('cancelled original review and live maintenance never change local or server state',async()=>{
+  const s=await reviewSetup({confirm:async()=>false}),old=await s.client.list();
+  assert.deepEqual(await s.review(),{cancelled:true});assert.deepEqual(await s.client.list(),old);assert.equal(s.synced(),0);
+  assert.equal(s.calls.some(c=>c.action==='confirmReview'),false);
+  await s.locks.request('qianmu:nai-maintenance',{mode:'shared'},async()=>{await assert.rejects(s.review(),/仍有等待/);});
+});
+test('lost service confirmation and partial local sync resume without asking consent or sending a new image again',async()=>{
+  let localFails=true;
+  const s=await reviewSetup({loseReply:true,sync:async()=>{if(localFails){localFails=false;throw Error('synthetic local failure');}}});
+  await assert.rejects(s.review(),/连接中断/);assert.equal(s.synced(),0);
+  await assert.rejects(s.review(),/local failure/);assert.equal((await s.client.list())[0].status,'submitted');
+  assert.equal((await s.review()).reviewed,true);assert.equal(s.prompts(),1);assert.equal(s.synced(),2);
+  assert.equal(s.calls.filter(c=>c.action==='confirmReview').length,1);assert.equal(s.calls.filter(c=>c.action==='submit').length,1);
+});
+test('pending, cached, old backend, foreign receipt and oversized review responses cannot reach local acknowledgement',async()=>{
+  for(const options of [
+    {view:()=>({status:'submitting',canReview:false,confirmation:''})},
+    {view:()=>({resultAvailable:true,canReview:false,confirmation:''})},
+    {capability:{nativeReviewVersion:undefined}},
+    {view:()=>({attemptId:'other'})},
+    {view:()=>({serviceDelivery:{version:1,kind:'image',channelKey:'0'.repeat(64)}})},
+    {view:()=>({padding:'x'.repeat(32768)})},
+  ]){const s=await reviewSetup(options);await assert.rejects(s.review());assert.equal(s.synced(),0);assert.equal(s.calls.some(c=>c.action==='confirmReview'),false);}
+});
+test('account or receipt changes while consent is open refuse the old review before confirmation writes',async()=>{
+  for(const change of [async s=>s.changeAccount('st-user:bob'),async s=>{const row=(await s.client.list())[0];await s.store.put({...row,status:'available'});}]){
+    const s=await reviewSetup({confirm:async s=>{await change(s);return true;}});
+    await assert.rejects(s.review());assert.equal(s.synced(),0);assert.equal(s.calls.some(c=>c.action==='confirmReview'),false);
+  }
+});
+test('server-history review works without inventing a local recipe or narrative budget',async()=>{
+  const s=await reviewSetup();await s.store.remove(s.row.namespace,s.row.attemptId);
+  let original;
+  assert.equal((await s.review({onReviewed:async row=>{original=row;}})).reviewed,true);
+  assert.equal(original.snapshot,null);assert.equal((await s.client.list()).length,0);assert.equal(original.attemptId,s.row.attemptId);
+});
+test('confirmation returns for a changed request digest or confirmation never sync local protection',async()=>{
+  for(const field of ['requestDigest','confirmation']){
+    const s=await reviewSetup({view:action=>action==='confirmReview'?{[field]:'d'.repeat(64)}:{}});
+    await assert.rejects(s.review(),/已变化/);assert.equal(s.synced(),0);assert.equal((await s.client.list())[0].status,'submitted');
+  }
+});
 
 test('client is lazy; capability probe is read-only and sends no provider key', async () => {
   let opened = 0;
@@ -114,15 +185,16 @@ test('pending query cannot turn into another generation request', async () => {
   await submit(s, { deliver: async () => false }); await assert.rejects(s.client.retrieve('job-a', () => true), /仍在生成/);
   assert.equal(s.calls.filter(call => call.action === 'submit').length, 1); assert.equal(s.calls.some(call => call.action === 'result'), false);
 });
-test('only explicit manual pre-submission confirmation allows a second submit', async () => {
+test('old fee-queue refusal never resends inline, even if a confirmation callback would approve', async () => {
   for (const approved of [false, true]) {
     let count = 0;
     const s = setup({ confirm: async () => approved, fetch: (action, body) => {
       if (action === 'submit' && ++count === 1) return response({ ok: false, code: 'image_service_confirmation_required', confirmation: 'a'.repeat(64), submissionState: 'not_submitted' }, 409);
       return response(action === 'capabilities' ? capability : action === 'submit' ? image(body.attemptId) : { ok: true });
     } });
-    if (approved) await submit(s); else await assert.rejects(submit(s));
-    assert.equal(count, approved ? 2 : 1);
+    await assert.rejects(submit(s), /NAI 收片/);
+    assert.equal(count, 1);
+    assert.equal((await s.client.list())[0].status, 'rejected');
   }
 });
 test('request snapshot is frozen across asynchronous preparation and excludes credentials', async () => {
