@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {checkPrivateResultDirectory as directory,readPrivateResultFile as read,replacePrivateResultFile as replace,syncPrivateResultDirectory as sync} from './qianmu-image-service-results.js';
-import {validateVibeEncodingIdentity} from './qianmu-vibe-encoding-store.js';
+import {validateVibeEncodingIdentity,validateVibeServiceDelivery} from './qianmu-vibe-encoding-store.js';
 import {VIBE_ENCODING_LIMIT} from './qianmu-vibe-encoding.js';
 
 const HASH=/^[a-f0-9]{64}$/,MAX_FILE=12*1024*1024,SCHEMA='qianmu.vibe-result.v1';
@@ -18,7 +18,8 @@ function identity(value){
 }
 const slot=value=>sha(JSON.stringify(identity(value)));
 async function checkedResult(value,owner){
-  if(!value||value.version!==1||value.cacheKey!==owner.requestDigest||Object.keys(value).some(key=>!['version','cacheKey','identity','encoding','durationMs'].includes(key)))throw fail('result','Vibe 编码暂存结构不完整');
+  if(!value||value.version!==1||value.cacheKey!==owner.requestDigest||Object.keys(value).some(key=>!['version','cacheKey','identity','encoding','durationMs','serviceDelivery'].includes(key)))throw fail('result','Vibe 编码暂存结构不完整');
+  if(value.serviceDelivery!==undefined)validateVibeServiceDelivery(value.serviceDelivery);
   await validateVibeEncodingIdentity(value.identity,value.cacheKey);
   if(typeof value.encoding!=='string'||!value.encoding||value.encoding.length>Math.ceil(VIBE_ENCODING_LIMIT/3)*4||value.encoding.length%4||!/^[A-Za-z0-9+/]*={0,2}$/.test(value.encoding))throw fail('result','Vibe 编码暂存内容无效');
   const bytes=Buffer.from(value.encoding,'base64');if(!bytes.length||bytes.length>VIBE_ENCODING_LIMIT||bytes.toString('base64')!==value.encoding)throw fail('result','Vibe 编码暂存大小或内容无效');

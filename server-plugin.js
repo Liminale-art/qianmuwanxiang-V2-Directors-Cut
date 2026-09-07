@@ -185,7 +185,7 @@ export async function init(router, options = {}) {
   router.get('/image/vibe/capabilities',(req,res)=>{
     prepareImageResponse(res);
     try{const account=imageServiceAccount(req);vibesFor(req);return res.json({ok:true,version:1,accountBindingVersion:1,expectedAccount:account.namespace,
-      nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024,sharedNativeChannelVersion:1});}
+      nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024,sharedNativeChannelVersion:1,receiptBindingVersion:1});}
     catch(error){const result=vibeServiceErrorPayload(error);return res.status(result.status).json(result.body);}
   });
   for(const action of ['query','result','submit'])router.post(`/image/vibe/${action}`,async(req,res)=>{

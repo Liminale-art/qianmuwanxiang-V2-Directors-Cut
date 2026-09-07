@@ -1,18 +1,37 @@
 import {createVibeAssetStore} from './qianmu-vibe-asset-store.js';
-import {createVibeEncodingStore} from './qianmu-vibe-encoding-store.js';
+import {createVibeEncodingStore,validateVibeEncodingIdentity} from './qianmu-vibe-encoding-store.js';
 import {exportNovelVibeFile,selectNovelVibeEncoding,vibeFilePreview,vibeFileError,vibeVariants,vibeDigest,appendNovelVibeEncoding,VIBE_FILE_LIMITS} from './qianmu-vibe-file.js';
 import {normalizeNovelVibeImage} from './qianmu-novel-vibe.js';
 export function createVibeAssetOperations(store,{encodings}={}){
-return async function run({type,namespace,id,file,ids,settings,bundle,model,information,encoding,cacheKey,identity,attemptId,retryAttemptId,status,assetRef,image,name,expectedSourceId}){
+return async function run({type,namespace,id,file,ids,settings,bundle,model,information,encoding,cacheKey,identity,attemptId,retryAttemptId,status,assetRef,image,name,expectedSourceId,sourceAssetRef,delivery,serviceAttemptId,serviceDelivery,expected}){
   if(type==='encoding-get')return encodings.get(namespace,cacheKey);
   if(type==='encoding-list')return encodings.list(namespace);
-  if(type==='encoding-reserve')return encodings.reserve(namespace,cacheKey,identity,attemptId,{retryAttemptId});
+  if(type==='encoding-reserve')return encodings.reserve(namespace,cacheKey,identity,attemptId,{retryAttemptId,sourceAssetRef,delivery});
   if(type==='encoding-transition')return encodings.transition(namespace,cacheKey,attemptId,status,{assetRef});
   if(type==='remember-encoding'){
     if(assetRef?.namespace!==namespace)throw vibeFileError('account','服务 Vibe 不能缓存到其他账户');
     const asset=await store.load(namespace,assetRef.id);if(!asset||asset.document.id!==identity?.sourceId)throw vibeFileError('source','服务编码缓存与原图不符');
     selectNovelVibeEncoding(asset.document,identity.capabilityModelId,identity.parameters?.information_extracted);
-    return encodings.remember(namespace,cacheKey,identity,assetRef);
+    return encodings.remember(namespace,cacheKey,identity,assetRef,{serviceAttemptId,serviceDelivery});
+  }
+  if(type==='export-encoding'){
+    const checked=await validateVibeEncodingIdentity(identity,cacheKey),info=checked.parameters.information_extracted;
+    const doc={identifier:'novelai-vibe-transfer',version:1,type:'encoding',id:await vibeDigest(encoding),name:'恢复的 Vibe',
+      encodings:{[checked.encodingModel]:{[await vibeDigest(`information_extracted:${info}`)]:{encoding,params:{information_extracted:info}}}},
+      importInfo:{model:checked.capabilityModelId,information_extracted:info,strength:.6}};
+    return new Blob([await exportNovelVibeFile([doc],{bundle:false})],{type:'application/json'});
+  }
+  if(type==='recover-encoding'){
+    const receipt=await encodings.get(namespace,cacheKey);if(!receipt||JSON.stringify(receipt)!==JSON.stringify(expected))throw vibeFileError('changed','原编码记录已变化，请刷新');
+    await validateVibeEncodingIdentity(identity,cacheKey);if(JSON.stringify(receipt.identity)!==JSON.stringify(identity))throw vibeFileError('source','领取结果与原编码请求不符');
+    let source=receipt.sourceAssetRef?await store.load(namespace,receipt.sourceAssetRef.id):null;
+    if(!source){const heads=await store.list(namespace);const head=heads.find(row=>row.summary.sourceId===identity.sourceId&&row.summary.hasImage);if(head)source=await store.load(namespace,head.assetId);}
+    if(!source)return {sourceMissing:true};
+    if(source.document.id!==identity.sourceId)throw vibeFileError('source','原文件与领取结果不符，未替换');
+    const next=await appendNovelVibeEncoding(source.document,identity.capabilityModelId,identity.parameters.information_extracted,encoding);
+    const [head]=await store.putFile(namespace,next.serialized),assetRef={version:1,namespace,id:head.assetId};
+    const settled=await encodings.recover(namespace,cacheKey,receipt,assetRef,serviceAttemptId,serviceDelivery);
+    return {...settled,assetRef};
   }
   if(type==='freeze-original'){
     const original=normalizeNovelVibeImage(image);
@@ -51,9 +70,17 @@ return async function run({type,namespace,id,file,ids,settings,bundle,model,info
     }
     return new Blob([await exportNovelVibeFile(docs,{bundle:bundle??ids.length!==1})],{type:'application/json'});
   }
-  if(!['original-preview','original','resolve','check','attach-encoding'].includes(type))throw vibeFileError('operation','未知 Vibe 资产操作');
+  if(!['original-preview','original','resolve','check','attach-encoding','library-info','export-reviewed'].includes(type))throw vibeFileError('operation','未知 Vibe 资产操作');
   const asset=await store.load(namespace,id);if(!asset)throw vibeFileError('missing','Vibe 原资产不存在，请重新导入');
   if(expectedSourceId!==undefined&&asset.document.id!==expectedSourceId)throw vibeFileError('source','编码缓存与原图不符，未替换素材');
+  if(type==='library-info'||type==='export-reviewed'){
+    // A receipt identifies one exact variant; old file defaults may point at another model or IE.
+    selectNovelVibeEncoding(asset.document,model,information);
+    const strength=asset.document.importInfo?.strength??.6;
+    if(type==='library-info')return {name:asset.summary.name,defaults:{strength,information}};
+    const document={...asset.document,importInfo:{model,information_extracted:information,strength}};
+    return new Blob([await exportNovelVibeFile([document],{bundle:false})],{type:'application/json'});
+  }
   if(type==='original'){
     if(asset.document.type!=='image')throw vibeFileError('image','此 Vibe 没有原图，不能重新编码');
     return {data:asset.document.image};

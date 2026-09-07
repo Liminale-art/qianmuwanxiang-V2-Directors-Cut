@@ -68,7 +68,7 @@ test('legacy native image HTTP entry shares the Vibe channel, keeps its image re
   const raw={version:1,provider:'novel',baseUrl:'https://relay.example',model:'nai-diffusion-4-5-full',apiKey:key,information:0,
     image:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg=='};
   const envelope={version:1,request:raw,confirmed:true,cacheKey:(await prepareNovelVibeEncoding(raw)).cacheKey,expectedAccount:imageServiceAccount({user:{profile:{handle:'alice',enabled:true}}}).namespace};
-  const capability=await (await callEndpoint('/image/vibe/capabilities')).json();assert.equal(capability.sharedNativeChannelVersion,1);
+  const capability=await (await callEndpoint('/image/vibe/capabilities')).json();assert.equal(capability.sharedNativeChannelVersion,1);assert.equal(capability.receiptBindingVersion,1);
   const encoding=callEndpoint('/image/vibe/submit',envelope);await began.promise;const generation=callEndpoint('/image/generate',image);
   await new Promise(resolve=>setTimeout(resolve,60));assert.equal(images,0);release.resolve();assert.equal((await encoding).status,200);
   const generated=await (await generation).json();assert.equal(generated.images[0].data,PNG);assert.equal(images,1);assert.equal(encodes,1);

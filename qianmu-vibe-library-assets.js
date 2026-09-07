@@ -20,6 +20,14 @@ export function createVibeLibraryAssets({state,namespace,call,guard,isCurrent,pu
   const ref=value=>{const result=retainVibeAssetRef(value);if(result.invalid||result.namespace!==namespace)throw Error('Vibe 资产不属于当前账户，请重新导入');return result;};
   const current=()=>{if(!isCurrent())throw Error('Vibe 页面已变化，未应用素材');};
   return Object.freeze({
+    async adopt(value,{model,information,expectedSourceId}){
+      const asset=ref(value);await guard();current();const before=JSON.stringify(state.vibeLibrary),head=await call('library-info',{namespace,id:asset.id,model,information,expectedSourceId});await guard();current();
+      if(!head||before!==JSON.stringify(state.vibeLibrary))throw Error('Vibe 文件或素材库已变化，请刷新');
+      if(state.vibeLibrary.some(row=>row.assetRef?.namespace===namespace&&row.assetRef.id===asset.id&&row.informationExtracted===head.defaults.information&&row.strength===head.defaults.strength))return;
+      if(state.vibeLibrary.length>=500)throw Error('Vibe 库已满，请先整理');const id=uid('shotvibe');if(!id||state.vibeLibrary.some(row=>row.id===id))throw Error('无法建立新 Vibe 条目');
+      const item={id,name:head.name,previewUrl:'',assetId:'',assetRef:asset,strength:head.defaults.strength,informationExtracted:head.defaults.information,providerIds:['novel'],modelIds:[],tags:[],notes:'',createdAt:Date.now(),updatedAt:Date.now()};
+      captureStoryboardVibeRecipe([id],[item]);state.vibeLibrary=[...state.vibeLibrary,item];publish();
+    },
     async import(file,active=()=>true){
       current();await guard();const original=JSON.stringify(state.vibeLibrary);
       const heads=await call('import',{namespace,file});await guard();current();

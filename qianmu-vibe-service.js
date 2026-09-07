@@ -29,10 +29,10 @@ export function createVibeEncodingService({dataRoot,store=createImageServiceStor
   const find=async value=>normalizeImageServiceChannel(await store.inspectChannel(value.channelKey),value.channelKey).entries
     .filter(row=>row.namespace===value.namespace&&row.requestDigest===value.cacheKey).at(-1);
   const owner=(value,row)=>({namespace:value.namespace,channelKey:value.channelKey,attemptId:row.attemptId,requestDigest:row.requestDigest,fence:row.fence});
-  const packet=(result,stored=true,warning='',channelNeedsReview=false)=>({ok:true,version:1,result,stored,...(warning?{warning}:{}),...(channelNeedsReview?{channelNeedsReview:true}:{})});
+  const packet=(result,stored=true,warning='',channelNeedsReview=false,attemptId)=>({ok:true,version:1,result,stored,...(attemptId?{attemptId}:{}),...(warning?{warning}:{}),...(channelNeedsReview?{channelNeedsReview:true}:{})});
   async function completed(req,value,row,result){
     let review=false;try{await channel.completeFromCache({namespace:value.namespace,kind:'vibe',attemptId:row.attemptId,requestDigest:row.requestDigest});}catch(_){review=true;}
-    check(req,value);return packet(result,true,'',review);
+    check(req,value);return packet(result,true,'',review,row.attemptId);
   }
   async function retrieve(req,value,row){
     if(!row)throw fail('missing','未找到当前账户的原 Vibe 编码','not_submitted',404);
@@ -53,7 +53,8 @@ export function createVibeEncodingService({dataRoot,store=createImageServiceStor
       if(input.confirmed!==true)throw fail('consent','本次编码尚未获得明确费用确认');
       if(admitted>=8)throw fail('capacity','编码等待已满，请稍后重试','not_submitted',429);
       // Closed native request surface: no arbitrary headers, disk paths, proxy flags or undeclared encoding parameters.
-      const raw=input.request,retryAttemptId=input.retryAttemptId||'';
+      const raw=input.request,retryAttemptId=input.retryAttemptId||'',clientAttemptId=input.clientAttemptId;
+      if(clientAttemptId!==undefined&&(typeof clientAttemptId!=='string'||!/^[A-Za-z0-9_-]{8,160}$/.test(clientAttemptId)))throw fail('request','编码原提交编号无效','not_submitted',400);
       if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(key=>!['version','provider','protocol','model','capabilityModelId','baseUrl','apiKey','image','information'].includes(key)))throw fail('request','Vibe 编码请求含未声明字段','not_submitted',400);
       if(typeof raw.image!=='string'||raw.image.length>24*1024*1024)throw fail('size','Vibe 编码原图大小无效','not_submitted',413);
       if(['provider','model','baseUrl','apiKey'].some(key=>typeof raw[key]!=='string'||raw[key].length>2048)
@@ -84,10 +85,13 @@ export function createVibeEncodingService({dataRoot,store=createImageServiceStor
               authorize:async(actual,key)=>{if(key!==prepared.cacheKey||JSON.stringify(actual)!==JSON.stringify(prepared.identity))throw fail('identity','编码参数已变化');await ticket.beforeSubmit();await shared.beforeSubmit();authorized=true;return true;}}));
           }catch(error){throw fail('encode',/^(vibe_|image_service_)/.test(error?.code||'')?error.message:'Vibe 编码结果未确认，请核查原请求',
             error?.submissionState==='rejected'?'rejected':authorized?'unknown':'not_submitted');}
+          // Bind the cached result to the actual winning sender. A different device/key may reuse bytes,
+          // but its uncertain fee receipt must not be reconciled by a coincident deterministic cache key.
+          if(clientAttemptId!==undefined)result={...result,serviceDelivery:{version:1,channelKey:hash(captured.apiKey.trim()),clientAttemptId}};
           try{await validateVibeServiceResult(result,identity);}catch(_){throw fail('result','编码返回不完整，请核查原请求，勿重复提交','unknown');}
           let stored=false;
           try{await results.save(identity,result);stored=true;}catch(_){try{stored=Boolean(await results.load(identity));}catch(_){} }
-          return packet(result,stored,stored?'':'编码已返回；服务暂存未完成，请先保存在当前设备，勿重复提交',channelNeedsReview);
+          return packet(result,stored,stored?'':'编码已返回；服务暂存未完成，请先保存在当前设备，勿重复提交',channelNeedsReview,attemptId);
         });jobs.set(id,work);
         try{const result=await work;check(req,value);return result;}finally{if(jobs.get(id)===work)jobs.delete(id);}
       }finally{admitted--;bytes-=weight;}

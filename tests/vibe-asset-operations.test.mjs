@@ -20,6 +20,16 @@ test('worker resolution returns only the exact model/IE encoding, while checks n
   const raw=await e.run({type:'resolve',...options,model:'nai-diffusion-3'});assert.equal(raw.data,image);assert.equal(raw.kind,'image');
   await assert.rejects(()=>e.run({type:'resolve',...options,information:.8}),{code:'vibe_file_missing_encoding'});
 });
+
+test('receipt adoption and export use its exact model/IE rather than another variant or old import defaults',async()=>{
+  const e=await fixture(),before=structuredClone(e.asset),options={namespace:'st-user:one',id:e.asset.assetId,model:'nai-diffusion-4-full',information:0,expectedSourceId:e.doc.id};
+  assert.deepEqual(await e.run({type:'library-info',...options}),{name:'Original',defaults:{strength:.6,information:0}});
+  const blob=await e.run({type:'export-reviewed',...options}),[parsed]=await parseNovelVibeFile(await blob.text());
+  assert.deepEqual(parsed.document.importInfo,{model:options.model,information_extracted:0,strength:.6});
+  assert.deepEqual(parsed.document.encodings,e.doc.encodings);assert.equal(parsed.document.image,image);assert.deepEqual(e.asset,before);
+  await assert.rejects(()=>e.run({type:'library-info',...options,expectedSourceId:'a'.repeat(64)}),{code:'vibe_file_source'});
+  await assert.rejects(()=>e.run({type:'export-reviewed',...options,information:.7}),{code:'vibe_file_missing_encoding'});
+});
 test('full export keeps every original variant, overlays only edited file defaults, and leaves immutable source untouched',async()=>{
   const e=await fixture(),before=structuredClone(e.asset),blob=await e.run({type:'export',namespace:'st-user:one',ids:[e.asset.assetId],bundle:true,settings:[{name:'Edited',strength:0,information:.7}]});
   const text=await blob.text(),data=JSON.parse(text);assert.equal(data.identifier,'novelai-vibe-transfer-bundle');assert.equal(data.vibes.length,1);

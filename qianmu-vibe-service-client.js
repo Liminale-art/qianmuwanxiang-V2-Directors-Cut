@@ -1,4 +1,5 @@
 import {prepareNovelVibeEncoding,VIBE_ENCODING_LIMIT} from './qianmu-vibe-encoding.js';
+import {validateVibeServiceDelivery} from './qianmu-vibe-encoding-store.js';
 const BASE='/api/plugins/qianmu-tts/image/vibe',HASH=/^[a-f0-9]{64}$/;
 const fail=(message,state='not_submitted')=>Object.assign(new Error(message),{code:'vibe_service_client',submissionState:state,retryable:false});
 const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),byte=>byte.toString(16).padStart(2,'0')).join('');
@@ -31,7 +32,7 @@ export function createVibeServiceClient({namespace,headers=()=>({}),fetchImpl=gl
   const locate=async prepared=>{if(!HASH.test(prepared?.cacheKey||''))throw fail('Vibe 编码指纹无效');return {version:1,expectedAccount:await account,cacheKey:prepared.cacheKey};};
   async function capabilities(){
     const value=await call('capabilities');await guard();
-    if(value.accountBindingVersion!==1||value.expectedAccount!==await account||value.nativeEncoding!==true||value.resultRetrieval!==true||value.automaticReplay!==false||value.maxEncodingBytes!==VIBE_ENCODING_LIMIT||value.sharedNativeChannelVersion!==1)throw fail('增强服务尚未提供兼容的 Vibe 编码、串行与领取功能，请更新后端');
+    if(value.accountBindingVersion!==1||value.expectedAccount!==await account||value.nativeEncoding!==true||value.resultRetrieval!==true||value.automaticReplay!==false||value.maxEncodingBytes!==VIBE_ENCODING_LIMIT||value.sharedNativeChannelVersion!==1||value.receiptBindingVersion!==1)throw fail('增强服务尚未提供兼容的 Vibe 编码、串行与领取功能，请更新后端');
   }
   function result(value,prepared){
     const row=value.result;
@@ -41,9 +42,11 @@ export function createVibeServiceClient({namespace,headers=()=>({}),fetchImpl=gl
     if(decoded.length>VIBE_ENCODING_LIMIT||btoa(decoded)!==row.encoding||!Number.isFinite(row.durationMs)||row.durationMs<0)throw fail('服务编码大小或格式无效','unknown');
     // Storage health is delivery metadata, not part of the immutable encoding or its fingerprint.
     return {version:1,cacheKey:row.cacheKey,identity:row.identity,encoding:row.encoding,durationMs:row.durationMs,
-      ...(value.stored===false?{serviceStored:false}:{}),...(value.channelNeedsReview===true?{channelNeedsReview:true}:{})};
+      ...(row.serviceDelivery!==undefined?{serviceDelivery:validateVibeServiceDelivery(row.serviceDelivery)}:{}),
+      ...(HASH.test(value.attemptId||'')?{serviceAttemptId:value.attemptId}:{}),...(value.stored===false?{serviceStored:false}:{}),...(value.channelNeedsReview===true?{channelNeedsReview:true}:{})};
   }
   return {
+    async attempt(prepared,previous){return previous?.status==='rejected'?digest(`${prepared.cacheKey}:${previous.attemptId}`):prepared.cacheKey;},
     async query(prepared){
       await capabilities();const value=await call('query',await locate(prepared));await guard();
       if(value.task===null)return null;
@@ -51,14 +54,14 @@ export function createVibeServiceClient({namespace,headers=()=>({}),fetchImpl=gl
         ||(task.status==='ready')!==task.resultAvailable)throw fail('服务编码状态不完整，请先核查');return task;
     },
     async result(prepared){const value=await call('result',await locate(prepared),{maximum:12*1024*1024});await guard();return result(value,prepared);},
-    async encode(input,{authorize,guard:active=guard}={},retryAttemptId=''){
+    async encode(input,{authorize,guard:active=guard,clientAttemptId}={},retryAttemptId=''){
       const apiKey=input?.apiKey;if(typeof apiKey!=='string'||!apiKey||apiKey.length>2048||apiKey.trim()!==apiKey||/[\u0000-\u001f\u007f]/.test(apiKey))throw fail('请填写有效的编码 API Key');
       const prepared=await prepareNovelVibeEncoding(input);await active();await capabilities();
       if(typeof authorize!=='function'||await authorize(prepared.identity,prepared.cacheKey)!==true)throw fail('Vibe 服务编码未获授权');
       await active();await guard();
       const request={version:1,provider:'novel',protocol:'novelai',model:prepared.body.model,capabilityModelId:prepared.identity.capabilityModelId,baseUrl:prepared.identity.endpoint,
         apiKey,image:prepared.body.image,information:prepared.body.information_extracted};
-      const value=await call('submit',{...await locate(prepared),request,confirmed:true,retryAttemptId},{write:true,maximum:12*1024*1024});
+      const value=await call('submit',{...await locate(prepared),request,confirmed:true,retryAttemptId,...(clientAttemptId!==undefined?{clientAttemptId}:{})},{write:true,maximum:12*1024*1024});
       // Caller persists completed bytes under the frozen original namespace before its next live-page guard.
       return result(value,prepared);
     },

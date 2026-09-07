@@ -10477,6 +10477,16 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-vibe-editor-actions { display:flex;gap:8px;justify-content:flex-end;margin-top:10px; }
 #story-director-modal .sd-vibe-library-search { margin:10px 0;display:flex;gap:7px;align-items:center; }
 #story-director-modal .sd-vibe-library-search>.text_pole { flex:1;min-width:0; }
+#story-director-modal .sd-vibe-review { min-width:0;text-align:left; }
+#story-director-modal .sd-vibe-review header { display:flex;align-items:center;gap:7px; }
+#story-director-modal .sd-vibe-review h3 { flex:1;min-width:0;margin:0;font-size:var(--sd-type-card,16px); }
+#story-director-modal .sd-vibe-review-status { font-size:12px;color:var(--sd-text-soft);overflow-wrap:anywhere; }
+#story-director-modal .sd-vibe-review-rows { display:grid;gap:8px; }
+#story-director-modal .sd-vibe-review-rows article { display:grid;gap:5px;min-width:0;padding:11px;border:1px solid var(--sd-hairline);border-left:3px solid var(--sd-accent);border-radius:8px;background:var(--sd-card);overflow-wrap:anywhere; }
+#story-director-modal .sd-vibe-review-rows time,#story-director-modal .sd-vibe-review-rows small { font-size:12px;color:var(--sd-text-soft); }
+#story-director-modal .sd-vibe-review-rows article>div { display:flex;flex-wrap:wrap;gap:7px;min-width:0; }
+#story-director-modal .sd-vibe-review-rows [data-state="unknown"] { border-left-color:#cf9c43; }
+#story-director-modal .sd-vibe-review-rows [data-state="rejected"] { border-left-color:#cf7272; }
 #story-director-modal .sd-vibe-file-cover:has(img) { min-height:0; }
 #story-director-modal .sd-vibe-waterfall { columns:2;column-gap:10px;min-width:0; }
 #story-director-modal .sd-vibe-tile,#story-director-modal .sd-vibe-gallery-picture { display:block;break-inside:avoid;margin:0 0 10px;width:100%;box-sizing:border-box;overflow:hidden;border:1px solid var(--sd-hairline);border-radius:9px;background:var(--sd-card);padding:0; }

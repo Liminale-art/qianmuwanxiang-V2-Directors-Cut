@@ -14,6 +14,25 @@ test('file import publishes one atomic lightweight library update, preserves zer
   assert.deepEqual(e.state.vibeLibrary[0].assetRef,assetRef);assert.equal(e.state.vibeLibrary[0].strength,0);assert.equal(e.state.vibeLibrary[0].informationExtracted,0);
   await e.service.import(new Blob(['mock']));assert.equal(e.saves(),1);assert.match(e.notices[1],/已在库中/);
 });
+
+test('adopting a recovered receipt reads the exact variant defaults, preserves zero and leaves current selections alone',async()=>{
+  const selection={model:'nai-diffusion-4-full',information:0,expectedSourceId:'b'.repeat(64)},calls=[];
+  const e=setup(async(type,args)=>{calls.push({type,...args});return {name:'Recovered',defaults:{strength:0,information:args.information}};});
+  e.state.selectedVibeIds=['existing'];await e.service.adopt(assetRef,selection);
+  assert.equal(calls[0].type,'library-info');assert.equal(calls[0].information,0);assert.equal(calls[0].expectedSourceId,selection.expectedSourceId);
+  assert.equal(e.state.vibeLibrary[0].strength,0);assert.equal(e.state.vibeLibrary[0].informationExtracted,0);assert.deepEqual(e.state.selectedVibeIds,['existing']);
+  await e.service.adopt(assetRef,selection);assert.equal(e.saves(),1);
+  await e.service.adopt(assetRef,{...selection,information:.7});assert.equal(e.saves(),2);assert.equal(e.state.vibeLibrary.length,2);
+});
+
+test('adopting does not publish after concurrent library, account or page changes',async()=>{
+  for(const change of [e=>e.setCurrent(false),e=>e.setAccount('st-user:two'),e=>e.state.vibeLibrary.push({id:'external'})]){
+    let release;const e=setup(()=>new Promise(resolve=>release=resolve));
+    const request=e.service.adopt(assetRef,{model:'nai-diffusion-4-full',information:0});await new Promise(resolve=>setImmediate(resolve));change(e);
+    const before=structuredClone(e.state);release({name:'Recovered',defaults:{strength:0,information:0}});
+    await assert.rejects(request);assert.deepEqual(e.state,before);assert.equal(e.saves(),0);
+  }
+});
 test('stored assets never imply a late library write after account, page, cancellation, content or capacity changes',async()=>{
   for(const change of [e=>e.setCurrent(false),e=>e.setAccount('st-user:two'),e=>e.state.vibeLibrary.push({id:'external'}),e=>e.active=false]){
     let release;const e=setup(()=>new Promise(resolve=>release=resolve));e.active=true;

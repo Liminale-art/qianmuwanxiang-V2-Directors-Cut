@@ -199,6 +199,7 @@ let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,st
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.104') },
+  vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.104') },
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.104') },
   vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.104') },
   tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.104') },
@@ -14553,6 +14554,10 @@ async function storyboardMountVibeLibrary(root) {
       const assets=assetRuntime.createVibeLibraryAssets({state,namespace,guard,isCurrent:same,call:assetRuntime.callVibeAsset,publish:saveSettings,uid,notify:message=>toast(message,'success')});
       storyboardVibeLibraryController=runtime.createStoryboardVibeLibraryController({
         assets,modelId:()=>{const profile=storyboardProviderProfile(state);return profile.capabilityModelId||profile.model;},
+        createReview:async onClose=>{const review=await featureRuntime.load('vibeReview');await guard();return review.createVibeReviewController({
+          actions:review.createVibeReviewActions({namespace,call:assetRuntime.callVibeAsset,guard,service:review.createVibeServiceClient({namespace,headers:storyboardRequestHeaders,guard})}),
+          onClose,onAdd:(ref,selection)=>assets.adopt(ref,selection),isCurrent:same,icons:node=>applyQianmuIcons(node),onNotice:message=>{if(same())toast(message,'warning');},
+        });},
         items:()=>state.vibeLibrary,gallery:()=>storyboardGalleryRecords().filter(item=>item.mediaType!=='video'&&item.kind!=='film'),
         isCurrent:same,icons:node=>applyQianmuIcons(node),onNotice:message=>{if(same())toast(message,'warning');},
         onEdit:id=>{if(same())state.editingVibeId=id;},

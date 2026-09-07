@@ -48,6 +48,17 @@ test('same-key concurrent service instances cannot win a second paid submission'
   await assert.rejects(()=>other.submit(actor(),input));assert.equal(posts,1);release();await first;
   assert.equal((await other.submit(actor(),input)).result.encoding,btoa('binary'));assert.equal(posts,1);
 });
+
+test('service cache retains the actual winning sender binding after restart, key rotation and cache reuse by a new sender',async t=>{
+  const e=await fixture(t),input=await envelope({clientAttemptId:'first-device-attempt'}),result=await e.service.submit(actor(),input);
+  assert.equal(result.attemptId,input.cacheKey);assert.equal(result.result.serviceDelivery.clientAttemptId,input.clientAttemptId);
+  assert.match(result.result.serviceDelivery.channelKey,/^[a-f0-9]{64}$/);assert.equal(JSON.stringify(result).includes('private-fixture-key'),false);
+  await e.service.close();const service=e.make();
+  const reused=await service.submit(actor(),{...input,clientAttemptId:'second-device-attempt',request:{...input.request,apiKey:'rotated-key'}});
+  assert.deepEqual(reused.result.serviceDelivery,result.result.serviceDelivery);assert.equal(e.posts(),1);
+  assert.deepEqual((await service.result(actor(),input)).result.serviceDelivery,result.result.serviceDelivery);
+  await assert.rejects(()=>service.submit(actor(),{...input,clientAttemptId:{value:'forged'}}));assert.equal(e.posts(),1);
+});
 test('cross-account result query cannot discover, return or replace another account encoding, including an admin',async t=>{
   const e=await fixture(t),input=await envelope();await e.service.submit(actor(),input);const bob=actor('bob');bob.user.profile.admin=true;
   const lookup={version:1,cacheKey:input.cacheKey,expectedAccount:imageServiceAccount(bob).namespace};assert.equal((await e.service.query(bob,lookup)).task,null);
@@ -142,14 +153,14 @@ test('client refuses unavailable/forged capabilities and never tries a native UR
     await assert.rejects(()=>client.query(prepared));assert.equal(methods.length,1);assert.equal(methods[0][1],'GET');
   }
   let writes=0;const client=createVibeServiceClient({namespace:'st-user:alice',fetchImpl:async(_url,init)=>{
-    if(init.method!=='GET')writes++;return Response.json({ok:true,version:1,accountBindingVersion:1,expectedAccount:imageServiceAccount(actor()).namespace,nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024,sharedNativeChannelVersion:1});
+    if(init.method!=='GET')writes++;return Response.json({ok:true,version:1,accountBindingVersion:1,expectedAccount:imageServiceAccount(actor()).namespace,nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024,sharedNativeChannelVersion:1,receiptBindingVersion:1});
   }});
   for(const authorize of [undefined,async()=>false,async()=>({yes:true})])await assert.rejects(()=>client.encode(request(),{authorize}));assert.equal(writes,0);
 });
 test('client captures the Key before consent and treats malformed or oversized responses as uncertain, never retrying',async()=>{
   const input=request(),prepared=await prepareNovelVibeEncoding(input);let body,writes=0;
   const client=createVibeServiceClient({namespace:'st-user:alice',fetchImpl:async(_url,init)=>{
-    if(init.method==='GET')return Response.json({ok:true,version:1,accountBindingVersion:1,expectedAccount:imageServiceAccount(actor()).namespace,nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024,sharedNativeChannelVersion:1});
+    if(init.method==='GET')return Response.json({ok:true,version:1,accountBindingVersion:1,expectedAccount:imageServiceAccount(actor()).namespace,nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024,sharedNativeChannelVersion:1,receiptBindingVersion:1});
     writes++;body=JSON.parse(init.body);return Response.json({ok:true,version:1,result:{version:1,cacheKey:prepared.cacheKey,identity:prepared.identity,encoding:btoa('binary'),durationMs:1}});
   }});
   await client.encode(input,{authorize:async()=>{input.apiKey='replaced';return true;}});assert.equal(body.request.apiKey,'private-fixture-key');assert.equal(writes,1);
@@ -160,7 +171,7 @@ test('client captures the Key before consent and treats malformed or oversized r
 });
 test('client retains an unpersisted-server warning as delivery metadata without trusting arbitrary server warning text',async()=>{
   const input=request(),prepared=await prepareNovelVibeEncoding(input),client=createVibeServiceClient({namespace:'st-user:alice',fetchImpl:async(_url,init)=>{
-    if(init.method==='GET')return Response.json({ok:true,version:1,accountBindingVersion:1,expectedAccount:imageServiceAccount(actor()).namespace,nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024,sharedNativeChannelVersion:1});
+    if(init.method==='GET')return Response.json({ok:true,version:1,accountBindingVersion:1,expectedAccount:imageServiceAccount(actor()).namespace,nativeEncoding:true,resultRetrieval:true,automaticReplay:false,maxEncodingBytes:8*1024*1024,sharedNativeChannelVersion:1,receiptBindingVersion:1});
     return Response.json({ok:true,version:1,stored:false,warning:'untrusted warning',result:{version:1,cacheKey:prepared.cacheKey,identity:prepared.identity,encoding:btoa('binary'),durationMs:1}});
   }});
   const result=await client.encode(input,{authorize:async()=>true});assert.equal(result.serviceStored,false);assert.equal(JSON.stringify(result).includes('untrusted warning'),false);

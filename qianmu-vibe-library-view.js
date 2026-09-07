@@ -24,10 +24,11 @@ function permanentUrl(value){
 }
 
 // A single local editor session survives host rerenders. Only explicit Save publishes a library entry.
-export function createStoryboardVibeLibraryController({items,gallery,save,remove,assets=null,modelId=()=>'',onEdit=()=>{},onGallery=()=>{},onGalleryDone=()=>{},onApply=()=>{},onCancel=()=>{},onNotice=()=>{},icons=()=>{},isCurrent=()=>true,selectionIssue=()=>'',collapsed=()=>false,onCollapse=()=>{}}={}){
+export function createStoryboardVibeLibraryController({items,gallery,save,remove,assets=null,createReview=null,modelId=()=>'',onEdit=()=>{},onGallery=()=>{},onGalleryDone=()=>{},onApply=()=>{},onCancel=()=>{},onNotice=()=>{},icons=()=>{},isCurrent=()=>true,selectionIssue=()=>'',collapsed=()=>false,onCollapse=()=>{}}={}){
   let host=null,disposed=false,token=0,cancelProbe=null,objectUrl='',timer=0,revision=0,busy=false,sourcePending=false;
   let draft=blank(),query='',visible=40,galleryQuery='',galleryVisible=40,picking=false,selection=null;
   let previewObserver=null,previewEpoch=0;const previewUrls=new Set(),downloadUrls=new Map();
+  let reviewing=false,review=null;
   function blank(item){return {id:item?.id||'',name:item?.name||'',url:item?.previewUrl||'',assetRef:item?.assetRef?{...item.assetRef}:null,assetHead:null,strength:String(amount(item?.strength,.6)),info:String(amount(item?.informationExtracted,1)),file:undefined,mode:'',pendingUrl:''};}
   const live=()=>!disposed&&isCurrent()&&host?.isConnected;
   const report=error=>{if(!disposed&&isCurrent())onNotice(error?.message||'操作失败，原素材保留');};
@@ -130,9 +131,14 @@ export function createStoryboardVibeLibraryController({items,gallery,save,remove
   }
   function render(){
     if(!live())return;clearTimeout(timer);
+    if(reviewing&&review){clearAssetPreviews();host.innerHTML='<div class="sd-vibe-review-host"></div>';review.mount(host.firstElementChild);return;}
     if(picking){renderGallery();return;}
     host.innerHTML=`${selection?'<div class="sd-vibe-selection-bar"><span class="sd-vibe-selection-count"></span><button class="sd-icon-btn sd-vibe-clear-selection" type="button" aria-label="清空本次选择"><i class="fa-solid fa-xmark"></i></button><button class="sd-btn sd-vibe-cancel-selection" type="button">取消</button><button class="sd-btn sd-primary sd-vibe-apply-selection" type="button">确认</button></div>':''}${editor()}<div class="sd-vibe-library-search"><input class="text_pole sd-vibe-search" aria-label="搜索 Vibe 名称" placeholder="搜索 Vibe" value="${escape(query)}"></div><div class="sd-vibe-list-host">${library()}</div>`;
     updateSelectionCount();bindLibrary();icons(host);
+    if(createReview){host.querySelector('.sd-vibe-library-search').insertAdjacentHTML('beforeend','<button type="button" class="sd-icon-btn sd-vibe-review-open" aria-label="编码记录"><i class="fa-solid fa-list"></i></button>');
+      listen('.sd-vibe-review-open','click',async()=>{if(busy)return;syncFields();const current=host;busy=true;
+        try{if(!review){const created=await createReview(()=>{reviewing=false;review?.detach();if(live())render();});if(!live()||host!==current){created.dispose();return;}review=created;}
+          if(!live()||host!==current)return;syncFields();cancelSource();reviewing=true;render();}finally{busy=false;}});}
     if(assets){
       const search=host.querySelector('.sd-vibe-library-search');search.insertAdjacentHTML('beforeend','<button type="button" class="sd-icon-btn sd-vibe-import" aria-label="导入 Vibe 文件"><i class="fa-solid fa-file-import"></i></button><input class="sd-vibe-import-file" type="file" accept=".naiv4vibe,.naiv4vibeBundle,application/json" hidden>');
       search.querySelector('.sd-vibe-import').addEventListener('click',()=>{if(!busy)search.querySelector('input[type=file]').click();});
@@ -178,8 +184,8 @@ export function createStoryboardVibeLibraryController({items,gallery,save,remove
   }
   return Object.freeze({
     mount(node){if(disposed)return;this.detach();host=node;render();},
-    detach(){syncFields();cancelSource();clearTimeout(timer);clearAssetPreviews();host=null;revoke();},
-    dispose(){this.detach();disposed=true;draft=blank();selection=null;for(const [url,timer] of downloadUrls){clearTimeout(timer);URL.revokeObjectURL(url);}downloadUrls.clear();},
+    detach(){syncFields();cancelSource();clearTimeout(timer);clearAssetPreviews();review?.detach();host=null;revoke();},
+    dispose(){this.detach();disposed=true;draft=blank();selection=null;review?.dispose();review=null;for(const [url,timer] of downloadUrls){clearTimeout(timer);URL.revokeObjectURL(url);}downloadUrls.clear();},
     edit(item){cancelSource();revoke();draft=blank(item);revision++;onEdit(draft.id);},
     beginSelection(value){selection={id:value.id,ids:[...value.ids]};},
     cancelSelection(){selection=null;},

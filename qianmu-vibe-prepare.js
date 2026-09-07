@@ -1,6 +1,7 @@
 import {resolveStoryboardVibeRecipe,retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {retainVibeAssetRef,VIBE_ENCODING_MODELS} from './qianmu-vibe-asset-ref.js';
 import {encodeNovelVibe,prepareNovelVibeEncoding} from './qianmu-vibe-encoding.js';
+import {matchesVibeServiceDelivery} from './qianmu-vibe-encoding-store.js';
 export {createVibeServiceClient} from './qianmu-vibe-service-client.js';
 
 // This error describes the IMAGE submission. The separately persisted encoding may already have been charged.
@@ -61,7 +62,7 @@ async function prepareVibes(payload,{namespace,model,connection,apiKey,call,read
           if(remoteState?.status==='ready'){
             const received=await service.result(prepared);await guard();
             used=ref(await rpc('attach-encoding',{...selection,encoding:received.encoding,expectedSourceId:prepared.identity.sourceId}));
-            await rpc('remember-encoding',{...options,identity:prepared.identity,assetRef:used});
+            await rpc('remember-encoding',{...options,identity:prepared.identity,assetRef:used,serviceAttemptId:received.serviceAttemptId,serviceDelivery:received.serviceDelivery});
             if(received.channelNeedsReview)notify('Vibe 编码已取回；NAI 共用渠道尚待核查');
           }else if(remoteState&&remoteState.status!=='rejected')throw blocked();
         }
@@ -73,20 +74,24 @@ async function prepareVibes(payload,{namespace,model,connection,apiKey,call,read
         await guard();
         const approved=await confirm('确认 Vibe 编码',`${item.name||'Vibe'} · 信息提取 ${item.information}\n此模型档位尚未缓存。NovelAI 官方每次编码收取 2 Anlas；第三方以渠道实际费用为准。仅本次编码获授权，缓存可复用。${items.length>4?' 当前超过 4 项 Vibe，官方还会按额外项数增加每张图费用，缓存不免除此费用。':''}`);
         await guard();if(approved!==true)throw fail('cancelled','已取消 Vibe 编码，未提交生图');
-        const attemptId=crypto.randomUUID(),reservation=await rpc('encoding-reserve',{...options,identity:prepared.identity,attemptId,retryAttemptId:cached?.attemptId||''});
+        const channelKey=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(String(apiKey||'').trim()))),byte=>byte.toString(16).padStart(2,'0')).join('');
+        const serviceAttemptId=service?.attempt?await service.attempt(prepared,remoteState):null;
+        const delivery=!service?{version:1,transport:'direct',channelKey}:serviceAttemptId?{version:1,transport:'service',channelKey,serviceAttemptId}:null;
+        const attemptId=crypto.randomUUID(),reservation=await rpc('encoding-reserve',{...options,identity:prepared.identity,attemptId,retryAttemptId:cached?.attemptId||'',sourceAssetRef:original,...(delivery?{delivery}:{})});
         if(!reservation.owned){if(reservation.receipt?.status==='ready')used=ref(reservation.receipt.assetRef);else throw blocked();}
         else{
           let authorized=false,completed=false,localOnly=false,channelNeedsReview=false;
           try{
             const deliver=service?(input,hooks)=>service.encode(input,hooks,remoteState?.status==='rejected'?remoteState.attemptId:''):encode;
-            const encoded=await deliver(input,{guard,authorize:async(actual,key)=>{
+            const encoded=await deliver(input,{guard,...(service?{clientAttemptId:attemptId}:{}),authorize:async(actual,key)=>{
               await guard();if(key!==prepared.cacheKey||JSON.stringify(actual)!==JSON.stringify(prepared.identity))throw fail('identity','Vibe 编码参数已变化');
               await rpc('encoding-transition',{...options,attemptId,status:'submitting'});authorized=true;return true;
             }});
             // Once the upstream returned, preserve its result under the ORIGINAL account even if the UI changed.
             // This writes only immutable local recovery data; a stale job is never allowed to use it or generate an image.
             completed=true;localOnly=encoded.serviceStored===false;channelNeedsReview=encoded.channelNeedsReview===true;
-            if(!authorized||encoded.cacheKey!==prepared.cacheKey||JSON.stringify(encoded.identity)!==JSON.stringify(prepared.identity))throw fail('result','编码返回身份不符，请核查原请求','unknown');
+            if(!authorized||encoded.cacheKey!==prepared.cacheKey||JSON.stringify(encoded.identity)!==JSON.stringify(prepared.identity)
+              ||delivery?.transport==='service'&&!matchesVibeServiceDelivery({delivery,attemptId},encoded.serviceAttemptId,encoded.serviceDelivery))throw fail('result','编码返回身份不符，请核查原请求','unknown');
             used=ref(await call('attach-encoding',{namespace,...selection,encoding:encoded.encoding,expectedSourceId:prepared.identity.sourceId}));
             await call('encoding-transition',{namespace,...options,attemptId,status:'ready',assetRef:used});
           }catch(error){
