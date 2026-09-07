@@ -10,6 +10,8 @@ import { STORYBOARD_PROMPT_FORMATS, retainStoryboardPromptRenderingPack, resolve
 import { retainComfyWorkbenchBinding } from './qianmu-comfy-workbench-binding.js';
 import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 import {retainStoryboardArtistPromptLayer} from './qianmu-artist-prompt-layer.js';
+import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
+export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
 export { assertCharacterCastingSnapshots } from './qianmu-character-casting.js';
@@ -2370,6 +2372,7 @@ function snapshot(value, fallback = {}) {
   const profile = normalizeStoryboardParameterProfile(raw.profile, source);
   const payload = safeData(raw.payload, 12) || {};
   if(Object.hasOwn(raw.payload || {},'artistPromptLayer'))payload.artistPromptLayer=retainStoryboardArtistPromptLayer(raw.payload.artistPromptLayer);
+  if(Object.hasOwn(raw.payload || {},'vibeRecipe'))payload.vibeRecipe=retainStoryboardVibeRecipe(raw.payload.vibeRecipe);
   // Preserve the separately bounded role contract without raising the generic snapshot depth budget.
   // A truncated recipe must never later be interpreted as a role that has no Comfy configuration.
   for (const [original,clean] of [[raw.shotSpec,safe?.shotSpec],[raw.payload?.shotSpec,payload.shotSpec]]) {

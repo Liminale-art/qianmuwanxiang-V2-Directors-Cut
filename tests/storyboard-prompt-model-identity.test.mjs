@@ -11,6 +11,7 @@ import {
   storyboardProductionContext,
   captureStoryboardArtistPromptLayer, resolveStoryboardArtistPromptBase,
   createStoryboardMessageReference,
+  captureStoryboardVibeRecipe,
 } from '../qianmu-storyboard.js';
 import { generateDirectImage } from '../qianmu-image-direct.js';
 import { generateImage } from '../qianmu-image-gateway.js';
@@ -43,6 +44,7 @@ function runtime(state = createStoryboardDefaults(), extra = {}, names = []) {
     resolveStoryboardConnectionBinding, projectStoryboardProtocolParameters,
     planCharacterReference, characterReferenceChoice,
     captureStoryboardArtistPromptLayer, resolveStoryboardArtistPromptBase,
+    captureStoryboardVibeRecipe,
     STORYBOARD_GENERIC_PROMPT_DEFAULTS: { positive: 'generic quality', negative: 'generic exclusions' },
     STORYBOARD_NAI_QUALITY_DEFAULTS: { [V3]: 'quality v3', [V45]: 'quality v45', [V5]: 'quality v5' },
     STORYBOARD_NAI_NEGATIVE_DEFAULTS: { [V3]: 'negative v3', [V45]: 'negative v45', [V5]: 'negative v5' },
@@ -120,6 +122,7 @@ test('canonical compiler calls and existing OpenAI-compatible names remain suppo
 test('workbench payload uses the same capability for captions, parameters, Vibe and default words', () => {
   const state = createStoryboardDefaults();
   state.selectedVibeIds = ['vibe-a'];
+  state.vibeLibrary=[{id:'vibe-a',name:'Vibe A',previewUrl:'/user/images/vibe.png',strength:.6,informationExtracted:1}];
   const context = runtime(state);
   for (const capabilityModelId of [V3, V45, V5]) {
     const profile = { ...state.profiles.novel, model: 'relay/same-alias', capabilityModelId,
@@ -262,6 +265,7 @@ test('actual inline artist replacement updates native request text using the his
 test('repeated inline restyling uses frozen layers after artist edits/deletion and retains native people, Vibe, params and variant grouping',async()=>{
   let archive=snapshot();
   archive.payload.parameters.steps=29;archive.payload.parameters.vibes=[{id:'vibe-a',strength:.7}];
+  archive.payload.selectedVibeIds=['vibe-a'];archive.payload.vibeRecipe=captureStoryboardVibeRecipe(['vibe-a'],[{id:'vibe-a',name:'Original Vibe',previewUrl:'/user/images/original-vibe.png',strength:.7,informationExtracted:0}]);
   archive.payload.parameters.providerOptions.v4_negative_prompt.caption.char_captions=[{char_caption:'Alice only excluded',centers:[{x:.2,y:.5}]}];
   const original=structuredClone(archive),next=[{id:'new',value:'artist:new',positivePrompt:'new quality',negativePrompt:'new exclusions'},null];
   for(const artistPreset of next){
@@ -271,6 +275,7 @@ test('repeated inline restyling uses frozen layers after artist edits/deletion a
     assert.equal(await env.context.storyboardRedrawRecord(env.record,{artistPreset}),true,env.notices.join(';'));
     const job=env.queued[0];assert.equal(job.variantRootId,'root-a');assert.equal(job.floor,0);
     assert.equal(job.payload.parameters.steps,29);assert.deepEqual(job.payload.parameters.vibes,original.payload.parameters.vibes);
+    assert.deepEqual(job.payload.vibeRecipe,original.payload.vibeRecipe);assert.deepEqual(job.payload.selectedVibeIds,['vibe-a']);
     for(const key of ['v4_prompt','v4_negative_prompt'])assert.deepEqual(job.payload.parameters.providerOptions[key].caption.char_captions,original.payload.parameters.providerOptions[key].caption.char_captions);
     assert.deepEqual(env.record,before);assert.doesNotMatch(job.payload.prompt,/old artist|old quality|today incorrect/);
     assert.equal(job.payload.artistPromptLayer.positivePrefix,artistPreset?'artist:new, new quality':'quality v45');

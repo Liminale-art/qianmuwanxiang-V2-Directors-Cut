@@ -77,7 +77,8 @@ test('new profile snapshots retain file receipts only for Comfy and preserve mal
 
 test('actual asset preparation delivers frozen references and leaves NAI Vibe paths independent', async () => {
   const saved=await selection(), job={source:'comfy',profile:{comfyReferences:saved},payload:{parameters:{workflow:graph()}},imageAdmission:{namespace}};
-  const context=vm.createContext({storyboardAdmissionEpoch:1,storyboardState:()=>({vibeLibrary:[]}),
+  const {resolveStoryboardVibeRecipe}=await import('../qianmu-vibe-recipe.js');
+  const context=vm.createContext({resolveStoryboardVibeRecipe,storyboardAdmissionEpoch:1,storyboardState:()=>({vibeLibrary:[]}),
     featureRuntime:{load:async name=>name==='imageAdmission'?{resolveImageAccountNamespace:async()=>namespace}:{...refs,readComfyReferenceImages:input=>refs.readComfyReferenceImages({...input,fetchImpl:async()=>new Response(png)})}}});
   vm.runInContext(storyboardFunctionSource('storyboardPrepareGatewayAssets'),context);
   const assets=await context.storyboardPrepareGatewayAssets(job);assert.equal(assets.references[0].data,png.toString('base64'));assert.equal(assets.vibes.length,0);
