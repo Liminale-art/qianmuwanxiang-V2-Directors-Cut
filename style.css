@@ -10103,6 +10103,22 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-service-inbox-history > div { display: flex; justify-content: space-between; gap: .4rem; padding-block: .3rem; }
 
 /* Independent engine workbenches share the storyboard control baseline and spacing. */
+#story-director-modal :is(.sd-storyboard-model-workbench,.sd-comfy-workbench,.sd-storyboard-capture-body) {
+  display: flex; flex-direction: column; min-width: 0; gap: var(--sd-storyboard-gap, 6px);
+}
+#story-director-modal .sd-storyboard-capture-settings > summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+#story-director-modal .sd-storyboard-capture-status { flex: 0 0 auto; color: var(--sd-muted); font-size: 11px; font-weight: 400; }
+#story-director-modal :is(.sd-storyboard-capture-note,.sd-storyboard-variants > small) { display: block; margin-top: 6px; color: var(--sd-muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+#story-director-modal .sd-storyboard-capture-body { padding: 0 10px 10px; }
+#story-director-modal .sd-storyboard-capture-body > .sd-card { margin: 0; box-shadow: none; }
+#story-director-modal .sd-storyboard-capture-api .sd-storyboard-card-body { display: grid; gap: 10px; }
+#story-director-modal .sd-storyboard-capture-preset { display: grid; gap: 6px; min-width: 0; text-align: left; }
+#story-director-modal .sd-storyboard-capture-preset > span { color: var(--sd-muted); font-size: 12px; font-weight: 500; line-height: 17px; }
+#story-director-modal .sd-storyboard-capture-api .sd-storyboard-inline-control { display: flex; width: 100%; min-width: 0; gap: 6px; }
+#story-director-modal .sd-storyboard-capture-api .sd-storyboard-inline-control > select { flex: 1; min-width: 0; }
+#story-director-modal .sd-storyboard-capture-api .sd-storyboard-inline-control > button { flex: 0 0 var(--qm-control-height, 40px); }
 #story-director-modal .sd-storyboard-engine-modes {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px;
   padding: 4px; border-radius: 9px; background: var(--sd-folder-head); min-width: 0;

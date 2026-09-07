@@ -30,7 +30,7 @@ test('actual workbench owns one budget card and one collapsed manual variant con
   assert.equal((content.match(/data-storyboard-card="generation"/g)||[]).length,1);
   assert.equal((content.match(/data-generation-field=/g)||[]).length,3);
   assert.equal((content.match(/data-storyboard-field="count"/g)||[]).length,1);
-  assert.ok(content.indexOf('data-storyboard-card="generation"')>content.indexOf('data-storyboard-card="params"'));
+  assert.ok(content.indexOf('data-storyboard-card="generation"')<content.indexOf('sd-storyboard-engine-modes'), 'global budget lives before engine selection, not inside either engine');
   assert.ok(content.indexOf('data-storyboard-card="generation"')<content.indexOf('data-storyboard-card="composition"'));
   assert.match(content,/<details class="sd-storyboard-variants">/);
   assert.doesNotMatch(fn('renderStoryboardRouting'),/sd-storyboard-route-(?:max|concurrency)/);

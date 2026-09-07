@@ -86,7 +86,7 @@ assert.match(createStoryboardFormFixture({family:'novel'}).content, /<b>API 设�
 assert.match(createStoryboardFormFixture({family:'comfy'}).content, /<b>连接<\/b>/, 'Comfy 工作台独立连接卡');
 assert.doesNotMatch(source, /将此瞬，妥为留存/, '镜头台不得继续显示已移除的装饰文案');
 assert.doesNotMatch(source, /自定义兼容模型|输入兼容模型 ID|查看接口全部模型/, '模型工作台不得暴露低概率的任意模型入口');
-assert.match(source, /function renderStoryboardModelCard[\s\S]*sd-storyboard-compiler-api[\s\S]*function renderStoryboardParameterVibes/, '画面整理模型必须与生图连接合并在同一工作台');
+assert.match(source, /function renderStoryboardCaptureSettings[\s\S]*sd-storyboard-compiler-api[\s\S]*function renderStoryboardEngineModes/, '取景整理 API 归共用拍摄设置，不复制到各生图连接卡');
 assert.doesNotMatch(source, /function renderStoryboardConnection\(/, '旧的重复连接页面必须移除');
 assert.doesNotMatch(source, /千幕组织镜头，SillyTavern 负责连接与生成/, '镜头台不应展示尴尬的实现说明');
 assert.match(css, /#chat \.mes \.sd-storyboard-inline/, '正文分镜样式必须严格限定在聊天消息内');

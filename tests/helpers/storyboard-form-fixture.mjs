@@ -36,7 +36,7 @@ export function createStoryboardFormFixture({ family = 'novel', enabled = true, 
     'storyboardParseWorkflow', 'storyboardComfyOutputOptions', 'renderStoryboardModelCard', 'renderStoryboardComfyTransport', 'renderStoryboardAutomationCard', 'renderStoryboardContextCard', 'renderStoryboardCompilerContextPanel',
     'storyboardPromptDefaultsKey', 'storyboardProviderPromptDefaults', 'storyboardPromptLayerForArtist', 'storyboardParameterPresets',
     'renderStoryboardParameterPresets', 'renderStoryboardParameterVibes', 'renderStoryboardCompositionCard', 'renderStoryboardOpenAICompatibility',
-    'renderStoryboardConnectionCompatibility', 'renderStoryboardImageOutputFields', 'renderStoryboardGenerationCard', 'renderStoryboardEngineModes', 'renderStoryboardComfyCreate', 'renderStoryboardCreate', 'renderStoryboardNav'];
+    'renderStoryboardConnectionCompatibility', 'renderStoryboardImageOutputFields', 'renderStoryboardGenerationCard', 'renderStoryboardVariantControls', 'renderStoryboardCaptureSettings', 'renderStoryboardEngineModes', 'renderStoryboardComfyCreate', 'renderStoryboardModelCreate', 'renderStoryboardCreate', 'renderStoryboardNav'];
   vm.runInContext(names.map(storyboardFunctionSource).join('\n'), context);
   return { state, context, content: context.renderStoryboardCreate(state), nav: context.renderStoryboardNav(state) };
 }

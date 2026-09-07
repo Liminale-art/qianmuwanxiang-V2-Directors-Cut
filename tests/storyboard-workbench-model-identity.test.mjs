@@ -44,7 +44,7 @@ function environment(capability = V3, model = alias, extra = {}) {
     'storyboardCompilerProfileOptions', 'renderStoryboardModelCard', 'storyboardPromptDefaultsKey',
     'storyboardProviderPromptDefaults', 'storyboardPromptLayerForArtist', 'storyboardRememberPromptLayer',
     'storyboardPromptsForArtist', 'storyboardJoinPrompt', 'storyboardParameterPresets',
-    'renderStoryboardParameterPresets', 'renderStoryboardParameterVibes', 'renderStoryboardCreate', 'renderStoryboardConnectionCompatibility', 'renderStoryboardOpenAICompatibility', 'renderStoryboardImageOutputFields', 'renderStoryboardGenerationCard',
+    'renderStoryboardParameterPresets', 'renderStoryboardParameterVibes', 'renderStoryboardModelCreate', 'renderStoryboardVariantControls', 'renderStoryboardCreate', 'renderStoryboardConnectionCompatibility', 'renderStoryboardOpenAICompatibility', 'renderStoryboardImageOutputFields', 'renderStoryboardGenerationCard',
     'storyboardProfileSnapshot', 'storyboardCaptureWorkbench', 'storyboardGenerationPayload', 'storyboardRestoreSnapshotConnection',
     'storyboardCreatePreparationGuard', 'storyboardResolveRoutingProfile', 'storyboardRoutingTargetOptions', 'storyboardCreateJob', 'storyboardGatewayRequest', 'storyboardLoadLogToWorkbench', 'storyboardSafeShotSpecFromPrompt', 'storyboardAdaptShotForModel'];
   for (const call of section('renderStoryboardCreate').matchAll(/\b(renderStoryboard\w+)\(/g)) {

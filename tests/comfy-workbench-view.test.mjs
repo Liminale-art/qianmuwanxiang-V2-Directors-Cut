@@ -31,6 +31,63 @@ test('model interface does not list Comfy as another model family but keeps its 
   assert.doesNotMatch(content,/sd-comfy-workflow-card/);
 });
 
+test('both workbenches have exactly one global capture configuration, outside either engine',()=>{
+  for(const family of ['novel','banana','comfy']) {
+    const fixture=createStoryboardFormFixture({family,workflow:graph});
+    const html=fixture.content;
+    for(const className of ['sd-storyboard-enabled','sd-storyboard-auto-capture','sd-storyboard-auto-generate','sd-storyboard-compiler-api','sd-storyboard-prompt-preset']) {
+      assert.equal((html.match(new RegExp(`class="[^"]*\\b${className}\\b[^"]*"`,'g'))||[]).length,1,className);
+    }
+    assert.equal((html.match(/data-generation-field="minImages"/g)||[]).length,1);
+    assert.ok(html.indexOf('sd-storyboard-capture-settings')<html.indexOf('sd-storyboard-engine-modes'));
+    const own=family==='comfy'?fixture.context.renderStoryboardComfyCreate(fixture.state):fixture.context.renderStoryboardModelCreate(fixture.state);
+    assert.doesNotMatch(own,/sd-storyboard-automation-card|sd-storyboard-compiler-api|sd-storyboard-context-depth|sd-storyboard-prompt-preset|data-generation-field|sd-storyboard-composition-mode/);
+  }
+});
+
+test('global capture remains accessible with a failed lazy Comfy view or invalid model selection',()=>{
+  const fixture=createStoryboardFormFixture({family:'comfy',workflow:graph});
+  fixture.context.storyboardComfyViewRuntime=null;fixture.context.storyboardComfyViewError='failed';
+  let html=fixture.context.renderStoryboardCreate(fixture.state);
+  assert.match(html,/sd-storyboard-enabled/);assert.match(html,/sd-comfy-view-retry/);
+  fixture.context.storyboardComfyViewRuntime=comfyView;fixture.state.profiles.comfy.model='not-a-workflow';
+  html=fixture.context.renderStoryboardCreate(fixture.state);
+  assert.match(html,/sd-storyboard-enabled/);assert.match(html,/sd-storyboard-model-card/);
+});
+
+test('capture and engine fold state is independent; opening a fresh disabled installation is discoverable',()=>{
+  const fixture=createStoryboardFormFixture({family:'comfy',enabled:false,workflow:graph});
+  assert.match(fixture.content,/data-storyboard-card="capture-settings" open/);
+  fixture.state.collapsedCards['capture-settings']=true;
+  fixture.state.collapsedCards['comfy-prompt']=true;fixture.state.collapsedCards['comfy-params']=true;fixture.state.collapsedCards['comfy-connection']=true;
+  const html=fixture.context.renderStoryboardCreate(fixture.state);
+  for(const key of ['capture-settings','comfy-prompt','comfy-params','comfy-connection'])assert.doesNotMatch(html,new RegExp(`data-storyboard-card="${key}" open`));
+  fixture.state.source='novel';const novel=fixture.context.renderStoryboardCreate(fixture.state);
+  for(const key of ['model','prompt','params'])assert.match(novel,new RegExp(`data-storyboard-card="${key}" open`));
+  const restored=storyboard.normalizeStoryboardState(structuredClone(fixture.state));
+  assert.equal(restored.collapsedCards['capture-settings'],true);assert.equal(restored.collapsedCards['comfy-params'],true);
+});
+
+test('workflow presentation cannot import global automation or queue by shared fragment injection',()=>{
+  const shared=Object.fromEntries(['modes','automation','production','context','worldbook','promptPreset','generation','composition','queue','recent'].map(key=>[key,`GLOBAL_${key}`]));
+  const html=comfyView.renderComfyWorkbench({profile:{},capabilities:{}},shared);
+  assert.doesNotMatch(html,/GLOBAL_/);assert.match(html,/工作流提示补充/);
+});
+
+test('manual variants belong to the bound engine, never the common per-floor budget',()=>{
+  const fixture=createStoryboardFormFixture({family:'comfy',workflow:{...graph,latent:{class_type:'TestBatch',inputs:{count:'%qianmu_count%'}}}});
+  const common=fixture.context.renderStoryboardCaptureSettings(fixture.state),engine=fixture.context.renderStoryboardComfyCreate(fixture.state);
+  assert.doesNotMatch(common,/data-storyboard-field="count"/);assert.match(common,/data-generation-field="concurrency"/);
+  assert.match(engine,/data-storyboard-field="count"/);assert.doesNotMatch(engine,/data-generation-field=/);
+  const unbound=createStoryboardFormFixture({family:'comfy',workflow:graph});assert.doesNotMatch(unbound.context.renderStoryboardComfyCreate(unbound.state),/data-storyboard-field="count"/);
+});
+
+test('VPS with local Comfy explains actual host and does not imply built-in tunnelling',()=>{
+  const fixture=createStoryboardFormFixture({family:'comfy',workflow:graph});
+  assert.match(fixture.content,/VPS ST＋本机 Comfy/);assert.match(fixture.content,/VPS 的 127\.0\.0\.1 不指你的电脑/);
+  assert.match(fixture.content,/ST 转发不提供内网穿透/);
+});
+
 test('engine changes save the old form and restore independent scroll without touching queued snapshots',()=>{
   const state=storyboard.createStoryboardDefaults();state.source='banana';const saved=[],renders=[];let loading=false;
   const root={isConnected:true,querySelector:()=>loading?{}:null};const queued=structuredClone(state.profiles),before=structuredClone(queued);

@@ -136,7 +136,10 @@ test('workflow capabilities are recomputed after edits, with no global changes t
 test('production renderer exposes only wired controls and does not erase remembered settings', () => {
   const a = createStoryboardFormFixture({family: 'comfy', workflow: basic()});
   for (const field of ['width', 'height', 'count', 'steps', 'cfg', 'seed', 'sampler', 'scheduler']) assert.ok(!a.content.includes(`data-storyboard-field="${field}"`), field);
-  assert.doesNotMatch(a.content, /class="text_pole sd-storyboard-negative/); assert.doesNotMatch(a.content, /data-storyboard-card="composition"/);
+  assert.doesNotMatch(a.content, /class="text_pole sd-storyboard-negative/);
+  assert.match(a.content, /data-storyboard-card="composition"/, 'global composition is available for other routed engines');
+  assert.doesNotMatch(a.context.renderStoryboardComfyCreate(a.state), /data-storyboard-card="composition"/, 'unbound workflow owns no pretend ratio control');
+  assert.match(a.content, /工作流固定尺寸不改写/);
   const graph = workflow({text: '%qianmu_prompt%', negative: '%qianmu_negative%', cfg: '%qianmu_cfg%', width: '%qianmu_width%'});
   const b = createStoryboardFormFixture({family: 'comfy', workflow: graph});
   assert.match(b.content, /data-storyboard-field="cfg"/); assert.match(b.content, /data-storyboard-field="width"/); assert.match(b.content, /class="text_pole sd-storyboard-negative/);
