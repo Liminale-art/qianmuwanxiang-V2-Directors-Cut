@@ -4,6 +4,8 @@
   "outputDirectory": "dist",
   "files": [
     "qianmu-comfy-library-backup.js",
+    "qianmu-comfy-pool-backup.js",
+    "qianmu-comfy-resource-backup.js",
     "qianmu-vibe-review.js",
     "qianmu-vibe-receipt-file.js",
     "qianmu-vibe-storage.js",

@@ -73,8 +73,9 @@ export function createComfyPoolStore({ indexedDB = globalThis.indexedDB, keyRang
       };
     }); opening = promise; void promise.catch(() => { if (opening === promise) opening = null; }); return promise;
   }
-  async function operation(names, mode, work) {
-    const db = await open(); if (closed) fail('closed', '候选方案仓会话已结束');
+  async function operation(names, mode, work, isCurrent = () => true) {
+    const current = () => { if (isCurrent() !== true) fail('changed', '候选方案备份页面已变化'); };
+    current(); const db = await open(); current(); if (closed) fail('closed', '候选方案仓会话已结束');
     return new Promise((resolve, reject) => {
       let tx, result, failure, done = false;
       const finish = cause => {
@@ -84,8 +85,8 @@ export function createComfyPoolStore({ indexedDB = globalThis.indexedDB, keyRang
       const abort = cause => { failure = typeof cause?.code === 'string' && cause.code.startsWith('comfy_pool_') ? cause : storageError(); try { tx.abort(); } catch (_) { finish(failure); } };
       const timer = setTimeout(() => { failure = error('timeout', '操作结果尚未确认，请刷新核对后再试'); try { tx?.abort(); } catch (_) {} finish(failure); }, timeout);
       try { tx = db.transaction(names, mode); pending.add(tx); } catch (_) { finish(storageError()); return; }
-      tx.oncomplete = () => finish(); tx.onabort = () => finish(failure || storageError()); tx.onerror = () => { failure ||= storageError(); };
-      const read = (request, receive) => { request.onsuccess = () => { try { receive(request.result); } catch (cause) { abort(cause); } }; };
+      tx.oncomplete = () => { try { current(); finish(); } catch (cause) { finish(cause); } }; tx.onabort = () => finish(failure || storageError()); tx.onerror = () => { failure ||= storageError(); };
+      const read = (request, receive) => { request.onsuccess = () => { try { current(); receive(request.result); } catch (cause) { abort(cause); } }; };
       try { work(tx, read, value => { result = value; }); } catch (cause) { abort(cause); }
     });
   }
@@ -106,7 +107,61 @@ export function createComfyPoolStore({ indexedDB = globalThis.indexedDB, keyRang
     receive(rows.map(row => metadata(row, namespace)));
   });
   const sort = rows => rows.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+  async function snapshot(namespace, isCurrent) {
+    account(namespace); return operation(stores, 'readonly', (tx, read, set) => {
+      read(tx.objectStore('heads').index('namespace').getAll(keyRange.only(namespace), COMFY_POOL_LIMITS.plans + 1), all => {
+        if (all.length > COMFY_POOL_LIMITS.plans) fail('capacity', '候选方案数量超过备份上限');
+        const records = []; let pendingHeads = all.length;
+        const complete = () => {
+          const expected = records.flatMap(row => row.versions.map(version => version.meta.key)).sort();
+          const prefix = JSON.stringify([namespace]).slice(0, -1) + ',', range = keyRange.bound(prefix, prefix + '\uffff'); let checked = 0;
+          for (const name of ['documents', 'versions']) read(tx.objectStore(name).getAllKeys(range, COMFY_POOL_LIMITS.plans * COMFY_POOL_LIMITS.versions + 1), keys => {
+            if (JSON.stringify(keys.sort()) !== JSON.stringify(expected)) fail('backup', '候选方案存在未关联或缺失的历史原件，请先保全核对');
+            if (++checked === 2) set(records);
+          });
+        };
+        if (!pendingHeads) { complete(); return; }
+        for (const head of all) {
+          metadata(head, namespace);
+          read(tx.objectStore('versions').index('poolKey').getAll(keyRange.only(head.key), COMFY_POOL_LIMITS.versions + 1), rows => {
+            if (rows.length !== head.version || rows.length > COMFY_POOL_LIMITS.versions) fail('backup', '候选方案历史版本缺失或超限');
+            const record = { head, versions: [] }; records.push(record); let pendingDocuments = rows.length;
+            for (const meta of rows) {
+              metadata(meta, namespace, true); if (meta.id !== head.id) fail('backup', '候选方案历史版本归属不符');
+              read(tx.objectStore('documents').get(meta.key), row => {
+                if (!row || row.key !== meta.key || row.namespace !== namespace || row.id !== head.id || row.revision !== meta.revision
+                  || row.version !== meta.version || row.name !== meta.name || row.bytes !== meta.bytes
+                  || Object.keys(row).some(key => !['key', 'namespace', 'id', 'revision', 'version', 'name', 'pool', 'bytes'].includes(key))) fail('backup', '候选方案原文缺失或归属不符');
+                record.versions.push({ meta, pool: row.pool }); if (!--pendingDocuments && !--pendingHeads) complete();
+              });
+            }
+          });
+        }
+      });
+    }, isCurrent);
+  }
   return Object.freeze({
+    async backup(namespace, { isCurrent = () => true } = {}) {
+      const codec = await import('./qianmu-comfy-pool-backup.js'), records = await snapshot(namespace, isCurrent);
+      const value = codec.packComfyPoolRecords(namespace, records); if (isCurrent() !== true) fail('changed', '候选方案备份页面已变化'); return value;
+    },
+    async restoreBackup(namespace, input, { expectedDigest, confirmed = false, isCurrent = () => true } = {}) {
+      if (confirmed !== true || typeof expectedDigest !== 'string' || !/^[a-f0-9]{64}$/.test(expectedDigest)) fail('backup', '请先核对并确认候选方案库恢复');
+      const incoming = structuredClone(input), codec = await import('./qianmu-comfy-pool-backup.js'); codec.validateComfyPoolBackup(incoming);
+      if (incoming.namespace !== account(namespace)) fail('backup', '候选方案备份属于另一 ST 账户，请重新绑定连接与参考图');
+      const records = await snapshot(namespace, isCurrent), local = codec.packComfyPoolRecords(namespace, records);
+      if (await codec.comfyPoolBackupDigest(local) !== expectedDigest) fail('conflict', '候选方案库在确认后已变化，请重新核对');
+      const plan = codec.planComfyPoolRestore(local, incoming, { maxBytes }), writes = plan.writes.map(row => codec.unpackComfyPoolRecord(namespace, row));
+      return operation(stores, 'readwrite', (tx, read, set) => read(tx.objectStore('heads').index('namespace').getAll(keyRange.only(namespace), COMFY_POOL_LIMITS.plans + 1), all => {
+        const ordered = rows => rows.slice().sort((a, b) => a.id.localeCompare(b.id));
+        if (JSON.stringify(ordered(all)) !== JSON.stringify(ordered(records.map(row => row.head)))) fail('conflict', '候选方案库在准备期间已变化，未覆盖');
+        for (const row of writes) {
+          for (const version of row.versions) { tx.objectStore('documents').add(version.document); tx.objectStore('versions').add(version.meta); }
+          tx.objectStore('heads').put(row.head);
+        }
+        set(plan.summary);
+      }), isCurrent);
+    },
     async list(namespace, { archived = false } = {}) {
       account(namespace); return operation(['heads'], 'readonly', (tx, read, set) => heads(tx, read, namespace, rows => set(sort(rows.filter(row => row.archived === Boolean(archived))))));
     },
