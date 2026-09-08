@@ -80,3 +80,33 @@ test('carrier metadata expansion preserves the image cap and raw-origin content-
   await assert.rejects(carrierPack(entries),/原件或迁移凭据数量/);
   await assert.rejects(carrierPack([{id:'bundle-carriers',file:carrierFile({})},{id:'carrier-original:'+'0'.repeat(64),file:carrierFile({})}]),/原文指纹/);
 });
+
+test('many carriers verify unique originals once instead of expanding each full receipt per proof',async()=>{
+  const f=await carrierFixture();for(let i=0;i<24;i++){const proof=await createBundleCarrierProof(await openStoryboardBundle((await carrierPack(f.rawEntries,100+i)).file));f.proofs.push(proof);f.heads.push(bundleCarrierHead((await inspectBundleCarrierProof(proof)).summary));}
+  const original=Blob.prototype.arrayBuffer;let reads=0,captured;Blob.prototype.arrayBuffer=function(...args){reads++;return original.apply(this,args);};
+  try{captured=await capture(f);}finally{Blob.prototype.arrayBuffer=original;}assert.equal(reads,8,'four canonical hashes and four complete originals, independent of 26 proofs');
+  const opened=await openStoryboardBundle((await carrierPack([...f.mappings.entries,...captured.entries],77)).file),mappings=await inspectBundleMappings(opened);
+  reads=0;Blob.prototype.arrayBuffer=function(...args){reads++;return original.apply(this,args);};
+  try{await inspectBundleCarriers(opened,{mappings});}finally{Blob.prototype.arrayBuffer=original;}assert.equal(reads,35,'26 proof segments, one index and two bounded reads per unique original');
+});
+
+test('a valid raw member cannot authorize changed metadata inside another otherwise coherent carrier proof',async()=>{
+  const f=await carrierFixture(),captured=await capture(f),old=f.proofs[0],mappingIndex=JSON.parse(old.mappingIndexText);mappingIndex.heads[0].createdAt++;
+  const indexText=JSON.stringify(await rehash(mappingIndex)),manifest=JSON.parse(old.manifestText),entry=manifest.entries.find(row=>row.id==='mapping-receipts');entry.sha256=await vibeDigest(new TextEncoder().encode(indexText));entry.bytes=new Blob([indexText]).size;
+  const manifestText=JSON.stringify(manifest),forged=await rehash({...old,manifestText,mappingIndexText:indexText,carrierDigest:await vibeDigest(new TextEncoder().encode(manifestText))}),head=bundleCarrierHead((await inspectBundleCarrierProof(forged)).summary);
+  f.proofs[0]=forged;f.heads[0]=head;await assert.rejects(capture(f),/与原目录不符/);
+  const index=await rehash({...captured.index,heads:captured.index.heads.map(row=>row.carrierDigest===old.carrierDigest?head:row).sort((a,b)=>a.carrierDigest<b.carrierDigest?-1:1)});
+  const entries=captured.entries.map(row=>row.id==='bundle-carriers'?{...row,file:carrierFile(index)}:row.id==='carrier:'+old.carrierDigest?{id:'carrier:'+head.carrierDigest,file:carrierFile(forged)}:row);
+  await assert.rejects(checked([...f.mappings.entries,...entries]),/与原目录不符/);
+});
+
+test('a canonical mapping segment cannot stand in for a missing declared original during unique-member checks',async()=>{
+  const f=await carrierFixture({variant:false}),captured=await capture(f);f.originals.pop();await assert.rejects(capture(f),/原文缺失/);
+  const index=await rehash({...captured.index,originals:captured.index.originals.slice(1)}),entries=captured.entries.map(row=>row.id==='bundle-carriers'?{...row,file:carrierFile(index)}:row);
+  await assert.rejects(checked([...f.mappings.entries,...entries]),/原文缺失/);
+});
+
+test('unique-member verification is local to one operation and never reuses a prior source read after corruption',async()=>{
+  const f=await carrierFixture();await capture(f);const head=f.originals[0],text=await f.rawFiles.get(head.sha256).text();f.rawFiles.set(head.sha256,new Blob([text.replace('"createdAt":','"createdXs":')]));
+  await assert.rejects(capture(f),/指纹不符/);
+});
