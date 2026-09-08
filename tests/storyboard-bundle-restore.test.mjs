@@ -1,0 +1,177 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { fixture as sourceFixture, namespace, chatKey, file, data } from './fixtures/storyboard-bundle.mjs';
+import { createStoryboardBundleRestoreSession } from '../qianmu-storyboard-bundle-restore.js';
+import { createStoryboardBundleConfiguration } from '../qianmu-storyboard-bundle-configuration.js';
+import { planComfyLibraryRestore, comfyLibraryBackupDigest as digest } from '../qianmu-comfy-library-backup.js';
+import { planComfyPoolRestore } from '../qianmu-comfy-pool-backup.js';
+import { planCharacterLibraryRestore } from '../qianmu-character-library-backup.js';
+import { validateResourceRestoreCheckpoint } from '../qianmu-storyboard-package-journal.js';
+import { createStoryboardDefaults } from '../qianmu-storyboard.js';
+import { vibeDigest } from '../qianmu-vibe-file.js';
+
+const clone = structuredClone;
+async function fixture() {
+  const source = await sourceFixture(); source.config.chat.images[0].source = 'novel'; source.config.chat.images[0].floor = 0;
+  source.options.storyboard = file(source.config); const built = await source.build();
+  const e = { active: true, events: [], files: new Map(), records: new Map(), mutation: null, settings: createStoryboardDefaults(), chat: {},
+    messages: [{ mes: 'original text', is_user: false, swipe_id: 0 }], locals: clone(source.sources), vibes: false, configChanges: 0 };
+  e.locals.workflows.workflows = []; e.locals.pools.pools = [];
+  e.locals.characters.archives = []; e.locals.characters.bindings = []; e.locals.characters.usage = { count: 0, bytes: 0, bindings: 0 };
+  const options = { namespace, chatKey, file: built.file, guard: async () => { if (!e.active) throw Error('inactive'); }, isCurrent: () => e.active,
+    locks: { request: async (name, settings, fn) => { e.events.push(`lock:${name}`); return fn(e.lockUnavailable ? null : {}); } } };
+  const store = key => ({ backup: async () => clone(e.locals[key]), usage: async () => ({ limit: e.limits?.[key] || (key === 'pools' ? 16 : 64) * 1024 * 1024 }),
+    restoreBackup: async (ns, input, approved) => {
+      assert.equal(ns, namespace); assert.equal(approved.confirmed, true); assert.equal(await digest(e.locals[key]), approved.expectedDigest);
+      if (e.failAt === key) throw Error('synthetic failure');
+      if (key === 'characters') e.locals[key] = planCharacterLibraryRestore(e.locals[key], input, approved).value;
+      else {
+        const plan = (key === 'pools' ? planComfyPoolRestore : planComfyLibraryRestore)(e.locals[key], input), rows = new Map(e.locals[key][key].map(row => [row.head.id, row]));
+        for (const row of plan.writes) rows.set(row.head.id, { head: row.head, versions: [...(rows.get(row.head.id)?.versions || []), ...row.versions] });
+        e.locals[key][key] = [...rows.values()].sort((a, b) => a.head.id.localeCompare(b.head.id));
+      }
+      e.events.push(key); if (e.afterStore) await e.afterStore(key); return {};
+    } });
+  options.workflowStore = store('workflows'); options.poolStore = store('pools'); options.characterStore = store('characters');
+  options.images = { inspect: async receipt => ({ receipt: clone(receipt), state: receipt.url === e.conflict ? 'conflict' : e.files.has(receipt.url) ? 'present' : 'missing' }),
+    restore: async (receipt, encoded, approved) => {
+      assert.equal(approved.confirmed, true); assert.equal(encoded, data); assert.equal(e.records.get('bundle').phase, 'originals'); assert.equal(e.files.has(receipt.url), false);
+      e.files.set(receipt.url, data); e.events.push('image'); if (e.afterImage) await e.afterImage(); return { state: 'created', receipt: clone(receipt) };
+    } };
+  options.vibeStage = { inspect: async () => ({ fileHash: await vibeDigest(new Uint8Array(await source.options.storyboard.arrayBuffer())), localHash: await digest(e.vibes), fits: !e.vibeFull, missing: e.vibes ? 0 : 1, rows: [], namespace }),
+    stage: async (_file, proof, confirmed) => { assert.equal(confirmed, true); assert.equal(proof.localHash, await digest(e.vibes)); if (e.failAt === 'vibes') throw Error('synthetic vibe failure'); e.vibes = true; e.events.push('vibes'); } };
+  options.journal = {
+    loadResource: async (_ns, kind = 'characters') => clone(e.records.get(kind) || null),
+    prepareResource: async (descriptor, approved) => { assert.equal(approved.confirmed, true); assert.deepEqual(approved.previous, e.records.get(descriptor.kind) || null);
+      if (e.failAt === 'journal') throw Error('synthetic journal failure');
+      const row = validateResourceRestoreCheckpoint({ ...clone(descriptor), key: JSON.stringify([namespace, descriptor.kind]), version: 1, phase: 'prepared', revision: (approved.previous?.revision || 0) + 1, createdAt: 1, updatedAt: 1 });
+      e.records.set(row.kind, row); e.events.push('prepared'); return clone(row); },
+    updateResource: async (previous, phase) => { assert.deepEqual(previous, e.records.get(previous.kind)); const row = validateResourceRestoreCheckpoint({ ...previous, phase, revision: previous.revision + 1 }); e.records.set(row.kind, row); e.events.push(`phase:${phase}`); return clone(row); },
+    loadMutation: async () => clone(e.mutation),
+    prepareMutation: async row => { assert.equal(e.mutation, null); if (e.failAt === 'mutation') throw Error('synthetic mutation failure'); e.mutation = clone(row); e.events.push('mutation'); return clone(row); },
+    updateMutation: async (previous, phase) => { assert.deepEqual(e.mutation, previous); e.mutation = { ...clone(previous), phase, revision: previous.revision + 1 }; return clone(e.mutation); },
+  };
+  options.configuration = createStoryboardBundleConfiguration({ namespace, chatKey, settings: e.settings, chat: e.chat, messages: () => e.messages,
+    journal: options.journal, guard: options.guard, isCurrent: options.isCurrent, persist: async () => { if (e.failAt === 'persist') throw Error('synthetic persist failure'); e.events.push('configuration'); } });
+  const reopen = () => createStoryboardBundleRestoreSession(options);
+  return { source, built, e, options, reopen, session: await reopen() };
+}
+const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true };
+const writes = e => e.events.filter(row => !row.startsWith('lock:'));
+
+test('one restore preflights all libraries and configuration then applies resources before the journalled live merge', async () => {
+  const { e, session, source } = await fixture(), before = clone(e.locals), view = await session.preview();
+  assert.equal(view.ready, true); assert.equal(view.images.length, 5); assert.deepEqual(e.locals, before); assert.deepEqual(writes(e), []);
+  const result = await session.restore(view, consent);
+  assert.deepEqual(e.locals, source.sources); assert.equal(e.files.size, 5); assert.equal(result.resourcesVerified, true); assert.equal(result.settingsVerified, false);
+  assert.deepEqual(e.events.filter(row => row.startsWith('phase:')), ['originals','workflows','pools','metadata','vibes','verified'].map(x => `phase:${x}`));
+  assert.ok(e.events.indexOf('configuration') > e.events.indexOf('vibes')); assert.ok(e.events.indexOf('configuration') > e.events.indexOf('mutation'));
+  assert.equal(e.mutation.phase, 'applied'); assert.match(e.chat.storyboardImages[0].url, /Qianmu-Storyboards\/import-/); assert.equal(e.chat.storyboardImages[0].floor, 0);
+  await assert.rejects(session.preview(), /配置有待核对/);
+});
+
+test('every capacity or configuration rejection happens before original uploads and journal writes', async () => {
+  for (const condition of ['workflowFull', 'poolFull', 'vibeFull', 'configInvalid']) {
+    const { e, session, options } = await fixture();
+    if (condition === 'workflowFull') e.limits = { workflows: 1 };
+    if (condition === 'poolFull') e.limits = { pools: 1 };
+    if (condition === 'vibeFull') e.vibeFull = true;
+    // Configuration is frozen; use a fresh adapter which explicitly rejects the detached draft.
+    if (condition === 'configInvalid') { options.configuration = { preview: async () => { throw Error('invalid configuration'); }, apply: async () => assert.fail('not reached') }; await assert.rejects((await createStoryboardBundleRestoreSession(options)).preview()); }
+    else await assert.rejects(session.preview());
+    assert.equal(e.files.size, 0); assert.deepEqual(writes(e), []);
+  }
+});
+
+test('role keep-local choices omit only unused incoming role images, not shared config or pool originals', async () => {
+  const { e, session, source } = await fixture(); e.locals.characters = clone(source.sources.characters);
+  const role = e.locals.characters.archives[0]; role.document.name = 'local Alice'; role.document.imagegen.reference = null; role.document.imagegen.preview = null;
+  role.head.name = role.document.name; role.head.cover = ''; role.head.bytes = file(role.document).size; e.locals.characters.usage.bytes = role.head.bytes;
+  const unresolved = await session.preview(); assert.equal(unresolved.ready, false); assert.equal(unresolved.images.length, 0);
+  const view = await session.preview({ 'archive:alice': 'local' }); assert.equal(view.images.length, 3);
+  await session.restore(view, consent); assert.equal(e.locals.characters.archives[0].document.name, 'local Alice'); assert.equal(e.files.size, 3);
+});
+
+test('unconfirmed environment, changed configuration, changed image state and missing locks do not start a restore', async () => {
+  const { e, session } = await fixture(), view = await session.preview();
+  await assert.rejects(session.restore(view, { confirmed: true }), /原环境/); assert.deepEqual(writes(e), []);
+  e.settings.profiles.comfy.model = 'local change'; await assert.rejects(session.restore(view, consent), /确认后/); assert.deepEqual(writes(e), []);
+  const fresh = await session.preview(); e.files.set(fresh.images[0].url, data);
+  await assert.rejects(session.restore(fresh, consent), /确认后/); assert.deepEqual(writes(e), []);
+  e.lockUnavailable = true; await assert.rejects(session.restore(await session.preview(), consent), /另一页面/); assert.deepEqual(writes(e), []);
+});
+
+test('a different original at the destination is a blocking conflict, never an overwrite', async () => {
+  const { e, session } = await fixture(); e.conflict = '/user/images/pool.png'; const view = await session.preview();
+  assert.equal(view.ready, false); await assert.rejects(session.restore(view, consent), /冲突/); assert.equal(e.files.size, 0); assert.deepEqual(writes(e), []);
+});
+
+test('a lost original acknowledgement is explicitly resumed from receipts without duplicate uploads', async () => {
+  const { e, session, reopen } = await fixture(); e.afterImage = () => { throw Error('lost acknowledgement'); };
+  await assert.rejects(session.restore(await session.preview(), consent), { code: 'storyboard_bundle_restore_partial' }); assert.equal(e.files.size, 1); assert.equal(e.records.get('bundle').phase, 'originals');
+  session.close(); e.afterImage = null; const next = await reopen(); await next.restore(await next.preview(), consent);
+  assert.equal(e.files.size, 5); assert.equal(e.events.filter(x => x === 'image').length, 5);
+});
+
+test('failure at each later store keeps originals and explicitly resumes without changing fixed versions', async () => {
+  for (const phase of ['workflows','pools','characters','vibes','mutation']) {
+    const { e, session, reopen } = await fixture(); e.failAt = phase;
+    await assert.rejects(session.restore(await session.preview(), consent)); assert.equal(e.files.size, 5); assert.equal(e.chat.storyboardImages, undefined);
+    session.close(); e.failAt = ''; const next = await reopen(); await next.restore(await next.preview(), consent);
+    assert.equal(e.events.filter(x => x === 'image').length, 5); assert.equal(e.locals.workflows.workflows[0].head.version, 2); assert.equal(e.locals.characters.archives[0].document.comfy.implementations[0].workflow.version, 1);
+  }
+});
+
+test('an unconfirmed settings save leaves before/after recovery and forbids automatic bundle replay', async () => {
+  const { e, session, reopen } = await fixture(); e.failAt = 'persist';
+  await assert.rejects(session.restore(await session.preview(), consent)); assert.equal(e.records.get('bundle').phase, 'verified'); assert.equal(e.mutation.phase, 'uncertain');
+  assert.equal(e.chat.storyboardImages.length, 1); assert.ok(e.mutation.patch.length); assert.equal(e.files.size, 5);
+  await assert.rejects((await reopen()).preview(), /配置有待核对/);
+});
+
+test('a narrative edit during resources does not overwrite the live configuration or discard restored originals', async () => {
+  const { e, session } = await fixture(); e.afterImage = () => { e.messages[0].mes = 'edited meanwhile'; };
+  await assert.rejects(session.restore(await session.preview(), consent), /正文已变化/); assert.equal(e.chat.storyboardImages, undefined); assert.equal(e.mutation, null); assert.equal(e.files.size, 5);
+});
+
+test('a concurrently added local role is never overwritten by an earlier bundle approval', async () => {
+  const { e, source, session, reopen } = await fixture(); let changed = false;
+  e.afterImage = () => {
+    if (changed) return; changed = true; const row = clone(source.sources.characters.archives[0]);
+    row.head.id = 'local-only'; e.locals.characters.archives = [row]; e.locals.characters.usage = { count: 1, bytes: row.head.bytes, bindings: 0 };
+  };
+  await assert.rejects(session.restore(await session.preview(), consent), { code: 'storyboard_bundle_restore_partial' });
+  assert.equal(e.locals.characters.archives[0].head.id, 'local-only'); assert.equal(e.chat.storyboardImages, undefined); assert.equal(e.records.get('bundle').phase, 'metadata');
+  e.afterImage = null; const next = await reopen(); await next.restore(await next.preview(), consent);
+  assert.deepEqual(e.locals.characters.archives.map(row => row.head.id), ['alice', 'local-only']); assert.equal(e.events.filter(x => x === 'image').length, 5);
+});
+
+test('a bad readback of a restored fixed workflow stops before pool, role or configuration writes', async () => {
+  const { e, session } = await fixture(); e.afterStore = key => { if (key === 'workflows') e.locals.workflows.workflows = []; };
+  await assert.rejects(session.restore(await session.preview(), consent), /固定工作流/);
+  assert.equal(e.locals.pools.pools.length, 0); assert.equal(e.locals.characters.archives.length, 0); assert.equal(e.mutation, null); assert.equal(e.records.get('bundle').phase, 'workflows');
+});
+
+test('a closed session stops between image writes without starting any later stage', async () => {
+  const { e, session } = await fixture(); e.afterImage = () => session.close();
+  await assert.rejects(session.restore(await session.preview(), consent), { code: 'storyboard_bundle_restore_partial' });
+  assert.equal(e.files.size, 1); assert.equal(e.locals.workflows.workflows.length, 0); assert.equal(e.mutation, null);
+});
+
+test('another source, another chat, stale character recovery and changed account are not inferred to be the same environment', async () => {
+  const { e, options, session } = await fixture();
+  await assert.rejects(createStoryboardBundleRestoreSession({ ...options, chatKey: 'other-chat' }), /原 ST/);
+  await assert.rejects(createStoryboardBundleRestoreSession({ ...options, namespace: 'st-user:someone-else' }), /原 ST/);
+  e.records.set('characters', { phase: 'metadata' }); await assert.rejects(session.preview(), /独立角色恢复/); e.records.clear();
+  e.records.set('bundle', { phase: 'pools', sourceDigest: 'f'.repeat(64), chatHash: await vibeDigest(chatKey) }); await assert.rejects(session.preview(), /另一份/); e.records.clear();
+  e.active = false; await assert.rejects(session.preview(), /页面已变化/); assert.deepEqual(writes(e), []);
+});
+
+test('bundle and legacy role checkpoints keep separate legal phases and require the bundle chat identity', () => {
+  const base = { namespace, version: 1, sourceDigest: 'a'.repeat(64), planDigest: 'b'.repeat(64), phase: 'pools', revision: 1, createdAt: 1, updatedAt: 1 };
+  const bundle = { ...base, key: JSON.stringify([namespace, 'bundle']), kind: 'bundle', chatHash: 'c'.repeat(64) };
+  assert.equal(validateResourceRestoreCheckpoint(bundle).phase, 'pools');
+  assert.throws(() => validateResourceRestoreCheckpoint({ ...bundle, chatHash: undefined }));
+  const role = { ...base, key: JSON.stringify([namespace, 'characters']), kind: 'characters' };
+  assert.throws(() => validateResourceRestoreCheckpoint(role)); assert.equal(validateResourceRestoreCheckpoint({ ...role, phase: 'metadata' }).kind, 'characters');
+});

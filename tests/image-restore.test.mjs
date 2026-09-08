@@ -44,7 +44,8 @@ test('image restore contract rejects paths, credentials, overflows and unconfirm
   }
   assert.equal(imageRestoreReceipt({ ...receipt, url: '/user/images/%E5%9B%BE%20%E7%89%87/a.png' }).bytes, bytes.length);
   for (const extra of [{ apiKey: 'no' }, { directory: 'C:/private' }, { namespace: 'alice' }]) assert.throws(() => imageRestoreRequest({ ...input(), ...extra }));
-  assert.throws(() => imageRestoreReceipt({ ...receipt, bytes: 16 * 1024 * 1024 + 1 }));
+  assert.equal(imageRestoreReceipt({ ...receipt, bytes: 24 * 1024 * 1024 }).bytes, 24 * 1024 * 1024);
+  assert.throws(() => imageRestoreReceipt({ ...receipt, bytes: 24 * 1024 * 1024 + 1 }));
   assert.throws(() => imageRestoreRequest({ ...input(true), confirmed: false }, { write: true }));
   assert.throws(() => imageRestoreRequest({ ...input(true), data: PNG + '==' }, { write: true }));
   assert.throws(() => imageRestoreReceipt({ ...receipt, name: 'not-a-disk-field' }));
@@ -54,11 +55,26 @@ test('image restore contract rejects paths, credentials, overflows and unconfirm
 test('capabilities and missing-file inspection are authenticated and never create directories', async t => {
   const f = await fixture(t);
   await assert.rejects(f.service.capabilities({}), { status: 401 });
-  assert.deepEqual(await f.service.capabilities(f.request), capability());
+  assert.deepEqual(await f.service.capabilities(f.request), { ...capability(), maxGalleryImageBytes: 24 * 1024 * 1024 });
   assert.equal((await f.service.inspect(f.request, input())).state, 'missing');
   assert.deepEqual(await fs.readdir(f.images), []);
   await assert.rejects(f.service.inspect(f.request, { ...input(), expectedAccount: account('bob') }), { status: 401 });
   f.request.user.profile.enabled = false; await assert.rejects(f.service.capabilities(f.request), { status: 401 });
+});
+
+test('old 16 MiB services remain compatible for references but stop larger gallery receipts before inspection or upload', async () => {
+  const calls = [], fetchImpl = async (url, options) => {
+    calls.push(url); if (url.endsWith('/capabilities')) return json(capability());
+    return json(result('missing', JSON.parse(options.body).receipt));
+  };
+  const client = createImageRestoreClient({ namespace: 'st-user:alice', fetchImpl });
+  assert.equal((await client.inspect(receipt)).state, 'missing');
+  const before = calls.length;
+  await assert.rejects(client.inspect({ ...receipt, bytes: 16 * 1024 * 1024 + 1 }), /更新后端/);
+  assert.equal(calls.length, before);
+  const updated = createImageRestoreClient({ namespace: 'st-user:alice', fetchImpl: async (url, options) => url.endsWith('/capabilities')
+    ? json({ ...capability(), maxGalleryImageBytes: 24 * 1024 * 1024 }) : json(result('missing', JSON.parse(options.body).receipt)) });
+  assert.equal((await updated.inspect({ ...receipt, bytes: 24 * 1024 * 1024 })).state, 'missing');
 });
 
 test('add-only originals keep exact URL, bytes, inode and modification time on repeated restoration', async t => {

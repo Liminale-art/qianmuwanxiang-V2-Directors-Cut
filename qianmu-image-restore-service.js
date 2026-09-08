@@ -163,7 +163,8 @@ export function createImageRestoreService({ dataRoot, io = fs } = {}) {
     try { return await work; } finally { pending.delete(work); accounts.delete(context.account.namespace); }
   }
   return Object.freeze({
-    async capabilities(request) { const context = capture(request); await checkedRoots(context); return { ok: true, version: 1, expectedAccount: context.account.namespace, originalPaths: true, missingOnly: true, automaticReplay: false, maxImageBytes: IMAGE_RESTORE_MAX_BYTES }; },
+    // Preserve the legacy reference limit field for already-installed clients which compare it exactly.
+    async capabilities(request) { const context = capture(request); await checkedRoots(context); return { ok: true, version: 1, expectedAccount: context.account.namespace, originalPaths: true, missingOnly: true, automaticReplay: false, maxImageBytes: 16 * 1024 * 1024, maxGalleryImageBytes: IMAGE_RESTORE_MAX_BYTES }; },
     inspect: (request, input, { signal } = {}) => task(request, input, false, signal),
     restore: (request, input, { signal } = {}) => task(request, input, true, signal),
     async close() { closed = true; await Promise.allSettled([...pending]); },

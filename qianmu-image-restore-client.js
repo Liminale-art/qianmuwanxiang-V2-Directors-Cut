@@ -12,7 +12,7 @@ const equalReceipt = (a, b) => ['url', 'sha256', 'mime', 'bytes'].every(key => a
 export function createImageRestoreClient({ namespace, headers = () => ({}), fetchImpl = globalThis.fetch, guard = async () => {}, timeoutMs = 60000 } = {}) {
   if (typeof namespace !== 'string' || !/^st-user:.+/.test(namespace) || namespace.length > 512 || /[\u0000-\u001f\u007f]/.test(namespace)) throw fail('原图恢复账户未确认');
   const account = digest(namespace.slice(8)).then(value => `st-user:${value}`);
-  let ready = false;
+  let maxBytes = 0;
   async function call(action, body, { write = false } = {}) {
     await guard(); const controller = new AbortController(); let timer, started = false;
     const state = () => write && started ? 'unconfirmed' : 'not_started';
@@ -56,15 +56,19 @@ export function createImageRestoreClient({ namespace, headers = () => ({}), fetc
   }
   async function capabilities() {
     const value = await call('capabilities');
-    if (value.originalPaths !== true || value.missingOnly !== true || value.automaticReplay !== false || value.maxImageBytes !== IMAGE_RESTORE_MAX_BYTES) throw fail('增强服务尚未支持只补缺件的原图恢复，请先更新后端');
-    ready = true; return value;
+    const limit = value.maxGalleryImageBytes ?? value.maxImageBytes;
+    if (value.originalPaths !== true || value.missingOnly !== true || value.automaticReplay !== false || !Number.isSafeInteger(value.maxImageBytes)
+      || value.maxImageBytes < 16 * 1024 * 1024 || value.maxImageBytes > IMAGE_RESTORE_MAX_BYTES
+      || !Number.isSafeInteger(limit) || limit < value.maxImageBytes || limit > IMAGE_RESTORE_MAX_BYTES) throw fail('增强服务尚未支持只补缺件的原图恢复，请先更新后端');
+    maxBytes = limit; return value;
   }
   async function execute(receipt, data, confirmed, write) {
     // Capture immutable primitives before any await; never read a changed caller receipt after confirmation.
     const frozen = imageRestoreReceipt(receipt);
     if (write && confirmed !== true) throw fail('请先确认恢复原图');
     const body = imageRestoreRequest({ version: 1, expectedAccount: await account, receipt: frozen, ...(write ? { data, confirmed: true } : {}) }, { write });
-    await guard(); if (!ready) await capabilities(); await guard();
+    await guard(); if (!maxBytes) await capabilities(); await guard();
+    if (frozen.bytes > maxBytes) throw fail('此原图超过当前增强服务的恢复上限，请更新后端；未上传或覆盖图片');
     const value = await call(write ? 'restore' : 'inspect', body, { write });
     let returned; try { returned = imageRestoreReceipt(value.receipt); } catch (_) { throw fail('原图恢复返回收据无效', write ? 'unconfirmed' : 'not_started'); }
     if (!equalReceipt(returned, frozen) || !(write ? ['created', 'reused'] : ['present', 'missing', 'conflict']).includes(value.state)) throw fail('原图恢复结果与所选文件不符', write ? 'unconfirmed' : 'not_started');

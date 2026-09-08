@@ -7,6 +7,8 @@
     "qianmu-storyboard-bundle-resources.js",
     "qianmu-storyboard-bundle-worker.js",
     "qianmu-storyboard-bundle-runtime.js",
+    "qianmu-storyboard-bundle-restore.js",
+    "qianmu-storyboard-bundle-configuration.js",
     "qianmu-character-backup-restore.js",
     "qianmu-image-restore-contract.js",
     "qianmu-image-restore-service.js",

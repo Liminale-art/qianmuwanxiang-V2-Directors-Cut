@@ -1,0 +1,58 @@
+import { STORYBOARD_SOURCES, sanitizeStoryboardSnapshot, createStoryboardMessageReference, resolveStoryboardMessageReference } from './qianmu-storyboard.js';
+import { hashText } from './qianmu-storyboard-utils.js';
+import { prepareStoryboardPackageDraft } from './qianmu-storyboard-package-draft.js';
+import { createStoryboardMutation, inspectStoryboardMutation, applyStoryboardMutation } from './qianmu-storyboard-package-mutation.js';
+import { comfyLibraryBackupDigest as digest } from './qianmu-comfy-library-backup.js';
+
+const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle_configuration', submissionState: 'not_submitted' }); };
+const clone = structuredClone;
+
+// Live ST state is injected by the entry point. Resource code never gets a reference to these objects.
+// Persistence may be debounced by ST: an applied journal is NOT proof of durable settings after reload.
+export function createStoryboardBundleConfiguration({ namespace, chatKey, settings, chat, messages, journal, persist, guard, isCurrent }) {
+  if (![messages, persist, guard, isCurrent].every(value => typeof value === 'function')) fail('缺少配置恢复环境或持久保存接口');
+  const stamp = () => JSON.stringify(messages().map((message, floor) => createStoryboardMessageReference({ message, floor, chatKey, now: 1 })));
+  const check = async () => { if (isCurrent() !== true) fail('配置恢复页面已变化'); await guard(); if (isCurrent() !== true) fail('配置恢复页面已变化'); };
+  async function prepare(input) {
+    const source = clone(input); await check();
+    const originalStamp = stamp(), list = clone(messages());
+    const images = (source.chat?.images || []).map(raw => {
+      if (!raw?.id || !Object.hasOwn(STORYBOARD_SOURCES, raw.source)) fail('成片包含不支持的渠道，未部分导入');
+      if (raw.snapshotRef && !raw.snapshot && !raw.recipeUnavailable) fail('成片缺少原始配置，请保留原包');
+      const url = source.imageUrls?.[raw.id];
+      if (typeof url !== 'string' || !/^\/user\/images\/Qianmu-Storyboards\/import-[a-f0-9]{64}\.(?:png|jpg|webp)$/.test(url)) fail('成片缺少已核对的原件收据地址');
+      const record = { ...raw, url, chatKey }; delete record.snapshotRef; delete record.snapshotVersion;
+      record.snapshot = sanitizeStoryboardSnapshot(record.snapshot || {}, { source: record.source, prompt: record.prompt, negative: record.negative });
+      const floor = Number.isInteger(record.floor) ? record.floor : null, message = list[floor];
+      const reference = record.messageRef ? { ...record.messageRef, chatKey } : null;
+      const resolved = reference?.messageKey ? resolveStoryboardMessageReference(reference, list, { chatKey }) : null;
+      const valid = resolved ? resolved.state === 'active' : message && (!record.messageHash || record.messageHash === hashText(String(message.mes || ''))) && Number(record.swipeId || 0) === Number(message.swipe_id || 0);
+      if (resolved?.state === 'active') { record.floor = resolved.floor; record.linkState = 'active'; record.messageRef = reference; }
+      else if (!valid) { record.lastKnownFloor = floor; record.floor = null; record.linkState = resolved?.state || 'orphaned'; }
+      return record;
+    });
+    const draft = prepareStoryboardPackageDraft({ settings, chat, incoming: source.settings, images, collections: source.chat?.collections || [], chatKey, now: 0 });
+    const mutation = await createStoryboardMutation({ namespace, chatKey, fileHash: source.fingerprint, settings, chat, draft, now: () => 0 });
+    const proof = await digest({ mutation, messages: originalStamp }); await check();
+    if (stamp() !== originalStamp || inspectStoryboardMutation(mutation, { settings, chat }).conflicts.length) fail('核对期间正文或配置已变化');
+    return { mutation, stamp: originalStamp, digest: proof, summary: { images: images.length, orphaned: images.filter(row => row.linkState !== 'active' && row.floor == null).length, fields: mutation.patch.length } };
+  }
+  return Object.freeze({
+    async preview(input) { const prepared = await prepare(input); return { digest: prepared.digest, summary: prepared.summary }; },
+    async apply(input) {
+      const source = clone(input), prepared = await prepare(source);
+      if (source.expectedDigest !== prepared.digest) fail('配置或正文已变化，未覆盖，请重新核对');
+      await check(); const pending = await journal.prepareMutation(prepared.mutation, { isCurrent }); await check();
+      const report = inspectStoryboardMutation(pending, { settings, chat });
+      if (stamp() !== prepared.stamp || report.conflicts.length || report.after) fail('写入恢复记录期间正文或配置已变化，请先核对导入');
+      applyStoryboardMutation(pending, { settings, chat });
+      try {
+        await persist(); await check(); await journal.updateMutation(pending, 'applied', { isCurrent }); await check();
+        return { settingsApplied: true, settingsVerified: false };
+      } catch (cause) {
+        if (isCurrent() === true) try { await journal.updateMutation(pending, 'uncertain', { isCurrent }); } catch (_) {}
+        throw Object.assign(new Error('配置保存尚未确认，请刷新后通过“核对导入”处理；原配置恢复记录和原件已保留'), { code: 'storyboard_bundle_configuration_pending', cause, submissionState: 'not_submitted' });
+      }
+    },
+  });
+}

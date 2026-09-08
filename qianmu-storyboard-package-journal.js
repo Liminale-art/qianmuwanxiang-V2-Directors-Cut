@@ -7,10 +7,12 @@ const phases=['prepared','staging','assets_ready'];
 const key=row=>JSON.stringify([row.namespace,row.chatHash,row.fileHash]);
 const fields=['key','version','namespace','sourceNamespace','chatHash','fileHash','fileBytes','assetIds','phase','revision','createdAt','updatedAt'];
 const resourcePhases=['prepared','originals','workflows','metadata','verified'];
+const bundlePhases=['prepared','originals','workflows','pools','metadata','vibes','verified'];
+const resourceOrder=kind=>kind==='bundle'?bundlePhases:resourcePhases;
 export function validateResourceRestoreCheckpoint(row){
-  const keys=['key','version','namespace','kind','sourceDigest','planDigest','phase','revision','createdAt','updatedAt'];
-  if(!row||typeof row!=='object'||Array.isArray(row)||Object.keys(row).some(name=>!keys.includes(name))||row.version!==1||!account(row.namespace)||row.kind!=='characters'
-    ||row.key!==JSON.stringify([row.namespace,row.kind])||!hash(row.sourceDigest)||!hash(row.planDigest)||!resourcePhases.includes(row.phase)
+  const keys=['key','version','namespace','kind','sourceDigest','planDigest','phase','revision','createdAt','updatedAt',...(row?.kind==='bundle'?['chatHash']:[])];
+  if(!row||typeof row!=='object'||Array.isArray(row)||Object.keys(row).some(name=>!keys.includes(name))||row.version!==1||!account(row.namespace)||!['characters','bundle'].includes(row.kind)
+    ||(row.kind==='bundle'&&!hash(row.chatHash))||row.key!==JSON.stringify([row.namespace,row.kind])||!hash(row.sourceDigest)||!hash(row.planDigest)||!resourceOrder(row.kind).includes(row.phase)
     ||!Number.isSafeInteger(row.revision)||row.revision<1||!Number.isSafeInteger(row.createdAt)||row.createdAt<0||!Number.isSafeInteger(row.updatedAt)||row.updatedAt<row.createdAt)fail('资源恢复记录损坏，请保留原备份核对');
   return row;
 }
@@ -56,7 +58,7 @@ export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,k
   }
   return Object.freeze({
     async loadResource(namespace,kind='characters'){
-      if(!account(namespace)||kind!=='characters')fail('资源恢复账户或类型无效');
+      if(!account(namespace)||!['characters','bundle'].includes(kind))fail('资源恢复账户或类型无效');
       return transaction('readonly',()=>true,(store,read,set)=>read(store.get(JSON.stringify([namespace,kind])),row=>{
         if(row){validateResourceRestoreCheckpoint(row);if(row.namespace!==namespace||row.kind!==kind)fail('资源恢复记录归属不符');}set(row||null);
       }),'resources');
@@ -68,14 +70,15 @@ export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,k
       return transaction('readwrite',isCurrent,(store,read,set)=>read(store.get(row.key),current=>{
         if(current)validateResourceRestoreCheckpoint(current);
         if(JSON.stringify(current||null)!==JSON.stringify(approved))fail('资源恢复记录已被另一页面修改，请重新核对');
-        if(current&&current.sourceDigest!==row.sourceDigest&&current.phase!=='verified')fail('本账户有未完成的资源恢复，请先选择原备份核对');
+        if(current&&(current.sourceDigest!==row.sourceDigest||current.chatHash!==row.chatHash)&&current.phase!=='verified')fail('本账户有未完成的资源恢复，请先选择原备份核对');
         if(current){row.revision=current.revision+1;row.createdAt=current.sourceDigest===row.sourceDigest?current.createdAt:stamp;row.updatedAt=Math.max(current.updatedAt,stamp);}
         validateResourceRestoreCheckpoint(row);store.put(row);set(row);
       }),'resources');
     },
     async updateResource(input,phase,{isCurrent=()=>true}={}){
       const previous=structuredClone(validateResourceRestoreCheckpoint(input));
-      if(resourcePhases.indexOf(phase)!==resourcePhases.indexOf(previous.phase)+1)fail('资源恢复阶段次序无效');
+      const order=resourceOrder(previous.kind);
+      if(order.indexOf(phase)!==order.indexOf(previous.phase)+1)fail('资源恢复阶段次序无效');
       return transaction('readwrite',isCurrent,(store,read,set)=>read(store.get(previous.key),row=>{
         validateResourceRestoreCheckpoint(row);if(JSON.stringify(row)!==JSON.stringify(previous))fail('资源恢复记录已变化，请重新核对');
         const next=validateResourceRestoreCheckpoint({...row,phase,revision:row.revision+1,updatedAt:Math.max(row.updatedAt,now())});store.put(next);set(next);

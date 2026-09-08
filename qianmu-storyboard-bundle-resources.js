@@ -123,3 +123,15 @@ export async function inspectStoryboardResourceBundle(file, { guard = async () =
   return { manifest: opened.manifest, fileBytes: opened.fileBytes, fingerprint: opened.fingerprint, summary,
     originals: [...census.originals.values()] };
 }
+
+// Restore only the selected incoming role originals. Shared config/pool references still remain required.
+// Called after the immutable bundle has passed full validation; this does not authorize any write.
+export async function collectStoryboardBundleRestoreOriginals(payload, pools, characters, excludedCharacterIds = []) {
+  const namespace = characters.namespace, { census } = await inspectConfig(payload, namespace, { checked: true });
+  scan(pools, namespace, census);
+  const excluded = new Set(excludedCharacterIds);
+  for (const row of characters.archives) if (!excluded.has(row.head.id)) {
+    for (const original of [row.document.imagegen.reference, row.document.imagegen.preview]) if (original) addOriginal(census, original);
+  }
+  return [...census.originals.values()];
+}

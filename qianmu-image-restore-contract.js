@@ -1,7 +1,8 @@
 import { comfyReferencePath } from './qianmu-comfy-reference-contract.js';
 
 export const IMAGE_RESTORE_VERSION = 1;
-export const IMAGE_RESTORE_MAX_BYTES = 16 * 1024 * 1024;
+// Gallery originals support 24 MiB. Role/Comfy reference selections retain their own 16 MiB limits.
+export const IMAGE_RESTORE_MAX_BYTES = 24 * 1024 * 1024;
 export const imageRestoreError = (code, message, status = 409) => Object.assign(new Error(message), { code: `image_restore_${code}`, message, status, submissionState: 'not_submitted' });
 const fail = (code, message) => { throw imageRestoreError(code, message, 400); };
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -10,7 +11,7 @@ export const imageRestoreAccount = value => typeof value === 'string' && /^st-us
 // Portable image locations only. Never accept a server disk path or let a receipt address private service directories.
 export function imageRestoreReceipt(value) {
   if (!object(value) || Object.keys(value).some(key => !['url', 'sha256', 'mime', 'bytes'].includes(key)) || typeof value.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.sha256)
-    || !Number.isSafeInteger(value.bytes) || value.bytes < 1 || value.bytes > IMAGE_RESTORE_MAX_BYTES || !['image/png', 'image/jpeg', 'image/webp'].includes(value.mime)) fail('receipt', '原图恢复收据无效或单张超过 16 MiB');
+    || !Number.isSafeInteger(value.bytes) || value.bytes < 1 || value.bytes > IMAGE_RESTORE_MAX_BYTES || !['image/png', 'image/jpeg', 'image/webp'].includes(value.mime)) fail('receipt', '原图恢复收据无效或单张超过 24 MiB');
   let url; try { url = comfyReferencePath(value.url); } catch (_) { fail('path', '原图恢复仅限当前 ST 的图片目录'); }
   if (url !== value.url) fail('path', '原图恢复路径须为完整的 /user/images/ 路径');
   const components = url.slice('/user/images/'.length).split('/').map(part => decodeURIComponent(part));
