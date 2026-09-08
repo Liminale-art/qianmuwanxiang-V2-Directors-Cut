@@ -19,6 +19,7 @@ import { comfyReferenceStillMime } from './qianmu-comfy-results.js';
 import { imageRestoreReceipt } from './qianmu-image-restore-contract.js';
 import { vibeDigest } from './qianmu-vibe-file.js';
 import { captureLegacyVibeOriginals, inspectLegacyVibeOriginals } from './qianmu-storyboard-legacy-vibes.js';
+import { captureBundleMappings, inspectBundleMappings } from './qianmu-bundle-mappings.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle_resources', submissionState: 'not_submitted' }); };
 const object = value => value !== null && typeof value === 'object';
@@ -106,7 +107,7 @@ async function inspectLibraries(namespace, config, { workflows, pools, character
 }
 
 // This unit captures and verifies one portable file. Applying it requires the explicit staged restore coordinator.
-export async function captureStoryboardResourceBundle({ namespace, chatKey, storyboard, workflowStore, poolStore, characterStore, source = null, chatEvidence = null, subjectEvidence = null,
+export async function captureStoryboardResourceBundle({ namespace, chatKey, storyboard, workflowStore, poolStore, characterStore, journal = null, source = null, chatEvidence = null, subjectEvidence = null,
   guard = async () => {}, isCurrent = () => true, readImages = readStaticReferenceBlobs, legacyFetch = globalThis.fetch, now = Date.now }) {
   const check = async () => { if (isCurrent() !== true) fail('资源包页面已变化'); await guard(); if (isCurrent() !== true) fail('资源包页面已变化'); };
   source = source === null ? null : await sourceIdentityForNamespace(source, namespace);
@@ -121,6 +122,8 @@ export async function captureStoryboardResourceBundle({ namespace, chatKey, stor
   if (subjectEvidence) checkSubjectCoverage(subjectEvidence, characters);
   const baselines = await Promise.all([digest(workflows), digest(pools), digest(characters)]); await check();
   const entries = [{ id: 'storyboard', file: storyboard }, { id: 'workflows', file: jsonFile(workflows) }, { id: 'pools', file: jsonFile(pools) }, { id: 'characters', file: jsonFile(characters) }];
+  const mappings=journal===null?null:await captureBundleMappings({namespace,journal,guard:check,isCurrent});
+  if(mappings){entries.push(...mappings.entries);summary.mappingReceipts=mappings.summary;}
   if (chatEvidence) entries.push({ id: 'chat-evidence', file: jsonFile(chatEvidence) });
   if (chatEvidence) summary.chatEvidenceMessages = chatEvidence.messages.length;
   if (subjectEvidence) { entries.push({ id: 'subject-evidence', file: jsonFile(subjectEvidence) }); summary.subjectEvidenceCount = subjectEvidence.subjects.length; }
@@ -148,16 +151,19 @@ export async function captureStoryboardResourceBundle({ namespace, chatKey, stor
     if (await digest(await store.backup(namespace, { isCurrent })) !== baselines[index]) fail('打包期间资源库已变化，请重新导出'); await check();
   }
   const result = await buildStoryboardBundle({ namespace, chatKey, entries, source, createdAt: now() }, { guard: check });
+  await mappings?.verify();
   await check(); return { ...result, summary };
 }
 
 export async function inspectStoryboardResourceBundle(file, { guard = async () => {}, includeOrigins = false } = {}) {
   const opened = await openStoryboardBundle(file, { guard }), namespace = opened.manifest.namespace;
+  const mappings=await inspectBundleMappings(opened,{guard});
   const config = await (async () => inspectConfig(await opened.readJson('storyboard'), namespace, {withOrigins:true,guard}))(); await guard();
   const legacy = opened.manifest.entries.some(row => row.id === 'legacy-vibes') ? await opened.readJson('legacy-vibes') : null;
   if (legacy) includeLegacyOriginals(config, legacy);
   const workflows = await opened.readJson('workflows'), pools = await opened.readJson('pools'), characters = await opened.readJson('characters'); await guard();
   const { census, summary } = await inspectLibraries(namespace, config, { workflows, pools, characters }, guard);
+  if(mappings)summary.mappingReceipts=mappings.summary;
   if (opened.manifest.entries.some(row => row.id === 'chat-evidence')) {
     const evidence = await inspectStoryboardChatEvidence(await opened.readJson('chat-evidence'), opened.manifest.chatKey); summary.chatEvidenceMessages = evidence.messages.length; await guard();
   }

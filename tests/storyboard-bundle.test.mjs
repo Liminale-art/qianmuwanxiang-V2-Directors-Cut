@@ -13,6 +13,8 @@ import { normalizeCharacterArchive, newCharacterArchive } from '../qianmu-charac
 import { CHARACTER_LIBRARY_BACKUP_SCHEMA } from '../qianmu-character-library-backup.js';
 import { comfyWorkflowReferenceHash, readStaticReferenceBlobs, readStaticReferenceImages } from '../qianmu-comfy-references.js';
 import { vibeDigest } from '../qianmu-vibe-file.js';
+import { createStoryboardEnvironmentReview } from '../qianmu-storyboard-environment-map.js';
+import { mappingHead } from '../qianmu-storyboard-mapping-contract.js';
 
 const namespace = 'st-user:bundle', chatKey = 'chat-one', clone = structuredClone;
 const data = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=';
@@ -65,6 +67,17 @@ test('unified bundle shares complete workflow history once and deduplicates orig
   assert.deepEqual(await opened.readJson('storyboard'), f.config);
   assert.equal((await opened.readJson('characters')).archives[0].document.comfy.implementations[0].workflow.version, 1);
   assert.deepEqual(Buffer.from((await opened.read(`image:${sha256}`)).bytes), png);
+});
+
+test('full resource capture includes historic mappings without changing their source and fails before images if journal is unavailable',async()=>{
+  const f=await fixture(),source={ok:true,version:1,state:'ready',expectedAccount:'st-user:'+await vibeDigest(namespace.slice(8)),instanceId:randomUUID(),accountId:randomUUID(),proof:'installation-labels',automaticRebinding:false};
+  const review=await createStoryboardEnvironmentReview({namespace,chatHash:'a'.repeat(64),sourceDigest:'b'.repeat(64),source,target:{...source,instanceId:randomUUID()}}),receipt={key:review.digest,namespace,review,createdAt:7};
+  const head=mappingHead('environment',receipt);let lists=0;
+  f.options.journal={listMappingHeads:async()=>{lists++;return [head];},loadMappingReceipt:async()=>receipt};
+  const captured=await f.build(),inspected=await inspectStoryboardResourceBundle(captured.file);assert.equal(captured.summary.mappingReceipts.count,1);assert.deepEqual(inspected.summary,captured.summary);assert.equal(lists,3);
+  assert.deepEqual(await (await openStoryboardBundle(captured.file)).readJson('mapping:environment:'+review.digest),receipt);
+  const next=await fixture();next.options.journal={listMappingHeads:async()=>{throw Error('journal unavailable');},loadMappingReceipt:async()=>null};await assert.rejects(next.build(),/unavailable/);assert.equal(next.reads.images,0);
+  const late=await fixture();let changed=false;late.options.journal={listMappingHeads:async()=>changed?[]:[head],loadMappingReceipt:async()=>receipt};late.options.readImages=async()=>{changed=true;return [blob];};await assert.rejects(late.build(),/迁移凭据已变化/);
 });
 
 test('source-labelled v3 bundles preserve complete contents and validate the account digest without upgrading legacy evidence', async () => {
@@ -207,4 +220,10 @@ test('background runtime stops when the account guard rejects, and refuses malfo
   let ok = true; const pending = runStoryboardBundle('inspect', blob, { guard: async () => { if (!ok) throw Error('account changed'); }, WorkerClass: FakeWorker }); await turn();
   ok = false; FakeWorker.latest.emit({ guard: 1 }); await assert.rejects(pending, /account changed/); assert.equal(FakeWorker.latest.terminated, true);
   const malformed = runStoryboardBundle('inspect', blob, { guard: async () => {}, WorkerClass: FakeWorker }); await turn(); FakeWorker.latest.emit({ result: {} }); await assert.rejects(malformed, /不完整/);
+});
+
+test('bundle worker summary must retain the declared receipt index without gaining approval',async()=>{
+  const pending=runStoryboardBundle('inspect',blob,{guard:async()=>{},WorkerClass:FakeWorker});await turn();
+  FakeWorker.latest.emit({result:{summary:{},manifest:{entries:[{id:'mapping-receipts',bytes:100,sha256}]},fingerprint:sha256,fileBytes:100}});
+  await assert.rejects(pending,/凭据摘要/);assert.equal(FakeWorker.latest.terminated,true);
 });

@@ -8,6 +8,8 @@
     "qianmu-user-alias-bindings.js",
     "qianmu-bundle-user-alias.js",
     "qianmu-bundle-subject-map.js",
+    "qianmu-bundle-mapping-contract.js",
+    "qianmu-bundle-mappings.js",
     "qianmu-bundle-user-alias-contract.js",
     "qianmu-user-alias-contract.js",
     "qianmu-user-alias-runtime.js",

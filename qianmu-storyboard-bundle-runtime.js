@@ -1,5 +1,6 @@
 import { projectStoryboardChatMessages } from './qianmu-storyboard-chat-evidence.js';
 import { projectStoryboardSubjects, inspectStoryboardSubjectEvidence } from './qianmu-storyboard-subject-evidence.js';
+import { validateBundleMappingTransportSummary } from './qianmu-bundle-mapping-contract.js';
 let active = null;
 const failure = message => Object.assign(new Error(message), { code: 'storyboard_bundle_runtime', submissionState: 'not_submitted' });
 export function closeStoryboardBundleRuntime() { active?.finish(failure('资源包处理已取消，原库未修改')); }
@@ -46,7 +47,11 @@ export async function runStoryboardBundle(action, file, { namespace, chatKey, so
         }
         if (!result?.summary || !result.manifest || typeof result.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(result.fingerprint)
           || (action === 'capture' ? !(result.file instanceof Blob) : !Number.isSafeInteger(result.fileBytes))) finish(failure('资源包处理返回不完整'));
-        else finish(null, result);
+        else {
+          try { validateBundleMappingTransportSummary(result.summary.mappingReceipts,result.manifest); }
+          catch (_) { finish(failure('资源包迁移凭据摘要返回不符'));return; }
+          finish(null, result);
+        }
       });
       signal?.addEventListener('abort', abort, { once: true });
       timer = setTimeout(() => finish(failure('资源包处理超时，请保留原文件后重试')), Math.max(100, Math.min(300000, Number(timeoutMs) || 180000)));

@@ -39,6 +39,8 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
   const inspected = await inspectStoryboardResourceBundle(file, { guard: check, includeOrigins: true }), opened = await openStoryboardBundle(file, { guard: check });
   if (inspected.fingerprint !== opened.fingerprint) fail('核验后资源联包发生变化，请重新选择原文件');
   if (inspected.manifest.namespace !== namespace || inspected.manifest.chatKey !== chatKey) fail('请在原 ST 账户及原聊天核对；跨环境身份重绑定尚未确认');
+  // Until the receipt import coordinator is installed, do not silently restore resources but drop their history.
+  if(inspected.summary.mappingReceipts?.count)fail('此包含历史迁移凭据，恢复接入尚待完成；请保留原包与原环境，未恢复任何数据');
   const sourceDigest = inspected.fingerprint, chatHash = await vibeDigest(chatKey);
   let environmentReview = null;
   const checkSource = async () => {
