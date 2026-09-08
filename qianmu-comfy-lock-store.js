@@ -158,6 +158,24 @@ export function createComfySceneLockStore({indexedDB=globalThis.indexedDB,keyRan
         }catch(cause){abort(cause);}};
       });
     },
+    async storageSummary(namespace,{isCurrent=()=>true}={}){
+      namespace=assertComfyRouteNamespace(namespace);if(!isCurrent())throw closedError();
+      return transaction('readonly',(tx,output,abort)=>{
+        const request=tx.objectStore('usage').get(namespace);
+        request.onsuccess=()=>{try{
+          if(!isCurrent())throw closedError();const raw=request.result,meta=usage(raw);let count=0,documentBytes=0,indexBytes=raw?bytes(raw):0;
+          const scan=tx.objectStore('scopes').index('chat').openCursor(keyRange.bound([namespace],[namespace,[]]));
+          scan.onsuccess=()=>{try{
+            if(!isCurrent())throw closedError();const cursor=scan.result;
+            if(!cursor){if(count!==meta.count||documentBytes!==meta.bytes)throw problem();output({status:'ready',count,documentBytes,indexBytes,bytes:documentBytes+indexBytes,generation:meta.generation});return;}
+            const row=cursor.value;if(++count>quota.scopes||row.namespace!==namespace||row.bytes!==bytes(row.record)||row.bytes>quota.rowBytes)throw problem();
+            const record=normalizeComfySceneRecord(row.record,row.record.scope);
+            if(record.scope.namespace!==namespace||record.scope.chatKey!==row.chatKey||comfySceneScopeKey(record.scope)!==cursor.primaryKey)throw problem();
+            documentBytes+=row.bytes;indexBytes+=bytes(row)-row.bytes;if(documentBytes>quota.bytes)throw problem();cursor.continue();
+          }catch(cause){abort(cause);}};
+        }catch(cause){abort(cause);}};
+      },isCurrent);
+    },
     async usage(namespace){namespace=assertComfyRouteNamespace(namespace);return transaction('readonly',(tx,output,abort)=>{const request=tx.objectStore('usage').get(namespace);request.onsuccess=()=>{try{output({...usage(request.result),limit:quota.bytes});}catch(error){abort(error);}};});},
     async clearChat(namespace,chatKey,options={}){
       namespace=assertComfyRouteNamespace(namespace);const sample=comfySceneScope({namespace,chatKey,continuityId:'clear',narrativeLayer:'present'});

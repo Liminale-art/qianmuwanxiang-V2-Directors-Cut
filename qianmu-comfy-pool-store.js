@@ -240,6 +240,10 @@ export function createComfyPoolStore({ indexedDB = globalThis.indexedDB, keyRang
         });
       });
     },
+    async storageSummary(namespace,{isCurrent=()=>true}={}){
+      account(namespace);const {readComfyLibraryStorage}=await import('./qianmu-comfy-storage-accounting.js');
+      return operation(stores,'readonly',(tx,read,set)=>readComfyLibraryStorage(tx,read,set,keyRange,'pools',namespace),isCurrent);
+    },
     async usage(namespace) {
       account(namespace); return operation(['heads'], 'readonly', (tx, read, set) => heads(tx, read, namespace, rows => set({
         count: rows.length, archived: rows.filter(row => row.archived).length, versions: rows.reduce((sum, row) => sum + row.version, 0),

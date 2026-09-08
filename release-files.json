@@ -76,6 +76,7 @@
     "qianmu-comfy-lock-store.js",
     "qianmu-comfy-lock-runtime.js",
     "qianmu-comfy-storage.js",
+    "qianmu-comfy-storage-accounting.js",
     "qianmu-prompt-formats.js",
     "qianmu-comfy-prompt.js",
     "qianmu-comfy-workbench-binding.js",

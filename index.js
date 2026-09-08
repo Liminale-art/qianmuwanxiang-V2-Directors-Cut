@@ -7933,7 +7933,7 @@ async function collectStorageInventory() {
     storyboardComfyRecoveryRuntime().then(client => client.usage()).catch(error => ({ bytes: 0, count: 0, error: error?.message || 'Comfy 领取记录暂不可读取' })),
     Promise.all([featureRuntime.load('comfyStorage'),featureRuntime.load('imageAdmission')]).then(([module,identity])=>module.collectComfyStorage({
       resolveNamespace:()=>identity.resolveImageAccountNamespace(),valid:()=>storageEpoch===storyboardAdmissionEpoch,
-    })).catch(error=>({bytes:0,count:0,errors:[error?.message||'Comfy 资料暂不可读取']})),
+    })).catch(error=>({status:'unavailable',bytes:0,count:0,errors:[error?.message||'Comfy 资料暂不可读取']})),
     Promise.all([featureRuntime.load('vibeStorageSummary'),featureRuntime.load('imageAdmission')]).then(([module,identity])=>module.collectVibeStorage({
       resolveNamespace:()=>identity.resolveImageAccountNamespace(),valid:()=>storageEpoch===storyboardAdmissionEpoch,
     })).catch(error=>{if(error?.code==='vibe_storage_stale')throw error;return {status:'unavailable',bytes:null,error:error?.message||'Vibe 资料暂不可读取'};}),
@@ -7947,6 +7947,7 @@ async function collectStorageInventory() {
   if(vibeStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(vibeStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
   if(restoreStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(restoreStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
   if(characterStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(characterStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
+  if(comfyStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(comfyStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
   if(storageEpoch!==storyboardAdmissionEpoch)throw new Error('储存页面已变化，请重新盘点');
   const pressure = blobStore.classifyStoragePressure(originEstimate || {});
   const settingsBytes = storageJsonBytes(storageSettingsSnapshotWithoutDiagnostics());
@@ -8066,7 +8067,7 @@ function renderStorageManagementCard() {
   const scaleBytes = Math.max(1, data.origin.quota > 0 ? Math.max(data.origin.quota, usedForScale) : usedForScale);
   const barItems = [
     ...categories.map((item) => ({ key: item.category, label: STORAGE_CATEGORY_LABELS[item.category] || item.category, bytes: Number(item.bytes) || 0, color: STORAGE_CATEGORY_COLORS[item.category] || STORAGE_CATEGORY_COLORS.other })),
-    ...(unknownUsage > 0 ? [{ key: 'origin-other', label: [data.vibeStorage,data.restoreStorage,data.characterStorage].some(row=>row?.status==='unavailable')?'未盘点站点数据':'其他 ST 数据', bytes: unknownUsage, color: '#555d6b' }] : []),
+    ...(unknownUsage > 0 ? [{ key: 'origin-other', label: [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage].some(row=>['unavailable','partial'].includes(row?.status))?'未盘点站点数据':'其他 ST 数据', bytes: unknownUsage, color: '#555d6b' }] : []),
     ...(freeBytes > 0 ? [{ key: 'free', label: '可用空间', bytes: freeBytes, color: 'rgba(127, 127, 127, .18)' }] : []),
   ];
   const storageBar = barItems.map((item) => `<i class="sd-storage-segment sd-storage-${htmlEscape(item.key)}" style="--sd-storage-weight:${Math.max(0, item.bytes / scaleBytes)};--sd-storage-color:${item.color}" title="${htmlEscape(item.label)} ${htmlEscape(formatStorageBytes(item.bytes))}"></i>`).join('');
@@ -8102,7 +8103,7 @@ function renderStorageManagementCard() {
     <div class="sd-storage-actions"><span>${data.characterStorage?.status==='ready'?`角色库 · ${data.characterStorage.documents.count} 份档案 · ${htmlEscape(formatStorageBytes(data.characterStorage.documents.bytes))}<br>绑定 ${data.characterStorage.bindings.count} 项 · ${htmlEscape(formatStorageBytes(data.characterStorage.bindings.bytes))} · 索引元数据 ${htmlEscape(formatStorageBytes(data.characterStorage.indexes.bytes))}<br>按本机记录计值，不含服务器参考图`:'角色库占用暂不可读取 · 当前总计不含此部分'}</span><button type="button" class="sd-btn sd-storage-characters">角色库管理</button></div>
     ${data.characterStorage?.status==='ready'?'':`<p class="sd-storage-pressure is-warning">${htmlEscape(data.characterStorage?.error||'请重新盘点或进入角色库核对；未修改档案。')}</p>`}
     ${(data.comfyStorage?.errors || []).map(message=>`<p class="sd-storage-pressure is-warning">${htmlEscape(message)}</p>`).join('')}
-    ${[['workflows','Comfy 工作流库'],['pools','Comfy 候选方案'],['scenes','Comfy 续场记录']].map(([key,label])=>`<div class="sd-storage-actions"><span>${label} · 当前账户 · ${Number(data.comfyStorage?.[key]?.count)||0} 项 · ${htmlEscape(formatStorageBytes(data.comfyStorage?.[key]?.bytes||0))}</span>${key!=='scenes'?`<button type="button" class="sd-btn" data-storage-comfy-library="${key}">管理</button>`:''}</div>`).join('')}
+    ${[['workflows','Comfy 工作流库'],['pools','Comfy 候选方案'],['scenes','Comfy 续场记录']].map(([key,label])=>{const row=data.comfyStorage?.[key];return `<div class="sd-storage-actions"><span>${label} · 当前账户 · ${row?.status==='ready'?`${row.count} 项 · ${htmlEscape(formatStorageBytes(row.bytes))}<br>${key==='scenes'?'记录正文':`含 ${row.versions} 个版本、${row.archived} 项归档`} · ${htmlEscape(formatStorageBytes(row.documentBytes))} · 索引元数据 ${htmlEscape(formatStorageBytes(row.indexBytes))}`:'未盘点，总计未包含'}</span>${key!=='scenes'?`<button type="button" class="sd-btn" data-storage-comfy-library="${key}">管理</button>`:''}</div>`;}).join('')}
     <p class="sd-storage-scope">此处是浏览器分配给当前 ST 站点来源的空间，不代表 VPS 磁盘总容量；千幕仅统计可明确归因的本地内容。</p>
     <div class="sd-storage-actions"><button type="button" class="sd-btn sd-primary sd-storage-clean" ${data.manageableBytes > 0 ? '' : 'disabled'}><i class="fa-solid fa-sliders"></i>选择清理模块</button><button type="button" class="sd-btn sd-storage-chat-clean" ${data.idb?.chatScopes?.length ? '' : 'disabled'}><i class="fa-solid fa-message"></i>按聊天管理</button></div>
   </section>`;
@@ -8156,7 +8157,7 @@ function openStorageCleanupDialog(data) {
     { id: '__image_attempts__', label: '生图请求与预算记录（当前账户）', bytes: Number(data?.imageAttempts?.bytes) || 0, count: Number(data?.imageAttempts?.count) || 0 },
     { id: '__image_channels__', label: 'NAI 连接协调记录（当前账户）', bytes: Number(data?.imageChannels?.bytes) || 0, count: Number(data?.imageChannels?.count) || 0 },
     { id: '__image_service_receipts__', label: '本机原图领取记录（服务器原图不删）', bytes: Number(data?.serviceReceipts?.bytes) || 0, count: Number(data?.serviceReceipts?.count) || 0 },
-    { id: '__comfy_scenes__', label: 'Comfy 续场记录（当前账户所有聊天）', bytes: Number(data?.comfyStorage?.scenes?.bytes) || 0, count: Number(data?.comfyStorage?.scenes?.count) || 0 },
+    ...(data?.comfyStorage?.scenes?.status==='ready'?[{ id: '__comfy_scenes__', label: 'Comfy 续场记录（当前账户所有聊天）', bytes: data.comfyStorage.scenes.bytes, count: data.comfyStorage.scenes.count }]:[]),
     { id: '__storyboard_restores__', label: '分镜恢复记录（当前账户）', bytes: data?.restoreStorage?.status==='ready'?data.restoreStorage.bytes:0, count: data?.restoreStorage?.count||0 },
   ];
   const fixedNotes = modules.find((item) => item.id === 'notes');

@@ -189,6 +189,9 @@ export function createComfyWorkflowStore({indexedDB=globalThis.indexedDB,keyRang
         read(request,cursor=>{if(!cursor){heads.delete(key);set({removed:row.version,bytes:row.totalBytes});return;}tx.objectStore('documents').delete(cursor.primaryKey);cursor.delete();cursor.continue();});
       });
     });},
+    async storageSummary(namespace,{isCurrent=()=>true}={}){identity(namespace);const {readComfyLibraryStorage}=await import('./qianmu-comfy-storage-accounting.js');
+      return operation(stores,'readonly',(tx,read,set)=>readComfyLibraryStorage(tx,read,set,keyRange,'workflows',namespace),isCurrent);
+    },
     async usage(namespace) {identity(namespace);return operation(['workflows'],'readonly',(tx,read,set)=>{
       read(tx.objectStore('workflows').index('namespace').getAll(keyRange.only(namespace)),rows=>{validHeads(rows,namespace);set({count:rows.length,archived:rows.filter(row=>row.archived).length,versions:rows.reduce((sum,row)=>sum+row.version,0),bytes:rows.reduce((sum,row)=>sum+row.totalBytes,0),limit:maxBytes});});
     });},

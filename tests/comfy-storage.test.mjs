@@ -4,10 +4,12 @@ import vm from 'node:vm';
 import {collectComfyStorage,clearComfySceneStorage} from '../qianmu-comfy-storage.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const namespace='st-user:storage-test';
+const summary=(key,bytes,count=1)=>({status:'ready',bytes,count,documentBytes:bytes,indexBytes:0,...(key==='scenes'?{generation:2}:{archived:0,versions:count})});
 
-test('Comfy inventory reads only metadata usage, sums each database once and closes all handles',async()=>{
+test('Comfy inventory reads only validated storage summaries, sums each database once and closes all handles',async()=>{
   const calls=[],createStores=Object.fromEntries(['workflows','pools','scenes'].map((key,index)=>[key,async()=>({
-    usage:async ns=>{calls.push([key,ns]);return {bytes:(index+1)*100,count:index+1,generation:2};},close:()=>calls.push([key,'close']),
+    storageSummary:async ns=>{calls.push([key,ns]);return summary(key,(index+1)*100,index+1);},close:()=>calls.push([key,'close']),
+    usage:()=>assert.fail('quota is not a full inventory'),
     load:()=>assert.fail('no workflow graph load'),list:()=>assert.fail('no scene or gallery scan'),
   })]));
   assert.equal(calls.length,0);const result=await collectComfyStorage({resolveNamespace:async()=>namespace,createStores});
@@ -17,10 +19,11 @@ test('Comfy inventory reads only metadata usage, sums each database once and clo
 
 test('one unavailable store reports a partial inventory; account changes do not publish mixed-account totals',async()=>{
   let closes=0,account=namespace;
-  const createStores={workflows:async()=>({usage:async()=>{throw Error('blocked');},close:()=>closes++}),
-    pools:async()=>({usage:async()=>({bytes:5,count:1}),close:()=>closes++}),scenes:async()=>({usage:async()=>({bytes:7,count:1,generation:0}),close:()=>closes++})};
+  const createStores={workflows:async()=>({storageSummary:async()=>{throw Error('blocked');},close:()=>closes++}),
+    pools:async()=>({storageSummary:async()=>summary('pools',5),close:()=>closes++}),scenes:async()=>({storageSummary:async()=>summary('scenes',7),close:()=>closes++})};
   const result=await collectComfyStorage({resolveNamespace:async()=>account,createStores});assert.equal(result.bytes,12);assert.equal(result.errors.length,1);assert.match(result.errors[0],/工作流库.*blocked/);assert.equal(closes,3);
-  createStores.scenes=async()=>({usage:async()=>{account='st-user:other';return {bytes:100,count:1};},close:()=>closes++});
+  assert.equal(result.workflows.bytes,null);assert.equal(result.workflows.count,null);assert.equal(result.status,'partial');
+  createStores.scenes=async()=>({storageSummary:async()=>{account='st-user:other';return summary('scenes',100);},close:()=>closes++});
   await assert.rejects(()=>collectComfyStorage({resolveNamespace:async()=>account,createStores}),/账户/);assert.equal(closes,6);
 });
 

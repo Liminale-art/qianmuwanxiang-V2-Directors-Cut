@@ -7,7 +7,11 @@ self.addEventListener('message',async event=>{
   if(started){if(pending&&event.data?.id===id&&Number.isSafeInteger(event.data.guard)&&event.data.guard===pending.request){const current=pending;pending=null;current.resolve();}return;}
   started=true;const input=event.data;id=input?.id;let journal,characters;
   try{
-    if(typeof id!=='string'||!['inspect','clear','characters'].includes(input.action))throw Error('储存操作无效');
+    if(typeof id!=='string'||!['inspect','clear','characters','comfy'].includes(input.action))throw Error('储存操作无效');
+    if(input.action==='comfy'){
+      await guard();const {inspectComfyStorage}=await import('./qianmu-comfy-storage.js');
+      const result=await inspectComfyStorage({namespace:input.namespace,guard});await guard();self.postMessage({id,result});return;
+    }
     if(input.action==='characters'){
       await guard();const {createCharacterArchiveStore}=await import('./qianmu-character-archive-store.js');
       characters=createCharacterArchiveStore();await guard();const result=await characters.storageSummary(input.namespace);await guard();self.postMessage({id,result});return;
