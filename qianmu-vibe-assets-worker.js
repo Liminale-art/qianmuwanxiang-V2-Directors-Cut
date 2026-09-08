@@ -2,10 +2,17 @@ import {createVibeAssetStore} from './qianmu-vibe-asset-store.js';
 import {createVibeEncodingStore,validateVibeEncodingIdentity} from './qianmu-vibe-encoding-store.js';
 import {exportNovelVibeFile,selectNovelVibeEncoding,vibeFilePreview,vibeFileError,vibeVariants,vibeDigest,appendNovelVibeEncoding,VIBE_FILE_LIMITS} from './qianmu-vibe-file.js';
 import {normalizeNovelVibeImage} from './qianmu-novel-vibe.js';
+import {exportVibeReceiptFile,inspectVibeReceiptFile} from './qianmu-vibe-receipt-file.js';
 export function createVibeAssetOperations(store,{encodings}={}){
 return async function run({type,namespace,id,file,ids,settings,bundle,model,information,encoding,cacheKey,identity,attemptId,retryAttemptId,status,assetRef,image,name,expectedSourceId,sourceAssetRef,delivery,serviceAttemptId,serviceDelivery,expected,proof,confirmed}){
   if(type==='encoding-get')return encodings.get(namespace,cacheKey);
   if(type==='encoding-list')return encodings.list(namespace);
+  if(type==='encoding-export'){
+    const rows=cacheKey?[await encodings.get(namespace,cacheKey)]:await encodings.list(namespace);
+    if(cacheKey&&(!rows[0]||JSON.stringify(rows[0])!==JSON.stringify(expected)))throw vibeFileError('changed','编码记录已变化，请刷新后导出');
+    return exportVibeReceiptFile(namespace,rows);
+  }
+  if(type==='encoding-inspect-file')return inspectVibeReceiptFile(namespace,file);
   if(type==='encoding-review')return encodings.review(namespace,cacheKey,expected,delivery);
   if(type==='encoding-review-local-plan')return encodings.previewLocalReview(namespace,cacheKey,expected);
   if(type==='encoding-review-local')return encodings.reviewLocal(namespace,cacheKey,expected,proof,confirmed);

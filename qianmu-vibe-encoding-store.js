@@ -57,6 +57,25 @@ export async function validateVibeEncodingIdentity(identity,cacheKey){
   if(!hash(cacheKey)||await digest(JSON.stringify(value))!==cacheKey)throw fail('identity','编码缓存指纹不匹配');return value;
 }
 
+function normalizeVibeEncodingReceipt(row,namespace,cacheKey){
+  if(!row)return null;
+  if(Object.keys(row).some(name=>!['key','namespace','cacheKey','identity','attemptId','status','revision','createdAt','updatedAt','assetRef','sourceAssetRef','delivery','feeReview','pastReviews'].includes(name))
+    ||row.key!==key(namespace,cacheKey)||row.namespace!==namespace||row.cacheKey!==cacheKey||!attempt(row.attemptId)
+    ||!['reserved','submitting','ready','rejected','unknown','reviewed'].includes(row.status)||!Number.isSafeInteger(row.revision)||row.revision<1
+    ||![row.createdAt,row.updatedAt].every(value=>Number.isFinite(value)&&value>=0)||row.updatedAt<row.createdAt||!object(row.identity))throw fail('corrupt','编码记录不完整，请先保全数据');
+  if(row.status==='ready'&&(retainVibeAssetRef(row.assetRef).invalid||row.assetRef.namespace!==namespace))throw fail('corrupt','编码原资产引用失效');
+  if(row.status!=='ready'&&row.assetRef)throw fail('corrupt','未完成编码含错误资产引用');
+  if(row.sourceAssetRef&&(retainVibeAssetRef(row.sourceAssetRef).invalid||row.sourceAssetRef.namespace!==namespace))throw fail('corrupt','原图资产归属不符');
+  if(row.delivery!==undefined)validateVibeEncodingDelivery(row.delivery);
+  if(row.status==='reviewed')checkReviewSource(row);else if(row.feeReview!==undefined)throw fail('corrupt','费用核查状态不符');
+  if(row.pastReviews!==undefined)checkReviewHistory(row.pastReviews);return row;
+}
+// Shared by durable reads and audit files. Validation never restores or authorizes a request.
+export async function validateVibeEncodingReceipt(row,namespace,cacheKey){
+  if(!object(row))throw fail('corrupt','编码记录不完整，请先保全数据');
+  normalizeVibeEncodingReceipt(row,namespace,cacheKey);await validateVibeEncodingIdentity(row.identity,cacheKey);return row;
+}
+
 // Durable metadata only, with no expiry or implicit retry. A crashed submitting receipt remains uncertain.
 export function createVibeEncodingStore({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-vibe-encodings',timeoutMs=8000,now=Date.now}={}){
   let db=null,opening=null,closed=false;const transactions=new Set(),timeout=Math.max(100,Math.min(15000,Number(timeoutMs)||8000));
@@ -85,19 +104,7 @@ export function createVibeEncodingStore({indexedDB=globalThis.indexedDB,keyRange
       try{work(tx.objectStore('receipts'),read,value=>result=value);}catch(cause){abort(cause);}
     });
   }
-  function normalize(row,namespace,cacheKey){
-    if(!row)return null;
-    if(Object.keys(row).some(name=>!['key','namespace','cacheKey','identity','attemptId','status','revision','createdAt','updatedAt','assetRef','sourceAssetRef','delivery','feeReview','pastReviews'].includes(name))
-      ||row.key!==key(namespace,cacheKey)||row.namespace!==namespace||row.cacheKey!==cacheKey||!attempt(row.attemptId)
-      ||!['reserved','submitting','ready','rejected','unknown','reviewed'].includes(row.status)||!Number.isSafeInteger(row.revision)||row.revision<1
-      ||![row.createdAt,row.updatedAt].every(value=>Number.isFinite(value)&&value>=0)||row.updatedAt<row.createdAt||!object(row.identity))throw fail('corrupt','编码记录不完整，请先保全数据');
-    if(row.status==='ready'&&(retainVibeAssetRef(row.assetRef).invalid||row.assetRef.namespace!==namespace))throw fail('corrupt','编码原资产引用失效');
-    if(row.status!=='ready'&&row.assetRef)throw fail('corrupt','未完成编码含错误资产引用');
-    if(row.sourceAssetRef&&(retainVibeAssetRef(row.sourceAssetRef).invalid||row.sourceAssetRef.namespace!==namespace))throw fail('corrupt','原图资产归属不符');
-    if(row.delivery!==undefined)validateVibeEncodingDelivery(row.delivery);
-    if(row.status==='reviewed')checkReviewSource(row);else if(row.feeReview!==undefined)throw fail('corrupt','费用核查状态不符');
-    if(row.pastReviews!==undefined)checkReviewHistory(row.pastReviews);return row;
-  }
+  const normalize=normalizeVibeEncodingReceipt;
   async function checked(row,namespace,cacheKey){if(!row)return null;normalize(row,namespace,cacheKey);await validateVibeEncodingIdentity(row.identity,cacheKey);return row;}
   const sameIdentity=(row,identity)=>{if(JSON.stringify(row.identity)!==JSON.stringify(identity))throw fail('corrupt','编码记录参数不一致，请先保全数据');};
   return Object.freeze({
