@@ -175,11 +175,30 @@ export async function buildRelease({ root = PROJECT_ROOT, dryRun = false } = {})
   return { ...plan, destination, checksums: checksums.length, dryRun: false };
 }
 
+async function runCli(args) {
+  // Validate every argument before any filesystem access; a misspelled dry-run must never build.
+  const allowed = new Set(['--dry-run', '--help', '-h']);
+  for (const arg of args) {
+    if (!allowed.has(arg)) throw new Error(`Unknown release argument: ${arg}. Use --help for usage.`);
+  }
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log([
+      'Usage: node scripts/build-release.mjs [--dry-run] [--help]',
+      '  --dry-run  Validate and print the release plan without writing any files.',
+      '  --help, -h Show this help without reading the release configuration.',
+      '  No flags  Build the release, replacing its existing versioned output directory.',
+    ].join('\n'));
+    return;
+  }
+  const result = await buildRelease({ dryRun: args.includes('--dry-run') });
+  console.log(JSON.stringify({
+    version: result.manifest.version, files: result.files.length, destination: result.destination, dryRun: result.dryRun,
+  }, null, 2));
+}
+
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
-  buildRelease().then((result) => {
-    console.log(JSON.stringify({ version: result.manifest.version, files: result.files.length, destination: result.destination }, null, 2));
-  }).catch((error) => {
+  runCli(process.argv.slice(2)).catch((error) => {
     console.error(error?.stack || error);
     process.exitCode = 1;
   });
