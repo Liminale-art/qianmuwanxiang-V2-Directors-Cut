@@ -4,6 +4,8 @@ import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 import { createImageService, imageServiceTaskErrorPayload, IMAGE_SERVICE_TASK_VERSION } from './qianmu-image-service.js';
 import { imageServiceAccount } from './qianmu-image-service-access.js';
+import { createImageRestoreService } from './qianmu-image-restore-service.js';
+import { imageRestoreError, imageRestoreErrorPayload } from './qianmu-image-restore-contract.js';
 import {createVibeEncodingService,vibeServiceErrorPayload} from './qianmu-vibe-service.js';
 import { checkServerComfyReadiness } from './qianmu-comfy-readiness-server.js';
 import { createComfyServerTransport } from './qianmu-comfy-server-transport.js';
@@ -176,6 +178,32 @@ export async function init(router, options = {}) {
 
   let imageTasks;
   const hostDataRoot = () => options.dataRoot === undefined ? globalThis.DATA_ROOT : options.dataRoot;
+  let imageRestore;
+  const restoreFor = req => {
+    try { imageServiceAccount(req); } catch (_) { throw imageRestoreError('account', '请先登录 ST 账户恢复原图', 401); }
+    if (!imageRestore) {
+      imageRestore = createImageRestoreService({ ...(options.imageRestoreOptions || {}), dataRoot: hostDataRoot() });
+      imageTaskServices.add(imageRestore);
+    }
+    return imageRestore;
+  };
+  router.get('/image/restore/capabilities', async (req, res) => {
+    prepareImageResponse(res);
+    try { return res.json(await restoreFor(req).capabilities(req)); }
+    catch (error) { const result = imageRestoreErrorPayload(error); return res.status(result.status).json(result.body); }
+  });
+  for (const action of ['inspect', 'restore']) router.post(`/image/restore/${action}`, async (req, res) => {
+    prepareImageResponse(res);
+    const controller = new AbortController(), onClose = () => { if (!res.writableEnded) controller.abort(); };
+    res.once?.('close', onClose);
+    try {
+      const result = await restoreFor(req)[action](req, req.body, { signal: controller.signal });
+      if (!res.destroyed && !res.writableEnded) return res.json(result);
+    } catch (error) {
+      const result = imageRestoreErrorPayload(error);
+      if (!res.destroyed && !res.writableEnded) return res.status(result.status).json(result.body);
+    } finally { res.off?.('close', onClose); }
+  });
   let vibeService;
   const vibesFor=req=>{
     imageServiceAccount(req);

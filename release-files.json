@@ -3,6 +3,9 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-image-restore-contract.js",
+    "qianmu-image-restore-service.js",
+    "qianmu-image-restore-client.js",
     "qianmu-comfy-library-backup.js",
     "qianmu-comfy-pool-backup.js",
     "qianmu-comfy-resource-backup.js",
