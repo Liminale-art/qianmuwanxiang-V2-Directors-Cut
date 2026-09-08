@@ -7,6 +7,7 @@ import { createStoryboardPackageJournal } from './qianmu-storyboard-package-jour
 import { createStoryboardPackageStage } from './qianmu-storyboard-package-stage.js';
 import { createImageRestoreClient } from './qianmu-image-restore-client.js';
 import { createSourceIdentityClient } from './qianmu-source-identity-client.js';
+import {createBundleCarrierStore} from './qianmu-bundle-carrier-store.js';
 
 let id = '', operation = 0, rpc = 0, busy = false, closed = false, session = null;
 const pending = new Map(), stores = [];
@@ -31,19 +32,20 @@ self.addEventListener('message', async event => {
   try {
     let result;
     if (message.action === 'open' && !session) {
-      const workflowStore = createComfyWorkflowStore(), poolStore = createComfyPoolStore(), characterStore = createCharacterArchiveStore(), vibe = createVibeAssetStore(), journal = createStoryboardPackageJournal();
-      stores.push(workflowStore, poolStore, characterStore, vibe, journal);
+      const workflowStore = createComfyWorkflowStore(), poolStore = createComfyPoolStore(), characterStore = createCharacterArchiveStore(), vibe = createVibeAssetStore(), journal = createStoryboardPackageJournal(),carrierStore=createBundleCarrierStore();
+      stores.push(workflowStore, poolStore, characterStore, vibe, journal,carrierStore);
       const namespace = message.payload.namespace, token = message.payload.csrf || '';
-      session = await createStoryboardBundleRestoreSession({ namespace, chatKey: message.payload.chatKey, file: message.payload.file, workflowStore, poolStore, characterStore, journal,
+      session = await createStoryboardBundleRestoreSession({ namespace, chatKey: message.payload.chatKey, file: message.payload.file, workflowStore, poolStore, characterStore, journal,carrierStore,
         vibeStage: createStoryboardPackageStage({ store: vibe, journal }), guard, isCurrent: () => !closed,
         images: createImageRestoreClient({ namespace, headers: () => ({ 'X-CSRF-Token': token }), guard }),
         sourceIdentity: createSourceIdentityClient({ namespace, guard }),
         configuration: { preview: value => ask('configuration-preview', value), apply: value => ask('configuration-apply', value), subjects: value => ask('configuration-subjects', value), targets: value => ask('configuration-targets',value) } });
-      result = { sourceDigest: session.sourceDigest };
+      result = { sourceDigest: session.sourceDigest,carrierRequired:session.carrierRequired };
     } else if (session && message.sourceDigest === session.sourceDigest) {
       if (message.action === 'preview') result = await session.preview(message.payload.decisions,message.payload.subjectMappings,message.payload.sourceAliasChoices);
       else if(message.action==='aliases')result=await session.aliases(message.payload);
       else if(message.action==='receipts')result=await session.receipts(message.payload);
+      else if(message.action==='carriers')result=await session.carriers(message.payload);
       else if (message.action === 'choose') result = await session.choose(message.payload.decisions);
       else if (message.action === 'resources') result = await session.resources(message.payload);
       else if (message.action === 'targets') result = await session.targets(message.payload);

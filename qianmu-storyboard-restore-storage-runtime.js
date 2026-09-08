@@ -4,11 +4,12 @@ import { validateComfyStorageSummary } from './qianmu-comfy-storage-accounting.j
 import {validateMappingQuery,validateMappingSelection,validateMappingStorage,validateMappingList,validateMappingDetail,validateMappingExport} from './qianmu-storyboard-mapping-contract.js';
 import {aliasHash,validateAliasInput,validateAliasTargets,validateAliasPage,validateAliasResult} from './qianmu-user-alias-contract.js';
 import {canonicalUserSubjectKey} from './qianmu-user-identity.js';
+import {validateBundleCarrierInventory} from './qianmu-bundle-carrier-storage-contract.js';
 const fail=message=>Object.assign(new Error(message),{code:'storyboard_restore_storage_runtime',submissionState:'not_submitted'});
 
 // Each request owns and immediately releases its Worker. No idle worker, background timer, raw configuration or network credential.
 export async function runRestoreStorage(action,{namespace,guard,selected,input,chatHash,resolveAliasTargets,confirmed=false,recoveryLossAccepted=false,signal,WorkerClass=globalThis.Worker,timeoutMs=120000}={}){
-  if(!['inspect','clear','characters','comfy','mappings','mapping-list','mapping-detail','mapping-export','user-alias-preview','user-alias-apply'].includes(action)||typeof guard!=='function')throw fail('储存操作或范围无效');
+  if(!['inspect','clear','characters','comfy','mappings','carriers','mapping-list','mapping-detail','mapping-export','user-alias-preview','user-alias-apply'].includes(action)||typeof guard!=='function')throw fail('储存操作或范围无效');
   if(action.startsWith('user-alias-')){validateAliasInput(action,input);if(!aliasHash(chatHash)||typeof resolveAliasTargets!=='function')throw fail('USER地址缺少当前聊天或人设目录');}
   if(action==='mapping-list')validateMappingQuery(input);
   if(action==='mapping-detail'||action==='mapping-export')validateMappingSelection(input,{paged:action==='mapping-detail'});
@@ -41,6 +42,7 @@ export async function runRestoreStorage(action,{namespace,guard,selected,input,c
           if(action==='user-alias-preview')result=validateAliasPage(result,namespace,chatHash,payload.input);
           else if(action==='user-alias-apply')result=validateAliasResult(result,namespace,chatHash,payload.input);
           else if(action==='mappings')result=validateMappingStorage(result,namespace);
+          else if(action==='carriers')result=validateBundleCarrierInventory(result,namespace);
           else if(action==='mapping-list')result=validateMappingList(result,namespace,payload.input);
           else if(action==='mapping-detail')result=validateMappingDetail(result,namespace,payload.input);
           else if(action==='mapping-export')result=validateMappingExport(result,namespace,payload.input);
@@ -65,6 +67,11 @@ export async function collectStoryboardMappingStorage({resolveNamespace,valid=()
   await guard();let result,error;
   try{result=validateMappingStorage(await call('mappings',{namespace,guard}),namespace);}catch(cause){error=cause;}
   await guard();return error?{version:1,status:'unavailable',namespace,bytes:null,error:String(error?.message||'迁移凭据暂不可读取')}:result;
+}
+export async function collectStoryboardCarrierStorage({resolveNamespace,valid=()=>true,call=runRestoreStorage}={}){
+  let namespace;const guard=async()=>{if(!valid())throw fail('储存页面已变化');const current=await resolveNamespace();if(!valid()||namespace&&namespace!==current)throw fail('储存账户已变化');namespace=current;};
+  await guard();let result,error;try{result=validateBundleCarrierInventory(await call('carriers',{namespace,guard}),namespace);}catch(cause){error=cause;}
+  await guard();return error?{version:1,status:'unavailable',namespace,bytes:null,error:String(error?.message||'来源记录暂不可读取')}:result;
 }
 
 export async function collectStoryboardRestoreStorage({resolveNamespace,valid=()=>true,call=runRestoreStorage}={}){

@@ -1,5 +1,5 @@
 import {BUNDLE_CARRIER_LIMITS} from './qianmu-bundle-carrier-contract.js';
-import {inspectBundleCarrierProof,verifyBundleCarrierMembers,collectBundleCarrierMembers} from './qianmu-bundle-carrier.js';
+import {inspectBundleCarrierProof,verifyBundleCarrierMembers,collectBundleCarrierMembers,inspectBundleCarrierOriginal} from './qianmu-bundle-carrier.js';
 import {bundleCarrierKey,bundleCarrierHead,validateBundleCarrierHead,summarizeBundleCarrierStorage,sameCarrierFields,bundleCarrierOriginalHead,validateBundleCarrierOriginalHead,summarizeBundleCarrierOriginals,BUNDLE_CARRIER_ORIGINAL_LIMITS} from './qianmu-bundle-carrier-storage-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 
@@ -122,5 +122,19 @@ export function createBundleCarrierStore({indexedDB=globalThis.indexedDB,keyRang
     const value=await operation('readonly',isCurrent,(tx,read,set)=>originalPair(tx,read,key,(head,record)=>set({head,record}))),file=checkOriginalPair(value.head,value.record,namespace);await check();
     if(file){const bytes=new Uint8Array(await file.arrayBuffer());await check();if(await vibeDigest(bytes)!==sha256)fail('来源成员原始字节已变化，未覆盖');await check();}return file;
   }
-  return Object.freeze({list,load,loadOriginal,save,close(){closed=true;for(const tx of pending)try{tx.abort();}catch(_){}database?.close();database=null;opening=null;}});
+  async function saveOriginal(namespace,file,{head:inputHead,confirmed=false,guard=async()=>{},isCurrent=()=>true}={}){
+    if(confirmed!==true)fail('请明确确认保全来源成员原文');const check=async()=>{current(isCurrent);await guard();current(isCurrent);};await check();
+    const head=structuredClone(inputHead);await inspectBundleCarrierOriginal(file,head,{namespace,guard:check});
+    const previous=await loadOriginal(namespace,head.sha256,{guard:check,isCurrent});
+    await operation('readwrite',isCurrent,(tx,read,set)=>originalCensus(tx,read,namespace,heads=>originalPair(tx,read,head.key,(existingHead,record)=>{
+      checkOriginalPair(existingHead,record,namespace);
+      if(existingHead){if(!sameCarrierFields(head,existingHead))fail('来源成员目录冲突，未覆盖');}
+      else{
+        if(previous)fail('来源成员原文已变化，请重新核对');summarizeBundleCarrierOriginals([...heads,head],namespace);
+        tx.objectStore('originals').add({key:head.key,namespace,file:file.slice(0,file.size,'application/json')});tx.objectStore('originalHeads').add(head);
+      }set(true);
+    })));
+    const saved=await loadOriginal(namespace,head.sha256,{guard:check,isCurrent});if(!saved)fail('来源成员写后核对缺失');await check();return head;
+  }
+  return Object.freeze({list,load,loadOriginal,save,saveOriginal,close(){closed=true;for(const tx of pending)try{tx.abort();}catch(_){}database?.close();database=null;opening=null;}});
 }

@@ -17,9 +17,10 @@ import {aliasFixture,targetKey as aliasTargetKey} from './fixtures/storyboard-us
 import {inspectStoryboardSubjectMapReview} from '../qianmu-storyboard-subject-map.js';
 import {mappingReceiptsFixture} from './fixtures/storyboard-mapping-receipts.mjs';
 import {mappingHead,mappingBytes} from '../qianmu-storyboard-mapping-contract.js';
+import {memoryCarrierStore} from './fixtures/bundle-carriers.mjs';
 
 const clone = structuredClone;
-async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = false, subjectEvidence = false, sourceAliases = false, history = false, sourceText = 'original text', missingAnchor = false } = {}) {
+async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = false, subjectEvidence = false, sourceAliases = false, history = false, carriers=false, sourceText = 'original text', missingAnchor = false } = {}) {
   const source = await sourceFixture(); source.config.chat.images[0].source = 'novel'; source.config.chat.images[0].floor = 0;
   source.config.chat.images[0].paragraphAnchor = { floor: 0 };
   if (!missingAnchor) source.config.chat.images[0].messageHash = hashText(sourceText);
@@ -88,11 +89,28 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
   options.configuration = createStoryboardBundleConfiguration({ namespace, chatKey, settings: e.settings, chat: e.chat, messages: () => e.messages,
     captureSubjects: async targets => captureStoryboardSubjectEvidence(e.subjectRows.filter(row=>targets.some(target=>target.category===row.category&&target.subjectKey===row.subjectKey))),
     journal: options.journal, guard: options.guard, isCurrent: options.isCurrent, persist: async () => { if (e.failAt === 'persist') throw Error('synthetic persist failure'); e.events.push('configuration'); } });
+  if(carriers){e.carriers=memoryCarrierStore();options.carrierStore={...e.carriers.store,saveOriginal:async(...args)=>{const result=await e.carriers.store.saveOriginal(...args);e.events.push('source-raw');return result;},save:async(...args)=>{const result=await e.carriers.store.save(...args);e.events.push('source-proof');return result;}};}
   const reopen = () => createStoryboardBundleRestoreSession(options);
   return { source, built, historyRows,e, options, reopen, session: await reopen() };
 }
 const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true, connectionsReviewed: true, resourcesReviewed: true };
 const writes = e => e.events.filter(row => !row.startsWith('lock:'));
+test('actual restore coordinator saves source and exact originals after journal history and before images',async()=>{
+  const f=await fixture({history:true,carriers:true}),p=await f.session.preview();assert.equal(p.carrierRestore.count,1);assert.equal(p.carrierRestore.originalCount,4);
+  await assert.rejects(f.session.restore(p,{...consent,historyReviewed:true}),/单独确认保全/);assert.deepEqual(writes(f.e),[]);
+  await f.session.restore(p,{...consent,historyReviewed:true,carriersReviewed:true});assert.ok(f.e.events.lastIndexOf('history')<f.e.events.indexOf('source-raw'));assert.ok(f.e.events.lastIndexOf('source-proof')<f.e.events.indexOf('image'));assert.equal(f.e.mutation.phase,'applied');f.session.close();
+});
+test('source proof interruption leaves prepared checkpoint and preserved raw originals, with no image or configuration writes',async()=>{
+  const f=await fixture({history:true,carriers:true}),p=await f.session.preview();f.e.carriers.state.failProofAt=0;
+  await assert.rejects(f.session.restore(p,{...consent,historyReviewed:true,carriersReviewed:true}),/未全部确认/);assert.equal(f.e.records.get('bundle').phase,'prepared');assert.equal(f.e.files.size,0);assert.equal(f.e.mutation,null);assert.equal(f.e.carriers.state.originals.length,4);
+  f.session.close();delete f.e.carriers.state.failProofAt;f.session=await f.reopen();const next=await f.session.preview();assert.equal(next.carrierRestore.addedOriginals,0);assert.equal(next.carrierRestore.added,1);await assert.rejects(f.session.restore(next,{...consent,historyReviewed:true}),/单独确认保全/);
+  await f.session.restore(next,{...consent,historyReviewed:true,carriersReviewed:true});assert.equal(f.e.carriers.state.originals.length,4);assert.equal(f.e.carriers.state.heads.length,1);f.session.close();
+});
+test('loss of source archive heads between resource stages stops later library/configuration application',async()=>{
+  const f=await fixture({history:true,carriers:true}),p=await f.session.preview(),restore=f.options.images.restore;let once=false;
+  f.options.images.restore=async(...args)=>{const result=await restore(...args);if(!once){once=true;f.e.carriers.state.originals.pop();}return result;};
+  await assert.rejects(f.session.restore(p,{...consent,historyReviewed:true,carriersReviewed:true}),/未全部确认/);assert.equal(f.e.mutation,null);assert.equal(f.e.events.includes('configuration'),false);assert.equal(f.e.events.includes('phase:workflows'),false);f.session.close();
+});
 test('carried history is separately confirmed and saved before originals and current mapping receipts',async()=>{
   const f=await fixture({history:true,subjectEvidence:true});f.e.subjectRows.push({category:'char',subjectKey:'char:renamed-alice.png',state:'present',profile:{name:'Alice',description:'original character'}});
   const mapping=[{category:'char',sourceKey:'char:alice.png',targetKey:'char:renamed-alice.png'}],p=await f.session.preview({},mapping);assert.equal(p.mappingRestore.added,4);assert.equal(p.mappingRestore.existing,0);

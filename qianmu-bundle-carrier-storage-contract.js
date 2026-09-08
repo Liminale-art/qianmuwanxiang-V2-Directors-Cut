@@ -46,3 +46,13 @@ export function summarizeBundleCarrierOriginals(heads,namespace){
   if(recordBytes+indexBytes>BUNDLE_CARRIER_ORIGINAL_LIMITS.total)fail();
   return {version:1,namespace,count:heads.length,payloadBytes,recordBytes,indexBytes,bytes:recordBytes+indexBytes};
 }
+export function validateBundleCarrierInventory(value,namespace){
+  bundleCarrierKey(namespace,'0'.repeat(64));
+  if(!exact(value,['version','status','namespace','count','proofBytes','originalCount','originalBytes','bytes'])||value.version!==1||value.status!=='ready'||value.namespace!==namespace
+    ||!['count','proofBytes','originalCount','originalBytes','bytes'].every(key=>Number.isSafeInteger(value[key])&&value[key]>=0)||value.count>256||value.originalCount>1024||value.proofBytes>32*1048576||value.originalBytes>70*1048576
+    ||Boolean(value.count)!==Boolean(value.proofBytes)||Boolean(value.originalCount)!==Boolean(value.originalBytes)||value.bytes!==value.proofBytes+value.originalBytes)fail();return value;
+}
+export function bundleCarrierInventory(value,namespace){
+  const metadata=summarizeBundleCarrierStorage(value.heads,namespace),originals=summarizeBundleCarrierOriginals(value.originals,namespace);
+  return validateBundleCarrierInventory({version:1,status:'ready',namespace,count:metadata.count,proofBytes:metadata.bytes,originalCount:originals.count,originalBytes:originals.bytes,bytes:metadata.bytes+originals.bytes},namespace);
+}

@@ -18,6 +18,7 @@ import {createBundleSubjectMapReview,bundleAliasTargetsReady,BUNDLE_SUBJECT_MAP_
 import {inspectBundleMappingIndex} from './qianmu-bundle-mappings.js';
 import {bundleMappingPage} from './qianmu-bundle-mapping-contract.js';
 import {planBundleMappingRestore,restoreBundleMappings,verifyBundleMappingRestore} from './qianmu-bundle-mapping-restore.js';
+import {createBundleCarrierRestore} from './qianmu-bundle-carrier-restore.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle_restore', submissionState: 'not_submitted' }); };
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -32,7 +33,7 @@ function mergedLibrary(local, plan, key) {
 // Heavy source bodies stay inside this session (intended for a worker). Views contain summaries/receipts only.
 // Resources use independent atomic stores, NOT a fictitious cross-IDB transaction or destructive rollback.
 // configuration must preflight a detached draft, then persist its before/after mutation through the shared journal.
-export async function createStoryboardBundleRestoreSession({ namespace, chatKey, file, workflowStore, poolStore, characterStore,
+export async function createStoryboardBundleRestoreSession({ namespace, chatKey, file, workflowStore, poolStore, characterStore,carrierStore=null,
   vibeStage, images, journal, configuration, sourceIdentity, guard, isCurrent, locks = globalThis.navigator?.locks }) {
   if (typeof guard !== 'function' || typeof isCurrent !== 'function' || !configuration?.preview || !configuration?.apply) fail('缺少整包恢复的环境及配置核对');
   let closed = false, busy = false, choose = null;
@@ -42,10 +43,11 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
   const inspected = await inspectStoryboardResourceBundle(file, { guard: check, includeOrigins: true }), opened = await openStoryboardBundle(file, { guard: check });
   if (inspected.fingerprint !== opened.fingerprint) fail('核验后资源联包发生变化，请重新选择原文件');
   if (inspected.manifest.namespace !== namespace || inspected.manifest.chatKey !== chatKey) fail('请在原 ST 账户及原聊天核对；跨环境身份重绑定尚未确认');
-  if(inspected.summary.carriers?.count||inspected.summary.carriers?.originalCount)fail('此包包含完整来源关联；恢复确认入口尚待接通，未恢复任何数据。请保留原包');
+  if((inspected.summary.carriers?.count||inspected.summary.carriers?.originalCount)&&!carrierStore)fail('此包含来源记录，请更新完整来源恢复模块，未恢复任何数据');
+  const carrierRestore=carrierStore?await createBundleCarrierRestore({opened,store:carrierStore,guard:check,isCurrent:syncCurrent}):null;
   const mappingIndex=inspected.summary.mappingReceipts?.count?await inspectBundleMappingIndex(await opened.readJson('mapping-receipts'),namespace):null;
   const mappingOptions={index:mappingIndex,opened,journal,guard:check,isCurrent:syncCurrent};
-  const verifyHistory=async()=>{if(mappingIndex)await verifyBundleMappingRestore(mappingOptions);};
+  const verifyHistory=async()=>{if(mappingIndex)await verifyBundleMappingRestore(mappingOptions);await carrierRestore?.verify();};
   const sourceDigest = inspected.fingerprint, chatHash = await vibeDigest(chatKey);
   let environmentReview = null;
   const checkSource = async () => {
@@ -152,11 +154,12 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
       :mapped.mappings.length&&subjects.ready?await createStoryboardSubjectMapReview({namespace,chatHash,sourceDigest,environmentDigest:environmentReview?.digest||null,sourceEvidence:evidence,targetEvidence:subjects.targetEvidence,lineage:mapped.lineage,mappings:mapped.mappings}):null;
     await inspectSubjectMap(subjectMapReview);
     const mappingRestore=mappingIndex?await planBundleMappingRestore({...mappingOptions,reservations:[...(environmentDigest?[{kind:'environment',review:environmentReview}]:[]),...(subjectMapReview?[{kind:'subjects',review:subjectMapReview}]:[])]}):null;
+    const carrierPlan=carrierRestore?await carrierRestore.preview():null;
     const view = { namespace, chatHash, sourceDigest, record, decisions: choices, conflicts: characterPlan.conflicts, subjectReview: subjects?.rows || [],
       subjectMappings:clone(mapped.mappings),subjectMappingReview:subjectMapReview?{digest:subjectMapReview.digest,count:mapped.mappings.length,bindings:aliasPlan?.changed?aliasPlan.before.length:mapped.lineage.length}:null,
       ...(aliasPlan?.changed?{sourceAliases:bundleUserAliasSummary(aliasPlan,aliasTargetsReady),sourceAliasChoices:clone(aliasChoices)}:{}),
       subjectMappingConflict:Boolean(record&&record.phase!=='verified'&&record.subjectMappingDigest!==(subjectMapReview?.digest||undefined)),
-      summary: clone(inspected.summary), ...(mappingRestore?{mappingRestore}:{}), characterSummary: characterPlan.summary, bindingReview: clone(characterPlan.bindingWrites), images: [],
+      summary: clone(inspected.summary), ...(mappingRestore?{mappingRestore}:{}),...(carrierPlan?{carrierRestore:carrierPlan}:{}), characterSummary: characterPlan.summary, bindingReview: clone(characterPlan.bindingWrites), images: [],
       ready: false, planDigest: '', settingsVerified: false, identityVerified: false, environmentReview: clone(environmentReview), sourceLabelsMatched: environmentReview?.state === 'matched' };
     const captureChoices = () => {
       const snapshot = createCharacterRestoreChoiceSnapshot(localCharacters, mapped.value, characterPlan, { ...view, summary: view.characterSummary });
@@ -191,7 +194,7 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
     if (await digest(await pendingRecords()) !== await digest(record)) fail('核对期间恢复记录已变化');
     view.workflowSummary = workflowPlan.summary; view.poolSummary = poolPlan.summary;
     view.vibe = vibe; view.configuration = clone(config.summary || {});
-    view.planDigest = await digest({ namespace, chatHash, sourceDigest, record, baseline, choices, expected, vibe, configuration: config.digest, images: view.images, ...(subjects ? { subjects: subjects.digest } : {}), ...(environmentReview ? { environment: environmentReview.digest } : {}),...(subjectMapReview?{subjectMapping:subjectMapReview.digest}:{}),...(mappingRestore?{mappingRestore:mappingRestore.digest}:{}) });
+    view.planDigest = await digest({ namespace, chatHash, sourceDigest, record, baseline, choices, expected, vibe, configuration: config.digest, images: view.images, ...(subjects ? { subjects: subjects.digest } : {}), ...(environmentReview ? { environment: environmentReview.digest } : {}),...(subjectMapReview?{subjectMapping:subjectMapReview.digest}:{}),...(mappingRestore?{mappingRestore:mappingRestore.digest}:{}),...(carrierPlan?{carrierRestore:carrierPlan.digest}:{}) });
     view.ready = !view.images.some(row => row.state === 'conflict') && subjects?.ready !== false && aliasTargetsReady && !view.subjectMappingConflict; await check(); captureChoices();
     return { view, baseline, expected, config, subjects, subjectMapReview, aliasPlan, sourceEvidence:evidence, mappedCharacters:mapped.value, originals: [...originals.values()] };
   }
@@ -211,6 +214,8 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
   }
   return Object.freeze({
     sourceDigest,
+    carrierRequired:Boolean(carrierRestore),
+    async carriers(input){if(busy)fail('恢复正在执行，请勿重复操作');await check();if(!carrierRestore)fail('来源恢复模块不可用');return carrierRestore.page(input);},
     async resources(options = {}) { if(busy)fail('恢复正在执行，请勿重复操作');await check();return {...storyboardResourceOriginsPage(inspected.origins,options),sourceDigest}; },
     async receipts(input){if(busy)fail('恢复正在执行，请勿重复操作');await check();if(!mappingIndex)fail('此包没有已记录的历史迁移凭据');return bundleMappingPage(mappingIndex,sourceDigest,input);},
     async targets(options = {}) { if(busy)fail('恢复正在执行，请勿重复操作');await check();if(!subjectEvidence||!configuration.targets)fail('目标目录暂不可用');
@@ -223,7 +228,7 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
       if (!snapshot || snapshot !== choose) fail('冲突选择已过期，请重新核对');
       const view = snapshot(choices); await check(); if (snapshot !== choose) fail('冲突选择已过期，请重新核对'); return view;
     },
-    async restore(prepared, { confirmed = false, environmentReviewed = false, environmentMapped = false, bindingsReviewed = false, subjectsReviewed = false, subjectsMapped = false, sourceAliasesReviewed = false, connectionsReviewed = false, resourcesReviewed = false, historyReviewed = false } = {}) {
+    async restore(prepared, { confirmed = false, environmentReviewed = false, environmentMapped = false, bindingsReviewed = false, subjectsReviewed = false, subjectsMapped = false, sourceAliasesReviewed = false, connectionsReviewed = false, resourcesReviewed = false, historyReviewed = false,carriersReviewed=false } = {}) {
       if (busy) fail('恢复正在执行，请勿重复操作');
       if (confirmed !== true || environmentReviewed !== true || prepared?.namespace !== namespace || prepared.sourceDigest !== sourceDigest || !hash(prepared.planDigest)) fail('请先核对整包内容、原环境及原聊天，并明确确认恢复');
       if (!locks?.request) fail('浏览器不支持跨页恢复锁，尚未写入任何原件');
@@ -240,11 +245,13 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
         if(latest.view.subjectMappings.length&&subjectsMapped!==true)fail('请单独确认角色／人设目标映射；不会改写历史画面身份');
         if(latest.aliasPlan?.changed&&sourceAliasesReviewed!==true)fail('请单独确认原包USER地址选择及原关系保全，不会自动采用冲突档案');
         if(mappingIndex&&historyReviewed!==true)fail('请单独确认保存历史迁移凭据；历史批准不授权本次恢复');
+        if(carrierRestore&&carriersReviewed!==true)fail('请单独确认保全全部来源记录及原成员');
         await checkSource();
         let checkpoint = await journal.prepareResource({ namespace, kind: 'bundle', chatHash, sourceDigest, planDigest: approved.planDigest, ...(environmentDigest ? { environmentDigest } : {}),...(latest.subjectMapReview?{subjectMappingDigest:latest.subjectMapReview.digest}:{}) }, { previous: latest.view.record, confirmed: true, isCurrent: syncCurrent });
         const advance = async phase => { await checkSource(); await verifyHistory(); await inspectEnvironmentMap(true); await inspectSubjectMap(latest.subjectMapReview,true); await verifySubjects(latest); checkpoint = await journal.updateResource(checkpoint, phase, { isCurrent: syncCurrent }); await check(); };
         try {
           if(mappingIndex)await restoreBundleMappings({...mappingOptions,confirmed:historyReviewed});
+          if(carrierRestore)await carrierRestore.restore(latest.view.carrierRestore,{confirmed:carriersReviewed});
           if (environmentDigest) { await journal.prepareEnvironmentMap(environmentReview, { confirmed: true, isCurrent: syncCurrent }); await checkSource(); await inspectEnvironmentMap(true); }
           if(latest.subjectMapReview){await journal.prepareSubjectMap(latest.subjectMapReview,{confirmed:true,isCurrent:syncCurrent});await check();await inspectSubjectMap(latest.subjectMapReview,true);}
           await advance('originals');

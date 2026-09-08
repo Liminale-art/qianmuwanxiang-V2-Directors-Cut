@@ -2,7 +2,7 @@ import {mappingReceiptsFixture} from './storyboard-mapping-receipts.mjs';
 import {mappingHead} from '../../qianmu-storyboard-mapping-contract.js';
 import {captureBundleMappings} from '../../qianmu-bundle-mappings.js';
 import {buildStoryboardBundle,openStoryboardBundle} from '../../qianmu-storyboard-bundle.js';
-import {createBundleCarrierProof,inspectBundleCarrierProof} from '../../qianmu-bundle-carrier.js';
+import {createBundleCarrierProof,inspectBundleCarrierProof,inspectBundleCarrierOriginal,collectBundleCarrierMembers} from '../../qianmu-bundle-carrier.js';
 import {bundleCarrierHead,bundleCarrierOriginalHead} from '../../qianmu-bundle-carrier-storage-contract.js';
 import {vibeDigest} from '../../qianmu-vibe-file.js';
 export const namespace='st-user:carrier-transport';
@@ -17,4 +17,20 @@ export async function carrierFixture({variant=true}={}){
   for(const stamp of [21,22]){const built=await carrierPack(rawEntries,stamp),proof=await createBundleCarrierProof(await openStoryboardBundle(built.file));proofs.push(proof);heads.push(bundleCarrierHead((await inspectBundleCarrierProof(proof)).summary));}
   const store={list:async()=>structuredClone({heads,originals}),load:async(ns,id)=>structuredClone(proofs.find(row=>row.carrierDigest===id)||null),loadOriginal:async(ns,sha)=>rawFiles.get(sha)||null};
   return {records,journal,mappings,rawEntries,proofs,heads,originals,rawFiles,store};
+}
+export function memoryCarrierStore(){
+  const state={heads:[],originals:[],proofs:new Map(),files:new Map(),events:[]};
+  const store={
+    list:async()=>{if(state.heads.some(row=>!state.proofs.has(row.carrierDigest))||state.originals.some(row=>!state.files.has(row.sha256)))throw Error('missing original');return structuredClone({heads:state.heads,originals:state.originals});},
+    load:async(ns,id)=>structuredClone(state.proofs.get(id)||null),
+    loadOriginal:async(ns,sha)=>{const file=state.files.get(sha);if(file&&await vibeDigest(new Uint8Array(await file.arrayBuffer()))!==sha)throw Error('original changed');return file||null;},
+    saveOriginal:async(ns,file,{head,confirmed})=>{
+      if(confirmed!==true)throw Error('consent');await inspectBundleCarrierOriginal(file,head,{namespace:ns});
+      if(!state.files.has(head.sha256)){if(state.failRawAt===state.originals.length)throw Error('raw interrupted');state.files.set(head.sha256,file);state.originals.push(structuredClone(head));state.events.push('raw');}return head;
+    },
+    save:async(ns,proof,{confirmed,load})=>{
+      if(confirmed!==true)throw Error('consent');const collected=await collectBundleCarrierMembers(proof,{load}),head=bundleCarrierHead(collected.summary);
+      if(!state.proofs.has(proof.carrierDigest)){if(state.failProofAt===state.heads.length)throw Error('proof interrupted');state.proofs.set(proof.carrierDigest,structuredClone(proof));state.heads.push(head);state.events.push('proof');}return head;
+    },
+  };return {store,state};
 }

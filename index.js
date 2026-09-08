@@ -7931,7 +7931,7 @@ function storageSettingsSnapshotWithoutDiagnostics() {
 async function collectStorageInventory() {
   const storageApi = globalThis.navigator?.storage;
   const storageEpoch=storyboardAdmissionEpoch;
-  const [originEstimate, idb, orphanReaderBlobs, imageAttempts, imageChannels, serviceReceipts, comfyReceipts, comfyStorage, vibeStorage, restoreStorage, characterStorage, mappingStorage] = await Promise.all([
+  const [originEstimate, idb, orphanReaderBlobs, imageAttempts, imageChannels, serviceReceipts, comfyReceipts, comfyStorage, vibeStorage, restoreStorage, characterStorage, mappingStorage,carrierStorage] = await Promise.all([
     storageApi?.estimate?.().catch(() => null) || Promise.resolve(null),
     blobStore.estimateBlobStoreUsage(),
     blobStore.auditOrphanedReaderBlobs(),
@@ -7954,10 +7954,14 @@ async function collectStorageInventory() {
     Promise.all([featureRuntime.load('storyboardRestoreStorage'),featureRuntime.load('imageAdmission')]).then(([module,identity])=>module.collectStoryboardMappingStorage({
       resolveNamespace:()=>identity.resolveImageAccountNamespace(),valid:()=>storageEpoch===storyboardAdmissionEpoch,
     })).catch(error=>({status:'unavailable',bytes:null,error:error?.message||'迁移凭据暂不可读取'})),
+    Promise.all([featureRuntime.load('storyboardRestoreStorage'),featureRuntime.load('imageAdmission')]).then(([module,identity])=>module.collectStoryboardCarrierStorage({
+      resolveNamespace:()=>identity.resolveImageAccountNamespace(),valid:()=>storageEpoch===storyboardAdmissionEpoch,
+    })).catch(error=>({status:'unavailable',bytes:null,error:error?.message||'来源记录暂不可读取'})),
   ]);
   if(vibeStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(vibeStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
   if(restoreStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(restoreStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
   if(mappingStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(mappingStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
+  if(carrierStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(carrierStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
   if(characterStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(characterStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
   if(comfyStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(comfyStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
   if(storageEpoch!==storyboardAdmissionEpoch)throw new Error('储存页面已变化，请重新盘点');
@@ -8001,7 +8005,8 @@ async function collectStorageInventory() {
   if(characterStorage.status==='ready')addCategory('characters',characterBytes,characterStorage.documents.count);
   const mappingSize=mappingStorage.status==='ready'?mappingStorage.bytes:0;
   if(mappingStorage.status==='ready')addCategory('logs',mappingSize,mappingStorage.count);
-  const trackedBytes = Number(idb.totalBytes || 0) + settingsBytes + currentChatBytes + diagnosticsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes + mappingSize;
+  const carrierSize=carrierStorage.status==='ready'?carrierStorage.bytes:0;if(carrierStorage.status==='ready')addCategory('logs',carrierSize,carrierStorage.count+carrierStorage.originalCount);
+  const trackedBytes = Number(idb.totalBytes || 0) + settingsBytes + currentChatBytes + diagnosticsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes + mappingSize+carrierSize;
   const recoverableBytes = Number(idb.recoverableBytes || 0) + diagnosticsBytes;
   const manageableBytes = Number(idb.totalBytes || 0) + diagnosticsBytes + portableTtsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes;
   return {
@@ -8029,6 +8034,7 @@ async function collectStorageInventory() {
     vibeStorage,
     restoreStorage,
     mappingStorage,
+    carrierStorage,
     characterStorage,
   };
 }
@@ -8082,7 +8088,7 @@ function renderStorageManagementCard() {
   const scaleBytes = Math.max(1, data.origin.quota > 0 ? Math.max(data.origin.quota, usedForScale) : usedForScale);
   const barItems = [
     ...categories.map((item) => ({ key: item.category, label: STORAGE_CATEGORY_LABELS[item.category] || item.category, bytes: Number(item.bytes) || 0, color: STORAGE_CATEGORY_COLORS[item.category] || STORAGE_CATEGORY_COLORS.other })),
-    ...(unknownUsage > 0 ? [{ key: 'origin-other', label: [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage,data.mappingStorage].some(row=>['unavailable','partial'].includes(row?.status))?'未盘点站点数据':'其他 ST 数据', bytes: unknownUsage, color: '#555d6b' }] : []),
+    ...(unknownUsage > 0 ? [{ key: 'origin-other', label: [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage,data.mappingStorage,data.carrierStorage].some(row=>['unavailable','partial'].includes(row?.status))?'未盘点站点数据':'其他 ST 数据', bytes: unknownUsage, color: '#555d6b' }] : []),
     ...(freeBytes > 0 ? [{ key: 'free', label: '可用空间', bytes: freeBytes, color: 'rgba(127, 127, 127, .18)' }] : []),
   ];
   const storageBar = barItems.map((item) => `<i class="sd-storage-segment sd-storage-${htmlEscape(item.key)}" style="--sd-storage-weight:${Math.max(0, item.bytes / scaleBytes)};--sd-storage-color:${item.color}" title="${htmlEscape(item.label)} ${htmlEscape(formatStorageBytes(item.bytes))}"></i>`).join('');
@@ -8117,6 +8123,8 @@ function renderStorageManagementCard() {
     ${data.restoreStorage?.status==='ready'?'':`<p class="sd-storage-pressure is-warning">${htmlEscape(data.restoreStorage?.error||'请重新盘点或进入恢复记录管理核对；未修改记录。')}</p>`}
     <div class="sd-storage-actions"><span>${data.mappingStorage?.status==='ready'?`迁移映射凭据 · ${data.mappingStorage.count} 份 · ${htmlEscape(formatStorageBytes(data.mappingStorage.bytes))}`:'迁移凭据占用暂不可读取 · 当前总计不含此部分'}</span><button type="button" class="sd-btn sd-storage-mappings">查看与导出</button></div>
     ${data.mappingStorage?.status==='ready'?'':`<p class="sd-storage-pressure is-warning">${htmlEscape(data.mappingStorage?.error||'请进入迁移凭据目录核对；未改动原记录。')}</p>`}
+    <div class="sd-storage-actions"><span>${data.carrierStorage?.status==='ready'?`来源记录 · ${data.carrierStorage.count} 份 · 原文 ${data.carrierStorage.originalCount} 份 · ${htmlEscape(formatStorageBytes(data.carrierStorage.bytes))}`:'来源记录占用暂不可读取 · 当前总计不含此部分'}</span><span>随资源联包完整备份</span></div>
+    ${data.carrierStorage?.status==='ready'?'':`<p class="sd-storage-pressure is-warning">${htmlEscape(data.carrierStorage?.error||'来源记录暂不可读取，未自动清理。')}</p>`}
     <div class="sd-storage-actions"><span>${data.characterStorage?.status==='ready'?`角色库 · ${data.characterStorage.documents.count} 份档案 · ${htmlEscape(formatStorageBytes(data.characterStorage.documents.bytes))}<br>绑定 ${data.characterStorage.bindings.count} 项 · ${htmlEscape(formatStorageBytes(data.characterStorage.bindings.bytes))} · 索引元数据 ${htmlEscape(formatStorageBytes(data.characterStorage.indexes.bytes))}<br>按本机记录计值，不含服务器参考图`:'角色库占用暂不可读取 · 当前总计不含此部分'}</span><button type="button" class="sd-btn sd-storage-characters">角色库管理</button></div>
     ${data.characterStorage?.status==='ready'?'':`<p class="sd-storage-pressure is-warning">${htmlEscape(data.characterStorage?.error||'请重新盘点或进入角色库核对；未修改档案。')}</p>`}
     ${(data.comfyStorage?.errors || []).map(message=>`<p class="sd-storage-pressure is-warning">${htmlEscape(message)}</p>`).join('')}

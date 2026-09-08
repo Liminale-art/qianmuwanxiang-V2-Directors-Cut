@@ -1,10 +1,7 @@
 import {BUNDLE_CARRIERS_SCHEMA,bundleCarrierEntryId,isBundleCarrierEntry,isBundleCarrierOriginalEntry,validateBundleCarriersIndex,bundleCarriersSummary} from './qianmu-bundle-carriers-contract.js';
-import {bundleCarrierHead,sameCarrierFields,validateBundleCarrierOriginalHead,summarizeBundleCarrierStorage,summarizeBundleCarrierOriginals} from './qianmu-bundle-carrier-storage-contract.js';
-import {inspectBundleCarrierProof,verifyBundleCarrierMembers} from './qianmu-bundle-carrier.js';
-import {inspectBundleMappingReceipt} from './qianmu-bundle-mappings.js';
+import {bundleCarrierHead,sameCarrierFields,summarizeBundleCarrierStorage,summarizeBundleCarrierOriginals} from './qianmu-bundle-carrier-storage-contract.js';
+import {inspectBundleCarrierProof,verifyBundleCarrierMembers,inspectBundleCarrierOriginal} from './qianmu-bundle-carrier.js';
 import {sameBundleMappingHead} from './qianmu-bundle-mapping-contract.js';
-import {mappingHead} from './qianmu-storyboard-mapping-contract.js';
-import {parseStrictStoryboardJson} from './qianmu-storyboard-package-input.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {comfyLibraryBackupDigest as digest} from './qianmu-comfy-library-backup.js';
 const fail=message=>{throw Object.assign(new Error(message),{code:'storyboard_bundle_carriers',submissionState:'not_submitted'});};
@@ -18,14 +15,10 @@ export async function inspectBundleCarriersIndex(value,namespace){
   validateBundleCarriersIndex(value,namespace);if(file(value).size>1048576)fail('来源关联目录超过1MiB');const {digest:expected,...core}=value;if(await digest(core)!==expected)fail('来源关联目录摘要不符');return value;
 }
 async function original(blob,head,namespace,mappings,guard){
-  validateBundleCarrierOriginalHead(head,namespace);await guard();if(!(blob instanceof Blob)||blob.size!==head.bytes)fail('来源成员原文缺失或大小不符');
-  const bytes=new Uint8Array(await blob.arrayBuffer());await guard();if(await vibeDigest(bytes)!==head.sha256)fail('来源成员原文指纹不符');
-  let text;try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch(_){fail('来源成员不是完整UTF-8');}
-  const receipt=parseStrictStoryboardJson(text,{maxBytes:9*1048576}),kind=receipt?.review?.schema==='qianmu.storyboard.environment-map.v1'?'environment':'subjects';
-  let derived;try{derived=mappingHead(kind,receipt);}catch(_){fail('来源成员凭据结构不完整');}
-  const expected=mappings?.heads.find(row=>row.kind===kind&&row.digest===derived.digest);
+  const derived=await inspectBundleCarrierOriginal(blob,head,{namespace,guard});
+  const expected=mappings?.heads.find(row=>row.kind===derived.kind&&row.digest===derived.digest);
   if(!expected||!sameBundleMappingHead(expected,derived))fail('来源成员缺少同一完整历史记录，未丢弃旧资料');
-  await inspectBundleMappingReceipt(receipt,expected,namespace);await guard();return expected;
+  await guard();return expected;
 }
 
 // Flat, deduplicated transport: old full packages are never nested. Standard raw members reuse mapping sections.

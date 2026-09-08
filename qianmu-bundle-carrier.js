@@ -5,6 +5,8 @@ import {bundleMappingEntryId,isBundleMappingEntry} from './qianmu-bundle-mapping
 import {inspectBundleMappingIndex,inspectBundleMappingReceipt} from './qianmu-bundle-mappings.js';
 import {comfyLibraryBackupDigest as digest} from './qianmu-comfy-library-backup.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
+import {mappingHead} from './qianmu-storyboard-mapping-contract.js';
+import {validateBundleCarrierOriginalHead} from './qianmu-bundle-carrier-storage-contract.js';
 const fail=message=>{throw Object.assign(new Error(message),{code:'storyboard_bundle_carrier',submissionState:'not_submitted'});};
 const bytes=value=>new TextEncoder().encode(value).byteLength;
 const decode=value=>{try{return new TextDecoder('utf-8',{fatal:true}).decode(value);}catch(_){fail('来源关联文本不是完整UTF-8');}};
@@ -62,4 +64,12 @@ export async function collectBundleCarrierMembers(input,{load,guard=async()=>{}}
 }
 export async function verifyBundleCarrierMembers(input,options){
   return (await collectBundleCarrierMembers(input,options)).summary;
+}
+export async function inspectBundleCarrierOriginal(file,head,{namespace=head?.namespace,guard=async()=>{}}={}){
+  await guard();validateBundleCarrierOriginalHead(head,namespace);
+  if(!(file instanceof Blob)||file.size!==head.bytes)fail('来源成员原文缺失或大小不符');
+  const content=new Uint8Array(await file.arrayBuffer());await guard();if(await vibeDigest(content)!==head.sha256)fail('来源成员原文指纹不符');
+  const receipt=parseStrictStoryboardJson(decode(content),{maxBytes:9*1048576}),kind=receipt?.review?.schema==='qianmu.storyboard.environment-map.v1'?'environment':'subjects';
+  let derived;try{derived=mappingHead(kind,receipt);}catch(_){fail('来源成员凭据结构不完整');}
+  await inspectBundleMappingReceipt(receipt,derived,namespace);await guard();return derived;
 }

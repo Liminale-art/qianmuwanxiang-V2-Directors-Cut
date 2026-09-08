@@ -38,7 +38,7 @@ class FakeWorker {
 async function fixture(flow, extra = {}) {
   const e = { active: true, applied: 0, previews: 0 };
   FakeWorker.flow = async (worker, command) => {
-    if (command.action === 'open') { await worker.rpc(command, 'guard'); worker.reply(command, { sourceDigest }); }
+    if (command.action === 'open') { await worker.rpc(command, 'guard'); worker.reply(command, { sourceDigest,...(extra.carrierRequired?{carrierRequired:true}:{}) }); }
     else if (flow) await flow(worker, command, e);
     else worker.reply(command, view());
   };
@@ -51,6 +51,17 @@ async function fixture(flow, extra = {}) {
 
 async function aliasView(){const library={...aliasFixture(),namespace},evidence=await captureStoryboardSubjectEvidence(storyboardSubjectTargets(library.bindings).map(row=>({...row,state:'present',profile:{name:'Player',description:'source'}})));
   const plan=await planBundleUserAliases({library,evidence,sourceDigest});return {page:bundleUserAliasPage(plan),preview:{...view(),sourceAliases:bundleUserAliasSummary(plan),sourceAliasChoices:{}}};}
+test('source consent is frozen at worker open and cannot be bypassed by deleting a preview field or issuing a page RPC',async()=>{
+  const f=await fixture(async(worker,command)=>{
+    if(command.action==='carriers'){const result=await worker.rpc(command,'configuration-apply',{fingerprint:sourceDigest,expectedDigest:'c'.repeat(64)});assert.match(result.error.message,/未经本次确认/);worker.reply(command,{});}
+    else worker.reply(command,view());
+  },{carrierRequired:true});
+  await assert.rejects(f.client.restore({...view(),ready:true,planDigest:'c'.repeat(64)},{confirmed:true,environmentReviewed:true}),/单独确认保全/);assert.equal(f.worker.sent.some(row=>row.action==='restore'),false);
+  await assert.rejects(f.client.carriers({offset:0}),/当前原包不符/);assert.equal(f.e.applied,0);assert.equal(f.worker.closed,true);
+});
+test('a ready worker preview must include its promised source capacity plan',async()=>{
+  const f=await fixture((worker,command)=>worker.reply(command,{...view(),ready:true,planDigest:'c'.repeat(64)}),{carrierRequired:true});await assert.rejects(f.client.preview(),/当前原包不符/);assert.equal(f.worker.closed,true);
+});
 
 test('historical receipt page is read-only, typed and requires independent UI and runtime consent',async()=>{
   const rows=await mappingReceiptsFixture({namespace}),bundle=await captureBundleMappings({namespace,journal:{listMappingHeads:async()=>rows.map(row=>row.head),loadMappingReceipt:async(_ns,kind,id)=>rows.find(row=>row.kind===kind&&row.head.digest===id).receipt}});
