@@ -11,6 +11,8 @@
     "qianmu-bundle-mapping-contract.js",
     "qianmu-bundle-mappings.js",
     "qianmu-bundle-mapping-restore.js",
+    "qianmu-bundle-carrier-contract.js",
+    "qianmu-bundle-carrier.js",
     "qianmu-bundle-user-alias-contract.js",
     "qianmu-user-alias-contract.js",
     "qianmu-user-alias-runtime.js",

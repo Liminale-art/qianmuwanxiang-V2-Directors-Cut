@@ -45,6 +45,17 @@ function inspectManifest(value) {
   return total;
 }
 
+// Shared by the envelope reader and bounded provenance proofs. A valid manifest alone does not verify resource bodies.
+export async function inspectStoryboardBundleManifestText(input,{guard=async()=>{}}={}){
+  await guard();
+  const manifest=parseStrictStoryboardJson(input,{maxBytes:STORYBOARD_BUNDLE_LIMITS.manifest}),contentBytes=inspectManifest(manifest),encoded=new TextEncoder().encode(input);
+  if(text(encoded)!==input)fail('资源包目录文本不是完整UTF-8');
+  const fileBytes=contentBytes+prefixBytes+encoded.byteLength;
+  if(fileBytes>STORYBOARD_BUNDLE_LIMITS.total)fail('资源包目录与分段合计超过512MiB');
+  await guard();if(manifest.source){await sourceIdentityForNamespace(manifest.source,manifest.namespace);await guard();}
+  const fingerprint=await vibeDigest(encoded);await guard();return {manifest,manifestText:input,contentBytes,fileBytes,fingerprint,manifestBytes:encoded.byteLength};
+}
+
 export async function buildStoryboardBundle({ namespace, chatKey, entries, source = null, createdAt = Date.now() }, { guard = async () => {} } = {}) {
   if (!Array.isArray(entries) || entries.length > STORYBOARD_BUNDLE_LIMITS.entries) fail('资源包分段清单无效');
   // Capture file handles, not their contents. Reject the aggregate before reading a single large segment.
@@ -81,10 +92,8 @@ export async function openStoryboardBundle(file, { guard = async () => {} } = {}
   if (!length || length > STORYBOARD_BUNDLE_LIMITS.manifest || prefixBytes + length > file.size) fail('资源包目录长度无效');
   const encoded = new Uint8Array(await file.slice(prefixBytes, prefixBytes + length).arrayBuffer()); await guard();
   if (encoded.byteLength !== length) fail('资源包目录不完整');
-  const manifest = parseStrictStoryboardJson(text(encoded), { maxBytes: STORYBOARD_BUNDLE_LIMITS.manifest });
-  const contentBytes = inspectManifest(manifest);
-  if (manifest.source) { await sourceIdentityForNamespace(manifest.source, manifest.namespace); await guard(); }
-  if (contentBytes + prefixBytes + length !== file.size) fail('资源包内容被截断或含多余数据');
+  const checked=await inspectStoryboardBundleManifestText(text(encoded),{guard}),{manifest,fingerprint}=checked;
+  if (checked.fileBytes !== file.size) fail('资源包内容被截断或含多余数据');
   const rows = new Map(); let offset = prefixBytes + length;
   for (const row of manifest.entries) { rows.set(row.id, { ...row, offset }); offset += row.bytes; }
   const read = async id => {
@@ -93,8 +102,8 @@ export async function openStoryboardBundle(file, { guard = async () => {} } = {}
     if (bytes.byteLength !== row.bytes || await vibeDigest(bytes) !== row.sha256) fail('资源包分段内容校验失败，未恢复任何数据');
     await guard(); return { row: { id: row.id, bytes: row.bytes, sha256: row.sha256, ...(row.mime ? { mime: row.mime } : {}) }, bytes, file: part };
   };
-  const fingerprint = await vibeDigest(encoded); await guard();
-  return Object.freeze({ manifest: structuredClone(manifest), fileBytes: file.size, fingerprint, read,
+  await guard();
+  return Object.freeze({ manifest: structuredClone(manifest), manifestText:checked.manifestText, fileBytes: file.size, fingerprint, read,
     async readJson(id) { if (!documents.includes(id) && !isBundleMappingEntry(id)) fail('原图不能作为 JSON 分段读取'); const part = await read(id); return parseStrictStoryboardJson(text(part.bytes), { maxBytes: STORYBOARD_BUNDLE_LIMITS[kind(id)] }); },
   });
 }
