@@ -2,10 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openStoryboardBundleRestoreRuntime, closeStoryboardBundleRestoreRuntime } from '../qianmu-storyboard-bundle-restore-runtime.js';
 import { renderStoryboardBundleReview } from '../qianmu-storyboard-bundle-view.js';
+import { createStoryboardEnvironmentReview } from '../qianmu-storyboard-environment-map.js';
+import { randomUUID, createHash } from 'node:crypto';
 const namespace = 'st-user:test', sourceDigest = 'a'.repeat(64), chatHash = 'b'.repeat(64);
 const view = () => ({ namespace, sourceDigest, chatHash, ready: false, planDigest: '', conflicts: [], images: [], bindingReview: [],
   summary: { images: 1, vibeFiles: 0, workflows: { count: 1, versions: 2 }, pools: { count: 0 }, characters: { count: 0 } }, characterSummary: { added: 0, replaced: 0, kept: 0 } });
 const gate = () => { let resolve; const promise = new Promise(done => resolve = done); return { promise, resolve }; };
+async function environmentReview(){const source={ok:true,version:1,state:'ready',expectedAccount:'st-user:'+createHash('sha256').update('test').digest('hex'),instanceId:randomUUID(),accountId:randomUUID(),proof:'installation-labels',automaticRebinding:false};return createStoryboardEnvironmentReview({namespace,sourceDigest,chatHash,source,target:{...source,instanceId:randomUUID()}});}
+test('mapped environment UI has explicit source/target labels and a distinct resettable consent gate',async()=>{
+  const review=await environmentReview(),preview={...view(),ready:true,planDigest:'c'.repeat(64),environmentReview:review,sourceLabelsMatched:false};
+  const input={preview,page:0,environmentReviewed:true};let markup=renderStoryboardBundleReview(input);
+  assert.match(markup,/data-bundle-mapping/);assert.match(markup,/data-bundle-action="restore" disabled/);assert.match(markup,new RegExp(review.source.instanceId));assert.match(markup,new RegExp(review.target.instanceId));
+  assert.doesNotMatch(markup,/此包无 ST 来源标识/);assert.doesNotMatch(renderStoryboardBundleReview({...input,environmentMapped:true}),/data-bundle-action="restore" disabled/);
+});
 class FakeWorker {
   static last; static flow;
   constructor() { FakeWorker.last = this; this.listeners = {}; this.sent = []; this.pending = new Map(); this.request = 0; this.closed = false; }
@@ -33,6 +42,19 @@ async function fixture(flow, extra = {}) {
   const client = await openStoryboardBundleRestoreRuntime(new Blob(['synthetic']), options);
   return { e, client, worker: FakeWorker.last, options };
 }
+test('runtime rejects unconfirmed environment mapping before dispatch and accepts source-bound mapped views',async t=>{
+  const review=await environmentReview(),prepared={...view(),environmentReview:review,sourceLabelsMatched:false};
+  const {client,worker}=await fixture(async(w,c)=>w.reply(c,prepared));t.after(()=>client.close());
+  assert.deepEqual((await client.preview()).environmentReview,review);const count=worker.sent.length;
+  await assert.rejects(client.restore(prepared,{confirmed:true,environmentReviewed:true}),/单独确认/);assert.equal(worker.sent.length,count);
+});
+test('runtime refuses malformed or cross-source environment views and false matched-label claims',async()=>{
+  const review=await environmentReview();
+  for(const bad of [{...review,sourceDigest:'d'.repeat(64)},{...review,chatHash:'e'.repeat(64)},{...review,credential:'private'},{...review,state:'matched'}]){
+    const {client,worker}=await fixture(async(w,c)=>w.reply(c,{...view(),environmentReview:bad,sourceLabelsMatched:false}));await assert.rejects(client.preview(),/结果与当前原包不符/);assert.equal(worker.closed,true);
+  }
+  const {client}=await fixture(async(w,c)=>w.reply(c,{...view(),environmentReview:review,sourceLabelsMatched:true}));await assert.rejects(client.preview(),/结果与当前原包不符/);
+});
 
 test('one persistent worker binds each command and configuration RPC to the source; headers only contain CSRF', async t => {
   const { e, client, worker } = await fixture(async (worker, command) => {

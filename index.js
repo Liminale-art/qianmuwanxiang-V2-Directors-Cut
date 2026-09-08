@@ -21703,7 +21703,7 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   const [packageModule,identity]=await Promise.all([featureRuntime.load('storyboardPackageAssets'),featureRuntime.load('imageAdmission')]);
   const session=await packageModule.createStoryboardPackageGuard({initial,context,resolveNamespace:()=>identity.resolveImageAccountNamespace()});
   if (originals && await confirmDialog(bundle ? '备份分镜资源联包' : '备份分镜配置与成片', bundle
-    ? '联包包含本聊天配置与成片、所引用 Vibe 原文件及本地旧图、完整 Comfy 工作流与候选历史、角色档案和绑定及参考原件。仅原 ST 账户与原聊天可直接恢复，跨环境身份重绑定尚未开放；外部 URL 原图、模型文件与服务器授权需单独保全。原环境请先保留，整包上限 512 MiB，配置分段仍限 128 MiB；不含 API Key。是否继续？'
+    ? '联包包含本聊天配置与成片、所引用 Vibe 原文件及本地旧图、完整 Comfy 工作流与候选历史、角色档案和绑定及参考原件。账户名与聊天标识不变时，更换 ST 安装可单独确认环境映射；不同账户名、聊天或角色身份的重绑定尚未开放。外部 URL 原图、模型文件与服务器授权需单独保全。请保留原环境，整包上限 512 MiB，配置分段仍限 128 MiB；不含 API Key。是否继续？'
     : '新版包包含本聊天成片、分镜预设及所引用的 Vibe 原文件。Comfy 独立工作流库、角色档案库、外部图片地址与服务器授权尚不属于此包，需单独保全；不是完整账户迁移包。最大 128 MiB，不包含 API Key。是否继续？') !== true) return;
   await session.guard();
   const bundleSource = bundle ? await (await featureRuntime.load('storyboardBundleSource')).prepareStoryboardBundleSource({ namespace: session.namespace,
@@ -21798,7 +21798,7 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   const link = document.createElement('a');
   link.href = url; link.download = bundle ? `qianmu-storyboard-bundle-${fileStamp()}.qmb` : `qianmu-storyboard-pack-${fileStamp()}.json`;
   document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
-  const vibeNotice=originals ? ` 已包含 ${vibeScope.refs.length} 份 Vibe 原文件。${vibeScope.legacyUrls.length ? bundle ? `另已保全 ${vibeScope.legacyUrls.length} 个旧 Vibe 地址的本地原图。` : `另有 ${vibeScope.legacyUrls.length} 个 Vibe 旧地址仅保留地址，原图需另行保全。` : ''}${bundle ? '已包含工作流、候选历史与角色库及参考原件；仅用于原环境核对恢复。' : '不含 Comfy 与角色独立库。'}` : vibeScope.refs.length||vibeScope.legacyUrls.length?' 当前旧版包只保留 Vibe 引用/地址，原文件请在 Vibe 文件空间另行备份。':'';
+  const vibeNotice=originals ? ` 已包含 ${vibeScope.refs.length} 份 Vibe 原文件。${vibeScope.legacyUrls.length ? bundle ? `另已保全 ${vibeScope.legacyUrls.length} 个旧 Vibe 地址的本地原图。` : `另有 ${vibeScope.legacyUrls.length} 个 Vibe 旧地址仅保留地址，原图需另行保全。` : ''}${bundle ? '已包含工作流、候选历史与角色库及参考原件；恢复需核对环境与身份。' : '不含 Comfy 与角色独立库。'}` : vibeScope.refs.length||vibeScope.legacyUrls.length?' 当前旧版包只保留 Vibe 引用/地址，原文件请在 Vibe 文件空间另行备份。':'';
   toast(`分镜数据已打包：${records.length} 条成片${skipped ? ` · ${skipped} 张仅保留原地址` : ''}。${vibeNotice}`, vibeNotice?'warning':'success');
   } catch(error) { toast(`分镜打包未完成：${error?.message||'请重新核对后导出'}`, 'error'); }
   finally {storyboardExportPackage.busy=false;}

@@ -29,7 +29,7 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
   if (chatEvidence) source.options.chatEvidence = await captureStoryboardChatEvidence([{ mes: sourceText, is_user: false, swipe_id: 0 }], chatKey);
   source.options.storyboard = file(source.config); const built = await source.build();
   const e = { active: true, events: [], files: new Map(), records: new Map(), mutation: null, settings: createStoryboardDefaults(), chat: {},
-    messages: [{ mes: sourceText, is_user: false, swipe_id: 0 }], subjectRows, locals: clone(source.sources), vibes: false, configChanges: 0 };
+    messages: [{ mes: sourceText, is_user: false, swipe_id: 0 }], subjectRows, locals: clone(source.sources), vibes: false, configChanges: 0, mappings: new Map() };
   e.locals.workflows.workflows = []; e.locals.pools.pools = [];
   e.locals.characters.archives = []; e.locals.characters.bindings = []; e.locals.characters.usage = { count: 0, bytes: 0, bindings: 0 };
   const options = { namespace, chatKey, file: built.file, guard: async () => { if (!e.active) throw Error('inactive'); }, isCurrent: () => e.active,
@@ -56,6 +56,8 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
   options.vibeStage = { inspect: async () => ({ fileHash: await vibeDigest(new Uint8Array(await source.options.storyboard.arrayBuffer())), localHash: await digest(e.vibes), fits: !e.vibeFull, missing: e.vibes ? 0 : 1, rows: [], namespace }),
     stage: async (_file, proof, confirmed) => { assert.equal(confirmed, true); assert.equal(proof.localHash, await digest(e.vibes)); if (e.failAt === 'vibes') throw Error('synthetic vibe failure'); e.vibes = true; e.events.push('vibes'); } };
   options.journal = {
+    inspectEnvironmentMap: async review => ({receipt:clone(e.mappings.get(review.digest)||null),fits:!e.mappingFull}),
+    prepareEnvironmentMap: async (review,approved) => {assert.equal(approved.confirmed,true);if(e.failAt==='mapping')throw Error('synthetic mapping failure');const row=e.mappings.get(review.digest)||{key:review.digest,namespace,review:clone(review),createdAt:1};e.mappings.set(review.digest,row);e.events.push('mapping');return clone(row);},
     loadResource: async (_ns, kind = 'characters') => clone(e.records.get(kind) || null),
     prepareResource: async (descriptor, approved) => { assert.equal(approved.confirmed, true); assert.deepEqual(approved.previous, e.records.get(descriptor.kind) || null);
       if (e.failAt === 'journal') throw Error('synthetic journal failure');
@@ -74,6 +76,47 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
 }
 const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true, connectionsReviewed: true, resourcesReviewed: true };
 const writes = e => e.events.filter(row => !row.startsWith('lock:'));
+async function mappedFixture() {
+  const identity={ok:true,version:1,state:'ready',expectedAccount:'st-user:'+createHash('sha256').update(namespace.slice(8)).digest('hex'),instanceId:randomUUID(),accountId:randomUUID(),proof:'installation-labels',automaticRebinding:false};
+  const f=await fixture({sourceIdentity:identity,chatEvidence:true,subjectEvidence:true});f.session.close();
+  f.e.target={...identity,instanceId:randomUUID(),accountId:randomUUID()};f.options.sourceIdentity.inspect=async()=>clone(f.e.target);
+  f.session=await f.reopen();return f;
+}
+const mappedConsent={...consent,subjectsReviewed:true,environmentMapped:true};
+test('different installation labels need independent consent and durable receipt before any original, with unchanged historical libraries',async()=>{
+  const f=await mappedFixture(),preview=await f.session.preview(),sourceBefore=await digest(f.source.sources),fileBefore=f.built.fingerprint;
+  assert.equal(preview.sourceLabelsMatched,false);assert.equal(preview.environmentReview.state,'mapping-required');assert.equal(preview.identityVerified,false);
+  assert.equal(f.e.mappings.size,0);await assert.rejects(f.session.restore(preview,{...mappedConsent,environmentMapped:false}),/单独确认/);
+  assert.equal(f.e.records.size,0);assert.equal(writes(f.e).length,0);
+  await f.session.restore(preview,mappedConsent);assert.equal(f.e.mappings.size,1);assert.equal(f.e.mutation.phase,'applied');
+  assert.ok(f.e.events.indexOf('mapping')<f.e.events.indexOf('image'));
+  assert.equal(f.e.records.get('bundle').environmentDigest,preview.environmentReview.digest);
+  assert.equal(await digest(f.e.locals.workflows),await digest(f.source.sources.workflows));assert.equal(await digest(f.e.locals.pools),await digest(f.source.sources.pools));
+  assert.equal(await digest(f.e.locals.characters),await digest(f.source.sources.characters));assert.equal(await digest(f.source.sources),sourceBefore);assert.equal(f.built.fingerprint,fileBefore);
+});
+test('mapping capacity and failed receipt persistence stop before originals; saved receipt is read back before any phase',async()=>{
+  const f=await mappedFixture();f.e.mappingFull=true;await assert.rejects(f.session.preview(),/空间不足/);assert.equal(writes(f.e).length,0);
+  f.e.mappingFull=false;const p=await f.session.preview();f.e.failAt='mapping';await assert.rejects(f.session.restore(p,mappedConsent),/未全部确认/);
+  assert.equal(f.e.files.size,0);assert.equal(f.e.mappings.size,0);assert.equal(f.e.records.get('bundle').phase,'prepared');
+  f.e.failAt='';f.options.journal.prepareEnvironmentMap=async()=>({});const next=await f.session.preview();
+  await assert.rejects(f.session.restore(next,mappedConsent),/凭据写入尚未确认/);assert.equal(f.e.files.size,0);
+});
+test('partial mapped restores require fresh consent on reopen, retain one receipt and cannot switch the destination',async()=>{
+  const f=await mappedFixture();f.e.failAt='workflows';const p=await f.session.preview();await assert.rejects(f.session.restore(p,mappedConsent),/未全部确认/);
+  assert.ok(f.e.files.size);assert.equal(f.e.mappings.size,1);f.session.close();const oldTarget=clone(f.e.target);f.e.target.accountId=randomUUID();
+  const wrong=await f.reopen();await assert.rejects(wrong.preview(),/目标环境已变化/);wrong.close();f.e.target=oldTarget;f.e.failAt='';
+  const resumed=await f.reopen(),next=await resumed.preview(),before=writes(f.e).length;
+  await assert.rejects(resumed.restore(next,{...mappedConsent,environmentMapped:false}),/单独确认/);assert.equal(writes(f.e).length,before);
+  await resumed.restore(next,mappedConsent);assert.equal(f.e.mappings.size,1);assert.equal(f.e.mutation.phase,'applied');
+});
+test('mapping target drift, missing required subjects and changed receipt all stop before configuration',async()=>{
+  const f=await mappedFixture();f.e.subjectRows[0]={category:'char',subjectKey:'char:alice.png',state:'missing'};const missing=await f.session.preview();assert.equal(missing.ready,false);
+  await assert.rejects(f.session.restore(missing,mappedConsent),/角色/);assert.equal(writes(f.e).length,0);
+  const g=await mappedFixture(),p=await g.session.preview();g.e.afterImage=async()=>{g.e.target.instanceId=randomUUID();};
+  await assert.rejects(g.session.restore(p,mappedConsent),/来源标识不同/);assert.ok(g.e.files.size);assert.equal(g.e.mutation,null);
+  const h=await mappedFixture(),hp=await h.session.preview();h.e.afterImage=async()=>h.e.mappings.clear();
+  await assert.rejects(h.session.restore(hp,mappedConsent),/凭据写入尚未确认/);assert.equal(h.e.mutation,null);
+});
 
 test('file-use pages are read-only and the external-dependency acknowledgement is enforced before any restore journal', async () => {
   const f=await fixture(),prepared=await f.session.preview(),before=structuredClone(f.e.locals),beforeWrites=writes(f.e);
@@ -156,13 +199,14 @@ test('weak-hash-colliding edits after configuration journalling cannot apply a s
   assert.equal(f.e.events.includes('configuration'), false); assert.equal(f.e.chat.storyboardImages, undefined); assert.ok(f.e.mutation); assert.ok(f.e.files.size);
 });
 
-test('source-labelled restores require matching live backend labels even for an identical handle/chat; they do not claim full identity verification', async () => {
+test('source-labelled restores pin live backend labels even for an identical handle/chat; they do not claim full identity verification', async () => {
   const identity = { ok: true, version: 1, state: 'ready', expectedAccount: 'st-user:' + createHash('sha256').update(namespace.slice(8)).digest('hex'),
     instanceId: randomUUID(), accountId: randomUUID(), proof: 'installation-labels', automaticRebinding: false };
   const f = await fixture({ sourceIdentity: identity });
   const prepared = await f.session.preview(); assert.equal(prepared.sourceLabelsMatched, true); assert.equal(prepared.identityVerified, false);
-  f.options.sourceIdentity.inspect = async () => ({ ...identity, instanceId: randomUUID() });
-  await assert.rejects(f.reopen(), /来源标识不同/); await assert.rejects(f.session.restore(prepared, consent), /来源标识不同/);
+  const changed={...identity,instanceId:randomUUID()};f.options.sourceIdentity.inspect = async () => clone(changed);
+  const other=await f.reopen();assert.equal((await other.preview()).environmentReview.state,'mapping-required');other.close();
+  await assert.rejects(f.session.restore(prepared, consent), /来源标识不同/);
   assert.deepEqual(writes(f.e), []); assert.equal(f.e.files.size, 0);
   delete f.options.sourceIdentity; await assert.rejects(f.reopen(), /不能降级/); assert.deepEqual(writes(f.e), []);
   f.options.sourceIdentity = { inspect: async () => clone(identity) }; const restored = await f.reopen();

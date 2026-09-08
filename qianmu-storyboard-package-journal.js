@@ -1,4 +1,5 @@
 import {validateStoryboardMutation} from './qianmu-storyboard-package-mutation.js';
+import {inspectStoryboardEnvironmentReview,validateStoryboardEnvironmentReceipt,storyboardEnvironmentReviewsEqual,STORYBOARD_ENVIRONMENT_MAP_LIMIT} from './qianmu-storyboard-environment-map.js';
 // Asset checkpoints are identity-only; the separate mutation store holds local before/after configuration.
 const fail=message=>{throw Object.assign(new Error(message),{code:'storyboard_package_journal',submissionState:'not_submitted'});};
 const account=value=>typeof value==='string'&&/^st-user:.+/.test(value)&&value.length<=512&&!/[\u0000-\u001f\u007f]/.test(value);
@@ -10,9 +11,9 @@ const resourcePhases=['prepared','originals','workflows','metadata','verified'];
 const bundlePhases=['prepared','originals','workflows','pools','metadata','vibes','verified'];
 const resourceOrder=kind=>kind==='bundle'?bundlePhases:resourcePhases;
 export function validateResourceRestoreCheckpoint(row){
-  const keys=['key','version','namespace','kind','sourceDigest','planDigest','phase','revision','createdAt','updatedAt',...(row?.kind==='bundle'?['chatHash']:[])];
+  const keys=['key','version','namespace','kind','sourceDigest','planDigest','phase','revision','createdAt','updatedAt',...(row?.kind==='bundle'?['chatHash','environmentDigest']:[])];
   if(!row||typeof row!=='object'||Array.isArray(row)||Object.keys(row).some(name=>!keys.includes(name))||row.version!==1||!account(row.namespace)||!['characters','bundle'].includes(row.kind)
-    ||(row.kind==='bundle'&&!hash(row.chatHash))||row.key!==JSON.stringify([row.namespace,row.kind])||!hash(row.sourceDigest)||!hash(row.planDigest)||!resourceOrder(row.kind).includes(row.phase)
+    ||(row.kind==='bundle'&&(!hash(row.chatHash)||(Object.hasOwn(row,'environmentDigest')&&!hash(row.environmentDigest))))||row.key!==JSON.stringify([row.namespace,row.kind])||!hash(row.sourceDigest)||!hash(row.planDigest)||!resourceOrder(row.kind).includes(row.phase)
     ||!Number.isSafeInteger(row.revision)||row.revision<1||!Number.isSafeInteger(row.createdAt)||row.createdAt<0||!Number.isSafeInteger(row.updatedAt)||row.updatedAt<row.createdAt)fail('资源恢复记录损坏，请保留原备份核对');
   return row;
 }
@@ -32,11 +33,12 @@ export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,k
     opening=new Promise((resolve,reject)=>{
       let done=false,request;const finish=(failure,value)=>{if(done){value?.close();return;}done=true;clearTimeout(timer);failure?reject(failure):resolve(value);};
       const timer=setTimeout(()=>finish(error('读取导入恢复记录超时')),timeout);
-      try{request=indexedDB.open(dbName,3);}catch(_){finish(error('无法打开导入恢复记录'));return;}
+      try{request=indexedDB.open(dbName,4);}catch(_){finish(error('无法打开导入恢复记录'));return;}
       request.onupgradeneeded=()=>{if(done||closed){request.transaction?.abort();return;}const db=request.result;
         if(!db.objectStoreNames.contains('checkpoints')){const store=db.createObjectStore('checkpoints',{keyPath:'key'});store.createIndex('namespace','namespace');}
         if(!db.objectStoreNames.contains('mutations'))db.createObjectStore('mutations',{keyPath:'namespace'});
         if(!db.objectStoreNames.contains('resources'))db.createObjectStore('resources',{keyPath:'key'});
+        if(!db.objectStoreNames.contains('environmentMaps')){const store=db.createObjectStore('environmentMaps',{keyPath:'key'});store.createIndex('namespace','namespace');}
       };
       request.onerror=()=>finish(error('导入恢复记录不可用'));request.onblocked=()=>finish(error('请关闭旧页面后重新核对导入恢复记录'));
       request.onsuccess=()=>{const db=request.result;if(done||closed){db.close();finish(ended());return;}database=db;
@@ -57,6 +59,23 @@ export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,k
     });
   }
   return Object.freeze({
+    async inspectEnvironmentMap(input){
+      const review=await inspectStoryboardEnvironmentReview(input);if(review.state!=='mapping-required')fail('无需保存相同环境的映射');
+      const result=await transaction('readonly',()=>true,(store,read,set)=>read(store.get(review.digest),row=>{
+        if(row){validateStoryboardEnvironmentReceipt(row);if(!storyboardEnvironmentReviewsEqual(row.review,review))fail('环境映射记录与原包不符');}
+        read(store.index('namespace').count(keyRange.only(review.namespace)),count=>set({receipt:row||null,fits:Boolean(row)||count<STORYBOARD_ENVIRONMENT_MAP_LIMIT}));
+      }),'environmentMaps');return result;
+    },
+    async prepareEnvironmentMap(input,{confirmed=false,isCurrent=()=>true}={}){
+      if(confirmed!==true)fail('请明确确认来源与目标环境映射');
+      const review=await inspectStoryboardEnvironmentReview(input),row=validateStoryboardEnvironmentReceipt({key:review.digest,namespace:review.namespace,review,createdAt:now()});
+      return transaction('readwrite',isCurrent,(store,read,set)=>read(store.get(row.key),existing=>{
+        if(existing){validateStoryboardEnvironmentReceipt(existing);if(!storyboardEnvironmentReviewsEqual(existing.review,review))fail('环境映射记录已变化');set(existing);return;}
+        read(store.index('namespace').count(keyRange.only(row.namespace)),count=>{
+          if(count>=STORYBOARD_ENVIRONMENT_MAP_LIMIT)fail('环境映射凭据已达上限，请先保全核对，不会自动删除历史');store.add(row);set(row);
+        });
+      }),'environmentMaps');
+    },
     async loadResource(namespace,kind='characters'){
       if(!account(namespace)||!['characters','bundle'].includes(kind))fail('资源恢复账户或类型无效');
       return transaction('readonly',()=>true,(store,read,set)=>read(store.get(JSON.stringify([namespace,kind])),row=>{
@@ -71,6 +90,7 @@ export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,k
         if(current)validateResourceRestoreCheckpoint(current);
         if(JSON.stringify(current||null)!==JSON.stringify(approved))fail('资源恢复记录已被另一页面修改，请重新核对');
         if(current&&(current.sourceDigest!==row.sourceDigest||current.chatHash!==row.chatHash)&&current.phase!=='verified')fail('本账户有未完成的资源恢复，请先选择原备份核对');
+        if(current&&current.phase!=='verified'&&current.environmentDigest!==row.environmentDigest)fail('未完成恢复的目标环境已变化，请先核对原记录');
         if(current){row.revision=current.revision+1;row.createdAt=current.sourceDigest===row.sourceDigest?current.createdAt:stamp;row.updatedAt=Math.max(current.updatedAt,stamp);}
         validateResourceRestoreCheckpoint(row);store.put(row);set(row);
       }),'resources');

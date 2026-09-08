@@ -1,6 +1,14 @@
 const escape = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const button = (action, text, disabled = false) => `<button type="button" class="sd-btn" data-bundle-action="${action}" ${disabled ? 'disabled' : ''}>${text}</button>`;
 const resourceStates={included:'包内资料',external:'外部另备',dynamic:'动态槽位',unresolved:'引用待定位',review:'运行环境待核对'};
+function renderEnvironment(review) {
+  if (review?.state !== 'mapping-required') return '';
+  const label = (title, identity) => `<p><b>${title}</b><br>ST 安装：${escape(identity.instanceId)}<br>账户标签：${escape(identity.accountId)}</p>`;
+  return `<section data-bundle-environment-map><h3>更换 ST 环境 · 请单独确认</h3>${label('备份来源',review.source)}${label('当前目标',review.target)}
+    <p>仅映射安装／账户标签；账户名、聊天及角色文件标识仍须相同。不会改写原包、工作流历史或角色身份，也不会替换 ST 的来源标签。</p>
+    <p>标签不是身份认证。同名不是同一个人；请同时核对角色内容和正文落点。凭据仅保存于当前浏览器，仍须保留原备份。</p>
+    <p><small>原包 SHA-256：${escape(review.sourceDigest)}<br>本次映射：${escape(review.digest)}</small></p></section>`;
+}
 function renderResources(view) {
   const summary=view.preview?.summary?.resourceOrigins,page=view.resourcePage;if(!summary)return '';
   return `<section data-bundle-resource-section><h3>文件与引用用途 · ${summary.total}</h3><p>${summary.recorded?'来源清单已与原包逐项核对。':'旧包未记录此清单；以下从现有原文重建，不冒充当时的来源证明。'} 原包全部用途按位置列出，不是唯一文件数；保留本机条目时不代表全部应用。</p>
@@ -12,12 +20,12 @@ function renderResources(view) {
 export function renderStoryboardBundleReview(view) {
   const p = view.preview, offset = view.page * 24, conflicts = p?.conflicts || [], bindings = p?.bindingReview || [], subjects = p?.subjectReview || [], connections = p?.configuration?.connections || [];
   const pages = Math.max(1, Math.ceil(Math.max(conflicts.length, bindings.length, subjects.length, connections.length) / 24));
-  const ready = p?.ready && !p.needsRecheck && view.environmentReviewed && (!bindings.length || view.bindingsReviewed) && (!subjects.length || view.subjectsReviewed) && (!connections.length || view.connectionsReviewed) && (!p.summary?.resourceOrigins?.total || view.resourcesReviewed);
+  const ready = p?.ready && !p.needsRecheck && view.environmentReviewed && (p.environmentReview?.state !== 'mapping-required' || view.environmentMapped) && (!bindings.length || view.bindingsReviewed) && (!subjects.length || view.subjectsReviewed) && (!connections.length || view.connectionsReviewed) && (!p.summary?.resourceOrigins?.total || view.resourcesReviewed);
   return `<header><b id="qm-bundle-title">恢复分镜资源联包</b><button type="button" class="sd-icon-btn" data-bundle-action="close" title="关闭恢复页面" aria-label="关闭恢复页面"><i data-qm-icon="qm-regular-x"></i></button></header>
     <main data-bundle-scroll><fieldset ${view.busy || view.result ? 'disabled' : ''}>
-    <section><p class="sd-bundle-file">${escape(view.fileName)}</p><p>恢复当前聊天成片、配置、Vibe 原文件、完整工作流／候选历史及角色库。只补缺件，不覆盖原图；不含模型文件或 API 授权。跨环境身份重绑定尚未开放，请先保留旧环境。</p>
+    <section><p class="sd-bundle-file">${escape(view.fileName)}</p><p>恢复当前聊天成片、配置、Vibe 原文件、完整工作流／候选历史及角色库。只补缺件，不覆盖原图；不含模型文件或 API 授权。更换 ST 安装可单独确认；不同账户名、聊天及角色身份的重绑定尚未开放，请保留旧环境。</p>
     ${p ? `<p>成片 ${p.summary.images} · Vibe ${p.summary.vibeFiles} · 工作流 ${p.summary.workflows.count}（${p.summary.workflows.versions} 版） · 候选 ${p.summary.pools.count} · 角色 ${p.summary.characters.count}</p>
-    <p>${p.sourceLabelsMatched ? 'ST 来源标识一致；完整服务器副本也会相同，角色与聊天仍须人工核对。' : '此包无 ST 来源标识，仅凭同名账户与聊天不能确认身份，请人工核对原环境。'}</p>
+    <p>${p.sourceLabelsMatched ? 'ST 来源标识一致；完整服务器副本也会相同，角色与聊天仍须人工核对。' : p.environmentReview ? 'ST 来源标签不同，请逐项核对来源与当前目标后确认映射。' : '此包无 ST 来源标识，仅凭同名账户与聊天不能确认身份，请人工核对原环境。'}</p>
     ${p.summary.legacyVibeOriginals ? `<p>已包含 ${p.summary.legacyVibeOriginals} 个旧 Vibe 地址的本地原图；原配方及强度不变。</p>` : ''}
     ${p.summary.legacyVibeUrls > (p.summary.legacyVibeOriginals || 0) ? `<p>另有 ${p.summary.legacyVibeUrls - (p.summary.legacyVibeOriginals || 0)} 个旧 Vibe 地址未包含原图，请另行保全。</p>` : ''}
     <p>档案／绑定：新增 ${p.characterSummary.added} · 替换 ${p.characterSummary.replaced} · 保留 ${p.characterSummary.kept}</p>
@@ -29,9 +37,11 @@ export function renderStoryboardBundleReview(view) {
     ${subjects.length ? `<section><h3>角色卡与人设内容 · ${subjects.length}</h3><p>核对声明的人物正文、开场与提示字段；不含头像图像、自定义扩展或外部世界书，不是完整角色卡备份。</p>${subjects.slice(offset, offset + 24).map(row => `<p>${escape(row.category.toUpperCase())} · ${escape(row.subjectKey)}<br>${({matched:'内容一致',changed:'内容有变化，请确认仍为原角色',missing:'目标未找到',unverified:'来源或目标资料未载入，须人工核对'})[row.state]}${row.required ? ' · 将恢复绑定' : ''}</p>`).join('')}${subjects.some(row => row.required && row.state === 'missing') ? '<p>待绑定目标缺失，尚不能恢复；请先在 ST 恢复原角色／人设。跨环境目标映射另行处理，不猜同名对象。</p>' : ''}</section>` : ''}
     ${connections.length ? `<section><h3>连接预设 · ${connections.length}</h3><p>仅核对生图连接配置，不测试连通、不复制 Key。当前编辑中的连接和选择标识保持本机状态；重选预设后才加载备份配置。取词 LLM 的 ST API 档案仍需另行核对。</p>${connections.slice(offset, offset + 24).map(row => `<p>${escape(row.providerId)} · ${escape(row.name)}<br>${({added:'新增预设',same:'连接配置一致',changed:'连接配置有变化'})[row.state]}${row.active ? ' · 当前选择的同编号预设' : ''}<br>${row.credential === 'retained' ? '保留本机该预设的授权引用；是否仍有效需自行验证' : '未沿用本机该预设的授权引用；使用前请重新核对 Key'}${row.differences.length ? `<br>变化项：${row.differences.map(key => ({baseUrl:'地址',protocol:'接口协议',imageProtocolVersion:'协议版本',modelFamily:'模型系列',headers:'自定义请求头',options:'传输选项',compatibility:'兼容规则',unverified:'原配置无法完整核对'})[key]).join('、')}` : ''}</p>`).join('')}</section>` : ''}
     ${pages > 1 ? `<nav>${button('previous','上一页',view.page === 0)}<span>${view.page + 1} / ${pages}</span>${button('next','下一页',view.page >= pages - 1)}</nav>` : ''}
+    ${renderEnvironment(p?.environmentReview)}
     ${renderResources(view)}
     ${p?.images?.some(row => row.state === 'conflict') ? `<section><h3>原图冲突，未覆盖</h3>${p.images.filter(row => row.state === 'conflict').slice(0,24).map(row => `<p>${escape(row.url)}</p>`).join('')}<p>请先在旧环境保全并处理冲突后重新核对。</p></section>` : ''}
-    <label class="sd-bundle-review"><input type="checkbox" data-bundle-environment ${view.environmentReviewed?'checked':''}>我确认来自当前 ST 原环境和原聊天；同名不代表同一身份，不确定时取消。</label>
+    <label class="sd-bundle-review"><input type="checkbox" data-bundle-environment ${view.environmentReviewed?'checked':''}>我已核对备份来源与当前聊天；同名不代表同一身份，不确定时取消。</label>
+    ${p?.environmentReview?.state === 'mapping-required' ? `<label class="sd-bundle-review"><input type="checkbox" data-bundle-mapping ${view.environmentMapped?'checked':''}>我明确确认从以上备份来源恢复至当前 ST，并保存本次环境映射凭据。</label>` : ''}
     ${bindings.length ? `<label class="sd-bundle-review"><input type="checkbox" data-bundle-bindings ${view.bindingsReviewed?'checked':''}>我已核对全部 ${bindings.length} 处原身份与聊天标识。</label>` : ''}
     ${subjects.length ? `<label class="sd-bundle-review"><input type="checkbox" data-bundle-subjects ${view.subjectsReviewed?'checked':''}>我已核对全部角色／人设差异，确认仍为原对象；无法确定时取消。</label>` : ''}
     ${connections.length ? `<label class="sd-bundle-review"><input type="checkbox" data-bundle-connections ${view.connectionsReviewed?'checked':''}>我已核对全部连接差异及授权提示，恢复后会先检查连接再使用。</label>` : ''}
@@ -41,7 +51,7 @@ export function renderStoryboardBundleReview(view) {
 
 export function openStoryboardBundleReview({ parent, fileName, connect, paintIcons = () => {} }) {
   const dialog = document.createElement('dialog'); dialog.className = 'sd-bundle-dialog'; dialog.setAttribute('aria-labelledby','qm-bundle-title');
-  const view = { fileName, page: 0, preview: null, busy: true, notice: '', result: null, environmentReviewed: false, bindingsReviewed: false, subjectsReviewed: false, connectionsReviewed: false, resourcesReviewed: false, resourcePage: null };
+  const view = { fileName, page: 0, preview: null, busy: true, notice: '', result: null, environmentReviewed: false, environmentMapped: false, bindingsReviewed: false, subjectsReviewed: false, connectionsReviewed: false, resourcesReviewed: false, resourcePage: null };
   let session = null, closed = false, choices = {}, focusChoice = null, resolve; const finished = new Promise(done => resolve = done);
   function close() { if (closed) return; closed = true; session?.close(); if (dialog.open) dialog.close(); dialog.remove(); resolve(view.result); }
   function draw() {
@@ -57,18 +67,18 @@ export function openStoryboardBundleReview({ parent, fileName, connect, paintIco
     if (view.busy || !session || closed) return;
     view.busy = true; view.notice = ''; draw();
     try {
-      if (action === 'preview') { view.environmentReviewed = false; view.bindingsReviewed = false; view.subjectsReviewed = false; view.connectionsReviewed = false; view.resourcesReviewed = false; view.preview = await session.preview(choices); }
+      if (action === 'preview') { view.environmentMapped = false; view.environmentReviewed = false; view.bindingsReviewed = false; view.subjectsReviewed = false; view.connectionsReviewed = false; view.resourcesReviewed = false; view.preview = await session.preview(choices); }
       if (action === 'choose') view.preview = await session.choose(choices);
       if (action === 'resources') { const page=await session.resources(resourceOptions);if(page.digest!==view.preview.summary.resourceOrigins.digest)throw Error('文件用途清单与当前预览不符');view.resourcePage=page; }
       if (action === 'restore') {
-        view.result = await session.restore(view.preview, { confirmed: true, environmentReviewed: view.environmentReviewed, bindingsReviewed: view.bindingsReviewed, subjectsReviewed: view.subjectsReviewed, connectionsReviewed: view.connectionsReviewed, resourcesReviewed: view.resourcesReviewed });
+        view.result = await session.restore(view.preview, { confirmed: true, environmentReviewed: view.environmentReviewed, environmentMapped: view.environmentMapped, bindingsReviewed: view.bindingsReviewed, subjectsReviewed: view.subjectsReviewed, connectionsReviewed: view.connectionsReviewed, resourcesReviewed: view.resourcesReviewed });
         session.close(); // Release the source Blob, decoded documents and worker DB connections while the result stays readable.
         view.notice = '原件已核对，配置已应用。请刷新后点击“核对导入”确认保存；历史生成任务不会续跑。';
       }
     } catch (error) {
       view.notice = error?.message || '恢复未确认，请核对原包';
       if (view.preview) view.preview = { ...view.preview, ready: false, needsRecheck: true, planDigest: '' };
-      view.environmentReviewed = false; view.bindingsReviewed = false; view.subjectsReviewed = false; view.connectionsReviewed = false; view.resourcesReviewed = false;
+      view.environmentMapped = false; view.environmentReviewed = false; view.bindingsReviewed = false; view.subjectsReviewed = false; view.connectionsReviewed = false; view.resourcesReviewed = false;
       if (/过期/.test(view.notice)) { choices = {}; view.preview = null; view.page = 0; view.notice += '，已清空过期选择，请重新核对。'; }
     } finally { view.busy = false; draw(); }
   }
@@ -85,6 +95,7 @@ export function openStoryboardBundleReview({ parent, fileName, connect, paintIco
   dialog.addEventListener('change', event => {
     if (view.busy || closed) return; const field = event.target;
     if (field.matches('[data-bundle-environment]')) { focusChoice = null; view.environmentReviewed = field.checked; draw(); }
+    else if (field.matches('[data-bundle-mapping]')) { focusChoice = null; view.environmentMapped = field.checked; draw(); }
     else if (field.matches('[data-bundle-bindings]')) { focusChoice = null; view.bindingsReviewed = field.checked; draw(); }
     else if (field.matches('[data-bundle-subjects]')) { focusChoice = null; view.subjectsReviewed = field.checked; draw(); }
     else if (field.matches('[data-bundle-connections]')) { focusChoice = null; view.connectionsReviewed = field.checked; draw(); }
@@ -94,7 +105,7 @@ export function openStoryboardBundleReview({ parent, fileName, connect, paintIco
       const row = view.preview?.conflicts[Number(field.dataset.bundleChoice)]; if (!row) return;
       focusChoice = field.dataset.bundleChoice;
       if (field.value) choices[row.key] = field.value; else delete choices[row.key];
-      view.environmentReviewed = false; view.bindingsReviewed = false; view.subjectsReviewed = false; view.connectionsReviewed = false; view.resourcesReviewed = false; view.preview = { ...view.preview, ready: false, needsRecheck: true, planDigest: '' }; void run('choose');
+      view.environmentMapped = false; view.environmentReviewed = false; view.bindingsReviewed = false; view.subjectsReviewed = false; view.connectionsReviewed = false; view.resourcesReviewed = false; view.preview = { ...view.preview, ready: false, needsRecheck: true, planDigest: '' }; void run('choose');
     }
   });
   parent.appendChild(dialog); draw();

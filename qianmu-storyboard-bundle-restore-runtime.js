@@ -1,5 +1,6 @@
 import { validStoryboardConnectionReview } from './qianmu-storyboard-connection-identity.js';
 import { validStoryboardResourceOriginsPage, validStoryboardResourceOriginsSummary } from './qianmu-storyboard-resource-origins.js';
+import { validStoryboardEnvironmentReview } from './qianmu-storyboard-environment-map.js';
 let active = null;
 const fail = message => Object.assign(new Error(message), { code: 'storyboard_bundle_restore_runtime', submissionState: 'not_submitted' });
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -11,6 +12,7 @@ function validView(value, namespace) {
     && (value.subjectReview === undefined || Array.isArray(value.subjectReview) && value.subjectReview.length <= 2080 && value.subjectReview.every(row => ['char','user','other'].includes(row.category) && typeof row.subjectKey === 'string' && row.subjectKey.length <= 1024 && typeof row.required === 'boolean' && ['matched','changed','missing','unverified'].includes(row.state)))
     && (value.configuration?.connections === undefined || validStoryboardConnectionReview(value.configuration.connections))
     && (value.summary?.resourceOrigins === undefined || validStoryboardResourceOriginsSummary(value.summary.resourceOrigins))
+    && (value.environmentReview == null || validStoryboardEnvironmentReview(value.environmentReview) && value.environmentReview.namespace === namespace && value.environmentReview.sourceDigest === value.sourceDigest && value.environmentReview.chatHash === value.chatHash && value.sourceLabelsMatched === (value.environmentReview.state === 'matched'))
     && Array.isArray(value.images) && value.images.length <= 30400 && value.images.every(row => typeof row.url === 'string' && ['missing','present','conflict'].includes(row.state))
     && ['added','replaced','kept'].every(key => count(value.characterSummary?.[key])) && count(value.summary?.images) && count(value.summary?.vibeFiles)
     && ['workflows','pools','characters'].every(key => count(value.summary?.[key]?.count)) && count(value.summary?.workflows?.versions);
@@ -37,6 +39,7 @@ export async function openStoryboardBundleRestoreRuntime(file, { namespace, chat
   async function command(action, payload) {
     try { await check(); } catch (error) { close(error); throw error; } if (current) throw fail('已有恢复操作正在执行');
     const captured = structuredClone(payload);
+    if (action === 'restore' && captured.prepared?.environmentReview?.state === 'mapping-required' && captured.consent?.environmentMapped !== true) throw fail('请单独确认来源与目标环境映射');
     return new Promise((resolve, reject) => {
       const operation = ++counter, pending = { operation, action, resolve, reject, lastRequest: 0, payload: captured }; current = pending;
       pending.timer = setTimeout(() => close(fail('恢复等待超时，部分可能已保存；请核对记录，不会自动重传')), Math.max(100, Math.min(300000, timeoutMs)));
