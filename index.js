@@ -201,6 +201,7 @@ const featureRuntime = createFeatureRuntime({
   vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.104') },
   vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.104') },
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.104') },
+  vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.104') },
   vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.104') },
   tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.104') },
   modelPicker: {
@@ -14585,6 +14586,10 @@ async function storyboardMountVibeLibrary(root) {
         createReview:async onClose=>{const review=await featureRuntime.load('vibeReview');await guard();return review.createVibeReviewController({
           actions:review.createVibeReviewActions({namespace,call:assetRuntime.callVibeAsset,guard,service:review.createVibeServiceClient({namespace,headers:storyboardRequestHeaders,guard})}),
           onClose,confirm:(title,message)=>confirmDialog(title,htmlEscape(message)),onAdd:(ref,selection)=>assets.adopt(ref,selection),isCurrent:same,icons:node=>applyQianmuIcons(node),onNotice:message=>{if(same())toast(message,'warning');},
+        });},
+        createStorage:async onClose=>{const storage=await featureRuntime.load('vibeStorage');await guard();return storage.createVibeStorageController({
+          actions:storage.createVibeStorageActions({namespace,call:assetRuntime.callVibeAsset,guard,items:()=>state.vibeLibrary}),
+          onClose,confirm:(title,message)=>confirmDialog(title,htmlEscape(message)),isCurrent:same,icons:node=>applyQianmuIcons(node),
         });},
         items:()=>state.vibeLibrary,gallery:()=>storyboardGalleryRecords().filter(item=>item.mediaType!=='video'&&item.kind!=='film'),
         isCurrent:same,icons:node=>applyQianmuIcons(node),onNotice:message=>{if(same())toast(message,'warning');},

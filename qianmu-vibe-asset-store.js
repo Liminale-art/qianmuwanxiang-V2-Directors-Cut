@@ -103,14 +103,29 @@ export function createVibeAssetStore({indexedDB=globalThis.indexedDB,keyRange=gl
       if(asset.assetId!==id||asset.bytes!==row.head.bytes||asset.serialized!==row.text||JSON.stringify(asset.summary)!==JSON.stringify(row.head.summary))fail('digest','Vibe 资产内容已变化，未用于生成');return asset;
     },
     async usage(account){namespace(account);return transaction('readonly',(tx,read,set)=>usage(tx,read,account,row=>set({...row,previewBytes:row.previewBytes??0,estimatedBytes:row.bytes+(row.previewBytes||0),limit:VIBE_ASSET_LIMITS.bytes})));},
+    async inventory(account){
+      namespace(account);return transaction('readonly',(tx,read,set)=>usage(tx,read,account,totals=>{
+        read(tx.objectStore('heads').index('namespace').getAll(keyRange.only(account),VIBE_ASSET_LIMITS.count+1),rows=>{
+          if(rows.length>VIBE_ASSET_LIMITS.count)fail('capacity','Vibe 资产条目过多');rows.forEach(row=>checkHead(row,account));
+          if(rows.length!==totals.count||rows.reduce((n,row)=>n+row.bytes,0)!==totals.bytes||rows.reduce((n,row)=>n+(row.previewBytes||0),0)!==(totals.previewBytes||0))fail('index','Vibe 目录与空间计值不一致，请先保全数据');
+          set({heads:rows,usage:{...totals,previewBytes:totals.previewBytes||0,limit:VIBE_ASSET_LIMITS.bytes}});
+        });
+      }));
+    },
     // Only an explicit storage-manager selection may call this; never a normal library-item deletion.
-    async remove(account,ids,{isCurrent=()=>true}={}){
+    async remove(account,ids,{isCurrent=()=>true,expectedHeads}={}){
       namespace(account);if(!Array.isArray(ids)||ids.length>VIBE_ASSET_LIMITS.count||new Set(ids).size!==ids.length)fail('asset','Vibe 清理选择无效');
       const keys=ids.map(id=>key(account,id));
+      let expected;
+      if(expectedHeads!==undefined){
+        if(!Array.isArray(expectedHeads)||expectedHeads.length!==ids.length||new Set(expectedHeads.map(row=>row?.assetId)).size!==ids.length)fail('stale','Vibe 清理快照无效');
+        expected=new Map(expectedHeads.map(row=>{checkHead(row,account);if(!ids.includes(row.assetId))fail('stale','Vibe 清理快照不匹配');return [row.key,JSON.stringify(row)];}));
+      }
       return transaction('readwrite',(tx,read,set)=>usage(tx,read,account,totals=>{
         let at=0,removed=0,bytes=0;
         const next=()=>{if(at===keys.length){tx.objectStore('usage').put(totals);set({removed,bytes});return;}
           const assetKey=keys[at++];read(tx.objectStore('heads').get(assetKey),head=>{
+            if(expected&&JSON.stringify(head)!==expected.get(assetKey))fail('stale','Vibe 文件已变化，未删除，请刷新后重新选择');
             if(!head){next();return;}checkHead(head,account);if(totals.count<1||totals.bytes<head.bytes||(totals.previewBytes||0)<(head.previewBytes||0))fail('index','Vibe 计值异常，未删除');
             totals={...totals,count:totals.count-1,bytes:totals.bytes-head.bytes,previewBytes:(totals.previewBytes||0)-(head.previewBytes||0)};if((totals.count===0)!==(totals.bytes===0)||totals.count===0&&totals.previewBytes!==0)fail('index','Vibe 计值不一致，未删除');
             tx.objectStore('heads').delete(assetKey);tx.objectStore('documents').delete(assetKey);tx.objectStore('previews').delete(assetKey);removed++;bytes+=head.bytes+(head.previewBytes||0);next();

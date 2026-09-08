@@ -3,9 +3,13 @@ import {createVibeEncodingStore,validateVibeEncodingIdentity} from './qianmu-vib
 import {exportNovelVibeFile,selectNovelVibeEncoding,vibeFilePreview,vibeFileError,vibeVariants,vibeDigest,appendNovelVibeEncoding,VIBE_FILE_LIMITS} from './qianmu-vibe-file.js';
 import {normalizeNovelVibeImage} from './qianmu-novel-vibe.js';
 import {exportVibeReceiptFile,inspectVibeReceiptFile} from './qianmu-vibe-receipt-file.js';
+import {createVibeStorageOperations} from './qianmu-vibe-storage.js';
 export function createVibeAssetOperations(store,{encodings}={}){
+const storage=createVibeStorageOperations({store,encodings});
 return async function run({type,namespace,id,file,ids,settings,bundle,model,information,encoding,cacheKey,identity,attemptId,retryAttemptId,status,assetRef,image,name,expectedSourceId,sourceAssetRef,delivery,serviceAttemptId,serviceDelivery,expected,proof,confirmed}){
   if(type==='encoding-get')return encodings.get(namespace,cacheKey);
+  if(type==='storage-inventory')return storage.inventory(namespace);
+  if(type==='storage-remove')return storage.remove(namespace,ids,proof,confirmed);
   if(type==='encoding-list')return encodings.list(namespace);
   if(type==='encoding-export'){
     const rows=cacheKey?[await encodings.get(namespace,cacheKey)]:await encodings.list(namespace);
@@ -57,7 +61,7 @@ return async function run({type,namespace,id,file,ids,settings,bundle,model,info
   if(type==='preview')return store.preview(namespace,id);
   if(type==='usage')return store.usage(namespace);
   if(type==='list')return store.list(namespace);
-  if(type==='remove')return store.remove(namespace,ids);
+  if(type==='remove')return storage.remove(namespace,ids,proof,confirmed);
   if(type==='export'){
     if(!Array.isArray(ids)||ids.length<1||ids.length>16)throw vibeFileError('size','请选择 1～16 项 Vibe 导出');
     if(settings!==undefined&&(!Array.isArray(settings)||settings.length!==ids.length||settings.some(row=>!row||typeof row.name!=='string'||row.name.length>100

@@ -10495,6 +10495,19 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-vibe-fee-history summary { cursor:pointer;list-style:none; }
 #story-director-modal .sd-vibe-fee-history summary::-webkit-details-marker { display:none; }
 #story-director-modal .sd-vibe-fee-history p { margin:5px 0; }
+#story-director-modal .sd-vibe-storage { min-width:0;text-align:left; }
+#story-director-modal .sd-vibe-storage header { display:flex;align-items:center;gap:7px; }
+#story-director-modal .sd-vibe-storage h3 { flex:1;min-width:0;margin:0;font-size:var(--sd-type-card,16px); }
+#story-director-modal .sd-vibe-storage p,#story-director-modal .sd-vibe-storage small { font-size:12px;color:var(--sd-text-soft);overflow-wrap:anywhere; }
+#story-director-modal .sd-vibe-storage-meter { display:flex;height:22px;overflow:hidden;border-radius:6px;background:var(--sd-hairline); }
+#story-director-modal .sd-vibe-storage-legend,#story-director-modal .sd-vibe-storage-tools { display:flex;flex-wrap:wrap;gap:7px;margin:10px 0; }
+#story-director-modal .sd-vibe-storage-legend { font-size:12px; }
+#story-director-modal .sd-vibe-storage-legend i { display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px; }
+#story-director-modal .sd-vibe-storage-tools .sd-btn { flex:1 1 100px;min-width:0;white-space:normal; }
+#story-director-modal .sd-vibe-storage-list { display:grid;gap:7px;margin-top:10px; }
+#story-director-modal .sd-vibe-storage-list>label { display:flex;align-items:center;gap:10px;min-width:0;padding:10px;border:1px solid var(--sd-hairline);border-radius:8px;background:var(--sd-card);text-align:left;cursor:pointer; }
+#story-director-modal .sd-vibe-storage-list input { flex:0 0 18px;width:18px;height:18px;margin:0; }
+#story-director-modal .sd-vibe-storage-list label>span { display:grid;gap:4px;min-width:0;overflow-wrap:anywhere; }
 #story-director-modal .sd-vibe-file-cover:has(img) { min-height:0; }
 #story-director-modal .sd-vibe-waterfall { columns:2;column-gap:10px;min-width:0; }
 #story-director-modal .sd-vibe-tile,#story-director-modal .sd-vibe-gallery-picture { display:block;break-inside:avoid;margin:0 0 10px;width:100%;box-sizing:border-box;overflow:hidden;border:1px solid var(--sd-hairline);border-radius:9px;background:var(--sd-card);padding:0; }

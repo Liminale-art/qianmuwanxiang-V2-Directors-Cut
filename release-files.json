@@ -5,6 +5,7 @@
   "files": [
     "qianmu-vibe-review.js",
     "qianmu-vibe-receipt-file.js",
+    "qianmu-vibe-storage.js",
     "qianmu-native-review-contract.js",
     "qianmu-native-review-service.js",
     "qianmu-novel-service-channel.js",
