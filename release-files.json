@@ -3,6 +3,10 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-storyboard-bundle.js",
+    "qianmu-storyboard-bundle-resources.js",
+    "qianmu-storyboard-bundle-worker.js",
+    "qianmu-storyboard-bundle-runtime.js",
     "qianmu-character-backup-restore.js",
     "qianmu-image-restore-contract.js",
     "qianmu-image-restore-service.js",

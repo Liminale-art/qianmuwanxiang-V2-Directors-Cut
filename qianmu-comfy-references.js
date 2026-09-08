@@ -47,6 +47,13 @@ export async function readComfyReferenceImages({workflow,selection,namespace,gua
 }
 // Shared byte reader; callers independently authorize their engine/account binding first.
 export async function readStaticReferenceImages(receipts, {guard = async () => {},fetchImpl = fetch,timeoutMs = 30000} = {}) {
+  return readStaticReferenceObjects(receipts, {guard,fetchImpl,timeoutMs}, (bytes, item, index) => ({ data: base64(bytes), mime: item.mime, name: `reference-${index+1}.${item.mime === 'image/jpeg' ? 'jpg' : item.mime.split('/')[1]}` }));
+}
+// Resource bundles retain binary Blobs instead of converting the same original into another large Base64 string.
+export async function readStaticReferenceBlobs(receipts, {guard = async () => {},fetchImpl = fetch,timeoutMs = 30000} = {}) {
+  return readStaticReferenceObjects(receipts, {guard,fetchImpl,timeoutMs}, (bytes, item) => new Blob([bytes], {type:item.mime}));
+}
+async function readStaticReferenceObjects(receipts, {guard,fetchImpl,timeoutMs}, encode) {
   if (!Array.isArray(receipts) || receipts.length > 16) fail('参考图数量无效');
   const items = receipts.map(normalizeStaticReferenceReceipt);
   if (items.reduce((sum,item) => sum + item.bytes,0) > COMFY_REFERENCE_TOTAL) fail('参考图总计须在 48 MB 以内');
@@ -65,7 +72,7 @@ export async function readStaticReferenceImages(receipts, {guard = async () => {
       } } finally { await reader.cancel().catch(() => {}); }
       const bytes = new Uint8Array(length); let at = 0; for (const chunk of chunks) { bytes.set(chunk,at); at += chunk.byteLength; }
       if (length !== item.bytes || mimeOf(bytes) !== item.mime || await digest(bytes) !== item.sha256) fail('参考图文件内容已变化，请重新选择');
-      await guard(); images.push({ data: base64(bytes), mime: item.mime, name: `reference-${images.length+1}.${item.mime === 'image/jpeg' ? 'jpg' : item.mime.split('/')[1]}` });
+      await guard(); images.push(encode(bytes,item,images.length));
     } catch (error) { if (error.code === 'comfy_reference_binding') throw error; fail('参考图读取中断，请稍后重试，尚未提交生成'); }
     finally { clearTimeout(timer); }
   }

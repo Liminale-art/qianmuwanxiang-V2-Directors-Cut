@@ -56,6 +56,12 @@ async function verifyWorkflows(library, source, census, guard) {
   await guard();
 }
 
+// Unified bundles share the full workflow library once. The character proof still checks only its exact pinned originals.
+export async function verifyCharacterBackupWorkflowDependencies(library, workflows, {guard = async () => {}} = {}) {
+  const census = collectCharacterBackupDependencies(library), selected = selectCharacterBackupWorkflows(library, workflows);
+  await verifyWorkflows(library, selected, census, guard); return census;
+}
+
 async function verifyImage(value, expected) {
   if (!object(value) || Object.keys(value).some(key => !['sha256', 'mime', 'bytes', 'data'].includes(key)) || !hash(value.sha256) || !expected
     || value.sha256 !== expected.sha256 || value.bytes !== expected.bytes || value.mime !== expected.mime || !Number.isSafeInteger(value.bytes) || value.bytes < 1 || value.bytes > 16 * 1024 * 1024

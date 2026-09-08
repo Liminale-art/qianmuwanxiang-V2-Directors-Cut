@@ -53,6 +53,9 @@ export function parseStrictStoryboardJson(text,{maxBytes=STORYBOARD_PACKAGE_INPU
 }
 export function parseStoryboardPackageText(text,{legacy=false,auto=false}={}){
   const payload=parseStrictStoryboardJson(text);
+  return validateStoryboardPackagePayload(payload,{legacy,auto});
+}
+export function validateStoryboardPackagePayload(payload,{legacy=false,auto=false}={}){
   if(auto)legacy=payload?.version!==7;
   const supported=legacy?(payload?.version===undefined||Number.isInteger(payload?.version)&&payload.version>=1&&payload.version<=6):payload?.version===7;
   if(!object(payload)||payload.type!=='qianmu-storyboard'||!supported||!object(payload.settings)||!object(payload.chat))fail(legacy?'当前版本不支持此分镜包格式，请保留原包':'请选择新版 v7 分镜包；旧版恢复仍使用原入口');
