@@ -3,6 +3,9 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-storyboard-mapping-contract.js",
+    "qianmu-storyboard-mapping-registry.js",
+    "qianmu-storyboard-mapping-view.js",
     "qianmu-storyboard-subject-map.js",
     "qianmu-storyboard-environment-map.js",
     "qianmu-source-identity-contract.js",

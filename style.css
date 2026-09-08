@@ -57,6 +57,17 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-modal .sd-bundle-dialog .sd-bundle-review { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0; }
 #story-director-modal .sd-bundle-dialog .sd-bundle-review input { flex: 0 0 auto; margin-top: 4px; }
 #story-director-modal .sd-bundle-dialog footer > div > button { flex: 1; min-width: 0; }
+#story-director-modal .sd-mapping-dialog .sd-mapping-search { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
+#story-director-modal .sd-mapping-dialog .sd-mapping-search select { grid-column:1 / -1; }
+#story-director-modal .sd-mapping-dialog .sd-mapping-search :is(input,select,button) { box-sizing:border-box; width:100%; min-width:0; height:40px; margin:0; font-size:12px; text-align:left; }
+#story-director-modal .sd-mapping-dialog .sd-mapping-items { display:grid; gap:8px; }
+#story-director-modal dialog.sd-mapping-dialog .sd-mapping-item { display:grid; gap:4px; width:100%; min-width:0; height:auto; padding:10px; text-align:left; white-space:normal; overflow-wrap:anywhere; }
+#story-director-modal .sd-mapping-dialog :is(.sd-mapping-meta,.sd-mapping-item) > div { display:grid; gap:3px; min-width:0; text-align:left; overflow-wrap:anywhere; }
+#story-director-modal .sd-mapping-dialog :is(.sd-mapping-item,.sd-mapping-meta) :is(b,span,small) { max-width:100%; font-size:12px; text-align:left; }
+#story-director-modal .sd-mapping-dialog :is(.sd-mapping-item,.sd-mapping-meta) small { color:var(--sd-muted,#777); }
+#story-director-modal .sd-mapping-dialog .sd-mapping-meta { display:grid; gap:8px; }
+#story-director-modal .sd-mapping-dialog footer > .sd-mapping-pages { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:8px; font-size:12px; }
+#story-director-modal .sd-mapping-dialog .sd-mapping-pages > button:last-child { grid-column:1 / -1; }
 #story-director-modal .sd-link-review-dialog .sd-link-row { display: flex; width: 100%; gap: 10px; padding: 10px; margin: 8px 0; height: auto; min-height: 44px; text-align: left; background: var(--sd-card); color: var(--sd-text); border: 1px solid var(--sd-hairline); border-radius: 8px; }
 #story-director-modal .sd-link-review-dialog button.sd-link-row { flex-direction: column; align-items: stretch; }
 #story-director-modal .sd-link-review-dialog .sd-link-row > span { min-width: 0; flex: 1; overflow-wrap: anywhere; }

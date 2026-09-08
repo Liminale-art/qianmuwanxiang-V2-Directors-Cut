@@ -109,10 +109,10 @@ test('the record manager is unchecked by default, names destructive consequences
   assert.match(html,/无法再通过“核对导入”/);assert.match(html,/其他聊天/);assert.match(html,/账户级角色库/);assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/private old text/);
 });
 
-function globalFixture(restore){
+function globalFixture(restore,mappings={status:'unavailable',bytes:null,error:'not sampled'}){
   return vm.createContext({storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:9999,quota:99999})}},
     blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
-    featureRuntime:{load:async key=>key==='storyboardRestoreStorage'?{collectStoryboardRestoreStorage:async()=>restore}:key==='vibeStorageSummary'?{collectVibeStorage:async()=>({status:'unavailable',bytes:null})}:key==='comfyStorage'?{collectComfyStorage:async()=>({bytes:0,errors:[]})}:{manageImageAdmissionStorage:async()=>({bytes:0,count:0}),resolveImageAccountNamespace:async()=>namespace}},
+    featureRuntime:{load:async key=>key==='storyboardRestoreStorage'?{collectStoryboardRestoreStorage:async()=>restore,collectStoryboardMappingStorage:async()=>mappings}:key==='vibeStorageSummary'?{collectVibeStorage:async()=>({status:'unavailable',bytes:null})}:key==='comfyStorage'?{collectComfyStorage:async()=>({bytes:0,errors:[]})}:{manageImageAdmissionStorage:async()=>({bytes:0,count:0}),resolveImageAccountNamespace:async()=>namespace}},
     storyboardManageImageChannels:async()=>({bytes:0}),storyboardImageServiceRuntime:async()=>({manage:async()=>({bytes:0})}),storyboardComfyRecoveryRuntime:async()=>({usage:async()=>({bytes:0})}),
     storageJsonBytes:()=>0,storageSettingsSnapshotWithoutDiagnostics:()=>({}),getChatStore:()=>({}),storageDiagnosticSnapshot:()=>({}),htmlEscape:value=>String(value??'').replaceAll('<','&lt;'),formatStorageBytes:value=>`${value} B`,storageInventoryState:{status:'ready'},STORAGE_CATEGORY_LABELS:{logs:'记录'},STORAGE_CATEGORY_COLORS:{logs:'#777',other:'#555'},
   });
@@ -130,6 +130,23 @@ test('actual space card keeps an unavailable record manager visible without manu
   const context=globalFixture({status:'unavailable',namespace,bytes:null,error:'bad <record>'});vm.runInContext([section('collectStorageInventory'),section('renderStorageManagementCard')].join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;assert.equal(data.trackedBytes,10);
   const html=context.renderStorageManagementCard();assert.match(html,/恢复记录占用暂不可读取 · 当前总计不含此部分/);assert.match(html,/bad &lt;record>/);assert.doesNotMatch(html,/分镜恢复记录 · 0 条/);
+});
+
+test('actual space card counts mapping bodies plus heads once, without advertising them as clearable cache',async()=>{
+  const {options}=fixture(),summary=await collectRestoreStorage(options),mappings={version:1,status:'ready',namespace,count:2,bytes:1400,recordBytes:1000,indexBytes:400},context=globalFixture(summary,mappings);
+  vm.runInContext([section('collectStorageInventory'),section('renderStorageManagementCard')].join('\n'),context);
+  const data=await context.collectStorageInventory();context.storageInventoryState.data=data;
+  assert.equal(data.trackedBytes,10+summary.bytes+1400);assert.equal(data.manageableBytes,10+summary.bytes);assert.equal(data.recoverableBytes,0);
+  assert.equal(data.categories.find(row=>row.category==='logs').bytes,summary.bytes+1400);
+  const html=context.renderStorageManagementCard();assert.match(html,/迁移映射凭据 · 2 份 · 1400 B/);assert.match(html,/sd-storage-mappings/);assert.match(html,/查看与导出/);
+});
+
+test('actual mapping entry is available when accounting fails and never routes to clearing',async()=>{
+  let click,args;
+  const root={isConnected:true,querySelector:selector=>selector==='button.sd-storage-mappings'?{addEventListener:(_event,fn)=>click=fn}:null,querySelectorAll:()=>[]};
+  const context=vm.createContext({storageInventoryState:{data:{mappingStorage:{status:'unavailable',namespace}}},storyboardOpenRestoreStorage:(...input)=>args=input});
+  vm.runInContext(section('bindStorageManagementEvents'),context);context.bindStorageManagementEvents(root);click();
+  assert.equal(args[0],root);assert.equal(args[1],namespace);assert.equal(args[2].mappings,true);
 });
 
 test('actual module cleanup opens per-record choices and does not clear a whole module or save settings on cancel',async()=>{

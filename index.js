@@ -212,6 +212,7 @@ const featureRuntime = createFeatureRuntime({
   storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.105') },
   storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.105') },
   storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.105') },
+  storyboardMappingView: { label: '迁移映射凭据', load: () => import('./qianmu-storyboard-mapping-view.js?v=1.59.105') },
   characterStorage: { label: '角色库空间', load: () => import('./qianmu-character-storage.js?v=1.59.105') },
   storyboardPackageStage: { label: '分镜素材暂存', load: () => import('./qianmu-storyboard-package-stage.js?v=1.59.105') },
   storyboardPackageRuntime: { label: '分镜原件打包', load: () => import('./qianmu-storyboard-package-runtime.js?v=1.59.105') },
@@ -7928,7 +7929,7 @@ function storageSettingsSnapshotWithoutDiagnostics() {
 async function collectStorageInventory() {
   const storageApi = globalThis.navigator?.storage;
   const storageEpoch=storyboardAdmissionEpoch;
-  const [originEstimate, idb, orphanReaderBlobs, imageAttempts, imageChannels, serviceReceipts, comfyReceipts, comfyStorage, vibeStorage, restoreStorage, characterStorage] = await Promise.all([
+  const [originEstimate, idb, orphanReaderBlobs, imageAttempts, imageChannels, serviceReceipts, comfyReceipts, comfyStorage, vibeStorage, restoreStorage, characterStorage, mappingStorage] = await Promise.all([
     storageApi?.estimate?.().catch(() => null) || Promise.resolve(null),
     blobStore.estimateBlobStoreUsage(),
     blobStore.auditOrphanedReaderBlobs(),
@@ -7948,9 +7949,13 @@ async function collectStorageInventory() {
     Promise.all([featureRuntime.load('characterStorage'),featureRuntime.load('imageAdmission')]).then(([module,identity])=>module.collectCharacterStorage({
       resolveNamespace:()=>identity.resolveImageAccountNamespace(),valid:()=>storageEpoch===storyboardAdmissionEpoch,
     })).catch(error=>({status:'unavailable',bytes:null,error:error?.message||'角色库暂不可读取'})),
+    Promise.all([featureRuntime.load('storyboardRestoreStorage'),featureRuntime.load('imageAdmission')]).then(([module,identity])=>module.collectStoryboardMappingStorage({
+      resolveNamespace:()=>identity.resolveImageAccountNamespace(),valid:()=>storageEpoch===storyboardAdmissionEpoch,
+    })).catch(error=>({status:'unavailable',bytes:null,error:error?.message||'迁移凭据暂不可读取'})),
   ]);
   if(vibeStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(vibeStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
   if(restoreStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(restoreStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
+  if(mappingStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(mappingStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
   if(characterStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(characterStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
   if(comfyStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(comfyStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
   if(storageEpoch!==storyboardAdmissionEpoch)throw new Error('储存页面已变化，请重新盘点');
@@ -7992,7 +7997,9 @@ async function collectStorageInventory() {
   if(restoreStorage.status==='ready')addCategory('logs',restoreBytes,restoreStorage.count);
   const characterBytes=characterStorage.status==='ready'?characterStorage.bytes:0;
   if(characterStorage.status==='ready')addCategory('characters',characterBytes,characterStorage.documents.count);
-  const trackedBytes = Number(idb.totalBytes || 0) + settingsBytes + currentChatBytes + diagnosticsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes;
+  const mappingSize=mappingStorage.status==='ready'?mappingStorage.bytes:0;
+  if(mappingStorage.status==='ready')addCategory('logs',mappingSize,mappingStorage.count);
+  const trackedBytes = Number(idb.totalBytes || 0) + settingsBytes + currentChatBytes + diagnosticsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes + mappingSize;
   const recoverableBytes = Number(idb.recoverableBytes || 0) + diagnosticsBytes;
   const manageableBytes = Number(idb.totalBytes || 0) + diagnosticsBytes + portableTtsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes;
   return {
@@ -8019,6 +8026,7 @@ async function collectStorageInventory() {
     comfyStorage,
     vibeStorage,
     restoreStorage,
+    mappingStorage,
     characterStorage,
   };
 }
@@ -8072,7 +8080,7 @@ function renderStorageManagementCard() {
   const scaleBytes = Math.max(1, data.origin.quota > 0 ? Math.max(data.origin.quota, usedForScale) : usedForScale);
   const barItems = [
     ...categories.map((item) => ({ key: item.category, label: STORAGE_CATEGORY_LABELS[item.category] || item.category, bytes: Number(item.bytes) || 0, color: STORAGE_CATEGORY_COLORS[item.category] || STORAGE_CATEGORY_COLORS.other })),
-    ...(unknownUsage > 0 ? [{ key: 'origin-other', label: [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage].some(row=>['unavailable','partial'].includes(row?.status))?'未盘点站点数据':'其他 ST 数据', bytes: unknownUsage, color: '#555d6b' }] : []),
+    ...(unknownUsage > 0 ? [{ key: 'origin-other', label: [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage,data.mappingStorage].some(row=>['unavailable','partial'].includes(row?.status))?'未盘点站点数据':'其他 ST 数据', bytes: unknownUsage, color: '#555d6b' }] : []),
     ...(freeBytes > 0 ? [{ key: 'free', label: '可用空间', bytes: freeBytes, color: 'rgba(127, 127, 127, .18)' }] : []),
   ];
   const storageBar = barItems.map((item) => `<i class="sd-storage-segment sd-storage-${htmlEscape(item.key)}" style="--sd-storage-weight:${Math.max(0, item.bytes / scaleBytes)};--sd-storage-color:${item.color}" title="${htmlEscape(item.label)} ${htmlEscape(formatStorageBytes(item.bytes))}"></i>`).join('');
@@ -8105,6 +8113,8 @@ function renderStorageManagementCard() {
     <div class="sd-storage-actions"><span>Comfy 本机领取记录 · ${Number(data.comfyReceipts?.count) || 0} 条 · ${htmlEscape(formatStorageBytes(data.comfyReceipts?.bytes || 0))}</span><button type="button" class="sd-btn sd-storage-comfy-receipts">收片管理</button></div>
     <div class="sd-storage-actions"><span>${data.restoreStorage?.status==='ready'?`分镜恢复记录 · ${data.restoreStorage.count} 条 · ${htmlEscape(formatStorageBytes(data.restoreStorage.bytes))}`:'恢复记录占用暂不可读取 · 当前总计不含此部分'}</span><button type="button" class="sd-btn sd-storage-restores">恢复记录管理</button></div>
     ${data.restoreStorage?.status==='ready'?'':`<p class="sd-storage-pressure is-warning">${htmlEscape(data.restoreStorage?.error||'请重新盘点或进入恢复记录管理核对；未修改记录。')}</p>`}
+    <div class="sd-storage-actions"><span>${data.mappingStorage?.status==='ready'?`迁移映射凭据 · ${data.mappingStorage.count} 份 · ${htmlEscape(formatStorageBytes(data.mappingStorage.bytes))}`:'迁移凭据占用暂不可读取 · 当前总计不含此部分'}</span><button type="button" class="sd-btn sd-storage-mappings">查看与导出</button></div>
+    ${data.mappingStorage?.status==='ready'?'':`<p class="sd-storage-pressure is-warning">${htmlEscape(data.mappingStorage?.error||'请进入迁移凭据目录核对；未改动原记录。')}</p>`}
     <div class="sd-storage-actions"><span>${data.characterStorage?.status==='ready'?`角色库 · ${data.characterStorage.documents.count} 份档案 · ${htmlEscape(formatStorageBytes(data.characterStorage.documents.bytes))}<br>绑定 ${data.characterStorage.bindings.count} 项 · ${htmlEscape(formatStorageBytes(data.characterStorage.bindings.bytes))} · 索引元数据 ${htmlEscape(formatStorageBytes(data.characterStorage.indexes.bytes))}<br>按本机记录计值，不含服务器参考图`:'角色库占用暂不可读取 · 当前总计不含此部分'}</span><button type="button" class="sd-btn sd-storage-characters">角色库管理</button></div>
     ${data.characterStorage?.status==='ready'?'':`<p class="sd-storage-pressure is-warning">${htmlEscape(data.characterStorage?.error||'请重新盘点或进入角色库核对；未修改档案。')}</p>`}
     ${(data.comfyStorage?.errors || []).map(message=>`<p class="sd-storage-pressure is-warning">${htmlEscape(message)}</p>`).join('')}
@@ -8541,12 +8551,12 @@ function paintStorageManagementCard() {
   return true;
 }
 
-async function storyboardOpenRestoreStorage(root,expectedNamespace) {
+async function storyboardOpenRestoreStorage(root,expectedNamespace,{mappings=false}={}) {
   if(storyboardOpenRestoreStorage.busy)return;
   storyboardOpenRestoreStorage.busy=true;
   const epoch=storyboardAdmissionEpoch,modal=document.getElementById(MODAL_ID);let view,namespace;
   try{
-    const [runtime,manager,identity,hashes]=await Promise.all([featureRuntime.load('storyboardRestoreStorage'),featureRuntime.load('storyboardRestoreStorageView'),featureRuntime.load('imageAdmission'),featureRuntime.load('storyboardPackageMutation')]);
+    const [runtime,manager,identity,hashes]=await Promise.all([featureRuntime.load('storyboardRestoreStorage'),featureRuntime.load(mappings?'storyboardMappingView':'storyboardRestoreStorageView'),featureRuntime.load('imageAdmission'),featureRuntime.load('storyboardPackageMutation')]);
     const guard=async()=>{
       if(!root.isConnected||!modal?.classList.contains('open')||epoch!==storyboardAdmissionEpoch||view&&!view.isOpen)throw new Error('恢复记录管理页面已变化');
       const current=await identity.resolveImageAccountNamespace();
@@ -8555,13 +8565,13 @@ async function storyboardOpenRestoreStorage(root,expectedNamespace) {
       if(!root.isConnected||epoch!==storyboardAdmissionEpoch||view&&!view.isOpen)throw new Error('恢复记录管理页面已变化');
     };
     await guard();const chatHash=await hashes.storyboardPackageDigest(String(getChatKey()||''));await guard();
-    view=manager.openRestoreStorageManager({parent:modal,chatHash,icons:applyQianmuIcons,formatBytes:formatStorageBytes,
+    view=(mappings?manager.openMappingRegistry:manager.openRestoreStorageManager)({parent:modal,chatHash,icons:applyQianmuIcons,formatBytes:formatStorageBytes,
       run:(action,options)=>runtime.runRestoreStorage(action,{...options,namespace,guard:async()=>{
         await guard();
         if(action==='clear'&&(storyboardImportPackage.busy||storyboardExportPackage.busy||storyboardBundleReview?.isOpen))throw new Error('分镜备份或恢复尚在进行，请结束后清理记录');
       }})});
     await view.finished;
-  }catch(error){toast(`恢复记录管理未完成：${error?.message||error}`,'error');}
+  }catch(error){toast(`${mappings?'迁移凭据':'恢复记录'}管理未完成：${error?.message||error}`,'error');}
   finally{view?.close();storyboardOpenRestoreStorage.busy=false;if(root.isConnected&&epoch===storyboardAdmissionEpoch)await refreshStorageInventory(true);}
 }
 
@@ -8571,6 +8581,7 @@ function bindStorageManagementEvents(root) {
     if(activeTab!=='imagegen')storyboardBeginSession();activeTab='imagegen';storyboardNavigate(root,{view:'characters'});
   });
   root.querySelector('button.sd-storage-restores')?.addEventListener('click',()=>void storyboardOpenRestoreStorage(root,storageInventoryState.data?.restoreStorage?.namespace));
+  root.querySelector('button.sd-storage-mappings')?.addEventListener('click',()=>void storyboardOpenRestoreStorage(root,storageInventoryState.data?.mappingStorage?.namespace,{mappings:true}));
   root.querySelector('button.sd-storage-vibes')?.addEventListener('click',()=>{
     storageInventoryState={...storageInventoryState,sampledAt:0};
     if(activeTab!=='imagegen')storyboardBeginSession();activeTab='imagegen';storyboardNavigate(root,{view:'assets',assetView:'vibes'});
