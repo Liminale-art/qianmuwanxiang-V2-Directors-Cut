@@ -20,7 +20,7 @@ assert.match(source, /function storyboardHydratePipelineArchive[\s\S]*storyboard
 assert.match(source, /if \(state\.view === 'logs'\) void storyboardHydratePipelineArchive\(\{ rerender: true \}\)/, 'archive hydration must wait for the logs page');
 const initSource = source.slice(source.indexOf('function init()'), source.indexOf('export async function onActivate'));
 assert.doesNotMatch(initSource, /storyboardHydratePipelineArchive/, 'startup must not scan detailed storyboard logs');
-assert.match(source, /async function storyboardExportPackage\(\)[\s\S]*await storyboardHydratePipelineArchive\(\)[\s\S]*pipelineLogs/, 'portable storyboard packages must still include archived pipeline details');
+assert.match(source, /async function storyboardExportPackage\([^)]*\)[\s\S]*await storyboardHydratePipelineArchive\(\)[\s\S]*pipelineLogs/, 'portable storyboard packages must still include archived pipeline details');
 assert.match(source, /sd-storyboard-export-logs[\s\S]*await storyboardHydratePipelineArchive\(\)[\s\S]*storyboardLogText/, 'manual log export must hydrate complete details first');
 assert.match(source, /sd-storyboard-clear-logs[\s\S]*clearStoryboardPipelineLogs\(\)[\s\S]*storyboardPipelineArchiveCache\.clear\(\)[\s\S]*state\.logs = \[\]/, 'clear logs must remove archived details before summaries');
 assert.match(source, /sd-storyboard-clear-logs[\s\S]*\+\+storyboardPipelineArchiveEpoch[\s\S]*clearStoryboardPipelineLogs/, 'clearing logs must invalidate writes that were already in flight');

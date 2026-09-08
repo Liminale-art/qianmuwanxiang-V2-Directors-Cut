@@ -68,6 +68,13 @@ export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,k
     async loadMutation(namespace){
       if(!account(namespace))fail('无法确认元数据恢复账户');return transaction('readonly',()=>true,(store,read,set)=>read(store.get(namespace),row=>set(row?validateStoryboardMutation(row):null)),'mutations');
     },
+    async dismissCheckpoint(input,{confirmed=false,isCurrent=()=>true}={}){
+      const previous=structuredClone(validateStoryboardPackageCheckpoint(input));if(confirmed!==true)fail('尚未确认结束素材暂存核对');
+      return transaction('readwrite',isCurrent,(store,read,set)=>read(store.get(previous.key),row=>{
+        validateStoryboardPackageCheckpoint(row);if(JSON.stringify(row)!==JSON.stringify(previous))fail('素材暂存记录已变化，请重新核对');
+        store.delete(row.key);set(true);
+      }));
+    },
     async hasMutation(namespace){
       if(!account(namespace))fail('无法确认元数据恢复账户');return transaction('readonly',()=>true,(store,read,set)=>read(store.getKey(namespace),key=>set(key!==undefined)),'mutations');
     },

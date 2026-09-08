@@ -208,6 +208,9 @@ const featureRuntime = createFeatureRuntime({
   storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.105') },
   storyboardPackageMutation: { label: '分镜导入核对', load: () => import('./qianmu-storyboard-package-mutation.js?v=1.59.105') },
   storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.105') },
+  storyboardPackageStage: { label: '分镜素材暂存', load: () => import('./qianmu-storyboard-package-stage.js?v=1.59.105') },
+  storyboardPackageRuntime: { label: '分镜原件打包', load: () => import('./qianmu-storyboard-package-runtime.js?v=1.59.105') },
+  storyboardPackageStore: { label: '分镜原件读取', load: () => import('./qianmu-vibe-asset-store.js?v=1.59.105') },
   vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.105') },
   vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.105') },
   tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.105') },
@@ -21615,7 +21618,7 @@ async function storyboardDownloadRecord(record) {
   }
 }
 
-async function storyboardExportPackage() {
+async function storyboardExportPackage({ originals = true } = {}) {
   if(storyboardExportPackage.busy)return toast('正在打包分镜数据，请稍候。','info');
   storyboardExportPackage.busy=true;
   const context=()=>({state:storyboardState(),store:getChatStore(),chatKey:String(getChatKey()||''),epoch:storyboardAdmissionEpoch});
@@ -21623,6 +21626,8 @@ async function storyboardExportPackage() {
   const initial=context();
   const [packageModule,identity]=await Promise.all([featureRuntime.load('storyboardPackageAssets'),featureRuntime.load('imageAdmission')]);
   const session=await packageModule.createStoryboardPackageGuard({initial,context,resolveNamespace:()=>identity.resolveImageAccountNamespace()});
+  if (originals && await confirmDialog('备份分镜配置与成片', '新版包包含本聊天成片、分镜预设及所引用的 Vibe 原文件。Comfy 独立工作流库、角色档案库、外部图片地址与服务器授权尚不属于此包，需单独保全；不是完整账户迁移包。最大 128 MiB，不包含 API Key。是否继续？') !== true) return;
+  await session.guard();
   await storyboardHydratePipelineArchive();
   await session.guard();
   await storyboardHydrateGallerySnapshots(storyboardGalleryRecords(),{migrate:false});
@@ -21646,19 +21651,23 @@ async function storyboardExportPackage() {
   const taskStates = (state.taskStates || []).filter((task) => !task.chatKey || task.chatKey === chatKey);
   toast('正在打包分镜数据…', 'info');
   const media = [];
-  let skipped = 0;
+  let skipped = 0, mediaBytes = 0;
+  const mediaReader = originals ? await featureRuntime.load('storyboardPackageInput') : null;
+  await session.guard();
   for (const record of records) {
     await session.guard();
     const url = storyboardSafeUrl(record.url);
     if (!url) { skipped++; continue; }
     try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(String(response.status));
-      const blob = await response.blob();
+      let blob;
+      if (mediaReader) blob = await mediaReader.readStoryboardPackageImage(url, { guard: session.guard });
+      else { const response = await fetch(url); if (!response.ok) throw new Error(String(response.status)); blob = await response.blob(); }
       if (!blob.size || blob.size > 24 * 1024 * 1024) throw new Error('image-too-large');
       const b64=await blobToBase64(blob);await session.guard();
+      mediaBytes += b64.length;
+      if (mediaBytes > packageModule.STORYBOARD_PACKAGE_LIMITS.total) throw new Error('分镜媒体合计超过 128 MiB，请分批备份');
       media.push({ id: record.id, mime: blob.type || 'image/png', b64 });
-    } catch (_) { skipped++; }
+    } catch (error) { if (originals || mediaBytes > packageModule.STORYBOARD_PACKAGE_LIMITS.total) throw error; skipped++; }
   }
   await session.guard();
   const payload = {
@@ -21666,9 +21675,10 @@ async function storyboardExportPackage() {
     settings: {
       schemaVersion: state.schemaVersion, enabled: state.enabled, automation: clone(state.automation), source: state.source, inlineByDefault: state.inlineByDefault,
       promptMode: state.promptMode, promptCompiler: clone(state.promptCompiler),
-      profiles: clone(state.profiles), parameterPresets: clone(state.parameterPresets), generationPolicy: clone(state.generationPolicy),
+      profiles: clone(state.profiles), modelProfiles: clone(state.modelProfiles), parameterPresets: clone(state.parameterPresets), parameterPresetSelection: clone(state.parameterPresetSelection), generationPolicy: clone(state.generationPolicy),
       promptPresets: clone(state.promptPresets), artistPresets: clone(state.artistPresets), artistCollections: clone(state.artistCollections), artistPools: clone(state.artistPools), tagLibrary: clone(state.tagLibrary),
-      vibeLibrary: clone(state.vibeLibrary), routing: clone(state.routing), logs: clone(state.logs), pipelineLogs: clone(pipelineLogs),
+      vibeLibrary: clone(state.vibeLibrary), selectedVibeIds: clone(state.selectedVibeIds), selectedArtistPresetId: state.selectedArtistPresetId, selectedArtistPoolId: state.selectedArtistPoolId,
+      promptDefaults: clone(state.promptDefaults), compositionPolicy: clone(state.compositionPolicy), routing: clone(state.routing), logs: clone(state.logs), pipelineLogs: clone(pipelineLogs),
       shotPlans: clone(shotPlans), taskStates: clone(taskStates),
       connections: Object.fromEntries(Object.entries(state.connections).map(([providerId, group]) => [providerId, {
         ...clone(group), presets: (group.presets || []).map((item) => ({ ...clone(item), credentialId: '' })),
@@ -21680,12 +21690,21 @@ async function storyboardExportPackage() {
   };
   const vibeScope=packageModule.collectStoryboardVibeDependencies(payload,{namespace:session.namespace});
   await session.guard();
-  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  let blob;
+  if (originals) {
+    if (skipped) throw new Error(`${skipped} 张成片原图未能保存，未导出缺件包；请先核对原图片地址`);
+    const runtime = await featureRuntime.load('storyboardPackageRuntime'); await session.guard();
+    toast('正在核对并打包 Vibe 原文件…', 'info');
+    const result = await runtime.exportStoryboardPackageAssets(payload, { namespace: session.namespace, guard: session.guard });
+    blob = result.file;
+  } else blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  if (blob.size > packageModule.STORYBOARD_PACKAGE_LIMITS.total) throw new Error('分镜包超过 128 MiB，未生成无法导入的文件');
+  await session.guard();
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url; link.download = `qianmu-storyboard-pack-${fileStamp()}.json`;
   document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
-  const vibeNotice=vibeScope.refs.length||vibeScope.legacyUrls.length?' 当前旧版包只保留 Vibe 引用/地址，原文件请在 Vibe 文件空间另行备份。':'';
+  const vibeNotice=originals ? ` 已包含 ${vibeScope.refs.length} 份 Vibe 原文件。${vibeScope.legacyUrls.length ? `另有 ${vibeScope.legacyUrls.length} 个 Vibe 旧地址仅保留地址，原图需另行保全。` : ''}不含 Comfy 与角色独立库。` : vibeScope.refs.length||vibeScope.legacyUrls.length?' 当前旧版包只保留 Vibe 引用/地址，原文件请在 Vibe 文件空间另行备份。':'';
   toast(`分镜数据已打包：${records.length} 条成片${skipped ? ` · ${skipped} 张仅保留原地址` : ''}。${vibeNotice}`, vibeNotice?'warning':'success');
   } catch(error) { toast(`分镜打包未完成：${error?.message||'请重新核对后导出'}`, 'error'); }
   finally {storyboardExportPackage.busy=false;}
@@ -21715,7 +21734,7 @@ async function storyboardPackageArchiveAllowed() {
 async function storyboardImportPackage(file, { recoverOnly = false } = {}) {
   if ((!file && !recoverOnly) || storyboardImportPackage.busy) return;
   storyboardImportPackage.busy = true;
-  let journal = null;
+  let journal = null, assetStore = null;
   const context = () => ({ state: storyboardState(), store: getChatStore(), chatKey: String(getChatKey() || ''), epoch: storyboardAdmissionEpoch });
   try {
     const initial = context();
@@ -21742,10 +21761,27 @@ async function storyboardImportPackage(file, { recoverOnly = false } = {}) {
         await storyboardRecoverPackageMutation({ pending, mutation, journal, initial, guard, isCurrent });
         return;
       }
-      if (recoverOnly) return toast('没有待核对的分镜导入。', 'info');
-      const parsed = await input.inspectStoryboardPackageFile(file, { legacy: true }); await guard();
-      const data = parsed.payload;
+      if (recoverOnly) {
+        const chatHash = await mutation.storyboardPackageDigest(initial.chatKey);
+        const rows = (await journal.list(session.namespace)).filter(row => row.chatHash === chatHash); await guard();
+        if (!rows.length) return toast('本聊天没有待核对的分镜导入。', 'info');
+        if (await confirmDialog('核对素材暂存', `本聊天有 ${rows.length} 份素材暂存记录（${rows.map(row => row.fileHash.slice(0,8)).join('、')}），不代表配置已经导入。需要继续时请取消并重新选择原包；确认则仅结束这些暂存记录，Vibe 原文件、图片和配置均不会删除。是否结束记录？`) !== true) return;
+        for (const row of rows) { await guard(); await journal.dismissCheckpoint(row, { confirmed: true, isCurrent }); }
+        return toast('素材暂存记录已结束；原文件、图片与配置未删除。', 'info');
+      }
+      const parsed = await input.inspectStoryboardPackageFile(file, { auto: true }); await guard();
+      const modern = parsed.payload.version === 7;
+      // Only typed Vibe identities are portable. Never remap Comfy grants, character identities or fee receipts.
+      const data = modern ? assets.remapStoryboardVibeReferences(parsed.payload, session.namespace) : parsed.payload;
       assets.collectStoryboardVibeDependencies(data, { namespace: session.namespace });
+      let stage = null, assetPlan = null;
+      if (modern) {
+        const [stageModule, storeModule] = await Promise.all([featureRuntime.load('storyboardPackageStage'), featureRuntime.load('storyboardPackageStore')]); await guard();
+        assetStore = storeModule.createVibeAssetStore();
+        stage = stageModule.createStoryboardPackageStage({ store: assetStore, journal });
+        assetPlan = await stage.inspect(file, { namespace: session.namespace, chatKey: initial.chatKey, guard, isCurrent }); await guard();
+        if (!assetPlan.fits) throw new Error('Vibe 原文件空间或名额不足，未修改配置，也不会自动清理');
+      }
       const originalState = clone(initial.state);
       const originalStore = Object.fromEntries(['storyboardImages','storyboardCollections'].filter(key => Object.hasOwn(initial.store, key)).map(key => [key, clone(initial.store[key])]));
       const messages = (ctx().chat || []).slice();
@@ -21769,8 +21805,13 @@ async function storyboardImportPackage(file, { recoverOnly = false } = {}) {
       const images = prepareRecords();
       // Validate the entire merge before confirmation, uploads, or any live state mutation.
       let draft = draftModule.prepareStoryboardPackageDraft({ settings: originalState, chat: originalStore, incoming: data.settings, images, collections: incomingCollections, chatKey: initial.chatKey });
-      if (await confirmDialog('导入分镜数据', `将合并 ${images.length} 条成片及预设；历史任务不会自动续跑，现有连接凭据不随包迁移。中断后可通过“核对导入”继续或恢复原配置。是否继续？`) !== true) return;
+      const coverage = modern ? `包含 ${assetPlan.rows.length} 份 Vibe 原文件，其中新增 ${assetPlan.missing} 份。${assetPlan.legacyUrls ? `另有 ${assetPlan.legacyUrls} 个 Vibe 旧地址，仅保留地址。` : ''}这是分镜配置与成片包，不含 Comfy 独立工作流库、角色档案库或服务器授权；相关外部资源仍需单独保全。` : '';
+      if (await confirmDialog('导入分镜数据', `将合并 ${images.length} 条成片及预设；${coverage}历史任务不会自动续跑，现有连接凭据不随包迁移。中断后可重新选择原包核对素材，或通过“核对导入”恢复配置。是否继续？`) !== true) return;
       await guard();
+      if (stage) {
+        toast('正在核对并暂存 Vibe 原文件；配置尚未应用…', 'info');
+        await stage.stage(file, assetPlan, true, { namespace: session.namespace, chatKey: initial.chatKey, guard, isCurrent }); await guard();
+      }
       const media = new Map((data.media || []).map(item => [item.id, item]));
       const utils = media.size ? await storyboardUtilsModule() : null; await guard();
       const characterName = getCharacterName() || 'Qianmu';
@@ -21797,7 +21838,7 @@ async function storyboardImportPackage(file, { recoverOnly = false } = {}) {
     });
   } catch (error) {
     toast(`分镜导入未完成：${error?.message || '请保留原包并重新核对'}；已暂存图片可能仍保留。`, 'error');
-  } finally { journal?.close(); storyboardImportPackage.busy = false; }
+  } finally { assetStore?.close(); journal?.close(); storyboardImportPackage.busy = false; }
 }
 
 async function storyboardApplyPackageMutation({ pending, mutation, journal, initial, guard, isCurrent, direction = 'after' }) {

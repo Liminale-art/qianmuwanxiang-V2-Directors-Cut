@@ -48,7 +48,7 @@ test('actual importer aborts complete merge before confirmation and before savin
 });
 test('cancel, wrong version, invalid media and interrupted media upload leave live settings and old archives alone',async()=>{
   const f=createPackageImportFixture(),before=JSON.stringify(f.e.state);f.e.confirm=false;await f.import(blob({promptMode:'combined'}));assert.equal(JSON.stringify(f.e.state),before);
-  const value=JSON.parse(await blob({promptMode:'combined'}).text());value.version=7;await f.import(new Blob([JSON.stringify(value)]));assert.match(f.e.notices.at(-1)[0],/不支持/);value.version=6;value.chat.images=[{id:'image',source:'novel'}];value.media=[{id:'image',mime:'image/png',b64:'bad'}];await f.import(new Blob([JSON.stringify(value)]));assert.equal(f.e.pending,null);
+  const value=JSON.parse(await blob({promptMode:'combined'}).text());value.version=7;await f.import(new Blob([JSON.stringify(value)]));assert.match(f.e.notices.at(-1)[0],/无效/);value.version=6;value.chat.images=[{id:'image',source:'novel'}];value.media=[{id:'image',mime:'image/png',b64:'bad'}];await f.import(new Blob([JSON.stringify(value)]));assert.equal(f.e.pending,null);
   value.media[0].b64=image;f.e.confirm=true;f.e.upload=async()=>{throw Error('disk full');};await f.import(new Blob([JSON.stringify(value)]));assert.equal(JSON.stringify(f.e.state),before);assert.equal(f.e.pending,null);assert.deepEqual(f.e.events,['media']);
 });
 test('editing settings during confirmation or switching chat during media upload cannot overwrite current data',async()=>{

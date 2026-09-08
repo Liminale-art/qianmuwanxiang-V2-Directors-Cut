@@ -2,7 +2,7 @@ import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
 import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {parseNovelVibeFile,vibeFileError} from './qianmu-vibe-file.js';
 
-export const STORYBOARD_PACKAGE_LIMITS=Object.freeze({metadata:32*1048576,mediaItem:34*1048576,total:768*1048576,assets:1024,nodes:500000,depth:40,uses:30000});
+export const STORYBOARD_PACKAGE_LIMITS=Object.freeze({metadata:32*1048576,mediaItem:34*1048576,total:128*1048576,assets:1024,nodes:500000,depth:40,uses:30000});
 const fail=message=>{throw vibeFileError('package',message);};
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const size=value=>new TextEncoder().encode(value).byteLength;
@@ -61,7 +61,7 @@ export async function buildStoryboardVibePackage(payload,{namespace,load}){
   if(size(header)>STORYBOARD_PACKAGE_LIMITS.metadata)fail('分镜元数据超过 32 MiB，请分批导出');
   const census=collectStoryboardVibeDependencies(metadata,{namespace});
   const parts=[header.slice(0,-1),',"media":['];let bytes=size(header)+64,first=true;
-  const add=text=>{bytes+=size(text);if(bytes>STORYBOARD_PACKAGE_LIMITS.total)fail('分镜包超过 768 MiB，请分批备份，未生成缺件包');parts.push(text);};
+  const add=text=>{bytes+=size(text);if(bytes>STORYBOARD_PACKAGE_LIMITS.total)fail('分镜包超过 128 MiB，请分批备份，未生成缺件包');parts.push(text);};
   for(const item of media){const text=JSON.stringify(item);if(typeof text!=='string'||size(text)>STORYBOARD_PACKAGE_LIMITS.mediaItem)fail('单份分镜媒体无效或超过支持上限');if(!first)add(',');add(text);first=false;}
   add('],"vibeAssets":[');first=true;
   for(const ref of census.refs){

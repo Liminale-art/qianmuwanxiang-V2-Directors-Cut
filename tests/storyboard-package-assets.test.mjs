@@ -130,20 +130,20 @@ function indexFixture(){
     storyboardState:()=>currentState,getChatStore:()=>currentStore,getChatKey:()=>chat,storyboardHydratePipelineArchive:async()=>{},storyboardHydrateGallerySnapshots:async()=>{},
     storyboardPipelineForLog:log=>state.pipelineLogs.find(p=>p.id===log.pipelineId)||null,storyboardGalleryRecords:()=>images,storyboardGalleryCollections:()=>[{id:'c',name:'Captured collection'}],
     storyboardSnapshotForRecord:record=>record.snapshot||null,storyboardPlansForPortableExport:async p=>p,storyboardSafeUrl:value=>value,fetch:async()=>({ok:true,blob:async()=>new Blob(['image'],{type:'image/png'})}),blobToBase64:async()=> 'aW1hZ2U=',
-    toast:(...args)=>notices.push(args),fileStamp:()=> 'fixture',URL:{createObjectURL:blob=>{exported=blob;return 'blob:test';},revokeObjectURL:noop},document:{createElement:()=>({click:noop,remove:noop}),body:{appendChild:noop}},
+    confirmDialog:async()=>true,toast:(...args)=>notices.push(args),fileStamp:()=> 'fixture',URL:{createObjectURL:blob=>{exported=blob;return 'blob:test';},revokeObjectURL:noop},document:{createElement:()=>({click:noop,remove:noop}),body:{appendChild:noop}},
   });vm.runInContext(fn('storyboardExportPackage'),context);
   return {state,store,notices,context,exported:()=>exported,setImages:value=>images=value,switch:()=>{chat='chat-b';currentState=board.createStoryboardDefaults();currentStore={};owner=otherAccount;}};
 }
 
 test('actual legacy export aborts on chat change during media retrieval and never downloads a mixed chat snapshot',async()=>{
   const e=indexFixture();e.setImages([{id:'one',source:'novel',url:'/one.png',snapshot:{}}]);e.context.fetch=async()=>{e.switch();return {ok:true,blob:async()=>new Blob(['image'])};};
-  await e.context.storyboardExportPackage();assert.equal(e.exported(),null);assert.ok(e.notices.some(([text,kind])=>kind==='error'&&text.includes('已变化')));
+  await e.context.storyboardExportPackage({originals:false});assert.equal(e.exported(),null);assert.ok(e.notices.some(([text,kind])=>kind==='error'&&text.includes('已变化')));
 });
 
 test('actual legacy export keeps artist pools and frozen collections, refusing a missing archived snapshot/pipeline',async()=>{
   const e=indexFixture();e.state.artistPresets=[{id:'artist',name:'A',value:'artist tags'}];e.state.artistPools=[{id:'pool',name:'Pool',members:[{artistId:'artist',weight:1}]}];
   e.context.storyboardPlansForPortableExport=async plans=>{e.context.storyboardGalleryCollections=()=>[{id:'later',name:'Later collection'}];return plans;};
-  await e.context.storyboardExportPackage();const exported=JSON.parse(await e.exported().text());assert.equal(exported.settings.artistPools[0].id,'pool');assert.deepEqual(exported.chat.collections,[{id:'c',name:'Captured collection'}]);
+  await e.context.storyboardExportPackage({originals:false});const exported=JSON.parse(await e.exported().text());assert.equal(exported.settings.artistPools[0].id,'pool');assert.deepEqual(exported.chat.collections,[{id:'c',name:'Captured collection'}]);
   for(const kind of ['snapshot','pipeline']){
     const x=indexFixture();if(kind==='snapshot')x.setImages([{id:'one',source:'novel',snapshotRef:'missing',url:'/image'}]);else{x.state.logs=[{id:'log',pipelineId:'missing'}];}
     await x.context.storyboardExportPackage();assert.equal(x.exported(),null);assert.ok(x.notices.some(([text,status])=>status==='error'&&text.includes('缺失')));
@@ -159,7 +159,7 @@ test('strict plan export refuses lost archives while old non-strict reads remain
 test('actual export prevents duplicate heavy work and explicitly describes legacy Vibe reference-only coverage',async()=>{
   const e=indexFixture();e.state.vibeLibrary=[{...item('legacy'),providerIds:['novel']}];let release,started;
   const began=new Promise(resolve=>started=resolve);e.context.storyboardHydratePipelineArchive=async()=>{started();await new Promise(resolve=>release=resolve);};
-  const pending=e.context.storyboardExportPackage();await began;await e.context.storyboardExportPackage();assert.equal(e.exported(),null);release();await pending;
+  const pending=e.context.storyboardExportPackage({originals:false});await began;await e.context.storyboardExportPackage();assert.equal(e.exported(),null);release();await pending;
   assert.ok(e.exported());assert.ok(e.notices.some(([text,kind])=>kind==='info'&&text.includes('请稍候')));
   assert.ok(e.notices.some(([text,kind])=>kind==='warning'&&text.includes('原文件')));assert.equal(e.context.storyboardExportPackage.busy,false);
 });
@@ -167,11 +167,11 @@ test('actual export prevents duplicate heavy work and explicitly describes legac
 test('old importer refuses future version packets before confirmation or any settings/media/archive write',async()=>{
   const f=createPackageImportFixture(),before=JSON.stringify(f.e.state);f.e.confirm=()=>assert.fail('must not confirm unsupported import');
   for(const version of [7,99,-1,'6',null])await f.import(new Blob([JSON.stringify({...payload(),version})]));
-  assert.equal(JSON.stringify(f.e.state),before);assert.equal(f.e.notices.filter(([text,kind])=>kind==='error'&&text.includes('不支持')).length,5);assert.deepEqual(f.e.events,[]);
+  assert.equal(JSON.stringify(f.e.state),before);assert.equal(f.e.notices.filter(([text,kind])=>kind==='error').length,5);assert.deepEqual(f.e.events,[]);
 });
 
-test('packet codec is in release and lazy registry without activation of the still-unmigrated version 7 import UI',async()=>{
+test('packet codec and unified v7 stage/worker are lazy and legacy export remains explicitly available',async()=>{
   const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url)));assert.ok(release.files.includes('qianmu-storyboard-package-assets.js'));
   const source=await readFile(new URL('../index.js',import.meta.url),'utf8');assert.match(source,/storyboardPackageAssets: \{ label: .*load: \(\) => import/);
-  assert.match(fn('storyboardExportPackage'),/version: 6/,'legacy workflow stays usable until staged v7 import ships');
+  assert.match(fn('storyboardExportPackage'),/version: 6/,'legacy payload remains usable');assert.match(fn('storyboardExportPackage'),/exportStoryboardPackageAssets/);assert.match(fn('storyboardImportPackage'),/stage\.stage/);
 });

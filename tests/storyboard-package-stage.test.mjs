@@ -34,7 +34,7 @@ test('external package parser rejects escaped duplicate keys, unsafe fields, exc
   const {file}=await fixture(0),text=await file.text();
   for(const broken of [text.replace('"version":7','"version":7,"\\u0076ersion":7'),text.replace('"settings":{','"settings":{"__proto__":{},'),text.replace('"settings":{','"settings":{"x":1e999,'),
     text.replace('"settings":{','"settings":{"x":'+ '['.repeat(42)+'0'+']'.repeat(42)+','),text+'{}',text.slice(0,-1),text.replace('"version":7','"version":6'),text.replace('"credentialsIncluded":false','"credentialsIncluded":true')])assert.throws(()=>parseStoryboardPackageText(broken));
-  const data=parseStoryboardPackageText(text.replace('"settings":{','"settings":{"quoted":"escaped \\\" comma,:{}",'));assert.equal(data.settings.quoted,'escaped " comma,:{}');
+  const data=parseStoryboardPackageText(text.replace('"settings":{','"settings":{"promptDefaults":{"quoted":"escaped \\\" comma,:{}"},'));assert.equal(data.settings.promptDefaults.quoted,'escaped " comma,:{}');
 });
 
 test('external file gate refuses malformed UTF-8 and oversized input before reading or opening a store',async()=>{
