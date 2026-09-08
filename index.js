@@ -5767,6 +5767,54 @@ function floorProseLayoutMarkup() {
     <div class="sd-prose-controls">${controls}</div>`;
 }
 
+function bindFloorProseNumberControls(root) {
+  const controls = [...root.querySelectorAll('input[data-prose-key]')];
+  const update = (control, commit = false) => {
+    const key = control.dataset.proseKey;
+    const spec = PROSE_LAYOUT_CONTROLS.find((item) => item.key === key);
+    if (!spec) return;
+    const sliding = control.type === 'range';
+    const raw = String(control.value ?? '').trim();
+    const parsed = raw === '' ? Number.NaN : Number(raw);
+    // Empty, partial and out-of-range drafts are normal while typing (e.g. 1 → 16 → 160).
+    // Never replace the active numeric field: assigning .value resets its native editing buffer/caret.
+    if (!sliding && !commit && (!Number.isFinite(parsed) || parsed < spec.min || parsed > spec.max)) return;
+    const layout = proseLayoutSettings();
+    const value = Number.isFinite(parsed) ? Math.min(spec.max, Math.max(spec.min, parsed)) : layout[key];
+    const formatted = proseLayoutFormatValue(key, value);
+    const next = sliding || commit ? Number(formatted) : value;
+    const changed = layout[key] !== next;
+    layout[key] = next;
+    for (const other of controls) {
+      if (other.dataset.proseKey !== key || (!sliding && !commit && other === control)) continue;
+      if (other.value !== formatted) other.value = formatted;
+    }
+    if (changed) {
+      applyProseLayout(false);
+      persistProseLayout();
+    }
+  };
+  for (const control of controls) {
+    if (control.type === 'range') {
+      control.addEventListener('input', () => update(control));
+      control.addEventListener('change', () => update(control));
+      continue;
+    }
+    let composing = false;
+    control.addEventListener('compositionstart', () => { composing = true; });
+    control.addEventListener('compositionend', () => { composing = false; update(control); });
+    control.addEventListener('input', (event) => { if (!composing && !event.isComposing) update(control); });
+    control.addEventListener('change', () => { if (!composing) update(control, true); });
+    control.addEventListener('blur', () => { if (!composing) update(control, true); });
+    control.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || composing || event.isComposing) return;
+      event.preventDefault();
+      update(control, true);
+      control.blur();
+    });
+  }
+}
+
 function openFloorNavigator(initialView = floorNavigatorView) {
   closeQuickWheel();
   closeFloorNavigator();
@@ -5812,27 +5860,7 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   root.querySelector('.sd-floor-jump')?.addEventListener('click', () => jumpToChatFloor(input?.value));
   root.querySelector('.sd-floor-top')?.addEventListener('click', () => jumpToChatFloor(0));
   root.querySelector('.sd-floor-bottom')?.addEventListener('click', () => jumpToChatFloor(chat.length - 1));
-  const setProseNumber = (key, raw, persist = false) => {
-    const spec = PROSE_LAYOUT_CONTROLS.find((item) => item.key === key);
-    if (!spec) return;
-    if (String(raw ?? '').trim() === '') return;
-    const parsed = Number(raw);
-    const fallback = Number(PROSE_LAYOUT_DEFAULTS[key]);
-    const value = Math.min(spec.max, Math.max(spec.min, Number.isFinite(parsed) ? parsed : fallback));
-    const layout = proseLayoutSettings();
-    layout[key] = value;
-    root.querySelectorAll(`[data-prose-key="${key}"]`).forEach((control) => { control.value = proseLayoutFormatValue(key, value); });
-    applyProseLayout(false);
-    if (persist) persistProseLayout();
-  };
-  root.querySelectorAll('input[type="range"][data-prose-key]').forEach((control) => {
-    control.addEventListener('input', () => setProseNumber(control.dataset.proseKey, control.value, true));
-    control.addEventListener('change', () => setProseNumber(control.dataset.proseKey, control.value, true));
-  });
-  root.querySelectorAll('input[type="number"][data-prose-key]').forEach((control) => {
-    control.addEventListener('input', () => setProseNumber(control.dataset.proseKey, control.value, true));
-    control.addEventListener('change', () => setProseNumber(control.dataset.proseKey, control.value, true));
-  });
+  bindFloorProseNumberControls(root);
   root.querySelectorAll('[data-prose-toggle]').forEach((control) => control.addEventListener('change', () => {
     const layout = proseLayoutSettings();
     layout[control.dataset.proseToggle] = Boolean(control.checked);

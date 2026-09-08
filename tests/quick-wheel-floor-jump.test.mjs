@@ -203,7 +203,10 @@ assert.doesNotMatch(source, /已应用正文排版|跟随 SillyTavern 默认|恢
 assert.ok(source.indexOf('data-prose-toggle="active"') < source.indexOf('<div class="sd-prose-controls">'), '排版开关组必须位于滑动条组上方');
 assert.match(source, /PROSE_LAYOUT_STORAGE_KEY[\s\S]*readCachedProseLayout[\s\S]*cacheProseLayout/, '正文排版必须具有刷新防丢的本地持久化镜像');
 assert.match(source, /function persistProseLayout[\s\S]*extensionSettings\[MODULE_NAME\]\.proseLayout = clone\(layout\)[\s\S]*saveSettingsDebounced/, '保存必须同时写回 ST 设置对象');
-assert.match(source, /input\[type="number"\]\[data-prose-key\][\s\S]*addEventListener\('input'/, '数值输入必须即时响应');
+const proseNumberBinding = source.slice(source.indexOf('function bindFloorProseNumberControls'), source.indexOf('function openFloorNavigator'));
+assert.match(proseNumberBinding, /root\.querySelectorAll\('input\[data-prose-key\]'\)/, '滑块与数值输入必须共用绑定入口');
+assert.match(proseNumberBinding, /addEventListener\('input', \(event\)[^\n]*update\(control\)/, '数值输入仍须即时预览，但不得打断组合输入');
+assert.match(proseNumberBinding, /other === control\)\) continue/, '实时同步不能回写正在编辑的数值输入框');
 assert.match(source, /querySelectorAll\('#chat \.mes_text'\)/, '排版功能必须严格限制在聊天正文');
 assert.doesNotMatch(source.slice(source.indexOf('function proseLayoutMarkBreaks'), source.indexOf('function proseLayoutSchedule')), /innerHTML|outerHTML|wrap|replaceWith/, '换行整理不得重建正文或复制参考实现');
 assert.match(css, /html body\.sd-prose-layout #chat \.mes \.mes_text[\s\S]*line-height:\s*var\(--sd-prose-line-height\) !important/, '正文排版必须以高优先级覆盖 ST 美化');
