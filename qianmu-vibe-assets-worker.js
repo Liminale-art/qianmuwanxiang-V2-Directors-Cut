@@ -15,6 +15,10 @@ async function exportReceipts(namespace,rows){
   }return exportVibeReceiptFile(namespace,rows,{reviewSegments});
 }
 return async function run({type,namespace,id,file,ids,settings,bundle,model,information,encoding,cacheKey,identity,attemptId,retryAttemptId,status,assetRef,image,name,expectedSourceId,sourceAssetRef,delivery,serviceAttemptId,serviceDelivery,expected,proof,confirmed,after,section,key}){
+  if(type==='restore-inspect'||type==='restore-originals'){
+    const {createVibeRestoreOperations}=await import('./qianmu-vibe-restore.js'),restore=createVibeRestoreOperations({store});
+    return type==='restore-inspect'?restore.inspect(namespace,file):restore.restore(namespace,file,proof,confirmed);
+  }
   if(type==='aggregate-prepare'||type==='aggregate-verify'){
     const {createVibeAggregationOperations}=await import('./qianmu-vibe-aggregate.js'),aggregate=createVibeAggregationOperations({store});
     return type==='aggregate-prepare'?aggregate.prepare(namespace,id):aggregate.verify(namespace,id,proof);
