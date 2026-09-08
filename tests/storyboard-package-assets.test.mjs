@@ -7,6 +7,7 @@ import * as board from '../qianmu-storyboard.js';
 import {parseNovelVibeFile,vibeDigest} from '../qianmu-vibe-file.js';
 import {exportStoryboardPackageAssets,closeStoryboardPackageRuntime} from '../qianmu-storyboard-package-runtime.js';
 import {storyboardFunctionSource as fn} from './helpers/storyboard-form-fixture.mjs';
+import {createPackageImportFixture} from './helpers/storyboard-package-fixture.mjs';
 const namespace='st-user:pack',otherAccount='st-user:target';
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
 const reference=id=>({version:1,namespace,id}),item=(id,ref)=>({id,name:id,previewUrl:ref?'':'https://legacy.example/image.png',strength:0,information:0,...(ref?{assetRef:ref}:{})});
@@ -164,9 +165,9 @@ test('actual export prevents duplicate heavy work and explicitly describes legac
 });
 
 test('old importer refuses future version packets before confirmation or any settings/media/archive write',async()=>{
-  const e=indexFixture(),before=JSON.stringify(e.state);e.context.confirmDialog=()=>assert.fail('must not confirm unsupported import');vm.runInContext(fn('storyboardImportPackage'),e.context);
-  for(const version of [7,99,-1,'6',null])await e.context.storyboardImportPackage({text:async()=>JSON.stringify({...payload(),version})});
-  assert.equal(JSON.stringify(e.state),before);assert.equal(e.notices.filter(([text,kind])=>kind==='error'&&text.includes('不支持')).length,5);
+  const f=createPackageImportFixture(),before=JSON.stringify(f.e.state);f.e.confirm=()=>assert.fail('must not confirm unsupported import');
+  for(const version of [7,99,-1,'6',null])await f.import(new Blob([JSON.stringify({...payload(),version})]));
+  assert.equal(JSON.stringify(f.e.state),before);assert.equal(f.e.notices.filter(([text,kind])=>kind==='error'&&text.includes('不支持')).length,5);assert.deepEqual(f.e.events,[]);
 });
 
 test('packet codec is in release and lazy registry without activation of the still-unmigrated version 7 import UI',async()=>{

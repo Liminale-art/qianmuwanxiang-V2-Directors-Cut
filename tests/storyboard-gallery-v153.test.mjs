@@ -15,7 +15,7 @@ assert.match(source, /function renderStoryboardGallery[\s\S]*sd-media-library-sh
 assert.match(source, /sd-storyboard-gallery-new-folder[\s\S]*sd-media-collection-rename[\s\S]*sd-media-collection-delete/, 'collections need create, rename, and dissolve controls');
 assert.match(source, /sd-storyboard-gallery-move-selected[\s\S]*storyboardAssignCollectionIds\(record, collectionId \? \[\.\.\.storyboardItemCollectionIds\(record\), collectionId\] : \[\]\)/, 'multi-select must add or clear collection membership');
 assert.match(source, /const collections=clone\(storyboardGalleryCollections\(\)\)[\s\S]*chat: \{ images: records, collections \}/, 'storyboard exports must include the captured media collections rather than reading a later chat');
-assert.match(source, /store\.storyboardCollections = storyboardMergeById/, 'cross-device imports must restore collections');
+assert.match(source, /prepareStoryboardPackageDraft\(\{[\s\S]*collections: incomingCollections/, 'cross-device imports prepare collections in the detached batch');
 assert.match(source, /data-storyboard-chat-action="redraw"/, 'redraw remains an inline chat action');
 assert.match(source, /data-storyboard-chat-action="artist"/, 'artist replacement remains an inline chat action');
 assert.match(source, /sd-storyboard-lightbox-delete[\s\S]*store\.storyboardImages = storyboardGalleryRecords\(\)\.filter/, 'individual variants remain deletable');

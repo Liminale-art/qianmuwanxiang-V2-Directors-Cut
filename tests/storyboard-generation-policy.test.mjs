@@ -6,6 +6,7 @@ import * as board from '../qianmu-storyboard.js';
 import {buildStoryboardPlanContractRequest} from '../qianmu-storyboard-contract.js';
 import {createStoryboardFormFixture,storyboardFunctionSource as fn} from './helpers/storyboard-form-fixture.mjs';
 import * as packageAssets from '../qianmu-storyboard-package-assets.js';
+import {createPackageImportFixture} from './helpers/storyboard-package-fixture.mjs';
 const plain=x=>JSON.parse(JSON.stringify(x));
 test('new installations get 1-3/2 while disabled legacy shot groups keep their original single-image behavior',()=>{
   assert.deepEqual(board.createStoryboardDefaults().generationPolicy,{version:1,minImages:1,maxImages:3,concurrency:2});
@@ -96,15 +97,17 @@ test('actual portable export/import preserves the policy and imports old package
     URL:{createObjectURL:blob=>{exported=blob;return 'blob:test';},revokeObjectURL:noop},
     document:{createElement:()=>({click:noop,remove:noop}),body:{appendChild:noop}},
   });
-  vm.runInContext(['storyboardExportPackage','storyboardMergeById','storyboardImportPackage'].map(fn).join('\n'),context);
+  vm.runInContext(fn('storyboardExportPackage'),context);
   await context.storyboardExportPackage();const text=await exported.text();
   assert.deepEqual(JSON.parse(text).settings.generationPolicy,{version:1,minImages:2,maxImages:4,concurrency:3});
-  state.generationPolicy={version:1,minImages:1,maxImages:1,concurrency:1};
-  await context.storyboardImportPackage({text:async()=>text});
-  assert.deepEqual(plain(state.generationPolicy),{version:1,minImages:2,maxImages:4,concurrency:3});
+  const importer=createPackageImportFixture();importer.e.state.generationPolicy={version:1,minImages:1,maxImages:1,concurrency:1};
+  await importer.import(new Blob([text]));
+  assert.deepEqual(plain(importer.e.state.generationPolicy),{version:1,minImages:2,maxImages:4,concurrency:3});
+  importer.e.choice='3';await importer.recover();
   for(const enabled of [false,true]){
     const legacy=JSON.parse(text);delete legacy.settings.generationPolicy;legacy.settings.routing={enabled,maxShotsPerFloor:2,providerConcurrency:1};
-    await context.storyboardImportPackage({text:async()=>JSON.stringify(legacy)});
-    assert.deepEqual(plain(state.generationPolicy),{version:1,minImages:1,maxImages:enabled?2:1,concurrency:1});
+    await importer.import(new Blob([JSON.stringify(legacy)]));
+    assert.deepEqual(plain(importer.e.state.generationPolicy),{version:1,minImages:1,maxImages:enabled?2:1,concurrency:1});
+    await importer.recover();
   }
 });

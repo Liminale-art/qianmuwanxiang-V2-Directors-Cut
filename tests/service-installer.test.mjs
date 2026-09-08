@@ -50,7 +50,7 @@ for(const engine of win?['powershell','shell']:['shell']) {
     assert.equal(await f.git('-C',f.plugin,'rev-parse','HEAD'),f.head);assert.match(result.output,/不会停止或重启|没有重启容器/);
   });
   test(`${engine}: updating retains unique original backup and records the exact prior commit`,async t=>{
-    const f=await fixture(t);assert.equal((await run(f,engine)).code,0);const first=await backups(f);
+    const f=await fixture(t),installed=await run(f,engine);assert.equal(installed.code,0,installed.output);const first=await backups(f);
     await fs.writeFile(path.join(f.origin,'server-plugin.js'),'export const testVersion=2;\n');await f.git('add','.');await f.git('commit','-m','next fixture');
     const result=await run(f,engine);assert.equal(result.code,0,result.output);const names=await backups(f);assert.equal(names.length,2);
     assert.equal(await fs.readFile(path.join(path.dirname(f.configFile),first[0]),'utf8'),original);

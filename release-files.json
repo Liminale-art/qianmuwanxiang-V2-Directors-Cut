@@ -15,6 +15,8 @@
     "qianmu-storyboard-package-input.js",
     "qianmu-storyboard-package-journal.js",
     "qianmu-storyboard-package-stage.js",
+    "qianmu-storyboard-package-mutation.js",
+    "qianmu-storyboard-package-draft.js",
     "qianmu-vibe-preservation.js",
     "qianmu-vibe-preservation-view.js",
     "qianmu-native-review-contract.js",

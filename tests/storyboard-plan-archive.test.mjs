@@ -69,7 +69,9 @@ test('portable exports hydrate full plans while imports discard local references
   assert.match(source, /async function storyboardExportPackage[\s\S]*await storyboardPlansForPortableExport/);
   assert.match(source, /type: 'qianmu-storyboard', version: 6/);
   assert.match(source, /async function importConfig[\s\S]*delete plan\.archiveRef[\s\S]*clearStoryboardPlanArchives/);
-  assert.match(source, /async function storyboardImportPackage[\s\S]*storyboardDeletePlanArchives\(replacedPlans\)[\s\S]*storyboardSchedulePlanArchive/);
+  const importer=source.slice(source.indexOf('async function storyboardImportPackage'),source.indexOf('function storyboardRelinkRedrawSnapshot'));
+  assert.match(importer, /prepareMutation[\s\S]*storyboardApplyPackageMutation/);
+  assert.doesNotMatch(importer, /storyboardDeletePlanArchives|storyboardDeleteRecordSnapshots|storyboardSchedulePlanArchive|storyboardArchiveGallerySnapshots/,'pending import must keep old archives available for recovery');
 });
 
 test('storage cleanup invalidates references and lifecycle performs idle migration only', () => {

@@ -204,6 +204,10 @@ const featureRuntime = createFeatureRuntime({
   vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.105') },
   vibeStorageSummary: { label: 'Vibe 空间汇总', load: () => import('./qianmu-vibe-storage-summary.js?v=1.59.105') },
   storyboardPackageAssets: { label: '分镜素材打包', load: () => import('./qianmu-storyboard-package-assets.js?v=1.59.105') },
+  storyboardPackageInput: { label: '分镜包核对', load: () => import('./qianmu-storyboard-package-input.js?v=1.59.105') },
+  storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.105') },
+  storyboardPackageMutation: { label: '分镜导入核对', load: () => import('./qianmu-storyboard-package-mutation.js?v=1.59.105') },
+  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.105') },
   vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.105') },
   vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.105') },
   tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.105') },
@@ -12264,6 +12268,7 @@ async function storyboardArchiveCompletedPipelines(state = storyboardState()) {
   ));
   if (!completed.length) return 0;
   const epoch = storyboardPipelineArchiveEpoch;
+  if (!await storyboardPackageArchiveAllowed()) return 0;
   await blobStore.putStoryboardPipelineLogs(completed.map((item) => clone(item)));
   if (epoch !== storyboardPipelineArchiveEpoch) return 0;
   const archivedIds = new Set(completed.map((item) => String(item.id)));
@@ -12282,6 +12287,7 @@ function storyboardArchivePipelineLog(log) {
     const state = storyboardState();
     const pipeline = (state.pipelineLogs || []).find((item) => item.id === pipelineId);
     if (!storyboardPipelineIsTerminal(pipeline)) return false;
+    if (!await storyboardPackageArchiveAllowed()) return false;
     await blobStore.putStoryboardPipelineLogs([clone(pipeline)]);
     if (epoch !== storyboardPipelineArchiveEpoch) return false;
     storyboardPipelineArchiveCache.set(pipelineId, clone(pipeline));
@@ -12961,6 +12967,7 @@ async function storyboardArchiveGallerySnapshots(records = storyboardGalleryReco
   })).filter((item) => item.key);
   if (!captures.length || !blobStore.blobStoreAvailable()) return 0;
   try {
+    if (!await storyboardPackageArchiveAllowed()) return 0;
     await blobStore.putStoryboardSnapshots(captures.map((item) => ({
       key: item.key, chatKey: expectedChatKey, recordId: item.record.id, snapshot: clone(item.snapshot),
     })));
@@ -13092,6 +13099,7 @@ async function storyboardArchiveShotPlans(plans = storyboardState().shotPlans) {
   })).filter((item) => item.key);
   if (!captures.length) return 0;
   try {
+    if (!await storyboardPackageArchiveAllowed()) return 0;
     await blobStore.putStoryboardPlanArchives(captures.map((item) => ({
       key: item.key, chatKey: item.chatKey, planId: item.id, plan: clone(item.plan), updatedAt: item.updatedAt,
     })));
@@ -17715,7 +17723,7 @@ function renderStoryboardLogs(state) {
     <details class="sd-storyboard-log-maintenance"><summary>日志管理</summary>
     <div><div class="sd-storyboard-receipt-tools"><button type="button" class="sd-btn sd-storyboard-open-service-inbox">NAI 收片</button><button type="button" class="sd-btn sd-storyboard-open-comfy-inbox">Comfy 收片</button></div><div class="sd-storyboard-service-inbox" role="status"></div><div class="sd-storyboard-comfy-inbox"></div></div>
     ${state.logs.length ? `<div class="sd-storyboard-log-actions"><button type="button" class="sd-btn sd-storyboard-export-logs">导出</button><button type="button" class="sd-btn sd-storyboard-clear-logs" ${storyboardActiveJobs.size || storyboardQueue.length ? 'disabled' : ''}>清空</button></div>` : ''}
-    <section class="sd-card sd-storyboard-pack-card"><div><b>分镜数据打包</b><small>跨 SillyTavern 迁移，不包含 API Key</small></div><div><button type="button" class="sd-icon-btn sd-storyboard-pack-export" title="导出分镜数据" aria-label="导出分镜数据"><i class="fa-solid fa-file-export"></i></button><label class="sd-icon-btn sd-storyboard-pack-import" title="导入分镜数据" aria-label="导入分镜数据"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-native-file sd-storyboard-pack-file" accept="application/json,.json"></label></div></section>
+    <section class="sd-card sd-storyboard-pack-card"><div><b>分镜数据打包</b><small>跨 SillyTavern 迁移，不包含 API Key</small></div><div><button type="button" class="sd-icon-btn sd-storyboard-pack-export" title="导出分镜数据" aria-label="导出分镜数据"><i class="fa-solid fa-file-export"></i></button><button type="button" class="sd-icon-btn sd-storyboard-pack-recover" title="核对导入" aria-label="核对导入"><i class="fa-solid fa-rotate-left"></i></button><label class="sd-icon-btn sd-storyboard-pack-import" title="导入分镜数据" aria-label="导入分镜数据"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-native-file sd-storyboard-pack-file" accept="application/json,.json"></label></div></section>
     </details>
     ${rows}
   </div>`;
@@ -21689,105 +21697,137 @@ function storyboardMergeById(local, incoming, limit = 240) {
   return [...map.values()].slice(0, limit);
 }
 
-async function storyboardImportPackage(file) {
-  if (!file) return;
-  let data;
+async function storyboardPackageArchiveAllowed() {
+  if (storyboardImportPackage.busy) return false;
+  const state = storyboardState(), chatKey = String(getChatKey() || '');
+  let journal;
   try {
-    data = JSON.parse(await file.text());
-    if(data?.version!==undefined&&(!Number.isInteger(data.version)||data.version<1||data.version>6))return toast('导入失败：当前版本不支持此分镜包格式，请保留原包，勿作为旧版导入。','error');
-    if (data?.type !== 'qianmu-storyboard' || !isPlainObject(data.settings) || !isPlainObject(data.chat)) throw new Error('invalid');
-  } catch (_) { return toast('导入失败：不是有效的千幕分镜数据包。', 'error'); }
-  const incomingImages = Array.isArray(data.chat.images) ? data.chat.images : [];
-  const incomingCollections = Array.isArray(data.chat.collections) ? data.chat.collections : [];
-  if (!await confirmDialog('导入分镜数据打包', `将导入 ${incomingImages.length} 条本聊天成片及分镜预设；同 ID 条目会更新，API Key 沿用本机设置。是否继续？`)) return;
-  const state = storyboardState();
-  const normalized = normalizeStoryboardState({ ...createStoryboardDefaults(), ...clone(data.settings),
-    generationPolicy: normalizeStoryboardGenerationPolicy(data.settings.generationPolicy, data.settings.routing || {}, data.settings.compositionPolicy),
-  });
-  state.parameterPresets = storyboardMergeById(state.parameterPresets, normalized.parameterPresets, 120);
-  state.promptPresets = storyboardMergeById(state.promptPresets, normalized.promptPresets, 200);
-  state.artistPresets = storyboardMergeById(state.artistPresets, normalized.artistPresets, 200);
-  state.artistCollections = storyboardMergeById(state.artistCollections, normalized.artistCollections, 100);
-  state.artistPools = storyboardMergeById(state.artistPools, normalized.artistPools, 100);
-  state.tagLibrary = storyboardMergeById(state.tagLibrary, normalized.tagLibrary, 2000);
-  state.vibeLibrary = storyboardMergeById(state.vibeLibrary, normalized.vibeLibrary, 500);
-  state.logs = storyboardMergeById(state.logs, normalized.logs, STORYBOARD_PIPELINE_LOG_LIMIT);
-  state.pipelineLogs = storyboardMergeById(state.pipelineLogs, normalized.pipelineLogs, STORYBOARD_PIPELINE_LOG_LIMIT);
-  const currentChatKey = String(getChatKey() || '');
-  const incomingPlans = (normalized.shotPlans || []).map((plan) => ({
-    ...clone(plan), chatKey: currentChatKey, archiveRef: '', archiveVersion: 0, archivedAt: 0,
-    messageRef: plan.messageRef ? { ...clone(plan.messageRef), chatKey: currentChatKey } : null,
-  }));
-  const incomingPlanIds = new Set(incomingPlans.map((plan) => String(plan.id || '')).filter(Boolean));
-  const replacedPlans = (state.shotPlans || []).filter((plan) => incomingPlanIds.has(String(plan.id || '')));
-  if (replacedPlans.length) await storyboardDeletePlanArchives(replacedPlans);
-  state.shotPlans = storyboardMergeById(state.shotPlans, incomingPlans, 300);
-  state.taskStates = storyboardMergeById(state.taskStates, (normalized.taskStates || []).map((task) => ({
-    ...clone(task), chatKey: currentChatKey,
-    messageRef: task.messageRef ? { ...clone(task.messageRef), chatKey: currentChatKey } : null,
-  })), 300);
-  state.enabled = normalized.enabled;
-  state.automation = clone(normalized.automation);
-  for (const sourceId of Object.keys(STORYBOARD_SOURCES)) Object.assign(state.profiles[sourceId], normalized.profiles[sourceId], { loaded: true });
-  state.routing = clone(normalized.routing);
-  state.generationPolicy = clone(normalized.generationPolicy);
-  for (const sourceId of Object.keys(STORYBOARD_SOURCES)) {
-    const incomingGroup = normalized.connections[sourceId];
-    if (!incomingGroup) continue;
-    state.connections[sourceId].presets = storyboardMergeById(state.connections[sourceId].presets, incomingGroup.presets, 60)
-      .map((item) => ({ ...item, credentialId: '' }));
+    const [module, identity] = await Promise.all([featureRuntime.load('storyboardPackageJournal'), featureRuntime.load('imageAdmission')]);
+    const namespace = await identity.resolveImageAccountNamespace();
+    journal = module.createStoryboardPackageJournal();
+    const pending = await journal.hasMutation(namespace);
+    const currentNamespace = await identity.resolveImageAccountNamespace();
+    return namespace === currentNamespace && !pending && !storyboardImportPackage.busy && state === storyboardState() && chatKey === String(getChatKey() || '');
+  } catch (_) { return false; }
+  finally { journal?.close(); }
+}
+
+async function storyboardImportPackage(file, { recoverOnly = false } = {}) {
+  if ((!file && !recoverOnly) || storyboardImportPackage.busy) return;
+  storyboardImportPackage.busy = true;
+  let journal = null;
+  const context = () => ({ state: storyboardState(), store: getChatStore(), chatKey: String(getChatKey() || ''), epoch: storyboardAdmissionEpoch });
+  try {
+    const initial = context();
+    const [input, draftModule, mutation, journalModule, assets, identity] = await Promise.all([
+      featureRuntime.load('storyboardPackageInput'), featureRuntime.load('storyboardPackageDraft'),
+      featureRuntime.load('storyboardPackageMutation'), featureRuntime.load('storyboardPackageJournal'),
+      featureRuntime.load('storyboardPackageAssets'), featureRuntime.load('imageAdmission'),
+    ]);
+    const session = await assets.createStoryboardPackageGuard({ initial, context, resolveNamespace: () => identity.resolveImageAccountNamespace() });
+    const isCurrent = () => { const live = context(); return live.state === initial.state && live.store === initial.store && live.chatKey === initial.chatKey && live.epoch === initial.epoch; };
+    const guard = async () => {
+      await session.guard();
+      if (storyboardActiveJobs.size || storyboardQueue.length || initial.state.shotPlans.some(plan => ['screening','compiling','generating','queued'].includes(plan.status))) throw new Error('分镜正在工作，请结束当前任务后再导入');
+    };
+    await guard();
+    if (!globalThis.navigator?.locks?.request) throw new Error('浏览器不支持跨页导入锁，未修改分镜数据');
+    journal = journalModule.createStoryboardPackageJournal();
+    await navigator.locks.request(`qianmu:package-import:${session.namespace}`, { mode: 'exclusive', ifAvailable: true }, async lock => {
+      if (!lock) throw new Error('另一页面正在处理分镜导入，请稍后重试');
+      await guard();
+      const pending = await journal.loadMutation(session.namespace); await guard();
+      if (pending) {
+        if (pending.chatHash !== await mutation.storyboardPackageDigest(initial.chatKey)) throw new Error('此账户有另一聊天的待核对导入，请回到原聊天点击“核对导入”');
+        await storyboardRecoverPackageMutation({ pending, mutation, journal, initial, guard, isCurrent });
+        return;
+      }
+      if (recoverOnly) return toast('没有待核对的分镜导入。', 'info');
+      const parsed = await input.inspectStoryboardPackageFile(file, { legacy: true }); await guard();
+      const data = parsed.payload;
+      assets.collectStoryboardVibeDependencies(data, { namespace: session.namespace });
+      const originalState = clone(initial.state);
+      const originalStore = Object.fromEntries(['storyboardImages','storyboardCollections'].filter(key => Object.hasOwn(initial.store, key)).map(key => [key, clone(initial.store[key])]));
+      const messages = (ctx().chat || []).slice();
+      const messageStamp = list => JSON.stringify(list.map((message, floor) => createStoryboardMessageReference({ message, floor, chatKey: initial.chatKey, now: 1 })));
+      const originalMessageStamp = messageStamp(messages);
+      const incomingImages = clone(data.chat.images || []), incomingCollections = clone(data.chat.collections || []);
+      const prepareRecords = () => incomingImages.map(raw => {
+        if (!raw?.id || !STORYBOARD_SOURCES[raw.source]) throw new Error('成片包含当前不支持的渠道，未部分导入');
+        if (raw.snapshotRef && !raw.snapshot && !raw.recipeUnavailable) throw new Error('成片缺少原始配置，请保留原包');
+        const record = clone(raw);
+        record.chatKey = initial.chatKey; delete record.snapshotRef; delete record.snapshotVersion;
+        record.snapshot = sanitizeStoryboardSnapshot(record.snapshot || {}, { source: record.source, prompt: record.prompt, negative: record.negative });
+        const floor = Number.isInteger(record.floor) ? record.floor : null, message = messages[floor];
+        const reference = record.messageRef ? { ...record.messageRef, chatKey: initial.chatKey } : null;
+        const resolved = reference?.messageKey ? resolveStoryboardMessageReference(reference, messages, { chatKey: initial.chatKey }) : null;
+        const anchorValid = resolved ? resolved.state === 'active' : message && (!record.messageHash || record.messageHash === hashText(String(message.mes || ''))) && Number(record.swipeId || 0) === Number(message.swipe_id || 0);
+        if (resolved?.state === 'active') { record.floor = resolved.floor; record.linkState = 'active'; record.messageRef = reference; }
+        else if (!anchorValid) { record.lastKnownFloor = floor; record.floor = null; record.linkState = resolved?.state || 'orphaned'; }
+        return record;
+      });
+      const images = prepareRecords();
+      // Validate the entire merge before confirmation, uploads, or any live state mutation.
+      let draft = draftModule.prepareStoryboardPackageDraft({ settings: originalState, chat: originalStore, incoming: data.settings, images, collections: incomingCollections, chatKey: initial.chatKey });
+      if (await confirmDialog('导入分镜数据', `将合并 ${images.length} 条成片及预设；历史任务不会自动续跑，现有连接凭据不随包迁移。中断后可通过“核对导入”继续或恢复原配置。是否继续？`) !== true) return;
+      await guard();
+      const media = new Map((data.media || []).map(item => [item.id, item]));
+      const utils = media.size ? await storyboardUtilsModule() : null; await guard();
+      const characterName = getCharacterName() || 'Qianmu';
+      let restored = 0;
+      for (const record of images) {
+        const embedded = media.get(record.id); if (!embedded) continue;
+        if (typeof utils?.saveBase64AsFile !== 'function') throw new Error('图片保存功能不可用，分镜设置未修改');
+        await guard();
+        const extension = embedded.mime === 'image/jpeg' ? 'jpg' : embedded.mime === 'image/webp' ? 'webp' : 'png';
+        record.url = await utils.saveBase64AsFile(embedded.b64, characterName, `qianmu_storyboard_import_${parsed.fingerprint.slice(0,16)}_${++restored}`, extension);
+        await guard();
+        if (!storyboardSafeUrl(record.url)) throw new Error('图片保存未返回有效地址，分镜设置未修改');
+      }
+      draft = draftModule.prepareStoryboardPackageDraft({ settings: originalState, chat: originalStore, incoming: data.settings, images, collections: incomingCollections, chatKey: initial.chatKey });
+      const pendingMutation = await mutation.createStoryboardMutation({ namespace: session.namespace, chatKey: initial.chatKey, fileHash: parsed.fingerprint, settings: originalState, chat: originalStore, draft });
+      await guard();
+      if (messageStamp(ctx().chat || []) !== originalMessageStamp) throw new Error('正文在导入期间已变化，请重新核对，分镜设置未修改');
+      const report = mutation.inspectStoryboardMutation(pendingMutation, { settings: initial.state, chat: initial.store });
+      if (report.conflicts.length || report.after) throw new Error('分镜数据在导入期间已变化，未覆盖，请重新导入');
+      const saved = await journal.prepareMutation(pendingMutation, { isCurrent }); await guard();
+      const latest = mutation.inspectStoryboardMutation(saved, { settings: initial.state, chat: initial.store });
+      if (latest.conflicts.length || latest.after) throw new Error('分镜数据已变化；恢复记录已保留，请先核对导入');
+      await storyboardApplyPackageMutation({ pending: saved, mutation, journal, initial, guard, isCurrent });
+    });
+  } catch (error) {
+    toast(`分镜导入未完成：${error?.message || '请保留原包并重新核对'}；已暂存图片可能仍保留。`, 'error');
+  } finally { journal?.close(); storyboardImportPackage.busy = false; }
+}
+
+async function storyboardApplyPackageMutation({ pending, mutation, journal, initial, guard, isCurrent, direction = 'after' }) {
+  await guard();
+  mutation.applyStoryboardMutation(pending, { settings: initial.state, chat: initial.store }, direction);
+  // No await between the two local objects. ST settings persistence itself is only debounced.
+  try {
+    saveSettings(); await saveMetadata(); await guard();
+    await journal.updateMutation(pending, 'applied', { isCurrent });
+    storyboardScheduleInlineRender(30); renderModal();
+    toast('分镜配置已应用，历史任务未续跑。请刷新后点击“核对导入”确认保存；恢复记录暂时保留。', 'info');
+  } catch (error) {
+    if (isCurrent()) try { await journal.updateMutation(pending, 'uncertain', { isCurrent }); } catch (_) {}
+    throw new Error(`配置保存结果未确认，未删除旧归档；请通过“核对导入”检查：${error?.message || '保存未确认'}`);
   }
-  if (STORYBOARD_SOURCES[normalized.source]) state.source = normalized.source;
-  const media = new Map((Array.isArray(data.media) ? data.media : []).filter((item) => item?.id && item?.b64).map((item) => [String(item.id), item]));
-  let restored = 0;
-  let metadataOnly = 0;
-  let utils = null;
-  try { utils = await storyboardUtilsModule(); } catch (_) {}
-  const imported = [];
-  for (let index = 0; index < incomingImages.length; index++) {
-    const raw = incomingImages[index];
-    if (!raw?.id || !STORYBOARD_SOURCES[raw.source]) continue;
-    const record = clone(raw);
-    record.chatKey = String(getChatKey() || '');
-    delete record.snapshotRef;
-    delete record.snapshotVersion;
-    record.snapshot = sanitizeStoryboardSnapshot(record.snapshot || {}, { source: record.source, prompt: record.prompt, negative: record.negative });
-    const embedded = media.get(String(record.id));
-    if (embedded && typeof utils?.saveBase64AsFile === 'function') {
-      try {
-        const extension = String(embedded.mime || '').includes('jpeg') ? 'jpg' : String(embedded.mime || '').includes('webp') ? 'webp' : 'png';
-        record.url = await utils.saveBase64AsFile(embedded.b64, getCharacterName() || 'Qianmu', `qianmu_storyboard_import_${Date.now()}_${index + 1}`, extension);
-        restored++;
-      } catch (_) { metadataOnly++; }
-    } else metadataOnly++;
-    const floor = Number.isInteger(record.floor) ? record.floor : null;
-    const message = Number.isInteger(floor) ? ctx().chat?.[floor] : null;
-    const resolved = record.messageRef?.messageKey
-      ? resolveStoryboardMessageReference(record.messageRef, ctx().chat, { chatKey: String(getChatKey() || '') })
-      : null;
-    const anchorValid = resolved ? resolved.state === 'active' : message && (!record.messageHash || record.messageHash === hashText(String(message.mes || '')))
-      && Number(record.swipeId || 0) === Number(message.swipe_id || 0);
-    if (resolved?.state === 'active') { record.floor = resolved.floor; record.linkState = 'active'; }
-    else if (!anchorValid) { record.lastKnownFloor = floor; record.floor = null; record.linkState = resolved?.state || 'orphaned'; }
-    imported.push(record);
+}
+
+async function storyboardRecoverPackageMutation({ pending, mutation, journal, initial, guard, isCurrent }) {
+  const report = mutation.inspectStoryboardMutation(pending, { settings: initial.state, chat: initial.store });
+  const choice = await promptInput('核对分镜导入', `当前有 ${report.before} 项仍为导入前、${report.after} 项已应用、${report.conflicts.length} 项被其他操作修改。\n1：继续应用导入内容\n2：恢复导入前配置\n3：保留当前配置并结束核对（建议刷新确认后选择）\n取消则保留恢复记录。`, '');
+  await guard();
+  if (choice == null || !String(choice).trim()) return;
+  if (String(choice).trim() === '3') {
+    if (await confirmDialog('结束导入核对', '将只删除本次配置恢复记录，保留当前配置、所有图片与旧归档；此后不能再用这条记录一键恢复导入前配置。请先确认刷新后配置仍正确。是否结束核对？') !== true) return;
+    await guard(); await journal.dismissMutation(pending, { confirmed: true, isCurrent });
+    return toast('导入核对已结束；仅移除本次配置恢复记录，图片与旧归档未删除。', 'info');
   }
-  const store = getChatStore();
-  const existingRecords = storyboardGalleryRecords();
-  store.storyboardImages = storyboardMergeById(existingRecords, imported, 400);
-  const retainedRecordIds = new Set(store.storyboardImages.map((item) => String(item.id || '')));
-  const prunedRecords = existingRecords.filter((item) => !retainedRecordIds.has(String(item.id || '')));
-  store.storyboardCollections = storyboardMergeById(storyboardGalleryCollections(), incomingCollections, 120)
-    .filter((item) => String(item.name || '').trim()).map((item) => ({
-      id: String(item.id), name: String(item.name).trim().slice(0, 80),
-      createdAt: Number(item.createdAt) || Date.now(), updatedAt: Number(item.updatedAt) || Date.now(),
-    }));
-  normalizeStoryboardState(state);
-  saveSettings(); await saveMetadata();
-  storyboardSchedulePlanArchive(600);
-  void storyboardArchiveGallerySnapshots(store.storyboardImages);
-  if (prunedRecords.length) void storyboardDeleteRecordSnapshots(prunedRecords);
-  storyboardScheduleInlineRender(30); renderModal();
-  toast(`分镜数据已导入：${imported.length} 条成片${restored ? ` · ${restored} 张图片已落盘` : ''}${metadataOnly ? ` · ${metadataOnly} 张沿用原地址` : ''}。`, 'success');
+  if (!['1','2'].includes(String(choice).trim())) return toast('请输入 1、2 或 3。', 'warning');
+  if (report.conflicts.length) return toast('涉及的配置已被其他操作修改，未自动覆盖；请先导出当前数据，再决定如何处理。', 'warning');
+  await storyboardApplyPackageMutation({ pending, mutation, journal, initial, guard, isCurrent, direction: String(choice).trim() === '2' ? 'before' : 'after' });
 }
 
 function storyboardRelinkRedrawSnapshot(snapshot, record, floor, message, paragraphIndex) {
@@ -23387,7 +23427,8 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-comfy-check-workflow')?.addEventListener('click', () => void storyboardCheckComfyReadiness(root));
   bindStoryboardComfyTargets(root);
   root.querySelector('.sd-storyboard-pack-export')?.addEventListener('click', () => void storyboardExportPackage());
-  root.querySelector('.sd-storyboard-pack-import input')?.addEventListener('change', (event) => void storyboardImportPackage(event.target.files?.[0]));
+  root.querySelector('.sd-storyboard-pack-recover')?.addEventListener('click', () => void storyboardImportPackage(null, { recoverOnly: true }));
+  root.querySelector('.sd-storyboard-pack-import input')?.addEventListener('change', (event) => { const file = event.target.files?.[0]; event.target.value = ''; void storyboardImportPackage(file); });
   root.querySelector('.sd-storyboard-export-logs')?.addEventListener('click', async () => {
     await storyboardHydratePipelineArchive();
     const currentState = storyboardState();

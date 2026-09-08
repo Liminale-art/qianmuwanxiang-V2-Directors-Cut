@@ -136,8 +136,8 @@ test('checkpoint validation rejects forged phase, foreign keys, duplicate IDs an
     r=>r.assetIds=['a'.repeat(64),'a'.repeat(64)],r=>r.apiKey='secret',r=>r.payload={},r=>r.chatKey='private chat']){const bad=structuredClone(row);mutate(bad);assert.throws(()=>validateStoryboardPackageCheckpoint(bad));}
 });
 
-test('new staging modules have no network, fee replay, destructive removal or metadata commit routes',async()=>{
-  for(const file of ['qianmu-storyboard-package-input.js','qianmu-storyboard-package-stage.js','qianmu-storyboard-package-journal.js']){
+test('asset staging modules have no network, fee replay, destructive removal or metadata commit routes',async()=>{
+  for(const file of ['qianmu-storyboard-package-input.js','qianmu-storyboard-package-stage.js']){
     const text=await readFile(new URL(`../${file}`,import.meta.url),'utf8');assert.doesNotMatch(text,/fetch\(|saveSettings\(|saveMetadata\(|\.remove\(|(?:store|objectStore\([^)]*\))\.delete\(|encoding-reserve|storyboardQueue/);
   }
 });

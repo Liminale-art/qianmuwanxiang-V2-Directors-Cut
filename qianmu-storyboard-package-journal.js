@@ -1,4 +1,5 @@
-// Durable metadata-only checkpoints. No image, prompt, credential or fee-request bodies.
+import {validateStoryboardMutation} from './qianmu-storyboard-package-mutation.js';
+// Asset checkpoints are identity-only; the separate mutation store holds local before/after configuration.
 const fail=message=>{throw Object.assign(new Error(message),{code:'storyboard_package_journal',submissionState:'not_submitted'});};
 const account=value=>typeof value==='string'&&/^st-user:.+/.test(value)&&value.length<=512&&!/[\u0000-\u001f\u007f]/.test(value);
 const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
@@ -21,24 +22,27 @@ export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,k
     opening=new Promise((resolve,reject)=>{
       let done=false,request;const finish=(failure,value)=>{if(done){value?.close();return;}done=true;clearTimeout(timer);failure?reject(failure):resolve(value);};
       const timer=setTimeout(()=>finish(error('读取导入恢复记录超时')),timeout);
-      try{request=indexedDB.open(dbName,1);}catch(_){finish(error('无法打开导入恢复记录'));return;}
-      request.onupgradeneeded=()=>{if(done||closed){request.transaction?.abort();return;}const store=request.result.createObjectStore('checkpoints',{keyPath:'key'});store.createIndex('namespace','namespace');};
+      try{request=indexedDB.open(dbName,2);}catch(_){finish(error('无法打开导入恢复记录'));return;}
+      request.onupgradeneeded=()=>{if(done||closed){request.transaction?.abort();return;}const db=request.result;
+        if(!db.objectStoreNames.contains('checkpoints')){const store=db.createObjectStore('checkpoints',{keyPath:'key'});store.createIndex('namespace','namespace');}
+        if(!db.objectStoreNames.contains('mutations'))db.createObjectStore('mutations',{keyPath:'namespace'});
+      };
       request.onerror=()=>finish(error('导入恢复记录不可用'));request.onblocked=()=>finish(error('请关闭旧页面后重新核对导入恢复记录'));
       request.onsuccess=()=>{const db=request.result;if(done||closed){db.close();finish(ended());return;}database=db;
         const release=()=>{db.close();if(database===db){database=null;opening=null;}};db.onversionchange=release;db.onclose=()=>{if(database===db){database=null;opening=null;}};finish(null,db);};
     });const attempt=opening;void attempt.catch(()=>{if(opening===attempt)opening=null;});return attempt;
   }
-  async function transaction(mode,isCurrent,work){
+  async function transaction(mode,isCurrent,work,storeName='checkpoints'){
     if(!isCurrent())fail('导入恢复记录的账户或页面已变化');const db=await open();if(closed)throw ended();if(!isCurrent())fail('导入恢复记录的账户或页面已变化');
     return new Promise((resolve,reject)=>{
       let tx,result,failure,done=false;const finish=err=>{if(done)return;done=true;clearTimeout(timer);pending.delete(tx);err?reject(err):resolve(result);};
       const abort=err=>{failure=err;try{tx.abort();}catch(_){finish(err);}};
       const timer=setTimeout(()=>{failure=error('导入恢复记录写入结果未确认，请重新核对');try{tx?.abort();}catch(_){}finish(failure);},timeout);
-      try{tx=db.transaction('checkpoints',mode);pending.add(tx);}catch(_){finish(error('导入恢复记录暂不可用'));return;}
+      try{tx=db.transaction(storeName,mode);pending.add(tx);}catch(_){finish(error('导入恢复记录暂不可用'));return;}
       tx.oncomplete=()=>{try{finish(closed?ended():!isCurrent()?error('恢复记录已写入但页面已变化，请重新核对'):null);}catch(err){finish(err);}};
       tx.onabort=()=>finish(failure||error('导入恢复记录未完成'));tx.onerror=()=>{failure||=error('导入恢复记录空间不足或写入失败');};
       const read=(request,next)=>{request.onsuccess=()=>{if(done)return;try{if(closed)throw ended();if(!isCurrent())fail('导入恢复记录的账户或页面已变化');next(request.result);}catch(err){abort(err);}};};
-      try{work(tx.objectStore('checkpoints'),read,value=>{result=value;});}catch(err){abort(err);}
+      try{work(tx.objectStore(storeName),read,value=>{result=value;});}catch(err){abort(err);}
     });
   }
   return Object.freeze({
@@ -60,6 +64,31 @@ export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,k
         if(row.phase==='prepared'&&phase!=='staging')fail('必须先暂存素材再标记核对完成');
         const next=validateStoryboardPackageCheckpoint({...row,phase,revision:row.revision+1,updatedAt:Math.max(row.updatedAt,now())});store.put(next);set(next);
       }));
+    },
+    async loadMutation(namespace){
+      if(!account(namespace))fail('无法确认元数据恢复账户');return transaction('readonly',()=>true,(store,read,set)=>read(store.get(namespace),row=>set(row?validateStoryboardMutation(row):null)),'mutations');
+    },
+    async hasMutation(namespace){
+      if(!account(namespace))fail('无法确认元数据恢复账户');return transaction('readonly',()=>true,(store,read,set)=>read(store.getKey(namespace),key=>set(key!==undefined)),'mutations');
+    },
+    async prepareMutation(input,{isCurrent=()=>true}={}){
+      const row=structuredClone(validateStoryboardMutation(input));if(row.phase!=='prepared'||row.revision!==1)fail('元数据恢复记录必须从准备阶段开始');
+      return transaction('readwrite',isCurrent,(store,read,set)=>read(store.get(row.namespace),existing=>{
+        if(existing)fail('本账户已有待核对的分镜导入，请先处理恢复记录');store.add(row);set(row);
+      }),'mutations');
+    },
+    async updateMutation(input,phase,{isCurrent=()=>true}={}){
+      const previous=structuredClone(validateStoryboardMutation(input));if(!['applied','uncertain'].includes(phase))fail('元数据保存阶段无效');
+      return transaction('readwrite',isCurrent,(store,read,set)=>read(store.get(previous.namespace),row=>{
+        validateStoryboardMutation(row);if(JSON.stringify(row)!==JSON.stringify(previous))fail('元数据恢复记录已变化，请重新核对');
+        const next=validateStoryboardMutation({...row,phase,revision:row.revision+1});store.put(next);set(next);
+      }),'mutations');
+    },
+    async dismissMutation(input,{confirmed=false,isCurrent=()=>true}={}){
+      const previous=structuredClone(validateStoryboardMutation(input));if(confirmed!==true)fail('尚未确认结束本次恢复核对');
+      return transaction('readwrite',isCurrent,(store,read,set)=>read(store.get(previous.namespace),row=>{
+        validateStoryboardMutation(row);if(JSON.stringify(row)!==JSON.stringify(previous))fail('元数据恢复记录已变化，请重新核对');store.delete(row.namespace);set(true);
+      }),'mutations');
     },
     close(){closed=true;for(const tx of pending)try{tx.abort();}catch(_){}database?.close();database=null;opening=null;},
   });
