@@ -29,7 +29,7 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
   if (chatEvidence) source.options.chatEvidence = await captureStoryboardChatEvidence([{ mes: sourceText, is_user: false, swipe_id: 0 }], chatKey);
   source.options.storyboard = file(source.config); const built = await source.build();
   const e = { active: true, events: [], files: new Map(), records: new Map(), mutation: null, settings: createStoryboardDefaults(), chat: {},
-    messages: [{ mes: sourceText, is_user: false, swipe_id: 0 }], subjectRows, locals: clone(source.sources), vibes: false, configChanges: 0, mappings: new Map() };
+    messages: [{ mes: sourceText, is_user: false, swipe_id: 0 }], subjectRows, locals: clone(source.sources), vibes: false, configChanges: 0, mappings: new Map(), subjectMaps:new Map() };
   e.locals.workflows.workflows = []; e.locals.pools.pools = [];
   e.locals.characters.archives = []; e.locals.characters.bindings = []; e.locals.characters.usage = { count: 0, bytes: 0, bindings: 0 };
   const options = { namespace, chatKey, file: built.file, guard: async () => { if (!e.active) throw Error('inactive'); }, isCurrent: () => e.active,
@@ -56,6 +56,9 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
   options.vibeStage = { inspect: async () => ({ fileHash: await vibeDigest(new Uint8Array(await source.options.storyboard.arrayBuffer())), localHash: await digest(e.vibes), fits: !e.vibeFull, missing: e.vibes ? 0 : 1, rows: [], namespace }),
     stage: async (_file, proof, confirmed) => { assert.equal(confirmed, true); assert.equal(proof.localHash, await digest(e.vibes)); if (e.failAt === 'vibes') throw Error('synthetic vibe failure'); e.vibes = true; e.events.push('vibes'); } };
   options.journal = {
+    loadSubjectMap:async(_ns,id)=>clone(e.subjectMaps.get(id)||null),
+    inspectSubjectMap:async review=>({receipt:clone(e.subjectMaps.get(review.digest)||null),fits:!e.subjectMapFull}),
+    prepareSubjectMap:async(review,approved)=>{assert.equal(approved.confirmed,true);if(e.failAt==='subjectMap')throw Error('synthetic subject map failure');const row=e.subjectMaps.get(review.digest)||{namespace,review:clone(review),createdAt:1};e.subjectMaps.set(review.digest,row);e.events.push('subjectMap');return clone(row);},
     inspectEnvironmentMap: async review => ({receipt:clone(e.mappings.get(review.digest)||null),fits:!e.mappingFull}),
     prepareEnvironmentMap: async (review,approved) => {assert.equal(approved.confirmed,true);if(e.failAt==='mapping')throw Error('synthetic mapping failure');const row=e.mappings.get(review.digest)||{key:review.digest,namespace,review:clone(review),createdAt:1};e.mappings.set(review.digest,row);e.events.push('mapping');return clone(row);},
     loadResource: async (_ns, kind = 'characters') => clone(e.records.get(kind) || null),
@@ -69,13 +72,53 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
     updateMutation: async (previous, phase) => { assert.deepEqual(e.mutation, previous); e.mutation = { ...clone(previous), phase, revision: previous.revision + 1 }; return clone(e.mutation); },
   };
   options.configuration = createStoryboardBundleConfiguration({ namespace, chatKey, settings: e.settings, chat: e.chat, messages: () => e.messages,
-    captureSubjects: async () => captureStoryboardSubjectEvidence(e.subjectRows),
+    captureSubjects: async targets => captureStoryboardSubjectEvidence(e.subjectRows.filter(row=>targets.some(target=>target.category===row.category&&target.subjectKey===row.subjectKey))),
     journal: options.journal, guard: options.guard, isCurrent: options.isCurrent, persist: async () => { if (e.failAt === 'persist') throw Error('synthetic persist failure'); e.events.push('configuration'); } });
   const reopen = () => createStoryboardBundleRestoreSession(options);
   return { source, built, e, options, reopen, session: await reopen() };
 }
 const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true, connectionsReviewed: true, resourcesReviewed: true };
 const writes = e => e.events.filter(row => !row.startsWith('lock:'));
+const subjectMappings=[{category:'char',sourceKey:'char:alice.png',targetKey:'char:renamed-alice.png'}];
+async function remappedSubjectsFixture(){
+  const f=await fixture({subjectEvidence:true,chatEvidence:true});f.e.subjectRows=[{category:'char',subjectKey:'char:alice.png',state:'missing'},
+    {category:'char',subjectKey:subjectMappings[0].targetKey,state:'present',profile:{name:'Alice',description:'original character'}}];return f;
+}
+const subjectConsent={...consent,subjectsReviewed:true,subjectsMapped:true};
+test('subject mapping restores a real target binding with new revision and retains original archive and historical recipes',async()=>{
+  const f=await remappedSubjectsFixture(),before=clone(f.source.sources),original=(await f.session.preview());assert.equal(original.ready,false);assert.equal(f.e.files.size,0);
+  const p=await f.session.preview({},subjectMappings);assert.equal(p.ready,true);assert.equal(p.subjectReview[0].state,'matched');assert.equal(p.bindingReview[0].subjectKey,subjectMappings[0].targetKey);
+  await assert.rejects(f.session.restore(p,{...subjectConsent,subjectsMapped:false}),/单独确认/);assert.equal(writes(f.e).length,0);
+  await f.session.restore(p,subjectConsent);assert.equal(f.e.subjectMaps.size,1);assert.ok(f.e.events.indexOf('subjectMap')<f.e.events.indexOf('image'));
+  assert.match(f.e.locals.characters.bindings[0].revision,/^mapped-/);assert.equal(f.e.locals.characters.bindings[0].subjectKey,subjectMappings[0].targetKey);
+  assert.deepEqual(f.e.locals.characters.archives,before.characters.archives);assert.deepEqual(f.source.sources,before);assert.deepEqual(f.e.locals.workflows,before.workflows);assert.equal(f.e.mutation.phase,'applied');
+  const receipt=[...f.e.subjectMaps.values()][0].review;assert.equal(receipt.lineage[0].source.subjectKey,'char:alice.png');assert.equal(receipt.lineage[0].target.subjectKey,subjectMappings[0].targetKey);
+});
+test('partial subject restore reopens with an unapproved mapping draft and rejects switching targets before completion',async()=>{
+  const f=await remappedSubjectsFixture(),p=await f.session.preview({},subjectMappings);f.e.failAt='vibes';await assert.rejects(f.session.restore(p,subjectConsent),/未全部确认/);assert.equal(f.e.subjectMaps.size,1);f.session.close();
+  const resumed=await f.reopen(),next=await resumed.preview();assert.deepEqual(next.subjectMappings,subjectMappings);
+  await assert.rejects(resumed.restore(next,{...subjectConsent,subjectsMapped:false}),/单独确认/);
+  f.e.subjectRows.push({category:'char',subjectKey:'char:third.png',state:'present',profile:{name:'Third',description:'different'}});
+  const changed=await resumed.preview({},[{...subjectMappings[0],targetKey:'char:third.png'}]);assert.equal(changed.ready,false);assert.equal(changed.subjectMappingConflict,true);
+  f.e.failAt='';await resumed.restore(await resumed.preview({},subjectMappings),subjectConsent);assert.equal(f.e.subjectMaps.size,1);assert.equal(f.e.mutation.phase,'applied');
+});
+test('failed subject receipt write can be explicitly reconstructed after reopen without deleting its pending checkpoint',async()=>{
+  const f=await remappedSubjectsFixture(),p=await f.session.preview({},subjectMappings);f.e.failAt='subjectMap';await assert.rejects(f.session.restore(p,subjectConsent),/未全部确认/);assert.equal(f.e.files.size,0);assert.equal(f.e.subjectMaps.size,0);f.session.close();
+  const resumed=await f.reopen(),next=await resumed.preview();assert.equal(next.ready,false);assert.equal(next.subjectMappingConflict,true);assert.deepEqual(next.subjectMappings,[]);
+  f.e.failAt='';await resumed.restore(await resumed.preview({},subjectMappings),subjectConsent);assert.equal(f.e.subjectMaps.size,1);assert.equal(f.e.mutation.phase,'applied');
+});
+test('subject target changes or missing durable lineage after original upload stop before applying archives/configuration',async()=>{
+  const f=await remappedSubjectsFixture(),p=await f.session.preview({},subjectMappings);f.e.afterImage=async()=>{f.e.subjectRows[1].profile.description='changed';};
+  await assert.rejects(f.session.restore(p,subjectConsent),/角色或人设来源已变化/);assert.ok(f.e.files.size);assert.equal(f.e.locals.characters.bindings.length,0);assert.equal(f.e.mutation,null);
+  const g=await remappedSubjectsFixture(),gp=await g.session.preview({},subjectMappings);g.e.afterImage=async()=>g.e.subjectMaps.clear();
+  await assert.rejects(g.session.restore(gp,subjectConsent),/角色映射凭据未确认/);assert.equal(g.e.mutation,null);
+});
+test('target binding conflicts retain local identity unless incoming is independently selected, without dropping original source mapping lineage',async()=>{
+  const f=await remappedSubjectsFixture();f.e.locals.characters=clone(f.source.sources.characters);f.e.locals.characters.bindings[0]={...f.e.locals.characters.bindings[0],subjectKey:subjectMappings[0].targetKey,archiveId:'',revision:'local-revision'};
+  const p=await f.session.preview({},subjectMappings),key=p.conflicts.find(row=>row.kind==='binding').key;assert.equal(p.ready,false);
+  const keep=await f.session.preview({[key]:'local'},subjectMappings);assert.equal(keep.ready,true);assert.equal(keep.bindingReview.length,0);
+  await f.session.restore(keep,subjectConsent);assert.equal(f.e.locals.characters.bindings[0].archiveId,'');assert.equal(f.e.locals.characters.bindings[0].revision,'local-revision');assert.equal(f.e.subjectMaps.size,1);
+});
 async function mappedFixture() {
   const identity={ok:true,version:1,state:'ready',expectedAccount:'st-user:'+createHash('sha256').update(namespace.slice(8)).digest('hex'),instanceId:randomUUID(),accountId:randomUUID(),proof:'installation-labels',automaticRebinding:false};
   const f=await fixture({sourceIdentity:identity,chatEvidence:true,subjectEvidence:true});f.session.close();

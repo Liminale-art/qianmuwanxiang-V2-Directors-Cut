@@ -87,6 +87,30 @@ test('subject evidence RPC remains read-only, source-bound and separate from the
   },{configuration:{preview:async()=>{},apply:async()=>assert.fail('no writes'),subjects:async()=>{calls++;return {digest:'e'.repeat(64),rows:[],ready:true};}}});
   t.after(()=>client.close());await client.preview();assert.equal(calls,1);
 });
+test('target catalogue RPC is read-only, tied to the requested page and cannot call preview/apply or carry profile data',async t=>{
+  const page={category:'char',query:'Alice',offset:0,total:1,rows:[{category:'char',subjectKey:'char:alice.png',name:'Alice'}]};let called=0;
+  const {client,e}=await fixture(async(w,c)=>{
+    assert.equal((await w.rpc(c,'configuration-targets',{fingerprint:sourceDigest,category:'char',query:'Alice',offset:0})).error,undefined);
+    assert.ok((await w.rpc(c,'configuration-preview',{fingerprint:sourceDigest,settings:{}})).error);assert.ok((await w.rpc(c,'configuration-apply',{fingerprint:sourceDigest})).error);
+    assert.ok((await w.rpc(c,'configuration-targets',{fingerprint:sourceDigest,category:'char',query:'Alice',offset:0,settings:{}})).error);
+    w.reply(c,{...page,sourceDigest});
+  },{configuration:{targets:async()=>{called++;return page;},preview:async()=>assert.fail('no preview'),apply:async()=>assert.fail('no apply')}});t.after(()=>client.close());
+  assert.equal((await client.targets({category:'char',query:'Alice',offset:0})).rows[0].name,'Alice');assert.equal(called,1);assert.equal(e.applied,0);
+});
+test('target picker rejects swapped pages and over-broad rows, and subject mapping needs its own runtime consent',async()=>{
+  const page={category:'char',query:'',offset:0,total:1,rows:[{category:'char',subjectKey:'char:alice.png',name:'Alice'}],sourceDigest};
+  for(const wrong of [{...page,offset:24},{...page,query:'other'},{...page,rows:[{...page.rows[0],profile:{description:'private'}}]}]){
+    const {client}=await fixture(async(w,c)=>w.reply(c,wrong));await assert.rejects(client.targets({category:'char',query:'',offset:0}),/结果与当前原包不符/);
+  }
+  const {client,worker}=await fixture();const count=worker.sent.length;
+  await assert.rejects(client.restore({...view(),subjectMappings:[{category:'char',sourceKey:'char:old.png',targetKey:'char:alice.png'}]},{confirmed:true,environmentReviewed:true}),/单独确认/);assert.equal(worker.sent.length,count);client.close();
+});
+test('subject mapped review shows original and target identifiers, escaped picker choices and distinct confirmation',()=>{
+  const preview={...view(),ready:true,planDigest:'c'.repeat(64),subjectReview:[{category:'char',subjectKey:'char:old.png',targetKey:'char:new.png',required:true,state:'changed'}],subjectMappings:[{category:'char',sourceKey:'char:old.png',targetKey:'char:new.png'}]};
+  const base={preview,page:0,environmentReviewed:true,subjectsReviewed:true,targetPicker:{category:'char',query:'<query>',offset:0,total:1,rows:[{category:'char',subjectKey:'char:new.png',name:'<Alice>'}]}};
+  const markup=renderStoryboardBundleReview(base);assert.match(markup,/→ char:new.png/);assert.match(markup,/&lt;Alice&gt;/);assert.doesNotMatch(markup,/<Alice>/);assert.match(markup,/data-bundle-subject-mapping/);assert.match(markup,/data-bundle-action="restore" disabled/);
+  assert.doesNotMatch(renderStoryboardBundleReview({...base,subjectsMapped:true}),/data-bundle-action="restore" disabled/);
+});
 
 test('subject differences require their own explicit checkbox even when the environment and binding labels were reviewed',()=>{
   const preview={...view(),ready:true,planDigest:'c'.repeat(64),subjectReview:[{category:'char',subjectKey:'char:alice.png',state:'changed',required:true}]};

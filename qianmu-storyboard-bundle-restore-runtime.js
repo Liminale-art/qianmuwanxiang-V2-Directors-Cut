@@ -1,15 +1,18 @@
 import { validStoryboardConnectionReview } from './qianmu-storyboard-connection-identity.js';
 import { validStoryboardResourceOriginsPage, validStoryboardResourceOriginsSummary } from './qianmu-storyboard-resource-origins.js';
 import { validStoryboardEnvironmentReview } from './qianmu-storyboard-environment-map.js';
+import { validStoryboardSubjectTargetPage, normalizeStoryboardSubjectMappings } from './qianmu-storyboard-subject-map.js';
 let active = null;
 const fail = message => Object.assign(new Error(message), { code: 'storyboard_bundle_restore_runtime', submissionState: 'not_submitted' });
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const count = value => Number.isSafeInteger(value) && value >= 0;
+function validMappings(value){try{return value.subjectMappings===undefined || JSON.stringify(normalizeStoryboardSubjectMappings(value.subjectMappings,value.subjectReview||[]))===JSON.stringify(value.subjectMappings);}catch(_){return false;}}
 function validView(value, namespace) {
   return value?.namespace === namespace && hash(value.chatHash) && typeof value.ready === 'boolean' && (value.ready ? hash(value.planDigest) : value.planDigest === '' || hash(value.planDigest))
     && Array.isArray(value.conflicts) && value.conflicts.length <= 2560 && value.conflicts.every(row => typeof row.key === 'string' && ['archive','binding'].includes(row.kind) && (row.kind === 'archive' || typeof row.category === 'string'))
     && Array.isArray(value.bindingReview) && value.bindingReview.length <= 2048 && value.bindingReview.every(row => typeof row.category === 'string' && typeof row.subjectKey === 'string')
     && (value.subjectReview === undefined || Array.isArray(value.subjectReview) && value.subjectReview.length <= 2080 && value.subjectReview.every(row => ['char','user','other'].includes(row.category) && typeof row.subjectKey === 'string' && row.subjectKey.length <= 1024 && typeof row.required === 'boolean' && ['matched','changed','missing','unverified'].includes(row.state)))
+    && validMappings(value) && (value.subjectMappingReview==null || Object.keys(value.subjectMappingReview).length===3 && hash(value.subjectMappingReview.digest) && count(value.subjectMappingReview.count) && value.subjectMappingReview.count<=2048 && count(value.subjectMappingReview.bindings) && value.subjectMappingReview.bindings<=2048)
     && (value.configuration?.connections === undefined || validStoryboardConnectionReview(value.configuration.connections))
     && (value.summary?.resourceOrigins === undefined || validStoryboardResourceOriginsSummary(value.summary.resourceOrigins))
     && (value.environmentReview == null || validStoryboardEnvironmentReview(value.environmentReview) && value.environmentReview.namespace === namespace && value.environmentReview.sourceDigest === value.sourceDigest && value.environmentReview.chatHash === value.chatHash && value.sourceLabelsMatched === (value.environmentReview.state === 'matched'))
@@ -40,6 +43,7 @@ export async function openStoryboardBundleRestoreRuntime(file, { namespace, chat
     try { await check(); } catch (error) { close(error); throw error; } if (current) throw fail('已有恢复操作正在执行');
     const captured = structuredClone(payload);
     if (action === 'restore' && captured.prepared?.environmentReview?.state === 'mapping-required' && captured.consent?.environmentMapped !== true) throw fail('请单独确认来源与目标环境映射');
+    if(action==='restore'&&captured.prepared?.subjectMappings?.length&&captured.consent?.subjectsMapped!==true)throw fail('请单独确认角色或人设目标映射');
     return new Promise((resolve, reject) => {
       const operation = ++counter, pending = { operation, action, resolve, reject, lastRequest: 0, payload: captured }; current = pending;
       pending.timer = setTimeout(() => close(fail('恢复等待超时，部分可能已保存；请核对记录，不会自动重传')), Math.max(100, Math.min(300000, timeoutMs)));
@@ -53,17 +57,17 @@ export async function openStoryboardBundleRestoreRuntime(file, { namespace, chat
       const message = event.data, pending = current;
       if (closed || !pending || message?.id !== id || message.operation !== pending.operation) return;
       if (message.request) {
-        if (!Number.isSafeInteger(message.request) || message.request <= pending.lastRequest || !['guard','configuration-preview','configuration-apply','configuration-subjects'].includes(message.kind)) { close(fail('恢复后台核对消息不符')); return; }
+        if (!Number.isSafeInteger(message.request) || message.request <= pending.lastRequest || !['guard','configuration-preview','configuration-apply','configuration-subjects','configuration-targets'].includes(message.kind)) { close(fail('恢复后台核对消息不符')); return; }
         pending.lastRequest = message.request;
         void (async () => {
           try {
             await check(); let result;
             if (message.kind !== 'guard') {
-              const input = message.payload, apply = message.kind === 'configuration-apply', subjects = message.kind === 'configuration-subjects';
-              const fields = subjects ? ['fingerprint','subjectEvidence','subjectBindings'] : ['settings','chat','imageUrls','fingerprint','chatEvidence',...(apply?['expectedDigest']:[])];
+              const input = message.payload, apply = message.kind === 'configuration-apply', subjects = message.kind === 'configuration-subjects', targets=message.kind==='configuration-targets';
+              const fields = targets ? ['fingerprint','category','query','offset'] : subjects ? ['fingerprint','subjectEvidence','subjectBindings','subjectMappings'] : ['settings','chat','imageUrls','fingerprint','chatEvidence',...(apply?['expectedDigest']:[])];
               if (!hash(sourceDigest) || input?.fingerprint !== sourceDigest || Object.keys(input).some(key => !fields.includes(key))
-                || (apply ? pending.action !== 'restore' || pending.payload.consent?.confirmed !== true || pending.payload.consent?.environmentReviewed !== true : !['preview','restore'].includes(pending.action))) throw fail('未经本次确认的配置请求，未应用');
-              result = await configuration[subjects ? 'subjects' : apply ? 'apply' : 'preview'](input); await check();
+                || (targets ? pending.action!=='targets' : apply ? pending.action !== 'restore' || pending.payload.consent?.confirmed !== true || pending.payload.consent?.environmentReviewed !== true || pending.payload.prepared?.subjectMappings?.length&&pending.payload.consent?.subjectsMapped!==true : !['preview','restore'].includes(pending.action))) throw fail('未经本次确认的配置请求，未应用');
+              result = await configuration[targets ? 'targets' : subjects ? 'subjects' : apply ? 'apply' : 'preview'](input); await check();
             }
             if (current === pending) worker.postMessage({ id, operation: pending.operation, type: 'rpc', request: message.request, result });
           } catch (error) {
@@ -81,14 +85,16 @@ export async function openStoryboardBundleRestoreRuntime(file, { namespace, chat
         sourceDigest = message.sourceDigest;
       } else if (message.sourceDigest !== sourceDigest || (pending.action === 'resources' && (message.result?.sourceDigest !== sourceDigest || !validStoryboardResourceOriginsPage(message.result)
         ||message.result.offset!==(pending.payload.offset??0)||message.result.filter!==(pending.payload.filter??'all')))
-        || (!['restore','resources'].includes(pending.action) && (message.result?.sourceDigest !== sourceDigest || !validView(message.result, namespace)))
+        || (pending.action==='targets' && (message.result?.sourceDigest!==sourceDigest || !validStoryboardSubjectTargetPage(message.result,{sourceBound:true}) || ['category','query','offset'].some(key=>message.result[key]!==pending.payload[key])))
+        || (!['restore','resources','targets'].includes(pending.action) && (message.result?.sourceDigest !== sourceDigest || !validView(message.result, namespace)))
         || (pending.action === 'restore' && (message.result?.resourcesVerified !== true || message.result?.settingsVerified !== false))) { close(fail('恢复结果与当前原包不符')); return; }
       void check().then(() => { if (current === pending) finish(null, message.result); }, error => close(error));
     });
     signal?.addEventListener('abort', abort, { once: true }); if (signal?.aborted) throw interrupted();
     const supplied = new Headers(headers()), csrf = supplied.get('x-csrf-token') || '';
     await command('open', { namespace, chatKey, file, csrf });
-    return Object.freeze({ sourceDigest, get isOpen() { return !closed; }, preview: decisions => command('preview', { decisions: decisions || {} }),
+    return Object.freeze({ sourceDigest, get isOpen() { return !closed; }, preview: (decisions,subjectMappings) => command('preview', { decisions: decisions || {},...(subjectMappings!==undefined?{subjectMappings}:{}) }),
+      targets:options=>command('targets',options),
       resources: options => command('resources', options || {}),
       choose: decisions => command('choose', { decisions: decisions || {} }), restore: (prepared, consent) => command('restore', { prepared, consent }), close });
   } catch (error) { close(error); throw error; }

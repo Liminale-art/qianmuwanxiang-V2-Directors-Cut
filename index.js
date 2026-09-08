@@ -21703,7 +21703,7 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   const [packageModule,identity]=await Promise.all([featureRuntime.load('storyboardPackageAssets'),featureRuntime.load('imageAdmission')]);
   const session=await packageModule.createStoryboardPackageGuard({initial,context,resolveNamespace:()=>identity.resolveImageAccountNamespace()});
   if (originals && await confirmDialog(bundle ? '备份分镜资源联包' : '备份分镜配置与成片', bundle
-    ? '联包包含本聊天配置与成片、所引用 Vibe 原文件及本地旧图、完整 Comfy 工作流与候选历史、角色档案和绑定及参考原件。账户名与聊天标识不变时，更换 ST 安装可单独确认环境映射；不同账户名、聊天或角色身份的重绑定尚未开放。外部 URL 原图、模型文件与服务器授权需单独保全。请保留原环境，整包上限 512 MiB，配置分段仍限 128 MiB；不含 API Key。是否继续？'
+    ? '联包包含本聊天配置与成片、所引用 Vibe 原文件及本地旧图、完整 Comfy 工作流与候选历史、角色档案和绑定及参考原件。账户名与聊天标识不变时，更换 ST 安装可单独确认环境映射，CHAR／USER可逐项选择对应目标；不同账户名或聊天的迁移尚未开放。外部 URL 原图、模型文件与服务器授权需单独保全。请保留原环境，整包上限 512 MiB，配置分段仍限 128 MiB；不含 API Key。是否继续？'
     : '新版包包含本聊天成片、分镜预设及所引用的 Vibe 原文件。Comfy 独立工作流库、角色档案库、外部图片地址与服务器授权尚不属于此包，需单独保全；不是完整账户迁移包。最大 128 MiB，不包含 API Key。是否继续？') !== true) return;
   await session.guard();
   const bundleSource = bundle ? await (await featureRuntime.load('storyboardBundleSource')).prepareStoryboardBundleSource({ namespace: session.namespace,
@@ -21946,6 +21946,7 @@ async function storyboardImportBundle(file) {
     const subjectCaptureCache = {};
     const configuration = configModule.createStoryboardBundleConfiguration({ namespace: scope.namespace, chatKey: initial.chatKey, settings: initial.state, chat: initial.store,
       captureSubjects: targets => storyboardCaptureSubjectEvidence({ namespace: scope.namespace, targets, guard, cache: subjectCaptureCache }),
+      listSubjects: async options => { const module=await featureRuntime.load('storyboardSubjectEvidence');await guard();const context=ctx();return module.listStoryboardSubjectTargets(options,{characters:context.characters,power:context.powerUserSettings||context.power_user||globalThis.power_user}); },
       captureChatEvidence: async (messages, chatKey) => (await evidenceRuntime.runStoryboardBundle('chat-evidence', null, { chatKey, messages, guard })).chatEvidence,
       messages: () => ctx().chat || [], journal, guard, isCurrent, persist: async () => { saveSettings(); await saveMetadata(); } });
     review = viewModule.openStoryboardBundleReview({ parent, fileName: file.name || '分镜资源联包', paintIcons: applyQianmuIcons,

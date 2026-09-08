@@ -52,6 +52,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-modal .sd-bundle-dialog .sd-bundle-choice { display: grid; grid-template-columns: minmax(0, 1fr) minmax(100px, 36%); gap: 12px; align-items: center; margin: 10px 0; }
 #story-director-modal .sd-bundle-dialog .sd-bundle-choice select, #story-director-modal .sd-bundle-dialog button { box-sizing: border-box; min-height: 40px; height: 40px; margin: 0; border-radius: 8px; font-size: 12px; }
 #story-director-modal .sd-bundle-dialog .sd-bundle-choice select { width: 100%; min-width: 0; }
+#story-director-modal dialog.sd-bundle-dialog .sd-btn[data-bundle-target-select] { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; width: 100%; min-width: 0; height: auto; min-height: 40px; padding: 8px 12px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+#story-director-modal dialog.sd-bundle-dialog [data-bundle-target-select] > :is(span,small) { max-width: 100%; text-align: left; }
 #story-director-modal .sd-bundle-dialog .sd-bundle-review { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0; }
 #story-director-modal .sd-bundle-dialog .sd-bundle-review input { flex: 0 0 auto; margin-top: 4px; }
 #story-director-modal .sd-bundle-dialog footer > div > button { flex: 1; min-width: 0; }

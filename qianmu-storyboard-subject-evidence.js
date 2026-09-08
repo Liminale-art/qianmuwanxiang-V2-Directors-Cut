@@ -86,6 +86,29 @@ export function readStoryboardSubjectProfiles(targets, { characters, power } = {
     return row;
   }));
 }
+// UI discovery reads only names/file identities, never copies all character narratives into a picker.
+export function listStoryboardSubjectTargets(input = {}, { characters, power } = {}) {
+  if (!exact(input,['category','query','offset']) || !['char','user'].includes(input.category) || typeof input.query !== 'string' || input.query.length > 160
+    || !Number.isSafeInteger(input.offset) || input.offset < 0 || input.offset % 24) fail('角色目标列表请求无效');
+  const rows = [], seen = new Set(), needle = input.query.trim().toLocaleLowerCase();let visited = 0;
+  const add = (subjectKey,name) => {
+    if (++visited > 100000) fail('ST角色目标数量超过支持范围');
+    const target = subject({category:input.category,subjectKey});if (seen.has(subjectKey)) fail('ST角色目标编号重复，请先核对');seen.add(subjectKey);
+    const label = String(name || subjectKey).slice(0,240);
+    if (!needle || label.toLocaleLowerCase().includes(needle) || subjectKey.toLocaleLowerCase().includes(needle)) rows.push({...target,name:label});
+  };
+  if (input.category === 'char') {
+    if (!Array.isArray(characters)) fail('ST角色目录尚未载入');
+    if(characters.length>100000)fail('ST角色目标数量超过支持范围');
+    for (const card of characters) {const avatar=card?.avatar || card?.data?.avatar;if (typeof avatar==='string' && avatar && !/[\/\\]/.test(avatar)) add('char:'+avatar,card.name ?? card.data?.name);}
+  } else {
+    if (!object(power?.personas)) fail('ST人设目录尚未载入');
+    let count=0;for (const avatar in power.personas) if(Object.hasOwn(power.personas,avatar)){if(++count>100000)fail('ST人设目标数量超过支持范围');if(avatar && !/[\/\\]/.test(avatar))add('user:/User Avatars/'+encodeURIComponent(avatar),power.personas[avatar]);}
+  }
+  rows.sort((a,b) => a.subjectKey < b.subjectKey ? -1 : a.subjectKey > b.subjectKey ? 1 : 0);
+  if (input.offset && input.offset >= rows.length) fail('角色目录已变化，请回到第一页重新选择');
+  return {...input,total:rows.length,rows:rows.slice(input.offset,input.offset+24)};
+}
 export async function captureStoryboardSubjectEvidence(input, { guard = async () => {} } = {}) {
   const projected = projectStoryboardSubjects(input), subjects = []; let bytes = 0;
   await guard();

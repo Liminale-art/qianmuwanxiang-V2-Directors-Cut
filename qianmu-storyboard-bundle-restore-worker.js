@@ -38,12 +38,13 @@ self.addEventListener('message', async event => {
         vibeStage: createStoryboardPackageStage({ store: vibe, journal }), guard, isCurrent: () => !closed,
         images: createImageRestoreClient({ namespace, headers: () => ({ 'X-CSRF-Token': token }), guard }),
         sourceIdentity: createSourceIdentityClient({ namespace, guard }),
-        configuration: { preview: value => ask('configuration-preview', value), apply: value => ask('configuration-apply', value), subjects: value => ask('configuration-subjects', value) } });
+        configuration: { preview: value => ask('configuration-preview', value), apply: value => ask('configuration-apply', value), subjects: value => ask('configuration-subjects', value), targets: value => ask('configuration-targets',value) } });
       result = { sourceDigest: session.sourceDigest };
     } else if (session && message.sourceDigest === session.sourceDigest) {
-      if (message.action === 'preview') result = await session.preview(message.payload.decisions);
+      if (message.action === 'preview') result = await session.preview(message.payload.decisions,message.payload.subjectMappings);
       else if (message.action === 'choose') result = await session.choose(message.payload.decisions);
       else if (message.action === 'resources') result = await session.resources(message.payload);
+      else if (message.action === 'targets') result = await session.targets(message.payload);
       else if (message.action === 'restore') result = await session.restore(message.payload.prepared, message.payload.consent);
       else throw failure('不支持的恢复操作');
     } else throw failure('恢复文件或会话不符');
