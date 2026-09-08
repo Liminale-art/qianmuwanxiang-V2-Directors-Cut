@@ -41,3 +41,27 @@ test('delivery provenance is closed, account-local and never stores credentials 
   let opens=0;const store=createVibeEncodingStore({indexedDB:{open(){opens++;throw Error();}}}),item=await prepared();
   await assert.rejects(()=>store.reserve('st-user:one',item.cacheKey,item.identity,'attempt-one',{sourceAssetRef:{version:1,namespace:'st-user:two',id:'a'.repeat(64)},delivery:value}));assert.equal(opens,0);store.close();
 });
+
+test('local review confirmation fingerprints one exact receipt and explicitly differs from service proof',async()=>{
+  const value=await prepared(),store=createVibeEncodingStore(),row={namespace:'st-user:one',cacheKey:value.cacheKey,identity:value.identity,attemptId:'attempt-one',status:'unknown',revision:1,createdAt:1,updatedAt:2};
+  const get=async()=>row,plan=()=>store.previewLocalReview.call({get},row.namespace,row.cacheKey,structuredClone(row));
+  const first=await plan();assert.equal(first.method,'local-user');assert.match(first.confirmation,/^[a-f0-9]{64}$/);assert.equal(first.requestDigest,value.cacheKey);assert.equal(first.attemptId,row.attemptId);
+  assert.deepEqual(await plan(),first);row.updatedAt++;assert.notEqual((await plan()).confirmation,first.confirmation);
+  row.updatedAt--;row.namespace='st-user:other';assert.notEqual((await plan()).confirmation,first.confirmation);
+  row.namespace='st-user:one';row.delivery={version:1,transport:'direct',channelKey:'a'.repeat(64)};assert.notEqual((await plan()).confirmation,first.confirmation);
+  row.delivery.transport='service';row.delivery.serviceAttemptId='b'.repeat(64);await assert.rejects(plan,/不能用本机确认替代/);store.close();
+});
+
+test('local review refuses completed, changed and absent receipts and rejects missing or altered consent before opening a write transaction',async()=>{
+  let opens=0;const store=createVibeEncodingStore({indexedDB:{open(){opens++;throw Error('no storage');}}}),value=await prepared();
+  const row={namespace:'st-user:one',cacheKey:value.cacheKey,identity:value.identity,attemptId:'attempt-one',status:'unknown',updatedAt:1},ns=row.namespace,key=row.cacheKey;
+  for(const actual of [null,{...row,status:'ready'},{...row,status:'rejected'},{...row,status:'reviewed'}]){
+    await assert.rejects(()=>store.previewLocalReview.call({get:async()=>actual},ns,key,actual));
+  }
+  await assert.rejects(()=>store.previewLocalReview.call({get:async()=>({...row,updatedAt:2})},ns,key,row),/记录已变化/);
+  const proof=await store.previewLocalReview.call({get:async()=>row},ns,key,row),self={previewLocalReview:async()=>proof};
+  for(const confirmed of [false,1,'true',undefined])await assert.rejects(()=>store.reviewLocal.call(self,ns,key,row,proof,confirmed),/尚未确认/);
+  for(const changed of [{...proof,confirmation:'a'.repeat(64)},{...proof,attemptId:'other-attempt'},{...proof,reviewed:true}]){
+    await assert.rejects(()=>store.reviewLocal.call(self,ns,key,row,changed,true),/尚未确认/);
+  }assert.equal(opens,0);store.close();
+});

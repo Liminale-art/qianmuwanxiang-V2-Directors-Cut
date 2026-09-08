@@ -3,10 +3,12 @@ import {createVibeEncodingStore,validateVibeEncodingIdentity} from './qianmu-vib
 import {exportNovelVibeFile,selectNovelVibeEncoding,vibeFilePreview,vibeFileError,vibeVariants,vibeDigest,appendNovelVibeEncoding,VIBE_FILE_LIMITS} from './qianmu-vibe-file.js';
 import {normalizeNovelVibeImage} from './qianmu-novel-vibe.js';
 export function createVibeAssetOperations(store,{encodings}={}){
-return async function run({type,namespace,id,file,ids,settings,bundle,model,information,encoding,cacheKey,identity,attemptId,retryAttemptId,status,assetRef,image,name,expectedSourceId,sourceAssetRef,delivery,serviceAttemptId,serviceDelivery,expected}){
+return async function run({type,namespace,id,file,ids,settings,bundle,model,information,encoding,cacheKey,identity,attemptId,retryAttemptId,status,assetRef,image,name,expectedSourceId,sourceAssetRef,delivery,serviceAttemptId,serviceDelivery,expected,proof,confirmed}){
   if(type==='encoding-get')return encodings.get(namespace,cacheKey);
   if(type==='encoding-list')return encodings.list(namespace);
   if(type==='encoding-review')return encodings.review(namespace,cacheKey,expected,delivery);
+  if(type==='encoding-review-local-plan')return encodings.previewLocalReview(namespace,cacheKey,expected);
+  if(type==='encoding-review-local')return encodings.reviewLocal(namespace,cacheKey,expected,proof,confirmed);
   if(type==='encoding-reserve')return encodings.reserve(namespace,cacheKey,identity,attemptId,{retryAttemptId,sourceAssetRef,delivery});
   if(type==='encoding-transition')return encodings.transition(namespace,cacheKey,attemptId,status,{assetRef});
   if(type==='remember-encoding'){

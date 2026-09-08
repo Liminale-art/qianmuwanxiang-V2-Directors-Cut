@@ -9,7 +9,10 @@ async function setup(){
   const prepared=await prepareNovelVibeEncoding({version:1,provider:'novel',model:'nai-diffusion-4-full',baseUrl:'https://relay.example',image,information:0});
   const row={namespace,...prepared,attemptId:'one-attempt',status:'unknown',updatedAt:1};delete row.body;
   const operations=[],remote={status:'ready',attemptId:'b'.repeat(64)};let changed=false,lock=true,live=true,save={reconciled:true,assetRef:{version:1,namespace,id:'a'.repeat(64)}};
-  const call=async(type,args)=>{operations.push(type);assert.equal(args.namespace,namespace);if(type==='encoding-list')return [row];if(type==='encoding-get')return changed?{...row,status:'ready'}:row;if(type==='recover-encoding')return save;return new Blob(['fixture']);};
+  const call=async(type,args)=>{operations.push(type);assert.equal(args.namespace,namespace);if(type==='encoding-list')return [row];if(type==='encoding-get')return changed?{...row,status:'ready'}:row;if(type==='recover-encoding')return save;
+    if(type==='encoding-review-local-plan')return {version:1,method:'local-user',requestDigest:row.cacheKey,attemptId:row.attemptId,confirmation:'c'.repeat(64)};
+    if(type==='encoding-review-local'){assert.equal(args.confirmed,true);assert.equal(args.expected,row);assert.equal(args.proof.method,'local-user');if(changed)throw Error('原费用记录已变化');return {...row,status:'reviewed',feeReview:{method:'local-user'}};}
+    return new Blob(['fixture']);};
   const service={query:async()=>remote,result:async()=>({identity:row.identity,encoding:btoa('binary'),cacheKey:row.cacheKey,serviceAttemptId:remote.attemptId}),encode:()=>assert.fail('review never encodes')};
   const actions=createVibeReviewActions({namespace,call,service,guard:async()=>{if(!live)throw Error('changed account');},locks:{request:async(name,options,work)=>{
     assert.equal(name,'qianmu:nai-maintenance');assert.deepEqual(options,{mode:'exclusive',ifAvailable:true});return work(lock?{}:null);
@@ -51,4 +54,43 @@ test('changed local receipt during the review dialog cannot clear the server or 
   e.service.review=async()=>({canReview:true,reviewed:false,requestDigest:e.row.cacheKey,attemptId:'b'.repeat(64),confirmation:'c'.repeat(64),serviceDelivery:{version:1,channelKey:'a'.repeat(64),clientAttemptId:e.row.attemptId}});
   e.service.confirmReview=()=>assert.fail('changed local record must not clear server');
   await assert.rejects(()=>e.actions.review(e.row,async()=>{e.changed();return true;}),/本机记录已变化/);assert.equal(e.operations.includes('encoding-review'),false);
+});
+
+test('direct and unbound legacy records have explicit local review without calling any service endpoint',async()=>{
+  for(const delivery of [undefined,{version:1,transport:'direct',channelKey:'a'.repeat(64)}]){
+    const e=await setup();if(delivery)e.row.delivery=delivery;
+    e.service.review=e.service.confirmReview=e.service.query=e.service.result=()=>assert.fail('local review must never call upstream');
+    const cancel=await e.actions.review(e.row,async(title,message)=>{
+      assert.equal(title,'人工核查原编码');assert.match(message,/未知事实/);assert.match(message,/不会解除服务端占用/);
+      assert.match(message,delivery?/浏览器直连/:/来源未绑定/);return false;
+    });assert.deepEqual(cancel,{cancelled:true});assert.equal(e.operations.includes('encoding-review-local'),false);
+    const result=await e.actions.review(e.row,async()=>true);assert.equal(result.feeReview.method,'local-user');assert.equal(e.operations.at(-1),'encoding-review-local');
+    assert.equal(e.operations.includes('encoding-review'),false);
+  }
+});
+
+test('local review still refuses active generations, stale snapshots, account switches and ambiguous consent',async()=>{
+  for(const change of [e=>e.locked(),e=>e.changed(),e=>e.invalid()]){
+    const e=await setup();change(e);await assert.rejects(()=>e.actions.review(e.row,async()=>assert.fail('must refuse before consent')));assert.equal(e.operations.includes('encoding-review-local'),false);
+  }
+  for(const consent of [undefined,null,1,'true',{}]){
+    const e=await setup();assert.deepEqual(await e.actions.review(e.row,async()=>consent),{cancelled:true});assert.equal(e.operations.includes('encoding-review-local'),false);
+  }
+  const e=await setup();await assert.rejects(()=>e.actions.review(e.row,async()=>{e.invalid();return true;}),/changed account/);assert.equal(e.operations.includes('encoding-review-local'),false);
+  const stale=await setup();await assert.rejects(()=>stale.actions.review(stale.row,async()=>{stale.changed();return true;}),/记录已变化/);
+});
+
+test('a bound service failure cannot fall back to local manual review',async()=>{
+  const e=await setup();e.row.delivery={version:1,transport:'service',channelKey:'a'.repeat(64),serviceAttemptId:'b'.repeat(64)};
+  e.service.review=async()=>{throw Error('server unreachable');};
+  await assert.rejects(()=>e.actions.review(e.row,async()=>assert.fail('no fallback consent')),/server unreachable/);
+  assert.equal(e.operations.includes('encoding-review-local-plan'),false);assert.equal(e.operations.includes('encoding-review-local'),false);
+});
+
+test('worker local review routes preserve snapshot, explicit consent and proof without invoking asset or service work',async()=>{
+  const e=await setup(),proof={confirmation:'c'.repeat(64)},args={namespace,cacheKey:e.row.cacheKey,expected:e.row};let plans=0,writes=0;
+  const run=createVibeAssetOperations({}, {encodings:{previewLocalReview:async(...values)=>{plans++;assert.deepEqual(values,[namespace,args.cacheKey,e.row]);return proof;},
+    reviewLocal:async(...values)=>{writes++;assert.deepEqual(values,[namespace,args.cacheKey,e.row,proof,true]);return e.row;}}});
+  assert.equal(await run({type:'encoding-review-local-plan',...args}),proof);assert.equal(await run({type:'encoding-review-local',...args,proof,confirmed:true}),e.row);
+  assert.equal(plans,1);assert.equal(writes,1);
 });

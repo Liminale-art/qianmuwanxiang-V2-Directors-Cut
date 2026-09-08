@@ -11,13 +11,20 @@ const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const equalReceipt=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 function checkFeeReview(value){
   if(!object(value)||value.version!==1||!hash(value.confirmation)||!['reserved','submitting','unknown'].includes(value.previousStatus)
-    ||!Number.isSafeInteger(value.at)||value.at<0||Object.keys(value).some(key=>!['version','confirmation','previousStatus','at'].includes(key)))throw fail('corrupt','原费用核查记录不完整');return value;
+    ||!Number.isSafeInteger(value.at)||value.at<0||(value.method!==undefined&&value.method!=='local-user')
+    ||Object.keys(value).some(key=>!['version','confirmation','previousStatus','at','method'].includes(key)))throw fail('corrupt','原费用核查记录不完整');return value;
+}
+function checkReviewSource(row){
+  checkFeeReview(row.feeReview);
+  if(row.delivery!==undefined)validateVibeEncodingDelivery(row.delivery);
+  // Missing old delivery is permissible only for explicitly local user evidence, never server proof.
+  if(row.feeReview.method==='local-user'?row.delivery?.transport==='service':row.delivery?.transport!=='service')throw fail('corrupt','原费用核查方式与提交来源不符');
 }
 function checkReviewHistory(rows){
   if(!Array.isArray(rows)||rows.length>32)throw fail('capacity','原编码核查历史过多，请先导出整理');const seen=new Set();
   for(const row of rows){
     if(!object(row)||!attempt(row.attemptId)||seen.has(row.attemptId)||Object.keys(row).some(key=>!['attemptId','delivery','feeReview'].includes(key)))throw fail('corrupt','原费用核查历史不完整');
-    checkFeeReview(row.feeReview);validateVibeEncodingDelivery(row.delivery);seen.add(row.attemptId);
+    checkReviewSource(row);seen.add(row.attemptId);
   }return rows;
 }
 export const VIBE_ENCODING_RECEIPT_LIMIT=2048;
@@ -87,8 +94,8 @@ export function createVibeEncodingStore({indexedDB=globalThis.indexedDB,keyRange
     if(row.status==='ready'&&(retainVibeAssetRef(row.assetRef).invalid||row.assetRef.namespace!==namespace))throw fail('corrupt','编码原资产引用失效');
     if(row.status!=='ready'&&row.assetRef)throw fail('corrupt','未完成编码含错误资产引用');
     if(row.sourceAssetRef&&(retainVibeAssetRef(row.sourceAssetRef).invalid||row.sourceAssetRef.namespace!==namespace))throw fail('corrupt','原图资产归属不符');
-    if(row.delivery)validateVibeEncodingDelivery(row.delivery);
-    if(row.status==='reviewed')checkFeeReview(row.feeReview);else if(row.feeReview!==undefined)throw fail('corrupt','费用核查状态不符');
+    if(row.delivery!==undefined)validateVibeEncodingDelivery(row.delivery);
+    if(row.status==='reviewed')checkReviewSource(row);else if(row.feeReview!==undefined)throw fail('corrupt','费用核查状态不符');
     if(row.pastReviews!==undefined)checkReviewHistory(row.pastReviews);return row;
   }
   async function checked(row,namespace,cacheKey){if(!row)return null;normalize(row,namespace,cacheKey);await validateVibeEncodingIdentity(row.identity,cacheKey);return row;}
@@ -132,6 +139,25 @@ export function createVibeEncodingStore({indexedDB=globalThis.indexedDB,keyRange
       return transaction('readwrite',(table,read,set)=>read(table.get(id),row=>{
         normalize(row,namespace,cacheKey);if(!equalReceipt(row,original))throw fail('changed','原费用记录已变化，未覆盖');
         const at=Math.max(now(),row.updatedAt),next={...row,status:'reviewed',updatedAt:at,feeReview:{version:1,confirmation:proof.confirmation,previousStatus:row.status,at}};table.put(next);set(next);
+      }));
+    },
+    async previewLocalReview(namespace,cacheKey,expected){
+      const row=await this.get(namespace,cacheKey);
+      if(!row||!equalReceipt(row,expected))throw fail('changed','原费用记录已变化，请刷新');
+      if(row.delivery?.transport==='service')throw fail('identity','此记录须核查原服务任务，不能用本机确认替代');
+      if(!['reserved','submitting','unknown'].includes(row.status))throw fail('changed','原费用状态不需要重新确认');
+      // This digest binds user consent to a snapshot. It is NOT an upstream completion/fee certificate.
+      return {version:1,method:'local-user',requestDigest:cacheKey,attemptId:row.attemptId,
+        confirmation:await digest(JSON.stringify(['qianmu:vibe-local-review:v1',row]))};
+    },
+    async reviewLocal(namespace,cacheKey,expected,proof,confirmed){
+      const plan=await this.previewLocalReview(namespace,cacheKey,expected),id=key(namespace,cacheKey);
+      if(confirmed!==true||!object(proof)||!equalReceipt(plan,proof))throw fail('identity','尚未确认这笔原编码的本机核查');
+      return transaction('readwrite',(table,read,set)=>read(table.get(id),row=>{
+        normalize(row,namespace,cacheKey);if(!equalReceipt(row,expected))throw fail('changed','原费用记录已变化，未覆盖');
+        const at=Math.max(now(),row.updatedAt),next={...row,status:'reviewed',updatedAt:at,
+          feeReview:{version:1,method:'local-user',confirmation:plan.confirmation,previousStatus:row.status,at}};
+        table.put(next);set(next);
       }));
     },
     async recover(namespace,cacheKey,expected,assetRef,serviceAttemptId,serviceDelivery){
