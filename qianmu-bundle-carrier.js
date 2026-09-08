@@ -49,12 +49,17 @@ export async function createBundleCarrierProof(opened,{guard=async()=>{}}={}){
 }
 
 // The original receipts remain separate and deduplicated. A proof cannot replace missing receipt bodies.
-export async function verifyBundleCarrierMembers(input,{load,guard=async()=>{}}={}){
+export async function collectBundleCarrierMembers(input,{load,guard=async()=>{}}={}){
   if(typeof load!=='function')fail('缺少原迁移凭据读取接口');const value=await inspectBundleCarrierProof(input,{guard});
+  const files=[];
   for(const member of value.members){
-    await guard();const file=await load({kind:member.head.kind,digest:member.head.digest});await guard();
+    await guard();const file=await load({kind:member.head.kind,digest:member.head.digest,sha256:member.sha256});await guard();
     if(!(file instanceof Blob)||file.size!==member.head.bytes)fail('来源关联缺少完整原迁移凭据');
     await verifyMember(member,new Uint8Array(await file.arrayBuffer()),value.proof.namespace,guard);
+    files.push({sha256:member.sha256,bytes:file.size,file:file.slice(0,file.size,'application/json')});
   }
-  return value.summary;
+  return {summary:value.summary,files};
+}
+export async function verifyBundleCarrierMembers(input,options){
+  return (await collectBundleCarrierMembers(input,options)).summary;
 }

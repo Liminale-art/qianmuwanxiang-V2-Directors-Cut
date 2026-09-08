@@ -42,6 +42,7 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
   const inspected = await inspectStoryboardResourceBundle(file, { guard: check, includeOrigins: true }), opened = await openStoryboardBundle(file, { guard: check });
   if (inspected.fingerprint !== opened.fingerprint) fail('核验后资源联包发生变化，请重新选择原文件');
   if (inspected.manifest.namespace !== namespace || inspected.manifest.chatKey !== chatKey) fail('请在原 ST 账户及原聊天核对；跨环境身份重绑定尚未确认');
+  if(inspected.summary.carriers?.count||inspected.summary.carriers?.originalCount)fail('此包包含完整来源关联；恢复确认入口尚待接通，未恢复任何数据。请保留原包');
   const mappingIndex=inspected.summary.mappingReceipts?.count?await inspectBundleMappingIndex(await opened.readJson('mapping-receipts'),namespace):null;
   const mappingOptions={index:mappingIndex,opened,journal,guard:check,isCurrent:syncCurrent};
   const verifyHistory=async()=>{if(mappingIndex)await verifyBundleMappingRestore(mappingOptions);};

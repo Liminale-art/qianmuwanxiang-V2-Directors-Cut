@@ -3,10 +3,12 @@ import { vibeDigest } from './qianmu-vibe-file.js';
 import { assertComfyRouteNamespace } from './qianmu-comfy-route-contract.js';
 import { sourceIdentityResponse, sourceIdentityForNamespace } from './qianmu-source-identity-contract.js';
 import { BUNDLE_MAPPING_LIMITS, isBundleMappingEntry } from './qianmu-bundle-mapping-contract.js';
+import {isBundleCarrierEntry,isBundleCarrierOriginalEntry} from './qianmu-bundle-carriers-contract.js';
 
 // Uncompressed, length-delimited Blob sections. No archive paths, extraction, executable entries or whole-file arrayBuffer.
 export const STORYBOARD_BUNDLE_SCHEMA = 'qianmu.storyboard.bundle.v3';
-export const STORYBOARD_BUNDLE_LIMITS = Object.freeze({ total: 512 * 1048576, manifest: 1048576, entries: 1545,
+export const STORYBOARD_BUNDLE_LIMITS = Object.freeze({ total: 512 * 1048576, manifest: 1048576, entries: 2826,
+  'bundle-carriers':1048576,carrier:5*1048576,'carrier-original':9*1048576,
   'mapping-receipts': BUNDLE_MAPPING_LIMITS.index, mapping: BUNDLE_MAPPING_LIMITS.receipt,
   storyboard: 128 * 1048576, workflows: 80 * 1048576, pools: 24 * 1048576, characters: 24 * 1048576, 'legacy-vibes': 2 * 1048576, 'chat-evidence': 24 * 1048576, 'subject-evidence': 4 * 1048576, 'resource-origins': 32 * 1048576, image: 16 * 1048576 });
 const magic = new TextEncoder().encode('QIANMU-BUNDLE/1\n'), prefixBytes = magic.length + 4;
@@ -16,12 +18,12 @@ export async function isStoryboardBundleFile(file) {
   return bytes.length === magic.length && bytes.every((value, index) => value === magic[index]);
 }
 const fixed = ['storyboard', 'workflows', 'pools', 'characters'];
-const documents = [...fixed, 'legacy-vibes', 'chat-evidence', 'subject-evidence', 'resource-origins', 'mapping-receipts'];
+const documents = [...fixed, 'legacy-vibes', 'chat-evidence', 'subject-evidence', 'resource-origins', 'mapping-receipts','bundle-carriers'];
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle', submissionState: 'not_submitted' }); };
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const only = (value, keys) => { if (!object(value) || Object.keys(value).some(key => !keys.includes(key))) fail('资源包含未知字段，请保留原文件'); };
-const kind = id => documents.includes(id) ? id : isBundleMappingEntry(id) ? 'mapping' : typeof id === 'string' && /^image:[a-f0-9]{64}$/.test(id) ? 'image' : '';
+const kind = id => documents.includes(id) ? id : isBundleMappingEntry(id) ? 'mapping' : isBundleCarrierEntry(id)?'carrier':isBundleCarrierOriginalEntry(id)?'carrier-original':typeof id === 'string' && /^image:[a-f0-9]{64}$/.test(id) ? 'image' : '';
 const text = bytes => { try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch (_) { fail('资源包不是完整 UTF-8'); } };
 function inspectManifest(value) {
   only(value, ['schema', 'namespace', 'chatKey', 'createdAt', 'credentialsIncluded', 'scope', 'entries', ...(value?.schema === STORYBOARD_BUNDLE_SCHEMA ? ['source'] : [])]);
@@ -30,7 +32,7 @@ function inspectManifest(value) {
   assertComfyRouteNamespace(value.namespace);
   if (typeof value.chatKey !== 'string' || !value.chatKey || value.chatKey.length > 1024 || /[\u0000-\u001f\u007f]/.test(value.chatKey)
     || !Number.isSafeInteger(value.createdAt) || value.createdAt < 0 || !Array.isArray(value.entries) || value.entries.length < 4 || value.entries.length > STORYBOARD_BUNDLE_LIMITS.entries) fail('资源包来源或目录无效');
-  const ids = new Set(); let total = 0, images = 0, mappings = 0, mappingBytes = 0;
+  const ids = new Set(); let total = 0, images = 0, mappings = 0, mappingBytes = 0,carriers=0,carrierBytes=0,originals=0,originalBytes=0;
   for (const row of value.entries) {
     only(row, ['id', 'bytes', 'sha256', 'mime']); const type = kind(row.id);
     if (!type || ids.has(row.id) || !hash(row.sha256) || !Number.isSafeInteger(row.bytes) || row.bytes < 1 || row.bytes > STORYBOARD_BUNDLE_LIMITS[type]) fail('资源包分段身份、大小或摘要无效');
@@ -38,9 +40,12 @@ function inspectManifest(value) {
     ids.add(row.id); total += row.bytes;
     if(type==='image')images++;
     if(type==='mapping'){mappings++;mappingBytes+=row.bytes;}
+    if(type==='carrier'){carriers++;carrierBytes+=row.bytes;}
+    if(type==='carrier-original'){originals++;originalBytes+=row.bytes;if(row.id!==`carrier-original:${row.sha256}`)fail('来源成员原件指纹不符');}
   }
   if (fixed.some(id => !ids.has(id)) || total > STORYBOARD_BUNDLE_LIMITS.total) fail('资源包缺少必需分段或超过 512 MiB');
   if(images>1024||mappings>BUNDLE_MAPPING_LIMITS.count||mappingBytes>BUNDLE_MAPPING_LIMITS.records||mappings&&!ids.has('mapping-receipts'))fail('资源包原件或迁移凭据数量超限、缺少清单');
+  if(carriers>256||carrierBytes>32*1048576||originals>1024||originalBytes>70*1048576||(carriers||originals)&&!ids.has('bundle-carriers'))fail('来源关联分段超过上限或缺少清单');
   if ((value.schema !== 'qianmu.storyboard.bundle.v1') !== ids.has('legacy-vibes')) fail('资源包版本与旧 Vibe 原图目录不符');
   return total;
 }
@@ -64,7 +69,7 @@ export async function buildStoryboardBundle({ namespace, chatKey, entries, sourc
   const capturedSource = source === null ? null : sourceIdentityResponse(source);
   const manifest = { schema: capturedSource ? STORYBOARD_BUNDLE_SCHEMA : parts.some(row => row.id === 'legacy-vibes') ? 'qianmu.storyboard.bundle.v2' : 'qianmu.storyboard.bundle.v1', namespace, chatKey, createdAt, credentialsIncluded: false, scope: 'current-chat-and-libraries',
     ...(capturedSource ? { source: capturedSource } : {}),
-    entries: parts.map(row => ({ id: row.id, bytes: row.file.size, sha256: kind(row.id) === 'image' ? row.id.slice(6) : '0'.repeat(64), ...(row.mime ? { mime: row.mime } : {}) })) };
+    entries: parts.map(row => ({ id: row.id, bytes: row.file.size, sha256: kind(row.id) === 'image' ? row.id.slice(6) : kind(row.id)==='carrier-original'?row.id.slice(17):'0'.repeat(64), ...(row.mime ? { mime: row.mime } : {}) })) };
   const total = inspectManifest(manifest);
   if (total + prefixBytes + new TextEncoder().encode(JSON.stringify(manifest)).length > STORYBOARD_BUNDLE_LIMITS.total) fail('资源包超过 512 MiB，未读取大文件');
   await guard();
@@ -74,6 +79,7 @@ export async function buildStoryboardBundle({ namespace, chatKey, entries, sourc
     if (bytes.byteLength !== manifest.entries[index].bytes) fail('资源包分段读取大小不符');
     const sha256 = await vibeDigest(bytes); await guard();
     if (kind(parts[index].id) === 'image' && sha256 !== parts[index].id.slice(6)) fail('资源包原件内容摘要不符');
+    if(kind(parts[index].id)==='carrier-original'&&sha256!==parts[index].id.slice(17))fail('来源成员原文指纹不符');
     manifest.entries[index].sha256 = sha256;
   }
   const encoded = new TextEncoder().encode(JSON.stringify(manifest));
@@ -104,6 +110,6 @@ export async function openStoryboardBundle(file, { guard = async () => {} } = {}
   };
   await guard();
   return Object.freeze({ manifest: structuredClone(manifest), manifestText:checked.manifestText, fileBytes: file.size, fingerprint, read,
-    async readJson(id) { if (!documents.includes(id) && !isBundleMappingEntry(id)) fail('原图不能作为 JSON 分段读取'); const part = await read(id); return parseStrictStoryboardJson(text(part.bytes), { maxBytes: STORYBOARD_BUNDLE_LIMITS[kind(id)] }); },
+    async readJson(id) { if (!documents.includes(id) && !isBundleMappingEntry(id)&&!isBundleCarrierEntry(id)&&!isBundleCarrierOriginalEntry(id)) fail('原图不能作为 JSON 分段读取'); const part = await read(id); return parseStrictStoryboardJson(text(part.bytes), { maxBytes: STORYBOARD_BUNDLE_LIMITS[kind(id)] }); },
   });
 }

@@ -5,6 +5,7 @@ import { createCharacterArchiveStore } from './qianmu-character-archive-store.js
 import { captureStoryboardChatEvidence } from './qianmu-storyboard-chat-evidence.js';
 import { captureStoryboardSubjectEvidence } from './qianmu-storyboard-subject-evidence.js';
 import { createStoryboardPackageJournal } from './qianmu-storyboard-package-journal.js';
+import {createBundleCarrierStore} from './qianmu-bundle-carrier-store.js';
 
 let started = false, counter = 0;
 const pending = new Map();
@@ -16,8 +17,8 @@ self.addEventListener('message', async event => {
     const input = event.data;
     let result;
     if (input?.action === 'capture') {
-      const workflowStore = createComfyWorkflowStore(), poolStore = createComfyPoolStore(), characterStore = createCharacterArchiveStore(), journal = createStoryboardPackageJournal(); stores.push(workflowStore, poolStore, characterStore, journal);
-      result = await captureStoryboardResourceBundle({ namespace: input.namespace, chatKey: input.chatKey, source: input.source, chatEvidence: input.chatEvidence, subjectEvidence: input.subjectEvidence, storyboard: input.file, workflowStore, poolStore, characterStore, journal, guard });
+      const workflowStore = createComfyWorkflowStore(), poolStore = createComfyPoolStore(), characterStore = createCharacterArchiveStore(), journal = createStoryboardPackageJournal(),carrierStore=createBundleCarrierStore(); stores.push(workflowStore, poolStore, characterStore, journal,carrierStore);
+      result = await captureStoryboardResourceBundle({ namespace: input.namespace, chatKey: input.chatKey, source: input.source, chatEvidence: input.chatEvidence, subjectEvidence: input.subjectEvidence, storyboard: input.file, workflowStore, poolStore, characterStore, journal,carrierStore, guard });
     } else if (input?.action === 'inspect') result = await inspectStoryboardResourceBundle(input.file, { guard });
     else if (input?.action === 'chat-evidence') result = { chatEvidence: await captureStoryboardChatEvidence(input.messages, input.chatKey, { guard }) };
     else if (input?.action === 'subject-evidence') result = { subjectEvidence: await captureStoryboardSubjectEvidence(input.subjects, { guard }) };

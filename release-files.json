@@ -15,6 +15,8 @@
     "qianmu-bundle-carrier.js",
     "qianmu-bundle-carrier-storage-contract.js",
     "qianmu-bundle-carrier-store.js",
+    "qianmu-bundle-carriers-contract.js",
+    "qianmu-bundle-carriers.js",
     "qianmu-bundle-user-alias-contract.js",
     "qianmu-user-alias-contract.js",
     "qianmu-user-alias-runtime.js",

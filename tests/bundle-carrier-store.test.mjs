@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {createBundleCarrierStore} from '../qianmu-bundle-carrier-store.js';
-import {bundleCarrierHead,bundleCarrierKey,validateBundleCarrierHead,summarizeBundleCarrierStorage,validateBundleCarrierStorage} from '../qianmu-bundle-carrier-storage-contract.js';
+import {bundleCarrierHead,bundleCarrierKey,validateBundleCarrierHead,summarizeBundleCarrierStorage,validateBundleCarrierStorage,bundleCarrierOriginalHead,validateBundleCarrierOriginalHead,summarizeBundleCarrierOriginals,BUNDLE_CARRIER_ORIGINAL_LIMITS} from '../qianmu-bundle-carrier-storage-contract.js';
 import {BUNDLE_CARRIER_LIMITS} from '../qianmu-bundle-carrier-contract.js';
 import {buildStoryboardBundle,openStoryboardBundle} from '../qianmu-storyboard-bundle.js';
 import {createBundleCarrierProof,inspectBundleCarrierProof} from '../qianmu-bundle-carrier.js';
@@ -49,4 +49,16 @@ test('synchronous account change during a member fetch stops before blob expansi
   class NeverRead extends Blob{arrayBuffer(){assert.fail('must not expand stale body');}}
   await assert.rejects(store.save(namespace,proof,{confirmed:true,isCurrent:()=>alive,load:async({kind,digest})=>{loads++;alive=false;return new NeverRead([JSON.stringify(rows.find(row=>row.kind===kind&&row.head.digest===digest).receipt)]);}}),/账户或页面/);
   assert.equal(loads,1);assert.equal(opens,0);store.close();
+});
+test('raw member inventory includes blob and wrapper/index bytes and is independently account bounded',()=>{
+  const head=bundleCarrierOriginalHead(namespace,'a'.repeat(64),100),summary=summarizeBundleCarrierOriginals([head],namespace);
+  assert.equal(summary.count,1);assert.equal(summary.payloadBytes,100);assert.equal(summary.recordBytes,100+bytes({key:head.key,namespace,file:null})-4);assert.equal(summary.indexBytes,bytes(head));assert.equal(summary.bytes,summary.recordBytes+summary.indexBytes);
+  for(const value of [{...head,extra:true},{...head,recordBytes:99},{...head,namespace:'st-user:other'},{...head,sha256:'bad'}])assert.throws(()=>validateBundleCarrierOriginalHead(value,namespace));
+  assert.throws(()=>summarizeBundleCarrierOriginals([head,head],namespace));assert.equal(summarizeBundleCarrierOriginals([],namespace).bytes,0);
+});
+test('raw member count and aggregate bounds include overhead and do not increase the per-record cap',()=>{
+  const heads=Array.from({length:1024},(_,index)=>bundleCarrierOriginalHead(namespace,index.toString(16).padStart(64,'0'),1));assert.equal(summarizeBundleCarrierOriginals(heads,namespace).count,1024);
+  assert.throws(()=>summarizeBundleCarrierOriginals([...heads,bundleCarrierOriginalHead(namespace,'f'.repeat(64),1)],namespace));
+  assert.throws(()=>bundleCarrierOriginalHead(namespace,'a'.repeat(64),BUNDLE_CARRIER_ORIGINAL_LIMITS.record+1));
+  assert.throws(()=>summarizeBundleCarrierOriginals(Array.from({length:8},(_,index)=>bundleCarrierOriginalHead(namespace,index.toString(16).padStart(64,'0'),9*1048576)),namespace));
 });
