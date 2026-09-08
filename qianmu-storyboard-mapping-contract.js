@@ -10,14 +10,15 @@ const fail=()=>{throw Object.assign(new Error('迁移凭据索引或查询不符
 export const mappingHeadKey=(namespace,kind,digest)=>JSON.stringify([namespace,kind,digest]);
 export function mappingHead(kind,receipt){
   const {review,namespace,createdAt}=receipt;
-  return validateMappingHead({version:review.scope==='local-user-alias-resolution'?2:1,...(review.scope==='local-user-alias-resolution'?{scope:review.scope}:{}),key:mappingHeadKey(namespace,kind,review.digest),namespace,kind,digest:review.digest,sourceDigest:review.sourceDigest,chatHash:review.chatHash,createdAt,
-    bytes:mappingBytes(receipt),reviewBytes:mappingBytes(review),mappings:kind==='environment'?1:review.rows.length,bindings:kind==='environment'?0:review.lineage.length},namespace);
+  const version=review.scope==='bundle-user-alias-resolution'?3:review.scope==='local-user-alias-resolution'?2:1;
+  return validateMappingHead({version,...(version>1?{scope:review.scope}:{}),key:mappingHeadKey(namespace,kind,review.digest),namespace,kind,digest:review.digest,sourceDigest:review.sourceDigest,chatHash:review.chatHash,createdAt,
+    bytes:mappingBytes(receipt),reviewBytes:mappingBytes(review),mappings:version===3?review.projection.sourceEvidence.subjects.length:kind==='environment'?1:review.rows.length,bindings:version===3?review.projection.sourceBindings.length:kind==='environment'?0:review.lineage.length},namespace);
 }
 export function validateMappingHead(value,namespace){
-  if(!exact(value,['version','key','namespace','kind','digest','sourceDigest','chatHash','createdAt','bytes','reviewBytes','mappings','bindings',...(value?.version===2?['scope']:[])])||![1,2].includes(value.version)||value.version===2&&(value.scope!=='local-user-alias-resolution'||value.kind!=='subjects')||!account(namespace)||value.namespace!==namespace
+  if(!exact(value,['version','key','namespace','kind','digest','sourceDigest','chatHash','createdAt','bytes','reviewBytes','mappings','bindings',...(value?.version>1?['scope']:[])])||![1,2,3].includes(value.version)||value.version>1&&(value.scope!==(value.version===2?'local-user-alias-resolution':'bundle-user-alias-resolution')||value.kind!=='subjects')||!account(namespace)||value.namespace!==namespace
     ||!['environment','subjects'].includes(value.kind)||![value.digest,value.sourceDigest,value.chatHash].every(hash)||value.key!==mappingHeadKey(namespace,value.kind,value.digest)
     ||!integer(value.createdAt)||!integer(value.bytes,9*1048576)||!integer(value.reviewBytes,8*1048576)||value.reviewBytes<1||value.bytes<=value.reviewBytes
-    ||!integer(value.mappings,2048)||value.mappings<1||!integer(value.bindings,2048)|| (value.kind==='environment'?(value.mappings!==1||value.bindings!==0):value.bindings<value.mappings))fail();
+    ||!integer(value.mappings,value.version===3?2080:2048)||value.mappings<1||!integer(value.bindings,2048)|| (value.kind==='environment'?(value.mappings!==1||value.bindings!==0):value.version!==3&&value.bindings<value.mappings))fail();
   return value;
 }
 export function validateMappingQuery(input){
@@ -50,6 +51,10 @@ export function validateMappingDetail(value,namespace,input){
       if(!exact(row,['sourceInstance','sourceAccount','targetInstance','targetAccount'])||!Object.values(row).every(value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value)))fail();
     }else if(value.head.scope==='local-user-alias-resolution'){
       if(!exact(row,['source','target'])||!binding(row.source)||!binding(row.target)||row.source.category!=='user'||row.target.category!=='user'||canonicalUserSubjectKey(row.source.subjectKey)!==row.target.subjectKey||canonicalUserSubjectKey(row.target.subjectKey)!==row.target.subjectKey||['scope','chatKey'].some(key=>row.source[key]!==row.target[key]))fail();
+    }else if(value.head.scope==='bundle-user-alias-resolution'){
+      if(!exact(row,['source','canonical','target','sourceState','sourceHash','targetState','targetHash'])||!binding(row.source)||!binding(row.canonical)||!binding(row.target)
+        ||['category','scope','chatKey'].some(key=>row.source[key]!==row.canonical[key]||row.source[key]!==row.target[key])||row.canonical.subjectKey!==(row.source.category==='user'?canonicalUserSubjectKey(row.source.subjectKey)||row.source.subjectKey:row.source.subjectKey)
+        ||['archiveId','updatedAt'].some(key=>row.canonical[key]!==row.target[key])||['source','target'].some(prefix=>!['present','missing','unavailable'].includes(row[prefix+'State'])||(row[prefix+'State']==='present'?!hash(row[prefix+'Hash']):row[prefix+'Hash']!==null)))fail();
     }else if(!exact(row,['source','target','sourceState','sourceHash','targetHash'])||!binding(row.source)||!binding(row.target)||!['present','missing','unavailable'].includes(row.sourceState)
       ||(row.sourceState==='present'?!hash(row.sourceHash):row.sourceHash!==null)||!hash(row.targetHash)||['category','scope','chatKey','archiveId','updatedAt'].some(key=>row.source[key]!==row.target[key]))fail();
   }return value;

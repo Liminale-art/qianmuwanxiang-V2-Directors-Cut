@@ -13,9 +13,11 @@ import { randomUUID, createHash } from 'node:crypto';
 import { hashText } from '../qianmu-storyboard-utils.js';
 import { captureStoryboardChatEvidence } from '../qianmu-storyboard-chat-evidence.js';
 import { captureStoryboardSubjectEvidence } from '../qianmu-storyboard-subject-evidence.js';
+import {aliasFixture,targetKey as aliasTargetKey} from './fixtures/storyboard-user-aliases.mjs';
+import {inspectStoryboardSubjectMapReview} from '../qianmu-storyboard-subject-map.js';
 
 const clone = structuredClone;
-async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = false, subjectEvidence = false, sourceText = 'original text', missingAnchor = false } = {}) {
+async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = false, subjectEvidence = false, sourceAliases = false, sourceText = 'original text', missingAnchor = false } = {}) {
   const source = await sourceFixture(); source.config.chat.images[0].source = 'novel'; source.config.chat.images[0].floor = 0;
   source.config.chat.images[0].paragraphAnchor = { floor: 0 };
   if (!missingAnchor) source.config.chat.images[0].messageHash = hashText(sourceText);
@@ -24,8 +26,9 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
     source.options.legacyFetch = async () => new Response(Buffer.from(data, 'base64'));
   }
   source.options.source = sourceIdentity;
-  const subjectRows = [{ category: 'char', subjectKey: 'char:alice.png', state: 'present', profile: { name: 'Alice', description: 'original character' } }];
+  let subjectRows = [{ category: 'char', subjectKey: 'char:alice.png', state: 'present', profile: { name: 'Alice', description: 'original character' } }];
   if (subjectEvidence) { source.options.subjectEvidence = await captureStoryboardSubjectEvidence(subjectRows); source.sources.characters.bindings[0].archiveId = 'alice'; }
+  if(sourceAliases){source.sources.characters={...aliasFixture({extra:26}),namespace};subjectRows=[...new Set(source.sources.characters.bindings.map(row=>row.subjectKey))].map(subjectKey=>({category:'user',subjectKey,state:'present',profile:{name:'Player',description:'source persona'}}));source.options.subjectEvidence=await captureStoryboardSubjectEvidence(subjectRows);}
   if (chatEvidence) source.options.chatEvidence = await captureStoryboardChatEvidence([{ mes: sourceText, is_user: false, swipe_id: 0 }], chatKey);
   source.options.storyboard = file(source.config); const built = await source.build();
   const e = { active: true, events: [], files: new Map(), records: new Map(), mutation: null, settings: createStoryboardDefaults(), chat: {},
@@ -85,6 +88,65 @@ async function remappedSubjectsFixture(){
     {category:'char',subjectKey:subjectMappings[0].targetKey,state:'present',profile:{name:'Alice',description:'original character'}}];return f;
 }
 const subjectConsent={...consent,subjectsReviewed:true,subjectsMapped:true};
+const aliasConsent={...subjectConsent,sourceAliasesReviewed:true},renamedUser='user:/User Avatars/new%20persona.png';
+async function aliasSelection(f){
+  const initial=await f.session.preview();assert.equal(initial.ready,false);assert.equal(initial.sourceAliases.unresolved,1);
+  const page=await f.session.aliases({choices:{},offset:24}),selected=page.rows.find(row=>row.conflict&&row.archiveId==='bob');
+  assert.ok(selected);const choices={[selected.groupId]:selected.candidateId};return choices;
+}
+
+test('source USER aliases are paged read-only, separately consented and saved with canonical-to-new-target provenance before originals',async()=>{
+  const f=await fixture({sourceAliases:true,chatEvidence:true}),before=clone(f.source.sources),choices=await aliasSelection(f);
+  assert.equal((await f.session.aliases({choices:{},offset:0})).rows.length,24);assert.equal((await f.session.aliases({choices:{},offset:24})).rows.length,5);assert.equal(writes(f.e).length,0);
+  f.e.subjectRows.push({category:'user',subjectKey:renamedUser,state:'present',profile:{name:'Player',description:'source persona'}});
+  const mappings=[{category:'user',sourceKey:aliasTargetKey,targetKey:renamedUser}],p=await f.session.preview({},mappings,choices);assert.equal(p.ready,true);assert.equal(p.sourceAliases.targetsReady,true);
+  await assert.rejects(f.session.restore(p,{...aliasConsent,sourceAliasesReviewed:false}),/单独确认原包USER/);assert.equal(writes(f.e).length,0);
+  await f.session.restore(p,aliasConsent);assert.ok(f.e.events.indexOf('subjectMap')<f.e.events.indexOf('image'));assert.equal(f.e.subjectMaps.size,1);
+  const review=[...f.e.subjectMaps.values()][0].review;await inspectStoryboardSubjectMapReview(review);assert.equal(review.schema,'qianmu.storyboard.subject-map.v3');
+  assert.equal(review.projection.sourceBindings.length,30);assert.equal(review.mappings[0].targetKey,renamedUser);assert.equal(f.e.locals.characters.bindings.length,29);
+  assert.equal(f.e.locals.characters.bindings.find(row=>row.scope==='default').archiveId,'bob');assert.equal(f.e.locals.characters.bindings.find(row=>row.chatKey==='chat-one').archiveId,'');
+  assert.ok(f.e.locals.characters.bindings.every(row=>row.subjectKey===renamedUser));assert.deepEqual(f.e.locals.characters.archives,before.characters.archives);assert.deepEqual(f.source.sources,before);f.session.close();
+});
+
+test('canonical-only source alias restoration also preserves a v3 receipt and cannot bypass a missing or unavailable target',async()=>{
+  const f=await fixture({sourceAliases:true}),choices=await aliasSelection(f);const canonical=f.e.subjectRows.find(row=>row.subjectKey===aliasTargetKey);
+  for(const state of ['missing','unavailable']){canonical.state=state;const p=await f.session.preview({},[],choices);assert.equal(p.ready,false);assert.equal(p.sourceAliases.targetsReady,false);assert.equal(writes(f.e).length,0);}
+  canonical.state='present';const p=await f.session.preview({},[],choices);assert.equal(p.subjectMappings.length,0);assert.equal(p.ready,true);
+  await f.session.restore(p,{...aliasConsent,subjectsMapped:false});const review=[...f.e.subjectMaps.values()][0].review;assert.equal(review.mappings.length,0);await inspectStoryboardSubjectMapReview(review);f.session.close();
+});
+
+test('interrupted source resolution reopens both drafts, rejects changed source choices and needs new consent before resuming',async()=>{
+  const f=await fixture({sourceAliases:true}),choices=await aliasSelection(f);f.e.subjectRows.push({category:'user',subjectKey:renamedUser,state:'present',profile:{name:'Player',description:'source persona'}});
+  const mappings=[{category:'user',sourceKey:aliasTargetKey,targetKey:renamedUser}],p=await f.session.preview({},mappings,choices);f.e.failAt='vibes';
+  await assert.rejects(f.session.restore(p,aliasConsent),/未全部确认/);assert.equal(f.e.subjectMaps.size,1);const uploads=f.e.events.filter(row=>row==='image').length;f.session.close();
+  f.session=await f.reopen();const resumed=await f.session.preview();assert.deepEqual(resumed.subjectMappings,mappings);assert.equal(resumed.ready,true);
+  await assert.rejects(f.session.restore(resumed,{...aliasConsent,sourceAliasesReviewed:false}),/单独确认原包USER/);
+  const page=await f.session.aliases({choices:resumed.sourceAliasChoices,offset:24}),other=page.rows.find(row=>row.conflict&&row.archiveId==='alice');
+  const changed=await f.session.preview({},mappings,{...resumed.sourceAliasChoices,[other.groupId]:other.candidateId});assert.equal(changed.ready,false);assert.equal(changed.subjectMappingConflict,true);
+  f.e.failAt='';await f.session.restore(await f.session.preview({},mappings,resumed.sourceAliasChoices),aliasConsent);assert.equal(f.e.subjectMaps.size,1);assert.equal(f.e.events.filter(row=>row==='image').length,uploads);assert.equal(f.e.mutation.phase,'applied');f.session.close();
+});
+
+test('source alias receipt failure leaves no originals and explicit reconstruction after reopen keeps the pending checkpoint',async()=>{
+  const f=await fixture({sourceAliases:true}),choices=await aliasSelection(f),p=await f.session.preview({},[],choices);f.e.failAt='subjectMap';
+  await assert.rejects(f.session.restore(p,aliasConsent),/未全部确认/);assert.equal(f.e.files.size,0);assert.equal(f.e.subjectMaps.size,0);f.session.close();
+  f.session=await f.reopen();const reopened=await f.session.preview();assert.equal(reopened.sourceAliases.unresolved,1);assert.equal(reopened.ready,false);
+  f.e.failAt='';await f.session.restore(await f.session.preview({},[],choices),aliasConsent);assert.equal(f.e.subjectMaps.size,1);f.session.close();
+});
+
+test('source alias target drift or vanished combined receipt stops before later resource/configuration writes',async()=>{
+  for(const reason of ['target','receipt']){
+    const f=await fixture({sourceAliases:true}),choices=await aliasSelection(f),p=await f.session.preview({},[],choices);
+    f.e.afterImage=async()=>{if(reason==='target')f.e.subjectRows.find(row=>row.subjectKey===aliasTargetKey).profile.description='changed after approval';else f.e.subjectMaps.clear();};
+    await assert.rejects(f.session.restore(p,aliasConsent),/未全部确认/);assert.ok(f.e.files.size);assert.equal(f.e.locals.characters.bindings.length,0);assert.equal(f.e.mutation,null);f.session.close();
+  }
+});
+
+test('source alias receipt capacity, unknown selections and a local alternate address cannot start a write',async()=>{
+  const f=await fixture({sourceAliases:true}),choices=await aliasSelection(f);f.e.subjectMapFull=true;
+  await assert.rejects(f.session.preview({},[],choices),/空间不足/);assert.equal(writes(f.e).length,0);f.e.subjectMapFull=false;
+  await assert.rejects(f.session.preview({},[],{['f'.repeat(64)]:'a'.repeat(64)}),/过期/);
+  f.e.locals.characters=clone(f.source.sources.characters);await assert.rejects(f.session.preview({},[],choices),/核对USER地址/);assert.equal(writes(f.e).length,0);f.session.close();
+});
 test('subject mapping restores a real target binding with new revision and retains original archive and historical recipes',async()=>{
   const f=await remappedSubjectsFixture(),before=clone(f.source.sources),original=(await f.session.preview());assert.equal(original.ready,false);assert.equal(f.e.files.size,0);
   const p=await f.session.preview({},subjectMappings);assert.equal(p.ready,true);assert.equal(p.subjectReview[0].state,'matched');assert.equal(p.bindingReview[0].subjectKey,subjectMappings[0].targetKey);

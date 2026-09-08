@@ -4,6 +4,9 @@ import { openStoryboardBundleRestoreRuntime, closeStoryboardBundleRestoreRuntime
 import { renderStoryboardBundleReview } from '../qianmu-storyboard-bundle-view.js';
 import { createStoryboardEnvironmentReview } from '../qianmu-storyboard-environment-map.js';
 import { randomUUID, createHash } from 'node:crypto';
+import {aliasFixture} from './fixtures/storyboard-user-aliases.mjs';
+import {captureStoryboardSubjectEvidence,storyboardSubjectTargets} from '../qianmu-storyboard-subject-evidence.js';
+import {planBundleUserAliases,bundleUserAliasPage,bundleUserAliasSummary} from '../qianmu-bundle-user-alias.js';
 const namespace = 'st-user:test', sourceDigest = 'a'.repeat(64), chatHash = 'b'.repeat(64);
 const view = () => ({ namespace, sourceDigest, chatHash, ready: false, planDigest: '', conflicts: [], images: [], bindingReview: [],
   summary: { images: 1, vibeFiles: 0, workflows: { count: 1, versions: 2 }, pools: { count: 0 }, characters: { count: 0 } }, characterSummary: { added: 0, replaced: 0, kept: 0 } });
@@ -42,6 +45,22 @@ async function fixture(flow, extra = {}) {
   const client = await openStoryboardBundleRestoreRuntime(new Blob(['synthetic']), options);
   return { e, client, worker: FakeWorker.last, options };
 }
+
+async function aliasView(){const library={...aliasFixture(),namespace},evidence=await captureStoryboardSubjectEvidence(storyboardSubjectTargets(library.bindings).map(row=>({...row,state:'present',profile:{name:'Player',description:'source'}})));
+  const plan=await planBundleUserAliases({library,evidence,sourceDigest});return {page:bundleUserAliasPage(plan),preview:{...view(),sourceAliases:bundleUserAliasSummary(plan),sourceAliasChoices:{}}};}
+test('source alias pages are typed, source/offset-bound and cannot obtain a configuration write',async()=>{
+  const {page,preview}=await aliasView(),{client,e}=await fixture(async(w,c)=>{if(c.action==='aliases'){const answer=await w.rpc(c,'configuration-apply',{fingerprint:sourceDigest,settings:{},chat:{},imageUrls:{},expectedDigest:'c'.repeat(64)});assert.ok(answer.error);w.reply(c,page);}else w.reply(c,preview);});
+  assert.deepEqual(await client.preview(),preview);assert.deepEqual(await client.aliases({choices:{},offset:0}),page);assert.equal(e.applied,0);client.close();
+  for(const bad of [{...page,sourceDigest:'b'.repeat(64)},{...page,offset:24},{...page,rows:[{...page.rows[0],secret:'private'}]}]){
+    const f=await fixture(async(w,c)=>w.reply(c,bad));await assert.rejects(f.client.aliases({choices:{},offset:0}),/结果与当前原包不符/);assert.equal(f.worker.closed,true);
+  }
+});
+test('source resolution has its own runtime and UI consent and malformed source summaries close the worker',async()=>{
+  const {preview}=await aliasView(),{client,worker}=await fixture();const before=worker.sent.length;
+  await assert.rejects(client.restore(preview,{confirmed:true,environmentReviewed:true,subjectsMapped:true}),/单独确认原包USER/);assert.equal(worker.sent.length,before);client.close();
+  const rendered=renderStoryboardBundleReview({preview:{...preview,ready:true,planDigest:'c'.repeat(64)},page:0,environmentReviewed:true});assert.match(rendered,/data-bundle-source-reviewed/);assert.match(rendered,/data-bundle-action="restore" disabled/);
+  const bad={...preview,sourceAliases:{...preview.sourceAliases,ready:true}},f=await fixture(async(w,c)=>w.reply(c,bad));await assert.rejects(f.client.preview(),/结果与当前原包不符/);assert.equal(f.worker.closed,true);
+});
 test('runtime rejects unconfirmed environment mapping before dispatch and accepts source-bound mapped views',async t=>{
   const review=await environmentReview(),prepared={...view(),environmentReview:review,sourceLabelsMatched:false};
   const {client,worker}=await fixture(async(w,c)=>w.reply(c,prepared));t.after(()=>client.close());

@@ -77,7 +77,9 @@ export function createStoryboardBundleConfiguration({ namespace, chatKey, settin
       if (!Array.isArray(bindings) || bindings.length > 2048) fail('角色来源绑定核对范围无效');
       const mappings = input.subjectMappings || [];
       const target = await captureSubjects(mappedStoryboardSubjectTargets(source.subjects,mappings)); await check();
-      return mappings.length ? compareMappedStoryboardSubjects(source,target,bindings,mappings) : compareStoryboardSubjectEvidence(source, target, bindings);
+      const result=await (mappings.length ? compareMappedStoryboardSubjects(source,target,bindings,mappings) : compareStoryboardSubjectEvidence(source, target, bindings));
+      if(input.includeTargetEvidence!==undefined&&input.includeTargetEvidence!==true)fail('目标资料核对请求无效');
+      return input.includeTargetEvidence?{...result,targetEvidence:target}:result;
     },
     async preview(input) { const prepared = await prepare(input); return { digest: prepared.digest, summary: prepared.summary }; },
     async apply(input) {

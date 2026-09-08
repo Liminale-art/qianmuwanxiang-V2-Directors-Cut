@@ -51,18 +51,24 @@ export function assertSubjectMappingTargetsUnambiguous(local,mappings) {
 export async function deriveStoryboardSubjectBindings(library, evidence, input, sourceDigest) {
   validateCharacterLibraryBackup(library);if (!hash(sourceDigest)) fail('角色映射缺少原包摘要');
   const source = await inspectStoryboardSubjectEvidence(evidence), mappings = normalizeStoryboardSubjectMappings(input, source.subjects);
-  const available = new Set(library.bindings.map(subjectMapKey));
+  const {bindings,lineage}=await deriveStoryboardBindingRows(library.bindings,mappings,sourceDigest);
+  const value = {...library,bindings};validateCharacterLibraryBackup(value);
+  return {value,mappings,lineage};
+}
+// Callers validate the source binding contract and normalize mappings before deriving rows.
+export async function deriveStoryboardBindingRows(sourceBindings,mappings,sourceDigest){
+  if(!hash(sourceDigest))fail('角色映射缺少原包摘要');
+  const available = new Set(sourceBindings.map(subjectMapKey));
   if (mappings.some(row => !available.has(subjectMapKey({category:row.category,subjectKey:row.sourceKey})))) fail('来源缺少可映射的ST绑定');
   const targets = new Map(mappings.map(row => [subjectMapKey({category:row.category,subjectKey:row.sourceKey}),row.targetKey])), bindings = [], lineage = [];
-  for (const row of library.bindings) {
+  for (const row of sourceBindings) {
     const targetKey = targets.get(subjectMapKey(row));if (!targetKey) {bindings.push(row);continue;}
     // A new binding gets a derived revision; archive documents, IDs, old snapshots and source rows are untouched.
     const next = {...row,subjectKey:targetKey,revision:'mapped-'+await digest({sourceDigest,source:row,targetKey})};
     bindings.push(next);lineage.push({source:structuredClone(row),target:structuredClone(next)});
   }
   bindings.sort((a,b) => characterBackupBindingKey(a).localeCompare(characterBackupBindingKey(b)));
-  const value = {...library,bindings};validateCharacterLibraryBackup(value);
-  return {value,mappings,lineage};
+  return {bindings,lineage};
 }
 export async function compareMappedStoryboardSubjects(source, target, bindings, input) {
   source = await inspectStoryboardSubjectEvidence(source);target = await inspectStoryboardSubjectEvidence(target);
@@ -94,6 +100,7 @@ export async function createStoryboardSubjectMapReview({namespace,chatHash,sourc
   return {...value,digest:await digest(value)};
 }
 export async function inspectStoryboardSubjectMapReview(value) {
+  if(value?.schema==='qianmu.storyboard.subject-map.v3')return (await import('./qianmu-bundle-subject-map.js')).inspectBundleSubjectMapReview(value);
   if(value?.schema==='qianmu.storyboard.subject-map.v2')return (await import('./qianmu-user-alias.js')).inspectUserAliasReview(value);
   if (!exact(value,['schema','scope','namespace','chatHash','sourceDigest','environmentDigest','rows','lineage','digest']) || value.schema !== SUBJECT_MAP_SCHEMA || value.scope !== 'declared-binding-mappings'
     || typeof value.namespace !== 'string' || !/^st-user:.+/.test(value.namespace) || value.namespace.length > 512 || /[\u0000-\u001f\u007f]/.test(value.namespace)

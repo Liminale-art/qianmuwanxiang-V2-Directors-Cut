@@ -41,7 +41,8 @@ self.addEventListener('message', async event => {
         configuration: { preview: value => ask('configuration-preview', value), apply: value => ask('configuration-apply', value), subjects: value => ask('configuration-subjects', value), targets: value => ask('configuration-targets',value) } });
       result = { sourceDigest: session.sourceDigest };
     } else if (session && message.sourceDigest === session.sourceDigest) {
-      if (message.action === 'preview') result = await session.preview(message.payload.decisions,message.payload.subjectMappings);
+      if (message.action === 'preview') result = await session.preview(message.payload.decisions,message.payload.subjectMappings,message.payload.sourceAliasChoices);
+      else if(message.action==='aliases')result=await session.aliases(message.payload);
       else if (message.action === 'choose') result = await session.choose(message.payload.decisions);
       else if (message.action === 'resources') result = await session.resources(message.payload);
       else if (message.action === 'targets') result = await session.targets(message.payload);

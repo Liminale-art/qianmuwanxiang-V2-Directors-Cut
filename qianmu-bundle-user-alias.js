@@ -52,7 +52,7 @@ async function projection({namespace,bindings,evidence,sourceDigest,choices={}})
     receipt={...core,digest:await digest(core)};
     if(receiptSize(receipt)>8*1048576)fail('来源地址凭据超过8MiB，原关系未截断');
   }
-  return {namespace,sourceDigest,...selected,evidence:profiles.evidence,sourceEvidence:profiles.original,addresses:profiles.addresses,unverified:profiles.unverified,ready,changed,receipt,
+  return {...selected,namespace,sourceDigest,evidence:profiles.evidence,sourceEvidence:profiles.original,addresses:profiles.addresses,unverified:profiles.unverified,ready,changed,receipt,
     digest:await digest({namespace,sourceDigest,evidence:profiles.original.digest,bindings:before,choices,receipt:receipt?.digest||null})};
 }
 
@@ -67,7 +67,7 @@ export async function planBundleUserAliases({library,evidence,sourceDigest,choic
   return {...plan,value,display:plan.display.map(row=>({...row,archiveName:names.get(row.archiveId)||''}))};
 }
 
-export async function inspectBundleUserAliasReceipt(value,{namespace,sourceDigest,bindings,evidence}={}){
+export async function replayBundleUserAliasReceipt(value,{namespace,sourceDigest,bindings,evidence}={}){
   if(!exact(value,fields)||value.schema!==BUNDLE_USER_ALIAS_SCHEMA||value.scope!=='source-bindings-only'||!hash(value.digest)||!hash(value.projectedEvidenceDigest)||!hash(value.projectedBindingsDigest)
     ||!Array.isArray(value.selections)||value.selections.length>2048||receiptSize(value)>8*1048576)fail('来源USER地址凭据格式无效');
   if(namespace!==undefined&&namespace!==value.namespace||sourceDigest!==undefined&&sourceDigest!==value.sourceDigest)fail('来源USER地址凭据不属于当前原包或账户');
@@ -78,12 +78,17 @@ export async function inspectBundleUserAliasReceipt(value,{namespace,sourceDiges
   if(evidence!==undefined&&await digest(await inspectStoryboardSubjectEvidence(evidence))!==await digest(value.sourceEvidence))fail('来源USER地址凭据与原包资料不符');
   const plan=await projection({namespace:value.namespace,bindings:value.sourceBindings,evidence:value.sourceEvidence,sourceDigest:value.sourceDigest,choices});
   if(!plan.ready||!plan.receipt||await digest(plan.receipt)!==await digest(value))fail('来源USER地址凭据与原关系、选择或派生结果不符');
-  return structuredClone(value);
+  return plan;
 }
+
+export async function inspectBundleUserAliasReceipt(value,expected){return structuredClone((await replayBundleUserAliasReceipt(value,expected)).receipt);}
 
 // Main-thread views never include the full source snapshot, receipt, or archive documents.
 export function bundleUserAliasPage(plan,offset=0){
   if(!Number.isSafeInteger(offset)||offset<0||offset%24||offset&&offset>=plan.display.length)fail('来源USER地址列表位置已变化');
   return {version:1,sourceDigest:plan.sourceDigest,digest:plan.digest,offset,total:plan.display.length,groups:plan.groups,unresolved:plan.unresolved,
     evidenceChanges:plan.addresses.length,unverified:plan.unverified,changed:plan.changed,ready:plan.ready,rows:structuredClone(plan.display.slice(offset,offset+24))};
+}
+export function bundleUserAliasSummary(plan,targetsReady=null){
+  const {rows,offset,...summary}=bundleUserAliasPage(plan);return {...summary,receiptDigest:plan.receipt?.digest||null,targetsReady};
 }

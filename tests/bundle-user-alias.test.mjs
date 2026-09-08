@@ -7,6 +7,9 @@ import {deriveStoryboardSubjectBindings,compareMappedStoryboardSubjects,createSt
 import {planCharacterLibraryRestore,validateCharacterLibraryBackup} from '../qianmu-character-library-backup.js';
 import {selectCharacterBinding} from '../qianmu-character-archive.js';
 import {comfyLibraryBackupDigest as digest} from '../qianmu-comfy-library-backup.js';
+import {createBundleSubjectMapReview,inspectBundleSubjectMapReview,bundleSubjectMapDetailRows} from '../qianmu-bundle-subject-map.js';
+import {mappingHead,validateMappingDetail} from '../qianmu-storyboard-mapping-contract.js';
+import {runMappingRegistry} from '../qianmu-storyboard-mapping-registry.js';
 const sourceDigest='a'.repeat(64),chatHash='e'.repeat(64),renamedKey='user:/User Avatars/renamed%20persona.png';
 const clone=structuredClone;
 async function evidenceFor(library,{mutate=()=>{},extra=[]}={}){
@@ -127,6 +130,32 @@ test('2048 source bindings keep every original and expose only a 24-row page wit
   const input=await fixture({extra:2044}),{plan:p}=await approved(input);assert.equal(p.before.length,2048);assert.equal(p.receipt.sourceBindings.length,2048);assert.equal(p.after.length,2047);
   await inspectBundleUserAliasReceipt(p.receipt,{namespace,sourceDigest,bindings:input.library.bindings,evidence:input.evidence});
   const page=bundleUserAliasPage(p,2040);assert.equal(page.rows.length,7);assert.equal(page.total,2047);assert.ok(JSON.stringify(page).length<24000);
+  assert.equal(page.sourceDigest,sourceDigest);assert.equal(p.sourceDigest,sourceDigest);
   assert.ok(!JSON.stringify(page).includes('private appearance'));assert.ok(!JSON.stringify(page).includes('same original narrative'));assert.ok(!Object.hasOwn(page,'receipt'));
   assert.throws(()=>bundleUserAliasPage(p,-24));assert.throws(()=>bundleUserAliasPage(p,1));assert.throws(()=>bundleUserAliasPage(p,2064));
+});
+
+async function combined(options={}){
+  const input=await fixture(options),{plan}=await approved(input),mappings=[{category:'user',sourceKey:targetKey,targetKey:renamedKey}];
+  const targetEvidence=await captureStoryboardSubjectEvidence([{category:'user',subjectKey:renamedKey,state:'present',profile:{name:'Player',description:'same original narrative'}}]);
+  const review=await createBundleSubjectMapReview({namespace,chatHash,sourceDigest,projection:plan.receipt,targetEvidence,mappings});return {input,plan,review};
+}
+test('combined receipt keeps the original -> canonical -> new-target chain without repeating archive bodies',async()=>{
+  const {input,review}=await combined();assert.deepEqual(await inspectBundleSubjectMapReview(review),review);assert.deepEqual(await inspectStoryboardSubjectMapReview(review),review);
+  const rows=await bundleSubjectMapDetailRows(review);assert.equal(rows.length,input.library.bindings.length);assert.ok(rows.some(row=>row.source.archiveId!==row.canonical.archiveId));
+  assert.ok(rows.every(row=>row.target.subjectKey===renamedKey&&row.canonical.subjectKey===targetKey));assert.ok(!JSON.stringify(review).includes('private appearance'));
+  const bytes=new TextEncoder().encode(JSON.stringify(review)).length,receipt={key:JSON.stringify([namespace,review.digest,bytes]),namespace,review,bytes,createdAt:1},head=mappingHead('subjects',receipt);
+  assert.equal(head.version,3);const journal={listMappingHeads:async()=>[head],loadMappingReceipt:async()=>receipt},inputPage={kind:'subjects',digest:review.digest,offset:0};
+  const detail=await runMappingRegistry('mapping-detail',{journal,namespace,input:inputPage});validateMappingDetail(detail,namespace,inputPage);assert.deepEqual(detail.rows,rows);
+  const result=await runMappingRegistry('mapping-export',{journal,namespace,input:{kind:'subjects',digest:review.digest}});assert.deepEqual(JSON.parse(await result.file.text()).receipt,receipt);
+});
+test('combined receipt rejects forged final derivations, source substitution, extra fields and changed target maps',async()=>{
+  const {review}=await combined();
+  for(const mutate of [r=>r.bindingsDigest='b'.repeat(64),r=>r.sourceDigest='c'.repeat(64),r=>r.projection.sourceBindings.pop(),r=>r.mappings[0].targetKey='user:/User Avatars/missing.png',r=>r.scope='local-user-alias-resolution',r=>r.secret='private']){
+    const forged=clone(review);mutate(forged);await assert.rejects(inspectBundleSubjectMapReview(await rehash(forged)));
+  }
+});
+test('full 2048-source combined receipt reconstructs the final eight original relationships without truncation',async()=>{
+  const {review}=await combined({extra:2044});assert.equal(review.projection.sourceBindings.length,2048);await inspectBundleSubjectMapReview(review);
+  const rows=await bundleSubjectMapDetailRows(review,2040);assert.equal(rows.length,8);assert.ok(rows.every(row=>row.target.subjectKey===renamedKey));
 });

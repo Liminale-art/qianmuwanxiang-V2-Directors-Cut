@@ -1,6 +1,16 @@
 const escape = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const button = (action, text, disabled = false) => `<button type="button" class="sd-btn" data-bundle-action="${action}" ${disabled ? 'disabled' : ''}>${text}</button>`;
 const resourceStates={included:'包内资料',external:'外部另备',dynamic:'动态槽位',unresolved:'引用待定位',review:'运行环境待核对'};
+function renderSourceAliases(view){
+  const summary=view.preview?.sourceAliases,page=view.sourceAliasPage;if(!summary?.changed)return '';
+  return `<section data-bundle-source-aliases><h3>先核对原包 USER 地址</h3><p>${summary.total} 条原绑定 · ${summary.groups} 组 · 待选择 ${summary.unresolved} 组。只统一同一头像文件的地址写法，不按同名合并不同人设。</p>
+    <p>默认与每个聊天分别选择；同组只采用所选档案，未采用的原关系仍完整保留在凭据中。选好后再选目标头像、核对本机覆盖；改来源选择会清掉后两项草稿。原包和档案原文不改写。</p>
+    ${summary.unverified?`<p>${summary.unverified} 组原人设资料摘要不一致，不会按第一条或选中档案冒称内容匹配；请结合原环境核对。</p>`:''}
+    ${summary.targetsReady===false?'<p>整理后的待绑定人设尚未完整载入，请在下方选择对应目标，或先在ST打开原人设。</p>':''}
+    ${page?`${page.rows.map((row,index)=>`<label class="sd-bundle-source-alias-row"><input type="radio" name="source-${row.groupId}" data-bundle-source-choice="${index}" ${row.selected?'checked':''}><span><b>${escape(row.archiveName||'不使用档案（显式解除）')}</b><small>${escape(row.scope==='default'?'默认绑定':row.chatKey)}</small><small>${escape(row.sourceKey)}</small><small>→ ${escape(row.targetKey)}</small><small>${row.conflict?'不同档案，须明确选择':'同组档案一致；保留全部原关系'}</small></span></label>`).join('')}
+      <nav>${button('aliases-previous','上一页',!page.offset)}<span>${page.total?`${page.offset+1}–${Math.min(page.offset+24,page.total)} / ${page.total}`:'没有待调整的绑定，仅核对来源证据地址'}</span>${button('aliases-next','下一页',page.offset+24>=page.total)}${button('aliases-close','收起')}</nav>`:button('aliases','核对原关系与选择')}
+    <p>来源地址 ${summary.evidenceChanges} 项；该步骤不证明目标身份，不代表恢复已完成。凭据可查看导出，暂无一键撤销。</p></section>`;
+}
 function renderSubjectPicker(view) {
   const picker=view.targetPicker;if(!picker)return '';
   return `<section data-bundle-target-picker><h3>选择${picker.category==='char'?'CHAR':'USER'}目标</h3><input class="text_pole" data-bundle-target-query maxlength="160" aria-label="搜索目标名称或文件" value="${escape(picker.query)}">
@@ -36,7 +46,7 @@ function renderResources(view) {
 export function renderStoryboardBundleReview(view) {
   const p = view.preview, offset = view.page * 24, conflicts = p?.conflicts || [], bindings = p?.bindingReview || [], subjects = p?.subjectReview || [], connections = p?.configuration?.connections || [];
   const pages = Math.max(1, Math.ceil(Math.max(conflicts.length, bindings.length, subjects.length, connections.length) / 24));
-  const ready = p?.ready && !p.needsRecheck && view.environmentReviewed && (p.environmentReview?.state !== 'mapping-required' || view.environmentMapped) && (!p.subjectMappings?.length || view.subjectsMapped) && (!bindings.length || view.bindingsReviewed) && (!subjects.length || view.subjectsReviewed) && (!connections.length || view.connectionsReviewed) && (!p.summary?.resourceOrigins?.total || view.resourcesReviewed);
+  const ready = p?.ready && !p.needsRecheck && view.environmentReviewed && (p.environmentReview?.state !== 'mapping-required' || view.environmentMapped) && (!p.subjectMappings?.length || view.subjectsMapped) && (!p.sourceAliases?.changed || view.sourceAliasesReviewed) && (!bindings.length || view.bindingsReviewed) && (!subjects.length || view.subjectsReviewed) && (!connections.length || view.connectionsReviewed) && (!p.summary?.resourceOrigins?.total || view.resourcesReviewed);
   return `<header><b id="qm-bundle-title">恢复分镜资源联包</b><button type="button" class="sd-icon-btn" data-bundle-action="close" title="关闭恢复页面" aria-label="关闭恢复页面"><i data-qm-icon="qm-regular-x"></i></button></header>
     <main data-bundle-scroll><fieldset ${view.busy || view.result ? 'disabled' : ''}>
     <section><p class="sd-bundle-file">${escape(view.fileName)}</p><p>恢复当前聊天成片、配置、Vibe 原文件、完整工作流／候选历史及角色库。只补缺件，不覆盖原图；不含模型文件或 API 授权。更换ST安装和CHAR／USER目标可分别确认；不同账户名或聊天的迁移尚未开放，请保留旧环境。</p>
@@ -50,6 +60,7 @@ export function renderStoryboardBundleReview(view) {
     ${p.record ? `<p>上次资源核对：${escape(({prepared:'已确认',originals:'原图',workflows:'工作流',pools:'候选',metadata:'角色',vibes:'Vibe',verified:'原件已核对，配置另行确认'})[p.record.phase] || p.record.phase)}。续接仍会逐项核对。</p>` : ''}` : ''}</section>
     ${conflicts.length ? `<section><h3>逐项选择 · ${conflicts.length}</h3>${conflicts.slice(offset, offset + 24).map((row, index) => `<label class="sd-bundle-choice"><span>${escape(row.kind === 'archive' ? `${row.localName} v${row.localVersion} → ${row.incomingName} v${row.incomingVersion}` : `${row.category.toUpperCase()} · ${row.subjectKey} · ${row.chatKey || '默认绑定'} · ${row.localArchiveId || '不绑定'} → ${row.incomingArchiveId || '不绑定'}`)}</span><select class="text_pole" data-bundle-choice="${offset + index}"><option value="" ${!row.choice?'selected':''}>请选择</option><option value="local" ${row.choice==='local'?'selected':''}>保留本机</option><option value="incoming" ${row.choice==='incoming'?'selected':''}>使用备份</option></select></label>`).join('')}</section>` : ''}
     ${bindings.length ? `<section><h3>原身份与聊天绑定 · ${bindings.length}</h3>${bindings.slice(offset, offset + 24).map(row => `<p>${escape(row.category.toUpperCase())} · ${escape(row.subjectKey)}<br>${escape(row.scope === 'chat' ? row.chatKey : '角色默认')} → ${escape(row.archiveId || '明确不绑定')}</p>`).join('')}</section>` : ''}
+    ${renderSourceAliases(view)}
     ${renderSubjects(view,subjects,offset)}
     ${connections.length ? `<section><h3>连接预设 · ${connections.length}</h3><p>仅核对生图连接配置，不测试连通、不复制 Key。当前编辑中的连接和选择标识保持本机状态；重选预设后才加载备份配置。取词 LLM 的 ST API 档案仍需另行核对。</p>${connections.slice(offset, offset + 24).map(row => `<p>${escape(row.providerId)} · ${escape(row.name)}<br>${({added:'新增预设',same:'连接配置一致',changed:'连接配置有变化'})[row.state]}${row.active ? ' · 当前选择的同编号预设' : ''}<br>${row.credential === 'retained' ? '保留本机该预设的授权引用；是否仍有效需自行验证' : '未沿用本机该预设的授权引用；使用前请重新核对 Key'}${row.differences.length ? `<br>变化项：${row.differences.map(key => ({baseUrl:'地址',protocol:'接口协议',imageProtocolVersion:'协议版本',modelFamily:'模型系列',headers:'自定义请求头',options:'传输选项',compatibility:'兼容规则',unverified:'原配置无法完整核对'})[key]).join('、')}` : ''}</p>`).join('')}</section>` : ''}
     ${pages > 1 ? `<nav>${button('previous','上一页',view.page === 0)}<span>${view.page + 1} / ${pages}</span>${button('next','下一页',view.page >= pages - 1)}</nav>` : ''}
@@ -61,6 +72,7 @@ export function renderStoryboardBundleReview(view) {
     ${bindings.length ? `<label class="sd-bundle-review"><input type="checkbox" data-bundle-bindings ${view.bindingsReviewed?'checked':''}>我已核对全部 ${bindings.length} 处原身份与聊天标识。</label>` : ''}
     ${subjects.length ? `<label class="sd-bundle-review"><input type="checkbox" data-bundle-subjects ${view.subjectsReviewed?'checked':''}>我已核对全部角色／人设差异，确认仍为原对象；无法确定时取消。</label>` : ''}
     ${p?.subjectMappings?.length ? `<label class="sd-bundle-review"><input type="checkbox" data-bundle-subject-mapping ${view.subjectsMapped?'checked':''}>我明确确认以上角色／人设目标映射，理解它只用于恢复绑定，不改写历史画面身份。</label>` : ''}
+    ${p?.sourceAliases?.changed ? `<label class="sd-bundle-review"><input type="checkbox" data-bundle-source-reviewed ${view.sourceAliasesReviewed?'checked':''} ${p.sourceAliases.ready?'':'disabled'}>我确认已核对原包USER的全部来源选择及资料差异，理解未采用关系保留在凭据中，目标映射和覆盖另行确认。</label>` : ''}
     ${connections.length ? `<label class="sd-bundle-review"><input type="checkbox" data-bundle-connections ${view.connectionsReviewed?'checked':''}>我已核对全部连接差异及授权提示，恢复后会先检查连接再使用。</label>` : ''}
     ${p?.summary?.resourceOrigins?.total ? `<label class="sd-bundle-review"><input type="checkbox" data-bundle-resources ${view.resourcesReviewed?'checked':''}>我已核对包内资料和外部依赖，理解仅恢复资料、不保证工作流可直接运行。</label>` : ''}
     </fieldset></main><footer><p role="status">${escape(view.notice || (view.busy ? '正在后台核对；关闭会中止后续步骤，已保存部分仍保留。' : '不会启动生成任务。'))}</p><div>${view.result ? button('close','关闭并稍后核对导入') : `${button('preview',p?.needsRecheck?'核对选择与原件':'重新核对',view.busy)}${button('restore','确认恢复',view.busy || !ready)}`}</div></footer>`;
@@ -68,7 +80,7 @@ export function renderStoryboardBundleReview(view) {
 
 export function openStoryboardBundleReview({ parent, fileName, connect, paintIcons = () => {} }) {
   const dialog = document.createElement('dialog'); dialog.className = 'sd-bundle-dialog'; dialog.setAttribute('aria-labelledby','qm-bundle-title');
-  const view = { fileName, page: 0, preview: null, busy: true, notice: '', result: null, environmentReviewed: false, environmentMapped: false, bindingsReviewed: false, subjectsReviewed: false, subjectsMapped:false,subjectMappings:undefined,targetPicker:null,targetIndex:null, connectionsReviewed: false, resourcesReviewed: false, resourcePage: null };
+  const view = { fileName, page: 0, preview: null, busy: true, notice: '', result: null, environmentReviewed: false, environmentMapped: false, bindingsReviewed: false, subjectsReviewed: false, subjectsMapped:false,subjectMappings:undefined,targetPicker:null,targetIndex:null, sourceAliasChoices:undefined,sourceAliasPage:null,sourceAliasesReviewed:false,connectionsReviewed: false, resourcesReviewed: false, resourcePage: null };
   let session = null, closed = false, choices = {}, focusChoice = null, resolve; const finished = new Promise(done => resolve = done);
   function close() { if (closed) return; closed = true; session?.close(); if (dialog.open) dialog.close(); dialog.remove(); resolve(view.result); }
   function draw() {
@@ -84,20 +96,25 @@ export function openStoryboardBundleReview({ parent, fileName, connect, paintIco
     if (view.busy || !session || closed) return;
     view.busy = true; view.notice = ''; draw();
     try {
-      if (action === 'preview' || action==='mapping') { view.subjectsMapped=false;view.environmentMapped = false; view.environmentReviewed = false; view.bindingsReviewed = false; view.subjectsReviewed = false; view.connectionsReviewed = false; view.resourcesReviewed = false; view.preview = await session.preview(choices,view.subjectMappings);view.subjectMappings=view.preview.subjectMappings; }
+      if (action === 'preview' || action==='mapping' || action==='alias-choice') {
+        view.sourceAliasesReviewed=false;view.subjectsMapped=false;view.environmentMapped=false;view.environmentReviewed=false;view.bindingsReviewed=false;view.subjectsReviewed=false;view.connectionsReviewed=false;view.resourcesReviewed=false;
+        view.preview=await session.preview(choices,view.subjectMappings,view.sourceAliasChoices);view.subjectMappings=view.preview.subjectMappings;view.sourceAliasChoices=view.preview.sourceAliasChoices;
+        if(view.sourceAliasPage){const offset=view.sourceAliasPage.offset<view.preview.sourceAliases?.total?view.sourceAliasPage.offset:0;view.sourceAliasPage=await session.aliases({choices:view.sourceAliasChoices||{},offset});if(view.sourceAliasPage.digest!==view.preview.sourceAliases?.digest)throw Error('来源USER地址选择已变化，请重新核对');}
+      }
       if (action === 'choose') view.preview = await session.choose(choices);
       if(action==='targets')view.targetPicker=await session.targets(resourceOptions);
+      if(action==='aliases'){view.sourceAliasesReviewed=false;const page=await session.aliases({choices:view.sourceAliasChoices||{},offset:resourceOptions?.offset||0});if(page.digest!==view.preview.sourceAliases?.digest)throw Error('来源USER地址选择已变化，请重新核对');view.sourceAliasPage=page;}
       if (action === 'resources') { const page=await session.resources(resourceOptions);if(page.digest!==view.preview.summary.resourceOrigins.digest)throw Error('文件用途清单与当前预览不符');view.resourcePage=page; }
       if (action === 'restore') {
-        view.result = await session.restore(view.preview, { confirmed: true, environmentReviewed: view.environmentReviewed, environmentMapped: view.environmentMapped, bindingsReviewed: view.bindingsReviewed, subjectsReviewed: view.subjectsReviewed, subjectsMapped:view.subjectsMapped, connectionsReviewed: view.connectionsReviewed, resourcesReviewed: view.resourcesReviewed });
+        view.result = await session.restore(view.preview, { confirmed: true, environmentReviewed: view.environmentReviewed, environmentMapped: view.environmentMapped, bindingsReviewed: view.bindingsReviewed, subjectsReviewed: view.subjectsReviewed, subjectsMapped:view.subjectsMapped, sourceAliasesReviewed:view.sourceAliasesReviewed,connectionsReviewed: view.connectionsReviewed, resourcesReviewed: view.resourcesReviewed });
         session.close(); // Release the source Blob, decoded documents and worker DB connections while the result stays readable.
         view.notice = '原件已核对，配置已应用。请刷新后点击“核对导入”确认保存；历史生成任务不会续跑。';
       }
     } catch (error) {
       view.notice = error?.message || '恢复未确认，请核对原包';
       if (view.preview) view.preview = { ...view.preview, ready: false, needsRecheck: true, planDigest: '' };
-      view.subjectsMapped=false;view.environmentMapped = false; view.environmentReviewed = false; view.bindingsReviewed = false; view.subjectsReviewed = false; view.connectionsReviewed = false; view.resourcesReviewed = false;
-      if (/过期/.test(view.notice)) { choices = {}; view.preview = null; view.page = 0; view.notice += '，已清空过期选择，请重新核对。'; }
+      view.sourceAliasesReviewed=false;view.subjectsMapped=false;view.environmentMapped = false; view.environmentReviewed = false; view.bindingsReviewed = false; view.subjectsReviewed = false; view.connectionsReviewed = false; view.resourcesReviewed = false;
+      if (/过期/.test(view.notice)) { choices = {}; view.preview = null; view.page = 0;view.sourceAliasChoices=undefined;view.subjectMappings=undefined;view.sourceAliasPage=null;view.targetPicker=null;view.notice += '，已清空过期选择，请重新核对。'; }
     } finally { view.busy = false; draw(); }
   }
   dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
@@ -106,6 +123,9 @@ export function openStoryboardBundleReview({ parent, fileName, connect, paintIco
   dialog.addEventListener('click', event => {
     const action = event.target.closest('[data-bundle-action]')?.dataset.bundleAction;
     if (action === 'close') { close(); return; } if (view.busy) return;
+    if(action==='aliases-close'){view.sourceAliasPage=null;draw();return;}
+    if(action==='aliases'){void run('aliases',{offset:0});return;}
+    if(['aliases-previous','aliases-next'].includes(action)&&view.sourceAliasPage){void run('aliases',{offset:view.sourceAliasPage.offset+(action==='aliases-next'?24:-24)});return;}
     const pick=event.target.closest('[data-bundle-target-for]'),select=event.target.closest('[data-bundle-target-select]'),clear=event.target.closest('[data-bundle-target-clear]');
     if(pick){view.targetIndex=Number(pick.dataset.bundleTargetFor);const row=view.preview?.subjectReview[view.targetIndex];if(row){focusChoice=null;void run('targets',{category:row.category,query:'',offset:0});}return;}
     if(select||clear){const index=clear?Number(clear.dataset.bundleTargetClear):view.targetIndex,source=view.preview?.subjectReview[index],target=select?view.targetPicker?.rows[Number(select.dataset.bundleTargetSelect)]:null;if(!source||select&&!target)return;
@@ -121,6 +141,12 @@ export function openStoryboardBundleReview({ parent, fileName, connect, paintIco
   });
   dialog.addEventListener('change', event => {
     if (view.busy || closed) return; const field = event.target;
+    if(field.matches('[data-bundle-source-reviewed]')){focusChoice=null;view.sourceAliasesReviewed=field.checked;draw();return;}
+    if(field.matches('[data-bundle-source-choice]')){
+      const row=view.sourceAliasPage?.rows[Number(field.dataset.bundleSourceChoice)];if(!row)return;
+      view.sourceAliasChoices={...view.sourceAliasChoices,[row.groupId]:row.candidateId};choices={};view.subjectMappings=[];view.targetPicker=null;view.sourceAliasesReviewed=false;focusChoice=null;
+      void run('alias-choice');return;
+    }
     if (field.matches('[data-bundle-environment]')) { focusChoice = null; view.environmentReviewed = field.checked; draw(); }
     else if (field.matches('[data-bundle-mapping]')) { focusChoice = null; view.environmentMapped = field.checked; draw(); }
     else if (field.matches('[data-bundle-bindings]')) { focusChoice = null; view.bindingsReviewed = field.checked; draw(); }
@@ -133,13 +159,13 @@ export function openStoryboardBundleReview({ parent, fileName, connect, paintIco
       const row = view.preview?.conflicts[Number(field.dataset.bundleChoice)]; if (!row) return;
       focusChoice = field.dataset.bundleChoice;
       if (field.value) choices[row.key] = field.value; else delete choices[row.key];
-      view.subjectsMapped=false;view.environmentMapped = false; view.environmentReviewed = false; view.bindingsReviewed = false; view.subjectsReviewed = false; view.connectionsReviewed = false; view.resourcesReviewed = false; view.preview = { ...view.preview, ready: false, needsRecheck: true, planDigest: '' }; void run('choose');
+      view.sourceAliasesReviewed=false;view.subjectsMapped=false;view.environmentMapped = false; view.environmentReviewed = false; view.bindingsReviewed = false; view.subjectsReviewed = false; view.connectionsReviewed = false; view.resourcesReviewed = false; view.preview = { ...view.preview, ready: false, needsRecheck: true, planDigest: '' }; void run('choose');
     }
   });
   parent.appendChild(dialog); draw();
   try { dialog.showModal(); } catch (error) { close(); throw error; }
   void (async () => {
-    try { session = await connect(); if (closed) { session.close(); return; } view.preview = await session.preview();view.subjectMappings=view.preview.subjectMappings; }
+    try { session = await connect(); if (closed) { session.close(); return; } view.preview = await session.preview();view.subjectMappings=view.preview.subjectMappings;view.sourceAliasChoices=view.preview.sourceAliasChoices; }
     catch (error) { view.notice = error?.message || '原包核对失败，请关闭后重选文件'; }
     finally { view.busy = false; draw(); }
   })();

@@ -11,6 +11,10 @@ import { validStoryboardConnectionReview } from './qianmu-storyboard-connection-
 import { storyboardResourceOriginsPage } from './qianmu-storyboard-resource-origins.js';
 import { createStoryboardEnvironmentReview } from './qianmu-storyboard-environment-map.js';
 import { deriveStoryboardSubjectBindings, compareMappedStoryboardSubjects, createStoryboardSubjectMapReview, validStoryboardSubjectTargetPage, assertSubjectMappingTargetsUnambiguous } from './qianmu-storyboard-subject-map.js';
+import {compareStoryboardSubjectEvidence} from './qianmu-storyboard-subject-evidence.js';
+import {planBundleUserAliases,bundleUserAliasPage,bundleUserAliasSummary,replayBundleUserAliasReceipt} from './qianmu-bundle-user-alias.js';
+import {validateBundleAliasInput} from './qianmu-bundle-user-alias-contract.js';
+import {createBundleSubjectMapReview,bundleAliasTargetsReady,BUNDLE_SUBJECT_MAP_SCOPE} from './qianmu-bundle-subject-map.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle_restore', submissionState: 'not_submitted' }); };
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -69,22 +73,22 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
   const stageOptions = { namespace, chatKey, guard: check, isCurrent: syncCurrent };
   // Never send Base64 media or Vibe bodies to the live configuration adapter.
   const configOptions = () => ({ settings: clone(payload.settings), chat: clone(payload.chat), imageUrls: clone(imageUrls), fingerprint: sourceDigest, ...(chatEvidence ? { chatEvidence: clone(chatEvidence) } : {}) });
-  async function inspectSubjects(bindings,subjectMappings=[]) {
-    if (!subjectEvidence) return null;
+  async function inspectSubjects(bindings,subjectMappings=[],evidence=subjectEvidence,includeTargetEvidence=false) {
+    if (!evidence) return null;
     if (typeof configuration.subjects !== 'function') fail('请更新前端以核对角色来源；不能绕过新包证据');
-    const result = await configuration.subjects({ fingerprint: sourceDigest, subjectEvidence: clone(subjectEvidence), subjectBindings: clone(bindings),...(subjectMappings.length?{subjectMappings:clone(subjectMappings)}:{}) }); await check();
-    if(subjectMappings.length){const verified=await compareMappedStoryboardSubjects(subjectEvidence,result.targetEvidence,bindings,subjectMappings);await check();
+    const result = await configuration.subjects({ fingerprint: sourceDigest, subjectEvidence: clone(evidence), subjectBindings: clone(bindings),...(subjectMappings.length?{subjectMappings:clone(subjectMappings)}:{}),...(includeTargetEvidence?{includeTargetEvidence:true}:{}) }); await check();
+    if(subjectMappings.length||includeTargetEvidence){const verified=subjectMappings.length?await compareMappedStoryboardSubjects(evidence,result.targetEvidence,bindings,subjectMappings):{...await compareStoryboardSubjectEvidence(evidence,result.targetEvidence,bindings),targetEvidence:result.targetEvidence};await check();
       if(verified.digest!==result.digest||verified.ready!==result.ready||await digest(verified.rows)!==await digest(result.rows))fail('角色映射目标核对返回不符');return verified;}
     const required = new Set(bindings.filter(row => row.archiveId).map(row => JSON.stringify([row.category,row.subjectKey])));
-    if (!hash(result?.digest) || typeof result.ready !== 'boolean' || !Array.isArray(result.rows) || result.rows.length !== subjectEvidence.subjects.length
-      || result.rows.some((row,index) => row.category !== subjectEvidence.subjects[index].category || row.subjectKey !== subjectEvidence.subjects[index].subjectKey
+    if (!hash(result?.digest) || typeof result.ready !== 'boolean' || !Array.isArray(result.rows) || result.rows.length !== evidence.subjects.length
+      || result.rows.some((row,index) => row.category !== evidence.subjects[index].category || row.subjectKey !== evidence.subjects[index].subjectKey
         || row.required !== required.has(JSON.stringify([row.category,row.subjectKey])) || !['matched','changed','missing','unverified'].includes(row.state))
       || result.ready !== !result.rows.some(row => row.required && row.state === 'missing')) fail('角色来源核对返回不完整');
     return result;
   }
   async function verifySubjects(latest) {
     if (!subjectEvidence) return;
-    const current = await inspectSubjects(latest.view.bindingReview,latest.view.subjectMappings);
+    const current = await inspectSubjects(latest.view.bindingReview,latest.view.subjectMappings,latest.sourceEvidence,Boolean(latest.aliasPlan?.changed));
     if (!current.ready || current.digest !== latest.subjects.digest) fail('角色或人设来源已变化，未继续套用绑定；请重新核对');
   }
   async function inspectSubjectMap(review,required=false){
@@ -107,26 +111,42 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
     if (await journal.loadMutation(namespace)) fail('配置有待核对导入，请先通过“核对导入”处理，不会自动重放');
     await check(); return record;
   }
-  async function inspect(decisions = {},mappingInput) {
+  async function inspect(decisions = {},mappingInput,aliasInput) {
     choose = null; const choices = clone(decisions); await checkSource(); const record = await pendingRecords(); await inspectEnvironmentMap();
-    let requested=mappingInput;
-    if(requested===undefined&&record?.phase!=='verified'&&record?.subjectMappingDigest){
+    let requested=mappingInput,aliasChoices=aliasInput;
+    if((requested===undefined||aliasChoices===undefined)&&record?.phase!=='verified'&&record?.subjectMappingDigest){
       const saved=await journal.loadSubjectMap?.(namespace,record.subjectMappingDigest);await check();
       if(saved&&(saved.review.sourceDigest!==sourceDigest||saved.review.chatHash!==chatHash||saved.review.environmentDigest!==(environmentReview?.digest||null)))fail('未完成的角色映射来源凭据不符，请保留原包核对');
       // An interrupted receipt write must leave a route to explicitly choose the original mapping again.
-      requested=saved?saved.review.rows.map(({category,sourceKey,targetKey})=>({category,sourceKey,targetKey})):[];
+      if(saved?.review.scope===BUNDLE_SUBJECT_MAP_SCOPE){
+        await replayBundleUserAliasReceipt(saved.review.projection,{namespace,sourceDigest,bindings:characters.bindings,evidence:subjectEvidence});await check();
+        if(requested===undefined)requested=saved.review.mappings;
+        if(aliasChoices===undefined)aliasChoices=Object.fromEntries(saved.review.projection.selections.map(row=>[row.groupId,row.candidateId]));
+      }else if(requested===undefined)requested=saved?saved.review.rows.map(({category,sourceKey,targetKey})=>({category,sourceKey,targetKey})):[];
     }
+    aliasChoices??={};validateBundleAliasInput({choices:aliasChoices,offset:0});
+    const aliasPlan=subjectEvidence?await planBundleUserAliases({library:characters,evidence:subjectEvidence,sourceDigest,choices:aliasChoices}):null;await check();
+    if(!subjectEvidence&&Object.keys(aliasChoices).length)fail('旧包缺少来源摘要，不能使用USER整理选择');
+    if(aliasPlan&&!aliasPlan.ready){
+      return {view:{namespace,chatHash,sourceDigest,record,decisions:{},conflicts:[],subjectReview:[],subjectMappings:[],subjectMappingReview:null,subjectMappingConflict:Boolean(record?.subjectMappingDigest),
+        sourceAliases:bundleUserAliasSummary(aliasPlan),sourceAliasChoices:clone(aliasChoices),summary:clone(inspected.summary),characterSummary:{added:0,replaced:0,kept:0},bindingReview:[],images:[],ready:false,planDigest:'',settingsVerified:false,identityVerified:false,environmentReview:clone(environmentReview),sourceLabelsMatched:environmentReview?.state==='matched'}};
+    }
+    const incoming=aliasPlan?.value||characters,evidence=aliasPlan?.evidence||subjectEvidence;
     if(requested!==undefined&&!Array.isArray(requested))fail('角色目标映射格式无效');
     if(requested?.length&&!subjectEvidence)fail('旧包缺少人物来源摘要，不能猜测身份映射，请先恢复原ST角色');
-    const mapped=requested?.length?await deriveStoryboardSubjectBindings(characters,subjectEvidence,requested,sourceDigest):{value:characters,mappings:[],lineage:[]};await check();
+    const mapped=requested?.length?await deriveStoryboardSubjectBindings(incoming,evidence,requested,sourceDigest):{value:incoming,mappings:[],lineage:[]};await check();
     const localCharacters = await characterStore.backup(namespace, { isCurrent: syncCurrent }); await check();
     if(mapped.mappings.length)assertSubjectMappingTargetsUnambiguous(localCharacters,mapped.mappings);
+    if(aliasPlan?.changed)assertSubjectMappingTargetsUnambiguous(localCharacters,mapped.value.bindings.map(row=>({category:row.category,targetKey:row.subjectKey})));
     const characterPlan = planCharacterLibraryRestore(localCharacters, mapped.value, { decisions: choices });
-    const subjects = await inspectSubjects(characterPlan.bindingWrites,mapped.mappings);
-    const subjectMapReview=mapped.mappings.length&&subjects.ready?await createStoryboardSubjectMapReview({namespace,chatHash,sourceDigest,environmentDigest:environmentReview?.digest||null,sourceEvidence:subjectEvidence,targetEvidence:subjects.targetEvidence,lineage:mapped.lineage,mappings:mapped.mappings}):null;
+    const subjects = await inspectSubjects(characterPlan.bindingWrites,mapped.mappings,evidence,Boolean(aliasPlan?.changed));
+    const aliasTargetsReady=aliasPlan?.changed?bundleAliasTargetsReady(aliasPlan,subjects.targetEvidence,mapped.mappings):true;
+    const subjectMapReview=aliasPlan?.changed?(subjects.ready&&aliasTargetsReady?await createBundleSubjectMapReview({namespace,chatHash,sourceDigest,environmentDigest:environmentReview?.digest||null,projection:aliasPlan.receipt,targetEvidence:subjects.targetEvidence,mappings:mapped.mappings}):null)
+      :mapped.mappings.length&&subjects.ready?await createStoryboardSubjectMapReview({namespace,chatHash,sourceDigest,environmentDigest:environmentReview?.digest||null,sourceEvidence:evidence,targetEvidence:subjects.targetEvidence,lineage:mapped.lineage,mappings:mapped.mappings}):null;
     await inspectSubjectMap(subjectMapReview);
     const view = { namespace, chatHash, sourceDigest, record, decisions: choices, conflicts: characterPlan.conflicts, subjectReview: subjects?.rows || [],
-      subjectMappings:clone(mapped.mappings),subjectMappingReview:subjectMapReview?{digest:subjectMapReview.digest,count:mapped.mappings.length,bindings:mapped.lineage.length}:null,
+      subjectMappings:clone(mapped.mappings),subjectMappingReview:subjectMapReview?{digest:subjectMapReview.digest,count:mapped.mappings.length,bindings:aliasPlan?.changed?aliasPlan.before.length:mapped.lineage.length}:null,
+      ...(aliasPlan?.changed?{sourceAliases:bundleUserAliasSummary(aliasPlan,aliasTargetsReady),sourceAliasChoices:clone(aliasChoices)}:{}),
       subjectMappingConflict:Boolean(record&&record.phase!=='verified'&&record.subjectMappingDigest!==(subjectMapReview?.digest||undefined)),
       summary: clone(inspected.summary), characterSummary: characterPlan.summary, bindingReview: clone(characterPlan.bindingWrites), images: [],
       ready: false, planDigest: '', settingsVerified: false, identityVerified: false, environmentReview: clone(environmentReview), sourceLabelsMatched: environmentReview?.state === 'matched' };
@@ -164,8 +184,8 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
     view.workflowSummary = workflowPlan.summary; view.poolSummary = poolPlan.summary;
     view.vibe = vibe; view.configuration = clone(config.summary || {});
     view.planDigest = await digest({ namespace, chatHash, sourceDigest, record, baseline, choices, expected, vibe, configuration: config.digest, images: view.images, ...(subjects ? { subjects: subjects.digest } : {}), ...(environmentReview ? { environment: environmentReview.digest } : {}),...(subjectMapReview?{subjectMapping:subjectMapReview.digest}:{}) });
-    view.ready = !view.images.some(row => row.state === 'conflict') && subjects?.ready !== false && !view.subjectMappingConflict; await check(); captureChoices();
-    return { view, baseline, expected, config, subjects, subjectMapReview, mappedCharacters:mapped.value, originals: [...originals.values()] };
+    view.ready = !view.images.some(row => row.state === 'conflict') && subjects?.ready !== false && aliasTargetsReady && !view.subjectMappingConflict; await check(); captureChoices();
+    return { view, baseline, expected, config, subjects, subjectMapReview, aliasPlan, sourceEvidence:evidence, mappedCharacters:mapped.value, originals: [...originals.values()] };
   }
   async function verifyResources(latest) {
     for (const [key, store] of [['workflows', workflowStore], ['pools', poolStore], ['characters', characterStore]]) {
@@ -186,19 +206,21 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
     async resources(options = {}) { if(busy)fail('恢复正在执行，请勿重复操作');await check();return {...storyboardResourceOriginsPage(inspected.origins,options),sourceDigest}; },
     async targets(options = {}) { if(busy)fail('恢复正在执行，请勿重复操作');await check();if(!subjectEvidence||!configuration.targets)fail('目标目录暂不可用');
       const result=await configuration.targets({...options,fingerprint:sourceDigest});await check();if(!validStoryboardSubjectTargetPage(result))fail('角色目标目录返回无效');return {...result,sourceDigest}; },
-    async preview(decisions = {},mappings) { if (busy) fail('恢复正在执行，请勿重复操作'); return clone((await inspect(decisions,mappings)).view); },
+    async aliases(input){if(busy)fail('恢复正在执行，请勿重复操作');validateBundleAliasInput(input);await check();if(!subjectEvidence)fail('旧包缺少来源摘要');
+      const plan=await planBundleUserAliases({library:characters,evidence:subjectEvidence,sourceDigest,choices:input.choices});await check();return bundleUserAliasPage(plan,input.offset);},
+    async preview(decisions = {},mappings,aliasChoices) { if (busy) fail('恢复正在执行，请勿重复操作'); return clone((await inspect(decisions,mappings,aliasChoices)).view); },
     async choose(decisions = {}) {
       if (busy) fail('恢复正在执行，请勿重复操作'); const snapshot = choose, choices = clone(decisions); await check();
       if (!snapshot || snapshot !== choose) fail('冲突选择已过期，请重新核对');
       const view = snapshot(choices); await check(); if (snapshot !== choose) fail('冲突选择已过期，请重新核对'); return view;
     },
-    async restore(prepared, { confirmed = false, environmentReviewed = false, environmentMapped = false, bindingsReviewed = false, subjectsReviewed = false, subjectsMapped = false, connectionsReviewed = false, resourcesReviewed = false } = {}) {
+    async restore(prepared, { confirmed = false, environmentReviewed = false, environmentMapped = false, bindingsReviewed = false, subjectsReviewed = false, subjectsMapped = false, sourceAliasesReviewed = false, connectionsReviewed = false, resourcesReviewed = false } = {}) {
       if (busy) fail('恢复正在执行，请勿重复操作');
       if (confirmed !== true || environmentReviewed !== true || prepared?.namespace !== namespace || prepared.sourceDigest !== sourceDigest || !hash(prepared.planDigest)) fail('请先核对整包内容、原环境及原聊天，并明确确认恢复');
       if (!locks?.request) fail('浏览器不支持跨页恢复锁，尚未写入任何原件');
       const approved = clone(prepared); busy = true;
       try { return await locked(`qianmu:package-import:${namespace}`, () => locked(`qianmu:character-restore:${namespace}`, async () => {
-        const latest = await inspect(approved.decisions,approved.subjectMappings);
+        const latest = await inspect(approved.decisions,approved.subjectMappings,approved.sourceAliasChoices);
         if (!latest.view.ready) fail('请处理全部角色、绑定和原图冲突');
         if (latest.view.planDigest !== approved.planDigest) fail('确认后资源、配置或恢复记录已变化，请重新核对');
         if (latest.view.bindingReview.length && bindingsReviewed !== true) fail('请逐项核对角色及聊天绑定；同名不是身份验证');
@@ -206,7 +228,8 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
         if (latest.view.configuration.connections.length && connectionsReviewed !== true) fail('请核对连接差异及需要重新填写的授权；当前连接草稿不会切换');
         if (latest.view.summary.resourceOrigins.total && resourcesReviewed !== true) fail('请核对包内原件与外部依赖；模型文件、节点插件和授权不会自动恢复');
         if (environmentDigest && environmentMapped !== true) fail('请单独确认从备份来源到当前 ST 的环境映射；不会自动信任上次确认');
-        if(latest.subjectMapReview&&subjectsMapped!==true)fail('请单独确认角色／人设目标映射；不会改写历史画面身份');
+        if(latest.view.subjectMappings.length&&subjectsMapped!==true)fail('请单独确认角色／人设目标映射；不会改写历史画面身份');
+        if(latest.aliasPlan?.changed&&sourceAliasesReviewed!==true)fail('请单独确认原包USER地址选择及原关系保全，不会自动采用冲突档案');
         await checkSource();
         let checkpoint = await journal.prepareResource({ namespace, kind: 'bundle', chatHash, sourceDigest, planDigest: approved.planDigest, ...(environmentDigest ? { environmentDigest } : {}),...(latest.subjectMapReview?{subjectMappingDigest:latest.subjectMapReview.digest}:{}) }, { previous: latest.view.record, confirmed: true, isCurrent: syncCurrent });
         const advance = async phase => { await checkSource(); await inspectEnvironmentMap(true); await inspectSubjectMap(latest.subjectMapReview,true); await verifySubjects(latest); checkpoint = await journal.updateResource(checkpoint, phase, { isCurrent: syncCurrent }); await check(); };
