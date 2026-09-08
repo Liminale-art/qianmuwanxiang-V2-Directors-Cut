@@ -1,4 +1,5 @@
 import {normalizeCharacterArchive,characterBindingTarget,characterArchiveError} from './qianmu-character-archive.js';
+import {summarizeCharacterStorage} from './qianmu-character-storage.js';
 const fail = (code,message) => { throw characterArchiveError(code,message); };
 const identifier = id => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(id);
 const account = namespace => { if (typeof namespace !== 'string' || !/^st-user:.+/.test(namespace) || namespace.length > 512 || /[\u0000-\u001f\u007f]/.test(namespace)) fail('account','无法确认当前 ST 账户'); return namespace; };
@@ -159,6 +160,18 @@ export function createCharacterArchiveStore({indexedDB=globalThis.indexedDB,keyR
         withUsage(tx,read,namespace,usage=>{if(usage.count<1||usage.bytes<head.bytes)fail('index','角色库计值异常，不会删除原数据');tx.objectStore('heads').delete(key);tx.objectStore('documents').delete(key);tx.objectStore('usage').put({...usage,count:usage.count-1,bytes:usage.bytes-head.bytes});set({removed:true});});
       });
     }));},
+    async storageSummary(namespace,{isCurrent=()=>true}={}){account(namespace);return operation('readonly',(tx,read,set)=>{
+      read(tx.objectStore('heads').index('namespace').getAll(keyRange.only(namespace),513),heads=>{
+        if(heads.length>512)fail('capacity','角色档案超过上限');for(const row of heads)validateHead(row,namespace);
+        read(tx.objectStore('bindings').index('namespace').getAll(keyRange.only(namespace),2049),bindings=>{
+          if(bindings.length>2048)fail('capacity','角色绑定超过上限');
+          read(tx.objectStore('usage').get(namespace),usage=>{
+            const prefix=JSON.stringify([namespace]).slice(0,-1)+',';
+            read(tx.objectStore('documents').getAllKeys(keyRange.bound(prefix,prefix+'\uffff'),513),documentKeys=>set(summarizeCharacterStorage(namespace,{heads,bindings,usage,documentKeys})));
+          });
+        });
+      });
+    },isCurrent);},
     async usage(namespace){account(namespace);return operation('readonly',(tx,read,set)=>withUsage(tx,read,namespace,value=>set({...value,limit:16*1024*1024})));},
     close(){closed=true;for(const tx of pending)try{tx.abort();}catch(_){}db?.close();db=null;opening=null;},
   });

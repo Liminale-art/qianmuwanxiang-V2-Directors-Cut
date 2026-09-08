@@ -17,6 +17,7 @@
     "qianmu-storyboard-restore-storage-worker.js",
     "qianmu-storyboard-restore-storage-runtime.js",
     "qianmu-storyboard-restore-storage-view.js",
+    "qianmu-character-storage.js",
     "qianmu-character-backup-restore.js",
     "qianmu-image-restore-contract.js",
     "qianmu-image-restore-service.js",

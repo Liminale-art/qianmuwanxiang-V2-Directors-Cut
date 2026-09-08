@@ -211,6 +211,7 @@ const featureRuntime = createFeatureRuntime({
   storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.105') },
   storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.105') },
   storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.105') },
+  characterStorage: { label: '角色库空间', load: () => import('./qianmu-character-storage.js?v=1.59.105') },
   storyboardPackageStage: { label: '分镜素材暂存', load: () => import('./qianmu-storyboard-package-stage.js?v=1.59.105') },
   storyboardPackageRuntime: { label: '分镜原件打包', load: () => import('./qianmu-storyboard-package-runtime.js?v=1.59.105') },
   storyboardPackageStore: { label: '分镜原件读取', load: () => import('./qianmu-vibe-asset-store.js?v=1.59.105') },
@@ -7922,7 +7923,7 @@ function storageSettingsSnapshotWithoutDiagnostics() {
 async function collectStorageInventory() {
   const storageApi = globalThis.navigator?.storage;
   const storageEpoch=storyboardAdmissionEpoch;
-  const [originEstimate, idb, orphanReaderBlobs, imageAttempts, imageChannels, serviceReceipts, comfyReceipts, comfyStorage, vibeStorage, restoreStorage] = await Promise.all([
+  const [originEstimate, idb, orphanReaderBlobs, imageAttempts, imageChannels, serviceReceipts, comfyReceipts, comfyStorage, vibeStorage, restoreStorage, characterStorage] = await Promise.all([
     storageApi?.estimate?.().catch(() => null) || Promise.resolve(null),
     blobStore.estimateBlobStoreUsage(),
     blobStore.auditOrphanedReaderBlobs(),
@@ -7939,9 +7940,13 @@ async function collectStorageInventory() {
     Promise.all([featureRuntime.load('storyboardRestoreStorage'),featureRuntime.load('imageAdmission')]).then(([module,identity])=>module.collectStoryboardRestoreStorage({
       resolveNamespace:()=>identity.resolveImageAccountNamespace(),valid:()=>storageEpoch===storyboardAdmissionEpoch,
     })).catch(error=>({status:'unavailable',bytes:null,error:error?.message||'分镜恢复记录暂不可读取'})),
+    Promise.all([featureRuntime.load('characterStorage'),featureRuntime.load('imageAdmission')]).then(([module,identity])=>module.collectCharacterStorage({
+      resolveNamespace:()=>identity.resolveImageAccountNamespace(),valid:()=>storageEpoch===storyboardAdmissionEpoch,
+    })).catch(error=>({status:'unavailable',bytes:null,error:error?.message||'角色库暂不可读取'})),
   ]);
   if(vibeStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(vibeStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
   if(restoreStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(restoreStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
+  if(characterStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(characterStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
   if(storageEpoch!==storyboardAdmissionEpoch)throw new Error('储存页面已变化，请重新盘点');
   const pressure = blobStore.classifyStoragePressure(originEstimate || {});
   const settingsBytes = storageJsonBytes(storageSettingsSnapshotWithoutDiagnostics());
@@ -7979,9 +7984,11 @@ async function collectStorageInventory() {
   const vibeBytes=vibeStorage.status==='ready'?vibeStorage.bytes:0;
   const restoreBytes=restoreStorage.status==='ready'?restoreStorage.bytes:0;
   if(restoreStorage.status==='ready')addCategory('logs',restoreBytes,restoreStorage.count);
-  const trackedBytes = Number(idb.totalBytes || 0) + settingsBytes + currentChatBytes + diagnosticsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes;
+  const characterBytes=characterStorage.status==='ready'?characterStorage.bytes:0;
+  if(characterStorage.status==='ready')addCategory('characters',characterBytes,characterStorage.documents.count);
+  const trackedBytes = Number(idb.totalBytes || 0) + settingsBytes + currentChatBytes + diagnosticsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes;
   const recoverableBytes = Number(idb.recoverableBytes || 0) + diagnosticsBytes;
-  const manageableBytes = Number(idb.totalBytes || 0) + diagnosticsBytes + portableTtsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes;
+  const manageableBytes = Number(idb.totalBytes || 0) + diagnosticsBytes + portableTtsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes;
   return {
     sampledAt: Date.now(),
     origin: {
@@ -8006,6 +8013,7 @@ async function collectStorageInventory() {
     comfyStorage,
     vibeStorage,
     restoreStorage,
+    characterStorage,
   };
 }
 
@@ -8036,11 +8044,11 @@ async function refreshStorageInventory(force = false) {
 }
 
 const STORAGE_CATEGORY_LABELS = Object.freeze({
-  images: '图片', vibes: 'Vibe 文件', audio: '音频', video: '动态影片', reader: '伴读资料', notes: '固定便笺', logs: '日志与记录', cache: '临时缓存', settings: '设置与预设', chat: '当前聊天数据', other: '其他',
+  images: '图片', vibes: 'Vibe 文件', characters: '角色资料', audio: '音频', video: '动态影片', reader: '伴读资料', notes: '固定便笺', logs: '日志与记录', cache: '临时缓存', settings: '设置与预设', chat: '当前聊天数据', other: '其他',
 });
 
 const STORAGE_CATEGORY_COLORS = Object.freeze({
-  images: '#5aa9ff', vibes: '#b29bc9', audio: '#ff9f43', video: '#6f8fff', reader: '#9b7cff', notes: '#f2c94c', logs: '#ff647c', cache: '#3dc7c9', settings: '#65c466', chat: '#8d94a6', other: '#747b88',
+  images: '#5aa9ff', vibes: '#b29bc9', characters: '#c985b1', audio: '#ff9f43', video: '#6f8fff', reader: '#9b7cff', notes: '#f2c94c', logs: '#ff647c', cache: '#3dc7c9', settings: '#65c466', chat: '#8d94a6', other: '#747b88',
 });
 
 function renderStorageManagementCard() {
@@ -8058,7 +8066,7 @@ function renderStorageManagementCard() {
   const scaleBytes = Math.max(1, data.origin.quota > 0 ? Math.max(data.origin.quota, usedForScale) : usedForScale);
   const barItems = [
     ...categories.map((item) => ({ key: item.category, label: STORAGE_CATEGORY_LABELS[item.category] || item.category, bytes: Number(item.bytes) || 0, color: STORAGE_CATEGORY_COLORS[item.category] || STORAGE_CATEGORY_COLORS.other })),
-    ...(unknownUsage > 0 ? [{ key: 'origin-other', label: data.vibeStorage?.status==='unavailable'||data.restoreStorage?.status==='unavailable'?'未盘点站点数据':'其他 ST 数据', bytes: unknownUsage, color: '#555d6b' }] : []),
+    ...(unknownUsage > 0 ? [{ key: 'origin-other', label: [data.vibeStorage,data.restoreStorage,data.characterStorage].some(row=>row?.status==='unavailable')?'未盘点站点数据':'其他 ST 数据', bytes: unknownUsage, color: '#555d6b' }] : []),
     ...(freeBytes > 0 ? [{ key: 'free', label: '可用空间', bytes: freeBytes, color: 'rgba(127, 127, 127, .18)' }] : []),
   ];
   const storageBar = barItems.map((item) => `<i class="sd-storage-segment sd-storage-${htmlEscape(item.key)}" style="--sd-storage-weight:${Math.max(0, item.bytes / scaleBytes)};--sd-storage-color:${item.color}" title="${htmlEscape(item.label)} ${htmlEscape(formatStorageBytes(item.bytes))}"></i>`).join('');
@@ -8091,6 +8099,8 @@ function renderStorageManagementCard() {
     <div class="sd-storage-actions"><span>Comfy 本机领取记录 · ${Number(data.comfyReceipts?.count) || 0} 条 · ${htmlEscape(formatStorageBytes(data.comfyReceipts?.bytes || 0))}</span><button type="button" class="sd-btn sd-storage-comfy-receipts">收片管理</button></div>
     <div class="sd-storage-actions"><span>${data.restoreStorage?.status==='ready'?`分镜恢复记录 · ${data.restoreStorage.count} 条 · ${htmlEscape(formatStorageBytes(data.restoreStorage.bytes))}`:'恢复记录占用暂不可读取 · 当前总计不含此部分'}</span><button type="button" class="sd-btn sd-storage-restores">恢复记录管理</button></div>
     ${data.restoreStorage?.status==='ready'?'':`<p class="sd-storage-pressure is-warning">${htmlEscape(data.restoreStorage?.error||'请重新盘点或进入恢复记录管理核对；未修改记录。')}</p>`}
+    <div class="sd-storage-actions"><span>${data.characterStorage?.status==='ready'?`角色库 · ${data.characterStorage.documents.count} 份档案 · ${htmlEscape(formatStorageBytes(data.characterStorage.documents.bytes))}<br>绑定 ${data.characterStorage.bindings.count} 项 · ${htmlEscape(formatStorageBytes(data.characterStorage.bindings.bytes))} · 索引元数据 ${htmlEscape(formatStorageBytes(data.characterStorage.indexes.bytes))}<br>按本机记录计值，不含服务器参考图`:'角色库占用暂不可读取 · 当前总计不含此部分'}</span><button type="button" class="sd-btn sd-storage-characters">角色库管理</button></div>
+    ${data.characterStorage?.status==='ready'?'':`<p class="sd-storage-pressure is-warning">${htmlEscape(data.characterStorage?.error||'请重新盘点或进入角色库核对；未修改档案。')}</p>`}
     ${(data.comfyStorage?.errors || []).map(message=>`<p class="sd-storage-pressure is-warning">${htmlEscape(message)}</p>`).join('')}
     ${[['workflows','Comfy 工作流库'],['pools','Comfy 候选方案'],['scenes','Comfy 续场记录']].map(([key,label])=>`<div class="sd-storage-actions"><span>${label} · 当前账户 · ${Number(data.comfyStorage?.[key]?.count)||0} 项 · ${htmlEscape(formatStorageBytes(data.comfyStorage?.[key]?.bytes||0))}</span>${key!=='scenes'?`<button type="button" class="sd-btn" data-storage-comfy-library="${key}">管理</button>`:''}</div>`).join('')}
     <p class="sd-storage-scope">此处是浏览器分配给当前 ST 站点来源的空间，不代表 VPS 磁盘总容量；千幕仅统计可明确归因的本地内容。</p>
@@ -8550,6 +8560,10 @@ async function storyboardOpenRestoreStorage(root,expectedNamespace) {
 }
 
 function bindStorageManagementEvents(root) {
+  root.querySelector('button.sd-storage-characters')?.addEventListener('click',()=>{
+    storageInventoryState={...storageInventoryState,sampledAt:0};
+    if(activeTab!=='imagegen')storyboardBeginSession();activeTab='imagegen';storyboardNavigate(root,{view:'characters'});
+  });
   root.querySelector('button.sd-storage-restores')?.addEventListener('click',()=>void storyboardOpenRestoreStorage(root,storageInventoryState.data?.restoreStorage?.namespace));
   root.querySelector('button.sd-storage-vibes')?.addEventListener('click',()=>{
     storageInventoryState={...storageInventoryState,sampledAt:0};
