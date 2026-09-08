@@ -5,6 +5,8 @@
   "files": [
     "qianmu-user-identity.js",
     "qianmu-user-alias.js",
+    "qianmu-user-alias-bindings.js",
+    "qianmu-bundle-user-alias.js",
     "qianmu-user-alias-contract.js",
     "qianmu-user-alias-runtime.js",
     "qianmu-user-alias-view.js",

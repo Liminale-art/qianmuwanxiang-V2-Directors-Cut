@@ -32,6 +32,12 @@ test('alias planning requires an explicit conflicting archive choice and retains
   assert.equal(selectCharacterBinding(next.after,subject,'new-chat').archiveId,'bob');assert.equal(selectCharacterBinding(next.after,subject,chatKey).archiveId,'');assert.equal(next.after.find(row=>row.chatKey==='other-chat').revision,'unchanged');
   assert.deepEqual(await inspectUserAliasReview(next.review),next.review);assert.deepEqual(await inspectStoryboardSubjectMapReview(next.review),next.review);
 });
+
+test('shared selector keeps already-saved local v2 receipt and approval digests byte-compatible with faeca17',async()=>{
+  const {plan:p}=await approved(aliasFixture());
+  assert.equal(p.review.digest,'895f8a62b2a15ec72da31fe03671afc096c00d24e31cc2982d72a9b57a88a722');
+  assert.equal(p.digest,'a398827453cd2b2348acd0a9ffdb986e11c1ffbdfd598a182350f1245ddb4a9b');
+});
 test('forged winner, changed namespace, lineage loss, rewritten scope or unknown fields cannot be made valid by rehashing',async()=>{
   const {plan:p}=await approved(aliasFixture());
   for(const change of [r=>r.lineage[0].target.archiveId='alice',r=>r.lineage[0].source.scope=r.lineage[0].source.scope==='chat'?'default':'chat',r=>r.lineage.pop(),r=>r.namespace='st-user:other',r=>r.extra='secret',r=>r.selections[0].candidateId='f'.repeat(64)]){
