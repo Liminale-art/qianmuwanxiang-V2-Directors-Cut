@@ -10,14 +10,49 @@ const current = check => { if (check() !== true) fail('角色恢复页面或账�
 const bindingKey = row => JSON.stringify([row.id, row.revision, row.version]);
 const receipt = row => imageRestoreReceipt(Object.fromEntries(['url', 'sha256', 'mime', 'bytes'].map(key => [key, row[key]])));
 
+// A choice snapshot contains only conflict summaries, byte deltas and binding identifiers, never document/image bodies.
+// It is a UI draft, not a restore authorization. The full planner and dependency checks still run on preview and commit.
+function choiceSnapshot(local, source, plan, view) {
+  const localBytes = new Map(local.archives.map(row => [row.head.id, row.head.bytes]));
+  const deltas = new Map(source.archives.map(row => [`archive:${row.head.id}`, row.head.bytes - (localBytes.get(row.head.id) || 0)]));
+  const keyOf = row => `binding:${JSON.stringify([row.category, row.subjectKey, row.scope, row.chatKey])}`;
+  const bindingConflicts = new Set(plan.conflicts.filter(row => row.kind === 'binding').map(row => row.key));
+  const bindingAdds = new Set(plan.bindingWrites.filter(row => !bindingConflicts.has(keyOf(row))).map(keyOf));
+  const bindings = structuredClone(source.bindings.filter(row => bindingAdds.has(keyOf(row)) || bindingConflicts.has(keyOf(row))));
+  const initial = structuredClone(view);
+  for (const row of initial.conflicts) {
+    if (row.choice === 'local') initial.summary.kept--;
+    if (row.choice === 'incoming') { initial.summary.replaced--; if (row.kind === 'archive') initial.summary.bytes -= deltas.get(row.key); }
+    row.choice = '';
+  }
+  const keys = new Set(initial.conflicts.map(row => row.key));
+  // All resource states and approval digests expire when changing a choice, including when changing it back.
+  initial.ready = false; initial.needsRecheck = true; initial.images = []; initial.workflowSummary = null;
+  initial.workflowDigest = null; initial.planDigest = ''; initial.bindingReview = [];
+  return decisions => {
+    if (!decisions || typeof decisions !== 'object' || Array.isArray(decisions) || Object.keys(decisions).some(key => !keys.has(key))) fail('冲突选择已过期，请重新核对');
+    const next = structuredClone(initial); next.decisions = Object.fromEntries(Object.keys(decisions).map(key => [key, decisions[key]]));
+    for (const row of next.conflicts) {
+      const choice = Object.hasOwn(decisions, row.key) ? decisions[row.key] : undefined;
+      if (choice !== undefined && !['local', 'incoming'].includes(choice)) fail('请选择保留本机或使用备份');
+      row.choice = choice || '';
+      if (choice === 'local') next.summary.kept++;
+      if (choice === 'incoming') { next.summary.replaced++; if (row.kind === 'archive') next.summary.bytes += deltas.get(row.key); }
+    }
+    next.bindingReview = structuredClone(bindings.filter(row => bindingAdds.has(keyOf(row)) || next.decisions[keyOf(row)] === 'incoming'));
+    next.choicesReady = next.conflicts.every(row => row.choice);
+    return next;
+  };
+}
+
 // One immutable source per session. Metadata never enters settings; original images are verified before the final IDB transaction.
 export async function createCharacterRestoreSession(namespace, input, { store, workflowStore, images, journal, guard = async () => {}, isCurrent = () => true, locks = globalThis.navigator?.locks } = {}) {
   const source = structuredClone(input); if (source.namespace !== namespace) fail('角色备份属于另一 ST 账户，请在目标环境显式重新绑定');
   await inspectCharacterBackupFile(source, { guard }); await guard(); current(isCurrent);
   const sourceDigest = await digest({ ...source, images: source.images.map(({ data: _, ...row }) => row) });
   const imageData = new Map(source.images.map(row => [row.sha256, row.data]));
-  let stopped = false;
-  const check = async () => { if (stopped) fail('角色恢复会话已结束，请重新选择原备份'); await guard(); current(isCurrent); };
+  let stopped = false, choose = null;
+  const check = async () => { if (stopped) fail('角色恢复会话已结束，请重新选择原备份'); await guard(); if (stopped) fail('角色恢复会话已结束，请重新选择原备份'); current(isCurrent); };
   const syncCurrent = () => !stopped && isCurrent() === true;
   async function dependencies(plan, decisions) {
     const conflicts = new Set(plan.conflicts.filter(row => row.kind === 'archive').map(row => row.key));
@@ -35,6 +70,7 @@ export async function createCharacterRestoreSession(namespace, input, { store, w
     return { originals: [...originals.values()], bindings: [...bindings.values()], workflows };
   }
   async function inspect(decisions = {}) {
+    choose = null;
     const choices = structuredClone(decisions); await check();
     const local = await store.backup(namespace, { isCurrent: syncCurrent }); await check();
     const plan = planCharacterLibraryRestore(local, source.library, { decisions: choices });
@@ -42,7 +78,7 @@ export async function createCharacterRestoreSession(namespace, input, { store, w
     if (record && record.sourceDigest !== sourceDigest && record.phase !== 'verified') fail('有另一份尚未完成的角色恢复，请先选择原备份或明确结束其核对');
     const base = { namespace, sourceDigest, libraryDigest: await digest(local), decisions: choices, conflicts: plan.conflicts, summary: plan.summary,
       bindingReview: structuredClone(plan.bindingWrites), ready: plan.ready, record, images: [], workflowSummary: null, workflowDigest: null, planDigest: '' };
-    if (!plan.ready) return { view: base, plan, dependencies: null };
+    if (!plan.ready) { await check(); choose = choiceSnapshot(local, source.library, plan, base); return { view: base, plan, dependencies: null }; }
     const needed = await dependencies(plan, choices);
     if (needed.workflows) {
       if (!workflowStore) fail('恢复所需的工作流库未就绪');
@@ -59,7 +95,7 @@ export async function createCharacterRestoreSession(namespace, input, { store, w
     }
     base.ready = !base.images.some(row => row.state === 'conflict');
     base.planDigest = await digest({ namespace, sourceDigest, libraryDigest: base.libraryDigest, workflowDigest: base.workflowDigest, decisions: choices });
-    await check(); return { view: base, plan, dependencies: needed };
+    await check(); choose = choiceSnapshot(local, source.library, plan, base); return { view: base, plan, dependencies: needed };
   }
   async function verifyWorkflows(needed) {
     if (!needed.workflows) return;
@@ -77,6 +113,13 @@ export async function createCharacterRestoreSession(namespace, input, { store, w
   return Object.freeze({
     sourceDigest,
     async preview(decisions = {}) { return (await inspect(decisions)).view; },
+    async choose(decisions = {}) {
+      const snapshot = choose, captured = structuredClone(decisions); await check();
+      if (!snapshot || snapshot !== choose) fail('选择快照已失效，请重新核对');
+      const next = snapshot(captured); await check();
+      if (snapshot !== choose) fail('选择快照已失效，请重新核对');
+      return next;
+    },
     async restore(prepared, { confirmed = false, bindingsReviewed = false } = {}) {
       if (confirmed !== true || prepared?.namespace !== namespace || prepared.sourceDigest !== sourceDigest || !hash(prepared.planDigest) || !hash(prepared.libraryDigest)) fail('请先核对并确认角色库恢复');
       if (!locks?.request) fail('浏览器不支持跨页恢复锁，尚未写入原图或档案');
@@ -116,6 +159,6 @@ export async function createCharacterRestoreSession(namespace, input, { store, w
         }
       });
     },
-    close() { stopped = true; },
+    close() { stopped = true; choose = null; },
   });
 }

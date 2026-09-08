@@ -82,7 +82,7 @@ export function planCharacterLibraryRestore(local, incoming, { decisions = {} } 
     const key = characterBackupBindingKey(row), previous = bindings.get(key);
     if (choose(`binding:${key}`, previous, row, 'binding', { category: row.category, subjectKey: row.subjectKey, scope: row.scope, chatKey: row.chatKey, localArchiveId: previous?.archiveId || '', incomingArchiveId: row.archiveId })) { bindings.set(key, row); bindingWrites.push(row); }
   }
-  if (Object.keys(decisions).some(key => !keys.has(key))) fail('冲突选择已过期，请重新核对');
+  if (Object.keys(decisions).some(key => !keys.has(key))) throw characterArchiveError('choice_stale', '冲突选择已过期，请重新核对');
   const value = { ...local, archives: [...archives.values()].sort((a, b) => a.head.id.localeCompare(b.head.id)), bindings: [...bindings.values()].sort((a, b) => characterBackupBindingKey(a).localeCompare(characterBackupBindingKey(b))), usage: { count: archives.size, bytes: [...archives.values()].reduce((sum, row) => sum + row.head.bytes, 0), bindings: bindings.size } };
   validateCharacterLibraryBackup(value);
   return { value, archiveWrites, bindingWrites, conflicts, ready: conflicts.every(row => row.choice), summary: { added, replaced, kept, conflicts: conflicts.length, archives: value.usage.count, bindings: value.usage.bindings, bytes: value.usage.bytes } };

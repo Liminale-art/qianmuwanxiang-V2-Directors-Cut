@@ -38,7 +38,7 @@ export function renderCharacterArchive(view,{identity=()=>''}={}) {
         <p>同一 ST 账户恢复档案、原图与固定工作流。旧环境与原备份请先保留，不含 API 授权或模型文件。</p>
         ${r.record?`<div class="sd-character-tools"><span>${escape(phase)} · ${escape(new Date(r.record.updatedAt).toLocaleString())}</span>${icon('restore-dismiss','结束此恢复核对记录','trash')}</div><p>阶段表示最近一次开始核对的位置，不代表全部保存成功；续接时仍逐件核对。</p>`:''}
         ${r.fileName?`<p class="sd-character-identifier">${escape(r.fileName)}</p>`:''}
-        ${p?`<p>档案与绑定：新增 ${p.summary.added} · 替换 ${p.summary.replaced} · 保留 ${p.summary.kept}</p><p>原图 ${p.images.length} 个路径 · 缺件 ${p.images.filter(row=>row.state==='missing').length}${p.workflowSummary?` · 工作流新增版本 ${p.workflowSummary.addedVersions}`:''}</p>`:''}
+        ${p?`<p>档案与绑定：新增 ${p.summary.added} · 替换 ${p.summary.replaced} · 保留 ${p.summary.kept}</p>${p.needsRecheck?'<p>选择仅更新预览；选定后核对本机库与原件，再确认恢复。</p>':`<p>原图 ${p.images.length} 个路径 · 缺件 ${p.images.filter(row=>row.state==='missing').length}${p.workflowSummary?` · 工作流新增版本 ${p.workflowSummary.addedVersions}`:''}</p>`}`:''}
       </div></section>
       ${conflicts.length?`<section class="sd-card"><summary><b>逐项确认冲突 · ${conflicts.length}</b></summary><div class="sd-storyboard-card-body sd-character-restore-items">${conflicts.slice(offset,limit).map((row,index)=>`<label>
         <span>${escape(row.kind==='archive'?`${row.localName} v${row.localVersion} → ${row.incomingName} v${row.incomingVersion}`:`${row.category.toUpperCase()} · ${row.subjectKey} · ${row.chatKey||'默认绑定'}`)}</span>
@@ -48,7 +48,7 @@ export function renderCharacterArchive(view,{identity=()=>''}={}) {
         <label class="sd-character-restore-review"><input type="checkbox" data-archive-restore-reviewed ${r.bindingsReviewed?'checked':''}><span>我确认此备份来自当前 ST 原环境，已核对全部 ${bindings.length} 处原身份及聊天标识。这里只恢复原标识，不自动验证所有角色文件／历史聊天；同名不代表同一身份，不确定时取消。</span></label></section>`:''}
       ${p?.images.some(row=>row.state==='conflict')?'<p role="alert">原图位置已有不同内容，不能覆盖；请保留双方原件核对。</p>':''}
       ${page||Math.max(conflicts.length,bindings.length)>24?`<div class="sd-character-tools"><button type="button" class="sd-btn" data-archive-action="restore-previous" ${page?'':'disabled'}>上一页</button><span>${page+1} / ${Math.ceil(Math.max(conflicts.length,bindings.length)/24)}</span><button type="button" class="sd-btn" data-archive-action="restore-more" ${Math.max(conflicts.length,bindings.length)>limit?'':'disabled'}>下一页</button></div>`:''}
-      <div class="sd-character-tools"><button type="button" class="sd-btn" data-archive-action="restore-preview" ${r.session?'':'disabled'}>重新核对</button><button type="button" class="sd-btn" data-archive-action="restore-commit" ${p?.ready&&(!bindings.length||r.bindingsReviewed)?'':'disabled'}>确认恢复</button></div>${status(view)}
+      <div class="sd-character-tools"><button type="button" class="sd-btn" data-archive-action="restore-preview" ${r.session?'':'disabled'}>${p?.needsRecheck?'核对选择与原件':'重新核对'}</button><button type="button" class="sd-btn" data-archive-action="restore-commit" ${p?.ready&&(!bindings.length||r.bindingsReviewed)?'':'disabled'}>确认恢复</button></div>${status(view)}
     </fieldset><input type="file" data-archive-backup-file accept=".json,application/json" hidden></div>`;
   }
   if(view.comfyEditor)return `<div class="sd-character-library sd-character-editor" aria-busy="${Boolean(view.busy)}"><fieldset ${disabled}>${renderComfyCharacterEditor(view.comfyEditor,icon)}${status(view)}</fieldset></div>`;
@@ -162,7 +162,10 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
         r.record=null;r.preview=null;return;
       }
       if(action==='restore-preview'){
-        const r=view.restoring;if(!r?.session)return;r.preview=null;r.preview=await r.session.preview(r.choices);r.record=r.preview.record;await guard();return;
+        const r=view.restoring;if(!r?.session)return;r.preview=null;r.bindingsReviewed=false;
+        try{r.preview=await r.session.preview(r.choices);r.record=r.preview.record;await guard();}
+        catch(error){if(error?.code==='character_archive_choice_stale')r.choices={};throw error;}
+        return;
       }
       if(action==='restore-commit'){
         const r=view.restoring;if(!r?.session||!r.preview?.ready)return;
@@ -269,8 +272,10 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
     host.querySelector('[data-archive-restore-reviewed]')?.addEventListener('change',event=>{if(!view.restoring)return;view.restoring.bindingsReviewed=event.target.checked;draw();});
     host.querySelectorAll('[data-archive-restore-decision]').forEach(field=>field.addEventListener('change',()=>{
       const r=view.restoring,row=r?.preview?.conflicts[Number(field.dataset.archiveRestoreDecision)];if(!row)return;
-      if(field.value)r.choices[row.key]=field.value;else delete r.choices[row.key];r.bindingsReviewed=false;r.preview=null;
-      void run(async guard=>{r.preview=await r.session.preview(r.choices);r.record=r.preview.record;await guard();});
+      if(view.busy)return;remember();
+      if(field.value)r.choices[row.key]=field.value;else delete r.choices[row.key];r.bindingsReviewed=false;
+      r.preview={...r.preview,ready:false,needsRecheck:true,planDigest:''};
+      void run(async guard=>{r.preview=await r.session.choose(r.choices);await guard();}).then(()=>{if(visible()&&view.restoring===r)restore();});
     }));
     host.querySelector('[data-archive-backup-file]')?.addEventListener('change',event=>{const file=event.target.files?.[0],r=view.restoring;if(!file||!r)return;void run(async(guard,expected)=>{
       r.session?.close();r.workflows?.close();r.session=null;r.workflows=null;r.preview=null;r.choices={};r.bindingsReviewed=false;r.page=0;r.fileName=file.name;scrolls.restore=0;

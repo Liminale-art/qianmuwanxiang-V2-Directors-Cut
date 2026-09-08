@@ -179,3 +179,83 @@ test('restore view escapes conflict names and identity keys, requires explicit b
   view.restoring.page = 1; const next = renderCharacterArchive(view); assert.equal((next.match(/data-archive-restore-decision=/g) || []).length, 16); assert.match(next, /data-archive-restore-decision="24"/);
   view.restoring.bindingsReviewed = true; assert.doesNotMatch(renderCharacterArchive(view), /data-archive-action="restore-commit" disabled/);
 });
+
+test('conflict choices use a compact snapshot without reading either library, journal or any image again', async () => {
+  const { e, options, session, packet } = await fixture();
+  e.local = library([archive('alice', 3, { imagegen: { appearance: 'a much longer local appearance' } }), archive('unrelated', 1, { imagegen: {} })], [{ ...binding(), archiveId: '', revision: 'local-unbind' }]);
+  const initial = await session.preview(), bindKey = initial.conflicts.find(row => row.kind === 'binding').key;
+  const expected = [ {}, { 'archive:alice': 'local' }, { 'archive:alice': 'incoming', [bindKey]: 'local' }, { 'archive:alice': 'local', [bindKey]: 'incoming' } ].map(decisions => ({ decisions, plan: planCharacterLibraryRestore(e.local, packet.library, { decisions }) }));
+  for (const object of [options.store, options.workflowStore, options.images, options.journal]) for (const method of Object.keys(object)) object[method] = () => assert.fail(`choice must not call ${method}`);
+  for (const { decisions, plan } of expected) {
+    const draft = await session.choose(decisions);
+    assert.deepEqual(draft.conflicts, plan.conflicts); assert.deepEqual(draft.summary, plan.summary); assert.deepEqual(draft.bindingReview, plan.bindingWrites);
+    assert.equal(draft.choicesReady, plan.ready); assert.equal(draft.ready, false); assert.equal(draft.needsRecheck, true);
+    assert.equal(draft.planDigest, ''); assert.deepEqual(draft.images, []); assert.equal(draft.workflowDigest, null); assert.equal(draft.workflowSummary, null);
+    assert.doesNotMatch(JSON.stringify(draft), /dark hair|longer local appearance|iVBOR|"document"|"imagegen"/);
+    await assert.rejects(session.restore(draft, { confirmed: true, bindingsReviewed: true }), /核对并确认/);
+    draft.summary.kept = 9000; draft.conflicts[0].key = 'tampered';
+    assert.deepEqual((await session.choose(decisions)).summary, plan.summary);
+  }
+  assert.deepEqual(e.events, []);
+});
+
+test('a chosen full preview can be edited back and forth with accurate counts and expired resource approvals', async () => {
+  const { e, session, packet } = await fixture(); e.local = library([archive('alice', 8, { imagegen: {} })], []);
+  const full = await session.preview({ 'archive:alice': 'incoming' }); assert.equal(full.ready, true); assert.equal(full.images.length, 2);
+  for (const decisions of [{ 'archive:alice': 'local' }, {}, { 'archive:alice': 'incoming' }]) {
+    const draft = await session.choose(decisions), exact = planCharacterLibraryRestore(e.local, packet.library, { decisions });
+    assert.deepEqual(draft.summary, exact.summary); assert.deepEqual(draft.bindingReview, exact.bindingWrites); assert.equal(draft.planDigest, '');
+  }
+  const selected = await session.choose({ 'archive:alice': 'incoming' });
+  e.conflict = image.url;
+  const rechecked = await session.preview(selected.decisions); assert.equal(rechecked.ready, false); assert.equal(rechecked.images[0].state, 'conflict');
+  await assert.rejects(session.restore(full, { confirmed: true, bindingsReviewed: true }), /原图冲突/); assert.deepEqual(e.events, []);
+});
+
+test('choice snapshots cannot hide changes made by another page, stale keys or a closed account scope', async () => {
+  const { e, session } = await fixture(); e.local = library([archive('alice', 2, { imagegen: {} })], []);
+  await session.preview(); const choice = await session.choose({ 'archive:alice': 'incoming' });
+  e.local = library();
+  await assert.rejects(session.preview(choice.decisions), /过期/);
+  await assert.rejects(session.choose({}), /快照已失效/);
+  const fresh = await session.preview(); assert.equal(fresh.conflicts.length, 0);
+  await assert.rejects(session.choose({ 'archive:alice': 'incoming' }), /过期/);
+  e.active = false; await assert.rejects(session.choose({}), /changed/); e.active = true;
+  session.close(); await assert.rejects(session.choose({}), /会话已结束/); assert.deepEqual(e.events, []);
+});
+
+test('choices reject malformed values, capture input before awaiting guards and ignore inherited selections', async () => {
+  const { e, session, options, packet } = await fixture(); e.local = library([archive('alice', 2, { imagegen: {} })], []); await session.preview();
+  for (const input of [null, [], 1, { 'archive:alice': 'skip' }, { 'archive:missing': 'incoming' }]) await assert.rejects(session.choose(input));
+  assert.equal((await session.choose(Object.create({ 'archive:alice': 'incoming' }))).choicesReady, false);
+  const delayed = gate(); let pause = false;
+  const next = await createCharacterRestoreSession(namespace, packet, { ...options, guard: async () => { if (pause) await delayed.promise; } });
+  await next.preview(); pause = true;
+  const input = { 'archive:alice': 'local' }, promise = next.choose(input); input['archive:alice'] = 'incoming'; delayed.release();
+  assert.equal((await promise).decisions['archive:alice'], 'local');
+});
+
+test('maximum-size role conflict lists stay lightweight when changing many choices', async () => {
+  const incoming = library(Array.from({ length: 512 }, (_, index) => archive(`id-${index}`, 1, { imagegen: { appearance: 'original-body-'.repeat(800) } })), []);
+  const { e, session, options } = await fixture(source(incoming));
+  e.local = library(Array.from({ length: 512 }, (_, index) => archive(`id-${index}`, 2, { imagegen: { appearance: 'local-body-'.repeat(700) } })), []);
+  const initial = await session.preview(); assert.equal(initial.conflicts.length, 512);
+  options.store.backup = () => assert.fail('draft changes must not read 512 full documents again');
+  const choices = {}; let result;
+  for (let index = 0; index < 512; index++) { choices[`archive:id-${index}`] = index % 2 ? 'local' : 'incoming'; result = await session.choose(choices); }
+  const exact = planCharacterLibraryRestore(e.local, incoming, { decisions: choices });
+  assert.deepEqual(result.summary, exact.summary); assert.equal(result.choicesReady, true); assert.ok(JSON.stringify(result).length < 150000);
+  assert.doesNotMatch(JSON.stringify(result), /original-body|local-body/); assert.deepEqual(e.events, []);
+});
+
+test('a closed or replaced choice snapshot cannot return late while its account guard is pending', async () => {
+  const { e, packet, options } = await fixture(); e.local = library([archive('alice', 2, { imagegen: {} })], []);
+  let pending = null;
+  const session = await createCharacterRestoreSession(namespace, packet, { ...options, guard: async () => { if (pending) await pending.promise; } });
+  await session.preview(); pending = gate();
+  const choosing = session.choose({ 'archive:alice': 'local' }), refreshing = session.preview();
+  pending.release(); pending = null;
+  await assert.rejects(choosing, /快照已失效/); await refreshing;
+  pending = gate(); const closing = session.preview(); session.close(); pending.release();
+  await assert.rejects(closing, /会话已结束/); assert.deepEqual(e.events, []);
+});
