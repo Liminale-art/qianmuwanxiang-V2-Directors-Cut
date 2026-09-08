@@ -135,6 +135,20 @@ function indexFixture(){
   return {state,store,notices,context,exported:()=>exported,setImages:value=>images=value,switch:()=>{chat='chat-b';currentState=board.createStoryboardDefaults();currentStore={};owner=otherAccount;}};
 }
 
+test('actual export carries creative drafts and layout preferences without taking destination navigation or unfinished editors',async()=>{
+  const e=indexFixture();Object.assign(e.state,{prompt:'lake',negative:'lettering',promptDraft:{compiled:'lake',negative:'lettering',userEditedCompiled:true},directorBridge:{worldSideShotsEnabled:true},
+    characterArchive:{schemaVersion:1,collapsed:{char:true,user:false,other:true}},collapsedCards:{worldbook:false},tagSort:'used',view:'gallery',pendingParagraphSelection:{version:1},promptItemDraft:{instruction:'unsaved'}});
+  await e.context.storyboardExportPackage({originals:false});const exported=JSON.parse(await e.exported().text());
+  assert.equal(exported.vibeAccount,namespace);assert.equal(exported.settings.prompt,'lake');assert.equal(exported.settings.negative,'lettering');assert.equal(exported.settings.promptDraft.userEditedCompiled,true);
+  assert.equal(exported.settings.directorBridge.worldSideShotsEnabled,true);assert.equal(exported.settings.collapsedCards.worldbook,false);assert.equal(exported.settings.tagSort,'used');
+  for(const key of ['view','pendingParagraphSelection','promptItemDraft'])assert.equal(Object.hasOwn(exported.settings,key),false);
+});
+
+test('actual export refuses overlong current prompts rather than normalizing away the extra content',async()=>{
+  const e=indexFixture();e.state.prompt='x'.repeat(24001);await e.context.storyboardExportPackage({originals:false});assert.equal(e.exported(),null);
+  assert.match(e.notices.at(-1)[0],/prompt.*完整保留/);assert.equal(e.state.prompt.length,24001);assert.equal(e.context.storyboardExportPackage.busy,false);
+});
+
 test('actual legacy export aborts on chat change during media retrieval and never downloads a mixed chat snapshot',async()=>{
   const e=indexFixture();e.setImages([{id:'one',source:'novel',url:'/one.png',snapshot:{}}]);e.context.fetch=async()=>{e.switch();return {ok:true,blob:async()=>new Blob(['image'])};};
   await e.context.storyboardExportPackage({originals:false});assert.equal(e.exported(),null);assert.ok(e.notices.some(([text,kind])=>kind==='error'&&text.includes('已变化')));

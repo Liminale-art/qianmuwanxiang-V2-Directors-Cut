@@ -1,5 +1,6 @@
 import {createStoryboardDefaults,migrateStoryboardState,normalizeStoryboardState,normalizeStoryboardGenerationPolicy,normalizeStoryboardConnectionProfile,STORYBOARD_PROVIDER_REGISTRY,STORYBOARD_PIPELINE_LOG_LIMIT} from './qianmu-storyboard.js';
 import {STORYBOARD_IMPORT_FIELDS} from './qianmu-storyboard-package-mutation.js';
+import {STORYBOARD_ADDED_IMPORT_FIELDS,assertStoryboardSelectionRestoreScope,assertStoryboardAdditionalSettingsRetained} from './qianmu-storyboard-package-fields.js';
 import {storyboardConnectionsShareTarget,storyboardConnectionRestoreReview} from './qianmu-storyboard-connection-identity.js';
 const fail=message=>{throw new Error(message);};
 const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
@@ -16,12 +17,14 @@ export function mergeStoryboardPackageRows(local,incoming,limit,label){
 function assertRetained(before,after,label){const original=ids(before,label,100000),retained=new Set((after||[]).map(row=>row.id));if(original.size!==retained.size||[...original].some(id=>!retained.has(id)))fail(`${label}含当前版本无法完整保留的条目，未部分导入`);}
 
 // Detached preparation only; normalize the combined libraries so incoming references can find local entries.
-export function prepareStoryboardPackageDraft({settings,chat,incoming,images,collections,chatKey,now=Date.now}){
+export function prepareStoryboardPackageDraft({settings,chat,incoming,images,collections,chatKey,namespace,sourceNamespace,now=Date.now}){
   if(!object(incoming)||!chatKey)fail('分镜包设置或目标聊天无效');const base=structuredClone(settings),raw=structuredClone(incoming),touched=new Set(),connectionReview=[];
+  assertStoryboardSelectionRestoreScope(raw,{namespace,sourceNamespace});
+  if(Object.hasOwn(raw,'comfyAutoEnabled')&&typeof raw.comfyAutoEnabled!=='boolean')fail('Comfy自动择流开关格式无效，未猜测开启状态');
   if(raw.source!==undefined&&!STORYBOARD_PROVIDER_REGISTRY[raw.source])fail('生图渠道不受当前版本支持');
   if(raw.profiles&&(!object(raw.profiles)||Object.keys(raw.profiles).some(key=>!STORYBOARD_PROVIDER_REGISTRY[key])))fail('绘制配置含不支持的渠道');
   const migrated=migrateStoryboardState(raw);
-  for(const key of Object.keys(raw))if(Object.hasOwn(migrated,key))raw[key]=migrated[key];
+  for(const key of Object.keys(raw))if(Object.hasOwn(migrated,key)&&!STORYBOARD_ADDED_IMPORT_FIELDS.includes(key))raw[key]=migrated[key];
   if(!raw.connections&&Object.values(migrated.connections||{}).some(group=>group.presets?.length))raw.connections=migrated.connections;
   if(!raw.pipelineLogs&&raw.logs&&migrated.pipelineLogs?.length)raw.pipelineLogs=migrated.pipelineLogs;
   for(const key of STORYBOARD_IMPORT_FIELDS){if(!Object.hasOwn(raw,key)||key==='connections')continue;touched.add(key);
@@ -56,7 +59,10 @@ export function prepareStoryboardPackageDraft({settings,chat,incoming,images,col
   const logs=new Set((raw.logs||[]).map(row=>row.id));for(const log of base.logs||[])if(logs.has(log.id)&&['queued','generating'].includes(log.status)){log.status='cancelled';log.error='从备份导入，原上游结果需核对，未重放请求';log.finishedAt=now();}
   const pipelines=new Set((raw.pipelineLogs||[]).map(row=>row.id));for(const log of base.pipelineLogs||[])if(pipelines.has(log.id)&&idle.includes(log.status)){log.status='cancelled';log.finishedAt=now();}
   for(const preset of raw.promptPresets||[])if(preset.items)ids(preset.items,'取景条目',50);
+  // Carry the selected version, never transfer the user's previous permission to run automatic routing.
+  if(['comfyAutoEnabled','comfyPoolSelection','comfyLibrarySelection'].some(key=>Object.hasOwn(raw,key))){base.comfyAutoEnabled=false;touched.add('comfyAutoEnabled');}
   const normalized=normalizeStoryboardState(base),draftSettings={};
+  assertStoryboardAdditionalSettingsRetained(raw,normalized,{resetAutomatic:true});
   if(touched.has('connections'))for(const source of Object.keys(STORYBOARD_PROVIDER_REGISTRY)){
     normalized.connections[source].draft=structuredClone(settings.connections[source].draft);
     normalized.connections[source].activePresetId=settings.connections[source].activePresetId;

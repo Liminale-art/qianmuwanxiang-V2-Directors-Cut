@@ -70,6 +70,7 @@
     "qianmu-vibe-aggregate.js",
     "qianmu-vibe-restore.js",
     "qianmu-storyboard-package-assets.js",
+    "qianmu-storyboard-package-fields.js",
     "qianmu-storyboard-package-worker.js",
     "qianmu-storyboard-package-runtime.js",
     "qianmu-storyboard-package-input.js",

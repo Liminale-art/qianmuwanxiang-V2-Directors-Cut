@@ -1,6 +1,7 @@
 import {vibeDigest} from './qianmu-vibe-file.js';
+import {STORYBOARD_IMPORT_FIELDS} from './qianmu-storyboard-package-fields.js';
+export {STORYBOARD_IMPORT_FIELDS} from './qianmu-storyboard-package-fields.js';
 export {vibeDigest as storyboardPackageDigest} from './qianmu-vibe-file.js';
-export const STORYBOARD_IMPORT_FIELDS=Object.freeze(['enabled','automation','source','inlineByDefault','promptMode','promptCompiler','profiles','modelProfiles','parameterPresets','parameterPresetSelection','generationPolicy','promptPresets','artistPresets','artistCollections','artistPools','tagLibrary','vibeLibrary','selectedVibeIds','selectedArtistPresetId','selectedArtistPoolId','promptDefaults','compositionPolicy','routing','logs','pipelineLogs','shotPlans','taskStates','connections']);
 const chatFields=['storyboardImages','storyboardCollections'];
 const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const hash=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
@@ -9,11 +10,12 @@ const fail=message=>{throw Object.assign(new Error(message),{code:'storyboard_pa
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 function slot(target,key){return Object.hasOwn(target,key)?{exists:true,value:structuredClone(target[key])}:{exists:false};}
 const arrays=new Set(['parameterPresets','promptPresets','artistPresets','artistCollections','artistPools','tagLibrary','vibeLibrary','selectedVibeIds','logs','pipelineLogs','shotPlans','taskStates',...chatFields]);
-const strings=new Set(['source','promptMode','selectedArtistPresetId','selectedArtistPoolId']);
+const strings=new Set(['source','promptMode','selectedArtistPresetId','selectedArtistPoolId','prompt','negative','contentRating','paragraphMode','lastModelSource','tagSort']);
 function validateSlot(value,key){
   if(!object(value)||typeof value.exists!=='boolean'||Object.keys(value).some(key=>!['exists','value'].includes(key))||Object.hasOwn(value,'value')!==value.exists)fail('导入恢复片段无效');
   if(!value.exists)return;const item=value.value;
-  if(arrays.has(key)?!Array.isArray(item):strings.has(key)?typeof item!=='string':['enabled','inlineByDefault'].includes(key)?typeof item!=='boolean':!object(item))fail('导入恢复字段类型无效');
+  if(['comfyPoolSelection','comfyLibrarySelection'].includes(key)&&item===null)return;
+  if(arrays.has(key)?!Array.isArray(item):strings.has(key)?typeof item!=='string':['enabled','inlineByDefault','comfyAutoEnabled'].includes(key)?typeof item!=='boolean':!object(item))fail('导入恢复字段类型无效');
 }
 export function validateStoryboardMutation(row){
   if(!object(row)||Object.keys(row).some(key=>!['namespace','chatHash','fileHash','version','revision','createdAt','phase','patch'].includes(key))||!account(row.namespace)||!hash(row.chatHash)||!hash(row.fileHash)||row.version!==1||!Number.isSafeInteger(row.revision)||row.revision<1||!Number.isSafeInteger(row.createdAt)||row.createdAt<0||!['prepared','applied','uncertain'].includes(row.phase)||!Array.isArray(row.patch)||row.patch.length>STORYBOARD_IMPORT_FIELDS.length+chatFields.length)fail('分镜元数据恢复记录无效');

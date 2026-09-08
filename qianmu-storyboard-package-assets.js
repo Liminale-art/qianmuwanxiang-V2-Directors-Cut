@@ -1,6 +1,8 @@
 import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
 import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {parseNovelVibeFile,vibeFileError} from './qianmu-vibe-file.js';
+import {inspectStoryboardPortableSelections} from './qianmu-storyboard-package-fields.js';
+export {captureStoryboardPackageSettings,assertStoryboardAdditionalSettingsRetained} from './qianmu-storyboard-package-fields.js';
 
 export const STORYBOARD_PACKAGE_LIMITS=Object.freeze({metadata:32*1048576,mediaItem:34*1048576,total:128*1048576,assets:1024,nodes:500000,depth:40,uses:30000});
 const fail=message=>{throw vibeFileError('package',message);};
@@ -56,6 +58,7 @@ export function collectStoryboardVibeDependencies(payload,{namespace=null,onRefe
 export async function buildStoryboardVibePackage(payload,{namespace,load}){
   if(!account(namespace)||typeof load!=='function')fail('无法确认分镜打包账户');
   const {media=[],vibeAssets:ignoredAssets,vibeAccount:ignoredAccount,...metadata}=payload;
+  inspectStoryboardPortableSelections(metadata.settings,namespace);
   if(!Array.isArray(media)||media.length>400)fail('分镜媒体列表超过 400 项或结构无效');
   const header=JSON.stringify({...metadata,version:7,vibeAccount:namespace});
   if(size(header)>STORYBOARD_PACKAGE_LIMITS.metadata)fail('分镜元数据超过 32 MiB，请分批导出');
@@ -81,6 +84,7 @@ export async function buildStoryboardVibePackage(payload,{namespace,load}){
 export async function inspectStoryboardVibePackage(payload){
   if(!object(payload)||payload.version!==7||!account(payload.vibeAccount)||!Array.isArray(payload.vibeAssets)||payload.vibeAssets.length>STORYBOARD_PACKAGE_LIMITS.assets)fail('分镜包版本或 Vibe 原文件清单无效');
   const {vibeAssets,media=[],...metadata}=payload;
+  inspectStoryboardPortableSelections(metadata.settings,payload.vibeAccount);
   if(size(JSON.stringify(metadata))>STORYBOARD_PACKAGE_LIMITS.metadata||!Array.isArray(media)||media.length>400)fail('分镜包元数据超限');
   const census=collectStoryboardVibeDependencies(metadata,{namespace:payload.vibeAccount}),expected=new Map(census.refs.map(row=>[identity(row),row])),assets=[];
   let bytes=size(JSON.stringify(metadata));for(const item of media){const text=JSON.stringify(item);if(typeof text!=='string'||size(text)>STORYBOARD_PACKAGE_LIMITS.mediaItem)fail('分镜媒体超限');bytes+=size(text);if(bytes>STORYBOARD_PACKAGE_LIMITS.total)fail('分镜包总内容超限');}

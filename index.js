@@ -21738,8 +21738,8 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   const [packageModule,identity]=await Promise.all([featureRuntime.load('storyboardPackageAssets'),featureRuntime.load('imageAdmission')]);
   const session=await packageModule.createStoryboardPackageGuard({initial,context,resolveNamespace:()=>identity.resolveImageAccountNamespace()});
   if (originals && await confirmDialog(bundle ? '备份分镜资源联包' : '备份分镜配置与成片', bundle
-    ? '联包包含本聊天配置与成片、所引用 Vibe 原文件及本地旧图、完整 Comfy 工作流与候选历史、角色档案和绑定及参考原件。账户名与聊天标识不变时，更换 ST 安装可单独确认环境映射，CHAR／USER可逐项选择对应目标；不同账户名或聊天的迁移尚未开放。外部 URL 原图、模型文件与服务器授权需单独保全。请保留原环境，整包上限 512 MiB，配置分段仍限 128 MiB；不含 API Key。是否继续？'
-    : '新版包包含本聊天成片、分镜预设及所引用的 Vibe 原文件。Comfy 独立工作流库、角色档案库、外部图片地址与服务器授权尚不属于此包，需单独保全；不是完整账户迁移包。最大 128 MiB，不包含 API Key。是否继续？') !== true) return;
+    ? '联包包含本聊天配置与成片、所引用 Vibe 原文件及本地旧图、完整 Comfy 工作流与候选历史、角色档案和绑定及参考原件。编辑中的条目请先保存；搜索、页面位置与临时段落选择不迁移。账户名与聊天标识不变时，更换 ST 安装可单独确认环境映射，CHAR／USER可逐项选择对应目标；不同账户名或聊天的迁移尚未开放。外部 URL 原图、模型文件与服务器授权需单独保全。请保留原环境，整包上限 512 MiB，配置分段仍限 128 MiB；不含 API Key。是否继续？'
+    : '新版包包含本聊天成片、分镜预设及所引用的 Vibe 原文件。编辑中的条目请先保存；搜索、页面位置与临时段落选择不迁移。Comfy 独立工作流库、角色档案库、外部图片地址与服务器授权尚不属于此包，需单独保全；不是完整账户迁移包。最大 128 MiB，不包含 API Key。是否继续？') !== true) return;
   await session.guard();
   const bundleSource = bundle ? await (await featureRuntime.load('storyboardBundleSource')).prepareStoryboardBundleSource({ namespace: session.namespace,
     headers: () => typeof ctx().getRequestHeaders === 'function' ? ctx().getRequestHeaders() : {}, guard: session.guard, confirm: (title, message) => confirmDialog(title, message) }) : null;
@@ -21753,7 +21753,8 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   await session.guard();
   await storyboardHydrateGallerySnapshots(storyboardGalleryRecords(),{migrate:false});
   await session.guard();
-  const state = normalizeStoryboardState(clone(storyboardState()));
+  const currentState=storyboardState(),state = normalizeStoryboardState(clone(currentState));
+  packageModule.assertStoryboardAdditionalSettingsRetained(currentState,state);
   const pipelineLogs = state.logs.map((log) => {
     const pipeline=storyboardPipelineForLog(log,state);
     if(log.pipelineId&&!pipeline)throw new Error('历史分镜日志原文缺失，请先保全数据；未导出缺件包');
@@ -21792,20 +21793,14 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   }
   await session.guard();
   const payload = {
-    type: 'qianmu-storyboard', version: 6, exportedAt: new Date().toISOString(), credentialsIncluded: false,
-    settings: {
-      schemaVersion: state.schemaVersion, enabled: state.enabled, automation: clone(state.automation), source: state.source, inlineByDefault: state.inlineByDefault,
-      promptMode: state.promptMode, promptCompiler: clone(state.promptCompiler),
-      profiles: clone(state.profiles), modelProfiles: clone(state.modelProfiles), parameterPresets: clone(state.parameterPresets), parameterPresetSelection: clone(state.parameterPresetSelection), generationPolicy: clone(state.generationPolicy),
-      promptPresets: clone(state.promptPresets), artistPresets: clone(state.artistPresets), artistCollections: clone(state.artistCollections), artistPools: clone(state.artistPools), tagLibrary: clone(state.tagLibrary),
-      vibeLibrary: clone(state.vibeLibrary), selectedVibeIds: clone(state.selectedVibeIds), selectedArtistPresetId: state.selectedArtistPresetId, selectedArtistPoolId: state.selectedArtistPoolId,
-      promptDefaults: clone(state.promptDefaults), compositionPolicy: clone(state.compositionPolicy), routing: clone(state.routing), logs: clone(state.logs), pipelineLogs: clone(pipelineLogs),
-      shotPlans: clone(shotPlans), taskStates: clone(taskStates),
+    type: 'qianmu-storyboard', version: 6, exportedAt: new Date().toISOString(), credentialsIncluded: false, vibeAccount:session.namespace,
+    settings: packageModule.captureStoryboardPackageSettings(state, {
+      pipelineLogs,shotPlans,taskStates,
       connections: Object.fromEntries(Object.entries(state.connections).map(([providerId, group]) => [providerId, {
         ...clone(group), presets: (group.presets || []).map((item) => ({ ...clone(item), credentialId: '' })),
         draft: { ...clone(group.draft), credentialId: '' },
       }])),
-    },
+    }),
     chat: { images: records, collections },
     media,
   };
@@ -22070,9 +22065,9 @@ async function storyboardImportPackage(file, { recoverOnly = false } = {}) {
       });
       const images = prepareRecords();
       // Validate the entire merge before confirmation, uploads, or any live state mutation.
-      let draft = draftModule.prepareStoryboardPackageDraft({ settings: originalState, chat: originalStore, incoming: data.settings, images, collections: incomingCollections, chatKey: initial.chatKey });
+      let draft = draftModule.prepareStoryboardPackageDraft({ settings: originalState, chat: originalStore, incoming: data.settings, images, collections: incomingCollections, chatKey: initial.chatKey, namespace:session.namespace, sourceNamespace:parsed.payload.vibeAccount });
       const coverage = modern ? `包含 ${assetPlan.rows.length} 份 Vibe 原文件，其中新增 ${assetPlan.missing} 份。${assetPlan.legacyUrls ? `另有 ${assetPlan.legacyUrls} 个 Vibe 旧地址，仅保留地址。` : ''}这是分镜配置与成片包，不含 Comfy 独立工作流库、角色档案库或服务器授权；相关外部资源仍需单独保全。` : '';
-      if (await confirmDialog('导入分镜数据', `将合并 ${images.length} 条成片及预设；${coverage}历史任务不会自动续跑，现有连接凭据不随包迁移。中断后可重新选择原包核对素材，或通过“核对导入”恢复配置。是否继续？`) !== true) return;
+      if (await confirmDialog('导入分镜数据', `将合并 ${images.length} 条成片及预设；${coverage}历史任务不会自动续跑，现有连接凭据不随包迁移。Comfy当前方案选择保留，自动择流需在镜头台重新开启。中断后可重新选择原包核对素材，或通过“核对导入”恢复配置。是否继续？`) !== true) return;
       await guard();
       if (stage) {
         toast('正在核对并暂存 Vibe 原文件；配置尚未应用…', 'info');
@@ -22091,7 +22086,7 @@ async function storyboardImportPackage(file, { recoverOnly = false } = {}) {
         await guard();
         if (!storyboardSafeUrl(record.url)) throw new Error('图片保存未返回有效地址，分镜设置未修改');
       }
-      draft = draftModule.prepareStoryboardPackageDraft({ settings: originalState, chat: originalStore, incoming: data.settings, images, collections: incomingCollections, chatKey: initial.chatKey });
+      draft = draftModule.prepareStoryboardPackageDraft({ settings: originalState, chat: originalStore, incoming: data.settings, images, collections: incomingCollections, chatKey: initial.chatKey, namespace:session.namespace, sourceNamespace:parsed.payload.vibeAccount });
       const pendingMutation = await mutation.createStoryboardMutation({ namespace: session.namespace, chatKey: initial.chatKey, fileHash: parsed.fingerprint, settings: originalState, chat: originalStore, draft });
       await guard();
       if (messageStamp(ctx().chat || []) !== originalMessageStamp) throw new Error('正文在导入期间已变化，请重新核对，分镜设置未修改');

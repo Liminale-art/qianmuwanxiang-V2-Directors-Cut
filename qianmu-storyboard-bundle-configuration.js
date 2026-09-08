@@ -58,7 +58,7 @@ export function createStoryboardBundleConfiguration({ namespace, chatKey, settin
       }
       return record;
     });
-    const draft = prepareStoryboardPackageDraft({ settings, chat, incoming: source.settings, images, collections: source.chat?.collections || [], chatKey, now: 0 });
+    const draft = prepareStoryboardPackageDraft({ settings, chat, incoming: source.settings, images, collections: source.chat?.collections || [], chatKey, namespace, sourceNamespace:namespace, now: 0 });
     const mutation = await createStoryboardMutation({ namespace, chatKey, fileHash: source.fingerprint, settings, chat, draft, now: () => 0 });
     const proof = await digest({ mutation, connections: draft.connectionReview, messages: currentEvidence?.digest || originalStamp }); await check();
     if ((projection ? !storyboardChatProjectionMatches(projection, messages()) : stamp() !== originalStamp) || inspectStoryboardMutation(mutation, { settings, chat }).conflicts.length) fail('核对期间正文或配置已变化');

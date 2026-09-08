@@ -59,7 +59,7 @@ test('typed remapping never rewrites frozen Comfy or character account identitie
 test('unified input accepts old and new files, still rejects unsupported contents instead of silently omitting them',async()=>{
   const p=await packet();assert.equal((await inspectStoryboardPackageFile(p.file,{auto:true})).payload.version,7);
   assert.equal((await inspectStoryboardPackageFile(new Blob([JSON.stringify(p.payload)]),{auto:true})).payload.version,6);
-  const raw=JSON.parse(await p.file.text());for(const change of [x=>x.version=99,x=>x.resources={workflows:[]},x=>x.settings.comfyLibrarySelection={id:'lost'},x=>x.chat.characterArchives=[]]){
+  const raw=JSON.parse(await p.file.text());for(const change of [x=>x.version=99,x=>x.resources={workflows:[]},x=>x.settings.futureLibrarySelection={id:'lost'},x=>x.chat.characterArchives=[]]){
     const value=structuredClone(raw);change(value);await assert.rejects(()=>inspectStoryboardPackageFile(new Blob([JSON.stringify(value)]),{auto:true}),/不支持/);
   }
   assert.equal(STORYBOARD_PACKAGE_LIMITS.total,128*1048576);assert.equal(STORYBOARD_PACKAGE_INPUT_LIMIT,STORYBOARD_PACKAGE_LIMITS.total);

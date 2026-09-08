@@ -21,6 +21,7 @@ import { vibeDigest } from './qianmu-vibe-file.js';
 import { captureLegacyVibeOriginals, inspectLegacyVibeOriginals } from './qianmu-storyboard-legacy-vibes.js';
 import { captureBundleMappings, inspectBundleMappings } from './qianmu-bundle-mappings.js';
 import {captureBundleCarriers,inspectBundleCarriers} from './qianmu-bundle-carriers.js';
+import {inspectStoryboardPortableSelections} from './qianmu-storyboard-package-fields.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle_resources', submissionState: 'not_submitted' }); };
 const object = value => value !== null && typeof value === 'object';
@@ -77,7 +78,7 @@ async function inspectConfig(payload, namespace, { checked = false, withOrigins 
   const media = new Set((payload.media || []).map(row => row.id));
   if ((payload.chat.images || []).some(row => !media.has(row.id))) fail('配置分段缺少成片原图，未把地址清单当作完整资源');
   const vibes = collectStoryboardVibeDependencies(payload, { namespace });
-  const census = { originals: new Map(), files: new Map(), bindings: new Map(), nodes: 0 };
+  const census = { originals: new Map(), files: new Map(), bindings: new Map(), nodes: 0, selections:inspectStoryboardPortableSelections(payload.settings,namespace) };
   scan(payload.settings, namespace, census); scan(payload.chat, namespace, census);
   return { census, legacyUrls: vibes.legacyUrls, ...(withOrigins?{originsPayload:await projectStoryboardOriginPayload(payload,{guard})}:{}), summary: { images: media.size, vibeFiles: vibes.refs.length, legacyVibeUrls: vibes.legacyUrls.length, legacyVibeOriginals: 0 } };
 }
@@ -97,6 +98,11 @@ async function inspectLibraries(namespace, config, { workflows, pools, character
   for (const archive of characters.archives) for (const row of [archive.document.imagegen.reference, archive.document.imagegen.preview]) if (row) addOriginal(census, row);
   const versions = new Map(), verified = new Map();
   for (const row of workflows.workflows) for (const version of row.versions) versions.set(key(version.meta), version.document);
+  if(census.selections.workflow&&!versions.has(key(census.selections.workflow)))fail('镜头台当前工作流选择的原版本缺失，未导出缺件包');
+  if(census.selections.pool){
+    const selected=census.selections.pool,version=pools.pools.find(row=>row.head.id===selected.id)?.versions.find(row=>key(row.meta)===key(selected));
+    if(!version||await vibeDigest(JSON.stringify(version.pool))!==selected.poolHash)fail('镜头台当前候选方案原版本缺失或摘要不符，未猜配同名方案');
+  }
   for (const [id, binding] of census.bindings) {
     const document = versions.get(id); if (!document) fail('配置或历史记录引用的固定工作流原版本缺失');
     if (!verified.has(id)) { const normalized = normalizeComfyLibraryDocument(document); verified.set(id, { workflowHash: await comfyWorkflowReferenceHash(normalized.workflow), recipeHash: await vibeDigest(JSON.stringify(normalized)) }); }
