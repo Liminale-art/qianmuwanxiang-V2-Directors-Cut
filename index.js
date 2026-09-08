@@ -197,6 +197,7 @@ const EXTENSION_NAME = '千幕';
 const VERSION = '1.59.105';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
+let storyboardLinkReview = null;
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.105') },
@@ -221,6 +222,8 @@ const featureRuntime = createFeatureRuntime({
   storyboardBundleRestore: { label: '分镜联包恢复', load: () => import('./qianmu-storyboard-bundle-restore-runtime.js?v=1.59.105') },
   storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.105') },
   storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.105') },
+  storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.105') },
+  storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.105') },
   vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.105') },
   vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.105') },
   tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.105') },
@@ -12616,6 +12619,7 @@ function storyboardBeginSession() {
 }
 
 function storyboardEndSession() {
+  storyboardLinkReview?.close(); storyboardLinkReview = null;
   storyboardBundleReview?.close(); storyboardBundleReview = null;
   storyboardVibeLibraryController?.dispose();storyboardVibeLibraryController=null;storyboardVibeControllerContext=null;storyboardVibeSelection=null;
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdVibePreviewsCleanup?.();
@@ -15052,7 +15056,7 @@ function renderStoryboardGallery(state) {
   });
   const inspectorCollections = inspected ? new Set(storyboardItemCollectionIds(inspected)) : new Set();
   const inspectedProduction = inspected ? storyboardProductionDeliveryPolicy(inspected) : null;
-  const inspector = inspected ? `<details class="sd-media-inspector" open><summary><span>画面详情</span></summary><div><img src="${htmlEscape(storyboardSafeUrl(inspected.url))}" alt=""><div class="sd-storyboard-inspector-source"><h4>${htmlEscape(STORYBOARD_SOURCES[inspected.source]?.label || inspected.source || '分镜')}</h4><span class="sd-storyboard-production-label ${inspectedProduction.track === 'second_camera' ? 'second-camera' : ''}">${htmlEscape(inspectedProduction.sourceLabel)}</span></div><p>${htmlEscape(snip(inspected.finalPrompt || inspected.prompt || '', 240))}</p><label><span>标签</span>${storyboardMediaTagEditorMarkup(inspected.tags || [], knownTags, `gallery:${inspected.id}`)}</label><label><span>合集</span><div class="sd-media-collection-choices">${collections.map((item) => `<label class="sd-media-collection-choice"><input type="checkbox" class="sd-gallery-inspector-collection" value="${htmlEscape(item.id)}" ${inspectorCollections.has(item.id) ? 'checked' : ''}><span>${htmlEscape(item.name)}</span></label>`).join('') || '<small>暂无合集</small>'}</div></label>${inspectedProduction.requiresExplicitInsert && !Number.isInteger(inspected.floor) ? '<button type="button" class="sd-btn sd-storyboard-attach-production"><i class="fa-solid fa-link"></i>引用至当前正文</button>' : ''}${inspected.source==='novel'&&!inspected.recipeUnavailable?'<button type="button" class="sd-btn sd-storyboard-apply-style">套用风格配置</button>':''}<button type="button" class="sd-btn sd-storyboard-preview-inspected"><i class="fa-solid fa-expand"></i>查看大图</button></div></details>` : `<details class="sd-media-inspector" open><summary><span>画面详情</span></summary><div class="sd-storyboard-empty-inline">点击画面信息按钮后在此整理。</div></details>`;
+  const inspector = inspected ? `<details class="sd-media-inspector" open><summary><span>画面详情</span></summary><div><img src="${htmlEscape(storyboardSafeUrl(inspected.url))}" alt=""><div class="sd-storyboard-inspector-source"><h4>${htmlEscape(STORYBOARD_SOURCES[inspected.source]?.label || inspected.source || '分镜')}</h4><span class="sd-storyboard-production-label ${inspectedProduction.track === 'second_camera' ? 'second-camera' : ''}">${htmlEscape(inspectedProduction.sourceLabel)}</span></div><p>${htmlEscape(snip(inspected.finalPrompt || inspected.prompt || '', 240))}</p><label><span>标签</span>${storyboardMediaTagEditorMarkup(inspected.tags || [], knownTags, `gallery:${inspected.id}`)}</label><label><span>合集</span><div class="sd-media-collection-choices">${collections.map((item) => `<label class="sd-media-collection-choice"><input type="checkbox" class="sd-gallery-inspector-collection" value="${htmlEscape(item.id)}" ${inspectorCollections.has(item.id) ? 'checked' : ''}><span>${htmlEscape(item.name)}</span></label>`).join('') || '<small>暂无合集</small>'}</div></label>${inspected.restoreLinkReview ? '<button type="button" class="sd-btn sd-storyboard-review-link"><i data-qm-icon="qm-regular-link"></i>核对正文位置</button>' : ''}${!inspected.restoreLinkReview && inspectedProduction.requiresExplicitInsert && !Number.isInteger(inspected.floor) ? '<button type="button" class="sd-btn sd-storyboard-attach-production"><i class="fa-solid fa-link"></i>引用至当前正文</button>' : ''}${inspected.source==='novel'&&!inspected.recipeUnavailable?'<button type="button" class="sd-btn sd-storyboard-apply-style">套用风格配置</button>':''}<button type="button" class="sd-btn sd-storyboard-preview-inspected"><i class="fa-solid fa-expand"></i>查看大图</button></div></details>` : `<details class="sd-media-inspector" open><summary><span>画面详情</span></summary><div class="sd-storyboard-empty-inline">点击画面信息按钮后在此整理。</div></details>`;
   return `<div class="sd-storyboard-gallery-page">
     ${renderStoryboardGalleryKindSwitch()}
     <section class="sd-card sd-storyboard-gallery-head"><div class="sd-storyboard-gallery-title">${currentCollection ? `<span><h3>${htmlEscape(currentCollection.name)}</h3></span>` : ''}<b>${records.length}</b></div><div class="sd-storyboard-gallery-tools"><select class="text_pole sd-storyboard-gallery-source" aria-label="筛选模型"><option value="all">全部模型</option>${Object.values(STORYBOARD_SOURCES).map((item) => `<option value="${item.id}" ${state.gallerySource === item.id ? 'selected' : ''}>${item.label}</option>`).join('')}</select><select class="text_pole sd-storyboard-gallery-track" aria-label="筛选画面来源"><option value="all" ${state.galleryTrack === 'all' ? 'selected' : ''}>全部来源</option><option value="main_camera" ${state.galleryTrack === 'main_camera' ? 'selected' : ''}>本段正文</option><option value="second_camera" ${state.galleryTrack === 'second_camera' ? 'selected' : ''}>世界背面</option></select><input class="text_pole sd-storyboard-gallery-search" value="${htmlEscape(state.gallerySearch)}" placeholder="搜索画面、模型、画师或标签"><button type="button" class="sd-icon-btn sd-storyboard-gallery-select-mode" aria-pressed="${storyboardGallerySelectMode}" title="${storyboardGallerySelectMode ? '完成多选' : '多选'}" aria-label="${storyboardGallerySelectMode ? '完成多选' : '多选'}"><i class="fa-solid ${storyboardGallerySelectMode ? 'fa-check' : 'fa-list-check'}"></i></button><button type="button" class="sd-icon-btn sd-storyboard-gallery-new-folder" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button></div></section>
@@ -21825,6 +21829,70 @@ async function storyboardImportAnyPackage(file) {
   } catch (error) { toast(`分镜包读取失败：${error?.message || '请选择完整原文件'}`, 'error'); }
 }
 
+function storyboardLinkReviewParagraphs(value) {
+  const holder = document.createElement('template');
+  holder.innerHTML = String(value || '').replace(/<br\s*\/?>/gi, '\n');
+  const content = holder.content;
+  const blocks = Array.from(content.querySelectorAll('p,li,blockquote')).map(node => storyboardCleanMessageText(node.textContent));
+  const rows = blocks.length > 1 ? blocks : String(content.textContent || value || '').split(/\n{2,}|\r?\n/).map(storyboardCleanMessageText);
+  // One extra row detects overflow instead of silently dropping the end of a floor.
+  return rows.filter(Boolean).slice(0, 241);
+}
+
+async function storyboardReviewRecordLink(record) {
+  if (!record?.restoreLinkReview || storyboardImportPackage.busy || storyboardExportPackage.busy) return;
+  storyboardImportPackage.busy = true;
+  let journal = null, review = null;
+  const context = () => ({ state: storyboardState(), store: getChatStore(), chatKey: String(getChatKey() || ''), epoch: storyboardAdmissionEpoch });
+  try {
+    const initial = context();
+    const [assets, identity, journalModule, mutation, model, view] = await Promise.all([
+      featureRuntime.load('storyboardPackageAssets'), featureRuntime.load('imageAdmission'), featureRuntime.load('storyboardPackageJournal'),
+      featureRuntime.load('storyboardPackageMutation'), featureRuntime.load('storyboardLinkReview'), featureRuntime.load('storyboardLinkReviewView'),
+    ]);
+    const scope = await assets.createStoryboardPackageGuard({ initial, context, resolveNamespace: () => identity.resolveImageAccountNamespace() });
+    const parent = document.getElementById(MODAL_ID);
+    const isCurrent = () => { const live = context(); return parent?.classList.contains('open') && live.state === initial.state && live.store === initial.store && live.chatKey === initial.chatKey && live.epoch === initial.epoch && (!review || review.isOpen); };
+    const guard = async () => {
+      await scope.guard();
+      if (!isCurrent()) throw new Error('核对页面或聊天已变化，请重新选择；已保存部分请核对导入');
+      if (storyboardActiveJobs.size || storyboardQueue.length || initial.state.shotPlans.some(plan => ['screening','compiling','generating','queued'].includes(plan.status))) throw new Error('分镜仍在工作，请结束当前任务后核对');
+    };
+    await guard();
+    if (!navigator.locks?.request) throw new Error('浏览器不支持跨页核对锁，未修改正文位置');
+    if (!storyboardSafeUrl(record.url)) throw new Error('图片地址不可用，请先保全原图');
+    journal = journalModule.createStoryboardPackageJournal();
+    if (await journal.hasMutation(scope.namespace)) throw new Error('请先刷新并完成“核对导入”，再调整图片位置');
+    await guard();
+    const session = model.createStoryboardLinkReview({ recordId: record.id, records: () => initial.store.storyboardImages || [], messages: () => ctx().chat || [], chatKey: initial.chatKey, paragraphs: storyboardLinkReviewParagraphs });
+    review = view.openStoryboardLinkReview({ parent, session, paintIcons: applyQianmuIcons, apply: async () => navigator.locks.request(`qianmu:package-import:${scope.namespace}`, { mode: 'exclusive', ifAvailable: true }, async lock => {
+      if (!lock) throw new Error('另一页面正在恢复，请稍后重试');
+      await guard(); session.validate();
+      if (await journal.hasMutation(scope.namespace)) throw new Error('已有待核对导入，未覆盖恢复记录');
+      await guard();
+      const proposal = await session.prepare({ confirmed: true }); await guard(); proposal.validateDraft();
+      const pending = await mutation.createStoryboardMutation({ namespace: scope.namespace, chatKey: initial.chatKey, fileHash: proposal.fileHash, settings: initial.state, chat: initial.store, draft: proposal.draft });
+      await guard(); proposal.validateDraft();
+      const saved = await journal.prepareMutation(pending, { isCurrent });
+      await guard(); proposal.validateDraft();
+      mutation.applyStoryboardMutation(saved, { settings: initial.state, chat: initial.store });
+      try {
+        await saveMetadata(); await guard(); session.validateTarget();
+        await journal.updateMutation(saved, 'applied', { isCurrent });
+        storyboardScheduleInlineRender(30);
+        return { applied: true };
+      } catch (error) {
+        if (isCurrent()) try { await journal.updateMutation(saved, 'uncertain', { isCurrent }); } catch (_) {}
+        throw new Error(`定位保存未确认，请使用“核对导入”检查：${error?.message || '保存失败'}`);
+      }
+    }) });
+    storyboardLinkReview = review;
+    await review.finished;
+    if (context().store === initial.store && parent?.classList.contains('open')) renderModal();
+  } catch (error) { toast(`正文定位未完成：${error?.message || '请重新核对'}`, 'warning'); }
+  finally { review?.close(); journal?.close(); if (storyboardLinkReview === review) storyboardLinkReview = null; storyboardImportPackage.busy = false; }
+}
+
 async function storyboardImportBundle(file) {
   if (!file || storyboardImportPackage.busy || storyboardExportPackage.busy) return;
   storyboardImportPackage.busy = true;
@@ -23780,6 +23848,10 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-attach-production')?.addEventListener('click', () => {
     const record = storyboardGalleryRecords().find((item) => item.id === storyboardGalleryInspectorRecordId);
     if (record) void storyboardAttachProductionRecord(record);
+  });
+  root.querySelector('.sd-storyboard-review-link')?.addEventListener('click', () => {
+    const record = storyboardGalleryRecords().find(item => item.id === storyboardGalleryInspectorRecordId);
+    if (record) void storyboardReviewRecordLink(record);
   });
   root.querySelectorAll('.sd-gallery-inspector-collection').forEach((input) => input.addEventListener('change', async () => {
     const record = storyboardGalleryRecords().find((item) => item.id === storyboardGalleryInspectorRecordId);
