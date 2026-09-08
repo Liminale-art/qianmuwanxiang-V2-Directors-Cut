@@ -2,6 +2,7 @@
 import { normalizeStaticReferenceReceipt } from './qianmu-comfy-reference-contract.js';
 import { normalizeCharacterReferenceSettings } from './qianmu-character-reference.js';
 import { normalizeComfyCharacterSettings } from './qianmu-comfy-character-contract.js';
+import {sameCharacterSubject} from './qianmu-user-identity.js';
 export const CHARACTER_ARCHIVE_SCHEMA = 'qianmu.character.archive.v1';
 export const CHARACTER_CATEGORIES = Object.freeze(['char', 'user', 'other']);
 export const characterArchiveError = (code, message) => Object.assign(new Error(message), { code: `character_archive_${code}` });
@@ -63,7 +64,9 @@ export function characterBindingTarget(value) {
   return {category:value.category,subjectKey:value.subjectKey,scope:value.scope,chatKey};
 }
 export function selectCharacterBinding(bindings, subject, chatKey = '') {
-  const rows = bindings.filter(row => row.category === subject.category && row.subjectKey === subject.subjectKey);
+  const rows = bindings.filter(row => sameCharacterSubject(row,subject));
   // Explicit chat-level null overrides a default binding; absence permits inheritance.
-  return rows.find(row => row.scope === 'chat' && row.chatKey === chatKey) || rows.find(row => row.scope === 'default') || null;
+  const chat=rows.filter(row=>row.scope==='chat'&&row.chatKey===chatKey),selected=chat.length?chat:rows.filter(row=>row.scope==='default');
+  if(subject.category==='user'&&selected.length>1)fail('alias','同一USER存在多种地址绑定，请在角色库核对USER地址后再提取');
+  return selected[0]||null;
 }

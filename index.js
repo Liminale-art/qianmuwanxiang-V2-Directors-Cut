@@ -213,6 +213,8 @@ const featureRuntime = createFeatureRuntime({
   storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.105') },
   storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.105') },
   storyboardMappingView: { label: '迁移映射凭据', load: () => import('./qianmu-storyboard-mapping-view.js?v=1.59.105') },
+  characterUserIdentity: { label: 'USER头像地址', load: () => import('./qianmu-user-identity.js?v=1.59.105') },
+  characterUserAliasView: { label: 'USER地址核对', load: () => import('./qianmu-user-alias-view.js?v=1.59.105') },
   characterStorage: { label: '角色库空间', load: () => import('./qianmu-character-storage.js?v=1.59.105') },
   storyboardPackageStage: { label: '分镜素材暂存', load: () => import('./qianmu-storyboard-package-stage.js?v=1.59.105') },
   storyboardPackageRuntime: { label: '分镜原件打包', load: () => import('./qianmu-storyboard-package-runtime.js?v=1.59.105') },
@@ -14202,6 +14204,19 @@ async function storyboardToggleComfyCharacters(root, rebind=false) {
   } catch(error){toast(error.message||'角色实现未启用','warning');}finally{root._sdComfyCharacterLoading=false;}
 }
 
+async function storyboardOpenUserAliases(namespace,guard) {
+  const [runtime,manager,subjects,hashes]=await Promise.all([featureRuntime.load('storyboardRestoreStorage'),featureRuntime.load('characterUserAliasView'),featureRuntime.load('characterUserIdentity'),featureRuntime.load('storyboardPackageMutation')]);
+  await guard();const chatKey=String(getChatKey()||''),chatHash=await hashes.storyboardPackageDigest(chatKey);let view;
+  const current=async()=>{await guard();if(String(getChatKey()||'')!==chatKey||view&&!view.isOpen)throw new Error('USER地址核对页面或聊天已变化');};
+  try{
+    await current();view=manager.openUserAliasReview({parent:document.getElementById(MODAL_ID),icons:applyQianmuIcons,
+      run:(action,options)=>runtime.runRestoreStorage(action,{...options,namespace,chatHash,guard:current,resolveAliasTargets:targets=>{
+        const context=ctx(),power=context.powerUserSettings||context.power_user||globalThis.power_user;
+        return subjects.inspectUserAliasTargets(targets,power?.personas);
+      }})});await view.finished;
+  }finally{view?.close();}
+}
+
 async function storyboardMountCharacterArchive(root) {
   const state = storyboardState(), host = root.querySelector('.sd-character-archive-host');
   if (!host || !host.isConnected || state.view !== 'characters') return;
@@ -14214,6 +14229,7 @@ async function storyboardMountCharacterArchive(root) {
         resolveNamespace: () => identity.resolveImageAccountNamespace(), getContext: storyboardCharacterArchiveContext,
         getScope: () => { const context = ctx(); return JSON.stringify([context.chatId, context.groupId, context.characterId]); },
         loadComfyRecipe: storyboardLoadCharacterComfyRecipe,
+        onUserAliases: storyboardOpenUserAliases,
         requestHeaders: storyboardRequestHeaders,
         isCurrent: () => activeTab === 'imagegen' && storyboardState() === state && state.view === 'characters',
         identity: renderCoreadIdentity, notify: toast, confirm: message => confirmDialog('角色档案', htmlEscape(message)),

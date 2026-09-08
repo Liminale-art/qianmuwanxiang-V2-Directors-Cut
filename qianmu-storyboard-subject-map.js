@@ -46,7 +46,7 @@ export function mappedStoryboardSubjectTargets(subjects, mappings) {
 }
 export function assertSubjectMappingTargetsUnambiguous(local,mappings) {
   const destinations=new Map(mappings.map(row=>[physicalTargetKey({category:row.category,subjectKey:row.targetKey}),row.targetKey]));
-  for(const row of local.bindings){const expected=destinations.get(physicalTargetKey(row));if(expected&&expected!==row.subjectKey)fail('本机同一人设存在另一种地址格式的绑定，请先在角色库核对，不能绕过原绑定覆盖选择');}
+  for(const row of local.bindings){const expected=destinations.get(physicalTargetKey(row));if(expected&&expected!==row.subjectKey)fail('本机同一人设存在另一种地址格式的绑定，请在角色库点“核对USER地址”后再核对原包，不能绕过原绑定覆盖选择');}
 }
 export async function deriveStoryboardSubjectBindings(library, evidence, input, sourceDigest) {
   validateCharacterLibraryBackup(library);if (!hash(sourceDigest)) fail('角色映射缺少原包摘要');
@@ -94,6 +94,7 @@ export async function createStoryboardSubjectMapReview({namespace,chatHash,sourc
   return {...value,digest:await digest(value)};
 }
 export async function inspectStoryboardSubjectMapReview(value) {
+  if(value?.schema==='qianmu.storyboard.subject-map.v2')return (await import('./qianmu-user-alias.js')).inspectUserAliasReview(value);
   if (!exact(value,['schema','scope','namespace','chatHash','sourceDigest','environmentDigest','rows','lineage','digest']) || value.schema !== SUBJECT_MAP_SCHEMA || value.scope !== 'declared-binding-mappings'
     || typeof value.namespace !== 'string' || !/^st-user:.+/.test(value.namespace) || value.namespace.length > 512 || /[\u0000-\u001f\u007f]/.test(value.namespace)
     || !hash(value.chatHash) || !hash(value.sourceDigest) || !hash(value.digest) || value.environmentDigest !== null && !hash(value.environmentDigest)

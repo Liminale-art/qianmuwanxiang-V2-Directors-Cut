@@ -30,6 +30,7 @@ export async function runMappingRegistry(action,{journal,namespace,input,guard=a
   const review=receipt.review,total=input.kind==='environment'?1:review.lineage.length;
   let rows;
   if(input.kind==='environment')rows=[{sourceInstance:review.source.instanceId,sourceAccount:review.source.accountId,targetInstance:review.target.instanceId,targetAccount:review.target.accountId}];
+  else if(review.scope==='local-user-alias-resolution')rows=review.lineage.slice(input.offset,input.offset+24);
   else{
     const bySource=new Map(review.rows.map(row=>[JSON.stringify([row.category,row.sourceKey]),row]));
     rows=review.lineage.slice(input.offset,input.offset+24).map(pair=>{

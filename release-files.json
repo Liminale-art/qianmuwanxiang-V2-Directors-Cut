@@ -3,6 +3,11 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-user-identity.js",
+    "qianmu-user-alias.js",
+    "qianmu-user-alias-contract.js",
+    "qianmu-user-alias-runtime.js",
+    "qianmu-user-alias-view.js",
     "qianmu-storyboard-mapping-contract.js",
     "qianmu-storyboard-mapping-registry.js",
     "qianmu-storyboard-mapping-view.js",

@@ -1,6 +1,7 @@
 import {CHARACTER_CATEGORIES,newCharacterArchive,normalizeCharacterArchive,selectCharacterBinding,exportCharacterArchive,importCharacterArchive} from './qianmu-character-archive.js';
 import {createCharacterArchiveStore} from './qianmu-character-archive-store.js';
 import {comfyCharacterEditorRecipe,newComfyCharacterImplementation,renderComfyCharacterEditor,captureComfyCharacterEditor,saveComfyCharacterEditor} from './qianmu-comfy-character-view.js';
+import {canonicalUserSubjectKey,sameCharacterSubject} from './qianmu-user-identity.js';
 const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const clone=value=>JSON.parse(JSON.stringify(value));
 const icon=(action,label,glyph,attrs='')=>`<button type="button" class="sd-icon-btn" data-archive-action="${action}" title="${escape(label)}" aria-label="${escape(label)}" ${attrs}><i data-qm-icon="qm-regular-${({upload:'upload-simple',download:'download-simple'})[glyph]||glyph}"></i></button>`;
@@ -11,6 +12,8 @@ const safeImage=value=>{
 };
 const status=view=>`<p class="sd-character-status" role="status">${escape(view.error||'参考图须在支持的镜头台启用；性征暂不参与生成')}</p>`;
 const field=(name,label,value,max,textarea=false)=>`<label><span>${label}</span>${textarea?`<textarea class="text_pole" data-archive-field="${name}" maxlength="${max}">${escape(value)}</textarea>`:`<input class="text_pole" data-archive-field="${name}" maxlength="${max}" value="${escape(value)}">`}</label>`;
+const visibleBinding=(bindings,subject,chatKey)=>{try{return selectCharacterBinding(bindings,subject,chatKey);}catch(error){if(error?.code==='character_archive_alias')return {aliasConflict:true};throw error;}};
+const hasAliasRows=bindings=>bindings.some(row=>row.category==='user'&&canonicalUserSubjectKey(row.subjectKey)&&canonicalUserSubjectKey(row.subjectKey)!==row.subjectKey);
 
 export async function saveCharacterReference(file,{save,guard,createBitmap=globalThis.createImageBitmap,createCanvas=()=>document.createElement('canvas')}={}) {
   if(typeof createBitmap!=='function')throw Error('当前浏览器不能生成档案封面，请更换浏览器后上传');
@@ -80,10 +83,11 @@ export function renderCharacterArchive(view,{identity=()=>''}={}) {
     </fieldset></div>`;
   }
   const picker=view.bindingEditor;
+  const currentBindings=view.subjects.map(subject=>visibleBinding(view.bindings,subject,view.chatKey));
   return `<div class="sd-character-library" aria-busy="${Boolean(view.busy)}"><fieldset ${disabled}>
     <section class="sd-card sd-character-current"><div class="sd-storyboard-card-body">${view.subjects.map((subject,index)=>{
-      const binding=selectCharacterBinding(view.bindings,subject,view.chatKey),bound=view.rows.find(row=>row.id===binding?.archiveId);
-      return `<div class="sd-character-current-person">${identity(subject.category.toUpperCase(),subject.name,safeImage(subject.avatar),subject.category==='user'?'fa-user':'fa-circle-user')}<button type="button" class="sd-character-binding-name" data-archive-action="binding" data-subject-index="${index}" ${subject.subjectKey?'':'disabled'}>${escape(bound?.name||'未绑定')}</button></div>`;
+      const binding=currentBindings[index],bound=view.rows.find(row=>row.id===binding?.archiveId);
+      return `<div class="sd-character-current-person">${identity(subject.category.toUpperCase(),subject.name,safeImage(subject.avatar),subject.category==='user'?'fa-user':'fa-circle-user')}<button type="button" class="sd-character-binding-name" data-archive-action="binding" data-subject-index="${index}" ${subject.subjectKey?'':'disabled'}>${escape(binding?.aliasConflict?'地址待核对':bound?.name||'未绑定')}</button></div>`;
     }).join('')}</div></section>
     ${picker?`<section class="sd-card"><div class="sd-storyboard-card-body sd-character-picker">
       <b>${escape(picker.subject.name)}</b><label><span>绑定范围</span><select class="text_pole" data-archive-binding="scope"><option value="chat" ${picker.scope==='chat'?'selected':''} ${view.chatKey?'':'disabled'}>当前聊天</option><option value="default" ${picker.scope==='default'?'selected':''}>该角色默认</option></select></label>
@@ -91,11 +95,12 @@ export function renderCharacterArchive(view,{identity=()=>''}={}) {
       <div class="sd-character-tools">${icon('binding-cancel','取消绑定选择','x')}<button type="button" class="sd-btn" data-archive-action="inherit" ${picker.scope==='chat'?'':'disabled'}>沿用默认</button><span class="sd-character-spacer"></span>${icon('binding-save','保存绑定','floppy-disk')}</div>
     </div></section>`:''}
     <div class="sd-character-tools"><input class="text_pole" type="search" data-archive-search value="${escape(view.search)}" aria-label="搜索角色档案">${icon('backup-library','备份角色库与原图','download')}${icon('restore-library','恢复角色库与原图','folder')}${icon('refresh','刷新角色库','arrows-clockwise')}${icon('import','导入角色档案','upload')}</div>
+    ${hasAliasRows(view.bindings)?'<div class="sd-character-tools"><span>USER地址存在不同写法</span><button type="button" class="sd-btn" data-archive-action="user-aliases">核对USER地址</button></div>':''}
     ${CHARACTER_CATEGORIES.map(category=>{
       const query=view.search.toLocaleLowerCase(),rows=view.rows.filter(row=>row.category===category&&(!query||[row.name,...row.aliases].join(' ').toLocaleLowerCase().includes(query))),shown=rows.slice(0,view.shown[category]||24);
       return `<details class="sd-card sd-character-category is-${category}" data-archive-category="${category}" ${view.collapsed[category]?'':'open'}><summary><b>${category.toUpperCase()}</b><span>${rows.length}</span>${icon('new',`新建 ${category.toUpperCase()} 档案`,'plus',`data-category="${category}"`)}</summary>
         <div class="sd-character-grid">${shown.map(row=>{
-          const subject=view.subjects.find(subject=>selectCharacterBinding(view.bindings,subject,view.chatKey)?.archiveId===row.id),cover=safeImage(row.cover)||safeImage(subject?.avatar);
+          const subject=view.subjects.find((_subject,index)=>currentBindings[index]?.archiveId===row.id),cover=safeImage(row.cover)||safeImage(subject?.avatar);
           return `<button type="button" class="sd-character-file ${subject?'is-bound':''}" data-archive-action="edit" data-archive-id="${escape(row.id)}"><span class="sd-character-file-image">${cover?`<img src="${escape(cover)}" alt="" loading="lazy" decoding="async">`:'<i data-qm-icon="qm-regular-user"></i>'}</span><b>${escape(row.name)}</b></button>`;
         }).join('')}${rows.length>shown.length?`<button type="button" class="sd-btn sd-character-more" data-archive-action="more" data-category="${category}">更多</button>`:''}</div></details>`;
     }).join('')}
@@ -103,7 +108,7 @@ export function renderCharacterArchive(view,{identity=()=>''}={}) {
   </fieldset><input type="file" data-archive-file accept=".json,application/json" hidden></div>`;
 }
 
-export function createCharacterArchiveController({resolveNamespace,getContext,getScope,isCurrent=()=>true,onIcons=()=>{},identity,notify=()=>{},confirm=async()=>false,download,saveReference,loadComfyRecipe,requestHeaders=()=>({}),
+export function createCharacterArchiveController({resolveNamespace,getContext,getScope,isCurrent=()=>true,onIcons=()=>{},identity,notify=()=>{},confirm=async()=>false,download,saveReference,loadComfyRecipe,onUserAliases,requestHeaders=()=>({}),
   onCollapse=()=>{},collapsed={},store=createCharacterArchiveStore()}={}) {
   const view={rows:[],bindings:[],subjects:[],chatKey:'',search:'',draft:null,bindingEditor:null,collapsed:{...collapsed},shown:{},bindingShown:24,busy:false,error:''};
   let host=null,namespace='',entry=0,disposed=false,verified=-1;const scrolls={list:0,editor:0,restore:0};
@@ -147,6 +152,9 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
     await run(async(guard,expected)=>{
       const id=button?.dataset.archiveId,category=button?.dataset.category;
       const itemIndex=Number(button?.dataset.itemIndex),editor=view.comfyEditor;
+      if(action==='user-aliases'){
+        if(typeof onUserAliases!=='function')throw Error('请更新前端后核对USER地址');view.bindingEditor=null;await onUserAliases(namespace,guard);await loadList(expected);return;
+      }
       if(action==='restore-library'&&!view.draft){
         const module=await import('./qianmu-storyboard-package-journal.js');await guard();clearRestore();remember();
         scrolls.restore=0;view.restoring={journal:module.createStoryboardPackageJournal(),record:null,session:null,preview:null,choices:{},bindingsReviewed:false,page:0};
@@ -239,7 +247,11 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
         await store.bind(namespace,{target:row,expectedRevision:row.revision,inherit:true});await loadList(expected);return;
       }
       if(action==='binding'){
-        const subject=view.subjects[Number(button.dataset.subjectIndex)];if(!subject?.subjectKey)return;
+        const current=view.subjects[Number(button.dataset.subjectIndex)];if(!current?.subjectKey)return;
+        const subject=current.category==='user'?{...current,subjectKey:canonicalUserSubjectKey(current.subjectKey)||current.subjectKey}:current;
+        if(subject.category==='user'&&hasAliasRows(view.bindings.filter(row=>sameCharacterSubject(row,subject)))){
+          if(typeof onUserAliases!=='function')throw Error('请更新前端后核对USER地址');view.bindingEditor=null;await onUserAliases(namespace,guard);await loadList(expected);return;
+        }
         const scope=view.chatKey?'chat':'default',row=selectCharacterBinding(view.bindings,subject,view.chatKey);
         view.bindingEditor={subject,scope,archiveId:row?.archiveId||''};return;
       }

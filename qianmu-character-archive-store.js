@@ -1,5 +1,6 @@
 import {normalizeCharacterArchive,characterBindingTarget,characterArchiveError} from './qianmu-character-archive.js';
 import {summarizeCharacterStorage} from './qianmu-character-storage.js';
+import {sameCharacterSubject} from './qianmu-user-identity.js';
 const fail = (code,message) => { throw characterArchiveError(code,message); };
 const identifier = id => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(id);
 const account = namespace => { if (typeof namespace !== 'string' || !/^st-user:.+/.test(namespace) || namespace.length > 512 || /[\u0000-\u001f\u007f]/.test(namespace)) fail('account','无法确认当前 ST 账户'); return namespace; };
@@ -140,9 +141,37 @@ export function createCharacterArchiveStore({indexedDB=globalThis.indexedDB,keyR
     async bindings(namespace){account(namespace);return operation('readonly',(tx,read,set)=>read(tx.objectStore('bindings').index('namespace').getAll(keyRange.only(namespace),2049),rows=>{
       if(rows.length>2048)fail('capacity','角色绑定超过上限');for(const row of rows)if(row.namespace!==namespace||row.key!==bindingKey(namespace,characterBindingTarget(row))||!identifier(row.revision)||(row.archiveId!==''&&!identifier(row.archiveId)))fail('index','角色绑定索引异常');set(rows);
     }));},
+    // The coordinator saves and verifies the original-relation receipt BEFORE invoking this atomic binding-only write.
+    async applyUserAliasReview(namespace,input,{expectedBindings,expectedHeads,confirmed=false,isCurrent=()=>true}={}){
+      if(confirmed!==true)fail('alias','请明确确认USER地址整理');account(namespace);
+      const codec=await import('./qianmu-user-alias.js'),review=await codec.inspectUserAliasReview(input);
+      if(review.namespace!==namespace)fail('alias','USER凭据不属于当前账户');
+      const bindings=structuredClone(expectedBindings),heads=structuredClone(expectedHeads),before=codec.projectAliasBindings(bindings,namespace);
+      if(!Array.isArray(heads)||heads.length>512)fail('alias','角色目录核对无效');for(const head of heads)validateHead(head,namespace);
+      const choices=Object.fromEntries(review.selections.map(row=>[row.groupId,row.candidateId]));
+      const plan=await codec.planUserAliases({namespace,chatHash:review.chatHash,bindings:before,choices,resolveTargets:async()=>review.targets});
+      if(!plan.ready||plan.review.digest!==review.digest)fail('alias','原USER地址关系已经变化，未覆盖');
+      return operation('readwrite',(tx,read,set)=>{
+        read(tx.objectStore('heads').index('namespace').getAll(keyRange.only(namespace),513),currentHeads=>read(tx.objectStore('bindings').index('namespace').getAll(keyRange.only(namespace),2049),currentBindings=>{
+          const sorted=rows=>rows.slice().sort((a,b)=>a.key.localeCompare(b.key));
+          if(JSON.stringify(sorted(currentHeads))!==JSON.stringify(sorted(heads))||JSON.stringify(sorted(currentBindings))!==JSON.stringify(sorted(bindings)))fail('conflict','USER整理确认后角色或绑定已变化，请重新核对');
+          const headById=new Map(currentHeads.map(head=>[head.id,head]));for(const row of plan.writes)if(row.archiveId&&headById.get(row.archiveId)?.category!=='user')fail('alias','选中的USER档案已不存在');
+          withUsage(tx,read,namespace,usage=>{
+            if(usage.bindings!==before.length)fail('index','原绑定计数不符，未整理');
+            for(const row of plan.affected)tx.objectStore('bindings').delete(bindingKey(namespace,row));
+            for(const row of plan.writes)tx.objectStore('bindings').put({...row,key:bindingKey(namespace,row),namespace});
+            tx.objectStore('usage').put({...usage,bindings:plan.after.length});set({before:plan.affected.length,after:plan.writes.length});
+          });
+        }));
+      },isCurrent);
+    },
     async bind(namespace,{target,archiveId='',expectedRevision='',inherit=false}){
       target=characterBindingTarget(target);const key=bindingKey(namespace,target);if(archiveId)keyFor(namespace,archiveId);const revision=freshId();
-      return operation('readwrite',(tx,read,set)=>read(tx.objectStore('bindings').get(key),previous=>{
+      const scanAliases=!inherit&&target.category==='user';
+      return operation('readwrite',(tx,read,set)=>read(scanAliases?tx.objectStore('bindings').index('namespace').getAll(keyRange.only(namespace),2049):tx.objectStore('bindings').get(key),existing=>{
+        if(scanAliases&&existing.length>2048)fail('capacity','角色绑定超过上限');
+        if(scanAliases&&existing.some(row=>sameCharacterSubject(row,target)&&row.subjectKey!==target.subjectKey))fail('alias','同一USER存在其他地址写法，请先在角色库核对USER地址');
+        const previous=scanAliases?existing.find(row=>row.key===key):existing;
         if((previous?.revision||'')!==expectedRevision)fail('conflict','绑定已被另一页修改，请刷新后重试');
         const write=()=>withUsage(tx,read,namespace,usage=>{
           if(previous&&usage.bindings<1)fail('index','角色绑定计值异常，不会覆盖原数据');

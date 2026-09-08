@@ -1,4 +1,5 @@
 // Compact metadata only. Full receipts are verified and serialized in a short-lived Worker.
+import {canonicalUserSubjectKey} from './qianmu-user-identity.js';
 export const MAPPING_PAGE_SIZE=24;
 export const mappingBytes=value=>new TextEncoder().encode(JSON.stringify(value)).length;
 const exact=(value,fields)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===fields.length&&fields.every(key=>Object.hasOwn(value,key));
@@ -9,11 +10,11 @@ const fail=()=>{throw Object.assign(new Error('迁移凭据索引或查询不符
 export const mappingHeadKey=(namespace,kind,digest)=>JSON.stringify([namespace,kind,digest]);
 export function mappingHead(kind,receipt){
   const {review,namespace,createdAt}=receipt;
-  return validateMappingHead({version:1,key:mappingHeadKey(namespace,kind,review.digest),namespace,kind,digest:review.digest,sourceDigest:review.sourceDigest,chatHash:review.chatHash,createdAt,
+  return validateMappingHead({version:review.scope==='local-user-alias-resolution'?2:1,...(review.scope==='local-user-alias-resolution'?{scope:review.scope}:{}),key:mappingHeadKey(namespace,kind,review.digest),namespace,kind,digest:review.digest,sourceDigest:review.sourceDigest,chatHash:review.chatHash,createdAt,
     bytes:mappingBytes(receipt),reviewBytes:mappingBytes(review),mappings:kind==='environment'?1:review.rows.length,bindings:kind==='environment'?0:review.lineage.length},namespace);
 }
 export function validateMappingHead(value,namespace){
-  if(!exact(value,['version','key','namespace','kind','digest','sourceDigest','chatHash','createdAt','bytes','reviewBytes','mappings','bindings'])||value.version!==1||!account(namespace)||value.namespace!==namespace
+  if(!exact(value,['version','key','namespace','kind','digest','sourceDigest','chatHash','createdAt','bytes','reviewBytes','mappings','bindings',...(value?.version===2?['scope']:[])])||![1,2].includes(value.version)||value.version===2&&(value.scope!=='local-user-alias-resolution'||value.kind!=='subjects')||!account(namespace)||value.namespace!==namespace
     ||!['environment','subjects'].includes(value.kind)||![value.digest,value.sourceDigest,value.chatHash].every(hash)||value.key!==mappingHeadKey(namespace,value.kind,value.digest)
     ||!integer(value.createdAt)||!integer(value.bytes,9*1048576)||!integer(value.reviewBytes,8*1048576)||value.reviewBytes<1||value.bytes<=value.reviewBytes
     ||!integer(value.mappings,2048)||value.mappings<1||!integer(value.bindings,2048)|| (value.kind==='environment'?(value.mappings!==1||value.bindings!==0):value.bindings<value.mappings))fail();
@@ -47,6 +48,8 @@ export function validateMappingDetail(value,namespace,input){
   for(const row of value.rows){
     if(input.kind==='environment'){
       if(!exact(row,['sourceInstance','sourceAccount','targetInstance','targetAccount'])||!Object.values(row).every(value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value)))fail();
+    }else if(value.head.scope==='local-user-alias-resolution'){
+      if(!exact(row,['source','target'])||!binding(row.source)||!binding(row.target)||row.source.category!=='user'||row.target.category!=='user'||canonicalUserSubjectKey(row.source.subjectKey)!==row.target.subjectKey||canonicalUserSubjectKey(row.target.subjectKey)!==row.target.subjectKey||['scope','chatKey'].some(key=>row.source[key]!==row.target[key]))fail();
     }else if(!exact(row,['source','target','sourceState','sourceHash','targetHash'])||!binding(row.source)||!binding(row.target)||!['present','missing','unavailable'].includes(row.sourceState)
       ||(row.sourceState==='present'?!hash(row.sourceHash):row.sourceHash!==null)||!hash(row.targetHash)||['category','scope','chatKey','archiveId','updatedAt'].some(key=>row.source[key]!==row.target[key]))fail();
   }return value;

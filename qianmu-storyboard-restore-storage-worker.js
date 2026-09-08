@@ -3,11 +3,15 @@ import { collectRestoreStorage, clearRestoreStorage } from './qianmu-storyboard-
 
 let started=false,request=0,id='',pending=null;
 const guard=()=>new Promise(resolve=>{pending={request:++request,resolve};self.postMessage({id,guard:request});});
+const resolveAliasTargets=targets=>new Promise(resolve=>{pending={request:++request,resolve,type:'targets'};self.postMessage({id,aliasTargets:{request,targets}});});
 self.addEventListener('message',async event=>{
-  if(started){if(pending&&event.data?.id===id&&Number.isSafeInteger(event.data.guard)&&event.data.guard===pending.request){const current=pending;pending=null;current.resolve();}return;}
+  if(started){if(pending&&event.data?.id===id){
+    if(pending.type==='targets'&&event.data.aliasTargets?.request===pending.request){const current=pending;pending=null;current.resolve(event.data.aliasTargets.rows);}
+    else if(!pending.type&&Number.isSafeInteger(event.data.guard)&&event.data.guard===pending.request){const current=pending;pending=null;current.resolve();}
+  }return;}
   started=true;const input=event.data;id=input?.id;let journal,characters;
   try{
-    if(typeof id!=='string'||!['inspect','clear','characters','comfy','mappings','mapping-list','mapping-detail','mapping-export'].includes(input.action))throw Error('储存操作无效');
+    if(typeof id!=='string'||!['inspect','clear','characters','comfy','mappings','mapping-list','mapping-detail','mapping-export','user-alias-preview','user-alias-apply'].includes(input.action))throw Error('储存操作无效');
     if(input.action==='comfy'){
       await guard();const {inspectComfyStorage}=await import('./qianmu-comfy-storage.js');
       const result=await inspectComfyStorage({namespace:input.namespace,guard});await guard();self.postMessage({id,result});return;
@@ -18,6 +22,10 @@ self.addEventListener('message',async event=>{
     }
     journal=createStoryboardPackageJournal();
     const options={journal,namespace:input.namespace,guard,isCurrent:()=>true};
+    if(input.action.startsWith('user-alias-')){
+      const {runUserAliasOperation}=await import('./qianmu-user-alias-runtime.js'),{createCharacterArchiveStore}=await import('./qianmu-character-archive-store.js');characters=createCharacterArchiveStore();
+      const result=await runUserAliasOperation(input.action,{...options,store:characters,chatHash:input.chatHash,input:input.input,resolveTargets:resolveAliasTargets});await guard();self.postMessage({id,result});return;
+    }
     if(input.action==='mappings'||input.action.startsWith('mapping-')){
       const {runMappingRegistry}=await import('./qianmu-storyboard-mapping-registry.js');
       const result=await runMappingRegistry(input.action,{...options,input:input.input});await guard();self.postMessage({id,result});return;
