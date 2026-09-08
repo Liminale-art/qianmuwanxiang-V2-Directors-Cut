@@ -15,9 +15,11 @@ import { captureStoryboardChatEvidence } from '../qianmu-storyboard-chat-evidenc
 import { captureStoryboardSubjectEvidence } from '../qianmu-storyboard-subject-evidence.js';
 import {aliasFixture,targetKey as aliasTargetKey} from './fixtures/storyboard-user-aliases.mjs';
 import {inspectStoryboardSubjectMapReview} from '../qianmu-storyboard-subject-map.js';
+import {mappingReceiptsFixture} from './fixtures/storyboard-mapping-receipts.mjs';
+import {mappingHead,mappingBytes} from '../qianmu-storyboard-mapping-contract.js';
 
 const clone = structuredClone;
-async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = false, subjectEvidence = false, sourceAliases = false, sourceText = 'original text', missingAnchor = false } = {}) {
+async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = false, subjectEvidence = false, sourceAliases = false, history = false, sourceText = 'original text', missingAnchor = false } = {}) {
   const source = await sourceFixture(); source.config.chat.images[0].source = 'novel'; source.config.chat.images[0].floor = 0;
   source.config.chat.images[0].paragraphAnchor = { floor: 0 };
   if (!missingAnchor) source.config.chat.images[0].messageHash = hashText(sourceText);
@@ -30,6 +32,8 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
   if (subjectEvidence) { source.options.subjectEvidence = await captureStoryboardSubjectEvidence(subjectRows); source.sources.characters.bindings[0].archiveId = 'alice'; }
   if(sourceAliases){source.sources.characters={...aliasFixture({extra:26}),namespace};subjectRows=[...new Set(source.sources.characters.bindings.map(row=>row.subjectKey))].map(subjectKey=>({category:'user',subjectKey,state:'present',profile:{name:'Player',description:'source persona'}}));source.options.subjectEvidence=await captureStoryboardSubjectEvidence(subjectRows);}
   if (chatEvidence) source.options.chatEvidence = await captureStoryboardChatEvidence([{ mes: sourceText, is_user: false, swipe_id: 0 }], chatKey);
+  const historyRows=history?await mappingReceiptsFixture({namespace}):[];
+  if(history)source.options.journal={listMappingHeads:async()=>historyRows.map(row=>row.head),loadMappingReceipt:async(_ns,kind,id)=>historyRows.find(row=>row.kind===kind&&row.head.digest===id).receipt};
   source.options.storyboard = file(source.config); const built = await source.build();
   const e = { active: true, events: [], files: new Map(), records: new Map(), mutation: null, settings: createStoryboardDefaults(), chat: {},
     messages: [{ mes: sourceText, is_user: false, swipe_id: 0 }], subjectRows, locals: clone(source.sources), vibes: false, configChanges: 0, mappings: new Map(), subjectMaps:new Map() };
@@ -59,9 +63,16 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
   options.vibeStage = { inspect: async () => ({ fileHash: await vibeDigest(new Uint8Array(await source.options.storyboard.arrayBuffer())), localHash: await digest(e.vibes), fits: !e.vibeFull, missing: e.vibes ? 0 : 1, rows: [], namespace }),
     stage: async (_file, proof, confirmed) => { assert.equal(confirmed, true); assert.equal(proof.localHash, await digest(e.vibes)); if (e.failAt === 'vibes') throw Error('synthetic vibe failure'); e.vibes = true; e.events.push('vibes'); } };
   options.journal = {
+    listMappingHeads:async()=>[...[...e.mappings.values()].map(row=>mappingHead('environment',row)),...[...e.subjectMaps.values()].map(row=>mappingHead('subjects',row))],
+    loadMappingReceipt:async(_ns,kind,id)=>clone((kind==='environment'?e.mappings:e.subjectMaps).get(id)||null),
+    importMappingReceipt:async(row,{head,confirmed})=>{assert.equal(confirmed,true);const store=head.kind==='environment'?e.mappings:e.subjectMaps;
+      if(e.failAt==='history'||e.historyFailAfter===e.events.filter(item=>item==='history').length)throw Error('synthetic receipt failure');
+      const current=store.get(row.review.digest);if(current)assert.deepEqual(current,row);else{store.set(row.review.digest,clone(row));e.events.push('history');}
+      if(e.afterHistory)await e.afterHistory();return clone(row);
+    },
     loadSubjectMap:async(_ns,id)=>clone(e.subjectMaps.get(id)||null),
     inspectSubjectMap:async review=>({receipt:clone(e.subjectMaps.get(review.digest)||null),fits:!e.subjectMapFull}),
-    prepareSubjectMap:async(review,approved)=>{assert.equal(approved.confirmed,true);if(e.failAt==='subjectMap')throw Error('synthetic subject map failure');const row=e.subjectMaps.get(review.digest)||{namespace,review:clone(review),createdAt:1};e.subjectMaps.set(review.digest,row);e.events.push('subjectMap');return clone(row);},
+    prepareSubjectMap:async(review,approved)=>{assert.equal(approved.confirmed,true);if(e.failAt==='subjectMap')throw Error('synthetic subject map failure');const bytes=mappingBytes(review),row=e.subjectMaps.get(review.digest)||{key:JSON.stringify([namespace,review.digest,bytes]),namespace,review:clone(review),bytes,createdAt:1};e.subjectMaps.set(review.digest,row);e.events.push('subjectMap');return clone(row);},
     inspectEnvironmentMap: async review => ({receipt:clone(e.mappings.get(review.digest)||null),fits:!e.mappingFull}),
     prepareEnvironmentMap: async (review,approved) => {assert.equal(approved.confirmed,true);if(e.failAt==='mapping')throw Error('synthetic mapping failure');const row=e.mappings.get(review.digest)||{key:review.digest,namespace,review:clone(review),createdAt:1};e.mappings.set(review.digest,row);e.events.push('mapping');return clone(row);},
     loadResource: async (_ns, kind = 'characters') => clone(e.records.get(kind) || null),
@@ -78,10 +89,43 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
     captureSubjects: async targets => captureStoryboardSubjectEvidence(e.subjectRows.filter(row=>targets.some(target=>target.category===row.category&&target.subjectKey===row.subjectKey))),
     journal: options.journal, guard: options.guard, isCurrent: options.isCurrent, persist: async () => { if (e.failAt === 'persist') throw Error('synthetic persist failure'); e.events.push('configuration'); } });
   const reopen = () => createStoryboardBundleRestoreSession(options);
-  return { source, built, e, options, reopen, session: await reopen() };
+  return { source, built, historyRows,e, options, reopen, session: await reopen() };
 }
 const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true, connectionsReviewed: true, resourcesReviewed: true };
 const writes = e => e.events.filter(row => !row.startsWith('lock:'));
+test('carried history is separately confirmed and saved before originals and current mapping receipts',async()=>{
+  const f=await fixture({history:true,subjectEvidence:true});f.e.subjectRows.push({category:'char',subjectKey:'char:renamed-alice.png',state:'present',profile:{name:'Alice',description:'original character'}});
+  const mapping=[{category:'char',sourceKey:'char:alice.png',targetKey:'char:renamed-alice.png'}],p=await f.session.preview({},mapping);assert.equal(p.mappingRestore.added,4);assert.equal(p.mappingRestore.existing,0);
+  const approved={...consent,subjectsReviewed:true,subjectsMapped:true};await assert.rejects(f.session.restore(p,approved),/单独确认保存历史/);assert.deepEqual(writes(f.e),[]);
+  const page=await f.session.receipts({offset:0});assert.equal(page.total,4);assert.equal(page.rows.length,4);assert.equal(page.indexDigest,p.summary.mappingReceipts.digest);
+  await f.session.restore(p,{...approved,historyReviewed:true});assert.equal(f.e.events.filter(row=>row==='history').length,4);
+  assert.ok(f.e.events.lastIndexOf('history')<f.e.events.indexOf('subjectMap'));assert.ok(f.e.events.indexOf('subjectMap')<f.e.events.indexOf('image'));
+  for(const row of f.historyRows)assert.deepEqual(await f.options.journal.loadMappingReceipt(namespace,row.kind,row.head.digest),row.receipt);
+  assert.equal(f.e.subjectMaps.size,4);assert.equal(f.e.mappings.size,1);assert.equal(f.e.mutation.phase,'applied');f.session.close();
+});
+
+test('partial receipt failure leaves no originals, and explicit reopen reuses intact originals without renewing timestamps',async()=>{
+  const f=await fixture({history:true}),p=await f.session.preview();f.e.historyFailAfter=2;
+  await assert.rejects(f.session.restore(p,{...consent,historyReviewed:true}),/未全部确认/);assert.equal(f.e.files.size,0);assert.equal(f.e.mutation,null);assert.equal(f.e.records.get('bundle').phase,'prepared');assert.equal(f.e.events.filter(x=>x==='history').length,2);
+  f.session.close();f.session=await f.reopen();const next=await f.session.preview();assert.equal(next.mappingRestore.existing,2);assert.equal(next.mappingRestore.added,2);
+  await assert.rejects(f.session.restore(next,consent),/单独确认保存历史/);f.e.historyFailAfter=undefined;
+  await f.session.restore(await f.session.preview(),{...consent,historyReviewed:true});assert.equal(f.e.events.filter(x=>x==='history').length,4);
+  for(const row of f.historyRows)assert.deepEqual(await f.options.journal.loadMappingReceipt(namespace,row.kind,row.head.digest),row.receipt);f.session.close();
+});
+
+test('conflicting first receipt and changed target census cannot pass restore approval',async()=>{
+  const f=await fixture({history:true}),p=await f.session.preview(),row=f.historyRows[0];f.e.mappings.set(row.head.digest,{...clone(row.receipt),createdAt:99});
+  await assert.rejects(f.session.restore(p,{...consent,historyReviewed:true}),/首次记录不同/);assert.equal(f.e.files.size,0);assert.equal(f.e.records.size,0);f.session.close();
+  const g=await fixture({history:true}),gp=await g.session.preview(),original=g.historyRows[0];g.e.mappings.set(original.head.digest,clone(original.receipt));
+  await assert.rejects(g.session.restore(gp,{...consent,historyReviewed:true}),/确认后资源/);assert.equal(g.e.records.size,0);g.session.close();
+});
+
+test('lost receipt readback and removed carried history halt later resource or configuration writes',async()=>{
+  const f=await fixture({history:true}),p=await f.session.preview();f.e.afterHistory=async()=>f.e.mappings.clear();
+  await assert.rejects(f.session.restore(p,{...consent,historyReviewed:true}),/未全部确认/);assert.equal(f.e.files.size,0);assert.equal(f.e.mutation,null);f.session.close();
+  const g=await fixture({history:true}),gp=await g.session.preview();g.e.afterImage=async()=>g.e.subjectMaps.clear();
+  await assert.rejects(g.session.restore(gp,{...consent,historyReviewed:true}),/未全部确认/);assert.ok(g.e.files.size);assert.equal(g.e.mutation,null);assert.equal(g.e.locals.characters.archives.length,0);g.session.close();
+});
 const subjectMappings=[{category:'char',sourceKey:'char:alice.png',targetKey:'char:renamed-alice.png'}];
 async function remappedSubjectsFixture(){
   const f=await fixture({subjectEvidence:true,chatEvidence:true});f.e.subjectRows=[{category:'char',subjectKey:'char:alice.png',state:'missing'},

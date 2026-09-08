@@ -6,8 +6,8 @@ import {createBundleSubjectMapReview} from '../../qianmu-bundle-subject-map.js';
 import {captureStoryboardSubjectEvidence,storyboardSubjectTargets} from '../../qianmu-storyboard-subject-evidence.js';
 import {mappingHead,mappingBytes} from '../../qianmu-storyboard-mapping-contract.js';
 export {namespace};
-export async function mappingReceiptsFixture(){
-  const base=await mappingFixture(),library={...aliasFixture(),namespace},chatHash='d'.repeat(64);
+export async function mappingReceiptsFixture({namespace:targetNamespace=namespace}={}){
+  const namespace=targetNamespace,base=await mappingFixture({namespace}),library={...aliasFixture(),namespace},chatHash='d'.repeat(64);
   const localInput={namespace,chatHash,bindings:library.bindings,resolveTargets:async targets=>targets.map(subjectKey=>({subjectKey,present:true}))};
   const preview=await planUserAliases(localInput),winner=preview.display.find(row=>row.conflict&&row.archiveId==='bob');
   const local=await planUserAliases({...localInput,choices:{[winner.groupId]:winner.candidateId}});

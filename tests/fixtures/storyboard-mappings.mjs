@@ -4,7 +4,8 @@ import {captureStoryboardSubjectEvidence} from '../../qianmu-storyboard-subject-
 import {comfyLibraryBackupDigest as digest} from '../../qianmu-comfy-library-backup.js';
 import {vibeDigest} from '../../qianmu-vibe-file.js';
 export const namespace='st-user:mapping-registry';
-export async function mappingFixture({bindings=25}={}){
+export async function mappingFixture({bindings=25,namespace:targetNamespace=namespace}={}){
+  const namespace=targetNamespace;
   const chatHash='b'.repeat(64),sourceDigest='a'.repeat(64);
   const source={ok:true,version:1,expectedAccount:'st-user:'+await vibeDigest(namespace.slice(8)),state:'ready',instanceId:'11111111-1111-4111-8111-111111111111',accountId:'22222222-2222-4222-8222-222222222222',proof:'installation-labels',automaticRebinding:false};
   const environment=await createStoryboardEnvironmentReview({namespace,chatHash,sourceDigest,source,target:{...source,instanceId:'33333333-3333-4333-8333-333333333333'}});

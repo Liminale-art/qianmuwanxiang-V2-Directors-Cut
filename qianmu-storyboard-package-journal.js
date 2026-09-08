@@ -2,6 +2,9 @@ import {validateStoryboardMutation} from './qianmu-storyboard-package-mutation.j
 import {inspectStoryboardEnvironmentReview,validateStoryboardEnvironmentReceipt,storyboardEnvironmentReviewsEqual,STORYBOARD_ENVIRONMENT_MAP_LIMIT} from './qianmu-storyboard-environment-map.js';
 import {inspectStoryboardSubjectMapReview} from './qianmu-storyboard-subject-map.js';
 import {mappingHead,validateMappingHead,mappingHeadKey} from './qianmu-storyboard-mapping-contract.js';
+import {inspectBundleMappingReceipt} from './qianmu-bundle-mappings.js';
+import {sameBundleMappingHead} from './qianmu-bundle-mapping-contract.js';
+import {comfyLibraryBackupDigest as mappingDigest} from './qianmu-comfy-library-backup.js';
 // Asset checkpoints are identity-only; the separate mutation store holds local before/after configuration.
 const fail=message=>{throw Object.assign(new Error(message),{code:'storyboard_package_journal',submissionState:'not_submitted'});};
 const account=value=>typeof value==='string'&&/^st-user:.+/.test(value)&&value.length<=512&&!/[\u0000-\u001f\u007f]/.test(value);
@@ -109,6 +112,32 @@ export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,k
   }
   return Object.freeze({
     loadMappingReceipt,
+    async importMappingReceipt(input,{head:inputHead,confirmed=false,isCurrent=()=>true}={}){
+      if(confirmed!==true)fail('请单独确认保存历史迁移凭据');
+      if(!isCurrent())fail('导入恢复记录的账户或页面已变化');
+      const row=structuredClone(input),head=structuredClone(inputHead),namespace=head?.namespace;
+      await inspectBundleMappingReceipt(row,head,namespace);
+      const previous=await loadMappingReceipt(namespace,head.kind,head.digest,{isCurrent});
+      if(previous&&await mappingDigest(previous)!==await mappingDigest(row))fail('历史迁移凭据与本机首次记录不同，未覆盖');
+      const expected=JSON.stringify(previous),storeName=mappingStore(head.kind);
+      await transaction('readwrite',isCurrent,(store,read,set,tx)=>{
+        read(store.index('namespace').getAllKeys(keyRange.only(namespace),257),keys=>{
+          if(head.kind==='subjects'){
+            const refs=subjectMapKeys(keys,namespace),matches=refs.filter(ref=>ref.digest===head.digest);
+            if(matches.length>1||matches.length&&matches[0].key!==row.key)fail('角色映射索引已变化');
+            if(!matches.length&&(refs.length>=256||refs.reduce((sum,ref)=>sum+ref.bytes,row.bytes)>64*1048576))fail('角色映射凭据空间不足，不会自动删除历史');
+          }else if(keys.length>256||keys.some(key=>!hash(key))||!keys.includes(row.key)&&keys.length>=256)fail('环境映射凭据名额不足或索引损坏');
+          read(store.get(row.key),current=>{
+            if(JSON.stringify(current||null)!==expected)fail('历史迁移凭据已被另一页面修改，请重新核对');
+            const heads=tx.objectStore('mappingHeads');read(heads.get(head.key),currentHead=>{
+              if(currentHead){validateMappingHead(currentHead,namespace);if(!sameBundleMappingHead(currentHead,head)||!current)fail('历史迁移凭据索引冲突，原记录未覆盖');}
+              if(!current)store.add(row);if(!currentHead)heads.add(head);set(true);
+            });
+          });
+        });
+      },[storeName,'mappingHeads']);
+      return loadMappingReceipt(namespace,head.kind,head.digest,{isCurrent});
+    },
     async listMappingHeads(namespace,{guard=async()=>{},isCurrent=()=>true}={}){
       if(!account(namespace))fail('迁移凭据账户无效');await guard();const before=await mappingReferences(namespace,isCurrent),existing=new Set(before.heads.map(row=>row.key));
       if(before.refs.length===before.heads.length){await guard();return before.heads;}

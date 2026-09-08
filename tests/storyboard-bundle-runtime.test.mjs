@@ -7,6 +7,9 @@ import { randomUUID, createHash } from 'node:crypto';
 import {aliasFixture} from './fixtures/storyboard-user-aliases.mjs';
 import {captureStoryboardSubjectEvidence,storyboardSubjectTargets} from '../qianmu-storyboard-subject-evidence.js';
 import {planBundleUserAliases,bundleUserAliasPage,bundleUserAliasSummary} from '../qianmu-bundle-user-alias.js';
+import {mappingReceiptsFixture} from './fixtures/storyboard-mapping-receipts.mjs';
+import {captureBundleMappings} from '../qianmu-bundle-mappings.js';
+import {bundleMappingPage} from '../qianmu-bundle-mapping-contract.js';
 const namespace = 'st-user:test', sourceDigest = 'a'.repeat(64), chatHash = 'b'.repeat(64);
 const view = () => ({ namespace, sourceDigest, chatHash, ready: false, planDigest: '', conflicts: [], images: [], bindingReview: [],
   summary: { images: 1, vibeFiles: 0, workflows: { count: 1, versions: 2 }, pools: { count: 0 }, characters: { count: 0 } }, characterSummary: { added: 0, replaced: 0, kept: 0 } });
@@ -48,6 +51,16 @@ async function fixture(flow, extra = {}) {
 
 async function aliasView(){const library={...aliasFixture(),namespace},evidence=await captureStoryboardSubjectEvidence(storyboardSubjectTargets(library.bindings).map(row=>({...row,state:'present',profile:{name:'Player',description:'source'}})));
   const plan=await planBundleUserAliases({library,evidence,sourceDigest});return {page:bundleUserAliasPage(plan),preview:{...view(),sourceAliases:bundleUserAliasSummary(plan),sourceAliasChoices:{}}};}
+
+test('historical receipt page is read-only, typed and requires independent UI and runtime consent',async()=>{
+  const rows=await mappingReceiptsFixture({namespace}),bundle=await captureBundleMappings({namespace,journal:{listMappingHeads:async()=>rows.map(row=>row.head),loadMappingReceipt:async(_ns,kind,id)=>rows.find(row=>row.kind===kind&&row.head.digest===id).receipt}});
+  const preview={...view(),ready:true,planDigest:'c'.repeat(64),summary:{...view().summary,mappingReceipts:bundle.summary},mappingRestore:{version:1,indexDigest:bundle.index.digest,count:4,added:4,existing:0,addedBytes:bundle.summary.bytes,restoreAuthorized:false,digest:'d'.repeat(64)}};
+  const page=bundleMappingPage(bundle.index,sourceDigest,{offset:0}),f=await fixture(async(w,c)=>{if(c.action==='receipts'){const response=await w.rpc(c,'configuration-apply',{fingerprint:sourceDigest,settings:{},chat:{},imageUrls:{},expectedDigest:'c'.repeat(64)});assert.ok(response.error);w.reply(c,page);}else w.reply(c,preview);});
+  assert.deepEqual(await f.client.preview(),preview);assert.deepEqual(await f.client.receipts({offset:0}),page);assert.equal(f.e.applied,0);
+  const before=f.worker.sent.length;await assert.rejects(f.client.restore(preview,{confirmed:true,environmentReviewed:true}),/单独确认保存历史/);assert.equal(f.worker.sent.length,before);f.client.close();
+  const markup=renderStoryboardBundleReview({preview,page:0,environmentReviewed:true,receiptPage:page});assert.match(markup,/data-bundle-history-reviewed/);assert.match(markup,/data-bundle-action="restore" disabled/);assert.doesNotMatch(renderStoryboardBundleReview({preview,page:0,environmentReviewed:true,historyReviewed:true}),/data-bundle-action="restore" disabled/);
+  const bad=await fixture(async(w,c)=>w.reply(c,{...preview,mappingRestore:{...preview.mappingRestore,restoreAuthorized:true}}));await assert.rejects(bad.client.preview(),/结果与当前原包不符/);assert.equal(bad.worker.closed,true);
+});
 test('source alias pages are typed, source/offset-bound and cannot obtain a configuration write',async()=>{
   const {page,preview}=await aliasView(),{client,e}=await fixture(async(w,c)=>{if(c.action==='aliases'){const answer=await w.rpc(c,'configuration-apply',{fingerprint:sourceDigest,settings:{},chat:{},imageUrls:{},expectedDigest:'c'.repeat(64)});assert.ok(answer.error);w.reply(c,page);}else w.reply(c,preview);});
   assert.deepEqual(await client.preview(),preview);assert.deepEqual(await client.aliases({choices:{},offset:0}),page);assert.equal(e.applied,0);client.close();

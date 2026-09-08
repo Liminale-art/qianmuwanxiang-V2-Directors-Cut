@@ -3,11 +3,18 @@ import { validStoryboardResourceOriginsPage, validStoryboardResourceOriginsSumma
 import { validStoryboardEnvironmentReview } from './qianmu-storyboard-environment-map.js';
 import { validStoryboardSubjectTargetPage, normalizeStoryboardSubjectMappings } from './qianmu-storyboard-subject-map.js';
 import {validateBundleAliasInput,validateBundleAliasSummary,validateBundleAliasPage} from './qianmu-bundle-user-alias-contract.js';
+import {validateBundleMappingSummary,validateBundleMappingRestoreSummary,validateBundleMappingPageInput,validateBundleMappingPage} from './qianmu-bundle-mapping-contract.js';
 let active = null;
 const fail = message => Object.assign(new Error(message), { code: 'storyboard_bundle_restore_runtime', submissionState: 'not_submitted' });
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const count = value => Number.isSafeInteger(value) && value >= 0;
 const validAliasResult=(value,sourceDigest,input)=>{try{validateBundleAliasPage(value,sourceDigest,input);return true;}catch(_){return false;}};
+const validReceiptResult=(value,namespace,sourceDigest,input)=>{try{validateBundleMappingPage(value,namespace,sourceDigest,input);return true;}catch(_){return false;}};
+function validHistory(value){try{
+  const source=value.summary?.mappingReceipts;if(source===undefined)return value.mappingRestore===undefined;
+  validateBundleMappingSummary(source);if(value.mappingRestore!==undefined)validateBundleMappingRestoreSummary(value.mappingRestore,source);
+  return !value.ready||!source.count||Boolean(value.mappingRestore);
+}catch(_){return false;}}
 function validMappings(value){try{return value.subjectMappings===undefined || JSON.stringify(normalizeStoryboardSubjectMappings(value.subjectMappings,value.subjectReview||[]))===JSON.stringify(value.subjectMappings);}catch(_){return false;}}
 function validAliases(value){try{
   if(value.sourceAliases===undefined)return value.sourceAliasChoices===undefined;
@@ -19,7 +26,7 @@ function validView(value, namespace) {
     && Array.isArray(value.conflicts) && value.conflicts.length <= 2560 && value.conflicts.every(row => typeof row.key === 'string' && ['archive','binding'].includes(row.kind) && (row.kind === 'archive' || typeof row.category === 'string'))
     && Array.isArray(value.bindingReview) && value.bindingReview.length <= 2048 && value.bindingReview.every(row => typeof row.category === 'string' && typeof row.subjectKey === 'string')
     && (value.subjectReview === undefined || Array.isArray(value.subjectReview) && value.subjectReview.length <= 2080 && value.subjectReview.every(row => ['char','user','other'].includes(row.category) && typeof row.subjectKey === 'string' && row.subjectKey.length <= 1024 && typeof row.required === 'boolean' && ['matched','changed','missing','unverified'].includes(row.state)))
-    && validMappings(value) && validAliases(value) && (value.subjectMappingReview==null || Object.keys(value.subjectMappingReview).length===3 && hash(value.subjectMappingReview.digest) && count(value.subjectMappingReview.count) && value.subjectMappingReview.count<=2048 && count(value.subjectMappingReview.bindings) && value.subjectMappingReview.bindings<=2048)
+    && validMappings(value) && validAliases(value) && validHistory(value) && (value.subjectMappingReview==null || Object.keys(value.subjectMappingReview).length===3 && hash(value.subjectMappingReview.digest) && count(value.subjectMappingReview.count) && value.subjectMappingReview.count<=2048 && count(value.subjectMappingReview.bindings) && value.subjectMappingReview.bindings<=2048)
     && (value.configuration?.connections === undefined || validStoryboardConnectionReview(value.configuration.connections))
     && (value.summary?.resourceOrigins === undefined || validStoryboardResourceOriginsSummary(value.summary.resourceOrigins))
     && (value.environmentReview == null || validStoryboardEnvironmentReview(value.environmentReview) && value.environmentReview.namespace === namespace && value.environmentReview.sourceDigest === value.sourceDigest && value.environmentReview.chatHash === value.chatHash && value.sourceLabelsMatched === (value.environmentReview.state === 'matched'))
@@ -52,6 +59,8 @@ export async function openStoryboardBundleRestoreRuntime(file, { namespace, chat
     if (action === 'restore' && captured.prepared?.environmentReview?.state === 'mapping-required' && captured.consent?.environmentMapped !== true) throw fail('请单独确认来源与目标环境映射');
     if(action==='restore'&&captured.prepared?.subjectMappings?.length&&captured.consent?.subjectsMapped!==true)throw fail('请单独确认角色或人设目标映射');
     if(action==='restore'&&captured.prepared?.sourceAliases?.changed&&captured.consent?.sourceAliasesReviewed!==true)throw fail('请单独确认原包USER地址整理');
+    if(action==='restore'&&captured.prepared?.summary?.mappingReceipts?.count&&captured.consent?.historyReviewed!==true)throw fail('请单独确认保存历史迁移凭据');
+    if(action==='receipts')validateBundleMappingPageInput(captured);
     if(action==='aliases')validateBundleAliasInput(captured);
     if(action==='preview'&&captured.sourceAliasChoices!==undefined)validateBundleAliasInput({choices:captured.sourceAliasChoices,offset:0});
     return new Promise((resolve, reject) => {
@@ -77,7 +86,7 @@ export async function openStoryboardBundleRestoreRuntime(file, { namespace, chat
               const fields = targets ? ['fingerprint','category','query','offset'] : subjects ? ['fingerprint','subjectEvidence','subjectBindings','subjectMappings','includeTargetEvidence'] : ['settings','chat','imageUrls','fingerprint','chatEvidence',...(apply?['expectedDigest']:[])];
               if (!hash(sourceDigest) || input?.fingerprint !== sourceDigest || Object.keys(input).some(key => !fields.includes(key))
                 || subjects&&input.includeTargetEvidence!==undefined&&input.includeTargetEvidence!==true
-                || (targets ? pending.action!=='targets' : apply ? pending.action !== 'restore' || pending.payload.consent?.confirmed !== true || pending.payload.consent?.environmentReviewed !== true || pending.payload.prepared?.subjectMappings?.length&&pending.payload.consent?.subjectsMapped!==true || pending.payload.prepared?.sourceAliases?.changed&&pending.payload.consent?.sourceAliasesReviewed!==true : !['preview','restore'].includes(pending.action))) throw fail('未经本次确认的配置请求，未应用');
+                || (targets ? pending.action!=='targets' : apply ? pending.action !== 'restore' || pending.payload.consent?.confirmed !== true || pending.payload.consent?.environmentReviewed !== true || pending.payload.prepared?.subjectMappings?.length&&pending.payload.consent?.subjectsMapped!==true || pending.payload.prepared?.sourceAliases?.changed&&pending.payload.consent?.sourceAliasesReviewed!==true || pending.payload.prepared?.summary?.mappingReceipts?.count&&pending.payload.consent?.historyReviewed!==true : !['preview','restore'].includes(pending.action))) throw fail('未经本次确认的配置请求，未应用');
               result = await configuration[targets ? 'targets' : subjects ? 'subjects' : apply ? 'apply' : 'preview'](input); await check();
             }
             if (current === pending) worker.postMessage({ id, operation: pending.operation, type: 'rpc', request: message.request, result });
@@ -94,10 +103,10 @@ export async function openStoryboardBundleRestoreRuntime(file, { namespace, chat
       if (pending.action === 'open') {
         if (!hash(message.result?.sourceDigest) || message.sourceDigest !== message.result.sourceDigest) { close(fail('恢复文件摘要缺失')); return; }
         sourceDigest = message.sourceDigest;
-      } else if (message.sourceDigest !== sourceDigest || (pending.action==='aliases'&&!validAliasResult(message.result,sourceDigest,pending.payload)) || (pending.action === 'resources' && (message.result?.sourceDigest !== sourceDigest || !validStoryboardResourceOriginsPage(message.result)
+      } else if (message.sourceDigest !== sourceDigest || (pending.action==='receipts'&&!validReceiptResult(message.result,namespace,sourceDigest,pending.payload)) || (pending.action==='aliases'&&!validAliasResult(message.result,sourceDigest,pending.payload)) || (pending.action === 'resources' && (message.result?.sourceDigest !== sourceDigest || !validStoryboardResourceOriginsPage(message.result)
         ||message.result.offset!==(pending.payload.offset??0)||message.result.filter!==(pending.payload.filter??'all')))
         || (pending.action==='targets' && (message.result?.sourceDigest!==sourceDigest || !validStoryboardSubjectTargetPage(message.result,{sourceBound:true}) || ['category','query','offset'].some(key=>message.result[key]!==pending.payload[key])))
-        || (!['restore','resources','targets','aliases'].includes(pending.action) && (message.result?.sourceDigest !== sourceDigest || !validView(message.result, namespace)))
+        || (!['restore','resources','targets','aliases','receipts'].includes(pending.action) && (message.result?.sourceDigest !== sourceDigest || !validView(message.result, namespace)))
         || (pending.action === 'restore' && (message.result?.resourcesVerified !== true || message.result?.settingsVerified !== false))) { close(fail('恢复结果与当前原包不符')); return; }
       void check().then(() => { if (current === pending) finish(null, message.result); }, error => close(error));
     });
@@ -106,6 +115,7 @@ export async function openStoryboardBundleRestoreRuntime(file, { namespace, chat
     await command('open', { namespace, chatKey, file, csrf });
     return Object.freeze({ sourceDigest, get isOpen() { return !closed; }, preview: (decisions,subjectMappings,sourceAliasChoices) => command('preview', { decisions: decisions || {},...(subjectMappings!==undefined?{subjectMappings}:{}),...(sourceAliasChoices!==undefined?{sourceAliasChoices}:{}) }),
       aliases:input=>command('aliases',input),
+      receipts:input=>command('receipts',input),
       targets:options=>command('targets',options),
       resources: options => command('resources', options || {}),
       choose: decisions => command('choose', { decisions: decisions || {} }), restore: (prepared, consent) => command('restore', { prepared, consent }), close });

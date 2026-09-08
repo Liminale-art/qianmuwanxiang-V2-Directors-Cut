@@ -4,6 +4,7 @@ export const BUNDLE_MAPPING_SCHEMA='qianmu.storyboard.bundle-mappings.v1';
 export const BUNDLE_MAPPING_LIMITS=Object.freeze({count:512,perKind:256,index:1048576,receipt:9*1048576,records:70*1048576,subjectReviews:64*1048576});
 export const bundleMappingEntryId=head=>`mapping:${head.kind}:${head.digest}`;
 export const isBundleMappingEntry=id=>typeof id==='string'&&/^mapping:(environment|subjects):[a-f0-9]{64}$/.test(id);
+export const sameBundleMappingHead=(a,b)=>Boolean(a&&b&&Object.keys(a).length===Object.keys(b).length&&Object.keys(a).every(key=>a[key]===b[key]));
 const fail=()=>{throw Object.assign(new Error('资源包迁移凭据清单不完整、重复或超限，请保留原文件'),{code:'storyboard_bundle_mappings'});};
 const exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
 const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
@@ -40,4 +41,21 @@ export function validateBundleMappingTransportSummary(value,manifest){
   validateBundleMappingSummary(value);
   if(index.length!==1||parts.length!==value.count||parts.filter(row=>row.id.startsWith('mapping:environment:')).length!==value.environment
     ||parts.reduce((sum,row)=>sum+row.bytes,0)!==value.bytes)fail();
+}
+export function validateBundleMappingRestoreSummary(value,source){
+  validateBundleMappingSummary(source);
+  if(!exact(value,['version','indexDigest','count','added','existing','addedBytes','restoreAuthorized','digest'])||value.version!==1||value.indexDigest!==source.digest||value.count!==source.count||value.restoreAuthorized!==false||!hash(value.digest)
+    ||!['added','existing','addedBytes'].every(key=>Number.isSafeInteger(value[key])&&value[key]>=0)||value.added+value.existing!==value.count||value.addedBytes>source.bytes||Boolean(value.added)!==Boolean(value.addedBytes))fail();return value;
+}
+export function validateBundleMappingPageInput(input){if(!exact(input,['offset'])||!Number.isSafeInteger(input.offset)||input.offset<0||input.offset>504||input.offset%24)fail();return input;}
+export function bundleMappingPage(index,sourceDigest,input){
+  validateBundleMappingPageInput(input);validateBundleMappingIndex(index,index.namespace);
+  if(!hash(sourceDigest)||input.offset&&input.offset>=index.heads.length)fail();
+  return {version:1,namespace:index.namespace,sourceDigest,indexDigest:index.digest,total:index.heads.length,offset:input.offset,rows:structuredClone(index.heads.slice(input.offset,input.offset+24))};
+}
+export function validateBundleMappingPage(value,namespace,sourceDigest,input){
+  validateBundleMappingPageInput(input);
+  if(!exact(value,['version','namespace','sourceDigest','indexDigest','total','offset','rows'])||value.version!==1||value.namespace!==namespace||value.sourceDigest!==sourceDigest||!hash(value.indexDigest)
+    ||!Number.isSafeInteger(value.total)||value.total<0||value.total>512||value.offset!==input.offset||value.offset&&value.offset>=value.total
+    ||!Array.isArray(value.rows)||value.rows.length!==Math.min(24,Math.max(0,value.total-value.offset)))fail();validateBundleMappingHeads(value.rows,namespace);return value;
 }
