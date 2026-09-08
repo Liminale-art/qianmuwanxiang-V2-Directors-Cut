@@ -125,9 +125,11 @@ export function createBrowserImageChannel({ locks = globalThis.navigator?.locks,
           // submitting record therefore remains uncertain after a page crash.
           const previous = await change(key, () => undefined); check();
           if (previous && previous.status !== 'reserved') {
+            // Sharing credentials does not grant one ST account authority to acknowledge another's uncertain fee.
+            if (previous.namespace !== namespace) throw problem('other_account', '此 NAI 连接有其他 ST 账户的未决请求，请回到原账户核查，或使用另一把 Key');
             if (serviceReviewRequired) throw problem('review_required', 'NAI 原请求结果待核查，请到分镜日志 → NAI 收片核查原任务，再手动生成新图');
             const alreadyConfirmed = previous.namespace === namespace && confirmed.has(previous.attemptId);
-            if (automatic || (!alreadyConfirmed && !await confirm('核对 NAI 原请求', '此连接有结果未确认的请求。请先核对渠道任务或账单；继续将发起新的生图请求。'))) {
+            if (automatic || (!alreadyConfirmed && await confirm('核对 NAI 原请求', '此连接有结果未确认的请求。请先核对渠道任务和账单并确认已结束；无法判断时请取消。原结果及费用仍可能未知，继续将发起新的生图请求。') !== true)) {
               throw problem('uncertain', 'NAI 原请求结果未确认，已暂停此连接的后续自动生图');
             }
             check();

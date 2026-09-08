@@ -123,7 +123,7 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
         }
         if (!decision.ok && decision.code === 'confirmation_required' && !job.automatic) {
           current(valid);
-          if (await confirm('确认重新生图', '原请求可能已受理或扣费。请先核对渠道记录；继续会发起一次新的生图请求。')) {
+          if (await confirm('确认重新生图', '原请求可能已受理或扣费。请先核对渠道任务和账单并确认已结束；无法判断时请取消。原结果及费用仍可能未知，继续会发起一次新的生图请求。') === true) {
             current(valid);
             confirmedAttempts = JSON.parse(decision.confirmation).map(row => row[0]);
             decision = await store.claim(identity.scope, { ...input, confirmation: decision.confirmation }, seeds);

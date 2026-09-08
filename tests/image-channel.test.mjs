@@ -5,6 +5,13 @@ import { imageChannelKey, createBrowserImageChannel } from '../qianmu-image-chan
 
 const args = (extra = {}) => ({ apiKey: 'mock-test-key', namespace: 'account-a', attemptId: 'job-a', automatic: true, ...extra });
 const neverWork = () => assert.fail('no provider work is authorized');
+function readOnlyFixture(record) {
+  let writes=0;
+  return {writes:()=>writes,indexedDB:{open(){const opening={};queueMicrotask(()=>{opening.result={close(){},transaction(){
+    const tx={objectStore:()=>({get(){const reading={};queueMicrotask(()=>{reading.result=structuredClone(record);reading.onsuccess();queueMicrotask(()=>tx.oncomplete?.());});return reading;},
+      put(){writes++;throw Error('unexpected mutation');},delete(){writes++;throw Error('unexpected deletion');}}),abort(){queueMicrotask(()=>tx.onabort?.());}};return tx;
+  }};opening.onsuccess();});return opening;}}};
+}
 function waitingLocks() {
   const calls = [];
   return { calls, request(name, options) {
@@ -51,6 +58,26 @@ test('invalid or unbounded prior consent cannot enter the channel', async () => 
     await assert.rejects(channel.run(args({ confirmedAttempts }), neverWork), { code: 'image_channel_identity' });
   }
   channel.close();
+});
+
+test('a shared NAI Key cannot acknowledge another ST account unresolved attempt, even with matching prior consent',async()=>{
+  const key=await imageChannelKey('mock-test-key');
+  for(const status of ['submitting','uncertain'])for(const serviceReviewRequired of [false,true]){
+    const record={version:1,key,namespace:'account-other',attemptId:'original-attempt',ownerId:'old-page',fence:'original-fence',status,updatedAt:1},fixture=readOnlyFixture(record);
+    const channel=createBrowserImageChannel({indexedDB:fixture.indexedDB,locks:{request:async(_key,_options,work)=>work({})}});
+    await assert.rejects(()=>channel.run(args({automatic:false,serviceReviewRequired,confirmedAttempts:[record.attemptId],confirm:neverWork}),neverWork),{code:'image_channel_other_account',submissionState:'not_submitted'});
+    assert.equal(fixture.writes(),0);channel.close();
+  }
+});
+
+test('manual unknown-image consent requires true and never treats popup codes or truthy values as authorization',async()=>{
+  const key=await imageChannelKey('mock-test-key');
+  for(const consent of [undefined,null,false,0,1,'true','1',{}]){
+    const fixture=readOnlyFixture({version:1,key,namespace:'account-a',attemptId:'original-attempt',ownerId:'old-page',fence:'original-fence',status:'uncertain',updatedAt:1});
+    const channel=createBrowserImageChannel({indexedDB:fixture.indexedDB,locks:{request:async(_key,_options,work)=>work({})}});
+    await assert.rejects(()=>channel.run(args({automatic:false,confirm:async(_title,message)=>{assert.match(message,/确认已结束/);return consent;}}),neverWork),{code:'image_channel_uncertain'});
+    assert.equal(fixture.writes(),0);channel.close();
+  }
 });
 
 test('an already closed storage connection fails promptly before provider work', async () => {

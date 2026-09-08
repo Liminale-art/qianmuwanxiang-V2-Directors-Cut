@@ -25520,8 +25520,10 @@ async function confirmDialog(title, text) {
     try {
       const result = await context.Popup.show.confirm(title, text);
       if (result === true) return true;
-      const value = String(result).toLowerCase();
-      return ['true', 'ok', 'yes', 'confirm', 'confirmed', 'affirmative', '1'].some((x) => value.includes(x));
+      // Match explicit affirmative results, never substrings such as -1, unconfirmed or not ok.
+      if (typeof result !== 'string' && typeof result !== 'number') return false;
+      const value = String(result).trim().toLowerCase();
+      return ['true', 'ok', 'yes', 'confirm', 'confirmed', 'affirmative', '1'].includes(value);
     } catch (_) {
       return false;
     }

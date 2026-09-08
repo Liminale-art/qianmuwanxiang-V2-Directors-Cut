@@ -116,6 +116,15 @@ test('all manual entry types share uncertain-result confirmation; declining send
   }
 });
 
+test('ambiguous manual retry consent cannot reserve a new image or alter the original fee history',async()=>{
+  for(const consent of [undefined,null,0,1,'true','1',{}]){
+    const {runtime,store}=setup({confirm:async(_title,message)=>{assert.match(message,/确认已结束/);return consent;}}),original=job();
+    await admit(runtime,original);await runtime.beforeSubmit(original);await runtime.settle(original,'unknown');const before=JSON.stringify([...store.rows]);
+    await assert.rejects(()=>admit(runtime,job({id:'retry',automatic:false,imageAdmission:original.imageAdmission})),{code:'image_attempt_confirmation_required'});
+    assert.equal(JSON.stringify([...store.rows]),before);
+  }
+});
+
 test('a confirmation becomes invalid if a previously unseen uncertain attempt appears', async () => {
   const store = storage(), original = job(); let confirmations = 0;
   const { runtime } = setup({ store, confirm: async () => {
