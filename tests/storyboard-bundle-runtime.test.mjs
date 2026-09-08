@@ -1,0 +1,107 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { openStoryboardBundleRestoreRuntime, closeStoryboardBundleRestoreRuntime } from '../qianmu-storyboard-bundle-restore-runtime.js';
+import { renderStoryboardBundleReview } from '../qianmu-storyboard-bundle-view.js';
+const namespace = 'st-user:test', sourceDigest = 'a'.repeat(64), chatHash = 'b'.repeat(64);
+const view = () => ({ namespace, sourceDigest, chatHash, ready: false, planDigest: '', conflicts: [], images: [], bindingReview: [],
+  summary: { images: 1, vibeFiles: 0, workflows: { count: 1, versions: 2 }, pools: { count: 0 }, characters: { count: 0 } }, characterSummary: { added: 0, replaced: 0, kept: 0 } });
+const gate = () => { let resolve; const promise = new Promise(done => resolve = done); return { promise, resolve }; };
+class FakeWorker {
+  static last; static flow;
+  constructor() { FakeWorker.last = this; this.listeners = {}; this.sent = []; this.pending = new Map(); this.request = 0; this.closed = false; }
+  addEventListener(type, run) { this.listeners[type] = run; }
+  terminate() { this.closed = true; }
+  emit(value) { this.listeners.message({ data: value }); }
+  postMessage(message) {
+    this.sent.push(structuredClone(message));
+    if (message.type === 'rpc') { this.pending.get(message.request)?.(message); this.pending.delete(message.request); return; }
+    if (message.type === 'command') void Promise.resolve().then(() => FakeWorker.flow(this, message));
+  }
+  reply(command, result) { this.emit({ id: command.id, operation: command.operation, action: command.action, type: 'result', sourceDigest, result }); }
+  rpc(command, kind, payload) { return new Promise(resolve => { const request = ++this.request; this.pending.set(request, resolve); this.emit({ id: command.id, operation: command.operation, request, kind, payload }); }); }
+}
+async function fixture(flow, extra = {}) {
+  const e = { active: true, applied: 0, previews: 0 };
+  FakeWorker.flow = async (worker, command) => {
+    if (command.action === 'open') { await worker.rpc(command, 'guard'); worker.reply(command, { sourceDigest }); }
+    else if (flow) await flow(worker, command, e);
+    else worker.reply(command, view());
+  };
+  const options = { namespace, chatKey: 'chat', guard: async () => { if (!e.active) throw Error('scope changed'); },
+    headers: () => ({ 'X-CSRF-Token': 'only-csrf', Authorization: 'not-forwarded' }), WorkerClass: FakeWorker,
+    configuration: { preview: async () => { e.previews++; return { digest: 'c'.repeat(64) }; }, apply: async () => { e.applied++; return {}; } }, ...extra };
+  const client = await openStoryboardBundleRestoreRuntime(new Blob(['synthetic']), options);
+  return { e, client, worker: FakeWorker.last, options };
+}
+
+test('one persistent worker binds each command and configuration RPC to the source; headers only contain CSRF', async t => {
+  const { e, client, worker } = await fixture(async (worker, command) => {
+    const ack = await worker.rpc(command, 'configuration-preview', { fingerprint: sourceDigest, settings: {}, chat: {}, imageUrls: {} });
+    assert.equal(ack.error, undefined); worker.reply(command, view());
+  }); t.after(() => client.close());
+  await client.preview(); await client.preview(); assert.equal(e.previews, 2); assert.equal(e.applied, 0);
+  const commands = worker.sent.filter(row => row.type === 'command'); assert.deepEqual(commands.map(row => row.operation), [1,2,3]);
+  assert.equal(commands[0].payload.csrf, 'only-csrf'); assert.equal(JSON.stringify(commands).includes('not-forwarded'), false);
+  assert.ok(commands.slice(1).every(row => row.sourceDigest === sourceDigest));
+});
+
+test('preview cannot request a live configuration write, and cross-source or oversized-field RPCs are rejected', async t => {
+  const { e, client } = await fixture(async (worker, command) => {
+    for (const [kind, payload] of [['configuration-apply', { fingerprint: sourceDigest }], ['configuration-preview', { fingerprint: 'd'.repeat(64) }], ['configuration-preview', { fingerprint: sourceDigest, media: ['not metadata'] }]]) {
+      const ack = await worker.rpc(command, kind, payload); assert.ok(ack.error);
+    }
+    worker.reply(command, view());
+  }); t.after(() => client.close()); await client.preview(); assert.equal(e.applied, 0); assert.equal(e.previews, 0);
+});
+
+test('late operations and another session are ignored, while a repeated active RPC terminates the session', async () => {
+  const { e, client, worker } = await fixture(async (worker, command) => {
+    worker.emit({ id: command.id, operation: command.operation-1, request: 11, kind: 'configuration-apply', payload: { fingerprint: sourceDigest } });
+    worker.emit({ id: 'other', operation: command.operation, request: 11, kind: 'configuration-apply', payload: { fingerprint: sourceDigest } });
+    const request = { id: command.id, operation: command.operation, request: 12, kind: 'guard' }; worker.emit(request); worker.emit(request);
+  });
+  await assert.rejects(client.preview(), /消息不符/); assert.equal(worker.closed, true); assert.equal(e.applied, 0);
+});
+
+test('overlapping operations are refused and closing a busy restore rejects with partial-save guidance', async () => {
+  const started = gate(), { client, worker } = await fixture(async () => { started.resolve(); });
+  const pending = client.preview(); await started.promise;
+  await assert.rejects(client.choose({}), /正在执行/); client.close();
+  await assert.rejects(pending, /部分原件或配置可能已保存/); assert.equal(worker.closed, true); assert.equal(client.isOpen, false);
+});
+
+test('a scope change closes the worker before the next command can be dispatched', async () => {
+  const { e, client, worker } = await fixture(); e.active = false;
+  await assert.rejects(client.preview(), /scope changed/); assert.equal(worker.sent.filter(row => row.type === 'command').length, 1); assert.equal(worker.closed, true);
+});
+
+test('timeout and abort terminate the worker without synchronous fallback or replay', async () => {
+  const timed = await fixture(async () => {}, { timeoutMs: 100 }); await assert.rejects(timed.client.preview(), /超时/); assert.equal(timed.worker.closed, true);
+  const signal = new AbortController(), aborted = await fixture(async () => {}, { signal: signal.signal });
+  const pending = aborted.client.preview(); await new Promise(resolve => setTimeout(resolve, 0)); signal.abort();
+  await assert.rejects(pending, /中断/); assert.equal(aborted.worker.closed, true);
+});
+
+test('global session exclusion and cleanup prevent two simultaneous bundle restorers', async () => {
+  const first = await fixture(); await assert.rejects(openStoryboardBundleRestoreRuntime(new Blob(['x']), first.options), /已有整包恢复/);
+  closeStoryboardBundleRestoreRuntime(); assert.equal(first.client.isOpen, false); const second = await fixture(); second.client.close();
+});
+
+test('a worker cannot claim durable settings verification as the result of applying a bundle', async () => {
+  const { client } = await fixture(async (worker, command) => worker.reply(command, { resourcesVerified: true, settingsVerified: true }));
+  await assert.rejects(client.restore({ sourceDigest }, { confirmed: true, environmentReviewed: true }), /结果与当前原包不符/);
+});
+
+test('a malformed worker preview is rejected before it can crash the review renderer', async () => {
+  const { client, worker } = await fixture(async (worker, command) => worker.reply(command, { sourceDigest }));
+  await assert.rejects(client.preview(), /结果与当前原包不符/); assert.equal(worker.closed, true);
+});
+
+test('review markup escapes filenames and role fields, pages conflicts and requires explicit environment consent', () => {
+  const p = view(); p.conflicts = Array.from({ length: 50 }, (_, i) => ({ key: `archive:${i}`, kind: 'archive', localName: '<script>local</script>', incomingName: 'incoming', localVersion: 1, incomingVersion: 2, choice: '' }));
+  let html = renderStoryboardBundleReview({ preview: p, fileName: '<img onerror=alert(1)>', page: 1, busy: false });
+  assert.equal((html.match(/data-bundle-choice=/g) || []).length, 24); assert.ok(html.includes('data-bundle-choice="24"')); assert.ok(html.includes('&lt;script&gt;')); assert.equal(html.includes('<img onerror'), false);
+  assert.match(html, /data-bundle-action="restore" disabled/);
+  p.ready = true; p.planDigest = 'f'.repeat(64); html = renderStoryboardBundleReview({ preview: p, page: 0, busy: false, environmentReviewed: true });
+  assert.doesNotMatch(html, /data-bundle-action="restore" disabled/);
+});

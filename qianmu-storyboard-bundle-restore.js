@@ -5,6 +5,7 @@ import { planComfyPoolRestore } from './qianmu-comfy-pool-backup.js';
 import { planCharacterLibraryRestore } from './qianmu-character-library-backup.js';
 import { imageRestoreReceipt } from './qianmu-image-restore-contract.js';
 import { vibeDigest } from './qianmu-vibe-file.js';
+import { createCharacterRestoreChoiceSnapshot } from './qianmu-character-backup-restore.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle_restore', submissionState: 'not_submitted' }); };
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -22,7 +23,7 @@ function mergedLibrary(local, plan, key) {
 export async function createStoryboardBundleRestoreSession({ namespace, chatKey, file, workflowStore, poolStore, characterStore,
   vibeStage, images, journal, configuration, guard, isCurrent, locks = globalThis.navigator?.locks }) {
   if (typeof guard !== 'function' || typeof isCurrent !== 'function' || !configuration?.preview || !configuration?.apply) fail('缺少整包恢复的环境及配置核对');
-  let closed = false, busy = false;
+  let closed = false, busy = false, choose = null;
   const syncCurrent = () => !closed && isCurrent() === true;
   const check = async () => { if (!syncCurrent()) fail('整包恢复页面已变化'); await guard(); if (!syncCurrent()) fail('整包恢复页面已变化'); };
   await check();
@@ -56,13 +57,17 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
     await check(); return record;
   }
   async function inspect(decisions = {}) {
-    const choices = clone(decisions); await check(); const record = await pendingRecords();
+    choose = null; const choices = clone(decisions); await check(); const record = await pendingRecords();
     const localCharacters = await characterStore.backup(namespace, { isCurrent: syncCurrent }); await check();
     const characterPlan = planCharacterLibraryRestore(localCharacters, characters, { decisions: choices });
     const view = { namespace, chatHash, sourceDigest, record, decisions: choices, conflicts: characterPlan.conflicts,
       summary: clone(inspected.summary), characterSummary: characterPlan.summary, bindingReview: clone(characterPlan.bindingWrites), images: [],
       ready: false, planDigest: '', settingsVerified: false, identityVerified: false };
-    if (!characterPlan.ready) return { view };
+    const captureChoices = () => {
+      const snapshot = createCharacterRestoreChoiceSnapshot(localCharacters, characters, characterPlan, { ...view, summary: view.characterSummary });
+      choose = decisions => { const next = snapshot(decisions); return { ...next, characterSummary: next.summary, summary: clone(inspected.summary), poolSummary: null, vibe: null, configuration: null }; };
+    };
+    if (!characterPlan.ready) { captureChoices(); return { view }; }
     const localWorkflows = await workflowStore.backup(namespace, { isCurrent: syncCurrent }); await check();
     const workflowCapacity = await workflowStore.usage(namespace); await check();
     const workflowPlan = planComfyLibraryRestore(localWorkflows, workflows, { maxBytes: workflowCapacity.limit });
@@ -92,7 +97,7 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
     view.workflowSummary = workflowPlan.summary; view.poolSummary = poolPlan.summary;
     view.vibe = vibe; view.configuration = clone(config.summary || {});
     view.planDigest = await digest({ namespace, chatHash, sourceDigest, record, baseline, choices, expected, vibe, configuration: config.digest, images: view.images });
-    view.ready = !view.images.some(row => row.state === 'conflict'); await check();
+    view.ready = !view.images.some(row => row.state === 'conflict'); await check(); captureChoices();
     return { view, baseline, expected, config, originals: [...originals.values()] };
   }
   async function verifyResources(latest) {
@@ -112,6 +117,11 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
   return Object.freeze({
     sourceDigest,
     async preview(decisions = {}) { if (busy) fail('恢复正在执行，请勿重复操作'); return clone((await inspect(decisions)).view); },
+    async choose(decisions = {}) {
+      if (busy) fail('恢复正在执行，请勿重复操作'); const snapshot = choose, choices = clone(decisions); await check();
+      if (!snapshot || snapshot !== choose) fail('冲突选择已过期，请重新核对');
+      const view = snapshot(choices); await check(); if (snapshot !== choose) fail('冲突选择已过期，请重新核对'); return view;
+    },
     async restore(prepared, { confirmed = false, environmentReviewed = false, bindingsReviewed = false } = {}) {
       if (busy) fail('恢复正在执行，请勿重复操作');
       if (confirmed !== true || environmentReviewed !== true || prepared?.namespace !== namespace || prepared.sourceDigest !== sourceDigest || !hash(prepared.planDigest)) fail('请先核对整包内容、原环境及原聊天，并明确确认恢复');
@@ -157,6 +167,6 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
         }
       })); } finally { busy = false; }
     },
-    close() { closed = true; },
+    close() { closed = true; choose = null; },
   });
 }

@@ -1,4 +1,5 @@
 import vm from 'node:vm';
+import assert from 'node:assert/strict';
 import * as board from '../../qianmu-storyboard.js';
 import * as assets from '../../qianmu-storyboard-package-assets.js';
 import * as input from '../../qianmu-storyboard-package-input.js';
@@ -12,7 +13,7 @@ export function createPackageImportFixture(){
   const locks={request:async(name,opts,run)=>run({name})};
   const assetStore={inventory:async namespace=>{const heads=[...e.files.values()].map(a=>({namespace,assetId:a.assetId,bytes:a.bytes,previewBytes:vibeFilePreview(a.document)?.size||0}));return {heads,usage:{bytes:heads.reduce((n,a)=>n+a.bytes,0),previewBytes:heads.reduce((n,a)=>n+a.previewBytes,0),limit:e.assetLimit??512*1048576}};},
     load:async(ns,id)=>e.files.get(id)||null,putFile:async(ns,text)=>{if(e.failAsset)throw Error('asset write interrupted');const [a]=await parseNovelVibeFile(text);e.events.push('asset');e.files.set(a.assetId,a);},close:()=>{e.assetClosed=true;}};
-  const journal={loadMutation:async()=>e.pending&&structuredClone(e.pending),prepareMutation:async row=>{e.events.push('journal');if(e.pending)throw Error('pending');e.pending=structuredClone(row);return structuredClone(row);},
+  const journal={loadResource:async()=>e.resource||null,dismissResource:async row=>{assert.deepEqual(row,e.resource);e.resource=null;},loadMutation:async()=>e.pending&&structuredClone(e.pending),prepareMutation:async row=>{e.events.push('journal');if(e.pending)throw Error('pending');e.pending=structuredClone(row);return structuredClone(row);},
     updateMutation:async(row,phase)=>{e.events.push(phase);e.pending=structuredClone({...row,phase,revision:row.revision+1});return structuredClone(e.pending);},dismissMutation:async()=>{e.pending=null;},close:()=>{},
     list:async namespace=>[...e.checkpoints.values()].filter(row=>row.namespace===namespace),dismissCheckpoint:async row=>{e.checkpoints.delete(row.key);},
     prepare:async d=>{const key=JSON.stringify([d.namespace,d.chatHash,d.fileHash]);let row=e.checkpoints.get(key);if(!row){row={...d,key,version:1,phase:'prepared',revision:1,createdAt:1,updatedAt:1};e.checkpoints.set(key,row);}return structuredClone(row);},

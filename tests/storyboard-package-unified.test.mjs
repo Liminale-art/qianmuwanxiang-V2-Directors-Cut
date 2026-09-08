@@ -37,6 +37,18 @@ test('asset-only recovery is explicit, current-chat scoped and never deletes ori
   f.e.checkpoints.set('other',{...row,key:'other',chatHash:'b'.repeat(64)});f.e.confirm=false;await f.recover();assert.equal(f.e.checkpoints.size,2);
   f.e.confirm=true;await f.recover();assert.equal(f.e.checkpoints.size,1);assert.ok(f.e.checkpoints.has('other'));assert.equal(f.e.files.get(p.asset.assetId).serialized,p.asset.serialized);assert.equal(f.e.pending,null);
 });
+
+test('actual recovery can dismiss only the current chat bundle record after explicit consent, leaving resources untouched',async()=>{
+  const f=createPackageImportFixture(),chatHash=await vibeDigest(f.e.chatKey);
+  f.e.resource={kind:'bundle',chatHash,phase:'originals',sourceDigest:'a'.repeat(64)};f.e.files.set('retained',{serialized:'original'});
+  f.e.confirm=false;await f.recover();assert.ok(f.e.resource);assert.equal(f.e.files.size,1);
+  f.e.confirm=true;await f.recover();assert.equal(f.e.resource,null);assert.equal(f.e.files.size,1);
+});
+
+test('a bundle record belonging to another chat is not removed by the current chat recovery button',async()=>{
+  const f=createPackageImportFixture();f.e.resource={kind:'bundle',chatHash:'b'.repeat(64),phase:'originals'};
+  await f.recover();assert.ok(f.e.resource);assert.match(f.e.notices.at(-1)[0],/另一聊天/);
+});
 test('typed remapping never rewrites frozen Comfy or character account identities',async()=>{
   const p=await packet(),references={version:1,namespace:p.namespace,enabled:false,workflowHash:'a'.repeat(64),items:[{url:'/user/images/source/a.png',name:'source',mime:'image/png',bytes:70,sha256:'b'.repeat(64)}]};
   p.payload.settings.profiles={comfy:{comfyReferences:references}};

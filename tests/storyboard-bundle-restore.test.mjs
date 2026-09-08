@@ -92,6 +92,24 @@ test('role keep-local choices omit only unused incoming role images, not shared 
   await session.restore(view, consent); assert.equal(e.locals.characters.archives[0].document.name, 'local Alice'); assert.equal(e.files.size, 3);
 });
 
+test('editing bundle conflict choices uses only the compact snapshot and invalidates every previous resource approval', async () => {
+  const { e, session, source, options } = await fixture(); e.locals.characters = clone(source.sources.characters);
+  const row = e.locals.characters.archives[0]; row.document.name = 'Local Alice'; row.head.name = row.document.name;
+  row.head.bytes = file(row.document).size; e.locals.characters.usage.bytes = row.head.bytes;
+  await session.preview(); let reads = 0;
+  for (const [target, method] of [[options.workflowStore,'backup'],[options.poolStore,'backup'],[options.characterStore,'backup'],[options.images,'inspect'],[options.configuration,'preview']]) {
+    // Configuration is frozen; its calls are not part of a choice snapshot either (covered by worker RPC tests).
+    if (Object.isFrozen(target)) continue;
+    const original = target[method]; target[method] = async (...args) => { reads++; return original(...args); };
+  }
+  const chosen = await session.choose({ 'archive:alice': 'local' });
+  assert.equal(chosen.characterSummary.kept, 2); assert.equal(chosen.needsRecheck, true); assert.equal(chosen.ready, false);
+  assert.equal(chosen.planDigest, ''); assert.deepEqual(chosen.images, []); assert.equal(chosen.vibe, null); assert.equal(chosen.poolSummary, null); assert.equal(reads, 0);
+  assert.equal(chosen.summary.workflows.versions, 2);
+  const rechecked = await session.preview(chosen.decisions); assert.equal(rechecked.ready, true); assert.ok(reads > 0);
+  const changedBack = await session.choose({ 'archive:alice': 'incoming' }); assert.equal(changedBack.ready, false); assert.equal(changedBack.planDigest, '');
+});
+
 test('unconfirmed environment, changed configuration, changed image state and missing locks do not start a restore', async () => {
   const { e, session } = await fixture(), view = await session.preview();
   await assert.rejects(session.restore(view, { confirmed: true }), /原环境/); assert.deepEqual(writes(e), []);

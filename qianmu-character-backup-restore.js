@@ -12,7 +12,7 @@ const receipt = row => imageRestoreReceipt(Object.fromEntries(['url', 'sha256', 
 
 // A choice snapshot contains only conflict summaries, byte deltas and binding identifiers, never document/image bodies.
 // It is a UI draft, not a restore authorization. The full planner and dependency checks still run on preview and commit.
-function choiceSnapshot(local, source, plan, view) {
+export function createCharacterRestoreChoiceSnapshot(local, source, plan, view) {
   const localBytes = new Map(local.archives.map(row => [row.head.id, row.head.bytes]));
   const deltas = new Map(source.archives.map(row => [`archive:${row.head.id}`, row.head.bytes - (localBytes.get(row.head.id) || 0)]));
   const keyOf = row => `binding:${JSON.stringify([row.category, row.subjectKey, row.scope, row.chatKey])}`;
@@ -78,7 +78,7 @@ export async function createCharacterRestoreSession(namespace, input, { store, w
     if (record && record.sourceDigest !== sourceDigest && record.phase !== 'verified') fail('有另一份尚未完成的角色恢复，请先选择原备份或明确结束其核对');
     const base = { namespace, sourceDigest, libraryDigest: await digest(local), decisions: choices, conflicts: plan.conflicts, summary: plan.summary,
       bindingReview: structuredClone(plan.bindingWrites), ready: plan.ready, record, images: [], workflowSummary: null, workflowDigest: null, planDigest: '' };
-    if (!plan.ready) { await check(); choose = choiceSnapshot(local, source.library, plan, base); return { view: base, plan, dependencies: null }; }
+    if (!plan.ready) { await check(); choose = createCharacterRestoreChoiceSnapshot(local, source.library, plan, base); return { view: base, plan, dependencies: null }; }
     const needed = await dependencies(plan, choices);
     if (needed.workflows) {
       if (!workflowStore) fail('恢复所需的工作流库未就绪');
@@ -95,7 +95,7 @@ export async function createCharacterRestoreSession(namespace, input, { store, w
     }
     base.ready = !base.images.some(row => row.state === 'conflict');
     base.planDigest = await digest({ namespace, sourceDigest, libraryDigest: base.libraryDigest, workflowDigest: base.workflowDigest, decisions: choices });
-    await check(); choose = choiceSnapshot(local, source.library, plan, base); return { view: base, plan, dependencies: needed };
+    await check(); choose = createCharacterRestoreChoiceSnapshot(local, source.library, plan, base); return { view: base, plan, dependencies: needed };
   }
   async function verifyWorkflows(needed) {
     if (!needed.workflows) return;

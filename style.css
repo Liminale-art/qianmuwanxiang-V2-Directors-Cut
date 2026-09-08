@@ -34,6 +34,24 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 
 /* ── 分镜 ───────────────────────────────────────────────────── */
 #story-director-modal .sd-storyboard-root { display: flex; flex-direction: column; gap: 12px; min-height: 100%; }
+#story-director-modal dialog.sd-bundle-dialog { box-sizing: border-box; width: min(820px, calc(100vw - 24px)); height: min(780px, calc(100dvh - 24px)); max-width: none; max-height: none; margin: auto; padding: 0; border: 1px solid var(--sd-hairline); border-radius: 12px; background: var(--sd-sticky-bg, #f7f3eb); color: var(--sd-text); font: inherit; overflow: hidden; }
+#story-director-modal dialog.sd-bundle-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+#story-director-modal .sd-bundle-dialog::backdrop { background: #0008; }
+#story-director-modal .sd-bundle-dialog > header, #story-director-modal .sd-bundle-dialog > footer { padding: 12px 16px; border: 0; background: var(--sd-sticky-bg, #f7f3eb); }
+#story-director-modal .sd-bundle-dialog > header > b { font-size: 14px; }
+#story-director-modal .sd-bundle-dialog > header, #story-director-modal .sd-bundle-dialog footer > div, #story-director-modal .sd-bundle-dialog nav { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+#story-director-modal .sd-bundle-dialog > main { min-width: 0; overflow: auto; padding: 0 16px; overscroll-behavior: contain; }
+#story-director-modal .sd-bundle-dialog fieldset { min-width: 0; padding: 0; margin: 0; border: 0; }
+#story-director-modal .sd-bundle-dialog section { padding: 10px 0; border-bottom: 1px solid var(--sd-hairline); }
+#story-director-modal .sd-bundle-dialog p, #story-director-modal .sd-bundle-dialog label, #story-director-modal .sd-bundle-dialog nav { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+#story-director-modal .sd-bundle-dialog p { margin: 6px 0; }
+#story-director-modal .sd-bundle-dialog h3 { margin: 4px 0 10px; font-size: 14px; }
+#story-director-modal .sd-bundle-dialog .sd-bundle-choice { display: grid; grid-template-columns: minmax(0, 1fr) minmax(100px, 36%); gap: 12px; align-items: center; margin: 10px 0; }
+#story-director-modal .sd-bundle-dialog .sd-bundle-choice select, #story-director-modal .sd-bundle-dialog button { box-sizing: border-box; min-height: 40px; height: 40px; margin: 0; border-radius: 8px; font-size: 12px; }
+#story-director-modal .sd-bundle-dialog .sd-bundle-choice select { width: 100%; min-width: 0; }
+#story-director-modal .sd-bundle-dialog .sd-bundle-review { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0; }
+#story-director-modal .sd-bundle-dialog .sd-bundle-review input { flex: 0 0 auto; margin-top: 4px; }
+#story-director-modal .sd-bundle-dialog footer > div > button { flex: 1; min-width: 0; }
 #story-director-modal .sd-storyboard-nav { position: sticky; z-index: 9; top: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; padding: 5px; border: 1px solid var(--sd-hairline); border-radius: 16px; background: color-mix(in srgb, var(--sd-card) 88%, transparent); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
 #story-director-modal .sd-storyboard-nav button { min-width: 0; min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 12px; background: transparent; color: var(--sd-muted); font: inherit; cursor: pointer; }
 #story-director-modal .sd-storyboard-nav button.active { background: var(--sd-folder-head); color: var(--sd-accent); }

@@ -7,6 +7,11 @@ export const STORYBOARD_BUNDLE_SCHEMA = 'qianmu.storyboard.bundle.v1';
 export const STORYBOARD_BUNDLE_LIMITS = Object.freeze({ total: 512 * 1048576, manifest: 1048576, entries: 1028,
   storyboard: 128 * 1048576, workflows: 80 * 1048576, pools: 24 * 1048576, characters: 24 * 1048576, image: 16 * 1048576 });
 const magic = new TextEncoder().encode('QIANMU-BUNDLE/1\n'), prefixBytes = magic.length + 4;
+export async function isStoryboardBundleFile(file) {
+  if (!(file instanceof Blob)) return false;
+  const bytes = new Uint8Array(await file.slice(0, magic.length).arrayBuffer());
+  return bytes.length === magic.length && bytes.every((value, index) => value === magic[index]);
+}
 const fixed = ['storyboard', 'workflows', 'pools', 'characters'];
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle', submissionState: 'not_submitted' }); };
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);

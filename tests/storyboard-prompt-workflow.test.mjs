@@ -109,7 +109,7 @@ assert.match(source, /querySelectorAll\('\.sd-storyboard-prompt, \.sd-storyboard
   'manual prompt edits must persist without triggering either automatic stage');
 
 // Image data is server-backed for one ST instance; the explicit package remains a migration tool.
-assert.match(source, /<b>分镜数据打包<\/b><small>跨 SillyTavern 迁移，不包含 API Key<\/small>/);
+assert.match(source, /<b>分镜资源联包<\/b><small>当前聊天与资源库，不包含 API Key<\/small>/);
 assert.match(source, /function renderStoryboardLogs[\s\S]*sd-storyboard-pack-card/);
 assert.match(source, /ctx\(\)\.saveSettingsDebounced\?\.\(\)/);
 assert.match(source, /storyboardImages[\s\S]*saveMetadata/);

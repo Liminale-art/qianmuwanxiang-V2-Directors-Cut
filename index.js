@@ -196,6 +196,7 @@ const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
 const VERSION = '1.59.105';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
+let storyboardBundleReview = null;
 let reader = null;
 const featureRuntime = createFeatureRuntime({
   vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.105') },
@@ -211,6 +212,11 @@ const featureRuntime = createFeatureRuntime({
   storyboardPackageStage: { label: '分镜素材暂存', load: () => import('./qianmu-storyboard-package-stage.js?v=1.59.105') },
   storyboardPackageRuntime: { label: '分镜原件打包', load: () => import('./qianmu-storyboard-package-runtime.js?v=1.59.105') },
   storyboardPackageStore: { label: '分镜原件读取', load: () => import('./qianmu-vibe-asset-store.js?v=1.59.105') },
+  storyboardBundleFormat: { label: '分镜联包识别', load: () => import('./qianmu-storyboard-bundle.js?v=1.59.105') },
+  storyboardBundleCapture: { label: '分镜资源联包', load: () => import('./qianmu-storyboard-bundle-runtime.js?v=1.59.105') },
+  storyboardBundleRestore: { label: '分镜联包恢复', load: () => import('./qianmu-storyboard-bundle-restore-runtime.js?v=1.59.105') },
+  storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.105') },
+  storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.105') },
   vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.105') },
   vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.105') },
   tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.105') },
@@ -12551,6 +12557,7 @@ function storyboardBeginSession() {
 }
 
 function storyboardEndSession() {
+  storyboardBundleReview?.close(); storyboardBundleReview = null;
   storyboardVibeLibraryController?.dispose();storyboardVibeLibraryController=null;storyboardVibeControllerContext=null;storyboardVibeSelection=null;
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdVibePreviewsCleanup?.();
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdTagCompleteCleanup?.();
@@ -17728,7 +17735,7 @@ function renderStoryboardLogs(state) {
     <details class="sd-storyboard-log-maintenance"><summary>日志管理</summary>
     <div><div class="sd-storyboard-receipt-tools"><button type="button" class="sd-btn sd-storyboard-open-service-inbox">NAI 收片</button><button type="button" class="sd-btn sd-storyboard-open-comfy-inbox">Comfy 收片</button></div><div class="sd-storyboard-service-inbox" role="status"></div><div class="sd-storyboard-comfy-inbox"></div></div>
     ${state.logs.length ? `<div class="sd-storyboard-log-actions"><button type="button" class="sd-btn sd-storyboard-export-logs">导出</button><button type="button" class="sd-btn sd-storyboard-clear-logs" ${storyboardActiveJobs.size || storyboardQueue.length ? 'disabled' : ''}>清空</button></div>` : ''}
-    <section class="sd-card sd-storyboard-pack-card"><div><b>分镜数据打包</b><small>跨 SillyTavern 迁移，不包含 API Key</small></div><div><button type="button" class="sd-icon-btn sd-storyboard-pack-export" title="导出分镜数据" aria-label="导出分镜数据"><i class="fa-solid fa-file-export"></i></button><button type="button" class="sd-icon-btn sd-storyboard-pack-recover" title="核对导入" aria-label="核对导入"><i class="fa-solid fa-rotate-left"></i></button><label class="sd-icon-btn sd-storyboard-pack-import" title="导入分镜数据" aria-label="导入分镜数据"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-native-file sd-storyboard-pack-file" accept="application/json,.json"></label></div></section>
+    <section class="sd-card sd-storyboard-pack-card"><div><b>分镜资源联包</b><small>当前聊天与资源库，不包含 API Key</small></div><div><button type="button" class="sd-icon-btn sd-storyboard-pack-export" title="导出分镜资源联包" aria-label="导出分镜资源联包"><i class="fa-solid fa-file-export"></i></button><button type="button" class="sd-icon-btn sd-storyboard-pack-recover" title="核对导入" aria-label="核对导入"><i class="fa-solid fa-rotate-left"></i></button><label class="sd-icon-btn sd-storyboard-pack-import" title="导入联包或旧分镜包" aria-label="导入联包或旧分镜包"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-native-file sd-storyboard-pack-file" accept=".qmb,application/json,.json"></label></div></section>
     </details>
     ${rows}
   </div>`;
@@ -21620,7 +21627,7 @@ async function storyboardDownloadRecord(record) {
   }
 }
 
-async function storyboardExportPackage({ originals = true } = {}) {
+async function storyboardExportPackage({ originals = true, bundle = false } = {}) {
   if(storyboardExportPackage.busy)return toast('正在打包分镜数据，请稍候。','info');
   storyboardExportPackage.busy=true;
   const context=()=>({state:storyboardState(),store:getChatStore(),chatKey:String(getChatKey()||''),epoch:storyboardAdmissionEpoch});
@@ -21628,7 +21635,9 @@ async function storyboardExportPackage({ originals = true } = {}) {
   const initial=context();
   const [packageModule,identity]=await Promise.all([featureRuntime.load('storyboardPackageAssets'),featureRuntime.load('imageAdmission')]);
   const session=await packageModule.createStoryboardPackageGuard({initial,context,resolveNamespace:()=>identity.resolveImageAccountNamespace()});
-  if (originals && await confirmDialog('备份分镜配置与成片', '新版包包含本聊天成片、分镜预设及所引用的 Vibe 原文件。Comfy 独立工作流库、角色档案库、外部图片地址与服务器授权尚不属于此包，需单独保全；不是完整账户迁移包。最大 128 MiB，不包含 API Key。是否继续？') !== true) return;
+  if (originals && await confirmDialog(bundle ? '备份分镜资源联包' : '备份分镜配置与成片', bundle
+    ? '联包包含本聊天配置与成片、所引用 Vibe 原文件、完整 Comfy 工作流及候选历史、角色档案和绑定及参考原件。仅原 ST 账户与原聊天可直接恢复，跨环境身份重绑定尚未开放；旧 URL Vibe、模型文件与服务器授权需单独保全。原环境请先保留，整包上限 512 MiB，配置分段仍限 128 MiB；不含 API Key。是否继续？'
+    : '新版包包含本聊天成片、分镜预设及所引用的 Vibe 原文件。Comfy 独立工作流库、角色档案库、外部图片地址与服务器授权尚不属于此包，需单独保全；不是完整账户迁移包。最大 128 MiB，不包含 API Key。是否继续？') !== true) return;
   await session.guard();
   await storyboardHydratePipelineArchive();
   await session.guard();
@@ -21702,11 +21711,17 @@ async function storyboardExportPackage({ originals = true } = {}) {
   } else blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
   if (blob.size > packageModule.STORYBOARD_PACKAGE_LIMITS.total) throw new Error('分镜包超过 128 MiB，未生成无法导入的文件');
   await session.guard();
+  if (bundle) {
+    const runtime = await featureRuntime.load('storyboardBundleCapture'); await session.guard();
+    toast('正在后台核对工作流、角色及参考原件…', 'info');
+    blob = (await runtime.runStoryboardBundle('capture', blob, { namespace: session.namespace, chatKey, guard: session.guard })).file;
+    await session.guard();
+  }
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  link.href = url; link.download = `qianmu-storyboard-pack-${fileStamp()}.json`;
+  link.href = url; link.download = bundle ? `qianmu-storyboard-bundle-${fileStamp()}.qmb` : `qianmu-storyboard-pack-${fileStamp()}.json`;
   document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
-  const vibeNotice=originals ? ` 已包含 ${vibeScope.refs.length} 份 Vibe 原文件。${vibeScope.legacyUrls.length ? `另有 ${vibeScope.legacyUrls.length} 个 Vibe 旧地址仅保留地址，原图需另行保全。` : ''}不含 Comfy 与角色独立库。` : vibeScope.refs.length||vibeScope.legacyUrls.length?' 当前旧版包只保留 Vibe 引用/地址，原文件请在 Vibe 文件空间另行备份。':'';
+  const vibeNotice=originals ? ` 已包含 ${vibeScope.refs.length} 份 Vibe 原文件。${vibeScope.legacyUrls.length ? `另有 ${vibeScope.legacyUrls.length} 个 Vibe 旧地址仅保留地址，原图需另行保全。` : ''}${bundle ? '已包含工作流、候选历史与角色库及参考原件；仅用于原环境核对恢复。' : '不含 Comfy 与角色独立库。'}` : vibeScope.refs.length||vibeScope.legacyUrls.length?' 当前旧版包只保留 Vibe 引用/地址，原文件请在 Vibe 文件空间另行备份。':'';
   toast(`分镜数据已打包：${records.length} 条成片${skipped ? ` · ${skipped} 张仅保留原地址` : ''}。${vibeNotice}`, vibeNotice?'warning':'success');
   } catch(error) { toast(`分镜打包未完成：${error?.message||'请重新核对后导出'}`, 'error'); }
   finally {storyboardExportPackage.busy=false;}
@@ -21731,6 +21746,56 @@ async function storyboardPackageArchiveAllowed() {
     return namespace === currentNamespace && !pending && !storyboardImportPackage.busy && state === storyboardState() && chatKey === String(getChatKey() || '');
   } catch (_) { return false; }
   finally { journal?.close(); }
+}
+
+async function storyboardImportAnyPackage(file) {
+  if (!file || storyboardImportPackage.busy) return;
+  try {
+    const format = await featureRuntime.load('storyboardBundleFormat');
+    if (/\.qmb$/i.test(file.name || '') || await format.isStoryboardBundleFile(file)) return storyboardImportBundle(file);
+    return storyboardImportPackage(file);
+  } catch (error) { toast(`分镜包读取失败：${error?.message || '请选择完整原文件'}`, 'error'); }
+}
+
+async function storyboardImportBundle(file) {
+  if (!file || storyboardImportPackage.busy || storyboardExportPackage.busy) return;
+  storyboardImportPackage.busy = true;
+  let journal = null, review = null, runtime = null;
+  const context = () => ({ state: storyboardState(), store: getChatStore(), chatKey: String(getChatKey() || ''), epoch: storyboardAdmissionEpoch });
+  try {
+    const initial = context();
+    const [assets, identity, journalModule, mutation, configModule, workerModule, viewModule] = await Promise.all([
+      featureRuntime.load('storyboardPackageAssets'), featureRuntime.load('imageAdmission'), featureRuntime.load('storyboardPackageJournal'),
+      featureRuntime.load('storyboardPackageMutation'), featureRuntime.load('storyboardBundleConfiguration'), featureRuntime.load('storyboardBundleRestore'), featureRuntime.load('storyboardBundleView'),
+    ]);
+    const scope = await assets.createStoryboardPackageGuard({ initial, context, resolveNamespace: () => identity.resolveImageAccountNamespace() });
+    const isCurrent = () => { const live = context(); return live.state === initial.state && live.store === initial.store && live.chatKey === initial.chatKey && live.epoch === initial.epoch && (!review || review.isOpen) && (!runtime || runtime.isOpen); };
+    const guard = async () => {
+      await scope.guard();
+      if (!isCurrent()) throw new Error('恢复页面已变化，请核对可能保存的部分');
+      if (storyboardActiveJobs.size || storyboardQueue.length || initial.state.shotPlans.some(plan => ['screening','compiling','generating','queued'].includes(plan.status))) throw new Error('分镜正在工作，请结束当前任务后再恢复');
+    };
+    await guard(); if (!navigator.locks?.request) throw new Error('浏览器不支持跨页导入锁，未修改分镜数据');
+    journal = journalModule.createStoryboardPackageJournal();
+    const pending = await journal.loadMutation(scope.namespace); await guard();
+    if (pending) {
+      if (pending.chatHash !== await mutation.storyboardPackageDigest(initial.chatKey)) throw new Error('另一聊天有待核对导入，请回原聊天核对');
+      await navigator.locks.request(`qianmu:package-import:${scope.namespace}`, { mode: 'exclusive', ifAvailable: true }, async lock => {
+        if (!lock) throw new Error('另一页面正在恢复，请稍后重试'); await guard();
+        await storyboardRecoverPackageMutation({ pending, mutation, journal, initial, guard, isCurrent });
+      }); return;
+    }
+    const parent = document.getElementById(MODAL_ID); if (!parent?.classList.contains('open')) throw new Error('请在分镜面板内打开恢复');
+    const configuration = configModule.createStoryboardBundleConfiguration({ namespace: scope.namespace, chatKey: initial.chatKey, settings: initial.state, chat: initial.store,
+      messages: () => ctx().chat || [], journal, guard, isCurrent, persist: async () => { saveSettings(); await saveMetadata(); } });
+    review = viewModule.openStoryboardBundleReview({ parent, fileName: file.name || '分镜资源联包', paintIcons: applyQianmuIcons,
+      connect: async () => { runtime = await workerModule.openStoryboardBundleRestoreRuntime(file, { namespace: scope.namespace, chatKey: initial.chatKey, guard, configuration, headers: () => typeof ctx().getRequestHeaders === 'function' ? ctx().getRequestHeaders() : {} }); return runtime; } });
+    storyboardBundleReview = review;
+    const result = await review.finished;
+    if (result?.settingsApplied) { storyboardScheduleInlineRender(30); renderModal(); toast('资源已恢复，配置已应用；请刷新后点击“核对导入”确认保存。', 'info'); }
+    else toast('恢复页面已关闭；如曾开始恢复，请保留原包，核对可能已保存的部分。', 'info');
+  } catch (error) { toast(`联包恢复未完成：${error?.message || '请核对原包与恢复记录'}`, 'error'); }
+  finally { review?.close(); runtime?.close(); journal?.close(); if (storyboardBundleReview === review) storyboardBundleReview = null; storyboardImportPackage.busy = false; }
 }
 
 async function storyboardImportPackage(file, { recoverOnly = false } = {}) {
@@ -21766,9 +21831,12 @@ async function storyboardImportPackage(file, { recoverOnly = false } = {}) {
       if (recoverOnly) {
         const chatHash = await mutation.storyboardPackageDigest(initial.chatKey);
         const rows = (await journal.list(session.namespace)).filter(row => row.chatHash === chatHash); await guard();
-        if (!rows.length) return toast('本聊天没有待核对的分镜导入。', 'info');
-        if (await confirmDialog('核对素材暂存', `本聊天有 ${rows.length} 份素材暂存记录（${rows.map(row => row.fileHash.slice(0,8)).join('、')}），不代表配置已经导入。需要继续时请取消并重新选择原包；确认则仅结束这些暂存记录，Vibe 原文件、图片和配置均不会删除。是否结束记录？`) !== true) return;
+        const resource = await journal.loadResource(session.namespace, 'bundle'); await guard();
+        const bundle = resource?.chatHash === chatHash ? resource : null;
+        if (!rows.length && !bundle) return toast(resource ? '另一聊天有联包恢复记录，请回到原聊天核对。' : '本聊天没有待核对的分镜导入。', 'info');
+        if (await confirmDialog('核对素材暂存', `本聊天有 ${rows.length} 份素材暂存记录${bundle ? '及一份联包阶段记录' : ''}，不代表配置已经导入。需要继续时请取消并重新选择原包；确认则仅结束这些记录，Vibe 原文件、图片、资源库和配置均不会删除。是否结束记录？`) !== true) return;
         for (const row of rows) { await guard(); await journal.dismissCheckpoint(row, { confirmed: true, isCurrent }); }
+        if (bundle) { await guard(); await journal.dismissResource(bundle, { confirmed: true, isCurrent }); }
         return toast('素材暂存记录已结束；原文件、图片与配置未删除。', 'info');
       }
       const parsed = await input.inspectStoryboardPackageFile(file, { auto: true }); await guard();
@@ -23469,9 +23537,9 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-check-connection')?.addEventListener('click', () => void storyboardCheckConnection(root));
   root.querySelector('.sd-comfy-check-workflow')?.addEventListener('click', () => void storyboardCheckComfyReadiness(root));
   bindStoryboardComfyTargets(root);
-  root.querySelector('.sd-storyboard-pack-export')?.addEventListener('click', () => void storyboardExportPackage());
+  root.querySelector('.sd-storyboard-pack-export')?.addEventListener('click', () => void storyboardExportPackage({ bundle: true }));
   root.querySelector('.sd-storyboard-pack-recover')?.addEventListener('click', () => void storyboardImportPackage(null, { recoverOnly: true }));
-  root.querySelector('.sd-storyboard-pack-import input')?.addEventListener('change', (event) => { const file = event.target.files?.[0]; event.target.value = ''; void storyboardImportPackage(file); });
+  root.querySelector('.sd-storyboard-pack-import input')?.addEventListener('change', (event) => { const file = event.target.files?.[0]; event.target.value = ''; void storyboardImportAnyPackage(file); });
   root.querySelector('.sd-storyboard-export-logs')?.addEventListener('click', async () => {
     await storyboardHydratePipelineArchive();
     const currentState = storyboardState();
