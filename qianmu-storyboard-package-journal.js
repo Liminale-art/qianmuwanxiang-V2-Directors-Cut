@@ -6,6 +6,14 @@ const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const phases=['prepared','staging','assets_ready'];
 const key=row=>JSON.stringify([row.namespace,row.chatHash,row.fileHash]);
 const fields=['key','version','namespace','sourceNamespace','chatHash','fileHash','fileBytes','assetIds','phase','revision','createdAt','updatedAt'];
+const resourcePhases=['prepared','originals','workflows','metadata','verified'];
+export function validateResourceRestoreCheckpoint(row){
+  const keys=['key','version','namespace','kind','sourceDigest','planDigest','phase','revision','createdAt','updatedAt'];
+  if(!row||typeof row!=='object'||Array.isArray(row)||Object.keys(row).some(name=>!keys.includes(name))||row.version!==1||!account(row.namespace)||row.kind!=='characters'
+    ||row.key!==JSON.stringify([row.namespace,row.kind])||!hash(row.sourceDigest)||!hash(row.planDigest)||!resourcePhases.includes(row.phase)
+    ||!Number.isSafeInteger(row.revision)||row.revision<1||!Number.isSafeInteger(row.createdAt)||row.createdAt<0||!Number.isSafeInteger(row.updatedAt)||row.updatedAt<row.createdAt)fail('资源恢复记录损坏，请保留原备份核对');
+  return row;
+}
 export function validateStoryboardPackageCheckpoint(row){
   if(!row||typeof row!=='object'||Object.keys(row).some(name=>!fields.includes(name))||row.version!==1||!account(row.namespace)||!account(row.sourceNamespace)||!hash(row.chatHash)||!hash(row.fileHash)
     ||row.key!==key(row)||!Number.isSafeInteger(row.fileBytes)||row.fileBytes<1||row.fileBytes>128*1024*1024||!Array.isArray(row.assetIds)||row.assetIds.length>1024||row.assetIds.some(id=>!hash(id))||new Set(row.assetIds).size!==row.assetIds.length
@@ -22,10 +30,11 @@ export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,k
     opening=new Promise((resolve,reject)=>{
       let done=false,request;const finish=(failure,value)=>{if(done){value?.close();return;}done=true;clearTimeout(timer);failure?reject(failure):resolve(value);};
       const timer=setTimeout(()=>finish(error('读取导入恢复记录超时')),timeout);
-      try{request=indexedDB.open(dbName,2);}catch(_){finish(error('无法打开导入恢复记录'));return;}
+      try{request=indexedDB.open(dbName,3);}catch(_){finish(error('无法打开导入恢复记录'));return;}
       request.onupgradeneeded=()=>{if(done||closed){request.transaction?.abort();return;}const db=request.result;
         if(!db.objectStoreNames.contains('checkpoints')){const store=db.createObjectStore('checkpoints',{keyPath:'key'});store.createIndex('namespace','namespace');}
         if(!db.objectStoreNames.contains('mutations'))db.createObjectStore('mutations',{keyPath:'namespace'});
+        if(!db.objectStoreNames.contains('resources'))db.createObjectStore('resources',{keyPath:'key'});
       };
       request.onerror=()=>finish(error('导入恢复记录不可用'));request.onblocked=()=>finish(error('请关闭旧页面后重新核对导入恢复记录'));
       request.onsuccess=()=>{const db=request.result;if(done||closed){db.close();finish(ended());return;}database=db;
@@ -46,6 +55,38 @@ export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,k
     });
   }
   return Object.freeze({
+    async loadResource(namespace,kind='characters'){
+      if(!account(namespace)||kind!=='characters')fail('资源恢复账户或类型无效');
+      return transaction('readonly',()=>true,(store,read,set)=>read(store.get(JSON.stringify([namespace,kind])),row=>{
+        if(row){validateResourceRestoreCheckpoint(row);if(row.namespace!==namespace||row.kind!==kind)fail('资源恢复记录归属不符');}set(row||null);
+      }),'resources');
+    },
+    async prepareResource(descriptor,{previous=null,confirmed=false,isCurrent=()=>true}={}){
+      if(confirmed!==true)fail('请先确认资源恢复');
+      const stamp=now(),row=structuredClone(validateResourceRestoreCheckpoint({...descriptor,key:JSON.stringify([descriptor.namespace,descriptor.kind]),version:1,phase:'prepared',revision:1,createdAt:stamp,updatedAt:stamp}));
+      const approved=previous?structuredClone(validateResourceRestoreCheckpoint(previous)):null;
+      return transaction('readwrite',isCurrent,(store,read,set)=>read(store.get(row.key),current=>{
+        if(current)validateResourceRestoreCheckpoint(current);
+        if(JSON.stringify(current||null)!==JSON.stringify(approved))fail('资源恢复记录已被另一页面修改，请重新核对');
+        if(current&&current.sourceDigest!==row.sourceDigest&&current.phase!=='verified')fail('本账户有未完成的资源恢复，请先选择原备份核对');
+        if(current){row.revision=current.revision+1;row.createdAt=current.sourceDigest===row.sourceDigest?current.createdAt:stamp;row.updatedAt=Math.max(current.updatedAt,stamp);}
+        validateResourceRestoreCheckpoint(row);store.put(row);set(row);
+      }),'resources');
+    },
+    async updateResource(input,phase,{isCurrent=()=>true}={}){
+      const previous=structuredClone(validateResourceRestoreCheckpoint(input));
+      if(resourcePhases.indexOf(phase)!==resourcePhases.indexOf(previous.phase)+1)fail('资源恢复阶段次序无效');
+      return transaction('readwrite',isCurrent,(store,read,set)=>read(store.get(previous.key),row=>{
+        validateResourceRestoreCheckpoint(row);if(JSON.stringify(row)!==JSON.stringify(previous))fail('资源恢复记录已变化，请重新核对');
+        const next=validateResourceRestoreCheckpoint({...row,phase,revision:row.revision+1,updatedAt:Math.max(row.updatedAt,now())});store.put(next);set(next);
+      }),'resources');
+    },
+    async dismissResource(input,{confirmed=false,isCurrent=()=>true}={}){
+      const previous=structuredClone(validateResourceRestoreCheckpoint(input));if(confirmed!==true)fail('请先确认结束资源恢复核对');
+      return transaction('readwrite',isCurrent,(store,read,set)=>read(store.get(previous.key),row=>{
+        validateResourceRestoreCheckpoint(row);if(JSON.stringify(row)!==JSON.stringify(previous))fail('资源恢复记录已变化，请重新核对');store.delete(row.key);set(true);
+      }),'resources');
+    },
     async list(namespace){if(!account(namespace))fail('无法确认恢复记录账户');return transaction('readonly',()=>true,(store,read,set)=>read(store.index('namespace').getAll(keyRange.only(namespace),9),rows=>{
       if(rows.length>8)fail('导入恢复记录超限，请先保全核对');for(const row of rows){validateStoryboardPackageCheckpoint(row);if(row.namespace!==namespace)fail('恢复记录账户不符');}set(rows);
     }));},

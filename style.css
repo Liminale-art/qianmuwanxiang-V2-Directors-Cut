@@ -10393,6 +10393,15 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal :is(.sd-character-cover-upload,.sd-character-file-image) svg { width: 24px; height: 24px; }
 #story-director-modal .sd-character-cover-field { min-width: 0; display: grid; align-content: start; gap: 6px; }
 #story-director-modal .sd-character-status { font-size: 12px; line-height: 1.5; color: var(--sd-muted); margin: 4px 0; text-align: left; overflow-wrap: anywhere; }
+#story-director-modal .sd-character-restore p,
+#story-director-modal .sd-character-restore label { margin: 0; font-size: 12px; line-height: 1.5; text-align: left; overflow-wrap: anywhere; min-width: 0; }
+#story-director-modal .sd-character-restore .sd-storyboard-card-body { display: grid; gap: 8px; min-width: 0; }
+#story-director-modal .sd-character-restore-items { max-height: min(42vh, 420px); overflow-y: auto; overscroll-behavior: contain; }
+#story-director-modal .sd-character-restore-items > label { display: grid; gap: 5px; }
+#story-director-modal .sd-character-restore-items .text_pole { width: 100%; min-width: 0; height: 40px; text-align: left; }
+#story-director-modal .sd-character-restore .sd-character-tools > .sd-btn { flex: 1; min-width: 0; min-height: 40px; }
+#story-director-modal .sd-character-restore-review { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; }
+#story-director-modal .sd-character-restore-review > input { flex: 0 0 18px; width: 18px; height: 18px; margin: 0; accent-color: var(--sd-accent); }
 #story-director-modal .sd-character-identifier { font-size: 11px; overflow-wrap: anywhere; color: var(--sd-muted); }
 #story-director-modal .sd-character-binding-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
 #story-director-modal .sd-character-binding-row > span { min-width: 0; flex: 1; overflow-wrap: anywhere; }

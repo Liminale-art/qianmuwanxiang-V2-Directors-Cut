@@ -14127,7 +14127,9 @@ async function storyboardMountCharacterArchive(root) {
       storyboardCharacterArchiveController?.dispose();
       const controller = module.createCharacterArchiveController({
         resolveNamespace: () => identity.resolveImageAccountNamespace(), getContext: storyboardCharacterArchiveContext,
+        getScope: () => { const context = ctx(); return JSON.stringify([context.chatId, context.groupId, context.characterId]); },
         loadComfyRecipe: storyboardLoadCharacterComfyRecipe,
+        requestHeaders: storyboardRequestHeaders,
         isCurrent: () => activeTab === 'imagegen' && storyboardState() === state && state.view === 'characters',
         identity: renderCoreadIdentity, notify: toast, confirm: message => confirmDialog('角色档案', htmlEscape(message)),
         onIcons: applyQianmuIcons, download: ttsDownloadBlob, collapsed: state.characterArchive?.collapsed || {},
