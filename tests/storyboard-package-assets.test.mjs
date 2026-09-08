@@ -135,6 +135,30 @@ function indexFixture(){
   return {state,store,notices,context,exported:()=>exported,setImages:value=>images=value,switch:()=>{chat='chat-b';currentState=board.createStoryboardDefaults();currentStore={};owner=otherAccount;}};
 }
 
+test('actual legacy export rejects structured URL credentials without clearing the local connection',async()=>{
+  const e=indexFixture();e.state.connections.novel.draft.baseUrl='https://image.example/api?api_key=private-fixture-value';const before=structuredClone(e.state);
+  await e.context.storyboardExportPackage({originals:false});assert.equal(e.exported(),null);assert.deepEqual(e.state,before);assert.equal(e.context.storyboardExportPackage.busy,false);
+  assert.match(e.notices.at(-1)[0],/授权查询参数/);assert.doesNotMatch(e.notices.at(-1)[0],/private-fixture-value/);
+});
+
+test('actual export checks original workbench and gallery graphs before normalizers could remove credentials or duplicate keys',async()=>{
+  for(const location of ['profile','gallery'])for(const graph of ['{"node":{"inputs":{"api_key":"private-fixture-value"}}}','{"a":1,"a":2}']){
+    const e=indexFixture();e.state.connections.novel.draft.credentialId='legitimate-local-reference';
+    if(location==='profile')e.state.profiles.comfy.comfyWorkflow=graph;
+    else e.setImages([{id:'one',source:'comfy',url:'/one.png',snapshot:{source:'comfy',profile:{comfyWorkflow:graph}}}]);
+    const before=structuredClone(e.state);await e.context.storyboardExportPackage({originals:false});assert.equal(e.exported(),null);assert.deepEqual(e.state,before);assert.equal(e.context.storyboardExportPackage.busy,false);
+    assert.match(e.notices.at(-1)[0],/凭据|重复字段/);assert.doesNotMatch(e.notices.at(-1)[0],/private-fixture-value/);
+  }
+});
+
+test('Vibe originals with structured credentials are rejected unchanged while public unknown encodings stay supported',async()=>{
+  const doc=(await asset('original')).document;doc.encodings.futuremodel.custom.params.apiToken='private-fixture-value';const [a]=await parseNovelVibeFile(JSON.stringify(doc));
+  const data=payload();data.settings.vibeLibrary=[item('original',reference(a.assetId))];const before=a.serialized;
+  await assert.rejects(()=>pack.buildStoryboardVibePackage(data,{namespace,load:async()=>a}),/凭据/);
+  const incoming={...data,version:7,vibeAccount:namespace,vibeAssets:[{namespace,id:a.assetId,bytes:a.bytes,document:a.document}]};
+  await assert.rejects(()=>pack.inspectStoryboardVibePackage(incoming),/凭据/);assert.equal(a.serialized,before);assert.equal(JSON.stringify(a.document),before);
+});
+
 test('actual export carries creative drafts and layout preferences without taking destination navigation or unfinished editors',async()=>{
   const e=indexFixture();Object.assign(e.state,{prompt:'lake',negative:'lettering',promptDraft:{compiled:'lake',negative:'lettering',userEditedCompiled:true},directorBridge:{worldSideShotsEnabled:true},
     characterArchive:{schemaVersion:1,collapsed:{char:true,user:false,other:true}},collapsedCards:{worldbook:false},tagSort:'used',view:'gallery',pendingParagraphSelection:{version:1},promptItemDraft:{instruction:'unsaved'}});

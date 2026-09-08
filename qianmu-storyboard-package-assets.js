@@ -2,6 +2,8 @@ import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
 import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {parseNovelVibeFile,vibeFileError} from './qianmu-vibe-file.js';
 import {inspectStoryboardPortableSelections} from './qianmu-storyboard-package-fields.js';
+import {assertPortableStoryboardData} from './qianmu-storyboard-package-security.js';
+export {assertPortableStoryboardData};
 export {captureStoryboardPackageSettings,assertStoryboardAdditionalSettingsRetained} from './qianmu-storyboard-package-fields.js';
 
 export const STORYBOARD_PACKAGE_LIMITS=Object.freeze({metadata:32*1048576,mediaItem:34*1048576,total:128*1048576,assets:1024,nodes:500000,depth:40,uses:30000});
@@ -62,6 +64,7 @@ export async function buildStoryboardVibePackage(payload,{namespace,load}){
   if(!Array.isArray(media)||media.length>400)fail('分镜媒体列表超过 400 项或结构无效');
   const header=JSON.stringify({...metadata,version:7,vibeAccount:namespace});
   if(size(header)>STORYBOARD_PACKAGE_LIMITS.metadata)fail('分镜元数据超过 32 MiB，请分批导出');
+  await assertPortableStoryboardData(metadata);
   const census=collectStoryboardVibeDependencies(metadata,{namespace});
   const parts=[header.slice(0,-1),',"media":['];let bytes=size(header)+64,first=true;
   const add=text=>{bytes+=size(text);if(bytes>STORYBOARD_PACKAGE_LIMITS.total)fail('分镜包超过 128 MiB，请分批备份，未生成缺件包');parts.push(text);};
@@ -72,6 +75,7 @@ export async function buildStoryboardVibePackage(payload,{namespace,load}){
     // store.load already validates; also validate injected loaders before trusting a supposedly verified identity.
     const [verified]=await parseNovelVibeFile(asset.serialized);
     if(verified.assetId!==ref.id||verified.serialized!==asset.serialized)fail(`Vibe 原文件内容不符 ${ref.id}`);
+    await assertPortableStoryboardData(verified.document);
     if(!first)add(',');add(`{"namespace":${JSON.stringify(ref.namespace)},"id":${JSON.stringify(ref.id)},"bytes":${verified.bytes},"document":`);
     add(verified.serialized);add('}');first=false;
   }
@@ -86,6 +90,7 @@ export async function inspectStoryboardVibePackage(payload){
   const {vibeAssets,media=[],...metadata}=payload;
   inspectStoryboardPortableSelections(metadata.settings,payload.vibeAccount);
   if(size(JSON.stringify(metadata))>STORYBOARD_PACKAGE_LIMITS.metadata||!Array.isArray(media)||media.length>400)fail('分镜包元数据超限');
+  await assertPortableStoryboardData(metadata);
   const census=collectStoryboardVibeDependencies(metadata,{namespace:payload.vibeAccount}),expected=new Map(census.refs.map(row=>[identity(row),row])),assets=[];
   let bytes=size(JSON.stringify(metadata));for(const item of media){const text=JSON.stringify(item);if(typeof text!=='string'||size(text)>STORYBOARD_PACKAGE_LIMITS.mediaItem)fail('分镜媒体超限');bytes+=size(text);if(bytes>STORYBOARD_PACKAGE_LIMITS.total)fail('分镜包总内容超限');}
   for(const row of vibeAssets){
@@ -93,6 +98,7 @@ export async function inspectStoryboardVibePackage(payload){
     const key=identity(row);if(!expected.has(key))fail('分镜包含多余或重复的 Vibe 原文件');
     const text=JSON.stringify(row.document),parsed=await parseNovelVibeFile(text),asset=parsed[0];
     if(parsed.length!==1||asset.serialized!==text||asset.assetId!==row.id||asset.bytes!==row.bytes)fail('Vibe 原文件摘要、单项结构或大小不符');
+    await assertPortableStoryboardData(asset.document);
     bytes+=asset.bytes+1024;if(bytes>STORYBOARD_PACKAGE_LIMITS.total)fail('分镜包总内容超限');
     expected.delete(key);assets.push({namespace:row.namespace,...asset});
   }

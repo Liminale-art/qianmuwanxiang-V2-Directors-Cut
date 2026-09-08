@@ -22,6 +22,7 @@ import { captureLegacyVibeOriginals, inspectLegacyVibeOriginals } from './qianmu
 import { captureBundleMappings, inspectBundleMappings } from './qianmu-bundle-mappings.js';
 import {captureBundleCarriers,inspectBundleCarriers} from './qianmu-bundle-carriers.js';
 import {inspectStoryboardPortableSelections} from './qianmu-storyboard-package-fields.js';
+import {assertPortableStoryboardData} from './qianmu-storyboard-package-security.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle_resources', submissionState: 'not_submitted' }); };
 const object = value => value !== null && typeof value === 'object';
@@ -89,6 +90,7 @@ function includeLegacyOriginals(config, document) {
 }
 async function inspectLibraries(namespace, config, { workflows, pools, characters }, guard) {
   if ([workflows, pools, characters].some(value => value?.namespace !== namespace)) fail('资源库账户不一致');
+  await assertPortableStoryboardData({workflows,pools,characters}); await guard();
   const summary = { workflows: validateComfyLibraryBackup(workflows), pools: validateComfyPoolBackup(pools), characters: validateCharacterLibraryBackup(characters) };
   await verifyComfyPoolDependencies(pools, workflows, { guard });
   const characterCensus = await verifyCharacterBackupWorkflowDependencies(characters, workflows, { guard });

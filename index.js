@@ -12884,7 +12884,9 @@ function renderStoryboardOpenAICompatibility(connection) {
 }
 
 function storyboardCompilerProfileOptions(state) {
-  return (settings.apiProfiles || []).map((item) => `<option value="${htmlEscape(item.id)}" ${state.promptCompiler.apiProfileId === item.id ? 'selected' : ''}>${htmlEscape(item.name || item.model || '未命名预设')}</option>`).join('');
+  const profiles = settings.apiProfiles || [], selected = state.promptCompiler.apiProfileId;
+  const missing = selected && !profiles.some((item) => item.id === selected) ? `<option value="${htmlEscape(selected)}" selected>原档案已失效，请重新选择</option>` : '';
+  return missing + profiles.map((item) => `<option value="${htmlEscape(item.id)}" ${selected === item.id ? 'selected' : ''}>${htmlEscape(item.name || item.model || '未命名预设')}</option>`).join('');
 }
 
 function storyboardComfyOutputOptions(profile) {
@@ -18689,7 +18691,7 @@ async function storyboardCompilerWorldText(state) {
   return { text: resolved.join('\n\n').slice(0, 18000), rows: selected, fallback: false };
 }
 
-function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = true, upstreamGuard = null } = {}) {
+function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = true, upstreamGuard = null, requireCompiler = false } = {}) {
   const chatKey = String(getChatKey() || '');
   const copy = (value) => Array.isArray(value) ? value.map(copy)
     : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, copy(item)])) : value;
@@ -18705,7 +18707,10 @@ function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = t
     const recent = Math.max(0, Math.min(20, Number(state.promptCompiler.includeRecentFloors) || 0));
     const chat = ctx().chat || [];
     const selectedPreset = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId);
-    const api = (settings.apiProfiles || []).find((item) => item.id === state.promptCompiler.apiProfileId) || settings;
+    const profileId = state.promptCompiler.apiProfileId;
+    const matches = profileId ? (settings.apiProfiles || []).filter((item) => item.id === profileId) : [];
+    if (requireCompiler && profileId && matches.length !== 1) throw new Error('取景 API 档案已失效或编号重复，请重新选择；未改用其他连接');
+    const api = matches[0] || settings;
     return {
       enabled: state.enabled, source: state.source, target: state.target, floor, floorValue: state.floor,
       profiles: Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((id) => {
@@ -18855,7 +18860,9 @@ function storyboardCompilerRequestConfig(state, profile, preparedRoutes = null) 
 }
 
 async function storyboardCallCompiler(messages, profileId, requestOptions = {}) {
-  const apiProfile = (settings.apiProfiles || []).find((item) => item.id === profileId) || null;
+  const matches = profileId ? (settings.apiProfiles || []).filter((item) => item.id === profileId) : [];
+  if (profileId && matches.length !== 1) throw new Error('取景 API 档案已失效或编号重复，请重新选择；未改用其他连接');
+  const apiProfile = matches[0] || null;
   const temperatureSource = requestOptions.temperature ?? apiProfile?.temperature ?? 0.35;
   const temperature = Number.isFinite(Number(temperatureSource)) ? Number(temperatureSource) : 0.35;
   const formatCount = requestOptions.promptFormats?.length ? normalizeStoryboardPromptFormats(requestOptions.promptFormats).length : 0;
@@ -19153,7 +19160,9 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
   catch (error) { toast(error.message, 'warning'); return false; }
   const floor = storyboardTargetFloor(state);
   if (floor < 0 || !ctx().chat?.[floor]) { toast('当前没有可用于自动取景的正文。', 'warning'); return false; }
-  const inputGuard = storyboardCreatePreparationGuard(state, { plan });
+  let inputGuard;
+  try { inputGuard = storyboardCreatePreparationGuard(state, { plan, requireCompiler: true }); }
+  catch (error) { toast(error.message, 'warning'); return false; }
   storyboardCompilerBusy = true;
   storyboardSetPlanStatus(plan, 'compiling');
   renderModal();
@@ -21753,7 +21762,10 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   await session.guard();
   await storyboardHydrateGallerySnapshots(storyboardGalleryRecords(),{migrate:false});
   await session.guard();
-  const currentState=storyboardState(),state = normalizeStoryboardState(clone(currentState));
+  const currentState=storyboardState();
+  await packageModule.assertPortableStoryboardData(currentState, { workflowsOnly: true });
+  await session.guard();
+  const state = normalizeStoryboardState(clone(currentState));
   packageModule.assertStoryboardAdditionalSettingsRetained(currentState,state);
   const pipelineLogs = state.logs.map((log) => {
     const pipeline=storyboardPipelineForLog(log,state);
@@ -21763,8 +21775,11 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   const chatKey = String(getChatKey() || '');
   const collections=clone(storyboardGalleryCollections());
   const sourceRecords=clone(storyboardGalleryRecords());
-  const records=sourceRecords.map(item=>{
-    const original=storyboardSnapshotForRecord(item);
+  const sourceSnapshots=sourceRecords.map(item=>storyboardSnapshotForRecord(item));
+  await packageModule.assertPortableStoryboardData(sourceSnapshots, { workflowsOnly: true });
+  await session.guard();
+  const records=sourceRecords.map((item,index)=>{
+    const original=sourceSnapshots[index];
     if(item.snapshotRef&&!original&&!item.recipeUnavailable)throw new Error('历史成片快照缺失，请先保全数据；未导出缺件包');
     return {...item,snapshot:sanitizeStoryboardSnapshot(original||{},{source:item.source,prompt:item.prompt,negative:item.negative})};
   });
@@ -21813,7 +21828,10 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
     toast('正在核对并打包 Vibe 原文件…', 'info');
     const result = await runtime.exportStoryboardPackageAssets(payload, { namespace: session.namespace, guard: session.guard });
     blob = result.file;
-  } else blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  } else {
+    await packageModule.assertPortableStoryboardData(payload);
+    blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  }
   if (blob.size > packageModule.STORYBOARD_PACKAGE_LIMITS.total) throw new Error('分镜包超过 128 MiB，未生成无法导入的文件');
   await session.guard();
   if (bundle) {
@@ -22067,7 +22085,7 @@ async function storyboardImportPackage(file, { recoverOnly = false } = {}) {
       // Validate the entire merge before confirmation, uploads, or any live state mutation.
       let draft = draftModule.prepareStoryboardPackageDraft({ settings: originalState, chat: originalStore, incoming: data.settings, images, collections: incomingCollections, chatKey: initial.chatKey, namespace:session.namespace, sourceNamespace:parsed.payload.vibeAccount });
       const coverage = modern ? `包含 ${assetPlan.rows.length} 份 Vibe 原文件，其中新增 ${assetPlan.missing} 份。${assetPlan.legacyUrls ? `另有 ${assetPlan.legacyUrls} 个 Vibe 旧地址，仅保留地址。` : ''}这是分镜配置与成片包，不含 Comfy 独立工作流库、角色档案库或服务器授权；相关外部资源仍需单独保全。` : '';
-      if (await confirmDialog('导入分镜数据', `将合并 ${images.length} 条成片及预设；${coverage}历史任务不会自动续跑，现有连接凭据不随包迁移。Comfy当前方案选择保留，自动择流需在镜头台重新开启。中断后可重新选择原包核对素材，或通过“核对导入”恢复配置。是否继续？`) !== true) return;
+      if (await confirmDialog('导入分镜数据', `将合并 ${images.length} 条成片及预设；${coverage}历史任务不会自动续跑，现有连接凭据不随包迁移。取景 API 沿用本机选择，不按原包编号切换。Comfy当前方案选择保留，自动择流需在镜头台重新开启。中断后可重新选择原包核对素材，或通过“核对导入”恢复配置。是否继续？`) !== true) return;
       await guard();
       if (stage) {
         toast('正在核对并暂存 Vibe 原文件；配置尚未应用…', 'info');

@@ -20,6 +20,24 @@ async function settings(){
     characterArchive:{schemaVersion:1,collapsed:{char:true,user:false,other:true}},collapsedCards:{worldbook:false,production:true},tagSort:'used'});
   return normalizeStoryboardState(value);
 }
+test('imported compiler IDs never replace the local choice while creative compiler settings still transfer',()=>{
+  for(const apiProfileId of ['local-profile','', 'source-profile']){
+    const local=createStoryboardDefaults();Object.assign(local.promptCompiler,{apiProfileId,connectionPresetId:'local-connection'});
+    const incoming={promptCompiler:{...local.promptCompiler,apiProfileId:'source-profile',connectionPresetId:'foreign-connection',includeRecentFloors:5,worldBookNames:['source-world']}};
+    const before=JSON.stringify({local,incoming}),prepared=prepareStoryboardPackageDraft({settings:local,chat:{},incoming,images:[],collections:[],chatKey:'chat'});
+    assert.equal(prepared.settings.promptCompiler.apiProfileId,apiProfileId);assert.equal(prepared.settings.promptCompiler.connectionPresetId,'local-connection');
+    assert.equal(prepared.settings.promptCompiler.includeRecentFloors,5);assert.deepEqual(prepared.settings.promptCompiler.worldBookNames,['source-world']);assert.equal(JSON.stringify({local,incoming}),before);
+  }
+});
+
+test('actual package import and recovery preserve destination API selection, with explicit pre-write explanation',async()=>{
+  const f=createPackageImportFixture();Object.assign(f.e.state.promptCompiler,{apiProfileId:'destination',connectionPresetId:'destination-connection'});const before=clone(f.e.state);
+  const payload={type:'qianmu-storyboard',version:6,credentialsIncluded:false,settings:{promptCompiler:{...f.e.state.promptCompiler,apiProfileId:'foreign',connectionPresetId:'foreign-connection',includeRecentFloors:7}},chat:{images:[],collections:[]}};
+  const {file}=await buildStoryboardVibePackage(payload,{namespace:f.e.namespace,load:()=>assert.fail('no asset')});await f.import(file);
+  assert.ok(f.e.pending,JSON.stringify(f.e.notices));assert.match(f.e.lastConfirmation[1],/取景 API 沿用本机选择/);assert.equal(f.e.state.promptCompiler.apiProfileId,'destination');assert.equal(f.e.state.promptCompiler.includeRecentFloors,7);
+  f.e.choice='2';await f.recover();assert.deepEqual(f.e.state,before);
+});
+
 test('every normalized built-in state field is either portable, explicitly local UI, or the derived schema version',()=>{
   const keys=[...STORYBOARD_IMPORT_FIELDS,...STORYBOARD_LOCAL_STATE_FIELDS,'schemaVersion'];assert.equal(new Set(keys).size,keys.length);
   assert.deepEqual([...Object.keys(normalizeStoryboardState(createStoryboardDefaults()))].sort(),keys.sort());

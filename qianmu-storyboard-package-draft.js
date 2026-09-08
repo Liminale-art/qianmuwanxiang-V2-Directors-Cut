@@ -32,6 +32,8 @@ export function prepareStoryboardPackageDraft({settings,chat,incoming,images,col
   }
   // Old packages used routing as the count policy; retain that conservative migration explicitly.
   if(Object.hasOwn(raw,'generationPolicy')||Object.hasOwn(raw,'routing')){base.generationPolicy=normalizeStoryboardGenerationPolicy(raw.generationPolicy,raw.routing||{},raw.compositionPolicy);touched.add('generationPolicy');}
+  // Imported display IDs are not authority to use a same-ID LLM profile on this installation.
+  if(Object.hasOwn(raw,'promptCompiler'))base.promptCompiler={...base.promptCompiler,apiProfileId:settings.promptCompiler?.apiProfileId||'',connectionPresetId:settings.promptCompiler?.connectionPresetId||''};
   if(raw.profiles){base.profiles={...structuredClone(settings.profiles),...raw.profiles};}
   if(raw.connections){
     if(!object(raw.connections))fail('连接预设结构无效');base.connections=structuredClone(settings.connections);touched.add('connections');

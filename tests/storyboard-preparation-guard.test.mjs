@@ -53,6 +53,34 @@ function environment() {
   return { state, context, calls, notices, plan, chat, events, dispatchInput };
 }
 
+test('missing or duplicate compiler profiles stop extraction before preparation, with a clear notice and no busy latch',async()=>{
+  for(const change of [e=>e.context.settings.apiProfiles=[],e=>e.context.settings.apiProfiles.push({...e.context.settings.apiProfiles[0],apiUrl:'https://other.example'})]){
+    const e=environment();change(e);
+    e.context.storyboardPrepareComfyRoutes=async()=>assert.fail('no paid preparation before a valid compiler choice');
+    assert.equal(await e.context.storyboardCompilePrompt(null,{plan:e.plan}),false);assert.deepEqual(e.calls,[]);assert.equal(e.context.storyboardCompilerBusy,false);
+    assert.match(e.notices.at(-1),/档案已失效或编号重复/);assert.equal(e.plan.status,'screening');
+    const guard=e.context.storyboardCreatePreparationGuard(e.state);guard.assertCurrent();guard.dispose();
+  }
+});
+
+test('actual compiler never falls back for missing or duplicate explicit IDs but still honors explicit main-API selection',async()=>{
+  const e=environment(),calls=[];vm.runInContext(section('storyboardCallCompiler'),e.context);
+  Object.assign(e.context,{AbortController,callExternalApi:async(_messages,_unused,cfg)=>{calls.push(['external',cfg]);return 'ok';},callSillyTavernModel:async()=>{calls.push(['st']);return 'ok';}});
+  const messages=[{content:'test'}];
+  for(const mode of ['st','external']){e.context.settings.providerMode=mode;await assert.rejects(()=>e.context.storyboardCallCompiler(messages,'missing'),/未改用其他连接/);}
+  e.context.settings.apiProfiles.push({...e.context.settings.apiProfiles[0],apiKey:'other-private'});
+  await assert.rejects(()=>e.context.storyboardCallCompiler(messages,'llm-a'),/编号重复/);assert.deepEqual(calls,[]);
+  e.context.settings.apiProfiles.pop();await e.context.storyboardCallCompiler(messages,'llm-a');assert.equal(calls[0][1].apiKey,'private-key');assert.equal(calls[0][1].apiUrl,'https://llm.example');
+  e.context.settings.providerMode='st';await e.context.storyboardCallCompiler(messages,'');assert.equal(calls.at(-1)[0],'st');
+  e.context.settings.providerMode='external';await e.context.storyboardCallCompiler(messages,null);assert.equal(calls.at(-1)[0],'external');assert.equal(calls.at(-1)[1].apiKey,undefined,'global external path still resolves its own current configuration');
+});
+
+test('missing compiler choice stays visible instead of looking like an implicitly selected main API',()=>{
+  const e=environment();e.state.promptCompiler.apiProfileId='missing<id>';e.context.htmlEscape=value=>String(value).replaceAll('<','&lt;').replaceAll('>','&gt;');
+  vm.runInContext(section('storyboardCompilerProfileOptions'),e.context);
+  const html=e.context.storyboardCompilerProfileOptions(e.state);assert.match(html,/value="missing&lt;id&gt;" selected>原档案已失效/);assert.doesNotMatch(html,/missing<id>/);
+});
+
 for (const [name, mutate] of [
   ['model', (e) => { e.state.profiles.novel.model = 'nai-diffusion-3'; }],
   ['capability', (e) => { e.state.profiles.novel.capabilityModelId = 'nai-diffusion-3'; }],
