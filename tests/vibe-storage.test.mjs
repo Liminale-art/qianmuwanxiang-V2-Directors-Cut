@@ -10,7 +10,7 @@ function fixture(){
     {assetId:otherId,bytes:50,createdAt:2,summary:{name:'编码',type:'encoding',sourceId:'d'.repeat(64),variants:[{}]}}],usage:{count:2,bytes:150,previewBytes:10,limit:512*1048576}};
   const receipts=[],writes=[];let available=true;
   const store={inventory:async ns=>{assert.equal(ns,namespace);return structuredClone(local);},remove:async(ns,ids,options)=>{writes.push({ns,ids,options});return {removed:ids.length,bytes:110};}};
-  const encodings={list:async ns=>{assert.equal(ns,namespace);return structuredClone(receipts);}};
+  const encodings={list:async ns=>{assert.equal(ns,namespace);return structuredClone(receipts);},inventory:async ns=>{assert.equal(ns,namespace);return {receipts:structuredClone(receipts),archived:{namespace,count:0,bytes:0}};}};
   const locks={request:async(name,options,work)=>{assert.equal(name,'qianmu:nai-maintenance');assert.deepEqual(options,{mode:'exclusive',ifAvailable:true});return work(available?{}:null);}};
   return {local,receipts,writes,store,encodings,locks,ops:createVibeStorageOperations({store,encodings,locks}),lock:()=>available=false};
 }
@@ -41,7 +41,7 @@ test('cleanup requires exact consent, cross-page exclusivity and unchanged recei
 });
 
 test('corrupt metadata and invalid direct-store snapshots never authorize deletion',async()=>{
-  const e=fixture(),s=await e.ops.inventory(namespace);e.encodings.list=async()=>{throw Error('corrupt receipts');};await assert.rejects(()=>e.ops.remove(namespace,[id],s.fingerprint,true),/corrupt/);assert.equal(e.writes.length,0);
+  const e=fixture(),s=await e.ops.inventory(namespace);e.encodings.inventory=async()=>{throw Error('corrupt receipts');};await assert.rejects(()=>e.ops.remove(namespace,[id],s.fingerprint,true),/corrupt/);assert.equal(e.writes.length,0);
   let opens=0;const store=createVibeAssetStore({indexedDB:{open(){opens++;throw Error('should not open');}}});
   for(const expectedHeads of [[],[{}],[e.local.heads[0]]])await assert.rejects(()=>store.remove(namespace,[id],{expectedHeads}));assert.equal(opens,0);store.close();
 });

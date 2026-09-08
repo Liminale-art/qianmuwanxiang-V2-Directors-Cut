@@ -4,13 +4,30 @@ import {exportNovelVibeFile,selectNovelVibeEncoding,vibeFilePreview,vibeFileErro
 import {normalizeNovelVibeImage} from './qianmu-novel-vibe.js';
 import {exportVibeReceiptFile,inspectVibeReceiptFile} from './qianmu-vibe-receipt-file.js';
 import {createVibeStorageOperations} from './qianmu-vibe-storage.js';
-export function createVibeAssetOperations(store,{encodings}={}){
+export function createVibeAssetOperations(store,{encodings,locks=globalThis.navigator?.locks}={}){
 const storage=createVibeStorageOperations({store,encodings});
-return async function run({type,namespace,id,file,ids,settings,bundle,model,information,encoding,cacheKey,identity,attemptId,retryAttemptId,status,assetRef,image,name,expectedSourceId,sourceAssetRef,delivery,serviceAttemptId,serviceDelivery,expected,proof,confirmed}){
+return async function run({type,namespace,id,file,ids,settings,bundle,model,information,encoding,cacheKey,identity,attemptId,retryAttemptId,status,assetRef,image,name,expectedSourceId,sourceAssetRef,delivery,serviceAttemptId,serviceDelivery,expected,proof,confirmed,after}){
   if(type==='encoding-get')return encodings.get(namespace,cacheKey);
   if(type==='storage-inventory')return storage.inventory(namespace);
   if(type==='storage-remove')return storage.remove(namespace,ids,proof,confirmed);
   if(type==='encoding-list')return encodings.list(namespace);
+  if(type==='encoding-archive-page')return encodings.archivePage(namespace,{after});
+  if(type==='encoding-archive'){
+    if(confirmed!==true||!Array.isArray(expected)||!expected.length||expected.length>40)throw vibeFileError('changed','尚未确认本次归档');
+    const selected=structuredClone(expected);
+    if(typeof locks?.request!=='function')throw vibeFileError('storage','浏览器不支持跨页协调，暂不能归档');
+    return locks.request('qianmu:nai-maintenance',{mode:'exclusive',ifAvailable:true},async lock=>{
+      if(!lock)throw vibeFileError('busy','仍有 NAI 请求正在等待或生成，请结束后归档');
+      return encodings.archiveCompleted(namespace,selected,true);
+    });
+  }
+  if(type==='encoding-export-page'){
+    if(!Array.isArray(expected)||!expected.length||expected.length>40)throw vibeFileError('size','请选择 1～40 条记录导出');
+    const selected=structuredClone(expected),rows=[];
+    for(const row of selected){const current=await encodings.get(namespace,row?.cacheKey);
+      if(!current||JSON.stringify(current)!==JSON.stringify(row))throw vibeFileError('changed','编码记录已变化，请刷新后导出');rows.push(current);}
+    return exportVibeReceiptFile(namespace,rows);
+  }
   if(type==='encoding-export'){
     const rows=cacheKey?[await encodings.get(namespace,cacheKey)]:await encodings.list(namespace);
     if(cacheKey&&(!rows[0]||JSON.stringify(rows[0])!==JSON.stringify(expected)))throw vibeFileError('changed','编码记录已变化，请刷新后导出');

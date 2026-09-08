@@ -13,7 +13,7 @@ test('cache equality alone cannot settle a different device, API Key, backend su
   for(const bad of [null,{...proof,apiKey:'secret'},{...proof,clientAttemptId:'short'},{...proof,version:2}])assert.throws(()=>validateVibeServiceDelivery(bad));
 });
 test('encoding receipts are lazy and fail closed when durable storage is unavailable',async()=>{
-  let opens=0;const store=createVibeEncodingStore({indexedDB:{open(name,version){opens++;assert.equal(name,'qianmu-vibe-encodings');assert.equal(version,1);throw Error();}}});
+  let opens=0;const store=createVibeEncodingStore({indexedDB:{open(name,version){opens++;assert.equal(name,'qianmu-vibe-encodings');assert.equal(version,2);throw Error();}}});
   assert.equal(opens,0);const value=await prepared();await assert.rejects(()=>store.reserve('st-user:one',value.cacheKey,value.identity,'attempt-one'),{code:'vibe_encoding_cache_storage'});assert.equal(opens,1);
   store.close();await assert.rejects(()=>store.get('st-user:one',value.cacheKey),{code:'vibe_encoding_cache_closed'});assert.equal(opens,1);
 });
