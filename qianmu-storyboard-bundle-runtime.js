@@ -1,11 +1,13 @@
+import { projectStoryboardChatMessages } from './qianmu-storyboard-chat-evidence.js';
 let active = null;
 const failure = message => Object.assign(new Error(message), { code: 'storyboard_bundle_runtime', submissionState: 'not_submitted' });
 export function closeStoryboardBundleRuntime() { active?.finish(failure('资源包处理已取消，原库未修改')); }
 
 // The worker owns heavy validation and short-lived, read-only library connections. No synchronous fallback on mobile.
-export async function runStoryboardBundle(action, file, { namespace, chatKey, source = null, guard, signal, WorkerClass = globalThis.Worker, timeoutMs = 180000 } = {}) {
-  if (!['capture', 'inspect'].includes(action) || !(file instanceof Blob) || typeof guard !== 'function') throw failure('资源包操作或环境核对无效');
+export async function runStoryboardBundle(action, file, { namespace, chatKey, source = null, chatEvidence = null, messages, guard, signal, WorkerClass = globalThis.Worker, timeoutMs = 180000 } = {}) {
+  if (!['capture', 'inspect', 'chat-evidence'].includes(action) || (action !== 'chat-evidence' && !(file instanceof Blob)) || typeof guard !== 'function') throw failure('资源包操作或环境核对无效');
   const capturedSource = source === null ? null : structuredClone(source);
+  const capturedChat = chatEvidence === null ? null : structuredClone(chatEvidence), projected = action === 'chat-evidence' ? projectStoryboardChatMessages(messages) : null;
   await guard();
   if (active) throw failure('已有资源包正在处理');
   if (signal?.aborted) throw failure('资源包处理已取消');
@@ -29,6 +31,11 @@ export async function runStoryboardBundle(action, file, { namespace, chatKey, so
         }
         if (event.data?.error) { finish(Object.assign(failure(event.data.error.message || '资源包处理失败'), { causeCode: event.data.error.code })); return; }
         const result = event.data?.result;
+        if (action === 'chat-evidence') {
+          if (result?.chatEvidence?.schema !== 'qianmu.storyboard.chat-evidence.v1' || result.chatEvidence.chatKey !== chatKey || !Array.isArray(result.chatEvidence.messages)
+            || result.chatEvidence.messages.length !== projected.length || !/^[a-f0-9]{64}$/.test(result.chatEvidence.digest || '')) finish(failure('正文来源核对返回不完整'));
+          else finish(null, result); return;
+        }
         if (!result?.summary || !result.manifest || typeof result.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(result.fingerprint)
           || (action === 'capture' ? !(result.file instanceof Blob) : !Number.isSafeInteger(result.fileBytes))) finish(failure('资源包处理返回不完整'));
         else finish(null, result);
@@ -36,7 +43,8 @@ export async function runStoryboardBundle(action, file, { namespace, chatKey, so
       signal?.addEventListener('abort', abort, { once: true });
       timer = setTimeout(() => finish(failure('资源包处理超时，请保留原文件后重试')), Math.max(100, Math.min(300000, Number(timeoutMs) || 180000)));
       if (signal?.aborted) { abort(); return; }
-      worker.postMessage({ action, file, ...(action === 'capture' ? { namespace, chatKey, source: capturedSource } : {}) });
+      worker.postMessage({ action, file, ...(action === 'capture' ? { namespace, chatKey, source: capturedSource, chatEvidence: capturedChat } : {}),
+        ...(action === 'chat-evidence' ? { chatKey, messages: projected } : {}) });
     } catch (_) { finish(failure('无法启动资源包后台处理，请检查浏览器权限')); }
   });
 }

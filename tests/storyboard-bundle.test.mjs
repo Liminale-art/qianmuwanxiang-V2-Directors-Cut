@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildStoryboardBundle, openStoryboardBundle, STORYBOARD_BUNDLE_LIMITS } from '../qianmu-storyboard-bundle.js';
 import { randomUUID, createHash } from 'node:crypto';
+import { captureStoryboardChatEvidence } from '../qianmu-storyboard-chat-evidence.js';
 import { captureStoryboardResourceBundle, inspectStoryboardResourceBundle } from '../qianmu-storyboard-bundle-resources.js';
 import { runStoryboardBundle, closeStoryboardBundleRuntime } from '../qianmu-storyboard-bundle-runtime.js';
 import { normalizeComfyLibraryDocument, inspectComfyLibraryDocument } from '../qianmu-comfy-library.js';
@@ -177,6 +178,15 @@ class FakeWorker {
   emit(data) { this.listeners.get('message')({ data }); }
 }
 const turn = () => new Promise(resolve => setTimeout(resolve, 0));
+test('chat-evidence runtime strips unrelated ST fields before posting and owns its cancellable worker', async () => {
+  const original = [{ mes: 'story', extra: { apiKey: 'secret' }, swipes: ['hidden'] }], expected = await captureStoryboardChatEvidence(original, chatKey);
+  const pending = runStoryboardBundle('chat-evidence', null, { chatKey, messages: original, guard: async () => {}, WorkerClass: FakeWorker });
+  original[0].mes = 'later'; await turn(); const worker = FakeWorker.latest;
+  assert.equal(worker.messages[0].messages[0].mes, 'story'); assert.doesNotMatch(JSON.stringify(worker.messages), /secret|hidden/);
+  worker.emit({ result: { chatEvidence: expected } }); assert.deepEqual((await pending).chatEvidence, expected); assert.equal(worker.terminated, true);
+  const malformed = runStoryboardBundle('chat-evidence', null, { chatKey, messages: [], guard: async () => {}, WorkerClass: FakeWorker }); await turn();
+  FakeWorker.latest.emit({ result: { chatEvidence: expected } }); await assert.rejects(malformed, /不完整/); assert.equal(FakeWorker.latest.terminated, true);
+});
 test('background runtime sends a Blob only, guards worker reads, and releases its worker on success', async () => {
   let guards = 0; const pending = runStoryboardBundle('capture', blob, { namespace, chatKey, guard: async () => { guards++; }, WorkerClass: FakeWorker }); await turn();
   const worker = FakeWorker.latest; assert.equal(worker.messages[0].file, blob); assert.equal(worker.messages[0].namespace, namespace); assert.equal(worker.options.type, 'module');

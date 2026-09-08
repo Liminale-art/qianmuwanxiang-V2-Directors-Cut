@@ -13670,6 +13670,7 @@ function storyboardScheduleLinkSave() {
 }
 
 function storyboardRecoverLegacyMessageReference(record, chat, chatKey) {
+  if (record?.restoreLinkReview) return null;
   const expectedHash = String(record?.messageHash || '');
   const expectedSwipe = Number(record?.swipeId || 0);
   const directFloor = Number.isInteger(record?.floor) ? record.floor : null;
@@ -13694,6 +13695,7 @@ function storyboardReconcileGalleryLinks({ persist = true } = {}) {
   let changed = false;
   for (const record of storyboardGalleryRecords()) {
     if (!record || storyboardRecordChatKey(record, chatKey) !== chatKey) continue;
+    if (record.restoreLinkReview) continue;
     if (!record.messageRef?.messageKey) {
       const recovered = storyboardRecoverLegacyMessageReference(record, chat, chatKey);
       if (recovered) { record.messageRef = recovered; changed = true; }
@@ -13719,6 +13721,7 @@ function storyboardReconcileGalleryLinks({ persist = true } = {}) {
 }
 
 function storyboardRecordStatus(record) {
+  if (record?.restoreLinkReview) return '待核对正文位置';
   if (record?.linkState === 'orphaned') return '原楼层已删除';
   if (record?.linkState === 'stale') return Number.isInteger(record?.floor) ? `第 ${record.floor} 层` : '';
   if (record?.linkState === 'inactive_swipe') return '已切换回复版本';
@@ -21700,6 +21703,9 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   await session.guard();
   const bundleSource = bundle ? await (await featureRuntime.load('storyboardBundleSource')).prepareStoryboardBundleSource({ namespace: session.namespace,
     headers: () => typeof ctx().getRequestHeaders === 'function' ? ctx().getRequestHeaders() : {}, guard: session.guard, confirm: (title, message) => confirmDialog(title, message) }) : null;
+  const bundleCapture = bundle ? await featureRuntime.load('storyboardBundleCapture') : null;
+  const captureChat = async () => (await bundleCapture.runStoryboardBundle('chat-evidence', null, { chatKey: initial.chatKey, messages: ctx().chat || [], guard: session.guard })).chatEvidence;
+  const chatEvidence = bundle ? await captureChat() : null;
   await storyboardHydratePipelineArchive();
   await session.guard();
   await storyboardHydrateGallerySnapshots(storyboardGalleryRecords(),{migrate:false});
@@ -21775,8 +21781,9 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   if (bundle) {
     const runtime = await featureRuntime.load('storyboardBundleCapture'); await session.guard();
     toast('正在后台核对工作流、角色及参考原件…', 'info');
-    blob = (await runtime.runStoryboardBundle('capture', blob, { namespace: session.namespace, chatKey, source: bundleSource.source, guard: session.guard })).file;
+    blob = (await runtime.runStoryboardBundle('capture', blob, { namespace: session.namespace, chatKey, source: bundleSource.source, chatEvidence, guard: session.guard })).file;
     await session.guard(); await bundleSource.verify();
+    if ((await captureChat()).digest !== chatEvidence.digest) throw new Error('打包期间正文已变化，未输出旧楼层证据，请重新导出');
   }
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -21847,7 +21854,9 @@ async function storyboardImportBundle(file) {
       }); return;
     }
     const parent = document.getElementById(MODAL_ID); if (!parent?.classList.contains('open')) throw new Error('请在分镜面板内打开恢复');
+    const evidenceRuntime = await featureRuntime.load('storyboardBundleCapture'); await guard();
     const configuration = configModule.createStoryboardBundleConfiguration({ namespace: scope.namespace, chatKey: initial.chatKey, settings: initial.state, chat: initial.store,
+      captureChatEvidence: async (messages, chatKey) => (await evidenceRuntime.runStoryboardBundle('chat-evidence', null, { chatKey, messages, guard })).chatEvidence,
       messages: () => ctx().chat || [], journal, guard, isCurrent, persist: async () => { saveSettings(); await saveMetadata(); } });
     review = viewModule.openStoryboardBundleReview({ parent, fileName: file.name || '分镜资源联包', paintIcons: applyQianmuIcons,
       connect: async () => { runtime = await workerModule.openStoryboardBundleRestoreRuntime(file, { namespace: scope.namespace, chatKey: initial.chatKey, guard, configuration, headers: () => typeof ctx().getRequestHeaders === 'function' ? ctx().getRequestHeaders() : {} }); return runtime; } });

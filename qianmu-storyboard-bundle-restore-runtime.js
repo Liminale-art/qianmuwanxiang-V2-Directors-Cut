@@ -52,7 +52,7 @@ export async function openStoryboardBundleRestoreRuntime(file, { namespace, chat
             await check(); let result;
             if (message.kind !== 'guard') {
               const input = message.payload, apply = message.kind === 'configuration-apply';
-              if (!hash(sourceDigest) || input?.fingerprint !== sourceDigest || Object.keys(input).some(key => !['settings','chat','imageUrls','fingerprint',...(apply?['expectedDigest']:[])].includes(key))
+              if (!hash(sourceDigest) || input?.fingerprint !== sourceDigest || Object.keys(input).some(key => !['settings','chat','imageUrls','fingerprint','chatEvidence',...(apply?['expectedDigest']:[])].includes(key))
                 || (apply ? pending.action !== 'restore' || pending.payload.consent?.confirmed !== true || pending.payload.consent?.environmentReviewed !== true : !['preview','restore'].includes(pending.action))) throw fail('未经本次确认的配置请求，未应用');
               result = await configuration[apply ? 'apply' : 'preview'](input); await check();
             }

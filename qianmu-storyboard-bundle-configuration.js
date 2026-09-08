@@ -3,19 +3,31 @@ import { hashText } from './qianmu-storyboard-utils.js';
 import { prepareStoryboardPackageDraft } from './qianmu-storyboard-package-draft.js';
 import { createStoryboardMutation, inspectStoryboardMutation, applyStoryboardMutation } from './qianmu-storyboard-package-mutation.js';
 import { comfyLibraryBackupDigest as digest } from './qianmu-comfy-library-backup.js';
+import { captureStoryboardChatEvidence, inspectStoryboardChatEvidence, createStoryboardEvidenceLinkResolver, projectStoryboardChatMessages, storyboardChatProjectionMatches } from './qianmu-storyboard-chat-evidence.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle_configuration', submissionState: 'not_submitted' }); };
 const clone = structuredClone;
 
 // Live ST state is injected by the entry point. Resource code never gets a reference to these objects.
 // Persistence may be debounced by ST: an applied journal is NOT proof of durable settings after reload.
-export function createStoryboardBundleConfiguration({ namespace, chatKey, settings, chat, messages, journal, persist, guard, isCurrent }) {
+export function createStoryboardBundleConfiguration({ namespace, chatKey, settings, chat, messages, journal, persist, guard, isCurrent, captureChatEvidence = captureStoryboardChatEvidence }) {
   if (![messages, persist, guard, isCurrent].every(value => typeof value === 'function')) fail('缺少配置恢复环境或持久保存接口');
   const stamp = () => JSON.stringify(messages().map((message, floor) => createStoryboardMessageReference({ message, floor, chatKey, now: 1 })));
   const check = async () => { if (isCurrent() !== true) fail('配置恢复页面已变化'); await guard(); if (isCurrent() !== true) fail('配置恢复页面已变化'); };
   async function prepare(input) {
     const source = clone(input); await check();
-    const originalStamp = stamp(), list = clone(messages());
+    const sourceEvidence = source.chatEvidence ? await inspectStoryboardChatEvidence(source.chatEvidence, chatKey) : null;
+    const originalStamp = sourceEvidence ? '' : stamp(), list = sourceEvidence ? messages().slice() : clone(messages());
+    const projection = sourceEvidence ? projectStoryboardChatMessages(list) : null;
+    const currentEvidence = sourceEvidence ? await captureChatEvidence(projection, chatKey, { guard: check }) : null;
+    if (currentEvidence) await inspectStoryboardChatEvidence(currentEvidence, chatKey);
+    await check();
+    const resolveEvidence = sourceEvidence ? createStoryboardEvidenceLinkResolver(sourceEvidence, currentEvidence) : null;
+    const references = new Map();
+    const referenceFor = floor => {
+      if (!references.has(floor)) references.set(floor, createStoryboardMessageReference({ message: list[floor], floor, chatKey, now: 1 }));
+      return clone(references.get(floor));
+    };
     const images = (source.chat?.images || []).map(raw => {
       if (!raw?.id || !Object.hasOwn(STORYBOARD_SOURCES, raw.source)) fail('成片包含不支持的渠道，未部分导入');
       if (raw.snapshotRef && !raw.snapshot && !raw.recipeUnavailable) fail('成片缺少原始配置，请保留原包');
@@ -24,18 +36,32 @@ export function createStoryboardBundleConfiguration({ namespace, chatKey, settin
       const record = { ...raw, url, chatKey }; delete record.snapshotRef; delete record.snapshotVersion;
       record.snapshot = sanitizeStoryboardSnapshot(record.snapshot || {}, { source: record.source, prompt: record.prompt, negative: record.negative });
       const floor = Number.isInteger(record.floor) ? record.floor : null, message = list[floor];
+      const sourceFloor = floor ?? (Number.isInteger(raw.lastKnownFloor) ? raw.lastKnownFloor : Number.isInteger(raw.messageRef?.lastKnownFloor) ? raw.messageRef.lastKnownFloor : null);
       const reference = record.messageRef ? { ...record.messageRef, chatKey } : null;
-      const resolved = reference?.messageKey ? resolveStoryboardMessageReference(reference, list, { chatKey }) : null;
-      const valid = resolved ? resolved.state === 'active' : message && (!record.messageHash || record.messageHash === hashText(String(message.mes || ''))) && Number(record.swipeId || 0) === Number(message.swipe_id || 0);
-      if (resolved?.state === 'active') { record.floor = resolved.floor; record.linkState = 'active'; record.messageRef = reference; }
-      else if (!valid) { record.lastKnownFloor = floor; record.floor = null; record.linkState = resolved?.state || 'orphaned'; }
+      const resolved = !resolveEvidence && !raw.restoreLinkReview && reference?.messageKey ? resolveStoryboardMessageReference(reference, list, { chatKey }) : null;
+      const valid = resolved ? resolved.state === 'active' : message && Boolean(record.messageHash) && record.messageHash === hashText(String(message.mes || '')) && Number(record.swipeId || 0) === Number(message.swipe_id || 0);
+      const evidenceFloor = resolveEvidence ? resolveEvidence(raw) : null;
+      if (resolveEvidence) {
+        if (evidenceFloor !== null) {
+          record.floor = evidenceFloor; record.lastKnownFloor = evidenceFloor; record.linkState = 'active'; record.messageRef = referenceFor(evidenceFloor);
+          if (record.paragraphAnchor) record.paragraphAnchor = { ...record.paragraphAnchor, floor: evidenceFloor };
+        }
+        else { record.lastKnownFloor = sourceFloor; record.floor = null; record.linkState = 'orphaned'; }
+      }
+      else if (resolved?.state === 'active') { record.floor = resolved.floor; record.linkState = 'active'; record.messageRef = reference; }
+      else if (!valid || raw.restoreLinkReview) { record.lastKnownFloor = sourceFloor; record.floor = null; record.linkState = resolved?.state || 'orphaned'; }
+      if (record.floor === null && record.linkState === 'orphaned') {
+        record.restoreLinkReview ||= { version: 1, sourceChatKey: chatKey, sourceFloor, sourceFingerprint: source.fingerprint, reason: 'unverified-message' };
+        record.requestedInline = record.requestedInline ?? record.inline; record.inline = false;
+      }
       return record;
     });
     const draft = prepareStoryboardPackageDraft({ settings, chat, incoming: source.settings, images, collections: source.chat?.collections || [], chatKey, now: 0 });
     const mutation = await createStoryboardMutation({ namespace, chatKey, fileHash: source.fingerprint, settings, chat, draft, now: () => 0 });
-    const proof = await digest({ mutation, messages: originalStamp }); await check();
-    if (stamp() !== originalStamp || inspectStoryboardMutation(mutation, { settings, chat }).conflicts.length) fail('核对期间正文或配置已变化');
-    return { mutation, stamp: originalStamp, digest: proof, summary: { images: images.length, orphaned: images.filter(row => row.linkState !== 'active' && row.floor == null).length, fields: mutation.patch.length } };
+    const proof = await digest({ mutation, messages: currentEvidence?.digest || originalStamp }); await check();
+    if ((projection ? !storyboardChatProjectionMatches(projection, messages()) : stamp() !== originalStamp) || inspectStoryboardMutation(mutation, { settings, chat }).conflicts.length) fail('核对期间正文或配置已变化');
+    return { mutation, stamp: originalStamp, projection, digest: proof, summary: { images: images.length, orphaned: images.filter(row => row.linkState !== 'active' && row.floor == null).length,
+      fields: mutation.patch.length, chatEvidence: Boolean(sourceEvidence), chatChanged: sourceEvidence ? sourceEvidence.digest !== currentEvidence.digest : null } };
   }
   return Object.freeze({
     async preview(input) { const prepared = await prepare(input); return { digest: prepared.digest, summary: prepared.summary }; },
@@ -44,7 +70,7 @@ export function createStoryboardBundleConfiguration({ namespace, chatKey, settin
       if (source.expectedDigest !== prepared.digest) fail('配置或正文已变化，未覆盖，请重新核对');
       await check(); const pending = await journal.prepareMutation(prepared.mutation, { isCurrent }); await check();
       const report = inspectStoryboardMutation(pending, { settings, chat });
-      if (stamp() !== prepared.stamp || report.conflicts.length || report.after) fail('写入恢复记录期间正文或配置已变化，请先核对导入');
+      if ((prepared.projection ? !storyboardChatProjectionMatches(prepared.projection, messages()) : stamp() !== prepared.stamp) || report.conflicts.length || report.after) fail('写入恢复记录期间正文或配置已变化，请先核对导入');
       applyStoryboardMutation(pending, { settings, chat });
       try {
         await persist(); await check(); await journal.updateMutation(pending, 'applied', { isCurrent }); await check();

@@ -1,5 +1,6 @@
 import { buildStoryboardBundle, openStoryboardBundle, STORYBOARD_BUNDLE_LIMITS } from './qianmu-storyboard-bundle.js';
 import { sourceIdentityForNamespace } from './qianmu-source-identity-contract.js';
+import { inspectStoryboardChatEvidence } from './qianmu-storyboard-chat-evidence.js';
 import { inspectStoryboardPackageFile, validateStoryboardPackagePayload, validateStoryboardPackageMedia } from './qianmu-storyboard-package-input.js';
 import { collectStoryboardVibeDependencies, inspectStoryboardVibePackage } from './qianmu-storyboard-package-assets.js';
 import { validateComfyLibraryBackup, comfyLibraryBackupDigest as digest } from './qianmu-comfy-library-backup.js';
@@ -88,10 +89,11 @@ async function inspectLibraries(namespace, config, { workflows, pools, character
 }
 
 // This unit captures and verifies one portable file. Applying it requires the explicit staged restore coordinator.
-export async function captureStoryboardResourceBundle({ namespace, chatKey, storyboard, workflowStore, poolStore, characterStore, source = null,
+export async function captureStoryboardResourceBundle({ namespace, chatKey, storyboard, workflowStore, poolStore, characterStore, source = null, chatEvidence = null,
   guard = async () => {}, isCurrent = () => true, readImages = readStaticReferenceBlobs, legacyFetch = globalThis.fetch, now = Date.now }) {
   const check = async () => { if (isCurrent() !== true) fail('资源包页面已变化'); await guard(); if (isCurrent() !== true) fail('资源包页面已变化'); };
   source = source === null ? null : await sourceIdentityForNamespace(source, namespace);
+  chatEvidence = chatEvidence === null ? null : await inspectStoryboardChatEvidence(chatEvidence, chatKey);
   await check();
   const config = await (async () => { const parsed = await inspectStoryboardPackageFile(storyboard); await check(); return inspectConfig(parsed.payload, namespace, { checked: true }); })();
   const pools = await poolStore.backup(namespace, { isCurrent }); await check();
@@ -100,6 +102,8 @@ export async function captureStoryboardResourceBundle({ namespace, chatKey, stor
   const { census, summary } = await inspectLibraries(namespace, config, { workflows, pools, characters }, check);
   const baselines = await Promise.all([digest(workflows), digest(pools), digest(characters)]); await check();
   const entries = [{ id: 'storyboard', file: storyboard }, { id: 'workflows', file: jsonFile(workflows) }, { id: 'pools', file: jsonFile(pools) }, { id: 'characters', file: jsonFile(characters) }];
+  if (chatEvidence) entries.push({ id: 'chat-evidence', file: jsonFile(chatEvidence) });
+  if (chatEvidence) summary.chatEvidenceMessages = chatEvidence.messages.length;
   // Conservative header reserve avoids fetching originals only to discover that the combined file cannot fit.
   if (entries.reduce((sum, row) => sum + row.file.size, STORYBOARD_BUNDLE_LIMITS.manifest) + [...census.files.values()].reduce((sum, row) => sum + row.bytes, 0) > STORYBOARD_BUNDLE_LIMITS.total) fail('资源联包超过 512 MiB，请保留原环境，未读取原图或输出缺件包');
   const remaining = STORYBOARD_BUNDLE_LIMITS.total - entries.reduce((sum, row) => sum + row.file.size, STORYBOARD_BUNDLE_LIMITS.manifest + STORYBOARD_BUNDLE_LIMITS['legacy-vibes']) - [...census.files.values()].reduce((sum, row) => sum + row.bytes, 0);
@@ -129,6 +133,9 @@ export async function inspectStoryboardResourceBundle(file, { guard = async () =
   if (opened.manifest.entries.some(row => row.id === 'legacy-vibes')) includeLegacyOriginals(config, await opened.readJson('legacy-vibes'));
   const workflows = await opened.readJson('workflows'), pools = await opened.readJson('pools'), characters = await opened.readJson('characters'); await guard();
   const { census, summary } = await inspectLibraries(namespace, config, { workflows, pools, characters }, guard);
+  if (opened.manifest.entries.some(row => row.id === 'chat-evidence')) {
+    const evidence = await inspectStoryboardChatEvidence(await opened.readJson('chat-evidence'), opened.manifest.chatKey); summary.chatEvidenceMessages = evidence.messages.length; await guard();
+  }
   const imageEntries = opened.manifest.entries.filter(row => row.id.startsWith('image:'));
   if (imageEntries.length !== census.files.size) fail('资源原件数量不符，存在缺件或多余文件');
   for (const row of imageEntries) {

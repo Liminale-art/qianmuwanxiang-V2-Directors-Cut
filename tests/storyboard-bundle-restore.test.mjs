@@ -10,18 +10,23 @@ import { validateResourceRestoreCheckpoint } from '../qianmu-storyboard-package-
 import { createStoryboardDefaults } from '../qianmu-storyboard.js';
 import { vibeDigest } from '../qianmu-vibe-file.js';
 import { randomUUID, createHash } from 'node:crypto';
+import { hashText } from '../qianmu-storyboard-utils.js';
+import { captureStoryboardChatEvidence } from '../qianmu-storyboard-chat-evidence.js';
 
 const clone = structuredClone;
-async function fixture({ legacy = false, sourceIdentity = null } = {}) {
+async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = false, sourceText = 'original text', missingAnchor = false } = {}) {
   const source = await sourceFixture(); source.config.chat.images[0].source = 'novel'; source.config.chat.images[0].floor = 0;
+  source.config.chat.images[0].paragraphAnchor = { floor: 0 };
+  if (!missingAnchor) source.config.chat.images[0].messageHash = hashText(sourceText);
   if (legacy) {
     source.config.settings.vibeLibrary = [{ id: 'legacy', name: 'Old Vibe', previewUrl: '/user/images/legacy.png', strength: 0, informationExtracted: 0 }];
     source.options.legacyFetch = async () => new Response(Buffer.from(data, 'base64'));
   }
   source.options.source = sourceIdentity;
+  if (chatEvidence) source.options.chatEvidence = await captureStoryboardChatEvidence([{ mes: sourceText, is_user: false, swipe_id: 0 }], chatKey);
   source.options.storyboard = file(source.config); const built = await source.build();
   const e = { active: true, events: [], files: new Map(), records: new Map(), mutation: null, settings: createStoryboardDefaults(), chat: {},
-    messages: [{ mes: 'original text', is_user: false, swipe_id: 0 }], locals: clone(source.sources), vibes: false, configChanges: 0 };
+    messages: [{ mes: sourceText, is_user: false, swipe_id: 0 }], locals: clone(source.sources), vibes: false, configChanges: 0 };
   e.locals.workflows.workflows = []; e.locals.pools.pools = [];
   e.locals.characters.archives = []; e.locals.characters.bindings = []; e.locals.characters.usage = { count: 0, bytes: 0, bindings: 0 };
   const options = { namespace, chatKey, file: built.file, guard: async () => { if (!e.active) throw Error('inactive'); }, isCurrent: () => e.active,
@@ -65,6 +70,36 @@ async function fixture({ legacy = false, sourceIdentity = null } = {}) {
 }
 const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true };
 const writes = e => e.events.filter(row => !row.startsWith('lock:'));
+
+test('an old floor-only image stays in the gallery instead of silently binding to an unverified paragraph', async () => {
+  const f = await fixture({ missingAnchor: true }), prepared = await f.session.preview(); assert.equal(prepared.configuration.orphaned, 1);
+  await f.session.restore(prepared, consent); const saved = f.e.chat.storyboardImages[0];
+  assert.equal(saved.floor, null); assert.equal(saved.lastKnownFloor, 0); assert.equal(saved.linkState, 'orphaned'); assert.ok(saved.url); assert.equal(saved.id, f.source.config.chat.images[0].id);
+  assert.equal(saved.restoreLinkReview.sourceFloor, 0); assert.equal(saved.restoreLinkReview.sourceFingerprint, f.built.fingerprint); assert.equal(saved.inline, false);
+});
+
+test('chat evidence relocates a uniquely anchored image when earlier floors were inserted without rewriting the backup', async () => {
+  const f = await fixture({ chatEvidence: true }); f.e.messages.unshift({ mes: 'earlier paragraph', is_user: true });
+  const prepared = await f.session.preview(); assert.equal(prepared.configuration.orphaned, 0); assert.equal(prepared.configuration.chatChanged, true);
+  await f.session.restore(prepared, consent); assert.equal(f.e.chat.storyboardImages[0].floor, 1); assert.equal(f.e.chat.storyboardImages[0].linkState, 'active');
+  assert.equal(f.e.chat.storyboardImages[0].paragraphAnchor.floor, 1); assert.equal(f.e.chat.storyboardImages[0].lastKnownFloor, 1);
+  assert.equal(f.source.config.chat.images[0].floor, 0);
+});
+
+test('changed text, speakers, swipe or ambiguous duplicate paragraphs stay detached with originals intact', async () => {
+  for (const change of [messages => { messages[0].mes = 'BB'; }, messages => { messages[0].name = 'another'; }, messages => { messages[0].swipe_id = 1; }, messages => { messages.push(clone(messages[0])); }]) {
+    const f = await fixture({ chatEvidence: true, sourceText: 'Aa' }); change(f.e.messages);
+    const prepared = await f.session.preview(); assert.equal(prepared.configuration.orphaned, 1);
+    await f.session.restore(prepared, consent); assert.equal(f.e.chat.storyboardImages[0].floor, null); assert.ok(f.e.files.size);
+  }
+});
+
+test('weak-hash-colliding edits after configuration journalling cannot apply a stale attachment', async () => {
+  const f = await fixture({ chatEvidence: true, sourceText: 'Aa' });
+  const prepare = f.options.journal.prepareMutation; f.options.journal.prepareMutation = async value => { const result = await prepare(value); f.e.messages[0].mes = 'BB'; return result; };
+  const prepared = await f.session.preview(); await assert.rejects(f.session.restore(prepared, consent), /正文或配置已变化/);
+  assert.equal(f.e.events.includes('configuration'), false); assert.equal(f.e.chat.storyboardImages, undefined); assert.ok(f.e.mutation); assert.ok(f.e.files.size);
+});
 
 test('source-labelled restores require matching live backend labels even for an identical handle/chat; they do not claim full identity verification', async () => {
   const identity = { ok: true, version: 1, state: 'ready', expectedAccount: 'st-user:' + createHash('sha256').update(namespace.slice(8)).digest('hex'),

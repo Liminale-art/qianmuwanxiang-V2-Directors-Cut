@@ -42,6 +42,7 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
   const configFile = (await opened.read('storyboard')).file;
   const payload = await opened.readJson('storyboard'), workflows = await opened.readJson('workflows'), pools = await opened.readJson('pools'), characters = await opened.readJson('characters');
   const legacyDocument = opened.manifest.entries.some(row => row.id === 'legacy-vibes') ? await opened.readJson('legacy-vibes') : null;
+  const chatEvidence = opened.manifest.entries.some(row => row.id === 'chat-evidence') ? await opened.readJson('chat-evidence') : null;
   const gallery = new Map(), imageUrls = Object.create(null);
   for (const row of payload.media || []) {
     await check(); const bytes = Uint8Array.from(atob(row.b64), c => c.charCodeAt(0)), sha256 = await vibeDigest(bytes);
@@ -51,7 +52,7 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
   }
   const stageOptions = { namespace, chatKey, guard: check, isCurrent: syncCurrent };
   // Never send Base64 media or Vibe bodies to the live configuration adapter.
-  const configOptions = () => ({ settings: clone(payload.settings), chat: clone(payload.chat), imageUrls: clone(imageUrls), fingerprint: sourceDigest });
+  const configOptions = () => ({ settings: clone(payload.settings), chat: clone(payload.chat), imageUrls: clone(imageUrls), fingerprint: sourceDigest, ...(chatEvidence ? { chatEvidence: clone(chatEvidence) } : {}) });
   async function inspectImage(receipt) {
     await check(); const actual = await images.inspect(receipt); await check();
     if (!['present', 'missing', 'conflict'].includes(actual?.state) || await digest(actual.receipt) !== await digest(receipt)) fail('原图恢复返回不符，未继续写入');
