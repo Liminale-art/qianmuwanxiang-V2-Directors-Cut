@@ -217,6 +217,7 @@ const featureRuntime = createFeatureRuntime({
   storyboardPackageStore: { label: '分镜原件读取', load: () => import('./qianmu-vibe-asset-store.js?v=1.59.105') },
   storyboardBundleFormat: { label: '分镜联包识别', load: () => import('./qianmu-storyboard-bundle.js?v=1.59.105') },
   storyboardBundleCapture: { label: '分镜资源联包', load: () => import('./qianmu-storyboard-bundle-runtime.js?v=1.59.105') },
+  storyboardBundleSource: { label: '备份来源核对', load: () => import('./qianmu-storyboard-bundle-source.js?v=1.59.105') },
   storyboardBundleRestore: { label: '分镜联包恢复', load: () => import('./qianmu-storyboard-bundle-restore-runtime.js?v=1.59.105') },
   storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.105') },
   storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.105') },
@@ -21694,9 +21695,11 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   const [packageModule,identity]=await Promise.all([featureRuntime.load('storyboardPackageAssets'),featureRuntime.load('imageAdmission')]);
   const session=await packageModule.createStoryboardPackageGuard({initial,context,resolveNamespace:()=>identity.resolveImageAccountNamespace()});
   if (originals && await confirmDialog(bundle ? '备份分镜资源联包' : '备份分镜配置与成片', bundle
-    ? '联包包含本聊天配置与成片、所引用 Vibe 原文件、完整 Comfy 工作流及候选历史、角色档案和绑定及参考原件。仅原 ST 账户与原聊天可直接恢复，跨环境身份重绑定尚未开放；旧 URL Vibe、模型文件与服务器授权需单独保全。原环境请先保留，整包上限 512 MiB，配置分段仍限 128 MiB；不含 API Key。是否继续？'
+    ? '联包包含本聊天配置与成片、所引用 Vibe 原文件及本地旧图、完整 Comfy 工作流与候选历史、角色档案和绑定及参考原件。仅原 ST 账户与原聊天可直接恢复，跨环境身份重绑定尚未开放；外部 URL 原图、模型文件与服务器授权需单独保全。原环境请先保留，整包上限 512 MiB，配置分段仍限 128 MiB；不含 API Key。是否继续？'
     : '新版包包含本聊天成片、分镜预设及所引用的 Vibe 原文件。Comfy 独立工作流库、角色档案库、外部图片地址与服务器授权尚不属于此包，需单独保全；不是完整账户迁移包。最大 128 MiB，不包含 API Key。是否继续？') !== true) return;
   await session.guard();
+  const bundleSource = bundle ? await (await featureRuntime.load('storyboardBundleSource')).prepareStoryboardBundleSource({ namespace: session.namespace,
+    headers: () => typeof ctx().getRequestHeaders === 'function' ? ctx().getRequestHeaders() : {}, guard: session.guard, confirm: (title, message) => confirmDialog(title, message) }) : null;
   await storyboardHydratePipelineArchive();
   await session.guard();
   await storyboardHydrateGallerySnapshots(storyboardGalleryRecords(),{migrate:false});
@@ -21772,8 +21775,8 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   if (bundle) {
     const runtime = await featureRuntime.load('storyboardBundleCapture'); await session.guard();
     toast('正在后台核对工作流、角色及参考原件…', 'info');
-    blob = (await runtime.runStoryboardBundle('capture', blob, { namespace: session.namespace, chatKey, guard: session.guard })).file;
-    await session.guard();
+    blob = (await runtime.runStoryboardBundle('capture', blob, { namespace: session.namespace, chatKey, source: bundleSource.source, guard: session.guard })).file;
+    await session.guard(); await bundleSource.verify();
   }
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

@@ -6,6 +6,7 @@ import { createVibeAssetStore } from './qianmu-vibe-asset-store.js';
 import { createStoryboardPackageJournal } from './qianmu-storyboard-package-journal.js';
 import { createStoryboardPackageStage } from './qianmu-storyboard-package-stage.js';
 import { createImageRestoreClient } from './qianmu-image-restore-client.js';
+import { createSourceIdentityClient } from './qianmu-source-identity-client.js';
 
 let id = '', operation = 0, rpc = 0, busy = false, closed = false, session = null;
 const pending = new Map(), stores = [];
@@ -36,6 +37,7 @@ self.addEventListener('message', async event => {
       session = await createStoryboardBundleRestoreSession({ namespace, chatKey: message.payload.chatKey, file: message.payload.file, workflowStore, poolStore, characterStore, journal,
         vibeStage: createStoryboardPackageStage({ store: vibe, journal }), guard, isCurrent: () => !closed,
         images: createImageRestoreClient({ namespace, headers: () => ({ 'X-CSRF-Token': token }), guard }),
+        sourceIdentity: createSourceIdentityClient({ namespace, guard }),
         configuration: { preview: value => ask('configuration-preview', value), apply: value => ask('configuration-apply', value) } });
       result = { sourceDigest: session.sourceDigest };
     } else if (session && message.sourceDigest === session.sourceDigest) {

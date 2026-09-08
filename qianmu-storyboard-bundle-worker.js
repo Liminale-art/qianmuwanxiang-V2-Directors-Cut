@@ -14,7 +14,7 @@ self.addEventListener('message', async event => {
     let result;
     if (input?.action === 'capture') {
       const workflowStore = createComfyWorkflowStore(), poolStore = createComfyPoolStore(), characterStore = createCharacterArchiveStore(); stores.push(workflowStore, poolStore, characterStore);
-      result = await captureStoryboardResourceBundle({ namespace: input.namespace, chatKey: input.chatKey, storyboard: input.file, workflowStore, poolStore, characterStore, guard });
+      result = await captureStoryboardResourceBundle({ namespace: input.namespace, chatKey: input.chatKey, source: input.source, storyboard: input.file, workflowStore, poolStore, characterStore, guard });
     } else if (input?.action === 'inspect') result = await inspectStoryboardResourceBundle(input.file, { guard });
     else throw Error('不支持的资源包操作');
     await guard(); self.postMessage({ result });

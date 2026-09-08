@@ -3,6 +3,10 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-source-identity-contract.js",
+    "qianmu-source-identity-service.js",
+    "qianmu-source-identity-client.js",
+    "qianmu-storyboard-bundle-source.js",
     "qianmu-storyboard-bundle.js",
     "qianmu-storyboard-bundle-resources.js",
     "qianmu-storyboard-bundle-worker.js",

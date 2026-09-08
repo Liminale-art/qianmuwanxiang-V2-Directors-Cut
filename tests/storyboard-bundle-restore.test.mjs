@@ -9,20 +9,23 @@ import { planCharacterLibraryRestore } from '../qianmu-character-library-backup.
 import { validateResourceRestoreCheckpoint } from '../qianmu-storyboard-package-journal.js';
 import { createStoryboardDefaults } from '../qianmu-storyboard.js';
 import { vibeDigest } from '../qianmu-vibe-file.js';
+import { randomUUID, createHash } from 'node:crypto';
 
 const clone = structuredClone;
-async function fixture({ legacy = false } = {}) {
+async function fixture({ legacy = false, sourceIdentity = null } = {}) {
   const source = await sourceFixture(); source.config.chat.images[0].source = 'novel'; source.config.chat.images[0].floor = 0;
   if (legacy) {
     source.config.settings.vibeLibrary = [{ id: 'legacy', name: 'Old Vibe', previewUrl: '/user/images/legacy.png', strength: 0, informationExtracted: 0 }];
     source.options.legacyFetch = async () => new Response(Buffer.from(data, 'base64'));
   }
+  source.options.source = sourceIdentity;
   source.options.storyboard = file(source.config); const built = await source.build();
   const e = { active: true, events: [], files: new Map(), records: new Map(), mutation: null, settings: createStoryboardDefaults(), chat: {},
     messages: [{ mes: 'original text', is_user: false, swipe_id: 0 }], locals: clone(source.sources), vibes: false, configChanges: 0 };
   e.locals.workflows.workflows = []; e.locals.pools.pools = [];
   e.locals.characters.archives = []; e.locals.characters.bindings = []; e.locals.characters.usage = { count: 0, bytes: 0, bindings: 0 };
   const options = { namespace, chatKey, file: built.file, guard: async () => { if (!e.active) throw Error('inactive'); }, isCurrent: () => e.active,
+    ...(sourceIdentity ? { sourceIdentity: { inspect: async () => clone(sourceIdentity) } } : {}),
     locks: { request: async (name, settings, fn) => { e.events.push(`lock:${name}`); return fn(e.lockUnavailable ? null : {}); } } };
   const store = key => ({ backup: async () => clone(e.locals[key]), usage: async () => ({ limit: e.limits?.[key] || (key === 'pools' ? 16 : 64) * 1024 * 1024 }),
     restoreBackup: async (ns, input, approved) => {
@@ -62,6 +65,29 @@ async function fixture({ legacy = false } = {}) {
 }
 const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true };
 const writes = e => e.events.filter(row => !row.startsWith('lock:'));
+
+test('source-labelled restores require matching live backend labels even for an identical handle/chat; they do not claim full identity verification', async () => {
+  const identity = { ok: true, version: 1, state: 'ready', expectedAccount: 'st-user:' + createHash('sha256').update(namespace.slice(8)).digest('hex'),
+    instanceId: randomUUID(), accountId: randomUUID(), proof: 'installation-labels', automaticRebinding: false };
+  const f = await fixture({ sourceIdentity: identity });
+  const prepared = await f.session.preview(); assert.equal(prepared.sourceLabelsMatched, true); assert.equal(prepared.identityVerified, false);
+  f.options.sourceIdentity.inspect = async () => ({ ...identity, instanceId: randomUUID() });
+  await assert.rejects(f.reopen(), /来源标识不同/); await assert.rejects(f.session.restore(prepared, consent), /来源标识不同/);
+  assert.deepEqual(writes(f.e), []); assert.equal(f.e.files.size, 0);
+  delete f.options.sourceIdentity; await assert.rejects(f.reopen(), /不能降级/); assert.deepEqual(writes(f.e), []);
+  f.options.sourceIdentity = { inspect: async () => clone(identity) }; const restored = await f.reopen();
+  const preview = await restored.preview(); await restored.restore(preview, consent); assert.ok(f.e.files.size); assert.ok(f.e.events.includes('configuration'));
+});
+
+test('source identity changes at a later restore phase preserve completed originals and stop before applying metadata or settings', async () => {
+  const identity = { ok: true, version: 1, state: 'ready', expectedAccount: 'st-user:' + createHash('sha256').update(namespace.slice(8)).digest('hex'),
+    instanceId: randomUUID(), accountId: randomUUID(), proof: 'installation-labels', automaticRebinding: false };
+  const f = await fixture({ sourceIdentity: identity }); let changed = false;
+  f.options.sourceIdentity.inspect = async () => changed ? { ...identity, accountId: randomUUID() } : clone(identity);
+  f.e.afterStore = async key => { if (key === 'workflows') changed = true; };
+  const prepared = await f.session.preview(); await assert.rejects(f.session.restore(prepared, consent), /来源标识不同/);
+  assert.ok(f.e.files.size); assert.ok(f.e.events.includes('workflows')); assert.equal(f.e.events.includes('pools'), false); assert.equal(f.e.events.includes('configuration'), false);
+});
 
 test('legacy Vibe originals are restored before settings without changing URL recipes, zero parameters or asset type', async () => {
   const { session, e, source } = await fixture({ legacy: true }), preview = await session.preview();

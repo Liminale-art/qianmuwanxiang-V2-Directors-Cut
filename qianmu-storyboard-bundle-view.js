@@ -8,6 +8,7 @@ export function renderStoryboardBundleReview(view) {
     <main data-bundle-scroll><fieldset ${view.busy || view.result ? 'disabled' : ''}>
     <section><p class="sd-bundle-file">${escape(view.fileName)}</p><p>恢复当前聊天成片、配置、Vibe 原文件、完整工作流／候选历史及角色库。只补缺件，不覆盖原图；不含模型文件或 API 授权。跨环境身份重绑定尚未开放，请先保留旧环境。</p>
     ${p ? `<p>成片 ${p.summary.images} · Vibe ${p.summary.vibeFiles} · 工作流 ${p.summary.workflows.count}（${p.summary.workflows.versions} 版） · 候选 ${p.summary.pools.count} · 角色 ${p.summary.characters.count}</p>
+    <p>${p.sourceLabelsMatched ? 'ST 来源标识一致；完整服务器副本也会相同，角色与聊天仍须人工核对。' : '此包无 ST 来源标识，仅凭同名账户与聊天不能确认身份，请人工核对原环境。'}</p>
     ${p.summary.legacyVibeOriginals ? `<p>已包含 ${p.summary.legacyVibeOriginals} 个旧 Vibe 地址的本地原图；原配方及强度不变。</p>` : ''}
     ${p.summary.legacyVibeUrls > (p.summary.legacyVibeOriginals || 0) ? `<p>另有 ${p.summary.legacyVibeUrls - (p.summary.legacyVibeOriginals || 0)} 个旧 Vibe 地址未包含原图，请另行保全。</p>` : ''}
     <p>档案／绑定：新增 ${p.characterSummary.added} · 替换 ${p.characterSummary.replaced} · 保留 ${p.characterSummary.kept}</p>

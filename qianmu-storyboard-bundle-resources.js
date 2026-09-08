@@ -1,4 +1,5 @@
 import { buildStoryboardBundle, openStoryboardBundle, STORYBOARD_BUNDLE_LIMITS } from './qianmu-storyboard-bundle.js';
+import { sourceIdentityForNamespace } from './qianmu-source-identity-contract.js';
 import { inspectStoryboardPackageFile, validateStoryboardPackagePayload, validateStoryboardPackageMedia } from './qianmu-storyboard-package-input.js';
 import { collectStoryboardVibeDependencies, inspectStoryboardVibePackage } from './qianmu-storyboard-package-assets.js';
 import { validateComfyLibraryBackup, comfyLibraryBackupDigest as digest } from './qianmu-comfy-library-backup.js';
@@ -87,9 +88,10 @@ async function inspectLibraries(namespace, config, { workflows, pools, character
 }
 
 // This unit captures and verifies one portable file. Applying it requires the explicit staged restore coordinator.
-export async function captureStoryboardResourceBundle({ namespace, chatKey, storyboard, workflowStore, poolStore, characterStore,
+export async function captureStoryboardResourceBundle({ namespace, chatKey, storyboard, workflowStore, poolStore, characterStore, source = null,
   guard = async () => {}, isCurrent = () => true, readImages = readStaticReferenceBlobs, legacyFetch = globalThis.fetch, now = Date.now }) {
   const check = async () => { if (isCurrent() !== true) fail('资源包页面已变化'); await guard(); if (isCurrent() !== true) fail('资源包页面已变化'); };
+  source = source === null ? null : await sourceIdentityForNamespace(source, namespace);
   await check();
   const config = await (async () => { const parsed = await inspectStoryboardPackageFile(storyboard); await check(); return inspectConfig(parsed.payload, namespace, { checked: true }); })();
   const pools = await poolStore.backup(namespace, { isCurrent }); await check();
@@ -117,7 +119,7 @@ export async function captureStoryboardResourceBundle({ namespace, chatKey, stor
   for (const [index, store] of [workflowStore, poolStore, characterStore].entries()) {
     if (await digest(await store.backup(namespace, { isCurrent })) !== baselines[index]) fail('打包期间资源库已变化，请重新导出'); await check();
   }
-  const result = await buildStoryboardBundle({ namespace, chatKey, entries, createdAt: now() }, { guard: check });
+  const result = await buildStoryboardBundle({ namespace, chatKey, entries, source, createdAt: now() }, { guard: check });
   await check(); return { ...result, summary };
 }
 

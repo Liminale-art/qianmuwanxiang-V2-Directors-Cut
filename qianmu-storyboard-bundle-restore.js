@@ -6,6 +6,7 @@ import { planCharacterLibraryRestore } from './qianmu-character-library-backup.j
 import { imageRestoreReceipt } from './qianmu-image-restore-contract.js';
 import { vibeDigest } from './qianmu-vibe-file.js';
 import { createCharacterRestoreChoiceSnapshot } from './qianmu-character-backup-restore.js';
+import { sourceIdentityLabelsMatch } from './qianmu-source-identity-contract.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle_restore', submissionState: 'not_submitted' }); };
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -21,7 +22,7 @@ function mergedLibrary(local, plan, key) {
 // Resources use independent atomic stores, NOT a fictitious cross-IDB transaction or destructive rollback.
 // configuration must preflight a detached draft, then persist its before/after mutation through the shared journal.
 export async function createStoryboardBundleRestoreSession({ namespace, chatKey, file, workflowStore, poolStore, characterStore,
-  vibeStage, images, journal, configuration, guard, isCurrent, locks = globalThis.navigator?.locks }) {
+  vibeStage, images, journal, configuration, sourceIdentity, guard, isCurrent, locks = globalThis.navigator?.locks }) {
   if (typeof guard !== 'function' || typeof isCurrent !== 'function' || !configuration?.preview || !configuration?.apply) fail('缺少整包恢复的环境及配置核对');
   let closed = false, busy = false, choose = null;
   const syncCurrent = () => !closed && isCurrent() === true;
@@ -30,6 +31,13 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
   const inspected = await inspectStoryboardResourceBundle(file, { guard: check }), opened = await openStoryboardBundle(file, { guard: check });
   if (inspected.fingerprint !== opened.fingerprint) fail('核验后资源联包发生变化，请重新选择原文件');
   if (inspected.manifest.namespace !== namespace || inspected.manifest.chatKey !== chatKey) fail('请在原 ST 账户及原聊天核对；跨环境身份重绑定尚未确认');
+  const checkSource = async () => {
+    await check(); if (!opened.manifest.source) return;
+    if (typeof sourceIdentity?.inspect !== 'function') fail('此包含来源标识，请更新增强服务后核对，不能降级绕过');
+    const target = await sourceIdentity.inspect(); await check();
+    if (!sourceIdentityLabelsMatch(opened.manifest.source, target)) fail('ST 实例或账户来源标识不同，未恢复；跨环境身份重绑定仍需另行确认');
+  };
+  await checkSource();
   const sourceDigest = inspected.fingerprint, chatHash = await vibeDigest(chatKey);
   const configFile = (await opened.read('storyboard')).file;
   const payload = await opened.readJson('storyboard'), workflows = await opened.readJson('workflows'), pools = await opened.readJson('pools'), characters = await opened.readJson('characters');
@@ -58,15 +66,15 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
     await check(); return record;
   }
   async function inspect(decisions = {}) {
-    choose = null; const choices = clone(decisions); await check(); const record = await pendingRecords();
+    choose = null; const choices = clone(decisions); await checkSource(); const record = await pendingRecords();
     const localCharacters = await characterStore.backup(namespace, { isCurrent: syncCurrent }); await check();
     const characterPlan = planCharacterLibraryRestore(localCharacters, characters, { decisions: choices });
     const view = { namespace, chatHash, sourceDigest, record, decisions: choices, conflicts: characterPlan.conflicts,
       summary: clone(inspected.summary), characterSummary: characterPlan.summary, bindingReview: clone(characterPlan.bindingWrites), images: [],
-      ready: false, planDigest: '', settingsVerified: false, identityVerified: false };
+      ready: false, planDigest: '', settingsVerified: false, identityVerified: false, sourceLabelsMatched: Boolean(opened.manifest.source) };
     const captureChoices = () => {
       const snapshot = createCharacterRestoreChoiceSnapshot(localCharacters, characters, characterPlan, { ...view, summary: view.characterSummary });
-      choose = decisions => { const next = snapshot(decisions); return { ...next, characterSummary: next.summary, summary: clone(inspected.summary), poolSummary: null, vibe: null, configuration: null }; };
+      choose = decisions => { const next = snapshot(decisions); return { ...next, characterSummary: next.summary, summary: clone(inspected.summary), sourceLabelsMatched: Boolean(opened.manifest.source), poolSummary: null, vibe: null, configuration: null }; };
     };
     if (!characterPlan.ready) { captureChoices(); return { view }; }
     const localWorkflows = await workflowStore.backup(namespace, { isCurrent: syncCurrent }); await check();
@@ -133,9 +141,9 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
         if (!latest.view.ready) fail('请处理全部角色、绑定和原图冲突');
         if (latest.view.planDigest !== approved.planDigest) fail('确认后资源、配置或恢复记录已变化，请重新核对');
         if (latest.view.bindingReview.length && bindingsReviewed !== true) fail('请逐项核对角色及聊天绑定；同名不是身份验证');
-        await check();
+        await checkSource();
         let checkpoint = await journal.prepareResource({ namespace, kind: 'bundle', chatHash, sourceDigest, planDigest: approved.planDigest }, { previous: latest.view.record, confirmed: true, isCurrent: syncCurrent });
-        const advance = async phase => { await check(); checkpoint = await journal.updateResource(checkpoint, phase, { isCurrent: syncCurrent }); await check(); };
+        const advance = async phase => { await checkSource(); checkpoint = await journal.updateResource(checkpoint, phase, { isCurrent: syncCurrent }); await check(); };
         try {
           await advance('originals');
           for (const receipt of latest.originals) {
@@ -158,7 +166,7 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
           await advance('verified');
           const config = await configuration.preview(configOptions()); await check();
           if (config?.digest !== latest.config.digest) fail('资源恢复期间配置或正文已变化，未覆盖；已恢复原件保留');
-          await configuration.apply({ ...configOptions(), expectedDigest: latest.config.digest }); await check();
+          await checkSource(); await configuration.apply({ ...configOptions(), expectedDigest: latest.config.digest }); await checkSource();
           const mutation = await journal.loadMutation(namespace); await check();
           if (!mutation || mutation.fileHash !== sourceDigest || mutation.chatHash !== chatHash || mutation.phase !== 'applied') fail('配置保存结果未确认，请通过“核对导入”处理');
           return { checkpoint, resourcesVerified: true, settingsApplied: true, settingsVerified: false, verificationRequired: true };

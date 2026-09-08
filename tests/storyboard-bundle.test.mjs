@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildStoryboardBundle, openStoryboardBundle, STORYBOARD_BUNDLE_LIMITS } from '../qianmu-storyboard-bundle.js';
+import { randomUUID, createHash } from 'node:crypto';
 import { captureStoryboardResourceBundle, inspectStoryboardResourceBundle } from '../qianmu-storyboard-bundle-resources.js';
 import { runStoryboardBundle, closeStoryboardBundleRuntime } from '../qianmu-storyboard-bundle-runtime.js';
 import { normalizeComfyLibraryDocument, inspectComfyLibraryDocument } from '../qianmu-comfy-library.js';
@@ -63,6 +64,25 @@ test('unified bundle shares complete workflow history once and deduplicates orig
   assert.deepEqual(await opened.readJson('storyboard'), f.config);
   assert.equal((await opened.readJson('characters')).archives[0].document.comfy.implementations[0].workflow.version, 1);
   assert.deepEqual(Buffer.from((await opened.read(`image:${sha256}`)).bytes), png);
+});
+
+test('source-labelled v3 bundles preserve complete contents and validate the account digest without upgrading legacy evidence', async () => {
+  const f = await fixture(), old = await f.build(); assert.equal(old.manifest.schema, 'qianmu.storyboard.bundle.v2'); assert.equal(old.manifest.source, undefined);
+  const source = { ok: true, version: 1, state: 'ready', expectedAccount: 'st-user:' + createHash('sha256').update(namespace.slice(8)).digest('hex'),
+    instanceId: randomUUID(), accountId: randomUUID(), proof: 'installation-labels', automaticRebinding: false };
+  f.options.source = source; const result = await f.build(), opened = await openStoryboardBundle(result.file);
+  assert.equal(opened.manifest.schema, 'qianmu.storyboard.bundle.v3'); assert.deepEqual(opened.manifest.source, source);
+  assert.deepEqual(result.manifest.entries, old.manifest.entries); assert.notEqual(result.fingerprint, old.fingerprint);
+  const checked = await inspectStoryboardResourceBundle(result.file); assert.equal(checked.summary.identityVerified, false); assert.equal(checked.summary.restoreAuthorized, false);
+  const prefixSize = new TextEncoder().encode('QIANMU-BUNDLE/1\n').length, prefix = new Uint8Array(await result.file.slice(0, prefixSize + 4).arrayBuffer());
+  const oldLength = new DataView(prefix.buffer).getUint32(prefixSize, true), body = result.file.slice(prefixSize + 4 + oldLength);
+  for (const tampered of [{ ...result.manifest, source: null }, { ...result.manifest, schema: 'qianmu.storyboard.bundle.v2' },
+    { ...result.manifest, source: { ...source, expectedAccount: 'st-user:' + 'a'.repeat(64) } }, { ...result.manifest, source: { ...source, proof: 'verified' } }]) {
+    const encoded = new TextEncoder().encode(JSON.stringify(tampered)), changedPrefix = prefix.slice(); new DataView(changedPrefix.buffer).setUint32(prefixSize, encoded.length, true);
+    await assert.rejects(openStoryboardBundle(new Blob([changedPrefix, encoded, body])));
+  }
+  f.options.source = { ...source, expectedAccount: 'st-user:' + 'a'.repeat(64) };
+  const before = structuredClone(f.reads); await assert.rejects(f.build(), /账户不一致/); assert.deepEqual(f.reads, before);
 });
 
 test('opening and checking a bundle reads slices only, not the full binary envelope, and ignores caller manifest edits', async () => {

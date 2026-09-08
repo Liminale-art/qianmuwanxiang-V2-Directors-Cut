@@ -5,6 +5,8 @@ import { randomUUID } from 'node:crypto';
 import { createImageService, imageServiceTaskErrorPayload, IMAGE_SERVICE_TASK_VERSION } from './qianmu-image-service.js';
 import { imageServiceAccount } from './qianmu-image-service-access.js';
 import { createImageRestoreService } from './qianmu-image-restore-service.js';
+import { createSourceIdentityService } from './qianmu-source-identity-service.js';
+import { sourceIdentityError, sourceIdentityErrorPayload } from './qianmu-source-identity-contract.js';
 import { imageRestoreError, imageRestoreErrorPayload } from './qianmu-image-restore-contract.js';
 import {createVibeEncodingService,vibeServiceErrorPayload} from './qianmu-vibe-service.js';
 import { checkServerComfyReadiness } from './qianmu-comfy-readiness-server.js';
@@ -178,6 +180,28 @@ export async function init(router, options = {}) {
 
   let imageTasks;
   const hostDataRoot = () => options.dataRoot === undefined ? globalThis.DATA_ROOT : options.dataRoot;
+  let sourceIdentity;
+  const sourceIdentityFor = req => {
+    try { imageServiceAccount(req); } catch (_) { throw sourceIdentityError('account', '请先登录 ST 账户核对来源标识', 401); }
+    if (!sourceIdentity) {
+      sourceIdentity = createSourceIdentityService({ ...(options.sourceIdentityOptions || {}), dataRoot: hostDataRoot() });
+      imageTaskServices.add(sourceIdentity);
+    }
+    return sourceIdentity;
+  };
+  for (const [method, route, action] of [['get', '/source-identity', 'inspect'], ['post', '/source-identity/initialize', 'initialize']]) router[method](route, async (req, res) => {
+    prepareImageResponse(res);
+    const controller = new AbortController(), onClose = () => { if (!res.writableEnded) controller.abort(); };
+    res.once?.('close', onClose);
+    try {
+      const service = sourceIdentityFor(req), options = { signal: controller.signal };
+      const result = action === 'inspect' ? await service.inspect(req, options) : await service.initialize(req, req.body, options);
+      if (!res.destroyed && !res.writableEnded) return res.json(result);
+    } catch (error) {
+      const result = sourceIdentityErrorPayload(error);
+      if (!res.destroyed && !res.writableEnded) return res.status(result.status).json(result.body);
+    } finally { res.off?.('close', onClose); }
+  });
   let imageRestore;
   const restoreFor = req => {
     try { imageServiceAccount(req); } catch (_) { throw imageRestoreError('account', '请先登录 ST 账户恢复原图', 401); }
