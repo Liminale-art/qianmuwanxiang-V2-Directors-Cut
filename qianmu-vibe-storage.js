@@ -27,6 +27,11 @@ export function createVibeStorageOperations({store,encodings,locks=globalThis.na
   }
   return {
     async inventory(namespace){return (await read(namespace)).view;},
+    async summary(namespace){
+      const view=(await read(namespace)).view,assets={bytes:view.usage.bytes,count:view.items.length,originalCount:view.items.filter(row=>row.type==='image').length,encodingCount:view.items.filter(row=>row.type==='encoding').length},
+        previews={bytes:view.usage.previewBytes,count:view.items.filter(row=>row.previewBytes>0).length},records={bytes:view.receiptBytes,count:view.receiptCount,archivedCount:view.archivedReceiptCount,pendingCount:view.pendingCount,reviewCount:view.historyReviewCount};
+      return {version:1,status:'ready',namespace,assets,previews,records,bytes:assets.bytes+previews.bytes+records.bytes};
+    },
     async remove(namespace,ids,proof,confirmed){
       ids=Array.isArray(ids)?[...ids]:ids;
       if(confirmed!==true||typeof proof!=='string'||!/^[a-f0-9]{64}$/.test(proof))throw fail('尚未明确确认本次清理');

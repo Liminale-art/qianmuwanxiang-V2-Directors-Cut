@@ -129,6 +129,12 @@ export function createStoryboardVibeLibraryController({items,gallery,save,remove
   function download(blob,name){
     const url=URL.createObjectURL(blob),link=host.ownerDocument.createElement('a');link.href=url;link.download=String(name).replace(/[\\/:*?"<>|\u0000-\u001f]/g,'_');host.ownerDocument.body.append(link);link.click();link.remove();downloadUrls.set(url,setTimeout(()=>{URL.revokeObjectURL(url);downloadUrls.delete(url);},30000));
   }
+  async function openManager(kind){
+    const create=kind==='storage'?createStorage:kind==='review'?createReview:null;if(!create||!live()||busy)return;
+    syncFields();const current=host;busy=true;
+    try{if(!review||reviewKind!==kind){const created=await create(()=>{reviewing=false;review?.detach();if(live())render();});if(!live()||host!==current){created.dispose();return;}review?.dispose();review=created;reviewKind=kind;}
+      if(!live()||host!==current)return;syncFields();cancelSource();reviewing=true;render();}finally{busy=false;}
+  }
   function render(){
     if(!live())return;clearTimeout(timer);
     if(reviewing&&review){clearAssetPreviews();host.innerHTML='<div class="sd-vibe-review-host"></div>';review.mount(host.firstElementChild);return;}
@@ -137,9 +143,7 @@ export function createStoryboardVibeLibraryController({items,gallery,save,remove
     updateSelectionCount();bindLibrary();icons(host);
     for(const [kind,create,label,icon] of [['review',createReview,'编码记录','fa-list'],['storage',createStorage,'Vibe 文件空间','fa-database']])if(create){
       host.querySelector('.sd-vibe-library-search').insertAdjacentHTML('beforeend',`<button type="button" class="sd-icon-btn sd-vibe-${kind}-open" aria-label="${label}"><i class="fa-solid ${icon}"></i></button>`);
-      listen(`.sd-vibe-${kind}-open`,'click',async()=>{if(busy)return;syncFields();const current=host;busy=true;
-        try{if(!review||reviewKind!==kind){const created=await create(()=>{reviewing=false;review?.detach();if(live())render();});if(!live()||host!==current){created.dispose();return;}review?.dispose();review=created;reviewKind=kind;}
-          if(!live()||host!==current)return;syncFields();cancelSource();reviewing=true;render();}finally{busy=false;}});
+      listen(`.sd-vibe-${kind}-open`,'click',()=>openManager(kind));
     }
     if(assets){
       const search=host.querySelector('.sd-vibe-library-search');search.insertAdjacentHTML('beforeend','<button type="button" class="sd-icon-btn sd-vibe-import" aria-label="导入 Vibe 文件"><i class="fa-solid fa-file-import"></i></button><input class="sd-vibe-import-file" type="file" accept=".naiv4vibe,.naiv4vibeBundle,application/json" hidden>');
@@ -185,6 +189,7 @@ export function createStoryboardVibeLibraryController({items,gallery,save,remove
     icons(host);
   }
   return Object.freeze({
+    openManager,
     mount(node){if(disposed)return;this.detach();host=node;render();},
     detach(){syncFields();cancelSource();clearTimeout(timer);clearAssetPreviews();review?.detach();host=null;revoke();},
     dispose(){this.detach();disposed=true;draft=blank();selection=null;review?.dispose();review=null;for(const [url,timer] of downloadUrls){clearTimeout(timer);URL.revokeObjectURL(url);}downloadUrls.clear();},

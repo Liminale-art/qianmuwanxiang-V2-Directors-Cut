@@ -202,6 +202,7 @@ const featureRuntime = createFeatureRuntime({
   vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.105') },
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.105') },
   vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.105') },
+  vibeStorageSummary: { label: 'Vibe 空间汇总', load: () => import('./qianmu-vibe-storage-summary.js?v=1.59.105') },
   vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.105') },
   vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.105') },
   tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.105') },
@@ -1392,6 +1393,7 @@ let storyboardStModulePromise = null;
 let storyboardUtilsModulePromise = null;
 let storyboardChatClickBound = false;
 let storageInventoryState = { status: 'idle', data: null, error: '', sampledAt: 0 };
+let storageInventoryResolveSerial = 0;
 let optionalServiceState = { status: 'idle', available: false, version: '', services: [], message: '', checkedAt: 0 };
 let optionalServiceProbePromise = null;
 let storyboardGatewayCapabilityPromise = null;
@@ -7904,7 +7906,7 @@ function storageSettingsSnapshotWithoutDiagnostics() {
 async function collectStorageInventory() {
   const storageApi = globalThis.navigator?.storage;
   const storageEpoch=storyboardAdmissionEpoch;
-  const [originEstimate, idb, orphanReaderBlobs, imageAttempts, imageChannels, serviceReceipts, comfyReceipts, comfyStorage] = await Promise.all([
+  const [originEstimate, idb, orphanReaderBlobs, imageAttempts, imageChannels, serviceReceipts, comfyReceipts, comfyStorage, vibeStorage] = await Promise.all([
     storageApi?.estimate?.().catch(() => null) || Promise.resolve(null),
     blobStore.estimateBlobStoreUsage(),
     blobStore.auditOrphanedReaderBlobs(),
@@ -7915,7 +7917,12 @@ async function collectStorageInventory() {
     Promise.all([featureRuntime.load('comfyStorage'),featureRuntime.load('imageAdmission')]).then(([module,identity])=>module.collectComfyStorage({
       resolveNamespace:()=>identity.resolveImageAccountNamespace(),valid:()=>storageEpoch===storyboardAdmissionEpoch,
     })).catch(error=>({bytes:0,count:0,errors:[error?.message||'Comfy 资料暂不可读取']})),
+    Promise.all([featureRuntime.load('vibeStorageSummary'),featureRuntime.load('imageAdmission')]).then(([module,identity])=>module.collectVibeStorage({
+      resolveNamespace:()=>identity.resolveImageAccountNamespace(),valid:()=>storageEpoch===storyboardAdmissionEpoch,
+    })).catch(error=>{if(error?.code==='vibe_storage_stale')throw error;return {status:'unavailable',bytes:null,error:error?.message||'Vibe 资料暂不可读取'};}),
   ]);
+  if(vibeStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(vibeStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
+  if(storageEpoch!==storyboardAdmissionEpoch)throw new Error('储存页面已变化，请重新盘点');
   const pressure = blobStore.classifyStoragePressure(originEstimate || {});
   const settingsBytes = storageJsonBytes(storageSettingsSnapshotWithoutDiagnostics());
   const currentChatBytes = storageJsonBytes(getChatStore());
@@ -7944,9 +7951,15 @@ async function collectStorageInventory() {
   addCategory('logs', comfyStorage.scenes?.bytes, comfyStorage.scenes?.count);
   addCategory('settings', comfyStorage.workflows?.bytes, comfyStorage.workflows?.count);
   addCategory('settings', comfyStorage.pools?.bytes, comfyStorage.pools?.count);
-  const trackedBytes = Number(idb.totalBytes || 0) + settingsBytes + currentChatBytes + diagnosticsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes;
+  if(vibeStorage.status==='ready'){
+    addCategory('vibes',vibeStorage.assets.bytes,vibeStorage.assets.count);
+    addCategory('cache',vibeStorage.previews.bytes,vibeStorage.previews.count);
+    addCategory('logs',vibeStorage.records.bytes,vibeStorage.records.count);
+  }
+  const vibeBytes=vibeStorage.status==='ready'?vibeStorage.bytes:0;
+  const trackedBytes = Number(idb.totalBytes || 0) + settingsBytes + currentChatBytes + diagnosticsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes;
   const recoverableBytes = Number(idb.recoverableBytes || 0) + diagnosticsBytes;
-  const manageableBytes = Number(idb.totalBytes || 0) + diagnosticsBytes + portableTtsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes;
+  const manageableBytes = Number(idb.totalBytes || 0) + diagnosticsBytes + portableTtsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes;
   return {
     sampledAt: Date.now(),
     origin: {
@@ -7969,30 +7982,42 @@ async function collectStorageInventory() {
     serviceReceipts,
     comfyReceipts,
     comfyStorage,
+    vibeStorage,
   };
 }
 
+async function storageInventoryScope() {
+  const epoch=storyboardAdmissionEpoch,identity=await featureRuntime.load('imageAdmission'),namespace=await identity.resolveImageAccountNamespace();
+  if(epoch!==storyboardAdmissionEpoch)throw new Error('储存页面已变化，请重新盘点');return JSON.stringify([epoch,namespace]);
+}
 async function refreshStorageInventory(force = false) {
-  if (storageInventoryState.status === 'loading') return storageInventoryState.data;
-  if (!force && storageInventoryState.data && Date.now() - storageInventoryState.sampledAt < 30000) return storageInventoryState.data;
-  storageInventoryState = { ...storageInventoryState, status: 'loading', error: '' };
+  const serial=++storageInventoryResolveSerial;
+  let scope;try{scope=await storageInventoryScope();}catch(error){if(serial!==storageInventoryResolveSerial)return null;storageInventoryState={status:'error',data:null,error:error.message,sampledAt:Date.now()};paintStorageManagementCard();return null;}
+  if(serial!==storageInventoryResolveSerial)return null;
+  const previous=storageInventoryState.scope===scope?storageInventoryState:{data:null};
+  if (previous.status === 'loading') return previous.data;
+  if (!force && previous.data && Date.now() - previous.sampledAt < 30000) return previous.data;
+  const owner={...previous,status:'loading',error:'',scope};storageInventoryState=owner;
   paintStorageManagementCard();
   try {
     const data = await collectStorageInventory();
-    storageInventoryState = { status: 'ready', data, error: '', sampledAt: data.sampledAt };
+    const latest=await storageInventoryScope();if(storageInventoryState!==owner)return null;
+    if(scope!==latest)throw new Error('储存账户已变化，请重新盘点');
+    storageInventoryState = { status: 'ready', data, error: '', sampledAt: data.sampledAt,scope };
   } catch (error) {
-    storageInventoryState = { ...storageInventoryState, status: 'error', error: error?.message || String(error), sampledAt: Date.now() };
+    if(storageInventoryState!==owner)return null;
+    storageInventoryState = { status:'error',data:null,scope,error: error?.message || String(error), sampledAt: Date.now() };
   }
   paintStorageManagementCard();
   return storageInventoryState.data;
 }
 
 const STORAGE_CATEGORY_LABELS = Object.freeze({
-  images: '图片', audio: '音频', video: '动态影片', reader: '伴读资料', notes: '固定便笺', logs: '日志', cache: '临时缓存', settings: '设置与预设', chat: '当前聊天数据', other: '其他',
+  images: '图片', vibes: 'Vibe 文件', audio: '音频', video: '动态影片', reader: '伴读资料', notes: '固定便笺', logs: '日志与记录', cache: '临时缓存', settings: '设置与预设', chat: '当前聊天数据', other: '其他',
 });
 
 const STORAGE_CATEGORY_COLORS = Object.freeze({
-  images: '#5aa9ff', audio: '#ff9f43', video: '#6f8fff', reader: '#9b7cff', notes: '#f2c94c', logs: '#ff647c', cache: '#3dc7c9', settings: '#65c466', chat: '#8d94a6', other: '#747b88',
+  images: '#5aa9ff', vibes: '#b29bc9', audio: '#ff9f43', video: '#6f8fff', reader: '#9b7cff', notes: '#f2c94c', logs: '#ff647c', cache: '#3dc7c9', settings: '#65c466', chat: '#8d94a6', other: '#747b88',
 });
 
 function renderStorageManagementCard() {
@@ -8010,7 +8035,7 @@ function renderStorageManagementCard() {
   const scaleBytes = Math.max(1, data.origin.quota > 0 ? Math.max(data.origin.quota, usedForScale) : usedForScale);
   const barItems = [
     ...categories.map((item) => ({ key: item.category, label: STORAGE_CATEGORY_LABELS[item.category] || item.category, bytes: Number(item.bytes) || 0, color: STORAGE_CATEGORY_COLORS[item.category] || STORAGE_CATEGORY_COLORS.other })),
-    ...(unknownUsage > 0 ? [{ key: 'origin-other', label: '其他 ST 数据', bytes: unknownUsage, color: '#555d6b' }] : []),
+    ...(unknownUsage > 0 ? [{ key: 'origin-other', label: data.vibeStorage?.status==='unavailable'?'未盘点站点数据':'其他 ST 数据', bytes: unknownUsage, color: '#555d6b' }] : []),
     ...(freeBytes > 0 ? [{ key: 'free', label: '可用空间', bytes: freeBytes, color: 'rgba(127, 127, 127, .18)' }] : []),
   ];
   const storageBar = barItems.map((item) => `<i class="sd-storage-segment sd-storage-${htmlEscape(item.key)}" style="--sd-storage-weight:${Math.max(0, item.bytes / scaleBytes)};--sd-storage-color:${item.color}" title="${htmlEscape(item.label)} ${htmlEscape(formatStorageBytes(item.bytes))}"></i>`).join('');
@@ -8039,6 +8064,7 @@ function renderStorageManagementCard() {
     ${data.imageChannels?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.imageChannels.error)}</p>` : ''}
     ${data.serviceReceipts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.serviceReceipts.error)}</p>` : ''}
     ${data.comfyReceipts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.comfyReceipts.error)}</p>` : ''}
+    ${data.vibeStorage?.status==='ready'?`<div class="sd-storage-actions"><span>Vibe 文件 · ${data.vibeStorage.assets.count} 份 · ${htmlEscape(formatStorageBytes(data.vibeStorage.assets.bytes+data.vibeStorage.previews.bytes))}<br>编码记录 ${data.vibeStorage.records.count} 条（含归档 ${data.vibeStorage.records.archivedCount}）· ${htmlEscape(formatStorageBytes(data.vibeStorage.records.bytes))}<br>未决 ${data.vibeStorage.records.pendingCount} 条 · 较早核查 ${data.vibeStorage.records.reviewCount} 次</span><button type="button" class="sd-btn sd-storage-vibes">Vibe 管理</button></div>`:`<div class="sd-storage-actions"><span>Vibe 占用暂不可读取 · 当前总计不含此部分</span><button type="button" class="sd-btn sd-storage-vibes">Vibe 管理</button></div><p class="sd-storage-pressure is-warning">${htmlEscape(data.vibeStorage?.error||'请进入 Vibe 管理核对或保全数据；未修改任何内容。')}</p>`}
     <div class="sd-storage-actions"><span>Comfy 本机领取记录 · ${Number(data.comfyReceipts?.count) || 0} 条 · ${htmlEscape(formatStorageBytes(data.comfyReceipts?.bytes || 0))}</span><button type="button" class="sd-btn sd-storage-comfy-receipts">收片管理</button></div>
     ${(data.comfyStorage?.errors || []).map(message=>`<p class="sd-storage-pressure is-warning">${htmlEscape(message)}</p>`).join('')}
     ${[['workflows','Comfy 工作流库'],['pools','Comfy 候选方案'],['scenes','Comfy 续场记录']].map(([key,label])=>`<div class="sd-storage-actions"><span>${label} · 当前账户 · ${Number(data.comfyStorage?.[key]?.count)||0} 项 · ${htmlEscape(formatStorageBytes(data.comfyStorage?.[key]?.bytes||0))}</span>${key!=='scenes'?`<button type="button" class="sd-btn" data-storage-comfy-library="${key}">管理</button>`:''}</div>`).join('')}
@@ -8473,6 +8499,11 @@ function paintStorageManagementCard() {
 }
 
 function bindStorageManagementEvents(root) {
+  root.querySelector('button.sd-storage-vibes')?.addEventListener('click',()=>{
+    storageInventoryState={...storageInventoryState,sampledAt:0};
+    if(activeTab!=='imagegen')storyboardBeginSession();activeTab='imagegen';storyboardNavigate(root,{view:'assets',assetView:'vibes'});
+    const modal=document.getElementById(MODAL_ID);if(modal)void storyboardMountVibeLibrary(modal,{manager:'storage'});
+  });
   root.querySelectorAll('[data-storage-comfy-library]').forEach(button=>button.addEventListener('click',()=>{
     const state=storyboardState(),view=button.dataset.storageComfyLibrary==='pools'?'comfy-pools':'workflows';
     if(activeTab!=='imagegen')storyboardBeginSession();
@@ -14566,7 +14597,7 @@ function storyboardFinishVibeSelection(root) {
   if(!session||session.state!==storyboardState()||session.epoch!==storyboardAdmissionEpoch)return;
   storyboardRememberPageScroll(root);storyboardApplyRoute({view:'create'});storyboardPendingRestoreScroll=session.scroll;saveSettings();renderModal();
 }
-async function storyboardMountVibeLibrary(root) {
+async function storyboardMountVibeLibrary(root,{manager=''}={}) {
   const host=root.querySelector('.sd-vibe-library-host');if(!host)return;
   const state=storyboardState(),epoch=storyboardAdmissionEpoch,chat=String(getChatKey()||''),ticket={};root._sdVibeMountTicket=ticket;
   const current=()=>host.isConnected&&root._sdVibeMountTicket===ticket&&state===storyboardState()&&epoch===storyboardAdmissionEpoch&&chat===String(getChatKey()||'')&&activeTab==='imagegen';
@@ -14629,6 +14660,7 @@ async function storyboardMountVibeLibrary(root) {
     if(storyboardVibeSelection&&(storyboardVibeSelection.state!==state||storyboardVibeSelection.epoch!==epoch||storyboardVibeSelection.chat!==chat)){storyboardVibeSelection=null;storyboardVibeLibraryController.cancelSelection();}
     if(storyboardVibeSelection&&storyboardVibeLibraryController.selectionId!==storyboardVibeSelection.id)storyboardVibeLibraryController.beginSelection(storyboardVibeSelection);
     storyboardVibeLibraryController.mount(host);
+    if(manager==='storage'&&current())await storyboardVibeLibraryController.openManager('storage');
   }catch(error){if(current()){host.innerHTML='<button type="button" class="sd-btn sd-vibe-retry">重新载入 Vibe 库</button>';host.querySelector('button').addEventListener('click',()=>void storyboardMountVibeLibrary(root));toast(error?.message||'Vibe 库载入失败','warning');}}
 }
 function storyboardOpenVibeSelection(root) {

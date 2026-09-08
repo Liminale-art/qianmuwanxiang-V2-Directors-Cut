@@ -6,6 +6,7 @@
     "qianmu-vibe-review.js",
     "qianmu-vibe-receipt-file.js",
     "qianmu-vibe-storage.js",
+    "qianmu-vibe-storage-summary.js",
     "qianmu-vibe-preservation.js",
     "qianmu-vibe-preservation-view.js",
     "qianmu-native-review-contract.js",

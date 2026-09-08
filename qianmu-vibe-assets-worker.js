@@ -21,6 +21,7 @@ return async function run({type,namespace,id,file,ids,settings,bundle,model,info
   }
   if(type==='encoding-get')return encodings.get(namespace,cacheKey);
   if(type==='storage-inventory')return storage.inventory(namespace);
+  if(type==='storage-summary')return storage.summary(namespace);
   if(type==='storage-remove')return storage.remove(namespace,ids,proof,confirmed);
   if(type==='encoding-list')return encodings.list(namespace);
   if(type==='encoding-archive-page')return encodings.archivePage(namespace,{after});
