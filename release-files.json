@@ -3,6 +3,7 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-comfy-library-backup.js",
     "qianmu-vibe-review.js",
     "qianmu-vibe-receipt-file.js",
     "qianmu-vibe-storage.js",

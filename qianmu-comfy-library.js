@@ -78,16 +78,17 @@ export function createComfyWorkflowStore({indexedDB=globalThis.indexedDB,keyRang
         db=value;value.onversionchange=()=>{value.close();if(db===value)db=null;opening=null;};value.onclose=()=>{if(db===value)db=null;opening=null;};finish(null,value);};
     });opening=promise;void promise.catch(()=>{if(opening===promise)opening=null;});return promise;
   };
-  async function operation(names,mode,work) {
-    const database=await open();if(closed)throw comfyLibraryError('closed','工作流库会话已结束');
+  async function operation(names,mode,work,isCurrent=()=>true) {
+    const current=()=>{if(isCurrent()!==true)throw comfyLibraryError('changed','工作流操作页面已变化，请重新核对');};current();
+    const database=await open();if(closed)throw comfyLibraryError('closed','工作流库会话已结束');current();
     return new Promise((resolve,reject)=>{
       let tx,output,failure,finished=false;
       const finish=cause=>{if(finished)return;finished=true;clearTimeout(timer);pending.delete(tx);cause||closed?reject(cause||comfyLibraryError('closed','工作流库会话已结束')):resolve(output);};
       const abort=cause=>{failure=typeof cause?.code==='string'&&cause.code.startsWith('comfy_library_')?cause:error();try{tx.abort();}catch(_){finish(failure);}};
       const timer=setTimeout(()=>{failure=comfyLibraryError('timeout','工作流操作未确认，请刷新核对后再试');try{tx?.abort();}catch(_){}finish(failure);},timeout);
       try{tx=database.transaction(names,mode);pending.add(tx);}catch(_){finish(error());return;}
-      tx.oncomplete=()=>finish();tx.onabort=()=>finish(failure||error());tx.onerror=()=>{failure||=error();};
-      const read=(request,receive)=>{request.onsuccess=()=>{try{receive(request.result);}catch(cause){abort(cause);}};};
+      tx.oncomplete=()=>{try{current();finish();}catch(cause){finish(cause);}};tx.onabort=()=>finish(failure||error());tx.onerror=()=>{failure||=error();};
+      const read=(request,receive)=>{request.onsuccess=()=>{try{current();receive(request.result);}catch(cause){abort(cause);}};};
       try{work(tx,read,value=>{output=value;},abort);}catch(cause){abort(cause);}
     });
   }
@@ -95,7 +96,56 @@ export function createComfyWorkflowStore({indexedDB=globalThis.indexedDB,keyRang
   const validHeads=(rows,namespace)=>{for(const row of rows)if(row.namespace!==namespace||row.key!==identity(namespace,row.id)
     ||!Number.isSafeInteger(row.version)||row.version<1||!Number.isSafeInteger(row.totalBytes)||row.totalBytes<1)throw comfyLibraryError('storage','工作流索引异常，请先导出核对，不会覆盖原数据');return rows;};
   const revisionKey=(namespace,id,revision)=>{identity(namespace,id);if(typeof revision!=='string'||!/^[a-zA-Z0-9_-]{1,160}$/.test(revision))throw comfyLibraryError('identity','工作流版本编号无效');return JSON.stringify([namespace,id,revision]);};
+  async function snapshot(namespace,isCurrent){
+    identity(namespace);return operation(stores,'readonly',(tx,read,set)=>{
+      read(tx.objectStore('workflows').index('namespace').getAll(keyRange.only(namespace),129),heads=>{
+        if(heads.length>128)throw comfyLibraryError('capacity','工作流库超过备份数量上限');validHeads(heads,namespace);
+        const records=[];let pending=heads.length;
+        const complete=()=>{
+          const expected=records.flatMap(row=>row.versions.map(version=>version.meta.key)).sort(),prefix=JSON.stringify([namespace]).slice(0,-1)+',';
+          const range=keyRange.bound(prefix,prefix+'\uffff');let checked=0;
+          for(const name of ['documents','revisions'])read(tx.objectStore(name).getAllKeys(range,8193),keys=>{
+            if(JSON.stringify(keys.sort())!==JSON.stringify(expected))throw comfyLibraryError('backup','工作流库存在未关联或缺失的历史原件，请先保全核对');
+            if(++checked===2)set(records);
+          });
+        };
+        if(!pending){complete();return;}
+        for(const head of heads)read(tx.objectStore('revisions').index('workflowKey').getAll(keyRange.only(head.key),65),rows=>{
+          if(rows.length!==head.version||rows.length>64)throw comfyLibraryError('backup','工作流历史版本缺失或超限');
+          const record={head,versions:[]};records.push(record);let documents=rows.length;
+          for(const meta of rows){const key=revisionKey(namespace,head.id,meta.revision);
+            if(meta.namespace!==namespace||meta.id!==head.id||meta.key!==key||meta.workflowKey!==head.key)throw comfyLibraryError('backup','工作流历史版本归属不符');
+            read(tx.objectStore('documents').get(key),row=>{
+              if(!row||row.key!==key||row.namespace!==namespace||row.id!==head.id||row.revision!==meta.revision
+                ||Object.keys(row).some(k=>!['key','namespace','id','revision','document'].includes(k)))throw comfyLibraryError('backup','工作流原文缺失或归属不符');
+              record.versions.push({meta,document:row.document});if(!--documents&&!--pending)complete();
+            });
+          }
+        });
+      });
+    },isCurrent);
+  }
   return Object.freeze({
+    async backup(namespace,{isCurrent=()=>true}={}){
+      const codec=await import('./qianmu-comfy-library-backup.js');const records=await snapshot(namespace,isCurrent);
+      const value=codec.packComfyLibraryRecords(namespace,records);if(isCurrent()!==true)throw comfyLibraryError('changed','工作流备份页面已变化');return value;
+    },
+    async restoreBackup(namespace,input,{expectedDigest,confirmed=false,isCurrent=()=>true}={}){
+      if(confirmed!==true||typeof expectedDigest!=='string'||!/^[a-f0-9]{64}$/.test(expectedDigest))throw comfyLibraryError('backup','请先核对并确认工作流库恢复');
+      const incoming=structuredClone(input),codec=await import('./qianmu-comfy-library-backup.js');codec.validateComfyLibraryBackup(incoming);
+      const records=await snapshot(namespace,isCurrent),local=codec.packComfyLibraryRecords(namespace,records);
+      if(await codec.comfyLibraryBackupDigest(local)!==expectedDigest)throw comfyLibraryError('conflict','工作流库在确认后已变化，请重新核对');
+      const plan=codec.planComfyLibraryRestore(local,incoming,{maxBytes}),writes=plan.writes.map(row=>codec.unpackComfyLibraryRecord(namespace,row));
+      // All IDs/documents are checked before the transaction. The immutable document chain only changes with its head.
+      return operation(stores,'readwrite',(tx,read,set)=>read(tx.objectStore('workflows').index('namespace').getAll(keyRange.only(namespace),129),heads=>{
+        const sorted=rows=>rows.slice().sort((a,b)=>a.id.localeCompare(b.id));
+        if(JSON.stringify(sorted(heads))!==JSON.stringify(sorted(records.map(row=>row.head))))throw comfyLibraryError('conflict','工作流库在准备期间已变化，未覆盖');
+        for(const row of writes){
+          for(const version of row.versions){tx.objectStore('documents').add(version.document);tx.objectStore('revisions').add(version.meta);}
+          tx.objectStore('workflows').put(row.head);
+        }set(plan.summary);
+      }),isCurrent);
+    },
     async list(namespace,{archived=false}={}) {identity(namespace);return operation(['workflows'],'readonly',(tx,read,set)=>{
       read(tx.objectStore('workflows').index('namespace').getAll(keyRange.only(namespace)),rows=>set(validHeads(rows,namespace).filter(row=>Boolean(row.archived)===Boolean(archived)).map(metadata).sort((a,b)=>b.updatedAt-a.updatedAt)));
     });},

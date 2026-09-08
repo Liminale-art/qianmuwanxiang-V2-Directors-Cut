@@ -62,7 +62,7 @@ export function renderComfyLibrary(view) {
   return `<div class="sd-comfy-library" aria-busy="${Boolean(view.busy)}"><fieldset ${disabled}>
     <div class="sd-comfy-library-tools"><input class="text_pole" data-comfy-search type="search" aria-label="搜索工作流" value="${escape(view.search||'')}">${icon('import','导入工作流','upload')}${icon('new','新建工作流','plus')}</div>
     <div class="sd-comfy-library-tools"><button type="button" class="sd-btn" data-comfy-action="from-current">保存当前配方到库</button><button type="button" class="sd-btn ${view.archived?'active':''}" aria-pressed="${Boolean(view.archived)}" data-comfy-action="archived">归档</button>${icon('refresh','刷新列表','rotate')}</div>
-    <button type="button" class="sd-btn" data-comfy-action="candidates">候选方案</button>
+    <div class="sd-comfy-library-tools"><button type="button" class="sd-btn" data-comfy-action="candidates">候选方案</button>${icon('backup-library','备份整个工作流库（含历史版本）','download')}${icon('restore-library','恢复工作流库备份','folder')}</div>
     ${view.usage?`<div class="sd-comfy-library-note">${view.usage.count} 个方案 · ${view.usage.versions} 个版本 · ${size(view.usage.bytes)} / ${size(view.usage.limit)}（当前浏览器 · 正文估算）</div>`:''}
     <div class="sd-comfy-library-rows">${(view.rows||[]).map(row=>`<section class="sd-card sd-comfy-library-row" data-comfy-id="${escape(row.id)}" data-comfy-name="${escape(row.name.toLocaleLowerCase())}" ${view.search&&!row.name.toLocaleLowerCase().includes(view.search.toLocaleLowerCase())?'hidden':''}>
       <div class="sd-comfy-library-row-head"><button type="button" class="sd-comfy-library-name" data-comfy-action="${view.archived?'export':'edit'}">${escape(row.name)}</button><span>v${row.version}</span></div>
@@ -70,7 +70,7 @@ export function renderComfyLibrary(view) {
       ${renderComfyClassificationBadges(row)}
       <div class="sd-comfy-library-row-actions">${view.archived?`${icon('restore','恢复方案','rotate-left')}${icon('export','导出最新版本','download')}${icon('purge','永久清理全部版本','trash-can')}`:`<button type="button" class="sd-btn" data-comfy-action="apply">应用</button>${icon('edit','编辑版本','pen')}${icon('copy','复制为新方案','copy')}${icon('export','导出最新版本','download')}${icon('archive','归档方案','box-archive')}`}</div>
     </section>`).join('')}</div>
-  </fieldset><input type="file" data-comfy-file accept=".json,application/json" hidden></div>`;
+  </fieldset><input type="file" data-comfy-file accept=".json,application/json" hidden><input type="file" data-comfy-backup-file accept=".json,application/json" hidden></div>`;
 }
 
 export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,onApply,onCandidates=()=>{},isCurrent=()=>true,notify=()=>{},confirm=async()=>false,onIcons=()=>{},download,store=createComfyWorkflowStore()}={}) {
@@ -101,8 +101,16 @@ export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,
       delete view.draft.document.classification;view.draft.dirty=true;syncClassification();return;
     }
     if(name==='import'){if(!view.busy)host.querySelector('[data-comfy-file]')?.click();return;}
+    if(name==='restore-library'){if(!view.busy)host.querySelector('[data-comfy-backup-file]')?.click();return;}
     await guarded(async()=>{
       const row=view.rows.find(row=>row.id===id);
+      if(name==='backup-library'){
+        const captured=namespace,at=entry,isSame=()=>visible()&&namespace===captured&&entry===at;
+        const packet=await store.backup(captured,{isCurrent:isSame});await authorize();
+        const codec=await import('./qianmu-comfy-library-backup.js'),summary=codec.validateComfyLibraryBackup(packet);await authorize();
+        if(!await confirm(`备份 ${summary.count} 个工作流、${summary.versions} 个历史版本（含归档）。不含模型/LoRA文件、参考图、分类候选池、连接授权；不修改工作流、不启用生成。继续？`))return;
+        await authorize();download(new Blob([JSON.stringify(packet)],{type:'application/json'}),'qianmu-comfy-library-backup.json');notify('工作流库及历史版本已备份；外部资源需单独保全','success');return;
+      }
       if(name==='candidates'){await authorize();onCandidates();return;}
       if(name==='refresh'){await loadList();return;}
       if(name==='archived'){view.archived=!view.archived;await loadList();return;}
@@ -180,6 +188,18 @@ export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,
         if(view.draft?.dirty&&!await confirm('导入会替换未保存的编辑，继续？'))return;
         await authorize();newDraft(imported.name||file.name.replace(/(?:\.qianmu)?\.json$/i,''),imported.document);view.draft.dirty=true;
         if(imported.removedFields.length)notify('导入时已移除工作流内的凭据字段，请核对后保存','warning');
+      });
+    });
+    host.querySelector('[data-comfy-backup-file]')?.addEventListener('change',event=>{
+      const file=event.target.files?.[0];event.target.value='';if(!file||host!==mounted||entry!==mountedEntry)return;
+      void guarded(async()=>{
+        const captured=namespace,at=entry,isSame=()=>visible()&&namespace===captured&&entry===at;
+        const codec=await import('./qianmu-comfy-library-backup.js'),packet=await codec.readComfyLibraryBackup(file);await authorize();
+        const local=await store.backup(captured,{isCurrent:isSame}),plan=codec.planComfyLibraryRestore(local,packet,{maxBytes:view.usage?.limit}),expectedDigest=await codec.comfyLibraryBackupDigest(local);await authorize();
+        const summary=plan.summary;
+        if(!await confirm(`恢复工作流库：新增 ${summary.added} 个，补齐 ${summary.extended} 个的后续版本，保留 ${summary.kept} 个本机方案。共新增 ${summary.addedVersions} 个版本。不会切换当前工作流或启用自动选择；参考图、模型文件、候选池及连接仍需另行准备。继续？`))return;
+        await authorize();await store.restoreBackup(captured,packet,{expectedDigest,confirmed:true,isCurrent:isSame});await authorize();
+        notify('工作流库已恢复；当前配方、候选池和连接未切换','success');await loadList();
       });
     });
   }

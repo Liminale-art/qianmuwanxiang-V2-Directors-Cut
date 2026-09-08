@@ -26,8 +26,9 @@ export async function readStoryboardPackageImage(url,{guard,fetch:request=global
 }
 
 // Scan before JSON.parse: duplicate escaped keys would otherwise silently replace data.
-export function parseStoryboardPackageText(text,{legacy=false,auto=false}={}){
-  if(typeof text!=='string'||!text.length||text.length>STORYBOARD_PACKAGE_INPUT_LIMIT||new TextEncoder().encode(text).length>STORYBOARD_PACKAGE_INPUT_LIMIT)fail('分镜包须在 128 MiB 以内，请分批备份');
+export function parseStrictStoryboardJson(text,{maxBytes=STORYBOARD_PACKAGE_INPUT_LIMIT}={}){
+  if(!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>STORYBOARD_PACKAGE_INPUT_LIMIT)fail('分镜包读取上限无效');
+  if(typeof text!=='string'||!text.length||text.length>maxBytes||new TextEncoder().encode(text).length>maxBytes)fail('分镜包为空或超过读取上限');
   const stack=[];let nodes=0;
   for(let at=0;at<text.length;at++){
     const char=text[at],parent=stack.at(-1);
@@ -48,6 +49,10 @@ export function parseStoryboardPackageText(text,{legacy=false,auto=false}={}){
   }
   let payload;try{payload=JSON.parse(text);}catch(_){fail('分镜包 JSON 无效');}
   const finite=value=>{if(typeof value==='number'&&!Number.isFinite(value))fail('分镜包数值超出有效范围');if(value&&typeof value==='object')for(const item of Object.values(value))finite(item);};finite(payload);
+  return payload;
+}
+export function parseStoryboardPackageText(text,{legacy=false,auto=false}={}){
+  const payload=parseStrictStoryboardJson(text);
   if(auto)legacy=payload?.version!==7;
   const supported=legacy?(payload?.version===undefined||Number.isInteger(payload?.version)&&payload.version>=1&&payload.version<=6):payload?.version===7;
   if(!object(payload)||payload.type!=='qianmu-storyboard'||!supported||!object(payload.settings)||!object(payload.chat))fail(legacy?'当前版本不支持此分镜包格式，请保留原包':'请选择新版 v7 分镜包；旧版恢复仍使用原入口');
