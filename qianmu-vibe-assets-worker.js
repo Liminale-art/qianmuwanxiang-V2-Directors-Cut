@@ -14,7 +14,11 @@ async function exportReceipts(namespace,rows){
     if(bytes>VIBE_RECEIPT_FILE_LIMIT)throw vibeFileError('size','记录与核查明细超过 32 MB，请逐项导出');
   }return exportVibeReceiptFile(namespace,rows,{reviewSegments});
 }
-return async function run({type,namespace,id,file,ids,settings,bundle,model,information,encoding,cacheKey,identity,attemptId,retryAttemptId,status,assetRef,image,name,expectedSourceId,sourceAssetRef,delivery,serviceAttemptId,serviceDelivery,expected,proof,confirmed,after}){
+return async function run({type,namespace,id,file,ids,settings,bundle,model,information,encoding,cacheKey,identity,attemptId,retryAttemptId,status,assetRef,image,name,expectedSourceId,sourceAssetRef,delivery,serviceAttemptId,serviceDelivery,expected,proof,confirmed,after,section,key}){
+  if(type==='preservation-page'||type==='preservation-export'){
+    const {createVibePreservationStore}=await import('./qianmu-vibe-preservation.js'),preserve=createVibePreservationStore();
+    return type==='preservation-page'?preserve.page(namespace,section,{after}):preserve.export(namespace,section,key);
+  }
   if(type==='encoding-get')return encodings.get(namespace,cacheKey);
   if(type==='storage-inventory')return storage.inventory(namespace);
   if(type==='storage-remove')return storage.remove(namespace,ids,proof,confirmed);

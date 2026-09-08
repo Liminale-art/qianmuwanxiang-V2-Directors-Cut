@@ -202,6 +202,7 @@ const featureRuntime = createFeatureRuntime({
   vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.105') },
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.105') },
   vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.105') },
+  vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.105') },
   vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.105') },
   tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.105') },
   modelPicker: {
@@ -14581,15 +14582,19 @@ async function storyboardMountVibeLibrary(root) {
       const assetRuntime=await featureRuntime.load('vibeAssets');if(!current())return;
       storyboardVibeControllerContext={state,epoch,chat,namespace};
       const assets=assetRuntime.createVibeLibraryAssets({state,namespace,guard,isCurrent:same,call:assetRuntime.callVibeAsset,publish:saveSettings,uid,notify:message=>toast(message,'success')});
+      const createPreservation=async onClose=>{const preservation=await featureRuntime.load('vibePreservation');await guard();return preservation.createVibePreservationController({
+        actions:preservation.createVibePreservationActions({namespace,call:assetRuntime.callVibeAsset,guard}),onClose,
+        confirm:(title,message)=>confirmDialog(title,htmlEscape(message)),isCurrent:same,icons:node=>applyQianmuIcons(node),
+      });};
       storyboardVibeLibraryController=runtime.createStoryboardVibeLibraryController({
         assets,modelId:()=>{const profile=storyboardProviderProfile(state);return profile.capabilityModelId||profile.model;},
         createReview:async onClose=>{const review=await featureRuntime.load('vibeReview');await guard();return review.createVibeReviewController({
           actions:review.createVibeReviewActions({namespace,call:assetRuntime.callVibeAsset,guard,service:review.createVibeServiceClient({namespace,headers:storyboardRequestHeaders,guard})}),
-          onClose,confirm:(title,message)=>confirmDialog(title,htmlEscape(message)),onAdd:(ref,selection)=>assets.adopt(ref,selection),isCurrent:same,icons:node=>applyQianmuIcons(node),onNotice:message=>{if(same())toast(message,'warning');},
+          onClose,createPreservation,confirm:(title,message)=>confirmDialog(title,htmlEscape(message)),onAdd:(ref,selection)=>assets.adopt(ref,selection),isCurrent:same,icons:node=>applyQianmuIcons(node),onNotice:message=>{if(same())toast(message,'warning');},
         });},
         createStorage:async onClose=>{const storage=await featureRuntime.load('vibeStorage');await guard();return storage.createVibeStorageController({
           actions:storage.createVibeStorageActions({namespace,call:assetRuntime.callVibeAsset,guard,items:()=>state.vibeLibrary}),
-          onClose,confirm:(title,message)=>confirmDialog(title,htmlEscape(message)),isCurrent:same,icons:node=>applyQianmuIcons(node),
+          onClose,createPreservation,confirm:(title,message)=>confirmDialog(title,htmlEscape(message)),isCurrent:same,icons:node=>applyQianmuIcons(node),
         });},
         items:()=>state.vibeLibrary,gallery:()=>storyboardGalleryRecords().filter(item=>item.mediaType!=='video'&&item.kind!=='film'),
         isCurrent:same,icons:node=>applyQianmuIcons(node),onNotice:message=>{if(same())toast(message,'warning');},

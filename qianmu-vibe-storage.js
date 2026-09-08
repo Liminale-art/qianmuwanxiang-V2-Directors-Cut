@@ -65,21 +65,22 @@ export function createVibeStorageActions({namespace,call,guard,items=()=>[]}){
   };
 }
 
-export function createVibeStorageController({actions,confirm=async()=>false,onClose,icons=()=>{},isCurrent=()=>true}){
-  let host,disposed=false,epoch=0,busy=false,snapshot=null,message='',visible=40;const selected=new Set(),urls=new Map();
+export function createVibeStorageController({actions,confirm=async()=>false,onClose,icons=()=>{},isCurrent=()=>true,createPreservation=null}){
+  let host,disposed=false,epoch=0,busy=false,snapshot=null,message='',visible=40,preservation=null;const selected=new Set(),urls=new Map();
   const live=()=>!disposed&&isCurrent()&&host?.isConnected;
   const run=callback=>async event=>{event?.preventDefault();if(!live()||busy)return;const ticket=epoch,active=()=>live()&&ticket===epoch;busy=true;render();
     try{await callback(active);}catch(error){if(active())message=error?.message||'操作未确认，请刷新核对';}finally{if(active()){busy=false;render();}}};
   async function refresh(active){const next=await actions.list();if(!active())return;snapshot=next;selected.clear();visible=40;message='';}
   function download(blob){const url=URL.createObjectURL(blob),link=host.ownerDocument.createElement('a');link.href=url;link.download=`qianmu-vibe-backup.${selected.size===1?'naiv4vibe':'naiv4vibeBundle'}`;link.click();urls.set(url,setTimeout(()=>{URL.revokeObjectURL(url);urls.delete(url);},30000));}
   function render(){
-    if(!live())return;
+    if(!live())return;if(preservation){preservation.mount(host);return;}
     const rows=snapshot?.items||[],total=rows.reduce((sum,row)=>sum+row.bytes+row.previewBytes,0)+(snapshot?.receiptBytes||0);
     const blocked=rows.some(row=>selected.has(row.id)&&row.pending);
     const parts=[['含原图文件',rows.filter(row=>row.type==='image').reduce((sum,row)=>sum+row.bytes,0),'#87a9c4'],['纯编码文件',rows.filter(row=>row.type==='encoding').reduce((sum,row)=>sum+row.bytes,0),'#b29bc9'],['缩略图',snapshot?.usage.previewBytes||0,'#d6b878'],['编码记录',snapshot?.receiptBytes||0,'#8bad99']];
     host.innerHTML=`<section class="sd-vibe-storage">
       <header><h3>Vibe 文件空间</h3><button type="button" class="sd-icon-btn sd-vibe-storage-refresh" aria-label="刷新空间" ${busy?'disabled':''}><i class="fa-solid fa-rotate"></i></button><button type="button" class="sd-icon-btn sd-vibe-storage-close" aria-label="返回 Vibe 库"><i class="fa-solid fa-xmark"></i></button></header>
       <p role="status">${escape(message||(busy?'正在读取…':'本设备 · 当前 ST 账户。不含 VPS 磁盘及其他功能数据。'))}</p>
+      ${createPreservation?`<button type="button" class="sd-btn sd-vibe-preserve-open" ${busy?'disabled':''}>原始数据保全</button>`:''}
       ${snapshot?`<div class="sd-vibe-storage-meter" role="img" aria-label="Vibe 占用组成">${parts.map(([label,n,color])=>`<span style="width:${total?n/total*100:0}%;background:${color}" title="${label} ${bytes(n)}"></span>`).join('')}</div>
       <div class="sd-vibe-storage-legend">${parts.map(([label,n,color])=>`<span><i style="background:${color}"></i>${label} ${bytes(n)}</span>`).join('')}</div>
       <p>文件 ${rows.length} / ${snapshot.usage.countLimit} · ${bytes(snapshot.usage.bytes+snapshot.usage.previewBytes)} / ${bytes(snapshot.usage.limit)}<br>记录 ${snapshot.receiptCount} 条，其中归档 ${snapshot.archivedReceiptCount||0} 条、未决 ${snapshot.pendingCount} 条；另存核查明细 ${snapshot.historyReviewCount||0} 次。计值为内容大小，非浏览器实际磁盘占用或剩余空间。</p>
@@ -89,6 +90,9 @@ export function createVibeStorageController({actions,confirm=async()=>false,onCl
       ${rows.length>visible?'<button type="button" class="sd-btn sd-vibe-storage-more">加载更多</button>':''}`:''}</section>`;
     host.querySelector('.sd-vibe-storage-close').onclick=()=>{epoch++;onClose();};
     host.querySelector('.sd-vibe-storage-refresh').onclick=run(refresh);
+    host.querySelector('.sd-vibe-preserve-open')?.addEventListener('click',run(async active=>{
+      const next=await createPreservation(()=>{epoch++;busy=false;preservation?.dispose();preservation=null;render();});if(!active()){next.dispose();return;}preservation=next;
+    }));
     host.querySelector('.sd-vibe-storage-select')?.addEventListener('click',()=>{if(selected.size)selected.clear();else rows.filter(row=>!row.pending).forEach(row=>selected.add(row.id));render();});
     for(const box of host.querySelectorAll('[data-vibe-storage-id]'))box.onchange=()=>{box.checked?selected.add(box.dataset.vibeStorageId):selected.delete(box.dataset.vibeStorageId);render();};
     host.querySelector('.sd-vibe-storage-export')?.addEventListener('click',run(async active=>{const file=await actions.export(snapshot,[...selected]);if(active()){download(file);message='已发起原文件下载，请确认文件已保存后再清理。';}}));
@@ -100,5 +104,5 @@ export function createVibeStorageController({actions,confirm=async()=>false,onCl
     }));
     host.querySelector('.sd-vibe-storage-more')?.addEventListener('click',()=>{visible+=40;render();});icons(host);
   }
-  return {mount(node){this.detach();host=node;render();void run(refresh)();},detach(){epoch++;host=null;busy=false;},dispose(){this.detach();disposed=true;snapshot=null;selected.clear();for(const [url,timer] of urls){clearTimeout(timer);URL.revokeObjectURL(url);}urls.clear();}};
+  return {mount(node){this.detach();host=node;render();if(!preservation)void run(refresh)();},detach(){epoch++;preservation?.detach();host=null;busy=false;},dispose(){this.detach();disposed=true;preservation?.dispose();preservation=null;snapshot=null;selected.clear();for(const [url,timer] of urls){clearTimeout(timer);URL.revokeObjectURL(url);}urls.clear();}};
 }

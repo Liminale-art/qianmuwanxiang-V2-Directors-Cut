@@ -86,8 +86,8 @@ export function createVibeReviewActions({namespace,call,guard,service,locks=glob
     async export(assetRef,selection){await check();if(assetRef?.namespace!==namespace)throw Error('编码文件不属于当前账户');const blob=await call('export-reviewed',{...selection,namespace,id:assetRef.id});await check();return blob;},
   };
 }
-export function createVibeReviewController({actions,onAdd,onClose,confirm=async()=>false,onNotice=()=>{},icons=()=>{},isCurrent=()=>true}){
-  let host,disposed=false,revision=0,rows=[],visible=40,busy=false,message='',loaded=false,archive=null,reviewHistory=null,historical=false,historyAfter='',historyNext='',historyCount=0;const historyCursors=[],recovered=new Map(),urls=new Map();
+export function createVibeReviewController({actions,onAdd,onClose,confirm=async()=>false,onNotice=()=>{},icons=()=>{},isCurrent=()=>true,createPreservation=null}){
+  let host,disposed=false,revision=0,rows=[],visible=40,busy=false,message='',loaded=false,archive=null,reviewHistory=null,historical=false,historyAfter='',historyNext='',historyCount=0,preservation=null;const historyCursors=[],recovered=new Map(),urls=new Map();
   const live=()=>!disposed&&isCurrent()&&host?.isConnected;
   function download(blob,name='qianmu-recovered.naiv4vibe'){const url=URL.createObjectURL(blob),link=host.ownerDocument.createElement('a');link.href=url;link.download=name;host.ownerDocument.body.append(link);link.click();link.remove();urls.set(url,setTimeout(()=>{URL.revokeObjectURL(url);urls.delete(url);},30000));}
   function downloadRecords(blob){download(blob,`qianmu-vibe-records-${new Date().toISOString().replace(/[:.]/g,'-')}.json`);message='已发起记录下载，请确认文件已保存。可用“校验记录文件”检查；本机原记录未清除。';}
@@ -107,11 +107,13 @@ export function createVibeReviewController({actions,onAdd,onClose,confirm=async(
   }
   function render(){
     if(!live())return;
+    if(preservation){preservation.mount(host);return;}
     if(reviewHistory){renderHistory();return;}
     const displayed=archive?.receipts||rows,limit=archive?.visible||visible;
     const readyBatch=rows.slice(0,visible).filter(row=>row.status==='ready').slice(0,40);
     host.innerHTML=`<section class="sd-vibe-review"><header><h3>${archive?'记录文件预览':historical?'历史编码':'编码记录'}</h3>${archive?'':`<button type="button" class="sd-icon-btn sd-vibe-review-refresh" aria-label="刷新记录" ${busy?'disabled':''}><i class="fa-solid fa-rotate"></i></button>`}<button type="button" class="sd-icon-btn sd-vibe-review-close" aria-label="${archive?'返回本机记录':'返回 Vibe 库'}"><i class="fa-solid fa-xmark"></i></button></header><p class="sd-vibe-review-status" role="status">${escape(message||(busy?'正在读取…':'领取只读取原结果，不会重新编码。未确认的费用记录不会自动清除。'))}</p>${archive?`<p class="sd-vibe-review-file-info">${escape(new Date(archive.exportedAt).toLocaleString())} · ${archive.receipts.length} 条 · ${(archive.bytes/1024).toFixed(1)} KB<br>摘要 ${escape(archive.fingerprint)}<br>仅核查记录，不含图片或编码。摘要只校验内容，不证明上游任务或费用；没有恢复或覆盖本机数据。</p>`:`<div class="sd-vibe-review-tools">
       <button type="button" class="sd-btn sd-vibe-review-history" ${busy?'disabled':''}>${historical?'当前记录':'历史档案'}</button>
+      ${createPreservation?`<button type="button" class="sd-btn sd-vibe-preserve-open" ${busy?'disabled':''}>原始数据保全</button>`:''}
       <button type="button" class="sd-btn sd-vibe-review-export-all" ${busy||!rows.length?'disabled':''}>${historical?'导出本页记录':'导出当前记录'}</button><button type="button" class="sd-btn sd-vibe-review-inspect" ${busy?'disabled':''}>校验记录文件</button>
       ${!historical?`<button type="button" class="sd-btn sd-vibe-review-archive-batch" ${busy||!readyBatch.length?'disabled':''}>归档已完成 · ${readyBatch.length}</button>`:''}<input class="sd-vibe-review-file" type="file" accept=".json,application/json" hidden></div>
       <small class="sd-vibe-review-file-info">${historical?`历史 ${historyCount} / 16384 条 · 每页最多 40 条，按请求编号分页。`: `当前 ${rows.length} / 2048 条 · 批量归档仅处理已显示的前 40 条已完成记录。`}归档保留完整历史，不释放磁盘。导出不含图片、编码或 Key；含账户与渠道地址，请勿公开分享。文件校验仅作只读预览。</small>`}<div class="sd-vibe-review-rows">${displayed.slice(0,limit).map((row,index)=>{
@@ -129,6 +131,9 @@ export function createVibeReviewController({actions,onAdd,onClose,confirm=async(
         }));}
     }
     host.querySelector('.sd-vibe-review-close').onclick=()=>{revision++;busy=false;if(archive){archive=null;message='';render();}else onClose();};
+    host.querySelector('.sd-vibe-preserve-open')?.addEventListener('click',run(async active=>{
+      const next=await createPreservation(()=>{revision++;busy=false;preservation?.dispose();preservation=null;render();});if(!active()){next.dispose();return;}preservation=next;
+    }));
     host.querySelector('.sd-vibe-review-more')?.addEventListener('click',()=>{if(archive)archive.visible+=40;else visible+=40;render();});
     if(archive){icons(host);return;}
     host.querySelector('.sd-vibe-review-refresh').onclick=()=>void refresh();
@@ -167,5 +172,5 @@ export function createVibeReviewController({actions,onAdd,onClose,confirm=async(
       article.querySelector('.sd-vibe-review-archive')?.addEventListener('click',archiveRows([row]));
     }icons(host);
   }
-  return {mount(node){this.detach();host=node;render();if(!loaded)void refresh();},detach(){revision++;host=null;busy=false;},dispose(){this.detach();disposed=true;archive=null;reviewHistory=null;rows=[];recovered.clear();for(const [url,timer] of urls){clearTimeout(timer);URL.revokeObjectURL(url);}urls.clear();}};
+  return {mount(node){this.detach();host=node;render();if(!loaded&&!preservation)void refresh();},detach(){revision++;preservation?.detach();host=null;busy=false;},dispose(){this.detach();disposed=true;preservation?.dispose();preservation=null;archive=null;reviewHistory=null;rows=[];recovered.clear();for(const [url,timer] of urls){clearTimeout(timer);URL.revokeObjectURL(url);}urls.clear();}};
 }
