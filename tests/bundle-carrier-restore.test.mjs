@@ -59,3 +59,9 @@ test('restore UI requires independent source consent and shows logical capacity 
   const view={preview,page:0,busy:false,environmentReviewed:true},html=renderStoryboardBundleReview(view);assert.match(html,/data-bundle-carriers-reviewed/);assert.match(html,/data-bundle-action="restore" disabled/);assert.match(html,/含本次备份/);
   assert.doesNotMatch(renderStoryboardBundleReview({...view,carriersReviewed:true}),/data-bundle-action="restore" disabled/);
 });
+
+test('restoration requires the store-owned batch path and passes old sources before the current carrier',async()=>{
+  const f=await fixture(),{saveBatch,...withoutBatch}=f.target.store;await assert.rejects(createBundleCarrierRestore({...f.options,store:withoutBatch}),/存储不可用/);
+  let calls=0;f.target.store.saveBatch=async function(ns,input,options){calls++;assert.equal(options.confirmed,true);assert.equal(input.heads.at(-1).carrierDigest,f.opened.fingerprint);assert.equal(input.originals.length,5);return saveBatch.call(this,ns,input,options);};
+  await f.session.restore(await f.session.preview(),{confirmed:true});assert.equal(calls,1);assert.equal(f.target.state.events.length,8);
+});

@@ -2,6 +2,7 @@ import {BUNDLE_CARRIER_LIMITS} from './qianmu-bundle-carrier-contract.js';
 import {inspectBundleCarrierProof,verifyBundleCarrierMembers,collectBundleCarrierMembers,inspectBundleCarrierOriginal} from './qianmu-bundle-carrier.js';
 import {bundleCarrierKey,bundleCarrierHead,validateBundleCarrierHead,summarizeBundleCarrierStorage,sameCarrierFields,bundleCarrierOriginalHead,validateBundleCarrierOriginalHead,summarizeBundleCarrierOriginals,BUNDLE_CARRIER_ORIGINAL_LIMITS} from './qianmu-bundle-carrier-storage-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
+import {sameBundleMappingHead} from './qianmu-bundle-mapping-contract.js';
 
 const error=message=>Object.assign(new Error(message),{code:'storyboard_bundle_carrier_storage',submissionState:'not_submitted'});
 const fail=message=>{throw error(message);};
@@ -122,9 +123,9 @@ export function createBundleCarrierStore({indexedDB=globalThis.indexedDB,keyRang
     const value=await operation('readonly',isCurrent,(tx,read,set)=>originalPair(tx,read,key,(head,record)=>set({head,record}))),file=checkOriginalPair(value.head,value.record,namespace);await check();
     if(file){const bytes=new Uint8Array(await file.arrayBuffer());await check();if(await vibeDigest(bytes)!==sha256)fail('来源成员原始字节已变化，未覆盖');await check();}return file;
   }
-  async function saveOriginal(namespace,file,{head:inputHead,confirmed=false,guard=async()=>{},isCurrent=()=>true}={}){
+  async function saveOriginalEntry(namespace,file,{head:inputHead,confirmed=false,guard=async()=>{},isCurrent=()=>true}={}){
     if(confirmed!==true)fail('请明确确认保全来源成员原文');const check=async()=>{current(isCurrent);await guard();current(isCurrent);};await check();
-    const head=structuredClone(inputHead);await inspectBundleCarrierOriginal(file,head,{namespace,guard:check});
+    const head=structuredClone(inputHead),member=await inspectBundleCarrierOriginal(file,head,{namespace,guard:check});
     const previous=await loadOriginal(namespace,head.sha256,{guard:check,isCurrent});
     await operation('readwrite',isCurrent,(tx,read,set)=>originalCensus(tx,read,namespace,heads=>originalPair(tx,read,head.key,(existingHead,record)=>{
       checkOriginalPair(existingHead,record,namespace);
@@ -134,7 +135,46 @@ export function createBundleCarrierStore({indexedDB=globalThis.indexedDB,keyRang
         tx.objectStore('originals').add({key:head.key,namespace,file:file.slice(0,file.size,'application/json')});tx.objectStore('originalHeads').add(head);
       }set(true);
     })));
-    const saved=await loadOriginal(namespace,head.sha256,{guard:check,isCurrent});if(!saved)fail('来源成员写后核对缺失');await check();return head;
+    const saved=await loadOriginal(namespace,head.sha256,{guard:check,isCurrent});if(!saved)fail('来源成员写后核对缺失');await check();return {head,member};
   }
-  return Object.freeze({list,load,loadOriginal,save,saveOriginal,close(){closed=true;for(const tx of pending)try{tx.abort();}catch(_){}database?.close();database=null;opening=null;}});
+  async function saveOriginal(namespace,file,options){return (await saveOriginalEntry(namespace,file,options)).head;}
+  // A batch owns its private verified-member map; callers cannot supply or retain a verification bypass.
+  // Raw records and individual proofs are atomic, but the batch is deliberately resumable, not all-or-nothing.
+  async function saveBatch(namespace,input,{confirmed=false,loadProof,loadOriginal:readOriginal,guard=async()=>{},isCurrent=()=>true}={}){
+    if(confirmed!==true)fail('请明确确认保全全部来源记录及原文');
+    const check=async()=>{current(isCurrent);await guard();current(isCurrent);};await check();
+    if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length!==2||!Object.hasOwn(input,'heads')||!Object.hasOwn(input,'originals')||typeof loadProof!=='function'||typeof readOriginal!=='function')fail('来源批次缺少完整目录或原文读取接口');
+    summarizeBundleCarrierStorage(input.heads,namespace);summarizeBundleCarrierOriginals(input.originals,namespace);
+    const {heads,originals}=structuredClone(input),verified=new Map();
+    const merged=(local,wanted)=>{const rows=new Map(local.map(row=>[row.key,row]));for(const head of wanted){if(rows.has(head.key)&&!sameCarrierFields(rows.get(head.key),head))fail('来源批次与已有目录冲突，未覆盖');rows.set(head.key,head);}return [...rows.values()];};
+    const before=await list(namespace,{guard:check,isCurrent});
+    summarizeBundleCarrierStorage(merged(before.heads,heads),namespace);summarizeBundleCarrierOriginals(merged(before.originals,originals),namespace);
+    // Each original is fully parsed/hashed, appended if missing and read back once, even if no proof references it.
+    for(const head of originals){await check();const file=await readOriginal(head.sha256);await check();const result=await saveOriginalEntry(namespace,file,{head,confirmed:true,guard:check,isCurrent});verified.set(head.sha256,Object.freeze({...result.member}));}
+    for(const head of heads){
+      await check();const inputProof=await loadProof({...head});await check();const value=await inspectBundleCarrierProof(inputProof,{namespace,guard:check});
+      if(!sameCarrierFields(head,bundleCarrierHead(value.summary)))fail('来源批次证明与目录不符');
+      for(const member of value.members)if(!sameBundleMappingHead(verified.get(member.sha256),member.head))fail('来源批次原成员缺失或与目录不符');
+      await appendBatchProof(namespace,head,value,{guard:check,isCurrent});
+    }
+    // Re-read every full proof and unique stored byte sequence after all writes.
+    // load verifies the full proof and its digest; no source body or cached Blob substitutes for stored readback.
+    for(const head of heads){const saved=await load(namespace,head.carrierDigest,{guard:check,isCurrent});if(!saved||saved.digest!==head.digest)fail('来源批次证明写后核对不符');await check();}
+    for(const head of originals){if(!await loadOriginal(namespace,head.sha256,{guard:check,isCurrent}))fail('来源批次原文写后缺失');await check();}
+    const after=await list(namespace,{guard:check,isCurrent}),savedHeads=new Map(after.heads.map(row=>[row.key,row])),savedOriginals=new Map(after.originals.map(row=>[row.key,row]));
+    if(heads.some(row=>!sameCarrierFields(savedHeads.get(row.key),row))||originals.some(row=>!sameCarrierFields(savedOriginals.get(row.key),row)))fail('来源批次写后目录缺失或变化');
+    await check();return {count:heads.length,originalCount:originals.length};
+  }
+  // Only saveBatch can reach this helper, after full private membership validation.
+  async function appendBatchProof(namespace,head,{proof,members},{guard,isCurrent}){
+    const previous=await load(namespace,head.carrierDigest,{guard,isCurrent});if(previous&&!sameCarrierFields(previous,proof))fail('同一载体已有不同来源证明，未覆盖');await guard();
+    await operation('readwrite',isCurrent,(tx,read,set)=>census(tx,read,namespace,heads=>originalCensus(tx,read,namespace,originalHeads=>pair(tx,read,head.key,(storedHead,storedRecord)=>{
+      if(storedHead){if(!sameCarrierFields(storedHead,head)||!storedRecord||Object.keys(storedRecord).length!==3||storedRecord.key!==head.key||storedRecord.namespace!==namespace||!sameCarrierFields(storedRecord.proof,proof))fail('来源证明在批次中已变化，未覆盖');}
+      else{if(previous)fail('来源证明已消失，请重新核对');summarizeBundleCarrierStorage([...heads,head],namespace);}
+      const raw=new Map(originalHeads.map(row=>[row.sha256,row]));
+      for(const member of members)if(!sameCarrierFields(raw.get(member.sha256),bundleCarrierOriginalHead(namespace,member.sha256,member.head.bytes)))fail('来源原文在批次中缺失或变化');
+      if(!storedHead){tx.objectStore('proofs').add({key:head.key,namespace,proof});tx.objectStore('heads').add(head);}set(true);
+    }))));
+  }
+  return Object.freeze({list,load,loadOriginal,save,saveOriginal,saveBatch,close(){closed=true;for(const tx of pending)try{tx.abort();}catch(_){}database?.close();database=null;opening=null;}});
 }

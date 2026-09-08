@@ -62,3 +62,20 @@ test('raw member count and aggregate bounds include overhead and do not increase
   assert.throws(()=>bundleCarrierOriginalHead(namespace,'a'.repeat(64),BUNDLE_CARRIER_ORIGINAL_LIMITS.record+1));
   assert.throws(()=>summarizeBundleCarrierOriginals(Array.from({length:8},(_,index)=>bundleCarrierOriginalHead(namespace,index.toString(16).padStart(64,'0'),9*1048576)),namespace));
 });
+
+test('carrier batch cannot skip consent, source readers or scope validation before opening a database',async()=>{
+  const {head}=await fixture();let opens=0;const store=createBundleCarrierStore({indexedDB:{open(){opens++;throw Error('must not open');}}}),input={heads:[head],originals:[]},options={confirmed:true,loadProof:async()=>null,loadOriginal:async()=>null};
+  await assert.rejects(store.saveBatch(namespace,input),/明确确认/);
+  await assert.rejects(store.saveBatch(namespace,input,{confirmed:true}),/读取接口/);
+  await assert.rejects(store.saveBatch(namespace,{...input,verified:true},options),/目录或原文/);
+  await assert.rejects(store.saveBatch('st-user:other',input,options),/目录/);
+  await assert.rejects(store.saveBatch(namespace,input,{...options,isCurrent:()=>false}),/账户或页面/);
+  store.close();await assert.rejects(store.saveBatch(namespace,input,options),/会话已结束/);assert.equal(opens,0);
+});
+
+test('carrier batch rejects duplicate or oversized declared capacity before opening a database',async()=>{
+  const {head}=await fixture();let opens=0;const store=createBundleCarrierStore({indexedDB:{open(){opens++;throw Error('must not open');}}}),options={confirmed:true,loadProof:async()=>null,loadOriginal:async()=>null};
+  await assert.rejects(store.saveBatch(namespace,{heads:[head,head],originals:[]},options),/目录/);
+  await assert.rejects(store.saveBatch(namespace,{heads:[],originals:Array.from({length:8},(_,index)=>bundleCarrierOriginalHead(namespace,index.toString(16).padStart(64,'0'),9*1048576))},options),/目录/);
+  await assert.rejects(store.saveBatch(namespace,{heads:[head],originals:[]},{...options,guard:async()=>{throw Error('cancelled');}}),/cancelled/);assert.equal(opens,0);store.close();
+});

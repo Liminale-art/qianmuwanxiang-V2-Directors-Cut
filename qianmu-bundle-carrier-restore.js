@@ -1,4 +1,4 @@
-import {createBundleCarrierProof,inspectBundleCarrierProof,verifyBundleCarrierMembers} from './qianmu-bundle-carrier.js';
+import {createBundleCarrierProof,inspectBundleCarrierProof} from './qianmu-bundle-carrier.js';
 import {inspectBundleCarriersIndex} from './qianmu-bundle-carriers.js';
 import {bundleCarrierEntryId} from './qianmu-bundle-carriers-contract.js';
 import {bundleCarrierHead,bundleCarrierOriginalHead,summarizeBundleCarrierStorage,summarizeBundleCarrierOriginals,sameCarrierFields} from './qianmu-bundle-carrier-storage-contract.js';
@@ -9,7 +9,7 @@ const ordered=rows=>[...rows].sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0);
 
 // Frozen source descriptor stays in the restore worker. Only heads/counts/pages leave it.
 export async function createBundleCarrierRestore({opened,store,guard=async()=>{},isCurrent=()=>true}){
-  if(!store?.list||!store?.load||!store?.loadOriginal||!store?.save||!store?.saveOriginal)fail('来源恢复存储不可用，请更新前端');
+  if(!store?.list||!store?.load||!store?.loadOriginal||!store?.saveBatch)fail('来源恢复存储不可用，请更新前端');
   const check=async()=>{if(isCurrent()!==true)fail('来源恢复页面已变化');await guard();if(isCurrent()!==true)fail('来源恢复页面已变化');};
   const {namespace}=opened.manifest,sourceDigest=opened.fingerprint;
   const index=opened.manifest.entries.some(row=>row.id==='bundle-carriers')?await inspectBundleCarriersIndex(await opened.readJson('bundle-carriers'),namespace):null;
@@ -47,14 +47,10 @@ export async function createBundleCarrierRestore({opened,store,guard=async()=>{}
   async function restore(approved,{confirmed=false}={}){
     if(confirmed!==true)fail('请单独确认保全全部来源记录及原成员');validateBundleCarrierRestoreSummary(approved,namespace,sourceDigest);
     if((await preview()).digest!==approved.digest)fail('确认后来源库已变化，请重新核对');
-    // Preserve all raw originals, including those not referenced by an individual surviving proof.
-    for(const head of desired.originals){await check();await store.saveOriginal(namespace,await getOriginal(head.sha256),{head,confirmed:true,guard:check,isCurrent});}
-    // Historic proofs first, then this carrier. A partial failure keeps explicit, inspectable progress.
-    for(const head of [...desired.heads.filter(row=>row.carrierDigest!==sourceDigest),currentHead]){
-      await check();const proof=await getProof(head);await store.save(namespace,proof,{confirmed:true,load:({sha256})=>getOriginal(sha256),guard:check,isCurrent});
-      const saved=await store.load(namespace,head.carrierDigest,{guard:check,isCurrent});if(!sameCarrierFields(proof,saved))fail('来源证明写后核对不符');
-      await verifyBundleCarrierMembers(saved,{load:({sha256})=>store.loadOriginal(namespace,sha256,{guard:check,isCurrent}),guard:check});
-    }
+    // The store owns unique-original validation and full byte readback for this batch.
+    // Preserve orphan originals too, then historic proofs, then this carrier; partial progress stays inspectable.
+    await store.saveBatch(namespace,{heads:[...desired.heads.filter(row=>row.carrierDigest!==sourceDigest),currentHead],originals:desired.originals},
+      {confirmed:true,loadProof:getProof,loadOriginal:getOriginal,guard:check,isCurrent});
     await verify();
   }
   return Object.freeze({preview,restore,verify,async page(input){validateBundleCarrierPageInput(input);await check();const rows=[currentHead,...desired.heads.filter(row=>row.carrierDigest!==sourceDigest)];if(input.offset&&input.offset>=rows.length)fail('来源目录页已变化');return {version:1,namespace,sourceDigest,descriptorDigest,offset:input.offset,total:rows.length,rows:rows.slice(input.offset,input.offset+24).map(head=>({...head,current:head.carrierDigest===sourceDigest}))};}});

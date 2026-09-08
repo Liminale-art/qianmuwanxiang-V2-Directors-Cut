@@ -32,5 +32,11 @@ export function memoryCarrierStore(){
       if(confirmed!==true)throw Error('consent');const collected=await collectBundleCarrierMembers(proof,{load}),head=bundleCarrierHead(collected.summary);
       if(!state.proofs.has(proof.carrierDigest)){if(state.failProofAt===state.heads.length)throw Error('proof interrupted');state.proofs.set(proof.carrierDigest,structuredClone(proof));state.heads.push(head);state.events.push('proof');}return head;
     },
+    async saveBatch(ns,{heads,originals},{confirmed,loadProof,loadOriginal}){
+      if(confirmed!==true)throw Error('consent');
+      for(const head of originals)await this.saveOriginal(ns,await loadOriginal(head.sha256),{head,confirmed:true});
+      for(const head of heads)await this.save(ns,await loadProof(head),{confirmed:true,load:({sha256})=>loadOriginal(sha256)});
+      for(const head of originals)if(!await this.loadOriginal(ns,head.sha256))throw Error('missing original');return {count:heads.length,originalCount:originals.length};
+    },
   };return {store,state};
 }
