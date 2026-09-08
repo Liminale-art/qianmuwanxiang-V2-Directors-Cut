@@ -2,6 +2,7 @@ import { buildStoryboardBundle, openStoryboardBundle, STORYBOARD_BUNDLE_LIMITS }
 import { sourceIdentityForNamespace } from './qianmu-source-identity-contract.js';
 import { inspectStoryboardChatEvidence } from './qianmu-storyboard-chat-evidence.js';
 import { inspectStoryboardSubjectEvidence, storyboardSubjectTargets } from './qianmu-storyboard-subject-evidence.js';
+import { assertPortableConnection, assertPortableConnectionUrl } from './qianmu-storyboard-connection-identity.js';
 import { inspectStoryboardPackageFile, validateStoryboardPackagePayload, validateStoryboardPackageMedia } from './qianmu-storyboard-package-input.js';
 import { collectStoryboardVibeDependencies, inspectStoryboardVibePackage } from './qianmu-storyboard-package-assets.js';
 import { validateComfyLibraryBackup, comfyLibraryBackupDigest as digest } from './qianmu-comfy-library-backup.js';
@@ -34,6 +35,16 @@ function scan(value, namespace, census, depth = 0) {
   if (!object(value)) return;
   for (const [name, item] of Object.entries(value)) {
     if (sensitive.has(name.replace(/[-_]/g, '').toLowerCase()) && item !== '' && item !== null && item !== undefined) fail('资源包含结构化连接凭据或授权，未复制到备份');
+    if (item != null && ['baseUrl','apiUrl','comfyUrl'].includes(name)) assertPortableConnectionUrl(item);
+    if (item != null && ['connection','headers','customHeaders'].includes(name)) assertPortableConnection(name === 'connection' ? item : { [name]: item });
+    if (name === 'connections' && item != null) {
+      if (!object(item) || Array.isArray(item)) fail('连接目录无效');
+      for (const group of Object.values(item)) {
+        if (!object(group) || Array.isArray(group) || group.presets != null && !Array.isArray(group.presets)) fail('连接预设目录无效');
+        if (group.draft != null) assertPortableConnection(group.draft);
+        for (const row of group.presets || []) assertPortableConnection(row);
+      }
+    }
     if (name === 'comfyWorkflowBinding' && item != null) {
       const binding = normalizeComfyRouteBinding(item); if (binding.namespace !== namespace) fail('固定工作流引用属于另一账户，请先在来源环境核对');
       const previous = census.bindings.get(key(binding));

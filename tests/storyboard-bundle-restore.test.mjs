@@ -72,8 +72,26 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
   const reopen = () => createStoryboardBundleRestoreSession(options);
   return { source, built, e, options, reopen, session: await reopen() };
 }
-const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true };
+const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true, connectionsReviewed: true };
 const writes = e => e.events.filter(row => !row.startsWith('lock:'));
+
+test('bundle connection review has separate consent and never starts a resource write when omitted', async () => {
+  const f = await fixture(), prepared = await f.session.preview();
+  assert.equal(prepared.configuration.connections.length, 1);
+  assert.equal(prepared.configuration.connections[0].state, 'added');
+  assert.equal(prepared.configuration.connections[0].credential, 'required');
+  await assert.rejects(f.session.restore(prepared, { ...consent, connectionsReviewed: false }), /连接差异/);
+  assert.deepEqual(writes(f.e), []); assert.equal(f.e.mutation, null); assert.equal(f.e.records.size, 0);
+  await f.session.restore(prepared, consent); assert.equal(f.e.settings.connections.comfy.presets[0].credentialId, '');
+});
+
+test('a transport edit after connection review invalidates the plan without overwriting credentials or writing files', async () => {
+  const f = await fixture(); f.e.settings.connections.comfy.presets = [{id:'connection',name:'Local',providerId:'comfy',baseUrl:'',credentialId:'local-grant',headers:{},options:{}}];
+  const prepared = await f.session.preview(); assert.equal(prepared.configuration.connections[0].credential, 'retained');
+  f.e.settings.connections.comfy.presets[0].options.comfyTransport = 'browser';
+  await assert.rejects(f.session.restore(prepared, consent), /确认后资源、配置/);
+  assert.deepEqual(writes(f.e), []); assert.equal(f.e.settings.connections.comfy.presets[0].credentialId, 'local-grant');
+});
 
 test('same-name changed roles are displayed and require separate subject confirmation before restoring bindings', async () => {
   const f = await fixture({ subjectEvidence: true }); f.e.subjectRows[0].profile.description = 'new character with the same name';

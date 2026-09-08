@@ -73,6 +73,23 @@ test('subject differences require their own explicit checkbox even when the envi
   assert.doesNotMatch(renderStoryboardBundleReview({...input,subjectsReviewed:true}),/data-bundle-action="restore" disabled/);
 });
 
+test('connection differences are paged, escaped and need separate consent rather than an environment checkbox',()=>{
+  const rows=Array.from({length:26},(_,i)=>({providerId:'openai',presetId:`id-${i}`,name:`<name-${i}>`,state:'changed',credential:'required',active:i===0,differences:['headers']}));
+  const preview={...view(),ready:true,planDigest:'c'.repeat(64),configuration:{connections:rows}}, input={preview,page:0,environmentReviewed:true,subjectsReviewed:true};
+  let markup=renderStoryboardBundleReview(input);assert.match(markup,/自定义请求头/);assert.match(markup,/当前选择的同编号/);assert.match(markup,/&lt;name-0&gt;/);assert.doesNotMatch(markup,/<name-0>/);
+  assert.doesNotMatch(markup,/&lt;name-24&gt;/);assert.match(markup,/1 \/ 2/);assert.match(markup,/data-bundle-action="restore" disabled/);
+  markup=renderStoryboardBundleReview({...input,page:1,connectionsReviewed:true});assert.match(markup,/&lt;name-24&gt;/);assert.doesNotMatch(markup,/&lt;name-0&gt;/);assert.doesNotMatch(markup,/data-bundle-action="restore" disabled/);
+  assert.match(renderStoryboardBundleReview({...input,connectionsReviewed:true,preview:{...preview,needsRecheck:true}}),/data-bundle-action="restore" disabled/);
+});
+
+test('connection view protocol refuses injected credential fields or impossible retained authorization',async()=>{
+  const row={providerId:'openai',presetId:'one',name:'Relay',state:'same',credential:'retained',active:false,differences:[]};
+  for(const invalid of [{...row,credentialId:'private'},{...row,state:'changed'},{...row,differences:['unknown']},{...row,options:{api_key:'private'}}]){
+    const {client,worker}=await fixture(async(worker,command)=>worker.reply(command,{...view(),configuration:{connections:[invalid]}}));
+    await assert.rejects(client.preview(),/结果与当前原包不符/);assert.equal(worker.closed,true);
+  }
+});
+
 test('late operations and another session are ignored, while a repeated active RPC terminates the session', async () => {
   const { e, client, worker } = await fixture(async (worker, command) => {
     worker.emit({ id: command.id, operation: command.operation-1, request: 11, kind: 'configuration-apply', payload: { fingerprint: sourceDigest } });

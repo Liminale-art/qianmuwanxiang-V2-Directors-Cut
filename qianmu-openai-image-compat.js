@@ -9,6 +9,7 @@ export const QIANMU_OPENAI_STANDARD_PARAMETERS = Object.freeze(['n', 'size', 'qu
 
 const DEFAULT_PROVIDER_OPTIONS = Object.freeze(['input_fidelity']);
 const SENSITIVE_HEADER = /(?:^|-)(?:authorization|proxy-authorization|cookie|set-cookie|api-key|access-key|token|access-token|secret)(?:$|-)/i;
+const sensitiveCompactName = name => /(?:apikey|apitoken|accesskey|authorization|accesstoken|refreshtoken|clientsecret|password|cookie|bearertoken)/i.test(name.replace(/[-_.]/g,''));
 
 const object = (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 const cleanText = (value, max = 240) => String(value ?? '').trim().slice(0, max);
@@ -25,12 +26,13 @@ function endpointPath(value, fallback) {
 
 function safeHeaderName(value) {
   const name = cleanText(value, 80);
-  return /^[A-Za-z][A-Za-z0-9-]{0,79}$/.test(name) && !SENSITIVE_HEADER.test(name) ? name : '';
+  return /^[A-Za-z][A-Za-z0-9-]{0,79}$/.test(name) && !SENSITIVE_HEADER.test(name) && !sensitiveCompactName(name) && !/(?:token|secret|auth)$/i.test(name) ? name : '';
 }
 
 function safeOptionName(value) {
   const name = cleanText(value, 80);
   return /^[A-Za-z][A-Za-z0-9_.-]{0,79}$/.test(name)
+    && !sensitiveCompactName(name)
     && !/(?:^|[-_.])(?:model|prompt|image|authorization|api[-_]?key|access[-_]?key|token|secret)(?:$|[-_.])/i.test(name) ? name : '';
 }
 

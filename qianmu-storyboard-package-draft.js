@@ -1,5 +1,6 @@
 import {createStoryboardDefaults,migrateStoryboardState,normalizeStoryboardState,normalizeStoryboardGenerationPolicy,normalizeStoryboardConnectionProfile,STORYBOARD_PROVIDER_REGISTRY,STORYBOARD_PIPELINE_LOG_LIMIT} from './qianmu-storyboard.js';
 import {STORYBOARD_IMPORT_FIELDS} from './qianmu-storyboard-package-mutation.js';
+import {storyboardConnectionsShareTarget,storyboardConnectionRestoreReview} from './qianmu-storyboard-connection-identity.js';
 const fail=message=>{throw new Error(message);};
 const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const limits={parameterPresets:200,promptPresets:200,artistPresets:200,artistCollections:100,artistPools:100,tagLibrary:2000,vibeLibrary:500,logs:STORYBOARD_PIPELINE_LOG_LIMIT,pipelineLogs:STORYBOARD_PIPELINE_LOG_LIMIT,shotPlans:300,taskStates:300};
@@ -16,7 +17,7 @@ function assertRetained(before,after,label){const original=ids(before,label,1000
 
 // Detached preparation only; normalize the combined libraries so incoming references can find local entries.
 export function prepareStoryboardPackageDraft({settings,chat,incoming,images,collections,chatKey,now=Date.now}){
-  if(!object(incoming)||!chatKey)fail('分镜包设置或目标聊天无效');const base=structuredClone(settings),raw=structuredClone(incoming),touched=new Set();
+  if(!object(incoming)||!chatKey)fail('分镜包设置或目标聊天无效');const base=structuredClone(settings),raw=structuredClone(incoming),touched=new Set(),connectionReview=[];
   if(raw.source!==undefined&&!STORYBOARD_PROVIDER_REGISTRY[raw.source])fail('生图渠道不受当前版本支持');
   if(raw.profiles&&(!object(raw.profiles)||Object.keys(raw.profiles).some(key=>!STORYBOARD_PROVIDER_REGISTRY[key])))fail('绘制配置含不支持的渠道');
   const migrated=migrateStoryboardState(raw);
@@ -35,8 +36,9 @@ export function prepareStoryboardPackageDraft({settings,chat,incoming,images,col
       if(!STORYBOARD_PROVIDER_REGISTRY[source]||!object(group))fail('连接渠道不受当前版本支持');
       const local=base.connections[source]||createStoryboardDefaults().connections[source],rows=(group.presets||[]).map(row=>{
         const normalized=normalizeStoryboardConnectionProfile({...row,credentialId:''},source),previous=local.presets.find(item=>item.id===normalized.id);
-        // A reused ID at a different endpoint must never inherit a local secret reference.
-        const sameTarget=previous&&previous.baseUrl===normalized.baseUrl&&previous.protocol===normalized.protocol;
+        // A reused ID with a changed transport contract must never inherit a local secret reference.
+        const sameTarget=storyboardConnectionsShareTarget(previous,row,source);
+        connectionReview.push(storyboardConnectionRestoreReview(previous,{...row,id:normalized.id,name:normalized.name},source,{retained:sameTarget&&Boolean(previous.credentialId),active:local.activePresetId===normalized.id}));
         return {...normalized,credentialId:sameTarget?previous.credentialId:''};
       });
       local.presets=mergeStoryboardPackageRows(local.presets,rows,60,'连接预设');base.connections[source]=local;
@@ -65,5 +67,5 @@ export function prepareStoryboardPackageDraft({settings,chat,incoming,images,col
   const mergedImages=mergeStoryboardPackageRows(chat.storyboardImages||[],images,400,'阅片室成片');
   const mergedCollections=mergeStoryboardPackageRows(chat.storyboardCollections||[],collections,120,'阅片室合集');
   for(const row of mergedCollections)if(typeof row.name!=='string'||!row.name.trim()||row.name.length>80)fail('阅片室合集名称无效或超长');
-  return {settings:draftSettings,chat:{storyboardImages:mergedImages,storyboardCollections:mergedCollections}};
+  return {settings:draftSettings,chat:{storyboardImages:mergedImages,storyboardCollections:mergedCollections},connectionReview};
 }

@@ -1,3 +1,4 @@
+import { validStoryboardConnectionReview } from './qianmu-storyboard-connection-identity.js';
 let active = null;
 const fail = message => Object.assign(new Error(message), { code: 'storyboard_bundle_restore_runtime', submissionState: 'not_submitted' });
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -7,6 +8,7 @@ function validView(value, namespace) {
     && Array.isArray(value.conflicts) && value.conflicts.length <= 2560 && value.conflicts.every(row => typeof row.key === 'string' && ['archive','binding'].includes(row.kind) && (row.kind === 'archive' || typeof row.category === 'string'))
     && Array.isArray(value.bindingReview) && value.bindingReview.length <= 2048 && value.bindingReview.every(row => typeof row.category === 'string' && typeof row.subjectKey === 'string')
     && (value.subjectReview === undefined || Array.isArray(value.subjectReview) && value.subjectReview.length <= 2080 && value.subjectReview.every(row => ['char','user','other'].includes(row.category) && typeof row.subjectKey === 'string' && row.subjectKey.length <= 1024 && typeof row.required === 'boolean' && ['matched','changed','missing','unverified'].includes(row.state)))
+    && (value.configuration?.connections === undefined || validStoryboardConnectionReview(value.configuration.connections))
     && Array.isArray(value.images) && value.images.length <= 30400 && value.images.every(row => typeof row.url === 'string' && ['missing','present','conflict'].includes(row.state))
     && ['added','replaced','kept'].every(key => count(value.characterSummary?.[key])) && count(value.summary?.images) && count(value.summary?.vibeFiles)
     && ['workflows','pools','characters'].every(key => count(value.summary?.[key]?.count)) && count(value.summary?.workflows?.versions);

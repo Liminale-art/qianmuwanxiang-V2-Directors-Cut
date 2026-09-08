@@ -59,10 +59,10 @@ export function createStoryboardBundleConfiguration({ namespace, chatKey, settin
     });
     const draft = prepareStoryboardPackageDraft({ settings, chat, incoming: source.settings, images, collections: source.chat?.collections || [], chatKey, now: 0 });
     const mutation = await createStoryboardMutation({ namespace, chatKey, fileHash: source.fingerprint, settings, chat, draft, now: () => 0 });
-    const proof = await digest({ mutation, messages: currentEvidence?.digest || originalStamp }); await check();
+    const proof = await digest({ mutation, connections: draft.connectionReview, messages: currentEvidence?.digest || originalStamp }); await check();
     if ((projection ? !storyboardChatProjectionMatches(projection, messages()) : stamp() !== originalStamp) || inspectStoryboardMutation(mutation, { settings, chat }).conflicts.length) fail('核对期间正文或配置已变化');
     return { mutation, stamp: originalStamp, projection, digest: proof, summary: { images: images.length, orphaned: images.filter(row => row.linkState !== 'active' && row.floor == null).length,
-      fields: mutation.patch.length, chatEvidence: Boolean(sourceEvidence), chatChanged: sourceEvidence ? sourceEvidence.digest !== currentEvidence.digest : null } };
+      fields: mutation.patch.length, connections: draft.connectionReview, chatEvidence: Boolean(sourceEvidence), chatChanged: sourceEvidence ? sourceEvidence.digest !== currentEvidence.digest : null } };
   }
   return Object.freeze({
     async subjects(input) {
