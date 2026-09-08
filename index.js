@@ -7978,9 +7978,9 @@ async function collectStorageInventory() {
   addCategory('settings', comfyStorage.workflows?.bytes, comfyStorage.workflows?.count);
   addCategory('settings', comfyStorage.pools?.bytes, comfyStorage.pools?.count);
   if(vibeStorage.status==='ready'){
-    addCategory('vibes',vibeStorage.assets.bytes,vibeStorage.assets.count);
+    addCategory('vibes',vibeStorage.assets.bytes+vibeStorage.metadata.assetBytes,vibeStorage.assets.count);
     addCategory('cache',vibeStorage.previews.bytes,vibeStorage.previews.count);
-    addCategory('logs',vibeStorage.records.bytes,vibeStorage.records.count);
+    addCategory('logs',vibeStorage.records.bytes+vibeStorage.metadata.ledgerBytes,vibeStorage.records.count);
   }
   const vibeBytes=vibeStorage.status==='ready'?vibeStorage.bytes:0;
   const restoreBytes=restoreStorage.status==='ready'?restoreStorage.bytes:0;
@@ -8096,7 +8096,7 @@ function renderStorageManagementCard() {
     ${data.imageChannels?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.imageChannels.error)}</p>` : ''}
     ${data.serviceReceipts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.serviceReceipts.error)}</p>` : ''}
     ${data.comfyReceipts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.comfyReceipts.error)}</p>` : ''}
-    ${data.vibeStorage?.status==='ready'?`<div class="sd-storage-actions"><span>Vibe 文件 · ${data.vibeStorage.assets.count} 份 · ${htmlEscape(formatStorageBytes(data.vibeStorage.assets.bytes+data.vibeStorage.previews.bytes))}<br>编码记录 ${data.vibeStorage.records.count} 条（含归档 ${data.vibeStorage.records.archivedCount}）· ${htmlEscape(formatStorageBytes(data.vibeStorage.records.bytes))}<br>未决 ${data.vibeStorage.records.pendingCount} 条 · 较早核查 ${data.vibeStorage.records.reviewCount} 次</span><button type="button" class="sd-btn sd-storage-vibes">Vibe 管理</button></div>`:`<div class="sd-storage-actions"><span>Vibe 占用暂不可读取 · 当前总计不含此部分</span><button type="button" class="sd-btn sd-storage-vibes">Vibe 管理</button></div><p class="sd-storage-pressure is-warning">${htmlEscape(data.vibeStorage?.error||'请进入 Vibe 管理核对或保全数据；未修改任何内容。')}</p>`}
+    ${data.vibeStorage?.status==='ready'?`<div class="sd-storage-actions"><span>Vibe 文件 · ${data.vibeStorage.assets.count} 份 · ${htmlEscape(formatStorageBytes(data.vibeStorage.assets.bytes+data.vibeStorage.previews.bytes))}<br>编码记录 ${data.vibeStorage.records.count} 条（含归档 ${data.vibeStorage.records.archivedCount}）· ${htmlEscape(formatStorageBytes(data.vibeStorage.records.bytes))}<br>未决 ${data.vibeStorage.records.pendingCount} 条 · 较早核查 ${data.vibeStorage.records.reviewCount} 次<br>索引元数据 ${htmlEscape(formatStorageBytes(data.vibeStorage.metadata.bytes))}</span><button type="button" class="sd-btn sd-storage-vibes">Vibe 管理</button></div>`:`<div class="sd-storage-actions"><span>Vibe 占用暂不可读取 · 当前总计不含此部分</span><button type="button" class="sd-btn sd-storage-vibes">Vibe 管理</button></div><p class="sd-storage-pressure is-warning">${htmlEscape(data.vibeStorage?.error||'请进入 Vibe 管理核对或保全数据；未修改任何内容。')}</p>`}
     <div class="sd-storage-actions"><span>Comfy 本机领取记录 · ${Number(data.comfyReceipts?.count) || 0} 条 · ${htmlEscape(formatStorageBytes(data.comfyReceipts?.bytes || 0))}</span><button type="button" class="sd-btn sd-storage-comfy-receipts">收片管理</button></div>
     <div class="sd-storage-actions"><span>${data.restoreStorage?.status==='ready'?`分镜恢复记录 · ${data.restoreStorage.count} 条 · ${htmlEscape(formatStorageBytes(data.restoreStorage.bytes))}`:'恢复记录占用暂不可读取 · 当前总计不含此部分'}</span><button type="button" class="sd-btn sd-storage-restores">恢复记录管理</button></div>
     ${data.restoreStorage?.status==='ready'?'':`<p class="sd-storage-pressure is-warning">${htmlEscape(data.restoreStorage?.error||'请重新盘点或进入恢复记录管理核对；未修改记录。')}</p>`}

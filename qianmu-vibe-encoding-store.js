@@ -103,7 +103,7 @@ export function createVibeEncodingStore({indexedDB=globalThis.indexedDB,keyRange
       if(!object(value)||Object.keys(value).some(k=>!['namespace','count','bytes'].includes(k))||value.namespace!==namespace||value.count!==count
         ||!Number.isSafeInteger(count)||count<0||count>VIBE_ENCODING_ARCHIVE_LIMIT||!Number.isSafeInteger(value.bytes)||value.bytes<0||value.bytes>ARCHIVE_BYTES
         ||(count===0)!==(value.bytes===0))throw fail('corrupt','历史编码计值不一致，请先保全数据');
-      next(value);
+      next(value,saved);
     }));
   }
   function readReviewUsage(segments,usage,read,namespace,next){
@@ -111,7 +111,7 @@ export function createVibeEncodingStore({indexedDB=globalThis.indexedDB,keyRange
       const value=saved||{namespace,count:0,bytes:0,reviews:0};
       if(!object(value)||Object.keys(value).some(k=>!['namespace','count','bytes','reviews'].includes(k))||value.namespace!==namespace||value.count!==count
         ||!Number.isSafeInteger(count)||count<0||count>4096||!Number.isSafeInteger(value.bytes)||value.bytes<0||value.bytes>ARCHIVE_BYTES
-        ||!Number.isSafeInteger(value.reviews)||value.reviews<count||value.reviews>count*32||(count===0)!==(value.bytes===0))throw fail('corrupt','核查明细计值不一致，请先保全数据');next(value);
+        ||!Number.isSafeInteger(value.reviews)||value.reviews<count||value.reviews>count*32||(count===0)!==(value.bytes===0))throw fail('corrupt','核查明细计值不一致，请先保全数据');next(value,saved);
     }));
   }
   async function snapshot(namespace,cacheKey){
@@ -157,7 +157,8 @@ export function createVibeEncodingStore({indexedDB=globalThis.indexedDB,keyRange
       if(!account(namespace))throw fail('identity','编码缓存账户无效');
       const snapshot=await transaction('readonly',(table,read,set,archive,usage,segments,reviewUsage)=>read(table.index('namespace').getAll(keyRange.only(namespace),VIBE_ENCODING_RECEIPT_LIMIT+1),receipts=>{
         if(receipts.length>VIBE_ENCODING_RECEIPT_LIMIT)throw fail('capacity','编码记录过多，请先整理');
-        readUsage(archive,usage,read,namespace,archived=>readReviewUsage(segments,reviewUsage,read,namespace,reviewHistory=>set({receipts,archived,reviewHistory})));
+        readUsage(archive,usage,read,namespace,(archived,archiveMeta)=>readReviewUsage(segments,reviewUsage,read,namespace,(reviewHistory,reviewMeta)=>set({receipts,archived,reviewHistory,
+          metadata:{count:Number(Boolean(archiveMeta))+Number(Boolean(reviewMeta)),bytes:(archiveMeta?receiptBytes(archiveMeta):0)+(reviewMeta?receiptBytes(reviewMeta):0)}})));
       }));
       for(const row of snapshot.receipts)await checked(row,namespace,row.cacheKey);return snapshot;
     },

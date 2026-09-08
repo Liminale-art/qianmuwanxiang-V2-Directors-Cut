@@ -5,14 +5,14 @@ import {collectVibeStorage,validateVibeStorageSummary} from '../qianmu-vibe-stor
 import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const namespace='st-user:summary';
-const summary=()=>({version:1,status:'ready',namespace,bytes:500,assets:{bytes:400,count:2,originalCount:1,encodingCount:1},previews:{bytes:40,count:1},records:{bytes:60,count:3,archivedCount:1,pendingCount:1,reviewCount:32}});
+const summary=()=>({version:2,status:'ready',namespace,bytes:530,assets:{bytes:400,count:2,originalCount:1,encodingCount:1},previews:{bytes:40,count:1},records:{bytes:60,count:3,archivedCount:1,pendingCount:1,reviewCount:32},metadata:{bytes:30,count:6,assetBytes:20,ledgerBytes:10}});
 
 test('worker summary counts files, previews, ready archive and older reviews exactly once without sending file lists',async()=>{
-  let reads=0;const store={inventory:async()=>{reads++;return {heads:[{assetId:'a',bytes:400,previewBytes:40,summary:{type:'image',name:'image',sourceId:'s',variants:[]}}],usage:{count:1,bytes:400,previewBytes:40,limit:999}};},load:()=>assert.fail('no bodies')};
+  let reads=0;const store={inventory:async()=>{reads++;return {heads:[{assetId:'a',bytes:400,previewBytes:40,summary:{type:'image',name:'image',sourceId:'s',variants:[]}}],usage:{count:1,bytes:400,previewBytes:40,limit:999},metadata:{bytes:20,count:4}};},load:()=>assert.fail('no bodies')};
   const row={status:'unknown',identity:{sourceId:'s'}};
-  const encodings={inventory:async()=>({receipts:[row],archived:{count:2,bytes:60},reviewHistory:{reviews:32,bytes:100}}),reviewHistory:()=>assert.fail('no full history')};
+  const encodings={inventory:async()=>({receipts:[row],archived:{count:2,bytes:60},reviewHistory:{reviews:32,bytes:100},metadata:{bytes:10,count:2}}),reviewHistory:()=>assert.fail('no full history')};
   const run=createVibeAssetOperations(store,{encodings}),result=await run({type:'storage-summary',namespace});assert.equal(reads,1);
-  const receiptBytes=Buffer.byteLength(JSON.stringify(row));assert.equal(result.bytes,400+40+60+100+receiptBytes);assert.equal(result.records.count,3);assert.equal(result.records.archivedCount,2);assert.equal(result.records.reviewCount,32);
+  const receiptBytes=Buffer.byteLength(JSON.stringify(row));assert.equal(result.bytes,400+40+60+100+receiptBytes+30);assert.equal(result.metadata.bytes,30);assert.equal(result.records.count,3);assert.equal(result.records.archivedCount,2);assert.equal(result.records.reviewCount,32);
   assert.equal(result.records.pendingCount,1);assert.equal(result.assets.originalCount,1);assert.equal(result.previews.count,1);assert.equal(Object.hasOwn(result,'items'),false);
   assert.deepEqual(validateVibeStorageSummary(result,namespace),result);
 });
@@ -41,8 +41,8 @@ function globalContext(value=summary()){
 }
 test('actual global inventory includes Vibe exactly once while preserving browser quota and recoverable limits',async()=>{
   const context=globalContext();vm.runInContext(section('collectStorageInventory'),context);const data=await context.collectStorageInventory();
-  assert.equal(data.trackedBytes,1120);assert.equal(data.manageableBytes,1120);assert.equal(data.recoverableBytes,0);assert.equal(data.origin.quota,10000);
-  assert.equal(data.categories.find(row=>row.category==='vibes').bytes,400);assert.equal(data.categories.find(row=>row.category==='cache').bytes,40);assert.equal(data.categories.find(row=>row.category==='logs').bytes,370);
+  assert.equal(data.trackedBytes,1150);assert.equal(data.manageableBytes,1150);assert.equal(data.recoverableBytes,0);assert.equal(data.origin.quota,10000);
+  assert.equal(data.categories.find(row=>row.category==='vibes').bytes,420);assert.equal(data.categories.find(row=>row.category==='cache').bytes,40);assert.equal(data.categories.find(row=>row.category==='logs').bytes,380);
   assert.equal(data.vibeStorage.records.reviewCount,32);
 });
 test('actual global card reports unmeasured Vibe content without losing its management entry or implying zero',async()=>{

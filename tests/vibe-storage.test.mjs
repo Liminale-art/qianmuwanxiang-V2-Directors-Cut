@@ -7,10 +7,10 @@ import {readFile} from 'node:fs/promises';
 const namespace='st-user:storage',id='a'.repeat(64),otherId='b'.repeat(64),source='c'.repeat(64);
 function fixture(){
   const local={heads:[{assetId:id,bytes:100,previewBytes:10,createdAt:1,summary:{name:'景色',type:'image',sourceId:source,variants:[{}]}},
-    {assetId:otherId,bytes:50,createdAt:2,summary:{name:'编码',type:'encoding',sourceId:'d'.repeat(64),variants:[{}]}}],usage:{count:2,bytes:150,previewBytes:10,limit:512*1048576}};
+    {assetId:otherId,bytes:50,createdAt:2,summary:{name:'编码',type:'encoding',sourceId:'d'.repeat(64),variants:[{}]}}],usage:{count:2,bytes:150,previewBytes:10,limit:512*1048576},metadata:{bytes:20,count:6}};
   const receipts=[],writes=[];let available=true;
   const store={inventory:async ns=>{assert.equal(ns,namespace);return structuredClone(local);},remove:async(ns,ids,options)=>{writes.push({ns,ids,options});return {removed:ids.length,bytes:110};}};
-  const encodings={list:async ns=>{assert.equal(ns,namespace);return structuredClone(receipts);},inventory:async ns=>{assert.equal(ns,namespace);return {receipts:structuredClone(receipts),archived:{namespace,count:0,bytes:0}};}};
+  const encodings={list:async ns=>{assert.equal(ns,namespace);return structuredClone(receipts);},inventory:async ns=>{assert.equal(ns,namespace);return {receipts:structuredClone(receipts),archived:{namespace,count:0,bytes:0},metadata:{bytes:0,count:0}};}};
   const locks={request:async(name,options,work)=>{assert.equal(name,'qianmu:nai-maintenance');assert.deepEqual(options,{mode:'exclusive',ifAvailable:true});return work(available?{}:null);}};
   return {local,receipts,writes,store,encodings,locks,ops:createVibeStorageOperations({store,encodings,locks}),lock:()=>available=false};
 }

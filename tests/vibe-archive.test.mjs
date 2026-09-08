@@ -75,8 +75,8 @@ test('historical page and page export preserve exact records and old audit forma
 
 test('Vibe file usage includes archived receipt metadata and still refuses cleanup if archive inventory cannot be verified',async()=>{
   let broken=false;
-  const ops=createVibeStorageOperations({store:{inventory:async()=>({heads:[],usage:{count:0,bytes:0,previewBytes:0,limit:1}})},
-    encodings:{inventory:async()=>{if(broken)throw Error('corrupt archive usage');return {receipts:[],archived:{count:17,bytes:5000}};}}});
+  const ops=createVibeStorageOperations({store:{inventory:async()=>({heads:[],usage:{count:0,bytes:0,previewBytes:0,limit:1},metadata:{bytes:0,count:0}})},
+    encodings:{inventory:async()=>{if(broken)throw Error('corrupt archive usage');return {receipts:[],archived:{count:17,bytes:5000},metadata:{bytes:70,count:1}};}}});
   const view=await ops.inventory(namespace);assert.equal(view.receiptCount,17);assert.equal(view.archivedReceiptCount,17);assert.equal(view.receiptBytes,5000);assert.equal(view.pendingCount,0);
   broken=true;await assert.rejects(()=>ops.inventory(namespace),/corrupt archive/);
 });

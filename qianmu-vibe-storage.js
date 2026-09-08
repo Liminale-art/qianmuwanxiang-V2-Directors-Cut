@@ -14,7 +14,10 @@ function select(snapshot,ids){
 // Both snapshots contain metadata only. No image/encoding body scan and no remote request.
 export function createVibeStorageOperations({store,encodings,locks=globalThis.navigator?.locks}){
   async function read(namespace){
-    const local=await store.inventory(namespace),{receipts,archived,reviewHistory}=await encodings.inventory(namespace),fingerprint=await hash([namespace,local,receipts,archived,reviewHistory]);
+    const local=await store.inventory(namespace),{receipts,archived,reviewHistory,metadata:ledgerMetadata}=await encodings.inventory(namespace);
+    for(const row of [local.metadata,ledgerMetadata])if(!row||!Number.isSafeInteger(row.bytes)||row.bytes<0||!Number.isSafeInteger(row.count)||row.count<0)throw fail('Vibe 元数据尚未完成盘点，请刷新后重新读取');
+    const metadata={bytes:local.metadata.bytes+ledgerMetadata.bytes,count:local.metadata.count+ledgerMetadata.count,assetBytes:local.metadata.bytes,ledgerBytes:ledgerMetadata.bytes};
+    const fingerprint=await hash([namespace,local,receipts,archived,reviewHistory,ledgerMetadata]);
     const byRef=new Map(),bySource=new Map(),add=(map,key,row)=>{if(key){if(!map.has(key))map.set(key,new Set());map.get(key).add(row);}};
     for(const row of receipts){add(byRef,row.assetRef?.id,row);add(byRef,row.sourceAssetRef?.id,row);add(bySource,row.identity.sourceId,row);}
     const items=local.heads.map(head=>{
@@ -22,7 +25,7 @@ export function createVibeStorageOperations({store,encodings,locks=globalThis.na
       return {id:head.assetId,name:head.summary.name,type:head.summary.type,bytes:head.bytes,previewBytes:head.previewBytes||0,
         createdAt:head.createdAt,variants:head.summary.variants.length,receiptCount:related.length,pending:related.filter(unsettled).length};
     });
-    return {local,view:{version:1,namespace,fingerprint,items,receiptCount:receipts.length+archived.count,archivedReceiptCount:archived.count,historyReviewCount:reviewHistory?.reviews||0,receiptBytes:receipts.reduce((sum,row)=>sum+size(row),0)+archived.bytes+(reviewHistory?.bytes||0),
+    return {local,view:{version:1,namespace,fingerprint,items,metadata,receiptCount:receipts.length+archived.count,archivedReceiptCount:archived.count,historyReviewCount:reviewHistory?.reviews||0,receiptBytes:receipts.reduce((sum,row)=>sum+size(row),0)+archived.bytes+(reviewHistory?.bytes||0),
       pendingCount:receipts.filter(unsettled).length,usage:{count:local.usage.count,bytes:local.usage.bytes,previewBytes:local.usage.previewBytes,limit:local.usage.limit,countLimit:VIBE_ASSET_LIMITS.count}}};
   }
   return {
@@ -30,7 +33,7 @@ export function createVibeStorageOperations({store,encodings,locks=globalThis.na
     async summary(namespace){
       const view=(await read(namespace)).view,assets={bytes:view.usage.bytes,count:view.items.length,originalCount:view.items.filter(row=>row.type==='image').length,encodingCount:view.items.filter(row=>row.type==='encoding').length},
         previews={bytes:view.usage.previewBytes,count:view.items.filter(row=>row.previewBytes>0).length},records={bytes:view.receiptBytes,count:view.receiptCount,archivedCount:view.archivedReceiptCount,pendingCount:view.pendingCount,reviewCount:view.historyReviewCount};
-      return {version:1,status:'ready',namespace,assets,previews,records,bytes:assets.bytes+previews.bytes+records.bytes};
+      return {version:2,status:'ready',namespace,assets,previews,records,metadata:view.metadata,bytes:assets.bytes+previews.bytes+records.bytes+view.metadata.bytes};
     },
     async remove(namespace,ids,proof,confirmed){
       ids=Array.isArray(ids)?[...ids]:ids;
@@ -50,7 +53,9 @@ export function createVibeStorageActions({namespace,call,guard,items=()=>[]}){
   // Only current-library references are known here; other chats/history are explicitly not claimed to be unreferenced.
   const library=()=>items().filter(row=>row.assetRef?.namespace===namespace).map(row=>({id:row.id,assetId:row.assetRef.id}));
   return {
-    async list(){await guard();const result=await call('storage-inventory',{namespace});await guard();return {...result,library:library()};},
+    async list(){await guard();const result=await call('storage-inventory',{namespace});await guard();
+      const meta=result?.metadata;if(result?.namespace!==namespace||!meta||!['bytes','count','assetBytes','ledgerBytes'].every(key=>Number.isSafeInteger(meta[key])&&meta[key]>=0)||meta.bytes!==meta.assetBytes+meta.ledgerBytes)throw fail('Vibe 元数据尚未完成盘点，请刷新后重新读取');
+      return {...result,library:library()};},
     async inspectRestore(file){await guard();const result=await call('restore-inspect',{namespace,file});await guard();return result;},
     async restore(plan,file,confirm){
       if(plan?.namespace!==namespace||!plan.fits||!plan.missingCount)throw fail('原文件恢复尚未就绪');
@@ -109,9 +114,9 @@ export function createVibeStorageController({actions,confirm=async()=>false,onCl
   }
   function render(){
     if(!live())return;if(preservation){preservation.mount(host);return;}if(restoration){restoration.mount(host);return;}if(aggregate){renderAggregate();return;}
-    const rows=snapshot?.items||[],total=rows.reduce((sum,row)=>sum+row.bytes+row.previewBytes,0)+(snapshot?.receiptBytes||0);
+    const rows=snapshot?.items||[],total=rows.reduce((sum,row)=>sum+row.bytes+row.previewBytes,0)+(snapshot?.receiptBytes||0)+(snapshot?.metadata?.bytes||0);
     const blocked=rows.some(row=>selected.has(row.id)&&row.pending);
-    const parts=[['含原图文件',rows.filter(row=>row.type==='image').reduce((sum,row)=>sum+row.bytes,0),'#87a9c4'],['纯编码文件',rows.filter(row=>row.type==='encoding').reduce((sum,row)=>sum+row.bytes,0),'#b29bc9'],['缩略图',snapshot?.usage.previewBytes||0,'#d6b878'],['编码记录',snapshot?.receiptBytes||0,'#8bad99']];
+    const parts=[['含原图文件',rows.filter(row=>row.type==='image').reduce((sum,row)=>sum+row.bytes,0),'#87a9c4'],['纯编码文件',rows.filter(row=>row.type==='encoding').reduce((sum,row)=>sum+row.bytes,0),'#b29bc9'],['缩略图',snapshot?.usage.previewBytes||0,'#d6b878'],['编码记录',snapshot?.receiptBytes||0,'#8bad99'],['索引元数据',snapshot?.metadata?.bytes||0,'#c99aac']];
     host.innerHTML=`<section class="sd-vibe-storage">
       <header><h3>Vibe 文件空间</h3><button type="button" class="sd-icon-btn sd-vibe-storage-refresh" aria-label="刷新空间" ${busy?'disabled':''}><i class="fa-solid fa-rotate"></i></button><button type="button" class="sd-icon-btn sd-vibe-storage-close" aria-label="返回 Vibe 库"><i class="fa-solid fa-xmark"></i></button></header>
       <p role="status">${escape(message||(busy?'正在读取…':'本设备 · 当前 ST 账户。不含 VPS 磁盘及其他功能数据。'))}</p>

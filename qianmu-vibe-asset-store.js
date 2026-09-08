@@ -1,4 +1,5 @@
 import {parseNovelVibeFile,vibeFileError,vibeFilePreview} from './qianmu-vibe-file.js';
+import {summarizeVibeAssetMetadata} from './qianmu-vibe-storage-accounting.js';
 
 const fail=(code,message)=>{throw vibeFileError(code,message);};
 const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
@@ -55,7 +56,7 @@ export function createVibeAssetStore({indexedDB=globalThis.indexedDB,keyRange=gl
   function usage(tx,read,account,next){
     read(tx.objectStore('usage').get(account),row=>{
       if(row){if(row.key!==account||!Number.isSafeInteger(row.count)||row.count<0||row.count>VIBE_ASSET_LIMITS.count||!Number.isSafeInteger(row.bytes)||row.bytes<0||row.bytes>VIBE_ASSET_LIMITS.bytes||(row.count===0)!==(row.bytes===0)
-        ||!Number.isSafeInteger(row.previewBytes??0)||(row.previewBytes??0)<0||(row.previewBytes??0)>row.count*2*1024*1024||row.bytes+(row.previewBytes??0)>VIBE_ASSET_LIMITS.bytes)fail('index','Vibe 储存计值异常');next({...row,previewBytes:row.previewBytes??0});return;}
+        ||!Number.isSafeInteger(row.previewBytes??0)||(row.previewBytes??0)<0||(row.previewBytes??0)>row.count*2*1024*1024||row.bytes+(row.previewBytes??0)>VIBE_ASSET_LIMITS.bytes)fail('index','Vibe 储存计值异常');next({...row,previewBytes:row.previewBytes??0},row);return;}
       read(tx.objectStore('heads').index('namespace').count(keyRange.only(account)),count=>{if(count)fail('index','Vibe 储存计值缺失，请先保全数据');next({key:account,count:0,bytes:0});});
     });
   }
@@ -104,11 +105,17 @@ export function createVibeAssetStore({indexedDB=globalThis.indexedDB,keyRange=gl
     },
     async usage(account){namespace(account);return transaction('readonly',(tx,read,set)=>usage(tx,read,account,row=>set({...row,previewBytes:row.previewBytes??0,estimatedBytes:row.bytes+(row.previewBytes||0),limit:VIBE_ASSET_LIMITS.bytes})));},
     async inventory(account){
-      namespace(account);return transaction('readonly',(tx,read,set)=>usage(tx,read,account,totals=>{
+      namespace(account);return transaction('readonly',(tx,read,set)=>usage(tx,read,account,(totals,rawUsage)=>{
         read(tx.objectStore('heads').index('namespace').getAll(keyRange.only(account),VIBE_ASSET_LIMITS.count+1),rows=>{
           if(rows.length>VIBE_ASSET_LIMITS.count)fail('capacity','Vibe 资产条目过多');rows.forEach(row=>checkHead(row,account));
           if(rows.length!==totals.count||rows.reduce((n,row)=>n+row.bytes,0)!==totals.bytes||rows.reduce((n,row)=>n+(row.previewBytes||0),0)!==(totals.previewBytes||0))fail('index','Vibe 目录与空间计值不一致，请先保全数据');
-          set({heads:rows,usage:{...totals,previewBytes:totals.previewBytes||0,limit:VIBE_ASSET_LIMITS.bytes}});
+          const prefix=JSON.stringify([account]).slice(0,-1)+',',range=keyRange.bound(prefix,prefix+'\uffff');
+          read(tx.objectStore('documents').getAllKeys(range,VIBE_ASSET_LIMITS.count+1),documentKeys=>{
+            read(tx.objectStore('previews').getAllKeys(range,VIBE_ASSET_LIMITS.count+1),previewKeys=>{
+              const metadata=summarizeVibeAssetMetadata(account,{heads:rows,usage:rawUsage,documentKeys,previewKeys});
+              set({heads:rows,usage:{...totals,previewBytes:totals.previewBytes||0,limit:VIBE_ASSET_LIMITS.bytes},metadata});
+            });
+          });
         });
       }));
     },
