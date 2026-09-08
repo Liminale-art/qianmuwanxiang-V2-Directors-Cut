@@ -72,8 +72,17 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
   const reopen = () => createStoryboardBundleRestoreSession(options);
   return { source, built, e, options, reopen, session: await reopen() };
 }
-const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true, connectionsReviewed: true };
+const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true, connectionsReviewed: true, resourcesReviewed: true };
 const writes = e => e.events.filter(row => !row.startsWith('lock:'));
+
+test('file-use pages are read-only and the external-dependency acknowledgement is enforced before any restore journal', async () => {
+  const f=await fixture(),prepared=await f.session.preview(),before=structuredClone(f.e.locals),beforeWrites=writes(f.e);
+  const page=await f.session.resources({filter:'all',offset:0});assert.equal(page.digest,prepared.summary.resourceOrigins.digest);assert.ok(page.rows.length<=24);
+  assert.ok(page.rows.some(row=>row.kind==='workflow-review'));assert.deepEqual(f.e.locals,before);assert.deepEqual(writes(f.e),beforeWrites);
+  await assert.rejects(f.session.restore(prepared,{...consent,resourcesReviewed:false}),/外部依赖/);assert.equal(f.e.records.size,0);assert.equal(f.e.files.size,0);
+  await f.session.restore(prepared,consent);assert.equal(f.e.mutation.phase,'applied');
+  f.session.close();await assert.rejects(f.session.resources({offset:0}),/页面已变化/);
+});
 
 test('bundle connection review has separate consent and never starts a resource write when omitted', async () => {
   const f = await fixture(), prepared = await f.session.preview();

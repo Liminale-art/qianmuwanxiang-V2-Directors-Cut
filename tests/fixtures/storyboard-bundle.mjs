@@ -14,10 +14,11 @@ const data = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAw
 const png = Buffer.from(data, 'base64'), sha256 = await vibeDigest(png), blob = new Blob([png], { type: 'image/png' });
 const file = value => new Blob([JSON.stringify(value)], { type: 'application/json' });
 const receipt = { name: 'original', url: '/user/images/reference.png', mime: 'image/png', bytes: png.length, sha256 };
-export async function fixture() {
+export async function fixture({ externalFiles = 0 } = {}) {
   let totalBytes = 0;
   const versions = [0, 77].map((seed, index) => {
-    const document = normalizeComfyLibraryDocument({ workflow: { text: { class_type: 'CLIPTextEncode', inputs: { text: '%qianmu_prompt%' } }, load: { class_type: 'LoadImage', inputs: { image: '%qianmu_reference_1%' } } }, parameters: { seed }, classification: { version: 1 } });
+    const extra = Object.fromEntries(Array.from({length:externalFiles},(_,i)=>[`model-${i}`,{class_type:i%2?'LoraLoader':'CheckpointLoaderSimple',inputs:{[i%2?'lora_name':'ckpt_name']:`models/test-${i}-v${index+1}.safetensors`}}]));
+    const document = normalizeComfyLibraryDocument({ workflow: { text: { class_type: 'CLIPTextEncode', inputs: { text: '%qianmu_prompt%' } }, load: { class_type: 'LoadImage', inputs: { image: '%qianmu_reference_1%' } }, ...extra }, parameters: { seed }, classification: { version: 1 } });
     const inspected = inspectComfyLibraryDocument(document); totalBytes += inspected.bytes;
     const meta = { id: 'workflow', revision: `wrev${index+1}`, version: index+1, name: `Recipe${index+1}`, createdAt: 1, updatedAt: index+1, archived: false, bytes: inspected.bytes, totalBytes,
       nodes: inspected.nodes, slots: inspected.slots, issue: inspected.issue, classification: document.classification, parentRevision: index ? 'wrev1' : '' };

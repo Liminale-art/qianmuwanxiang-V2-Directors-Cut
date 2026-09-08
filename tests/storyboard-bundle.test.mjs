@@ -56,7 +56,7 @@ async function replaceSection(built, id, replacement) {
 
 test('unified bundle shares complete workflow history once and deduplicates original bytes without dropping any use', async () => {
   const f = await fixture(), before = clone(f.sources), result = await f.build(), inspected = await inspectStoryboardResourceBundle(result.file);
-  assert.equal(result.manifest.entries.length, 6); assert.equal(f.reads.images, 1); assert.equal(result.summary.originalPaths, 4); assert.equal(result.summary.originalFiles, 1);
+  assert.equal(result.manifest.entries.length, 7); assert.equal(f.reads.images, 1); assert.equal(result.summary.originalPaths, 4); assert.equal(result.summary.originalFiles, 1);
   assert.equal(result.summary.workflows.versions, 2); assert.equal(result.summary.identityVerified, false); assert.equal(result.summary.restoreAuthorized, false);
   assert.deepEqual(inspected.summary, result.summary); assert.equal(inspected.originals.length, 4); assert.equal(inspected.fingerprint, result.fingerprint);
   assert.deepEqual(f.sources, before); assert.deepEqual(f.reads, { workflows: 2, pools: 2, characters: 2, images: 1 });

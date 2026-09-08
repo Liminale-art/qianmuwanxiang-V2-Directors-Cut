@@ -8,6 +8,7 @@ import { vibeDigest } from './qianmu-vibe-file.js';
 import { createCharacterRestoreChoiceSnapshot } from './qianmu-character-backup-restore.js';
 import { sourceIdentityLabelsMatch } from './qianmu-source-identity-contract.js';
 import { validStoryboardConnectionReview } from './qianmu-storyboard-connection-identity.js';
+import { storyboardResourceOriginsPage } from './qianmu-storyboard-resource-origins.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle_restore', submissionState: 'not_submitted' }); };
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -29,7 +30,7 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
   const syncCurrent = () => !closed && isCurrent() === true;
   const check = async () => { if (!syncCurrent()) fail('整包恢复页面已变化'); await guard(); if (!syncCurrent()) fail('整包恢复页面已变化'); };
   await check();
-  const inspected = await inspectStoryboardResourceBundle(file, { guard: check }), opened = await openStoryboardBundle(file, { guard: check });
+  const inspected = await inspectStoryboardResourceBundle(file, { guard: check, includeOrigins: true }), opened = await openStoryboardBundle(file, { guard: check });
   if (inspected.fingerprint !== opened.fingerprint) fail('核验后资源联包发生变化，请重新选择原文件');
   if (inspected.manifest.namespace !== namespace || inspected.manifest.chatKey !== chatKey) fail('请在原 ST 账户及原聊天核对；跨环境身份重绑定尚未确认');
   const checkSource = async () => {
@@ -145,13 +146,14 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
   }
   return Object.freeze({
     sourceDigest,
+    async resources(options = {}) { if(busy)fail('恢复正在执行，请勿重复操作');await check();return {...storyboardResourceOriginsPage(inspected.origins,options),sourceDigest}; },
     async preview(decisions = {}) { if (busy) fail('恢复正在执行，请勿重复操作'); return clone((await inspect(decisions)).view); },
     async choose(decisions = {}) {
       if (busy) fail('恢复正在执行，请勿重复操作'); const snapshot = choose, choices = clone(decisions); await check();
       if (!snapshot || snapshot !== choose) fail('冲突选择已过期，请重新核对');
       const view = snapshot(choices); await check(); if (snapshot !== choose) fail('冲突选择已过期，请重新核对'); return view;
     },
-    async restore(prepared, { confirmed = false, environmentReviewed = false, bindingsReviewed = false, subjectsReviewed = false, connectionsReviewed = false } = {}) {
+    async restore(prepared, { confirmed = false, environmentReviewed = false, bindingsReviewed = false, subjectsReviewed = false, connectionsReviewed = false, resourcesReviewed = false } = {}) {
       if (busy) fail('恢复正在执行，请勿重复操作');
       if (confirmed !== true || environmentReviewed !== true || prepared?.namespace !== namespace || prepared.sourceDigest !== sourceDigest || !hash(prepared.planDigest)) fail('请先核对整包内容、原环境及原聊天，并明确确认恢复');
       if (!locks?.request) fail('浏览器不支持跨页恢复锁，尚未写入任何原件');
@@ -163,6 +165,7 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
         if (latest.view.bindingReview.length && bindingsReviewed !== true) fail('请逐项核对角色及聊天绑定；同名不是身份验证');
         if (latest.view.subjectReview.length && subjectsReviewed !== true) fail('请明确核对角色卡及人设内容差异，不能只确认同名绑定');
         if (latest.view.configuration.connections.length && connectionsReviewed !== true) fail('请核对连接差异及需要重新填写的授权；当前连接草稿不会切换');
+        if (latest.view.summary.resourceOrigins.total && resourcesReviewed !== true) fail('请核对包内原件与外部依赖；模型文件、节点插件和授权不会自动恢复');
         await checkSource();
         let checkpoint = await journal.prepareResource({ namespace, kind: 'bundle', chatHash, sourceDigest, planDigest: approved.planDigest }, { previous: latest.view.record, confirmed: true, isCurrent: syncCurrent });
         const advance = async phase => { await checkSource(); await verifySubjects(latest); checkpoint = await journal.updateResource(checkpoint, phase, { isCurrent: syncCurrent }); await check(); };

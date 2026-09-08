@@ -79,7 +79,7 @@ test('v2 resource capture preserves every typed old recipe unchanged and shares 
 
 test('v1 bundles still show unpreserved legacy sources while v2 cannot silently omit their original manifest', async () => {
   const f=await withLegacy(), built=await f.build();
-  const old=await repack(built,entries=>entries.splice(entries.findIndex(row=>row.id==='legacy-vibes'),1));
+  const old=await repack(built,entries=>{for(const id of ['legacy-vibes','resource-origins'])entries.splice(entries.findIndex(row=>row.id===id),1);});
   const inspected=await inspectStoryboardResourceBundle(old.file);
   assert.equal(inspected.manifest.schema,'qianmu.storyboard.bundle.v1');assert.equal(inspected.summary.legacyVibeUrls,1);assert.equal(inspected.summary.legacyVibeOriginals,0);
   const empty=await repack(built,entries=>entries.find(row=>row.id==='legacy-vibes').file=file({schema:'qianmu.storyboard.legacy-vibes.v1',items:[]}));

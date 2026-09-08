@@ -5,8 +5,8 @@ import { sourceIdentityResponse, sourceIdentityForNamespace } from './qianmu-sou
 
 // Uncompressed, length-delimited Blob sections. No archive paths, extraction, executable entries or whole-file arrayBuffer.
 export const STORYBOARD_BUNDLE_SCHEMA = 'qianmu.storyboard.bundle.v3';
-export const STORYBOARD_BUNDLE_LIMITS = Object.freeze({ total: 512 * 1048576, manifest: 1048576, entries: 1031,
-  storyboard: 128 * 1048576, workflows: 80 * 1048576, pools: 24 * 1048576, characters: 24 * 1048576, 'legacy-vibes': 2 * 1048576, 'chat-evidence': 24 * 1048576, 'subject-evidence': 4 * 1048576, image: 16 * 1048576 });
+export const STORYBOARD_BUNDLE_LIMITS = Object.freeze({ total: 512 * 1048576, manifest: 1048576, entries: 1032,
+  storyboard: 128 * 1048576, workflows: 80 * 1048576, pools: 24 * 1048576, characters: 24 * 1048576, 'legacy-vibes': 2 * 1048576, 'chat-evidence': 24 * 1048576, 'subject-evidence': 4 * 1048576, 'resource-origins': 32 * 1048576, image: 16 * 1048576 });
 const magic = new TextEncoder().encode('QIANMU-BUNDLE/1\n'), prefixBytes = magic.length + 4;
 export async function isStoryboardBundleFile(file) {
   if (!(file instanceof Blob)) return false;
@@ -14,7 +14,7 @@ export async function isStoryboardBundleFile(file) {
   return bytes.length === magic.length && bytes.every((value, index) => value === magic[index]);
 }
 const fixed = ['storyboard', 'workflows', 'pools', 'characters'];
-const documents = [...fixed, 'legacy-vibes', 'chat-evidence', 'subject-evidence'];
+const documents = [...fixed, 'legacy-vibes', 'chat-evidence', 'subject-evidence', 'resource-origins'];
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle', submissionState: 'not_submitted' }); };
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);

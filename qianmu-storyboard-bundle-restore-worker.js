@@ -43,6 +43,7 @@ self.addEventListener('message', async event => {
     } else if (session && message.sourceDigest === session.sourceDigest) {
       if (message.action === 'preview') result = await session.preview(message.payload.decisions);
       else if (message.action === 'choose') result = await session.choose(message.payload.decisions);
+      else if (message.action === 'resources') result = await session.resources(message.payload);
       else if (message.action === 'restore') result = await session.restore(message.payload.prepared, message.payload.consent);
       else throw failure('不支持的恢复操作');
     } else throw failure('恢复文件或会话不符');

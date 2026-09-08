@@ -3,6 +3,7 @@ import { sourceIdentityForNamespace } from './qianmu-source-identity-contract.js
 import { inspectStoryboardChatEvidence } from './qianmu-storyboard-chat-evidence.js';
 import { inspectStoryboardSubjectEvidence, storyboardSubjectTargets } from './qianmu-storyboard-subject-evidence.js';
 import { assertPortableConnection, assertPortableConnectionUrl } from './qianmu-storyboard-connection-identity.js';
+import { projectStoryboardOriginPayload, buildStoryboardResourceOrigins, inspectStoryboardResourceOrigins, storyboardResourceOriginsSummary } from './qianmu-storyboard-resource-origins.js';
 import { inspectStoryboardPackageFile, validateStoryboardPackagePayload, validateStoryboardPackageMedia } from './qianmu-storyboard-package-input.js';
 import { collectStoryboardVibeDependencies, inspectStoryboardVibePackage } from './qianmu-storyboard-package-assets.js';
 import { validateComfyLibraryBackup, comfyLibraryBackupDigest as digest } from './qianmu-comfy-library-backup.js';
@@ -67,7 +68,7 @@ function addOriginal(census, value) {
   census.originals.set(row.url, row); census.files.set(row.sha256, row);
   if (census.files.size > 1024 || census.originals.size > 30000) fail('资源原件或使用位置超过支持范围');
 }
-async function inspectConfig(payload, namespace, { checked = false } = {}) {
+async function inspectConfig(payload, namespace, { checked = false, withOrigins = false, guard = async()=>{} } = {}) {
   validateStoryboardPackagePayload(payload);
   if (payload.vibeAccount !== namespace) fail('配置和独立库的来源账户不一致');
   if (!checked) { validateStoryboardPackageMedia(payload); await inspectStoryboardVibePackage(payload); }
@@ -76,7 +77,7 @@ async function inspectConfig(payload, namespace, { checked = false } = {}) {
   const vibes = collectStoryboardVibeDependencies(payload, { namespace });
   const census = { originals: new Map(), files: new Map(), bindings: new Map(), nodes: 0 };
   scan(payload.settings, namespace, census); scan(payload.chat, namespace, census);
-  return { census, legacyUrls: vibes.legacyUrls, summary: { images: media.size, vibeFiles: vibes.refs.length, legacyVibeUrls: vibes.legacyUrls.length, legacyVibeOriginals: 0 } };
+  return { census, legacyUrls: vibes.legacyUrls, ...(withOrigins?{originsPayload:await projectStoryboardOriginPayload(payload,{guard})}:{}), summary: { images: media.size, vibeFiles: vibes.refs.length, legacyVibeUrls: vibes.legacyUrls.length, legacyVibeOriginals: 0 } };
 }
 function includeLegacyOriginals(config, document) {
   const result = inspectLegacyVibeOriginals(document, config.legacyUrls);
@@ -112,7 +113,7 @@ export async function captureStoryboardResourceBundle({ namespace, chatKey, stor
   chatEvidence = chatEvidence === null ? null : await inspectStoryboardChatEvidence(chatEvidence, chatKey);
   subjectEvidence = subjectEvidence === null ? null : await inspectStoryboardSubjectEvidence(subjectEvidence);
   await check();
-  const config = await (async () => { const parsed = await inspectStoryboardPackageFile(storyboard); await check(); return inspectConfig(parsed.payload, namespace, { checked: true }); })();
+  const config = await (async () => { const parsed = await inspectStoryboardPackageFile(storyboard); await check(); return inspectConfig(parsed.payload, namespace, { checked: true, withOrigins: true, guard: check }); })();
   const pools = await poolStore.backup(namespace, { isCurrent }); await check();
   const characters = await characterStore.backup(namespace, { isCurrent }); await check();
   const workflows = await workflowStore.backup(namespace, { isCurrent }); await check();
@@ -131,6 +132,10 @@ export async function captureStoryboardResourceBundle({ namespace, chatKey, stor
   includeLegacyOriginals(config, legacy.document);
   Object.assign(summary, { legacyVibeOriginals: config.summary.legacyVibeOriginals, originalFiles: census.files.size, originalPaths: census.originals.size });
   entries.push({ id: 'legacy-vibes', file: jsonFile(legacy.document) });
+  const origins = await buildStoryboardResourceOrigins({payload:config.originsPayload,workflows,pools,characters,originals:[...census.originals.values()],legacy:legacy.document},{guard:check});
+  delete config.originsPayload;
+  entries.push({id:'resource-origins',file:jsonFile(origins)});summary.resourceOrigins=storyboardResourceOriginsSummary(origins,true);
+  if(entries.reduce((sum,row)=>sum+row.file.size,STORYBOARD_BUNDLE_LIMITS.manifest)+[...census.files.values()].reduce((sum,row)=>sum+row.bytes,0)>STORYBOARD_BUNDLE_LIMITS.total)fail('加上文件用途清单后联包超过 512 MiB，未输出缺件包');
   for (const row of census.files.values()) {
     await check(); const files = legacy.files.has(row.sha256) ? [legacy.files.get(row.sha256)] : await readImages([{ ...row, name: '备份原件' }], { guard: check }); await check();
     if (!Array.isArray(files) || files.length !== 1 || !(files[0] instanceof Blob) || files[0].size !== row.bytes) fail('资源原图读取结果不符');
@@ -146,10 +151,11 @@ export async function captureStoryboardResourceBundle({ namespace, chatKey, stor
   await check(); return { ...result, summary };
 }
 
-export async function inspectStoryboardResourceBundle(file, { guard = async () => {} } = {}) {
+export async function inspectStoryboardResourceBundle(file, { guard = async () => {}, includeOrigins = false } = {}) {
   const opened = await openStoryboardBundle(file, { guard }), namespace = opened.manifest.namespace;
-  const config = await (async () => inspectConfig(await opened.readJson('storyboard'), namespace))(); await guard();
-  if (opened.manifest.entries.some(row => row.id === 'legacy-vibes')) includeLegacyOriginals(config, await opened.readJson('legacy-vibes'));
+  const config = await (async () => inspectConfig(await opened.readJson('storyboard'), namespace, {withOrigins:true,guard}))(); await guard();
+  const legacy = opened.manifest.entries.some(row => row.id === 'legacy-vibes') ? await opened.readJson('legacy-vibes') : null;
+  if (legacy) includeLegacyOriginals(config, legacy);
   const workflows = await opened.readJson('workflows'), pools = await opened.readJson('pools'), characters = await opened.readJson('characters'); await guard();
   const { census, summary } = await inspectLibraries(namespace, config, { workflows, pools, characters }, guard);
   if (opened.manifest.entries.some(row => row.id === 'chat-evidence')) {
@@ -164,8 +170,13 @@ export async function inspectStoryboardResourceBundle(file, { guard = async () =
     const expected = census.files.get(row.sha256); if (!expected || expected.bytes !== row.bytes || expected.mime !== row.mime) fail('资源原件收据不符');
     const part = await opened.read(row.id); if (comfyReferenceStillMime(part.bytes) !== row.mime) fail('资源原件不是完整静态图片'); await guard();
   }
+  const origins=await buildStoryboardResourceOrigins({payload:config.originsPayload,workflows,pools,characters,originals:[...census.originals.values()],legacy},{guard});
+  delete config.originsPayload;
+  const recorded=opened.manifest.entries.some(row=>row.id==='resource-origins');
+  if(recorded)await inspectStoryboardResourceOrigins(await opened.readJson('resource-origins'),origins);
+  summary.resourceOrigins=storyboardResourceOriginsSummary(origins,recorded);await guard();
   return { manifest: opened.manifest, fileBytes: opened.fileBytes, fingerprint: opened.fingerprint, summary,
-    originals: [...census.originals.values()] };
+    originals: [...census.originals.values()], ...(includeOrigins?{origins}:{}) };
 }
 
 // Restore only the selected incoming role originals. Shared config/pool references still remain required.

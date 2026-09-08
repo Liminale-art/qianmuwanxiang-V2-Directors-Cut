@@ -90,6 +90,27 @@ test('connection view protocol refuses injected credential fields or impossible 
   }
 });
 
+test('resource paging cannot obtain configuration writes and binds the returned page to its requested offset/filter',async()=>{
+  const item={kind:'comfy-file',state:'external',at:'workflows$["old"]',label:'LoRA',target:'old.safetensors'};
+  const {client,e}=await fixture(async(worker,command)=>{
+    const ack=await worker.rpc(command,'configuration-apply',{fingerprint:sourceDigest});assert.ok(ack.error);
+    worker.reply(command,{sourceDigest,digest:'e'.repeat(64),offset:0,filter:'external',total:1,rows:[item]});
+  });
+  const result=await client.resources({filter:'external',offset:0});assert.equal(result.rows.length,1);assert.equal(e.applied,0);client.close();
+  for(const row of [{offset:24,filter:'all',total:25,rows:[item]},{offset:0,filter:'external',total:1,rows:[item]},{offset:0,filter:'all',total:1,rows:[{...item,headers:{secret:'not-allowed'}}]}]){
+    const f=await fixture(async(worker,command)=>worker.reply(command,{sourceDigest,digest:'e'.repeat(64),...row}));
+    await assert.rejects(f.client.resources(),/结果与当前原包不符/);assert.equal(f.worker.closed,true);
+  }
+});
+
+test('resource use review explains external dependencies, escapes filenames and requires its own confirmation',()=>{
+  const summary={recorded:false,digest:'e'.repeat(64),total:1,included:0,external:1,dynamic:0,unresolved:0,review:0};
+  const preview={...view(),ready:true,planDigest:'c'.repeat(64),summary:{...view().summary,resourceOrigins:summary}};
+  const input={preview,page:0,environmentReviewed:true,resourcePage:{offset:0,filter:'all',total:1,rows:[{kind:'comfy-file',state:'external',at:'workflow$["x"]',label:'LoRA',target:'<model>.safetensors'}]}};
+  const html=renderStoryboardBundleReview(input);assert.match(html,/旧包未记录/);assert.match(html,/&lt;model&gt;/);assert.doesNotMatch(html,/<model>/);assert.match(html,/data-bundle-action="restore" disabled/);
+  assert.doesNotMatch(renderStoryboardBundleReview({...input,resourcesReviewed:true}),/data-bundle-action="restore" disabled/);
+});
+
 test('late operations and another session are ignored, while a repeated active RPC terminates the session', async () => {
   const { e, client, worker } = await fixture(async (worker, command) => {
     worker.emit({ id: command.id, operation: command.operation-1, request: 11, kind: 'configuration-apply', payload: { fingerprint: sourceDigest } });

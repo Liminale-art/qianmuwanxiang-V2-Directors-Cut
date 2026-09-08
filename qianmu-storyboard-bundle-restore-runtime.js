@@ -1,4 +1,5 @@
 import { validStoryboardConnectionReview } from './qianmu-storyboard-connection-identity.js';
+import { validStoryboardResourceOriginsPage, validStoryboardResourceOriginsSummary } from './qianmu-storyboard-resource-origins.js';
 let active = null;
 const fail = message => Object.assign(new Error(message), { code: 'storyboard_bundle_restore_runtime', submissionState: 'not_submitted' });
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -9,6 +10,7 @@ function validView(value, namespace) {
     && Array.isArray(value.bindingReview) && value.bindingReview.length <= 2048 && value.bindingReview.every(row => typeof row.category === 'string' && typeof row.subjectKey === 'string')
     && (value.subjectReview === undefined || Array.isArray(value.subjectReview) && value.subjectReview.length <= 2080 && value.subjectReview.every(row => ['char','user','other'].includes(row.category) && typeof row.subjectKey === 'string' && row.subjectKey.length <= 1024 && typeof row.required === 'boolean' && ['matched','changed','missing','unverified'].includes(row.state)))
     && (value.configuration?.connections === undefined || validStoryboardConnectionReview(value.configuration.connections))
+    && (value.summary?.resourceOrigins === undefined || validStoryboardResourceOriginsSummary(value.summary.resourceOrigins))
     && Array.isArray(value.images) && value.images.length <= 30400 && value.images.every(row => typeof row.url === 'string' && ['missing','present','conflict'].includes(row.state))
     && ['added','replaced','kept'].every(key => count(value.characterSummary?.[key])) && count(value.summary?.images) && count(value.summary?.vibeFiles)
     && ['workflows','pools','characters'].every(key => count(value.summary?.[key]?.count)) && count(value.summary?.workflows?.versions);
@@ -74,7 +76,9 @@ export async function openStoryboardBundleRestoreRuntime(file, { namespace, chat
       if (pending.action === 'open') {
         if (!hash(message.result?.sourceDigest) || message.sourceDigest !== message.result.sourceDigest) { close(fail('恢复文件摘要缺失')); return; }
         sourceDigest = message.sourceDigest;
-      } else if (message.sourceDigest !== sourceDigest || (pending.action !== 'restore' && (message.result?.sourceDigest !== sourceDigest || !validView(message.result, namespace)))
+      } else if (message.sourceDigest !== sourceDigest || (pending.action === 'resources' && (message.result?.sourceDigest !== sourceDigest || !validStoryboardResourceOriginsPage(message.result)
+        ||message.result.offset!==(pending.payload.offset??0)||message.result.filter!==(pending.payload.filter??'all')))
+        || (!['restore','resources'].includes(pending.action) && (message.result?.sourceDigest !== sourceDigest || !validView(message.result, namespace)))
         || (pending.action === 'restore' && (message.result?.resourcesVerified !== true || message.result?.settingsVerified !== false))) { close(fail('恢复结果与当前原包不符')); return; }
       void check().then(() => { if (current === pending) finish(null, message.result); }, error => close(error));
     });
@@ -82,6 +86,7 @@ export async function openStoryboardBundleRestoreRuntime(file, { namespace, chat
     const supplied = new Headers(headers()), csrf = supplied.get('x-csrf-token') || '';
     await command('open', { namespace, chatKey, file, csrf });
     return Object.freeze({ sourceDigest, get isOpen() { return !closed; }, preview: decisions => command('preview', { decisions: decisions || {} }),
+      resources: options => command('resources', options || {}),
       choose: decisions => command('choose', { decisions: decisions || {} }), restore: (prepared, consent) => command('restore', { prepared, consent }), close });
   } catch (error) { close(error); throw error; }
 }
