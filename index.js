@@ -21721,7 +21721,7 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   const link = document.createElement('a');
   link.href = url; link.download = bundle ? `qianmu-storyboard-bundle-${fileStamp()}.qmb` : `qianmu-storyboard-pack-${fileStamp()}.json`;
   document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
-  const vibeNotice=originals ? ` 已包含 ${vibeScope.refs.length} 份 Vibe 原文件。${vibeScope.legacyUrls.length ? `另有 ${vibeScope.legacyUrls.length} 个 Vibe 旧地址仅保留地址，原图需另行保全。` : ''}${bundle ? '已包含工作流、候选历史与角色库及参考原件；仅用于原环境核对恢复。' : '不含 Comfy 与角色独立库。'}` : vibeScope.refs.length||vibeScope.legacyUrls.length?' 当前旧版包只保留 Vibe 引用/地址，原文件请在 Vibe 文件空间另行备份。':'';
+  const vibeNotice=originals ? ` 已包含 ${vibeScope.refs.length} 份 Vibe 原文件。${vibeScope.legacyUrls.length ? bundle ? `另已保全 ${vibeScope.legacyUrls.length} 个旧 Vibe 地址的本地原图。` : `另有 ${vibeScope.legacyUrls.length} 个 Vibe 旧地址仅保留地址，原图需另行保全。` : ''}${bundle ? '已包含工作流、候选历史与角色库及参考原件；仅用于原环境核对恢复。' : '不含 Comfy 与角色独立库。'}` : vibeScope.refs.length||vibeScope.legacyUrls.length?' 当前旧版包只保留 Vibe 引用/地址，原文件请在 Vibe 文件空间另行备份。':'';
   toast(`分镜数据已打包：${records.length} 条成片${skipped ? ` · ${skipped} 张仅保留原地址` : ''}。${vibeNotice}`, vibeNotice?'warning':'success');
   } catch(error) { toast(`分镜打包未完成：${error?.message||'请重新核对后导出'}`, 'error'); }
   finally {storyboardExportPackage.busy=false;}

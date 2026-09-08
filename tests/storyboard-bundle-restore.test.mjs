@@ -11,8 +11,12 @@ import { createStoryboardDefaults } from '../qianmu-storyboard.js';
 import { vibeDigest } from '../qianmu-vibe-file.js';
 
 const clone = structuredClone;
-async function fixture() {
+async function fixture({ legacy = false } = {}) {
   const source = await sourceFixture(); source.config.chat.images[0].source = 'novel'; source.config.chat.images[0].floor = 0;
+  if (legacy) {
+    source.config.settings.vibeLibrary = [{ id: 'legacy', name: 'Old Vibe', previewUrl: '/user/images/legacy.png', strength: 0, informationExtracted: 0 }];
+    source.options.legacyFetch = async () => new Response(Buffer.from(data, 'base64'));
+  }
   source.options.storyboard = file(source.config); const built = await source.build();
   const e = { active: true, events: [], files: new Map(), records: new Map(), mutation: null, settings: createStoryboardDefaults(), chat: {},
     messages: [{ mes: 'original text', is_user: false, swipe_id: 0 }], locals: clone(source.sources), vibes: false, configChanges: 0 };
@@ -58,6 +62,24 @@ async function fixture() {
 }
 const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true };
 const writes = e => e.events.filter(row => !row.startsWith('lock:'));
+
+test('legacy Vibe originals are restored before settings without changing URL recipes, zero parameters or asset type', async () => {
+  const { session, e, source } = await fixture({ legacy: true }), preview = await session.preview();
+  assert.equal(preview.summary.legacyVibeOriginals, 1); assert.equal(preview.images.length, 6); assert.equal(e.files.size, 0);
+  await session.restore(preview, consent);
+  assert.equal(e.files.get('/user/images/legacy.png'), data);
+  const row = e.settings.vibeLibrary.find(row => row.id === 'legacy');
+  assert.equal(row.previewUrl, source.config.settings.vibeLibrary[0].previewUrl);
+  assert.equal(row.strength, 0); assert.equal(row.informationExtracted, 0); assert.equal(Object.hasOwn(row, 'assetRef'), false);
+  assert.ok(e.events.lastIndexOf('image') < e.events.indexOf('configuration'));
+});
+
+test('different existing legacy Vibe bytes stop the whole restore before any resource or configuration writes', async () => {
+  const { session, e } = await fixture({ legacy: true }); e.conflict = '/user/images/legacy.png';
+  const preview = await session.preview(); assert.equal(preview.ready, false);
+  await assert.rejects(session.restore(preview, consent), /冲突/);
+  assert.equal(e.files.size, 0); assert.deepEqual(writes(e), []); assert.equal(e.mutation, null);
+});
 
 test('one restore preflights all libraries and configuration then applies resources before the journalled live merge', async () => {
   const { e, session, source } = await fixture(), before = clone(e.locals), view = await session.preview();

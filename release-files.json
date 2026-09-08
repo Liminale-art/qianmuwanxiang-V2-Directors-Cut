@@ -12,6 +12,7 @@
     "qianmu-storyboard-bundle-restore-worker.js",
     "qianmu-storyboard-bundle-restore-runtime.js",
     "qianmu-storyboard-bundle-view.js",
+    "qianmu-storyboard-legacy-vibes.js",
     "qianmu-character-backup-restore.js",
     "qianmu-image-restore-contract.js",
     "qianmu-image-restore-service.js",

@@ -13,6 +13,7 @@ import { readStaticReferenceBlobs, comfyWorkflowReferenceHash } from './qianmu-c
 import { comfyReferenceStillMime } from './qianmu-comfy-results.js';
 import { imageRestoreReceipt } from './qianmu-image-restore-contract.js';
 import { vibeDigest } from './qianmu-vibe-file.js';
+import { captureLegacyVibeOriginals, inspectLegacyVibeOriginals } from './qianmu-storyboard-legacy-vibes.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle_resources', submissionState: 'not_submitted' }); };
 const object = value => value !== null && typeof value === 'object';
@@ -57,7 +58,12 @@ async function inspectConfig(payload, namespace, { checked = false } = {}) {
   const vibes = collectStoryboardVibeDependencies(payload, { namespace });
   const census = { originals: new Map(), files: new Map(), bindings: new Map(), nodes: 0 };
   scan(payload.settings, namespace, census); scan(payload.chat, namespace, census);
-  return { census, summary: { images: media.size, vibeFiles: vibes.refs.length, legacyVibeUrls: vibes.legacyUrls.length } };
+  return { census, legacyUrls: vibes.legacyUrls, summary: { images: media.size, vibeFiles: vibes.refs.length, legacyVibeUrls: vibes.legacyUrls.length, legacyVibeOriginals: 0 } };
+}
+function includeLegacyOriginals(config, document) {
+  const result = inspectLegacyVibeOriginals(document, config.legacyUrls);
+  for (const row of result.receipts) addOriginal(config.census, row);
+  config.summary.legacyVibeOriginals = result.rows.length;
 }
 async function inspectLibraries(namespace, config, { workflows, pools, characters }, guard) {
   if ([workflows, pools, characters].some(value => value?.namespace !== namespace)) fail('资源库账户不一致');
@@ -82,7 +88,7 @@ async function inspectLibraries(namespace, config, { workflows, pools, character
 
 // This unit captures and verifies one portable file. Applying it requires the explicit staged restore coordinator.
 export async function captureStoryboardResourceBundle({ namespace, chatKey, storyboard, workflowStore, poolStore, characterStore,
-  guard = async () => {}, isCurrent = () => true, readImages = readStaticReferenceBlobs, now = Date.now }) {
+  guard = async () => {}, isCurrent = () => true, readImages = readStaticReferenceBlobs, legacyFetch = globalThis.fetch, now = Date.now }) {
   const check = async () => { if (isCurrent() !== true) fail('资源包页面已变化'); await guard(); if (isCurrent() !== true) fail('资源包页面已变化'); };
   await check();
   const config = await (async () => { const parsed = await inspectStoryboardPackageFile(storyboard); await check(); return inspectConfig(parsed.payload, namespace, { checked: true }); })();
@@ -94,8 +100,14 @@ export async function captureStoryboardResourceBundle({ namespace, chatKey, stor
   const entries = [{ id: 'storyboard', file: storyboard }, { id: 'workflows', file: jsonFile(workflows) }, { id: 'pools', file: jsonFile(pools) }, { id: 'characters', file: jsonFile(characters) }];
   // Conservative header reserve avoids fetching originals only to discover that the combined file cannot fit.
   if (entries.reduce((sum, row) => sum + row.file.size, STORYBOARD_BUNDLE_LIMITS.manifest) + [...census.files.values()].reduce((sum, row) => sum + row.bytes, 0) > STORYBOARD_BUNDLE_LIMITS.total) fail('资源联包超过 512 MiB，请保留原环境，未读取原图或输出缺件包');
+  const remaining = STORYBOARD_BUNDLE_LIMITS.total - entries.reduce((sum, row) => sum + row.file.size, STORYBOARD_BUNDLE_LIMITS.manifest + STORYBOARD_BUNDLE_LIMITS['legacy-vibes']) - [...census.files.values()].reduce((sum, row) => sum + row.bytes, 0);
+  if (remaining < 0) fail('联包没有足够容量容纳旧 Vibe 原图清单');
+  const legacy = await captureLegacyVibeOriginals(config.legacyUrls, { guard: check, fetch: legacyFetch, maxBytes: remaining });
+  includeLegacyOriginals(config, legacy.document);
+  Object.assign(summary, { legacyVibeOriginals: config.summary.legacyVibeOriginals, originalFiles: census.files.size, originalPaths: census.originals.size });
+  entries.push({ id: 'legacy-vibes', file: jsonFile(legacy.document) });
   for (const row of census.files.values()) {
-    await check(); const files = await readImages([{ ...row, name: '备份原件' }], { guard: check }); await check();
+    await check(); const files = legacy.files.has(row.sha256) ? [legacy.files.get(row.sha256)] : await readImages([{ ...row, name: '备份原件' }], { guard: check }); await check();
     if (!Array.isArray(files) || files.length !== 1 || !(files[0] instanceof Blob) || files[0].size !== row.bytes) fail('资源原图读取结果不符');
     const bytes = new Uint8Array(await files[0].arrayBuffer());
     if (comfyReferenceStillMime(bytes) !== row.mime || await vibeDigest(bytes) !== row.sha256) fail('资源原图内容已变化，未生成缺件包');
@@ -112,6 +124,7 @@ export async function captureStoryboardResourceBundle({ namespace, chatKey, stor
 export async function inspectStoryboardResourceBundle(file, { guard = async () => {} } = {}) {
   const opened = await openStoryboardBundle(file, { guard }), namespace = opened.manifest.namespace;
   const config = await (async () => inspectConfig(await opened.readJson('storyboard'), namespace))(); await guard();
+  if (opened.manifest.entries.some(row => row.id === 'legacy-vibes')) includeLegacyOriginals(config, await opened.readJson('legacy-vibes'));
   const workflows = await opened.readJson('workflows'), pools = await opened.readJson('pools'), characters = await opened.readJson('characters'); await guard();
   const { census, summary } = await inspectLibraries(namespace, config, { workflows, pools, characters }, guard);
   const imageEntries = opened.manifest.entries.filter(row => row.id.startsWith('image:'));
@@ -126,8 +139,9 @@ export async function inspectStoryboardResourceBundle(file, { guard = async () =
 
 // Restore only the selected incoming role originals. Shared config/pool references still remain required.
 // Called after the immutable bundle has passed full validation; this does not authorize any write.
-export async function collectStoryboardBundleRestoreOriginals(payload, pools, characters, excludedCharacterIds = []) {
-  const namespace = characters.namespace, { census } = await inspectConfig(payload, namespace, { checked: true });
+export async function collectStoryboardBundleRestoreOriginals(payload, pools, characters, excludedCharacterIds = [], legacyDocument = null) {
+  const namespace = characters.namespace, config = await inspectConfig(payload, namespace, { checked: true }), { census } = config;
+  if (legacyDocument !== null) includeLegacyOriginals(config, legacyDocument);
   scan(pools, namespace, census);
   const excluded = new Set(excludedCharacterIds);
   for (const row of characters.archives) if (!excluded.has(row.head.id)) {

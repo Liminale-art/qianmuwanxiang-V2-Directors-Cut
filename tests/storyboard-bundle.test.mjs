@@ -54,7 +54,7 @@ async function replaceSection(built, id, replacement) {
 
 test('unified bundle shares complete workflow history once and deduplicates original bytes without dropping any use', async () => {
   const f = await fixture(), before = clone(f.sources), result = await f.build(), inspected = await inspectStoryboardResourceBundle(result.file);
-  assert.equal(result.manifest.entries.length, 5); assert.equal(f.reads.images, 1); assert.equal(result.summary.originalPaths, 4); assert.equal(result.summary.originalFiles, 1);
+  assert.equal(result.manifest.entries.length, 6); assert.equal(f.reads.images, 1); assert.equal(result.summary.originalPaths, 4); assert.equal(result.summary.originalFiles, 1);
   assert.equal(result.summary.workflows.versions, 2); assert.equal(result.summary.identityVerified, false); assert.equal(result.summary.restoreAuthorized, false);
   assert.deepEqual(inspected.summary, result.summary); assert.equal(inspected.originals.length, 4); assert.equal(inspected.fingerprint, result.fingerprint);
   assert.deepEqual(f.sources, before); assert.deepEqual(f.reads, { workflows: 2, pools: 2, characters: 2, images: 1 });
@@ -125,11 +125,12 @@ test('credential declarations are not trusted, while an empty credential slot do
   await assert.rejects(g.build(), /另一账户/); assert.equal(g.reads.images, 0);
 });
 
-test('missing gallery originals cannot be exported as complete, and legacy Vibe URLs remain explicitly counted', async () => {
+test('missing gallery originals cannot be exported as complete, and local legacy Vibe originals are included', async () => {
   const f = await fixture(); f.config.media = []; f.options.storyboard = file(f.config);
   await assert.rejects(f.build(), /成片原图/); assert.equal(f.reads.images, 0);
   const g = await fixture(); g.config.settings.vibeLibrary = [{ id: 'legacy', previewUrl: '/user/images/legacy.png' }]; g.options.storyboard = file(g.config);
-  const result = await g.build(); assert.equal(result.summary.legacyVibeUrls, 1); assert.equal((await inspectStoryboardResourceBundle(result.file)).summary.legacyVibeUrls, 1);
+  g.options.legacyFetch = async () => new Response(png);
+  const result = await g.build(); assert.equal(result.summary.legacyVibeUrls, 1); assert.equal((await inspectStoryboardResourceBundle(result.file)).summary.legacyVibeOriginals, 1);
 });
 
 test('a changed source library, unreadable original or cancelled page prevents output without any library writes', async () => {

@@ -33,6 +33,7 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
   const sourceDigest = inspected.fingerprint, chatHash = await vibeDigest(chatKey);
   const configFile = (await opened.read('storyboard')).file;
   const payload = await opened.readJson('storyboard'), workflows = await opened.readJson('workflows'), pools = await opened.readJson('pools'), characters = await opened.readJson('characters');
+  const legacyDocument = opened.manifest.entries.some(row => row.id === 'legacy-vibes') ? await opened.readJson('legacy-vibes') : null;
   const gallery = new Map(), imageUrls = Object.create(null);
   for (const row of payload.media || []) {
     await check(); const bytes = Uint8Array.from(atob(row.b64), c => c.charCodeAt(0)), sha256 = await vibeDigest(bytes);
@@ -83,7 +84,7 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
     const config = await configuration.preview(configOptions()); await check();
     if (!hash(config?.digest)) fail('整包配置核对未返回有效草稿摘要');
     const excluded = characterPlan.conflicts.filter(row => row.kind === 'archive' && choices[row.key] === 'local').map(row => row.key.slice('archive:'.length));
-    const originals = new Map((await collectStoryboardBundleRestoreOriginals(payload, pools, characters, excluded)).map(row => [row.url, row]));
+    const originals = new Map((await collectStoryboardBundleRestoreOriginals(payload, pools, characters, excluded, legacyDocument)).map(row => [row.url, row]));
     for (const { receipt } of gallery.values()) {
       if (originals.has(receipt.url) && await digest(originals.get(receipt.url)) !== await digest(receipt)) fail('成片与参考原件存在不同内容的同路径');
       originals.set(receipt.url, receipt);
