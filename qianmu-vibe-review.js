@@ -9,6 +9,14 @@ export function createVibeReviewActions({namespace,call,guard,service,locks=glob
   return {
     async list(){await check();const rows=await call('encoding-list',{namespace});await check();return rows.slice().sort((a,b)=>b.updatedAt-a.updatedAt);},
     async archivePage(after=''){await check();const page=await call('encoding-archive-page',{namespace,after});await check();return page;},
+    async reviewHistory(row){await check();if(row?.namespace!==namespace)throw Error('核查明细不属于当前账户');const result=await call('encoding-review-history',{namespace,cacheKey:row.cacheKey,expected:row});await check();return result;},
+    async compactReviews(row,confirm){
+      if(row?.namespace!==namespace||!Array.isArray(row.pastReviews)||row.pastReviews.length<16||row.pastReviews.length>32)throw Error('累积至少 16 次旧核查明细后可整理');
+      const expected=structuredClone(row);await check();
+      const yes=await confirm('整理旧核查明细',`将 ${expected.pastReviews.length} 次旧核查明细移入完整历史档案，释放当前明细名额。\n当前请求、原时间与费用状态不会改变，未知费用仍未知；旧编号仍禁止重复使用。\n此操作不重新编码、不退款、不释放磁盘，也不代表已授权下一笔请求。`);
+      await check();if(yes!==true)return {cancelled:true};
+      const result=await call('encoding-compact-reviews',{namespace,cacheKey:expected.cacheKey,expected,confirmed:true});await check();return result;
+    },
     async archiveCompleted(selected,confirm){
       if(!Array.isArray(selected)||!selected.length||selected.length>40||new Set(selected.map(row=>row?.cacheKey)).size!==selected.length
         ||selected.some(row=>row?.namespace!==namespace||row.status!=='ready'))throw Error('请选择 1～40 条已完成编码；未决记录不能归档');
@@ -79,14 +87,27 @@ export function createVibeReviewActions({namespace,call,guard,service,locks=glob
   };
 }
 export function createVibeReviewController({actions,onAdd,onClose,confirm=async()=>false,onNotice=()=>{},icons=()=>{},isCurrent=()=>true}){
-  let host,disposed=false,revision=0,rows=[],visible=40,busy=false,message='',loaded=false,archive=null,historical=false,historyAfter='',historyNext='',historyCount=0;const historyCursors=[],recovered=new Map(),urls=new Map();
+  let host,disposed=false,revision=0,rows=[],visible=40,busy=false,message='',loaded=false,archive=null,reviewHistory=null,historical=false,historyAfter='',historyNext='',historyCount=0;const historyCursors=[],recovered=new Map(),urls=new Map();
   const live=()=>!disposed&&isCurrent()&&host?.isConnected;
   function download(blob,name='qianmu-recovered.naiv4vibe'){const url=URL.createObjectURL(blob),link=host.ownerDocument.createElement('a');link.href=url;link.download=name;host.ownerDocument.body.append(link);link.click();link.remove();urls.set(url,setTimeout(()=>{URL.revokeObjectURL(url);urls.delete(url);},30000));}
   function downloadRecords(blob){download(blob,`qianmu-vibe-records-${new Date().toISOString().replace(/[:.]/g,'-')}.json`);message='已发起记录下载，请确认文件已保存。可用“校验记录文件”检查；本机原记录未清除。';}
   async function refresh(){const token=++revision;busy=true;render();try{const next=historical?await actions.archivePage(historyAfter):{rows:await actions.list()};if(!live()||token!==revision)return;rows=next.rows;historyNext=next.next||'';historyCount=next.count||0;loaded=true;message='';}catch(error){if(live()&&token===revision)message=error.message;}finally{if(live()&&token===revision){busy=false;render();}}}
   const run=callback=>async event=>{event.preventDefault();if(busy||!live())return;const token=revision,active=()=>live()&&token===revision;busy=true;render();try{await callback(active);}catch(error){if(active())message=error.message;}finally{if(active()){busy=false;render();}}};
+  function renderHistory(){
+    const current=reviewHistory,{reviews,offset}=current;
+    host.innerHTML=`<section class="sd-vibe-review"><header><h3>核查明细</h3><button class="sd-icon-btn sd-vibe-history-close" type="button" aria-label="返回编码记录"><i class="fa-solid fa-xmark"></i></button></header>
+      <p class="sd-vibe-review-status" role="status">${escape(message||'原结果及费用未知 · 完整明细保留，只读查阅。')}</p><small class="sd-vibe-review-file-info">${reviews.length} 次 · 每页 40 次 · ${current.file?'来自校验文件，不读取或覆盖本机':'来自本机历史档案'}</small>
+      ${current.file?'':`<button type="button" class="sd-btn sd-vibe-history-export" ${busy?'disabled':''}>导出记录及完整明细</button>`}
+      <div class="sd-vibe-review-rows">${reviews.slice(offset,offset+40).map(row=>`<article><b>${row.feeReview.method==='local-user'?'本机人工确认 · 上游未验证':'原服务核查'}</b><time>${escape(new Date(row.feeReview.at).toLocaleString())}</time><span>原结果及费用未知</span><span>尝试 ${escape(row.attemptId)}</span><small>${row.delivery?.transport==='service'?'增强服务':row.delivery?.transport==='direct'?'浏览器直连':'旧记录 · 来源未绑定'}</small></article>`).join('')}</div>
+      <div class="sd-vibe-review-tools"><button type="button" class="sd-btn sd-vibe-history-prev" ${busy||!offset?'disabled':''}>上一页</button><button type="button" class="sd-btn sd-vibe-history-next" ${busy||offset+40>=reviews.length?'disabled':''}>下一页</button></div></section>`;
+    host.querySelector('.sd-vibe-history-close').onclick=()=>{revision++;busy=false;reviewHistory=null;message='';render();};
+    host.querySelector('.sd-vibe-history-prev').onclick=()=>{current.offset=Math.max(0,offset-40);render();};
+    host.querySelector('.sd-vibe-history-next').onclick=()=>{current.offset=offset+40;render();};
+    host.querySelector('.sd-vibe-history-export')?.addEventListener('click',run(async active=>{const blob=await actions.exportRecords(current.receipt);if(active())downloadRecords(blob);}));icons(host);
+  }
   function render(){
     if(!live())return;
+    if(reviewHistory){renderHistory();return;}
     const displayed=archive?.receipts||rows,limit=archive?.visible||visible;
     const readyBatch=rows.slice(0,visible).filter(row=>row.status==='ready').slice(0,40);
     host.innerHTML=`<section class="sd-vibe-review"><header><h3>${archive?'记录文件预览':historical?'历史编码':'编码记录'}</h3>${archive?'':`<button type="button" class="sd-icon-btn sd-vibe-review-refresh" aria-label="刷新记录" ${busy?'disabled':''}><i class="fa-solid fa-rotate"></i></button>`}<button type="button" class="sd-icon-btn sd-vibe-review-close" aria-label="${archive?'返回本机记录':'返回 Vibe 库'}"><i class="fa-solid fa-xmark"></i></button></header><p class="sd-vibe-review-status" role="status">${escape(message||(busy?'正在读取…':'领取只读取原结果，不会重新编码。未确认的费用记录不会自动清除。'))}</p>${archive?`<p class="sd-vibe-review-file-info">${escape(new Date(archive.exportedAt).toLocaleString())} · ${archive.receipts.length} 条 · ${(archive.bytes/1024).toFixed(1)} KB<br>摘要 ${escape(archive.fingerprint)}<br>仅核查记录，不含图片或编码。摘要只校验内容，不证明上游任务或费用；没有恢复或覆盖本机数据。</p>`:`<div class="sd-vibe-review-tools">
@@ -97,6 +118,16 @@ export function createVibeReviewController({actions,onAdd,onClose,confirm=async(
       const ref=row.status==='ready'?row.assetRef:recovered.get(rowKey(row)),transport=row.delivery?.transport==='service'?'增强服务':row.delivery?.transport==='direct'?'浏览器直连':'旧记录 · 来源未绑定';
       return `<article data-vibe-review-row="${index}" data-state="${escape(row.status)}"><b>${escape(statuses[row.status]||'待核查')}</b><time>${escape(new Date(row.updatedAt).toLocaleString())}</time><span>${escape(row.identity.remoteModelId)}</span><span>信息提取 ${escape(row.identity.parameters.information_extracted)} · ${escape(transport)}</span>${archive?`<details class="sd-vibe-fee-history"><summary>原提交标识</summary><p>${escape(row.identity.endpoint)}<br>请求 ${escape(row.cacheKey)}<br>尝试 ${escape(row.attemptId)}</p></details>`:`<div>${['reserved','submitting','unknown'].includes(row.status)?`<button type="button" class="sd-btn sd-vibe-review-check" ${busy?'disabled':''}>${row.delivery?.transport==='service'?'核查后继续':'人工核查'}</button>`:''}${row.status!=='ready'?`<button type="button" class="sd-btn sd-vibe-review-receive" ${busy?'disabled':''}>${row.delivery?.transport==='service'?'领取原结果':'查服务缓存'}</button>`:''}${ref?`<button type="button" class="sd-btn sd-vibe-review-add" ${busy?'disabled':''}>加入 Vibe 库</button><button type="button" class="sd-icon-btn sd-vibe-review-export" aria-label="导出编码文件" ${busy?'disabled':''}><i class="fa-solid fa-download"></i></button>`:''}<button type="button" class="sd-btn sd-vibe-review-export-record" ${busy?'disabled':''}>导出记录</button>${!historical&&row.status==='ready'?`<button type="button" class="sd-btn sd-vibe-review-archive" ${busy?'disabled':''}>归档</button>`:''}</div>`}${['reserved','submitting','unknown'].includes(row.status)?'<small>请先在渠道核查原任务和账单；仍在运行的请求不能解除占用。</small>':''}${row.feeReview||row.pastReviews?.length?`<details class="sd-vibe-fee-history"><summary>保留核查记录 ${(row.pastReviews?.length||0)+(row.feeReview?1:0)} 次</summary>${[...(row.pastReviews||[]),...(row.feeReview?[row]:[])].map(item=>`<p>${escape(new Date(item.feeReview.at).toLocaleString())} · ${item.feeReview.method==='local-user'?'本机人工确认 · 上游未验证':'原服务核查'} · 原结果及费用未知</p>`).join('')}</details>`:''}</article>`;
     }).join('')}</div>${displayed.length>limit?'<button type="button" class="sd-btn sd-vibe-review-more">加载更多</button>':''}${historical&&!archive?`<div class="sd-vibe-review-tools"><button type="button" class="sd-btn sd-vibe-review-history-prev" ${busy||!historyCursors.length?'disabled':''}>上一页</button><button type="button" class="sd-btn sd-vibe-review-history-next" ${busy||!historyNext?'disabled':''}>下一页</button></div>`:''}</section>`;
+    for(const article of host.querySelectorAll('[data-vibe-review-row]')){
+      const row=displayed[Number(article.dataset.vibeReviewRow)];
+      if(row.reviewArchive){const button=host.ownerDocument.createElement('button');button.type='button';button.className='sd-btn sd-vibe-review-details';button.disabled=busy;button.textContent=`查看较早明细 · ${row.reviewArchive.count}`;article.append(button);
+        button.addEventListener('click',run(async active=>{const result=archive?{receipt:row,reviews:archive.reviewHistories[row.cacheKey],file:true}:await actions.reviewHistory(row);
+          if(active()){reviewHistory={...result,offset:0};message='';}}));}
+      if(!archive&&!historical&&(row.pastReviews?.length||0)>=16){const button=host.ownerDocument.createElement('button');button.type='button';button.className='sd-btn sd-vibe-review-compact';button.disabled=busy;button.textContent='整理旧核查明细';article.append(button);
+        button.addEventListener('click',run(async active=>{const result=await actions.compactReviews(row,async(...args)=>{if(!active())return false;const yes=await confirm(...args);return active()&&yes===true;});if(!active())return;
+          if(result.cancelled){message='已取消整理，原明细保留';return;}rows=rows.map(item=>item.cacheKey===row.cacheKey?result.receipt:item);message=`已整理 ${result.moved} 次明细，当前请求与费用状态不变；可查看或导出完整历史。`;
+        }));}
+    }
     host.querySelector('.sd-vibe-review-close').onclick=()=>{revision++;busy=false;if(archive){archive=null;message='';render();}else onClose();};
     host.querySelector('.sd-vibe-review-more')?.addEventListener('click',()=>{if(archive)archive.visible+=40;else visible+=40;render();});
     if(archive){icons(host);return;}
@@ -136,5 +167,5 @@ export function createVibeReviewController({actions,onAdd,onClose,confirm=async(
       article.querySelector('.sd-vibe-review-archive')?.addEventListener('click',archiveRows([row]));
     }icons(host);
   }
-  return {mount(node){this.detach();host=node;render();if(!loaded)void refresh();},detach(){revision++;host=null;busy=false;},dispose(){this.detach();disposed=true;archive=null;rows=[];recovered.clear();for(const [url,timer] of urls){clearTimeout(timer);URL.revokeObjectURL(url);}urls.clear();}};
+  return {mount(node){this.detach();host=node;render();if(!loaded)void refresh();},detach(){revision++;host=null;busy=false;},dispose(){this.detach();disposed=true;archive=null;reviewHistory=null;rows=[];recovered.clear();for(const [url,timer] of urls){clearTimeout(timer);URL.revokeObjectURL(url);}urls.clear();}};
 }

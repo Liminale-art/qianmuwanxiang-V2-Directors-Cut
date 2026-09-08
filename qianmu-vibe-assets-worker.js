@@ -2,16 +2,36 @@ import {createVibeAssetStore} from './qianmu-vibe-asset-store.js';
 import {createVibeEncodingStore,validateVibeEncodingIdentity} from './qianmu-vibe-encoding-store.js';
 import {exportNovelVibeFile,selectNovelVibeEncoding,vibeFilePreview,vibeFileError,vibeVariants,vibeDigest,appendNovelVibeEncoding,VIBE_FILE_LIMITS} from './qianmu-vibe-file.js';
 import {normalizeNovelVibeImage} from './qianmu-novel-vibe.js';
-import {exportVibeReceiptFile,inspectVibeReceiptFile} from './qianmu-vibe-receipt-file.js';
+import {exportVibeReceiptFile,inspectVibeReceiptFile,VIBE_RECEIPT_FILE_LIMIT} from './qianmu-vibe-receipt-file.js';
 import {createVibeStorageOperations} from './qianmu-vibe-storage.js';
 export function createVibeAssetOperations(store,{encodings,locks=globalThis.navigator?.locks}={}){
 const storage=createVibeStorageOperations({store,encodings});
+async function exportReceipts(namespace,rows){
+  const reviewSegments=[];let bytes=2048;
+  for(const row of rows){bytes+=new TextEncoder().encode(JSON.stringify(row)).byteLength;
+    if(row.reviewArchive){const history=await encodings.reviewHistory(namespace,row.cacheKey,row);
+      for(const segment of history.segments){bytes+=new TextEncoder().encode(JSON.stringify(segment)).byteLength;reviewSegments.push(segment);}}
+    if(bytes>VIBE_RECEIPT_FILE_LIMIT)throw vibeFileError('size','记录与核查明细超过 32 MB，请逐项导出');
+  }return exportVibeReceiptFile(namespace,rows,{reviewSegments});
+}
 return async function run({type,namespace,id,file,ids,settings,bundle,model,information,encoding,cacheKey,identity,attemptId,retryAttemptId,status,assetRef,image,name,expectedSourceId,sourceAssetRef,delivery,serviceAttemptId,serviceDelivery,expected,proof,confirmed,after}){
   if(type==='encoding-get')return encodings.get(namespace,cacheKey);
   if(type==='storage-inventory')return storage.inventory(namespace);
   if(type==='storage-remove')return storage.remove(namespace,ids,proof,confirmed);
   if(type==='encoding-list')return encodings.list(namespace);
   if(type==='encoding-archive-page')return encodings.archivePage(namespace,{after});
+  if(type==='encoding-review-history'){
+    const result=await encodings.reviewHistory(namespace,cacheKey,expected);return {receipt:result.receipt,reviews:result.reviews};
+  }
+  if(type==='encoding-compact-reviews'){
+    if(confirmed!==true)throw vibeFileError('changed','尚未确认本次核查明细整理');
+    const selected=structuredClone(expected);
+    if(typeof locks?.request!=='function')throw vibeFileError('storage','浏览器不支持跨页协调，暂不能整理');
+    return locks.request('qianmu:nai-maintenance',{mode:'exclusive',ifAvailable:true},async lock=>{
+      if(!lock)throw vibeFileError('busy','仍有 NAI 请求正在等待或生成，请结束后整理');
+      return encodings.compactReviews(namespace,cacheKey,selected,true);
+    });
+  }
   if(type==='encoding-archive'){
     if(confirmed!==true||!Array.isArray(expected)||!expected.length||expected.length>40)throw vibeFileError('changed','尚未确认本次归档');
     const selected=structuredClone(expected);
@@ -26,12 +46,12 @@ return async function run({type,namespace,id,file,ids,settings,bundle,model,info
     const selected=structuredClone(expected),rows=[];
     for(const row of selected){const current=await encodings.get(namespace,row?.cacheKey);
       if(!current||JSON.stringify(current)!==JSON.stringify(row))throw vibeFileError('changed','编码记录已变化，请刷新后导出');rows.push(current);}
-    return exportVibeReceiptFile(namespace,rows);
+    return exportReceipts(namespace,rows);
   }
   if(type==='encoding-export'){
     const rows=cacheKey?[await encodings.get(namespace,cacheKey)]:await encodings.list(namespace);
     if(cacheKey&&(!rows[0]||JSON.stringify(rows[0])!==JSON.stringify(expected)))throw vibeFileError('changed','编码记录已变化，请刷新后导出');
-    return exportVibeReceiptFile(namespace,rows);
+    return exportReceipts(namespace,rows);
   }
   if(type==='encoding-inspect-file')return inspectVibeReceiptFile(namespace,file);
   if(type==='encoding-review')return encodings.review(namespace,cacheKey,expected,delivery);

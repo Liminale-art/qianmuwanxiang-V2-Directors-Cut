@@ -14,7 +14,7 @@ function select(snapshot,ids){
 // Both snapshots contain metadata only. No image/encoding body scan and no remote request.
 export function createVibeStorageOperations({store,encodings,locks=globalThis.navigator?.locks}){
   async function read(namespace){
-    const local=await store.inventory(namespace),{receipts,archived}=await encodings.inventory(namespace),fingerprint=await hash([namespace,local,receipts,archived]);
+    const local=await store.inventory(namespace),{receipts,archived,reviewHistory}=await encodings.inventory(namespace),fingerprint=await hash([namespace,local,receipts,archived,reviewHistory]);
     const byRef=new Map(),bySource=new Map(),add=(map,key,row)=>{if(key){if(!map.has(key))map.set(key,new Set());map.get(key).add(row);}};
     for(const row of receipts){add(byRef,row.assetRef?.id,row);add(byRef,row.sourceAssetRef?.id,row);add(bySource,row.identity.sourceId,row);}
     const items=local.heads.map(head=>{
@@ -22,7 +22,7 @@ export function createVibeStorageOperations({store,encodings,locks=globalThis.na
       return {id:head.assetId,name:head.summary.name,type:head.summary.type,bytes:head.bytes,previewBytes:head.previewBytes||0,
         createdAt:head.createdAt,variants:head.summary.variants.length,receiptCount:related.length,pending:related.filter(unsettled).length};
     });
-    return {local,view:{version:1,namespace,fingerprint,items,receiptCount:receipts.length+archived.count,archivedReceiptCount:archived.count,receiptBytes:receipts.reduce((sum,row)=>sum+size(row),0)+archived.bytes,
+    return {local,view:{version:1,namespace,fingerprint,items,receiptCount:receipts.length+archived.count,archivedReceiptCount:archived.count,historyReviewCount:reviewHistory?.reviews||0,receiptBytes:receipts.reduce((sum,row)=>sum+size(row),0)+archived.bytes+(reviewHistory?.bytes||0),
       pendingCount:receipts.filter(unsettled).length,usage:{count:local.usage.count,bytes:local.usage.bytes,previewBytes:local.usage.previewBytes,limit:local.usage.limit,countLimit:VIBE_ASSET_LIMITS.count}}};
   }
   return {
@@ -82,7 +82,7 @@ export function createVibeStorageController({actions,confirm=async()=>false,onCl
       <p role="status">${escape(message||(busy?'正在读取…':'本设备 · 当前 ST 账户。不含 VPS 磁盘及其他功能数据。'))}</p>
       ${snapshot?`<div class="sd-vibe-storage-meter" role="img" aria-label="Vibe 占用组成">${parts.map(([label,n,color])=>`<span style="width:${total?n/total*100:0}%;background:${color}" title="${label} ${bytes(n)}"></span>`).join('')}</div>
       <div class="sd-vibe-storage-legend">${parts.map(([label,n,color])=>`<span><i style="background:${color}"></i>${label} ${bytes(n)}</span>`).join('')}</div>
-      <p>文件 ${rows.length} / ${snapshot.usage.countLimit} · ${bytes(snapshot.usage.bytes+snapshot.usage.previewBytes)} / ${bytes(snapshot.usage.limit)}<br>记录 ${snapshot.receiptCount} 条，其中归档 ${snapshot.archivedReceiptCount||0} 条、未决 ${snapshot.pendingCount} 条。计值为内容大小，非浏览器实际磁盘占用或剩余空间。</p>
+      <p>文件 ${rows.length} / ${snapshot.usage.countLimit} · ${bytes(snapshot.usage.bytes+snapshot.usage.previewBytes)} / ${bytes(snapshot.usage.limit)}<br>记录 ${snapshot.receiptCount} 条，其中归档 ${snapshot.archivedReceiptCount||0} 条、未决 ${snapshot.pendingCount} 条；另存核查明细 ${snapshot.historyReviewCount||0} 次。计值为内容大小，非浏览器实际磁盘占用或剩余空间。</p>
       <div class="sd-vibe-storage-tools"><button type="button" class="sd-btn sd-vibe-storage-select" ${busy?'disabled':''}>${selected.size?'清空选择':'选择未锁定项'}</button><button type="button" class="sd-btn sd-vibe-storage-export" ${busy||!selected.size?'disabled':''}>导出所选</button><button type="button" class="sd-btn sd-danger sd-vibe-storage-remove" ${busy||!selected.size||blocked?'disabled':''}>清理 ${selected.size} 项</button></div>
       <small>不自动清理。其他聊天和历史镜头仍可能引用这些文件；删除后需重新导入同一原文件。未决关联文件可导出，清理前须先核查。</small>
       <div class="sd-vibe-storage-list">${rows.slice(0,visible).map(row=>`<label><input type="checkbox" data-vibe-storage-id="${row.id}" ${selected.has(row.id)?'checked':''} ${busy?'disabled':''}><span><b>${escape(row.name||'未命名 Vibe')}</b><small>${bytes(row.bytes+row.previewBytes)} · ${row.type==='image'?'含原图':'纯编码'} · ${row.variants} 个编码档位</small><small>当前库引用 ${snapshot.library.filter(item=>item.assetId===row.id).length} · 未归档关联 ${row.receiptCount}${row.pending?` · 未决 ${row.pending}`:''}</small></span></label>`).join('')}</div>
