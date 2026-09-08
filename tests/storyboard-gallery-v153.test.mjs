@@ -14,7 +14,7 @@ assert.match(source, /function storyboardRedrawRecord[\s\S]*job\.variantRootId =
 assert.match(source, /function renderStoryboardGallery[\s\S]*sd-media-library-shell[\s\S]*sd-storyboard-stack-count/, 'gallery must use the media-library shell and preserve variant counts');
 assert.match(source, /sd-storyboard-gallery-new-folder[\s\S]*sd-media-collection-rename[\s\S]*sd-media-collection-delete/, 'collections need create, rename, and dissolve controls');
 assert.match(source, /sd-storyboard-gallery-move-selected[\s\S]*storyboardAssignCollectionIds\(record, collectionId \? \[\.\.\.storyboardItemCollectionIds\(record\), collectionId\] : \[\]\)/, 'multi-select must add or clear collection membership');
-assert.match(source, /chat: \{ images: records, collections: clone\(storyboardGalleryCollections\(\)\)/, 'storyboard exports must include media collections');
+assert.match(source, /const collections=clone\(storyboardGalleryCollections\(\)\)[\s\S]*chat: \{ images: records, collections \}/, 'storyboard exports must include the captured media collections rather than reading a later chat');
 assert.match(source, /store\.storyboardCollections = storyboardMergeById/, 'cross-device imports must restore collections');
 assert.match(source, /data-storyboard-chat-action="redraw"/, 'redraw remains an inline chat action');
 assert.match(source, /data-storyboard-chat-action="artist"/, 'artist replacement remains an inline chat action');

@@ -203,6 +203,7 @@ const featureRuntime = createFeatureRuntime({
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.105') },
   vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.105') },
   vibeStorageSummary: { label: 'Vibe 空间汇总', load: () => import('./qianmu-vibe-storage-summary.js?v=1.59.105') },
+  storyboardPackageAssets: { label: '分镜素材打包', load: () => import('./qianmu-storyboard-package-assets.js?v=1.59.105') },
   vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.105') },
   vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.105') },
   tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.105') },
@@ -13135,7 +13136,7 @@ async function storyboardReleasePlanArchive(plan) {
   catch (error) { console.warn('[千幕] 分镜历史计划恢复为工作态时，旧归档稍后可由储存空间清理。', error); }
 }
 
-async function storyboardPlansForPortableExport(plans = []) {
+async function storyboardPlansForPortableExport(plans = [], { strict = false } = {}) {
   const list = Array.isArray(plans) ? plans : [];
   const keys = [...new Set(list.map((plan) => String(plan?.archiveRef || '')).filter(Boolean))];
   const missing = keys.filter((key) => !storyboardPlanArchiveCache.has(key));
@@ -13149,6 +13150,7 @@ async function storyboardPlansForPortableExport(plans = []) {
   }
   return list.map((summary) => {
     const archived = summary?.archiveRef ? storyboardPlanArchiveCache.get(String(summary.archiveRef)) : null;
+    if (strict && summary?.archiveRef && !archived) throw new Error('历史镜头计划原文缺失，请先保全数据；未导出缺件包');
     const output = archived ? clone(archived) : clone(summary);
     if (archived) {
       Object.assign(output, {
@@ -21606,21 +21608,39 @@ async function storyboardDownloadRecord(record) {
 }
 
 async function storyboardExportPackage() {
+  if(storyboardExportPackage.busy)return toast('正在打包分镜数据，请稍候。','info');
+  storyboardExportPackage.busy=true;
+  const context=()=>({state:storyboardState(),store:getChatStore(),chatKey:String(getChatKey()||''),epoch:storyboardAdmissionEpoch});
+  try {
+  const initial=context();
+  const [packageModule,identity]=await Promise.all([featureRuntime.load('storyboardPackageAssets'),featureRuntime.load('imageAdmission')]);
+  const session=await packageModule.createStoryboardPackageGuard({initial,context,resolveNamespace:()=>identity.resolveImageAccountNamespace()});
   await storyboardHydratePipelineArchive();
-  await storyboardHydrateGallerySnapshots();
+  await session.guard();
+  await storyboardHydrateGallerySnapshots(storyboardGalleryRecords(),{migrate:false});
+  await session.guard();
   const state = normalizeStoryboardState(clone(storyboardState()));
-  const pipelineLogs = state.logs.map((log) => storyboardPipelineForLog(log)).filter(Boolean);
+  const pipelineLogs = state.logs.map((log) => {
+    const pipeline=storyboardPipelineForLog(log,state);
+    if(log.pipelineId&&!pipeline)throw new Error('历史分镜日志原文缺失，请先保全数据；未导出缺件包');
+    return pipeline?clone(pipeline):null;
+  }).filter(Boolean);
   const chatKey = String(getChatKey() || '');
-  const shotPlans = await storyboardPlansForPortableExport((state.shotPlans || []).filter((plan) => !plan.chatKey || plan.chatKey === chatKey));
+  const collections=clone(storyboardGalleryCollections());
+  const sourceRecords=clone(storyboardGalleryRecords());
+  const records=sourceRecords.map(item=>{
+    const original=storyboardSnapshotForRecord(item);
+    if(item.snapshotRef&&!original&&!item.recipeUnavailable)throw new Error('历史成片快照缺失，请先保全数据；未导出缺件包');
+    return {...item,snapshot:sanitizeStoryboardSnapshot(original||{},{source:item.source,prompt:item.prompt,negative:item.negative})};
+  });
+  const shotPlans = await storyboardPlansForPortableExport((state.shotPlans || []).filter((plan) => !plan.chatKey || plan.chatKey === chatKey),{strict:true});
+  await session.guard();
   const taskStates = (state.taskStates || []).filter((task) => !task.chatKey || task.chatKey === chatKey);
-  const records = storyboardGalleryRecords().map((item) => ({
-    ...clone(item),
-    snapshot: sanitizeStoryboardSnapshot(storyboardSnapshotForRecord(item) || {}, { source: item?.source, prompt: item?.prompt, negative: item?.negative }),
-  }));
   toast('正在打包分镜数据…', 'info');
   const media = [];
   let skipped = 0;
   for (const record of records) {
+    await session.guard();
     const url = storyboardSafeUrl(record.url);
     if (!url) { skipped++; continue; }
     try {
@@ -21628,16 +21648,18 @@ async function storyboardExportPackage() {
       if (!response.ok) throw new Error(String(response.status));
       const blob = await response.blob();
       if (!blob.size || blob.size > 24 * 1024 * 1024) throw new Error('image-too-large');
-      media.push({ id: record.id, mime: blob.type || 'image/png', b64: await blobToBase64(blob) });
+      const b64=await blobToBase64(blob);await session.guard();
+      media.push({ id: record.id, mime: blob.type || 'image/png', b64 });
     } catch (_) { skipped++; }
   }
+  await session.guard();
   const payload = {
     type: 'qianmu-storyboard', version: 6, exportedAt: new Date().toISOString(), credentialsIncluded: false,
     settings: {
       schemaVersion: state.schemaVersion, enabled: state.enabled, automation: clone(state.automation), source: state.source, inlineByDefault: state.inlineByDefault,
       promptMode: state.promptMode, promptCompiler: clone(state.promptCompiler),
       profiles: clone(state.profiles), parameterPresets: clone(state.parameterPresets), generationPolicy: clone(state.generationPolicy),
-      promptPresets: clone(state.promptPresets), artistPresets: clone(state.artistPresets), artistCollections: clone(state.artistCollections), tagLibrary: clone(state.tagLibrary),
+      promptPresets: clone(state.promptPresets), artistPresets: clone(state.artistPresets), artistCollections: clone(state.artistCollections), artistPools: clone(state.artistPools), tagLibrary: clone(state.tagLibrary),
       vibeLibrary: clone(state.vibeLibrary), routing: clone(state.routing), logs: clone(state.logs), pipelineLogs: clone(pipelineLogs),
       shotPlans: clone(shotPlans), taskStates: clone(taskStates),
       connections: Object.fromEntries(Object.entries(state.connections).map(([providerId, group]) => [providerId, {
@@ -21645,15 +21667,20 @@ async function storyboardExportPackage() {
         draft: { ...clone(group.draft), credentialId: '' },
       }])),
     },
-    chat: { images: records, collections: clone(storyboardGalleryCollections()) },
+    chat: { images: records, collections },
     media,
   };
+  const vibeScope=packageModule.collectStoryboardVibeDependencies(payload,{namespace:session.namespace});
+  await session.guard();
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url; link.download = `qianmu-storyboard-pack-${fileStamp()}.json`;
   document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
-  toast(`分镜数据已打包：${records.length} 条成片${skipped ? ` · ${skipped} 张仅保留原地址` : ''}。`, 'success');
+  const vibeNotice=vibeScope.refs.length||vibeScope.legacyUrls.length?' 当前旧版包只保留 Vibe 引用/地址，原文件请在 Vibe 文件空间另行备份。':'';
+  toast(`分镜数据已打包：${records.length} 条成片${skipped ? ` · ${skipped} 张仅保留原地址` : ''}。${vibeNotice}`, vibeNotice?'warning':'success');
+  } catch(error) { toast(`分镜打包未完成：${error?.message||'请重新核对后导出'}`, 'error'); }
+  finally {storyboardExportPackage.busy=false;}
 }
 
 function storyboardMergeById(local, incoming, limit = 240) {
@@ -21667,6 +21694,7 @@ async function storyboardImportPackage(file) {
   let data;
   try {
     data = JSON.parse(await file.text());
+    if(data?.version!==undefined&&(!Number.isInteger(data.version)||data.version<1||data.version>6))return toast('导入失败：当前版本不支持此分镜包格式，请保留原包，勿作为旧版导入。','error');
     if (data?.type !== 'qianmu-storyboard' || !isPlainObject(data.settings) || !isPlainObject(data.chat)) throw new Error('invalid');
   } catch (_) { return toast('导入失败：不是有效的千幕分镜数据包。', 'error'); }
   const incomingImages = Array.isArray(data.chat.images) ? data.chat.images : [];

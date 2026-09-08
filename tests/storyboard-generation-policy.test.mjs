@@ -5,6 +5,7 @@ import {readFile} from 'node:fs/promises';
 import * as board from '../qianmu-storyboard.js';
 import {buildStoryboardPlanContractRequest} from '../qianmu-storyboard-contract.js';
 import {createStoryboardFormFixture,storyboardFunctionSource as fn} from './helpers/storyboard-form-fixture.mjs';
+import * as packageAssets from '../qianmu-storyboard-package-assets.js';
 const plain=x=>JSON.parse(JSON.stringify(x));
 test('new installations get 1-3/2 while disabled legacy shot groups keep their original single-image behavior',()=>{
   assert.deepEqual(board.createStoryboardDefaults().generationPolicy,{version:1,minImages:1,maxImages:3,concurrency:2});
@@ -86,6 +87,7 @@ test('actual portable export/import preserves the policy and imports old package
   const state=board.createStoryboardDefaults(),store={};state.generationPolicy={version:1,minImages:2,maxImages:4,concurrency:3};
   let exported=null;const noop=()=>{};
   const context=vm.createContext({...board,Blob,clone:structuredClone,storyboardState:()=>state,STORYBOARD_SOURCES:board.STORYBOARD_PROVIDER_REGISTRY,
+    storyboardAdmissionEpoch:1,featureRuntime:{load:async name=>name==='storyboardPackageAssets'?packageAssets:{resolveImageAccountNamespace:async()=> 'st-user:fixture'}},
     isPlainObject:v=>Boolean(v&&typeof v==='object'&&!Array.isArray(v)),confirmDialog:async()=>true,getChatKey:()=> 'chat-a',getChatStore:()=>store,
     storyboardHydratePipelineArchive:noop,storyboardHydrateGallerySnapshots:noop,storyboardPlansForPortableExport:async x=>x,
     storyboardGalleryRecords:()=>[],storyboardGalleryCollections:()=>[],storyboardUtilsModule:async()=>({}),

@@ -1,0 +1,176 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import {readFile} from 'node:fs/promises';
+import * as pack from '../qianmu-storyboard-package-assets.js';
+import * as board from '../qianmu-storyboard.js';
+import {parseNovelVibeFile,vibeDigest} from '../qianmu-vibe-file.js';
+import {exportStoryboardPackageAssets,closeStoryboardPackageRuntime} from '../qianmu-storyboard-package-runtime.js';
+import {storyboardFunctionSource as fn} from './helpers/storyboard-form-fixture.mjs';
+const namespace='st-user:pack',otherAccount='st-user:target';
+const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
+const reference=id=>({version:1,namespace,id}),item=(id,ref)=>({id,name:id,previewUrl:ref?'':'https://legacy.example/image.png',strength:0,information:0,...(ref?{assetRef:ref}:{})});
+const recipe=items=>({version:items.some(i=>i.assetRef)?2:1,items});
+const payload=()=>({type:'qianmu-storyboard',version:6,credentialsIncluded:false,settings:{vibeLibrary:[],logs:[],pipelineLogs:[],shotPlans:[],taskStates:[]},chat:{images:[],collections:[]},media:[]});
+async function asset(name){const encoding=btoa('encoded-'+name),doc={identifier:'novelai-vibe-transfer',version:1,type:'image',id:await vibeDigest(png),image:png,name,thumbnail:`data:image/png;base64,${png}`,createdAt:1,
+  encodings:{futuremodel:{custom:{encoding,params:{information_extracted:0,focus_seed:0}}},v4full:{first:{encoding,params:{information_extracted:1}}}},importInfo:{strength:0,information_extracted:0}};return (await parseNovelVibeFile(JSON.stringify(doc)))[0];}
+
+test('dependency census includes library, profile/history/plan/task/gallery recipes while leaving other resource refs alone',()=>{
+  const data=payload(),a=reference('a'.repeat(64)),b=reference('b'.repeat(64));data.settings.vibeLibrary=[item('active',a),item('unselected',b),item('legacy')];
+  for(const path of ['logs','pipelineLogs','shotPlans','taskStates'])data.settings[path].push({snapshot:{payload:{selectedVibeIds:['original'],vibeRecipe:recipe([item('original',b)])}}});
+  data.chat.images.push({snapshot:{payload:{vibeRecipe:recipe([item('history',a)])}},assetRef:{version:1,namespace:'foreign',id:'comfy-image'}});
+  data.settings.modelProfiles={novel:{old:{vibeRecipe:recipe([item('profile',b)])}}};
+  const census=pack.collectStoryboardVibeDependencies(data,{namespace});assert.equal(census.refs.length,2);assert.equal(census.refs[0].uses.length,2);assert.equal(census.refs[1].uses.length,6);
+  assert.equal(census.legacyUrls.length,1);assert.ok(census.refs[1].uses.some(path=>path.includes('taskStates')));assert.ok(census.refs[1].uses.some(path=>path.includes('modelProfiles')));
+});
+
+test('malformed/cross-account references and mismatched selection fail before accepting a partial manifest',()=>{
+  for(const bad of [{version:1,invalid:true},{version:1,namespace:otherAccount,id:'a'.repeat(64)},{version:1,namespace,id:'bad'}]){
+    const data=payload();data.settings.vibeLibrary=[item('bad',bad)];assert.throws(()=>pack.collectStoryboardVibeDependencies(data,{namespace}));
+  }
+  const data=payload();data.chat.images=[{vibeRecipe:{version:1,invalid:true}}];assert.throws(()=>pack.collectStoryboardVibeDependencies(data),/不完整/);
+  data.chat.images=[{selectedVibeIds:['other'],vibeRecipe:recipe([item('legacy')])}];assert.throws(()=>pack.collectStoryboardVibeDependencies(data),/不符/);
+});
+
+test('a DAG preserves each location, but cycles, unsafe keys and excessive depth stop instead of truncating refs',()=>{
+  const data=payload(),shared={vibeRecipe:recipe([item('same',reference('a'.repeat(64)))])};data.settings.logs=[shared,shared];assert.equal(pack.collectStoryboardVibeDependencies(data).refs[0].uses.length,2);
+  shared.loop=shared;assert.throws(()=>pack.collectStoryboardVibeDependencies(data),/循环/);delete shared.loop;
+  data.settings.logs=[JSON.parse('{"constructor":{}}')];assert.throws(()=>pack.collectStoryboardVibeDependencies(data),/不安全/);
+  let deep={vibeRecipe:recipe([item('legacy')])};for(let i=0;i<42;i++)deep={nested:deep};data.settings.logs=[deep];assert.throws(()=>pack.collectStoryboardVibeDependencies(data),/层级/);
+});
+
+test('package builder supports more than 16 referenced originals, loading each exactly once and preserving every encoding',async()=>{
+  const data=payload(),assets=[];for(let i=0;i<20;i++)assets.push(await asset(`original-${i}`));
+  data.settings.vibeLibrary=assets.map(a=>item(a.document.name,reference(a.assetId)));data.chat.images=[{snapshot:{vibeRecipe:recipe([item('old',reference(assets[0].assetId))])}}];
+  const calls=[];let inFlight=0,peak=0;const result=await pack.buildStoryboardVibePackage(data,{namespace,load:async(ns,id)=>{assert.equal(ns,namespace);inFlight++;peak=Math.max(peak,inFlight);await Promise.resolve();inFlight--;calls.push(id);return assets.find(a=>a.assetId===id);}});
+  assert.equal(calls.length,20);assert.equal(new Set(calls).size,20);assert.equal(peak,1);assert.equal(result.manifest.vibeUses,21);assert.equal(result.manifest.vibeFiles,20);
+  const document=JSON.parse(await result.file.text());assert.equal(document.version,7);assert.equal(document.vibeAssets.length,20);assert.equal(document.vibeAccount,namespace);
+  const inspected=await pack.inspectStoryboardVibePackage(document);assert.deepEqual(inspected.assets.map(a=>a.assetId),assets.map(a=>a.assetId));
+  assert.deepEqual(inspected.assets.map(a=>a.document.encodings),assets.map(a=>a.document.encodings));assert.equal(inspected.assets[0].document.importInfo.strength,0);
+  assert.equal(data.version,6);assert.equal(data.vibeAssets,undefined,'source metadata untouched');
+});
+
+test('missing or tampered original stops building rather than returning a references-only success',async()=>{
+  const good=await asset('first'),data=payload();data.settings.vibeLibrary=[item('first',reference(good.assetId)),item('missing',reference('b'.repeat(64)))];
+  await assert.rejects(()=>pack.buildStoryboardVibePackage(data,{namespace,load:async(ns,id)=>id===good.assetId?good:null}),/缺少/);
+  data.settings.vibeLibrary=[item('first',reference(good.assetId))];await assert.rejects(()=>pack.buildStoryboardVibePackage(data,{namespace,load:async()=>({...good,serialized:good.serialized.replace('first','other')})}),/不符/);
+});
+
+test('legacy URL entries remain explicit dependencies, not fabricated cached originals or hidden network reads',async()=>{
+  const data=payload();data.settings.vibeLibrary=[item('legacy')];data.settings.logs=[{vibeRecipe:recipe([item('same-url')])}];
+  const result=await pack.buildStoryboardVibePackage(data,{namespace,load:()=>assert.fail('no local asset dependency')});assert.equal(result.manifest.legacyVibeUrls,1);assert.equal(result.manifest.vibeFiles,0);
+  const inspect=await pack.inspectStoryboardVibePackage(JSON.parse(await result.file.text()));assert.equal(inspect.census.legacyUrls[0].uses.length,2);
+});
+
+test('inspection rejects missing, extra, duplicate, foreign and byte-inconsistent assets before any restore',async()=>{
+  const a=await asset('first'),data=payload();data.settings.vibeLibrary=[item('first',reference(a.assetId))];const file=await pack.buildStoryboardVibePackage(data,{namespace,load:async()=>a}),document=JSON.parse(await file.file.text());
+  for(const mutate of [d=>d.vibeAssets=[],d=>d.vibeAssets.push(d.vibeAssets[0]),d=>d.vibeAssets[0].namespace=otherAccount,d=>d.vibeAssets[0].id='b'.repeat(64),
+    d=>d.vibeAssets[0].bytes++,d=>d.vibeAssets[0].document.name='changed',d=>d.vibeAssets[0].extra='unknown',d=>d.version=6,d=>d.settings.vibeLibrary=[],
+    d=>d.vibeAssets[0].document={identifier:'novelai-vibe-transfer-bundle',version:1,vibes:[d.vibeAssets[0].document]},
+    d=>d.vibeAssets[0].document={identifier:'novelai-vibe-transfer-bundle',version:1,vibes:[d.vibeAssets[0].document,d.vibeAssets[0].document]}]){
+    const altered=structuredClone(document);mutate(altered);await assert.rejects(()=>pack.inspectStoryboardVibePackage(altered));
+  }
+});
+
+test('namespace remap changes only typed references in a detached staging copy, not assets, jobs or originals',async()=>{
+  const a=await asset('first'),data=payload();data.settings.vibeLibrary=[item('first',reference(a.assetId))];
+  const shared={payload:{selectedVibeIds:['frozen'],vibeRecipe:recipe([item('frozen',reference(a.assetId))])}},comfy={version:1,namespace,id:'workflow'};
+  data.settings.logs=[shared,shared];data.settings.comfy=structuredClone(comfy);data.settings.taskStates=[{status:'generating',delivery:{namespace}}];
+  const result=await pack.buildStoryboardVibePackage(data,{namespace,load:async()=>a}),parsed=JSON.parse(await result.file.text()),original=JSON.stringify(parsed),mapped=pack.remapStoryboardVibeReferences(parsed,otherAccount);
+  assert.equal(mapped.settings.vibeLibrary[0].assetRef.namespace,otherAccount);assert.equal(mapped.settings.logs[1].payload.vibeRecipe.items[0].assetRef.namespace,otherAccount);
+  assert.equal(mapped.settings.vibeLibrary[0].assetRef.id,a.assetId);assert.equal(mapped.vibeAssets,parsed.vibeAssets);assert.equal(mapped.media,parsed.media);
+  assert.deepEqual(mapped.settings.comfy,comfy);assert.equal(mapped.settings.taskStates[0].delivery.namespace,namespace);assert.equal(JSON.stringify(parsed),original);
+  assert.throws(()=>pack.remapStoryboardVibeReferences(parsed,'bad'));
+});
+
+test('count and metadata limits stop oversized packets without silently clipping library/media lists',async()=>{
+  const data=payload();data.media=Array(401).fill({id:'one'});await assert.rejects(()=>pack.buildStoryboardVibePackage(data,{namespace,load:()=>assert.fail('too large')}),/400/);
+  data.media=[];data.settings.large='x'.repeat(pack.STORYBOARD_PACKAGE_LIMITS.metadata);await assert.rejects(()=>pack.buildStoryboardVibePackage(data,{namespace,load:()=>assert.fail('too large')}),/32 MiB/);
+  delete data.settings.large;data.media=[undefined];await assert.rejects(()=>pack.buildStoryboardVibePackage(data,{namespace,load:()=>assert.fail('invalid')}),/无效/);
+});
+
+test('packet worker uses a separate asset connection and has no fee store or service dependencies',async()=>{
+  const worker=await readFile(new URL('../qianmu-storyboard-package-worker.js',import.meta.url),'utf8'),shared=await readFile(new URL('../qianmu-vibe-assets-worker.js',import.meta.url),'utf8');
+  assert.match(worker,/createVibeAssetStore/);assert.match(worker,/store\.close\(\);self\.close\(\)/);assert.doesNotMatch(worker,/encoding-store|fetch\(|putFile|remove\(/);assert.doesNotMatch(shared,/package-vibes-export/);
+});
+
+test('dedicated runtime guards both ends, frees its worker and never accepts an incomplete reply',async()=>{
+  const workers=[];let guards=0;
+  class WorkerFixture extends EventTarget {constructor(url,options){super();assert.match(String(url),/package-worker\.js$/);assert.equal(options.type,'module');workers.push(this);}postMessage(value){this.sent=value;}terminate(){this.closed=true;}reply(data){this.dispatchEvent(Object.assign(new Event('message'),{data}));}}
+  const pending=exportStoryboardPackageAssets(payload(),{namespace,guard:async()=>guards++,WorkerClass:WorkerFixture});await Promise.resolve();await Promise.resolve();
+  assert.equal(workers.length,1);assert.equal(workers[0].sent.namespace,namespace);const file=new Blob(['fixture']);workers[0].reply({value:{file}});assert.equal((await pending).file,file);assert.equal(guards,2);assert.equal(workers[0].closed,true);
+  const bad=exportStoryboardPackageAssets(payload(),{namespace,guard:async()=>{},WorkerClass:WorkerFixture});await Promise.resolve();await Promise.resolve();workers[1].reply({value:{file:'invalid'}});await assert.rejects(()=>bad,/不完整/);assert.equal(workers[1].closed,true);
+});
+
+test('large package cancellation/timeouts stay separate from the Vibe runtime, and late account results are discarded',async()=>{
+  const workers=[];class WorkerFixture extends EventTarget {constructor(){super();workers.push(this);}postMessage(){}terminate(){this.closed=true;}reply(data){this.dispatchEvent(Object.assign(new Event('message'),{data}));}}
+  const options={namespace,guard:async()=>{},WorkerClass:WorkerFixture};
+  const pending=exportStoryboardPackageAssets(payload(),options);await Promise.resolve();await Promise.resolve();await assert.rejects(()=>exportStoryboardPackageAssets(payload(),options),/正在处理/);closeStoryboardPackageRuntime();await assert.rejects(()=>pending,/取消/);assert.equal(workers[0].closed,true);
+  const controller=new AbortController(),aborted=exportStoryboardPackageAssets(payload(),{...options,signal:controller.signal});await Promise.resolve();await Promise.resolve();controller.abort();await assert.rejects(()=>aborted,/取消/);
+  await assert.rejects(()=>exportStoryboardPackageAssets(payload(),{...options,timeoutMs:100}),/超时/);
+  let live=true;const late=exportStoryboardPackageAssets(payload(),{...options,guard:async()=>{if(!live)throw Error('account changed');}});await Promise.resolve();await Promise.resolve();live=false;workers.at(-1).reply({value:{file:new Blob(['late'])}});await assert.rejects(()=>late,/account changed/);assert.equal(workers.at(-1).closed,true);
+});
+
+test('package guard detects account/chat/store/epoch changes before and after asynchronous identity resolution',async()=>{
+  for(const change of [scope=>scope.chatKey='other',scope=>scope.store={},scope=>scope.state={},scope=>scope.epoch++]){
+    let current={state:{},store:{},chatKey:'chat',epoch:1},accountNow=namespace;const initial={...current},session=await pack.createStoryboardPackageGuard({initial,context:()=>current,resolveNamespace:async()=>accountNow});
+    await session.guard();change(current);await assert.rejects(()=>session.guard(),/已变化/);
+  }
+  const initial={state:{},store:{},chatKey:'chat',epoch:1};let accountNow=namespace;
+  const session=await pack.createStoryboardPackageGuard({initial,context:()=>initial,resolveNamespace:async()=>accountNow});accountNow=otherAccount;await assert.rejects(()=>session.guard(),/已变化/);
+  let current={...initial};const delayed=await pack.createStoryboardPackageGuard({initial,context:()=>current,resolveNamespace:async()=>namespace});
+  current={...initial};let onResolve=false;const late=await pack.createStoryboardPackageGuard({initial,context:()=>current,resolveNamespace:async()=>{if(onResolve)current={...current,store:{}};return namespace;}});onResolve=true;await assert.rejects(()=>late.guard(),/已变化/);
+  await assert.rejects(()=>pack.createStoryboardPackageGuard({initial,context:()=>({...initial,epoch:2}),resolveNamespace:async()=>namespace}),/已变化/);
+});
+
+function indexFixture(){
+  const state=board.createStoryboardDefaults(),store={},notices=[];let currentState=state,currentStore=store,chat='chat-a',owner=namespace,exported=null,images=[];
+  const noop=()=>{},context=vm.createContext({...board,Blob,clone:structuredClone,storyboardAdmissionEpoch:1,featureRuntime:{load:async name=>name==='storyboardPackageAssets'?pack:{resolveImageAccountNamespace:async()=>owner}},
+    storyboardState:()=>currentState,getChatStore:()=>currentStore,getChatKey:()=>chat,storyboardHydratePipelineArchive:async()=>{},storyboardHydrateGallerySnapshots:async()=>{},
+    storyboardPipelineForLog:log=>state.pipelineLogs.find(p=>p.id===log.pipelineId)||null,storyboardGalleryRecords:()=>images,storyboardGalleryCollections:()=>[{id:'c',name:'Captured collection'}],
+    storyboardSnapshotForRecord:record=>record.snapshot||null,storyboardPlansForPortableExport:async p=>p,storyboardSafeUrl:value=>value,fetch:async()=>({ok:true,blob:async()=>new Blob(['image'],{type:'image/png'})}),blobToBase64:async()=> 'aW1hZ2U=',
+    toast:(...args)=>notices.push(args),fileStamp:()=> 'fixture',URL:{createObjectURL:blob=>{exported=blob;return 'blob:test';},revokeObjectURL:noop},document:{createElement:()=>({click:noop,remove:noop}),body:{appendChild:noop}},
+  });vm.runInContext(fn('storyboardExportPackage'),context);
+  return {state,store,notices,context,exported:()=>exported,setImages:value=>images=value,switch:()=>{chat='chat-b';currentState=board.createStoryboardDefaults();currentStore={};owner=otherAccount;}};
+}
+
+test('actual legacy export aborts on chat change during media retrieval and never downloads a mixed chat snapshot',async()=>{
+  const e=indexFixture();e.setImages([{id:'one',source:'novel',url:'/one.png',snapshot:{}}]);e.context.fetch=async()=>{e.switch();return {ok:true,blob:async()=>new Blob(['image'])};};
+  await e.context.storyboardExportPackage();assert.equal(e.exported(),null);assert.ok(e.notices.some(([text,kind])=>kind==='error'&&text.includes('已变化')));
+});
+
+test('actual legacy export keeps artist pools and frozen collections, refusing a missing archived snapshot/pipeline',async()=>{
+  const e=indexFixture();e.state.artistPresets=[{id:'artist',name:'A',value:'artist tags'}];e.state.artistPools=[{id:'pool',name:'Pool',members:[{artistId:'artist',weight:1}]}];
+  e.context.storyboardPlansForPortableExport=async plans=>{e.context.storyboardGalleryCollections=()=>[{id:'later',name:'Later collection'}];return plans;};
+  await e.context.storyboardExportPackage();const exported=JSON.parse(await e.exported().text());assert.equal(exported.settings.artistPools[0].id,'pool');assert.deepEqual(exported.chat.collections,[{id:'c',name:'Captured collection'}]);
+  for(const kind of ['snapshot','pipeline']){
+    const x=indexFixture();if(kind==='snapshot')x.setImages([{id:'one',source:'novel',snapshotRef:'missing',url:'/image'}]);else{x.state.logs=[{id:'log',pipelineId:'missing'}];}
+    await x.context.storyboardExportPackage();assert.equal(x.exported(),null);assert.ok(x.notices.some(([text,status])=>status==='error'&&text.includes('缺失')));
+  }
+});
+
+test('strict plan export refuses lost archives while old non-strict reads remain compatible',async()=>{
+  const context=vm.createContext({storyboardPlanArchiveCache:new Map(),blobStore:{blobStoreAvailable:()=>false},clone:structuredClone});vm.runInContext(fn('storyboardPlansForPortableExport'),context);
+  const old=[{id:'old',archiveRef:'missing'}];assert.equal((await context.storyboardPlansForPortableExport(old))[0].id,'old');
+  await assert.rejects(()=>context.storyboardPlansForPortableExport(old,{strict:true}),/缺失/);
+});
+
+test('actual export prevents duplicate heavy work and explicitly describes legacy Vibe reference-only coverage',async()=>{
+  const e=indexFixture();e.state.vibeLibrary=[{...item('legacy'),providerIds:['novel']}];let release,started;
+  const began=new Promise(resolve=>started=resolve);e.context.storyboardHydratePipelineArchive=async()=>{started();await new Promise(resolve=>release=resolve);};
+  const pending=e.context.storyboardExportPackage();await began;await e.context.storyboardExportPackage();assert.equal(e.exported(),null);release();await pending;
+  assert.ok(e.exported());assert.ok(e.notices.some(([text,kind])=>kind==='info'&&text.includes('请稍候')));
+  assert.ok(e.notices.some(([text,kind])=>kind==='warning'&&text.includes('原文件')));assert.equal(e.context.storyboardExportPackage.busy,false);
+});
+
+test('old importer refuses future version packets before confirmation or any settings/media/archive write',async()=>{
+  const e=indexFixture(),before=JSON.stringify(e.state);e.context.confirmDialog=()=>assert.fail('must not confirm unsupported import');vm.runInContext(fn('storyboardImportPackage'),e.context);
+  for(const version of [7,99,-1,'6',null])await e.context.storyboardImportPackage({text:async()=>JSON.stringify({...payload(),version})});
+  assert.equal(JSON.stringify(e.state),before);assert.equal(e.notices.filter(([text,kind])=>kind==='error'&&text.includes('不支持')).length,5);
+});
+
+test('packet codec is in release and lazy registry without activation of the still-unmigrated version 7 import UI',async()=>{
+  const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url)));assert.ok(release.files.includes('qianmu-storyboard-package-assets.js'));
+  const source=await readFile(new URL('../index.js',import.meta.url),'utf8');assert.match(source,/storyboardPackageAssets: \{ label: .*load: \(\) => import/);
+  assert.match(fn('storyboardExportPackage'),/version: 6/,'legacy workflow stays usable until staged v7 import ships');
+});
