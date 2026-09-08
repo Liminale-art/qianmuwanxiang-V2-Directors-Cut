@@ -11,7 +11,7 @@ self.addEventListener('message',async event=>{
   }return;}
   started=true;const input=event.data;id=input?.id;let journal,characters,carriers;
   try{
-    if(typeof id!=='string'||!['inspect','clear','characters','comfy','mappings','carriers','mapping-list','mapping-detail','mapping-export','user-alias-preview','user-alias-apply'].includes(input.action))throw Error('储存操作无效');
+    if(typeof id!=='string'||!['inspect','clear','characters','comfy','mappings','carriers','mapping-list','mapping-detail','mapping-export','mapping-import-preview','mapping-import-apply','user-alias-preview','user-alias-apply'].includes(input.action))throw Error('储存操作无效');
     if(input.action==='carriers'){
       await guard();const {createBundleCarrierStore}=await import('./qianmu-bundle-carrier-store.js'),{bundleCarrierInventory}=await import('./qianmu-bundle-carrier-storage-contract.js');carriers=createBundleCarrierStore();
       const result=bundleCarrierInventory(await carriers.list(input.namespace,{guard}),input.namespace);await guard();self.postMessage({id,result});return;
@@ -26,6 +26,9 @@ self.addEventListener('message',async event=>{
     }
     journal=createStoryboardPackageJournal();
     const options={journal,namespace:input.namespace,guard,isCurrent:()=>true};
+    if(input.action==='mapping-import-preview'||input.action==='mapping-import-apply'){
+      const {runMappingImport}=await import('./qianmu-mapping-import.js');const result=await runMappingImport(input.action,{...options,input:input.input});await guard();self.postMessage({id,result});return;
+    }
     if(input.action.startsWith('user-alias-')){
       const {runUserAliasOperation}=await import('./qianmu-user-alias-runtime.js'),{createCharacterArchiveStore}=await import('./qianmu-character-archive-store.js');characters=createCharacterArchiveStore();
       const result=await runUserAliasOperation(input.action,{...options,store:characters,chatHash:input.chatHash,input:input.input,resolveTargets:resolveAliasTargets});await guard();self.postMessage({id,result});return;

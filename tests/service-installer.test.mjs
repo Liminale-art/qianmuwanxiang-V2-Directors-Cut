@@ -106,7 +106,7 @@ for(const engine of win?['powershell','shell']:['shell']) {
       ? `function Set-Acl { param($LiteralPath,$AclObject) Microsoft.PowerShell.Security\\Set-Acl -LiteralPath $LiteralPath -AclObject $AclObject; if ($LiteralPath -like '*.qianmu-new.*') { [IO.File]::WriteAllText($env:QM_FIXTURE_CONFIG,'edited during install') } }`
       : `cp() { command cp "$@" || return; case "$*" in *qianmu-new.*) printf 'edited during install' > "$QM_FIXTURE_CONFIG" ;; esac; }`;
     const result=await run(f,engine,{QM_FIXTURE_CONFIG:f.configFile},before);assert.notEqual(result.code,0,result.output);
-    assert.equal(await fs.readFile(f.configFile,'utf8'),'edited during install');assert.match(result.output,/配置.*变化/);
+    assert.equal(await fs.readFile(f.configFile,'utf8'),'edited during install',result.output);assert.match(result.output,/配置.*变化/);
     const [backup]=await backups(f);assert.equal(await fs.readFile(path.join(path.dirname(f.configFile),backup),'utf8'),original);
     assert.equal((await fs.readdir(f.st)).some(name=>name.includes('.qianmu-new.')),false);
     assert.equal(await fs.readFile(path.join(f.data,'old-user-data'),'utf8'),'keep legacy data');

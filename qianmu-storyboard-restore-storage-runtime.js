@@ -5,23 +5,26 @@ import {validateMappingQuery,validateMappingSelection,validateMappingStorage,val
 import {aliasHash,validateAliasInput,validateAliasTargets,validateAliasPage,validateAliasResult} from './qianmu-user-alias-contract.js';
 import {canonicalUserSubjectKey} from './qianmu-user-identity.js';
 import {validateBundleCarrierInventory} from './qianmu-bundle-carrier-storage-contract.js';
+import {isMappingImport,validateMappingImportInput,validateMappingImportPreview,validateMappingImportResult} from './qianmu-mapping-import-contract.js';
 const fail=message=>Object.assign(new Error(message),{code:'storyboard_restore_storage_runtime',submissionState:'not_submitted'});
 
 // Each request owns and immediately releases its Worker. No idle worker, background timer, raw configuration or network credential.
 export async function runRestoreStorage(action,{namespace,guard,selected,input,chatHash,resolveAliasTargets,confirmed=false,recoveryLossAccepted=false,signal,WorkerClass=globalThis.Worker,timeoutMs=120000}={}){
-  if(!['inspect','clear','characters','comfy','mappings','carriers','mapping-list','mapping-detail','mapping-export','user-alias-preview','user-alias-apply'].includes(action)||typeof guard!=='function')throw fail('储存操作或范围无效');
+  if(!['inspect','clear','characters','comfy','mappings','carriers','mapping-list','mapping-detail','mapping-export','mapping-import-preview','mapping-import-apply','user-alias-preview','user-alias-apply'].includes(action)||typeof guard!=='function')throw fail('储存操作或范围无效');
+  if(isMappingImport(action))validateMappingImportInput(action,input);
   if(action.startsWith('user-alias-')){validateAliasInput(action,input);if(!aliasHash(chatHash)||typeof resolveAliasTargets!=='function')throw fail('USER地址缺少当前聊天或人设目录');}
   if(action==='mapping-list')validateMappingQuery(input);
   if(action==='mapping-detail'||action==='mapping-export')validateMappingSelection(input,{paged:action==='mapping-detail'});
   if(action==='clear'&&(confirmed!==true||recoveryLossAccepted!==true))throw fail('尚未确认结束所选恢复记录');
   await guard();
-  const interrupted=()=>fail(action==='user-alias-apply'?'USER整理结果未确认，原绑定可能已调整，请重新打开核对；不会自动重试。':action==='user-alias-preview'?'USER地址核对已取消，未修改绑定':action==='clear'?'清理结果未确认；部分记录可能已结束，请重新盘点。不会自动重试。':action==='mappings'||action.startsWith('mapping-')?'迁移凭据核对已取消，原映射记录未修改':`${action==='characters'?'角色空间':action==='comfy'?'Comfy 空间':'恢复记录'}盘点已取消，未修改数据`);
+  const interrupted=()=>fail(action==='mapping-import-apply'?'迁移凭据导入已中断':action==='user-alias-apply'?'USER整理结果未确认，原绑定可能已调整，请重新打开核对；不会自动重试。':action==='user-alias-preview'?'USER地址核对已取消，未修改绑定':action==='clear'?'清理结果未确认；部分记录可能已结束，请重新盘点。不会自动重试。':action==='mappings'||action.startsWith('mapping-')?'迁移凭据核对已取消，原映射记录未修改':`${action==='characters'?'角色空间':action==='comfy'?'Comfy 空间':'恢复记录'}盘点已取消，未修改数据`);
   if(signal?.aborted)throw interrupted();
   const id=crypto.randomUUID(),payload={id,action,namespace,...(action.startsWith('mapping-')||action.startsWith('user-alias-')?{input:structuredClone(input)}:{}),...(action.startsWith('user-alias-')?{chatHash}:{}),...(action==='clear'?{selected:structuredClone(selected),confirmed,recoveryLossAccepted}: {})};
   return new Promise((resolve,reject)=>{
     let worker,done=false,lastGuard=0,timer;
     const abort=()=>finish(interrupted());
-    const finish=(error,result)=>{if(done)return;done=true;clearTimeout(timer);signal?.removeEventListener('abort',abort);worker?.terminate();if(error)reject(error);else Promise.resolve().then(guard).then(()=>resolve(result),reject);};
+    const rejectResult=error=>reject(action==='mapping-import-apply'?fail(`迁移凭据保存结果未确认，可能已保存：${error?.message||'返回核对失败'}。请重新核对，不会自动重试。`):error);
+    const finish=(error,result)=>{if(done)return;done=true;clearTimeout(timer);signal?.removeEventListener('abort',abort);worker?.terminate();if(error)rejectResult(error);else Promise.resolve().then(guard).then(()=>resolve(result),rejectResult);};
     try{
       worker=new WorkerClass(new URL('./qianmu-storyboard-restore-storage-worker.js',import.meta.url),{type:'module',name:'qianmu-restore-storage'});
       worker.addEventListener('error',()=>finish(interrupted()));
@@ -46,6 +49,8 @@ export async function runRestoreStorage(action,{namespace,guard,selected,input,c
           else if(action==='mapping-list')result=validateMappingList(result,namespace,payload.input);
           else if(action==='mapping-detail')result=validateMappingDetail(result,namespace,payload.input);
           else if(action==='mapping-export')result=validateMappingExport(result,namespace,payload.input);
+          else if(action==='mapping-import-preview')result=validateMappingImportPreview(result,namespace);
+          else if(action==='mapping-import-apply')result=validateMappingImportResult(result,namespace,payload.input);
           else if(action==='comfy')result=validateComfyStorageSummary(result,namespace);
           else if(action==='characters')result=validateCharacterStorageSummary(result,namespace);
           else if(action==='inspect')result=validateRestoreStorageSummary(result,namespace);

@@ -8121,7 +8121,7 @@ function renderStorageManagementCard() {
     <div class="sd-storage-actions"><span>Comfy 本机领取记录 · ${Number(data.comfyReceipts?.count) || 0} 条 · ${htmlEscape(formatStorageBytes(data.comfyReceipts?.bytes || 0))}</span><button type="button" class="sd-btn sd-storage-comfy-receipts">收片管理</button></div>
     <div class="sd-storage-actions"><span>${data.restoreStorage?.status==='ready'?`分镜恢复记录 · ${data.restoreStorage.count} 条 · ${htmlEscape(formatStorageBytes(data.restoreStorage.bytes))}`:'恢复记录占用暂不可读取 · 当前总计不含此部分'}</span><button type="button" class="sd-btn sd-storage-restores">恢复记录管理</button></div>
     ${data.restoreStorage?.status==='ready'?'':`<p class="sd-storage-pressure is-warning">${htmlEscape(data.restoreStorage?.error||'请重新盘点或进入恢复记录管理核对；未修改记录。')}</p>`}
-    <div class="sd-storage-actions"><span>${data.mappingStorage?.status==='ready'?`迁移映射凭据 · ${data.mappingStorage.count} 份 · ${htmlEscape(formatStorageBytes(data.mappingStorage.bytes))}`:'迁移凭据占用暂不可读取 · 当前总计不含此部分'}</span><button type="button" class="sd-btn sd-storage-mappings">查看与导出</button></div>
+    <div class="sd-storage-actions"><span>${data.mappingStorage?.status==='ready'?`迁移映射凭据 · ${data.mappingStorage.count} 份 · ${htmlEscape(formatStorageBytes(data.mappingStorage.bytes))}`:'迁移凭据占用暂不可读取 · 当前总计不含此部分'}</span><button type="button" class="sd-btn sd-storage-mappings">凭据管理</button></div>
     ${data.mappingStorage?.status==='ready'?'':`<p class="sd-storage-pressure is-warning">${htmlEscape(data.mappingStorage?.error||'请进入迁移凭据目录核对；未改动原记录。')}</p>`}
     <div class="sd-storage-actions"><span>${data.carrierStorage?.status==='ready'?`来源记录 · ${data.carrierStorage.count} 份 · 原文 ${data.carrierStorage.originalCount} 份 · ${htmlEscape(formatStorageBytes(data.carrierStorage.bytes))}`:'来源记录占用暂不可读取 · 当前总计不含此部分'}</span><span>随资源联包完整备份</span></div>
     ${data.carrierStorage?.status==='ready'?'':`<p class="sd-storage-pressure is-warning">${htmlEscape(data.carrierStorage?.error||'来源记录暂不可读取，未自动清理。')}</p>`}
@@ -8578,7 +8578,7 @@ async function storyboardOpenRestoreStorage(root,expectedNamespace,{mappings=fal
     view=(mappings?manager.openMappingRegistry:manager.openRestoreStorageManager)({parent:modal,chatHash,icons:applyQianmuIcons,formatBytes:formatStorageBytes,
       run:(action,options)=>runtime.runRestoreStorage(action,{...options,namespace,guard:async()=>{
         await guard();
-        if(action==='clear'&&(storyboardImportPackage.busy||storyboardExportPackage.busy||storyboardBundleReview?.isOpen))throw new Error('分镜备份或恢复尚在进行，请结束后清理记录');
+        if(['clear','mapping-import-apply'].includes(action)&&(storyboardImportPackage.busy||storyboardExportPackage.busy||storyboardBundleReview?.isOpen))throw new Error('分镜备份或恢复尚在进行，请结束后管理记录');
       }})});
     await view.finished;
   }catch(error){toast(`${mappings?'迁移凭据':'恢复记录'}管理未完成：${error?.message||error}`,'error');}

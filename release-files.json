@@ -24,6 +24,8 @@
     "qianmu-user-alias-runtime.js",
     "qianmu-user-alias-view.js",
     "qianmu-storyboard-mapping-contract.js",
+    "qianmu-mapping-import-contract.js",
+    "qianmu-mapping-import.js",
     "qianmu-storyboard-mapping-registry.js",
     "qianmu-storyboard-mapping-view.js",
     "qianmu-storyboard-subject-map.js",

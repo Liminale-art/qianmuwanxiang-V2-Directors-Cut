@@ -138,7 +138,7 @@ test('actual space card counts mapping bodies plus heads once, without advertisi
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;
   assert.equal(data.trackedBytes,10+summary.bytes+1400);assert.equal(data.manageableBytes,10+summary.bytes);assert.equal(data.recoverableBytes,0);
   assert.equal(data.categories.find(row=>row.category==='logs').bytes,summary.bytes+1400);
-  const html=context.renderStorageManagementCard();assert.match(html,/迁移映射凭据 · 2 份 · 1400 B/);assert.match(html,/sd-storage-mappings/);assert.match(html,/查看与导出/);
+  const html=context.renderStorageManagementCard();assert.match(html,/迁移映射凭据 · 2 份 · 1400 B/);assert.match(html,/sd-storage-mappings/);assert.match(html,/凭据管理/);
 });
 
 test('actual mapping entry is available when accounting fails and never routes to clearing',async()=>{
