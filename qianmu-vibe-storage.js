@@ -51,6 +51,15 @@ export function createVibeStorageActions({namespace,call,guard,items=()=>[]}){
   const library=()=>items().filter(row=>row.assetRef?.namespace===namespace).map(row=>({id:row.id,assetId:row.assetRef.id}));
   return {
     async list(){await guard();const result=await call('storage-inventory',{namespace});await guard();return {...result,library:library()};},
+    async aggregate(snapshot,id){
+      await guard();if(snapshot?.namespace!==namespace||select(snapshot,[id])[0].type!=='image')throw fail('请选择一份含原图的文件');
+      const result=await call('aggregate-prepare',{namespace,id});await guard();return result;
+    },
+    async exportAggregate(plan,confirm){
+      if(plan?.namespace!==namespace||plan.report?.conflictCount!==0||!(plan.file instanceof Blob)||plan.file.size<1||plan.file.size>64*1024*1024)throw fail('汇总尚未就绪或存在冲突');
+      const {id,fingerprint,file}=plan;await guard();const yes=await confirm('导出全档汇总','这会导出当前账户、本设备已保存的同原图档位；名称、预览和默认值沿用所选基准文件。\n汇总是一个新素材，不会修改原文件、替换旧引用、清理记录或重新编码。\n它不能代替原文件备份来恢复旧镜头引用；清理前仍须另行导出原文件。确认下载？');
+      await guard();if(yes!==true)return null;const result=await call('aggregate-verify',{namespace,id,proof:fingerprint});await guard();if(result?.verified!==true)throw fail('同源文件快照未确认');return file;
+    },
     async export(snapshot,ids){
       await guard();if(snapshot?.namespace!==namespace)throw fail('文件不属于当前账户');select(snapshot,ids);
       if(ids.length>16)throw fail('每次最多导出 16 份，请分批保存');
@@ -71,14 +80,28 @@ export function createVibeStorageActions({namespace,call,guard,items=()=>[]}){
 }
 
 export function createVibeStorageController({actions,confirm=async()=>false,onClose,icons=()=>{},isCurrent=()=>true,createPreservation=null}){
-  let host,disposed=false,epoch=0,busy=false,snapshot=null,message='',visible=40,preservation=null;const selected=new Set(),urls=new Map();
+  let host,disposed=false,epoch=0,busy=false,snapshot=null,message='',visible=40,preservation=null,aggregate=null,aggregateVisible=40;const selected=new Set(),urls=new Map();
   const live=()=>!disposed&&isCurrent()&&host?.isConnected;
   const run=callback=>async event=>{event?.preventDefault();if(!live()||busy)return;const ticket=epoch,active=()=>live()&&ticket===epoch;busy=true;render();
     try{await callback(active);}catch(error){if(active())message=error?.message||'操作未确认，请刷新核对';}finally{if(active()){busy=false;render();}}};
   async function refresh(active){const next=await actions.list();if(!active())return;snapshot=next;selected.clear();visible=40;message='';}
-  function download(blob){const url=URL.createObjectURL(blob),link=host.ownerDocument.createElement('a');link.href=url;link.download=`qianmu-vibe-backup.${selected.size===1?'naiv4vibe':'naiv4vibeBundle'}`;link.click();urls.set(url,setTimeout(()=>{URL.revokeObjectURL(url);urls.delete(url);},30000));}
+  function download(blob,name=`qianmu-vibe-backup.${selected.size===1?'naiv4vibe':'naiv4vibeBundle'}`){const url=URL.createObjectURL(blob),link=host.ownerDocument.createElement('a');link.href=url;link.download=name;link.click();urls.set(url,setTimeout(()=>{URL.revokeObjectURL(url);urls.delete(url);},30000));}
+  function renderAggregate(){
+    const report=aggregate.report;
+    host.innerHTML=`<section class="sd-vibe-review sd-vibe-aggregate"><header><h3>同原图档位汇总</h3><button class="sd-icon-btn sd-vibe-aggregate-close" type="button" aria-label="返回文件空间"><i class="fa-solid fa-xmark"></i></button></header>
+      <p role="status">${escape(message||(busy?'正在核对…':report.conflictCount?'存在冲突，原文件全部保留':'汇总已就绪，原文件与引用未改变'))}</p>
+      <p class="sd-vibe-review-file-info">基准：${escape(report.name)}<br>${report.fileCount} 份同原图文件 · ${report.variantCount} 个唯一档位 · ${report.duplicateCount} 个重复档位已去重<br>仅本设备当前账户已保存的原图文件，不含云端、已删除或来源不明的纯编码。名称、预览、日期和默认值沿用基准文件。</p>
+      ${report.metadataDifferenceCount?`<p class="sd-vibe-review-file-info">${report.metadataDifferenceCount} 份文件的名称/预览/日期/默认值与基准不同；原文件仍保留。汇总文件不替换它们。</p>`:''}
+      ${report.conflictCount?`<p class="sd-storage-pressure is-warning">${report.conflictCount} 项编码冲突，未生成汇总文件。请返回逐项备份，不会自动改名或覆盖档位。</p><div class="sd-vibe-review-rows">${report.conflicts.map(item=>`<article><b>${item.kind==='slot'?'同名档位内容不同':'同模型/信息档位含不同编码'}</b><span>${escape(item.model)} · ${escape(item.variant)}</span><small>信息提取 ${item.information===null?'未说明':escape(item.information)}</small><small>${escape(item.first)}<br>${escape(item.second)}</small></article>`).join('')}</div>${report.conflictCount>report.conflicts.length?'<p class="sd-vibe-review-file-info">仅显示前 64 项冲突；所有冲突均已阻止导出。</p>':''}`:`<div class="sd-vibe-review-rows">${report.variants.slice(0,aggregateVisible).map(item=>`<article><span>${escape(item.model)} · 信息提取 ${item.information===null?'未说明':escape(item.information)}${item.customParams?' · 含自定义参数':''}</span><small>${escape(item.variant)}</small></article>`).join('')}</div>${report.variants.length>aggregateVisible?'<button type="button" class="sd-btn sd-vibe-aggregate-more">加载更多档位</button>':''}`}
+      <p class="sd-vibe-review-file-info">汇总为新素材，不是恢复旧引用的原文件备份；清理前请另行导出原文件。这里不重新编码、不收费。</p>
+      <button class="sd-btn sd-vibe-aggregate-export" type="button" ${busy||report.conflictCount?'disabled':''}>导出全档 .naiv4vibe</button></section>`;
+    host.querySelector('.sd-vibe-aggregate-close').onclick=()=>{epoch++;busy=false;aggregate=null;message='';render();};
+    host.querySelector('.sd-vibe-aggregate-more')?.addEventListener('click',()=>{aggregateVisible+=40;renderAggregate();});
+    host.querySelector('.sd-vibe-aggregate-export').onclick=run(async active=>{const file=await actions.exportAggregate(aggregate,async(...args)=>{if(!active())return false;const yes=await confirm(...args);return active()&&yes===true;});if(!active())return;
+      if(!file){message='已取消，原文件保留';return;}download(file,'qianmu-vibe-all-variants.naiv4vibe');message='已发起汇总下载，请确认文件已保存；原文件、费用记录和旧引用未改变。';});icons(host);
+  }
   function render(){
-    if(!live())return;if(preservation){preservation.mount(host);return;}
+    if(!live())return;if(preservation){preservation.mount(host);return;}if(aggregate){renderAggregate();return;}
     const rows=snapshot?.items||[],total=rows.reduce((sum,row)=>sum+row.bytes+row.previewBytes,0)+(snapshot?.receiptBytes||0);
     const blocked=rows.some(row=>selected.has(row.id)&&row.pending);
     const parts=[['含原图文件',rows.filter(row=>row.type==='image').reduce((sum,row)=>sum+row.bytes,0),'#87a9c4'],['纯编码文件',rows.filter(row=>row.type==='encoding').reduce((sum,row)=>sum+row.bytes,0),'#b29bc9'],['缩略图',snapshot?.usage.previewBytes||0,'#d6b878'],['编码记录',snapshot?.receiptBytes||0,'#8bad99']];
@@ -90,6 +113,7 @@ export function createVibeStorageController({actions,confirm=async()=>false,onCl
       <div class="sd-vibe-storage-legend">${parts.map(([label,n,color])=>`<span><i style="background:${color}"></i>${label} ${bytes(n)}</span>`).join('')}</div>
       <p>文件 ${rows.length} / ${snapshot.usage.countLimit} · ${bytes(snapshot.usage.bytes+snapshot.usage.previewBytes)} / ${bytes(snapshot.usage.limit)}<br>记录 ${snapshot.receiptCount} 条，其中归档 ${snapshot.archivedReceiptCount||0} 条、未决 ${snapshot.pendingCount} 条；另存核查明细 ${snapshot.historyReviewCount||0} 次。计值为内容大小，非浏览器实际磁盘占用或剩余空间。</p>
       <div class="sd-vibe-storage-tools"><button type="button" class="sd-btn sd-vibe-storage-select" ${busy?'disabled':''}>${selected.size?'清空选择':'选择未锁定项'}</button><button type="button" class="sd-btn sd-vibe-storage-export" ${busy||!selected.size?'disabled':''}>导出所选</button><button type="button" class="sd-btn sd-danger sd-vibe-storage-remove" ${busy||!selected.size||blocked?'disabled':''}>清理 ${selected.size} 项</button></div>
+      ${typeof actions.aggregate==='function'?`<button type="button" class="sd-btn sd-vibe-storage-aggregate" ${busy||selected.size!==1||rows.find(row=>selected.has(row.id))?.type!=='image'?'disabled':''}>汇总同原图档位</button>`:''}
       <small>不自动清理。其他聊天和历史镜头仍可能引用这些文件；删除后需重新导入同一原文件。未决关联文件可导出，清理前须先核查。</small>
       <div class="sd-vibe-storage-list">${rows.slice(0,visible).map(row=>`<label><input type="checkbox" data-vibe-storage-id="${row.id}" ${selected.has(row.id)?'checked':''} ${busy?'disabled':''}><span><b>${escape(row.name||'未命名 Vibe')}</b><small>${bytes(row.bytes+row.previewBytes)} · ${row.type==='image'?'含原图':'纯编码'} · ${row.variants} 个编码档位</small><small>当前库引用 ${snapshot.library.filter(item=>item.assetId===row.id).length} · 未归档关联 ${row.receiptCount}${row.pending?` · 未决 ${row.pending}`:''}</small></span></label>`).join('')}</div>
       ${rows.length>visible?'<button type="button" class="sd-btn sd-vibe-storage-more">加载更多</button>':''}`:''}</section>`;
@@ -101,6 +125,7 @@ export function createVibeStorageController({actions,confirm=async()=>false,onCl
     host.querySelector('.sd-vibe-storage-select')?.addEventListener('click',()=>{if(selected.size)selected.clear();else rows.filter(row=>!row.pending).forEach(row=>selected.add(row.id));render();});
     for(const box of host.querySelectorAll('[data-vibe-storage-id]'))box.onchange=()=>{box.checked?selected.add(box.dataset.vibeStorageId):selected.delete(box.dataset.vibeStorageId);render();};
     host.querySelector('.sd-vibe-storage-export')?.addEventListener('click',run(async active=>{const file=await actions.export(snapshot,[...selected]);if(active()){download(file);message='已发起原文件下载，请确认文件已保存后再清理。';}}));
+    host.querySelector('.sd-vibe-storage-aggregate')?.addEventListener('click',run(async active=>{const result=await actions.aggregate(snapshot,[...selected][0]);if(active()){aggregate=result;aggregateVisible=40;message='';}}));
     host.querySelector('.sd-vibe-storage-remove')?.addEventListener('click',run(async active=>{
       const result=await actions.remove(snapshot,[...selected],async(...args)=>{if(!active())return false;const yes=await confirm(...args);return active()&&yes===true;});if(!active())return;
       if(result.cancelled){message='已取消，原文件保留';return;}
@@ -109,5 +134,5 @@ export function createVibeStorageController({actions,confirm=async()=>false,onCl
     }));
     host.querySelector('.sd-vibe-storage-more')?.addEventListener('click',()=>{visible+=40;render();});icons(host);
   }
-  return {mount(node){this.detach();host=node;render();if(!preservation)void run(refresh)();},detach(){epoch++;preservation?.detach();host=null;busy=false;},dispose(){this.detach();disposed=true;preservation?.dispose();preservation=null;snapshot=null;selected.clear();for(const [url,timer] of urls){clearTimeout(timer);URL.revokeObjectURL(url);}urls.clear();}};
+  return {mount(node){this.detach();host=node;render();if(!preservation&&!aggregate)void run(refresh)();},detach(){epoch++;preservation?.detach();host=null;busy=false;},dispose(){this.detach();disposed=true;preservation?.dispose();preservation=null;aggregate=null;snapshot=null;selected.clear();for(const [url,timer] of urls){clearTimeout(timer);URL.revokeObjectURL(url);}urls.clear();}};
 }
