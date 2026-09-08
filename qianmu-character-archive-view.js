@@ -68,7 +68,7 @@ export function renderCharacterArchive(view,{identity=()=>''}={}) {
       <label><span>角色档案</span><select class="text_pole" data-archive-binding="archiveId"><option value="">不绑定</option>${view.rows.filter(row=>row.category===picker.subject.category).map(row=>`<option value="${escape(row.id)}" ${picker.archiveId===row.id?'selected':''}>${escape(row.name)}</option>`).join('')}</select></label>
       <div class="sd-character-tools">${icon('binding-cancel','取消绑定选择','x')}<button type="button" class="sd-btn" data-archive-action="inherit" ${picker.scope==='chat'?'':'disabled'}>沿用默认</button><span class="sd-character-spacer"></span>${icon('binding-save','保存绑定','floppy-disk')}</div>
     </div></section>`:''}
-    <div class="sd-character-tools"><input class="text_pole" type="search" data-archive-search value="${escape(view.search)}" aria-label="搜索角色档案">${icon('refresh','刷新角色库','arrows-clockwise')}${icon('import','导入角色档案','upload')}</div>
+    <div class="sd-character-tools"><input class="text_pole" type="search" data-archive-search value="${escape(view.search)}" aria-label="搜索角色档案">${icon('backup-library','备份角色库与原图','download')}${icon('refresh','刷新角色库','arrows-clockwise')}${icon('import','导入角色档案','upload')}</div>
     ${CHARACTER_CATEGORIES.map(category=>{
       const query=view.search.toLocaleLowerCase(),rows=view.rows.filter(row=>row.category===category&&(!query||[row.name,...row.aliases].join(' ').toLocaleLowerCase().includes(query))),shown=rows.slice(0,view.shown[category]||24);
       return `<details class="sd-card sd-character-category is-${category}" data-archive-category="${category}" ${view.collapsed[category]?'':'open'}><summary><b>${category.toUpperCase()}</b><span>${rows.length}</span>${icon('new',`新建 ${category.toUpperCase()} 档案`,'plus',`data-category="${category}"`)}</summary>
@@ -122,6 +122,19 @@ export function createCharacterArchiveController({resolveNamespace,getContext,is
     await run(async(guard,expected)=>{
       const id=button?.dataset.archiveId,category=button?.dataset.category;
       const itemIndex=Number(button?.dataset.itemIndex),editor=view.comfyEditor;
+      if(action==='backup-library'&&!view.draft){
+        const account=namespace,chatKey=view.chatKey,isSame=()=>Boolean(visible()&&entry===expected&&namespace===account&&view.chatKey===chatKey);
+        const codec=await import('./qianmu-character-backup-file.js');await guard();
+        const library=await store.backup(account,{isCurrent:isSame}),census=codec.collectCharacterBackupDependencies(library);await guard();
+        if(!await confirm(`备份全部已保存的 ${library.usage.count} 份角色档案、${library.usage.bindings} 处绑定及 ${census.images.length} 份参考图/封面原件？包含普通形象、性征与 Comfy 实现，仅保存到本机文件，请妥善保管。不含模型/LoRA 磁盘文件、API 连接与授权。当前整库恢复入口仍在接线，请保留旧环境，不要用此包替代原库。`))return;
+        await guard();let workflows=null;
+        if(census.workflows.length){
+          const module=await import('./qianmu-comfy-library.js');await guard();const workflowStore=module.createComfyWorkflowStore();
+          try{workflows=codec.selectCharacterBackupWorkflows(library,await workflowStore.backup(account,{isCurrent:isSame}));}finally{workflowStore.close();}
+        }
+        const result=await codec.buildCharacterBackupFile(library,{workflows,guard});await guard();if(!isSame())throw Error('角色备份页面已变化');
+        await download(result.file,'qianmu-character-resources.json');return;
+      }
       if(action==='comfy-new'||action==='comfy-edit'||action==='comfy-rebind'){
         if(!view.draft||typeof loadComfyRecipe!=='function')throw Error('请先在 Comfy 镜头台应用已保存的工作流方案');
         const previous=action==='comfy-edit'?view.draft.document.comfy?.implementations[itemIndex]:null;

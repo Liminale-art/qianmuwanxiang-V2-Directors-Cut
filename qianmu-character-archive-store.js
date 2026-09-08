@@ -28,16 +28,17 @@ export function createCharacterArchiveStore({indexedDB=globalThis.indexedDB,keyR
         db=value;value.onversionchange=()=>{value.close();db=null;opening=null;};value.onclose=()=>{db=null;opening=null;};finish(null,value);};
     });const current=opening;void current.catch(()=>{if(opening===current)opening=null;});return current;
   }
-  async function operation(mode,work) {
-    const database=await open();if(closed)fail('closed','角色库会话已结束');
+  async function operation(mode,work,isCurrent=()=>true) {
+    const current=()=>{if(isCurrent()!==true)fail('changed','角色库备份页面已变化');};
+    current();const database=await open();current();if(closed)fail('closed','角色库会话已结束');
     return new Promise((resolve,reject)=>{
       let tx,result,failure,done=false;
       const finish=cause=>{if(done)return;done=true;clearTimeout(timer);pending.delete(tx);cause?reject(cause):resolve(result);};
-      const abort=cause=>{failure=cause?.code?.startsWith('character_archive_')?cause:error();try{tx.abort();}catch(_){finish(failure);}};
+      const abort=cause=>{failure=typeof cause?.code==='string'&&cause.code.startsWith('character_archive_')?cause:error();try{tx.abort();}catch(_){finish(failure);}};
       const timer=setTimeout(()=>{failure=characterArchiveError('timeout','保存结果未确认，请刷新核对后再操作');try{tx?.abort();}catch(_){}finish(failure);},timeout);
       try{tx=database.transaction(names,mode);pending.add(tx);}catch(_){finish(error());return;}
-      tx.oncomplete=()=>finish(closed?characterArchiveError('closed','角色库会话已结束'):null);tx.onabort=()=>finish(failure||error());tx.onerror=()=>{failure||=error();};
-      const read=(request,receive)=>{request.onsuccess=()=>{try{receive(request.result);}catch(cause){abort(cause);}};};
+      tx.oncomplete=()=>{try{current();finish(closed?characterArchiveError('closed','角色库会话已结束'):null);}catch(cause){finish(cause);}};tx.onabort=()=>finish(failure||error());tx.onerror=()=>{failure||=error();};
+      const read=(request,receive)=>{request.onsuccess=()=>{try{current();receive(request.result);}catch(cause){abort(cause);}};};
       try{work(tx,read,value=>{result=value;});}catch(cause){abort(cause);}
     });
   }
@@ -56,7 +57,59 @@ export function createCharacterArchiveStore({indexedDB=globalThis.indexedDB,keyR
       });
     });
   });
+  async function snapshot(namespace,isCurrent) {
+    account(namespace);return operation('readonly',(tx,read,set)=>{
+      read(tx.objectStore('heads').index('namespace').getAll(keyRange.only(namespace),513),heads=>{
+        if(heads.length>512)fail('capacity','角色库超过备份数量上限');
+        read(tx.objectStore('bindings').index('namespace').getAll(keyRange.only(namespace),2049),bindings=>{
+          if(bindings.length>2048)fail('capacity','角色绑定超过备份数量上限');
+          for(const row of bindings)if(row.namespace!==namespace||row.key!==bindingKey(namespace,characterBindingTarget(row)))fail('backup','角色绑定归属不符');
+          withUsage(tx,read,namespace,usage=>{
+            const records={archives:[],bindings,usage};let pendingDocuments=heads.length;
+            const complete=()=>{
+              const prefix=JSON.stringify([namespace]).slice(0,-1)+',',range=keyRange.bound(prefix,prefix+'\uffff');let checked=0;
+              for(const name of ['heads','documents','bindings'])read(tx.objectStore(name).getAllKeys(range,name==='bindings'?2049:513),keys=>{
+                const expected=(name==='bindings'?bindings:heads).map(row=>row.key).sort();
+                if(JSON.stringify(keys.sort())!==JSON.stringify(expected))fail('backup','角色库存在未关联或缺失的原件，请先保全核对');
+                if(++checked===3)set(records);
+              });
+            };
+            if(!pendingDocuments){complete();return;}
+            for(const head of heads){validateHead(head,namespace);read(tx.objectStore('documents').get(head.key),row=>{
+              if(!row||row.key!==head.key||row.namespace!==namespace||row.revision!==head.revision||Object.keys(row).some(key=>!['key','namespace','revision','document'].includes(key)))fail('backup','角色档案原文缺失或归属不符');
+              records.archives.push({head,document:row.document});if(!--pendingDocuments)complete();
+            });}
+          });
+        });
+      });
+    },isCurrent);
+  }
   return Object.freeze({
+    async backup(namespace,{isCurrent=()=>true}={}) {
+      const codec=await import('./qianmu-character-library-backup.js'),records=await snapshot(namespace,isCurrent),value=codec.packCharacterLibraryRecords(namespace,records);
+      if(isCurrent()!==true)fail('changed','角色库备份页面已变化');return value;
+    },
+    // Storage primitive only. The restore coordinator must settle image/workflow dependencies before this commit.
+    async restoreBackup(namespace,input,{expectedDigest,decisions={},confirmed=false,isCurrent=()=>true}={}) {
+      if(confirmed!==true||typeof expectedDigest!=='string'||!/^[a-f0-9]{64}$/.test(expectedDigest))fail('backup','请先核对并确认角色库恢复');
+      const incoming=structuredClone(input),choices=structuredClone(decisions),codec=await import('./qianmu-character-library-backup.js');codec.validateCharacterLibraryBackup(incoming);
+      if(incoming.namespace!==account(namespace))fail('backup','角色库备份属于另一 ST 账户，请重新绑定');
+      const records=await snapshot(namespace,isCurrent),local=codec.packCharacterLibraryRecords(namespace,records);
+      if(await codec.characterLibraryBackupDigest(local)!==expectedDigest)fail('conflict','角色库在确认后已变化，请重新核对');
+      const plan=codec.planCharacterLibraryRestore(local,incoming,{decisions:choices});if(!plan.ready)fail('backup','请逐项选择角色或绑定冲突的处理方式');
+      return operation('readwrite',(tx,read,set)=>{
+        read(tx.objectStore('heads').index('namespace').getAll(keyRange.only(namespace),513),heads=>read(tx.objectStore('bindings').index('namespace').getAll(keyRange.only(namespace),2049),bindings=>{
+          const sorted=rows=>rows.slice().sort((a,b)=>a.key.localeCompare(b.key));
+          if(JSON.stringify(sorted(heads))!==JSON.stringify(sorted(records.archives.map(row=>row.head)))||JSON.stringify(sorted(bindings))!==JSON.stringify(sorted(records.bindings)))fail('conflict','角色库在准备期间已变化，未覆盖');
+          withUsage(tx,read,namespace,usage=>{
+            if(JSON.stringify(usage)!==JSON.stringify(records.usage))fail('conflict','角色库计值已变化，未覆盖');
+            for(const row of plan.archiveWrites){const key=keyFor(namespace,row.head.id);tx.objectStore('heads').put({...structuredClone(row.head),key,namespace});tx.objectStore('documents').put({key,namespace,revision:row.head.revision,document:structuredClone(row.document)});}
+            for(const row of plan.bindingWrites)tx.objectStore('bindings').put({...structuredClone(row),key:bindingKey(namespace,row),namespace});
+            tx.objectStore('usage').put({key:namespace,...plan.value.usage});set(plan.summary);
+          });
+        }));
+      },isCurrent);
+    },
     async list(namespace){account(namespace);return operation('readonly',(tx,read,set)=>{
       read(tx.objectStore('heads').index('namespace').getAll(keyRange.only(namespace),513),rows=>{
         if(rows.length>512)fail('capacity','角色档案超过 512 项');set(rows.map(row=>validateHead(row,namespace)).sort((a,b)=>b.updatedAt-a.updatedAt||a.id.localeCompare(b.id)));
