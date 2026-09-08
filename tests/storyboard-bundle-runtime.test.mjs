@@ -54,6 +54,25 @@ test('preview cannot request a live configuration write, and cross-source or ove
   }); t.after(() => client.close()); await client.preview(); assert.equal(e.applied, 0); assert.equal(e.previews, 0);
 });
 
+test('subject evidence RPC remains read-only, source-bound and separate from the live settings payload', async t => {
+  let calls=0;
+  const { client }=await fixture(async(worker,command)=>{
+    const value={fingerprint:sourceDigest,subjectEvidence:{schema:'synthetic'},subjectBindings:[]};
+    assert.equal((await worker.rpc(command,'configuration-subjects',value)).error,undefined);
+    assert.ok((await worker.rpc(command,'configuration-subjects',{...value,settings:{}})).error);
+    assert.ok((await worker.rpc(command,'configuration-subjects',{...value,fingerprint:'d'.repeat(64)})).error);
+    worker.reply(command,view());
+  },{configuration:{preview:async()=>{},apply:async()=>assert.fail('no writes'),subjects:async()=>{calls++;return {digest:'e'.repeat(64),rows:[],ready:true};}}});
+  t.after(()=>client.close());await client.preview();assert.equal(calls,1);
+});
+
+test('subject differences require their own explicit checkbox even when the environment and binding labels were reviewed',()=>{
+  const preview={...view(),ready:true,planDigest:'c'.repeat(64),subjectReview:[{category:'char',subjectKey:'char:alice.png',state:'changed',required:true}]};
+  const input={preview,page:0,fileName:'source',environmentReviewed:true,bindingsReviewed:true};
+  const markup=renderStoryboardBundleReview(input);assert.match(markup,/内容有变化/);assert.match(markup,/data-bundle-subjects/);assert.match(markup,/data-bundle-action="restore" disabled/);
+  assert.doesNotMatch(renderStoryboardBundleReview({...input,subjectsReviewed:true}),/data-bundle-action="restore" disabled/);
+});
+
 test('late operations and another session are ignored, while a repeated active RPC terminates the session', async () => {
   const { e, client, worker } = await fixture(async (worker, command) => {
     worker.emit({ id: command.id, operation: command.operation-1, request: 11, kind: 'configuration-apply', payload: { fingerprint: sourceDigest } });

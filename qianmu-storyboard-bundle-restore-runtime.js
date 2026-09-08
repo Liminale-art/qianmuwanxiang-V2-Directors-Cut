@@ -6,6 +6,7 @@ function validView(value, namespace) {
   return value?.namespace === namespace && hash(value.chatHash) && typeof value.ready === 'boolean' && (value.ready ? hash(value.planDigest) : value.planDigest === '' || hash(value.planDigest))
     && Array.isArray(value.conflicts) && value.conflicts.length <= 2560 && value.conflicts.every(row => typeof row.key === 'string' && ['archive','binding'].includes(row.kind) && (row.kind === 'archive' || typeof row.category === 'string'))
     && Array.isArray(value.bindingReview) && value.bindingReview.length <= 2048 && value.bindingReview.every(row => typeof row.category === 'string' && typeof row.subjectKey === 'string')
+    && (value.subjectReview === undefined || Array.isArray(value.subjectReview) && value.subjectReview.length <= 2080 && value.subjectReview.every(row => ['char','user','other'].includes(row.category) && typeof row.subjectKey === 'string' && row.subjectKey.length <= 1024 && typeof row.required === 'boolean' && ['matched','changed','missing','unverified'].includes(row.state)))
     && Array.isArray(value.images) && value.images.length <= 30400 && value.images.every(row => typeof row.url === 'string' && ['missing','present','conflict'].includes(row.state))
     && ['added','replaced','kept'].every(key => count(value.characterSummary?.[key])) && count(value.summary?.images) && count(value.summary?.vibeFiles)
     && ['workflows','pools','characters'].every(key => count(value.summary?.[key]?.count)) && count(value.summary?.workflows?.versions);
@@ -45,16 +46,17 @@ export async function openStoryboardBundleRestoreRuntime(file, { namespace, chat
       const message = event.data, pending = current;
       if (closed || !pending || message?.id !== id || message.operation !== pending.operation) return;
       if (message.request) {
-        if (!Number.isSafeInteger(message.request) || message.request <= pending.lastRequest || !['guard','configuration-preview','configuration-apply'].includes(message.kind)) { close(fail('恢复后台核对消息不符')); return; }
+        if (!Number.isSafeInteger(message.request) || message.request <= pending.lastRequest || !['guard','configuration-preview','configuration-apply','configuration-subjects'].includes(message.kind)) { close(fail('恢复后台核对消息不符')); return; }
         pending.lastRequest = message.request;
         void (async () => {
           try {
             await check(); let result;
             if (message.kind !== 'guard') {
-              const input = message.payload, apply = message.kind === 'configuration-apply';
-              if (!hash(sourceDigest) || input?.fingerprint !== sourceDigest || Object.keys(input).some(key => !['settings','chat','imageUrls','fingerprint','chatEvidence',...(apply?['expectedDigest']:[])].includes(key))
+              const input = message.payload, apply = message.kind === 'configuration-apply', subjects = message.kind === 'configuration-subjects';
+              const fields = subjects ? ['fingerprint','subjectEvidence','subjectBindings'] : ['settings','chat','imageUrls','fingerprint','chatEvidence',...(apply?['expectedDigest']:[])];
+              if (!hash(sourceDigest) || input?.fingerprint !== sourceDigest || Object.keys(input).some(key => !fields.includes(key))
                 || (apply ? pending.action !== 'restore' || pending.payload.consent?.confirmed !== true || pending.payload.consent?.environmentReviewed !== true : !['preview','restore'].includes(pending.action))) throw fail('未经本次确认的配置请求，未应用');
-              result = await configuration[apply ? 'apply' : 'preview'](input); await check();
+              result = await configuration[subjects ? 'subjects' : apply ? 'apply' : 'preview'](input); await check();
             }
             if (current === pending) worker.postMessage({ id, operation: pending.operation, type: 'rpc', request: message.request, result });
           } catch (error) {

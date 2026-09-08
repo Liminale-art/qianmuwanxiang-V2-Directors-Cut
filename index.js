@@ -224,6 +224,7 @@ const featureRuntime = createFeatureRuntime({
   storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.105') },
   storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.105') },
   storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.105') },
+  storyboardSubjectEvidence: { label: '角色来源核对', load: () => import('./qianmu-storyboard-subject-evidence.js?v=1.59.105') },
   vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.105') },
   vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.105') },
   tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.105') },
@@ -21710,6 +21711,9 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   const bundleCapture = bundle ? await featureRuntime.load('storyboardBundleCapture') : null;
   const captureChat = async () => (await bundleCapture.runStoryboardBundle('chat-evidence', null, { chatKey: initial.chatKey, messages: ctx().chat || [], guard: session.guard })).chatEvidence;
   const chatEvidence = bundle ? await captureChat() : null;
+  const subjectCaptureCache = {};
+  const captureSubjects = () => storyboardCaptureSubjectEvidence({ namespace: session.namespace, guard: session.guard, cache: subjectCaptureCache });
+  const subjectEvidence = bundle ? await captureSubjects() : null;
   await storyboardHydratePipelineArchive();
   await session.guard();
   await storyboardHydrateGallerySnapshots(storyboardGalleryRecords(),{migrate:false});
@@ -21785,9 +21789,10 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   if (bundle) {
     const runtime = await featureRuntime.load('storyboardBundleCapture'); await session.guard();
     toast('正在后台核对工作流、角色及参考原件…', 'info');
-    blob = (await runtime.runStoryboardBundle('capture', blob, { namespace: session.namespace, chatKey, source: bundleSource.source, chatEvidence, guard: session.guard })).file;
+    blob = (await runtime.runStoryboardBundle('capture', blob, { namespace: session.namespace, chatKey, source: bundleSource.source, chatEvidence, subjectEvidence, guard: session.guard })).file;
     await session.guard(); await bundleSource.verify();
     if ((await captureChat()).digest !== chatEvidence.digest) throw new Error('打包期间正文已变化，未输出旧楼层证据，请重新导出');
+    if ((await captureSubjects()).digest !== subjectEvidence.digest) throw new Error('打包期间角色或人设来源已变化，请重新导出');
   }
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -21827,6 +21832,21 @@ async function storyboardImportAnyPackage(file) {
     if (/\.qmb$/i.test(file.name || '') || await format.isStoryboardBundleFile(file)) return storyboardImportBundle(file);
     return storyboardImportPackage(file);
   } catch (error) { toast(`分镜包读取失败：${error?.message || '请选择完整原文件'}`, 'error'); }
+}
+
+async function storyboardCaptureSubjectEvidence({ namespace, targets = null, guard, cache = null }) {
+  const module = await featureRuntime.load('storyboardSubjectEvidence'); await guard();
+  const requested = targets === null ? await module.readStoryboardBoundSubjects(namespace) : module.storyboardSubjectTargets(targets); await guard();
+  const read = () => { const context = ctx(); return module.readStoryboardSubjectProfiles(requested, { characters: context.characters,
+    power: context.powerUserSettings || context.power_user || globalThis.power_user }); };
+  const projected = read();
+  // Re-check actual declared fields at every stage, but hash unchanged large text only once per local operation.
+  if (cache?.evidence && module.storyboardSubjectProfilesMatch(cache.projected, projected)) return structuredClone(cache.evidence);
+  const runtime = await featureRuntime.load('storyboardBundleCapture'); await guard();
+  const result = (await runtime.runStoryboardBundle('subject-evidence', null, { subjects: projected, guard })).subjectEvidence;
+  await guard(); if (!module.storyboardSubjectProfilesMatch(projected, read())) throw new Error('核对期间角色资料已变化，请重新核对');
+  if (cache) { cache.projected = projected; cache.evidence = structuredClone(result); }
+  return result;
 }
 
 function storyboardLinkReviewParagraphs(value) {
@@ -21923,7 +21943,9 @@ async function storyboardImportBundle(file) {
     }
     const parent = document.getElementById(MODAL_ID); if (!parent?.classList.contains('open')) throw new Error('请在分镜面板内打开恢复');
     const evidenceRuntime = await featureRuntime.load('storyboardBundleCapture'); await guard();
+    const subjectCaptureCache = {};
     const configuration = configModule.createStoryboardBundleConfiguration({ namespace: scope.namespace, chatKey: initial.chatKey, settings: initial.state, chat: initial.store,
+      captureSubjects: targets => storyboardCaptureSubjectEvidence({ namespace: scope.namespace, targets, guard, cache: subjectCaptureCache }),
       captureChatEvidence: async (messages, chatKey) => (await evidenceRuntime.runStoryboardBundle('chat-evidence', null, { chatKey, messages, guard })).chatEvidence,
       messages: () => ctx().chat || [], journal, guard, isCurrent, persist: async () => { saveSettings(); await saveMetadata(); } });
     review = viewModule.openStoryboardBundleReview({ parent, fileName: file.name || '分镜资源联包', paintIcons: applyQianmuIcons,

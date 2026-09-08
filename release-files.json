@@ -8,6 +8,7 @@
     "qianmu-source-identity-client.js",
     "qianmu-storyboard-bundle-source.js",
     "qianmu-storyboard-chat-evidence.js",
+    "qianmu-storyboard-subject-evidence.js",
     "qianmu-storyboard-link-review.js",
     "qianmu-storyboard-link-review-view.js",
     "qianmu-storyboard-bundle.js",

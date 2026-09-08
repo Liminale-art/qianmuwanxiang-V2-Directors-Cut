@@ -12,9 +12,10 @@ import { vibeDigest } from '../qianmu-vibe-file.js';
 import { randomUUID, createHash } from 'node:crypto';
 import { hashText } from '../qianmu-storyboard-utils.js';
 import { captureStoryboardChatEvidence } from '../qianmu-storyboard-chat-evidence.js';
+import { captureStoryboardSubjectEvidence } from '../qianmu-storyboard-subject-evidence.js';
 
 const clone = structuredClone;
-async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = false, sourceText = 'original text', missingAnchor = false } = {}) {
+async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = false, subjectEvidence = false, sourceText = 'original text', missingAnchor = false } = {}) {
   const source = await sourceFixture(); source.config.chat.images[0].source = 'novel'; source.config.chat.images[0].floor = 0;
   source.config.chat.images[0].paragraphAnchor = { floor: 0 };
   if (!missingAnchor) source.config.chat.images[0].messageHash = hashText(sourceText);
@@ -23,10 +24,12 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
     source.options.legacyFetch = async () => new Response(Buffer.from(data, 'base64'));
   }
   source.options.source = sourceIdentity;
+  const subjectRows = [{ category: 'char', subjectKey: 'char:alice.png', state: 'present', profile: { name: 'Alice', description: 'original character' } }];
+  if (subjectEvidence) { source.options.subjectEvidence = await captureStoryboardSubjectEvidence(subjectRows); source.sources.characters.bindings[0].archiveId = 'alice'; }
   if (chatEvidence) source.options.chatEvidence = await captureStoryboardChatEvidence([{ mes: sourceText, is_user: false, swipe_id: 0 }], chatKey);
   source.options.storyboard = file(source.config); const built = await source.build();
   const e = { active: true, events: [], files: new Map(), records: new Map(), mutation: null, settings: createStoryboardDefaults(), chat: {},
-    messages: [{ mes: sourceText, is_user: false, swipe_id: 0 }], locals: clone(source.sources), vibes: false, configChanges: 0 };
+    messages: [{ mes: sourceText, is_user: false, swipe_id: 0 }], subjectRows, locals: clone(source.sources), vibes: false, configChanges: 0 };
   e.locals.workflows.workflows = []; e.locals.pools.pools = [];
   e.locals.characters.archives = []; e.locals.characters.bindings = []; e.locals.characters.usage = { count: 0, bytes: 0, bindings: 0 };
   const options = { namespace, chatKey, file: built.file, guard: async () => { if (!e.active) throw Error('inactive'); }, isCurrent: () => e.active,
@@ -64,12 +67,37 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
     updateMutation: async (previous, phase) => { assert.deepEqual(e.mutation, previous); e.mutation = { ...clone(previous), phase, revision: previous.revision + 1 }; return clone(e.mutation); },
   };
   options.configuration = createStoryboardBundleConfiguration({ namespace, chatKey, settings: e.settings, chat: e.chat, messages: () => e.messages,
+    captureSubjects: async () => captureStoryboardSubjectEvidence(e.subjectRows),
     journal: options.journal, guard: options.guard, isCurrent: options.isCurrent, persist: async () => { if (e.failAt === 'persist') throw Error('synthetic persist failure'); e.events.push('configuration'); } });
   const reopen = () => createStoryboardBundleRestoreSession(options);
   return { source, built, e, options, reopen, session: await reopen() };
 }
 const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true };
 const writes = e => e.events.filter(row => !row.startsWith('lock:'));
+
+test('same-name changed roles are displayed and require separate subject confirmation before restoring bindings', async () => {
+  const f = await fixture({ subjectEvidence: true }); f.e.subjectRows[0].profile.description = 'new character with the same name';
+  const prepared = await f.session.preview(); assert.equal(prepared.subjectReview[0].state, 'changed'); assert.equal(prepared.ready, true);
+  await assert.rejects(f.session.restore(prepared, consent), /角色卡及人设/); assert.equal(writes(f.e).length, 0);
+  await f.session.restore(prepared, { ...consent, subjectsReviewed: true }); assert.equal(f.e.locals.characters.bindings[0].archiveId, 'alice');
+  assert.equal(f.source.sources.characters.bindings[0].revision, 'bind1');
+});
+test('missing required ST subject cannot inherit a same-name archive or start a partial restore', async () => {
+  const f = await fixture({ subjectEvidence: true }); f.e.subjectRows[0] = { ...f.e.subjectRows[0], state: 'missing', profile: null };
+  const prepared = await f.session.preview(); assert.equal(prepared.subjectReview[0].state, 'missing'); assert.equal(prepared.ready, false);
+  await assert.rejects(f.session.restore(prepared, { ...consent, subjectsReviewed: true }), /冲突/); assert.equal(writes(f.e).length, 0);
+});
+test('changed subject after original upload preserves images and stops before applying role bindings', async () => {
+  const f = await fixture({ subjectEvidence: true }), prepared = await f.session.preview();
+  assert.equal(prepared.subjectReview[0].state, 'matched');
+  f.e.afterImage = async () => { f.e.subjectRows[0].profile.description = 'changed during upload'; };
+  await assert.rejects(f.session.restore(prepared, { ...consent, subjectsReviewed: true }), /角色或人设来源已变化/);
+  assert.ok(f.e.files.size); assert.equal(f.e.locals.characters.bindings.length, 0); assert.equal(f.e.mutation, null);
+});
+test('a post-preview subject edit invalidates consent before journal or original writes', async () => {
+  const f = await fixture({ subjectEvidence: true }), prepared = await f.session.preview(); f.e.subjectRows[0].profile.description = 'changed after preview';
+  await assert.rejects(f.session.restore(prepared, { ...consent, subjectsReviewed: true }), /已变化/); assert.equal(writes(f.e).length, 0);
+});
 
 test('an old floor-only image stays in the gallery instead of silently binding to an unverified paragraph', async () => {
   const f = await fixture({ missingAnchor: true }), prepared = await f.session.preview(); assert.equal(prepared.configuration.orphaned, 1);

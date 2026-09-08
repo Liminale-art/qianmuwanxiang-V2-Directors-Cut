@@ -1,6 +1,7 @@
 import { buildStoryboardBundle, openStoryboardBundle, STORYBOARD_BUNDLE_LIMITS } from './qianmu-storyboard-bundle.js';
 import { sourceIdentityForNamespace } from './qianmu-source-identity-contract.js';
 import { inspectStoryboardChatEvidence } from './qianmu-storyboard-chat-evidence.js';
+import { inspectStoryboardSubjectEvidence, storyboardSubjectTargets } from './qianmu-storyboard-subject-evidence.js';
 import { inspectStoryboardPackageFile, validateStoryboardPackagePayload, validateStoryboardPackageMedia } from './qianmu-storyboard-package-input.js';
 import { collectStoryboardVibeDependencies, inspectStoryboardVibePackage } from './qianmu-storyboard-package-assets.js';
 import { validateComfyLibraryBackup, comfyLibraryBackupDigest as digest } from './qianmu-comfy-library-backup.js';
@@ -22,6 +23,10 @@ const object = value => value !== null && typeof value === 'object';
 const key = value => JSON.stringify([value.id, value.revision, value.version]);
 const jsonFile = value => new Blob([JSON.stringify(value)], { type: 'application/json' });
 const sensitive = new Set(['apikey', 'authorization', 'accesstoken', 'refreshtoken', 'clientsecret', 'password', 'credentialid', 'grantid', 'sharedsecret']);
+function checkSubjectCoverage(evidence, characters) {
+  const ids = new Set(evidence.subjects.map(row => JSON.stringify([row.category,row.subjectKey])));
+  if (storyboardSubjectTargets(characters.bindings).some(row => !ids.has(JSON.stringify([row.category,row.subjectKey])))) fail('角色来源摘要缺少原绑定，请重新导出');
+}
 
 // Visit typed bindings in settings, histories and all pool revisions. Do not interpret arbitrary strings as executable JSON.
 function scan(value, namespace, census, depth = 0) {
@@ -89,21 +94,24 @@ async function inspectLibraries(namespace, config, { workflows, pools, character
 }
 
 // This unit captures and verifies one portable file. Applying it requires the explicit staged restore coordinator.
-export async function captureStoryboardResourceBundle({ namespace, chatKey, storyboard, workflowStore, poolStore, characterStore, source = null, chatEvidence = null,
+export async function captureStoryboardResourceBundle({ namespace, chatKey, storyboard, workflowStore, poolStore, characterStore, source = null, chatEvidence = null, subjectEvidence = null,
   guard = async () => {}, isCurrent = () => true, readImages = readStaticReferenceBlobs, legacyFetch = globalThis.fetch, now = Date.now }) {
   const check = async () => { if (isCurrent() !== true) fail('资源包页面已变化'); await guard(); if (isCurrent() !== true) fail('资源包页面已变化'); };
   source = source === null ? null : await sourceIdentityForNamespace(source, namespace);
   chatEvidence = chatEvidence === null ? null : await inspectStoryboardChatEvidence(chatEvidence, chatKey);
+  subjectEvidence = subjectEvidence === null ? null : await inspectStoryboardSubjectEvidence(subjectEvidence);
   await check();
   const config = await (async () => { const parsed = await inspectStoryboardPackageFile(storyboard); await check(); return inspectConfig(parsed.payload, namespace, { checked: true }); })();
   const pools = await poolStore.backup(namespace, { isCurrent }); await check();
   const characters = await characterStore.backup(namespace, { isCurrent }); await check();
   const workflows = await workflowStore.backup(namespace, { isCurrent }); await check();
   const { census, summary } = await inspectLibraries(namespace, config, { workflows, pools, characters }, check);
+  if (subjectEvidence) checkSubjectCoverage(subjectEvidence, characters);
   const baselines = await Promise.all([digest(workflows), digest(pools), digest(characters)]); await check();
   const entries = [{ id: 'storyboard', file: storyboard }, { id: 'workflows', file: jsonFile(workflows) }, { id: 'pools', file: jsonFile(pools) }, { id: 'characters', file: jsonFile(characters) }];
   if (chatEvidence) entries.push({ id: 'chat-evidence', file: jsonFile(chatEvidence) });
   if (chatEvidence) summary.chatEvidenceMessages = chatEvidence.messages.length;
+  if (subjectEvidence) { entries.push({ id: 'subject-evidence', file: jsonFile(subjectEvidence) }); summary.subjectEvidenceCount = subjectEvidence.subjects.length; }
   // Conservative header reserve avoids fetching originals only to discover that the combined file cannot fit.
   if (entries.reduce((sum, row) => sum + row.file.size, STORYBOARD_BUNDLE_LIMITS.manifest) + [...census.files.values()].reduce((sum, row) => sum + row.bytes, 0) > STORYBOARD_BUNDLE_LIMITS.total) fail('资源联包超过 512 MiB，请保留原环境，未读取原图或输出缺件包');
   const remaining = STORYBOARD_BUNDLE_LIMITS.total - entries.reduce((sum, row) => sum + row.file.size, STORYBOARD_BUNDLE_LIMITS.manifest + STORYBOARD_BUNDLE_LIMITS['legacy-vibes']) - [...census.files.values()].reduce((sum, row) => sum + row.bytes, 0);
@@ -135,6 +143,9 @@ export async function inspectStoryboardResourceBundle(file, { guard = async () =
   const { census, summary } = await inspectLibraries(namespace, config, { workflows, pools, characters }, guard);
   if (opened.manifest.entries.some(row => row.id === 'chat-evidence')) {
     const evidence = await inspectStoryboardChatEvidence(await opened.readJson('chat-evidence'), opened.manifest.chatKey); summary.chatEvidenceMessages = evidence.messages.length; await guard();
+  }
+  if (opened.manifest.entries.some(row => row.id === 'subject-evidence')) {
+    const evidence = await inspectStoryboardSubjectEvidence(await opened.readJson('subject-evidence')); checkSubjectCoverage(evidence, characters); summary.subjectEvidenceCount = evidence.subjects.length; await guard();
   }
   const imageEntries = opened.manifest.entries.filter(row => row.id.startsWith('image:'));
   if (imageEntries.length !== census.files.size) fail('资源原件数量不符，存在缺件或多余文件');

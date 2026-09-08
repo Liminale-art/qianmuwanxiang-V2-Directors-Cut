@@ -38,7 +38,7 @@ self.addEventListener('message', async event => {
         vibeStage: createStoryboardPackageStage({ store: vibe, journal }), guard, isCurrent: () => !closed,
         images: createImageRestoreClient({ namespace, headers: () => ({ 'X-CSRF-Token': token }), guard }),
         sourceIdentity: createSourceIdentityClient({ namespace, guard }),
-        configuration: { preview: value => ask('configuration-preview', value), apply: value => ask('configuration-apply', value) } });
+        configuration: { preview: value => ask('configuration-preview', value), apply: value => ask('configuration-apply', value), subjects: value => ask('configuration-subjects', value) } });
       result = { sourceDigest: session.sourceDigest };
     } else if (session && message.sourceDigest === session.sourceDigest) {
       if (message.action === 'preview') result = await session.preview(message.payload.decisions);

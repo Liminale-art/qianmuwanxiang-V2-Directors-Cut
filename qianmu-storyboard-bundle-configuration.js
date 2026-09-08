@@ -4,13 +4,14 @@ import { prepareStoryboardPackageDraft } from './qianmu-storyboard-package-draft
 import { createStoryboardMutation, inspectStoryboardMutation, applyStoryboardMutation } from './qianmu-storyboard-package-mutation.js';
 import { comfyLibraryBackupDigest as digest } from './qianmu-comfy-library-backup.js';
 import { captureStoryboardChatEvidence, inspectStoryboardChatEvidence, createStoryboardEvidenceLinkResolver, projectStoryboardChatMessages, storyboardChatProjectionMatches } from './qianmu-storyboard-chat-evidence.js';
+import { inspectStoryboardSubjectEvidence, compareStoryboardSubjectEvidence } from './qianmu-storyboard-subject-evidence.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle_configuration', submissionState: 'not_submitted' }); };
 const clone = structuredClone;
 
 // Live ST state is injected by the entry point. Resource code never gets a reference to these objects.
 // Persistence may be debounced by ST: an applied journal is NOT proof of durable settings after reload.
-export function createStoryboardBundleConfiguration({ namespace, chatKey, settings, chat, messages, journal, persist, guard, isCurrent, captureChatEvidence = captureStoryboardChatEvidence }) {
+export function createStoryboardBundleConfiguration({ namespace, chatKey, settings, chat, messages, journal, persist, guard, isCurrent, captureChatEvidence = captureStoryboardChatEvidence, captureSubjects }) {
   if (![messages, persist, guard, isCurrent].every(value => typeof value === 'function')) fail('缺少配置恢复环境或持久保存接口');
   const stamp = () => JSON.stringify(messages().map((message, floor) => createStoryboardMessageReference({ message, floor, chatKey, now: 1 })));
   const check = async () => { if (isCurrent() !== true) fail('配置恢复页面已变化'); await guard(); if (isCurrent() !== true) fail('配置恢复页面已变化'); };
@@ -64,6 +65,14 @@ export function createStoryboardBundleConfiguration({ namespace, chatKey, settin
       fields: mutation.patch.length, chatEvidence: Boolean(sourceEvidence), chatChanged: sourceEvidence ? sourceEvidence.digest !== currentEvidence.digest : null } };
   }
   return Object.freeze({
+    async subjects(input) {
+      await check();
+      if (typeof captureSubjects !== 'function') fail('缺少角色来源读取接口，请更新前端后核对');
+      const source = await inspectStoryboardSubjectEvidence(input.subjectEvidence), bindings = clone(input.subjectBindings);
+      if (!Array.isArray(bindings) || bindings.length > 2048) fail('角色来源绑定核对范围无效');
+      const target = await captureSubjects(source.subjects.map(({ category, subjectKey }) => ({ category, subjectKey }))); await check();
+      return compareStoryboardSubjectEvidence(source, target, bindings);
+    },
     async preview(input) { const prepared = await prepare(input); return { digest: prepared.digest, summary: prepared.summary }; },
     async apply(input) {
       const source = clone(input), prepared = await prepare(source);

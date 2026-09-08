@@ -3,6 +3,7 @@ import { createComfyWorkflowStore } from './qianmu-comfy-library.js';
 import { createComfyPoolStore } from './qianmu-comfy-pool-store.js';
 import { createCharacterArchiveStore } from './qianmu-character-archive-store.js';
 import { captureStoryboardChatEvidence } from './qianmu-storyboard-chat-evidence.js';
+import { captureStoryboardSubjectEvidence } from './qianmu-storyboard-subject-evidence.js';
 
 let started = false, counter = 0;
 const pending = new Map();
@@ -15,9 +16,10 @@ self.addEventListener('message', async event => {
     let result;
     if (input?.action === 'capture') {
       const workflowStore = createComfyWorkflowStore(), poolStore = createComfyPoolStore(), characterStore = createCharacterArchiveStore(); stores.push(workflowStore, poolStore, characterStore);
-      result = await captureStoryboardResourceBundle({ namespace: input.namespace, chatKey: input.chatKey, source: input.source, chatEvidence: input.chatEvidence, storyboard: input.file, workflowStore, poolStore, characterStore, guard });
+      result = await captureStoryboardResourceBundle({ namespace: input.namespace, chatKey: input.chatKey, source: input.source, chatEvidence: input.chatEvidence, subjectEvidence: input.subjectEvidence, storyboard: input.file, workflowStore, poolStore, characterStore, guard });
     } else if (input?.action === 'inspect') result = await inspectStoryboardResourceBundle(input.file, { guard });
     else if (input?.action === 'chat-evidence') result = { chatEvidence: await captureStoryboardChatEvidence(input.messages, input.chatKey, { guard }) };
+    else if (input?.action === 'subject-evidence') result = { subjectEvidence: await captureStoryboardSubjectEvidence(input.subjects, { guard }) };
     else throw Error('不支持的资源包操作');
     await guard(); self.postMessage({ result });
   } catch (error) { self.postMessage({ error: { code: error?.code || 'storyboard_bundle_worker', message: error?.message || '资源包处理失败' } }); }
