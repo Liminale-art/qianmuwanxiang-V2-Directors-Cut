@@ -104,8 +104,11 @@ test('actual portable export/import preserves the policy and imports old package
   await importer.import(new Blob([text]));
   assert.deepEqual(plain(importer.e.state.generationPolicy),{version:1,minImages:2,maxImages:4,concurrency:3});
   importer.e.choice='3';await importer.recover();
+  const modern=JSON.parse(text);delete modern.settings.generationPolicy;modern.settings.routing={enabled:false};
+  await importer.import(new Blob([JSON.stringify(modern)]));
+  assert.deepEqual(plain(importer.e.state.generationPolicy),{version:1,minImages:2,maxImages:4,concurrency:3});await importer.recover();
   for(const enabled of [false,true]){
-    const legacy=JSON.parse(text);delete legacy.settings.generationPolicy;legacy.settings.routing={enabled,maxShotsPerFloor:2,providerConcurrency:1};
+    const legacy=JSON.parse(text);legacy.settings.schemaVersion=2;delete legacy.settings.generationPolicy;legacy.settings.routing={enabled,maxShotsPerFloor:2,providerConcurrency:1};
     await importer.import(new Blob([JSON.stringify(legacy)]));
     assert.deepEqual(plain(importer.e.state.generationPolicy),{version:1,minImages:1,maxImages:enabled?2:1,concurrency:1});
     await importer.recover();

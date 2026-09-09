@@ -21768,6 +21768,7 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   const state = normalizeStoryboardState(clone(currentState));
   packageModule.assertStoryboardAdditionalSettingsRetained(currentState,state);
   packageModule.assertStoryboardPresetDataRetained(currentState,state);
+  packageModule.assertStoryboardRelationsRetained(currentState,state);
   const pipelineLogs = state.logs.map((log) => {
     const pipeline=storyboardPipelineForLog(log,state);
     if(log.pipelineId&&!pipeline)throw new Error('历史分镜日志原文缺失，请先保全数据；未导出缺件包');

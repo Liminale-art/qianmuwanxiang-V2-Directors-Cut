@@ -1,5 +1,6 @@
 import {createStoryboardDefaults,migrateStoryboardState,normalizeStoryboardState,normalizeStoryboardGenerationPolicy,normalizeStoryboardConnectionProfile,STORYBOARD_PROVIDER_REGISTRY,STORYBOARD_PIPELINE_LOG_LIMIT,STORYBOARD_SCHEMA_VERSION} from './qianmu-storyboard.js';
 import {mergeStoryboardParameterMemory,assertStoryboardMemoryIdentitiesRetained,mergeStoryboardPromptDefaults,captureStoryboardPresetData,assertStoryboardPresetDataRetained} from './qianmu-storyboard-package-presets.js';
+import {STORYBOARD_RELATION_FIELDS,captureStoryboardRelationData,assertStoryboardRelationsRetained,mergeStoryboardParameterSelection} from './qianmu-storyboard-package-relations.js';
 import {STORYBOARD_IMPORT_FIELDS} from './qianmu-storyboard-package-mutation.js';
 import {STORYBOARD_ADDED_IMPORT_FIELDS,assertStoryboardSelectionRestoreScope,assertStoryboardAdditionalSettingsRetained} from './qianmu-storyboard-package-fields.js';
 import {storyboardConnectionsShareTarget,storyboardConnectionRestoreReview} from './qianmu-storyboard-connection-identity.js';
@@ -25,15 +26,17 @@ export function prepareStoryboardPackageDraft({settings,chat,incoming,images,col
   if(Object.hasOwn(raw,'comfyAutoEnabled')&&typeof raw.comfyAutoEnabled!=='boolean')fail('Comfy自动择流开关格式无效，未猜测开启状态');
   if(raw.source!==undefined&&!STORYBOARD_PROVIDER_REGISTRY[raw.source])fail('生图渠道不受当前版本支持');
   if(raw.profiles&&(!object(raw.profiles)||Object.keys(raw.profiles).some(key=>!STORYBOARD_PROVIDER_REGISTRY[key])))fail('绘制配置含不支持的渠道');
+  const modern=Number(incoming.schemaVersion)===STORYBOARD_SCHEMA_VERSION;
   const migrated=migrateStoryboardState(raw);
-  for(const key of Object.keys(raw))if(Object.hasOwn(migrated,key)&&!STORYBOARD_ADDED_IMPORT_FIELDS.includes(key))raw[key]=migrated[key];
+  for(const key of Object.keys(raw))if(Object.hasOwn(migrated,key)&&!STORYBOARD_ADDED_IMPORT_FIELDS.includes(key)&&!(modern&&STORYBOARD_RELATION_FIELDS.includes(key)))raw[key]=migrated[key];
   if(!raw.connections&&Object.values(migrated.connections||{}).some(group=>group.presets?.length))raw.connections=migrated.connections;
   if(!raw.pipelineLogs&&raw.logs&&migrated.pipelineLogs?.length)raw.pipelineLogs=migrated.pipelineLogs;
   for(const key of STORYBOARD_IMPORT_FIELDS){if(!Object.hasOwn(raw,key)||key==='connections')continue;touched.add(key);
     base[key]=Object.hasOwn(limits,key)?mergeStoryboardPackageRows(base[key]||[],raw[key],limits[key],key):structuredClone(raw[key]);
   }
   // Old packages used routing as the count policy; retain that conservative migration explicitly.
-  if(Object.hasOwn(raw,'generationPolicy')||Object.hasOwn(raw,'routing')){base.generationPolicy=normalizeStoryboardGenerationPolicy(raw.generationPolicy,raw.routing||{},raw.compositionPolicy);touched.add('generationPolicy');}
+  if(Object.hasOwn(raw,'generationPolicy')||(!modern&&Object.hasOwn(raw,'routing'))){base.generationPolicy=modern?structuredClone(raw.generationPolicy):normalizeStoryboardGenerationPolicy(raw.generationPolicy,raw.routing||{},raw.compositionPolicy);touched.add('generationPolicy');}
+  if(Object.hasOwn(raw,'parameterPresetSelection'))base.parameterPresetSelection=mergeStoryboardParameterSelection(settings.parameterPresetSelection,raw.parameterPresetSelection);
   // Imported display IDs are not authority to use a same-ID LLM profile on this installation.
   if(Object.hasOwn(raw,'promptCompiler'))base.promptCompiler={...base.promptCompiler,apiProfileId:settings.promptCompiler?.apiProfileId||'',connectionPresetId:settings.promptCompiler?.connectionPresetId||''};
   if(raw.profiles){base.profiles={...structuredClone(settings.profiles),...raw.profiles};}
@@ -69,10 +72,14 @@ export function prepareStoryboardPackageDraft({settings,chat,incoming,images,col
   for(const preset of raw.promptPresets||[])if(preset.items)ids(preset.items,'取景条目',50);
   // Carry the selected version, never transfer the user's previous permission to run automatic routing.
   if(['comfyAutoEnabled','comfyPoolSelection','comfyLibrarySelection'].some(key=>Object.hasOwn(raw,key))){base.comfyAutoEnabled=false;touched.add('comfyAutoEnabled');}
-  const presetBefore=captureStoryboardPresetData(base,[...touched]);
+  const presetKeys=new Set(touched);
+  // A Tag library normalization also processes local preset references, even when those presets were not in the file.
+  if(touched.has('tagLibrary'))presetKeys.add('promptPresets');
+  const presetBefore=captureStoryboardPresetData(base,[...presetKeys]);
+  const relationBefore=modern?captureStoryboardRelationData(base):null;
   const normalized=normalizeStoryboardState(base),draftSettings={};
   if(touched.has('modelProfiles'))assertStoryboardMemoryIdentitiesRetained(presetBefore.modelProfiles,normalized.modelProfiles);
-  if(Number(incoming.schemaVersion)===STORYBOARD_SCHEMA_VERSION)assertStoryboardPresetDataRetained(presetBefore,normalized);
+  if(modern){assertStoryboardPresetDataRetained(presetBefore,normalized);assertStoryboardRelationsRetained(relationBefore,normalized);}
   assertStoryboardAdditionalSettingsRetained(raw,normalized,{resetAutomatic:true});
   if(touched.has('connections'))for(const source of Object.keys(STORYBOARD_PROVIDER_REGISTRY)){
     normalized.connections[source].draft=structuredClone(settings.connections[source].draft);

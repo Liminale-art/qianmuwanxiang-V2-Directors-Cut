@@ -210,11 +210,25 @@ test('strict plan export refuses lost archives while old non-strict reads remain
 });
 
 test('actual export prevents duplicate heavy work and explicitly describes legacy Vibe reference-only coverage',async()=>{
-  const e=indexFixture();e.state.vibeLibrary=[{...item('legacy'),providerIds:['novel']}];let release,started;
+  const e=indexFixture();const {information,...legacy}=item('legacy');e.state.vibeLibrary=[{...legacy,informationExtracted:information,providerIds:['novel']}];let release,started;
   const began=new Promise(resolve=>started=resolve);e.context.storyboardHydratePipelineArchive=async()=>{started();await new Promise(resolve=>release=resolve);};
   const pending=e.context.storyboardExportPackage({originals:false});await began;await e.context.storyboardExportPackage();assert.equal(e.exported(),null);release();await pending;
   assert.ok(e.exported());assert.ok(e.notices.some(([text,kind])=>kind==='info'&&text.includes('请稍候')));
   assert.ok(e.notices.some(([text,kind])=>kind==='warning'&&text.includes('原文件')));assert.equal(e.context.storyboardExportPackage.busy,false);
+});
+
+test('actual export rejects broken resource selections and truncated Tag rules before reading images',async()=>{
+  for(const mutate of [s=>s.selectedVibeIds=['missing'],s=>s.promptCompiler.instructionPresetId='missing',s=>s.tagLibrary=[{id:'t',content:'x'.repeat(6001)}],s=>s.generationPolicy.maxImages=8,s=>s.routing.rules=[{id:'bad',target:{providerId:'unknown'}}]]){
+    const e=indexFixture();mutate(e.state);const before=structuredClone(e.state);e.context.fetch=()=>assert.fail('must stop before media');
+    await e.context.storyboardExportPackage({originals:false});assert.equal(e.exported(),null);assert.match(e.notices.at(-1)[0],/关联.*完整保留/);assert.deepEqual(e.state,before);
+  }
+});
+
+test('actual export retains Tag/Vibe/preset links, zero strengths and compiler selection in one normalized package',async()=>{
+  const e=indexFixture();e.state.tagLibrary=[{id:'t',content:'soft light',positive:false}];e.state.vibeLibrary=[{id:'v',name:'V',strength:0,informationExtracted:0,tags:['t']}];e.state.selectedVibeIds=['v'];
+  e.state.promptPresets=[{id:'p',name:'P',tagIds:['t'],items:[{id:'entry',instruction:'frame the light'}]}];e.state.promptCompiler.instructionPresetId='p';const before=structuredClone(e.state);
+  await e.context.storyboardExportPackage({originals:false});assert.ok(e.exported(),JSON.stringify(e.notices));const value=JSON.parse(await e.exported().text());
+  assert.equal(value.settings.promptCompiler.instructionPresetId,'p');assert.deepEqual(value.settings.selectedVibeIds,['v']);assert.deepEqual(value.settings.vibeLibrary[0].tags,['t']);assert.equal(value.settings.vibeLibrary[0].informationExtracted,0);assert.deepEqual(e.state,before);
 });
 
 test('old importer refuses future version packets before confirmation or any settings/media/archive write',async()=>{
