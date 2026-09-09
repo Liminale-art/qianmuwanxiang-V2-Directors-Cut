@@ -1806,6 +1806,17 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 #story-director-modal .sd-storage-scope { margin: 13px 0 0; color: var(--sd-muted); font-size: 11px; line-height: 1.45; }
 #story-director-modal .sd-storage-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 13px; }
+#story-director-modal .sd-storage-disclosure { margin-top: 13px; min-width: 0; border: 1px solid var(--sd-hairline); border-radius: var(--sd-radius-control); }
+#story-director-modal .sd-storage-disclosure > summary { padding: 11px 12px; color: var(--sd-text); font-size: var(--sd-font-secondary, 12px); cursor: pointer; list-style: none; }
+#story-director-modal .sd-storage-disclosure > summary::-webkit-details-marker { display: none; }
+#story-director-modal .sd-storage-disclosure > summary:focus-visible { outline: 2px solid var(--sd-accent); outline-offset: -2px; border-radius: inherit; }
+#story-director-modal .sd-storage-disclosure[open] > summary { border-bottom: 1px solid var(--sd-hairline); }
+#story-director-modal .sd-storage-disclosure-body { min-width: 0; padding: 0 12px 12px; overflow-wrap: anywhere; }
+#story-director-modal .sd-storage-disclosure-body > .sd-storage-totals { margin-top: 12px; }
+#story-director-modal .sd-storage-backup-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; margin-top: 10px; min-width: 0; }
+#story-director-modal .sd-storage-backup-row > span { font-size: var(--sd-font-secondary, 12px); color: var(--sd-muted); }
+#story-director-modal .sd-storage-backup-row > .sd-btn { min-width: 48px; min-height: 34px; margin: 0; padding: 5px 9px; }
+#story-director-modal .sd-storage-card .sd-storage-actions > * { min-width: 0; overflow-wrap: anywhere; }
 
 /* 便笺是完全不透明的紧凑工作页；舞台拦住下层操作，蜂巢入口只有拖出后才在 ST 顶层出现。 */
 #story-director-modal .sd-notes-stage {

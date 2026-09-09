@@ -63,11 +63,12 @@ assert.match(storeSource, /export function normalizeChatScopedStorageSelections\
 
 const plugTab = source.slice(source.indexOf('function renderPlugTab'), source.indexOf('/* ============================================================', source.indexOf('function renderPlugTab')));
 const tasksTab = source.slice(source.indexOf('function renderTasksNodesTab'), source.indexOf('function renderCastWorldTab'));
-assert.match(plugTab, /配置备份[\s\S]*renderStorageManagementCard\(\)/, 'storage management must be the final API/log card');
+assert.match(plugTab, /renderRuntimeHealthCard\(\)[\s\S]*renderStorageManagementCard\(\)/, 'storage management must be the final API/log card');
+assert.doesNotMatch(plugTab, /sd-export-config|<h3>配置备份/, 'configuration backup must live inside storage management, not a competing card');
 assert.doesNotMatch(tasksTab, /renderStorageManagementCard|storageCard/, 'the task page must remain focused on task data');
 assert.match(source, /sd-storage-ios-bar[\s\S]*sd-storage-legend/, 'storage must use an iOS-style multicolor bar and legend');
 assert.match(styles, /\.sd-storage-ios-bar[\s\S]*\.sd-storage-segment[\s\S]*--sd-storage-color/, 'each category must own a visual segment');
-assert.match(source, /浏览器 \/ ST 来源[\s\S]*千幕已盘点[\s\S]*可管理项目/, 'origin, attributable, and manageable totals must remain separate');
+assert.match(source, /本设备 · 站点已用 \/ 配额[\s\S]*千幕已盘点[\s\S]*可管理项目/, 'device origin, attributable, and manageable totals must remain separate');
 assert.match(source, /浏览器分配给当前 ST 站点来源的空间[\s\S]*千幕仅统计可明确归因的本地内容/, 'origin use must never be mislabeled as Qianmu-only storage');
 assert.match(source, /不代表 VPS 磁盘总容量/, 'browser quota must not be confused with server disk capacity');
 assert.match(source, /classifyStoragePressure\(originEstimate \|\| \{\}\)[\s\S]*pressureNotice[\s\S]*千幕不会自动清理/, 'high origin usage must produce a visible warning without automatic cleanup');
@@ -77,7 +78,7 @@ assert.match(source, /openStorageCleanupDialog[\s\S]*data\?\.idb\?\.stores[\s\S]
 assert.match(source, /blobStore\.clearStorageItems\(stores\)[\s\S]*selected\.includes\('__diagnostics__'\)[\s\S]*storyboard\.pipelineLogs = \[\]/, 'selected stores and diagnostics must be cleared independently');
 assert.match(source, /cleared\.has\('storyboard_pipeline_logs'\)[\s\S]*storyboardPipelineArchiveEpoch\+\+[\s\S]*filter\(\(item\) => !storyboardPipelineIsTerminal\(item\)\)/, 'clearing detailed logs must invalidate archive callbacks while preserving active pipelines');
 assert.match(source, /portableTtsBytes[\s\S]*item\.name === 'tts_lines'[\s\S]*cleared\.has\('tts_lines'\)[\s\S]*ttsLineCache\.clear\(\)/, 'the TTS cache item must include and clear its portable chat snapshot');
-assert.match(source, /orphanReaderBlobs[\s\S]*\u5b64\u513f\u56fe\u7247[\s\S]*__orphan_reader_blobs__/, 'orphaned reader blobs must be visible as a separate cleanup choice');
+assert.match(source, /orphanReaderBlobs[\s\S]*无所属书籍的图片[\s\S]*__orphan_reader_blobs__/, 'orphaned reader blobs must keep a clear label and a separate cleanup choice');
 assert.match(source, /selected\.includes\('__orphan_reader_blobs__'\)[\s\S]*clearOrphanedReaderBlobs\(\)/, 'orphan cleanup must only run after explicit selection');
 assert.match(source, /scopeCount: Array\.isArray\(item\.scopes\)[\s\S]*item\.scopeCount[\s\S]*个聊天/, 'cleanup rows must reveal how many chat buckets each registered store contains');
 assert.match(source, /openStorageChatCleanupDialog[\s\S]*导出伴读整包[\s\S]*导出语音缓存[\s\S]*clearChatScopedStorage\(selected\)/, 'chat cleanup must offer module backups before explicit per-item deletion');

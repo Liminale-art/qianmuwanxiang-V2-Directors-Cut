@@ -8066,7 +8066,7 @@ async function refreshStorageInventory(force = false) {
 }
 
 const STORAGE_CATEGORY_LABELS = Object.freeze({
-  images: '图片', vibes: 'Vibe 文件', characters: '角色资料', audio: '音频', video: '动态影片', reader: '伴读资料', notes: '固定便笺', logs: '日志与记录', cache: '临时缓存', settings: '设置与预设', chat: '当前聊天数据', other: '其他',
+  images: '图片', vibes: '参考素材', characters: '角色资料', audio: '音频', video: '影片', reader: '伴读资料', notes: '固定便笺', logs: '日志与记录', cache: '临时缓存', settings: '设置与预设', chat: '当前聊天数据', other: '其他',
 });
 
 const STORAGE_CATEGORY_COLORS = Object.freeze({
@@ -8075,9 +8075,18 @@ const STORAGE_CATEGORY_COLORS = Object.freeze({
 
 function renderStorageManagementCard() {
   const { status, data, error } = storageInventoryState;
+  // These are existing module packages, not a new all-device snapshot or sync protocol.
+  const backupSection = `<details class="sd-storage-disclosure sd-storage-backup-section" data-storage-section="backups">
+    <summary>备份与恢复</summary>
+    <div class="sd-storage-disclosure-body">
+      <p class="sd-storage-scope">按内容分别备份。配置不包含素材原件；导入配置会覆盖现有设置。分镜资源包的范围在导出前核对，不代表全部聊天备份。</p>
+      <div class="sd-storage-backup-row"><span>配置</span><button type="button" class="sd-btn sd-export-config">导出</button><button type="button" class="sd-btn sd-import-config">导入</button><input type="file" class="sd-import-config-file" accept="application/json,.json" hidden></div>
+      ${[['storyboard','分镜资源','.qmb,application/json,.json'],['reader','伴读资料','application/json,.json'],['favorites','语音收藏','application/json,.json'],['notes','固定便笺','application/json,.json']].map(([key,label,accept])=>`<div class="sd-storage-backup-row"><span>${label}</span><button type="button" class="sd-btn" data-storage-export="${key}" aria-label="导出${label}">导出</button><button type="button" class="sd-btn" data-storage-pick="${key}" aria-label="导入${label}">导入</button><input type="file" data-storage-import="${key}" accept="${accept}" hidden></div>`).join('')}
+    </div>
+  </details>`;
   if (!data) {
     const message = status === 'error' ? `盘点失败：${htmlEscape(error || '当前环境不可用')}` : '正在盘点本机数据…';
-    return `<section class="sd-card sd-storage-card"><div class="sd-card-title-row"><h3>储存空间</h3><button type="button" class="sd-icon-btn sd-storage-refresh" title="刷新" aria-label="刷新"><i class="fa-solid fa-rotate"></i></button></div><p class="sd-muted">${message}</p></section>`;
+    return `<section class="sd-card sd-storage-card"><div class="sd-card-title-row"><h3>储存空间</h3><button type="button" class="sd-icon-btn sd-storage-refresh" title="刷新" aria-label="刷新"><i class="fa-solid fa-rotate"></i></button></div><p class="sd-muted" role="status">${message}</p>${backupSection}</section>`;
   }
   const categories = data.categories.filter((item) => Number(item.bytes) > 0);
   const originUsage = Math.max(0, Number(data.origin.usage) || 0);
@@ -8107,12 +8116,20 @@ function renderStorageManagementCard() {
     : pressure.level === 'warning'
       ? `<p class="sd-storage-pressure is-warning" role="status">浏览器来源空间已使用 ${pressurePercent}% · 剩余约 ${htmlEscape(formatStorageBytes(pressure.freeBytes))}。可按需整理，千幕不会自动清理。</p>`
       : '';
+  const incomplete = [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage,data.mappingStorage,data.carrierStorage].some(row=>['unavailable','partial'].includes(row?.status))
+    || [data.imageAttempts,data.imageChannels,data.serviceReceipts,data.comfyReceipts].some(row=>row?.error);
   return `<section class="sd-card sd-storage-card">
     <div class="sd-card-title-row"><div><h3>储存空间</h3><p class="sd-summary-note">${htmlEscape(new Date(data.sampledAt).toLocaleTimeString())}</p></div><button type="button" class="sd-icon-btn sd-storage-refresh" title="刷新" aria-label="刷新"><i class="fa-solid fa-rotate${status === 'loading' ? ' fa-spin' : ''}"></i></button></div>
-    <div class="sd-storage-totals"><span>浏览器 / ST 来源<b>${htmlEscape(originText)}</b></span><span>千幕已盘点<b>${htmlEscape(formatStorageBytes(data.trackedBytes))}</b></span><span>可管理项目<b>${htmlEscape(formatStorageBytes(data.manageableBytes))}</b></span><span>孤儿图片<b>${htmlEscape(orphanText)}</b></span></div>
+    <div class="sd-storage-totals"><span>本设备 · 站点已用 / 配额<b>${htmlEscape(originText)}</b></span><span>千幕已盘点<b>${htmlEscape(formatStorageBytes(data.trackedBytes))}</b></span></div>
     <div class="sd-storage-ios-bar" role="img" aria-label="储存空间分布">${storageBar}</div>
     <div class="sd-storage-legend">${legend || '<p class="sd-muted">暂未发现千幕本地数据。</p>'}</div>
     ${pressureNotice}
+    ${incomplete ? '<p class="sd-storage-pressure is-warning" role="status">部分数据暂不可读取，统计尚不完整。可展开占用明细核对；未读取的部分不会按零占用处理。</p>' : ''}
+    <p class="sd-storage-scope">此处是浏览器分配给当前 ST 站点来源的空间，不代表 VPS 磁盘总容量；千幕仅统计可明确归因的本地内容。</p>
+    ${backupSection}
+    <div class="sd-storage-actions"><button type="button" class="sd-btn sd-primary sd-storage-clean" ${data.manageableBytes > 0 ? '' : 'disabled'}><i class="fa-solid fa-sliders"></i>选择清理模块</button><button type="button" class="sd-btn sd-storage-chat-clean" ${data.idb?.chatScopes?.length ? '' : 'disabled'}><i class="fa-solid fa-message"></i>按聊天管理</button></div>
+    <details class="sd-storage-disclosure sd-storage-details" data-storage-section="details"><summary>占用明细与维护</summary><div class="sd-storage-disclosure-body">
+    <div class="sd-storage-totals"><span>可管理项目<b>${htmlEscape(formatStorageBytes(data.manageableBytes))}</b></span><span>无所属书籍的图片<b>${htmlEscape(orphanText)}</b></span></div>
     ${data.imageAttempts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.imageAttempts.error)}</p>` : ''}
     ${data.imageChannels?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.imageChannels.error)}</p>` : ''}
     ${data.serviceReceipts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.serviceReceipts.error)}</p>` : ''}
@@ -8129,8 +8146,7 @@ function renderStorageManagementCard() {
     ${data.characterStorage?.status==='ready'?'':`<p class="sd-storage-pressure is-warning">${htmlEscape(data.characterStorage?.error||'请重新盘点或进入角色库核对；未修改档案。')}</p>`}
     ${(data.comfyStorage?.errors || []).map(message=>`<p class="sd-storage-pressure is-warning">${htmlEscape(message)}</p>`).join('')}
     ${[['workflows','Comfy 工作流库'],['pools','Comfy 候选方案'],['scenes','Comfy 续场记录']].map(([key,label])=>{const row=data.comfyStorage?.[key];return `<div class="sd-storage-actions"><span>${label} · 当前账户 · ${row?.status==='ready'?`${row.count} 项 · ${htmlEscape(formatStorageBytes(row.bytes))}<br>${key==='scenes'?'记录正文':`含 ${row.versions} 个版本、${row.archived} 项归档`} · ${htmlEscape(formatStorageBytes(row.documentBytes))} · 索引元数据 ${htmlEscape(formatStorageBytes(row.indexBytes))}`:'未盘点，总计未包含'}</span>${key!=='scenes'?`<button type="button" class="sd-btn" data-storage-comfy-library="${key}">管理</button>`:''}</div>`;}).join('')}
-    <p class="sd-storage-scope">此处是浏览器分配给当前 ST 站点来源的空间，不代表 VPS 磁盘总容量；千幕仅统计可明确归因的本地内容。</p>
-    <div class="sd-storage-actions"><button type="button" class="sd-btn sd-primary sd-storage-clean" ${data.manageableBytes > 0 ? '' : 'disabled'}><i class="fa-solid fa-sliders"></i>选择清理模块</button><button type="button" class="sd-btn sd-storage-chat-clean" ${data.idb?.chatScopes?.length ? '' : 'disabled'}><i class="fa-solid fa-message"></i>按聊天管理</button></div>
+    </div></details>
   </section>`;
 }
 
@@ -8555,9 +8571,18 @@ function paintStorageManagementCard() {
   template.innerHTML = renderStorageManagementCard().trim();
   const next = template.content.firstElementChild;
   if (!next) return false;
+  for (const section of current.querySelectorAll('details[data-storage-section]')) {
+    const target = [...next.querySelectorAll('details[data-storage-section]')].find(item=>item.dataset.storageSection===section.dataset.storageSection);
+    if (target) target.open = section.open;
+  }
+  // Keep native file pickers and in-progress backup buttons alive during a quota refresh.
+  const backup = current.querySelector('.sd-storage-backup-section');
+  if (backup) next.querySelector('.sd-storage-backup-section')?.replaceWith(backup);
+  const refreshFocused = document.activeElement === current.querySelector('.sd-storage-refresh');
   current.replaceWith(next);
   applyQianmuIcons(next);
   bindStorageManagementEvents(next);
+  if (refreshFocused) next.querySelector('.sd-storage-refresh')?.focus({ preventScroll: true });
   return true;
 }
 
@@ -8586,6 +8611,36 @@ async function storyboardOpenRestoreStorage(root,expectedNamespace,{mappings=fal
 }
 
 function bindStorageManagementEvents(root) {
+  const backup = root.querySelector('.sd-storage-backup-section');
+  if (backup && !backup.dataset.storageBound) {
+    backup.dataset.storageBound = 'true';
+    backup.querySelector('.sd-export-config')?.addEventListener('click', () => void exportConfig());
+    backup.querySelector('.sd-import-config')?.addEventListener('click', () => backup.querySelector('.sd-import-config-file')?.click());
+    backup.querySelector('.sd-import-config-file')?.addEventListener('change', event => void importConfig(event));
+    backup.querySelectorAll('[data-storage-export]').forEach(button=>button.addEventListener('click',()=>{
+      switch(button.dataset.storageExport) {
+        case 'storyboard': void storyboardExportPackage({ bundle: true }); break;
+        case 'reader': void coreadExportData(); break;
+        case 'favorites': void exportTtsFavoritesBackup(button); break;
+        case 'notes': void exportPinnedNotesBackup(button); break;
+      }
+    }));
+    backup.querySelectorAll('[data-storage-pick]').forEach(button=>button.addEventListener('click',()=>{
+      backup.querySelector(`input[data-storage-import="${button.dataset.storagePick}"]`)?.click();
+    }));
+    backup.querySelectorAll('input[data-storage-import]').forEach(input=>input.addEventListener('change',async event=>{
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        switch(input.dataset.storageImport) {
+          case 'storyboard': await storyboardImportAnyPackage(file); break;
+          case 'reader': await coreadImportDataFile(file); break;
+          case 'favorites': await importTtsFavoritesBackup(event); break;
+          case 'notes': await importPinnedNotesBackup(event); break;
+        }
+      } finally { input.value = ''; }
+    }));
+  }
   root.querySelector('button.sd-storage-characters')?.addEventListener('click',()=>{
     storageInventoryState={...storageInventoryState,sampledAt:0};
     if(activeTab!=='imagegen')storyboardBeginSession();activeTab='imagegen';storyboardNavigate(root,{view:'characters'});
@@ -12268,15 +12323,6 @@ function renderPlugTab() {
       <h3>日志</h3>
       <p class="sd-muted">保留最近 ${LOG_LIMIT} 次生成记录。</p>
       ${logs.length ? `<div class="sd-log-list">${logs.map((log, i) => renderLogEntry(log, i)).join('')}</div>` : '<p class="sd-muted">暂无日志。</p>'}
-    </section>
-    <section class="sd-card">
-      <h3>配置备份</h3>
-      <p class="sd-muted">导出千幕的全部本地配置，导入将覆盖当前配置。</p>
-      <div class="sd-button-row">
-        <button class="sd-btn sd-export-config"><i class="fa-solid fa-file-export"></i>导出配置</button>
-        <button class="sd-btn sd-import-config"><i class="fa-solid fa-file-import"></i>导入配置</button>
-        <input type="file" class="sd-import-config-file" accept="application/json,.json" hidden>
-      </div>
     </section>
     ${renderRuntimeHealthCard()}
     ${renderStorageManagementCard()}`;
@@ -25899,9 +25945,6 @@ function bindActiveTabEvents(root) {
     saveSettings();
     toast('API已保存。', 'success');
   });
-  root.querySelector('.sd-export-config')?.addEventListener('click', exportConfig);
-  root.querySelector('.sd-import-config')?.addEventListener('click', () => root.querySelector('.sd-import-config-file')?.click());
-  root.querySelector('.sd-import-config-file')?.addEventListener('change', importConfig);
   root.querySelector('.sd-test-api')?.addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     const rawUrl = String(root.querySelector('.sd-api-url')?.value || '').trim().replace(/\/+$/, '');

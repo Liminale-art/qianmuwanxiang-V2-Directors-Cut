@@ -53,7 +53,7 @@ test('actual global inventory attributes all Comfy databases without double coun
 test('actual cleanup handler requires explicit scene selection and refuses a switched account before any other deletion',async()=>{
   for(const mode of ['cancel','unselected','selected','switched','busy']){
     let account=namespace,clears=0,generic=0,closes=0;const events={},notices=[],root={isConnected:true,
-      querySelectorAll:()=>[],querySelector:selector=>({addEventListener:(_name,fn)=>events[selector]=fn})};
+      querySelectorAll:()=>[],querySelector:selector=>selector==='.sd-storage-backup-section'?null:({addEventListener:(_name,fn)=>events[selector]=fn})};
     const module={clearComfySceneStorage:options=>clearComfySceneStorage({...options,createStore:async()=>({
       clearAccount:async(ns,request)=>{assert.equal(ns,namespace);assert.equal(request.expectedGeneration,2);assert.equal(request.valid(),true);if(mode==='busy')throw Error('在途或结果未明');clears++;return {removed:2};},close:()=>closes++,
     })})};

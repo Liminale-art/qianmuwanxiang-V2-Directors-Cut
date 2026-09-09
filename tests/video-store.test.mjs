@@ -135,7 +135,7 @@ test('IndexedDB adds task, budget, local media, draft and timeline stores withou
 test('storage UI identifies video records as destructive and the adapter stays idle at startup', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(source, /video: '动态影片'/);
+  assert.match(source, /video: '影片'/);
   assert.match(source, /video_tasks: \['可能含进行中任务 · 清理后无法恢复追踪', true\]/);
   assert.match(source, /video_budget: \['费用与预算流水 · 清理后无法对账', true\]/);
   assert.match(source, /video_media: \['不可恢复 · H3 动态成片', true\]/);
