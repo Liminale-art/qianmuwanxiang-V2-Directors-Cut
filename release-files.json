@@ -75,6 +75,7 @@
     "qianmu-storyboard-package-security.js",
     "qianmu-storyboard-package-presets.js",
     "qianmu-storyboard-package-relations.js",
+    "qianmu-storyboard-package-history.js",
     "qianmu-storyboard-package-worker.js",
     "qianmu-storyboard-package-runtime.js",
     "qianmu-storyboard-package-input.js",

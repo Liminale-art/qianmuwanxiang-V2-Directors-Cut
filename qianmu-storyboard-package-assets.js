@@ -6,6 +6,7 @@ import {assertPortableStoryboardData} from './qianmu-storyboard-package-security
 export {assertPortableStoryboardData};
 export {assertStoryboardPresetDataRetained} from './qianmu-storyboard-package-presets.js';
 export {assertStoryboardRelationsRetained} from './qianmu-storyboard-package-relations.js';
+export {assertStoryboardHistoryRetained} from './qianmu-storyboard-package-history.js';
 export {captureStoryboardPackageSettings,assertStoryboardAdditionalSettingsRetained} from './qianmu-storyboard-package-fields.js';
 
 export const STORYBOARD_PACKAGE_LIMITS=Object.freeze({metadata:32*1048576,mediaItem:34*1048576,total:128*1048576,assets:1024,nodes:500000,depth:40,uses:30000});

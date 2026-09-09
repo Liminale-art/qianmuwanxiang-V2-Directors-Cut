@@ -7,6 +7,7 @@ import {createStoryboardMutation,applyStoryboardMutation} from '../qianmu-storyb
 import {createPackageImportFixture} from './helpers/storyboard-package-fixture.mjs';
 import {buildStoryboardVibePackage} from '../qianmu-storyboard-package-assets.js';
 import {captureStoryboardPackageSettings} from '../qianmu-storyboard-package-fields.js';
+import {captureStoryboardHistoryData,assertStoryboardHistoryRetained} from '../qianmu-storyboard-package-history.js';
 const clone=structuredClone,state=()=>board.normalizeStoryboardState(board.createStoryboardDefaults());
 const modern=value=>({schemaVersion:board.STORYBOARD_SCHEMA_VERSION,...value});
 const prepare=(local,incoming)=>prepareStoryboardPackageDraft({settings:local,chat:{},incoming,images:[],collections:[],chatKey:'chat'});
@@ -89,6 +90,50 @@ test('routing cannot discard disabled rules or change invalid channels, remote c
   for(const mutate of [r=>r.rules[0].target.providerId='unknown',r=>r.rules[0].priority=2000,r=>r.rules[0].future='original',r=>r.rules[0].target.capabilityModelId='x'.repeat(241),r=>r.rules[0].shotTypes=Array.from({length:31},(_,i)=>`type-${i}`)]){
     const source=relations();mutate(source.routing);source.routing.rules[0].enabled=false;assert.throws(()=>prepare(state(),source),/routing.*完整保留/);
   }
+});
+
+function history(){
+  return {
+    shotPlans:[{id:'plan',chatKey:'source-chat',floor:4,swipeId:2,revisionId:'rev',idempotencyKey:'idem',origin:'automatic',promptLocked:true,autoGenerate:true,manualReviewRequired:false,status:'queued',linkState:'linked',paragraphSelection:{mode:'manual_supplement',indexes:[3],insertAfterIndex:3},messageRef:{chatKey:'source-chat',lastKnownFloor:4,swipeId:2},continuityLedger:{facts:[{key:'coat',value:'off'}]},shots:[{id:'shot',shotType:'close',role:'hero',title:'Close',purpose:'reveal',prompt:'hero hands',safePrompt:'hero hands',negative:'blur',hasPrompt:true,providerId:'novel',connectionPresetId:'conn',parameterPresetId:'style',routeRuleId:'rule',status:'queued',resultIds:['img-1'],error:'',attempt:0,partialFailureCount:0,paragraphAnchor:{floor:4,paragraphIndex:3},paragraphSelection:{mode:'manual_supplement',indexes:[3]},shotSpec:{scene:'kitchen'},compiledPrompt:{text:'hero hands'},compositionDecision:{ratio:'3:2'},sensitive:false,safetyAdapted:false,userEdited:true,promptLocked:true,requiresManualConfirmation:false},{id:'shot-2',shotType:'medium_shot',role:'relationship',title:'Two shot',purpose:'relationship',prompt:'hero and partner',safePrompt:'hero and partner',negative:'blur',hasPrompt:true,providerId:'novel',connectionPresetId:'conn',parameterPresetId:'style',routeRuleId:'rule-2',status:'queued',resultIds:['img-2'],error:'',attempt:0,partialFailureCount:0,paragraphAnchor:{floor:4,paragraphIndex:4},paragraphSelection:{mode:'manual_supplement',indexes:[4]},shotSpec:{scene:'kitchen table'},compiledPrompt:{text:'hero and partner'},compositionDecision:{ratio:'3:2'},sensitive:false,safetyAdapted:false,userEdited:false,promptLocked:false,requiresManualConfirmation:false}]}],
+    taskStates:[{id:'task',chatKey:'source-chat',status:'queued',stage:'queue',requestedAt:4,updatedAt:4,messageRef:{chatKey:'source-chat',lastKnownFloor:4},prompt:'hero hands',error:''}],
+    logs:[{id:'log',status:'generating',source:'novel',model:'nai-diffusion-3',prompt:'hero hands',negative:'blur',effectivePrompt:'hero hands',effectiveNegative:'blur',target:'floor',floor:4,params:{steps:28},error:'',recordId:'img-1',recordIds:['img-1'],pipelineId:'pipe',queuedAt:1,startedAt:2,attempt:1,snapshot:{source:'novel',payload:{prompt:'hero hands',shotSpec:{scene:'kitchen'}}}}],
+    pipelineLogs:[{id:'pipe',taskId:'task',status:'running',providerId:'novel',model:'nai-diffusion-3',startedAt:2,stages:[{id:'stage',type:'provider',status:'running',startedAt:2,input:{prompt:'hero hands'},output:{},decisions:['fixed scene'],error:''}]}],
+  };
+}
+
+test('history capture retains creative plan order, paragraph anchors, continuity, task and pipeline provenance',()=>{
+  const source=history(),captured=captureStoryboardHistoryData(source),after=clone(source);
+  after.shotPlans[0].chatKey='target-chat';after.shotPlans[0].status='cancelled';after.shotPlans[0].autoGenerate=false;after.shotPlans[0].manualReviewRequired=true;after.shotPlans[0].messageRef.chatKey='target-chat';after.shotPlans[0].shots[0].status='cancelled';after.shotPlans[0].shots[0].requiresManualConfirmation=true;
+  after.taskStates[0].chatKey='target-chat';after.taskStates[0].status='cancelled';after.taskStates[0].stage='cancelled';after.taskStates[0].messageRef.chatKey='target-chat';after.taskStates[0].finishedAt=9;after.logs[0].status='cancelled';after.logs[0].finishedAt=9;after.pipelineLogs[0].status='cancelled';
+  assert.doesNotThrow(()=>assertStoryboardHistoryRetained(captured,after,{targetChatKey:'target-chat'}));
+});
+
+test('history loss is rejected even when top-level IDs and result IDs remain',()=>{
+  for(const mutate of [s=>s.shotPlans[0].shots[0].prompt='short',s=>s.shotPlans[0].shots[0].paragraphAnchor=null,s=>s.shotPlans[0].continuityLedger.facts=[],s=>s.taskStates[0].prompt='',s=>s.logs[0].snapshot.payload.prompt='cut',s=>s.pipelineLogs[0].stages=[],s=>s.shotPlans[0].shots.pop()]){
+    const source=history(),after=clone(source);mutate(after);assert.throws(()=>assertStoryboardHistoryRetained(source,after),/历史.*无法完整保留/);
+  }
+});
+
+test('history unknown fields, duplicate IDs and reordered sequence are not silently normalized away',()=>{
+  const source=history();
+  for(const mutate of [s=>s.shotPlans[0].future='keep',s=>s.shotPlans[0].shots[0].future='keep',s=>s.logs[0].future='keep',s=>s.pipelineLogs[0].stages[0].future='keep',s=>s.shotPlans[0].shots.reverse()]){
+    const before=clone(source);mutate(before);const after=clone(source);assert.throws(()=>assertStoryboardHistoryRetained(before,after),/历史.*无法完整保留/);
+  }
+  const duplicate=clone(source);duplicate.shotPlans[0].shots.push(clone(duplicate.shotPlans[0].shots[0]));assert.throws(()=>assertStoryboardHistoryRetained(source,duplicate),/历史/);
+});
+
+test('modern import rejects deep plan or task content before returning a partial draft',()=>{
+  for(const mutate of [s=>s.shotPlans[0].shots[0].prompt='x'.repeat(24001),s=>s.taskStates[0].future='not portable',s=>s.logs[0].snapshot.payload.shotSpec={scene:'x',future:'keep'},s=>s.pipelineLogs[0].stages[0].input={future:'x'.repeat(50000)}]){
+    const source=history();mutate(source);assert.throws(()=>prepare(state(),modern(source)),/历史|完整保留/);
+  }
+});
+
+test('actual import keeps plan anchors and task lineage while cancelling only execution state',async()=>{
+  const f=createPackageImportFixture(),source=history();f.e.state=state();const before=clone(f.e.state);
+  const payload={type:'qianmu-storyboard',version:6,credentialsIncluded:false,settings:modern(source),chat:{images:[],collections:[]}};
+  const {file}=await buildStoryboardVibePackage(payload,{namespace:f.e.namespace,load:()=>assert.fail('no original')});await f.import(file);assert.ok(f.e.pending,JSON.stringify(f.e.notices));
+  const plan=f.e.state.shotPlans.find(row=>row.id==='plan');assert.equal(plan.shots[0].prompt,'hero hands');assert.equal(plan.shots[0].paragraphAnchor.paragraphIndex,3);assert.equal(plan.status,'cancelled');assert.equal(plan.manualReviewRequired,true);assert.equal(f.e.state.taskStates[0].messageRef.chatKey,f.e.chatKey);assert.equal(f.e.state.logs[0].snapshot.payload.prompt,'hero hands');
+  f.e.choice='2';await f.recover();assert.deepEqual(f.e.state,before);
 });
 
 test('relation capture is detached and deep or cyclic malformed content has a bounded failure',()=>{

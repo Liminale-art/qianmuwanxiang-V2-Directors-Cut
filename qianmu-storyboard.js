@@ -1839,7 +1839,9 @@ export function normalizeStoryboardTaskState(value) {
     status: statusValue, stage, progress: taskProgress(raw.progress, statusValue, stage),
     deliveryState: STORYBOARD_TASK_DELIVERY_STATES.includes(raw.deliveryState) ? raw.deliveryState : 'none',
     linkState: STORYBOARD_MESSAGE_LINK_STATES.includes(raw.linkState) ? raw.linkState : '',
-    resultIds: ids(raw.resultIds, 20), error: str(raw.error, 4000), uiVisible: Boolean(raw.uiVisible),
+    // Keep the compiled task input with its lineage so an imported task can be audited
+    // without relying on a separately retained log record.
+    prompt: str(raw.prompt, 24000), resultIds: ids(raw.resultIds, 20), error: str(raw.error, 4000), uiVisible: Boolean(raw.uiVisible),
     requestedAt: pos(raw.requestedAt || raw.createdAt), startedAt: pos(raw.startedAt), finishedAt: pos(raw.finishedAt), updatedAt: pos(raw.updatedAt || raw.finishedAt || raw.startedAt || raw.requestedAt || raw.createdAt),
   };
 }

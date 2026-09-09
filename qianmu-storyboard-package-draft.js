@@ -1,6 +1,7 @@
 import {createStoryboardDefaults,migrateStoryboardState,normalizeStoryboardState,normalizeStoryboardGenerationPolicy,normalizeStoryboardConnectionProfile,STORYBOARD_PROVIDER_REGISTRY,STORYBOARD_PIPELINE_LOG_LIMIT,STORYBOARD_SCHEMA_VERSION} from './qianmu-storyboard.js';
 import {mergeStoryboardParameterMemory,assertStoryboardMemoryIdentitiesRetained,mergeStoryboardPromptDefaults,captureStoryboardPresetData,assertStoryboardPresetDataRetained} from './qianmu-storyboard-package-presets.js';
 import {STORYBOARD_RELATION_FIELDS,captureStoryboardRelationData,assertStoryboardRelationsRetained,mergeStoryboardParameterSelection} from './qianmu-storyboard-package-relations.js';
+import {captureStoryboardHistoryData,assertStoryboardHistoryRetained} from './qianmu-storyboard-package-history.js';
 import {STORYBOARD_IMPORT_FIELDS} from './qianmu-storyboard-package-mutation.js';
 import {STORYBOARD_ADDED_IMPORT_FIELDS,assertStoryboardSelectionRestoreScope,assertStoryboardAdditionalSettingsRetained} from './qianmu-storyboard-package-fields.js';
 import {storyboardConnectionsShareTarget,storyboardConnectionRestoreReview} from './qianmu-storyboard-connection-identity.js';
@@ -27,6 +28,10 @@ export function prepareStoryboardPackageDraft({settings,chat,incoming,images,col
   if(raw.source!==undefined&&!STORYBOARD_PROVIDER_REGISTRY[raw.source])fail('生图渠道不受当前版本支持');
   if(raw.profiles&&(!object(raw.profiles)||Object.keys(raw.profiles).some(key=>!STORYBOARD_PROVIDER_REGISTRY[key])))fail('绘制配置含不支持的渠道');
   const modern=Number(incoming.schemaVersion)===STORYBOARD_SCHEMA_VERSION;
+  // Capture the source graph before migration/normalization can clamp or reorder history.
+  // The retained-history assertion below must observe every source-owned field.
+  const historyBefore=modern?captureStoryboardHistoryData(raw):null;
+  const historyImportedIds=modern?Object.fromEntries(['shotPlans','taskStates','logs','pipelineLogs'].map(key=>[key,(raw[key]||[]).map(row=>row.id)])):{};
   const migrated=migrateStoryboardState(raw);
   for(const key of Object.keys(raw))if(Object.hasOwn(migrated,key)&&!STORYBOARD_ADDED_IMPORT_FIELDS.includes(key)&&!(modern&&STORYBOARD_RELATION_FIELDS.includes(key)))raw[key]=migrated[key];
   if(!raw.connections&&Object.values(migrated.connections||{}).some(group=>group.presets?.length))raw.connections=migrated.connections;
@@ -80,6 +85,7 @@ export function prepareStoryboardPackageDraft({settings,chat,incoming,images,col
   const normalized=normalizeStoryboardState(base),draftSettings={};
   if(touched.has('modelProfiles'))assertStoryboardMemoryIdentitiesRetained(presetBefore.modelProfiles,normalized.modelProfiles);
   if(modern){assertStoryboardPresetDataRetained(presetBefore,normalized);assertStoryboardRelationsRetained(relationBefore,normalized);}
+  if(modern)assertStoryboardHistoryRetained(historyBefore,normalized,{importedIds:historyImportedIds,targetChatKey:chatKey});
   assertStoryboardAdditionalSettingsRetained(raw,normalized,{resetAutomatic:true});
   if(touched.has('connections'))for(const source of Object.keys(STORYBOARD_PROVIDER_REGISTRY)){
     normalized.connections[source].draft=structuredClone(settings.connections[source].draft);
