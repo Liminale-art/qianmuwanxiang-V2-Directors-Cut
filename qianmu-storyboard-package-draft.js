@@ -1,4 +1,5 @@
-import {createStoryboardDefaults,migrateStoryboardState,normalizeStoryboardState,normalizeStoryboardGenerationPolicy,normalizeStoryboardConnectionProfile,STORYBOARD_PROVIDER_REGISTRY,STORYBOARD_PIPELINE_LOG_LIMIT} from './qianmu-storyboard.js';
+import {createStoryboardDefaults,migrateStoryboardState,normalizeStoryboardState,normalizeStoryboardGenerationPolicy,normalizeStoryboardConnectionProfile,STORYBOARD_PROVIDER_REGISTRY,STORYBOARD_PIPELINE_LOG_LIMIT,STORYBOARD_SCHEMA_VERSION} from './qianmu-storyboard.js';
+import {mergeStoryboardParameterMemory,assertStoryboardMemoryIdentitiesRetained,mergeStoryboardPromptDefaults,captureStoryboardPresetData,assertStoryboardPresetDataRetained} from './qianmu-storyboard-package-presets.js';
 import {STORYBOARD_IMPORT_FIELDS} from './qianmu-storyboard-package-mutation.js';
 import {STORYBOARD_ADDED_IMPORT_FIELDS,assertStoryboardSelectionRestoreScope,assertStoryboardAdditionalSettingsRetained} from './qianmu-storyboard-package-fields.js';
 import {storyboardConnectionsShareTarget,storyboardConnectionRestoreReview} from './qianmu-storyboard-connection-identity.js';
@@ -19,6 +20,7 @@ function assertRetained(before,after,label){const original=ids(before,label,1000
 // Detached preparation only; normalize the combined libraries so incoming references can find local entries.
 export function prepareStoryboardPackageDraft({settings,chat,incoming,images,collections,chatKey,namespace,sourceNamespace,now=Date.now}){
   if(!object(incoming)||!chatKey)fail('分镜包设置或目标聊天无效');const base=structuredClone(settings),raw=structuredClone(incoming),touched=new Set(),connectionReview=[];
+  if(Object.hasOwn(incoming,'schemaVersion')&&(!Number.isSafeInteger(Number(incoming.schemaVersion))||Number(incoming.schemaVersion)<0||Number(incoming.schemaVersion)>STORYBOARD_SCHEMA_VERSION))fail('分镜设置版本尚不支持，请保留原包并更新插件，未按旧版裁剪恢复');
   assertStoryboardSelectionRestoreScope(raw,{namespace,sourceNamespace});
   if(Object.hasOwn(raw,'comfyAutoEnabled')&&typeof raw.comfyAutoEnabled!=='boolean')fail('Comfy自动择流开关格式无效，未猜测开启状态');
   if(raw.source!==undefined&&!STORYBOARD_PROVIDER_REGISTRY[raw.source])fail('生图渠道不受当前版本支持');
@@ -35,6 +37,10 @@ export function prepareStoryboardPackageDraft({settings,chat,incoming,images,col
   // Imported display IDs are not authority to use a same-ID LLM profile on this installation.
   if(Object.hasOwn(raw,'promptCompiler'))base.promptCompiler={...base.promptCompiler,apiProfileId:settings.promptCompiler?.apiProfileId||'',connectionPresetId:settings.promptCompiler?.connectionPresetId||''};
   if(raw.profiles){base.profiles={...structuredClone(settings.profiles),...raw.profiles};}
+  if(Object.hasOwn(raw,'modelProfiles'))base.modelProfiles=mergeStoryboardParameterMemory(settings.modelProfiles,raw.modelProfiles);
+  // Normalizing a newly selected current model may add a cache entry; make that derived write explicit and reversible.
+  if(Object.hasOwn(raw,'modelProfiles')||Object.hasOwn(raw,'profiles'))touched.add('modelProfiles');
+  if(Object.hasOwn(raw,'promptDefaults'))base.promptDefaults=mergeStoryboardPromptDefaults(settings.promptDefaults,raw.promptDefaults);
   if(raw.connections){
     if(!object(raw.connections))fail('连接预设结构无效');base.connections=structuredClone(settings.connections);touched.add('connections');
     for(const [source,group] of Object.entries(raw.connections)){
@@ -63,7 +69,10 @@ export function prepareStoryboardPackageDraft({settings,chat,incoming,images,col
   for(const preset of raw.promptPresets||[])if(preset.items)ids(preset.items,'取景条目',50);
   // Carry the selected version, never transfer the user's previous permission to run automatic routing.
   if(['comfyAutoEnabled','comfyPoolSelection','comfyLibrarySelection'].some(key=>Object.hasOwn(raw,key))){base.comfyAutoEnabled=false;touched.add('comfyAutoEnabled');}
+  const presetBefore=captureStoryboardPresetData(base,[...touched]);
   const normalized=normalizeStoryboardState(base),draftSettings={};
+  if(touched.has('modelProfiles'))assertStoryboardMemoryIdentitiesRetained(presetBefore.modelProfiles,normalized.modelProfiles);
+  if(Number(incoming.schemaVersion)===STORYBOARD_SCHEMA_VERSION)assertStoryboardPresetDataRetained(presetBefore,normalized);
   assertStoryboardAdditionalSettingsRetained(raw,normalized,{resetAutomatic:true});
   if(touched.has('connections'))for(const source of Object.keys(STORYBOARD_PROVIDER_REGISTRY)){
     normalized.connections[source].draft=structuredClone(settings.connections[source].draft);

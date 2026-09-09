@@ -173,6 +173,21 @@ test('actual export refuses overlong current prompts rather than normalizing awa
   assert.match(e.notices.at(-1)[0],/prompt.*完整保留/);assert.equal(e.state.prompt.length,24001);assert.equal(e.context.storyboardExportPackage.busy,false);
 });
 
+test('actual export rejects nested preset loss before media reads instead of only counting surviving IDs',async()=>{
+  for(const mutate of [state=>state.profiles.openai.futureParameter='keep',state=>state.artistPresets=[{id:'artist',name:'A',value:'x'.repeat(6001)}],state=>state.promptPresets=[{id:'p',name:'P',items:[{id:'e',name:'E',instruction:'x'.repeat(12001)}]}]]){
+    const e=indexFixture();mutate(e.state);const before=structuredClone(e.state);e.context.fetch=()=>assert.fail('failure before media loading');
+    await e.context.storyboardExportPackage({originals:false});assert.equal(e.exported(),null);assert.deepEqual(e.state,before);assert.match(e.notices.at(-1)[0],/无法完整保留/);
+  }
+});
+
+test('actual export retains model memories and custom prompt layers while allowing graph formatting only',async()=>{
+  const e=indexFixture();e.state.profiles.comfy.comfyWorkflow='{ "node": { "class_type":"Text", "inputs": { "text":"public" } } }';
+  board.rememberStoryboardModelProfile(e.state.modelProfiles,'openai',{model:'saved-model',steps:'27'});e.state.promptDefaults={'saved-model':{positive:'local plus',negative:'local minus'}};const before=structuredClone(e.state);
+  await e.context.storyboardExportPackage({originals:false});assert.ok(e.exported(),JSON.stringify(e.notices));const value=JSON.parse(await e.exported().text());
+  assert.equal(value.settings.modelProfiles.openai['saved-model'].steps,'27');assert.deepEqual(value.settings.promptDefaults,e.state.promptDefaults);assert.deepEqual(e.state,before);
+  assert.deepEqual(JSON.parse(value.settings.profiles.comfy.comfyWorkflow),JSON.parse(before.profiles.comfy.comfyWorkflow));
+});
+
 test('actual legacy export aborts on chat change during media retrieval and never downloads a mixed chat snapshot',async()=>{
   const e=indexFixture();e.setImages([{id:'one',source:'novel',url:'/one.png',snapshot:{}}]);e.context.fetch=async()=>{e.switch();return {ok:true,blob:async()=>new Blob(['image'])};};
   await e.context.storyboardExportPackage({originals:false});assert.equal(e.exported(),null);assert.ok(e.notices.some(([text,kind])=>kind==='error'&&text.includes('已变化')));

@@ -21767,6 +21767,7 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   await session.guard();
   const state = normalizeStoryboardState(clone(currentState));
   packageModule.assertStoryboardAdditionalSettingsRetained(currentState,state);
+  packageModule.assertStoryboardPresetDataRetained(currentState,state);
   const pipelineLogs = state.logs.map((log) => {
     const pipeline=storyboardPipelineForLog(log,state);
     if(log.pipelineId&&!pipeline)throw new Error('历史分镜日志原文缺失，请先保全数据；未导出缺件包');
@@ -22085,7 +22086,7 @@ async function storyboardImportPackage(file, { recoverOnly = false } = {}) {
       // Validate the entire merge before confirmation, uploads, or any live state mutation.
       let draft = draftModule.prepareStoryboardPackageDraft({ settings: originalState, chat: originalStore, incoming: data.settings, images, collections: incomingCollections, chatKey: initial.chatKey, namespace:session.namespace, sourceNamespace:parsed.payload.vibeAccount });
       const coverage = modern ? `包含 ${assetPlan.rows.length} 份 Vibe 原文件，其中新增 ${assetPlan.missing} 份。${assetPlan.legacyUrls ? `另有 ${assetPlan.legacyUrls} 个 Vibe 旧地址，仅保留地址。` : ''}这是分镜配置与成片包，不含 Comfy 独立工作流库、角色档案库或服务器授权；相关外部资源仍需单独保全。` : '';
-      if (await confirmDialog('导入分镜数据', `将合并 ${images.length} 条成片及预设；${coverage}历史任务不会自动续跑，现有连接凭据不随包迁移。取景 API 沿用本机选择，不按原包编号切换。Comfy当前方案选择保留，自动择流需在镜头台重新开启。中断后可重新选择原包核对素材，或通过“核对导入”恢复配置。是否继续？`) !== true) return;
+      if (await confirmDialog('导入分镜数据', `将合并 ${images.length} 条成片及预设；${coverage}参数记忆与默认词按模型合并，同项以来包为准。历史任务不会自动续跑，现有连接凭据不随包迁移。取景 API 沿用本机选择，不按原包编号切换。Comfy当前方案选择保留，自动择流需在镜头台重新开启。中断后可重新选择原包核对素材，或通过“核对导入”恢复配置。是否继续？`) !== true) return;
       await guard();
       if (stage) {
         toast('正在核对并暂存 Vibe 原文件；配置尚未应用…', 'info');
