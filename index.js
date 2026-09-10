@@ -17,7 +17,8 @@ import { exportFocusWeekImage } from './qianmu-focus-export.js';
 import { createFocusCueRecords } from './qianmu-focus-cue-records.js';
 import { createFocusVoiceDrawer } from './qianmu-focus-drawer.js';
 import { renderCoreadIdentityView, renderCoreadIdentityChoicesView } from './qianmu-reader-identity-view.js';
-import { renderCoreadCenterStatusView, renderCoreadSpoilerGuardView, renderCoreadGuideView, renderCoreadPackBarView } from './qianmu-reader-center-view.js';
+import { renderCoreadCenterStatusView, renderCoreadSpoilerGuardView, renderCoreadGuideView, renderCoreadPackBarView,
+  renderCoreadMemoryStorageView, renderCoreadSummaryItemsView, renderCoreadMemoryOverviewView } from './qianmu-reader-center-view.js';
 import {
   clone,
   isPlainObject,
@@ -31841,37 +31842,10 @@ function renderMemRecordsTab(m) {
   const curBook = coreadBookMeta(readerDialog.bookId);
   const syncLabel = m.worldSyncMode === 'shared' ? '正文记忆同书' : (m.worldSyncMode === 'dedicated' ? '千幕伴读世界书' : '仅存千幕档案');
   // 千幕档案是主存储，世界书仅作用户可选镜像。
-  const storageCard = `
-    <details class="sd-reader-mcard">
-      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-database"></i> 世界书同步 <span class="sd-reader-inj-tag">${syncLabel}</span></summary>
-      <div class="sd-reader-mrow">
-        <span class="sd-reader-mrow-lab" style="white-space:nowrap">同步方式</span>
-        <select class="sd-reader-minput sd-reader-storagemode"${coreadWorldSyncBusy ? ' disabled' : ''}>
-          <option value="none"${m.worldSyncMode === 'none' ? ' selected' : ''}>仅存至千幕档案（本地存储）</option>
-          <option value="dedicated"${m.worldSyncMode === 'dedicated' ? ' selected' : ''}>同步到千幕伴读世界书</option>
-          <option value="shared"${m.worldSyncMode === 'shared' ? ' selected' : ''}>同步至正文记忆插件所用世界书</option>
-        </select>
-      </div>
-    </details>`;
+  const storageCard = renderCoreadMemoryStorageView({syncLabel, syncMode: m.worldSyncMode, busy: coreadWorldSyncBusy});
 
   const items = (m.summaryItems || []).slice().sort((a, b) => a.order - b.order);
-  const promptItems = items.map((it, i) => {
-    return `
-    <details class="sd-reader-promptblock sd-reader-sumitem" data-id="${htmlEscape(it.id)}">
-      <summary class="sd-reader-promptblock-lab">
-        <span><i class="fa-solid fa-comments"></i> ${htmlEscape(it.title)}</span>
-        <span class="sd-reader-promptblock-acts" onclick="event.stopPropagation()">
-          <button type="button" class="sd-reader-mbtn sd-reader-sumitem-up" data-id="${htmlEscape(it.id)}" title="上移"${i === 0 ? ' disabled' : ''}><i class="fa-solid fa-chevron-up"></i></button>
-          <button type="button" class="sd-reader-mbtn sd-reader-sumitem-down" data-id="${htmlEscape(it.id)}" title="下移"${i === items.length - 1 ? ' disabled' : ''}><i class="fa-solid fa-chevron-down"></i></button>
-          ${it.builtin ? '' : `<button type="button" class="sd-reader-mbtn sd-reader-sumitem-del" data-id="${htmlEscape(it.id)}" title="删除"><i class="fa-solid fa-trash"></i></button>`}
-        </span>
-      </summary>
-      <div class="sd-reader-promptedit">
-        <input class="sd-reader-minput sd-reader-sumitem-title" data-id="${htmlEscape(it.id)}" value="${htmlEscape(it.title)}" placeholder="提示词名">
-        <textarea class="sd-reader-mtextarea sd-reader-sumitem-text" data-id="${htmlEscape(it.id)}" rows="8" placeholder="这条提示词要总结什么……">${htmlEscape(it.text)}</textarea>
-      </div>
-    </details>`;
-  }).join('');
+  const promptItems = renderCoreadSummaryItemsView(items, htmlEscape);
 
   // 切片：折叠只显主按钮（批次号+摘要首句），展开看全文可编辑可删
   const slices = (readerDialog.slices || []).slice().sort((a, b) => (Number(b.batch) || 0) - (Number(a.batch) || 0));
@@ -31892,21 +31866,8 @@ function renderMemRecordsTab(m) {
     </div>`).join('');
   const boundary = readerDialog.readBoundary || coreadCurrentReadBoundarySync(readerDialog.bookId);
   const blockedN = slices.length - coreadSafeSlices(slices, boundary, m).length;
-  const archiveOverview = `
-    <section class="sd-reader-memory-overview${coreadGuideTargetClass('records')}">
-      <div class="sd-reader-memory-title"><span><i class="fa-solid fa-book-bookmark"></i></span><div><b>${curBook ? `《${htmlEscape(curBook.title || '未命名')}》` : '当前伴读档案'}</b><small>${msgsLen} 条对话 · 已整理 ${cursor} 条</small></div></div>
-      <div class="sd-reader-memory-stats">
-        <span><b>${slices.length}</b><small>记忆切片</small></span>
-        <span><b>${pendingN}</b><small>待整理对话</small></span>
-        <span><b>${boundN}</b><small>绑定档案</small></span>
-        <span><b>${blockedN}</b><small>进度外隔离</small></span>
-      </div>
-      <div class="sd-reader-memory-actions">
-        <button type="button" class="sd-reader-mbtn sd-reader-slice-manage"><i class="fa-solid fa-table-list"></i>管理切片</button>
-        <button type="button" class="sd-reader-mbtn sd-reader-arch-manage"><i class="fa-solid fa-box-archive"></i>管理档案</button>
-        <button type="button" class="sd-reader-mbtn sd-reader-slice-clear"${slices.length ? '' : ' disabled'}><i class="fa-solid fa-trash-can"></i>清空切片</button>
-      </div>
-    </section>`;
+  const archiveOverview = renderCoreadMemoryOverviewView({curBook, msgsLen, cursor, sliceCount: slices.length,
+    pendingN, boundN, blockedN, targetClass: coreadGuideTargetClass('records')}, htmlEscape);
 
   return `
     ${archiveOverview}

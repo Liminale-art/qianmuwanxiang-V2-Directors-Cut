@@ -13,7 +13,8 @@ assert.doesNotMatch(setup, /控制书友能看见多少|超长篇按比例截取
 assert.doesNotMatch(setup, /身份与正文联动|身份跟随 ST 当前角色与用户|独立于主线选择|伴读世界书<\/label>|伴读预设<\/label>/, '设定页指定旧标题和取材说明必须移除');
 assert.match(css, /\.sd-reader-setup-compact-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2/, '紧凑设置在窄屏也应保持二列基础布局');
 
-const records = source.slice(source.indexOf('function renderMemRecordsTab'), source.indexOf('function renderMemInjectTab'));
+const records = source.slice(source.indexOf('function renderMemRecordsTab'), source.indexOf('function renderMemInjectTab'))
+  + centerView.slice(centerView.indexOf('export function renderCoreadMemoryStorageView'));
 assert.doesNotMatch(records, /开发测试|sd-reader-test-selftest|sd-reader-test-lore/, '记忆档案不得暴露开发测试卡');
 assert.match(records, /世界书同步[\s\S]*仅存至千幕档案（本地存储）[\s\S]*同步到千幕伴读世界书[\s\S]*同步至正文记忆插件所用世界书/, '千幕档案必须主存储，世界书只提供三档可选镜像');
 assert.match(records, /默认方案/, '总结预设默认项必须命名为默认方案');
