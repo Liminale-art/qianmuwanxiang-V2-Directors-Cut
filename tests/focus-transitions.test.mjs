@@ -17,6 +17,17 @@ function fixture(overrides={}) {
   return {...e,trace};
 }
 
+test('the controller allocates without reading state and each action uses the current normalized owner once',()=>{
+  const {c,f}=fixture();let reads=0,current=f;
+  c.focusClockState=()=>{reads++;return current;};
+  const controller=c.focusClockSession();assert.equal(reads,0);
+  c.focusClockStart();assert.equal(reads,1);const firstToken=f.sessionToken;
+  current={...f,status:'idle',sessionToken:'',sessionVoiceCues:[],history:[]};
+  c.focusClockStart();assert.equal(reads,2);assert.equal(c.focusClockSession(),controller);
+  assert.equal(f.sessionToken,firstToken);assert.notEqual(current.sessionToken,firstToken);
+  c.focusClockReset();assert.equal(reads,3);assert.equal(current.status,'idle');assert.equal(f.status,'running');
+});
+
 test('phase selection resets only an idle round and never changes a paused/running session',()=>{
   const {c,f,trace}=fixture();c.focusClockSetPhase('longBreak');
   assert.equal(f.phase,'longBreak');assert.equal(f.remainingMs,15*60000);assert.equal(f.sessionPlannedMs,f.remainingMs);

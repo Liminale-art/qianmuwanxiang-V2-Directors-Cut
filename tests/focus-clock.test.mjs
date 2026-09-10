@@ -3,6 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const runtime = await readFile(new URL('../qianmu-focus-runtime.js', import.meta.url), 'utf8');
+const session = await readFile(new URL('../qianmu-focus-session.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 for (const name of ['light.mp3', 'daylight.mp3', 'silver-bell.mp3', 'bright.mp3', 'horizon.mp3', 'sunrise.mp3']) {
   const file = await stat(new URL(`../assets/focus-sounds/${name}`, import.meta.url));
@@ -16,8 +17,8 @@ assert.match(source, /id: 'focus', label: '专注', icon: 'fa-hourglass-half'/, 
 assert.match(source, /case 'focus': return renderFocusClockTab\(\)/, '专注标签必须接入统一路由');
 
 assert.match(source, /function focusClockRemainingMs[\s\S]*state\.endsAt - now/, '运行态必须按绝对截止时间计算，避免后台节流导致计时漂移');
-assert.match(source, /function focusClockStart[\s\S]*f\.endsAt = now \+ remaining/, '开始和继续必须写入真实截止时间');
-assert.match(source, /function focusClockPause[\s\S]*f\.remainingMs = Math\.max\(0, f\.endsAt - now\)[\s\S]*f\.status = 'paused'/, '暂停必须把截止时间折算为剩余时长');
+assert.match(session, /function start[\s\S]*f\.endsAt = now \+ remaining/, '开始和继续必须写入真实截止时间');
+assert.match(session, /function pause[\s\S]*f\.remainingMs = Math\.max\(0, f\.endsAt - now\)[\s\S]*f\.status = 'paused'/, '暂停必须把截止时间折算为剩余时长');
 assert.match(source, /function focusClockRuntimeTick[\s\S]*focusClockRemainingMs\(f\) <= 0[\s\S]*focusClockComplete/, '后台恢复后必须立即结算到期阶段');
 const tick = source.slice(source.indexOf('function focusClockRuntimeTick'), source.indexOf('function startFocusClockRuntime'));
 assert.doesNotMatch(tick, /saveSettings/, '每秒刷新不得持续写入 ST 设置');
@@ -25,11 +26,11 @@ assert.match(source, /startFocusClockRuntime\(\)/, '扩展初始化时必须恢�
 assert.match(source, /stopFocusClockRuntime\(\)/, '扩展停用或热更新时必须清理计时器');
 assert.match(runtime, /stop\(\);[\s\S]*if \(state.status !== 'running'\) return;[\s\S]*setInterval\(tick, 500\)/, '闲置与暂停状态不得保留 500ms 常驻轮询');
 assert.match(runtime, /if \(syncing\) return;[\s\S]*finally \{[\s\S]*syncing = false/, '启动恢复触发到期结算时不得递归建立两份 ticker');
-assert.match(source, /function focusClockStart[\s\S]*startFocusClockRuntime\(\{ prepareVoice: false \}\)[\s\S]*function focusClockPause[\s\S]*startFocusClockRuntime\(\{ prepareVoice: false \}\)/, '开始与暂停必须同步计时器生命周期且不得重复预生成语音');
+assert.match(session, /function start[\s\S]*clock.reconcile\(\{ prepareVoice: false \}\)[\s\S]*function pause[\s\S]*clock.reconcile\(\{ prepareVoice: false \}\)/, '开始与暂停必须同步计时器生命周期且不得重复预生成语音');
 
 assert.match(source, /activity: 'task'[\s\S]*bookId: ''/, '专注时钟必须支持普通任务与伴读两种活动');
 assert.match(source, /data-focus-activity="reading"[\s\S]*sd-focus-book[\s\S]*进入阅读/, '伴读模式必须能够绑定并打开具体书籍');
-assert.match(source, /progressStart:[\s\S]*progressEnd:/, '伴读专注完成记录必须保存阅读进度变化');
+assert.match(session, /progressStart:[\s\S]*progressEnd:/, '伴读专注完成记录必须保存阅读进度变化');
 assert.match(source, /sd-reader-focus-btn[\s\S]*sd-reader-focus-mini/, '阅读页必须提供专注时钟入口与实时剩余时间');
 assert.match(source, /已有另一段专注正在进行/, '阅读页不得擅自覆盖正在进行的其他书籍专注');
 assert.match(source, /const returnTab = activeTab === 'focus' \? 'focus' : 'coread'[\s\S]*activeTab = 'coread'/, '从专注进入阅读器时必须切到伴读路由，防止计时重渲染卸载阅读页');
@@ -39,7 +40,7 @@ assert.match(source, /FOCUS_CLOCK_WEEK_ENTRY_LIMIT = 160/, '本周明细必须�
 assert.match(source, /historyBeforeCleanup[\s\S]*finishedAt \|\| item\.startedAt\) >= weekStart/, '不可见的往周记录必须在状态归一时自动清理');
 assert.match(source, /function focusClockWeekStats\(state = focusClockState\(\)\) \{\s*return focusWeekStats\(state.history\);/, '本周统计使用独立只读投影；归一和保存仍归专注入口');
 assert.match(source, /function focusClockExportWeekImage[\s\S]*canvas\.toBlob[\s\S]*千幕-本周专注/, '本周记录必须可导出独立 PNG 图片');
-assert.match(source, /f\.focusCycle % f\.longBreakEvery === 0 \? 'longBreak' : 'shortBreak'/, '专注周期必须按用户设置进入小憩或长休');
+assert.match(session, /f\.focusCycle % f\.longBreakEvery === 0 \? 'longBreak' : 'shortBreak'/, '专注周期必须按用户设置进入小憩或长休');
 assert.match(source, /sd-focus-settings-head[\s\S]*sd-focus-auto-next-wrap/, '自动下一阶段必须位于周期设置标题右侧');
 assert.match(source, /sd-focus-sound-card[\s\S]*<h3>完成提示音<\/h3>/, '完成提示音必须使用独立卡片');
 assert.match(source, /FOCUS_CLOCK_SOUND_PRESETS[\s\S]*light\.mp3[\s\S]*daylight\.mp3[\s\S]*silver-bell\.mp3[\s\S]*bright\.mp3[\s\S]*horizon\.mp3[\s\S]*sunrise\.mp3[\s\S]*Merry%20Christmas%20Mr\.%20Lawrence\.mp3[\s\S]*Farewell\.mp3/, '完成提示音必须包含六个正式内置文件与两个内置外链资源');
@@ -58,7 +59,7 @@ assert.match(source, /voiceEnabledByChat[\s\S]*voiceSpeakerByChat[\s\S]*voiceRel
 assert.match(source, /你是“千幕专注场景”的角色短句编写器[\s\S]*不引用聊天正文[\s\S]*不得猜测正文情节/, '情景生成提示词必须与正文隔离并约束不 OOC');
 assert.match(source, /function focusClockPrepareVoiceCues[\s\S]*focusClockBuildVoiceParams[\s\S]*focusClockSynthVoiceCue/, '角色语音必须在开始时冻结已绑定角色的音色参数并预生成缓存');
 assert.match(source, /function focusClockOpenVoiceDrawer[\s\S]*sd-focus-cue-play[\s\S]*sd-focus-cue-regen[\s\S]*sd-focus-cue-fav[\s\S]*sd-focus-cue-download/, '专注角色语音必须通过二层抽屉提供重听、重生成、收藏和下载');
-assert.match(source, /voiceText: completionCue\?\.text \|\| '', voiceCues: completedVoiceCues/, '完成记录必须持久化可回放的安全语音缓存索引');
+assert.match(session, /voiceText: completionCue\?\.text \|\| '', voiceCues: completedVoiceCues/, '完成记录必须持久化可回放的安全语音缓存索引');
 assert.match(source, /blobStore\.addFavorite[\s\S]*source: 'focus'/, '专注语音必须复用配音收藏夹存储');
 assert.match(source, /function focusClockVoiceCueFileBase[\s\S]*speaker[\s\S]*task[\s\S]*ttsCompactStamp/, '专注角色语音命名必须包含角色、任务与时间');
 assert.match(source, /function focusClockPlayCompletionAlert[\s\S]*focusClockPlayDoneSound/, '角色语音失败必须回退普通完成提示音');

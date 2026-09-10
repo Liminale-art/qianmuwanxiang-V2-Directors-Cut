@@ -10,6 +10,7 @@ const rules = {
   'qianmu-focus-voice.js': [],
   'qianmu-focus-lock.js': [],
   'qianmu-focus-runtime.js': [],
+  'qianmu-focus-session.js': [],
 };
 if (!vm.SourceTextModule) throw new Error('Run this development check with --experimental-vm-modules.');
 

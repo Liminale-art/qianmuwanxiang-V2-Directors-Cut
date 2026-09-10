@@ -6,6 +6,7 @@ import { focusVoiceCharacterKey, cleanFocusVoice, focusVoiceProfile, saveFocusVo
 import { focusClockFormat, focusClockDateKey, focusClockWeekStart } from './qianmu-focus-time.js';
 import { focusWeekHistory, focusTodayHistory, focusWeekStats } from './qianmu-focus-history.js';
 import { createFocusClockRuntime } from './qianmu-focus-runtime.js';
+import { createFocusSessionController } from './qianmu-focus-session.js';
 import {
   clone,
   isPlainObject,
@@ -1370,6 +1371,7 @@ let theaterBusy = false;           // 幕外忙碌态（与推演独立，允许
 let theaterAbort = null;           // 幕外中止句柄
 let theaterCancel = false;         // 幕外取消标记
 let focusClockRuntime = null;      // Only owns the display ticker/listeners; endsAt remains authoritative.
+let focusClockSessionController = null;
 let focusClockLockGuard = null;
 let focusClockEntryBusy = false;
 let focusClockLockOwner = '';
@@ -25003,156 +25005,33 @@ function focusClockMaybePlayMidCue(state) {
   void focusClockPlayVoiceCue(cue, { automatic: true, isCurrent: () => state.status === 'running' && state.sessionToken === token });
 }
 
-function focusClockSetPhase(phase) {
-  const f = focusClockState();
-  if (!FOCUS_CLOCK_PHASES[phase] || f.status !== 'idle') return;
-  f.phase = phase;
-  f.status = 'idle';
-  f.remainingMs = focusClockPhaseMs(phase, f);
-  f.sessionPlannedMs = f.remainingMs;
-  f.endsAt = 0;
-  f.runStartedAt = 0;
-  f.sessionStartedAt = 0;
-  f.sessionElapsedMs = 0;
-  f.sessionToken = '';
-  f.sessionVoiceCues = [];
-  focusClockCancelVoiceWork();
-  saveSettings();
+function focusClockSession() {
+  return focusClockSessionController ||= createFocusSessionController({
+    getState: () => focusClockState(), phaseMs: focusClockPhaseMs, remainingMs: focusClockRemainingMs,
+    phases: FOCUS_CLOCK_PHASES, historyLimit: FOCUS_CLOCK_WEEK_ENTRY_LIMIT,
+    clockNow: () => Date.now(), uid: prefix => uid(prefix),
+    reading: { ready: id => focusClockReaderReady(id), book: id => coreadBookMeta(id) },
+    voice: {
+      cancel: () => focusClockCancelVoiceWork(), enabled: f => focusClockVoiceContext(f).enabled,
+      prepare: token => focusClockPrepareVoiceCues(token), bindingActive: key => focusClockVoiceBindingActive(key),
+      completionAlert: cue => focusClockPlayCompletionAlert(cue),
+    },
+    clock: { prime: () => focusClockPrimeSound(), reconcile: options => startFocusClockRuntime(options), refresh: () => focusClockUpdateDom() },
+    lock: { blocks: () => focusClockBlockExit(), release: () => focusClockReleaseLock() },
+    save: () => saveSettings(), notify: (message, kind) => toast(message, kind),
+    renderCompletion: () => { if (isModalOpen() && activeTab === 'focus') renderModal(); else focusClockUpdateDom(); },
+  });
 }
 
-function focusClockStart() {
-  const f = focusClockState();
-  if (f.status === 'running') return;
-  if (f.phase === 'focus' && f.activity === 'reading' && !focusClockReaderReady(f.bookId)) return;
-  f.readingExitPaused = false;
-  const now = Date.now();
-  const remaining = Math.max(1000, focusClockRemainingMs(f, now) || focusClockPhaseMs(f.phase, f));
-  let prepareVoice = false;
-  if (f.status === 'idle') {
-    if (f.phase === 'focus') f.lastCompletionId = '';
-    if (f.activity === 'reading') {
-      const book = coreadBookMeta(f.bookId);
-      if (!book) return toast('请先选择一本伴读书籍。', 'warning');
-      f.task = `阅读《${book.title || '未命名书籍'}》`;
-      f.sessionBookId = book.id;
-      f.sessionProgressStart = Math.max(0, Math.min(100, Number(book.progress) || 0));
-    } else {
-      f.sessionBookId = '';
-      f.sessionProgressStart = 0;
-    }
-    f.sessionStartedAt = now;
-    f.sessionElapsedMs = 0;
-    f.sessionPlannedMs = remaining;
-    f.sessionToken = f.phase === 'focus' ? uid('focussession') : '';
-    f.sessionVoiceCues = [];
-    focusClockCancelVoiceWork();
-    prepareVoice = f.phase === 'focus' && focusClockVoiceContext(f).enabled;
-  } else {
-    prepareVoice = f.phase === 'focus' && !f.sessionVoiceCues.some(cue => cue.type === 'complete' && !cue.played)
-      && focusClockVoiceContext(f).enabled;
-  }
-  f.status = 'running';
-  f.remainingMs = remaining;
-  f.runStartedAt = now;
-  f.endsAt = now + remaining;
-  focusClockPrimeSound();
-  saveSettings();
-  startFocusClockRuntime({ prepareVoice: false });
-  focusClockUpdateDom();
-  if (prepareVoice) void focusClockPrepareVoiceCues(f.sessionToken);
-}
+function focusClockSetPhase(phase) { return focusClockSession().selectPhase(phase); }
 
-function focusClockPause() {
-  if (focusClockBlockExit()) return;
-  const f = focusClockState();
-  f.readingExitPaused = false;
-  if (f.status !== 'running') return;
-  const now = Date.now();
-  if (f.endsAt <= now) { focusClockComplete(); return; }
-  f.sessionElapsedMs += Math.max(0, now - (f.runStartedAt || now));
-  f.remainingMs = Math.max(0, f.endsAt - now);
-  f.endsAt = 0;
-  f.runStartedAt = 0;
-  f.status = 'paused';
-  focusClockCancelVoiceWork();
-  saveSettings();
-  startFocusClockRuntime({ prepareVoice: false });
-  focusClockUpdateDom();
-}
+function focusClockStart() { return focusClockSession().start(); }
 
-function focusClockReset() {
-  if (focusClockBlockExit()) return;
-  const f = focusClockState();
-  f.readingExitPaused = false;
-  f.status = 'idle';
-  f.remainingMs = focusClockPhaseMs(f.phase, f);
-  f.sessionPlannedMs = f.remainingMs;
-  f.endsAt = 0;
-  f.runStartedAt = 0;
-  f.sessionStartedAt = 0;
-  f.sessionElapsedMs = 0;
-  f.sessionBookId = '';
-  f.sessionProgressStart = 0;
-  f.sessionToken = '';
-  f.sessionVoiceCues = [];
-  focusClockCancelVoiceWork();
-  saveSettings();
-  startFocusClockRuntime({ prepareVoice: false });
-  focusClockUpdateDom();
-}
+function focusClockPause() { return focusClockSession().pause(); }
 
-function focusClockComplete() {
-  const f = focusClockState();
-  if (f.status !== 'running') return;
-  const now = Date.now();
-  const completedPhase = f.phase;
-  const wasLocked = !!f.lock;
-  if (wasLocked) focusClockReleaseLock();
-  const completionCue = completedPhase === 'focus' ? f.sessionVoiceCues.find((cue) => cue.type === 'complete' && !cue.played && focusClockVoiceBindingActive(cue.voiceBindingKey)) : null;
-  if (completedPhase === 'focus') {
-    const durationMs = Math.max(1000, Number(f.sessionPlannedMs) || focusClockPhaseMs('focus', f));
-    const linkedBook = f.sessionBookId ? coreadBookMeta(f.sessionBookId) : null;
-    const completedVoiceCues = f.sessionVoiceCues
-      .filter((cue) => cue?.cacheKey && (cue.played || cue === completionCue))
-      .map((cue) => ({ ...cue, played: true }));
-    const completedEntry = {
-      id: uid('focus'), kind: 'focus', task: String(f.task || '').trim() || '未命名专注',
-      startedAt: f.sessionStartedAt || Math.max(0, now - durationMs), finishedAt: now, durationMs,
-      activity: f.sessionBookId ? 'reading' : 'task', bookId: f.sessionBookId || '', bookTitle: linkedBook?.title || '',
-      progressStart: f.sessionBookId ? f.sessionProgressStart : null,
-      progressEnd: f.sessionBookId ? Math.max(0, Math.min(100, Number(linkedBook?.progress) || 0)) : null,
-      voiceText: completionCue?.text || '', voiceCues: completedVoiceCues, note: '',
-    };
-    f.history.unshift(completedEntry);
-    f.lastCompletionId = completedEntry.id;
-    f.history = f.history.slice(0, FOCUS_CLOCK_WEEK_ENTRY_LIMIT);
-    f.focusCycle += 1;
-    f.phase = f.focusCycle % f.longBreakEvery === 0 ? 'longBreak' : 'shortBreak';
-  } else {
-    f.phase = 'focus';
-  }
-  const autoNext = f.autoStartNext && !wasLocked && !(f.phase === 'focus' && f.activity === 'reading' && !focusClockReaderReady(f.bookId));
-  f.status = autoNext ? 'running' : 'idle';
-  f.remainingMs = focusClockPhaseMs(f.phase, f);
-  f.sessionPlannedMs = f.remainingMs;
-  f.sessionStartedAt = autoNext ? now : 0;
-  f.sessionElapsedMs = 0;
-  f.sessionBookId = autoNext && f.phase === 'focus' && f.activity === 'reading' ? f.bookId : '';
-  f.sessionProgressStart = f.sessionBookId ? Math.max(0, Math.min(100, Number(coreadBookMeta(f.sessionBookId)?.progress) || 0)) : 0;
-  f.runStartedAt = autoNext ? now : 0;
-  f.endsAt = autoNext ? now + f.remainingMs : 0;
-  f.sessionToken = autoNext && f.phase === 'focus' ? uid('focussession') : '';
-  f.sessionVoiceCues = [];
-  focusClockCancelVoiceWork();
-  saveSettings();
-  startFocusClockRuntime({ prepareVoice: false });
-  void focusClockPlayCompletionAlert(completionCue);
-  if (f.sessionToken && focusClockVoiceContext(f).enabled) void focusClockPrepareVoiceCues(f.sessionToken);
-  const nextLabel = FOCUS_CLOCK_PHASES[f.phase].label;
-  toast(completedPhase === 'focus' ? `这一程已经完成，接下来是${nextLabel}。` : '休息结束，慢慢回到下一段专注。', 'success');
-  if (isModalOpen() && activeTab === 'focus') renderModal();
-  else focusClockUpdateDom();
-}
+function focusClockReset() { return focusClockSession().reset(); }
+
+function focusClockComplete() { return focusClockSession().complete(); }
 
 function focusClockUpdateDom() {
   const f = focusClockState();

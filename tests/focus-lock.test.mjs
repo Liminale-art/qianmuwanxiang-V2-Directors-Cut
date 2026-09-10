@@ -62,7 +62,8 @@ test('ordinary focus still supports pause, resume and reset when the user did no
   c.focusClockStart();assert.equal(f.status,'running');c.focusClockReset();assert.equal(f.status,'idle');
 });
 test('navigation entry points cannot bypass the lock and teardown releases DOM isolation',()=>{
-  for(const name of ['closeModal','coreadCloseReader','focusClockPause','focusClockReset']) assert.match(section(name),/focusClockBlockExit\(\)/);
+  for(const name of ['closeModal','coreadCloseReader']) assert.match(section(name),/focusClockBlockExit\(\)/);
+  assert.match(section('focusClockSession'),/blocks: \(\) => focusClockBlockExit\(\)/);
   assert.match(section('renderModal'),/focusClockActiveLock\(\)/);assert.match(section('coreadOpenBook'),/readingLock.bookId !== bookId/);
   assert.match(section('stopFocusClockRuntime'),/focusClockLockGuard\?\.dispose\(\)/);
 });
