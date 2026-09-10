@@ -10611,9 +10611,12 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 @media(min-width:760px){#story-director-modal .sd-vibe-waterfall { columns:3; }#story-director-modal .sd-vibe-edit-grid { grid-template-columns:180px minmax(0,1fr); }}
 
 /* Shelf-level companion selection never changes the host's active character/chat. */
-#story-director-modal .sd-reader-session-bar { display:flex;align-items:flex-end;gap:8px;margin:0 0 10px;min-width:0; }
-#story-director-modal .sd-reader-session-bar label { display:grid;gap:4px;flex:1;min-width:0;text-align:left; }
-#story-director-modal .sd-reader-session-bar label>span { color:var(--sd-muted);font-size:12px; }
-#story-director-modal .sd-reader-session-bar select,#story-director-modal .sd-reader-session-bar .sd-btn { box-sizing:border-box;min-width:0;height:34px;min-height:34px;margin:0;padding:5px 9px;border-radius:8px;font-size:12px; }
-#story-director-modal .sd-reader-session-bar select { width:100%;text-overflow:ellipsis; }
+#story-director-modal .sd-reader-session-bar { display:flex;justify-content:flex-end;gap:8px;margin:0 0 10px;min-width:0; }
+#story-director-modal .sd-reader-session-bar .sd-btn { box-sizing:border-box;min-width:0;height:34px;min-height:34px;margin:0;padding:5px 9px;border-radius:8px;font-size:12px; }
 #story-director-modal .sd-reader-session-bar .sd-btn { flex:0 0 auto;width:auto;white-space:nowrap; }
+.sd-reader-setup-identity button[data-coread-identity] { padding:0;margin:0;cursor:pointer;flex:none; }
+:is(#story-director-modal,#sd-reader-portal) .sd-reader-setup-identity button[data-coread-identity] { border-radius:50% !important; }
+.sd-reader-setup-identity button[data-coread-identity]:focus-visible { outline:2px solid var(--sd-accent);outline-offset:3px; }
+.sd-reader-identity-picker { display:grid;gap:12px;text-align:left;min-width:0;width:min(320px,70vw); }
+.sd-reader-identity-picker select { width:100%;min-width:0;max-height:45dvh;font-size:14px;text-align:left; }
+.sd-reader-identity-picker option { padding:9px 10px;white-space:normal; }
