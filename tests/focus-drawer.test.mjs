@@ -26,6 +26,25 @@ function fixture() {
   return {c,portals,notices,resolve,setRows:value=>{rows=value;}};
 }
 
+test('drawer construction and unused close are inert; a missing host panel does not read records or create DOM',()=>{
+  const calls=[];
+  const drawer=createFocusVoiceDrawer({getModal:()=>{calls.push('root');return null;},
+    rowsForView:()=>{throw Error('records must not be read');},document:{createElement:()=>{throw Error('no host');}}});
+  assert.equal(Object.isFrozen(drawer),true);assert.deepEqual(calls,[]);
+  drawer.close();drawer.close();assert.deepEqual(calls,[]);
+  drawer.open();assert.deepEqual(calls,['root']);
+});
+
+test('closing removes only its own portal once without reading records or stopping shared audio',()=>{
+  const e=fixture();let reads=0,removes=0;const rows=e.c.focusClockVoiceDrawerRows;
+  e.c.focusClockVoiceDrawerRows=()=>{reads++;return rows();};
+  e.c.ttsStopPlayback=()=>{throw Error('closing UI must not stop narration');};
+  e.c.focusClockOpenVoiceDrawer();const portal=e.portals[0],remove=portal.remove;
+  portal.remove=()=>{removes++;remove.call(portal);};
+  e.c.focusClockCloseVoiceDrawer();e.c.focusClockCloseVoiceDrawer();
+  assert.equal(reads,1);assert.equal(removes,1);assert.equal(portal.isConnected,false);
+});
+
 test('an empty voice drawer closes its predecessor without creating an empty dialog',()=>{
   const e=fixture();e.c.focusClockOpenVoiceDrawer();e.setRows([]);e.c.focusClockOpenVoiceDrawer();
   assert.equal(e.portals.length,1);assert.equal(e.portals[0].isConnected,false);
