@@ -97,9 +97,9 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.109';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.109';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.109';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.110';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.110';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.110';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -107,7 +107,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.109';
+} from './qianmu-llm-output.js?v=1.59.110';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -189,289 +189,289 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.109';
+} from './qianmu-storyboard.js?v=1.59.110';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.109';
+const VERSION = '1.59.110';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
 let reader = null;
 const featureRuntime = createFeatureRuntime({
-  vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.109') },
-  vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.109') },
-  vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.109') },
-  vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.109') },
-  vibeStorageSummary: { label: 'Vibe 空间汇总', load: () => import('./qianmu-vibe-storage-summary.js?v=1.59.109') },
-  storyboardPackageAssets: { label: '分镜素材打包', load: () => import('./qianmu-storyboard-package-assets.js?v=1.59.109') },
-  storyboardPackageInput: { label: '分镜包核对', load: () => import('./qianmu-storyboard-package-input.js?v=1.59.109') },
-  storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.109') },
-  storyboardPackageMutation: { label: '分镜导入核对', load: () => import('./qianmu-storyboard-package-mutation.js?v=1.59.109') },
-  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.109') },
-  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.109') },
-  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.109') },
-  storyboardMappingView: { label: '迁移映射凭据', load: () => import('./qianmu-storyboard-mapping-view.js?v=1.59.109') },
-  characterUserIdentity: { label: 'USER头像地址', load: () => import('./qianmu-user-identity.js?v=1.59.109') },
-  characterUserAliasView: { label: 'USER地址核对', load: () => import('./qianmu-user-alias-view.js?v=1.59.109') },
-  characterStorage: { label: '角色库空间', load: () => import('./qianmu-character-storage.js?v=1.59.109') },
-  storyboardPackageStage: { label: '分镜素材暂存', load: () => import('./qianmu-storyboard-package-stage.js?v=1.59.109') },
-  storyboardPackageRuntime: { label: '分镜原件打包', load: () => import('./qianmu-storyboard-package-runtime.js?v=1.59.109') },
-  storyboardPackageStore: { label: '分镜原件读取', load: () => import('./qianmu-vibe-asset-store.js?v=1.59.109') },
-  storyboardBundleFormat: { label: '分镜联包识别', load: () => import('./qianmu-storyboard-bundle.js?v=1.59.109') },
-  storyboardBundleCapture: { label: '分镜资源联包', load: () => import('./qianmu-storyboard-bundle-runtime.js?v=1.59.109') },
-  storyboardBundleSource: { label: '备份来源核对', load: () => import('./qianmu-storyboard-bundle-source.js?v=1.59.109') },
-  storyboardBundleRestore: { label: '分镜联包恢复', load: () => import('./qianmu-storyboard-bundle-restore-runtime.js?v=1.59.109') },
-  storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.109') },
-  storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.109') },
-  storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.109') },
-  storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.109') },
-  storyboardSubjectEvidence: { label: '角色来源核对', load: () => import('./qianmu-storyboard-subject-evidence.js?v=1.59.109') },
-  vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.109') },
-  vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.109') },
-  tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.109') },
+  vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.110') },
+  vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.110') },
+  vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.110') },
+  vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.110') },
+  vibeStorageSummary: { label: 'Vibe 空间汇总', load: () => import('./qianmu-vibe-storage-summary.js?v=1.59.110') },
+  storyboardPackageAssets: { label: '分镜素材打包', load: () => import('./qianmu-storyboard-package-assets.js?v=1.59.110') },
+  storyboardPackageInput: { label: '分镜包核对', load: () => import('./qianmu-storyboard-package-input.js?v=1.59.110') },
+  storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.110') },
+  storyboardPackageMutation: { label: '分镜导入核对', load: () => import('./qianmu-storyboard-package-mutation.js?v=1.59.110') },
+  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.110') },
+  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.110') },
+  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.110') },
+  storyboardMappingView: { label: '迁移映射凭据', load: () => import('./qianmu-storyboard-mapping-view.js?v=1.59.110') },
+  characterUserIdentity: { label: 'USER头像地址', load: () => import('./qianmu-user-identity.js?v=1.59.110') },
+  characterUserAliasView: { label: 'USER地址核对', load: () => import('./qianmu-user-alias-view.js?v=1.59.110') },
+  characterStorage: { label: '角色库空间', load: () => import('./qianmu-character-storage.js?v=1.59.110') },
+  storyboardPackageStage: { label: '分镜素材暂存', load: () => import('./qianmu-storyboard-package-stage.js?v=1.59.110') },
+  storyboardPackageRuntime: { label: '分镜原件打包', load: () => import('./qianmu-storyboard-package-runtime.js?v=1.59.110') },
+  storyboardPackageStore: { label: '分镜原件读取', load: () => import('./qianmu-vibe-asset-store.js?v=1.59.110') },
+  storyboardBundleFormat: { label: '分镜联包识别', load: () => import('./qianmu-storyboard-bundle.js?v=1.59.110') },
+  storyboardBundleCapture: { label: '分镜资源联包', load: () => import('./qianmu-storyboard-bundle-runtime.js?v=1.59.110') },
+  storyboardBundleSource: { label: '备份来源核对', load: () => import('./qianmu-storyboard-bundle-source.js?v=1.59.110') },
+  storyboardBundleRestore: { label: '分镜联包恢复', load: () => import('./qianmu-storyboard-bundle-restore-runtime.js?v=1.59.110') },
+  storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.110') },
+  storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.110') },
+  storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.110') },
+  storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.110') },
+  storyboardSubjectEvidence: { label: '角色来源核对', load: () => import('./qianmu-storyboard-subject-evidence.js?v=1.59.110') },
+  vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.110') },
+  vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.110') },
+  tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.110') },
   modelPicker: {
     label: '模型选择',
-    load: () => import('./qianmu-model-picker.js?v=1.59.109'),
+    load: () => import('./qianmu-model-picker.js?v=1.59.110'),
   },
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.109'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.110'),
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.109'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.110'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
-    load: () => import('./qianmu-image-channel.js?v=1.59.109'),
+    load: () => import('./qianmu-image-channel.js?v=1.59.110'),
   },
   imageServiceClient: {
     label: '增强生图任务',
-    load: () => import('./qianmu-image-service-client.js?v=1.59.109'),
+    load: () => import('./qianmu-image-service-client.js?v=1.59.110'),
   },
   comfySubmission: {
     label: 'Comfy 实例排队',
-    load: () => import('./qianmu-comfy-submission.js?v=1.59.109'),
+    load: () => import('./qianmu-comfy-submission.js?v=1.59.110'),
   },
   comfyRecovery: {
     label: 'Comfy 原图领取',
-    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.109'),
+    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.110'),
   },
   comfyInbox: {
     label: 'Comfy 收片管理',
-    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.109'),
+    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.110'),
   },
   comfyReferences: {
     label: 'Comfy 参考图',
-    load: () => import('./qianmu-comfy-references.js?v=1.59.109'),
+    load: () => import('./qianmu-comfy-references.js?v=1.59.110'),
   },
   characterArchive: {
     label: '角色档案',
-    load: () => import('./qianmu-character-archive-view.js?v=1.59.109'),
+    load: () => import('./qianmu-character-archive-view.js?v=1.59.110'),
   },
   characterCasting: {
     label: '角色取景绑定',
-    load: () => import('./qianmu-character-casting.js?v=1.59.109'),
+    load: () => import('./qianmu-character-casting.js?v=1.59.110'),
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.109'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.110'),
   },
   artistPromptReview: {
     label: '原画师层核对',
-    load: () => import('./qianmu-artist-prompt-review.js?v=1.59.109'),
+    load: () => import('./qianmu-artist-prompt-review.js?v=1.59.110'),
   },
   styleRecipe: {
     label: '图片风格配置',
-    load: () => import('./qianmu-style-recipe.js?v=1.59.109'),
+    load: () => import('./qianmu-style-recipe.js?v=1.59.110'),
   },
   characterShotEditor: {
     label: '本镜人物编辑',
-    load: () => import('./qianmu-character-shot-view.js?v=1.59.109'),
+    load: () => import('./qianmu-character-shot-view.js?v=1.59.110'),
   },
   characterReference: {
     label: '角色参考图',
-    load: () => import('./qianmu-character-reference.js?v=1.59.109'),
+    load: () => import('./qianmu-character-reference.js?v=1.59.110'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.109').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.110').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.109'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.110'),
   },
   comfyWorkbench: {
     label: 'Comfy 镜头台',
-    load: () => import('./qianmu-comfy-workbench.js?v=1.59.109'),
+    load: () => import('./qianmu-comfy-workbench.js?v=1.59.110'),
   },
   comfyCharacters: {
     label: 'Comfy 角色实现',
-    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.109'),
+    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.110'),
   },
   comfyRoutes: {
     label: 'Comfy 镜头分工',
-    load: () => import('./qianmu-comfy-route.js?v=1.59.109'),
+    load: () => import('./qianmu-comfy-route.js?v=1.59.110'),
   },
   comfyPrompt: {
     label: 'Comfy 提示表达',
-    load: () => import('./qianmu-comfy-prompt.js?v=1.59.109'),
+    load: () => import('./qianmu-comfy-prompt.js?v=1.59.110'),
   },
   comfyCharacterReadiness: {
     label: '角色节点检查',
-    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.109'),
+    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.110'),
   },
   comfyLibrary: {
     label: 'Comfy 工作流库',
-    load: () => import('./qianmu-comfy-library-view.js?v=1.59.109'),
+    load: () => import('./qianmu-comfy-library-view.js?v=1.59.110'),
   },
   comfyPools: {
     label: 'Comfy 候选方案',
-    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.109'),
+    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.110'),
   },
   comfyScene: {
     label: 'Comfy 续场锁',
-    load: () => import('./qianmu-comfy-lock-runtime.js?v=1.59.109'),
+    load: () => import('./qianmu-comfy-lock-runtime.js?v=1.59.110'),
   },
   comfyStorage: {
     label: 'Comfy 储存盘点',
-    load: () => import('./qianmu-comfy-storage.js?v=1.59.109'),
+    load: () => import('./qianmu-comfy-storage.js?v=1.59.110'),
   },
   comfyAuto: {
     label: 'Comfy 候选调度',
-    load: () => import('./qianmu-comfy-auto-runtime.js?v=1.59.109'),
+    load: () => import('./qianmu-comfy-auto-runtime.js?v=1.59.110'),
   },
   comfyPreflight: {
     label: 'Comfy 配置检查',
-    load: () => import('./qianmu-comfy-preflight.js?v=1.59.109'),
+    load: () => import('./qianmu-comfy-preflight.js?v=1.59.110'),
   },
   comfyReadiness: {
     label: 'Comfy 节点检查',
-    load: () => import('./qianmu-comfy-readiness.js?v=1.59.109'),
+    load: () => import('./qianmu-comfy-readiness.js?v=1.59.110'),
   },
   comfyTargets: {
     label: 'Comfy 可信连接',
-    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.109'),
+    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.110'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.109'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.110'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.109'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.110'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.109'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.110'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.109'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.110'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.109'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.110'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.109'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.110'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.109'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.110'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.109'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.110'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.109'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.110'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.109'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.110'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.109'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.110'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.109'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.110'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.109'),
+    load: () => import('./qianmu-video-task.js?v=1.59.110'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.109'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.110'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.109'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.110'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.109'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.110'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.109'),
+    load: () => import('./qianmu-video-store.js?v=1.59.110'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.109'),
+    load: () => import('./qianmu-video-result.js?v=1.59.110'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.109'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.110'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.109'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.110'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.109'),
+    load: () => import('./qianmu-video-media.js?v=1.59.110'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.109'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.110'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.109'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.110'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.109'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.110'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.109'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.110'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.109'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.110'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.109'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.110'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.109'),
-        import('./qianmu-theaters.js?v=1.59.109'),
+        import('./builtin-theaters.js?v=1.59.110'),
+        import('./qianmu-theaters.js?v=1.59.110'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -4142,6 +4142,7 @@ function closeModal() {
     storyboardEndSession();
   }
   focusClockCloseVoiceDrawer();
+  if (readerView) coreadSaveProgress({ summarize: false });
   document.getElementById(MODAL_ID)?.classList.remove('open');
   document.body.classList.remove('sd-qm-modal-open');
   unmountReaderPortal();   // 关模态连带收掉全屏阅读 portal
@@ -26260,6 +26261,8 @@ const READER_PORTAL_BG = { light: '#f3efe7', dark: '#1c1e22', summer: '#e9f5ee',
 let readerContentCache = null;   // { bookId, fullText, chapters:[{title,content}], sig }
 let readerScrollSaveTimer = null;
 let coreadOpenRequestId = 0;
+let coreadMemoryWrites = 0;
+let coreadIdentitySwitchBusy = false;
 let companionWorldView = '';     // 伴读设定浮层中：当前查看条目的世界书名
 let companionPresetView = '';    // 伴读设定浮层中：当前查看条目的预设名
 let coreadCurrentDictId = '';    // 注入状态tab：当前查看/编辑的词典册ID（空=默认整册视图）
@@ -26362,7 +26365,7 @@ function coreadEnsureCompanionSession(avatar, { persona = coreadPersona(), scope
 
 function coreadSelectCompanion(avatar) {
   if (readerView) return false; // Switch from the shelf, keeping in-flight reading/dialogue isolated.
-  if (coreadDistilling) { toast('正在整理伴读记忆，请完成或停止后切换书友。', 'info'); return false; }
+  if (coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight) { toast('正在整理伴读记忆，请完成或停止后切换书友。', 'info'); return false; }
   if (avatar && !coreadCompanionChoices().some(ch => (ch.avatar || ch.data?.avatar) === avatar)) { toast('书友角色已不存在，请重新选择。', 'warning'); return false; }
   if (avatar && !coreadEnsureCompanionSession(avatar)) return false;
   coread().companionOverrideAvatar = avatar;
@@ -26396,24 +26399,11 @@ async function coreadResolveCompanionMacro(text, character = coreadCompanionChar
   return String(text || '').replace(/\{\{char\}\}/gi, () => name).replace(/\{\{user\}\}/gi, () => persona.name);
 }
 
-function renderCoreadSessionBar() {
-  const last = coread().lastReading, book = last ? coreadBookMeta(last.bookId) : null;
-  return `<div class="sd-reader-session-bar"><button type="button" class="sd-btn sd-reader-continue-last" title="${htmlEscape(book?.title || (last ? '原书籍已不存在' : '尚无阅读记录'))}"><i class="fa-solid fa-book-open"></i>继续上次</button></div>`;
-}
-
-async function coreadContinueLast() {
-  const last = coread().lastReading;
-  if (!last) { toast('尚无阅读记录，先打开一本书即可。', 'info'); return; }
-  if (!coreadBookMeta(last.bookId)) { toast('上次阅读的书籍已不存在，记录仍保留。', 'warning'); return; }
-  if (last.avatar && !coreadCompanionChoices().some(ch => (ch.avatar || ch.data?.avatar) === last.avatar)) { toast('上次的书友角色已不存在，请重选书友后打开书籍。', 'warning'); return; }
-  return coreadOpenBook(last.bookId, { resume: { ...last } });
-}
-
 function renderCoreadIdentityChoices(kind) {
   const user = kind === 'user', chosen = user ? coread().personaOverrideAvatar : coread().companionOverrideAvatar;
   const choices = user ? coreadPersonaChoices() : coreadCompanionChoices().map(ch => ({ key: ch.avatar || ch.data.avatar, name: ch.name || ch.data?.name || '未命名角色' }));
-  return `<div class="sd-reader-identity-picker"><b>${user ? '选择 USER 人设' : '选择 CHAR 书友'}</b>
-    <select class="text_pole" size="${Math.min(8, Math.max(3, choices.length + 1))}" aria-label="${user ? 'USER 人设名字' : 'CHAR 书友名字'}">
+  return `<div class="sd-reader-identity-picker"><b>${user ? '选择人设' : '选择书友'}</b>
+    <select class="text_pole" size="${Math.min(8, Math.max(3, choices.length + 1))}" aria-label="${user ? '人设名字' : '书友名字'}">
       <option value="" ${!chosen ? 'selected' : ''}>跟随当前聊天</option>
       ${choices.map(item => `<option value="${htmlEscape(item.key)}" ${chosen === item.key ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('')}
     </select></div>`;
@@ -26421,7 +26411,7 @@ function renderCoreadIdentityChoices(kind) {
 
 async function coreadApplyIdentityChoice(kind, key) {
   if (!['char', 'user'].includes(kind)) return false;
-  if (coreadDistilling || coreadAutoTextInFlight || dialogBusy || readerAssistantBusy || coreadComicVisionBusy) {
+  if (coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight || dialogBusy || readerAssistantBusy || coreadComicVisionBusy) {
     toast('请先完成或停止当前伴读任务，再切换身份。', 'info'); return false;
   }
   if (readerView && (!readerDialog.loaded || coreadPendingChatImages().length ||
@@ -26438,14 +26428,22 @@ async function coreadApplyIdentityChoice(kind, key) {
   if (!view && kind === 'char') return coreadSelectCompanion(key);
   const session = character && persona ? coreadEnsureCompanionSession(character.avatar || character.data?.avatar, { persona }) : null;
   if (view && !session) return false;
-  if (view) coreadRememberReading();
+  if (view) {
+    coreadSaveProgress({ summarize: false });
+    coreadIdentitySwitchBusy = true;
+    let saved;
+    try { saved = await coreadSaveDialog(); } finally { coreadIdentitySwitchBusy = false; }
+    if (!saved || readerView !== view) { toast('原会话尚未保存，暂未切换书友。', 'warning'); return false; }
+    if (coreadMemoryWrites || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight || dialogBusy || readerAssistantBusy || coreadComicVisionBusy) {
+      toast('伴读任务正在处理，请完成后再切换身份。', 'info'); return false;
+    }
+  }
   c[field] = key;
   coreadOpenRequestId++;
   if (view) {
     coreadStopDialog(); coreadStopAssistant(false); ttsStopPlayback(true);
     readerView = { ...view, companionAvatar: session.avatar, companionScope: session.scope, userPersona: { ...persona } };
     readerAssistant = { bucket: coreadDialogBucket(view.bookId), bookId: view.bookId, messages: [], quote: '', loaded: false };
-    coreadRememberReading();
     void coreadLoadDialog(view.bookId);
     refreshReaderPortal();
     const center = document.querySelector('#sd-reader-portal .sd-reader-morepage');
@@ -27262,7 +27260,8 @@ function coreadLoreComment(meta, label) {
 }
 
 function coreadSliceLogicalId(slice, bookId = readerDialog.bookId || 'unknown') {
-  return `coread::${bookId}::${slice?.id || 'unknown'}`;
+  const owner = slice?.ownerBucket || slice?.provenance?.bucket || readerDialog.bucket;
+  return `coread::${bookId}::${owner ? `${encodeURIComponent(owner)}::` : ''}${slice?.id || 'unknown'}`;
 }
 
 function coreadSliceLoreLabel(slice) {
@@ -27312,7 +27311,7 @@ async function coreadRemoveSliceMirrors(book, slices) {
   const map = await coreadMirrorUidMap(book);
   let removed = 0;
   for (const slice of slices) {
-    const uid = map.get(coreadSliceLogicalId(slice));
+    const uid = map.get(coreadSliceLogicalId(slice)) || (!slice.ownerBucket ? map.get(`coread::${slice.provenance?.bookId || readerDialog.bookId}::${slice.id}`) : '');
     if (!uid) continue;
     try { await deleteWorldEntry(book, uid); removed++; } catch (_) {}
   }
@@ -27830,7 +27829,8 @@ async function coreadPersistSlice(res, meta, extra = {}) {
   const batch = coreadNextBatch();
   const sliceId = uid('slice');
   const bookId = readerDialog.bookId || 'unknown';
-  const loreUid = `coread::${bookId}::${sliceId}`;
+  const boundary = coreadCurrentReadBoundarySync(bookId);
+  const loreUid = coreadSliceLogicalId({ id: sliceId }, bookId);
   let finalUid = '';
   let targetBook = '';
   let writeErr = '';
@@ -27847,7 +27847,6 @@ async function coreadPersistSlice(res, meta, extra = {}) {
     }
   } catch (e) { writeErr = e?.message || String(e); console.warn(`[${MODULE_NAME}] persist slice failed`, e); }
   readerDialog.slices = Array.isArray(readerDialog.slices) ? readerDialog.slices : [];
-  const boundary = coreadCurrentReadBoundarySync(bookId);
   const source = reader.normalizeCoreadSource(extra.src);
   const finiteExtra = (key) => {
     if (extra[key] == null || extra[key] === '') return null;
@@ -28055,32 +28054,35 @@ function coreadStopDistill() {
 // ── 主线联动蒸馏：把「圈选的主线消息」蒸成共读切片 ──
 // 只收圈选的、且排除千幕/审片注入的楼层（extra.qianmu_injected），职责限「聊到书的片段」，不与记忆插件的全剧情总结撞车。
 async function coreadDistillMainline(pickedItems, m) {
-  const id = readerView?.bookId || readerDialog.bookId;
-  const meta = coreadBookMeta(id) || { title: '' };
-  const names = { char: companionCharName(), user: coreadUserName() };
-  const picked = (pickedItems || []).map((item) => (
-    isPlainObject(item) ? item : { text: String(item || '') }
-  )).filter((item) => String(item.text || '').trim());
-  const body = picked.map((item) => String(item.text || '').trim()).join('\n\n');
-  if (!body.trim()) return { ok: false, reason: '没有选中可总结的主线消息' };
-  // 整理要求：主线选择总结有独立内置默认，避免沿用伴读对话规则后把主线剧情整体误收进来。
-  const custom = String(m.mainlineSummaryPrompt || '').trim();
-  const rule = custom || DEFAULT_MAINLINE_SUMMARY_PROMPT;
-  const sysPrompt = `你是伴读记忆整理助手。下面是主线剧情里「${names.user}」与「${names.char}」聊到《${meta.title || '这本书'}》的片段。请把其中与这本书相关的讨论、观点、引用蒸馏成第三人称客观的共读记忆，供日后回顾与延续。\n\n【整理要求】\n${rule}\n\n【底线】只输出纯 JSON：{"summary":"第三人称共读记忆正文","keywords":["高辨识度检索词"],"synonyms":{}}。不要代码块标记、不要额外解释。`;
-  let res;
-  try { res = await coreadDistillText(body, sysPrompt, m); }
-  catch (e) { return { ok: false, reason: coreadExplainError(e) }; }
-  if (!res) return { ok: false, reason: '模型没有返回有效总结' };
-  const floors = uniqueClean(picked.map((item) => Number(item.floor)).filter((floor) => Number.isFinite(floor) && floor > 0));
-  const indexes = picked.map((item) => Number(item.idx)).filter(Number.isFinite);
-  await coreadPersistSlice(res, meta, {
-    src: 'mainline',
-    mainlineFloors: floors,
-    ...(indexes.length ? { coveredFrom: Math.min(...indexes), coveredTo: Math.max(...indexes) } : {}),
-  });
-  await coreadSaveDialog();
-  await coreadRefreshContainer();
-  return { ok: true, salvaged: !!res.salvaged };
+  coreadMemoryWrites++;
+  try {
+    const id = readerView?.bookId || readerDialog.bookId;
+    const meta = coreadBookMeta(id) || { title: '' };
+    const names = { char: companionCharName(), user: coreadUserName() };
+    const picked = (pickedItems || []).map((item) => (
+      isPlainObject(item) ? item : { text: String(item || '') }
+    )).filter((item) => String(item.text || '').trim());
+    const body = picked.map((item) => String(item.text || '').trim()).join('\n\n');
+    if (!body.trim()) return { ok: false, reason: '没有选中可总结的主线消息' };
+    // 整理要求：主线选择总结有独立内置默认，避免沿用伴读对话规则后把主线剧情整体误收进来。
+    const custom = String(m.mainlineSummaryPrompt || '').trim();
+    const rule = custom || DEFAULT_MAINLINE_SUMMARY_PROMPT;
+    const sysPrompt = `你是伴读记忆整理助手。下面是主线剧情里「${names.user}」与「${names.char}」聊到《${meta.title || '这本书'}》的片段。请把其中与这本书相关的讨论、观点、引用蒸馏成第三人称客观的共读记忆，供日后回顾与延续。\n\n【整理要求】\n${rule}\n\n【底线】只输出纯 JSON：{"summary":"第三人称共读记忆正文","keywords":["高辨识度检索词"],"synonyms":{}}。不要代码块标记、不要额外解释。`;
+    let res;
+    try { res = await coreadDistillText(body, sysPrompt, m); }
+    catch (e) { return { ok: false, reason: coreadExplainError(e) }; }
+    if (!res) return { ok: false, reason: '模型没有返回有效总结' };
+    const floors = uniqueClean(picked.map((item) => Number(item.floor)).filter((floor) => Number.isFinite(floor) && floor > 0));
+    const indexes = picked.map((item) => Number(item.idx)).filter(Number.isFinite);
+    await coreadPersistSlice(res, meta, {
+      src: 'mainline',
+      mainlineFloors: floors,
+      ...(indexes.length ? { coveredFrom: Math.min(...indexes), coveredTo: Math.max(...indexes) } : {}),
+    });
+    await coreadSaveDialog();
+    await coreadRefreshContainer();
+    return { ok: true, salvaged: !!res.salvaged };
+  } finally { coreadMemoryWrites--; }
 }
 
 
@@ -28245,29 +28247,32 @@ async function coreadCompressSlices(lo, hi) {
 
 // 重新生成某条已有切片（用同区间对话重蒸馏·覆盖 summary/keywords·更新 Lore）。
 async function coreadRegenSlice(sliceId) {
-  const slice = (readerDialog.slices || []).find((s) => s.id === sliceId);
-  if (!slice) return { ok: false, reason: '找不到该切片' };
-  const msgs = readerDialog.messages || [];
-  const seg = msgs.slice(slice.coveredFrom, slice.coveredTo + 1);
-  const m = coreadMemory();
-  const meta = coreadBookMeta(readerDialog.bookId) || {};
-  const names = { char: companionCharName(), user: coreadUserName() };
+  coreadMemoryWrites++;
   try {
-      const res = await coreadDistillSegment(seg, m, meta, names);
-      if (!res) return { ok: false, reason: '该切片对应的对话已不存在或模型无返回' };
-      slice.summary = res.summary; slice.keywords = res.keywords; slice.synonyms = res.synonyms || {}; slice.ts = Date.now();
-      coreadVectorStates.set(slice.id, { state: 'pending', attempt: 0, fingerprint: coreadSliceFingerprint(slice), updatedAt: Date.now() });
-      coreadPipelineCircuits.delete(`vector:${slice.id}`);
-      if (coreadVecCache?.vecs) { delete coreadVecCache.vecs[slice.id]; delete coreadVecCache.fps[slice.id]; delete coreadVecCache.errors?.[slice.id]; }
-    if (res.salvaged) slice.salvaged = true; else delete slice.salvaged;   // 重生成成功即摘掉保底标记
-    try { await coreadSyncSliceMirror(slice, meta); } catch (_) {}
-    await coreadSaveDialog();
-    await coreadRefreshContainer();   // 切片内容有变→反哺主线切片池失效重建
-    const vector = await coreadSyncSliceVector(sliceId, { announce: false });
-    return { ok: true, slice, vector };
-  } catch (e) {
-    return { ok: false, reason: e?.message || '重新生成失败' };
-  }
+    const slice = (readerDialog.slices || []).find((s) => s.id === sliceId);
+    if (!slice) return { ok: false, reason: '找不到该切片' };
+    const msgs = readerDialog.messages || [];
+    const seg = msgs.slice(slice.coveredFrom, slice.coveredTo + 1);
+    const m = coreadMemory();
+    const meta = coreadBookMeta(readerDialog.bookId) || {};
+    const names = { char: companionCharName(), user: coreadUserName() };
+    try {
+        const res = await coreadDistillSegment(seg, m, meta, names);
+        if (!res) return { ok: false, reason: '该切片对应的对话已不存在或模型无返回' };
+        slice.summary = res.summary; slice.keywords = res.keywords; slice.synonyms = res.synonyms || {}; slice.ts = Date.now();
+        coreadVectorStates.set(slice.id, { state: 'pending', attempt: 0, fingerprint: coreadSliceFingerprint(slice), updatedAt: Date.now() });
+        coreadPipelineCircuits.delete(`vector:${slice.id}`);
+        if (coreadVecCache?.vecs) { delete coreadVecCache.vecs[slice.id]; delete coreadVecCache.fps[slice.id]; delete coreadVecCache.errors?.[slice.id]; }
+      if (res.salvaged) slice.salvaged = true; else delete slice.salvaged;   // 重生成成功即摘掉保底标记
+      try { await coreadSyncSliceMirror(slice, meta); } catch (_) {}
+      await coreadSaveDialog();
+      await coreadRefreshContainer();   // 切片内容有变→反哺主线切片池失效重建
+      const vector = await coreadSyncSliceVector(sliceId, { announce: false });
+      return { ok: true, slice, vector };
+    } catch (e) {
+      return { ok: false, reason: e?.message || '重新生成失败' };
+    }
+  } finally { coreadMemoryWrites--; }
 }
 
 // 保存切片的手动编辑（summary/keywords）→ 同步 Lore。
@@ -28291,42 +28296,48 @@ async function coreadUpdateComicDescriptionForSlice(sliceId, values = null) {
 }
 
 async function coreadSaveSliceEdit(sliceId, summary, keywordsStr, options = {}) {
-  const slice = (readerDialog.slices || []).find((s) => s.id === sliceId);
-  if (!slice) return { ok: false, reason: '找不到该切片' };
-  const cleanSummary = String(summary || '').trim();
-  if (!cleanSummary) return { ok: false, reason: '记忆内容不能为空' };
-  slice.summary = cleanSummary;
-  slice.keywords = uniqueClean(String(keywordsStr || '').split(/[,，、\s]+/).map((k) => k.trim()).filter(Boolean)).slice(0, 8);
-  slice.ts = Date.now();
-  coreadVectorStates.set(slice.id, { state: 'pending', attempt: 0, fingerprint: coreadSliceFingerprint(slice), updatedAt: Date.now() });
-  coreadPipelineCircuits.delete(`vector:${slice.id}`);
-  if (coreadVecCache?.vecs) { delete coreadVecCache.vecs[slice.id]; delete coreadVecCache.fps[slice.id]; delete coreadVecCache.errors?.[slice.id]; }
-  delete slice.salvaged;   // 用户手动编辑过即视为已修正
-  await coreadUpdateComicDescriptionForSlice(sliceId, { summary: slice.summary, keywords: slice.keywords });
-  let mirrorError = '';
-  try { await coreadSyncSliceMirror(slice, coreadBookMeta(readerDialog.bookId) || {}); } catch (error) { mirrorError = error?.message || String(error); }
-  await coreadSaveDialog();
-  await coreadRefreshContainer();   // 切片内容有变→反哺主线切片池失效重建
-  const vector = options.syncVector === false
-    ? { ok: false, skipped: true }
-    : await coreadSyncSliceVector(sliceId, { announce: false });
-  return { ok: true, slice, vector, mirrorError };
+  coreadMemoryWrites++;
+  try {
+    const slice = (readerDialog.slices || []).find((s) => s.id === sliceId);
+    if (!slice) return { ok: false, reason: '找不到该切片' };
+    const cleanSummary = String(summary || '').trim();
+    if (!cleanSummary) return { ok: false, reason: '记忆内容不能为空' };
+    slice.summary = cleanSummary;
+    slice.keywords = uniqueClean(String(keywordsStr || '').split(/[,，、\s]+/).map((k) => k.trim()).filter(Boolean)).slice(0, 8);
+    slice.ts = Date.now();
+    coreadVectorStates.set(slice.id, { state: 'pending', attempt: 0, fingerprint: coreadSliceFingerprint(slice), updatedAt: Date.now() });
+    coreadPipelineCircuits.delete(`vector:${slice.id}`);
+    if (coreadVecCache?.vecs) { delete coreadVecCache.vecs[slice.id]; delete coreadVecCache.fps[slice.id]; delete coreadVecCache.errors?.[slice.id]; }
+    delete slice.salvaged;   // 用户手动编辑过即视为已修正
+    await coreadUpdateComicDescriptionForSlice(sliceId, { summary: slice.summary, keywords: slice.keywords });
+    let mirrorError = '';
+    try { await coreadSyncSliceMirror(slice, coreadBookMeta(readerDialog.bookId) || {}); } catch (error) { mirrorError = error?.message || String(error); }
+    await coreadSaveDialog();
+    await coreadRefreshContainer();   // 切片内容有变→反哺主线切片池失效重建
+    const vector = options.syncVector === false
+      ? { ok: false, skipped: true }
+      : await coreadSyncSliceVector(sliceId, { announce: false });
+    return { ok: true, slice, vector, mirrorError };
+  } finally { coreadMemoryWrites--; }
 }
 
 // 删除单条切片（连同 Lore 条目）。
 async function coreadDeleteSlice(sliceId) {
-  const idx = (readerDialog.slices || []).findIndex((s) => s.id === sliceId);
-  if (idx < 0) return { ok: false, reason: '找不到该切片' };
-  const slice = readerDialog.slices[idx];
-  try { const book = await coreadTargetBook(); if (book) await coreadRemoveSliceMirrors(book, [slice]); } catch (_) {}
-  readerDialog.slices.splice(idx, 1);
-  await coreadForgetSliceRuntime([sliceId]);
-  await coreadUpdateComicDescriptionForSlice(sliceId, null);
-  coreadRenumberSlices();
-  coreadRecalculateDialogCursor();
-  await coreadSaveDialog();
-  await coreadRefreshContainer();   // 切片有变→重建共读记忆容器
-  return { ok: true };
+  coreadMemoryWrites++;
+  try {
+    const idx = (readerDialog.slices || []).findIndex((s) => s.id === sliceId);
+    if (idx < 0) return { ok: false, reason: '找不到该切片' };
+    const slice = readerDialog.slices[idx];
+    try { const book = await coreadTargetBook(); if (book) await coreadRemoveSliceMirrors(book, [slice]); } catch (_) {}
+    readerDialog.slices.splice(idx, 1);
+    await coreadForgetSliceRuntime([sliceId]);
+    await coreadUpdateComicDescriptionForSlice(sliceId, null);
+    coreadRenumberSlices();
+    coreadRecalculateDialogCursor();
+    await coreadSaveDialog();
+    await coreadRefreshContainer();   // 切片有变→重建共读记忆容器
+    return { ok: true };
+  } finally { coreadMemoryWrites--; }
 }
 
 // 关键词召回：对给定「查询文本」在本书切片里做关键词命中，按命中数×新近度排序取前 n。
@@ -28607,12 +28618,15 @@ function coreadCosine(a, b) {
 let coreadVecCache = null;   // { bucket, dim, model, vecs:{id:[]}, fps:{id:fp}, errors:{id:{message,at}} }
 async function coreadEnsureVectors(m, onlySlices = null) {
   const bucket = readerDialog.bucket;
+  const owner = readerDialog, model = m.vectorModel;
+  const current = () => readerDialog === owner && readerDialog.bucket === bucket && m.vectorModel === model;
   const slices = Array.isArray(onlySlices) ? onlySlices : (readerDialog.slices || []);
   if (!bucket || !slices.length) return null;
   // 载入持久化缓存（换 bucket / 换模型则重置）
   if (!coreadVecCache || coreadVecCache.bucket !== bucket || coreadVecCache.model !== m.vectorModel) {
     let rec = null;
     try { rec = await blobStore.getReaderVectors(bucket); } catch (_) {}
+    if (!current()) return null;
     coreadVecCache = (rec && rec.model === m.vectorModel && isPlainObject(rec.vecs))
       ? { bucket, dim: rec.dim || 0, model: m.vectorModel, vecs: rec.vecs, fps: isPlainObject(rec.fps) ? rec.fps : {}, errors: isPlainObject(rec.errors) ? rec.errors : {} }
       : { bucket, dim: 0, model: m.vectorModel, vecs: {}, fps: {}, errors: {} };
@@ -28627,15 +28641,18 @@ async function coreadEnsureVectors(m, onlySlices = null) {
   if (need.length) {
     const failures = [];
     for (const item of need) {
+      if (!current()) return null;
       coreadVectorStates.set(item.s.id, { state: 'pending', attempt: 0, fingerprint: item.fp, updatedAt: Date.now() });
       try {
         // 每条切片独立重试/熔断：一条坏数据或单次网络波动不会阻断队列里的其它切片。
-        const [vector] = await coreadWithRetry(`vector:${item.s.id}`, () => coreadEmbed([`${item.s.summary || ''}\n${(item.s.keywords || []).join(' ')}`], m), {
+        const [vector] = await coreadWithRetry(`vector:${item.s.id}`, () => current() ? coreadEmbed([`${item.s.summary || ''}\n${(item.s.keywords || []).join(' ')}`], m) : [], {
           onRetry: (attempt, error) => {
+            if (!current()) return;
             coreadVectorStates.set(item.s.id, { state: 'retrying', attempt, error: error?.message || String(error), fingerprint: item.fp, updatedAt: Date.now() });
             rerenderMoreIfOpen?.();
           },
         });
+        if (!current()) return null;
         // 请求返回前用户可能再次编辑；旧指纹结果不得覆盖新文本状态。
         const live = (readerDialog.slices || []).find((slice) => slice.id === item.s.id);
         if (!vector || !live || coreadSliceFingerprint(live) !== item.fp) {
@@ -28647,6 +28664,7 @@ async function coreadEnsureVectors(m, onlySlices = null) {
         if (!cache.dim) cache.dim = vector.length;
         coreadVectorStates.set(item.s.id, { state: 'synced', attempt: 0, fingerprint: item.fp, updatedAt: Date.now() });
       } catch (error) {
+        if (!current()) return null;
         delete cache.vecs[item.s.id]; delete cache.fps[item.s.id];
         cache.errors[item.s.id] = { message: error?.message || String(error), at: Date.now(), fingerprint: item.fp };
         coreadVectorStates.set(item.s.id, { state: 'error', attempt: 3, error: error?.message || String(error), fingerprint: item.fp, updatedAt: Date.now() });
@@ -28658,12 +28676,14 @@ async function coreadEnsureVectors(m, onlySlices = null) {
     for (const id of Object.keys(cache.vecs)) if (!liveIds.has(id)) { delete cache.vecs[id]; delete cache.fps[id]; }
     for (const id of Object.keys(cache.errors)) if (!liveIds.has(id)) delete cache.errors[id];
     try { await blobStore.putReaderVectors(bucket, { dim: cache.dim, model: cache.model, vecs: cache.vecs, fps: cache.fps, errors: cache.errors }); } catch (_) {}
+    if (!current()) return null;
     if (failures.length) { const error = failures[0].error; error.failedSlices = failures.map((item) => item.slice.id); throw error; }
   }
   return cache;
 }
 
 async function coreadSyncSliceVector(sliceId, { announce = false } = {}) {
+  const owner = readerDialog;
   const m = coreadMemory();
   if (!m.vectorEnabled) return { ok: false, skipped: true };
   const slice = (readerDialog.slices || []).find((item) => item.id === sliceId);
@@ -28675,10 +28695,12 @@ async function coreadSyncSliceVector(sliceId, { announce = false } = {}) {
   coreadVectorStates.set(sliceId, { state: 'pending', attempt: 0, fingerprint: coreadSliceFingerprint(slice), updatedAt: Date.now() });
   if (coreadVecCache?.vecs) { delete coreadVecCache.vecs[sliceId]; delete coreadVecCache.fps[sliceId]; delete coreadVecCache.errors?.[sliceId]; }
   try {
-    await coreadEnsureVectors(m, [slice]);
+    const result = await coreadEnsureVectors(m, [slice]);
+    if (!result || readerDialog !== owner) return { ok: false, skipped: true };
     if (announce) toast('向量同步完成。', 'success');
     return { ok: true };
   } catch (error) {
+    if (readerDialog !== owner) return { ok: false, skipped: true };
     if (announce) coreadPipelineFailed('vector', error, '已保留关键词召回');
     return { ok: false, error };
   }
@@ -28686,12 +28708,13 @@ async function coreadSyncSliceVector(sliceId, { announce = false } = {}) {
 
 // 向量召回：对查询算向量，与各切片向量算余弦，返回 [{slice, vscore}] 降序（仅 vscore>0）。异步。
 async function coreadVectorRecall(queryText, m, pool) {
+  const owner = readerDialog;
   const cache = await coreadEnsureVectors(m);
-  if (!cache) return [];
+  if (!cache || readerDialog !== owner) return [];
   const q = String(queryText || '').trim();
   if (!q) return [];
   const [qvec] = await coreadEmbed([q], m);
-  if (!qvec) return [];
+  if (!qvec || readerDialog !== owner) return [];
   const slices = pool || readerDialog.slices || [];
   const scored = slices.map((s) => ({ slice: s, vscore: cache.vecs[s.id] ? coreadCosine(qvec, cache.vecs[s.id]) : 0 }))
     .filter((x) => x.vscore > 0);
@@ -28945,19 +28968,22 @@ async function coreadRefreshContainer() { coreadInvalidatePool(); }
 
 // 一键删除本「聊天×书」的全部伴读记忆（清 Lore 条目 + 清镜像 + 重置 cursor）。
 async function coreadClearAllSlices() {
-  const slices = readerDialog.slices || [];
+  coreadMemoryWrites++;
   try {
-    const book = await coreadTargetBook();
-    if (book) await coreadRemoveSliceMirrors(book, slices);
-  } catch (e) { console.warn(`[${MODULE_NAME}] clear slices failed`, e); }
-  readerDialog.slices = [];
-  coreadEchoTtl.clear();   // 切片全清，回响池随之清空
-  coreadVecCache = null;   // 向量缓存随之作废
-  try { if (readerDialog.bucket) await blobStore.deleteReaderVectors(readerDialog.bucket); } catch (_) {}
-  readerDialog.summaryFloor = (readerDialog.messages || []).length;
-  readerDialog.cursor = readerDialog.summaryFloor;   // 已聊的都视作「不再总结」，避免立刻又重蒸
-  await coreadSaveDialog();
-  await coreadRefreshContainer();   // 无切片→容器随之禁用
+    const slices = readerDialog.slices || [];
+    try {
+      const book = await coreadTargetBook();
+      if (book) await coreadRemoveSliceMirrors(book, slices);
+    } catch (e) { console.warn(`[${MODULE_NAME}] clear slices failed`, e); }
+    readerDialog.slices = [];
+    coreadEchoTtl.clear();   // 切片全清，回响池随之清空
+    coreadVecCache = null;   // 向量缓存随之作废
+    try { if (readerDialog.bucket) await blobStore.deleteReaderVectors(readerDialog.bucket); } catch (_) {}
+    readerDialog.summaryFloor = (readerDialog.messages || []).length;
+    readerDialog.cursor = readerDialog.summaryFloor;   // 已聊的都视作「不再总结」，避免立刻又重蒸
+    await coreadSaveDialog();
+    await coreadRefreshContainer();   // 无切片→容器随之禁用
+  } finally { coreadMemoryWrites--; }
 }
 
 /* ── 跨聊天迁移：把本书在「其他 ST 聊天」里的伴读对话+切片复制到当前聊天 ──
@@ -29027,36 +29053,40 @@ function coreadToggleBind(bucket, on) {
 
 // 执行迁移：把源桶的会话复制进当前 readerDialog，落盘 + 重写 Lore + 重建容器。
 async function coreadMigrateFromChat(sourceRec) {
-  if (!sourceRec) return { ok: false, reason: '源会话为空' };
-  const bookId = readerDialog.bookId;
-  const meta = coreadBookMeta(bookId) || {};
-  // 复制会话到当前 readerDialog（覆盖当前·已在弹窗二次确认）
-  readerDialog.messages = Array.isArray(sourceRec.messages) ? clone(sourceRec.messages) : [];
-  readerDialog.summaries = Array.isArray(sourceRec.summaries) ? clone(sourceRec.summaries) : [];
-  const boundary = readerDialog.readBoundary || coreadCurrentReadBoundarySync(bookId);
-  readerDialog.slices = coreadNormalizeSlices(Array.isArray(sourceRec.slices) ? clone(sourceRec.slices) : [], bookId, readerDialog.bucket, boundary);
-  const progress = coreadSummaryProgressFromRecord(sourceRec, readerDialog.slices, readerDialog.messages.length);
-  readerDialog.summaryFloor = progress.summaryFloor;
-  readerDialog.cursor = progress.cursor;
-  readerDialog.lastInjected = null;
-  coreadEchoTtl.clear();
-  coreadVecCache = null;   // 迁入新切片→向量缓存作废，下次召回按需重算
-  // 千幕档案先落盘；开启世界书同步时再按逻辑标识重建镜像。
-  let wrote = 0;
+  coreadMemoryWrites++;
   try {
-    const book = await coreadTargetBook();
-    if (book) {
-      const map = await coreadMirrorUidMap(book);
-      for (const s of readerDialog.slices) {
-        try {
-          if (await coreadSyncSliceMirror(s, meta, book, map)) wrote++;
-        } catch (_) {}
+    if (!sourceRec) return { ok: false, reason: '源会话为空' };
+    const bookId = readerDialog.bookId;
+    const meta = coreadBookMeta(bookId) || {};
+    // 复制会话到当前 readerDialog（覆盖当前·已在弹窗二次确认）
+    readerDialog.messages = Array.isArray(sourceRec.messages) ? clone(sourceRec.messages) : [];
+    readerDialog.summaries = Array.isArray(sourceRec.summaries) ? clone(sourceRec.summaries) : [];
+    const boundary = sourceRec.readBoundary?.bookId === bookId ? sourceRec.readBoundary : readerDialog.readBoundary || coreadCurrentReadBoundarySync(bookId);
+    readerDialog.slices = coreadNormalizeSlices(Array.isArray(sourceRec.slices) ? clone(sourceRec.slices) : [], bookId, readerDialog.bucket, boundary)
+      .map(slice => { const copy = { ...slice, ownerBucket: readerDialog.bucket }; delete copy.loreUid; delete copy.loreBook; return copy; });
+    const progress = coreadSummaryProgressFromRecord(sourceRec, readerDialog.slices, readerDialog.messages.length);
+    readerDialog.summaryFloor = progress.summaryFloor;
+    readerDialog.cursor = progress.cursor;
+    readerDialog.lastInjected = null;
+    coreadEchoTtl.clear();
+    coreadVecCache = null;   // 迁入新切片→向量缓存作废，下次召回按需重算
+    // 千幕档案先落盘；开启世界书同步时再按逻辑标识重建镜像。
+    let wrote = 0;
+    try {
+      const book = await coreadTargetBook();
+      if (book) {
+        const map = await coreadMirrorUidMap(book);
+        for (const s of readerDialog.slices) {
+          try {
+            if (await coreadSyncSliceMirror(s, meta, book, map)) wrote++;
+          } catch (_) {}
+        }
       }
-    }
-  } catch (_) {}
-  await coreadSaveDialog();
-  await coreadRefreshContainer(meta);
-  return { ok: true, messages: readerDialog.messages.length, slices: readerDialog.slices.length, wrote };
+    } catch (_) {}
+    await coreadSaveDialog();
+    await coreadRefreshContainer(meta);
+    return { ok: true, messages: readerDialog.messages.length, slices: readerDialog.slices.length, wrote };
+  } finally { coreadMemoryWrites--; }
 }
 
 // 迁移入口：弹选择器列出本书在其他聊天的会话→选一个→二次确认（当前会话会被覆盖）→执行。
@@ -29366,13 +29396,16 @@ function renderCoreadSlicePage() {
 
 // 切片管理改为伴读中心内部子页面。
 async function coreadOpenSliceManagerDialog() {
+  const owner = readerDialog, view = readerView;
   const m = coreadMemory();
   if (m.vectorEnabled) {
     try {
-      const rec = await blobStore.getReaderVectors(readerDialog.bucket);
+      const rec = await blobStore.getReaderVectors(owner.bucket);
+      if (readerDialog !== owner || readerView !== view) return;
       if (rec && rec.model === m.vectorModel && isPlainObject(rec.vecs)) coreadVecCache = { bucket: readerDialog.bucket, dim: rec.dim || 0, model: rec.model, vecs: rec.vecs, fps: isPlainObject(rec.fps) ? rec.fps : {}, errors: isPlainObject(rec.errors) ? rec.errors : {} };
     } catch (_) {}
   }
+  if (readerDialog !== owner || readerView !== view) return;
   coreadCenterPage = 'slices';
   rerenderMoreIfOpen();
 }
@@ -29649,11 +29682,12 @@ async function coreadLoadDialog(bookId) {
       const rawSlices = Array.isArray(rec.slices) ? rec.slices : [];
       needsMigration = needsMigration || Number(rec.sliceSchemaVersion) !== reader.COREAD_SLICE_SCHEMA_VERSION
         || rawSlices.some((slice) => Number(slice?.provenance?.version) !== reader.COREAD_SLICE_SCHEMA_VERSION);
-      readerDialog.slices = coreadNormalizeSlices(rawSlices, bookId, bucket, boundary);   // 旧切片懒迁移：补来源与形成时阅读水位
+      const archivedBoundary = rec.readBoundary && rec.readBoundary.bookId === bookId ? rec.readBoundary : boundary;
+      readerDialog.slices = coreadNormalizeSlices(rawSlices, bookId, bucket, archivedBoundary);   // 旧档优先使用原读位，不以另一书友的新进度改写记忆形成阶段
       // v2 及更早版本“删书但保留记忆”会留下空对话 + 对谈切片 + cursor=0。
       // 将其迁为归档对谈，继续参与召回但不占用重新导入后的新对话下标。
       if (rec.summaryFloor == null && !readerDialog.messages.length && !(Number(rec.cursor) || 0) && readerDialog.slices.length) {
-        readerDialog.slices = coreadArchiveDialogSlices(readerDialog.slices, bookId, bucket, boundary);
+        readerDialog.slices = coreadArchiveDialogSlices(readerDialog.slices, bookId, bucket, archivedBoundary);
         needsMigration = true;
       }
       const progress = coreadSummaryProgressFromRecord(rec, readerDialog.slices, readerDialog.messages.length);
@@ -29730,7 +29764,7 @@ async function coreadSweepOrphanLore() {
 
 // 持久化当前会话（防抖交给 IndexedDB 本身足够快·每轮收发后调）
 async function coreadSaveDialog() {
-  if (!readerDialog.bucket || !readerDialog.loaded) return;
+  if (!readerDialog.bucket || !readerDialog.loaded) return false;
   try {
     await blobStore.putReaderChat(readerDialog.bucket, {
       bookId: readerDialog.bookId,
@@ -29745,10 +29779,12 @@ async function coreadSaveDialog() {
         ? readerAssistant.messages
         : [],
       sliceSchemaVersion: reader.COREAD_SLICE_SCHEMA_VERSION,
+      readBoundary: readerDialog.readBoundary,
       updatedAt: Date.now(),
       names: { char: companionCharName(), user: coreadUserName() },
     });
-  } catch (error) { console.warn(`[${MODULE_NAME}] save reader dialog failed`, error); }
+    return true;
+  } catch (error) { console.warn(`[${MODULE_NAME}] save reader dialog failed`, error); return false; }
 }
 
 // 渲染对话消息流（user 右 / friend 左·气泡跟随主题·预留 bubbleCustom DIY 于 1B 后续接线）
@@ -31290,15 +31326,16 @@ async function coreadDeleteBook(bookId, options = {}) {
 
 /* ── 进入/退出阅读器 ───────────────────────────────────── */
 
-async function coreadOpenBook(bookId, { resume = null } = {}) {
-  if (coreadDistilling) { toast('正在整理伴读记忆，请完成或停止后进入阅读。', 'info'); return; }
+async function coreadOpenBook(bookId) {
+  if (coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight) { toast('正在保存或整理伴读记忆，请完成或停止后进入阅读。', 'info'); return; }
   const requestId = ++coreadOpenRequestId, originTab = activeTab;
-  const ch = coreadCompanionCharacter();
-  if (!resume && coread().companionOverrideAvatar && !ch) { toast('指定的书友已不存在，请在伴读设定重新选择。', 'warning'); return; }
-  const avatar = resume ? resume.avatar : ch?.avatar || ch?.data?.avatar;
-  const persona = resume?.userPersona ? (resume.userPersona.key ? coreadPersonaChoices().find(p => p.key === resume.userPersona.key) : resume.userPersona) : resume ? coreadHostPersona() : coreadPersona();
+  const c = coread(), selected = c.companionOverrideAvatar;
+  const ch = selected ? coreadCompanionChoices().find(item => (item.avatar || item.data?.avatar) === selected) : ctx().groupId ? null : ctx().characters?.[ctx().characterId];
+  if (selected && !ch) { toast('指定的书友已不存在，请在伴读设定重新选择。', 'warning'); return; }
+  const avatar = ch?.avatar || ch?.data?.avatar;
+  const persona = c.personaOverrideAvatar ? coreadPersonaChoices().find(p => p.key === c.personaOverrideAvatar) : coreadHostPersona();
   if (!persona) { toast('原 USER 人设已不存在，请在伴读设定点击头像重新选择。', 'warning'); return; }
-  const session = avatar ? coreadEnsureCompanionSession(avatar, { persona, scope: resume?.scope || '' })
+  const session = avatar ? coreadEnsureCompanionSession(avatar, { persona })
     : { avatar: '', scope: `coread-unassigned:user:${encodeURIComponent(persona.key || '')}` };
   if (!session) { toast('请核对书友及原伴读会话，可在伴读设定点击头像选择。', 'info'); return; }
   // 阅读器必须暂时归属伴读路由。若仍把 activeTab 留在专注，计时到点触发的模态重渲会卸载 portal，造成偶发“闪退回专注”。
@@ -31308,26 +31345,26 @@ async function coreadOpenBook(bookId, { resume = null } = {}) {
   let rec = null;
   try { rec = await blobStore.getBook(bookId); } catch (_) {}
   if (requestId !== coreadOpenRequestId || activeTab !== originTab) return;
+  if (coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight) {
+    toast('伴读记忆正在处理，请完成后再打开书目。', 'info'); return;
+  }
   // 跨端：书目索引（settings，会同步）在，但正文 blob 在 IndexedDB（不跨端）→ 本机没有，友好提示而非报错弹窗
   if (!rec || !Array.isArray(rec.chapters)) {
     saveSettings();
     coreadShowRefillChooser(bookId);
     return;
   }
-  if (resume && !resume.userPersona) toast('旧阅读记录未保存 USER 身份，本次沿用当前聊天人设。', 'info');
   meta.lastReadAt = Date.now();
-  if (readerView) { coreadStopDialog(); coreadStopAssistant(false); coreadSaveProgress(); }
+  if (readerView) { coreadStopDialog(); coreadStopAssistant(false); coreadSaveProgress({ summarize: false }); }
   saveSettings();
   readerContentCache = { bookId, fullText: rec.fullText || '', chapters: rec.chapters, sig: rec.sig || '', comicDescriptions: isPlainObject(rec.comicDescriptions) ? rec.comicDescriptions : {} };
-  const saved = resume || meta.companionProgress?.find(p => p.scope === session.scope);
-  const startCh = Number.isInteger(saved?.chapterIndex) ? saved.chapterIndex : Number.isInteger(meta.lastChapterIndex) ? meta.lastChapterIndex : 0;
+  const startCh = Number.isInteger(meta.lastChapterIndex) ? meta.lastChapterIndex : 0;
   readerView = {
     bookId, chapterIndex: Math.max(0, Math.min(startCh, rec.chapters.length - 1)),
-    scrollRatio: Math.max(0, Math.min(1, Number(saved?.scrollRatio ?? meta.lastScrollRatio) || 0)), barHidden: false, activePanel: '', dialogPinned: false,
+    scrollRatio: Math.max(0, Math.min(1, Number(meta.lastScrollRatio) || 0)), barHidden: false, activePanel: '', dialogPinned: false,
     companionAvatar: session.avatar, companionScope: session.scope, userPersona: { ...persona },
     sessionStart: nowMs(), assistantOpen: false, pendingChatImages: [], panelInputBlockedUntil: 0, returnTab,
   };
-  coreadRememberReading();
   saveSettings();
   readerAssistant = { bucket: coreadDialogBucket(bookId), bookId, messages: [], quote: '', loaded: false };
   // 阅读器始终走 body portal（逃离模态 backdrop-filter 包含块；窄屏/移动端真·全页，不被 .sd-window 裁切）
@@ -31338,6 +31375,7 @@ async function coreadOpenBook(bookId, { resume = null } = {}) {
 }
 
 function coreadCloseReader() {
+  if (coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight) { toast('正在保存或整理伴读记忆，请完成或停止后退出阅读。', 'info'); return; }
   coreadOpenRequestId++;
   const returnTab = readerView?.returnTab === 'focus' ? 'focus' : 'coread';
   coreadStopDialog();     // 中止在途生成，弃旧回调
@@ -31354,7 +31392,7 @@ function coreadCloseReader() {
   } else {
     void coreadStoreAssistantHistory();
   }
-  coreadSaveProgress();   // 落进度 + 累计阅读时长
+  coreadSaveProgress({ summarize: false });   // 退出时只保存，不新启动记忆任务
   unmountReaderPortal();
   readerView = null;
   readerContentCache = null;
@@ -31368,17 +31406,16 @@ function nowMs() {
 }
 
 // 保存阅读进度（章节 + 滚动比例 + 累计阅读时长 → 轻量索引）。
-function coreadSaveProgress() {
+function coreadSaveProgress({ summarize = true } = {}) {
   if (!readerView || !readerContentCache) return;
   const meta = coreadBookMeta(readerView.bookId);
   if (!meta) return;
   meta.lastChapterIndex = readerView.chapterIndex;
   meta.lastScrollRatio = readerView.scrollRatio || 0;
   meta.lastReadAt = Date.now();
-  coreadRememberReading();
   const total = readerContentCache.chapters.length || 1;
   meta.progress = Math.round(((readerView.chapterIndex + (readerView.scrollRatio || 0)) / total) * 100);
-  if (readerDialog.bookId === readerView.bookId) readerDialog.readBoundary = coreadCurrentReadBoundarySync(readerView.bookId);
+  if (readerDialog.loaded && readerDialog.bucket === coreadDialogBucket(readerView.bookId)) readerDialog.readBoundary = coreadCurrentReadBoundarySync(readerView.bookId);
   coreadInvalidatePool();
   // 累计本书阅读总时长（毫秒）；分段结算，避免长时间挂着算一坨
   if (readerView.sessionStart) {
@@ -31387,20 +31424,7 @@ function coreadSaveProgress() {
     readerView.sessionStart = nowMs();
   }
   saveSettings();
-  coreadMaybeAutoDistillText();   // 按阅读进度自动蒸正文切片（内部有开关+字数阈值+在飞守卫）
-}
-
-function coreadRememberReading() {
-  if (!readerView?.companionScope) return;
-  const meta = coreadBookMeta(readerView.bookId);
-  if (!meta) return;
-  const saved = { id: readerView.companionScope, bookId: readerView.bookId, avatar: readerView.companionAvatar, scope: readerView.companionScope,
-    userPersona: readerView.userPersona ? { ...readerView.userPersona } : undefined,
-    chapterIndex: readerView.chapterIndex, scrollRatio: readerView.scrollRatio || 0 };
-  if (!Array.isArray(meta.companionProgress)) meta.companionProgress = [];
-  const index = meta.companionProgress.findIndex(p => p.scope === saved.scope);
-  if (index < 0) meta.companionProgress.push(saved); else meta.companionProgress[index] = saved;
-  coread().lastReading = { ...saved };
+  if (summarize) coreadMaybeAutoDistillText();
 }
 
 // 阅读进度前进到阈值时自动蒸一条正文切片（非阻塞·失败静默·不打断阅读）。
@@ -31411,7 +31435,7 @@ async function coreadMaybeAutoDistillText() {
   if (!readerView || !readerContentCache) return;
   const id = readerView.bookId;
   if (coreadBookMeta(id)?.mode === 'comic') return;
-  if (readerDialog.bookId !== id) return;   // 镜像未对上当前书（切书瞬间）·跳过
+  if (!readerDialog.loaded || readerDialog.bucket !== coreadDialogBucket(id)) return;
   try {
     const full = readerContentCache.chapters.map((ch) => String(ch?.content || '')).join('');
     const win = computeVisibleWindow(readerContentCache.chapters, readerView.chapterIndex, readerView.scrollRatio || 0, 100, full.length);
@@ -31758,7 +31782,6 @@ function renderLibraryView() {
     : ((c.libTags || []).length ? '没有符合当前标签的书籍。' : '书架还是空的。点右下「＋」添加第一本书，开始和角色伴读。');
   return `
     <div class="sd-reader-lib sd-reader-lib-${viewMode}">
-      ${renderCoreadSessionBar()}
       ${collectionHead}
       <div class="sd-reader-lib-bar">
         <button class="sd-reader-view-toggle" title="切换视图"><i class="fa-solid ${viewMode === 'grid' ? 'fa-list' : 'fa-table-cells-large'}"></i></button>
@@ -33486,7 +33509,6 @@ function bindLibraryBookDrag(root) {
 }
 
 function bindLibraryViewEvents(root) {
-  root.querySelector('.sd-reader-continue-last')?.addEventListener('click', () => { void coreadContinueLast(); });
   loadShelfCovers(root);   // 异步给 hasCover 的卡片填充封面图（IndexedDB blob → objectURL）
   bindLibraryBookDrag(root);
   root.querySelector('.sd-reader-collection-create')?.addEventListener('click', async () => {
@@ -34879,12 +34901,14 @@ function bindReaderStageEvents(stageRoot) {
       if (!m.vectorEnabled) coreadSetPipelineStatus('vector', 'ok');
       // 开启即自动向量化现有切片（指纹增量·已算的复用·不重复消耗）。静默失败回退关键词召回。
       if (m.vectorEnabled && (readerDialog.slices || []).length) {
+        const owner = readerDialog;
         toast('向量检索：正在向量化现有切片…', 'info');
         coreadEnsureVectors(m).then((c) => {
+          if (readerDialog !== owner) return;
           if (c) toast(`向量检索已就绪（${Object.keys(c.vecs || {}).length} 条切片）。`, 'success');
           else toast('向量化未完成（接口未配置或无切片），已回退关键词召回。', 'warning');
           rerenderMore();
-        }).catch((err) => { coreadPipelineFailed('vector', err, '已回退关键词召回'); rerenderMore(); });
+        }).catch((err) => { if (readerDialog !== owner) return; coreadPipelineFailed('vector', err, '已回退关键词召回'); rerenderMore(); });
       }
       return;
     }
@@ -35212,20 +35236,35 @@ function bindReaderStageEvents(stageRoot) {
   });
 
   // 位置恢复（仅 portal 重建时：开书/换章用·直接落到记忆位置·无滚动动画无闪动；划线等原地更新不触发）+ 保存
-  if (bodyEl) {
-    if (readerView.scrollRatio > 0) {
-      // 同步落位（读 scrollHeight 强制布局→首帧即在位·不会先画顶部再跳）；再补一帧兜底字体/回流后的高度校正
-      const land = () => { const denom = bodyEl.scrollHeight - bodyEl.clientHeight; if (denom > 0) bodyEl.scrollTop = readerView.scrollRatio * denom; };
-      land();
-      requestAnimationFrame(land);
-    }
-    bodyEl.addEventListener('scroll', () => {
-      const denom = bodyEl.scrollHeight - bodyEl.clientHeight;
-      readerView.scrollRatio = denom > 0 ? bodyEl.scrollTop / denom : 0;
-      clearTimeout(readerScrollSaveTimer);
-      readerScrollSaveTimer = setTimeout(coreadSaveProgress, 600);
-    });
-  }
+  if (bodyEl) bindCoreadReadingPosition(bodyEl);
+}
+
+function bindCoreadReadingPosition(bodyEl) {
+  const view = readerView, chapter = view?.chapterIndex, ratio = Math.max(0, Math.min(1, Number(view?.scrollRatio) || 0));
+  const current = () => bodyEl.isConnected && readerView === view && view.chapterIndex === chapter;
+  let restoring = true, applied = bodyEl.scrollTop;
+  const land = () => {
+    if (!current() || bodyEl.clientHeight <= 0) return;
+    const extent = bodyEl.scrollHeight - bodyEl.clientHeight;
+    if (extent > 0) bodyEl.scrollTop = ratio * extent;
+    applied = bodyEl.scrollTop;
+  };
+  clearTimeout(readerScrollSaveTimer);
+  land();
+  requestAnimationFrame(() => {
+    if (restoring && current() && bodyEl.scrollTop === applied) land();
+    restoring = false;
+  });
+  bodyEl.addEventListener('scroll', () => {
+    if (!current() || bodyEl.clientHeight <= 0) return;
+    if (restoring && bodyEl.scrollTop === applied) return;
+    restoring = false;
+    const extent = bodyEl.scrollHeight - bodyEl.clientHeight;
+    if (extent <= 0) return; // A collapsed/hidden layout must not erase the book position.
+    view.scrollRatio = Math.max(0, Math.min(1, bodyEl.scrollTop / extent));
+    clearTimeout(readerScrollSaveTimer);
+    readerScrollSaveTimer = setTimeout(() => { if (current()) coreadSaveProgress(); }, 600);
+  });
 }
 
 // 目录 / 笔记 / 书签共用固定高度；抓手调整后跨章节、跨重开书记忆。
