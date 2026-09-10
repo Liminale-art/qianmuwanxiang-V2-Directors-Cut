@@ -10,7 +10,7 @@ function fixture(){
   const host={POPUP_TYPE:{CONFIRM:7}},wrap={innerHTML:'',querySelector:()=>({value:'picked'})};let resolve;
   host.Popup=class{constructor(...args){popups.push(args);}show(){return new Promise(done=>resolve=done);}};
   const c=vm.createContext({...identityView,coread:()=>state,coreadCompanionChoices:()=>characters,coreadPersonaChoices:()=>personas,htmlEscape:escape,
-    ctx:()=>host,readerView:null,document:{createElement:()=>wrap},toast:(...args)=>notices.push(args),
+    ctx:()=>host,readerView:null,settings:{enabled:true},coreadOpenRequestId:0,RUNTIME_LOCK_KEY:'runtimeFixture',runtimeFixture:{},document:{createElement:()=>wrap},toast:(...args)=>notices.push(args),
     coreadApplyIdentityChoice:async(...args)=>applied.push(args)});
   vm.runInContext(['renderCoreadIdentity','renderCoreadIdentityChoices','coreadChooseIdentity'].map(section).join('\n'),c);
   return {c,state,characters,personas,host,wrap,notices,applied,popups,answer:value=>resolve(value)};
@@ -55,5 +55,17 @@ test('unavailable or failed popup stays non-mutating and reports a concise warni
   for(const failure of ['missing','throw']){
     const e=fixture();if(failure==='missing')delete e.host.Popup;else e.host.Popup=class{constructor(){throw Error('host failure');}};
     await e.c.coreadChooseIdentity('char');assert.deepEqual(e.applied,[]);assert.equal(e.notices.length,1);assert.equal(e.notices[0][1],'warning');
+  }
+});
+
+test('stale identity consent cannot mutate a reopened page, disabled plugin, replaced settings or runtime',async()=>{
+  for(const change of ['navigation','disabled','settings','stop','restart']){
+    const e=fixture(),run=e.c.coreadChooseIdentity('char');
+    if(change==='navigation')e.c.coreadOpenRequestId++;
+    if(change==='disabled')e.c.settings.enabled=false;
+    if(change==='settings')e.c.settings={enabled:true};
+    if(change==='stop')delete e.c.runtimeFixture;
+    if(change==='restart')e.c.runtimeFixture={};
+    e.answer(true);await run;assert.deepEqual(e.applied,[],change);
   }
 });

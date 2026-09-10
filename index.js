@@ -25938,13 +25938,15 @@ async function coreadApplyIdentityChoice(kind, key) {
 
 async function coreadChooseIdentity(kind) {
   const context = ctx(), Popup = context.Popup, view = readerView;
+  const requestId = coreadOpenRequestId, owner = settings, runtime = globalThis[RUNTIME_LOCK_KEY];
   if (!Popup || !context.POPUP_TYPE) { toast('当前环境不支持选择窗口。', 'warning'); return; }
   const wrap = document.createElement('div');
   wrap.innerHTML = renderCoreadIdentityChoices(kind);
   try {
     const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '选择', cancelButton: '取消' });
     const result = await popup.show();
-    if ((result !== true && String(result) !== '1') || readerView !== view) return;
+    if ((result !== true && String(result) !== '1') || readerView !== view || coreadOpenRequestId !== requestId
+      || settings !== owner || !settings.enabled || !runtime || globalThis[RUNTIME_LOCK_KEY] !== runtime) return;
     await coreadApplyIdentityChoice(kind, wrap.querySelector('select').value);
   } catch (error) { toast('身份选择未完成，请重试。', 'warning'); }
 }

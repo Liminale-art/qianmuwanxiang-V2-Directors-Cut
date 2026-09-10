@@ -17,6 +17,7 @@ try{
   await page.setContent(`<style>${css}</style><style>body{margin:0;background:#222}#story-director-modal{position:static!important;display:block!important;width:100%;box-sizing:border-box;padding:8px}#workbench{padding-top:12px}.sd-storyboard-scroll{height:340px!important;overflow:auto!important;min-height:0!important}#workbench:after{content:'';display:block;height:80px}</style><div id="story-director-modal" class="sd-theme-dark"><div id="shelf"></div><div id="workbench"></div></div>`);
   await page.evaluate(async({functions,forms,identityViewSource})=>{
     Object.assign(window,await import('data:text/javascript,'+encodeURIComponent(identityViewSource)));
+    window.settings={enabled:true};window.RUNTIME_LOCK_KEY='runtimeFixture';window.runtimeFixture={};
     window.forms=forms;window.state={source:'novel',view:'create'};window.storyboardState=()=>state;window.storyboardPageScrolls=new Map([['create',420],['create:comfy',720]]);window.storyboardPendingRestoreScroll=null;
     window.STORYBOARD_PROVIDER_REGISTRY={novel:{}};window.storyboardCaptureWorkbench=()=>{};window.saveSettings=()=>{};
     window.readerView=null;window.coreadDistilling=false;window.coreadAutoTextInFlight=false;window.dialogBusy=false;window.readerAssistantBusy=false;window.coreadComicVisionBusy=false;window.coreadOpenRequestId=0;window.c={};
