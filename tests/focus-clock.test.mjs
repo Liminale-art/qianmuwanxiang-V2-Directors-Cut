@@ -36,7 +36,7 @@ assert.match(source, /const returnTab = readerView\?\.returnTab === 'focus'[\s\S
 
 assert.match(source, /FOCUS_CLOCK_WEEK_ENTRY_LIMIT = 160/, '本周明细必须有异常容量保护');
 assert.match(source, /historyBeforeCleanup[\s\S]*finishedAt \|\| item\.startedAt\) >= weekStart/, '不可见的往周记录必须在状态归一时自动清理');
-assert.match(source, /function focusClockWeekStats[\s\S]*readingMinutes/, '本周记录必须按日聚合专注与伴读分钟');
+assert.match(source, /function focusClockWeekStats\(state = focusClockState\(\)\) \{\s*return focusWeekStats\(state.history\);/, '本周统计使用独立只读投影；归一和保存仍归专注入口');
 assert.match(source, /function focusClockExportWeekImage[\s\S]*canvas\.toBlob[\s\S]*千幕-本周专注/, '本周记录必须可导出独立 PNG 图片');
 assert.match(source, /f\.focusCycle % f\.longBreakEvery === 0 \? 'longBreak' : 'shortBreak'/, '专注周期必须按用户设置进入小憩或长休');
 assert.match(source, /sd-focus-settings-head[\s\S]*sd-focus-auto-next-wrap/, '自动下一阶段必须位于周期设置标题右侧');

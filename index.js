@@ -4,6 +4,7 @@ import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js
 import { inspectFocusLock, createFocusLockGuard } from './qianmu-focus-lock.js';
 import { focusVoiceCharacterKey, cleanFocusVoice, focusVoiceProfile, saveFocusVoiceProfile, focusVoiceOptions } from './qianmu-focus-voice.js';
 import { focusClockFormat, focusClockDateKey, focusClockWeekStart } from './qianmu-focus-time.js';
+import { focusWeekHistory, focusTodayHistory, focusWeekStats } from './qianmu-focus-history.js';
 import {
   clone,
   isPlainObject,
@@ -24313,38 +24314,15 @@ function focusClockRemainingMs(state = focusClockState(), now = Date.now()) {
 }
 
 function focusClockWeekHistory(state = focusClockState()) {
-  const start = focusClockWeekStart().getTime();
-  return state.history.filter((item) => item?.kind === 'focus' && Number(item.finishedAt || item.startedAt) >= start);
+  return focusWeekHistory(state.history);
 }
 
 function focusClockTodayHistory(state = focusClockState()) {
-  const today = focusClockDateKey();
-  return state.history.filter((item) => item?.kind === 'focus' && focusClockDateKey(item.finishedAt || item.startedAt) === today);
+  return focusTodayHistory(state.history);
 }
 
 function focusClockWeekStats(state = focusClockState()) {
-  const history = focusClockWeekHistory(state);
-  const start = focusClockWeekStart();
-  const days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(start);
-    date.setDate(start.getDate() + index);
-    return { date, key: focusClockDateKey(date), minutes: 0, count: 0, readingMinutes: 0 };
-  });
-  for (const item of history) {
-    const day = days.find((entry) => entry.key === focusClockDateKey(item.finishedAt || item.startedAt));
-    if (!day) continue;
-    const minutes = Math.max(1, Math.round((Number(item.durationMs) || 0) / 60000));
-    day.minutes += minutes;
-    day.count += 1;
-    if (item.activity === 'reading') day.readingMinutes += minutes;
-  }
-  return {
-    history,
-    days,
-    minutes: days.reduce((sum, day) => sum + day.minutes, 0),
-    count: days.reduce((sum, day) => sum + day.count, 0),
-    readingMinutes: days.reduce((sum, day) => sum + day.readingMinutes, 0),
-  };
+  return focusWeekStats(state.history);
 }
 
 function focusClockRoundRect(context, x, y, width, height, radius) {
