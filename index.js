@@ -30289,8 +30289,9 @@ function coreadCollectionForBook(bookId) {
 function coreadMoveBooksToCollection(bookIds, collectionId = '') {
   const ids = [...new Set((bookIds || []).map(String).filter((id) => coreadBookMeta(id)))];
   const collections = coreadCollections();
-  for (const collection of collections) collection.bookIds = collection.bookIds.filter((id) => !ids.includes(id));
   const target = collections.find((collection) => collection.id === collectionId);
+  if (!ids.length || (collectionId && !target)) return null;
+  for (const collection of collections) collection.bookIds = collection.bookIds.filter((id) => !ids.includes(id));
   if (target) {
     target.bookIds.push(...ids.filter((id) => !target.bookIds.includes(id)));
     target.updatedAt = Date.now();
@@ -30299,7 +30300,7 @@ function coreadMoveBooksToCollection(bookIds, collectionId = '') {
   return target || null;
 }
 
-function coreadCaptureCollectionMutation(collectionId = '') {
+function coreadCaptureCollectionMutation(collectionId = '', bookIds = []) {
   const owner = settings, c = coread(), requestId = coreadOpenRequestId;
   const runtime = globalThis[RUNTIME_LOCK_KEY];
   const modal = document.getElementById(MODAL_ID), page = modal?.querySelector('.sd-reader-lib');
@@ -30307,6 +30308,12 @@ function coreadCaptureCollectionMutation(collectionId = '') {
     collection.id, collection.name, collection.bookIds, collection.createdAt, collection.updatedAt,
   ]) : null;
   const baseline = signature((c.collections || []).find((item) => item.id === collectionId));
+  const bookSignature = () => JSON.stringify(bookIds.map((id) => {
+    const book = (c.books || []).find((item) => item.id === id);
+    return book ? [book.id, book.title, book.author, book.addedAt,
+      (c.collections || []).filter((item) => item.bookIds?.includes(id)).map((item) => item.id).sort()] : null;
+  }));
+  const bookBaseline = bookSignature();
   const isCurrent = () => settings === owner && settings.enabled && settings.coread === c
     && coreadOpenRequestId === requestId && !!runtime && globalThis[RUNTIME_LOCK_KEY] === runtime
     && !!page?.isConnected && !page.hidden && modal.classList.contains('open');
@@ -30318,14 +30325,20 @@ function coreadCaptureCollectionMutation(collectionId = '') {
     }
     return collection;
   };
-  return { isCurrent, currentCollection };
+  const booksAreCurrent = () => {
+    if (!isCurrent()) return false;
+    if (bookSignature() !== bookBaseline) {
+      toast('所选书目或归属已变化，请重新选择。', 'warning'); return false;
+    }
+    return true;
+  };
+  return { isCurrent, currentCollection, booksAreCurrent };
 }
 
-async function coreadCreateCollection(defaultName = '') {
-  const mutation = coreadCaptureCollectionMutation();
-  if (!mutation.isCurrent()) return null;
+async function coreadCreateCollection(defaultName = '', mutation = coreadCaptureCollectionMutation()) {
+  if (!mutation.booksAreCurrent()) return null;
   const raw = await promptInput('新建书架合集', '', defaultName);
-  if (raw == null || !mutation.isCurrent()) return null;
+  if (raw == null || !mutation.booksAreCurrent()) return null;
   const name = String(raw || '').trim().slice(0, 60);
   if (!name) { toast('合集名称不能为空。', 'warning'); return null; }
   const collections = coreadCollections();
@@ -30374,11 +30387,21 @@ async function coreadChooseCollectionForBooks(bookIds) {
   const ids = [...new Set((bookIds || []).map(String).filter((id) => coreadBookMeta(id)))];
   if (!ids.length) return false;
   let collections = coreadCollections();
-  if (!collections.length) {
-    const created = await coreadCreateCollection();
-    if (!created) return false;
-    coreadMoveBooksToCollection(ids, created.id);
+  const mutation = coreadCaptureCollectionMutation('', ids);
+  const move = (collectionId, notify = false) => {
+    if (!mutation.booksAreCurrent()) return false;
+    if (collectionId && !(coread().collections || []).some((item) => item.id === collectionId)) {
+      toast('目标合集已不存在，请重新选择。', 'warning'); return false;
+    }
+    const target = coreadMoveBooksToCollection(ids, collectionId);
+    if (notify) toast(target ? `已移入「${target.name}」。` : '已移出合集。', 'success');
     return true;
+  };
+  if (!mutation.booksAreCurrent()) return false;
+  if (!collections.length) {
+    const created = await coreadCreateCollection('', mutation);
+    if (!created) return false;
+    return move(created.id);
   }
   try {
     const context = ctx();
@@ -30389,25 +30412,24 @@ async function coreadChooseCollectionForBooks(bookIds) {
       const popup = new context.Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '确定', cancelButton: '取消' });
       const result = await popup.show();
       if (result !== true && String(result) !== '1') return false;
+      if (!mutation.booksAreCurrent()) return false;
       let collectionId = wrap.querySelector('.sd-reader-collection-pick')?.value || '';
       if (collectionId === '__new__') {
-        const created = await coreadCreateCollection();
+        const created = await coreadCreateCollection('', mutation);
         if (!created) return false;
         collectionId = created.id;
       }
-      const target = coreadMoveBooksToCollection(ids, collectionId);
-      toast(target ? `已移入「${target.name}」。` : '已移出合集。', 'success');
-      return true;
+      return move(collectionId, true);
     }
   } catch (_) {}
+  if (!mutation.booksAreCurrent()) return false;
   const raw = await promptInput('整理书架', '输入目标合集名称；留空移出合集：', '');
-  if (raw == null) return false;
+  if (raw == null || !mutation.booksAreCurrent()) return false;
   const name = String(raw || '').trim();
   let target = coreadCollections().find((item) => item.name === name) || null;
-  if (name && !target) target = await coreadCreateCollection(name);
+  if (name && !target) target = await coreadCreateCollection(name, mutation);
   if (name && !target) return false;
-  coreadMoveBooksToCollection(ids, target?.id || '');
-  return true;
+  return move(target?.id || '');
 }
 
 // 网格封面（无图时）：书名 + 作者，长名自动省略不出框。
