@@ -214,7 +214,7 @@ try{
     window.coreadActiveDict=()=>({关键词:['同义词']});window.coreadBoundDicts=()=>store.coreadDictBound;
     window.getChatStore=()=>store;window.saveMetadata=()=>calls.metadata++;
     window.coreadPromptText=async(...args)=>{calls.prompts.push(args);return promptAnswer;};
-    window.coreadOpenDictEntryDialog=async(...args)=>{calls.entries.push(args);return false;};
+    window.coreadOpenDictEntryDialog=async(...args)=>{if(args[3]?.tagName!=='BUTTON')throw Error('Dictionary editor must retain its originating button');calls.entries.push(args.slice(0,3));return false;};
     window.uid=()=> 'new-fixture';window.eval(functions);
     window.resetInject=()=>{
       memory={guideSeen:true,moreTab:'inject',recallScanMessages:2,recentInject:1,recallCount:3,rerankTopN:4,mainlineFeedback:false,mainlineRecall:0,mainlineRecent:0,mainlineDepth:0,

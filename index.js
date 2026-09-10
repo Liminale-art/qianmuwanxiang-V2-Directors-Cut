@@ -28337,13 +28337,35 @@ async function coreadPromptText(title, label, defaultValue = '') {
 
 // 词典词条编辑弹窗：新增或编辑单条（词源 + 同义词列表）。
 // bookId=词册ID，canon=标准词（空=新增），aliases=当前同义词数组。
-async function coreadOpenDictEntryDialog(bookId, canon, aliases) {
+function coreadCaptureDictMutation(m, bookId = '', origin = null) {
+  const owner = settings, view = readerView, requestId = coreadOpenRequestId;
+  const runtime = globalThis[RUNTIME_LOCK_KEY], chatKey = getChatKey();
+  const page = origin?.closest('.sd-reader-morepage') || document.querySelector('#sd-reader-portal .sd-reader-morepage');
+  const signature = (book) => book ? JSON.stringify([
+    book.id, book.name, Object.entries(coreadNormalizeSynonyms(book.pairs)).sort(([a], [b]) => a.localeCompare(b)),
+  ]) : null;
+  const baseline = signature((m.dictBooks || []).find((book) => book.id === bookId));
+  const isCurrent = () => settings === owner && settings.enabled && settings.coread?.memory === m
+    && readerView === view && coreadOpenRequestId === requestId && getChatKey() === chatKey
+    && !!runtime && globalThis[RUNTIME_LOCK_KEY] === runtime && !!page?.isConnected && !page.hidden
+    && (!origin || origin.isConnected);
+  const currentBook = () => {
+    if (!isCurrent() || !baseline) return null;
+    const book = (m.dictBooks || []).find((item) => item.id === bookId);
+    if (signature(book) !== baseline) { toast('词册已变化，请重新打开后编辑。', 'warning'); return null; }
+    return book;
+  };
+  return { isCurrent, currentBook };
+}
+
+async function coreadOpenDictEntryDialog(bookId, canon, aliases, origin = null) {
   const context = ctx();
   const Popup = context.Popup;
   if (!Popup || !context.POPUP_TYPE) { toast('当前环境不支持弹窗。', 'error'); return null; }
   const m = coreadMemory();
   const book = (m.dictBooks || []).find((d) => d.id === bookId);
   if (!book) { toast('未找到词册。', 'error'); return null; }
+  const mutation = coreadCaptureDictMutation(m, bookId, origin);
   const isNew = !canon;
   const initAliases = (aliases || []).join(', ');
   const inner = `
@@ -28370,12 +28392,14 @@ async function coreadOpenDictEntryDialog(bookId, canon, aliases) {
     const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '保存', cancelButton: '取消' });
     const res = await popup.show();
     if (res !== true && String(res) !== '1') return null;
+    const currentBook = mutation.currentBook();
+    if (!currentBook) return null;
     const newCanon = String(wrap.querySelector('.sd-reader-de-canon').value || '').trim();
     const newAliases = wrap.querySelector('.sd-reader-de-aliases').value.split(/[,，、]/).map((a) => a.trim()).filter(Boolean);
     if (!newCanon) { toast('索引词不能为空。', 'warning'); return null; }
-    if (!isNew && canon !== newCanon) delete book.pairs[canon];   // 词源改名→删旧
-    book.pairs[newCanon] = newAliases;
-    book.pairs = coreadNormalizeSynonyms(book.pairs);
+    if (!isNew && canon !== newCanon) delete currentBook.pairs[canon];   // 词源改名→删旧
+    currentBook.pairs[newCanon] = newAliases;
+    currentBook.pairs = coreadNormalizeSynonyms(currentBook.pairs);
     saveSettings(); coreadInvalidatePool();
     return { canon: newCanon, aliases: newAliases };
   } catch (_) { return null; }
@@ -34094,7 +34118,7 @@ function bindReaderStageEvents(stageRoot) {
     // 词典：新增词条（弹窗编辑）
     if (e.target.closest('.sd-reader-dict-addentry')) {
       if (!coreadCurrentDictId) return;
-      coreadOpenDictEntryDialog(coreadCurrentDictId, '', []).then((r) => { if (r) { toast('已添加词条。', 'success'); rerenderMore(); } });
+      coreadOpenDictEntryDialog(coreadCurrentDictId, '', [], e.target.closest('.sd-reader-dict-addentry')).then((r) => { if (r) { toast('已添加词条。', 'success'); rerenderMore(); } });
       return;
     }
     // 词典：绑定/解绑当前选中词册
@@ -34116,7 +34140,7 @@ function bindReaderStageEvents(stageRoot) {
       if (!bookId || !canon) return;
       const book = m.dictBooks.find((d) => d.id === bookId);
       const aliases = book?.pairs?.[canon] || [];
-      coreadOpenDictEntryDialog(bookId, canon, aliases).then((r) => { if (r) { toast('已保存。', 'success'); rerenderMore(); } });
+      coreadOpenDictEntryDialog(bookId, canon, aliases, dictEdit).then((r) => { if (r) { toast('已保存。', 'success'); rerenderMore(); } });
       return;
     }
     // 词典行：删除词条
