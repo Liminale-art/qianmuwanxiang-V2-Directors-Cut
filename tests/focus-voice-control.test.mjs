@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {createFocusVoiceCache} from '../qianmu-focus-voice-cache.js';
 import * as profiles from '../qianmu-focus-voice.js';
 import {createFocusSpeechPlayer} from '../qianmu-focus-speech.js';
 import {createFocusVoicePreparation} from '../qianmu-focus-preparation.js';
@@ -20,7 +21,7 @@ function fixture(overrides={}){
     coreadCompanionChoices:()=>host.characters,coreadCompanionCharacter:()=>host.characters.find(ch=>ch.avatar===(c.readerView?.companionAvatar||host.characters[host.characterId]?.avatar)),
     ttsProviderConfig:()=>({voiceLibrary:[]}),ttsActiveVoiceMap:()=>voices,ttsProviderId:()=>provider,ttsDoubaoVoiceModel:value=>value||'auto',
     FOCUS_CLOCK_RELATIONS:{neutral:{}},FOCUS_CLOCK_VOICE_FREQUENCIES:{low:{chance:.3}},
-    createFocusVoicePreparation,focusClockVoicePreparation:null,createFocusSpeechPlayer,focusClockSpeechPlayer:null,focusClockVoiceBlobs:new Map(),
+    createFocusVoicePreparation,focusClockVoicePreparation:null,createFocusSpeechPlayer,focusClockSpeechPlayer:null,focusClockVoiceCache:createFocusVoiceCache({available:()=>c.blobStore.blobStoreAvailable(),read:key=>c.blobStore.getAudio(key)}),
     focusClockMidCueProgresses:()=>[],focusClockPickStockLines:()=>['这一程已经完成。'],
     ttsBuildParams:(_line,voice)=>({providerId:provider,fileExtension:'mp3',voiceId:voice?.voiceId}),ttsProviderHasCredentials:()=>true,getTtsProvider:()=>({label:'TTS'}),
     cacheKeyForTts:()=> 'cache',DOMException,Blob,focusClockGenerateSceneLines:async()=>['完成。'],
@@ -55,7 +56,7 @@ test('a current persistent audio cache hit is reused without synthesizing or rew
   c.blobStore.getAudio=async()=>{reads++;return {blob};};c.blobStore.pruneAudio=async()=>prunes++;
   const key=await c.focusClockSynthVoiceCue({speaker:'甲',params:{providerId:'minimax'}},'text');
   assert.equal(key,'cache');assert.equal(reads,1);assert.equal(counts.synth,0);assert.equal(counts.put,0);assert.equal(prunes,0);
-  assert.equal(c.focusClockVoiceBlobs.get(key),blob);
+  assert.equal(c.focusClockVoiceCache.peek(key),blob);
 });
 
 test('persistent cache hits share the twelve-item memory ceiling without deleting or rewriting stored audio',async()=>{
@@ -64,9 +65,9 @@ test('persistent cache hits share the twelve-item memory ceiling without deletin
   c.cacheKeyForTts=(_provider,params)=>params.text;c.blobStore.getAudio=async key=>({blob:disk.get(key)});
   c.blobStore.pruneAudio=async()=>prunes++;
   for(const key of disk.keys())await c.focusClockSynthVoiceCue({speaker:'甲',params:{providerId:'minimax'}},key);
-  assert.equal(c.focusClockVoiceBlobs.size,12);assert.equal(c.focusClockVoiceBlobs.has('cached-0'),false);
-  assert.equal(c.focusClockVoiceBlobs.get('cached-24'),disk.get('cached-24'));
-  await c.focusClockSynthVoiceCue({speaker:'甲',params:{providerId:'minimax'}},'cached-24');assert.equal(c.focusClockVoiceBlobs.size,12);
+  assert.equal(c.focusClockVoiceCache.size,12);assert.equal(c.focusClockVoiceCache.peek('cached-0'),undefined);
+  assert.equal(c.focusClockVoiceCache.peek('cached-24'),disk.get('cached-24'));
+  await c.focusClockSynthVoiceCue({speaker:'甲',params:{providerId:'minimax'}},'cached-24');assert.equal(c.focusClockVoiceCache.size,12);
   assert.equal(disk.size,25);assert.equal(counts.synth,0);assert.equal(counts.put,0);assert.equal(prunes,0);
 });
 
@@ -76,7 +77,7 @@ test('cancelling during an already admitted cache write prevents pruning and ses
   const run=c.focusClockSynthVoiceCue({speaker:'甲',params:{providerId:'minimax'}},'text',{isCurrent:()=>current});
   await new Promise(resolve=>setImmediate(resolve));assert.equal(counts.put,1);
   const rejection=assert.rejects(run,{name:'AbortError'});current=false;writing.resolve();await rejection;
-  assert.equal(prunes,0);assert.equal(c.focusClockVoiceBlobs.size,0);
+  assert.equal(prunes,0);assert.equal(c.focusClockVoiceCache.size,0);
   // An already admitted storage operation is not rolled back by deleting shared records.
   assert.equal(counts.put,1);
 });
@@ -84,8 +85,8 @@ test('cancelling during an already admitted cache write prevents pruning and ses
 test('newly synthesized memory fallback retains only the latest twelve cues without persistent storage',async()=>{
   const {c,counts}=fixture();c.blobStore.blobStoreAvailable=()=>false;c.cacheKeyForTts=(_provider,params)=>params.text;
   for(let i=0;i<13;i++) await c.focusClockSynthVoiceCue({speaker:'甲',params:{providerId:'minimax'}},`line-${i}`);
-  assert.equal(c.focusClockVoiceBlobs.size,12);assert.equal(c.focusClockVoiceBlobs.has('line-0'),false);
-  assert.equal(c.focusClockVoiceBlobs.has('line-12'),true);assert.equal(counts.synth,13);assert.equal(counts.put,0);
+  assert.equal(c.focusClockVoiceCache.size,12);assert.equal(c.focusClockVoiceCache.peek('line-0'),undefined);
+  assert.ok(c.focusClockVoiceCache.peek('line-12'));assert.equal(counts.synth,13);assert.equal(counts.put,0);
 });
 
 test('resolved Doubao output uses its resolved cache key and leaves the frozen request parameters unchanged',async()=>{
@@ -133,7 +134,7 @@ test('a paid response returning after mute is discarded without caching, metadat
   const {c,f,counts}=fixture(),wait=pending();c.blobStore.blobStoreAvailable=()=>false;
   c.synthesizeTts=()=>{counts.synth++;return wait.promise;};const run=c.focusClockPrepareVoiceCues('round');
   assert.equal(counts.synth,1);c.focusClockSetVoiceEnabled(false);wait.resolve({blob:new Blob(['late'])});await run;
-  assert.equal(f.sessionVoiceCues.length,0);assert.equal(c.focusClockVoiceBlobs.size,0);assert.equal(counts.play,0);
+  assert.equal(f.sessionVoiceCues.length,0);assert.equal(c.focusClockVoiceCache.size,0);assert.equal(counts.play,0);
 });
 test('changing the chat or provider while preparing cannot bind old results to the new context',async()=>{
   for(const change of ['chat','provider']){
@@ -149,7 +150,7 @@ test('turning off then on cannot let the older response erase the newer generati
   const ticket=c.focusClockPreparation().epoch;old.resolve({blob:new Blob(['old'])});await first;
   assert.equal(c.focusClockPreparation().epoch,ticket);assert.equal(c.focusClockPreparation().busy,true);assert.equal(f.sessionVoiceCues.length,0);
   fresh.resolve({blob:new Blob(['fresh'])});await new Promise(r=>setImmediate(r));
-  assert.equal(f.sessionVoiceCues.length,1);assert.equal(await c.focusClockVoiceBlobs.get('cache').text(),'fresh');
+  assert.equal(f.sessionVoiceCues.length,1);assert.equal(await c.focusClockVoiceCache.peek('cache').text(),'fresh');
 });
 test('normal enabled preparation still produces a usable completion cue without serializing credentials',async()=>{
   const {c,f,counts}=fixture();c.ttsBuildParams=()=>({providerId:'minimax',apiKey:'fixture-only-secret'});
@@ -168,7 +169,7 @@ test('mute after async playback lookup prevents both voice and surprise completi
   assert.equal(counts.play,0);assert.equal(counts.sound,0);
 });
 test('mute stops and releases focus audio but does not stop unrelated narration',async()=>{
-  const {c,counts}=fixture();c.focusClockVoiceBlobs.set('cache',new Blob(['audio']));await c.focusClockPlayVoiceCue(cueFor(c),{automatic:true});
+  const {c,counts}=fixture();c.focusClockVoiceCache.remember('cache',new Blob(['audio']));await c.focusClockPlayVoiceCue(cueFor(c),{automatic:true});
   const audio=c.ttsCurrentAudio;c.focusClockSetVoiceEnabled(false);assert.equal(audio.paused,true);assert.equal(counts.revoke,1);
   const other={pause(){throw Error('must not stop narration');}};c.ttsCurrentAudio=other;c.focusClockSetVoiceEnabled(false);assert.equal(c.ttsCurrentAudio,other);
 });
@@ -178,7 +179,7 @@ test('a newer user playback wins over an older focus cache lookup',async()=>{
 });
 
 test('speech cleanup is idempotent and does not clear a newer channel owner',async()=>{
-  const {c,counts}=fixture();c.focusClockVoiceBlobs.set('cache',new Blob(['audio']));await c.focusClockPlayVoiceCue({cacheKey:'cache'});
+  const {c,counts}=fixture();c.focusClockVoiceCache.remember('cache',new Blob(['audio']));await c.focusClockPlayVoiceCue({cacheKey:'cache'});
   const cleanup=c.ttsPlayCleanup;cleanup();cleanup();assert.equal(counts.revoke,1);assert.equal(c.ttsCurrentAudio,null);
   await c.focusClockPlayVoiceCue({cacheKey:'cache'});const older=c.ttsPlayCleanup;
   const other={};const newer=()=>{};c.ttsCurrentAudio=other;c.ttsCurrentUrl='blob:newer';c.ttsPlayCleanup=newer;
@@ -186,19 +187,19 @@ test('speech cleanup is idempotent and does not clear a newer channel owner',asy
 });
 
 test('a current playback failure releases its audio URL and channel binding',async()=>{
-  const {c,counts}=fixture();c.focusClockVoiceBlobs.set('cache',new Blob(['audio']));
+  const {c,counts}=fixture();c.focusClockVoiceCache.remember('cache',new Blob(['audio']));
   c.Audio=class{addEventListener(){} async play(){throw Error('denied');}};
   assert.equal(await c.focusClockPlayVoiceCue({cacheKey:'cache'}),false);
   assert.equal(counts.revoke,1);assert.equal(c.ttsCurrentAudio,null);assert.equal(c.ttsPlayCleanup,null);assert.equal(c.ttsCurrentUrl,'');
 });
 
 test('cancelling preparation without stopping playback preserves the explicitly playing focus audio',async()=>{
-  const {c}=fixture();c.focusClockVoiceBlobs.set('cache',new Blob(['audio']));await c.focusClockPlayVoiceCue({cacheKey:'cache'});
+  const {c}=fixture();c.focusClockVoiceCache.remember('cache',new Blob(['audio']));await c.focusClockPlayVoiceCue({cacheKey:'cache'});
   const audio=c.ttsCurrentAudio;c.focusClockCancelVoiceWork({stopPlayback:false});assert.equal(c.ttsCurrentAudio,audio);
   c.focusClockCancelVoiceWork();assert.equal(c.ttsCurrentAudio,null);assert.equal(audio.paused,true);
 });
 test('manual replay remains an explicit action while automatic voice is off; ordinary done sound is independent',async()=>{
-  const {c,counts}=fixture();c.focusClockSetVoiceEnabled(false);c.focusClockVoiceBlobs.set('cache',new Blob(['audio']));
+  const {c,counts}=fixture();c.focusClockSetVoiceEnabled(false);c.focusClockVoiceCache.remember('cache',new Blob(['audio']));
   assert.equal(await c.focusClockPlayVoiceCue(cueFor(c),{automatic:true}),false);
   assert.equal(await c.focusClockPlayVoiceCue({cacheKey:'cache'}),true);await c.focusClockPlayCompletionAlert(null);assert.equal(counts.sound,1);
 });

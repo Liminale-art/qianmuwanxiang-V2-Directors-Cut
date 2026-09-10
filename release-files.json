@@ -12,6 +12,7 @@
     "qianmu-focus-sound.js",
     "qianmu-focus-speech.js",
     "qianmu-focus-preparation.js",
+    "qianmu-focus-voice-cache.js",
     "qianmu-user-identity.js",
     "qianmu-user-alias.js",
     "qianmu-user-alias-bindings.js",

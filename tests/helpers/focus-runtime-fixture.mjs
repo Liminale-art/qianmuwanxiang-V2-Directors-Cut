@@ -1,4 +1,5 @@
 import vm from 'node:vm';
+import {createFocusVoiceCache} from '../../qianmu-focus-voice-cache.js';
 import { createFocusClockRuntime } from '../../qianmu-focus-runtime.js';
 import { storyboardFunctionSource } from './storyboard-form-fixture.mjs';
 
@@ -19,7 +20,7 @@ export function focusRuntimeFixture(overrides = {}) {
   const document=events(),window=events(),timers=new Map(),trace=[],prepared=[],seen=[];
   let nextId=0, state={status:'running',phase:'focus',sessionToken:'original',sessionVoiceCues:[],remainingMs:1000,...overrides};
   const c=vm.createContext({document,window,createFocusClockRuntime,focusClockRuntime:null,
-    focusClockLockGuard:{dispose:()=>trace.push('unlock')},focusClockVoiceBlobs:new Map([['cached',{}]]),
+    focusClockLockGuard:{dispose:()=>trace.push('unlock')},focusClockVoiceCache:createFocusVoiceCache({available:()=>false,read:async()=>null}),
     setInterval:(fn,ms)=>{const id=++nextId;timers.set(id,{fn,ms});return id;},clearInterval:id=>timers.delete(id),
     focusClockState:()=>state,focusClockRemainingMs:value=>value.remainingMs,
     focusClockMaybePlayMidCue:value=>seen.push(value),focusClockUpdateDom:()=>trace.push('paint'),
@@ -27,6 +28,7 @@ export function focusRuntimeFixture(overrides = {}) {
     focusClockVoiceContext:()=>({enabled:true}),focusClockPrepareVoiceCues:token=>prepared.push(token),
     focusClockCancelVoiceWork:()=>trace.push('cancel'),focusClockResetMedia:()=>trace.push('media'),
   });
+  c.focusClockVoiceCache.remember('cached',{});
   vm.runInContext(source,c);
   return {c,document,window,timers,trace,prepared,seen,get state(){return state;},setState:value=>{state=value;}};
 }

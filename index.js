@@ -10,6 +10,7 @@ import { createFocusSessionController } from './qianmu-focus-session.js';
 import { createFocusSoundPlayer } from './qianmu-focus-sound.js';
 import { createFocusSpeechPlayer } from './qianmu-focus-speech.js';
 import { createFocusVoicePreparation } from './qianmu-focus-preparation.js';
+import { createFocusVoiceCache } from './qianmu-focus-voice-cache.js';
 import {
   clone,
   isPlainObject,
@@ -1382,7 +1383,9 @@ let focusClockLockConfirming = false;
 let focusClockSoundPlayer = null;  // Owns completion/preview audio and its animation lifecycle.
 let focusClockVoicePreparation = null; // Owns generation tickets; no provider credentials are persisted here.
 let focusClockSpeechPlayer = null; // Owns only focus speech playback/cancellation, not narration.
-const focusClockVoiceBlobs = new Map(); // IndexedDB 不可用时仍可在本页完成播放；仅保留少量预生成结果
+const focusClockVoiceCache = createFocusVoiceCache({
+  available: () => blobStore.blobStoreAvailable(), read: key => blobStore.getAudio(key),
+}); // Keeps bounded memory references even when IndexedDB is unavailable.
 let focusClockVoiceDrawerEl = null;  // 专注角色语音二层抽屉；挂在千幕根容器，避免移动端 fixed 定位受 ST 主题干扰
 const STORYBOARD_QUEUE_LIMIT = 8;     // 仅本页运行态；刷新后不自动续跑，避免意外消耗生图额度
 let storyboardBusy = false;          // 分镜生成独立忙碌态，不占用推演/幕外请求锁
@@ -24565,9 +24568,7 @@ async function focusClockGenerateSceneLines(binding, count, subject, { isCurrent
 }
 
 function focusClockRememberVoiceBlob(key, blob) {
-  focusClockVoiceBlobs.set(key, blob);
-  while (focusClockVoiceBlobs.size > 12) focusClockVoiceBlobs.delete(focusClockVoiceBlobs.keys().next().value);
-  return key;
+  return focusClockVoiceCache.remember(key, blob);
 }
 
 async function focusClockSynthVoiceCue(binding, text, { isCurrent = () => true } = {}) {
@@ -24629,7 +24630,7 @@ function focusClockPrepareVoiceCues(sessionToken) { return focusClockPreparation
 
 function focusClockSpeech() {
   return focusClockSpeechPlayer ||= createFocusSpeechPlayer({
-    Audio, URL, memory: key => focusClockVoiceBlobs.get(key),
+    Audio, URL, memory: key => focusClockVoiceCache.peek(key),
     cacheAvailable: () => blobStore.blobStoreAvailable(), readCache: key => blobStore.getAudio(key),
     bindingActive: key => focusClockVoiceBindingActive(key),
     channel: {
@@ -24646,14 +24647,7 @@ function focusClockSpeech() {
 
 function focusClockPlayVoiceCue(cue, options) { return focusClockSpeech().play(cue, options); }
 
-async function focusClockVoiceCueBlob(cue) {
-  if (!cue?.cacheKey) return null;
-  const memoryBlob = focusClockVoiceBlobs.get(cue.cacheKey);
-  if (memoryBlob) return memoryBlob;
-  if (!blobStore.blobStoreAvailable()) return null;
-  const hit = await blobStore.getAudio(cue.cacheKey).catch(() => null);
-  return hit?.blob || null;
-}
+function focusClockVoiceCueBlob(cue) { return focusClockVoiceCache.cueBlob(cue); }
 
 function focusClockVoiceCueFileBase(cue) {
   const speaker = ttsSafeFilenamePart(cue?.speaker, '角色').slice(0, 28) || '角色';
@@ -24903,7 +24897,7 @@ function stopFocusClockRuntime() {
   focusClockLockGuard?.dispose(); focusClockLockGuard = null;
   focusClockRuntime?.stop();
   focusClockResetMedia();
-  focusClockVoiceBlobs.clear();
+  focusClockVoiceCache.clear();
 }
 
 function renderFocusClockTab() {

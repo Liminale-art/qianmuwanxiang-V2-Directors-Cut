@@ -59,7 +59,7 @@ test('stop is repeatable, releases owned resources, and leaves unrelated timers/
   assert.deepEqual([...e.timers.keys()],[otherTimer]);
   assert.equal(e.document.count(),1);assert.equal(e.window.count(),1);
   assert.ok(e.window.listeners.get('focus').has(other));
-  assert.equal(e.c.focusClockRuntime.active,false);assert.equal(e.c.focusClockLockGuard,null);assert.equal(e.c.focusClockVoiceBlobs.size,0);
+  assert.equal(e.c.focusClockRuntime.active,false);assert.equal(e.c.focusClockLockGuard,null);assert.equal(e.c.focusClockVoiceCache.size,0);
 });
 
 test('a failed startup tick releases the reentrancy guard so an explicit retry can succeed', () => {
