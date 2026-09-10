@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {readFile,mkdir} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
-import {coreadCenterFunctions,coreadRecordsFunctions} from '../tests/helpers/coread-center-fixture.mjs';
+import {coreadCenterFunctions,coreadRecordsFunctions,coreadApiFunctions} from '../tests/helpers/coread-center-fixture.mjs';
+import {storyboardFunctionSource} from '../tests/helpers/storyboard-form-fixture.mjs';
 import {normalizeCoreadSource} from '../qianmu-reader.js';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
@@ -149,5 +150,62 @@ try{
     recordLayouts.push({width,boxes,confirmationBeforeClear:true,busyDisabled:true});
   }
   assert.deepEqual(errors,[]);assert.equal(external,0);
-  console.log(JSON.stringify({layouts,recordActions,recordLayouts,realEventBranches:true,realTemplates:true,external,errors,limits:'isolated DOM; no real data import/deletion/sync, host navigation, guide positioning, record expansion memory or physical iOS validation'}));
+  await page.evaluate(({functions,apiClick,apiChange,switchChange})=>{
+    window.coreadCenterPage='';window.ctx=()=>({});window.settings={apiProfiles:[]};
+    window.coreadAssistantConfig=()=>({});window.coreadComicConfig=()=>({pagesPerBatch:3});
+    window.coreadSetPipelineStatus=(...args)=>calls.pipeline.push(args);
+    window.coreadEnsureVectors=async()=>{calls.vectors++;return {vecs:{fixture:[]}};};
+    window.coreadPipelineFailed=()=>{throw Error('Unexpected fixture vector failure');};
+    window.coreadTestMemConn=(kind,button)=>calls.api.push(['test',kind,button.dataset.kind]);
+    window.coreadFetchMemModels=(kind,button)=>calls.api.push(['fetch',kind,button.dataset.kind]);
+    window.coreadSaveMemProfile=kind=>calls.api.push(['save',kind]);
+    window.coreadLoadMemProfile=(kind,id)=>{calls.api.push(['load',kind,id]);rerenderMore();};
+    window.coreadDeleteMemProfile=(kind,id)=>calls.api.push(['delete',kind,id]);
+    window.toast=(message,kind)=>calls.notices.push([message,kind]);
+    window.eval(functions);
+    window.rerenderMore=()=>{document.getElementById('center').innerHTML=renderCompanionMoreBody();applyQianmuIcons(document.getElementById('sd-reader-portal'));};
+    window.resetApi=()=>{
+      memory={guideSeen:true,moreTab:'api',summaryTemperature:0,summaryMaxTokens:0,summaryContextChars:0};coreadGuideStep=null;readerDialog.slices=[{id:'fixture'}];
+      Object.assign(calls,{api:[],pipeline:[],vectors:0,notices:[],save:0});
+      for(const kind of ['summary','vector','rerank'])Object.assign(memory,{[kind+'Models']:['listed'],[kind+'Model']:'missing-'+kind,[kind+'Profiles']:[{id:'profile-'+kind,name:'预设<&'}],[kind+'ProfileSel']:'profile-'+kind,[kind+'ApiKey']:'synthetic-only-'+kind});
+      rerenderMore();
+    };
+    const root=document.getElementById('center');
+    root.addEventListener('click',new Function('e','const morePage=document.getElementById("center");'+apiClick));
+    root.addEventListener('change',new Function('e','const m=coreadMemory();'+apiChange+switchChange));
+    resetApi();
+  },{functions:coreadApiFunctions+'\n'+storyboardFunctionSource('renderCompanionMoreBody'),
+    apiClick:between("    const testBtn = e.target.closest('.sd-reader-mem-test');",'    // ── 记忆记录 tab'),
+    apiChange:between("    const modelPick = e.target.closest('.sd-reader-mem-modelpick');","  });\n  morePage?.addEventListener('input'"),
+    switchChange:between("    if (e.target.closest('.sd-reader-sum-stream'))",'\n')+between("    if (e.target.closest('.sd-reader-vector-en'))","    if (e.target.closest('.sd-reader-autodistill-en'))")});
+  const apiLayouts=[];
+  for(const width of [320,360,430,1100]){
+    await page.setViewportSize({width,height:850});await page.evaluate(()=>resetApi());
+    for(const kind of ['summary','vector','rerank']){
+      const pick=page.locator(`.sd-reader-mem-modelpick[data-kind="${kind}"]`),profile=page.locator(`.sd-reader-mem-profile[data-kind="${kind}"]`);
+      assert.equal(await pick.inputValue(),'missing-'+kind);
+      await pick.selectOption('listed');assert.equal(await page.evaluate(k=>memory[k+'Model'],kind),'listed');
+      await profile.selectOption('');await profile.selectOption('profile-'+kind);
+      assert.equal(await profile.inputValue(),'profile-'+kind);
+      for(const action of ['test','fetch','save'])await page.locator(`.sd-reader-mem-${action}[data-kind="${kind}"]`).tap();
+      await page.locator(`.sd-reader-mem-profile-del[data-kind="${kind}"]`).tap();
+      assert.deepEqual(await page.evaluate(k=>calls.api.filter(x=>x[1]===k),kind),[['load',kind,'profile-'+kind],['test',kind,kind],['fetch',kind,kind],['save',kind],['delete',kind,'profile-'+kind]]);
+      assert.equal(await page.evaluate(k=>memory[k+'ProfileSel'],kind),'');
+      assert.equal(await page.locator(`.sd-reader-${kind}-apikey`).inputValue(),'synthetic-only-'+kind);
+    }
+    for(const [selector,key]of [['sum-stream','summaryStream'],['vector-en','vectorEnabled'],['rerank-en','rerankEnabled']]){
+      const toggle=page.locator(`.sd-reader-${selector}`).locator('..');
+      await toggle.tap();assert.equal(await page.evaluate(k=>memory[k],key),true);
+      if(key==='vectorEnabled')await page.waitForFunction(()=>calls.vectors===1);
+      await toggle.tap();assert.equal(await page.evaluate(k=>memory[k],key),false);
+    }
+    assert.deepEqual(await page.evaluate(()=>calls.pipeline),[['vector','ok'],['rerank','ok']]);
+    const boxes=await page.locator('.sd-reader-mem-modelpick,.sd-reader-mprofile,.sd-reader-mactions').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {x:r.x,right:r.right,width:r.width,overflow:n.scrollWidth-n.clientWidth};}));
+    for(const box of boxes)assert.ok(box.x>=0&&box.right<=width+1&&box.width>0&&box.overflow<=1,JSON.stringify({width,box}));
+    await page.locator('.sd-reader-mem-modelpick[data-kind="vector"]').scrollIntoViewIfNeeded();
+    await page.screenshot({path:fileURLToPath(new URL(`../dist/local-qa/coread-api-${width}.png`,import.meta.url)),fullPage:true});
+    apiLayouts.push({width,boxes,threeKindsRouted:true});
+  }
+  assert.deepEqual(errors,[]);assert.equal(external,0);
+  console.log(JSON.stringify({layouts,recordActions,recordLayouts,apiLayouts,realEventBranches:true,realTemplates:true,external,errors,limits:'isolated DOM; API/profile/vector services are fakes; no real credentials, data import/deletion/sync, host navigation, guide positioning, record expansion memory or physical iOS validation'}));
 }finally{await context.close();await browser.close();}
