@@ -1383,7 +1383,7 @@ let focusClockRuntime = null;      // Only owns the display ticker/listeners; en
 let focusClockSessionController = null;
 let focusClockLockGuard = null;
 let focusClockEntryBusy = false;
-let focusClockEntryEpoch = 0; // Invalidates pending UI admission when the runtime stops.
+let focusClockEntryEpoch = 0; // Invalidates pending UI admission when the runtime stops or its page closes.
 let focusClockLockOwner = '';
 let focusClockLockConfirming = false;
 let focusClockSoundPlayer = null;  // Owns completion/preview audio and its animation lifecycle.
@@ -4167,6 +4167,10 @@ function openModal(tab) {
 
 function closeModal() {
   if (focusClockBlockExit()) return;
+  focusClockEntryEpoch++;
+  focusClockEntryBusy = false;
+  focusClockLockConfirming = false;
+  coreadOpenRequestId++;
   focusClockPauseForReadingExit();
   if (activeTab === 'imagegen') {
     const storyboardRoot = document.getElementById(MODAL_ID)?.querySelector('.sd-storyboard-root');
@@ -30859,6 +30863,9 @@ async function coreadOpenBook(bookId, { isCurrent = () => true } = {}) {
 function coreadCloseReader() {
   if (focusClockBlockExit()) return;
   if (coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight) { toast('正在保存或整理伴读记忆，请完成或停止后退出阅读。', 'info'); return; }
+  focusClockEntryEpoch++;
+  focusClockEntryBusy = false;
+  focusClockLockConfirming = false;
   focusClockPauseForReadingExit();
   coreadOpenRequestId++;
   const returnTab = readerView?.returnTab === 'focus' ? 'focus' : 'coread';
