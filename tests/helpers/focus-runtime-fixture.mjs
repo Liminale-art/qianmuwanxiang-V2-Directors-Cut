@@ -4,7 +4,7 @@ import { createFocusClockRuntime } from '../../qianmu-focus-runtime.js';
 import { storyboardFunctionSource } from './storyboard-form-fixture.mjs';
 
 // Characterization seam: only this loader changes when the runtime becomes a real module.
-const source = ['focusClockRuntimeTick','startFocusClockRuntime','stopFocusClockRuntime'].map(storyboardFunctionSource).join('\n');
+const source = ['focusClockCancelEntry','focusClockRuntimeTick','startFocusClockRuntime','stopFocusClockRuntime'].map(storyboardFunctionSource).join('\n');
 
 export function focusRuntimeFixture(overrides = {}) {
   const events = () => {

@@ -7,7 +7,7 @@ import {storyboardFunctionSource as section} from './storyboard-form-fixture.mjs
 
 const source=await readFile(new URL('../../index.js',import.meta.url),'utf8');
 export const focusDefaults=vm.runInNewContext('('+source.match(/  focusClock: (\{[\s\S]*?^  \}),\r?\n  \/\/ 分镜/m)[1]+')');
-export const focusFunctions=['focusClockActiveLock','focusClockBlockExit','focusClockReleaseLock','focusClockReaderReady','focusClockRequestStart','focusClockEnableLock',
+export const focusFunctions=['focusClockCancelEntry','focusClockActiveLock','focusClockBlockExit','focusClockReleaseLock','focusClockReaderReady','focusClockRequestStart','focusClockEnableLock',
   'focusClockSession','focusClockStart','focusClockPause','focusClockReset','focusClockComplete','focusClockShowPanel','focusClockEnterReading','focusClockRestoreLock',
   'focusClockPhaseMs','focusClockRemainingMs','focusClockPauseForReadingExit','focusClockResumeReading'].map(section).join('\n');
 

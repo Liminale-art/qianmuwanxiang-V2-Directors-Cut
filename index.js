@@ -1383,7 +1383,7 @@ let focusClockRuntime = null;      // Only owns the display ticker/listeners; en
 let focusClockSessionController = null;
 let focusClockLockGuard = null;
 let focusClockEntryBusy = false;
-let focusClockEntryEpoch = 0; // Invalidates pending UI admission when the runtime stops or its page closes.
+let focusClockEntryEpoch = 0; // Invalidates pending UI admission when its runtime or navigation owner ends.
 let focusClockLockOwner = '';
 let focusClockLockConfirming = false;
 let focusClockSoundPlayer = null;  // Owns completion/preview audio and its animation lifecycle.
@@ -4167,9 +4167,7 @@ function openModal(tab) {
 
 function closeModal() {
   if (focusClockBlockExit()) return;
-  focusClockEntryEpoch++;
-  focusClockEntryBusy = false;
-  focusClockLockConfirming = false;
+  focusClockCancelEntry();
   coreadOpenRequestId++;
   focusClockPauseForReadingExit();
   if (activeTab === 'imagegen') {
@@ -6893,6 +6891,10 @@ async function refreshQianmuUpdateStatus(force = false) {
 
 function renderModal() {
   if (focusClockActiveLock() && activeTab !== 'focus' && !(activeTab === 'coread' && readerView)) activeTab = 'focus';
+  if (!['focus', 'coread'].includes(activeTab) || (focusClockLockConfirming && activeTab !== 'focus')) {
+    focusClockCancelEntry();
+    coreadOpenRequestId++;
+  }
   if (activeTab !== 'coread') focusClockPauseForReadingExit();
   const modal = document.getElementById(MODAL_ID);
   if (!modal) return;
@@ -24178,6 +24180,12 @@ function focusClockReaderReady(bookId) {
     && !!document.querySelector('#sd-reader-portal .sd-reader-body')?.isConnected;
 }
 
+function focusClockCancelEntry() {
+  focusClockEntryEpoch++;
+  focusClockEntryBusy = false;
+  focusClockLockConfirming = false;
+}
+
 async function focusClockEnterReading() {
   const entryEpoch = focusClockEntryEpoch;
   const f = focusClockState(), bookId = f.sessionBookId || f.bookId;
@@ -24707,9 +24715,7 @@ function startFocusClockRuntime(options) {
 }
 
 function stopFocusClockRuntime() {
-  focusClockEntryEpoch++;
-  focusClockEntryBusy = false;
-  focusClockLockConfirming = false;
+  focusClockCancelEntry();
   focusClockCancelVoiceWork();
   focusClockLockGuard?.dispose(); focusClockLockGuard = null;
   focusClockRuntime?.stop();
@@ -30863,9 +30869,7 @@ async function coreadOpenBook(bookId, { isCurrent = () => true } = {}) {
 function coreadCloseReader() {
   if (focusClockBlockExit()) return;
   if (coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight) { toast('正在保存或整理伴读记忆，请完成或停止后退出阅读。', 'info'); return; }
-  focusClockEntryEpoch++;
-  focusClockEntryBusy = false;
-  focusClockLockConfirming = false;
+  focusClockCancelEntry();
   focusClockPauseForReadingExit();
   coreadOpenRequestId++;
   const returnTab = readerView?.returnTab === 'focus' ? 'focus' : 'coread';

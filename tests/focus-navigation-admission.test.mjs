@@ -43,3 +43,23 @@ test('blocked exits preserve the current admission and lock; memory-save refusal
   const {c}=fixture();c.coreadMemoryWrites=1;c.focusClockEntryBusy=true;c.coreadCloseReader();
   assert.equal(c.focusClockEntryEpoch,0);assert.equal(c.coreadOpenRequestId,0);assert.equal(c.focusClockEntryBusy,true);
 });
+
+test('leaving the focus and reading routes invalidates admission even if the user returns before loading finishes',async()=>{
+  const {c,f}=fixture(),loads=[];let opens=0;
+  vm.runInContext(section('renderModal'),c);c.document.getElementById=()=>null;
+  c.ensureCoreadReaderRuntime=()=>new Promise(resolve=>loads.push(resolve));
+  c.coreadOpenBook=async()=>{opens++;c.activeTab='coread';c.readerView={bookId:'book'};c.readerContentCache={bookId:'book'};c.document.querySelector=()=>({isConnected:true});};
+  const old=c.focusClockRequestStart();c.activeTab='imagegen';c.renderModal();c.activeTab='focus';c.renderModal();
+  assert.equal(c.coreadOpenRequestId,1);const next=c.focusClockRequestStart();assert.equal(loads.length,2);
+  loads[0]();await old;assert.equal(opens,0);assert.equal(f.status,'idle');assert.equal(c.focusClockEntryBusy,true);
+  loads[1]();await next;assert.equal(opens,1);assert.equal(f.status,'running');
+});
+
+test('render-only updates and the admitted focus-to-reader transition keep their ticket; leaving consent does not',()=>{
+  const {c}=fixture();vm.runInContext(section('renderModal'),c);c.document.getElementById=()=>null;c.focusClockEntryBusy=true;
+  for(const tab of ['focus','coread']){c.activeTab=tab;c.renderModal();assert.equal(c.focusClockEntryEpoch,0);assert.equal(c.coreadOpenRequestId,0);assert.equal(c.focusClockEntryBusy,true);}
+  c.focusClockEntryBusy=false;c.focusClockLockConfirming=true;c.renderModal();
+  assert.equal(c.focusClockEntryEpoch,1);assert.equal(c.focusClockLockConfirming,false);
+  c.focusClockActiveLock=()=>({});c.focusClockEntryBusy=true;c.activeTab='imagegen';c.renderModal();
+  assert.equal(c.activeTab,'focus');assert.equal(c.focusClockEntryEpoch,1);assert.equal(c.focusClockEntryBusy,true,'blocked navigation must keep the lock restoration ticket');
+});
