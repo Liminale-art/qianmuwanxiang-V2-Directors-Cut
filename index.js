@@ -24933,8 +24933,9 @@ function bindFocusClockEvents(root) {
   root.querySelector('.sd-focus-reset')?.addEventListener('click', async () => {
     const f = focusClockState();
     if (f.status !== 'idle') {
+      const sessionToken = f.sessionToken, phase = f.phase;
       const yes = await confirmDialog('结束本轮', '当前进度不会计入完成记录，确定结束？');
-      if (!yes) return;
+      if (!yes || !settings.enabled || settings.focusClock !== f || f.sessionToken !== sessionToken || f.phase !== phase) return;
     }
     focusClockReset();
     renderModal();

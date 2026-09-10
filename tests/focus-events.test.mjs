@@ -36,3 +36,23 @@ test('reset cancellation does nothing, and confirmed clear affects only today wi
   e.confirm(false);await reset.fire('click');await clear.fire('click');assert.deepEqual(e.trace,[]);assert.equal(e.f.history.length,2);
   e.confirm(true);await clear.fire('click');assert.deepEqual(Array.from(e.f.history,x=>x.id),['old']);assert.equal(e.f.lastCompletionId,'');assert.deepEqual(e.trace,['save','render']);
 });
+
+test('an old end confirmation cannot reset a different round, phase, state owner or disabled plugin',async()=>{
+  for(const change of ['round','phase','owner','disabled']) {
+    const e=fixture({status:'running',sessionToken:'old',phase:'focus'}),button=e.node('.sd-focus-reset');let resolve;
+    e.c.confirmDialog=()=>new Promise(r=>{resolve=r;});e.bind();e.trace.length=0;
+    const pending=button.fire('click');
+    if(change==='round')e.f.sessionToken='new';
+    if(change==='phase')e.f.phase='shortBreak';
+    if(change==='owner')e.c.settings.focusClock={...e.f};
+    if(change==='disabled')e.c.settings.enabled=false;
+    resolve(true);await pending;assert.deepEqual(e.trace,[],change);
+  }
+});
+
+test('same-round confirmation after pausing still ends that round, and idle reset does not open a confirmation',async()=>{
+  const e=fixture({status:'running',sessionToken:'same'}),button=e.node('.sd-focus-reset');let resolve,confirmations=0;
+  e.c.confirmDialog=()=>{confirmations++;return new Promise(r=>{resolve=r;});};e.bind();e.trace.length=0;
+  const pending=button.fire('click');e.f.status='paused';resolve(true);await pending;assert.deepEqual(e.trace,['reset','render']);
+  e.f.status='idle';e.trace.length=0;await button.fire('click');assert.equal(confirmations,1);assert.deepEqual(e.trace,['reset','render']);
+});
