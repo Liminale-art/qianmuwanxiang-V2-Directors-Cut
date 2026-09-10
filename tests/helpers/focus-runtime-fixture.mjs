@@ -1,0 +1,31 @@
+import vm from 'node:vm';
+import { storyboardFunctionSource } from './storyboard-form-fixture.mjs';
+
+// Characterization seam: only this loader changes when the runtime becomes a real module.
+const source = ['focusClockRuntimeTick','focusClockVisibilitySync','startFocusClockRuntime','stopFocusClockRuntime'].map(storyboardFunctionSource).join('\n');
+
+export function focusRuntimeFixture(overrides = {}) {
+  const events = () => {
+    const listeners = new Map();
+    return {
+      visibilityState:'visible', listeners,
+      addEventListener(type,fn) { if (!listeners.has(type)) listeners.set(type,new Set()); listeners.get(type).add(fn); },
+      removeEventListener(type,fn) { listeners.get(type)?.delete(fn); },
+      dispatch(type) { for (const fn of [...(listeners.get(type) || [])]) fn(); },
+      count() { return [...listeners.values()].reduce((sum,set)=>sum+set.size,0); },
+    };
+  };
+  const document=events(),window=events(),timers=new Map(),trace=[],prepared=[],seen=[];
+  let nextId=0, state={status:'running',phase:'focus',sessionToken:'original',sessionVoiceCues:[],remainingMs:1000,...overrides};
+  const c=vm.createContext({document,window,focusClockTicker:null,focusClockRuntimeSyncing:false,
+    focusClockLockGuard:{dispose:()=>trace.push('unlock')},focusClockVoiceBlobs:new Map([['cached',{}]]),
+    setInterval:(fn,ms)=>{const id=++nextId;timers.set(id,{fn,ms});return id;},clearInterval:id=>timers.delete(id),
+    focusClockState:()=>state,focusClockRemainingMs:value=>value.remainingMs,
+    focusClockMaybePlayMidCue:value=>seen.push(value),focusClockUpdateDom:()=>trace.push('paint'),
+    focusClockComplete:()=>{trace.push('complete');state.status='idle';},
+    focusClockVoiceContext:()=>({enabled:true}),focusClockPrepareVoiceCues:token=>prepared.push(token),
+    focusClockCancelVoiceWork:()=>trace.push('cancel'),focusClockResetMedia:()=>trace.push('media'),
+  });
+  vm.runInContext(source,c);
+  return {c,document,window,timers,trace,prepared,seen,get state(){return state;},setState:value=>{state=value;}};
+}
