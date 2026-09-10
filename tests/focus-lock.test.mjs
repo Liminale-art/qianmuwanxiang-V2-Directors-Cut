@@ -66,3 +66,28 @@ test('navigation entry points cannot bypass the lock and teardown releases DOM i
   assert.match(section('renderModal'),/focusClockActiveLock\(\)/);assert.match(section('coreadOpenBook'),/readingLock.bookId !== bookId/);
   assert.match(section('stopFocusClockRuntime'),/focusClockLockGuard\?\.dispose\(\)/);
 });
+
+test('leaving ordinary reading pauses and returning to the same loaded book resumes remaining time',()=>{
+  const {c,f,setNow}=focusFixture({activity:'reading',bookId:'book',sessionBookId:'book',status:'running',endsAt:160000,sessionToken:'same-round'});
+  c.readerView={bookId:'book'};c.readerContentCache={bookId:'book'};c.activeTab='coread';c.document.querySelector=()=>({isConnected:true});
+  setNow(110000);c.focusClockPauseForReadingExit();assert.equal(f.status,'paused');assert.equal(f.remainingMs,50000);assert.equal(f.readingExitPaused,true);
+  setNow(200000);c.focusClockResumeReading();assert.equal(f.status,'running');assert.equal(f.endsAt,250000);assert.equal(f.sessionToken,'same-round');assert.equal(f.readingExitPaused,false);
+});
+test('manual pause, another book, rest phases and ordinary task focus are not automatically resumed or paused',()=>{
+  const {c,f}=focusFixture({status:'paused',activity:'reading',bookId:'book',sessionBookId:'book'});c.readerView={bookId:'book'};
+  c.focusClockResumeReading();assert.equal(f.status,'paused');
+  f.readingExitPaused=true;c.readerView.bookId='other';c.focusClockResumeReading();assert.equal(f.status,'paused');
+  for(const changes of [{activity:'task',phase:'focus'},{activity:'reading',phase:'shortBreak'}]){
+    Object.assign(f,{status:'running',endsAt:160000},changes);c.readerView.bookId='book';c.focusClockPauseForReadingExit();assert.equal(f.status,'running');
+  }
+});
+test('viewing the timer in strong-locked reading cannot pause the locked round',async()=>{
+  const {c,f}=focusFixture();await c.focusClockEnableLock();f.activity='reading';f.sessionBookId='book';c.readerView={bookId:'book'};
+  c.focusClockShowPanel();assert.equal(f.status,'running');assert.equal(f.readingExitPaused,false);
+});
+test('accepted reading exits pause before losing the book identity; render-only reading updates do not pause',()=>{
+  assert.match(section('coreadCloseReader'),/focusClockPauseForReadingExit\(\)[\s\S]*readerView = null/);
+  assert.match(section('closeModal'),/focusClockPauseForReadingExit\(\)/);
+  assert.match(section('renderModal'),/if \(activeTab !== 'coread'\) focusClockPauseForReadingExit\(\)/);
+  assert.match(section('coreadOpenBook'),/refreshReaderPortal\(\);\s*focusClockResumeReading\(\)/);
+});

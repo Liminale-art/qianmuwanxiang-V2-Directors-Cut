@@ -8,16 +8,18 @@ import {storyboardFunctionSource as section} from '../tests/helpers/storyboard-f
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
 const guardSource=await readFile(new URL('../qianmu-focus-lock.js',import.meta.url),'utf8');
+const profileSource=await readFile(new URL('../qianmu-focus-voice.js',import.meta.url),'utf8');
 const iconSource=await readFile(new URL('../qianmu-icon-renderer.js',import.meta.url),'utf8');
-const functions=focusFunctions+'\n'+['focusClockAttachLock','focusClockUpdateDom','focusClockRuntimeTick','renderFocusClockTab','bindFocusClockEvents','focusClockCancelVoiceWork','focusClockSetVoiceEnabled'].map(section).join('\n');
+const functions=focusFunctions+'\n'+['focusClockAttachLock','focusClockUpdateDom','focusClockRuntimeTick','renderFocusClockTab','bindFocusClockEvents','focusClockCancelVoiceWork','focusClockSetVoiceEnabled','focusClockVoiceContext','focusClockBindVoice'].map(section).join('\n');
 await mkdir(new URL('../dist/local-qa/',import.meta.url),{recursive:true});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
 const context=await browser.newContext({hasTouch:true});let external=0;const errors=[];
 await context.route('**/*',r=>{external++;return r.abort();});const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
 try{
   await page.setContent(`<style>${css}</style><style>body{margin:0;background:#202328}#story-director-modal{position:relative!important;display:block!important;inset:auto!important;transform:none!important;width:100%!important;box-sizing:border-box;padding:8px}#sd-reader-portal{position:fixed;inset:0;background:#222;color:white;padding:24px;box-sizing:border-box}#reading-space{height:70vh;overflow:auto}.sd-focus-ring{margin-inline:auto}button{cursor:pointer}</style><main id="host"><button id="host-chat">ST聊天</button></main><div id="pre-disabled" inert>原本不可用</div><div id="story-director-modal" class="open sd-theme-dark"></div>`);
-  await page.evaluate(({defaults,functions,guardSource,iconSource})=>{
+  await page.evaluate(({defaults,functions,guardSource,iconSource,profileSource})=>{
     window.eval(guardSource.replaceAll('export ',''));window.eval(iconSource.replaceAll('export ',''));
+    window.eval(profileSource.replaceAll('export ','')+'\nwindow.focusVoiceCharacterKey=focusVoiceCharacterKey;');
     window.MODAL_ID='story-director-modal';window.settings={enabled:true,focusClock:structuredClone(defaults)};window.DEFAULT_SETTINGS={focusClock:defaults};window.activeTab='focus';
     window.focusClockState=()=>settings.focusClock;window.focusClockLockOwner='browser-test';window.focusClockOwnerId=()=>focusClockLockOwner;
     window.focusClockEntryBusy=false;window.focusClockLockGuard=null;window.focusClockLockConfirming=false;window.focusClockVoicePrepareSeq=0;
@@ -26,7 +28,12 @@ try{
     window.FOCUS_CLOCK_PHASES={focus:{label:'专注',icon:'fa-seedling',setting:'focusMinutes'},shortBreak:{label:'小憩',icon:'fa-mug-hot',setting:'shortBreakMinutes'},longBreak:{label:'长休',icon:'fa-cloud-moon',setting:'longBreakMinutes'}};
     window.FOCUS_CLOCK_WEEK_ENTRY_LIMIT=160;window.FOCUS_CLOCK_RELATIONS={};window.FOCUS_CLOCK_VOICE_FREQUENCIES={};window.FOCUS_CLOCK_SOUND_PRESETS={};
     window.coreadBookMeta=id=>id==='book'?{id,title:'测试书籍',progress:20}:null;window.coread=()=>({books:[coreadBookMeta('book')]});
-    window.focusClockVoiceContext=()=>voiceFixture?({hasChat:true,enabled:!!settings.focusClock.voiceEnabledByChat.test,options:[{name:'测试角色',voiceId:'test'}],chatKey:'test',speaker:'测试角色',relation:'neutral'}):({enabled:false,options:[]});window.focusClockVoiceDrawerRows=()=>[];
+    window.voiceHost={chatId:'test-chat',characterId:0,characters:[{avatar:'A',name:'书友甲'},{avatar:'B',name:'书友乙'}]};
+    window.ctx=()=>voiceFixture?voiceHost:{characters:[]};window.getChatKey=()=>voiceHost.chatId;
+    window.coreadCompanionChoices=()=>ctx().characters;window.coreadCompanionCharacter=()=>coreadCompanionChoices().find(ch=>ch.avatar===(readerView?.companionAvatar||ctx().characters[ctx().characterId]?.avatar));
+    window.coreadHostPersona=window.coreadPersona=()=>({key:'U',name:'我'});window.coreadCompanionSession=()=>null;
+    window.ttsProviderConfig=()=>({voiceLibrary:[{id:'v',voiceId:'voice-A',name:'柔和音色'},{id:'v2',voiceId:'voice-B',name:'另一音色'}]});window.ttsActiveVoiceMap=()=>[];
+    window.focusClockVoiceDrawerRows=()=>[];
     window.focusClockTodayHistory=()=>[];window.focusClockWeekStats=()=>({days:Array.from({length:7},()=>({minutes:0})),history:[],minutes:0,count:0,readingMinutes:0});
     window.focusClockWeekStart=()=>new Date();window.htmlEscape=x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
     window.focusClockPrimeSound=()=>{};window.focusClockPrepareVoiceCues=()=>{};window.focusClockPlayCompletionAlert=()=>{};
@@ -41,7 +48,7 @@ try{
     window.renderModal=()=>{const root=document.getElementById(MODAL_ID);root.innerHTML='<section class="sd-window"><header class="sd-header"><button id="other-page">其它模块</button></header><div class="sd-body">'+renderFocusClockTab()+'</div></section>';bindFocusClockEvents(root);applyQianmuIcons(root);focusClockLockGuard?.sync();};
     window.hostClicks=0;document.getElementById('host-chat').onclick=()=>hostClicks++;
     window.reset=()=>{focusClockLockGuard?.dispose();focusClockLockGuard=null;settings.focusClock=structuredClone(defaults);settings.focusClock.soundEnabled=false;activeTab='focus';readerView=null;readerContentCache=null;unmountReaderPortal();renderModal();};reset();
-  },{defaults:focusDefaults,functions,guardSource,iconSource});
+  },{defaults:focusDefaults,functions,guardSource,iconSource,profileSource});
   const layouts=[];
   for(const width of [320,393,1100]){
     await page.setViewportSize({width,height:850});await page.evaluate(()=>reset());
@@ -72,14 +79,27 @@ try{
   for(const width of [320,1100]){
     await page.setViewportSize({width,height:850});
     for(const phase of ['focus','shortBreak','longBreak']) for(const status of ['idle','running','paused']){
-      await page.evaluate(({phase,status})=>{reset();voiceFixture=true;Object.assign(settings.focusClock,{phase,status,sessionToken:'test-round',endsAt:Date.now()+60000});renderModal();},{phase,status});
+      await page.evaluate(({phase,status})=>{reset();voiceFixture=true;saveFocusVoiceProfile(settings.focusClock,'character:A','minimax',{voiceId:'voice-A',name:'测试音色'},false);Object.assign(settings.focusClock,{phase,status,sessionToken:'test-round',endsAt:Date.now()+60000});renderModal();},{phase,status});
       const timer=await page.evaluate(()=>settings.focusClock.endsAt);
       const toggle=page.locator('.sd-focus-voice-enabled');assert.equal(await toggle.isDisabled(),false);
-      await toggle.tap();assert.equal(await page.evaluate(()=>settings.focusClock.voiceEnabledByChat.test),true);
-      await toggle.tap();assert.equal(await page.evaluate(()=>settings.focusClock.voiceEnabledByChat.test),false);
+      await toggle.tap();assert.equal(await page.evaluate(()=>settings.focusClock.voiceProfiles['character:A'].minimax.enabled),true);
+      await toggle.tap();assert.equal(await page.evaluate(()=>settings.focusClock.voiceProfiles['character:A'].minimax.enabled),false);
       assert.equal(await page.evaluate(()=>settings.focusClock.status),status);assert.equal(await page.evaluate(()=>settings.focusClock.endsAt),timer);
       voiceCases++;
     }
+    await page.evaluate(()=>{reset();voiceFixture=true;renderModal();});
+    await page.locator('.sd-focus-voice-character').selectOption('B');
+    const key=await page.evaluate(()=>focusClockVoiceContext().options[1].key);await page.locator('.sd-focus-voice-speaker').selectOption(key);
+    assert.equal(await page.evaluate(()=>focusClockVoiceContext().voice.voiceId),'voice-B');
+    await page.evaluate(()=>{voiceHost.chatId='different-chat';renderModal();});
+    assert.equal(await page.evaluate(()=>focusClockVoiceContext().voice.voiceId),'voice-B');
+    await page.locator('.sd-focus-voice-card').screenshot({path:fileURLToPath(new URL(`../dist/local-qa/focus-role-voice-${width}.png`,import.meta.url))});
+    const boxes=await page.locator('.sd-focus-voice-grid select').evaluateAll(nodes=>nodes.map(n=>{const b=n.getBoundingClientRect();return {left:b.left,right:b.right,height:b.height};}));
+    assert.ok(boxes.every(b=>b.left>=0&&b.right<=width));assert.ok(Math.abs(boxes[0].height-boxes[1].height)<1);
+    await page.evaluate(()=>{voiceFixture=false;voiceHost.chatId='test-chat';reset();settings.focusClock.activity='reading';settings.focusClock.bookId='book';renderModal();});
+    await page.locator('.sd-focus-main').tap();await page.locator('#reader-timer').tap();assert.equal(await page.evaluate(()=>settings.focusClock.status),'paused');
+    const remaining=await page.evaluate(()=>settings.focusClock.remainingMs);await page.locator('.sd-focus-open-reading').tap();
+    assert.equal(await page.evaluate(()=>settings.focusClock.status),'running');assert.ok(await page.evaluate(ms=>settings.focusClock.endsAt-Date.now()<=ms,remaining));
   }
   assert.deepEqual(errors,[]);assert.equal(external,0);console.log(JSON.stringify({layouts,readingAndMemoryScope:true,failOpen:true,expiry:true,voiceCases,external,errors}));
 }finally{await context.close();await browser.close();}

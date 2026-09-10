@@ -4,6 +4,7 @@
   "outputDirectory": "dist",
   "files": [
     "qianmu-focus-lock.js",
+    "qianmu-focus-voice.js",
     "qianmu-user-identity.js",
     "qianmu-user-alias.js",
     "qianmu-user-alias-bindings.js",

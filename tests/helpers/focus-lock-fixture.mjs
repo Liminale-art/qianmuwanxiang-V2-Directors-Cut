@@ -7,7 +7,7 @@ const source=await readFile(new URL('../../index.js',import.meta.url),'utf8');
 export const focusDefaults=vm.runInNewContext('('+source.match(/  focusClock: (\{[\s\S]*?^  \}),\r?\n  \/\/ 分镜/m)[1]+')');
 export const focusFunctions=['focusClockActiveLock','focusClockBlockExit','focusClockReleaseLock','focusClockReaderReady','focusClockRequestStart','focusClockEnableLock',
   'focusClockStart','focusClockPause','focusClockReset','focusClockComplete','focusClockShowPanel','focusClockEnterReading','focusClockRestoreLock',
-  'focusClockPhaseMs','focusClockRemainingMs','focusClockFormat'].map(section).join('\n');
+  'focusClockPhaseMs','focusClockRemainingMs','focusClockFormat','focusClockPauseForReadingExit','focusClockResumeReading'].map(section).join('\n');
 
 export function focusFixture(overrides={}){
   let now=100000,sequence=0;const notices=[],calls=[];

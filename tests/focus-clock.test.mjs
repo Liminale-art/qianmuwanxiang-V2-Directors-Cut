@@ -52,9 +52,10 @@ assert.match(source, /FOCUS_CLOCK_RELATIONS[\s\S]*stranger[\s\S]*neutral[\s\S]*f
 assert.match(source, /FOCUS_CLOCK_VOICE_FREQUENCIES[\s\S]*chance: \.3[\s\S]*chance: \.5[\s\S]*chance: \.75/, '长时角色语音必须按 30%、50%、75% 三档概率决定');
 assert.match(source, /function focusClockMidCueProgresses[\s\S]*durationMinutes < 45[\s\S]*if \(!selected\.length\) selected\.push/, '长时角色语音必须保证至少一次中途陪伴');
 assert.match(source, /\['url', '自定义'\]/, '完成提示音的自定义来源必须使用清晰文案');
-assert.match(source, /voiceEnabledByChat[\s\S]*voiceSpeakerByChat[\s\S]*voiceRelationByChat/, '角色语音启用、角色与关系必须按聊天隔离');
+assert.match(source, /voiceProfiles: \{\}/, '角色音色与启用状态按角色及Provider保存；关系仍保留原会话归属');
+assert.match(source, /voiceEnabledByChat[\s\S]*voiceSpeakerByChat[\s\S]*voiceRelationByChat/, '旧聊天音色字段须保留，不破坏历史配置');
 assert.match(source, /你是“千幕专注场景”的角色短句编写器[\s\S]*不引用聊天正文[\s\S]*不得猜测正文情节/, '情景生成提示词必须与正文隔离并约束不 OOC');
-assert.match(source, /function focusClockPrepareVoiceCues[\s\S]*ttsBuildParams[\s\S]*focusClockSynthVoiceCue/, '角色语音必须在开始时冻结音色参数并预生成缓存');
+assert.match(source, /function focusClockPrepareVoiceCues[\s\S]*focusClockBuildVoiceParams[\s\S]*focusClockSynthVoiceCue/, '角色语音必须在开始时冻结已绑定角色的音色参数并预生成缓存');
 assert.match(source, /function focusClockOpenVoiceDrawer[\s\S]*sd-focus-cue-play[\s\S]*sd-focus-cue-regen[\s\S]*sd-focus-cue-fav[\s\S]*sd-focus-cue-download/, '专注角色语音必须通过二层抽屉提供重听、重生成、收藏和下载');
 assert.match(source, /voiceText: completionCue\?\.text \|\| '', voiceCues: completedVoiceCues/, '完成记录必须持久化可回放的安全语音缓存索引');
 assert.match(source, /blobStore\.addFavorite[\s\S]*source: 'focus'/, '专注语音必须复用配音收藏夹存储');
