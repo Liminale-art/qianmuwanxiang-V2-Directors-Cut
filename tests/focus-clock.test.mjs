@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile, stat } from 'node:fs/promises';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+const runtime = await readFile(new URL('../qianmu-focus-runtime.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 for (const name of ['light.mp3', 'daylight.mp3', 'silver-bell.mp3', 'bright.mp3', 'horizon.mp3', 'sunrise.mp3']) {
   const file = await stat(new URL(`../assets/focus-sounds/${name}`, import.meta.url));
@@ -18,12 +19,12 @@ assert.match(source, /function focusClockRemainingMs[\s\S]*state\.endsAt - now/,
 assert.match(source, /function focusClockStart[\s\S]*f\.endsAt = now \+ remaining/, '开始和继续必须写入真实截止时间');
 assert.match(source, /function focusClockPause[\s\S]*f\.remainingMs = Math\.max\(0, f\.endsAt - now\)[\s\S]*f\.status = 'paused'/, '暂停必须把截止时间折算为剩余时长');
 assert.match(source, /function focusClockRuntimeTick[\s\S]*focusClockRemainingMs\(f\) <= 0[\s\S]*focusClockComplete/, '后台恢复后必须立即结算到期阶段');
-const tick = source.slice(source.indexOf('function focusClockRuntimeTick'), source.indexOf('function focusClockVisibilitySync'));
+const tick = source.slice(source.indexOf('function focusClockRuntimeTick'), source.indexOf('function startFocusClockRuntime'));
 assert.doesNotMatch(tick, /saveSettings/, '每秒刷新不得持续写入 ST 设置');
 assert.match(source, /startFocusClockRuntime\(\)/, '扩展初始化时必须恢复专注时钟');
 assert.match(source, /stopFocusClockRuntime\(\)/, '扩展停用或热更新时必须清理计时器');
-assert.match(source, /function startFocusClockRuntime[\s\S]*focusClockTicker = null[\s\S]*if \(f\.status !== 'running'\) return[\s\S]*setInterval\(focusClockRuntimeTick, 500\)/, '闲置与暂停状态不得保留 500ms 常驻轮询');
-assert.match(source, /focusClockRuntimeSyncing[\s\S]*if \(focusClockRuntimeSyncing\) return;[\s\S]*finally \{[\s\S]*focusClockRuntimeSyncing = false/, '启动恢复触发到期结算时不得递归建立两份 ticker');
+assert.match(runtime, /stop\(\);[\s\S]*if \(state.status !== 'running'\) return;[\s\S]*setInterval\(tick, 500\)/, '闲置与暂停状态不得保留 500ms 常驻轮询');
+assert.match(runtime, /if \(syncing\) return;[\s\S]*finally \{[\s\S]*syncing = false/, '启动恢复触发到期结算时不得递归建立两份 ticker');
 assert.match(source, /function focusClockStart[\s\S]*startFocusClockRuntime\(\{ prepareVoice: false \}\)[\s\S]*function focusClockPause[\s\S]*startFocusClockRuntime\(\{ prepareVoice: false \}\)/, '开始与暂停必须同步计时器生命周期且不得重复预生成语音');
 
 assert.match(source, /activity: 'task'[\s\S]*bookId: ''/, '专注时钟必须支持普通任务与伴读两种活动');

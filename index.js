@@ -5,6 +5,7 @@ import { inspectFocusLock, createFocusLockGuard } from './qianmu-focus-lock.js';
 import { focusVoiceCharacterKey, cleanFocusVoice, focusVoiceProfile, saveFocusVoiceProfile, focusVoiceOptions } from './qianmu-focus-voice.js';
 import { focusClockFormat, focusClockDateKey, focusClockWeekStart } from './qianmu-focus-time.js';
 import { focusWeekHistory, focusTodayHistory, focusWeekStats } from './qianmu-focus-history.js';
+import { createFocusClockRuntime } from './qianmu-focus-runtime.js';
 import {
   clone,
   isPlainObject,
@@ -1368,8 +1369,7 @@ let cancelRequested = false;       // 推演取消标记
 let theaterBusy = false;           // 幕外忙碌态（与推演独立，允许并发）
 let theaterAbort = null;           // 幕外中止句柄
 let theaterCancel = false;         // 幕外取消标记
-let focusClockTicker = null;        // 专注时钟只负责刷新显示；真实进度由持久化 endsAt 计算
-let focusClockRuntimeSyncing = false; // 防止启动恢复时“到期结算→下一阶段”递归建立两份 ticker
+let focusClockRuntime = null;      // Only owns the display ticker/listeners; endsAt remains authoritative.
 let focusClockLockGuard = null;
 let focusClockEntryBusy = false;
 let focusClockLockOwner = '';
@@ -7868,7 +7868,7 @@ function runtimeHealthSnapshot() {
     ...[...quickDockShadowObservers.keys()].map((_, index) => [`蜂巢影子根 ${index + 1}`, true]),
   ].filter(([, active]) => Boolean(active)).map(([label]) => label);
   const timers = [
-    ['专注时钟', focusClockTicker],
+    ['专注时钟', focusClockRuntime?.active],
     ['分镜正文同步', storyboardInlineTimer],
     ['配音扫描', ttsScanTimer],
     ['配音变更', ttsMutationTimer],
@@ -25180,42 +25180,21 @@ function focusClockRuntimeTick() {
   focusClockUpdateDom();
 }
 
-function focusClockVisibilitySync() {
-  if (document.visibilityState === 'visible') focusClockRuntimeTick();
-}
-
-function startFocusClockRuntime({ prepareVoice = true } = {}) {
-  if (focusClockRuntimeSyncing) return;
-  focusClockRuntimeSyncing = true;
-  try {
-    if (focusClockTicker) clearInterval(focusClockTicker);
-    focusClockTicker = null;
-    document.removeEventListener('visibilitychange', focusClockVisibilitySync);
-    window.removeEventListener('pageshow', focusClockRuntimeTick);
-    window.removeEventListener('focus', focusClockRuntimeTick);
-    focusClockRuntimeTick();
-    const f = focusClockState();
-    // 闲置或暂停时完全停掉常驻轮询；绝对 endsAt 仍能在恢复运行后准确续算。
-    // 这让未使用专注功能的绝大多数会话不再每 500ms 做一次无意义 DOM 查询。
-    if (f.status !== 'running') return;
-    focusClockTicker = setInterval(focusClockRuntimeTick, 500);
-    document.addEventListener('visibilitychange', focusClockVisibilitySync, { passive: true });
-    window.addEventListener('pageshow', focusClockRuntimeTick, { passive: true });
-    window.addEventListener('focus', focusClockRuntimeTick, { passive: true });
-    if (prepareVoice && f.phase === 'focus' && f.sessionToken && !f.sessionVoiceCues.length && focusClockVoiceContext(f).enabled) void focusClockPrepareVoiceCues(f.sessionToken);
-  } finally {
-    focusClockRuntimeSyncing = false;
-  }
+function startFocusClockRuntime(options) {
+  focusClockRuntime ||= createFocusClockRuntime({
+    document, window, setInterval, clearInterval,
+    tick: focusClockRuntimeTick, getState: focusClockState,
+    prepare: f => {
+      if (f.phase === 'focus' && f.sessionToken && !f.sessionVoiceCues.length && focusClockVoiceContext(f).enabled) void focusClockPrepareVoiceCues(f.sessionToken);
+    },
+  });
+  focusClockRuntime.start(options);
 }
 
 function stopFocusClockRuntime() {
   focusClockCancelVoiceWork();
   focusClockLockGuard?.dispose(); focusClockLockGuard = null;
-  if (focusClockTicker) clearInterval(focusClockTicker);
-  focusClockTicker = null;
-  document.removeEventListener('visibilitychange', focusClockVisibilitySync);
-  window.removeEventListener('pageshow', focusClockRuntimeTick);
-  window.removeEventListener('focus', focusClockRuntimeTick);
+  focusClockRuntime?.stop();
   focusClockResetMedia();
   focusClockVoiceBlobs.clear();
 }

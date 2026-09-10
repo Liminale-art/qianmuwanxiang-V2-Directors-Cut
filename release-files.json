@@ -7,6 +7,7 @@
     "qianmu-focus-voice.js",
     "qianmu-focus-time.js",
     "qianmu-focus-history.js",
+    "qianmu-focus-runtime.js",
     "qianmu-user-identity.js",
     "qianmu-user-alias.js",
     "qianmu-user-alias-bindings.js",

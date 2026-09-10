@@ -11,19 +11,23 @@ const guardSource=await readFile(new URL('../qianmu-focus-lock.js',import.meta.u
 const profileSource=await readFile(new URL('../qianmu-focus-voice.js',import.meta.url),'utf8');
 const timeSource=await readFile(new URL('../qianmu-focus-time.js',import.meta.url),'utf8');
 const historySource=await readFile(new URL('../qianmu-focus-history.js',import.meta.url),'utf8');
+const runtimeSource=await readFile(new URL('../qianmu-focus-runtime.js',import.meta.url),'utf8');
 const iconSource=await readFile(new URL('../qianmu-icon-renderer.js',import.meta.url),'utf8');
-const functions=focusFunctions+'\n'+['focusClockAttachLock','focusClockUpdateDom','focusClockRuntimeTick','renderFocusClockTab','bindFocusClockEvents','focusClockCancelVoiceWork','focusClockSetVoiceEnabled','focusClockVoiceContext','focusClockBindVoice','focusClockTodayHistory','focusClockWeekStats'].map(section).join('\n');
+const functions=focusFunctions+'\n'+['focusClockAttachLock','focusClockUpdateDom','focusClockRuntimeTick','startFocusClockRuntime','stopFocusClockRuntime','renderFocusClockTab','bindFocusClockEvents','focusClockCancelVoiceWork','focusClockSetVoiceEnabled','focusClockVoiceContext','focusClockBindVoice','focusClockTodayHistory','focusClockWeekStats'].map(section).join('\n');
 await mkdir(new URL('../dist/local-qa/',import.meta.url),{recursive:true});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
 const context=await browser.newContext({hasTouch:true});let external=0;const errors=[];
 await context.route('**/*',r=>{external++;return r.abort();});const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
 await page.route('https://qianmu.test/qianmu-focus-time.js',r=>r.fulfill({contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:timeSource}));
 await page.route('https://qianmu.test/qianmu-focus-history.js',r=>r.fulfill({contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:historySource}));
+await page.route('https://qianmu.test/qianmu-focus-runtime.js',r=>r.fulfill({contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:runtimeSource}));
 try{
   await page.setContent(`<style>${css}</style><style>body{margin:0;background:#202328}#story-director-modal{position:relative!important;display:block!important;inset:auto!important;transform:none!important;width:100%!important;box-sizing:border-box;padding:8px}#sd-reader-portal{position:fixed;inset:0;background:#222;color:white;padding:24px;box-sizing:border-box}#reading-space{height:70vh;overflow:auto}.sd-focus-ring{margin-inline:auto}button{cursor:pointer}</style><main id="host"><button id="host-chat">ST聊天</button></main><div id="pre-disabled" inert>原本不可用</div><div id="story-director-modal" class="open sd-theme-dark"></div>`);
   await page.evaluate(async({defaults,functions,guardSource,iconSource,profileSource})=>{
     Object.assign(window,await import('https://qianmu.test/qianmu-focus-time.js'));
     Object.assign(window,await import('https://qianmu.test/qianmu-focus-history.js'));
+    Object.assign(window,await import('https://qianmu.test/qianmu-focus-runtime.js'));
+    window.focusClockRuntime=null;window.focusClockVoiceBlobs=new Map();window.focusClockResetMedia=()=>{};
     window.eval(guardSource.replaceAll('export ',''));window.eval(iconSource.replaceAll('export ',''));
     window.eval(profileSource.replaceAll('export ','')+'\nwindow.focusVoiceCharacterKey=focusVoiceCharacterKey;');
     window.MODAL_ID='story-director-modal';window.settings={enabled:true,focusClock:structuredClone(defaults)};window.DEFAULT_SETTINGS={focusClock:defaults};window.activeTab='focus';
@@ -42,7 +46,7 @@ try{
     window.focusClockVoiceDrawerRows=()=>[];
     window.htmlEscape=x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
     window.focusClockPrimeSound=()=>{};window.focusClockPrepareVoiceCues=()=>{};window.focusClockPlayCompletionAlert=()=>{};
-    window.startFocusClockRuntime=()=>{};window.focusClockMaybePlayMidCue=()=>{};window.focusClockOpenVoiceDrawer=()=>{};window.focusClockSyncPreviewButton=()=>{};
+    window.focusClockMaybePlayMidCue=()=>{};window.focusClockOpenVoiceDrawer=()=>{};window.focusClockSyncPreviewButton=()=>{};
     window.saveSettings=()=>{};let uidCount=0;window.uid=()=>`fixture-${++uidCount}`;window.notices=[];window.toast=x=>notices.push(x);window.confirmDialog=async()=>true;
     window.readerView=null;window.readerContentCache=null;window.ensureCoreadReaderRuntime=async()=>{};window.coreadPendingChatImages=()=>[];window.coreadSaveProgress=()=>{};
     window.isModalOpen=()=>document.getElementById(MODAL_ID)?.classList.contains('open');window.openModal=()=>renderModal();
@@ -52,7 +56,7 @@ try{
     window.eval(functions);
     window.renderModal=()=>{const root=document.getElementById(MODAL_ID);root.innerHTML='<section class="sd-window"><header class="sd-header"><button id="other-page">其它模块</button></header><div class="sd-body">'+renderFocusClockTab()+'</div></section>';bindFocusClockEvents(root);applyQianmuIcons(root);focusClockLockGuard?.sync();};
     window.hostClicks=0;document.getElementById('host-chat').onclick=()=>hostClicks++;
-    window.reset=()=>{focusClockLockGuard?.dispose();focusClockLockGuard=null;settings.focusClock=structuredClone(defaults);settings.focusClock.soundEnabled=false;activeTab='focus';readerView=null;readerContentCache=null;unmountReaderPortal();renderModal();};reset();
+    window.reset=()=>{stopFocusClockRuntime();settings.focusClock=structuredClone(defaults);settings.focusClock.soundEnabled=false;activeTab='focus';readerView=null;readerContentCache=null;unmountReaderPortal();renderModal();};reset();
   },{defaults:focusDefaults,functions,guardSource,iconSource,profileSource});
   const layouts=[];
   for(const width of [320,393,1100]){
@@ -103,8 +107,11 @@ try{
     assert.ok(boxes.every(b=>b.left>=0&&b.right<=width));assert.ok(Math.abs(boxes[0].height-boxes[1].height)<1);
     await page.evaluate(()=>{voiceFixture=false;voiceHost.chatId='test-chat';reset();settings.focusClock.activity='reading';settings.focusClock.bookId='book';renderModal();});
     await page.locator('.sd-focus-main').tap();await page.locator('#reader-timer').tap();assert.equal(await page.evaluate(()=>settings.focusClock.status),'paused');
+    assert.equal(await page.evaluate(()=>focusClockRuntime.active),false);
     const remaining=await page.evaluate(()=>settings.focusClock.remainingMs);await page.locator('.sd-focus-open-reading').tap();
     assert.equal(await page.evaluate(()=>settings.focusClock.status),'running');assert.ok(await page.evaluate(ms=>settings.focusClock.endsAt-Date.now()<=ms,remaining));
+    assert.equal(await page.evaluate(()=>focusClockRuntime.active),true);
   }
+  await page.evaluate(()=>stopFocusClockRuntime());assert.equal(await page.evaluate(()=>focusClockRuntime.active),false);
   assert.deepEqual(errors,[]);assert.equal(external,0);console.log(JSON.stringify({layouts,readingAndMemoryScope:true,failOpen:true,expiry:true,voiceCases,external,errors}));
 }finally{await context.close();await browser.close();}
