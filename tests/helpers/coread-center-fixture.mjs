@@ -29,3 +29,8 @@ export function createCoreadRecordsFixture(){
   const m={worldSyncMode:'none',summaryItems:[],summaryPresets:[],spoilerProtection:true};
   vm.runInContext(coreadRecordsFunctions,c);return {...f,m};
 }
+
+export const coreadApiFunctions=['renderMemModelRow','renderMemProfileRow','renderMemApiActions','renderSummaryApiCard'].map(section).join('\n');
+export function createCoreadApiFixture(){
+  const f=createCoreadCenterFixture();vm.runInContext(coreadApiFunctions,f.c);return f;
+}
