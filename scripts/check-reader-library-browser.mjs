@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {libraryFunctions} from '../tests/helpers/coread-library-fixture.mjs';
 import {storyboardFunctionSource as section} from '../tests/helpers/storyboard-form-fixture.mjs';
+import {checkCollectionMutationBrowser} from '../tests/helpers/coread-collection-browser.mjs';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const css=await readFile(new URL('../style.css',import.meta.url),'utf8'),view=await readFile(new URL('../qianmu-reader-library-view.js',import.meta.url),'utf8');
 const utils=await readFile(new URL('../qianmu-storyboard-utils.js',import.meta.url),'utf8'),icons=await readFile(new URL('../qianmu-icon-renderer.js',import.meta.url),'utf8');
@@ -69,5 +70,6 @@ try{
     const native=await page.locator('.sd-reader-import-input').evaluate(el=>{const b=el.getBoundingClientRect();return document.elementFromPoint(b.x+b.width/2,b.y+b.height/2)===el;});assert.equal(native,true);
     await page.screenshot({path:fileURLToPath(new URL(`../dist/local-qa/reader-library-${width}.png`,import.meta.url))});layouts.push({width,boxes,nativeFileHit:native,toolIsolation:true,mouseDrag:true,ownershipPreserved:true});
   }
-  assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({layouts,realTemplates:true,realEvents:true,localCoverBlob:true,external,errors,limits:'fake storage, confirmations, editors and host navigation; no real import/deletion or physical mobile drag validation'}));
+  const mutations=await checkCollectionMutationBrowser(page);
+  assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({layouts,mutations,realTemplates:true,realEvents:true,localCoverBlob:true,external,errors,limits:'fake storage, host Popup transport, book editors and navigation; no real import/deletion or physical mobile drag validation'}));
 }finally{await context.close();await browser.close();}
