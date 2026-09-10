@@ -15,6 +15,7 @@ import { renderFocusClockView, updateFocusClockView } from './qianmu-focus-view.
 import { bindFocusClockPage } from './qianmu-focus-events.js';
 import { exportFocusWeekImage } from './qianmu-focus-export.js';
 import { createFocusCueRecords } from './qianmu-focus-cue-records.js';
+import { createFocusVoiceDrawer } from './qianmu-focus-drawer.js';
 import {
   clone,
   isPlainObject,
@@ -1398,7 +1399,7 @@ const focusClockVoiceCache = createFocusVoiceCache({
   },
 }); // Keeps bounded memory references even when IndexedDB is unavailable.
 let focusClockCueRecords = null;
-let focusClockVoiceDrawerEl = null;  // 专注角色语音二层抽屉；挂在千幕根容器，避免移动端 fixed 定位受 ST 主题干扰
+let focusClockVoiceDrawer = null;  // 专注抽屉控制器；DOM 所有权留在独立模块。
 const STORYBOARD_QUEUE_LIMIT = 8;     // 仅本页运行态；刷新后不自动续跑，避免意外消耗生图额度
 let storyboardBusy = false;          // 分镜生成独立忙碌态，不占用推演/幕外请求锁
 let storyboardCompilerBusy = false;  // 自动取景是独立的一次 LLM 请求，不与正文生成共用返回
@@ -24573,10 +24574,18 @@ function focusClockVoiceCueFileBase(cue) { return focusClockRecords().fileBase(c
 
 function focusClockVoiceDrawerRows(state = focusClockState()) { return focusClockRecords().rows(state); }
 
-function focusClockCloseVoiceDrawer() {
-  focusClockVoiceDrawerEl?.remove();
-  focusClockVoiceDrawerEl = null;
+function focusClockDrawer() {
+  return focusClockVoiceDrawer ||= createFocusVoiceDrawer({
+    document, getModal: () => document.getElementById(MODAL_ID), rowsForView: () => focusClockVoiceDrawerRows(),
+    format: { escape: htmlEscape, date: value => formatDateTime(value), icons: el => applyQianmuIcons(el), iconClass: (...args) => setQianmuIconClass(...args) },
+    voice: { play: cue => focusClockPlayVoiceCue(cue), regenerate: cue => focusClockRegenerateVoiceCue(cue), blob: cue => focusClockVoiceCueBlob(cue) },
+    favorites: { sync: portal => focusClockSyncVoiceDrawerFavorites(portal), toggle: (...args) => focusClockToggleVoiceCueFavorite(...args) },
+    download: { save: (...args) => ttsDownloadBlob(...args), fileBase: cue => focusClockVoiceCueFileBase(cue), safeName: (...args) => ttsSafeFilenamePart(...args) },
+    notify: (...args) => toast(...args), now: () => Date.now(),
+  });
 }
+
+function focusClockCloseVoiceDrawer() { focusClockVoiceDrawer?.close(); }
 
 function focusClockSyncVoiceDrawerFavorites(portal) { return focusClockRecords().syncFavorites(portal); }
 
@@ -24613,70 +24622,7 @@ async function focusClockRegenerateVoiceCue(cue) {
   }
 }
 
-function focusClockOpenVoiceDrawer() {
-  focusClockCloseVoiceDrawer();
-  const modal = document.getElementById(MODAL_ID);
-  if (!modal) return;
-  const rows = focusClockVoiceDrawerRows();
-  if (!rows.length) { toast('还没有可重听的陪伴语音。', 'info'); return; }
-  const portal = document.createElement('div');
-  portal.className = 'sd-focus-voice-drawer-portal';
-  portal.innerHTML = `<button type="button" class="sd-focus-voice-drawer-backdrop" aria-label="关闭陪伴语音"></button>
-    <section class="sd-focus-voice-drawer" role="dialog" aria-modal="true" aria-label="陪伴语音">
-      <header><div><h3>陪伴语音</h3><small>重听或整理这一程留下的声音</small></div><button type="button" class="sd-icon-btn sd-focus-voice-drawer-close" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
-      <div class="sd-focus-voice-drawer-list">${rows.map((cue) => `<article class="sd-focus-cue" data-cue-id="${htmlEscape(cue.id)}">
-        <button type="button" class="sd-focus-cue-play" title="重听" aria-label="重听"><i class="fa-solid fa-play"></i></button>
-        <button type="button" class="sd-focus-cue-main" title="重听这句"><b>${htmlEscape(cue.speaker || '角色')}</b><span>${htmlEscape(cue.text || '')}</span><small>${htmlEscape(cue.task || '专注')} · ${htmlEscape(formatDateTime(cue.sourceTime || Date.now()))}</small></button>
-        <button type="button" class="sd-icon-btn sd-focus-cue-more" title="更多操作" aria-label="更多操作" aria-expanded="false"><i class="fa-solid fa-ellipsis"></i></button>
-        <div class="sd-focus-cue-tools" hidden>
-          <button type="button" class="sd-icon-btn sd-focus-cue-regen" title="重新生成" aria-label="重新生成"><i class="fa-solid fa-rotate"></i></button>
-          <button type="button" class="sd-icon-btn sd-focus-cue-fav" data-cue-id="${htmlEscape(cue.id)}" title="收藏" aria-label="收藏" aria-pressed="false"><i class="fa-regular fa-star"></i></button>
-          <button type="button" class="sd-icon-btn sd-focus-cue-download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button>
-        </div>
-      </article>`).join('')}</div>
-    </section>`;
-  modal.appendChild(portal);
-  applyQianmuIcons(portal);
-  focusClockVoiceDrawerEl = portal;
-  const cueFor = (target) => rows.find((cue) => cue.id === target.closest('.sd-focus-cue')?.dataset.cueId);
-  portal.querySelector('.sd-focus-voice-drawer-backdrop')?.addEventListener('click', focusClockCloseVoiceDrawer);
-  portal.querySelector('.sd-focus-voice-drawer-close')?.addEventListener('click', focusClockCloseVoiceDrawer);
-  portal.querySelectorAll('.sd-focus-cue-play, .sd-focus-cue-main').forEach((button) => button.addEventListener('click', async (event) => {
-    const cue = cueFor(event.currentTarget);
-    if (!cue) return;
-    if (!await focusClockPlayVoiceCue(cue)) toast('音频缓存已过期，可以使用重新生成。', 'warning');
-  }));
-  portal.querySelectorAll('.sd-focus-cue-more').forEach((button) => button.addEventListener('click', () => {
-    const item = button.closest('.sd-focus-cue');
-    const tools = item?.querySelector('.sd-focus-cue-tools');
-    const next = Boolean(tools?.hidden);
-    portal.querySelectorAll('.sd-focus-cue-tools').forEach((row) => { row.hidden = true; });
-    portal.querySelectorAll('.sd-focus-cue-more').forEach((entry) => entry.setAttribute('aria-expanded', 'false'));
-    if (tools) tools.hidden = !next;
-    button.setAttribute('aria-expanded', next ? 'true' : 'false');
-  }));
-  portal.querySelectorAll('.sd-focus-cue-regen').forEach((button) => button.addEventListener('click', async (event) => {
-    const cue = cueFor(event.currentTarget);
-    if (!cue) return;
-    button.disabled = true;
-    const icon = button.querySelector('i'); setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
-    await focusClockRegenerateVoiceCue(cue);
-    if (focusClockVoiceDrawerEl === portal && portal.isConnected) focusClockOpenVoiceDrawer();
-  }));
-  portal.querySelectorAll('.sd-focus-cue-fav').forEach((button) => button.addEventListener('click', async (event) => {
-    const cue = cueFor(event.currentTarget);
-    if (cue) await focusClockToggleVoiceCueFavorite(cue, button);
-  }));
-  portal.querySelectorAll('.sd-focus-cue-download').forEach((button) => button.addEventListener('click', async (event) => {
-    const cue = cueFor(event.currentTarget);
-    if (!cue) return;
-    const blob = await focusClockVoiceCueBlob(cue);
-    if (!blob) { toast('音频缓存已过期，请先重新生成。', 'warning'); return; }
-    ttsDownloadBlob(blob, `${focusClockVoiceCueFileBase(cue)}.${ttsSafeFilenamePart(cue.format, 'mp3') || 'mp3'}`);
-    toast('已下载。', 'success');
-  }));
-  void focusClockSyncVoiceDrawerFavorites(portal);
-}
+function focusClockOpenVoiceDrawer() { focusClockDrawer().open(); }
 
 function focusClockPlayCompletionAlert(cue) { return focusClockSpeech().complete(cue, () => focusClockPlayDoneSound()); }
 

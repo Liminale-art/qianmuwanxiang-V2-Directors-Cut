@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {createFocusVoiceDrawer} from '../qianmu-focus-drawer.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 function fixture() {
@@ -17,18 +18,18 @@ function fixture() {
       click:()=>listeners.get('click')({currentTarget:button})};
     portals.push(portal);return portal;
   }};
-  const c=vm.createContext({document,MODAL_ID:'modal',focusClockVoiceDrawerEl:null,
+  const c=vm.createContext({document,MODAL_ID:'modal',focusClockVoiceDrawer:null,createFocusVoiceDrawer,
     focusClockVoiceDrawerRows:()=>rows,toast:(...args)=>notices.push(args),htmlEscape:String,
     formatDateTime:()=>'',applyQianmuIcons:()=>{},setQianmuIconClass:()=>{},
     focusClockSyncVoiceDrawerFavorites:async()=>{},focusClockRegenerateVoiceCue:()=>pending});
-  vm.runInContext(['focusClockCloseVoiceDrawer','focusClockOpenVoiceDrawer'].map(section).join('\n'),c);
+  vm.runInContext(['focusClockDrawer','focusClockCloseVoiceDrawer','focusClockOpenVoiceDrawer'].map(section).join('\n'),c);
   return {c,portals,notices,resolve,setRows:value=>{rows=value;}};
 }
 
 test('an empty voice drawer closes its predecessor without creating an empty dialog',()=>{
   const e=fixture();e.c.focusClockOpenVoiceDrawer();e.setRows([]);e.c.focusClockOpenVoiceDrawer();
   assert.equal(e.portals.length,1);assert.equal(e.portals[0].isConnected,false);
-  assert.equal(e.c.focusClockVoiceDrawerEl,null);assert.equal(e.notices[0][1],'info');
+  assert.equal(e.portals.some(portal=>portal.isConnected),false);assert.equal(e.notices[0][1],'info');
 });
 
 test('a regeneration refreshes its still-open drawer and preserves the busy button until replacement',async()=>{
@@ -36,7 +37,7 @@ test('a regeneration refreshes its still-open drawer and preserves the busy butt
   assert.equal(old.button.disabled,true);assert.equal(e.portals.length,1);
   e.resolve(true);await run;
   assert.equal(old.isConnected,false);assert.equal(e.portals.length,2);
-  assert.equal(e.c.focusClockVoiceDrawerEl,e.portals[1]);
+  assert.equal(e.portals[1].isConnected,true);
 });
 
 test('a delayed regeneration cannot reopen a closed drawer, replace a newer drawer, or resurrect a removed page',async()=>{
@@ -45,9 +46,9 @@ test('a delayed regeneration cannot reopen a closed drawer, replace a newer draw
     if(action==='close')e.c.focusClockCloseVoiceDrawer();
     if(action==='replace')e.c.focusClockOpenVoiceDrawer();
     if(action==='remove')old.remove(); // Host rerender removes DOM before the stored pointer is cleared.
-    const count=e.portals.length,current=e.c.focusClockVoiceDrawerEl;
+    const count=e.portals.length,current=e.portals.find(portal=>portal.isConnected);
     e.resolve(true);await run;
     assert.equal(e.portals.length,count,action);
-    assert.equal(e.c.focusClockVoiceDrawerEl,current,action);
+    assert.equal(e.portals.find(portal=>portal.isConnected),current,action);
   }
 });

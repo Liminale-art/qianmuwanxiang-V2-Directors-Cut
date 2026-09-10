@@ -19,6 +19,7 @@ const rules = {
   'qianmu-focus-events.js': [],
   'qianmu-focus-export.js': [],
   'qianmu-focus-cue-records.js': [],
+  'qianmu-focus-drawer.js': [],
 };
 if (!vm.SourceTextModule) throw new Error('Run this development check with --experimental-vm-modules.');
 

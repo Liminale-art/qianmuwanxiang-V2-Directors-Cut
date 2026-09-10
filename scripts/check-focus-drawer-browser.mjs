@@ -7,20 +7,23 @@ import {storyboardFunctionSource as section} from '../tests/helpers/storyboard-f
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
 const records=await readFile(new URL('../qianmu-focus-cue-records.js',import.meta.url),'utf8');
+const drawer=await readFile(new URL('../qianmu-focus-drawer.js',import.meta.url),'utf8');
 const functions=['focusClockRecords','focusClockVoiceCueFileBase','focusClockVoiceDrawerRows','focusClockSyncVoiceDrawerFavorites',
-  'focusClockToggleVoiceCueFavorite','focusClockOpenVoiceDrawer','focusClockCloseVoiceDrawer','ttsSafeFilenamePart','ttsCompactStamp'].map(section).join('\n');
+  'focusClockToggleVoiceCueFavorite','focusClockDrawer','focusClockOpenVoiceDrawer','focusClockCloseVoiceDrawer','ttsSafeFilenamePart','ttsCompactStamp'].map(section).join('\n');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
 const context=await browser.newContext({hasTouch:true}),errors=[],layouts=[];let external=0;
 await context.route('**/*',route=>{external++;return route.abort();});
 const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));
 await page.route('https://qianmu.test/qianmu-focus-cue-records.js',route=>route.fulfill({contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:records}));
+await page.route('https://qianmu.test/qianmu-focus-drawer.js',route=>route.fulfill({contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:drawer}));
 try {
   await page.setContent(`<style>${css}</style><style>body{margin:0}#story-director-modal{position:relative!important;display:block!important;inset:auto!important;transform:none!important;width:100%!important;height:680px!important;box-sizing:border-box}</style><div id="story-director-modal" class="open sd-theme-dark"></div>`);
   await page.evaluate(async functions=>{
     Object.assign(window,await import('https://qianmu.test/qianmu-focus-cue-records.js'));
+    Object.assign(window,await import('https://qianmu.test/qianmu-focus-drawer.js'));
     const favorites=new Map();window.calls={play:[],downloads:[],notices:[]};
     window.rows=[0,1].map(i=>({id:`c${i}`,cacheKey:`a${i}`,speaker:`角色${i}`,text:'<img src=x onerror=alert(1)>陪伴',task:'阅读',played:true,format:'mp3',sourceTime:1000000}));
-    Object.assign(window,{focusClockCueRecords:null,focusClockVoiceDrawerEl:null,MODAL_ID:'story-director-modal',
+    Object.assign(window,{focusClockCueRecords:null,focusClockVoiceDrawer:null,MODAL_ID:'story-director-modal',
       focusClockState:()=>({sessionVoiceCues:rows,history:[]}),htmlEscape:value=>{const el=document.createElement('div');el.textContent=value;return el.innerHTML;},
       formatDateTime:()=> '测试日期',sanitizeFolder:String,applyQianmuIcons:()=>{},setQianmuIconClass:(el,name)=>{el.className=name;},
       ttsSetFavoriteButton:(el,active)=>{el.setAttribute('aria-pressed',String(active));},toast:(...args)=>calls.notices.push(args),
