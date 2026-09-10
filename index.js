@@ -12,6 +12,7 @@ import { createFocusSpeechPlayer } from './qianmu-focus-speech.js';
 import { createFocusVoicePreparation } from './qianmu-focus-preparation.js';
 import { createFocusVoiceCache } from './qianmu-focus-voice-cache.js';
 import { renderFocusClockView, updateFocusClockView } from './qianmu-focus-view.js';
+import { bindFocusClockPage } from './qianmu-focus-events.js';
 import {
   clone,
   isPlainObject,
@@ -24886,168 +24887,15 @@ function renderFocusClockTab() {
 
 function bindFocusClockEvents(root) {
   if (activeTab !== 'focus') return;
-  const displayedVoice = focusClockVoiceContext();
-  const voicePageCurrent = () => {
-    const current = focusClockVoiceContext();
-    return current.characterKey === displayedVoice.characterKey && current.providerId === displayedVoice.providerId;
-  };
-  root.querySelector('.sd-focus-lock')?.addEventListener('click', () => void focusClockEnableLock());
-  root.querySelector('.sd-focus-auto-next-wrap')?.addEventListener('click', (event) => event.stopPropagation());
-  root.querySelector('.sd-focus-voice-drawer-open')?.addEventListener('click', focusClockOpenVoiceDrawer);
-  root.querySelector('.sd-focus-finale-voice')?.addEventListener('click', focusClockOpenVoiceDrawer);
-  root.querySelectorAll('.sd-focus-phase').forEach((button) => button.addEventListener('click', () => {
-    focusClockSetPhase(button.dataset.focusPhase);
-    renderModal();
-  }));
-  root.querySelectorAll('.sd-focus-activity').forEach((button) => button.addEventListener('click', () => {
-    const f = focusClockState();
-    if (f.status !== 'idle') return;
-    f.activity = button.dataset.focusActivity === 'reading' ? 'reading' : 'task';
-    if (f.activity === 'reading' && !coreadBookMeta(f.bookId)) f.bookId = coread().books?.[0]?.id || '';
-    saveSettings();
-    renderModal();
-  }));
-  root.querySelector('.sd-focus-book')?.addEventListener('change', (event) => {
-    const f = focusClockState();
-    f.bookId = String(event.target.value || '');
-    const book = coreadBookMeta(f.bookId);
-    if (book) f.task = `阅读《${book.title || '未命名书籍'}》`;
-    saveSettings();
-    renderModal();
-  });
-  root.querySelector('.sd-focus-open-reading')?.addEventListener('click', () => {
-    if (focusClockState().status === 'running') void focusClockEnterReading();
-    else void focusClockRequestStart();
-  });
-  root.querySelector('.sd-focus-main')?.addEventListener('click', () => {
-    const f = focusClockState();
-    const task = root.querySelector('.sd-focus-task')?.value;
-    if (typeof task === 'string') f.task = task.trim().slice(0, 120);
-    if (f.status === 'running') focusClockPause(); else void focusClockRequestStart();
-    renderModal();
-  });
-  root.querySelector('.sd-focus-task')?.addEventListener('change', (event) => {
-    focusClockState().task = String(event.target.value || '').trim().slice(0, 120);
-    saveSettings();
-  });
-  root.querySelector('.sd-focus-reset')?.addEventListener('click', async () => {
-    const f = focusClockState();
-    if (f.status !== 'idle') {
-      const sessionToken = f.sessionToken, phase = f.phase;
-      const yes = await confirmDialog('结束本轮', '当前进度不会计入完成记录，确定结束？');
-      if (!yes || !settings.enabled || settings.focusClock !== f || f.sessionToken !== sessionToken || f.phase !== phase) return;
-    }
-    focusClockReset();
-    renderModal();
-  });
-  root.querySelectorAll('.sd-focus-setting').forEach((input) => input.addEventListener('change', () => {
-    const f = focusClockState();
-    const key = input.dataset.focusSetting;
-    const limits = { focusMinutes: [1, 240], shortBreakMinutes: [1, 60], longBreakMinutes: [1, 120], longBreakEvery: [1, 12], dailyGoal: [1, 24] };
-    const [min, max] = limits[key] || [1, 240];
-    f[key] = Math.max(min, Math.min(max, Math.round(Number(input.value) || Number(DEFAULT_SETTINGS.focusClock[key]) || min)));
-    if (f.status === 'idle' && FOCUS_CLOCK_PHASES[f.phase]?.setting === key) {
-      f.remainingMs = focusClockPhaseMs(f.phase, f);
-      f.sessionPlannedMs = f.remainingMs;
-    }
-    saveSettings();
-    renderModal();
-  }));
-  root.querySelector('.sd-focus-auto-next')?.addEventListener('change', (event) => {
-    focusClockState().autoStartNext = Boolean(event.target.checked);
-    saveSettings();
-  });
-  root.querySelector('.sd-focus-sound')?.addEventListener('change', (event) => {
-    focusClockState().soundEnabled = Boolean(event.target.checked);
-    if (event.target.checked) focusClockPrimeSound(); else focusClockResetMedia();
-    saveSettings();
-    renderModal();
-  });
-  root.querySelectorAll('.sd-focus-sound-source').forEach((button) => button.addEventListener('click', () => {
-    const f = focusClockState();
-    f.soundSource = ['builtin', 'url'].includes(button.dataset.focusSoundSource) ? button.dataset.focusSoundSource : 'builtin';
-    focusClockResetMedia();
-    saveSettings();
-    renderModal();
-  }));
-  root.querySelector('.sd-focus-sound-preset')?.addEventListener('change', (event) => {
-    const f = focusClockState();
-    f.soundPreset = FOCUS_CLOCK_SOUND_PRESETS[event.target.value] ? event.target.value : 'silverBell';
-    saveSettings();
-  });
-  root.querySelector('.sd-focus-sound-url')?.addEventListener('change', (event) => {
-    const f = focusClockState();
-    f.soundUrl = String(event.target.value || '').trim().slice(0, 2048);
-    focusClockResetMedia();
-    saveSettings();
-  });
-  root.querySelector('.sd-focus-sound-preview')?.addEventListener('click', () => {
-    const urlInput = root.querySelector('.sd-focus-sound-url');
-    if (urlInput) {
-      const f = focusClockState();
-      const nextUrl = String(urlInput.value || '').trim().slice(0, 2048);
-      if (nextUrl !== f.soundUrl) {
-        f.soundUrl = nextUrl;
-        focusClockResetMedia();
-        saveSettings();
-      }
-    }
-    void focusClockPlayDoneSound({ preview: true });
-  });
-  focusClockSyncPreviewButton();
-  root.querySelector('.sd-focus-week-export')?.addEventListener('click', () => void focusClockExportWeekImage());
-  root.querySelector('.sd-focus-voice-enabled')?.addEventListener('change', (event) => {
-    if (voicePageCurrent()) focusClockSetVoiceEnabled(Boolean(event.target.checked));
-    renderModal();
-  });
-  root.querySelector('.sd-focus-voice-character')?.addEventListener('change', event => {
-    const f = focusClockState(), avatar = event.target.value;
-    if (f.status !== 'idle' || f.activity === 'reading') return;
-    if (avatar && !coreadCompanionChoices().some(ch => (ch.avatar || ch.data?.avatar) === avatar)) return;
-    f.voiceCharacterAvatar = avatar; focusClockCancelVoiceWork({ clearCues: true }); saveSettings(); renderModal();
-  });
-  root.querySelector('.sd-focus-voice-speaker')?.addEventListener('change', (event) => {
-    focusClockBindVoice(event.target.value, displayedVoice.characterKey, displayedVoice.providerId); renderModal();
-  });
-  root.querySelector('.sd-focus-voice-relation')?.addEventListener('change', (event) => {
-    const f = focusClockState();
-    const voice = focusClockVoiceContext(f);
-    if (!voice.chatKey || f.status !== 'idle' || !voicePageCurrent()) return;
-    f.voiceRelationByChat[voice.chatKey] = FOCUS_CLOCK_RELATIONS[event.target.value] ? event.target.value : 'neutral';
-    saveSettings();
-  });
-  root.querySelectorAll('.sd-focus-voice-mode').forEach((button) => button.addEventListener('click', () => {
-    focusClockState().voiceMode = button.dataset.focusVoiceMode === 'scene' ? 'scene' : 'stock';
-    saveSettings();
-    renderModal();
-  }));
-  root.querySelectorAll('.sd-focus-voice-frequency').forEach((button) => button.addEventListener('click', () => {
-    const id = button.dataset.focusVoiceFrequency;
-    focusClockState().voiceFrequency = FOCUS_CLOCK_VOICE_FREQUENCIES[id] ? id : 'low';
-    saveSettings();
-    renderModal();
-  }));
-  root.querySelector('.sd-focus-finale-note')?.addEventListener('change', (event) => {
-    const f = focusClockState();
-    const entry = f.history.find((item) => item.id === f.lastCompletionId);
-    if (!entry) return;
-    entry.note = String(event.target.value || '').trim().slice(0, 100);
-    saveSettings();
-  });
-  root.querySelector('.sd-focus-finale-close')?.addEventListener('click', () => {
-    focusClockState().lastCompletionId = '';
-    saveSettings();
-    renderModal();
-  });
-  root.querySelector('.sd-focus-clear-history')?.addEventListener('click', async () => {
-    const owner = settings.focusClock, today = focusClockDateKey();
-    const yes = await confirmDialog('清空今日记录', '只清除今天已完成的专注记录，确定继续？');
-    if (!yes || !settings.enabled || settings.focusClock !== owner || focusClockDateKey() !== today) return;
-    const f = focusClockState();
-    f.history = f.history.filter((item) => focusClockDateKey(item.finishedAt || item.startedAt) !== today);
-    if (!f.history.some((item) => item.id === f.lastCompletionId)) f.lastCompletionId = '';
-    saveSettings();
-    renderModal();
+  return bindFocusClockPage(root, {
+    state: () => focusClockState(), stateOwner: () => settings.focusClock, enabled: () => settings.enabled,
+    defaults: DEFAULT_SETTINGS.focusClock, phases: FOCUS_CLOCK_PHASES, relations: FOCUS_CLOCK_RELATIONS,
+    frequencies: FOCUS_CLOCK_VOICE_FREQUENCIES, soundPresets: FOCUS_CLOCK_SOUND_PRESETS,
+    ui: { save: (...args) => saveSettings(...args), render: (...args) => renderModal(...args), confirm: (...args) => confirmDialog(...args) },
+    clock: { enableLock: (...args) => focusClockEnableLock(...args), selectPhase: (...args) => focusClockSetPhase(...args), enterReading: (...args) => focusClockEnterReading(...args), requestStart: (...args) => focusClockRequestStart(...args), pause: (...args) => focusClockPause(...args), reset: (...args) => focusClockReset(...args), phaseMs: (...args) => focusClockPhaseMs(...args), exportWeek: (...args) => focusClockExportWeekImage(...args), dateKey: (...args) => focusClockDateKey(...args) },
+    books: { list: () => coread().books, meta: (...args) => coreadBookMeta(...args), choices: (...args) => coreadCompanionChoices(...args) },
+    sound: { prime: (...args) => focusClockPrimeSound(...args), reset: (...args) => focusClockResetMedia(...args), play: (...args) => focusClockPlayDoneSound(...args), sync: (...args) => focusClockSyncPreviewButton(...args) },
+    voice: { context: (...args) => focusClockVoiceContext(...args), openDrawer: (...args) => focusClockOpenVoiceDrawer(...args), setEnabled: (...args) => focusClockSetVoiceEnabled(...args), bind: (...args) => focusClockBindVoice(...args), cancel: (...args) => focusClockCancelVoiceWork(...args) },
   });
 }
 

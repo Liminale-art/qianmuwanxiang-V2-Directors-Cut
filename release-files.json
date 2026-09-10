@@ -14,6 +14,7 @@
     "qianmu-focus-preparation.js",
     "qianmu-focus-voice-cache.js",
     "qianmu-focus-view.js",
+    "qianmu-focus-events.js",
     "qianmu-user-identity.js",
     "qianmu-user-alias.js",
     "qianmu-user-alias-bindings.js",

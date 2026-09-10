@@ -1,4 +1,5 @@
 import vm from 'node:vm';
+import {bindFocusClockPage} from '../../qianmu-focus-events.js';
 import {focusFixture} from './focus-lock-fixture.mjs';
 import {storyboardFunctionSource as section} from './storyboard-form-fixture.mjs';
 
@@ -12,7 +13,7 @@ export function focusEventsFixture(overrides={}) {
       count:type=>(handlers.get(type)||[]).length};nodes.set(selector,el);return el;
   }
   const root={querySelector:s=>nodes.get(s),querySelectorAll:s=>nodes.has(s)?[nodes.get(s)]:[]};
-  Object.assign(c,{focusClockVoiceContext:()=>voice,saveSettings:()=>trace.push('save'),renderModal:()=>trace.push('render'),
+  Object.assign(c,{bindFocusClockPage,focusClockVoiceContext:()=>voice,saveSettings:()=>trace.push('save'),renderModal:()=>trace.push('render'),
     focusClockSyncPreviewButton:()=>trace.push('sync'),focusClockOpenVoiceDrawer:()=>trace.push('drawer'),
     focusClockRequestStart:()=>trace.push('start'),focusClockPause:()=>trace.push('pause'),focusClockReset:()=>trace.push('reset'),
     focusClockPrimeSound:()=>trace.push('prime'),focusClockResetMedia:()=>trace.push('media'),focusClockPlayDoneSound:opts=>trace.push(['play',opts.preview]),
