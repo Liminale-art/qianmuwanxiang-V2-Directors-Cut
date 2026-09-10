@@ -8,7 +8,7 @@ const same=(a,b)=>a?.namespace===b.namespace&&a?.kind===b.kind&&a?.attemptId===b
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 // Separate instances/processes sharing the ST data directory see the same atomically claimed occupancy.
 // There is no expiry, lock stealing or automatic replay. Unknown remote work remains fenced.
-export function createNovelServiceChannel({dataRoot,store=createImageServiceStore({dataRoot,scope:'novel-channel'}),
+export function createNovelServiceChannel({dataRoot,store=createImageServiceStore({dataRoot,scope:'novel-channel',lockWaitMs:2000}),
   waitTimeoutMs=240000,pollMs=250,now=Date.now}={}){
   const ownerId=randomUUID(),pending=new Set();let closed=false;
   const deadline=Math.max(100,Math.min(240000,Number(waitTimeoutMs)||240000)),interval=Math.max(10,Math.min(1000,Number(pollMs)||250));

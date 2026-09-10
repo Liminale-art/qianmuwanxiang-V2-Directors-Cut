@@ -149,6 +149,19 @@ test('bounded metadata-lock waiting acquires after release without rerunning a r
   const work=waiting.transaction(imageServiceChannelKey(key),state=>{reductions++;return {state:normalizeNovelServiceChannel(state,imageServiceChannelKey(key))};});
   await pause(30);assert.equal(reductions,0);release.resolve();await Promise.all([work,blocking]);assert.equal(reductions,1);
 });
+
+test('releasing a completed operation waits through a short metadata lock without the coarse channel polling delay',async t=>{
+  const e=await fixture(t),gate=e.channel({pollMs:1000}),began=deferred(),finish=deferred(),held=deferred(),unlock=deferred();
+  e.unblock.push(finish.resolve,unlock.resolve);let warnings=0;
+  const work=gate.run(lease('short-lock',{onWarning:()=>warnings++}),async ticket=>{await ticket.beforeSubmit();began.resolve();await finish.promise;});
+  await began.promise;
+  const blocking=e.store.exclusive(async()=>{held.resolve();await unlock.promise;});await held.promise;
+  finish.resolve();await pause(75);unlock.resolve();await blocking;
+  // Upstream polling can be slow; a completed request must instead wait locally for the short write lock.
+  const released=await Promise.race([work.then(()=>true),pause(650).then(()=>false)]);
+  assert.equal(released,true);assert.equal(warnings,0);
+  assert.equal((await e.store.inspectChannel(imageServiceChannelKey(key))).entries[0].status,'released');
+});
 test('an ambiguous write is never retried even when a lock-wait-enabled store receives EEXIST after rename',async t=>{
   const e=await fixture(t);let reductions=0,renames=0;
   const store=e.register(createImageServiceStore({dataRoot:e.root,scope:'novel-channel',lockWaitMs:1000,fileSystem:{...fs,rename:async(...args)=>{
