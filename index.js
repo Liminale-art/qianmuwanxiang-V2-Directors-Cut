@@ -97,9 +97,9 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.107';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.107';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.107';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.108';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.108';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.108';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -107,7 +107,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.107';
+} from './qianmu-llm-output.js?v=1.59.108';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -189,289 +189,289 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.107';
+} from './qianmu-storyboard.js?v=1.59.108';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.107';
+const VERSION = '1.59.108';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
 let reader = null;
 const featureRuntime = createFeatureRuntime({
-  vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.107') },
-  vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.107') },
-  vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.107') },
-  vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.107') },
-  vibeStorageSummary: { label: 'Vibe 空间汇总', load: () => import('./qianmu-vibe-storage-summary.js?v=1.59.107') },
-  storyboardPackageAssets: { label: '分镜素材打包', load: () => import('./qianmu-storyboard-package-assets.js?v=1.59.107') },
-  storyboardPackageInput: { label: '分镜包核对', load: () => import('./qianmu-storyboard-package-input.js?v=1.59.107') },
-  storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.107') },
-  storyboardPackageMutation: { label: '分镜导入核对', load: () => import('./qianmu-storyboard-package-mutation.js?v=1.59.107') },
-  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.107') },
-  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.107') },
-  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.107') },
-  storyboardMappingView: { label: '迁移映射凭据', load: () => import('./qianmu-storyboard-mapping-view.js?v=1.59.107') },
-  characterUserIdentity: { label: 'USER头像地址', load: () => import('./qianmu-user-identity.js?v=1.59.107') },
-  characterUserAliasView: { label: 'USER地址核对', load: () => import('./qianmu-user-alias-view.js?v=1.59.107') },
-  characterStorage: { label: '角色库空间', load: () => import('./qianmu-character-storage.js?v=1.59.107') },
-  storyboardPackageStage: { label: '分镜素材暂存', load: () => import('./qianmu-storyboard-package-stage.js?v=1.59.107') },
-  storyboardPackageRuntime: { label: '分镜原件打包', load: () => import('./qianmu-storyboard-package-runtime.js?v=1.59.107') },
-  storyboardPackageStore: { label: '分镜原件读取', load: () => import('./qianmu-vibe-asset-store.js?v=1.59.107') },
-  storyboardBundleFormat: { label: '分镜联包识别', load: () => import('./qianmu-storyboard-bundle.js?v=1.59.107') },
-  storyboardBundleCapture: { label: '分镜资源联包', load: () => import('./qianmu-storyboard-bundle-runtime.js?v=1.59.107') },
-  storyboardBundleSource: { label: '备份来源核对', load: () => import('./qianmu-storyboard-bundle-source.js?v=1.59.107') },
-  storyboardBundleRestore: { label: '分镜联包恢复', load: () => import('./qianmu-storyboard-bundle-restore-runtime.js?v=1.59.107') },
-  storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.107') },
-  storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.107') },
-  storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.107') },
-  storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.107') },
-  storyboardSubjectEvidence: { label: '角色来源核对', load: () => import('./qianmu-storyboard-subject-evidence.js?v=1.59.107') },
-  vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.107') },
-  vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.107') },
-  tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.107') },
+  vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.108') },
+  vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.108') },
+  vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.108') },
+  vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.108') },
+  vibeStorageSummary: { label: 'Vibe 空间汇总', load: () => import('./qianmu-vibe-storage-summary.js?v=1.59.108') },
+  storyboardPackageAssets: { label: '分镜素材打包', load: () => import('./qianmu-storyboard-package-assets.js?v=1.59.108') },
+  storyboardPackageInput: { label: '分镜包核对', load: () => import('./qianmu-storyboard-package-input.js?v=1.59.108') },
+  storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.108') },
+  storyboardPackageMutation: { label: '分镜导入核对', load: () => import('./qianmu-storyboard-package-mutation.js?v=1.59.108') },
+  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.108') },
+  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.108') },
+  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.108') },
+  storyboardMappingView: { label: '迁移映射凭据', load: () => import('./qianmu-storyboard-mapping-view.js?v=1.59.108') },
+  characterUserIdentity: { label: 'USER头像地址', load: () => import('./qianmu-user-identity.js?v=1.59.108') },
+  characterUserAliasView: { label: 'USER地址核对', load: () => import('./qianmu-user-alias-view.js?v=1.59.108') },
+  characterStorage: { label: '角色库空间', load: () => import('./qianmu-character-storage.js?v=1.59.108') },
+  storyboardPackageStage: { label: '分镜素材暂存', load: () => import('./qianmu-storyboard-package-stage.js?v=1.59.108') },
+  storyboardPackageRuntime: { label: '分镜原件打包', load: () => import('./qianmu-storyboard-package-runtime.js?v=1.59.108') },
+  storyboardPackageStore: { label: '分镜原件读取', load: () => import('./qianmu-vibe-asset-store.js?v=1.59.108') },
+  storyboardBundleFormat: { label: '分镜联包识别', load: () => import('./qianmu-storyboard-bundle.js?v=1.59.108') },
+  storyboardBundleCapture: { label: '分镜资源联包', load: () => import('./qianmu-storyboard-bundle-runtime.js?v=1.59.108') },
+  storyboardBundleSource: { label: '备份来源核对', load: () => import('./qianmu-storyboard-bundle-source.js?v=1.59.108') },
+  storyboardBundleRestore: { label: '分镜联包恢复', load: () => import('./qianmu-storyboard-bundle-restore-runtime.js?v=1.59.108') },
+  storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.108') },
+  storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.108') },
+  storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.108') },
+  storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.108') },
+  storyboardSubjectEvidence: { label: '角色来源核对', load: () => import('./qianmu-storyboard-subject-evidence.js?v=1.59.108') },
+  vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.108') },
+  vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.108') },
+  tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.108') },
   modelPicker: {
     label: '模型选择',
-    load: () => import('./qianmu-model-picker.js?v=1.59.107'),
+    load: () => import('./qianmu-model-picker.js?v=1.59.108'),
   },
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.107'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.108'),
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.107'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.108'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
-    load: () => import('./qianmu-image-channel.js?v=1.59.107'),
+    load: () => import('./qianmu-image-channel.js?v=1.59.108'),
   },
   imageServiceClient: {
     label: '增强生图任务',
-    load: () => import('./qianmu-image-service-client.js?v=1.59.107'),
+    load: () => import('./qianmu-image-service-client.js?v=1.59.108'),
   },
   comfySubmission: {
     label: 'Comfy 实例排队',
-    load: () => import('./qianmu-comfy-submission.js?v=1.59.107'),
+    load: () => import('./qianmu-comfy-submission.js?v=1.59.108'),
   },
   comfyRecovery: {
     label: 'Comfy 原图领取',
-    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.107'),
+    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.108'),
   },
   comfyInbox: {
     label: 'Comfy 收片管理',
-    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.107'),
+    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.108'),
   },
   comfyReferences: {
     label: 'Comfy 参考图',
-    load: () => import('./qianmu-comfy-references.js?v=1.59.107'),
+    load: () => import('./qianmu-comfy-references.js?v=1.59.108'),
   },
   characterArchive: {
     label: '角色档案',
-    load: () => import('./qianmu-character-archive-view.js?v=1.59.107'),
+    load: () => import('./qianmu-character-archive-view.js?v=1.59.108'),
   },
   characterCasting: {
     label: '角色取景绑定',
-    load: () => import('./qianmu-character-casting.js?v=1.59.107'),
+    load: () => import('./qianmu-character-casting.js?v=1.59.108'),
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.107'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.108'),
   },
   artistPromptReview: {
     label: '原画师层核对',
-    load: () => import('./qianmu-artist-prompt-review.js?v=1.59.107'),
+    load: () => import('./qianmu-artist-prompt-review.js?v=1.59.108'),
   },
   styleRecipe: {
     label: '图片风格配置',
-    load: () => import('./qianmu-style-recipe.js?v=1.59.107'),
+    load: () => import('./qianmu-style-recipe.js?v=1.59.108'),
   },
   characterShotEditor: {
     label: '本镜人物编辑',
-    load: () => import('./qianmu-character-shot-view.js?v=1.59.107'),
+    load: () => import('./qianmu-character-shot-view.js?v=1.59.108'),
   },
   characterReference: {
     label: '角色参考图',
-    load: () => import('./qianmu-character-reference.js?v=1.59.107'),
+    load: () => import('./qianmu-character-reference.js?v=1.59.108'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.107').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.108').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.107'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.108'),
   },
   comfyWorkbench: {
     label: 'Comfy 镜头台',
-    load: () => import('./qianmu-comfy-workbench.js?v=1.59.107'),
+    load: () => import('./qianmu-comfy-workbench.js?v=1.59.108'),
   },
   comfyCharacters: {
     label: 'Comfy 角色实现',
-    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.107'),
+    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.108'),
   },
   comfyRoutes: {
     label: 'Comfy 镜头分工',
-    load: () => import('./qianmu-comfy-route.js?v=1.59.107'),
+    load: () => import('./qianmu-comfy-route.js?v=1.59.108'),
   },
   comfyPrompt: {
     label: 'Comfy 提示表达',
-    load: () => import('./qianmu-comfy-prompt.js?v=1.59.107'),
+    load: () => import('./qianmu-comfy-prompt.js?v=1.59.108'),
   },
   comfyCharacterReadiness: {
     label: '角色节点检查',
-    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.107'),
+    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.108'),
   },
   comfyLibrary: {
     label: 'Comfy 工作流库',
-    load: () => import('./qianmu-comfy-library-view.js?v=1.59.107'),
+    load: () => import('./qianmu-comfy-library-view.js?v=1.59.108'),
   },
   comfyPools: {
     label: 'Comfy 候选方案',
-    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.107'),
+    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.108'),
   },
   comfyScene: {
     label: 'Comfy 续场锁',
-    load: () => import('./qianmu-comfy-lock-runtime.js?v=1.59.107'),
+    load: () => import('./qianmu-comfy-lock-runtime.js?v=1.59.108'),
   },
   comfyStorage: {
     label: 'Comfy 储存盘点',
-    load: () => import('./qianmu-comfy-storage.js?v=1.59.107'),
+    load: () => import('./qianmu-comfy-storage.js?v=1.59.108'),
   },
   comfyAuto: {
     label: 'Comfy 候选调度',
-    load: () => import('./qianmu-comfy-auto-runtime.js?v=1.59.107'),
+    load: () => import('./qianmu-comfy-auto-runtime.js?v=1.59.108'),
   },
   comfyPreflight: {
     label: 'Comfy 配置检查',
-    load: () => import('./qianmu-comfy-preflight.js?v=1.59.107'),
+    load: () => import('./qianmu-comfy-preflight.js?v=1.59.108'),
   },
   comfyReadiness: {
     label: 'Comfy 节点检查',
-    load: () => import('./qianmu-comfy-readiness.js?v=1.59.107'),
+    load: () => import('./qianmu-comfy-readiness.js?v=1.59.108'),
   },
   comfyTargets: {
     label: 'Comfy 可信连接',
-    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.107'),
+    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.108'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.107'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.108'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.107'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.108'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.107'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.108'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.107'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.108'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.107'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.108'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.107'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.108'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.107'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.108'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.107'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.108'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.107'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.108'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.107'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.108'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.107'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.108'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.107'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.108'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.107'),
+    load: () => import('./qianmu-video-task.js?v=1.59.108'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.107'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.108'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.107'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.108'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.107'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.108'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.107'),
+    load: () => import('./qianmu-video-store.js?v=1.59.108'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.107'),
+    load: () => import('./qianmu-video-result.js?v=1.59.108'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.107'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.108'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.107'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.108'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.107'),
+    load: () => import('./qianmu-video-media.js?v=1.59.108'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.107'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.108'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.107'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.108'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.107'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.108'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.107'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.108'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.107'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.108'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.107'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.108'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.107'),
-        import('./qianmu-theaters.js?v=1.59.107'),
+        import('./builtin-theaters.js?v=1.59.108'),
+        import('./qianmu-theaters.js?v=1.59.108'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -2667,7 +2667,7 @@ async function coreadEnsureDedicatedBook() {
 async function coreadTargetBook() {
   const m = coreadMemory();
   if (m.worldSyncMode === 'none') return '';
-  if (m.worldSyncMode === 'shared') return getOrCreateChatBook();
+  if (m.worldSyncMode === 'shared') return coreadCompanionMatchesChat() ? getOrCreateChatBook() : '';
   return coreadEnsureDedicatedBook();
 }
 
@@ -26259,6 +26259,7 @@ const READER_PORTAL_BG = { light: '#f3efe7', dark: '#1c1e22', summer: '#e9f5ee',
 // 打开阅读器时把该书正文载入此缓存（重数据不进 settings/DOM 反复读）；关闭阅读器即清。
 let readerContentCache = null;   // { bookId, fullText, chapters:[{title,content}], sig }
 let readerScrollSaveTimer = null;
+let coreadOpenRequestId = 0;
 let companionWorldView = '';     // 伴读设定浮层中：当前查看条目的世界书名
 let companionPresetView = '';    // 伴读设定浮层中：当前查看条目的预设名
 let coreadCurrentDictId = '';    // 注入状态tab：当前查看/编辑的词典册ID（空=默认整册视图）
@@ -26283,6 +26284,93 @@ function coreadAssistantConfig() {
   if (!['session', 'persistent', 'clear'].includes(a.historyMode)) a.historyMode = 'session';
   delete a.recentTurns;   // v1.23.2 起改为后台固定轻量窗口，不再把无感参数暴露给用户。
   return a;
+}
+
+function coreadCompanionChoices() {
+  const seen = new Set();
+  return Object.values(ctx().characters || {}).filter((ch) => {
+    const avatar = String(ch?.avatar || ch?.data?.avatar || '');
+    if (!avatar || seen.has(avatar)) return false;
+    seen.add(avatar); return true;
+  });
+}
+
+function coreadCompanionCharacter() {
+  const avatar = readerView?.companionAvatar || coread().companionAvatar;
+  if (avatar) return coreadCompanionChoices().find(ch => (ch.avatar || ch.data?.avatar) === avatar) || null;
+  return ctx().groupId ? null : ctx().characters?.[ctx().characterId] || null;
+}
+
+function coreadCompanionSession() {
+  const c = coread(), avatar = readerView?.companionAvatar || c.companionAvatar;
+  return avatar && Array.isArray(c.companionSessions) ? c.companionSessions.find(s => s?.avatar === avatar && typeof s.scope === 'string' && s.scope) || null : null;
+}
+
+function coreadEnsureCompanionSession(avatar) {
+  const c = coread(), ch = coreadCompanionChoices().find(ch => (ch.avatar || ch.data?.avatar) === avatar);
+  if (!ch) return null;
+  if (!Array.isArray(c.companionSessions)) c.companionSessions = [];
+  let session = c.companionSessions.find(s => s?.avatar === avatar && typeof s.scope === 'string' && s.scope);
+  if (!session) {
+    const current = ctx().characters?.[ctx().characterId];
+    const legacy = !!ctx().chatId && !ctx().groupId && current && (current.avatar || current.data?.avatar) === avatar;
+    const priorWb = legacy ? getChatStore().coreadCompanionWb : null;
+    session = { id: `companion:${avatar}`, avatar, scope: legacy ? getChatKey() : `coread-character:${encodeURIComponent(avatar)}`,
+      worldBooks: clone(priorWb?.worldBooks || []), worldItems: clone(priorWb?.worldItems || {}), coreadBookSeq: clone(legacy ? getChatStore().coreadBookSeq || {} : {}) };
+    c.companionSessions.push(session);
+  }
+  c.companionAvatar = avatar;
+  return session;
+}
+
+function coreadSelectCompanion(avatar) {
+  if (readerView) return false; // Switch from the shelf, keeping in-flight reading/dialogue isolated.
+  if (coreadDistilling) { toast('正在整理伴读记忆，请完成或停止后切换书友。', 'info'); return false; }
+  const session = coreadEnsureCompanionSession(avatar);
+  if (!session) { toast('书友角色已不存在，请重新选择。', 'warning'); return false; }
+  coreadOpenRequestId++;
+  coreadInvalidatePool(); saveSettings(); renderModal(); return true;
+}
+
+function coreadCompanionMatchesChat() {
+  const session = coreadCompanionSession();
+  if (!session) return !coread().companionAvatar;
+  const ch = ctx().characters?.[ctx().characterId];
+  return !ctx().groupId && session.scope === getChatKey() && (ch?.avatar || ch?.data?.avatar) === session.avatar;
+}
+
+async function coreadResolveCompanionMacro(text, character = coreadCompanionCharacter()) {
+  if (!character) return '';
+  const name = character.name || character.data?.name || '书友';
+  const sub = ctx().substituteParams || globalThis.substituteParams;
+  const description = character.description || character.data?.description || '';
+  // The legacy override signature is supported by both old and current ST macro engines.
+  if (typeof sub === 'function') {
+    const result = await sub(String(text || ''), getPersonaName(), name, undefined, name, false, {
+      char: name, charIfNotGroup: name, description,
+      personality: character.personality || character.data?.personality || '',
+      scenario: character.scenario || character.data?.scenario || '', persona: getPersonaDescription(),
+    });
+    return String(result || '').replace(/\{\{(setvar|addvar|incvar|decvar|multiplyvar|dividevar):[^}]*\}\}/gi, '');
+  }
+  return String(text || '').replace(/\{\{char\}\}/gi, () => name).replace(/\{\{user\}\}/gi, () => getPersonaName());
+}
+
+function renderCoreadSessionBar() {
+  const c = coread(), selected = coreadCompanionCharacter(), avatar = c.companionAvatar || selected?.avatar || selected?.data?.avatar || '';
+  const last = c.lastReading, book = last ? coreadBookMeta(last.bookId) : null;
+  const missing = avatar && !selected;
+  return `<div class="sd-reader-session-bar"><label><span>书友</span><select class="sd-reader-companion-select text_pole" aria-label="选择书友">
+    <option value="">选择书友</option>${missing ? `<option value="${htmlEscape(avatar)}" selected>原书友已不存在 · 请重选</option>` : ''}
+    ${coreadCompanionChoices().map(ch => { const key = ch.avatar || ch.data.avatar; return `<option value="${htmlEscape(key)}" ${key === avatar ? 'selected' : ''}>${htmlEscape(ch.name || ch.data?.name || '未命名角色')}</option>`; }).join('')}</select></label>
+    ${last ? `<button type="button" class="sd-btn sd-reader-continue-last" title="${htmlEscape(book?.title || '原书籍已不存在')}"><i class="fa-solid fa-book-open"></i>继续上次</button>` : ''}</div>`;
+}
+
+async function coreadContinueLast() {
+  const last = coread().lastReading;
+  if (!last || !coreadBookMeta(last.bookId)) { toast('上次阅读的书籍已不存在，记录仍保留。', 'warning'); return; }
+  if (!coreadCompanionChoices().some(ch => (ch.avatar || ch.data?.avatar) === last.avatar)) { toast('上次的书友角色已不存在，请重选书友后打开书籍。', 'warning'); return; }
+  return coreadOpenBook(last.bookId, { resume: { ...last } });
 }
 
 function coreadComicConfig() {
@@ -26648,6 +26736,12 @@ let rerenderMoreIfOpen = () => {};
 // 伴读世界书「书」级选中（独立于主线）。
 // 伴读世界书选择按聊天存储（getChatStore），与预设分开——预设全局可沿用·世界书随聊天绑定关系各不同。
 function coreadChatCompanionWb() {
+  const session = coreadCompanionSession();
+  if (session) {
+    if (!Array.isArray(session.worldBooks)) session.worldBooks = [];
+    if (!isPlainObject(session.worldItems)) session.worldItems = {};
+    return session;
+  }
   const store = getChatStore();
   if (!isPlainObject(store.coreadCompanionWb)) store.coreadCompanionWb = { worldBooks: [], worldItems: {} };
   if (!Array.isArray(store.coreadCompanionWb.worldBooks)) store.coreadCompanionWb.worldBooks = [];
@@ -26662,7 +26756,7 @@ function coreadToggleCompanionWorldBook(name, selected) {
   const want = typeof selected === 'boolean' ? selected : i < 0;
   if (want && i < 0) wb.worldBooks.push(name);
   else if (!want && i >= 0) wb.worldBooks.splice(i, 1);
-  saveMetadata();   // 世界书选择按聊天存 chatStore，用 saveMetadata 而非 saveSettings
+  if (coreadCompanionSession()) saveSettings(); else saveMetadata();
 }
 function isCompanionWorldItemSelected(book, itemId, fallbackEnabled) {
   const store = coreadChatCompanionWb().worldItems[book];
@@ -26673,7 +26767,7 @@ function setCompanionWorldItemSelected(book, itemId, selected) {
   const wb = coreadChatCompanionWb();
   if (!isPlainObject(wb.worldItems[book])) wb.worldItems[book] = {};
   wb.worldItems[book][itemId] = !!selected;
-  saveMetadata();   // 同上：按聊天存
+  if (coreadCompanionSession()) saveSettings(); else saveMetadata();
 }
 
 // 扫描世界书（复用主线 refreshWorldBooks→contextScanCache，含条目数据），扫完重渲设定浮层。
@@ -26905,6 +26999,10 @@ function getMainlineCharContext(floors) {
 // bookId 省略时取当前 readerView 的书。recallQuery=本轮查询文本（用于记忆召回）。返回 null 表示书不存在/无正文。
 async function buildCompanionContext(bookId, recallQuery = '') {
   const cp = coreadCompanion();
+  const character = coreadCompanionCharacter();
+  if (!character) return null;
+  const resolveCompanion = text => coreadResolveCompanionMacro(text, character);
+  const mainline = cp.chatCtxEnabled && coreadCompanionMatchesChat() ? getMainlineCharContext(cp.chatCtxFloors) : '';
   const id = bookId || readerView?.bookId;
   const meta = coreadBookMeta(id);
   if (!meta) return null;
@@ -26939,7 +27037,7 @@ async function buildCompanionContext(bookId, recallQuery = '') {
       const itemId = getContextItemId(item, index);
       if (!isCompanionPresetItemSelected(presetName, itemId, item.enabled)) continue;
       const title = item.name || item.identifier || item.role || `预设条目 ${index + 1}`;
-      let content = await resolveMacro(item.content || item.prompt || item.message || item.text || '');
+      let content = await resolveCompanion(item.content || item.prompt || item.message || item.text || '');
       content = processRandomMacros(content);
       if (content) presetBlocks.push(`\n【预设 - ${presetName}: ${title}】\n${cleanContextText(content)}\n`);
     }
@@ -26953,17 +27051,17 @@ async function buildCompanionContext(bookId, recallQuery = '') {
       const itemId = getContextItemId(item, index);
       if (!isCompanionWorldItemSelected(wbName, itemId, item.enabled)) continue;
       const title = item.name || item.comment || (Array.isArray(item.key) ? item.key.join(', ') : item.key) || `世界书条目 ${index + 1}`;
-      let content = await resolveMacro(item.content || item.text || '');
+      let content = await resolveCompanion(item.content || item.text || '');
       content = processRandomMacros(content);
       if (content) worldBlocks.push(`\n【世界书 - ${wbName}: ${title}】\n${cleanContextText(content)}\n`);
     }
   }
 
   // ── 身份人设：默认跟随 ST 当前选择，经千幕注入逻辑（与主线同源 helper）──
-  const charName = await resolveMacro(getCharacterName()) || '书友';
-  const charDesc = await resolveMacro(getCharacterDescription());
-  const userName = await resolveMacro(getPersonaName()) || '我';
-  const userDesc = await resolveMacro(getPersonaDescription());
+  const charName = character.name || character.data?.name || '书友';
+  const charDesc = await resolveCompanion(character.description || character.data?.description || '');
+  const userName = await resolveCompanion(getPersonaName()) || '我';
+  const userDesc = await resolveCompanion(getPersonaDescription());
 
   const seg = [];
   seg.push(`你是${charName}本人，正与${userName}共读《${meta.title || '未命名'}》${meta.author ? `（${meta.author}）` : ''}。你们是同追一书的书友，就眼下读到的段落随性闲谈：抒观感、猜走向、辩细节，或是扯些书外联想。对话要有来有回的鲜活感，绝非单向陈述。`);
@@ -26977,7 +27075,7 @@ async function buildCompanionContext(bookId, recallQuery = '') {
   // 主线正文上下文（只计 char 发言·可选·让书友对当下主线剧情有感知）
   let chatCtxLen = 0;
   if (cp.chatCtxEnabled) {
-    const chatCtx = getMainlineCharContext(cp.chatCtxFloors);
+    const chatCtx = mainline;
     if (chatCtx) { chatCtxLen = chatCtx.length; seg.push(`【主线正文近况（「${charName}」在主线里刚说/做的·供你保持人设连贯）】\n${chatCtx}`); }
   }
   // 记忆召回（关键词档·零算力）：本轮查询命中的历史切片，让书友记得你们以前聊过的想法
@@ -27048,13 +27146,14 @@ function coreadLorePrefix(bookTitle) {
 
 // 本聊天里这本书的「书籍序号」（第几本读的·1-based·稳定）。存 chatStore.coreadBookSeq={bookId:seq}·首见分配下一号。
 function coreadBookSeqInChat(bookId) {
-  const store = getChatStore();
+  const session = coreadCompanionSession();
+  const store = session || getChatStore();
   if (!isPlainObject(store.coreadBookSeq)) store.coreadBookSeq = {};
   const map = store.coreadBookSeq;
   if (!map[bookId]) {
     const next = Object.values(map).reduce((mx, v) => Math.max(mx, Number(v) || 0), 0) + 1;
     map[bookId] = next;
-    saveMetadata();
+    if (session) saveSettings(); else saveMetadata();
   }
   return map[bookId];
 }
@@ -29407,12 +29506,13 @@ async function coreadDeleteSummaryPreset() {
 
 // 书友显示名（同步·供输入框占位/气泡·不做宏解析·组装上下文时 buildCompanionContext 内会宏解析）
 function companionCharName() {
-  return getCharacterName() || '书友';
+  const ch = coreadCompanionCharacter();
+  return ch?.name || ch?.data?.name || '书友';
 }
 
 // 会话分桶键：绑当前聊天 × 这本书。切聊天/切书自动隔离。
 function coreadDialogBucket(bookId) {
-  return `${getChatKey()}::${bookId || readerView?.bookId || ''}`;
+  return `${readerView?.companionScope || coreadCompanionSession()?.scope || getChatKey()}::${bookId || readerView?.bookId || ''}`;
 }
 
 // 模块级对话缓存：避免每次渲染都读 IndexedDB。{ bucket, bookId, messages:[{id,role,text,at}], summaries, cursor, loaded }
@@ -29436,10 +29536,13 @@ async function coreadLoadDialog(bookId) {
   coreadVectorStates.clear();
   coreadVecCache = null;
   readerDialog = { bucket, bookId, messages: [], summaries: [], slices: [], cursor: 0, summaryFloor: 0, lastInjected: null, pipelineStatus: null, readBoundary: boundary, loaded: false };
+  const target = readerDialog, view = readerView;
+  const current = () => readerDialog === target && readerView === view && coreadDialogBucket(bookId) === bucket;
   let needsMigration = false;
   let persistentAssistantMessages = [];
   try {
     const rec = await blobStore.getReaderChat(bucket);
+    if (!current()) return;
     if (rec) {
       readerDialog.messages = Array.isArray(rec.messages) ? rec.messages : [];
       const repairedDialog = repairLegacyCoreadDialogMessages(readerDialog.messages);
@@ -29466,7 +29569,11 @@ async function coreadLoadDialog(bookId) {
       readerDialog.pipelineStatus = rec.pipelineStatus && typeof rec.pipelineStatus === 'object' ? rec.pipelineStatus : null;
       persistentAssistantMessages = Array.isArray(rec.assistantMessages) ? rec.assistantMessages : [];
     }
-  } catch (_) {}
+  } catch (error) {
+    if (current()) toast('伴读档案暂未读出，请重新打开；原记录未改动。', 'warning');
+    return;
+  }
+  if (!current()) return;
   const assistantCfg = coreadAssistantConfig();
   const sessionMessages = readerAssistantSessions.get(bucket);
   const pendingQuote = readerAssistant.bucket === bucket ? readerAssistant.quote : '';
@@ -29481,10 +29588,12 @@ async function coreadLoadDialog(bookId) {
   };
   readerDialog.loaded = true;
   if (needsMigration) await coreadSaveDialog();
+  if (!current()) return;
   // 若对话抽屉正开在对话 tab，载入后补渲消息
   const body = document.querySelector('#sd-reader-portal .sd-reader-dtab-chat');
   if (body && !readerView?.assistantOpen) { body.innerHTML = renderReaderDialogMessages(); applyQianmuIcons(body); scrollDialogToBottom(); }
   coreadRefreshAssistantPanel();
+  coreadSyncDialogButtons();
   coreadSweepOrphanLore();   // 懒清扫：本聊天世界书里指向「已删书」的孤儿伴读条目（每聊天每会话一次）
 }
 
@@ -29492,6 +29601,7 @@ async function coreadLoadDialog(bookId) {
 // 每聊天每会话跑一次即可（切聊天才可能碰到别的聊天残留）。静默进行，不打扰。
 const coreadSweptChats = new Set();
 async function coreadSweepOrphanLore() {
+  if (!coreadCompanionMatchesChat()) return;
   try {
     const chatKey = getChatKey();
     if (!chatKey || coreadSweptChats.has(chatKey)) return;
@@ -29525,7 +29635,7 @@ async function coreadSweepOrphanLore() {
 
 // 持久化当前会话（防抖交给 IndexedDB 本身足够快·每轮收发后调）
 async function coreadSaveDialog() {
-  if (!readerDialog.bucket) return;
+  if (!readerDialog.bucket || !readerDialog.loaded) return;
   try {
     await blobStore.putReaderChat(readerDialog.bucket, {
       bookId: readerDialog.bookId,
@@ -29823,7 +29933,7 @@ function coreadRefreshAssistantPanel() {
   if (send) {
     const busy = assistantMode ? readerAssistantBusy : dialogBusy;
     send.classList.toggle('is-stop', busy);
-    send.disabled = false;
+    send.disabled = !readerDialog.loaded;
     send.title = busy ? '停止回答' : '单击发送；长按让 AI 回复；桌面双击或触屏上滑添加图片';
     send.innerHTML = `<i class="fa-solid ${busy ? 'fa-stop' : 'fa-arrow-up'}"></i>`;
     applyQianmuIcons(send);
@@ -30201,6 +30311,7 @@ function coreadSyncDialogButtons() {
 
 // 发送：仅追加 user 气泡到消息流（不调模型）。可连续点，攒多句后再点「生成」一起回。
 async function coreadAppendUserMessage(text, imageIds = []) {
+  if (!readerView || !readerDialog.loaded || readerDialog.bucket !== coreadDialogBucket(readerView.bookId)) { toast('伴读档案正在载入，请稍候。', 'info'); return false; }
   const images = (Array.isArray(imageIds) ? imageIds : []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
   const content = String(text || '').trim();
   if ((!content && !images.length) || dialogBusy) return;
@@ -30214,6 +30325,8 @@ async function coreadAppendUserMessage(text, imageIds = []) {
 // isReroll=true：重生成模式，先把最新 friend 批删掉，再用其之前的末尾 user 群重新生成。
 async function coreadGenerateReply(isReroll = false) {
   if (dialogBusy || !readerView) return;
+  if (!readerDialog.loaded || readerDialog.bucket !== coreadDialogBucket(readerView.bookId)) { toast('伴读档案正在载入，请稍候。', 'info'); return; }
+  const preparingView = readerView, preparingDialog = readerDialog, preparingToken = dialogGenToken;
   const bookId = readerView.bookId;
   const portal = document.getElementById('sd-reader-portal');
   const body = portal?.querySelector('.sd-reader-dtab-chat');
@@ -30237,6 +30350,7 @@ async function coreadGenerateReply(isReroll = false) {
   const recallScanN = Math.max(1, Number(coreadMemory().recallScanMessages) || 8);
   const recallQuery = [...pendingUsers, ...msgs.slice(Math.max(0, s + 1 - recallScanN), s + 1)].map((x) => x.text || '').join(' ');
   const assembled = await buildCompanionContext(bookId, recallQuery);
+  if (readerView !== preparingView || readerDialog !== preparingDialog || dialogGenToken !== preparingToken) return;
   if (!assembled) { toast('无法读取正文，先在阅读器打开这本书。', 'warn'); return; }
 
   const token = ++dialogGenToken;
@@ -30383,6 +30497,10 @@ function coreadStopDialog() {
 async function coreadSpeakMsg(msg, speaker, btn, force = false) {
   const t = String(msg?.text || '').trim();
   if (!t) return;
+  const companion = coreadCompanionCharacter(), currentCharacter = ctx().characters?.[ctx().characterId];
+  if (msg.role === 'friend' && (!companion || ctx().groupId || (companion.avatar || companion.data?.avatar) !== (currentCharacter?.avatar || currentCharacter?.data?.avatar))) {
+    toast('当前聊天音色不属于这位书友，暂不调用其他角色的音色。', 'info'); return;
+  }
   if (!force && btn?.dataset.speaking === '1') { ttsStopPlayback(true); return; }   // 播放中再点＝停
   const icon = btn?.querySelector('i');
   const prev = icon?.className;
@@ -31074,36 +31192,50 @@ async function coreadDeleteBook(bookId, options = {}) {
 
 /* ── 进入/退出阅读器 ───────────────────────────────────── */
 
-async function coreadOpenBook(bookId) {
+async function coreadOpenBook(bookId, { resume = null } = {}) {
+  if (coreadDistilling) { toast('正在整理伴读记忆，请完成或停止后进入阅读。', 'info'); return; }
+  const requestId = ++coreadOpenRequestId, originTab = activeTab;
+  const ch = coreadCompanionCharacter();
+  const avatar = resume?.avatar || coread().companionAvatar || ch?.avatar || ch?.data?.avatar;
+  const session = coreadEnsureCompanionSession(avatar);
+  if (!session) { toast('请先在书架选择一位书友。', 'info'); return; }
   // 阅读器必须暂时归属伴读路由。若仍把 activeTab 留在专注，计时到点触发的模态重渲会卸载 portal，造成偶发“闪退回专注”。
   const returnTab = activeTab === 'focus' ? 'focus' : 'coread';
   const meta = coreadBookMeta(bookId);
   if (!meta) { toast('找不到这本书。', 'error'); return; }
   let rec = null;
   try { rec = await blobStore.getBook(bookId); } catch (_) {}
+  if (requestId !== coreadOpenRequestId || activeTab !== originTab) return;
   // 跨端：书目索引（settings，会同步）在，但正文 blob 在 IndexedDB（不跨端）→ 本机没有，友好提示而非报错弹窗
   if (!rec || !Array.isArray(rec.chapters)) {
+    saveSettings();
     coreadShowRefillChooser(bookId);
     return;
   }
   meta.lastReadAt = Date.now();
+  if (readerView) { coreadStopDialog(); coreadStopAssistant(false); coreadSaveProgress(); }
   saveSettings();
   readerContentCache = { bookId, fullText: rec.fullText || '', chapters: rec.chapters, sig: rec.sig || '', comicDescriptions: isPlainObject(rec.comicDescriptions) ? rec.comicDescriptions : {} };
-  const startCh = Number.isInteger(meta.lastChapterIndex) ? meta.lastChapterIndex : 0;
+  const saved = resume || meta.companionProgress?.find(p => p.scope === session.scope);
+  const startCh = Number.isInteger(saved?.chapterIndex) ? saved.chapterIndex : Number.isInteger(meta.lastChapterIndex) ? meta.lastChapterIndex : 0;
   readerView = {
     bookId, chapterIndex: Math.max(0, Math.min(startCh, rec.chapters.length - 1)),
-    scrollRatio: meta.lastScrollRatio || 0, barHidden: false, activePanel: '', dialogPinned: false,
+    scrollRatio: Math.max(0, Math.min(1, Number(saved?.scrollRatio ?? meta.lastScrollRatio) || 0)), barHidden: false, activePanel: '', dialogPinned: false,
+    companionAvatar: session.avatar, companionScope: session.scope,
     sessionStart: nowMs(), assistantOpen: false, pendingChatImages: [], panelInputBlockedUntil: 0, returnTab,
   };
+  coreadRememberReading();
+  saveSettings();
   readerAssistant = { bucket: coreadDialogBucket(bookId), bookId, messages: [], quote: '', loaded: false };
   // 阅读器始终走 body portal（逃离模态 backdrop-filter 包含块；窄屏/移动端真·全页，不被 .sd-window 裁切）
   activeTab = 'coread';
+  void coreadLoadDialog(bookId); // Reset the old dialogue before the new reader is painted.
   renderModal();        // 模态内此 tab 转为占位
   refreshReaderPortal();
-  coreadLoadDialog(bookId);   // 异步载入本「聊天×书」会话，载完补渲对话流
 }
 
 function coreadCloseReader() {
+  coreadOpenRequestId++;
   const returnTab = readerView?.returnTab === 'focus' ? 'focus' : 'coread';
   coreadStopDialog();     // 中止在途生成，弃旧回调
   coreadStopAssistant(false);
@@ -31140,6 +31272,7 @@ function coreadSaveProgress() {
   meta.lastChapterIndex = readerView.chapterIndex;
   meta.lastScrollRatio = readerView.scrollRatio || 0;
   meta.lastReadAt = Date.now();
+  coreadRememberReading();
   const total = readerContentCache.chapters.length || 1;
   meta.progress = Math.round(((readerView.chapterIndex + (readerView.scrollRatio || 0)) / total) * 100);
   if (readerDialog.bookId === readerView.bookId) readerDialog.readBoundary = coreadCurrentReadBoundarySync(readerView.bookId);
@@ -31152,6 +31285,18 @@ function coreadSaveProgress() {
   }
   saveSettings();
   coreadMaybeAutoDistillText();   // 按阅读进度自动蒸正文切片（内部有开关+字数阈值+在飞守卫）
+}
+
+function coreadRememberReading() {
+  if (!readerView?.companionAvatar || !readerView.companionScope) return;
+  const meta = coreadBookMeta(readerView.bookId);
+  if (!meta) return;
+  const saved = { id: readerView.companionScope, bookId: readerView.bookId, avatar: readerView.companionAvatar, scope: readerView.companionScope,
+    chapterIndex: readerView.chapterIndex, scrollRatio: readerView.scrollRatio || 0 };
+  if (!Array.isArray(meta.companionProgress)) meta.companionProgress = [];
+  const index = meta.companionProgress.findIndex(p => p.scope === saved.scope);
+  if (index < 0) meta.companionProgress.push(saved); else meta.companionProgress[index] = saved;
+  coread().lastReading = { ...saved };
 }
 
 // 阅读进度前进到阈值时自动蒸一条正文切片（非阻塞·失败静默·不打断阅读）。
@@ -31509,6 +31654,7 @@ function renderLibraryView() {
     : ((c.libTags || []).length ? '没有符合当前标签的书籍。' : '书架还是空的。点右下「＋」添加第一本书，开始和角色伴读。');
   return `
     <div class="sd-reader-lib sd-reader-lib-${viewMode}">
+      ${renderCoreadSessionBar()}
       ${collectionHead}
       <div class="sd-reader-lib-bar">
         <button class="sd-reader-view-toggle" title="切换视图"><i class="fa-solid ${viewMode === 'grid' ? 'fa-list' : 'fa-table-cells-large'}"></i></button>
@@ -32459,8 +32605,8 @@ function coreadIdentityAvatar(kind) {
     const context = ctx();
     let raw = '';
     if (kind === 'char') {
-      const charId = context?.characterId;
-      raw = context?.characters?.[charId]?.avatar || context?.characters?.[charId]?.data?.avatar || '';
+      const character = coreadCompanionCharacter();
+      raw = character?.avatar || character?.data?.avatar || '';
     } else {
       const power = context?.powerUserSettings || context?.power_user || globalThis.power_user || {};
       // 冷启动缓存直接来自 ST 的 user_avatar 模块导出；DOM 与聊天头像仅作旧版本兼容兜底。
@@ -32503,7 +32649,7 @@ function renderCompanionSetupBody() {
   const cp = coreadCompanion();
   const m = coreadMemory();
   const wb = coreadChatCompanionWb();   // 世界书选择按聊天存·从 chatStore 读
-  const stChar = getCharacterName() || '未选择';
+  const stChar = companionCharName();
   const stUser = getPersonaName() || '未选择';
   const charAvatar = coreadIdentityAvatar('char');
   const userAvatar = coreadIdentityAvatar('user');
@@ -33232,6 +33378,10 @@ function bindLibraryBookDrag(root) {
 }
 
 function bindLibraryViewEvents(root) {
+  root.querySelector('.sd-reader-companion-select')?.addEventListener('change', event => {
+    if (!coreadSelectCompanion(event.target.value)) renderModal();
+  });
+  root.querySelector('.sd-reader-continue-last')?.addEventListener('click', () => { void coreadContinueLast(); });
   loadShelfCovers(root);   // 异步给 hasCover 的卡片填充封面图（IndexedDB blob → objectURL）
   bindLibraryBookDrag(root);
   root.querySelector('.sd-reader-collection-create')?.addEventListener('click', async () => {
@@ -33776,6 +33926,7 @@ function bindReaderStageEvents(stageRoot) {
     }
   };
   const doSend = async () => {
+    if (!readerDialog.loaded) { toast('伴读档案正在载入，请稍候。', 'info'); return false; }
     if (readerView.assistantOpen) {
       if (readerAssistantBusy) { coreadStopAssistant(); return false; }
     }
@@ -33783,11 +33934,12 @@ function bindReaderStageEvents(stageRoot) {
     const text = dialogTa?.value || '';
     if (!text.trim() && !coreadPendingChatImages().length) return false;
     if (chatSendBusy) return false;
-    const assistantMode = !!readerView.assistantOpen;
+    const assistantMode = !!readerView.assistantOpen, sendingView = readerView, sendingDialog = readerDialog;
     chatSendBusy = true;
     if (dialogSend) dialogSend.disabled = true;
     try {
       const imageIds = await coreadPersistPendingChatImages();
+      if (readerView !== sendingView || readerDialog !== sendingDialog || !readerDialog.loaded) return false;
       refreshPendingImages();
       if (dialogTa) { dialogTa.value = ''; dialogTa.style.height = 'auto'; }
       if (assistantMode) await coreadAppendAssistantMessage(text, imageIds);
