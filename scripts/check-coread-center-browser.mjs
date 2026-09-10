@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {coreadCenterFunctions,coreadRecordsFunctions,coreadApiFunctions,coreadInjectFunctions} from '../tests/helpers/coread-center-fixture.mjs';
 import {uniqueClean,isPlainObject} from '../qianmu-storyboard-utils.js';
+import {checkDictionaryMutationBrowser} from '../tests/helpers/coread-dictionary-browser.mjs';
 import {storyboardFunctionSource} from '../tests/helpers/storyboard-form-fixture.mjs';
 import {normalizeCoreadSource} from '../qianmu-reader.js';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
@@ -271,5 +272,7 @@ try{
     injectLayouts.push({width,boxes,numericIdentityPreserved:true,syntheticDictionaryActions:true});
   }
   assert.deepEqual(errors,[]);assert.equal(external,0);
-  console.log(JSON.stringify({layouts,recordActions,recordLayouts,apiLayouts,injectLayouts,realEventBranches:true,realTemplates:true,external,errors,limits:'isolated DOM; API/profile/vector/dictionary dialogs are fakes; no real credentials, data import/deletion/sync, host navigation, guide positioning, record expansion memory or physical iOS validation'}));
+  const dictionaryAsync=await checkDictionaryMutationBrowser(page);
+  assert.deepEqual(errors,[]);assert.equal(external,0);
+  console.log(JSON.stringify({layouts,recordActions,recordLayouts,apiLayouts,injectLayouts,dictionaryAsync,realEventBranches:true,realTemplates:true,external,errors,limits:'isolated DOM; API/profile/vector services and ST popup transport are fakes; no real credentials, data import/deletion/sync, host navigation, guide positioning, record expansion memory or physical iOS validation'}));
 }finally{await context.close();await browser.close();}
