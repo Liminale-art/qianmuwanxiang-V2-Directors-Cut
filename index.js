@@ -24564,6 +24564,12 @@ async function focusClockGenerateSceneLines(binding, count, subject, { isCurrent
     .slice(0, count);
 }
 
+function focusClockRememberVoiceBlob(key, blob) {
+  focusClockVoiceBlobs.set(key, blob);
+  while (focusClockVoiceBlobs.size > 12) focusClockVoiceBlobs.delete(focusClockVoiceBlobs.keys().next().value);
+  return key;
+}
+
 async function focusClockSynthVoiceCue(binding, text, { isCurrent = () => true } = {}) {
   const assertCurrent = () => { if (!isCurrent()) throw new DOMException('专注语音请求已失效', 'AbortError'); };
   assertCurrent();
@@ -24574,7 +24580,7 @@ async function focusClockSynthVoiceCue(binding, text, { isCurrent = () => true }
   if (blobStore.blobStoreAvailable()) {
     const hit = await blobStore.getAudio(key).catch(() => null);
     assertCurrent();
-    if (hit?.blob) { focusClockVoiceBlobs.set(key, hit.blob); return key; }
+    if (hit?.blob) return focusClockRememberVoiceBlob(key, hit.blob);
   }
   const result = await synthesizeTts(params.providerId, params);
   assertCurrent();
@@ -24589,9 +24595,7 @@ async function focusClockSynthVoiceCue(binding, text, { isCurrent = () => true }
     await blobStore.pruneAudio(Number(settings.tts?.cacheLimit ?? 200), 'tts').catch(() => {});
   }
   assertCurrent();
-  focusClockVoiceBlobs.set(key, result.blob);
-  while (focusClockVoiceBlobs.size > 12) focusClockVoiceBlobs.delete(focusClockVoiceBlobs.keys().next().value);
-  return key;
+  return focusClockRememberVoiceBlob(key, result.blob);
 }
 
 function focusClockMidCueProgresses(durationMinutes, chance) {

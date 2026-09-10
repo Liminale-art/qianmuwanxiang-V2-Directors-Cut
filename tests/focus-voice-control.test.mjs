@@ -8,7 +8,7 @@ import {focusFixture} from './helpers/focus-lock-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 const names=['focusClockVoiceContext','focusClockVoiceBindingKey','focusClockVoiceBindingActive','focusClockCancelVoiceWork',
-  'focusClockPreparation','focusClockSpeech','focusClockSetVoiceEnabled','focusClockSynthVoiceCue','focusClockPrepareVoiceCues','focusClockPlayVoiceCue','focusClockPlayCompletionAlert','focusClockRegenerateVoiceCue',
+  'focusClockPreparation','focusClockSpeech','focusClockSetVoiceEnabled','focusClockRememberVoiceBlob','focusClockSynthVoiceCue','focusClockPrepareVoiceCues','focusClockPlayVoiceCue','focusClockPlayCompletionAlert','focusClockRegenerateVoiceCue',
   'focusClockMaybePlayMidCue','focusClockCleanVoiceLine','focusClockBuildVoiceParams','focusClockBindVoice'];
 function fixture(overrides={}){
   const env=focusFixture({status:'running',sessionToken:'round',endsAt:160000,voiceProfiles:{'character:A':{minimax:{enabled:true,voice:{name:'甲',voiceId:'voice-A'},revision:1}}},...overrides});
@@ -56,6 +56,18 @@ test('a current persistent audio cache hit is reused without synthesizing or rew
   const key=await c.focusClockSynthVoiceCue({speaker:'甲',params:{providerId:'minimax'}},'text');
   assert.equal(key,'cache');assert.equal(reads,1);assert.equal(counts.synth,0);assert.equal(counts.put,0);assert.equal(prunes,0);
   assert.equal(c.focusClockVoiceBlobs.get(key),blob);
+});
+
+test('persistent cache hits share the twelve-item memory ceiling without deleting or rewriting stored audio',async()=>{
+  const {c,counts}=fixture();let prunes=0;
+  const disk=new Map(Array.from({length:25},(_,i)=>[`cached-${i}`,new Blob([String(i)])]));
+  c.cacheKeyForTts=(_provider,params)=>params.text;c.blobStore.getAudio=async key=>({blob:disk.get(key)});
+  c.blobStore.pruneAudio=async()=>prunes++;
+  for(const key of disk.keys())await c.focusClockSynthVoiceCue({speaker:'甲',params:{providerId:'minimax'}},key);
+  assert.equal(c.focusClockVoiceBlobs.size,12);assert.equal(c.focusClockVoiceBlobs.has('cached-0'),false);
+  assert.equal(c.focusClockVoiceBlobs.get('cached-24'),disk.get('cached-24'));
+  await c.focusClockSynthVoiceCue({speaker:'甲',params:{providerId:'minimax'}},'cached-24');assert.equal(c.focusClockVoiceBlobs.size,12);
+  assert.equal(disk.size,25);assert.equal(counts.synth,0);assert.equal(counts.put,0);assert.equal(prunes,0);
 });
 
 test('cancelling during an already admitted cache write prevents pruning and session-memory promotion',async()=>{
