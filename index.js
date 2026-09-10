@@ -24701,7 +24701,7 @@ function focusClockOpenVoiceDrawer() {
     button.disabled = true;
     const icon = button.querySelector('i'); setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
     await focusClockRegenerateVoiceCue(cue);
-    focusClockOpenVoiceDrawer();
+    if (focusClockVoiceDrawerEl === portal && portal.isConnected) focusClockOpenVoiceDrawer();
   }));
   portal.querySelectorAll('.sd-focus-cue-fav').forEach((button) => button.addEventListener('click', async (event) => {
     const cue = cueFor(event.currentTarget);
