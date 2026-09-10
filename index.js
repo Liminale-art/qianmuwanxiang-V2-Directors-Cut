@@ -30299,9 +30299,33 @@ function coreadMoveBooksToCollection(bookIds, collectionId = '') {
   return target || null;
 }
 
+function coreadCaptureCollectionMutation(collectionId = '') {
+  const owner = settings, c = coread(), requestId = coreadOpenRequestId;
+  const runtime = globalThis[RUNTIME_LOCK_KEY];
+  const modal = document.getElementById(MODAL_ID), page = modal?.querySelector('.sd-reader-lib');
+  const signature = (collection) => collection ? JSON.stringify([
+    collection.id, collection.name, collection.bookIds, collection.createdAt, collection.updatedAt,
+  ]) : null;
+  const baseline = signature((c.collections || []).find((item) => item.id === collectionId));
+  const isCurrent = () => settings === owner && settings.enabled && settings.coread === c
+    && coreadOpenRequestId === requestId && !!runtime && globalThis[RUNTIME_LOCK_KEY] === runtime
+    && !!page?.isConnected && !page.hidden && modal.classList.contains('open');
+  const currentCollection = () => {
+    if (!isCurrent() || !baseline) return null;
+    const collection = (c.collections || []).find((item) => item.id === collectionId);
+    if (signature(collection) !== baseline) {
+      toast('合集已变化，请重新打开后编辑。', 'warning'); return null;
+    }
+    return collection;
+  };
+  return { isCurrent, currentCollection };
+}
+
 async function coreadCreateCollection(defaultName = '') {
+  const mutation = coreadCaptureCollectionMutation();
+  if (!mutation.isCurrent()) return null;
   const raw = await promptInput('新建书架合集', '', defaultName);
-  if (raw == null) return null;
+  if (raw == null || !mutation.isCurrent()) return null;
   const name = String(raw || '').trim().slice(0, 60);
   if (!name) { toast('合集名称不能为空。', 'warning'); return null; }
   const collections = coreadCollections();
@@ -30317,14 +30341,18 @@ async function coreadCreateCollection(defaultName = '') {
 async function coreadRenameCollection(collectionId) {
   const collection = coreadCollections().find((item) => item.id === collectionId);
   if (!collection) return false;
+  const mutation = coreadCaptureCollectionMutation(collectionId);
+  if (!mutation.isCurrent()) return false;
   const raw = await promptInput('重命名合集', '合集名称：', collection.name);
-  if (raw == null) return false;
+  if (raw == null || !mutation.isCurrent()) return false;
+  const current = mutation.currentCollection();
+  if (!current) return false;
   const name = String(raw || '').trim().slice(0, 60);
   if (!name) { toast('合集名称不能为空。', 'warning'); return false; }
-  if (coreadCollections().some((item) => item.id !== collection.id && item.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+  if (coread().collections.some((item) => item.id !== current.id && item.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
     toast('已有同名合集。', 'warning'); return false;
   }
-  collection.name = name; collection.updatedAt = Date.now(); saveSettings();
+  current.name = name; current.updatedAt = Date.now(); saveSettings();
   return true;
 }
 
@@ -30332,8 +30360,11 @@ async function coreadDissolveCollection(collectionId) {
   const c = coread();
   const collection = coreadCollections().find((item) => item.id === collectionId);
   if (!collection) return false;
+  const mutation = coreadCaptureCollectionMutation(collectionId);
+  if (!mutation.isCurrent()) return false;
   if (!await confirmDialog(`确定解散「${collection.name}」？`, '')) return false;
-  c.collections = coreadCollections().filter((item) => item.id !== collectionId);
+  if (!mutation.currentCollection()) return false;
+  c.collections = c.collections.filter((item) => item.id !== collectionId);
   if (c.libCollectionId === collectionId) c.libCollectionId = '';
   saveSettings();
   return true;
