@@ -132,3 +132,135 @@ export function renderCoreadApiActionsView(kind) {
       <button type="button" class="sd-reader-mbtn sd-reader-mem-save" data-kind="${kind}"><i class="fa-solid fa-bookmark"></i>保存预设</button>
     </div>`;
 }
+
+export function renderCoreadInjectionRowsView({injected, recall}, htmlEscape, coreadSliceSourceClass, coreadSliceSourceLabel) {
+  const batchOf = (s) => s.compressed ? '合并' : (s.batch || '?');
+  // 锚定词高亮：用召回内核算出的真实 hits（已过同义词归一），非裸字符串匹配。近景切片是无条件注入·不算锚定·不高亮。
+  const kwTags = (h) => {
+    const anchorSet = new Set(h.recent ? [] : (h.hits || []));
+    return (h.slice.keywords || []).map((k) => `<span class="sd-reader-slice-key ${anchorSet.has(k) ? 'on' : ''}">${htmlEscape(k)}</span>`).join('');
+  };
+  // 切片来源徽标 HTML（三来源统一命名·同色系区分）
+  const srcBadge = (s) => `<span class="sd-reader-src-badge ${coreadSliceSourceClass(s)}">${coreadSliceSourceLabel(s)}</span>`;
+  // ① 实际注入：显完整总结全文（书籍/对谈/主线来源徽标 + 近景/检索通道标）
+  const injCards = injected.length
+    ? injected.map((h) => `
+      <div class="sd-reader-injslice inj">
+        <div class="sd-reader-injslice-head"><span class="sd-reader-slice-batch">#${batchOf(h.slice)}</span>${srcBadge(h.slice)}<span class="sd-reader-injslice-tag${h.recent ? ' recent' : ''}">${h.recent ? '近景' : '检索'}</span></div>
+        <div class="sd-reader-injslice-full">${htmlEscape(h.slice.summary || '')}</div>
+        <div class="sd-reader-injslice-keys">${kwTags(h)}</div>
+      </div>`).join('')
+    : '<div class="sd-reader-mempty">尚无注入记录</div>';
+
+  // ② 召回候选：编号 + 来源徽标 + 关键词（锚定词点亮）+ 命中数 + 分数
+  const candRows = recall.length
+    ? recall.map((h) => `
+      <div class="sd-reader-injrow">
+        <span class="sd-reader-slice-batch">#${batchOf(h.slice)}</span>
+        ${srcBadge(h.slice)}
+        <span class="sd-reader-injrow-keys">${kwTags(h)}</span>
+        <span class="sd-reader-injrow-score">命中 ${h.hits.length} · 分 ${(h.score || 0).toFixed(2)}</span>
+      </div>`).join('')
+    : '<div class="sd-reader-mempty">无候选。</div>';
+
+  return {injCards, candRows};
+}
+
+export function renderCoreadInjectionAnchorsView(roundAnchors, htmlEscape) {
+  const anchorBar = roundAnchors.length
+    ? `<div class="sd-reader-anchorbar"><span class="sd-reader-anchorbar-lab">本轮关键词</span>${roundAnchors.map((k) => `<span class="sd-reader-slice-key on">${htmlEscape(k)}</span>`).join('')}</div>`
+    : '<div class="sd-reader-anchorbar sd-muted">本轮没有命中切片关键词。</div>';
+
+  return anchorBar;
+}
+
+export function renderCoreadInjectionDictionaryView({curBook, curBound, isDefaultBook, dictOptions}, htmlEscape) {
+  let dictRows = '';
+  if (curBook && curBook.pairs) {
+    dictRows = Object.entries(curBook.pairs).map(([canon, aliases]) => `
+      <div class="sd-reader-dict-row" data-bookid="${htmlEscape(curBook.id)}" data-canon="${htmlEscape(canon)}">
+        <span class="sd-reader-dict-canon">${htmlEscape(canon)}</span>
+        <span class="sd-reader-dict-aliases">
+          ${(aliases || []).map((a) => `<span class="sd-reader-dict-alias">${htmlEscape(a)}</span>`).join('')}
+        </span>
+        <span class="sd-reader-dict-row-acts">
+          <button type="button" class="sd-reader-dict-row-edit" title="编辑"><i class="fa-solid fa-pencil"></i></button>
+          <button type="button" class="sd-reader-dict-row-del" title="删除"><i class="fa-solid fa-trash"></i></button>
+        </span>
+      </div>`).join('');
+  }
+  if (!dictRows) dictRows = '<div class="sd-reader-mempty">点下方「新增词条」添加。</div>';
+  const dictBody = `
+    <div class="sd-reader-dict-selector">
+      <select class="sd-reader-minput sd-reader-dict-booksel">
+        ${dictOptions}
+      </select>
+      ${curBook ? `<span class="sd-reader-dict-book-acts">
+        ${isDefaultBook ? '' : `<button type="button" class="sd-reader-mbtn sd-reader-dictbook-rename" data-id="${htmlEscape(curBook.id)}" title="重命名词册"><i class="fa-solid fa-pen"></i></button>
+        <button type="button" class="sd-reader-mbtn sd-reader-dictbook-delbtn" data-id="${htmlEscape(curBook.id)}" title="删除此词册"><i class="fa-solid fa-trash"></i></button>`}
+      </span>` : ''}
+    </div>
+    <div class="sd-reader-dict-rows">${dictRows}</div>
+    <div class="sd-reader-mactions">
+      <button type="button" class="sd-reader-mbtn sd-reader-dictbook-add">新建词册</button>
+      <button type="button" class="sd-reader-mbtn sd-reader-dict-addentry">新增词条</button>
+      <button type="button" class="sd-reader-mbtn sd-reader-dictbook-bind">${curBound ? '解除绑定' : '绑定至此聊天'}</button>
+    </div>`;
+  return dictBody;
+}
+
+export function renderCoreadInjectionPanelView({injectedCount, hasLastInjection, liChannelLabel, injCards, blockedCount, config, scanN, mainlineSwitch, dictPairCount, curBound, dictBody, scanText, anchorBar, candidateCount, candRows, targetClass}, htmlEscape) {
+  return `
+    <details class="sd-reader-mcard${targetClass}" open>
+      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-syringe"></i> 实际注入 <span class="sd-reader-inj-tag">${injectedCount} 条</span>${hasLastInjection ? `<span class="sd-reader-inj-tag">最近一次·${liChannelLabel}</span>` : ''}</summary>
+      <div class="sd-reader-injslices">${injCards}</div>
+    </details>
+    <div class="sd-reader-mcard">
+      <div class="sd-reader-mcard-head"><i class="fa-solid fa-sliders"></i> 注入设置</div>
+      ${blockedCount ? `<div class="sd-reader-mhint"><i class="fa-solid fa-shield-halved"></i> 当前已隔离 ${blockedCount} 条超过阅读进度的记忆；它们仍保存在档案中，读到相应位置后自动恢复。</div>` : ''}
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">检索命中注入数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-recall" min="0" step="1" value="${config.recallCount}"></div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">近景切片注入数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-recent" min="0" step="1" value="${config.recentInject}"></div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">语境扫描对话条数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-scan" min="1" max="50" step="1" value="${scanN}"></div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">重排后保留数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-reranktop" min="1" step="1" value="${config.rerankTopN}"></div>
+    </div>
+    <div class="sd-reader-mcard">
+      <div class="sd-reader-mcard-head"><i class="fa-solid fa-arrow-right-arrow-left"></i> 主线联动</div>
+      <div class="sd-reader-mhint">根据主线当下语境将伴读记忆切片召回注入。</div>
+      <div class="sd-reader-mrow">
+        <span class="sd-reader-mrow-lab">开启主线联动</span>
+        ${mainlineSwitch}
+      </div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">检索命中注入数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-recall" min="0" step="1" value="${config.mainlineRecall}"${config.mainlineFeedback ? '' : ' disabled'}></div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">近景切片注入数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-recent" min="0" step="1" value="${config.mainlineRecent}"${config.mainlineFeedback ? '' : ' disabled'}></div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">注入深度</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-depth" min="0" step="1" value="${config.mainlineDepth}"${config.mainlineFeedback ? '' : ' disabled'}></div>
+    </div>
+    <details class="sd-reader-mcard" open>
+      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-book-bookmark"></i> 检索词典 <span class="sd-reader-inj-tag">${dictPairCount}</span><span class="sd-reader-inj-tag${curBound ? ' on' : ''}">${curBound ? '已绑定' : '未绑定'}</span></summary>
+      ${dictBody}
+    </details>
+    <details class="sd-reader-mcard">
+      <summary class="sd-reader-mcard-head">
+        <i class="fa-solid fa-diagram-project"></i> 召回管线
+        <span class="sd-reader-inj-tag${config.vectorEnabled ? ' on' : ''}">向量</span>
+        <span class="sd-reader-inj-tag${config.rerankEnabled ? ' on' : ''}">重排</span>
+      </summary>
+      <div class="sd-reader-pipe-step">
+        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-magnifying-glass"></i> ① 语境扫描（最近 ${scanN} 条对话）</div>
+        <div class="sd-reader-scanbox">${htmlEscape(scanText)}</div>
+      </div>
+      <div class="sd-reader-pipe-step">
+        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-anchor"></i> ② 关键词锚定</div>
+        ${anchorBar}
+      </div>
+      <div class="sd-reader-pipe-step">
+        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-vector-square"></i> ③ 向量召回 <span class="sd-reader-inj-tag${config.vectorEnabled ? ' on' : ''}">向量</span></div>
+      </div>
+      <div class="sd-reader-pipe-step">
+        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-arrow-down-wide-short"></i> ④ 重排精排 <span class="sd-reader-inj-tag${config.rerankEnabled ? ' on' : ''}">重排</span></div>
+      </div>
+      <div class="sd-reader-pipe-step">
+        <div class="sd-reader-pipe-lab"><i class="fa-solid fa-list-check"></i> ⑤ 召回候选（${candidateCount}）</div>
+        <div class="sd-reader-injrows">${candRows}</div>
+      </div>
+    </details>`;
+}
