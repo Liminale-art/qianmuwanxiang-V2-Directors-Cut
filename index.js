@@ -24259,18 +24259,23 @@ function focusClockShowPanel() {
 }
 
 async function focusClockRestoreLock() {
-  if (!settings?.focusClock?.lock) return;
+  if (!settings?.enabled || !settings?.focusClock?.lock) return;
   focusClockOwnerId();
   const result = inspectFocusLock(settings.focusClock, focusClockLockOwner, Date.now());
   if (result.reason === 'absent') return; // Another tab/device is not silently enrolled.
   if (!result.active) {
     focusClockReleaseLock(result.reason === 'invalid' ? '专注锁定记录异常，已恢复普通计时。' : ''); return;
   }
+  const f = settings.focusClock, entryEpoch = focusClockEntryEpoch, token = result.lock.token;
+  const isCurrent = () => entryEpoch === focusClockEntryEpoch && settings.enabled && settings.focusClock === f
+    && f.lock === result.lock && f.sessionToken === token && result.lock.token === token;
   try {
     openModal('focus');
-    if (result.lock.activity === 'reading' && !await focusClockEnterReading()) { focusClockReleaseLock('原阅读页暂不可用，已暂停并解除锁定。'); return; }
+    const ready = result.lock.activity !== 'reading' || await focusClockEnterReading();
+    if (!isCurrent()) return;
+    if (!ready) { focusClockReleaseLock('原阅读页暂不可用，已暂停并解除锁定。'); return; }
     focusClockAttachLock();
-  } catch (_) { focusClockReleaseLock('专注页面恢复失败，已安全解除锁定。'); }
+  } catch (_) { if (isCurrent()) focusClockReleaseLock('专注页面恢复失败，已安全解除锁定。'); }
 }
 
 function focusClockState() {

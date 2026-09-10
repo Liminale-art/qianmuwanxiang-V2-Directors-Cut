@@ -98,6 +98,26 @@ test('a failed reading restoration releases the lock and pauses ordinary timing'
   const {c,f}=focusFixture();await c.focusClockEnableLock();f.lock.activity='reading';f.lock.bookId='book';f.sessionBookId='book';
   c.focusClockEnterReading=async()=>false;await c.focusClockRestoreLock();assert.equal(f.lock,null);assert.equal(f.status,'paused');
 });
+
+test('late restoration cannot release or attach a replacement lock, even when the old read fails',async()=>{
+  for(const change of ['stop','state','lock','token'])for(const outcome of ['ready','missing','error']) {
+    const {c,f,calls,notices}=focusFixture();await c.focusClockEnableLock();
+    Object.assign(f.lock,{activity:'reading',bookId:'book'});f.sessionBookId='book';
+    let resolve,reject;c.focusClockEnterReading=()=>new Promise((yes,no)=>{resolve=yes;reject=no;});
+    const old=c.focusClockRestoreLock();
+    if(change==='stop'){
+      Object.assign(c,{focusClockRuntime:null,focusClockResetMedia:()=>{},focusClockVoiceCache:{clear:()=>{}},focusClockCloseVoiceDrawer:()=>{}});
+      vm.runInContext(section('stopFocusClockRuntime'),c);c.stopFocusClockRuntime();
+    }
+    if(change==='state')c.settings.focusClock={...f,lock:{...f.lock}};
+    if(change==='lock')f.lock={...f.lock};
+    if(change==='token'){f.lock.token='new-round';f.sessionToken='new-round';}
+    const current=c.settings.focusClock,lock=current.lock,before=JSON.stringify(current);calls.length=0;notices.length=0;
+    if(outcome==='error')reject(Error('late failure'));else resolve(outcome==='ready');await old;
+    assert.equal(current.lock,lock,`${change}/${outcome}`);assert.equal(JSON.stringify(current),before);
+    assert.deepEqual(calls,[],`${change}/${outcome}`);assert.deepEqual(notices,[]);
+  }
+});
 test('refreshing an active task keeps the original deadline and installs the guard without re-starting',async()=>{
   const {c,f}=focusFixture();await c.focusClockEnableLock();const deadline=f.endsAt;const token=f.sessionToken;
   await c.focusClockRestoreLock();assert.equal(f.endsAt,deadline);assert.equal(f.sessionToken,token);
