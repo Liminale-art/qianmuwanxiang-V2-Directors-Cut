@@ -1,5 +1,5 @@
 // Development-only: use Node's module parser/linker; never execute the application.
-// Keep the existing command path; this gate grows with governed UI modules, including reader identity.
+// Keep the existing command path; this gate grows with governed UI modules, including reader views.
 // Run with: node --experimental-vm-modules scripts/check-focus-boundaries.mjs
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -22,6 +22,7 @@ const rules = {
   'qianmu-focus-cue-records.js': [],
   'qianmu-focus-drawer.js': [],
   'qianmu-reader-identity-view.js': [],
+  'qianmu-reader-center-view.js': [],
 };
 if (!vm.SourceTextModule) throw new Error('Run this development check with --experimental-vm-modules.');
 
@@ -59,5 +60,7 @@ assert.throws(()=>inspect(change('qianmu-focus-time.js','export function broken(
 assert.throws(()=>inspect(sources,entry+"\nimport './qianmu-focus-time.js?v=other';"),/canonical module identity/);
 assert.throws(()=>inspect(change('qianmu-reader-identity-view.js',"import './index.js';"),entry),/boundary changed/);
 assert.throws(()=>inspect(sources,entry+"\nimport './qianmu-reader-identity-view.js?v=other';"),/canonical module identity/);
+assert.throws(()=>inspect(change('qianmu-reader-center-view.js',"import './index.js';"),entry),/boundary changed/);
+assert.throws(()=>inspect(sources,entry+"\nimport './qianmu-reader-center-view.js?v=other';"),/canonical module identity/);
 assert.doesNotThrow(()=>inspect(change('qianmu-focus-time.js',sources['qianmu-focus-time.js']+"\n// import './index.js';\nthrow new Error('must not execute');"),entry));
-console.log(JSON.stringify({modules:Object.keys(rules).length,linked:true,executed:false,negativeFixtures:7,nonExecutionFixture:true,scope:'static imports/re-exports and canonical entry paths only',dependencies:rules}));
+console.log(JSON.stringify({modules:Object.keys(rules).length,linked:true,executed:false,negativeFixtures:9,nonExecutionFixture:true,scope:'static imports/re-exports and canonical entry paths only',dependencies:rules}));
