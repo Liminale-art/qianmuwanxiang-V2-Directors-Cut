@@ -218,6 +218,36 @@ test('scene admission is checked after asynchronous macro resolution, before eit
   assert.match(section('stopFocusClockRuntime'),/focusClockCancelVoiceWork\(\)/);
 });
 
+test('cancel during companion macro resolution prevents both external and host model submissions',async()=>{
+  for(const mode of ['external','host']) {
+    const {c}=fixture(),wait=pending();let current=true,requests=0;
+    c.settings.providerMode=mode;c.coreadResolveCompanionMacro=()=>wait.promise;c.cleanContextText=String;
+    c.FOCUS_CLOCK_RELATIONS={neutral:{label:'普通',rule:'不推断关系'}};c.AbortController=AbortController;
+    c.validateApiSettings=()=>true;c.callExternalApi=async()=>requests++;c.callSillyTavernModel=async()=>requests++;
+    vm.runInContext(section('focusClockGenerateSceneLines'),c);
+    const run=c.focusClockGenerateSceneLines({relation:'neutral',character:{description:'source'},persona:{},speaker:'甲'},1,'read',{isCurrent:()=>current});
+    const rejection=assert.rejects(run,{name:'AbortError'});current=false;wait.resolve('resolved');await rejection;
+    assert.equal(requests,0,mode);
+  }
+});
+
+test('scene transport preserves external admission, host fallback, fixed limits and bounded cleaned output',async()=>{
+  for(const [mode,valid,expected] of [['external',true,'external'],['external',false,'host'],['host',true,'host']]) {
+    const {c}=fixture();let sent,checks=0;c.settings.providerMode=mode;
+    c.coreadResolveCompanionMacro=async()=> 'resolved identity';c.cleanContextText=String;c.extractJson=JSON.parse;c.AbortController=AbortController;
+    c.FOCUS_CLOCK_RELATIONS={neutral:{label:'普通',rule:'不推断关系'}};c.validateApiSettings=()=>{checks++;return valid;};
+    const output=JSON.stringify({lines:['line 1: “继续。”','   ','角色2：第二句','第三句']});
+    c.callExternalApi=async(messages,unused,options,controller)=>{sent={kind:'external',messages,unused,options,controller};return output;};
+    c.callSillyTavernModel=async(user,system,unused,options)=>{sent={kind:'host',user,system,unused,options};return output;};
+    vm.runInContext(section('focusClockGenerateSceneLines'),c);
+    const result=await c.focusClockGenerateSceneLines({relation:'unknown',character:{},persona:{},speaker:'甲'},2,'read');
+    assert.deepEqual(Array.from(result),['继续。','第二句']);assert.equal(sent.kind,expected);assert.equal(sent.unused,null);
+    assert.equal(checks,mode==='external'?1:0);
+    if(expected==='external') {assert.equal(sent.messages[0].role,'system');assert.equal(sent.messages[1].role,'user');assert.equal(sent.options.maxTokens,220);assert.equal(sent.options.temperature,.82);assert.equal(sent.options.stream,false);assert.ok(sent.controller instanceof AbortController);}
+    else {assert.match(sent.user,/resolved identity/);assert.match(sent.system,/普通/);assert.equal(sent.options.max_tokens,220);assert.equal(sent.options.stream_response,false);}
+  }
+});
+
 test('role profiles share one voice across chats but keep same-name characters and providers separate',()=>{
   const {c,f,host,setProvider}=fixture();host.chatId='chatB';assert.equal(c.focusClockVoiceContext().voice.voiceId,'voice-A');
   host.characters[1].name='甲';host.characterId=1;assert.equal(c.focusClockVoiceContext().voice,null);
