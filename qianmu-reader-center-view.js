@@ -66,7 +66,7 @@ export function renderCoreadSummaryItemsView(items, htmlEscape) {
     <details class="sd-reader-promptblock sd-reader-sumitem" data-id="${htmlEscape(it.id)}">
       <summary class="sd-reader-promptblock-lab">
         <span><i class="fa-solid fa-comments"></i> ${htmlEscape(it.title)}</span>
-        <span class="sd-reader-promptblock-acts" onclick="event.stopPropagation()">
+        <span class="sd-reader-promptblock-acts" onclick="event.preventDefault()">
           <button type="button" class="sd-reader-mbtn sd-reader-sumitem-up" data-id="${htmlEscape(it.id)}" title="上移"${i === 0 ? ' disabled' : ''}><i class="fa-solid fa-chevron-up"></i></button>
           <button type="button" class="sd-reader-mbtn sd-reader-sumitem-down" data-id="${htmlEscape(it.id)}" title="下移"${i === items.length - 1 ? ' disabled' : ''}><i class="fa-solid fa-chevron-down"></i></button>
           ${it.builtin ? '' : `<button type="button" class="sd-reader-mbtn sd-reader-sumitem-del" data-id="${htmlEscape(it.id)}" title="删除"><i class="fa-solid fa-trash"></i></button>`}

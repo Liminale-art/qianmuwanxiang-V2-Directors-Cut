@@ -3,6 +3,13 @@ import assert from 'node:assert/strict';
 import {createCoreadRecordsFixture} from './helpers/coread-center-fixture.mjs';
 
 const overview=html=>html.slice(html.indexOf('<section class="sd-reader-memory-overview'),html.indexOf('</section>')+10);
+test('summary tools suppress native collapse but allow delegated save and reorder clicks to reach the page',()=>{
+  const {c,m}=createCoreadRecordsFixture();m.summaryItems=[{id:'custom',title:'Title',text:'text',order:1}];
+  const html=c.renderMemRecordsTab(m),tools=[...html.matchAll(/<span class="sd-reader-promptblock-acts"[^>]*>/g)].map(x=>x[0]);
+  assert.equal(tools.length,3);
+  for(const tool of tools){assert.match(tool,/onclick="event.preventDefault\(\)"/);assert.doesNotMatch(tool,/stopPropagation/);}
+});
+
 test('records render preserves binding initialization and safety-read order without altering reader history',()=>{
   const {c,m,inputs,trace}=createCoreadRecordsFixture();delete inputs.store.coreadBound;
   const before=JSON.stringify(c.readerDialog),html=c.renderMemRecordsTab(m),card=overview(html);

@@ -31892,7 +31892,7 @@ function renderMemRecordsTab(m) {
       <details class="sd-reader-promptblock">
         <summary class="sd-reader-promptblock-lab">
           <i class="fa-solid fa-flask-vial"></i> 蒸馏书籍提示词
-          <span class="sd-reader-promptblock-acts" onclick="event.stopPropagation()">
+          <span class="sd-reader-promptblock-acts" onclick="event.preventDefault()">
             <button type="button" class="sd-reader-mbtn sd-reader-distillprompt-save" title="保存"><i class="fa-solid fa-check"></i></button>
           </span>
         </summary>
@@ -31901,7 +31901,7 @@ function renderMemRecordsTab(m) {
       <details class="sd-reader-promptblock">
         <summary class="sd-reader-promptblock-lab">
           <i class="fa-solid fa-arrow-right-arrow-left"></i> 主线选择总结提示词
-          <span class="sd-reader-promptblock-acts" onclick="event.stopPropagation()">
+          <span class="sd-reader-promptblock-acts" onclick="event.preventDefault()">
             <button type="button" class="sd-reader-mbtn sd-reader-mainlineprompt-save" title="保存"><i class="fa-solid fa-check"></i></button>
           </span>
         </summary>

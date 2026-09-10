@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {readFile,mkdir} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
-import {coreadCenterFunctions} from '../tests/helpers/coread-center-fixture.mjs';
+import {coreadCenterFunctions,coreadRecordsFunctions} from '../tests/helpers/coread-center-fixture.mjs';
+import {normalizeCoreadSource} from '../qianmu-reader.js';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
 const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
@@ -13,6 +14,7 @@ function between(start,end){const a=source.indexOf(start),b=source.indexOf(end,a
 const click=between("    if (e.target.closest('.sd-reader-tour-skip'))", "    if (e.target.closest('.sd-reader-guide-replay'))");
 const fileChange=between("    const packInput = e.target.closest('.sd-reader-pack-import-input');",'    const m = coreadMemory();');
 const guardChange=between("    if (e.target.closest('.sd-reader-spoiler-filter'))",'\n');
+const recordClick=between("    if (e.target.closest('.sd-reader-distillprompt-save'))", "    if (e.target.closest('.sd-reader-sumitem-export'))");
 await mkdir(new URL('../dist/local-qa/',import.meta.url),{recursive:true});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
 const context=await browser.newContext({hasTouch:true}),errors=[];let external=0;
@@ -73,6 +75,40 @@ try{
     await page.locator('.sd-reader-tour-skip').tap();assert.deepEqual(await page.evaluate(()=>[coreadGuideStep,memory.guideSeen]),[null,true]);
     layouts.push({width,boxes,nativeInputHit:hit});
   }
+  await page.evaluate(({functions,normalize,handler})=>{
+    coreadGuideStep=null;window.reader={normalizeCoreadSource:window.eval('('+normalize+')')};
+    window.getChatStore=()=>({coreadBound:[]});window.coreadWorldSyncBusy=false;
+    window.DEFAULT_DISTILL_TEXT_PROMPT='fixture';window.DEFAULT_MAINLINE_SUMMARY_PROMPT='fixture';
+    window.toast=()=>{};readerDialog.messages=[];readerDialog.cursor=0;
+    window.eval(functions);
+    window.rerenderMore=()=>{const root=document.getElementById('center');root.innerHTML=`<div class="sd-reader-mtab-body">${renderMemRecordsTab(memory)}</div>`;root.querySelectorAll('details').forEach(n=>n.open=true);applyQianmuIcons(document.getElementById('sd-reader-portal'));};
+    window.resetRecords=()=>{memory={worldSyncMode:'none',summaryItems:[{id:'fixed',title:'内置条目',text:'fixed',order:1,builtin:true},{id:'custom',title:'自定义<&',text:'custom',order:2}]};calls.save=0;rerenderMore();};
+    document.getElementById('center').addEventListener('click',new Function('e','const m=coreadMemory(),morePage=document.getElementById("center");'+handler));
+    resetRecords();
+  },{functions:coreadRecordsFunctions,normalize:normalizeCoreadSource.toString(),handler:recordClick});
+  const recordActions=[];
+  for(const width of [320,360,430,1100])for(const action of ['click','tap','keyboard']){
+    await page.setViewportSize({width,height:850});await page.evaluate(()=>resetRecords());
+    const activate=async selector=>{const n=page.locator(selector);if(action==='keyboard'){await n.focus();await n.press('Enter');}else await n[action]();};
+    assert.equal(await page.locator('.sd-reader-sumitem-del[data-id="fixed"]').count(),0);
+    await activate('.sd-reader-sumitem-up[data-id="custom"]');
+    assert.deepEqual(await page.evaluate(()=>[memory.summaryItems.find(x=>x.id==='custom').order,calls.save]),[1,1]);
+    await activate('.sd-reader-sumitem-down[data-id="custom"]');
+    assert.deepEqual(await page.evaluate(()=>[memory.summaryItems.find(x=>x.id==='custom').order,calls.save]),[2,2]);
+    for(const [selector,key,value]of [['distillprompt','distillTextPrompt','new distill'],['mainlineprompt','mainlineSummaryPrompt','new mainline']]){
+      await page.locator(`.sd-reader-${selector}-text`).fill('  '+value+'  ');
+      const saves=await page.evaluate(()=>calls.save);await activate(`.sd-reader-${selector}-save`);
+      assert.equal(await page.evaluate(key=>memory[key],key),value);assert.equal(await page.evaluate(()=>calls.save),saves+1);
+      assert.equal(await page.locator(`.sd-reader-${selector}-save`).evaluate(n=>n.closest('details').open),true);
+    }
+    const idle=await page.evaluate(()=>calls.save);
+    await page.locator('.sd-reader-sumitem[data-id="custom"] .sd-reader-promptblock-acts').evaluate(n=>n.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true})));
+    assert.equal(await page.locator('.sd-reader-sumitem[data-id="custom"]').evaluate(n=>n.open),true);
+    assert.equal(await page.evaluate(()=>calls.save),idle);
+    await activate('.sd-reader-sumitem-del[data-id="custom"]');
+    assert.deepEqual(await page.evaluate(()=>memory.summaryItems.map(x=>x.id)),['fixed']);assert.equal(await page.evaluate(()=>calls.save),idle+1);
+    recordActions.push({width,action,once:true});
+  }
   assert.deepEqual(errors,[]);assert.equal(external,0);
-  console.log(JSON.stringify({layouts,realEventBranches:true,realTemplates:true,external,errors,limits:'isolated DOM; no real data import, host navigation, guide positioning or physical iOS validation'}));
+  console.log(JSON.stringify({layouts,recordActions,realEventBranches:true,realTemplates:true,external,errors,limits:'isolated DOM; no real data import, host navigation, guide positioning, record expansion memory or physical iOS validation'}));
 }finally{await context.close();await browser.close();}
