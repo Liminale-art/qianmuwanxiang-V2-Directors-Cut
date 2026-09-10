@@ -20,6 +20,7 @@
     "qianmu-focus-drawer.js",
     "qianmu-reader-identity-view.js",
     "qianmu-reader-center-view.js",
+    "qianmu-reader-panel-view.js",
     "qianmu-user-identity.js",
     "qianmu-user-alias.js",
     "qianmu-user-alias-bindings.js",

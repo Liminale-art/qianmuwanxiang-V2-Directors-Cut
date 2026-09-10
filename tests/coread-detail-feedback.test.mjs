@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import {createCoreadPanelFixture} from './helpers/coread-panel-fixture.mjs';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 
@@ -12,7 +13,7 @@ const libraryBinding = source.slice(source.indexOf('function bindLibraryViewEven
 assert.match(libraryBinding, /等 \$\{ids\.length\} 本书/, '批量删书提示必须只展示首本书与总数');
 assert.doesNotMatch(libraryBinding, /\.join\('、'\)/, '批量删书提示不得罗列全部书名');
 
-assert.match(source, /声音抽屉是空的/, '语音条空白态必须使用约定短文案');
+assert.match(createCoreadPanelFixture().renderReaderVoiceClips(), /声音抽屉是空的/, '语音条空白态必须使用约定短文案');
 assert.match(source, /支持 EPUB、MOBI、TXT/, '空书架必须提示可导入格式');
 assert.match(source, /sd-reader-noteedit-quote'\)\.textContent = text;/, '长笔记摘录必须完整显示，不得按字符截断');
 assert.doesNotMatch(source, /text:\s*String\(text \|\| ''\)\.slice\(/, '新建摘录不得截断用户选择的长文本');

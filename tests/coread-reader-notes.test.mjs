@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import {createCoreadPanelFixture} from './helpers/coread-panel-fixture.mjs';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
@@ -18,7 +19,7 @@ assert.match(stage, /min="10" max="20"[\s\S]*>页眉</, '摘录字号必须限�
 assert.match(stage, /sd-reader-excerpt-zoom-out[\s\S]*sd-reader-excerpt-zoomval[\s\S]*sd-reader-excerpt-zoom-fit/, '摘录预览必须提供缩放百分比与完整适应操作');
 assert.match(stage, />样式<[^]*sd-reader-excerpt-fontfamily[^]*sd-reader-excerpt-font-add[^]*fa-solid fa-plus/, '摘录面板必须以样式命名并用加号添加 CSS 字体');
 
-const notes = source.slice(source.indexOf('function renderReaderNotes'), source.indexOf('function renderReaderMarks'));
+const notes = createCoreadPanelFixture().renderReaderNotes({notes:[{id:'note',kind:'highlight',chapterIndex:0,text:'excerpt',annotation:'note',tags:['tag']}]});
 assert.match(notes, /sd-reader-notes-search[\s\S]*sd-reader-notes-filter[\s\S]*favorite/, '笔记列表必须支持搜索、类型筛选和收藏');
 assert.match(notes, /sd-reader-note-copy[\s\S]*sd-reader-note-image[\s\S]*sd-reader-note-edit/, '每条摘录必须提供复制、图片与编辑操作');
 assert.match(notes, /sd-reader-note-tools-toggle[\s\S]*sd-reader-note-tools" hidden/, '笔记卡工具必须在右侧折叠后按需展开');
