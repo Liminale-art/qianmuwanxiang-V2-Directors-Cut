@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {renderFocusClockView,updateFocusClockView} from '../qianmu-focus-view.js';
 import {focusFixture} from './helpers/focus-lock-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
@@ -9,7 +10,7 @@ function viewFixture(overrides={}) {
   const env=focusFixture(overrides),{c,f}=env,trace=[];
   const data={books:[],today:[],week:{days:Array.from({length:7},()=>({minutes:0})),history:[],minutes:0,count:0,readingMinutes:0},
     voice:{hasCharacter:true,voice:{voiceId:'A'},enabled:true,characterName:'甲',options:[],selected:'',relation:'neutral'},characters:[],rows:[]};
-  Object.assign(c,{htmlEscape:escape,focusClockState:()=>{trace.push('state');return f;},
+  Object.assign(c,{renderFocusClockView,updateFocusClockView,htmlEscape:escape,focusClockState:()=>{trace.push('state');return f;},
     focusClockTodayHistory:state=>{assert.equal(state,f);trace.push('today');return data.today;},
     focusClockWeekStats:state=>{assert.equal(state,f);trace.push('week');return data.week;},
     focusClockWeekStart:()=>new Date(2026,8,7),coread:()=>{trace.push('books');return {books:data.books};},

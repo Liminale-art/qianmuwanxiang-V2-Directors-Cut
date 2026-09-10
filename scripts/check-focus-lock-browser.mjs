@@ -16,6 +16,7 @@ const sessionSource=await readFile(new URL('../qianmu-focus-session.js',import.m
 const soundSource=await readFile(new URL('../qianmu-focus-sound.js',import.meta.url),'utf8');
 const speechSource=await readFile(new URL('../qianmu-focus-speech.js',import.meta.url),'utf8');
 const cacheSource=await readFile(new URL('../qianmu-focus-voice-cache.js',import.meta.url),'utf8');
+const viewSource=await readFile(new URL('../qianmu-focus-view.js',import.meta.url),'utf8');
 const preparationSource=await readFile(new URL('../qianmu-focus-preparation.js',import.meta.url),'utf8');
 const iconSource=await readFile(new URL('../qianmu-icon-renderer.js',import.meta.url),'utf8');
 const functions=focusFunctions+'\n'+['focusClockPreparation','focusClockSpeech','focusClockSound','focusClockResetMedia','focusClockPrimeSound','focusClockPlayDoneSound','focusClockSyncPreviewButton','setQianmuIconClass','focusClockAttachLock','focusClockUpdateDom','focusClockRuntimeTick','startFocusClockRuntime','stopFocusClockRuntime','renderFocusClockTab','bindFocusClockEvents','focusClockCancelVoiceWork','focusClockSetVoiceEnabled','focusClockVoiceContext','focusClockBindVoice','focusClockTodayHistory','focusClockWeekStats'].map(section).join('\n');
@@ -32,6 +33,7 @@ await page.route('https://qianmu.test/qianmu-focus-speech.js',r=>r.fulfill({cont
 await page.route('https://qianmu.test/qianmu-focus-preparation.js',r=>r.fulfill({contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:preparationSource}));
 await page.route('https://qianmu.test/qianmu-focus-voice-cache.js',r=>r.fulfill({contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:cacheSource}));
 try{
+  await page.route('https://qianmu.test/qianmu-focus-view.js',r=>r.fulfill({contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:viewSource}));
   await page.setContent(`<style>${css}</style><style>body{margin:0;background:#202328}#story-director-modal{position:relative!important;display:block!important;inset:auto!important;transform:none!important;width:100%!important;box-sizing:border-box;padding:8px}#sd-reader-portal{position:fixed;inset:0;background:#222;color:white;padding:24px;box-sizing:border-box}#reading-space{height:70vh;overflow:auto}.sd-focus-ring{margin-inline:auto}button{cursor:pointer}</style><main id="host"><button id="host-chat">ST聊天</button></main><div id="pre-disabled" inert>原本不可用</div><div id="story-director-modal" class="open sd-theme-dark"></div>`);
   await page.evaluate(async({defaults,functions,guardSource,iconSource,profileSource})=>{
     Object.assign(window,await import('https://qianmu.test/qianmu-focus-time.js'));
@@ -42,6 +44,7 @@ try{
     Object.assign(window,await import('https://qianmu.test/qianmu-focus-speech.js'));
     Object.assign(window,await import('https://qianmu.test/qianmu-focus-preparation.js'));
     Object.assign(window,await import('https://qianmu.test/qianmu-focus-voice-cache.js'));
+    Object.assign(window,await import('https://qianmu.test/qianmu-focus-view.js'));
     window.focusClockVoicePreparation=null;
     window.focusClockSpeechPlayer=null;
     window.focusClockSoundPlayer=null;window.soundTestAudio=[];
