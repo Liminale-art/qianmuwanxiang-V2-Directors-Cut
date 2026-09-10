@@ -18,6 +18,7 @@ const speechSource=await readFile(new URL('../qianmu-focus-speech.js',import.met
 const cacheSource=await readFile(new URL('../qianmu-focus-voice-cache.js',import.meta.url),'utf8');
 const viewSource=await readFile(new URL('../qianmu-focus-view.js',import.meta.url),'utf8');
 const eventsSource=await readFile(new URL('../qianmu-focus-events.js',import.meta.url),'utf8');
+const exportSource=await readFile(new URL('../qianmu-focus-export.js',import.meta.url),'utf8');
 const preparationSource=await readFile(new URL('../qianmu-focus-preparation.js',import.meta.url),'utf8');
 const iconSource=await readFile(new URL('../qianmu-icon-renderer.js',import.meta.url),'utf8');
 const functions=focusFunctions+'\n'+['focusClockPreparation','focusClockSpeech','focusClockSound','focusClockResetMedia','focusClockPrimeSound','focusClockPlayDoneSound','focusClockSyncPreviewButton','setQianmuIconClass','focusClockAttachLock','focusClockUpdateDom','focusClockRuntimeTick','startFocusClockRuntime','stopFocusClockRuntime','renderFocusClockTab','bindFocusClockEvents','focusClockCancelVoiceWork','focusClockSetVoiceEnabled','focusClockVoiceContext','focusClockBindVoice','focusClockTodayHistory','focusClockWeekStats'].map(section).join('\n');
@@ -34,6 +35,7 @@ await page.route('https://qianmu.test/qianmu-focus-speech.js',r=>r.fulfill({cont
 await page.route('https://qianmu.test/qianmu-focus-preparation.js',r=>r.fulfill({contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:preparationSource}));
 await page.route('https://qianmu.test/qianmu-focus-voice-cache.js',r=>r.fulfill({contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:cacheSource}));
 try{
+  await page.route('https://qianmu.test/qianmu-focus-export.js',r=>r.fulfill({contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:exportSource}));
   await page.route('https://qianmu.test/qianmu-focus-events.js',r=>r.fulfill({contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:eventsSource}));
   await page.route('https://qianmu.test/qianmu-focus-view.js',r=>r.fulfill({contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:viewSource}));
   await page.setContent(`<style>${css}</style><style>body{margin:0;background:#202328}#story-director-modal{position:relative!important;display:block!important;inset:auto!important;transform:none!important;width:100%!important;box-sizing:border-box;padding:8px}#sd-reader-portal{position:fixed;inset:0;background:#222;color:white;padding:24px;box-sizing:border-box}#reading-space{height:70vh;overflow:auto}.sd-focus-ring{margin-inline:auto}button{cursor:pointer}</style><main id="host"><button id="host-chat">ST聊天</button></main><div id="pre-disabled" inert>原本不可用</div><div id="story-director-modal" class="open sd-theme-dark"></div>`);
@@ -144,5 +146,17 @@ try{
   assert.equal(await page.locator('.sd-focus-sound-preview').evaluate(el=>el.style.getPropertyValue('--sd-sound-progress')),'90deg');
   await page.locator('.sd-focus-sound-preview').tap();assert.equal(await page.locator('.sd-focus-sound-preview').getAttribute('title'),'继续试听');
   await page.evaluate(()=>stopFocusClockRuntime());assert.equal(await page.evaluate(()=>focusClockSound().snapshot().hasMedia),false);
-  assert.deepEqual(errors,[]);assert.equal(external,0);console.log(JSON.stringify({layouts,readingAndMemoryScope:true,failOpen:true,expiry:true,voiceCases,external,errors}));
+  const png=await page.evaluate(async entry=>{
+    Object.assign(window,await import('https://qianmu.test/qianmu-focus-export.js'));window.eval(entry);
+    const previous=window.focusClockWeekStats;let output;
+    window.THEME_KEYS=['light'];settings.theme='light';
+    window.focusClockWeekStats=()=>({history:[{id:'fixture'}],minutes:71,count:3,readingMinutes:26,days:[0,5,12,30,0,0,24].map(minutes=>({minutes}))});
+    window.ttsDownloadBlob=(blob,name)=>{output={blob,name};};
+    try {
+      await focusClockExportWeekImage();const bytes=await output.blob.arrayBuffer(),header=new DataView(bytes);
+      return {type:output.blob.type,size:bytes.byteLength,signature:Array.from(new Uint8Array(bytes,0,8)),width:header.getUint32(16),height:header.getUint32(20),name:output.name};
+    } finally {window.focusClockWeekStats=previous;delete window.ttsDownloadBlob;}
+  },section('focusClockExportWeekImage'));
+  assert.equal(png.type,'image/png');assert.ok(png.size>1000);assert.deepEqual(png.signature,[137,80,78,71,13,10,26,10]);assert.equal(png.width,1200);assert.equal(png.height,820);assert.match(png.name,/^千幕-本周专注-\d{4}-\d{2}-\d{2}\.png$/);
+  assert.deepEqual(errors,[]);assert.equal(external,0);console.log(JSON.stringify({layouts,readingAndMemoryScope:true,failOpen:true,expiry:true,voiceCases,png,external,errors}));
 }finally{await context.close();await browser.close();}

@@ -17,6 +17,7 @@ const rules = {
   'qianmu-focus-voice-cache.js': [],
   'qianmu-focus-view.js': ['./qianmu-focus-time.js'],
   'qianmu-focus-events.js': [],
+  'qianmu-focus-export.js': [],
 };
 if (!vm.SourceTextModule) throw new Error('Run this development check with --experimental-vm-modules.');
 

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {exportFocusWeekImage} from '../qianmu-focus-export.js';
 import {focusClockDateKey} from '../qianmu-focus-time.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
@@ -10,11 +11,11 @@ function fixture({empty=false,contextAvailable=true,blob=new Blob(['png']),defer
   const context={};for(const method of ['beginPath','moveTo','arcTo','closePath','fill','fillRect','fillText'])context[method]=(...args)=>draws.push([method,...args]);
   context.createLinearGradient=(...args)=>{draws.push(['gradient',...args]);return {addColorStop:(...args)=>colors.push(args)};};
   const canvas={getContext:type=>{assert.equal(type,'2d');return contextAvailable?context:null;},toBlob:(callback,type)=>{assert.equal(type,'image/png');encode=callback;if(!deferred)callback(blob);}};
-  const c=vm.createContext({settings:{theme},THEME_KEYS:['light','dark','summer','candy','kraft','dream'],Date,focusClockDateKey,
+  const c=vm.createContext({exportFocusWeekImage,settings:{theme},THEME_KEYS:['light','dark','summer','candy','kraft','dream'],Date,focusClockDateKey,
     focusClockWeekStats:()=>{reads++;return stats;},focusClockWeekStart:()=>new Date(2026,8,7),
     document:{createElement:tag=>{assert.equal(tag,'canvas');creates++;return canvas;}},
     toast:(...args)=>notices.push(args),ttsDownloadBlob:(...args)=>downloads.push(args)});
-  vm.runInContext(['focusClockRoundRect','focusClockExportWeekImage'].map(section).join('\n'),c);
+  vm.runInContext(section('focusClockExportWeekImage'),c);
   return {c,stats,draws,colors,notices,downloads,canvas,get creates(){return creates;},get reads(){return reads;},finish:value=>encode(value),run:()=>c.focusClockExportWeekImage()};
 }
 

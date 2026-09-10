@@ -4,6 +4,7 @@ import { readFile, stat } from 'node:fs/promises';
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const view = await readFile(new URL('../qianmu-focus-view.js', import.meta.url), 'utf8');
 const events = await readFile(new URL('../qianmu-focus-events.js', import.meta.url), 'utf8');
+const imageExport = await readFile(new URL('../qianmu-focus-export.js', import.meta.url), 'utf8');
 const runtime = await readFile(new URL('../qianmu-focus-runtime.js', import.meta.url), 'utf8');
 const session = await readFile(new URL('../qianmu-focus-session.js', import.meta.url), 'utf8');
 const sound = await readFile(new URL('../qianmu-focus-sound.js', import.meta.url), 'utf8');
@@ -43,7 +44,7 @@ assert.match(source, /const returnTab = readerView\?\.returnTab === 'focus'[\s\S
 assert.match(source, /FOCUS_CLOCK_WEEK_ENTRY_LIMIT = 160/, '本周明细必须有异常容量保护');
 assert.match(source, /historyBeforeCleanup[\s\S]*finishedAt \|\| item\.startedAt\) >= weekStart/, '不可见的往周记录必须在状态归一时自动清理');
 assert.match(source, /function focusClockWeekStats\(state = focusClockState\(\)\) \{\s*return focusWeekStats\(state.history\);/, '本周统计使用独立只读投影；归一和保存仍归专注入口');
-assert.match(source, /function focusClockExportWeekImage[\s\S]*canvas\.toBlob[\s\S]*千幕-本周专注/, '本周记录必须可导出独立 PNG 图片');
+assert.match(imageExport, /function exportFocusWeekImage[\s\S]*canvas\.toBlob[\s\S]*千幕-本周专注/, '本周记录必须可导出独立 PNG 图片');
 assert.match(session, /f\.focusCycle % f\.longBreakEvery === 0 \? 'longBreak' : 'shortBreak'/, '专注周期必须按用户设置进入小憩或长休');
 assert.match(view, /sd-focus-settings-head[\s\S]*sd-focus-auto-next-wrap/, '自动下一阶段必须位于周期设置标题右侧');
 assert.match(view, /sd-focus-sound-card[\s\S]*<h3>完成提示音<\/h3>/, '完成提示音必须使用独立卡片');
