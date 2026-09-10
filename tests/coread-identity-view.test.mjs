@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as identityView from '../qianmu-reader-identity-view.js';
+import {renderCharacterArchive} from '../qianmu-character-archive-view.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 function fixture(){
@@ -25,6 +26,18 @@ test('identity avatars retain selectable reader and read-only archive forms with
     else {assert.doesNotMatch(html,/<button|data-coread-identity/);assert.match(html,/<span class="sd-reader-identity-avatar"/);}
   }
   assert.doesNotMatch(c.renderCoreadIdentity('role','name','','fa-user'),/<img/);
+});
+
+test('the real character archive uses read-only identity avatars while preserving its own binding controls',()=>{
+  const {c}=fixture(),view={rows:[],bindings:[],subjects:[
+    {category:'char',subjectKey:'char:A',name:'<A>',avatar:'/characters/A.png'},
+    {category:'user',subjectKey:'user:U.png',name:'<U>',avatar:'/User%20Avatars/U.png'}
+  ],chatKey:'chat',search:'',collapsed:{},shown:{}},before=JSON.stringify(view);
+  const html=renderCharacterArchive(view,{identity:c.renderCoreadIdentity});
+  assert.equal((html.match(/<span class="sd-reader-identity-avatar"/g)||[]).length,2);
+  assert.doesNotMatch(html,/data-coread-identity|<button[^>]*sd-reader-identity-avatar/);
+  assert.equal((html.match(/data-archive-action="binding"/g)||[]).length,2);
+  assert.match(html,/&lt;A>/);assert.match(html,/&lt;U>/);assert.equal(JSON.stringify(view),before);
 });
 
 test('identity choices preserve saved keys, follow mode, fallback names and bounded list height',()=>{
