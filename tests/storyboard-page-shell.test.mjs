@@ -15,7 +15,7 @@ const sandbox = vm.createContext({
   storyboardVibeLibraryController:null,storyboardVibeControllerContext:null,storyboardVibeSelection:null,
   storyboardState: () => state, htmlEscape: (v) => String(v), clone: structuredClone,
   storyboardPageScrolls: new Map(), storyboardPendingRestoreScroll: null,
-  storyboardScroller: () => ({ scrollTop: 275 }), saveSettings() {}, renderModal() {},
+  storyboardScroller: () => ({ scrollTop: 275, dataset: { storyboardPage: sandbox.storyboardPageKey(state) }, querySelector: () => null }), saveSettings() {}, renderModal() {},
   storyboardCloseLightbox() {}, storyboardReconcileGalleryLinks() {},
   renderStoryboardAssets: () => '<div>assets</div>', renderStoryboardArtistLibrary: () => '<div>artists</div>',
   renderStoryboardPresetLibrary: () => '<div>presets</div>', renderStoryboardGallery: () => '<div>gallery</div>',

@@ -6867,7 +6867,7 @@ function renderModal() {
     saveSettings();
   }
   const previousStoryboardScroller = activeTab === 'imagegen' ? modal.querySelector('.sd-storyboard-scroll') : null;
-  if (previousStoryboardScroller) storyboardPageScrolls.set(storyboardPageKey(), Math.max(0, previousStoryboardScroller.scrollTop || 0));
+  if (previousStoryboardScroller) storyboardRememberPageScroll(modal);
   const prevScroll = previousStoryboardScroller?.scrollTop ?? modal.querySelector('.sd-body')?.scrollTop ?? 0;
   const prevTheaterScroll = modal.querySelector('.sd-theater-reader-scroll')?.scrollTop ?? 0;
   const prevTabScroll = modal.querySelector('.sd-tabs')?.scrollLeft ?? 0;
@@ -6987,13 +6987,8 @@ function renderModal() {
     ? storyboardPendingRestoreScroll
     : storyboardLayout ? (storyboardPageScrolls.get(storyboardPageKey()) ?? prevScroll) : prevScroll;
   if (body) {
-    body.scrollTop = restoreBodyScroll;
-    if (storyboardLayout && storyboardPendingRestoreScroll !== null) {
-      requestAnimationFrame(() => {
-        const currentBody = document.getElementById(MODAL_ID)?.querySelector('.sd-storyboard-scroll');
-        if (currentBody) currentBody.scrollTop = restoreBodyScroll;
-      });
-    }
+    if (storyboardLayout) storyboardRestorePageScroll(body, restoreBodyScroll);
+    else body.scrollTop = restoreBodyScroll;
   }
   if (storyboardLayout) storyboardPendingRestoreScroll = null;
   const theaterScroller = modal.querySelector('.sd-theater-reader-scroll');
@@ -12668,7 +12663,18 @@ function storyboardScroller(root = document) {
 
 function storyboardRememberPageScroll(root = document) {
   const scroller = storyboardScroller(root);
-  if (scroller) storyboardPageScrolls.set(storyboardPageKey(), Math.max(0, scroller.scrollTop || 0));
+  // State already points at the destination during rendering; the DOM still belongs to the departing page.
+  const key = scroller?.dataset?.storyboardPage;
+  if (key && !scroller.querySelector('.sd-comfy-workbench-loading')) storyboardPageScrolls.set(key, Math.max(0, scroller.scrollTop || 0));
+}
+
+function storyboardRestorePageScroll(body, top) {
+  body.scrollTop = top;
+  const applied = body.scrollTop;
+  requestAnimationFrame(() => {
+    // A late frame must not move a replacement page or undo scrolling performed by the user.
+    if (body.isConnected && body.scrollTop === applied) body.scrollTop = top;
+  });
 }
 
 function storyboardApplyRoute(entry = {}) {
