@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as reader from '../qianmu-reader.js';
+import * as identityView from '../qianmu-reader-identity-view.js';
 import {readFile} from 'node:fs/promises';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
@@ -9,7 +10,7 @@ function fixture(){
   const host={chatId:'old-chat',characterId:0,characters:[{name:'同名',avatar:'a.png',description:'A {{char}}'},{name:'同名',avatar:'b.png',description:'B {{char}}'}]};
   const books=[{id:'book',title:'Book',lastChapterIndex:1,lastScrollRatio:.2},{id:'other',title:'Other'}],state={books};
   const legacy={coreadCompanionWb:{worldBooks:['A world'],worldItems:{}}},notices=[],writes=[],frames=[];
-  const context=vm.createContext({ctx:()=>host,coread:()=>state,getChatKey:()=>host.chatId||String(host.characterId??'default'),getChatStore:()=>legacy,
+  const context=vm.createContext({...identityView,ctx:()=>host,coread:()=>state,getChatKey:()=>host.chatId||String(host.characterId??'default'),getChatStore:()=>legacy,
     clone:structuredClone,isPlainObject:x=>!!x&&typeof x==='object'&&!Array.isArray(x),coreadBookMeta:id=>books.find(b=>b.id===id),
     getPersonaName:()=>host.name1 || 'User',getPersonaDescription:()=>host.persona_description || 'User desc',coreadPersonaAvatarRaw:'',URL,
     htmlEscape:x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
@@ -148,7 +149,7 @@ test('CHAR and USER avatar choices expose a follow option and escaped ST names',
   assert.match(e.context.renderCoreadIdentityChoices('user'),/&lt;user>/);assert.match(e.context.renderCoreadIdentityChoices('char'),/跟随当前聊天/);
   assert.match(e.context.renderCoreadIdentityChoices('char'),/>选择书友</);assert.match(e.context.renderCoreadIdentityChoices('user'),/>选择人设</);
   assert.match(section('renderCompanionSetupBody'),/renderCoreadIdentity\('我', stUser, userAvatar, 'fa-circle-user', 'user'\)/);
-  assert.match(section('renderCoreadIdentity'),/data-coread-identity/);
+  assert.match(identityView.renderCoreadIdentityView.toString(),/data-coread-identity/);
 });
 
 test('USER selection changes persona macros and session scope, not the ST persona or the companion',async()=>{

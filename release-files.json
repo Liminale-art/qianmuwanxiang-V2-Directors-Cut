@@ -18,6 +18,7 @@
     "qianmu-focus-export.js",
     "qianmu-focus-cue-records.js",
     "qianmu-focus-drawer.js",
+    "qianmu-reader-identity-view.js",
     "qianmu-user-identity.js",
     "qianmu-user-alias.js",
     "qianmu-user-alias-bindings.js",

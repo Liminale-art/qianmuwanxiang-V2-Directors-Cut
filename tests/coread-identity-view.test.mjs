@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import * as identityView from '../qianmu-reader-identity-view.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 function fixture(){
@@ -8,7 +9,7 @@ function fixture(){
   const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
   const host={POPUP_TYPE:{CONFIRM:7}},wrap={innerHTML:'',querySelector:()=>({value:'picked'})};let resolve;
   host.Popup=class{constructor(...args){popups.push(args);}show(){return new Promise(done=>resolve=done);}};
-  const c=vm.createContext({coread:()=>state,coreadCompanionChoices:()=>characters,coreadPersonaChoices:()=>personas,htmlEscape:escape,
+  const c=vm.createContext({...identityView,coread:()=>state,coreadCompanionChoices:()=>characters,coreadPersonaChoices:()=>personas,htmlEscape:escape,
     ctx:()=>host,readerView:null,document:{createElement:()=>wrap},toast:(...args)=>notices.push(args),
     coreadApplyIdentityChoice:async(...args)=>applied.push(args)});
   vm.runInContext(['renderCoreadIdentity','renderCoreadIdentityChoices','coreadChooseIdentity'].map(section).join('\n'),c);

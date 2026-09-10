@@ -16,6 +16,7 @@ import { bindFocusClockPage } from './qianmu-focus-events.js';
 import { exportFocusWeekImage } from './qianmu-focus-export.js';
 import { createFocusCueRecords } from './qianmu-focus-cue-records.js';
 import { createFocusVoiceDrawer } from './qianmu-focus-drawer.js';
+import { renderCoreadIdentityView, renderCoreadIdentityChoicesView } from './qianmu-reader-identity-view.js';
 import {
   clone,
   isPlainObject,
@@ -25888,11 +25889,7 @@ async function coreadResolveCompanionMacro(text, character = coreadCompanionChar
 function renderCoreadIdentityChoices(kind) {
   const user = kind === 'user', chosen = user ? coread().personaOverrideAvatar : coread().companionOverrideAvatar;
   const choices = user ? coreadPersonaChoices() : coreadCompanionChoices().map(ch => ({ key: ch.avatar || ch.data.avatar, name: ch.name || ch.data?.name || '未命名角色' }));
-  return `<div class="sd-reader-identity-picker"><b>${user ? '选择人设' : '选择书友'}</b>
-    <select class="text_pole" size="${Math.min(8, Math.max(3, choices.length + 1))}" aria-label="${user ? '人设名字' : '书友名字'}">
-      <option value="" ${!chosen ? 'selected' : ''}>跟随当前聊天</option>
-      ${choices.map(item => `<option value="${htmlEscape(item.key)}" ${chosen === item.key ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('')}
-    </select></div>`;
+  return renderCoreadIdentityChoicesView({user, chosen, choices}, htmlEscape);
 }
 
 async function coreadApplyIdentityChoice(kind, key) {
@@ -32264,10 +32261,7 @@ function coreadIdentityAvatar(kind, { followHost = false } = {}) {
 }
 
 function renderCoreadIdentity(role, name, avatar, icon, kind = '') {
-  return `<div class="sd-reader-setup-identity">
-    <${kind ? 'button type="button"' : 'span'} class="sd-reader-identity-avatar" ${kind ? `data-coread-identity="${kind}" aria-label="选择${kind === 'user' ? 'USER 人设' : 'CHAR 书友'}"` : ''}><i class="fa-solid ${icon}"></i>${avatar ? `<img src="${htmlEscape(avatar)}" alt="">` : ''}</${kind ? 'button' : 'span'}>
-    <span class="sd-reader-setup-tag"><em>${htmlEscape(role)}</em><b title="${htmlEscape(name)}">${htmlEscape(name)}</b></span>
-  </div>`;
+  return renderCoreadIdentityView({role, name, avatar, icon, kind}, htmlEscape);
 }
 
 // 伴读设定浮层内容：身份直显(头像+标签·联动 ST 当前)+世界书取材式选择(书/条目独立)+可见正文范围。

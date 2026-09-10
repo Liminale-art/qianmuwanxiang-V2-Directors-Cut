@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {storyboardFunctionSource as section,createStoryboardFormFixture} from '../tests/helpers/storyboard-form-fixture.mjs';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
+const identityViewSource=await readFile(new URL('../qianmu-reader-identity-view.js',import.meta.url),'utf8');
 const forms={model:createStoryboardFormFixture().content,comfy:createStoryboardFormFixture({family:'comfy'}).content};
 const functions=['storyboardPageKey','storyboardScroller','storyboardRememberPageScroll','storyboardRestorePageScroll','storyboardChangeWorkbenchEngine',
   'coreadCompanionChoices','coreadCompanionCharacter','coreadCompanionSession','coreadEnsureCompanionSession','coreadSelectCompanion',
@@ -14,7 +15,8 @@ const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL|
 let external=0;const errors=[];await context.route('**/*',route=>{external++;return route.abort();});const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
 try{
   await page.setContent(`<style>${css}</style><style>body{margin:0;background:#222}#story-director-modal{position:static!important;display:block!important;width:100%;box-sizing:border-box;padding:8px}#workbench{padding-top:12px}.sd-storyboard-scroll{height:340px!important;overflow:auto!important;min-height:0!important}#workbench:after{content:'';display:block;height:80px}</style><div id="story-director-modal" class="sd-theme-dark"><div id="shelf"></div><div id="workbench"></div></div>`);
-  await page.evaluate(({functions,forms})=>{
+  await page.evaluate(async({functions,forms,identityViewSource})=>{
+    Object.assign(window,await import('data:text/javascript,'+encodeURIComponent(identityViewSource)));
     window.forms=forms;window.state={source:'novel',view:'create'};window.storyboardState=()=>state;window.storyboardPageScrolls=new Map([['create',420],['create:comfy',720]]);window.storyboardPendingRestoreScroll=null;
     window.STORYBOARD_PROVIDER_REGISTRY={novel:{}};window.storyboardCaptureWorkbench=()=>{};window.saveSettings=()=>{};
     window.readerView=null;window.coreadDistilling=false;window.coreadAutoTextInFlight=false;window.dialogBusy=false;window.readerAssistantBusy=false;window.coreadComicVisionBusy=false;window.coreadOpenRequestId=0;window.c={};
@@ -37,7 +39,7 @@ try{
       storyboardRestorePageScroll(root.querySelector('.sd-storyboard-scroll'),target);storyboardPendingRestoreScroll=null;
       root.querySelector('#model-mode').onclick=()=>storyboardChangeWorkbenchEngine(root,'model');root.querySelector('#comfy-mode').onclick=()=>storyboardChangeWorkbenchEngine(root,'comfy');renderShelf();
     };renderModal();
-  },{functions,forms});
+  },{functions,forms,identityViewSource});
   const layouts=[];
   for(const width of [320,360,430,1100]){
     await page.evaluate(()=>{readerView=null;host.characterId=0;host.chatId='host-chat';c.companionOverrideAvatar='';c.personaOverrideAvatar='';delete c.lastReading;renderShelf();});
