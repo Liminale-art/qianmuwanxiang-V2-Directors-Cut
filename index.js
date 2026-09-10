@@ -1385,6 +1385,13 @@ let focusClockVoicePreparation = null; // Owns generation tickets; no provider c
 let focusClockSpeechPlayer = null; // Owns only focus speech playback/cancellation, not narration.
 const focusClockVoiceCache = createFocusVoiceCache({
   available: () => blobStore.blobStoreAvailable(), read: key => blobStore.getAudio(key),
+  write: (...args) => blobStore.putAudio(...args), prune: (...args) => blobStore.pruneAudio(...args),
+  cacheLimit: () => Number(settings.tts?.cacheLimit ?? 200),
+  tts: {
+    provider: id => getTtsProvider(id), hasCredentials: (...args) => ttsProviderHasCredentials(...args),
+    key: (...args) => cacheKeyForTts(...args), synthesize: (...args) => synthesizeTts(...args),
+    persistResolvedModel: (...args) => ttsPersistResolvedDoubaoModel(...args),
+  },
 }); // Keeps bounded memory references even when IndexedDB is unavailable.
 let focusClockVoiceDrawerEl = null;  // 专注角色语音二层抽屉；挂在千幕根容器，避免移动端 fixed 定位受 ST 主题干扰
 const STORYBOARD_QUEUE_LIMIT = 8;     // 仅本页运行态；刷新后不自动续跑，避免意外消耗生图额度
@@ -24567,37 +24574,7 @@ async function focusClockGenerateSceneLines(binding, count, subject, { isCurrent
     .slice(0, count);
 }
 
-function focusClockRememberVoiceBlob(key, blob) {
-  return focusClockVoiceCache.remember(key, blob);
-}
-
-async function focusClockSynthVoiceCue(binding, text, { isCurrent = () => true } = {}) {
-  const assertCurrent = () => { if (!isCurrent()) throw new DOMException('专注语音请求已失效', 'AbortError'); };
-  assertCurrent();
-  let params = { ...binding.params, text };
-  const provider = getTtsProvider(params.providerId);
-  if (!ttsProviderHasCredentials(params.providerId, params)) throw new Error(`未配置 ${provider.label} 凭证`);
-  let key = cacheKeyForTts(params.providerId, params);
-  if (blobStore.blobStoreAvailable()) {
-    const hit = await blobStore.getAudio(key).catch(() => null);
-    assertCurrent();
-    if (hit?.blob) return focusClockRememberVoiceBlob(key, hit.blob);
-  }
-  const result = await synthesizeTts(params.providerId, params);
-  assertCurrent();
-  if (params.providerId === 'doubao' && params.model === 'auto' && result.resolvedModel) {
-    ttsPersistResolvedDoubaoModel(params, result.resolvedModel);
-    params = { ...params, model: result.resolvedModel };
-    key = cacheKeyForTts(params.providerId, params);
-  }
-  if (blobStore.blobStoreAvailable()) {
-    await blobStore.putAudio(key, result.blob, { speaker: binding.speaker, text, source: 'focus', provider: params.providerId });
-    assertCurrent();
-    await blobStore.pruneAudio(Number(settings.tts?.cacheLimit ?? 200), 'tts').catch(() => {});
-  }
-  assertCurrent();
-  return focusClockRememberVoiceBlob(key, result.blob);
-}
+function focusClockSynthVoiceCue(binding, text, options) { return focusClockVoiceCache.synthesize(binding, text, options); }
 
 function focusClockMidCueProgresses(durationMinutes, chance) {
   if (durationMinutes < 45) return [];

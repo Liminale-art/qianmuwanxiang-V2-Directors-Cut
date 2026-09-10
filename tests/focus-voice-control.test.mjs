@@ -9,7 +9,7 @@ import {focusFixture} from './helpers/focus-lock-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 const names=['focusClockVoiceContext','focusClockVoiceBindingKey','focusClockVoiceBindingActive','focusClockCancelVoiceWork',
-  'focusClockPreparation','focusClockSpeech','focusClockSetVoiceEnabled','focusClockRememberVoiceBlob','focusClockSynthVoiceCue','focusClockPrepareVoiceCues','focusClockPlayVoiceCue','focusClockPlayCompletionAlert','focusClockRegenerateVoiceCue',
+  'focusClockPreparation','focusClockSpeech','focusClockSetVoiceEnabled','focusClockSynthVoiceCue','focusClockPrepareVoiceCues','focusClockPlayVoiceCue','focusClockPlayCompletionAlert','focusClockRegenerateVoiceCue',
   'focusClockMaybePlayMidCue','focusClockCleanVoiceLine','focusClockBuildVoiceParams','focusClockBindVoice'];
 function fixture(overrides={}){
   const env=focusFixture({status:'running',sessionToken:'round',endsAt:160000,voiceProfiles:{'character:A':{minimax:{enabled:true,voice:{name:'甲',voiceId:'voice-A'},revision:1}}},...overrides});
@@ -21,7 +21,11 @@ function fixture(overrides={}){
     coreadCompanionChoices:()=>host.characters,coreadCompanionCharacter:()=>host.characters.find(ch=>ch.avatar===(c.readerView?.companionAvatar||host.characters[host.characterId]?.avatar)),
     ttsProviderConfig:()=>({voiceLibrary:[]}),ttsActiveVoiceMap:()=>voices,ttsProviderId:()=>provider,ttsDoubaoVoiceModel:value=>value||'auto',
     FOCUS_CLOCK_RELATIONS:{neutral:{}},FOCUS_CLOCK_VOICE_FREQUENCIES:{low:{chance:.3}},
-    createFocusVoicePreparation,focusClockVoicePreparation:null,createFocusSpeechPlayer,focusClockSpeechPlayer:null,focusClockVoiceCache:createFocusVoiceCache({available:()=>c.blobStore.blobStoreAvailable(),read:key=>c.blobStore.getAudio(key)}),
+    createFocusVoicePreparation,focusClockVoicePreparation:null,createFocusSpeechPlayer,focusClockSpeechPlayer:null,
+    focusClockVoiceCache:createFocusVoiceCache({available:()=>c.blobStore.blobStoreAvailable(),read:key=>c.blobStore.getAudio(key),
+      write:(...args)=>c.blobStore.putAudio(...args),prune:(...args)=>c.blobStore.pruneAudio(...args),cacheLimit:()=>Number(c.settings.tts?.cacheLimit??200),
+      tts:{provider:id=>c.getTtsProvider(id),hasCredentials:(...args)=>c.ttsProviderHasCredentials(...args),
+        key:(...args)=>c.cacheKeyForTts(...args),synthesize:(...args)=>c.synthesizeTts(...args),persistResolvedModel:(...args)=>c.ttsPersistResolvedDoubaoModel(...args)}}),
     focusClockMidCueProgresses:()=>[],focusClockPickStockLines:()=>['这一程已经完成。'],
     ttsBuildParams:(_line,voice)=>({providerId:provider,fileExtension:'mp3',voiceId:voice?.voiceId}),ttsProviderHasCredentials:()=>true,getTtsProvider:()=>({label:'TTS'}),
     cacheKeyForTts:()=> 'cache',DOMException,Blob,focusClockGenerateSceneLines:async()=>['完成。'],
