@@ -14,6 +14,7 @@ import { createFocusVoiceCache } from './qianmu-focus-voice-cache.js';
 import { renderFocusClockView, updateFocusClockView } from './qianmu-focus-view.js';
 import { bindFocusClockPage } from './qianmu-focus-events.js';
 import { exportFocusWeekImage } from './qianmu-focus-export.js';
+import { createFocusCueRecords } from './qianmu-focus-cue-records.js';
 import {
   clone,
   isPlainObject,
@@ -1396,6 +1397,7 @@ const focusClockVoiceCache = createFocusVoiceCache({
     persistResolvedModel: (...args) => ttsPersistResolvedDoubaoModel(...args),
   },
 }); // Keeps bounded memory references even when IndexedDB is unavailable.
+let focusClockCueRecords = null;
 let focusClockVoiceDrawerEl = null;  // 专注角色语音二层抽屉；挂在千幕根容器，避免移动端 fixed 定位受 ST 主题干扰
 const STORYBOARD_QUEUE_LIMIT = 8;     // 仅本页运行态；刷新后不自动续跑，避免意外消耗生图额度
 let storyboardBusy = false;          // 分镜生成独立忙碌态，不占用推演/幕外请求锁
@@ -24554,75 +24556,31 @@ function focusClockPlayVoiceCue(cue, options) { return focusClockSpeech().play(c
 
 function focusClockVoiceCueBlob(cue) { return focusClockVoiceCache.cueBlob(cue); }
 
-function focusClockVoiceCueFileBase(cue) {
-  const speaker = ttsSafeFilenamePart(cue?.speaker, '角色').slice(0, 28) || '角色';
-  const task = ttsSafeFilenamePart(cue?.task, '专注').slice(0, 30) || '专注';
-  const stamp = ttsCompactStamp(cue?.sourceTime || Date.now());
-  const seq = String((Number(cue?.lineIndex) || 0) + 1).padStart(2, '0');
-  return `${speaker}-${task}-${stamp}-${seq}`.slice(0, 110);
+function focusClockRecords() {
+  return focusClockCueRecords ||= createFocusCueRecords({
+    getState: () => focusClockState(), safeName: (...args) => ttsSafeFilenamePart(...args),
+    formatStamp: (...args) => ttsCompactStamp(...args), now: () => Date.now(),
+    storage: {
+      available: () => blobStore.blobStoreAvailable(), has: (...args) => blobStore.hasFavorite(...args),
+      remove: (...args) => blobStore.removeFavorite(...args), add: (...args) => blobStore.addFavorite(...args),
+    },
+    audio: cue => focusClockVoiceCueBlob(cue), folder: value => sanitizeFolder(value),
+    setButton: (...args) => ttsSetFavoriteButton(...args), notify: (...args) => toast(...args),
+  });
 }
 
-function focusClockVoiceDrawerRows(state = focusClockState()) {
-  const rows = [];
-  for (const cue of state.sessionVoiceCues || []) {
-    if (cue?.played && cue.cacheKey) rows.push(cue);
-  }
-  for (const entry of state.history || []) {
-    for (const cue of Array.isArray(entry?.voiceCues) ? entry.voiceCues : []) {
-      if (!cue?.cacheKey) continue;
-      if (!cue.task) cue.task = entry.task || '专注';
-      rows.push(cue);
-    }
-  }
-  const seen = new Set();
-  return rows.filter((cue) => {
-    const id = cue.id || cue.cacheKey;
-    if (!id || seen.has(id)) return false;
-    seen.add(id);
-    return true;
-  }).slice(0, 16);
-}
+function focusClockVoiceCueFileBase(cue) { return focusClockRecords().fileBase(cue); }
+
+function focusClockVoiceDrawerRows(state = focusClockState()) { return focusClockRecords().rows(state); }
 
 function focusClockCloseVoiceDrawer() {
   focusClockVoiceDrawerEl?.remove();
   focusClockVoiceDrawerEl = null;
 }
 
-async function focusClockSyncVoiceDrawerFavorites(portal) {
-  if (!portal || !blobStore.blobStoreAvailable()) return;
-  for (const button of portal.querySelectorAll('.sd-focus-cue-fav')) {
-    const cue = focusClockVoiceDrawerRows().find((item) => item.id === button.dataset.cueId);
-    if (!cue) continue;
-    const active = await blobStore.hasFavorite(`fav:${cue.cacheKey}`).catch(() => false);
-    ttsSetFavoriteButton(button, active);
-  }
-}
+function focusClockSyncVoiceDrawerFavorites(portal) { return focusClockRecords().syncFavorites(portal); }
 
-async function focusClockToggleVoiceCueFavorite(cue, button) {
-  if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地收藏。', 'warning'); return; }
-  // Regeneration can replace the live cue during either read; keep this click's audio and metadata together.
-  cue = { ...cue };
-  const id = `fav:${cue.cacheKey}`;
-  try {
-    if (await blobStore.hasFavorite(id)) {
-      await blobStore.removeFavorite(id);
-      ttsSetFavoriteButton(button, false);
-      toast('已取消收藏。', 'success');
-      return;
-    }
-    const blob = await focusClockVoiceCueBlob(cue);
-    if (!blob) throw new Error('音频缓存已过期，请先重新生成');
-    await blobStore.addFavorite(id, blob, {
-      speaker: cue.speaker || '角色', text: cue.text || '',
-      format: cue.format || 'mp3', provider: cue.providerId || '',
-      folder: sanitizeFolder(cue.speaker || ''), fileNameBase: focusClockVoiceCueFileBase(cue),
-      chatKey: cue.chatKey || '', sourceTime: cue.sourceTime || Date.now(), lineIndex: Number(cue.lineIndex) || 0,
-      source: 'focus',
-    }, cue.text || '');
-    ttsSetFavoriteButton(button, true);
-    toast('已收藏。', 'success');
-  } catch (error) { toast(`收藏失败：${error?.message || error}`, 'error'); }
-}
+function focusClockToggleVoiceCueFavorite(cue, button) { return focusClockRecords().toggleFavorite(cue, button); }
 
 async function focusClockRegenerateVoiceCue(cue) {
   const binding = focusClockVoiceContext();

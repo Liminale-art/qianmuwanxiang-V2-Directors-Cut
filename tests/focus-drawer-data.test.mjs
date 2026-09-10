@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {sanitizeFolder} from '../qianmu-storyboard-utils.js';
 import {createFocusVoiceCache} from '../qianmu-focus-voice-cache.js';
+import {createFocusCueRecords} from '../qianmu-focus-cue-records.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 function fixture(state={sessionVoiceCues:[],history:[]}) {
   const trace=[],favorites=new Map(),blob=new Blob(['local audio']),button={};
-  const c=vm.createContext({Date,Number,Blob,sanitizeFolder,
+  const c=vm.createContext({Date,Number,Blob,sanitizeFolder,createFocusCueRecords,focusClockCueRecords:null,
     focusClockState:()=>{trace.push(['state']);return state;},
     focusClockVoiceCueBlob:async cue=>{trace.push(['blob',cue.cacheKey]);return blob;},
     blobStore:{blobStoreAvailable:()=>true,
@@ -16,7 +17,7 @@ function fixture(state={sessionVoiceCues:[],history:[]}) {
       addFavorite:async(id,audio,meta,text)=>{trace.push(['add',id]);favorites.set(id,{audio,meta,text});}},
     ttsSetFavoriteButton:(target,active)=>{trace.push(['button',active]);target.active=active;},
     toast:(...args)=>trace.push(['toast',...args])});
-  vm.runInContext(['ttsSafeFilenamePart','ttsCompactStamp','focusClockVoiceCueFileBase',
+  vm.runInContext(['ttsSafeFilenamePart','ttsCompactStamp','focusClockRecords','focusClockVoiceCueFileBase',
     'focusClockVoiceDrawerRows','focusClockSyncVoiceDrawerFavorites','focusClockToggleVoiceCueFavorite'].map(section).join('\n'),c);
   return {c,state,trace,favorites,blob,button};
 }

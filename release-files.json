@@ -16,6 +16,7 @@
     "qianmu-focus-view.js",
     "qianmu-focus-events.js",
     "qianmu-focus-export.js",
+    "qianmu-focus-cue-records.js",
     "qianmu-user-identity.js",
     "qianmu-user-alias.js",
     "qianmu-user-alias-bindings.js",
