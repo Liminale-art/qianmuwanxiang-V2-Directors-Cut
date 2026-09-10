@@ -18,7 +18,8 @@ import { createFocusCueRecords } from './qianmu-focus-cue-records.js';
 import { createFocusVoiceDrawer } from './qianmu-focus-drawer.js';
 import { renderCoreadIdentityView, renderCoreadIdentityChoicesView } from './qianmu-reader-identity-view.js';
 import { renderCoreadCenterStatusView, renderCoreadSpoilerGuardView, renderCoreadGuideView, renderCoreadPackBarView,
-  renderCoreadMemoryStorageView, renderCoreadSummaryItemsView, renderCoreadMemoryOverviewView } from './qianmu-reader-center-view.js';
+  renderCoreadMemoryStorageView, renderCoreadSummaryItemsView, renderCoreadMemoryOverviewView,
+  renderCoreadSwitchView, renderCoreadModelRowView, renderCoreadProfileRowView, renderCoreadApiActionsView } from './qianmu-reader-center-view.js';
 import {
   clone,
   isPlainObject,
@@ -31612,7 +31613,7 @@ function buildReaderStage() {
 
 // 胶囊左右滑开关（替代方框勾选）：checkbox + 轨道 + 滑块，纯 CSS 动画。
 function renderMemSwitch(cls, on) {
-  return `<label class="sd-reader-mtoggle"><input type="checkbox" class="${cls}"${on ? ' checked' : ''}><span class="sd-reader-mtoggle-track"><span class="sd-reader-mtoggle-thumb"></span></span></label>`;
+  return renderCoreadSwitchView(cls, on);
 }
 
 // 模型选择行：拉取到列表后从下拉里选。当前已选但不在列表里时补进顶端，保证可见。
@@ -31621,38 +31622,19 @@ function renderMemModelRow(kind, m, placeholder) {
   const models = m[`${kind}Models`] || [];
   const cur = m[`${kind}Model`] || '';
   const list = cur && !models.includes(cur) ? [cur, ...models] : models;
-  const opts = list.length
-    ? list.map((x) => `<option value="${htmlEscape(x)}"${x === cur ? ' selected' : ''}>${htmlEscape(x)}</option>`).join('')
-    : `<option value="" disabled selected>— 先拉取模型列表 —</option>`;
-  return `<label class="sd-reader-mlab">模型</label>
-    <select class="sd-reader-minput sd-reader-mem-modelpick" data-kind="${kind}">
-      ${list.length ? `<option value="">— ${htmlEscape(placeholder || '选择模型')} —</option>` : ''}
-      ${opts}
-    </select>`;
+  return renderCoreadModelRowView({kind, list, cur, placeholder}, htmlEscape);
 }
 
 function renderMemProfileRow(kind, m) {
   const list = m[`${kind}Profiles`] || [];
   if (!list.length) return '';
   const sel = m[`${kind}ProfileSel`] || '';
-  return `
-    <div class="sd-reader-mprofile">
-      <select class="sd-reader-minput sd-reader-mem-profile" data-kind="${kind}">
-        <option value="">— 载入预设 —</option>
-        ${list.map((p) => `<option value="${htmlEscape(p.id)}"${p.id === sel ? ' selected' : ''}>${htmlEscape(p.name || p.model || '未命名')}</option>`).join('')}
-      </select>
-      <button type="button" class="sd-reader-mbtn sd-reader-mem-profile-del" data-kind="${kind}" title="删除选中预设"><i class="fa-solid fa-trash"></i></button>
-    </div>`;
+  return renderCoreadProfileRowView({kind, list, sel}, htmlEscape);
 }
 
 // 向量/重排卡底部操作行：测试连接 / 拉取模型 / 保存为预设（同排均分撑满·窄屏PC都一排）。
 function renderMemApiActions(kind) {
-  return `
-    <div class="sd-reader-mactions">
-      <button type="button" class="sd-reader-mbtn sd-reader-mem-test" data-kind="${kind}"><i class="fa-solid fa-plug-circle-check"></i>测试连接</button>
-      <button type="button" class="sd-reader-mbtn sd-reader-mem-fetch" data-kind="${kind}"><i class="fa-solid fa-rotate"></i>拉取模型</button>
-      <button type="button" class="sd-reader-mbtn sd-reader-mem-save" data-kind="${kind}"><i class="fa-solid fa-bookmark"></i>保存预设</button>
-    </div>`;
+  return renderCoreadApiActionsView(kind);
 }
 
 // 伴读记忆面板内容：三 tab —— ① API 设置（对话/向量/重排/总结各成一卡）② 记忆记录（切片列表+总结提示词）③ 注入状态。

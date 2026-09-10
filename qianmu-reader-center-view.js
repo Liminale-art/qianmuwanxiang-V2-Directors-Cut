@@ -97,3 +97,38 @@ export function renderCoreadMemoryOverviewView({curBook, msgsLen, cursor, sliceC
       </div>
     </section>`;
 }
+
+export function renderCoreadSwitchView(cls, on) {
+  return `<label class="sd-reader-mtoggle"><input type="checkbox" class="${cls}"${on ? ' checked' : ''}><span class="sd-reader-mtoggle-track"><span class="sd-reader-mtoggle-thumb"></span></span></label>`;
+}
+
+export function renderCoreadModelRowView({kind, list, cur, placeholder}, htmlEscape) {
+  const opts = list.length
+    ? list.map((x) => `<option value="${htmlEscape(x)}"${x === cur ? ' selected' : ''}>${htmlEscape(x)}</option>`).join('')
+    : `<option value="" disabled selected>— 先拉取模型列表 —</option>`;
+  return `<label class="sd-reader-mlab">模型</label>
+    <select class="sd-reader-minput sd-reader-mem-modelpick" data-kind="${kind}">
+      ${list.length ? `<option value="">— ${htmlEscape(placeholder || '选择模型')} —</option>` : ''}
+      ${opts}
+    </select>`;
+}
+
+export function renderCoreadProfileRowView({kind, list, sel}, htmlEscape) {
+  return `
+    <div class="sd-reader-mprofile">
+      <select class="sd-reader-minput sd-reader-mem-profile" data-kind="${kind}">
+        <option value="">— 载入预设 —</option>
+        ${list.map((p) => `<option value="${htmlEscape(p.id)}"${p.id === sel ? ' selected' : ''}>${htmlEscape(p.name || p.model || '未命名')}</option>`).join('')}
+      </select>
+      <button type="button" class="sd-reader-mbtn sd-reader-mem-profile-del" data-kind="${kind}" title="删除选中预设"><i class="fa-solid fa-trash"></i></button>
+    </div>`;
+}
+
+export function renderCoreadApiActionsView(kind) {
+  return `
+    <div class="sd-reader-mactions">
+      <button type="button" class="sd-reader-mbtn sd-reader-mem-test" data-kind="${kind}"><i class="fa-solid fa-plug-circle-check"></i>测试连接</button>
+      <button type="button" class="sd-reader-mbtn sd-reader-mem-fetch" data-kind="${kind}"><i class="fa-solid fa-rotate"></i>拉取模型</button>
+      <button type="button" class="sd-reader-mbtn sd-reader-mem-save" data-kind="${kind}"><i class="fa-solid fa-bookmark"></i>保存预设</button>
+    </div>`;
+}
