@@ -4,7 +4,7 @@ import {readFile,mkdir} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {coreadCenterFunctions,coreadRecordsFunctions,coreadApiFunctions,coreadInjectFunctions} from '../tests/helpers/coread-center-fixture.mjs';
-import {uniqueClean} from '../qianmu-storyboard-utils.js';
+import {uniqueClean,isPlainObject} from '../qianmu-storyboard-utils.js';
 import {storyboardFunctionSource} from '../tests/helpers/storyboard-form-fixture.mjs';
 import {normalizeCoreadSource} from '../qianmu-reader.js';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
@@ -208,8 +208,10 @@ try{
     apiLayouts.push({width,boxes,threeKindsRouted:true});
   }
   assert.deepEqual(errors,[]);assert.equal(external,0);
-  await page.evaluate(({functions,unique,dictClick,injectChange,injectInput})=>{
+  await page.evaluate(({functions,unique,plainObject,dictClick,injectChange,injectInput})=>{
     window.uniqueClean=window.eval('('+unique+')');window.COREAD_DEFAULT_DICT='default';window.coreadCurrentDictId='';
+    window.isPlainObject=window.eval('('+plainObject+')');window.coreadOpenRequestId=0;window.readerView={bookId:'book'};
+    window.RUNTIME_LOCK_KEY='dictionaryFixtureRuntime';window.dictionaryFixtureRuntime={};window.getChatKey=()=> 'fixture-chat';
     window.coreadRecentSlices=()=>[];window.coreadRecallSlices=()=>[{slice:readerDialog.slices[0],hits:['关键词'],score:1.25}];
     window.coreadActiveDict=()=>({关键词:['同义词']});window.coreadBoundDicts=()=>store.coreadDictBound;
     window.getChatStore=()=>store;window.saveMetadata=()=>calls.metadata++;
@@ -219,6 +221,7 @@ try{
     window.resetInject=()=>{
       memory={guideSeen:true,moreTab:'inject',recallScanMessages:2,recentInject:1,recallCount:3,rerankTopN:4,mainlineFeedback:false,mainlineRecall:0,mainlineRecent:0,mainlineDepth:0,
         dictBooks:[{id:'default',name:'默认词册',pairs:{}},{id:'custom"',name:'自定义<&',pairs:{'关键词<&':['同义词<&']}}]};
+      settings.enabled=true;settings.coread={memory};
       window.store={coreadDictBound:[]};coreadCurrentDictId='custom"';window.promptAnswer=null;confirmAnswer=false;
       Object.assign(calls,{metadata:0,prompts:[],entries:[],confirmations:[],notices:[],save:0,invalidate:0});
       readerDialog.slices=[{id:'a',batch:1,summary:'实际注入的安全摘要。'.repeat(8),keywords:['关键词'],src:'book'}];
@@ -229,7 +232,7 @@ try{
     root.addEventListener('change',new Function('e','const m=coreadMemory();'+injectChange));
     root.addEventListener('input',new Function('e','const m=coreadMemory();'+injectInput));
     resetInject();
-  },{functions:coreadInjectFunctions,unique:uniqueClean.toString(),
+  },{functions:coreadInjectFunctions+'\n'+storyboardFunctionSource('coreadNormalizeSynonyms')+'\n'+storyboardFunctionSource('coreadCaptureDictMutation'),unique:uniqueClean.toString(),plainObject:isPlainObject.toString(),
     dictClick:between('    // 词典册：新建词册','    // 测试按钮：综合自检'),
     injectChange:between("    if (e.target.closest('.sd-reader-dict-booksel'))",'    // 总结提示词预设下拉')+between("    if (e.target.closest('.sd-reader-mainline-toggle'))",'\n'),
     injectInput:between("    if (e.target.closest('.sd-reader-inj-recall'))",'    const map = [')});

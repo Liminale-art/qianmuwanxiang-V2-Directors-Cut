@@ -34075,8 +34075,9 @@ function bindReaderStageEvents(stageRoot) {
     if (e.target.closest('.sd-reader-arch-manage')) { void coreadOpenArchivePage(); return; }
     // 词典册：新建词册（弹窗命名后创建并自动选中）
     if (e.target.closest('.sd-reader-dictbook-add')) {
+      const mutation = coreadCaptureDictMutation(m, '', e.target.closest('.sd-reader-dictbook-add'));
       coreadPromptText('新建词册', '给词册起个名字', `词典${(m.dictBooks.length || 0) + 1}`).then((name) => {
-        if (name == null) return;   // 取消
+        if (name == null || !mutation.isCurrent()) return;
         const nm = String(name).trim().slice(0, 40) || `词典${(m.dictBooks.length || 0) + 1}`;
         const newId = uid('dict');
         m.dictBooks.push({ id: newId, name: nm, pairs: {} });
@@ -34092,9 +34093,12 @@ function bindReaderStageEvents(stageRoot) {
       const id = dictRenameBtn.dataset.id;
       const book = m.dictBooks.find((d) => d.id === id);
       if (!book) return;
+      const mutation = coreadCaptureDictMutation(m, id, dictRenameBtn);
       coreadPromptText('重命名词册', '词册新名字', book.name).then((name) => {
         if (name == null) return;
-        book.name = String(name).trim().slice(0, 40) || book.name;
+        const currentBook = mutation.currentBook();
+        if (!currentBook) return;
+        currentBook.name = String(name).trim().slice(0, 40) || currentBook.name;
         saveSettings(); rerenderMore();
         toast('已重命名。', 'success');
       });
@@ -34104,8 +34108,10 @@ function bindReaderStageEvents(stageRoot) {
     const dictDelBtn = e.target.closest('.sd-reader-dictbook-delbtn');
     if (dictDelBtn) {
       const id = dictDelBtn.dataset.id;
+      if (id === COREAD_DEFAULT_DICT) return;
+      const mutation = coreadCaptureDictMutation(m, id, dictDelBtn);
       confirmDialog('删除词册', `确定删除词册「${(m.dictBooks.find(d => d.id === id)?.name || '未命名')}」？词册内所有词条将被删除，且不可恢复。`).then((yes) => {
-        if (!yes) return;
+        if (!yes || !mutation.currentBook()) return;
         m.dictBooks = (m.dictBooks || []).filter((d) => d.id !== id);
         const store = getChatStore();
         store.coreadDictBound = coreadBoundDicts().filter((x) => x !== id);
@@ -34118,7 +34124,9 @@ function bindReaderStageEvents(stageRoot) {
     // 词典：新增词条（弹窗编辑）
     if (e.target.closest('.sd-reader-dict-addentry')) {
       if (!coreadCurrentDictId) return;
-      coreadOpenDictEntryDialog(coreadCurrentDictId, '', [], e.target.closest('.sd-reader-dict-addentry')).then((r) => { if (r) { toast('已添加词条。', 'success'); rerenderMore(); } });
+      const origin = e.target.closest('.sd-reader-dict-addentry');
+      const mutation = coreadCaptureDictMutation(m, coreadCurrentDictId, origin);
+      coreadOpenDictEntryDialog(coreadCurrentDictId, '', [], origin).then((r) => { if (r && mutation.isCurrent()) { toast('已添加词条。', 'success'); rerenderMore(); } });
       return;
     }
     // 词典：绑定/解绑当前选中词册
@@ -34140,7 +34148,8 @@ function bindReaderStageEvents(stageRoot) {
       if (!bookId || !canon) return;
       const book = m.dictBooks.find((d) => d.id === bookId);
       const aliases = book?.pairs?.[canon] || [];
-      coreadOpenDictEntryDialog(bookId, canon, aliases, dictEdit).then((r) => { if (r) { toast('已保存。', 'success'); rerenderMore(); } });
+      const mutation = coreadCaptureDictMutation(m, bookId, dictEdit);
+      coreadOpenDictEntryDialog(bookId, canon, aliases, dictEdit).then((r) => { if (r && mutation.isCurrent()) { toast('已保存。', 'success'); rerenderMore(); } });
       return;
     }
     // 词典行：删除词条
@@ -34149,10 +34158,12 @@ function bindReaderStageEvents(stageRoot) {
       const row = dictRowDel.closest('.sd-reader-dict-row');
       const bookId = row?.dataset.bookid, canon = row?.dataset.canon;
       if (!bookId || !canon) return;
+      const mutation = coreadCaptureDictMutation(m, bookId, dictRowDel);
       confirmDialog('删除词条', `确定删除「${canon}」？`).then((yes) => {
         if (!yes) return;
-        const book = m.dictBooks.find((d) => d.id === bookId);
-        if (book && book.pairs) delete book.pairs[canon];
+        const book = mutation.currentBook();
+        if (!book) return;
+        delete book.pairs[canon];
         saveSettings(); coreadInvalidatePool(); rerenderMore();
         toast('已删除。', 'info');
       });
