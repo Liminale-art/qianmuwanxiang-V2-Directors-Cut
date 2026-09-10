@@ -3,6 +3,7 @@ import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, 
 import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
 import { inspectFocusLock, createFocusLockGuard } from './qianmu-focus-lock.js';
 import { focusVoiceCharacterKey, cleanFocusVoice, focusVoiceProfile, saveFocusVoiceProfile, focusVoiceOptions } from './qianmu-focus-voice.js';
+import { focusClockFormat, focusClockDateKey, focusClockWeekStart } from './qianmu-focus-time.js';
 import {
   clone,
   isPlainObject,
@@ -24309,26 +24310,6 @@ function focusClockPhaseMs(phase, state = settings?.focusClock || DEFAULT_SETTIN
 
 function focusClockRemainingMs(state = focusClockState(), now = Date.now()) {
   return state.status === 'running' ? Math.max(0, state.endsAt - now) : Math.max(0, state.remainingMs);
-}
-
-function focusClockFormat(ms) {
-  const seconds = Math.max(0, Math.ceil(Number(ms || 0) / 1000));
-  const minutes = Math.floor(seconds / 60);
-  return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
-}
-
-function focusClockDateKey(value = Date.now()) {
-  const date = new Date(value);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-function focusClockWeekStart(value = Date.now()) {
-  const date = new Date(value);
-  date.setHours(0, 0, 0, 0);
-  const mondayOffset = (date.getDay() + 6) % 7;
-  date.setDate(date.getDate() - mondayOffset);
-  return date;
 }
 
 function focusClockWeekHistory(state = focusClockState()) {

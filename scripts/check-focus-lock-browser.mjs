@@ -9,15 +9,18 @@ const require=createRequire(import.meta.url),{chromium}=require(process.env.QIAN
 const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
 const guardSource=await readFile(new URL('../qianmu-focus-lock.js',import.meta.url),'utf8');
 const profileSource=await readFile(new URL('../qianmu-focus-voice.js',import.meta.url),'utf8');
+const timeSource=await readFile(new URL('../qianmu-focus-time.js',import.meta.url),'utf8');
 const iconSource=await readFile(new URL('../qianmu-icon-renderer.js',import.meta.url),'utf8');
 const functions=focusFunctions+'\n'+['focusClockAttachLock','focusClockUpdateDom','focusClockRuntimeTick','renderFocusClockTab','bindFocusClockEvents','focusClockCancelVoiceWork','focusClockSetVoiceEnabled','focusClockVoiceContext','focusClockBindVoice'].map(section).join('\n');
 await mkdir(new URL('../dist/local-qa/',import.meta.url),{recursive:true});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
 const context=await browser.newContext({hasTouch:true});let external=0;const errors=[];
 await context.route('**/*',r=>{external++;return r.abort();});const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
+await page.route('https://qianmu.test/qianmu-focus-time.js',r=>r.fulfill({contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:timeSource}));
 try{
   await page.setContent(`<style>${css}</style><style>body{margin:0;background:#202328}#story-director-modal{position:relative!important;display:block!important;inset:auto!important;transform:none!important;width:100%!important;box-sizing:border-box;padding:8px}#sd-reader-portal{position:fixed;inset:0;background:#222;color:white;padding:24px;box-sizing:border-box}#reading-space{height:70vh;overflow:auto}.sd-focus-ring{margin-inline:auto}button{cursor:pointer}</style><main id="host"><button id="host-chat">ST聊天</button></main><div id="pre-disabled" inert>原本不可用</div><div id="story-director-modal" class="open sd-theme-dark"></div>`);
-  await page.evaluate(({defaults,functions,guardSource,iconSource,profileSource})=>{
+  await page.evaluate(async({defaults,functions,guardSource,iconSource,profileSource})=>{
+    Object.assign(window,await import('https://qianmu.test/qianmu-focus-time.js'));
     window.eval(guardSource.replaceAll('export ',''));window.eval(iconSource.replaceAll('export ',''));
     window.eval(profileSource.replaceAll('export ','')+'\nwindow.focusVoiceCharacterKey=focusVoiceCharacterKey;');
     window.MODAL_ID='story-director-modal';window.settings={enabled:true,focusClock:structuredClone(defaults)};window.DEFAULT_SETTINGS={focusClock:defaults};window.activeTab='focus';
@@ -35,7 +38,7 @@ try{
     window.ttsProviderConfig=()=>({voiceLibrary:[{id:'v',voiceId:'voice-A',name:'柔和音色'},{id:'v2',voiceId:'voice-B',name:'另一音色'}]});window.ttsActiveVoiceMap=()=>[];
     window.focusClockVoiceDrawerRows=()=>[];
     window.focusClockTodayHistory=()=>[];window.focusClockWeekStats=()=>({days:Array.from({length:7},()=>({minutes:0})),history:[],minutes:0,count:0,readingMinutes:0});
-    window.focusClockWeekStart=()=>new Date();window.htmlEscape=x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
+    window.htmlEscape=x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
     window.focusClockPrimeSound=()=>{};window.focusClockPrepareVoiceCues=()=>{};window.focusClockPlayCompletionAlert=()=>{};
     window.startFocusClockRuntime=()=>{};window.focusClockMaybePlayMidCue=()=>{};window.focusClockOpenVoiceDrawer=()=>{};window.focusClockSyncPreviewButton=()=>{};
     window.saveSettings=()=>{};let uidCount=0;window.uid=()=>`fixture-${++uidCount}`;window.notices=[];window.toast=x=>notices.push(x);window.confirmDialog=async()=>true;
