@@ -60,7 +60,7 @@ try{
     window.eval(profileSource.replaceAll('export ','')+'\nwindow.focusVoiceCharacterKey=focusVoiceCharacterKey;');
     window.MODAL_ID='story-director-modal';window.settings={enabled:true,focusClock:structuredClone(defaults)};window.DEFAULT_SETTINGS={focusClock:defaults};window.activeTab='focus';
     window.focusClockState=()=>settings.focusClock;window.focusClockLockOwner='browser-test';window.focusClockOwnerId=()=>focusClockLockOwner;
-    window.focusClockEntryBusy=false;window.focusClockLockGuard=null;window.focusClockLockConfirming=false;
+    window.focusClockEntryBusy=false;window.focusClockEntryEpoch=0;window.focusClockLockGuard=null;window.focusClockLockConfirming=false;
     window.ttsCurrentAudio=null;window.voiceFixture=false;
     window.ttsProviderId=()=> 'minimax';window.getTtsProvider=()=>({label:'测试音色'});
     window.FOCUS_CLOCK_PHASES={focus:{label:'专注',icon:'fa-seedling',setting:'focusMinutes'},shortBreak:{label:'小憩',icon:'fa-mug-hot',setting:'shortBreakMinutes'},longBreak:{label:'长休',icon:'fa-cloud-moon',setting:'longBreakMinutes'}};

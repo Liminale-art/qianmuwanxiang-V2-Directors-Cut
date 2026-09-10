@@ -16,7 +16,7 @@ export function focusFixture(overrides={}){
   const f=structuredClone(focusDefaults);Object.assign(f,overrides);
   const c=vm.createContext({settings:{enabled:true,focusClock:f},DEFAULT_SETTINGS:{focusClock:structuredClone(focusDefaults)},
     createFocusSessionController,focusClockSessionController:null,
-    focusClockState:()=>f,focusClockEntryBusy:false,focusClockLockConfirming:false,focusClockLockOwner:'device',focusClockLockGuard:null,
+    focusClockState:()=>f,focusClockEntryBusy:false,focusClockEntryEpoch:0,focusClockLockConfirming:false,focusClockLockOwner:'device',focusClockLockGuard:null,
     inspectFocusLock,focusClockFormat,Date:class extends Date{static now(){return now;}},FOCUS_CLOCK_WEEK_ENTRY_LIMIT:160,
     FOCUS_CLOCK_PHASES:{focus:{setting:'focusMinutes',label:'专注'},shortBreak:{setting:'shortBreakMinutes',label:'小憩'},longBreak:{setting:'longBreakMinutes',label:'长休'}},
     readerView:null,readerContentCache:null,activeTab:'focus',document:{querySelector:()=>null,querySelectorAll:()=>[],createElement:()=>({inert:false})},

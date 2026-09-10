@@ -1383,6 +1383,7 @@ let focusClockRuntime = null;      // Only owns the display ticker/listeners; en
 let focusClockSessionController = null;
 let focusClockLockGuard = null;
 let focusClockEntryBusy = false;
+let focusClockEntryEpoch = 0; // Invalidates pending UI admission when the runtime stops.
 let focusClockLockOwner = '';
 let focusClockLockConfirming = false;
 let focusClockSoundPlayer = null;  // Owns completion/preview audio and its animation lifecycle.
@@ -24208,6 +24209,7 @@ async function focusClockRequestStart({ locked = false } = {}) {
 
 async function focusClockEnableLock() {
   if (focusClockBlockExit() || focusClockEntryBusy || focusClockLockConfirming) return;
+  const entryEpoch = focusClockEntryEpoch;
   const f = focusClockState();
   if (f.status !== 'idle' || f.phase !== 'focus') { toast('请在新一轮专注开始前上锁。', 'info'); return; }
   if (!focusClockOwnerId() || !('inert' in document.createElement('div'))) { toast('当前浏览器不支持可靠锁定，仍可使用普通计时。', 'warning'); return; }
@@ -24215,8 +24217,8 @@ async function focusClockEnableLock() {
   focusClockLockConfirming = true;
   let yes;
   try { yes = await confirmDialog('上锁并开始专注', `本轮 ${Math.ceil(f.remainingMs / 60000)} 分钟内不能暂停、提前结束或退出专注范围。${f.activity === 'reading' ? '成功打开阅读页后才开始计时，伴读内功能仍可使用。' : ''}到时自动解锁；下一轮不会自动上锁。`); }
-  finally { focusClockLockConfirming = false; }
-  if (!yes || settings.focusClock !== f || f.status !== 'idle' || f.phase !== 'focus' || !isModalOpen() || activeTab !== 'focus'
+  finally { if (entryEpoch === focusClockEntryEpoch) focusClockLockConfirming = false; }
+  if (!yes || entryEpoch !== focusClockEntryEpoch || !settings.enabled || settings.focusClock !== f || f.status !== 'idle' || f.phase !== 'focus' || !isModalOpen() || activeTab !== 'focus'
       || signature !== JSON.stringify([f.activity, f.bookId, f.focusMinutes, f.remainingMs])) return;
   await focusClockRequestStart({ locked: true });
 }
@@ -24692,6 +24694,8 @@ function startFocusClockRuntime(options) {
 }
 
 function stopFocusClockRuntime() {
+  focusClockEntryEpoch++;
+  focusClockLockConfirming = false;
   focusClockCancelVoiceWork();
   focusClockLockGuard?.dispose(); focusClockLockGuard = null;
   focusClockRuntime?.stop();

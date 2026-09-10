@@ -19,7 +19,7 @@ export function focusRuntimeFixture(overrides = {}) {
   };
   const document=events(),window=events(),timers=new Map(),trace=[],prepared=[],seen=[];
   let nextId=0, state={status:'running',phase:'focus',sessionToken:'original',sessionVoiceCues:[],remainingMs:1000,...overrides};
-  const c=vm.createContext({document,window,createFocusClockRuntime,focusClockRuntime:null,
+  const c=vm.createContext({document,window,createFocusClockRuntime,focusClockRuntime:null,focusClockEntryEpoch:0,focusClockLockConfirming:false,
     focusClockLockGuard:{dispose:()=>trace.push('unlock')},focusClockVoiceCache:createFocusVoiceCache({available:()=>false,read:async()=>null}),
     setInterval:(fn,ms)=>{const id=++nextId;timers.set(id,{fn,ms});return id;},clearInterval:id=>timers.delete(id),
     focusClockState:()=>state,focusClockRemainingMs:value=>value.remainingMs,

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import {inspectFocusLock,FOCUS_LOCK_MAX_MS} from '../qianmu-focus-lock.js';
 import {focusFixture} from './helpers/focus-lock-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
@@ -8,6 +9,23 @@ test('locking requires confirmation and starts exactly one bounded round',async(
   const {c,f,calls}=focusFixture();c.confirmDialog=async()=>false;await c.focusClockEnableLock();assert.equal(f.status,'idle');assert.equal(f.lock,null);
   c.confirmDialog=async()=>true;await c.focusClockEnableLock();assert.equal(f.status,'running');assert.equal(f.lock.endsAt,f.endsAt);assert.equal(f.lock.owner,'device');
   assert.equal(calls.filter(x=>x==='attach').length,1);assert.equal(inspectFocusLock(f,'device',100001).active,true);
+});
+
+test('runtime stop invalidates an old lock confirmation without letting its finally clear a newer confirmation',async()=>{
+  for(const openNew of [false,true]) {
+    const {c,f}=focusFixture(),answers=[];
+    Object.assign(c,{focusClockEntryEpoch:0,focusClockRuntime:null,focusClockResetMedia:()=>{},
+      focusClockVoiceCache:{clear:()=>{}},focusClockCloseVoiceDrawer:()=>{},
+      confirmDialog:()=>new Promise(resolve=>answers.push(resolve))});
+    vm.runInContext(section('stopFocusClockRuntime'),c);
+    const old=c.focusClockEnableLock();c.settings.enabled=false;c.stopFocusClockRuntime();c.settings.enabled=true;
+    const next=openNew?c.focusClockEnableLock():null;
+    assert.equal(answers.length,openNew?2:1,'a stopped confirmation must not block a new one');
+    answers[0](true);await old;
+    assert.equal(f.status,'idle','old consent cannot start a round after re-enable');assert.equal(f.lock,null);
+    assert.equal(c.focusClockLockConfirming,openNew,'old finally must not release the newer busy flag');
+    if(openNew){answers[1](true);await next;assert.equal(f.status,'running');assert.ok(f.lock);}
+  }
 });
 test('active locks block pause, reset and re-lock without changing the timer deadline',async()=>{
   const {c,f}=focusFixture();await c.focusClockEnableLock();const deadline=f.endsAt;
