@@ -1,4 +1,5 @@
 import vm from 'node:vm';
+import * as centerView from '../../qianmu-reader-center-view.js';
 import {storyboardFunctionSource as section} from './storyboard-form-fixture.mjs';
 
 export const coreadCenterFunctions=['renderMemSwitch','renderCoreadCenterStatus','renderCoreadSpoilerGuard',
@@ -6,7 +7,7 @@ export const coreadCenterFunctions=['renderMemSwitch','renderCoreadCenterStatus'
 
 export function createCoreadCenterFixture(){
   const trace=[],inputs={meta:{title:'Book<&',progress:60},fallback:{progress:40},safe:[{id:1}]};
-  const c=vm.createContext({COREAD_MEMORY_ENABLED:true,coreadGuideStep:null,
+  const c=vm.createContext({...centerView,COREAD_MEMORY_ENABLED:true,coreadGuideStep:null,
     readerDialog:{bookId:'book',readBoundary:{progress:12.5},slices:[{id:1},{id:2},{id:3}]},
     coreadBookMeta:id=>{trace.push(['meta',id]);return inputs.meta;},
     coreadCurrentReadBoundarySync:id=>{trace.push(['boundary',id]);return inputs.fallback;},

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+const centerView = await readFile(new URL('../qianmu-reader-center-view.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
 const setup = source.slice(source.indexOf('function renderCompanionSetupBody'), source.indexOf('function renderReaderVoiceClips'));
@@ -24,7 +25,7 @@ assert.match(css, /\.sd-reader-promptblock[^{]*\{[^}]*border:[^}]*border-radius:
 
 const guide = source.slice(source.indexOf('const COREAD_GUIDE_STEPS'), source.indexOf('function renderCompanionMoreBody'));
 assert.match(guide, /tab: 'api'[\s\S]*target: 'sources'[\s\S]*target: 'dialog-summary'[\s\S]*target: 'mainline-summary'[\s\S]*target: 'records'[\s\S]*tab: 'inject'[\s\S]*target: 'transfer'/, '首次教程必须覆盖接口、取材、伴读总结、主线总结、档案、注入和迁移');
-assert.match(guide, /sd-reader-tour-prev[\s\S]*sd-reader-tour-next/, '逐步教程必须提供箭头式上一步和下一步');
+assert.match(centerView, /sd-reader-tour-prev[\s\S]*sd-reader-tour-next/, '逐步教程必须提供箭头式上一步和下一步');
 assert.match(source, /if \(!m\.guideSeen && coreadGuideStep === null\) coreadGuideStep = 0/, '首次进入伴读中心必须自动启动逐步引导');
 assert.match(css, /\.sd-reader-tour-target[^{]*\{[^}]*outline:[^}]*animation:/, '当前引导卡必须有明确高亮视觉');
 assert.match(css, /\.sd-reader-tour\s*\{[^}]*position:\s*absolute/, '引导说明卡必须跟随当前高亮区定位而非固定在页顶');

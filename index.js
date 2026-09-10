@@ -17,6 +17,7 @@ import { exportFocusWeekImage } from './qianmu-focus-export.js';
 import { createFocusCueRecords } from './qianmu-focus-cue-records.js';
 import { createFocusVoiceDrawer } from './qianmu-focus-drawer.js';
 import { renderCoreadIdentityView, renderCoreadIdentityChoicesView } from './qianmu-reader-identity-view.js';
+import { renderCoreadCenterStatusView, renderCoreadSpoilerGuardView, renderCoreadGuideView, renderCoreadPackBarView } from './qianmu-reader-center-view.js';
 import {
   clone,
   isPlainObject,
@@ -31685,23 +31686,12 @@ function renderCoreadCenterStatus(m) {
   const safeSlices = coreadSafeSlices(allSlices, boundary, m);
   const blocked = Math.max(0, allSlices.length - safeSlices.length);
   const progress = Math.max(0, Math.min(100, Number(boundary?.progress ?? meta?.progress) || 0));
-  return `<section class="sd-reader-center-status">
-    <div class="sd-reader-center-book">
-      <span class="sd-reader-center-book-icon"><i class="fa-solid fa-book"></i></span>
-      <span class="sd-reader-center-book-copy">
-        <b>${meta ? `《${htmlEscape(meta.title || '未命名')}》` : '尚未打开书籍'}</b>
-        <small>已读 ${progress}% · ${allSlices.length} 条记忆${blocked ? ` · ${blocked} 条进度外隔离` : ''}</small>
-      </span>
-    </div>
-  </section>`;
+  return renderCoreadCenterStatusView({meta, progress, blocked, sliceCount: allSlices.length}, htmlEscape);
 }
 
 function renderCoreadSpoilerGuard(m) {
   const on = m.spoilerProtection !== false;
-  return `<label class="sd-reader-center-guard sd-reader-setup-guard${on ? ' is-protected' : ''}">
-    <span><i class="fa-solid fa-shield-halved"></i><b>防全知剧透</b></span>
-    ${renderMemSwitch('sd-reader-spoiler-filter', on)}
-  </label>`;
+  return renderCoreadSpoilerGuardView({on, switchHtml: renderMemSwitch('sd-reader-spoiler-filter', on)});
 }
 
 const COREAD_GUIDE_STEPS = [
@@ -31735,30 +31725,11 @@ function renderCoreadGuide() {
   const step = coreadGuideCurrent();
   if (!step) return '';
   const index = Math.max(0, Math.min(steps.length - 1, coreadGuideStep));
-  return `<aside class="sd-reader-tour" role="dialog" aria-label="伴读快速引导">
-    <div class="sd-reader-tour-icon"><i class="fa-solid ${step.icon}"></i></div>
-    <div class="sd-reader-tour-copy">
-      <span class="sd-reader-tour-count">${index + 1} / ${steps.length}</span>
-      <b>${htmlEscape(step.title)}</b>
-      <p>${htmlEscape(step.text)}</p>
-    </div>
-    <div class="sd-reader-tour-actions">
-      <button type="button" class="sd-reader-tour-skip" title="跳过引导">跳过</button>
-      <button type="button" class="sd-reader-tour-prev" title="上一步"${index ? '' : ' disabled'}><i class="fa-solid fa-arrow-left"></i></button>
-      <button type="button" class="sd-reader-tour-next" title="${index === steps.length - 1 ? '完成' : '下一步'}"><i class="fa-solid ${index === steps.length - 1 ? 'fa-check' : 'fa-arrow-right'}"></i></button>
-    </div>
-  </aside>`;
+  return renderCoreadGuideView({step, index, total: steps.length}, htmlEscape);
 }
 
 function renderCoreadPackBar() {
-  return `<section class="sd-reader-packbar${coreadGuideTargetClass('transfer')}">
-    <span class="sd-reader-packbar-icon"><i class="fa-solid fa-box-open"></i></span>
-    <span class="sd-reader-packbar-copy"><b>伴读数据打包</b><small>整包迁移与备份 · 不含 API 密钥</small></span>
-    <span class="sd-reader-packbar-actions">
-      <button type="button" class="sd-reader-pack-export" title="导出伴读数据打包"><i class="fa-solid fa-file-export"></i></button>
-      <label class="sd-reader-pack-import" title="导入伴读数据打包"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-pack-import-input sd-reader-native-file" accept="application/json,.json"></label>
-    </span>
-  </section>`;
+  return renderCoreadPackBarView(coreadGuideTargetClass('transfer'));
 }
 
 function renderCompanionMoreBody() {

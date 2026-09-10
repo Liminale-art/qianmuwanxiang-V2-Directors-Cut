@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+const centerView = await readFile(new URL('../qianmu-reader-center-view.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 const store = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
 
@@ -25,6 +26,6 @@ assert.match(store, /export async function listReaderImages[\s\S]*export async f
 assert.match(source, /<div class="sd-reader-mempty">尚无注入记录<\/div>/, '实际注入空态必须使用精简文案');
 const setup = source.slice(source.indexOf('function renderCompanionSetupBody'), source.indexOf('function renderReaderVoiceClips'));
 assert.match(setup, /对话与可见范围[\s\S]*renderCoreadPackBar\(\)/, '伴读数据打包必须位于伴读设定末尾');
-assert.match(source, /<b>伴读数据打包<\/b>/, '数据迁移入口必须命名为伴读数据打包');
+assert.match(centerView, /<b>伴读数据打包<\/b>/, '数据迁移入口必须命名为伴读数据打包');
 
 console.log('Coread package and guided tour contract OK');

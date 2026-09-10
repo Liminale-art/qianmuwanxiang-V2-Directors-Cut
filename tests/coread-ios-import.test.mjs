@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+const centerView = await readFile(new URL('../qianmu-reader-center-view.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
 const shelfMarkup = source.slice(source.indexOf('function renderLibraryView'), source.indexOf('function buildReaderParagraphs'));
@@ -29,7 +30,7 @@ assert.doesNotMatch(refillChooser, /document\.getElementById\('story-director-mo
 assert.match(refillChooser, /window\.visualViewport[\s\S]*viewport\?\.addEventListener\('resize', syncViewport\)/, '补正文弹层必须跟随移动端 visualViewport');
 assert.match(css, /\.sd-reader-refill-card\s*\{[^}]*max-height:\s*100%[^}]*overflow-y:\s*auto/, '短视口下补正文卡片必须可滚动且不越界');
 
-const center = source.slice(source.indexOf('function renderCoreadPackBar'), source.indexOf('function renderCompanionMoreBody'));
+const center = centerView.slice(centerView.indexOf('function renderCoreadPackBarView'));
 const centerBinding = source.slice(source.indexOf("morePage?.addEventListener('change'"), source.indexOf("morePage?.addEventListener('input'"));
 assert.match(center, /sd-reader-pack-import[\s\S]*<input type="file" class="sd-reader-pack-import-input sd-reader-native-file"/, '伴读中心数据包导入必须使用常驻原生文件控件');
 assert.match(centerBinding, /sd-reader-pack-import-input[\s\S]*packInput\.value = ''[\s\S]*coreadImportDataFile\(file\)/, '伴读数据包选择后必须清空控件并进入统一导入器');
