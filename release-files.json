@@ -9,6 +9,7 @@
     "qianmu-focus-history.js",
     "qianmu-focus-runtime.js",
     "qianmu-focus-session.js",
+    "qianmu-focus-sound.js",
     "qianmu-user-identity.js",
     "qianmu-user-alias.js",
     "qianmu-user-alias-bindings.js",

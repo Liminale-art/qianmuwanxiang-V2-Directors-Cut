@@ -4,6 +4,7 @@ import { readFile, stat } from 'node:fs/promises';
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const runtime = await readFile(new URL('../qianmu-focus-runtime.js', import.meta.url), 'utf8');
 const session = await readFile(new URL('../qianmu-focus-session.js', import.meta.url), 'utf8');
+const sound = await readFile(new URL('../qianmu-focus-sound.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 for (const name of ['light.mp3', 'daylight.mp3', 'silver-bell.mp3', 'bright.mp3', 'horizon.mp3', 'sunrise.mp3']) {
   const file = await stat(new URL(`../assets/focus-sounds/${name}`, import.meta.url));
@@ -47,8 +48,9 @@ assert.match(source, /FOCUS_CLOCK_SOUND_PRESETS[\s\S]*light\.mp3[\s\S]*daylight\
 assert.match(source, /soundSource: 'builtin'[\s\S]*soundUrl: ''/, '提示音必须支持内置与外链方案');
 assert.doesNotMatch(source, /data-focus-sound-source="file"|sd-focus-sound-file/, '本地提示音入口必须移除');
 assert.match(source, /data-focus-sound-source="\$\{id\}"[\s\S]*sd-focus-sound-preview/, '提示音来源必须可切换并可试听');
-assert.match(source, /focusClockPreviewMode[\s\S]*audio\.paused[\s\S]*audio\.pause\(\)/, '试听按钮必须支持播放、暂停与继续');
-assert.match(source, /--sd-sound-progress[\s\S]*requestAnimationFrame/, '试听播放进度必须驱动环形进度');
+assert.match(sound, /previewMode[\s\S]*audio\.paused[\s\S]*audio\.pause\(\)/, '试听按钮必须支持播放、暂停与继续');
+assert.match(sound, /frame = requestAnimationFrame\(tick\)/, '试听播放进度必须逐帧刷新');
+assert.match(source, /focusClockSound\(\).snapshot\(\)[\s\S]*--sd-sound-progress/, '试听环形进度读取播放器快照');
 assert.match(source, /if \(nextUrl !== f\.soundUrl\)[\s\S]*focusClockResetMedia/, '外链未变化时不得在每次点击试听时重建音频，否则暂停无法生效');
 assert.match(source, /FOCUS_CLOCK_RELATIONS[\s\S]*stranger[\s\S]*neutral[\s\S]*friend[\s\S]*partner[\s\S]*elder/, '角色语音必须提供陌生、中性、朋友、伴侣、长者五档关系');
 assert.match(source, /FOCUS_CLOCK_VOICE_FREQUENCIES[\s\S]*chance: \.3[\s\S]*chance: \.5[\s\S]*chance: \.75/, '长时角色语音必须按 30%、50%、75% 三档概率决定');
