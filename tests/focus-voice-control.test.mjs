@@ -50,6 +50,49 @@ test('failed credential admission releases the pending ticket so a later valid p
   assert.equal(c.focusClockPreparation().busy,false);assert.equal(f.sessionVoiceCues.length,1);assert.equal(counts.synth,1);
 });
 
+test('a current persistent audio cache hit is reused without synthesizing or rewriting it',async()=>{
+  const {c,counts}=fixture(),blob=new Blob(['cached']);let reads=0,prunes=0;
+  c.blobStore.getAudio=async()=>{reads++;return {blob};};c.blobStore.pruneAudio=async()=>prunes++;
+  const key=await c.focusClockSynthVoiceCue({speaker:'甲',params:{providerId:'minimax'}},'text');
+  assert.equal(key,'cache');assert.equal(reads,1);assert.equal(counts.synth,0);assert.equal(counts.put,0);assert.equal(prunes,0);
+  assert.equal(c.focusClockVoiceBlobs.get(key),blob);
+});
+
+test('cancelling during an already admitted cache write prevents pruning and session-memory promotion',async()=>{
+  const {c,counts}=fixture(),writing=pending();let current=true,prunes=0;
+  c.blobStore.putAudio=()=>{counts.put++;return writing.promise;};c.blobStore.pruneAudio=async()=>prunes++;
+  const run=c.focusClockSynthVoiceCue({speaker:'甲',params:{providerId:'minimax'}},'text',{isCurrent:()=>current});
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(counts.put,1);
+  const rejection=assert.rejects(run,{name:'AbortError'});current=false;writing.resolve();await rejection;
+  assert.equal(prunes,0);assert.equal(c.focusClockVoiceBlobs.size,0);
+  // An already admitted storage operation is not rolled back by deleting shared records.
+  assert.equal(counts.put,1);
+});
+
+test('newly synthesized memory fallback retains only the latest twelve cues without persistent storage',async()=>{
+  const {c,counts}=fixture();c.blobStore.blobStoreAvailable=()=>false;c.cacheKeyForTts=(_provider,params)=>params.text;
+  for(let i=0;i<13;i++) await c.focusClockSynthVoiceCue({speaker:'甲',params:{providerId:'minimax'}},`line-${i}`);
+  assert.equal(c.focusClockVoiceBlobs.size,12);assert.equal(c.focusClockVoiceBlobs.has('line-0'),false);
+  assert.equal(c.focusClockVoiceBlobs.has('line-12'),true);assert.equal(counts.synth,13);assert.equal(counts.put,0);
+});
+
+test('resolved Doubao output uses its resolved cache key and leaves the frozen request parameters unchanged',async()=>{
+  const {c}=fixture();const original={providerId:'doubao',model:'auto',voiceId:'voice-A'};let persisted,written,pruned;
+  c.cacheKeyForTts=(_provider,params)=>params.model;
+  c.synthesizeTts=async()=>({blob:new Blob(['audio']),resolvedModel:'resolved-model'});
+  c.ttsPersistResolvedDoubaoModel=(params,model)=>{persisted={params,model};};
+  c.blobStore.putAudio=async(key,_blob,meta)=>{written={key,meta};};c.blobStore.pruneAudio=async(limit,kind)=>{pruned={limit,kind};};
+  const key=await c.focusClockSynthVoiceCue({speaker:'甲',params:original},'text');
+  assert.equal(key,'resolved-model');assert.equal(written.key,key);assert.equal(written.meta.source,'focus');
+  assert.equal(persisted.model,key);assert.equal(original.model,'auto');assert.equal(pruned.limit,200);assert.equal(pruned.kind,'tts');
+});
+
+test('missing provider credentials fail before even reading audio cache or creating a synthesis request',async()=>{
+  const {c,counts}=fixture();let reads=0;c.ttsProviderHasCredentials=()=>false;c.blobStore.getAudio=async()=>{reads++;return null;};
+  await assert.rejects(c.focusClockSynthVoiceCue({speaker:'甲',params:{providerId:'minimax'}},'text'),/未配置/);
+  assert.equal(reads,0);assert.equal(counts.synth,0);assert.equal(counts.put,0);
+});
+
 test('all three phases allow switching off while running or paused, without changing timing',()=>{
   for(const phase of ['focus','shortBreak','longBreak']) for(const status of ['running','paused']){
     const {c,f}=fixture({phase,status});const end=f.endsAt;
