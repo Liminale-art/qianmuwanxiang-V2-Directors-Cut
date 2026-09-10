@@ -56,3 +56,17 @@ test('same-round confirmation after pausing still ends that round, and idle rese
   const pending=button.fire('click');e.f.status='paused';resolve(true);await pending;assert.deepEqual(e.trace,['reset','render']);
   e.f.status='idle';e.trace.length=0;await button.fire('click');assert.equal(confirmations,1);assert.deepEqual(e.trace,['reset','render']);
 });
+
+test('today-clear confirmation cannot cross a local date, settings owner or plugin deactivation',async()=>{
+  for(const change of ['day','owner','disabled']) {
+    const e=fixture({history:[{id:'old',finishedAt:'day1'},{id:'later',finishedAt:'day2'}],lastCompletionId:'later'}),button=e.node('.sd-focus-clear-history');let resolve,day='day1';
+    e.c.focusClockDateKey=stamp=>stamp||day;e.c.focusClockState=()=>e.c.settings.focusClock;
+    e.c.confirmDialog=()=>new Promise(r=>{resolve=r;});e.bind();e.trace.length=0;
+    const pending=button.fire('click');
+    if(change==='day')day='day2';
+    if(change==='owner')e.c.settings.focusClock={...e.f,history:[{id:'restored',finishedAt:'day1'}],lastCompletionId:'restored'};
+    if(change==='disabled')e.c.settings.enabled=false;
+    const before=JSON.stringify(e.c.settings.focusClock);resolve(true);await pending;
+    assert.equal(JSON.stringify(e.c.settings.focusClock),before,change);assert.deepEqual(e.trace,[],change);
+  }
+});

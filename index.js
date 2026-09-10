@@ -25040,10 +25040,10 @@ function bindFocusClockEvents(root) {
     renderModal();
   });
   root.querySelector('.sd-focus-clear-history')?.addEventListener('click', async () => {
+    const owner = settings.focusClock, today = focusClockDateKey();
     const yes = await confirmDialog('清空今日记录', '只清除今天已完成的专注记录，确定继续？');
-    if (!yes) return;
+    if (!yes || !settings.enabled || settings.focusClock !== owner || focusClockDateKey() !== today) return;
     const f = focusClockState();
-    const today = focusClockDateKey();
     f.history = f.history.filter((item) => focusClockDateKey(item.finishedAt || item.startedAt) !== today);
     if (!f.history.some((item) => item.id === f.lastCompletionId)) f.lastCompletionId = '';
     saveSettings();
