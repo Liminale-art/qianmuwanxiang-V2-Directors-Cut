@@ -1377,6 +1377,7 @@ let focusClockEntryBusy = false;
 let focusClockLockOwner = '';
 let focusClockLockConfirming = false;
 let focusClockMedia = null;         // 内置/外链提示音复用同一 Audio 元素，开始计时时由用户手势预热
+let focusClockMediaSeq = 0;        // 旧预热/播放返回不能操作后续试听或已释放的音频
 let focusClockPreviewMode = false;  // 试听可暂停后继续；完成提醒播放不占用试听按钮状态
 let focusClockPreviewFrame = 0;     // requestAnimationFrame 驱动试听圆环，避免 timeupdate 的阶梯感
 let focusClockVoicePrepareSeq = 0;   // 新专注轮次递增；旧异步情景生成返回时自动作废
@@ -24459,6 +24460,7 @@ function focusClockAttachMediaEvents(audio) {
     audio.addEventListener(eventName, focusClockSyncPreviewButton);
   }
   audio.addEventListener('ended', () => {
+    if (audio !== focusClockMedia) return;
     if (focusClockPreviewMode) {
       focusClockPreviewMode = false;
       try { audio.currentTime = 0; } catch (_) {}
@@ -24480,6 +24482,7 @@ function focusClockEnsureMedia(src) {
 }
 
 function focusClockResetMedia() {
+  focusClockMediaSeq += 1;
   try { focusClockMedia?.pause?.(); } catch (_) {}
   focusClockPreviewMode = false;
   focusClockStopPreviewFrame();
@@ -24493,22 +24496,26 @@ function focusClockPrimeSound() {
   try {
     const src = focusClockMediaSource(f);
     if (!src) return;
-    focusClockEnsureMedia(src);
+    const audio = focusClockEnsureMedia(src);
+    const mediaSeq = ++focusClockMediaSeq;
+    const isCurrent = () => mediaSeq === focusClockMediaSeq && audio === focusClockMedia;
     // 开始/预览均来自用户手势；静音预热能提高移动端稍后播放的成功率，但浏览器仍可能在锁屏后暂停网页。
-    const previousVolume = focusClockMedia.volume;
-    focusClockMedia.volume = 0;
-    const primed = focusClockMedia.play();
+    const previousVolume = audio.volume;
+    audio.volume = 0;
+    const primed = audio.play();
     if (primed?.then) void primed.then(() => {
-      focusClockMedia.pause();
-      focusClockMedia.currentTime = 0;
-      focusClockMedia.volume = previousVolume || 1;
-    }).catch(() => { focusClockMedia.volume = previousVolume || 1; });
+      if (!isCurrent()) return;
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = previousVolume || 1;
+    }).catch(() => { if (isCurrent()) audio.volume = previousVolume || 1; });
   } catch (_) {}
 }
 
 async function focusClockPlayDoneSound({ preview = false } = {}) {
   const f = focusClockState();
   if (!f.soundEnabled && !preview) return false;
+  let isCurrent = () => true;
   try {
     const src = focusClockMediaSource(f);
     if (!src) {
@@ -24517,10 +24524,13 @@ async function focusClockPlayDoneSound({ preview = false } = {}) {
     }
     const sameSource = focusClockMedia?.dataset?.source === src;
     const audio = focusClockEnsureMedia(src);
+    const mediaSeq = ++focusClockMediaSeq;
+    isCurrent = () => mediaSeq === focusClockMediaSeq && audio === focusClockMedia;
     audio.volume = 1;
     if (preview && sameSource && focusClockPreviewMode && !audio.ended) {
       if (audio.paused) {
         await audio.play();
+        if (!isCurrent()) return false;
         focusClockRunPreviewFrame();
       } else {
         audio.pause();
@@ -24532,10 +24542,12 @@ async function focusClockPlayDoneSound({ preview = false } = {}) {
     focusClockPreviewMode = preview;
     audio.currentTime = 0;
     await audio.play();
+    if (!isCurrent()) return false;
     if (preview) focusClockRunPreviewFrame();
     else focusClockSyncPreviewButton();
     return true;
   } catch (_) {
+    if (!isCurrent()) return false;
     if (preview) {
       focusClockPreviewMode = false;
       focusClockStopPreviewFrame();
