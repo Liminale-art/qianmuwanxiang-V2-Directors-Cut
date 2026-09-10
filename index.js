@@ -24177,14 +24177,15 @@ function focusClockReaderReady(bookId) {
 async function focusClockEnterReading() {
   const entryEpoch = focusClockEntryEpoch;
   const f = focusClockState(), bookId = f.sessionBookId || f.bookId;
+  const isCurrent = () => entryEpoch === focusClockEntryEpoch && settings.enabled && settings.focusClock === f && (f.sessionBookId || f.bookId) === bookId && isModalOpen() && ['focus', 'coread'].includes(activeTab);
   if (!bookId || !coreadBookMeta(bookId)) { toast('请先选择一本可阅读的书籍。', 'warning'); return false; }
   try {
     await ensureCoreadReaderRuntime();
-    if (entryEpoch !== focusClockEntryEpoch || !settings.enabled || settings.focusClock !== f || (f.sessionBookId || f.bookId) !== bookId || !isModalOpen() || !['focus', 'coread'].includes(activeTab)) return false;
+    if (!isCurrent()) return false;
     if (readerView?.bookId === bookId && readerContentCache?.bookId === bookId) {
       activeTab = 'coread'; renderModal(); refreshReaderPortal();
-    } else await coreadOpenBook(bookId);
-    if (entryEpoch !== focusClockEntryEpoch || !settings.enabled) return false;
+    } else await coreadOpenBook(bookId, { isCurrent });
+    if (!isCurrent()) return false;
     focusClockResumeReading();
     return focusClockReaderReady(bookId);
   } catch (_) { if (entryEpoch === focusClockEntryEpoch && settings.enabled) toast('阅读页未能打开，尚未开始新的计时。', 'warning'); return false; }
@@ -30802,7 +30803,8 @@ async function coreadDeleteBook(bookId, options = {}) {
 
 /* ── 进入/退出阅读器 ───────────────────────────────────── */
 
-async function coreadOpenBook(bookId) {
+async function coreadOpenBook(bookId, { isCurrent = () => true } = {}) {
+  if (!isCurrent()) return;
   const readingLock = focusClockActiveLock();
   if (readingLock && (readingLock.activity !== 'reading' || readingLock.bookId !== bookId)) { focusClockBlockExit(); return; }
   if (coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight) { toast('正在保存或整理伴读记忆，请完成或停止后进入阅读。', 'info'); return; }
@@ -30823,7 +30825,7 @@ async function coreadOpenBook(bookId) {
   if (!meta) { toast('找不到这本书。', 'error'); return; }
   let rec = null;
   try { rec = await blobStore.getBook(bookId); } catch (_) {}
-  if (requestId !== coreadOpenRequestId || activeTab !== originTab) return;
+  if (!isCurrent() || requestId !== coreadOpenRequestId || activeTab !== originTab) return;
   if (coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight) {
     toast('伴读记忆正在处理，请完成后再打开书目。', 'info'); return;
   }

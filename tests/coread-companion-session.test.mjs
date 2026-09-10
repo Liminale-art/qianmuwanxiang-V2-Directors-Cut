@@ -86,6 +86,19 @@ test('missing local book content preserves position and enters the existing refi
   await e.context.coreadOpenBook('book');assert.equal(e.context.readerView,null);assert.equal(e.books[0].lastScrollRatio,.2);assert.equal(e.state.lastReading.scrollRatio,.5);assert.equal(e.notices.at(-1),'refill:book');
 });
 
+test('cancelled caller admission cannot paint or refill a book after its asynchronous read',async()=>{
+  for(const content of [null,{chapters:[{content:'old'}]}]) {
+    const e=fixture(),trace=[];let current=true,resolve,reads=0;
+    e.context.blobStore.getBook=()=>{reads++;return new Promise(done=>resolve=done);};
+    e.context.renderModal=()=>trace.push('render');e.context.focusClockResumeReading=()=>trace.push('resume');
+    const before=JSON.stringify(e.books),run=e.context.coreadOpenBook('book',{isCurrent:()=>current});
+    const replacement={bookId:'replacement'};e.context.readerView=replacement;current=false;resolve(content);await run;
+    assert.equal(e.context.readerView,replacement);assert.equal(JSON.stringify(e.books),before);
+    assert.deepEqual(trace,[]);assert.deepEqual(e.notices,[]);
+    await e.context.coreadOpenBook('book',{isCurrent:()=>false});assert.equal(reads,1,'already cancelled calls must not read');
+  }
+});
+
 test('character macros receive the selected card overrides, not the host current role',async()=>{
   const e=fixture();e.context.coreadSelectCompanion('b.png');let argumentsUsed;
   e.host.substituteParams=(...args)=>{argumentsUsed=args;return args[0].replace('{{char}}',args[2]);};

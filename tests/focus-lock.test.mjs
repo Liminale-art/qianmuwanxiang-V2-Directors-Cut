@@ -89,6 +89,15 @@ test('reading entry checks stop after book loading and suppresses stale loading 
     assert.equal(await old,false);assert.equal(resume,0);assert.deepEqual(notices,[]);
   }
 });
+
+test('focus passes its current admission through to the asynchronous book opener',async()=>{
+  const {c}=focusFixture({activity:'reading',bookId:'book'});let checked=false;
+  c.coreadOpenBook=async(id,options)=>{
+    assert.equal(id,'book');assert.equal(typeof options?.isCurrent,'function');assert.equal(options.isCurrent(),true);
+    c.focusClockEntryEpoch++;assert.equal(options.isCurrent(),false);checked=true;
+  };
+  assert.equal(await c.focusClockEnterReading(),false);assert.equal(checked,true);
+});
 test('the reader timer suspends only the portal and does not reset identity or dialogue owner',()=>{
   const {c,calls}=focusFixture();const view={bookId:'book',companionAvatar:'A',chapterIndex:2,scrollRatio:.7};c.readerView=view;
   c.focusClockShowPanel();assert.equal(c.readerView,view);assert.equal(c.activeTab,'focus');assert.ok(calls.includes('unmount'));
