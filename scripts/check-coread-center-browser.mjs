@@ -15,6 +15,8 @@ const click=between("    if (e.target.closest('.sd-reader-tour-skip'))", "    if
 const fileChange=between("    const packInput = e.target.closest('.sd-reader-pack-import-input');",'    const m = coreadMemory();');
 const guardChange=between("    if (e.target.closest('.sd-reader-spoiler-filter'))",'\n');
 const recordClick=between("    if (e.target.closest('.sd-reader-distillprompt-save'))", "    if (e.target.closest('.sd-reader-sumitem-export'))");
+const archiveClick=between("    if (e.target.closest('.sd-reader-slice-clear'))",'    // 词典册：新建词册');
+const syncChange=between("    if (e.target.closest('.sd-reader-storagemode'))",'\n');
 await mkdir(new URL('../dist/local-qa/',import.meta.url),{recursive:true});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
 const context=await browser.newContext({hasTouch:true}),errors=[];let external=0;
@@ -109,6 +111,43 @@ try{
     assert.deepEqual(await page.evaluate(()=>memory.summaryItems.map(x=>x.id)),['fixed']);assert.equal(await page.evaluate(()=>calls.save),idle+1);
     recordActions.push({width,action,once:true});
   }
+  await page.evaluate(({archiveClick,syncChange})=>{
+    window.confirmAnswer=false;
+    window.coreadSetWorldSyncMode=mode=>calls.modes.push(mode);
+    window.coreadOpenSliceManagerDialog=()=>calls.managers.push('slices');
+    window.coreadOpenArchivePage=()=>calls.managers.push('archives');
+    window.confirmDialog=async(title,message)=>{calls.confirmations.push({title,message});return confirmAnswer;};
+    window.coreadClearAllSlices=async()=>{calls.clears++;};
+    const root=document.getElementById('center');
+    root.addEventListener('click',new Function('e',archiveClick));
+    root.addEventListener('change',new Function('e',syncChange));
+  },{archiveClick,syncChange});
+  const recordLayouts=[];
+  for(const width of [320,360,430,1100]){
+    await page.setViewportSize({width,height:850});
+    await page.evaluate(()=>{coreadWorldSyncBusy=false;readerDialog.slices=[{id:1},{id:2}];confirmAnswer=false;Object.assign(calls,{modes:[],managers:[],confirmations:[],clears:0});resetRecords();});
+    const boxes=await page.locator('.sd-reader-memory-overview,.sd-reader-storagemode,.sd-reader-sumitem').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {kind:n.className,x:r.x,right:r.right,width:r.width,overflow:n.scrollWidth-n.clientWidth};}));
+    for(const box of boxes)assert.ok(box.x>=0&&box.right<=width+1&&box.width>0&&box.overflow<=1,JSON.stringify({width,box}));
+    for(const mode of ['shared','dedicated','none'])await page.locator('.sd-reader-storagemode').selectOption(mode);
+    assert.deepEqual(await page.evaluate(()=>calls.modes),['shared','dedicated','none']);
+    await page.evaluate(()=>{coreadWorldSyncBusy=true;rerenderMore();});
+    assert.equal(await page.locator('.sd-reader-storagemode').isDisabled(),true);
+    await page.evaluate(()=>{coreadWorldSyncBusy=false;rerenderMore();});
+    await page.locator('.sd-reader-slice-manage').tap();await page.locator('.sd-reader-arch-manage').tap();
+    assert.deepEqual(await page.evaluate(()=>calls.managers),['slices','archives']);
+    await page.locator('.sd-reader-slice-clear').tap();
+    assert.deepEqual(await page.evaluate(()=>[calls.confirmations.length,calls.clears]),[1,0]);
+    assert.match(await page.evaluate(()=>calls.confirmations[0].message),/本聊天里这本书.*不可恢复/);
+    await page.evaluate(()=>{confirmAnswer=true;});await page.locator('.sd-reader-slice-clear').tap();
+    await page.waitForFunction(()=>calls.clears===1);
+    assert.equal(await page.evaluate(()=>calls.confirmations.length),2);
+    await page.locator('.sd-reader-memory-overview').scrollIntoViewIfNeeded();
+    await page.screenshot({path:fileURLToPath(new URL(`../dist/local-qa/coread-records-${width}.png`,import.meta.url)),fullPage:true});
+    await page.evaluate(()=>{readerDialog.slices=[];rerenderMore();});
+    assert.equal(await page.locator('.sd-reader-slice-clear').isDisabled(),true);
+    assert.equal(await page.locator('.sd-reader-slice-manage').isEnabled(),true);
+    recordLayouts.push({width,boxes,confirmationBeforeClear:true,busyDisabled:true});
+  }
   assert.deepEqual(errors,[]);assert.equal(external,0);
-  console.log(JSON.stringify({layouts,recordActions,realEventBranches:true,realTemplates:true,external,errors,limits:'isolated DOM; no real data import, host navigation, guide positioning, record expansion memory or physical iOS validation'}));
+  console.log(JSON.stringify({layouts,recordActions,recordLayouts,realEventBranches:true,realTemplates:true,external,errors,limits:'isolated DOM; no real data import/deletion/sync, host navigation, guide positioning, record expansion memory or physical iOS validation'}));
 }finally{await context.close();await browser.close();}
