@@ -63,7 +63,7 @@ for(const engine of win?['powershell','shell']:['shell']) {
     assert.equal((await backups(f)).length,1);
   });
   test(`${engine}: a dirty installed checkout is preserved without changing configuration`,async t=>{
-    const f=await fixture(t);assert.equal((await run(f,engine)).code,0);await fs.writeFile(f.configFile,original);await fs.writeFile(path.join(f.plugin,'local-user-file'),'user edit');
+    const f=await fixture(t),installed=await run(f,engine);assert.equal(installed.code,0,installed.output);await fs.writeFile(f.configFile,original);await fs.writeFile(path.join(f.plugin,'local-user-file'),'user edit');
     const before=await backups(f),result=await run(f,engine);assert.notEqual(result.code,0);assert.equal(await fs.readFile(f.configFile,'utf8'),original);
     assert.equal(await fs.readFile(path.join(f.plugin,'local-user-file'),'utf8'),'user edit');assert.deepEqual(await backups(f),before);
   });
