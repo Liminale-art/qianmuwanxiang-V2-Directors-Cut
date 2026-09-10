@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import {createLibraryFixture} from './helpers/coread-library-fixture.mjs';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
@@ -11,8 +12,10 @@ assert.match(collectionData, /validBooks[\s\S]*claimedBooks[\s\S]*bookIds/, '合
 assert.match(collectionData, /function coreadMoveBooksToCollection[\s\S]*function coreadDissolveCollection/, '必须提供移动与安全解散合集的数据操作');
 assert.match(collectionData, /confirmDialog\(`确定解散「\$\{collection\.name\}」？`, ''\)/, '解散合集必须使用单句确认文案');
 
-const shelf = source.slice(source.indexOf('function renderLibraryBookItem'), source.indexOf('// 章节正文'));
-assert.match(shelf, /Array\.from\(\{ length: 4 \}/, '网格合集封面必须由四格书封组成');
+const {c,data}=createLibraryFixture();data.books=[{id:'book',title:'Book'}];data.collections=[{id:'collection',name:'Collection',bookIds:['book']}];
+const grid=c.renderLibraryView();data.libViewMode='list';const list=c.renderLibraryView();data.libCollectionId='collection';
+const shelf=grid+list+c.renderLibraryView();
+assert.equal((grid.match(/<span class="sd-reader-collection-tile(?: sd-reader-collection-tile-empty)?"/g)||[]).length,4, '网格合集封面必须由四格书封组成');
 assert.match(shelf, /sd-reader-collection-card/, '合集必须适配网格视图');
 assert.match(shelf, /sd-reader-collection-row/, '合集必须适配列表视图');
 assert.match(shelf, /sd-reader-collection-head[\s\S]*sd-reader-collection-back/, '打开合集后必须提供清晰的层级标题与返回入口');

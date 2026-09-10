@@ -24,6 +24,7 @@ const rules = {
   'qianmu-reader-identity-view.js': [],
   'qianmu-reader-center-view.js': [],
   'qianmu-reader-panel-view.js': [],
+  'qianmu-reader-library-view.js': [],
 };
 if (!vm.SourceTextModule) throw new Error('Run this development check with --experimental-vm-modules.');
 
@@ -65,5 +66,7 @@ assert.throws(()=>inspect(change('qianmu-reader-center-view.js',"import './index
 assert.throws(()=>inspect(sources,entry+"\nimport './qianmu-reader-center-view.js?v=other';"),/canonical module identity/);
 assert.throws(()=>inspect(change('qianmu-reader-panel-view.js',"import './index.js';"),entry),/boundary changed/);
 assert.throws(()=>inspect(sources,entry+"\nimport './qianmu-reader-panel-view.js?v=other';"),/canonical module identity/);
+assert.throws(()=>inspect(change('qianmu-reader-library-view.js',"import './index.js';"),entry),/boundary changed/);
+assert.throws(()=>inspect(sources,entry+"\nimport './qianmu-reader-library-view.js?v=other';"),/canonical module identity/);
 assert.doesNotThrow(()=>inspect(change('qianmu-focus-time.js',sources['qianmu-focus-time.js']+"\n// import './index.js';\nthrow new Error('must not execute');"),entry));
-console.log(JSON.stringify({modules:Object.keys(rules).length,linked:true,executed:false,negativeFixtures:11,nonExecutionFixture:true,scope:'static imports/re-exports and canonical entry paths only',dependencies:rules}));
+console.log(JSON.stringify({modules:Object.keys(rules).length,linked:true,executed:false,negativeFixtures:13,nonExecutionFixture:true,scope:'static imports/re-exports and canonical entry paths only',dependencies:rules}));
