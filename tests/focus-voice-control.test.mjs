@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as profiles from '../qianmu-focus-voice.js';
 import {createFocusSpeechPlayer} from '../qianmu-focus-speech.js';
+import {createFocusVoicePreparation} from '../qianmu-focus-preparation.js';
 import {focusFixture} from './helpers/focus-lock-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 const names=['focusClockVoiceContext','focusClockVoiceBindingKey','focusClockVoiceBindingActive','focusClockCancelVoiceWork',
-  'focusClockSpeech','focusClockSetVoiceEnabled','focusClockSynthVoiceCue','focusClockPrepareVoiceCues','focusClockPlayVoiceCue','focusClockPlayCompletionAlert',
+  'focusClockPreparation','focusClockSpeech','focusClockSetVoiceEnabled','focusClockSynthVoiceCue','focusClockPrepareVoiceCues','focusClockPlayVoiceCue','focusClockPlayCompletionAlert','focusClockRegenerateVoiceCue',
   'focusClockMaybePlayMidCue','focusClockCleanVoiceLine','focusClockBuildVoiceParams','focusClockBindVoice'];
 function fixture(overrides={}){
   const env=focusFixture({status:'running',sessionToken:'round',endsAt:160000,voiceProfiles:{'character:A':{minimax:{enabled:true,voice:{name:'甲',voiceId:'voice-A'},revision:1}}},...overrides});
@@ -18,8 +19,8 @@ function fixture(overrides={}){
     coreadHostPersona:()=>({key:'user-A'}),coreadPersona:()=>({key:'user-A'}),coreadCompanionSession:()=>null,
     coreadCompanionChoices:()=>host.characters,coreadCompanionCharacter:()=>host.characters.find(ch=>ch.avatar===(c.readerView?.companionAvatar||host.characters[host.characterId]?.avatar)),
     ttsProviderConfig:()=>({voiceLibrary:[]}),ttsActiveVoiceMap:()=>voices,ttsProviderId:()=>provider,ttsDoubaoVoiceModel:value=>value||'auto',
-    FOCUS_CLOCK_RELATIONS:{neutral:{}},FOCUS_CLOCK_VOICE_FREQUENCIES:{low:{chance:.3}},focusClockVoicePrepareSeq:0,
-    createFocusSpeechPlayer,focusClockSpeechPlayer:null,focusClockVoiceWork:null,focusClockVoiceBlobs:new Map(),
+    FOCUS_CLOCK_RELATIONS:{neutral:{}},FOCUS_CLOCK_VOICE_FREQUENCIES:{low:{chance:.3}},
+    createFocusVoicePreparation,focusClockVoicePreparation:null,createFocusSpeechPlayer,focusClockSpeechPlayer:null,focusClockVoiceBlobs:new Map(),
     focusClockMidCueProgresses:()=>[],focusClockPickStockLines:()=>['这一程已经完成。'],
     ttsBuildParams:(_line,voice)=>({providerId:provider,fileExtension:'mp3',voiceId:voice?.voiceId}),ttsProviderHasCredentials:()=>true,getTtsProvider:()=>({label:'TTS'}),
     cacheKeyForTts:()=> 'cache',DOMException,Blob,focusClockGenerateSceneLines:async()=>['完成。'],
@@ -36,12 +37,25 @@ function fixture(overrides={}){
 const pending=()=>{let resolve;return {promise:new Promise(r=>resolve=r),resolve:value=>resolve(value)};};
 const cueFor=c=>({cacheKey:'cache',voiceBindingKey:c.focusClockVoiceBindingKey(c.focusClockVoiceContext())});
 
+test('cue regeneration shares the preparation cancellation epoch and cannot rewrite an old cue after mute',async()=>{
+  const {c,counts}=fixture(),wait=pending();const cue={characterKey:'character:A',providerId:'minimax',speaker:'甲',text:'again',cacheKey:'old'};
+  c.focusClockSynthVoiceCue=()=>wait.promise;const run=c.focusClockRegenerateVoiceCue(cue);
+  c.focusClockCancelVoiceWork();wait.resolve('new');assert.equal(await run,false);assert.equal(cue.cacheKey,'old');assert.equal(counts.play,0);
+});
+
+test('failed credential admission releases the pending ticket so a later valid preparation can run',async()=>{
+  const {c,f,counts}=fixture();c.ttsProviderHasCredentials=()=>false;
+  await c.focusClockPrepareVoiceCues('round');assert.equal(c.focusClockPreparation().busy,false);assert.equal(counts.synth,0);
+  c.ttsProviderHasCredentials=()=>true;await c.focusClockPrepareVoiceCues('round');
+  assert.equal(c.focusClockPreparation().busy,false);assert.equal(f.sessionVoiceCues.length,1);assert.equal(counts.synth,1);
+});
+
 test('all three phases allow switching off while running or paused, without changing timing',()=>{
   for(const phase of ['focus','shortBreak','longBreak']) for(const status of ['running','paused']){
     const {c,f}=fixture({phase,status});const end=f.endsAt;
     f.sessionVoiceCues=[{played:true,id:'heard'},{played:false,id:'pending'}];c.focusClockSetVoiceEnabled(false);
     assert.equal(f.voiceProfiles['character:A'].minimax.enabled,false);assert.equal(f.endsAt,end);assert.equal(f.status,status);
-    assert.deepEqual(Array.from(f.sessionVoiceCues,cue=>cue.id),['heard']);assert.equal(c.focusClockVoicePrepareSeq,1);
+    assert.deepEqual(Array.from(f.sessionVoiceCues,cue=>cue.id),['heard']);assert.equal(c.focusClockPreparation().epoch,1);
   }
 });
 test('switching off remains possible after the configured voice disappears',()=>{
@@ -53,7 +67,7 @@ test('repeated preparation is deduplicated, and turning off during LLM work prev
   c.focusClockGenerateSceneLines=()=>{calls++;return wait.promise;};
   const run=c.focusClockPrepareVoiceCues('round');await c.focusClockPrepareVoiceCues('round');assert.equal(calls,1);
   c.focusClockSetVoiceEnabled(false);wait.resolve(['完成。']);await run;
-  assert.equal(counts.synth,0);assert.equal(f.sessionVoiceCues.length,0);assert.equal(c.focusClockVoiceWork,null);
+  assert.equal(counts.synth,0);assert.equal(f.sessionVoiceCues.length,0);assert.equal(c.focusClockPreparation().busy,false);
 });
 test('turning off during an audio cache lookup prevents submitting a new synthesis',async()=>{
   const {c,counts}=fixture(),wait=pending();c.blobStore.getAudio=()=>wait.promise;
@@ -77,8 +91,8 @@ test('turning off then on cannot let the older response erase the newer generati
   const {c,f,counts}=fixture(),old=pending(),fresh=pending();c.blobStore.blobStoreAvailable=()=>false;
   c.synthesizeTts=()=>{counts.synth++;return counts.synth===1?old.promise:fresh.promise;};
   const first=c.focusClockPrepareVoiceCues('round');c.focusClockSetVoiceEnabled(false);c.focusClockSetVoiceEnabled(true);
-  const ticket=c.focusClockVoiceWork;old.resolve({blob:new Blob(['old'])});await first;
-  assert.equal(c.focusClockVoiceWork,ticket);assert.equal(f.sessionVoiceCues.length,0);
+  const ticket=c.focusClockPreparation().epoch;old.resolve({blob:new Blob(['old'])});await first;
+  assert.equal(c.focusClockPreparation().epoch,ticket);assert.equal(c.focusClockPreparation().busy,true);assert.equal(f.sessionVoiceCues.length,0);
   fresh.resolve({blob:new Blob(['fresh'])});await new Promise(r=>setImmediate(r));
   assert.equal(f.sessionVoiceCues.length,1);assert.equal(await c.focusClockVoiceBlobs.get('cache').text(),'fresh');
 });

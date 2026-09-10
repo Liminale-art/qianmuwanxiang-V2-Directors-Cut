@@ -5,6 +5,7 @@ const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const runtime = await readFile(new URL('../qianmu-focus-runtime.js', import.meta.url), 'utf8');
 const session = await readFile(new URL('../qianmu-focus-session.js', import.meta.url), 'utf8');
 const sound = await readFile(new URL('../qianmu-focus-sound.js', import.meta.url), 'utf8');
+const preparation = await readFile(new URL('../qianmu-focus-preparation.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 for (const name of ['light.mp3', 'daylight.mp3', 'silver-bell.mp3', 'bright.mp3', 'horizon.mp3', 'sunrise.mp3']) {
   const file = await stat(new URL(`../assets/focus-sounds/${name}`, import.meta.url));
@@ -59,7 +60,7 @@ assert.match(source, /\['url', '自定义'\]/, '完成提示音的自定义来�
 assert.match(source, /voiceProfiles: \{\}/, '角色音色与启用状态按角色及Provider保存；关系仍保留原会话归属');
 assert.match(source, /voiceEnabledByChat[\s\S]*voiceSpeakerByChat[\s\S]*voiceRelationByChat/, '旧聊天音色字段须保留，不破坏历史配置');
 assert.match(source, /你是“千幕专注场景”的角色短句编写器[\s\S]*不引用聊天正文[\s\S]*不得猜测正文情节/, '情景生成提示词必须与正文隔离并约束不 OOC');
-assert.match(source, /function focusClockPrepareVoiceCues[\s\S]*focusClockBuildVoiceParams[\s\S]*focusClockSynthVoiceCue/, '角色语音必须在开始时冻结已绑定角色的音色参数并预生成缓存');
+assert.match(preparation, /async function prepare[\s\S]*voice.params[\s\S]*synthesize/, '角色语音必须在开始时冻结已绑定角色的音色参数并预生成缓存');
 assert.match(source, /function focusClockOpenVoiceDrawer[\s\S]*sd-focus-cue-play[\s\S]*sd-focus-cue-regen[\s\S]*sd-focus-cue-fav[\s\S]*sd-focus-cue-download/, '专注角色语音必须通过二层抽屉提供重听、重生成、收藏和下载');
 assert.match(session, /voiceText: completionCue\?\.text \|\| '', voiceCues: completedVoiceCues/, '完成记录必须持久化可回放的安全语音缓存索引');
 assert.match(source, /blobStore\.addFavorite[\s\S]*source: 'focus'/, '专注语音必须复用配音收藏夹存储');

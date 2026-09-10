@@ -9,6 +9,7 @@ import { createFocusClockRuntime } from './qianmu-focus-runtime.js';
 import { createFocusSessionController } from './qianmu-focus-session.js';
 import { createFocusSoundPlayer } from './qianmu-focus-sound.js';
 import { createFocusSpeechPlayer } from './qianmu-focus-speech.js';
+import { createFocusVoicePreparation } from './qianmu-focus-preparation.js';
 import {
   clone,
   isPlainObject,
@@ -1379,8 +1380,7 @@ let focusClockEntryBusy = false;
 let focusClockLockOwner = '';
 let focusClockLockConfirming = false;
 let focusClockSoundPlayer = null;  // Owns completion/preview audio and its animation lifecycle.
-let focusClockVoicePrepareSeq = 0;   // 新专注轮次递增；旧异步情景生成返回时自动作废
-let focusClockVoiceWork = null;
+let focusClockVoicePreparation = null; // Owns generation tickets; no provider credentials are persisted here.
 let focusClockSpeechPlayer = null; // Owns only focus speech playback/cancellation, not narration.
 const focusClockVoiceBlobs = new Map(); // IndexedDB 不可用时仍可在本页完成播放；仅保留少量预生成结果
 let focusClockVoiceDrawerEl = null;  // 专注角色语音二层抽屉；挂在千幕根容器，避免移动端 fixed 定位受 ST 主题干扰
@@ -24495,7 +24495,7 @@ function focusClockVoiceBindingActive(bindingKey) {
 }
 
 function focusClockCancelVoiceWork({ clearCues = false, stopPlayback = true } = {}) {
-  focusClockVoicePrepareSeq += 1;
+  focusClockPreparation().cancel();
   focusClockSpeech().cancel({ stopPlayback: false });
   if (clearCues) focusClockState().sessionVoiceCues = focusClockState().sessionVoiceCues.filter(cue => cue.played);
   if (stopPlayback) focusClockSpeech().stopOwned();
@@ -24607,73 +24607,21 @@ function focusClockMidCueProgresses(durationMinutes, chance) {
   return selected;
 }
 
-async function focusClockPrepareVoiceCues(sessionToken) {
-  const f = focusClockState();
-  if (!settings.enabled || f.status !== 'running' || f.phase !== 'focus' || !sessionToken || f.sessionToken !== sessionToken) return;
-  const voiceContext = focusClockVoiceContext(f);
-  if (!voiceContext.hasCharacter || !voiceContext.enabled || !voiceContext.voice) return;
-  const bindingKey = focusClockVoiceBindingKey(voiceContext);
-  if (focusClockVoiceWork?.sessionToken === sessionToken && focusClockVoiceWork.bindingKey === bindingKey
-      && focusClockVoiceWork.seq === focusClockVoicePrepareSeq) return;
-  const prepareSeq = ++focusClockVoicePrepareSeq;
-  const work = { sessionToken, bindingKey, seq: prepareSeq };
-  focusClockVoiceWork = work;
-  const isCurrent = () => prepareSeq === focusClockVoicePrepareSeq && focusClockState() === f
-    && f.status === 'running' && f.phase === 'focus' && f.sessionToken === sessionToken && focusClockVoiceBindingActive(bindingKey);
-  try {
-    const baseParams = focusClockBuildVoiceParams(voiceContext, '专注提醒');
-    if (!baseParams || !ttsProviderHasCredentials(baseParams.providerId, baseParams)) return;
-    const frequency = FOCUS_CLOCK_VOICE_FREQUENCIES[f.voiceFrequency] || FOCUS_CLOCK_VOICE_FREQUENCIES.low;
-    const durationMinutes = Math.max(1, Number(f.sessionPlannedMs) / 60000);
-    const specs = focusClockMidCueProgresses(durationMinutes, frequency.chance)
-      .map((progress) => ({ type: 'mid', progress }));
-    specs.push({ type: 'complete', progress: 1 });
-    const book = f.sessionBookId ? coreadBookMeta(f.sessionBookId) : null;
-    const subject = f.sessionBookId ? `阅读《${book?.title || '未命名书籍'}》` : (f.task || '完成一段专注');
-    const binding = { ...voiceContext, params: { ...baseParams, text: '' } };
-    let lines = [];
-    if (f.voiceMode === 'scene') {
-      try { lines = await focusClockGenerateSceneLines(binding, specs.length, subject, { isCurrent }); }
-      catch (error) {
-        if (!isCurrent() || error?.name === 'AbortError') return;
-        console.warn(`[${MODULE_NAME}] focus scene voice fallback`, error);
-      }
-    }
-    if (lines.length < specs.length) {
-      const fallback = focusClockPickStockLines(binding.relation, specs.length);
-      lines = specs.map((_, index) => lines[index] || fallback[index]);
-    }
-    const cues = [];
-    for (let index = 0; index < specs.length; index++) {
-      if (!isCurrent()) return;
-      const text = focusClockCleanVoiceLine(lines[index]);
-      if (!text) continue;
-      try {
-        const cacheKey = await focusClockSynthVoiceCue(binding, text, { isCurrent });
-        if (!isCurrent()) return;
-        cues.push({
-          id: uid('focusvoice'), ...specs[index], text, cacheKey, played: false,
-          speaker: binding.speaker,
-          providerId: baseParams.providerId,
-          format: baseParams.fileExtension || 'mp3',
-          chatKey: binding.chatKey,
-          characterKey: binding.characterKey,
-          voiceBindingKey: bindingKey,
-          task: String(subject || f.task || '专注').slice(0, 120),
-          sourceTime: f.sessionStartedAt || Date.now(),
-          lineIndex: index,
-        });
-      } catch (error) {
-        if (!isCurrent() || error?.name === 'AbortError') return;
-        console.warn(`[${MODULE_NAME}] focus voice synth failed`, error);
-      }
-    }
-    const current = focusClockState();
-    if (!isCurrent()) return;
-    current.sessionVoiceCues = [...current.sessionVoiceCues.filter(cue => cue.played), ...cues].slice(-4);
-    saveSettings();
-  } finally { if (focusClockVoiceWork === work) focusClockVoiceWork = null; }
+function focusClockPreparation() {
+  return focusClockVoicePreparation ||= createFocusVoicePreparation({
+    enabled: () => settings.enabled, getState: () => focusClockState(),
+    voice: { context: state => focusClockVoiceContext(state), key: value => focusClockVoiceBindingKey(value),
+      active: key => focusClockVoiceBindingActive(key), params: (binding, text) => focusClockBuildVoiceParams(binding, text),
+      credentials: (provider, params) => ttsProviderHasCredentials(provider, params) },
+    frequencies: FOCUS_CLOCK_VOICE_FREQUENCIES, midpoints: (minutes, chance) => focusClockMidCueProgresses(minutes, chance),
+    bookMeta: id => coreadBookMeta(id),
+    textSource: { generate: (...args) => focusClockGenerateSceneLines(...args), fallback: (...args) => focusClockPickStockLines(...args), clean: text => focusClockCleanVoiceLine(text) },
+    synthesize: (...args) => focusClockSynthVoiceCue(...args), uid: prefix => uid(prefix), now: () => Date.now(), save: () => saveSettings(),
+    warn: (kind, error) => console.warn(`[${MODULE_NAME}] focus ${kind === 'scene' ? 'scene voice fallback' : 'voice synth failed'}`, error),
+  });
 }
+
+function focusClockPrepareVoiceCues(sessionToken) { return focusClockPreparation().prepare(sessionToken); }
 
 function focusClockSpeech() {
   return focusClockSpeechPlayer ||= createFocusSpeechPlayer({
@@ -24782,8 +24730,8 @@ async function focusClockRegenerateVoiceCue(cue) {
   }
   const params = cue.characterKey ? focusClockBuildVoiceParams(binding, cue.text) : ttsBuildParams({ speaker: cue.speaker, text: cue.text, emotion: 'auto' });
   if (!params) { toast('请先为此角色配置音色。', 'warning'); return false; }
-  const seq = focusClockVoicePrepareSeq, chatKey = getChatKey(), bindingKey = focusClockVoiceBindingKey(binding);
-  const isCurrent = () => seq === focusClockVoicePrepareSeq && params.providerId === ttsProviderId()
+  const seq = focusClockPreparation().epoch, chatKey = getChatKey(), bindingKey = focusClockVoiceBindingKey(binding);
+  const isCurrent = () => seq === focusClockPreparation().epoch && params.providerId === ttsProviderId()
     && (cue.characterKey ? focusClockVoiceBindingKey(focusClockVoiceContext()) === bindingKey : chatKey === getChatKey());
   try {
     const cacheKey = await focusClockSynthVoiceCue({ speaker: cue.speaker, params }, cue.text, { isCurrent });
