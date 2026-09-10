@@ -62,6 +62,33 @@ test('duplicate starts while opening a book do not submit a second opening',asyn
   c.focusClockEnterReading=()=>{count++;return new Promise(r=>release=r);};
   const first=c.focusClockRequestStart();await c.focusClockRequestStart();assert.equal(count,1);release(false);await first;
 });
+
+test('a stopped reading start cannot block or unlock the next start, reopen its book, or start its timer',async()=>{
+  const {c,f}=focusFixture({activity:'reading',bookId:'book'}),loads=[];let opens=0;
+  Object.assign(c,{focusClockRuntime:null,focusClockResetMedia:()=>{},focusClockVoiceCache:{clear:()=>{}},focusClockCloseVoiceDrawer:()=>{},
+    ensureCoreadReaderRuntime:()=>new Promise(resolve=>loads.push(resolve)),coreadOpenBook:async()=>{
+      opens++;c.activeTab='coread';c.readerView={bookId:'book'};c.readerContentCache={bookId:'book'};c.document.querySelector=()=>({isConnected:true});
+    }});
+  vm.runInContext(section('stopFocusClockRuntime'),c);
+  const old=c.focusClockRequestStart();c.stopFocusClockRuntime();const next=c.focusClockRequestStart();
+  assert.equal(loads.length,2,'stop must release the previous entry admission');
+  loads[0]();await old;assert.equal(opens,0);assert.equal(f.status,'idle');assert.equal(c.focusClockEntryBusy,true);
+  await c.focusClockRequestStart();assert.equal(loads.length,2,'old finally must not admit a duplicate third start');
+  loads[1]();await next;assert.equal(opens,1);assert.equal(f.status,'running');assert.equal(c.focusClockEntryBusy,false);
+});
+
+test('reading entry checks stop after book loading and suppresses stale loading failures',async()=>{
+  for(const failure of [false,true]) {
+    const {c,notices}=focusFixture({activity:'reading',bookId:'book'});let resume,resolve,reject,entered;
+    const started=new Promise(done=>entered=done),wait=new Promise((yes,no)=>{resolve=yes;reject=no;});resume=0;
+    Object.assign(c,{focusClockRuntime:null,focusClockResetMedia:()=>{},focusClockVoiceCache:{clear:()=>{}},focusClockCloseVoiceDrawer:()=>{},
+      coreadOpenBook:()=>{entered();return wait;},focusClockResumeReading:()=>resume++});
+    vm.runInContext(section('stopFocusClockRuntime'),c);
+    const old=c.focusClockEnterReading();await started;c.stopFocusClockRuntime();
+    if(failure)reject(Error('old fetch'));else resolve();
+    assert.equal(await old,false);assert.equal(resume,0);assert.deepEqual(notices,[]);
+  }
+});
 test('the reader timer suspends only the portal and does not reset identity or dialogue owner',()=>{
   const {c,calls}=focusFixture();const view={bookId:'book',companionAvatar:'A',chapterIndex:2,scrollRatio:.7};c.readerView=view;
   c.focusClockShowPanel();assert.equal(c.readerView,view);assert.equal(c.activeTab,'focus');assert.ok(calls.includes('unmount'));

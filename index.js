@@ -24175,27 +24175,30 @@ function focusClockReaderReady(bookId) {
 }
 
 async function focusClockEnterReading() {
+  const entryEpoch = focusClockEntryEpoch;
   const f = focusClockState(), bookId = f.sessionBookId || f.bookId;
   if (!bookId || !coreadBookMeta(bookId)) { toast('请先选择一本可阅读的书籍。', 'warning'); return false; }
   try {
     await ensureCoreadReaderRuntime();
-    if (settings.focusClock !== f || (f.sessionBookId || f.bookId) !== bookId || !isModalOpen() || !['focus', 'coread'].includes(activeTab)) return false;
+    if (entryEpoch !== focusClockEntryEpoch || !settings.enabled || settings.focusClock !== f || (f.sessionBookId || f.bookId) !== bookId || !isModalOpen() || !['focus', 'coread'].includes(activeTab)) return false;
     if (readerView?.bookId === bookId && readerContentCache?.bookId === bookId) {
       activeTab = 'coread'; renderModal(); refreshReaderPortal();
     } else await coreadOpenBook(bookId);
+    if (entryEpoch !== focusClockEntryEpoch || !settings.enabled) return false;
     focusClockResumeReading();
     return focusClockReaderReady(bookId);
-  } catch (_) { toast('阅读页未能打开，尚未开始新的计时。', 'warning'); return false; }
+  } catch (_) { if (entryEpoch === focusClockEntryEpoch && settings.enabled) toast('阅读页未能打开，尚未开始新的计时。', 'warning'); return false; }
 }
 
 async function focusClockRequestStart({ locked = false } = {}) {
   if (focusClockEntryBusy) return;
+  const entryEpoch = focusClockEntryEpoch;
   const f = focusClockState(), status = f.status, phase = f.phase, activity = f.activity, bookId = f.bookId;
   if (status === 'running') return;
   focusClockEntryBusy = true;
   try {
     if (phase === 'focus' && activity === 'reading' && !await focusClockEnterReading()) return;
-    if (settings.focusClock !== f || f.status !== status || f.phase !== phase || f.activity !== activity || f.bookId !== bookId) return;
+    if (entryEpoch !== focusClockEntryEpoch || !settings.enabled || settings.focusClock !== f || f.status !== status || f.phase !== phase || f.activity !== activity || f.bookId !== bookId) return;
     focusClockStart();
     if (locked && f.status === 'running' && f.phase === 'focus') {
       f.lock = { version: 1, owner: focusClockLockOwner, activity, bookId: f.sessionBookId,
@@ -24204,7 +24207,7 @@ async function focusClockRequestStart({ locked = false } = {}) {
       saveSettings(); focusClockAttachLock();
     }
     renderModal();
-  } finally { focusClockEntryBusy = false; }
+  } finally { if (entryEpoch === focusClockEntryEpoch) focusClockEntryBusy = false; }
 }
 
 async function focusClockEnableLock() {
@@ -24695,6 +24698,7 @@ function startFocusClockRuntime(options) {
 
 function stopFocusClockRuntime() {
   focusClockEntryEpoch++;
+  focusClockEntryBusy = false;
   focusClockLockConfirming = false;
   focusClockCancelVoiceWork();
   focusClockLockGuard?.dispose(); focusClockLockGuard = null;
