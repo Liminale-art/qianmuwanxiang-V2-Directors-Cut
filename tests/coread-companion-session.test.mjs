@@ -15,6 +15,7 @@ function fixture(){
     htmlEscape:x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
     coreadDistilling:false,coreadAutoTextInFlight:false,coreadMemoryWrites:0,coreadIdentitySwitchBusy:false,coreadWorldSyncBusy:false,readerView:null,readerContentCache:null,coreadOpenRequestId:0,activeTab:'coread',readerAssistant:{},readerDialog:{bucket:'',loaded:false},readerAssistantSessions:new Map(),
     reader,coreadVectorStates:new Map(),coreadVecCache:null,MODULE_NAME:'fixture',coreadMaybeAutoDistillText:()=>{},
+    focusClockActiveLock:()=>null,focusClockBlockExit:()=>false,focusClockRememberLockedReader:()=>{},
     toast:text=>notices.push(text),saveSettings:()=>{},coreadInvalidatePool:()=>{},renderModal:()=>{},refreshReaderPortal:()=>{},nowMs:()=>1,
     coreadStopDialog:()=>{},coreadStopAssistant:()=>{},ttsStopPlayback:()=>{},coreadPendingChatImages:()=>[],coreadSaveProgress:()=>{},coreadShowRefillChooser:id=>notices.push('refill:'+id),
     coreadLoadDialog:()=>{},document:{querySelector:()=>null},applyQianmuIcons:()=>{},scrollDialogToBottom:()=>{},coreadRefreshAssistantPanel:()=>{},coreadSyncDialogButtons:()=>{},coreadSweepOrphanLore:()=>{},
@@ -230,4 +231,20 @@ test('a memory operation starting during content retrieval keeps the original bo
   const e=fixture();await e.context.coreadOpenBook('book');
   e.context.blobStore.getBook=async()=>{e.context.coreadMemoryWrites=1;return {chapters:[{}]};};
   await e.context.coreadOpenBook('other');assert.equal(e.context.readerView.bookId,'book');
+});
+
+test('restoring a reading lock preserves its companion identity without reviving continue-last progress',async()=>{
+  const e=fixture();const session=e.context.coreadEnsureCompanionSession('a.png');
+  e.books[0].lastChapterIndex=2;e.books[0].lastScrollRatio=.8;
+  e.context.focusClockActiveLock=()=>({activity:'reading',bookId:'book',reader:{avatar:'a.png',scope:session.scope,persona:{key:'',name:'User',description:'User desc'}}});
+  e.host.characterId=1;e.host.chatId='another';await e.context.coreadOpenBook('book');
+  assert.equal(e.context.readerView.companionAvatar,'a.png');assert.equal(e.context.readerView.companionScope,session.scope);
+  assert.equal(e.context.readerView.chapterIndex,2);assert.equal(e.context.readerView.scrollRatio,.8);assert.equal(e.host.characterId,1);
+  assert.equal(e.state.companionOverrideAvatar,undefined);
+});
+
+test('an active reading lock cannot open another book or silently replace a missing companion',async()=>{
+  const e=fixture();e.context.focusClockActiveLock=()=>({activity:'reading',bookId:'book',reader:{avatar:'gone',scope:'old-chat',persona:{key:'',name:'User'}}});
+  await e.context.coreadOpenBook('other');assert.equal(e.context.readerView,null);
+  await e.context.coreadOpenBook('book');assert.equal(e.context.readerView,null);assert.match(e.notices.at(-1),/书友已不存在/);
 });
