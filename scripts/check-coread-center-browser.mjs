@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {readFile,mkdir} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
-import {coreadCenterFunctions,coreadRecordsFunctions,coreadApiFunctions} from '../tests/helpers/coread-center-fixture.mjs';
+import {coreadCenterFunctions,coreadRecordsFunctions,coreadApiFunctions,coreadInjectFunctions} from '../tests/helpers/coread-center-fixture.mjs';
+import {uniqueClean} from '../qianmu-storyboard-utils.js';
 import {storyboardFunctionSource} from '../tests/helpers/storyboard-form-fixture.mjs';
 import {normalizeCoreadSource} from '../qianmu-reader.js';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
@@ -207,5 +208,65 @@ try{
     apiLayouts.push({width,boxes,threeKindsRouted:true});
   }
   assert.deepEqual(errors,[]);assert.equal(external,0);
-  console.log(JSON.stringify({layouts,recordActions,recordLayouts,apiLayouts,realEventBranches:true,realTemplates:true,external,errors,limits:'isolated DOM; API/profile/vector services are fakes; no real credentials, data import/deletion/sync, host navigation, guide positioning, record expansion memory or physical iOS validation'}));
+  await page.evaluate(({functions,unique,dictClick,injectChange,injectInput})=>{
+    window.uniqueClean=window.eval('('+unique+')');window.COREAD_DEFAULT_DICT='default';window.coreadCurrentDictId='';
+    window.coreadRecentSlices=()=>[];window.coreadRecallSlices=()=>[{slice:readerDialog.slices[0],hits:['关键词'],score:1.25}];
+    window.coreadActiveDict=()=>({关键词:['同义词']});window.coreadBoundDicts=()=>store.coreadDictBound;
+    window.getChatStore=()=>store;window.saveMetadata=()=>calls.metadata++;
+    window.coreadPromptText=async(...args)=>{calls.prompts.push(args);return promptAnswer;};
+    window.coreadOpenDictEntryDialog=async(...args)=>{calls.entries.push(args);return false;};
+    window.uid=()=> 'new-fixture';window.eval(functions);
+    window.resetInject=()=>{
+      memory={guideSeen:true,moreTab:'inject',recallScanMessages:2,recentInject:1,recallCount:3,rerankTopN:4,mainlineFeedback:false,mainlineRecall:0,mainlineRecent:0,mainlineDepth:0,
+        dictBooks:[{id:'default',name:'默认词册',pairs:{}},{id:'custom"',name:'自定义<&',pairs:{'关键词<&':['同义词<&']}}]};
+      window.store={coreadDictBound:[]};coreadCurrentDictId='custom"';window.promptAnswer=null;confirmAnswer=false;
+      Object.assign(calls,{metadata:0,prompts:[],entries:[],confirmations:[],notices:[],save:0,invalidate:0});
+      readerDialog.slices=[{id:'a',batch:1,summary:'实际注入的安全摘要。'.repeat(8),keywords:['关键词'],src:'book'}];
+      readerDialog.lastInjected={channel:'companion',items:[{id:'a',hits:['关键词']}]};readerDialog.messages=[{text:'当前语境'.repeat(30)}];rerenderMore();
+    };
+    const root=document.getElementById('center');
+    root.addEventListener('click',new Function('e','const m=coreadMemory();'+dictClick));
+    root.addEventListener('change',new Function('e','const m=coreadMemory();'+injectChange));
+    root.addEventListener('input',new Function('e','const m=coreadMemory();'+injectInput));
+    resetInject();
+  },{functions:coreadInjectFunctions,unique:uniqueClean.toString(),
+    dictClick:between('    // 词典册：新建词册','    // 测试按钮：综合自检'),
+    injectChange:between("    if (e.target.closest('.sd-reader-dict-booksel'))",'    // 总结提示词预设下拉')+between("    if (e.target.closest('.sd-reader-mainline-toggle'))",'\n'),
+    injectInput:between("    if (e.target.closest('.sd-reader-inj-recall'))",'    const map = [')});
+  const injectLayouts=[];
+  for(const width of [320,360,430,1100]){
+    await page.setViewportSize({width,height:850});await page.evaluate(()=>resetInject());
+    assert.equal(await page.locator('.sd-reader-mainline-recall').isDisabled(),true);
+    await page.locator('.sd-reader-mainline-toggle').locator('..').tap();assert.equal(await page.evaluate(()=>memory.mainlineFeedback),true);
+    const fields=[['inj-recall','recallCount',-1,0],['inj-recent','recentInject',5,5],['inj-scan','recallScanMessages',99,50],['inj-reranktop','rerankTopN',-1,1],['mainline-recall','mainlineRecall',3,3],['mainline-recent','mainlineRecent',2,2],['mainline-depth','mainlineDepth',99,20]];
+    for(const [sel,key,value,expected]of fields){
+      const node=page.locator('.sd-reader-'+sel);await node.evaluate(n=>{window.originalNumericInput=n;});
+      const saves=await page.evaluate(()=>calls.save);await node.fill(String(value));
+      assert.equal(await page.evaluate(k=>memory[k],key),expected);assert.equal(await page.evaluate(()=>calls.save),saves+1);
+      assert.equal(await node.evaluate(n=>n===originalNumericInput),true,'numeric typing must not replace the focused control');
+    }
+    await page.locator('.sd-reader-mainline-toggle').locator('..').tap();assert.equal(await page.locator('.sd-reader-mainline-depth').isDisabled(),true);
+    await page.locator('.sd-reader-injrow').evaluate(n=>{n.closest('details').open=true;});
+    const boxes=await page.locator('.sd-reader-injslice,.sd-reader-dict-selector,.sd-reader-dict-row,.sd-reader-injrow,.sd-reader-scanbox').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {kind:n.className,x:r.x,right:r.right,width:r.width,overflow:n.scrollWidth-n.clientWidth};}));
+    for(const box of boxes)assert.ok(box.x>=0&&box.right<=width+1&&box.width>0&&box.overflow<=1,JSON.stringify({width,box}));
+    await page.locator('.sd-reader-dict-selector').scrollIntoViewIfNeeded();await page.screenshot({path:fileURLToPath(new URL(`../dist/local-qa/coread-inject-${width}.png`,import.meta.url)),fullPage:true});
+    await page.locator('.sd-reader-dict-booksel').selectOption('default');assert.equal(await page.locator('.sd-reader-dictbook-delbtn').count(),0);
+    await page.locator('.sd-reader-dict-booksel').selectOption('custom"');
+    await page.locator('.sd-reader-dictbook-bind').tap();assert.deepEqual(await page.evaluate(()=>store.coreadDictBound),['custom"']);
+    await page.locator('.sd-reader-dictbook-bind').tap();assert.deepEqual(await page.evaluate(()=>store.coreadDictBound),[]);
+    await page.locator('.sd-reader-dict-row-edit').tap();await page.locator('.sd-reader-dict-addentry').tap();
+    assert.deepEqual(await page.evaluate(()=>calls.entries),[['custom"','关键词<&',['同义词<&']],['custom"','',[]]]);
+    await page.locator('.sd-reader-dict-row-del').tap();assert.equal(await page.locator('.sd-reader-dict-row').count(),1);
+    await page.evaluate(()=>{confirmAnswer=true;});await page.locator('.sd-reader-dict-row-del').tap();await page.waitForFunction(()=>!Object.keys(memory.dictBooks[1].pairs).length);
+    await page.evaluate(()=>{promptAnswer='  重命名  ';});await page.locator('.sd-reader-dictbook-rename').tap();await page.waitForFunction(()=>memory.dictBooks[1].name==='重命名');
+    await page.locator('.sd-reader-dictbook-bind').tap();await page.evaluate(()=>{confirmAnswer=false;});await page.locator('.sd-reader-dictbook-delbtn').tap();assert.equal(await page.evaluate(()=>memory.dictBooks.length),2);
+    await page.evaluate(()=>{confirmAnswer=true;});await page.locator('.sd-reader-dictbook-delbtn').tap();await page.waitForFunction(()=>memory.dictBooks.length===1);
+    assert.deepEqual(await page.evaluate(()=>[coreadCurrentDictId,store.coreadDictBound,calls.confirmations.length]),['default',[],4]);
+    await page.evaluate(()=>{promptAnswer=null;});await page.locator('.sd-reader-dictbook-add').tap();assert.equal(await page.evaluate(()=>memory.dictBooks.length),1);
+    await page.evaluate(()=>{promptAnswer=' 新词册 ';});await page.locator('.sd-reader-dictbook-add').tap();await page.waitForFunction(()=>coreadCurrentDictId==='new-fixture');
+    assert.equal(await page.locator('.sd-reader-dict-booksel').inputValue(),'new-fixture');assert.equal(await page.evaluate(()=>memory.dictBooks[1].name),'新词册');
+    injectLayouts.push({width,boxes,numericIdentityPreserved:true,syntheticDictionaryActions:true});
+  }
+  assert.deepEqual(errors,[]);assert.equal(external,0);
+  console.log(JSON.stringify({layouts,recordActions,recordLayouts,apiLayouts,injectLayouts,realEventBranches:true,realTemplates:true,external,errors,limits:'isolated DOM; API/profile/vector/dictionary dialogs are fakes; no real credentials, data import/deletion/sync, host navigation, guide positioning, record expansion memory or physical iOS validation'}));
 }finally{await context.close();await browser.close();}
