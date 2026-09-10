@@ -8,6 +8,7 @@ import { focusWeekHistory, focusTodayHistory, focusWeekStats } from './qianmu-fo
 import { createFocusClockRuntime } from './qianmu-focus-runtime.js';
 import { createFocusSessionController } from './qianmu-focus-session.js';
 import { createFocusSoundPlayer } from './qianmu-focus-sound.js';
+import { createFocusSpeechPlayer } from './qianmu-focus-speech.js';
 import {
   clone,
   isPlainObject,
@@ -1380,8 +1381,7 @@ let focusClockLockConfirming = false;
 let focusClockSoundPlayer = null;  // Owns completion/preview audio and its animation lifecycle.
 let focusClockVoicePrepareSeq = 0;   // 新专注轮次递增；旧异步情景生成返回时自动作废
 let focusClockVoiceWork = null;
-let focusClockVoicePlaybackSeq = 0;
-let focusClockVoiceAudio = null;   // 关闭专注语音只停止它自己的声音，不中断正文配音
+let focusClockSpeechPlayer = null; // Owns only focus speech playback/cancellation, not narration.
 const focusClockVoiceBlobs = new Map(); // IndexedDB 不可用时仍可在本页完成播放；仅保留少量预生成结果
 let focusClockVoiceDrawerEl = null;  // 专注角色语音二层抽屉；挂在千幕根容器，避免移动端 fixed 定位受 ST 主题干扰
 const STORYBOARD_QUEUE_LIMIT = 8;     // 仅本页运行态；刷新后不自动续跑，避免意外消耗生图额度
@@ -24496,9 +24496,9 @@ function focusClockVoiceBindingActive(bindingKey) {
 
 function focusClockCancelVoiceWork({ clearCues = false, stopPlayback = true } = {}) {
   focusClockVoicePrepareSeq += 1;
-  focusClockVoicePlaybackSeq += 1;
+  focusClockSpeech().cancel({ stopPlayback: false });
   if (clearCues) focusClockState().sessionVoiceCues = focusClockState().sessionVoiceCues.filter(cue => cue.played);
-  if (stopPlayback && focusClockVoiceAudio && ttsCurrentAudio === focusClockVoiceAudio) ttsStopPlayback(true);
+  if (stopPlayback) focusClockSpeech().stopOwned();
 }
 
 function focusClockSetVoiceEnabled(enabled) {
@@ -24675,38 +24675,24 @@ async function focusClockPrepareVoiceCues(sessionToken) {
   } finally { if (focusClockVoiceWork === work) focusClockVoiceWork = null; }
 }
 
-async function focusClockPlayVoiceCue(cue, { automatic = false, isCurrent = () => true } = {}) {
-  if (!cue?.cacheKey) return false;
-  const playSeq = ++focusClockVoicePlaybackSeq, ttsSeq = ttsSeqToken;
-  const allowed = () => playSeq === focusClockVoicePlaybackSeq && ttsSeq === ttsSeqToken && isCurrent()
-    && (!automatic || focusClockVoiceBindingActive(cue.voiceBindingKey));
-  if (!allowed()) return false;
-  try {
-    const memoryBlob = focusClockVoiceBlobs.get(cue.cacheKey);
-    const hit = memoryBlob ? { blob: memoryBlob } : (blobStore.blobStoreAvailable() ? await blobStore.getAudio(cue.cacheKey) : null);
-    if (!hit?.blob || !allowed()) return false;
-    ttsStopPlayback(true);
-    const url = URL.createObjectURL(hit.blob);
-    const audio = new Audio(url);
-    focusClockVoiceAudio = audio;
-    ttsCurrentAudio = audio;
-    ttsCurrentUrl = url;
-    let cleaned = false;
-    const cleanup = () => {
-      if (cleaned) return;
-      cleaned = true;
-      if (ttsPlayCleanup === cleanup) ttsPlayCleanup = null;
-      if (ttsCurrentUrl === url) { try { URL.revokeObjectURL(url); } catch (_) {} ttsCurrentUrl = ''; }
-      if (ttsCurrentAudio === audio) ttsCurrentAudio = null;
-      if (focusClockVoiceAudio === audio) focusClockVoiceAudio = null;
-    };
-    ttsPlayCleanup = cleanup;
-    audio.addEventListener('ended', cleanup, { once: true });
-    audio.addEventListener('error', cleanup, { once: true });
-    try { await audio.play(); } catch (_) { cleanup(); return false; }
-    return true;
-  } catch (_) { return false; }
+function focusClockSpeech() {
+  return focusClockSpeechPlayer ||= createFocusSpeechPlayer({
+    Audio, URL, memory: key => focusClockVoiceBlobs.get(key),
+    cacheAvailable: () => blobStore.blobStoreAvailable(), readCache: key => blobStore.getAudio(key),
+    bindingActive: key => focusClockVoiceBindingActive(key),
+    channel: {
+      epoch: () => ttsSeqToken, current: () => ttsCurrentAudio, stop: () => ttsStopPlayback(true),
+      adopt: (audio, url, cleanup) => { ttsCurrentAudio = audio; ttsCurrentUrl = url; ttsPlayCleanup = cleanup; },
+      release: (audio, url, cleanup) => {
+        if (ttsPlayCleanup === cleanup) ttsPlayCleanup = null;
+        if (ttsCurrentUrl === url) { try { URL.revokeObjectURL(url); } catch (_) {} ttsCurrentUrl = ''; }
+        if (ttsCurrentAudio === audio) ttsCurrentAudio = null;
+      },
+    },
+  });
 }
+
+function focusClockPlayVoiceCue(cue, options) { return focusClockSpeech().play(cue, options); }
 
 async function focusClockVoiceCueBlob(cue) {
   if (!cue?.cacheKey) return null;
@@ -24881,13 +24867,7 @@ function focusClockOpenVoiceDrawer() {
   void focusClockSyncVoiceDrawerFavorites(portal);
 }
 
-async function focusClockPlayCompletionAlert(cue) {
-  const epoch = focusClockVoicePlaybackSeq;
-  if (await focusClockPlayVoiceCue(cue, { automatic: true })) return;
-  // Closing voice while audio is loading must not unexpectedly start a fallback sound.
-  if (focusClockVoicePlaybackSeq > epoch + (cue?.cacheKey ? 1 : 0)) return;
-  await focusClockPlayDoneSound();
-}
+function focusClockPlayCompletionAlert(cue) { return focusClockSpeech().complete(cue, () => focusClockPlayDoneSound()); }
 
 function focusClockMaybePlayMidCue(state) {
   if (state.status !== 'running' || state.phase !== 'focus') return;

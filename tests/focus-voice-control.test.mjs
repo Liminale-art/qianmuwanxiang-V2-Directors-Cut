@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as profiles from '../qianmu-focus-voice.js';
+import {createFocusSpeechPlayer} from '../qianmu-focus-speech.js';
 import {focusFixture} from './helpers/focus-lock-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 const names=['focusClockVoiceContext','focusClockVoiceBindingKey','focusClockVoiceBindingActive','focusClockCancelVoiceWork',
-  'focusClockSetVoiceEnabled','focusClockSynthVoiceCue','focusClockPrepareVoiceCues','focusClockPlayVoiceCue','focusClockPlayCompletionAlert',
+  'focusClockSpeech','focusClockSetVoiceEnabled','focusClockSynthVoiceCue','focusClockPrepareVoiceCues','focusClockPlayVoiceCue','focusClockPlayCompletionAlert',
   'focusClockMaybePlayMidCue','focusClockCleanVoiceLine','focusClockBuildVoiceParams','focusClockBindVoice'];
 function fixture(overrides={}){
   const env=focusFixture({status:'running',sessionToken:'round',endsAt:160000,voiceProfiles:{'character:A':{minimax:{enabled:true,voice:{name:'甲',voiceId:'voice-A'},revision:1}}},...overrides});
@@ -18,7 +19,7 @@ function fixture(overrides={}){
     coreadCompanionChoices:()=>host.characters,coreadCompanionCharacter:()=>host.characters.find(ch=>ch.avatar===(c.readerView?.companionAvatar||host.characters[host.characterId]?.avatar)),
     ttsProviderConfig:()=>({voiceLibrary:[]}),ttsActiveVoiceMap:()=>voices,ttsProviderId:()=>provider,ttsDoubaoVoiceModel:value=>value||'auto',
     FOCUS_CLOCK_RELATIONS:{neutral:{}},FOCUS_CLOCK_VOICE_FREQUENCIES:{low:{chance:.3}},focusClockVoicePrepareSeq:0,
-    focusClockVoiceWork:null,focusClockVoicePlaybackSeq:0,focusClockVoiceAudio:null,focusClockVoiceBlobs:new Map(),
+    createFocusSpeechPlayer,focusClockSpeechPlayer:null,focusClockVoiceWork:null,focusClockVoiceBlobs:new Map(),
     focusClockMidCueProgresses:()=>[],focusClockPickStockLines:()=>['这一程已经完成。'],
     ttsBuildParams:(_line,voice)=>({providerId:provider,fileExtension:'mp3',voiceId:voice?.voiceId}),ttsProviderHasCredentials:()=>true,getTtsProvider:()=>({label:'TTS'}),
     cacheKeyForTts:()=> 'cache',DOMException,Blob,focusClockGenerateSceneLines:async()=>['完成。'],
@@ -99,12 +100,33 @@ test('mute after async playback lookup prevents both voice and surprise completi
 });
 test('mute stops and releases focus audio but does not stop unrelated narration',async()=>{
   const {c,counts}=fixture();c.focusClockVoiceBlobs.set('cache',new Blob(['audio']));await c.focusClockPlayVoiceCue(cueFor(c),{automatic:true});
-  const audio=c.focusClockVoiceAudio;c.focusClockSetVoiceEnabled(false);assert.equal(audio.paused,true);assert.equal(counts.revoke,1);
+  const audio=c.ttsCurrentAudio;c.focusClockSetVoiceEnabled(false);assert.equal(audio.paused,true);assert.equal(counts.revoke,1);
   const other={pause(){throw Error('must not stop narration');}};c.ttsCurrentAudio=other;c.focusClockSetVoiceEnabled(false);assert.equal(c.ttsCurrentAudio,other);
 });
 test('a newer user playback wins over an older focus cache lookup',async()=>{
   const {c,counts}=fixture(),wait=pending();c.blobStore.getAudio=()=>wait.promise;const run=c.focusClockPlayVoiceCue(cueFor(c));
   c.ttsSeqToken++;wait.resolve({blob:new Blob(['old'])});assert.equal(await run,false);assert.equal(counts.play,0);
+});
+
+test('speech cleanup is idempotent and does not clear a newer channel owner',async()=>{
+  const {c,counts}=fixture();c.focusClockVoiceBlobs.set('cache',new Blob(['audio']));await c.focusClockPlayVoiceCue({cacheKey:'cache'});
+  const cleanup=c.ttsPlayCleanup;cleanup();cleanup();assert.equal(counts.revoke,1);assert.equal(c.ttsCurrentAudio,null);
+  await c.focusClockPlayVoiceCue({cacheKey:'cache'});const older=c.ttsPlayCleanup;
+  const other={};const newer=()=>{};c.ttsCurrentAudio=other;c.ttsCurrentUrl='blob:newer';c.ttsPlayCleanup=newer;
+  older();assert.equal(c.ttsCurrentAudio,other);assert.equal(c.ttsCurrentUrl,'blob:newer');assert.equal(c.ttsPlayCleanup,newer);
+});
+
+test('a current playback failure releases its audio URL and channel binding',async()=>{
+  const {c,counts}=fixture();c.focusClockVoiceBlobs.set('cache',new Blob(['audio']));
+  c.Audio=class{addEventListener(){} async play(){throw Error('denied');}};
+  assert.equal(await c.focusClockPlayVoiceCue({cacheKey:'cache'}),false);
+  assert.equal(counts.revoke,1);assert.equal(c.ttsCurrentAudio,null);assert.equal(c.ttsPlayCleanup,null);assert.equal(c.ttsCurrentUrl,'');
+});
+
+test('cancelling preparation without stopping playback preserves the explicitly playing focus audio',async()=>{
+  const {c}=fixture();c.focusClockVoiceBlobs.set('cache',new Blob(['audio']));await c.focusClockPlayVoiceCue({cacheKey:'cache'});
+  const audio=c.ttsCurrentAudio;c.focusClockCancelVoiceWork({stopPlayback:false});assert.equal(c.ttsCurrentAudio,audio);
+  c.focusClockCancelVoiceWork();assert.equal(c.ttsCurrentAudio,null);assert.equal(audio.paused,true);
 });
 test('manual replay remains an explicit action while automatic voice is off; ordinary done sound is independent',async()=>{
   const {c,counts}=fixture();c.focusClockSetVoiceEnabled(false);c.focusClockVoiceBlobs.set('cache',new Blob(['audio']));
