@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {sanitizeFolder} from '../qianmu-storyboard-utils.js';
+import {createFocusVoiceCache} from '../qianmu-focus-voice-cache.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 function fixture(state={sessionVoiceCues:[],history:[]}) {
@@ -65,6 +66,29 @@ test('unavailable storage, expired audio and failed writes never report a succes
     assert.equal(e.favorites.size,0);assert.equal(e.button.active,undefined);
     assert.equal(e.trace.some(row=>row[0]==='toast'&&row.at(-1)==='success'),false);
     assert.equal(e.trace.at(-1).at(-1),failure==='unavailable'?'warning':'error');
+  }
+});
+
+test('a favorite keeps its clicked audio and metadata when regeneration replaces the cue during either read',async()=>{
+  for(const stage of ['has','blob'])for(const expired of [false,true]) {
+    const e=fixture(),cue={cacheKey:'old',speaker:'甲',text:'原句',providerId:'minimax',format:'mp3',sourceTime:1000000};
+    const original={...cue},oldBlob=new Blob(['old']),newBlob=new Blob(['new']);
+    let resume,entered;
+    const wait=new Promise(resolve=>{resume=resolve;}),started=new Promise(resolve=>{entered=resolve;});
+    e.c.blobStore.hasFavorite=async()=>{if(stage==='has'){entered();await wait;}return false;};
+    const cache=createFocusVoiceCache({available:()=>true,read:async key=>{
+      if(stage==='blob'){entered();await wait;}
+      return {blob:key==='old'?(expired?null:oldBlob):newBlob};
+    }});
+    e.c.focusClockVoiceCueBlob=cache.cueBlob;
+    const run=e.c.focusClockToggleVoiceCueFavorite(cue,e.button);await started;
+    Object.assign(cue,{cacheKey:'new',format:'wav',providerId:'doubao'});resume();await run;
+    assert.equal(cue.cacheKey,'new','saving must not roll back regeneration');
+    assert.equal(e.favorites.has('fav:new'),false);
+    if(expired){assert.equal(e.favorites.size,0);assert.equal(e.button.active,undefined);continue;}
+    const saved=e.favorites.get('fav:old');assert.equal(saved.audio,oldBlob,stage);
+    assert.equal(saved.meta.format,original.format,stage);assert.equal(saved.meta.provider,original.providerId,stage);
+    assert.equal(saved.meta.fileNameBase,e.c.focusClockVoiceCueFileBase(original));
   }
 });
 

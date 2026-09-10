@@ -24600,6 +24600,8 @@ async function focusClockSyncVoiceDrawerFavorites(portal) {
 
 async function focusClockToggleVoiceCueFavorite(cue, button) {
   if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地收藏。', 'warning'); return; }
+  // Regeneration can replace the live cue during either read; keep this click's audio and metadata together.
+  cue = { ...cue };
   const id = `fav:${cue.cacheKey}`;
   try {
     if (await blobStore.hasFavorite(id)) {
