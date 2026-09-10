@@ -24697,6 +24697,7 @@ function stopFocusClockRuntime() {
   focusClockRuntime?.stop();
   focusClockResetMedia();
   focusClockVoiceCache.clear();
+  focusClockCloseVoiceDrawer();
 }
 
 function renderFocusClockTab() {

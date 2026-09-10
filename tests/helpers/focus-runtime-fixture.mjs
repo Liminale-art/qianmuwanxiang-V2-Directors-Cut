@@ -27,6 +27,7 @@ export function focusRuntimeFixture(overrides = {}) {
     focusClockComplete:()=>{trace.push('complete');state.status='idle';},
     focusClockVoiceContext:()=>({enabled:true}),focusClockPrepareVoiceCues:token=>prepared.push(token),
     focusClockCancelVoiceWork:()=>trace.push('cancel'),focusClockResetMedia:()=>trace.push('media'),
+    focusClockCloseVoiceDrawer:()=>{},
   });
   c.focusClockVoiceCache.remember('cached',{});
   vm.runInContext(source,c);

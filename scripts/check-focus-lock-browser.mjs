@@ -74,7 +74,7 @@ try{
     window.focusClockVoiceDrawerRows=()=>[];
     window.htmlEscape=x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
     window.focusClockPrepareVoiceCues=()=>{};window.focusClockPlayCompletionAlert=()=>{};
-    window.focusClockMaybePlayMidCue=()=>{};window.focusClockOpenVoiceDrawer=()=>{};
+    window.focusClockMaybePlayMidCue=()=>{};window.focusClockOpenVoiceDrawer=()=>{};window.focusClockCloseVoiceDrawer=()=>{};
     window.saveSettings=()=>{};let uidCount=0;window.uid=()=>`fixture-${++uidCount}`;window.notices=[];window.toast=x=>notices.push(x);window.confirmDialog=async()=>true;
     window.readerView=null;window.readerContentCache=null;window.ensureCoreadReaderRuntime=async()=>{};window.coreadPendingChatImages=()=>[];window.coreadSaveProgress=()=>{};
     window.isModalOpen=()=>document.getElementById(MODAL_ID)?.classList.contains('open');window.openModal=()=>renderModal();

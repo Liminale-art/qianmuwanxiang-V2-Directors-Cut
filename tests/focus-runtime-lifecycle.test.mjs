@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { focusRuntimeFixture } from './helpers/focus-runtime-fixture.mjs';
+import {createFocusVoiceDrawer} from '../qianmu-focus-drawer.js';
 
 test('repeated runtime reconciliation owns exactly one ticker and one copy of each listener', () => {
   const e=focusRuntimeFixture(),before=JSON.stringify(e.state);
@@ -74,4 +75,15 @@ test('an installed ticker reads the latest state rather than keeping the startin
   const e=focusRuntimeFixture();e.c.startFocusClockRuntime({prepareVoice:false});
   const replacement={...e.state,sessionToken:'replacement'};e.setState(replacement);
   [...e.timers.values()][0].fn();assert.equal(e.seen.at(-1),replacement);
+});
+
+test('stopping focus releases its drawer even if the host already removed the panel, without changing records',()=>{
+  const e=focusRuntimeFixture(),before=JSON.stringify(e.state);let removed=0;
+  const portal={isConnected:false,remove(){removed++;this.isConnected=false;},querySelector:()=>null,querySelectorAll:()=>[]};
+  const drawer=createFocusVoiceDrawer({document:{createElement:()=>portal},getModal:()=>({appendChild:()=>{portal.isConnected=true;}}),
+    rowsForView:()=>[{id:'cue',text:'stored'}],format:{escape:String,date:()=>'',icons:()=>{}},favorites:{sync:async()=>{}},now:()=>0});
+  e.c.focusClockCloseVoiceDrawer=()=>drawer.close();drawer.open();portal.isConnected=false;
+  e.c.stopFocusClockRuntime();e.c.stopFocusClockRuntime();
+  assert.equal(removed,1,'stop must relinquish the retained portal, not just rely on host DOM removal');
+  assert.equal(JSON.stringify(e.state),before);assert.equal(e.c.focusClockVoiceCache.size,0);
 });
