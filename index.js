@@ -98,9 +98,9 @@ import {
   normalizeQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.111';
-import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.111';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.111';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.112';
+import { createFeatureRuntime } from './qianmu-feature-runtime.js?v=1.59.112';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.112';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -108,7 +108,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.111';
+} from './qianmu-llm-output.js?v=1.59.112';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -190,289 +190,289 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.111';
+} from './qianmu-storyboard.js?v=1.59.112';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.111';
+const VERSION = '1.59.112';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
 let reader = null;
 const featureRuntime = createFeatureRuntime({
-  vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.111') },
-  vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.111') },
-  vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.111') },
-  vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.111') },
-  vibeStorageSummary: { label: 'Vibe 空间汇总', load: () => import('./qianmu-vibe-storage-summary.js?v=1.59.111') },
-  storyboardPackageAssets: { label: '分镜素材打包', load: () => import('./qianmu-storyboard-package-assets.js?v=1.59.111') },
-  storyboardPackageInput: { label: '分镜包核对', load: () => import('./qianmu-storyboard-package-input.js?v=1.59.111') },
-  storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.111') },
-  storyboardPackageMutation: { label: '分镜导入核对', load: () => import('./qianmu-storyboard-package-mutation.js?v=1.59.111') },
-  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.111') },
-  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.111') },
-  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.111') },
-  storyboardMappingView: { label: '迁移映射凭据', load: () => import('./qianmu-storyboard-mapping-view.js?v=1.59.111') },
-  characterUserIdentity: { label: 'USER头像地址', load: () => import('./qianmu-user-identity.js?v=1.59.111') },
-  characterUserAliasView: { label: 'USER地址核对', load: () => import('./qianmu-user-alias-view.js?v=1.59.111') },
-  characterStorage: { label: '角色库空间', load: () => import('./qianmu-character-storage.js?v=1.59.111') },
-  storyboardPackageStage: { label: '分镜素材暂存', load: () => import('./qianmu-storyboard-package-stage.js?v=1.59.111') },
-  storyboardPackageRuntime: { label: '分镜原件打包', load: () => import('./qianmu-storyboard-package-runtime.js?v=1.59.111') },
-  storyboardPackageStore: { label: '分镜原件读取', load: () => import('./qianmu-vibe-asset-store.js?v=1.59.111') },
-  storyboardBundleFormat: { label: '分镜联包识别', load: () => import('./qianmu-storyboard-bundle.js?v=1.59.111') },
-  storyboardBundleCapture: { label: '分镜资源联包', load: () => import('./qianmu-storyboard-bundle-runtime.js?v=1.59.111') },
-  storyboardBundleSource: { label: '备份来源核对', load: () => import('./qianmu-storyboard-bundle-source.js?v=1.59.111') },
-  storyboardBundleRestore: { label: '分镜联包恢复', load: () => import('./qianmu-storyboard-bundle-restore-runtime.js?v=1.59.111') },
-  storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.111') },
-  storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.111') },
-  storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.111') },
-  storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.111') },
-  storyboardSubjectEvidence: { label: '角色来源核对', load: () => import('./qianmu-storyboard-subject-evidence.js?v=1.59.111') },
-  vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.111') },
-  vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.111') },
-  tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.111') },
+  vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.112') },
+  vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.112') },
+  vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.112') },
+  vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.112') },
+  vibeStorageSummary: { label: 'Vibe 空间汇总', load: () => import('./qianmu-vibe-storage-summary.js?v=1.59.112') },
+  storyboardPackageAssets: { label: '分镜素材打包', load: () => import('./qianmu-storyboard-package-assets.js?v=1.59.112') },
+  storyboardPackageInput: { label: '分镜包核对', load: () => import('./qianmu-storyboard-package-input.js?v=1.59.112') },
+  storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.112') },
+  storyboardPackageMutation: { label: '分镜导入核对', load: () => import('./qianmu-storyboard-package-mutation.js?v=1.59.112') },
+  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.112') },
+  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.112') },
+  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.112') },
+  storyboardMappingView: { label: '迁移映射凭据', load: () => import('./qianmu-storyboard-mapping-view.js?v=1.59.112') },
+  characterUserIdentity: { label: 'USER头像地址', load: () => import('./qianmu-user-identity.js?v=1.59.112') },
+  characterUserAliasView: { label: 'USER地址核对', load: () => import('./qianmu-user-alias-view.js?v=1.59.112') },
+  characterStorage: { label: '角色库空间', load: () => import('./qianmu-character-storage.js?v=1.59.112') },
+  storyboardPackageStage: { label: '分镜素材暂存', load: () => import('./qianmu-storyboard-package-stage.js?v=1.59.112') },
+  storyboardPackageRuntime: { label: '分镜原件打包', load: () => import('./qianmu-storyboard-package-runtime.js?v=1.59.112') },
+  storyboardPackageStore: { label: '分镜原件读取', load: () => import('./qianmu-vibe-asset-store.js?v=1.59.112') },
+  storyboardBundleFormat: { label: '分镜联包识别', load: () => import('./qianmu-storyboard-bundle.js?v=1.59.112') },
+  storyboardBundleCapture: { label: '分镜资源联包', load: () => import('./qianmu-storyboard-bundle-runtime.js?v=1.59.112') },
+  storyboardBundleSource: { label: '备份来源核对', load: () => import('./qianmu-storyboard-bundle-source.js?v=1.59.112') },
+  storyboardBundleRestore: { label: '分镜联包恢复', load: () => import('./qianmu-storyboard-bundle-restore-runtime.js?v=1.59.112') },
+  storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.112') },
+  storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.112') },
+  storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.112') },
+  storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.112') },
+  storyboardSubjectEvidence: { label: '角色来源核对', load: () => import('./qianmu-storyboard-subject-evidence.js?v=1.59.112') },
+  vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.112') },
+  vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.112') },
+  tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.112') },
   modelPicker: {
     label: '模型选择',
-    load: () => import('./qianmu-model-picker.js?v=1.59.111'),
+    load: () => import('./qianmu-model-picker.js?v=1.59.112'),
   },
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.111'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.112'),
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.111'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.112'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
-    load: () => import('./qianmu-image-channel.js?v=1.59.111'),
+    load: () => import('./qianmu-image-channel.js?v=1.59.112'),
   },
   imageServiceClient: {
     label: '增强生图任务',
-    load: () => import('./qianmu-image-service-client.js?v=1.59.111'),
+    load: () => import('./qianmu-image-service-client.js?v=1.59.112'),
   },
   comfySubmission: {
     label: 'Comfy 实例排队',
-    load: () => import('./qianmu-comfy-submission.js?v=1.59.111'),
+    load: () => import('./qianmu-comfy-submission.js?v=1.59.112'),
   },
   comfyRecovery: {
     label: 'Comfy 原图领取',
-    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.111'),
+    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.112'),
   },
   comfyInbox: {
     label: 'Comfy 收片管理',
-    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.111'),
+    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.112'),
   },
   comfyReferences: {
     label: 'Comfy 参考图',
-    load: () => import('./qianmu-comfy-references.js?v=1.59.111'),
+    load: () => import('./qianmu-comfy-references.js?v=1.59.112'),
   },
   characterArchive: {
     label: '角色档案',
-    load: () => import('./qianmu-character-archive-view.js?v=1.59.111'),
+    load: () => import('./qianmu-character-archive-view.js?v=1.59.112'),
   },
   characterCasting: {
     label: '角色取景绑定',
-    load: () => import('./qianmu-character-casting.js?v=1.59.111'),
+    load: () => import('./qianmu-character-casting.js?v=1.59.112'),
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.111'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.112'),
   },
   artistPromptReview: {
     label: '原画师层核对',
-    load: () => import('./qianmu-artist-prompt-review.js?v=1.59.111'),
+    load: () => import('./qianmu-artist-prompt-review.js?v=1.59.112'),
   },
   styleRecipe: {
     label: '图片风格配置',
-    load: () => import('./qianmu-style-recipe.js?v=1.59.111'),
+    load: () => import('./qianmu-style-recipe.js?v=1.59.112'),
   },
   characterShotEditor: {
     label: '本镜人物编辑',
-    load: () => import('./qianmu-character-shot-view.js?v=1.59.111'),
+    load: () => import('./qianmu-character-shot-view.js?v=1.59.112'),
   },
   characterReference: {
     label: '角色参考图',
-    load: () => import('./qianmu-character-reference.js?v=1.59.111'),
+    load: () => import('./qianmu-character-reference.js?v=1.59.112'),
   },
   readerCore: {
     label: '伴读解析器',
-    load: () => import('./qianmu-reader.js?v=1.59.111').then((module) => {
+    load: () => import('./qianmu-reader.js?v=1.59.112').then((module) => {
       reader = module;
       return module;
     }),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.111'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.112'),
   },
   comfyWorkbench: {
     label: 'Comfy 镜头台',
-    load: () => import('./qianmu-comfy-workbench.js?v=1.59.111'),
+    load: () => import('./qianmu-comfy-workbench.js?v=1.59.112'),
   },
   comfyCharacters: {
     label: 'Comfy 角色实现',
-    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.111'),
+    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.112'),
   },
   comfyRoutes: {
     label: 'Comfy 镜头分工',
-    load: () => import('./qianmu-comfy-route.js?v=1.59.111'),
+    load: () => import('./qianmu-comfy-route.js?v=1.59.112'),
   },
   comfyPrompt: {
     label: 'Comfy 提示表达',
-    load: () => import('./qianmu-comfy-prompt.js?v=1.59.111'),
+    load: () => import('./qianmu-comfy-prompt.js?v=1.59.112'),
   },
   comfyCharacterReadiness: {
     label: '角色节点检查',
-    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.111'),
+    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.112'),
   },
   comfyLibrary: {
     label: 'Comfy 工作流库',
-    load: () => import('./qianmu-comfy-library-view.js?v=1.59.111'),
+    load: () => import('./qianmu-comfy-library-view.js?v=1.59.112'),
   },
   comfyPools: {
     label: 'Comfy 候选方案',
-    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.111'),
+    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.112'),
   },
   comfyScene: {
     label: 'Comfy 续场锁',
-    load: () => import('./qianmu-comfy-lock-runtime.js?v=1.59.111'),
+    load: () => import('./qianmu-comfy-lock-runtime.js?v=1.59.112'),
   },
   comfyStorage: {
     label: 'Comfy 储存盘点',
-    load: () => import('./qianmu-comfy-storage.js?v=1.59.111'),
+    load: () => import('./qianmu-comfy-storage.js?v=1.59.112'),
   },
   comfyAuto: {
     label: 'Comfy 候选调度',
-    load: () => import('./qianmu-comfy-auto-runtime.js?v=1.59.111'),
+    load: () => import('./qianmu-comfy-auto-runtime.js?v=1.59.112'),
   },
   comfyPreflight: {
     label: 'Comfy 配置检查',
-    load: () => import('./qianmu-comfy-preflight.js?v=1.59.111'),
+    load: () => import('./qianmu-comfy-preflight.js?v=1.59.112'),
   },
   comfyReadiness: {
     label: 'Comfy 节点检查',
-    load: () => import('./qianmu-comfy-readiness.js?v=1.59.111'),
+    load: () => import('./qianmu-comfy-readiness.js?v=1.59.112'),
   },
   comfyTargets: {
     label: 'Comfy 可信连接',
-    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.111'),
+    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.112'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.111'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.112'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.111'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.112'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.111'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.112'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.111'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.112'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.111'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.112'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.111'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.112'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.111'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.112'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.111'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.112'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.111'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.112'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.111'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.112'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.111'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.112'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.111'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.112'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.111'),
+    load: () => import('./qianmu-video-task.js?v=1.59.112'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.111'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.112'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.111'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.112'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.111'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.112'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.111'),
+    load: () => import('./qianmu-video-store.js?v=1.59.112'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.111'),
+    load: () => import('./qianmu-video-result.js?v=1.59.112'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.111'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.112'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.111'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.112'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.111'),
+    load: () => import('./qianmu-video-media.js?v=1.59.112'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.111'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.112'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.111'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.112'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.111'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.112'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.111'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.112'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.111'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.112'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.111'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.112'),
   },
   theaterCatalog: {
     label: '内置剧札',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        import('./builtin-theaters.js?v=1.59.111'),
-        import('./qianmu-theaters.js?v=1.59.111'),
+        import('./builtin-theaters.js?v=1.59.112'),
+        import('./qianmu-theaters.js?v=1.59.112'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -1372,6 +1372,9 @@ let focusClockMedia = null;         // 内置/外链提示音复用同一 Audio 
 let focusClockPreviewMode = false;  // 试听可暂停后继续；完成提醒播放不占用试听按钮状态
 let focusClockPreviewFrame = 0;     // requestAnimationFrame 驱动试听圆环，避免 timeupdate 的阶梯感
 let focusClockVoicePrepareSeq = 0;   // 新专注轮次递增；旧异步情景生成返回时自动作废
+let focusClockVoiceWork = null;
+let focusClockVoicePlaybackSeq = 0;
+let focusClockVoiceAudio = null;   // 关闭专注语音只停止它自己的声音，不中断正文配音
 const focusClockVoiceBlobs = new Map(); // IndexedDB 不可用时仍可在本页完成播放；仅保留少量预生成结果
 let focusClockVoiceDrawerEl = null;  // 专注角色语音二层抽屉；挂在千幕根容器，避免移动端 fixed 定位受 ST 主题干扰
 const STORYBOARD_QUEUE_LIMIT = 8;     // 仅本页运行态；刷新后不自动续跑，避免意外消耗生图额度
@@ -24559,7 +24562,11 @@ function focusClockVoiceContext(state = focusClockState()) {
   const hasChat = Boolean(context.groupId || context.chatId || context.characterId !== undefined && context.characterId !== null);
   if (!hasChat) return { hasChat: false, enabled: false, options: [], chatKey: '', speaker: '', relation: 'neutral', characterName: '' };
   const chatKey = getChatKey();
-  const options = ttsActiveVoiceMap().filter((row) => row?.voiceId && String(row.name || '').trim());
+  const hostCharacter = context.characters?.[context.characterId];
+  const readerMismatch = state.activity === 'reading' && readerView && (
+    readerView.companionAvatar !== (hostCharacter?.avatar || hostCharacter?.data?.avatar || '')
+    || readerView.userPersona?.key !== coreadHostPersona().key);
+  const options = readerMismatch ? [] : ttsActiveVoiceMap().filter((row) => row?.voiceId && String(row.name || '').trim());
   const characterName = String(getCharacterName() || '').trim();
   const saved = String(state.voiceSpeakerByChat?.[chatKey] || '').trim();
   const speaker = options.some((row) => String(row.name).trim() === saved)
@@ -24567,7 +24574,8 @@ function focusClockVoiceContext(state = focusClockState()) {
     : (options.find((row) => String(row.name).trim() === characterName)?.name || options[0]?.name || '');
   const savedRelation = String(state.voiceRelationByChat?.[chatKey] || 'neutral');
   const relation = FOCUS_CLOCK_RELATIONS[savedRelation] ? savedRelation : 'neutral';
-  return { hasChat: true, enabled: Boolean(state.voiceEnabledByChat?.[chatKey]), options, chatKey, speaker: String(speaker || '').trim(), relation, characterName };
+  return { hasChat: true, enabled: Boolean(state.voiceEnabledByChat?.[chatKey]), options, chatKey, speaker: String(speaker || '').trim(), relation, characterName,
+    unavailableReason: readerMismatch ? '当前书友与聊天身份不同，暂不借用聊天音色。' : '' };
 }
 
 function focusClockCharacterDescription(speaker, characterName) {
@@ -24577,6 +24585,38 @@ function focusClockCharacterDescription(speaker, characterName) {
     : null;
   if (match) return match.description || match.data?.description || '';
   return String(speaker || '').trim() === String(characterName || '').trim() ? getCharacterDescription() : '';
+}
+
+function focusClockVoiceBindingKey(binding) {
+  const context = ctx();
+  const character = context.characters?.[context.characterId];
+  return JSON.stringify([binding.chatKey, character?.avatar || character?.data?.avatar || '',
+    readerView?.companionAvatar || '', readerView?.companionScope || '', readerView?.userPersona?.key || '',
+    ttsProviderId(), binding.speaker, binding.relation]);
+}
+
+function focusClockVoiceBindingActive(bindingKey) {
+  const voice = focusClockVoiceContext();
+  return !!settings.enabled && voice.enabled && !!voice.speaker && !!bindingKey
+    && focusClockVoiceBindingKey(voice) === bindingKey;
+}
+
+function focusClockCancelVoiceWork({ clearCues = false, stopPlayback = true } = {}) {
+  focusClockVoicePrepareSeq += 1;
+  focusClockVoicePlaybackSeq += 1;
+  if (clearCues) focusClockState().sessionVoiceCues = focusClockState().sessionVoiceCues.filter(cue => cue.played);
+  if (stopPlayback && focusClockVoiceAudio && ttsCurrentAudio === focusClockVoiceAudio) ttsStopPlayback(true);
+}
+
+function focusClockSetVoiceEnabled(enabled) {
+  const f = focusClockState(), voice = focusClockVoiceContext(f);
+  if (!voice.chatKey) return;
+  if (enabled && (!voice.options.length || !voice.speaker)) { toast('请先配置可用的角色音色。', 'warning'); return; }
+  f.voiceEnabledByChat[voice.chatKey] = Boolean(enabled);
+  if (enabled && !f.voiceSpeakerByChat[voice.chatKey]) f.voiceSpeakerByChat[voice.chatKey] = voice.speaker;
+  focusClockCancelVoiceWork({ clearCues: true });
+  saveSettings();
+  if (enabled && f.status === 'running' && f.phase === 'focus') void focusClockPrepareVoiceCues(f.sessionToken);
 }
 
 function focusClockPickStockLines(relation, count) {
@@ -24599,10 +24639,11 @@ function focusClockCleanVoiceLine(value) {
     .slice(0, 80);
 }
 
-async function focusClockGenerateSceneLines(binding, count, subject) {
+async function focusClockGenerateSceneLines(binding, count, subject, { isCurrent = () => true } = {}) {
   const relationMeta = FOCUS_CLOCK_RELATIONS[binding.relation] || FOCUS_CLOCK_RELATIONS.neutral;
   const rawDescription = focusClockCharacterDescription(binding.speaker, binding.characterName);
   const characterDescription = cleanContextText(await resolveMacro(rawDescription)).slice(0, 1800) || '未提供额外人设；保持自然、克制，不擅自补写关系和经历。';
+  if (!isCurrent()) throw new DOMException('专注语音请求已失效', 'AbortError');
   const systemPrompt = `你是“千幕专注场景”的角色短句编写器。你的唯一任务是让指定角色在专注计时中自然地提醒、陪伴或收束，不续写剧情，不扮演用户，不引用聊天正文。
 
 【绝对边界】
@@ -24631,16 +24672,20 @@ async function focusClockGenerateSceneLines(binding, count, subject) {
     .slice(0, count);
 }
 
-async function focusClockSynthVoiceCue(binding, text) {
+async function focusClockSynthVoiceCue(binding, text, { isCurrent = () => true } = {}) {
+  const assertCurrent = () => { if (!isCurrent()) throw new DOMException('专注语音请求已失效', 'AbortError'); };
+  assertCurrent();
   let params = { ...binding.params, text };
   const provider = getTtsProvider(params.providerId);
   if (!ttsProviderHasCredentials(params.providerId, params)) throw new Error(`未配置 ${provider.label} 凭证`);
   let key = cacheKeyForTts(params.providerId, params);
   if (blobStore.blobStoreAvailable()) {
     const hit = await blobStore.getAudio(key).catch(() => null);
+    assertCurrent();
     if (hit?.blob) { focusClockVoiceBlobs.set(key, hit.blob); return key; }
   }
   const result = await synthesizeTts(params.providerId, params);
+  assertCurrent();
   if (params.providerId === 'doubao' && params.model === 'auto' && result.resolvedModel) {
     ttsPersistResolvedDoubaoModel(params, result.resolvedModel);
     params = { ...params, model: result.resolvedModel };
@@ -24648,8 +24693,10 @@ async function focusClockSynthVoiceCue(binding, text) {
   }
   if (blobStore.blobStoreAvailable()) {
     await blobStore.putAudio(key, result.blob, { speaker: binding.speaker, text, source: 'focus', provider: params.providerId });
+    assertCurrent();
     await blobStore.pruneAudio(Number(settings.tts?.cacheLimit ?? 200), 'tts').catch(() => {});
   }
+  assertCurrent();
   focusClockVoiceBlobs.set(key, result.blob);
   while (focusClockVoiceBlobs.size > 12) focusClockVoiceBlobs.delete(focusClockVoiceBlobs.keys().next().value);
   return key;
@@ -24669,63 +24716,86 @@ function focusClockMidCueProgresses(durationMinutes, chance) {
 }
 
 async function focusClockPrepareVoiceCues(sessionToken) {
-  const prepareSeq = ++focusClockVoicePrepareSeq;
   const f = focusClockState();
-  if (f.phase !== 'focus' || f.sessionToken !== sessionToken) return;
+  if (!settings.enabled || f.status !== 'running' || f.phase !== 'focus' || !sessionToken || f.sessionToken !== sessionToken) return;
   const voiceContext = focusClockVoiceContext(f);
   if (!voiceContext.hasChat || !voiceContext.enabled || !voiceContext.speaker) return;
-  const baseParams = ttsBuildParams({ speaker: voiceContext.speaker, text: '专注提醒', emotion: 'auto' });
-  if (!baseParams || !ttsProviderHasCredentials(baseParams.providerId, baseParams)) return;
-  const frequency = FOCUS_CLOCK_VOICE_FREQUENCIES[f.voiceFrequency] || FOCUS_CLOCK_VOICE_FREQUENCIES.low;
-  const durationMinutes = Math.max(1, Number(f.sessionPlannedMs) / 60000);
-  const specs = focusClockMidCueProgresses(durationMinutes, frequency.chance)
-    .map((progress) => ({ type: 'mid', progress }));
-  specs.push({ type: 'complete', progress: 1 });
-  const book = f.sessionBookId ? coreadBookMeta(f.sessionBookId) : null;
-  const subject = f.sessionBookId ? `阅读《${book?.title || '未命名书籍'}》` : (f.task || '完成一段专注');
-  const binding = { ...voiceContext, params: { ...baseParams, text: '' } };
-  let lines = [];
-  if (f.voiceMode === 'scene') {
-    try { lines = await focusClockGenerateSceneLines(binding, specs.length, subject); } catch (error) { console.warn(`[${MODULE_NAME}] focus scene voice fallback`, error); }
-  }
-  if (lines.length < specs.length) {
-    const fallback = focusClockPickStockLines(binding.relation, specs.length);
-    lines = specs.map((_, index) => lines[index] || fallback[index]);
-  }
-  const cues = [];
-  for (let index = 0; index < specs.length; index++) {
-    if (prepareSeq !== focusClockVoicePrepareSeq || focusClockState().sessionToken !== sessionToken) return;
-    const text = focusClockCleanVoiceLine(lines[index]);
-    if (!text) continue;
-    try {
-      const cacheKey = await focusClockSynthVoiceCue(binding, text);
-      cues.push({
-        id: uid('focusvoice'), ...specs[index], text, cacheKey, played: false,
-        speaker: binding.speaker,
-        providerId: baseParams.providerId,
-        format: baseParams.fileExtension || 'mp3',
-        chatKey: binding.chatKey,
-        task: String(subject || f.task || '专注').slice(0, 120),
-        sourceTime: f.sessionStartedAt || Date.now(),
-        lineIndex: index,
-      });
-    } catch (error) { console.warn(`[${MODULE_NAME}] focus voice synth failed`, error); }
-  }
-  const current = focusClockState();
-  if (prepareSeq !== focusClockVoicePrepareSeq || current.sessionToken !== sessionToken) return;
-  current.sessionVoiceCues = cues;
-  saveSettings();
+  const bindingKey = focusClockVoiceBindingKey(voiceContext);
+  if (focusClockVoiceWork?.sessionToken === sessionToken && focusClockVoiceWork.bindingKey === bindingKey
+      && focusClockVoiceWork.seq === focusClockVoicePrepareSeq) return;
+  const prepareSeq = ++focusClockVoicePrepareSeq;
+  const work = { sessionToken, bindingKey, seq: prepareSeq };
+  focusClockVoiceWork = work;
+  const isCurrent = () => prepareSeq === focusClockVoicePrepareSeq && focusClockState() === f
+    && f.status === 'running' && f.phase === 'focus' && f.sessionToken === sessionToken && focusClockVoiceBindingActive(bindingKey);
+  try {
+    const baseParams = ttsBuildParams({ speaker: voiceContext.speaker, text: '专注提醒', emotion: 'auto' });
+    if (!baseParams || !ttsProviderHasCredentials(baseParams.providerId, baseParams)) return;
+    const frequency = FOCUS_CLOCK_VOICE_FREQUENCIES[f.voiceFrequency] || FOCUS_CLOCK_VOICE_FREQUENCIES.low;
+    const durationMinutes = Math.max(1, Number(f.sessionPlannedMs) / 60000);
+    const specs = focusClockMidCueProgresses(durationMinutes, frequency.chance)
+      .map((progress) => ({ type: 'mid', progress }));
+    specs.push({ type: 'complete', progress: 1 });
+    const book = f.sessionBookId ? coreadBookMeta(f.sessionBookId) : null;
+    const subject = f.sessionBookId ? `阅读《${book?.title || '未命名书籍'}》` : (f.task || '完成一段专注');
+    const binding = { ...voiceContext, params: { ...baseParams, text: '' } };
+    let lines = [];
+    if (f.voiceMode === 'scene') {
+      try { lines = await focusClockGenerateSceneLines(binding, specs.length, subject, { isCurrent }); }
+      catch (error) {
+        if (!isCurrent() || error?.name === 'AbortError') return;
+        console.warn(`[${MODULE_NAME}] focus scene voice fallback`, error);
+      }
+    }
+    if (lines.length < specs.length) {
+      const fallback = focusClockPickStockLines(binding.relation, specs.length);
+      lines = specs.map((_, index) => lines[index] || fallback[index]);
+    }
+    const cues = [];
+    for (let index = 0; index < specs.length; index++) {
+      if (!isCurrent()) return;
+      const text = focusClockCleanVoiceLine(lines[index]);
+      if (!text) continue;
+      try {
+        const cacheKey = await focusClockSynthVoiceCue(binding, text, { isCurrent });
+        if (!isCurrent()) return;
+        cues.push({
+          id: uid('focusvoice'), ...specs[index], text, cacheKey, played: false,
+          speaker: binding.speaker,
+          providerId: baseParams.providerId,
+          format: baseParams.fileExtension || 'mp3',
+          chatKey: binding.chatKey,
+          voiceBindingKey: bindingKey,
+          task: String(subject || f.task || '专注').slice(0, 120),
+          sourceTime: f.sessionStartedAt || Date.now(),
+          lineIndex: index,
+        });
+      } catch (error) {
+        if (!isCurrent() || error?.name === 'AbortError') return;
+        console.warn(`[${MODULE_NAME}] focus voice synth failed`, error);
+      }
+    }
+    const current = focusClockState();
+    if (!isCurrent()) return;
+    current.sessionVoiceCues = [...current.sessionVoiceCues.filter(cue => cue.played), ...cues].slice(-4);
+    saveSettings();
+  } finally { if (focusClockVoiceWork === work) focusClockVoiceWork = null; }
 }
 
-async function focusClockPlayVoiceCue(cue) {
+async function focusClockPlayVoiceCue(cue, { automatic = false, isCurrent = () => true } = {}) {
   if (!cue?.cacheKey) return false;
+  const playSeq = ++focusClockVoicePlaybackSeq, ttsSeq = ttsSeqToken;
+  const allowed = () => playSeq === focusClockVoicePlaybackSeq && ttsSeq === ttsSeqToken && isCurrent()
+    && (!automatic || focusClockVoiceBindingActive(cue.voiceBindingKey));
+  if (!allowed()) return false;
   try {
     const memoryBlob = focusClockVoiceBlobs.get(cue.cacheKey);
     const hit = memoryBlob ? { blob: memoryBlob } : (blobStore.blobStoreAvailable() ? await blobStore.getAudio(cue.cacheKey) : null);
-    if (!hit?.blob) return false;
+    if (!hit?.blob || !allowed()) return false;
     ttsStopPlayback(true);
     const url = URL.createObjectURL(hit.blob);
     const audio = new Audio(url);
+    focusClockVoiceAudio = audio;
     ttsCurrentAudio = audio;
     ttsCurrentUrl = url;
     let cleaned = false;
@@ -24735,6 +24805,7 @@ async function focusClockPlayVoiceCue(cue) {
       if (ttsPlayCleanup === cleanup) ttsPlayCleanup = null;
       if (ttsCurrentUrl === url) { try { URL.revokeObjectURL(url); } catch (_) {} ttsCurrentUrl = ''; }
       if (ttsCurrentAudio === audio) ttsCurrentAudio = null;
+      if (focusClockVoiceAudio === audio) focusClockVoiceAudio = null;
     };
     ttsPlayCleanup = cleanup;
     audio.addEventListener('ended', cleanup, { once: true });
@@ -24828,8 +24899,11 @@ async function focusClockRegenerateVoiceCue(cue) {
   }
   const params = ttsBuildParams({ speaker: cue.speaker, text: cue.text, emotion: 'auto' });
   if (!params) { toast('当前聊天没有这个角色的音色绑定。', 'warning'); return false; }
+  const seq = focusClockVoicePrepareSeq, chatKey = getChatKey();
+  const isCurrent = () => seq === focusClockVoicePrepareSeq && chatKey === getChatKey() && params.providerId === ttsProviderId();
   try {
-    const cacheKey = await focusClockSynthVoiceCue({ speaker: cue.speaker, params }, cue.text);
+    const cacheKey = await focusClockSynthVoiceCue({ speaker: cue.speaker, params }, cue.text, { isCurrent });
+    if (!isCurrent()) return false;
     cue.cacheKey = cacheKey;
     cue.providerId = params.providerId;
     cue.format = params.fileExtension || 'mp3';
@@ -24838,6 +24912,7 @@ async function focusClockRegenerateVoiceCue(cue) {
     if (!played) toast('语音已重新生成，但浏览器暂未允许播放。', 'warning');
     return true;
   } catch (error) {
+    if (!isCurrent() || error?.name === 'AbortError') return false;
     toast(`重新生成失败：${error?.message || error}`, 'error');
     return false;
   }
@@ -24909,7 +24984,10 @@ function focusClockOpenVoiceDrawer() {
 }
 
 async function focusClockPlayCompletionAlert(cue) {
-  if (await focusClockPlayVoiceCue(cue)) return;
+  const epoch = focusClockVoicePlaybackSeq;
+  if (await focusClockPlayVoiceCue(cue, { automatic: true })) return;
+  // Closing voice while audio is loading must not unexpectedly start a fallback sound.
+  if (focusClockVoicePlaybackSeq > epoch + (cue?.cacheKey ? 1 : 0)) return;
   await focusClockPlayDoneSound();
 }
 
@@ -24918,9 +24996,11 @@ function focusClockMaybePlayMidCue(state) {
   const elapsed = 1 - focusClockRemainingMs(state) / Math.max(1000, Number(state.sessionPlannedMs) || focusClockPhaseMs('focus', state));
   const cue = state.sessionVoiceCues.find((item) => item.type === 'mid' && !item.played && elapsed >= Number(item.progress || 1));
   if (!cue) return;
+  if (!focusClockVoiceBindingActive(cue.voiceBindingKey)) return;
   cue.played = true;
   saveSettings();
-  void focusClockPlayVoiceCue(cue);
+  const token = state.sessionToken;
+  void focusClockPlayVoiceCue(cue, { automatic: true, isCurrent: () => state.status === 'running' && state.sessionToken === token });
 }
 
 function focusClockSetPhase(phase) {
@@ -24936,7 +25016,7 @@ function focusClockSetPhase(phase) {
   f.sessionElapsedMs = 0;
   f.sessionToken = '';
   f.sessionVoiceCues = [];
-  focusClockVoicePrepareSeq += 1;
+  focusClockCancelVoiceWork();
   saveSettings();
 }
 
@@ -24964,8 +25044,11 @@ function focusClockStart() {
     f.sessionPlannedMs = remaining;
     f.sessionToken = f.phase === 'focus' ? uid('focussession') : '';
     f.sessionVoiceCues = [];
-    focusClockVoicePrepareSeq += 1;
+    focusClockCancelVoiceWork();
     prepareVoice = f.phase === 'focus' && focusClockVoiceContext(f).enabled;
+  } else {
+    prepareVoice = f.phase === 'focus' && !f.sessionVoiceCues.some(cue => cue.type === 'complete' && !cue.played)
+      && focusClockVoiceContext(f).enabled;
   }
   f.status = 'running';
   f.remainingMs = remaining;
@@ -24989,6 +25072,7 @@ function focusClockPause() {
   f.endsAt = 0;
   f.runStartedAt = 0;
   f.status = 'paused';
+  focusClockCancelVoiceWork();
   saveSettings();
   startFocusClockRuntime({ prepareVoice: false });
   focusClockUpdateDom();
@@ -25008,7 +25092,7 @@ function focusClockReset() {
   f.sessionProgressStart = 0;
   f.sessionToken = '';
   f.sessionVoiceCues = [];
-  focusClockVoicePrepareSeq += 1;
+  focusClockCancelVoiceWork();
   saveSettings();
   startFocusClockRuntime({ prepareVoice: false });
   focusClockUpdateDom();
@@ -25021,7 +25105,7 @@ function focusClockComplete() {
   const completedPhase = f.phase;
   const wasLocked = !!f.lock;
   if (wasLocked) focusClockReleaseLock();
-  const completionCue = completedPhase === 'focus' ? f.sessionVoiceCues.find((cue) => cue.type === 'complete' && !cue.played) : null;
+  const completionCue = completedPhase === 'focus' ? f.sessionVoiceCues.find((cue) => cue.type === 'complete' && !cue.played && focusClockVoiceBindingActive(cue.voiceBindingKey)) : null;
   if (completedPhase === 'focus') {
     const durationMs = Math.max(1000, Number(f.sessionPlannedMs) || focusClockPhaseMs('focus', f));
     const linkedBook = f.sessionBookId ? coreadBookMeta(f.sessionBookId) : null;
@@ -25056,7 +25140,7 @@ function focusClockComplete() {
   f.endsAt = autoNext ? now + f.remainingMs : 0;
   f.sessionToken = autoNext && f.phase === 'focus' ? uid('focussession') : '';
   f.sessionVoiceCues = [];
-  focusClockVoicePrepareSeq += 1;
+  focusClockCancelVoiceWork();
   saveSettings();
   startFocusClockRuntime({ prepareVoice: false });
   void focusClockPlayCompletionAlert(completionCue);
@@ -25122,6 +25206,7 @@ function startFocusClockRuntime({ prepareVoice = true } = {}) {
 }
 
 function stopFocusClockRuntime() {
+  focusClockCancelVoiceWork();
   focusClockLockGuard?.dispose(); focusClockLockGuard = null;
   if (focusClockTicker) clearInterval(focusClockTicker);
   focusClockTicker = null;
@@ -25157,11 +25242,11 @@ function renderFocusClockTab() {
   const weekRange = `${weekStart.getMonth() + 1}.${weekStart.getDate()}–${weekEnd.getMonth() + 1}.${weekEnd.getDate()}`;
   const voiceContext = focusClockVoiceContext(f);
   const voiceAvailable = voiceContext.hasChat && voiceContext.options.length > 0;
-  const voiceStatus = !voiceContext.hasChat
+  const voiceStatus = voiceContext.unavailableReason || (!voiceContext.hasChat
     ? '进入一个聊天后，才可选择角色并关联当前聊天的音色。'
     : !voiceContext.options.length
       ? '当前聊天还没有可用角色音色，请先在配音中完成绑定。'
-      : `已关联当前聊天 · ${getTtsProvider(ttsProviderId()).label}`;
+      : `已关联当前聊天 · ${getTtsProvider(ttsProviderId()).label}`);
   const voiceSpeakerOptions = voiceContext.options.map((row) => `<option value="${htmlEscape(row.name)}" ${String(row.name).trim() === voiceContext.speaker ? 'selected' : ''}>${htmlEscape(row.name)}</option>`).join('');
   const voiceRelationOptions = Object.entries(FOCUS_CLOCK_RELATIONS).map(([id, item]) => `<option value="${id}" ${voiceContext.relation === id ? 'selected' : ''}>${item.label}</option>`).join('');
   const voiceDrawerCount = focusClockVoiceDrawerRows(f).length;
@@ -25251,7 +25336,7 @@ function renderFocusClockTab() {
       ${soundConfig}
     </section>
     <section class="sd-card sd-focus-voice-card">
-      <div class="sd-card-title-row"><h3>角色语音</h3><span class="sd-focus-voice-head-actions"><button type="button" class="sd-icon-btn sd-focus-voice-drawer-open" title="陪伴语音" aria-label="打开陪伴语音" ${voiceDrawerCount ? '' : 'hidden'}><i class="fa-solid fa-headphones-simple"></i><span>${voiceDrawerCount}</span></button><label class="checkbox_label"><input type="checkbox" class="sd-focus-voice-enabled" ${voiceContext.enabled ? 'checked' : ''} ${voiceAvailable && !locked ? '' : 'disabled'}>${voiceContext.enabled ? '已开启' : '已关闭'}</label></span></div>
+      <div class="sd-card-title-row"><h3>角色语音</h3><span class="sd-focus-voice-head-actions"><button type="button" class="sd-icon-btn sd-focus-voice-drawer-open" title="陪伴语音" aria-label="打开陪伴语音" ${voiceDrawerCount ? '' : 'hidden'}><i class="fa-solid fa-headphones-simple"></i><span>${voiceDrawerCount}</span></button><label class="checkbox_label"><input type="checkbox" class="sd-focus-voice-enabled" ${voiceContext.enabled ? 'checked' : ''} ${voiceAvailable || voiceContext.enabled ? '' : 'disabled'}>${voiceContext.enabled ? '已开启' : '已关闭'}</label></span></div>
       <div class="sd-focus-voice-status"><i class="fa-solid ${voiceAvailable ? 'fa-link' : 'fa-circle-info'}"></i><span>${htmlEscape(voiceStatus)}</span></div>
       ${voiceConfig}
     </section>
@@ -25368,13 +25453,7 @@ function bindFocusClockEvents(root) {
   focusClockSyncPreviewButton();
   root.querySelector('.sd-focus-week-export')?.addEventListener('click', () => void focusClockExportWeekImage());
   root.querySelector('.sd-focus-voice-enabled')?.addEventListener('change', (event) => {
-    const f = focusClockState();
-    const voice = focusClockVoiceContext(f);
-    if (!voice.chatKey || !voice.options.length) return;
-    f.voiceEnabledByChat[voice.chatKey] = Boolean(event.target.checked);
-    if (!f.voiceSpeakerByChat[voice.chatKey] && voice.speaker) f.voiceSpeakerByChat[voice.chatKey] = voice.speaker;
-    if (!f.voiceRelationByChat[voice.chatKey]) f.voiceRelationByChat[voice.chatKey] = 'neutral';
-    saveSettings();
+    focusClockSetVoiceEnabled(Boolean(event.target.checked));
     renderModal();
   });
   root.querySelector('.sd-focus-voice-speaker')?.addEventListener('change', (event) => {

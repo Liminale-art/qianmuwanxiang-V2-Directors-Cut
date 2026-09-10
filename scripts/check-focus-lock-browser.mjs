@@ -9,7 +9,7 @@ const require=createRequire(import.meta.url),{chromium}=require(process.env.QIAN
 const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
 const guardSource=await readFile(new URL('../qianmu-focus-lock.js',import.meta.url),'utf8');
 const iconSource=await readFile(new URL('../qianmu-icon-renderer.js',import.meta.url),'utf8');
-const functions=focusFunctions+'\n'+['focusClockAttachLock','focusClockUpdateDom','focusClockRuntimeTick','renderFocusClockTab','bindFocusClockEvents'].map(section).join('\n');
+const functions=focusFunctions+'\n'+['focusClockAttachLock','focusClockUpdateDom','focusClockRuntimeTick','renderFocusClockTab','bindFocusClockEvents','focusClockCancelVoiceWork','focusClockSetVoiceEnabled'].map(section).join('\n');
 await mkdir(new URL('../dist/local-qa/',import.meta.url),{recursive:true});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
 const context=await browser.newContext({hasTouch:true});let external=0;const errors=[];
@@ -21,10 +21,12 @@ try{
     window.MODAL_ID='story-director-modal';window.settings={enabled:true,focusClock:structuredClone(defaults)};window.DEFAULT_SETTINGS={focusClock:defaults};window.activeTab='focus';
     window.focusClockState=()=>settings.focusClock;window.focusClockLockOwner='browser-test';window.focusClockOwnerId=()=>focusClockLockOwner;
     window.focusClockEntryBusy=false;window.focusClockLockGuard=null;window.focusClockLockConfirming=false;window.focusClockVoicePrepareSeq=0;
+    window.focusClockVoicePlaybackSeq=0;window.focusClockVoiceAudio=null;window.ttsCurrentAudio=null;window.voiceFixture=false;
+    window.ttsProviderId=()=> 'minimax';window.getTtsProvider=()=>({label:'测试音色'});
     window.FOCUS_CLOCK_PHASES={focus:{label:'专注',icon:'fa-seedling',setting:'focusMinutes'},shortBreak:{label:'小憩',icon:'fa-mug-hot',setting:'shortBreakMinutes'},longBreak:{label:'长休',icon:'fa-cloud-moon',setting:'longBreakMinutes'}};
     window.FOCUS_CLOCK_WEEK_ENTRY_LIMIT=160;window.FOCUS_CLOCK_RELATIONS={};window.FOCUS_CLOCK_VOICE_FREQUENCIES={};window.FOCUS_CLOCK_SOUND_PRESETS={};
     window.coreadBookMeta=id=>id==='book'?{id,title:'测试书籍',progress:20}:null;window.coread=()=>({books:[coreadBookMeta('book')]});
-    window.focusClockVoiceContext=()=>({enabled:false,options:[]});window.focusClockVoiceDrawerRows=()=>[];
+    window.focusClockVoiceContext=()=>voiceFixture?({hasChat:true,enabled:!!settings.focusClock.voiceEnabledByChat.test,options:[{name:'测试角色',voiceId:'test'}],chatKey:'test',speaker:'测试角色',relation:'neutral'}):({enabled:false,options:[]});window.focusClockVoiceDrawerRows=()=>[];
     window.focusClockTodayHistory=()=>[];window.focusClockWeekStats=()=>({days:Array.from({length:7},()=>({minutes:0})),history:[],minutes:0,count:0,readingMinutes:0});
     window.focusClockWeekStart=()=>new Date();window.htmlEscape=x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
     window.focusClockPrimeSound=()=>{};window.focusClockPrepareVoiceCues=()=>{};window.focusClockPlayCompletionAlert=()=>{};
@@ -66,5 +68,18 @@ try{
     assert.equal(await page.evaluate(()=>settings.focusClock.status),'paused');
     await page.evaluate(()=>{document.getElementById(MODAL_ID).classList.add('open');document.getElementById('toast-container')?.remove();});layouts.push({width,actions,lock});
   }
-  assert.deepEqual(errors,[]);assert.equal(external,0);console.log(JSON.stringify({layouts,readingAndMemoryScope:true,failOpen:true,expiry:true,external,errors}));
+  let voiceCases=0;
+  for(const width of [320,1100]){
+    await page.setViewportSize({width,height:850});
+    for(const phase of ['focus','shortBreak','longBreak']) for(const status of ['idle','running','paused']){
+      await page.evaluate(({phase,status})=>{reset();voiceFixture=true;Object.assign(settings.focusClock,{phase,status,sessionToken:'test-round',endsAt:Date.now()+60000});renderModal();},{phase,status});
+      const timer=await page.evaluate(()=>settings.focusClock.endsAt);
+      const toggle=page.locator('.sd-focus-voice-enabled');assert.equal(await toggle.isDisabled(),false);
+      await toggle.tap();assert.equal(await page.evaluate(()=>settings.focusClock.voiceEnabledByChat.test),true);
+      await toggle.tap();assert.equal(await page.evaluate(()=>settings.focusClock.voiceEnabledByChat.test),false);
+      assert.equal(await page.evaluate(()=>settings.focusClock.status),status);assert.equal(await page.evaluate(()=>settings.focusClock.endsAt),timer);
+      voiceCases++;
+    }
+  }
+  assert.deepEqual(errors,[]);assert.equal(external,0);console.log(JSON.stringify({layouts,readingAndMemoryScope:true,failOpen:true,expiry:true,voiceCases,external,errors}));
 }finally{await context.close();await browser.close();}

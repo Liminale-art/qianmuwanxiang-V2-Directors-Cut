@@ -18,7 +18,7 @@ export function focusFixture(overrides={}){
     FOCUS_CLOCK_PHASES:{focus:{setting:'focusMinutes',label:'专注'},shortBreak:{setting:'shortBreakMinutes',label:'小憩'},longBreak:{setting:'longBreakMinutes',label:'长休'}},
     readerView:null,readerContentCache:null,activeTab:'focus',document:{querySelector:()=>null,querySelectorAll:()=>[],createElement:()=>({inert:false})},
     coreadBookMeta:id=>id==='book'?{id,title:'Book',progress:20}:null,saveSettings:()=>calls.push('save'),uid:()=>`id-${++sequence}`,
-    focusClockVoicePrepareSeq:0,focusClockVoiceContext:()=>({enabled:false}),focusClockPrimeSound:()=>{},focusClockUpdateDom:()=>{},
+    focusClockVoicePrepareSeq:0,focusClockCancelVoiceWork:()=>{},focusClockVoiceContext:()=>({enabled:false}),focusClockPrimeSound:()=>{},focusClockUpdateDom:()=>{},
     startFocusClockRuntime:()=>{},focusClockPlayCompletionAlert:async()=>{},focusClockPrepareVoiceCues:async()=>{},
     focusClockAttachLock:()=>calls.push('attach'),focusClockOwnerId:()=> 'device',confirmDialog:async()=>true,
     isModalOpen:()=>true,renderModal:()=>calls.push('render'),toast:message=>notices.push(message),
