@@ -153,6 +153,16 @@ test('actual import migration failure returns before replacing host settings or 
   assert.equal(e.notices.at(-1)[0],'配置无法恢复，当前设置未改变。');
 });
 
+test('catalog preparation failure never publishes imported settings or saves partial configuration',async()=>{
+  const e=fixture(),owner=e.c.settings;e.c.confirmDialog=async()=>true;
+  e.c.seedBuiltinTheaters=prepared=>{assert.notEqual(prepared,owner);throw Error('synthetic catalog error');};
+  e.c.cacheProseLayout=()=>{throw Error('cache must not be touched');};
+  await e.c.importConfig({target:{files:[{text:async()=>JSON.stringify({version:2,type:'qianmu-config',includeApi:false,settings:{proseLayout:{width:10}}})}],value:'x'}});
+  assert.equal(e.c.settings,owner);assert.equal(e.c.ctx().extensionSettings.module,undefined);
+  assert.equal(e.writes.length,0);assert.equal(e.c.storyboardPlanArchiveEpoch,0);
+  assert.equal(e.notices.at(-1)[0],'配置无法恢复，当前设置未改变。');
+});
+
 test('restore gate reports active work without cancelling it and accepts only idle unchanged state',()=>{
   const owner=settings(),notices=[],state={};const gate=policy.configRestoreGate(owner,()=>state,(...args)=>notices.push(args));
   assert.equal(gate(owner),true);

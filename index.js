@@ -25652,7 +25652,7 @@ async function importConfig(event) {
   if (!yes) return;
   if (!allowed(settings)) return;
   let merged;
-  try { merged = prepareConfigRestore(incoming, owner, DEFAULT_SETTINGS, preserveConnections, {clone, mergeDefaults, normalizeStoryboardState, migrateSettings}); }
+  try { merged = prepareConfigRestore(incoming, owner, DEFAULT_SETTINGS, preserveConnections, {clone, mergeDefaults, normalizeStoryboardState, migrateSettings}); seedBuiltinTheaters(merged); }
   catch (_) { return toast('配置无法恢复，当前设置未改变。', 'error'); }
   const extensionSettings = ctx().extensionSettings ||= {};
   if (isPlainObject(merged.proseLayout)) {
@@ -25666,7 +25666,6 @@ async function importConfig(event) {
   // Import replaces settings, not historical originals; retain old archives for explicit storage management.
   extensionSettings[MODULE_NAME] = merged;
   settings = merged;
-  seedBuiltinTheaters();   // 导入的配置可能早于内置剧场组，补种一次
   saveSettings();
   storyboardSchedulePlanArchive(600);
   await applyDirectorInjection();
@@ -35046,8 +35045,9 @@ function isOrphanBuiltinCopy(s, builtinByTitle) {
   return (s.folder === BUILTIN_THEATER_FOLDER || s.folder === QIANMU_THEATER_FOLDER)
     && String(s.instruction || '').trim() === String(canon.instruction || '').trim();
 }
-function seedBuiltinTheaters() {
-  const t = getTheater();
+function seedBuiltinTheaters(owner) {
+  if (!theaterCatalogReady) return; // Unloaded is not empty.
+  const t = owner ? owner.theater : getTheater();
   const ziziStale = Number(t.builtinRevision || 0) !== BUILTIN_THEATER_REVISION;
   const qmStale = Number(t.qianmuRevision || 0) !== QIANMU_THEATER_REVISION;
   if (!ziziStale && !qmStale) return;   // 两组都最新，无需重种
@@ -35078,7 +35078,7 @@ function seedBuiltinTheaters() {
   t.scripts = [...userScripts, ...ziziBuiltins, ...qmBuiltins];
   t.builtinRevision = BUILTIN_THEATER_REVISION;
   t.qianmuRevision = QIANMU_THEATER_REVISION;
-  saveSettings();
+  if (!owner) saveSettings(); // Never save a detached copy.
 }
 
 // 规整剧札顺序：用户自建项在前、内置项在后，不设数量上限（保留全部）
