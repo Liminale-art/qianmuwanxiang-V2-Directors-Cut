@@ -314,10 +314,42 @@ export function createReaderPackageReader({check = () => {}} = {}) {
       transaction.oncomplete = () => { try { check(); resolve(request.result); } catch (error) { reject(error); } };
     });
   };
+  const scan = async (name, project, keysOnly = false) => {
+    check();
+    if (!blobStoreAvailable()) throw new Error('伴读存储不可用，未读取备份目录。');
+    const db = await openDB();
+    check();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(name, 'readonly'), result = [];
+      const storage = transaction.objectStore(name);
+      let scanError;
+      const failure = event => scanError || event?.target?.error || transaction.error || new Error('伴读目录扫描未能完成。');
+      transaction.onerror = event => reject(failure(event));
+      transaction.onabort = event => reject(failure(event));
+      transaction.oncomplete = () => { try { check(); resolve(result); } catch (error) { reject(error); } };
+      const request = keysOnly ? storage.openKeyCursor() : storage.openCursor();
+      request.onsuccess = () => {
+        try {
+          check();
+          const cursor = request.result;
+          if (!cursor) return;
+          result.push(project(cursor.key, keysOnly ? undefined : cursor.value));
+          cursor.continue();
+        } catch (error) {
+          scanError = error;
+          try { transaction.abort(); } catch (_) { reject(error); }
+        }
+      };
+    });
+  };
   return {
     getBook: key => get(STORE_BOOKS, key), getCover: key => get(STORE_COVERS, key),
     getReaderChat: key => get(STORE_CHATS, key), getReaderVectors: key => get(STORE_VECTORS, key),
-    listReaderChatKeys, listReaderImages, listReaderVectorKeys, listAudio, listRetLog,
+    listReaderChatKeys: () => scan(STORE_CHATS, key => key, true),
+    listReaderImages: () => scan(STORE_IMAGES, (key, blob) => ({key:String(key), blob})),
+    listReaderVectorKeys: () => scan(STORE_VECTORS, key => key, true),
+    listAudio: () => scan(STORE_AUDIO, (key, value) => ({key,blob:value?.blob,meta:value?.meta || {},createdAt:value?.createdAt || 0})),
+    listRetLog: async () => (await scan(STORE_RETLOG, (id, value) => ({id,...(value || {})}))).sort((a,b)=>(b.at || 0)-(a.at || 0)),
   };
 }
 

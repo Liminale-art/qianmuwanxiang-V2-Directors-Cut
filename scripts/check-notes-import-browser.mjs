@@ -139,9 +139,35 @@ try{
     check('log import rechecks its owner after waiting for the database',logFailed&&logCalls===2&&JSON.stringify(await db.listRetLog())===originalLogs);
     await writer.pushRetLog({query:'confirmed',at:2000});const committedLogs=await db.listRetLog();
     check('a confirmed log replaces only the oldest insertion and retains exactly fifty',committedLogs.length===50&&committedLogs[0].query==='confirmed'&&!committedLogs.some(r=>r.query==='original-0')&&committedLogs.some(r=>r.query==='original-1'));
+    const scans=[['listReaderChatKeys','reader_chats','openKeyCursor'],['listReaderImages','reader_images','openCursor'],['listReaderVectorKeys','reader_vectors','openKeyCursor'],['listAudio','audio','openCursor'],['listRetLog','reader_retlog','openCursor']];
+    for(const [method,store,cursorMethod] of scans){
+      const expected=await db[method](),actual=await reader[method]();
+      check(method+' preserves inventory projection and ordering after completion',JSON.stringify(actual)===JSON.stringify(expected)&&actual.every((item,i)=>item?.blob?.size===expected[i]?.blob?.size));
+      const original=IDBObjectStore.prototype[cursorMethod];
+      for(const end of [false,true]){
+        let failed=false;
+        try{
+          IDBObjectStore.prototype[cursorMethod]=function(...args){const request=original.apply(this,args);if(this.name===store)request.addEventListener('success',()=>{if(!!request.result!==end)this.transaction.abort();});return request;};
+          try{await reader[method]();}catch(error){failed=!!error?.message;}
+        }finally{IDBObjectStore.prototype[cursorMethod]=original;}
+        check(method+(end?' refuses a late end-of-scan abort':' refuses a partial inventory after cursor abort'),failed);
+      }
+      let calls=0,failed=false;
+      try{await db.createReaderPackageReader({check(){if(++calls===2)throw Error('stale scan open');}})[method]();}catch{failed=true;}
+      check(method+' rechecks state after opening the database',failed&&calls===2);
+      for(const end of [false,true]){
+        let current=true;failed=false;
+        try{
+          IDBObjectStore.prototype[cursorMethod]=function(...args){const request=original.apply(this,args);if(this.name===store)request.addEventListener('success',()=>{if(!!request.result!==end)current=false;});return request;};
+          try{await db.createReaderPackageReader({check(){if(!current)throw Error('stale scan');}})[method]();}catch{failed=true;}
+        }finally{IDBObjectStore.prototype[cursorMethod]=original;}
+        check(method+(end?' rejects state changes at the end of scanning':' stops scanning when the owner changes'),failed);
+      }
+    }
     const descriptor=Object.getOwnPropertyDescriptor(window,'indexedDB');
     try{
       Object.defineProperty(window,'indexedDB',{configurable:true,value:undefined});
+      let unavailableScans=0;for(const [method] of scans){try{await reader[method]();}catch{unavailableScans++;}}check('every backup directory rejects unavailable storage',unavailableScans===5);
       let readUnavailable=false;try{await reader.getBook('reader-book');}catch{readUnavailable=true;}check('reader backup cannot read cached database handles after storage becomes unavailable',readUnavailable);
       let logsUnavailable=false;try{await writer.pushRetLog({query:'unavailable'});}catch{logsUnavailable=true;}check('log import rejects unavailable storage',logsUnavailable);
       let unavailable=false;try{await writer.bulkPutAudio([entry('reader-audio-unavailable')]);}catch{unavailable=true;}check('audio import rejects unavailable storage instead of claiming saved',unavailable);
@@ -178,5 +204,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,66);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,97);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}
