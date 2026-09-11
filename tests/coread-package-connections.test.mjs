@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
 import {isPlainObject,clone} from '../qianmu-storyboard-utils.js';
-import {readCoreadPackageFile,coreadPackageSafeKey,applyCoreadPackageData,createCoreadImportProgress,coreadImportProgressText} from '../qianmu-reader-package.js';
+import {readCoreadPackageFile,coreadPackageSafeKey,applyCoreadPackageData,collectCoreadPackageData,createCoreadImportProgress,coreadImportProgressText} from '../qianmu-reader-package.js';
 import {omitConfigConnections} from '../qianmu-config-connections.js';
 function fixture(local){
   let exported;const notices=[];
@@ -14,6 +14,8 @@ function fixture(local){
     document:{createElement:()=>({click(){},remove(){}}),body:{appendChild(){}}},URL:{createObjectURL:()=> 'blob:fixture',revokeObjectURL(){}},
     Blob:class{constructor(parts){exported=JSON.parse(parts[0]);}}});
   vm.runInContext(['coreadIsCredentialKey','coreadSanitizePackageValue','coreadMergePackageValue','coreadImportDataFile','coreadExportData'].map(source).join('\n'),c);
+  c.collectCoreadPackageData=collectCoreadPackageData;
+  c.blobToBase64=async()=>{throw Error('unexpected media in connection-only fixture');};
   c.createCoreadImportViewGuard=()=>({check(){},release(){}});
   c.blobStore.createReaderPackageWriter=({check})=>{assert.equal(typeof check,'function');return c.blobStore;};
   return {c,notices,exported:()=>exported,run:prefs=>c.coreadImportDataFile({text:async()=>JSON.stringify({type:'qianmu-coread',version:5,books:[],prefs})})};

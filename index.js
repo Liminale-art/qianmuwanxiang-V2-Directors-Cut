@@ -1,7 +1,7 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
-import { readCoreadPackageFile, coreadPackageSafeKey, applyCoreadPackageData, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard } from './qianmu-reader-package.js';
+import { readCoreadPackageFile, coreadPackageSafeKey, applyCoreadPackageData, collectCoreadPackageData, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard } from './qianmu-reader-package.js';
 import { exportConfiguration } from './qianmu-config-export.js';
 import { receiveComfyImage, resolveComfyRecoveryKey } from './qianmu-comfy-recovery-action.js';
 import { receiveServiceImage } from './qianmu-service-recovery-action.js';
@@ -34832,50 +34832,7 @@ async function coreadExportData() {
   if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地存储，无法导出。', 'error'); return; }
   toast('正在打包伴读数据…', 'info');
   if (readerDialog.loaded) { try { await coreadSaveDialog(); } catch (_) {} }
-  const books = [];
-  for (const meta of coread().books || []) {
-    let rec = null;
-    try { rec = await blobStore.getBook(meta.id); } catch (_) {}
-    let coverB64 = '', coverMime = '';
-    try {
-      const cover = await blobStore.getCover(meta.id);
-      if (cover) { coverB64 = await blobToBase64(cover); coverMime = cover.type || 'image/jpeg'; }
-    } catch (_) {}
-    books.push({ meta, fullText: rec?.fullText || '', chapters: rec?.chapters || [], sig: rec?.sig || '', comicDescriptions: rec?.comicDescriptions || {}, coverB64, coverMime });
-  }
-  // 伴读对话 + 记忆切片：存 IndexedDB reader_chats（bucketKey=chatKey::bookId·含 messages/slices/cursor/names）。
-  // 全量导出所有 bucket——换端后对话与蒸馏出的记忆切片可整体复原（语音条文本随 messages 走·音频可重生成）。
-  const chats = [];
-  try {
-    for (const key of await blobStore.listReaderChatKeys()) {
-      const rec = await blobStore.getReaderChat(key);
-      if (rec) chats.push({ key, rec });
-    }
-  } catch (e) { console.warn(`[${MODULE_NAME}] export chats failed`, e); }
-  const images = [];
-  try {
-    for (const item of await blobStore.listReaderImages()) {
-      if (!item?.key || !item.blob) continue;
-      images.push({ key: item.key, b64: await blobToBase64(item.blob), mime: item.blob.type || 'image/*' });
-    }
-  } catch (e) { console.warn(`[${MODULE_NAME}] export reader images failed`, e); }
-  const vectors = [];
-  try {
-    for (const key of await blobStore.listReaderVectorKeys()) {
-      const rec = await blobStore.getReaderVectors(key);
-      if (rec) vectors.push({ key, rec });
-    }
-  } catch (e) { console.warn(`[${MODULE_NAME}] export vectors failed`, e); }
-  const audio = [];
-  try {
-    const allAudio = await blobStore.listAudio();
-    for (const item of allAudio.filter((entry) => entry?.meta?.source === 'coread')) {
-      if (!item?.key || !item.blob) continue;
-      audio.push({ key: item.key, b64: await blobToBase64(item.blob), mime: item.blob.type || 'audio/mpeg', meta: item.meta || {}, createdAt: item.createdAt || 0 });
-    }
-  } catch (e) { console.warn(`[${MODULE_NAME}] export coread audio failed`, e); }
-  let retrievalLogs = [];
-  try { retrievalLogs = await blobStore.listRetLog(); } catch (e) { console.warn(`[${MODULE_NAME}] export retrieval logs failed`, e); }
+  const {books,chats,images,vectors,audio,retrievalLogs} = await collectCoreadPackageData({bookMetas:coread().books || [],blobStore,blobToBase64,warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error)});
   const payload = {
     type: 'qianmu-coread', version: 5, exportedAt: new Date().toISOString(), credentialsIncluded: false,
     prefs: omitConfigConnections({coread:coreadSanitizePackageValue(coread())}).coread,

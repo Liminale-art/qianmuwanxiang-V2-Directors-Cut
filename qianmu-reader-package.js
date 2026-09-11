@@ -1,6 +1,54 @@
 // Reader packs contain original media, unlike the smaller configuration-only package.
 import {parseBoundedJson} from './qianmu-json-input.js';
 export const COREAD_PACKAGE_LIMITS = Object.freeze({bytes:256*1048576,depth:40,nodes:500000});
+
+export async function collectCoreadPackageData({bookMetas,blobStore,blobToBase64,warn}) {
+  const books = [];
+  for (const meta of bookMetas) {
+    let rec = null;
+    try { rec = await blobStore.getBook(meta.id); } catch (_) {}
+    let coverB64 = '', coverMime = '';
+    try {
+      const cover = await blobStore.getCover(meta.id);
+      if (cover) { coverB64 = await blobToBase64(cover); coverMime = cover.type || 'image/jpeg'; }
+    } catch (_) {}
+    books.push({ meta, fullText: rec?.fullText || '', chapters: rec?.chapters || [], sig: rec?.sig || '', comicDescriptions: rec?.comicDescriptions || {}, coverB64, coverMime });
+  }
+  // 伴读对话 + 记忆切片：存 IndexedDB reader_chats（bucketKey=chatKey::bookId·含 messages/slices/cursor/names）。
+  // 全量导出所有 bucket——换端后对话与蒸馏出的记忆切片可整体复原（语音条文本随 messages 走·音频可重生成）。
+  const chats = [];
+  try {
+    for (const key of await blobStore.listReaderChatKeys()) {
+      const rec = await blobStore.getReaderChat(key);
+      if (rec) chats.push({ key, rec });
+    }
+  } catch (e) { warn(`export chats failed`, e); }
+  const images = [];
+  try {
+    for (const item of await blobStore.listReaderImages()) {
+      if (!item?.key || !item.blob) continue;
+      images.push({ key: item.key, b64: await blobToBase64(item.blob), mime: item.blob.type || 'image/*' });
+    }
+  } catch (e) { warn(`export reader images failed`, e); }
+  const vectors = [];
+  try {
+    for (const key of await blobStore.listReaderVectorKeys()) {
+      const rec = await blobStore.getReaderVectors(key);
+      if (rec) vectors.push({ key, rec });
+    }
+  } catch (e) { warn(`export vectors failed`, e); }
+  const audio = [];
+  try {
+    const allAudio = await blobStore.listAudio();
+    for (const item of allAudio.filter((entry) => entry?.meta?.source === 'coread')) {
+      if (!item?.key || !item.blob) continue;
+      audio.push({ key: item.key, b64: await blobToBase64(item.blob), mime: item.blob.type || 'audio/mpeg', meta: item.meta || {}, createdAt: item.createdAt || 0 });
+    }
+  } catch (e) { warn(`export coread audio failed`, e); }
+  let retrievalLogs = [];
+  try { retrievalLogs = await blobStore.listRetLog(); } catch (e) { warn(`export retrieval logs failed`, e); }
+  return {books,chats,images,vectors,audio,retrievalLogs};
+}
 export const coreadPackageSafeKey = key => !['__proto__','prototype','constructor'].includes(key);
 // The file input may be hidden; watch its owning page, not the file chooser itself.
 export function createCoreadImportViewGuard(origin) {
