@@ -112,6 +112,12 @@ try{
       try{await guardedAudio.bulkPutAudio([entry('reader-audio-lookup')]);}catch{interrupted=true;}
     }finally{IDBObjectStore.prototype.getKey=getKey;}
     check('audio lookup rechecks the guard inside the same write transaction',interrupted&&!await db.getAudio('reader-audio-lookup'));
+    let lookupAborted;
+    try{
+      IDBObjectStore.prototype.getKey=function(key){const request=getKey.call(this,key);if(key==='reader-audio-lookup-abort')request.addEventListener('success',()=>this.transaction.abort(),{once:true});return request;};
+      lookupAborted=await writer.bulkPutAudio([entry('reader-audio-lookup-abort'),entry('reader-audio-after-lookup-abort')]);
+    }finally{IDBObjectStore.prototype.getKey=getKey;}
+    check('external abort during audio lookup fails only that row and does not prevent the next committed row',lookupAborted.failed===1&&lookupAborted.added===1&&lookupAborted.skipped===0&&!await db.getAudio('reader-audio-lookup-abort')&&!!await db.getAudio('reader-audio-after-lookup-abort'));
     let audioCalls=0;interrupted=false;
     try{await db.createReaderPackageWriter({check(){if(++audioCalls===2)throw Error('database wait expired');}}).bulkPutAudio([entry('reader-audio-open')]);}catch{interrupted=true;}
     check('audio import cannot write after its database wait becomes stale',interrupted&&audioCalls===2&&!await db.getAudio('reader-audio-open'));
@@ -134,6 +140,12 @@ try{
       try{await guardedAudio.pushRetLog({query:'stale trim',at:2000});}catch{logFailed=true;}
     }finally{IDBObjectStore.prototype.getAllKeys=getAllKeys;}
     check('log guard expiry before trimming rolls back the queued insertion',logFailed&&JSON.stringify(await db.listRetLog())===originalLogs);
+    logFailed=false;
+    try{
+      IDBObjectStore.prototype.getAllKeys=function(...args){const request=getAllKeys.apply(this,args);if(this.name==='reader_retlog')request.addEventListener('success',()=>this.transaction.abort(),{once:true});return request;};
+      try{await writer.pushRetLog({query:'lookup aborted externally',at:2000});}catch{logFailed=true;}
+    }finally{IDBObjectStore.prototype.getAllKeys=getAllKeys;}
+    check('external abort during log lookup preserves every original and does not claim the new record committed',logFailed&&JSON.stringify(await db.listRetLog())===originalLogs);
     let logCalls=0;logFailed=false;
     try{await db.createReaderPackageWriter({check(){if(++logCalls===2)throw Error('stale log database wait');}}).pushRetLog({query:'stale open',at:2000});}catch{logFailed=true;}
     check('log import rechecks its owner after waiting for the database',logFailed&&logCalls===2&&JSON.stringify(await db.listRetLog())===originalLogs);
@@ -212,5 +224,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,100);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,102);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

@@ -400,7 +400,7 @@ export function createReaderPackageWriter({check = () => {}} = {}) {
                 if (lookup.result !== undefined) return;
                 audio.add({blob:entry.blob, meta:entry.meta || {}, createdAt:entry.createdAt || Date.now()}, entry.key);
                 inserted = true;
-              } catch (error) { guardError = error; transaction.abort(); }
+              } catch (error) { guardError = error; try { transaction.abort(); } catch (_) { reject(error); } }
             };
           });
           result[added ? 'added' : 'skipped']++;
@@ -433,9 +433,9 @@ export function createReaderPackageWriter({check = () => {}} = {}) {
               check();
               // Keep the existing insertion-order ring; insertion and trimming commit together.
               for (const key of lookup.result.slice(0, Math.max(0, lookup.result.length - maxEntries))) logs.delete(key);
-            } catch (error) { guardError = error; transaction.abort(); }
+            } catch (error) { guardError = error; try { transaction.abort(); } catch (_) { reject(error); } }
           };
-        } catch (error) { guardError = error; transaction.abort(); }
+        } catch (error) { guardError = error; try { transaction.abort(); } catch (_) { reject(error); } }
       });
     },
   };
