@@ -8329,7 +8329,7 @@ async function importPinnedNotesBackup(event) {
   const input = event?.currentTarget;
   const file = input?.files?.[0];
   if (!file) return;
-  if (importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || coreadImportDataFile.busy || coreadExportData.busy || storageCleanupSession.busy) return toast('请先结束备份或导入，或关闭清理选择，再从备份区导入。', 'warning');
+  if (importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || coreadImportDataFile.busy || coreadExportData.busy || storyboardOpenRestoreStorage.busy || storageCleanupSession.busy) return toast('请先结束备份或导入，或关闭数据管理窗口，再从备份区导入。', 'warning');
   importPinnedNotesBackup.busy = true;
   const owner = settings, epoch = storyboardAdmissionEpoch;
   const view = document.getElementById(MODAL_ID);
@@ -8403,7 +8403,7 @@ async function importTtsFavoritesBackup(event) {
   const input = event?.currentTarget;
   const file = input?.files?.[0];
   if (!file) return;
-  if (importTtsFavoritesBackup.busy || importPinnedNotesBackup.busy || coreadImportDataFile.busy || coreadExportData.busy || storageCleanupSession.busy) return toast('请先结束备份或导入，或关闭清理选择，再从备份区导入。', 'warning');
+  if (importTtsFavoritesBackup.busy || importPinnedNotesBackup.busy || coreadImportDataFile.busy || coreadExportData.busy || storyboardOpenRestoreStorage.busy || storageCleanupSession.busy) return toast('请先结束备份或导入，或关闭数据管理窗口，再从备份区导入。', 'warning');
   importTtsFavoritesBackup.busy = true;
   const owner = settings, epoch = storyboardAdmissionEpoch, modal = document.getElementById(MODAL_ID);
   const check = () => { if (settings !== owner || epoch !== storyboardAdmissionEpoch || !input.isConnected || !modal?.isConnected || !modal.classList.contains('open')) throw Error('导入页面或状态已变化，后续已停止；已写入内容保留。'); };
@@ -8613,23 +8613,25 @@ function paintStorageManagementCard() {
 
 async function storyboardOpenRestoreStorage(root,expectedNamespace,{mappings=false}={}) {
   if(storyboardOpenRestoreStorage.busy)return;
+  if(Object.values(configRestoreActivity()).some(Boolean))return toast('请先结束正在进行的任务或关闭其他数据管理窗口。','warning');
   storyboardOpenRestoreStorage.busy=true;
-  const epoch=storyboardAdmissionEpoch,modal=document.getElementById(MODAL_ID);let view,namespace;
+  const owner=settings,chat=getChatKey(),epoch=storyboardAdmissionEpoch,modal=document.getElementById(MODAL_ID);let view,namespace;
   try{
     const [runtime,manager,identity,hashes]=await Promise.all([featureRuntime.load('storyboardRestoreStorage'),featureRuntime.load(mappings?'storyboardMappingView':'storyboardRestoreStorageView'),featureRuntime.load('imageAdmission'),featureRuntime.load('storyboardPackageMutation')]);
+    const check=()=>{
+      if(settings!==owner||getChatKey()!==chat||!root.isConnected||!modal?.classList.contains('open')||epoch!==storyboardAdmissionEpoch||view&&!view.isOpen)throw new Error('恢复记录管理页面已变化');
+      if(Object.values(configRestoreActivity(true,storyboardOpenRestoreStorage)).some(Boolean))throw new Error('其他任务已开始，请稍后重新打开数据管理。');
+    };
     const guard=async()=>{
-      if(!root.isConnected||!modal?.classList.contains('open')||epoch!==storyboardAdmissionEpoch||view&&!view.isOpen)throw new Error('恢复记录管理页面已变化');
+      check();
       const current=await identity.resolveImageAccountNamespace();
       if(namespace&&namespace!==current||expectedNamespace&&expectedNamespace!==current)throw new Error('储存账户已变化，请重新盘点');
       namespace=current;
-      if(!root.isConnected||epoch!==storyboardAdmissionEpoch||view&&!view.isOpen)throw new Error('恢复记录管理页面已变化');
+      check();
     };
     await guard();const chatHash=await hashes.storyboardPackageDigest(String(getChatKey()||''));await guard();
     view=(mappings?manager.openMappingRegistry:manager.openRestoreStorageManager)({parent:modal,chatHash,icons:applyQianmuIcons,formatBytes:formatStorageBytes,
-      run:(action,options)=>runtime.runRestoreStorage(action,{...options,namespace,guard:async()=>{
-        await guard();
-        if(['clear','mapping-import-apply'].includes(action)&&(storyboardImportPackage.busy||storyboardExportPackage.busy||storyboardBundleReview?.isOpen))throw new Error('分镜备份或恢复尚在进行，请结束后管理记录');
-      }})});
+      run:(action,options)=>runtime.runRestoreStorage(action,{...options,namespace,guard})});
     await view.finished;
   }catch(error){toast(`${mappings?'迁移凭据':'恢复记录'}管理未完成：${error?.message||error}`,'error');}
   finally{view?.close();storyboardOpenRestoreStorage.busy=false;if(root.isConnected&&epoch===storyboardAdmissionEpoch)await refreshStorageInventory(true);}
@@ -25608,7 +25610,7 @@ function configRestoreActivity(includeCleanup = true, ownTransfer = null) {
     focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy,
     director: busy || theaterBusy,
     image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || storyboardImageService?.busy || storyboardReceiveServiceImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
-    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || (ownTransfer !== coreadImportDataFile && coreadImportDataFile.busy) || (ownTransfer !== coreadExportData && coreadExportData.busy) || (includeCleanup && storageCleanupSession.busy),
+    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || (ownTransfer !== storyboardOpenRestoreStorage && storyboardOpenRestoreStorage.busy) || (ownTransfer !== coreadImportDataFile && coreadImportDataFile.busy) || (ownTransfer !== coreadExportData && coreadExportData.busy) || (includeCleanup && storageCleanupSession.busy),
   };
 }
 

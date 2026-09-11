@@ -237,7 +237,7 @@ test('actual activity adapter blocks each independent lane without normalizing o
   const base=Object.fromEntries(Object.values(lanes).flat().map(key=>[key,false]));
   const c=vm.createContext({...base,settings:{focusClock:{status:'idle'}},focusClockVoicePreparation:null,
     storyboardActiveJobs:new Map(),storyboardGenerationPreparing:new Set(),storyboardPreparationRetries:new Set(),storyboardComfyRecovery:null,storyboardReceiveComfyImage:{},storyboardImageService:null,storyboardReceiveServiceImage:{},storyboardQueue:[],storyboardAutomaticPending:new Map(),
-    storyboardImportPackage:{},storyboardExportPackage:{},storyboardBundleReview:null,storageCleanupSession:{busy:false},importPinnedNotesBackup:{busy:false},importTtsFavoritesBackup:{busy:false},coreadImportDataFile:{busy:false},coreadExportData:{busy:false}});
+    storyboardImportPackage:{},storyboardExportPackage:{},storyboardBundleReview:null,storyboardOpenRestoreStorage:{busy:false},storageCleanupSession:{busy:false},importPinnedNotesBackup:{busy:false},importTtsFavoritesBackup:{busy:false},coreadImportDataFile:{busy:false},coreadExportData:{busy:false}});
   vm.runInContext(section('configRestoreActivity'),c);
   const idle=()=>assert.equal(Object.values(c.configRestoreActivity()).some(Boolean),false);
   idle();const before=JSON.stringify(c.settings);let cases=0;
@@ -272,6 +272,11 @@ test('actual activity adapter blocks each independent lane without normalizing o
   assert.equal(!!c.configRestoreActivity(true,c.coreadExportData).transfer,false,'export ignores only itself');
   c.dialogBusy=true;assert.equal(c.configRestoreActivity(true,c.coreadExportData).reader,true,'an in-flight reply remains a conflict');
   c.storageCleanupSession.busy=true;assert.equal(c.configRestoreActivity(true,c.coreadExportData).transfer,true,'export cannot ignore cleanup');
+  c.storageCleanupSession.busy=false;c.coreadExportData.busy=false;c.storyboardOpenRestoreStorage.busy=true;
+  assert.equal(c.configRestoreActivity(false).transfer,true,'cleanup cannot ignore an independent restore manager');
+  assert.equal(c.configRestoreActivity(true,c.coreadExportData).transfer,true,'reader backup cannot ignore an independent restore manager');
+  assert.equal(!!c.configRestoreActivity(true,c.storyboardOpenRestoreStorage).transfer,false,'manager excludes only its own activity');
+  c.coreadImportDataFile.busy=true;assert.equal(c.configRestoreActivity(true,c.storyboardOpenRestoreStorage).transfer,true,'manager still observes another import');
 });
 
 test('actual import preserves same-owner changes made during file reading or confirmation',async()=>{

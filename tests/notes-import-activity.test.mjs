@@ -15,6 +15,7 @@ function fixture(){
   c.importTtsFavoritesBackup={busy:false};
   c.coreadImportDataFile={busy:false};
   c.coreadExportData={busy:false};
+  c.storyboardOpenRestoreStorage={busy:false};
   c.saveImportedQianmuNote=(...args)=>c.saveQianmuNote(...args);
   c.storageCleanupSession=createStorageCleanupSession({owner:()=>c.settings,scope:()=>1,epoch:()=>c.storyboardAdmissionEpoch,activity:()=>({transfer:c.importPinnedNotesBackup.busy})});
   const input={isConnected:true,files:[{size:payload.length,text:async()=>payload}],value:'fixture'};
@@ -24,6 +25,11 @@ function fixture(){
 test('notes import cannot start while a reader export is collecting originals',async()=>{
   const e=fixture();e.c.coreadExportData.busy=true;let reads=0;e.input.files[0].text=async()=>{reads++;return payload;};
   await e.run();assert.equal(reads,0);assert.deepEqual(e.saved,[]);assert.match(e.notices.at(-1),/结束备份/);
+});
+
+test('notes import also waits for an independent restore manager without reading the chosen file',async()=>{
+  const e=fixture();e.c.storyboardOpenRestoreStorage.busy=true;e.input.files[0].text=()=>{throw Error('must not read');};
+  await e.run();assert.deepEqual(e.saved,[]);assert.match(e.notices.at(-1),/关闭数据管理窗口/);
 });
 test('a pending notes import prevents cleanup and duplicate imports before reading finishes',async()=>{
   const e=fixture();let release,reads=0;e.input.files[0].text=()=>{reads++;return new Promise(r=>release=r);};

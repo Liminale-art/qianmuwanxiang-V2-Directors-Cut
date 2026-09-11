@@ -14,6 +14,7 @@ function fixture(){
   c.blobStore.importFavorite=(...args)=>c.blobStore.addFavorite(...args);
   c.coreadImportDataFile={busy:false};
   c.coreadExportData={busy:false};
+  c.storyboardOpenRestoreStorage={busy:false};
   c.storageCleanupSession=createStorageCleanupSession({owner:()=>c.settings,scope:()=>1,epoch:()=>c.storyboardAdmissionEpoch,
     activity:()=>({transfer:c.importTtsFavoritesBackup.busy||c.importPinnedNotesBackup.busy})});
   const input={isConnected:true,value:'fixture',files:[{size:1,text:async()=>payload}]};
@@ -23,6 +24,11 @@ function fixture(){
 test('favorite import cannot overlap a reader export',async()=>{
   const e=fixture();e.c.coreadExportData.busy=true;let reads=0;e.input.files[0].text=async()=>{reads++;return payload;};
   await e.run();assert.equal(reads,0);assert.deepEqual(e.saved,[]);assert.match(e.notices.at(-1),/结束备份/);
+});
+
+test('favorite import waits for an independent restore manager instead of starting another data writer',async()=>{
+  const e=fixture();e.c.storyboardOpenRestoreStorage.busy=true;e.input.files[0].text=()=>{throw Error('must not read');};
+  await e.run();assert.deepEqual(e.saved,[]);assert.match(e.notices.at(-1),/关闭数据管理窗口/);
 });
 test('pending favorite imports exclude cleanup, duplicates and notes without reading another file',async()=>{
   const e=fixture();let release,reads=0;e.input.files[0].text=()=>{reads++;return new Promise(r=>release=r);};
