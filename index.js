@@ -17,7 +17,7 @@ import { exportFocusWeekImage } from './qianmu-focus-export.js';
 import { createFocusCueRecords } from './qianmu-focus-cue-records.js';
 import { createFocusVoiceDrawer } from './qianmu-focus-drawer.js';
 import { renderCoreadIdentityView, renderCoreadIdentityChoicesView } from './qianmu-reader-identity-view.js';
-import { renderCoreadVoicePanelView, renderCoreadNotesPanelView, renderCoreadMarksPanelView } from './qianmu-reader-panel-view.js';
+import { renderCoreadVoicePanelView, renderCoreadNotesPanelView, renderCoreadMarksPanelView, coreadNoteMatches } from './qianmu-reader-panel-view.js';
 import { renderCoreadLibraryBookView, renderCoreadLibraryCollectionView } from './qianmu-reader-library-view.js';
 import { cleanupReaderWorldMirrors } from './qianmu-reader-book-cleanup.js';
 import { renderCoreadCenterStatusView, renderCoreadSpoilerGuardView, renderCoreadGuideView, renderCoreadPackBarView,
@@ -30761,8 +30761,8 @@ async function coreadPurgeBookMemory(bookId, isCurrent) {
       }
     },
   });
+  if (current()) for (const name of names) if (contextScanCache.worldBooks) delete contextScanCache.worldBooks[name];
   if (result.status !== 'complete') throw new Error('世界书记忆未全部核验');
-  for (const name of result.checkedBooks) if (contextScanCache.worldBooks) delete contextScanCache.worldBooks[name];
   return result;
 }
 
@@ -33092,10 +33092,9 @@ function bindReaderStageEvents(stageRoot) {
     readerView.noteSearch = notesPanel.querySelector('.sd-reader-notes-search input')?.value || '';
     readerView.noteFilter = kind;
     let visible = 0;
+    const notesById = new Map((coreadBookMeta(readerView.bookId)?.notes || []).map(note => [String(note.id), note]));
     notesPanel.querySelectorAll('.sd-reader-note-item').forEach((item) => {
-      const kindHit = kind === 'all' || item.dataset.kind === kind || (kind === 'favorite' && item.dataset.favorite === '1');
-      const textHit = !key || String(item.textContent || '').toLowerCase().includes(key);
-      item.hidden = !(kindHit && textHit);
+      item.hidden = !coreadNoteMatches(notesById.get(item.dataset.note), key, kind);
       if (!item.hidden) visible++;
     });
     const count = notesPanel.querySelector('.sd-reader-notes-count'); if (count) count.textContent = `${visible} 条`;

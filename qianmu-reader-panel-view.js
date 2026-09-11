@@ -12,6 +12,16 @@ export function renderCoreadVoicePanelView(messages, htmlEscape) {
     </div>`).join('');
 }
 
+export function coreadNoteMatches(note, searchValue = '', filterValue = 'all') {
+  if (!note || note.kind !== 'highlight') return false;
+  const search = String(searchValue || '').trim().toLowerCase();
+  const filter = ['all', 'excerpt', 'note', 'favorite'].includes(filterValue) ? filterValue : 'all';
+  const kind = note.annotation?.trim() ? 'note' : 'excerpt';
+  const tags = Array.isArray(note.tags) ? note.tags.filter(Boolean).slice(0, 8) : [];
+  return (filter === 'all' || filter === kind || (filter === 'favorite' && !!note.favorite))
+    && (!search || [note.text, note.annotation, ...tags].join(' ').toLowerCase().includes(search));
+}
+
 export function renderCoreadNotesPanelView(allNotes, {noteSearch, noteFilter}, htmlEscape) {
   const notes = (allNotes || []).filter((n) => n.kind === 'highlight');
   if (!notes.length) return '<div class="sd-reader-panel-empty">还没有笔记。选中正文后可划线、记录想法或保存摘录。</div>';
@@ -24,9 +34,7 @@ export function renderCoreadNotesPanelView(allNotes, {noteSearch, noteFilter}, h
     const tags = Array.isArray(n.tags) ? n.tags.filter(Boolean).slice(0, 8) : [];
     const created = Number(n.at) ? new Date(n.at).toLocaleDateString() : '';
     const kind = isNote ? 'note' : 'excerpt';
-    const kindHit = filter === 'all' || filter === kind || (filter === 'favorite' && n.favorite);
-    const textHit = !search || [n.text, n.annotation, ...tags].join(' ').toLowerCase().includes(search);
-    const shown = kindHit && textHit;
+    const shown = coreadNoteMatches(n, search, filter);
     if (shown) visible++;
     return `
     <article class="sd-reader-note-item" data-note="${htmlEscape(n.id)}" data-ch="${n.chapterIndex}" data-kind="${kind}" data-favorite="${n.favorite ? '1' : '0'}"${shown ? '' : ' hidden'}>
@@ -65,4 +73,3 @@ export function renderCoreadMarksPanelView(allNotes, htmlEscape) {
       ${n.text ? `<div class="sd-reader-note-text">${htmlEscape(n.text)}</div>` : ''}
     </div>`).join('');
 }
-

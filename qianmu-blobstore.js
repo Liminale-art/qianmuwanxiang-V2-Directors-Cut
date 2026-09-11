@@ -377,7 +377,9 @@ export async function deleteReaderBookData(bookId, { deleteMemory = false, archi
     };
     const scan = (storeName, field, matches) => {
       // Key cursors avoid loading image Blobs and vector arrays merely to delete them.
-      const target = tx.objectStore(storeName), request = storeName === STORE_CHATS && !deleteMemory ? target.openCursor() : target.openKeyCursor();
+      const target = tx.objectStore(storeName);
+      const range = storeName === STORE_IMAGES ? IDBKeyRange.bound(`${bookId}::`, `${bookId}::\uffff`) : undefined;
+      const request = target.openKeyCursor(range);
       request.onsuccess = () => {
         try {
           if (!guard()) return;
@@ -385,11 +387,17 @@ export async function deleteReaderBookData(bookId, { deleteMemory = false, archi
           if (!cursor) return;
           if (typeof cursor.key === 'string' && matches(cursor.key)) {
             if (storeName === STORE_CHATS && !deleteMemory) {
-              const rec = cursor.value, slices = archiveSlices(rec.slices || [], bookId, cursor.key);
-              if (!Array.isArray(slices)) throw new TypeError('记忆归档必须同步返回切片');
-              if (rec.messages?.length || rec.assistantMessages?.length) counts.conversations++;
-              watch(cursor.update({ ...rec, messages: [], assistantMessages: [], slices, cursor: 0, summaryFloor: 0,
-                lastInjected: null, sliceSchemaVersion, updatedAt: Date.now() }));
+              const key = cursor.key, read = target.get(key);
+              read.onsuccess = () => {
+                try {
+                  if (!guard() || !read.result) return;
+                  const rec = read.result, slices = archiveSlices(rec.slices || [], bookId, key);
+                  if (!Array.isArray(slices)) throw new TypeError('记忆归档必须同步返回切片');
+                  if (rec.messages?.length || rec.assistantMessages?.length) counts.conversations++;
+                  watch(target.put({ ...rec, messages: [], assistantMessages: [], slices, cursor: 0, summaryFloor: 0,
+                    lastInjected: null, sliceSchemaVersion, updatedAt: Date.now() }, key));
+                } catch (cause) { abort(cause); }
+              };
             } else { watch(target.delete(cursor.key)); counts[field]++; }
           }
           cursor.continue();

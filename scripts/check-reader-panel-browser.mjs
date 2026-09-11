@@ -45,6 +45,17 @@ try{
     await page.locator('[data-ptab="notes"]').tap();
     const input=page.locator('.sd-reader-notes-search input');await input.fill('蓝色');
     assert.equal(await page.locator('.sd-reader-ptab-notes .sd-reader-note-item:visible').count(),1);
+    for(const search of ['第1节','笔记','1970','蓝色','湖边想法','GREEN','#green']){
+      await input.fill(search);
+      const same=await page.evaluate(()=>{
+        const now=[...document.querySelectorAll('.sd-reader-ptab-notes article')].filter(el=>!el.hidden).map(el=>el.dataset.note);
+        const fresh=document.createElement('div');fresh.innerHTML=renderReaderNotes(panelMeta);
+        const reopened=[...fresh.querySelectorAll('article')].filter(el=>!el.hidden).map(el=>el.dataset.note);
+        return JSON.stringify(now)===JSON.stringify(reopened);
+      });
+      assert.equal(same,true,'typing and reopening use the same searchable fields: '+search);
+    }
+    await input.fill('蓝色');
     await input.evaluate(el=>window.searchInputBefore=el);await input.press('Backspace');
     assert.equal(await input.evaluate(el=>el===window.searchInputBefore&&document.activeElement===el),true);
     await input.fill('not-present');assert.equal(await page.locator('.sd-reader-notes-none').isVisible(),true);

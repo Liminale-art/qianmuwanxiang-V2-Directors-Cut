@@ -33,23 +33,30 @@ try {
     result=await api.deleteReaderBookData('book',options);
     check('retry is idempotent and never resurrects missing buckets',result.status==='committed'&&Object.values(result.counts).every(n=>n===0)&&!await api.getReaderChat('charA::book'));
     await seed('rollback');
-    const originalDelete=IDBObjectStore.prototype.delete,originalUpdate=IDBCursor.prototype.update;
+    const originalDelete=IDBObjectStore.prototype.delete,originalPut=IDBObjectStore.prototype.put;
     try {
       let atSuccess=false,settled=false;
       IDBObjectStore.prototype.delete=function(...args){const req=originalDelete.apply(this,args);if(this.name==='reader_books')req.addEventListener('success',()=>{atSuccess=!settled;this.transaction.abort();});return req;};
       let failed=false;try{await api.deleteReaderBookData('rollback',options);}catch(_){failed=true;}finally{settled=true;}
       check('request success followed by abort never reports completion',atSuccess&&failed&&!!await api.getBook('rollback')&&!!await api.getCover('rollback')&&(await api.getReaderChat('charA::rollback')).messages.length===1);
       IDBObjectStore.prototype.delete=originalDelete;
-      IDBCursor.prototype.update=function(){throw new DOMException('synthetic quota','QuotaExceededError');};
+      IDBObjectStore.prototype.put=function(){throw new DOMException('synthetic quota','QuotaExceededError');};
       failed=false;try{await api.deleteReaderBookData('rollback',options);}catch(e){failed=e.name==='QuotaExceededError';}
       check('archive failure rolls back book and images as well',failed&&!!await api.getBook('rollback')&&!!await api.getReaderImage('rollback',1));
-    }finally{IDBObjectStore.prototype.delete=originalDelete;IDBCursor.prototype.update=originalUpdate;}
+    }finally{IDBObjectStore.prototype.delete=originalDelete;IDBObjectStore.prototype.put=originalPut;}
     let calls=0;result=await api.deleteReaderBookData('rollback',{...options,isCurrent:()=>++calls<5});
     check('owner loss aborts pending transaction',result.status==='stale'&&!!await api.getBook('rollback')&&(await api.getReaderChat('charA::rollback')).messages.length===1);
     let failed=false;try{await api.deleteReaderBookData('rollback',{...options,archiveSlices:()=>Promise.resolve([])});}catch(_){failed=true;}
     check('asynchronous archive callback rejected without partial deletion',failed&&!!await api.getBook('rollback'));
     result=await api.deleteReaderBookData('rollback',options);
     check('failed cleanup remains safely retryable',result.status==='committed'&&!await api.getBook('rollback'));
+    const originalCursor=IDBObjectStore.prototype.openCursor,originalGet=IDBObjectStore.prototype.get,reads=[];
+    try{
+      IDBObjectStore.prototype.openCursor=function(){throw Error('cleanup must not load whole-store values');};
+      IDBObjectStore.prototype.get=function(key){reads.push([this.name,key]);return originalGet.call(this,key);};
+      await api.deleteReaderBookData('rollback',options);
+      check('cleanup reads only matching dialogue values, never neighbouring heavy payloads',reads.every(([store,key])=>store==='reader_chats'&&key.endsWith('::rollback')));
+    }finally{IDBObjectStore.prototype.openCursor=originalCursor;IDBObjectStore.prototype.get=originalGet;}
     return checks;
   },source);
   assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,realIndexedDB:true,external,errors}));

@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCoreadPanelFixture,panelEscape} from './helpers/coread-panel-fixture.mjs';
+import {coreadNoteMatches} from '../qianmu-reader-panel-view.js';
+
+test('search uses note content rather than surrounding buttons dates or chapter labels',()=>{
+  const note={kind:'highlight',chapterIndex:0,at:1,text:'A tree',annotation:'Thought',tags:['Green']};
+  for(const search of ['第1节','笔记','复制','1970','#Green'])assert.equal(coreadNoteMatches(note,search),false,search);
+  for(const search of ['Tree',' thought ','GREEN'])assert.equal(coreadNoteMatches(note,search),true,search);
+  assert.equal(coreadNoteMatches(null),false);assert.equal(coreadNoteMatches({...note,kind:'bookmark'}),false);
+});
 
 const notes=()=>[
   {id:'old',kind:'highlight',chapterIndex:0,text:'Lake',annotation:'',at:10,tags:['Blue']},
