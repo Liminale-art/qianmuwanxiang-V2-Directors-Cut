@@ -128,6 +128,7 @@ import {
   clearTemporaryQianmuNotes,
   createQianmuNote,
   deleteQianmuNote,
+  importQianmuNotesBackup,
   listQianmuNotes,
   normalizeQianmuNote,
   saveQianmuNote,
@@ -8348,31 +8349,7 @@ async function importPinnedNotesBackup(event) {
   const owner = settings, epoch = storyboardAdmissionEpoch;
   const check = () => { if (settings !== owner || epoch !== storyboardAdmissionEpoch) throw Error('导入状态已变化，后续已停止；已写入内容保留。'); };
   try {
-    if (Number(file.size) > 12 * 1024 * 1024) throw new Error('便笺备份文件超过 12 MB');
-    const payload = JSON.parse(await file.text());
-    check();
-    if (payload?.type !== 'qianmu-notes' || Number(payload?.version) !== 1 || !Array.isArray(payload?.notes)) {
-      throw new Error('不是有效的千幕固定便笺备份');
-    }
-    const incoming = payload.notes.slice(0, 1000);
-    const occupiedIds = new Set((await listQianmuNotes()).map((note) => note.id));
-    check();
-    let imported = 0;
-    const failed = [];
-    for (let index = 0; index < incoming.length; index++) {
-      check();
-      const raw = incoming[index];
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { failed.push(`第 ${index + 1} 条格式无效`); continue; }
-      let id = String(raw.id || '').trim().slice(0, 120);
-      if (!id || occupiedIds.has(id)) id = uid('note-import');
-      occupiedIds.add(id);
-      try {
-        await saveQianmuNote(normalizeQianmuNote({ ...raw, id, pinned: true, floating: false }));
-        imported++;
-      } catch (error) {
-        failed.push(`第 ${index + 1} 条：${error?.message || error}`);
-      }
-    }
+    const {imported, failed} = await importQianmuNotesBackup(file, {check, read:listQianmuNotes, write:saveQianmuNote, uid});
     const notes = await listQianmuNotes(); check();
     notesRuntime = notes;
     notesLoaded = true;

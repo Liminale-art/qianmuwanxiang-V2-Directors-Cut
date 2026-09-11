@@ -5,6 +5,7 @@ import { classifyStoragePressure, estimateStoredValueBytes, normalizeChatScopedS
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 const storeSource = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
+const notesSource = await readFile(new URL('../qianmu-notes.js', import.meta.url), 'utf8');
 
 assert.equal(estimateStoredValueBytes('千幕'), 6, 'UTF-8 text must use real byte size');
 assert.equal(estimateStoredValueBytes(new Blob(['12345'])), 5, 'Blob inventory must use its real size');
@@ -84,8 +85,9 @@ assert.match(source, /scopeCount: Array\.isArray\(item\.scopes\)[\s\S]*item\.sco
 assert.match(source, /openStorageChatCleanupDialog[\s\S]*导出伴读整包[\s\S]*导出语音缓存[\s\S]*clearChatScopedStorage\(selected, cleanup\)/, 'chat cleanup must offer module backups before session-scoped per-item deletion');
 assert.match(source, /openStorageCleanupDialog[\s\S]*导出固定便笺[\s\S]*导入固定便笺[\s\S]*exportPinnedNotesBackup/, 'fixed notes must have backup and restore paths beside destructive module cleanup');
 assert.match(source, /function exportPinnedNotesBackup[\s\S]*filter\(\(note\) => note\.pinned\)[\s\S]*type: 'qianmu-notes'/, 'the notes backup must exclude temporary session-only notes');
-assert.match(source, /function importPinnedNotesBackup[\s\S]*12 \* 1024 \* 1024[\s\S]*payload\?\.type !== 'qianmu-notes'[\s\S]*slice\(0, 1000\)/, 'notes restore must validate format and bound file and entry counts');
-assert.match(source, /occupiedIds\.has\(id\)[\s\S]*uid\('note-import'\)[\s\S]*pinned: true, floating: false/, 'restoring notes must preserve local collisions as independent safe copies');
+assert.match(source, /function importPinnedNotesBackup[\s\S]*importQianmuNotesBackup\(file, \{check, read:listQianmuNotes, write:saveQianmuNote, uid\}\)/, 'the guarded entry must use the independent import data boundary');
+assert.match(notesSource, /function importQianmuNotesBackup[\s\S]*12 \* 1024 \* 1024[\s\S]*payload\?\.type !== 'qianmu-notes'[\s\S]*slice\(0, 1000\)/, 'notes restore must validate format and bound file and entry counts');
+assert.match(notesSource, /occupiedIds\.has\(id\)[\s\S]*uid\('note-import'\)[\s\S]*pinned: true, floating: false/, 'restoring notes must preserve local collisions as independent safe copies');
 assert.match(source, /function exportTtsFavoritesBackup[\s\S]*qianmu-tts-favorites[\s\S]*credentialsIncluded: false/, 'voice favorites need a credential-free binary backup before destructive cleanup');
 assert.match(source, /function importTtsFavoritesBackup[\s\S]*256 \* 1024 \* 1024[\s\S]*slice\(0, 2000\)[\s\S]*hasFavorite\(id\)[\s\S]*uid\('fav-import'\)/, 'favorite restore must bound input and preserve ID collisions as copies');
 assert.match(source, /storageSafeFavoriteMeta[\s\S]*const allowed = \['speaker'[\s\S]*credentialsIncluded: false/, 'favorite packages must use an explicit metadata allow-list');

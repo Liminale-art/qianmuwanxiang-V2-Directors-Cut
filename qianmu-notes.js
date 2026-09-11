@@ -64,3 +64,33 @@ export async function deleteQianmuNote(noteId) {
 export function clearTemporaryQianmuNotes() {
   temporaryNotes.clear();
 }
+
+// Import data only. The caller owns activity admission, view updates and notices.
+export async function importQianmuNotesBackup(file, {check, read, write, uid}) {
+  if (Number(file.size) > 12 * 1024 * 1024) throw new Error('便笺备份文件超过 12 MB');
+  const payload = JSON.parse(await file.text());
+  check();
+  if (payload?.type !== 'qianmu-notes' || Number(payload?.version) !== 1 || !Array.isArray(payload?.notes)) {
+    throw new Error('不是有效的千幕固定便笺备份');
+  }
+  const incoming = payload.notes.slice(0, 1000);
+  const occupiedIds = new Set((await read()).map((note) => note.id));
+  check();
+  let imported = 0;
+  const failed = [];
+  for (let index = 0; index < incoming.length; index++) {
+    check();
+    const raw = incoming[index];
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { failed.push(`第 ${index + 1} 条格式无效`); continue; }
+    let id = String(raw.id || '').trim().slice(0, 120);
+    if (!id || occupiedIds.has(id)) id = uid('note-import');
+    occupiedIds.add(id);
+    try {
+      await write(normalizeQianmuNote({ ...raw, id, pinned: true, floating: false }));
+      imported++;
+    } catch (error) {
+      failed.push(`第 ${index + 1} 条：${error?.message || error}`);
+    }
+  }
+  return {imported, failed};
+}

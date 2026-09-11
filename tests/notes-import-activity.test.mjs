@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
 import {createStorageCleanupSession} from '../qianmu-storage-cleanup-session.js';
-import {normalizeQianmuNote} from '../qianmu-notes.js';
+import {normalizeQianmuNote, importQianmuNotesBackup} from '../qianmu-notes.js';
 const payload=JSON.stringify({type:'qianmu-notes',version:1,notes:[{id:'same',body:'first'},{id:'other',body:'second'}]});
 function fixture(){
   const saved=[],notices=[];
-  const c=vm.createContext({settings:{},storyboardAdmissionEpoch:1,normalizeQianmuNote,
+  const c=vm.createContext({settings:{},storyboardAdmissionEpoch:1,normalizeQianmuNote,importQianmuNotesBackup,
     listQianmuNotes:async()=>[{id:'same'}],saveQianmuNote:async note=>saved.push(note),uid:()=> 'copy',
     notesRuntime:['original'],notesLoaded:false,notesPanelOpen:false,renderFloatingNotes(){},refreshStorageInventory:async()=>{},toast:text=>notices.push(text)});
   vm.runInContext(source('importPinnedNotesBackup'),c);
