@@ -113,6 +113,26 @@ try{
     await page.evaluate(()=>{document.getElementById(MODAL_ID).classList.add('open');document.getElementById('toast-container')?.remove();});layouts.push({width,actions,lock});
   }
   let voiceCases=0;
+  for(const width of [320,410,430,1100]){
+    await page.setViewportSize({width,height:898});
+    await page.evaluate(()=>{voiceFixture=true;reset();Object.assign(settings.focusClock,{activity:'reading',bookId:'book',soundEnabled:true,voiceSetupTipSeen:false});renderModal();});
+    assert.equal(await page.locator('.sd-focus-voice-setup-tip').count(),1);
+    assert.equal(await page.evaluate(()=>settings.focusClock.voiceSetupTipSeen),true);
+    const fields=await page.locator('.sd-focus-voice-grid input, .sd-focus-voice-grid select').evaluateAll(nodes=>nodes.map(n=>{const b=n.getBoundingClientRect();return {x:b.x,y:b.y,right:b.right,height:b.height};}));
+    assert.equal(fields.length,2);assert.ok(Math.abs(fields[0].y-fields[1].y)<1);assert.ok(Math.abs(fields[0].height-fields[1].height)<1);
+    assert.ok(fields.every(b=>b.x>=0&&b.right<=width));
+    await page.locator('.sd-focus-sound-preview').tap();assert.equal(await page.evaluate(()=>soundTestAudio.at(-1).paused),false);
+    await page.locator('.sd-focus-voice-enabled').tap();
+    assert.equal(await page.locator('.sd-focus-voice-enabled').isChecked(),true);assert.equal(await page.locator('.sd-focus-sound').isChecked(),false);
+    assert.equal(await page.evaluate(()=>soundTestAudio.at(-1).paused),true);assert.equal(await page.locator('.sd-focus-voice-setup-tip').count(),0);
+    const pendingVoice=await page.evaluate(()=>focusClockVoiceContext().voice);assert.equal(pendingVoice,null);
+    const selectedKey=await page.evaluate(()=>focusClockVoiceContext().options[0].key);await page.locator('.sd-focus-voice-speaker').selectOption(selectedKey);
+    assert.equal(await page.locator('.sd-focus-voice-enabled').isChecked(),true);
+    await page.locator('.sd-focus-sound').tap();assert.equal(await page.locator('.sd-focus-voice-enabled').isChecked(),false);
+    await page.locator('.sd-focus-sound').tap();assert.equal(await page.locator('.sd-focus-voice-enabled').isChecked(),false);
+    await page.evaluate(()=>renderModal());assert.equal(await page.locator('.sd-focus-voice-setup-tip').count(),0);
+    await page.locator('.sd-focus-voice-card').screenshot({path:fileURLToPath(new URL(`../dist/local-qa/focus-feedback-${width}.png`,import.meta.url))});
+  }
   for(const width of [320,1100]){
     await page.setViewportSize({width,height:850});
     for(const phase of ['focus','shortBreak','longBreak']) for(const status of ['idle','running','paused']){

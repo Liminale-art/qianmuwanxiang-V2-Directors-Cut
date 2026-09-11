@@ -27,6 +27,13 @@ function control(html,name) {
 }
 const disabled=(html,name)=>/\bdisabled(?:\s|>)/.test(control(html,name));
 
+test('unconfigured role switch remains usable and setup help disappears after its first presentation',()=>{
+  const {f,data,render}=viewFixture();data.voice.voice=null;data.voice.enabled=false;
+  assert.equal(disabled(render(),'sd-focus-voice-enabled'),false);assert.match(render(),/sd-focus-voice-setup-tip/);
+  f.voiceSetupTipSeen=true;assert.doesNotMatch(render(),/选择一次音色后按角色保存/);
+  data.voice.enabled=true;assert.match(render(),/请选择音色/);
+});
+
 test('phase and session state lock only the existing controls, while voice-off always remains reachable',()=>{
   for(const phase of ['focus','shortBreak','longBreak'])for(const status of ['idle','running','paused']) {
     const {c,data,render}=viewFixture({phase,status,endsAt:160000});const html=render();

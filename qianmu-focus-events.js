@@ -5,6 +5,10 @@ export function bindFocusClockPage(root, {state, stateOwner, enabled, defaults, 
     const current = voice.context();
     return current.characterKey === displayedVoice.characterKey && current.providerId === displayedVoice.providerId;
   };
+  if (root.querySelector('.sd-focus-voice-setup-tip') && !state().voiceSetupTipSeen) {
+    state().voiceSetupTipSeen = true;
+    ui.save();
+  }
   root.querySelector('.sd-focus-lock')?.addEventListener('click', () => void clock.enableLock());
   root.querySelector('.sd-focus-auto-next-wrap')?.addEventListener('click', (event) => event.stopPropagation());
   root.querySelector('.sd-focus-voice-drawer-open')?.addEventListener('click', voice.openDrawer);
@@ -72,6 +76,7 @@ export function bindFocusClockPage(root, {state, stateOwner, enabled, defaults, 
     ui.save();
   });
   root.querySelector('.sd-focus-sound')?.addEventListener('change', (event) => {
+    if (event.target.checked) voice.setEnabled(false);
     state().soundEnabled = Boolean(event.target.checked);
     if (event.target.checked) sound.prime(); else sound.reset();
     ui.save();
@@ -125,9 +130,9 @@ export function bindFocusClockPage(root, {state, stateOwner, enabled, defaults, 
   });
   root.querySelector('.sd-focus-voice-relation')?.addEventListener('change', (event) => {
     const f = state();
-    const voice = voice.context(f);
-    if (!voice.chatKey || f.status !== 'idle' || !voicePageCurrent()) return;
-    f.voiceRelationByChat[voice.chatKey] = relations[event.target.value] ? event.target.value : 'neutral';
+    const binding = voice.context(f);
+    if (!binding.chatKey || f.status !== 'idle' || !voicePageCurrent()) return;
+    f.voiceRelationByChat[binding.chatKey] = relations[event.target.value] ? event.target.value : 'neutral';
     ui.save();
   });
   root.querySelectorAll('.sd-focus-voice-mode').forEach((button) => button.addEventListener('click', () => {

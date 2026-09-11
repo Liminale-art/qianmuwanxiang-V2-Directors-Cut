@@ -15,10 +15,12 @@ export function renderFocusClockView({f, remaining, total, phase, strongLocked, 
   const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
   const weekRange = `${weekStart.getMonth() + 1}.${weekStart.getDate()}–${weekEnd.getMonth() + 1}.${weekEnd.getDate()}`;
   const voiceAvailable = voiceContext.hasCharacter && !!voiceContext.voice;
+  const showVoiceSetupTip = voiceContext.hasCharacter && !voiceContext.voice && !f.voiceSetupTipSeen;
   const voiceStatus = !voiceContext.hasCharacter
     ? (f.activity === 'reading' ? '请先选择伴读书友。' : '请选择角色，或进入角色聊天。')
     : voiceContext.voice ? `音色跟随 ${voiceContext.characterName} · ${providerLabel}`
-      : '选择一次音色后按角色保存；可使用音色库或手动沿用当前聊天音色。';
+      : showVoiceSetupTip ? '选择一次音色后按角色保存；可使用音色库或手动沿用当前聊天音色。'
+        : voiceContext.enabled ? '请选择音色。' : '';
   const voiceSpeakerOptions = '<option value="">选择音色</option>' + voiceContext.options.map(row => `<option value="${htmlEscape(row.key)}" ${row.key === voiceContext.selected ? 'selected' : ''}>${htmlEscape(row.label)}</option>`).join('');
   const voiceCharacterOptions = '<option value="">跟随当前聊天</option>' + voiceCharacters.map(ch => `<option value="${htmlEscape(ch.avatar)}" ${ch.avatar === f.voiceCharacterAvatar ? 'selected' : ''}>${htmlEscape(ch.name)}</option>`).join('')
     + (f.voiceCharacterAvatar && !voiceCharacters.some(ch => ch.avatar === f.voiceCharacterAvatar) ? '<option selected disabled>原角色已不存在，请重选</option>' : '');
@@ -111,8 +113,8 @@ export function renderFocusClockView({f, remaining, total, phase, strongLocked, 
       ${soundConfig}
     </section>
     <section class="sd-card sd-focus-voice-card">
-      <div class="sd-card-title-row"><h3>角色语音</h3><span class="sd-focus-voice-head-actions"><button type="button" class="sd-icon-btn sd-focus-voice-drawer-open" title="陪伴语音" aria-label="打开陪伴语音" ${voiceDrawerCount ? '' : 'hidden'}><i class="fa-solid fa-headphones-simple"></i><span>${voiceDrawerCount}</span></button><label class="checkbox_label"><input type="checkbox" class="sd-focus-voice-enabled" ${voiceContext.enabled ? 'checked' : ''} ${voiceAvailable || voiceContext.enabled ? '' : 'disabled'}>${voiceContext.enabled ? '已开启' : '已关闭'}</label></span></div>
-      <div class="sd-focus-voice-status"><i class="fa-solid ${voiceAvailable ? 'fa-link' : 'fa-circle-info'}"></i><span>${htmlEscape(voiceStatus)}</span></div>
+      <div class="sd-card-title-row"><h3>角色语音</h3><span class="sd-focus-voice-head-actions"><button type="button" class="sd-icon-btn sd-focus-voice-drawer-open" title="陪伴语音" aria-label="打开陪伴语音" ${voiceDrawerCount ? '' : 'hidden'}><i class="fa-solid fa-headphones-simple"></i><span>${voiceDrawerCount}</span></button><label class="checkbox_label"><input type="checkbox" class="sd-focus-voice-enabled" ${voiceContext.enabled ? 'checked' : ''} ${voiceContext.hasCharacter || voiceContext.enabled ? '' : 'disabled'}>${voiceContext.enabled ? '已开启' : '已关闭'}</label></span></div>
+      ${voiceStatus ? `<div class="sd-focus-voice-status ${showVoiceSetupTip ? 'sd-focus-voice-setup-tip' : ''}"><i class="fa-solid ${voiceAvailable ? 'fa-link' : 'fa-circle-info'}"></i><span>${htmlEscape(voiceStatus)}</span></div>` : ''}
       ${voiceConfig}
     </section>
     <section class="sd-card sd-focus-history-card">

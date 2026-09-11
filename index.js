@@ -1145,6 +1145,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     voiceEnabledByChat: {},        // 每个聊天单独启用，避免切聊天后自动套用另一角色
     voiceCharacterAvatar: '',     // 普通专注留空跟随当前角色；伴读始终跟随书友
     voiceProfiles: {},            // character avatar -> provider -> explicit voice + enabled + revision
+    voiceSetupTipSeen: false,
     readingExitPaused: false,     // 仅退出阅读造成的暂停允许回到原书时自动续计
     voiceMode: 'stock',           // stock=轻量话语 | scene=情景生成（只读任务/书名/人设/手选关系，不读正文）
     voiceFrequency: 'low',        // 长时专注至少一次中途陪伴；低30%/中50%/高75%决定候选点追加密度
@@ -24434,7 +24435,7 @@ function focusClockVoiceContext(state = focusClockState()) {
   const relation = FOCUS_CLOCK_RELATIONS[savedRelation] ? savedRelation : 'neutral';
   const characterName = String(character?.name || character?.data?.name || '');
   return { hasCharacter: !!characterKey, characterKey, character, persona, providerId, profile, voice,
-    enabled: !!profile?.enabled, options, selected: voice ? options[0]?.key || '' : '', chatKey,
+    enabled: !!profile?.enabled && !state.soundEnabled, options, selected: voice ? options[0]?.key || '' : '', chatKey,
     speaker: characterName, relation, characterName };
 }
 
@@ -24475,7 +24476,7 @@ function focusClockCancelVoiceWork({ clearCues = false, stopPlayback = true } = 
 function focusClockSetVoiceEnabled(enabled) {
   const f = focusClockState(), voice = focusClockVoiceContext(f);
   if (!voice.characterKey) return;
-  if (enabled && !voice.voice) { toast('请先为此角色选择音色。', 'warning'); return; }
+  if (enabled) { f.soundEnabled = false; focusClockResetMedia(); }
   saveFocusVoiceProfile(f, voice.characterKey, voice.providerId, voice.voice, enabled);
   focusClockCancelVoiceWork({ clearCues: true });
   saveSettings();

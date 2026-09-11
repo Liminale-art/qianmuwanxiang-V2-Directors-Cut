@@ -2,6 +2,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {focusEventsFixture as fixture} from './helpers/focus-events-fixture.mjs';
 
+test('enabling completion sound turns role voice off; disabling it does not turn role voice back on',async()=>{
+  const e=fixture({soundEnabled:false}),toggle=e.node('.sd-focus-sound',{checked:true});e.bind();e.trace.length=0;
+  await toggle.fire('change');assert.equal(e.f.soundEnabled,true);assert.deepEqual(e.trace,[['enabled',false],'prime','save','render']);
+  toggle.checked=false;e.trace.length=0;await toggle.fire('change');assert.deepEqual(e.trace,['media','save','render']);
+});
+
+test('setup hint is acknowledged once without repainting the first visible hint',()=>{
+  const e=fixture();e.node('.sd-focus-voice-setup-tip');e.bind();
+  assert.equal(e.f.voiceSetupTipSeen,true);assert.equal(e.trace.filter(x=>x==='save').length,1);assert.ok(!e.trace.includes('render'));
+  e.trace.length=0;e.bind();assert.ok(!e.trace.includes('save'));
+});
+
+test('relationship control saves to the displayed companion scope without a shadowed voice adapter',async()=>{
+  const e=fixture({status:'idle'}),relation=e.node('.sd-focus-voice-relation',{value:'neutral'});e.bind();e.trace.length=0;
+  await relation.fire('change');assert.equal(e.f.voiceRelationByChat.chatA,'neutral');assert.deepEqual(e.trace,['save']);
+});
+
 test('binding another tab is inert and a fresh focus page binds one main action',async()=>{
   const e=fixture(),main=e.node('.sd-focus-main');e.c.activeTab='coread';e.bind();assert.equal(main.count('click'),0);assert.deepEqual(e.trace,[]);
   e.c.activeTab='focus';e.bind();e.trace.length=0;await main.fire('click');assert.deepEqual(e.trace,['start','render']);

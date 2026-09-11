@@ -12,7 +12,7 @@ const names=['focusClockVoiceContext','focusClockVoiceBindingKey','focusClockVoi
   'focusClockPreparation','focusClockSpeech','focusClockSetVoiceEnabled','focusClockSynthVoiceCue','focusClockPrepareVoiceCues','focusClockPlayVoiceCue','focusClockPlayCompletionAlert','focusClockRegenerateVoiceCue',
   'focusClockMaybePlayMidCue','focusClockCleanVoiceLine','focusClockBuildVoiceParams','focusClockBindVoice'];
 function fixture(overrides={}){
-  const env=focusFixture({status:'running',sessionToken:'round',endsAt:160000,voiceProfiles:{'character:A':{minimax:{enabled:true,voice:{name:'甲',voiceId:'voice-A'},revision:1}}},...overrides});
+  const env=focusFixture({status:'running',soundEnabled:false,sessionToken:'round',endsAt:160000,voiceProfiles:{'character:A':{minimax:{enabled:true,voice:{name:'甲',voiceId:'voice-A'},revision:1}}},...overrides});
   const {c}=env, counts={synth:0,put:0,play:0,stop:0,sound:0,revoke:0};
   const host={chatId:'chatA',characterId:0,characters:[{avatar:'A',name:'甲'},{avatar:'B',name:'乙'}]};
   const voices=[{name:'甲',voiceId:'voice-A'}];let provider='minimax';
@@ -35,12 +35,28 @@ function fixture(overrides={}){
     ttsStopPlayback:()=>{counts.stop++;c.ttsSeqToken++;c.ttsCurrentAudio?.pause();c.ttsPlayCleanup?.();c.ttsCurrentAudio=null;},
     URL:{createObjectURL:()=> 'blob:test',revokeObjectURL:()=>counts.revoke++},
     Audio:class { addEventListener(){} pause(){this.paused=true;} async play(){counts.play++;} },
-    focusClockPlayDoneSound:async()=>counts.sound++});
+    focusClockPlayDoneSound:async()=>counts.sound++,focusClockResetMedia:()=>counts.soundReset=(counts.soundReset||0)+1});
   vm.runInContext(names.map(section).join('\n'),c);
   return {...env,counts,host,voices,setProvider:value=>provider=value};
 }
 const pending=()=>{let resolve;return {promise:new Promise(r=>resolve=r),resolve:value=>resolve(value)};};
 const cueFor=c=>({cacheKey:'cache',voiceBindingKey:c.focusClockVoiceBindingKey(c.focusClockVoiceContext())});
+
+test('voice may be enabled before selecting a voice, without generating audio or running the completion sound',async()=>{
+  const {c,f,counts}=fixture({soundEnabled:true,voiceProfiles:{}});
+  c.focusClockSetVoiceEnabled(true);await new Promise(r=>setImmediate(r));
+  assert.equal(c.focusClockVoiceContext().enabled,true);assert.equal(c.focusClockVoiceContext().voice,null);
+  assert.equal(f.soundEnabled,false);assert.equal(counts.synth,0);assert.equal(counts.soundReset,1);
+  f.status='idle';const context=c.focusClockVoiceContext();c.focusClockBindVoice(context.options[0].key,context.characterKey,context.providerId);
+  assert.equal(c.focusClockVoiceContext().enabled,true);assert.equal(c.focusClockVoiceContext().voice.voiceId,'voice-A');
+});
+
+test('completion sound suppresses stored role preferences across character changes without deleting them',()=>{
+  const {c,f,host}=fixture({soundEnabled:true});profiles.saveFocusVoiceProfile(f,'character:B','minimax',{voiceId:'voice-B'},true);
+  assert.equal(c.focusClockVoiceContext().enabled,false);host.characterId=1;assert.equal(c.focusClockVoiceContext().enabled,false);
+  assert.equal(f.voiceProfiles['character:A'].minimax.voice.voiceId,'voice-A');c.focusClockSetVoiceEnabled(true);
+  assert.equal(f.soundEnabled,false);assert.equal(c.focusClockVoiceContext().enabled,true);
+});
 
 test('cue regeneration shares the preparation cancellation epoch and cannot rewrite an old cue after mute',async()=>{
   const {c,counts}=fixture(),wait=pending();const cue={characterKey:'character:A',providerId:'minimax',speaker:'甲',text:'again',cacheKey:'old'};
@@ -118,9 +134,9 @@ test('all three phases allow switching off while running or paused, without chan
     assert.deepEqual(Array.from(f.sessionVoiceCues,cue=>cue.id),['heard']);assert.equal(c.focusClockPreparation().epoch,1);
   }
 });
-test('switching off remains possible after the configured voice disappears',()=>{
-  const {c,f}=fixture();f.voiceProfiles['character:A'].minimax.voice=null;c.focusClockSetVoiceEnabled(false);assert.equal(f.voiceProfiles['character:A'].minimax.enabled,false);
-  c.focusClockSetVoiceEnabled(true);assert.equal(f.voiceProfiles['character:A'].minimax.enabled,false);
+test('a disappeared voice can be disabled or re-enabled as pending setup without synthesizing',()=>{
+  const {c,f,counts}=fixture();f.voiceProfiles['character:A'].minimax.voice=null;c.focusClockSetVoiceEnabled(false);assert.equal(f.voiceProfiles['character:A'].minimax.enabled,false);
+  c.focusClockSetVoiceEnabled(true);assert.equal(f.voiceProfiles['character:A'].minimax.enabled,true);assert.equal(counts.synth,0);
 });
 test('repeated preparation is deduplicated, and turning off during LLM work prevents TTS',async()=>{
   const {c,f,counts}=fixture({voiceMode:'scene'}),wait=pending();let calls=0;
