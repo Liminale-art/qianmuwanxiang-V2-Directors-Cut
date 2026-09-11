@@ -8720,14 +8720,18 @@ function bindStorageManagementEvents(root) {
   root.querySelector('.sd-storage-refresh')?.addEventListener('click', () => void refreshStorageInventory(true));
   root.querySelector('.sd-storage-clean')?.addEventListener('click', async () => {
     const cleanup = storageCleanupSession.begin(root); if (!cleanup) return;
-    const inventory=storageInventoryState.data,cleanupEpoch=storyboardAdmissionEpoch;
+    const inventory=storageInventoryState.data;
     try {
       const selected = await openStorageCleanupDialog(inventory); cleanup.check();
       if (!selected?.length) return;
       if(selected.includes('__storyboard_restores__')){
-        await storyboardOpenRestoreStorage(root,inventory?.restoreStorage?.namespace); cleanup.check();
-        if(selected.length===1)return;
-        if(cleanupEpoch!==storyboardAdmissionEpoch||inventory?.restoreStorage?.namespace!==storageInventoryState.data?.restoreStorage?.namespace)throw new Error('清理页面或账户已变化，请重新选择其他模块');
+        if(selected.length>1){
+          const proceed=await confirmDialog('先管理恢复记录',`恢复记录需逐条确认。本次不会清理同时勾选的其他 ${selected.length-1} 项；完成后请重新选择。是否进入？`);
+          cleanup.check();if(!proceed)return;
+        }
+        cleanup.release();
+        await storyboardOpenRestoreStorage(root,inventory?.restoreStorage?.namespace);
+        return;
       }
       const stores = selected.filter((item) => !item.startsWith('__'));
       if(selected.includes('__comfy_scenes__')){
@@ -8773,7 +8777,7 @@ function bindStorageManagementEvents(root) {
       } else if (orphanResult?.skipped?.length) {
         toast(`所选项目已清理；${orphanResult.skipped.length} 项因书籍已恢复而保留。`, 'success');
       } else {
-        toast(selected.includes('__storyboard_restores__')?'其他所选项目已清理；恢复记录仅结束你逐条确认的内容。':'所选本地项目已清理。', 'success');
+        toast('所选本地项目已清理。', 'success');
       }
     } catch (error) {
       toast(`清理未完成：${error?.message || error}`, 'error');

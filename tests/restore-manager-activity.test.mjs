@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
+import {createStorageCleanupSession} from '../qianmu-storage-cleanup-session.js';
 
 function fixture(){
   const f={chat:'chat',namespace:'account',root:{isConnected:true},modalOpen:true,other:{},loads:0,opened:0,writes:0,notes:[],refreshes:0};
@@ -66,4 +67,41 @@ test('load failures release the activity slot so an independent later attempt is
   const f=fixture();f.load=()=>{throw Error('synthetic unavailable module');};await f.start();
   assert.equal(f.c.storyboardOpenRestoreStorage.busy,false);assert.equal(f.opened,0);
   delete f.load;const pending=f.start();await tick();assert.equal(f.opened,1);f.view.close();await pending;
+});
+
+function cleanupFixture(selected=['__storyboard_restores__']){
+  const f=fixture(),c=f.c;let click;
+  f.root.querySelector=s=>s==='.sd-storage-clean'?{addEventListener:(_name,callback)=>click=callback}:null;f.root.querySelectorAll=()=>[];
+  c.storageInventoryState={data:{restoreStorage:{namespace:'account'}}};c.openStorageCleanupDialog=async()=>selected;
+  const activity=c.configRestoreActivity;
+  c.configRestoreActivity=(include=true,own=null)=>({...activity(include,own),cleanup:include&&c.storageCleanupSession.busy});
+  c.storageCleanupSession=createStorageCleanupSession({owner:()=>c.settings,scope:()=>f.chat,epoch:()=>c.storyboardAdmissionEpoch,activity:()=>c.configRestoreActivity(false)});
+  c.blobStore={clearStorageItems:()=>assert.fail('handoff must not clear unrelated selected stores')};c.saveSettings=()=>assert.fail('handoff must not save unrelated configuration');
+  vm.runInContext(source('bindStorageManagementEvents'),c);c.bindStorageManagementEvents(f.root);f.cleanup=()=>click();return f;
+}
+
+test('real cleanup hands off its slot to the real per-record manager without bypassing task protection',async()=>{
+  const f=cleanupFixture(),pending=f.cleanup();await tick();
+  assert.equal(f.opened,1);assert.equal(f.c.storageCleanupSession.busy,false);assert.equal(f.c.storyboardOpenRestoreStorage.busy,true);
+  assert.equal(f.c.storageCleanupSession.begin(f.root),null,'manager protects itself from another cleanup');
+  f.view.close();await pending;assert.equal(f.c.configRestoreActivity().transfer,false);assert.equal(f.c.storageCleanupSession.busy,false);assert.deepEqual(f.notes,[]);
+});
+
+test('mixed selections require explicit handoff consent and never resume stale unrelated cleanup',async()=>{
+  for(const choice of [true,false]){
+    const f=cleanupFixture(['__storyboard_restores__','notes','favorites']);let asked=0;
+    f.c.confirmDialog=async(title,text)=>{asked++;assert.match(title,/先管理/);assert.match(text,/不会清理.*其他 2 项.*重新选择/);assert.equal(f.c.storageCleanupSession.busy,true);return choice;};
+    const pending=f.cleanup();await tick();assert.equal(asked,1);assert.equal(f.opened,choice?1:0);
+    if(choice)f.view.close();await pending;assert.equal(f.c.storageCleanupSession.busy,false);assert.equal(f.writes,0);assert.deepEqual(f.notes,[]);
+  }
+});
+
+test('handoff confirmation cannot outlive its scope or bypass a task starting during manager loading',async()=>{
+  for(const mode of ['owner','chat','epoch','root','activity','load-activity','load-failure']){
+    const f=cleanupFixture(['__storyboard_restores__','notes']);
+    f.c.confirmDialog=async()=>{if(mode==='owner')f.c.settings={};if(mode==='chat')f.chat='other';if(mode==='epoch')f.c.storyboardAdmissionEpoch++;if(mode==='root')f.root.isConnected=false;if(mode==='activity')f.other={image:true};return true;};
+    if(mode==='load-activity')f.load=(_name,value)=>{f.other={image:true};return value;};
+    if(mode==='load-failure')f.load=()=>{throw Error('synthetic load failure');};
+    await f.cleanup();assert.equal(f.opened,0,mode);assert.equal(f.writes,0,mode);assert.equal(f.c.storageCleanupSession.busy,false,mode);assert.equal(!!f.c.storyboardOpenRestoreStorage.busy,false,mode);assert.ok(f.notes.length,mode);
+  }
 });

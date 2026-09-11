@@ -46,6 +46,20 @@ try{
       const retry=storageCleanupSession.begin({isConnected:true});if(!retry)throw Error('retry blocked');retry.release();
       checks.push(kind+'/'+action);
     }
+    for(const mode of ['single','mixed-yes','mixed-no']){
+      storageInventoryState.data={diagnosticsBytes:10,restoreStorage:{status:'ready',bytes:10,count:1,namespace:'synthetic'}};
+      document.body.innerHTML='<section id="fixture-modal" class="open"><section class="sd-storage-card"><button class="sd-storage-clean">Module</button></section></section>';
+      let opened=0,asked=0,finishManager;
+      window.confirmDialog=async(_title,text)=>{asked++;if(!text.includes('不会清理')||!text.includes('其他 1 项'))throw Error('mixed selection lacks disclosure');return mode!=='mixed-no';};
+      window.storyboardOpenRestoreStorage=async()=>{if(storageCleanupSession.busy)throw Error('cleanup slot was not handed off');opened++;await new Promise(resolve=>finishManager=resolve);};
+      window.blobStore={clearStorageItems:()=>{throw Error('unexpected unrelated deletion');}};window.saveSettings=()=>{throw Error('unexpected save');};
+      const card=document.querySelector('.sd-storage-card');bindCleanup(card);card.querySelector('.sd-storage-clean').click();
+      const layer=document.getElementById(STORAGE_CLEANUP_LAYER_ID);layer.querySelector('input[value="__storyboard_restores__"]').click();
+      if(mode!=='single')layer.querySelector('input[value="__diagnostics__"]').click();
+      layer.querySelector('.sd-storage-cleanup-confirm').click();await new Promise(resolve=>setTimeout(resolve,0));
+      if(opened!==(mode==='mixed-no'?0:1)||asked!==(mode==='single'?0:1)||storageCleanupSession.busy||layer.isConnected)throw Error('handoff failed '+mode);
+      finishManager?.();await new Promise(resolve=>setTimeout(resolve,0));checks.push('native restore handoff '+mode);
+    }
     document.body.innerHTML='<section id="fixture-modal" class="open"></section><div id="fixture-chooser"></div>';
     let finish;const chosen=['synthetic-selection'];
     const pending=new Promise(resolve=>{finish=bindStorageCleanupLifetime(document.getElementById(STORAGE_CLEANUP_LAYER_ID),document.getElementById(MODAL_ID),resolve);});
@@ -56,5 +70,5 @@ try{
     checks.push('confirmation settles once and releases listeners');
     return checks;
   },['openStorageCleanupDialog','openStorageChatCleanupDialog','bindStorageManagementEvents'].map(section).join('\n'));
-  assert.equal(checks.length,20);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,23);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}
