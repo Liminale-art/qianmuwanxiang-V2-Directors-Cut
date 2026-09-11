@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { createComfyRecoveryClient } from '../qianmu-comfy-recovery-client.js';
+import { receiveComfyImage } from '../qianmu-comfy-recovery-action.js';
 import { normalizeComfyDelivery, createComfyDeliveryStore } from '../qianmu-comfy-delivery-store.js';
 import { comfyArchiveFilename } from '../qianmu-comfy-submission.js';
 import { sanitizeStoryboardSnapshot, getStoryboardComfyTransport } from '../qianmu-storyboard.js';
@@ -165,7 +166,10 @@ test('production normal and manual UI are wired to the same client and preserve 
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   assert.match(source, /sd-storyboard-receive-comfy/); assert.match(source, /storyboardComfyRecovery\?\.close\(\)/);
   const receive = storyboardFunctionSource('storyboardReceiveComfyImage');
-  assert.match(storyboardFunctionSource('storyboardResolveComfyRecoveryKey'), /exact: true/); assert.match(receive, /archiveFiles, checkpoint,/); assert.doesNotMatch(receive, /storyboardRetryLog|generateImage/);
+  const action = await readFile(new URL('../qianmu-comfy-recovery-action.js', import.meta.url), 'utf8');
+  assert.match(storyboardFunctionSource('storyboardResolveComfyRecoveryKey'), /exact: true/);
+  assert.match(receive, /resolveKey:storyboardResolveComfyRecoveryKey,deliver:storyboardDeliverGatewayResult/);
+  assert.match(action, /archiveFiles, checkpoint,/); assert.doesNotMatch(receive + action, /storyboardRetryLog|generateImage/);
 });
 
 test('recovery credential cannot silently fall back to a draft key for a different host', async () => {
@@ -201,7 +205,7 @@ test('actual manual receive controller preserves original log, guards chat switc
   for (const switchChat of [false, true]) {
     const log = { id: 'log-a', snapshot: job(), error: 'old failure', durationMs: 250 }, calls = [], notices = [];
     let chat = 'chat-a';
-    const context = vm.createContext({ sanitizeStoryboardSnapshot, getStoryboardComfyTransport, getChatKey: () => chat,
+    const context = vm.createContext({ receiveComfyImage, settings:{}, storyboardAdmissionEpoch:0, sanitizeStoryboardSnapshot, getStoryboardComfyTransport, getChatKey: () => chat,
       storyboardResolveComfyRecoveryKey: async () => 'original-test-key',
       storyboardComfyRecoveryRuntime: async () => ({ retrieve: async (frozen, options) => {
         assert.equal(frozen.id, 'attempt-a'); assert.equal(frozen.recoveringOriginal, true); assert.equal(options.apiKey, 'original-test-key');
@@ -217,7 +221,7 @@ test('actual manual receive controller preserves original log, guards chat switc
     });
     vm.runInContext(['storyboardCanReceiveComfyLog','storyboardReceiveComfyImage'].map(storyboardFunctionSource).join('\n'), context);
     await context.storyboardReceiveComfyImage(log);
-    assert.deepEqual(calls, switchChat ? ['account'] : ['account','archive','finish','admission']);
+    assert.deepEqual(calls, switchChat ? [] : ['account','archive','finish','admission']);
     assert.match(notices[0], switchChat ? /聊天已切换/ : /已领取并归档/);
   }
 });

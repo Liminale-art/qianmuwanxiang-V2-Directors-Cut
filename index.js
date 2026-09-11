@@ -2,6 +2,7 @@
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreSummary } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { exportConfiguration } from './qianmu-config-export.js';
+import { receiveComfyImage } from './qianmu-comfy-recovery-action.js';
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
 import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives } from './qianmu-plan-archive-write.js';
@@ -19645,28 +19646,15 @@ async function storyboardResolveComfyRecoveryKey(connection) {
 }
 
 async function storyboardReceiveComfyImage(log, { refresh = true, taskLocator } = {}) {
+  storyboardReceiveComfyImage.pending = (storyboardReceiveComfyImage.pending || 0) + 1;
   try {
-    if (!storyboardCanReceiveComfyLog(log)) throw new Error('请使用原 Comfy 服务日志领取');
-    const snapshot = sanitizeStoryboardSnapshot(log.snapshot, { source: 'comfy' });
-    const job = { ...snapshot, id: snapshot.imageAdmission.attemptId, logId: log.id, recoveringOriginal: true, ...(taskLocator ? { comfyTaskLocator: taskLocator } : {}) };
-    if (job.chatKey && job.chatKey !== String(getChatKey() || '')) throw new Error('请返回原聊天后领取 Comfy 原图');
-    const service = await storyboardComfyRecoveryRuntime();
-    const apiKey = await storyboardResolveComfyRecoveryKey(job.connection);
-    const result = await service.retrieve(job, { apiKey,
-      deliver: (data, archiveFiles, checkpoint, guard) => storyboardDeliverGatewayResult(job, log, data, { service: true, archiveFiles, checkpoint,
-        guard: async () => { await guard(); if (job.chatKey && job.chatKey !== String(getChatKey() || '')) throw new Error('聊天已切换，请回原聊天继续领取'); },
-      }),
+    return await receiveComfyImage(log, { refresh, taskLocator }, {
+      scope:()=>({owner:settings,epoch:storyboardAdmissionEpoch,chat:String(getChatKey()||'')}),
+      canReceive:storyboardCanReceiveComfyLog,sanitize:sanitizeStoryboardSnapshot,recovery:storyboardComfyRecoveryRuntime,
+      resolveKey:storyboardResolveComfyRecoveryKey,deliver:storyboardDeliverGatewayResult,finish:storyboardFinishLog,
+      admission:storyboardImageAdmissionRuntime,notify:toast,render:renderModal,
     });
-    if (result.archived) {
-      log.error = ''; log.submissionState = 'accepted';
-      storyboardFinishLog(log, 'success', { durationMs: Number(log.durationMs) || 0 });
-      try { await (await storyboardImageAdmissionRuntime()).confirmResult(job.imageAdmission); }
-      catch (_) { result.warning ||= '原图已归档；本地任务状态尚待核查'; }
-    }
-    toast(result.warning || '原图已领取并归档', result.warning ? 'warning' : 'success');
-    if (refresh) renderModal();
-    return result;
-  } catch (error) { toast(error.message || 'Comfy 原图暂不可领取，未重新生成', 'warning'); }
+  } finally { storyboardReceiveComfyImage.pending--; }
 }
 
 async function storyboardOpenComfyInbox(root) {
@@ -25648,7 +25636,7 @@ function configRestoreActivity() {
     reader: readerView || coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight || dialogBusy || readerAssistantBusy || coreadComicVisionBusy,
     focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy,
     director: busy || theaterBusy,
-    image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
+    image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
     transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen,
   };
 }
