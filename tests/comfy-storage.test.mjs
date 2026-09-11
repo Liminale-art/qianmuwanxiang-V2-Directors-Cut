@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {createStorageCleanupSession} from '../qianmu-storage-cleanup-session.js';
 import {collectComfyStorage,clearComfySceneStorage} from '../qianmu-comfy-storage.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const namespace='st-user:storage-test';
@@ -63,6 +64,7 @@ test('actual cleanup handler requires explicit scene selection and refuses a swi
       blobStore:{clearStorageItems:async rows=>{generic++;assert.equal(rows.length,0);return {cleared:[],failed:[]};}},
       reconcileClearedStorageItems:()=>({}),saveSettings:()=>{},refreshStorageInventory:async()=>{},toast:message=>notices.push(message),settings:{},storyboardState:()=>({}),
     });
+    context.storageCleanupSession=createStorageCleanupSession({owner:()=>context.settings,scope:()=>'',epoch:()=>context.storyboardAdmissionEpoch});
     vm.runInContext(section('bindStorageManagementEvents'),context);context.bindStorageManagementEvents(root);await events['.sd-storage-clean']();
     assert.equal(clears,mode==='selected'?1:0);assert.equal(generic,['selected','unselected'].includes(mode)?1:0);
     if(mode==='busy')assert.ok(notices.some(text=>text.includes('结果未明')));if(mode==='switched')assert.ok(notices.some(text=>text.includes('账户')));

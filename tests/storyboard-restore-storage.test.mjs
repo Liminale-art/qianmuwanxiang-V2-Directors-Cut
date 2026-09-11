@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {createStorageCleanupSession} from '../qianmu-storage-cleanup-session.js';
 import {renderStorageBackupSection} from '../qianmu-storage-backup-view.js';
 import { collectRestoreStorage, clearRestoreStorage, validateRestoreStorageSummary } from '../qianmu-storyboard-restore-storage.js';
 import { runRestoreStorage, collectStoryboardRestoreStorage } from '../qianmu-storyboard-restore-storage-runtime.js';
@@ -156,5 +157,6 @@ test('actual module cleanup opens per-record choices and does not clear a whole 
   const context=vm.createContext({renderStorageBackupSection,storyboardAdmissionEpoch:1,storageInventoryState:{data:{restoreStorage:{namespace}}},openStorageCleanupDialog:async()=>['__storyboard_restores__'],
     storyboardOpenRestoreStorage:async(target,scope)=>{assert.equal(target,root);assert.equal(scope,namespace);opened++;},
     blobStore:{clearStorageItems:()=>assert.fail('no whole-module deletion')},saveSettings:()=>assert.fail('no unrelated save'),toast:()=>assert.fail('do not claim cancelled selection was cleared')});
+  context.storageCleanupSession=createStorageCleanupSession({owner:()=>context.settings,scope:()=>'',epoch:()=>context.storyboardAdmissionEpoch});
   vm.runInContext(section('bindStorageManagementEvents'),context);context.bindStorageManagementEvents(root);await click();assert.equal(opened,1);
 });

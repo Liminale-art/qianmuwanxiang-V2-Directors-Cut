@@ -11,6 +11,7 @@
     "qianmu-config-undo-action.js",
     "qianmu-plan-archive-write.js",
     "qianmu-storage-backup-view.js",
+    "qianmu-storage-cleanup-session.js",
     "qianmu-focus-lock.js",
     "qianmu-focus-voice.js",
     "qianmu-focus-time.js",

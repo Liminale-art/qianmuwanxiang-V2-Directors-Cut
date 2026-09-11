@@ -8,6 +8,7 @@ import { createConfigUndoSlot } from './qianmu-config-undo.js';
 import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, releasePlanReferencesForChats } from './qianmu-plan-archive-write.js';
 import { renderStorageBackupSection } from './qianmu-storage-backup-view.js';
+import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
 import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
 import { inspectFocusLock, createFocusLockGuard } from './qianmu-focus-lock.js';
@@ -1453,6 +1454,7 @@ const storyboardPlanArchiveCache = new Map(); // key -> 已结束计划的完整
 let storyboardPlanArchiveEpoch = 0;
 let storyboardPlanArchiveTimer = null;
 const storyboardApiKeys = new Map(); // credentialId -> Key；不进入设置、日志或分镜数据包
+const storageCleanupSession = createStorageCleanupSession({owner:()=>settings,scope:()=>getChatKey(),epoch:()=>storyboardAdmissionEpoch,notify:toast});
 const storyboardDraftApiKeys = new Map(); // 表单会话：载入、测试、保存及重绘均保留 Key；不新增持久副本
 let storyboardConnectionLoadRevision = 0;
 let storyboardKeyInputRevision = 0;
@@ -8719,37 +8721,41 @@ function bindStorageManagementEvents(root) {
   });
   root.querySelector('.sd-storage-refresh')?.addEventListener('click', () => void refreshStorageInventory(true));
   root.querySelector('.sd-storage-clean')?.addEventListener('click', async () => {
+    const cleanup = storageCleanupSession.begin(root); if (!cleanup) return;
     const inventory=storageInventoryState.data,cleanupEpoch=storyboardAdmissionEpoch;
-    const selected = await openStorageCleanupDialog(inventory);
-    if (!selected?.length) return;
     try {
+      const selected = await openStorageCleanupDialog(inventory); cleanup.check();
+      if (!selected?.length) return;
       if(selected.includes('__storyboard_restores__')){
-        await storyboardOpenRestoreStorage(root,inventory?.restoreStorage?.namespace);
+        await storyboardOpenRestoreStorage(root,inventory?.restoreStorage?.namespace); cleanup.check();
         if(selected.length===1)return;
         if(cleanupEpoch!==storyboardAdmissionEpoch||inventory?.restoreStorage?.namespace!==storageInventoryState.data?.restoreStorage?.namespace)throw new Error('清理页面或账户已变化，请重新选择其他模块');
       }
       const stores = selected.filter((item) => !item.startsWith('__'));
       if(selected.includes('__comfy_scenes__')){
-        const [module,identity]=await Promise.all([featureRuntime.load('comfyStorage'),featureRuntime.load('imageAdmission')]);
+        const [module,identity]=await Promise.all([featureRuntime.load('comfyStorage'),featureRuntime.load('imageAdmission')]); cleanup.check();
         await module.clearComfySceneStorage({resolveNamespace:()=>identity.resolveImageAccountNamespace(),expectedNamespace:inventory?.comfyStorage?.namespace,
-          expectedGeneration:inventory?.comfyStorage?.scenes?.generation,valid:()=>root.isConnected&&cleanupEpoch===storyboardAdmissionEpoch});
+          expectedGeneration:inventory?.comfyStorage?.scenes?.generation,valid:()=>cleanup.current()}); cleanup.check();
       }
       if (selected.includes('__image_channels__')) await storyboardManageImageChannels({ remove: true });
-      if (selected.includes('__image_service_receipts__')) await (await storyboardImageServiceRuntime()).manage({ remove: true });
+      cleanup.check();
+      if (selected.includes('__image_service_receipts__')) { const service = await storyboardImageServiceRuntime(); cleanup.check(); await service.manage({ remove: true }); }
+      cleanup.check();
       if (selected.includes('__image_attempts__')) {
         if (storyboardQueue.length || storyboardActiveJobs.size || storyboardGenerationPreparing.size) throw new Error('仍有等待或生成中的画面，请结束后再清理防重记录');
-        const module = await featureRuntime.load('imageAdmission');
-        await module.manageImageAdmissionStorage({ remove: true });
+        const module = await featureRuntime.load('imageAdmission'); cleanup.check();
+        await module.manageImageAdmissionStorage({ remove: true }); cleanup.check();
       }
       if (stores.includes('storyboard_plan_archives')) {
         storyboardPlanArchiveEpoch++;
         if (storyboardPlanArchiveTimer) clearTimeout(storyboardPlanArchiveTimer);
         storyboardPlanArchiveTimer = null;
       }
-      const storageResult = await blobStore.clearStorageItems(stores);
+      const storageResult = await blobStore.clearStorageItems(stores); cleanup.check();
       const reconciled = reconcileClearedStorageItems(storageResult.cleared);
       let orphanResult = null;
       if (selected.includes('__orphan_reader_blobs__')) orphanResult = await blobStore.clearOrphanedReaderBlobs();
+      cleanup.check();
       if (selected.includes('__diagnostics__')) {
         settings.logHistory = [];
         settings.logOpenState = {};
@@ -8759,7 +8765,7 @@ function bindStorageManagementEvents(root) {
       }
       saveSettings();
       if (reconciled.chatMetadataChanged) await saveMetadata();
-      await refreshStorageInventory(true);
+      cleanup.check(); await refreshStorageInventory(true); if (!cleanup.current(false)) return;
       if (storageResult.failed.length) {
         const knownStores = storageInventoryState.data?.idb?.stores || [];
         const details = storageResult.failed.slice(0, 3).map((item) => `${knownStores.find((store) => store.name === item.name)?.label || item.name}：${item.error}`).join('；');
@@ -8773,20 +8779,21 @@ function bindStorageManagementEvents(root) {
       }
     } catch (error) {
       toast(`清理未完成：${error?.message || error}`, 'error');
-      await refreshStorageInventory(true);
-    }
+      if (cleanup.current(false)) await refreshStorageInventory(true);
+    } finally { cleanup.release(); }
   });
   root.querySelector('.sd-storage-chat-clean')?.addEventListener('click', async () => {
-    const selected = await openStorageChatCleanupDialog(storageInventoryState.data);
-    if (!selected?.length) return;
+    const cleanup = storageCleanupSession.begin(root); if (!cleanup) return;
     try {
+      const selected = await openStorageChatCleanupDialog(storageInventoryState.data); cleanup.check();
+      if (!selected?.length) return;
       const planArchiveChats = selected.filter((item) => item.name === 'storyboard_plan_archives').map((item) => item.chatKey);
       if (planArchiveChats.length) {
         storyboardPlanArchiveEpoch++;
         if (storyboardPlanArchiveTimer) clearTimeout(storyboardPlanArchiveTimer);
         storyboardPlanArchiveTimer = null;
       }
-      const result = await blobStore.clearChatScopedStorage(selected);
+      const result = await blobStore.clearChatScopedStorage(selected); cleanup.check();
       const currentStores = [...new Set(result.cleared
         .filter((item) => item.count > 0 && item.chatKey === String(getChatKey() || ''))
         .map((item) => item.name)
@@ -8794,8 +8801,9 @@ function bindStorageManagementEvents(root) {
       const reconciled = currentStores.length ? reconcileClearedStorageItems(currentStores) : { chatMetadataChanged: false };
       reconcileClearedStoryboardPlanChats(result.cleared.filter((item) => item.name === 'storyboard_plan_archives').map((item) => item.chatKey));
       if (reconciled.chatMetadataChanged) await saveMetadata();
+      cleanup.check();
       saveSettings();
-      await refreshStorageInventory(true);
+      await refreshStorageInventory(true); if (!cleanup.current(false)) return;
       if (result.failed.length) {
         const stores = storageInventoryState.data?.idb?.stores || [];
         const details = result.failed.slice(0, 3).map((item) => `${stores.find((store) => store.name === item.name)?.label || item.name}：${item.error}`).join('；');
@@ -8805,8 +8813,8 @@ function bindStorageManagementEvents(root) {
       }
     } catch (error) {
       toast(`按聊天清理未完成：${error?.message || error}`, 'error');
-      await refreshStorageInventory(true);
-    }
+      if (cleanup.current(false)) await refreshStorageInventory(true);
+    } finally { cleanup.release(); }
   });
 }
 
