@@ -1,10 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {preserveCapturedPlanArchives} from '../qianmu-plan-archive-write.js';
+import {preserveCapturedPlanArchives,releasePlanReferencesForChats} from '../qianmu-plan-archive-write.js';
 import {createConfigUndoSlot} from '../qianmu-config-undo.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const captured=()=>[{key:'chat␟plan',chatKey:'chat',id:'plan',updatedAt:1,status:'completed',plan:{shots:[{prompt:'kept'}]}}];
+
+test('reference cleanup preserves payload identity and unselected or unarchived metadata',()=>{
+  const payload=[{prompt:'keep original words'}],plans=[
+    {messageRef:{chatKey:'a'},archiveRef:'original-a',archiveVersion:1,archivedAt:9,shots:payload},
+    {chatKey:'b',archiveRef:'original-b',archiveVersion:2},
+    {chatKey:'a',archiveVersion:7},
+  ];
+  assert.equal(releasePlanReferencesForChats(plans,new Set(['a'])),true);
+  assert.equal(plans[0].shots,payload);assert.equal(plans[0].archiveRef,undefined);
+  assert.deepEqual(plans[1],{chatKey:'b',archiveRef:'original-b',archiveVersion:2});
+  assert.deepEqual(plans[2],{chatKey:'a',archiveVersion:7});
+  assert.equal(releasePlanReferencesForChats(plans,new Set(['a'])),false);
+});
 
 test('archive bridge requires preservation and returns committed variant without mutating captured payload',async()=>{
   const captures=captured(),before=structuredClone(captures),key=captures[0].key+'␟revision:'+'a'.repeat(64);

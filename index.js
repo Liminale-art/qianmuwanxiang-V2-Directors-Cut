@@ -6,7 +6,7 @@ import { receiveComfyImage, resolveComfyRecoveryKey } from './qianmu-comfy-recov
 import { receiveServiceImage } from './qianmu-service-recovery-action.js';
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
 import { createConfigUndoAction } from './qianmu-config-undo-action.js';
-import { preserveCapturedPlanArchives } from './qianmu-plan-archive-write.js';
+import { preserveCapturedPlanArchives, releasePlanReferencesForChats } from './qianmu-plan-archive-write.js';
 import { renderStorageBackupSection } from './qianmu-storage-backup-view.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
 import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -8608,15 +8608,7 @@ function reconcileClearedStoryboardPlanChats(chatKeys = []) {
   if (storyboardPlanArchiveTimer) clearTimeout(storyboardPlanArchiveTimer);
   storyboardPlanArchiveTimer = null;
   storyboardPlanArchiveCache.clear();
-  let changed = false;
-  for (const plan of storyboardState().shotPlans || []) {
-    if (!keys.has(String(plan.chatKey || plan.messageRef?.chatKey || '')) || !plan.archiveRef) continue;
-    delete plan.archiveRef;
-    delete plan.archiveVersion;
-    delete plan.archivedAt;
-    changed = true;
-  }
-  return changed;
+  return releasePlanReferencesForChats(storyboardState().shotPlans || [], keys);
 }
 
 function paintStorageManagementCard() {

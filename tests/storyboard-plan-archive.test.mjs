@@ -97,7 +97,7 @@ test('storage cleanup invalidates references and lifecycle performs idle migrati
   assert.match(source, /storyboard_plan_archives: \['不可恢复 · 分镜历史计划', true\]/);
   assert.match(source, /STORAGE_CHAT_CLEARABLE[^\n]*storyboard_plan_archives/);
   assert.match(source, /cleared\.has\('storyboard_plan_archives'\)[\s\S]*delete plan\.archiveRef/);
-  assert.match(source, /reconcileClearedStoryboardPlanChats[\s\S]*keys\.has[\s\S]*delete plan\.archiveRef/);
+  assert.match(source, /reconcileClearedStoryboardPlanChats[\s\S]*releasePlanReferencesForChats\(storyboardState\(\)\.shotPlans \|\| \[\], keys\)/);
   assert.match(source, /const appReadyHandler[\s\S]*storyboardSchedulePlanArchive\(1200\)/);
   const appReady = source.slice(source.indexOf('const appReadyHandler'), source.indexOf('const personaChangedHandler'));
   assert.doesNotMatch(appReady, /getStoryboardPlanArchives/, 'startup migration must not scan archived plan details');

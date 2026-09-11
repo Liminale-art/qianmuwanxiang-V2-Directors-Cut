@@ -1,6 +1,18 @@
 // Immutable plan archive variants. Hashing finishes before the IndexedDB transaction.
 // Native Web Crypto avoids importing media parsers into the shared blob store.
 const identity = row => JSON.stringify([row.chatKey, row.planId, row.plan]);
+// Release only metadata for confirmed chat groups; payloads and other chats stay intact.
+export function releasePlanReferencesForChats(plans, keys) {
+  let changed = false;
+  for (const plan of plans) {
+    if (!keys.has(String(plan.chatKey || plan.messageRef?.chatKey || '')) || !plan.archiveRef) continue;
+    delete plan.archiveRef;
+    delete plan.archiveVersion;
+    delete plan.archivedAt;
+    changed = true;
+  }
+  return changed;
+}
 export async function preserveCapturedPlanArchives(captures, write) {
   const result = await write(captures.map(item => ({key:item.key, chatKey:item.chatKey, planId:item.id,
     plan:structuredClone(item.plan), updatedAt:item.updatedAt})), {preserveExisting:true});

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {releasePlanReferencesForChats} from '../qianmu-plan-archive-write.js';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
 
 // Execute the real button callback and reference reconciliation. Only database IO
@@ -10,7 +11,7 @@ function fixture(result) {
     id:'plan-'+chatKey,chatKey,archiveRef:'original-'+chatKey,archiveVersion:1,archivedAt:7,
   }))};
   const selected=['a','b'].map(chatKey=>({name:'storyboard_plan_archives',chatKey}));
-  const c=vm.createContext({storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
+  const c=vm.createContext({releasePlanReferencesForChats,storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
     storageInventoryState:{data:{idb:{stores:[]}}},storyboardState:()=>state,
     openStorageChatCleanupDialog:async()=>selected,blobStore:{clearChatScopedStorage:async entries=>{assert.equal(entries,selected);return result;}},
     getChatKey:()=> 'a',reconcileClearedStorageItems:()=>({chatMetadataChanged:false}),saveSettings(){},
