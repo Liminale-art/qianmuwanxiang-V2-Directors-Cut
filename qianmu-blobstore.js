@@ -344,6 +344,67 @@ export async function deleteBook(bookId) {
   try { const c = await store(STORE_COVERS, 'readwrite'); await reqP(c.delete(bookId)); } catch (_) {}
 }
 
+// Destructive shelf removal is one transaction, not a series of successful requests.
+// The synchronous archive callback sees the latest bucket under the same write lock.
+export async function deleteReaderBookData(bookId, { deleteMemory = false, archiveSlices, sliceSchemaVersion, isCurrent = () => true } = {}) {
+  if (typeof bookId !== 'string' || !bookId.trim() || (!deleteMemory && typeof archiveSlices !== 'function')) {
+    throw new TypeError('书籍清理参数无效');
+  }
+  if (!isCurrent()) return { status: 'stale' };
+  const db = await openDB();
+  if (!isCurrent()) return { status: 'stale' };
+  const stores = [STORE_BOOKS, STORE_COVERS, STORE_IMAGES, STORE_CHATS, ...(deleteMemory ? [STORE_VECTORS] : [])];
+  const tx = db.transaction(stores, 'readwrite');
+  return new Promise((resolve, reject) => {
+    let stale = false, failure;
+    const counts = { books: 0, covers: 0, images: 0, conversations: 0, buckets: 0, vectors: 0 };
+    const error = () => failure || tx.error || new Error('书籍资源清理未提交');
+    tx.oncomplete = () => resolve({ status: 'committed', counts });
+    tx.onerror = () => { if (!stale || failure) reject(error()); };
+    tx.onabort = () => stale && !failure ? resolve({ status: 'stale' }) : reject(error());
+    const abort = cause => { failure = cause; try { tx.abort(); } catch (_) { reject(cause); } };
+    const guard = () => {
+      if (isCurrent()) return true;
+      stale = true; tx.abort(); return false;
+    };
+    const watch = request => { request.onsuccess = () => { try { guard(); } catch (cause) { abort(cause); } }; };
+    const exact = (storeName, field) => {
+      const target = tx.objectStore(storeName), request = target.getKey(bookId);
+      request.onsuccess = () => {
+        try { if (guard() && request.result !== undefined) { counts[field]++; watch(target.delete(bookId)); } }
+        catch (cause) { abort(cause); }
+      };
+    };
+    const scan = (storeName, field, matches) => {
+      // Key cursors avoid loading image Blobs and vector arrays merely to delete them.
+      const target = tx.objectStore(storeName), request = storeName === STORE_CHATS && !deleteMemory ? target.openCursor() : target.openKeyCursor();
+      request.onsuccess = () => {
+        try {
+          if (!guard()) return;
+          const cursor = request.result;
+          if (!cursor) return;
+          if (typeof cursor.key === 'string' && matches(cursor.key)) {
+            if (storeName === STORE_CHATS && !deleteMemory) {
+              const rec = cursor.value, slices = archiveSlices(rec.slices || [], bookId, cursor.key);
+              if (!Array.isArray(slices)) throw new TypeError('记忆归档必须同步返回切片');
+              if (rec.messages?.length || rec.assistantMessages?.length) counts.conversations++;
+              watch(cursor.update({ ...rec, messages: [], assistantMessages: [], slices, cursor: 0, summaryFloor: 0,
+                lastInjected: null, sliceSchemaVersion, updatedAt: Date.now() }));
+            } else { watch(target.delete(cursor.key)); counts[field]++; }
+          }
+          cursor.continue();
+        } catch (cause) { abort(cause); }
+      };
+    };
+    try {
+      exact(STORE_BOOKS, 'books'); exact(STORE_COVERS, 'covers');
+      scan(STORE_IMAGES, 'images', key => key.startsWith(`${bookId}::`));
+      scan(STORE_CHATS, 'buckets', key => key.endsWith(`::${bookId}`));
+      if (deleteMemory) scan(STORE_VECTORS, 'vectors', key => key.endsWith(`::${bookId}`));
+    } catch (cause) { abort(cause); }
+  });
+}
+
 export async function listBookIds() {
   const s = await store(STORE_BOOKS, 'readonly');
   const keys = await reqP(s.getAllKeys ? s.getAllKeys() : s.getAll());
