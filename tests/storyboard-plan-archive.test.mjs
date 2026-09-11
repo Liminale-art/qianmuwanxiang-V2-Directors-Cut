@@ -68,7 +68,8 @@ test('portable exports hydrate full plans while imports discard local references
   assert.match(source, /async function exportConfig[\s\S]*await storyboardPlansForPortableExport\(snapshot\.imagegen\.shotPlans\)/);
   assert.match(source, /async function storyboardExportPackage[\s\S]*await storyboardPlansForPortableExport/);
   assert.match(source, /type: 'qianmu-storyboard', version: 6/);
-  assert.match(source, /async function importConfig[\s\S]*delete plan\.archiveRef[\s\S]*clearStoryboardPlanArchives/);
+  assert.match(source, /async function importConfig[\s\S]*delete plan\.archiveRef/);
+  assert.doesNotMatch(source.slice(source.indexOf('async function importConfig('),source.indexOf('function exportTemplates(')), /clearStoryboardPlanArchives/, 'configuration replacement must not erase historical originals before committing settings');
   const importer=source.slice(source.indexOf('async function storyboardImportPackage'),source.indexOf('function storyboardRelinkRedrawSnapshot'));
   assert.match(importer, /prepareMutation[\s\S]*storyboardApplyPackageMutation/);
   assert.doesNotMatch(importer, /storyboardDeletePlanArchives|storyboardDeleteRecordSnapshots|storyboardSchedulePlanArchive|storyboardArchiveGallerySnapshots/,'pending import must keep old archives available for recovery');

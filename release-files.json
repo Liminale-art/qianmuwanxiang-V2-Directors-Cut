@@ -3,6 +3,7 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-config-connections.js",
     "qianmu-focus-lock.js",
     "qianmu-focus-voice.js",
     "qianmu-focus-time.js",
