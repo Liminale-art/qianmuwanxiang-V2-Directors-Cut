@@ -119,7 +119,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     row = await save(job, { ...row, status: 'archived' });
     return acknowledge(job, row);
   }
-  return {
+  const client = {
     async usage() {
       const current = await scope(), usage = await store.usage(current.namespace); await guard(current.job);
       return { ...usage, namespace: current.namespace };
@@ -223,4 +223,17 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     },
     close() { closed = true; for (const controller of controllers) controller.abort(); store.close(); },
   };
+  // Restore must wait for the entire operation, not just its HTTP requests.
+  // Nested retrieval and overlapping reads each retain their own activity.
+  let pending = 0;
+  for (const [name, action] of Object.entries(client)) {
+    if (name === 'close') continue;
+    client[name] = async function (...args) {
+      pending++;
+      try { return await action.apply(this, args); }
+      finally { pending--; }
+    };
+  }
+  Object.defineProperty(client, 'busy', { get: () => pending > 0 });
+  return client;
 }

@@ -27,6 +27,51 @@ function setup(options = {}) {
 }
 const callback = async (data, files, checkpoint, guard) => { await guard(); await checkpoint(data.images.map((_, index) => ({ url: files[index]?.url || `/user/images/${index}.png`, prompt: 'must not persist' }))); return true; };
 
+test('recovery activity covers delivery and acknowledgement after the image request has finished', async () => {
+  const entered = deferred(), release = deferred(), ackEntered = deferred(), ackRelease = deferred();
+  const s = setup({ respond: async action => {
+    if (action === 'acknowledge') { ackEntered.resolve(); await ackRelease.promise; return json({ ok: true }); }
+    return json(action === 'query' ? { ok: true, task: { resultStored: true, live: false } } : result());
+  } });
+  assert.equal(s.client.busy, false);
+  const running = s.client.retrieve(job(), { deliver: async (...args) => {
+    entered.resolve(); await release.promise; return callback(...args);
+  } });
+  assert.equal(s.client.busy, true, 'block restoration before the first async boundary');
+  await entered.promise;
+  assert.equal(s.client.busy, true, 'the image response is not the end of archival');
+  release.resolve(); await ackEntered.promise;
+  assert.equal(s.client.busy, true, 'server acknowledgement is still part of the original operation');
+  ackRelease.resolve(); assert.equal((await running).archived, true);
+  assert.equal(s.client.busy, false);
+  assert.deepEqual(s.calls.map(call => call.action), ['query', 'result', 'acknowledge']);
+});
+
+test('one rejected concurrent operation must not unlock restoration while another delivery is pending', async () => {
+  const entered = deferred(), release = deferred(), s = setup();
+  const running = s.client.deliver(job(), result(), async (...args) => {
+    entered.resolve(); await release.promise; return callback(...args);
+  });
+  await entered.promise;
+  await assert.rejects(s.client.retrieve(job(), { deliver: callback }), { code: 'comfy_delivery_busy' });
+  assert.equal(s.client.busy, true);
+  release.resolve(); await running; assert.equal(s.client.busy, false);
+  await assert.rejects(s.client.discard([]), { code: 'comfy_delivery_selection' });
+  assert.equal(s.client.busy, false, 'validation failure must release only its own activity');
+});
+
+test('closing recovery does not fake idle while a previously entered delivery is still settling', async () => {
+  const entered = deferred(), release = deferred(), s = setup();
+  const running = s.client.deliver(job(), result(), async (...args) => {
+    entered.resolve(); await release.promise; return callback(...args);
+  });
+  await entered.promise; s.client.close();
+  assert.equal(s.client.busy, true);
+  release.resolve(); await assert.rejects(running, { code: 'comfy_delivery_closed' });
+  assert.equal(s.client.busy, false);
+  assert.equal(s.calls.length, 0, 'closing must not acknowledge an unfinished archive');
+});
+
 test('Comfy preparation is lazy, bounded to an identity and strips all recipe and credentials', async () => {
   const s = setup(); assert.equal(s.rows.size, 0); assert.equal(s.calls.length, 0);
   const binding = await s.client.prepare({ ...job(), workflow: 'large-workflow', apiKey: 'test-secret', prompt: 'garden' });
