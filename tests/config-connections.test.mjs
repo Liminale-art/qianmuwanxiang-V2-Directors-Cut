@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as policy from '../qianmu-config-connections.js';
+import {finishConfigRestore} from '../qianmu-config-apply.js';
 import {migrateTtsProviderSettingsState} from '../qianmu-tts-providers.js';
 import {mergeDefaults} from '../qianmu-storyboard-utils.js';
 import * as utilities from '../qianmu-storyboard-utils.js';
@@ -60,7 +61,7 @@ test('supported envelopes retain explicit included APIs; malformed or unsafe dat
 
 function fixture() {
   const downloads=[],notices=[],writes=[],context={extensionSettings:{}};
-  const c=vm.createContext({...policy,settings:settings(),clone:structuredClone,isPlainObject:v=>v&&typeof v==='object'&&!Array.isArray(v),Blob,
+  const c=vm.createContext({...policy,finishConfigRestore,PROSE_LAYOUT_STORAGE_KEY:'fixture-layout',settings:settings(),clone:structuredClone,isPlainObject:v=>v&&typeof v==='object'&&!Array.isArray(v),Blob,
     confirmDialog:async()=>false,configRestoreActivity:()=>({}),normalizeStoryboardState:structuredClone,storyboardPlansForPortableExport:async value=>value,
     ttsDownloadBlob:(blob,name)=>downloads.push({blob,name}),toast:(...args)=>notices.push(args),fileStamp:()=> 'fixture',ctx:()=>context,MODULE_NAME:'module',DEFAULT_SETTINGS:{},
     mergeDefaults:()=>{},migrateSettings:()=>{},storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
@@ -228,6 +229,30 @@ test('actual excluded import preserves local API paths and does not clear archiv
   const file={text:async()=>JSON.stringify({version:2,type:'qianmu-config',includeApi:false,settings:settings()})};
   await e.c.importConfig({target:{files:[file],value:'selected'}});
   assert.equal(e.c.settings.apiKey,'target-credential');assert.equal(e.c.settings.tts.providers.doubao.apiKey,'target-credential');assert.equal(e.writes.length,1);
+});
+
+test('actual import restores settings and raw layout after save failure without invalidating archives',async()=>{
+  const e=fixture(),owner=e.c.settings;let cache='raw old cache',saves=0;e.c.confirmDialog=async()=>true;
+  e.c.localStorage={getItem:()=>cache,setItem:(k,v)=>{cache=v;},removeItem:()=>{cache=null;}};
+  e.c.saveSettings=()=>{if(++saves===1)throw Error('synthetic save failure');};
+  await e.c.importConfig({target:{files:[{text:async()=>JSON.stringify({version:2,type:'qianmu-config',includeApi:false,settings:{proseLayout:{width:99}}})}],value:'x'}});
+  assert.equal(e.c.settings,owner);assert.equal(e.c.ctx().extensionSettings.module,undefined);assert.equal(cache,'raw old cache');assert.equal(saves,2);
+  assert.equal(e.c.storyboardPlanArchiveEpoch,0);assert.match(e.notices.at(-1)[0],/当前页面已恢复原配置.*保存结果未确认/);
+});
+
+test('view errors after a successful import warn without rolling back or resubmitting configuration',async()=>{
+  const e=fixture();e.c.confirmDialog=async()=>true;e.c.renderModal=()=>{throw Error('synthetic render failure');};
+  await e.c.importConfig({target:{files:[{text:async()=>JSON.stringify({version:2,type:'qianmu-config',includeApi:false,settings:{theme:'new'}})}],value:'x'}});
+  assert.equal(e.c.settings.theme,'new');assert.equal(e.writes.length,1);assert.equal(e.c.storyboardPlanArchiveEpoch,1);
+  assert.match(e.notices.at(-1)[0],/配置已应用，但页面更新未完成/);assert.equal(e.notices.at(-1)[1],'warning');
+});
+
+test('a delayed injection never renders or announces the old import over a new settings owner',async()=>{
+  const e=fixture();e.c.confirmDialog=async()=>true;let release,rendered=0;
+  e.c.applyDirectorInjection=()=>new Promise(r=>release=r);e.c.renderModal=()=>rendered++;
+  const pending=e.c.importConfig({target:{files:[{text:async()=>JSON.stringify({version:2,type:'qianmu-config',includeApi:false,settings:{theme:'new'}})}],value:'x'}});
+  await new Promise(r=>setImmediate(r));assert.equal(typeof release,'function');const other=settings('other');e.c.settings=other;release();await pending;
+  assert.equal(e.c.settings,other);assert.equal(rendered,0);assert.equal(e.writes.length,1);assert.equal(e.notices.length,0);
 });
 
 test('cancelled import and late confirmations or archive reads do not export/import another settings owner',async()=>{

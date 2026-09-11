@@ -10,7 +10,7 @@ await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.origin==='https://qianmu.test'){
     if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<section class="sd-storage-backup-section"><button class="sd-export-config">导出</button><button class="sd-import-config">导入</button><input class="sd-import-config-file" type="file"></section>'});
-    if(['/qianmu-config-connections.js','/qianmu-data-migrations.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
+    if(['/qianmu-config-connections.js','/qianmu-config-apply.js','/qianmu-data-migrations.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
   }
   external++;return route.abort();
 });
@@ -18,6 +18,7 @@ try{
   const page=await context.newPage();page.on('pageerror',e=>{errors.push(e.message);console.error('Isolated page error:',e.message);});await page.goto('https://qianmu.test');
   await page.evaluate(async source=>{
     Object.assign(window,await import('/qianmu-config-connections.js'));
+    Object.assign(window,await import('/qianmu-config-apply.js'),{PROSE_LAYOUT_STORAGE_KEY:'fixture-layout'});
     window.settings={apiKey:'fixture-main-private',apiUrl:'https://fixture.invalid',theme:'dark',tts:{providers:{doubao:{apiKey:'fixture-tts-private',accessKey:'fixture-access-private',voiceLibrary:[{voiceId:'saved-voice'}]}}},coread:{books:[{id:'book',progress:.6}],memory:{summaryApiKey:'fixture-summary-private'}}};
     window.notices=[];window.prompts=[];window.allow=false;window.saved=0;
     window.context={extensionSettings:{}};Object.assign(window,{clone:structuredClone,confirmDialog:async(title,text)=>{prompts.push(text);return allow;},

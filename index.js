@@ -1,5 +1,6 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, configRestoreGate, configRestoreSummary } from './qianmu-config-connections.js';
+import { finishConfigRestore } from './qianmu-config-apply.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
 import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
 import { inspectFocusLock, createFocusLockGuard } from './qianmu-focus-lock.js';
@@ -25654,24 +25655,16 @@ async function importConfig(event) {
   let merged;
   try { merged = prepareConfigRestore(incoming, owner, DEFAULT_SETTINGS, preserveConnections, {clone, mergeDefaults, normalizeStoryboardState, migrateSettings}); seedBuiltinTheaters(merged); }
   catch (_) { return toast('配置无法恢复，当前设置未改变。', 'error'); }
-  const extensionSettings = ctx().extensionSettings ||= {};
-  if (isPlainObject(merged.proseLayout)) {
-    merged.proseLayout.updatedAt = Date.now();
-    cacheProseLayout(merged.proseLayout);
-  }
-  storyboardPlanArchiveEpoch++;
-  if (storyboardPlanArchiveTimer) clearTimeout(storyboardPlanArchiveTimer);
-  storyboardPlanArchiveTimer = null;
-  storyboardPlanArchiveCache.clear();
-  // Import replaces settings, not historical originals; retain old archives for explicit storage management.
-  extensionSettings[MODULE_NAME] = merged;
-  settings = merged;
-  saveSettings();
-  storyboardSchedulePlanArchive(600);
-  await applyDirectorInjection();
-  renderFloatButton();
-  renderModal();
-  toast('配置已导入并覆盖。', 'success');
+  await finishConfigRestore({prepared:merged, owner, host:ctx().extensionSettings ||= {}, slot:MODULE_NAME,
+    setCurrent:value=>{settings=value;}, current:()=>settings, save:saveSettings,
+    layoutStorage:()=>globalThis.localStorage, layoutKey:PROSE_LAYOUT_STORAGE_KEY,
+    afterApply:()=>{
+      storyboardPlanArchiveEpoch++;
+      if (storyboardPlanArchiveTimer) clearTimeout(storyboardPlanArchiveTimer);
+      storyboardPlanArchiveTimer = null;
+      storyboardPlanArchiveCache.clear();
+      storyboardSchedulePlanArchive(600);
+    }, inject:applyDirectorInjection, render:()=>{renderFloatButton();renderModal();}, notify:toast});
 }
 
 function exportTemplates(ids = null) {

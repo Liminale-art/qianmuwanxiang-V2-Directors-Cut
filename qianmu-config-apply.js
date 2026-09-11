@@ -37,3 +37,26 @@ export function applyPreparedConfig({prepared, owner, host, slot, setCurrent, sa
     return {status:complete ? 'reverted' : 'incomplete', persistence:saveAttempted ? 'uncertain' : 'not-requested'};
   }
 }
+
+// Derived caches/views are updated only after the configuration handoff succeeds.
+// A view error must never masquerade as an unapplied import or trigger a second import.
+export async function finishConfigRestore(options) {
+  const result = applyPreparedConfig(options);
+  if (result.status !== 'applied') {
+    const messages = {
+      rejected:'配置未应用，当前设置未改变。请检查储存状态后重试。',
+      reverted:result.persistence === 'uncertain' ? '当前页面已恢复原配置；保存结果未确认，请先导出备份并检查。' : '配置未应用，已恢复原状态。',
+      incomplete:'配置恢复未完成，部分状态未能还原；请勿继续覆盖，先导出备份并检查。',
+    };
+    options.notify(messages[result.status], 'error');
+    return result;
+  }
+  let viewFailed = false;
+  for (const effect of [options.afterApply, options.inject, options.render]) {
+    if (options.current() !== options.prepared) return {...result, view:'stale'};
+    try { await effect(); } catch (_) { viewFailed = true; }
+  }
+  if (options.current() !== options.prepared) return {...result, view:'stale'};
+  options.notify(viewFailed ? '配置已应用，但页面更新未完成，请重新打开千幕检查。' : '配置已导入并覆盖。', viewFailed ? 'warning' : 'success');
+  return {...result, view:viewFailed ? 'incomplete' : 'updated'};
+}
