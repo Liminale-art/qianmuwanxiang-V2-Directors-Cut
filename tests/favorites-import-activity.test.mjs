@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
 import {createStorageCleanupSession} from '../qianmu-storage-cleanup-session.js';
-import {FAVORITES_BACKUP_LIMITS} from '../qianmu-library-backup.js';
+import {FAVORITES_BACKUP_LIMITS,FAVORITE_TEXT_LIMITS} from '../qianmu-library-backup.js';
 const payload=JSON.stringify({type:'qianmu-tts-favorites',version:1,entries:[{id:'one',data:'AA=='},{id:'two',data:'AA=='}]});
 function fixture(){
   const saved=[],notices=[],view={isConnected:true,open:true,classList:{contains:()=>view.open}};
-  const c=vm.createContext({FAVORITES_BACKUP_LIMITS,settings:{},storyboardAdmissionEpoch:1,document:{getElementById:()=>view},MODAL_ID:'fixture',activeTab:'api',
+  const c=vm.createContext({FAVORITES_BACKUP_LIMITS,FAVORITE_TEXT_LIMITS,settings:{},storyboardAdmissionEpoch:1,document:{getElementById:()=>view},MODAL_ID:'fixture',activeTab:'api',
     toast:m=>notices.push(m),uid:()=> 'copy',base64ToBlob:()=>({size:1}),storageSafeFavoriteMeta:x=>x,refreshStorageInventory:async()=>{},
     blobStore:{hasFavorite:async()=>false,addFavorite:async id=>saved.push(id)}});
   vm.runInContext(source('importTtsFavoritesBackup'),c);

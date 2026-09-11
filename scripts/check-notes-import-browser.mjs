@@ -212,6 +212,9 @@ try{
     check('non-restorable deep originals remain byte-complete in a marked preservation copy',preserved.preservationOnly&&await preserved.blob.text()===originalText);
     let refused=false;try{await readCoreadPackageFile(preserved.blob);}catch{refused=true;}
     check('preservation classification agrees with the current native import rejection',refused);
+    const {prepareLibraryBackup}=await import('/qianmu-library-backup.js');
+    const longNote={id:'native-long-note',body:'🌙'.repeat(20001),pinned:true},longBackup=prepareLibraryBackup({type:'qianmu-notes',version:1,notes:[longNote]});
+    check('native note backup preserves long Unicode prose and marks its restoration limit',longBackup.preservationOnly&&JSON.parse(await longBackup.blob.text()).notes[0].body===longNote.body);
     const mount=reader=>{
       const host=document.createElement('section');host.innerHTML=reader?'<div class="sd-reader-morepage"><input hidden></div>':'<div id="story-director-modal" class="open"><section><input hidden></section></div>';
       document.body.append(host);const root=host.firstElementChild,input=host.querySelector('input'),token=createCoreadImportViewGuard(input);
@@ -242,5 +245,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,113);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,114);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

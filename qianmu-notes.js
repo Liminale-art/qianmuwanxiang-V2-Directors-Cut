@@ -2,7 +2,7 @@
 // 固定便笺写入 IndexedDB；未固定便笺只存在当前页面运行态，重开 ST 自动消失。
 
 import * as blobStore from './qianmu-blobstore.js';
-import {NOTES_BACKUP_LIMITS} from './qianmu-library-backup.js';
+import {NOTES_BACKUP_LIMITS,NOTE_TEXT_LIMITS} from './qianmu-library-backup.js';
 
 const temporaryNotes = new Map();
 
@@ -14,12 +14,12 @@ const number = (value, fallback, min, max) => {
 
 export function normalizeQianmuNote(input = {}) {
   const now = Date.now();
-  const id = text(input.id || `note-${now}-${Math.random().toString(36).slice(2, 8)}`, 120);
+  const id = text(input.id || `note-${now}-${Math.random().toString(36).slice(2, 8)}`, NOTE_TEXT_LIMITS.id);
   return {
     schemaVersion: 1,
     id,
-    title: text(input.title, 120),
-    body: text(input.body, 20000),
+    title: text(input.title, NOTE_TEXT_LIMITS.title),
+    body: text(input.body, NOTE_TEXT_LIMITS.body),
     pinned: Boolean(input.pinned),
     floating: Boolean(input.floating),
     minimized: Boolean(input.minimized),
@@ -94,7 +94,7 @@ export async function importQianmuNotesBackup(file, {check, read, write, uid, pr
     check();
     const raw = incoming[index];
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { failed.push(`第 ${index + 1} 条格式无效`); continue; }
-    let id = String(raw.id || '').trim().slice(0, 120);
+    let id = String(raw.id || '').trim().slice(0, NOTE_TEXT_LIMITS.id);
     if (!id || occupiedIds.has(id)) id = uid('note-import');
     occupiedIds.add(id);
     try {

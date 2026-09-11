@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
-import {exportLibraryBackup} from '../qianmu-library-backup.js';
+import {exportLibraryBackup,FAVORITE_TEXT_LIMITS} from '../qianmu-library-backup.js';
 
 function fixture(){
   const f={notes:[{id:'note',body:'完整原文',pinned:true},{id:'temporary',body:'session only',pinned:false}],favorites:[{id:'voice',blob:new Blob(['synthetic audio'],{type:'audio/mpeg'}),label:'收藏',meta:{speaker:'角色',apiKey:'never export'},createdAt:123}],downloads:[],notices:[]};
   f.icon={className:'original-icon'};f.button={isConnected:true,disabled:false,querySelector:()=>f.icon};
   f.modal={isConnected:true,open:true,classList:{contains:()=>f.modal.open}};f.other={};
-  const c=vm.createContext({exportLibraryBackup,confirmDialog:async()=>true,settings:{},storyboardAdmissionEpoch:1,MODAL_ID:'fixture',document:{getElementById:()=>f.modal},Blob,clone:structuredClone,blobStore:{listNotes:async()=>f.notes,listFavorites:async()=>f.favorites},
+  const c=vm.createContext({exportLibraryBackup,FAVORITE_TEXT_LIMITS,confirmDialog:async()=>true,settings:{},storyboardAdmissionEpoch:1,MODAL_ID:'fixture',document:{getElementById:()=>f.modal},Blob,clone:structuredClone,blobStore:{listNotes:async()=>f.notes,listFavorites:async()=>f.favorites},
     fileStamp:()=> 'fixture',blobToBase64:async blob=>Buffer.from(await blob.arrayBuffer()).toString('base64'),
     ttsDownloadBlob:(blob,name)=>f.downloads.push({blob,name}),toast:(...args)=>f.notices.push(args),setQianmuIconClass:(icon,name)=>icon.className=name});
   vm.runInContext(['createStorageBackupCheck','storageSafeFavoriteMeta','exportPinnedNotesBackup','exportTtsFavoritesBackup'].map(source).join('\n'),c);
@@ -26,6 +26,19 @@ test('normal module exports preserve pinned prose and audio bytes with their exi
   assert.equal(favorites.entries[0].meta.speaker,'角色');assert.equal(favorites.entries[0].meta.apiKey,undefined);
   assert.equal(f.downloads[0].name,'qianmu-notes-fixture.json');assert.equal(f.downloads[1].name,'qianmu-语音收藏-fixture.json');
   assert.equal(f.button.disabled,false);assert.equal(f.icon.className,'original-icon');
+});
+
+test('actual library exports preserve long source text in marked copies while import metadata defaults remain bounded',async()=>{
+  const f=fixture();f.notes[0].body='正文'.repeat(12000);f.notes[0].title='标题'.repeat(80);
+  const favorite=f.favorites[0];favorite.id='id'.repeat(150);favorite.label='名称'.repeat(600);
+  favorite.meta={text:'台词'.repeat(7000),speaker:'声线'.repeat(300),apiKey:'never export',unknownSecret:'never export'};
+  await f.c.exportPinnedNotesBackup(f.button);await f.c.exportTtsFavoritesBackup(f.button);
+  const notes=JSON.parse(await f.downloads[0].blob.text()),saved=JSON.parse(await f.downloads[1].blob.text()).entries[0];
+  assert.equal(notes.notes[0].body,f.notes[0].body);assert.equal(notes.notes[0].title,f.notes[0].title);
+  assert.equal(saved.id,favorite.id);assert.equal(saved.label,favorite.label);assert.equal(saved.meta.text,favorite.meta.text);assert.equal(saved.meta.speaker,favorite.meta.speaker);
+  assert.equal(saved.meta.apiKey,undefined);assert.equal(saved.meta.unknownSecret,undefined);
+  assert.ok(f.downloads.every(d=>d.name.includes('preservation-')));assert.ok(f.notices.every(n=>n[1]==='warning'));
+  const imported=f.c.storageSafeFavoriteMeta(favorite.meta);assert.equal(imported.text.length,12000);assert.equal(imported.speaker.length,512);assert.equal(imported.apiKey,undefined);
 });
 
 test('missing, empty or unreadable audio never produces a partial successful backup even after a good first row',async()=>{
