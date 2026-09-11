@@ -1,4 +1,5 @@
 // Comfy delivery only: no generation route, reference upload or workflow copy.
+import { trackClientActivity } from './qianmu-client-activity.js';
 import { prepareComfySubmission, assertComfyAccount, acknowledgeComfyImage } from './qianmu-comfy-submission.js';
 import { resolveImageAccountNamespace } from './qianmu-image-admission.js';
 import { imageChannelKey } from './qianmu-image-channel.js';
@@ -223,17 +224,5 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     },
     close() { closed = true; for (const controller of controllers) controller.abort(); store.close(); },
   };
-  // Restore must wait for the entire operation, not just its HTTP requests.
-  // Nested retrieval and overlapping reads each retain their own activity.
-  let pending = 0;
-  for (const [name, action] of Object.entries(client)) {
-    if (name === 'close') continue;
-    client[name] = async function (...args) {
-      pending++;
-      try { return await action.apply(this, args); }
-      finally { pending--; }
-    };
-  }
-  Object.defineProperty(client, 'busy', { get: () => pending > 0 });
-  return client;
+  return trackClientActivity(client);
 }

@@ -1,5 +1,6 @@
 // Optional service transport. Loading this module does not open storage or probe.
 import { imageChannelKey } from './qianmu-image-channel.js';
+import { trackClientActivity } from './qianmu-client-activity.js';
 import { resolveImageAccountNamespace } from './qianmu-image-admission.js';
 import { sanitizeStoryboardSnapshot, sanitizeStoryboardDiagnosticData } from './qianmu-storyboard.js';
 import { normalizeNativeReviewView, normalizeNativeReceipt } from './qianmu-native-review-contract.js';
@@ -201,7 +202,7 @@ export function createImageServiceClient({ store = createImageServiceClientStore
       return { archived: true, warning: '' };
     } catch (_) { return { archived: true, warning: '本地已归档；服务暂存待清理' }; }
   }
-  return {
+  return trackClientActivity({
     probe,
     async historyReviews(scope, seeds) {
       const namespace = await account(); await assertAccount(namespace);
@@ -396,5 +397,5 @@ export function createImageServiceClient({ store = createImageServiceClientStore
       });
     },
     close() { closed = true; store.close(); },
-  };
+  });
 }

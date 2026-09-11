@@ -46,6 +46,23 @@ function setup(options = {}) {
 }
 const submit = (s, extra = {}) => s.client.submit(job(), request, { beforeSubmit: async () => {}, deliver: async () => true, ...extra });
 
+test('service activity covers completed network requests through delivery and final acknowledgement',async()=>{
+  const entered=deferred(),release=deferred(),s=setup();
+  const running=submit(s,{deliver:async()=>{entered.resolve();await release.promise;return true;}});
+  assert.equal(s.client.busy,true);await entered.promise;assert.equal(s.client.busy,true);
+  await s.client.list();assert.equal(s.client.busy,true,'parallel list completion must not release the original receipt');
+  release.resolve();await running;assert.equal(s.client.busy,false);
+});
+
+test('closing a service preserves busy state until the old receipt rejects without replay',async()=>{
+  const entered=deferred(),release=deferred(),s=setup();
+  const running=submit(s,{deliver:async()=>{entered.resolve();await release.promise;return true;}});
+  await entered.promise;s.client.close();assert.equal(s.client.busy,true);
+  release.resolve();await assert.rejects(running);assert.equal(s.client.busy,false);
+  assert.equal(s.calls.filter(item=>item.action==='submit').length,1);
+  assert.equal(s.calls.some(item=>item.action==='acknowledge'),false);
+});
+
 async function reviewSetup(options = {}) {
   let confirmed = false, prompts = 0, synced = 0;
   const s = setup({ confirm: async () => { prompts++; return options.confirm ? options.confirm(s) : true; }, fetch: async (action, body) => {

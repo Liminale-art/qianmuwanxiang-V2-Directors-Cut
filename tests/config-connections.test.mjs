@@ -215,7 +215,7 @@ test('actual activity adapter blocks each independent lane without normalizing o
   };
   const base=Object.fromEntries(Object.values(lanes).flat().map(key=>[key,false]));
   const c=vm.createContext({...base,settings:{focusClock:{status:'idle'}},focusClockVoicePreparation:null,
-    storyboardActiveJobs:new Map(),storyboardGenerationPreparing:new Set(),storyboardPreparationRetries:new Set(),storyboardComfyRecovery:null,storyboardReceiveComfyImage:{},storyboardQueue:[],storyboardAutomaticPending:new Map(),
+    storyboardActiveJobs:new Map(),storyboardGenerationPreparing:new Set(),storyboardPreparationRetries:new Set(),storyboardComfyRecovery:null,storyboardReceiveComfyImage:{},storyboardImageService:null,storyboardReceiveServiceImage:{},storyboardQueue:[],storyboardAutomaticPending:new Map(),
     storyboardImportPackage:{},storyboardExportPackage:{},storyboardBundleReview:null});
   vm.runInContext(section('configRestoreActivity'),c);
   const idle=()=>assert.equal(Object.values(c.configRestoreActivity()).some(Boolean),false);
@@ -224,12 +224,13 @@ test('actual activity adapter blocks each independent lane without normalizing o
   for(const [key,value,lane] of [['storyboardActiveJobs',new Map([['job',{}]]),'image'],['storyboardGenerationPreparing',new Set(['job']),'image'],
     ['storyboardPreparationRetries',new Set(['log']),'image'],['storyboardComfyRecovery',{busy:true},'image'],
     ['storyboardReceiveComfyImage',{pending:1},'image'],
+    ['storyboardImageService',{busy:true},'image'],['storyboardReceiveServiceImage',{pending:1},'image'],
     ['storyboardQueue',[{}],'image'],['storyboardAutomaticPending',new Map([['floor',{}]]),'image'],['focusClockVoicePreparation',{busy:true},'focus'],
     ['storyboardImportPackage',{busy:true},'transfer'],['storyboardExportPackage',{busy:true},'transfer'],['storyboardBundleReview',{isOpen:true},'transfer']]){
     const previous=c[key];c[key]=value;assert.ok(c.configRestoreActivity()[lane],key);c[key]=previous;idle();cases++;
   }
   for(const status of ['running','paused']){c.settings.focusClock.status=status;assert.ok(c.configRestoreActivity().focus,status);cases++;}
-  c.settings.focusClock.status='idle';idle();assert.equal(JSON.stringify(c.settings),before);assert.equal(cases,29);
+  c.settings.focusClock.status='idle';idle();assert.equal(JSON.stringify(c.settings),before);assert.equal(cases,31);
 });
 
 test('actual import preserves same-owner changes made during file reading or confirmation',async()=>{

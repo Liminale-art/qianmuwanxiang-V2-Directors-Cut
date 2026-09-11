@@ -19683,6 +19683,8 @@ async function storyboardOpenComfyInbox(root) {
 }
 
 async function storyboardReceiveServiceImage(attemptId, discovered = null, expectedNamespace = discovered?.namespace) {
+  storyboardReceiveServiceImage.pending = (storyboardReceiveServiceImage.pending || 0) + 1;
+  try {
   try {
     const service = await storyboardImageServiceRuntime();
     if (discovered && !await service.rememberOriginal(discovered, { chatKey: String(getChatKey() || '') })) return;
@@ -19705,6 +19707,7 @@ async function storyboardReceiveServiceImage(attemptId, discovered = null, expec
     toast(result.warning || '原图已领取并归档', result.warning ? 'warning' : 'success');
     renderModal();
   } catch (error) { toast(error.message || '原图暂不可领取，未重新生成', 'warning'); }
+  } finally { storyboardReceiveServiceImage.pending--; }
 }
 
 async function storyboardReviewServiceImage(task, namespace, valid = () => true) {
@@ -25636,7 +25639,7 @@ function configRestoreActivity() {
     reader: readerView || coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight || dialogBusy || readerAssistantBusy || coreadComicVisionBusy,
     focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy,
     director: busy || theaterBusy,
-    image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
+    image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || storyboardImageService?.busy || storyboardReceiveServiceImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
     transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen,
   };
 }
