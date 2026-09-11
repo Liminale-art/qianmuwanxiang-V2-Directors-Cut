@@ -1,6 +1,7 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
+import { readCoreadPackageFile, coreadPackageSafeKey } from './qianmu-reader-package.js';
 import { exportConfiguration } from './qianmu-config-export.js';
 import { receiveComfyImage, resolveComfyRecoveryKey } from './qianmu-comfy-recovery-action.js';
 import { receiveServiceImage } from './qianmu-service-recovery-action.js';
@@ -34797,7 +34798,7 @@ function coreadSanitizePackageValue(value) {
   if (!isPlainObject(value)) return value;
   const out = {};
   for (const [key, item] of Object.entries(value)) {
-    if (coreadIsCredentialKey(key) || key === 'books') continue;
+    if (!coreadPackageSafeKey(key) || coreadIsCredentialKey(key) || key === 'books') continue;
     out[key] = coreadSanitizePackageValue(item);
   }
   return out;
@@ -34807,7 +34808,7 @@ function coreadSanitizePackageValue(value) {
 function coreadMergePackageValue(target, source) {
   if (!isPlainObject(source)) return target;
   for (const [key, value] of Object.entries(source)) {
-    if (key === 'books' || key === 'enabled' || coreadIsCredentialKey(key)) continue;
+    if (!coreadPackageSafeKey(key) || key === 'books' || key === 'enabled' || coreadIsCredentialKey(key)) continue;
     if (Array.isArray(value)) {
       const local = Array.isArray(target[key]) ? target[key] : [];
       target[key] = value.map((item, index) => {
@@ -34898,9 +34899,8 @@ async function coreadImportDataFile(file) {
     if (!file) return;
     let data;
     try {
-      data = JSON.parse(await file.text());
-      if (data.type !== 'qianmu-coread' || !Array.isArray(data.books)) throw new Error('格式不符');
-    } catch (_) { toast('导入失败：不是有效的千幕阅读数据文件。', 'error'); return; }
+      data = await readCoreadPackageFile(file);
+    } catch (error) { toast(`导入失败：${error?.message || '不是有效的千幕阅读数据文件。'} 未写入内容，请保留原包。`, 'error'); return; }
     if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地存储，无法导入。', 'error'); return; }
     const chatN = Array.isArray(data.chats) ? data.chats.length : 0;
     const mediaN = (Array.isArray(data.images) ? data.images.length : 0) + (Array.isArray(data.audio) ? data.audio.length : 0);

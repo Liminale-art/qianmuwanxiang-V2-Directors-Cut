@@ -42,6 +42,7 @@
     "qianmu-reader-panel-view.js",
     "qianmu-reader-library-view.js",
     "qianmu-reader-book-cleanup.js",
+    "qianmu-reader-package.js",
     "qianmu-user-identity.js",
     "qianmu-user-alias.js",
     "qianmu-user-alias-bindings.js",
