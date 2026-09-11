@@ -109,5 +109,40 @@ try{
   assert.match(preserved.suggestedFilename(),/^qianmu-config-preservation-/);
   const content=JSON.parse(await readFile(await preserved.path(),'utf8'));let leaf=content.settings.nested;for(let n=0;n<42;n++)leaf=leaf.child;assert.equal(leaf.text,'kept');
   assert.ok(await page.evaluate(()=>notices.some(row=>row[0].includes('当前版本不能直接恢复')&&row[1]==='warning')));
-  assert.deepEqual(errors,[]);assert.equal(external,0);console.log(JSON.stringify({nativeDownload:true,nativeFileInput:true,nestedConnectionsExcluded:true,recipientConnectionsPreserved:true,malformedNoWrite:true,undoCancel:true,undoApplied:true,undoStaleBlocked:true,nativeStorageFailureRetry:true,incompleteCompensationBlocksRetry:true,explicitPreservationDownload:true,external,errors}));
+  // Full shipped CSS and the actual storage-card view, inside the real modal/body
+  // hierarchy. Only inventory data/host are synthetic; no sizing overrides hide overflow.
+  await page.addStyleTag({content:css});
+  await page.evaluate(source=>{
+    window.storageInventoryState={status:'loading',data:null};window.htmlEscape=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;');
+    window.renderFixtureStorage=new Function(source+';return renderStorageManagementCard;')();
+  },section('renderStorageManagementCard'));
+  const layouts=[];
+  for(const width of [320,393,720,1100])for(const theme of ['', 'sd-theme-dark'])for(const recoverable of [false,true]){
+    await page.setViewportSize({width,height:898});
+    await page.evaluate(({theme,recoverable})=>{
+      storageInventoryState.status=recoverable?'error':'loading';storageInventoryState.error='临时盘点不可用';
+      const modal=document.querySelector('#story-director-modal');modal.className='open '+theme;
+      modal.innerHTML='<section class="sd-window"><main class="sd-body">'+renderFixtureStorage()+'</main></section>';
+      modal.querySelector('.sd-undo-config').hidden=!recoverable;
+    },{theme,recoverable});
+    assert.equal(await page.locator('.sd-export-config').isVisible(),false);
+    await page.locator('.sd-storage-backup-section > summary').click();
+    const layout=await page.evaluate(()=>{
+      const root=document.querySelector('.sd-storage-card'),body=document.querySelector('.sd-body');
+      const rows=[...root.querySelectorAll('.sd-storage-backup-row')].map(row=>{
+        const box=row.getBoundingClientRect(),controls=[...row.querySelectorAll('button')].map(el=>el.getBoundingClientRect());
+        return {contained:controls.every(b=>b.left>=box.left-1&&b.right<=box.right+1),aligned:controls.length<2||Math.abs(controls[0].height-controls[1].height)<1,label:row.querySelector('span').getBoundingClientRect().width};
+      });
+      return {rows,noOverflow:root.scrollWidth<=root.clientWidth+1&&body.scrollWidth<=body.clientWidth+1,
+        filesHidden:[...root.querySelectorAll('input[type=file]')].every(el=>el.getClientRects().length===0)};
+    });
+    assert.equal(layout.rows.length,6);assert.equal(layout.noOverflow,true,`overflow at ${width}/${theme}/${recoverable}`);
+    assert.ok(layout.rows.every(row=>row.contained&&row.aligned&&row.label>0),`controls at ${width}/${theme}/${recoverable}`);
+    assert.equal(layout.filesHidden,true);assert.equal(await page.locator('.sd-undo-config').isVisible(),recoverable);
+    await page.locator('.sd-storage-backup-section > summary').press('Enter');
+    assert.equal(await page.locator('.sd-export-config').isVisible(),false);
+    assert.equal(await page.locator('.sd-undo-config').isVisible(),false);
+    layouts.push({width,theme:theme||'default',recoverable});
+  }
+  assert.deepEqual(errors,[]);assert.equal(external,0);console.log(JSON.stringify({nativeDownload:true,nativeFileInput:true,nestedConnectionsExcluded:true,recipientConnectionsPreserved:true,malformedNoWrite:true,undoCancel:true,undoApplied:true,undoStaleBlocked:true,nativeStorageFailureRetry:true,incompleteCompensationBlocksRetry:true,explicitPreservationDownload:true,fullStyleLayouts:layouts,external,errors}));
 }finally{await context.close();await browser.close();}
