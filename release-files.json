@@ -6,6 +6,7 @@
     "qianmu-config-connections.js",
     "qianmu-config-apply.js",
     "qianmu-config-undo.js",
+    "qianmu-config-undo-action.js",
     "qianmu-plan-archive-write.js",
     "qianmu-storage-backup-view.js",
     "qianmu-focus-lock.js",

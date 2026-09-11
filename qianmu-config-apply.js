@@ -75,6 +75,6 @@ export async function finishConfigRestore(options) {
     } catch (_) { viewFailed = true; }
   }
   if (options.current() !== options.prepared) return {...result, view:'stale'};
-  options.notify(viewFailed ? '配置已应用，但页面更新未完成，请重新打开千幕检查。' : '配置已导入并覆盖。', viewFailed ? 'warning' : 'success');
+  options.notify(viewFailed ? '配置已应用，但页面更新未完成，请重新打开千幕检查。' : options.action === 'undo' ? '已撤回本次配置恢复。' : '配置已导入并覆盖。', viewFailed ? 'warning' : 'success');
   return {...result, view:viewFailed ? 'incomplete' : 'updated'};
 }

@@ -19,6 +19,15 @@ export function createConfigUndoSlot({clone = structuredClone} = {}) {
       } catch (_) { return false; }
     },
     available(current) { return !!record && record.unchanged(current); },
+    capture(current) {
+      const held = record;
+      if (!held || !held.unchanged(current)) return null;
+      try {
+        return {snapshot:clone(held.snapshot),
+          valid:value=>record === held && held.unchanged(value),
+          release:()=>{ if (record === held) clear(); }};
+      } catch (_) { return null; }
+    },
     // Internal synchronous derivations only, never a user edit or an async operation.
     // Advance only a baseline that was valid BEFORE the controlled transformation.
     transition(current, update) {
