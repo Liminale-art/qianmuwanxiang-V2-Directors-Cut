@@ -2,6 +2,18 @@
 import {migrateQianmuSettingsV2} from './qianmu-data-migrations.js';
 import {parseBoundedJson} from './qianmu-json-input.js';
 export const CONFIG_INPUT_LIMITS = Object.freeze({bytes:32*1048576,depth:40,nodes:500000});
+// Session-only form values must not follow a restored connection to another host.
+// Unchanged recipient groups keep typed keys; persistent credential stores are untouched.
+export function resetConfigConnectionSession(previous, current, drafts, statuses) {
+  let changed = false;
+  for (const id of new Set([...drafts.keys(), ...statuses.keys()])) {
+    let same = false;
+    try { same = !!previous?.[id] && !!current?.[id] && JSON.stringify(previous[id]) === JSON.stringify(current[id]); } catch (_) {}
+    if (same) continue;
+    drafts.delete(id); statuses.delete(id); changed = true;
+  }
+  return changed;
+}
 export async function readConfigFile(file) {
   const fail=message=>{throw Object.assign(new Error(message),{code:'qianmu_config_input'});};
   if (!file || typeof file.text !== 'function') fail('请选择千幕配置文件。');

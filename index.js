@@ -1,5 +1,5 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreSummary } from './qianmu-config-connections.js';
+import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { exportConfiguration } from './qianmu-config-export.js';
 import { receiveComfyImage, resolveComfyRecoveryKey } from './qianmu-comfy-recovery-action.js';
@@ -25661,10 +25661,12 @@ function undoConfigRestore() {
 }
 
 function configApplyOptions() {
+  const connections = settings.imagegen?.connections;
   return {host:ctx().extensionSettings ||= {}, slot:MODULE_NAME,
     setCurrent:value=>{settings=value;}, current:()=>settings, save:saveSettings,
     layoutStorage:()=>globalThis.localStorage, layoutKey:PROSE_LAYOUT_STORAGE_KEY,
     afterApply:()=>{
+      if (resetConfigConnectionSession(connections,settings.imagegen?.connections,storyboardDraftApiKeys,storyboardConnectionStatus)) storyboardCredentialRevision++;
       storyboardAdmissionEpoch++;
       storyboardSnapshotEpoch++;
       storyboardSnapshotCache.clear();

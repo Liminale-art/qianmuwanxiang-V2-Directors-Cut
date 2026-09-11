@@ -33,7 +33,7 @@ try{
       storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
       storyboardPipelineArchiveEpoch:0,storyboardPipelineArchiveCache:new Map(),storyboardPipelineArchiveWrites:new Map(),storyboardPipelineArchiveHydration:null,
       storyboardSnapshotEpoch:0,storyboardSnapshotCache:new Map(),storyboardSnapshotReads:new Map(),
-      storyboardAdmissionEpoch:0,
+      storyboardAdmissionEpoch:0,storyboardDraftApiKeys:new Map(),storyboardConnectionStatus:new Map(),storyboardCredentialRevision:0,
       storyboardPlansForPortableExport:async value=>value,seedBuiltinTheaters(){},saveSettings:()=>saved++,storyboardSchedulePlanArchive(){},applyDirectorInjection:async()=>{},renderFloatButton(){},renderModal(){}});
     // Execute the same entry adapters called by the storage card, only host services are stubs.
     new Function(source+';window.runExport=exportConfig;window.runImport=importConfig;window.renderModal=()=>{document.getElementById("fixture-root").innerHTML=renderStorageBackupSection();bindStorageManagementEvents(document);};renderModal();')();

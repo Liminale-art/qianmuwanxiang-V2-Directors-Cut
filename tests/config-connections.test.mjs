@@ -70,7 +70,7 @@ function fixture() {
     mergeDefaults:()=>{},migrateSettings:()=>{},storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
     storyboardPipelineArchiveEpoch:0,storyboardPipelineArchiveCache:new Map(),storyboardPipelineArchiveWrites:new Map(),storyboardPipelineArchiveHydration:null,
     storyboardSnapshotEpoch:0,storyboardSnapshotCache:new Map(),storyboardSnapshotReads:new Map(),
-    storyboardAdmissionEpoch:0,
+    storyboardAdmissionEpoch:0,storyboardDraftApiKeys:new Map(),storyboardConnectionStatus:new Map(),storyboardCredentialRevision:0,
     blobStore:{clearStoryboardPlanArchives(){throw Error('must never erase historical originals');}},
     getSettings:()=>context.extensionSettings.module,seedBuiltinTheaters(){},saveSettings:()=>writes.push('save'),storyboardSchedulePlanArchive(){},applyDirectorInjection:async()=>{},renderFloatButton(){},renderModal(){},cacheProseLayout(){}});
   vm.runInContext(['exportConfig','importConfig','configApplyOptions','undoConfigRestore'].map(section).join('\n'),c);
@@ -84,6 +84,25 @@ function realMigrationFixture() {
   vm.runInContext('"use strict";\n'+section('migrateTtsProviderSettings')+'\n'+section('migrateSettings'),e.c);
   return e;
 }
+
+test('restored connection changes clear only stale form keys; excluded APIs and cancelled imports preserve them',async()=>{
+  for(const mode of ['changed','excluded','same','cancelled']){
+    const e=fixture();e.c.storyboardDraftApiKeys.set('comfy','temporary-form-key');e.c.storyboardConnectionStatus.set('comfy',{ok:true});
+    e.c.confirmDialog=async()=>mode!=='cancelled';
+    const pack={version:2,type:'qianmu-config',includeApi:mode!=='excluded',settings:settings(mode==='same'?'source':'other')};
+    await e.c.importConfig({target:{files:[{text:async()=>JSON.stringify(pack)}],value:'selected'}});
+    assert.equal(e.c.storyboardDraftApiKeys.get('comfy'),mode==='changed'?undefined:'temporary-form-key',mode);
+    assert.equal(e.c.storyboardConnectionStatus.has('comfy'),mode!=='changed',mode);
+    assert.equal(e.c.storyboardCredentialRevision,mode==='changed'?1:0,mode);
+  }
+});
+
+test('session invalidation is per channel and never mutates connection originals',()=>{
+  const previous={a:{draft:{baseUrl:'old'}},b:{draft:{baseUrl:'same'}}},next=structuredClone(previous);
+  next.a.draft.baseUrl='new';const original=JSON.stringify(previous),drafts=new Map([['a','old-a'],['b','old-b'],['removed','old-r']]),statuses=new Map([['a',{}],['b',{}]]);
+  assert.equal(policy.resetConfigConnectionSession(previous,next,drafts,statuses),true);
+  assert.deepEqual([...drafts],[['b','old-b']]);assert.deepEqual([...statuses.keys()],['b']);assert.equal(JSON.stringify(previous),original);
+});
 
 test('configuration handoff invalidates pipeline memory sessions without deleting original archives',()=>{
   const e=fixture(),owner=e.c.settings;
