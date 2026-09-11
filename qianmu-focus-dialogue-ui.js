@@ -10,7 +10,7 @@ export async function openFocusDialogue({document,host,library,guard,choices,bin
   const body=portal.querySelector('.sd-focus-library-body'),status=portal.querySelector('[role=status]');
   let closed=false,busy=false,composing=false,data,editing=null,autosave=null,timer=null,folder=binding().characterKey||'';const selected=new Set();
   const check=async()=>{await guard();if(closed||!portal.isConnected)throw Error('台词库页面已关闭');};
-  const button=(action,label)=>`<button type="button" class="sd-btn" data-action="${action}">${label}</button>`;
+  const button=(action,label,icon)=>`<button type="button" class="sd-icon-btn" data-action="${action}" title="${label}" aria-label="${label}"><i class="fa-solid fa-${icon}" aria-hidden="true"></i></button>`;
   function title(value){portal.querySelector('h3').textContent=value;portal.querySelector('[role=dialog]').setAttribute('aria-label',value);}
   function close(){if(closed)return;closed=true;clearTimeout(timer);autosave?.dispose();portal.remove();siblings.forEach(([el,inert])=>{el.inert=inert;});if(previous?.isConnected)previous.focus();onClose();}
   function capture(){if(!autosave)return;autosave.update({text:body.querySelector('textarea').value,moments:[...body.querySelectorAll('[data-moment][aria-pressed=true]')].map(el=>el.dataset.moment)});}
@@ -20,14 +20,13 @@ export async function openFocusDialogue({document,host,library,guard,choices,bin
   function render(){
     autosave?.dispose();autosave=null;editing=null;composing=false;title('自定义台词库');portal.querySelector('[data-action=back]').hidden=true;status.textContent='';const visible=data.rows.filter(row=>!folder||row.characterKey===folder);
     for(const id of selected)if(!visible.some(row=>row.id===id))selected.delete(id);
-    body.innerHTML=`<div class="sd-focus-dialogue-folders"><select class="text_pole" data-field="folder" aria-label="选择角色"><option value="">全部角色</option>${folders().map(([key,name])=>`<option value="${esc(key)}" ${key===folder?'selected':''}>${esc(name)}</option>`).join('')}</select>${button('new','新建')}</div>
-      ${visible.length?`<div class="sd-focus-dialogue-bulk">${button('select-all','全选')}${button('remove-selected','删除所选')}</div>`:''}
+    body.innerHTML=`<div class="sd-focus-dialogue-folders"><select class="text_pole" data-field="folder" aria-label="选择角色"><option value="">全部角色</option>${folders().map(([key,name])=>`<option value="${esc(key)}" ${key===folder?'selected':''}>${esc(name)}</option>`).join('')}</select>${button('new','新建','plus')}${button('select-all','全选','check')}${button('remove-selected','删除所选','trash')}</div>
       <div class="sd-focus-library-list">${visible.map(row=>`<article><label class="sd-focus-dialogue-check"><input type="checkbox" data-select="${esc(row.id)}" aria-label="选择台词：${esc(row.text.slice(0,60))}" ${selected.has(row.id)?'checked':''}></label><button type="button" class="sd-focus-library-item" data-action="edit" data-id="${esc(row.id)}"><b>${esc(row.text||'空白台词')}</b><span>${esc(row.speaker)} · ${row.moments.map(key=>moments[key]).join(' / ')||'未启用阶段'}</span></button></article>`).join('')}</div>`;syncSelection();icons(portal);
   }
   function syncSelection(){
     const del=body.querySelector('[data-action=remove-selected]'),all=body.querySelector('[data-action=select-all]');
-    if(del){del.disabled=selected.size===0;del.textContent=selected.size?`删除所选（${selected.size}）`:'删除所选';}
-    if(all)all.textContent=selected.size&&[...body.querySelectorAll('[data-select]')].every(el=>selected.has(el.dataset.select))?'取消全选':'全选';
+    if(del){del.disabled=selected.size===0;del.title=selected.size?`删除所选（${selected.size}）`:'删除所选';del.setAttribute('aria-label',del.title);}
+    if(all){const rows=[...body.querySelectorAll('[data-select]')],active=rows.length>0&&rows.every(el=>selected.has(el.dataset.select));all.disabled=!rows.length;all.title=active?'取消全选':'全选';all.setAttribute('aria-label',all.title);all.setAttribute('aria-pressed',String(active));}
   }
   async function reload(){const next=await library.snapshot();await check();data=next;render();}
   function edit(row){

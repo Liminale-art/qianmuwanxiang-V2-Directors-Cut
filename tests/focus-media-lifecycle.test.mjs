@@ -72,3 +72,32 @@ test('disabled automatic sound does not allocate media; current preview failures
   const play=c.focusClockPlayDoneSound({preview:true});pending[0].reject(new Error('denied'));assert.equal(await play,false);
   assert.equal(notices.length,1);assert.equal(frames.size,0);assert.equal(c.focusClockSound().snapshot().previewMode,false);
 });
+
+test('changing a playing track starts the new selection without a second click and retires old events',async()=>{
+  const {c,state,pending,audios,frames,notices}=fixture();
+  const first=c.focusClockPlayDoneSound({preview:true});pending[0].resolve();await first;
+  state.soundPreset='other';const next=c.focusClockPlayDoneSound({selectionChanged:true});
+  assert.equal(audios[0].paused,true);assert.equal(audios[1].src,'other');
+  pending[1].resolve();assert.equal(await next,true);assert.equal(c.focusClockSound().snapshot().playing,true);
+  audios[0].dispatch('error');audios[0].dispatch('ended');assert.equal(frames.size,1);assert.equal(notices.length,0);
+  audios[1].dispatch('error');assert.equal(c.focusClockSound().snapshot().playing,false);assert.equal(frames.size,0);assert.equal(notices.length,1);
+});
+
+test('selection while paused or idle never autoplays, while an unchanged selection preserves position',async()=>{
+  const {c,state,pending,audios}=fixture();await c.focusClockPlayDoneSound({selectionChanged:true});assert.equal(audios.length,0);
+  const first=c.focusClockPlayDoneSound({preview:true});pending[0].resolve();await first;audios[0].currentTime=12;
+  await c.focusClockPlayDoneSound({selectionChanged:true});assert.equal(audios[0].currentTime,12);assert.equal(audios.length,1);
+  await c.focusClockPlayDoneSound({preview:true});state.soundPreset='other';await c.focusClockPlayDoneSound({selectionChanged:true});
+  assert.equal(c.focusClockSound().snapshot().hasMedia,false);assert.equal(audios.length,1);
+  const next=c.focusClockPlayDoneSound({preview:true});assert.equal(audios[1].src,'other');pending[1].resolve();await next;assert.equal(audios[1].currentTime,0);
+});
+
+test('rapid selection changes ignore late play promises and an invalid URL stops the old track',async()=>{
+  const {c,state,pending,audios,notices}=fixture();const first=c.focusClockPlayDoneSound({preview:true});
+  state.soundPreset='other';const second=c.focusClockPlayDoneSound({selectionChanged:true});
+  state.soundPreset='silverBell';const third=c.focusClockPlayDoneSound({selectionChanged:true});
+  pending[2].resolve();assert.equal(await third,true);pending[0].resolve();pending[1].reject(Error('late'));
+  assert.equal(await first,false);assert.equal(await second,false);assert.equal(notices.length,0);
+  assert.equal(audios[0].paused,true);assert.equal(audios[1].paused,true);assert.equal(audios[2].paused,false);
+  state.soundSource='url';state.soundUrl='invalid';assert.equal(await c.focusClockPlayDoneSound({selectionChanged:true}),false);assert.equal(audios[2].paused,true);
+});

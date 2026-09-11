@@ -12,7 +12,9 @@ export function bindFocusClockPage(root, {state, stateOwner, enabled, defaults, 
   root.querySelector('.sd-focus-lock')?.addEventListener('click', () => void clock.enableLock());
   root.querySelector('.sd-focus-auto-next-wrap')?.addEventListener('click', (event) => event.stopPropagation());
   root.querySelector('.sd-focus-voice-drawer-open')?.addEventListener('click', voice.openDrawer);
-  root.querySelector('.sd-focus-library-open')?.addEventListener('click', () => void voice.openLibrary());
+  const libraryButton=root.querySelector('.sd-focus-library-open');
+  for(const type of ['pointerenter','focus'])libraryButton?.addEventListener(type,()=>{void voice.warmLibrary?.().catch(()=>{});},{once:true});
+  libraryButton?.addEventListener('click',async()=>{const label=libraryButton.innerHTML;libraryButton.disabled=true;libraryButton.textContent='正在打开…';try{await voice.openLibrary();}finally{if(libraryButton.isConnected){libraryButton.innerHTML=label;libraryButton.disabled=false;}}});
   root.querySelector('.sd-focus-finale-voice')?.addEventListener('click', voice.openDrawer);
   root.querySelectorAll('.sd-focus-phase').forEach((button) => button.addEventListener('click', () => {
     clock.selectPhase(button.dataset.focusPhase);
@@ -86,20 +88,21 @@ export function bindFocusClockPage(root, {state, stateOwner, enabled, defaults, 
   root.querySelectorAll('.sd-focus-sound-source').forEach((button) => button.addEventListener('click', () => {
     const f = state();
     f.soundSource = ['builtin', 'url'].includes(button.dataset.focusSoundSource) ? button.dataset.focusSoundSource : 'builtin';
-    sound.reset();
     ui.save();
+    void sound.play({ selectionChanged: true });
     ui.render();
   }));
   root.querySelector('.sd-focus-sound-preset')?.addEventListener('change', (event) => {
     const f = state();
     f.soundPreset = soundPresets[event.target.value] ? event.target.value : 'silverBell';
     ui.save();
+    void sound.play({ selectionChanged: true });
   });
   root.querySelector('.sd-focus-sound-url')?.addEventListener('change', (event) => {
     const f = state();
     f.soundUrl = String(event.target.value || '').trim().slice(0, 2048);
-    sound.reset();
     ui.save();
+    void sound.play({ selectionChanged: true });
   });
   root.querySelector('.sd-focus-sound-preview')?.addEventListener('click', () => {
     const urlInput = root.querySelector('.sd-focus-sound-url');

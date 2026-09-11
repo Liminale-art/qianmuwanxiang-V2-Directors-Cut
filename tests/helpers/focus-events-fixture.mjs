@@ -16,7 +16,7 @@ export function focusEventsFixture(overrides={}) {
   Object.assign(c,{bindFocusClockPage,focusClockVoiceContext:()=>voice,saveSettings:()=>trace.push('save'),renderModal:()=>trace.push('render'),
     focusClockSyncPreviewButton:()=>trace.push('sync'),focusClockOpenVoiceDrawer:()=>trace.push('drawer'),
     focusClockRequestStart:()=>trace.push('start'),focusClockPause:()=>trace.push('pause'),focusClockReset:()=>trace.push('reset'),
-    focusClockPrimeSound:()=>trace.push('prime'),focusClockResetMedia:()=>trace.push('media'),focusClockPlayDoneSound:opts=>trace.push(['play',opts.preview]),
+    focusClockPrimeSound:()=>trace.push('prime'),focusClockResetMedia:()=>trace.push('media'),focusClockPlayDoneSound:opts=>trace.push(opts.selectionChanged?'selection':['play',opts.preview]),
     focusClockSetVoiceEnabled:enabled=>trace.push(['enabled',enabled]),focusClockBindVoice:(...args)=>trace.push(['bind',...args]),
     confirmDialog:async()=>confirmed,coread:()=>({books:[{id:'book',title:'Book'}]}),coreadCompanionChoices:()=>[{avatar:'A'}],
     FOCUS_CLOCK_RELATIONS:{neutral:{}},FOCUS_CLOCK_SOUND_PRESETS:{bell:{}},FOCUS_CLOCK_VOICE_FREQUENCIES:{low:{}},focusClockDateKey:stamp=>stamp||'today'});

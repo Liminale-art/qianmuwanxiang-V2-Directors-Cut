@@ -42,6 +42,12 @@ test('preview consumes unsaved URL before playing and preserves an unchanged pre
   e.trace.length=0;await play.fire('click');assert.deepEqual(e.trace,[['play',true]]);
 });
 
+test('preset and URL edits inform the existing player instead of only saving a different label',async()=>{
+  const e=fixture(),preset=e.node('.sd-focus-sound-preset',{value:'bell'}),url=e.node('.sd-focus-sound-url',{value:'https://example.test/new.mp3'});e.bind();e.trace.length=0;
+  await preset.fire('change');assert.equal(e.f.soundPreset,'bell');assert.deepEqual(e.trace,['save','selection']);
+  e.trace.length=0;await url.fire('change');assert.equal(e.f.soundUrl,url.value);assert.deepEqual(e.trace,['save','selection']);
+});
+
 test('old displayed identity cannot toggle or choose a voice for a new role',async()=>{
   const e=fixture(),toggle=e.node('.sd-focus-voice-enabled',{checked:false});e.node('.sd-focus-voice-speaker',{setAttribute(){}});e.node('.sd-focus-voice-menu',{close(){}});const option=e.node('[data-focus-voice-key]',{dataset:{focusVoiceKey:'voice'}});e.bind();e.trace.length=0;
   e.setVoice({characterKey:'character:B',providerId:'doubao',chatKey:'chatB'});await toggle.fire('change');assert.deepEqual(e.trace,['render']);

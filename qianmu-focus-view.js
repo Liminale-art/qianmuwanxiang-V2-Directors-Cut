@@ -21,7 +21,7 @@ export function renderFocusClockView({f, remaining, total, phase, strongLocked, 
     : voiceContext.voice ? `音色跟随 ${voiceContext.characterName} · ${providerLabel}`
       : showVoiceSetupTip ? '选择一次音色后按角色保存；可使用音色库或手动沿用当前聊天音色。'
         : voiceContext.enabled ? '请选择音色。' : '';
-  const voiceSpeakerOptions = `<button type="button" data-focus-voice-key="" role="option" aria-selected="${!voiceContext.selected}">暂不选择音色</button>` + voiceContext.options.map(row => `<button type="button" data-focus-voice-key="${htmlEscape(row.key)}" role="option" aria-selected="${row.key === voiceContext.selected}"><small class="sd-focus-voice-provider">${htmlEscape(providerLabel)}</small><span>${htmlEscape(row.label)}</span></button>`).join('');
+  const voiceSpeakerOptions = `<button type="button" data-focus-voice-key="" role="option" aria-selected="${!voiceContext.selected}"><small class="sd-focus-voice-provider">${htmlEscape(providerLabel)}</small><span>暂不选择音色</span></button>` + voiceContext.options.map(row => `<button type="button" data-focus-voice-key="${htmlEscape(row.key)}" role="option" aria-selected="${row.key === voiceContext.selected}"><small class="sd-focus-voice-provider">${htmlEscape(providerLabel)}</small><span>${htmlEscape(row.label)}</span></button>`).join('');
   const voiceSpeakerName = voiceContext.options.find(row=>row.key===voiceContext.selected)?.label || '选择音色';
   const voiceCharacterOptions = '<option value="">跟随当前聊天</option>' + voiceCharacters.map(ch => `<option value="${htmlEscape(ch.avatar)}" ${ch.avatar === f.voiceCharacterAvatar ? 'selected' : ''}>${htmlEscape(ch.name)}</option>`).join('')
     + (f.voiceCharacterAvatar && !voiceCharacters.some(ch => ch.avatar === f.voiceCharacterAvatar) ? '<option selected disabled>原角色已不存在，请重选</option>' : '');
@@ -29,7 +29,7 @@ export function renderFocusClockView({f, remaining, total, phase, strongLocked, 
   const voiceConfig = `
     <div class="sd-focus-voice-config">
       <div class="sd-focus-voice-grid">
-        <label><span>${f.activity === 'reading' ? '书友' : '角色'}</span>${f.activity === 'reading' ? `<input class="text_pole" value="${htmlEscape(voiceContext.characterName)}" readonly>` : `<select class="text_pole sd-focus-voice-character" ${locked ? 'disabled' : ''}>${voiceCharacterOptions}</select>`}</label>
+        <div class="sd-focus-voice-field"><span>${f.activity === 'reading' ? '书友' : '角色'}</span>${f.activity === 'reading' ? `<input class="text_pole" aria-label="书友" value="${htmlEscape(voiceContext.characterName)}" readonly>` : `<select class="text_pole sd-focus-voice-character" aria-label="角色" ${locked ? 'disabled' : ''}>${voiceCharacterOptions}</select>`}</div>
         <div class="sd-focus-voice-field"><span>音色</span><button type="button" class="text_pole sd-focus-voice-speaker" aria-label="选择音色" aria-haspopup="dialog" aria-expanded="false" ${locked || !voiceContext.hasCharacter ? 'disabled' : ''}><span>${htmlEscape(voiceSpeakerName)}</span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button><dialog class="sd-focus-voice-menu" aria-label="选择音色"><header><b>选择音色</b><button type="button" class="sd-icon-btn sd-focus-voice-menu-close" aria-label="关闭音色列表"><i class="fa-solid fa-xmark"></i></button></header><div role="listbox" aria-label="音色">${voiceSpeakerOptions}</div></dialog></div>
       </div>
       ${voiceContext.hasCharacter ? `${f.voiceMode==='scene'?`<label><span>关系</span><select class="text_pole sd-focus-voice-relation" ${locked ? 'disabled' : ''}>${voiceRelationOptions}</select></label>`:''}

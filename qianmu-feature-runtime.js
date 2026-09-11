@@ -9,6 +9,7 @@ function normalizeDefinition(key, definition) {
     key,
     label: String(definition.label || key),
     load: definition.load,
+    intent: definition.intent || '',
   };
 }
 
@@ -81,5 +82,32 @@ export function createFeatureRuntime(definitions = {}) {
     }));
   }
 
-  return Object.freeze({ load, snapshot });
+  const roots=new WeakSet();
+  function bindIntent(root){
+    if(roots.has(root))return;roots.add(root);
+    const warm=event=>{for(const entry of entries.values())if(entry.intent&&entry.status==='idle'&&event.target.closest?.(entry.intent))void load(entry.key).catch(()=>{});};
+    root.addEventListener('pointerover',warm);root.addEventListener('focusin',warm);
+  }
+  return Object.freeze({ load, snapshot, bindIntent });
 }
+
+// Explicit local allowlist only. No rewriting dependency graphs or executing URLs from errors.
+const localChunkNames=new Set(['qianmu-reader.js','builtin-theaters.js','qianmu-theaters.js','qianmu-focus-dialogue.js','qianmu-focus-dialogue-ui.js','qianmu-focus-library-ui.js']);
+export function createLocalChunkLoader({importer=url=>import(url),pause=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
+  const entries=new Map();
+  return function load(relative){
+    const url=new URL(relative,import.meta.url),name=url.pathname.split('/').at(-1);
+    if(!localChunkNames.has(name)||url.href.split('?')[0]!==new URL('./'+name,import.meta.url).href||url.hash)return Promise.reject(Error('无效的本地组件地址'));
+    const key=url.href;let entry=entries.get(key);if(!entry){entry={attempt:0,promise:null,value:null};entries.set(key,entry);}
+    if(entry.value)return Promise.resolve(entry.value);if(entry.promise)return entry.promise;
+    entry.promise=(async()=>{
+      for(let retry=0;retry<2;retry++){
+        if(entry.attempt>=8)throw Error('组件仍未载入，请确认网络和插件更新后刷新页面');
+        const attempt=entry.attempt++,target=new URL(key);if(attempt)target.searchParams.set('qm_retry',String(attempt));
+        try{return entry.value=await importer(target.href);}
+        catch(error){if(error?.name!=='TypeError'||!/(fetch.*dynamically imported|importing a module script failed|error loading dynamically imported)/i.test(error.message)||retry)throw error;await pause(180);}
+      }
+    })().finally(()=>{entry.promise=null;});return entry.promise;
+  };
+}
+export const loadLocalChunk=createLocalChunkLoader();

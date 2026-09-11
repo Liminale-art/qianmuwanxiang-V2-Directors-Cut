@@ -118,7 +118,7 @@ try{
     await page.evaluate(()=>{voiceFixture=true;reset();Object.assign(settings.focusClock,{activity:'reading',bookId:'book',soundEnabled:true,voiceSetupTipSeen:false});renderModal();});
     assert.equal(await page.locator('.sd-focus-voice-setup-tip').count(),1);
     assert.equal(await page.evaluate(()=>settings.focusClock.voiceSetupTipSeen),true);
-    const fields=await page.locator('.sd-focus-voice-grid > label > :is(input,select),.sd-focus-voice-speaker').evaluateAll(nodes=>nodes.map(n=>{const b=n.getBoundingClientRect();return {x:b.x,y:b.y,right:b.right,height:b.height};}));
+    const fields=await page.locator('.sd-focus-voice-field > :is(input,select),.sd-focus-voice-speaker').evaluateAll(nodes=>nodes.map(n=>{const b=n.getBoundingClientRect();return {x:b.x,y:b.y,right:b.right,height:b.height};}));
     assert.equal(fields.length,2);assert.ok(Math.abs(fields[0].y-fields[1].y)<1);assert.ok(Math.abs(fields[0].height-fields[1].height)<1);
     assert.ok(fields.every(b=>b.x>=0&&b.right<=width));
     await page.locator('.sd-focus-sound-preview').tap();assert.equal(await page.evaluate(()=>soundTestAudio.at(-1).paused),false);

@@ -61,7 +61,7 @@ export async function collectReleaseFiles(root = PROJECT_ROOT, config = null) {
 function localReferences(file, text) {
   const references = [];
   if (file.endsWith('.js')) {
-    const matcher = /(?:\bfrom\s*|\bimport\s*\()\s*['"](\.\/[^'"]+)['"]/g;
+    const matcher = /(?:\bfrom\s*|\b(?:import|loadLocalChunk)\s*\()\s*['"](\.\/[^'"]+)['"]/g;
     for (const match of text.matchAll(matcher)) references.push(match[1]);
     const assetMatcher = /\bnew\s+URL\(\s*['"](\.\/[^'"]+)['"]\s*,\s*import\.meta\.url\s*\)/g;
     for (const match of text.matchAll(assetMatcher)) references.push(match[1]);

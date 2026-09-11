@@ -46,6 +46,12 @@ async function fixture(t, { configured = true } = {}) {
   };
 }
 
+test('retryable local imports still reject missing runtime files before a package is written',async t=>{
+  const f=await fixture(t);
+  await writeFile(path.join(f.project,'index.js'),"loadLocalChunk('./qianmu-reader.js?v=test');\n");
+  const result=f.run('--dry-run');assert.notEqual(result.status,0);assert.match(result.stderr,/qianmu-reader\.js/);
+});
+
 async function snapshot(directory) {
   const entries = [];
   for (const name of (await readdir(directory)).sort()) {

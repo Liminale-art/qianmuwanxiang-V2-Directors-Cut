@@ -1,12 +1,14 @@
 import {createFocusLibraryStore} from './qianmu-focus-library-store.js';
 import {createFocusLibraryPicker} from './qianmu-focus-library.js';
+import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.138';
 // Lazy media storage and UI: no generation outside an explicit editor action.
 export function createFocusLibraryRuntime({resolveNamespace,owner,context,choices,generate,ui,notify,save}) {
   let portal=null,openEpoch=0;const previous=new Map();
   let dialoguePromise=null;
-  function dialogue(){return dialoguePromise||=import('./qianmu-focus-dialogue.js').then(({createFocusDialogueLibrary})=>createFocusDialogueLibrary({owner,save,
+  function dialogue(){return dialoguePromise||=loadLocalChunk('./qianmu-focus-dialogue.js?v=1.59.138').then(({createFocusDialogueLibrary})=>createFocusDialogueLibrary({owner,save,
     legacy:async()=>{const start=owner(),namespace=await resolveNamespace();const rows=await withStore(store=>store.list(namespace));
-      if(start!==owner()||namespace!==await resolveNamespace())throw Error('账户已变化');return rows;}}));}
+      if(start!==owner()||namespace!==await resolveNamespace())throw Error('账户已变化');return rows;}})).catch(error=>{dialoguePromise=null;throw error;});}
+  function warm(){return Promise.all([loadLocalChunk('./qianmu-focus-dialogue-ui.js?v=1.59.138'),loadLocalChunk('./qianmu-focus-dialogue.js?v=1.59.138')]);}
   async function lines(options){
     const values=await (await dialogue()).lines({...options,characterKey:context().characterKey});
     if(options.isCurrent()&&values.some(value=>!value))notify('部分阶段没有适用台词，已跳过。','info');return values;
@@ -48,11 +50,11 @@ export function createFocusLibraryRuntime({resolveNamespace,owner,context,choice
       const namespace=await resolveNamespace();if(!live()){store.close();return;}
       const guard=async()=>{if(!live()||namespace!==await resolveNamespace()||!live())throw new Error('语音库页面或账户已变化，请重开');};
       if(!options?.management){
-        const {openFocusDialogue}=await import('./qianmu-focus-dialogue-ui.js');const library=await dialogue();await guard();
+        const [{openFocusDialogue},library]=await Promise.all([loadLocalChunk('./qianmu-focus-dialogue-ui.js?v=1.59.138'),dialogue()]);await guard();
         const result=await openFocusDialogue({...ui,host:ui.host(),library,guard,choices,binding:context,onClose:()=>{if(ticket===openEpoch){portal=null;ui.changed();}}});
         store.close();if(!live())result.close();else portal=result;return;
       }
-      const {openFocusLibrary}=await import('./qianmu-focus-library-ui.js');await guard();
+      const {openFocusLibrary}=await loadLocalChunk('./qianmu-focus-library-ui.js?v=1.59.138');await guard();
       const result=await openFocusLibrary({...ui,host:ui.host(),store,namespace,guard,isActive:live,choices,
         binding:key=>context(key),generate:async(key,clip,options)=>{await guard();const binding=context(key),stamp=JSON.stringify([binding.providerId,binding.profile?.revision]);
           if(clip.providerId&&clip.providerId!==binding.providerId)throw new Error('配音渠道已变化，请在编辑页重新选择当前渠道音色');
@@ -63,5 +65,5 @@ export function createFocusLibraryRuntime({resolveNamespace,owner,context,choice
       if(!live()){result.close();store.close();}else portal=result;
     }catch(error){store.close();if(live())notify(error.message||'语音库未能打开','warning');}
   }
-  return {summary,read,prepare,lines,open,close};
+  return {summary,read,prepare,lines,open,close,warm};
 }

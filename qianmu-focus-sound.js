@@ -28,9 +28,20 @@ export function createFocusSoundPlayer({Audio, requestAnimationFrame, cancelAnim
   function attachEvents(audio) {
     if (!audio || audio.dataset?.qianmuEvents === '1') return;
     audio.dataset.qianmuEvents = '1';
-    for (const eventName of ['loadedmetadata', 'durationchange', 'seeked', 'pause', 'play']) {
-      audio.addEventListener(eventName, onChange);
+    for (const eventName of ['loadedmetadata', 'durationchange', 'seeked', 'pause', 'play', 'playing']) {
+      audio.addEventListener(eventName, () => {
+        if (audio !== media) return;
+        if (eventName === 'pause') stopFrame();
+        if (eventName === 'playing' && previewMode) runFrame();
+        onChange();
+      });
     }
+    audio.addEventListener('error', () => {
+      if (audio !== media) return;
+      const preview = previewMode;
+      reset();
+      if (preview) notify('提示音无法播放，请检查音频地址或浏览器媒体权限。', 'warning');
+    });
     audio.addEventListener('ended', () => {
       if (audio !== media) return;
       if (previewMode) {
@@ -55,10 +66,13 @@ export function createFocusSoundPlayer({Audio, requestAnimationFrame, cancelAnim
 
   function reset() {
     sequence += 1;
-    try { media?.pause?.(); } catch (_) {}
+    const previous = media;
+    media = null;
+    try { previous?.pause?.(); } catch (_) {}
+    // Release the old download/decoder; late events cannot affect the new track.
+    try { previous?.removeAttribute('src'); previous?.load(); } catch (_) {}
     previewMode = false;
     stopFrame();
-    media = null;
     onChange();
   }
 
@@ -84,7 +98,13 @@ export function createFocusSoundPlayer({Audio, requestAnimationFrame, cancelAnim
     } catch (_) {}
   }
 
-  async function play({ preview = false } = {}) {
+  async function play({ preview = false, selectionChanged = false } = {}) {
+    if (selectionChanged) {
+      if (media?.dataset?.source === source()) return false;
+      const continuePreview = previewMode && media && !media.paused && !media.ended;
+      reset();
+      return continuePreview && source() ? play({ preview: true }) : false;
+    }
     const f = getState();
     if (!f.soundEnabled && !preview) return false;
     let isCurrent = () => true;

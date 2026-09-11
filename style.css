@@ -5593,8 +5593,8 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-focus-voice-status i { color: var(--sd-accent); }
 #story-director-modal .sd-focus-voice-config { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 #story-director-modal .sd-focus-voice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-#story-director-modal .sd-focus-voice-grid > :is(label,.sd-focus-voice-field) { min-width: 0; display: flex; flex-direction: column; gap: 6px; color: var(--sd-muted); font-size: .76em; margin:0 !important; }
-#story-director-modal .sd-focus-voice-grid > :is(label,.sd-focus-voice-field) > span { text-align: left; }
+#story-director-modal .sd-focus-voice-grid > .sd-focus-voice-field { min-width:0; display:flex; flex-direction:column; gap:6px; color:var(--sd-muted); font-size:var(--qm-type-label,11px); line-height:16px; margin:0 !important; }
+#story-director-modal .sd-focus-voice-grid > .sd-focus-voice-field > span { display:block; text-align:left !important; font:inherit; line-height:16px; margin:0 !important; padding:0; }
 #story-director-modal .sd-focus-voice-grid :is(select, input) { min-width: 0; width: 100%; height: 34px !important; min-height: 34px !important; box-sizing: border-box; margin: 0 !important; padding: 6px 10px; font: inherit; line-height: 1.25; }
 #story-director-modal .sd-focus-voice-grid .sd-focus-voice-speaker { display:flex; align-items:center; justify-content:space-between; gap:4px; width:100%; min-width:0; box-sizing:border-box; margin:0 !important; height:34px !important; min-height:34px !important; padding:6px 10px !important; border:1px solid var(--sd-hairline); background:var(--sd-pre); color:var(--sd-text); text-align:left; }
 #story-director-modal .sd-focus-voice-speaker > span { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
@@ -5633,12 +5633,11 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-focus-library audio { width:100%; max-width:100%; height:38px; }
 #story-director-modal .sd-focus-library-status { padding:8px 12px; margin:0; font-size:12px; overflow-wrap:anywhere; flex:none; }
 #story-director-modal .sd-focus-library-status:empty { display:none; }
-#story-director-modal .sd-focus-dialogue-folders { display:grid; grid-template-columns:minmax(0,1fr) 72px; align-items:center; gap:8px; }
-#story-director-modal .sd-focus-dialogue-bulk { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-#story-director-modal .sd-focus-dialogue-folders > :is(select,button),
-#story-director-modal .sd-focus-dialogue-bulk > button { box-sizing:border-box; margin:0 !important; min-width:0; height:34px !important; min-height:34px !important; max-height:34px; padding:4px 8px; line-height:normal; }
+#story-director-modal .sd-focus-dialogue-folders { display:grid; grid-template-columns:minmax(0,1fr) repeat(3,34px); align-items:center; gap:6px; }
+#story-director-modal .sd-focus-dialogue-folders > :is(select,button) { box-sizing:border-box; margin:0 !important; min-width:0; height:34px !important; min-height:34px !important; max-height:34px; padding:4px 8px; line-height:normal; }
 #story-director-modal .sd-focus-dialogue-folders > :is(select,button) { width:100%; align-self:center; }
-#story-director-modal .sd-focus-dialogue-bulk > button { flex:0 0 auto; }
+#story-director-modal .sd-focus-dialogue-folders > button.sd-icon-btn { width:34px; min-width:34px; padding:0 !important; }
+#story-director-modal .sd-focus-dialogue-folders > [aria-pressed=true] { color:var(--sd-accent); border-color:var(--sd-accent); background:color-mix(in srgb,var(--sd-accent) 14%,transparent); }
 #story-director-modal .sd-focus-dialogue .sd-focus-dialogue-check { flex:0 0 34px; min-height:34px; margin:0 !important; display:grid; place-items:center; cursor:pointer; }
 #story-director-modal .sd-focus-dialogue-check > input { margin:0 !important; }
 #story-director-modal .sd-focus-dialogue header > h3 { flex:1; min-width:0; overflow-wrap:anywhere; }

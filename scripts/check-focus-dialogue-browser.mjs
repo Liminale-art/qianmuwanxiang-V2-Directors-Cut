@@ -12,7 +12,7 @@ const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL|
 const mobile=process.env.QIANMU_TEST_MOBILE==='1';
 const context=await browser.newContext(mobile?{isMobile:true,hasTouch:true,deviceScaleFactor:2}:{}),errors=[],checks=[];let external=0;
 // Simulate host/theme defaults absent from the old isolated fixture; not a claim about live ST CSS.
-const hostRules='label{margin-block:8px 6px}button{margin-block:5px;min-width:104px}select{margin-block:6px;line-height:1.8}';
+const hostRules='label{margin-block:8px 6px}button{margin-block:5px;min-width:104px}select{margin-block:6px;line-height:1.8}#story-director-modal .sd-focus-voice-grid label{padding-top:8px}#story-director-modal .sd-focus-voice-grid label>span{text-align:center!important}';
 await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.origin==='https://qianmu.test'){
@@ -28,13 +28,14 @@ try{
   await page.evaluate(async defaults=>{
     const {createFocusLibraryRuntime}=await import('/qianmu-focus-library-runtime.js');
     const {createFocusLibraryStore}=await import('/qianmu-focus-library-store.js');
+    const {applyQianmuIcons}=await import('/qianmu-icon-renderer.js');
     window.owner={focusClock:defaults};window.saved=0;window.generation=0;window.active=true;window.confirmations=[];window.allowConfirm=true;
     window.scope={namespace:'st-user:dialogue-fixture',characterKey:'character:A.png'};
     const store=createFocusLibraryStore();await store.save(scope,{...scope,id:'legacy',speaker:'甲',text:'旧的录音台词',moments:['focus:complete']},new Blob(['legacy audio'],{type:'audio/wav'}));store.close();
     window.escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     window.library=createFocusLibraryRuntime({owner:()=>owner,resolveNamespace:async()=>scope.namespace,save:()=>saved++,context:()=>({characterKey:scope.characterKey}),choices:()=>[{avatar:'A.png',name:'甲'},{avatar:'B.png',name:'乙'}],
       generate:()=>{generation++;throw Error('editor must not generate');},notify:message=>{throw Error(message);},
-      ui:{document,host:()=>document.querySelector('#story-director-modal'),escape,icons(){},confirm:async(...args)=>{confirmations.push(args);return allowConfirm;},changed(){}}});
+      ui:{document,host:()=>document.querySelector('#story-director-modal'),escape,icons:applyQianmuIcons,confirm:async(...args)=>{confirmations.push(args);return allowConfirm;},changed(){}}});
     await library.open();
   },focusDefaults);
   for(const width of mobile?[320,393]:[320,393,1100]){
@@ -42,6 +43,8 @@ try{
     const values=await page.evaluate(()=>{const rect=el=>el.getBoundingClientRect().toJSON();return {panel:rect(document.querySelector('.sd-focus-library')),select:rect(document.querySelector('[data-field=folder]')),button:rect(document.querySelector('[data-action=new]'))};});
     ok(`dialogue panel contained at ${width}`,values.panel.x>=0&&values.panel.x+values.panel.width<=width+1);
     ok(`folder and new button share height and baseline at ${width}`,Math.abs(values.select.height-values.button.height)<1&&Math.abs(values.select.bottom-values.button.bottom)<1);
+    const actions=await page.locator('.sd-focus-dialogue-folders > button').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().toJSON()));
+    ok(`all three square icon actions share the folder row at ${width}`,actions.length===3&&actions.every(b=>Math.abs(b.width-b.height)<1&&Math.abs(b.y-values.select.y)<1&&b.right<=width)&&await page.locator('.sd-focus-dialogue-folders > button svg').count()===3);
   }
   ok('folder has an accessible name without the removed visible subheading',await page.locator('[data-field=folder]').getAttribute('aria-label')==='选择角色'&&!await page.locator('.sd-focus-library-body').innerText().then(text=>text.includes('角色文件夹')));
   ok('legacy text is visible without changing or generating its recording',await page.locator('.sd-focus-library-item').count()===1&&await page.evaluate(()=>generation===0));
@@ -79,6 +82,7 @@ try{
   await page.locator('[data-field=folder]').selectOption('character:B.png');await page.locator('[data-field=folder]').selectOption('character:A.png');
   ok('switching role clears hidden selections',await page.locator('[data-select]:checked').count()===0&&await page.locator('[data-action=remove-selected]').isDisabled());
   await page.locator('[data-action=select-all]').click();await page.evaluate(()=>allowConfirm=false);await page.locator('[data-action=remove-selected]').click();
+  ok('selection updates pressed state without replacing inline icons',await page.locator('[data-action=select-all]').getAttribute('aria-pressed')==='true'&&await page.locator('.sd-focus-dialogue-folders > button svg').count()===3);
   await page.waitForFunction(()=>confirmations.some(args=>args[0]==='删除所选台词'));
   ok('cancelled batch keeps all text',await page.evaluate(()=>owner.focusClock.dialogueLibrary.rows.length===2));
   await page.evaluate(()=>allowConfirm=true);await page.locator('[data-action=remove-selected]').click();await page.waitForFunction(()=>document.querySelector('[role=status]').textContent==='已删除 2 条台词');
@@ -89,9 +93,9 @@ try{
   await page.locator('[data-action=edit]').click();ok('legacy management is read-only playback without pre-generation',await page.locator('audio').count()===1&&await page.locator('[data-action=generate],[data-action=save]').count()===0);
   await page.evaluate(()=>library.close());
   await page.evaluate(async()=>{
-    const {renderFocusClockView}=await import('/qianmu-focus-view.js');const {bindFocusClockPage}=await import('/qianmu-focus-events.js');window.currentChannel='MiniMax';window.render=mode=>{
+    const {renderFocusClockView}=await import('/qianmu-focus-view.js');const {bindFocusClockPage}=await import('/qianmu-focus-events.js');window.currentChannel='MiniMax';window.selectedVoiceKey='v';window.render=mode=>{
       owner.focusClock.voiceMode=mode;const data={f:owner.focusClock,remaining:1500000,total:1500000,phase:{label:'专注'},strongLocked:false,today:[],week:{days:Array.from({length:7},()=>({minutes:0})),history:[],minutes:0,count:0,readingMinutes:0},books:[],weekStart:new Date(),
-        voiceContext:{hasCharacter:true,characterName:'甲',characterKey:'character:A',providerId:currentChannel,voice:{voiceId:'v'},options:[{key:'v',label:'清雅'}],selected:'v',enabled:true},voiceCharacters:[],voiceDrawerCount:0,providerLabel:currentChannel,FOCUS_CLOCK_PHASES:{focus:{label:'专注',icon:'fa-clock'}},FOCUS_CLOCK_RELATIONS:{neutral:{label:'普通'}},FOCUS_CLOCK_VOICE_FREQUENCIES:{low:{label:'低',chance:.3}},FOCUS_CLOCK_SOUND_PRESETS:{}};
+        voiceContext:{hasCharacter:true,characterName:'甲',characterKey:'character:A',providerId:currentChannel,voice:{voiceId:'v'},options:[{key:'v',label:'清雅'}],selected:selectedVoiceKey,enabled:true},voiceCharacters:[],voiceDrawerCount:0,providerLabel:currentChannel,FOCUS_CLOCK_PHASES:{focus:{label:'专注',icon:'fa-clock'}},FOCUS_CLOCK_RELATIONS:{neutral:{label:'普通'}},FOCUS_CLOCK_VOICE_FREQUENCIES:{low:{label:'低',chance:.3}},FOCUS_CLOCK_SOUND_PRESETS:{}};
       document.querySelector('main').innerHTML=renderFocusClockView(data,escape);document.querySelector('.sd-focus-settings').open=true;
       bindFocusClockPage(document.querySelector('main'),{state:()=>owner.focusClock,ui:{save(){},render:()=>render(mode)},voice:{context:()=>data.voiceContext,bind:key=>{window.chosenKey=key;}},sound:{sync(){}},clock:{}});
     };render('custom');
@@ -108,20 +112,25 @@ try{
     ok(`daily goal aligns to long rest in the left column at ${width}`,Math.abs(positions[0].x-positions[1].x)<1&&Math.abs(positions[0].width-positions[1].width)<1);
     const picker=await page.locator('.sd-focus-voice-speaker').boundingBox(),character=await page.locator('.sd-focus-voice-character').boundingBox();
     ok(`collapsed voice name control aligns to the role field at ${width}`,Math.abs(picker.height-character.height)<1&&Math.abs(picker.y-character.y)<1&&picker.x+picker.width<=width);
+    const fields=await page.locator('.sd-focus-voice-field > span').evaluateAll(els=>els.map(el=>({y:el.getBoundingClientRect().y,height:el.getBoundingClientRect().height,font:getComputedStyle(el).fontSize,align:getComputedStyle(el).textAlign})));
+    ok(`role and voice captions share typography and left alignment at ${width}`,fields.length===2&&fields.every(f=>f.align==='left'&&f.font===fields[0].font&&f.height===fields[0].height&&Math.abs(f.y-fields[0].y)<1));
     if(width===393&&process.env.QIANMU_QA_SCREENSHOTS==='1')await page.locator('.sd-focus-voice-card').screenshot({path:'dist/local-qa/focus-voice-137.png'});
   }
-  ok('collapsed selection shows only the name with no visible channel badge',await page.locator('.sd-focus-voice-speaker').innerText()==='清雅'&&!await page.locator('.sd-focus-voice-provider').isVisible());
+  ok('collapsed selection shows only the name with no visible channel badge',await page.locator('.sd-focus-voice-speaker').innerText()==='清雅'&&!await page.locator('.sd-focus-voice-provider').first().isVisible());
   for(const width of mobile?[320,393]:[320,393,1100]){
     await page.setViewportSize({width,height:898});await page.locator('.sd-focus-voice-speaker').click();
     const box=await page.locator('.sd-focus-voice-menu').boundingBox();
-    ok(`expanded voice menu and full channel badge fit at ${width}`,box.x>=0&&box.x+box.width<=width&&await page.locator('.sd-focus-voice-provider').innerText()==='MiniMax'&&await page.locator('.sd-focus-voice-provider').evaluate(el=>el.scrollWidth<=el.clientWidth));
+    ok(`expanded voice menu and full channel badge fit at ${width}`,box.x>=0&&box.x+box.width<=width&&await page.locator('.sd-focus-voice-provider').first().innerText()==='MiniMax'&&await page.locator('.sd-focus-voice-provider').first().evaluate(el=>el.scrollWidth<=el.clientWidth));
     await page.keyboard.press('Escape');ok(`Escape closes only the voice list at ${width}`,!await page.locator('.sd-focus-voice-menu').isVisible()&&await page.locator('.sd-focus-voice-speaker').isVisible());
   }
   await page.locator('.sd-focus-voice-speaker').click();await page.locator('[data-focus-voice-key="v"]').click();
-  ok('choosing a voice uses its stable key then hides badges',await page.evaluate(()=>chosenKey==='v')&&await page.locator('.sd-focus-voice-speaker').innerText()==='清雅'&&!await page.locator('.sd-focus-voice-provider').isVisible());
+  ok('choosing a voice uses its stable key then hides badges',await page.evaluate(()=>chosenKey==='v')&&await page.locator('.sd-focus-voice-speaker').innerText()==='清雅'&&!await page.locator('.sd-focus-voice-provider').first().isVisible());
+  await page.evaluate(()=>{selectedVoiceKey='';render('custom');});await page.locator('.sd-focus-voice-speaker').click();
+  ok('first opening without a bound voice shows channel tags immediately including the focused empty choice',await page.locator('[aria-selected=true] .sd-focus-voice-provider').innerText()==='MiniMax'&&await page.locator('.sd-focus-voice-provider').evaluateAll(els=>els.length===2&&els.every(el=>el.getBoundingClientRect().height>0)));
+  await page.keyboard.press('Escape');await page.evaluate(()=>{selectedVoiceKey='v';render('custom');});
   await page.evaluate(()=>{currentChannel='豆包';render('custom');});await page.locator('.sd-focus-voice-speaker').click();
-  const channelStyle=await page.locator('.sd-focus-voice-provider').evaluate(el=>{const probe=document.createElement('span');probe.style.color='var(--sd-accent)';el.append(probe);const expected=getComputedStyle(probe).color,actual=getComputedStyle(el).color;probe.remove();return {expected,actual};});
-  ok('expanded badges follow the current channel and theme accent',await page.locator('.sd-focus-voice-provider').innerText()==='豆包'&&channelStyle.expected===channelStyle.actual);
+  const channelStyle=await page.locator('.sd-focus-voice-provider').first().evaluate(el=>{const probe=document.createElement('span');probe.style.color='var(--sd-accent)';el.append(probe);const expected=getComputedStyle(probe).color,actual=getComputedStyle(el).color;probe.remove();return {expected,actual};});
+  ok('expanded badges follow the current channel and theme accent',await page.locator('.sd-focus-voice-provider').first().innerText()==='豆包'&&channelStyle.expected===channelStyle.actual);
   await page.locator('.sd-focus-voice-menu-close').click();
   await page.locator('.sd-focus-voice-speaker').click();await page.mouse.click(1,1);
   ok('clicking outside the list dismisses it without changing the voice',!await page.locator('.sd-focus-voice-menu').isVisible()&&await page.evaluate(()=>chosenKey==='v'));
