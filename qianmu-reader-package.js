@@ -18,44 +18,51 @@ export async function readCoreadPackageFile(file) {
   return data;
 }
 
-export async function applyCoreadPackageData(data, {blobStore, coread, isPlainObject, base64ToBlob, warn}) {
+export async function applyCoreadPackageData(data, {blobStore, coread, isPlainObject, base64ToBlob, warn, check = () => {}}) {
+  check();
   let ok = 0;
   for (const b of data.books) {
+    check();
     if (!b?.meta?.id) continue;
     try {
       await blobStore.putBook(b.meta.id, { meta: { title: b.meta.title, author: b.meta.author, mode: b.meta.mode || 'text' }, fullText: b.fullText || '', chapters: b.chapters || [], sig: b.sig || '', comicDescriptions: isPlainObject(b.comicDescriptions) ? b.comicDescriptions : {} });
-      if (b.coverB64) { try { await blobStore.putCover(b.meta.id, base64ToBlob(b.coverB64, b.coverMime || 'image/jpeg')); b.meta.hasCover = true; } catch (_) {} }
+      check();
+      if (b.coverB64) { try { await blobStore.putCover(b.meta.id, base64ToBlob(b.coverB64, b.coverMime || 'image/jpeg')); check(); b.meta.hasCover = true; } catch (_) { check(); } }
       const idx = (coread().books || []).findIndex((x) => x.id === b.meta.id);
       if (idx >= 0) coread().books[idx] = b.meta; else coread().books.unshift(b.meta);
       ok++;
-    } catch (e) { warn(`import book failed`, e); }
+    } catch (e) { check(); warn(`import book failed`, e); }
   }
   // 伴读对话 + 记忆切片（reader_chats·按 bucketKey=chatKey::bookId 覆盖式还原·v2 新增）
   let chatOk = 0;
   if (Array.isArray(data.chats)) {
     for (const c of data.chats) {
+      check();
       if (!c?.key || !isPlainObject(c.rec)) continue;
-      try { await blobStore.putReaderChat(c.key, c.rec); chatOk++; } catch (e) { warn(`import chat failed`, e); }
+      try { await blobStore.putReaderChat(c.key, c.rec); chatOk++; check(); } catch (e) { check(); warn(`import chat failed`, e); }
     }
   }
   let imageOk = 0;
   if (Array.isArray(data.images)) {
     for (const item of data.images) {
+      check();
       if (!item?.key || !item.b64) continue;
-      try { await blobStore.putReaderImageByKey(item.key, base64ToBlob(item.b64, item.mime || 'image/*')); imageOk++; } catch (e) { warn(`import reader image failed`, e); }
+      try { await blobStore.putReaderImageByKey(item.key, base64ToBlob(item.b64, item.mime || 'image/*')); imageOk++; check(); } catch (e) { check(); warn(`import reader image failed`, e); }
     }
   }
   let vectorOk = 0;
   if (Array.isArray(data.vectors)) {
     for (const item of data.vectors) {
+      check();
       if (!item?.key || !isPlainObject(item.rec)) continue;
-      try { await blobStore.putReaderVectors(item.key, item.rec); vectorOk++; } catch (e) { warn(`import vectors failed`, e); }
+      try { await blobStore.putReaderVectors(item.key, item.rec); vectorOk++; check(); } catch (e) { check(); warn(`import vectors failed`, e); }
     }
   }
   let audioOk = 0;
   if (Array.isArray(data.audio)) {
     const entries = [];
     for (const item of data.audio) {
+      check();
       if (!item?.key || !item?.b64) continue;
       try {
         entries.push({
@@ -64,18 +71,21 @@ export async function applyCoreadPackageData(data, {blobStore, coread, isPlainOb
           meta: { ...(item.meta || {}), source: 'coread' },
           createdAt: item.createdAt || Date.now(),
         });
-      } catch (e) { warn(`decode coread audio failed`, e); }
+      } catch (e) { check(); warn(`decode coread audio failed`, e); }
     }
-    try { audioOk = (await blobStore.bulkPutAudio(entries)).added; } catch (e) { warn(`import coread audio failed`, e); }
+    check();
+    try { audioOk = (await blobStore.bulkPutAudio(entries)).added; check(); } catch (e) { check(); warn(`import coread audio failed`, e); }
   }
   let logOk = 0;
   if (Array.isArray(data.retrievalLogs)) {
     const ordered = data.retrievalLogs.slice().sort((a, b) => (a?.at || 0) - (b?.at || 0));
     for (const item of ordered) {
+      check();
       if (!isPlainObject(item)) continue;
       const rec = { ...item }; delete rec.id;
-      try { await blobStore.pushRetLog(rec, 50); logOk++; } catch (e) { warn(`import retrieval log failed`, e); }
+      try { await blobStore.pushRetLog(rec, 50); logOk++; check(); } catch (e) { check(); warn(`import retrieval log failed`, e); }
     }
   }
+  check();
   return {ok, chatOk, imageOk, vectorOk, audioOk, logOk};
 }

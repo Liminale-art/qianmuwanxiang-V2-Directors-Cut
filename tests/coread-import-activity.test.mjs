@@ -28,7 +28,7 @@ test('cancellation and invalid input release reader activity, while an existing 
   e.c.readCoreadPackageFile=async()=>({books:[]});e.c.confirmDialog=async()=>false;await e.run();assert.deepEqual(e.calls,[]);assert.equal(e.c.coreadImportDataFile.busy,false);
 });
 test('a completed writer cannot merge preferences or repaint a different reader owner',async()=>{
-  const e=fixture();let release,captured;e.c.applyCoreadPackageData=async(data,options)=>{captured=options.coread();await new Promise(r=>release=r);return {ok:1};};
+  const e=fixture();let release,captured;e.c.applyCoreadPackageData=async(data,options)=>{assert.equal(typeof options.check,'function');options.check();captured=options.coread();await new Promise(r=>release=r);return {ok:1};};
   const old=e.c.settings.coread,pending=e.run();await new Promise(r=>setImmediate(r));e.c.settings={coread:{newer:true}};
   release();await pending;assert.equal(captured,old);assert.deepEqual(e.calls,[]);assert.equal(e.c.coreadImportDataFile.busy,false);assert.match(e.notices.at(-1),/已写入内容保留/);
 });

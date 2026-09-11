@@ -30,3 +30,19 @@ test('legacy book-only packs remain supported without calling absent media categ
   const e=fixture();const result=await applyCoreadPackageData({books:[]},e.options);
   assert.equal(Object.values(result).every(n=>n===0),true);assert.deepEqual(e.calls,[]);
 });
+
+for(const method of ['putBook','putCover','putReaderChat','putReaderImageByKey','putReaderVectors','bulkPutAudio','pushRetLog'])test(method+' cannot resume the remaining import after its guard expires',async()=>{
+  for(const fail of [false,true]){
+    const e=fixture();let release,current=true;
+    e.options.check=()=>{if(!current)throw Error('stale import');};
+    e.options.blobStore[method]=async(...args)=>{e.calls.push([method,...args]);await new Promise(r=>release=r);if(fail)throw Error('late database failure');return method==='bulkPutAudio'?{added:1}:undefined;};
+    const pending=applyCoreadPackageData(e.data,e.options);await new Promise(r=>setImmediate(r));assert.equal(typeof release,'function');
+    const before=e.calls.length;current=false;release();await assert.rejects(()=>pending,/stale import/);
+    assert.equal(e.calls.length,before,'no subsequent category or record writes');assert.deepEqual(e.warnings,[],'stale state must not be swallowed as an ordinary row failure');
+    if(['putBook','putCover'].includes(method))assert.equal(e.state.books[0].title,'before','no stale index writeback');
+  }
+});
+test('an already stale package cannot start its first write',async()=>{
+  const e=fixture();e.options.check=()=>{throw Error('stale import');};
+  await assert.rejects(()=>applyCoreadPackageData(e.data,e.options),/stale import/);assert.deepEqual(e.calls,[]);
+});
