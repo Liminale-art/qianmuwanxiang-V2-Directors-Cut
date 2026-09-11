@@ -237,7 +237,7 @@ test('actual activity adapter blocks each independent lane without normalizing o
   const base=Object.fromEntries(Object.values(lanes).flat().map(key=>[key,false]));
   const c=vm.createContext({...base,settings:{focusClock:{status:'idle'}},focusClockVoicePreparation:null,
     storyboardActiveJobs:new Map(),storyboardGenerationPreparing:new Set(),storyboardPreparationRetries:new Set(),storyboardComfyRecovery:null,storyboardReceiveComfyImage:{},storyboardImageService:null,storyboardReceiveServiceImage:{},storyboardQueue:[],storyboardAutomaticPending:new Map(),
-    storyboardImportPackage:{},storyboardExportPackage:{},storyboardBundleReview:null,storageCleanupSession:{busy:false},importPinnedNotesBackup:{busy:false},importTtsFavoritesBackup:{busy:false}});
+    storyboardImportPackage:{},storyboardExportPackage:{},storyboardBundleReview:null,storageCleanupSession:{busy:false},importPinnedNotesBackup:{busy:false},importTtsFavoritesBackup:{busy:false},coreadImportDataFile:{busy:false}});
   vm.runInContext(section('configRestoreActivity'),c);
   const idle=()=>assert.equal(Object.values(c.configRestoreActivity()).some(Boolean),false);
   idle();const before=JSON.stringify(c.settings);let cases=0;
@@ -253,6 +253,7 @@ test('actual activity adapter blocks each independent lane without normalizing o
   for(const status of ['running','paused']){c.settings.focusClock.status=status;assert.ok(c.configRestoreActivity().focus,status);cases++;}
   c.settings.focusClock.status='idle';idle();assert.equal(JSON.stringify(c.settings),before);assert.equal(cases,34);
   c.storageCleanupSession.busy=true;
+  c.coreadImportDataFile.busy=true;assert.equal(c.configRestoreActivity(false).transfer,true);c.coreadImportDataFile.busy=false;
   assert.equal(Object.values(c.configRestoreActivity(false)).some(Boolean),false,'cleanup must exclude only itself');
   const notices=[],allowed=policy.configRestoreGate(c.settings,()=>c.configRestoreActivity(),(...args)=>notices.push(args));
   assert.equal(allowed(c.settings),false);assert.match(notices[0][0],/数据清理/);

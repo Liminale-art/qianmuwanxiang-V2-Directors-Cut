@@ -12,6 +12,7 @@ function fixture(){
   vm.runInContext(source('importTtsFavoritesBackup'),c);
   vm.runInContext(source('importPinnedNotesBackup'),c);
   c.blobStore.importFavorite=(...args)=>c.blobStore.addFavorite(...args);
+  c.coreadImportDataFile={busy:false};
   c.storageCleanupSession=createStorageCleanupSession({owner:()=>c.settings,scope:()=>1,epoch:()=>c.storyboardAdmissionEpoch,
     activity:()=>({transfer:c.importTtsFavoritesBackup.busy||c.importPinnedNotesBackup.busy})});
   const input={isConnected:true,value:'fixture',files:[{size:1,text:async()=>payload}]};

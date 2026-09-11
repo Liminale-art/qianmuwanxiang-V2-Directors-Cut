@@ -8329,7 +8329,7 @@ async function importPinnedNotesBackup(event) {
   const input = event?.currentTarget;
   const file = input?.files?.[0];
   if (!file) return;
-  if (importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || storageCleanupSession.busy) return toast('请先结束导入或关闭清理选择，再从备份区导入。', 'warning');
+  if (importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || coreadImportDataFile.busy || storageCleanupSession.busy) return toast('请先结束导入或关闭清理选择，再从备份区导入。', 'warning');
   importPinnedNotesBackup.busy = true;
   const owner = settings, epoch = storyboardAdmissionEpoch;
   const view = document.getElementById(MODAL_ID);
@@ -8403,7 +8403,7 @@ async function importTtsFavoritesBackup(event) {
   const input = event?.currentTarget;
   const file = input?.files?.[0];
   if (!file) return;
-  if (importTtsFavoritesBackup.busy || importPinnedNotesBackup.busy || storageCleanupSession.busy) return toast('请先结束导入或关闭清理选择，再从备份区导入。', 'warning');
+  if (importTtsFavoritesBackup.busy || importPinnedNotesBackup.busy || coreadImportDataFile.busy || storageCleanupSession.busy) return toast('请先结束导入或关闭清理选择，再从备份区导入。', 'warning');
   importTtsFavoritesBackup.busy = true;
   const owner = settings, epoch = storyboardAdmissionEpoch, modal = document.getElementById(MODAL_ID);
   const check = () => { if (settings !== owner || epoch !== storyboardAdmissionEpoch || !input.isConnected || !modal?.isConnected || !modal.classList.contains('open')) throw Error('导入页面或状态已变化，后续已停止；已写入内容保留。'); };
@@ -25605,7 +25605,7 @@ function configRestoreActivity(includeCleanup = true) {
     focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy,
     director: busy || theaterBusy,
     image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || storyboardImageService?.busy || storyboardReceiveServiceImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
-    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || (includeCleanup && storageCleanupSession.busy),
+    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || coreadImportDataFile.busy || (includeCleanup && storageCleanupSession.busy),
   };
 }
 
@@ -34897,21 +34897,31 @@ async function coreadExportData() {
 
 async function coreadImportDataFile(file) {
     if (!file) return;
+    if (coreadImportDataFile.busy || Object.values(configRestoreActivity()).some(Boolean)) return toast('请先结束正在进行的任务或退出阅读，再导入伴读整包。', 'warning');
+    coreadImportDataFile.busy = true;
+    try {
+    const owner = settings, reader = coread(), epoch = storyboardAdmissionEpoch;
+    const check = () => { if (settings !== owner || coread() !== reader || epoch !== storyboardAdmissionEpoch) throw Error('伴读状态已变化，后续已停止；已写入内容保留。'); };
     let data;
     try {
       data = await readCoreadPackageFile(file);
     } catch (error) { toast(`导入失败：${error?.message || '不是有效的千幕阅读数据文件。'} 未写入内容，请保留原包。`, 'error'); return; }
+    check();
     if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地存储，无法导入。', 'error'); return; }
     const chatN = Array.isArray(data.chats) ? data.chats.length : 0;
     const mediaN = (Array.isArray(data.images) ? data.images.length : 0) + (Array.isArray(data.audio) ? data.audio.length : 0);
     if (!await confirmDialog('导入伴读数据打包', `将导入 ${data.books.length} 本书${chatN ? `、${chatN} 段伴读对话与记忆` : ''}${mediaN ? `、${mediaN} 项媒体` : ''}。同 id 的书和会话会被覆盖；API 密钥沿用本机设置。是否继续？`)) return;
-    const {ok, chatOk, imageOk, vectorOk, audioOk, logOk} = await applyCoreadPackageData(data, {blobStore, coread, isPlainObject, base64ToBlob, warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error)});
+    check();
+    const {ok, chatOk, imageOk, vectorOk, audioOk, logOk} = await applyCoreadPackageData(data, {blobStore, coread:()=>reader, isPlainObject, base64ToBlob, warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error)});
+    check();
     // 偏好深合并：保留本机书目、启用态和全部凭据；v1–v5 数据均兼容。
     if (isPlainObject(data.prefs)) coreadMergePackageValue(coread(), omitConfigConnections({coread:data.prefs}).coread);
     saveSettings();
     toast(`已导入 ${ok} 本书 · ${chatOk} 段对话 · ${imageOk} 张插图 · ${vectorOk} 组向量 · ${audioOk} 条语音${logOk ? ` · ${logOk} 条检索记录` : ''}。`, 'success');
     renderModal();
     rerenderMoreIfOpen();
+    } catch (error) { toast(`伴读导入未完成：${error?.message || error}`, 'error'); }
+    finally { coreadImportDataFile.busy = false; }
 }
 
 function coreadImportData() {

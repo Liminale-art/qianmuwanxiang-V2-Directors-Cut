@@ -13,6 +13,7 @@ function fixture(){
     notesRuntime:['original'],notesLoaded:false,notesPanelOpen:false,renderFloatingNotes(){},refreshStorageInventory:async()=>{},toast:text=>notices.push(text)});
   vm.runInContext(source('importPinnedNotesBackup'),c);
   c.importTtsFavoritesBackup={busy:false};
+  c.coreadImportDataFile={busy:false};
   c.saveImportedQianmuNote=(...args)=>c.saveQianmuNote(...args);
   c.storageCleanupSession=createStorageCleanupSession({owner:()=>c.settings,scope:()=>1,epoch:()=>c.storyboardAdmissionEpoch,activity:()=>({transfer:c.importPinnedNotesBackup.busy})});
   const input={isConnected:true,files:[{size:payload.length,text:async()=>payload}],value:'fixture'};
