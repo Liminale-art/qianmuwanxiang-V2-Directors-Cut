@@ -1715,12 +1715,12 @@ export async function clearRecoverableCategories(categories = []) {
 // 储存管理页按 IndexedDB 项目逐项清理。目标仍只能来自本模块登记过的 store，
 // 但不再替用户隐去不可恢复项目；是否删除由界面上的风险说明与用户勾选决定。
 export async function clearStorageItems(storeNames = []) {
-  if (!blobStoreAvailable()) return { cleared: [], failed: [], beforeBytes: 0, clearedBytes: 0 };
   const allowedNames = new Set(Object.keys(STORAGE_STORE_INFO));
   const selected = new Set((Array.isArray(storeNames) ? storeNames : [])
     .map((value) => String(value || ''))
     .filter((value) => allowedNames.has(value)));
   if (!selected.size) return { cleared: [], failed: [], beforeBytes: 0, clearedBytes: 0 };
+  if (!blobStoreAvailable()) throw new Error('当前浏览器储存不可用，未清理所选内容。');
   const before = await estimateBlobStoreUsage();
   const targets = before.stores.filter((item) => selected.has(item.name));
   const cleared = [];
@@ -1728,8 +1728,14 @@ export async function clearStorageItems(storeNames = []) {
   let clearedBytes = 0;
   for (const item of targets) {
     try {
-      const targetStore = await store(item.name, 'readwrite');
-      await reqP(targetStore.clear());
+      const db = await openDB();
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction(item.name, 'readwrite');
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(transaction.error || new Error(`${item.name} cleanup aborted`));
+        transaction.objectStore(item.name).clear();
+      });
       cleared.push(item.name);
       clearedBytes += Math.max(0, Number(item.bytes) || 0);
     } catch (error) {
@@ -1799,8 +1805,9 @@ export function normalizeChatScopedStorageSelections(selections = []) {
 }
 
 export async function clearChatScopedStorage(selections = []) {
-  if (!blobStoreAvailable()) return { cleared: [], failed: [], count: 0, bytes: 0 };
   const normalized = normalizeChatScopedStorageSelections(selections);
+  if (!normalized.length) return { cleared: [], failed: [], count: 0, bytes: 0 };
+  if (!blobStoreAvailable()) throw new Error('当前浏览器储存不可用，未清理所选内容。');
   const cleared = [];
   const failed = [];
   for (const selection of normalized) {
