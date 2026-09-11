@@ -8429,7 +8429,7 @@ async function importTtsFavoritesBackup(event) {
         const mime = /^audio\/[a-z0-9.+-]+$/i.test(String(item.mime || '')) ? String(item.mime) : 'audio/mpeg';
         const audioBlob = base64ToBlob(item.data, mime);
         if (audioBlob.size > 48 * 1024 * 1024) throw new Error('单条音频超过 48 MB');
-        await blobStore.addFavorite(id, audioBlob, storageSafeFavoriteMeta(item.meta), String(item.label || '').slice(0, 1000));
+        await blobStore.importFavorite(id, audioBlob, storageSafeFavoriteMeta(item.meta), String(item.label || '').slice(0, 1000), {check});
         imported++;
       } catch (error) {
         failed.push(`第 ${index + 1} 条：${error?.message || error}`);

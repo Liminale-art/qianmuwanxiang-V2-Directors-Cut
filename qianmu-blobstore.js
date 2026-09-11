@@ -224,6 +224,23 @@ export async function addFavorite(favId, blob, meta, label) {
   return favId;
 }
 
+// Import must never replace an existing original or report an aborted request as saved.
+export async function importFavorite(favId, blob, meta, label, {check = () => {}} = {}) {
+  check();
+  if (!blobStoreAvailable()) throw new Error('语音收藏存储不可用，未导入。');
+  const db = await openDB();
+  check();
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_FAVORITES, 'readwrite');
+    const error = event => event?.target?.error || transaction.error || new Error('语音收藏未能完成保存。');
+    transaction.oncomplete = resolve;
+    transaction.onerror = event => reject(error(event));
+    transaction.onabort = event => reject(error(event));
+    transaction.objectStore(STORE_FAVORITES).add({blob, meta:meta || {}, label:label || '', createdAt:Date.now()}, favId);
+  });
+  return favId;
+}
+
 export async function getFavorite(favId) {
   const s = await store(STORE_FAVORITES, 'readonly');
   return reqP(s.get(favId));

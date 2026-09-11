@@ -36,10 +36,25 @@ try{
     check('a late inventory abort cannot masquerade as a successfully read empty or partial library',failed);
     let guarded=false;try{await api.saveImportedQianmuNote({id:'stale'},{check(){throw Error('stale');}});}catch{guarded=true;}
     check('stale import does not create a note',guarded&&!(await read()).some(n=>n.id==='stale'));
+    const audio=new Blob(['synthetic audio'],{type:'audio/mpeg'});
+    await db.importFavorite('favorite-original',audio,{speaker:'fixture'},'original');
+    let collisionError;try{await db.importFavorite('favorite-original',audio,{},'replacement');}catch(error){collisionError=error;}
+    check('favorite import preserves collisions and provides a readable error',!!collisionError?.message&&(await db.getFavorite('favorite-original')).label==='original');
+    let aborted=false;
+    try{
+      IDBObjectStore.prototype.add=function(value,key){const request=add.call(this,value,key);if(key==='favorite-abort')request.addEventListener('success',()=>this.transaction.abort(),{once:true});return request;};
+      try{await db.importFavorite('favorite-abort',audio,{},'abort');}catch(error){aborted=!!error?.message;}
+    }finally{IDBObjectStore.prototype.add=add;}
+    check('a favorite request success followed by abort is never reported as committed',aborted&&!(await db.getFavorite('favorite-abort')));
+    await db.importFavorite('favorite-next',audio,{},'next');
+    check('another favorite can commit after an independent failure',(await db.getFavorite('favorite-next')).label==='next');
+    let guardCalls=0,staleFavorite=false;
+    try{await db.importFavorite('favorite-stale',audio,{},'',{check(){if(++guardCalls===2)throw Error('stale after database await');}});}catch{staleFavorite=true;}
+    check('favorite guard is rechecked after opening the database and before any write',staleFavorite&&guardCalls===2&&!(await db.getFavorite('favorite-stale')));
     const descriptor=Object.getOwnPropertyDescriptor(window,'indexedDB');
     try{
       Object.defineProperty(window,'indexedDB',{configurable:true,value:undefined});
-      for(const [name,run] of [['strict read',read],['persistent import',()=>write({id:'no-storage'})]]){
+      for(const [name,run] of [['strict read',read],['persistent import',()=>write({id:'no-storage'})],['favorite import',()=>db.importFavorite('no-storage',audio,{},'')]]){
         let failed=false;try{await run();}catch{failed=true;}check(name+' rejects unavailable storage',failed);
       }
       await api.saveQianmuNote({id:'temporary',body:'normal temporary',pinned:false});
@@ -48,5 +63,5 @@ try{
     }finally{if(descriptor)Object.defineProperty(window,'indexedDB',descriptor);else delete window.indexedDB;}
     return checks;
   });
-  assert.equal(checks.length,7);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,12);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

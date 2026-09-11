@@ -11,6 +11,7 @@ function fixture(){
     blobStore:{hasFavorite:async()=>false,addFavorite:async id=>saved.push(id)}});
   vm.runInContext(source('importTtsFavoritesBackup'),c);
   vm.runInContext(source('importPinnedNotesBackup'),c);
+  c.blobStore.importFavorite=(...args)=>c.blobStore.addFavorite(...args);
   c.storageCleanupSession=createStorageCleanupSession({owner:()=>c.settings,scope:()=>1,epoch:()=>c.storyboardAdmissionEpoch,
     activity:()=>({transfer:c.importTtsFavoritesBackup.busy||c.importPinnedNotesBackup.busy})});
   const input={isConnected:true,value:'fixture',files:[{size:1,text:async()=>payload}]};
@@ -55,4 +56,10 @@ test('oversized lists are rejected before lookup, and invalid input releases the
 test('final inventory errors report completed work without calling the whole import a success',async()=>{
   const e=fixture();e.c.refreshStorageInventory=async()=>{throw Error('synthetic inventory failure');};await e.run();
   assert.deepEqual(e.saved,['one','two']);assert.match(e.notices.at(-1),/未完成：已导入 2 条/);assert.equal(e.c.importTtsFavoritesBackup.busy,false);
+});
+
+test('the dedicated import receives its guard; rejected writes never count as imported',async()=>{
+  const e=fixture();e.c.blobStore.importFavorite=async(id,blob,meta,label,{check})=>{
+    assert.equal(typeof check,'function');check();if(id==='one')throw Error('transaction aborted');e.saved.push(id);
+  };await e.run();assert.deepEqual(e.saved,['two']);assert.match(e.notices.at(-1),/已导入 1 条语音收藏，1 条失败/);
 });
