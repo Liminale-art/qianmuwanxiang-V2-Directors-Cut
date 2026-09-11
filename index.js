@@ -19660,21 +19660,23 @@ async function storyboardReceiveComfyImage(log, { refresh = true, taskLocator } 
 async function storyboardOpenComfyInbox(root) {
   const host = root.querySelector('.sd-storyboard-comfy-inbox'); if (!host) return;
   root._sdComfyInboxCleanup?.();
-  const epoch = storyboardAdmissionEpoch, ticket = uid('comfy-inbox'); host.dataset.ticket = ticket;
-  const valid = () => root.isConnected && host.isConnected && host.dataset.ticket === ticket && epoch === storyboardAdmissionEpoch;
+  const epoch = storyboardAdmissionEpoch, owner = settings, chat = String(getChatKey() || ''), ticket = uid('comfy-inbox'); host.dataset.ticket = ticket;
+  const valid = () => root.isConnected && host.isConnected && host.dataset.ticket === ticket && epoch === storyboardAdmissionEpoch && owner === settings && chat === String(getChatKey() || '');
   host.textContent = '正在读取';
   const nai = root.querySelector('.sd-storyboard-service-inbox'); if (nai) nai.hidden = true; host.hidden = false;
   try {
     const [view, service] = await Promise.all([featureRuntime.load('comfyInbox'), storyboardComfyRecoveryRuntime()]);
     if (!valid()) return;
     const dispose = view.mountComfyInbox(host, { service, isCurrent: valid, receive: async row => {
+      if (!valid()) throw new Error('收片页面已变化，请重新打开后领取原图');
       const log = storyboardState().logs.find(item => (!row.logId || item.id === row.logId) && item.snapshot?.source === 'comfy' && item.snapshot?.imageAdmission?.attemptId === row.attemptId && item.snapshot?.imageAdmission?.namespace === row.namespace);
       if (log && storyboardCanReceiveComfyLog(log) && !row.originalOnly) return storyboardReceiveComfyImage(log, { refresh: false, taskLocator: row.taskLocator });
       const chatKey = String(getChatKey() || '');
       const apiKey = row.baseUrl ? await storyboardResolveComfyRecoveryKey({ baseUrl: row.baseUrl, credentialId: row.credentialId }) : '';
+      if (!valid()) throw new Error('收片页面已变化，请重新打开后领取原图');
       return service.retrieveOriginal(row, { chatKey, apiKey, deliver: (job, data, archiveFiles, checkpoint, guard) =>
         storyboardDeliverGatewayResult(job, null, data, { service: true, archiveFiles, checkpoint, guard: async () => {
-          await guard(); if (String(getChatKey() || '') !== chatKey) throw new Error('聊天已切换，请返回原页面领取');
+          await guard(); if (!valid() || String(getChatKey() || '') !== chatKey) throw new Error('收片页面已变化，请返回原页面领取');
         } }),
       });
     } });
