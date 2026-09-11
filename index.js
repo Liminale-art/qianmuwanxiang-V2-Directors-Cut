@@ -8311,11 +8311,7 @@ async function exportPinnedNotesBackup(button = null) {
       type: 'qianmu-notes', version: 1, exportedAt: new Date().toISOString(), credentialsIncluded: false,
       notes: notes.map((note) => clone(note)),
     };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type: 'application/json' }));
-    const link = document.createElement('a');
-    link.href = url; link.download = `qianmu-notes-${fileStamp()}.json`;
-    document.body.appendChild(link); link.click(); link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    ttsDownloadBlob(new Blob([JSON.stringify(payload)], {type:'application/json'}), `qianmu-notes-${fileStamp()}.json`);
     toast(`已导出 ${notes.length} 条固定便笺。`, 'success');
   } catch (error) {
     toast(`便笺导出失败：${error?.message || error}`, 'error');
@@ -8377,19 +8373,17 @@ async function exportTtsFavoritesBackup(button = null) {
     if (!favorites.length) return toast('没有可导出的语音收藏。', 'info');
     const entries = [];
     for (const favorite of favorites) {
-      if (!favorite?.blob) continue;
+      if (!favorite?.blob || !Number.isSafeInteger(favorite.blob.size) || favorite.blob.size < 1) throw new Error(`第 ${entries.length + 1} 条收藏的音频原件缺失或为空，未导出；请保留本机资料。`);
+      const data = await blobToBase64(favorite.blob);
+      if (typeof data !== 'string' || !data) throw new Error(`第 ${entries.length + 1} 条收藏未能完整读取，未导出；请稍后重试。`);
       entries.push({
         id: String(favorite.id || '').slice(0, 240), label: String(favorite.label || '').slice(0, 1000),
-        mime: String(favorite.blob.type || 'audio/mpeg').slice(0, 120), data: await blobToBase64(favorite.blob),
+        mime: String(favorite.blob.type || 'audio/mpeg').slice(0, 120), data,
         meta: storageSafeFavoriteMeta(favorite.meta), createdAt: Number(favorite.createdAt) || 0,
       });
     }
     const payload = { type: 'qianmu-tts-favorites', version: 1, exportedAt: new Date().toISOString(), credentialsIncluded: false, entries };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type: 'application/json' }));
-    const link = document.createElement('a');
-    link.href = url; link.download = `qianmu-语音收藏-${fileStamp()}.json`;
-    document.body.appendChild(link); link.click(); link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    ttsDownloadBlob(new Blob([JSON.stringify(payload)], {type:'application/json'}), `qianmu-语音收藏-${fileStamp()}.json`);
     toast(`已导出 ${entries.length} 条语音收藏。`, 'success');
   } catch (error) {
     toast(`语音收藏导出失败：${error?.message || error}`, 'error');
