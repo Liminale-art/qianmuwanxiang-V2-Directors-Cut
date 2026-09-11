@@ -645,12 +645,17 @@ export async function deleteStoryboardDelivery(taskId) {
 // ── 分镜：已结束的详细流水日志 ──────────────────────────────
 // 生成中的流水仍由内存/settings 运行态持有；只有终态日志成功写入这里后，调用方才会
 // 收缩 settings 中的完整 stages。该顺序保证 IndexedDB 不可用时仍保留旧数据。
-export async function putStoryboardPipelineLogs(records = []) {
+export async function putStoryboardPipelineLogs(records = [], { preserveExisting = false } = {}) {
   const normalized = (Array.isArray(records) ? records : [])
     .filter((item) => item && String(item.id || '').trim())
     .map((item) => ({ ...item, id: String(item.id), archivedAt: Date.now() }));
   if (!normalized.length) return { stored: [] };
+  const captured = preserveExisting ? structuredClone(normalized) : normalized;
   const db = await openDB();
+  if (preserveExisting) {
+    const { writePreservedPipelineLogs } = await import('./qianmu-plan-archive-write.js');
+    return writePreservedPipelineLogs(db, STORE_STORYBOARD_PIPELINE_LOGS, captured);
+  }
   const transaction = db.transaction(STORE_STORYBOARD_PIPELINE_LOGS, 'readwrite');
   const done = new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();

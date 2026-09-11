@@ -12501,7 +12501,7 @@ async function storyboardArchiveCompletedPipelines(state = storyboardState()) {
   if (!completed.length) return 0;
   const epoch = storyboardPipelineArchiveEpoch;
   if (!await storyboardPackageArchiveAllowed()) return 0;
-  await blobStore.putStoryboardPipelineLogs(completed.map((item) => clone(item)));
+  await blobStore.putStoryboardPipelineLogs(completed.map((item) => clone(item)), { preserveExisting: true });
   if (epoch !== storyboardPipelineArchiveEpoch) return 0;
   const archivedIds = new Set(completed.map((item) => String(item.id)));
   for (const pipeline of completed) storyboardPipelineArchiveCache.set(String(pipeline.id), clone(pipeline));
@@ -12520,7 +12520,7 @@ function storyboardArchivePipelineLog(log) {
     const pipeline = (state.pipelineLogs || []).find((item) => item.id === pipelineId);
     if (!storyboardPipelineIsTerminal(pipeline)) return false;
     if (!await storyboardPackageArchiveAllowed()) return false;
-    await blobStore.putStoryboardPipelineLogs([clone(pipeline)]);
+    await blobStore.putStoryboardPipelineLogs([clone(pipeline)], { preserveExisting: true });
     if (epoch !== storyboardPipelineArchiveEpoch) return false;
     storyboardPipelineArchiveCache.set(pipelineId, clone(pipeline));
     state.pipelineLogs = (state.pipelineLogs || []).filter((item) => item.id !== pipelineId);

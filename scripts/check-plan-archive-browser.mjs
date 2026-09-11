@@ -14,6 +14,16 @@ try {
     const check=(name,ok)=>{if(!ok)throw Error(name);checks.push(name);};
     const make=(key,prompt)=>({key,chatKey:'fixture',planId:'same',updatedAt:1,plan:{shots:[{prompt}]}});
     const put=rows=>api.putStoryboardPlanArchives(rows,{preserveExisting:true});
+    const pipeline={id:'pipeline-conflict',status:'success',stages:[{response:'original private text'}]};
+    await api.putStoryboardPipelineLogs([pipeline]);
+    const beforePipeline=(await api.getStoryboardPipelineLogs([pipeline.id]))[0];
+    const preservePipelines=rows=>api.putStoryboardPipelineLogs(rows,{preserveExisting:true});
+    await preservePipelines([{...pipeline,archivedAt:1}]);
+    check('identical pipeline retries do not overwrite archival metadata',JSON.stringify((await api.getStoryboardPipelineLogs([pipeline.id]))[0])===JSON.stringify(beforePipeline));
+    let conflict=false;try{await preservePipelines([{...pipeline,id:'pipeline-new'}, {...pipeline,stages:[{response:'different text'}]}]);}catch{conflict=true;}
+    check('pipeline collision rejects atomically and preserves the old full text',conflict&&(await api.getStoryboardPipelineLogs(['pipeline-new'])).length===0&&JSON.stringify((await api.getStoryboardPipelineLogs([pipeline.id]))[0])===JSON.stringify(beforePipeline));
+    const racing=await Promise.allSettled([preservePipelines([{...pipeline,id:'pipeline-race',choice:'A'}]),preservePipelines([{...pipeline,id:'pipeline-race',choice:'B'}])]);
+    check('concurrent conflicting pipeline writers cannot both succeed',racing.filter(item=>item.status==='fulfilled').length===1&&(await api.getStoryboardPipelineLogs(['pipeline-race'])).length===1);
     const old=make('fixture-key','old'),fresh=make('fixture-key','new');
     await api.putStoryboardPlanArchives([old]);
     const added=await put([fresh]),key=added.stored[0];
