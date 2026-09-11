@@ -116,6 +116,42 @@ export function createFocusLibraryStore({indexedDB=globalThis.indexedDB,keyRange
     namespace=focusLibraryNamespace(namespace);
     return transaction(['usage'],'readonly',(tx,output,on)=>on(tx.objectStore('usage').get(namespace))(value=>output(usage(value))));
   }
+  // Import is append-only; selected deletion is all-or-nothing. Never overwrite a newer edit.
+  async function batch(namespace,{add=[],remove:deletions=[]}={}, {isCurrent=()=>true}={}) {
+    namespace=focusLibraryNamespace(namespace);
+    if(!Array.isArray(add)||!Array.isArray(deletions)||add.length+deletions.length<1||add.length+deletions.length>quota.clips)throw problem();
+    const keys=new Set(),additions=add.map(({clip,blob})=>{
+      const owner=focusLibraryScope({namespace,characterKey:clip?.characterKey}),value=normalizeFocusLibraryClip({...clip,namespace},owner),key=focusLibraryClipKey(owner,value.id);
+      if(!(blob instanceof Blob)||!blob.size||blob.size>quota.audioBytes||!/^audio\//i.test(blob.type))throw focusLibraryError('audio','备份音频无效');
+      if(keys.has(key))throw problem();keys.add(key);return {owner,clip:value,blob,key};
+    }),removals=deletions.map(row=>{
+      const owner=focusLibraryScope({namespace,characterKey:row?.characterKey}),key=focusLibraryClipKey(owner,row.id),expected=revision(row.revision);
+      if(keys.has(key)||!expected)throw problem();keys.add(key);return {owner,id:row.id,key,expected};
+    });
+    return transaction(['clips','audio','usage'],'readwrite',(tx,output,on)=>{
+      const heads=tx.objectStore('clips'),audio=tx.objectStore('audio'),totals=tx.objectStore('usage');
+      on(totals.get(namespace))(value=>{
+        const total={...usage(value)},saved=[],old=[];let index=0;
+        const checks=[...additions.map(row=>({row,adding:true})),...removals.map(row=>({row,adding:false}))];
+        function next(){
+          if(index<checks.length){const {row,adding}=checks[index++];on(heads.get(row.key))(head=>{
+            if(adding){if(head!==undefined)throw focusLibraryError('conflict','导入编号冲突，原库未改动');}
+            else{head=storedHead(head,row.owner,row.id);if(!head||head.revision!==row.expected)throw focusLibraryError('conflict','所选语音已变化，请重新选择');old.push({...row,head});}next();});return;}
+          for(const row of old){if(total.count<1||total.bytes<row.head.storedBytes||total.revision<row.head.revision)throw problem();total.count--;total.bytes-=row.head.storedBytes;}
+          for(const row of additions){
+            if(total.revision>=Number.MAX_SAFE_INTEGER-1)throw problem();const stamp=now();
+            const head={...row.clip,revision:++total.revision,createdAt:stamp,updatedAt:stamp,audioBytes:row.blob.size,mimeType:row.blob.type};
+            head.storedBytes=row.blob.size+new TextEncoder().encode(JSON.stringify(head)).byteLength;
+            total.count++;total.bytes+=head.storedBytes;saved.push({...row,head});
+          }
+          if(total.count>quota.clips||total.bytes>quota.bytes)throw focusLibraryError('quota','空间不足，整批未导入');
+          for(const row of old){on(heads.delete(row.key))(()=>{});on(audio.delete(row.key))(()=>{});}
+          for(const row of saved){on(heads.put(row.head,row.key))(()=>{});on(audio.put(row.blob,row.key))(()=>{});}
+          on(totals.put(total,namespace))(()=>{});output({status:'committed',added:saved.map(row=>row.head),removed:old.length});
+        }next();
+      });
+    },isCurrent);
+  }
   function close(){closed=true;cancelOpening?.();for(const abort of [...active.values()])abort(ended());database?.close();database=null;}
-  return Object.freeze({save,list,readAudio,remove,summary,close});
+  return Object.freeze({save,list,readAudio,remove,summary,batch,close});
 }
