@@ -144,7 +144,10 @@ try{
     f=mount(false);f.input.remove();check('a removed import control cannot continue a stale page operation',rejects(f.token));f.done();
     f=mount(false);const replacement=document.createElement('section');replacement.append(f.input);f.root.replaceChildren(replacement);await Promise.resolve();check('storage-card refresh can retain the same file input without cancelling import',!rejects(f.token));f.done();
     f=mount(true);window.dispatchEvent(new Event('pagehide'));check('leaving the document invalidates a reader import',rejects(f.token));f.done();
+    f=mount(false);const exportGuard=createCoreadImportViewGuard(f.input,'导出');f.root.classList.remove('open');let exportError;
+    try{exportGuard.check();}catch(error){exportError=error.message;}exportGuard.release();f.done();
+    check('the shared page guard reports an export cancellation without claiming imported writes',exportError.includes('导出页面')&&exportError.includes('未导出备份')&&!exportError.includes('已写入'));
     return checks;
   });
-  assert.equal(checks.length,47);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,48);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

@@ -8649,7 +8649,7 @@ function bindStorageManagementEvents(root) {
     backup.querySelectorAll('[data-storage-export]').forEach(button=>button.addEventListener('click',()=>{
       switch(button.dataset.storageExport) {
         case 'storyboard': void storyboardExportPackage({ bundle: true }); break;
-        case 'reader': void coreadExportData(); break;
+        case 'reader': void coreadExportData(button); break;
         case 'favorites': void exportTtsFavoritesBackup(button); break;
         case 'notes': void exportPinnedNotesBackup(button); break;
       }
@@ -33841,7 +33841,7 @@ function bindReaderStageEvents(stageRoot) {
       return;
     }
     if (e.target.closest('.sd-reader-pack-export')) {
-      void coreadExportData();
+      void coreadExportData(e.target.closest('.sd-reader-pack-export'));
       return;
     }
     const mtab = e.target.closest('.sd-reader-mtab');
@@ -34828,15 +34828,18 @@ function coreadMergePackageValue(target, source) {
   return target;
 }
 
-async function coreadExportData() {
+async function coreadExportData(origin) {
   if (coreadExportData.busy) return toast('伴读备份正在打包，请勿重复导出。', 'info');
   if (Object.values(configRestoreActivity(true, coreadExportData)).some(Boolean)) return toast('请先结束正在写入的任务或关闭清理选择，再导出伴读备份。', 'warning');
   if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地存储，无法导出。', 'error'); return; }
   coreadExportData.busy = true;
+  let viewGuard;
   try {
+  viewGuard = createCoreadImportViewGuard(origin, '导出');
   toast('正在打包伴读数据…', 'info');
   const owner = settings, reader = coread(), epoch = storyboardAdmissionEpoch;
   const check = () => {
+    viewGuard.check();
     if (settings !== owner || coread() !== reader || storyboardAdmissionEpoch !== epoch) throw Error('伴读状态已变化，未导出备份。请重新开始。');
     if (Object.values(configRestoreActivity(true, coreadExportData)).some(Boolean)) throw Error('其他任务已开始，伴读备份已停止，请稍后重新导出。');
   };
@@ -34864,7 +34867,7 @@ async function coreadExportData() {
   URL.revokeObjectURL(url);
   toast(`伴读数据已打包导出：${books.length} 本书 · ${chats.length} 段对话 · ${images.length} 张插图 · ${audio.length} 条语音。`, 'success');
   } catch (error) { toast(`伴读备份未完成：${error?.message || '请保留本机资料并重试。'}`, 'error'); }
-  finally { coreadExportData.busy = false; }
+  finally { viewGuard?.release(); coreadExportData.busy = false; }
 }
 
 async function coreadImportDataFile(file, origin) {

@@ -59,7 +59,7 @@ export async function collectCoreadPackageData({bookMetas,blobStore,blobToBase64
 }
 export const coreadPackageSafeKey = key => !['__proto__','prototype','constructor'].includes(key);
 // The file input may be hidden; watch its owning page, not the file chooser itself.
-export function createCoreadImportViewGuard(origin) {
+export function createCoreadImportViewGuard(origin, action = '导入') {
   const page = origin?.closest('.sd-reader-morepage');
   const modal = page ? null : origin?.closest('#story-director-modal');
   const root = page || modal, view = origin?.ownerDocument?.defaultView;
@@ -70,7 +70,7 @@ export function createCoreadImportViewGuard(origin) {
   const check = () => {
     if (observer) consume(observer.takeRecords());
     if (!origin?.isConnected || !root?.isConnected || (page ? page.hidden : !modal?.classList.contains('open'))) invalid = true;
-    if (invalid) throw Error('伴读导入页面已关闭或变化，后续已停止；已写入内容保留。');
+    if (invalid) throw Error(`伴读${action}页面已关闭或变化，后续已停止；${action === '导出' ? '未导出备份。' : '已写入内容保留。'}`);
   };
   check();
   const onPageHide = () => { invalid = true; };

@@ -17,7 +17,7 @@ function fixture(local){
   c.collectCoreadPackageData=collectCoreadPackageData;
   c.configRestoreActivity=(includeCleanup=true,ownTransfer=null)=>({transfer:(ownTransfer!==c.coreadExportData&&c.coreadExportData.busy)||(ownTransfer!==c.coreadImportDataFile&&c.coreadImportDataFile.busy),...c.competingActivity});
   c.blobToBase64=async()=>{throw Error('unexpected media in connection-only fixture');};
-  c.createCoreadImportViewGuard=()=>({check(){},release(){}});
+  c.createCoreadImportViewGuard=(origin,action)=>({check(){if(c.pageChanged)throw Error(`${action} page changed`);},release(){c.viewReleased=true;}});
   c.blobStore.createReaderPackageWriter=({check})=>{assert.equal(typeof check,'function');return c.blobStore;};
   return {c,notices,exported:()=>exported,run:prefs=>c.coreadImportDataFile({text:async()=>JSON.stringify({type:'qianmu-coread',version:5,books:[],prefs})})};
 }
@@ -100,4 +100,13 @@ test('competing operations block export before reading and stop a pending export
     e.c.competingActivity={[lane]:true};release({fullText:'original'});await pending;
     assert.equal(e.exported(),undefined);assert.equal(e.c.coreadExportData.busy,false);assert.match(e.notices.at(-1),/其他任务已开始/);
   }
+});
+
+for(const phase of ['save','read'])test('closing the export page during '+phase+' prevents download and releases its guard',async()=>{
+  const local=settings();local.books=[{id:'book'}];const e=fixture(local);let release;
+  e.c.blobStore.getBook=async()=>({fullText:'original'});e.c.blobStore.getCover=async()=>undefined;
+  if(phase==='save'){e.c.readerDialog.loaded=true;e.c.coreadSaveDialog=()=>new Promise(r=>release=r);}
+  else e.c.blobStore.getBook=()=>new Promise(r=>release=r);
+  const pending=e.c.coreadExportData();await new Promise(r=>setImmediate(r));e.c.pageChanged=true;release({fullText:'original'});await pending;
+  assert.equal(e.exported(),undefined);assert.equal(e.c.coreadExportData.busy,false);assert.equal(e.c.viewReleased,true);assert.match(e.notices.at(-1),/导出 page changed/);
 });
