@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
 import {isPlainObject,clone} from '../qianmu-storyboard-utils.js';
-import {readCoreadPackageFile,coreadPackageSafeKey,applyCoreadPackageData,collectCoreadPackageData,createCoreadImportProgress,coreadImportProgressText} from '../qianmu-reader-package.js';
+import {readCoreadPackageFile,coreadPackageSafeKey,applyCoreadPackageData,collectCoreadPackageData,prepareCoreadPackageExport,createCoreadImportProgress,coreadImportProgressText} from '../qianmu-reader-package.js';
 import {omitConfigConnections} from '../qianmu-config-connections.js';
 function fixture(local){
   let exported;const notices=[];
@@ -15,6 +15,7 @@ function fixture(local){
     Blob:class{constructor(parts){exported=JSON.parse(parts[0]);}}});
   vm.runInContext(['ttsDownloadBlob','coreadIsCredentialKey','coreadSanitizePackageValue','coreadMergePackageValue','coreadImportDataFile','coreadExportData'].map(source).join('\n'),c);
   c.collectCoreadPackageData=collectCoreadPackageData;
+  c.prepareCoreadPackageExport=payload=>{const prepared=prepareCoreadPackageExport(payload);exported=JSON.parse(JSON.stringify(payload));return prepared;};
   c.configRestoreActivity=(includeCleanup=true,ownTransfer=null)=>({transfer:(ownTransfer!==c.coreadExportData&&c.coreadExportData.busy)||(ownTransfer!==c.coreadImportDataFile&&c.coreadImportDataFile.busy),...c.competingActivity});
   c.blobToBase64=async()=>{throw Error('unexpected media in connection-only fixture');};
   c.createCoreadImportViewGuard=(origin,action)=>({check(){if(c.pageChanged)throw Error(`${action} page changed`);},release(){c.viewReleased=true;}});
@@ -22,6 +23,30 @@ function fixture(local){
   c.blobStore.createReaderPackageReader=({check})=>{assert.equal(typeof check,'function');return c.blobStore;};
   return {c,notices,exported:()=>exported,run:prefs=>c.coreadImportDataFile({text:async()=>JSON.stringify({type:'qianmu-coread',version:5,books:[],prefs})})};
 }
+test('non-restorable originals require explicit consent and confirmation cannot outlive their owner or page',async()=>{
+  for(const mode of ['confirm','cancel','page','settings','reader','epoch','activity']){
+    const local=settings(),e=fixture(local),downloads=[];let asks=0;
+    let rec={original:'keep this complete'};for(let i=0;i<42;i++)rec={nested:rec};
+    e.c.blobStore.listReaderChatKeys=async()=>['chat'];e.c.blobStore.getReaderChat=async()=>rec;
+    e.c.ttsDownloadBlob=(blob,name)=>downloads.push({blob,name});
+    e.c.confirmDialog=async(title,text)=>{
+      asks++;assert.match(title,/保全/);assert.match(text,/不能直接恢复/);
+      if(mode==='page')e.c.pageChanged=true;
+      if(mode==='settings')e.c.settings={};if(mode==='reader')e.c.coread=()=>({});
+      if(mode==='epoch')e.c.storyboardAdmissionEpoch++;if(mode==='activity')e.c.competingActivity={voice:true};
+      return mode!=='cancel';
+    };
+    await e.c.coreadExportData();assert.equal(asks,1);assert.equal(e.c.coreadExportData.busy,false);assert.equal(e.c.viewReleased,true);
+    assert.equal(downloads.length,mode==='confirm'?1:0);
+    assert.equal(e.notices.some(n=>n.includes('伴读数据已打包导出')),false,'a preservation copy is never advertised as a normal restorable pack');
+    if(mode==='confirm'){
+      assert.match(downloads[0].name,/preservation/);assert.match(e.notices.at(-1),/不能直接恢复/);
+      const saved=JSON.parse(await downloads[0].blob.text());assert.deepEqual(saved.chats[0].rec,rec);
+      await assert.rejects(()=>readCoreadPackageFile(downloads[0].blob));
+    }
+  }
+});
+
 function settings(){
   return {books:[],collections:[{id:'collection',name:'fixture'}],enabled:true,fontSize:16,assistant:{apiProfileId:'local-assistant'},comic:{visionApiProfileId:'local-vision'},
     memory:{dialogProvider:'sillytavern',dialogApiProfileId:'local-dialog',...Object.fromEntries(['vector','rerank','summary'].flatMap(kind=>[

@@ -178,7 +178,15 @@ try{
       const local=await api.listQianmuNotes();
       check('normal temporary notes still work but failed imports never become temporary',local.some(n=>n.id==='temporary')&&!local.some(n=>n.id==='no-storage'));
     }finally{if(descriptor)Object.defineProperty(window,'indexedDB',descriptor);else delete window.indexedDB;}
-    const {createCoreadImportViewGuard}=await import('/qianmu-reader-package.js');
+    const {createCoreadImportViewGuard,prepareCoreadPackageExport,readCoreadPackageFile}=await import('/qianmu-reader-package.js');
+    const pack={type:'qianmu-coread',version:5,books:[{meta:{id:'synthetic-book'},fullText:'月光 synthetic original'}],prefs:{fontSize:16}};
+    const normalPack=prepareCoreadPackageExport(pack),readPack=await readCoreadPackageFile(normalPack.blob);
+    check('native Blob export round trips Unicode originals through the real package reader',!normalPack.preservationOnly&&JSON.stringify(readPack)===JSON.stringify(pack));
+    let deep={original:'keep complete'};for(let i=0;i<42;i++)deep={nested:deep};
+    const originalText=JSON.stringify({...pack,chats:[{key:'synthetic-chat',rec:deep}]}),preserved=prepareCoreadPackageExport(JSON.parse(originalText));
+    check('non-restorable deep originals remain byte-complete in a marked preservation copy',preserved.preservationOnly&&await preserved.blob.text()===originalText);
+    let refused=false;try{await readCoreadPackageFile(preserved.blob);}catch{refused=true;}
+    check('preservation classification agrees with the current native import rejection',refused);
     const mount=reader=>{
       const host=document.createElement('section');host.innerHTML=reader?'<div class="sd-reader-morepage"><input hidden></div>':'<div id="story-director-modal" class="open"><section><input hidden></section></div>';
       document.body.append(host);const root=host.firstElementChild,input=host.querySelector('input'),token=createCoreadImportViewGuard(input);
@@ -204,5 +212,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,97);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,100);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

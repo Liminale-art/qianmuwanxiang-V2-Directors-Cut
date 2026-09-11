@@ -1,6 +1,18 @@
 // Reader packs contain original media, unlike the smaller configuration-only package.
-import {parseBoundedJson} from './qianmu-json-input.js';
+import {parseBoundedJson,assertJsonInputBounds} from './qianmu-json-input.js';
 export const COREAD_PACKAGE_LIMITS = Object.freeze({bytes:256*1048576,depth:40,nodes:500000});
+
+// The caller constructs the v5 envelope. Its serialized text is valid JSON;
+// reuse import limits without parsing another full copy of the media payload.
+export function prepareCoreadPackageExport(payload) {
+  const text = JSON.stringify(payload), blob = new Blob([text], {type:'application/json'});
+  let preservationOnly = blob.size > COREAD_PACKAGE_LIMITS.bytes;
+  if (!preservationOnly) {
+    try { assertJsonInputBounds(text, {maxBytes:COREAD_PACKAGE_LIMITS.bytes,maxDepth:COREAD_PACKAGE_LIMITS.depth,maxNodes:COREAD_PACKAGE_LIMITS.nodes,label:'伴读整包'}); }
+    catch (_) { preservationOnly = true; }
+  }
+  return {blob,preservationOnly};
+}
 
 export async function collectCoreadPackageData({bookMetas,blobStore,blobToBase64,check = () => {}}) {
   let category = '书籍原件';

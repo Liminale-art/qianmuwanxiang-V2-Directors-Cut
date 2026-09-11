@@ -1,7 +1,7 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
-import { readCoreadPackageFile, coreadPackageSafeKey, applyCoreadPackageData, collectCoreadPackageData, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard } from './qianmu-reader-package.js';
+import { readCoreadPackageFile, coreadPackageSafeKey, applyCoreadPackageData, collectCoreadPackageData, prepareCoreadPackageExport, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard } from './qianmu-reader-package.js';
 import { exportConfiguration } from './qianmu-config-export.js';
 import { receiveComfyImage, resolveComfyRecoveryKey } from './qianmu-comfy-recovery-action.js';
 import { receiveServiceImage } from './qianmu-service-recovery-action.js';
@@ -34862,9 +34862,11 @@ async function coreadExportData(origin) {
     audio,
     retrievalLogs,
   };
-  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-  ttsDownloadBlob(blob, `qianmu-coread-pack-${fileStamp()}.json`);
-  toast(`伴读数据已打包导出：${books.length} 本书 · ${chats.length} 段对话 · ${images.length} 张插图 · ${audio.length} 条语音。`, 'success');
+  const {blob,preservationOnly} = prepareCoreadPackageExport(payload);
+  if (preservationOnly && !await confirmDialog('仅保存保全副本', '此伴读整包超过256 MiB或结构限制，当前版本不能直接恢复。可完整保存原内容供后续整理，不会裁剪资料。是否下载保全副本？')) return;
+  check();
+  ttsDownloadBlob(blob, `qianmu-coread-pack-${preservationOnly ? 'preservation-' : ''}${fileStamp()}.json`);
+  toast(preservationOnly ? '伴读保全副本已导出，当前版本不能直接恢复；请保留原文件和本机资料。' : `伴读数据已打包导出：${books.length} 本书 · ${chats.length} 段对话 · ${images.length} 张插图 · ${audio.length} 条语音。`, preservationOnly ? 'warning' : 'success');
   } catch (error) { toast(`伴读备份未完成：${error?.message || '请保留本机资料并重试。'}`, 'error'); }
   finally { viewGuard?.release(); coreadExportData.busy = false; }
 }
