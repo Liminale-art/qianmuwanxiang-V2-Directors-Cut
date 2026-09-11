@@ -5,6 +5,7 @@
   "files": [
     "qianmu-config-connections.js",
     "qianmu-config-export.js",
+    "qianmu-library-backup.js",
     "qianmu-json-input.js",
     "qianmu-config-apply.js",
     "qianmu-config-undo.js",

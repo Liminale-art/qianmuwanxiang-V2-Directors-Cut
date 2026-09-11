@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
+import {exportLibraryBackup} from '../qianmu-library-backup.js';
 
 function fixture(){
   const f={notes:[{id:'note',body:'完整原文',pinned:true},{id:'temporary',body:'session only',pinned:false}],favorites:[{id:'voice',blob:new Blob(['synthetic audio'],{type:'audio/mpeg'}),label:'收藏',meta:{speaker:'角色',apiKey:'never export'},createdAt:123}],downloads:[],notices:[]};
   f.icon={className:'original-icon'};f.button={isConnected:true,disabled:false,querySelector:()=>f.icon};
   f.modal={isConnected:true,open:true,classList:{contains:()=>f.modal.open}};f.other={};
-  const c=vm.createContext({settings:{},storyboardAdmissionEpoch:1,MODAL_ID:'fixture',document:{getElementById:()=>f.modal},Blob,clone:structuredClone,blobStore:{listNotes:async()=>f.notes,listFavorites:async()=>f.favorites},
+  const c=vm.createContext({exportLibraryBackup,confirmDialog:async()=>true,settings:{},storyboardAdmissionEpoch:1,MODAL_ID:'fixture',document:{getElementById:()=>f.modal},Blob,clone:structuredClone,blobStore:{listNotes:async()=>f.notes,listFavorites:async()=>f.favorites},
     fileStamp:()=> 'fixture',blobToBase64:async blob=>Buffer.from(await blob.arrayBuffer()).toString('base64'),
     ttsDownloadBlob:(blob,name)=>f.downloads.push({blob,name}),toast:(...args)=>f.notices.push(args),setQianmuIconClass:(icon,name)=>icon.className=name});
   vm.runInContext(['createStorageBackupCheck','storageSafeFavoriteMeta','exportPinnedNotesBackup','exportTtsFavoritesBackup'].map(source).join('\n'),c);
@@ -77,6 +78,17 @@ test('each pending export blocks duplicate and opposite exports until its own fi
     const pending=f.c[name](f.button);await new Promise(r=>setImmediate(r));assert.equal(f.c.configRestoreActivity().transfer,true);
     await f.c[name]();await f.c[opposite]();assert.equal(reads,1);assert.equal(f.downloads.length,0);
     release();await pending;assert.equal(f.downloads.length,1);assert.equal(!!f.c.configRestoreActivity().transfer,false);
+  }
+});
+
+test('real export entries retain their activity and page check through the preservation confirmation',async()=>{
+  for(const favorites of [false,true])for(const mode of ['confirm','cancel','page']){
+    const f=fixture(),name=favorites?'exportTtsFavoritesBackup':'exportPinnedNotesBackup';let asks=0;
+    if(favorites)f.favorites=Array.from({length:2001},(_,i)=>({...f.favorites[0],id:'audio-'+i}));
+    else f.notes=Array.from({length:1001},(_,i)=>({...f.notes[0],id:'note-'+i}));
+    f.c.confirmDialog=async title=>{asks++;assert.match(title,/保全/);assert.equal(f.c[name].busy,true);if(mode==='page')f.modal.open=false;return mode!=='cancel';};
+    await f.c[name](f.button);assert.equal(asks,1);assert.equal(f.downloads.length,mode==='confirm'?1:0);assert.equal(f.c[name].busy,false);assert.equal(f.button.disabled,false);
+    if(mode==='confirm'){assert.match(f.downloads[0].name,/preservation/);assert.equal(f.notices.at(-1)[1],'warning');}
   }
 });
 

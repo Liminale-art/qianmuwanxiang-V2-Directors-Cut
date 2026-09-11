@@ -9,7 +9,7 @@ let external=0;const errors=[];
 await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.href==='https://qianmu.test/')return route.fulfill({contentType:'text/html',body:'<!doctype html>'});
-  if(url.origin==='https://qianmu.test'&&['/qianmu-notes.js','/qianmu-blobstore.js','/qianmu-reader-package.js','/qianmu-json-input.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
+  if(url.origin==='https://qianmu.test'&&['/qianmu-notes.js','/qianmu-blobstore.js','/qianmu-reader-package.js','/qianmu-json-input.js','/qianmu-library-backup.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
   external++;return route.abort();
 });
 try{

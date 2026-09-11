@@ -2,6 +2,7 @@
 // 固定便笺写入 IndexedDB；未固定便笺只存在当前页面运行态，重开 ST 自动消失。
 
 import * as blobStore from './qianmu-blobstore.js';
+import {NOTES_BACKUP_LIMITS} from './qianmu-library-backup.js';
 
 const temporaryNotes = new Map();
 
@@ -78,13 +79,13 @@ export function clearTemporaryQianmuNotes() {
 
 // Import data only. The caller owns activity admission, view updates and notices.
 export async function importQianmuNotesBackup(file, {check, read, write, uid, progress = {imported:0, failed:[]}}) {
-  if (Number(file.size) > 12 * 1024 * 1024) throw new Error('便笺备份文件超过 12 MB');
+  if (Number(file.size) > NOTES_BACKUP_LIMITS.bytes) throw new Error('便笺备份文件超过 12 MB');
   const payload = JSON.parse(await file.text());
   check();
   if (payload?.type !== 'qianmu-notes' || Number(payload?.version) !== 1 || !Array.isArray(payload?.notes)) {
     throw new Error('不是有效的千幕固定便笺备份');
   }
-  if (payload.notes.length > 1000) throw new Error('便笺备份超过 1000 条，请拆分后导入；本次未写入。');
+  if (payload.notes.length > NOTES_BACKUP_LIMITS.entries) throw new Error('便笺备份超过 1000 条，请拆分后导入；本次未写入。');
   const incoming = payload.notes;
   const occupiedIds = new Set((await read()).map((note) => note.id));
   check();
