@@ -1454,7 +1454,7 @@ const storyboardPlanArchiveCache = new Map(); // key -> 已结束计划的完整
 let storyboardPlanArchiveEpoch = 0;
 let storyboardPlanArchiveTimer = null;
 const storyboardApiKeys = new Map(); // credentialId -> Key；不进入设置、日志或分镜数据包
-const storageCleanupSession = createStorageCleanupSession({owner:()=>settings,scope:()=>getChatKey(),epoch:()=>storyboardAdmissionEpoch,notify:toast});
+const storageCleanupSession = createStorageCleanupSession({owner:()=>settings,scope:()=>getChatKey(),epoch:()=>storyboardAdmissionEpoch,activity:()=>configRestoreActivity(false),notify:toast});
 const storyboardDraftApiKeys = new Map(); // 表单会话：载入、测试、保存及重绘均保留 Key；不新增持久副本
 let storyboardConnectionLoadRevision = 0;
 let storyboardKeyInputRevision = 0;
@@ -25606,14 +25606,14 @@ async function exportConfig() {
     plans:storyboardPlansForPortableExport,stamp:fileStamp,download:ttsDownloadBlob,notify:toast});
 }
 
-function configRestoreActivity() {
+function configRestoreActivity(includeCleanup = true) {
   return {
     voice: ttsRestoreTasks > 0,
     reader: readerView || coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight || dialogBusy || readerAssistantBusy || coreadComicVisionBusy,
     focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy,
     director: busy || theaterBusy,
     image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || storyboardImageService?.busy || storyboardReceiveServiceImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
-    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen,
+    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || (includeCleanup && storageCleanupSession.busy),
   };
 }
 

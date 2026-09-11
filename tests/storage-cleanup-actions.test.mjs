@@ -26,6 +26,25 @@ function fixture(result, kind = 'chat') {
 }
 const row=(chatKey,count=1)=>({name:'storyboard_plan_archives',chatKey,count,bytes:10});
 
+test('cleanup cannot start while any known task lane is active or status cannot be read',()=>{
+  for(const lane of ['reader','focus','director','voice','image','transfer','unknown']){
+    const notices=[],session=createStorageCleanupSession({owner:()=>1,scope:()=>1,epoch:()=>1,notify:text=>notices.push(text),
+      activity:()=>{if(lane==='unknown')throw Error('synthetic');return {[lane]:true};}});
+    assert.equal(session.begin({isConnected:true}),null,lane);assert.equal(session.busy,false);assert.equal(notices.length,1);
+  }
+});
+
+test('a newly started task permanently invalidates the old cleanup, even after the task finishes',()=>{
+  for(const lane of ['reader','focus','director','voice','image','transfer','unknown']){
+    let running=false;const session=createStorageCleanupSession({owner:()=>1,scope:()=>1,epoch:()=>1,
+      activity:()=>{if(running&&lane==='unknown')throw Error('synthetic');return {[lane]:running};}});
+    const token=session.begin({isConnected:true});token.check();running=true;
+    assert.throws(()=>token.check(),/后续操作已停止/);running=false;
+    assert.throws(()=>token.check(),/后续操作已停止/);token.release();
+    const retry=session.begin({isConnected:true});retry.check();retry.release();
+  }
+});
+
 test('orphan cleanup receives the initiating session, not an unguarded background delete',async()=>{
   const e=fixture({cleared:[],failed:[]},'module');let checked=false;
   e.c.openStorageCleanupDialog=async()=>['__orphan_reader_blobs__'];

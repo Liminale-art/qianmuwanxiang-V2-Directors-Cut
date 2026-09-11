@@ -109,7 +109,7 @@ export function configRestoreGuard(owner) {
 
 export function configRestoreGate(owner, activity, notify) {
   const unchanged = configRestoreGuard(owner);
-  const reasons = {reader:'请先退出阅读并完成伴读任务，再恢复配置。',focus:'请先结束本轮专注及语音准备，再恢复配置。',director:'请等待推演或幕外任务完成后恢复配置。',image:'请等待分镜生成与队列完成后恢复配置。',transfer:'请先完成分镜备份或恢复，再恢复配置。'};
+  const reasons = {reader:'请先退出阅读并完成伴读任务，再恢复配置。',focus:'请先结束本轮专注及语音准备，再恢复配置。',director:'请等待推演或幕外任务完成后恢复配置。',image:'请等待分镜生成与队列完成后恢复配置。',transfer:'请先完成数据清理、备份或恢复，再恢复配置。'};
   return current => {
     const state = activity();
     reasons.voice = '请等待本轮台词提取或配音完成，停止连播后再恢复配置。';
