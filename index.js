@@ -1,7 +1,7 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
-import { readCoreadPackageFile, coreadPackageSafeKey } from './qianmu-reader-package.js';
+import { readCoreadPackageFile, coreadPackageSafeKey, applyCoreadPackageData } from './qianmu-reader-package.js';
 import { exportConfiguration } from './qianmu-config-export.js';
 import { receiveComfyImage, resolveComfyRecoveryKey } from './qianmu-comfy-recovery-action.js';
 import { receiveServiceImage } from './qianmu-service-recovery-action.js';
@@ -34905,64 +34905,7 @@ async function coreadImportDataFile(file) {
     const chatN = Array.isArray(data.chats) ? data.chats.length : 0;
     const mediaN = (Array.isArray(data.images) ? data.images.length : 0) + (Array.isArray(data.audio) ? data.audio.length : 0);
     if (!await confirmDialog('导入伴读数据打包', `将导入 ${data.books.length} 本书${chatN ? `、${chatN} 段伴读对话与记忆` : ''}${mediaN ? `、${mediaN} 项媒体` : ''}。同 id 的书和会话会被覆盖；API 密钥沿用本机设置。是否继续？`)) return;
-    let ok = 0;
-    for (const b of data.books) {
-      if (!b?.meta?.id) continue;
-      try {
-        await blobStore.putBook(b.meta.id, { meta: { title: b.meta.title, author: b.meta.author, mode: b.meta.mode || 'text' }, fullText: b.fullText || '', chapters: b.chapters || [], sig: b.sig || '', comicDescriptions: isPlainObject(b.comicDescriptions) ? b.comicDescriptions : {} });
-        if (b.coverB64) { try { await blobStore.putCover(b.meta.id, base64ToBlob(b.coverB64, b.coverMime || 'image/jpeg')); b.meta.hasCover = true; } catch (_) {} }
-        const idx = (coread().books || []).findIndex((x) => x.id === b.meta.id);
-        if (idx >= 0) coread().books[idx] = b.meta; else coread().books.unshift(b.meta);
-        ok++;
-      } catch (e) { console.warn(`[${MODULE_NAME}] import book failed`, e); }
-    }
-    // 伴读对话 + 记忆切片（reader_chats·按 bucketKey=chatKey::bookId 覆盖式还原·v2 新增）
-    let chatOk = 0;
-    if (Array.isArray(data.chats)) {
-      for (const c of data.chats) {
-        if (!c?.key || !isPlainObject(c.rec)) continue;
-        try { await blobStore.putReaderChat(c.key, c.rec); chatOk++; } catch (e) { console.warn(`[${MODULE_NAME}] import chat failed`, e); }
-      }
-    }
-    let imageOk = 0;
-    if (Array.isArray(data.images)) {
-      for (const item of data.images) {
-        if (!item?.key || !item.b64) continue;
-        try { await blobStore.putReaderImageByKey(item.key, base64ToBlob(item.b64, item.mime || 'image/*')); imageOk++; } catch (e) { console.warn(`[${MODULE_NAME}] import reader image failed`, e); }
-      }
-    }
-    let vectorOk = 0;
-    if (Array.isArray(data.vectors)) {
-      for (const item of data.vectors) {
-        if (!item?.key || !isPlainObject(item.rec)) continue;
-        try { await blobStore.putReaderVectors(item.key, item.rec); vectorOk++; } catch (e) { console.warn(`[${MODULE_NAME}] import vectors failed`, e); }
-      }
-    }
-    let audioOk = 0;
-    if (Array.isArray(data.audio)) {
-      const entries = [];
-      for (const item of data.audio) {
-        if (!item?.key || !item?.b64) continue;
-        try {
-          entries.push({
-            key: item.key,
-            blob: base64ToBlob(item.b64, item.mime || 'audio/mpeg'),
-            meta: { ...(item.meta || {}), source: 'coread' },
-            createdAt: item.createdAt || Date.now(),
-          });
-        } catch (e) { console.warn(`[${MODULE_NAME}] decode coread audio failed`, e); }
-      }
-      try { audioOk = (await blobStore.bulkPutAudio(entries)).added; } catch (e) { console.warn(`[${MODULE_NAME}] import coread audio failed`, e); }
-    }
-    let logOk = 0;
-    if (Array.isArray(data.retrievalLogs)) {
-      const ordered = data.retrievalLogs.slice().sort((a, b) => (a?.at || 0) - (b?.at || 0));
-      for (const item of ordered) {
-        if (!isPlainObject(item)) continue;
-        const rec = { ...item }; delete rec.id;
-        try { await blobStore.pushRetLog(rec, 50); logOk++; } catch (e) { console.warn(`[${MODULE_NAME}] import retrieval log failed`, e); }
-      }
-    }
+    const {ok, chatOk, imageOk, vectorOk, audioOk, logOk} = await applyCoreadPackageData(data, {blobStore, coread, isPlainObject, base64ToBlob, warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error)});
     // 偏好深合并：保留本机书目、启用态和全部凭据；v1–v5 数据均兼容。
     if (isPlainObject(data.prefs)) coreadMergePackageValue(coread(), omitConfigConnections({coread:data.prefs}).coread);
     saveSettings();

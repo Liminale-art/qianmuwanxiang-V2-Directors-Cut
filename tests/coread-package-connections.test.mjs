@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
 import {isPlainObject,clone} from '../qianmu-storyboard-utils.js';
-import {readCoreadPackageFile,coreadPackageSafeKey} from '../qianmu-reader-package.js';
+import {readCoreadPackageFile,coreadPackageSafeKey,applyCoreadPackageData} from '../qianmu-reader-package.js';
 import {omitConfigConnections} from '../qianmu-config-connections.js';
 function fixture(local){
   let exported;const notices=[];
-  const c=vm.createContext({isPlainObject,clone,readCoreadPackageFile,coreadPackageSafeKey,omitConfigConnections,
-    coread:()=>local,readerDialog:{loaded:false},toast:m=>notices.push(m),confirmDialog:async()=>true,
+  const c=vm.createContext({isPlainObject,clone,readCoreadPackageFile,coreadPackageSafeKey,applyCoreadPackageData,omitConfigConnections,
+    coread:()=>local,readerDialog:{loaded:false},toast:m=>notices.push(m),confirmDialog:async()=>true,base64ToBlob:()=>{throw Error('unexpected media');},MODULE_NAME:'fixture',
     blobStore:{blobStoreAvailable:()=>true,listReaderChatKeys:async()=>[],listReaderImages:async()=>[],listReaderVectorKeys:async()=>[],listAudio:async()=>[],listRetLog:async()=>[]},
     saveSettings(){},renderModal(){},rerenderMoreIfOpen(){},fileStamp:()=> 'fixture',
     document:{createElement:()=>({click(){},remove(){}}),body:{appendChild(){}}},URL:{createObjectURL:()=> 'blob:fixture',revokeObjectURL(){}},

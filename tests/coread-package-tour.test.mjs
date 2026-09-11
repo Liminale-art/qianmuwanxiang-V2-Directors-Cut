@@ -5,6 +5,7 @@ const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const centerView = await readFile(new URL('../qianmu-reader-center-view.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 const store = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
+const packageData = await readFile(new URL('../qianmu-reader-package.js', import.meta.url), 'utf8');
 
 assert.match(css, /@media \(max-width: 620px\)[\s\S]*\.sd-reader-lib-grid \.sd-reader-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/, '移动端和窄屏书架必须固定一行三本');
 
@@ -19,7 +20,8 @@ assert.match(packageHelpers, /apikey[\s\S]*accesskey[\s\S]*secretkey[\s\S]*autho
 assert.match(packageHelpers, /对象数组按 id\/name 对齐本机条目[\s\S]*coreadMergePackageValue/, '导入必须深合并并保留本机凭据');
 
 const importBlock = source.slice(source.indexOf('async function coreadImportDataFile'), source.indexOf('function coreadImportData()'));
-assert.match(importBlock, /putReaderImageByKey[\s\S]*putReaderVectors[\s\S]*bulkPutAudio[\s\S]*pushRetLog/, '导入必须恢复所有扩展存储');
+assert.match(importBlock, /await applyCoreadPackageData\(data, \{blobStore, coread, isPlainObject, base64ToBlob/, '导入必须调用专用数据模块');
+assert.match(packageData, /putReaderImageByKey[\s\S]*putReaderVectors[\s\S]*bulkPutAudio[\s\S]*pushRetLog/, '导入模块必须保留所有扩展存储');
 assert.match(importBlock, /API 密钥沿用本机设置/, '导入确认必须明确凭据处理方式');
 assert.match(store, /export async function listReaderImages[\s\S]*export async function putReaderImageByKey[\s\S]*export async function listReaderVectorKeys/, '存储层必须支持媒体与向量整包迁移');
 
