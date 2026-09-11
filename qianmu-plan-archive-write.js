@@ -34,6 +34,15 @@ export function writePreservedPipelineLogs(db, storeName, records) {
   return writePreservedRecords(db, storeName, prepared, contentOf);
 }
 
+export function writePreservedSnapshotArchives(db, storeName, records) {
+  const contentOf = row => JSON.stringify([row.chatKey, row.recordId, row.snapshot]);
+  const prepared = records.map(row => {
+    const record = structuredClone(row);
+    return {record, key:record.key, content:contentOf(record)};
+  });
+  return writePreservedRecords(db, storeName, prepared, contentOf);
+}
+
 function writePreservedRecords(db, storeName, prepared, contentOf) {
   if (!prepared.length) return {stored:[]};
   const tx = db.transaction(storeName,'readwrite'), target = tx.objectStore(storeName), stored = [];

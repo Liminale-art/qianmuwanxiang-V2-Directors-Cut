@@ -69,6 +69,7 @@ function fixture() {
     ttsDownloadBlob:(blob,name)=>downloads.push({blob,name}),toast:(...args)=>notices.push(args),fileStamp:()=> 'fixture',ctx:()=>context,MODULE_NAME:'module',DEFAULT_SETTINGS:{},
     mergeDefaults:()=>{},migrateSettings:()=>{},storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
     storyboardPipelineArchiveEpoch:0,storyboardPipelineArchiveCache:new Map(),storyboardPipelineArchiveWrites:new Map(),storyboardPipelineArchiveHydration:null,
+    storyboardSnapshotEpoch:0,storyboardSnapshotCache:new Map(),storyboardSnapshotReads:new Map(),
     blobStore:{clearStoryboardPlanArchives(){throw Error('must never erase historical originals');}},
     getSettings:()=>context.extensionSettings.module,seedBuiltinTheaters(){},saveSettings:()=>writes.push('save'),storyboardSchedulePlanArchive(){},applyDirectorInjection:async()=>{},renderFloatButton(){},renderModal(){},cacheProseLayout(){}});
   vm.runInContext(['exportConfig','importConfig','configApplyOptions','undoConfigRestore'].map(section).join('\n'),c);
@@ -88,10 +89,12 @@ test('configuration handoff invalidates pipeline memory sessions without deletin
   e.c.storyboardPipelineArchiveCache.set('old',{stages:['original']});
   e.c.storyboardPipelineArchiveWrites.set('old',Promise.resolve());
   e.c.storyboardPipelineArchiveHydration=Promise.resolve();
+  e.c.storyboardSnapshotCache.set('old',{prompt:'old'});e.c.storyboardSnapshotReads.set('old',Promise.resolve());
   e.c.configApplyOptions().afterApply();
   assert.equal(e.c.storyboardPipelineArchiveEpoch,1);
   assert.equal(e.c.storyboardPipelineArchiveCache.size,0);assert.equal(e.c.storyboardPipelineArchiveWrites.size,0);
   assert.equal(e.c.storyboardPipelineArchiveHydration,null);assert.equal(e.c.settings,owner);
+  assert.equal(e.c.storyboardSnapshotEpoch,1);assert.equal(e.c.storyboardSnapshotCache.size,0);assert.equal(e.c.storyboardSnapshotReads.size,0);
   assert.deepEqual(e.writes,[]);
 });
 

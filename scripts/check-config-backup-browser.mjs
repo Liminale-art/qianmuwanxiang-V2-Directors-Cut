@@ -32,6 +32,7 @@ try{
       ctx:()=>context,MODULE_NAME:'fixture',DEFAULT_SETTINGS:{},configRestoreActivity:()=>({}),normalizeStoryboardState:structuredClone,migrateSettings(){},mergeDefaults(){},getSettings:()=>context.extensionSettings.fixture,
       storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
       storyboardPipelineArchiveEpoch:0,storyboardPipelineArchiveCache:new Map(),storyboardPipelineArchiveWrites:new Map(),storyboardPipelineArchiveHydration:null,
+      storyboardSnapshotEpoch:0,storyboardSnapshotCache:new Map(),storyboardSnapshotReads:new Map(),
       storyboardPlansForPortableExport:async value=>value,seedBuiltinTheaters(){},saveSettings:()=>saved++,storyboardSchedulePlanArchive(){},applyDirectorInjection:async()=>{},renderFloatButton(){},renderModal(){}});
     // Execute the same entry adapters called by the storage card, only host services are stubs.
     new Function(source+';window.runExport=exportConfig;window.runImport=importConfig;window.renderModal=()=>{document.getElementById("fixture-root").innerHTML=renderStorageBackupSection();bindStorageManagementEvents(document);};renderModal();')();

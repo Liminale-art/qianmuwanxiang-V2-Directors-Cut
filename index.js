@@ -13217,6 +13217,7 @@ async function storyboardArchiveGallerySnapshots(records = storyboardGalleryReco
   )).map((record) => ({
     record,
     source: record.snapshot,
+    sourceText: JSON.stringify(record.snapshot),
     key: storyboardSnapshotKey(record, expectedChatKey),
     snapshot: sanitizeStoryboardSnapshot(record.snapshot, { source: record.source, prompt: record.prompt, negative: record.negative }),
   })).filter((item) => item.key);
@@ -13225,18 +13226,14 @@ async function storyboardArchiveGallerySnapshots(records = storyboardGalleryReco
     if (!await storyboardPackageArchiveAllowed()) return 0;
     await blobStore.putStoryboardSnapshots(captures.map((item) => ({
       key: item.key, chatKey: expectedChatKey, recordId: item.record.id, snapshot: clone(item.snapshot),
-    })));
+    })), { preserveExisting: true });
     if (epoch !== storyboardSnapshotEpoch || expectedChatKey !== String(getChatKey() || '')) return 0;
     const stripped = [];
     const currentById = new Map(storyboardGalleryRecords().map((record) => [String(record?.id || ''), record]));
-    const abandonedKeys = [];
     for (const item of captures) {
       const current = currentById.get(String(item.record.id || ''));
-      if (current !== item.record) {
-        if (!current) abandonedKeys.push(item.key);
-        continue;
-      }
-      if (item.record.snapshot !== item.source) continue;
+      if (current !== item.record) continue;
+      if (item.record.snapshot !== item.source || JSON.stringify(item.record.snapshot) !== item.sourceText) continue;
       storyboardSnapshotCache.set(item.key, clone(item.snapshot));
       item.record.chatKey = expectedChatKey;
       item.record.snapshotRef = item.key;
@@ -13244,11 +13241,10 @@ async function storyboardArchiveGallerySnapshots(records = storyboardGalleryReco
       delete item.record.snapshot;
       stripped.push(item);
     }
-    if (abandonedKeys.length) void blobStore.deleteStoryboardSnapshots(abandonedKeys).catch(() => {});
     if (!stripped.length) return 0;
     try { await saveMetadata(); }
     catch (error) {
-      for (const item of stripped) item.record.snapshot = item.source;
+      for (const item of stripped) if (!item.record.snapshot && item.record.snapshotRef === item.key) item.record.snapshot = item.source;
       throw error;
     }
     return stripped.length;
@@ -13259,9 +13255,10 @@ async function storyboardArchiveGallerySnapshots(records = storyboardGalleryReco
 }
 
 async function storyboardHydrateGallerySnapshots(records = storyboardGalleryRecords(), { migrate = true } = {}) {
-  if (migrate) await storyboardArchiveGallerySnapshots(records);
   const expectedChatKey = String(getChatKey() || '');
   const epoch = storyboardSnapshotEpoch;
+  if (migrate) await storyboardArchiveGallerySnapshots(records);
+  if (epoch !== storyboardSnapshotEpoch || expectedChatKey !== String(getChatKey() || '')) return 0;
   const missing = (Array.isArray(records) ? records : []).map((record) => ({
     record, key: String(record?.snapshotRef || storyboardSnapshotKey(record, expectedChatKey)),
   })).filter((item) => item.record && !item.record.snapshot && item.key && !storyboardSnapshotCache.has(item.key));
@@ -25674,6 +25671,9 @@ function configApplyOptions() {
     setCurrent:value=>{settings=value;}, current:()=>settings, save:saveSettings,
     layoutStorage:()=>globalThis.localStorage, layoutKey:PROSE_LAYOUT_STORAGE_KEY,
     afterApply:()=>{
+      storyboardSnapshotEpoch++;
+      storyboardSnapshotCache.clear();
+      storyboardSnapshotReads.clear();
       storyboardPipelineArchiveEpoch++;
       storyboardPipelineArchiveCache.clear();
       storyboardPipelineArchiveWrites.clear();

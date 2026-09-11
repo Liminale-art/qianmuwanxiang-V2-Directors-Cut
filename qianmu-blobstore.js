@@ -706,7 +706,7 @@ export async function clearStoryboardPipelineLogs() {
 // ── 分镜：阅片记录的完整精确重绘快照 ────────────────────────
 // 图片 URL、正文锚点与可视参数继续留在聊天 metadata；这里只承接 profile、connection、
 // payload 等体积较大的可重放请求。调用方必须在事务成功后才移除旧内联 snapshot。
-export async function putStoryboardSnapshots(records = []) {
+export async function putStoryboardSnapshots(records = [], { preserveExisting = false } = {}) {
   const normalized = (Array.isArray(records) ? records : [])
     .filter((item) => item && String(item.key || '').trim() && item.snapshot && typeof item.snapshot === 'object')
     .map((item) => ({
@@ -714,7 +714,12 @@ export async function putStoryboardSnapshots(records = []) {
       snapshot: item.snapshot, updatedAt: Number(item.updatedAt) || Date.now(),
     }));
   if (!normalized.length) return { stored: [] };
+  const captured = preserveExisting ? structuredClone(normalized) : normalized;
   const db = await openDB();
+  if (preserveExisting) {
+    const { writePreservedSnapshotArchives } = await import('./qianmu-plan-archive-write.js');
+    return writePreservedSnapshotArchives(db, STORE_STORYBOARD_SNAPSHOTS, captured);
+  }
   const transaction = db.transaction(STORE_STORYBOARD_SNAPSHOTS, 'readwrite');
   const done = new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();

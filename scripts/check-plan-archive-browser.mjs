@@ -14,6 +14,14 @@ try {
     const check=(name,ok)=>{if(!ok)throw Error(name);checks.push(name);};
     const make=(key,prompt)=>({key,chatKey:'fixture',planId:'same',updatedAt:1,plan:{shots:[{prompt}]}});
     const put=rows=>api.putStoryboardPlanArchives(rows,{preserveExisting:true});
+    const snapshot={key:'snapshot-conflict',chatKey:'fixture',recordId:'image',snapshot:{prompt:'old image'}};
+    await api.putStoryboardSnapshots([snapshot]);const beforeSnapshot=(await api.getStoryboardSnapshots([snapshot.key]))[0];
+    await api.putStoryboardSnapshots([{...snapshot,updatedAt:1}],{preserveExisting:true});
+    check('automatic snapshot retries preserve the original metadata',JSON.stringify((await api.getStoryboardSnapshots([snapshot.key]))[0])===JSON.stringify(beforeSnapshot));
+    let snapshotConflict=false;try{await api.putStoryboardSnapshots([{...snapshot,key:'snapshot-new'},{...snapshot,snapshot:{prompt:'imported image'}}],{preserveExisting:true});}catch{snapshotConflict=true;}
+    check('automatic snapshot collision preserves old originals and aborts the complete batch',snapshotConflict&&(await api.getStoryboardSnapshots(['snapshot-new'])).length===0&&(await api.getStoryboardSnapshots([snapshot.key]))[0].snapshot.prompt==='old image');
+    await api.putStoryboardSnapshots([{...snapshot,snapshot:{prompt:'explicit user edit'}}]);
+    check('explicit snapshot editing remains available',(await api.getStoryboardSnapshots([snapshot.key]))[0].snapshot.prompt==='explicit user edit');
     const pipeline={id:'pipeline-conflict',status:'success',stages:[{response:'original private text'}]};
     await api.putStoryboardPipelineLogs([pipeline]);
     const beforePipeline=(await api.getStoryboardPipelineLogs([pipeline.id]))[0];
