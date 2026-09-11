@@ -15,6 +15,7 @@ function fixture(local){
     Blob:class{constructor(parts){exported=JSON.parse(parts[0]);}}});
   vm.runInContext(['coreadIsCredentialKey','coreadSanitizePackageValue','coreadMergePackageValue','coreadImportDataFile','coreadExportData'].map(source).join('\n'),c);
   c.collectCoreadPackageData=collectCoreadPackageData;
+  c.configRestoreActivity=(includeCleanup=true,ownTransfer=null)=>({transfer:(ownTransfer!==c.coreadExportData&&c.coreadExportData.busy)||(ownTransfer!==c.coreadImportDataFile&&c.coreadImportDataFile.busy),...c.competingActivity});
   c.blobToBase64=async()=>{throw Error('unexpected media in connection-only fixture');};
   c.createCoreadImportViewGuard=()=>({check(){},release(){}});
   c.blobStore.createReaderPackageWriter=({check})=>{assert.equal(typeof check,'function');return c.blobStore;};
@@ -79,5 +80,24 @@ for(const phase of ['save','read'])test('actual export '+phase+' cannot finish u
     const pending=e.c.coreadExportData();await new Promise(r=>setImmediate(r));
     if(changed==='settings')e.c.settings={changed:true};if(changed==='reader')e.c.coread=()=>({});if(changed==='epoch')e.c.storyboardAdmissionEpoch++;
     release({fullText:'original'});await pending;assert.equal(e.exported(),undefined);assert.match(e.notices.at(-1),/伴读状态已变化/);
+  }
+});
+
+test('a pending export excludes duplicate export and reader import, then releases its busy flag',async()=>{
+  const local=settings();local.books=[{id:'book'}];const e=fixture(local);let release,reads=0;
+  e.c.blobStore.getBook=()=>{reads++;return new Promise(r=>release=r);};e.c.blobStore.getCover=async()=>undefined;
+  const pending=e.c.coreadExportData();await new Promise(r=>setImmediate(r));assert.equal(e.c.coreadExportData.busy,true);
+  await e.c.coreadExportData();assert.equal(reads,1);assert.match(e.notices.at(-1),/重复导出/);
+  await e.run({fontSize:77});assert.equal(local.fontSize,16);assert.match(e.notices.at(-1),/结束正在进行的任务/);
+  release({fullText:'original'});await pending;assert.ok(e.exported());assert.equal(e.c.coreadExportData.busy,false);
+});
+test('competing operations block export before reading and stop a pending export without downloading',async()=>{
+  for(const lane of ['voice','reader','focus','director','image','transfer']){
+    const local=settings();local.books=[{id:'book'}];const e=fixture(local);let release,reads=0;
+    e.c.blobStore.getBook=()=>{reads++;return new Promise(r=>release=r);};e.c.blobStore.getCover=async()=>undefined;
+    e.c.competingActivity={[lane]:true};await e.c.coreadExportData();assert.equal(reads,0);assert.equal(!!e.c.coreadExportData.busy,false);
+    e.c.competingActivity={};const pending=e.c.coreadExportData();await new Promise(r=>setImmediate(r));
+    e.c.competingActivity={[lane]:true};release({fullText:'original'});await pending;
+    assert.equal(e.exported(),undefined);assert.equal(e.c.coreadExportData.busy,false);assert.match(e.notices.at(-1),/其他任务已开始/);
   }
 });

@@ -8329,7 +8329,7 @@ async function importPinnedNotesBackup(event) {
   const input = event?.currentTarget;
   const file = input?.files?.[0];
   if (!file) return;
-  if (importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || coreadImportDataFile.busy || storageCleanupSession.busy) return toast('请先结束导入或关闭清理选择，再从备份区导入。', 'warning');
+  if (importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || coreadImportDataFile.busy || coreadExportData.busy || storageCleanupSession.busy) return toast('请先结束备份或导入，或关闭清理选择，再从备份区导入。', 'warning');
   importPinnedNotesBackup.busy = true;
   const owner = settings, epoch = storyboardAdmissionEpoch;
   const view = document.getElementById(MODAL_ID);
@@ -8403,7 +8403,7 @@ async function importTtsFavoritesBackup(event) {
   const input = event?.currentTarget;
   const file = input?.files?.[0];
   if (!file) return;
-  if (importTtsFavoritesBackup.busy || importPinnedNotesBackup.busy || coreadImportDataFile.busy || storageCleanupSession.busy) return toast('请先结束导入或关闭清理选择，再从备份区导入。', 'warning');
+  if (importTtsFavoritesBackup.busy || importPinnedNotesBackup.busy || coreadImportDataFile.busy || coreadExportData.busy || storageCleanupSession.busy) return toast('请先结束备份或导入，或关闭清理选择，再从备份区导入。', 'warning');
   importTtsFavoritesBackup.busy = true;
   const owner = settings, epoch = storyboardAdmissionEpoch, modal = document.getElementById(MODAL_ID);
   const check = () => { if (settings !== owner || epoch !== storyboardAdmissionEpoch || !input.isConnected || !modal?.isConnected || !modal.classList.contains('open')) throw Error('导入页面或状态已变化，后续已停止；已写入内容保留。'); };
@@ -25598,14 +25598,14 @@ async function exportConfig() {
     plans:storyboardPlansForPortableExport,stamp:fileStamp,download:ttsDownloadBlob,notify:toast});
 }
 
-function configRestoreActivity(includeCleanup = true, includeReaderImport = true) {
+function configRestoreActivity(includeCleanup = true, ownTransfer = null) {
   return {
     voice: ttsRestoreTasks > 0,
-    reader: readerView || coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight || dialogBusy || readerAssistantBusy || coreadComicVisionBusy,
+    reader: (ownTransfer !== coreadExportData && readerView) || coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight || dialogBusy || readerAssistantBusy || coreadComicVisionBusy,
     focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy,
     director: busy || theaterBusy,
     image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || storyboardImageService?.busy || storyboardReceiveServiceImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
-    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || (includeReaderImport && coreadImportDataFile.busy) || (includeCleanup && storageCleanupSession.busy),
+    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || (ownTransfer !== coreadImportDataFile && coreadImportDataFile.busy) || (ownTransfer !== coreadExportData && coreadExportData.busy) || (includeCleanup && storageCleanupSession.busy),
   };
 }
 
@@ -34829,11 +34829,17 @@ function coreadMergePackageValue(target, source) {
 }
 
 async function coreadExportData() {
+  if (coreadExportData.busy) return toast('伴读备份正在打包，请勿重复导出。', 'info');
+  if (Object.values(configRestoreActivity(true, coreadExportData)).some(Boolean)) return toast('请先结束正在写入的任务或关闭清理选择，再导出伴读备份。', 'warning');
   if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地存储，无法导出。', 'error'); return; }
-  toast('正在打包伴读数据…', 'info');
+  coreadExportData.busy = true;
   try {
+  toast('正在打包伴读数据…', 'info');
   const owner = settings, reader = coread(), epoch = storyboardAdmissionEpoch;
-  const check = () => { if (settings !== owner || coread() !== reader || storyboardAdmissionEpoch !== epoch) throw Error('伴读状态已变化，未导出备份。请重新开始。'); };
+  const check = () => {
+    if (settings !== owner || coread() !== reader || storyboardAdmissionEpoch !== epoch) throw Error('伴读状态已变化，未导出备份。请重新开始。');
+    if (Object.values(configRestoreActivity(true, coreadExportData)).some(Boolean)) throw Error('其他任务已开始，伴读备份已停止，请稍后重新导出。');
+  };
   if (readerDialog.loaded) { try { await coreadSaveDialog(); } catch (_) { throw Error('当前伴读对话未能保存，未导出备份。请保留页面并重试。'); } }
   check();
   const prefs = omitConfigConnections({coread:coreadSanitizePackageValue(reader)}).coread;
@@ -34858,6 +34864,7 @@ async function coreadExportData() {
   URL.revokeObjectURL(url);
   toast(`伴读数据已打包导出：${books.length} 本书 · ${chats.length} 段对话 · ${images.length} 张插图 · ${audio.length} 条语音。`, 'success');
   } catch (error) { toast(`伴读备份未完成：${error?.message || '请保留本机资料并重试。'}`, 'error'); }
+  finally { coreadExportData.busy = false; }
 }
 
 async function coreadImportDataFile(file, origin) {
@@ -34872,7 +34879,7 @@ async function coreadImportDataFile(file, origin) {
     const check = () => {
       viewGuard.check();
       if (settings !== owner || coread() !== reader || epoch !== storyboardAdmissionEpoch) throw Error('伴读状态已变化，后续已停止；已写入内容保留。');
-      if (Object.values(configRestoreActivity(true, false)).some(Boolean)) throw Error('其他任务已开始，伴读导入后续已停止；已写入内容保留。');
+      if (Object.values(configRestoreActivity(true, coreadImportDataFile)).some(Boolean)) throw Error('其他任务已开始，伴读导入后续已停止；已写入内容保留。');
     };
     let data;
     try {

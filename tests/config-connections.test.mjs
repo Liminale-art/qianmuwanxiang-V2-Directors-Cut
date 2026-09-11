@@ -237,7 +237,7 @@ test('actual activity adapter blocks each independent lane without normalizing o
   const base=Object.fromEntries(Object.values(lanes).flat().map(key=>[key,false]));
   const c=vm.createContext({...base,settings:{focusClock:{status:'idle'}},focusClockVoicePreparation:null,
     storyboardActiveJobs:new Map(),storyboardGenerationPreparing:new Set(),storyboardPreparationRetries:new Set(),storyboardComfyRecovery:null,storyboardReceiveComfyImage:{},storyboardImageService:null,storyboardReceiveServiceImage:{},storyboardQueue:[],storyboardAutomaticPending:new Map(),
-    storyboardImportPackage:{},storyboardExportPackage:{},storyboardBundleReview:null,storageCleanupSession:{busy:false},importPinnedNotesBackup:{busy:false},importTtsFavoritesBackup:{busy:false},coreadImportDataFile:{busy:false}});
+    storyboardImportPackage:{},storyboardExportPackage:{},storyboardBundleReview:null,storageCleanupSession:{busy:false},importPinnedNotesBackup:{busy:false},importTtsFavoritesBackup:{busy:false},coreadImportDataFile:{busy:false},coreadExportData:{busy:false}});
   vm.runInContext(section('configRestoreActivity'),c);
   const idle=()=>assert.equal(Object.values(c.configRestoreActivity()).some(Boolean),false);
   idle();const before=JSON.stringify(c.settings);let cases=0;
@@ -259,12 +259,19 @@ test('actual activity adapter blocks each independent lane without normalizing o
   assert.equal(allowed(c.settings),false);assert.match(notices[0][0],/数据清理/);
   c.storyboardImportPackage.busy=true;assert.equal(c.configRestoreActivity(false).transfer,true,'other transfers remain protected');
   c.coreadImportDataFile.busy=true;
-  assert.equal(c.configRestoreActivity(true,false).transfer,true,'ignoring reader import must not ignore another transfer or cleanup');
+  assert.equal(c.configRestoreActivity(true,c.coreadImportDataFile).transfer,true,'ignoring reader import must not ignore another transfer or cleanup');
   c.storyboardImportPackage.busy=false;
-  assert.equal(c.configRestoreActivity(true,false).transfer,true,'cleanup remains a conflict');
+  assert.equal(c.configRestoreActivity(true,c.coreadImportDataFile).transfer,true,'cleanup remains a conflict');
   c.storageCleanupSession.busy=false;
-  assert.equal(c.configRestoreActivity(true,false).transfer,false,'only the owning reader import is excluded');
-  c.readerAssistantBusy=true;assert.equal(c.configRestoreActivity(true,false).reader,true,'reader work remains protected');
+  assert.equal(c.configRestoreActivity(true,c.coreadImportDataFile).transfer,false,'only the owning reader import is excluded');
+  c.readerAssistantBusy=true;assert.equal(c.configRestoreActivity(true,c.coreadImportDataFile).reader,true,'reader work remains protected');
+  c.readerAssistantBusy=false;c.coreadImportDataFile.busy=false;c.coreadExportData.busy=true;
+  assert.equal(c.configRestoreActivity(false).transfer,true,'cleanup cannot ignore an export');
+  assert.equal(c.configRestoreActivity(true,c.coreadImportDataFile).transfer,true,'reader import cannot ignore an export');
+  c.readerView={};assert.equal(!!c.configRestoreActivity(true,c.coreadExportData).reader,false,'idle open reading can be backed up');
+  assert.equal(!!c.configRestoreActivity(true,c.coreadExportData).transfer,false,'export ignores only itself');
+  c.dialogBusy=true;assert.equal(c.configRestoreActivity(true,c.coreadExportData).reader,true,'an in-flight reply remains a conflict');
+  c.storageCleanupSession.busy=true;assert.equal(c.configRestoreActivity(true,c.coreadExportData).transfer,true,'export cannot ignore cleanup');
 });
 
 test('actual import preserves same-owner changes made during file reading or confirmation',async()=>{

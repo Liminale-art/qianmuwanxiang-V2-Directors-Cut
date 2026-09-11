@@ -14,11 +14,17 @@ function fixture(){
   vm.runInContext(source('importPinnedNotesBackup'),c);
   c.importTtsFavoritesBackup={busy:false};
   c.coreadImportDataFile={busy:false};
+  c.coreadExportData={busy:false};
   c.saveImportedQianmuNote=(...args)=>c.saveQianmuNote(...args);
   c.storageCleanupSession=createStorageCleanupSession({owner:()=>c.settings,scope:()=>1,epoch:()=>c.storyboardAdmissionEpoch,activity:()=>({transfer:c.importPinnedNotesBackup.busy})});
   const input={isConnected:true,files:[{size:payload.length,text:async()=>payload}],value:'fixture'};
   return {c,input,view,saved,notices,run:()=>c.importPinnedNotesBackup({currentTarget:input})};
 }
+
+test('notes import cannot start while a reader export is collecting originals',async()=>{
+  const e=fixture();e.c.coreadExportData.busy=true;let reads=0;e.input.files[0].text=async()=>{reads++;return payload;};
+  await e.run();assert.equal(reads,0);assert.deepEqual(e.saved,[]);assert.match(e.notices.at(-1),/结束备份/);
+});
 test('a pending notes import prevents cleanup and duplicate imports before reading finishes',async()=>{
   const e=fixture();let release,reads=0;e.input.files[0].text=()=>{reads++;return new Promise(r=>release=r);};
   const pending=e.run();assert.equal(e.c.importPinnedNotesBackup.busy,true);

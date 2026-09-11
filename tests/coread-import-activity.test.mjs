@@ -9,7 +9,7 @@ function fixture(){
     readCoreadPackageFile:async()=>({books:[]}),confirmDialog:async()=>true,blobStore:{blobStoreAvailable:()=>true},isPlainObject:()=>false,
     base64ToBlob(){},MODULE_NAME:'fixture',saveSettings(){calls.push('save');},renderModal(){calls.push('render');},rerenderMoreIfOpen(){},
     applyCoreadPackageData:async()=>{calls.push('write');return {ok:0,chatOk:0,imageOk:0,vectorOk:0,audioOk:0,logOk:0};}});
-  c.coread=()=>c.settings.coread;c.configRestoreActivity=(includeCleanup=true,includeReaderImport=true)=>({transfer:(includeReaderImport&&c.coreadImportDataFile.busy)||(includeCleanup&&c.storageCleanupSession.busy),...c.competingActivity});
+  c.coread=()=>c.settings.coread;c.configRestoreActivity=(includeCleanup=true,ownTransfer=null)=>({transfer:(ownTransfer!==c.coreadImportDataFile&&c.coreadImportDataFile.busy)||(includeCleanup&&c.storageCleanupSession.busy),...c.competingActivity});
   c.createCoreadImportViewGuard=()=>({check(){if(c.pageChanged)throw Error('page changed');},release(){c.viewReleased=true;}});
   vm.runInContext(source('coreadImportDataFile'),c);
   c.blobStore.createReaderPackageWriter=({check})=>{assert.equal(typeof check,'function');return c.blobStore;};

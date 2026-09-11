@@ -13,11 +13,17 @@ function fixture(){
   vm.runInContext(source('importPinnedNotesBackup'),c);
   c.blobStore.importFavorite=(...args)=>c.blobStore.addFavorite(...args);
   c.coreadImportDataFile={busy:false};
+  c.coreadExportData={busy:false};
   c.storageCleanupSession=createStorageCleanupSession({owner:()=>c.settings,scope:()=>1,epoch:()=>c.storyboardAdmissionEpoch,
     activity:()=>({transfer:c.importTtsFavoritesBackup.busy||c.importPinnedNotesBackup.busy})});
   const input={isConnected:true,value:'fixture',files:[{size:1,text:async()=>payload}]};
   return {c,view,input,saved,notices,run:()=>c.importTtsFavoritesBackup({currentTarget:input})};
 }
+
+test('favorite import cannot overlap a reader export',async()=>{
+  const e=fixture();e.c.coreadExportData.busy=true;let reads=0;e.input.files[0].text=async()=>{reads++;return payload;};
+  await e.run();assert.equal(reads,0);assert.deepEqual(e.saved,[]);assert.match(e.notices.at(-1),/结束备份/);
+});
 test('pending favorite imports exclude cleanup, duplicates and notes without reading another file',async()=>{
   const e=fixture();let release,reads=0;e.input.files[0].text=()=>{reads++;return new Promise(r=>release=r);};
   const pending=e.run();assert.equal(e.c.importTtsFavoritesBackup.busy,true);
