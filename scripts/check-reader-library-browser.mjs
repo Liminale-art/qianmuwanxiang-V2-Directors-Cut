@@ -7,6 +7,7 @@ import {libraryFunctions} from '../tests/helpers/coread-library-fixture.mjs';
 import {storyboardFunctionSource as section} from '../tests/helpers/storyboard-form-fixture.mjs';
 import {checkCollectionMutationBrowser} from '../tests/helpers/coread-collection-browser.mjs';
 import {checkBookEditBrowser} from '../tests/helpers/coread-book-edit-browser.mjs';
+import {checkBookDeleteBrowser} from '../tests/helpers/coread-book-delete-browser.mjs';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const css=await readFile(new URL('../style.css',import.meta.url),'utf8'),view=await readFile(new URL('../qianmu-reader-library-view.js',import.meta.url),'utf8');
 const utils=await readFile(new URL('../qianmu-storyboard-utils.js',import.meta.url),'utf8'),icons=await readFile(new URL('../qianmu-icon-renderer.js',import.meta.url),'utf8');
@@ -25,6 +26,7 @@ try{
     window.coreadCreateCollection=async()=>{shelfCalls.push(['create']);return false;};window.coreadDissolveCollection=async id=>{shelfCalls.push(['dissolve',id]);return false;};
     window.coreadChooseCollectionForBooks=async ids=>{shelfCalls.push(['collect',ids]);coreadMoveBooksToCollection(ids,'folder');return true;};
     window.confirmDialog=async title=>{shelfCalls.push(['confirm',title]);return false;};window.coreadDeleteBook=()=>{throw Error('must not delete after cancellation');};
+    window.coreadRequestDeleteBooks=async ids=>{if(await confirmDialog(`删除 ${ids.length} 本测试书`))throw Error('fixture deletion not authorized');return false;};
     window.coreadHandleImportFiles=()=>{throw Error('no fixture import authorized');};
     const bytes=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg=='),x=>x.charCodeAt(0));
     window.blobStore={getCover:async id=>{shelfCalls.push(['cover',id]);return new Blob([bytes],{type:'image/png'});}};
@@ -74,5 +76,6 @@ try{
   }
   const mutations=await checkCollectionMutationBrowser(page);
   const bookEdits=await checkBookEditBrowser(page);
-  assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({layouts,mutations,bookEdits,realTemplates:true,realEvents:true,localCoverBlob:true,external,errors,limits:'synthetic host Popup, books and navigation; metadata edits additionally use native isolated IndexedDB; no real user import/deletion or physical mobile drag validation'}));
+  const bookDeletes=await checkBookDeleteBrowser(page);
+  assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({layouts,mutations,bookEdits,bookDeletes,realTemplates:true,realEvents:true,localCoverBlob:true,external,errors,limits:'synthetic host Popup, books and navigation; metadata edits/deletions use native isolated IndexedDB; no real user import/deletion or physical mobile drag validation'}));
 }finally{await context.close();await browser.close();}

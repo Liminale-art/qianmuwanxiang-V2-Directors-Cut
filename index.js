@@ -30860,7 +30860,8 @@ async function coreadEditBookInfo(bookId) {
   return mutation.isCurrent();
 }
 
-async function coreadChooseDeleteMemory(label) {
+async function coreadChooseDeleteMemory(label, { isCurrent = () => true } = {}) {
+  if (!isCurrent()) return null;
   const title = `是否一并删除${label}的长期记忆？`;
   const text = '长期记忆默认保留，可继续在伴读档案中管理并反哺正文。选择“删除记忆”才会永久清除；选择“保留记忆”会继续删书。';
   try {
@@ -30871,19 +30872,74 @@ async function coreadChooseDeleteMemory(label) {
       wrap.innerHTML = `<h3>${htmlEscape(title)}</h3><p>${htmlEscape(text)}</p>`;
       const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '删除记忆', cancelButton: '保留记忆' });
       const result = await popup.show();
+      if (!isCurrent()) return null;
       return result === true || String(result) === '1';
     }
   } catch (_) {}
-  return globalThis.confirm(`${title}\n${text}`);
+  return isCurrent() ? globalThis.confirm(`${title}\n${text}`) : null;
+}
+
+function coreadCanDeleteBooks() {
+  if (coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight
+    || dialogBusy || readerAssistantBusy || coreadComicVisionBusy) {
+    toast('请先完成或停止当前伴读任务，再删除书籍。', 'info'); return false;
+  }
+  return true;
+}
+
+async function coreadRequestDeleteBooks(bookIds) {
+  const ids = [...new Set((bookIds || []).map(String).filter(Boolean))];
+  if (!ids.length || !coreadCanDeleteBooks()) return false;
+  const entries = ids.map(id => ({ id, book: coreadBookMeta(id), mutation: coreadCaptureCollectionMutation('', [id]) }));
+  const ready = entry => {
+    if (!entry.mutation.booksAreCurrent()) return false;
+    if (!entry.book || coreadBookMeta(entry.id) !== entry.book) {
+      toast('所选书目已变化，请重新选择。', 'warning'); return false;
+    }
+    return coreadCanDeleteBooks();
+  };
+  const allReady = () => entries.every(ready);
+  if (!allReady()) return false;
+  const firstTitle = entries[0].book.title || '未命名书籍';
+  const label = ids.length > 1 ? `《${firstTitle}》等 ${ids.length} 本书` : `《${firstTitle}》`;
+  if (!await confirmDialog(`确定删除${label}？`, '正文、阅读进度和伴读对话会一并清除；相关长期记忆默认保留。') || !allReady()) return false;
+  const deleteMemory = await coreadChooseDeleteMemory(label, { isCurrent: allReady });
+  if (deleteMemory === null || !allReady()) return false;
+  let removed = 0;
+  for (const entry of entries) {
+    if (!ready(entry)) break;
+    try {
+      if (!await coreadDeleteBook(entry.id, { deleteMemory, silent: true, mutation: entry.mutation })) break;
+      removed++;
+    } catch (error) {
+      console.warn(`[${MODULE_NAME}] delete book interrupted`, error);
+      toast('删除过程未完成，请核对书架后再试。', 'warning');
+      return entries[0].mutation.isCurrent();
+    }
+  }
+  // 数量只表示已移除的书架条目，不作为各项缓存/世界书清理完成的凭据。
+  if (removed) toast(removed === ids.length ? `已从书架移除 ${removed} 本书。` : `已从书架移除 ${removed}/${ids.length} 本书，剩余操作已停止。`, removed === ids.length ? 'info' : 'warning');
+  return removed > 0 && entries[0].mutation.isCurrent();
 }
 
 async function coreadDeleteBook(bookId, options = {}) {
   const deleteMemory = options.deleteMemory === true;
   const silent = options.silent === true;
+  const mutation = options.mutation || coreadCaptureCollectionMutation('', [bookId]);
+  if (!mutation.booksAreCurrent() || !coreadCanDeleteBooks()) return false;
   const meta = coreadBookMeta(bookId);
-  if (!meta) return;
+  if (!meta) return false;
   // 先落盘本轮尚在内存里的切片，随后才能安全地只清空短对话。
-  if (readerDialog?.bookId === bookId) await coreadSaveDialog();
+  if (readerDialog?.bookId === bookId) {
+    const dialog = readerDialog;
+    let saved = false;
+    coreadMemoryWrites++;
+    try { saved = await coreadSaveDialog(); } catch (error) { console.warn(`[${MODULE_NAME}] preserve dialogue before deletion failed`, error); }
+    finally { coreadMemoryWrites--; }
+    if (!mutation.booksAreCurrent() || coreadBookMeta(bookId) !== meta || !coreadCanDeleteBooks()) return false;
+    if (!saved) { toast('伴读会话尚未保存，已停止删除，请重试。', 'warning'); return false; }
+    if (readerDialog !== dialog) { toast('伴读会话已变化，已停止删除。', 'warning'); return false; }
+  }
   // 删当前打开的书 → 先卸载阅读器 portal，避免 readerView / readerDialog 悬空
   if (readerView?.bookId === bookId) unmountReaderPortal();
   // 若删的正是当前会话的书，清掉内存镜像防其 autosave 复活桶
@@ -30907,16 +30963,11 @@ async function coreadDeleteBook(bookId, options = {}) {
   saveSettings();
   try { await blobStore.deleteBook(bookId); } catch (_) {}
   try { await blobStore.deleteReaderImages(bookId); } catch (_) {}
-  const result = deleteMemory
-    ? await coreadPurgeBookMemory(bookId)
-    : await coreadClearBookDialogue(bookId);
+  if (deleteMemory) await coreadPurgeBookMemory(bookId);
+  else await coreadClearBookDialogue(bookId);
   coreadInvalidatePool();
-  if (!silent) {
-    const extra = deleteMemory
-      ? `，并清理了 ${result.loreEntries || 0} 条长期记忆`
-      : '；相关长期记忆已保留';
-    toast(`已删除《${meta.title}》${extra}。`, 'info');
-  }
+  if (!silent && mutation.isCurrent()) toast(`已从书架移除《${meta.title}》。`, 'info');
+  return true;
 }
 
 /* ── 进入/退出阅读器 ───────────────────────────────────── */
@@ -32908,12 +32959,7 @@ function bindLibraryViewEvents(root) {
   // 列表行删除钮（单本删除）
   root.querySelectorAll('.sd-reader-card-del').forEach((el) => el.addEventListener('click', async (e) => {
     e.stopPropagation();
-    const id = el.dataset.book;
-    const b = coreadBookMeta(id);
-    if (b && await confirmDialog(`确定删除《${b.title}》？`, '正文、阅读进度和伴读对话会一并清除；相关长期记忆默认保留。')) {
-      const deleteMemory = await coreadChooseDeleteMemory(`《${b.title}》`);
-      await coreadDeleteBook(id, { deleteMemory }); renderModal();
-    }
+    if (await coreadRequestDeleteBooks([el.dataset.book])) renderModal();
   }));
   // 勾选框变化：更新批量删除按钮状态
   const updateBatchBtn = () => {
@@ -32947,14 +32993,7 @@ function bindLibraryViewEvents(root) {
     const checks = Array.from(root.querySelectorAll('.sd-reader-book-check:checked'));
     if (!checks.length) return;
     const ids = checks.map((c) => c.dataset.book);
-    const firstTitle = coreadBookMeta(ids[0])?.title || '未命名书籍';
-    const label = ids.length > 1 ? `《${firstTitle}》等 ${ids.length} 本书` : `《${firstTitle}》`;
-    if (await confirmDialog(`确定删除${label}？`, '正文、阅读进度和伴读对话会一并清除；相关长期记忆默认保留。')) {
-      const deleteMemory = await coreadChooseDeleteMemory(label);
-      for (const id of ids) await coreadDeleteBook(id, { deleteMemory, silent: true });
-      toast(`已删除${label}；相关长期记忆${deleteMemory ? '已一并删除' : '已保留'}。`, 'info');
-      renderModal();
-    }
+    if (await coreadRequestDeleteBooks(ids)) renderModal();
   });
 }
 
