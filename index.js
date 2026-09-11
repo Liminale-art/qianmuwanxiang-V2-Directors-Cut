@@ -8800,7 +8800,7 @@ function bindStorageManagementEvents(root) {
         .map((item) => item.name)
         .filter((name) => name !== 'storyboard_plan_archives'))];
       const reconciled = currentStores.length ? reconcileClearedStorageItems(currentStores) : { chatMetadataChanged: false };
-      reconcileClearedStoryboardPlanChats(planArchiveChats);
+      reconcileClearedStoryboardPlanChats(result.cleared.filter((item) => item.name === 'storyboard_plan_archives').map((item) => item.chatKey));
       if (reconciled.chatMetadataChanged) await saveMetadata();
       saveSettings();
       await refreshStorageInventory(true);
