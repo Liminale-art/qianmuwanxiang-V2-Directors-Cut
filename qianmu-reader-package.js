@@ -2,21 +2,22 @@
 import {parseBoundedJson} from './qianmu-json-input.js';
 export const COREAD_PACKAGE_LIMITS = Object.freeze({bytes:256*1048576,depth:40,nodes:500000});
 
-export async function collectCoreadPackageData({bookMetas,blobStore,blobToBase64}) {
+export async function collectCoreadPackageData({bookMetas,blobStore,blobToBase64,check = () => {}}) {
   let category = '书籍原件';
   const record = value => value && typeof value === 'object' && !Array.isArray(value);
-  const list = async read => { const items = await read(); if (!Array.isArray(items)) throw Error('invalid inventory'); return items; };
-  const encode = async blob => { const value = await blobToBase64(blob); if (typeof value !== 'string' || !value) throw Error('invalid media'); return value; };
+  const read = async load => { check(); const value = await load(); check(); return value; };
+  const list = async load => { const items = await read(load); if (!Array.isArray(items)) throw Error('invalid inventory'); return items; };
+  const encode = async blob => { const value = await read(() => blobToBase64(blob)); if (typeof value !== 'string' || !value) throw Error('invalid media'); return value; };
   try {
   const books = [];
   for (const meta of bookMetas) {
     category = '书籍原件';
     if (!meta?.id) throw Error('missing book identity');
-    const rec = await blobStore.getBook(meta.id);
+    const rec = await read(() => blobStore.getBook(meta.id));
     if (!record(rec) || typeof rec.fullText !== 'string') throw Error('missing book original');
     let coverB64 = '', coverMime = '';
     category = '书籍封面';
-      const cover = await blobStore.getCover(meta.id);
+      const cover = await read(() => blobStore.getCover(meta.id));
       if (!cover && meta.hasCover) throw Error('missing declared cover');
       if (cover) { coverB64 = await encode(cover); coverMime = cover.type || 'image/jpeg'; }
     books.push({ meta, fullText: rec?.fullText || '', chapters: rec?.chapters || [], sig: rec?.sig || '', comicDescriptions: rec?.comicDescriptions || {}, coverB64, coverMime });
@@ -26,7 +27,7 @@ export async function collectCoreadPackageData({bookMetas,blobStore,blobToBase64
   const chats = [];
   category = '伴读对话与记忆';
     for (const key of await list(() => blobStore.listReaderChatKeys())) {
-      const rec = await blobStore.getReaderChat(key);
+      const rec = await read(() => blobStore.getReaderChat(key));
       if (!key || !record(rec)) throw Error('missing listed chat');
       chats.push({ key, rec });
     }
@@ -39,7 +40,7 @@ export async function collectCoreadPackageData({bookMetas,blobStore,blobToBase64
   const vectors = [];
   category = '伴读检索资料';
     for (const key of await list(() => blobStore.listReaderVectorKeys())) {
-      const rec = await blobStore.getReaderVectors(key);
+      const rec = await read(() => blobStore.getReaderVectors(key));
       if (!key || !record(rec)) throw Error('missing listed vectors');
       vectors.push({ key, rec });
     }
@@ -53,8 +54,8 @@ export async function collectCoreadPackageData({bookMetas,blobStore,blobToBase64
   category = '伴读检索记录';
   const retrievalLogs = await list(() => blobStore.listRetLog());
   if (retrievalLogs.some(item => !record(item))) throw Error('invalid retrieval log');
-  return {books,chats,images,vectors,audio,retrievalLogs};
-  } catch (_) { throw Error(`未能完整读取${category}，未导出备份。请保留本机资料，检查后重试。`); }
+  check(); return {books,chats,images,vectors,audio,retrievalLogs};
+  } catch (_) { check(); throw Error(`未能完整读取${category}，未导出备份。请保留本机资料，检查后重试。`); }
 }
 export const coreadPackageSafeKey = key => !['__proto__','prototype','constructor'].includes(key);
 // The file input may be hidden; watch its owning page, not the file chooser itself.

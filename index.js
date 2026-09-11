@@ -34832,11 +34832,17 @@ async function coreadExportData() {
   if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地存储，无法导出。', 'error'); return; }
   toast('正在打包伴读数据…', 'info');
   try {
+  const owner = settings, reader = coread(), epoch = storyboardAdmissionEpoch;
+  const check = () => { if (settings !== owner || coread() !== reader || storyboardAdmissionEpoch !== epoch) throw Error('伴读状态已变化，未导出备份。请重新开始。'); };
   if (readerDialog.loaded) { try { await coreadSaveDialog(); } catch (_) { throw Error('当前伴读对话未能保存，未导出备份。请保留页面并重试。'); } }
-  const {books,chats,images,vectors,audio,retrievalLogs} = await collectCoreadPackageData({bookMetas:coread().books || [],blobStore,blobToBase64});
+  check();
+  const prefs = omitConfigConnections({coread:coreadSanitizePackageValue(reader)}).coread;
+  const bookMetas = clone(reader.books || []);
+  const {books,chats,images,vectors,audio,retrievalLogs} = await collectCoreadPackageData({bookMetas,blobStore,blobToBase64,check});
+  check();
   const payload = {
     type: 'qianmu-coread', version: 5, exportedAt: new Date().toISOString(), credentialsIncluded: false,
-    prefs: omitConfigConnections({coread:coreadSanitizePackageValue(coread())}).coread,
+    prefs,
     books,
     chats,
     images,

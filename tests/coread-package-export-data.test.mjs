@@ -52,3 +52,13 @@ test('a failed or empty media encoding prevents a misleading partial backup',asy
     await assert.rejects(()=>collectCoreadPackageData(e.options),/未能完整读取/);
   }
 });
+
+test('every awaited collection stage rechecks ownership before reading more or returning a package',async()=>{
+  for(const method of ['getBook','getCover','listReaderChatKeys','getReaderChat','listReaderImages','listReaderVectorKeys','getReaderVectors','listAudio','listRetLog','encode'])for(const fail of [false,true]){
+    const e=fixture();let current=true,at=-1;e.options.check=()=>{if(!current)throw Error('owner changed');};
+    const target=method==='encode'?e.options:e.options.blobStore,key=method==='encode'?'blobToBase64':method,original=target[key];
+    target[key]=async(...args)=>{const value=await original(...args);current=false;at=e.calls.length;if(fail)throw Error('late read error');return value;};
+    await assert.rejects(()=>collectCoreadPackageData(e.options),/owner changed/);
+    assert.equal(e.calls.length,at,'no further inventory or original read after invalidation');
+  }
+});

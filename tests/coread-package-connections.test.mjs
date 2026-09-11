@@ -59,3 +59,25 @@ test('the actual exporter never creates a downloadable complete pack after a req
     assert.match(e.notices.at(-1),/备份未完成/);assert.equal(e.notices.some(n=>n.includes('已打包导出')),false);
   }
 });
+
+test('the actual export freezes book metadata and preferences together before asynchronous collection',async()=>{
+  const local=settings();local.books=[{id:'original',title:'before'}];const e=fixture(local);let release;
+  e.c.blobStore.getBook=()=>new Promise(r=>release=r);e.c.blobStore.getCover=async()=>undefined;
+  const pending=e.c.coreadExportData();await new Promise(r=>setImmediate(r));
+  local.fontSize=99;local.books[0].title='after';local.books.push({id:'new'});
+  release({fullText:'original prose'});await pending;
+  const result=e.exported();assert.equal(result.prefs.fontSize,16);assert.equal(result.books.length,1);
+  assert.equal(result.books[0].meta.title,'before');assert.equal(result.prefs.books,undefined,'the existing preference format excludes book originals');
+  assert.equal(local.fontSize,99);assert.equal(local.books.length,2,'export cannot overwrite live changes');
+});
+for(const phase of ['save','read'])test('actual export '+phase+' cannot finish under a different state owner',async()=>{
+  for(const changed of ['settings','reader','epoch']){
+    const local=settings();local.books=[{id:'original'}];const e=fixture(local);let release;
+    e.c.blobStore.getBook=async()=>({fullText:'original'});e.c.blobStore.getCover=async()=>undefined;
+    if(phase==='save'){e.c.readerDialog.loaded=true;e.c.coreadSaveDialog=()=>new Promise(r=>release=r);}
+    else e.c.blobStore.getBook=()=>new Promise(r=>release=r);
+    const pending=e.c.coreadExportData();await new Promise(r=>setImmediate(r));
+    if(changed==='settings')e.c.settings={changed:true};if(changed==='reader')e.c.coread=()=>({});if(changed==='epoch')e.c.storyboardAdmissionEpoch++;
+    release({fullText:'original'});await pending;assert.equal(e.exported(),undefined);assert.match(e.notices.at(-1),/伴读状态已变化/);
+  }
+});
