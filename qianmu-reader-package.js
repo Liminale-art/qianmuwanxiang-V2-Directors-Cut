@@ -18,52 +18,47 @@ export async function readCoreadPackageFile(file) {
   return data;
 }
 
-export async function applyCoreadPackageData(data, {blobStore, coread, isPlainObject, base64ToBlob, warn, check = () => {}}) {
+export async function applyCoreadPackageData(data, {blobStore, coread, isPlainObject, base64ToBlob, warn, check = () => {}, progress = createCoreadImportProgress()}) {
   check();
-  let ok = 0;
   for (const b of data.books) {
     check();
-    if (!b?.meta?.id) continue;
+    if (!b?.meta?.id) { progress.invalid++; continue; }
     try {
       await blobStore.putBook(b.meta.id, { meta: { title: b.meta.title, author: b.meta.author, mode: b.meta.mode || 'text' }, fullText: b.fullText || '', chapters: b.chapters || [], sig: b.sig || '', comicDescriptions: isPlainObject(b.comicDescriptions) ? b.comicDescriptions : {} });
+      progress.ok++;
       check();
-      if (b.coverB64) { try { await blobStore.putCover(b.meta.id, base64ToBlob(b.coverB64, b.coverMime || 'image/jpeg')); check(); b.meta.hasCover = true; } catch (_) { check(); } }
+      if (b.coverB64) { try { await blobStore.putCover(b.meta.id, base64ToBlob(b.coverB64, b.coverMime || 'image/jpeg')); progress.coverOk++; check(); b.meta.hasCover = true; } catch (_) { check(); progress.failed++; } }
       const idx = (coread().books || []).findIndex((x) => x.id === b.meta.id);
       if (idx >= 0) coread().books[idx] = b.meta; else coread().books.unshift(b.meta);
-      ok++;
-    } catch (e) { check(); warn(`import book failed`, e); }
+    } catch (e) { check(); progress.failed++; warn(`import book failed`, e); }
   }
   // 伴读对话 + 记忆切片（reader_chats·按 bucketKey=chatKey::bookId 覆盖式还原·v2 新增）
-  let chatOk = 0;
   if (Array.isArray(data.chats)) {
     for (const c of data.chats) {
       check();
-      if (!c?.key || !isPlainObject(c.rec)) continue;
-      try { await blobStore.putReaderChat(c.key, c.rec); chatOk++; check(); } catch (e) { check(); warn(`import chat failed`, e); }
+      if (!c?.key || !isPlainObject(c.rec)) { progress.invalid++; continue; }
+      try { await blobStore.putReaderChat(c.key, c.rec); progress.chatOk++; check(); } catch (e) { check(); progress.failed++; warn(`import chat failed`, e); }
     }
   }
-  let imageOk = 0;
   if (Array.isArray(data.images)) {
     for (const item of data.images) {
       check();
-      if (!item?.key || !item.b64) continue;
-      try { await blobStore.putReaderImageByKey(item.key, base64ToBlob(item.b64, item.mime || 'image/*')); imageOk++; check(); } catch (e) { check(); warn(`import reader image failed`, e); }
+      if (!item?.key || !item.b64) { progress.invalid++; continue; }
+      try { await blobStore.putReaderImageByKey(item.key, base64ToBlob(item.b64, item.mime || 'image/*')); progress.imageOk++; check(); } catch (e) { check(); progress.failed++; warn(`import reader image failed`, e); }
     }
   }
-  let vectorOk = 0;
   if (Array.isArray(data.vectors)) {
     for (const item of data.vectors) {
       check();
-      if (!item?.key || !isPlainObject(item.rec)) continue;
-      try { await blobStore.putReaderVectors(item.key, item.rec); vectorOk++; check(); } catch (e) { check(); warn(`import vectors failed`, e); }
+      if (!item?.key || !isPlainObject(item.rec)) { progress.invalid++; continue; }
+      try { await blobStore.putReaderVectors(item.key, item.rec); progress.vectorOk++; check(); } catch (e) { check(); progress.failed++; warn(`import vectors failed`, e); }
     }
   }
-  let audioOk = 0;
   if (Array.isArray(data.audio)) {
     const entries = [];
     for (const item of data.audio) {
       check();
-      if (!item?.key || !item?.b64) continue;
+      if (!item?.key || !item?.b64) { progress.invalid++; continue; }
       try {
         entries.push({
           key: item.key,
@@ -71,21 +66,28 @@ export async function applyCoreadPackageData(data, {blobStore, coread, isPlainOb
           meta: { ...(item.meta || {}), source: 'coread' },
           createdAt: item.createdAt || Date.now(),
         });
-      } catch (e) { check(); warn(`decode coread audio failed`, e); }
+      } catch (e) { check(); progress.failed++; warn(`decode coread audio failed`, e); }
     }
     check();
-    try { audioOk = (await blobStore.bulkPutAudio(entries)).added; check(); } catch (e) { check(); warn(`import coread audio failed`, e); }
+    try { const result = await blobStore.bulkPutAudio(entries); progress.audioOk = result.added; progress.skipped = result.skipped || 0; check(); } catch (e) { check(); progress.failed++; warn(`import coread audio failed`, e); }
   }
-  let logOk = 0;
   if (Array.isArray(data.retrievalLogs)) {
     const ordered = data.retrievalLogs.slice().sort((a, b) => (a?.at || 0) - (b?.at || 0));
     for (const item of ordered) {
       check();
-      if (!isPlainObject(item)) continue;
+      if (!isPlainObject(item)) { progress.invalid++; continue; }
       const rec = { ...item }; delete rec.id;
-      try { await blobStore.pushRetLog(rec, 50); logOk++; check(); } catch (e) { check(); warn(`import retrieval log failed`, e); }
+      try { await blobStore.pushRetLog(rec, 50); progress.logOk++; check(); } catch (e) { check(); progress.failed++; warn(`import retrieval log failed`, e); }
     }
   }
   check();
-  return {ok, chatOk, imageOk, vectorOk, audioOk, logOk};
+  return progress;
+}
+
+export function createCoreadImportProgress() {
+  return {ok:0, coverOk:0, chatOk:0, imageOk:0, vectorOk:0, audioOk:0, logOk:0, failed:0, invalid:0, skipped:0};
+}
+
+export function coreadImportProgressText(p) {
+  return `已导入 ${p.ok} 本书原件 · ${p.coverOk} 张封面 · ${p.chatOk} 段对话 · ${p.imageOk} 张插图 · ${p.vectorOk} 组向量 · ${p.audioOk} 条语音 · ${p.logOk} 条检索记录；失败 ${p.failed} 项，格式无效 ${p.invalid} 项，已存在音频跳过 ${p.skipped} 项。`;
 }

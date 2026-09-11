@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {applyCoreadPackageData} from '../qianmu-reader-package.js';
+import {applyCoreadPackageData,createCoreadImportProgress} from '../qianmu-reader-package.js';
 import {isPlainObject} from '../qianmu-storyboard-utils.js';
 function fixture(fail=''){
   const calls=[],warnings=[],state={books:[{id:'old',title:'before'},{id:'untouched'}]};
@@ -15,7 +15,7 @@ function fixture(fail=''){
 }
 test('the extracted writer retains store order, overwrite semantics, metadata and counts',async()=>{
   const e=fixture(),result=await applyCoreadPackageData(e.data,e.options);
-  assert.deepEqual(result,{ok:2,chatOk:1,imageOk:1,vectorOk:1,audioOk:1,logOk:2});
+  assert.deepEqual(result,{ok:2,coverOk:1,chatOk:1,imageOk:1,vectorOk:1,audioOk:1,logOk:2,failed:0,invalid:0,skipped:0});
   assert.deepEqual(e.calls.map(c=>c[0]),['putBook','putCover','putBook','putReaderChat','putReaderImageByKey','putReaderVectors','bulkPutAudio','pushRetLog','pushRetLog']);
   assert.deepEqual(e.state.books.map(b=>b.id),['new','old','untouched']);assert.equal(e.state.books[1].title,'updated');assert.equal(e.state.books[1].hasCover,true);
   assert.equal(e.calls[0][2].fullText,'new content');assert.equal(e.calls[6][1][0].meta.source,'coread');
@@ -25,6 +25,7 @@ test('moving the writer does not change existing independent failure or invalid-
   const e=fixture('putBook');e.data.chats.unshift(null);e.data.images.unshift({});
   const result=await applyCoreadPackageData(e.data,e.options);assert.equal(result.ok,0);assert.equal(result.chatOk,1);assert.equal(result.imageOk,1);
   assert.deepEqual(e.state.books,[{id:'old',title:'before'},{id:'untouched'}]);assert.equal(e.warnings.length,2);
+  assert.equal(result.failed,2);assert.equal(result.invalid,2);
 });
 test('legacy book-only packs remain supported without calling absent media categories',async()=>{
   const e=fixture();const result=await applyCoreadPackageData({books:[]},e.options);
@@ -33,13 +34,14 @@ test('legacy book-only packs remain supported without calling absent media categ
 
 for(const method of ['putBook','putCover','putReaderChat','putReaderImageByKey','putReaderVectors','bulkPutAudio','pushRetLog'])test(method+' cannot resume the remaining import after its guard expires',async()=>{
   for(const fail of [false,true]){
-    const e=fixture();let release,current=true;
+    const e=fixture();e.options.progress=createCoreadImportProgress();let release,current=true;
     e.options.check=()=>{if(!current)throw Error('stale import');};
     e.options.blobStore[method]=async(...args)=>{e.calls.push([method,...args]);await new Promise(r=>release=r);if(fail)throw Error('late database failure');return method==='bulkPutAudio'?{added:1}:undefined;};
     const pending=applyCoreadPackageData(e.data,e.options);await new Promise(r=>setImmediate(r));assert.equal(typeof release,'function');
     const before=e.calls.length;current=false;release();await assert.rejects(()=>pending,/stale import/);
     assert.equal(e.calls.length,before,'no subsequent category or record writes');assert.deepEqual(e.warnings,[],'stale state must not be swallowed as an ordinary row failure');
     if(['putBook','putCover'].includes(method))assert.equal(e.state.books[0].title,'before','no stale index writeback');
+    if(!fail){const key={putBook:'ok',putCover:'coverOk',putReaderChat:'chatOk',putReaderImageByKey:'imageOk',putReaderVectors:'vectorOk',bulkPutAudio:'audioOk',pushRetLog:'logOk'}[method];assert.ok(e.options.progress[key]>0,'completed work remains counted after the guard throws');}
   }
 });
 test('an already stale package cannot start its first write',async()=>{

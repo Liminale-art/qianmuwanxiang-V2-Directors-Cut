@@ -1,7 +1,7 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
-import { readCoreadPackageFile, coreadPackageSafeKey, applyCoreadPackageData } from './qianmu-reader-package.js';
+import { readCoreadPackageFile, coreadPackageSafeKey, applyCoreadPackageData, createCoreadImportProgress, coreadImportProgressText } from './qianmu-reader-package.js';
 import { exportConfiguration } from './qianmu-config-export.js';
 import { receiveComfyImage, resolveComfyRecoveryKey } from './qianmu-comfy-recovery-action.js';
 import { receiveServiceImage } from './qianmu-service-recovery-action.js';
@@ -34899,6 +34899,7 @@ async function coreadImportDataFile(file) {
     if (!file) return;
     if (coreadImportDataFile.busy || Object.values(configRestoreActivity()).some(Boolean)) return toast('请先结束正在进行的任务或退出阅读，再导入伴读整包。', 'warning');
     coreadImportDataFile.busy = true;
+    const progress = createCoreadImportProgress();
     try {
     const owner = settings, reader = coread(), epoch = storyboardAdmissionEpoch;
     const check = () => { if (settings !== owner || coread() !== reader || epoch !== storyboardAdmissionEpoch) throw Error('伴读状态已变化，后续已停止；已写入内容保留。'); };
@@ -34912,15 +34913,15 @@ async function coreadImportDataFile(file) {
     const mediaN = (Array.isArray(data.images) ? data.images.length : 0) + (Array.isArray(data.audio) ? data.audio.length : 0);
     if (!await confirmDialog('导入伴读数据打包', `将导入 ${data.books.length} 本书${chatN ? `、${chatN} 段伴读对话与记忆` : ''}${mediaN ? `、${mediaN} 项媒体` : ''}。同 id 的书和会话会被覆盖；API 密钥沿用本机设置。是否继续？`)) return;
     check();
-    const {ok, chatOk, imageOk, vectorOk, audioOk, logOk} = await applyCoreadPackageData(data, {blobStore, coread:()=>reader, isPlainObject, base64ToBlob, check, warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error)});
+    await applyCoreadPackageData(data, {blobStore, coread:()=>reader, isPlainObject, base64ToBlob, check, progress, warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error)});
     check();
     // 偏好深合并：保留本机书目、启用态和全部凭据；v1–v5 数据均兼容。
     if (isPlainObject(data.prefs)) coreadMergePackageValue(coread(), omitConfigConnections({coread:data.prefs}).coread);
     saveSettings();
-    toast(`已导入 ${ok} 本书 · ${chatOk} 段对话 · ${imageOk} 张插图 · ${vectorOk} 组向量 · ${audioOk} 条语音${logOk ? ` · ${logOk} 条检索记录` : ''}。`, 'success');
+    toast(coreadImportProgressText(progress), progress.failed || progress.invalid ? 'warning' : 'success');
     renderModal();
     rerenderMoreIfOpen();
-    } catch (error) { toast(`伴读导入未完成：${error?.message || error}`, 'error'); }
+    } catch (error) { toast(`伴读导入未完成：${coreadImportProgressText(progress)} ${error?.message || error}`, 'error'); }
     finally { coreadImportDataFile.busy = false; }
 }
 

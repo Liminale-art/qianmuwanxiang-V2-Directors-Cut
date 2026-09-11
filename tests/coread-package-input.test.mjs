@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {readCoreadPackageFile,coreadPackageSafeKey,COREAD_PACKAGE_LIMITS} from '../qianmu-reader-package.js';
+import {readCoreadPackageFile,coreadPackageSafeKey,COREAD_PACKAGE_LIMITS,createCoreadImportProgress,coreadImportProgressText} from '../qianmu-reader-package.js';
 import {isPlainObject,clone} from '../qianmu-storyboard-utils.js';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
 const file=text=>({size:Buffer.byteLength(text),text:async()=>text});
@@ -35,7 +35,7 @@ test('actual merge and export helpers cannot mutate prototypes even if called wi
   assert.equal(result.polluted,false);assert.equal(result.merged,'{"safe":"keep"}');assert.equal(result.clean,'{"safe":"keep"}');
 });
 test('the actual import rejects unsafe packs before any confirmation or storage action',async()=>{
-  const notices=[],reader={},c=vm.createContext({settings:{},storyboardAdmissionEpoch:1,coread:()=>reader,configRestoreActivity:()=>({}),readCoreadPackageFile,toast:m=>notices.push(m)});
+  const notices=[],reader={},c=vm.createContext({createCoreadImportProgress,coreadImportProgressText,settings:{},storyboardAdmissionEpoch:1,coread:()=>reader,configRestoreActivity:()=>({}),readCoreadPackageFile,toast:m=>notices.push(m)});
   vm.runInContext(source('coreadImportDataFile'),c);
   await c.coreadImportDataFile(file('{"type":"qianmu-coread","books":[],"prototype":{}}'));
   assert.match(notices[0],/未写入内容/);
