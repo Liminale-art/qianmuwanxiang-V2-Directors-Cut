@@ -16532,6 +16532,8 @@ async function storyboardImportDirectorSubtitles(root, button) {
 }
 
 async function storyboardGenerateDirectorVoice(root, button) {
+  ttsRestoreTasks++;
+  try {
   if (!storyboardFilmEditor) return;
   storyboardCaptureFilmEditor(root);
   const editor = storyboardFilmEditor;
@@ -16570,6 +16572,7 @@ async function storyboardGenerateDirectorVoice(root, button) {
     for (const line of pending.slice(0, available)) {
       if (storyboardFilmEditor !== editor || chatKey !== String(getChatKey() || '')) throw new Error('director_action_stale');
       const result = await ttsSynthCached(line, false, 'director');
+      if (storyboardFilmEditor !== editor || chatKey !== String(getChatKey() || '')) throw new Error('director_action_stale');
       const assetId = cacheKeyForTts(result.params.providerId, result.params);
       project.audio.dialogue.push({
         audioId: line.lineId,
@@ -16605,6 +16608,7 @@ async function storyboardGenerateDirectorVoice(root, button) {
   } finally {
     if (button?.isConnected) button.disabled = false;
   }
+  } finally { ttsRestoreTasks--; }
 }
 
 async function storyboardRefreshFilmGallery({ rerender = false, force = false } = {}) {
@@ -30147,6 +30151,8 @@ function coreadStopDialog() {
 // 懒合成 + 缓存（ttsSynthCached·命中缓存秒回），未绑音色/未配 Key 由 catch 提示。btn 上转圈+播放高亮。
 // 成功合成即把 msg.voiced=1（连同 speed/emotion 快照）存盘→该句才进语音条列表（语音条=已生成语音的句）。
 async function coreadSpeakMsg(msg, speaker, btn, force = false) {
+  ttsRestoreTasks++;
+  try {
   const t = String(msg?.text || '').trim();
   if (!t) return;
   const companion = coreadCompanionCharacter(), currentCharacter = ctx().characters?.[ctx().characterId];
@@ -30175,6 +30181,7 @@ async function coreadSpeakMsg(msg, speaker, btn, force = false) {
     if (prev) setQianmuIconClass(icon, prev);
     if (btn) delete btn.dataset.speaking;
   }
+  } finally { ttsRestoreTasks--; }
 }
 
 // 语音条可见时重渲（生成语音后新句进列表·重生成后旧句退出）。
