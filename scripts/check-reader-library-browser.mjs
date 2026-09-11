@@ -6,14 +6,16 @@ import {fileURLToPath} from 'node:url';
 import {libraryFunctions} from '../tests/helpers/coread-library-fixture.mjs';
 import {storyboardFunctionSource as section} from '../tests/helpers/storyboard-form-fixture.mjs';
 import {checkCollectionMutationBrowser} from '../tests/helpers/coread-collection-browser.mjs';
+import {checkBookEditBrowser} from '../tests/helpers/coread-book-edit-browser.mjs';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const css=await readFile(new URL('../style.css',import.meta.url),'utf8'),view=await readFile(new URL('../qianmu-reader-library-view.js',import.meta.url),'utf8');
 const utils=await readFile(new URL('../qianmu-storyboard-utils.js',import.meta.url),'utf8'),icons=await readFile(new URL('../qianmu-icon-renderer.js',import.meta.url),'utf8');
 const functions=libraryFunctions+'\n'+['coreadMoveBooksToCollection','loadShelfCovers','bindLibraryBookDrag','bindLibraryViewEvents'].map(section).join('\n');
 await mkdir(new URL('../dist/local-qa/',import.meta.url),{recursive:true});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext({hasTouch:true});
-const errors=[];let external=0;await context.route('**/*',route=>{external++;return route.abort();});const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
+const errors=[];let external=0;await context.route('**/*',route=>route.request().url()==='https://qianmu.test/'?route.fulfill({contentType:'text/html',body:'<!doctype html><title>Isolated shelf</title>'}):(external++,route.abort()));const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
 try{
+  await page.goto('https://qianmu.test/');
   await page.setContent(`<style>${css}</style><style>body{margin:0;background:#222}#story-director-modal{position:static!important;display:block!important;width:100%;box-sizing:border-box;padding:12px}</style><div id="story-director-modal" class="sd-theme-dark"><div id="shelf"></div></div>`);
   await page.evaluate(async({view,utils,icons,functions})=>{
     Object.assign(window,await import('data:text/javascript,'+encodeURIComponent(view)),await import('data:text/javascript,'+encodeURIComponent(utils)),await import('data:text/javascript,'+encodeURIComponent(icons)));
@@ -71,5 +73,6 @@ try{
     await page.screenshot({path:fileURLToPath(new URL(`../dist/local-qa/reader-library-${width}.png`,import.meta.url))});layouts.push({width,boxes,nativeFileHit:native,toolIsolation:true,mouseDrag:true,ownershipPreserved:true});
   }
   const mutations=await checkCollectionMutationBrowser(page);
-  assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({layouts,mutations,realTemplates:true,realEvents:true,localCoverBlob:true,external,errors,limits:'fake storage, host Popup transport, book editors and navigation; no real import/deletion or physical mobile drag validation'}));
+  const bookEdits=await checkBookEditBrowser(page);
+  assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({layouts,mutations,bookEdits,realTemplates:true,realEvents:true,localCoverBlob:true,external,errors,limits:'synthetic host Popup, books and navigation; metadata edits additionally use native isolated IndexedDB; no real user import/deletion or physical mobile drag validation'}));
 }finally{await context.close();await browser.close();}

@@ -30798,6 +30798,15 @@ async function coreadEditBookInfo(bookId) {
   let title = meta.title || '';
   let author = meta.author || '';
   let collectionId = coreadCollectionForBook(bookId)?.id || '';
+  const mutation = coreadCaptureCollectionMutation('', [bookId]);
+  const canSave = () => {
+    if (!mutation.booksAreCurrent()) return false;
+    if (collectionId && !(coread().collections || []).some((item) => item.id === collectionId)) {
+      toast('目标合集已不存在，请重新选择。', 'warning'); return false;
+    }
+    return true;
+  };
+  if (!canSave()) return false;
   try {
     const context = ctx();
     const Popup = context.Popup;
@@ -30810,29 +30819,45 @@ async function coreadEditBookInfo(bookId) {
         <label><span>归入合集</span><select class="text_pole sd-reader-bookedit-collection"><option value="">未分类</option>${coreadCollections().map((item) => `<option value="${htmlEscape(item.id)}" ${item.id === collectionId ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('')}</select></label>`;
       const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '保存', cancelButton: '取消' });
       const result = await popup.show();
-      if (result !== true && String(result) !== '1') return false;
+      if ((result !== true && String(result) !== '1') || !mutation.booksAreCurrent()) return false;
       title = String(wrap.querySelector('.sd-reader-bookedit-title')?.value || '').trim();
       author = String(wrap.querySelector('.sd-reader-bookedit-author')?.value || '').trim();
       collectionId = String(wrap.querySelector('.sd-reader-bookedit-collection')?.value || '');
     } else {
       const nextTitle = await promptInput('编辑书籍信息', '书名：', title);
-      if (nextTitle == null) return false;
+      if (nextTitle == null || !canSave()) return false;
       title = String(nextTitle).trim();
       const nextAuthor = await promptInput('编辑书籍信息', '作者（可留空）：', author);
-      if (nextAuthor == null) return false;
+      if (nextAuthor == null || !canSave()) return false;
       author = String(nextAuthor).trim();
     }
   } catch (_) { return false; }
+  if (!canSave()) return false;
   if (!title) { toast('书名不能为空。', 'warning'); return false; }
-  meta.title = title.slice(0, 120);
-  meta.author = author.slice(0, 80);
-  coreadMoveBooksToCollection([bookId], collectionId);
+  const patch = { title: title.slice(0, 120), author: author.slice(0, 80) };
+  let result;
   try {
-    const rec = await blobStore.getBook(bookId);
-    if (rec) await blobStore.putBook(bookId, { ...rec, meta: { ...(rec.meta || {}), title: meta.title, author: meta.author } });
-  } catch (error) { console.warn(`[${MODULE_NAME}] update book metadata failed`, error); }
-  toast('书籍信息已更新。', 'success');
-  return true;
+    result = await blobStore.updateBookMetadata(bookId, patch, { isCurrent: canSave });
+    if (!['updated', 'missing', 'stale'].includes(result?.status)) throw new Error('Unknown book metadata result');
+  } catch (error) {
+    console.warn(`[${MODULE_NAME}] update book metadata failed`, error);
+    toast('书籍信息保存失败，未修改书架，请重试。', 'error'); return false;
+  }
+  if (result.status === 'stale') return false;
+  if (!canSave()) {
+    if (result.status === 'updated') toast('正文信息已保存，但书架状态已变化，未覆盖当前书架，请重新打开核对。', 'warning');
+    return false;
+  }
+  // 上面的等待可能重建书架对象；只修改当前记录，不覆盖阅读进度和笔记。
+  const current = coreadBookMeta(bookId);
+  current.title = patch.title; current.author = patch.author;
+  try { coreadMoveBooksToCollection([bookId], collectionId); }
+  catch (error) {
+    console.warn(`[${MODULE_NAME}] schedule book metadata settings failed`, error);
+    toast(result.status === 'updated' ? '正文信息已保存，但书架未能提交保存，请重新打开核对。' : '书架信息未能提交保存，请重试。', 'warning'); return false;
+  }
+  toast(result.status === 'missing' ? '仅更新书架信息；本机尚无该书正文。' : '书籍信息已更新。', result.status === 'missing' ? 'info' : 'success');
+  return mutation.isCurrent();
 }
 
 async function coreadChooseDeleteMemory(label) {

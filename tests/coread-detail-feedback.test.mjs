@@ -24,6 +24,8 @@ assert.match(library, /lastReadAt-desc[^]*最近阅读/, '书架必须提供最�
 assert.match(source, /async function coreadOpenBook[^]*meta\.lastReadAt = Date\.now\(\)/, '成功打开书籍时必须更新最近阅读时间');
 assert.match(library, /sd-reader-card-edit/, '书架必须提供书名与作者编辑按钮');
 assert.match(library, /coreadEditBookInfo\(el\.dataset\.book\)/, '书架编辑按钮必须接通书名与作者保存逻辑');
-assert.match(source, /async function coreadEditBookInfo[^]*meta\.title = title[^]*blobStore\.putBook/, '编辑书籍信息必须同步轻量书架与本机正文元数据');
+const bookEdit = source.slice(source.indexOf('async function coreadEditBookInfo'), source.indexOf('async function coreadChooseDeleteMemory'));
+assert.match(bookEdit, /blobStore\.updateBookMetadata[^]*current\.title = patch\.title/, '正文元信息提交完成后才更新当前书架；行为与失败口径另有执行测试');
+assert.doesNotMatch(bookEdit, /blobStore\.(getBook|putBook)\(/, '编辑元信息不得再回填打开弹窗时的整本旧正文');
 
 console.log('Coread detail feedback contract OK');
