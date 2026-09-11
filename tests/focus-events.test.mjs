@@ -42,16 +42,25 @@ test('preview consumes unsaved URL before playing and preserves an unchanged pre
   e.trace.length=0;await play.fire('click');assert.deepEqual(e.trace,[['play',true]]);
 });
 
-test('old displayed identity cannot toggle a new role voice and selection passes its original binding identity',async()=>{
-  const e=fixture(),toggle=e.node('.sd-focus-voice-enabled',{checked:false}),speaker=e.node('.sd-focus-voice-speaker',{value:'voice'});e.bind();e.trace.length=0;
+test('old displayed identity cannot toggle or choose a voice for a new role',async()=>{
+  const e=fixture(),toggle=e.node('.sd-focus-voice-enabled',{checked:false});e.node('.sd-focus-voice-speaker',{setAttribute(){}});e.node('.sd-focus-voice-menu',{close(){}});const option=e.node('[data-focus-voice-key]',{dataset:{focusVoiceKey:'voice'}});e.bind();e.trace.length=0;
   e.setVoice({characterKey:'character:B',providerId:'doubao',chatKey:'chatB'});await toggle.fire('change');assert.deepEqual(e.trace,['render']);
-  e.trace.length=0;await speaker.fire('change');assert.deepEqual(e.trace,[['bind','voice','character:A','minimax'],'render']);
+  e.trace.length=0;await option.fire('click');assert.deepEqual(e.trace,[]);
+  e.setVoice({characterKey:'character:A',providerId:'minimax',chatKey:'chatA'});await option.fire('click');assert.deepEqual(e.trace,[['bind','voice','character:A','minimax'],'render']);
 });
 
 test('reset cancellation does nothing, and confirmed clear affects only today with matching completion references',async()=>{
   const e=fixture({status:'running',lastCompletionId:'now',history:[{id:'now',finishedAt:'today'},{id:'old',finishedAt:'yesterday'}]}),reset=e.node('.sd-focus-reset'),clear=e.node('.sd-focus-clear-history');e.bind();e.trace.length=0;
   e.confirm(false);await reset.fire('click');await clear.fire('click');assert.deepEqual(e.trace,[]);assert.equal(e.f.history.length,2);
   e.confirm(true);await clear.fire('click');assert.deepEqual(Array.from(e.f.history,x=>x.id),['old']);assert.equal(e.f.lastCompletionId,'');assert.deepEqual(e.trace,['save','render']);
+});
+
+test('an open voice list cannot bind after its round starts, owner changes or plugin is disabled',async()=>{
+  for(const change of ['running','owner','disabled']){
+    const e=fixture();e.node('.sd-focus-voice-speaker',{setAttribute(){}});e.node('.sd-focus-voice-menu',{close(){}});const option=e.node('[data-focus-voice-key]',{dataset:{focusVoiceKey:'voice'}});e.bind();e.trace.length=0;
+    if(change==='running')e.f.status='running';if(change==='owner')e.c.settings.focusClock={...e.f};if(change==='disabled')e.c.settings.enabled=false;
+    await option.fire('click');assert.deepEqual(e.trace,[],change);
+  }
 });
 
 test('an old end confirmation cannot reset a different round, phase, state owner or disabled plugin',async()=>{

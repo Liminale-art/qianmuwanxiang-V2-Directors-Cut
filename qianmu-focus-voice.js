@@ -32,16 +32,16 @@ export function saveFocusVoiceProfile(state, characterKey, providerId, voice, en
 
 export function focusVoiceOptions({ library = [], current = null, chat = [] } = {}) {
   const options = [], seen = new Set();
-  const add = (source, suffix) => {
+  const add = source => {
     const voice = cleanFocusVoice(source);
     if (!voice) return;
     const key = JSON.stringify([voice.voiceId, voice.model, voice.speed, voice.emotion]);
     if (seen.has(key)) return;
     const name=voice.name===voice.voiceId?'未命名音色':voice.name;
-    seen.add(key); options.push({ ...voice, key, label: `${name} · ${suffix}` });
+    seen.add(key); options.push({ ...voice, key, label: name });
   };
-  if (current) add(current, '已绑定');
-  for (const row of Array.isArray(library) ? library : []) add(row, '音色库');
-  for (const row of Array.isArray(chat) ? chat : []) add(row, '当前聊天');
+  if (current) add(current);
+  for (const row of Array.isArray(library) ? library : []) add(row);
+  for (const row of Array.isArray(chat) ? chat : []) add(row);
   return options;
 }

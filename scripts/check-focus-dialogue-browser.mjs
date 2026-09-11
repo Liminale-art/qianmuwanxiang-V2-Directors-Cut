@@ -45,22 +45,36 @@ try{
   }
   ok('folder has an accessible name without the removed visible subheading',await page.locator('[data-field=folder]').getAttribute('aria-label')==='选择角色'&&!await page.locator('.sd-focus-library-body').innerText().then(text=>text.includes('角色文件夹')));
   ok('legacy text is visible without changing or generating its recording',await page.locator('.sd-focus-library-item').count()===1&&await page.evaluate(()=>generation===0));
-  await page.locator('[data-action=new]').click();await page.locator('[data-field=text]').fill('<script>literal text</script> 新的台词');await page.locator('[data-moment="longBreak:complete"]').check();
+  await page.locator('[data-action=new]').click();await page.locator('[data-action=back]').click();
+  ok('leaving an empty new draft creates no row or discard confirmation',await page.evaluate(()=>owner.focusClock.dialogueLibrary.rows.length===1&&confirmations.length===0));
+  await page.locator('[data-action=new]').click();await page.locator('[data-field=text]').fill('<script>literal text</script> 新的台词');await page.locator('[data-moment="longBreak:complete"]').click();
   ok('editor has only text and stage fields, no title voice or audio controls',await page.locator('audio,[data-action=generate],[data-field=title],[data-field=voice]').count()===0);
   ok('editor header uses character name without a duplicate name row',await page.locator('.sd-focus-library h3').innerText()==='甲'&&await page.locator('.sd-focus-library-body b').count()===0);
   for(const width of mobile?[320,393]:[320,393,1100]){
-    await page.setViewportSize({width,height:898});const back=await page.locator('[data-action=back]').boundingBox(),save=await page.locator('[data-action=save]').boundingBox();
-    ok(`square back button sits directly left of save at ${width}`,Math.abs(back.width-back.height)<1&&Math.abs(back.y-save.y)<1&&Math.abs(back.height-save.height)<1&&back.x+back.width<save.x+1);
+    await page.setViewportSize({width,height:898});const back=await page.locator('[data-action=back]').boundingBox(),title=await page.locator('.sd-focus-dialogue h3').boundingBox();
+    ok(`square list button sits left of the centered title line at ${width}`,Math.abs(back.width-back.height)<1&&Math.abs(back.y+back.height/2-title.y-title.height/2)<1&&back.x+back.width<title.x+1);
+    const tags=await page.locator('[data-moment]').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().toJSON()));
+    ok(`four stage tags have equal dimensions and gutters at ${width}`,tags.length===4&&tags.every(b=>Math.abs(b.height-tags[0].height)<1&&Math.abs(b.width-tags[0].width)<1)&&Math.abs(tags[1].left-tags[0].right-8)<1&&Math.abs(tags[2].top-tags[0].bottom-8)<1);
+    const gap=await page.evaluate(()=>document.querySelector('.sd-focus-library-body>label').getBoundingClientRect().top-document.querySelector('.sd-focus-dialogue header').getBoundingClientRect().bottom);
+    ok(`title to editor gap is compact at ${width}`,gap>=0&&gap<=4);
+    if(width===393&&process.env.QIANMU_QA_SCREENSHOTS==='1')await page.locator('.sd-focus-dialogue').screenshot({path:'dist/local-qa/focus-dialogue-137.png'});
   }
-  await page.locator('[data-action=save]').click();await page.waitForFunction(()=>document.querySelector('[role=status]').textContent==='台词已保存');
-  ok('save creates a text record without generation',await page.evaluate(()=>owner.focusClock.dialogueLibrary.rows.length===2&&generation===0));
+  await page.waitForFunction(()=>owner.focusClock.dialogueLibrary.rows.length===2&&owner.focusClock.dialogueLibrary.rows[1].moments.includes('longBreak:complete'));
+  ok('typing creates a text record without generation or explicit save/delete buttons',await page.evaluate(()=>generation===0)&&await page.locator('[data-action=save],[data-action=remove]').count()===0);
+  await page.locator('[data-action=back]').click();
   ok('text-like markup is escaped',await page.locator('.sd-focus-library-body script').count()===0);
   await page.locator('[data-field=folder]').selectOption('character:B.png');ok('stable role folders remain isolated',await page.locator('.sd-focus-library-item').count()===0);
   await page.evaluate(()=>library.close());await page.evaluate(()=>library.open());
   ok('reopening does not duplicate migrated text',await page.evaluate(()=>owner.focusClock.dialogueLibrary.rows.length===2));
-  await page.locator('[data-action=edit]').last().click();await page.locator('[data-field=text]').fill('修改后的台词');await page.locator('[data-action=save]').click();
-  await page.waitForFunction(()=>document.querySelector('[role=status]').textContent==='台词已保存');
+  await page.locator('[data-action=edit]').last().click();
+  await page.locator('[data-field=text]').evaluate(el=>{window.liveEditor=el;window.beforeIME=owner.focusClock.dialogueLibrary.revision;el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));el.value='zhong';el.dispatchEvent(new InputEvent('input',{bubbles:true,isComposing:true}));});
+  await page.waitForTimeout(350);ok('Chinese composition is not persisted halfway',await page.evaluate(()=>owner.focusClock.dialogueLibrary.revision===beforeIME));
+  await page.locator('[data-field=text]').evaluate(el=>{el.value='中文输入';el.setSelectionRange(2,2);el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));});
+  await page.waitForFunction(()=>owner.focusClock.dialogueLibrary.rows.at(-1).text==='中文输入');
+  ok('autosave preserves the live editor and caret',await page.evaluate(()=>liveEditor===document.querySelector('textarea')&&liveEditor.selectionStart===2&&document.activeElement===liveEditor));
+  await page.locator('[data-field=text]').fill('修改后的台词');await page.locator('[data-action=back]').click();
   ok('saved text edits survive reloading',await page.evaluate(()=>owner.focusClock.dialogueLibrary.rows.at(-1).text==='修改后的台词'));
+  ok('return to list does not ask about unsaved edits',await page.evaluate(()=>confirmations.length===0));
   await page.locator('[data-select]').first().check();ok('checking a row stays in the list and enables batch removal',await page.locator('[data-action=remove-selected]').isEnabled()&&await page.locator('textarea').count()===0);
   await page.locator('[data-field=folder]').selectOption('character:B.png');await page.locator('[data-field=folder]').selectOption('character:A.png');
   ok('switching role clears hidden selections',await page.locator('[data-select]:checked').count()===0&&await page.locator('[data-action=remove-selected]').isDisabled());
@@ -75,10 +89,11 @@ try{
   await page.locator('[data-action=edit]').click();ok('legacy management is read-only playback without pre-generation',await page.locator('audio').count()===1&&await page.locator('[data-action=generate],[data-action=save]').count()===0);
   await page.evaluate(()=>library.close());
   await page.evaluate(async()=>{
-    const {renderFocusClockView}=await import('/qianmu-focus-view.js');window.render=mode=>{
+    const {renderFocusClockView}=await import('/qianmu-focus-view.js');const {bindFocusClockPage}=await import('/qianmu-focus-events.js');window.currentChannel='MiniMax';window.render=mode=>{
       owner.focusClock.voiceMode=mode;const data={f:owner.focusClock,remaining:1500000,total:1500000,phase:{label:'专注'},strongLocked:false,today:[],week:{days:Array.from({length:7},()=>({minutes:0})),history:[],minutes:0,count:0,readingMinutes:0},books:[],weekStart:new Date(),
-        voiceContext:{hasCharacter:true,characterName:'甲',voice:{voiceId:'v'},options:[],enabled:true},voiceCharacters:[],voiceDrawerCount:0,providerLabel:'测试',FOCUS_CLOCK_PHASES:{focus:{label:'专注',icon:'fa-clock'}},FOCUS_CLOCK_RELATIONS:{neutral:{label:'普通'}},FOCUS_CLOCK_VOICE_FREQUENCIES:{low:{label:'低',chance:.3}},FOCUS_CLOCK_SOUND_PRESETS:{}};
+        voiceContext:{hasCharacter:true,characterName:'甲',characterKey:'character:A',providerId:currentChannel,voice:{voiceId:'v'},options:[{key:'v',label:'清雅'}],selected:'v',enabled:true},voiceCharacters:[],voiceDrawerCount:0,providerLabel:currentChannel,FOCUS_CLOCK_PHASES:{focus:{label:'专注',icon:'fa-clock'}},FOCUS_CLOCK_RELATIONS:{neutral:{label:'普通'}},FOCUS_CLOCK_VOICE_FREQUENCIES:{low:{label:'低',chance:.3}},FOCUS_CLOCK_SOUND_PRESETS:{}};
       document.querySelector('main').innerHTML=renderFocusClockView(data,escape);document.querySelector('.sd-focus-settings').open=true;
+      bindFocusClockPage(document.querySelector('main'),{state:()=>owner.focusClock,ui:{save(){},render:()=>render(mode)},voice:{context:()=>data.voiceContext,bind:key=>{window.chosenKey=key;}},sound:{sync(){}},clock:{}});
     };render('custom');
   });
   for(const width of mobile?[320,393]:[320,393,1100]){
@@ -91,7 +106,29 @@ try{
     ok(`cycle title matches other cards at ${width}`,shape.title===shape.card);
     const positions=await page.evaluate(()=>['longBreakMinutes','dailyGoal'].map(key=>document.querySelector(`[data-focus-setting="${key}"]`).getBoundingClientRect().toJSON()));
     ok(`daily goal aligns to long rest in the left column at ${width}`,Math.abs(positions[0].x-positions[1].x)<1&&Math.abs(positions[0].width-positions[1].width)<1);
+    const picker=await page.locator('.sd-focus-voice-speaker').boundingBox(),character=await page.locator('.sd-focus-voice-character').boundingBox();
+    ok(`collapsed voice name control aligns to the role field at ${width}`,Math.abs(picker.height-character.height)<1&&Math.abs(picker.y-character.y)<1&&picker.x+picker.width<=width);
+    if(width===393&&process.env.QIANMU_QA_SCREENSHOTS==='1')await page.locator('.sd-focus-voice-card').screenshot({path:'dist/local-qa/focus-voice-137.png'});
   }
+  ok('collapsed selection shows only the name with no visible channel badge',await page.locator('.sd-focus-voice-speaker').innerText()==='清雅'&&!await page.locator('.sd-focus-voice-provider').isVisible());
+  for(const width of mobile?[320,393]:[320,393,1100]){
+    await page.setViewportSize({width,height:898});await page.locator('.sd-focus-voice-speaker').click();
+    const box=await page.locator('.sd-focus-voice-menu').boundingBox();
+    ok(`expanded voice menu and full channel badge fit at ${width}`,box.x>=0&&box.x+box.width<=width&&await page.locator('.sd-focus-voice-provider').innerText()==='MiniMax'&&await page.locator('.sd-focus-voice-provider').evaluate(el=>el.scrollWidth<=el.clientWidth));
+    await page.keyboard.press('Escape');ok(`Escape closes only the voice list at ${width}`,!await page.locator('.sd-focus-voice-menu').isVisible()&&await page.locator('.sd-focus-voice-speaker').isVisible());
+  }
+  await page.locator('.sd-focus-voice-speaker').click();await page.locator('[data-focus-voice-key="v"]').click();
+  ok('choosing a voice uses its stable key then hides badges',await page.evaluate(()=>chosenKey==='v')&&await page.locator('.sd-focus-voice-speaker').innerText()==='清雅'&&!await page.locator('.sd-focus-voice-provider').isVisible());
+  await page.evaluate(()=>{currentChannel='豆包';render('custom');});await page.locator('.sd-focus-voice-speaker').click();
+  const channelStyle=await page.locator('.sd-focus-voice-provider').evaluate(el=>{const probe=document.createElement('span');probe.style.color='var(--sd-accent)';el.append(probe);const expected=getComputedStyle(probe).color,actual=getComputedStyle(el).color;probe.remove();return {expected,actual};});
+  ok('expanded badges follow the current channel and theme accent',await page.locator('.sd-focus-voice-provider').innerText()==='豆包'&&channelStyle.expected===channelStyle.actual);
+  await page.locator('.sd-focus-voice-menu-close').click();
+  await page.locator('.sd-focus-voice-speaker').click();await page.mouse.click(1,1);
+  ok('clicking outside the list dismisses it without changing the voice',!await page.locator('.sd-focus-voice-menu').isVisible()&&await page.evaluate(()=>chosenKey==='v'));
+  await page.locator('.sd-focus-voice-speaker').click();await page.keyboard.press('Home');
+  ok('keyboard Home moves to the first option',await page.locator('[data-focus-voice-key=""]').evaluate(el=>document.activeElement===el));
+  await page.keyboard.press('End');await page.keyboard.press('Enter');
+  ok('keyboard selection closes the list and preserves the chosen identity',!await page.locator('.sd-focus-voice-menu').isVisible()&&await page.evaluate(()=>chosenKey==='v'));
   await page.evaluate(()=>render('scene'));ok('scene mode has no dialogue library button',await page.locator('.sd-focus-library-open').count()===0);
   for(const name of ['merry-christmas-mr-lawrence','farewell']){
     const duration=await page.evaluate(name=>new Promise((resolve,reject)=>{

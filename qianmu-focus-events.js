@@ -126,9 +126,33 @@ export function bindFocusClockPage(root, {state, stateOwner, enabled, defaults, 
     if (avatar && !books.choices().some(ch => (ch.avatar || ch.data?.avatar) === avatar)) return;
     f.voiceCharacterAvatar = avatar; voice.cancel({ clearCues: true }); ui.save(); ui.render();
   });
-  root.querySelector('.sd-focus-voice-speaker')?.addEventListener('change', (event) => {
-    voice.bind(event.target.value, displayedVoice.characterKey, displayedVoice.providerId); ui.render();
+  const speaker=root.querySelector('.sd-focus-voice-speaker'),menu=root.querySelector('.sd-focus-voice-menu');
+  const voiceMenuOwner=stateOwner?.()||state();
+  const voiceMenuCurrent=()=>enabled?.()!==false&&(stateOwner?.()||state())===voiceMenuOwner&&state().status==='idle'&&voicePageCurrent();
+  const dismissVoiceMenu=()=>{menu.close();speaker.setAttribute('aria-expanded','false');};
+  speaker?.addEventListener('click',()=>{
+    if(!voiceMenuCurrent())return;
+    menu.showModal();speaker.setAttribute('aria-expanded','true');
+    (menu.querySelector('[aria-selected=true]')||menu.querySelector('[role=option]'))?.focus();
   });
+  root.querySelector('.sd-focus-voice-menu-close')?.addEventListener('click',dismissVoiceMenu);
+  menu?.addEventListener('close',()=>{speaker.setAttribute('aria-expanded','false');});
+  menu?.addEventListener('keydown',event=>{
+    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();dismissVoiceMenu();}
+    if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){
+      const rows=[...menu.querySelectorAll('[role=option]')],at=rows.indexOf(event.target);
+      if(at<0)return;event.preventDefault();event.stopPropagation();
+      rows[event.key==='Home'?0:event.key==='End'?rows.length-1:Math.max(0,Math.min(rows.length-1,at+(event.key==='ArrowDown'?1:-1)))]?.focus();
+    }
+  });
+  menu?.addEventListener('click',event=>{
+    if(event.target!==menu)return;const rect=menu.getBoundingClientRect();
+    if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)dismissVoiceMenu();
+  });
+  root.querySelectorAll('[data-focus-voice-key]').forEach(option=>option.addEventListener('click',()=>{
+    if(!voiceMenuCurrent()){dismissVoiceMenu();return;}
+    dismissVoiceMenu();voice.bind(option.dataset.focusVoiceKey,displayedVoice.characterKey,displayedVoice.providerId);ui.render();
+  }));
   root.querySelector('.sd-focus-voice-relation')?.addEventListener('change', (event) => {
     const f = state();
     const binding = voice.context(f);

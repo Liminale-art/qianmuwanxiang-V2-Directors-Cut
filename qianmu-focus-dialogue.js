@@ -33,7 +33,7 @@ export function createFocusDialogueLibrary({owner,legacy,save,random=Math.random
   async function put(value,expected){
     const {characterKey}=focusLibraryScope({namespace:'st-user:settings',characterKey:value.characterKey});
     const text=String(value.text||'').trim(),moments=[...new Set(value.moments||[])];
-    if(!text||text.length>2000||!moments.length||moments.some(key=>!FOCUS_LIBRARY_MOMENTS.includes(key)))throw Error('请填写不超过 2000 字的台词并选择适用阶段');
+    if((!text&&!value.id)||text.length>2000||moments.some(key=>!FOCUS_LIBRARY_MOMENTS.includes(key)))throw Error('请填写不超过 2000 字的台词并选择有效阶段');
     return change(expected,rows=>{
       const at=value.id?rows.findIndex(row=>row.id===value.id&&row.characterKey===characterKey):-1;
       if(value.id&&at<0)throw Error('此台词已被删除，请重新打开列表');
@@ -53,7 +53,7 @@ export function createFocusDialogueLibrary({owner,legacy,save,random=Math.random
   async function lines({characterKey,phase,specs,isCurrent=()=>true}){
     const data=await snapshot();if(!isCurrent())return [];
     let previous='';return specs.map(spec=>{
-      const candidates=data.rows.filter(row=>row.characterKey===characterKey&&row.moments.includes(`${phase}:${spec.type}`));
+      const candidates=data.rows.filter(row=>row.characterKey===characterKey&&row.text.trim()&&row.moments.includes(`${phase}:${spec.type}`));
       const alternatives=candidates.filter(row=>row.id!==previous),pool=alternatives.length?alternatives:candidates;
       if(!pool.length)return '';const sample=random();if(!Number.isFinite(sample)||sample<0||sample>=1)throw Error('台词抽取状态异常');
       const selected=pool[Math.floor(sample*pool.length)];previous=selected.id;return selected.text;

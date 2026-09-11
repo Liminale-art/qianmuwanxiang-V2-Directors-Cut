@@ -25,6 +25,7 @@
     "qianmu-focus-library-runtime.js",
     "qianmu-focus-dialogue.js",
     "qianmu-focus-dialogue-ui.js",
+    "qianmu-focus-dialogue-autosave.js",
     "qianmu-focus-library-ui.js",
     "qianmu-focus-scene-prompts.js",
     "qianmu-reader-identity-view.js",

@@ -53,7 +53,7 @@ test('simultaneous save and batch delete cannot both commit from the same revisi
 test('voice labels omit backend identifiers without changing the selected identity or deduplication',()=>{
   const current={voiceId:'internal-key-123456789012',name:'清雅',model:'m'},second={voiceId:'another-key-123456789013',name:'清雅',model:'m'};
   const options=focusVoiceOptions({current,library:[current,second,{voiceId:'unnamed-id'}]});
-  assert.equal(options.length,3);assert.equal(options[0].label,'清雅 · 已绑定');assert.equal(options[1].label,'清雅 · 音色库');assert.equal(options[2].label,'未命名音色 · 音色库');
+  assert.equal(options.length,3);assert.equal(options[0].label,'清雅');assert.equal(options[1].label,'清雅');assert.equal(options[2].label,'未命名音色');
   assert.equal(options[0].voiceId,current.voiceId);assert.notEqual(options[0].key,options[1].key);assert.ok(options.every(option=>!option.label.includes(option.voiceId)));
 });
 test('custom text needs voice credentials but never sends text to the scene LLM',async()=>{

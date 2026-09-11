@@ -103,7 +103,7 @@ try{
     await page.locator('.sd-focus-lock').tap();assert.equal(await page.locator('#sd-reader-portal').count(),1);
     const initial=await page.evaluate(()=>settings.focusClock.endsAt);await page.locator('.sd-reader-dialog-ta').fill('暂未发送');
     await page.locator('#reader-timer').tap();assert.equal(await page.locator('#sd-reader-portal').count(),1,'unsent input must not be discarded');
-    await page.locator('.sd-reader-dialog-ta').fill('');await page.locator('#reader-popup').tap();await page.locator('dialog select').selectOption({label:'B'});await page.locator('dialog button').tap();
+    await page.locator('.sd-reader-dialog-ta').fill('');await page.locator('#reader-popup').tap();await page.locator('dialog[open] select').selectOption({label:'B'});await page.locator('dialog[open] button').tap();
     await page.locator('#reader-timer').tap();assert.equal(await page.locator('#sd-reader-portal').count(),0);await page.locator('.sd-focus-open-reading').tap();
     assert.equal(await page.locator('#sd-reader-portal').count(),1);assert.equal(await page.evaluate(()=>settings.focusClock.endsAt),initial);
     // Keep a toast/dialog alive while the actual focus surfaces vanish: still fail open.
@@ -118,7 +118,7 @@ try{
     await page.evaluate(()=>{voiceFixture=true;reset();Object.assign(settings.focusClock,{activity:'reading',bookId:'book',soundEnabled:true,voiceSetupTipSeen:false});renderModal();});
     assert.equal(await page.locator('.sd-focus-voice-setup-tip').count(),1);
     assert.equal(await page.evaluate(()=>settings.focusClock.voiceSetupTipSeen),true);
-    const fields=await page.locator('.sd-focus-voice-grid input, .sd-focus-voice-grid select').evaluateAll(nodes=>nodes.map(n=>{const b=n.getBoundingClientRect();return {x:b.x,y:b.y,right:b.right,height:b.height};}));
+    const fields=await page.locator('.sd-focus-voice-grid > label > :is(input,select),.sd-focus-voice-speaker').evaluateAll(nodes=>nodes.map(n=>{const b=n.getBoundingClientRect();return {x:b.x,y:b.y,right:b.right,height:b.height};}));
     assert.equal(fields.length,2);assert.ok(Math.abs(fields[0].y-fields[1].y)<1);assert.ok(Math.abs(fields[0].height-fields[1].height)<1);
     assert.ok(fields.every(b=>b.x>=0&&b.right<=width));
     await page.locator('.sd-focus-sound-preview').tap();assert.equal(await page.evaluate(()=>soundTestAudio.at(-1).paused),false);
@@ -126,7 +126,7 @@ try{
     assert.equal(await page.locator('.sd-focus-voice-enabled').isChecked(),true);assert.equal(await page.locator('.sd-focus-sound').isChecked(),false);
     assert.equal(await page.evaluate(()=>soundTestAudio.at(-1).paused),true);assert.equal(await page.locator('.sd-focus-voice-setup-tip').count(),0);
     const pendingVoice=await page.evaluate(()=>focusClockVoiceContext().voice);assert.equal(pendingVoice,null);
-    const selectedKey=await page.evaluate(()=>focusClockVoiceContext().options[0].key);await page.locator('.sd-focus-voice-speaker').selectOption(selectedKey);
+    await page.locator('.sd-focus-voice-speaker').tap();await page.locator('[data-focus-voice-key]').nth(1).tap();
     assert.equal(await page.locator('.sd-focus-voice-enabled').isChecked(),true);
     await page.locator('.sd-focus-sound').tap();assert.equal(await page.locator('.sd-focus-voice-enabled').isChecked(),false);
     await page.locator('.sd-focus-sound').tap();assert.equal(await page.locator('.sd-focus-voice-enabled').isChecked(),false);
@@ -146,12 +146,12 @@ try{
     }
     await page.evaluate(()=>{reset();voiceFixture=true;renderModal();});
     await page.locator('.sd-focus-voice-character').selectOption('B');
-    const key=await page.evaluate(()=>focusClockVoiceContext().options[1].key);await page.locator('.sd-focus-voice-speaker').selectOption(key);
+    await page.locator('.sd-focus-voice-speaker').tap();await page.locator('[data-focus-voice-key]').nth(2).tap();
     assert.equal(await page.evaluate(()=>focusClockVoiceContext().voice.voiceId),'voice-B');
     await page.evaluate(()=>{voiceHost.chatId='different-chat';renderModal();});
     assert.equal(await page.evaluate(()=>focusClockVoiceContext().voice.voiceId),'voice-B');
     await page.locator('.sd-focus-voice-card').screenshot({path:fileURLToPath(new URL(`../dist/local-qa/focus-role-voice-${width}.png`,import.meta.url))});
-    const boxes=await page.locator('.sd-focus-voice-grid select').evaluateAll(nodes=>nodes.map(n=>{const b=n.getBoundingClientRect();return {left:b.left,right:b.right,height:b.height};}));
+    const boxes=await page.locator('.sd-focus-voice-character,.sd-focus-voice-speaker').evaluateAll(nodes=>nodes.map(n=>{const b=n.getBoundingClientRect();return {left:b.left,right:b.right,height:b.height};}));
     assert.ok(boxes.every(b=>b.left>=0&&b.right<=width));assert.ok(Math.abs(boxes[0].height-boxes[1].height)<1);
     await page.evaluate(()=>{voiceFixture=false;voiceHost.chatId='test-chat';reset();settings.focusClock.activity='reading';settings.focusClock.bookId='book';renderModal();});
     await page.locator('.sd-focus-main').tap();await page.locator('#reader-timer').tap();assert.equal(await page.evaluate(()=>settings.focusClock.status),'paused');
