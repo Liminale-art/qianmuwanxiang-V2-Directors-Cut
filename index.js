@@ -25598,14 +25598,14 @@ async function exportConfig() {
     plans:storyboardPlansForPortableExport,stamp:fileStamp,download:ttsDownloadBlob,notify:toast});
 }
 
-function configRestoreActivity(includeCleanup = true) {
+function configRestoreActivity(includeCleanup = true, includeReaderImport = true) {
   return {
     voice: ttsRestoreTasks > 0,
     reader: readerView || coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight || dialogBusy || readerAssistantBusy || coreadComicVisionBusy,
     focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy,
     director: busy || theaterBusy,
     image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || storyboardImageService?.busy || storyboardReceiveServiceImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
-    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || coreadImportDataFile.busy || (includeCleanup && storageCleanupSession.busy),
+    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || (includeReaderImport && coreadImportDataFile.busy) || (includeCleanup && storageCleanupSession.busy),
   };
 }
 
@@ -34904,7 +34904,11 @@ async function coreadImportDataFile(file, origin) {
     try {
     viewGuard = createCoreadImportViewGuard(origin);
     const owner = settings, reader = coread(), epoch = storyboardAdmissionEpoch;
-    const check = () => { viewGuard.check(); if (settings !== owner || coread() !== reader || epoch !== storyboardAdmissionEpoch) throw Error('伴读状态已变化，后续已停止；已写入内容保留。'); };
+    const check = () => {
+      viewGuard.check();
+      if (settings !== owner || coread() !== reader || epoch !== storyboardAdmissionEpoch) throw Error('伴读状态已变化，后续已停止；已写入内容保留。');
+      if (Object.values(configRestoreActivity(true, false)).some(Boolean)) throw Error('其他任务已开始，伴读导入后续已停止；已写入内容保留。');
+    };
     let data;
     try {
       data = await readCoreadPackageFile(file);

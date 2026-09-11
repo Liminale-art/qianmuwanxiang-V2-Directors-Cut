@@ -9,7 +9,7 @@ function fixture(){
     readCoreadPackageFile:async()=>({books:[]}),confirmDialog:async()=>true,blobStore:{blobStoreAvailable:()=>true},isPlainObject:()=>false,
     base64ToBlob(){},MODULE_NAME:'fixture',saveSettings(){calls.push('save');},renderModal(){calls.push('render');},rerenderMoreIfOpen(){},
     applyCoreadPackageData:async()=>{calls.push('write');return {ok:0,chatOk:0,imageOk:0,vectorOk:0,audioOk:0,logOk:0};}});
-  c.coread=()=>c.settings.coread;c.configRestoreActivity=()=>({transfer:c.coreadImportDataFile.busy||c.storageCleanupSession.busy});
+  c.coread=()=>c.settings.coread;c.configRestoreActivity=(includeCleanup=true,includeReaderImport=true)=>({transfer:(includeReaderImport&&c.coreadImportDataFile.busy)||(includeCleanup&&c.storageCleanupSession.busy),...c.competingActivity});
   c.createCoreadImportViewGuard=()=>({check(){if(c.pageChanged)throw Error('page changed');},release(){c.viewReleased=true;}});
   vm.runInContext(source('coreadImportDataFile'),c);
   c.blobStore.createReaderPackageWriter=({check})=>{assert.equal(typeof check,'function');return c.blobStore;};
@@ -50,4 +50,16 @@ for(const phase of ['read','confirm','write'])test('reader '+phase+' stops on a 
   const pending=e.run();await new Promise(r=>setImmediate(r));e.c.pageChanged=true;
   release(phase==='read'?{books:[]}:true);await pending;
   assert.deepEqual(e.calls,[]);assert.equal(e.c.viewReleased,true);assert.equal(e.c.coreadImportDataFile.busy,false);assert.match(e.notices.at(-1),/page changed/);
+});
+
+for(const phase of ['read','confirm','write'])test('reader '+phase+' stops when another operation begins without treating itself as a conflict',async()=>{
+  for(const lane of ['voice','reader','focus','director','image','transfer']){
+    const e=fixture();let release;
+    const fn={read:'readCoreadPackageFile',confirm:'confirmDialog',write:'applyCoreadPackageData'}[phase];
+    e.c[fn]=()=>new Promise(r=>release=r);
+    const pending=e.run();await new Promise(r=>setImmediate(r));assert.equal(typeof release,'function','own busy flag cannot stop the import');
+    e.c.competingActivity={[lane]:true};release(phase==='read'?{books:[]}:true);await pending;
+    assert.deepEqual(e.calls,[]);assert.equal(e.c.coreadImportDataFile.busy,false);assert.equal(e.c.viewReleased,true);
+    assert.match(e.notices.at(-1),/其他任务已开始/);
+  }
 });

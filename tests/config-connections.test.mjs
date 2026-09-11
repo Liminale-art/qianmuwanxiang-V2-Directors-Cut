@@ -258,6 +258,13 @@ test('actual activity adapter blocks each independent lane without normalizing o
   const notices=[],allowed=policy.configRestoreGate(c.settings,()=>c.configRestoreActivity(),(...args)=>notices.push(args));
   assert.equal(allowed(c.settings),false);assert.match(notices[0][0],/数据清理/);
   c.storyboardImportPackage.busy=true;assert.equal(c.configRestoreActivity(false).transfer,true,'other transfers remain protected');
+  c.coreadImportDataFile.busy=true;
+  assert.equal(c.configRestoreActivity(true,false).transfer,true,'ignoring reader import must not ignore another transfer or cleanup');
+  c.storyboardImportPackage.busy=false;
+  assert.equal(c.configRestoreActivity(true,false).transfer,true,'cleanup remains a conflict');
+  c.storageCleanupSession.busy=false;
+  assert.equal(c.configRestoreActivity(true,false).transfer,false,'only the owning reader import is excluded');
+  c.readerAssistantBusy=true;assert.equal(c.configRestoreActivity(true,false).reader,true,'reader work remains protected');
 });
 
 test('actual import preserves same-owner changes made during file reading or confirmation',async()=>{
