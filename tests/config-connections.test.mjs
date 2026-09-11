@@ -278,9 +278,9 @@ test('actual activity adapter blocks each independent lane without normalizing o
   assert.equal(!!c.configRestoreActivity(true,c.storyboardOpenRestoreStorage).transfer,false,'manager excludes only its own activity');
   c.coreadImportDataFile.busy=true;assert.equal(c.configRestoreActivity(true,c.storyboardOpenRestoreStorage).transfer,true,'manager still observes another import');
   c.coreadImportDataFile.busy=false;c.storyboardOpenRestoreStorage.busy=false;
-  for(const name of ['exportPinnedNotesBackup','exportTtsFavoritesBackup']){
+  for(const name of ['exportPinnedNotesBackup','exportTtsFavoritesBackup','importPinnedNotesBackup','importTtsFavoritesBackup']){
     c[name].busy=true;assert.equal(c.configRestoreActivity(false).transfer,true,'cleanup observes '+name);
-    assert.equal(!!c.configRestoreActivity(true,c[name]).transfer,false,'export excludes itself only');
+    assert.equal(!!c.configRestoreActivity(true,c[name]).transfer,false,'transfer excludes itself only');
     c.coreadExportData.busy=true;assert.equal(c.configRestoreActivity(true,c[name]).transfer,true,'reader export remains a conflict');
     c.coreadExportData.busy=false;c[name].busy=false;
   }

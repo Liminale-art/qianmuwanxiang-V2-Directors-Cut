@@ -11,7 +11,9 @@ function fixture(){
   const c=vm.createContext({document:{getElementById:()=>view},MODAL_ID:'fixture',settings:{},storyboardAdmissionEpoch:1,normalizeQianmuNote,importQianmuNotesBackup,
     listQianmuNotes:async()=>[{id:'same'}],saveQianmuNote:async note=>saved.push(note),uid:()=> 'copy',
     notesRuntime:['original'],notesLoaded:false,notesPanelOpen:false,renderFloatingNotes(){},refreshStorageInventory:async()=>{},toast:text=>notices.push(text)});
-  vm.runInContext(source('importPinnedNotesBackup'),c);
+  vm.runInContext(source('createStorageBackupCheck')+'\n'+source('importPinnedNotesBackup'),c);
+  c.createCoreadImportViewGuard=()=>({check(){if(c.pageChanged)throw Error('页面变化，已写入内容保留');},release(){c.released=(c.released||0)+1;}});
+  c.configRestoreActivity=(include=true,own=null)=>({active:c.otherActivity,transfer:[c.importPinnedNotesBackup,c.importTtsFavoritesBackup,c.coreadImportDataFile,c.coreadExportData,c.exportPinnedNotesBackup,c.exportTtsFavoritesBackup,c.storyboardOpenRestoreStorage].some(t=>t!==own&&t.busy)||c.storageCleanupSession.busy});
   c.importTtsFavoritesBackup={busy:false};
   c.coreadImportDataFile={busy:false};
   c.coreadExportData={busy:false};
@@ -81,4 +83,17 @@ test('failed final inventory reports already committed imports and does not publ
 test('a failed entry remains separate from the committed count',async()=>{
   const e=fixture();e.c.saveQianmuNote=async note=>{if(note.id==='copy')throw Error('synthetic write failure');e.saved.push(note);};
   await e.run();assert.equal(e.saved.length,1);assert.match(e.notices.at(-1),/已导入 1 条固定便笺，1 条失败并跳过/);
+});
+
+test('notes import stops on late page or task changes, retaining only committed notes and releasing its watcher',async()=>{
+  for(const phase of ['before','read','save'])for(const mode of ['page','activity']){
+    const e=fixture();let reads=0;
+    const change=()=>{if(mode==='page')e.c.pageChanged=true;else e.c.otherActivity=true;};
+    e.input.files[0].text=async()=>{reads++;if(phase==='read')change();return payload;};
+    if(phase==='before')change();
+    if(phase==='save')e.c.saveQianmuNote=async note=>{e.saved.push(note);change();};
+    await e.run();assert.equal(e.saved.length,phase==='save'?1:0);assert.equal(e.c.importPinnedNotesBackup.busy||false,false);assert.equal(e.c.released||0,phase==='before'&&mode==='activity'?0:1);
+    assert.equal(reads,phase==='before'?0:1);if(phase==='save')assert.match(e.notices.at(-1),/已导入 1 条，已写入内容保留/);
+    assert.equal(e.c.notesLoaded,false);
+  }
 });

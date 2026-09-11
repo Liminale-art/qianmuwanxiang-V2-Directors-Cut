@@ -242,6 +242,10 @@ try{
     check('leaving the document cancels pending library exports',rejects({check:backupCheck}));backupCheck.release?.();f.done();
     f=mount(false);backupCheck=createStorageBackupCheck(null,()=>{});const refreshed=document.createElement('section');refreshed.append(f.input);f.root.replaceChildren(refreshed);await Promise.resolve();
     check('legacy library exports use the open modal while ordinary storage refresh remains valid',!rejects({check:backupCheck}));backupCheck.release?.();f.done();
+    f=mount(false);backupCheck=createStorageBackupCheck(f.input,()=>{},'导入');f.root.classList.remove('open');f.root.classList.add('open');let importError='';
+    try{backupCheck();}catch(error){importError=error.message;}check('library import cannot revive after reopening and preserves committed-write messaging',importError.includes('导入页面')&&importError.includes('已写入内容保留')&&!importError.includes('伴读'));backupCheck.release();f.done();
+    f=mount(false);backupCheck=createStorageBackupCheck(f.input,()=>{},'导入');window.dispatchEvent(new Event('pagehide'));
+    check('document departure cancels the shared library import guard',rejects({check:backupCheck}));backupCheck.release();f.done();
     return checks;
   },storyboardFunctionSource('createStorageBackupCheck'));
   await page.evaluate(code=>{window.eval(code);window.downloadRevoked=0;const revoke=URL.revokeObjectURL.bind(URL);URL.revokeObjectURL=url=>{window.downloadRevoked++;revoke(url);};},storyboardFunctionSource('ttsDownloadBlob'));
@@ -251,5 +255,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,117);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,119);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

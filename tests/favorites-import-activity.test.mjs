@@ -10,7 +10,9 @@ function fixture(){
   const c=vm.createContext({FAVORITES_BACKUP_LIMITS,FAVORITE_TEXT_LIMITS,settings:{},storyboardAdmissionEpoch:1,document:{getElementById:()=>view},MODAL_ID:'fixture',activeTab:'api',
     toast:m=>notices.push(m),uid:()=> 'copy',base64ToBlob:()=>({size:1}),storageSafeFavoriteMeta:x=>x,refreshStorageInventory:async()=>{},
     blobStore:{hasFavorite:async()=>false,addFavorite:async id=>saved.push(id)}});
-  vm.runInContext(source('importTtsFavoritesBackup'),c);
+  vm.runInContext(source('createStorageBackupCheck')+'\n'+source('importTtsFavoritesBackup'),c);
+  c.createCoreadImportViewGuard=()=>({check(){if(c.pageChanged)throw Error('页面变化，已写入内容保留');},release(){c.released=(c.released||0)+1;}});
+  c.configRestoreActivity=(include=true,own=null)=>({active:c.otherActivity,transfer:[c.importPinnedNotesBackup,c.importTtsFavoritesBackup,c.coreadImportDataFile,c.coreadExportData,c.exportPinnedNotesBackup,c.exportTtsFavoritesBackup,c.storyboardOpenRestoreStorage].some(t=>t!==own&&t.busy)||c.storageCleanupSession.busy});
   vm.runInContext(source('importPinnedNotesBackup'),c);
   c.blobStore.importFavorite=(...args)=>c.blobStore.addFavorite(...args);
   c.coreadImportDataFile={busy:false};
@@ -77,4 +79,16 @@ test('the dedicated import receives its guard; rejected writes never count as im
   const e=fixture();e.c.blobStore.importFavorite=async(id,blob,meta,label,{check})=>{
     assert.equal(typeof check,'function');check();if(id==='one')throw Error('transaction aborted');e.saved.push(id);
   };await e.run();assert.deepEqual(e.saved,['two']);assert.match(e.notices.at(-1),/已导入 1 条语音收藏，1 条失败/);
+});
+
+test('favorite imports retain committed audio but stop after page or task changes and release the watcher',async()=>{
+  for(const phase of ['before','read','write'])for(const mode of ['page','activity']){
+    const e=fixture();let reads=0;
+    const change=()=>{if(mode==='page')e.c.pageChanged=true;else e.c.otherActivity=true;};
+    e.input.files[0].text=async()=>{reads++;if(phase==='read')change();return payload;};
+    if(phase==='before')change();
+    if(phase==='write')e.c.blobStore.addFavorite=async id=>{e.saved.push(id);change();};
+    await e.run();assert.equal(e.saved.length,phase==='write'?1:0);assert.equal(e.c.importTtsFavoritesBackup.busy||false,false);assert.equal(e.c.released||0,phase==='before'&&mode==='activity'?0:1);
+    assert.equal(reads,phase==='before'?0:1);if(phase==='write')assert.match(e.notices.at(-1),/已导入 1 条，已写入内容保留/);
+  }
 });
