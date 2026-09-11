@@ -8,7 +8,7 @@ let external=0;const errors=[];
 await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.href==='https://qianmu.test/')return route.fulfill({contentType:'text/html',body:'<!doctype html>'});
-  if(url.origin==='https://qianmu.test'&&['/qianmu-notes.js','/qianmu-blobstore.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
+  if(url.origin==='https://qianmu.test'&&['/qianmu-notes.js','/qianmu-blobstore.js','/qianmu-reader-package.js','/qianmu-json-input.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
   external++;return route.abort();
 });
 try{
@@ -130,7 +130,21 @@ try{
       const local=await api.listQianmuNotes();
       check('normal temporary notes still work but failed imports never become temporary',local.some(n=>n.id==='temporary')&&!local.some(n=>n.id==='no-storage'));
     }finally{if(descriptor)Object.defineProperty(window,'indexedDB',descriptor);else delete window.indexedDB;}
+    const {createCoreadImportViewGuard}=await import('/qianmu-reader-package.js');
+    const mount=reader=>{
+      const host=document.createElement('section');host.innerHTML=reader?'<div class="sd-reader-morepage"><input hidden></div>':'<div id="story-director-modal" class="open"><section><input hidden></section></div>';
+      document.body.append(host);const root=host.firstElementChild,input=host.querySelector('input'),token=createCoreadImportViewGuard(input);
+      return {host,root,input,token,done(){token.release();host.remove();}};
+    };
+    const rejects=token=>{try{token.check();return false;}catch{return true;}};
+    let f=mount(false);check('a hidden native file input on an open backup page remains valid',!rejects(f.token));
+    f.root.classList.remove('open');f.root.classList.add('open');check('closing then reopening a modal cannot revive its pending import',rejects(f.token));f.done();
+    f=mount(true);check('the independent reader center does not require the main modal',!rejects(f.token));
+    f.root.hidden=true;f.root.hidden=false;check('closing then reopening the reader center invalidates its import',rejects(f.token));f.done();
+    f=mount(false);f.input.remove();check('a removed import control cannot continue a stale page operation',rejects(f.token));f.done();
+    f=mount(false);const replacement=document.createElement('section');replacement.append(f.input);f.root.replaceChildren(replacement);await Promise.resolve();check('storage-card refresh can retain the same file input without cancelling import',!rejects(f.token));f.done();
+    f=mount(true);window.dispatchEvent(new Event('pagehide'));check('leaving the document invalidates a reader import',rejects(f.token));f.done();
     return checks;
   });
-  assert.equal(checks.length,40);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,47);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

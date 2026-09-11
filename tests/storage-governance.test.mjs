@@ -91,7 +91,7 @@ assert.match(notesSource, /occupiedIds\.has\(id\)[\s\S]*uid\('note-import'\)[\s\
 assert.match(source, /function exportTtsFavoritesBackup[\s\S]*qianmu-tts-favorites[\s\S]*credentialsIncluded: false/, 'voice favorites need a credential-free binary backup before destructive cleanup');
 assert.match(source, /function importTtsFavoritesBackup[\s\S]*256 \* 1024 \* 1024[\s\S]*entries.length > 2000[\s\S]*hasFavorite\(id\)[\s\S]*uid\('fav-import'\)/, 'favorite restore must reject oversized lists instead of silently clipping, and preserve ID collisions as copies');
 assert.match(source, /storageSafeFavoriteMeta[\s\S]*const allowed = \['speaker'[\s\S]*credentialsIncluded: false/, 'favorite packages must use an explicit metadata allow-list');
-assert.match(source, /case 'reader': void coreadExportData\(\)[\s\S]*case 'reader': await coreadImportDataFile\(file\)/, 'the unified storage backup home must retain the complete reader backup round trip');
+assert.match(source, /case 'reader': void coreadExportData\(\)[\s\S]*case 'reader': await coreadImportDataFile\(file, input\)/, 'the unified storage backup home retains reader backup and the initiating input identity');
 assert.match(source, /STORAGE_CHAT_CLEARABLE[\s\S]*reader_chats[\s\S]*reader_vectors/, 'the UI must expose only the same chat-scoped store subset');
 assert.doesNotMatch(source, /navigator\.storage\.persist|申请持久保存/, 'persistent-storage prompts must be removed');
 const refreshInventory = source.slice(source.indexOf('async function refreshStorageInventory'), source.indexOf('const STORAGE_CATEGORY_LABELS'));

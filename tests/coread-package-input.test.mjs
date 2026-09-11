@@ -36,6 +36,7 @@ test('actual merge and export helpers cannot mutate prototypes even if called wi
 });
 test('the actual import rejects unsafe packs before any confirmation or storage action',async()=>{
   const notices=[],reader={},c=vm.createContext({createCoreadImportProgress,coreadImportProgressText,settings:{},storyboardAdmissionEpoch:1,coread:()=>reader,configRestoreActivity:()=>({}),readCoreadPackageFile,toast:m=>notices.push(m)});
+  c.createCoreadImportViewGuard=()=>({check(){},release(){}});
   vm.runInContext(source('coreadImportDataFile'),c);
   await c.coreadImportDataFile(file('{"type":"qianmu-coread","books":[],"prototype":{}}'));
   assert.match(notices[0],/未写入内容/);

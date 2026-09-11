@@ -1,7 +1,7 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
-import { readCoreadPackageFile, coreadPackageSafeKey, applyCoreadPackageData, createCoreadImportProgress, coreadImportProgressText } from './qianmu-reader-package.js';
+import { readCoreadPackageFile, coreadPackageSafeKey, applyCoreadPackageData, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard } from './qianmu-reader-package.js';
 import { exportConfiguration } from './qianmu-config-export.js';
 import { receiveComfyImage, resolveComfyRecoveryKey } from './qianmu-comfy-recovery-action.js';
 import { receiveServiceImage } from './qianmu-service-recovery-action.js';
@@ -8663,7 +8663,7 @@ function bindStorageManagementEvents(root) {
       try {
         switch(input.dataset.storageImport) {
           case 'storyboard': await storyboardImportAnyPackage(file); break;
-          case 'reader': await coreadImportDataFile(file); break;
+          case 'reader': await coreadImportDataFile(file, input); break;
           case 'favorites': await importTtsFavoritesBackup(event); break;
           case 'notes': await importPinnedNotesBackup(event); break;
         }
@@ -34188,7 +34188,7 @@ function bindReaderStageEvents(stageRoot) {
     if (packInput) {
       const file = packInput.files?.[0];
       packInput.value = '';
-      void coreadImportDataFile(file);
+      void coreadImportDataFile(file, packInput);
       return;
     }
     const m = coreadMemory();
@@ -34895,14 +34895,16 @@ async function coreadExportData() {
   toast(`伴读数据已打包导出：${books.length} 本书 · ${chats.length} 段对话 · ${images.length} 张插图 · ${audio.length} 条语音。`, 'success');
 }
 
-async function coreadImportDataFile(file) {
+async function coreadImportDataFile(file, origin) {
     if (!file) return;
     if (coreadImportDataFile.busy || Object.values(configRestoreActivity()).some(Boolean)) return toast('请先结束正在进行的任务或退出阅读，再导入伴读整包。', 'warning');
     coreadImportDataFile.busy = true;
     const progress = createCoreadImportProgress();
+    let viewGuard;
     try {
+    viewGuard = createCoreadImportViewGuard(origin);
     const owner = settings, reader = coread(), epoch = storyboardAdmissionEpoch;
-    const check = () => { if (settings !== owner || coread() !== reader || epoch !== storyboardAdmissionEpoch) throw Error('伴读状态已变化，后续已停止；已写入内容保留。'); };
+    const check = () => { viewGuard.check(); if (settings !== owner || coread() !== reader || epoch !== storyboardAdmissionEpoch) throw Error('伴读状态已变化，后续已停止；已写入内容保留。'); };
     let data;
     try {
       data = await readCoreadPackageFile(file);
@@ -34922,16 +34924,17 @@ async function coreadImportDataFile(file) {
     renderModal();
     rerenderMoreIfOpen();
     } catch (error) { toast(`伴读导入未完成：${coreadImportProgressText(progress)} ${error?.message || error}`, 'error'); }
-    finally { coreadImportDataFile.busy = false; }
+    finally { viewGuard?.release(); coreadImportDataFile.busy = false; }
 }
 
 function coreadImportData() {
+  const origin = document.querySelector('#sd-reader-portal .sd-reader-morepage:not([hidden])') || document.querySelector('#story-director-modal .sd-body');
   const input = document.createElement('input');
   input.type = 'file'; input.accept = 'application/json,.json'; input.style.display = 'none';
   document.body.appendChild(input);
   input.addEventListener('change', async () => {
     const file = input.files?.[0]; input.remove();
-    await coreadImportDataFile(file);
+    await coreadImportDataFile(file, origin);
   });
   input.click();
 }

@@ -2,6 +2,28 @@
 import {parseBoundedJson} from './qianmu-json-input.js';
 export const COREAD_PACKAGE_LIMITS = Object.freeze({bytes:256*1048576,depth:40,nodes:500000});
 export const coreadPackageSafeKey = key => !['__proto__','prototype','constructor'].includes(key);
+// The file input may be hidden; watch its owning page, not the file chooser itself.
+export function createCoreadImportViewGuard(origin) {
+  const page = origin?.closest('.sd-reader-morepage');
+  const modal = page ? null : origin?.closest('#story-director-modal');
+  const root = page || modal, view = origin?.ownerDocument?.defaultView;
+  let invalid = false, observer;
+  const consume = records => {
+    if (records.some(r => r.type === 'attributes' && (page ? r.oldValue !== null : !String(r.oldValue || '').split(/\s+/).includes('open')))) invalid = true;
+  };
+  const check = () => {
+    if (observer) consume(observer.takeRecords());
+    if (!origin?.isConnected || !root?.isConnected || (page ? page.hidden : !modal?.classList.contains('open'))) invalid = true;
+    if (invalid) throw Error('伴读导入页面已关闭或变化，后续已停止；已写入内容保留。');
+  };
+  check();
+  const onPageHide = () => { invalid = true; };
+  observer = new view.MutationObserver(records => { consume(records); try { check(); } catch (_) {} });
+  observer.observe(origin.ownerDocument.body, {childList:true, subtree:true});
+  observer.observe(root, {attributes:true, attributeFilter:[page ? 'hidden' : 'class'], attributeOldValue:true});
+  view.addEventListener('pagehide', onPageHide);
+  return {check, release(){observer.disconnect();view.removeEventListener('pagehide', onPageHide);}};
+}
 export async function readCoreadPackageFile(file) {
   if (!file || typeof file.text !== 'function' || (file.size !== undefined && (!Number.isSafeInteger(file.size) || file.size < 1 || file.size > COREAD_PACKAGE_LIMITS.bytes))) {
     throw new Error('伴读整包须在256 MiB以内；请保留原包，大包暂不直接恢复。');

@@ -33,7 +33,7 @@ assert.match(css, /\.sd-reader-refill-card\s*\{[^}]*max-height:\s*100%[^}]*overf
 const center = centerView.slice(centerView.indexOf('function renderCoreadPackBarView'));
 const centerBinding = source.slice(source.indexOf("morePage?.addEventListener('change'"), source.indexOf("morePage?.addEventListener('input'"));
 assert.match(center, /sd-reader-pack-import[\s\S]*<input type="file" class="sd-reader-pack-import-input sd-reader-native-file"/, '伴读中心数据包导入必须使用常驻原生文件控件');
-assert.match(centerBinding, /sd-reader-pack-import-input[\s\S]*packInput\.value = ''[\s\S]*coreadImportDataFile\(file\)/, '伴读数据包选择后必须清空控件并进入统一导入器');
+assert.match(centerBinding, /sd-reader-pack-import-input[\s\S]*packInput\.value = ''[\s\S]*coreadImportDataFile\(file, packInput\)/, '伴读数据包选择后必须清空控件并保留发起页面身份进入统一导入器');
 assert.match(css, /\.sd-reader-pack-import \.sd-reader-pack-import-input\s*\{[^}]*inset:\s*0[^}]*width:\s*100%[^}]*height:\s*100%/, '数据包文件控件必须覆盖导入图标以兼容 iOS');
 
 console.log('Coread iOS import contract OK');

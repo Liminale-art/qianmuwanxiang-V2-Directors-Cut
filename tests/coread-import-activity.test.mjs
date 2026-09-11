@@ -10,6 +10,7 @@ function fixture(){
     base64ToBlob(){},MODULE_NAME:'fixture',saveSettings(){calls.push('save');},renderModal(){calls.push('render');},rerenderMoreIfOpen(){},
     applyCoreadPackageData:async()=>{calls.push('write');return {ok:0,chatOk:0,imageOk:0,vectorOk:0,audioOk:0,logOk:0};}});
   c.coread=()=>c.settings.coread;c.configRestoreActivity=()=>({transfer:c.coreadImportDataFile.busy||c.storageCleanupSession.busy});
+  c.createCoreadImportViewGuard=()=>({check(){if(c.pageChanged)throw Error('page changed');},release(){c.viewReleased=true;}});
   vm.runInContext(source('coreadImportDataFile'),c);
   c.blobStore.createReaderPackageWriter=({check})=>{assert.equal(typeof check,'function');return c.blobStore;};
   c.storageCleanupSession=createStorageCleanupSession({owner:()=>c.settings,scope:()=>1,epoch:()=>c.storyboardAdmissionEpoch,activity:()=>({transfer:c.coreadImportDataFile.busy})});
@@ -40,4 +41,13 @@ test('failed and invalid items never end with a success notice, and interrupted 
   assert.equal(e.levels.at(-1),'warning');assert.match(e.notices.at(-1),/失败 2 项，格式无效 1 项/);
   e.c.applyCoreadPackageData=async(data,{progress})=>{progress.ok=1;throw Error('stopped');};await e.run();
   assert.equal(e.levels.at(-1),'error');assert.match(e.notices.at(-1),/未完成：已导入 1 本书原件/);assert.equal(e.c.coreadImportDataFile.busy,false);
+});
+
+for(const phase of ['read','confirm','write'])test('reader '+phase+' stops on a closed page and releases its listener',async()=>{
+  const e=fixture();let release;
+  const fn={read:'readCoreadPackageFile',confirm:'confirmDialog',write:'applyCoreadPackageData'}[phase];
+  e.c[fn]=()=>new Promise(r=>release=r);
+  const pending=e.run();await new Promise(r=>setImmediate(r));e.c.pageChanged=true;
+  release(phase==='read'?{books:[]}:true);await pending;
+  assert.deepEqual(e.calls,[]);assert.equal(e.c.viewReleased,true);assert.equal(e.c.coreadImportDataFile.busy,false);assert.match(e.notices.at(-1),/page changed/);
 });
