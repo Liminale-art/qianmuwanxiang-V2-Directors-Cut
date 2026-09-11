@@ -2,7 +2,7 @@
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreSummary } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { exportConfiguration } from './qianmu-config-export.js';
-import { receiveComfyImage } from './qianmu-comfy-recovery-action.js';
+import { receiveComfyImage, resolveComfyRecoveryKey } from './qianmu-comfy-recovery-action.js';
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
 import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives } from './qianmu-plan-archive-write.js';
@@ -12500,14 +12500,19 @@ async function storyboardArchiveCompletedPipelines(state = storyboardState()) {
   ));
   if (!completed.length) return 0;
   const epoch = storyboardPipelineArchiveEpoch;
-  if (!await storyboardPackageArchiveAllowed()) return 0;
-  await blobStore.putStoryboardPipelineLogs(completed.map((item) => clone(item)), { preserveExisting: true });
-  if (epoch !== storyboardPipelineArchiveEpoch) return 0;
-  const archivedIds = new Set(completed.map((item) => String(item.id)));
-  for (const pipeline of completed) storyboardPipelineArchiveCache.set(String(pipeline.id), clone(pipeline));
+  const captures = completed.map(source => ({source, payload:clone(source)}));
+  if (!await storyboardPackageArchiveAllowed() || epoch !== storyboardPipelineArchiveEpoch || state !== storyboardState()) return 0;
+  await blobStore.putStoryboardPipelineLogs(captures.map(item => item.payload), { preserveExisting: true });
+  if (epoch !== storyboardPipelineArchiveEpoch || state !== storyboardState()) return 0;
+  const archived = captures.filter(item => state.pipelineLogs.includes(item.source) && JSON.stringify(item.source) === JSON.stringify(item.payload));
+  if (!archived.length) return 0;
+  return configUndo.transition(()=>settings,()=>{
+  const archivedIds = new Set(archived.map(item => String(item.payload.id)));
+  for (const item of archived) storyboardPipelineArchiveCache.set(String(item.payload.id), item.payload);
   state.pipelineLogs = (state.pipelineLogs || []).filter((item) => !archivedIds.has(String(item.id)));
   saveSettings();
   return archivedIds.size;
+  });
 }
 
 function storyboardArchivePipelineLog(log) {
@@ -12519,34 +12524,36 @@ function storyboardArchivePipelineLog(log) {
     const state = storyboardState();
     const pipeline = (state.pipelineLogs || []).find((item) => item.id === pipelineId);
     if (!storyboardPipelineIsTerminal(pipeline)) return false;
-    if (!await storyboardPackageArchiveAllowed()) return false;
-    await blobStore.putStoryboardPipelineLogs([clone(pipeline)], { preserveExisting: true });
-    if (epoch !== storyboardPipelineArchiveEpoch) return false;
-    storyboardPipelineArchiveCache.set(pipelineId, clone(pipeline));
+    const payload = clone(pipeline);
+    if (!await storyboardPackageArchiveAllowed() || epoch !== storyboardPipelineArchiveEpoch || state !== storyboardState()) return false;
+    await blobStore.putStoryboardPipelineLogs([payload], { preserveExisting: true });
+    if (epoch !== storyboardPipelineArchiveEpoch || state !== storyboardState() || !state.pipelineLogs.includes(pipeline) || JSON.stringify(pipeline) !== JSON.stringify(payload)) return false;
+    return configUndo.transition(()=>settings,()=>{
+    storyboardPipelineArchiveCache.set(pipelineId, payload);
     state.pipelineLogs = (state.pipelineLogs || []).filter((item) => item.id !== pipelineId);
     saveSettings();
     return true;
+    });
   })().catch((error) => {
     // IndexedDB 不可用时保留 settings 中的完整流水，绝不为了瘦身丢失诊断。
     console.warn('[千幕] 分镜详细日志暂未归档，已保留原数据。', error);
     return false;
-  }).finally(() => storyboardPipelineArchiveWrites.delete(pipelineId));
+  }).finally(() => { if (storyboardPipelineArchiveWrites.get(pipelineId) === task) storyboardPipelineArchiveWrites.delete(pipelineId); });
   storyboardPipelineArchiveWrites.set(pipelineId, task);
   return task;
 }
 
 async function storyboardHydratePipelineArchive({ rerender = false } = {}) {
   if (storyboardPipelineArchiveHydration) return storyboardPipelineArchiveHydration;
-  const epoch = storyboardPipelineArchiveEpoch;
-  storyboardPipelineArchiveHydration = (async () => {
-    const state = storyboardState();
+  const epoch = storyboardPipelineArchiveEpoch, state = storyboardState();
+  const task = (async () => {
     let changed = false;
     try {
       changed = (await storyboardArchiveCompletedPipelines(state)) > 0;
     } catch (error) {
       console.warn('[千幕] 旧分镜详细日志迁移未完成，继续使用设置内原数据。', error);
     }
-    if (epoch !== storyboardPipelineArchiveEpoch) return false;
+    if (epoch !== storyboardPipelineArchiveEpoch || state !== storyboardState()) return false;
     const current = storyboardState();
     const inlineIds = new Set((current.pipelineLogs || []).map((item) => String(item.id)));
     const missingIds = (current.logs || []).map((log) => String(log.pipelineId || '')).filter((id) => (
@@ -12555,7 +12562,7 @@ async function storyboardHydratePipelineArchive({ rerender = false } = {}) {
     if (missingIds.length) {
       try {
         const archived = await blobStore.getStoryboardPipelineLogs(missingIds);
-        if (epoch !== storyboardPipelineArchiveEpoch) return false;
+        if (epoch !== storyboardPipelineArchiveEpoch || state !== storyboardState()) return false;
         for (const pipeline of archived) storyboardPipelineArchiveCache.set(String(pipeline.id), pipeline);
         changed ||= archived.length > 0;
       } catch (error) {
@@ -12565,7 +12572,8 @@ async function storyboardHydratePipelineArchive({ rerender = false } = {}) {
     if (rerender && changed && activeTab === 'imagegen' && storyboardState().view === 'logs'
       && document.getElementById(MODAL_ID)?.classList.contains('open')) renderModal();
     return changed;
-  })().finally(() => { storyboardPipelineArchiveHydration = null; });
+  })().finally(() => { if (storyboardPipelineArchiveHydration === task) storyboardPipelineArchiveHydration = null; });
+  storyboardPipelineArchiveHydration = task;
   return storyboardPipelineArchiveHydration;
 }
 
@@ -19630,19 +19638,8 @@ function storyboardCanReceiveComfyLog(log) {
 }
 
 async function storyboardResolveComfyRecoveryKey(connection) {
-  if (!connection?.credentialId) return '';
-  const root = value => { try { const url = new URL(value); return !url.username && !url.password && !url.search && !url.hash ? url.href.replace(/\/+$/, '') : ''; } catch (_) { return ''; } };
-  const expected = root(connection.baseUrl), credentialId = connection.credentialId;
-  // A draft credential id can be reused for another host after generation.
-  // Do not send today's unrelated Key back to the old server.
-  const matches = () => {
-    const group = storyboardState().connections.comfy;
-    const connections = [group?.draft, group?.active, ...(group?.presets || [])].filter(item => item?.credentialId === credentialId);
-    return expected && connections.length && connections.every(item => root(item.baseUrl) === expected);
-  };
-  if (!matches()) return '';
-  const apiKey = await storyboardResolveApiKey('comfy', credentialId, { exact: true });
-  return matches() ? apiKey : '';
+  return resolveComfyRecoveryKey(connection, {connections:()=>storyboardState().connections.comfy,
+    resolve:credentialId=>storyboardResolveApiKey('comfy',credentialId,{exact:true})});
 }
 
 async function storyboardReceiveComfyImage(log, { refresh = true, taskLocator } = {}) {
@@ -25677,6 +25674,10 @@ function configApplyOptions() {
     setCurrent:value=>{settings=value;}, current:()=>settings, save:saveSettings,
     layoutStorage:()=>globalThis.localStorage, layoutKey:PROSE_LAYOUT_STORAGE_KEY,
     afterApply:()=>{
+      storyboardPipelineArchiveEpoch++;
+      storyboardPipelineArchiveCache.clear();
+      storyboardPipelineArchiveWrites.clear();
+      storyboardPipelineArchiveHydration = null;
       storyboardPlanArchiveEpoch++;
       if (storyboardPlanArchiveTimer) clearTimeout(storyboardPlanArchiveTimer);
       storyboardPlanArchiveTimer = null;

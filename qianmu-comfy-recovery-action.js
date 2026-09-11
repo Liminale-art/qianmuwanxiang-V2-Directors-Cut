@@ -1,4 +1,19 @@
 // Manual receipt of an existing image. Never submit a new generation request.
+export async function resolveComfyRecoveryKey(connection, {connections,resolve}) {
+  if (!connection?.credentialId) return '';
+  const root = value => { try { const url = new URL(value); return !url.username && !url.password && !url.search && !url.hash ? url.href.replace(/\/+$/, '') : ''; } catch (_) { return ''; } };
+  const expected = root(connection.baseUrl), credentialId = connection.credentialId;
+  // Reused credential ids must not send today's Key to an unrelated old host.
+  const matches = () => {
+    const group = connections();
+    const rows = [group?.draft, group?.active, ...(group?.presets || [])].filter(item => item?.credentialId === credentialId);
+    return expected && rows.length && rows.every(item => root(item.baseUrl) === expected);
+  };
+  if (!matches()) return '';
+  const apiKey = await resolve(credentialId);
+  return matches() ? apiKey : '';
+}
+
 export async function receiveComfyImage(log, { refresh = true, taskLocator } = {}, deps) {
   const initial = deps.scope();
   const current = () => {

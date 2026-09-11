@@ -68,6 +68,7 @@ function fixture() {
     confirmDialog:async()=>false,configRestoreActivity:()=>({}),normalizeStoryboardState:structuredClone,storyboardPlansForPortableExport:async value=>value,
     ttsDownloadBlob:(blob,name)=>downloads.push({blob,name}),toast:(...args)=>notices.push(args),fileStamp:()=> 'fixture',ctx:()=>context,MODULE_NAME:'module',DEFAULT_SETTINGS:{},
     mergeDefaults:()=>{},migrateSettings:()=>{},storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
+    storyboardPipelineArchiveEpoch:0,storyboardPipelineArchiveCache:new Map(),storyboardPipelineArchiveWrites:new Map(),storyboardPipelineArchiveHydration:null,
     blobStore:{clearStoryboardPlanArchives(){throw Error('must never erase historical originals');}},
     getSettings:()=>context.extensionSettings.module,seedBuiltinTheaters(){},saveSettings:()=>writes.push('save'),storyboardSchedulePlanArchive(){},applyDirectorInjection:async()=>{},renderFloatButton(){},renderModal(){},cacheProseLayout(){}});
   vm.runInContext(['exportConfig','importConfig','configApplyOptions','undoConfigRestore'].map(section).join('\n'),c);
@@ -81,6 +82,18 @@ function realMigrationFixture() {
   vm.runInContext('"use strict";\n'+section('migrateTtsProviderSettings')+'\n'+section('migrateSettings'),e.c);
   return e;
 }
+
+test('configuration handoff invalidates pipeline memory sessions without deleting original archives',()=>{
+  const e=fixture(),owner=e.c.settings;
+  e.c.storyboardPipelineArchiveCache.set('old',{stages:['original']});
+  e.c.storyboardPipelineArchiveWrites.set('old',Promise.resolve());
+  e.c.storyboardPipelineArchiveHydration=Promise.resolve();
+  e.c.configApplyOptions().afterApply();
+  assert.equal(e.c.storyboardPipelineArchiveEpoch,1);
+  assert.equal(e.c.storyboardPipelineArchiveCache.size,0);assert.equal(e.c.storyboardPipelineArchiveWrites.size,0);
+  assert.equal(e.c.storyboardPipelineArchiveHydration,null);assert.equal(e.c.settings,owner);
+  assert.deepEqual(e.writes,[]);
+});
 
 test('real settings migration rejects malformed nested input before touching live configuration or originals',async()=>{
   for(const incoming of [{templates:[null]},{templates:[{} ,null]},{contextOptions:'invalid'}]){

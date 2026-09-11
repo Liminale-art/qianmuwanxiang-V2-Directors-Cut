@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { createComfyRecoveryClient } from '../qianmu-comfy-recovery-client.js';
-import { receiveComfyImage } from '../qianmu-comfy-recovery-action.js';
+import { receiveComfyImage, resolveComfyRecoveryKey } from '../qianmu-comfy-recovery-action.js';
 import { normalizeComfyDelivery, createComfyDeliveryStore } from '../qianmu-comfy-delivery-store.js';
 import { comfyArchiveFilename } from '../qianmu-comfy-submission.js';
 import { sanitizeStoryboardSnapshot, getStoryboardComfyTransport } from '../qianmu-storyboard.js';
@@ -167,7 +167,7 @@ test('production normal and manual UI are wired to the same client and preserve 
   assert.match(source, /sd-storyboard-receive-comfy/); assert.match(source, /storyboardComfyRecovery\?\.close\(\)/);
   const receive = storyboardFunctionSource('storyboardReceiveComfyImage');
   const action = await readFile(new URL('../qianmu-comfy-recovery-action.js', import.meta.url), 'utf8');
-  assert.match(storyboardFunctionSource('storyboardResolveComfyRecoveryKey'), /exact: true/);
+  assert.match(storyboardFunctionSource('storyboardResolveComfyRecoveryKey'), /exact:\s*true/);
   assert.match(receive, /resolveKey:storyboardResolveComfyRecoveryKey,deliver:storyboardDeliverGatewayResult/);
   assert.match(action, /archiveFiles, checkpoint,/); assert.doesNotMatch(receive + action, /storyboardRetryLog|generateImage/);
 });
@@ -175,7 +175,7 @@ test('production normal and manual UI are wired to the same client and preserve 
 test('recovery credential cannot silently fall back to a draft key for a different host', async () => {
   let reads = 0;
   const state = { connections: { comfy: { draft: { credentialId: 'original-key', baseUrl: 'https://new.test' }, presets: [] } } };
-  const context = vm.createContext({ URL, storyboardState: () => state, storyboardResolveApiKey: async (_provider, key, options) => { reads++; assert.equal(key, 'original-key'); assert.equal(options.exact, true); return 'original-secret'; } });
+  const context = vm.createContext({ resolveComfyRecoveryKey, URL, storyboardState: () => state, storyboardResolveApiKey: async (_provider, key, options) => { reads++; assert.equal(key, 'original-key'); assert.equal(options.exact, true); return 'original-secret'; } });
   vm.runInContext(storyboardFunctionSource('storyboardResolveComfyRecoveryKey'), context);
   assert.equal(await context.storyboardResolveComfyRecoveryKey(job().connection), ''); assert.equal(reads, 0);
   state.connections.comfy.presets.push(job().connection);
