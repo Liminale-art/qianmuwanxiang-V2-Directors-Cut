@@ -36,8 +36,10 @@ export function createQianmuNote(input = {}) {
   return normalizeQianmuNote({ ...input, createdAt: Date.now(), updatedAt: Date.now() });
 }
 
-export async function listQianmuNotes() {
-  const persistent = blobStore.blobStoreAvailable() ? await blobStore.listNotes().catch(() => []) : [];
+export async function listQianmuNotes({strict = false} = {}) {
+  if (strict && !blobStore.blobStoreAvailable()) throw new Error('无法读取固定便笺库，未开始导入。');
+  const persistent = strict ? await blobStore.listNotes({requireCommit:true})
+    : blobStore.blobStoreAvailable() ? await blobStore.listNotes().catch(() => []) : [];
   const merged = new Map(persistent.map((note) => [note.id, normalizeQianmuNote({ ...note, pinned: true })]));
   for (const [id, note] of temporaryNotes) if (!merged.has(id)) merged.set(id, normalizeQianmuNote(note));
   return [...merged.values()].sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
@@ -52,6 +54,15 @@ export async function saveQianmuNote(input) {
     temporaryNotes.set(note.id, note);
     if (blobStore.blobStoreAvailable()) await blobStore.deleteNote(note.id).catch(() => {});
   }
+  return note;
+}
+
+export async function saveImportedQianmuNote(input, {check}) {
+  check();
+  if (!blobStore.blobStoreAvailable()) throw new Error('固定便笺储存不可用，未保存为临时便笺。');
+  const note = normalizeQianmuNote({...input, pinned:true, floating:false, updatedAt:Date.now()});
+  if (temporaryNotes.has(note.id)) throw new Error('便笺 ID 已被占用，原内容保留，请重新导入。');
+  await blobStore.addNote(note.id, note, {check});
   return note;
 }
 

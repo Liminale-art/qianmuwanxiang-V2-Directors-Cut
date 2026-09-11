@@ -131,6 +131,7 @@ import {
   importQianmuNotesBackup,
   listQianmuNotes,
   normalizeQianmuNote,
+  saveImportedQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.140';
@@ -8349,8 +8350,8 @@ async function importPinnedNotesBackup(event) {
   const owner = settings, epoch = storyboardAdmissionEpoch;
   const check = () => { if (settings !== owner || epoch !== storyboardAdmissionEpoch) throw Error('导入状态已变化，后续已停止；已写入内容保留。'); };
   try {
-    const {imported, failed} = await importQianmuNotesBackup(file, {check, read:listQianmuNotes, write:saveQianmuNote, uid});
-    const notes = await listQianmuNotes(); check();
+    const {imported, failed} = await importQianmuNotesBackup(file, {check, read:()=>listQianmuNotes({strict:true}), write:note=>saveImportedQianmuNote(note,{check}), uid});
+    const notes = await listQianmuNotes({strict:true}); check();
     notesRuntime = notes;
     notesLoaded = true;
     if (notesPanelOpen) renderNotesPanelPortal();

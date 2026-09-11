@@ -585,19 +585,39 @@ export async function putNote(noteId, record) {
   return noteId;
 }
 
+// Imported originals are create-only and count as saved only after commit.
+export async function addNote(noteId, record, {check = () => {}} = {}) {
+  check();
+  const db = await openDB();
+  check();
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NOTES, 'readwrite');
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error || new Error('Note import aborted'));
+    transaction.objectStore(STORE_NOTES).add({ ...record, id:String(noteId), pinned:true, updatedAt:Date.now() }, String(noteId));
+  });
+  return noteId;
+}
+
 export async function deleteNote(noteId) {
   const s = await store(STORE_NOTES, 'readwrite');
   await reqP(s.delete(String(noteId)));
 }
 
-export async function listNotes() {
+export async function listNotes({requireCommit = false} = {}) {
   const s = await store(STORE_NOTES, 'readonly');
   const out = [];
   await new Promise((resolve, reject) => {
+    if (requireCommit) {
+      s.transaction.oncomplete = resolve;
+      s.transaction.onerror = () => reject(s.transaction.error);
+      s.transaction.onabort = () => reject(s.transaction.error || new Error('Note inventory aborted'));
+    }
     const cursor = s.openCursor();
     cursor.onsuccess = () => {
       const current = cursor.result;
-      if (!current) { resolve(); return; }
+      if (!current) { if (!requireCommit) resolve(); return; }
       out.push({ ...(current.value || {}), id: String(current.key), pinned: true });
       current.continue();
     };

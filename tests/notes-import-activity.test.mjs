@@ -11,6 +11,7 @@ function fixture(){
     listQianmuNotes:async()=>[{id:'same'}],saveQianmuNote:async note=>saved.push(note),uid:()=> 'copy',
     notesRuntime:['original'],notesLoaded:false,notesPanelOpen:false,renderFloatingNotes(){},refreshStorageInventory:async()=>{},toast:text=>notices.push(text)});
   vm.runInContext(source('importPinnedNotesBackup'),c);
+  c.saveImportedQianmuNote=(...args)=>c.saveQianmuNote(...args);
   c.storageCleanupSession=createStorageCleanupSession({owner:()=>c.settings,scope:()=>1,epoch:()=>c.storyboardAdmissionEpoch,activity:()=>({transfer:c.importPinnedNotesBackup.busy})});
   const input={files:[{size:payload.length,text:async()=>payload}],value:'fixture'};
   return {c,input,saved,notices,run:()=>c.importPinnedNotesBackup({currentTarget:input})};
