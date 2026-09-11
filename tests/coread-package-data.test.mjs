@@ -48,3 +48,15 @@ test('an already stale package cannot start its first write',async()=>{
   const e=fixture();e.options.check=()=>{throw Error('stale import');};
   await assert.rejects(()=>applyCoreadPackageData(e.data,e.options),/stale import/);assert.deepEqual(e.calls,[]);
 });
+
+test('audio batch reports committed rows before interruption without losing previous failures',async()=>{
+  const e=fixture('putBook');e.options.progress=createCoreadImportProgress();let current=true;
+  e.options.check=()=>{if(!current)throw Error('stale import');};
+  e.options.blobStore.bulkPutAudio=async(entries,{onProgress})=>{
+    onProgress({added:2,skipped:1,failed:1});current=false;throw Error('late interruption');
+  };
+  await assert.rejects(()=>applyCoreadPackageData(e.data,e.options),/stale import/);
+  assert.equal(e.options.progress.audioOk,2);assert.equal(e.options.progress.skipped,1);
+  assert.equal(e.options.progress.failed,3,'two earlier book failures plus one audio failure');
+  assert.equal(e.options.progress.logOk,0);
+});

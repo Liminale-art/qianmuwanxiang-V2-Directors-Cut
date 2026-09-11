@@ -69,7 +69,13 @@ export async function applyCoreadPackageData(data, {blobStore, coread, isPlainOb
       } catch (e) { check(); progress.failed++; warn(`decode coread audio failed`, e); }
     }
     check();
-    try { const result = await blobStore.bulkPutAudio(entries); progress.audioOk = result.added; progress.skipped = result.skipped || 0; check(); } catch (e) { check(); progress.failed++; warn(`import coread audio failed`, e); }
+    const failedBeforeAudio = progress.failed;
+    const onProgress = result => {
+      progress.audioOk = result.added;
+      progress.skipped = result.skipped || 0;
+      progress.failed = failedBeforeAudio + (result.failed || 0);
+    };
+    try { const result = await blobStore.bulkPutAudio(entries, {onProgress}); onProgress(result); check(); } catch (e) { check(); progress.failed++; warn(`import coread audio failed`, e); }
   }
   if (Array.isArray(data.retrievalLogs)) {
     const ordered = data.retrievalLogs.slice().sort((a, b) => (a?.at || 0) - (b?.at || 0));

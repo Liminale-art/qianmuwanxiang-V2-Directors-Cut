@@ -321,7 +321,42 @@ export function createReaderPackageWriter({check = () => {}} = {}) {
     putReaderChat: (key, record) => put(STORE_CHATS, key, {...record, updatedAt:Date.now()}),
     putReaderImageByKey: (key, blob) => put(STORE_IMAGES, String(key), blob),
     putReaderVectors: (key, record) => put(STORE_VECTORS, key, {...record, updatedAt:Date.now()}),
-    bulkPutAudio, pushRetLog,
+    async bulkPutAudio(entries, {onProgress = () => {}} = {}) {
+      check();
+      if (!blobStoreAvailable()) throw new Error('伴读存储不可用，未导入音频。');
+      const db = await openDB();
+      check();
+      const result = {added:0, skipped:0, failed:0};
+      for (const entry of entries) {
+        check();
+        try {
+          const added = await new Promise((resolve, reject) => {
+            const transaction = db.transaction(STORE_AUDIO, 'readwrite');
+            const audio = transaction.objectStore(STORE_AUDIO);
+            let inserted = false, guardError;
+            const failure = event => guardError || event?.target?.error || transaction.error || new Error('伴读音频未能完成保存。');
+            transaction.oncomplete = () => resolve(inserted);
+            transaction.onerror = event => reject(failure(event));
+            transaction.onabort = event => reject(failure(event));
+            const lookup = audio.getKey(entry.key);
+            lookup.onsuccess = () => {
+              try {
+                check();
+                if (lookup.result !== undefined) return;
+                audio.add({blob:entry.blob, meta:entry.meta || {}, createdAt:entry.createdAt || Date.now()}, entry.key);
+                inserted = true;
+              } catch (error) { guardError = error; transaction.abort(); }
+            };
+          });
+          result[added ? 'added' : 'skipped']++;
+        } catch (error) { check(); result.failed++; }
+        // Publish committed progress before checking whether the next row may start.
+        onProgress({...result});
+        check();
+      }
+      return result;
+    },
+    pushRetLog,
   };
 }
 

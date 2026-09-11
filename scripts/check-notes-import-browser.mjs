@@ -71,9 +71,33 @@ try{
       check(method+' checks after database wait without changing the original',stale&&calls===2&&await content(await readValue())==='old');
       await writer[method](key,replacement);check(method+' commits a confirmed replacement',await content(await readValue())==='new');
     }
+    await db.putAudio('reader-audio-existing',oldBlob,{marker:'old'});
+    const entry=key=>({key,blob:newBlob,meta:{marker:'new'}});
+    const existing=await writer.bulkPutAudio([entry('reader-audio-existing'),entry('reader-audio-new'),entry('reader-audio-new')]);
+    check('audio import preserves original bytes and metadata and skips same-batch duplicates',existing.added===1&&existing.skipped===2&&existing.failed===0&&(await db.getAudio('reader-audio-existing')).meta.marker==='old'&&await (await db.getAudio('reader-audio-existing')).blob.text()==='old');
+    const audioProgress=[];let audioResult;
+    try{
+      IDBObjectStore.prototype.add=function(value,key){const request=add.call(this,value,key);if(key==='reader-audio-abort')request.addEventListener('success',()=>this.transaction.abort(),{once:true});return request;};
+      audioResult=await writer.bulkPutAudio([entry('reader-audio-abort'),entry('reader-audio-after')],{onProgress:p=>audioProgress.push(p)});
+    }finally{IDBObjectStore.prototype.add=add;}
+    check('audio count follows transaction commit and continues after an independent failed row',audioResult.added===1&&audioResult.failed===1&&!await db.getAudio('reader-audio-abort')&&!!await db.getAudio('reader-audio-after')&&audioProgress[0].added===0&&audioProgress[0].failed===1);
+    let current=true,partial,interrupted=false;
+    const guardedAudio=db.createReaderPackageWriter({check(){if(!current)throw Error('stale audio import');}});
+    try{await guardedAudio.bulkPutAudio([entry('reader-audio-first'),entry('reader-audio-never')],{onProgress:p=>{partial=p;current=false;}});}catch{interrupted=true;}
+    check('audio interruption retains committed progress but prevents the next record',interrupted&&partial.added===1&&!!await db.getAudio('reader-audio-first')&&!await db.getAudio('reader-audio-never'));
+    const getKey=IDBObjectStore.prototype.getKey;current=true;interrupted=false;
+    try{
+      IDBObjectStore.prototype.getKey=function(key){const request=getKey.call(this,key);if(key==='reader-audio-lookup')request.addEventListener('success',()=>{current=false;},{once:true});return request;};
+      try{await guardedAudio.bulkPutAudio([entry('reader-audio-lookup')]);}catch{interrupted=true;}
+    }finally{IDBObjectStore.prototype.getKey=getKey;}
+    check('audio lookup rechecks the guard inside the same write transaction',interrupted&&!await db.getAudio('reader-audio-lookup'));
+    let audioCalls=0;interrupted=false;
+    try{await db.createReaderPackageWriter({check(){if(++audioCalls===2)throw Error('database wait expired');}}).bulkPutAudio([entry('reader-audio-open')]);}catch{interrupted=true;}
+    check('audio import cannot write after its database wait becomes stale',interrupted&&audioCalls===2&&!await db.getAudio('reader-audio-open'));
     const descriptor=Object.getOwnPropertyDescriptor(window,'indexedDB');
     try{
       Object.defineProperty(window,'indexedDB',{configurable:true,value:undefined});
+      let unavailable=false;try{await writer.bulkPutAudio([entry('reader-audio-unavailable')]);}catch{unavailable=true;}check('audio import rejects unavailable storage instead of claiming saved',unavailable);
       for(const [name,run] of [['strict read',read],['persistent import',()=>write({id:'no-storage'})],['favorite import',()=>db.importFavorite('no-storage',audio,{},'')],['reader import',()=>writer.putBook('no-storage',{})]]){
         let failed=false;try{await run();}catch{failed=true;}check(name+' rejects unavailable storage',failed);
       }
@@ -83,5 +107,5 @@ try{
     }finally{if(descriptor)Object.defineProperty(window,'indexedDB',descriptor);else delete window.indexedDB;}
     return checks;
   });
-  assert.equal(checks.length,28);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,34);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}
