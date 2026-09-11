@@ -56,12 +56,14 @@ test('backup detects audio corruption, metadata alteration, duplicate keys and u
 test('backup cancellation never yields a downloadable partial success',async()=>{
   let count=0;await assert.rejects(exportFocusLibrary(rows,{readAudio:async()=>({status:'ready',blob}),guard:async()=>{if(++count>1)throw Error('closed');}}),/closed/);
 });
-for(const phase of ['focus','shortBreak','longBreak'])test(`custom ${phase} prepares without API credentials, voice binding or generation`,async()=>{
+for(const phase of ['focus','shortBreak','longBreak'])test(`custom ${phase} selects stage text and synthesizes with the current bound voice`,async()=>{
   let used;const state={voiceMode:'custom',phase,status:'running',sessionToken:'t',sessionPlannedMs:3600000,sessionVoiceCues:[]};
-  const prohibited=()=>{throw Error('must not use paid route');};
-  const prep=createFocusVoicePreparation({enabled:()=>true,getState:()=>state,voice:{context:()=>({hasCharacter:true,enabled:true}),key:()=> 'k',active:()=>true,params:prohibited,credentials:prohibited},
-    frequencies:{low:{chance:1}},midpoints:()=>[.5],library:{prepare:async spec=>used=spec},synthesize:prohibited});
+  let synths=0;const prohibited=()=>{throw Error('must not call the scene LLM');};
+  const prep=createFocusVoicePreparation({enabled:()=>true,getState:()=>state,voice:{context:()=>({hasCharacter:true,enabled:true,voice:{voiceId:'v'}}),key:()=> 'k',active:()=>true,params:()=>({providerId:'minimax'}),credentials:()=>true},
+    frequencies:{low:{chance:1}},midpoints:()=>[.5],library:{lines:async spec=>{used=spec;return spec.specs.map(()=> '用户的完整台词'.repeat(30));}},
+    textSource:{generate:prohibited,fallback:prohibited},synthesize:async(_binding,text)=>{assert.ok(text.length>80);synths++;return 'cache';},uid:()=>String(synths),save:()=>{},now:()=>1});
   await prep.prepare('t');assert.ok(used.isCurrent());assert.equal(used.specs.at(-1).type,'complete');assert.equal(used.specs.length,phase==='focus'?2:1);
+  assert.equal(synths,used.specs.length);assert.equal(state.sessionVoiceCues.length,synths);
   prep.cancel();assert.equal(used.isCurrent(),false);
 });
 for(const phase of ['shortBreak','longBreak'])test(`${phase} completion uses its own custom cue and does not write a fake focus history`,async()=>{

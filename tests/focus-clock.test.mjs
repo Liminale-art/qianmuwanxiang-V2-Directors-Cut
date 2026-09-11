@@ -51,7 +51,7 @@ assert.match(imageExport, /function exportFocusWeekImage[\s\S]*canvas\.toBlob[\s
 assert.match(session, /f\.focusCycle % f\.longBreakEvery === 0 \? 'longBreak' : 'shortBreak'/, '专注周期必须按用户设置进入小憩或长休');
 assert.match(view, /sd-focus-settings-head[\s\S]*sd-focus-auto-next-wrap/, '自动下一阶段必须位于周期设置标题右侧');
 assert.match(view, /sd-focus-sound-card[\s\S]*<h3>完成提示音<\/h3>/, '完成提示音必须使用独立卡片');
-assert.match(source, /FOCUS_CLOCK_SOUND_PRESETS[\s\S]*light\.mp3[\s\S]*daylight\.mp3[\s\S]*silver-bell\.mp3[\s\S]*bright\.mp3[\s\S]*horizon\.mp3[\s\S]*sunrise\.mp3[\s\S]*Merry%20Christmas%20Mr\.%20Lawrence\.mp3[\s\S]*Farewell\.mp3/, '完成提示音必须包含六个正式内置文件与两个内置外链资源');
+assert.match(source, /FOCUS_CLOCK_SOUND_PRESETS[\s\S]*light\.mp3[\s\S]*daylight\.mp3[\s\S]*silver-bell\.mp3[\s\S]*bright\.mp3[\s\S]*horizon\.mp3[\s\S]*sunrise\.mp3[\s\S]*merry-christmas-mr-lawrence\.mp3[\s\S]*farewell\.mp3/, '八个内置提示音全部随插件安装，不依赖第三方外链');
 assert.match(source, /soundSource: 'builtin'[\s\S]*soundUrl: ''/, '提示音必须支持内置与外链方案');
 assert.doesNotMatch(source, /data-focus-sound-source="file"|sd-focus-sound-file/, '本地提示音入口必须移除');
 assert.match(view, /data-focus-sound-source="\$\{id\}"[\s\S]*sd-focus-sound-preview/, '提示音来源必须可切换并可试听');
@@ -75,7 +75,7 @@ assert.match(cueRecords, /function fileBase[\s\S]*speaker[\s\S]*task[\s\S]*forma
 assert.match(source, /function focusClockPlayCompletionAlert[\s\S]*focusClockPlayDoneSound/, '角色语音失败必须回退普通完成提示音');
 assert.match(view, /sd-focus-finale-card[\s\S]*sd-focus-finale-note/, '完成后必须提供可随记的片尾卡');
 assert.match(css, /\.sd-focus-ring\s*\{[^}]*conic-gradient/, '主计时器必须使用清晰的环形进度视觉');
-assert.match(css, /\.sd-focus-setting-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3/, '桌面周期设置必须使用紧凑网格');
+assert.match(css, /\.sd-focus-setting-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2/, '周期设置双端统一使用均匀两列网格');
 assert.match(css, /@media \(max-width: 520px\)[\s\S]*\.sd-focus-setting-grid\s*\{[^}]*repeat\(2/, '移动端周期设置必须保持两列易读布局');
 assert.match(css, /\.sd-reader-focus-btn\.active/, '伴读阅读页必须明确显示当前绑定的专注计时');
 assert.match(css, /\.sd-focus-actions\s*\{[^}]*width:\s*min\(100%, 460px\)/, '暂停与结束按钮组必须和进入阅读区域同宽');

@@ -41,6 +41,7 @@ export function createFocusSessionController({getState, phaseMs, remainingMs, ph
       f.sessionElapsedMs = 0;
       f.sessionPlannedMs = remaining;
       f.sessionToken = f.phase === 'focus' || f.voiceMode === 'custom' ? uid('focussession') : '';
+      if(f.phase==='focus'||!f.voiceRoundId)voice.newRound?.(f);
       f.sessionVoiceCues = [];
       voice.cancel();
       prepareVoice = (f.phase === 'focus' || f.voiceMode === 'custom') && voice.enabled(f);
@@ -143,8 +144,15 @@ export function createFocusSessionController({getState, phaseMs, remainingMs, ph
     voice.cancel();
     save();
     clock.reconcile({ prepareVoice: false });
-    void voice.completionAlert(completionCue);
-    if (f.sessionToken && voice.enabled(f)) void voice.prepare(f.sessionToken);
+    const alert=voice.completionAlert(completionCue);
+    if(autoNext&&f.phase==='focus'){
+      // Start playback before expiring the preceding break's temporary recording.
+      const token=f.sessionToken;
+      void Promise.resolve(alert).catch(()=>{}).then(()=>{
+        if(getState()!==f||f.sessionToken!==token||f.status!=='running')return;
+        voice.newRound?.(f);if(voice.enabled(f))void voice.prepare(token);
+      });
+    }else if (f.sessionToken && voice.enabled(f)) void voice.prepare(f.sessionToken);
     const nextLabel = phases[f.phase].label;
     notify(completedPhase === 'focus' ? `这一程已经完成，接下来是${nextLabel}。` : '休息结束，慢慢回到下一段专注。', 'success');
     renderCompletion();

@@ -6,7 +6,7 @@ export function createFocusVoicePreparation({enabled, getState, voice, frequenci
     const custom=f.voiceMode==='custom',phase=f.phase;
     if (!enabled() || f.status !== 'running' || (!custom && phase !== 'focus') || !sessionToken || f.sessionToken !== sessionToken) return;
     const voiceContext = voice.context(f);
-    if (!voiceContext.hasCharacter || !voiceContext.enabled || (!custom && !voiceContext.voice)) return;
+    if (!voiceContext.hasCharacter || !voiceContext.enabled || !voiceContext.voice) return;
     const bindingKey = voice.key(voiceContext);
     if (pending?.sessionToken === sessionToken && pending.bindingKey === bindingKey
         && pending.seq === sequence) return;
@@ -16,24 +16,21 @@ export function createFocusVoicePreparation({enabled, getState, voice, frequenci
     const isCurrent = () => prepareSeq === sequence && getState() === f
       && f.status === 'running' && f.phase === phase && f.sessionToken === sessionToken && voice.active(bindingKey);
     try {
-      if(custom){
-        const frequency=frequencies[f.voiceFrequency]||frequencies.low;
-        const specs=(phase==='focus'?midpoints(Math.max(1,Number(f.sessionPlannedMs)/60000),frequency.chance):[]).slice(0,3).map(progress=>({type:'mid',progress}));
-        specs.push({type:'complete',progress:1});
-        try{await library.prepare({state:f,sessionToken,bindingKey,isCurrent,specs,uid,save});}
-        catch(error){if(isCurrent())warn('library',error);}return;
-      }
       const baseParams = voice.params(voiceContext, '专注提醒');
       if (!baseParams || !voice.credentials(baseParams.providerId, baseParams)) return;
       const frequency = frequencies[f.voiceFrequency] || frequencies.low;
       const durationMinutes = Math.max(1, Number(f.sessionPlannedMs) / 60000);
-      const specs = midpoints(durationMinutes, frequency.chance)
+      const specs = (phase==='focus'?midpoints(durationMinutes, frequency.chance):[]).slice(0,3)
         .map((progress) => ({ type: 'mid', progress }));
       specs.push({ type: 'complete', progress: 1 });
       const book = f.sessionBookId ? bookMeta(f.sessionBookId) : null;
       const subject = f.sessionBookId ? `阅读《${book?.title || '未命名书籍'}》` : (f.task || '完成一段专注');
       const binding = { ...voiceContext, params: { ...baseParams, text: '' } };
       let lines = [];
+      if(custom){
+        try{lines=await library.lines({phase,specs,isCurrent});}
+        catch(error){if(isCurrent())warn('library',error);return;}
+      }
       if (f.voiceMode === 'scene') {
         try { lines = await textSource.generate(binding, specs.length, subject, { isCurrent }); }
         catch (error) {
@@ -41,14 +38,14 @@ export function createFocusVoicePreparation({enabled, getState, voice, frequenci
           warn('scene', error);
         }
       }
-      if (lines.length < specs.length) {
+      if (!custom && lines.length < specs.length) {
         const fallback = textSource.fallback(binding.relation, specs.length);
         lines = specs.map((_, index) => lines[index] || fallback[index]);
       }
       const cues = [];
       for (let index = 0; index < specs.length; index++) {
         if (!isCurrent()) return;
-        const text = textSource.clean(lines[index]);
+        const text = custom ? String(lines[index]||'').trim() : textSource.clean(lines[index]);
         if (!text) continue;
         try {
           const cacheKey = await synthesize(binding, text, { isCurrent });
@@ -65,6 +62,7 @@ export function createFocusVoicePreparation({enabled, getState, voice, frequenci
             sourceTime: f.sessionStartedAt || now(),
             lineIndex: index,
           });
+          if(Array.isArray(f.voiceReplayCues)){f.voiceReplayCues.push(cues.at(-1));save();}
         } catch (error) {
           if (!isCurrent() || error?.name === 'AbortError') return;
           warn('synth', error);

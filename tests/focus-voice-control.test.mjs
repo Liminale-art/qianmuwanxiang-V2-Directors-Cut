@@ -249,8 +249,8 @@ test('cancel during companion macro resolution prevents both external and host m
   }
 });
 
-test('scene transport preserves external admission, host fallback, fixed limits and bounded cleaned output',async()=>{
-  for(const [mode,valid,expected] of [['external',true,'external'],['external',false,'host'],['host',true,'host']]) {
+test('scene transport follows the chosen Qianmu API, fixed limits and bounded cleaned output',async()=>{
+  for(const [mode,valid,expected] of [['external',true,'external'],['host',true,'host']]) {
     const {c}=fixture();let sent,checks=0;c.settings.providerMode=mode;
     c.coreadResolveCompanionMacro=async()=> 'resolved identity';c.cleanContextText=String;c.extractJson=JSON.parse;c.AbortController=AbortController;
     c.FOCUS_CLOCK_RELATIONS={neutral:{label:'普通',rule:'不推断关系'}};c.validateApiSettings=()=>{checks++;return valid;};
@@ -264,6 +264,14 @@ test('scene transport preserves external admission, host fallback, fixed limits 
     if(expected==='external') {assert.equal(sent.messages[0].role,'system');assert.equal(sent.messages[1].role,'user');assert.equal(sent.options.maxTokens,220);assert.equal(sent.options.temperature,.82);assert.equal(sent.options.stream,false);assert.ok(sent.controller instanceof AbortController);}
     else {assert.match(sent.user,/resolved identity/);assert.match(sent.system,/普通/);assert.equal(sent.options.max_tokens,220);assert.equal(sent.options.stream_response,false);}
   }
+});
+
+test('invalid current external API never silently sends scene text to the host model',async()=>{
+  const {c}=fixture();let sent=0;c.settings.providerMode='external';c.validateApiSettings=()=>false;
+  c.coreadResolveCompanionMacro=async()=>'';c.cleanContextText=String;c.FOCUS_CLOCK_RELATIONS={neutral:{rule:''}};
+  c.callExternalApi=c.callSillyTavernModel=async()=>sent++;
+  vm.runInContext(section('focusClockGenerateSceneLines'),c);
+  await assert.rejects(c.focusClockGenerateSceneLines({character:{},persona:{}},1,'read'),/当前 API/);assert.equal(sent,0);
 });
 
 test('role profiles share one voice across chats but keep same-name characters and providers separate',()=>{

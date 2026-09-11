@@ -10,6 +10,7 @@ export function createFocusCueRecords({getState, safeName, formatStamp, now, sto
 
   function rows(state = getState()) {
     const rows = [];
+    if(Array.isArray(state.voiceReplayCues))return [...new Map(state.voiceReplayCues.filter(cue=>cue?.cacheKey).map(cue=>[cue.id||cue.cacheKey,cue])).values()].reverse();
     for (const cue of state.sessionVoiceCues || []) {
       if (cue?.played && cue.cacheKey) rows.push(cue);
     }

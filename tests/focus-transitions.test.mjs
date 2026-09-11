@@ -92,11 +92,11 @@ test('completion archives book progress and only eligible voice snapshots withou
   const before=JSON.stringify(f);trace.length=0;c.focusClockComplete();assert.equal(JSON.stringify(f),before);assert.deepEqual(trace,[]);
 });
 
-test('rest completion auto-starts reading only when its page is ready and creates no focus history for rest',()=>{
+test('rest completion auto-starts reading only when its page is ready and creates no focus history for rest',async()=>{
   for(const ready of [false,true]){
     const {c,f,setNow,trace}=fixture({phase:'shortBreak',status:'running',endsAt:101000,autoStartNext:true,activity:'reading',bookId:'book'});
     if(ready){c.activeTab='coread';c.readerView={bookId:'book'};c.readerContentCache={bookId:'book'};c.document.querySelector=()=>({isConnected:true});}
-    setNow(101000);c.focusClockComplete();assert.equal(f.phase,'focus');assert.equal(f.history.length,0);
+    setNow(101000);c.focusClockComplete();await new Promise(resolve=>setImmediate(resolve));assert.equal(f.phase,'focus');assert.equal(f.history.length,0);
     assert.equal(f.status,ready?'running':'idle');assert.equal(f.sessionBookId,ready?'book':'');
     assert.equal(Boolean(f.sessionToken),ready);assert.equal(f.endsAt,ready?101000+25*60000:0);
     assert.equal(trace.filter(x=>x.startsWith('prepare:')).length,ready?1:0);

@@ -23,6 +23,8 @@
     "qianmu-focus-library-backup.js",
     "qianmu-focus-library-editor.js",
     "qianmu-focus-library-runtime.js",
+    "qianmu-focus-dialogue.js",
+    "qianmu-focus-dialogue-ui.js",
     "qianmu-focus-library-ui.js",
     "qianmu-focus-scene-prompts.js",
     "qianmu-reader-identity-view.js",

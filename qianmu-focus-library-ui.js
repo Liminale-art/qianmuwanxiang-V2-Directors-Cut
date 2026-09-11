@@ -37,7 +37,8 @@ export async function openFocusLibrary({document,host,store,namespace,guard,isAc
       <label>语音内容<textarea class="text_pole" maxlength="2000" rows="4" data-field="text">${esc(initial.text)}</textarea></label>
       <label>生成音色<select class="text_pole" data-field="voice"><option value="">${initial.voice?.voiceId?'沿用录音音色':'选择音色'}</option>${available.map((option,i)=>`<option value="${i}">${esc(option.label)}</option>`).join('')}</select></label>
       <div class="sd-focus-library-moments">${Object.entries(moments).map(([key,label])=>`<label><input type="checkbox" data-moment="${key}" ${initial.moments.includes(key)?'checked':''}>${label}</label>`).join('')}</div>
-      <audio controls preload="none" aria-label="试听语音"></audio><div class="sd-focus-library-toolbar">${button('generate',blob?'重新生成':'生成语音','fa-wand-magic-sparkles')}${button('save','保存','fa-floppy-disk')}${row?button('remove','删除','fa-trash-can'):''}</div>`;
+      <audio controls preload="none" aria-label="试听语音"></audio><div class="sd-focus-library-toolbar">${management?'':button('generate',blob?'重新生成':'生成语音','fa-wand-magic-sparkles')+button('save','保存','fa-floppy-disk')}${row?button('remove','删除','fa-trash-can'):''}</div>`;
+    if(management)body.querySelectorAll('input,textarea,select').forEach(el=>{el.disabled=true;});
     body.querySelector('audio').addEventListener('play',stopAudio);body.querySelector('audio').addEventListener('error',()=>{if(live())status.textContent='浏览器无法播放这条音频，请检查渠道输出或重新生成。';});preview();paintIcons();status.textContent=row&&!blob?'原件缺失，可重新生成后保存。':'';
   }
   function preview(){stop();const audio=editor?.snapshot().audio;if(audio){url=URL.createObjectURL(audio);body.querySelector('audio').src=url;}else body.querySelector('audio')?.removeAttribute('src');}
@@ -75,7 +76,7 @@ export async function openFocusLibrary({document,host,store,namespace,guard,isAc
   }
   async function run(work){if(busy)return;busy=true;portal.querySelectorAll('button,input,select,textarea').forEach(el=>{el.disabled=true;});
     try{await work();}catch(error){if(live())status.textContent=error.message||'操作未完成';}
-    finally{busy=false;if(live())portal.querySelectorAll('button,input,select,textarea').forEach(el=>{el.disabled=false;});}}
+    finally{busy=false;if(live())portal.querySelectorAll('button,input,select,textarea').forEach(el=>{el.disabled=!!(management&&editor&&el.matches('input,select,textarea'));});}}
   portal.addEventListener('click',event=>{const target=event.target.closest('[data-action]');if(target)void run(()=>action(target.dataset.action,target));});
   portal.addEventListener('keydown',event=>{
     if(event.key==='Escape'){event.preventDefault();event.stopPropagation();void run(()=>action('close'));}

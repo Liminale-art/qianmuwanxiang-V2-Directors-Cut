@@ -1,4 +1,5 @@
-// Existing prompt text, unchanged; provider calls and cancellation remain in the host.
+// PROMPT-PENDING-FOCUS-SCENE: revise in the unified prompt-writing unit, not in this UI iteration.
+// Existing prompt text, unchanged; provider calls and cancellation use the current Qianmu API in the host.
 export function pickFocusStockLines(source,count){
   const bank=[...source],result=[];
   while(result.length<count){if(!bank.length)bank.push(...source);result.push(bank.splice(Math.floor(Math.random()*bank.length),1)[0]);}

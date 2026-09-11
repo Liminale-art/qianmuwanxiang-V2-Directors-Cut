@@ -15,7 +15,7 @@ test('runtime stop invalidates an old lock confirmation without letting its fina
   for(const openNew of [false,true]) {
     const {c,f}=focusFixture(),answers=[];
     Object.assign(c,{focusClockEntryEpoch:0,focusClockRuntime:null,focusClockResetMedia:()=>{},
-      focusClockVoiceCache:{clear:()=>{}},focusClockCloseVoiceDrawer:()=>{},
+      focusClockVoiceCache:{clear:()=>{},beginRound:()=>{}},focusClockCloseVoiceDrawer:()=>{},
       confirmDialog:()=>new Promise(resolve=>answers.push(resolve))});
     vm.runInContext(section('stopFocusClockRuntime'),c);
     const old=c.focusClockEnableLock();c.settings.enabled=false;c.stopFocusClockRuntime();c.settings.enabled=true;
@@ -65,7 +65,7 @@ test('duplicate starts while opening a book do not submit a second opening',asyn
 
 test('a stopped reading start cannot block or unlock the next start, reopen its book, or start its timer',async()=>{
   const {c,f}=focusFixture({activity:'reading',bookId:'book'}),loads=[];let opens=0;
-  Object.assign(c,{focusClockRuntime:null,focusClockResetMedia:()=>{},focusClockVoiceCache:{clear:()=>{}},focusClockCloseVoiceDrawer:()=>{},
+  Object.assign(c,{focusClockRuntime:null,focusClockResetMedia:()=>{},focusClockVoiceCache:{clear:()=>{},beginRound:()=>{}},focusClockCloseVoiceDrawer:()=>{},
     ensureCoreadReaderRuntime:()=>new Promise(resolve=>loads.push(resolve)),coreadOpenBook:async()=>{
       opens++;c.activeTab='coread';c.readerView={bookId:'book'};c.readerContentCache={bookId:'book'};c.document.querySelector=()=>({isConnected:true});
     }});
@@ -81,7 +81,7 @@ test('reading entry checks stop after book loading and suppresses stale loading 
   for(const failure of [false,true]) {
     const {c,notices}=focusFixture({activity:'reading',bookId:'book'});let resume,resolve,reject,entered;
     const started=new Promise(done=>entered=done),wait=new Promise((yes,no)=>{resolve=yes;reject=no;});resume=0;
-    Object.assign(c,{focusClockRuntime:null,focusClockResetMedia:()=>{},focusClockVoiceCache:{clear:()=>{}},focusClockCloseVoiceDrawer:()=>{},
+    Object.assign(c,{focusClockRuntime:null,focusClockResetMedia:()=>{},focusClockVoiceCache:{clear:()=>{},beginRound:()=>{}},focusClockCloseVoiceDrawer:()=>{},
       coreadOpenBook:()=>{entered();return wait;},focusClockResumeReading:()=>resume++});
     vm.runInContext(section('stopFocusClockRuntime'),c);
     const old=c.focusClockEnterReading();await started;c.stopFocusClockRuntime();
@@ -115,7 +115,7 @@ test('late restoration cannot release or attach a replacement lock, even when th
     let resolve,reject;c.focusClockEnterReading=()=>new Promise((yes,no)=>{resolve=yes;reject=no;});
     const old=c.focusClockRestoreLock();
     if(change==='stop'){
-      Object.assign(c,{focusClockRuntime:null,focusClockResetMedia:()=>{},focusClockVoiceCache:{clear:()=>{}},focusClockCloseVoiceDrawer:()=>{}});
+      Object.assign(c,{focusClockRuntime:null,focusClockResetMedia:()=>{},focusClockVoiceCache:{clear:()=>{},beginRound:()=>{}},focusClockCloseVoiceDrawer:()=>{}});
       vm.runInContext(section('stopFocusClockRuntime'),c);c.stopFocusClockRuntime();
     }
     if(change==='state')c.settings.focusClock={...f,lock:{...f.lock}};

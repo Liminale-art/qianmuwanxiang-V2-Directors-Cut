@@ -5548,10 +5548,12 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-focus-settings[open] > summary i { transform: rotate(180deg); }
 #story-director-modal .sd-focus-settings-head { min-width: 0; display: inline-flex; align-items: center; justify-content: flex-end; gap: 9px; }
 #story-director-modal .sd-focus-auto-next-wrap { min-width: 0; margin: 0; color: var(--sd-muted); font-size: .78em; font-weight: 400; white-space: nowrap; }
-#story-director-modal .sd-focus-setting-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 13px; }
+#story-director-modal .sd-focus-setting-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 13px; text-align:left; }
 #story-director-modal .sd-focus-setting-grid > label { min-width: 0; display: flex; flex-direction: column; gap: 6px; color: var(--sd-muted); font-size: .76em; }
 #story-director-modal .sd-focus-setting-grid > label > div { display: flex; align-items: center; gap: 5px; }
-#story-director-modal .sd-focus-setting-grid input { min-width: 0; margin: 0 !important; text-align: center; }
+#story-director-modal .sd-focus-setting-grid input { min-width: 0; width:100%; height:var(--qm-control-height,34px); min-height:var(--qm-control-height,34px); box-sizing:border-box; margin: 0 !important; text-align: left; }
+#story-director-modal .sd-focus-setting-grid > label > span { text-align:left; align-self:stretch; }
+#story-director-modal .sd-focus-setting-grid > label:last-child { grid-column:1/-1; }
 #story-director-modal .sd-focus-setting-grid small { flex: 0 0 auto; color: var(--sd-muted); }
 #story-director-modal .sd-focus-sound-card > .sd-card-title-row .checkbox_label { margin: 0; color: var(--sd-muted); font-size: .8em; }
 #story-director-modal .sd-focus-sound-config { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
@@ -5607,6 +5609,8 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-focus-library .text_pole { box-sizing:border-box; width:100%; min-width:0; margin:0; font:inherit; padding:8px; }
 #story-director-modal .sd-focus-library-toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
 #story-director-modal .sd-focus-library-toolbar > label { flex:1; }
+#story-director-modal .sd-focus-library-toolbar select.text_pole,
+#story-director-modal .sd-focus-library-toolbar > .sd-btn { height:34px !important; min-height:34px !important; max-height:34px; box-sizing:border-box; padding:4px 8px; line-height:normal; }
 #story-director-modal .sd-focus-library .sd-btn { border-radius:8px; min-height:34px; font-size:12px; margin:0; }
 #story-director-modal .sd-focus-library-moments { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
 #story-director-modal .sd-focus-library-moments label { flex-direction:row; align-items:center; }
@@ -8531,8 +8535,8 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-section-title h3 { font-size: var(--qm-type-card-title) !important; }
 #story-director-modal .sd-plain-fold > summary > b,
 #story-director-modal .sd-accordion > summary > b,
-#story-director-modal .sd-storyboard-preset-entry > summary b,
-#story-director-modal .sd-focus-settings > summary { font-size: 12px !important; }
+#story-director-modal .sd-storyboard-preset-entry > summary b { font-size: 12px !important; }
+#story-director-modal .sd-focus-settings > summary { font-size: var(--qm-type-card-title) !important; }
 #story-director-modal .sd-btn,
 #story-director-modal button.sd-btn,
 #story-director-modal label.sd-btn { min-height: var(--qm-control-height); font-size: 12px !important; }
