@@ -5550,11 +5550,11 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-focus-auto-next-wrap { min-width: 0; margin: 0; color: var(--sd-muted); font-size: .78em; font-weight: 400; white-space: nowrap; }
 #story-director-modal .sd-focus-setting-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 13px; text-align:left; }
 #story-director-modal .sd-focus-setting-grid > label { min-width: 0; display: flex; flex-direction: column; gap: 6px; color: var(--sd-muted); font-size: .76em; }
-#story-director-modal .sd-focus-setting-grid > label > div { display: flex; align-items: center; gap: 5px; }
+#story-director-modal .sd-focus-setting-grid > label > div { display: flex; align-items: center; justify-content:flex-start; width:100%; gap: 5px; }
 #story-director-modal .sd-focus-setting-grid input { min-width: 0; width:100%; height:var(--qm-control-height,34px); min-height:var(--qm-control-height,34px); box-sizing:border-box; margin: 0 !important; text-align: left; }
 #story-director-modal .sd-focus-setting-grid > label > span { text-align:left; align-self:stretch; }
-#story-director-modal .sd-focus-setting-grid > label:last-child { grid-column:1/-1; }
-#story-director-modal .sd-focus-setting-grid small { flex: 0 0 auto; color: var(--sd-muted); }
+#story-director-modal .sd-focus-setting-grid > label:last-child { grid-column:1; }
+#story-director-modal .sd-focus-setting-grid small { flex: 0 0 2em; text-align:left; color: var(--sd-muted); }
 #story-director-modal .sd-focus-sound-card > .sd-card-title-row .checkbox_label { margin: 0; color: var(--sd-muted); font-size: .8em; }
 #story-director-modal .sd-focus-sound-config { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 #story-director-modal .sd-focus-sound-sources { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 3px; border-radius: 999px; background: var(--sd-glass-weak); }
@@ -5621,6 +5621,20 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-focus-library audio { width:100%; max-width:100%; height:38px; }
 #story-director-modal .sd-focus-library-status { padding:8px 12px; margin:0; font-size:12px; overflow-wrap:anywhere; flex:none; }
 #story-director-modal .sd-focus-library-status:empty { display:none; }
+#story-director-modal .sd-focus-dialogue-folders { display:grid; grid-template-columns:minmax(0,1fr) 72px; align-items:center; gap:8px; }
+#story-director-modal .sd-focus-dialogue-actions { display:flex; align-items:center; gap:8px; }
+#story-director-modal .sd-focus-dialogue-actions > [data-action=save] { flex:1; }
+#story-director-modal .sd-focus-dialogue-bulk { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+#story-director-modal .sd-focus-dialogue-folders > :is(select,button),
+#story-director-modal .sd-focus-dialogue-actions > button,
+#story-director-modal .sd-focus-dialogue-bulk > button { box-sizing:border-box; margin:0 !important; min-width:0; height:34px !important; min-height:34px !important; max-height:34px; padding:4px 8px; line-height:normal; }
+#story-director-modal .sd-focus-dialogue-folders > :is(select,button) { width:100%; align-self:center; }
+#story-director-modal .sd-focus-dialogue-actions > [data-action=back] { flex:0 0 34px; width:34px; padding:0; border-radius:8px; }
+#story-director-modal .sd-focus-dialogue-actions > [data-action=remove],
+#story-director-modal .sd-focus-dialogue-bulk > button { flex:0 0 auto; }
+#story-director-modal .sd-focus-dialogue .sd-focus-dialogue-check { flex:0 0 34px; min-height:34px; margin:0 !important; display:grid; place-items:center; cursor:pointer; }
+#story-director-modal .sd-focus-dialogue-check > input { margin:0 !important; }
+#story-director-modal .sd-focus-dialogue header > h3 { min-width:0; overflow-wrap:anywhere; }
 #story-director-modal .sd-focus-voice-drawer-portal { position: absolute; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; padding: 18px; }
 #story-director-modal .sd-focus-voice-drawer-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; background: color-mix(in srgb, #0d1110 44%, transparent); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); cursor: default; }
 #story-director-modal .sd-focus-voice-drawer { position: relative; z-index: 1; width: min(480px, 100%); max-height: min(72vh, 620px); overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--sd-hairline); border-radius: 20px; background: color-mix(in srgb, var(--sd-card) 90%, var(--sd-sticky-bg)); color: var(--sd-text); box-shadow: 0 18px 48px rgba(0, 0, 0, .24); backdrop-filter: blur(24px) saturate(1.08); -webkit-backdrop-filter: blur(24px) saturate(1.08); }

@@ -4,6 +4,7 @@ import {createFocusDialogueLibrary} from '../qianmu-focus-dialogue.js';
 import {createFocusVoiceCache} from '../qianmu-focus-voice-cache.js';
 import {createFocusVoicePreparation} from '../qianmu-focus-preparation.js';
 import {focusFixture} from './helpers/focus-lock-fixture.mjs';
+import {focusVoiceOptions} from '../qianmu-focus-voice.js';
 const row={characterKey:'character:A.png',speaker:'甲',text:'慢慢来',moments:['focus:complete']};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function libraryFixture(legacy=async()=>[]){let owner={focusClock:{}},saved=0,id=0;const library=createFocusDialogueLibrary({owner:()=>owner,legacy,save:()=>saved++,uid:()=>`id${++id}`,random:()=>0});return {library,get owner(){return owner;},switch(){owner={focusClock:{}};},get saves(){return saved;}};}
@@ -28,6 +29,32 @@ test('selection is scoped by stable character and phase, with no paid fallback f
   const f=libraryFixture(async()=>[row,{...row,characterKey:'character:B.png',text:'乙'},{...row,moments:['shortBreak:complete'],text:'小憩'}]);
   const lines=await f.library.lines({characterKey:row.characterKey,phase:'focus',specs:[{type:'mid'},{type:'complete'}]});assert.deepEqual(lines,['','慢慢来']);
   assert.deepEqual(await f.library.lines({characterKey:row.characterKey,phase:'shortBreak',specs:[{type:'complete'}]}),['小憩']);
+});
+test('batch deletion removes only selected text in one revision, without touching replay or originals',async()=>{
+  const f=libraryFixture(async()=>[row,{...row,text:'keep'},{...row,characterKey:'character:B.png',text:'other'}]);
+  const before=await f.library.snapshot();f.owner.focusClock.voiceReplayCues=[{id:'audio',cacheKey:'keep'}];
+  const after=await f.library.removeMany([before.rows[0].id,before.rows[2].id],before.revision);
+  assert.equal(after.revision,before.revision+1);assert.deepEqual(after.rows.map(row=>row.text),['keep']);assert.equal(f.saves,2);
+  assert.deepEqual(f.owner.focusClock.voiceReplayCues,[{id:'audio',cacheKey:'keep'}]);
+});
+test('missing or stale batch selection cannot produce a partial delete',async()=>{
+  const f=libraryFixture(async()=>[row,{...row,text:'keep'}]),before=await f.library.snapshot();
+  await assert.rejects(f.library.removeMany([before.rows[0].id,'missing'],before.revision),/已被删除/);
+  assert.deepEqual(await f.library.snapshot(),before);
+  const next=await f.library.put({...before.rows[1],text:'new edit'},before.revision);
+  await assert.rejects(f.library.removeMany(before.rows.map(row=>row.id),before.revision),/已变化/);
+  assert.deepEqual(await f.library.snapshot(),next);
+});
+test('simultaneous save and batch delete cannot both commit from the same revision',async()=>{
+  const f=libraryFixture(async()=>[row]),before=await f.library.snapshot();
+  const results=await Promise.allSettled([f.library.put({...before.rows[0],text:'newer'},before.revision),f.library.removeMany([before.rows[0].id],before.revision)]);
+  assert.equal(results.filter(result=>result.status==='fulfilled').length,1);assert.equal((await f.library.snapshot()).revision,before.revision+1);
+});
+test('voice labels omit backend identifiers without changing the selected identity or deduplication',()=>{
+  const current={voiceId:'internal-key-123456789012',name:'清雅',model:'m'},second={voiceId:'another-key-123456789013',name:'清雅',model:'m'};
+  const options=focusVoiceOptions({current,library:[current,second,{voiceId:'unnamed-id'}]});
+  assert.equal(options.length,3);assert.equal(options[0].label,'清雅 · 已绑定');assert.equal(options[1].label,'清雅 · 音色库');assert.equal(options[2].label,'未命名音色 · 音色库');
+  assert.equal(options[0].voiceId,current.voiceId);assert.notEqual(options[0].key,options[1].key);assert.ok(options.every(option=>!option.label.includes(option.voiceId)));
 });
 test('custom text needs voice credentials but never sends text to the scene LLM',async()=>{
   for(const credentials of [false,true]){

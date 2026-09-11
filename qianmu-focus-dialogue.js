@@ -25,7 +25,7 @@ export function createFocusDialogueLibrary({owner,legacy,save,random=Math.random
   async function snapshot(){return structuredClone(check(await load()));}
   async function change(expected,action){
     const account=owner(),data=check(await load());
-    if(account!==owner()||data.revision!==expected||data.revision===Number.MAX_SAFE_INTEGER)throw Error('台词库已变化，请重新打开条目');
+    if(account!==owner()||account.focusClock.dialogueLibrary!==data||data.revision!==expected||data.revision===Number.MAX_SAFE_INTEGER)throw Error('台词库已变化，请重新打开条目');
     const next=structuredClone(data);action(next.rows);next.revision++;
     if(next.rows.length>512)throw Error('台词库已满，请先整理已有台词');
     account.focusClock.dialogueLibrary=next;save();return structuredClone(next);
@@ -41,7 +41,15 @@ export function createFocusDialogueLibrary({owner,legacy,save,random=Math.random
       if(at<0)rows.push(row);else rows[at]=row;
     });
   }
-  const remove=(id,expected)=>change(expected,rows=>{const at=rows.findIndex(row=>row.id===id);if(at<0)throw Error('此台词已被删除');rows.splice(at,1);});
+  const removeMany=(ids,expected)=>{
+    if(!Array.isArray(ids)||!ids.length||ids.length>512||ids.some(id=>typeof id!=='string'||!id))throw Error('请先选择台词');
+    const selected=new Set(ids);
+    return change(expected,rows=>{
+      if([...selected].some(id=>!rows.some(row=>row.id===id)))throw Error('所选台词已被删除，请刷新列表后重选');
+      for(let index=rows.length-1;index>=0;index--)if(selected.has(rows[index].id))rows.splice(index,1);
+    });
+  };
+  const remove=(id,expected)=>removeMany([id],expected);
   async function lines({characterKey,phase,specs,isCurrent=()=>true}){
     const data=await snapshot();if(!isCurrent())return [];
     let previous='';return specs.map(spec=>{
@@ -51,5 +59,5 @@ export function createFocusDialogueLibrary({owner,legacy,save,random=Math.random
       const selected=pool[Math.floor(sample*pool.length)];previous=selected.id;return selected.text;
     });
   }
-  return {snapshot,put,remove,lines};
+  return {snapshot,put,remove,removeMany,lines};
 }
