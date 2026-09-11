@@ -8305,7 +8305,7 @@ async function exportPinnedNotesBackup(button = null) {
   if (button) button.disabled = true;
   if (icon) setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
   try {
-    const notes = (await blobStore.listNotes()).filter((note) => note.pinned);
+    const notes = (await blobStore.listNotes({requireCommit:true})).filter((note) => note.pinned);
     if (!notes.length) return toast('没有可导出的固定便笺。', 'info');
     const payload = {
       type: 'qianmu-notes', version: 1, exportedAt: new Date().toISOString(), credentialsIncluded: false,
@@ -8373,7 +8373,7 @@ async function exportTtsFavoritesBackup(button = null) {
   if (button) button.disabled = true;
   if (icon) setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
   try {
-    const favorites = await blobStore.listFavorites();
+    const favorites = await blobStore.listFavorites({requireCommit:true});
     if (!favorites.length) return toast('没有可导出的语音收藏。', 'info');
     const entries = [];
     for (const favorite of favorites) {

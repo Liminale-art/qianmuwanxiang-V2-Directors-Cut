@@ -176,9 +176,22 @@ try{
         check(method+(end?' rejects state changes at the end of scanning':' stops scanning when the owner changes'),failed);
       }
     }
+    for(const [method,store] of [['listNotes','notes'],['listFavorites','favorites']]){
+      const normal=await db[method](),strict=await db[method]({requireCommit:true});
+      check(method+' strict backup inventory preserves raw fields, ordering and media',JSON.stringify(normal)===JSON.stringify(strict)&&normal.every((row,i)=>row?.blob?.size===strict[i]?.blob?.size));
+      for(const late of [false,true]){
+        const original=IDBObjectStore.prototype.openCursor;let failed=false;
+        try{
+          IDBObjectStore.prototype.openCursor=function(...args){const request=original.apply(this,args);if(this.name===store)request.addEventListener('success',()=>{if(late?!request.result:!!request.result)this.transaction.abort();},{once:!late});return request;};
+          try{await db[method]({requireCommit:true});}catch(error){failed=!!error?.message;}
+        }finally{IDBObjectStore.prototype.openCursor=original;}
+        check(method+' strict backup inventory rejects '+(late?'end-of-scan':'mid-scan')+' abort without a partial list',failed);
+      }
+    }
     const descriptor=Object.getOwnPropertyDescriptor(window,'indexedDB');
     try{
       Object.defineProperty(window,'indexedDB',{configurable:true,value:undefined});
+      for(const method of ['listNotes','listFavorites']){let failed=false;try{await db[method]({requireCommit:true});}catch{failed=true;}check(method+' strict backup inventory rejects unavailable storage even with a cached database',failed);}
       let unavailableScans=0;for(const [method] of scans){try{await reader[method]();}catch{unavailableScans++;}}check('every backup directory rejects unavailable storage',unavailableScans===5);
       let readUnavailable=false;try{await reader.getBook('reader-book');}catch{readUnavailable=true;}check('reader backup cannot read cached database handles after storage becomes unavailable',readUnavailable);
       let logsUnavailable=false;try{await writer.pushRetLog({query:'unavailable'});}catch{logsUnavailable=true;}check('log import rejects unavailable storage',logsUnavailable);
@@ -224,5 +237,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,102);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,110);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

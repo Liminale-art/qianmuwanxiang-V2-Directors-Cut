@@ -273,17 +273,25 @@ export async function removeFavorite(favId) {
 }
 
 // 列出收藏（含 blob，便于直接播放）。返回 [{ id, blob, meta, label, createdAt }]
-export async function listFavorites() {
+export async function listFavorites({requireCommit = false} = {}) {
+  if (requireCommit && !blobStoreAvailable()) throw new Error('语音收藏储存不可用，未读取备份目录。');
   const s = await store(STORE_FAVORITES, 'readonly');
   const out = [];
   await new Promise((resolve, reject) => {
+    if (requireCommit) {
+      s.transaction.oncomplete = resolve;
+      s.transaction.onerror = () => reject(s.transaction.error || new Error('语音收藏目录读取失败。'));
+      s.transaction.onabort = () => reject(s.transaction.error || new Error('语音收藏目录读取中止。'));
+    }
     const cur = s.openCursor();
     cur.onsuccess = () => {
+      try {
       const c = cur.result;
-      if (!c) { resolve(); return; }
+      if (!c) { if (!requireCommit) resolve(); return; }
       const v = c.value || {};
       out.push({ id: c.key, blob: v.blob, meta: v.meta || {}, label: v.label || '', createdAt: v.createdAt || 0 });
       c.continue();
+      } catch (error) { reject(error); }
     };
     cur.onerror = () => reject(cur.error);
   });
@@ -766,6 +774,7 @@ export async function deleteNote(noteId) {
 }
 
 export async function listNotes({requireCommit = false} = {}) {
+  if (requireCommit && !blobStoreAvailable()) throw new Error('固定便笺储存不可用，未读取备份目录。');
   const s = await store(STORE_NOTES, 'readonly');
   const out = [];
   await new Promise((resolve, reject) => {
@@ -776,10 +785,12 @@ export async function listNotes({requireCommit = false} = {}) {
     }
     const cursor = s.openCursor();
     cursor.onsuccess = () => {
+      try {
       const current = cursor.result;
       if (!current) { if (!requireCommit) resolve(); return; }
       out.push({ ...(current.value || {}), id: String(current.key), pinned: true });
       current.continue();
+      } catch (error) { reject(error); }
     };
     cursor.onerror = () => reject(cursor.error);
   });
