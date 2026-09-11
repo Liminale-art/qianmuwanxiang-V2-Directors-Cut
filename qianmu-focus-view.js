@@ -14,10 +14,11 @@ export function renderFocusClockView({f, remaining, total, phase, strongLocked, 
   const weekBars = week.days.map((day, index) => `<div class="sd-focus-week-day"><span class="sd-focus-week-value">${day.minutes || ''}</span><span class="sd-focus-week-bar"><i style="height:${day.minutes ? Math.max(8, day.minutes / weekMax * 100) : 3}%"></i></span><small>${['一', '二', '三', '四', '五', '六', '日'][index]}</small></div>`).join('');
   const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
   const weekRange = `${weekStart.getMonth() + 1}.${weekStart.getDate()}–${weekEnd.getMonth() + 1}.${weekEnd.getDate()}`;
-  const voiceAvailable = voiceContext.hasCharacter && !!voiceContext.voice;
+  const voiceAvailable = voiceContext.hasCharacter && (!!voiceContext.voice || f.voiceMode === 'custom');
   const showVoiceSetupTip = voiceContext.hasCharacter && !voiceContext.voice && !f.voiceSetupTipSeen;
   const voiceStatus = !voiceContext.hasCharacter
     ? (f.activity === 'reading' ? '请先选择伴读书友。' : '请选择角色，或进入角色聊天。')
+    : f.voiceMode === 'custom' ? `从 ${voiceContext.characterName} 的语音库随机播放`
     : voiceContext.voice ? `音色跟随 ${voiceContext.characterName} · ${providerLabel}`
       : showVoiceSetupTip ? '选择一次音色后按角色保存；可使用音色库或手动沿用当前聊天音色。'
         : voiceContext.enabled ? '请选择音色。' : '';
@@ -31,8 +32,9 @@ export function renderFocusClockView({f, remaining, total, phase, strongLocked, 
         <label><span>${f.activity === 'reading' ? '书友' : '角色'}</span>${f.activity === 'reading' ? `<input class="text_pole" value="${htmlEscape(voiceContext.characterName)}" readonly>` : `<select class="text_pole sd-focus-voice-character" ${locked ? 'disabled' : ''}>${voiceCharacterOptions}</select>`}</label>
         <label><span>音色</span><select class="text_pole sd-focus-voice-speaker" ${locked || !voiceContext.hasCharacter ? 'disabled' : ''}>${voiceSpeakerOptions}</select></label>
       </div>
-      ${voiceContext.enabled && voiceAvailable ? `<label><span>关系</span><select class="text_pole sd-focus-voice-relation" ${locked ? 'disabled' : ''}>${voiceRelationOptions}</select></label>
-      <div class="sd-focus-voice-row"><span>话语方式</span><div class="sd-focus-segments">${[['stock', '轻量话语'], ['scene', '情景生成']].map(([id, label]) => `<button type="button" class="sd-focus-voice-mode ${f.voiceMode === id ? 'active' : ''}" data-focus-voice-mode="${id}" ${locked ? 'disabled' : ''}>${label}</button>`).join('')}</div></div>
+      ${voiceContext.hasCharacter ? `${f.voiceMode==='scene'?`<label><span>关系</span><select class="text_pole sd-focus-voice-relation" ${locked ? 'disabled' : ''}>${voiceRelationOptions}</select></label>`:''}
+      <div class="sd-focus-voice-row"><span>话语方式</span><div class="sd-focus-segments">${[['custom', '自定义语音'], ['scene', '情景生成']].map(([id, label]) => `<button type="button" class="sd-focus-voice-mode ${f.voiceMode === id ? 'active' : ''}" data-focus-voice-mode="${id}" ${locked ? 'disabled' : ''}>${label}</button>`).join('')}</div></div>
+      <button type="button" class="sd-btn sd-focus-library-open"><i class="fa-solid fa-folder-open"></i>语音库</button>
       <div class="sd-focus-voice-row"><span>长时陪伴频率</span><div class="sd-focus-segments">${Object.entries(FOCUS_CLOCK_VOICE_FREQUENCIES).map(([id, item]) => `<button type="button" class="sd-focus-voice-frequency ${f.voiceFrequency === id ? 'active' : ''}" data-focus-voice-frequency="${id}" ${locked ? 'disabled' : ''}>${item.label} ${Math.round(item.chance * 100)}%</button>`).join('')}</div></div>
       ` : ''}
     </div>`;

@@ -28,7 +28,7 @@ function control(html,name) {
 const disabled=(html,name)=>/\bdisabled(?:\s|>)/.test(control(html,name));
 
 test('unconfigured role switch remains usable and setup help disappears after its first presentation',()=>{
-  const {f,data,render}=viewFixture();data.voice.voice=null;data.voice.enabled=false;
+  const {f,data,render}=viewFixture({voiceMode:'scene'});data.voice.voice=null;data.voice.enabled=false;
   assert.equal(disabled(render(),'sd-focus-voice-enabled'),false);assert.match(render(),/sd-focus-voice-setup-tip/);
   f.voiceSetupTipSeen=true;assert.doesNotMatch(render(),/选择一次音色后按角色保存/);
   data.voice.enabled=true;assert.match(render(),/请选择音色/);

@@ -22,8 +22,8 @@ export function createFocusVoiceDrawer({document, getModal, rowsForView, format,
           <button type="button" class="sd-focus-cue-main" title="重听这句"><b>${format.escape(cue.speaker || '角色')}</b><span>${format.escape(cue.text || '')}</span><small>${format.escape(cue.task || '专注')} · ${format.escape(format.date(cue.sourceTime || now()))}</small></button>
           <button type="button" class="sd-icon-btn sd-focus-cue-more" title="更多操作" aria-label="更多操作" aria-expanded="false"><i class="fa-solid fa-ellipsis"></i></button>
           <div class="sd-focus-cue-tools" hidden>
-            <button type="button" class="sd-icon-btn sd-focus-cue-regen" title="重新生成" aria-label="重新生成"><i class="fa-solid fa-rotate"></i></button>
-            <button type="button" class="sd-icon-btn sd-focus-cue-fav" data-cue-id="${format.escape(cue.id)}" title="收藏" aria-label="收藏" aria-pressed="false"><i class="fa-regular fa-star"></i></button>
+            ${cue.library ? '<small>编辑请前往专注语音库</small>' : `<button type="button" class="sd-icon-btn sd-focus-cue-regen" title="重新生成" aria-label="重新生成"><i class="fa-solid fa-rotate"></i></button>
+            <button type="button" class="sd-icon-btn sd-focus-cue-fav" data-cue-id="${format.escape(cue.id)}" title="收藏" aria-label="收藏" aria-pressed="false"><i class="fa-regular fa-star"></i></button>`}
             <button type="button" class="sd-icon-btn sd-focus-cue-download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button>
           </div>
         </article>`).join('')}</div>
@@ -37,7 +37,7 @@ export function createFocusVoiceDrawer({document, getModal, rowsForView, format,
     portal.querySelectorAll('.sd-focus-cue-play, .sd-focus-cue-main').forEach((button) => button.addEventListener('click', async (event) => {
       const cue = cueFor(event.currentTarget);
       if (!cue) return;
-      if (!await voice.play(cue)) notify('音频缓存已过期，可以使用重新生成。', 'warning');
+      if (!await voice.play(cue)) notify(cue.library ? '语音原件已变化或不可播放，请到专注语音库核对。' : '音频缓存已过期，可以使用重新生成。', 'warning');
     }));
     portal.querySelectorAll('.sd-focus-cue-more').forEach((button) => button.addEventListener('click', () => {
       const item = button.closest('.sd-focus-cue');

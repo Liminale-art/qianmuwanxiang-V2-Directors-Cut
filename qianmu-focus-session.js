@@ -40,12 +40,12 @@ export function createFocusSessionController({getState, phaseMs, remainingMs, ph
       f.sessionStartedAt = now;
       f.sessionElapsedMs = 0;
       f.sessionPlannedMs = remaining;
-      f.sessionToken = f.phase === 'focus' ? uid('focussession') : '';
+      f.sessionToken = f.phase === 'focus' || f.voiceMode === 'custom' ? uid('focussession') : '';
       f.sessionVoiceCues = [];
       voice.cancel();
-      prepareVoice = f.phase === 'focus' && voice.enabled(f);
+      prepareVoice = (f.phase === 'focus' || f.voiceMode === 'custom') && voice.enabled(f);
     } else {
-      prepareVoice = f.phase === 'focus' && !f.sessionVoiceCues.some(cue => cue.type === 'complete' && !cue.played)
+      prepareVoice = (f.phase === 'focus' || f.voiceMode === 'custom') && !f.sessionVoiceCues.some(cue => cue.type === 'complete' && !cue.played)
         && voice.enabled(f);
     }
     f.status = 'running';
@@ -105,7 +105,7 @@ export function createFocusSessionController({getState, phaseMs, remainingMs, ph
     const completedPhase = f.phase;
     const wasLocked = !!f.lock;
     if (wasLocked) lock.release();
-    const completionCue = completedPhase === 'focus' ? f.sessionVoiceCues.find((cue) => cue.type === 'complete' && !cue.played && voice.bindingActive(cue.voiceBindingKey)) : null;
+    const completionCue = completedPhase === 'focus' || f.voiceMode === 'custom' ? f.sessionVoiceCues.find((cue) => cue.type === 'complete' && !cue.played && voice.bindingActive(cue.voiceBindingKey)) : null;
     if (completedPhase === 'focus') {
       const durationMs = Math.max(1000, Number(f.sessionPlannedMs) || phaseMs('focus', f));
       const linkedBook = f.sessionBookId ? reading.book(f.sessionBookId) : null;
@@ -138,7 +138,7 @@ export function createFocusSessionController({getState, phaseMs, remainingMs, ph
     f.sessionProgressStart = f.sessionBookId ? Math.max(0, Math.min(100, Number(reading.book(f.sessionBookId)?.progress) || 0)) : 0;
     f.runStartedAt = autoNext ? now : 0;
     f.endsAt = autoNext ? now + f.remainingMs : 0;
-    f.sessionToken = autoNext && f.phase === 'focus' ? uid('focussession') : '';
+    f.sessionToken = autoNext && (f.phase === 'focus' || f.voiceMode === 'custom') ? uid('focussession') : '';
     f.sessionVoiceCues = [];
     voice.cancel();
     save();

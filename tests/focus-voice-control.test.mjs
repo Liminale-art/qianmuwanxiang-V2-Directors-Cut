@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {focusScenePrompts} from '../qianmu-focus-scene-prompts.js';
 import {createFocusVoiceCache} from '../qianmu-focus-voice-cache.js';
 import * as profiles from '../qianmu-focus-voice.js';
 import {createFocusSpeechPlayer} from '../qianmu-focus-speech.js';
@@ -12,11 +13,12 @@ const names=['focusClockVoiceContext','focusClockVoiceBindingKey','focusClockVoi
   'focusClockPreparation','focusClockSpeech','focusClockSetVoiceEnabled','focusClockSynthVoiceCue','focusClockPrepareVoiceCues','focusClockPlayVoiceCue','focusClockPlayCompletionAlert','focusClockRegenerateVoiceCue',
   'focusClockMaybePlayMidCue','focusClockCleanVoiceLine','focusClockBuildVoiceParams','focusClockBindVoice'];
 function fixture(overrides={}){
-  const env=focusFixture({status:'running',soundEnabled:false,sessionToken:'round',endsAt:160000,voiceProfiles:{'character:A':{minimax:{enabled:true,voice:{name:'甲',voiceId:'voice-A'},revision:1}}},...overrides});
+  // Keep the legacy transport characterization independent of the new custom-mode default.
+  const env=focusFixture({voiceMode:'stock',status:'running',soundEnabled:false,sessionToken:'round',endsAt:160000,voiceProfiles:{'character:A':{minimax:{enabled:true,voice:{name:'甲',voiceId:'voice-A'},revision:1}}},...overrides});
   const {c}=env, counts={synth:0,put:0,play:0,stop:0,sound:0,revoke:0};
   const host={chatId:'chatA',characterId:0,characters:[{avatar:'A',name:'甲'},{avatar:'B',name:'乙'}]};
   const voices=[{name:'甲',voiceId:'voice-A'}];let provider='minimax';
-  Object.assign(c,profiles,{ctx:()=>host,getChatKey:()=>host.chatId,getCharacterName:()=>host.characters[host.characterId]?.name,
+  Object.assign(c,profiles,{focusScenePrompts,ctx:()=>host,getChatKey:()=>host.chatId,getCharacterName:()=>host.characters[host.characterId]?.name,
     coreadHostPersona:()=>({key:'user-A'}),coreadPersona:()=>({key:'user-A'}),coreadCompanionSession:()=>null,
     coreadCompanionChoices:()=>host.characters,coreadCompanionCharacter:()=>host.characters.find(ch=>ch.avatar===(c.readerView?.companionAvatar||host.characters[host.characterId]?.avatar)),
     ttsProviderConfig:()=>({voiceLibrary:[]}),ttsActiveVoiceMap:()=>voices,ttsProviderId:()=>provider,ttsDoubaoVoiceModel:value=>value||'auto',

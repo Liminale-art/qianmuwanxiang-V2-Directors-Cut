@@ -18,7 +18,7 @@ function fixture() {
       click:()=>listeners.get('click')({currentTarget:button})};
     portals.push(portal);return portal;
   }};
-  const c=vm.createContext({document,MODAL_ID:'modal',focusClockVoiceDrawer:null,createFocusVoiceDrawer,
+  const c=vm.createContext({document,MODAL_ID:'modal',focusClockVoiceDrawer:null,focusLibraryRuntime:null,createFocusVoiceDrawer,
     focusClockVoiceDrawerRows:()=>rows,toast:(...args)=>notices.push(args),htmlEscape:String,
     formatDateTime:()=>'',applyQianmuIcons:()=>{},setQianmuIconClass:()=>{},
     focusClockSyncVoiceDrawerFavorites:async()=>{},focusClockRegenerateVoiceCue:()=>pending});

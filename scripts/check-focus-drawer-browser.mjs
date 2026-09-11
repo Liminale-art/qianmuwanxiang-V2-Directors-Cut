@@ -23,7 +23,7 @@ try {
     Object.assign(window,await import('https://qianmu.test/qianmu-focus-drawer.js'));
     const favorites=new Map();window.calls={play:[],downloads:[],notices:[]};
     window.rows=[0,1].map(i=>({id:`c${i}`,cacheKey:`a${i}`,speaker:`角色${i}`,text:'<img src=x onerror=alert(1)>陪伴',task:'阅读',played:true,format:'mp3',sourceTime:1000000}));
-    Object.assign(window,{focusClockCueRecords:null,focusClockVoiceDrawer:null,MODAL_ID:'story-director-modal',
+    Object.assign(window,{focusClockCueRecords:null,focusClockVoiceDrawer:null,focusLibraryRuntime:null,MODAL_ID:'story-director-modal',
       focusClockState:()=>({sessionVoiceCues:rows,history:[]}),htmlEscape:value=>{const el=document.createElement('div');el.textContent=value;return el.innerHTML;},
       formatDateTime:()=> '测试日期',sanitizeFolder:String,applyQianmuIcons:()=>{},setQianmuIconClass:(el,name)=>{el.className=name;},
       ttsSetFavoriteButton:(el,active)=>{el.setAttribute('aria-pressed',String(active));},toast:(...args)=>calls.notices.push(args),

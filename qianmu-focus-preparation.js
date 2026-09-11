@@ -1,11 +1,12 @@
 // Owns preparation tickets only; adapters keep provider requests, storage and identity resolution outside.
-export function createFocusVoicePreparation({enabled, getState, voice, frequencies, midpoints, bookMeta, textSource, synthesize, uid, now, save, warn}) {
+export function createFocusVoicePreparation({enabled, getState, voice, frequencies, midpoints, bookMeta, textSource, synthesize, uid, now, save, warn, library}) {
   let sequence = 0, pending = null;
   async function prepare(sessionToken) {
     const f = getState();
-    if (!enabled() || f.status !== 'running' || f.phase !== 'focus' || !sessionToken || f.sessionToken !== sessionToken) return;
+    const custom=f.voiceMode==='custom',phase=f.phase;
+    if (!enabled() || f.status !== 'running' || (!custom && phase !== 'focus') || !sessionToken || f.sessionToken !== sessionToken) return;
     const voiceContext = voice.context(f);
-    if (!voiceContext.hasCharacter || !voiceContext.enabled || !voiceContext.voice) return;
+    if (!voiceContext.hasCharacter || !voiceContext.enabled || (!custom && !voiceContext.voice)) return;
     const bindingKey = voice.key(voiceContext);
     if (pending?.sessionToken === sessionToken && pending.bindingKey === bindingKey
         && pending.seq === sequence) return;
@@ -13,8 +14,15 @@ export function createFocusVoicePreparation({enabled, getState, voice, frequenci
     const work = { sessionToken, bindingKey, seq: prepareSeq };
     pending = work;
     const isCurrent = () => prepareSeq === sequence && getState() === f
-      && f.status === 'running' && f.phase === 'focus' && f.sessionToken === sessionToken && voice.active(bindingKey);
+      && f.status === 'running' && f.phase === phase && f.sessionToken === sessionToken && voice.active(bindingKey);
     try {
+      if(custom){
+        const frequency=frequencies[f.voiceFrequency]||frequencies.low;
+        const specs=(phase==='focus'?midpoints(Math.max(1,Number(f.sessionPlannedMs)/60000),frequency.chance):[]).slice(0,3).map(progress=>({type:'mid',progress}));
+        specs.push({type:'complete',progress:1});
+        try{await library.prepare({state:f,sessionToken,bindingKey,isCurrent,specs,uid,save});}
+        catch(error){if(isCurrent())warn('library',error);}return;
+      }
       const baseParams = voice.params(voiceContext, '专注提醒');
       if (!baseParams || !voice.credentials(baseParams.providerId, baseParams)) return;
       const frequency = frequencies[f.voiceFrequency] || frequencies.low;

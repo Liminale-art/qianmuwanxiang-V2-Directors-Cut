@@ -39,7 +39,7 @@ test('cleanup requires the exact inventoried account and generation and cannot d
 
 test('actual global inventory attributes all Comfy databases without double counting and keeps browser quota separate',async()=>{
   let collects=0;const comfy={namespace,bytes:600,count:6,workflows:{bytes:100,count:1},pools:{bytes:200,count:2},scenes:{bytes:300,count:3,generation:2},errors:[]};
-  const context=vm.createContext({storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:1000,quota:10000})}},
+  const context=vm.createContext({focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:1000,quota:10000})}},
     blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[{category:'images',bytes:10,count:1}]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
     featureRuntime:{load:async key=>key==='comfyStorage'?{collectComfyStorage:async options=>{collects++;assert.equal(await options.resolveNamespace(),namespace);assert.equal(options.valid(),true);return comfy;}}:{manageImageAdmissionStorage:async()=>({bytes:1,count:1}),resolveImageAccountNamespace:async()=>namespace}},
     storyboardManageImageChannels:async()=>({bytes:2,count:1}),storyboardImageServiceRuntime:async()=>({manage:async()=>({bytes:3,count:1})}),storyboardComfyRecoveryRuntime:async()=>({usage:async()=>({bytes:4,count:1})}),

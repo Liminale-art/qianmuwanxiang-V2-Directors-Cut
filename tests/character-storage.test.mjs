@@ -47,10 +47,16 @@ test('short-lived worker character operation returns only the validated summary 
   class Worker{addEventListener(type,fn){if(type==='message')this.receive=fn;}postMessage(value){sent=value;queueMicrotask(()=>this.receive({data:{id:value.id,result:summary}}));}terminate(){closed++;}}
   assert.deepEqual(await runRestoreStorage('characters',{namespace,guard:async()=>{},WorkerClass:Worker}),summary);assert.equal(closed,1);assert.deepEqual(Object.keys(sent).sort(),['action','id','namespace']);
 });
-function globalFixture(summary){return vm.createContext({storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:99999,quota:999999})}},blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
+function globalFixture(summary){return vm.createContext({focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:99999,quota:999999})}},blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
   featureRuntime:{load:async key=>key==='characterStorage'?{collectCharacterStorage:async()=>summary}:key==='comfyStorage'?{collectComfyStorage:async()=>({bytes:0,errors:[]})}:key==='vibeStorageSummary'?{collectVibeStorage:async()=>({status:'unavailable',bytes:null})}:key==='storyboardRestoreStorage'?{collectStoryboardRestoreStorage:async()=>({status:'unavailable',bytes:null})}:{resolveImageAccountNamespace:async()=>namespace,manageImageAdmissionStorage:async()=>({bytes:0})}},
   storyboardManageImageChannels:async()=>({bytes:0}),storyboardImageServiceRuntime:async()=>({manage:async()=>({bytes:0})}),storyboardComfyRecoveryRuntime:async()=>({usage:async()=>({bytes:0})}),storageJsonBytes:()=>0,storageSettingsSnapshotWithoutDiagnostics:()=>({}),getChatStore:()=>({}),storageDiagnosticSnapshot:()=>({}),
   htmlEscape:value=>String(value??'').replaceAll('<','&lt;'),formatStorageBytes:value=>`${value} B`,STORAGE_CATEGORY_LABELS:{},STORAGE_CATEGORY_COLORS:{other:'#777'},storageInventoryState:{status:'ready'},});}
+test('focus originals join the space meter exactly once and are not recoverable temporary cache',async()=>{
+  const context=globalFixture({status:'unavailable',bytes:null});context.focusClockLibrary=()=>({summary:async()=>({status:'ready',count:2,bytes:1234})});
+  vm.runInContext(section('collectStorageInventory'),context);const data=await context.collectStorageInventory();
+  assert.equal(data.trackedBytes,1244);assert.equal(data.manageableBytes,1244);assert.equal(data.recoverableBytes,0);
+  assert.equal(data.categories.find(row=>row.category==='audio').bytes,1234);assert.equal(data.origin.quota,999999);
+});
 test('actual global card includes role metadata once, not as recoverable cache, and explains server image exclusion',async()=>{
   const {rows}=fixture(),summary=summarizeCharacterStorage(namespace,rows),context=globalFixture(summary);vm.runInContext([section('collectStorageInventory'),section('renderStorageManagementCard')].join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;assert.equal(data.trackedBytes,10+summary.bytes);assert.equal(data.manageableBytes,10+summary.bytes);assert.equal(data.recoverableBytes,0);assert.equal(data.categories.find(row=>row.category==='characters').bytes,summary.bytes);

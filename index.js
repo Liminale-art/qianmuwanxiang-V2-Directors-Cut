@@ -16,6 +16,8 @@ import { bindFocusClockPage } from './qianmu-focus-events.js';
 import { exportFocusWeekImage } from './qianmu-focus-export.js';
 import { createFocusCueRecords } from './qianmu-focus-cue-records.js';
 import { createFocusVoiceDrawer } from './qianmu-focus-drawer.js';
+import { createFocusLibraryRuntime } from './qianmu-focus-library-runtime.js';
+import { focusScenePrompts, pickFocusStockLines } from './qianmu-focus-scene-prompts.js';
 import { renderCoreadIdentityView, renderCoreadIdentityChoicesView } from './qianmu-reader-identity-view.js';
 import { renderCoreadVoicePanelView, renderCoreadNotesPanelView, renderCoreadMarksPanelView, coreadNoteMatches } from './qianmu-reader-panel-view.js';
 import { renderCoreadLibraryBookView, renderCoreadLibraryCollectionView } from './qianmu-reader-library-view.js';
@@ -1148,7 +1150,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     voiceProfiles: {},            // character avatar -> provider -> explicit voice + enabled + revision
     voiceSetupTipSeen: false,
     readingExitPaused: false,     // 仅退出阅读造成的暂停允许回到原书时自动续计
-    voiceMode: 'stock',           // stock=轻量话语 | scene=情景生成（只读任务/书名/人设/手选关系，不读正文）
+    voiceMode: 'custom',          // 自定义播放保存原件；scene 显式选择后自动生成
     voiceFrequency: 'low',        // 长时专注至少一次中途陪伴；低30%/中50%/高75%决定候选点追加密度
     voiceSpeakerByChat: {},       // 每个聊天、当前配音 Provider 下由用户选择的角色名
     voiceRelationByChat: {},      // stranger | neutral | friend | partner | elder
@@ -1410,6 +1412,7 @@ const focusClockVoiceCache = createFocusVoiceCache({
 }); // Keeps bounded memory references even when IndexedDB is unavailable.
 let focusClockCueRecords = null;
 let focusClockVoiceDrawer = null;  // 专注抽屉控制器；DOM 所有权留在独立模块。
+let focusLibraryRuntime = null;
 const STORYBOARD_QUEUE_LIMIT = 8;     // 仅本页运行态；刷新后不自动续跑，避免意外消耗生图额度
 let storyboardBusy = false;          // 分镜生成独立忙碌态，不占用推演/幕外请求锁
 let storyboardCompilerBusy = false;  // 自动取景是独立的一次 LLM 请求，不与正文生成共用返回
@@ -7981,7 +7984,7 @@ function storageSettingsSnapshotWithoutDiagnostics() {
 async function collectStorageInventory() {
   const storageApi = globalThis.navigator?.storage;
   const storageEpoch=storyboardAdmissionEpoch;
-  const [originEstimate, idb, orphanReaderBlobs, imageAttempts, imageChannels, serviceReceipts, comfyReceipts, comfyStorage, vibeStorage, restoreStorage, characterStorage, mappingStorage,carrierStorage] = await Promise.all([
+  const [originEstimate, idb, orphanReaderBlobs, imageAttempts, imageChannels, serviceReceipts, comfyReceipts, comfyStorage, vibeStorage, restoreStorage, characterStorage, mappingStorage,carrierStorage, focusLibrary] = await Promise.all([
     storageApi?.estimate?.().catch(() => null) || Promise.resolve(null),
     blobStore.estimateBlobStoreUsage(),
     blobStore.auditOrphanedReaderBlobs(),
@@ -8007,6 +8010,7 @@ async function collectStorageInventory() {
     Promise.all([featureRuntime.load('storyboardRestoreStorage'),featureRuntime.load('imageAdmission')]).then(([module,identity])=>module.collectStoryboardCarrierStorage({
       resolveNamespace:()=>identity.resolveImageAccountNamespace(),valid:()=>storageEpoch===storyboardAdmissionEpoch,
     })).catch(error=>({status:'unavailable',bytes:null,error:error?.message||'来源记录暂不可读取'})),
+    focusClockLibrary().summary(),
   ]);
   if(vibeStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(vibeStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
   if(restoreStorage.namespace){const identity=await featureRuntime.load('imageAdmission');if(restoreStorage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
@@ -8056,9 +8060,10 @@ async function collectStorageInventory() {
   const mappingSize=mappingStorage.status==='ready'?mappingStorage.bytes:0;
   if(mappingStorage.status==='ready')addCategory('logs',mappingSize,mappingStorage.count);
   const carrierSize=carrierStorage.status==='ready'?carrierStorage.bytes:0;if(carrierStorage.status==='ready')addCategory('logs',carrierSize,carrierStorage.count+carrierStorage.originalCount);
-  const trackedBytes = Number(idb.totalBytes || 0) + settingsBytes + currentChatBytes + diagnosticsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes + mappingSize+carrierSize;
+  const focusBytes=focusLibrary.status==='ready'?focusLibrary.bytes:0;if(focusBytes)addCategory('audio',focusBytes,focusLibrary.count);
+  const trackedBytes = focusBytes + Number(idb.totalBytes || 0) + settingsBytes + currentChatBytes + diagnosticsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes + mappingSize+carrierSize;
   const recoverableBytes = Number(idb.recoverableBytes || 0) + diagnosticsBytes;
-  const manageableBytes = Number(idb.totalBytes || 0) + diagnosticsBytes + portableTtsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes;
+  const manageableBytes = focusBytes + Number(idb.totalBytes || 0) + diagnosticsBytes + portableTtsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes;
   return {
     sampledAt: Date.now(),
     origin: {
@@ -8085,7 +8090,7 @@ async function collectStorageInventory() {
     restoreStorage,
     mappingStorage,
     carrierStorage,
-    characterStorage,
+    characterStorage, focusLibrary,
   };
 }
 
@@ -8129,6 +8134,7 @@ function renderStorageManagementCard() {
   const backupSection = `<details class="sd-storage-disclosure sd-storage-backup-section" data-storage-section="backups">
     <summary>备份与恢复</summary>
     <div class="sd-storage-disclosure-body">
+      <div class="sd-storage-backup-row"><span>专注语音原件</span><button type="button" class="sd-btn sd-storage-focus-library">选择备份／恢复／清理</button></div>
       <p class="sd-storage-scope">按内容分别备份。配置不包含素材原件；导入配置会覆盖现有设置。分镜资源包的范围在导出前核对，不代表全部聊天备份。</p>
       <div class="sd-storage-backup-row"><span>配置</span><button type="button" class="sd-btn sd-export-config">导出</button><button type="button" class="sd-btn sd-import-config">导入</button><input type="file" class="sd-import-config-file" accept="application/json,.json" hidden></div>
       ${[['storyboard','分镜资源','.qmb,application/json,.json'],['reader','伴读资料','application/json,.json'],['favorites','语音收藏','application/json,.json'],['notes','固定便笺','application/json,.json']].map(([key,label,accept])=>`<div class="sd-storage-backup-row"><span>${label}</span><button type="button" class="sd-btn" data-storage-export="${key}" aria-label="导出${label}">导出</button><button type="button" class="sd-btn" data-storage-pick="${key}" aria-label="导入${label}">导入</button><input type="file" data-storage-import="${key}" accept="${accept}" hidden></div>`).join('')}
@@ -8147,7 +8153,7 @@ function renderStorageManagementCard() {
   const scaleBytes = Math.max(1, data.origin.quota > 0 ? Math.max(data.origin.quota, usedForScale) : usedForScale);
   const barItems = [
     ...categories.map((item) => ({ key: item.category, label: STORAGE_CATEGORY_LABELS[item.category] || item.category, bytes: Number(item.bytes) || 0, color: STORAGE_CATEGORY_COLORS[item.category] || STORAGE_CATEGORY_COLORS.other })),
-    ...(unknownUsage > 0 ? [{ key: 'origin-other', label: [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage,data.mappingStorage,data.carrierStorage].some(row=>['unavailable','partial'].includes(row?.status))?'未盘点站点数据':'其他 ST 数据', bytes: unknownUsage, color: '#555d6b' }] : []),
+    ...(unknownUsage > 0 ? [{ key: 'origin-other', label: [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage,data.mappingStorage,data.carrierStorage,data.focusLibrary].some(row=>['unavailable','partial'].includes(row?.status))?'未盘点站点数据':'其他 ST 数据', bytes: unknownUsage, color: '#555d6b' }] : []),
     ...(freeBytes > 0 ? [{ key: 'free', label: '可用空间', bytes: freeBytes, color: 'rgba(127, 127, 127, .18)' }] : []),
   ];
   const storageBar = barItems.map((item) => `<i class="sd-storage-segment sd-storage-${htmlEscape(item.key)}" style="--sd-storage-weight:${Math.max(0, item.bytes / scaleBytes)};--sd-storage-color:${item.color}" title="${htmlEscape(item.label)} ${htmlEscape(formatStorageBytes(item.bytes))}"></i>`).join('');
@@ -8166,7 +8172,7 @@ function renderStorageManagementCard() {
     : pressure.level === 'warning'
       ? `<p class="sd-storage-pressure is-warning" role="status">浏览器来源空间已使用 ${pressurePercent}% · 剩余约 ${htmlEscape(formatStorageBytes(pressure.freeBytes))}。可按需整理，千幕不会自动清理。</p>`
       : '';
-  const incomplete = [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage,data.mappingStorage,data.carrierStorage].some(row=>['unavailable','partial'].includes(row?.status))
+  const incomplete = [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage,data.mappingStorage,data.carrierStorage,data.focusLibrary].some(row=>['unavailable','partial'].includes(row?.status))
     || [data.imageAttempts,data.imageChannels,data.serviceReceipts,data.comfyReceipts].some(row=>row?.error);
   return `<section class="sd-card sd-storage-card">
     <div class="sd-card-title-row"><div><h3>储存空间</h3><p class="sd-summary-note">${htmlEscape(new Date(data.sampledAt).toLocaleTimeString())}</p></div><button type="button" class="sd-icon-btn sd-storage-refresh" title="刷新" aria-label="刷新"><i class="fa-solid fa-rotate${status === 'loading' ? ' fa-spin' : ''}"></i></button></div>
@@ -8194,6 +8200,7 @@ function renderStorageManagementCard() {
     ${data.carrierStorage?.status==='ready'?'':`<p class="sd-storage-pressure is-warning">${htmlEscape(data.carrierStorage?.error||'来源记录暂不可读取，未自动清理。')}</p>`}
     <div class="sd-storage-actions"><span>${data.characterStorage?.status==='ready'?`角色库 · ${data.characterStorage.documents.count} 份档案 · ${htmlEscape(formatStorageBytes(data.characterStorage.documents.bytes))}<br>绑定 ${data.characterStorage.bindings.count} 项 · ${htmlEscape(formatStorageBytes(data.characterStorage.bindings.bytes))} · 索引元数据 ${htmlEscape(formatStorageBytes(data.characterStorage.indexes.bytes))}<br>按本机记录计值，不含服务器参考图`:'角色库占用暂不可读取 · 当前总计不含此部分'}</span><button type="button" class="sd-btn sd-storage-characters">角色库管理</button></div>
     ${data.characterStorage?.status==='ready'?'':`<p class="sd-storage-pressure is-warning">${htmlEscape(data.characterStorage?.error||'请重新盘点或进入角色库核对；未修改档案。')}</p>`}
+    <div class="sd-storage-actions"><span>专注语音 · ${data.focusLibrary?.status==='ready'?`${data.focusLibrary.count} 条 · ${htmlEscape(formatStorageBytes(data.focusLibrary.bytes))}`:'暂不可读取，总计未包含'}</span></div>
     ${(data.comfyStorage?.errors || []).map(message=>`<p class="sd-storage-pressure is-warning">${htmlEscape(message)}</p>`).join('')}
     ${[['workflows','Comfy 工作流库'],['pools','Comfy 候选方案'],['scenes','Comfy 续场记录']].map(([key,label])=>{const row=data.comfyStorage?.[key];return `<div class="sd-storage-actions"><span>${label} · 当前账户 · ${row?.status==='ready'?`${row.count} 项 · ${htmlEscape(formatStorageBytes(row.bytes))}<br>${key==='scenes'?'记录正文':`含 ${row.versions} 个版本、${row.archived} 项归档`} · ${htmlEscape(formatStorageBytes(row.documentBytes))} · 索引元数据 ${htmlEscape(formatStorageBytes(row.indexBytes))}`:'未盘点，总计未包含'}</span>${key!=='scenes'?`<button type="button" class="sd-btn" data-storage-comfy-library="${key}">管理</button>`:''}</div>`;}).join('')}
     </div></details>
@@ -8664,6 +8671,7 @@ function bindStorageManagementEvents(root) {
   const backup = root.querySelector('.sd-storage-backup-section');
   if (backup && !backup.dataset.storageBound) {
     backup.dataset.storageBound = 'true';
+    backup.querySelector('.sd-storage-focus-library')?.addEventListener('click',()=>void focusClockLibrary().open({management:true}));
     backup.querySelector('.sd-export-config')?.addEventListener('click', () => void exportConfig());
     backup.querySelector('.sd-import-config')?.addEventListener('click', () => backup.querySelector('.sd-import-config-file')?.click());
     backup.querySelector('.sd-import-config-file')?.addEventListener('change', event => void importConfig(event));
@@ -24330,8 +24338,9 @@ function focusClockState() {
   delete f.soundFileName;
   delete f.soundFileData;
   f.voiceEnabledByChat = isPlainObject(f.voiceEnabledByChat) ? f.voiceEnabledByChat : {};
+  f.customVoiceEnabled=isPlainObject(f.customVoiceEnabled)?f.customVoiceEnabled:{};
   delete f.voiceEnabled;
-  f.voiceMode = f.voiceMode === 'scene' ? 'scene' : 'stock';
+  f.voiceMode = f.voiceMode === 'scene' ? 'scene' : 'custom';
   f.voiceFrequency = FOCUS_CLOCK_VOICE_FREQUENCIES[f.voiceFrequency] ? f.voiceFrequency : 'low';
   f.voiceSpeakerByChat = isPlainObject(f.voiceSpeakerByChat) ? f.voiceSpeakerByChat : {};
   f.voiceRelationByChat = isPlainObject(f.voiceRelationByChat) ? f.voiceRelationByChat : {};
@@ -24436,7 +24445,7 @@ function focusClockVoiceContext(state = focusClockState()) {
   const relation = FOCUS_CLOCK_RELATIONS[savedRelation] ? savedRelation : 'neutral';
   const characterName = String(character?.name || character?.data?.name || '');
   return { hasCharacter: !!characterKey, characterKey, character, persona, providerId, profile, voice,
-    enabled: !!profile?.enabled && !state.soundEnabled, options, selected: voice ? options[0]?.key || '' : '', chatKey,
+    enabled: !!(state.voiceMode === 'custom' ? (state.customVoiceEnabled?.[characterKey] ?? profile?.enabled) : profile?.enabled) && !state.soundEnabled, options, selected: voice ? options[0]?.key || '' : '', chatKey,
     speaker: characterName, relation, characterName };
 }
 
@@ -24457,13 +24466,14 @@ function focusClockBuildVoiceParams(binding, text) {
 }
 
 function focusClockVoiceBindingKey(binding) {
+  if(settings.focusClock.voiceMode==='custom')return JSON.stringify([binding.characterKey,'custom',binding.chatKey,binding.persona?.key||'']);
   return JSON.stringify([binding.characterKey, binding.providerId, binding.profile?.revision, binding.voice?.voiceId,
     binding.chatKey, binding.persona?.key || '', binding.relation]);
 }
 
 function focusClockVoiceBindingActive(bindingKey) {
   const voice = focusClockVoiceContext();
-  return !!settings.enabled && voice.enabled && !!voice.voice && voice.hasCharacter && !!bindingKey
+  return !!settings.enabled && voice.enabled && (settings.focusClock.voiceMode==='custom' || !!voice.voice) && voice.hasCharacter && !!bindingKey
     && focusClockVoiceBindingKey(voice) === bindingKey;
 }
 
@@ -24478,20 +24488,15 @@ function focusClockSetVoiceEnabled(enabled) {
   const f = focusClockState(), voice = focusClockVoiceContext(f);
   if (!voice.characterKey) return;
   if (enabled) { f.soundEnabled = false; focusClockResetMedia(); }
+  if(f.voiceMode==='custom'){f.customVoiceEnabled||={};f.customVoiceEnabled[voice.characterKey]=!!enabled;}
   saveFocusVoiceProfile(f, voice.characterKey, voice.providerId, voice.voice, enabled);
   focusClockCancelVoiceWork({ clearCues: true });
   saveSettings();
-  if (enabled && f.status === 'running' && f.phase === 'focus') void focusClockPrepareVoiceCues(f.sessionToken);
+  if (enabled && f.status === 'running' && (f.phase === 'focus' || f.voiceMode === 'custom')) void focusClockPrepareVoiceCues(f.sessionToken);
 }
 
 function focusClockPickStockLines(relation, count) {
-  const bank = [...(FOCUS_CLOCK_STOCK_LINES[relation] || FOCUS_CLOCK_STOCK_LINES.neutral)];
-  const result = [];
-  while (result.length < count) {
-    if (!bank.length) bank.push(...(FOCUS_CLOCK_STOCK_LINES[relation] || FOCUS_CLOCK_STOCK_LINES.neutral));
-    result.push(bank.splice(Math.floor(Math.random() * bank.length), 1)[0]);
-  }
-  return result;
+  return pickFocusStockLines(FOCUS_CLOCK_STOCK_LINES[relation] || FOCUS_CLOCK_STOCK_LINES.neutral, count);
 }
 
 function focusClockCleanVoiceLine(value) {
@@ -24509,18 +24514,7 @@ async function focusClockGenerateSceneLines(binding, count, subject, { isCurrent
   const rawDescription = binding.character?.description || binding.character?.data?.description || '';
   const characterDescription = cleanContextText(await coreadResolveCompanionMacro(rawDescription, binding.character, binding.persona)).slice(0, 1800) || '未提供额外人设；保持自然、克制，不擅自补写关系和经历。';
   if (!isCurrent()) throw new DOMException('专注语音请求已失效', 'AbortError');
-  const systemPrompt = `你是“千幕专注场景”的角色短句编写器。你的唯一任务是让指定角色在专注计时中自然地提醒、陪伴或收束，不续写剧情，不扮演用户，不引用聊天正文。
-
-【绝对边界】
-1. 仅依据角色人设、用户手动选择的关系档、当前专注事项写台词；不得猜测正文情节、双方共同经历或未给出的关系进度。
-2. 角色必须自然且不 OOC：措辞、礼貌程度、情绪表达与角色人设一致；不把“专注提示”写成客服模板。
-3. 关系档为“${relationMeta.label}”：${relationMeta.rule}
-4. 每句 12—42 个汉字，只说一句话，不写动作、旁白、引号、名字前缀、舞台说明或表情符号。
-5. 不使用“作为AI”、任务分析、行数说明、思维链或标签。只输出严格 JSON：{"lines":["台词1","台词2"]}，数组数量必须为 ${count}。`;
-  const userPrompt = `角色：${binding.speaker}
-角色人设：${characterDescription}
-专注事项：${String(subject || '完成一段专注').slice(0, 160)}
-需要 ${count} 句彼此不重复的专注场景短句；最后一句用于完成时收束，其余用于长时专注中的低频陪伴。`;
+  const {systemPrompt,userPrompt}=focusScenePrompts({relationMeta,characterDescription,binding,count,subject});
   let output = '';
   if (settings.providerMode === 'external' && validateApiSettings()) {
     output = await callExternalApi([
@@ -24552,6 +24546,16 @@ function focusClockMidCueProgresses(durationMinutes, chance) {
   return selected;
 }
 
+function focusClockLibrary() {
+  return focusLibraryRuntime ||= createFocusLibraryRuntime({
+    resolveNamespace:async()=>(await featureRuntime.load('imageAdmission')).resolveImageAccountNamespace(), owner:()=>settings,
+    context:key=>focusClockVoiceContext(key?{...focusClockState(),activity:'task',voiceCharacterAvatar:decodeURIComponent(key.slice(10))}:focusClockState()),
+    choices:()=>coreadCompanionChoices().map(ch=>({avatar:ch.avatar||ch.data?.avatar,name:ch.name||ch.data?.name||'角色'})),
+    generate:async(binding,text,{isCurrent})=>{const params=focusClockBuildVoiceParams(binding,text);if(!params||!ttsProviderHasCredentials(params.providerId,params))throw Error('请配置当前渠道凭据和此角色音色');if(!isCurrent())throw Error('页面已变化');return (await synthesizeTts(params.providerId,params)).blob;},
+    notify:toast, ui:{document,host:()=>document.getElementById(MODAL_ID),escape:htmlEscape,icons:applyQianmuIcons,confirm:confirmDialog,notify:toast,download:ttsDownloadBlob,stopAudio:()=>ttsStopPlayback(true),changed:()=>{storageInventoryState.sampledAt=0;}},
+  });
+}
+
 function focusClockPreparation() {
   return focusClockVoicePreparation ||= createFocusVoicePreparation({
     enabled: () => settings.enabled, getState: () => focusClockState(),
@@ -24559,10 +24563,10 @@ function focusClockPreparation() {
       active: key => focusClockVoiceBindingActive(key), params: (binding, text) => focusClockBuildVoiceParams(binding, text),
       credentials: (provider, params) => ttsProviderHasCredentials(provider, params) },
     frequencies: FOCUS_CLOCK_VOICE_FREQUENCIES, midpoints: (minutes, chance) => focusClockMidCueProgresses(minutes, chance),
-    bookMeta: id => coreadBookMeta(id),
+    library: {prepare:options=>focusClockLibrary().prepare(options)}, bookMeta: id => coreadBookMeta(id),
     textSource: { generate: (...args) => focusClockGenerateSceneLines(...args), fallback: (...args) => focusClockPickStockLines(...args), clean: text => focusClockCleanVoiceLine(text) },
     synthesize: (...args) => focusClockSynthVoiceCue(...args), uid: prefix => uid(prefix), now: () => Date.now(), save: () => saveSettings(),
-    warn: (kind, error) => console.warn(`[${MODULE_NAME}] focus ${kind === 'scene' ? 'scene voice fallback' : 'voice synth failed'}`, error),
+    warn: (kind, error) => kind==='library' ? toast('专注语音读取失败，未生成替代语音。','warning') : console.warn(`[${MODULE_NAME}] focus ${kind === 'scene' ? 'scene voice fallback' : 'voice synth failed'}`, error),
   });
 }
 
@@ -24570,7 +24574,7 @@ function focusClockPrepareVoiceCues(sessionToken) { return focusClockPreparation
 
 function focusClockSpeech() {
   return focusClockSpeechPlayer ||= createFocusSpeechPlayer({
-    Audio, URL, memory: key => focusClockVoiceCache.peek(key),
+    Audio, URL, memory: key => focusClockVoiceCache.peek(key), readLibrary:cue=>focusClockLibrary().read(cue),
     cacheAvailable: () => blobStore.blobStoreAvailable(), readCache: key => blobStore.getAudio(key),
     bindingActive: key => focusClockVoiceBindingActive(key),
     channel: {
@@ -24587,7 +24591,7 @@ function focusClockSpeech() {
 
 function focusClockPlayVoiceCue(cue, options) { return focusClockSpeech().play(cue, options); }
 
-function focusClockVoiceCueBlob(cue) { return focusClockVoiceCache.cueBlob(cue); }
+async function focusClockVoiceCueBlob(cue) { return cue?.library ? (await focusClockLibrary().read(cue))?.blob : focusClockVoiceCache.cueBlob(cue); }
 
 function focusClockRecords() {
   return focusClockCueRecords ||= createFocusCueRecords({
@@ -24617,13 +24621,14 @@ function focusClockDrawer() {
   });
 }
 
-function focusClockCloseVoiceDrawer() { focusClockVoiceDrawer?.close(); }
+function focusClockCloseVoiceDrawer() { focusClockVoiceDrawer?.close(); focusLibraryRuntime?.close(); }
 
 function focusClockSyncVoiceDrawerFavorites(portal) { return focusClockRecords().syncFavorites(portal); }
 
 function focusClockToggleVoiceCueFavorite(cue, button) { return focusClockRecords().toggleFavorite(cue, button); }
 
 async function focusClockRegenerateVoiceCue(cue) {
+  if(cue?.library){toast('请在专注语音库中编辑或重新生成这条语音。','info');return false;}
   const binding = focusClockVoiceContext();
   if (cue.characterKey && (cue.characterKey !== binding.characterKey || cue.providerId !== binding.providerId)) {
     toast('请先选择这条语音的角色与原配音渠道。', 'warning'); return false;
@@ -24717,7 +24722,7 @@ function startFocusClockRuntime(options) {
     document, window, setInterval, clearInterval,
     tick: focusClockRuntimeTick, getState: focusClockState,
     prepare: f => {
-      if (f.phase === 'focus' && f.sessionToken && !f.sessionVoiceCues.length && focusClockVoiceContext(f).enabled) void focusClockPrepareVoiceCues(f.sessionToken);
+      if ((f.phase === 'focus' || f.voiceMode === 'custom') && f.sessionToken && !f.sessionVoiceCues.length && focusClockVoiceContext(f).enabled) void focusClockPrepareVoiceCues(f.sessionToken);
     },
   });
   focusClockRuntime.start(options);
@@ -24761,7 +24766,7 @@ function bindFocusClockEvents(root) {
     clock: { enableLock: (...args) => focusClockEnableLock(...args), selectPhase: (...args) => focusClockSetPhase(...args), enterReading: (...args) => focusClockEnterReading(...args), requestStart: (...args) => focusClockRequestStart(...args), pause: (...args) => focusClockPause(...args), reset: (...args) => focusClockReset(...args), phaseMs: (...args) => focusClockPhaseMs(...args), exportWeek: (...args) => focusClockExportWeekImage(...args), dateKey: (...args) => focusClockDateKey(...args) },
     books: { list: () => coread().books, meta: (...args) => coreadBookMeta(...args), choices: (...args) => coreadCompanionChoices(...args) },
     sound: { prime: (...args) => focusClockPrimeSound(...args), reset: (...args) => focusClockResetMedia(...args), play: (...args) => focusClockPlayDoneSound(...args), sync: (...args) => focusClockSyncPreviewButton(...args) },
-    voice: { context: (...args) => focusClockVoiceContext(...args), openDrawer: (...args) => focusClockOpenVoiceDrawer(...args), setEnabled: (...args) => focusClockSetVoiceEnabled(...args), bind: (...args) => focusClockBindVoice(...args), cancel: (...args) => focusClockCancelVoiceWork(...args) },
+    voice: { openLibrary:()=>focusClockLibrary().open(), context: (...args) => focusClockVoiceContext(...args), openDrawer: (...args) => focusClockOpenVoiceDrawer(...args), setEnabled: (...args) => focusClockSetVoiceEnabled(...args), bind: (...args) => focusClockBindVoice(...args), cancel: (...args) => focusClockCancelVoiceWork(...args) },
   });
 }
 

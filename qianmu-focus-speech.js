@@ -1,5 +1,5 @@
 // Own only focus speech admission and audio identity; the shared TTS channel stays with the host.
-export function createFocusSpeechPlayer({Audio, URL, memory, cacheAvailable, readCache, channel, bindingActive}) {
+export function createFocusSpeechPlayer({Audio, URL, memory, cacheAvailable, readCache, channel, bindingActive, readLibrary}) {
   let sequence = 0, ownedAudio = null;
   function stopOwned() {
     if (ownedAudio && channel.current() === ownedAudio) channel.stop();
@@ -16,7 +16,7 @@ export function createFocusSpeechPlayer({Audio, URL, memory, cacheAvailable, rea
     if (!allowed()) return false;
     try {
       const memoryBlob = memory(cue.cacheKey);
-      const hit = memoryBlob ? {blob: memoryBlob} : (cacheAvailable() ? await readCache(cue.cacheKey) : null);
+      const hit = cue.library ? await readLibrary?.(cue) : memoryBlob ? {blob: memoryBlob} : (cacheAvailable() ? await readCache(cue.cacheKey) : null);
       if (!hit?.blob || !allowed()) return false;
       channel.stop();
       const url = URL.createObjectURL(hit.blob);

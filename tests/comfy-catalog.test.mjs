@@ -179,7 +179,7 @@ test('client cleanup is explicit, bounded and preserves partial error reporting'
 
 test('global storage meter counts Comfy journal by constant-size usage read, without remote listing or recipe scans', async () => {
   let reads = 0;
-  const context = vm.createContext({ storyboardAdmissionEpoch:1, navigator: { storage: { estimate: async () => ({ usage: 1000, quota: 100000 }) } },
+  const context = vm.createContext({ focusClockLibrary:()=>({summary:async()=>({status:'ready',bytes:0,count:0})}), storyboardAdmissionEpoch:1, navigator: { storage: { estimate: async () => ({ usage: 1000, quota: 100000 }) } },
     blobStore: { estimateBlobStoreUsage: async () => ({ totalBytes: 0, categories: [], recoverableBytes: 0 }), auditOrphanedReaderBlobs: async () => ({ count: 0, bytes: 0 }), classifyStoragePressure: () => ({}) },
     featureRuntime: { load: async key => key==='comfyStorage'?{collectComfyStorage:async()=>({bytes:0,count:0,errors:[]})}:({ manageImageAdmissionStorage: async () => ({ count: 1, bytes: 10 }) }) },
     storyboardManageImageChannels: async () => ({ count: 1, bytes: 20 }), storyboardImageServiceRuntime: async () => ({ manage: async () => ({ count: 1, bytes: 30 }) }),

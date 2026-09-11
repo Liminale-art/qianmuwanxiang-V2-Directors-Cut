@@ -12,6 +12,7 @@ export function bindFocusClockPage(root, {state, stateOwner, enabled, defaults, 
   root.querySelector('.sd-focus-lock')?.addEventListener('click', () => void clock.enableLock());
   root.querySelector('.sd-focus-auto-next-wrap')?.addEventListener('click', (event) => event.stopPropagation());
   root.querySelector('.sd-focus-voice-drawer-open')?.addEventListener('click', voice.openDrawer);
+  root.querySelector('.sd-focus-library-open')?.addEventListener('click', () => void voice.openLibrary());
   root.querySelector('.sd-focus-finale-voice')?.addEventListener('click', voice.openDrawer);
   root.querySelectorAll('.sd-focus-phase').forEach((button) => button.addEventListener('click', () => {
     clock.selectPhase(button.dataset.focusPhase);
@@ -136,7 +137,9 @@ export function bindFocusClockPage(root, {state, stateOwner, enabled, defaults, 
     ui.save();
   });
   root.querySelectorAll('.sd-focus-voice-mode').forEach((button) => button.addEventListener('click', () => {
-    state().voiceMode = button.dataset.focusVoiceMode === 'scene' ? 'scene' : 'stock';
+    if(state().status!=='idle')return;
+    state().voiceMode = button.dataset.focusVoiceMode === 'scene' ? 'scene' : 'custom';
+    voice.cancel({clearCues:true});
     ui.save();
     ui.render();
   }));
