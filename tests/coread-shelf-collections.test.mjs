@@ -41,6 +41,6 @@ assert.match(source, /仅书目信息会随千幕配置同步，书籍内容须�
 assert.doesNotMatch(source, /也可稍后通过伴读数据打包完成迁移/, '跨端缺书弹窗不得继续展示旧迁移说明');
 
 const exportBlock = source.slice(source.indexOf('async function coreadExportData'), source.indexOf('async function coreadImportDataFile'));
-assert.match(exportBlock, /version: 5[\s\S]*prefs: coreadSanitizePackageValue\(coread\(\)\)/, 'v5 伴读数据包必须随偏好携带合集结构');
+assert.match(exportBlock, /version: 5[\s\S]*prefs: omitConfigConnections\(\{coread:coreadSanitizePackageValue\(coread\(\)\)\}\)\.coread/, 'v5 伴读数据包必须随偏好携带合集结构，同时排除完整连接');
 
 console.log('Coread shelf collections contract OK');

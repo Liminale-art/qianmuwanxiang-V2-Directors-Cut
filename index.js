@@ -34878,7 +34878,7 @@ async function coreadExportData() {
   try { retrievalLogs = await blobStore.listRetLog(); } catch (e) { console.warn(`[${MODULE_NAME}] export retrieval logs failed`, e); }
   const payload = {
     type: 'qianmu-coread', version: 5, exportedAt: new Date().toISOString(), credentialsIncluded: false,
-    prefs: coreadSanitizePackageValue(coread()),
+    prefs: omitConfigConnections({coread:coreadSanitizePackageValue(coread())}).coread,
     books,
     chats,
     images,
@@ -34964,7 +34964,7 @@ async function coreadImportDataFile(file) {
       }
     }
     // 偏好深合并：保留本机书目、启用态和全部凭据；v1–v5 数据均兼容。
-    if (isPlainObject(data.prefs)) coreadMergePackageValue(coread(), data.prefs);
+    if (isPlainObject(data.prefs)) coreadMergePackageValue(coread(), omitConfigConnections({coread:data.prefs}).coread);
     saveSettings();
     toast(`已导入 ${ok} 本书 · ${chatOk} 段对话 · ${imageOk} 张插图 · ${vectorOk} 组向量 · ${audioOk} 条语音${logOk ? ` · ${logOk} 条检索记录` : ''}。`, 'success');
     renderModal();
