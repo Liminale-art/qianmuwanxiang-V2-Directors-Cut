@@ -38,13 +38,21 @@ try {
     const state={shotPlans:[{...structuredClone(prior),shots:[{id:'s',status:'completed',prompt:'after import'}]}]};
     Object.assign(window,await import('/qianmu-plan-archive-write.js'),{clone:structuredClone,blobStore:api,storyboardState:()=>state,
       storyboardPlanArchiveEpoch:0,storyboardPlanArchiveCache:new Map(),saveSettings(){},storyboardPackageArchiveAllowed:async()=>true});
-    const entry=new Function(source+';return {archive:storyboardArchiveShotPlans,portable:storyboardPlansForPortableExport};')();
+    const entry=new Function(source+';return {archive:storyboardArchiveShotPlans,portable:storyboardPlansForPortableExport,release:storyboardReleasePlanArchive};')();
     check('actual entry archives into the returned collision-free reference',await entry.archive()===1&&state.shotPlans[0].archiveRef!==base);
     storyboardPlanArchiveCache.clear();
     const current=await entry.portable(state.shotPlans,{strict:true});
     const previous=await entry.portable([{...prior,archiveRef:base}],{strict:true});
     check('both original and imported prompts survive cache clearing and portable rehydration',current[0].shots[0].prompt==='after import'&&previous[0].shots[0].prompt==='before import');
+    const usage=await api.estimateBlobStoreUsage(),scope=usage.stores.find(row=>row.name==='storyboard_plan_archives').scopes.find(row=>row.chatKey==='entry-chat');
+    check('storage counts both variants by record chat ownership',scope.count===2&&scope.bytes>0);
+    const activeKey=state.shotPlans[0].archiveRef;await entry.release(state.shotPlans[0]);
+    check('releasing the selected variant leaves the older archive intact',(await api.getStoryboardPlanArchives([activeKey])).length===0&&(await api.getStoryboardPlanArchives([base])).length===1);
+    await put([{key:base,chatKey:prior.chatKey,planId:prior.id,plan:{...prior,shots:[{id:'s',prompt:'another variant'}]}}]);
+    const cleared=await api.clearChatScopedStorage([{name:'storyboard_plan_archives',chatKey:'entry-chat'}]);
+    const remaining=await api.estimateBlobStoreUsage();
+    check('explicit chat cleanup includes variants without touching other chats',cleared.count===2&&cleared.failed.length===0&&!remaining.chatScopes.some(row=>row.chatKey==='entry-chat')&&(await api.getStoryboardPlanArchives(['fixture-key'])).length===1);
     return checks;
-  },['storyboardPlanIsTerminal','storyboardPlanArchiveKey','storyboardPlanHasHeavyPayload','storyboardPlanArchivePayload','storyboardPlanLightweightSummary','storyboardArchiveShotPlans','storyboardPlansForPortableExport'].map(section).join('\n'));
+  },['storyboardPlanIsTerminal','storyboardPlanArchiveKey','storyboardPlanHasHeavyPayload','storyboardPlanArchivePayload','storyboardPlanLightweightSummary','storyboardArchiveShotPlans','storyboardPlansForPortableExport','storyboardReleasePlanArchive'].map(section).join('\n'));
   assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({nativeIndexedDB:true,checks,external,errors}));
 } finally {await context.close();await browser.close();}

@@ -61,6 +61,15 @@ test('heavy settings shrink only after durable storage and terminal revalidation
   assert.match(source, /function storyboardPlanHasHeavyPayload[\s\S]*storyboardPlanIsTerminal\(plan\)/);
 });
 
+test('longest normalized plan identities retain both legacy and immutable variant references losslessly',()=>{
+  const chatKey='c'.repeat(512),id='p'.repeat(200),base=`${chatKey}␟${id}`;
+  for(const archiveRef of [base,base+'␟revision:'+'f'.repeat(64)]){
+    const plan=normalizeStoryboardState({shotPlans:[{id,chatKey,status:'completed',archiveRef,shots:[{id:'s',hasPrompt:true}]}]}).shotPlans[0];
+    assert.equal(plan.id,id);assert.equal(plan.chatKey,chatKey);assert.equal(plan.archiveRef,archiveRef);assert.ok(archiveRef.length<900);
+    assert.equal(plan.shots[0].shotSpec,null,'normalization must not invent a new heavy payload for an archived variant');
+  }
+});
+
 test('retry and re-extraction release machine-local archives before mutation', () => {
   assert.match(source, /async function storyboardRetryPlan[\s\S]*if \(plan\.archiveRef\) await storyboardReleasePlanArchive\(plan\)[\s\S]*plan\.status = 'screening'/);
   assert.match(source, /dataset\.storyboardChatAction === 'capture-floor'[\s\S]*if \(plan\.archiveRef\) await storyboardReleasePlanArchive\(plan\)/);
