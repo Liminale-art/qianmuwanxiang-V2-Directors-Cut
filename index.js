@@ -9666,6 +9666,8 @@ function bindTtsTabEvents(root) {
 
   // 当前 Provider：测试连接（合成一句试听语音并播放）/ 保存
   root.querySelector('.sd-tts-test-conn')?.addEventListener('click', async (e) => {
+    ttsRestoreTasks++;
+    try {
     const btn = e.currentTarget;
     // 以当前界面值为准（不强依赖已 change 落盘）
     const apiKey = (root.querySelector('.sd-tts-key')?.value || '').trim();
@@ -9707,6 +9709,7 @@ function bindTtsTabEvents(root) {
       btn.disabled = false;
       if (prevIcon) setQianmuIconClass(btnIcon, prevIcon);
     }
+    } finally { ttsRestoreTasks--; }
   });
   root.querySelector('.sd-tts-save-conn')?.addEventListener('click', () => {
     // 把当前界面值显式写入并落盘（即便用户没触发 change）
@@ -9793,6 +9796,8 @@ function bindTtsTabEvents(root) {
     renderModal();
   });
   root.querySelectorAll('.sd-tts-lib-test').forEach((btn) => btn.addEventListener('click', async (e) => {
+    ttsRestoreTasks++;
+    try {
     const cur = (p.voiceLibrary || []).find((v) => v.id === btn.dataset.id);
     const text = (root.querySelector('.sd-tts-test-text')?.value || '').trim();
     const result = await ttsPreviewVoice(cur?.voiceId || '', text, e.currentTarget, cur?.model || 'auto');
@@ -9802,6 +9807,7 @@ function bindTtsTabEvents(root) {
       toast(`已识别为${ttsDoubaoVoiceModelLabel(cur.model)}，后续将自动使用。`, 'success');
       renderModal();
     }
+    } finally { ttsRestoreTasks--; }
   }));
   root.querySelectorAll('.sd-tts-lib-edit').forEach((btn) => btn.addEventListener('click', async () => {
     const cur = (p.voiceLibrary || []).find((v) => v.id === btn.dataset.id);
@@ -9841,6 +9847,8 @@ function bindTtsTabEvents(root) {
     renderModal();
   });
   root.querySelectorAll('.sd-tts-narch-test').forEach((btn) => btn.addEventListener('click', async (e) => {
+    ttsRestoreTasks++;
+    try {
     const cur = (p.npcArchetypes || []).find((a) => a.id === btn.dataset.id);
     const text = (root.querySelector('.sd-tts-test-text')?.value || '').trim();
     const result = await ttsPreviewVoice(cur?.voiceId || '', text, e.currentTarget, cur?.model || 'auto');
@@ -9850,6 +9858,7 @@ function bindTtsTabEvents(root) {
       toast(`已识别为${ttsDoubaoVoiceModelLabel(cur.model)}，后续将自动使用。`, 'success');
       renderModal();
     }
+    } finally { ttsRestoreTasks--; }
   }));
   root.querySelectorAll('.sd-tts-narch-edit').forEach((btn) => btn.addEventListener('click', async () => {
     const cur = (p.npcArchetypes || []).find((a) => a.id === btn.dataset.id);
@@ -11395,6 +11404,8 @@ function ttsHighlightEls(mesEl, idx) {
 
 // 播放一句已解析台词：spinner → 合成（force=重生成跳缓存）→ 仅真合成弹提示 → 列表+内联同步高亮
 async function ttsPlayResolvedLine(line, mesEl, idx, spinBtn, force = false) {
+  ttsRestoreTasks++;
+  try {
   const icon = spinBtn?.querySelector('i');
   const prev = icon?.className;
   setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
@@ -11407,6 +11418,7 @@ async function ttsPlayResolvedLine(line, mesEl, idx, spinBtn, force = false) {
     if (prev) setQianmuIconClass(icon, prev);
     toast(`配音失败：${err?.message || err}`, 'error');
   }
+  } finally { ttsRestoreTasks--; }
 }
 
 async function ttsPlayLineFromBtn(btn, force = false) {
@@ -12078,6 +12090,8 @@ function ttsDownloadBlob(blob, filename) {
 
 // 下载单句：合成(走缓存)→导出 blob
 async function ttsDownloadLine(line, btn, location = {}) {
+  ttsRestoreTasks++;
+  try {
   const icon = btn?.querySelector('i');
   const prev = icon?.className;
   setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
@@ -12091,6 +12105,7 @@ async function ttsDownloadLine(line, btn, location = {}) {
   } finally {
     if (prev) setQianmuIconClass(icon, prev);
   }
+  } finally { ttsRestoreTasks--; }
 }
 
 function ttsFavoriteIdentity(line) {
@@ -12118,6 +12133,8 @@ async function ttsSyncFavoriteButton(line, btn) {
 
 // 收藏按钮是幂等切换：同一模型/音色/参数再次点击即取消，不重新合成。
 async function ttsFavoriteLine(line, btn, location = {}) {
+  ttsRestoreTasks++;
+  try {
   if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地收藏。', 'warning'); return; }
   const icon = btn?.querySelector('i');
   const prev = icon?.className;
@@ -12152,6 +12169,7 @@ async function ttsFavoriteLine(line, btn, location = {}) {
     if (btn) await ttsSyncFavoriteButton(line, btn);
     else if (prev) setQianmuIconClass(icon, prev);
   }
+  } finally { ttsRestoreTasks--; }
 }
 function ttsPopupOutside(e) {
   if (ttsPopupEl && !ttsPopupEl.contains(e.target)) ttsCloseQuickPopup();
