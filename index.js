@@ -8328,7 +8328,7 @@ async function importPinnedNotesBackup(event) {
   const input = event?.currentTarget;
   const file = input?.files?.[0];
   if (!file) return;
-  if (importPinnedNotesBackup.busy || storageCleanupSession.busy) return toast('请先结束导入或关闭清理选择，再从备份区导入。', 'warning');
+  if (importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || storageCleanupSession.busy) return toast('请先结束导入或关闭清理选择，再从备份区导入。', 'warning');
   importPinnedNotesBackup.busy = true;
   const owner = settings, epoch = storyboardAdmissionEpoch;
   const view = document.getElementById(MODAL_ID);
@@ -8402,21 +8402,30 @@ async function importTtsFavoritesBackup(event) {
   const input = event?.currentTarget;
   const file = input?.files?.[0];
   if (!file) return;
+  if (importTtsFavoritesBackup.busy || importPinnedNotesBackup.busy || storageCleanupSession.busy) return toast('请先结束导入或关闭清理选择，再从备份区导入。', 'warning');
+  importTtsFavoritesBackup.busy = true;
+  const owner = settings, epoch = storyboardAdmissionEpoch, modal = document.getElementById(MODAL_ID);
+  const check = () => { if (settings !== owner || epoch !== storyboardAdmissionEpoch || !input.isConnected || !modal?.isConnected || !modal.classList.contains('open')) throw Error('导入页面或状态已变化，后续已停止；已写入内容保留。'); };
+  let imported = 0;
   try {
+    check();
     if (Number(file.size) > 256 * 1024 * 1024) throw new Error('语音收藏备份文件超过 256 MB');
     const payload = JSON.parse(await file.text());
+    check();
     if (payload?.type !== 'qianmu-tts-favorites' || Number(payload?.version) !== 1 || !Array.isArray(payload?.entries)) {
       throw new Error('不是有效的千幕语音收藏备份');
     }
-    const entries = payload.entries.slice(0, 2000);
-    let imported = 0;
+    if (payload.entries.length > 2000) throw new Error('语音收藏备份超过 2000 条，请拆分后导入；未写入内容。');
+    const entries = payload.entries;
     const failed = [];
     for (let index = 0; index < entries.length; index++) {
+      check();
       const item = entries[index];
       try {
         if (!item || typeof item !== 'object' || typeof item.data !== 'string' || item.data.length > 64 * 1024 * 1024) throw new Error('条目格式或体积无效');
         let id = String(item.id || '').trim().slice(0, 240) || uid('fav-import');
         if (await blobStore.hasFavorite(id)) id = uid('fav-import');
+        check();
         const mime = /^audio\/[a-z0-9.+-]+$/i.test(String(item.mime || '')) ? String(item.mime) : 'audio/mpeg';
         const audioBlob = base64ToBlob(item.data, mime);
         if (audioBlob.size > 48 * 1024 * 1024) throw new Error('单条音频超过 48 MB');
@@ -8426,14 +8435,17 @@ async function importTtsFavoritesBackup(event) {
         failed.push(`第 ${index + 1} 条：${error?.message || error}`);
       }
     }
-    const modal = document.getElementById(MODAL_ID);
+    check();
     if (activeTab === 'voicing' && modal) await ttsRefreshFavorites(modal);
+    check();
     await refreshStorageInventory(true);
+    check();
     if (failed.length) toast(`已导入 ${imported} 条语音收藏，${failed.length} 条失败并跳过。${failed.slice(0, 2).join('；')}`, 'warning');
     else toast(`已导入 ${imported} 条语音收藏；同 ID 条目已作为副本保留。`, 'success');
   } catch (error) {
-    toast(`语音收藏导入失败：${error?.message || error}`, 'error');
+    toast(`语音收藏导入未完成：${imported ? `已导入 ${imported} 条，已写入内容保留；` : ''}${error?.message || error}`, 'error');
   } finally {
+    importTtsFavoritesBackup.busy = false;
     if (input) input.value = '';
   }
 }
@@ -25587,7 +25599,7 @@ function configRestoreActivity(includeCleanup = true) {
     focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy,
     director: busy || theaterBusy,
     image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || storyboardImageService?.busy || storyboardReceiveServiceImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
-    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || importPinnedNotesBackup.busy || (includeCleanup && storageCleanupSession.busy),
+    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || (includeCleanup && storageCleanupSession.busy),
   };
 }
 

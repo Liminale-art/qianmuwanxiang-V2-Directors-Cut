@@ -89,7 +89,7 @@ assert.match(source, /function importPinnedNotesBackup[\s\S]*importQianmuNotesBa
 assert.match(notesSource, /function importQianmuNotesBackup[\s\S]*12 \* 1024 \* 1024[\s\S]*payload\?\.type !== 'qianmu-notes'[\s\S]*payload\.notes\.length > 1000/, 'notes restore must reject oversized entry lists, not silently truncate them');
 assert.match(notesSource, /occupiedIds\.has\(id\)[\s\S]*uid\('note-import'\)[\s\S]*pinned: true, floating: false/, 'restoring notes must preserve local collisions as independent safe copies');
 assert.match(source, /function exportTtsFavoritesBackup[\s\S]*qianmu-tts-favorites[\s\S]*credentialsIncluded: false/, 'voice favorites need a credential-free binary backup before destructive cleanup');
-assert.match(source, /function importTtsFavoritesBackup[\s\S]*256 \* 1024 \* 1024[\s\S]*slice\(0, 2000\)[\s\S]*hasFavorite\(id\)[\s\S]*uid\('fav-import'\)/, 'favorite restore must bound input and preserve ID collisions as copies');
+assert.match(source, /function importTtsFavoritesBackup[\s\S]*256 \* 1024 \* 1024[\s\S]*entries.length > 2000[\s\S]*hasFavorite\(id\)[\s\S]*uid\('fav-import'\)/, 'favorite restore must reject oversized lists instead of silently clipping, and preserve ID collisions as copies');
 assert.match(source, /storageSafeFavoriteMeta[\s\S]*const allowed = \['speaker'[\s\S]*credentialsIncluded: false/, 'favorite packages must use an explicit metadata allow-list');
 assert.match(source, /case 'reader': void coreadExportData\(\)[\s\S]*case 'reader': await coreadImportDataFile\(file\)/, 'the unified storage backup home must retain the complete reader backup round trip');
 assert.match(source, /STORAGE_CHAT_CLEARABLE[\s\S]*reader_chats[\s\S]*reader_vectors/, 'the UI must expose only the same chat-scoped store subset');
