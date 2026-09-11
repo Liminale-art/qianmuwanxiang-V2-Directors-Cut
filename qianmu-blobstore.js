@@ -356,7 +356,33 @@ export function createReaderPackageWriter({check = () => {}} = {}) {
       }
       return result;
     },
-    pushRetLog,
+    async pushRetLog(record, maxEntries = 50) {
+      check();
+      if (!Number.isSafeInteger(maxEntries) || maxEntries < 1) throw new Error('检索记录保留数量无效，未导入。');
+      if (!blobStoreAvailable()) throw new Error('伴读存储不可用，未导入检索记录。');
+      const db = await openDB();
+      check();
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction(STORE_RETLOG, 'readwrite');
+        const logs = transaction.objectStore(STORE_RETLOG);
+        let guardError;
+        const failure = event => guardError || event?.target?.error || transaction.error || new Error('检索记录未能完成保存。');
+        transaction.oncomplete = resolve;
+        transaction.onerror = event => reject(failure(event));
+        transaction.onabort = event => reject(failure(event));
+        try {
+          logs.add({...record, at:record?.at || Date.now()});
+          const lookup = logs.getAllKeys();
+          lookup.onsuccess = () => {
+            try {
+              check();
+              // Keep the existing insertion-order ring; insertion and trimming commit together.
+              for (const key of lookup.result.slice(0, Math.max(0, lookup.result.length - maxEntries))) logs.delete(key);
+            } catch (error) { guardError = error; transaction.abort(); }
+          };
+        } catch (error) { guardError = error; transaction.abort(); }
+      });
+    },
   };
 }
 

@@ -94,9 +94,34 @@ try{
     let audioCalls=0;interrupted=false;
     try{await db.createReaderPackageWriter({check(){if(++audioCalls===2)throw Error('database wait expired');}}).bulkPutAudio([entry('reader-audio-open')]);}catch{interrupted=true;}
     check('audio import cannot write after its database wait becomes stale',interrupted&&audioCalls===2&&!await db.getAudio('reader-audio-open'));
+    for(let i=0;i<50;i++)await writer.pushRetLog({query:'original-'+i,at:1000+i});
+    const originalLogs=JSON.stringify(await db.listRetLog());let logFailed=false;
+    try{
+      IDBObjectStore.prototype.add=function(...args){const request=add.apply(this,args);if(this.name==='reader_retlog')request.addEventListener('success',()=>this.transaction.abort(),{once:true});return request;};
+      try{await writer.pushRetLog({query:'aborted insertion',at:2000});}catch(error){logFailed=!!error?.message;}
+    }finally{IDBObjectStore.prototype.add=add;}
+    check('an aborted log insertion preserves all fifty originals',logFailed&&JSON.stringify(await db.listRetLog())===originalLogs);
+    const deleteRecord=IDBObjectStore.prototype.delete;logFailed=false;
+    try{
+      IDBObjectStore.prototype.delete=function(...args){const request=deleteRecord.apply(this,args);if(this.name==='reader_retlog')request.addEventListener('success',()=>this.transaction.abort(),{once:true});return request;};
+      try{await writer.pushRetLog({query:'aborted trimming',at:2000});}catch(error){logFailed=!!error?.message;}
+    }finally{IDBObjectStore.prototype.delete=deleteRecord;}
+    check('trimming failure rolls back both the new log and deletion of old logs',logFailed&&JSON.stringify(await db.listRetLog())===originalLogs);
+    const getAllKeys=IDBObjectStore.prototype.getAllKeys;current=true;logFailed=false;
+    try{
+      IDBObjectStore.prototype.getAllKeys=function(...args){const request=getAllKeys.apply(this,args);if(this.name==='reader_retlog')request.addEventListener('success',()=>{current=false;},{once:true});return request;};
+      try{await guardedAudio.pushRetLog({query:'stale trim',at:2000});}catch{logFailed=true;}
+    }finally{IDBObjectStore.prototype.getAllKeys=getAllKeys;}
+    check('log guard expiry before trimming rolls back the queued insertion',logFailed&&JSON.stringify(await db.listRetLog())===originalLogs);
+    let logCalls=0;logFailed=false;
+    try{await db.createReaderPackageWriter({check(){if(++logCalls===2)throw Error('stale log database wait');}}).pushRetLog({query:'stale open',at:2000});}catch{logFailed=true;}
+    check('log import rechecks its owner after waiting for the database',logFailed&&logCalls===2&&JSON.stringify(await db.listRetLog())===originalLogs);
+    await writer.pushRetLog({query:'confirmed',at:2000});const committedLogs=await db.listRetLog();
+    check('a confirmed log replaces only the oldest insertion and retains exactly fifty',committedLogs.length===50&&committedLogs[0].query==='confirmed'&&!committedLogs.some(r=>r.query==='original-0')&&committedLogs.some(r=>r.query==='original-1'));
     const descriptor=Object.getOwnPropertyDescriptor(window,'indexedDB');
     try{
       Object.defineProperty(window,'indexedDB',{configurable:true,value:undefined});
+      let logsUnavailable=false;try{await writer.pushRetLog({query:'unavailable'});}catch{logsUnavailable=true;}check('log import rejects unavailable storage',logsUnavailable);
       let unavailable=false;try{await writer.bulkPutAudio([entry('reader-audio-unavailable')]);}catch{unavailable=true;}check('audio import rejects unavailable storage instead of claiming saved',unavailable);
       for(const [name,run] of [['strict read',read],['persistent import',()=>write({id:'no-storage'})],['favorite import',()=>db.importFavorite('no-storage',audio,{},'')],['reader import',()=>writer.putBook('no-storage',{})]]){
         let failed=false;try{await run();}catch{failed=true;}check(name+' rejects unavailable storage',failed);
@@ -107,5 +132,5 @@ try{
     }finally{if(descriptor)Object.defineProperty(window,'indexedDB',descriptor);else delete window.indexedDB;}
     return checks;
   });
-  assert.equal(checks.length,34);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,40);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}
