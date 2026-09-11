@@ -72,6 +72,26 @@ try{
       check(method+' checks after database wait without changing the original',stale&&calls===2&&await content(await readValue())==='old');
       await writer[method](key,replacement);check(method+' commits a confirmed replacement',await content(await readValue())==='new');
     }
+    const reader=db.createReaderPackageReader();
+    for(const [method,row] of [['getBook',rows[0]],['getCover',rows[1]],['getReaderChat',rows[2]],['getReaderVectors',rows[4]]]){
+      const [,store,key,,,,content]=row;const get=IDBObjectStore.prototype.get;
+      check(method+' returns the original only after a completed read',await content(await reader[method](key))==='new');
+      let failed=false;
+      try{
+        IDBObjectStore.prototype.get=function(id){const request=get.call(this,id);if(this.name===store&&id===key)request.addEventListener('success',()=>this.transaction.abort(),{once:true});return request;};
+        try{await reader[method](key);}catch(error){failed=!!error?.message;}
+      }finally{IDBObjectStore.prototype.get=get;}
+      check(method+' rejects a successful request followed by transaction abort',failed);
+      let calls=0;failed=false;
+      try{await db.createReaderPackageReader({check(){if(++calls===2)throw Error('stale database wait');}})[method](key);}catch{failed=true;}
+      check(method+' checks state again after the database wait',failed&&calls===2);
+      let current=true;failed=false;
+      try{
+        IDBObjectStore.prototype.get=function(id){const request=get.call(this,id);if(this.name===store&&id===key)request.addEventListener('success',()=>{current=false;},{once:true});return request;};
+        try{await db.createReaderPackageReader({check(){if(!current)throw Error('stale completion');}})[method](key);}catch{failed=true;}
+      }finally{IDBObjectStore.prototype.get=get;}
+      check(method+' cannot publish a result after its owner changes before completion',failed);
+    }
     await db.putAudio('reader-audio-existing',oldBlob,{marker:'old'});
     const entry=key=>({key,blob:newBlob,meta:{marker:'new'}});
     const existing=await writer.bulkPutAudio([entry('reader-audio-existing'),entry('reader-audio-new'),entry('reader-audio-new')]);
@@ -122,6 +142,7 @@ try{
     const descriptor=Object.getOwnPropertyDescriptor(window,'indexedDB');
     try{
       Object.defineProperty(window,'indexedDB',{configurable:true,value:undefined});
+      let readUnavailable=false;try{await reader.getBook('reader-book');}catch{readUnavailable=true;}check('reader backup cannot read cached database handles after storage becomes unavailable',readUnavailable);
       let logsUnavailable=false;try{await writer.pushRetLog({query:'unavailable'});}catch{logsUnavailable=true;}check('log import rejects unavailable storage',logsUnavailable);
       let unavailable=false;try{await writer.bulkPutAudio([entry('reader-audio-unavailable')]);}catch{unavailable=true;}check('audio import rejects unavailable storage instead of claiming saved',unavailable);
       for(const [name,run] of [['strict read',read],['persistent import',()=>write({id:'no-storage'})],['favorite import',()=>db.importFavorite('no-storage',audio,{},'')],['reader import',()=>writer.putBook('no-storage',{})]]){
@@ -157,5 +178,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,49);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,66);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

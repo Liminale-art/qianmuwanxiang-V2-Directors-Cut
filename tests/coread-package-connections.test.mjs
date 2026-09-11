@@ -19,6 +19,7 @@ function fixture(local){
   c.blobToBase64=async()=>{throw Error('unexpected media in connection-only fixture');};
   c.createCoreadImportViewGuard=(origin,action)=>({check(){if(c.pageChanged)throw Error(`${action} page changed`);},release(){c.viewReleased=true;}});
   c.blobStore.createReaderPackageWriter=({check})=>{assert.equal(typeof check,'function');return c.blobStore;};
+  c.blobStore.createReaderPackageReader=({check})=>{assert.equal(typeof check,'function');return c.blobStore;};
   return {c,notices,exported:()=>exported,run:prefs=>c.coreadImportDataFile({text:async()=>JSON.stringify({type:'qianmu-coread',version:5,books:[],prefs})})};
 }
 function settings(){

@@ -298,6 +298,29 @@ export function blobStoreAvailable() {
 }
 
 // ── 伴读：书籍正文（重，懒取）────────────────────────────────
+// Export-only reads must not publish a request result from an aborted transaction.
+export function createReaderPackageReader({check = () => {}} = {}) {
+  const get = async (name, key) => {
+    check();
+    if (!blobStoreAvailable()) throw new Error('伴读存储不可用，未读取备份原件。');
+    const db = await openDB();
+    check();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(name, 'readonly');
+      const failure = event => event?.target?.error || transaction.error || new Error('伴读原件读取未能完成。');
+      transaction.onerror = event => reject(failure(event));
+      transaction.onabort = event => reject(failure(event));
+      const request = transaction.objectStore(name).get(key);
+      transaction.oncomplete = () => { try { check(); resolve(request.result); } catch (error) { reject(error); } };
+    });
+  };
+  return {
+    getBook: key => get(STORE_BOOKS, key), getCover: key => get(STORE_COVERS, key),
+    getReaderChat: key => get(STORE_CHATS, key), getReaderVectors: key => get(STORE_VECTORS, key),
+    listReaderChatKeys, listReaderImages, listReaderVectorKeys, listAudio, listRetLog,
+  };
+}
+
 // Import-only adapter. Daily reader writes retain their existing public behavior.
 export function createReaderPackageWriter({check = () => {}} = {}) {
   const put = async (name, key, value) => {

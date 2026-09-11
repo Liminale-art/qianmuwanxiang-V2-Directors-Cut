@@ -34850,7 +34850,7 @@ async function coreadExportData(origin) {
   check();
   const prefs = omitConfigConnections({coread:coreadSanitizePackageValue(reader)}).coread;
   const bookMetas = clone(reader.books || []);
-  const {books,chats,images,vectors,audio,retrievalLogs} = await collectCoreadPackageData({bookMetas,blobStore,blobToBase64,check});
+  const {books,chats,images,vectors,audio,retrievalLogs} = await collectCoreadPackageData({bookMetas,blobStore:blobStore.createReaderPackageReader({check}),blobToBase64,check});
   check();
   const payload = {
     type: 'qianmu-coread', version: 5, exportedAt: new Date().toISOString(), credentialsIncluded: false,
