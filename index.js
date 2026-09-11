@@ -1,6 +1,7 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, configRestoreGate, configRestoreSummary } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
+import { preserveCapturedPlanArchives } from './qianmu-plan-archive-write.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
 import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
 import { inspectFocusLock, createFocusLockGuard } from './qianmu-focus-lock.js';
@@ -13317,13 +13318,11 @@ async function storyboardArchiveShotPlans(plans = storyboardState().shotPlans) {
   if (!captures.length) return 0;
   try {
     if (!await storyboardPackageArchiveAllowed()) return 0;
-    await blobStore.putStoryboardPlanArchives(captures.map((item) => ({
-      key: item.key, chatKey: item.chatKey, planId: item.id, plan: clone(item.plan), updatedAt: item.updatedAt,
-    })));
+    const stored = await preserveCapturedPlanArchives(captures, blobStore.putStoryboardPlanArchives);
     if (epoch !== storyboardPlanArchiveEpoch) return 0;
     const state = storyboardState();
     let archived = 0;
-    for (const item of captures) {
+    for (const item of stored) {
       const index = state.shotPlans.findIndex((plan) => String(plan.id) === item.id);
       const current = index >= 0 ? state.shotPlans[index] : null;
       if (!current || Number(current.updatedAt || 0) !== item.updatedAt || String(current.status || '') !== item.status || !storyboardPlanIsTerminal(current)) continue;

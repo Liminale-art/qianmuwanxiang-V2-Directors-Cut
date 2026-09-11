@@ -1,6 +1,17 @@
 // Immutable plan archive variants. Hashing finishes before the IndexedDB transaction.
 // Native Web Crypto avoids importing media parsers into the shared blob store.
 const identity = row => JSON.stringify([row.chatKey, row.planId, row.plan]);
+export async function preserveCapturedPlanArchives(captures, write) {
+  const result = await write(captures.map(item => ({key:item.key, chatKey:item.chatKey, planId:item.id,
+    plan:structuredClone(item.plan), updatedAt:item.updatedAt})), {preserveExisting:true});
+  const keys = result?.stored;
+  if (!Array.isArray(keys) || keys.length !== captures.length || keys.some((key,index) => {
+    const base = captures[index].key, prefix = `${base}\u241frevision:`;
+    return typeof key !== 'string' || !key || (key !== base && (!key.startsWith(prefix) || !/^[a-f0-9]{64}$/.test(key.slice(prefix.length))));
+  })) throw new Error('归档返回位置不完整，已保留完整镜头内容');
+  return captures.map((item,index) => ({...item,key:keys[index]}));
+}
+
 export async function writePreservedPlanArchives(db, storeName, records) {
   const copies = records.map(row => structuredClone(row));
   const prepared = await Promise.all(copies.map(async record => {

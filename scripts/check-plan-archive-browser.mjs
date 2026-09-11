@@ -2,13 +2,14 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
+import {storyboardFunctionSource as section} from '../tests/helpers/storyboard-form-fixture.mjs';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const sources=new Map(await Promise.all(['qianmu-blobstore.js','qianmu-plan-archive-write.js'].map(async file=>['https://qianmu.test/'+file,await readFile(new URL('../'+file,import.meta.url),'utf8')])));
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext();let external=0;const errors=[];
 await context.route('**/*',route=>{const url=route.request().url();return url==='https://qianmu.test/'?route.fulfill({contentType:'text/html',body:'<!doctype html>'}):sources.has(url)?route.fulfill({contentType:'application/javascript',body:sources.get(url)}):(external++,route.abort());});
 try {
   const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));await page.goto('https://qianmu.test/');
-  const checks=await page.evaluate(async()=>{
+  const checks=await page.evaluate(async source=>{
     const api=await import('/qianmu-blobstore.js'),checks=[];
     const check=(name,ok)=>{if(!ok)throw Error(name);checks.push(name);};
     const make=(key,prompt)=>({key,chatKey:'fixture',planId:'same',updatedAt:1,plan:{shots:[{prompt}]}});
@@ -32,7 +33,18 @@ try {
     } finally { IDBObjectStore.prototype.add=original; }
     check('failure does not remove existing originals',(await api.getStoryboardPlanArchives(['fixture-key']))[0].plan.shots[0].prompt==='old');
     check('writer does not mutate caller records',fresh.key==='fixture-key'&&fresh.plan.shots[0].prompt==='new');
+    const prior={id:'entry-plan',chatKey:'entry-chat',status:'completed',updatedAt:1,shots:[{id:'s',status:'completed',prompt:'before import'}]};
+    const base='entry-chat␟entry-plan';await api.putStoryboardPlanArchives([{key:base,chatKey:prior.chatKey,planId:prior.id,plan:prior}]);
+    const state={shotPlans:[{...structuredClone(prior),shots:[{id:'s',status:'completed',prompt:'after import'}]}]};
+    Object.assign(window,await import('/qianmu-plan-archive-write.js'),{clone:structuredClone,blobStore:api,storyboardState:()=>state,
+      storyboardPlanArchiveEpoch:0,storyboardPlanArchiveCache:new Map(),saveSettings(){},storyboardPackageArchiveAllowed:async()=>true});
+    const entry=new Function(source+';return {archive:storyboardArchiveShotPlans,portable:storyboardPlansForPortableExport};')();
+    check('actual entry archives into the returned collision-free reference',await entry.archive()===1&&state.shotPlans[0].archiveRef!==base);
+    storyboardPlanArchiveCache.clear();
+    const current=await entry.portable(state.shotPlans,{strict:true});
+    const previous=await entry.portable([{...prior,archiveRef:base}],{strict:true});
+    check('both original and imported prompts survive cache clearing and portable rehydration',current[0].shots[0].prompt==='after import'&&previous[0].shots[0].prompt==='before import');
     return checks;
-  });
+  },['storyboardPlanIsTerminal','storyboardPlanArchiveKey','storyboardPlanHasHeavyPayload','storyboardPlanArchivePayload','storyboardPlanLightweightSummary','storyboardArchiveShotPlans','storyboardPlansForPortableExport'].map(section).join('\n'));
   assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({nativeIndexedDB:true,checks,external,errors}));
 } finally {await context.close();await browser.close();}

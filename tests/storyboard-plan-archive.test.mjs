@@ -52,7 +52,9 @@ test('archived summaries preserve UI identity without recreating heavy defaults'
 
 test('heavy settings shrink only after durable storage and terminal revalidation', () => {
   const archive = source.slice(source.indexOf('async function storyboardArchiveShotPlans'), source.indexOf('function storyboardSchedulePlanArchive'));
-  assert.ok(archive.indexOf('await blobStore.putStoryboardPlanArchives') < archive.indexOf('state.shotPlans[index] = storyboardPlanLightweightSummary'));
+  const writeAt=archive.indexOf('await preserveCapturedPlanArchives(captures, blobStore.putStoryboardPlanArchives)');
+  assert.ok(writeAt>=0&&writeAt<archive.indexOf('state.shotPlans[index] = storyboardPlanLightweightSummary'));
+  assert.match(archive,/for \(const item of stored\)/,'summaries must reference the actual committed key, not the original colliding key');
   assert.match(archive, /epoch !== storyboardPlanArchiveEpoch/);
   assert.match(archive, /Number\(current\.updatedAt \|\| 0\) !== item\.updatedAt/);
   assert.match(archive, /storyboardPlanIsTerminal\(current\)/);
