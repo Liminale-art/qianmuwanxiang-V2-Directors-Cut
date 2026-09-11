@@ -42,9 +42,11 @@ try{
   assert.equal(pack.version,2);assert.equal(pack.includeApi,false);assert.doesNotMatch(JSON.stringify(pack),/fixture-(main|tts|access|summary)-private/);
   assert.equal(pack.settings.tts.providers.doubao.voiceLibrary[0].voiceId,'saved-voice');assert.equal(pack.settings.coread.books[0].progress,.6);
   await page.evaluate(()=>{allow=true;settings.apiKey='recipient-main';settings.tts.providers.doubao.apiKey='recipient-voice';settings.coread.memory.summaryApiKey='recipient-memory';});
+  pack.settings.focusClock={status:'running',phase:'focus',focusMinutes:30,endsAt:9999999999999,lock:{owner:'old'},sessionToken:'foreign',voiceCleanupCues:[{cacheKey:'foreign'}],history:[{id:'completed'}]};
   pack.settings.theme='light';await page.locator('.sd-import-config-file').setInputFiles({name:'config.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(pack))});
   await page.waitForFunction(()=>saved===1);
   assert.deepEqual(await page.evaluate(()=>[settings.theme,settings.apiKey,settings.tts.providers.doubao.apiKey,settings.coread.memory.summaryApiKey]),['light','recipient-main','recipient-voice','recipient-memory']);
+  assert.deepEqual(await page.evaluate(()=>[settings.focusClock.status,settings.focusClock.lock,settings.focusClock.voiceCleanupCues.length,settings.focusClock.history[0].id]),['idle',null,0,'completed']);
   assert.ok(await page.evaluate(()=>prompts.some(text=>text.includes('当前连接与密钥保留'))));
   await page.locator('.sd-import-config-file').setInputFiles({name:'bad.json',mimeType:'application/json',buffer:Buffer.from('{"type":"qianmu-config","version":2,"settings":{"__proto__":{"x":true}}}')});
   await page.waitForFunction(()=>notices.some(row=>row[0].includes('导入失败')));assert.equal(await page.evaluate(()=>saved),1);

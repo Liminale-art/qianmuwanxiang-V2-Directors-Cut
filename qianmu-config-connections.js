@@ -116,6 +116,7 @@ export function configRestoreSummary(incoming, preserveConnections) {
     '范围包含书目索引与读位、专注设置与台词、音色选择、分镜配置，以及外观、排版与小组件位置。',
     Array.isArray(books) ? `文件中有 ${books.length} 项书目索引；这不表示书籍正文已备份或可读取。` : '文件未提供书目索引；恢复后当前书架索引可能被重置。',
     '书籍正文、图片、录音等独立原件不会随此配置包恢复或清空。原件请使用对应模块的备份。',
+    '专注任务、周期及完成记录保留；导入后计时待启动，不恢复旧锁屏、待播语音或临时重听/清理队列。',
     preserveConnections ? '当前连接与密钥保留。' : '连接与密钥也将以文件中的配置替换。',
     '请先保留当前配置的备份。确认恢复？',
   ].join('\n\n');
@@ -123,6 +124,20 @@ export function configRestoreSummary(incoming, preserveConnections) {
 
 // Prepare a detached configuration before host/cache writes. Missing nested fields use
 // defaults; existing values are retained. Local archive references are not portable.
+export function resetRestoredFocusSession(settings) {
+  const f=settings?.focusClock;
+  if(!record(f))return settings;
+  // Match the existing reset/phase duration contract without invoking timer, voice,
+  // lock, history cleanup or persistence callbacks on the current device.
+  const phases={focus:['focusMinutes',25,240],shortBreak:['shortBreakMinutes',5,60],longBreak:['longBreakMinutes',15,120]};
+  const phase=Object.hasOwn(phases,f.phase)?f.phase:'focus', [field,fallback,max]=phases[phase];
+  const duration=Math.max(1,Math.min(max,Math.round(Number(f[field])||fallback)))*60000;
+  Object.assign(f,{phase,status:'idle',lock:null,readingExitPaused:false,remainingMs:duration,sessionPlannedMs:duration,
+    endsAt:0,runStartedAt:0,sessionStartedAt:0,sessionElapsedMs:0,sessionBookId:'',sessionProgressStart:0,sessionToken:'',sessionVoiceCues:[],
+    voiceRoundId:'',voiceReplayCues:[],voiceCleanupCues:[]});
+  return settings;
+}
+
 export function prepareConfigRestore(incoming, current, defaults, preserveConnections, {clone, mergeDefaults, normalizeStoryboardState, migrateSettings = () => {}}) {
   const migration = migrateQianmuSettingsV2(clone(incoming));
   if (migration.failed) throw Error('配置迁移失败');
@@ -137,6 +152,7 @@ export function prepareConfigRestore(incoming, current, defaults, preserveConnec
     }
   }
   migrateSettings(merged);
+  resetRestoredFocusSession(merged);
   // Resolve legacy aliases before restoring recipient connections; never refill foreign keys later.
   if (preserveConnections) restoreConfigConnections(merged, current);
   return merged;
