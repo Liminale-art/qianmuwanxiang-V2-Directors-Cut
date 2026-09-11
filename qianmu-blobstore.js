@@ -753,7 +753,7 @@ export async function deleteStoryboardSnapshots(keys = []) {
 }
 
 // ── 分镜：结束态计划重数据 ───────────────────────────────
-export async function putStoryboardPlanArchives(records = []) {
+export async function putStoryboardPlanArchives(records = [], {preserveExisting = false} = {}) {
   const normalized = (Array.isArray(records) ? records : [])
     .filter((item) => item && String(item.key || '').trim() && item.plan && typeof item.plan === 'object')
     .map((item) => ({
@@ -762,6 +762,10 @@ export async function putStoryboardPlanArchives(records = []) {
     }));
   if (!normalized.length) return { stored: [] };
   const db = await openDB();
+  if (preserveExisting) {
+    const {writePreservedPlanArchives} = await import('./qianmu-plan-archive-write.js');
+    return writePreservedPlanArchives(db, STORE_STORYBOARD_PLAN_ARCHIVES, normalized);
+  }
   const transaction = db.transaction(STORE_STORYBOARD_PLAN_ARCHIVES, 'readwrite');
   const done = new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();
