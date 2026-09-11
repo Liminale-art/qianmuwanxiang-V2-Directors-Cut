@@ -1,5 +1,15 @@
 // Configuration-package policy only. Never scan/rewrite user prose, prompt text or media.
 import {migrateQianmuSettingsV2} from './qianmu-data-migrations.js';
+import {parseBoundedJson} from './qianmu-json-input.js';
+export const CONFIG_INPUT_LIMITS = Object.freeze({bytes:32*1048576,depth:40,nodes:500000});
+export async function readConfigFile(file) {
+  const fail=message=>{throw Object.assign(new Error(message),{code:'qianmu_config_input'});};
+  if (!file || typeof file.text !== 'function') fail('请选择千幕配置文件。');
+  if (file.size !== undefined && (!Number.isSafeInteger(file.size) || file.size < 1 || file.size > CONFIG_INPUT_LIMITS.bytes)) fail('配置文件须为32 MiB以内；请保留原包，大型素材使用各模块备份。');
+  const text = await file.text();
+  try { return parseBoundedJson(text,{maxBytes:CONFIG_INPUT_LIMITS.bytes,maxDepth:CONFIG_INPUT_LIMITS.depth,maxNodes:CONFIG_INPUT_LIMITS.nodes,label:'配置'}); }
+  catch (_) { fail('配置文件无效、含重复字段或超过32 MiB/结构上限；未应用任何内容，请保留原包。'); }
+}
 export const API_CONFIG_KEYS = Object.freeze(['apiUrl', 'apiKey', 'model', 'availableModels', 'apiProfiles', 'providerMode']);
 const own = (value, key) => value && Object.hasOwn(value, key);
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -61,12 +71,14 @@ export function readConfigEnvelope(data) {
   if (!record(data) || data.type !== 'qianmu-config' || ![1, 2].includes(data.version) || !record(data.settings)
     || ((data.version === 2 || own(data, 'includeApi')) && typeof data.includeApi !== 'boolean')) throw Error('格式不符');
   // Reject unsafe object keys before the existing merge-defaults path; never partially import.
-  const pending = [data.settings];
+  const pending = [[data.settings,0]]; let nodes=0;
   while (pending.length) {
-    const value = pending.pop();
+    const [value,depth] = pending.pop();
+    if (depth >= CONFIG_INPUT_LIMITS.depth) throw Error('配置结构不受支持');
     for (const key of Object.keys(value)) {
+      if (++nodes > CONFIG_INPUT_LIMITS.nodes) throw Error('配置条目过多');
       if (!safeKey(key)) throw Error('配置包含不支持的字段');
-      if (value[key] && typeof value[key] === 'object') pending.push(value[key]);
+      if (value[key] && typeof value[key] === 'object') pending.push([value[key],depth+1]);
     }
   }
   return { settings: data.settings, preserveConnections: data.includeApi === false || (data.includeApi === undefined && !API_CONFIG_KEYS.some(key => own(data.settings, key))) };

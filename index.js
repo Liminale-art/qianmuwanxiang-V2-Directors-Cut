@@ -1,5 +1,5 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, configRestoreGate, configRestoreSummary } from './qianmu-config-connections.js';
+import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreSummary } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
 import { createConfigUndoAction } from './qianmu-config-undo-action.js';
@@ -25654,10 +25654,10 @@ async function importConfig(event) {
   if (!allowed(settings)) return;
   let incoming, preserveConnections;
   try {
-    const data = JSON.parse(await file.text());
+    const data = await readConfigFile(file);
     ({ settings: incoming, preserveConnections } = readConfigEnvelope(data));
   } catch (_) {
-    return toast('导入失败：不是有效的千幕配置文件。', 'error');
+    return toast('导入失败：配置格式无效或超过32 MiB/结构上限；已保留当前设置，请保留原包。', 'error');
   }
   if (!allowed(settings)) return;
   const yes = await confirmDialog('恢复前确认', configRestoreSummary(incoming, preserveConnections));

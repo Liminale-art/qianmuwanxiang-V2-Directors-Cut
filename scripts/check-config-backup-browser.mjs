@@ -10,7 +10,7 @@ await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.origin==='https://qianmu.test'){
     if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<div id="story-director-modal"><div id="fixture-root"></div></div>'});
-    if(['/qianmu-config-connections.js','/qianmu-config-apply.js','/qianmu-data-migrations.js','/qianmu-config-undo.js','/qianmu-config-undo-action.js','/qianmu-storage-backup-view.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
+    if(['/qianmu-config-connections.js','/qianmu-json-input.js','/qianmu-config-apply.js','/qianmu-data-migrations.js','/qianmu-config-undo.js','/qianmu-config-undo-action.js','/qianmu-storage-backup-view.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
   }
   external++;return route.abort();
 });

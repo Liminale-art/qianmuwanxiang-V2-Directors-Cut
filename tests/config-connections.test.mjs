@@ -155,6 +155,12 @@ test('actual import migration failure returns before replacing host settings or 
   assert.equal(e.c.settings,owner);assert.equal(e.c.ctx().extensionSettings.module,undefined);assert.equal(e.c.storyboardPlanArchiveEpoch,0);assert.equal(e.writes.length,0);
   assert.equal(e.notices.at(-1)[0],'配置无法恢复，当前设置未改变。');
 });
+test('actual oversized config import neither reads the file nor confirms or saves',async()=>{
+  const e=fixture(),owner=e.c.settings;let read=false,confirm=false;
+  e.c.confirmDialog=async()=>{confirm=true;return true;};
+  await e.c.importConfig({target:{value:'selected',files:[{size:policy.CONFIG_INPUT_LIMITS.bytes+1,text:async()=>{read=true;return '{}';}}]}});
+  assert.equal(read,false);assert.equal(confirm,false);assert.equal(e.c.settings,owner);assert.equal(e.writes.length,0);assert.match(e.notices[0][0],/32 MiB/);
+});
 
 test('catalog preparation failure never publishes imported settings or saves partial configuration',async()=>{
   const e=fixture(),owner=e.c.settings;e.c.confirmDialog=async()=>true;

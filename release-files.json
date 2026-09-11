@@ -4,6 +4,7 @@
   "outputDirectory": "dist",
   "files": [
     "qianmu-config-connections.js",
+    "qianmu-json-input.js",
     "qianmu-config-apply.js",
     "qianmu-config-undo.js",
     "qianmu-config-undo-action.js",

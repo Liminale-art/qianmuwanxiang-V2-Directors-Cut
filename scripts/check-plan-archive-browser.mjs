@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {storyboardFunctionSource as section} from '../tests/helpers/storyboard-form-fixture.mjs';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
-const sources=new Map(await Promise.all(['qianmu-blobstore.js','qianmu-plan-archive-write.js','qianmu-config-undo.js','qianmu-config-connections.js','qianmu-data-migrations.js'].map(async file=>['https://qianmu.test/'+file,await readFile(new URL('../'+file,import.meta.url),'utf8')])));
+const sources=new Map(await Promise.all(['qianmu-blobstore.js','qianmu-plan-archive-write.js','qianmu-config-undo.js','qianmu-config-connections.js','qianmu-json-input.js','qianmu-data-migrations.js'].map(async file=>['https://qianmu.test/'+file,await readFile(new URL('../'+file,import.meta.url),'utf8')])));
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext();let external=0;const errors=[];
 await context.route('**/*',route=>{const url=route.request().url();return url==='https://qianmu.test/'?route.fulfill({contentType:'text/html',body:'<!doctype html>'}):sources.has(url)?route.fulfill({contentType:'application/javascript',body:sources.get(url)}):(external++,route.abort());});
 try {
