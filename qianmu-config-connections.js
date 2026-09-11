@@ -67,3 +67,56 @@ export function readConfigEnvelope(data) {
   }
   return { settings: data.settings, preserveConnections: data.includeApi === false || (data.includeApi === undefined && !API_CONFIG_KEYS.some(key => own(data.settings, key))) };
 }
+
+// Short-lived import guard only. Never persist/log this snapshot: it may contain keys.
+// Reference equality alone misses progress/preferences updated while the dialog is open.
+export function configRestoreGuard(owner) {
+  let baseline;
+  try { baseline = JSON.stringify(owner); } catch (_) { return () => false; }
+  return current => {
+    if (current !== owner || typeof baseline !== 'string') return false;
+    try { return JSON.stringify(current) === baseline; } catch (_) { return false; }
+  };
+}
+
+export function configRestoreGate(owner, activity, notify) {
+  const unchanged = configRestoreGuard(owner);
+  const reasons = {reader:'请先退出阅读并完成伴读任务，再恢复配置。',focus:'请先结束本轮专注及语音准备，再恢复配置。',director:'请等待推演或幕外任务完成后恢复配置。',image:'请等待分镜生成与队列完成后恢复配置。',transfer:'请先完成分镜备份或恢复，再恢复配置。'};
+  return current => {
+    const state = activity();
+    const key = Object.keys(reasons).find(key => state[key]);
+    const reason = key ? reasons[key] : unchanged(current) ? '' : '设置已变化，请重新导入。';
+    if (reason) notify(reason, 'warning');
+    return !reason;
+  };
+}
+
+// Only fixed copy and array length enter the confirmation, never imported names/HTML/keys.
+export function configRestoreSummary(incoming, preserveConnections) {
+  const books = incoming?.coread?.books;
+  return [
+    '将以文件中的配置替换当前设置，不会自动合并。缺失的设置会补为默认值。',
+    '范围包含书目索引与读位、专注设置与台词、音色选择、分镜配置，以及外观、排版与小组件位置。',
+    Array.isArray(books) ? `文件中有 ${books.length} 项书目索引；这不表示书籍正文已备份或可读取。` : '文件未提供书目索引；恢复后当前书架索引可能被重置。',
+    '书籍正文、图片、录音等独立原件不会随此配置包恢复或清空。原件请使用对应模块的备份。',
+    preserveConnections ? '当前连接与密钥保留。' : '连接与密钥也将以文件中的配置替换。',
+    '请先保留当前配置的备份。确认恢复？',
+  ].join('\n\n');
+}
+
+// Prepare a detached configuration before host/cache writes. Missing nested fields use
+// defaults; existing values are retained. Local archive references are not portable.
+export function prepareConfigRestore(incoming, current, defaults, preserveConnections, {clone, mergeDefaults, normalizeStoryboardState}) {
+  const merged = clone(incoming);
+  mergeDefaults(merged, defaults);
+  if (record(merged.imagegen)) {
+    merged.imagegen = normalizeStoryboardState(merged.imagegen);
+    for (const plan of merged.imagegen.shotPlans || []) {
+      delete plan.archiveRef;
+      delete plan.archiveVersion;
+      delete plan.archivedAt;
+    }
+  }
+  if (preserveConnections) restoreConfigConnections(merged, current);
+  return merged;
+}

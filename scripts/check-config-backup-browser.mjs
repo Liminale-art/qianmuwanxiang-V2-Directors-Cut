@@ -15,14 +15,14 @@ await context.route('**/*',async route=>{
   external++;return route.abort();
 });
 try{
-  const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto('https://qianmu.test');
+  const page=await context.newPage();page.on('pageerror',e=>{errors.push(e.message);console.error('Isolated page error:',e.message);});await page.goto('https://qianmu.test');
   await page.evaluate(async source=>{
     Object.assign(window,await import('/qianmu-config-connections.js'));
     window.settings={apiKey:'fixture-main-private',apiUrl:'https://fixture.invalid',theme:'dark',tts:{providers:{doubao:{apiKey:'fixture-tts-private',accessKey:'fixture-access-private',voiceLibrary:[{voiceId:'saved-voice'}]}}},coread:{books:[{id:'book',progress:.6}],memory:{summaryApiKey:'fixture-summary-private'}}};
     window.notices=[];window.prompts=[];window.allow=false;window.saved=0;
     window.context={extensionSettings:{}};Object.assign(window,{clone:structuredClone,confirmDialog:async(title,text)=>{prompts.push(text);return allow;},
       toast:(...args)=>notices.push(args),fileStamp:()=> 'isolated',isPlainObject:value=>value&&typeof value==='object'&&!Array.isArray(value),
-      ctx:()=>context,MODULE_NAME:'fixture',DEFAULT_SETTINGS:{},mergeDefaults(){},getSettings:()=>context.extensionSettings.fixture,
+      ctx:()=>context,MODULE_NAME:'fixture',DEFAULT_SETTINGS:{},configRestoreActivity:()=>({}),normalizeStoryboardState:structuredClone,mergeDefaults(){},getSettings:()=>context.extensionSettings.fixture,
       storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
       seedBuiltinTheaters(){},saveSettings:()=>saved++,storyboardSchedulePlanArchive(){},applyDirectorInjection:async()=>{},renderFloatButton(){},renderModal(){}});
     // Execute the same entry adapters called by the storage card, only host services are stubs.

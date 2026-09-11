@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as policy from '../qianmu-config-connections.js';
 import {migrateTtsProviderSettingsState} from '../qianmu-tts-providers.js';
+import {mergeDefaults} from '../qianmu-storyboard-utils.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 function settings(prefix='source') {
@@ -57,7 +58,7 @@ test('supported envelopes retain explicit included APIs; malformed or unsafe dat
 function fixture() {
   const downloads=[],notices=[],writes=[],context={extensionSettings:{}};
   const c=vm.createContext({...policy,settings:settings(),clone:structuredClone,isPlainObject:v=>v&&typeof v==='object'&&!Array.isArray(v),Blob,
-    confirmDialog:async()=>false,normalizeStoryboardState:structuredClone,storyboardPlansForPortableExport:async value=>value,
+    confirmDialog:async()=>false,configRestoreActivity:()=>({}),normalizeStoryboardState:structuredClone,storyboardPlansForPortableExport:async value=>value,
     ttsDownloadBlob:(blob,name)=>downloads.push({blob,name}),toast:(...args)=>notices.push(args),fileStamp:()=> 'fixture',ctx:()=>context,MODULE_NAME:'module',DEFAULT_SETTINGS:{},
     mergeDefaults:()=>{},storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
     blobStore:{clearStoryboardPlanArchives(){throw Error('must never erase historical originals');}},
@@ -65,6 +66,89 @@ function fixture() {
   vm.runInContext(section('exportConfig')+'\n'+section('importConfig'),c);
   return {c,downloads,notices,writes};
 }
+
+test('restore confirmation explains replacement and original boundaries without exposing imported content',()=>{
+  const incoming=settings();incoming.coread.books[0].title='<img src=x onerror=secret>';const before=structuredClone(incoming);
+  const preview=policy.configRestoreSummary(incoming,true);
+  assert.match(preview,/不会自动合并/);assert.match(preview,/1 项书目索引/);assert.match(preview,/不表示书籍正文已备份/);
+  assert.match(preview,/不会随此配置包恢复或清空/);assert.match(preview,/当前连接与密钥保留/);
+  assert.doesNotMatch(preview,/onerror|secret|source-credential/);assert.deepEqual(incoming,before);
+  assert.match(policy.configRestoreSummary({},false),/当前书架索引可能被重置/);
+  assert.match(policy.configRestoreSummary({},false),/连接与密钥也将/);
+});
+
+test('restore guard rejects replaced or mutated settings and fails closed on uninspectable data',()=>{
+  const owner=settings(),valid=policy.configRestoreGuard(owner);assert.equal(valid(owner),true);
+  assert.equal(valid(structuredClone(owner)),false);owner.coread.books[0].progress=.75;assert.equal(valid(owner),false);
+  const circular={};circular.self=circular;assert.equal(policy.configRestoreGuard(circular)(circular),false);
+  assert.equal(policy.configRestoreGuard(undefined)(undefined),false);
+});
+
+test('restore preparation is detached, recursively fills defaults and strips only local archive references',()=>{
+  const incoming=settings(),current=settings('target'),before=structuredClone(incoming),local=structuredClone(current);
+  Object.assign(incoming.imagegen.shotPlans[0],{archiveRef:'device-only',archiveVersion:1,archivedAt:12});
+  const result=policy.prepareConfigRestore(incoming,current,{coread:{enabled:false,books:[]}},true,{clone:structuredClone,mergeDefaults,normalizeStoryboardState:structuredClone});
+  assert.equal(result.coread.enabled,false);assert.deepEqual(result.coread.books,before.coread.books);
+  assert.equal(result.apiKey,'target-credential');assert.equal(result.imagegen.shotPlans[0].prompt,'unchanged');
+  for(const field of ['archiveRef','archiveVersion','archivedAt'])assert.equal(Object.hasOwn(result.imagegen.shotPlans[0],field),false);
+  assert.equal(incoming.imagegen.shotPlans[0].archiveRef,'device-only');assert.deepEqual(current,local);
+  assert.throws(()=>policy.prepareConfigRestore(incoming,current,{},true,{clone:structuredClone,mergeDefaults,normalizeStoryboardState:()=>{throw Error('prepare failed');}}),/prepare failed/);
+  assert.deepEqual(current,local);assert.equal(incoming.imagegen.shotPlans[0].archiveRef,'device-only');
+});
+
+test('restore gate reports active work without cancelling it and accepts only idle unchanged state',()=>{
+  const owner=settings(),notices=[],state={};const gate=policy.configRestoreGate(owner,()=>state,(...args)=>notices.push(args));
+  assert.equal(gate(owner),true);
+  for(const key of ['reader','focus','director','image','transfer']){state[key]=true;assert.equal(gate(owner),false);assert.equal(state[key],true);delete state[key];}
+  assert.equal(notices.length,5);assert.equal(gate(owner),true);
+});
+
+test('actual import checks active work before file reading and again after confirmation',async()=>{
+  for(const phase of ['before','confirm']){
+    const e=fixture(),owner=e.c.settings;let active=phase==='before',reads=0;
+    e.c.configRestoreActivity=()=>({image:active});e.c.confirmDialog=async()=>{active=true;return true;};
+    const file={text:async()=>{reads++;return JSON.stringify({version:2,type:'qianmu-config',includeApi:false,settings:settings()});}};
+    await e.c.importConfig({target:{files:[file],value:'x'}});
+    assert.equal(reads,phase==='before'?0:1);assert.equal(e.c.settings,owner);assert.equal(e.writes.length,0);assert.equal(e.c.storyboardPlanArchiveEpoch,0);
+    assert.match(e.notices.at(-1)[0],/等待分镜/);
+  }
+});
+
+test('actual activity adapter blocks each independent lane without normalizing or changing settings',()=>{
+  const lanes={
+    reader:['readerView','coreadMemoryWrites','coreadIdentitySwitchBusy','coreadWorldSyncBusy','coreadDistilling','coreadAutoTextInFlight','dialogBusy','readerAssistantBusy','coreadComicVisionBusy'],
+    focus:['focusClockEntryBusy'],director:['busy','theaterBusy'],image:['storyboardBusy','storyboardCompilerBusy','storyboardAutomaticCurrent'],
+  };
+  const base=Object.fromEntries(Object.values(lanes).flat().map(key=>[key,false]));
+  const c=vm.createContext({...base,settings:{focusClock:{status:'idle'}},focusClockVoicePreparation:null,
+    storyboardActiveJobs:new Map(),storyboardGenerationPreparing:new Set(),storyboardQueue:[],storyboardAutomaticPending:new Map(),
+    storyboardImportPackage:{},storyboardExportPackage:{},storyboardBundleReview:null});
+  vm.runInContext(section('configRestoreActivity'),c);
+  const idle=()=>assert.equal(Object.values(c.configRestoreActivity()).some(Boolean),false);
+  idle();const before=JSON.stringify(c.settings);let cases=0;
+  for(const [lane,keys] of Object.entries(lanes))for(const key of keys){c[key]=true;assert.ok(c.configRestoreActivity()[lane],key);c[key]=false;idle();cases++;}
+  for(const [key,value,lane] of [['storyboardActiveJobs',new Map([['job',{}]]),'image'],['storyboardGenerationPreparing',new Set(['job']),'image'],
+    ['storyboardQueue',[{}],'image'],['storyboardAutomaticPending',new Map([['floor',{}]]),'image'],['focusClockVoicePreparation',{busy:true},'focus'],
+    ['storyboardImportPackage',{busy:true},'transfer'],['storyboardExportPackage',{busy:true},'transfer'],['storyboardBundleReview',{isOpen:true},'transfer']]){
+    const previous=c[key];c[key]=value;assert.ok(c.configRestoreActivity()[lane],key);c[key]=previous;idle();cases++;
+  }
+  for(const status of ['running','paused']){c.settings.focusClock.status=status;assert.ok(c.configRestoreActivity().focus,status);cases++;}
+  c.settings.focusClock.status='idle';idle();assert.equal(JSON.stringify(c.settings),before);assert.equal(cases,25);
+});
+
+test('actual import preserves same-owner changes made during file reading or confirmation',async()=>{
+  for(const phase of ['read','confirm']){
+    const e=fixture(),owner=e.c.settings;let resume,shown=0;
+    const wait=()=>new Promise(r=>resume=r);
+    e.c.confirmDialog=phase==='confirm'?wait:async()=>{shown++;return true;};
+    const payload=JSON.stringify({version:2,type:'qianmu-config',includeApi:false,settings:{coread:{books:[]}}});
+    const pending=e.c.importConfig({target:{value:'selected',files:[{text:phase==='read'?wait:async()=>payload}]}});
+    await new Promise(r=>setImmediate(r));owner.coread.books[0].progress=.75;resume(phase==='read'?payload:true);await pending;
+    assert.equal(e.c.settings,owner);assert.equal(owner.coread.books[0].progress,.75);assert.equal(e.writes.length,0);
+    assert.equal(e.c.storyboardPlanArchiveEpoch,0);assert.equal(shown,0);
+    assert.equal(e.notices.at(-1)[0],'设置已变化，请重新导入。');
+  }
+});
 
 test('actual export produces a versioned settings-only pack without reading secrets or changing saved connections',async()=>{
   const e=fixture(),before=structuredClone(e.c.settings);await e.c.exportConfig();

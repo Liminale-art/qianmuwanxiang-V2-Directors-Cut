@@ -1,5 +1,5 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import { omitConfigConnections, restoreConfigConnections, readConfigEnvelope } from './qianmu-config-connections.js';
+import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, configRestoreGate, configRestoreSummary } from './qianmu-config-connections.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
 import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
 import { inspectFocusLock, createFocusLockGuard } from './qianmu-focus-lock.js';
@@ -25623,11 +25623,23 @@ async function exportConfig() {
   toast(includeApi ? '配置已导出（含 API）。' : '配置已导出（不含 API）。', 'success');
 }
 
+function configRestoreActivity() {
+  return {
+    reader: readerView || coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight || dialogBusy || readerAssistantBusy || coreadComicVisionBusy,
+    focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy,
+    director: busy || theaterBusy,
+    image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
+    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen,
+  };
+}
+
 async function importConfig(event) {
   const file = event.target.files?.[0];
   if (!file) return;
   event.target.value = '';
   const owner = settings;
+  const allowed = configRestoreGate(owner, configRestoreActivity, toast);
+  if (!allowed(settings)) return;
   let incoming, preserveConnections;
   try {
     const data = JSON.parse(await file.text());
@@ -25635,25 +25647,13 @@ async function importConfig(event) {
   } catch (_) {
     return toast('导入失败：不是有效的千幕配置文件。', 'error');
   }
-  if (settings !== owner) return toast('设置已变化，请重新导入。', 'warning');
-  const yes = await confirmDialog('导入配置', `导入会覆盖设置，不包含素材原件。${preserveConnections ? '当前连接与密钥保留。' : '连接配置也会覆盖。'}确认导入？`);
-  if (!yes || settings !== owner) return;
+  if (!allowed(settings)) return;
+  const yes = await confirmDialog('恢复前确认', configRestoreSummary(incoming, preserveConnections));
+  if (!yes) return;
+  if (!allowed(settings)) return;
   const context = ctx();
   const extensionSettings = context.extensionSettings || (context.extensionSettings = {});
-  // 覆盖式导入：以导入内容为准，再用 mergeDefaults 递归补齐缺失字段（含嵌套对象的新增默认）。
-  // 旧版本导出的配置可能缺 injectSections / theater / contextOptions 里新增的嵌套字段，浅层 Object.assign 会整体替换、丢掉这些新默认；
-  // mergeDefaults 只在键缺失时填默认、对嵌套 plain object 递归，故导入内容里已有的值保留、新版新增字段用默认补上。
-  const merged = clone(incoming);
-  mergeDefaults(merged, DEFAULT_SETTINGS);
-  if (isPlainObject(merged.imagegen)) {
-    merged.imagegen = normalizeStoryboardState(merged.imagegen);
-    for (const plan of merged.imagegen.shotPlans || []) {
-      delete plan.archiveRef;
-      delete plan.archiveVersion;
-      delete plan.archivedAt;
-    }
-  }
-  if (preserveConnections) restoreConfigConnections(merged, owner);
+  const merged = prepareConfigRestore(incoming, owner, DEFAULT_SETTINGS, preserveConnections, {clone, mergeDefaults, normalizeStoryboardState});
   if (isPlainObject(merged.proseLayout)) {
     merged.proseLayout.updatedAt = Date.now();
     cacheProseLayout(merged.proseLayout);

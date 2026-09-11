@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { STORYBOARD_SCHEMA_VERSION, normalizeStoryboardState } from '../qianmu-storyboard.js';
+import { prepareConfigRestore } from '../qianmu-config-connections.js';
+import { clone, mergeDefaults } from '../qianmu-storyboard-utils.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const store = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
@@ -68,7 +70,10 @@ test('portable exports hydrate full plans while imports discard local references
   assert.match(source, /async function exportConfig[\s\S]*await storyboardPlansForPortableExport\(snapshot\.imagegen\.shotPlans\)/);
   assert.match(source, /async function storyboardExportPackage[\s\S]*await storyboardPlansForPortableExport/);
   assert.match(source, /type: 'qianmu-storyboard', version: 6/);
-  assert.match(source, /async function importConfig[\s\S]*delete plan\.archiveRef/);
+  assert.match(source, /async function importConfig[\s\S]*prepareConfigRestore\(incoming, owner, DEFAULT_SETTINGS, preserveConnections/);
+  const prepared=prepareConfigRestore({imagegen:{shotPlans:[{id:'portable-plan',status:'completed',archiveRef:'other-device',archiveVersion:1,archivedAt:12,shots:[{id:'shot',prompt:'kept'}]}]}},{},{},true,{clone,mergeDefaults,normalizeStoryboardState});
+  for(const field of ['archiveRef','archiveVersion','archivedAt'])assert.equal(Object.hasOwn(prepared.imagegen.shotPlans[0],field),false,'portable configuration cannot reference another device archive');
+  assert.equal(prepared.imagegen.shotPlans[0].shots[0].prompt,'kept');
   assert.doesNotMatch(source.slice(source.indexOf('async function importConfig('),source.indexOf('function exportTemplates(')), /clearStoryboardPlanArchives/, 'configuration replacement must not erase historical originals before committing settings');
   const importer=source.slice(source.indexOf('async function storyboardImportPackage'),source.indexOf('function storyboardRelinkRedrawSnapshot'));
   assert.match(importer, /prepareMutation[\s\S]*storyboardApplyPackageMutation/);
