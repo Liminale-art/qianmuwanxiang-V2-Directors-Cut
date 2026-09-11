@@ -1,20 +1,33 @@
 // Synchronous configuration handoff only; independent originals are never read/deleted.
 // `save` schedules host persistence. Its return is NOT a durable-write acknowledgement.
 export function applyPreparedConfig({prepared, owner, host, slot, setCurrent, save,
-  layoutStorage, layoutKey, now = Date.now}) {
-  let hadSlot, previous, storage, rawLayout, nextLayout;
+  layoutStorage, layoutKey, now = Date.now, undo, layoutSnapshot}) {
+  let hadSlot, previous, storage, rawLayout, nextLayout, recovery, writeLayout = false;
   try {
     if (!prepared || typeof prepared !== 'object' || Array.isArray(prepared) || prepared === owner) throw Error();
     hadSlot = Object.hasOwn(host, slot);
     previous = host[slot];
     if (hadSlot && previous !== owner) throw Error();
-    if (prepared.proseLayout && typeof prepared.proseLayout === 'object' && !Array.isArray(prepared.proseLayout)) {
+    const hasLayout = prepared.proseLayout && typeof prepared.proseLayout === 'object' && !Array.isArray(prepared.proseLayout);
+    if (layoutSnapshot !== undefined && (!layoutSnapshot || typeof layoutSnapshot.available !== 'boolean'
+      || (layoutSnapshot.available && layoutSnapshot.raw !== null && typeof layoutSnapshot.raw !== 'string'))) throw Error();
+    if (hasLayout || undo || layoutSnapshot?.available) {
       storage = layoutStorage();
-      if (storage) {
-        rawLayout = storage.getItem(layoutKey);
+      if (storage) rawLayout = storage.getItem(layoutKey);
+      if (layoutSnapshot?.available) {
+        if (!storage) throw Error();
+        nextLayout = layoutSnapshot.raw;
+        writeLayout = true;
+      } else if (storage && hasLayout && layoutSnapshot === undefined) {
         prepared.proseLayout.updatedAt = now();
         nextLayout = JSON.stringify(prepared.proseLayout);
+        writeLayout = true;
       }
+    }
+    if (undo) {
+      if (typeof undo.remember !== 'function' || typeof undo.clear !== 'function') throw Error();
+      recovery = {settings:structuredClone(owner),layout:{available:!!storage,raw:storage ? rawLayout : null},
+        layoutAfter:{available:!!storage,raw:storage ? (writeLayout ? nextLayout : rawLayout) : null}};
     }
   } catch (_) { return {status:'rejected', persistence:'not-requested'}; }
 
@@ -22,13 +35,15 @@ export function applyPreparedConfig({prepared, owner, host, slot, setCurrent, sa
   try {
     hostTouched = true; host[slot] = prepared;
     liveTouched = true; setCurrent(prepared);
-    if (storage) { cacheTouched = true; storage.setItem(layoutKey, nextLayout); }
+    if (writeLayout) { cacheTouched = true; if (nextLayout === null) storage.removeItem(layoutKey); else storage.setItem(layoutKey, nextLayout); }
     saveAttempted = true; save();
+    if (undo && !undo.remember(recovery,prepared)) throw Error('撤回记录准备失败');
     return {status:'applied', persistence:'requested'};
   } catch (_) {
     // Restore every touched target independently, even if a previous compensation fails.
     let complete = true;
     const attempt = action => { try { action(); } catch (_) { complete = false; } };
+    if (undo) attempt(() => undo.clear());
     if (cacheTouched) attempt(() => rawLayout === null ? storage.removeItem(layoutKey) : storage.setItem(layoutKey, rawLayout));
     if (hostTouched) attempt(() => { if (hadSlot) host[slot] = previous; else delete host[slot]; });
     if (liveTouched) attempt(() => setCurrent(owner));
@@ -54,7 +69,10 @@ export async function finishConfigRestore(options) {
   let viewFailed = false;
   for (const effect of [options.afterApply, options.inject, options.render]) {
     if (options.current() !== options.prepared) return {...result, view:'stale'};
-    try { await effect(); } catch (_) { viewFailed = true; }
+    try {
+      if (effect === options.render && options.undo) await options.undo.transition(options.current, effect);
+      else await effect();
+    } catch (_) { viewFailed = true; }
   }
   if (options.current() !== options.prepared) return {...result, view:'stale'};
   options.notify(viewFailed ? '配置已应用，但页面更新未完成，请重新打开千幕检查。' : '配置已导入并覆盖。', viewFailed ? 'warning' : 'success');
