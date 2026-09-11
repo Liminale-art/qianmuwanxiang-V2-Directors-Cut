@@ -19,6 +19,7 @@ import { createFocusVoiceDrawer } from './qianmu-focus-drawer.js';
 import { renderCoreadIdentityView, renderCoreadIdentityChoicesView } from './qianmu-reader-identity-view.js';
 import { renderCoreadVoicePanelView, renderCoreadNotesPanelView, renderCoreadMarksPanelView } from './qianmu-reader-panel-view.js';
 import { renderCoreadLibraryBookView, renderCoreadLibraryCollectionView } from './qianmu-reader-library-view.js';
+import { cleanupReaderWorldMirrors } from './qianmu-reader-book-cleanup.js';
 import { renderCoreadCenterStatusView, renderCoreadSpoilerGuardView, renderCoreadGuideView, renderCoreadPackBarView,
   renderCoreadMemoryStorageView, renderCoreadSummaryItemsView, renderCoreadMemoryOverviewView,
   renderCoreadSwitchView, renderCoreadModelRowView, renderCoreadProfileRowView, renderCoreadApiActionsView,
@@ -30726,70 +30727,43 @@ function coreadShowRefillChooser(bookId) {
   window.addEventListener('orientationchange', syncViewport);
 }
 
-/* 用户明确选择「一并删除记忆」时，清理该书的全部伴读记忆：
-   ① 对话桶(IndexedDB *::bookId·所有聊天)——删书后再也打不开，纯废数据。
-   ② 当前聊天绑定世界书里 uid 前缀 coread::bookId:: 的切片 + 容器条目——否则会继续注入主线。
-   其他聊天世界书里的同书条目无法在此触及(需切到那聊天)，靠切聊天时的懒清扫兜底。返回 {buckets, loreEntries} 计数。 */
-async function coreadPurgeBookMemory(bookId) {
-  let buckets = 0, loreEntries = 0;
-  // ① 对话桶：匹配 `${任意chatKey}::${bookId}`（按 ::bookId 结尾判定·bookId 全局唯一）
-  const suffix = `::${bookId}`;
-  for (const key of readerAssistantSessions.keys()) { if (String(key).endsWith(suffix)) readerAssistantSessions.delete(key); }
-  try {
-    const keys = await blobStore.listReaderChatKeys();
-    for (const k of keys) {
-      if (String(k).endsWith(suffix)) {
-        try { await blobStore.deleteReaderChat(k); buckets++; } catch (_) {}
-        try { await blobStore.deleteReaderVectors(k); } catch (_) {}   // 连带清该桶向量
+// Only existing, explicitly known mirror destinations. No /getchatbook creation during deletion.
+// Other chats' historical mirrors are not claimed as covered by this local action.
+async function coreadPurgeBookMemory(bookId, isCurrent) {
+  const context = ctx(), metadata = context.chatMetadata, chatBook = String(metadata?.world_info || '');
+  const current = () => isCurrent() && ctx().chatMetadata === metadata && String(metadata?.world_info || '') === chatBook;
+  const headers = context.getRequestHeaders();
+  const read = async (path, body) => {
+    if (!current()) throw new Error('删除目标已变化');
+    const response = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body) });
+    if (!response.ok) throw new Error('无法核验世界书记忆');
+    return response.json();
+  };
+  const listed = await read('/api/worldinfo/list', {});
+  if (!Array.isArray(listed)) throw new Error('世界书目录格式无效');
+  const available = new Set(listed.map(item => typeof item === 'string' ? item : item.file_id || item.name));
+  const names = [...new Set([chatBook, COREAD_DEDICATED_BOOK].filter(name => name && available.has(name)))];
+  const result = await cleanupReaderWorldMirrors(bookId, {
+    names, isCurrent: current, logicalId: coreadEntryLogicalId,
+    readEntries: async name => {
+      const data = await read('/api/worldinfo/get', { name });
+      if (!data?.entries || typeof data.entries !== 'object') throw new Error('世界书内容格式无效');
+      return Object.values(data.entries);
+    },
+    disableEntry: async (name, uid) => {
+      if (uid === undefined || uid === null) throw new Error('记忆条目缺少标识');
+      const execute = context.executeSlashCommandsWithOptions;
+      if (typeof execute !== 'function') throw new Error('当前 ST 不支持确认式记忆清理');
+      for (const [field, value] of [['content', '""'], ['disable', '1']]) {
+        if (!current()) throw new Error('删除目标已变化');
+        const result = await execute.call(context, `/setentryfield file=${quoteSlashValue(name)} uid=${quoteSlashValue(String(uid))} field=${field} ${value}`, { handleParserErrors: false, handleExecutionErrors: false });
+        if (result?.isError || result?.isAborted) throw new Error('世界书记忆清理未完成');
       }
-    }
-  } catch (_) {}
-  // ② 世界书里该书的切片条目（按 uid 前缀）——两模式都清：当前聊天绑定书 + 独立「千幕伴读」书
-  const prefix = `coread::${bookId}::`;
-  const booksToScan = uniqueClean([await getOrCreateChatBook().catch(() => ''), await coreadEnsureDedicatedBook().catch(() => '')]);
-  for (const book of booksToScan) {
-    if (!book) continue;
-    try {
-      const entries = await getWorldBookEntries(book);
-      for (const e of (entries || [])) {
-        const tag = coreadEntryLogicalId(e);   // 兼容新(comment ⟨…⟩)/旧(uid 即标识)
-        if (tag.startsWith(prefix)) { try { await deleteWorldEntry(book, String(e?.uid ?? tag)); loreEntries++; } catch (_) {} }
-      }
-    } catch (_) {}
-  }
-  return { buckets, loreEntries };
-}
-
-// 默认删书只清短对话：保留切片、二次总结和向量，长期记忆仍能在伴读档案中管理与反哺正文。
-async function coreadClearBookDialogue(bookId) {
-  let conversations = 0;
-  const suffix = `::${bookId}`;
-  for (const key of readerAssistantSessions.keys()) { if (String(key).endsWith(suffix)) readerAssistantSessions.delete(key); }
-  try {
-    const keys = await blobStore.listReaderChatKeys();
-    for (const key of keys) {
-      if (!String(key).endsWith(suffix)) continue;
-      let rec = null;
-      try { rec = await blobStore.getReaderChat(key); } catch (_) {}
-      if (!rec) continue;
-      const hadDialogue = (Array.isArray(rec.messages) && rec.messages.length > 0)
-        || (Array.isArray(rec.assistantMessages) && rec.assistantMessages.length > 0);
-      const archivedSlices = coreadArchiveDialogSlices(rec.slices || [], bookId, key, null);
-      await blobStore.putReaderChat(key, {
-        ...rec,
-        messages: [],
-        assistantMessages: [],
-        slices: archivedSlices,
-        cursor: 0,
-        summaryFloor: 0,
-        lastInjected: null,
-        sliceSchemaVersion: reader.COREAD_SLICE_SCHEMA_VERSION,
-        updatedAt: Date.now(),
-      });
-      if (hadDialogue) conversations++;
-    }
-  } catch (_) {}
-  return { conversations };
+    },
+  });
+  if (result.status !== 'complete') throw new Error('世界书记忆未全部核验');
+  for (const name of result.checkedBooks) if (contextScanCache.worldBooks) delete contextScanCache.worldBooks[name];
+  return result;
 }
 
 async function coreadEditBookInfo(bookId) {
@@ -30863,7 +30837,7 @@ async function coreadEditBookInfo(bookId) {
 async function coreadChooseDeleteMemory(label, { isCurrent = () => true } = {}) {
   if (!isCurrent()) return null;
   const title = `是否一并删除${label}的长期记忆？`;
-  const text = '长期记忆默认保留，可继续在伴读档案中管理并反哺正文。选择“删除记忆”才会永久清除；选择“保留记忆”会继续删书。';
+  const text = '长期记忆默认保留。选择“删除记忆”会清除本机档案，并清空停用当前聊天及千幕伴读世界书中的相关镜像；其他聊天里的历史镜像不在本次范围。选择“保留记忆”会继续删书。';
   try {
     const context = ctx();
     const Popup = context.Popup;
@@ -30929,6 +30903,7 @@ async function coreadDeleteBook(bookId, options = {}) {
   if (!mutation.booksAreCurrent() || !coreadCanDeleteBooks()) return false;
   const meta = coreadBookMeta(bookId);
   if (!meta) return false;
+  if (focusClockActiveLock()?.bookId === bookId) { focusClockBlockExit(); return false; }
   // 先落盘本轮尚在内存里的切片，随后才能安全地只清空短对话。
   if (readerDialog?.bookId === bookId) {
     const dialog = readerDialog;
@@ -30940,34 +30915,62 @@ async function coreadDeleteBook(bookId, options = {}) {
     if (!saved) { toast('伴读会话尚未保存，已停止删除，请重试。', 'warning'); return false; }
     if (readerDialog !== dialog) { toast('伴读会话已变化，已停止删除。', 'warning'); return false; }
   }
-  // 删当前打开的书 → 先卸载阅读器 portal，避免 readerView / readerDialog 悬空
-  if (readerView?.bookId === bookId) unmountReaderPortal();
-  // 若删的正是当前会话的书，清掉内存镜像防其 autosave 复活桶
-  if (readerDialog?.bookId === bookId) { readerDialog = { bucket: '', bookId: '', messages: [], summaries: [], slices: [], cursor: 0, summaryFloor: 0, lastInjected: null, pipelineStatus: null, readBoundary: null, loaded: false }; coreadEchoTtl.clear(); }
-  // 删除书籍只移除其合集索引；合集本身和其他书不受影响。
-  for (const collection of coreadCollections()) collection.bookIds = collection.bookIds.filter((id) => id !== bookId);
-  coread().books = coread().books.filter((b) => b.id !== bookId);
-  const retained = coread().retainedMemoryBooks || (coread().retainedMemoryBooks = []);
-  const retainedIndex = retained.findIndex((b) => b.id === bookId);
-  if (deleteMemory) {
-    if (retainedIndex >= 0) retained.splice(retainedIndex, 1);
-  } else {
-    const snapshot = {
-      id: bookId, title: meta.title || '未命名书籍', author: meta.author || '', deletedAt: Date.now(),
-      charCount: Number(meta.charCount) || 0, progress: Number(meta.progress) || 0,
-      lastChapterIndex: Number(meta.lastChapterIndex) || 0, lastScrollRatio: Number(meta.lastScrollRatio) || 0,
-    };
-    if (retainedIndex >= 0) retained[retainedIndex] = snapshot;
-    else retained.push(snapshot);
-  }
-  saveSettings();
-  try { await blobStore.deleteBook(bookId); } catch (_) {}
-  try { await blobStore.deleteReaderImages(bookId); } catch (_) {}
-  if (deleteMemory) await coreadPurgeBookMemory(bookId);
-  else await coreadClearBookDialogue(bookId);
-  coreadInvalidatePool();
-  if (!silent && mutation.isCurrent()) toast(`已从书架移除《${meta.title}》。`, 'info');
-  return true;
+  const current = () => mutation.booksAreCurrent() && coreadBookMeta(bookId) === meta;
+  let localCommitted = false;
+  coreadMemoryWrites++;
+  try {
+    // Remote mirrors cannot join the local transaction. Stop on failure, keep the book for an explicit retry.
+    if (deleteMemory) await coreadPurgeBookMemory(bookId, current);
+    if (!current()) return false;
+    const result = await blobStore.deleteReaderBookData(bookId, {
+      deleteMemory, isCurrent: current, sliceSchemaVersion: reader.COREAD_SLICE_SCHEMA_VERSION,
+      archiveSlices: (slices, id, bucket) => coreadArchiveDialogSlices(slices, id, bucket, null),
+    });
+    if (result?.status === 'stale') return false;
+    if (result?.status !== 'committed') throw new Error('书籍清理未提交');
+    localCommitted = true;
+    if (!current()) { toast('本机资源已清理，但书架已变化，未覆盖新状态，请重新打开核对。', 'warning'); return false; }
+    // 只卸载这一本书的阅读状态，不经过会再次保存旧会话的通用关闭路径。
+    if (readerView?.bookId === bookId) {
+      focusClockCancelEntry(); focusClockPauseForReadingExit(); coreadClearPendingChatImages();
+      unmountReaderPortal(); readerView = null;
+    }
+    if (readerContentCache?.bookId === bookId) readerContentCache = null;
+    if (readerDialog?.bookId === bookId) {
+      dialogGenToken++; dialogAbort?.abort(); dialogAbort = null;
+      readerDialog = { bucket: '', bookId: '', messages: [], summaries: [], slices: [], cursor: 0, summaryFloor: 0, lastInjected: null, pipelineStatus: null, readBoundary: null, loaded: false }; coreadEchoTtl.clear();
+    }
+    if (readerAssistant?.bookId === bookId) {
+      readerAssistantToken++; readerAssistantAbort?.abort(); readerAssistantAbort = null;
+      readerAssistant = { bucket: '', bookId: '', messages: [], quote: '', loaded: false };
+    }
+    for (const key of readerAssistantSessions.keys()) if (String(key).endsWith(`::${bookId}`)) readerAssistantSessions.delete(key);
+    // 删除书籍只移除其合集索引；合集本身和其他书不受影响。
+    for (const collection of coreadCollections()) collection.bookIds = collection.bookIds.filter((id) => id !== bookId);
+    coread().books = coread().books.filter((b) => b.id !== bookId);
+    const retained = coread().retainedMemoryBooks || (coread().retainedMemoryBooks = []);
+    const retainedIndex = retained.findIndex((b) => b.id === bookId);
+    if (deleteMemory) {
+      if (retainedIndex >= 0) retained.splice(retainedIndex, 1);
+    } else {
+      const snapshot = {
+        id: bookId, title: meta.title || '未命名书籍', author: meta.author || '', deletedAt: Date.now(),
+        charCount: Number(meta.charCount) || 0, progress: Number(meta.progress) || 0,
+        lastChapterIndex: Number(meta.lastChapterIndex) || 0, lastScrollRatio: Number(meta.lastScrollRatio) || 0,
+      };
+      if (retainedIndex >= 0) retained[retainedIndex] = snapshot;
+      else retained.push(snapshot);
+    }
+    saveSettings();
+    coreadInvalidatePool();
+    if (!silent && mutation.isCurrent()) toast(`已从书架移除《${meta.title}》。`, 'info');
+    return true;
+  } catch (error) {
+    console.warn(`[${MODULE_NAME}] book cleanup incomplete`, error);
+    toast(localCommitted ? '本机资源已清理，但书架保存未完成，请重新打开核对。'
+      : deleteMemory ? '删除未完成，书籍已保留，可重试；部分世界书记忆可能已清空停用。' : '本机清理失败，书籍和记忆已保留，请重试。', 'warning');
+    return false;
+  } finally { coreadMemoryWrites--; }
 }
 
 /* ── 进入/退出阅读器 ───────────────────────────────────── */
@@ -30994,7 +30997,7 @@ async function coreadOpenBook(bookId, { isCurrent = () => true } = {}) {
   if (!meta) { toast('找不到这本书。', 'error'); return; }
   let rec = null;
   try { rec = await blobStore.getBook(bookId); } catch (_) {}
-  if (!isCurrent() || requestId !== coreadOpenRequestId || activeTab !== originTab) return;
+  if (!isCurrent() || requestId !== coreadOpenRequestId || activeTab !== originTab || coreadBookMeta(bookId) !== meta) return;
   if (coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight) {
     toast('伴读记忆正在处理，请完成后再打开书目。', 'info'); return;
   }

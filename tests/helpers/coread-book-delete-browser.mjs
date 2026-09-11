@@ -15,12 +15,15 @@ export async function checkBookDeleteBrowser(page) {
       const gate=new Promise(resolve=>window.releasePreserve=resolve);
       window.coreadSaveDialog=async()=>{saveEntered=true;deleteCalls.push('preserve');return scenario.startsWith('save-')?await gate:true;};
       window.unmountReaderPortal=()=>deleteCalls.push('unmount');window.coreadInvalidatePool=()=>{};
-      window.coreadClearBookDialogue=async()=>{deleteCalls.push('clear-dialog');return {};};window.coreadPurgeBookMemory=async()=>{deleteCalls.push('purge-memory');return {};};
+      window.coreadPurgeBookMemory=async()=>{deleteCalls.push('purge-memory');return {};};
+      window.reader={COREAD_SLICE_SCHEMA_VERSION:3};window.coreadArchiveDialogSlices=s=>s;window.focusClockActiveLock=()=>null;
+      window.readerContentCache=null;window.readerAssistant=null;window.readerAssistantSessions=new Map();window.dialogGenToken=0;window.dialogAbort=null;
       for(const id of ['a','b'])await nativeBooks.putBook(id,{meta:{title:id},fullText:'Synthetic body',chapters:[{}]});
-      window.blobStore={...blobStore,deleteBook:async id=>{
-        deleteCalls.push('body:'+id);await nativeBooks.deleteBook(id);
+      window.blobStore={...blobStore,deleteReaderBookData:async (id,options)=>{
+        deleteCalls.push('body:'+id);const result=await nativeBooks.deleteReaderBookData(id,options);
         if(scenario==='next-book'&&id==='a')settings.coread.books.find(b=>b.id==='b').title='Changed after first removal';
-      },deleteReaderImages:async()=>deleteCalls.push('images')};
+        return result;
+      }};
       window.deleteBefore={data:JSON.stringify(settings.coread),renders:shelfRenders};
     };
   },['coreadChooseDeleteMemory','coreadCanDeleteBooks','coreadRequestDeleteBooks','coreadDeleteBook'].map(section).join('\n'));

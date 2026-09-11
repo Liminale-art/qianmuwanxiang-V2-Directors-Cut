@@ -11,8 +11,10 @@ function fixture() {
     document:{getElementById:()=>modal},readerDialog:{bookId:'a',bucket:'chat::a',loaded:true,slices:['unsaved']},readerView:null,coreadEchoTtl:new Map(),
     coreadMemoryWrites:0,coreadIdentitySwitchBusy:false,coreadWorldSyncBusy:false,coreadDistilling:false,coreadAutoTextInFlight:false,dialogBusy:false,readerAssistantBusy:false,coreadComicVisionBusy:false,
     coreadSaveDialog:()=>new Promise(resolve=>{calls.push('save-dialog');saveAnswer=resolve;}),unmountReaderPortal:()=>calls.push('unmount'),saveSettings:()=>calls.push('save-settings'),
-    coreadInvalidatePool:()=>{},coreadClearBookDialogue:async()=>{calls.push('clear-dialog');return {};},coreadPurgeBookMemory:async()=>{calls.push('purge-memory');return {};},
-    blobStore:{deleteBook:async()=>calls.push('delete-body'),deleteReaderImages:async()=>calls.push('delete-images')},toast:(...args)=>notices.push(args),console:{warn:()=>{}},MODULE_NAME:'fixture'});
+    coreadInvalidatePool:()=>{},coreadPurgeBookMemory:async()=>{calls.push('purge-memory');return {};},
+    reader:{COREAD_SLICE_SCHEMA_VERSION:3},readerContentCache:null,readerAssistant:null,readerAssistantSessions:new Map(),dialogGenToken:0,dialogAbort:null,
+    focusClockActiveLock:()=>null,coreadArchiveDialogSlices:s=>s,
+    blobStore:{deleteReaderBookData:async()=>{calls.push('delete-body');return {status:'committed'};}},toast:(...args)=>notices.push(args),console:{warn:()=>{}},MODULE_NAME:'fixture'});
   c.coread=()=>c.settings.coread;
   const names=['coreadBookMeta','coreadCollections','coreadCaptureCollectionMutation','coreadDeleteBook','coreadCanDeleteBooks','coreadRequestDeleteBooks'];
   vm.runInContext(names.map(section).join('\n'),c);
@@ -56,11 +58,11 @@ test('batch consent is consumed per book rather than invalidated by its own firs
 
 test('a batch stops before a changed next book and reports only the already removed count',async()=>{
   for(const change of ['book','owner']){
-    const f=requestFixture();let release;f.c.blobStore.deleteBook=()=>{f.calls.push('delete-body');return new Promise(r=>release=r);};
+    const f=requestFixture();let release;f.c.blobStore.deleteReaderBookData=()=>{f.calls.push('delete-body');return new Promise(r=>release=r);};
     const pending=f.c.coreadRequestDeleteBooks(['a','b']);f.confirm(true);await tick();f.memory(false);await tick();f.answerSave(true);await tick();
-    assert.equal(f.data.books.length,1);if(change==='book')f.data.books[0].title='New consent required';else f.c.settings={enabled:true,coread:structuredClone(f.data)};
-    release();const result=await pending;assert.equal(result,change==='book');assert.equal(f.data.books.length,1);assert.equal(f.c.settings.coread.books.length,1);
-    assert.equal(f.calls.filter(c=>c==='delete-body').length,1);assert.match(f.notices.at(-1)[0],/1\/2.*停止/);assert.equal(f.notices.at(-1)[1],'warning');
+    assert.equal(f.data.books.length,2);if(change==='book')f.data.books[1].title='New consent required';else f.c.settings={enabled:true,coread:structuredClone(f.data)};
+    release({status:'committed'});const result=await pending;assert.equal(result,change==='book');assert.equal(f.data.books.length,change==='book'?1:2);assert.equal(f.c.settings.coread.books.length,change==='book'?1:2);
+    assert.equal(f.calls.filter(c=>c==='delete-body').length,1);assert.match(f.notices.at(-1)[0],change==='book'?/1\/2.*停止/:/书架已变化/);assert.equal(f.notices.at(-1)[1],'warning');
   }
 });
 
@@ -74,10 +76,10 @@ test('cancel, unavailable targets and all busy writers cause zero deletion work'
 
 test('rejected saves and interrupted cleanup fail visibly instead of continuing the batch',async()=>{
   const f=fixture();f.c.coreadSaveDialog=async()=>{throw Error('synthetic');};assert.equal(await f.c.coreadDeleteBook('a'),false);assert.equal(f.data.books.length,2);
-  const g=requestFixture();g.c.coreadClearBookDialogue=async()=>{throw Error('synthetic cleanup interruption');};
+  const g=requestFixture();g.c.blobStore.deleteReaderBookData=async()=>{throw Error('synthetic cleanup interruption');};
   const pending=g.c.coreadRequestDeleteBooks(['a','b']);g.confirm(true);await tick();g.memory(false);await tick();g.answerSave(true);
-  assert.equal(await pending,true,'original shelf should repaint its partial state');assert.equal(g.data.books.length,1);assert.equal(g.data.books[0].id,'b');
-  assert.match(g.notices.at(-1)[0],/未完成/);assert.equal(g.notices.at(-1)[1],'warning');
+  assert.equal(await pending,false,'failed transaction keeps the original shelf unchanged');assert.equal(g.data.books.length,2);assert.equal(g.data.books[0].id,'a');
+  assert.match(g.notices.at(-1)[0],/失败.*保留/);assert.equal(g.notices.at(-1)[1],'warning');
 });
 
 test('a changed owner, page, book or dialogue after preservation cannot inherit old deletion consent',async()=>{
@@ -104,7 +106,27 @@ test('preserving dialogue participates in the existing memory-write guard and ex
 test('admitted deletion preserves other books and the existing memory choice',async()=>{
   for(const deleteMemory of [false,true]){const f=fixture(),pending=f.c.coreadDeleteBook('a',{deleteMemory});f.answerSave(true);
     assert.equal(await pending,true);assert.equal(f.data.books.length,1);assert.equal(f.data.books[0].id,'b');
-    assert.equal(f.calls.includes('purge-memory'),deleteMemory);assert.equal(f.calls.includes('clear-dialog'),!deleteMemory);
+    assert.equal(f.calls.includes('purge-memory'),deleteMemory);assert.equal(f.calls.includes('delete-body'),true);
     assert.equal(f.data.retainedMemoryBooks.length,deleteMemory?0:1);
   }
+});
+
+test('cleanup keeps its writer guard until commit and detaches only the removed reader',async()=>{
+  const f=fixture();f.c.readerView={bookId:'a'};f.c.readerContentCache={bookId:'a',fullText:'large body'};
+  f.c.readerAssistant={bookId:'a'};f.c.readerAssistantToken=0;f.c.readerAssistantAbort=null;
+  for(const name of ['focusClockCancelEntry','focusClockPauseForReadingExit','coreadClearPendingChatImages'])f.c[name]=()=>f.calls.push(name);
+  f.c.readerAssistantSessions.set('char::a',{});f.c.readerAssistantSessions.set('char::b',{});
+  let release;f.c.blobStore.deleteReaderBookData=()=>new Promise(r=>release=r);
+  const pending=f.c.coreadDeleteBook('a');f.answerSave(true);await tick();
+  assert.equal(f.c.coreadMemoryWrites,1);assert.equal(f.data.books.length,2);assert.ok(f.c.readerContentCache);
+  assert.equal(await f.c.coreadDeleteBook('b'),false);
+  release({status:'committed'});assert.equal(await pending,true);assert.equal(f.c.coreadMemoryWrites,0);
+  assert.equal(f.c.readerView,null);assert.equal(f.c.readerContentCache,null);assert.equal(f.c.readerAssistant.bookId,'');
+  assert.equal(f.c.readerAssistantSessions.has('char::a'),false);assert.equal(f.c.readerAssistantSessions.has('char::b'),true);
+});
+test('failed world cleanup leaves local resources and shelf available for retry',async()=>{
+  const f=fixture();f.c.coreadPurgeBookMemory=async()=>{throw Error('world failure');};
+  const pending=f.c.coreadDeleteBook('a',{deleteMemory:true});f.answerSave(true);
+  assert.equal(await pending,false);assert.equal(f.data.books.length,2);assert.ok(!f.calls.includes('delete-body'));assert.equal(f.c.coreadMemoryWrites,0);
+  assert.match(f.notices.at(-1)[0],/部分世界书记忆可能/);
 });

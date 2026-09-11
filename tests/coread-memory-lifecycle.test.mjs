@@ -65,6 +65,6 @@ assert.match(edit, /coreadSyncSliceVector\(sliceId/, '任意切片编辑入口�
 
 assert.match(source, /summaryFloor: readerDialog\.summaryFloor/, '对话总结基准必须随档案持久化');
 assert.match(source, /summaryFloor = \(readerDialog\.messages \|\| \[\]\)\.length/, '清空记忆时必须显式记录不再重蒸旧对话的基准');
-assert.match(source, /coreadClearBookDialogue[\s\S]*coreadArchiveDialogSlices/, '删书但保留记忆时必须把旧对谈切片归档而非复用消息下标');
+assert.match(source, /deleteReaderBookData[\s\S]*archiveSlices:[\s\S]*coreadArchiveDialogSlices/, '删书但保留记忆时必须把旧对谈切片归档而非复用消息下标');
 
 console.log('Coread memory lifecycle contract OK');

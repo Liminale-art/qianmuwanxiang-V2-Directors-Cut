@@ -5,8 +5,8 @@ import {createCoreadPanelFixture} from './helpers/coread-panel-fixture.mjs';
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 
 const deletion = source.slice(source.indexOf('async function coreadPurgeBookMemory'), source.indexOf('/* ── 进入/退出阅读器'));
-assert.match(deletion, /coreadClearBookDialogue[\s\S]*\.\.\.rec,[\s\S]*messages:\s*\[\]/, '默认删书必须只清短对话并保留桶内长期记忆字段');
-assert.match(deletion, /retainedMemoryBooks[\s\S]*deleteMemory[\s\S]*coreadPurgeBookMemory/, '删书必须用轻档案保留记忆，并只在用户选择后永久清理');
+assert.match(deletion, /deleteReaderBookData[\s\S]*archiveSlices:[\s\S]*coreadArchiveDialogSlices/, '删书在事务内归档长期切片，保留记忆行为由真实数据库测试覆盖');
+assert.match(deletion, /if \(deleteMemory\) await coreadPurgeBookMemory[\s\S]*retainedMemoryBooks/, '仅明确选择时清理世界书，默认保留轻档案');
 assert.match(deletion, /okButton:\s*'删除记忆'[\s\S]*cancelButton:\s*'保留记忆'/, '记忆删除选择必须默认可明确保留');
 
 const libraryBinding = source.slice(source.indexOf('function bindLibraryViewEvents'), source.indexOf('function bindReaderStageEvents'));
