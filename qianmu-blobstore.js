@@ -294,6 +294,50 @@ export async function getBook(bookId) {
   return reqP(s.get(bookId));
 }
 
+// 编辑书名/作者只更新已存在的正文记录；不以弹窗打开时的旧副本覆盖新正文。
+// isCurrent 由调用方提供同步身份检查；updated 表示事务已提交，不代表当前 UI 仍归原编辑者所有。
+export async function updateBookMetadata(bookId, patch = {}, { isCurrent = () => true } = {}) {
+  if (typeof bookId !== 'string' || !bookId.trim() || typeof patch?.title !== 'string' || !patch.title.trim()
+    || (patch.author !== undefined && typeof patch.author !== 'string')) {
+    throw new TypeError('书名和作者格式无效');
+  }
+  const title = patch.title.trim().slice(0, 120), author = (patch.author || '').trim().slice(0, 80);
+  if (!isCurrent()) return { status: 'stale' };
+  const db = await openDB();
+  if (!isCurrent()) return { status: 'stale' };
+  const transaction = db.transaction(STORE_BOOKS, 'readwrite');
+  return new Promise((resolve, reject) => {
+    let result = { status: 'missing' }, failure;
+    const error = () => failure || transaction.error || new Error('书籍信息保存未完成');
+    transaction.oncomplete = () => resolve(result);
+    transaction.onerror = () => reject(error());
+    transaction.onabort = () => result.status === 'stale' && !failure ? resolve(result) : reject(error());
+    const abort = cause => {
+      failure = cause;
+      try { transaction.abort(); } catch (_) { reject(cause); }
+    };
+    const stale = () => {
+      if (isCurrent()) return false;
+      result = { status: 'stale' };
+      transaction.abort();
+      return true;
+    };
+    try {
+      const target = transaction.objectStore(STORE_BOOKS), request = target.get(bookId);
+      request.onsuccess = () => {
+        try {
+          if (stale()) return;
+          const current = request.result;
+          if (!current) return;
+          const write = target.put({ ...current, meta: { ...current.meta, title, author }, savedAt: Date.now() }, bookId);
+          result = { status: 'updated', title, author };
+          write.onsuccess = () => { try { stale(); } catch (cause) { abort(cause); } };
+        } catch (cause) { abort(cause); }
+      };
+    } catch (cause) { abort(cause); }
+  });
+}
+
 export async function deleteBook(bookId) {
   const s = await store(STORE_BOOKS, 'readwrite');
   await reqP(s.delete(bookId));
