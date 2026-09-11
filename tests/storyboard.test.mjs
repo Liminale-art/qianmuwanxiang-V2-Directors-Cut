@@ -105,7 +105,7 @@ assert.match(source, /function storyboardParseWorkflow[\s\S]*removedFields[\s\S]
 assert.match(source, /storyboardPipelineStage[\s\S]*sanitizeStoryboardDiagnosticData\(input\)[\s\S]*sanitizeStoryboardDiagnosticData\(output\)/, '分镜诊断日志写入前必须经过凭据净化');
 assert.match(source, /storyboardExportPackage[\s\S]*sanitizeStoryboardSnapshot[\s\S]*credentialsIncluded: false/, '分镜数据包必须再次净化历史成片快照');
 assert.match(source, /async function exportConfig[\s\S]*snapshot\.imagegen[\s\S]*normalizeStoryboardState/, '千幕全量配置导出也必须净化旧版分镜工作流');
-assert.match(source, /async function importConfig[\s\S]*prepareConfigRestore\(incoming, owner, DEFAULT_SETTINGS, preserveConnections, \{clone, mergeDefaults, normalizeStoryboardState\}/, '千幕配置恢复必须调用同一规范化准备路径');
+assert.match(source, /async function importConfig[\s\S]*prepareConfigRestore\(incoming, owner, DEFAULT_SETTINGS, preserveConnections, \{clone, mergeDefaults, normalizeStoryboardState, migrateSettings\}/, '千幕配置恢复必须调用同一规范化准备路径');
 const importedWorkflow=prepareConfigRestore({imagegen:{profiles:{comfy:{comfyWorkflow:JSON.stringify({encode:{class_type:'CLIPTextEncode',inputs:{text:'kept landscape',api_key:'synthetic-import-secret'}}})}}}},{},{},false,{clone,mergeDefaults,normalizeStoryboardState});
 assert.doesNotMatch(importedWorkflow.imagegen.profiles.comfy.comfyWorkflow,/synthetic-import-secret|api_key/,'配置恢复不能重新写入工作流凭据');
 assert.match(importedWorkflow.imagegen.profiles.comfy.comfyWorkflow,/kept landscape/,'清理凭据不应丢失合法画面文字');

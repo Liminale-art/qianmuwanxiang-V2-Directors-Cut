@@ -10,7 +10,7 @@ await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.origin==='https://qianmu.test'){
     if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<section class="sd-storage-backup-section"><button class="sd-export-config">导出</button><button class="sd-import-config">导入</button><input class="sd-import-config-file" type="file"></section>'});
-    if(url.pathname==='/qianmu-config-connections.js')return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('../qianmu-config-connections.js',import.meta.url))});
+    if(['/qianmu-config-connections.js','/qianmu-data-migrations.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
   }
   external++;return route.abort();
 });
@@ -22,7 +22,7 @@ try{
     window.notices=[];window.prompts=[];window.allow=false;window.saved=0;
     window.context={extensionSettings:{}};Object.assign(window,{clone:structuredClone,confirmDialog:async(title,text)=>{prompts.push(text);return allow;},
       toast:(...args)=>notices.push(args),fileStamp:()=> 'isolated',isPlainObject:value=>value&&typeof value==='object'&&!Array.isArray(value),
-      ctx:()=>context,MODULE_NAME:'fixture',DEFAULT_SETTINGS:{},configRestoreActivity:()=>({}),normalizeStoryboardState:structuredClone,mergeDefaults(){},getSettings:()=>context.extensionSettings.fixture,
+      ctx:()=>context,MODULE_NAME:'fixture',DEFAULT_SETTINGS:{},configRestoreActivity:()=>({}),normalizeStoryboardState:structuredClone,migrateSettings(){},mergeDefaults(){},getSettings:()=>context.extensionSettings.fixture,
       storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
       seedBuiltinTheaters(){},saveSettings:()=>saved++,storyboardSchedulePlanArchive(){},applyDirectorInjection:async()=>{},renderFloatButton(){},renderModal(){}});
     // Execute the same entry adapters called by the storage card, only host services are stubs.

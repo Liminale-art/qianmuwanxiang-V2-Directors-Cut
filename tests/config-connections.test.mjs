@@ -4,6 +4,9 @@ import vm from 'node:vm';
 import * as policy from '../qianmu-config-connections.js';
 import {migrateTtsProviderSettingsState} from '../qianmu-tts-providers.js';
 import {mergeDefaults} from '../qianmu-storyboard-utils.js';
+import * as utilities from '../qianmu-storyboard-utils.js';
+import * as ttsProviders from '../qianmu-tts-providers.js';
+import {normalizeQianmuStructuredOutputMode} from '../qianmu-llm-output.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 function settings(prefix='source') {
@@ -60,12 +63,42 @@ function fixture() {
   const c=vm.createContext({...policy,settings:settings(),clone:structuredClone,isPlainObject:v=>v&&typeof v==='object'&&!Array.isArray(v),Blob,
     confirmDialog:async()=>false,configRestoreActivity:()=>({}),normalizeStoryboardState:structuredClone,storyboardPlansForPortableExport:async value=>value,
     ttsDownloadBlob:(blob,name)=>downloads.push({blob,name}),toast:(...args)=>notices.push(args),fileStamp:()=> 'fixture',ctx:()=>context,MODULE_NAME:'module',DEFAULT_SETTINGS:{},
-    mergeDefaults:()=>{},storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
+    mergeDefaults:()=>{},migrateSettings:()=>{},storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
     blobStore:{clearStoryboardPlanArchives(){throw Error('must never erase historical originals');}},
     getSettings:()=>context.extensionSettings.module,seedBuiltinTheaters(){},saveSettings:()=>writes.push('save'),storyboardSchedulePlanArchive(){},applyDirectorInjection:async()=>{},renderFloatButton(){},renderModal(){},cacheProseLayout(){}});
   vm.runInContext(section('exportConfig')+'\n'+section('importConfig'),c);
   return {c,downloads,notices,writes};
 }
+
+function realMigrationFixture() {
+  const e=fixture();Object.assign(e.c,utilities,ttsProviders,{normalizeQianmuStructuredOutputMode,
+    DEFAULT_SETTINGS:{tts:{}},DEFAULT_SYSTEM_PROMPT:'fixture system',JSON_SCHEMA_TEXT:'{}',PROMPT_REVISION:1,LOG_LIMIT:10});
+  // Production functions live in an ES module: match its strict assignment semantics.
+  vm.runInContext('"use strict";\n'+section('migrateTtsProviderSettings')+'\n'+section('migrateSettings'),e.c);
+  return e;
+}
+
+test('real settings migration rejects malformed nested input before touching live configuration or originals',async()=>{
+  for(const incoming of [{templates:[null]},{templates:[{} ,null]},{contextOptions:'invalid'}]){
+    const e=realMigrationFixture(),owner=e.c.settings;let cacheWrites=0;e.c.cacheProseLayout=()=>cacheWrites++;e.c.confirmDialog=async()=>true;
+    const pack={version:2,type:'qianmu-config',includeApi:false,settings:{...incoming,proseLayout:{width:10}}};
+    await e.c.importConfig({target:{files:[{text:async()=>JSON.stringify(pack)}],value:'selected'}});
+    assert.equal(e.c.settings,owner);assert.equal(e.c.ctx().extensionSettings.module,undefined);assert.equal(e.writes.length,0);
+    assert.equal(cacheWrites,0);assert.equal(e.c.storyboardPlanArchiveEpoch,0);assert.equal(e.notices.at(-1)[0],'配置无法恢复，当前设置未改变。');
+  }
+});
+
+test('real migration preserves legacy voice content and cannot refill excluded credentials on a later read',async()=>{
+  const e=realMigrationFixture();e.c.settings=settings('target');e.c.confirmDialog=async()=>true;
+  const incoming={ttsSettings:{apiKey:'legacy-secret',voiceLibrary:[{id:'voice',voiceId:'legacy-voice'}]},templates:[{name:'old',tags:['folder'],content:'keep'}]};
+  const pack={version:1,type:'qianmu-config',includeApi:false,settings:incoming};
+  await e.c.importConfig({target:{files:[{text:async()=>JSON.stringify(pack)}],value:'selected'}});
+  assert.equal(e.writes.length,1);assert.equal(e.c.settings.apiKey,'target-credential');
+  assert.equal(e.c.settings.tts.providers.doubao.apiKey,'target-credential');assert.equal(e.c.settings.tts.providers.minimax.voiceLibrary[0].voiceId,'legacy-voice');
+  assert.equal(e.c.settings.templates[0].folder,'folder');assert.equal(e.c.settings.templates[0].content,'keep');
+  e.c.migrateSettings(e.c.settings);
+  assert.doesNotMatch(JSON.stringify(e.c.settings),/legacy-secret/);assert.equal(e.c.settings.tts.providers.doubao.apiKey,'target-credential');
+});
 
 test('restore confirmation explains replacement and original boundaries without exposing imported content',()=>{
   const incoming=settings();incoming.coread.books[0].title='<img src=x onerror=secret>';const before=structuredClone(incoming);
@@ -94,6 +127,30 @@ test('restore preparation is detached, recursively fills defaults and strips onl
   assert.equal(incoming.imagegen.shotPlans[0].archiveRef,'device-only');assert.deepEqual(current,local);
   assert.throws(()=>policy.prepareConfigRestore(incoming,current,{},true,{clone:structuredClone,mergeDefaults,normalizeStoryboardState:()=>{throw Error('prepare failed');}}),/prepare failed/);
   assert.deepEqual(current,local);assert.equal(incoming.imagegen.shotPlans[0].archiveRef,'device-only');
+});
+
+test('legacy connection aliases are excluded and cannot refill foreign keys after migration',()=>{
+  for(const alias of ['directorSettings','director','ttsSettings','speechSettings','theaterSettings','theaters']){
+    const value=alias.includes('director')?{apiUrl:'legacy-secret',apiKey:'legacy-secret',theme:'light'}
+      : ['ttsSettings','speechSettings'].includes(alias)?{apiKey:'legacy-secret',providers:{doubao:{apiKey:'legacy-secret',voiceLibrary:[{voiceId:'kept'}]}}}
+      : {apiProfileId:'legacy-secret',scripts:[{title:'kept'}]};
+    const pack={[alias]:value,apiPresets:[{apiKey:'legacy-secret'}]},before=structuredClone(pack);
+    const exported=policy.omitConfigConnections(structuredClone(pack));assert.doesNotMatch(JSON.stringify(exported),/legacy-secret/);assert.deepEqual(pack,before);
+    const restored=policy.prepareConfigRestore(pack,settings('target'),{},true,{clone:structuredClone,mergeDefaults,normalizeStoryboardState:structuredClone,
+      migrateSettings:s=>{if(s.tts)migrateTtsProviderSettingsState(s.tts);}});
+    assert.doesNotMatch(JSON.stringify(restored),/legacy-secret/);assert.equal(restored.apiKey,'target-credential');
+    if(alias.includes('director'))assert.equal(restored.theme,'light');
+  }
+});
+
+test('actual import migration failure returns before replacing host settings or touching prose and archives',async()=>{
+  const e=fixture(),owner=e.c.settings;e.c.confirmDialog=async()=>true;
+  e.c.migrateSettings=()=>{throw Error('synthetic migration failure');};
+  e.c.cacheProseLayout=()=>{throw Error('cache must not be touched');};
+  const file={text:async()=>JSON.stringify({version:2,type:'qianmu-config',includeApi:false,settings:{proseLayout:{width:10}}})};
+  await e.c.importConfig({target:{files:[file],value:'x'}});
+  assert.equal(e.c.settings,owner);assert.equal(e.c.ctx().extensionSettings.module,undefined);assert.equal(e.c.storyboardPlanArchiveEpoch,0);assert.equal(e.writes.length,0);
+  assert.equal(e.notices.at(-1)[0],'配置无法恢复，当前设置未改变。');
 });
 
 test('restore gate reports active work without cancelling it and accepts only idle unchanged state',()=>{

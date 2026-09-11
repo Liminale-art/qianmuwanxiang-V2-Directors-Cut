@@ -1,4 +1,5 @@
 // Configuration-package policy only. Never scan/rewrite user prose, prompt text or media.
+import {migrateQianmuSettingsV2} from './qianmu-data-migrations.js';
 export const API_CONFIG_KEYS = Object.freeze(['apiUrl', 'apiKey', 'model', 'availableModels', 'apiProfiles', 'providerMode']);
 const own = (value, key) => value && Object.hasOwn(value, key);
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -6,6 +7,8 @@ const safeKey = key => !['__proto__', 'constructor', 'prototype'].includes(key);
 const ttsKeys = ['apiKey', 'appId', 'accessKey', 'groupId', 'authMode', 'endpoint', 'proxyBase', 'model'];
 const paths = [
   ...API_CONFIG_KEYS.map(key => [key]),
+  ...['directorSettings','director'].flatMap(alias => API_CONFIG_KEYS.map(key => [alias,key])),
+  ['apiPresets'], ...['theaterSettings','theaters'].map(alias => [alias,'apiProfileId']),
   ['tts', 'provider'], ['tts', 'extractApiProfileId'], ['theater', 'apiProfileId'],
   ['coread', 'assistant', 'apiProfileId'], ['coread', 'comic', 'visionApiProfileId'],
   ['coread', 'memory', 'dialogProvider'], ['coread', 'memory', 'dialogApiProfileId'],
@@ -14,8 +17,9 @@ const paths = [
 ];
 
 function connectionPaths(...sources) {
-  const result = [...paths, ...ttsKeys.map(key => ['tts', key])]; // pre-provider legacy settings
-  for (const [container, fields] of [[['tts', 'providers'], ttsKeys], [['imagegen', 'profiles'], ['comfyUrl']]]) {
+  const ttsRoots = ['tts','ttsSettings','speechSettings'];
+  const result = [...paths, ...ttsRoots.flatMap(root => [...ttsKeys,'provider','extractApiProfileId'].map(key => [root,key]))];
+  for (const [container, fields] of [...ttsRoots.map(root => [[root,'providers'],ttsKeys]), [['imagegen', 'profiles'], ['comfyUrl']]]) {
     const ids = new Set(sources.flatMap(source => Object.keys(container.reduce((value, key) => value?.[key], source) || {})));
     for (const id of ids) if (safeKey(id)) for (const field of fields) result.push([...container, id, field]);
   }
@@ -106,8 +110,10 @@ export function configRestoreSummary(incoming, preserveConnections) {
 
 // Prepare a detached configuration before host/cache writes. Missing nested fields use
 // defaults; existing values are retained. Local archive references are not portable.
-export function prepareConfigRestore(incoming, current, defaults, preserveConnections, {clone, mergeDefaults, normalizeStoryboardState}) {
-  const merged = clone(incoming);
+export function prepareConfigRestore(incoming, current, defaults, preserveConnections, {clone, mergeDefaults, normalizeStoryboardState, migrateSettings = () => {}}) {
+  const migration = migrateQianmuSettingsV2(clone(incoming));
+  if (migration.failed) throw Error('配置迁移失败');
+  const merged = migration.value;
   mergeDefaults(merged, defaults);
   if (record(merged.imagegen)) {
     merged.imagegen = normalizeStoryboardState(merged.imagegen);
@@ -117,6 +123,8 @@ export function prepareConfigRestore(incoming, current, defaults, preserveConnec
       delete plan.archivedAt;
     }
   }
+  migrateSettings(merged);
+  // Resolve legacy aliases before restoring recipient connections; never refill foreign keys later.
   if (preserveConnections) restoreConfigConnections(merged, current);
   return merged;
 }

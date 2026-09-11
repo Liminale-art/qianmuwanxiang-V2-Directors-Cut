@@ -25651,9 +25651,10 @@ async function importConfig(event) {
   const yes = await confirmDialog('恢复前确认', configRestoreSummary(incoming, preserveConnections));
   if (!yes) return;
   if (!allowed(settings)) return;
-  const context = ctx();
-  const extensionSettings = context.extensionSettings || (context.extensionSettings = {});
-  const merged = prepareConfigRestore(incoming, owner, DEFAULT_SETTINGS, preserveConnections, {clone, mergeDefaults, normalizeStoryboardState});
+  let merged;
+  try { merged = prepareConfigRestore(incoming, owner, DEFAULT_SETTINGS, preserveConnections, {clone, mergeDefaults, normalizeStoryboardState, migrateSettings}); }
+  catch (_) { return toast('配置无法恢复，当前设置未改变。', 'error'); }
+  const extensionSettings = ctx().extensionSettings ||= {};
   if (isPlainObject(merged.proseLayout)) {
     merged.proseLayout.updatedAt = Date.now();
     cacheProseLayout(merged.proseLayout);
@@ -25664,7 +25665,7 @@ async function importConfig(event) {
   storyboardPlanArchiveCache.clear();
   // Import replaces settings, not historical originals; retain old archives for explicit storage management.
   extensionSettings[MODULE_NAME] = merged;
-  settings = getSettings();
+  settings = merged;
   seedBuiltinTheaters();   // 导入的配置可能早于内置剧场组，补种一次
   saveSettings();
   storyboardSchedulePlanArchive(600);
