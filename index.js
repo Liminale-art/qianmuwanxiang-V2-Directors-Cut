@@ -8302,10 +8302,14 @@ function openStorageCleanupDialog(data) {
 
 function createStorageBackupCheck(button, transfer) {
   const owner=settings,epoch=storyboardAdmissionEpoch,modal=document.getElementById(MODAL_ID);
-  return ()=>{
+  const view=createCoreadImportViewGuard(button||modal,'导出','');
+  const check=()=>{
+    view.check();
     if(settings!==owner||epoch!==storyboardAdmissionEpoch||button&&!button.isConnected||!modal?.isConnected||!modal.classList.contains('open'))throw Error('导出页面或状态已变化，未下载备份，请重新开始。');
     if(Object.values(configRestoreActivity(true,transfer)).some(Boolean))throw Error('其他任务已开始，未下载备份，请稍后重试。');
   };
+  check.release=view.release;
+  return check;
 }
 
 async function exportPinnedNotesBackup(button = null) {
@@ -8313,8 +8317,9 @@ async function exportPinnedNotesBackup(button = null) {
   const icon = button?.querySelector('i');
   const previousIcon = icon?.className || '';
   exportPinnedNotesBackup.busy=true;
+  let check;
   try {
-  const check=createStorageBackupCheck(button,exportPinnedNotesBackup);check();
+  check=createStorageBackupCheck(button,exportPinnedNotesBackup);check();
   if (button) button.disabled = true;
   if (icon) setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
     const notes = (await blobStore.listNotes({requireCommit:true})).filter((note) => note.pinned);
@@ -8329,6 +8334,7 @@ async function exportPinnedNotesBackup(button = null) {
     toast(`便笺导出失败：${error?.message || error}`, 'error');
   } finally {
     exportPinnedNotesBackup.busy=false;
+    check?.release();
     if (icon && previousIcon) setQianmuIconClass(icon, previousIcon);
     if (button) button.disabled = false;
   }
@@ -8381,8 +8387,9 @@ async function exportTtsFavoritesBackup(button = null) {
   const icon = button?.querySelector('i');
   const previousIcon = icon?.className || '';
   exportTtsFavoritesBackup.busy=true;
+  let check;
   try {
-  const check=createStorageBackupCheck(button,exportTtsFavoritesBackup);check();
+  check=createStorageBackupCheck(button,exportTtsFavoritesBackup);check();
   if (button) button.disabled = true;
   if (icon) setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
     const favorites = await blobStore.listFavorites({requireCommit:true});
@@ -8406,6 +8413,7 @@ async function exportTtsFavoritesBackup(button = null) {
     toast(`语音收藏导出失败：${error?.message || error}`, 'error');
   } finally {
     exportTtsFavoritesBackup.busy=false;
+    check?.release();
     if (icon && previousIcon) setQianmuIconClass(icon, previousIcon);
     if (button) button.disabled = false;
   }

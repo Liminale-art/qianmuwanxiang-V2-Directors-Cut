@@ -8,7 +8,8 @@ function fixture(){
   const f={notes:[{id:'note',body:'完整原文',pinned:true},{id:'temporary',body:'session only',pinned:false}],favorites:[{id:'voice',blob:new Blob(['synthetic audio'],{type:'audio/mpeg'}),label:'收藏',meta:{speaker:'角色',apiKey:'never export'},createdAt:123}],downloads:[],notices:[]};
   f.icon={className:'original-icon'};f.button={isConnected:true,disabled:false,querySelector:()=>f.icon};
   f.modal={isConnected:true,open:true,classList:{contains:()=>f.modal.open}};f.other={};
-  const c=vm.createContext({exportLibraryBackup,FAVORITE_TEXT_LIMITS,confirmDialog:async()=>true,settings:{},storyboardAdmissionEpoch:1,MODAL_ID:'fixture',document:{getElementById:()=>f.modal},Blob,clone:structuredClone,blobStore:{listNotes:async()=>f.notes,listFavorites:async()=>f.favorites},
+  f.guards=[];
+  const c=vm.createContext({exportLibraryBackup,FAVORITE_TEXT_LIMITS,createCoreadImportViewGuard:(origin,action,subject)=>{const g={origin,action,subject,released:0,check(){if(f.pageChanged)throw Error('export page changed');},release(){g.released++;}};f.guards.push(g);return g;},confirmDialog:async()=>true,settings:{},storyboardAdmissionEpoch:1,MODAL_ID:'fixture',document:{getElementById:()=>f.modal},Blob,clone:structuredClone,blobStore:{listNotes:async()=>f.notes,listFavorites:async()=>f.favorites},
     fileStamp:()=> 'fixture',blobToBase64:async blob=>Buffer.from(await blob.arrayBuffer()).toString('base64'),
     ttsDownloadBlob:(blob,name)=>f.downloads.push({blob,name}),toast:(...args)=>f.notices.push(args),setQianmuIconClass:(icon,name)=>icon.className=name});
   vm.runInContext(['createStorageBackupCheck','storageSafeFavoriteMeta','exportPinnedNotesBackup','exportTtsFavoritesBackup'].map(source).join('\n'),c);
@@ -110,5 +111,22 @@ test('active work blocks exports before reading and icon setup failure cannot st
     const f=fixture();f.other={image:true};await f.c[name](f.button);assert.equal(f.downloads.length,0);assert.equal(!!f.c[name].busy,false);
     f.other={};f.c.setQianmuIconClass=(icon,value)=>{if(value.includes('spinner'))throw Error('icon failed');icon.className=value;};
     await f.c[name](f.button);assert.equal(f.c[name].busy,false);assert.equal(f.button.disabled,false);assert.equal(f.downloads.length,0);
+  }
+});
+
+test('library exports release their shared page watcher on every success, cancellation and failure path',async()=>{
+  for(const [name,method] of [['exportPinnedNotesBackup','listNotes'],['exportTtsFavoritesBackup','listFavorites']])for(const mode of ['success','empty','read','download','page','icon','cancel','setup']){
+    const f=fixture(),c=f.c;
+    if(mode==='empty')c.blobStore[method]=async()=>[];
+    if(mode==='read')c.blobStore[method]=async()=>{throw Error('read interrupted');};
+    if(mode==='download')c.ttsDownloadBlob=()=>{throw Error('download interrupted');};
+    if(mode==='page')c.blobStore[method]=async()=>{f.pageChanged=true;return method==='listNotes'?f.notes:f.favorites;};
+    if(mode==='icon')c.setQianmuIconClass=(icon,value)=>{if(value.includes('spinner'))throw Error('icon failed');icon.className=value;};
+    if(mode==='setup')c.createCoreadImportViewGuard=()=>{throw Error('closed initially');};
+    if(mode==='cancel'){c.confirmDialog=async()=>false;f.notes[0].body='a'.repeat(20001);f.favorites[0].label='a'.repeat(1001);}
+    await c[name](f.button);assert.equal(c[name].busy,false,mode);assert.equal(f.button.disabled,false,mode);
+    assert.equal(f.guards.length,mode==='setup'?0:1,mode);
+    for(const g of f.guards){assert.equal(g.released,1,mode);assert.equal(g.origin,f.button);assert.equal(g.action,'导出');assert.equal(g.subject,'');}
+    assert.equal(f.downloads.length,mode==='success'?1:0,mode);
   }
 });
