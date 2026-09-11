@@ -10160,13 +10160,18 @@ async function ttsPreviewVoice(voiceId, text, btn, voiceModel = '') {
 async function ttsRefreshFavorites(root) {
   const box = root.querySelector('.sd-tts-fav-list');
   if (!box) return;
+  const requestId = uid('favorites-list'), owner = settings, epoch = storyboardAdmissionEpoch;
+  box.dataset.requestId = requestId;
+  const current = () => root.isConnected && box.isConnected && root.querySelector('.sd-tts-fav-list') === box
+    && root.closest(`#${MODAL_ID}`)?.classList.contains('open') && box.dataset.requestId === requestId && owner === settings && epoch === storyboardAdmissionEpoch;
   if (!blobStore.blobStoreAvailable()) { box.innerHTML = '<p class="sd-muted sd-hint-sm">当前环境不支持本地收藏。</p>'; return; }
   snapshotAccState(box);
   box.innerHTML = '<p class="sd-muted sd-hint-sm"><i class="fa-solid fa-spinner fa-spin"></i> 加载中…</p>';
   applyQianmuIcons(box);
   let favs = [];
   try { favs = await blobStore.listFavorites(); }
-  catch (_) { box.innerHTML = '<p class="sd-muted sd-hint-sm sd-tts-err">读取收藏失败。</p>'; return; }
+  catch (_) { if (current()) box.innerHTML = '<p class="sd-muted sd-hint-sm sd-tts-err">读取收藏失败。</p>'; return; }
+  if (!current()) return;
   if (!favs.length) { box.innerHTML = '<p class="sd-muted sd-hint-sm">还没有收藏的语音。双击正文台词的小喇叭，在快捷窗里点收藏。</p>'; return; }
   const renderRow = (f) => {
     const spk = htmlEscape(f.meta?.speaker || '');
