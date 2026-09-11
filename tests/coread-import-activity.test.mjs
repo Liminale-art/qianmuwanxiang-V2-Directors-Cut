@@ -11,6 +11,7 @@ function fixture(){
     applyCoreadPackageData:async()=>{calls.push('write');return {ok:0,chatOk:0,imageOk:0,vectorOk:0,audioOk:0,logOk:0};}});
   c.coread=()=>c.settings.coread;c.configRestoreActivity=()=>({transfer:c.coreadImportDataFile.busy||c.storageCleanupSession.busy});
   vm.runInContext(source('coreadImportDataFile'),c);
+  c.blobStore.createReaderPackageWriter=({check})=>{assert.equal(typeof check,'function');return c.blobStore;};
   c.storageCleanupSession=createStorageCleanupSession({owner:()=>c.settings,scope:()=>1,epoch:()=>c.storyboardAdmissionEpoch,activity:()=>({transfer:c.coreadImportDataFile.busy})});
   return {c,calls,notices,levels,run:()=>c.coreadImportDataFile({})};
 }

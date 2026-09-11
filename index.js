@@ -34913,7 +34913,7 @@ async function coreadImportDataFile(file) {
     const mediaN = (Array.isArray(data.images) ? data.images.length : 0) + (Array.isArray(data.audio) ? data.audio.length : 0);
     if (!await confirmDialog('导入伴读数据打包', `将导入 ${data.books.length} 本书${chatN ? `、${chatN} 段伴读对话与记忆` : ''}${mediaN ? `、${mediaN} 项媒体` : ''}。同 id 的书和会话会被覆盖；API 密钥沿用本机设置。是否继续？`)) return;
     check();
-    await applyCoreadPackageData(data, {blobStore, coread:()=>reader, isPlainObject, base64ToBlob, check, progress, warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error)});
+    await applyCoreadPackageData(data, {blobStore:blobStore.createReaderPackageWriter({check}), coread:()=>reader, isPlainObject, base64ToBlob, check, progress, warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error)});
     check();
     // 偏好深合并：保留本机书目、启用态和全部凭据；v1–v5 数据均兼容。
     if (isPlainObject(data.prefs)) coreadMergePackageValue(coread(), omitConfigConnections({coread:data.prefs}).coread);

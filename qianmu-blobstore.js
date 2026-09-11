@@ -298,6 +298,33 @@ export function blobStoreAvailable() {
 }
 
 // ── 伴读：书籍正文（重，懒取）────────────────────────────────
+// Import-only adapter. Daily reader writes retain their existing public behavior.
+export function createReaderPackageWriter({check = () => {}} = {}) {
+  const put = async (name, key, value) => {
+    check();
+    if (!blobStoreAvailable()) throw new Error('伴读存储不可用，未写入。');
+    const db = await openDB();
+    check();
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction(name, 'readwrite');
+      const failure = event => event?.target?.error || transaction.error || new Error('伴读数据未能完成保存。');
+      transaction.oncomplete = resolve;
+      transaction.onerror = event => reject(failure(event));
+      transaction.onabort = event => reject(failure(event));
+      transaction.objectStore(name).put(value, key);
+    });
+    return key;
+  };
+  return {
+    putBook: (key, record) => put(STORE_BOOKS, key, {...record, savedAt:Date.now()}),
+    putCover: (key, blob) => put(STORE_COVERS, key, blob),
+    putReaderChat: (key, record) => put(STORE_CHATS, key, {...record, updatedAt:Date.now()}),
+    putReaderImageByKey: (key, blob) => put(STORE_IMAGES, String(key), blob),
+    putReaderVectors: (key, record) => put(STORE_VECTORS, key, {...record, updatedAt:Date.now()}),
+    bulkPutAudio, pushRetLog,
+  };
+}
+
 // 轻重分离：书架列表只读 settings 里的轻元数据（标量长度/标题等），正文仅在打开阅读器时按 id 取。
 
 export async function putBook(bookId, record) {
