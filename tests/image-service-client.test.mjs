@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { createImageServiceClient, createImageServiceClientStore } from '../qianmu-image-service-client.js';
+import { receiveServiceImage } from '../qianmu-service-recovery-action.js';
 import { normalizeStoryboardState, sanitizeStoryboardSnapshot } from '../qianmu-storyboard.js';
 import { confirmImageAttemptResult, claimImageAttempt, beginImageAttempt } from '../qianmu-image-attempts.js';
 
@@ -306,8 +307,9 @@ test('multi-image recovery checkpoints each file and resumes only the unfinished
 });
 test('service UI keeps generation and original retrieval as distinct explicit actions', () => {
   assert.match(section('renderStoryboardModelCard'), /sd-storyboard-service-mode[\s\S]*浏览器优先[\s\S]*增强服务协调/);
-  assert.match(section('storyboardRunJob'), /service\.submit/); assert.match(section('storyboardReceiveServiceImage'), /service\.retrieve/);
-  assert.doesNotMatch(section('storyboardReceiveServiceImage'), /storyboardQueueJob|storyboardGenerate|generateDirectImage/);
+  assert.match(section('storyboardRunJob'), /service\.submit/); assert.match(section('storyboardReceiveServiceImage'), /receiveServiceImage\(/);
+  assert.match(receiveServiceImage.toString(), /service\.retrieve/);
+  assert.doesNotMatch(section('storyboardReceiveServiceImage')+receiveServiceImage.toString(), /storyboardQueueJob|storyboardGenerate|generateDirectImage/);
   assert.match(section('renderStoryboardLogs'), /sd-storyboard-open-service-inbox/);
 });
 

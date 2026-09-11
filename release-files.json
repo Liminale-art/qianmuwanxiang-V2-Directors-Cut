@@ -171,6 +171,7 @@
     "qianmu-comfy-recovery-client.js",
     "qianmu-comfy-recovery-action.js",
     "qianmu-client-activity.js",
+    "qianmu-service-recovery-action.js",
     "qianmu-comfy-inbox-view.js",
     "qianmu-comfy-reference-contract.js",
     "qianmu-comfy-references.js",

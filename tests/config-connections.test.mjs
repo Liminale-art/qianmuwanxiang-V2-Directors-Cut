@@ -70,6 +70,7 @@ function fixture() {
     mergeDefaults:()=>{},migrateSettings:()=>{},storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
     storyboardPipelineArchiveEpoch:0,storyboardPipelineArchiveCache:new Map(),storyboardPipelineArchiveWrites:new Map(),storyboardPipelineArchiveHydration:null,
     storyboardSnapshotEpoch:0,storyboardSnapshotCache:new Map(),storyboardSnapshotReads:new Map(),
+    storyboardAdmissionEpoch:0,
     blobStore:{clearStoryboardPlanArchives(){throw Error('must never erase historical originals');}},
     getSettings:()=>context.extensionSettings.module,seedBuiltinTheaters(){},saveSettings:()=>writes.push('save'),storyboardSchedulePlanArchive(){},applyDirectorInjection:async()=>{},renderFloatButton(){},renderModal(){},cacheProseLayout(){}});
   vm.runInContext(['exportConfig','importConfig','configApplyOptions','undoConfigRestore'].map(section).join('\n'),c);
@@ -95,6 +96,7 @@ test('configuration handoff invalidates pipeline memory sessions without deletin
   assert.equal(e.c.storyboardPipelineArchiveCache.size,0);assert.equal(e.c.storyboardPipelineArchiveWrites.size,0);
   assert.equal(e.c.storyboardPipelineArchiveHydration,null);assert.equal(e.c.settings,owner);
   assert.equal(e.c.storyboardSnapshotEpoch,1);assert.equal(e.c.storyboardSnapshotCache.size,0);assert.equal(e.c.storyboardSnapshotReads.size,0);
+  assert.equal(e.c.storyboardAdmissionEpoch,1);
   assert.deepEqual(e.writes,[]);
 });
 

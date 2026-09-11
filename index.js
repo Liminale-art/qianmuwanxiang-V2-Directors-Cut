@@ -3,6 +3,7 @@ import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readCo
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { exportConfiguration } from './qianmu-config-export.js';
 import { receiveComfyImage, resolveComfyRecoveryKey } from './qianmu-comfy-recovery-action.js';
+import { receiveServiceImage } from './qianmu-service-recovery-action.js';
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
 import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives } from './qianmu-plan-archive-write.js';
@@ -19685,28 +19686,11 @@ async function storyboardOpenComfyInbox(root) {
 async function storyboardReceiveServiceImage(attemptId, discovered = null, expectedNamespace = discovered?.namespace) {
   storyboardReceiveServiceImage.pending = (storyboardReceiveServiceImage.pending || 0) + 1;
   try {
-  try {
-    const service = await storyboardImageServiceRuntime();
-    if (discovered && !await service.rememberOriginal(discovered, { chatKey: String(getChatKey() || '') })) return;
-    const result = await service.retrieve(attemptId, async (data, row, checkpoint, guard) => {
-      const job = row.originalOnly ? { id: row.attemptId, originalOnly: true, source: 'novel', target: 'gallery', chatKey: row.snapshot.chatKey, inlineByDefault: false,
-        profile: { model: String(data.model || '') }, prompt: '', negative: '', payload: {}, automatic: false }
-        : { ...clone(row.snapshot), id: row.attemptId, automatic: Boolean(row.snapshot.automatic), discardRequested: false };
-      const log = row.originalOnly ? null : storyboardState().logs.find(item => item.id === row.logId);
-      const archived = await storyboardDeliverGatewayResult(job, log, data, { service: true, archiveRecords: row.archiveRecords, checkpoint, guard });
-      if (archived) {
-        await guard();
-        try {
-          const admission = await storyboardImageAdmissionRuntime();
-          if (job.imageAdmission) await admission.confirmResult(job.imageAdmission);
-          await (await storyboardImageChannelRuntime()).confirmResult({ namespace: row.namespace, attemptId: row.attemptId, channelKey: row.channelKey });
-        } catch (_) { throw new Error('原图已归档；本地请求保护记录尚待核查，可稍后再领取以同步，不会重新生图'); }
-      }
-      return archived;
-    }, { namespace: expectedNamespace });
-    toast(result.warning || '原图已领取并归档', result.warning ? 'warning' : 'success');
-    renderModal();
-  } catch (error) { toast(error.message || '原图暂不可领取，未重新生成', 'warning'); }
+    return await receiveServiceImage(attemptId, discovered, expectedNamespace, {
+      scope:()=>({owner:settings,epoch:storyboardAdmissionEpoch,chat:String(getChatKey()||'')}),
+      service:storyboardImageServiceRuntime,state:storyboardState,clone,deliver:storyboardDeliverGatewayResult,
+      admission:storyboardImageAdmissionRuntime,channel:storyboardImageChannelRuntime,notify:toast,render:renderModal,
+    });
   } finally { storyboardReceiveServiceImage.pending--; }
 }
 
@@ -19728,8 +19712,9 @@ async function storyboardPaintServiceInbox(root, { server = false, cursor = null
   const host = root.querySelector('.sd-storyboard-service-inbox');
   if (!host) return;
   const requestId = uid('service-list'); host.dataset.requestId = requestId;
+  const owner = settings, epoch = storyboardAdmissionEpoch, chat = String(getChatKey() || '');
   host.textContent = '正在读取';
-  const current = () => host.isConnected && host.dataset.requestId === requestId;
+  const current = () => host.isConnected && host.dataset.requestId === requestId && owner === settings && epoch === storyboardAdmissionEpoch && chat === String(getChatKey() || '');
   try {
     const service = await storyboardImageServiceRuntime();
     const data = server ? await service.catalog({ cursor }) : null;
@@ -19762,11 +19747,13 @@ async function storyboardPaintServiceInbox(root, { server = false, cursor = null
     host.querySelectorAll('[data-service-scope]').forEach(button => button.addEventListener('click', () => void storyboardPaintServiceInbox(root, { server: button.dataset.serviceScope === 'server' })));
     host.querySelector('[data-service-next]')?.addEventListener('click', () => void storyboardPaintServiceInbox(root, { server: true, cursor: data.nextCursor }));
     host.querySelectorAll('[data-service-receive-index]').forEach(button => button.addEventListener('click', async () => {
+      if (!current()) return;
       const row = rows[Number(button.dataset.serviceReceiveIndex)]; button.disabled = true;
       try { await storyboardReceiveServiceImage(row.attemptId, server ? { ...row, namespace: data.namespace } : null, server ? data.namespace : row.namespace); }
       finally { if (current()) button.disabled = false; }
     }));
     host.querySelectorAll('[data-service-remove-index]').forEach(button => button.addEventListener('click', async () => {
+      if (!current()) return;
       const row = rows[Number(button.dataset.serviceRemoveIndex)]; button.disabled = true;
       try {
         if (server) { if (await service.discardOriginal({ ...row, namespace: data.namespace })) toast('已删除该项服务器暂存，已归档图片与防重记录保留', 'success'); }
@@ -25678,6 +25665,7 @@ function configApplyOptions() {
     setCurrent:value=>{settings=value;}, current:()=>settings, save:saveSettings,
     layoutStorage:()=>globalThis.localStorage, layoutKey:PROSE_LAYOUT_STORAGE_KEY,
     afterApply:()=>{
+      storyboardAdmissionEpoch++;
       storyboardSnapshotEpoch++;
       storyboardSnapshotCache.clear();
       storyboardSnapshotReads.clear();
