@@ -7,14 +7,15 @@ import {normalizeQianmuNote, importQianmuNotesBackup} from '../qianmu-notes.js';
 const payload=JSON.stringify({type:'qianmu-notes',version:1,notes:[{id:'same',body:'first'},{id:'other',body:'second'}]});
 function fixture(){
   const saved=[],notices=[];
-  const c=vm.createContext({settings:{},storyboardAdmissionEpoch:1,normalizeQianmuNote,importQianmuNotesBackup,
+  const view={isConnected:true,open:true,classList:{contains:()=>view.open}};
+  const c=vm.createContext({document:{getElementById:()=>view},MODAL_ID:'fixture',settings:{},storyboardAdmissionEpoch:1,normalizeQianmuNote,importQianmuNotesBackup,
     listQianmuNotes:async()=>[{id:'same'}],saveQianmuNote:async note=>saved.push(note),uid:()=> 'copy',
     notesRuntime:['original'],notesLoaded:false,notesPanelOpen:false,renderFloatingNotes(){},refreshStorageInventory:async()=>{},toast:text=>notices.push(text)});
   vm.runInContext(source('importPinnedNotesBackup'),c);
   c.saveImportedQianmuNote=(...args)=>c.saveQianmuNote(...args);
   c.storageCleanupSession=createStorageCleanupSession({owner:()=>c.settings,scope:()=>1,epoch:()=>c.storyboardAdmissionEpoch,activity:()=>({transfer:c.importPinnedNotesBackup.busy})});
-  const input={files:[{size:payload.length,text:async()=>payload}],value:'fixture'};
-  return {c,input,saved,notices,run:()=>c.importPinnedNotesBackup({currentTarget:input})};
+  const input={isConnected:true,files:[{size:payload.length,text:async()=>payload}],value:'fixture'};
+  return {c,input,view,saved,notices,run:()=>c.importPinnedNotesBackup({currentTarget:input})};
 }
 test('a pending notes import prevents cleanup and duplicate imports before reading finishes',async()=>{
   const e=fixture();let release,reads=0;e.input.files[0].text=()=>{reads++;return new Promise(r=>release=r);};
@@ -29,13 +30,17 @@ test('active cleanup rejects import without reading a file or changing the clean
   await e.run();assert.equal(e.saved.length,0);assert.equal(e.c.storageCleanupSession.busy,true);token.release();
 });
 for(const phase of ['read','list','save'])test('notes import stops stale '+phase+' work without republishing another configuration',async()=>{
-  for(const change of ['owner','epoch']){
+  for(const change of ['owner','epoch','closed','detached','input']){
     const e=fixture();let release;
     if(phase==='read')e.input.files[0].text=()=>new Promise(r=>release=r);
     if(phase==='list')e.c.listQianmuNotes=()=>new Promise(r=>release=r);
     if(phase==='save')e.c.saveQianmuNote=async note=>{e.saved.push(note);await new Promise(r=>release=r);};
     const pending=e.run();await new Promise(r=>setImmediate(r));assert.equal(typeof release,'function');
-    if(change==='owner')e.c.settings={newOwner:true};else e.c.storyboardAdmissionEpoch++;
+    if(change==='owner')e.c.settings={newOwner:true};
+    if(change==='epoch')e.c.storyboardAdmissionEpoch++;
+    if(change==='closed')e.view.open=false;
+    if(change==='detached')e.view.isConnected=false;
+    if(change==='input')e.input.isConnected=false;
     release(phase==='read'?payload:[]);await pending;
     assert.equal(e.saved.length,phase==='save'?1:0);assert.equal(e.c.notesLoaded,false);
     assert.equal(e.c.notesRuntime[0],'original');assert.equal(e.c.importPinnedNotesBackup.busy,false);assert.match(e.notices.at(-1),/已写入内容保留/);

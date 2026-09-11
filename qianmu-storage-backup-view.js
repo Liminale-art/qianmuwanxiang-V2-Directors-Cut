@@ -24,6 +24,11 @@ export function bindStorageCleanupLifetime(layer, modal, resolve) {
   if (modal) observer.observe(modal, {attributes:true, attributeFilter:['class']});
   document.addEventListener('keydown', onKey, true);
   view.addEventListener('pagehide', onPageHide);
+  layer.querySelector('.sd-storage-backup-home')?.addEventListener('click', () => {
+    finish(null);
+    const backup = modal?.querySelector('.sd-storage-backup-section');
+    if (backup) { backup.open = true; backup.scrollIntoView({block:'nearest'}); backup.querySelector('summary')?.focus({preventScroll:true}); }
+  });
   if (!layer.isConnected || !modal?.isConnected || !modal.classList.contains('open')) finish(null);
   return finish;
 }

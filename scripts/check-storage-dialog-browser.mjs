@@ -21,7 +21,7 @@ try{
     window.storageCleanupSession=createStorageCleanupSession({owner:()=>settings,scope:()=>getChatKey(),epoch:()=>storyboardAdmissionEpoch});
     new Function(source+';window.bindCleanup=bindStorageManagementEvents;')();
     const checks=[];
-    for(const kind of ['module','chat'])for(const action of ['cancel','close','backdrop','escape','remove','modal-close','modal-remove','card-replace','pagehide']){
+    for(const kind of ['module','chat'])for(const action of ['cancel','close','backdrop','escape','remove','modal-close','modal-remove','card-replace','pagehide',...(kind==='module'?['backup']:[])]){
       document.body.innerHTML='<section id="fixture-modal" class="open"><section class="sd-storage-card"><button class="sd-storage-clean">Module</button><button class="sd-storage-chat-clean">Chat</button></section></section>';
       const modal=document.getElementById(MODAL_ID),card=modal.firstElementChild;bindCleanup(card);
       card.querySelector(kind==='module'?'.sd-storage-clean':'.sd-storage-chat-clean').click();
@@ -35,6 +35,12 @@ try{
       if(action==='modal-remove')modal.remove();
       if(action==='card-replace')card.replaceWith(card.cloneNode(true));
       if(action==='pagehide')dispatchEvent(new Event('pagehide'));
+      if(action==='backup'){
+        if(layer.querySelector('input[type=file]'))throw Error('cleanup still owns import inputs');
+        const backup=document.createElement('details');backup.className='sd-storage-backup-section';backup.innerHTML='<summary>Backup</summary>';card.append(backup);
+        layer.querySelector('.sd-storage-backup-home').click();
+        if(!backup.open||document.activeElement!==backup.firstElementChild)throw Error('backup home was not revealed and focused');
+      }
       await new Promise(resolve=>setTimeout(resolve,0));
       if(storageCleanupSession.busy||layer.isConnected)throw Error(kind+'/'+action+' left the cleanup locked');
       const retry=storageCleanupSession.begin({isConnected:true});if(!retry)throw Error('retry blocked');retry.release();
@@ -50,5 +56,5 @@ try{
     checks.push('confirmation settles once and releases listeners');
     return checks;
   },['openStorageCleanupDialog','openStorageChatCleanupDialog','bindStorageManagementEvents'].map(section).join('\n'));
-  assert.equal(checks.length,19);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,20);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

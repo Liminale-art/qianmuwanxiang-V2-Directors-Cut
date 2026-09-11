@@ -8263,9 +8263,6 @@ function openStorageCleanupDialog(data) {
     ...(data?.comfyStorage?.scenes?.status==='ready'?[{ id: '__comfy_scenes__', label: 'Comfy 续场记录（当前账户所有聊天）', bytes: data.comfyStorage.scenes.bytes, count: data.comfyStorage.scenes.count }]:[]),
     { id: '__storyboard_restores__', label: '分镜恢复记录（当前账户）', bytes: data?.restoreStorage?.status==='ready'?data.restoreStorage.bytes:0, count: data?.restoreStorage?.count||0 },
   ];
-  const fixedNotes = modules.find((item) => item.id === 'notes');
-  const favorites = modules.find((item) => item.id === 'favorites');
-  const hasReaderData = modules.some((item) => item.id.startsWith('reader_') && Number(item.count) > 0);
   return new Promise((resolve) => {
     const layer = document.createElement('div');
     layer.id = STORAGE_CLEANUP_LAYER_ID;
@@ -8282,11 +8279,7 @@ function openStorageCleanupDialog(data) {
         const [risk, destructive] = STORAGE_ITEM_RISK[item.id] || ['本地项目', true];
         return `<label class="${destructive ? 'is-destructive' : ''}"><input type="checkbox" value="${htmlEscape(item.id)}" ${item.bytes > 0 ? '' : 'disabled'}><span><span><b>${htmlEscape(item.label)}</b><em>${htmlEscape(risk)}</em></span><small>${htmlEscape(formatStorageBytes(item.bytes))}${item.count ? ` · ${item.count} 项` : ''}${item.scopeCount ? ` · ${item.scopeCount} 个聊天` : ''}</small></span></label>`;
       }).join('')}</div>
-      <details class="sd-storage-backups"><summary>备份与恢复</summary><div class="sd-storage-backup-actions">
-        <button type="button" class="sd-btn sd-storage-export-notes" ${Number(fixedNotes?.count) > 0 ? '' : 'disabled'}><i class="fa-solid fa-file-export"></i>导出固定便笺</button><label class="sd-btn"><i class="fa-solid fa-file-import"></i>导入固定便笺<input type="file" class="sd-storage-import-notes" accept="application/json,.json" hidden></label>
-        <button type="button" class="sd-btn sd-storage-export-favorites" ${Number(favorites?.count) > 0 ? '' : 'disabled'}><i class="fa-solid fa-file-export"></i>导出语音收藏</button><label class="sd-btn"><i class="fa-solid fa-file-import"></i>导入语音收藏<input type="file" class="sd-storage-import-favorites" accept="application/json,.json" hidden></label>
-        <button type="button" class="sd-btn sd-storage-export-reader-pack" ${hasReaderData ? '' : 'disabled'}><i class="fa-solid fa-file-export"></i>导出伴读整包</button><label class="sd-btn"><i class="fa-solid fa-file-import"></i>导入伴读整包<input type="file" class="sd-storage-import-reader-pack" accept="application/json,.json" hidden></label>
-      </div></details>
+      <div class="sd-storage-backup-actions"><button type="button" class="sd-btn sd-storage-backup-home">先去备份与恢复</button></div>
       <footer><button type="button" class="sd-btn sd-storage-cleanup-cancel">取消</button><button type="button" class="sd-btn sd-primary sd-storage-cleanup-confirm" disabled><i class="fa-solid fa-trash-can"></i>清理所选</button></footer>
     </section>`;
     document.body.appendChild(layer);
@@ -8298,16 +8291,6 @@ function openStorageCleanupDialog(data) {
       if (confirm) confirm.disabled = count === 0;
     };
     layer.querySelectorAll('input[type="checkbox"]').forEach((input) => input.addEventListener('change', sync));
-    layer.querySelector('.sd-storage-export-notes')?.addEventListener('click', (event) => void exportPinnedNotesBackup(event.currentTarget));
-    layer.querySelector('.sd-storage-import-notes')?.addEventListener('change', (event) => void importPinnedNotesBackup(event));
-    layer.querySelector('.sd-storage-export-favorites')?.addEventListener('click', (event) => void exportTtsFavoritesBackup(event.currentTarget));
-    layer.querySelector('.sd-storage-import-favorites')?.addEventListener('change', (event) => void importTtsFavoritesBackup(event));
-    layer.querySelector('.sd-storage-export-reader-pack')?.addEventListener('click', () => void coreadExportData());
-    layer.querySelector('.sd-storage-import-reader-pack')?.addEventListener('change', async (event) => {
-      const input = event.currentTarget;
-      try { await coreadImportDataFile(input.files?.[0]); }
-      finally { input.value = ''; }
-    });
     layer.querySelector('.sd-storage-cleanup-confirm')?.addEventListener('click', () => finish([...layer.querySelectorAll('input:checked')].map((input) => input.value)));
     layer.querySelector('.sd-storage-cleanup-backdrop')?.addEventListener('click', () => finish(null));
     layer.querySelector('.sd-storage-cleanup-close')?.addEventListener('click', () => finish(null));
@@ -8348,9 +8331,11 @@ async function importPinnedNotesBackup(event) {
   if (importPinnedNotesBackup.busy || storageCleanupSession.busy) return toast('请先结束导入或关闭清理选择，再从备份区导入。', 'warning');
   importPinnedNotesBackup.busy = true;
   const owner = settings, epoch = storyboardAdmissionEpoch;
-  const check = () => { if (settings !== owner || epoch !== storyboardAdmissionEpoch) throw Error('导入状态已变化，后续已停止；已写入内容保留。'); };
+  const view = document.getElementById(MODAL_ID);
+  const check = () => { if (settings !== owner || epoch !== storyboardAdmissionEpoch || !input.isConnected || !view?.isConnected || !view.classList.contains('open')) throw Error('导入页面或状态已变化，后续已停止；已写入内容保留。'); };
   const progress = {imported:0, failed:[]};
   try {
+    check();
     const {imported, failed} = await importQianmuNotesBackup(file, {check, read:()=>listQianmuNotes({strict:true}), write:note=>saveImportedQianmuNote(note,{check}), uid, progress});
     const notes = await listQianmuNotes({strict:true}); check();
     notesRuntime = notes;
