@@ -39,10 +39,26 @@ for(const phase of ['read','list','save'])test('notes import stops stale '+phase
     release(phase==='read'?payload:[]);await pending;
     assert.equal(e.saved.length,phase==='save'?1:0);assert.equal(e.c.notesLoaded,false);
     assert.equal(e.c.notesRuntime[0],'original');assert.equal(e.c.importPinnedNotesBackup.busy,false);assert.match(e.notices.at(-1),/已写入内容保留/);
+    if(phase==='save')assert.match(e.notices.at(-1),/已导入 1 条/);
   }
 });
 test('invalid input releases import activity for the next attempt',async()=>{
   const e=fixture();e.input.files[0].text=async()=>'{';await e.run();
   assert.equal(e.c.importPinnedNotesBackup.busy,false);assert.equal(e.input.value,'');assert.equal(e.saved.length,0);
   e.input.files[0].text=async()=>payload;await e.run();assert.equal(e.saved.length,2);
+});
+
+test('too many notes are rejected before library reads or writes, never silently clipped',async()=>{
+  const e=fixture();e.input.files[0].text=async()=>JSON.stringify({type:'qianmu-notes',version:1,notes:Array.from({length:1001},()=>({body:'fixture'}))});
+  e.c.listQianmuNotes=()=>{throw Error('must not read');};await e.run();
+  assert.equal(e.saved.length,0);assert.match(e.notices.at(-1),/超过 1000 条/);assert.equal(e.c.importPinnedNotesBackup.busy,false);
+});
+test('failed final inventory reports already committed imports and does not publish an empty library',async()=>{
+  const e=fixture();let reads=0;e.c.listQianmuNotes=async()=>{if(reads++)throw Error('synthetic read failure');return [];};
+  await e.run();assert.equal(e.saved.length,2);assert.equal(e.c.notesRuntime[0],'original');
+  assert.match(e.notices.at(-1),/已导入 2 条，已写入内容保留/);assert.match(e.notices.at(-1),/synthetic read failure/);
+});
+test('a failed entry remains separate from the committed count',async()=>{
+  const e=fixture();e.c.saveQianmuNote=async note=>{if(note.id==='copy')throw Error('synthetic write failure');e.saved.push(note);};
+  await e.run();assert.equal(e.saved.length,1);assert.match(e.notices.at(-1),/已导入 1 条固定便笺，1 条失败并跳过/);
 });

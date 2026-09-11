@@ -8349,8 +8349,9 @@ async function importPinnedNotesBackup(event) {
   importPinnedNotesBackup.busy = true;
   const owner = settings, epoch = storyboardAdmissionEpoch;
   const check = () => { if (settings !== owner || epoch !== storyboardAdmissionEpoch) throw Error('导入状态已变化，后续已停止；已写入内容保留。'); };
+  const progress = {imported:0, failed:[]};
   try {
-    const {imported, failed} = await importQianmuNotesBackup(file, {check, read:()=>listQianmuNotes({strict:true}), write:note=>saveImportedQianmuNote(note,{check}), uid});
+    const {imported, failed} = await importQianmuNotesBackup(file, {check, read:()=>listQianmuNotes({strict:true}), write:note=>saveImportedQianmuNote(note,{check}), uid, progress});
     const notes = await listQianmuNotes({strict:true}); check();
     notesRuntime = notes;
     notesLoaded = true;
@@ -8361,7 +8362,7 @@ async function importPinnedNotesBackup(event) {
     if (failed.length) toast(`已导入 ${imported} 条固定便笺，${failed.length} 条失败并跳过。${failed.slice(0, 2).join('；')}`, 'warning');
     else toast(`已导入 ${imported} 条固定便笺；同 ID 条目已作为副本保留。`, 'success');
   } catch (error) {
-    toast(`便笺导入失败：${error?.message || error}`, 'error');
+    toast(`便笺导入未完成：${progress.imported ? `已导入 ${progress.imported} 条，已写入内容保留；` : ''}${error?.message || error}`, 'error');
   } finally {
     importPinnedNotesBackup.busy = false;
     if (input) input.value = '';
