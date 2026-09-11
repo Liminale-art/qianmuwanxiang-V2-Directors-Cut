@@ -48,3 +48,14 @@ test('actual reader export strips complete connections from a detached copy and 
   assert.deepEqual(result.prefs.memory,{});assert.deepEqual(result.prefs.assistant,{});assert.deepEqual(result.prefs.comic,{});
   assert.equal(JSON.stringify(result).includes('synthetic'),false);assert.equal(JSON.stringify(result).includes('https://local.invalid'),false);
 });
+
+test('the actual exporter never creates a downloadable complete pack after a required read or dialog save fails',async()=>{
+  for(const failure of ['getBook','listAudio','coreadSaveDialog']){
+    const local=settings();local.books=[{id:'book'}];const e=fixture(local);
+    e.c.blobStore.getBook=async()=>({fullText:'original'});e.c.blobStore.getCover=async()=>undefined;
+    if(failure==='coreadSaveDialog'){e.c.readerDialog.loaded=true;e.c.coreadSaveDialog=async()=>{throw Error('save failed');};}
+    else e.c.blobStore[failure]=async()=>{throw Error('read failed');};
+    await e.c.coreadExportData();assert.equal(e.exported(),undefined,'no Blob was created for a partial pack');
+    assert.match(e.notices.at(-1),/备份未完成/);assert.equal(e.notices.some(n=>n.includes('已打包导出')),false);
+  }
+});

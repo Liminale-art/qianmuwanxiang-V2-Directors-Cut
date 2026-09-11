@@ -2,52 +2,59 @@
 import {parseBoundedJson} from './qianmu-json-input.js';
 export const COREAD_PACKAGE_LIMITS = Object.freeze({bytes:256*1048576,depth:40,nodes:500000});
 
-export async function collectCoreadPackageData({bookMetas,blobStore,blobToBase64,warn}) {
+export async function collectCoreadPackageData({bookMetas,blobStore,blobToBase64}) {
+  let category = '书籍原件';
+  const record = value => value && typeof value === 'object' && !Array.isArray(value);
+  const list = async read => { const items = await read(); if (!Array.isArray(items)) throw Error('invalid inventory'); return items; };
+  const encode = async blob => { const value = await blobToBase64(blob); if (typeof value !== 'string' || !value) throw Error('invalid media'); return value; };
+  try {
   const books = [];
   for (const meta of bookMetas) {
-    let rec = null;
-    try { rec = await blobStore.getBook(meta.id); } catch (_) {}
+    category = '书籍原件';
+    if (!meta?.id) throw Error('missing book identity');
+    const rec = await blobStore.getBook(meta.id);
+    if (!record(rec) || typeof rec.fullText !== 'string') throw Error('missing book original');
     let coverB64 = '', coverMime = '';
-    try {
+    category = '书籍封面';
       const cover = await blobStore.getCover(meta.id);
-      if (cover) { coverB64 = await blobToBase64(cover); coverMime = cover.type || 'image/jpeg'; }
-    } catch (_) {}
+      if (!cover && meta.hasCover) throw Error('missing declared cover');
+      if (cover) { coverB64 = await encode(cover); coverMime = cover.type || 'image/jpeg'; }
     books.push({ meta, fullText: rec?.fullText || '', chapters: rec?.chapters || [], sig: rec?.sig || '', comicDescriptions: rec?.comicDescriptions || {}, coverB64, coverMime });
   }
   // 伴读对话 + 记忆切片：存 IndexedDB reader_chats（bucketKey=chatKey::bookId·含 messages/slices/cursor/names）。
   // 全量导出所有 bucket——换端后对话与蒸馏出的记忆切片可整体复原（语音条文本随 messages 走·音频可重生成）。
   const chats = [];
-  try {
-    for (const key of await blobStore.listReaderChatKeys()) {
+  category = '伴读对话与记忆';
+    for (const key of await list(() => blobStore.listReaderChatKeys())) {
       const rec = await blobStore.getReaderChat(key);
-      if (rec) chats.push({ key, rec });
+      if (!key || !record(rec)) throw Error('missing listed chat');
+      chats.push({ key, rec });
     }
-  } catch (e) { warn(`export chats failed`, e); }
   const images = [];
-  try {
-    for (const item of await blobStore.listReaderImages()) {
-      if (!item?.key || !item.blob) continue;
-      images.push({ key: item.key, b64: await blobToBase64(item.blob), mime: item.blob.type || 'image/*' });
+  category = '伴读插图';
+    for (const item of await list(() => blobStore.listReaderImages())) {
+      if (!item?.key || !item.blob) throw Error('missing listed image');
+      images.push({ key: item.key, b64: await encode(item.blob), mime: item.blob.type || 'image/*' });
     }
-  } catch (e) { warn(`export reader images failed`, e); }
   const vectors = [];
-  try {
-    for (const key of await blobStore.listReaderVectorKeys()) {
+  category = '伴读检索资料';
+    for (const key of await list(() => blobStore.listReaderVectorKeys())) {
       const rec = await blobStore.getReaderVectors(key);
-      if (rec) vectors.push({ key, rec });
+      if (!key || !record(rec)) throw Error('missing listed vectors');
+      vectors.push({ key, rec });
     }
-  } catch (e) { warn(`export vectors failed`, e); }
   const audio = [];
-  try {
-    const allAudio = await blobStore.listAudio();
+  category = '伴读语音';
+    const allAudio = await list(() => blobStore.listAudio());
     for (const item of allAudio.filter((entry) => entry?.meta?.source === 'coread')) {
-      if (!item?.key || !item.blob) continue;
-      audio.push({ key: item.key, b64: await blobToBase64(item.blob), mime: item.blob.type || 'audio/mpeg', meta: item.meta || {}, createdAt: item.createdAt || 0 });
+      if (!item?.key || !item.blob) throw Error('missing listed audio');
+      audio.push({ key: item.key, b64: await encode(item.blob), mime: item.blob.type || 'audio/mpeg', meta: item.meta || {}, createdAt: item.createdAt || 0 });
     }
-  } catch (e) { warn(`export coread audio failed`, e); }
-  let retrievalLogs = [];
-  try { retrievalLogs = await blobStore.listRetLog(); } catch (e) { warn(`export retrieval logs failed`, e); }
+  category = '伴读检索记录';
+  const retrievalLogs = await list(() => blobStore.listRetLog());
+  if (retrievalLogs.some(item => !record(item))) throw Error('invalid retrieval log');
   return {books,chats,images,vectors,audio,retrievalLogs};
+  } catch (_) { throw Error(`未能完整读取${category}，未导出备份。请保留本机资料，检查后重试。`); }
 }
 export const coreadPackageSafeKey = key => !['__proto__','prototype','constructor'].includes(key);
 // The file input may be hidden; watch its owning page, not the file chooser itself.

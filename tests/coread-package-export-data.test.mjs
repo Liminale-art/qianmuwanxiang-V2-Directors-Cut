@@ -31,3 +31,24 @@ test('an empty library exports empty category arrays without requesting a nonexi
   const result=await collectCoreadPackageData(e.options);
   assert.deepEqual(result,{books:[],chats:[],images:[],vectors:[],audio:[],retrievalLogs:[]});assert.deepEqual(e.calls,[]);
 });
+
+test('every failed original or category read stops the complete collector without leaking underlying error text',async()=>{
+  for(const method of ['getBook','getCover','listReaderChatKeys','getReaderChat','listReaderImages','listReaderVectorKeys','getReaderVectors','listAudio','listRetLog']){
+    const e=fixture();e.options.blobStore[method]=async()=>{throw Error('sensitive fixture detail');};
+    await assert.rejects(()=>collectCoreadPackageData(e.options),error=>/未能完整读取/.test(error.message)&&!error.message.includes('sensitive'));
+  }
+});
+test('missing required originals or malformed inventory cannot silently become empty exported data',async()=>{
+  const cases=[['getBook',undefined],['getBook',{}],['getReaderChat',null],['getReaderVectors',null],['listReaderImages',[{key:'missing'}]],
+    ['listAudio',[{key:'missing',meta:{source:'coread'}}]],['listRetLog',[null]]];
+  for(const method of ['listReaderChatKeys','listReaderImages','listReaderVectorKeys','listAudio','listRetLog'])cases.push([method,undefined]);
+  for(const [method,value] of cases){const e=fixture();e.options.blobStore[method]=async()=>value;await assert.rejects(()=>collectCoreadPackageData(e.options),/未能完整读取/);}
+  const e=fixture();e.options.bookMetas[0].hasCover=true;e.options.blobStore.getCover=async()=>undefined;
+  await assert.rejects(()=>collectCoreadPackageData(e.options),/书籍封面/);
+});
+test('a failed or empty media encoding prevents a misleading partial backup',async()=>{
+  for(const kind of ['cover','image','voice'])for(const fail of [true,false]){
+    const e=fixture();e.options.blobToBase64=async blob=>{if(blob.kind!==kind)return blob.kind;if(fail)throw Error('encode failed');return '';};
+    await assert.rejects(()=>collectCoreadPackageData(e.options),/未能完整读取/);
+  }
+});

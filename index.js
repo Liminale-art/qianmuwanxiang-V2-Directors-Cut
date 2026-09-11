@@ -34831,8 +34831,9 @@ function coreadMergePackageValue(target, source) {
 async function coreadExportData() {
   if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地存储，无法导出。', 'error'); return; }
   toast('正在打包伴读数据…', 'info');
-  if (readerDialog.loaded) { try { await coreadSaveDialog(); } catch (_) {} }
-  const {books,chats,images,vectors,audio,retrievalLogs} = await collectCoreadPackageData({bookMetas:coread().books || [],blobStore,blobToBase64,warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error)});
+  try {
+  if (readerDialog.loaded) { try { await coreadSaveDialog(); } catch (_) { throw Error('当前伴读对话未能保存，未导出备份。请保留页面并重试。'); } }
+  const {books,chats,images,vectors,audio,retrievalLogs} = await collectCoreadPackageData({bookMetas:coread().books || [],blobStore,blobToBase64});
   const payload = {
     type: 'qianmu-coread', version: 5, exportedAt: new Date().toISOString(), credentialsIncluded: false,
     prefs: omitConfigConnections({coread:coreadSanitizePackageValue(coread())}).coread,
@@ -34850,6 +34851,7 @@ async function coreadExportData() {
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
   toast(`伴读数据已打包导出：${books.length} 本书 · ${chats.length} 段对话 · ${images.length} 张插图 · ${audio.length} 条语音。`, 'success');
+  } catch (error) { toast(`伴读备份未完成：${error?.message || '请保留本机资料并重试。'}`, 'error'); }
 }
 
 async function coreadImportDataFile(file, origin) {
