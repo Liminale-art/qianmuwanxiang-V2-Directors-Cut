@@ -77,8 +77,10 @@ test('retry and re-extraction release machine-local archives before mutation', (
   assert.match(source, /shot\.hasPrompt \|\| String\(shot\.prompt \|\| ''\)\.trim\(\)/);
 });
 
-test('portable exports hydrate full plans while imports discard local references', () => {
-  assert.match(source, /async function exportConfig[\s\S]*await storyboardPlansForPortableExport\(snapshot\.imagegen\.shotPlans\)/);
+test('portable exports hydrate full plans while imports discard local references', async () => {
+  assert.match(source, /async function exportConfig[\s\S]*plans:storyboardPlansForPortableExport/);
+  const exporter=await readFile(new URL('../qianmu-config-export.js',import.meta.url),'utf8');
+  assert.match(exporter,/await plans\(snapshot\.imagegen\.shotPlans,\{strict:true\}\)/);
   assert.match(source, /async function storyboardExportPackage[\s\S]*await storyboardPlansForPortableExport/);
   assert.match(source, /type: 'qianmu-storyboard', version: 6/);
   assert.match(source, /async function importConfig[\s\S]*prepareConfigRestore\(incoming, owner, DEFAULT_SETTINGS, preserveConnections/);

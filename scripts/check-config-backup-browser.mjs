@@ -10,7 +10,7 @@ await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.origin==='https://qianmu.test'){
     if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<div id="story-director-modal"><div id="fixture-root"></div></div>'});
-    if(['/qianmu-config-connections.js','/qianmu-json-input.js','/qianmu-config-apply.js','/qianmu-data-migrations.js','/qianmu-config-undo.js','/qianmu-config-undo-action.js','/qianmu-storage-backup-view.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
+    if(['/qianmu-config-connections.js','/qianmu-config-export.js','/qianmu-json-input.js','/qianmu-config-apply.js','/qianmu-data-migrations.js','/qianmu-config-undo.js','/qianmu-config-undo-action.js','/qianmu-storage-backup-view.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
   }
   external++;return route.abort();
 });
@@ -21,6 +21,7 @@ try{
   assert.ok(hiddenRule);await page.addStyleTag({content:'.sd-btn { display:flex !important; }\n'+hiddenRule});
   await page.evaluate(async source=>{
     Object.assign(window,await import('/qianmu-config-connections.js'));
+    Object.assign(window,await import('/qianmu-config-export.js'));
     Object.assign(window,await import('/qianmu-config-apply.js'),{PROSE_LAYOUT_STORAGE_KEY:'fixture-layout'});
     Object.assign(window,await import('/qianmu-config-undo.js'),await import('/qianmu-config-undo-action.js'),await import('/qianmu-storage-backup-view.js'));
     window.configUndo=createConfigUndoSlot();window.configUndoAction=null;
@@ -30,7 +31,7 @@ try{
       toast:(...args)=>notices.push(args),fileStamp:()=> 'isolated',isPlainObject:value=>value&&typeof value==='object'&&!Array.isArray(value),
       ctx:()=>context,MODULE_NAME:'fixture',DEFAULT_SETTINGS:{},configRestoreActivity:()=>({}),normalizeStoryboardState:structuredClone,migrateSettings(){},mergeDefaults(){},getSettings:()=>context.extensionSettings.fixture,
       storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
-      seedBuiltinTheaters(){},saveSettings:()=>saved++,storyboardSchedulePlanArchive(){},applyDirectorInjection:async()=>{},renderFloatButton(){},renderModal(){}});
+      storyboardPlansForPortableExport:async value=>value,seedBuiltinTheaters(){},saveSettings:()=>saved++,storyboardSchedulePlanArchive(){},applyDirectorInjection:async()=>{},renderFloatButton(){},renderModal(){}});
     // Execute the same entry adapters called by the storage card, only host services are stubs.
     new Function(source+';window.runExport=exportConfig;window.runImport=importConfig;window.renderModal=()=>{document.getElementById("fixture-root").innerHTML=renderStorageBackupSection();bindStorageManagementEvents(document);};renderModal();')();
   },['ttsDownloadBlob','exportConfig','importConfig','configApplyOptions','undoConfigRestore','bindStorageManagementEvents'].map(section).join('\n'));
@@ -60,5 +61,10 @@ try{
   await page.evaluate(()=>{settings.theme='user-change';});await page.locator('.sd-undo-config').click();
   await page.waitForFunction(()=>notices.some(row=>row[0].includes('无法撤回')));assert.equal(await page.evaluate(()=>saved),3);
   assert.equal(await page.evaluate(()=>settings.theme),'user-change');
-  assert.deepEqual(errors,[]);assert.equal(external,0);console.log(JSON.stringify({nativeDownload:true,nativeFileInput:true,nestedConnectionsExcluded:true,recipientConnectionsPreserved:true,malformedNoWrite:true,undoCancel:true,undoApplied:true,undoStaleBlocked:true,external,errors}));
+  await page.evaluate(()=>{let nested={text:'kept'};for(let n=0;n<42;n++)nested={child:nested};settings={theme:'preservation',nested};allow=true;});
+  const preserveEvent=page.waitForEvent('download');await page.locator('.sd-export-config').click();const preserved=await preserveEvent;
+  assert.match(preserved.suggestedFilename(),/^qianmu-config-preservation-/);
+  const content=JSON.parse(await readFile(await preserved.path(),'utf8'));let leaf=content.settings.nested;for(let n=0;n<42;n++)leaf=leaf.child;assert.equal(leaf.text,'kept');
+  assert.ok(await page.evaluate(()=>notices.some(row=>row[0].includes('当前版本不能直接恢复')&&row[1]==='warning')));
+  assert.deepEqual(errors,[]);assert.equal(external,0);console.log(JSON.stringify({nativeDownload:true,nativeFileInput:true,nestedConnectionsExcluded:true,recipientConnectionsPreserved:true,malformedNoWrite:true,undoCancel:true,undoApplied:true,undoStaleBlocked:true,explicitPreservationDownload:true,external,errors}));
 }finally{await context.close();await browser.close();}

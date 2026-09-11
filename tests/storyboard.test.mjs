@@ -104,7 +104,9 @@ assert.match(source, /storyboardCaptureComfyWorkflow[\s\S]*sanitizeStoryboardWor
 assert.match(source, /function storyboardParseWorkflow[\s\S]*removedFields[\s\S]*不能内嵌凭据/, '含凭据字段的 ComfyUI Workflow 必须在生成前明确阻断');
 assert.match(source, /storyboardPipelineStage[\s\S]*sanitizeStoryboardDiagnosticData\(input\)[\s\S]*sanitizeStoryboardDiagnosticData\(output\)/, '分镜诊断日志写入前必须经过凭据净化');
 assert.match(source, /storyboardExportPackage[\s\S]*sanitizeStoryboardSnapshot[\s\S]*credentialsIncluded: false/, '分镜数据包必须再次净化历史成片快照');
-assert.match(source, /async function exportConfig[\s\S]*snapshot\.imagegen[\s\S]*normalizeStoryboardState/, '千幕全量配置导出也必须净化旧版分镜工作流');
+assert.match(source, /async function exportConfig[\s\S]*normalize:normalizeStoryboardState/, '千幕配置导出必须传入真实分镜规范化函数');
+const configExporter=await readFile(new URL('../qianmu-config-export.js',import.meta.url),'utf8');
+assert.match(configExporter,/snapshot\.imagegen=normalize\(snapshot\.imagegen\)/,'独立导出模块必须实际规范化分镜后再打包');
 assert.match(source, /async function importConfig[\s\S]*prepareConfigRestore\(incoming, owner, DEFAULT_SETTINGS, preserveConnections, \{clone, mergeDefaults, normalizeStoryboardState, migrateSettings\}/, '千幕配置恢复必须调用同一规范化准备路径');
 const importedWorkflow=prepareConfigRestore({imagegen:{profiles:{comfy:{comfyWorkflow:JSON.stringify({encode:{class_type:'CLIPTextEncode',inputs:{text:'kept landscape',api_key:'synthetic-import-secret'}}})}}}},{},{},false,{clone,mergeDefaults,normalizeStoryboardState});
 assert.doesNotMatch(importedWorkflow.imagegen.profiles.comfy.comfyWorkflow,/synthetic-import-secret|api_key/,'配置恢复不能重新写入工作流凭据');

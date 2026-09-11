@@ -1,6 +1,7 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreSummary } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
+import { exportConfiguration } from './qianmu-config-export.js';
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
 import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives } from './qianmu-plan-archive-write.js';
@@ -25619,19 +25620,8 @@ async function resolveImportConflicts(names) {
 }
 
 async function exportConfig() {
-  const owner = settings, snapshot = clone(owner);
-  const includeApi = await confirmDialog('导出配置', '是否包含连接配置与密钥？包含时文件含明文密钥，请勿分享。');
-  if (settings !== owner) return toast('设置已变化，请重新导出。', 'warning');
-  if (isPlainObject(snapshot.imagegen)) {
-    snapshot.imagegen = normalizeStoryboardState(snapshot.imagegen);
-    snapshot.imagegen.shotPlans = await storyboardPlansForPortableExport(snapshot.imagegen.shotPlans);
-  }
-  if (settings !== owner) return toast('设置已变化，请重新导出。', 'warning');
-  if (!includeApi) omitConfigConnections(snapshot);
-  const payload = { version: 2, type: 'qianmu-config', includeApi, exportedAt: new Date().toISOString(), settings: snapshot };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  ttsDownloadBlob(blob, `qianmu-config-${fileStamp()}.json`);
-  toast(includeApi ? '配置已导出（含 API）。' : '配置已导出（不含 API）。', 'success');
+  return exportConfiguration({current:()=>settings,clone,confirm:confirmDialog,normalize:normalizeStoryboardState,isPlainObject,
+    plans:storyboardPlansForPortableExport,stamp:fileStamp,download:ttsDownloadBlob,notify:toast});
 }
 
 function configRestoreActivity() {

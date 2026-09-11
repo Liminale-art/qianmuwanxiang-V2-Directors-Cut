@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as policy from '../qianmu-config-connections.js';
 import {finishConfigRestore} from '../qianmu-config-apply.js';
+import {exportConfiguration} from '../qianmu-config-export.js';
 import {createConfigUndoSlot} from '../qianmu-config-undo.js';
 import {createConfigUndoAction} from '../qianmu-config-undo-action.js';
 import {migrateTtsProviderSettingsState} from '../qianmu-tts-providers.js';
@@ -63,7 +64,7 @@ test('supported envelopes retain explicit included APIs; malformed or unsafe dat
 
 function fixture() {
   const downloads=[],notices=[],writes=[],context={extensionSettings:{}};
-  const c=vm.createContext({...policy,finishConfigRestore,configUndo:createConfigUndoSlot(),configUndoAction:null,createConfigUndoAction,PROSE_LAYOUT_STORAGE_KEY:'fixture-layout',settings:settings(),clone:structuredClone,isPlainObject:v=>v&&typeof v==='object'&&!Array.isArray(v),Blob,
+  const c=vm.createContext({...policy,exportConfiguration,finishConfigRestore,configUndo:createConfigUndoSlot(),configUndoAction:null,createConfigUndoAction,PROSE_LAYOUT_STORAGE_KEY:'fixture-layout',settings:settings(),clone:structuredClone,isPlainObject:v=>v&&typeof v==='object'&&!Array.isArray(v),Blob,
     confirmDialog:async()=>false,configRestoreActivity:()=>({}),normalizeStoryboardState:structuredClone,storyboardPlansForPortableExport:async value=>value,
     ttsDownloadBlob:(blob,name)=>downloads.push({blob,name}),toast:(...args)=>notices.push(args),fileStamp:()=> 'fixture',ctx:()=>context,MODULE_NAME:'module',DEFAULT_SETTINGS:{},
     mergeDefaults:()=>{},migrateSettings:()=>{},storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
