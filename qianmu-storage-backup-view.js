@@ -1,3 +1,33 @@
+// A detached/hidden chooser is cancellation, never an implicit confirmation.
+// Keep listeners only while a chooser is pending; the caller owns the cleanup lock.
+export function bindStorageCleanupLifetime(layer, modal, resolve) {
+  const document = layer.ownerDocument, view = document.defaultView;
+  const card = modal?.querySelector('.sd-storage-card');
+  let settled = false;
+  const observer = new view.MutationObserver(() => {
+    if (!layer.isConnected || !modal?.isConnected || !modal.classList.contains('open') || (card && !card.isConnected)) finish(null);
+  });
+  const onKey = event => {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); finish(null); }
+  };
+  const onPageHide = () => finish(null);
+  const finish = value => {
+    if (settled) return;
+    settled = true;
+    observer.disconnect();
+    document.removeEventListener('keydown', onKey, true);
+    view.removeEventListener('pagehide', onPageHide);
+    layer.remove();
+    resolve(value);
+  };
+  observer.observe(document.body, {childList:true, subtree:true});
+  if (modal) observer.observe(modal, {attributes:true, attributeFilter:['class']});
+  document.addEventListener('keydown', onKey, true);
+  view.addEventListener('pagehide', onPageHide);
+  if (!layer.isConnected || !modal?.isConnected || !modal.classList.contains('open')) finish(null);
+  return finish;
+}
+
 // Keep view replacement independent of application state and storage mutations.
 export function replaceStorageManagementCard(current, html, {icons, bind}) {
   const document = current.ownerDocument;

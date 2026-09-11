@@ -7,7 +7,7 @@ import { receiveServiceImage } from './qianmu-service-recovery-action.js';
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
 import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, releasePlanReferencesForChats } from './qianmu-plan-archive-write.js';
-import { renderStorageBackupSection, replaceStorageManagementCard } from './qianmu-storage-backup-view.js';
+import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCleanupLifetime } from './qianmu-storage-backup-view.js';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
 import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -8289,7 +8289,7 @@ function openStorageCleanupDialog(data) {
     </section>`;
     document.body.appendChild(layer);
     applyQianmuIcons(layer);
-    const finish = (value) => { layer.remove(); resolve(value); };
+    const finish = bindStorageCleanupLifetime(layer, modal, resolve);
     const sync = () => {
       const count = layer.querySelectorAll('input:checked').length;
       const confirm = layer.querySelector('.sd-storage-cleanup-confirm');
@@ -8507,7 +8507,7 @@ function openStorageChatCleanupDialog(data) {
     </section>`;
     document.body.appendChild(layer);
     applyQianmuIcons(layer);
-    const finish = (value) => { layer.remove(); resolve(value); };
+    const finish = bindStorageCleanupLifetime(layer, modal, resolve);
     const sync = () => {
       const count = layer.querySelectorAll('input:checked').length;
       const confirm = layer.querySelector('.sd-storage-cleanup-confirm');
