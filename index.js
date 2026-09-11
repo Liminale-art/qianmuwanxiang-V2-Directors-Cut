@@ -8343,17 +8343,24 @@ async function importPinnedNotesBackup(event) {
   const input = event?.currentTarget;
   const file = input?.files?.[0];
   if (!file) return;
+  if (importPinnedNotesBackup.busy || storageCleanupSession.busy) return toast('请先结束导入或关闭清理选择，再从备份区导入。', 'warning');
+  importPinnedNotesBackup.busy = true;
+  const owner = settings, epoch = storyboardAdmissionEpoch;
+  const check = () => { if (settings !== owner || epoch !== storyboardAdmissionEpoch) throw Error('导入状态已变化，后续已停止；已写入内容保留。'); };
   try {
     if (Number(file.size) > 12 * 1024 * 1024) throw new Error('便笺备份文件超过 12 MB');
     const payload = JSON.parse(await file.text());
+    check();
     if (payload?.type !== 'qianmu-notes' || Number(payload?.version) !== 1 || !Array.isArray(payload?.notes)) {
       throw new Error('不是有效的千幕固定便笺备份');
     }
     const incoming = payload.notes.slice(0, 1000);
     const occupiedIds = new Set((await listQianmuNotes()).map((note) => note.id));
+    check();
     let imported = 0;
     const failed = [];
     for (let index = 0; index < incoming.length; index++) {
+      check();
       const raw = incoming[index];
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { failed.push(`第 ${index + 1} 条格式无效`); continue; }
       let id = String(raw.id || '').trim().slice(0, 120);
@@ -8366,16 +8373,19 @@ async function importPinnedNotesBackup(event) {
         failed.push(`第 ${index + 1} 条：${error?.message || error}`);
       }
     }
-    notesRuntime = await listQianmuNotes();
+    const notes = await listQianmuNotes(); check();
+    notesRuntime = notes;
     notesLoaded = true;
     if (notesPanelOpen) renderNotesPanelPortal();
     renderFloatingNotes();
     await refreshStorageInventory(true);
+    check();
     if (failed.length) toast(`已导入 ${imported} 条固定便笺，${failed.length} 条失败并跳过。${failed.slice(0, 2).join('；')}`, 'warning');
     else toast(`已导入 ${imported} 条固定便笺；同 ID 条目已作为副本保留。`, 'success');
   } catch (error) {
     toast(`便笺导入失败：${error?.message || error}`, 'error');
   } finally {
+    importPinnedNotesBackup.busy = false;
     if (input) input.value = '';
   }
 }
@@ -25613,7 +25623,7 @@ function configRestoreActivity(includeCleanup = true) {
     focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy,
     director: busy || theaterBusy,
     image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || storyboardImageService?.busy || storyboardReceiveServiceImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
-    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || (includeCleanup && storageCleanupSession.busy),
+    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || importPinnedNotesBackup.busy || (includeCleanup && storageCleanupSession.busy),
   };
 }
 
