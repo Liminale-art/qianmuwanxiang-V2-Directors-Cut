@@ -1816,6 +1816,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-storage-backup-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; margin-top: 10px; min-width: 0; }
 #story-director-modal .sd-storage-backup-row > span { font-size: var(--sd-font-secondary, 12px); color: var(--sd-muted); }
 #story-director-modal .sd-storage-backup-row > .sd-btn { min-width: 48px; min-height: 34px; margin: 0; padding: 5px 9px; }
+#story-director-modal .sd-storage-backup-section .sd-undo-config[hidden] { display: none !important; }
 #story-director-modal .sd-storage-card .sd-storage-actions > * { min-width: 0; overflow-wrap: anywhere; }
 
 /* 便笺是完全不透明的紧凑工作页；舞台拦住下层操作，蜂巢入口只有拖出后才在 ST 顶层出现。 */

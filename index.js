@@ -1,6 +1,8 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, configRestoreGate, configRestoreSummary } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
+import { createConfigUndoSlot } from './qianmu-config-undo.js';
+import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives } from './qianmu-plan-archive-write.js';
 import { renderStorageBackupSection } from './qianmu-storage-backup-view.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -1368,6 +1370,8 @@ const DEFAULT_SETTINGS = Object.freeze({
 });
 
 let settings = null;
+const configUndo = createConfigUndoSlot();
+let configUndoAction = null;
 let activeTab = 'dashboard';
 let storyboardReturnTab = 'dashboard';
 const storyboardPageScrolls = new Map();
@@ -8662,10 +8666,13 @@ async function storyboardOpenRestoreStorage(root,expectedNamespace,{mappings=fal
 
 function bindStorageManagementEvents(root) {
   const backup = root.querySelector('.sd-storage-backup-section');
+  const undoButton = backup?.querySelector('.sd-undo-config');
+  if (undoButton) undoButton.hidden = !configUndo.available(settings);
   if (backup && !backup.dataset.storageBound) {
     backup.dataset.storageBound = 'true';
     backup.querySelector('.sd-storage-focus-library')?.addEventListener('click',()=>void focusClockLibrary().open({management:true}));
     backup.querySelector('.sd-export-config')?.addEventListener('click', () => void exportConfig());
+    undoButton?.addEventListener('click', () => void undoConfigRestore());
     backup.querySelector('.sd-import-config')?.addEventListener('click', () => backup.querySelector('.sd-import-config-file')?.click());
     backup.querySelector('.sd-import-config-file')?.addEventListener('change', event => void importConfig(event));
     backup.querySelectorAll('[data-storage-export]').forEach(button=>button.addEventListener('click',()=>{
@@ -13312,6 +13319,7 @@ async function storyboardArchiveShotPlans(plans = storyboardState().shotPlans) {
     if (!await storyboardPackageArchiveAllowed()) return 0;
     const stored = await preserveCapturedPlanArchives(captures, blobStore.putStoryboardPlanArchives);
     if (epoch !== storyboardPlanArchiveEpoch) return 0;
+    return configUndo.transition(()=>settings,()=>{
     const state = storyboardState();
     let archived = 0;
     for (const item of stored) {
@@ -13324,6 +13332,7 @@ async function storyboardArchiveShotPlans(plans = storyboardState().shotPlans) {
     }
     if (archived) saveSettings();
     return archived;
+    });
   } catch (error) {
     console.warn('[千幕] 分镜历史计划暂未归档，已保留设置内原数据。', error);
     return 0;
@@ -25646,7 +25655,16 @@ async function importConfig(event) {
   let merged;
   try { merged = prepareConfigRestore(incoming, owner, DEFAULT_SETTINGS, preserveConnections, {clone, mergeDefaults, normalizeStoryboardState, migrateSettings}); seedBuiltinTheaters(merged); }
   catch (_) { return toast('配置无法恢复，当前设置未改变。', 'error'); }
-  await finishConfigRestore({prepared:merged, owner, host:ctx().extensionSettings ||= {}, slot:MODULE_NAME,
+  await finishConfigRestore({...configApplyOptions(), prepared:merged, owner, undo:configUndo});
+}
+
+function undoConfigRestore() {
+  configUndoAction ||= createConfigUndoAction({undo:configUndo,current:()=>settings,activity:configRestoreActivity,confirm:confirmDialog,notify:toast,applyOptions:configApplyOptions});
+  return configUndoAction();
+}
+
+function configApplyOptions() {
+  return {host:ctx().extensionSettings ||= {}, slot:MODULE_NAME,
     setCurrent:value=>{settings=value;}, current:()=>settings, save:saveSettings,
     layoutStorage:()=>globalThis.localStorage, layoutKey:PROSE_LAYOUT_STORAGE_KEY,
     afterApply:()=>{
@@ -25655,7 +25673,7 @@ async function importConfig(event) {
       storyboardPlanArchiveTimer = null;
       storyboardPlanArchiveCache.clear();
       storyboardSchedulePlanArchive(600);
-    }, inject:applyDirectorInjection, render:()=>{renderFloatButton();renderModal();}, notify:toast});
+    }, inject:applyDirectorInjection, render:()=>{renderFloatButton();renderModal();}, notify:toast};
 }
 
 function exportTemplates(ids = null) {
@@ -36394,6 +36412,7 @@ function cleanupRuntime(resetSettings = false) {
       notesLoading = null;
       notesPanelOpen = false;
     });
+    clean('config recovery', () => {configUndo.clear();configUndoAction=null;});
     clean('prose layout', () => stopProseLayout(true));
     clean('resize', () => {
       if (resizeHandler) window.removeEventListener('resize', resizeHandler);

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as policy from '../qianmu-config-connections.js';
 import {finishConfigRestore} from '../qianmu-config-apply.js';
+import {createConfigUndoSlot} from '../qianmu-config-undo.js';
+import {createConfigUndoAction} from '../qianmu-config-undo-action.js';
 import {migrateTtsProviderSettingsState} from '../qianmu-tts-providers.js';
 import {mergeDefaults} from '../qianmu-storyboard-utils.js';
 import * as utilities from '../qianmu-storyboard-utils.js';
@@ -61,13 +63,13 @@ test('supported envelopes retain explicit included APIs; malformed or unsafe dat
 
 function fixture() {
   const downloads=[],notices=[],writes=[],context={extensionSettings:{}};
-  const c=vm.createContext({...policy,finishConfigRestore,PROSE_LAYOUT_STORAGE_KEY:'fixture-layout',settings:settings(),clone:structuredClone,isPlainObject:v=>v&&typeof v==='object'&&!Array.isArray(v),Blob,
+  const c=vm.createContext({...policy,finishConfigRestore,configUndo:createConfigUndoSlot(),configUndoAction:null,createConfigUndoAction,PROSE_LAYOUT_STORAGE_KEY:'fixture-layout',settings:settings(),clone:structuredClone,isPlainObject:v=>v&&typeof v==='object'&&!Array.isArray(v),Blob,
     confirmDialog:async()=>false,configRestoreActivity:()=>({}),normalizeStoryboardState:structuredClone,storyboardPlansForPortableExport:async value=>value,
     ttsDownloadBlob:(blob,name)=>downloads.push({blob,name}),toast:(...args)=>notices.push(args),fileStamp:()=> 'fixture',ctx:()=>context,MODULE_NAME:'module',DEFAULT_SETTINGS:{},
     mergeDefaults:()=>{},migrateSettings:()=>{},storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
     blobStore:{clearStoryboardPlanArchives(){throw Error('must never erase historical originals');}},
     getSettings:()=>context.extensionSettings.module,seedBuiltinTheaters(){},saveSettings:()=>writes.push('save'),storyboardSchedulePlanArchive(){},applyDirectorInjection:async()=>{},renderFloatButton(){},renderModal(){},cacheProseLayout(){}});
-  vm.runInContext(section('exportConfig')+'\n'+section('importConfig'),c);
+  vm.runInContext(['exportConfig','importConfig','configApplyOptions','undoConfigRestore'].map(section).join('\n'),c);
   return {c,downloads,notices,writes};
 }
 

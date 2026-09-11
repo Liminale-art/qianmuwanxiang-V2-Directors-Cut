@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {preserveCapturedPlanArchives} from '../qianmu-plan-archive-write.js';
+import {createConfigUndoSlot} from '../qianmu-config-undo.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const captured=()=>[{key:'chat␟plan',chatKey:'chat',id:'plan',updatedAt:1,status:'completed',plan:{shots:[{prompt:'kept'}]}}];
 
@@ -24,7 +25,7 @@ test('actual archive callback preserves heavy settings on failed mapping or chan
   for(const mode of ['invalid','stale','valid']){
     const plan={id:'plan',chatKey:'chat',status:'completed',updatedAt:1,shots:[{id:'s',prompt:'kept',status:'completed'}]},state={shotPlans:[plan]};let saved=0;
     const key='chat␟plan␟revision:'+'a'.repeat(64);
-    const c=vm.createContext({clone:structuredClone,preserveCapturedPlanArchives,storyboardState:()=>state,storyboardPlanArchiveEpoch:0,storyboardPlanArchiveCache:new Map(),saveSettings(){saved++;},console:{warn(){}},storyboardPackageArchiveAllowed:async()=>true});
+    const c=vm.createContext({configUndo:createConfigUndoSlot(),settings:state,clone:structuredClone,preserveCapturedPlanArchives,storyboardState:()=>state,storyboardPlanArchiveEpoch:0,storyboardPlanArchiveCache:new Map(),saveSettings(){saved++;},console:{warn(){}},storyboardPackageArchiveAllowed:async()=>true});
     c.blobStore={blobStoreAvailable:()=>true,putStoryboardPlanArchives:async()=>{if(mode==='stale')c.storyboardPlanArchiveEpoch++;return mode==='invalid'?{stored:[]}:{stored:[key]};}};
     vm.runInContext('"use strict";\n'+['storyboardPlanIsTerminal','storyboardPlanArchiveKey','storyboardPlanHasHeavyPayload','storyboardPlanArchivePayload','storyboardPlanLightweightSummary','storyboardArchiveShotPlans'].map(section).join('\n'),c);
     assert.equal(await c.storyboardArchiveShotPlans(),mode==='valid'?1:0);
