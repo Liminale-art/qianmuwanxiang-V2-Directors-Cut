@@ -19,6 +19,19 @@ export function createConfigUndoSlot({clone = structuredClone} = {}) {
       } catch (_) { return false; }
     },
     available(current) { return !!record && record.unchanged(current); },
+    // Internal synchronous derivations only, never a user edit or an async operation.
+    // Advance only a baseline that was valid BEFORE the controlled transformation.
+    transition(current, update) {
+      const held = record, owner = current(), valid = !!held && held.unchanged(owner);
+      try {
+        const result = update();
+        if (valid && record === held) {
+          if (result?.then || current() !== owner) clear();
+          else record.unchanged = configRestoreGuard(owner);
+        }
+        return result;
+      } catch (error) { if (record === held) clear(); throw error; }
+    },
     read(current) {
       if (!record || !record.unchanged(current)) return null;
       // Failed application must not consume recovery; release only on confirmed handoff.

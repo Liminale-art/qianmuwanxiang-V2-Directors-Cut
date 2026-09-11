@@ -34,3 +34,32 @@ test('snapshot failure leaves no partially armed recovery record',()=>{
   const slot=createConfigUndoSlot({clone:()=>{throw Error('private fixture');}});
   const current={};assert.equal(slot.remember({settings:{}},current),false);assert.equal(slot.available(current),false);assert.equal(slot.read(current),null);
 });
+
+test('a known synchronous derivation can advance the baseline without altering the recovery snapshot',()=>{
+  const slot=createConfigUndoSlot(),current={imagegen:{shotPlans:[{id:'p',prompt:'full'}]}};
+  slot.remember({settings:{theme:'before'}},current);
+  const result=slot.transition(()=>current,()=>{current.imagegen.shotPlans=[{id:'p',archiveRef:'verified-key'}];return 1;});
+  assert.equal(result,1);assert.equal(slot.available(current),true);assert.equal(slot.read(current).settings.theme,'before');
+});
+
+test('derived updates never authorize overwriting user changes made before them',()=>{
+  const slot=createConfigUndoSlot(),current={progress:.5,layout:0};slot.remember({settings:{}},current);current.progress=.75;
+  slot.transition(()=>current,()=>{current.layout=1;});
+  assert.equal(current.layout,1,'normal derived work must not be blocked by an expired undo record');
+  assert.equal(slot.available(current),false);assert.equal(slot.read(current),null);assert.equal(current.progress,.75);
+});
+
+test('asynchronous, throwing or owner-changing transitions cannot renew recovery authority',async()=>{
+  for(const mode of ['async','throw','owner']){
+    const slot=createConfigUndoSlot();let current={id:'one'};const initial=current;slot.remember({settings:{}},current);
+    const update=()=>{if(mode==='throw')throw Error('fixture');if(mode==='owner')current={id:'two'};else return Promise.resolve();};
+    if(mode==='throw')assert.throws(()=>slot.transition(()=>current,update));else await slot.transition(()=>current,update);
+    assert.equal(slot.available(current),false);assert.equal(slot.available(initial),false);
+  }
+});
+
+test('a newer recovery record created within a transition is not overwritten or cleared by its predecessor',()=>{
+  const slot=createConfigUndoSlot(),old={id:'old'},next={id:'next'};slot.remember({settings:{}},old);
+  slot.transition(()=>old,()=>slot.remember({settings:{id:'new backup'}},next));
+  assert.equal(slot.available(old),false);assert.equal(slot.read(next).settings.id,'new backup');
+});
