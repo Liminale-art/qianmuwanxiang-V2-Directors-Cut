@@ -8299,13 +8299,25 @@ function openStorageCleanupDialog(data) {
   });
 }
 
+function createStorageBackupCheck(button, transfer) {
+  const owner=settings,epoch=storyboardAdmissionEpoch,modal=document.getElementById(MODAL_ID);
+  return ()=>{
+    if(settings!==owner||epoch!==storyboardAdmissionEpoch||button&&!button.isConnected||!modal?.isConnected||!modal.classList.contains('open'))throw Error('导出页面或状态已变化，未下载备份，请重新开始。');
+    if(Object.values(configRestoreActivity(true,transfer)).some(Boolean))throw Error('其他任务已开始，未下载备份，请稍后重试。');
+  };
+}
+
 async function exportPinnedNotesBackup(button = null) {
+  if(exportPinnedNotesBackup.busy||Object.values(configRestoreActivity()).some(Boolean))return toast('请先结束当前任务或关闭数据管理窗口，再导出备份。','warning');
   const icon = button?.querySelector('i');
   const previousIcon = icon?.className || '';
+  exportPinnedNotesBackup.busy=true;
+  try {
+  const check=createStorageBackupCheck(button,exportPinnedNotesBackup);check();
   if (button) button.disabled = true;
   if (icon) setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
-  try {
     const notes = (await blobStore.listNotes({requireCommit:true})).filter((note) => note.pinned);
+    check();
     if (!notes.length) return toast('没有可导出的固定便笺。', 'info');
     const payload = {
       type: 'qianmu-notes', version: 1, exportedAt: new Date().toISOString(), credentialsIncluded: false,
@@ -8316,6 +8328,7 @@ async function exportPinnedNotesBackup(button = null) {
   } catch (error) {
     toast(`便笺导出失败：${error?.message || error}`, 'error');
   } finally {
+    exportPinnedNotesBackup.busy=false;
     if (icon && previousIcon) setQianmuIconClass(icon, previousIcon);
     if (button) button.disabled = false;
   }
@@ -8325,7 +8338,7 @@ async function importPinnedNotesBackup(event) {
   const input = event?.currentTarget;
   const file = input?.files?.[0];
   if (!file) return;
-  if (importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || coreadImportDataFile.busy || coreadExportData.busy || storyboardOpenRestoreStorage.busy || storageCleanupSession.busy) return toast('请先结束备份或导入，或关闭数据管理窗口，再从备份区导入。', 'warning');
+  if (importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || coreadImportDataFile.busy || coreadExportData.busy || exportPinnedNotesBackup.busy || exportTtsFavoritesBackup.busy || storyboardOpenRestoreStorage.busy || storageCleanupSession.busy) return toast('请先结束备份或导入，或关闭数据管理窗口，再从备份区导入。', 'warning');
   importPinnedNotesBackup.busy = true;
   const owner = settings, epoch = storyboardAdmissionEpoch;
   const view = document.getElementById(MODAL_ID);
@@ -8364,17 +8377,22 @@ function storageSafeFavoriteMeta(value = {}) {
 }
 
 async function exportTtsFavoritesBackup(button = null) {
+  if(exportTtsFavoritesBackup.busy||Object.values(configRestoreActivity()).some(Boolean))return toast('请先结束当前任务或关闭数据管理窗口，再导出备份。','warning');
   const icon = button?.querySelector('i');
   const previousIcon = icon?.className || '';
+  exportTtsFavoritesBackup.busy=true;
+  try {
+  const check=createStorageBackupCheck(button,exportTtsFavoritesBackup);check();
   if (button) button.disabled = true;
   if (icon) setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
-  try {
     const favorites = await blobStore.listFavorites({requireCommit:true});
+    check();
     if (!favorites.length) return toast('没有可导出的语音收藏。', 'info');
     const entries = [];
     for (const favorite of favorites) {
       if (!favorite?.blob || !Number.isSafeInteger(favorite.blob.size) || favorite.blob.size < 1) throw new Error(`第 ${entries.length + 1} 条收藏的音频原件缺失或为空，未导出；请保留本机资料。`);
       const data = await blobToBase64(favorite.blob);
+      check();
       if (typeof data !== 'string' || !data) throw new Error(`第 ${entries.length + 1} 条收藏未能完整读取，未导出；请稍后重试。`);
       entries.push({
         id: String(favorite.id || '').slice(0, 240), label: String(favorite.label || '').slice(0, 1000),
@@ -8388,6 +8406,7 @@ async function exportTtsFavoritesBackup(button = null) {
   } catch (error) {
     toast(`语音收藏导出失败：${error?.message || error}`, 'error');
   } finally {
+    exportTtsFavoritesBackup.busy=false;
     if (icon && previousIcon) setQianmuIconClass(icon, previousIcon);
     if (button) button.disabled = false;
   }
@@ -8397,7 +8416,7 @@ async function importTtsFavoritesBackup(event) {
   const input = event?.currentTarget;
   const file = input?.files?.[0];
   if (!file) return;
-  if (importTtsFavoritesBackup.busy || importPinnedNotesBackup.busy || coreadImportDataFile.busy || coreadExportData.busy || storyboardOpenRestoreStorage.busy || storageCleanupSession.busy) return toast('请先结束备份或导入，或关闭数据管理窗口，再从备份区导入。', 'warning');
+  if (importTtsFavoritesBackup.busy || importPinnedNotesBackup.busy || coreadImportDataFile.busy || coreadExportData.busy || exportPinnedNotesBackup.busy || exportTtsFavoritesBackup.busy || storyboardOpenRestoreStorage.busy || storageCleanupSession.busy) return toast('请先结束备份或导入，或关闭数据管理窗口，再从备份区导入。', 'warning');
   importTtsFavoritesBackup.busy = true;
   const owner = settings, epoch = storyboardAdmissionEpoch, modal = document.getElementById(MODAL_ID);
   const check = () => { if (settings !== owner || epoch !== storyboardAdmissionEpoch || !input.isConnected || !modal?.isConnected || !modal.classList.contains('open')) throw Error('导入页面或状态已变化，后续已停止；已写入内容保留。'); };
@@ -25604,7 +25623,7 @@ function configRestoreActivity(includeCleanup = true, ownTransfer = null) {
     focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy,
     director: busy || theaterBusy,
     image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || storyboardImageService?.busy || storyboardReceiveServiceImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
-    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || (ownTransfer !== storyboardOpenRestoreStorage && storyboardOpenRestoreStorage.busy) || (ownTransfer !== coreadImportDataFile && coreadImportDataFile.busy) || (ownTransfer !== coreadExportData && coreadExportData.busy) || (includeCleanup && storageCleanupSession.busy),
+    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || importPinnedNotesBackup.busy || importTtsFavoritesBackup.busy || (ownTransfer !== storyboardOpenRestoreStorage && storyboardOpenRestoreStorage.busy) || (ownTransfer !== exportPinnedNotesBackup && exportPinnedNotesBackup.busy) || (ownTransfer !== exportTtsFavoritesBackup && exportTtsFavoritesBackup.busy) || (ownTransfer !== coreadImportDataFile && coreadImportDataFile.busy) || (ownTransfer !== coreadExportData && coreadExportData.busy) || (includeCleanup && storageCleanupSession.busy),
   };
 }
 

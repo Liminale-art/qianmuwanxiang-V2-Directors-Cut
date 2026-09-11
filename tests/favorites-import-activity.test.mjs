@@ -14,6 +14,7 @@ function fixture(){
   c.blobStore.importFavorite=(...args)=>c.blobStore.addFavorite(...args);
   c.coreadImportDataFile={busy:false};
   c.coreadExportData={busy:false};
+  c.exportPinnedNotesBackup={busy:false};c.exportTtsFavoritesBackup={busy:false};
   c.storyboardOpenRestoreStorage={busy:false};
   c.storageCleanupSession=createStorageCleanupSession({owner:()=>c.settings,scope:()=>1,epoch:()=>c.storyboardAdmissionEpoch,
     activity:()=>({transfer:c.importTtsFavoritesBackup.busy||c.importPinnedNotesBackup.busy})});

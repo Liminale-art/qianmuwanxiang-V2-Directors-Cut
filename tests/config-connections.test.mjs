@@ -237,7 +237,7 @@ test('actual activity adapter blocks each independent lane without normalizing o
   const base=Object.fromEntries(Object.values(lanes).flat().map(key=>[key,false]));
   const c=vm.createContext({...base,settings:{focusClock:{status:'idle'}},focusClockVoicePreparation:null,
     storyboardActiveJobs:new Map(),storyboardGenerationPreparing:new Set(),storyboardPreparationRetries:new Set(),storyboardComfyRecovery:null,storyboardReceiveComfyImage:{},storyboardImageService:null,storyboardReceiveServiceImage:{},storyboardQueue:[],storyboardAutomaticPending:new Map(),
-    storyboardImportPackage:{},storyboardExportPackage:{},storyboardBundleReview:null,storyboardOpenRestoreStorage:{busy:false},storageCleanupSession:{busy:false},importPinnedNotesBackup:{busy:false},importTtsFavoritesBackup:{busy:false},coreadImportDataFile:{busy:false},coreadExportData:{busy:false}});
+    storyboardImportPackage:{},storyboardExportPackage:{},storyboardBundleReview:null,storyboardOpenRestoreStorage:{busy:false},exportPinnedNotesBackup:{busy:false},exportTtsFavoritesBackup:{busy:false},storageCleanupSession:{busy:false},importPinnedNotesBackup:{busy:false},importTtsFavoritesBackup:{busy:false},coreadImportDataFile:{busy:false},coreadExportData:{busy:false}});
   vm.runInContext(section('configRestoreActivity'),c);
   const idle=()=>assert.equal(Object.values(c.configRestoreActivity()).some(Boolean),false);
   idle();const before=JSON.stringify(c.settings);let cases=0;
@@ -277,6 +277,13 @@ test('actual activity adapter blocks each independent lane without normalizing o
   assert.equal(c.configRestoreActivity(true,c.coreadExportData).transfer,true,'reader backup cannot ignore an independent restore manager');
   assert.equal(!!c.configRestoreActivity(true,c.storyboardOpenRestoreStorage).transfer,false,'manager excludes only its own activity');
   c.coreadImportDataFile.busy=true;assert.equal(c.configRestoreActivity(true,c.storyboardOpenRestoreStorage).transfer,true,'manager still observes another import');
+  c.coreadImportDataFile.busy=false;c.storyboardOpenRestoreStorage.busy=false;
+  for(const name of ['exportPinnedNotesBackup','exportTtsFavoritesBackup']){
+    c[name].busy=true;assert.equal(c.configRestoreActivity(false).transfer,true,'cleanup observes '+name);
+    assert.equal(!!c.configRestoreActivity(true,c[name]).transfer,false,'export excludes itself only');
+    c.coreadExportData.busy=true;assert.equal(c.configRestoreActivity(true,c[name]).transfer,true,'reader export remains a conflict');
+    c.coreadExportData.busy=false;c[name].busy=false;
+  }
 });
 
 test('actual import preserves same-owner changes made during file reading or confirmation',async()=>{

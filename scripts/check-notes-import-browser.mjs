@@ -14,7 +14,7 @@ await context.route('**/*',async route=>{
 });
 try{
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto('https://qianmu.test/');
-  const checks=await page.evaluate(async()=>{
+  const checks=await page.evaluate(async backupCheckSource=>{
     const api=await import('/qianmu-notes.js'),db=await import('/qianmu-blobstore.js'),checks=[];
     const check=(name,value)=>{if(!value)throw Error(name);checks.push(name);},guard=()=>{};
     const read=()=>api.listQianmuNotes({strict:true}),write=note=>api.saveImportedQianmuNote(note,{check:guard});
@@ -228,8 +228,13 @@ try{
     f=mount(false);const exportGuard=createCoreadImportViewGuard(f.input,'导出');f.root.classList.remove('open');let exportError;
     try{exportGuard.check();}catch(error){exportError=error.message;}exportGuard.release();f.done();
     check('the shared page guard reports an export cancellation without claiming imported writes',exportError.includes('导出页面')&&exportError.includes('未导出备份')&&!exportError.includes('已写入'));
+    window.eval(backupCheckSource);Object.assign(window,{settings:{},storyboardAdmissionEpoch:1,MODAL_ID:'story-director-modal',configRestoreActivity:()=>({})});
+    f=mount(false);let backupCheck=createStorageBackupCheck(f.input,()=>{});
+    check('module export guard accepts its actual connected origin',!rejects({check:backupCheck}));
+    f.root.classList.remove('open');check('module export guard rejects its closed native modal',rejects({check:backupCheck}));f.done();
+    f=mount(false);backupCheck=createStorageBackupCheck(f.input,()=>{});f.input.remove();check('module export guard rejects the replaced native export control',rejects({check:backupCheck}));f.done();
     return checks;
-  });
+  },storyboardFunctionSource('createStorageBackupCheck'));
   await page.evaluate(code=>{window.eval(code);window.downloadRevoked=0;const revoke=URL.revokeObjectURL.bind(URL);URL.revokeObjectURL=url=>{window.downloadRevoked++;revoke(url);};},storyboardFunctionSource('ttsDownloadBlob'));
   const pendingDownload=page.waitForEvent('download');
   await page.evaluate(()=>ttsDownloadBlob(new Blob(['synthetic backup only'],{type:'application/json'}),'千幕-隔离备份.json'));
@@ -237,5 +242,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,110);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,113);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}
