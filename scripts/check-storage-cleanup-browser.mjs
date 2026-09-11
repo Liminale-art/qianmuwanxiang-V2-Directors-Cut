@@ -26,6 +26,27 @@ try{
     check('another selected store can commit independently',result.cleared.includes('audio')&&(await api.estimateBlobStoreUsage()).stores.find(row=>row.name==='audio').count===0);
     const retry=await api.clearStorageItems(['notes']);
     check('retry after abort commits and reports actual success',retry.cleared.includes('notes')&&retry.failed.length===0&&(await api.listNotes()).length===0);
+    // Invalidation after a committed store must never start another write transaction.
+    for(const kind of ['module','chat']){
+      await api.putAudio('scope-audio',new Blob(['synthetic']),{chatKey:'scope'});
+      await api.putTtsLineCache('scope',{lines:['keep subsequent group']});
+      let valid=true,writes=0;const transaction=IDBDatabase.prototype.transaction;
+      try{
+        IDBDatabase.prototype.transaction=function(names,mode,...args){
+          const tx=transaction.call(this,names,mode,...args);
+          if(mode==='readwrite'){writes++;tx.addEventListener('complete',()=>{valid=false;},{once:true});}
+          return tx;
+        };
+        const session={check(){if(!valid)throw Error('scope changed');}};
+        const ordered=(await api.estimateBlobStoreUsage()).stores.filter(row=>['audio','tts_lines'].includes(row.name)).map(row=>row.name);
+        check(kind+' fixture contains both stores',ordered.length===2);
+        result=kind==='module'?await api.clearStorageItems(ordered,session):await api.clearChatScopedStorage(ordered.map(name=>({name,chatKey:'scope'})),session);
+        check(kind+' stops before the next native write transaction',writes===1);
+        check(kind+' retains committed success and reports the unstarted group as failed',result.cleared.length===1&&result.failed.length===1&&result.failed[0].error==='scope changed');
+        const after=await api.estimateBlobStoreUsage();
+        check(kind+' subsequent group data survives',after.stores.find(row=>row.name===ordered[1]).count>0);
+      }finally{IDBDatabase.prototype.transaction=transaction;}
+    }
     const descriptor=Object.getOwnPropertyDescriptor(window,'indexedDB');
     try{
       Object.defineProperty(window,'indexedDB',{configurable:true,value:undefined});

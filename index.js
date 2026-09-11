@@ -8751,7 +8751,7 @@ function bindStorageManagementEvents(root) {
         if (storyboardPlanArchiveTimer) clearTimeout(storyboardPlanArchiveTimer);
         storyboardPlanArchiveTimer = null;
       }
-      const storageResult = await blobStore.clearStorageItems(stores); cleanup.check();
+      const storageResult = await blobStore.clearStorageItems(stores, cleanup); cleanup.check();
       const reconciled = reconcileClearedStorageItems(storageResult.cleared);
       let orphanResult = null;
       if (selected.includes('__orphan_reader_blobs__')) orphanResult = await blobStore.clearOrphanedReaderBlobs();
@@ -8793,7 +8793,7 @@ function bindStorageManagementEvents(root) {
         if (storyboardPlanArchiveTimer) clearTimeout(storyboardPlanArchiveTimer);
         storyboardPlanArchiveTimer = null;
       }
-      const result = await blobStore.clearChatScopedStorage(selected); cleanup.check();
+      const result = await blobStore.clearChatScopedStorage(selected, cleanup); cleanup.check();
       const currentStores = [...new Set(result.cleared
         .filter((item) => item.count > 0 && item.chatKey === String(getChatKey() || ''))
         .map((item) => item.name)

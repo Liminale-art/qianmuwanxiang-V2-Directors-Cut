@@ -26,6 +26,17 @@ function fixture(result, kind = 'chat') {
 }
 const row=(chatKey,count=1)=>({name:'storyboard_plan_archives',chatKey,count,bytes:10});
 
+test('both real cleanup entry points pass their live scope check into the database loop',async()=>{
+  for(const kind of ['chat','module']){
+    const result={cleared:[],failed:[],count:0,bytes:0},e=fixture(result,kind);let checked=false;
+    e.c.blobStore[kind==='chat'?'clearChatScopedStorage':'clearStorageItems']=async(entries,session)=>{
+      session.check();e.root.isConnected=false;
+      assert.throws(()=>session.check(),/后续操作已停止/);checked=true;return result;
+    };
+    await e.run();assert.equal(checked,true);assert.equal(e.calls.save,0);
+  }
+});
+
 for(const phase of ['selection','storage'])test('both cleanup paths stop stale '+phase+' results before touching a new owner',async()=>{
   for(const kind of ['chat','module'])for(const change of ['owner','chat','epoch','root']){
     const result={cleared:[],failed:[],count:0,bytes:0},e=fixture(result,kind);let release;

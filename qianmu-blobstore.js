@@ -1714,21 +1714,25 @@ export async function clearRecoverableCategories(categories = []) {
 
 // 储存管理页按 IndexedDB 项目逐项清理。目标仍只能来自本模块登记过的 store，
 // 但不再替用户隐去不可恢复项目；是否删除由界面上的风险说明与用户勾选决定。
-export async function clearStorageItems(storeNames = []) {
+export async function clearStorageItems(storeNames = [], {check = () => {}} = {}) {
   const allowedNames = new Set(Object.keys(STORAGE_STORE_INFO));
   const selected = new Set((Array.isArray(storeNames) ? storeNames : [])
     .map((value) => String(value || ''))
     .filter((value) => allowedNames.has(value)));
   if (!selected.size) return { cleared: [], failed: [], beforeBytes: 0, clearedBytes: 0 };
   if (!blobStoreAvailable()) throw new Error('当前浏览器储存不可用，未清理所选内容。');
+  check();
   const before = await estimateBlobStoreUsage();
+  check();
   const targets = before.stores.filter((item) => selected.has(item.name));
   const cleared = [];
   const failed = [];
   let clearedBytes = 0;
   for (const item of targets) {
     try {
+      check();
       const db = await openDB();
+      check();
       await new Promise((resolve, reject) => {
         const transaction = db.transaction(item.name, 'readwrite');
         transaction.oncomplete = () => resolve();
@@ -1765,8 +1769,10 @@ const CHAT_SCOPED_CLEARABLE_STORES = Object.freeze([
   STORE_VIDEO_POSTPRODUCTION,
 ]);
 
-async function clearStoreChatScope(name, chatKey) {
+async function clearStoreChatScope(name, chatKey, check) {
+  check();
   const db = await openDB();
+  check();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(name, 'readwrite');
     const target = transaction.objectStore(name);
@@ -1804,14 +1810,14 @@ export function normalizeChatScopedStorageSelections(selections = []) {
   return [...unique.values()];
 }
 
-export async function clearChatScopedStorage(selections = []) {
+export async function clearChatScopedStorage(selections = [], {check = () => {}} = {}) {
   const normalized = normalizeChatScopedStorageSelections(selections);
   if (!normalized.length) return { cleared: [], failed: [], count: 0, bytes: 0 };
   if (!blobStoreAvailable()) throw new Error('当前浏览器储存不可用，未清理所选内容。');
   const cleared = [];
   const failed = [];
   for (const selection of normalized) {
-    try { cleared.push(await clearStoreChatScope(selection.name, selection.chatKey)); }
+    try { cleared.push(await clearStoreChatScope(selection.name, selection.chatKey, check)); }
     catch (error) { failed.push({ ...selection, error: error?.message || String(error) }); }
   }
   return {
