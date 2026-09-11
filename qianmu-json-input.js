@@ -1,5 +1,7 @@
 // Shared scanner extracted from the existing storyboard package reader.
-export function parseBoundedJson(text,{maxBytes,maxDepth=40,maxNodes=500000,label='JSON'}={}){
+// Checks resource limits and field safety only, not JSON syntax. Export callers
+// may use this on JSON.stringify output without allocating a second object tree.
+export function assertJsonInputBounds(text,{maxBytes,maxDepth=40,maxNodes=500000,label='JSON'}={}){
   const fail=message=>{throw Error(message.replaceAll('分镜包',label));};
   if([maxBytes,maxDepth,maxNodes].some(n=>!Number.isSafeInteger(n)||n<1))fail('分镜包读取上限无效');
   if(typeof text!=='string'||!text.length||text.length>maxBytes||new TextEncoder().encode(text).length>maxBytes)fail('分镜包为空或超过读取上限');
@@ -21,6 +23,12 @@ export function parseBoundedJson(text,{maxBytes,maxDepth=40,maxNodes=500000,labe
     else if(char===':'&&parent)parent.key=false;
     else if(char===','&&parent){if(++nodes>maxNodes)fail('分镜包条目过多');parent.key=true;}
   }
+}
+
+export function parseBoundedJson(text,options={}){
+  assertJsonInputBounds(text,options);
+  const {label='JSON'}=options;
+  const fail=message=>{throw Error(message.replaceAll('分镜包',label));};
   let payload;try{payload=JSON.parse(text);}catch(_){fail('分镜包 JSON 无效');}
   const finite=value=>{if(typeof value==='number'&&!Number.isFinite(value))fail('分镜包数值超出有效范围');if(value&&typeof value==='object')for(const item of Object.values(value))finite(item);};finite(payload);
   return payload;
