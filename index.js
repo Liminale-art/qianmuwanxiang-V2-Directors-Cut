@@ -12059,13 +12059,16 @@ function ttsFavoriteFilename(favorite) {
 
 function ttsDownloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  let a;
+  try {
+  a = document.createElement('a');
   a.href = url;
   a.download = filename;
   document.body.appendChild(a);
   a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } finally {
+    try { a?.remove(); } finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
+  }
 }
 
 // 下载单句：合成(走缓存)→导出 blob
@@ -34860,11 +34863,7 @@ async function coreadExportData(origin) {
     retrievalLogs,
   };
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = `qianmu-coread-pack-${fileStamp()}.json`;
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
+  ttsDownloadBlob(blob, `qianmu-coread-pack-${fileStamp()}.json`);
   toast(`伴读数据已打包导出：${books.length} 本书 · ${chats.length} 段对话 · ${images.length} 张插图 · ${audio.length} 条语音。`, 'success');
   } catch (error) { toast(`伴读备份未完成：${error?.message || '请保留本机资料并重试。'}`, 'error'); }
   finally { viewGuard?.release(); coreadExportData.busy = false; }

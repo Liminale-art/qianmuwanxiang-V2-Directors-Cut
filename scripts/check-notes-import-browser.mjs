@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
+import {storyboardFunctionSource} from '../tests/helpers/storyboard-form-fixture.mjs';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext();
 let external=0;const errors=[];
@@ -149,5 +150,12 @@ try{
     check('the shared page guard reports an export cancellation without claiming imported writes',exportError.includes('导出页面')&&exportError.includes('未导出备份')&&!exportError.includes('已写入'));
     return checks;
   });
-  assert.equal(checks.length,48);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  await page.evaluate(code=>{window.eval(code);window.downloadRevoked=0;const revoke=URL.revokeObjectURL.bind(URL);URL.revokeObjectURL=url=>{window.downloadRevoked++;revoke(url);};},storyboardFunctionSource('ttsDownloadBlob'));
+  const pendingDownload=page.waitForEvent('download');
+  await page.evaluate(()=>ttsDownloadBlob(new Blob(['synthetic backup only'],{type:'application/json'}),'千幕-隔离备份.json'));
+  const download=await pendingDownload;assert.equal(download.suggestedFilename(),'千幕-隔离备份.json');
+  let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
+  await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
+  checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
+  assert.equal(checks.length,49);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}
