@@ -47,10 +47,43 @@ try{
         check(kind+' subsequent group data survives',after.stores.find(row=>row.name===ordered[1]).count>0);
       }finally{IDBDatabase.prototype.transaction=transaction;}
     }
+    await api.putCover('orphan-abort',new Blob(['synthetic cover']));
+    const originalDelete=IDBObjectStore.prototype.delete;
+    try{
+      IDBObjectStore.prototype.delete=function(key){const request=originalDelete.call(this,key);if(key==='orphan-abort')request.addEventListener('success',()=>this.transaction.abort(),{once:true});return request;};
+      result=await api.clearOrphanedReaderBlobs();
+    }finally{IDBObjectStore.prototype.delete=originalDelete;}
+    check('orphan request success followed by abort never reports a cleared resource',result.cleared.length===0&&result.failed.length===1&&Boolean(await api.getCover('orphan-abort')));
+    result=await api.clearOrphanedReaderBlobs();
+    check('orphan retry reports only committed deletion',result.cleared.length===1&&!await api.getCover('orphan-abort'));
+    await api.putCover('orphan-a',new Blob(['first']));await api.putReaderImage('orphan-b',0,new Blob(['second']));
+    const transaction=IDBDatabase.prototype.transaction;let valid=true,writes=0;
+    try{
+      IDBDatabase.prototype.transaction=function(names,mode,...args){
+        const tx=transaction.call(this,names,mode,...args);
+        if(mode==='readwrite'){writes++;tx.addEventListener('complete',()=>{valid=false;},{once:true});}
+        return tx;
+      };
+      result=await api.clearOrphanedReaderBlobs({check(){if(!valid)throw Error('scope changed');}});
+    }finally{IDBDatabase.prototype.transaction=transaction;}
+    check('orphan scope change preserves the next resource without another write transaction',writes===1&&result.cleared.length===1&&result.failed.length===1&&Boolean(await api.getReaderImage('orphan-b',0)));
+    await api.clearOrphanedReaderBlobs();
+    await api.putCover('restored-during-cleanup',new Blob(['keep cover']));let inserted=false;
+    try{
+      IDBDatabase.prototype.transaction=function(names,mode,...args){
+        if(!inserted&&mode==='readwrite'){
+          inserted=true;
+          transaction.call(this,'reader_books','readwrite').objectStore('reader_books').put({fullText:'restored fixture'},'restored-during-cleanup');
+        }
+        return transaction.call(this,names,mode,...args);
+      };
+      result=await api.clearOrphanedReaderBlobs();
+    }finally{IDBDatabase.prototype.transaction=transaction;}
+    check('a book restored after inventory protects its cover at the transactional recheck',inserted&&result.cleared.length===0&&result.skipped.length===1&&Boolean(await api.getCover('restored-during-cleanup')));
     const descriptor=Object.getOwnPropertyDescriptor(window,'indexedDB');
     try{
       Object.defineProperty(window,'indexedDB',{configurable:true,value:undefined});
-      for(const [label,run] of [['module',()=>api.clearStorageItems(['notes'])],['chat',()=>api.clearChatScopedStorage([{name:'audio',chatKey:'fixture'}])]]){
+      for(const [label,run] of [['module',()=>api.clearStorageItems(['notes'])],['chat',()=>api.clearChatScopedStorage([{name:'audio',chatKey:'fixture'}])],['orphan',()=>api.clearOrphanedReaderBlobs()]]){
         let failed=false;try{await run();}catch{failed=true;}check(label+' cleanup cannot claim success without storage support',failed);
       }
       check('empty selections remain harmless no-ops without storage support',(await api.clearStorageItems([])).cleared.length===0&&(await api.clearChatScopedStorage([])).cleared.length===0);

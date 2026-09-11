@@ -50,7 +50,7 @@ assert.match(storeSource, /export async function auditOrphanedReaderBlobs\(\)/, 
 assert.match(storeSource, /STORE_COVERS[\s\S]*STORE_IMAGES[\s\S]*books\.has\(bookId\)/, 'only reader cover/image records without a canonical book may be marked orphaned');
 assert.match(storeSource, /auditOrphanedStore[\s\S]*openCursor\(\)[\s\S]*estimateStoredValueBytes\(current\.value\)/, 'blob audit must stream values through a cursor instead of retaining the full library in memory');
 assert.match(storeSource, /\u4f34\u8bfb\u4f1a\u8bdd\/\u5411\u91cf[\s\S]*\u7edd\u4e0d\u81ea\u52a8\u5224\u5b64/, 'retained reader memories and vectors must not be treated as orphaned blobs');
-assert.match(storeSource, /export async function clearOrphanedReaderBlobs\(\)[\s\S]*await getBook\(item\.bookId\)/, 'orphan deletion must re-check the canonical book immediately before deletion');
+assert.match(storeSource, /function deleteOrphanedReaderBlob[\s\S]*db\.transaction\(\[STORE_BOOKS, item\.store\][\s\S]*objectStore\(STORE_BOOKS\)\.get\(item\.bookId\)/, 'orphan deletion must re-check the canonical book inside the same transaction');
 assert.match(storeSource, /function storageRecordChatKey\(name, key, value\)[\s\S]*STORE_TTS_LINES[\s\S]*STORE_CHATS[\s\S]*STORE_VECTORS[\s\S]*STORE_STORYBOARD_INBOX[\s\S]*STORE_AUDIO/, 'chat-scoped stores must use an explicit scope extractor');
 assert.match(storeSource, /estimateStoreUsage\(name\)[\s\S]*scopeMap[\s\S]*recordBytes[\s\S]*chatScopes:/, 'chat scope sizes must be collected during the existing store inventory pass');
 assert.match(storeSource, /CHAT_SCOPED_CLEARABLE_STORES[\s\S]*STORE_AUDIO[\s\S]*STORE_TTS_LINES[\s\S]*STORE_CHATS[\s\S]*STORE_VECTORS/, 'chat cleanup must use an explicit store allow-list');
@@ -79,7 +79,7 @@ assert.match(source, /blobStore\.clearStorageItems\(stores, cleanup\)[\s\S]*sele
 assert.match(source, /cleared\.has\('storyboard_pipeline_logs'\)[\s\S]*storyboardPipelineArchiveEpoch\+\+[\s\S]*filter\(\(item\) => !storyboardPipelineIsTerminal\(item\)\)/, 'clearing detailed logs must invalidate archive callbacks while preserving active pipelines');
 assert.match(source, /portableTtsBytes[\s\S]*item\.name === 'tts_lines'[\s\S]*cleared\.has\('tts_lines'\)[\s\S]*ttsLineCache\.clear\(\)/, 'the TTS cache item must include and clear its portable chat snapshot');
 assert.match(source, /orphanReaderBlobs[\s\S]*无所属书籍的图片[\s\S]*__orphan_reader_blobs__/, 'orphaned reader blobs must keep a clear label and a separate cleanup choice');
-assert.match(source, /selected\.includes\('__orphan_reader_blobs__'\)[\s\S]*clearOrphanedReaderBlobs\(\)/, 'orphan cleanup must only run after explicit selection');
+assert.match(source, /selected\.includes\('__orphan_reader_blobs__'\)[\s\S]*clearOrphanedReaderBlobs\(cleanup\)/, 'orphan cleanup must only run after explicit selection under its initiating session');
 assert.match(source, /scopeCount: Array\.isArray\(item\.scopes\)[\s\S]*item\.scopeCount[\s\S]*个聊天/, 'cleanup rows must reveal how many chat buckets each registered store contains');
 assert.match(source, /openStorageChatCleanupDialog[\s\S]*导出伴读整包[\s\S]*导出语音缓存[\s\S]*clearChatScopedStorage\(selected, cleanup\)/, 'chat cleanup must offer module backups before session-scoped per-item deletion');
 assert.match(source, /openStorageCleanupDialog[\s\S]*导出固定便笺[\s\S]*导入固定便笺[\s\S]*exportPinnedNotesBackup/, 'fixed notes must have backup and restore paths beside destructive module cleanup');

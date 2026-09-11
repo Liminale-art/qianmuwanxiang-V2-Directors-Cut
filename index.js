@@ -8754,7 +8754,7 @@ function bindStorageManagementEvents(root) {
       const storageResult = await blobStore.clearStorageItems(stores, cleanup); cleanup.check();
       const reconciled = reconcileClearedStorageItems(storageResult.cleared);
       let orphanResult = null;
-      if (selected.includes('__orphan_reader_blobs__')) orphanResult = await blobStore.clearOrphanedReaderBlobs();
+      if (selected.includes('__orphan_reader_blobs__')) orphanResult = await blobStore.clearOrphanedReaderBlobs(cleanup);
       cleanup.check();
       if (selected.includes('__diagnostics__')) {
         settings.logHistory = [];

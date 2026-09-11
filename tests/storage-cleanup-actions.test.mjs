@@ -26,6 +26,16 @@ function fixture(result, kind = 'chat') {
 }
 const row=(chatKey,count=1)=>({name:'storyboard_plan_archives',chatKey,count,bytes:10});
 
+test('orphan cleanup receives the initiating session, not an unguarded background delete',async()=>{
+  const e=fixture({cleared:[],failed:[]},'module');let checked=false;
+  e.c.openStorageCleanupDialog=async()=>['__orphan_reader_blobs__'];
+  e.c.blobStore.clearOrphanedReaderBlobs=async(session)=>{
+    session.check();e.root.isConnected=false;
+    assert.throws(()=>session.check(),/后续操作已停止/);checked=true;return {cleared:[],failed:[]};
+  };
+  await e.run();assert.equal(checked,true);assert.equal(e.calls.save,0);
+});
+
 test('both real cleanup entry points pass their live scope check into the database loop',async()=>{
   for(const kind of ['chat','module']){
     const result={cleared:[],failed:[],count:0,bytes:0},e=fixture(result,kind);let checked=false;

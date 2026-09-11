@@ -1507,21 +1507,48 @@ export async function auditOrphanedReaderBlobs() {
   };
 }
 
+// Recheck the book and remove its orphan in one transaction: a concurrent import
+// must not slip between a separate readonly check and the resource deletion.
+async function deleteOrphanedReaderBlob(item, check) {
+  check();
+  const db = await openDB();
+  check();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_BOOKS, item.store], 'readwrite');
+    let removed = false, failure;
+    transaction.oncomplete = () => resolve(removed);
+    transaction.onerror = () => reject(failure || transaction.error);
+    transaction.onabort = () => reject(failure || transaction.error || new Error('Reader resource cleanup aborted'));
+    const removeIfOrphan = (book) => {
+      try {
+        check();
+        if (book) return;
+        transaction.objectStore(item.store).delete(item.key);
+        removed = true;
+      } catch (error) { failure = error; transaction.abort(); }
+    };
+    if (item.bookId) {
+      const request = transaction.objectStore(STORE_BOOKS).get(item.bookId);
+      request.onsuccess = () => removeIfOrphan(request.result);
+    } else removeIfOrphan(null);
+  });
+}
+
 // 删除前逐项重查书籍主体；若盘点后书籍被重新导入，该资源会被跳过。
-export async function clearOrphanedReaderBlobs() {
-  if (!blobStoreAvailable()) return { cleared: [], skipped: [], failed: [], beforeBytes: 0, remaining: 0 };
+export async function clearOrphanedReaderBlobs({check = () => {}} = {}) {
+  if (!blobStoreAvailable()) throw new Error('当前浏览器储存不可用，未清理阅读资源。');
+  check();
   const audit = await auditOrphanedReaderBlobs();
+  check();
   const cleared = [];
   const skipped = [];
   const failed = [];
   for (const item of audit.records) {
     try {
-      if (item.bookId && await getBook(item.bookId)) {
+      if (!await deleteOrphanedReaderBlob(item, check)) {
         skipped.push({ ...item, reason: '书籍已恢复，保留资源' });
         continue;
       }
-      const target = await store(item.store, 'readwrite');
-      await reqP(target.delete(item.key));
       cleared.push(item);
     } catch (error) {
       failed.push({ ...item, error: error?.message || String(error) });
