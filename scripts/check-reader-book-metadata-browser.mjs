@@ -58,5 +58,5 @@ try {
     check('guard exceptions fail closed',failure?.message==='owner lookup failed'&&(await books.getBook('book')).meta.title==='t'.repeat(120));
     return checks;
   },source);
-  assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,realIndexedDB:true,external,errors,limits:'isolated synthetic books; UI not wired and real ST/browser quotas not exercised'}));
+  assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,realIndexedDB:true,external,errors,limits:'storage API only, editor integration checked separately; synthetic books, no real ST/browser quota validation'}));
 } finally {await context.close();await browser.close();}
