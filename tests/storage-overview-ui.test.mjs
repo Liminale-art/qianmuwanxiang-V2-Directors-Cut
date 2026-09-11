@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import vm from 'node:vm';
+import {renderStorageBackupSection} from '../qianmu-storage-backup-view.js';
 import { readFile } from 'node:fs/promises';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const constants = source.slice(source.indexOf('const STORAGE_CATEGORY_LABELS'), source.indexOf('function renderStorageManagementCard'));
 function fixture(data = null, status = 'ready') {
-  const context = vm.createContext({ storageInventoryState: { data, status, error: '<unavailable>' },
+  const context = vm.createContext({renderStorageBackupSection, storageInventoryState: { data, status, error: '<unavailable>' },
     htmlEscape: x => String(x ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'),
     formatStorageBytes: x => `${Number(x) || 0} B`, blobStore: { classifyStoragePressure: () => ({ level: 'normal' }) } });
   vm.runInContext(constants + section('renderStorageManagementCard'), context);
@@ -76,7 +77,7 @@ test('central backup entry binds once and reuses the existing export and restore
     || imports.find(input => selector === `input[data-storage-import="${input.dataset.storageImport}"]`)),
     querySelectorAll: selector => ({ '[data-storage-export]': exports, '[data-storage-pick]': picks, 'input[data-storage-import]': imports }[selector] || []) };
   const root = { querySelector: selector => selector === '.sd-storage-backup-section' ? backup : null, querySelectorAll: () => [] };
-  const context = vm.createContext({ exportConfig: () => calls.push('config-export'), importConfig: () => calls.push('config-import'),
+  const context = vm.createContext({renderStorageBackupSection, exportConfig: () => calls.push('config-export'), importConfig: () => calls.push('config-import'),
     storyboardExportPackage: options => { assert.equal(options.bundle, true); calls.push('storyboard-export'); },
     storyboardImportAnyPackage: file => { assert.equal(file.name, 'fixture'); calls.push('storyboard-import'); },
     coreadExportData: () => calls.push('reader-export'), coreadImportDataFile: () => calls.push('reader-import'),

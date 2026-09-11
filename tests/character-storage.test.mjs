@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {renderStorageBackupSection} from '../qianmu-storage-backup-view.js';
 import { summarizeCharacterStorage, validateCharacterStorageSummary, collectCharacterStorage } from '../qianmu-character-storage.js';
 import { runRestoreStorage } from '../qianmu-storyboard-restore-storage-runtime.js';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
@@ -47,7 +48,7 @@ test('short-lived worker character operation returns only the validated summary 
   class Worker{addEventListener(type,fn){if(type==='message')this.receive=fn;}postMessage(value){sent=value;queueMicrotask(()=>this.receive({data:{id:value.id,result:summary}}));}terminate(){closed++;}}
   assert.deepEqual(await runRestoreStorage('characters',{namespace,guard:async()=>{},WorkerClass:Worker}),summary);assert.equal(closed,1);assert.deepEqual(Object.keys(sent).sort(),['action','id','namespace']);
 });
-function globalFixture(summary){return vm.createContext({focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:99999,quota:999999})}},blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
+function globalFixture(summary){return vm.createContext({renderStorageBackupSection,focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:99999,quota:999999})}},blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
   featureRuntime:{load:async key=>key==='characterStorage'?{collectCharacterStorage:async()=>summary}:key==='comfyStorage'?{collectComfyStorage:async()=>({bytes:0,errors:[]})}:key==='vibeStorageSummary'?{collectVibeStorage:async()=>({status:'unavailable',bytes:null})}:key==='storyboardRestoreStorage'?{collectStoryboardRestoreStorage:async()=>({status:'unavailable',bytes:null})}:{resolveImageAccountNamespace:async()=>namespace,manageImageAdmissionStorage:async()=>({bytes:0})}},
   storyboardManageImageChannels:async()=>({bytes:0}),storyboardImageServiceRuntime:async()=>({manage:async()=>({bytes:0})}),storyboardComfyRecoveryRuntime:async()=>({usage:async()=>({bytes:0})}),storageJsonBytes:()=>0,storageSettingsSnapshotWithoutDiagnostics:()=>({}),getChatStore:()=>({}),storageDiagnosticSnapshot:()=>({}),
   htmlEscape:value=>String(value??'').replaceAll('<','&lt;'),formatStorageBytes:value=>`${value} B`,STORAGE_CATEGORY_LABELS:{},STORAGE_CATEGORY_COLORS:{other:'#777'},storageInventoryState:{status:'ready'},});}
@@ -69,6 +70,6 @@ test('unavailable role summary remains explicitly uncounted and keeps the existi
 test('actual role management shortcut changes only the view and never rewrites engine, prompts or bindings',()=>{
   let click;const routes=[],state={source:'comfy',prompt:'unchanged',bindings:['bound']},before=clone(state);
   const root={querySelector:selector=>selector==='button.sd-storage-characters'?{addEventListener:(_name,fn)=>click=fn}:null,querySelectorAll:()=>[]};
-  const context=vm.createContext({activeTab:'plug',storageInventoryState:{sampledAt:1},storyboardBeginSession:()=>{},storyboardNavigate:(_root,route)=>routes.push(route)});vm.runInContext(section('bindStorageManagementEvents'),context);context.bindStorageManagementEvents(root);click();
+  const context=vm.createContext({renderStorageBackupSection,activeTab:'plug',storageInventoryState:{sampledAt:1},storyboardBeginSession:()=>{},storyboardNavigate:(_root,route)=>routes.push(route)});vm.runInContext(section('bindStorageManagementEvents'),context);context.bindStorageManagementEvents(root);click();
   assert.deepEqual(JSON.parse(JSON.stringify(routes)),[{view:'characters'}]);assert.equal(context.activeTab,'imagegen');assert.equal(context.storageInventoryState.sampledAt,0);assert.deepEqual(state,before);
 });

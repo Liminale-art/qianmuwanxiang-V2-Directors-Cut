@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {renderStorageBackupSection} from '../qianmu-storage-backup-view.js';
 import { collectRestoreStorage, clearRestoreStorage, validateRestoreStorageSummary } from '../qianmu-storyboard-restore-storage.js';
 import { runRestoreStorage, collectStoryboardRestoreStorage } from '../qianmu-storyboard-restore-storage-runtime.js';
 import { renderRestoreStorageReview } from '../qianmu-storyboard-restore-storage-view.js';
@@ -110,7 +111,7 @@ test('the record manager is unchecked by default, names destructive consequences
 });
 
 function globalFixture(restore,mappings={status:'unavailable',bytes:null,error:'not sampled'}){
-  return vm.createContext({focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:9999,quota:99999})}},
+  return vm.createContext({renderStorageBackupSection,focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:9999,quota:99999})}},
     blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
     featureRuntime:{load:async key=>key==='storyboardRestoreStorage'?{collectStoryboardRestoreStorage:async()=>restore,collectStoryboardMappingStorage:async()=>mappings}:key==='vibeStorageSummary'?{collectVibeStorage:async()=>({status:'unavailable',bytes:null})}:key==='comfyStorage'?{collectComfyStorage:async()=>({bytes:0,errors:[]})}:{manageImageAdmissionStorage:async()=>({bytes:0,count:0}),resolveImageAccountNamespace:async()=>namespace}},
     storyboardManageImageChannels:async()=>({bytes:0}),storyboardImageServiceRuntime:async()=>({manage:async()=>({bytes:0})}),storyboardComfyRecoveryRuntime:async()=>({usage:async()=>({bytes:0})}),
@@ -144,7 +145,7 @@ test('actual space card counts mapping bodies plus heads once, without advertisi
 test('actual mapping entry is available when accounting fails and never routes to clearing',async()=>{
   let click,args;
   const root={isConnected:true,querySelector:selector=>selector==='button.sd-storage-mappings'?{addEventListener:(_event,fn)=>click=fn}:null,querySelectorAll:()=>[]};
-  const context=vm.createContext({storageInventoryState:{data:{mappingStorage:{status:'unavailable',namespace}}},storyboardOpenRestoreStorage:(...input)=>args=input});
+  const context=vm.createContext({renderStorageBackupSection,storageInventoryState:{data:{mappingStorage:{status:'unavailable',namespace}}},storyboardOpenRestoreStorage:(...input)=>args=input});
   vm.runInContext(section('bindStorageManagementEvents'),context);context.bindStorageManagementEvents(root);click();
   assert.equal(args[0],root);assert.equal(args[1],namespace);assert.equal(args[2].mappings,true);
 });
@@ -152,7 +153,7 @@ test('actual mapping entry is available when accounting fails and never routes t
 test('actual module cleanup opens per-record choices and does not clear a whole module or save settings on cancel',async()=>{
   let click,opened=0;
   const root={isConnected:true,querySelector:selector=>selector==='.sd-storage-clean'?{addEventListener:(_event,fn)=>click=fn}:null,querySelectorAll:()=>[]};
-  const context=vm.createContext({storyboardAdmissionEpoch:1,storageInventoryState:{data:{restoreStorage:{namespace}}},openStorageCleanupDialog:async()=>['__storyboard_restores__'],
+  const context=vm.createContext({renderStorageBackupSection,storyboardAdmissionEpoch:1,storageInventoryState:{data:{restoreStorage:{namespace}}},openStorageCleanupDialog:async()=>['__storyboard_restores__'],
     storyboardOpenRestoreStorage:async(target,scope)=>{assert.equal(target,root);assert.equal(scope,namespace);opened++;},
     blobStore:{clearStorageItems:()=>assert.fail('no whole-module deletion')},saveSettings:()=>assert.fail('no unrelated save'),toast:()=>assert.fail('do not claim cancelled selection was cleared')});
   vm.runInContext(section('bindStorageManagementEvents'),context);context.bindStorageManagementEvents(root);await click();assert.equal(opened,1);

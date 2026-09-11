@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {renderStorageBackupSection} from '../qianmu-storage-backup-view.js';
 import {summarizeComfyLibraryStorage,validateComfyStorageSummary} from '../qianmu-comfy-storage-accounting.js';
 import {collectComfyStorage} from '../qianmu-comfy-storage.js';
 import {runRestoreStorage} from '../qianmu-storyboard-restore-storage-runtime.js';
@@ -58,7 +59,7 @@ test('Comfy Worker results are compact, schema checked, bound to the operation a
 });
 test('actual storage card keeps failed Comfy library links, labels unknown space and renders real version and metadata counts',()=>{
   const comfy=complete();comfy.workflows={status:'unavailable',bytes:null,count:null,error:'unreadable <data>'};comfy.status='partial';comfy.errors=[comfy.workflows.error];
-  const context=vm.createContext({storageInventoryState:{status:'ready',data:{sampledAt:1,origin:{available:true,usage:99999,quota:999999},trackedBytes:comfy.bytes,categories:[],idb:{stores:[]},comfyStorage:comfy}},STORAGE_CATEGORY_LABELS:{},STORAGE_CATEGORY_COLORS:{},htmlEscape:x=>String(x??'').replaceAll('<','&lt;'),formatStorageBytes:x=>`${x} B`});
+  const context=vm.createContext({renderStorageBackupSection,storageInventoryState:{status:'ready',data:{sampledAt:1,origin:{available:true,usage:99999,quota:999999},trackedBytes:comfy.bytes,categories:[],idb:{stores:[]},comfyStorage:comfy}},STORAGE_CATEGORY_LABELS:{},STORAGE_CATEGORY_COLORS:{},htmlEscape:x=>String(x??'').replaceAll('<','&lt;'),formatStorageBytes:x=>`${x} B`});
   context.storageInventoryState.data.origin.pressure={};vm.runInContext(section('renderStorageManagementCard'),context);const html=context.renderStorageManagementCard();
   assert.match(html,/Comfy 工作流库 · 当前账户 · 未盘点，总计未包含/);assert.doesNotMatch(html,/Comfy 工作流库 · 当前账户 · 0 项/);assert.match(html,/data-storage-comfy-library="workflows"/);assert.match(html,/含 2 个版本、1 项归档/);assert.match(html,/未盘点站点数据/);assert.match(html,/unreadable &lt;data>/);
 });
