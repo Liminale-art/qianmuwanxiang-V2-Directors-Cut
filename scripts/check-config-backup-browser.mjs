@@ -66,10 +66,48 @@ try{
   await page.evaluate(()=>{settings.theme='user-change';});await page.locator('.sd-undo-config').click();
   await page.waitForFunction(()=>notices.some(row=>row[0].includes('无法撤回')));assert.equal(await page.evaluate(()=>saved),3);
   assert.equal(await page.evaluate(()=>settings.theme),'user-change');
+  // Native Storage failure injection: a failed undo must neither announce success
+  // nor consume its recovery point; a failed compensation must be visible instead.
+  for(const incomplete of [false,true]){
+    const savedBefore=await page.evaluate(()=>saved);
+    await page.evaluate(()=>{settings.theme='before-storage-failure';localStorage.setItem('fixture-layout','original-layout-bytes');});
+    const storagePack={...pack,settings:{...pack.settings,proseLayout:{enabled:false,width:80}}};
+    await page.locator('.sd-import-config-file').setInputFiles({name:'storage-config.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(storagePack))});
+    await page.waitForFunction(count=>saved===count+1,savedBefore);
+    await page.locator('.sd-storage-backup-section').evaluate(el=>{el.open=true;});
+    const prior=await page.evaluate(()=>({saved,notices:notices.length,raw:localStorage.getItem('fixture-layout')}));
+    await page.evaluate(incomplete=>{
+      window.storageFailureCalls=0;window.nativeSetItem=Storage.prototype.setItem;
+      Storage.prototype.setItem=function(key,value){
+        if(key!=='fixture-layout')return nativeSetItem.call(this,key,value);
+        storageFailureCalls++;
+        if(incomplete){if(storageFailureCalls===1)nativeSetItem.call(this,key,value);throw new DOMException('Isolated storage failure','QuotaExceededError');}
+        if(storageFailureCalls===1)throw new DOMException('Isolated storage failure','QuotaExceededError');
+        return nativeSetItem.call(this,key,value);
+      };
+    },incomplete);
+    try{
+      await page.locator('.sd-undo-config').click();
+      await page.waitForFunction(count=>notices.length>count,prior.notices);
+      const failure=await page.evaluate(()=>({saved,theme:settings.theme,available:configUndo.available(settings),raw:localStorage.getItem('fixture-layout'),notice:notices.at(-1),calls:storageFailureCalls}));
+      assert.equal(failure.saved,prior.saved);assert.equal(failure.theme,'light');assert.equal(failure.available,true);assert.equal(failure.calls,2);
+      assert.equal(failure.notice[1],'error');assert.equal(failure.raw,incomplete?'original-layout-bytes':prior.raw);
+      assert.match(failure.notice[0],incomplete?/部分状态未能还原/:/已恢复原状态/);
+    }finally{await page.evaluate(()=>{Storage.prototype.setItem=nativeSetItem;delete window.nativeSetItem;});}
+    const noticeCount=await page.evaluate(()=>notices.length);
+    await page.locator('.sd-undo-config').click();await page.waitForFunction(count=>notices.length>count,noticeCount);
+    if(incomplete){
+      assert.equal(await page.evaluate(()=>saved),prior.saved);
+      assert.match(await page.evaluate(()=>notices.at(-1)[0]),/无法撤回/);
+      assert.equal(await page.evaluate(()=>settings.theme),'light');
+    }else{
+      assert.deepEqual(await page.evaluate(()=>[saved,settings.theme,localStorage.getItem('fixture-layout'),configUndo.available(settings)]),[prior.saved+1,'before-storage-failure','original-layout-bytes',false]);
+    }
+  }
   await page.evaluate(()=>{let nested={text:'kept'};for(let n=0;n<42;n++)nested={child:nested};settings={theme:'preservation',nested};allow=true;});
   const preserveEvent=page.waitForEvent('download');await page.locator('.sd-export-config').click();const preserved=await preserveEvent;
   assert.match(preserved.suggestedFilename(),/^qianmu-config-preservation-/);
   const content=JSON.parse(await readFile(await preserved.path(),'utf8'));let leaf=content.settings.nested;for(let n=0;n<42;n++)leaf=leaf.child;assert.equal(leaf.text,'kept');
   assert.ok(await page.evaluate(()=>notices.some(row=>row[0].includes('当前版本不能直接恢复')&&row[1]==='warning')));
-  assert.deepEqual(errors,[]);assert.equal(external,0);console.log(JSON.stringify({nativeDownload:true,nativeFileInput:true,nestedConnectionsExcluded:true,recipientConnectionsPreserved:true,malformedNoWrite:true,undoCancel:true,undoApplied:true,undoStaleBlocked:true,explicitPreservationDownload:true,external,errors}));
+  assert.deepEqual(errors,[]);assert.equal(external,0);console.log(JSON.stringify({nativeDownload:true,nativeFileInput:true,nestedConnectionsExcluded:true,recipientConnectionsPreserved:true,malformedNoWrite:true,undoCancel:true,undoApplied:true,undoStaleBlocked:true,nativeStorageFailureRetry:true,incompleteCompensationBlocksRetry:true,explicitPreservationDownload:true,external,errors}));
 }finally{await context.close();await browser.close();}
