@@ -30972,6 +30972,8 @@ async function coreadOpenBook(bookId, { isCurrent = () => true } = {}) {
   renderModal();        // 模态内此 tab 转为占位
   refreshReaderPortal();
   focusClockResumeReading();
+  const companion = coreadCompanionCharacter();
+  toast(`当前伴读书友：${htmlEscape(companion ? companionCharName() : '未选择')}`, 'info');
 }
 
 function coreadCloseReader() {

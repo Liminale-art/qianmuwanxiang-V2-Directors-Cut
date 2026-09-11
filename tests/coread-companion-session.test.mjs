@@ -32,6 +32,41 @@ function fixture(){
   return {context,host,state,books,legacy,notices,writes,dialog:()=>vm.runInContext('readerDialog',context)};
 }
 
+test('reader entry announces its actual selected companion after the portal is mounted',async()=>{
+  for(const selected of ['', 'b.png']) {
+    const e=fixture(),trace=[];e.host.characters[0].name='当前聊天';e.host.characters[1].name='手选书友';
+    e.state.companionOverrideAvatar=selected;e.state.lastReading={avatar:'gone.png'};
+    e.context.refreshReaderPortal=()=>trace.push('portal');e.context.toast=text=>{trace.push(text);e.notices.push(text);};
+    await e.context.coreadOpenBook('book');
+    const message=`当前伴读书友：${selected?'手选书友':'当前聊天'}`;
+    assert.equal(e.notices.at(-1),message);assert.ok(trace.indexOf('portal')<trace.indexOf(message));
+    assert.equal(e.context.readerView.companionAvatar,selected||'a.png');
+    assert.equal(e.books[0].lastChapterIndex,1);assert.equal(e.books[0].lastScrollRatio,.2);
+    assert.equal(e.state.lastReading.avatar,'gone.png','obsolete last-reading data must not route the companion');
+  }
+});
+
+test('entry notice follows the locked reading identity and escapes card names',async()=>{
+  const e=fixture();e.host.characters[1].name='<img src=x onerror=alert(1)>';
+  const session=e.context.coreadEnsureCompanionSession('b.png');
+  e.context.focusClockActiveLock=()=>({activity:'reading',bookId:'book',reader:{avatar:'b.png',scope:session.scope,persona:e.context.coreadHostPersona()}});
+  await e.context.coreadOpenBook('book');
+  assert.equal(e.context.readerView.companionAvatar,'b.png');
+  assert.equal(e.notices.at(-1),'当前伴读书友：&lt;img src=x onerror=alert(1)>');
+});
+
+test('unassigned reading is explicit, while refill and superseded entries do not announce a companion',async()=>{
+  const e=fixture();e.host.characterId=undefined;e.host.chatId='';await e.context.coreadOpenBook('book');
+  assert.equal(e.notices.at(-1),'当前伴读书友：未选择');
+  const f=fixture(),reads=new Map();f.host.characters[0].name='唯一书友';
+  f.context.blobStore.getBook=id=>new Promise(resolve=>reads.set(id,resolve));
+  const old=f.context.coreadOpenBook('book'),current=f.context.coreadOpenBook('other');
+  reads.get('other')({chapters:[{}]});await current;reads.get('book')({chapters:[{}]});await old;
+  assert.deepEqual(f.notices,['当前伴读书友：唯一书友']);
+  f.context.readerView=null;f.context.blobStore.getBook=async()=>null;f.notices.length=0;
+  await f.context.coreadOpenBook('book');assert.deepEqual(f.notices,['refill:book']);
+});
+
 test('first current companion preserves the exact legacy bucket without renaming or merging records',()=>{
   const e=fixture();const session=e.context.coreadEnsureCompanionSession('a.png');
   assert.equal(session.scope,'old-chat');assert.equal(e.context.coreadDialogBucket('book'),'old-chat::book');
