@@ -7,7 +7,7 @@ import { receiveServiceImage } from './qianmu-service-recovery-action.js';
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
 import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, releasePlanReferencesForChats } from './qianmu-plan-archive-write.js';
-import { renderStorageBackupSection } from './qianmu-storage-backup-view.js';
+import { renderStorageBackupSection, replaceStorageManagementCard } from './qianmu-storage-backup-view.js';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
 import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -8619,23 +8619,9 @@ function paintStorageManagementCard() {
   if (!modal?.classList.contains('open')) return false;
   const current = modal.querySelector('.sd-storage-card');
   if (!current) return false;
-  const template = document.createElement('template');
-  template.innerHTML = renderStorageManagementCard().trim();
-  const next = template.content.firstElementChild;
-  if (!next) return false;
-  for (const section of current.querySelectorAll('details[data-storage-section]')) {
-    const target = [...next.querySelectorAll('details[data-storage-section]')].find(item=>item.dataset.storageSection===section.dataset.storageSection);
-    if (target) target.open = section.open;
-  }
-  // Keep native file pickers and in-progress backup buttons alive during a quota refresh.
-  const backup = current.querySelector('.sd-storage-backup-section');
-  if (backup) next.querySelector('.sd-storage-backup-section')?.replaceWith(backup);
-  const refreshFocused = document.activeElement === current.querySelector('.sd-storage-refresh');
-  current.replaceWith(next);
-  applyQianmuIcons(next);
-  bindStorageManagementEvents(next);
-  if (refreshFocused) next.querySelector('.sd-storage-refresh')?.focus({ preventScroll: true });
-  return true;
+  return replaceStorageManagementCard(current, renderStorageManagementCard(), {
+    icons:applyQianmuIcons, bind:bindStorageManagementEvents,
+  });
 }
 
 async function storyboardOpenRestoreStorage(root,expectedNamespace,{mappings=false}={}) {

@@ -1,3 +1,25 @@
+// Keep view replacement independent of application state and storage mutations.
+export function replaceStorageManagementCard(current, html, {icons, bind}) {
+  const document = current.ownerDocument;
+  const template = document.createElement('template');
+  template.innerHTML = html.trim();
+  const next = template.content.firstElementChild;
+  if (!next) return false;
+  for (const section of current.querySelectorAll('details[data-storage-section]')) {
+    const target = [...next.querySelectorAll('details[data-storage-section]')].find(item=>item.dataset.storageSection===section.dataset.storageSection);
+    if (target) target.open = section.open;
+  }
+  // Retain live file inputs and their listeners across quota refreshes.
+  const backup = current.querySelector('.sd-storage-backup-section');
+  if (backup) next.querySelector('.sd-storage-backup-section')?.replaceWith(backup);
+  const refreshFocused = document.activeElement === current.querySelector('.sd-storage-refresh');
+  current.replaceWith(next);
+  icons(next);
+  bind(next);
+  if (refreshFocused) next.querySelector('.sd-storage-refresh')?.focus({ preventScroll: true });
+  return true;
+}
+
 // Existing module packages only; this is not an all-device snapshot or sync protocol.
 export function renderStorageBackupSection() {
   return `<details class="sd-storage-disclosure sd-storage-backup-section" data-storage-section="backups">

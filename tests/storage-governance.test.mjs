@@ -95,6 +95,6 @@ assert.doesNotMatch(source, /navigator\.storage\.persist|申请持久保存/, 'p
 const refreshInventory = source.slice(source.indexOf('async function refreshStorageInventory'), source.indexOf('const STORAGE_CATEGORY_LABELS'));
 assert.match(refreshInventory, /paintStorageManagementCard\(\)/, 'inventory completion must patch only its own card');
 assert.doesNotMatch(refreshInventory, /renderModal\(\)/, 'inventory completion must not rebuild the full Qianmu window');
-assert.match(source, /function paintStorageManagementCard\(\)[\s\S]*current\.replaceWith\(next\)[\s\S]*bindStorageManagementEvents\(next\)/, 'a replaced storage card must restore its own controls');
+assert.match(source, /function paintStorageManagementCard\(\)[\s\S]*replaceStorageManagementCard\(current, renderStorageManagementCard\(\), \{[\s\S]*bind:bindStorageManagementEvents/, 'a replaced storage card must restore its own controls through the existing view module');
 
 console.log('Storage governance contract OK');

@@ -16,6 +16,24 @@ await context.route('**/*',async route=>{
 });
 try{
   const page=await context.newPage();page.on('pageerror',e=>{errors.push(e.message);console.error('Isolated page error:',e.message);});await page.goto('https://qianmu.test');
+  const replacement=await page.evaluate(async source=>{
+    const {replaceStorageManagementCard}=await import('/qianmu-storage-backup-view.js');
+    const modal=document.getElementById('story-director-modal');modal.classList.add('open');
+    const html='<section class="sd-storage-card"><button class="sd-storage-refresh">Refresh</button><details data-storage-section="details"><summary>Details</summary></details><details class="sd-storage-backup-section" data-storage-section="backups"><summary>Backup</summary><input type="file"></details></section>';
+    const old=document.createElement('div');old.innerHTML=html;modal.append(old.firstElementChild);
+    const card=modal.querySelector('.sd-storage-card'),backup=card.querySelector('.sd-storage-backup-section'),input=backup.querySelector('input');
+    backup.open=true;card.querySelector('details').open=true;let events=0,bindings=0,icons=0;
+    input.addEventListener('change',()=>events++);const transfer=new DataTransfer();transfer.items.add(new File(['fixture'],'selected.json'));input.files=transfer.files;
+    card.querySelector('button').focus();
+    const paint=new Function('replaceStorageManagementCard','document','activeTab','MODAL_ID','renderStorageManagementCard','applyQianmuIcons','bindStorageManagementEvents',source+';return paintStorageManagementCard();');
+    const run=tab=>paint(replaceStorageManagementCard,document,tab,'story-director-modal',()=>html,()=>icons++,()=>bindings++);
+    const wrongTab=run('focus')===false&&card.isConnected;
+    const replaced=run('plug'),next=modal.querySelector('.sd-storage-card');input.dispatchEvent(new Event('change'));
+    const result={wrongTab,replaced,backupIdentity:next.querySelector('.sd-storage-backup-section')===backup,fileKept:input.files[0]?.name==='selected.json',events,bindings,icons,
+      expanded:[...next.querySelectorAll('details')].every(el=>el.open),focused:document.activeElement===next.querySelector('button')};
+    next.remove();modal.classList.remove('open');return result;
+  },section('paintStorageManagementCard'));
+  assert.deepEqual(replacement,{wrongTab:true,replaced:true,backupIdentity:true,fileKept:true,events:1,bindings:1,icons:1,expanded:true,focused:true});
   const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
   const hiddenRule=css.match(/#story-director-modal \.sd-storage-backup-section \.sd-undo-config\[hidden\]\s*\{[^}]+\}/)?.[0];
   assert.ok(hiddenRule);await page.addStyleTag({content:'.sd-btn { display:flex !important; }\n'+hiddenRule});
