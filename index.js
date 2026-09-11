@@ -1370,6 +1370,7 @@ const DEFAULT_SETTINGS = Object.freeze({
 });
 
 let settings = null;
+let ttsRestoreTasks = 0;
 const configUndo = createConfigUndoSlot();
 let configUndoAction = null;
 let activeTab = 'dashboard';
@@ -11081,6 +11082,8 @@ function ttsPronunciationTone() {
 // 返回 { blob, params, cached }；params 用于下载/收藏命名，cached 用于决定是否弹提示。
 // source='coread' 时把缓存标记为伴读语音，并按伴读独立上限裁剪（不吃配音额度·反之亦然）。
 async function ttsSynthCached(line, force = false, source = 'tts') {
+  ttsRestoreTasks++;
+  try {
   const params = ttsBuildParams(line);
   if (!params) throw new Error(`「${line.speaker}」未配置音色`);
   const provider = getTtsProvider(params.providerId);
@@ -11108,6 +11111,7 @@ async function ttsSynthCached(line, force = false, source = 'tts') {
     } catch (_) {}
   }
   return { blob, params, cached: false };
+  } finally { ttsRestoreTasks--; }
 }
 
 // 停止当前播放（单句或连播）。bumpSeq=true 同时令进行中的连播失效。
@@ -11412,6 +11416,8 @@ async function ttsPlayLineFromBtn(btn, force = false) {
 
 // 🎧 触发：提取台词 → 渲染台词条 + 正文内联 🔊。force=true 为重新提取（清缓存重 roll）
 async function ttsHandleTrigger(trig, force = false) {
+  ttsRestoreTasks++;
+  try {
   const mesEl = trig.closest('.mes');
   if (!mesEl) return;
   const bar = ttsEnsureBar(mesEl);
@@ -11466,6 +11472,7 @@ async function ttsHandleTrigger(trig, force = false) {
   } finally {
     if (prevIcon) setQianmuIconClass(icon, prevIcon);
   }
+  } finally { ttsRestoreTasks--; }
 }
 
 // 把一组 lines 落到某条消息的台词条：渲染列表 + 正文内联 🔊 + 外层连播钮显隐。提取/自动恢复共用。
@@ -11873,6 +11880,8 @@ function ttsInjectInlineIcons(mesEl, lines) {
 // 可被停止/新连播打断；折叠后台词条 hidden 但仍在 DOM，故照常可播。btn 可为外层工具栏钮或正文内联连播钮。
 // 全程包 try/finally：任何抛错都复位忙碌态并弹提示，杜绝按钮卡死在 disabled（disabled 按钮不触发点击、也不弹提示）。
 async function ttsHandlePlayAll(btn, force = false) {
+  ttsRestoreTasks++;
+  try {
   const mesEl = btn.closest('.mes');
   const bar = mesEl?.querySelector(`.${TTS_BAR_CLASS}`) || btn.closest(`.${TTS_BAR_CLASS}`);
   if (!bar) { toast('未找到台词条，请先点 🎧 提取。', 'info'); return; }
@@ -11945,6 +11954,7 @@ async function ttsHandlePlayAll(btn, force = false) {
     // 这里幂等补一次：图标还在则 ttsAutoRestore 内部即返回，被抹了则按缓存重注入。根治「连播后小图标全消失、重进才回」。
     if (mesEl) ttsAutoRestore(mesEl);
   }
+  } finally { ttsRestoreTasks--; }
 }
 
 // 双击单句 → 快捷窗：语速滑块 + 情绪下拉 + 重生成/下载/收藏切换。改动持久化进 line 对象（跨刷新稳定）。
@@ -25626,6 +25636,7 @@ async function exportConfig() {
 
 function configRestoreActivity() {
   return {
+    voice: ttsRestoreTasks > 0,
     reader: readerView || coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight || dialogBusy || readerAssistantBusy || coreadComicVisionBusy,
     focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy,
     director: busy || theaterBusy,

@@ -186,6 +186,7 @@ test('actual import checks active work before file reading and again after confi
 
 test('actual activity adapter blocks each independent lane without normalizing or changing settings',()=>{
   const lanes={
+    voice:['ttsRestoreTasks'],
     reader:['readerView','coreadMemoryWrites','coreadIdentitySwitchBusy','coreadWorldSyncBusy','coreadDistilling','coreadAutoTextInFlight','dialogBusy','readerAssistantBusy','coreadComicVisionBusy'],
     focus:['focusClockEntryBusy'],director:['busy','theaterBusy'],image:['storyboardBusy','storyboardCompilerBusy','storyboardAutomaticCurrent'],
   };
@@ -203,7 +204,7 @@ test('actual activity adapter blocks each independent lane without normalizing o
     const previous=c[key];c[key]=value;assert.ok(c.configRestoreActivity()[lane],key);c[key]=previous;idle();cases++;
   }
   for(const status of ['running','paused']){c.settings.focusClock.status=status;assert.ok(c.configRestoreActivity().focus,status);cases++;}
-  c.settings.focusClock.status='idle';idle();assert.equal(JSON.stringify(c.settings),before);assert.equal(cases,25);
+  c.settings.focusClock.status='idle';idle();assert.equal(JSON.stringify(c.settings),before);assert.equal(cases,26);
 });
 
 test('actual import preserves same-owner changes made during file reading or confirmation',async()=>{
