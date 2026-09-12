@@ -10,6 +10,8 @@ import { generateImage } from '../qianmu-image-gateway.js';
 import { COMFY_CLOUD_CHANNEL_SCHEMA, normalizeComfyCloudChannel } from '../qianmu-comfy-cloud-channel-state.js';
 import { COMFY_CLOUD_RECEIPT_SCHEMA, COMFY_CLOUD_INTENT_SCHEMA } from '../qianmu-comfy-cloud-receipt.js';
 import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
+import { comfyCloudResourceKey, createComfyCloudLedger } from '../qianmu-comfy-cloud-ledger.js';
+import { imageServiceAccount } from '../qianmu-image-service-access.js';
 
 const key = imageServiceChannelKey('mock-persistence-key');
 const never = () => assert.fail('must not authorize another request');
@@ -62,6 +64,74 @@ function withCloudIntent() {
     requestDigest: row.requestDigest, workflow: structuredClone(receipt.workflow), stillOutput: structuredClone(receipt.stillOutput) };
   return state;
 }
+
+const cloudActor = (handle = 'alice') => ({ user: { profile: { handle, enabled: true } } });
+const cloudInput = (req, attemptId = 'cloud-once', apiKey = 'mock-cloud-key') => ({
+  expectedAccount: imageServiceAccount(req).namespace, attemptId, apiKey, intent: withCloudIntent().entries[0].cloudIntent,
+});
+
+test('cloud resource scope separates actual keys and origins, never stores the credential', () => {
+  const connection = withCloudIntent().entries[0].cloudIntent.connection;
+  const original = comfyCloudResourceKey(connection, 'mock-cloud-key'); assert.match(original, /^[a-f0-9]{64}$/);
+  assert.equal(original, comfyCloudResourceKey(structuredClone(connection), 'mock-cloud-key'));
+  assert.notEqual(original, comfyCloudResourceKey(connection, 'another-key'));
+  assert.notEqual(original, comfyCloudResourceKey(bindComfyCloudProtocol('https://dep.run.comfy.app', connection.protocol), 'mock-cloud-key'));
+  for (const key of ['', ' key ', 'a\nb', 'k'.repeat(2049)]) assert.throws(() => comfyCloudResourceKey(connection, key), { code: 'image_service_cloud_key' });
+});
+
+test('cloud reservation is durable before return and never authorizes replay across service restarts', async t => {
+  const { root } = await fixture(t), store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => store.close());
+  const req = cloudActor(), input = cloudInput(req), ledger = createComfyCloudLedger({ store, ownerId: 'first-owner' });
+  const reservation = await ledger.reserve(req, input);
+  assert.equal(Object.isFrozen(reservation), true); assert.equal(reservation.status, 'reserved');
+  assert.equal((await store.inspectChannel(reservation.channelKey)).entries[0].fence, reservation.fence);
+  const contents = await fs.readFile(path.join(root, '.qianmu-service', 'comfy-cloud-queue-v1', `${reservation.channelKey}.json`), 'utf8');
+  assert.doesNotMatch(contents, /mock-cloud-key|apiKey/);
+  const nextStore = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => nextStore.close());
+  const next = createComfyCloudLedger({ store: nextStore, ownerId: 'new-owner' });
+  await assert.rejects(next.reserve(req, input), { code: 'image_service_cloud_duplicate' });
+  const changed = structuredClone(input); changed.intent.requestDigest = 'f'.repeat(64);
+  await assert.rejects(next.reserve(req, changed), { code: 'image_service_cloud_conflict' });
+  assert.equal((await nextStore.inspectChannel(reservation.channelKey)).entries.length, 1);
+  await nextStore.transaction(reservation.channelKey, state => { state.entries[0].status = 'uncertain'; return { state }; });
+  await assert.rejects(next.reserve(req, cloudInput(req, 'new-attempt')), { code: 'image_service_cloud_occupied' });
+});
+
+test('shared cloud keys fence different ST users while separate keys remain independent', async t => {
+  const { root } = await fixture(t), store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => store.close());
+  const ledger = createComfyCloudLedger({ store }), alice = cloudActor(), bob = cloudActor('bob');
+  const results = await Promise.allSettled([ledger.reserve(alice, cloudInput(alice)), ledger.reserve(bob, cloudInput(bob))]);
+  assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
+  assert.equal(results.find(r => r.status === 'rejected').reason.code, 'image_service_cloud_occupied');
+  assert.equal((await ledger.reserve(bob, cloudInput(bob, 'independent', 'another-key'))).status, 'reserved');
+});
+
+test('cloud reservation rejects missing host identity, foreign recipe or storage without creating records', async t => {
+  const { root } = await fixture(t), store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => store.close());
+  assert.throws(() => createComfyCloudLedger(), { code: 'image_service_cloud_storage' });
+  const ledger = createComfyCloudLedger({ store }), req = cloudActor(), input = cloudInput(req);
+  await assert.rejects(ledger.reserve({}, input), { code: 'image_service_authentication_required' });
+  await assert.rejects(ledger.reserve(cloudActor('other'), input), { code: 'image_service_cloud_identity' });
+  const foreign = structuredClone(input); foreign.intent.workflow.binding = { schemaVersion: 1, namespace: imageServiceAccount(cloudActor('other')).namespace, id: 'recipe', revision: 'r', version: 1, name: 'Saved', workflowHash: 'a'.repeat(64), recipeHash: 'd'.repeat(64) };
+  await assert.rejects(ledger.reserve(req, foreign), { code: 'image_service_cloud_identity' });
+  assert.deepEqual(await fs.readdir(root), []);
+});
+
+test('an account switch after durable reservation cannot receive the ticket or erase original ownership', async t => {
+  const { root } = await fixture(t), req = cloudActor(), input = cloudInput(req);
+  const store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud', fileSystem: { ...fs, rename: async (...args) => { await fs.rename(...args); req.user.profile.handle = 'bob'; } } }); t.after(() => store.close());
+  await assert.rejects(createComfyCloudLedger({ store }).reserve(req, input), { code: 'image_service_cloud_account_changed' });
+  const state = await store.inspectChannel(comfyCloudResourceKey(input.intent.connection, input.apiKey));
+  assert.equal(state.entries.length, 1); assert.equal(state.entries[0].namespace, input.expectedAccount);
+  assert.equal(state.entries[0].status, 'reserved');
+});
+
+test('cloud reservation does not return a ticket when durable write fails', async t => {
+  const { root } = await fixture(t), req = cloudActor(), input = cloudInput(req);
+  const store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud', fileSystem: { ...fs, rename: async () => { throw Object.assign(Error('private path'), { code: 'EIO' }); } } }); t.after(() => store.close());
+  await assert.rejects(createComfyCloudLedger({ store }).reserve(req, input), { code: 'image_service_storage_unavailable' });
+  assert.equal(await store.inspectChannel(comfyCloudResourceKey(input.intent.connection, input.apiKey)), undefined);
+});
 
 test('a cloud reservation needs pre-submit intent and accepted evidence must agree with it after reopen', async t => {
   const { root } = await fixture(t), store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => store.close());
