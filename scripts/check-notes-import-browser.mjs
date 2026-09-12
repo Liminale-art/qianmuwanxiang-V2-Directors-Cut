@@ -213,6 +213,40 @@ try{
       check('normal temporary notes still work but failed imports never become temporary',local.some(n=>n.id==='temporary')&&!local.some(n=>n.id==='no-storage'));
     }finally{if(descriptor)Object.defineProperty(window,'indexedDB',descriptor);else delete window.indexedDB;}
     const {createCoreadImportViewGuard,prepareCoreadPackageExport,readCoreadPackageFile,applyCoreadPackageData}=await import('/qianmu-reader-package.js');
+    const atomicKey='reader-atomic',put=IDBObjectStore.prototype.put;
+    const originalPair=async()=>{await writer.putBook(atomicKey,{fullText:'old prose'});await writer.putCover(atomicKey,new Blob(['old cover']));};
+    for(const failure of ['reader_books','reader_covers','synchronous-cover']){
+      await originalPair();let rejected=false;
+      try{
+        IDBObjectStore.prototype.put=function(value,key){
+          if(key===atomicKey&&failure==='synchronous-cover'&&this.name==='reader_covers')throw new DOMException('synthetic clone failure','DataCloneError');
+          const request=put.call(this,value,key);
+          if(key===atomicKey&&this.name===failure)request.addEventListener('success',()=>this.transaction.abort(),{once:true});return request;
+        };
+        try{await writer.putBookWithCover(atomicKey,{fullText:'new prose'},new Blob(['new cover']));}catch(error){rejected=!!error?.message;}
+      }finally{IDBObjectStore.prototype.put=put;}
+      check('book-cover atomic '+failure+' preserves both original stores',rejected&&(await db.getBook(atomicKey)).fullText==='old prose'&&await (await db.getCover(atomicKey)).text()==='old cover');
+    }
+    await writer.putBookWithCover(atomicKey,{fullText:'new prose'},new Blob(['new cover']));
+    check('book and cover are both visible after committed replacement',(await db.getBook(atomicKey)).fullText==='new prose'&&await (await db.getCover(atomicKey)).text()==='new cover');
+    await writer.putBookWithCover(atomicKey,{fullText:'legacy replacement'},null);
+    check('an absent cover in a legacy pack does not delete the local original',await (await db.getCover(atomicKey)).text()==='new cover');
+    for(const failure of ['database-wait','between-writes']){
+      await originalPair();let current=true,calls=0,rejected=false;
+      const guarded=db.createReaderPackageWriter({check(){if(++calls===2&&failure==='database-wait')throw Error('changed while opening');if(!current)throw Error('changed between originals');}});
+      try{
+        IDBObjectStore.prototype.put=function(value,key){const request=put.call(this,value,key);if(key===atomicKey&&this.name==='reader_books'&&failure==='between-writes')current=false;return request;};
+        try{await guarded.putBookWithCover(atomicKey,{fullText:'new prose'},new Blob(['new cover']));}catch{rejected=true;}
+      }finally{IDBObjectStore.prototype.put=put;}
+      check('book-cover '+failure+' cannot partially overwrite either original',rejected&&(await db.getBook(atomicKey)).fullText==='old prose'&&await (await db.getCover(atomicKey)).text()==='old cover');
+    }
+    const readerState={books:[{id:atomicKey,title:'old title'}]},bookPack=await readCoreadPackageFile(new File([JSON.stringify({type:'qianmu-coread',books:[{meta:{id:atomicKey,title:'new title',hasCover:true},fullText:'new prose',coverB64:'YQ=='}]})],'book-cover.json'));
+    let failedBookResult;
+    try{
+      IDBObjectStore.prototype.put=function(value,key){const request=put.call(this,value,key);if(key===atomicKey&&this.name==='reader_covers')request.addEventListener('success',()=>this.transaction.abort(),{once:true});return request;};
+      failedBookResult=await applyCoreadPackageData(bookPack,{blobStore:writer,coread:()=>readerState,isPlainObject:v=>v&&typeof v==='object'&&!Array.isArray(v),base64ToBlob:()=>new Blob(['new cover']),warn(){}});
+    }finally{IDBObjectStore.prototype.put=put;}
+    check('actual importer keeps the old shelf entry and reports neither original as saved after cover abort',failedBookResult.failed===1&&failedBookResult.ok===0&&failedBookResult.coverOk===0&&readerState.books[0].title==='old title'&&(await db.getBook(atomicKey)).fullText==='old prose');
     for(const books of [[{meta:{id:'reader-book'}}],[{meta:{id:'reader-book'},fullText:'first'},{meta:{id:'reader-book'},fullText:'second'}]]){
       const before=await db.getBook('reader-book');let rejected=false;
       try{const invalid=await readCoreadPackageFile(new File([JSON.stringify({type:'qianmu-coread',version:5,books})],'broken-reader.json'));for(const book of invalid.books)await writer.putBook(book.meta.id,book);}catch(error){rejected=error.message.includes('未写入内容');}
@@ -283,5 +317,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,128);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,136);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

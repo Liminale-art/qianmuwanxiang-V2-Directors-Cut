@@ -4,7 +4,7 @@ import {applyCoreadPackageData,createCoreadImportProgress} from '../qianmu-reade
 import {isPlainObject} from '../qianmu-storyboard-utils.js';
 function fixture(fail=''){
   const calls=[],warnings=[],state={books:[{id:'old',title:'before'},{id:'untouched'}]};
-  const blobStore=Object.fromEntries(['putBook','putCover','putReaderChat','putReaderImageByKey','putReaderVectors','bulkPutAudio','pushRetLog'].map(name=>[name,async(...args)=>{
+  const blobStore=Object.fromEntries(['putBookWithCover','putReaderChat','putReaderImageByKey','putReaderVectors','bulkPutAudio','pushRetLog'].map(name=>[name,async(...args)=>{
     if(name==='bulkPutAudio')args[0]=Array.from(args[0]);
     calls.push([name,...args]);if(name===fail)throw Error('synthetic failure');return name==='bulkPutAudio'?{added:1}:undefined;
   }]));
@@ -17,23 +17,33 @@ function fixture(fail=''){
 test('the extracted writer retains store order, overwrite semantics, metadata and counts',async()=>{
   const e=fixture(),result=await applyCoreadPackageData(e.data,e.options);
   assert.deepEqual(result,{ok:2,coverOk:1,chatOk:1,imageOk:1,vectorOk:1,audioOk:1,logOk:2,failed:0,invalid:0,skipped:0});
-  assert.deepEqual(e.calls.map(c=>c[0]),['putBook','putCover','putBook','putReaderChat','putReaderImageByKey','putReaderVectors','bulkPutAudio','pushRetLog','pushRetLog']);
+  assert.deepEqual(e.calls.map(c=>c[0]),['putBookWithCover','putBookWithCover','putReaderChat','putReaderImageByKey','putReaderVectors','bulkPutAudio','pushRetLog','pushRetLog']);
   assert.deepEqual(e.state.books.map(b=>b.id),['new','old','untouched']);assert.equal(e.state.books[1].title,'updated');assert.equal(e.state.books[1].hasCover,true);
-  assert.equal(e.calls[0][2].fullText,'new content');assert.equal(e.calls[6][1][0].meta.source,'coread');
+  assert.equal(e.calls[0][2].fullText,'new content');assert.deepEqual(e.calls[0][3],{data:'cover',mime:'image/jpeg'});assert.equal(e.calls[1][3],null);assert.equal(e.calls[5][1][0].meta.source,'coread');
   assert.deepEqual(e.calls.slice(-2).map(c=>c[1]),[{at:10},{at:20}]);assert.ok(e.calls.slice(-2).every(c=>c[2]===50));
 });
 test('moving the writer does not change existing independent failure or invalid-row behavior',async()=>{
-  const e=fixture('putBook');e.data.chats.unshift(null);e.data.images.unshift({});
+  const e=fixture('putBookWithCover');e.data.chats.unshift(null);e.data.images.unshift({});
   const result=await applyCoreadPackageData(e.data,e.options);assert.equal(result.ok,0);assert.equal(result.chatOk,1);assert.equal(result.imageOk,1);
   assert.deepEqual(e.state.books,[{id:'old',title:'before'},{id:'untouched'}]);assert.equal(e.warnings.length,2);
   assert.equal(result.failed,2);assert.equal(result.invalid,2);
+  assert.equal(result.coverOk,0,'a failed book-cover unit cannot publish a saved cover');
+});
+
+test('cover decoding failure occurs before overwriting its book and does not claim saved metadata',async()=>{
+  const e=fixture();e.options.base64ToBlob=(data,mime)=>{if(data==='cover')throw Error('decode failed');return {data,mime};};
+  const result=await applyCoreadPackageData(e.data,e.options);
+  assert.equal(result.ok,1);assert.equal(result.coverOk,0);assert.equal(result.failed,1);
+  assert.equal(e.calls.some(call=>call[0]==='putBookWithCover'&&call[1]==='old'),false);
+  assert.equal(e.state.books.find(book=>book.id==='old').title,'before');
+  assert.equal(result.chatOk,1,'independent categories keep their existing partial-import behavior');
 });
 test('legacy book-only packs remain supported without calling absent media categories',async()=>{
   const e=fixture();const result=await applyCoreadPackageData({books:[]},e.options);
   assert.equal(Object.values(result).every(n=>n===0),true);assert.deepEqual(e.calls,[]);
 });
 
-for(const method of ['putBook','putCover','putReaderChat','putReaderImageByKey','putReaderVectors','bulkPutAudio','pushRetLog'])test(method+' cannot resume the remaining import after its guard expires',async()=>{
+for(const method of ['putBookWithCover','putReaderChat','putReaderImageByKey','putReaderVectors','bulkPutAudio','pushRetLog'])test(method+' cannot resume the remaining import after its guard expires',async()=>{
   for(const fail of [false,true]){
     const e=fixture();e.options.progress=createCoreadImportProgress();let release,current=true;
     e.options.check=()=>{if(!current)throw Error('stale import');};
@@ -41,8 +51,8 @@ for(const method of ['putBook','putCover','putReaderChat','putReaderImageByKey',
     const pending=applyCoreadPackageData(e.data,e.options);await new Promise(r=>setImmediate(r));assert.equal(typeof release,'function');
     const before=e.calls.length;current=false;release();await assert.rejects(()=>pending,/stale import/);
     assert.equal(e.calls.length,before,'no subsequent category or record writes');assert.deepEqual(e.warnings,[],'stale state must not be swallowed as an ordinary row failure');
-    if(['putBook','putCover'].includes(method))assert.equal(e.state.books[0].title,'before','no stale index writeback');
-    if(!fail){const key={putBook:'ok',putCover:'coverOk',putReaderChat:'chatOk',putReaderImageByKey:'imageOk',putReaderVectors:'vectorOk',bulkPutAudio:'audioOk',pushRetLog:'logOk'}[method];assert.ok(e.options.progress[key]>0,'completed work remains counted after the guard throws');}
+    if(method==='putBookWithCover')assert.equal(e.state.books[0].title,'before','no stale index writeback');
+    if(!fail){const key={putBookWithCover:'ok',putReaderChat:'chatOk',putReaderImageByKey:'imageOk',putReaderVectors:'vectorOk',bulkPutAudio:'audioOk',pushRetLog:'logOk'}[method];assert.ok(e.options.progress[key]>0,'completed work remains counted after the guard throws');if(method==='putBookWithCover')assert.equal(e.options.progress.coverOk,1,'both committed originals remain counted');}
   }
 });
 test('an already stale package cannot start its first write',async()=>{
@@ -51,7 +61,7 @@ test('an already stale package cannot start its first write',async()=>{
 });
 
 test('audio batch reports committed rows before interruption without losing previous failures',async()=>{
-  const e=fixture('putBook');e.options.progress=createCoreadImportProgress();let current=true;
+  const e=fixture('putBookWithCover');e.options.progress=createCoreadImportProgress();let current=true;
   e.options.check=()=>{if(!current)throw Error('stale import');};
   e.options.blobStore.bulkPutAudio=async(entries,{onProgress})=>{
     onProgress({added:2,skipped:1,failed:1});current=false;throw Error('late interruption');
@@ -77,7 +87,7 @@ test('audio is decoded only as the writer requests it, not all at once before th
 });
 
 test('lazy decoder failures remain counted alongside earlier and per-audio write failures',async()=>{
-  const e=fixture('putBook');e.data.audio=[{key:'a',b64:'ok'},{key:'b',b64:'bad'},{key:'c',b64:'ok'}];
+  const e=fixture('putBookWithCover');e.data.audio=[{key:'a',b64:'ok'},{key:'b',b64:'bad'},{key:'c',b64:'ok'}];
   e.options.base64ToBlob=data=>{if(data==='bad')throw Error('decode failed');return {data};};
   e.options.blobStore.bulkPutAudio=async(entries,{onProgress})=>{
     const result={added:0,failed:0,skipped:0};for(const entry of entries){result[entry.key==='a'?'failed':'added']++;onProgress({...result});}return result;

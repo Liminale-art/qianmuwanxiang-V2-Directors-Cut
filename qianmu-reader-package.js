@@ -170,10 +170,12 @@ export async function applyCoreadPackageData(data, {blobStore, coread, isPlainOb
     check();
     if (!b?.meta?.id) { progress.invalid++; continue; }
     try {
-      await blobStore.putBook(b.meta.id, { meta: { title: b.meta.title, author: b.meta.author, mode: b.meta.mode || 'text' }, fullText: b.fullText || '', chapters: b.chapters || [], sig: b.sig || '', comicDescriptions: isPlainObject(b.comicDescriptions) ? b.comicDescriptions : {} });
+      const cover = b.coverB64 ? base64ToBlob(b.coverB64, b.coverMime || 'image/jpeg') : null;
+      await blobStore.putBookWithCover(b.meta.id, { meta: { title: b.meta.title, author: b.meta.author, mode: b.meta.mode || 'text' }, fullText: b.fullText || '', chapters: b.chapters || [], sig: b.sig || '', comicDescriptions: isPlainObject(b.comicDescriptions) ? b.comicDescriptions : {} }, cover);
       progress.ok++;
+      if (cover) progress.coverOk++;
       check();
-      if (b.coverB64) { try { await blobStore.putCover(b.meta.id, base64ToBlob(b.coverB64, b.coverMime || 'image/jpeg')); progress.coverOk++; check(); b.meta.hasCover = true; } catch (_) { check(); progress.failed++; } }
+      if (cover) b.meta.hasCover = true;
       const idx = (coread().books || []).findIndex((x) => x.id === b.meta.id);
       if (idx >= 0) coread().books[idx] = b.meta; else coread().books.unshift(b.meta);
     } catch (e) { check(); progress.failed++; warn(`import book failed`, e); }

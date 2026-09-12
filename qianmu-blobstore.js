@@ -363,23 +363,32 @@ export function createReaderPackageReader({check = () => {}} = {}) {
 
 // Import-only adapter. Daily reader writes retain their existing public behavior.
 export function createReaderPackageWriter({check = () => {}} = {}) {
-  const put = async (name, key, value) => {
+  const put = async (name, key, value, companions = []) => {
     check();
     if (!blobStoreAvailable()) throw new Error('伴读存储不可用，未写入。');
     const db = await openDB();
     check();
     await new Promise((resolve, reject) => {
-      const transaction = db.transaction(name, 'readwrite');
-      const failure = event => event?.target?.error || transaction.error || new Error('伴读数据未能完成保存。');
+      const transaction = db.transaction([name, ...companions.map(([storeName]) => storeName)], 'readwrite');
+      let writeError;
+      const failure = event => writeError || event?.target?.error || transaction.error || new Error('伴读数据未能完成保存。');
       transaction.oncomplete = resolve;
       transaction.onerror = event => reject(failure(event));
       transaction.onabort = event => reject(failure(event));
-      transaction.objectStore(name).put(value, key);
+      try {
+        for (const [storeName, record] of [[name, value], ...companions]) {
+          check();
+          transaction.objectStore(storeName).put(record, key);
+        }
+      } catch (error) { writeError = error; try { transaction.abort(); } catch (_) { reject(error); } }
     });
     return key;
   };
   return {
     putBook: (key, record) => put(STORE_BOOKS, key, {...record, savedAt:Date.now()}),
+    // Book and supplied cover either both commit or both keep the recipient's originals.
+    // A missing cover in an old pack does not delete the existing local cover.
+    putBookWithCover: (key, record, cover) => put(STORE_BOOKS, key, {...record, savedAt:Date.now()}, cover ? [[STORE_COVERS, cover]] : []),
     putCover: (key, blob) => put(STORE_COVERS, key, blob),
     putReaderChat: (key, record) => put(STORE_CHATS, key, {...record, updatedAt:Date.now()}),
     putReaderImageByKey: (key, blob) => put(STORE_IMAGES, String(key), blob),
