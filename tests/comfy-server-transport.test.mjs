@@ -397,6 +397,55 @@ test('one receiver suppresses duplicate in-flight collection without sharing the
   assert.equal((await first).status, 'staged'); assert.equal(calls.length, 3);
 });
 
+test('only a full original cache read can record stored completion, and repeats preserve its receipt and timestamps', async t => {
+  const f = await persistedCloudTask(t), calls = [], cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
+  const received = await createComfyCloudReceiver({ ledger: f.ledger, cache }).receive(f.req, { task: f.task, ...f.locator },
+    { ...assetReadOptions(f), requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) });
+  assert.equal(await received.grant.readDelivery(), null);
+  const saved = await received.grant.recordStored(cache);
+  assert.equal(saved.delivery.state, 'stored'); assert.equal(saved.delivery.cacheReceipt, received.result.receipt);
+  assert.equal(saved.delivery.bytes, png.length); assert.equal(saved.delivery.archivedAt, undefined);
+  const before = await f.store.inspectChannel(f.locator.channelKey); assert.equal(before.entries[0].status, 'succeeded');
+  assert.deepEqual((await received.grant.recordStored(cache)).delivery, saved.delivery);
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+  assert.equal((await cache.load(received.grant.identity)).images.length, 1, 'recording storage does not delete the only image');
+  const next = createComfyCloudLedger({ store: f.store }), grant = await next.authorizeStaging(f.req, f.locator, f.task);
+  assert.deepEqual(await grant.readDelivery(), saved.delivery); assert.equal(calls.length, 3);
+  assert.throws(() => next.submission(grant.identity), { code: 'image_service_cloud_ticket' });
+});
+
+test('stored completion refuses missing bytes, changed ownership, cancellation and conflicting cache receipts', async t => {
+  const f = await persistedCloudTask(t), calls = [], cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
+  const received = await createComfyCloudReceiver({ ledger: f.ledger, cache }).receive(f.req, { task: f.task, ...f.locator },
+    { ...assetReadOptions(f), requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) });
+  const before = await f.store.inspectChannel(f.locator.channelKey);
+  await assert.rejects(received.grant.recordStored({ load: identity => cache.load(identity, { metadataOnly: true }) }), { code: 'image_service_cloud_delivery_missing' });
+  const controller = new AbortController(); controller.abort();
+  await assert.rejects(received.grant.recordStored(cache, { signal: controller.signal }), { code: 'image_service_cloud_delivery_cancelled' });
+  f.req.user.profile.handle = 'bob'; await assert.rejects(received.grant.recordStored(cache), { code: 'image_service_cloud_account_changed' }); f.req.user.profile.handle = 'alice';
+  await assert.rejects(received.grant.recordStored({ load: async identity => {
+    const result = await cache.load(identity); f.req.user.profile.handle = 'bob'; return result;
+  } }), { code: 'image_service_cloud_account_changed' }); f.req.user.profile.handle = 'alice';
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+  const saved = await received.grant.recordStored(cache);
+  await assert.rejects(received.grant.recordStored({ load: async identity => ({ ...await cache.load(identity), receipt: '0'.repeat(64) }) }), { code: 'image_service_cloud_delivery_conflict' });
+  assert.deepEqual(await received.grant.readDelivery(), saved.delivery);
+  await f.store.transaction(f.locator.channelKey, state => { state.entries[0].fence = 'replacement'; return { state }; });
+  await assert.rejects(received.grant.recordStored(cache), { code: 'image_service_cloud_query_changed' });
+});
+
+test('a failed delivery ledger commit preserves original bytes and the conservative task state for later recovery', async t => {
+  const f = await persistedCloudTask(t), calls = [], cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
+  const received = await createComfyCloudReceiver({ ledger: f.ledger, cache }).receive(f.req, { task: f.task, ...f.locator },
+    { ...assetReadOptions(f), requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) });
+  const broken = createComfyCloudLedger({ store: { ...f.store, transaction: async () => { throw new Error('simulated write unavailable'); } } });
+  const grant = await broken.authorizeStaging(f.req, f.locator, f.task);
+  await assert.rejects(grant.recordStored(cache));
+  assert.equal((await f.store.inspectChannel(f.locator.channelKey)).entries[0].status, 'uncertain');
+  assert.equal((await cache.load(received.grant.identity)).receipt, received.result.receipt);
+  assert.equal((await received.grant.recordStored(cache)).delivery.state, 'stored');
+});
+
 test('account changes or cancellation after the private write retain evidence but block delivery', async t => {
   for (const mode of ['account', 'cancelled']) {
     const f = await persistedCloudTask(t), calls = [], controller = new AbortController();
