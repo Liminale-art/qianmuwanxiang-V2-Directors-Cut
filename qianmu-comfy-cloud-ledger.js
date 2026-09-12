@@ -29,6 +29,31 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
     change(row); row.updatedAt = Math.max(now(), row.updatedAt);
     return { state: normalizeComfyCloudChannel(state, reservation.channelKey) };
   });
+  async function authorizeOriginal(req, { channelKey, attemptId, apiKey } = {}, rawTask) {
+    const account = imageServiceAccount(req), task = bindComfyCloudTask(rawTask, rawTask?.taskId, rawTask?.links);
+    if (typeof store.inspectChannel !== 'function' || !id(attemptId) || channelKey !== comfyCloudResourceKey(task, apiKey)) {
+      throw fail('query_identity', '请使用原云连接与原任务核查');
+    }
+    const current = () => { if (!imageServiceAccountStillMatches(req, account)) throw fail('account_changed', 'ST账户已变化，未交付云任务状态'); };
+    const read = async () => {
+      current();
+      const state = normalizeComfyCloudChannel(await store.inspectChannel(channelKey), channelKey); current();
+      const row = state.entries.find(item => item.namespace === account.namespace && item.attemptId === attemptId);
+      if (!row?.cloudIntent || !row.cloudReceipt || row.upstreamId !== task.taskId
+        || JSON.stringify(row.cloudReceipt.task) !== JSON.stringify(task)) throw fail('query_identity', '原云任务凭据不完整或不匹配，请先核查');
+      return { signature: JSON.stringify([row.ownerId, row.fence, row.requestDigest, row.cloudIntent, row.cloudReceipt]), receipt: row.cloudReceipt,
+        identity: Object.freeze({ namespace: row.namespace, channelKey, attemptId: row.attemptId, requestDigest: row.requestDigest, fence: row.fence }) };
+    };
+    const { signature: original, receipt, identity } = await read();
+    const verify = async () => {
+      if ((await read()).signature !== original) throw fail('query_changed', '原云任务归属或收据已变化，未交付查询结果');
+      return receipt;
+    };
+    // Server-internal evidence only. The identity and verifier originate in the
+    // same read; do not acquire a fresh fence after downloading or expose this
+    // object as an HTTP response. It does not grant target IO or submission.
+    return Object.freeze({ identity, receipt, verify });
+  }
   return Object.freeze({
     submission(reservation) {
       const context = issued.get(reservation);
@@ -93,28 +118,12 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
       });
       return context.ticket;
     },
-    async authorizeQuery(req, { channelKey, attemptId, apiKey } = {}, rawTask) {
-      const account = imageServiceAccount(req), task = bindComfyCloudTask(rawTask, rawTask?.taskId, rawTask?.links);
-      if (typeof store.inspectChannel !== 'function' || !id(attemptId) || channelKey !== comfyCloudResourceKey(task, apiKey)) {
-        throw fail('query_identity', '请使用原云连接与原任务核查');
-      }
-      const current = () => { if (!imageServiceAccountStillMatches(req, account)) throw fail('account_changed', 'ST账户已变化，未交付云任务状态'); };
-      const read = async () => {
-        current();
-        const state = normalizeComfyCloudChannel(await store.inspectChannel(channelKey), channelKey); current();
-        const row = state.entries.find(item => item.namespace === account.namespace && item.attemptId === attemptId);
-        if (!row?.cloudIntent || !row.cloudReceipt || row.upstreamId !== task.taskId
-          || JSON.stringify(row.cloudReceipt.task) !== JSON.stringify(task)) throw fail('query_identity', '原云任务凭据不完整或不匹配，请先核查');
-        return { signature: JSON.stringify([row.ownerId, row.fence, row.requestDigest, row.cloudIntent, row.cloudReceipt]), receipt: row.cloudReceipt };
-      };
-      const { signature: original, receipt } = await read();
+    async authorizeQuery(req, locator, rawTask) {
       // New sessions may inspect old tasks, but never recreate their submission
       // tickets. Target authorization remains a separate transport requirement.
-      return async () => {
-        if ((await read()).signature !== original) throw fail('query_changed', '原云任务归属或收据已变化，未交付查询结果');
-        return receipt; // Original frozen evidence, never a caller's current output choices.
-      };
+      return (await authorizeOriginal(req, locator, rawTask)).verify;
     },
+    authorizeStaging: authorizeOriginal,
     async reserve(req, { apiKey, expectedAccount, attemptId, intent: rawIntent } = {}) {
       const account = imageServiceAccount(req);
       if (expectedAccount !== account.namespace || !id(attemptId)) throw fail('identity', '云任务账户或请求编号未确认');

@@ -120,6 +120,46 @@ test('cloud query grants recheck login and persistent fence while allowing ordin
   await assert.rejects(verify(), { code: 'image_service_cloud_query_changed' });
 });
 
+test('cloud staging identity comes from the same original read and cannot recreate a submission ticket', async t => {
+  const { root } = await fixture(t), store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => store.close());
+  const req = cloudActor(), input = cloudInput(req), ledger = createComfyCloudLedger({ store }), reservation = await ledger.reserve(req, input), ticket = ledger.submission(reservation);
+  await ticket.beforeSubmit(); await ticket.recordAccepted('original', cloudAccepted(reservation));
+  const before = await store.inspectChannel(reservation.channelKey), next = createComfyCloudLedger({ store });
+  const grant = await next.authorizeStaging(req, { channelKey: reservation.channelKey, attemptId: reservation.attemptId, apiKey: input.apiKey,
+    namespace: 'forged', fence: 'forged', requestDigest: '0'.repeat(64) }, cloudAccepted(reservation).task);
+  assert.deepEqual(grant.identity, { namespace: reservation.namespace, channelKey: reservation.channelKey, attemptId: reservation.attemptId,
+    requestDigest: reservation.requestDigest, fence: reservation.fence });
+  assert.ok(Object.isFrozen(grant)); assert.ok(Object.isFrozen(grant.identity)); assert.ok(Object.isFrozen(grant.receipt));
+  assert.equal(await grant.verify(), grant.receipt);
+  assert.equal(JSON.stringify(grant).includes(input.apiKey), false);
+  assert.throws(() => next.submission(grant.identity), { code: 'image_service_cloud_ticket' });
+  assert.deepEqual(await store.inspectChannel(reservation.channelKey), before, 'readback permission must not change paid task occupancy');
+});
+
+test('cloud staging grants retain their first fence across waits and never adopt a replacement record', async t => {
+  const { root } = await fixture(t), store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => store.close());
+  const req = cloudActor(), input = cloudInput(req), ledger = createComfyCloudLedger({ store }), reservation = await ledger.reserve(req, input), ticket = ledger.submission(reservation);
+  await ticket.beforeSubmit(); await ticket.recordAccepted('original', cloudAccepted(reservation));
+  const grant = await ledger.authorizeStaging(req, { channelKey: reservation.channelKey, attemptId: reservation.attemptId, apiKey: input.apiKey }, cloudAccepted(reservation).task);
+  await ticket.markUncertain(); await grant.verify();
+  req.user.profile.handle = 'bob'; await assert.rejects(grant.verify(), { code: 'image_service_cloud_account_changed' }); req.user.profile.handle = 'alice';
+  await store.transaction(reservation.channelKey, state => { state.entries[0].fence = 'replacement'; return { state }; });
+  assert.equal(grant.identity.fence, reservation.fence);
+  await assert.rejects(grant.verify(), { code: 'image_service_cloud_query_changed' });
+});
+
+test('cloud staging rejects other accounts and ID-only evidence before returning any cache identity', async t => {
+  const { root } = await fixture(t), store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => store.close());
+  const req = cloudActor(), input = cloudInput(req), ledger = createComfyCloudLedger({ store }), reservation = await ledger.reserve(req, input), ticket = ledger.submission(reservation);
+  await ticket.beforeSubmit(); await ticket.recordAccepted('original');
+  const locator = { channelKey: reservation.channelKey, attemptId: reservation.attemptId, apiKey: input.apiKey }, task = cloudAccepted(reservation).task;
+  await assert.rejects(ledger.authorizeStaging(req, locator, task), { code: 'image_service_cloud_query_identity' });
+  await ticket.recordAccepted('original', cloudAccepted(reservation));
+  await assert.rejects(ledger.authorizeStaging(cloudActor('bob'), locator, task), { code: 'image_service_cloud_query_identity' });
+  await assert.rejects(ledger.authorizeStaging(req, { ...locator, apiKey: 'other-key' }, task), { code: 'image_service_cloud_query_identity' });
+  assert.equal((await store.inspectChannel(reservation.channelKey)).entries[0].upstreamId, 'original');
+});
+
 test('known cloud id without complete trusted links cannot be queried by guessing a public route', async t => {
   const { root } = await fixture(t), store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => store.close());
   const req = cloudActor(), input = cloudInput(req), ledger = createComfyCloudLedger({ store }), reservation = await ledger.reserve(req, input), ticket = ledger.submission(reservation);
