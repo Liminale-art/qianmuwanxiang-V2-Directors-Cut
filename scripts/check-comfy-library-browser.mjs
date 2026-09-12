@@ -68,5 +68,72 @@ try{
   }));
   await page.locator('[data-comfy-action="apply"]').click();await page.waitForFunction(()=>applied.length===2);
   ok('list application targets the new revision and account',await page.evaluate(()=>applied[1].namespace===scope&&applied[1].version===2&&applied[1].document.positivePrompt===''));
+  await page.evaluate(async()=>{
+    controller.dispose();
+    const {createComfyWorkflowStore}=await import('/qianmu-comfy-library.js');
+    const {openComfyRoutePicker}=await import('/qianmu-comfy-route-view.js');
+    const {pinComfyRouteWorkflow,readPinnedComfyRouteWorkflow}=await import('/qianmu-comfy-route.js');
+    const {createComfyPoolStore}=await import('/qianmu-comfy-pool-store.js');
+    const {createComfyPoolController,createComfyPoolCandidate}=await import('/qianmu-comfy-pool-view.js');
+    const {COMFY_SELECTION_SCHEMA}=await import('/qianmu-comfy-selection.js');
+    const {applyQianmuIcons}=await import('/qianmu-icon-renderer.js');
+    const createStore=()=>createComfyWorkflowStore({dbName:'qianmu-comfy-browser-synthetic'});
+    window.store=createStore();await store.save(scope,{name:'可择流方案',document:{...original,classification:{version:1,contentClasses:['sfw'],promptFormat:'tags'}}});
+    window.routeHead=(await store.list(scope)).find(row=>row.name==='可择流方案');
+    window.routeRecipe=await pinComfyRouteWorkflow({namespace:scope,selection:routeHead,createStore});
+    // ST Popup is the sole shell substitute; selection/async loading/pinning run unmodified.
+    class Popup{
+      constructor(wrap,_type,_text,options){this.wrap=wrap;this.options=options;}
+      show(){return new Promise(resolve=>{
+        const dialog=document.createElement('dialog');dialog.style.cssText='box-sizing:border-box;max-width:calc(100vw - 24px);border:0;border-radius:12px';dialog.append(this.wrap);
+        for(const [action,text] of [['confirm',this.options.okButton],['cancel',this.options.cancelButton]]){
+          const button=document.createElement('button');button.textContent=text;button.dataset.testPicker=action;
+          button.onclick=()=>{dialog.close();dialog.remove();resolve(action==='confirm');};dialog.append(button);
+        }document.body.append(dialog);dialog.showModal();
+      });}
+    }
+    window.startPicker=hasReferences=>{window.picked=undefined;void openComfyRoutePicker({context:{Popup,POPUP_TYPE:{CONFIRM:1}},namespace:scope,hasReferences,createStore}).then(value=>window.picked=value,error=>window.picked={error:error.message});};
+    window.poolStore=createComfyPoolStore({dbName:'qianmu-comfy-pools-browser-synthetic'});
+    const candidate=createComfyPoolCandidate({namespace:scope,choice:{recipe:routeRecipe,roles:true}});candidate.target.comfyCharacterEnabled=true;
+    await poolStore.save(scope,{name:'历史候选',pool:{schema:COMFY_SELECTION_SCHEMA,namespace:scope,id:'draft',revision:'draft',enabled:false,styleLock:true,candidates:[candidate]}});
+    window.poolDownloads=[];window.poolSelections=[];
+    window.openPools=()=>{
+      window.poolController=createComfyPoolController({store:poolStore,resolveNamespace:async()=>scope,
+        readRecipe:options=>readPinnedComfyRouteWorkflow({...options,createStore}),pickWorkflow:async()=>({recipe:routeRecipe,roles:true}),onIcons:applyQianmuIcons,
+        onSelect:row=>poolSelections.push(row),download:async blob=>poolDownloads.push(JSON.parse(await blob.text())),confirm:async()=>true});poolController.mount(host);
+    };
+  });
+  for(const width of [320,393,1100]){
+    await page.setViewportSize({width,height:898});await page.evaluate(()=>startPicker(true));await page.waitForSelector('dialog[open]');
+    await page.locator('[data-comfy-route-pick="workflow"]').selectOption(await page.evaluate(()=>routeHead.id));
+    await page.waitForFunction(()=>!document.querySelector('[data-comfy-route-pick="revision"]').disabled);
+    await page.locator('[data-comfy-route-pick="revision"]').selectOption(await page.evaluate(()=>routeHead.revision));
+    await page.locator('[data-comfy-route-references]').check();
+    ok(`picker fields fit at ${width}`,await page.locator('.sd-comfy-route-picker').evaluate(node=>node.scrollWidth-node.clientWidth<=1&&[...node.querySelectorAll('select')].every(field=>field.getBoundingClientRect().height===40)));
+    ok(`picker has no role toggle at ${width}`,await page.locator('[data-comfy-route-roles]').count()===0);
+    await page.locator('[data-test-picker="confirm"]').click();await page.waitForFunction(()=>window.picked!==undefined);
+    ok(`picker preserves explicit version and reference choice at ${width}`,await page.evaluate(()=>!picked.error&&picked.roles===false&&picked.useReferences===true&&picked.recipe.binding.revision===routeHead.revision));
+  }
+  await page.evaluate(()=>startPicker(false));await page.waitForSelector('dialog[open]');
+  ok('missing workbench references cannot be requested',await page.locator('[data-comfy-route-references]').isDisabled());
+  await page.locator('[data-test-picker="cancel"]').click();await page.waitForFunction(()=>window.picked!==undefined);ok('cancel does not bind a workflow',await page.evaluate(()=>picked===null));
+  await page.evaluate(()=>openPools());await page.waitForSelector('[data-pool-id]');await page.locator('[data-pool-action="edit"]').first().click();await page.waitForSelector('[data-pool-name]');
+  await page.locator('[data-pool-member] summary').click();
+  for(const width of [320,393,1100]){
+    await page.setViewportSize({width,height:898});
+    ok(`candidate controls fit at ${width}`,await page.locator('.sd-comfy-pools').evaluate(node=>node.scrollWidth-node.clientWidth<=1));
+    ok(`candidate role toggle stays retired at ${width}`,await page.locator('[data-pool-action="toggle-roles"]').count()===0);
+    await page.screenshot({path:fileURLToPath(new URL(`../dist/local-qa/comfy-pool-${width}.png`,import.meta.url))});
+  }
+  await page.locator('[data-pool-action="toggle-member"]').click();await page.waitForFunction(()=>document.querySelector('[data-pool-action="toggle-member"]').getAttribute('aria-pressed')==='true');
+  await page.locator('[data-pool-action="add-member"]').click();await page.waitForFunction(()=>document.querySelectorAll('[data-pool-member]').length===2);
+  await page.locator('[data-pool-action="style-lock"]').click();await page.waitForFunction(()=>document.querySelector('[data-pool-action="style-lock"]').getAttribute('aria-pressed')==='false');
+  await page.locator('[data-pool-action="save"]').click();await page.waitForSelector('[data-pool-id]');
+  ok('new pool revision retires roles but preserves enabled choices, style lock and historical data',await page.evaluate(async()=>{
+    const row=(await poolStore.list(scope))[0],versions=await poolStore.versions(scope,row.id);
+    const latest=await poolStore.load(scope,row.id,row.revision),old=await poolStore.load(scope,row.id,versions.find(v=>v.version===1).revision);
+    return versions.length===2&&latest.pool.candidates.length===2&&latest.pool.candidates.every(c=>!c.target.comfyCharacterEnabled)
+      &&latest.pool.candidates[0].enabled&&!latest.pool.candidates[1].enabled&&!latest.pool.styleLock&&old.pool.candidates[0].target.comfyCharacterEnabled&&poolSelections.length===0;
+  }));
   assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}
