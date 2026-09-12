@@ -4,10 +4,10 @@ import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
 import {isPlainObject,clone} from '../qianmu-storyboard-utils.js';
 import {readCoreadPackageFile,coreadPackageSafeKey,coreadPackageRestoreMessage,applyCoreadPackageData,collectCoreadPackageData,prepareCoreadPackageExport,createCoreadImportProgress,coreadImportProgressText,finishCoreadPackageImport} from '../qianmu-reader-package.js';
-import {omitConfigConnections} from '../qianmu-config-connections.js';
+import {omitConfigConnections,configRestoreGuard} from '../qianmu-config-connections.js';
 function fixture(local){
   let exported;const notices=[];
-  const c=vm.createContext({isPlainObject,clone,readCoreadPackageFile,coreadPackageSafeKey,coreadPackageRestoreMessage,applyCoreadPackageData,createCoreadImportProgress,coreadImportProgressText,finishCoreadPackageImport,omitConfigConnections,
+  const c=vm.createContext({isPlainObject,clone,readCoreadPackageFile,coreadPackageSafeKey,coreadPackageRestoreMessage,applyCoreadPackageData,createCoreadImportProgress,coreadImportProgressText,finishCoreadPackageImport,omitConfigConnections,configRestoreGuard,
     settings:{},storyboardAdmissionEpoch:1,configRestoreActivity:()=>({}),coread:()=>local,readerDialog:{loaded:false},toast:m=>notices.push(m),confirmDialog:async()=>true,base64ToBlob:()=>{throw Error('unexpected media');},MODULE_NAME:'fixture',
     blobStore:{blobStoreAvailable:()=>true,listReaderChatKeys:async()=>[],listReaderImages:async()=>[],listReaderVectorKeys:async()=>[],listAudio:async()=>[],listRetLog:async()=>[]},
     saveSettings(){},renderModal(){},rerenderMoreIfOpen(){},fileStamp:()=> 'fixture',

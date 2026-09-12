@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {configRestoreGuard} from '../qianmu-config-connections.js';
 import {readCoreadPackageFile,coreadPackageSafeKey,COREAD_PACKAGE_LIMITS,createCoreadImportProgress,coreadImportProgressText,prepareCoreadPackageExport} from '../qianmu-reader-package.js';
 import {isPlainObject,clone} from '../qianmu-storyboard-utils.js';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
@@ -36,7 +37,7 @@ test('actual merge and export helpers cannot mutate prototypes even if called wi
 });
 test('the actual import rejects unsafe packs before any confirmation or storage action',async()=>{
   const notices=[],reader={},c=vm.createContext({createCoreadImportProgress,coreadImportProgressText,settings:{},storyboardAdmissionEpoch:1,coread:()=>reader,configRestoreActivity:()=>({}),readCoreadPackageFile,toast:m=>notices.push(m)});
-  c.createCoreadImportViewGuard=()=>({check(){},release(){}});
+  c.configRestoreGuard=configRestoreGuard;c.createCoreadImportViewGuard=()=>({check(){},release(){}});
   vm.runInContext(source('coreadImportDataFile'),c);
   await c.coreadImportDataFile(file('{"type":"qianmu-coread","books":[],"prototype":{}}'));
   assert.match(notices[0],/未写入内容/);
@@ -47,7 +48,7 @@ const pack=()=>({type:'qianmu-coread',version:5,books:[{meta:{id:'original',hasC
 for(const key of ['books','chats','images','vectors','audio','retrievalLogs'])test(key+' invalid later entry is rejected before confirmation or destination access',async()=>{
   const value=pack();value[key].push(null);const notices=[];let asked=0,writes=0;
   const reader={},c=vm.createContext({createCoreadImportProgress,coreadImportProgressText,settings:{},storyboardAdmissionEpoch:1,coread:()=>reader,configRestoreActivity:()=>({}),readCoreadPackageFile,toast:m=>notices.push(m),confirmDialog:async()=>{asked++;return true;},blobStore:{blobStoreAvailable(){writes++;return true;}}});
-  c.createCoreadImportViewGuard=()=>({check(){},release(){}});vm.runInContext(source('coreadImportDataFile'),c);
+  c.configRestoreGuard=configRestoreGuard;c.createCoreadImportViewGuard=()=>({check(){},release(){}});vm.runInContext(source('coreadImportDataFile'),c);
   await c.coreadImportDataFile(file(JSON.stringify(value)));
   assert.equal(asked,0);assert.equal(writes,0);assert.match(notices[0],/第 2 项/);assert.equal(c.coreadImportDataFile.busy,false);
   const prepared=prepareCoreadPackageExport(value);assert.equal(prepared.preservationOnly,true);assert.deepEqual(JSON.parse(await prepared.blob.text()),value);

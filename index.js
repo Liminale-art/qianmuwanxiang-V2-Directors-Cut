@@ -1,5 +1,5 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
+import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { readCoreadPackageFile, coreadPackageSafeKey, coreadPackageRestoreMessage, applyCoreadPackageData, collectCoreadPackageData, prepareCoreadPackageExport, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard, finishCoreadPackageImport } from './qianmu-reader-package.js';
 import { exportConfiguration } from './qianmu-config-export.js';
@@ -34918,19 +34918,24 @@ async function coreadImportDataFile(file, origin) {
     try {
     viewGuard = createCoreadImportViewGuard(origin);
     const owner = settings, reader = coread(), epoch = storyboardAdmissionEpoch;
+    const unchanged = configRestoreGuard(reader);
     const check = () => {
       viewGuard.check();
       if (settings !== owner || coread() !== reader || epoch !== storyboardAdmissionEpoch) throw Error('伴读状态已变化，后续已停止；已写入内容保留。');
       if (Object.values(configRestoreActivity(true, coreadImportDataFile)).some(Boolean)) throw Error('其他任务已开始，伴读导入后续已停止；已写入内容保留。');
     };
+    const checkBeforeWrite = () => {
+      check();
+      if (!unchanged(reader)) throw Error('书目、读位或阅读设置已变化，未写入原件；请重新导入并确认。');
+    };
     let data;
     try {
       data = await readCoreadPackageFile(file);
     } catch (error) { toast(`导入失败：${error?.message || '不是有效的千幕阅读数据文件。'} 未写入内容，请保留原包。`, 'error'); return; }
-    check();
+    checkBeforeWrite();
     if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地存储，无法导入。', 'error'); return; }
     if (await confirmDialog('恢复伴读数据', coreadPackageRestoreMessage(data)) !== true) return;
-    check();
+    checkBeforeWrite();
     await applyCoreadPackageData(data, {blobStore:blobStore.createReaderPackageWriter({check}), coread:()=>reader, isPlainObject, base64ToBlob, check, progress, onBookIndexed:saveSettings, warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error)});
     check();
     finishCoreadPackageImport({reader, progress, hasPrefs:isPlainObject(data.prefs), check, save:saveSettings, notify:toast,

@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
 import {createStorageCleanupSession} from '../qianmu-storage-cleanup-session.js';
+import {configRestoreGuard} from '../qianmu-config-connections.js';
 import {createCoreadImportProgress,coreadImportProgressText,coreadPackageRestoreMessage,finishCoreadPackageImport} from '../qianmu-reader-package.js';
 function fixture(){
-  const notices=[],calls=[],levels=[];const c=vm.createContext({createCoreadImportProgress,coreadImportProgressText,coreadPackageRestoreMessage,finishCoreadPackageImport,settings:{coread:{}},storyboardAdmissionEpoch:1,toast:(m,level)=>{notices.push(m);levels.push(level);},
+  const notices=[],calls=[],levels=[];const c=vm.createContext({configRestoreGuard,createCoreadImportProgress,coreadImportProgressText,coreadPackageRestoreMessage,finishCoreadPackageImport,settings:{coread:{}},storyboardAdmissionEpoch:1,toast:(m,level)=>{notices.push(m);levels.push(level);},
     readCoreadPackageFile:async()=>({books:[]}),confirmDialog:async()=>true,blobStore:{blobStoreAvailable:()=>true},isPlainObject:()=>false,
     base64ToBlob(){},MODULE_NAME:'fixture',saveSettings(){calls.push('save');},renderModal(){calls.push('render');},rerenderMoreIfOpen(){},
     applyCoreadPackageData:async()=>{calls.push('write');return {ok:0,chatOk:0,imageOk:0,vectorOk:0,audioOk:0,logOk:0};}});
@@ -29,6 +30,30 @@ test('cancellation and invalid input release reader activity, while an existing 
   const e=fixture(),token=e.c.storageCleanupSession.begin({isConnected:true});await e.run();assert.deepEqual(e.calls,[]);assert.equal(e.c.storageCleanupSession.busy,true);token.release();
   e.c.readCoreadPackageFile=async()=>{throw Error('bad file');};await e.run();assert.equal(e.c.coreadImportDataFile.busy,false);
   e.c.readCoreadPackageFile=async()=>({books:[]});e.c.confirmDialog=async()=>false;await e.run();assert.deepEqual(e.calls,[]);assert.equal(e.c.coreadImportDataFile.busy,false);
+});
+
+for(const phase of ['read','confirm'])test('reader '+phase+' rejects in-place reading changes before any original write',async()=>{
+  for(const edit of [reader=>reader.books[0].progress=40,reader=>reader.fontSize=22,reader=>reader.books.push({id:'another'})]){
+    const e=fixture();e.c.settings.coread={books:[{id:'book',progress:20}],fontSize:16};const reader=e.c.settings.coread;
+    let release;e.c[phase==='read'?'readCoreadPackageFile':'confirmDialog']=()=>new Promise(resolve=>release=resolve);
+    const pending=e.run();await new Promise(resolve=>setImmediate(resolve));edit(reader);
+    const edited=JSON.stringify(reader);release(phase==='read'?{books:[]}:true);await pending;
+    assert.deepEqual(e.calls,[]);assert.equal(JSON.stringify(reader),edited,'the new local reading state must survive the rejected restore');
+    assert.match(e.notices.at(-1),/书目、读位或阅读设置已变化，未写入原件/);
+    assert.equal(e.c.coreadImportDataFile.busy,false);assert.equal(e.c.viewReleased,true);
+  }
+});
+
+test('reader baseline compares only admission and does not reject its own successful shelf writes',async()=>{
+  const e=fixture();let checks=0;e.c.settings.coread={books:[]};
+  e.c.configRestoreGuard=reader=>{const unchanged=configRestoreGuard(reader);return current=>{checks++;return unchanged(current);};};
+  e.c.applyCoreadPackageData=async(data,{coread,check,progress,onBookIndexed})=>{
+    check();coread().books.push({id:'new',progress:12});progress.ok++;onBookIndexed();
+    for(let i=0;i<20;i++)check();
+  };
+  await e.run();assert.equal(checks,2,'do not serialize the shelf for every transaction or written original');
+  assert.deepEqual(e.calls,['save','save','render']);assert.equal(e.c.settings.coread.books[0].progress,12);
+  assert.equal(e.levels.at(-1),'success');
 });
 
 test('actual reader entry requires explicit approval of complete scope before creating its storage writer',async()=>{
