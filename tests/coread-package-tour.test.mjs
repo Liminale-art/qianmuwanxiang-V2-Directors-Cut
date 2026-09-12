@@ -23,7 +23,8 @@ assert.match(packageHelpers, /对象数组按 id\/name 对齐本机条目[\s\S]*
 const importBlock = source.slice(source.indexOf('async function coreadImportDataFile'), source.indexOf('function coreadImportData()'));
 assert.match(importBlock, /await applyCoreadPackageData\(data, \{blobStore:blobStore.createReaderPackageWriter\(\{check\}\), coread:\(\)=>reader, isPlainObject, base64ToBlob/, '导入必须以专用事务adapter和捕获的伴读状态调用数据模块');
 assert.match(packageData, /putReaderImageByKey[\s\S]*putReaderVectors[\s\S]*bulkPutAudio[\s\S]*pushRetLog/, '导入模块必须保留所有扩展存储');
-assert.match(importBlock, /API 密钥沿用本机设置/, '导入确认必须明确凭据处理方式');
+assert.match(importBlock, /confirmDialog\('恢复伴读数据', coreadPackageRestoreMessage\(data\)\)/, '导入确认使用共享范围摘要');
+assert.match(packageData, /API 密钥沿用本机设置/, '导入确认必须明确凭据处理方式');
 assert.match(store, /export async function listReaderImages[\s\S]*export async function putReaderImageByKey[\s\S]*export async function listReaderVectorKeys/, '存储层必须支持媒体与向量整包迁移');
 
 assert.match(centerView, /<div class="sd-reader-mempty">尚无注入记录<\/div>/, '实际注入空态必须使用精简文案');

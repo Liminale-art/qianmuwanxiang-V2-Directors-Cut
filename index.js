@@ -1,7 +1,7 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
-import { readCoreadPackageFile, coreadPackageSafeKey, applyCoreadPackageData, collectCoreadPackageData, prepareCoreadPackageExport, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard } from './qianmu-reader-package.js';
+import { readCoreadPackageFile, coreadPackageSafeKey, coreadPackageRestoreMessage, applyCoreadPackageData, collectCoreadPackageData, prepareCoreadPackageExport, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard } from './qianmu-reader-package.js';
 import { exportConfiguration } from './qianmu-config-export.js';
 import { exportLibraryBackup, readLibraryBackupFile, confirmLibraryRestore, FAVORITES_BACKUP_LIMITS, FAVORITE_TEXT_LIMITS } from './qianmu-library-backup.js';
 import { receiveComfyImage, resolveComfyRecoveryKey } from './qianmu-comfy-recovery-action.js';
@@ -34932,9 +34932,7 @@ async function coreadImportDataFile(file, origin) {
     } catch (error) { toast(`导入失败：${error?.message || '不是有效的千幕阅读数据文件。'} 未写入内容，请保留原包。`, 'error'); return; }
     check();
     if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地存储，无法导入。', 'error'); return; }
-    const chatN = Array.isArray(data.chats) ? data.chats.length : 0;
-    const mediaN = (Array.isArray(data.images) ? data.images.length : 0) + (Array.isArray(data.audio) ? data.audio.length : 0);
-    if (!await confirmDialog('导入伴读数据打包', `将导入 ${data.books.length} 本书${chatN ? `、${chatN} 段伴读对话与记忆` : ''}${mediaN ? `、${mediaN} 项媒体` : ''}。同 id 的书和会话会被覆盖；API 密钥沿用本机设置。是否继续？`)) return;
+    if (await confirmDialog('恢复伴读数据', coreadPackageRestoreMessage(data)) !== true) return;
     check();
     await applyCoreadPackageData(data, {blobStore:blobStore.createReaderPackageWriter({check}), coread:()=>reader, isPlainObject, base64ToBlob, check, progress, warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error)});
     check();

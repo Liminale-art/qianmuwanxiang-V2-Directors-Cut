@@ -151,6 +151,19 @@ export function inspectCoreadPackage(data) {
   return data;
 }
 
+// Called after preflight; only counts and fixed copy enter the confirmation, never imported HTML.
+export function coreadPackageRestoreMessage(data) {
+  const count = key => Array.isArray(data[key]) ? data[key].length : 0;
+  const covers = data.books.filter(book => book.coverB64).length;
+  const scope = [`将恢复 ${count('books')} 本书、${covers} 张封面、${count('chats')} 段对话与记忆、${count('images')} 张插图、${count('vectors')} 组检索资料、${count('audio')} 条语音、${count('retrievalLogs')} 条检索记录。`];
+  if (count('books') || count('chats') || count('images') || count('vectors')) scope.push('同编号的书籍（含阅读进度）、包内封面、对话与记忆、插图和检索资料会覆盖已有内容；不是另存副本。包外条目不主动删除。');
+  if (count('audio')) scope.push('同编号语音保留本机已有音频，跳过包内同编号音频；不恢复配音收藏或专注语音库。');
+  if (count('retrievalLogs')) scope.push('检索记录按包内时间先后追加，仍按原规则仅保留最近插入的50条，可能挤出本机已有记录。');
+  if (data.prefs) scope.push('包内阅读偏好会合并并替换相应设置，保留本机启用状态。');
+  scope.push('API 密钥沿用本机设置，连接地址、模型与连接预设不随包替换。请先备份本机资料；写入后若部分失败，已成功写入的内容会保留，不会整包自动撤回。是否继续？');
+  return scope.join('\n\n');
+}
+
 export async function applyCoreadPackageData(data, {blobStore, coread, isPlainObject, base64ToBlob, warn, check = () => {}, progress = createCoreadImportProgress()}) {
   check();
   for (const b of data.books) {

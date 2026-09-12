@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
 import {createStorageCleanupSession} from '../qianmu-storage-cleanup-session.js';
-import {createCoreadImportProgress,coreadImportProgressText} from '../qianmu-reader-package.js';
+import {createCoreadImportProgress,coreadImportProgressText,coreadPackageRestoreMessage} from '../qianmu-reader-package.js';
 function fixture(){
-  const notices=[],calls=[],levels=[];const c=vm.createContext({createCoreadImportProgress,coreadImportProgressText,settings:{coread:{}},storyboardAdmissionEpoch:1,toast:(m,level)=>{notices.push(m);levels.push(level);},
+  const notices=[],calls=[],levels=[];const c=vm.createContext({createCoreadImportProgress,coreadImportProgressText,coreadPackageRestoreMessage,settings:{coread:{}},storyboardAdmissionEpoch:1,toast:(m,level)=>{notices.push(m);levels.push(level);},
     readCoreadPackageFile:async()=>({books:[]}),confirmDialog:async()=>true,blobStore:{blobStoreAvailable:()=>true},isPlainObject:()=>false,
     base64ToBlob(){},MODULE_NAME:'fixture',saveSettings(){calls.push('save');},renderModal(){calls.push('render');},rerenderMoreIfOpen(){},
     applyCoreadPackageData:async()=>{calls.push('write');return {ok:0,chatOk:0,imageOk:0,vectorOk:0,audioOk:0,logOk:0};}});
@@ -29,6 +29,21 @@ test('cancellation and invalid input release reader activity, while an existing 
   const e=fixture(),token=e.c.storageCleanupSession.begin({isConnected:true});await e.run();assert.deepEqual(e.calls,[]);assert.equal(e.c.storageCleanupSession.busy,true);token.release();
   e.c.readCoreadPackageFile=async()=>{throw Error('bad file');};await e.run();assert.equal(e.c.coreadImportDataFile.busy,false);
   e.c.readCoreadPackageFile=async()=>({books:[]});e.c.confirmDialog=async()=>false;await e.run();assert.deepEqual(e.calls,[]);assert.equal(e.c.coreadImportDataFile.busy,false);
+});
+
+test('actual reader entry requires explicit approval of complete scope before creating its storage writer',async()=>{
+  for(const answer of [false,undefined,null,'cancel',-1,true]){
+    const e=fixture();let asked=0,writers=0;
+    e.c.readCoreadPackageFile=async()=>({books:[],audio:[{}],retrievalLogs:[{}],prefs:{fontSize:18}});
+    e.c.confirmDialog=async(title,text)=>{
+      asked++;assert.equal(title,'恢复伴读数据');assert.match(text,/保留本机已有音频/);assert.match(text,/可能挤出本机已有记录/);
+      assert.equal(writers,0);assert.deepEqual(e.calls,[]);return answer;
+    };
+    e.c.blobStore.createReaderPackageWriter=()=>{writers++;return {};};
+    await e.run();assert.equal(asked,1);assert.equal(writers,answer===true?1:0);
+    assert.deepEqual(e.calls,answer===true?['write','save','render']:[]);
+    assert.equal(e.c.coreadImportDataFile.busy,false);assert.equal(e.c.viewReleased,true);
+  }
 });
 test('a completed writer cannot merge preferences or repaint a different reader owner',async()=>{
   const e=fixture();let release,captured;e.c.applyCoreadPackageData=async(data,options)=>{assert.equal(typeof options.check,'function');options.check();captured=options.coread();await new Promise(r=>release=r);return {ok:1};};
