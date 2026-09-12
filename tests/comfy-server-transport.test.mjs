@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Writable, PassThrough } from 'node:stream';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createComfyServerTransport, createComfyCloudServerTransport, pinnedComfyFetch } from '../qianmu-comfy-server-transport.js';
+import { createComfyServerTransport, createComfyCloudServerTransport, createComfyCloudAssetTransport, pinnedComfyFetch } from '../qianmu-comfy-server-transport.js';
 import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
 import { queryComfyCloudTask } from '../qianmu-comfy-cloud-query.js';
 import { createComfyCloudLedger } from '../qianmu-comfy-cloud-ledger.js';
@@ -459,6 +459,63 @@ test('task ownership or ST account revocation during a returned response blocks 
         return { body: { taskId: task.taskId, status: 'SUCCESS', errorCode: '' } }; }),
     }), error => error.submissionState === 'accepted' && error.upstreamId === task.taskId && !error.message.includes('test-only-secret'));
   }
+});
+
+test('asset transport requires original asset and target grants before DNS, even for an administrator', async () => {
+  const task = bindComfyCloudTask(cloudBinding, 'original', { self: '/api/v2/jobs/original', cancel: '/api/v2/jobs/original/cancel' });
+  const assetId = '00000000-0000-4000-8000-000000000001'; let resolutions = 0; const calls = [];
+  const options = { authorizeAsset: cloudGrant, authorizeTarget: cloudGrant, resolveHost: async () => { resolutions++; return publicDns(); }, requestImpl: mockNodeRequest(calls) };
+  await assert.rejects(createComfyCloudAssetTransport({}, { task, assetId }, options), { code: 'comfy_transport_authentication_required', status: 401, submissionState: 'accepted', upstreamId: 'original' });
+  for (const overrides of [{ authorizeAsset: undefined }, { authorizeTarget: undefined }, { authorizeAsset: async () => {} },
+    { authorizeAsset: async () => { throw Error('private-test-secret'); } }]) {
+    await assert.rejects(createComfyCloudAssetTransport(account(true), { task, assetId }, { ...options, ...overrides }), error => error.submissionState === 'accepted' && error.upstreamId === 'original' && !error.message.includes('private-test-secret'));
+  }
+  assert.equal(resolutions, 0); assert.equal(calls.length, 0);
+});
+
+test('asset transport pins one metadata GET and refuses content, other assets, writes, credentials forwarding and redirects', async () => {
+  const task = bindComfyCloudTask(cloudBinding, 'original', { self: '/api/v2/jobs/original', cancel: '/api/v2/jobs/original/cancel' });
+  const assetId = '00000000-0000-4000-8000-000000000001', calls = []; let grants = 0;
+  const transport = await createComfyCloudAssetTransport(account(), { task, assetId }, {
+    authorizeAsset: async (req, resource, owner) => { assert.deepEqual(resource, { task, assetId }); assert.equal(owner.namespace, imageServiceAccount(req).namespace); return async () => { grants++; }; },
+    authorizeTarget: cloudGrant, resolveHost: publicDns, requestImpl: mockNodeRequest(calls, () => ({ body: { id: assetId } })),
+  });
+  const url = `${cloudBinding.origin}/api/v2/assets/${assetId}`;
+  const result = await transport.fetchImpl(url, { headers: { Authorization: 'Bearer test-only-secret', Accept: 'application/json' } });
+  assert.deepEqual(await result.json(), { id: assetId }); await transport.verify(); assert.ok(grants > 1);
+  for (const [target, init] of [[`${url}/content`, {}], [url.replace(/1$/, '2'), {}], [url, { method: 'DELETE' }],
+    [url, { method: 'POST', body: '{}' }], [url, { headers: { Cookie: 'secret' } }], [url, { body: '{}' }]]) await assert.rejects(transport.fetchImpl(target, init));
+  assert.equal(calls.length, 1); assert.equal(calls[0].options.method, 'GET'); assert.equal(calls[0].options.headers.authorization, 'Bearer test-only-secret');
+  calls[0].options.lookup('cloud.comfy.org', {}, (error, ip) => { assert.equal(error, null); assert.equal(ip, '8.8.8.8'); });
+  const redirect = await createComfyCloudAssetTransport(account(), { task, assetId }, { authorizeAsset: cloudGrant, authorizeTarget: cloudGrant, resolveHost: publicDns,
+    requestImpl: mockNodeRequest([], () => ({ status: 302, headers: { location: 'https://files.test/a?private-test-secret' } })) });
+  await assert.rejects(redirect.fetchImpl(url), { code: 'comfy_transport_redirect', submissionState: 'accepted', upstreamId: 'original' });
+});
+
+test('revoked asset permission blocks prepared reads and returned response delivery without a new request', async () => {
+  const task = bindComfyCloudTask(cloudBinding, 'original', { self: '/api/v2/jobs/original', cancel: '/api/v2/jobs/original/cancel' });
+  const assetId = '00000000-0000-4000-8000-000000000001', calls = []; let permitted = true;
+  const transport = await createComfyCloudAssetTransport(account(), { task, assetId }, {
+    authorizeAsset: async () => async () => { if (!permitted) throw Error('private-test-secret'); }, authorizeTarget: cloudGrant, resolveHost: publicDns,
+    requestImpl: mockNodeRequest(calls, () => { permitted = false; return { body: { id: assetId } }; }),
+  });
+  permitted = false; await assert.rejects(transport.fetchImpl(transport.plan.url)); assert.equal(calls.length, 0);
+  permitted = true; const response = await transport.fetchImpl(transport.plan.url); await response.json();
+  await assert.rejects(transport.verify(), error => error.submissionState === 'accepted' && error.upstreamId === 'original' && !error.message.includes('private-test-secret'));
+  assert.equal(calls.length, 1);
+});
+
+test('account changes during asset grant or private DNS results cannot open metadata connections', async () => {
+  const task = bindComfyCloudTask(cloudBinding, 'original', { self: '/api/v2/jobs/original', cancel: '/api/v2/jobs/original/cancel' });
+  const assetId = '00000000-0000-4000-8000-000000000001', req = account(), calls = []; let resolutions = 0;
+  await assert.rejects(createComfyCloudAssetTransport(req, { task, assetId }, {
+    authorizeAsset: async () => { req.user.profile.handle = 'bob'; return async () => {}; }, authorizeTarget: cloudGrant,
+    resolveHost: async () => { resolutions++; return publicDns(); }, requestImpl: mockNodeRequest(calls),
+  }), { code: 'comfy_transport_account_changed' });
+  assert.equal(resolutions, 0);
+  await assert.rejects(createComfyCloudAssetTransport(account(true), { task, assetId }, { authorizeAsset: cloudGrant, authorizeTarget: cloudGrant,
+    resolveHost: async () => [{ address: '127.0.0.1', family: 4 }], requestImpl: mockNodeRequest(calls) }));
+  assert.equal(calls.length, 0);
 });
 
 test('cloud transport requires a logged-in account and a recheckable grant before any DNS/network', async () => {

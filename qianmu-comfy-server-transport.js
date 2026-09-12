@@ -7,8 +7,9 @@ import { request as httpsRequest } from 'node:https';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { ImageGatewayError, validateGatewayBaseUrl } from './qianmu-image-gateway.js';
-import { imageServiceAccount } from './qianmu-image-service-access.js';
-import { planComfyCloudOperation } from './qianmu-comfy-cloud-protocol.js';
+import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
+import { planComfyCloudOperation, bindComfyCloudTask } from './qianmu-comfy-cloud-protocol.js';
+import { planComfyCloudAssetMetadata } from './qianmu-comfy-cloud-asset.js';
 
 // Only the explicit cloud factory can add this capability; native callers stay native.
 const CLOUD_PLAN = Symbol('verified cloud operation');
@@ -176,6 +177,37 @@ export async function createComfyServerTransport(req, input, { operation, resolv
 // Internal adapter boundary only; no public cloud route/capability is enabled yet.
 export async function createComfyCloudServerTransport(req, { binding, operation, task }, options = {}) {
   const plan = planComfyCloudOperation(binding, operation, task);
+  return createCloudPlannedTransport(req, plan, options);
+}
+
+// Exact metadata GET only. The coordinator supplies an asset grant backed by the
+// original job output; neither a browser asset id nor a plan is that permission.
+export async function createComfyCloudAssetTransport(req, { task: rawTask, assetId }, options = {}) {
+  const task = bindComfyCloudTask(rawTask, rawTask?.taskId, rawTask?.links), plan = planComfyCloudAssetMetadata(task, assetId);
+  try {
+    let account;
+    try { account = imageServiceAccount(req); } catch (_) { throw fail('authentication_required', '请先登录ST账户再读取原图片信息', 401); }
+    const check = () => {
+      options.signal?.throwIfAborted();
+      if (!imageServiceAccountStillMatches(req, account)) throw fail('account_changed', 'ST账户已变化，未读取原图片信息', 401);
+    };
+    if (typeof options.authorizeAsset !== 'function' || typeof options.authorizeTarget !== 'function') throw fail('asset_authorization', '原图片或云连接尚未获得读取授权', 403);
+    check(); const verifyAsset = await options.authorizeAsset(req, Object.freeze({ task, assetId: plan.assetId }), account); check();
+    if (typeof verifyAsset !== 'function') throw fail('asset_authorization', '原图片缺少持续归属校验', 403);
+    const verify = async () => { check(); await verifyAsset(); check(); };
+    await verify();
+    return await createCloudPlannedTransport(req, plan, { ...options, authorizeTarget: async (...args) => {
+      await verify(); const verifyTarget = await options.authorizeTarget(...args); await verify();
+      if (typeof verifyTarget !== 'function') throw fail('cloud_authorization', '云连接缺少持续授权校验');
+      return async () => { await verify(); await verifyTarget(); await verify(); };
+    } });
+  } catch (cause) {
+    const error = cause instanceof ImageGatewayError ? cause : fail('asset_unavailable', '原图片信息暂不可读，请核查原任务', 502);
+    error.submissionState = 'accepted'; error.upstreamId = task.taskId; throw error;
+  }
+}
+
+async function createCloudPlannedTransport(req, plan, options) {
   const requestImpl = options.requestImpl || httpsRequest;
   let sent = false;
   const annotate = cause => {

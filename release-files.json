@@ -4,6 +4,7 @@
   "outputDirectory": "dist",
   "files": [
     "qianmu-comfy-cloud-protocol.js",
+    "qianmu-comfy-cloud-asset.js",
     "qianmu-comfy-cloud-receipt.js",
     "qianmu-comfy-cloud-channel-state.js",
     "qianmu-comfy-new-execution.js",
