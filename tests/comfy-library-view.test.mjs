@@ -80,6 +80,24 @@ test('applying a recipe retires active role routing without rewriting saved addi
   assert.deepEqual(state.promptDefaults,defaults);assert.deepEqual(document,source);
   await assert.rejects(()=>context.storyboardApplyComfyLibraryRecipe(root,state,{document}),/已切换/);
 });
+test('saved-version apply carries the verified account and rejects a late account or page switch',async()=>{
+  for(const change of ['none','account','page']){
+    const row={id:'one',revision:'r1',name:'old',version:1},applied=[],notices=[];let account='st-user:test',loads=0;
+    const buttons=Object.fromEntries(['edit','apply-version'].map(action=>[action,{dataset:{comfyAction:action},addEventListener(_name,handler){this.click=handler;},closest:()=>action==='edit'?{dataset:{comfyId:row.id}}:null}]));
+    const host={isConnected:true,innerHTML:'',closest:()=>null,querySelector:()=>null,querySelectorAll:selector=>selector==='[data-comfy-action]'?Object.values(buttons):[]};
+    const store={list:async()=>[row],usage:async()=>({count:1,versions:1,bytes:100,limit:10000}),versions:async()=>[row],close(){},
+      load:async()=>{if(++loads===2){if(change==='account')account='st-user:other';if(change==='page')host.isConnected=false;}return structuredClone(document);}};
+    const controller=createComfyLibraryController({store,resolveNamespace:async()=>account,onApply:value=>applied.push(value),notify:message=>notices.push(message)});
+    const flush=async()=>{for(let n=0;n<6;n++)await new Promise(resolve=>setImmediate(resolve));};
+    try{
+      controller.mount(host);await flush();buttons.edit.click();await flush();buttons['apply-version'].click();await flush();
+      assert.equal(loads,2);assert.equal(applied.length,change==='none'?1:0);
+      if(change==='none')assert.deepEqual(applied[0],{namespace:'st-user:test',...row,document});
+      if(change==='account')assert.match(notices.join(' '),/账户已切换/);
+    }finally{controller.dispose();}
+  }
+});
+
 test('workflow route and selection survive reload without library documents in settings',()=>{
   const state=storyboard.createStoryboardDefaults();state.source='comfy';state.view='workflows';state.comfyLibrarySelection={id:'a',revision:'b',name:'x',version:2,workflow:'not-index-data'};
   const restored=storyboard.normalizeStoryboardState(state);assert.equal(restored.view,'workflows');assert.equal(restored.comfyLibrarySelection.version,2);assert.ok(!Object.hasOwn(restored.comfyLibrarySelection,'workflow'));

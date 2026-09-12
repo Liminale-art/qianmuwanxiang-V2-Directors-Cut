@@ -123,7 +123,7 @@ export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,
       if(name==='export-draft'){exportDocument(view.draft.name,view.draft.document);return;}
       if(name==='apply-version'){
         const draft=view.draft;if(!draft?.id)return;if(draft.dirty)throw Error('请先保存或取消当前编辑，再应用已保存版本');
-        const document=await loadDocument(draft);await authorize();await onApply({id:draft.id,revision:draft.revision,name:draft.name,version:draft.version,document});return;
+        const document=await loadDocument(draft);await authorize();await onApply({namespace,id:draft.id,revision:draft.revision,name:draft.name,version:draft.version,document});return;
       }
       if(name==='save'||name==='save-copy'){
         const draft=view.draft;if(!draft)return;
