@@ -11,6 +11,7 @@ import { createImageServiceStore } from '../qianmu-image-service-store.js';
 import { COMFY_CLOUD_INTENT_SCHEMA, COMFY_CLOUD_RECEIPT_SCHEMA } from '../qianmu-comfy-cloud-receipt.js';
 import { readComfyCloudJsonResponse, readComfyCloudAcceptance } from '../qianmu-comfy-cloud-response.js';
 import { submitComfyCloudTask } from '../qianmu-comfy-cloud-submit.js';
+import { readComfyCloudAsset } from '../qianmu-comfy-cloud-asset-read.js';
 import { comfyCloudResourceKey } from '../qianmu-comfy-cloud-ledger.js';
 import { init, exit } from '../server-plugin.js';
 import * as fs from 'node:fs/promises';
@@ -330,6 +331,89 @@ test('revocation after a valid output response blocks descriptor delivery under 
     }),
   }), { code: 'comfy_cloud_query_delivery', submissionState: 'accepted', upstreamId: f.task.taskId });
   await revoked; assert.equal(calls.length, 1);
+});
+
+const assetReadInput = f => ({ task: f.task, assetId: cloudOutput().id, ...f.locator });
+const assetReadOptions = f => ({ ledger: f.ledger, authorizeTarget: cloudGrant, resolveHost: publicDns });
+const assetMetadataBody = f => ({ id: cloudOutput().id, job_id: f.task.taskId, size_bytes: png.length, content_type: 'image/png', hash: null,
+  url: 'https://files.test/image?secret=temporary', url_expires_at: new Date(Date.now() + 60000).toISOString() });
+const readyCloudJob = f => ({ id: f.task.taskId, status: 'succeeded', urls: f.task.links, outputs: [cloudOutput()] });
+
+test('asset reader derives its descriptor from the actual original query and never reads file bytes or mutates the ledger', async t => {
+  const f = await persistedCloudTask(t), calls = [], before = await f.store.inspectChannel(f.locator.channelKey);
+  const result = await readComfyCloudAsset(f.req, { ...assetReadInput(f), expected: { sizeBytes: 999, nodeId: 'other' } }, { ...assetReadOptions(f),
+    requestImpl: mockNodeRequest(calls, call => ({ body: call.url.pathname.includes('/assets/') ? assetMetadataBody(f) : readyCloudJob(f) })),
+  });
+  assert.equal(result.status, 'metadata_ready'); assert.equal(result.asset.sizeBytes, png.length); assert.equal(result.asset.nodeId, 'save');
+  assert.equal(calls.length, 2); assert.equal(calls[0].url.href, f.task.links.self);
+  assert.equal(calls[1].url.href, `${cloudBinding.origin}/api/v2/assets/${cloudOutput().id}`);
+  assert.ok(calls.every(call => call.options.method === 'GET' && call.options.headers.authorization === 'Bearer test-only-secret'));
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before); assert.doesNotMatch(JSON.stringify(before), /temporary|files.test/);
+});
+
+test('waiting jobs and assets absent from the original output cannot cause an asset metadata request', async t => {
+  for (const waiting of [true, false]) {
+    const f = await persistedCloudTask(t), calls = [];
+    const promise = readComfyCloudAsset(f.req, { ...assetReadInput(f), assetId: '00000000-0000-4000-8000-000000000099' }, { ...assetReadOptions(f),
+      requestImpl: mockNodeRequest(calls, () => ({ body: { ...readyCloudJob(f), status: waiting ? 'running' : 'succeeded' } })),
+    });
+    if (waiting) assert.equal((await promise).asset, null);
+    else await assert.rejects(promise, { code: 'comfy_cloud_asset_read_asset', submissionState: 'accepted' });
+    assert.equal(calls.length, 1);
+  }
+});
+
+test('metadata mismatch or expiry preserves the original record and does not request the returned file URL', async t => {
+  for (const wrong of [true, false]) {
+    const f = await persistedCloudTask(t), calls = [], before = await f.store.inspectChannel(f.locator.channelKey);
+    await assert.rejects(readComfyCloudAsset(f.req, assetReadInput(f), { ...assetReadOptions(f), requestImpl: mockNodeRequest(calls, call => ({ body: call.url.pathname.includes('/assets/')
+      ? { ...assetMetadataBody(f), ...(wrong ? { size_bytes: 999 } : { url_expires_at: '2000-01-01T00:00:00Z' }) } : readyCloudJob(f) })) }),
+    error => error.code === 'comfy_cloud_asset_read_match' && error.submissionState === 'accepted' && !error.message.includes('temporary'));
+    assert.equal(calls.length, 2); assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+  }
+});
+
+test('one original fence spans job query and metadata, including revocation after the metadata arrives', async t => {
+  const f = await persistedCloudTask(t), calls = []; let revoked, grants = 0;
+  await assert.rejects(readComfyCloudAsset(f.req, assetReadInput(f), { ...assetReadOptions(f), ledger: {
+    authorizeQuery: async (...args) => { grants++; const verify = await f.ledger.authorizeQuery(...args); return async () => { if (revoked) await revoked; return verify(); }; },
+  }, requestImpl: mockNodeRequest(calls, call => {
+    if (!call.url.pathname.includes('/assets/')) return { body: readyCloudJob(f) };
+    revoked = f.store.transaction(f.locator.channelKey, state => { state.entries[0].fence = 'revoked'; return { state }; });
+    return { body: assetMetadataBody(f) };
+  }) }), { code: 'comfy_cloud_asset_read_delivery', submissionState: 'accepted', upstreamId: f.task.taskId });
+  await revoked; assert.equal(grants, 1); assert.equal(calls.length, 2);
+});
+
+test('asset metadata deadline and pre-cancellation prevent late authority from starting any network read', async t => {
+  const f = await persistedCloudTask(t), calls = []; let release, grants = 0;
+  const grant = new Promise(resolve => { release = resolve; }), controller = new AbortController(); controller.abort();
+  const options = { ...assetReadOptions(f), timeoutMs: 15, ledger: { authorizeQuery: () => { grants++; return grant; } }, requestImpl: mockNodeRequest(calls) };
+  await assert.rejects(readComfyCloudAsset(f.req, assetReadInput(f), { ...options, signal: controller.signal }), { code: 'comfy_cloud_asset_read_cancelled' });
+  assert.equal(grants, 0);
+  await assert.rejects(readComfyCloudAsset(f.req, assetReadInput(f), options), { code: 'comfy_cloud_asset_read_timeout' });
+  release(async () => {}); await new Promise(resolve => setImmediate(resolve)); assert.equal(grants, 1); assert.equal(calls.length, 0);
+});
+
+test('metadata response stalls and mid-read account changes cannot outlive the bounded original read', async t => {
+  for (const changeAccount of [false, true]) {
+    const f = await persistedCloudTask(t), calls = []; let metadataSignal;
+    const jobRequest = mockNodeRequest(calls, () => ({ body: readyCloudJob(f) }));
+    await assert.rejects(readComfyCloudAsset(f.req, assetReadInput(f), { ...assetReadOptions(f), timeoutMs: 300,
+      requestImpl: (url, options, callback) => {
+        if (!new URL(url).pathname.includes('/assets/')) return jobRequest(url, options, callback);
+        calls.push({ url: new URL(url), options }); metadataSignal = options.signal;
+        return new Writable({ write(_chunk, _encoding, done) { done(); }, final(done) {
+          const incoming = new PassThrough(); incoming.statusCode = 200; incoming.headers = { 'content-type': 'application/json' };
+          if (changeAccount) f.req.user.profile.handle = 'bob';
+          callback(incoming); if (changeAccount) incoming.end(JSON.stringify(assetMetadataBody(f))); done();
+        } });
+      },
+    }), error => error.submissionState === 'accepted' && error.upstreamId === f.task.taskId
+      && error.code === (changeAccount ? 'comfy_cloud_asset_read_metadata' : 'comfy_cloud_asset_read_timeout'));
+    assert.equal(calls.length, 2); assert.equal(metadataSignal.aborted, true);
+    assert.equal((await f.store.inspectChannel(f.locator.channelKey)).entries[0].status, 'uncertain');
+  }
 });
 
 test('real stored ownership and network target grants both precede cloud DNS or requests', async t => {
