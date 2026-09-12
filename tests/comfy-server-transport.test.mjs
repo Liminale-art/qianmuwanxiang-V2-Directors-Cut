@@ -11,7 +11,7 @@ import { createImageServiceStore } from '../qianmu-image-service-store.js';
 import { COMFY_CLOUD_INTENT_SCHEMA, COMFY_CLOUD_RECEIPT_SCHEMA } from '../qianmu-comfy-cloud-receipt.js';
 import { readComfyCloudJsonResponse, readComfyCloudAcceptance } from '../qianmu-comfy-cloud-response.js';
 import { submitComfyCloudTask } from '../qianmu-comfy-cloud-submit.js';
-import { readComfyCloudAsset } from '../qianmu-comfy-cloud-asset-read.js';
+import { readComfyCloudAsset, downloadComfyCloudAsset } from '../qianmu-comfy-cloud-asset-read.js';
 import { comfyCloudResourceKey } from '../qianmu-comfy-cloud-ledger.js';
 import { init, exit } from '../server-plugin.js';
 import * as fs from 'node:fs/promises';
@@ -338,6 +338,69 @@ const assetReadOptions = f => ({ ledger: f.ledger, authorizeTarget: cloudGrant, 
 const assetMetadataBody = f => ({ id: cloudOutput().id, job_id: f.task.taskId, size_bytes: png.length, content_type: 'image/png', hash: null,
   url: 'https://files.test/image?secret=temporary', url_expires_at: new Date(Date.now() + 60000).toISOString() });
 const readyCloudJob = f => ({ id: f.task.taskId, status: 'succeeded', urls: f.task.links, outputs: [cloudOutput()] });
+
+const assetDownloadReply = (f, call) => call.url.hostname === 'files.test' ? { body: png, headers: { 'content-type': 'image/png' } }
+  : { body: call.url.pathname.includes('/assets/') ? assetMetadataBody(f) : readyCloudJob(f) };
+
+test('one original stored grant spans job, metadata and image bytes without persisting the signed source or acknowledging the task', async t => {
+  const f = await persistedCloudTask(t), calls = [], before = await f.store.inspectChannel(f.locator.channelKey); let grants = 0;
+  const result = await downloadComfyCloudAsset(f.req, { ...assetReadInput(f), expected: { mime: 'image/jpeg', sizeBytes: 1 } }, { ...assetReadOptions(f),
+    ledger: { authorizeQuery: (...args) => { grants++; return f.ledger.authorizeQuery(...args); } }, requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) });
+  assert.equal(result.status, 'bytes_checked'); assert.equal(result.mime, 'image/png'); assert.deepEqual(result.bytes, new Uint8Array(png));
+  assert.equal(result.asset.assetId, cloudOutput().id); assert.equal(grants, 1); assert.equal(calls.length, 3);
+  assert.ok(calls.every(call => call.options.method === 'GET')); assert.deepEqual(calls[2].options.headers, { Accept: 'image/*' });
+  assert.doesNotMatch(JSON.stringify(result), /files\.test|temporary|apiKey/); assert.equal(result.source, undefined);
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before, 'download is not acknowledgement or a new submission');
+});
+
+test('waiting tasks and file body mismatches cannot become downloaded or cause a generation retry', async t => {
+  for (const waiting of [true, false]) {
+    const f = await persistedCloudTask(t), calls = [], before = await f.store.inspectChannel(f.locator.channelKey);
+    const pending = downloadComfyCloudAsset(f.req, assetReadInput(f), { ...assetReadOptions(f), requestImpl: mockNodeRequest(calls, call => {
+      if (waiting) return { body: { ...readyCloudJob(f), status: 'running' } };
+      if (call.url.hostname === 'files.test') return { body: png.subarray(0, -1), headers: { 'content-type': 'image/png' } };
+      return assetDownloadReply(f, call);
+    }) });
+    if (waiting) assert.deepEqual(await pending, { task: f.task, status: 'running', asset: null });
+    else await assert.rejects(pending, { code: 'comfy_cloud_asset_read_bytes', submissionState: 'accepted', upstreamId: f.task.taskId, retryable: false });
+    assert.equal(calls.length, waiting ? 1 : 3); assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+  }
+});
+
+test('changing the original persisted fence during file arrival cannot be bypassed by acquiring a replacement grant', async t => {
+  const f = await persistedCloudTask(t), calls = []; let revoked, grants = 0;
+  await assert.rejects(downloadComfyCloudAsset(f.req, assetReadInput(f), { ...assetReadOptions(f), ledger: {
+    authorizeQuery: async (...args) => { grants++; const verify = await f.ledger.authorizeQuery(...args); return async () => { if (revoked) await revoked; return verify(); }; },
+  }, requestImpl: mockNodeRequest(calls, call => {
+    if (call.url.hostname === 'files.test') revoked = f.store.transaction(f.locator.channelKey, state => { state.entries[0].fence = 'changed-during-download'; return { state }; });
+    return assetDownloadReply(f, call);
+  }) }), { code: 'comfy_cloud_asset_read_file', submissionState: 'accepted', upstreamId: f.task.taskId });
+  await revoked; assert.equal(grants, 1); assert.equal(calls.length, 3);
+});
+
+test('cancelled file target approval cannot start a late CDN request after the caller has returned', async t => {
+  const f = await persistedCloudTask(t), calls = [], controller = new AbortController(); let entered, release;
+  const entering = new Promise(resolve => { entered = resolve; }), held = new Promise(resolve => { release = resolve; });
+  const pending = downloadComfyCloudAsset(f.req, assetReadInput(f), { ...assetReadOptions(f), signal: controller.signal,
+    authorizeTarget: async (_req, target) => { if (new URL(target.baseUrl).hostname === 'files.test') { entered(); await held; } return async () => {}; },
+    requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) });
+  await entering; controller.abort();
+  await assert.rejects(pending, { code: 'comfy_cloud_asset_read_cancelled', submissionState: 'accepted', upstreamId: f.task.taskId });
+  release(); await new Promise(resolve => setImmediate(resolve)); assert.equal(calls.length, 2);
+});
+
+test('file body stalls share the whole operation deadline and do not clear the original queue record', async t => {
+  const f = await persistedCloudTask(t), calls = [], before = await f.store.inspectChannel(f.locator.channelKey); let fileSignal;
+  const api = mockNodeRequest(calls, call => assetDownloadReply(f, call));
+  await assert.rejects(downloadComfyCloudAsset(f.req, assetReadInput(f), { ...assetReadOptions(f), timeoutMs: 500,
+    requestImpl: (url, options, callback) => {
+      if (new URL(url).hostname !== 'files.test') return api(url, options, callback);
+      calls.push({ url: new URL(url), options }); fileSignal = options.signal;
+      return new Writable({ final(done) { const incoming = new PassThrough(); incoming.statusCode = 200; incoming.headers = { 'content-type': 'image/png' }; callback(incoming); done(); } });
+    },
+  }), { code: 'comfy_cloud_asset_read_timeout', submissionState: 'accepted', upstreamId: f.task.taskId, retryable: false });
+  assert.equal(calls.length, 3); assert.equal(fileSignal.aborted, true); assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+});
 
 test('asset reader derives its descriptor from the actual original query and never reads file bytes or mutates the ledger', async t => {
   const f = await persistedCloudTask(t), calls = [], before = await f.store.inspectChannel(f.locator.channelKey);

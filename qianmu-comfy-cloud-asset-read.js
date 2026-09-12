@@ -2,14 +2,24 @@
 // download inputs, never HTTP responses, ledger rows, logs or archived results.
 import { bindComfyCloudTask, comfyCloudAssetId } from './qianmu-comfy-cloud-protocol.js';
 import { queryComfyCloudTask } from './qianmu-comfy-cloud-query.js';
-import { createComfyCloudAssetTransport } from './qianmu-comfy-server-transport.js';
-import { readComfyCloudJsonResponse } from './qianmu-comfy-cloud-response.js';
+import { createComfyCloudAssetTransport, createComfyCloudFileTransport } from './qianmu-comfy-server-transport.js';
+import { readComfyCloudJsonResponse, readComfyCloudImageResponse } from './qianmu-comfy-cloud-response.js';
 import { matchComfyCloudAssetMetadata } from './qianmu-comfy-cloud-asset.js';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
 
-export async function readComfyCloudAsset(req, { task: rawTask, assetId: rawId, channelKey, attemptId, apiKey } = {}, {
+export async function readComfyCloudAsset(req, input, options) {
+  return readAsset(req, input, options, false);
+}
+
+// Bytes/container checked only: not yet digest-verified, staged, or acknowledged.
+// This server-only result deliberately excludes the sensitive signed source URL.
+export async function downloadComfyCloudAsset(req, input, options = {}) {
+  return readAsset(req, input, { ...options, timeoutMs: options.timeoutMs === undefined ? 60000 : options.timeoutMs }, true);
+}
+
+async function readAsset(req, { task: rawTask, assetId: rawId, channelKey, attemptId, apiKey } = {}, {
   ledger, authorizeTarget, timeoutMs = 15000, signal, resolveHost, requestImpl, maxBytes, now = Date.now,
-} = {}) {
+} = {}, download) {
   const task = bindComfyCloudTask(rawTask, rawTask?.taskId, rawTask?.links), assetId = comfyCloudAssetId(rawId), ownErrors = new WeakSet();
   const fail = (code, message) => {
     const error = Object.assign(new Error(message), { code: `comfy_cloud_asset_read_${code}`, submissionState: 'accepted', upstreamId: task.taskId, retryable: false });
@@ -59,13 +69,34 @@ export async function readComfyCloudAsset(req, { task: rawTask, assetId: rawId, 
     const body = await readComfyCloudJsonResponse(response, { task, signal: controller.signal, timeoutMs: remaining(), maxBytes });
     check(); stage = 'match'; const matched = matchComfyCloudAssetMetadata(task, expected, body, { now: now() });
     stage = 'delivery'; await transport.verify(); await verify();
-    return Object.freeze({ status: 'metadata_ready', ...matched });
+    if (!download) return Object.freeze({ status: 'metadata_ready', ...matched });
+    stage = 'file';
+    const file = await createComfyCloudFileTransport(req, { task, assetId, source: matched.source }, {
+      authorizeTarget, signal: controller.signal, resolveHost, requestImpl, now,
+      authorizeAsset: async (_req, resource, owner) => {
+        await verify();
+        if (owner.namespace !== account.namespace || resource.assetId !== assetId || JSON.stringify(resource.task) !== JSON.stringify(task)
+          || resource.source.url !== matched.source.url || resource.source.expiresAt !== matched.source.expiresAt) throw fail('asset', '原图片下载目标已变化');
+        return verify;
+      },
+    });
+    await verify();
+    response = await file.fetchImpl(matched.source.url, { method: 'GET', signal: controller.signal });
+    check(); stage = 'bytes';
+    const image = await readComfyCloudImageResponse(response, { task, mime: matched.asset.mime, sizeBytes: matched.asset.sizeBytes,
+      signal: controller.signal, timeoutMs: remaining() });
+    stage = 'delivery'; await verify(); await file.verify(); check();
+    const deliveredAt = now();
+    if (!Number.isSafeInteger(deliveredAt) || deliveredAt < 0 || deliveredAt >= matched.source.expiresAt) throw fail('expired', '图片链接已失效，请刷新原任务，不必重新生图');
+    return Object.freeze({ status: 'bytes_checked', task, asset: matched.asset, bytes: image.bytes, mime: image.mime });
   };
   try { return await Promise.race([work(), stopped]); }
   catch (cause) {
     if (interruption) throw interruption;
     if (ownErrors.has(cause)) throw cause;
-    const error = fail(stage, stage === 'match' && String(cause?.code).startsWith('comfy_cloud_asset_') ? cause.message : '原图片信息暂无法确认，请核查原任务，未重新生图');
+    const readableCause = stage === 'match' && String(cause?.code).startsWith('comfy_cloud_asset_')
+      || stage === 'bytes' && String(cause?.code).startsWith('comfy_cloud_response_');
+    const error = fail(stage, readableCause ? cause.message : '原图片信息暂无法确认，请核查原任务，未重新生图');
     if (response && !response.ok && Number.isInteger(response.status)) error.httpStatus = response.status;
     throw error;
   } finally {
