@@ -25,6 +25,14 @@ test('books without an optional cover still retain their original text and chapt
   assert.equal(result.books[0].coverB64,'');assert.equal(result.books[0].fullText,e.original.fullText);
   assert.deepEqual(result.books[0].chapters,e.original.chapters);
 });
+
+test('export uses the current shelf rather than replaying import-time metadata from the original',async()=>{
+  const e=fixture();e.options.bookMetas[0]={id:'book',title:'Current',progress:85};
+  e.options.blobStore.getBook=async()=>({...e.original,meta:{id:'book',title:'Imported',progress:12,custom:'old'}});
+  const result=await collectCoreadPackageData(e.options);
+  assert.deepEqual(result.books[0].meta,{id:'book',title:'Current',progress:85});
+  assert.equal(result.books[0].fullText,e.original.fullText);
+});
 test('an empty library exports empty category arrays without requesting a nonexistent book',async()=>{
   const e=fixture();e.options.bookMetas=[];
   for(const name of ['listReaderChatKeys','listReaderImages','listReaderVectorKeys','listAudio','listRetLog'])e.options.blobStore[name]=async()=>[];

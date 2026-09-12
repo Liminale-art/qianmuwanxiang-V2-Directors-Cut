@@ -172,7 +172,9 @@ export async function applyCoreadPackageData(data, {blobStore, coread, isPlainOb
     let indexed = false;
     try {
       const cover = b.coverB64 ? base64ToBlob(b.coverB64, b.coverMime || 'image/jpeg') : null;
-      await blobStore.putBookWithCover(b.meta.id, { meta: { title: b.meta.title, author: b.meta.author, mode: b.meta.mode || 'text' }, fullText: b.fullText || '', chapters: b.chapters || [], sig: b.sig || '', comicDescriptions: isPlainObject(b.comicDescriptions) ? b.comicDescriptions : {} }, cover);
+      // Keep import-time book metadata with its original if the later shelf handoff fails.
+      // This is not live reading state or proof of ownership; the shelf remains authoritative.
+      await blobStore.putBookWithCover(b.meta.id, { meta: { ...b.meta, mode: b.meta.mode || 'text' }, fullText: b.fullText || '', chapters: b.chapters || [], sig: b.sig || '', comicDescriptions: isPlainObject(b.comicDescriptions) ? b.comicDescriptions : {} }, cover);
       progress.ok++;
       if (cover) progress.coverOk++;
       check();

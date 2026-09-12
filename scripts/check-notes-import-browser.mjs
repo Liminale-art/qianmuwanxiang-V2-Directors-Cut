@@ -220,7 +220,7 @@ try{
     }finally{if(descriptor)Object.defineProperty(window,'indexedDB',descriptor);else delete window.indexedDB;}
     const {createCoreadImportViewGuard,prepareCoreadPackageExport,readCoreadPackageFile,applyCoreadPackageData,createCoreadImportProgress,finishCoreadPackageImport}=await import('/qianmu-reader-package.js');
     const atomicKey='reader-atomic',put=IDBObjectStore.prototype.put;
-    const originalPair=async()=>{await writer.putBook(atomicKey,{fullText:'old prose'});await writer.putCover(atomicKey,new Blob(['old cover']));};
+    const originalPair=async()=>{await writer.putBook(atomicKey,{meta:{id:atomicKey,title:'old title',progress:12},fullText:'old prose'});await writer.putCover(atomicKey,new Blob(['old cover']));};
     for(const failure of ['reader_books','reader_covers','synchronous-cover']){
       await originalPair();let rejected=false;
       try{
@@ -252,11 +252,13 @@ try{
       IDBObjectStore.prototype.put=function(value,key){const request=put.call(this,value,key);if(key===atomicKey&&this.name==='reader_covers')request.addEventListener('success',()=>this.transaction.abort(),{once:true});return request;};
       failedBookResult=await applyCoreadPackageData(bookPack,{blobStore:writer,coread:()=>readerState,isPlainObject:v=>v&&typeof v==='object'&&!Array.isArray(v),base64ToBlob:()=>new Blob(['new cover']),warn(){}});
     }finally{IDBObjectStore.prototype.put=put;}
-    check('actual importer keeps the old shelf entry and reports neither original as saved after cover abort',failedBookResult.failed===1&&failedBookResult.ok===0&&failedBookResult.coverOk===0&&readerState.books[0].title==='old title'&&(await db.getBook(atomicKey)).fullText==='old prose');
+    check('actual importer keeps the old shelf entry and reports neither original as saved after cover abort',failedBookResult.failed===1&&failedBookResult.ok===0&&failedBookResult.coverOk===0&&readerState.books[0].title==='old title'&&(await db.getBook(atomicKey)).fullText==='old prose'&&(await db.getBook(atomicKey)).meta.progress===12);
     readerState.books[0].hasCover=true;
     const legacyBook={books:[{meta:{id:atomicKey,title:'legacy title',hasCover:false,progress:25},fullText:'legacy prose'}]};
     const legacyBookResult=await applyCoreadPackageData(legacyBook,{blobStore:writer,coread:()=>readerState,isPlainObject:v=>v&&typeof v==='object'&&!Array.isArray(v),base64ToBlob(){throw Error('no cover in legacy pack');},warn(){throw Error('unexpected write failure');}});
     check('legacy book-only import retains the indexed cover and actual original while restoring progress',legacyBookResult.ok===1&&legacyBookResult.coverOk===0&&readerState.books[0].hasCover===true&&readerState.books[0].progress===25&&await (await db.getCover(atomicKey)).text()==='old cover');
+    const retainedBook=await db.getBook(atomicKey);
+    check('native committed original retains incoming book metadata without claiming the retained local cover',retainedBook.meta.id===atomicKey&&retainedBook.meta.progress===25&&retainedBook.meta.hasCover===false&&retainedBook.meta.mode==='text');
     check('cover metadata reconciliation leaves the imported source untouched',legacyBook.books[0].meta.hasCover===false&&legacyBook.books[0].meta!==readerState.books[0]);
     for(const mode of ['later-interruption','save-failure']){
       const first='checkpoint-'+mode+'-first',second='checkpoint-'+mode+'-second',shelf={books:[]},progress=createCoreadImportProgress();
@@ -350,5 +352,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,152);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,153);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

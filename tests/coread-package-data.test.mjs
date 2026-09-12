@@ -54,6 +54,25 @@ test('legacy book-only packs remain supported without calling absent media categ
   assert.equal(Object.values(result).every(n=>n===0),true);assert.deepEqual(e.calls,[]);
 });
 
+test('restored originals retain import-time book metadata without changing the incoming package',async()=>{
+  const e=fixture(),meta={id:'old',title:'Book',author:'Author',progress:37,lastChapterIndex:3,lastScrollRatio:0.4,custom:{legacy:true}},before=structuredClone(meta);
+  await applyCoreadPackageData({books:[{meta,fullText:'prose'}]},e.options);
+  const stored=e.calls[0][2].meta;
+  assert.deepEqual(stored,{...before,mode:'text'});assert.notEqual(stored,meta);assert.deepEqual(meta,before);
+  e.state.books[0].progress=90;
+  assert.equal(stored.progress,37,'raw metadata describes the import, not subsequent reading progress');
+});
+
+test('metadata survives a committed original when a stale owner prevents publishing its shelf entry',async()=>{
+  const e=fixture(),stored=new Map();let current=true,saves=0;
+  e.options.progress=createCoreadImportProgress();e.options.check=()=>{if(!current)throw Error('stale');};e.options.onBookIndexed=()=>saves++;
+  e.options.blobStore.putBookWithCover=async(id,record)=>{stored.set(id,structuredClone(record));current=false;};
+  await assert.rejects(applyCoreadPackageData({books:[{meta:{id:'old',title:'Restored',progress:42,lastChapterIndex:2},fullText:'prose'}]},e.options),/stale/);
+  assert.equal(stored.get('old').meta.progress,42);assert.equal(stored.get('old').meta.lastChapterIndex,2);
+  assert.equal(e.state.books[0].title,'before');assert.equal(saves,0,'preservation must not write the old import into a new owner');
+  assert.equal(e.options.progress.ok,1);assert.equal(e.options.progress.failed,0);
+});
+
 for(const method of ['putBookWithCover','putReaderChat','putReaderImageByKey','putReaderVectors','bulkPutAudio','pushRetLog'])test(method+' cannot resume the remaining import after its guard expires',async()=>{
   for(const fail of [false,true]){
     const e=fixture();e.options.progress=createCoreadImportProgress();let release,current=true;
