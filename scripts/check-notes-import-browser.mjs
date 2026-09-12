@@ -352,5 +352,17 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,159);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  // A fresh document must reread committed originals, not pass on stale module memory.
+  // The localStorage handoff below is synthetic; it is not an ST server acknowledgement.
+  await page.reload({waitUntil:'domcontentloaded'});
+  const restored=await page.evaluate(async()=>{
+    const db=await import('/qianmu-blobstore.js'),reader=db.createReaderPackageReader(),book=await reader.getBook('reader-atomic');
+    return {meta:book.meta,fullText:book.fullText,cover:await (await reader.getCover('reader-atomic')).text(),settings:JSON.parse(localStorage.getItem('synthetic-reader-settings'))};
+  });
+  assert.deepEqual(restored.meta,{id:'reader-atomic',title:'legacy title',hasCover:false,progress:25,mode:'text'});
+  assert.equal(restored.fullText,'legacy prose');assert.equal(restored.cover,'old cover');
+  checks.push('a fresh document rereads the retained original, cover and import-time metadata from native storage');
+  assert.equal(restored.settings.fontSize,16);assert.equal(restored.settings.books[0].id,'reader-atomic');assert.equal(restored.settings.books[0].hasCover,true);
+  checks.push('synthetic compensated settings survive reload independently without overwriting the original metadata snapshot');
+  assert.equal(checks.length,161);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}
