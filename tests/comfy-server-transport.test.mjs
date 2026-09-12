@@ -370,17 +370,21 @@ test('whole cloud job preserves the final query order with one grant and feeds t
   assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
 });
 
-test('cloud receiver reads the stored original before any cloud IO and does not settle or acknowledge the ledger', async t => {
+test('cloud receiver confirms full storage but never client ACK, then serves the original without further cloud IO', async t => {
   const f = await persistedCloudTask(t, cloudBinding, 2), calls = [], before = await f.store.inspectChannel(f.locator.channelKey); let grants = 0;
   const cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
   const receiver = createComfyCloudReceiver({ cache, ledger: { authorizeStaging: (...args) => { grants++; return f.ledger.authorizeStaging(...args); } } });
   const packet = await receiver.receive(f.req, { task: f.task, ...f.locator }, { ...assetReadOptions(f), requestImpl: mockNodeRequest(calls, call => multiAssetReply(f, call)) });
   assert.equal(packet.status, 'staged'); assert.equal(packet.result.images.length, 2); assert.equal(grants, 1); assert.equal(calls.length, 5);
+  const stored = await f.store.inspectChannel(f.locator.channelKey);
+  assert.equal(stored.entries[0].status, 'succeeded'); assert.equal(stored.entries[0].cloudDelivery.state, 'stored');
+  assert.equal(stored.entries[0].cloudDelivery.archivedAt, undefined);
+  assert.equal(stored.entries[0].fence, before.entries[0].fence); assert.deepEqual(stored.entries[0].cloudReceipt, before.entries[0].cloudReceipt);
   const reopened = createComfyCloudReceiver({ cache, ledger: f.ledger, download: () => assert.fail('saved originals must not depend on expired remote URLs') });
   const readback = await reopened.receive(f.req, { task: f.task, ...f.locator });
   assert.equal(readback.status, 'staged'); assert.equal(readback.result.receipt, packet.result.receipt);
   assert.deepEqual(readback.result.cloud.selection.map(row => row.assetId), twoCloudIds);
-  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), stored);
 });
 
 test('one receiver suppresses duplicate in-flight collection without sharing the first caller result', async t => {
@@ -397,10 +401,16 @@ test('one receiver suppresses duplicate in-flight collection without sharing the
   assert.equal((await first).status, 'staged'); assert.equal(calls.length, 3);
 });
 
-test('only a full original cache read can record stored completion, and repeats preserve its receipt and timestamps', async t => {
+async function stagedBeforeSettlement(t) {
   const f = await persistedCloudTask(t), calls = [], cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
-  const received = await createComfyCloudReceiver({ ledger: f.ledger, cache }).receive(f.req, { task: f.task, ...f.locator },
+  const downloaded = await downloadComfyCloudJob(f.req, { task: f.task, ...f.locator },
     { ...assetReadOptions(f), requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) });
+  await cache.reserve(downloaded.grant.identity); await cache.save(downloaded.grant.identity, downloaded.result);
+  return { f, calls, cache, received: { grant: downloaded.grant, result: await cache.load(downloaded.grant.identity) } };
+}
+
+test('only a full original cache read can record stored completion, and repeats preserve its receipt and timestamps', async t => {
+  const { f, calls, cache, received } = await stagedBeforeSettlement(t);
   assert.equal(await received.grant.readDelivery(), null);
   const saved = await received.grant.recordStored(cache);
   assert.equal(saved.delivery.state, 'stored'); assert.equal(saved.delivery.cacheReceipt, received.result.receipt);
@@ -415,9 +425,7 @@ test('only a full original cache read can record stored completion, and repeats 
 });
 
 test('stored completion refuses missing bytes, changed ownership, cancellation and conflicting cache receipts', async t => {
-  const f = await persistedCloudTask(t), calls = [], cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
-  const received = await createComfyCloudReceiver({ ledger: f.ledger, cache }).receive(f.req, { task: f.task, ...f.locator },
-    { ...assetReadOptions(f), requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) });
+  const { f, cache, received } = await stagedBeforeSettlement(t);
   const before = await f.store.inspectChannel(f.locator.channelKey);
   await assert.rejects(received.grant.recordStored({ load: identity => cache.load(identity, { metadataOnly: true }) }), { code: 'image_service_cloud_delivery_missing' });
   const controller = new AbortController(); controller.abort();
@@ -435,15 +443,62 @@ test('stored completion refuses missing bytes, changed ownership, cancellation a
 });
 
 test('a failed delivery ledger commit preserves original bytes and the conservative task state for later recovery', async t => {
-  const f = await persistedCloudTask(t), calls = [], cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
-  const received = await createComfyCloudReceiver({ ledger: f.ledger, cache }).receive(f.req, { task: f.task, ...f.locator },
-    { ...assetReadOptions(f), requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) });
+  const { f, cache, received } = await stagedBeforeSettlement(t);
   const broken = createComfyCloudLedger({ store: { ...f.store, transaction: async () => { throw new Error('simulated write unavailable'); } } });
   const grant = await broken.authorizeStaging(f.req, f.locator, f.task);
   await assert.rejects(grant.recordStored(cache));
   assert.equal((await f.store.inspectChannel(f.locator.channelKey)).entries[0].status, 'uncertain');
   assert.equal((await cache.load(received.grant.identity)).receipt, received.result.receipt);
   assert.equal((await received.grant.recordStored(cache)).delivery.state, 'stored');
+});
+
+test('archived cloud jobs never re-download and missing previously stored images require review instead of a silent fallback', async t => {
+  for (const archived of [true, false]) {
+    const { f, cache, received } = await stagedBeforeSettlement(t); await received.grant.recordStored(cache);
+    if (archived) await f.store.transaction(f.locator.channelKey, state => {
+      const row = state.entries[0]; row.updatedAt++;
+      row.cloudDelivery = { ...row.cloudDelivery, state: 'archived', archivedAt: row.updatedAt }; return { state };
+    });
+    await cache.discard(received.grant.identity, received.result.receipt);
+    let downloads = 0;
+    const receiver = createComfyCloudReceiver({ ledger: f.ledger, cache, download: () => { downloads++; assert.fail('a recorded archive/storage outcome is not permission to restart collection'); } });
+    const pending = receiver.receive(f.req, { task: f.task, ...f.locator });
+    if (archived) assert.deepEqual(await pending, { status: 'archived', task: f.task, result: null });
+    else await assert.rejects(pending, { code: 'comfy_cloud_receive_readback' });
+    assert.equal(downloads, 0); assert.equal(await cache.load(received.grant.identity), null);
+    assert.equal((await f.store.inspectChannel(f.locator.channelKey)).entries[0].cloudDelivery.state, archived ? 'archived' : 'stored');
+  }
+});
+
+test('receiver does not announce stored success when the ledger write failed and recovery needs no second full image read', async t => {
+  const { f, cache, received } = await stagedBeforeSettlement(t);
+  const broken = createComfyCloudLedger({ store: { ...f.store, transaction: async () => { throw new Error('simulated unavailable ledger'); } } });
+  const input = { task: f.task, ...f.locator }, download = () => assert.fail('keep the already verified private image');
+  await assert.rejects(createComfyCloudReceiver({ ledger: broken, cache, download }).receive(f.req, input), { code: 'comfy_cloud_receive_readback' });
+  assert.equal((await f.store.inspectChannel(f.locator.channelKey)).entries[0].status, 'uncertain');
+  assert.equal((await cache.load(received.grant.identity)).receipt, received.result.receipt);
+  let fullReads = 0;
+  const result = await createComfyCloudReceiver({ ledger: f.ledger, download, cache: { ...cache, load: (...args) => {
+    if (!args[1]?.metadataOnly) fullReads++; return cache.load(...args);
+  } } }).receive(f.req, input);
+  assert.equal(result.status, 'staged'); assert.equal(result.delivery.state, 'stored'); assert.equal(fullReads, 1);
+});
+
+test('an archive confirmed during readback cannot be downgraded into another image delivery', async t => {
+  const { f, cache } = await stagedBeforeSettlement(t);
+  const ledger = { authorizeStaging: async (...args) => {
+    const grant = await f.ledger.authorizeStaging(...args);
+    return { ...grant, recordStored: async (...input) => {
+      const saved = await grant.recordStored(...input);
+      await f.store.transaction(f.locator.channelKey, state => {
+        const row = state.entries[0]; row.updatedAt++;
+        row.cloudDelivery = { ...row.cloudDelivery, state: 'archived', archivedAt: row.updatedAt }; return { state };
+      });
+      return saved; // Simulate the earlier transaction snapshot arriving after a later ACK.
+    } };
+  } };
+  const received = await createComfyCloudReceiver({ ledger, cache, download: () => assert.fail('no download needed') }).receive(f.req, { task: f.task, ...f.locator });
+  assert.deepEqual(received, { status: 'archived', task: f.task, result: null });
 });
 
 test('account changes or cancellation after the private write retain evidence but block delivery', async t => {
@@ -461,7 +516,7 @@ test('account changes or cancellation after the private write retain evidence bu
     const recovered = await createComfyCloudReceiver({ ledger: f.ledger, cache, download: () => assert.fail('do not regenerate or re-download retained evidence') })
       .receive(f.req, { task: f.task, ...f.locator });
     assert.equal(recovered.status, 'staged'); assert.equal(calls.length, 3);
-    assert.equal((await f.store.inspectChannel(f.locator.channelKey)).entries[0].status, 'uncertain');
+    assert.equal((await f.store.inspectChannel(f.locator.channelKey)).entries[0].status, 'succeeded');
   }
 });
 

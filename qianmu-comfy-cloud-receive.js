@@ -1,6 +1,6 @@
 // Server-internal collection coordinator, not an HTTP route. The host supplies
-// one receiver per cloud service and its shutdown signal. No submission, ACK,
-// ledger settlement, cache deletion or ownership of the host store here.
+// one receiver per cloud service and its shutdown signal. Storage is confirmed
+// only after full readback. No submission, client ACK, deletion or store ownership.
 import { bindComfyCloudTask } from './qianmu-comfy-cloud-protocol.js';
 import { downloadComfyCloudJob } from './qianmu-comfy-cloud-asset-read.js';
 import { normalizeComfyCloudStage } from './qianmu-comfy-cloud-stage-contract.js';
@@ -22,6 +22,7 @@ export function createComfyCloudReceiver({ ledger, cache, download = downloadCom
         check();
         const locator = { channelKey: input.channelKey, attemptId: input.attemptId, apiKey: input.apiKey };
         const grant = await ledger.authorizeStaging(req, locator, task);
+        if (typeof grant?.readDelivery !== 'function' || typeof grant?.recordStored !== 'function') throw fail('authorization', '原任务缺少持久领取确认能力');
         const verify = async () => { check(); const receipt = await grant.verify(); check(); return receipt; };
         await verify();
         key = JSON.stringify([grant.identity.namespace, grant.identity.channelKey, grant.identity.attemptId]);
@@ -29,15 +30,19 @@ export function createComfyCloudReceiver({ ledger, cache, download = downloadCom
         active.add(key); owned = true;
         const read = async () => {
           await verify();
-          const result = await cache.load(grant.identity); // Full byte/hash check, never metadataOnly proof.
+          const delivery = await grant.readDelivery(); await verify();
+          if (delivery?.state === 'archived') return Object.freeze({ status: 'archived', task, result: null });
+          const meta = await cache.load(grant.identity, { metadataOnly: true });
           await verify();
-          if (result) {
-            const cloud = normalizeComfyCloudStage(result.cloud, grant.identity);
-            if (result.ok !== true || result.ready !== true || !/^[a-f0-9]{64}$/.test(result.receipt || '')
-              || result.provider !== task.provider || result.upstreamId !== task.taskId || result.model !== grant.receipt.stillOutput.model
-              || JSON.stringify(cloud.receipt) !== JSON.stringify(grant.receipt)) throw fail('readback', '暂存原图与原任务不一致，未交付');
+          if (!meta?.ready) {
+            if (delivery) throw fail('readback', '原任务已确认暂存但原图缺失，请核查；未重新下载');
+            return null;
           }
-          return result;
+          // recordStored performs the full read/hash check and returns those
+          // bytes, so the receiver does not hold two full readback copies.
+          const confirmed = await grant.recordStored(cache, { signal }); await verify();
+          if (confirmed.delivery.state === 'archived') return Object.freeze({ status: 'archived', task, result: null });
+          return Object.freeze({ status: 'staged', task, grant, result: confirmed.result, delivery: confirmed.delivery });
         };
         stage = 'readback'; let result = await read();
         if (!result) {
@@ -52,14 +57,19 @@ export function createComfyCloudReceiver({ ledger, cache, download = downloadCom
           if (!result) {
             stage = 'download';
             // Reuse the initial grant, not a fresh authorization after cache IO.
+            const networkGrant = Object.freeze({ ...grant, verify: async () => {
+              const receipt = await verify();
+              if (await grant.readDelivery()) throw fail('result_changed', '原任务已有保存记录，请重新领取；未继续下载');
+              check(); return receipt;
+            } });
             const downloaded = await download(req, { task, ...locator }, { ...options, signal,
-              ledger: { authorizeStaging: async () => { await verify(); return grant; } } });
-            await verify();
+              ledger: { authorizeStaging: async () => { await networkGrant.verify(); return networkGrant; } } });
+            await networkGrant.verify();
             if (downloaded.status !== 'integrity_checked') {
               if (!['queued', 'running', 'canceling', 'canceled', 'failed', 'expired'].includes(downloaded.status) || downloaded.result !== null) throw fail('download', '原任务收图状态不完整，未交付');
               return Object.freeze({ status: downloaded.status, task, result: null });
             }
-            if (downloaded.grant !== grant || JSON.stringify(downloaded.task) !== JSON.stringify(task)) throw fail('download', '原图未沿用原任务授权，未暂存');
+            if (downloaded.grant !== networkGrant || JSON.stringify(downloaded.task) !== JSON.stringify(task)) throw fail('download', '原图未沿用原任务授权，未暂存');
             const cloud = normalizeComfyCloudStage(downloaded.result?.cloud, grant.identity);
             if (JSON.stringify(cloud.receipt) !== JSON.stringify(grant.receipt)) throw fail('download', '原图收据已变化，未暂存');
             stage = 'save'; await verify();
@@ -73,7 +83,10 @@ export function createComfyCloudReceiver({ ledger, cache, download = downloadCom
         }
         if (!result) throw fail('readback', '原图暂存尚未完整，原任务仍保留');
         await verify();
-        return Object.freeze({ status: 'staged', task, grant, result });
+        const latest = await grant.readDelivery(); check();
+        if (latest?.state === 'archived') return Object.freeze({ status: 'archived', task, result: null });
+        if (result.status === 'staged' && latest?.cacheReceipt !== result.result.receipt) throw fail('readback', '原图保存凭证已变化，未交付');
+        return result;
       } catch (cause) {
         if (signal?.aborted) throw fail('cancelled', '已停止领取，原任务和暂存仍保留');
         if (String(cause?.code).startsWith('comfy_cloud_receive_')) throw cause;
