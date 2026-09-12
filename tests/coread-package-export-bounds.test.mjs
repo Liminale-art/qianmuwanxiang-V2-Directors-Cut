@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {prepareCoreadPackageExport,readCoreadPackageFile} from '../qianmu-reader-package.js';
+import {prepareCoreadPackageExport,readCoreadPackageFile,inspectCoreadPackage} from '../qianmu-reader-package.js';
 import {assertJsonInputBounds} from '../qianmu-json-input.js';
 
 const pack=()=>({type:'qianmu-coread',version:5,books:[{meta:{id:'book',title:'月光'},fullText:'original'}],prefs:{fontSize:16},chats:[],images:[],vectors:[],audio:[],retrievalLogs:[]});
 const bounded=(payload,limits)=>{
-  const c=vm.createContext({JSON,Blob,assertJsonInputBounds,COREAD_PACKAGE_LIMITS:{bytes:10000,depth:40,nodes:500000,...limits}});
+  const c=vm.createContext({JSON,Blob,assertJsonInputBounds,inspectCoreadPackage,COREAD_PACKAGE_LIMITS:{bytes:10000,depth:40,nodes:500000,...limits}});
   vm.runInContext(prepareCoreadPackageExport.toString(),c);
   return c.prepareCoreadPackageExport(payload);
 };

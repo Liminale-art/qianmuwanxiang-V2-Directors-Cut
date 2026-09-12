@@ -213,6 +213,11 @@ try{
       check('normal temporary notes still work but failed imports never become temporary',local.some(n=>n.id==='temporary')&&!local.some(n=>n.id==='no-storage'));
     }finally{if(descriptor)Object.defineProperty(window,'indexedDB',descriptor);else delete window.indexedDB;}
     const {createCoreadImportViewGuard,prepareCoreadPackageExport,readCoreadPackageFile}=await import('/qianmu-reader-package.js');
+    for(const books of [[{meta:{id:'reader-book'}}],[{meta:{id:'reader-book'},fullText:'first'},{meta:{id:'reader-book'},fullText:'second'}]]){
+      const before=await db.getBook('reader-book');let rejected=false;
+      try{const invalid=await readCoreadPackageFile(new File([JSON.stringify({type:'qianmu-coread',version:5,books})],'broken-reader.json'));for(const book of invalid.books)await writer.putBook(book.meta.id,book);}catch(error){rejected=error.message.includes('未写入内容');}
+      check('native reader preflight preserves the existing original for missing text and duplicate IDs',rejected&&JSON.stringify(await db.getBook('reader-book'))===JSON.stringify(before));
+    }
     const pack={type:'qianmu-coread',version:5,books:[{meta:{id:'synthetic-book'},fullText:'月光 synthetic original'}],prefs:{fontSize:16}};
     const normalPack=prepareCoreadPackageExport(pack),readPack=await readCoreadPackageFile(normalPack.blob);
     check('native Blob export round trips Unicode originals through the real package reader',!normalPack.preservationOnly&&JSON.stringify(readPack)===JSON.stringify(pack));
@@ -273,5 +278,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,124);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,126);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

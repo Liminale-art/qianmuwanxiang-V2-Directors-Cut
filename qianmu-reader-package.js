@@ -8,7 +8,10 @@ export function prepareCoreadPackageExport(payload) {
   const text = JSON.stringify(payload), blob = new Blob([text], {type:'application/json'});
   let preservationOnly = blob.size > COREAD_PACKAGE_LIMITS.bytes;
   if (!preservationOnly) {
-    try { assertJsonInputBounds(text, {maxBytes:COREAD_PACKAGE_LIMITS.bytes,maxDepth:COREAD_PACKAGE_LIMITS.depth,maxNodes:COREAD_PACKAGE_LIMITS.nodes,label:'伴读整包'}); }
+    try {
+      assertJsonInputBounds(text, {maxBytes:COREAD_PACKAGE_LIMITS.bytes,maxDepth:COREAD_PACKAGE_LIMITS.depth,maxNodes:COREAD_PACKAGE_LIMITS.nodes,label:'伴读整包'});
+      inspectCoreadPackage(payload);
+    }
     catch (_) { preservationOnly = true; }
   }
   return {blob,preservationOnly};
@@ -97,14 +100,48 @@ export async function readCoreadPackageFile(file) {
     throw new Error('伴读整包须在256 MiB以内；请保留原包，大包暂不直接恢复。');
   }
   const data = parseBoundedJson(await file.text(), {maxBytes:COREAD_PACKAGE_LIMITS.bytes,maxDepth:COREAD_PACKAGE_LIMITS.depth,maxNodes:COREAD_PACKAGE_LIMITS.nodes,label:'伴读整包'});
+  inspectCoreadPackage(data);
+  return data;
+}
+
+// Read-only structural preflight. Reject a broken later entry before any overwrite.
+// Optional v1-v5 categories stay optional; unknown historical record fields are kept.
+export function inspectCoreadPackage(data) {
   const record = value => !!value && typeof value === 'object' && !Array.isArray(value);
   if (!record(data) || data.type !== 'qianmu-coread' || !Array.isArray(data.books)) throw new Error('不是有效的千幕阅读数据文件。');
-  const version = data.version === undefined ? 1 : Number(data.version);
+  const version = data.version === undefined ? 1 : (typeof data.version === 'number' || typeof data.version === 'string') ? Number(data.version) : NaN;
   if (!Number.isInteger(version) || version < 1 || version > 5) throw new Error('暂不支持此伴读整包版本，请保留原包。');
   for (const key of ['chats','images','vectors','audio','retrievalLogs']) {
     if (data[key] !== undefined && !Array.isArray(data[key])) throw new Error('伴读整包条目格式无效。');
   }
   if (data.prefs !== undefined && !record(data.prefs)) throw new Error('伴读整包设置格式无效。');
+  const groups=[['books','书籍'],['chats','对话与记忆'],['images','插图'],['vectors','检索资料'],['audio','语音'],['retrievalLogs','检索记录']];
+  for(const [key,label] of groups){
+    const seen=new Set();
+    for(const [index,item] of (data[key]||[]).entries()){
+      const fail=message=>{throw Error(`伴读${label}第 ${index+1} 项${message}；未写入内容，请保留原包。`);};
+      if(!record(item))fail('格式无效');
+      if(key==='retrievalLogs')continue; // Log IDs are intentionally recreated by the writer.
+      if(key==='books'&&!record(item.meta))fail('书目信息缺失');
+      const id=key==='books'?item.meta.id:item.key;
+      if(typeof id!=='string'||!id.trim())fail('编号无效');
+      if(seen.has(id))fail('编号重复，无法确定应恢复哪一份');
+      seen.add(id);
+      if(key==='books'){
+        // Empty text is valid (e.g. a comic), missing/non-text originals are not.
+        if(typeof item.fullText!=='string')fail('正文原件缺失或格式无效');
+        if(item.chapters!==undefined&&!Array.isArray(item.chapters))fail('章节格式无效');
+        if(item.comicDescriptions!==undefined&&!record(item.comicDescriptions))fail('漫画描述格式无效');
+        if(item.coverB64!==undefined&&typeof item.coverB64!=='string')fail('封面格式无效');
+        if(item.meta.hasCover&&!item.coverB64)fail('声明的封面原件缺失');
+      }else if(key==='chats'||key==='vectors'){
+        if(!record(item.rec))fail('记录缺失或格式无效');
+      }else{
+        if(typeof item.b64!=='string'||!item.b64)fail('媒体原件缺失或格式无效');
+        if(key==='audio'&&item.meta!==undefined&&!record(item.meta))fail('媒体信息格式无效');
+      }
+    }
+  }
   return data;
 }
 
