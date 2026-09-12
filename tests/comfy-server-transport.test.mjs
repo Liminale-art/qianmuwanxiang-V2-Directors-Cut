@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { Writable, PassThrough } from 'node:stream';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createComfyServerTransport, pinnedComfyFetch } from '../qianmu-comfy-server-transport.js';
+import { createComfyServerTransport, createComfyCloudServerTransport, pinnedComfyFetch } from '../qianmu-comfy-server-transport.js';
+import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
 import { init, exit } from '../server-plugin.js';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
@@ -36,6 +37,89 @@ function mockNodeRequest(calls, respond = () => ({ body: {} })) {
   };
 }
 const response = () => ({ statusCode: 200, headers: {}, set(k, v) { this.headers[k.toLowerCase()] = v; return this; }, status(v) { this.statusCode = v; return this; }, json(v) { this.body = v; return this; } });
+const cloudBinding = bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2');
+const rhBinding = bindComfyCloudProtocol('https://www.runninghub.cn', 'runninghub-workflow-v1');
+const cloudGrant = async () => async () => {};
+
+test('cloud transport requires a logged-in account and a recheckable grant before any DNS/network', async () => {
+  const request = { binding: cloudBinding, operation: 'submit' }, denied = { resolveHost: () => assert.fail('no DNS'), requestImpl: () => assert.fail('no request') };
+  await assert.rejects(createComfyCloudServerTransport({}, request, { ...denied, authorizeTarget: cloudGrant }), { code: 'comfy_transport_authentication_required', submissionState: 'not_submitted' });
+  await assert.rejects(createComfyCloudServerTransport(account(), request, denied), { code: 'comfy_transport_cloud_authorization' });
+  await assert.rejects(createComfyCloudServerTransport(account(), request, { ...denied, authorizeTarget: async () => {} }), { code: 'comfy_transport_cloud_authorization' });
+});
+
+test('cloud read POST is pinned to the original RH task and cannot submit or forward cookies', async () => {
+  const task = bindComfyCloudTask(rhBinding, '1904152026220003329'), calls = []; let resolutions = 0;
+  const transport = await createComfyCloudServerTransport(account(), { binding: rhBinding, operation: 'query', task }, {
+    authorizeTarget: cloudGrant, resolveHost: async () => { resolutions++; return publicDns(); }, requestImpl: mockNodeRequest(calls),
+  });
+  const init = { method: 'POST', headers: { Authorization: 'Bearer test-only-secret', 'Content-Type': 'application/json' }, body: JSON.stringify({ taskId: task.taskId }) };
+  const result = await transport.fetchImpl(transport.plan.url, init); await result.text();
+  assert.equal(transport.plan.effect, 'read'); assert.equal(transport.plan.createsJob, false); assert.equal(resolutions, 1); assert.equal(calls.length, 1);
+  const ip = await new Promise((resolve, reject) => calls[0].options.lookup('www.runninghub.cn', {}, (error, value) => error ? reject(error) : resolve(value)));
+  assert.equal(ip, '8.8.8.8'); assert.equal(calls[0].options.headers.authorization, 'Bearer test-only-secret');
+  for (const [url, override] of [[`${rhBinding.origin}/task/openapi/create`, {}], [transport.plan.url, { body: JSON.stringify({ taskId: 'other' }) }],
+    [transport.plan.url, { body: JSON.stringify({ taskId: task.taskId, workflowId: 'another' }) }], [transport.plan.url, { headers: { Cookie: 'secret' } }]]) {
+    await assert.rejects(transport.fetchImpl(url, { ...init, ...override }), error => error.submissionState === 'accepted' && error.upstreamId === task.taskId);
+  }
+  assert.equal(calls.length, 1);
+});
+
+test('cloud submission refuses redirects and cannot dispatch again after an uncertain first request', async () => {
+  const calls = [], transport = await createComfyCloudServerTransport(account(), { binding: cloudBinding, operation: 'submit' }, {
+    authorizeTarget: cloudGrant, resolveHost: publicDns, requestImpl: mockNodeRequest(calls, () => ({ status: 302, headers: { location: 'https://else.test' } })),
+  });
+  const init = { method: 'POST', headers: { 'Idempotency-Key': '00000000-0000-4000-8000-000000000000' }, body: '{}' };
+  await assert.rejects(transport.fetchImpl(transport.plan.url, init), { code: 'comfy_transport_redirect', submissionState: 'unknown' });
+  await assert.rejects(transport.fetchImpl(transport.plan.url, init), { code: 'comfy_transport_cloud_replay', submissionState: 'unknown' });
+  assert.equal(calls.length, 1);
+});
+
+test('concurrent cloud submit calls cannot both cross the final dispatch fence', async () => {
+  const calls = [], transport = await createComfyCloudServerTransport(account(), { binding: cloudBinding, operation: 'submit' }, {
+    authorizeTarget: cloudGrant, resolveHost: publicDns, requestImpl: mockNodeRequest(calls),
+  });
+  const results = await Promise.allSettled([1, 2].map(() => transport.fetchImpl(transport.plan.url, { method: 'POST', body: '{}' })));
+  assert.equal(calls.length, 1); assert.equal(results.filter(row => row.status === 'fulfilled').length, 1);
+  const rejected = results.find(row => row.status === 'rejected').reason;
+  assert.equal(rejected.code, 'comfy_transport_cloud_replay'); assert.equal(rejected.submissionState, 'unknown');
+  await results.find(row => row.status === 'fulfilled').value.text();
+});
+
+test('cloud task recovery preserves accepted identity when account changes after preparation', async () => {
+  const req = account(), task = bindComfyCloudTask(rhBinding, '1904152026220003329');
+  const transport = await createComfyCloudServerTransport(req, { binding: rhBinding, operation: 'query', task }, {
+    authorizeTarget: cloudGrant, resolveHost: publicDns, requestImpl: () => assert.fail('no request after account change'),
+  });
+  req.user.profile.handle = 'bob';
+  assert.throws(() => transport.assertCurrent(), { submissionState: 'accepted', upstreamId: task.taskId });
+  await assert.rejects(transport.verify(), { submissionState: 'accepted', upstreamId: task.taskId });
+  await assert.rejects(transport.fetchImpl(transport.plan.url, { method: 'POST', body: JSON.stringify({ taskId: task.taskId }) }), { submissionState: 'accepted', upstreamId: task.taskId });
+});
+
+test('grant revocation, private DNS and identity changes cannot use a prepared cloud request', async () => {
+  const calls = [], req = account(); let granted = true;
+  const transport = await createComfyCloudServerTransport(req, { binding: cloudBinding, operation: 'submit' }, {
+    authorizeTarget: async () => async () => { if (!granted) throw Error('revoked secret details'); }, resolveHost: publicDns, requestImpl: mockNodeRequest(calls),
+  });
+  granted = false;
+  await assert.rejects(transport.fetchImpl(transport.plan.url, { method: 'POST' }), { code: 'comfy_transport_cloud_unavailable', submissionState: 'not_submitted' });
+  granted = true; req.user.profile.handle = 'bob';
+  await assert.rejects(transport.fetchImpl(transport.plan.url, { method: 'POST' }), { code: 'comfy_transport_account_changed', submissionState: 'not_submitted' });
+  assert.equal(calls.length, 0);
+  await assert.rejects(createComfyCloudServerTransport(account(true), { binding: cloudBinding, operation: 'submit' }, {
+    authorizeTarget: cloudGrant, resolveHost: async () => [{ address: '127.0.0.1', family: 4 }], requestImpl: () => assert.fail('private connection'),
+  }));
+});
+
+test('native transport does not inherit cloud paths, idempotency headers or arbitrary operation capabilities', async () => {
+  const calls = [], transport = await createComfyServerTransport(account(), { baseUrl: cloudBinding.origin }, {
+    operation: 'generate', resolveHost: publicDns, requestImpl: mockNodeRequest(calls),
+  });
+  await assert.rejects(transport.fetchImpl(`${cloudBinding.origin}/api/v2/jobs`, { method: 'POST' }), { code: 'comfy_transport_target_changed' });
+  await assert.rejects(transport.fetchImpl(`${cloudBinding.origin}/prompt`, { method: 'POST', headers: { 'Idempotency-Key': '00000000-0000-4000-8000-000000000000' } }), { code: 'comfy_transport_headers' });
+  assert.equal(calls.length, 0);
+});
 async function routes(options = {}) {
   const handlers = new Map();
   const dataRoot = await fs.mkdtemp(path.join(tmpdir(), 'qianmu-comfy-routes-')); roots.push(dataRoot);

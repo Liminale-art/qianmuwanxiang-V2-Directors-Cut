@@ -8,6 +8,10 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { ImageGatewayError, validateGatewayBaseUrl } from './qianmu-image-gateway.js';
 import { imageServiceAccount } from './qianmu-image-service-access.js';
+import { planComfyCloudOperation } from './qianmu-comfy-cloud-protocol.js';
+
+// Only the explicit cloud factory can add this capability; native callers stay native.
+const CLOUD_PLAN = Symbol('verified cloud operation');
 
 const fail = (code, message, status = 400) => Object.assign(new ImageGatewayError(status, `comfy_transport_${code}`, message), { submissionState: 'not_submitted' });
 const oneSegment = value => {
@@ -66,7 +70,7 @@ function allowedOperation(base, url, method, operation) {
   return !folder || folder.split('/').every(oneSegment);
 }
 
-export function pinnedComfyFetch(base, addresses, { operation, requestImpl, assertCurrent = () => {}, beforeRequest, signal } = {}) {
+export function pinnedComfyFetch(base, addresses, { operation, requestImpl, assertCurrent = () => {}, beforeRequest, signal, [CLOUD_PLAN]: cloudPlan } = {}) {
   base = new URL(base); // Do not retain a caller-mutable URL or DNS answer array.
   const host = base.hostname.toLowerCase().replace(/^\[|\]$/g, '');
   const list = addressList(addresses);
@@ -74,10 +78,22 @@ export function pinnedComfyFetch(base, addresses, { operation, requestImpl, asse
   return async (rawUrl, init = {}) => {
     assertCurrent(); signal?.throwIfAborted();
     const url = new URL(rawUrl), method = String(init.method || 'GET').toUpperCase();
-    if (!allowedOperation(base, url, method, operation)) throw fail('target_changed', 'Comfy 请求目标或操作已变化');
+    const allowed = cloudPlan ? base.origin === cloudPlan.origin && url.href === cloudPlan.url && method === cloudPlan.method
+      : allowedOperation(base, url, method, operation);
+    if (!allowed) throw fail('target_changed', 'Comfy 请求目标或操作已变化');
     await beforeRequest?.(); assertCurrent(); signal?.throwIfAborted();
     const headers = new Headers(init.headers);
-    if ([...headers.keys()].some(key => !['authorization', 'content-type', 'accept'].includes(key))) throw fail('headers', 'Comfy 请求包含不允许的转发头');
+    const headerNames = ['authorization', 'content-type', 'accept'];
+    if (cloudPlan?.protocol === 'comfy-cloud-v2' && cloudPlan.createsJob) headerNames.push('idempotency-key');
+    if ([...headers.keys()].some(key => !headerNames.includes(key))) throw fail('headers', 'Comfy 请求包含不允许的转发头');
+    if (headers.has('idempotency-key') && !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(headers.get('idempotency-key'))) throw fail('headers', '云端幂等编号无效');
+    if (cloudPlan?.provider === 'runninghub' && cloudPlan.taskId) {
+      let body; try { if (typeof init.body === 'string' && init.body.length <= 4096) body = JSON.parse(init.body); } catch (_) { /* Denied below. */ }
+      const keys = cloudPlan.operation === 'cancel' ? ['taskId', 'apiKey'] : ['taskId'];
+      if (!body || Array.isArray(body) || body.taskId !== cloudPlan.taskId || Object.keys(body).some(key => !keys.includes(key))
+        || (Object.hasOwn(body, 'apiKey') && (typeof body.apiKey !== 'string' || body.apiKey.length > 2048))) throw fail('body', '云端请求与原任务编号不匹配');
+    }
+    if (cloudPlan?.provider === 'comfy-cloud' && cloudPlan.operation === 'cancel' && init.body != null) throw fail('body', '云端取消操作不接受额外参数');
     if (method === 'GET' && init.body != null) throw fail('body', 'Comfy 只读请求不能携带正文');
     // Web Request supplies the correct multipart boundary without buffering the image.
     const combined = signal && init.signal ? AbortSignal.any([signal, init.signal]) : signal || init.signal;
@@ -111,7 +127,7 @@ export function pinnedComfyFetch(base, addresses, { operation, requestImpl, asse
   };
 }
 
-export async function createComfyServerTransport(req, input, { operation, resolveHost = lookup, requestImpl, signal, dnsTimeoutMs = 5000, authorizeTarget } = {}) {
+export async function createComfyServerTransport(req, input, { operation, resolveHost = lookup, requestImpl, signal, dnsTimeoutMs = 5000, authorizeTarget, [CLOUD_PLAN]: cloudPlan } = {}) {
   let account;
   try { account = imageServiceAccount(req); } catch (_) { throw fail('authentication_required', '请先登录 ST 账户再连接 Comfy', 401); }
   const allowPrivateNetwork = input?.allowPrivateNetwork === true;
@@ -122,9 +138,11 @@ export async function createComfyServerTransport(req, input, { operation, resolv
     signal?.throwIfAborted();
   };
   const rawBase = safeRoot(input?.baseUrl);
+  if (cloudPlan && (allowPrivateNetwork || rawBase.origin !== cloudPlan.origin || typeof authorizeTarget !== 'function')) throw fail('cloud_authorization', '云端连接尚未获得目标授权');
   if (!allowPrivateNetwork && rawBase.protocol !== 'https:') throw fail('address', '远程 Comfy 地址必须使用 HTTPS');
   assertCurrent();
   const verifyTarget = await authorizeTarget?.(req, { baseUrl: rawBase.toString(), allowPrivateNetwork });
+  if (cloudPlan && typeof verifyTarget !== 'function') throw fail('cloud_authorization', '云端连接缺少持续授权校验');
   assertCurrent();
   const verify = async () => { assertCurrent(); await verifyTarget?.(); assertCurrent(); };
   let addresses, timer;
@@ -146,5 +164,38 @@ export async function createComfyServerTransport(req, input, { operation, resolv
   await resolveOnce(rawBase.hostname.replace(/^\[|\]$/g, ''), { all: true, verbatim: true });
   const base = await validateGatewayBaseUrl(rawBase.toString(), { allowPrivateNetwork, resolveHost: async () => addresses });
   await verify();
-  return { base, assertCurrent, verify, fetchImpl: pinnedComfyFetch(base, addresses, { operation, requestImpl, assertCurrent, beforeRequest: verify, signal }) };
+  return { base, assertCurrent, verify, fetchImpl: pinnedComfyFetch(base, addresses, { operation, requestImpl, assertCurrent, beforeRequest: verify, signal, [CLOUD_PLAN]: cloudPlan }) };
+}
+
+// Internal adapter boundary only; no public cloud route/capability is enabled yet.
+export async function createComfyCloudServerTransport(req, { binding, operation, task }, options = {}) {
+  const plan = planComfyCloudOperation(binding, operation, task);
+  const requestImpl = options.requestImpl || httpsRequest;
+  let sent = false;
+  const annotate = cause => {
+    const error = cause instanceof ImageGatewayError ? cause : fail('cloud_unavailable', '云端请求暂不可用，请核查原任务', 502);
+    error.submissionState = plan.taskId ? 'accepted' : sent ? 'unknown' : 'not_submitted';
+    if (plan.taskId) error.upstreamId = plan.taskId;
+    return error;
+  };
+  try {
+    const transport = await createComfyServerTransport(req, { baseUrl: plan.origin }, { ...options, operation: 'cloud', [CLOUD_PLAN]: plan,
+      requestImpl: (...args) => {
+        // Recheck at dispatch too: concurrent calls may both pass the outer check
+        // before their awaited authorization checks finish.
+        if (plan.createsJob && sent) throw fail('cloud_replay', '此云端提交已发出，请核查原任务，未重复提交');
+        sent = true; return requestImpl(...args);
+      },
+    });
+    const fetchImpl = async (url, init) => {
+      try {
+        if (plan.createsJob && sent) throw fail('cloud_replay', '此云端提交已发出，请核查原任务，未重复提交');
+        return await transport.fetchImpl(url, init);
+      } catch (error) { throw annotate(error); }
+    };
+    return { ...transport, plan, fetchImpl,
+      assertCurrent: () => { try { transport.assertCurrent(); } catch (error) { throw annotate(error); } },
+      verify: async () => { try { await transport.verify(); } catch (error) { throw annotate(error); } },
+    };
+  } catch (error) { throw annotate(error); }
 }
