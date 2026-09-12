@@ -255,3 +255,23 @@ test('library apply reads the verified version instead of trusting a changed cal
   await e.context.storyboardApplyComfyLibraryRecipe(e.root,e.state,{...e.rows[1],document:{...e.rows[1].document,positivePrompt:'forged callback prefix'}});
   assert.equal(e.context.storyboardCurrentComfyRecipe(e.state).document.positivePrompt,'landscape quality');
 });
+
+for(const [name,factory,key] of [['fixed-route',environment,'comfyRoutePromptLayer'],['workbench',workbenchEnvironment,'comfyWorkbenchPromptLayer']]){
+  test(`${name} historical prompt retirement cannot erase frozen additions or re-sign an altered replay`,async()=>{
+    const e=await factory();await e.context.storyboardCompilePrompt(null);await e.context.storyboardGenerate(null,{automatic:true});
+    const saved=core.sanitizeStoryboardSnapshot(e.jobs[0]),original=JSON.stringify(saved);
+    const holder=job=>name==='workbench'?job.payload:job.profile;
+    assert.ok(holder(saved)[key].positive);assert.ok(holder(saved)[key].negative);assert.ok(saved.payload.promptRendering);
+    const loads=e.calls.filter(call=>Array.isArray(call)&&call[0]==='load').length,llmCalls=e.llmCalls.length;
+    // Retirement applies to new jobs; enqueue is not permission to rewrite a historical receipt.
+    for(const prepare of [false,true])for(const erase of [false,true]){
+      const replay=plain(saved);
+      if(erase)delete holder(replay)[key];else holder(replay)[key]={positive:'',negative:''};
+      const before=JSON.stringify(replay);
+      await assert.rejects(()=>prompts.prepareComfyPromptJob(replay,{prepare,namespace}),{code:'storyboard_prompt_format'});
+      assert.equal(JSON.stringify(replay),before);
+    }
+    await prompts.prepareComfyPromptJob(saved,{namespace});assert.equal(JSON.stringify(saved),original);
+    assert.equal(e.llmCalls.length,llmCalls);assert.equal(e.calls.filter(call=>Array.isArray(call)&&call[0]==='load').length,loads);
+  });
+}
