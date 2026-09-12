@@ -21,8 +21,14 @@ test('workflow settings default collapsed; blank/invalid documents remain repair
   const base={profile:{comfyWorkflow:JSON.stringify(graph)},capabilities:{},workflowNodes:1};
   const collapsed=comfyView.renderComfyWorkbench(base);assert.doesNotMatch(collapsed, /data-storyboard-card="comfy-workflow" open/);
   for(const variant of [{profile:{comfyWorkflow:''}},{workflowNotice:'bad <script>'},{collapsed:{'comfy-workflow':false}}])assert.match(comfyView.renderComfyWorkbench({...base,...variant}),/data-storyboard-card="comfy-workflow" open/);
-  const html=comfyView.renderComfyWorkbench({...base,profile:{comfyWorkflow:'{"value":"</textarea><script>bad()</script>"}'},promptLayer:{positive:'</textarea><script>bad()</script>'}});
+  const html=comfyView.renderComfyWorkbench({...base,profile:{comfyWorkflow:'{"value":"</textarea><script>bad()</script>"}'},workflowNotice:'</textarea><script>bad()</script>'});
   assert.doesNotMatch(html,/<script>/);assert.match(html,/&lt;script&gt;/);
+});
+
+test('retired Comfy prompt and role controls stay absent even with populated old settings',()=>{
+  const html=comfyView.renderComfyWorkbench({profile:{comfyCharacterEnabled:true,comfyWorkflow:JSON.stringify(graph)},capabilities:{supportsNativeNegative:true,width:true},promptLayer:{positive:'legacy prefix',negative:'legacy suffix'}});
+  assert.doesNotMatch(html,/data-comfy-character-action|comfy-prompt|sd-storyboard-prompt-textarea|legacy prefix|legacy suffix/);
+  assert.match(html,/工作流设置/);assert.match(html,/连续场景/);assert.match(html,/data-storyboard-field="width"/);
 });
 
 test('model interface does not list Comfy as another model family but keeps its API controls',()=>{
@@ -71,7 +77,7 @@ test('capture and engine fold state is independent; opening a fresh disabled ins
 test('workflow presentation cannot import global automation or queue by shared fragment injection',()=>{
   const shared=Object.fromEntries(['modes','automation','production','context','worldbook','promptPreset','generation','composition','queue','recent'].map(key=>[key,`GLOBAL_${key}`]));
   const html=comfyView.renderComfyWorkbench({profile:{},capabilities:{}},shared);
-  assert.doesNotMatch(html,/GLOBAL_/);assert.match(html,/工作流提示补充/);
+  assert.doesNotMatch(html,/GLOBAL_|工作流提示补充/);assert.match(html,/工作流设置/);
 });
 
 test('manual variants belong to the bound engine, never the common per-floor budget',()=>{

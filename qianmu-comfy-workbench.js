@@ -27,7 +27,7 @@ export function renderComfyReferenceControls(profile, capabilities, collapsed = 
       <div class="sd-comfy-reference-status" role="status"></div>
     </div></details>`;
 }
-export function renderComfyWorkbench({profile, capabilities, collapsed={}, promptLayer={}, workflowNotice='', workflowNodes=0, librarySelection=null,autoEnabled=false,poolSelection=null}, shared={}) {
+export function renderComfyWorkbench({profile, capabilities, collapsed={}, workflowNotice='', workflowNodes=0, librarySelection=null,autoEnabled=false,poolSelection=null}, shared={}) {
   const controls=fields.filter(([key])=>capabilities[key]).map(([key,label,type,attrs])=>
     `<label><span>${label}</span><input class="text_pole sd-storyboard-field${['width','height'].includes(key)?` sd-storyboard-${key}`:''}" data-storyboard-field="${key}" type="${type}" ${attrs} value="${escape(profile[key])}"></label>`).join('');
   const workflow=typeof profile.comfyWorkflow==='string'&&profile.comfyWorkflow.trim().startsWith('{')?profile.comfyWorkflow:'';
@@ -43,14 +43,8 @@ export function renderComfyWorkbench({profile, capabilities, collapsed={}, promp
         <div class="sd-storyboard-workflow-warning sd-storyboard-connection-result failed" ${workflowNotice?'':'hidden'} role="status"><span>${escape(workflowNotice)}</span></div>
       </div>
     </details>
-    <details class="sd-card sd-storyboard-prompt-card" data-storyboard-card="comfy-prompt" ${(collapsed['comfy-prompt'] ?? collapsed.prompt)?'':'open'}><summary><b>工作流提示补充</b></summary>
-      <div class="sd-storyboard-card-body"><div class="sd-storyboard-prompt-stack">
-        <label><span>提示补充</span><textarea class="text_pole sd-storyboard-prompt sd-storyboard-prompt-textarea" spellcheck="false">${escape(promptLayer.positive)}</textarea></label>
-        ${capabilities.supportsNativeNegative?`<label><span>负面提示词</span><textarea class="text_pole sd-storyboard-negative sd-storyboard-prompt-textarea" spellcheck="false">${escape(promptLayer.negative)}</textarea></label>`:''}
-      </div></div>
-    </details>
-    <details class="sd-card sd-storyboard-params" data-storyboard-card="comfy-params" ${(collapsed['comfy-params'] ?? collapsed.params)?'':'open'}><summary><b>工作流参数</b></summary>
-      <div class="sd-storyboard-card-body"><div class="sd-comfy-role-heading"><button type="button" class="sd-btn ${profile.comfyCharacterEnabled?'active':''}" data-comfy-character-action="toggle" aria-pressed="${Boolean(profile.comfyCharacterEnabled)}">角色实现</button>${profile.comfyCharacterEnabled?'<button type="button" class="sd-btn" data-comfy-character-action="bind">绑定当前方案</button>':''}</div>${shared.parameterPresets||''}${controls?`<div class="sd-storyboard-grid sd-storyboard-grid-two">${controls}</div>`:''}${shared.variants||''}</div>
+    <details class="sd-card sd-storyboard-params" data-storyboard-card="comfy-params" ${(collapsed['comfy-params'] ?? collapsed.params)?'':'open'}><summary><b>工作流设置</b></summary>
+      <div class="sd-storyboard-card-body">${shared.parameterPresets||''}${controls?`<div class="sd-storyboard-grid sd-storyboard-grid-two">${controls}</div>`:''}${shared.variants||''}</div>
     </details>
     ${renderComfyReferenceControls(profile, capabilities, collapsed)}`;
   const automatic=`<details class="sd-card" data-storyboard-card="comfy-auto" ${collapsed['comfy-auto']?'':'open'}><summary><b>候选工作流</b></summary><div class="sd-storyboard-card-body">
@@ -59,5 +53,5 @@ export function renderComfyWorkbench({profile, capabilities, collapsed={}, promp
     ${poolSelection?.invalid?'<p role="alert">候选方案来源待核对，请重新选择</p>':''}
     </div></details>`;
   return `<div class="sd-comfy-workbench">${shared.connection||''}${modes}${autoEnabled?automatic:fixed}
-    <div class="sd-comfy-scene-actions">${autoEnabled?'<button type="button" class="sd-btn sd-comfy-link-toggle">关联前层风格</button>':''}<button type="button" class="sd-btn sd-comfy-scene-toggle">续场记录</button></div><div class="sd-comfy-link-list" hidden></div><div class="sd-comfy-scene-list" hidden></div></div>`;
+    <div class="sd-comfy-scene-actions">${autoEnabled?'<button type="button" class="sd-btn sd-comfy-link-toggle">关联前层风格</button>':''}<button type="button" class="sd-btn sd-comfy-scene-toggle">连续场景</button></div><div class="sd-comfy-link-list" hidden></div><div class="sd-comfy-scene-list" hidden></div></div>`;
 }

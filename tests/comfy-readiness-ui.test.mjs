@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as storyboard from '../qianmu-storyboard.js';
-import * as roles from '../qianmu-comfy-character-plan.js';
-import {job as roleJob,namespace} from './helpers/comfy-character-fixture.mjs';
+import {projectNewComfyExecution} from '../qianmu-comfy-new-execution.js';
+import {job as roleJob} from './helpers/comfy-character-fixture.mjs';
 import { storyboardFunctionSource, createStoryboardFormFixture } from './helpers/storyboard-form-fixture.mjs';
 
 const graph = { a: { class_type: 'TestImage', inputs: { text: '%qianmu_prompt%' } }, b: { class_type: 'SaveImage', inputs: { images: ['a', 0] } } };
@@ -18,7 +18,7 @@ function fixture(options = {}) {
     querySelectorAll: () => [key, field], addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) };
   const calls = [];
   const runtime = { prepareComfyReadiness() {}, async checkComfyReadiness(request) { calls.push(request); return structuredClone(report); }, ...options.runtime };
-  const context = vm.createContext({ ...storyboard, AbortController, setTimeout, clearTimeout, document: { createElement: element },
+  const context = vm.createContext({ ...storyboard, projectNewComfyExecution, AbortController, setTimeout, clearTimeout, document: { createElement: element },
     storyboardState: () => state, clone: structuredClone, storyboardCaptureWorkbench() {}, storyboardProviderProfile: () => state.profiles.comfy,
     storyboardConnectionState: () => ({ draft: { baseUrl: 'https://comfy.example', options: options.mode ? { comfyTransport: options.mode } : {} } }), getChatKey: () => 'chat-a',
     storyboardKeyInputRevision: 0, storyboardConnectionLoadRevision: 0, featureRuntime: { load: async () => runtime },
@@ -44,16 +44,16 @@ test('actual handler uses captured recipe, keeps the typed Key and reports brows
   fx.listeners.get('input')(); assert.equal(fx.output.hidden, true); assert.equal(fx.listeners.size, 0);
 });
 
-test('workbench node inspection counts frozen role candidates without claiming their final LoRA was executed',async()=>{
+test('workbench node inspection ignores retired role settings without changing saved profiles or reading archives',async()=>{
   for(const missing of [false,true]){
-    const fx=fixture(),j=roleJob(),snapshot=structuredClone(j.shotSpec.characters[0].archiveSnapshot.comfyImplementation);
-    if(missing)snapshot.reference=null;Object.assign(fx.state.profiles.comfy,j.profile);
-    Object.assign(fx.context,{ctx:()=>({chat:[{mes:'Alice'}]}),storyboardTargetFloor:()=>0,
-      storyboardCompilerCharacterCasting:async(text,guard,refs,comfy)=>{assert.equal(text,'Alice');assert.equal(refs,false);assert.equal(comfy,true);guard.assertCurrent();return {namespace,prepared:{entries:[{identity:{name:'Alice'},comfyImplementation:snapshot}]},assertCurrent:async()=>{}};}});
-    const load=fx.context.featureRuntime.load;fx.context.featureRuntime.load=key=>key==='comfyCharacters'?Promise.resolve(roles):load(key);
-    await fx.run();assert.equal(fx.calls.length,missing?0:1);
-    if(missing)assert.match(fx.output.textContent,/参考图缺失/);
-    else {assert.equal(fx.calls[0].referenceCount,1);assert.match(fx.output.children[2].textContent,/每镜生成前单独检查/);}
+    const fx=fixture();Object.assign(fx.state.profiles.comfy,roleJob().profile);
+    if(missing)delete fx.state.profiles.comfy.comfyCharacterActivation;
+    const before=structuredClone(fx.state);
+    fx.context.storyboardCompilerCharacterCasting=()=>assert.fail('retired archive lookup');
+    const load=fx.context.featureRuntime.load;fx.context.featureRuntime.load=key=>{assert.notEqual(key,'comfyCharacters');return load(key);};
+    await fx.run();assert.equal(fx.calls.length,1);assert.equal(fx.calls[0].referenceCount,0);
+    assert.doesNotMatch(fx.output.children.map(child=>child.textContent).join(''),/角色参考槽|LoRA/);
+    assert.deepEqual(fx.state,before);
     assert.equal(fx.button.disabled,false);assert.equal(fx.key.value,'typed-key');
   }
 });

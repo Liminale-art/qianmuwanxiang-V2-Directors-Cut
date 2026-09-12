@@ -95,7 +95,7 @@ test('profile and workbench keep a separate, default-off Comfy activation and ma
   assert.equal(storyboard.normalizeStoryboardParameterProfile(original.profile,'novel').comfyCharacterEnabled,undefined);
   assert.deepEqual(storyboard.normalizeStoryboardParameterProfile({...original.profile,comfyCharacterActivation:{bad:true}},'comfy').comfyCharacterActivation,{invalid:true});
   const plain=renderComfyWorkbench({profile:{},capabilities:{}}),enabled=renderComfyWorkbench({profile,capabilities:{}});
-  assert.match(plain,/data-comfy-character-action="toggle" aria-pressed="false"/);assert.match(enabled,/绑定当前方案/);assert.doesNotMatch(enabled,/NAI 参考设置/);
+  assert.doesNotMatch(plain,/data-comfy-character-action/);assert.doesNotMatch(enabled,/data-comfy-character-action|绑定当前方案|NAI 参考设置/);
 });
 
 test('actual activation loads the explicitly saved recipe, keeps stale account/page changes off, and disabling performs no lookup',async()=>{

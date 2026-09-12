@@ -142,7 +142,9 @@ test('production renderer exposes only wired controls and does not erase remembe
   assert.match(a.content, /工作流固定尺寸不改写/);
   const graph = workflow({text: '%qianmu_prompt%', negative: '%qianmu_negative%', cfg: '%qianmu_cfg%', width: '%qianmu_width%'});
   const b = createStoryboardFormFixture({family: 'comfy', workflow: graph});
-  assert.match(b.content, /data-storyboard-field="cfg"/); assert.match(b.content, /data-storyboard-field="width"/); assert.match(b.content, /class="text_pole sd-storyboard-negative/);
+  assert.match(b.content, /data-storyboard-field="cfg"/); assert.match(b.content, /data-storyboard-field="width"/);
+  assert.doesNotMatch(b.content, /class="text_pole sd-storyboard-negative/);
+  assert.equal(storyboard.getStoryboardCapabilities('comfy','comfy-workflow',JSON.stringify(graph)).supportsNativeNegative,true,'retired supplement editor does not remove the declared negative input slot');
   assert.equal(a.state.profiles.comfy.width, b.state.profiles.comfy.width);
 });
 

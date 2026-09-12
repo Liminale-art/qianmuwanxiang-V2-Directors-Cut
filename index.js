@@ -14223,10 +14223,9 @@ function renderStoryboardComfyCreate(state) {
   const connection = storyboardConnectionState(state).draft;
   const protocolBinding = resolveStoryboardConnectionBinding('comfy', connection);
   const capabilities = getStoryboardCapabilities('comfy', profile.capabilityModelId, profile.comfyWorkflow || '', connection);
-  const promptLayer = storyboardPromptLayerForArtist(state, null, 'comfy', profile.model, profile.capabilityModelId);
   let workflowNodes = 0;
   try { workflowNodes = Object.keys(storyboardParseWorkflow(profile.comfyWorkflow)).length; } catch (_) { /* Show the stored validation issue. */ }
-  return storyboardComfyViewRuntime.renderComfyWorkbench({ profile, capabilities, collapsed: state.collapsedCards, promptLayer, workflowNodes, librarySelection: state.comfyLibrarySelection,
+  return storyboardComfyViewRuntime.renderComfyWorkbench({ profile, capabilities, collapsed: state.collapsedCards, workflowNodes, librarySelection: state.comfyLibrarySelection,
     autoEnabled:state.comfyAutoEnabled,poolSelection:state.comfyPoolSelection,
     workflowNotice: profile.comfyWorkflowNotice || capabilities.workflowIssue || '' }, {
     connection: renderStoryboardModelCard(state), parameterPresets: renderStoryboardParameterPresets(state),
@@ -18488,7 +18487,7 @@ async function storyboardCheckComfyReadiness(root) {
   if (state.source !== 'comfy' || !button || button.disabled || !output) return;
   root._sdComfyReadinessCleanup?.();
   storyboardCaptureWorkbench(root);
-  const profile = clone(storyboardProviderProfile(state)), connection = clone(storyboardConnectionState(state).draft);
+  const profile = projectNewComfyExecution(storyboardProviderProfile(state)).profile, connection = clone(storyboardConnectionState(state).draft);
   const chatKey = getChatKey(), keyRevision = storyboardKeyInputRevision, loadRevision = storyboardConnectionLoadRevision;
   const fields = () => JSON.stringify([...root.querySelectorAll('input, select, textarea')].map(field => [field.value, field.checked]));
   const snapshot = fields();
@@ -22962,7 +22961,6 @@ function bindStoryboardTabEvents(root) {
   root.querySelectorAll('[data-comfy-reference-action]').forEach(button => button.addEventListener('click', event => {
     event.preventDefault(); void storyboardEditComfyReferences(root, button.dataset.comfyReferenceAction, button.dataset.referenceIndex);
   }));
-  root.querySelectorAll('[data-comfy-character-action]').forEach(button=>button.addEventListener('click',()=>void storyboardToggleComfyCharacters(root,button.dataset.comfyCharacterAction==='bind')));
   if (root.querySelector('.sd-comfy-workbench-loading')) void storyboardLoadComfyView(root);
   root.querySelector('.sd-comfy-view-retry')?.addEventListener('click', () => void storyboardLoadComfyView(root, true));
   root.querySelector('.sd-comfy-import-workflow')?.addEventListener('click', event => { event.preventDefault(); root.querySelector('.sd-comfy-workflow-file')?.click(); });

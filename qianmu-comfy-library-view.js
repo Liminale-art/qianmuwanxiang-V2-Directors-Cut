@@ -55,7 +55,6 @@ export function renderComfyLibrary(view) {
       </div></section>
       ${classificationEditor(draft.document)}
       <details class="sd-card"><summary><b>参数默认值</b></summary><div class="sd-storyboard-card-body sd-storyboard-grid sd-storyboard-grid-two">${COMFY_LIBRARY_PARAMETERS.map(key=>`<label><span>${titles[key]}</span><input class="text_pole" data-comfy-parameter="${key}" maxlength="120" value="${escape(draft.document.parameters[key]||'')}" ${['sampler','scheduler'].includes(key)?'':'inputmode="decimal"'}></label>`).join('')}</div></details>
-      <details class="sd-card"><summary><b>提示补充</b></summary><div class="sd-storyboard-card-body"><label><span>正面补充</span><textarea class="text_pole" data-comfy-draft="positivePrompt" maxlength="12000">${escape(draft.document.positivePrompt)}</textarea></label><label><span>负面补充</span><textarea class="text_pole" data-comfy-draft="negativePrompt" maxlength="12000">${escape(draft.document.negativePrompt)}</textarea></label></div></details>
       <p class="sd-comfy-library-note">仅已接入工作流的参数生效。保存不切换当前配方；返回列表后可明确应用。</p>
     </fieldset><input type="file" data-comfy-file accept=".json,application/json" hidden></div>`;
   }
@@ -128,7 +127,8 @@ export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,
       }
       if(name==='save'||name==='save-copy'){
         const draft=view.draft;if(!draft)return;
-        await store.save(namespace,{id:name==='save'?draft.id:'',expectedRevision:name==='save'?draft.revision:'',name:draft.name,document:draft.document});
+        // A new revision retires additions; archived documents and exports retain their original fields.
+        await store.save(namespace,{id:name==='save'?draft.id:'',expectedRevision:name==='save'?draft.revision:'',name:draft.name,document:{...draft.document,positivePrompt:'',negativePrompt:''}});
         if(!visible())return;notify('方案已保存，尚未应用','success');returnList();view.archived=false;await loadList();return;
       }
       if(!row)return;
@@ -158,7 +158,7 @@ export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,
     const mounted=host,mountedEntry=entry;
     host.querySelectorAll('[data-comfy-action]').forEach(button=>button.addEventListener('click',()=>void action(button.dataset.comfyAction,button.closest('[data-comfy-id]')?.dataset.comfyId)));
     host.querySelector('[data-comfy-search]')?.addEventListener('input',event=>{view.search=event.target.value;host.querySelectorAll('[data-comfy-name]').forEach(row=>{row.hidden=!row.dataset.comfyName.includes(view.search.toLocaleLowerCase());});});
-    host.querySelectorAll('[data-comfy-draft]').forEach(field=>field.addEventListener('input',()=>{if(!view.draft)return;const key=field.dataset.comfyDraft;view.draft.dirty=true;if(key==='name')view.draft.name=field.value;else view.draft.document[key]=field.value;}));
+    host.querySelectorAll('[data-comfy-draft]').forEach(field=>field.addEventListener('input',()=>{const key=field.dataset.comfyDraft;if(!view.draft||!['name','workflow','outputNodeId'].includes(key))return;view.draft.dirty=true;if(key==='name')view.draft.name=field.value;else view.draft.document[key]=field.value;}));
     host.querySelectorAll('[data-comfy-parameter]').forEach(field=>field.addEventListener('input',()=>{view.draft.dirty=true;view.draft.document.parameters[field.dataset.comfyParameter]=field.value;}));
     host.querySelectorAll('[data-comfy-class-choice]').forEach(button=>button.addEventListener('click',()=>{
       if(!visible()||view.busy||!view.draft)return;

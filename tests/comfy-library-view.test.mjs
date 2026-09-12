@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import * as storyboard from '../qianmu-storyboard.js';
-import {renderComfyLibrary} from '../qianmu-comfy-library-view.js';
+import {renderComfyLibrary,createComfyLibraryController} from '../qianmu-comfy-library-view.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const document={workflow:JSON.stringify({save:{class_type:'SaveImage',inputs:{text:'%qianmu_prompt%'}}}),outputNodeId:'save',parameters:{width:'832',height:'1216'},positivePrompt:'prefix',negativePrompt:'exclusion'};
 test('classification editor uses accessible multi-selects and does not classify old documents by rendering',()=>{
@@ -36,6 +36,27 @@ test('library list is metadata-only, escaped and blank without fabricated placeh
 test('full editor retains missing output, exposes history and separates saving from applying',()=>{
   const html=renderComfyLibrary({draft:{name:'x',revision:'r1',version:1,document:{...document,outputNodeId:'missing'},versions:[{revision:'r1',version:1,updatedAt:1}]}});
   assert.match(html,/value="missing" selected/);assert.match(html,/data-comfy-version/);assert.match(html,/data-comfy-action="save-copy"/);assert.doesNotMatch(html,/data-comfy-action="apply"/);
+  assert.doesNotMatch(html,/提示补充|data-comfy-draft="(?:positivePrompt|negativePrompt)"/);
+});
+
+test('new saved revisions omit retired additions while draft export and the source document remain intact',async()=>{
+  for(const saveAction of ['save','save-copy']){
+    const original=structuredClone(document),saved=[],downloads=[];let applied=0;
+    const buttons=Object.fromEntries(['from-current','export-draft',saveAction].map(action=>[action,{dataset:{comfyAction:action},addEventListener(_name,handler){this.click=handler;},closest:()=>null}]));
+    const host={isConnected:true,innerHTML:'',closest:()=>null,querySelector:()=>null,querySelectorAll:selector=>selector==='[data-comfy-action]'?Object.values(buttons):[]};
+    const store={list:async()=>[],usage:async()=>({count:0,versions:0,bytes:0,limit:10000}),save:async(_namespace,row)=>saved.push(structuredClone(row)),close(){}};
+    const controller=createComfyLibraryController({store,resolveNamespace:async()=> 'st-user:test',getCurrentRecipe:()=>({name:'legacy',document}),download:blob=>downloads.push(blob),onApply:()=>{applied++;}});
+    const flush=async()=>{for(let turn=0;turn<6;turn++)await new Promise(resolve=>setImmediate(resolve));};
+    try{
+      controller.mount(host);await flush();buttons['from-current'].click();await flush();
+      assert.doesNotMatch(host.innerHTML,/data-comfy-draft="positivePrompt"/);
+      buttons['export-draft'].click();await flush();assert.equal(downloads.length,1);
+      const exported=await downloads[0].text();assert.match(exported,/prefix/);assert.match(exported,/exclusion/);
+      buttons[saveAction].click();await flush();assert.equal(saved.length,1);
+      assert.deepEqual(saved[0].document,{...original,positivePrompt:'',negativePrompt:''});
+      assert.deepEqual(document,original);assert.equal(applied,0,'save is not apply');
+    }finally{controller.dispose();}
+  }
 });
 test('archived schemes expose explicit recovery/export/purge, not generation',()=>{
   const html=renderComfyLibrary({archived:true,rows:[{id:'a',name:'x',nodes:1,version:1,totalBytes:100}]});
