@@ -21990,10 +21990,7 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
     if ((await captureChat()).digest !== chatEvidence.digest) throw new Error('打包期间正文已变化，未输出旧楼层证据，请重新导出');
     if ((await captureSubjects()).digest !== subjectEvidence.digest) throw new Error('打包期间角色或人设来源已变化，请重新导出');
   }
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url; link.download = bundle ? `qianmu-storyboard-bundle-${fileStamp()}.qmb` : `qianmu-storyboard-pack-${fileStamp()}.json`;
-  document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+  ttsDownloadBlob(blob, bundle ? `qianmu-storyboard-bundle-${fileStamp()}.qmb` : `qianmu-storyboard-pack-${fileStamp()}.json`);
   const vibeNotice=originals ? ` 已包含 ${vibeScope.refs.length} 份 Vibe 原文件。${vibeScope.legacyUrls.length ? bundle ? `另已保全 ${vibeScope.legacyUrls.length} 个旧 Vibe 地址的本地原图。` : `另有 ${vibeScope.legacyUrls.length} 个 Vibe 旧地址仅保留地址，原图需另行保全。` : ''}${bundle ? '已包含工作流、候选历史与角色库及参考原件；恢复需核对环境与身份。' : '不含 Comfy 与角色独立库。'}` : vibeScope.refs.length||vibeScope.legacyUrls.length?' 当前旧版包只保留 Vibe 引用/地址，原文件请在 Vibe 文件空间另行备份。':'';
   toast(`分镜数据已打包：${records.length} 条成片${skipped ? ` · ${skipped} 张仅保留原地址` : ''}。${vibeNotice}`, vibeNotice?'warning':'success');
   } catch(error) { toast(`分镜打包未完成：${error?.message||'请重新核对后导出'}`, 'error'); }

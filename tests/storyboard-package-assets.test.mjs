@@ -132,9 +132,25 @@ function indexFixture(){
     storyboardSnapshotForRecord:record=>record.snapshot||null,storyboardPlansForPortableExport:async p=>p,storyboardSafeUrl:value=>value,fetch:async()=>({ok:true,blob:async()=>new Blob(['image'],{type:'image/png'})}),blobToBase64:async()=> 'aW1hZ2U=',
     confirmDialog:async()=>true,toast:(...args)=>notices.push(args),fileStamp:()=> 'fixture',URL:{createObjectURL:blob=>{exported=blob;return 'blob:test';},revokeObjectURL:noop},document:{createElement:()=>({click:noop,remove:noop}),body:{appendChild:noop}},
   });Object.assign(context,{MODAL_ID:'fixture',createStorageBackupCheck:()=>{const check=()=>{};check.release=()=>{};return check;}});context.document.getElementById=()=>({});
-  vm.runInContext(fn('storyboardPackageContext')+'\n'+fn('storyboardExportPackage'),context);
+  context.setTimeout=noop;
+  vm.runInContext(fn('ttsDownloadBlob')+'\n'+fn('storyboardPackageContext')+'\n'+fn('storyboardExportPackage'),context);
   return {state,store,notices,context,exported:()=>exported,setImages:value=>images=value,switch:()=>{chat='chat-b';currentState=board.createStoryboardDefaults();currentStore={};owner=otherAccount;}};
 }
+
+for(const failure of ['', 'append', 'click'])test('actual storyboard download releases its URL after browser handoff and reports '+(failure||'success'),async()=>{
+  const e=indexFixture(),events=[],timers=[];let link;
+  e.context.URL.revokeObjectURL=()=>events.push('revoke');
+  e.context.setTimeout=(run,delay)=>timers.push({run,delay});
+  e.context.document.createElement=()=>link={click(){events.push('click');if(failure==='click')throw Error('synthetic click failed');},remove(){events.push('remove');}};
+  e.context.document.body.appendChild=()=>{events.push('append');if(failure==='append')throw Error('synthetic append failed');};
+  await e.context.storyboardExportPackage({originals:false});
+  assert.ok(e.exported());assert.equal(link.download,'qianmu-storyboard-pack-fixture.json');
+  assert.equal(events.includes('revoke'),false,'browser gets a chance to consume the file before URL release');
+  assert.equal(events.at(-1),'remove');assert.equal(timers.length,1);assert.equal(timers[0].delay,1000);timers[0].run();assert.equal(events.at(-1),'revoke');
+  assert.equal(e.context.storyboardExportPackage.busy,false);
+  if(failure){assert.equal(e.notices.at(-1)[1],'error');assert.equal(e.notices.some(([text])=>text.startsWith('分镜数据已打包')),false);}
+  else assert.ok(e.notices.some(([text])=>text.startsWith('分镜数据已打包')));
+});
 
 test('actual legacy export rejects structured URL credentials without clearing the local connection',async()=>{
   const e=indexFixture();e.state.connections.novel.draft.baseUrl='https://image.example/api?api_key=private-fixture-value';const before=structuredClone(e.state);
