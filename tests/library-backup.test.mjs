@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {NOTES_BACKUP_LIMITS,FAVORITES_BACKUP_LIMITS,NOTE_TEXT_LIMITS,FAVORITE_TEXT_LIMITS,prepareLibraryBackup,exportLibraryBackup,validateLibraryBackupRows,readLibraryBackupFile,confirmLibraryRestore} from '../qianmu-library-backup.js';
-import {assertJsonInputBounds} from '../qianmu-json-input.js';
+import {assertJsonInputBounds,base64DecodedLength} from '../qianmu-json-input.js';
 import {importQianmuNotesBackup} from '../qianmu-notes.js';
 const note=()=>({id:'original',body:'月光与原文',pinned:true});
 const pack=(favorites=false,count=1)=>favorites?{type:'qianmu-tts-favorites',version:1,credentialsIncluded:false,entries:Array.from({length:count},(_,i)=>({id:'audio-'+i,data:'YQ==',mime:'audio/mpeg'}))}:{type:'qianmu-notes',version:1,credentialsIncluded:false,notes:Array.from({length:count},(_,i)=>({...note(),id:'note-'+i}))};
@@ -26,7 +26,7 @@ test('entry boundaries match current import limits and preserve overflow without
 });
 
 test('the same serializer uses exact UTF8 bytes and individual audio limits without requiring huge test allocations',async()=>{
-  const c=vm.createContext({Blob,JSON,assertJsonInputBounds,NOTE_TEXT_LIMITS,FAVORITE_TEXT_LIMITS,NOTES_BACKUP_LIMITS:{bytes:1e6,entries:1000},FAVORITES_BACKUP_LIMITS:{bytes:1e6,entries:2000,encodedBytes:4,audioBytes:48*1024*1024}});
+  const c=vm.createContext({Blob,JSON,assertJsonInputBounds,base64DecodedLength,NOTE_TEXT_LIMITS,FAVORITE_TEXT_LIMITS,NOTES_BACKUP_LIMITS:{bytes:1e6,entries:1000},FAVORITES_BACKUP_LIMITS:{bytes:1e6,entries:2000,encodedBytes:4,audioBytes:48*1024*1024}});
   vm.runInContext(validateLibraryBackupRows.toString()+'\n'+prepareLibraryBackup.toString(),c);
   const payload=pack(),bytes=Buffer.byteLength(JSON.stringify(payload));c.NOTES_BACKUP_LIMITS.bytes=bytes;
   assert.equal(c.prepareLibraryBackup(payload).preservationOnly,false);c.NOTES_BACKUP_LIMITS.bytes--;
@@ -107,6 +107,15 @@ test('only explicit acceptance proceeds and confirmation must still belong to th
   for(const value of [false,undefined,null,'true',1])assert.equal(await confirmLibraryRestore(pack(),{check(){},confirm:async()=>value}),false);
   let current=true;await assert.rejects(confirmLibraryRestore(pack(),{check(){if(!current)throw Error('stale');},confirm:async()=>{current=false;return true;}}),/stale/);
   await assert.rejects(confirmLibraryRestore(pack(),{check(){},confirm:async()=>{throw Error('dialog unavailable');}}),/dialog unavailable/);
+});
+
+test('shared media admission computes exact byte counts with both limits and canonical trailing bits',()=>{
+  const limits={maxEncodedBytes:4,maxBytes:3};
+  for(const [data,bytes] of [['YQ==',1],['YWI=',2],['YWJj',3]])assert.equal(base64DecodedLength(data,limits),bytes);
+  for(const data of ['YR==','YWJ=','YQ=','====','',null])assert.throws(()=>base64DecodedLength(data,limits));
+  assert.throws(()=>base64DecodedLength('YWJj',{...limits,maxBytes:2}),/读取上限/);
+  assert.throws(()=>base64DecodedLength('YQ==',{...limits,maxEncodedBytes:3}));
+  assert.throws(()=>base64DecodedLength('YQ==',{...limits,maxBytes:NaN}));
 });
 
 test('preservation requires consent and a still-current operation; cancellation and stale confirmation download nothing',async()=>{

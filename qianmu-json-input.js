@@ -33,3 +33,15 @@ export function parseBoundedJson(text,options={}){
   const finite=value=>{if(typeof value==='number'&&!Number.isFinite(value))fail('分镜包数值超出有效范围');if(value&&typeof value==='object')for(const item of Object.values(value))finite(item);};finite(payload);
   return payload;
 }
+
+// Shared backup admission: inspect canonical base64 without allocating decoded media.
+export function base64DecodedLength(data,{maxEncodedBytes,maxBytes}){
+  if(!Number.isSafeInteger(maxEncodedBytes)||maxEncodedBytes<1||!Number.isSafeInteger(maxBytes)||maxBytes<1)throw Error('媒体读取上限无效');
+  if(typeof data!=='string'||!data.length||data.length>maxEncodedBytes||data.length%4||!/^[A-Za-z0-9+/]*={0,2}$/.test(data))throw Error('媒体编码或体积无效');
+  const padding=data.endsWith('==')?2:data.endsWith('=')?1:0;
+  const last='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'.indexOf(data[data.length-padding-1]);
+  if(padding&&(last&(padding===2?15:3)))throw Error('媒体编码不完整');
+  const bytes=data.length/4*3-padding;
+  if(bytes>maxBytes)throw Error('媒体超过读取上限');
+  return bytes;
+}

@@ -87,3 +87,20 @@ test('preflight preserves legacy extra metadata and original identity/progress/m
     const restored=await readCoreadPackageFile(file(original));assert.equal(JSON.stringify(restored),original);assert.equal(JSON.stringify(value),original);
   }
 });
+
+test('every inline media category rejects damaged encoding before any prose can be overwritten',async()=>{
+  for(const key of ['books','images','audio'])for(const encoded of ['YR==','YQ=','Y Q==','data:audio/mpeg;base64,YQ==','!!!!']){
+    const value=pack();value[key][0][key==='books'?'coverB64':'b64']=encoded;
+    await assert.rejects(readCoreadPackageFile(file(JSON.stringify(value))),/媒体编码/);
+    const prepared=prepareCoreadPackageExport(value);assert.equal(prepared.preservationOnly,true);assert.deepEqual(JSON.parse(await prepared.blob.text()),value);
+  }
+});
+
+test('media family and complete MIME parameters survive while wrong or malformed types fail closed',async()=>{
+  for(const key of ['books','images','audio'])for(const mime of ['text/html',{},'audio/','image/\r\nbad']){
+    const value=pack();value[key][0][key==='books'?'coverMime':'mime']=mime;
+    await assert.rejects(readCoreadPackageFile(file(JSON.stringify(value))),/媒体类型/);
+  }
+  const value=pack();value.audio[0].mime='audio/webm;codecs=opus';value.images[0].mime='image/*';
+  assert.deepEqual(await readCoreadPackageFile(file(JSON.stringify(value))),value);
+});

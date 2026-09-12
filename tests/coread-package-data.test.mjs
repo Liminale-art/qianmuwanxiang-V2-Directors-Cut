@@ -5,6 +5,7 @@ import {isPlainObject} from '../qianmu-storyboard-utils.js';
 function fixture(fail=''){
   const calls=[],warnings=[],state={books:[{id:'old',title:'before'},{id:'untouched'}]};
   const blobStore=Object.fromEntries(['putBook','putCover','putReaderChat','putReaderImageByKey','putReaderVectors','bulkPutAudio','pushRetLog'].map(name=>[name,async(...args)=>{
+    if(name==='bulkPutAudio')args[0]=Array.from(args[0]);
     calls.push([name,...args]);if(name===fail)throw Error('synthetic failure');return name==='bulkPutAudio'?{added:1}:undefined;
   }]));
   const options={blobStore,coread:()=>state,isPlainObject,base64ToBlob:(data,mime)=>({data,mime}),warn:(...args)=>warnings.push(args)};
@@ -59,4 +60,36 @@ test('audio batch reports committed rows before interruption without losing prev
   assert.equal(e.options.progress.audioOk,2);assert.equal(e.options.progress.skipped,1);
   assert.equal(e.options.progress.failed,3,'two earlier book failures plus one audio failure');
   assert.equal(e.options.progress.logOk,0);
+});
+
+test('audio is decoded only as the writer requests it, not all at once before the first commit',async()=>{
+  const e=fixture(),events=[];let release;
+  const data={books:[],audio:[{key:'a',b64:'a'},{key:'b',b64:'b'}]};
+  e.options.base64ToBlob=data=>{events.push('decode:'+data);return {data};};
+  e.options.blobStore.bulkPutAudio=async(entries,{onProgress})=>{
+    assert.equal(Array.isArray(entries),false);let added=0;
+    for(const entry of entries){events.push('write:'+entry.key);if(entry.key==='a')await new Promise(r=>release=r);onProgress({added:++added,skipped:0,failed:0});}
+    return {added,skipped:0,failed:0};
+  };
+  const pending=applyCoreadPackageData(data,e.options);await new Promise(r=>setImmediate(r));
+  assert.deepEqual(events,['decode:a','write:a']);release();const result=await pending;
+  assert.deepEqual(events,['decode:a','write:a','decode:b','write:b']);assert.equal(result.audioOk,2);
+});
+
+test('lazy decoder failures remain counted alongside earlier and per-audio write failures',async()=>{
+  const e=fixture('putBook');e.data.audio=[{key:'a',b64:'ok'},{key:'b',b64:'bad'},{key:'c',b64:'ok'}];
+  e.options.base64ToBlob=data=>{if(data==='bad')throw Error('decode failed');return {data};};
+  e.options.blobStore.bulkPutAudio=async(entries,{onProgress})=>{
+    const result={added:0,failed:0,skipped:0};for(const entry of entries){result[entry.key==='a'?'failed':'added']++;onProgress({...result});}return result;
+  };
+  const result=await applyCoreadPackageData(e.data,e.options);assert.equal(result.failed,4);assert.equal(result.audioOk,1);assert.equal(result.logOk,2);
+});
+
+test('a scope change after one audio commit stops before decoding the next original',async()=>{
+  const e=fixture(),decoded=[];let current=true;e.options.progress=createCoreadImportProgress();
+  e.options.check=()=>{if(!current)throw Error('stale import');};
+  e.options.base64ToBlob=data=>{decoded.push(data);return {data};};
+  e.options.blobStore.bulkPutAudio=async(entries,{onProgress})=>{for(const _ of entries){onProgress({added:1});current=false;}return {added:1};};
+  await assert.rejects(applyCoreadPackageData({books:[],audio:[{key:'a',b64:'one'},{key:'b',b64:'two'}]},e.options),/stale import/);
+  assert.deepEqual(decoded,['one']);assert.equal(e.options.progress.audioOk,1);
 });

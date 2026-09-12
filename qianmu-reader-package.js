@@ -1,5 +1,5 @@
 // Reader packs contain original media, unlike the smaller configuration-only package.
-import {parseBoundedJson,assertJsonInputBounds} from './qianmu-json-input.js';
+import {parseBoundedJson,assertJsonInputBounds,base64DecodedLength} from './qianmu-json-input.js';
 export const COREAD_PACKAGE_LIMITS = Object.freeze({bytes:256*1048576,depth:40,nodes:500000});
 
 // The caller constructs the v5 envelope. Its serialized text is valid JSON;
@@ -120,6 +120,10 @@ export function inspectCoreadPackage(data) {
     const seen=new Set();
     for(const [index,item] of (data[key]||[]).entries()){
       const fail=message=>{throw Error(`伴读${label}第 ${index+1} 项${message}；未写入内容，请保留原包。`);};
+      const media=(data,mime,kind)=>{
+        if(mime!==undefined&&(typeof mime!=='string'||mime&&!new RegExp(`^${kind}/[a-z0-9.+*-]+(?:;[^\\r\\n]*)?$`,'i').test(mime)))fail('媒体类型无效');
+        try{base64DecodedLength(data,{maxEncodedBytes:COREAD_PACKAGE_LIMITS.bytes,maxBytes:COREAD_PACKAGE_LIMITS.bytes});}catch(error){fail(error.message);}
+      };
       if(!record(item))fail('格式无效');
       if(key==='retrievalLogs')continue; // Log IDs are intentionally recreated by the writer.
       if(key==='books'&&!record(item.meta))fail('书目信息缺失');
@@ -134,11 +138,13 @@ export function inspectCoreadPackage(data) {
         if(item.comicDescriptions!==undefined&&!record(item.comicDescriptions))fail('漫画描述格式无效');
         if(item.coverB64!==undefined&&typeof item.coverB64!=='string')fail('封面格式无效');
         if(item.meta.hasCover&&!item.coverB64)fail('声明的封面原件缺失');
+        if(item.coverB64)media(item.coverB64,item.coverMime,'image');
       }else if(key==='chats'||key==='vectors'){
         if(!record(item.rec))fail('记录缺失或格式无效');
       }else{
         if(typeof item.b64!=='string'||!item.b64)fail('媒体原件缺失或格式无效');
         if(key==='audio'&&item.meta!==undefined&&!record(item.meta))fail('媒体信息格式无效');
+        media(item.b64,item.mime,key==='audio'?'audio':'image');
       }
     }
   }
@@ -182,27 +188,31 @@ export async function applyCoreadPackageData(data, {blobStore, coread, isPlainOb
     }
   }
   if (Array.isArray(data.audio)) {
-    const entries = [];
-    for (const item of data.audio) {
-      check();
-      if (!item?.key || !item?.b64) { progress.invalid++; continue; }
-      try {
-        entries.push({
-          key: item.key,
-          blob: base64ToBlob(item.b64, item.mime || 'audio/mpeg'),
-          meta: { ...(item.meta || {}), source: 'coread' },
-          createdAt: item.createdAt || Date.now(),
-        });
-      } catch (e) { check(); progress.failed++; warn(`decode coread audio failed`, e); }
+    let decodeFailures = 0;
+    // The existing writer consumes one item only after the previous transaction settles.
+    // Do not allocate a decoded Blob for every track before starting the first write.
+    function* entries() {
+      for (const item of data.audio) {
+        check();
+        if (!item?.key || !item?.b64) { progress.invalid++; continue; }
+        try {
+          yield {
+            key: item.key,
+            blob: base64ToBlob(item.b64, item.mime || 'audio/mpeg'),
+            meta: { ...(item.meta || {}), source: 'coread' },
+            createdAt: item.createdAt || Date.now(),
+          };
+        } catch (e) { check(); decodeFailures++; progress.failed++; warn(`decode coread audio failed`, e); }
+      }
     }
     check();
     const failedBeforeAudio = progress.failed;
     const onProgress = result => {
       progress.audioOk = result.added;
       progress.skipped = result.skipped || 0;
-      progress.failed = failedBeforeAudio + (result.failed || 0);
+      progress.failed = failedBeforeAudio + decodeFailures + (result.failed || 0);
     };
-    try { const result = await blobStore.bulkPutAudio(entries, {onProgress}); onProgress(result); check(); } catch (e) { check(); progress.failed++; warn(`import coread audio failed`, e); }
+    try { const result = await blobStore.bulkPutAudio(entries(), {onProgress}); onProgress(result); check(); } catch (e) { check(); progress.failed++; warn(`import coread audio failed`, e); }
   }
   if (Array.isArray(data.retrievalLogs)) {
     const ordered = data.retrievalLogs.slice().sort((a, b) => (a?.at || 0) - (b?.at || 0));

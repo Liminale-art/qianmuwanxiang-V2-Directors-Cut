@@ -1,5 +1,5 @@
 // Original-file library formats. Keep import admission and export warnings aligned.
-import {parseBoundedJson,assertJsonInputBounds} from './qianmu-json-input.js';
+import {parseBoundedJson,assertJsonInputBounds,base64DecodedLength} from './qianmu-json-input.js';
 export const NOTES_BACKUP_LIMITS=Object.freeze({bytes:12*1024*1024,entries:1000});
 export const FAVORITES_BACKUP_LIMITS=Object.freeze({bytes:256*1024*1024,entries:2000,encodedBytes:64*1024*1024,audioBytes:48*1024*1024});
 export const NOTE_TEXT_LIMITS=Object.freeze({id:120,title:120,body:20000});
@@ -33,13 +33,7 @@ export function validateLibraryBackupRows(payload){
       for(const [key,value] of Object.entries(row.meta))if(typeof value==='string')text(value,key==='text'?caps.text:caps.field,'文字');
     }
     if(row.mime!=null&&(typeof row.mime!=='string'||!/^audio\/[a-z0-9.+-]+$/i.test(row.mime)))fail('音频类型无效');
-    const data=row.data;
-    if(typeof data!=='string'||!data.length||data.length>limits.encodedBytes||data.length%4||!/^[A-Za-z0-9+/]*={0,2}$/.test(data))fail('音频编码或体积无效');
-    const padding=data.endsWith('==')?2:data.endsWith('=')?1:0;
-    // Check canonical padding bits without allocating another full audio copy.
-    const last='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'.indexOf(data[data.length-padding-1]);
-    if(padding&&(last& (padding===2?15:3)))fail('音频编码不完整');
-    if(data.length/4*3-padding>limits.audioBytes)fail('音频超过 48 MB');
+    try{base64DecodedLength(row.data,{maxEncodedBytes:limits.encodedBytes,maxBytes:limits.audioBytes});}catch(error){fail(error.message);}
   }
   return rows;
 }
