@@ -6,12 +6,14 @@ import { createComfyCloudAssetTransport, createComfyCloudFileTransport } from '.
 import { readComfyCloudJsonResponse, readComfyCloudImageResponse } from './qianmu-comfy-cloud-response.js';
 import { matchComfyCloudAssetMetadata } from './qianmu-comfy-cloud-asset.js';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
+import { verifyComfyCloudImageDigest } from './qianmu-comfy-cloud-digest.js';
 
 export async function readComfyCloudAsset(req, input, options) {
   return readAsset(req, input, options, false);
 }
 
-// Bytes/container checked only: not yet digest-verified, staged, or acknowledged.
+// Integrity checked only: not yet staged or acknowledged. Missing platform hash
+// remains explicitly unverified, even though local digests are computed.
 // This server-only result deliberately excludes the sensitive signed source URL.
 export async function downloadComfyCloudAsset(req, input, options = {}) {
   return readAsset(req, input, { ...options, timeoutMs: options.timeoutMs === undefined ? 60000 : options.timeoutMs }, true);
@@ -85,17 +87,20 @@ async function readAsset(req, { task: rawTask, assetId: rawId, channelKey, attem
     check(); stage = 'bytes';
     const image = await readComfyCloudImageResponse(response, { task, mime: matched.asset.mime, sizeBytes: matched.asset.sizeBytes,
       signal: controller.signal, timeoutMs: remaining() });
+    stage = 'digest';
+    const verified = await verifyComfyCloudImageDigest(image.bytes, matched.asset.hash, { signal: controller.signal, timeoutMs: remaining() });
     stage = 'delivery'; await verify(); await file.verify(); check();
     const deliveredAt = now();
     if (!Number.isSafeInteger(deliveredAt) || deliveredAt < 0 || deliveredAt >= matched.source.expiresAt) throw fail('expired', '图片链接已失效，请刷新原任务，不必重新生图');
-    return Object.freeze({ status: 'bytes_checked', task, asset: matched.asset, bytes: image.bytes, mime: image.mime });
+    return Object.freeze({ status: 'integrity_checked', task, asset: matched.asset, bytes: verified.bytes, mime: image.mime, integrity: verified.integrity });
   };
   try { return await Promise.race([work(), stopped]); }
   catch (cause) {
     if (interruption) throw interruption;
     if (ownErrors.has(cause)) throw cause;
     const readableCause = stage === 'match' && String(cause?.code).startsWith('comfy_cloud_asset_')
-      || stage === 'bytes' && String(cause?.code).startsWith('comfy_cloud_response_');
+      || stage === 'bytes' && String(cause?.code).startsWith('comfy_cloud_response_')
+      || stage === 'digest' && String(cause?.code).startsWith('comfy_cloud_digest_');
     const error = fail(stage, readableCause ? cause.message : '原图片信息暂无法确认，请核查原任务，未重新生图');
     if (response && !response.ok && Number.isInteger(response.status)) error.httpStatus = response.status;
     throw error;

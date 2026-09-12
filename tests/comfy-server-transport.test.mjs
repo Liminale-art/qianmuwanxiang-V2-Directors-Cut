@@ -19,6 +19,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { imageServiceAccount } from '../qianmu-image-service-access.js';
 import { comfyTargetId } from '../qianmu-comfy-target-store.js';
+import { blake3 } from '../vendor/noble-hashes-2.4.0/blake3.js';
 
 const account = (admin = false) => ({ user: { profile: { handle: 'alice', enabled: true, admin } } });
 const workflow = (refs = false) => ({ '1': { class_type: 'FixtureOutput', inputs: { text: '%qianmu_prompt%', ...(refs ? { refs: '%qianmu_references%' } : {}) } }, save: { class_type: 'SaveImage', inputs: { images: ['1', 0] } } });
@@ -346,11 +347,51 @@ test('one original stored grant spans job, metadata and image bytes without pers
   const f = await persistedCloudTask(t), calls = [], before = await f.store.inspectChannel(f.locator.channelKey); let grants = 0;
   const result = await downloadComfyCloudAsset(f.req, { ...assetReadInput(f), expected: { mime: 'image/jpeg', sizeBytes: 1 } }, { ...assetReadOptions(f),
     ledger: { authorizeQuery: (...args) => { grants++; return f.ledger.authorizeQuery(...args); } }, requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) });
-  assert.equal(result.status, 'bytes_checked'); assert.equal(result.mime, 'image/png'); assert.deepEqual(result.bytes, new Uint8Array(png));
+  assert.equal(result.status, 'integrity_checked'); assert.equal(result.mime, 'image/png'); assert.deepEqual(result.bytes, new Uint8Array(png));
+  assert.equal(result.integrity.platformVerified, null); assert.equal(result.integrity.platformHash, null);
+  assert.equal(result.integrity.sizeBytes, png.length); assert.match(result.integrity.sha256, /^[a-f0-9]{64}$/);
   assert.equal(result.asset.assetId, cloudOutput().id); assert.equal(grants, 1); assert.equal(calls.length, 3);
   assert.ok(calls.every(call => call.options.method === 'GET')); assert.deepEqual(calls[2].options.headers, { Accept: 'image/*' });
   assert.doesNotMatch(JSON.stringify(result), /files\.test|temporary|apiKey/); assert.equal(result.source, undefined);
   assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before, 'download is not acknowledgement or a new submission');
+});
+
+test('download verifies the actual platform BLAKE3 and preserves the task when bytes disagree with valid metadata', async t => {
+  for (const matching of [true, false]) {
+    const f = await persistedCloudTask(t), calls = [], before = await f.store.inspectChannel(f.locator.channelKey);
+    const hash = `blake3:${matching ? Buffer.from(blake3(png)).toString('hex') : '0'.repeat(64)}`;
+    const pending = downloadComfyCloudAsset(f.req, assetReadInput(f), { ...assetReadOptions(f), requestImpl: mockNodeRequest(calls, call => {
+      if (call.url.hostname === 'files.test') return assetDownloadReply(f, call);
+      return { body: call.url.pathname.includes('/assets/') ? { ...assetMetadataBody(f), hash }
+        : { ...readyCloudJob(f), outputs: [cloudOutput(undefined, { hash })] } };
+    }) });
+    if (matching) {
+      const result = await pending;
+      assert.equal(result.status, 'integrity_checked'); assert.equal(result.integrity.platformVerified, true);
+      assert.equal(result.integrity.platformHash, hash); assert.equal(`blake3:${result.integrity.blake3}`, hash);
+    } else await assert.rejects(pending, { code: 'comfy_cloud_asset_read_digest', submissionState: 'accepted', upstreamId: f.task.taskId, retryable: false });
+    assert.equal(calls.length, 3); assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+  }
+});
+
+test('cancellation or account change after file EOF still blocks the digest delivery checkpoint', async t => {
+  for (const cancel of [true, false]) {
+    const f = await persistedCloudTask(t), calls = [], controller = new AbortController(); let afterFile = false;
+    const before = await f.store.inspectChannel(f.locator.channelKey), api = mockNodeRequest(calls, call => assetDownloadReply(f, call));
+    await assert.rejects(downloadComfyCloudAsset(f.req, assetReadInput(f), { ...assetReadOptions(f), signal: controller.signal,
+      requestImpl: (url, options, callback) => {
+        if (new URL(url).hostname !== 'files.test') return api(url, options, callback);
+        calls.push({ url: new URL(url), options });
+        return new Writable({ final(done) {
+          const incoming = new PassThrough(); incoming.statusCode = 200; incoming.headers = { 'content-type': 'image/png' };
+          incoming.once('end', () => setImmediate(() => { afterFile = true; if (cancel) controller.abort('private-test-reason'); else f.req.user.profile.handle = 'bob'; }));
+          callback(incoming); incoming.end(png); done();
+        } });
+      },
+    }), { code: `comfy_cloud_asset_read_${cancel ? 'cancelled' : 'account'}`, submissionState: 'accepted', upstreamId: f.task.taskId });
+    assert.equal(afterFile, true); assert.equal(calls.length, 3);
+    assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+  }
 });
 
 test('waiting tasks and file body mismatches cannot become downloaded or cause a generation retry', async t => {
