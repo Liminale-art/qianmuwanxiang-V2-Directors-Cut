@@ -70,6 +70,86 @@ const cloudInput = (req, attemptId = 'cloud-once', apiKey = 'mock-cloud-key') =>
   expectedAccount: imageServiceAccount(req).namespace, attemptId, apiKey, intent: withCloudIntent().entries[0].cloudIntent,
 });
 
+function cloudAccepted(reservation, taskId = 'original') {
+  const { cloudIntent: intent } = reservation;
+  return { schema: COMFY_CLOUD_RECEIPT_SCHEMA,
+    task: bindComfyCloudTask(intent.connection, taskId, { self: `/api/v2/jobs/${taskId}`, cancel: `/api/v2/jobs/${taskId}/cancel` }),
+    requestDigest: intent.requestDigest, workflow: intent.workflow, stillOutput: intent.stillOutput };
+}
+
+test('cloud submission is single-use, persistent before dispatch and cannot be recreated from serialized tickets', async t => {
+  const { root } = await fixture(t), store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => store.close());
+  const req = cloudActor(), ledger = createComfyCloudLedger({ store }), reservation = await ledger.reserve(req, cloudInput(req));
+  assert.throws(() => ledger.submission(structuredClone(reservation)), { code: 'image_service_cloud_ticket' });
+  assert.throws(() => createComfyCloudLedger({ store }).submission(reservation), { code: 'image_service_cloud_ticket' });
+  const ticket = ledger.submission(reservation); assert.equal(ticket, ledger.submission(reservation));
+  await assert.rejects(ticket.recordAccepted('original'), { code: 'image_service_cloud_ticket' });
+  const results = await Promise.allSettled([ticket.beforeSubmit(), ticket.beforeSubmit()]);
+  assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
+  assert.equal((await store.inspectChannel(reservation.channelKey)).entries[0].status, 'submitting');
+  await ticket.recordAccepted('original', cloudAccepted(reservation));
+  const row = (await store.inspectChannel(reservation.channelKey)).entries[0];
+  assert.equal(row.status, 'submitting', 'acceptance is not completion'); assert.equal(row.cloudReceipt.task.taskId, 'original');
+});
+
+test('cloud acceptance survives login change, malformed receipt and later completion of missing evidence', async t => {
+  const { root } = await fixture(t), store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => store.close());
+  const req = cloudActor(), ledger = createComfyCloudLedger({ store }), reservation = await ledger.reserve(req, cloudInput(req)), ticket = ledger.submission(reservation);
+  await ticket.beforeSubmit(); req.user.profile.handle = 'bob';
+  await assert.rejects(ticket.recordAccepted('original', {}), { code: 'image_service_cloud_acceptance_unconfirmed', submissionState: 'accepted', upstreamId: 'original' });
+  let row = (await store.inspectChannel(reservation.channelKey)).entries[0];
+  assert.equal(row.upstreamId, 'original'); assert.equal(row.namespace, reservation.namespace); assert.equal(row.cloudReceipt, undefined);
+  await ticket.recordAccepted('original', cloudAccepted(reservation));
+  row = (await store.inspectChannel(reservation.channelKey)).entries[0]; assert.ok(row.cloudReceipt);
+  await assert.rejects(ticket.recordAccepted('another', cloudAccepted(reservation, 'another')), { code: 'image_service_cloud_acceptance_unconfirmed' });
+  assert.equal((await store.inspectChannel(reservation.channelKey)).entries[0].upstreamId, 'original');
+});
+
+test('changing a durable owner, fence, digest or intent revokes old cloud submission authority', async t => {
+  const { root } = await fixture(t), store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => store.close());
+  for (const field of ['ownerId', 'fence', 'requestDigest', 'cloudIntent']) {
+    const req = cloudActor(), ledger = createComfyCloudLedger({ store }), input = cloudInput(req, field, `mock-${field}`), reservation = await ledger.reserve(req, input);
+    await store.transaction(reservation.channelKey, state => {
+      const row = state.entries[0];
+      if (field === 'requestDigest') { row.requestDigest = 'e'.repeat(64); row.cloudIntent = { ...row.cloudIntent, requestDigest: row.requestDigest }; }
+      else if (field === 'cloudIntent') row.cloudIntent = { ...row.cloudIntent, workflow: { ...row.cloudIntent.workflow, executionHash: 'e'.repeat(64) } };
+      else row[field] = 'replaced';
+      return { state };
+    });
+    await assert.rejects(ledger.submission(reservation).beforeSubmit(), { code: 'image_service_cloud_ticket_changed' });
+  }
+});
+
+test('cloud login change before dispatch blocks authority; accepted-id write failure is never not-submitted', async t => {
+  const { root } = await fixture(t); let failWrite = false;
+  const store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud', fileSystem: { ...fs, rename: async (...args) => { if (failWrite) throw Object.assign(Error('private path'), { code: 'EIO' }); return fs.rename(...args); } } }); t.after(() => store.close());
+  const req = cloudActor(), ledger = createComfyCloudLedger({ store }), reservation = await ledger.reserve(req, cloudInput(req));
+  req.user.profile.handle = 'bob';
+  await assert.rejects(ledger.submission(reservation).beforeSubmit(), { code: 'image_service_cloud_account_changed' });
+  req.user.profile.handle = 'alice'; const ticket = ledger.submission(reservation); await ticket.beforeSubmit();
+  failWrite = true;
+  await assert.rejects(ticket.recordAccepted('original', cloudAccepted(reservation)), error => error.code === 'image_service_cloud_acceptance_unconfirmed' && error.submissionState === 'accepted' && error.upstreamId === 'original' && !error.message.includes('private path'));
+  failWrite = false;
+  assert.equal((await store.inspectChannel(reservation.channelKey)).entries[0].status, 'submitting');
+  await ticket.recordAccepted('original', cloudAccepted(reservation));
+  assert.equal((await store.inspectChannel(reservation.channelKey)).entries[0].upstreamId, 'original');
+});
+
+test('interruption between accepted id and full receipt writes preserves recovery evidence after reopening', async t => {
+  const { root } = await fixture(t); let acceptedWrites = 0, failReceipt = false;
+  const store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud', fileSystem: { ...fs, rename: async (...args) => {
+    if (failReceipt && ++acceptedWrites === 2) throw Object.assign(Error('interrupted'), { code: 'EIO' });
+    return fs.rename(...args);
+  } } }); t.after(() => store.close());
+  const req = cloudActor(), ledger = createComfyCloudLedger({ store }), reservation = await ledger.reserve(req, cloudInput(req)), ticket = ledger.submission(reservation);
+  await ticket.beforeSubmit(); failReceipt = true;
+  await assert.rejects(ticket.recordAccepted('original', cloudAccepted(reservation)), { code: 'image_service_cloud_acceptance_unconfirmed', submissionState: 'accepted' });
+  const next = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => next.close());
+  const row = (await next.inspectChannel(reservation.channelKey)).entries[0];
+  assert.equal(row.upstreamId, 'original'); assert.equal(row.cloudReceipt, undefined); assert.equal(row.status, 'submitting');
+  await assert.rejects(createComfyCloudLedger({ store: next }).reserve(req, cloudInput(req, 'not-a-retry')), { code: 'image_service_cloud_occupied' });
+});
+
 test('cloud resource scope separates actual keys and origins, never stores the credential', () => {
   const connection = withCloudIntent().entries[0].cloudIntent.connection;
   const original = comfyCloudResourceKey(connection, 'mock-cloud-key'); assert.match(original, /^[a-f0-9]{64}$/);
