@@ -5,6 +5,7 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { createComfyServerTransport, createComfyCloudServerTransport, pinnedComfyFetch } from '../qianmu-comfy-server-transport.js';
 import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
+import { queryComfyCloudTask } from '../qianmu-comfy-cloud-query.js';
 import { init, exit } from '../server-plugin.js';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
@@ -40,6 +41,89 @@ const response = () => ({ statusCode: 200, headers: {}, set(k, v) { this.headers
 const cloudBinding = bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2');
 const rhBinding = bindComfyCloudProtocol('https://www.runninghub.cn', 'runninghub-workflow-v1');
 const cloudGrant = async () => async () => {};
+
+test('cloud query runner performs only the original task read through real authorization and response projection', async () => {
+  const calls = [], task = bindComfyCloudTask(rhBinding, '1904152026220003329'); let ownershipChecks = 0;
+  const result = await queryComfyCloudTask(account(), task, { apiKey: 'test-only-secret', authorizeTask: async (_req, original, owner) => {
+    assert.deepEqual(original, task); assert.match(owner.namespace, /^st-user:/); return async () => { ownershipChecks++; };
+  }, authorizeTarget: cloudGrant, resolveHost: publicDns, requestImpl: mockNodeRequest(calls, () => ({ body: { taskId: task.taskId, status: 'SUCCESS', errorCode: '', usage: { ignored: true } } })) });
+  assert.equal(result.status, 'succeeded'); assert.equal(calls.length, 1); assert.equal(calls[0].url.pathname, '/openapi/v2/query');
+  assert.deepEqual(JSON.parse(calls[0].body), { taskId: task.taskId }); assert.ok(ownershipChecks >= 3);
+  assert.deepEqual(Object.keys(result), ['task', 'status', 'terminal']); assert.equal(JSON.stringify(result).includes('test-only-secret'), false);
+});
+
+test('cloud query runner cannot use missing ownership grants or keys to reach DNS', async () => {
+  const task = bindComfyCloudTask(rhBinding, '1904152026220003329');
+  const options = { apiKey: 'test-only-secret', authorizeTarget: cloudGrant, resolveHost: () => assert.fail('no DNS') };
+  await assert.rejects(queryComfyCloudTask(account(), task, options), { code: 'comfy_cloud_query_authorization', submissionState: 'accepted' });
+  await assert.rejects(queryComfyCloudTask(account(), task, { ...options, authorizeTask: async () => {} }), { code: 'comfy_cloud_query_authorization' });
+  await assert.rejects(queryComfyCloudTask(account(), task, { ...options, apiKey: 'bad\nkey', authorizeTask: cloudGrant }), { code: 'comfy_cloud_query_key' });
+});
+
+test('Cloud v2 query runner follows the original mounted GET link and sends no RH body', async () => {
+  const calls = [], binding = bindComfyCloudProtocol('https://dep-one.run.comfy.app', 'comfy-cloud-v2');
+  const urls = { self: '/deployment/dep-one/api/v2/jobs/original', cancel: '/deployment/dep-one/api/v2/jobs/original/cancel' };
+  const task = bindComfyCloudTask(binding, 'original', urls);
+  const result = await queryComfyCloudTask(account(), task, { apiKey: 'test-only-secret', authorizeTask: cloudGrant, authorizeTarget: cloudGrant,
+    resolveHost: publicDns, requestImpl: mockNodeRequest(calls, () => ({ body: { id: 'original', status: 'running', urls } })),
+  });
+  assert.equal(result.status, 'running'); assert.equal(calls.length, 1); assert.equal(calls[0].options.method, 'GET');
+  assert.equal(calls[0].url.pathname, urls.self); assert.equal(calls[0].body.length, 0);
+  assert.equal(calls[0].options.headers.authorization, 'Bearer test-only-secret');
+});
+
+test('query deadline includes a response body that stalls after headers and tears down its stream', async () => {
+  const task = bindComfyCloudTask(rhBinding, '1904152026220003329'); let incoming, calls = 0;
+  await assert.rejects(queryComfyCloudTask(account(), task, { apiKey: 'test-only-secret', timeoutMs: 30,
+    authorizeTask: cloudGrant, authorizeTarget: cloudGrant, resolveHost: publicDns,
+    requestImpl: (_url, options, callback) => {
+      calls++;
+      return new Writable({ write(_chunk, _encoding, done) { done(); }, final(done) {
+        incoming = new PassThrough(); incoming.statusCode = 200; incoming.headers = { 'content-type': 'application/json' };
+        options.signal.addEventListener('abort', () => incoming.destroy(), { once: true });
+        callback(incoming); incoming.write('{"taskId":'); done();
+      } });
+    },
+  }), { code: 'comfy_cloud_query_timeout', submissionState: 'accepted', upstreamId: task.taskId });
+  assert.equal(calls, 1); assert.equal(incoming.destroyed, true);
+});
+
+test('query deadline covers a stalled ownership grant and prevents late DNS after the caller has timed out', async () => {
+  const task = bindComfyCloudTask(rhBinding, '1904152026220003329'); let release;
+  const granted = new Promise(resolve => { release = resolve; });
+  const result = queryComfyCloudTask(account(), task, { apiKey: 'test-only-secret', timeoutMs: 5,
+    authorizeTask: () => granted, authorizeTarget: cloudGrant, resolveHost: () => assert.fail('late DNS') });
+  await assert.rejects(result, { code: 'comfy_cloud_query_timeout', submissionState: 'accepted', upstreamId: task.taskId });
+  release(async () => {}); await new Promise(resolve => setImmediate(resolve));
+});
+
+test('query deadline and external cancellation abort header waits without creating another request', async () => {
+  const task = bindComfyCloudTask(rhBinding, '1904152026220003329');
+  for (const cancel of [false, true]) {
+    const controller = new AbortController(); let calls = 0, socketSignal;
+    const result = queryComfyCloudTask(account(), task, { apiKey: 'test-only-secret', timeoutMs: cancel ? 1000 : 5, signal: controller.signal,
+      authorizeTask: cloudGrant, authorizeTarget: cloudGrant, resolveHost: publicDns,
+      requestImpl: (_url, options) => { calls++; socketSignal = options.signal; if (cancel) queueMicrotask(() => controller.abort());
+        const output = new Writable({ write(_chunk, _encoding, done) { done(); } });
+        options.signal.addEventListener('abort', () => output.destroy(Error('test-only-secret')), { once: true }); return output;
+      },
+    });
+    await assert.rejects(result, { code: cancel ? 'comfy_cloud_query_cancelled' : 'comfy_cloud_query_timeout', submissionState: 'accepted', upstreamId: task.taskId });
+    assert.equal(calls, 1); assert.equal(socketSignal.aborted, true);
+  }
+});
+
+test('task ownership or ST account revocation during a returned response blocks delivery', async () => {
+  const task = bindComfyCloudTask(rhBinding, '1904152026220003329');
+  for (const changeAccount of [true, false]) {
+    const req = account(); let permitted = true;
+    await assert.rejects(queryComfyCloudTask(req, task, { apiKey: 'test-only-secret',
+      authorizeTask: async () => async () => { if (!permitted) throw Error('test-only-secret'); }, authorizeTarget: cloudGrant, resolveHost: publicDns,
+      requestImpl: mockNodeRequest([], () => { if (changeAccount) req.user.profile.handle = 'bob'; else permitted = false;
+        return { body: { taskId: task.taskId, status: 'SUCCESS', errorCode: '' } }; }),
+    }), error => error.submissionState === 'accepted' && error.upstreamId === task.taskId && !error.message.includes('test-only-secret'));
+  }
+});
 
 test('cloud transport requires a logged-in account and a recheckable grant before any DNS/network', async () => {
   const request = { binding: cloudBinding, operation: 'submit' }, denied = { resolveHost: () => assert.fail('no DNS'), requestImpl: () => assert.fail('no request') };
