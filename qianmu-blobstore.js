@@ -378,7 +378,12 @@ export function createReaderPackageWriter({check = () => {}} = {}) {
       try {
         for (const [storeName, record] of [[name, value], ...companions]) {
           check();
-          transaction.objectStore(storeName).put(record, key);
+          const request = transaction.objectStore(storeName).put(record, key);
+          // Request success is still before commit: a stale page can preserve the old originals here.
+          request.onsuccess = () => {
+            try { check(); }
+            catch (error) { writeError = error; try { transaction.abort(); } catch (_) { reject(error); } }
+          };
         }
       } catch (error) { writeError = error; try { transaction.abort(); } catch (_) { reject(error); } }
     });

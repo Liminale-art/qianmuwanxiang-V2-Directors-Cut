@@ -79,6 +79,12 @@ try{
       let calls=0,stale=false;const guarded=db.createReaderPackageWriter({check(){if(++calls===2)throw Error('changed while opening database');}});
       try{await guarded[method](key,replacement);}catch{stale=true;}
       check(method+' checks after database wait without changing the original',stale&&calls===2&&await content(await readValue())==='old');
+      let current=true;failed=false;
+      try{
+        IDBObjectStore.prototype.put=function(value,id){const request=put.call(this,value,id);if(this.name===store&&id===key)request.addEventListener('success',()=>{current=false;},{once:true});return request;};
+        try{await db.createReaderPackageWriter({check(){if(!current)throw Error('changed before commit');}})[method](key,replacement);}catch(error){failed=error.message==='changed before commit';}
+      }finally{IDBObjectStore.prototype.put=put;}
+      check(method+' aborts a now-stale pending transaction instead of replacing an original',failed&&await content(await readValue())==='old');
       await writer[method](key,replacement);check(method+' commits a confirmed replacement',await content(await readValue())==='new');
     }
     const reader=db.createReaderPackageReader();
@@ -231,11 +237,11 @@ try{
     check('book and cover are both visible after committed replacement',(await db.getBook(atomicKey)).fullText==='new prose'&&await (await db.getCover(atomicKey)).text()==='new cover');
     await writer.putBookWithCover(atomicKey,{fullText:'legacy replacement'},null);
     check('an absent cover in a legacy pack does not delete the local original',await (await db.getCover(atomicKey)).text()==='new cover');
-    for(const failure of ['database-wait','between-writes']){
+    for(const failure of ['database-wait','between-writes','reader_books','reader_covers']){
       await originalPair();let current=true,calls=0,rejected=false;
       const guarded=db.createReaderPackageWriter({check(){if(++calls===2&&failure==='database-wait')throw Error('changed while opening');if(!current)throw Error('changed between originals');}});
       try{
-        IDBObjectStore.prototype.put=function(value,key){const request=put.call(this,value,key);if(key===atomicKey&&this.name==='reader_books'&&failure==='between-writes')current=false;return request;};
+        IDBObjectStore.prototype.put=function(value,key){const request=put.call(this,value,key);if(key===atomicKey&&this.name==='reader_books'&&failure==='between-writes')current=false;if(key===atomicKey&&this.name===failure)request.addEventListener('success',()=>{current=false;},{once:true});return request;};
         try{await guarded.putBookWithCover(atomicKey,{fullText:'new prose'},new Blob(['new cover']));}catch{rejected=true;}
       }finally{IDBObjectStore.prototype.put=put;}
       check('book-cover '+failure+' cannot partially overwrite either original',rejected&&(await db.getBook(atomicKey)).fullText==='old prose'&&await (await db.getCover(atomicKey)).text()==='old cover');
@@ -344,5 +350,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,145);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,152);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}
