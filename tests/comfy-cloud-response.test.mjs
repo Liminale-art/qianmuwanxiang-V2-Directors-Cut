@@ -1,12 +1,60 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { bindComfyCloudProtocol as bind, planComfyCloudOperation as plan } from '../qianmu-comfy-cloud-protocol.js';
-import { readComfyCloudAcceptance as accept, readComfyCloudTaskStatus as status, readComfyCloudJsonResponse as read } from '../qianmu-comfy-cloud-response.js';
+import { readComfyCloudAcceptance as accept, readComfyCloudTaskStatus as status, readComfyCloudJsonResponse as read, readComfyCloudImageResponse as readImage } from '../qianmu-comfy-cloud-response.js';
 const cloud = bind('https://dep-one.run.comfy.app', 'comfy-cloud-v2'), rh = bind('https://www.runninghub.cn', 'runninghub-workflow-v1');
 const id = 'original-id', rhId = '1904152026220003329';
 const urls = { self: `/deployment/dep-one/api/v2/jobs/${id}`, cancel: `/deployment/dep-one/api/v2/jobs/${id}/cancel` };
 const cloudBody = { id, status: 'queued', urls }, rhBody = { code: 0, data: { taskId: rhId } };
 const cloudTask = accept(cloud, cloudBody), rhTask = accept(rh, rhBody);
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==', 'base64');
+const imageContract = { task: cloudTask, mime: 'image/png', sizeBytes: png.length };
+
+test('cloud still reading requires the original byte count and container, including a binary CDN response', async () => {
+  for (const mime of ['image/png', 'application/octet-stream']) {
+    const response = new Response(new ReadableStream({ start(stream) { stream.enqueue(png.subarray(0, 30)); stream.enqueue(png.subarray(30)); stream.close(); } }),
+      { headers: { 'content-type': mime, 'content-length': png.length } });
+    const result = await readImage(response, imageContract);
+    assert.equal(result.mime, 'image/png'); assert.deepEqual(result.bytes, new Uint8Array(png)); assert.equal(response.body.locked, false);
+  }
+});
+
+test('invalid still contracts and partial, encoded or differently typed responses never become archived images', async () => {
+  for (const extra of [{ task: null }, { mime: 'image/gif' }, { sizeBytes: 0 }, { sizeBytes: 48 * 1024 * 1024 + 1 }]) {
+    await assert.rejects(readImage(new Response(png, { headers: { 'content-type': 'image/png' } }), { ...imageContract, ...extra }), { code: 'comfy_cloud_response_limits' });
+  }
+  for (const init of [{ status: 206, headers: { 'content-type': 'image/png' } }, { headers: { 'content-type': 'image/png', 'content-encoding': 'gzip' } },
+    { headers: { 'content-type': 'text/html' } }, { headers: { 'content-type': 'image/jpeg' } }]) {
+    await assert.rejects(readImage(new Response(png, init), imageContract), { code: 'comfy_cloud_response_type', submissionState: 'accepted', upstreamId: id, retryable: false });
+  }
+  await assert.rejects(readImage(new Response(png, { headers: { 'content-type': 'image/jpeg' } }), { ...imageContract, mime: 'image/jpeg' }), { code: 'comfy_cloud_response_image_type' });
+});
+
+test('a smaller declaration, short body or extra bytes cannot override the original image size', async () => {
+  for (const [body, headers, code] of [[png, { 'content-length': png.length - 1 }, 'image_size'], [png.subarray(0, -1), {}, 'image_size'], [Buffer.concat([png, Buffer.from([0])]), {}, 'size']]) {
+    await assert.rejects(readImage(new Response(body, { headers: { 'content-type': 'image/png', ...headers } }), imageContract), { code: `comfy_cloud_response_${code}`, upstreamId: id });
+  }
+});
+
+test('HTML, truncated containers and animation never pass merely because metadata says PNG', async () => {
+  const animation = Buffer.concat([png.subarray(0, 33), Buffer.from([0,0,0,0]), Buffer.from('acTL'), Buffer.alloc(4), png.subarray(33)]);
+  for (const body of [Buffer.from('<html>test-only-secret</html>'), png.subarray(0, 33), animation]) {
+    await assert.rejects(readImage(new Response(body, { headers: { 'content-type': 'image/png' } }), { ...imageContract, sizeBytes: body.length }), error =>
+      error.code === 'comfy_cloud_response_image_invalid' && error.upstreamId === id && !error.message.includes('test-only-secret'));
+  }
+});
+
+test('still body deadlines and cancellation reuse the bounded reader without an unbounded arrayBuffer fallback', async () => {
+  for (const abort of [false, true]) {
+    let cancelled = 0; const controller = new AbortController();
+    const response = new Response(new ReadableStream({ cancel() { cancelled++; return new Promise(() => {}); } }), { headers: { 'content-type': 'image/png' } });
+    const pending = readImage(response, { ...imageContract, timeoutMs: abort ? 1000 : 5, signal: controller.signal });
+    if (abort) controller.abort('test-only-secret');
+    await assert.rejects(pending, { code: `comfy_cloud_response_${abort ? 'cancelled' : 'timeout'}`, submissionState: 'accepted', upstreamId: id });
+    assert.equal(cancelled, 1); assert.equal(response.body.locked, false);
+  }
+  await assert.rejects(readImage({ ok: true, status: 200, headers: new Headers({ 'content-type': 'image/png' }), arrayBuffer: () => assert.fail('unbounded fallback') }, imageContract), { code: 'comfy_cloud_response_stream' });
+});
 
 test('Cloud follows validated response links including the serverless mount once, not a guessed base path', () => {
   assert.equal(plan(cloud, 'query', cloudTask).url, `${cloud.origin}${urls.self}`);

@@ -1,6 +1,7 @@
 // Bounded response reading and identity/status projection; no submission, billing or retry.
 import { bindComfyCloudTask, requireComfyCloudTaskId, planComfyCloudOperation } from './qianmu-comfy-cloud-protocol.js';
 import { parseBoundedJson } from './qianmu-json-input.js';
+import { comfyStillMime } from './qianmu-comfy-results.js';
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const fail = (code, message, taskId = '') => {
   throw Object.assign(new Error(message), { code: `comfy_cloud_response_${code}`, retryable: false,
@@ -9,7 +10,7 @@ const fail = (code, message, taskId = '') => {
 
 // Called only after response headers arrive. Header/connect deadlines belong to the
 // operation runner; this deadline covers a body that never finishes or stops mid-stream.
-export async function readComfyCloudJsonResponse(response, { task, maxBytes = 1024 * 1024, timeoutMs = 15000, signal } = {}) {
+async function readCloudResponse(response, { task, maxBytes, timeoutMs, signal }, { hardLimit, checkHeaders, decode }) {
   const original = task ? bindComfyCloudTask(task, task.taskId, task.links) : null;
   const ownErrors = new WeakSet();
   const error = (code, message) => {
@@ -18,18 +19,18 @@ export async function readComfyCloudJsonResponse(response, { task, maxBytes = 10
     ownErrors.add(result); return result;
   };
   let reader, timer, onAbort, interruption;
+  const deadline = performance.now() + timeoutMs;
   const cancelBody = () => {
     // Never wait indefinitely for a broken stream's cancellation callback.
     try { Promise.resolve(reader ? reader.cancel() : response?.body?.cancel?.()).catch(() => {}); } catch (_) { /* Best effort cleanup. */ }
   };
   try {
-    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 2 * 1024 * 1024
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > hardLimit
       || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60000) throw error('limits', '云端响应读取限制无效');
     if (signal?.aborted) throw error('cancelled', '已停止读取云端响应，原任务请到平台核查');
     if (!response?.ok) throw Object.assign(error('http', '云端请求未正常返回，请核查原任务'),
       { httpStatus: Number.isInteger(response?.status) ? response.status : 0 });
-    const mime = String(response.headers?.get?.('content-type') || '').split(';', 1)[0].trim().toLowerCase();
-    if (!/^application\/(?:json|[a-z0-9!#$&^_.+-]+\+json)$/.test(mime)) throw error('type', '云端未返回JSON数据，原任务状态尚未确认');
+    checkHeaders(response, error);
     const declared = response.headers?.get?.('content-length');
     if (declared !== null && declared !== undefined && (!/^\d+$/.test(declared) || !Number.isSafeInteger(Number(declared)) || Number(declared) > maxBytes)) {
       throw error('size', '云端响应超过读取上限或长度无效，未截断接收');
@@ -44,6 +45,8 @@ export async function readComfyCloudJsonResponse(response, { task, maxBytes = 10
     });
     const chunks = []; let bytes = 0;
     while (true) {
+      if (signal?.aborted) throw error('cancelled', '已停止读取云端响应，原任务请到平台核查');
+      if (performance.now() >= deadline) throw error('timeout', '读取云端响应超时，请核查原任务，未重新提交');
       const part = await Promise.race([reader.read(), interrupted]);
       if (interruption) throw interruption;
       if (part.done) break;
@@ -54,11 +57,10 @@ export async function readComfyCloudJsonResponse(response, { task, maxBytes = 10
     }
     const joined = new Uint8Array(bytes); let offset = 0;
     for (const chunk of chunks) { joined.set(chunk, offset); offset += chunk.byteLength; }
-    let body;
-    try { body = parseBoundedJson(new TextDecoder('utf-8', { fatal: true }).decode(joined), { maxBytes, maxDepth: 32, maxNodes: 100000, label: '云端响应' }); }
-    catch (_) { throw error('json', '云端JSON数据无效或超限，请核查原任务'); }
-    if (!object(body)) throw error('shape', '云端未返回有效任务数据');
-    return body;
+    const result = decode(joined, error);
+    if (signal?.aborted) throw error('cancelled', '已停止读取云端响应，原任务请到平台核查');
+    if (performance.now() >= deadline) throw error('timeout', '读取云端响应超时，请核查原任务，未重新提交');
+    return result;
   } catch (cause) {
     if (ownErrors.has(cause)) throw cause;
     throw error('stream', '读取云端响应失败，请核查原任务');
@@ -66,6 +68,46 @@ export async function readComfyCloudJsonResponse(response, { task, maxBytes = 10
     clearTimeout(timer); if (onAbort) signal?.removeEventListener('abort', onAbort);
     cancelBody(); if (reader) { try { reader.releaseLock(); } catch (_) { /* Already released or broken. */ } }
   }
+}
+
+const responseMime = response => String(response.headers?.get?.('content-type') || '').split(';', 1)[0].trim().toLowerCase();
+export async function readComfyCloudJsonResponse(response, { task, maxBytes = 1024 * 1024, timeoutMs = 15000, signal } = {}) {
+  return readCloudResponse(response, { task, maxBytes, timeoutMs, signal }, {
+    hardLimit: 2 * 1024 * 1024,
+    checkHeaders: (response, error) => {
+      if (!/^application\/(?:json|[a-z0-9!#$&^_.+-]+\+json)$/.test(responseMime(response))) throw error('type', '云端未返回JSON数据，原任务状态尚未确认');
+    },
+    decode: (bytes, error) => {
+      let body;
+      try { body = parseBoundedJson(new TextDecoder('utf-8', { fatal: true }).decode(bytes), { maxBytes, maxDepth: 32, maxNodes: 100000, label: '云端响应' }); }
+      catch (_) { throw error('json', '云端JSON数据无效或超限，请核查原任务'); }
+      if (!object(body)) throw error('shape', '云端未返回有效任务数据');
+      return body;
+    },
+  });
+}
+
+// The descriptor must come from the original job/asset. This checks byte count
+// and still-container type, not decoded pixels, CRC or the platform's BLAKE3 hash.
+// Network deadline and the final owner/source grant remain the caller's duty.
+export async function readComfyCloudImageResponse(response, { task, mime, sizeBytes, timeoutMs = 60000, signal } = {}) {
+  return readCloudResponse(response, { task, maxBytes: sizeBytes, timeoutMs, signal }, {
+    hardLimit: 48 * 1024 * 1024,
+    checkHeaders: (response, error) => {
+      if (!task || !['image/png', 'image/jpeg', 'image/webp'].includes(mime)) throw error('limits', '缺少原任务图片约定');
+      const declared = response.headers?.get?.('content-length'), encoding = response.headers?.get?.('content-encoding');
+      if (response.status !== 200 || ![mime, 'application/octet-stream'].includes(responseMime(response)) || encoding && encoding.toLowerCase() !== 'identity') throw error('type', '云端未返回约定的完整原图');
+      if (declared != null && Number(declared) !== sizeBytes) throw error('image_size', '图片长度与原任务记录不一致，未入库');
+    },
+    decode: (bytes, error) => {
+      if (bytes.byteLength !== sizeBytes) throw error('image_size', '图片未完整接收或与原记录不一致，未入库');
+      let actual;
+      try { actual = comfyStillMime(bytes); }
+      catch (cause) { throw error('image_invalid', cause?.code === 'comfy_animated_output' ? '云端返回了动画，未加入静帧' : '原图格式无效或容器不完整，未入库'); }
+      if (actual !== mime) throw error('image_type', '图片实际格式与原任务记录不一致，未入库');
+      return { bytes, mime: actual };
+    },
+  });
 }
 
 export function readComfyCloudAcceptance(binding, body) {
