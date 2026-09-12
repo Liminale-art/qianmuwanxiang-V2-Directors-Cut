@@ -8,7 +8,7 @@ import { createImageServiceStore } from '../qianmu-image-service-store.js';
 import { createImageServiceQueue, imageServiceChannelKey, describeImageServiceRequest, normalizeImageServiceChannel } from '../qianmu-image-service-queue.js';
 import { generateImage } from '../qianmu-image-gateway.js';
 import { COMFY_CLOUD_CHANNEL_SCHEMA, normalizeComfyCloudChannel } from '../qianmu-comfy-cloud-channel-state.js';
-import { COMFY_CLOUD_RECEIPT_SCHEMA } from '../qianmu-comfy-cloud-receipt.js';
+import { COMFY_CLOUD_RECEIPT_SCHEMA, COMFY_CLOUD_INTENT_SCHEMA } from '../qianmu-comfy-cloud-receipt.js';
 import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
 
 const key = imageServiceChannelKey('mock-persistence-key');
@@ -54,6 +54,41 @@ function cloudMetadata() {
   };
   return state;
 }
+
+function withCloudIntent() {
+  const state = cloudMetadata(), row = state.entries[0], receipt = row.cloudReceipt;
+  const { version, provider, protocol, origin } = receipt.task;
+  row.cloudIntent = { schema: COMFY_CLOUD_INTENT_SCHEMA, connection: { version, provider, protocol, origin },
+    requestDigest: row.requestDigest, workflow: structuredClone(receipt.workflow), stillOutput: structuredClone(receipt.stillOutput) };
+  return state;
+}
+
+test('a cloud reservation needs pre-submit intent and accepted evidence must agree with it after reopen', async t => {
+  const { root } = await fixture(t), store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => store.close());
+  const state = withCloudIntent(); state.entries[0].status = 'reserved'; delete state.entries[0].upstreamId; delete state.entries[0].cloudReceipt;
+  const missing = structuredClone(state); delete missing.entries[0].cloudIntent;
+  await assert.rejects(store.transaction(key, () => ({ state: missing })), { code: 'image_service_cloud_state' });
+  await store.transaction(key, () => ({ state }));
+  const next = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => next.close());
+  assert.deepEqual(await next.inspectChannel(key), state);
+  await next.transaction(key, () => ({ state: withCloudIntent() }));
+  assert.deepEqual(await store.inspectChannel(key), withCloudIntent());
+  const mismatch = withCloudIntent(); mismatch.entries[0].cloudReceipt.stillOutput.execution.outputNodeIds = ['other'];
+  await assert.rejects(store.transaction(key, () => ({ state: mismatch })), { code: 'image_service_cloud_state' });
+  assert.deepEqual(await next.inspectChannel(key), withCloudIntent());
+});
+
+test('pre-submit intent must match owning row, and historical uncertain records never gain an invented intent', () => {
+  for (const change of [s => { s.entries[0].cloudIntent.requestDigest = 'f'.repeat(64); },
+    s => { s.entries[0].automatic = false; }, s => { s.entries[0].cloudIntent = undefined; },
+    s => { s.entries[0].cloudIntent.workflow.executionHash = 'e'.repeat(64); }]) {
+    const state = withCloudIntent(); change(state);
+    assert.throws(() => normalizeComfyCloudChannel(state, key), { code: 'image_service_cloud_state' });
+  }
+  const old = normalizeComfyCloudChannel(cloudMetadata(), key);
+  assert.equal(Object.hasOwn(old.entries[0], 'cloudIntent'), false);
+  assert.equal(old.entries[0].status, 'uncertain');
+});
 
 test('cloud scope round-trips accepted evidence after reopening without touching native records', async t => {
   const { root, store, directory } = await fixture(t);

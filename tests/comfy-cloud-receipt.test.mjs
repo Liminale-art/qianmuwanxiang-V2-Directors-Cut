@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
 import { normalizeComfyReceipt } from '../qianmu-comfy-receipt.js';
 import { COMFY_CLOUD_RECEIPT_SCHEMA as schema, normalizeComfyCloudReceipt as normalize, assertComfyCloudReceiptMatches as matches } from '../qianmu-comfy-cloud-receipt.js';
+import { COMFY_CLOUD_INTENT_SCHEMA, normalizeComfyCloudIntent, assertComfyCloudReceiptForIntent } from '../qianmu-comfy-cloud-receipt.js';
 const connection = bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2');
 const task = bindComfyCloudTask(connection, 'original', { self: '/api/v2/jobs/original', cancel: '/api/v2/jobs/original/cancel' });
 const stillOutput = { version: 1, model: 'workflow', previewNodeIds: ['preview'], execution: { version: 1, automatic: false, maxImages: 2, outputNodeIds: ['save'], expectedImages: 1 } };
@@ -11,6 +12,41 @@ const binding = { schemaVersion: 1, namespace: 'st-user:fixture', id: 'recipe', 
 const receipt = { schema, task, requestDigest, workflow: { templateHash, executionHash, binding }, stillOutput };
 const expected = { connection, requestDigest, templateHash, executionHash, upstreamId: 'original' };
 const invalid = { code: 'comfy_cloud_receipt_invalid', retryable: false };
+const intent = { schema: COMFY_CLOUD_INTENT_SCHEMA, connection, requestDigest, workflow: receipt.workflow, stillOutput };
+
+test('pre-submit intent is an owned frozen snapshot without task id or credentials', () => {
+  const source = structuredClone(intent), actual = normalizeComfyCloudIntent(source);
+  assert.deepEqual(actual, intent); assert.equal(Object.isFrozen(actual.connection), true);
+  assert.equal(Object.isFrozen(actual.stillOutput.execution), true);
+  assert.equal(Object.isFrozen(actual.workflow.binding), true);
+  source.workflow.binding.name = 'later edit'; source.stillOutput.execution.outputNodeIds.push('later');
+  assert.deepEqual(actual, intent);
+  assert.throws(() => normalize(intent), invalid);
+  assert.throws(() => normalizeComfyCloudIntent(receipt), { code: 'comfy_cloud_intent_invalid' });
+});
+
+test('pre-submit intent rejects missing identity, changed platform, future schema and nested authentication', () => {
+  let getterReads = 0;
+  for (const change of [v => { delete v.workflow; }, v => { v.schema += '.future'; }, v => { v.connection.provider = 'runninghub'; },
+    v => { v.apiKey = 'test-only-secret'; }, v => { v.connection.apiKey = 'test-only-secret'; },
+    v => { v.workflow.binding.extra_data = { key: 'test-only-secret' }; },
+    v => { Object.defineProperty(v, 'requestDigest', { get() { getterReads++; return requestDigest; }, enumerable: true }); }]) {
+    const bad = structuredClone(intent); change(bad);
+    assert.throws(() => normalizeComfyCloudIntent(bad), error => error.code === 'comfy_cloud_intent_invalid' && !error.message.includes('test-only-secret') && !Object.hasOwn(error, 'submissionState'));
+  }
+  assert.equal(getterReads, 0, 'invalid objects are rejected without evaluating their accessors');
+});
+
+test('accepted receipt must match every frozen workflow version and output choice, not only graph hashes', () => {
+  assert.deepEqual(assertComfyCloudReceiptForIntent(receipt, intent, 'original'), receipt);
+  for (const change of [r => { r.workflow.binding.version = 2; }, r => { delete r.workflow.binding; },
+    r => { r.stillOutput.model = 'different workflow'; }, r => { r.stillOutput.execution.outputNodeIds = ['another']; },
+    r => { r.stillOutput.previewNodeIds = []; }, r => { r.stillOutput.execution.maxImages = 3; },
+    r => { r.stillOutput.execution.expectedImages = 2; }]) {
+    const bad = structuredClone(receipt); change(bad);
+    assert.throws(() => assertComfyCloudReceiptForIntent(bad, intent, 'original'), invalid);
+  }
+});
 
 test('cloud receipt freezes original platform, both workflow hashes and saved version without changing native evidence', () => {
   const source = structuredClone(receipt), before = JSON.stringify(source), actual = normalize(source);
@@ -44,8 +80,10 @@ test('missing/future fields, credentials and unsafe extra layers are rejected in
     const bad = structuredClone(receipt); let object = bad; for (const key of path) object = object[key]; object.apiKey = 'test-only-secret';
     assert.throws(() => normalize(bad), error => error.code === invalid.code && !error.message.includes('test-only-secret') && !Object.hasOwn(error, 'submissionState'));
   }
-  const getter = structuredClone(receipt); Object.defineProperty(getter.workflow, 'templateHash', { get() { assert.fail('no accessor execution'); }, enumerable: true });
+  let getterReads = 0;
+  const getter = structuredClone(receipt); Object.defineProperty(getter.workflow, 'templateHash', { get() { getterReads++; return templateHash; }, enumerable: true });
   assert.throws(() => normalize(getter), invalid);
+  assert.equal(getterReads, 0, 'an accessor error must not be swallowed and mistaken for successful validation');
 });
 test('cloud output policy retains existing preview, node uniqueness and automatic single-image constraints', () => {
   for (const change of [value => { value.execution.outputNodeIds = ['preview']; }, value => { value.execution.outputNodeIds = ['save', 'save']; },
