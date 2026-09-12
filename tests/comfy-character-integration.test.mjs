@@ -9,7 +9,6 @@ import * as storyboard from '../qianmu-storyboard.js';
 import * as references from '../qianmu-comfy-references.js';
 import * as direct from '../qianmu-image-direct.js';
 import {checkComfyCharacterReadiness} from '../qianmu-comfy-character-readiness.js';
-import {comfyCharacterEditorRecipe,renderComfyCharacterEditor,saveComfyCharacterEditor} from '../qianmu-comfy-character-view.js';
 import {renderComfyWorkbench} from '../qianmu-comfy-workbench.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {graph,definitions,namespace,identity,implementation,job,recipe} from './helpers/comfy-character-fixture.mjs';
@@ -33,10 +32,8 @@ function harness({readReference}={}){
   return {context,calls,warnings,state,setAccount:value=>account=value,setReadinessError:value=>readinessError=value};
 }
 
-test('editor offers connected neutral targets, preserves escaped text and rejects disconnected bindings',()=>{
-  const r=comfyCharacterEditorRecipe(recipe);assert.deepEqual(r.targets.referenceSlots,[1]);assert.deepEqual(r.targets.conditioning.map(row=>row.nodeId),['person','negative']);
-  const editor={recipe:r,implementation:copy(implementation)};assert.deepEqual(saveComfyCharacterEditor(editor),implementation);
-  editor.implementation.name='<script>x</script>';assert.doesNotMatch(renderComfyCharacterEditor(editor,()=>''),/<script>/);
+test('historical role validation remains available after retiring its editor and rejects disconnected bindings',()=>{
+  const before=copy(graph);assert.doesNotThrow(()=>roles.validateComfyCharacterOutput(graph,implementation,'save'));assert.deepEqual(graph,before);
   const broken=copy(graph);broken.save.inputs.images=['reference',0];assert.throws(()=>roles.validateComfyCharacterOutput(broken,implementation,'save'),/未接入/);
   assert.throws(()=>roles.validateComfyCharacterOutput(graph,implementation,''),/最终输出/);
 });

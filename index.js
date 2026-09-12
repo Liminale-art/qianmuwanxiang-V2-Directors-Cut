@@ -18490,13 +18490,7 @@ async function storyboardCheckComfyReadiness(root) {
     const sanitized = sanitizeStoryboardWorkflow(profile.comfyWorkflow);
     if (!sanitized.ok || sanitized.removedFields.length || profile.comfyWorkflowNotice) throw new Error('工作流需先在工作流库内核对并保存');
     const assertCurrent = () => { if (!isCurrent() || controller.signal.aborted) throw new Error('检查页面已变化'); };
-    let referenceCount;
-    if (profile.comfyCharacterEnabled === true) {
-      const casting = await storyboardCompilerCharacterCasting(String(ctx().chat?.[storyboardTargetFloor(state)]?.mes || ''), {assertCurrent}, false, true);
-      const roles = await featureRuntime.load('comfyCharacters'); assertCurrent();
-      referenceCount = (await roles.checkComfyCharacterCandidates({profile,prepared:casting.prepared,namespace:casting.namespace,
-        guard:async()=>{assertCurrent();await casting.assertCurrent();}})).referenceCount;
-    } else referenceCount = (await storyboardComfyReferenceMetadata(profile.comfyWorkflow, profile.comfyReferences, assertCurrent)).length;
+    const referenceCount = (await storyboardComfyReferenceMetadata(profile.comfyWorkflow, profile.comfyReferences, assertCurrent)).length;
     const request = { baseUrl: connection.baseUrl || profile.baseUrl, workflow: profile.comfyWorkflow,
       model: profile.model, outputNodeId: profile.comfyOutputNodeId || '', referenceCount,
       parameters: Object.fromEntries(['width','height','count','steps','cfg','seed','sampler','scheduler'].map(key => [key, profile[key]])),
@@ -18535,11 +18529,6 @@ async function storyboardCheckComfyReadiness(root) {
     const boundary = document.createElement('small');
     boundary.textContent = `已检查 ${result.nodeCount} 个节点；未运行工作流。自定义运行校验、资源兼容与实际出图仍需验证。${requester === 'ST 主机' ? '本机地址指 ST 所在主机，不是浏览器设备；转发不提供内网穿透。' : '本机地址指当前浏览器设备。'}`;
     output.append(boundary);
-    if (profile.comfyCharacterEnabled === true) {
-      const roleBoundary = document.createElement('small');
-      roleBoundary.textContent = '角色参考槽已按当前候选档案核对；具体人物、LoRA 与人物词会在每镜生成前单独检查。';
-      output.append(roleBoundary);
-    }
     if (Array.isArray(result.issues) && result.issues.length) {
       const list = document.createElement('ul');
       for (const issue of result.issues.slice(0, 64)) { const item = document.createElement('li'); item.textContent = String(issue.message || '').slice(0, 400); list.append(item); }

@@ -58,6 +58,18 @@ test('workbench node inspection ignores retired role settings without changing s
   }
 });
 
+test('retired role settings cannot hide explicitly selected workflow references from node inspection',async()=>{
+  const fx=fixture();Object.assign(fx.state.profiles.comfy,roleJob().profile);
+  fx.state.profiles.comfy.comfyReferences={version:1,enabled:true,items:[{id:'one'},{id:'two'}]};
+  const before=structuredClone(fx.state);let reads=0;
+  fx.context.storyboardComfyReferenceMetadata=async(workflow,selection,guard)=>{
+    guard();reads++;assert.equal(workflow,before.profiles.comfy.comfyWorkflow);
+    assert.deepEqual(selection,before.profiles.comfy.comfyReferences);return selection.items;
+  };
+  await fx.run();assert.equal(reads,1);assert.equal(fx.calls.length,1);assert.equal(fx.calls[0].referenceCount,2);
+  assert.deepEqual(fx.state,before);assert.equal(fx.button.disabled,false);
+});
+
 test('transport-only failure may inspect from ST, labels the requester and uses authenticated same-origin POST without generation', async () => {
   const requests = [];
   const fx = fixture({ runtime: { checkComfyReadiness: async () => { throw Object.assign(new Error('cors'), { code: 'comfy_readiness_transport' }); } },

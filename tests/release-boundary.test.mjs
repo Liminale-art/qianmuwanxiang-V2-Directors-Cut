@@ -12,7 +12,7 @@ assert.ok(result.files.length >= 40, 'the release closure must contain the compl
 for (const required of ['manifest.json', 'index.js', 'style.css', 'server-plugin.js', 'LICENSE', 'THIRD_PARTY_NOTICES.md']) {
   assert.ok(files.has(required), `release is missing ${required}`);
 }
-for (const forbidden of ['tests', 'node_modules', '.git', '.claude', '关于千幕.md', '千幕V2实测流程.md', '千幕V2视觉规范.md']) {
+for (const forbidden of ['tests', 'node_modules', '.git', '.claude', '关于千幕.md', '千幕V2实测流程.md', '千幕V2视觉规范.md', 'qianmu-comfy-character-view.js']) {
   assert.ok(!result.files.some((file) => file === forbidden || file.startsWith(`${forbidden}/`)), `${forbidden} must stay outside public snapshots`);
 }
 assert.ok(result.files.some((file) => file.startsWith('assets/focus-sounds/')), 'bundled focus sounds must remain installable offline');
