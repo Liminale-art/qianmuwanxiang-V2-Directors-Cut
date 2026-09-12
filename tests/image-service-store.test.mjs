@@ -346,6 +346,54 @@ test('pre-submit intent must match owning row, and historical uncertain records 
   assert.equal(old.entries[0].status, 'uncertain');
 });
 
+function cloudDelivered(state = 'stored') {
+  const value = withCloudIntent(), row = value.entries[0]; row.status = 'succeeded'; row.updatedAt = 4;
+  row.cloudDelivery = { schema: 'qianmu.comfy-cloud-delivery.v1', state, cacheReceipt: 'd'.repeat(64), bytes: 67, imageCount: 1,
+    storedAt: 2, ...(state === 'archived' ? { archivedAt: 3 } : {}) };
+  return value;
+}
+
+test('cloud stored and client-archived evidence survives restart without changing native review semantics', async t => {
+  const { root, store } = await fixture(t); await store.transaction(key, () => ({ state: metadata() }));
+  const nativeBefore = await store.inspectChannel(key), cloud = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => cloud.close());
+  for (const phase of ['stored', 'archived']) {
+    const state = cloudDelivered(phase); await cloud.transaction(key, () => ({ state }));
+    const reopened = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' });
+    try {
+      assert.deepEqual(await reopened.inspectChannel(key), state);
+      assert.equal((await reopened.inspectAccount('account-a')).entries[0].cloudDelivery.state, phase);
+    } finally { await reopened.close(); }
+  }
+  assert.deepEqual(await store.inspectChannel(key), nativeBefore);
+  for (const status of ['uncertain', 'acknowledged', 'succeeded']) {
+    const old = withCloudIntent(); old.entries[0].status = status;
+    const normalized = normalizeComfyCloudChannel(old, key);
+    assert.equal(normalized.entries[0].status, status); assert.equal(normalized.entries[0].cloudDelivery, undefined);
+  }
+});
+
+test('cloud delivery proof rejects incomplete, premature or contradictory archive claims', () => {
+  for (const edit of [
+    row => { row.status = 'acknowledged'; }, row => { row.status = 'uncertain'; }, row => { delete row.cloudIntent; },
+    row => { delete row.cloudReceipt; }, row => { row.cloudDelivery.cacheReceipt = 'not-a-receipt'; },
+    row => { row.cloudDelivery.bytes = 0; }, row => { row.cloudDelivery.bytes = 48 * 1024 * 1024 + 1; },
+    row => { row.cloudDelivery.imageCount = 2; }, row => { row.cloudDelivery.storedAt = 0; },
+    row => { row.cloudDelivery.storedAt = 5; }, row => { row.cloudDelivery.archivedAt = 3; },
+    row => { row.cloudDelivery.state = 'archived'; }, row => { row.cloudDelivery.apiKey = 'must-not-store'; },
+    row => { row.cloudDelivery = undefined; },
+  ]) {
+    const state = cloudDelivered(); edit(state.entries[0]);
+    assert.throws(() => normalizeComfyCloudChannel(state, key), { code: 'image_service_cloud_state' });
+  }
+  for (const at of [1, 5, NaN]) {
+    const state = cloudDelivered('archived'); state.entries[0].cloudDelivery.archivedAt = at;
+    assert.throws(() => normalizeComfyCloudChannel(state, key), { code: 'image_service_cloud_state' });
+  }
+  const accessor = cloudDelivered(); let reads = 0;
+  Object.defineProperty(accessor.entries[0].cloudDelivery, 'cacheReceipt', { get() { reads++; return 'd'.repeat(64); } });
+  assert.throws(() => normalizeComfyCloudChannel(accessor, key), { code: 'image_service_cloud_state' }); assert.equal(reads, 0);
+});
+
 test('cloud scope round-trips accepted evidence after reopening without touching native records', async t => {
   const { root, store, directory } = await fixture(t);
   await store.transaction(key, () => ({ state: metadata() }));

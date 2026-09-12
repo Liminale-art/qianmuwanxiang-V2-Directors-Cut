@@ -4,7 +4,7 @@ import { normalizeImageServiceChannel } from './qianmu-image-service-queue.js';
 import { normalizeComfyCloudReceipt, normalizeComfyCloudIntent, assertComfyCloudReceiptForIntent } from './qianmu-comfy-cloud-receipt.js';
 
 export const COMFY_CLOUD_CHANNEL_SCHEMA = 'qianmu.comfy-cloud-channel.v1';
-const keys = ['namespace', 'attemptId', 'requestDigest', 'ownerId', 'fence', 'status', 'automatic', 'createdAt', 'updatedAt', 'upstreamId', 'cloudReceipt', 'cloudIntent'];
+const keys = ['namespace', 'attemptId', 'requestDigest', 'ownerId', 'fence', 'status', 'automatic', 'createdAt', 'updatedAt', 'upstreamId', 'cloudReceipt', 'cloudIntent', 'cloudDelivery'];
 const fail = () => { throw Object.assign(new Error('云任务记录不完整，请先核查原任务'), { code: 'image_service_cloud_state', status: 409, retryable: false }); };
 function fields(value, allowed) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) fail();
@@ -12,6 +12,25 @@ function fields(value, allowed) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (!allowed.includes(key) || descriptor.get || descriptor.set) fail();
   }
+}
+function delivery(value, row) {
+  const required = ['schema', 'state', 'cacheReceipt', 'bytes', 'imageCount', 'storedAt'];
+  fields(value, [...required, 'archivedAt']);
+  if (required.some(name => !Object.hasOwn(value, name))) fail();
+  if (value.schema !== 'qianmu.comfy-cloud-delivery.v1' || !['stored', 'archived'].includes(value.state)
+    || typeof value.cacheReceipt !== 'string' || !/^[a-f0-9]{64}$/.test(value.cacheReceipt)
+    || !Number.isSafeInteger(value.bytes) || value.bytes < 1 || value.bytes > 48 * 1024 * 1024
+    || !Number.isSafeInteger(value.imageCount) || value.imageCount < 1 || value.imageCount > 8 || value.bytes < value.imageCount
+    || !Number.isSafeInteger(value.storedAt) || value.storedAt < row.createdAt || value.storedAt > row.updatedAt
+    || row.status !== 'succeeded' || !row.cloudIntent || row.cloudReceipt?.task.provider !== 'comfy-cloud') fail();
+  const { execution } = row.cloudReceipt.stillOutput;
+  if (value.imageCount > execution.maxImages || execution.expectedImages != null && value.imageCount !== execution.expectedImages
+    || execution.automatic && value.imageCount !== 1) fail();
+  if (value.state === 'archived') {
+    if (!Object.hasOwn(value, 'archivedAt') || !Number.isSafeInteger(value.archivedAt) || value.archivedAt < value.storedAt || value.archivedAt > row.updatedAt) fail();
+  } else if (Object.hasOwn(value, 'archivedAt')) fail();
+  return Object.freeze({ schema: value.schema, state: value.state, cacheReceipt: value.cacheReceipt, bytes: value.bytes,
+    imageCount: value.imageCount, storedAt: value.storedAt, ...(value.state === 'archived' ? { archivedAt: value.archivedAt } : {}) });
 }
 export function normalizeComfyCloudChannel(value, channelKey) {
   try {
@@ -43,6 +62,10 @@ export function normalizeComfyCloudChannel(value, channelKey) {
       // An accepted id may exist without usable links/output evidence. Keep it
       // uncertain for investigation rather than dropping the id or authorizing a replay.
       if (row.status === 'succeeded' && !row.cloudReceipt) fail();
+      // "acknowledged" already means manual review of an uncertain charge in
+      // the shared queue. Never reinterpret it as a browser archive receipt.
+      // Legacy rows have no delivery proof; do not invent one during reads.
+      if (Object.hasOwn(raw, 'cloudDelivery')) row.cloudDelivery = delivery(raw.cloudDelivery, row);
     });
     return { ...normalized, schema: COMFY_CLOUD_CHANNEL_SCHEMA };
   } catch (_) { fail(); }
