@@ -9,6 +9,7 @@ import { queryComfyCloudTask } from '../qianmu-comfy-cloud-query.js';
 import { createComfyCloudLedger } from '../qianmu-comfy-cloud-ledger.js';
 import { createImageServiceStore } from '../qianmu-image-service-store.js';
 import { COMFY_CLOUD_INTENT_SCHEMA, COMFY_CLOUD_RECEIPT_SCHEMA } from '../qianmu-comfy-cloud-receipt.js';
+import { readComfyCloudJsonResponse, readComfyCloudAcceptance } from '../qianmu-comfy-cloud-response.js';
 import { init, exit } from '../server-plugin.js';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
@@ -44,6 +45,34 @@ const response = () => ({ statusCode: 200, headers: {}, set(k, v) { this.headers
 const cloudBinding = bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2');
 const rhBinding = bindComfyCloudProtocol('https://www.runninghub.cn', 'runninghub-workflow-v1');
 const cloudGrant = async () => async () => {};
+
+test('cloud submit response retains bounded acceptance evidence after login changes but cannot pass delivery checks', async () => {
+  for (const binding of [cloudBinding, rhBinding]) {
+    const req = account(), calls = [], task = bindComfyCloudTask(binding, binding.provider === 'runninghub' ? '1904152026220003329' : 'accepted',
+      binding.provider === 'runninghub' ? undefined : { self: '/api/v2/jobs/accepted', cancel: '/api/v2/jobs/accepted/cancel' });
+    const transport = await createComfyCloudServerTransport(req, { binding, operation: 'submit' }, {
+      authorizeTarget: cloudGrant, resolveHost: publicDns, requestImpl: mockNodeRequest(calls, () => {
+        req.user.profile.handle = 'bob';
+        return { body: binding.provider === 'runninghub' ? { code: 0, data: { taskId: task.taskId } } : { id: task.taskId, urls: task.links } };
+      }),
+    });
+    const response = await transport.fetchImpl(transport.plan.url, { method: 'POST', body: '{}' });
+    assert.deepEqual(readComfyCloudAcceptance(binding, await readComfyCloudJsonResponse(response)), task);
+    await assert.rejects(transport.verify(), { code: 'comfy_transport_account_changed', submissionState: 'unknown' });
+    await assert.rejects(transport.fetchImpl(transport.plan.url, { method: 'POST', body: '{}' }), { code: 'comfy_transport_cloud_replay' });
+    assert.equal(calls.length, 1);
+  }
+});
+
+test('cloud query and cancellation keep rejecting changed-account responses rather than exposing their contents', async () => {
+  for (const operation of ['query', 'cancel']) {
+    const req = account(), task = bindComfyCloudTask(cloudBinding, 'original', { self: '/api/v2/jobs/original', cancel: '/api/v2/jobs/original/cancel' });
+    const transport = await createComfyCloudServerTransport(req, { binding: cloudBinding, operation, task }, {
+      authorizeTarget: cloudGrant, resolveHost: publicDns, requestImpl: mockNodeRequest([], () => { req.user.profile.handle = 'bob'; return { body: { private: 'original owner only' } }; }),
+    });
+    await assert.rejects(transport.fetchImpl(transport.plan.url, { method: transport.plan.method }), { code: 'comfy_transport_account_changed', submissionState: 'accepted', upstreamId: task.taskId });
+  }
+});
 
 async function persistedCloudTask(t, binding = cloudBinding) {
   const root = await fs.mkdtemp(path.join(tmpdir(), 'qianmu-comfy-routes-')); roots.push(root);

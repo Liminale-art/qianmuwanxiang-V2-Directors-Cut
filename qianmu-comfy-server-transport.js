@@ -111,7 +111,11 @@ export function pinnedComfyFetch(base, addresses, { operation, requestImpl, asse
           },
         }, incoming => {
           try {
-            assertCurrent();
+            // Cloud submit responses are internal acceptance evidence, not UI
+            // delivery. Drain/persist the original id even after login changes;
+            // the submission coordinator must verify again before delivery.
+            // Query/cancel and native Comfy retain their response account gate.
+            if (!cloudPlan?.createsJob) assertCurrent();
             if (incoming.statusCode >= 300 && incoming.statusCode < 400) throw fail('redirect', 'Comfy 接口发生跳转，未跟随', 502);
             const responseHeaders = new Headers();
             for (const [key, value] of Object.entries(incoming.headers)) if (value !== undefined) responseHeaders.set(key, Array.isArray(value) ? value.join(', ') : String(value));
