@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
-import { createComfyPoolCandidate, verifyComfyPoolCandidate, renderComfyPools } from '../qianmu-comfy-pool-view.js';
+import { createComfyPoolCandidate, prepareComfyPoolSave, verifyComfyPoolCandidate, renderComfyPools } from '../qianmu-comfy-pool-view.js';
 import { normalizeComfyClassification, COMFY_SELECTION_SCHEMA } from '../qianmu-comfy-selection.js';
 import { recipesFixture, namespace } from './helpers/comfy-route-fixture.mjs';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
@@ -20,9 +20,26 @@ test('new members copy only the chosen fixed-version classification, never graph
   assert.equal(f.candidate.target.comfyWorkflowBinding.revision, f.recipe.binding.revision);
   assert.doesNotMatch(JSON.stringify(f.candidate), /class_type|%qianmu_prompt%/);
   const previous = structuredClone(f.candidate); previous.enabled = true; previous.priority = 5; previous.target.connectionPresetId = 'custom';
-  const next = createComfyPoolCandidate({ namespace, choice: f.choice, previous });
+  previous.target.comfyCharacterEnabled=true;
+  const next = createComfyPoolCandidate({ namespace, choice: {...f.choice,roles:true}, previous });
   assert.equal(next.id, previous.id); assert.equal(next.priority, 5); assert.equal(next.target.connectionPresetId, 'custom'); assert.equal(next.enabled, false);
   assert.equal(previous.enabled, true);
+  assert.equal(next.target.comfyCharacterEnabled,false);assert.equal(previous.target.comfyCharacterEnabled,true);
+});
+
+test('saving a new pool version retires all role switches without rewriting the original or enrolling disabled candidates',async()=>{
+  const f=await fixture();f.pool.candidates[0].target.comfyCharacterEnabled=true;
+  f.pool.candidates.push({...structuredClone(f.pool.candidates[0]),id:'candidate-b',enabled:true});
+  const before=structuredClone(f.pool),captured=prepareComfyPoolSave(f.pool);
+  assert.deepEqual(f.pool,before);assert.deepEqual(captured.candidates.map(row=>row.enabled),[false,true]);
+  assert.ok(captured.candidates.every(row=>row.target.comfyCharacterEnabled===false));
+  for(const [index,row] of captured.candidates.entries()){
+    assert.deepEqual(row.target.comfyWorkflowBinding,before.candidates[index].target.comfyWorkflowBinding);
+    assert.deepEqual(row.classification,before.candidates[index].classification);
+  }
+  const source=await readFile(new URL('../qianmu-comfy-pool-view.js',import.meta.url),'utf8');
+  assert.match(source,/captured = prepareComfyPoolSave\(draft.pool\)/);
+  assert.doesNotMatch(source,/name === 'toggle-roles'/);
 });
 test('legacy unclassified workflow is visible as incomplete rather than automatically enrolled', async () => {
   const f = await fixture(); delete f.recipe.document.classification;
@@ -60,7 +77,7 @@ test('candidate maintenance has no generate/apply button, exposes fields with sa
   const html = renderComfyPools({ draft: { name: 'plan', pool: f.pool }, openMembers: new Set([f.candidate.id]) });
   assert.doesNotMatch(html, /<script>|data-pool-action="(?:generate|apply|enable-auto)"/); assert.match(html, /&lt;script&gt;/);
   for (const field of ['connectionPresetId', 'priority']) assert.match(html, new RegExp(`data-pool-member-field="${field}"`));
-  assert.match(html, /data-pool-action="toggle-roles"/); assert.match(html, /data-pool-action="toggle-member" aria-pressed="false"/);
+  assert.doesNotMatch(html, /data-pool-action="toggle-roles"/); assert.match(html, /data-pool-action="toggle-member" aria-pressed="false"/);
   assert.match(html, /分类随固定版本/); assert.match(html, /在镜头台启用自动择流后使用/);
 });
 test('imported or missing connection names are escaped and retained for explicit correction', async () => {

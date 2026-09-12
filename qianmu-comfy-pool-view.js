@@ -11,14 +11,19 @@ const freshId = () => { if (!globalThis.crypto?.randomUUID) throw Error('请使�
 const classificationOf = document => normalizeComfyClassification(Object.hasOwn(document, 'classification') ? document.classification : { version: 1 });
 const readyClassification = value => value.contentClasses.length > 0 && Boolean(value.promptFormat);
 export function createComfyPoolCandidate({ namespace, choice, previous = null, id = previous?.id || freshId() }) {
-  const { recipe, roles, useReferences, references } = choice;
+  const { recipe, useReferences, references } = choice;
   if (useReferences && references?.enabled !== true) throw Error('当前工作台没有已启用参考图，请重新选择');
   const target = { providerId: 'comfy', modelId: 'comfy-workflow', capabilityModelId: 'comfy-workflow', parameterPresetId: '',
-    connectionPresetId: previous?.target.connectionPresetId || '', comfyWorkflowBinding: recipe.binding, comfyCharacterEnabled: roles,
+    connectionPresetId: previous?.target.connectionPresetId || '', comfyWorkflowBinding: recipe.binding, comfyCharacterEnabled: false,
     comfyReferences: useReferences ? clone(references) : clone(previous?.target.comfyReferences || null) };
   applyComfyRouteRecipe({}, target, recipe); // Includes namespace/graph ownership of copied or retained references.
   const candidate = { id, enabled: false, priority: previous?.priority ?? 0, target, classification: classificationOf(recipe.document) };
   return normalizeComfyAutoPool({ schema: COMFY_SELECTION_SCHEMA, namespace, id: 'draft', revision: 'draft', candidates: [candidate] }).candidates[0];
+}
+export function prepareComfyPoolSave(pool) {
+  const captured=normalizeComfyAutoPool(pool);
+  for(const candidate of captured.candidates)candidate.target.comfyCharacterEnabled=false;
+  return captured; // New version only. The original pool and its exported history remain intact.
 }
 export async function verifyComfyPoolCandidate({ candidate, namespace, connections, guard = async () => {}, readRecipe = readPinnedComfyRouteWorkflow }) {
   if (candidate.target.connectionPresetId && !connections.some(row => row.id === candidate.target.connectionPresetId)) throw Error('此候选的 API 预设已失效，请重新选择');
@@ -35,7 +40,7 @@ function renderMember(candidate, view) {
     <summary><b>${escape(binding.name)} · v${binding.version}</b><small>${candidate.enabled ? '参与选择' : '未参与'}</small></summary><div class="sd-storyboard-card-body">
     <div class="sd-comfy-pool-tools"><button type="button" class="sd-btn" data-pool-action="replace-member">更换固定版本</button><button type="button" class="sd-btn" data-pool-action="toggle-member" aria-pressed="${candidate.enabled}">参与选择</button>${icon('remove-member','移除候选','trash-can')}</div>
     <div class="sd-comfy-pool-fields"><label><span>API 预设</span><select class="text_pole" data-pool-member-field="connectionPresetId"><option value="">当前 Comfy API</option>${missing ? `<option value="${escape(target.connectionPresetId)}" selected>API 预设已失效</option>` : ''}${view.connections.map(row => `<option value="${escape(row.id)}" ${row.id === target.connectionPresetId ? 'selected' : ''}>${escape(row.name)}</option>`).join('')}</select></label><label><span>同等匹配优先级</span><input class="text_pole" data-pool-member-field="priority" type="number" min="-100" max="100" step="1" inputmode="numeric" value="${escape(candidate.priority)}"></label></div>
-    <div class="sd-comfy-pool-tools"><button type="button" class="sd-btn" data-pool-action="toggle-roles" aria-pressed="${target.comfyCharacterEnabled}">角色库实现</button><span class="sd-comfy-library-note">参考图 ${target.comfyReferences?.items.length || 0} 张</span>${target.comfyReferences ? icon('clear-references','移除本候选参考图','xmark') : ''}</div>
+    <div class="sd-comfy-pool-tools"><span class="sd-comfy-library-note">参考图 ${target.comfyReferences?.items.length || 0} 张</span>${target.comfyReferences ? icon('clear-references','移除本候选参考图','xmark') : ''}</div>
     ${renderComfyClassificationBadges(candidate)}
     <small class="sd-comfy-library-note">${escape(view.checks?.get(candidate.id) || (readyClassification(candidate.classification) ? '分类随固定版本；更改请在工作流库保存新版本后重绑。' : '分类待完善：请先声明内容范围和提示格式。'))}</small>
   </div></details>`;
@@ -176,11 +181,10 @@ export function createComfyPoolController({ resolveNamespace, getScopeKey = () =
       }
       if (name === 'remove-member' && member) { draft.pool.candidates = draft.pool.candidates.filter(item => item !== member); draft.dirty = true; view.openMembers.delete(member.id); view.checks.delete(member.id); return; }
       if (name === 'toggle-member' && member) { if (!member.enabled) await validateMembers([member], guard); await guard(); member.enabled = !member.enabled; draft.dirty = true; return; }
-      if (name === 'toggle-roles' && member) { member.target.comfyCharacterEnabled = !member.target.comfyCharacterEnabled; draft.dirty = true; view.checks.delete(member.id); return; }
       if (name === 'clear-references' && member) { member.target.comfyReferences = null; draft.dirty = true; view.checks.delete(member.id); return; }
       if (name === 'check-members') { await validateMembers(draft.pool.candidates, guard, true); return; }
       if (name === 'save' || name === 'save-copy') {
-        if (!draft) return; const captured = normalizeComfyAutoPool(draft.pool);
+        if (!draft) return; const captured = prepareComfyPoolSave(draft.pool);
         await validateMembers(captured.candidates.filter(row => row.enabled), guard); await guard();
         await store.save(namespace, { id: name === 'save' ? draft.id : '', expectedRevision: name === 'save' ? draft.revision : '', name: draft.name, pool: captured }); await guard();
         view.draft = null; view.archived = false; view.checks.clear(); await loadList(guard); notify('候选方案已保存，未启用自动运行', 'success'); return;

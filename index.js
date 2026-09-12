@@ -14460,7 +14460,7 @@ async function storyboardPickComfyPoolWorkflow(state, { namespace, previous, gua
   };
   const runtime = await featureRuntime.load('comfyRoutes'); await check();
   const picked = await runtime.openComfyRoutePicker({ context: ctx(), namespace, binding: previous?.target.comfyWorkflowBinding,
-    roles: previous?.target.comfyCharacterEnabled === true, hasReferences: references?.enabled === true, guard: check });
+    hasReferences: references?.enabled === true, guard: check });
   await check(); return picked ? { ...picked, references } : null;
 }
 
@@ -14784,7 +14784,7 @@ function storyboardRoutingTargetOptions(state, providerId, target = {}) {
     return `<label><span>生图渠道</span><select class="text_pole sd-storyboard-route-provider">${Object.values(STORYBOARD_PROVIDER_REGISTRY).map(item => `<option value="${item.id}" ${item.id === 'comfy' ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('')}</select></label>
       <label><span>工作流分工</span><button type="button" class="sd-btn sd-storyboard-bind-route-workflow">${htmlEscape(fixed ? fixed.invalid ? '绑定已失效 · 重新选择' : `${fixed.name} · v${fixed.version}` : '选择固定工作流')}</button></label>
       <label><span>API 预设</span><select class="text_pole sd-storyboard-route-connection"><option value="">当前 Comfy API</option>${missing ? `<option value="${htmlEscape(target.connectionPresetId)}" selected>API 预设已失效</option>` : ''}${connections.map(item => `<option value="${htmlEscape(item.id)}" ${target.connectionPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('')}</select></label>
-      ${fixed ? `<div class="sd-storyboard-route-fixed"><label class="sd-switch-row"><span>角色库实现</span><input type="checkbox" class="sd-storyboard-route-characters" ${target.comfyCharacterEnabled ? 'checked' : ''}></label><small>参考图 ${target.comfyReferences?.items?.length || 0} 张 · 参数与提示补充随固定版本</small><button type="button" class="sd-btn sd-storyboard-clear-route-workflow">解除固定</button>${target.comfyReferences ? '<button type="button" class="sd-btn sd-storyboard-clear-route-references">移除本分工参考图</button>' : ''}</div>` : `<small class="sd-storyboard-safety-notice">未固定：沿用当前 Comfy 工作台${target.parameterPresetId ? '与旧参数样式' : ''}</small>`}${issue}`;
+      ${fixed ? `<div class="sd-storyboard-route-fixed"><small>参考图 ${target.comfyReferences?.items?.length || 0} 张 · 工作流与参数随固定版本</small><button type="button" class="sd-btn sd-storyboard-clear-route-workflow">解除固定</button>${target.comfyReferences ? '<button type="button" class="sd-btn sd-storyboard-clear-route-references">移除本分工参考图</button>' : ''}</div>` : `<small class="sd-storyboard-safety-notice">未固定：沿用当前 Comfy 工作台${target.parameterPresetId ? '与旧参数样式' : ''}</small>`}${issue}`;
   }
   const parameters = storyboardParameterPresets(provider.id, modelId, target.capabilityModelId, state);
   const missingConnection = target.connectionPresetId && !connections.some((item) => item.id === target.connectionPresetId)
@@ -14811,10 +14811,10 @@ async function storyboardBindRouteWorkflow(root, rule) {
     };
     await guard();
     const picked = await runtime.openComfyRoutePicker({ context: ctx(), namespace, binding: rule.target.comfyWorkflowBinding,
-      roles: rule.target.comfyCharacterEnabled === true, hasReferences: references?.enabled === true, guard });
+      hasReferences: references?.enabled === true, guard });
     await guard(); if (!picked) return;
     const next = { ...rule.target, parameterPresetId: '', modelId: 'comfy-workflow', capabilityModelId: 'comfy-workflow',
-      comfyWorkflowBinding: picked.recipe.binding, comfyCharacterEnabled: picked.roles,
+      comfyWorkflowBinding: picked.recipe.binding, comfyCharacterEnabled: false,
       comfyReferences: picked.useReferences ? references : clone(rule.target.comfyReferences || null) };
     runtime.applyComfyRouteRecipe({}, next, picked.recipe); // Verify reference ownership/graph before saving the small selection.
     await guard(); rule.target = next; saveSettings(); renderModal(); toast('工作流分工已绑定，未开始生成', 'success');
@@ -23800,7 +23800,6 @@ function bindStoryboardTabEvents(root) {
     row.querySelector('.sd-storyboard-route-connection')?.addEventListener('change', (event) => { rule.target.connectionPresetId = event.target.value; saveSettings(); renderModal(); });
     row.querySelector('.sd-storyboard-route-style')?.addEventListener('change', (event) => { rule.target.parameterPresetId = event.target.value; saveSettings(); renderModal(); });
     row.querySelector('.sd-storyboard-bind-route-workflow')?.addEventListener('click', () => void storyboardBindRouteWorkflow(root, rule));
-    row.querySelector('.sd-storyboard-route-characters')?.addEventListener('change', event => { rule.target.comfyCharacterEnabled = event.target.checked; saveSettings(); });
     row.querySelector('.sd-storyboard-clear-route-references')?.addEventListener('click', () => { rule.target.comfyReferences = null; saveSettings(); renderModal(); });
     row.querySelector('.sd-storyboard-clear-route-workflow')?.addEventListener('click', () => {
       delete rule.target.comfyWorkflowBinding; delete rule.target.comfyCharacterEnabled; delete rule.target.comfyReferences;

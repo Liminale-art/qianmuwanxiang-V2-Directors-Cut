@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { normalizeComfyRouteBinding, retainComfyRouteBinding } from '../qianmu-comfy-route-contract.js';
 import { pinComfyRouteWorkflow, readPinnedComfyRouteWorkflow } from '../qianmu-comfy-route.js';
+import {openComfyRoutePicker} from '../qianmu-comfy-route-view.js';
 import { normalizeStoryboardState, routeStoryboardShot } from '../qianmu-storyboard.js';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
 
@@ -27,6 +28,18 @@ function fixture() {
   return f;
 }
 async function binding() { return (await pinComfyRouteWorkflow(fixture().options)).binding; }
+
+test('actual picker retains explicit workflow and reference selection without querying a retired role control',async()=>{
+  const f=fixture(),before=copy(f.document),prior=globalThis.document;
+  const fields={'[data-comfy-route-pick=workflow]':{value:selection.id,addEventListener(){}},'[data-comfy-route-pick=revision]':{value:selection.revision},'[role=status]':{},'[data-comfy-route-references]':{checked:true}};
+  globalThis.document={createElement:()=>({innerHTML:'',querySelector:selector=>{assert.ok(Object.hasOwn(fields,selector),selector);return fields[selector];}})};
+  try{
+    const result=await openComfyRoutePicker({...f.options,binding:selection,roles:true,hasReferences:true,context:{POPUP_TYPE:{CONFIRM:1},Popup:class {async show(){return true;}}}});
+    assert.equal(result.roles,false);assert.equal(result.useReferences,true);
+    assert.equal(result.recipe.binding.id,selection.id);assert.deepEqual(f.document,before);
+    assert.equal(f.opens,f.closes);assert.ok(f.guards>0);
+  }finally{if(prior===undefined)delete globalThis.document;else globalThis.document=prior;}
+});
 
 test('pinning captures a bounded lightweight identity and an immutable exact recipe without writes', async () => {
   const f = fixture(), before = copy(f.document), recipe = await pinComfyRouteWorkflow(f.options);

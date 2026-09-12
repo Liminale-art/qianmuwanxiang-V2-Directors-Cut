@@ -103,9 +103,9 @@ test('frozen replay validates original account and graph, without reading a newe
 test('route picker markup escapes imported names and keeps selection separate from generation or workbench model choice',async()=>{
   const e=await routeEnvironment();e.state.routing.rules[0].target.comfyWorkflowBinding={...e.routes[0].comfyWorkflowBinding,name:'<script>bad</script>'};
   const target=e.context.storyboardRoutingTargetOptions(e.state,'comfy',e.state.routing.rules[0].target);
-  assert.doesNotMatch(target,/<script>|sd-storyboard-route-model|sd-storyboard-route-parameters/);assert.match(target,/&lt;script&gt;/);
-  const picker=renderComfyRoutePicker({heads:[{id:'safe',name:'<img onerror=bad>'}],selectedId:'safe'});
-  assert.doesNotMatch(picker,/<img/);assert.match(picker,/确认不会生成/);assert.match(picker,/disabled/);
+  assert.doesNotMatch(target,/<script>|sd-storyboard-route-model|sd-storyboard-route-parameters|sd-storyboard-route-characters/);assert.match(target,/&lt;script&gt;/);
+  const picker=renderComfyRoutePicker({heads:[{id:'safe',name:'<img onerror=bad>'}],selectedId:'safe',roles:true});
+  assert.doesNotMatch(picker,/<img|data-comfy-route-roles|提示补充/);assert.match(picker,/确认不会生成/);assert.match(picker,/disabled/);
 });
 
 test('binding UI saves only the explicit route selection, and cancellation or late page change preserve the prior target',async()=>{
@@ -116,7 +116,7 @@ test('binding UI saves only the explicit route selection, and cancellation or la
     }}:load(key);
     const root={isConnected:true};await e.context.storyboardBindRouteWorkflow(root,rule);
     assert.equal(root._sdRouteBindingBusy,false);assert.equal(JSON.stringify(e.state.profiles.comfy),profile);assert.equal(e.jobs.length,0);
-    if(scenario==='save'){assert.equal(rule.target.comfyWorkflowBinding.id,'landscape');assert.equal(rule.target.comfyCharacterEnabled,true);assert.equal(rule.target.parameterPresetId,'');}
+    if(scenario==='save'){assert.equal(rule.target.comfyWorkflowBinding.id,'landscape');assert.equal(rule.target.comfyCharacterEnabled,false);assert.equal(rule.target.parameterPresetId,'');}
     else assert.equal(JSON.stringify(rule.target),before);
   }
 });
