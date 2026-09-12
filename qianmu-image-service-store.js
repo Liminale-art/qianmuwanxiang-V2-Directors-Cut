@@ -6,6 +6,7 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { normalizeImageServiceChannel } from './qianmu-image-service-queue.js';
 import {normalizeNovelServiceChannel} from './qianmu-novel-service-channel-state.js';
+import {normalizeComfyCloudChannel} from './qianmu-comfy-cloud-channel-state.js';
 
 const DISK_SCHEMA = 'qianmu.image-service-disk.v1';
 const HASH = /^[a-f0-9]{64}$/;
@@ -24,9 +25,9 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
     throw error('root', '增强服务缺少可信的 ST 数据目录');
   }
   // Host-only, closed choice. Existing NAI data stays at its original path.
-  if (!['novel', 'comfy', 'vibe', 'novel-channel'].includes(scope)) throw error('scope', '生图服务记录范围无效');
-  const queueDirectory = scope === 'novel-channel' ? 'novel-channel-v1' : scope === 'vibe' ? 'vibe-queue-v1' : scope === 'comfy' ? 'comfy-queue-v1' : 'image-queue-v1';
-  const normalize=scope==='novel-channel'?normalizeNovelServiceChannel:normalizeImageServiceChannel;
+  if (!['novel', 'comfy', 'vibe', 'novel-channel', 'comfy-cloud'].includes(scope)) throw error('scope', '生图服务记录范围无效');
+  const queueDirectory = scope === 'comfy-cloud' ? 'comfy-cloud-queue-v1' : scope === 'novel-channel' ? 'novel-channel-v1' : scope === 'vibe' ? 'vibe-queue-v1' : scope === 'comfy' ? 'comfy-queue-v1' : 'image-queue-v1';
+  const normalize=scope==='comfy-cloud'?normalizeComfyCloudChannel:scope==='novel-channel'?normalizeNovelServiceChannel:normalizeImageServiceChannel;
   const channelLimit = Math.max(1, Math.min(128, Math.trunc(Number(maxChannels) || 128)));
   const recordLimit = Math.max(1024, Math.min(2 * 1024 * 1024, Math.trunc(Number(maxRecordBytes) || 2 * 1024 * 1024)));
   const pendingLimit = Math.max(1, Math.min(64, Math.trunc(Number(maxPending) || 64)));

@@ -7,6 +7,9 @@ import { spawn } from 'node:child_process';
 import { createImageServiceStore } from '../qianmu-image-service-store.js';
 import { createImageServiceQueue, imageServiceChannelKey, describeImageServiceRequest, normalizeImageServiceChannel } from '../qianmu-image-service-queue.js';
 import { generateImage } from '../qianmu-image-gateway.js';
+import { COMFY_CLOUD_CHANNEL_SCHEMA, normalizeComfyCloudChannel } from '../qianmu-comfy-cloud-channel-state.js';
+import { COMFY_CLOUD_RECEIPT_SCHEMA } from '../qianmu-comfy-cloud-receipt.js';
+import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
 
 const key = imageServiceChannelKey('mock-persistence-key');
 const never = () => assert.fail('must not authorize another request');
@@ -39,6 +42,86 @@ async function child(script) {
 }
 const storeUrl = new URL('../qianmu-image-service-store.js', import.meta.url).href;
 const queueUrl = new URL('../qianmu-image-service-queue.js', import.meta.url).href;
+
+function cloudMetadata() {
+  const state = metadata(); state.schema = COMFY_CLOUD_CHANNEL_SCHEMA;
+  const row = state.entries[0]; row.status = 'uncertain'; row.upstreamId = 'original';
+  row.cloudReceipt = { schema: COMFY_CLOUD_RECEIPT_SCHEMA,
+    task: bindComfyCloudTask(bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2'), row.upstreamId,
+      { self: '/deployment/work/api/v2/jobs/original', cancel: '/deployment/work/api/v2/jobs/original/cancel' }),
+    requestDigest: row.requestDigest, workflow: { templateHash: 'a'.repeat(64), executionHash: 'b'.repeat(64) },
+    stillOutput: { version: 1, model: 'workflow', previewNodeIds: [], execution: { version: 1, automatic: true, maxImages: 1, expectedImages: 1, outputNodeIds: ['save'] } },
+  };
+  return state;
+}
+
+test('cloud scope round-trips accepted evidence after reopening without touching native records', async t => {
+  const { root, store, directory } = await fixture(t);
+  await store.transaction(key, () => ({ state: metadata() }));
+  const original = await fs.readFile(path.join(directory, `${key}.json`), 'utf8');
+  const cloud = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => cloud.close());
+  assert.equal(cloud.inspect().initialized, false);
+  assert.deepEqual(await cloud.inspectAccount('account-a'), { entries: [], selected: [], total: 0, nextCursor: null });
+  await cloud.transaction(key, () => ({ state: cloudMetadata(), result: 'durable' }));
+  await cloud.close();
+  const reopened = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => reopened.close());
+  assert.deepEqual(await reopened.inspectChannel(key), cloudMetadata());
+  assert.equal((await reopened.inspectAccount('account-a')).entries[0].cloudReceipt.task.taskId, 'original');
+  assert.equal((await reopened.inspectAccount('account-b')).total, 0);
+  assert.equal(await fs.readFile(path.join(directory, `${key}.json`), 'utf8'), original);
+  assert.deepEqual(await store.inspectChannel(key), metadata());
+  assert.ok((await fs.readdir(path.join(root, '.qianmu-service', 'comfy-cloud-queue-v1'))).includes(`${key}.json`));
+});
+
+test('cloud format rejects legacy, future, credential and native-only fields before disk replacement', async t => {
+  const { root } = await fixture(t), store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => store.close());
+  await store.transaction(key, () => ({ state: cloudMetadata() }));
+  const target = path.join(root, '.qianmu-service', 'comfy-cloud-queue-v1', `${key}.json`), original = await fs.readFile(target, 'utf8');
+  const changed = patch => { const state = cloudMetadata(); patch(state); return state; };
+  for (const state of [metadata(), changed(s => { s.schema = 'qianmu.comfy-cloud-channel.v2'; }),
+    changed(s => { s.apiKey = 'mock-secret'; }), changed(s => { s.entries[0].apiKey = 'mock-secret'; }),
+    changed(s => { s.entries[0].comfyReceipt = s.entries[0].cloudReceipt.stillOutput; }),
+    changed(s => { s.entries[0].nativeReceipt = {}; }), changed(s => { s.entries[0].cloudReceipt = undefined; })]) {
+    await assert.rejects(store.transaction(key, () => ({ state })), { code: 'image_service_cloud_state' });
+    assert.equal(await fs.readFile(target, 'utf8'), original);
+  }
+  assert.throws(() => createImageServiceStore({ dataRoot: root, scope: '../comfy-cloud-queue-v1' }), { code: 'image_service_storage_scope' });
+});
+
+test('cloud row cannot attach another request receipt or silently switch automatic output policy', () => {
+  for (const patch of [s => { s.entries[0].upstreamId = 'other'; }, s => { s.entries[0].requestDigest = 'e'.repeat(64); },
+    s => { s.entries[0].automatic = false; }, s => { s.entries[0].status = 'reserved'; },
+    s => { s.entries[0].cloudReceipt.workflow.binding = { schemaVersion: 1, namespace: 'st-user:someone-else', id: 'recipe', revision: 'r', version: 1, name: 'Saved', workflowHash: 'a'.repeat(64), recipeHash: 'd'.repeat(64) }; },
+    s => { s.entries.push(structuredClone(s.entries[0])); }, s => { s.entries.length = 2; }]) {
+    const state = cloudMetadata(); patch(state); assert.throws(() => normalizeComfyCloudChannel(state, key), { code: 'image_service_cloud_state' });
+  }
+  assert.deepEqual(normalizeComfyCloudChannel(undefined, key), { schema: COMFY_CLOUD_CHANNEL_SCHEMA, channelKey: key, entries: [] });
+});
+
+test('incomplete acceptance retains original id as uncertain and cannot become verified success', () => {
+  const state = cloudMetadata(); delete state.entries[0].cloudReceipt;
+  assert.equal(normalizeComfyCloudChannel(state, key).entries[0].upstreamId, 'original');
+  state.entries[0].status = 'succeeded';
+  assert.throws(() => normalizeComfyCloudChannel(state, key), { code: 'image_service_cloud_state' });
+  assert.throws(() => normalizeImageServiceChannel(cloudMetadata(), key), { code: 'image_service_state' });
+});
+
+test('native queue cannot accidentally execute or settle an existing cloud task', async t => {
+  const { root } = await fixture(t), store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' });
+  const queue = createImageServiceQueue({ store }); t.after(async () => { queue.close(); await store.close(); });
+  await store.transaction(key, () => ({ state: cloudMetadata() }));
+  await assert.rejects(queue.run(args('first'), never), { code: 'image_service_state' });
+  assert.equal((await store.inspectChannel(key)).entries[0].status, 'uncertain');
+});
+
+test('failed cloud replacement keeps prior accepted task readable through another instance', async t => {
+  const { root } = await fixture(t), store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => store.close());
+  await store.transaction(key, () => ({ state: cloudMetadata() }));
+  const broken = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud', fileSystem: { ...fs, rename: async () => { throw Object.assign(Error('private path'), { code: 'EIO' }); } } }); t.after(() => broken.close());
+  await assert.rejects(broken.transaction(key, state => { state.entries[0].updatedAt = 2; return { state }; }), { code: 'image_service_storage_unavailable' });
+  const next = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => next.close());
+  assert.deepEqual(await next.inspectChannel(key), cloudMetadata());
+});
 
 test('private store is lazy and rejects untrusted roots and channel path traversal', async t => {
   for (const dataRoot of [undefined, '', '.', '/', path.parse(process.cwd()).root, 'a\0b']) assert.throws(() => createImageServiceStore({ dataRoot }), { code: 'image_service_storage_root' });
