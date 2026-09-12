@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { bindComfyCloudProtocol as bind, planComfyCloudOperation as plan } from '../qianmu-comfy-cloud-protocol.js';
-import { readComfyCloudAcceptance as accept, readComfyCloudTaskStatus as status } from '../qianmu-comfy-cloud-response.js';
+import { readComfyCloudAcceptance as accept, readComfyCloudTaskStatus as status, readComfyCloudJsonResponse as read } from '../qianmu-comfy-cloud-response.js';
 const cloud = bind('https://dep-one.run.comfy.app', 'comfy-cloud-v2'), rh = bind('https://www.runninghub.cn', 'runninghub-workflow-v1');
 const id = 'original-id', rhId = '1904152026220003329';
 const urls = { self: `/deployment/dep-one/api/v2/jobs/${id}`, cancel: `/deployment/dep-one/api/v2/jobs/${id}/cancel` };
@@ -58,4 +58,67 @@ test('validated status owns a frozen task snapshot rather than retaining the cal
   mutable.taskId = 'changed'; mutable.links.self = 'https://evil.test'; response.urls.self = 'changed';
   assert.deepEqual(result.task, original); assert.equal(Object.isFrozen(result.task), true);
   assert.equal(Object.isFrozen(result.task.links), true);
+});
+
+test('bounded JSON reading supports split UTF8 bytes and keeps exact task IDs without copying defaults', async () => {
+  const body = { taskId: rhId, status: 'RUNNING', errorCode: '', note: '千幕' }, encoded = new TextEncoder().encode(JSON.stringify(body));
+  const response = new Response(new ReadableStream({ start(controller) { for (const byte of encoded) controller.enqueue(new Uint8Array([byte])); controller.close(); } }),
+    { headers: { 'content-type': 'application/json; charset=utf-8' } });
+  assert.deepEqual(await read(response, { task: rhTask, maxBytes: encoded.length }), body);
+  assert.equal(response.body.locked, false);
+});
+test('retained byte chunks own their memory even when a Node Buffer producer reuses its buffer', async () => {
+  const buffer = Buffer.from('{"id":"kept"}'); let reads = 0;
+  const response = { ok: true, headers: new Headers({ 'content-type': 'application/json' }), body: { getReader: () => ({
+    read: async () => { if (!reads++) return { done: false, value: buffer }; buffer.fill(0); return { done: true }; },
+    cancel: async () => {}, releaseLock: () => {},
+  }) } };
+  assert.deepEqual(await read(response), { id: 'kept' });
+});
+test('declared and streamed oversize metadata is rejected, not silently truncated or replaced by arrayBuffer', async () => {
+  for (const declared of ['100', '-1', 'abc', '9007199254740993', null]) {
+    let cancelled = 0;
+    const response = new Response(new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('{"large":"01234567890123456789"}')); }, cancel() { cancelled++; } }),
+      { headers: { 'content-type': 'application/json', ...(declared === null ? {} : { 'content-length': declared }) } });
+    await assert.rejects(read(response, { task: rhTask, maxBytes: 10 }), { code: 'comfy_cloud_response_size', submissionState: 'accepted', upstreamId: rhId });
+    assert.equal(cancelled, 1); assert.equal(response.body.locked, false);
+  }
+  await assert.rejects(read({ ok: true, headers: new Headers({ 'content-type': 'application/json' }), arrayBuffer: () => assert.fail('unbounded fallback') }), { code: 'comfy_cloud_response_stream' });
+});
+test('invalid syntax, duplicate fields, unsafe keys, deep JSON and invalid UTF8 never become a repaired response', async () => {
+  for (const text of ['{"id":"first","id":"second"}', '{"constructor":{}}', '```json {} ```', 'null', '[]', '{', '{"x":1e999}', '['.repeat(34) + '0' + ']'.repeat(34), new Uint8Array([255])]) {
+    await assert.rejects(read(new Response(text, { headers: { 'content-type': 'application/json' } })), error =>
+      /^comfy_cloud_response_(json|shape)$/.test(error.code) && error.submissionState === 'unknown' && error.retryable === false);
+  }
+});
+test('body timeout cancels a stalled stream without waiting for its stuck cancel callback', async () => {
+  let cancelled = 0;
+  const response = new Response(new ReadableStream({ cancel() { cancelled++; return new Promise(() => {}); } }), { headers: { 'content-type': 'application/json' } });
+  await assert.rejects(read(response, { task: rhTask, timeoutMs: 5 }), { code: 'comfy_cloud_response_timeout', submissionState: 'accepted', upstreamId: rhId });
+  assert.equal(cancelled, 1); assert.equal(response.body.locked, false);
+});
+test('external cancellation and stream failure preserve the original task and do not expose raw upstream errors', async () => {
+  const controller = new AbortController(); let cancelled = 0;
+  const response = new Response(new ReadableStream({ cancel() { cancelled++; } }), { headers: { 'content-type': 'application/json' } });
+  const pending = read(response, { task: rhTask, signal: controller.signal }); controller.abort('test-only-secret');
+  await assert.rejects(pending, { code: 'comfy_cloud_response_cancelled', submissionState: 'accepted', upstreamId: rhId });
+  assert.equal(cancelled, 1);
+  const broken = new Response(new ReadableStream({ start(stream) { stream.error(Object.assign(Error('test-only-secret'), { code: 'comfy_cloud_response_size' })); } }), { headers: { 'content-type': 'application/json' } });
+  await assert.rejects(read(broken), error => error.code === 'comfy_cloud_response_stream' && !error.message.includes('test-only-secret'));
+});
+
+test('endless empty chunks cannot bypass the byte limit and starve the timeout indefinitely', async () => {
+  let cancelled = 0;
+  const response = new Response(new ReadableStream({ pull(stream) { stream.enqueue(new Uint8Array()); }, cancel() { cancelled++; } }),
+    { headers: { 'content-type': 'application/json' } });
+  await assert.rejects(read(response), { code: 'comfy_cloud_response_size', submissionState: 'unknown' });
+  assert.equal(cancelled, 1); assert.equal(response.body.locked, false);
+});
+test('HTTP errors and wrong MIME do not reset an accepted task or return an upstream HTML page as content', async () => {
+  for (const code of [400, 401, 402, 404, 429, 500, 503]) {
+    await assert.rejects(read(new Response('test-only-secret', { status: code }), { task: rhTask }), {
+      code: 'comfy_cloud_response_http', httpStatus: code, submissionState: 'accepted', upstreamId: rhId, retryable: false,
+    });
+  }
+  await assert.rejects(read(new Response('<html>test-only-secret</html>')), { code: 'comfy_cloud_response_type', submissionState: 'unknown' });
 });
