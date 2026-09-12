@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {NOTES_BACKUP_LIMITS,FAVORITES_BACKUP_LIMITS,NOTE_TEXT_LIMITS,FAVORITE_TEXT_LIMITS,prepareLibraryBackup,exportLibraryBackup} from '../qianmu-library-backup.js';
+import {NOTES_BACKUP_LIMITS,FAVORITES_BACKUP_LIMITS,NOTE_TEXT_LIMITS,FAVORITE_TEXT_LIMITS,prepareLibraryBackup,exportLibraryBackup,validateLibraryBackupRows,readLibraryBackupFile} from '../qianmu-library-backup.js';
+import {assertJsonInputBounds} from '../qianmu-json-input.js';
 import {importQianmuNotesBackup} from '../qianmu-notes.js';
 const note=()=>({id:'original',body:'月光与原文',pinned:true});
 const pack=(favorites=false,count=1)=>favorites?{type:'qianmu-tts-favorites',version:1,credentialsIncluded:false,entries:Array.from({length:count},(_,i)=>({id:'audio-'+i,data:'YQ==',mime:'audio/mpeg'}))}:{type:'qianmu-notes',version:1,credentialsIncluded:false,notes:Array.from({length:count},(_,i)=>({...note(),id:'note-'+i}))};
@@ -25,13 +26,66 @@ test('entry boundaries match current import limits and preserve overflow without
 });
 
 test('the same serializer uses exact UTF8 bytes and individual audio limits without requiring huge test allocations',async()=>{
-  const c=vm.createContext({Blob,JSON,NOTE_TEXT_LIMITS,FAVORITE_TEXT_LIMITS,NOTES_BACKUP_LIMITS:{bytes:1e6,entries:1000},FAVORITES_BACKUP_LIMITS:{bytes:1e6,entries:2000,encodedBytes:4}});
-  vm.runInContext(prepareLibraryBackup.toString(),c);
+  const c=vm.createContext({Blob,JSON,assertJsonInputBounds,NOTE_TEXT_LIMITS,FAVORITE_TEXT_LIMITS,NOTES_BACKUP_LIMITS:{bytes:1e6,entries:1000},FAVORITES_BACKUP_LIMITS:{bytes:1e6,entries:2000,encodedBytes:4,audioBytes:48*1024*1024}});
+  vm.runInContext(validateLibraryBackupRows.toString()+'\n'+prepareLibraryBackup.toString(),c);
   const payload=pack(),bytes=Buffer.byteLength(JSON.stringify(payload));c.NOTES_BACKUP_LIMITS.bytes=bytes;
   assert.equal(c.prepareLibraryBackup(payload).preservationOnly,false);c.NOTES_BACKUP_LIMITS.bytes--;
   const large=c.prepareLibraryBackup(payload);assert.equal(large.preservationOnly,true);assert.deepEqual(JSON.parse(await large.blob.text()),payload);
   const audio=pack(true);assert.equal(c.prepareLibraryBackup(audio).preservationOnly,false);audio.entries[0].data='YWFhYQ==';
   const result=c.prepareLibraryBackup(audio);assert.equal(result.preservationOnly,true);assert.deepEqual(JSON.parse(await result.blob.text()),audio);
+});
+
+for(const favorites of [false,true])test(`strict ${favorites?'audio':'notes'} admission rejects ambiguous JSON before trusting metadata`,async()=>{
+  const payload=pack(favorites),type=payload.type,raw=JSON.stringify(payload);
+  const malformed=[raw.replace('"version":1','"version":1,"version":2'),raw.replace('"version":1','"version":1,"\\u0076ersion":1'),raw.replace('"version":1','"version":1,"__proto__":{}'),raw.replace('"version":1','"version":1,"number":1e999'),raw.replace('"version":1','"version":1,"deep":'+'['.repeat(42)+'0'+']'.repeat(42))];
+  for(const text of malformed)await assert.rejects(readLibraryBackupFile({text:async()=>text},type,{check(){}}));
+  const result=await readLibraryBackupFile(new Blob([raw]),type,{check(){}});assert.deepEqual(result,payload);
+  for(const version of [true,[1],{},2])await assert.rejects(readLibraryBackupFile(new Blob([JSON.stringify({...payload,version})]),type,{check(){}}));
+  assert.equal((await readLibraryBackupFile(new Blob([JSON.stringify({...payload,version:'1'})]),type,{check(){}})).version,'1');
+  await assert.rejects(readLibraryBackupFile(new Blob([raw]),favorites?'qianmu-notes':'qianmu-tts-favorites',{check(){}}),/不是有效/);
+});
+
+test('file size and actual UTF8 size both bound the read; stale readers cannot proceed',async()=>{
+  let reads=0;for(const size of [0,-1,NaN,Infinity,1.5,'1',NOTES_BACKUP_LIMITS.bytes+1]){
+    await assert.rejects(readLibraryBackupFile({size,text:async()=>{reads++;return '{}';}},'qianmu-notes',{check(){}}));
+  }assert.equal(reads,0);
+  const text=' '.repeat(NOTES_BACKUP_LIMITS.bytes+1);
+  await assert.rejects(readLibraryBackupFile({size:1,text:async()=>text},'qianmu-notes',{check(){}}),/读取上限/);
+  let current=true;await assert.rejects(readLibraryBackupFile({text:async()=>{current=false;return JSON.stringify(pack());}},'qianmu-notes',{check(){if(!current)throw Error('stale');}}),/stale/);
+});
+
+test('a malformed later note prevents all reads and writes, not a partial successful restore',async()=>{
+  for(const row of [null,[],{body:12},{id:' padded '},{body:'字'.repeat(20001)},{title:'😀'.repeat(121)}]){
+    const payload=pack();payload.notes.push(row);const original=JSON.stringify(payload),file=new Blob([original]);
+    let reads=0,writes=0;
+    await assert.rejects(importQianmuNotesBackup(file,{check(){},read:async()=>{reads++;return [];},write:async()=>{writes++;},uid:()=> 'copy'}),/第 2 条/);
+    assert.equal(reads,0);assert.equal(writes,0);assert.equal(JSON.stringify(payload),original);
+    const exported=prepareLibraryBackup(payload);assert.equal(exported.preservationOnly,true);assert.equal(await exported.blob.text(),original);
+  }
+});
+
+test('canonical audio validation avoids decoded copies and rejects incomplete final entries',async()=>{
+  for(const data of ['', 'YR==','YQ=','YQ===','Y Q==','!!!!','YWJ=','YQ==\n']){
+    const payload=pack(true);payload.entries.push({id:'bad',data});
+    await assert.rejects(readLibraryBackupFile(new Blob([JSON.stringify(payload)]),payload.type,{check(){}}),/第 2 条/);
+    assert.equal(prepareLibraryBackup(payload).preservationOnly,true);
+  }
+  for(const data of ['YQ==','YWI=','YWJj']){
+    const payload=pack(true);payload.entries[0].data=data;
+    assert.deepEqual(await readLibraryBackupFile(new Blob([JSON.stringify(payload)]),payload.type,{check(){}}),payload);
+  }
+  for(const patch of [{mime:'image/png'},{label:[]},{meta:[]},{id:'i'.repeat(241)},{meta:{text:'t'.repeat(12001)}}]){
+    const payload=pack(true);Object.assign(payload.entries[0],patch);
+    await assert.rejects(readLibraryBackupFile(new Blob([JSON.stringify(payload)]),payload.type,{check(){}}));
+  }
+});
+
+test('ordinary Unicode and missing legacy optional fields still roundtrip; unknown unsafe structures are preservation only',async()=>{
+  const payload=pack();payload.notes[0]={id:'😀'.repeat(60),title:'😀'.repeat(120),body:'😀'.repeat(20000)};
+  const saved=[];await importQianmuNotesBackup(prepareLibraryBackup(payload).blob,{check(){},read:async()=>[],write:async row=>saved.push(row),uid:()=> 'copy'});
+  for(const key of ['id','title','body'])assert.equal(saved[0][key],payload.notes[0][key]);
+  const unsafe=JSON.parse('{"type":"qianmu-notes","version":1,"notes":[],"constructor":{}}');
+  assert.equal(prepareLibraryBackup(unsafe).preservationOnly,true);
 });
 
 test('preservation requires consent and a still-current operation; cancellation and stale confirmation download nothing',async()=>{

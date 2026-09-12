@@ -3,7 +3,7 @@ import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readCo
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { readCoreadPackageFile, coreadPackageSafeKey, applyCoreadPackageData, collectCoreadPackageData, prepareCoreadPackageExport, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard } from './qianmu-reader-package.js';
 import { exportConfiguration } from './qianmu-config-export.js';
-import { exportLibraryBackup, FAVORITES_BACKUP_LIMITS, FAVORITE_TEXT_LIMITS } from './qianmu-library-backup.js';
+import { exportLibraryBackup, readLibraryBackupFile, FAVORITES_BACKUP_LIMITS, FAVORITE_TEXT_LIMITS } from './qianmu-library-backup.js';
 import { receiveComfyImage, resolveComfyRecoveryKey } from './qianmu-comfy-recovery-action.js';
 import { receiveServiceImage } from './qianmu-service-recovery-action.js';
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
@@ -8432,27 +8432,20 @@ async function importTtsFavoritesBackup(event) {
   try {
     check=createStorageBackupCheck(input,importTtsFavoritesBackup,'导入');
     check();
-    if (Number(file.size) > FAVORITES_BACKUP_LIMITS.bytes) throw new Error('语音收藏备份文件超过 256 MB');
-    const payload = JSON.parse(await file.text());
-    check();
-    if (payload?.type !== 'qianmu-tts-favorites' || Number(payload?.version) !== 1 || !Array.isArray(payload?.entries)) {
-      throw new Error('不是有效的千幕语音收藏备份');
-    }
-    if (payload.entries.length > FAVORITES_BACKUP_LIMITS.entries) throw new Error('语音收藏备份超过 2000 条，请拆分后导入；未写入内容。');
+    const payload = await readLibraryBackupFile(file,'qianmu-tts-favorites',{check});
     const entries = payload.entries;
     const failed = [];
     for (let index = 0; index < entries.length; index++) {
       check();
       const item = entries[index];
       try {
-        if (!item || typeof item !== 'object' || typeof item.data !== 'string' || item.data.length > FAVORITES_BACKUP_LIMITS.encodedBytes) throw new Error('条目格式或体积无效');
-        let id = String(item.id || '').trim().slice(0, FAVORITE_TEXT_LIMITS.id) || uid('fav-import');
+        let id = item.id || uid('fav-import');
         if (await blobStore.hasFavorite(id)) id = uid('fav-import');
         check();
         const mime = /^audio\/[a-z0-9.+-]+$/i.test(String(item.mime || '')) ? String(item.mime) : 'audio/mpeg';
         const audioBlob = base64ToBlob(item.data, mime);
         if (audioBlob.size > FAVORITES_BACKUP_LIMITS.audioBytes) throw new Error('单条音频超过 48 MB');
-        await blobStore.importFavorite(id, audioBlob, storageSafeFavoriteMeta(item.meta), String(item.label || '').slice(0, FAVORITE_TEXT_LIMITS.label), {check});
+        await blobStore.importFavorite(id, audioBlob, storageSafeFavoriteMeta(item.meta), item.label || '', {check});
         imported++;
       } catch (error) {
         failed.push(`第 ${index + 1} 条：${error?.message || error}`);

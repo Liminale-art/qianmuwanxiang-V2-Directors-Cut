@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
 import {createStorageCleanupSession} from '../qianmu-storage-cleanup-session.js';
-import {FAVORITES_BACKUP_LIMITS,FAVORITE_TEXT_LIMITS} from '../qianmu-library-backup.js';
+import {FAVORITES_BACKUP_LIMITS,FAVORITE_TEXT_LIMITS,readLibraryBackupFile} from '../qianmu-library-backup.js';
 const payload=JSON.stringify({type:'qianmu-tts-favorites',version:1,entries:[{id:'one',data:'AA=='},{id:'two',data:'AA=='}]});
 function fixture(){
   const saved=[],notices=[],view={isConnected:true,open:true,classList:{contains:()=>view.open}};
-  const c=vm.createContext({FAVORITES_BACKUP_LIMITS,FAVORITE_TEXT_LIMITS,settings:{},storyboardAdmissionEpoch:1,document:{getElementById:()=>view},MODAL_ID:'fixture',activeTab:'api',
+  const c=vm.createContext({FAVORITES_BACKUP_LIMITS,FAVORITE_TEXT_LIMITS,readLibraryBackupFile,settings:{},storyboardAdmissionEpoch:1,document:{getElementById:()=>view},MODAL_ID:'fixture',activeTab:'api',
     toast:m=>notices.push(m),uid:()=> 'copy',base64ToBlob:()=>({size:1}),storageSafeFavoriteMeta:x=>x,refreshStorageInventory:async()=>{},
     blobStore:{hasFavorite:async()=>false,addFavorite:async id=>saved.push(id)}});
   vm.runInContext(source('createStorageBackupCheck')+'\n'+source('importTtsFavoritesBackup'),c);
@@ -73,6 +73,16 @@ test('oversized lists are rejected before lookup, and invalid input releases the
 test('final inventory errors report completed work without calling the whole import a success',async()=>{
   const e=fixture();e.c.refreshStorageInventory=async()=>{throw Error('synthetic inventory failure');};await e.run();
   assert.deepEqual(e.saved,['one','two']);assert.match(e.notices.at(-1),/未完成：已导入 2 条/);assert.equal(e.c.importTtsFavoritesBackup.busy,false);
+});
+
+test('the real favorite entry rejects a bad later row before any destination access',async()=>{
+  for(const row of [null,{id:'two',data:'bad!'},{id:'two',data:'AA==',label:'x'.repeat(1001)}]){
+    const e=fixture(),pack=JSON.parse(payload);pack.entries[1]=row;
+    e.input.files[0].text=async()=>JSON.stringify(pack);
+    let lookups=0;e.c.blobStore.hasFavorite=async()=>{lookups++;return false;};
+    await e.run();assert.equal(lookups,0);assert.deepEqual(e.saved,[]);assert.match(e.notices.at(-1),/第 2 条/);
+    assert.equal(e.c.importTtsFavoritesBackup.busy,false);assert.equal(e.input.value,'');
+  }
 });
 
 test('the dedicated import receives its guard; rejected writes never count as imported',async()=>{

@@ -29,6 +29,15 @@ try{
     }finally{IDBObjectStore.prototype.add=add;}
     const notes=await read();
     check('aborted successful request is failed while another note commits',result.imported===1&&result.failed.length===1&&!notes.some(n=>n.id==='abort')&&notes.some(n=>n.id==='committed'));
+    for(const row of [null,{id:'bad',body:'字'.repeat(20001)}]){
+      let rejected=false,destinationReads=0;
+      const file=new File([JSON.stringify({type:'qianmu-notes',version:1,notes:[{id:'preflight-first',body:'must not write'},row]})],'invalid.json');
+      try{await api.importQianmuNotesBackup(file,{check:guard,read:async()=>{destinationReads++;return read();},write,uid:()=> 'copy'});}catch(error){rejected=error.message.includes('第 2 条');}
+      check('native File invalid later note prevents all IndexedDB access',rejected&&destinationReads===0&&!(await read()).some(n=>n.id==='preflight-first'));
+    }
+    const {readLibraryBackupFile}=await import('/qianmu-library-backup.js');
+    let rejectedAudio=false;try{await readLibraryBackupFile(new File(['{"type":"qianmu-tts-favorites","version":1,"entries":[{"data":"YR=="}]}'],'bad-audio.json'),'qianmu-tts-favorites',{check:guard});}catch(error){rejectedAudio=error.message.includes('第 1 条');}
+    check('native browser rejects incomplete canonical audio before allocating decoded copies',rejectedAudio);
     const cursor=IDBObjectStore.prototype.openCursor;let failed=false;
     try{
       IDBObjectStore.prototype.openCursor=function(...args){const request=cursor.apply(this,args);if(this.name==='notes')request.addEventListener('success',()=>{if(!request.result)this.transaction.abort();});return request;};
@@ -255,5 +264,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,119);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,122);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}
