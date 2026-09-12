@@ -6,6 +6,9 @@ import { once } from 'node:events';
 import { createComfyServerTransport, createComfyCloudServerTransport, pinnedComfyFetch } from '../qianmu-comfy-server-transport.js';
 import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
 import { queryComfyCloudTask } from '../qianmu-comfy-cloud-query.js';
+import { createComfyCloudLedger } from '../qianmu-comfy-cloud-ledger.js';
+import { createImageServiceStore } from '../qianmu-image-service-store.js';
+import { COMFY_CLOUD_INTENT_SCHEMA, COMFY_CLOUD_RECEIPT_SCHEMA } from '../qianmu-comfy-cloud-receipt.js';
 import { init, exit } from '../server-plugin.js';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
@@ -41,6 +44,84 @@ const response = () => ({ statusCode: 200, headers: {}, set(k, v) { this.headers
 const cloudBinding = bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2');
 const rhBinding = bindComfyCloudProtocol('https://www.runninghub.cn', 'runninghub-workflow-v1');
 const cloudGrant = async () => async () => {};
+
+async function persistedCloudTask(t, binding = cloudBinding) {
+  const root = await fs.mkdtemp(path.join(tmpdir(), 'qianmu-comfy-routes-')); roots.push(root);
+  const store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => store.close());
+  const req = account(), apiKey = 'test-only-secret', taskId = binding.provider === 'runninghub' ? '1904152026220003329' : 'persisted';
+  const task = bindComfyCloudTask(binding, taskId, binding.provider === 'runninghub' ? undefined
+    : { self: `/deployment/saved/api/v2/jobs/${taskId}`, cancel: `/deployment/saved/api/v2/jobs/${taskId}/cancel` });
+  const intent = { schema: COMFY_CLOUD_INTENT_SCHEMA, connection: binding, requestDigest: 'a'.repeat(64),
+    workflow: { templateHash: 'b'.repeat(64), executionHash: 'c'.repeat(64) },
+    stillOutput: { version: 1, model: 'workflow', previewNodeIds: [], execution: { version: 1, automatic: true, maxImages: 1, expectedImages: 1, outputNodeIds: ['save'] } } };
+  const ledger = createComfyCloudLedger({ store }), reservation = await ledger.reserve(req, { expectedAccount: imageServiceAccount(req).namespace, attemptId: 'persisted-attempt', apiKey, intent });
+  const ticket = ledger.submission(reservation); await ticket.beforeSubmit();
+  await ticket.recordAccepted(taskId, { schema: COMFY_CLOUD_RECEIPT_SCHEMA, task, requestDigest: intent.requestDigest, workflow: intent.workflow, stillOutput: intent.stillOutput });
+  await ticket.markUncertain(); await store.close();
+  const reopened = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => reopened.close());
+  const next = createComfyCloudLedger({ store: reopened }), locator = { channelKey: reservation.channelKey, attemptId: reservation.attemptId, apiKey };
+  return { req, task, store: reopened, ledger: next, locator, options: {
+    apiKey, authorizeTask: (req, original) => next.authorizeQuery(req, locator, original), authorizeTarget: cloudGrant, resolveHost: publicDns,
+  } };
+}
+
+test('persisted cloud and RH originals pass real ledger grants through the bounded query runner after restart', async t => {
+  for (const binding of [cloudBinding, rhBinding]) {
+    const f = await persistedCloudTask(t, binding), calls = [], before = await f.store.inspectChannel(f.locator.channelKey);
+    const result = await queryComfyCloudTask(f.req, f.task, { ...f.options, requestImpl: mockNodeRequest(calls, () => ({ body: binding.provider === 'runninghub'
+      ? { taskId: f.task.taskId, status: 'RUNNING', errorCode: '' } : { id: f.task.taskId, status: 'running', urls: f.task.links } })) });
+    assert.equal(result.status, 'running'); assert.equal(calls.length, 1);
+    if (binding.provider === 'runninghub') { assert.equal(calls[0].url.pathname, '/openapi/v2/query'); assert.deepEqual(JSON.parse(calls[0].body), { taskId: f.task.taskId }); }
+    else { assert.equal(calls[0].url.href, f.task.links.self); assert.equal(calls[0].options.method, 'GET'); assert.equal(calls[0].body.length, 0); }
+    assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before, 'query must not mark a generating job complete or release its fence');
+  }
+});
+
+test('real stored ownership and network target grants both precede cloud DNS or requests', async t => {
+  const f = await persistedCloudTask(t); let resolutions = 0; const calls = [];
+  for (const variation of [
+    { req: { user: { profile: { handle: 'bob', enabled: true } } }, options: {} },
+    { req: f.req, options: { authorizeTarget: undefined } },
+    { req: f.req, options: { authorizeTask: (req, task) => f.ledger.authorizeQuery(req, { ...f.locator, apiKey: 'another-key' }, task) } },
+  ]) {
+    await assert.rejects(queryComfyCloudTask(variation.req, f.task, { ...f.options, ...variation.options,
+      resolveHost: async () => { resolutions++; return publicDns(); }, requestImpl: mockNodeRequest(calls) }),
+    error => error.submissionState === 'accepted' && error.upstreamId === f.task.taskId && error.code.startsWith('comfy_cloud_query_'));
+  }
+  assert.equal(resolutions, 0); assert.equal(calls.length, 0);
+  assert.equal((await f.store.inspectChannel(f.locator.channelKey)).entries[0].status, 'uncertain');
+});
+
+test('revoking a real stored cloud fence during response prevents delivery without any resubmission', async t => {
+  const f = await persistedCloudTask(t), calls = []; let revoked;
+  await assert.rejects(queryComfyCloudTask(f.req, f.task, { ...f.options,
+    authorizeTask: async (req, original) => {
+      const verify = await f.ledger.authorizeQuery(req, f.locator, original);
+      return async () => { if (revoked) await revoked; await verify(); };
+    },
+    requestImpl: mockNodeRequest(calls, () => {
+      revoked = f.store.transaction(f.locator.channelKey, state => { state.entries[0].fence = 'revoked'; return { state }; });
+      return { body: { id: f.task.taskId, status: 'succeeded', urls: f.task.links } };
+    }),
+  }), error => error.submissionState === 'accepted' && error.upstreamId === f.task.taskId && error.code.startsWith('comfy_cloud_query_'));
+  await revoked; assert.equal(calls.length, 1);
+  const row = (await f.store.inspectChannel(f.locator.channelKey)).entries[0];
+  assert.equal(row.fence, 'revoked'); assert.equal(row.status, 'uncertain'); assert.equal(row.upstreamId, f.task.taskId);
+});
+
+test('real cloud ledger becoming unavailable after response never delivers an unverified result', async t => {
+  const f = await persistedCloudTask(t), calls = []; let closing;
+  await assert.rejects(queryComfyCloudTask(f.req, f.task, { ...f.options,
+    authorizeTask: async (req, original) => {
+      const verify = await f.ledger.authorizeQuery(req, f.locator, original);
+      return async () => { if (closing) await closing; await verify(); };
+    },
+    requestImpl: mockNodeRequest(calls, () => {
+      closing = f.store.close(); return { body: { id: f.task.taskId, status: 'succeeded', urls: f.task.links } };
+    }),
+  }), error => error.submissionState === 'accepted' && error.upstreamId === f.task.taskId && error.code.startsWith('comfy_cloud_query_'));
+  await closing; assert.equal(calls.length, 1);
+});
 
 test('cloud query runner performs only the original task read through real authorization and response projection', async () => {
   const calls = [], task = bindComfyCloudTask(rhBinding, '1904152026220003329'); let ownershipChecks = 0;
