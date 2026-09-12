@@ -97,7 +97,8 @@ test('actual portable export/import preserves the policy and imports old package
     URL:{createObjectURL:blob=>{exported=blob;return 'blob:test';},revokeObjectURL:noop},
     document:{createElement:()=>({click:noop,remove:noop}),body:{appendChild:noop}},
   });
-  vm.runInContext(fn('storyboardExportPackage'),context);
+  Object.assign(context,{MODAL_ID:'fixture',createStorageBackupCheck:()=>{const check=()=>{};check.release=()=>{};return check;}});context.document.getElementById=()=>({});
+  vm.runInContext(fn('storyboardPackageContext')+'\n'+fn('storyboardExportPackage'),context);
   await context.storyboardExportPackage({originals:false});const text=await exported.text();
   assert.deepEqual(JSON.parse(text).settings.generationPolicy,{version:1,minImages:2,maxImages:4,concurrency:3});
   const importer=createPackageImportFixture();importer.e.state.generationPolicy={version:1,minImages:1,maxImages:1,concurrency:1};

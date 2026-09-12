@@ -84,7 +84,8 @@ async function production({ pending = false, changeAt = '', lock = true, saveFai
     storyboardSafeUrl: url => url, ctx: () => ({ chat: f.messages }), storyboardLinkReviewParagraphs: text => text.split('\n'), applyQianmuIcons() {}, storyboardLinkReview: null,
     saveMetadata: async () => { writes++; if (changeAt === 'save') f.messages[1].mes = 'changed'; if (saveFail) throw new Error('write failed'); },
     storyboardScheduleInlineRender: () => scheduler++, renderModal: () => rendered++, toast: message => notices.push(message) });
-  vm.runInContext(storyboardFunctionSource('storyboardReviewRecordLink'), context);
+  context.createStorageBackupCheck=()=>{const check=()=>{};check.release=()=>{};return check;};
+  vm.runInContext(storyboardFunctionSource('storyboardPackageContext')+'\n'+storyboardFunctionSource('storyboardReviewRecordLink'), context);
   await context.storyboardReviewRecordLink(f.record);
   return { f, store, saved, writes, rendered, scheduler, closed, outcome, phase, applyError, notices, busy: context.storyboardImportPackage.busy };
 }

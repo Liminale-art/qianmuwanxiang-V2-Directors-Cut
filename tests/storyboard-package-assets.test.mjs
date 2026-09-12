@@ -131,7 +131,8 @@ function indexFixture(){
     storyboardPipelineForLog:log=>state.pipelineLogs.find(p=>p.id===log.pipelineId)||null,storyboardGalleryRecords:()=>images,storyboardGalleryCollections:()=>[{id:'c',name:'Captured collection'}],
     storyboardSnapshotForRecord:record=>record.snapshot||null,storyboardPlansForPortableExport:async p=>p,storyboardSafeUrl:value=>value,fetch:async()=>({ok:true,blob:async()=>new Blob(['image'],{type:'image/png'})}),blobToBase64:async()=> 'aW1hZ2U=',
     confirmDialog:async()=>true,toast:(...args)=>notices.push(args),fileStamp:()=> 'fixture',URL:{createObjectURL:blob=>{exported=blob;return 'blob:test';},revokeObjectURL:noop},document:{createElement:()=>({click:noop,remove:noop}),body:{appendChild:noop}},
-  });vm.runInContext(fn('storyboardExportPackage'),context);
+  });Object.assign(context,{MODAL_ID:'fixture',createStorageBackupCheck:()=>{const check=()=>{};check.release=()=>{};return check;}});context.document.getElementById=()=>({});
+  vm.runInContext(fn('storyboardPackageContext')+'\n'+fn('storyboardExportPackage'),context);
   return {state,store,notices,context,exported:()=>exported,setImages:value=>images=value,switch:()=>{chat='chat-b';currentState=board.createStoryboardDefaults();currentStore={};owner=otherAccount;}};
 }
 

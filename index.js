@@ -21881,11 +21881,18 @@ async function storyboardDownloadRecord(record) {
   }
 }
 
+function storyboardPackageContext(transfer) {
+  const check=createStorageBackupCheck(document.getElementById(MODAL_ID),transfer,'数据操作');
+  const context=()=>{check();return {state:storyboardState(),store:getChatStore(),chatKey:String(getChatKey()||''),epoch:storyboardAdmissionEpoch};};
+  context.release=check.release;return context;
+}
+
 async function storyboardExportPackage({ originals = true, bundle = false } = {}) {
   if(storyboardExportPackage.busy)return toast('正在打包分镜数据，请稍候。','info');
   storyboardExportPackage.busy=true;
-  const context=()=>({state:storyboardState(),store:getChatStore(),chatKey:String(getChatKey()||''),epoch:storyboardAdmissionEpoch});
+  let context;
   try {
+  context=storyboardPackageContext(storyboardExportPackage);
   const initial=context();
   const [packageModule,identity]=await Promise.all([featureRuntime.load('storyboardPackageAssets'),featureRuntime.load('imageAdmission')]);
   const session=await packageModule.createStoryboardPackageGuard({initial,context,resolveNamespace:()=>identity.resolveImageAccountNamespace()});
@@ -21995,7 +22002,7 @@ async function storyboardExportPackage({ originals = true, bundle = false } = {}
   const vibeNotice=originals ? ` 已包含 ${vibeScope.refs.length} 份 Vibe 原文件。${vibeScope.legacyUrls.length ? bundle ? `另已保全 ${vibeScope.legacyUrls.length} 个旧 Vibe 地址的本地原图。` : `另有 ${vibeScope.legacyUrls.length} 个 Vibe 旧地址仅保留地址，原图需另行保全。` : ''}${bundle ? '已包含工作流、候选历史与角色库及参考原件；恢复需核对环境与身份。' : '不含 Comfy 与角色独立库。'}` : vibeScope.refs.length||vibeScope.legacyUrls.length?' 当前旧版包只保留 Vibe 引用/地址，原文件请在 Vibe 文件空间另行备份。':'';
   toast(`分镜数据已打包：${records.length} 条成片${skipped ? ` · ${skipped} 张仅保留原地址` : ''}。${vibeNotice}`, vibeNotice?'warning':'success');
   } catch(error) { toast(`分镜打包未完成：${error?.message||'请重新核对后导出'}`, 'error'); }
-  finally {storyboardExportPackage.busy=false;}
+  finally {context?.release();storyboardExportPackage.busy=false;}
 }
 
 function storyboardMergeById(local, incoming, limit = 240) {
@@ -22057,8 +22064,9 @@ async function storyboardReviewRecordLink(record) {
   if (!record?.restoreLinkReview || storyboardImportPackage.busy || storyboardExportPackage.busy) return;
   storyboardImportPackage.busy = true;
   let journal = null, review = null;
-  const context = () => ({ state: storyboardState(), store: getChatStore(), chatKey: String(getChatKey() || ''), epoch: storyboardAdmissionEpoch });
+  let context;
   try {
+    context=storyboardPackageContext(storyboardImportPackage);
     const initial = context();
     const [assets, identity, journalModule, mutation, model, view] = await Promise.all([
       featureRuntime.load('storyboardPackageAssets'), featureRuntime.load('imageAdmission'), featureRuntime.load('storyboardPackageJournal'),
@@ -22104,15 +22112,16 @@ async function storyboardReviewRecordLink(record) {
     await review.finished;
     if (context().store === initial.store && parent?.classList.contains('open')) renderModal();
   } catch (error) { toast(`正文定位未完成：${error?.message || '请重新核对'}`, 'warning'); }
-  finally { review?.close(); journal?.close(); if (storyboardLinkReview === review) storyboardLinkReview = null; storyboardImportPackage.busy = false; }
+  finally { review?.close(); journal?.close(); context?.release(); if (storyboardLinkReview === review) storyboardLinkReview = null; storyboardImportPackage.busy = false; }
 }
 
 async function storyboardImportBundle(file) {
   if (!file || storyboardImportPackage.busy || storyboardExportPackage.busy) return;
   storyboardImportPackage.busy = true;
   let journal = null, review = null, runtime = null;
-  const context = () => ({ state: storyboardState(), store: getChatStore(), chatKey: String(getChatKey() || ''), epoch: storyboardAdmissionEpoch });
+  let context;
   try {
+    context=storyboardPackageContext(storyboardImportPackage);
     const initial = context();
     const [assets, identity, journalModule, mutation, configModule, workerModule, viewModule] = await Promise.all([
       featureRuntime.load('storyboardPackageAssets'), featureRuntime.load('imageAdmission'), featureRuntime.load('storyboardPackageJournal'),
@@ -22150,15 +22159,16 @@ async function storyboardImportBundle(file) {
     if (result?.settingsApplied) { storyboardScheduleInlineRender(30); renderModal(); toast('资源已恢复，配置已应用；请刷新后点击“核对导入”确认保存。', 'info'); }
     else toast('恢复页面已关闭；如曾开始恢复，请保留原包，核对可能已保存的部分。', 'info');
   } catch (error) { toast(`联包恢复未完成：${error?.message || '请核对原包与恢复记录'}`, 'error'); }
-  finally { review?.close(); runtime?.close(); journal?.close(); if (storyboardBundleReview === review) storyboardBundleReview = null; storyboardImportPackage.busy = false; }
+  finally { review?.close(); runtime?.close(); journal?.close(); context?.release(); if (storyboardBundleReview === review) storyboardBundleReview = null; storyboardImportPackage.busy = false; }
 }
 
 async function storyboardImportPackage(file, { recoverOnly = false } = {}) {
   if ((!file && !recoverOnly) || storyboardImportPackage.busy) return;
   storyboardImportPackage.busy = true;
   let journal = null, assetStore = null;
-  const context = () => ({ state: storyboardState(), store: getChatStore(), chatKey: String(getChatKey() || ''), epoch: storyboardAdmissionEpoch });
+  let context;
   try {
+    context=storyboardPackageContext(storyboardImportPackage);
     const initial = context();
     const [input, draftModule, mutation, journalModule, assets, identity] = await Promise.all([
       featureRuntime.load('storyboardPackageInput'), featureRuntime.load('storyboardPackageDraft'),
@@ -22263,7 +22273,7 @@ async function storyboardImportPackage(file, { recoverOnly = false } = {}) {
     });
   } catch (error) {
     toast(`分镜导入未完成：${error?.message || '请保留原包并重新核对'}；已暂存图片可能仍保留。`, 'error');
-  } finally { assetStore?.close(); journal?.close(); storyboardImportPackage.busy = false; }
+  } finally { assetStore?.close(); journal?.close(); context?.release(); storyboardImportPackage.busy = false; }
 }
 
 async function storyboardApplyPackageMutation({ pending, mutation, journal, initial, guard, isCurrent, direction = 'after' }) {
@@ -25644,7 +25654,7 @@ function configRestoreActivity(includeCleanup = true, ownTransfer = null) {
     focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy || (ownTransfer!==focusLibraryRuntime&&focusLibraryRuntime?.busy),
     director: busy || theaterBusy,
     image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || (includeCleanup ? storyboardImageService?.busy : storyboardImageService?.busyExcept('manage')) || storyboardReceiveServiceImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
-    transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || (ownTransfer !== importPinnedNotesBackup && importPinnedNotesBackup.busy) || (ownTransfer !== importTtsFavoritesBackup && importTtsFavoritesBackup.busy) || (ownTransfer !== storyboardOpenRestoreStorage && storyboardOpenRestoreStorage.busy) || (ownTransfer !== exportPinnedNotesBackup && exportPinnedNotesBackup.busy) || (ownTransfer !== exportTtsFavoritesBackup && exportTtsFavoritesBackup.busy) || (ownTransfer !== coreadImportDataFile && coreadImportDataFile.busy) || (ownTransfer !== coreadExportData && coreadExportData.busy) || (includeCleanup && storageCleanupSession.busy),
+    transfer: (ownTransfer!==storyboardImportPackage&&(storyboardImportPackage.busy||storyboardBundleReview?.isOpen)) || (ownTransfer!==storyboardExportPackage&&storyboardExportPackage.busy) || (ownTransfer !== importPinnedNotesBackup && importPinnedNotesBackup.busy) || (ownTransfer !== importTtsFavoritesBackup && importTtsFavoritesBackup.busy) || (ownTransfer !== storyboardOpenRestoreStorage && storyboardOpenRestoreStorage.busy) || (ownTransfer !== exportPinnedNotesBackup && exportPinnedNotesBackup.busy) || (ownTransfer !== exportTtsFavoritesBackup && exportTtsFavoritesBackup.busy) || (ownTransfer !== coreadImportDataFile && coreadImportDataFile.busy) || (ownTransfer !== coreadExportData && coreadExportData.busy) || (includeCleanup && storageCleanupSession.busy),
   };
 }
 

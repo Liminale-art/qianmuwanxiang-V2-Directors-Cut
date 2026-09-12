@@ -27,6 +27,7 @@ export function createPackageImportFixture(){
     storyboardSafeUrl:url=>typeof url==='string'&&url.startsWith('/')?url:'',saveSettings:()=>{e.events.push('settings');},saveMetadata:async()=>{e.events.push('metadata');if(e.persist)await e.persist();},
     hashText:text=>text,storyboardScheduleInlineRender:noop,renderModal:noop,toast:(...args)=>e.notices.push(args),
   });context.globalThis=context;
-  vm.runInContext(['storyboardImportPackage','storyboardApplyPackageMutation','storyboardRecoverPackageMutation'].map(fn).join('\n'),context);
+  Object.assign(context,{MODAL_ID:'fixture',document:{getElementById:()=>({})},createStorageBackupCheck:()=>{const check=()=>{if(e.competing)throw Error('other task');};check.release=()=>{};return check;}});
+  vm.runInContext(['storyboardPackageContext','storyboardImportPackage','storyboardApplyPackageMutation','storyboardRecoverPackageMutation'].map(fn).join('\n'),context);
   return {e,context,journal,modules,import:context.storyboardImportPackage,recover:()=>context.storyboardImportPackage(null,{recoverOnly:true})};
 }

@@ -262,6 +262,15 @@ test('actual activity adapter blocks each independent lane without normalizing o
   c.focusLibraryRuntime={busy:true};assert.equal(c.configRestoreActivity(false).focus,true,'cleanup must observe focus original management');
   assert.equal(!!c.configRestoreActivity(true,c.focusLibraryRuntime).focus,false,'focus manager excludes its own slot only');
   c.focusLibraryRuntime=null;
+  c.storyboardImportPackage.busy=true;c.storyboardBundleReview={isOpen:true};
+  assert.equal(!!c.configRestoreActivity(true,c.storyboardImportPackage).transfer,true,'cleanup still blocks the importing owner');
+  c.storageCleanupSession.busy=false;
+  assert.equal(!!c.configRestoreActivity(true,c.storyboardImportPackage).transfer,false,'package import and its own review share one slot');
+  c.storyboardExportPackage.busy=true;assert.equal(c.configRestoreActivity(true,c.storyboardImportPackage).transfer,true,'export is still a separate conflict');
+  assert.equal(c.configRestoreActivity(true,c.storyboardExportPackage).transfer,true,'export cannot ignore an import');
+  c.storyboardImportPackage.busy=false;c.storyboardBundleReview=null;
+  assert.equal(!!c.configRestoreActivity(true,c.storyboardExportPackage).transfer,false,'export may exclude only its own slot');
+  c.storyboardExportPackage.busy=false;c.storageCleanupSession.busy=true;
   c.coreadImportDataFile.busy=true;assert.equal(c.configRestoreActivity(false).transfer,true);c.coreadImportDataFile.busy=false;
   assert.equal(Object.values(c.configRestoreActivity(false)).some(Boolean),false,'cleanup must exclude only itself');
   const notices=[],allowed=policy.configRestoreGate(c.settings,()=>c.configRestoreActivity(),(...args)=>notices.push(args));
