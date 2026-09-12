@@ -113,7 +113,7 @@ export function createImageServiceClientStore({ indexedDB = globalThis.indexedDB
       const next = checkedRow({ ...previous, status: 'reviewed', feeReview: checkedFeeReview(proof) }, row.namespace);
       return transaction(row.namespace, true, row.attemptId, next, JSON.stringify(previous), valid);
     },
-    remove: (namespace, attemptId) => transaction(namespace, true, attemptId, null),
+    remove: (namespace, attemptId, { expected, valid } = {}) => transaction(namespace, true, attemptId, null, expected, valid),
     close() { closed = true; db?.close(); db = null; },
   };
 }
@@ -381,13 +381,25 @@ export function createImageServiceClient({ store = createImageServiceClientStore
         await assertAccount(namespace); await store.remove(namespace, attemptId);
       });
     },
-    async manage({ remove = false } = {}) {
-      const namespace = await account();
+    async manage({ remove = false, expectedNamespace, check = () => {} } = {}) {
+      const guard = () => { if (closed) throw fail('closed', '服务请求会话已结束'); check(); };
+      guard(); const namespace = await account(); guard();
+      if (remove && namespace !== expectedNamespace) throw fail('account', '储存账户已变化或尚未盘点，请重新选择清理项目。');
       const run = async () => {
-        const rows = await store.list(namespace); await assertAccount(namespace);
-        const totals = { count: rows.length, bytes: rows.reduce((sum,row) => sum + new TextEncoder().encode(JSON.stringify(row)).length,0) };
-        if (remove) for (const row of rows) { await assertAccount(namespace); await store.remove(namespace,row.attemptId); }
-        return totals;
+        let clearedCount = 0;
+        try {
+          guard(); const rows = await store.list(namespace); guard(); await assertAccount(namespace); guard();
+          const totals = { namespace, count: rows.length, bytes: rows.reduce((sum,row) => sum + new TextEncoder().encode(JSON.stringify(row)).length,0) };
+          if (remove) for (const row of rows) {
+            guard(); await assertAccount(namespace); guard();
+            await store.remove(namespace, row.attemptId, { expected: JSON.stringify(row), valid: () => { guard(); return true; } });
+            clearedCount++; guard();
+          }
+          return totals;
+        } catch (cause) {
+          if (!clearedCount) throw cause;
+          throw Object.assign(fail('cleanup_partial', `已清理 ${clearedCount} 条本机领取记录；后续清理已停止，其余未继续清理。服务器原图不受影响。`), { clearedCount, cause });
+        }
       };
       if (!remove) return run();
       if (!locks?.request) throw fail('locks', '当前浏览器无法安全清理服务请求');

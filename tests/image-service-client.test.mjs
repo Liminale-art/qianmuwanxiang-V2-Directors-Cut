@@ -26,7 +26,10 @@ function setup(options = {}) {
       assert.equal(valid(), true); assert.deepEqual(await this.get(row.namespace,row.attemptId),row);
       await this.put({...row,status:'reviewed',feeReview});
     },
-    async remove(ns, attempt) { rows.delete(key(ns, attempt)); }, close() {},
+    async remove(ns, attempt, { expected, valid = () => true } = {}) {
+      if (!valid() || expected !== undefined && JSON.stringify(await this.get(ns, attempt)) !== expected) throw Error('record changed');
+      rows.delete(key(ns, attempt));
+    }, close() {},
   };
   const locks = { async request(name, options, work) {
     const current = held.get(name);
@@ -364,10 +367,46 @@ test('bulk local receipt cleanup cannot interleave with a live generation', asyn
   const gate=deferred(),begun=deferred();t.after(gate.resolve);
   const s=setup({fetch:async(action,body)=>{if(action==='submit'){begun.resolve();await gate.promise;}return response(action==='capabilities'?capability:image(body.attemptId));}});
   const pending=submit(s,{deliver:async()=>false});await begun.promise;
-  await assert.rejects(s.client.manage({remove:true}),/仍有生成或领取/);assert.equal(s.rows.size,1);
+  await assert.rejects(s.client.manage({remove:true,expectedNamespace:'st-user:alice'}),/仍有生成或领取/);assert.equal(s.rows.size,1);
   gate.resolve();await pending;
-  const count=s.calls.length;const stats=await s.client.manage({remove:true});
+  const count=s.calls.length;const stats=await s.client.manage({remove:true,expectedNamespace:'st-user:alice'});
   assert.equal(stats.count,1);assert.ok(stats.bytes>0);assert.equal(s.rows.size,0);assert.equal(s.calls.length,count);
+});
+
+test('cleanup binds the selected inventory account and rejects missing or changed selection without IO',async()=>{
+  for(const expectedNamespace of [undefined,'st-user:bob']){
+    const s=setup();let listed=false;s.store.list=async()=>{listed=true;return [];};
+    assert.equal((await s.client.manage()).namespace,'st-user:alice');listed=false;
+    await assert.rejects(s.client.manage({remove:true,expectedNamespace}),{code:'image_service_client_account'});
+    assert.equal(listed,false);assert.equal(s.calls.length,0);
+  }
+});
+
+test('receipt cleanup guards the actual write and reports committed deletions without claiming rollback',async()=>{
+  for(const phase of ['list','write','after-first','changed-row']){
+    const s=setup();for(const attemptId of ['a','b'])await s.store.put({namespace:'st-user:alice',attemptId,status:'submitted'});
+    let live=true;const list=s.store.list.bind(s.store),remove=s.store.remove.bind(s.store);
+    s.store.list=async ns=>{const rows=await list(ns);if(phase==='list')live=false;return rows;};
+    s.store.remove=async(ns,id,options)=>{
+      if(phase==='write')live=false;
+      if(phase==='changed-row')await s.store.put({namespace:ns,attemptId:id,status:'available'});
+      await remove(ns,id,options);if(phase==='after-first')live=false;
+    };
+    await assert.rejects(s.client.manage({remove:true,expectedNamespace:'st-user:alice',check(){if(!live)throw Error('stale scope');}}),e=>{
+      if(phase==='after-first'){assert.equal(e.clearedCount,1);assert.match(e.message,/已清理 1 条/);}return true;
+    });
+    assert.equal(s.rows.size,phase==='after-first'?1:2);assert.equal(s.calls.length,0);
+  }
+});
+
+test('maintenance can exclude itself from the activity gate without hiding concurrent receipt work',async()=>{
+  const s=setup(),gate=deferred(),entered=deferred(),get=s.store.get.bind(s.store);
+  const options={remove:true,expectedNamespace:'st-user:alice',check(){assert.equal(s.client.busy,true);if(s.client.busyExcept('manage'))throw Error('other work');}};
+  await s.client.manage(options);assert.equal(s.client.busy,false);
+  s.store.get=async(...args)=>{entered.resolve();await gate.promise;return get(...args);};
+  const pending=s.client.dismiss('missing');await entered.promise;
+  await assert.rejects(s.client.manage(options),/other work/);assert.equal(s.client.busy,true);
+  gate.resolve();await pending;assert.equal(s.client.busy,false);assert.equal(s.client.busyExcept('manage'),false);
 });
 
 test('original-only recovery archives an image without invented recipe, prompt or paragraph binding',async()=>{

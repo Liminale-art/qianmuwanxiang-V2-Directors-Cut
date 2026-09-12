@@ -253,6 +253,12 @@ test('actual activity adapter blocks each independent lane without normalizing o
   for(const status of ['running','paused']){c.settings.focusClock.status=status;assert.ok(c.configRestoreActivity().focus,status);cases++;}
   c.settings.focusClock.status='idle';idle();assert.equal(JSON.stringify(c.settings),before);assert.equal(cases,34);
   c.storageCleanupSession.busy=true;
+  let otherServiceWork=false;
+  c.storyboardImageService={busy:true,busyExcept:name=>{assert.equal(name,'manage');return otherServiceWork;}};
+  assert.equal(c.configRestoreActivity().image,true,'ordinary restore must still see receipt maintenance');
+  assert.equal(!!c.configRestoreActivity(false).image,false,'cleanup must not block its own receipt maintenance');
+  otherServiceWork=true;assert.equal(c.configRestoreActivity(false).image,true,'cleanup must still observe simultaneous service work');
+  c.storyboardImageService=null;
   c.coreadImportDataFile.busy=true;assert.equal(c.configRestoreActivity(false).transfer,true);c.coreadImportDataFile.busy=false;
   assert.equal(Object.values(c.configRestoreActivity(false)).some(Boolean),false,'cleanup must exclude only itself');
   const notices=[],allowed=policy.configRestoreGate(c.settings,()=>c.configRestoreActivity(),(...args)=>notices.push(args));

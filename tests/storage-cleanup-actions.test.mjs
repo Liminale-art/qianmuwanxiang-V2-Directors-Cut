@@ -77,6 +77,17 @@ test('attempt cleanup forwards selected account and live scope rather than clear
   await e.run();assert.equal(called,true);assert.equal(e.calls.clear,0);assert.equal(e.calls.save,0);assert.equal(e.c.storageCleanupSession.busy,false);
 });
 
+test('receipt cleanup forwards selected account and live scope and surfaces partial cleanup without saving stale UI',async()=>{
+  const e=fixture({cleared:[],failed:[],count:0,bytes:0},'module');let called=false;
+  e.c.storageInventoryState.data.serviceReceipts={namespace:'selected-account'};e.c.openStorageCleanupDialog=async()=>['__image_service_receipts__'];
+  e.c.storyboardImageServiceRuntime=async()=>({manage:async options=>{
+    assert.equal(options.expectedNamespace,'selected-account');options.check();e.root.isConnected=false;
+    assert.throws(()=>options.check(),/后续操作已停止/);called=true;throw Error('已清理 1 条本机领取记录');
+  }});
+  await e.run();assert.equal(called,true);assert.equal(e.calls.clear,0);assert.equal(e.calls.save,0);
+  assert.match(e.notices.at(-1)[0],/已清理 1 条/);assert.equal(e.c.storageCleanupSession.busy,false);
+});
+
 test('both real cleanup entry points pass their live scope check into the database loop',async()=>{
   for(const kind of ['chat','module']){
     const result={cleared:[],failed:[],count:0,bytes:0},e=fixture(result,kind);let checked=false;

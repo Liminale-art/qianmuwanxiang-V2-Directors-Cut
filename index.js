@@ -8741,7 +8741,7 @@ function bindStorageManagementEvents(root) {
       }
       if (selected.includes('__image_channels__')) await storyboardManageImageChannels({ remove: true, expectedNamespace:inventory?.imageChannels?.namespace, check:()=>cleanup.check() });
       cleanup.check();
-      if (selected.includes('__image_service_receipts__')) { const service = await storyboardImageServiceRuntime(); cleanup.check(); await service.manage({ remove: true }); }
+      if (selected.includes('__image_service_receipts__')) { const service = await storyboardImageServiceRuntime(); cleanup.check(); await service.manage({ remove: true, expectedNamespace:inventory?.serviceReceipts?.namespace, check:()=>cleanup.check() }); }
       cleanup.check();
       if (selected.includes('__image_attempts__')) {
         if (storyboardQueue.length || storyboardActiveJobs.size || storyboardGenerationPreparing.size) throw new Error('仍有等待或生成中的画面，请结束后再清理防重记录');
@@ -25640,7 +25640,7 @@ function configRestoreActivity(includeCleanup = true, ownTransfer = null) {
     reader: (ownTransfer !== coreadExportData && readerView) || coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight || dialogBusy || readerAssistantBusy || coreadComicVisionBusy,
     focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy,
     director: busy || theaterBusy,
-    image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || storyboardImageService?.busy || storyboardReceiveServiceImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
+    image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || (includeCleanup ? storyboardImageService?.busy : storyboardImageService?.busyExcept('manage')) || storyboardReceiveServiceImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
     transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || (ownTransfer !== importPinnedNotesBackup && importPinnedNotesBackup.busy) || (ownTransfer !== importTtsFavoritesBackup && importTtsFavoritesBackup.busy) || (ownTransfer !== storyboardOpenRestoreStorage && storyboardOpenRestoreStorage.busy) || (ownTransfer !== exportPinnedNotesBackup && exportPinnedNotesBackup.busy) || (ownTransfer !== exportTtsFavoritesBackup && exportTtsFavoritesBackup.busy) || (ownTransfer !== coreadImportDataFile && coreadImportDataFile.busy) || (ownTransfer !== coreadExportData && coreadExportData.busy) || (includeCleanup && storageCleanupSession.busy),
   };
 }
