@@ -14401,7 +14401,6 @@ async function storyboardMountCharacterArchive(root) {
       const controller = module.createCharacterArchiveController({
         resolveNamespace: () => identity.resolveImageAccountNamespace(), getContext: storyboardCharacterArchiveContext,
         getScope: () => { const context = ctx(); return JSON.stringify([context.chatId, context.groupId, context.characterId]); },
-        loadComfyRecipe: storyboardLoadCharacterComfyRecipe,
         onUserAliases: storyboardOpenUserAliases,
         requestHeaders: storyboardRequestHeaders,
         isCurrent: () => activeTab === 'imagegen' && storyboardState() === state && state.view === 'characters',

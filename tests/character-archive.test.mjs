@@ -4,11 +4,41 @@ import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import * as archive from '../qianmu-character-archive.js';
 import {createCharacterArchiveStore} from '../qianmu-character-archive-store.js';
-import {renderCharacterArchive,saveCharacterReference} from '../qianmu-character-archive-view.js';
+import {renderCharacterArchive,saveCharacterReference,createCharacterArchiveController} from '../qianmu-character-archive-view.js';
+import {implementation} from './helpers/comfy-character-fixture.mjs';
 import {LUCIDE_GLYPH_NAMES} from '../qianmu-icon-renderer.js';
 import {normalizeStoryboardState} from '../qianmu-storyboard.js';
 import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
 const document=()=>({...archive.newCharacterArchive('char'),name:'Alice',aliases:['Al','阿莉'],imagegen:{appearance:'black hair',negative:'',sensitiveAppearance:'private field',reference:null}});
+
+test('retired character workflow editors are absent without erasing old archive data',()=>{
+  const doc={...document(),comfy:{version:1,implementations:[implementation]}},before=structuredClone(doc);
+  const html=renderCharacterArchive({draft:{id:'alice',document:doc},rows:[],bindings:[],subjects:[]});
+  assert.doesNotMatch(html,/Comfy 实现|data-archive-action="comfy-|绑定当前 Comfy 方案/);
+  assert.match(html,/data-archive-field="appearance"/);assert.match(html,/data-archive-image/);
+  assert.deepEqual(doc,before);
+});
+
+test('editing an existing archive preserves legacy fields, copying it does not create new workflow bindings',async()=>{
+  const doc=archive.normalizeCharacterArchive({...document(),comfy:{version:1,implementations:[implementation]}}),original=structuredClone(doc),saved=[];
+  const head={id:'alice',revision:'revision-a',version:1,category:'char',name:'Alice'},events={preventDefault(){},stopPropagation(){}};
+  const buttons=Object.fromEntries(['edit','copy','save','comfy-new'].map(action=>[action,{dataset:{archiveAction:action,archiveId:'alice'},addEventListener(_name,handler){this.click=()=>handler(events);}}]));
+  const field={dataset:{archiveField:'name'},value:'Alice revised',addEventListener(_name,handler){this.input=handler;}};
+  const host={isConnected:true,innerHTML:'',closest:()=>null,querySelector:()=>null,querySelectorAll:selector=>selector==='[data-archive-action]'?Object.values(buttons):selector==='[data-archive-field]'?[field]:[]};
+  const store={list:async()=>[head],bindings:async()=>[],load:async()=>({head,document:doc}),save:async(_namespace,row)=>saved.push(structuredClone(row)),close(){}};
+  const notices=[],controller=createCharacterArchiveController({store,resolveNamespace:async()=> 'st-user:test',getContext:async()=>({chatKey:'chat-a',subjects:[]}),notify:(message,kind)=>notices.push({message,kind})});
+  const flush=async()=>{for(let turn=0;turn<6;turn++)await new Promise(resolve=>setImmediate(resolve));};
+  try{
+    controller.mount(host);await flush();buttons.edit.click();await flush();
+    buttons['comfy-new'].click();await flush();assert.equal(saved.length,0);
+    field.input();buttons.save.click();await flush();assert.equal(saved.length,1);
+    assert.equal(saved[0].id,'alice');assert.equal(saved[0].document.name,'Alice revised');assert.deepEqual(saved[0].document.comfy,original.comfy);
+    buttons.edit.click();await flush();buttons.copy.click();await flush();buttons.save.click();await flush();
+    assert.equal(saved.length,2);assert.equal(saved[1].id,'');assert.equal(saved[1].document.comfy,undefined);
+    assert.equal(saved[1].document.imagegen.appearance,original.imagegen.appearance);
+    assert.equal(notices.filter(row=>row.kind==='warning').length,0);assert.deepEqual(doc,original);
+  }finally{controller.dispose();}
+});
 
 test('new character schema isolates appearance, sensitive fields and explicit references from connection data',()=>{
   const raw={...document(),apiKey:'secret',imagegen:{...document().imagegen,apiKey:'secret'}};
