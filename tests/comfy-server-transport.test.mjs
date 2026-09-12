@@ -13,6 +13,7 @@ import { COMFY_CLOUD_INTENT_SCHEMA, COMFY_CLOUD_RECEIPT_SCHEMA } from '../qianmu
 import { readComfyCloudJsonResponse, readComfyCloudAcceptance } from '../qianmu-comfy-cloud-response.js';
 import { submitComfyCloudTask } from '../qianmu-comfy-cloud-submit.js';
 import { readComfyCloudAsset, downloadComfyCloudAsset, downloadComfyCloudJob } from '../qianmu-comfy-cloud-asset-read.js';
+import { createComfyCloudReceiver } from '../qianmu-comfy-cloud-receive.js';
 import { comfyCloudResourceKey } from '../qianmu-comfy-cloud-ledger.js';
 import { init, exit } from '../server-plugin.js';
 import * as fs from 'node:fs/promises';
@@ -367,6 +368,77 @@ test('whole cloud job preserves the final query order with one grant and feeds t
   assert.equal(loaded.images.length, 2); assert.deepEqual(loaded.cloud.selection.map(row => row.assetId), twoCloudIds);
   assert.deepEqual(loaded.images.map(image => Buffer.from(image.bytes)), [png, png]);
   assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+});
+
+test('cloud receiver reads the stored original before any cloud IO and does not settle or acknowledge the ledger', async t => {
+  const f = await persistedCloudTask(t, cloudBinding, 2), calls = [], before = await f.store.inspectChannel(f.locator.channelKey); let grants = 0;
+  const cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
+  const receiver = createComfyCloudReceiver({ cache, ledger: { authorizeStaging: (...args) => { grants++; return f.ledger.authorizeStaging(...args); } } });
+  const packet = await receiver.receive(f.req, { task: f.task, ...f.locator }, { ...assetReadOptions(f), requestImpl: mockNodeRequest(calls, call => multiAssetReply(f, call)) });
+  assert.equal(packet.status, 'staged'); assert.equal(packet.result.images.length, 2); assert.equal(grants, 1); assert.equal(calls.length, 5);
+  const reopened = createComfyCloudReceiver({ cache, ledger: f.ledger, download: () => assert.fail('saved originals must not depend on expired remote URLs') });
+  const readback = await reopened.receive(f.req, { task: f.task, ...f.locator });
+  assert.equal(readback.status, 'staged'); assert.equal(readback.result.receipt, packet.result.receipt);
+  assert.deepEqual(readback.result.cloud.selection.map(row => row.assetId), twoCloudIds);
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+});
+
+test('one receiver suppresses duplicate in-flight collection without sharing the first caller result', async t => {
+  const f = await persistedCloudTask(t), calls = []; let enter, release, downloads = 0;
+  const entered = new Promise(resolve => { enter = resolve; }), gate = new Promise(resolve => { release = resolve; });
+  const cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
+  const receiver = createComfyCloudReceiver({ cache, ledger: f.ledger, download: async (...args) => { downloads++; enter(); await gate; return downloadComfyCloudJob(...args); } });
+  const input = { task: f.task, ...f.locator }, options = { ...assetReadOptions(f), requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) };
+  const first = receiver.receive(f.req, input, options); await entered;
+  try {
+    const second = await receiver.receive(f.req, input, options);
+    assert.deepEqual(second, { status: 'collecting', task: f.task, result: null }); assert.equal(downloads, 1);
+  } finally { release(); }
+  assert.equal((await first).status, 'staged'); assert.equal(calls.length, 3);
+});
+
+test('account changes or cancellation after the private write retain evidence but block delivery', async t => {
+  for (const mode of ['account', 'cancelled']) {
+    const f = await persistedCloudTask(t), calls = [], controller = new AbortController();
+    const cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
+    const receiver = createComfyCloudReceiver({ ledger: f.ledger, cache: { ...cache, save: async (...args) => {
+      const stored = await cache.save(...args);
+      if (mode === 'account') f.req.user.profile.handle = 'bob'; else controller.abort();
+      return stored;
+    } } });
+    await assert.rejects(receiver.receive(f.req, { task: f.task, ...f.locator }, { ...assetReadOptions(f), signal: controller.signal,
+      requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) }), { code: `comfy_cloud_receive_${mode === 'account' ? 'save' : mode}` });
+    f.req.user.profile.handle = 'alice';
+    const recovered = await createComfyCloudReceiver({ ledger: f.ledger, cache, download: () => assert.fail('do not regenerate or re-download retained evidence') })
+      .receive(f.req, { task: f.task, ...f.locator });
+    assert.equal(recovered.status, 'staged'); assert.equal(calls.length, 3);
+    assert.equal((await f.store.inspectChannel(f.locator.channelKey)).entries[0].status, 'uncertain');
+  }
+});
+
+test('corrupt cache or another account cannot fall through into fresh cloud collection', async t => {
+  const f = await persistedCloudTask(t), cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' }); let reads = 0;
+  const receiver = createComfyCloudReceiver({ ledger: f.ledger, cache: { ...cache, load: async () => { reads++; throw new Error('private-path-or-secret'); } },
+    download: () => assert.fail('cache/authentication failures are not permission to fetch again') });
+  const input = { task: f.task, ...f.locator }; f.req.user.profile.handle = 'bob';
+  await assert.rejects(receiver.receive(f.req, input), { code: 'comfy_cloud_receive_authorization' }); assert.equal(reads, 0);
+  f.req.user.profile.handle = 'alice';
+  await assert.rejects(receiver.receive(f.req, input), error => error.code === 'comfy_cloud_receive_readback' && !error.message.includes('private-path-or-secret'));
+  assert.equal(reads, 1);
+});
+
+test('waiting or expired cloud jobs retain the reserved quota and no receipt claims a completed archive', async t => {
+  for (const status of ['running', 'expired']) {
+    const f = await persistedCloudTask(t), calls = [], before = await f.store.inspectChannel(f.locator.channelKey);
+    const cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
+    const receiver = createComfyCloudReceiver({ ledger: f.ledger, cache });
+    const result = await receiver.receive(f.req, { task: f.task, ...f.locator }, { ...assetReadOptions(f),
+      requestImpl: mockNodeRequest(calls, () => ({ body: { ...readyCloudJob(f), status } })) });
+    assert.deepEqual(result, { status, task: f.task, result: null }); assert.equal(calls.length, 1);
+    const inventory = await cache.inventory(imageServiceAccount(f.req).namespace);
+    assert.equal(inventory.totals.reservedBytes, 48 * 1024 * 1024); assert.equal(inventory.entries[0].ready, false);
+    assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+  }
 });
 
 test('a failed or cancelled second cloud image never returns a partial whole-job packet or re-submits the job', async t => {
