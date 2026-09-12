@@ -1,8 +1,20 @@
 # Third-Party Notices
 
-千幕万象 V2 随插件分发了 Lucide Static `1.39.0` 的按需图标子集。以下许可仅适用于这些第三方图标，不改变千幕原创代码与素材所采用的 PolyForm Noncommercial License 1.0.0。
+千幕万象 V2 随插件分发以下第三方资源。对应许可仅适用于各自的第三方文件，不改变千幕原创代码与素材所采用的 PolyForm Noncommercial License 1.0.0。
+
+## noble-hashes
+
+`@noble/hashes 2.4.0` 的 BLAKE3 ESM 依赖子集，源文件未修改。
+
+- 上游：https://github.com/paulmillr/noble-hashes/tree/663c2aeeffc308ac0cded59bd32f7c212adacfc2
+- 许可：MIT，Copyright (c) 2022 Paul Miller。
+- 完整许可随包保留于 `vendor/noble-hashes-2.4.0/LICENSE`。
+- 固定版本、上游归档完整性及各文件摘要见 `vendor/noble-hashes-2.4.0/VENDOR.json`。
+- 这些文件不需要运行时下载或额外安装；上游声明的 Node 环境要求为 `>=20.19.0`。BLAKE3 不在其 2022 年独立审计范围内，不宣称该算法实现已通过独立审计。
 
 ## Lucide
+
+Lucide Static `1.39.0` 的按需图标子集。
 
 ISC License
 

@@ -1,0 +1,40 @@
+{
+  "name": "@noble/hashes",
+  "version": "2.4.0",
+  "upstream": "https://github.com/paulmillr/noble-hashes/tree/663c2aeeffc308ac0cded59bd32f7c212adacfc2",
+  "tarball": "https://registry.npmjs.org/@noble/hashes/-/hashes-2.4.0.tgz",
+  "integrity": "sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==",
+  "license": "MIT",
+  "upstreamNode": ">=20.19.0",
+  "scope": "Unmodified BLAKE3 transitive ESM subset; no upstream install scripts or runtime downloads.",
+  "files": {
+    "blake3.js": {
+      "bytes": 12503,
+      "sha256": "bc25a8f6c50acabf3781c44ec55cb364b00f6f3f4349d841813a1057a8af2f20"
+    },
+    "blake2.js": {
+      "bytes": 22819,
+      "sha256": "03f00237bcc0b4d822a80f7c0ac22e42632c48e246c3b6da584e6452186e32f0"
+    },
+    "_md.js": {
+      "bytes": 9175,
+      "sha256": "60cf3010fda89e3e4d3f0e7ff1ce249e9c467f34b4fd41b6fd6101d9f69be763"
+    },
+    "_u64.js": {
+      "bytes": 4794,
+      "sha256": "b09da8c07fe8187c07649494cdb7cd0bcf13df90b506a9473d19e4d5f8c2e102"
+    },
+    "utils.js": {
+      "bytes": 26035,
+      "sha256": "037ad49adb78168b6b699598fd33f85f7877456b1d28b4d032e2a1a16807947c"
+    },
+    "LICENSE": {
+      "bytes": 1109,
+      "sha256": "4f221aee6e072336700c408c68ab3b96a3fc09f6aebe6f48f1bd99e5ef13faec"
+    },
+    "_blake.js": {
+      "bytes": 2841,
+      "sha256": "cabbff61d1f373bac45594ad758df7c42e176464ddbb94b44f5533fa977a4f56"
+    }
+  }
+}
