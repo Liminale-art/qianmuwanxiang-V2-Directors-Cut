@@ -2,8 +2,8 @@ import {createFocusLibraryStore} from './qianmu-focus-library-store.js';
 import {createFocusLibraryPicker} from './qianmu-focus-library.js';
 import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.140';
 // Lazy media storage and UI: no generation outside an explicit editor action.
-export function createFocusLibraryRuntime({resolveNamespace,owner,context,choices,generate,ui,notify,save}) {
-  let portal=null,openEpoch=0;const previous=new Map();
+export function createFocusLibraryRuntime({resolveNamespace,owner,context,choices,generate,ui,notify,save,available=()=>true,watchView=()=>null}) {
+  let portal=null,openEpoch=0,management=null;const previous=new Map();
   let dialoguePromise=null;
   function dialogue(){return dialoguePromise||=loadLocalChunk('./qianmu-focus-dialogue.js?v=1.59.140').then(({createFocusDialogueLibrary})=>createFocusDialogueLibrary({owner,save,
     legacy:async()=>{const start=owner(),namespace=await resolveNamespace();const rows=await withStore(store=>store.list(namespace));
@@ -42,12 +42,15 @@ export function createFocusLibraryRuntime({resolveNamespace,owner,context,choice
       if(empty)notify('部分时机没有可用的自定义语音，已跳过；可在语音库补充。','info');
     });
   }
-  function close(){openEpoch++;portal?.close();portal=null;}
+  function releaseManagement(ticket){if(management?.ticket===ticket){management.watcher?.release();management=null;}}
+  function close(){openEpoch++;portal?.close();portal=null;if(management)releaseManagement(management.ticket);}
   async function open(options){
+    if(management||options?.management&&!available()){notify('请先结束当前任务或关闭其他数据管理窗口。','info');return;}
     close();const ticket=openEpoch,start=owner(),store=createFocusLibraryStore();
-    const live=()=>ticket===openEpoch&&start===owner()&&ui.host()?.isConnected;
+    const live=()=>{try{if(options?.management){management?.watcher?.check();if(!available())return false;}return ticket===openEpoch&&start===owner()&&ui.host()?.isConnected;}catch{return false;}};
     try{
-      const namespace=await resolveNamespace();if(!live()){store.close();return;}
+      if(options?.management){management={ticket,watcher:watchView(ui.host())};}
+      const namespace=await resolveNamespace();if(!live()){store.close();releaseManagement(ticket);return;}
       const guard=async()=>{if(!live()||namespace!==await resolveNamespace()||!live())throw new Error('语音库页面或账户已变化，请重开');};
       if(!options?.management){
         const [{openFocusDialogue},library]=await Promise.all([loadLocalChunk('./qianmu-focus-dialogue-ui.js?v=1.59.140'),dialogue()]);await guard();
@@ -60,10 +63,10 @@ export function createFocusLibraryRuntime({resolveNamespace,owner,context,choice
           if(clip.providerId&&clip.providerId!==binding.providerId)throw new Error('配音渠道已变化，请在编辑页重新选择当前渠道音色');
           const isCurrent=()=>live()&&options.isCurrent()&&JSON.stringify([context(key).providerId,context(key).profile?.revision])===stamp;
           const blob=await generate({...binding,voice:clip.voice},clip.text,{isCurrent});await guard();if(!isCurrent())throw new Error('生成音色或页面已变化');return blob;},
-        onClose:()=>{store.close();if(ticket===openEpoch){portal=null;ui.changed();}}
+        onClose:()=>{store.close();releaseManagement(ticket);if(ticket===openEpoch){portal=null;ui.changed();}}
       },options);
       if(!live()){result.close();store.close();}else portal=result;
-    }catch(error){store.close();if(live())notify(error.message||'语音库未能打开','warning');}
+    }catch(error){store.close();if(live())notify(error.message||'语音库未能打开','warning');releaseManagement(ticket);}
   }
-  return {summary,read,prepare,lines,open,close,warm};
+  return {summary,read,prepare,lines,open,close,warm,get busy(){return management!==null;}};
 }

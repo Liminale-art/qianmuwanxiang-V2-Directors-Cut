@@ -235,7 +235,7 @@ test('actual activity adapter blocks each independent lane without normalizing o
     focus:['focusClockEntryBusy'],director:['busy','theaterBusy'],image:['storyboardBusy','storyboardCompilerBusy','storyboardAutomaticCurrent'],
   };
   const base=Object.fromEntries(Object.values(lanes).flat().map(key=>[key,false]));
-  const c=vm.createContext({...base,settings:{focusClock:{status:'idle'}},focusClockVoicePreparation:null,
+  const c=vm.createContext({...base,settings:{focusClock:{status:'idle'}},focusClockVoicePreparation:null,focusLibraryRuntime:null,
     storyboardActiveJobs:new Map(),storyboardGenerationPreparing:new Set(),storyboardPreparationRetries:new Set(),storyboardComfyRecovery:null,storyboardReceiveComfyImage:{},storyboardImageService:null,storyboardReceiveServiceImage:{},storyboardQueue:[],storyboardAutomaticPending:new Map(),
     storyboardImportPackage:{},storyboardExportPackage:{},storyboardBundleReview:null,storyboardOpenRestoreStorage:{busy:false},exportPinnedNotesBackup:{busy:false},exportTtsFavoritesBackup:{busy:false},storageCleanupSession:{busy:false},importPinnedNotesBackup:{busy:false},importTtsFavoritesBackup:{busy:false},coreadImportDataFile:{busy:false},coreadExportData:{busy:false}});
   vm.runInContext(section('configRestoreActivity'),c);
@@ -259,6 +259,9 @@ test('actual activity adapter blocks each independent lane without normalizing o
   assert.equal(!!c.configRestoreActivity(false).image,false,'cleanup must not block its own receipt maintenance');
   otherServiceWork=true;assert.equal(c.configRestoreActivity(false).image,true,'cleanup must still observe simultaneous service work');
   c.storyboardImageService=null;
+  c.focusLibraryRuntime={busy:true};assert.equal(c.configRestoreActivity(false).focus,true,'cleanup must observe focus original management');
+  assert.equal(!!c.configRestoreActivity(true,c.focusLibraryRuntime).focus,false,'focus manager excludes its own slot only');
+  c.focusLibraryRuntime=null;
   c.coreadImportDataFile.busy=true;assert.equal(c.configRestoreActivity(false).transfer,true);c.coreadImportDataFile.busy=false;
   assert.equal(Object.values(c.configRestoreActivity(false)).some(Boolean),false,'cleanup must exclude only itself');
   const notices=[],allowed=policy.configRestoreGate(c.settings,()=>c.configRestoreActivity(),(...args)=>notices.push(args));

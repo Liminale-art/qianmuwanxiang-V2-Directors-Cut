@@ -24571,6 +24571,7 @@ function focusClockMidCueProgresses(durationMinutes, chance) {
 
 function focusClockLibrary() {
   return focusLibraryRuntime ||= createFocusLibraryRuntime({
+    available:()=>!Object.values(configRestoreActivity(true,focusLibraryRuntime)).some(Boolean),watchView:root=>createCoreadImportViewGuard(root,'管理',''),
     resolveNamespace:async()=>(await featureRuntime.load('imageAdmission')).resolveImageAccountNamespace(), owner:()=>settings, save:saveSettings,
     context:key=>focusClockVoiceContext(key?{...focusClockState(),activity:'task',voiceCharacterAvatar:decodeURIComponent(key.slice(10))}:focusClockState()),
     choices:()=>coreadCompanionChoices().map(ch=>({avatar:ch.avatar||ch.data?.avatar,name:ch.name||ch.data?.name||'角色'})),
@@ -25640,7 +25641,7 @@ function configRestoreActivity(includeCleanup = true, ownTransfer = null) {
   return {
     voice: ttsRestoreTasks > 0,
     reader: (ownTransfer !== coreadExportData && readerView) || coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight || dialogBusy || readerAssistantBusy || coreadComicVisionBusy,
-    focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy,
+    focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy || (ownTransfer!==focusLibraryRuntime&&focusLibraryRuntime?.busy),
     director: busy || theaterBusy,
     image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || (includeCleanup ? storyboardImageService?.busy : storyboardImageService?.busyExcept('manage')) || storyboardReceiveServiceImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
     transfer: storyboardImportPackage.busy || storyboardExportPackage.busy || storyboardBundleReview?.isOpen || (ownTransfer !== importPinnedNotesBackup && importPinnedNotesBackup.busy) || (ownTransfer !== importTtsFavoritesBackup && importTtsFavoritesBackup.busy) || (ownTransfer !== storyboardOpenRestoreStorage && storyboardOpenRestoreStorage.busy) || (ownTransfer !== exportPinnedNotesBackup && exportPinnedNotesBackup.busy) || (ownTransfer !== exportTtsFavoritesBackup && exportTtsFavoritesBackup.busy) || (ownTransfer !== coreadImportDataFile && coreadImportDataFile.busy) || (ownTransfer !== coreadExportData && coreadExportData.busy) || (includeCleanup && storageCleanupSession.busy),

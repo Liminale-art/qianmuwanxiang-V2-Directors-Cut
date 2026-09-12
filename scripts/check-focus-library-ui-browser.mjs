@@ -95,5 +95,28 @@ try {
   await page.evaluate(()=>{view.close();finish(wav);});await page.waitForTimeout(40);
   ok('late generation cannot resurrect closed UI or save a recording',await page.evaluate(async()=>!document.querySelector('.sd-focus-library')&&(await store.summary(scope.namespace)).count===0));
   ok('closing restores the host interaction',await page.locator('main').evaluate(el=>!el.inert));
+  const managementChecks=await page.evaluate(async()=>{
+    const {createFocusLibraryRuntime}=await import('/qianmu-focus-library-runtime.js'),{createCoreadImportViewGuard}=await import('/qianmu-reader-package.js');
+    const checks=[],host=document.querySelector('#story-director-modal'),owner={};
+    for(const change of ['normal','close','close-reopen']){
+      let release,allowed=true;const gate=new Promise(r=>release=r);
+      const runtime=createFocusLibraryRuntime({owner:()=>owner,resolveNamespace:async()=>{await gate;return scope.namespace;},available:()=>allowed,
+        watchView:root=>createCoreadImportViewGuard(root,'管理',''),choices:()=>[],context:()=>({}),notify(){},
+        ui:{document,host:()=>host,escape:String,icons(){},confirm:async()=>false,stopAudio(){},changed(){}}});
+      const pending=runtime.open({management:true});if(!runtime.busy)throw Error('loading not reserved');
+      if(change==='close')runtime.close();
+      if(change==='close-reopen'){host.classList.remove('open');host.classList.add('open');}
+      release();await pending;
+      if(change==='normal'){
+        if(!runtime.busy||!host.querySelector('.sd-focus-library'))throw Error('manager released before closing');
+        host.querySelector('[data-action=close]').click();await new Promise(r=>setTimeout(r,0));
+        if(runtime.busy)throw Error('close retained activity');
+        allowed=false;await runtime.open({management:true});
+      }
+      if(runtime.busy||host.querySelector('.sd-focus-library'))throw Error('stale manager reopened');
+      runtime.close();checks.push('real management lifecycle '+change);
+    }
+    return checks;
+  });checks.push(...managementChecks);
   assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors,realDOM:true,nativeIndexedDB:true,realAudioDecode:true,paidTTS:false}));
 }finally{await context.close();await browser.close();}
