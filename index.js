@@ -34937,9 +34937,9 @@ async function coreadImportDataFile(file, origin) {
     await applyCoreadPackageData(data, {blobStore:blobStore.createReaderPackageWriter({check}), coread:()=>reader, isPlainObject, base64ToBlob, check, progress, warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error)});
     check();
     // 偏好深合并：保留本机书目、启用态和全部凭据；v1–v5 数据均兼容。
-    if (isPlainObject(data.prefs)) coreadMergePackageValue(coread(), omitConfigConnections({coread:data.prefs}).coread);
+    if (isPlainObject(data.prefs) && !progress.failed && !progress.invalid) coreadMergePackageValue(coread(), omitConfigConnections({coread:data.prefs}).coread);
     saveSettings();
-    toast(coreadImportProgressText(progress), progress.failed || progress.invalid ? 'warning' : 'success');
+    toast(coreadImportProgressText(progress) + ((progress.failed || progress.invalid) && isPlainObject(data.prefs) ? ' 包内阅读偏好未应用，已保留本机偏好。' : ''), progress.failed || progress.invalid ? 'warning' : 'success');
     renderModal();
     rerenderMoreIfOpen();
     } catch (error) { toast(`伴读导入未完成：${coreadImportProgressText(progress)} ${error?.message || error}`, 'error'); }

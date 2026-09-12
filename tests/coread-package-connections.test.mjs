@@ -68,6 +68,17 @@ test('absent recipient connections stay absent instead of accepting source endpo
   const local={books:[],fontSize:16},e=fixture(local);await e.run(settings());
   for(const key of ['memory','assistant','comic'])assert.equal(JSON.stringify(local[key]),'{}');
 });
+
+test('partially restored originals retain local preferences instead of selecting a possibly unrestored book',async()=>{
+  for(const failure of ['failed','invalid']){
+    const local=settings(),before=structuredClone(local),e=fixture(local);
+    e.c.applyCoreadPackageData=async(data,{progress})=>{progress.ok=1;progress[failure]=1;local.books.push({id:'committed',title:'preserve this successful entry'});};
+    await e.run({fontSize:28,currentBookId:'failed-book',collections:[{id:'foreign',name:'incoming'}]});
+    assert.equal(local.fontSize,before.fontSize);assert.equal(local.currentBookId,undefined);assert.deepEqual(local.collections,before.collections);
+    assert.equal(local.books[0].id,'committed','do not compensate by throwing away successfully imported originals');
+    assert.match(e.notices.at(-1),/包内阅读偏好未应用/);assert.equal(e.c.coreadImportDataFile.busy,false);
+  }
+});
 test('actual reader export strips complete connections from a detached copy and retains reading preferences',async()=>{
   const local=settings(),before=structuredClone(local),e=fixture(local);await e.c.coreadExportData();
   const result=e.exported();assert.deepEqual(local,before);assert.equal(result.prefs.fontSize,16);assert.equal(result.version,5);

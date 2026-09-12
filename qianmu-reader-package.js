@@ -159,7 +159,7 @@ export function coreadPackageRestoreMessage(data) {
   if (count('books') || count('chats') || count('images') || count('vectors')) scope.push('同编号的书籍（含阅读进度）、包内封面、对话与记忆、插图和检索资料会覆盖已有内容；不是另存副本。包外条目不主动删除。');
   if (count('audio')) scope.push('同编号语音保留本机已有音频，跳过包内同编号音频；不恢复配音收藏或专注语音库。');
   if (count('retrievalLogs')) scope.push('检索记录按包内时间先后追加，仍按原规则仅保留最近插入的50条，可能挤出本机已有记录。');
-  if (data.prefs) scope.push('包内阅读偏好会合并并替换相应设置，保留本机启用状态。');
+  if (data.prefs) scope.push('原件恢复无失败时，包内阅读偏好会合并并替换相应设置，保留本机启用状态；部分失败时保留本机阅读偏好。');
   scope.push('API 密钥沿用本机设置，连接地址、模型与连接预设不随包替换。请先备份本机资料；写入后若部分失败，已成功写入的内容会保留，不会整包自动撤回。是否继续？');
   return scope.join('\n\n');
 }
@@ -175,9 +175,10 @@ export async function applyCoreadPackageData(data, {blobStore, coread, isPlainOb
       progress.ok++;
       if (cover) progress.coverOk++;
       check();
-      if (cover) b.meta.hasCover = true;
       const idx = (coread().books || []).findIndex((x) => x.id === b.meta.id);
-      if (idx >= 0) coread().books[idx] = b.meta; else coread().books.unshift(b.meta);
+      // A book-only legacy pack preserves the already indexed local cover, not the old reading progress.
+      const meta = {...b.meta, hasCover:!!cover || !!(idx >= 0 && coread().books[idx].hasCover)};
+      if (idx >= 0) coread().books[idx] = meta; else coread().books.unshift(meta);
     } catch (e) { check(); progress.failed++; warn(`import book failed`, e); }
   }
   // 伴读对话 + 记忆切片（reader_chats·按 bucketKey=chatKey::bookId 覆盖式还原·v2 新增）

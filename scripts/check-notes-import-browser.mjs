@@ -247,6 +247,11 @@ try{
       failedBookResult=await applyCoreadPackageData(bookPack,{blobStore:writer,coread:()=>readerState,isPlainObject:v=>v&&typeof v==='object'&&!Array.isArray(v),base64ToBlob:()=>new Blob(['new cover']),warn(){}});
     }finally{IDBObjectStore.prototype.put=put;}
     check('actual importer keeps the old shelf entry and reports neither original as saved after cover abort',failedBookResult.failed===1&&failedBookResult.ok===0&&failedBookResult.coverOk===0&&readerState.books[0].title==='old title'&&(await db.getBook(atomicKey)).fullText==='old prose');
+    readerState.books[0].hasCover=true;
+    const legacyBook={books:[{meta:{id:atomicKey,title:'legacy title',hasCover:false,progress:25},fullText:'legacy prose'}]};
+    const legacyBookResult=await applyCoreadPackageData(legacyBook,{blobStore:writer,coread:()=>readerState,isPlainObject:v=>v&&typeof v==='object'&&!Array.isArray(v),base64ToBlob(){throw Error('no cover in legacy pack');},warn(){throw Error('unexpected write failure');}});
+    check('legacy book-only import retains the indexed cover and actual original while restoring progress',legacyBookResult.ok===1&&legacyBookResult.coverOk===0&&readerState.books[0].hasCover===true&&readerState.books[0].progress===25&&await (await db.getCover(atomicKey)).text()==='old cover');
+    check('cover metadata reconciliation leaves the imported source untouched',legacyBook.books[0].meta.hasCover===false&&legacyBook.books[0].meta!==readerState.books[0]);
     for(const books of [[{meta:{id:'reader-book'}}],[{meta:{id:'reader-book'},fullText:'first'},{meta:{id:'reader-book'},fullText:'second'}]]){
       const before=await db.getBook('reader-book');let rejected=false;
       try{const invalid=await readCoreadPackageFile(new File([JSON.stringify({type:'qianmu-coread',version:5,books})],'broken-reader.json'));for(const book of invalid.books)await writer.putBook(book.meta.id,book);}catch(error){rejected=error.message.includes('未写入内容');}
@@ -317,5 +322,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,136);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,138);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

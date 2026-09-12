@@ -38,6 +38,17 @@ test('cover decoding failure occurs before overwriting its book and does not cla
   assert.equal(e.state.books.find(book=>book.id==='old').title,'before');
   assert.equal(result.chatOk,1,'independent categories keep their existing partial-import behavior');
 });
+
+test('a legacy pack keeps an indexed local cover but restores the incoming progress without mutating its source',async()=>{
+  for(const hasCover of [true,false,undefined]){
+    const e=fixture();Object.assign(e.state.books[0],{hasCover,progress:80});
+    const data={books:[{meta:{id:'old',title:'restored',hasCover:false,progress:20,custom:{keep:'legacy'}},fullText:'restored prose'}]},before=structuredClone(data);
+    const result=await applyCoreadPackageData(data,e.options),meta=e.state.books.find(book=>book.id==='old');
+    assert.equal(meta.hasCover,!!hasCover);assert.equal(meta.progress,20);assert.equal(meta.title,'restored');
+    assert.deepEqual(meta.custom,{keep:'legacy'});assert.deepEqual(data,before);assert.notEqual(meta,data.books[0].meta);
+    assert.equal(result.ok,1);assert.equal(result.coverOk,0,'retained local covers are not counted as newly restored');
+  }
+});
 test('legacy book-only packs remain supported without calling absent media categories',async()=>{
   const e=fixture();const result=await applyCoreadPackageData({books:[]},e.options);
   assert.equal(Object.values(result).every(n=>n===0),true);assert.deepEqual(e.calls,[]);
