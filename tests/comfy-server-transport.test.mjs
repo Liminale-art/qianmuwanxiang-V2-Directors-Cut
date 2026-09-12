@@ -10,6 +10,8 @@ import { createComfyCloudLedger } from '../qianmu-comfy-cloud-ledger.js';
 import { createImageServiceStore } from '../qianmu-image-service-store.js';
 import { COMFY_CLOUD_INTENT_SCHEMA, COMFY_CLOUD_RECEIPT_SCHEMA } from '../qianmu-comfy-cloud-receipt.js';
 import { readComfyCloudJsonResponse, readComfyCloudAcceptance } from '../qianmu-comfy-cloud-response.js';
+import { submitComfyCloudTask } from '../qianmu-comfy-cloud-submit.js';
+import { comfyCloudResourceKey } from '../qianmu-comfy-cloud-ledger.js';
 import { init, exit } from '../server-plugin.js';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
@@ -45,6 +47,108 @@ const response = () => ({ statusCode: 200, headers: {}, set(k, v) { this.headers
 const cloudBinding = bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2');
 const rhBinding = bindComfyCloudProtocol('https://www.runninghub.cn', 'runninghub-workflow-v1');
 const cloudGrant = async () => async () => {};
+
+async function cloudSubmissionFixture(t, binding = cloudBinding) {
+  const root = await fs.mkdtemp(path.join(tmpdir(), 'qianmu-comfy-routes-')); roots.push(root);
+  const store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => store.close());
+  const req = account(), apiKey = 'test-only-secret';
+  const input = { apiKey, expectedAccount: imageServiceAccount(req).namespace, attemptId: 'new-cloud-task', request: {
+    connection: binding, workflow: workflow(), prompt: 'quiet rain', model: 'workflow', parameters: {},
+    execution: { version: 1, automatic: false, maxImages: 1, outputNodeIds: ['save'], allowUnverified: true },
+  } };
+  return { root, req, input, store, key: comfyCloudResourceKey(binding, apiKey), options: {
+    ledger: createComfyCloudLedger({ store }), authorizeTarget: cloudGrant, resolveHost: publicDns,
+  } };
+}
+const acceptedCloudBody = (binding = cloudBinding, id = 'new-job') => binding.provider === 'runninghub' ? { code: 0, data: { taskId: id } }
+  : { id, urls: { self: `/api/v2/jobs/${id}`, cancel: `/api/v2/jobs/${id}/cancel` } };
+
+test('single cloud submit runner persists original acceptance with platform authentication only at dispatch', async t => {
+  for (const binding of [cloudBinding, rhBinding]) {
+    const f = await cloudSubmissionFixture(t, binding), calls = [], id = binding.provider === 'runninghub' ? '1904152026220003329' : 'new-job';
+    const result = await submitComfyCloudTask(f.req, f.input, { ...f.options, requestImpl: mockNodeRequest(calls, () => ({ body: acceptedCloudBody(binding, id) })) });
+    assert.equal(result.status, 'accepted'); assert.equal(result.task.taskId, id); assert.equal(calls.length, 1);
+    const row = (await f.store.inspectChannel(f.key)).entries[0]; assert.equal(row.status, 'submitting'); assert.equal(row.upstreamId, id); assert.ok(row.cloudReceipt);
+    assert.doesNotMatch(JSON.stringify(row), /test-only-secret|apiKey/);
+    const body = JSON.parse(calls[0].body);
+    assert.equal(calls[0].options.headers.authorization, 'Bearer test-only-secret');
+    if (binding.provider === 'runninghub') { assert.equal(body.apiKey, 'test-only-secret'); assert.equal(typeof body.workflow, 'string'); assert.equal(calls[0].options.headers['idempotency-key'], undefined); }
+    else { assert.equal(body.apiKey, undefined); assert.equal(typeof body.workflow, 'object'); assert.equal(calls[0].options.headers['idempotency-key'], row.fence); }
+    await assert.rejects(submitComfyCloudTask(f.req, f.input, { ...f.options, requestImpl: mockNodeRequest(calls) }));
+    assert.equal(calls.length, 1, 'repeated UI calls cannot create a second job');
+  }
+});
+
+test('cloud submit cancellation before dispatch creates no reservation, DNS lookup or request', async t => {
+  const f = await cloudSubmissionFixture(t), controller = new AbortController(); controller.abort(); let resolutions = 0; const calls = [];
+  await assert.rejects(submitComfyCloudTask(f.req, f.input, { ...f.options, signal: controller.signal,
+    resolveHost: async () => { resolutions++; return publicDns(); }, requestImpl: mockNodeRequest(calls) }), { code: 'comfy_cloud_submit_cancelled', submissionState: 'not_submitted' });
+  assert.equal(resolutions, 0); assert.equal(calls.length, 0); assert.deepEqual(await fs.readdir(f.root), []);
+});
+
+test('cloud submit preserves accepted ids for malformed links and does not retry HTTP idempotency errors', async t => {
+  for (const malformed of [false, true]) {
+    const f = await cloudSubmissionFixture(t), calls = [];
+    await assert.rejects(submitComfyCloudTask(f.req, f.input, { ...f.options, requestImpl: mockNodeRequest(calls, () => malformed
+      ? { body: { id: 'new-job', urls: { self: 'https://evil.test', cancel: 'https://evil.test' } } }
+      : { status: 422, body: { error: { code: 'idempotency_key_reuse' } } }) }), error => malformed
+      ? error.submissionState === 'accepted' && error.upstreamId === 'new-job'
+      : error.submissionState === 'unknown' && error.httpStatus === 422);
+    const row = (await f.store.inspectChannel(f.key)).entries[0]; assert.equal(row.status, 'uncertain'); assert.equal(row.cloudReceipt, undefined);
+    assert.equal(row.upstreamId, malformed ? 'new-job' : undefined); assert.equal(calls.length, 1);
+  }
+});
+
+test('post-dispatch page cancellation or login change retains original cloud acceptance before refusing delivery', async t => {
+  for (const changeAccount of [false, true]) {
+    const f = await cloudSubmissionFixture(t), controller = new AbortController(), calls = [];
+    await assert.rejects(submitComfyCloudTask(f.req, f.input, { ...f.options, signal: controller.signal,
+      requestImpl: mockNodeRequest(calls, () => {
+        if (changeAccount) f.req.user.profile.handle = 'bob'; else controller.abort();
+        return { body: acceptedCloudBody() };
+      }),
+    }), error => error.submissionState === 'accepted' && error.code === `comfy_cloud_submit_${changeAccount ? 'account' : 'cancelled'}`
+      && (changeAccount ? !Object.hasOwn(error, 'upstreamId') : error.upstreamId === 'new-job'));
+    const row = (await f.store.inspectChannel(f.key)).entries[0]; assert.equal(row.namespace, f.input.expectedAccount);
+    assert.equal(row.upstreamId, 'new-job'); assert.ok(row.cloudReceipt); assert.equal(row.status, 'uncertain'); assert.equal(calls.length, 1);
+  }
+});
+
+test('submit deadline includes authorization and late grants cannot dispatch or reserve', async t => {
+  const f = await cloudSubmissionFixture(t); let release, resolutions = 0;
+  const grant = new Promise(resolve => { release = resolve; }); const calls = [];
+  await assert.rejects(submitComfyCloudTask(f.req, f.input, { ...f.options, timeoutMs: 15, authorizeTarget: () => grant,
+    resolveHost: async () => { resolutions++; return publicDns(); }, requestImpl: mockNodeRequest(calls) }), { code: 'comfy_cloud_submit_timeout', submissionState: 'not_submitted' });
+  release(async () => {}); await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(resolutions, 0); assert.equal(calls.length, 0); assert.deepEqual(await fs.readdir(f.root), []);
+});
+
+test('submit deadline bounds a stalled response and keeps the durable task fenced without a replay', async t => {
+  const f = await cloudSubmissionFixture(t); let calls = 0;
+  await assert.rejects(submitComfyCloudTask(f.req, f.input, { ...f.options, timeoutMs: 150, requestImpl: (_url, _options, callback) => {
+    calls++;
+    return new Writable({ write(_chunk, _encoding, done) { done(); }, final(done) {
+      const incoming = new PassThrough(); incoming.statusCode = 200; incoming.headers = { 'content-type': 'application/json' }; callback(incoming); done();
+    } });
+  } }), { code: 'comfy_cloud_submit_timeout', submissionState: 'unknown' });
+  let row;
+  for (let i = 0; i < 50; i++) { row = (await f.store.inspectChannel(f.key))?.entries[0]; if (row?.status === 'uncertain') break; await new Promise(resolve => setTimeout(resolve, 10)); }
+  assert.equal(row.status, 'uncertain'); assert.equal(calls, 1); assert.equal(row.upstreamId, undefined);
+});
+
+test('Node response bridge does not prefetch into a closed reader when bounded admission rejects early', async () => {
+  const task = bindComfyCloudTask(cloudBinding, 'original', { self: '/api/v2/jobs/original', cancel: '/api/v2/jobs/original/cancel' });
+  for (const result of [{ status: 503, body: { error: 'unavailable' } },
+    { headers: { 'content-type': 'text/html' }, body: Buffer.from('<html>not JSON</html>') },
+    { headers: { 'content-type': 'application/json', 'content-length': '5000000' }, body: { oversized: true } }]) {
+    const transport = await createComfyCloudServerTransport(account(), { binding: cloudBinding, operation: 'query', task }, {
+      authorizeTarget: cloudGrant, resolveHost: publicDns, requestImpl: mockNodeRequest([], () => result),
+    });
+    const response = await transport.fetchImpl(transport.plan.url, { method: 'GET' });
+    await assert.rejects(readComfyCloudJsonResponse(response, { task }), error => error.code.startsWith('comfy_cloud_response_'));
+    await new Promise(resolve => setImmediate(resolve));
+  }
+});
 
 test('cloud submit response retains bounded acceptance evidence after login changes but cannot pass delivery checks', async () => {
   for (const binding of [cloudBinding, rhBinding]) {

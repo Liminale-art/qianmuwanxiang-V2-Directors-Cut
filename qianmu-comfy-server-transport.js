@@ -120,7 +120,9 @@ export function pinnedComfyFetch(base, addresses, { operation, requestImpl, asse
             const responseHeaders = new Headers();
             for (const [key, value] of Object.entries(incoming.headers)) if (value !== undefined) responseHeaders.set(key, Array.isArray(value) ? value.join(', ') : String(value));
             const empty = [204, 205, 304].includes(incoming.statusCode); if (empty) incoming.resume();
-            resolve(new Response(empty ? null : Readable.toWeb(incoming), { status: incoming.statusCode, headers: responseHeaders }));
+            // Pull only when the bounded consumer asks. Eager adapter prefetch
+            // can race an immediate HTTP/MIME rejection and enqueue after cancel.
+            resolve(new Response(empty ? null : Readable.toWeb(incoming, { strategy: { highWaterMark: 0 } }), { status: incoming.statusCode, headers: responseHeaders }));
           } catch (error) { incoming.destroy(); reject(error); }
         });
         outgoing.once('error', reject);
