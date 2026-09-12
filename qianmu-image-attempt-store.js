@@ -94,11 +94,17 @@ export function createImageAttemptStore({ indexedDB = globalThis.indexedDB, dbNa
   }
 
   return {
-    async manage(namespace, { remove = false } = {}) {
+    async manage(namespace, { remove = false, check = () => {} } = {}) {
       // Validate the account without opening storage. Only the selected account's
       // metadata is visited; another ST account's records are never cleared.
       imageAttemptScopeKey({ namespace, chatKey: '_', messageKey: '_', revisionId: '_' });
+      const guard=()=>{
+        if(disposed)throw problem('image_attempt_closed','生图请求记录会话已结束');
+        try{check();}catch(_){throw problem('image_attempt_changed','清理状态已变化，防重记录未清理，请重新盘点。');}
+      };
+      guard();
       const db = await ensureOpen();
+      guard();
       const prefix = `${JSON.stringify([namespace]).slice(0, -1)},`;
       return new Promise((resolve, reject) => {
         let tx, failure, finished = false;
@@ -115,9 +121,10 @@ export function createImageAttemptStore({ indexedDB = globalThis.indexedDB, dbNa
           tx.onerror = () => { failure ||= storageProblem(); };
           const cursor = tx.objectStore(STORE).openCursor(IDBKeyRange.bound(prefix, `${prefix}\uffff`));
           cursor.onsuccess = () => {
-            const row = cursor.result;
-            if (!row) return;
             try {
+              guard();
+              const row = cursor.result;
+              if (!row) return;
               const parts = JSON.parse(row.key);
               if (parts[0] !== namespace) { row.continue(); return; }
               const scope = { namespace, chatKey: parts[1], messageKey: parts[2], revisionId: parts[3] };
@@ -136,7 +143,7 @@ export function createImageAttemptStore({ indexedDB = globalThis.indexedDB, dbNa
               if (remove && summary.pending) throw problem('image_attempt_busy', '仍有等待或生成中的画面，请结束后再清理防重记录');
               if (remove) row.delete();
               row.continue();
-            } catch (cause) { failure = cause; tx.abort(); }
+            } catch (cause) { failure = cause; try { tx.abort(); } catch (_) { finish(cause); } }
           };
         } catch (cause) { finish(cause?.code ? cause : storageProblem()); }
       });

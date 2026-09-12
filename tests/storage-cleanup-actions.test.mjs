@@ -66,6 +66,17 @@ test('NAI cleanup forwards the account from the chosen inventory and a live page
   await e.run();assert.equal(called,true);assert.equal(e.calls.clear,0);assert.equal(e.calls.save,0);assert.equal(e.c.storageCleanupSession.busy,false);
 });
 
+test('attempt cleanup forwards selected account and live scope rather than clearing a newly resolved account',async()=>{
+  const e=fixture({cleared:[],failed:[],count:0,bytes:0},'module');let called=false;
+  e.c.storyboardQueue=[];e.c.storyboardActiveJobs=new Map();e.c.storyboardGenerationPreparing=new Set();
+  e.c.storageInventoryState.data.imageAttempts={namespace:'selected-account'};e.c.openStorageCleanupDialog=async()=>['__image_attempts__'];
+  e.c.featureRuntime={load:async()=>({manageImageAdmissionStorage:async options=>{
+    assert.equal(options.remove,true);assert.equal(options.expectedNamespace,'selected-account');options.check();
+    e.root.isConnected=false;assert.throws(()=>options.check(),/后续操作已停止/);called=true;
+  }})};
+  await e.run();assert.equal(called,true);assert.equal(e.calls.clear,0);assert.equal(e.calls.save,0);assert.equal(e.c.storageCleanupSession.busy,false);
+});
+
 test('both real cleanup entry points pass their live scope check into the database loop',async()=>{
   for(const kind of ['chat','module']){
     const result={cleared:[],failed:[],count:0,bytes:0},e=fixture(result,kind);let checked=false;

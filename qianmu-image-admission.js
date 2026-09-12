@@ -39,9 +39,12 @@ export async function resolveImageAccountNamespace({ loadUser = () => import('/s
 }
 
 export async function manageImageAdmissionStorage(options = {}) {
+  const check=options.check||(()=>{});check();
   const namespace = await resolveImageAccountNamespace();
+  check();
+  if(options.remove&&namespace!==options.expectedNamespace)throw error('account','储存账户已变化或尚未盘点，请重新选择清理项目。');
   const store = createImageAttemptStore();
-  try { return await store.manage(namespace, options); }
+  try { return {...await store.manage(namespace, options),namespace}; }
   finally { store.close(); }
 }
 

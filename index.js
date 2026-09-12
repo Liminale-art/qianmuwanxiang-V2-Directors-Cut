@@ -8746,7 +8746,7 @@ function bindStorageManagementEvents(root) {
       if (selected.includes('__image_attempts__')) {
         if (storyboardQueue.length || storyboardActiveJobs.size || storyboardGenerationPreparing.size) throw new Error('仍有等待或生成中的画面，请结束后再清理防重记录');
         const module = await featureRuntime.load('imageAdmission'); cleanup.check();
-        await module.manageImageAdmissionStorage({ remove: true }); cleanup.check();
+        await module.manageImageAdmissionStorage({ remove: true, expectedNamespace:inventory?.imageAttempts?.namespace, check:()=>cleanup.check() }); cleanup.check();
       }
       if (stores.includes('storyboard_plan_archives')) {
         storyboardPlanArchiveEpoch++;

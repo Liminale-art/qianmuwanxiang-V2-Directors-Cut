@@ -8,7 +8,7 @@ let external=0;const errors=[];
 await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.href==='https://qianmu.test/')return route.fulfill({contentType:'text/html',body:'<!doctype html>'});
-  if(url.href==='https://qianmu.test/qianmu-image-channel.js')return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('../qianmu-image-channel.js',import.meta.url))});
+  if(url.origin==='https://qianmu.test'&&['/qianmu-image-channel.js','/qianmu-image-attempt-store.js','/qianmu-image-attempts.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
   external++;return route.abort();
 });
 try{
@@ -39,7 +39,32 @@ try{
         check('successful cleanup commits only the selected account and leaves the other intact',result.count===2&&JSON.stringify(await read())===JSON.stringify([rows[2]]));
       }finally{client.close();}
     }finally{db.close();}
+    const {createImageAttemptStore}=await import('/qianmu-image-attempt-store.js'),{normalizeImageAttempts,imageAttemptScopeKey}=await import('/qianmu-image-attempts.js');
+    const attemptName='synthetic-attempt-cleanup',attemptDb=await new Promise((resolve,reject)=>{const r=indexedDB.open(attemptName,1);r.onupgradeneeded=()=>r.result.createObjectStore('scopes');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+    const scopes=['a1','a2','b1'].map(messageKey=>({namespace:messageKey[0]==='a'?'account-a':'account-b',chatKey:'chat',messageKey,revisionId:'revision'}));
+    const ledgers=scopes.map(scope=>normalizeImageAttempts(null,scope));
+    const seedAttempts=()=>new Promise((resolve,reject)=>{const tx=attemptDb.transaction('scopes','readwrite'),store=tx.objectStore('scopes');store.clear();scopes.forEach((scope,i)=>store.put(ledgers[i],imageAttemptScopeKey(scope)));tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});
+    const readAttempts=()=>new Promise((resolve,reject)=>{const tx=attemptDb.transaction('scopes','readonly'),r=tx.objectStore('scopes').getAll();tx.oncomplete=()=>resolve(r.result);tx.onabort=()=>reject(tx.error);});
+    try{
+      for(const mode of ['before','open','first-delete','last-delete']){
+        await seedAttempts();let valid=mode!=='before',deleted=0;const store=createImageAttemptStore({dbName:attemptName});
+        const transaction=IDBDatabase.prototype.transaction,remove=IDBCursorWithValue.prototype.delete;
+        try{
+          IDBDatabase.prototype.transaction=function(names,access,...args){const tx=transaction.call(this,names,access,...args);if(this.name===attemptName&&access==='readwrite'&&mode==='open')valid=false;return tx;};
+          IDBCursorWithValue.prototype.delete=function(){const request=remove.call(this);deleted++;if(mode==='first-delete'||mode==='last-delete'&&deleted===2)valid=false;return request;};
+          let error;try{await store.manage('account-a',{remove:true,check(){if(!valid)throw Error('stale cleanup');}});}catch(cause){error=cause;}
+          check('attempt '+mode+' invalidation preserves the whole original ledger group',error?.code==='image_attempt_changed'&&JSON.stringify(await readAttempts())===JSON.stringify(ledgers));
+        }finally{IDBDatabase.prototype.transaction=transaction;IDBCursorWithValue.prototype.delete=remove;store.close();}
+      }
+      ledgers[1]={corrupt:true,entries:[{status:'submitting'}]};await seedAttempts();const store=createImageAttemptStore({dbName:attemptName});
+      try{
+        let blocked=false;try{await store.manage('account-a',{remove:true});}catch(error){blocked=error.code==='image_attempt_busy';}
+        check('a late recognizable pending dispatch rolls back earlier ledger deletions even if its record is corrupt',blocked&&JSON.stringify(await readAttempts())===JSON.stringify(ledgers));
+        ledgers[1]=normalizeImageAttempts(null,scopes[1]);await seedAttempts();const result=await store.manage('account-a',{remove:true});
+        check('successful attempt cleanup touches only the selected account',result.scopes===2&&JSON.stringify(await readAttempts())===JSON.stringify([ledgers[2]]));
+      }finally{store.close();}
+    }finally{attemptDb.close();}
     return checks;
   });
-  assert.equal(checks.length,6);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,12);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}
