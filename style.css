@@ -10528,6 +10528,12 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-character-binding-row small { display: block; font-size: 11px; color: var(--sd-muted); }
 @media (min-width: 700px) { #story-director-modal .sd-character-grid { grid-template-columns: repeat(auto-fill,minmax(112px,1fr)); } }
 @media (max-width: 340px) { #story-director-modal .sd-character-detail-grid { grid-template-columns: minmax(0,1fr); } #story-director-modal .sd-character-cover-upload { max-width: 120px; } }
+@media (max-width: 340px) {
+  #story-director-modal .sd-character-editor > fieldset > .sd-character-tools { display: grid; grid-template-columns: repeat(4,40px); justify-content: space-between; }
+  #story-director-modal .sd-character-editor > fieldset > .sd-character-tools > b { grid-column: 2 / -1; }
+  #story-director-modal .sd-character-editor > fieldset > .sd-character-tools > .sd-character-spacer { display: none; }
+  #story-director-modal .sd-character-editor > fieldset > .sd-character-tools > [data-archive-action="save"] { grid-column: 4; }
+}
 
 .sd-style-recipe-fields { display: grid; gap: 10px; min-width: 0; margin-top: 12px; }
 .sd-style-recipe-fields > label { display: grid; gap: 5px; min-width: 0; text-align: left; }

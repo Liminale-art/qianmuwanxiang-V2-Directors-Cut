@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import {readFile,mkdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
+import {implementation as historicalImplementation} from '../tests/helpers/comfy-character-fixture.mjs';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
-const context=await browser.newContext({hasTouch:true}),errors=[],checks=[];let external=0;
+const context=await browser.newContext({hasTouch:true}),errors=[],checks=[];let external=0,referenceImage;
 const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
 await mkdir(new URL('../dist/local-qa/',import.meta.url),{recursive:true});
 await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
+  if(url.origin==='https://qianmu.test'&&url.pathname==='/user/images/synthetic-character.png'&&referenceImage)return route.fulfill({contentType:'image/png',body:referenceImage});
   if(url.origin==='https://qianmu.test'&&url.pathname==='/')return route.fulfill({contentType:'text/html',body:`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style><style>body{margin:0}#story-director-modal{position:relative!important;display:block!important;inset:auto!important;transform:none!important;width:100%!important;height:898px!important;box-sizing:border-box}#story-director-modal .sd-window{width:100%!important;height:100%!important;max-height:none!important;margin:0!important}</style><div id="story-director-modal" class="open sd-theme-dark sd-storyboard-mode"><section class="sd-window"><main class="sd-body sd-storyboard-body"><div class="sd-storyboard-root"><header class="sd-storyboard-titlebar">COMFY WORKBENCH</header><div class="sd-storyboard-scroll"><div id="host"></div></div><nav class="sd-storyboard-nav">隔离验收</nav></div></main></section></div>`});
   if(url.origin==='https://qianmu.test'&&/^\/qianmu-[a-z0-9-]+\.js$/.test(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
   external++;return route.abort();
@@ -134,6 +136,60 @@ try{
     const latest=await poolStore.load(scope,row.id,row.revision),old=await poolStore.load(scope,row.id,versions.find(v=>v.version===1).revision);
     return versions.length===2&&latest.pool.candidates.length===2&&latest.pool.candidates.every(c=>!c.target.comfyCharacterEnabled)
       &&latest.pool.candidates[0].enabled&&!latest.pool.candidates[1].enabled&&!latest.pool.styleLock&&old.pool.candidates[0].target.comfyCharacterEnabled&&poolSelections.length===0;
+  }));
+  referenceImage=Buffer.from(await page.evaluate(async legacy=>{
+    poolController.dispose();store.close();
+    const {newCharacterArchive}=await import('/qianmu-character-archive.js');
+    const {createCharacterArchiveStore}=await import('/qianmu-character-archive-store.js');
+    const {createCharacterArchiveController}=await import('/qianmu-character-archive-view.js');
+    const {applyQianmuIcons}=await import('/qianmu-icon-renderer.js');
+    const canvas=document.createElement('canvas');canvas.width=80;canvas.height=100;const ctx=canvas.getContext('2d');ctx.fillStyle='#91baab';ctx.fillRect(0,0,80,100);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png')),bytes=await blob.arrayBuffer();
+    const sha256=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(n=>n.toString(16).padStart(2,'0')).join('');
+    const reference={url:'/user/images/synthetic-character.png',name:'synthetic cover',mime:'image/png',bytes:blob.size,sha256};
+    window.charStore=createCharacterArchiveStore({dbName:'qianmu-character-retirement-synthetic'});
+    window.oldCharacter={...newCharacterArchive('char'),name:'历史角色',aliases:['旧别名'],ageStatus:'adult',comfy:{version:1,implementations:[legacy]},
+      imagegen:{appearance:'black hair',negative:'extra hands',sensitiveAppearance:'',reference,preview:{...reference,sourceSha256:sha256},novelReference:{strength:0.6,fidelity:1}}};
+    window.charHead=await charStore.save(scope,{document:oldCharacter});
+    for(const category of ['user','other'])await charStore.save(scope,{document:{...newCharacterArchive(category),name:`测试 ${category}`}});
+    window.startCharacters=()=>{
+      window.charController=createCharacterArchiveController({store:charStore,resolveNamespace:async()=>scope,getContext:async()=>({chatKey:'synthetic-chat',subjects:[]}),onIcons:applyQianmuIcons,confirm:async()=>true});charController.mount(host);
+    };
+    return [...new Uint8Array(bytes)];
+  },historicalImplementation));
+  await page.evaluate(()=>startCharacters());await page.waitForSelector('.sd-character-file');
+  for(const width of [320,393,1100]){
+    await page.setViewportSize({width,height:898});
+    ok(`character categories fit at ${width}`,await page.locator('.sd-character-library').evaluate(node=>node.scrollWidth-node.clientWidth<=1));
+    ok(`three character categories remain present at ${width}`,await page.locator('[data-archive-category]').count()===3);
+  }
+  await page.locator(`[data-archive-action="edit"][data-archive-id="${await page.evaluate(()=>charHead.id)}"]`).click();await page.waitForSelector('[data-archive-field="name"]');
+  await page.waitForFunction(()=>document.querySelector('.sd-character-cover-upload img')?.naturalWidth===80);
+  for(const width of [320,393,1100]){
+    await page.setViewportSize({width,height:898});
+    await page.screenshot({path:fileURLToPath(new URL(`../dist/local-qa/comfy-character-${width}.png`,import.meta.url))});
+    const overflow=await page.locator('.sd-character-editor').evaluate(node=>({width:node.clientWidth,scroll:node.scrollWidth,children:[...node.querySelectorAll('*')].filter(child=>child.getBoundingClientRect().right>node.getBoundingClientRect().right+1).slice(0,10).map(child=>child.className)}));
+    ok(`character editor contains fields at ${width}: ${JSON.stringify(overflow)}`,overflow.scroll-overflow.width<=1);
+    ok(`character toolbar retains reachable full-sized actions at ${width}`,await page.locator('.sd-character-editor > fieldset > .sd-character-tools').evaluate(node=>[...node.querySelectorAll('button')].every(button=>{const box=button.getBoundingClientRect(),toolbar=node.getBoundingClientRect();return box.width>=40&&box.height>=40&&box.left>=toolbar.left-1&&box.right<=toolbar.right+1;})));
+    ok(`retired editor absent but reference control remains at ${width}`,await page.locator('[data-archive-action^="comfy-"]').count()===0&&await page.locator('[data-archive-image]').count()===1);
+  }
+  await page.locator('[data-archive-field="name"]').fill('更新角色');await page.locator('[data-archive-action="save"]').click();await page.waitForSelector('.sd-character-file');
+  ok('editing old archive keeps legacy workflow, references and appearance',await page.evaluate(async()=>{
+    const saved=await charStore.load(scope,charHead.id);return saved.head.version===2&&saved.document.name==='更新角色'
+      &&JSON.stringify(saved.document.comfy)===JSON.stringify(oldCharacter.comfy)&&JSON.stringify(saved.document.imagegen)===JSON.stringify(oldCharacter.imagegen);
+  }));
+  await page.locator(`[data-archive-action="edit"][data-archive-id="${await page.evaluate(()=>charHead.id)}"]`).click();await page.waitForSelector('[data-archive-field="name"]');
+  await page.locator('[data-archive-action="copy"]').click();await page.waitForFunction(()=>document.querySelector('[data-archive-field="name"]').value.endsWith('副本'));
+  await page.locator('[data-archive-action="save"]').click();await page.waitForSelector('.sd-character-file');
+  ok('copy retains identity and reference but does not inherit retired workflows',await page.evaluate(async()=>{
+    const copied=(await charStore.list(scope)).find(row=>row.name.endsWith('副本')),saved=await charStore.load(scope,copied.id),old=await charStore.load(scope,charHead.id);
+    return !Object.hasOwn(saved.document,'comfy')&&JSON.stringify(saved.document.imagegen)===JSON.stringify(old.document.imagegen)&&old.document.comfy.implementations.length===1;
+  }));
+  await page.locator('[data-archive-action="new"][data-category="other"]').click();await page.waitForSelector('[data-archive-field="name"]');
+  await page.locator('[data-archive-field="name"]').fill('新路人');await page.locator('[data-archive-action="save"]').click();await page.waitForSelector('.sd-character-file');
+  ok('new archive has no retired fields or implicit copied reference',await page.evaluate(async()=>{
+    const row=(await charStore.list(scope)).find(row=>row.name==='新路人'),saved=await charStore.load(scope,row.id);
+    return saved.document.category==='other'&&!Object.hasOwn(saved.document,'comfy')&&saved.document.imagegen.reference===null;
   }));
   assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}
