@@ -26,6 +26,17 @@ function fixture(result, kind = 'chat') {
 }
 const row=(chatKey,count=1)=>({name:'storyboard_plan_archives',chatKey,count,bytes:10});
 
+test('cleanup owns its page watcher through mutation and releases it once without releasing a newer operation',()=>{
+  let closed=false,released=0;
+  const session=createStorageCleanupSession({owner:()=>1,scope:()=>1,epoch:()=>1,watchView:()=>({check(){if(closed)throw Error('closed and reopened');},release(){released++;}})});
+  const token=session.begin({isConnected:true});token.check();closed=true;
+  assert.throws(()=>token.check(),/后续操作已停止/);closed=false;assert.throws(()=>token.check(),/后续操作已停止/);
+  token.release();assert.equal(released,1);const next=session.begin({isConnected:true});token.release();assert.equal(session.busy,true);
+  next.check();next.release();assert.equal(released,2);
+  const failed=createStorageCleanupSession({owner:()=>1,scope:()=>1,epoch:()=>1,watchView(){throw Error('initially closed');}});
+  assert.equal(failed.begin({isConnected:true}),null);assert.equal(failed.busy,false);
+});
+
 test('cleanup cannot start while any known task lane is active or status cannot be read',()=>{
   for(const lane of ['reader','focus','director','voice','image','transfer','unknown']){
     const notices=[],session=createStorageCleanupSession({owner:()=>1,scope:()=>1,epoch:()=>1,notify:text=>notices.push(text),

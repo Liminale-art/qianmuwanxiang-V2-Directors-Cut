@@ -9,7 +9,7 @@ let external=0;const errors=[];
 await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.href==='https://qianmu.test/')return route.fulfill({contentType:'text/html',body:'<!doctype html>'});
-  if(url.origin==='https://qianmu.test'&&['/qianmu-storage-backup-view.js','/qianmu-storage-cleanup-session.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
+  if(url.origin==='https://qianmu.test'&&['/qianmu-storage-backup-view.js','/qianmu-storage-cleanup-session.js','/qianmu-reader-package.js','/qianmu-json-input.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
   external++;return route.abort();
 });
 try{
@@ -68,7 +68,22 @@ try{
     const escape=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});document.dispatchEvent(escape);
     if(escape.defaultPrevented)throw Error('finished chooser leaked its escape listener');
     checks.push('confirmation settles once and releases listeners');
+    const {createCoreadImportViewGuard}=await import('/qianmu-reader-package.js');
+    for(const action of ['close-reopen','pagehide','remove','normal']){
+      document.body.innerHTML='<section id="story-director-modal" class="open"><section class="sd-storage-card"></section></section>';
+      const modal=document.getElementById('story-director-modal'),card=modal.firstElementChild;
+      const session=createStorageCleanupSession({owner:()=>settings,scope:()=>1,epoch:()=>1,watchView:root=>createCoreadImportViewGuard(root,'清理','')});
+      const token=session.begin(card);token.check();
+      // The selector is already gone; the operation itself must still own a watcher.
+      if(action==='close-reopen'){modal.classList.remove('open');modal.classList.add('open');}
+      if(action==='pagehide')dispatchEvent(new Event('pagehide'));
+      if(action==='remove')card.remove();
+      let stale=false;try{token.check();}catch{stale=true;}
+      if(stale!==(action!=='normal'))throw Error('post-confirmation lifetime '+action);
+      token.release();card.isConnected||modal.append(card);
+      const retry=session.begin(card);retry.check();retry.release();checks.push('post-confirmation lifetime '+action);
+    }
     return checks;
   },['openStorageCleanupDialog','openStorageChatCleanupDialog','bindStorageManagementEvents'].map(section).join('\n'));
-  assert.equal(checks.length,23);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,27);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

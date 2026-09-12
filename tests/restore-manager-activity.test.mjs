@@ -17,6 +17,7 @@ function fixture(){
     storyboardPackageMutation:{storyboardPackageDigest:async value=>{assert.equal(value,'chat');return 'hash';}},
   };
   const c=vm.createContext({settings:{},storyboardAdmissionEpoch:1,getChatKey:()=>f.chat,MODAL_ID:'fixture',
+    createCoreadImportViewGuard:()=>({check(){if(f.pageChanged)throw Error('page changed');},release(){f.released=(f.released||0)+1;}}),
     document:{getElementById:()=>({classList:{contains:()=>f.modalOpen}})},
     featureRuntime:{load:async name=>{f.loads++;return f.load?f.load(name,features[name]):features[name];}},
     applyQianmuIcons(){},formatStorageBytes(){},toast:message=>f.notes.push(message),refreshStorageInventory:async()=>f.refreshes++});
@@ -67,6 +68,15 @@ test('load failures release the activity slot so an independent later attempt is
   const f=fixture();f.load=()=>{throw Error('synthetic unavailable module');};await f.start();
   assert.equal(f.c.storyboardOpenRestoreStorage.busy,false);assert.equal(f.opened,0);
   delete f.load;const pending=f.start();await tick();assert.equal(f.opened,1);f.view.close();await pending;
+});
+
+test('closing and reopening during manager loading permanently invalidates its original view and releases the watcher',async()=>{
+  for(const mappings of [false,true]){
+    const f=fixture();let release;
+    f.load=(name,value)=>name==='storyboardRestoreStorage'?new Promise(r=>release=()=>r(value)):value;
+    const pending=f.start({mappings});await tick();f.pageChanged=true;release();await pending;
+    assert.equal(f.opened,0);assert.equal(f.writes,0);assert.equal(f.released,1);assert.equal(f.c.storyboardOpenRestoreStorage.busy,false);
+  }
 });
 
 function cleanupFixture(selected=['__storyboard_restores__']){

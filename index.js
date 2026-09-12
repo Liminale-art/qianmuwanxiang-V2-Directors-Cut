@@ -1458,7 +1458,7 @@ const storyboardPlanArchiveCache = new Map(); // key -> 已结束计划的完整
 let storyboardPlanArchiveEpoch = 0;
 let storyboardPlanArchiveTimer = null;
 const storyboardApiKeys = new Map(); // credentialId -> Key；不进入设置、日志或分镜数据包
-const storageCleanupSession = createStorageCleanupSession({owner:()=>settings,scope:()=>getChatKey(),epoch:()=>storyboardAdmissionEpoch,activity:()=>configRestoreActivity(false),notify:toast});
+const storageCleanupSession = createStorageCleanupSession({owner:()=>settings,scope:()=>getChatKey(),epoch:()=>storyboardAdmissionEpoch,activity:()=>configRestoreActivity(false),notify:toast,watchView:root=>createCoreadImportViewGuard(root,'清理','')});
 const storyboardDraftApiKeys = new Map(); // 表单会话：载入、测试、保存及重绘均保留 Key；不新增持久副本
 let storyboardConnectionLoadRevision = 0;
 let storyboardKeyInputRevision = 0;
@@ -8638,10 +8638,12 @@ async function storyboardOpenRestoreStorage(root,expectedNamespace,{mappings=fal
   if(storyboardOpenRestoreStorage.busy)return;
   if(Object.values(configRestoreActivity()).some(Boolean))return toast('请先结束正在进行的任务或关闭其他数据管理窗口。','warning');
   storyboardOpenRestoreStorage.busy=true;
-  const owner=settings,chat=getChatKey(),epoch=storyboardAdmissionEpoch,modal=document.getElementById(MODAL_ID);let view,namespace;
+  const owner=settings,chat=getChatKey(),epoch=storyboardAdmissionEpoch,modal=document.getElementById(MODAL_ID);let view,namespace,lifetime;
   try{
+    lifetime=createCoreadImportViewGuard(root,'管理','');
     const [runtime,manager,identity,hashes]=await Promise.all([featureRuntime.load('storyboardRestoreStorage'),featureRuntime.load(mappings?'storyboardMappingView':'storyboardRestoreStorageView'),featureRuntime.load('imageAdmission'),featureRuntime.load('storyboardPackageMutation')]);
     const check=()=>{
+      lifetime.check();
       if(settings!==owner||getChatKey()!==chat||!root.isConnected||!modal?.classList.contains('open')||epoch!==storyboardAdmissionEpoch||view&&!view.isOpen)throw new Error('恢复记录管理页面已变化');
       if(Object.values(configRestoreActivity(true,storyboardOpenRestoreStorage)).some(Boolean))throw new Error('其他任务已开始，请稍后重新打开数据管理。');
     };
@@ -8657,7 +8659,7 @@ async function storyboardOpenRestoreStorage(root,expectedNamespace,{mappings=fal
       run:(action,options)=>runtime.runRestoreStorage(action,{...options,namespace,guard})});
     await view.finished;
   }catch(error){toast(`${mappings?'迁移凭据':'恢复记录'}管理未完成：${error?.message||error}`,'error');}
-  finally{view?.close();storyboardOpenRestoreStorage.busy=false;if(root.isConnected&&epoch===storyboardAdmissionEpoch)await refreshStorageInventory(true);}
+  finally{view?.close();lifetime?.release();storyboardOpenRestoreStorage.busy=false;if(root.isConnected&&epoch===storyboardAdmissionEpoch)await refreshStorageInventory(true);}
 }
 
 function bindStorageManagementEvents(root) {
