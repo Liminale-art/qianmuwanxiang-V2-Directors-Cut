@@ -7,9 +7,15 @@ import { assertComfyRouteNamespace, normalizeComfyRouteSelection, comfyRouteBind
 import { readPinnedComfyRouteWorkflow, applyComfyRouteRecipe } from './qianmu-comfy-route.js';
 import { normalizeStoryboardShotSpec, sanitizeStoryboardDiagnosticData } from './qianmu-storyboard.js';
 import { normalizeStoryboardPromptFormats, resolveStoryboardPromptRendering } from './qianmu-prompt-formats.js';
+import { projectNewComfyExecution } from './qianmu-comfy-new-execution.js';
 
 export const COMFY_AUTO_PREPARATION_BYTES=8*1024*1024;
 const copy=value=>JSON.parse(JSON.stringify(value));
+const executionPool=(pool,freshComfy)=>{
+  const projected=copy(pool);
+  if(freshComfy===true)for(const candidate of projected.candidates)candidate.target.comfyCharacterEnabled=false;
+  return projected;
+};
 const freeze=value=>{if(value && typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};
 const fail=message=>{throw comfyAutoError(message);};
 const message=(error,fallback)=>String(sanitizeStoryboardDiagnosticData(String(error?.message || fallback).slice(0,2000))).slice(0,180);
@@ -43,16 +49,16 @@ export async function readPinnedComfyAutoPool({binding,...options}) {
   return readPool({...options,selection:captured},captured);
 }
 export async function readComfyStylePool(options){
-  const chosen=await readPinnedComfyAutoPool(options),poolKey=await comfyActiveScenePoolKey(chosen.pool);await options.guard?.();
+  const chosen=await readPinnedComfyAutoPool(options),poolKey=await comfyActiveScenePoolKey(executionPool(chosen.pool,options.freshComfy),{freshComfy:options.freshComfy});await options.guard?.();
   return {binding:chosen.binding,poolKey,styleLock:chosen.pool.styleLock};
 }
 
 export async function prepareComfyAutoSession({binding,namespace,guard=async()=>{},createStore,readRecipe=readPinnedComfyRouteWorkflow,
-  maxBytes=COMFY_AUTO_PREPARATION_BYTES}={}) {
+  maxBytes=COMFY_AUTO_PREPARATION_BYTES,freshComfy=false}={}) {
   if(!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>COMFY_AUTO_PREPARATION_BYTES)fail('候选工作流准备额度无效');
   let closed=false;const current=async()=>{if(closed)fail('候选准备已结束');await guard();if(closed)fail('候选准备已结束');};
   const chosen=await readPinnedComfyAutoPool({binding,namespace,guard:current,createStore});
-  const pool=copy(chosen.pool),recipes=new Map(),candidates=new Map(),issues=[];let usedBytes=0;
+  const pool=executionPool(chosen.pool,freshComfy),recipes=new Map(),candidates=new Map(),issues=[];let usedBytes=0;
   // The caller requested a selection session, not global auto-generation. Selection outcomes remain unauthorized.
   pool.enabled=true;
   try {
@@ -71,7 +77,7 @@ export async function prepareComfyAutoSession({binding,namespace,guard=async()=>
           if(usedBytes+size>maxBytes)throw Object.assign(comfyAutoError('参与候选的工作流合计超过 8 MB，请拆分方案'),{code:'comfy_auto_capacity'});
           usedBytes+=size;recipes.set(key,freeze(recipe));
         }
-        candidates.set(candidate.id,{candidate,recipe,executionKey:await comfyCandidateExecutionKey(candidate)});await current();
+        candidates.set(candidate.id,{candidate,recipe,executionKey:await comfyCandidateExecutionKey(candidate,{freshComfy})});await current();
       }catch(error){
         await current();if(error.code==='comfy_auto_capacity')throw error;
         issues.push({candidateId:candidate.id,reason:'recipe_unavailable',message:message(error,'候选配置不可用')});
@@ -97,7 +103,7 @@ export async function prepareComfyAutoSession({binding,namespace,guard=async()=>
           contentClass:shot.sensitive?'adult':'sfw',promptFormats};
         const requestKey=await comfySelectionRequestKey(requirements,capturedScope,namespace),eligibility=new Map();await live();
         const diagnostics=[...issues];
-        const choose=()=>selectComfyWorkflow({pool,namespace,requirements,eligibility,preparationId,scope:capturedScope,lock:capturedLock,adultAllowed:adultAllowed===true});
+        const choose=()=>selectComfyWorkflow({pool,namespace,requirements,eligibility,preparationId,scope:capturedScope,lock:capturedLock,adultAllowed:adultAllowed===true,freshComfy});
         const preliminary=await choose();await live();
         if(['lock_pool_changed','lock_scope_mismatch','scene_layer_mismatch','content_unknown','content_not_authorized'].includes(preliminary.reason))return freeze({...preliminary,preparationId,requestKey,diagnostics});
         for(const {candidate,recipe,executionKey} of candidates.values()) {
@@ -121,7 +127,7 @@ export async function prepareComfyAutoSession({binding,namespace,guard=async()=>
         const result=await choose();await live();
         return freeze({...result,preparationId,requestKey,diagnostics});
       },
-      apply(target,base){if(closed)fail('候选准备已结束');const recipe=recipes.get(comfyRouteBindingKey(target.comfyWorkflowBinding));return applyComfyRouteRecipe(base,target,recipe);},
+      apply(target,base){if(closed)fail('候选准备已结束');const recipe=recipes.get(comfyRouteBindingKey(target.comfyWorkflowBinding));const profile=applyComfyRouteRecipe(base,target,recipe);return freshComfy===true?projectNewComfyExecution(profile).profile:profile;},
       assertCurrent:current,
       close(){closed=true;recipes.clear();candidates.clear();},
     });

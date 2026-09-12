@@ -43,10 +43,12 @@ export function normalizeComfyAutoPool(value) {
     styleLock:bool(value.styleLock,true),candidates};
 }
 
-export async function comfyCandidateExecutionKey(candidate) {
+// Keep legacy digests byte-identical; fresh execution omits recipe additions even when roles were already off.
+const executionIdentity=(value,freshComfy)=>freshComfy===true?[...value,'qianmu.comfy.fresh.v1']:value;
+export async function comfyCandidateExecutionKey(candidate,{freshComfy=false}={}) {
   const target=candidate.target,binding=normalizeComfyRouteBinding(target.comfyWorkflowBinding),normalized=normalizeTarget(target,binding.namespace);
   // Include connection and reference/role choice; a matching graph name is not matching execution configuration.
-  return digest([comfyRouteBindingKey(binding),normalized.connectionPresetId,normalized.comfyCharacterEnabled,normalized.comfyReferences]);
+  return digest(executionIdentity([comfyRouteBindingKey(binding),normalized.connectionPresetId,normalized.comfyCharacterEnabled,normalized.comfyReferences],freshComfy));
 }
 
 function requirement(value) {
@@ -74,8 +76,8 @@ export function normalizeComfySceneLock(value,namespace) {
     ||![value.poolKey,value.executionKey].every(key=>typeof key==='string'&&/^[a-f0-9]{64}$/.test(key)))fail('连续场景锁无效');
   return {schema:COMFY_SELECTION_SCHEMA,scope:normalizeScope(value.scope,namespace),poolKey:value.poolKey,candidateId:id(value.candidateId,'锁定候选'),executionKey:value.executionKey};
 }
-const poolKey=pool=>digest([pool.namespace,pool.id,pool.revision,pool.enabled,pool.styleLock,pool.candidates]);
-export const comfyActiveScenePoolKey=raw=>poolKey({...normalizeComfyAutoPool(raw),enabled:true});
+const poolKey=(pool,freshComfy=false)=>digest(executionIdentity([pool.namespace,pool.id,pool.revision,pool.enabled,pool.styleLock,pool.candidates],freshComfy));
+export const comfyActiveScenePoolKey=(raw,{freshComfy=false}={})=>poolKey({...normalizeComfyAutoPool(raw),enabled:true},freshComfy);
 export async function comfySelectionRequestKey(requirements,scope,namespace) {
   return digest([requirement(requirements),normalizeScope(scope,assertComfyRouteNamespace(namespace))]);
 }
@@ -85,7 +87,7 @@ function affinity(classification,request) {
   return rows.reduce((score,[key,value,weight])=>score+(classification[key].includes(value)?weight:0),0);
 }
 
-export async function selectComfyWorkflow({pool:raw,namespace,requirements,eligibility,preparationId,scope:rawScope=null,lock=null,adultAllowed=false}) {
+export async function selectComfyWorkflow({pool:raw,namespace,requirements,eligibility,preparationId,scope:rawScope=null,lock=null,adultAllowed=false,freshComfy=false}) {
   const pool=normalizeComfyAutoPool(raw);assertComfyRouteNamespace(namespace);
   if(pool.namespace!==namespace)fail('自动候选方案属于另一账户');
   if(!pool.enabled)return outcome('disabled','pool_disabled');
@@ -97,10 +99,10 @@ export async function selectComfyWorkflow({pool:raw,namespace,requirements,eligi
   if(!(eligibility instanceof Map))fail('缺少本次镜头的独立技术检查');
   id(preparationId,'本次准备');
   const checks=new Map(pool.candidates.map(candidate=>{const row=eligibility.get(candidate.id);return [candidate.id,row?{...row}:null];}));
-  const requestKey=await comfySelectionRequestKey(request,scope,namespace),poolIdentity=await poolKey(pool);
+  const requestKey=await comfySelectionRequestKey(request,scope,namespace),poolIdentity=await poolKey(pool,freshComfy);
   const candidates=[],excluded=[];
   for(const candidate of pool.candidates){
-    const c=candidate.classification,key=await comfyCandidateExecutionKey(candidate),check=checks.get(candidate.id);let reason='';
+    const c=candidate.classification,key=await comfyCandidateExecutionKey(candidate,{freshComfy}),check=checks.get(candidate.id);let reason='';
     if(!candidate.enabled)reason='candidate_disabled';
     else if(!c.contentClasses.includes(request.contentClass))reason='content_not_declared';
     else if(!c.promptFormat||!request.promptFormats.includes(c.promptFormat))reason='prompt_format_unavailable';

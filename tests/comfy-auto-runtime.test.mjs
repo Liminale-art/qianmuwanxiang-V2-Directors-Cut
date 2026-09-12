@@ -175,3 +175,30 @@ test('runtime has no provider submission/LLM/lock writes and is not loaded at st
   assert.match(section('storyboardPrepareComfyRoutes'),/prepareComfyAutoSession/);assert.match(section('storyboardSetComfyAuto'),/prepareComfyAutoSession/);
   assert.doesNotMatch(index,/^import .*qianmu-comfy-auto-runtime/m);
 });
+
+for(const roles of [false,true])test(`fresh candidate sessions retire additions with old roles ${roles} without rewriting the pool or accepting its old lock`,async()=>{
+  const f=await fixture();f.rows[0].pool.candidates[0].target.comfyCharacterEnabled=roles;
+  const pinned=await runtime.pinComfyAutoPool({namespace,selection:f.rows[0],createStore:f.createPoolStore});
+  const options={...f.options,binding:pinned.binding},before=JSON.stringify([f.rows,f.workflowRows]);
+  const legacy=await runtime.prepareComfyAutoSession(options),fresh=await runtime.prepareComfyAutoSession({...options,freshComfy:true});
+  try{
+    const scope={namespace,chatKey:'chat',continuityId:'scene',narrativeLayer:'present'},spec=await shot();
+    const old=await legacy.select({shotSpec:spec,scope,probe:actualProbe});
+    const selected=await fresh.select({shotSpec:spec,scope,probe:actualProbe});
+    assert.equal(old.status,'selected');assert.equal(selected.status,'selected');
+    assert.equal(legacy.candidates[0].target.comfyCharacterEnabled,roles);assert.equal(fresh.candidates[0].target.comfyCharacterEnabled,false);
+    assert.notEqual(selected.proposedLock.poolKey,old.proposedLock.poolKey);
+    assert.notEqual(selected.proposedLock.executionKey,old.proposedLock.executionKey);
+    const metadata=await runtime.readComfyStylePool({...options,freshComfy:true});
+    assert.equal(metadata.poolKey,selected.proposedLock.poolKey);assert.deepEqual(metadata.binding,pinned.binding);
+    const continued=await fresh.select({shotSpec:spec,scope,lock:selected.proposedLock,probe:actualProbe});
+    assert.equal(continued.status,'selected');assert.equal(continued.reason,'scene_locked');
+    let probes=0;const blocked=await fresh.select({shotSpec:spec,scope,lock:old.proposedLock,probe:async()=>{probes++;return {automaticEligible:true};}});
+    assert.equal(blocked.status,'review');assert.equal(blocked.reason,'lock_pool_changed');assert.equal(probes,0);
+    const oldProfile=legacy.apply(legacy.candidates[0].target,{}),profile=fresh.apply(fresh.candidates[0].target,{});
+    assert.equal(oldProfile.comfyCharacterEnabled,roles);assert.equal(profile.comfyCharacterEnabled,false);assert.equal(profile.comfyCharacterActivation,undefined);
+    assert.ok(oldProfile.comfyRoutePromptLayer.positive);assert.deepEqual(profile.comfyRoutePromptLayer,{positive:'',negative:''});
+    assert.equal(profile.comfyWorkflow,oldProfile.comfyWorkflow);assert.deepEqual(profile.comfyRouteBinding,oldProfile.comfyRouteBinding);
+    assert.equal(selected.executionAuthorized,false);assert.equal(JSON.stringify([f.rows,f.workflowRows]),before);
+  }finally{legacy.close();fresh.close();}
+});
