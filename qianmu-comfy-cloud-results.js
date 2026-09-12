@@ -2,8 +2,8 @@
 // grant: callers still need the original ledger/target authorization and bytes.
 import { normalizeComfyCloudReceipt } from './qianmu-comfy-cloud-receipt.js';
 import { readComfyCloudTaskStatus } from './qianmu-comfy-cloud-response.js';
+import { comfyCloudAssetId } from './qianmu-comfy-cloud-protocol.js';
 
-const assetId = value => typeof value === 'string' && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value);
 const nodeId = value => typeof value === 'string' && /^[a-zA-Z0-9_:-]{1,120}$/.test(value);
 const mimes = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const kinds = new Set(['image', 'video', 'audio', 'text', 'file', 'latent']);
@@ -30,7 +30,7 @@ export function collectComfyCloudStillResults(rawReceipt, body) {
       continue;
     }
     if (!nodeId(item.node_id)) fail('node', '云端缺少图片所属节点，未猜测最终成图');
-    if (!assetId(item.id) || !Number.isSafeInteger(item.size_bytes) || item.size_bytes < 1
+    if (!comfyCloudAssetId(item.id) || !Number.isSafeInteger(item.size_bytes) || item.size_bytes < 1
       || typeof item.content_type !== 'string' || item.content_type.length > 120
       || !(item.hash === null || typeof item.hash === 'string' && /^blake3:[a-f0-9]{64}$/.test(item.hash))) {
       fail('asset', '云端图片资产信息不完整，未收片');

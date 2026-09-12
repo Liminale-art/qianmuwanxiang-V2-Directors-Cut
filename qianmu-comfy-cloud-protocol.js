@@ -2,6 +2,7 @@
 // Not yet wired into the native Comfy gateway. Plans are not account/target authorization.
 // Contracts: Comfy-Org/docs openapi-v2.yaml; RunningHub API 425749013/425767306/425749015.
 export const COMFY_CLOUD_PROTOCOL_VERSION = 1;
+export const comfyCloudAssetId = value => typeof value === 'string' && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value) ? value.toLowerCase() : '';
 const fail = (code, message) => { throw Object.assign(new Error(message), { code: `comfy_cloud_${code}`, retryable: false }); };
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const protocols = Object.freeze({
