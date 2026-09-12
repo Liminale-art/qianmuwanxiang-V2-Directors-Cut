@@ -877,7 +877,7 @@ export function pinnedImageResultFetch(rawUrl, addresses, requestImpl = httpsReq
   return async (url, init) => {
     if (String(url) !== expected.toString() || init.method !== 'GET') throw new ImageGatewayError(502, 'unsafe_image_host', '原图下载目标已变化');
     return new Promise((resolve, reject) => {
-      const outgoing = requestImpl(expected, { method: 'GET', signal: init.signal, headers: { Accept: 'image/*' },
+      const outgoing = requestImpl(expected, { method: 'GET', signal: init.signal, headers: { Accept: 'image/*' }, agent: false, maxHeaderSize: 16384,
         lookup(hostname, options, callback) {
           if (hostname.toLowerCase() !== expected.hostname.toLowerCase().replace(/^\[|\]$/g, '')) { callback(new Error('image host changed')); return; }
           if (options?.all) callback(null, list.map(item => ({ ...item })));
@@ -890,7 +890,7 @@ export function pinnedImageResultFetch(rawUrl, addresses, requestImpl = httpsReq
           for (const [key, value] of Object.entries(incoming.headers)) if (value !== undefined) headers.set(key, Array.isArray(value) ? value.join(', ') : String(value));
           const empty = [204,205,304].includes(incoming.statusCode);
           if (empty) incoming.resume();
-          resolve(new Response(empty ? null : Readable.toWeb(incoming), { status: incoming.statusCode, headers }));
+          resolve(new Response(empty ? null : Readable.toWeb(incoming, { strategy: { highWaterMark: 0 } }), { status: incoming.statusCode, headers }));
         } catch (error) { incoming.destroy(); reject(error); }
       });
       outgoing.once('error', reject); outgoing.end();

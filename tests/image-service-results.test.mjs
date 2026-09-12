@@ -30,9 +30,31 @@ test('public media lookup is pinned to copied validated addresses and never forw
   const response = await fetcher(url, { method: 'GET', headers: { Authorization: 'must-not-forward', Cookie: 'private-cookie' } });
   assert.equal(Buffer.from(await response.arrayBuffer()).toString('base64'), PNG);
   assert.deepEqual(options.headers, { Accept: 'image/*' });
+  assert.equal(options.agent, false, 'a pooled socket must not bypass the validated DNS answers');
+  assert.equal(options.maxHeaderSize, 16384, 'media headers use the same bound as the Comfy transport');
   const pinned = await new Promise((resolve, reject) => options.lookup('image.example.test', { all: true }, (error, records) => error ? reject(error) : resolve(records)));
   assert.deepEqual(pinned, [{ address: '8.8.8.8', family: 4 }]);
   await assert.rejects(fetcher('https://elsewhere.example.test/p.png', { method: 'GET' }), { code: 'unsafe_image_host' });
+});
+
+test('media bytes wait for a consumer and cancelling the web body releases the incoming stream', async () => {
+  const url = 'https://image.example.test/p.png'; let reads = 0, incoming;
+  const fetcher = pinnedImageResultFetch(url, [{ address: '8.8.8.8', family: 4 }], (_url, _init, callback) => {
+    const request = new EventEmitter();
+    request.end = () => {
+      incoming = new Readable({ read() { reads++; this.push(Buffer.alloc(65536)); } });
+      incoming.statusCode = 200; incoming.headers = { 'content-type': 'image/png' }; callback(incoming);
+    };
+    return request;
+  });
+  const response = await fetcher(url, { method: 'GET' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(reads, 0, 'checking metadata or permissions must not eagerly buffer the file body');
+  const reader = response.body.getReader();
+  assert.equal((await reader.read()).value.byteLength, 65536);
+  await reader.cancel(); reader.releaseLock();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(incoming.destroyed, true, 'cancelled downloads must not keep reading into a closed web stream');
 });
 
 test('private addresses, changed methods and redirects cannot turn media retrieval into another request', async () => {
