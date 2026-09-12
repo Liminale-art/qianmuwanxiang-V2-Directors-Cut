@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import * as storyboard from '../qianmu-storyboard.js';
+import {projectNewComfyExecution} from '../qianmu-comfy-new-execution.js';
 import {renderComfyLibrary,createComfyLibraryController} from '../qianmu-comfy-library-view.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const document={workflow:JSON.stringify({save:{class_type:'SaveImage',inputs:{text:'%qianmu_prompt%'}}}),outputNodeId:'save',parameters:{width:'832',height:'1216'},positivePrompt:'prefix',negativePrompt:'exclusion'};
@@ -62,16 +63,21 @@ test('archived schemes expose explicit recovery/export/purge, not generation',()
   const html=renderComfyLibrary({archived:true,rows:[{id:'a',name:'x',nodes:1,version:1,totalBytes:100}]});
   for(const action of ['restore','export','purge'])assert.ok(html.includes(`data-comfy-action="${action}"`));assert.doesNotMatch(html,/data-comfy-action="apply"/);
 });
-test('applying a recipe changes only the active Comfy snapshot/additions, never connections or other engine/queued data',async()=>{
+test('applying a recipe retires active role routing without rewriting saved additions, references or queued data',async()=>{
   const state=storyboard.createStoryboardDefaults();state.source='comfy';state.view='workflows';const connections=structuredClone(state.connections),other=structuredClone(state.profiles.novel),queued=structuredClone(state.profiles.comfy);
-  const root={isConnected:true},notices=[],routes=[];const context=vm.createContext({...storyboard,storyboardState:()=>state,clone:structuredClone,storyboardAdmissionEpoch:1,getChatKey:()=> 'chat-a',
+  Object.assign(state.profiles.comfy,{comfyCharacterEnabled:true,comfyCharacterActivation:{legacy:true},comfyReferences:{enabled:true,items:[{id:'reference'}]}});
+  state.promptDefaults['comfy:legacy']={positive:'keep old default',negative:'keep old exclusion'};
+  const original=state.profiles.comfy,before=structuredClone(original),defaults=structuredClone(state.promptDefaults),source=structuredClone(document);
+  const root={isConnected:true},notices=[],routes=[];const context=vm.createContext({...storyboard,projectNewComfyExecution,storyboardState:()=>state,clone:structuredClone,storyboardAdmissionEpoch:1,getChatKey:()=> 'chat-a',
     featureRuntime:{load:async key=>key==='imageAdmission'?{resolveImageAccountNamespace:async()=> 'st-user:test'}:{pinComfyRouteWorkflow:async({guard,selection})=>{await guard();return {binding:{...selection,name:'versioned'},document};}}},
     storyboardNavigate:(node,patch)=>{assert.equal(node,root);routes.push(patch);state.view=patch.view;},toast:message=>notices.push(message)});
   vm.runInContext(['storyboardPromptDefaultsKey','storyboardRememberPromptLayer','storyboardApplyComfyLibraryRecipe'].map(section).join('\n'),context);
   await context.storyboardApplyComfyLibraryRecipe(root,state,{namespace:'st-user:test',id:'a',revision:'b',name:'versioned',version:2,document});
   assert.equal(state.profiles.comfy.comfyWorkflow,document.workflow);assert.equal(state.profiles.comfy.width,'832');assert.equal(state.comfyLibrarySelection.version,2);
   assert.deepEqual(state.connections,connections);assert.deepEqual(state.profiles.novel,other);assert.equal(queued.comfyWorkflow,'');assert.equal(routes.length,1);assert.equal(notices.length,1);
-  assert.equal(Object.values(state.promptDefaults)[0].positive,'prefix');assert.equal(Object.values(state.promptDefaults)[0].negative,'exclusion');
+  assert.equal(state.profiles.comfy.comfyCharacterEnabled,false);assert.equal(state.profiles.comfy.comfyCharacterActivation,undefined);
+  assert.deepEqual(state.profiles.comfy.comfyReferences,before.comfyReferences);assert.deepEqual(original,before);
+  assert.deepEqual(state.promptDefaults,defaults);assert.deepEqual(document,source);
   await assert.rejects(()=>context.storyboardApplyComfyLibraryRecipe(root,state,{document}),/已切换/);
 });
 test('workflow route and selection survive reload without library documents in settings',()=>{

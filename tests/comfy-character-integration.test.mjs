@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {generateImage} from '../qianmu-image-gateway.js';
 import * as roles from '../qianmu-comfy-character-plan.js';
@@ -98,22 +99,10 @@ test('profile and workbench keep a separate, default-off Comfy activation and ma
   assert.doesNotMatch(plain,/data-comfy-character-action/);assert.doesNotMatch(enabled,/data-comfy-character-action|绑定当前方案|NAI 参考设置/);
 });
 
-test('actual activation loads the explicitly saved recipe, keeps stale account/page changes off, and disabling performs no lookup',async()=>{
-  for(const change of ['none','account','workflow','page']){
-    const state=storyboard.createStoryboardDefaults();state.source='comfy';state.view='create';Object.assign(state.profiles.comfy,job().profile,{comfyCharacterEnabled:false});state.comfyLibrarySelection=copy(identity);
-    const root={isConnected:true},notices=[];let account=namespace,saves=0,reads=0;
-    const context=vm.createContext({...storyboard,clone:structuredClone,storyboardState:()=>state,storyboardAdmissionEpoch:1,toast:m=>notices.push(m),saveSettings:()=>saves++,renderModal(){},
-      featureRuntime:{load:async key=>key==='imageAdmission'?{resolveImageAccountNamespace:async()=>account}:{readComfyCharacterRecipe:async options=>{
-        reads++;await options.guard();assert.equal(options.binding.id,identity.id);assert.equal(options.expectedWorkflow,job().profile.comfyWorkflow);
-        if(change==='account')account='st-user:other';if(change==='workflow')state.profiles.comfy.comfyWorkflow='{}';if(change==='page')root.isConnected=false;
-        await options.guard();return recipe;
-      }}},
-    });
-    vm.runInContext(['storyboardLoadCharacterComfyRecipe','storyboardToggleComfyCharacters'].map(section).join('\n'),context);
-    await context.storyboardToggleComfyCharacters(root);assert.equal(state.profiles.comfy.comfyCharacterEnabled,change==='none');assert.equal(saves,change==='none'?1:0);assert.equal(root._sdComfyCharacterLoading,false);
-    if(change==='none'){assert.equal(state.profiles.comfy.comfyCharacterActivation.workflow.hash,identity.hash);await context.storyboardToggleComfyCharacters(root);assert.equal(reads,1);assert.equal(state.profiles.comfy.comfyCharacterEnabled,false);assert.equal(saves,2);}
-    else assert.match(notices.at(-1),/变化|切换/);
-  }
+test('retired role activation has no host entry while frozen job preparation remains available',async()=>{
+  const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
+  assert.doesNotMatch(source,/storyboardLoadCharacterComfyRecipe|storyboardToggleComfyCharacters/);
+  assert.match(source,/async function storyboardPrepareComfyCharacterJob\(/);
 });
 
 test('candidate preflight fills only potential reference coverage, without declaring candidates to be visible people',async()=>{

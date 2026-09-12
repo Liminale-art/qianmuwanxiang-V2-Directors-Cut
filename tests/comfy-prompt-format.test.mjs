@@ -150,10 +150,19 @@ test('applying a classified library version retains only bounded workbench prove
   assert.equal(core.storyboardComfyPromptFormat(profile),'tags');assert.equal(profile.comfyWorkbenchBinding.binding.revision,'revision-portrait');
   const recipe=e.context.storyboardCurrentComfyRecipe(e.state);
   assert.equal(recipe.document.classification.promptFormat,'tags');assert.equal(recipe.document.workflow,e.recipes[0].document.workflow);
+  assert.equal(recipe.document.positivePrompt,'');assert.equal(recipe.document.negativePrompt,'');
   const restored=core.normalizeStoryboardState(plain(e.state));assert.deepEqual(restored.profiles.comfy.comfyWorkbenchBinding,plain(profile.comfyWorkbenchBinding));
   assert.equal(core.getStoryboardRememberedProfile(restored.modelProfiles,'comfy','comfy-workflow').comfyWorkbenchBinding.classification.promptFormat,'tags');
   assert.ok(JSON.stringify(profile.comfyWorkbenchBinding).length<1500);assert.doesNotMatch(JSON.stringify(profile.comfyWorkbenchBinding),/class_type|parameters|positivePrompt/);
 });
+test('saving current workflow omits old defaults without erasing them or modifying fixed workflow text',async()=>{
+  const e=await workbenchEnvironment(),profile=e.state.profiles.comfy;
+  for(const field of ['positive','negative'])e.context.storyboardRememberPromptLayer(e.state,null,'comfy',profile.model,field,`saved legacy ${field}`);
+  const before=JSON.stringify(e.state),current=e.context.storyboardCurrentComfyRecipe(e.state).document;
+  assert.equal(current.positivePrompt,'');assert.equal(current.negativePrompt,'');
+  assert.equal(current.workflow,profile.comfyWorkflow);assert.equal(JSON.stringify(e.state),before);
+});
+
 test('ordinary workbench generation honors format and parameters without reviving saved retired prompt additions',async()=>{
   const e=await workbenchEnvironment(),profile=e.state.profiles.comfy;
   profile.steps='19';profile.cfg='6';profile.width='768';profile.height='1024';
@@ -254,7 +263,9 @@ test('workbench additions are typed and bounded, never object-to-string prompt c
 test('library apply reads the verified version instead of trusting a changed callback document',async()=>{
   const e=await workbenchEnvironment();e.state.view='workflows';
   await e.context.storyboardApplyComfyLibraryRecipe(e.root,e.state,{...e.rows[1],document:{...e.rows[1].document,positivePrompt:'forged callback prefix'}});
-  assert.equal(e.context.storyboardCurrentComfyRecipe(e.state).document.positivePrompt,'landscape quality');
+  const current=e.context.storyboardCurrentComfyRecipe(e.state).document;
+  assert.equal(current.workflow,e.rows[1].document.workflow);assert.equal(current.positivePrompt,'');assert.equal(current.negativePrompt,'');
+  assert.equal(e.rows[1].document.positivePrompt,'landscape quality');
 });
 
 for(const [name,factory,key] of [['fixed-route',environment,'comfyRoutePromptLayer'],['workbench',workbenchEnvironment,'comfyWorkbenchPromptLayer']]){
@@ -263,6 +274,10 @@ for(const [name,factory,key] of [['fixed-route',environment,'comfyRoutePromptLay
     // Build an actual old-format job, not a newly generated empty-layer job labelled as history.
     const createJob=e.context.storyboardCreateJob;
     e.context.storyboardCreateJob=(state,profile,options)=>createJob(state,profile,{...options,freshComfy:false});
+    if(name==='workbench'){
+      // Old saved defaults are a historical fixture, no longer a side effect of applying a recipe.
+      for(const field of ['positive','negative'])e.context.storyboardRememberPromptLayer(e.state,null,'comfy',e.state.profiles.comfy.model,field,e.rows[0].document[`${field}Prompt`]);
+    }
     await e.context.storyboardCompilePrompt(null);await e.context.storyboardGenerate(null,{automatic:true});
     const saved=core.sanitizeStoryboardSnapshot(e.jobs[0]),original=JSON.stringify(saved);
     const holder=job=>name==='workbench'?job.payload:job.profile;

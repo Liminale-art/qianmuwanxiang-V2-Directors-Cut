@@ -14245,11 +14245,10 @@ async function storyboardLoadComfyView(root, retry = false) {
 
 function storyboardCurrentComfyRecipe(state = storyboardState()) {
   const profile = state.profiles.comfy;
-  const layer = storyboardPromptLayerForArtist(state, null, 'comfy', profile.model, profile.capabilityModelId);
   return { name: state.comfyLibrarySelection?.name || '', document: {
     workflow: profile.comfyWorkflow || '', outputNodeId: profile.comfyOutputNodeId || '',
     parameters: Object.fromEntries(['width','height','count','steps','cfg','seed','sampler','scheduler'].map(key => [key, String(profile[key] ?? '')])),
-    positivePrompt: layer.positive, negativePrompt: layer.negative,
+    positivePrompt: '', negativePrompt: '',
     ...(profile.comfyWorkbenchBinding?.classification ? {classification:clone(profile.comfyWorkbenchBinding.classification)} : {}),
   } };
 }
@@ -14319,14 +14318,12 @@ async function storyboardApplyComfyLibraryRecipe(root, state, recipe) {
   const document=verified.document;
   const modelBinding=resolveStoryboardProfileBinding('comfy',profile);
   // Only the active compatibility snapshot changes. No API connection, queue or old record is rewritten.
-  const next = { ...profile, model:modelBinding.remoteModelId, capabilityModelId:modelBinding.capabilityModelId,
+  const next = { ...projectNewComfyExecution(profile).profile, model:modelBinding.remoteModelId, capabilityModelId:modelBinding.capabilityModelId,
     comfyWorkflow: document.workflow, comfyOutputNodeId: document.outputNodeId, comfyWorkflowNotice: '', loaded: true };
   for (const key of ['comfyRouteBinding','comfyRoutePromptLayer','comfyRoutePromptFormat','comfyWorkbenchBinding']) delete next[key];
   if (document.classification) next.comfyWorkbenchBinding={schemaVersion:1,binding:clone(verified.binding),classification:clone(document.classification)};
   for (const key of ['width','height','count','steps','cfg','seed','sampler','scheduler']) next[key] = String(document.parameters[key] ?? '');
   state.profiles.comfy = next;
-  storyboardRememberPromptLayer(state, null, 'comfy', next.model, 'positive', document.positivePrompt);
-  storyboardRememberPromptLayer(state, null, 'comfy', next.model, 'negative', document.negativePrompt);
   state.comfyLibrarySelection = { ...selection, name: verified.binding.name };
   state.parameterPresetSelection.comfy = '';
   rememberStoryboardModelProfile(state.modelProfiles, 'comfy', next);
@@ -14352,29 +14349,6 @@ async function storyboardCharacterArchiveContext() {
   const avatar = coreadIdentityAvatar('user', { followHost: true });
   subjects.push({category:'user',subjectKey:/^\/User(?:%20| )Avatars\//.test(avatar) ? `user:${avatar}` : '',name:getPersonaName() || 'USER',avatar});
   return {chatKey:context.chatId ? String(getChatKey() || '') : '',subjects};
-}
-
-async function storyboardLoadCharacterComfyRecipe(binding, namespace, guard) {
-  const state=storyboardState(),profile=state.profiles.comfy;
-  const selection=binding||clone(state.comfyLibrarySelection),workflow=profile.comfyWorkflow,output=profile.comfyOutputNodeId;
-  const runtime=await featureRuntime.load('comfyCharacters');await guard();
-  const current=async()=>{await guard();if(storyboardState()!==state||!binding&&(profile!==state.profiles.comfy||profile.comfyWorkflow!==workflow||profile.comfyOutputNodeId!==output||JSON.stringify(state.comfyLibrarySelection)!==JSON.stringify(selection)))throw new Error('当前工作流已切换，请重新选择');};
-  return runtime.readComfyCharacterRecipe({namespace,binding:selection,...(!binding?{expectedWorkflow:workflow,expectedOutput:output}:{}),guard:current});
-}
-
-async function storyboardToggleComfyCharacters(root, rebind=false) {
-  const state=storyboardState(),profile=state.profiles.comfy,epoch=storyboardAdmissionEpoch;
-  if(state.source!=='comfy'||state.view!=='create'||root._sdComfyCharacterLoading)return;
-  if(!rebind&&profile.comfyCharacterEnabled===true){profile.comfyCharacterEnabled=false;rememberStoryboardModelProfile(state.modelProfiles,'comfy',profile);saveSettings();renderModal();return;}
-  const initial=JSON.stringify([profile.comfyCharacterEnabled,profile.comfyCharacterActivation]);root._sdComfyCharacterLoading=true;
-  try {
-    const identity=await featureRuntime.load('imageAdmission'),namespace=await identity.resolveImageAccountNamespace();
-    const guard=async()=>{if(!root.isConnected||storyboardState()!==state||state.source!=='comfy'||state.view!=='create'||profile!==state.profiles.comfy||initial!==JSON.stringify([profile.comfyCharacterEnabled,profile.comfyCharacterActivation])||epoch!==storyboardAdmissionEpoch||namespace!==await identity.resolveImageAccountNamespace())throw new Error('页面或账户已变化，角色实现未启用');};
-    const recipe=await storyboardLoadCharacterComfyRecipe(null,namespace,guard);await guard();
-    if(!recipe.document.outputNodeId)throw new Error('请先在工作流方案中选择最终输出节点');
-    profile.comfyCharacterActivation={namespace,workflow:recipe.workflow};profile.comfyCharacterEnabled=true;
-    rememberStoryboardModelProfile(state.modelProfiles,'comfy',profile);saveSettings();renderModal();toast('角色实现已启用；仅影响新取景，未开始生成','success');
-  } catch(error){toast(error.message||'角色实现未启用','warning');}finally{root._sdComfyCharacterLoading=false;}
 }
 
 async function storyboardOpenUserAliases(namespace,guard) {
