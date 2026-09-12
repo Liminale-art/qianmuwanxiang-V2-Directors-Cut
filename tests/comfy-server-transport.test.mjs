@@ -8,10 +8,11 @@ import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-clou
 import { queryComfyCloudTask } from '../qianmu-comfy-cloud-query.js';
 import { createComfyCloudLedger } from '../qianmu-comfy-cloud-ledger.js';
 import { createImageServiceStore } from '../qianmu-image-service-store.js';
+import { createImageServiceResults } from '../qianmu-image-service-results.js';
 import { COMFY_CLOUD_INTENT_SCHEMA, COMFY_CLOUD_RECEIPT_SCHEMA } from '../qianmu-comfy-cloud-receipt.js';
 import { readComfyCloudJsonResponse, readComfyCloudAcceptance } from '../qianmu-comfy-cloud-response.js';
 import { submitComfyCloudTask } from '../qianmu-comfy-cloud-submit.js';
-import { readComfyCloudAsset, downloadComfyCloudAsset } from '../qianmu-comfy-cloud-asset-read.js';
+import { readComfyCloudAsset, downloadComfyCloudAsset, downloadComfyCloudJob } from '../qianmu-comfy-cloud-asset-read.js';
 import { comfyCloudResourceKey } from '../qianmu-comfy-cloud-ledger.js';
 import { init, exit } from '../server-plugin.js';
 import * as fs from 'node:fs/promises';
@@ -246,7 +247,7 @@ test('cloud query and cancellation keep rejecting changed-account responses rath
   }
 });
 
-async function persistedCloudTask(t, binding = cloudBinding) {
+async function persistedCloudTask(t, binding = cloudBinding, imageCount = 1) {
   const root = await fs.mkdtemp(path.join(tmpdir(), 'qianmu-comfy-routes-')); roots.push(root);
   const store = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => store.close());
   const req = account(), apiKey = 'test-only-secret', taskId = binding.provider === 'runninghub' ? '1904152026220003329' : 'persisted';
@@ -254,14 +255,14 @@ async function persistedCloudTask(t, binding = cloudBinding) {
     : { self: `/deployment/saved/api/v2/jobs/${taskId}`, cancel: `/deployment/saved/api/v2/jobs/${taskId}/cancel` });
   const intent = { schema: COMFY_CLOUD_INTENT_SCHEMA, connection: binding, requestDigest: 'a'.repeat(64),
     workflow: { templateHash: 'b'.repeat(64), executionHash: 'c'.repeat(64) },
-    stillOutput: { version: 1, model: 'workflow', previewNodeIds: [], execution: { version: 1, automatic: true, maxImages: 1, expectedImages: 1, outputNodeIds: ['save'] } } };
+    stillOutput: { version: 1, model: 'workflow', previewNodeIds: [], execution: { version: 1, automatic: imageCount === 1, maxImages: imageCount, expectedImages: imageCount, outputNodeIds: ['save'] } } };
   const ledger = createComfyCloudLedger({ store }), reservation = await ledger.reserve(req, { expectedAccount: imageServiceAccount(req).namespace, attemptId: 'persisted-attempt', apiKey, intent });
   const ticket = ledger.submission(reservation); await ticket.beforeSubmit();
   await ticket.recordAccepted(taskId, { schema: COMFY_CLOUD_RECEIPT_SCHEMA, task, requestDigest: intent.requestDigest, workflow: intent.workflow, stillOutput: intent.stillOutput });
   await ticket.markUncertain(); await store.close();
   const reopened = createImageServiceStore({ dataRoot: root, scope: 'comfy-cloud' }); t.after(() => reopened.close());
   const next = createComfyCloudLedger({ store: reopened }), locator = { channelKey: reservation.channelKey, attemptId: reservation.attemptId, apiKey };
-  return { req, task, store: reopened, ledger: next, locator, options: {
+  return { root, req, task, store: reopened, ledger: next, locator, options: {
     apiKey, authorizeTask: (req, original) => next.authorizeQuery(req, locator, original), authorizeTarget: cloudGrant, resolveHost: publicDns,
   } };
 }
@@ -342,6 +343,61 @@ const readyCloudJob = f => ({ id: f.task.taskId, status: 'succeeded', urls: f.ta
 
 const assetDownloadReply = (f, call) => call.url.hostname === 'files.test' ? { body: png, headers: { 'content-type': 'image/png' } }
   : { body: call.url.pathname.includes('/assets/') ? assetMetadataBody(f) : readyCloudJob(f) };
+
+const twoCloudIds = ['00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000001'];
+const multiAssetReply = (f, call) => call.url.hostname === 'files.test' ? { body: png, headers: { 'content-type': 'image/png' } }
+  : { body: call.url.pathname.includes('/assets/') ? { ...assetMetadataBody(f), id: call.url.pathname.split('/').at(-1),
+    url: `https://files.test/${call.url.pathname.split('/').at(-1)}?secret=temporary` } : { ...readyCloudJob(f), outputs: twoCloudIds.map(id => cloudOutput(id)) } };
+
+test('whole cloud job preserves the final query order with one grant and feeds the existing binary staging contract', async t => {
+  const f = await persistedCloudTask(t, cloudBinding, 2), calls = [], before = await f.store.inspectChannel(f.locator.channelKey); let grants = 0;
+  const received = await downloadComfyCloudJob(f.req, { task: f.task, ...f.locator, selection: ['forged'], assetId: 'forged' }, { ...assetReadOptions(f),
+    ledger: { authorizeStaging: (...args) => { grants++; return f.ledger.authorizeStaging(...args); } }, requestImpl: mockNodeRequest(calls, call => multiAssetReply(f, call)) });
+  assert.equal(received.status, 'integrity_checked'); assert.equal(grants, 1); assert.equal(calls.length, 5);
+  assert.ok(calls.every(call => call.options.method === 'GET'));
+  assert.deepEqual(received.result.cloud.selection.map(row => row.assetId), twoCloudIds);
+  assert.deepEqual(received.result.cloud.images.map(row => row.assetId), twoCloudIds);
+  assert.deepEqual(calls.filter(call => call.url.hostname === 'files.test').map(call => call.url.pathname.slice(1)), twoCloudIds);
+  assert.doesNotMatch(JSON.stringify(received), /files\.test|temporary|test-only-secret/);
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before, 'collecting is neither settlement nor acknowledgement');
+  assert.equal(await received.grant.verify(), received.grant.receipt, 'the original durable grant survives the download controller closing');
+  const cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
+  await cache.reserve(received.grant.identity); await cache.save(received.grant.identity, received.result);
+  const loaded = await cache.load(received.grant.identity);
+  assert.equal(loaded.images.length, 2); assert.deepEqual(loaded.cloud.selection.map(row => row.assetId), twoCloudIds);
+  assert.deepEqual(loaded.images.map(image => Buffer.from(image.bytes)), [png, png]);
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+});
+
+test('a failed or cancelled second cloud image never returns a partial whole-job packet or re-submits the job', async t => {
+  for (const mode of ['bytes', 'metadata', 'cancelled']) {
+    const f = await persistedCloudTask(t, cloudBinding, 2), calls = [], before = await f.store.inspectChannel(f.locator.channelKey), controller = new AbortController(); let grants = 0;
+    const pending = downloadComfyCloudJob(f.req, { task: f.task, ...f.locator }, { ...assetReadOptions(f), signal: controller.signal,
+      ledger: { authorizeStaging: (...args) => { grants++; return f.ledger.authorizeStaging(...args); } }, requestImpl: mockNodeRequest(calls, call => {
+        const reply = multiAssetReply(f, call), second = call.url.pathname.endsWith(twoCloudIds[1]);
+        if (second && call.url.pathname.includes('/assets/')) {
+          if (mode === 'metadata') reply.body.size_bytes++;
+          if (mode === 'cancelled') controller.abort();
+        }
+        if (second && call.url.hostname === 'files.test' && mode === 'bytes') reply.body = Buffer.alloc(png.length);
+        return reply;
+      }) });
+    await assert.rejects(pending, { code: `comfy_cloud_asset_read_${mode === 'metadata' ? 'match' : mode}`, submissionState: 'accepted', upstreamId: f.task.taskId, retryable: false });
+    assert.equal(grants, 1); assert.ok(calls.every(call => call.options.method === 'GET'));
+    assert.equal(calls.filter(call => call.url.href === f.task.links.self).length, 1);
+    assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+  }
+});
+
+test('a waiting whole cloud job returns status only and a later revoked grant cannot authorize staging', async t => {
+  const f = await persistedCloudTask(t), calls = [];
+  const waiting = await downloadComfyCloudJob(f.req, { task: f.task, ...f.locator }, { ...assetReadOptions(f), requestImpl: mockNodeRequest(calls,
+    () => ({ body: { ...readyCloudJob(f), status: 'running' } })) });
+  assert.equal(waiting.status, 'running'); assert.equal(waiting.result, null); assert.equal(waiting.grant, undefined); assert.equal(calls.length, 1);
+  const received = await downloadComfyCloudJob(f.req, { task: f.task, ...f.locator }, { ...assetReadOptions(f), requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) });
+  await f.store.transaction(f.locator.channelKey, state => { state.entries[0].fence = 'revoked'; return { state }; });
+  await assert.rejects(received.grant.verify(), { code: 'image_service_cloud_query_changed' });
+});
 
 test('one original stored grant spans job, metadata and image bytes without persisting the signed source or acknowledging the task', async t => {
   const f = await persistedCloudTask(t), calls = [], before = await f.store.inspectChannel(f.locator.channelKey); let grants = 0;
