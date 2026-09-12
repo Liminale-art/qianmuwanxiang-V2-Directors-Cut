@@ -105,12 +105,15 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
         const row = state.entries.find(item => item.namespace === account.namespace && item.attemptId === attemptId);
         if (!row?.cloudIntent || !row.cloudReceipt || row.upstreamId !== task.taskId
           || JSON.stringify(row.cloudReceipt.task) !== JSON.stringify(task)) throw fail('query_identity', '原云任务凭据不完整或不匹配，请先核查');
-        return JSON.stringify([row.ownerId, row.fence, row.requestDigest, row.cloudIntent, row.cloudReceipt]);
+        return { signature: JSON.stringify([row.ownerId, row.fence, row.requestDigest, row.cloudIntent, row.cloudReceipt]), receipt: row.cloudReceipt };
       };
-      const original = await read();
+      const { signature: original, receipt } = await read();
       // New sessions may inspect old tasks, but never recreate their submission
       // tickets. Target authorization remains a separate transport requirement.
-      return async () => { if (await read() !== original) throw fail('query_changed', '原云任务归属或收据已变化，未交付查询结果'); };
+      return async () => {
+        if ((await read()).signature !== original) throw fail('query_changed', '原云任务归属或收据已变化，未交付查询结果');
+        return receipt; // Original frozen evidence, never a caller's current output choices.
+      };
     },
     async reserve(req, { apiKey, expectedAccount, attemptId, intent: rawIntent } = {}) {
       const account = imageServiceAccount(req);

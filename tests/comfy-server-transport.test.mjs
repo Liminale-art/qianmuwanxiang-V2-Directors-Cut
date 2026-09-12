@@ -276,6 +276,62 @@ test('persisted cloud and RH originals pass real ledger grants through the bound
   }
 });
 
+const cloudOutput = (id = '00000000-0000-4000-8000-000000000001', extra = {}) => ({
+  id, node_id: 'save', type: 'image', content_type: 'image/png', size_bytes: png.length, hash: null,
+  url: 'https://signed.test/result?secret=temporary', ...extra,
+});
+
+test('bounded query collects still descriptors only from the original durable receipt and never archives remote success', async t => {
+  const f = await persistedCloudTask(t), calls = [], before = await f.store.inspectChannel(f.locator.channelKey);
+  const result = await queryComfyCloudTask(f.req, f.task, { ...f.options, includeStillOutputs: true,
+    receipt: { stillOutput: { execution: { outputNodeIds: ['other'], maxImages: 99 } } }, // Not a supported override.
+    requestImpl: mockNodeRequest(calls, () => ({ body: { id: f.task.taskId, status: 'succeeded', urls: f.task.links, error: null, outputs: [cloudOutput()] } })),
+  });
+  assert.equal(result.status, 'succeeded'); assert.equal(result.stillOutputs.outputs[0].nodeId, 'save');
+  assert.equal(result.stillOutputs.requestDigest, before.entries[0].requestDigest); assert.equal(result.images, undefined);
+  assert.ok(Object.isFrozen(result.stillOutputs.outputs)); assert.doesNotMatch(JSON.stringify(result), /temporary|signed.test/);
+  assert.equal(calls.length, 1); assert.equal(calls[0].options.method, 'GET');
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+});
+
+test('output collection cannot use an empty grant or unsupported provider and waiting snapshots contain no partial image', async t => {
+  const f = await persistedCloudTask(t), calls = []; let resolutions = 0;
+  const options = { ...f.options, includeStillOutputs: true, resolveHost: async () => { resolutions++; return publicDns(); }, requestImpl: mockNodeRequest(calls) };
+  await assert.rejects(queryComfyCloudTask(f.req, f.task, { ...options, authorizeTask: cloudGrant }), { code: 'comfy_cloud_query_authorization' });
+  await assert.rejects(queryComfyCloudTask(f.req, bindComfyCloudTask(rhBinding, '123'), options), { code: 'comfy_cloud_query_output_mode' });
+  await assert.rejects(queryComfyCloudTask(f.req, f.task, { ...options, includeStillOutputs: 'true' }), { code: 'comfy_cloud_query_output_mode' });
+  assert.equal(resolutions, 0); assert.equal(calls.length, 0);
+  const result = await queryComfyCloudTask(f.req, f.task, { ...options, requestImpl: mockNodeRequest(calls, () => ({ body: {
+    id: f.task.taskId, status: 'running', urls: f.task.links, outputs: [cloudOutput()],
+  } })) });
+  assert.equal(result.status, 'running'); assert.equal(result.stillOutputs, null); assert.equal(calls.length, 1);
+});
+
+test('output mismatch is a failed collection of the original task, never a generation retry', async t => {
+  for (const outputs of [[cloudOutput(undefined, { node_id: 'other' })], [cloudOutput(), cloudOutput('00000000-0000-4000-8000-000000000002')]]) {
+    const f = await persistedCloudTask(t), calls = [], before = await f.store.inspectChannel(f.locator.channelKey);
+    await assert.rejects(queryComfyCloudTask(f.req, f.task, { ...f.options, includeStillOutputs: true,
+      requestImpl: mockNodeRequest(calls, () => ({ body: { id: f.task.taskId, status: 'succeeded', urls: f.task.links, outputs } })),
+    }), { code: 'comfy_cloud_query_outputs', submissionState: 'accepted', upstreamId: f.task.taskId, retryable: false });
+    assert.equal(calls.length, 1); assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+  }
+});
+
+test('revocation after a valid output response blocks descriptor delivery under the original durable grant', async t => {
+  const f = await persistedCloudTask(t), calls = []; let revoked;
+  await assert.rejects(queryComfyCloudTask(f.req, f.task, { ...f.options, includeStillOutputs: true,
+    authorizeTask: async (req, original) => {
+      const verify = await f.ledger.authorizeQuery(req, f.locator, original);
+      return async () => { if (revoked) await revoked; return verify(); };
+    },
+    requestImpl: mockNodeRequest(calls, () => {
+      revoked = f.store.transaction(f.locator.channelKey, state => { state.entries[0].fence = 'revoked'; return { state }; });
+      return { body: { id: f.task.taskId, status: 'succeeded', urls: f.task.links, outputs: [cloudOutput()] } };
+    }),
+  }), { code: 'comfy_cloud_query_delivery', submissionState: 'accepted', upstreamId: f.task.taskId });
+  await revoked; assert.equal(calls.length, 1);
+});
+
 test('real stored ownership and network target grants both precede cloud DNS or requests', async t => {
   const f = await persistedCloudTask(t); let resolutions = 0; const calls = [];
   for (const variation of [
