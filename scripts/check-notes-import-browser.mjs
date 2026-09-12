@@ -166,7 +166,7 @@ try{
     check('log import rechecks its owner after waiting for the database',logFailed&&logCalls===2&&JSON.stringify(await db.listRetLog())===originalLogs);
     await writer.pushRetLog({query:'confirmed',at:2000});const committedLogs=await db.listRetLog();
     check('a confirmed log replaces only the oldest insertion and retains exactly fifty',committedLogs.length===50&&committedLogs[0].query==='confirmed'&&!committedLogs.some(r=>r.query==='original-0')&&committedLogs.some(r=>r.query==='original-1'));
-    const scans=[['listReaderChatKeys','reader_chats','openKeyCursor'],['listReaderImages','reader_images','openCursor'],['listReaderVectorKeys','reader_vectors','openKeyCursor'],['listAudio','audio','openCursor'],['listRetLog','reader_retlog','openCursor']];
+    const scans=[['listBookIds','reader_books','openKeyCursor'],['listReaderChatKeys','reader_chats','openKeyCursor'],['listReaderImages','reader_images','openCursor'],['listReaderVectorKeys','reader_vectors','openKeyCursor'],['listAudio','audio','openCursor'],['listRetLog','reader_retlog','openCursor']];
     for(const [method,store,cursorMethod] of scans){
       const expected=await db[method](),actual=await reader[method]();
       check(method+' preserves inventory projection and ordering after completion',JSON.stringify(actual)===JSON.stringify(expected)&&actual.every((item,i)=>item?.blob?.size===expected[i]?.blob?.size));
@@ -207,7 +207,7 @@ try{
     try{
       Object.defineProperty(window,'indexedDB',{configurable:true,value:undefined});
       for(const method of ['listNotes','listFavorites']){let failed=false;try{await db[method]({requireCommit:true});}catch{failed=true;}check(method+' strict backup inventory rejects unavailable storage even with a cached database',failed);}
-      let unavailableScans=0;for(const [method] of scans){try{await reader[method]();}catch{unavailableScans++;}}check('every backup directory rejects unavailable storage',unavailableScans===5);
+      let unavailableScans=0;for(const [method] of scans){try{await reader[method]();}catch{unavailableScans++;}}check('every backup directory rejects unavailable storage',unavailableScans===scans.length);
       let readUnavailable=false;try{await reader.getBook('reader-book');}catch{readUnavailable=true;}check('reader backup cannot read cached database handles after storage becomes unavailable',readUnavailable);
       let logsUnavailable=false;try{await writer.pushRetLog({query:'unavailable'});}catch{logsUnavailable=true;}check('log import rejects unavailable storage',logsUnavailable);
       let unavailable=false;try{await writer.bulkPutAudio([entry('reader-audio-unavailable')]);}catch{unavailable=true;}check('audio import rejects unavailable storage instead of claiming saved',unavailable);
@@ -352,5 +352,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,153);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,159);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

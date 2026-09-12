@@ -306,7 +306,7 @@ export function blobStoreAvailable() {
 }
 
 // ── 伴读：书籍正文（重，懒取）────────────────────────────────
-// Export-only reads must not publish a request result from an aborted transaction.
+// Backup and maintenance reads must not publish results from an aborted transaction.
 export function createReaderPackageReader({check = () => {}} = {}) {
   const get = async (name, key) => {
     check();
@@ -352,6 +352,7 @@ export function createReaderPackageReader({check = () => {}} = {}) {
   };
   return {
     getBook: key => get(STORE_BOOKS, key), getCover: key => get(STORE_COVERS, key),
+    listBookIds: () => scan(STORE_BOOKS, key => key, true),
     getReaderChat: key => get(STORE_CHATS, key), getReaderVectors: key => get(STORE_VECTORS, key),
     listReaderChatKeys: () => scan(STORE_CHATS, key => key, true),
     listReaderImages: () => scan(STORE_IMAGES, (key, blob) => ({key:String(key), blob})),
@@ -596,9 +597,7 @@ export async function deleteReaderBookData(bookId, { deleteMemory = false, archi
 }
 
 export async function listBookIds() {
-  const s = await store(STORE_BOOKS, 'readonly');
-  const keys = await reqP(s.getAllKeys ? s.getAllKeys() : s.getAll());
-  return Array.isArray(keys) ? keys : [];
+  return createReaderPackageReader().listBookIds();
 }
 
 // ── 伴读：封面图 ─────────────────────────────────────────────

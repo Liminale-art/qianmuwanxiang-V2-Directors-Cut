@@ -80,6 +80,21 @@ try{
       result=await api.clearOrphanedReaderBlobs();
     }finally{IDBDatabase.prototype.transaction=transaction;}
     check('a book restored after inventory protects its cover at the transactional recheck',inserted&&result.cleared.length===0&&result.skipped.length===1&&Boolean(await api.getCover('restored-during-cleanup')));
+    const bookKey='restored-during-cleanup',valueMethods=['getAll','getAllKeys','openCursor'],savedMethods=valueMethods.map(name=>IDBObjectStore.prototype[name]);
+    try{
+      for(const name of valueMethods){const original=IDBObjectStore.prototype[name];IDBObjectStore.prototype[name]=function(...args){if(this.name==='reader_books')throw Error('inventory must only read keys');return original.apply(this,args);};}
+      const ids=await api.listBookIds();
+      check('book inventory returns actual IDs without loading book values or using a getAll fallback',ids.includes(bookKey)&&ids.every(id=>typeof id==='string'));
+    }finally{valueMethods.forEach((name,i)=>IDBObjectStore.prototype[name]=savedMethods[i]);}
+    const keyCursor=IDBObjectStore.prototype.openKeyCursor;
+    for(const late of [false,true]){
+      let failed=false;
+      try{
+        IDBObjectStore.prototype.openKeyCursor=function(...args){const request=keyCursor.apply(this,args);if(this.name==='reader_books')request.addEventListener('success',()=>{if(late?!request.result:!!request.result)this.transaction.abort();});return request;};
+        try{await api.auditOrphanedReaderBlobs();}catch{failed=true;}
+      }finally{IDBObjectStore.prototype.openKeyCursor=keyCursor;}
+      check('orphan audit rejects '+(late?'end-of-scan':'partial')+' book inventory rather than labelling live covers as unreferenced',failed&&Boolean(await api.getCover(bookKey)));
+    }
     const descriptor=Object.getOwnPropertyDescriptor(window,'indexedDB');
     try{
       Object.defineProperty(window,'indexedDB',{configurable:true,value:undefined});
