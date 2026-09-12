@@ -71,6 +71,27 @@ test('an already stale package cannot start its first write',async()=>{
   await assert.rejects(()=>applyCoreadPackageData(e.data,e.options),/stale import/);assert.deepEqual(e.calls,[]);
 });
 
+test('each committed shelf entry requests persistence before awaiting the next book or category',async()=>{
+  const e=fixture(),events=[];e.options.onBookIndexed=()=>events.push('save:'+e.state.books.filter(b=>b.id!=='untouched').map(b=>b.id).join(','));
+  for(const method of ['putBookWithCover','putReaderChat']){const original=e.options.blobStore[method];e.options.blobStore[method]=async(...args)=>{events.push(method+':'+args[0]);return original(...args);};}
+  await applyCoreadPackageData(e.data,e.options);
+  assert.deepEqual(events,['putBookWithCover:old','save:old','putBookWithCover:new','save:new,old','putReaderChat:chat::old']);
+});
+
+test('a shelf-save failure stops later writes without reclassifying or discarding the committed original',async()=>{
+  const e=fixture();e.options.progress=createCoreadImportProgress();e.options.onBookIndexed=()=>{throw Error('host save failed');};
+  await assert.rejects(applyCoreadPackageData(e.data,e.options),/书目保存请求未确认/);
+  assert.equal(e.options.progress.ok,1);assert.equal(e.options.progress.coverOk,1);assert.equal(e.options.progress.failed,0);
+  assert.equal(e.calls.length,1);assert.equal(e.state.books[0].title,'updated');assert.deepEqual(e.warnings,[]);
+});
+
+test('failed originals and stale completed writes cannot publish a shelf-save request',async()=>{
+  const e=fixture('putBookWithCover');let saves=0;e.options.onBookIndexed=()=>saves++;
+  await applyCoreadPackageData(e.data,e.options);assert.equal(saves,0);
+  let current=true;e.options.check=()=>{if(!current)throw Error('stale');};e.options.blobStore.putBookWithCover=async()=>{current=false;};
+  await assert.rejects(applyCoreadPackageData(e.data,e.options),/stale/);assert.equal(saves,0);
+});
+
 test('audio batch reports committed rows before interruption without losing previous failures',async()=>{
   const e=fixture('putBookWithCover');e.options.progress=createCoreadImportProgress();let current=true;
   e.options.check=()=>{if(!current)throw Error('stale import');};

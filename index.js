@@ -34934,7 +34934,7 @@ async function coreadImportDataFile(file, origin) {
     if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地存储，无法导入。', 'error'); return; }
     if (await confirmDialog('恢复伴读数据', coreadPackageRestoreMessage(data)) !== true) return;
     check();
-    await applyCoreadPackageData(data, {blobStore:blobStore.createReaderPackageWriter({check}), coread:()=>reader, isPlainObject, base64ToBlob, check, progress, warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error)});
+    await applyCoreadPackageData(data, {blobStore:blobStore.createReaderPackageWriter({check}), coread:()=>reader, isPlainObject, base64ToBlob, check, progress, onBookIndexed:saveSettings, warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error)});
     check();
     finishCoreadPackageImport({reader, progress, hasPrefs:isPlainObject(data.prefs), check, save:saveSettings, notify:toast,
       preparePrefs:()=>coreadMergePackageValue(clone(reader), omitConfigConnections({coread:data.prefs}).coread),

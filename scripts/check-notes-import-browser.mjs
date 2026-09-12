@@ -252,6 +252,19 @@ try{
     const legacyBookResult=await applyCoreadPackageData(legacyBook,{blobStore:writer,coread:()=>readerState,isPlainObject:v=>v&&typeof v==='object'&&!Array.isArray(v),base64ToBlob(){throw Error('no cover in legacy pack');},warn(){throw Error('unexpected write failure');}});
     check('legacy book-only import retains the indexed cover and actual original while restoring progress',legacyBookResult.ok===1&&legacyBookResult.coverOk===0&&readerState.books[0].hasCover===true&&readerState.books[0].progress===25&&await (await db.getCover(atomicKey)).text()==='old cover');
     check('cover metadata reconciliation leaves the imported source untouched',legacyBook.books[0].meta.hasCover===false&&legacyBook.books[0].meta!==readerState.books[0]);
+    for(const mode of ['later-interruption','save-failure']){
+      const first='checkpoint-'+mode+'-first',second='checkpoint-'+mode+'-second',shelf={books:[]},progress=createCoreadImportProgress();
+      let current=true,attempts=0,saves=0,errorText='';const storageKey='synthetic-'+mode;
+      const options={coread:()=>shelf,progress,isPlainObject:v=>v&&typeof v==='object'&&!Array.isArray(v),
+        check(){if(!current)throw Error('synthetic page changed');},warn(){throw Error('unexpected original failure');},
+        onBookIndexed(){saves++;if(mode==='save-failure')throw Error('synthetic host failure');localStorage.setItem(storageKey,JSON.stringify(shelf));},
+        blobStore:{...writer,async putBookWithCover(...args){if(++attempts===2){current=false;throw Error('synthetic page changed');}return writer.putBookWithCover(...args);}}};
+      try{await applyCoreadPackageData({books:[{meta:{id:first},fullText:'keep first'},{meta:{id:second},fullText:'do not publish'}]},options);}catch(error){errorText=error.message;}
+      check('native '+mode+' retains the committed original without writing a later book',progress.ok===1&&progress.failed===0&&(await db.getBook(first)).fullText==='keep first'&&!await db.getBook(second));
+      check('native '+mode+' schedules only the current shelf and stops on an unconfirmed request',saves===1&&shelf.books.length===1&&shelf.books[0].id===first&&(mode==='save-failure'
+        ?attempts===1&&errorText.includes('书目保存请求未确认')
+        :attempts===2&&errorText==='synthetic page changed'&&JSON.parse(localStorage.getItem(storageKey)).books[0].id===first));
+    }
     const handoffReader={books:readerState.books,fontSize:16},handoffNotices=[];let handoffSaves=0;
     const handoffOptions={reader:handoffReader,progress:{...createCoreadImportProgress(),ok:1},hasPrefs:true,check:guard,
       preparePrefs:()=>({...handoffReader,fontSize:24,newPref:'incoming'}),save(){localStorage.setItem('synthetic-reader-settings',JSON.stringify(handoffReader));if(++handoffSaves===1)throw Error('synthetic save request failure');},refresh(){},notify:(text,level)=>handoffNotices.push({text,level})};
@@ -331,5 +344,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,141);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,145);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

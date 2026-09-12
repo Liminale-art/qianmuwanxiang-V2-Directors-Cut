@@ -164,11 +164,12 @@ export function coreadPackageRestoreMessage(data) {
   return scope.join('\n\n');
 }
 
-export async function applyCoreadPackageData(data, {blobStore, coread, isPlainObject, base64ToBlob, warn, check = () => {}, progress = createCoreadImportProgress()}) {
+export async function applyCoreadPackageData(data, {blobStore, coread, isPlainObject, base64ToBlob, warn, check = () => {}, onBookIndexed = () => {}, progress = createCoreadImportProgress()}) {
   check();
   for (const b of data.books) {
     check();
     if (!b?.meta?.id) { progress.invalid++; continue; }
+    let indexed = false;
     try {
       const cover = b.coverB64 ? base64ToBlob(b.coverB64, b.coverMime || 'image/jpeg') : null;
       await blobStore.putBookWithCover(b.meta.id, { meta: { title: b.meta.title, author: b.meta.author, mode: b.meta.mode || 'text' }, fullText: b.fullText || '', chapters: b.chapters || [], sig: b.sig || '', comicDescriptions: isPlainObject(b.comicDescriptions) ? b.comicDescriptions : {} }, cover);
@@ -179,7 +180,15 @@ export async function applyCoreadPackageData(data, {blobStore, coread, isPlainOb
       // A book-only legacy pack preserves the already indexed local cover, not the old reading progress.
       const meta = {...b.meta, hasCover:!!cover || !!(idx >= 0 && coread().books[idx].hasCover)};
       if (idx >= 0) coread().books[idx] = meta; else coread().books.unshift(meta);
+      indexed = true;
     } catch (e) { check(); progress.failed++; warn(`import book failed`, e); }
+    // Request host persistence before waiting on the next original/category. This callback is synchronous.
+    // A failed request is not a failed original write; stop without rolling back the committed book.
+    if (indexed) {
+      check();
+      try { onBookIndexed(); } catch (_) { check(); throw Error('书目保存请求未确认，后续恢复已停止；原件与本页书目保留，请先导出备份。'); }
+      check();
+    }
   }
   // 伴读对话 + 记忆切片（reader_chats·按 bucketKey=chatKey::bookId 覆盖式还原·v2 新增）
   if (Array.isArray(data.chats)) {

@@ -95,6 +95,18 @@ test('actual entry reports a repaint failure separately after applied preference
   await e.run({fontSize:28});assert.equal(local.fontSize,28);assert.equal(writes,1);assert.equal(saves,1);
   assert.match(e.notices.at(-1),/不必重复导入/);assert.equal(e.notices.some(n=>n.startsWith('伴读导入未完成：')),false);
 });
+
+test('actual import schedules the first restored shelf before a later write is interrupted',async()=>{
+  const local=settings(),e=fixture(local),saved=[];let release,writes=0;
+  e.c.saveSettings=()=>saved.push(structuredClone(local.books));
+  e.c.blobStore.putBookWithCover=async()=>{if(++writes===2)await new Promise(r=>release=r);};
+  const data={type:'qianmu-coread',books:[{meta:{id:'first'},fullText:'one'},{meta:{id:'second'},fullText:'two'}],prefs:{fontSize:28}};
+  const pending=e.c.coreadImportDataFile({text:async()=>JSON.stringify(data)});await new Promise(r=>setImmediate(r));
+  assert.equal(typeof release,'function');assert.deepEqual(saved.map(books=>books.map(b=>b.id)),[['first']]);
+  e.c.pageChanged=true;release();await pending;
+  assert.equal(saved.length,1,'no save to the changed page or state owner');assert.equal(local.fontSize,16,'incoming preferences not applied after interruption');
+  assert.match(e.notices.at(-1),/已导入 2 本书原件/);assert.equal(e.c.coreadImportDataFile.busy,false);
+});
 test('actual reader export strips complete connections from a detached copy and retains reading preferences',async()=>{
   const local=settings(),before=structuredClone(local),e=fixture(local);await e.c.coreadExportData();
   const result=e.exported();assert.deepEqual(local,before);assert.equal(result.prefs.fontSize,16);assert.equal(result.version,5);
