@@ -1,5 +1,6 @@
 // Lightweight, version-pinned route identity. Not a workflow, credential, permission or execution receipt.
 import {COMFY_CLASSIFICATION_VALUES} from './qianmu-comfy-classification.js';
+import {hasFreshComfyExecution,COMFY_FRESH_EXECUTION_POLICY} from './qianmu-comfy-new-execution.js';
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const identifier = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(value);
 const digest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -55,7 +56,8 @@ export function normalizeComfySceneOrigin(value) {
   }
   return {version:1,mode:value.mode,scope:{namespace:assertComfyRouteNamespace(scope.namespace),chatKey:scope.chatKey,
     continuityId:scope.continuityId,narrativeLayer:scope.narrativeLayer},poolKey:value.poolKey,candidateId:value.candidateId,
-    executionKey:value.executionKey,connectionPresetId:value.connectionPresetId,sourceHash:value.sourceHash};
+    executionKey:value.executionKey,connectionPresetId:value.connectionPresetId,sourceHash:value.sourceHash,
+    ...(hasFreshComfyExecution(value)?{executionPolicy:COMFY_FRESH_EXECUTION_POLICY}:{})};
 }
 export function retainComfySceneOrigin(value) {
   try{return normalizeComfySceneOrigin(value);}catch(_){return {invalid:true};}

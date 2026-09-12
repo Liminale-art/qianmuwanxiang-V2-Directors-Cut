@@ -7,7 +7,7 @@ import { assertComfyRouteNamespace, normalizeComfyRouteSelection, comfyRouteBind
 import { readPinnedComfyRouteWorkflow, applyComfyRouteRecipe } from './qianmu-comfy-route.js';
 import { normalizeStoryboardShotSpec, sanitizeStoryboardDiagnosticData } from './qianmu-storyboard.js';
 import { normalizeStoryboardPromptFormats, resolveStoryboardPromptRendering } from './qianmu-prompt-formats.js';
-import { projectNewComfyExecution } from './qianmu-comfy-new-execution.js';
+import { projectNewComfyExecution, COMFY_FRESH_EXECUTION_POLICY } from './qianmu-comfy-new-execution.js';
 
 export const COMFY_AUTO_PREPARATION_BYTES=8*1024*1024;
 const copy=value=>JSON.parse(JSON.stringify(value));
@@ -91,6 +91,7 @@ export async function prepareComfyAutoSession({binding,namespace,guard=async()=>
     let promptFormats=formats();
     const preparationId=crypto.randomUUID();await current();
     return Object.freeze({binding:chosen.binding,get promptFormats(){return promptFormats;},styleLock:pool.styleLock,issues:freeze(issues),preparationId,executionAuthorized:false,
+      ...(freshComfy===true?{executionPolicy:COMFY_FRESH_EXECUTION_POLICY}:{}),
       get candidates(){return freeze([...candidates.values()].map(({candidate})=>({id:candidate.id,target:copy(candidate.target)})));},
       exclude(id){if(closed)fail('候选准备已结束');candidates.delete(id);promptFormats=formats();},
       async select({shotSpec,scope=null,lock=null,adultAllowed=false,probe}={}) {

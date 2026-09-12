@@ -4,6 +4,7 @@ import {comfySceneScope,comfySceneScopeKey,comfySceneLockError,captureComfyScene
 import {comfyCandidateExecutionKey,COMFY_SELECTION_SCHEMA} from './qianmu-comfy-selection.js';
 import {resolveStoryboardPromptRendering} from './qianmu-prompt-formats.js';
 import {assertComfyRouteNamespace,normalizeComfySceneOrigin} from './qianmu-comfy-route-contract.js';
+import {hasFreshComfyExecution,COMFY_FRESH_EXECUTION_POLICY} from './qianmu-comfy-new-execution.js';
 export {createComfyBatchSceneScopes,createComfyDraftSceneScopes} from './qianmu-comfy-scene-lock.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
@@ -53,8 +54,10 @@ export function createComfySceneCoordinator({resolveNamespace,store=createComfyS
   const claimFor=job=>{const claim=claims.get(job);if(!claim)fail('receipt','本镜续场预留已失效');return claim;};
   return {
     createBatch({prepared,probe,guard:inputGuard=async()=>{}}){
+      const freshComfy=hasFreshComfyExecution(prepared);
       const namespace=assertComfyRouteNamespace(prepared?.binding?.namespace),observations=new Map(),choices=new WeakMap();let ended=false;
-      const current=async()=>{if(ended)fail('closed','本批次续场准备已结束');await inputGuard();await guard(namespace,()=>!ended);await inputGuard();};
+      const checkPolicy=()=>{if(hasFreshComfyExecution(prepared)!==freshComfy)fail('scope','执行规则已变化');};
+      const current=async()=>{if(ended)fail('closed','本批次续场准备已结束');checkPolicy();await inputGuard();await guard(namespace,()=>!ended);await inputGuard();checkPolicy();};
       return {
         async choose(shot,rawScope,{adultAllowed=false}={}){
           await current();
@@ -81,11 +84,11 @@ export function createComfySceneCoordinator({resolveNamespace,store=createComfyS
           const target={...choice.target,modelId:job.profile.model,capabilityModelId:job.profile.capabilityModelId,
             comfyWorkflowBinding:job.profile.comfyRouteBinding,comfyCharacterEnabled:job.profile.comfyCharacterEnabled===true,comfyReferences:job.profile.comfyReferences??null};
           if(choice.target.connectionPresetId&&job.connection?.id!==choice.target.connectionPresetId)fail('scope','本镜连接与选定工作流不符');
-          if(await comfyCandidateExecutionKey({target})!==choice.proposedLock.executionKey)fail('scope','本镜配置与选定工作流不符');await current();
+          if(await comfyCandidateExecutionKey({target},{freshComfy})!==choice.proposedLock.executionKey)fail('scope','本镜配置与选定工作流不符');await current();
           if(!selected.sourceHash||job.shotSpec?.promptRenderingPack?.sourceHash!==selected.sourceHash)fail('scope','本镜取景事实与选择时不符');
           await resolveStoryboardPromptRendering(job.shotSpec,job.shotSpec.promptRenderingPack,job.profile.comfyRoutePromptFormat,{guard:current});await current();
           job.comfySceneOrigin=normalizeComfySceneOrigin({...choice.proposedLock,version:1,mode:'scene',
-            connectionPresetId:choice.target.connectionPresetId||'',sourceHash:selected.sourceHash});
+            connectionPresetId:choice.target.connectionPresetId||'',sourceHash:selected.sourceHash,...(freshComfy?{executionPolicy:COMFY_FRESH_EXECUTION_POLICY}:{})});
           Object.defineProperty(job,'comfySceneClaim',{value:true,enumerable:false});
           const claim={namespace,observed:selected.observed,proposed:copy(choice.proposedLock),facts:capture(routeFacts(job)),receipt:null,begun:false};
           claims.set(job,claim);return true;
@@ -104,7 +107,7 @@ export function createComfySceneCoordinator({resolveNamespace,store=createComfyS
         connectionPresetId:origin.connectionPresetId,parameterPresetId:'',comfyWorkflowBinding:job.profile?.comfyRouteBinding,
         comfyCharacterEnabled:job.profile?.comfyCharacterEnabled===true,comfyReferences:job.profile?.comfyReferences??null};
       if(target.comfyWorkflowBinding?.namespace!==namespace||origin.connectionPresetId&&job.connection?.id!==origin.connectionPresetId)fail('scope','原图工作流与续场来源不符');
-      const matchesOrigin=await comfyCandidateExecutionKey({target})===origin.executionKey&&job.shotSpec?.promptRenderingPack?.sourceHash===origin.sourceHash;
+      const matchesOrigin=await comfyCandidateExecutionKey({target},{freshComfy:hasFreshComfyExecution(origin)})===origin.executionKey&&job.shotSpec?.promptRenderingPack?.sourceHash===origin.sourceHash;
       await check();await resolveStoryboardPromptRendering(job.shotSpec,job.shotSpec.promptRenderingPack,job.profile.comfyRoutePromptFormat,{guard:check});await check();
       if(origin.mode==='independent')return 'independent';
       const proposed={schema:COMFY_SELECTION_SCHEMA,scope,poolKey:origin.poolKey,candidateId:origin.candidateId,executionKey:origin.executionKey};

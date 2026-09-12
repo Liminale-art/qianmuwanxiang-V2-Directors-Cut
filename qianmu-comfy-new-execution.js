@@ -1,6 +1,14 @@
 // Fresh generation only. Never apply this projection to archived jobs or retry payloads.
 // This is not workflow validation: graph, reference and provenance checks still run afterwards.
 const emptyLayer = () => ({positive:'',negative:''});
+export const COMFY_FRESH_EXECUTION_POLICY='qianmu.comfy.fresh.v1';
+export function hasFreshComfyExecution(record) {
+  if (!record || !Object.hasOwn(record,'executionPolicy')) return false;
+  if (record.executionPolicy!==COMFY_FRESH_EXECUTION_POLICY) {
+    throw Object.assign(new Error('Comfy 执行规则版本无效，请核对原记录'),{code:'comfy_execution_policy',submissionState:'not_submitted',retryable:false});
+  }
+  return true;
+}
 export function projectNewComfyExecution(profile) {
   if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
     throw Object.assign(new Error('Comfy 执行配置无效'),{code:'comfy_execution_profile'});

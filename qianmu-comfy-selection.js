@@ -2,6 +2,7 @@
 import { assertComfyRouteNamespace, normalizeComfyRouteBinding, comfyRouteBindingKey } from './qianmu-comfy-route-contract.js';
 import { normalizeComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
 import { COMFY_CLASSIFICATION_VALUES, normalizeComfyClassification, comfyClassificationChoices as choices } from './qianmu-comfy-classification.js';
+import { COMFY_FRESH_EXECUTION_POLICY } from './qianmu-comfy-new-execution.js';
 export { COMFY_CLASSIFICATION_VALUES, normalizeComfyClassification } from './qianmu-comfy-classification.js';
 
 export const COMFY_SELECTION_SCHEMA = 'qianmu.comfy.selection.v1';
@@ -44,7 +45,7 @@ export function normalizeComfyAutoPool(value) {
 }
 
 // Keep legacy digests byte-identical; fresh execution omits recipe additions even when roles were already off.
-const executionIdentity=(value,freshComfy)=>freshComfy===true?[...value,'qianmu.comfy.fresh.v1']:value;
+const executionIdentity=(value,freshComfy)=>freshComfy===true?[...value,COMFY_FRESH_EXECUTION_POLICY]:value;
 export async function comfyCandidateExecutionKey(candidate,{freshComfy=false}={}) {
   const target=candidate.target,binding=normalizeComfyRouteBinding(target.comfyWorkflowBinding),normalized=normalizeTarget(target,binding.namespace);
   // Include connection and reference/role choice; a matching graph name is not matching execution configuration.

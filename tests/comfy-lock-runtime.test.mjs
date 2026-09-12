@@ -14,7 +14,29 @@ import {captureComfySceneStyleLink,copyComfySceneStyleRecord} from '../qianmu-co
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {fakeWebLocks} from './helpers/web-locks-fixture.mjs';
 import {normalizeComfySceneOrigin,retainComfySceneOrigin} from '../qianmu-comfy-route-contract.js';
+import {COMFY_FRESH_EXECUTION_POLICY} from '../qianmu-comfy-new-execution.js';
 const copy=value=>JSON.parse(JSON.stringify(value)),scope={namespace,chatKey:'chat',continuityId:'program-confirmed-scene',narrativeLayer:'present'};
+
+test('unknown or asynchronously changed preparation policy cannot start scene work',async()=>{
+  const e=await fixture({freshComfy:true});let batch;
+  try{
+    assert.throws(()=>e.manager.createBatch({prepared:{...e.prepared,executionPolicy:'future'},probe:e.probe}),{code:'comfy_execution_policy'});
+    const prepared={...e.prepared};batch=e.manager.createBatch({prepared,probe:e.probe,guard:async()=>{delete prepared.executionPolicy;}});
+    const shot=await e.makeShot();await assert.rejects(()=>batch.choose(shot,scope),/执行规则已变化/);
+    assert.equal(e.store.calls.length,0);
+  }finally{batch?.close();await e.close();}
+});
+
+test('fresh origin policy cannot change after reservation to bypass the original submission guard',async()=>{
+  const e=await fixture({freshComfy:true}),batch=e.manager.createBatch({prepared:e.prepared,probe:e.probe});
+  try{
+    const shot=await e.makeShot(),choice=await batch.choose(shot,scope),job=e.makeJob(choice,shot,'fresh');
+    await batch.attach(job,choice);await e.manager.reserve(job);delete job.comfySceneOrigin.executionPolicy;
+    await assert.rejects(()=>e.manager.beforeSubmit(job),{code:'comfy_scene_closed',submissionState:'not_submitted'});
+    assert.equal(e.store.calls.filter(value=>value==='begin').length,0);
+    job.comfySceneOrigin.executionPolicy=COMFY_FRESH_EXECUTION_POLICY;await e.manager.settle(job,'not_submitted');
+  }finally{batch.close();await e.close();}
+});
 function memoryStore(){
   const records=new Map(),calls=[];let afterWrite=()=>{};
   const inspect=async scope=>({...inspectComfySceneRecord(records.get(comfySceneScopeKey(scope)),scope,100),generation:0});
@@ -24,13 +46,13 @@ function memoryStore(){
     reserve:(scope,request)=>write(scope,{...request,type:'reserve'}),begin:receipt=>write(receipt.scope,{type:'begin',receipt}),
     settle:(receipt,outcome)=>write(receipt.scope,{type:'settle',receipt,outcome}),unlock:(scope,request)=>write(scope,{...request,type:'unlock'}),close:()=>calls.push('close')};
 }
-async function fixture(){
+async function fixture({freshComfy=false}={}){
   const f=await recipesFixture({formats:['tags','natural_language']});f.rows.forEach((row,index)=>Object.assign(row.document.classification,{visualKinds:[index?'environment':'character']}));
   const recipes=await Promise.all(f.rows.map(selection=>pinComfyRouteWorkflow({namespace,selection,createStore:f.createStore})));
   const pool=normalizeComfyAutoPool({schema:COMFY_SELECTION_SCHEMA,namespace,id:'pool',revision:'v1',enabled:false,styleLock:true,candidates:recipes.map((recipe,index)=>({id:`candidate-${index}`,enabled:true,target:{...f.routes[index],comfyWorkflowBinding:recipe.binding},classification:recipe.document.classification}))});
   const row={namespace,id:pool.id,revision:pool.revision,version:1,name:'Pool',archived:false,pool},createStore=()=>({list:async()=>[copy(row)],versions:async()=>[copy(row)],load:async()=>copy(row),close(){}});
   const binding=(await auto.pinComfyAutoPool({namespace,selection:row,createStore})).binding;
-  const prepared=await auto.prepareComfyAutoSession({namespace,binding,createStore,readRecipe:options=>readPinnedComfyRouteWorkflow({...options,createStore:f.createStore})});
+  const prepared=await auto.prepareComfyAutoSession({namespace,binding,createStore,freshComfy,readRecipe:options=>readPinnedComfyRouteWorkflow({...options,createStore:f.createStore})});
   const store=memoryStore();let account=namespace;
   const manager=createComfySceneCoordinator({store,resolveNamespace:async()=>account,ownerId:'page-a',locks:fakeWebLocks()});
   const probe=async({recipe})=>({automaticEligible:checkComfyConfiguration({workflow:recipe.document.workflow,parameters:{...recipe.document.parameters,count:1},model:'comfy-workflow',outputNodeId:'save',automatic:true}).localConfigurationReady});
@@ -57,13 +79,15 @@ test('one batch proposes one style, attaches checked original facts, then reserv
   }finally{batch.close();await e.close();}
 });
 
-test('historical provenance survives snapshot normalization but restores a fresh claim and never a historical receipt',async()=>{
-  const e=await fixture(),batch=e.manager.createBatch({prepared:e.prepared,probe:e.probe});
+for(const freshComfy of [false,true])test(`historical provenance (fresh ${freshComfy}) retains its rule but restores a new claim, never an old receipt`,async()=>{
+  const e=await fixture({freshComfy}),batch=e.manager.createBatch({prepared:e.prepared,probe:e.probe});
   try{
     const shot=await e.makeShot(),choice=await batch.choose(shot,scope),original=e.makeJob(choice,shot,'original');await batch.attach(original,choice);
     await e.manager.reserve(original);await e.manager.beforeSubmit(original);await e.manager.settle(original,'succeeded');
     const saved=core.sanitizeStoryboardSnapshot(original),before=JSON.stringify(saved);
     assert.deepEqual(saved.comfySceneOrigin,original.comfySceneOrigin);assert.equal(saved.comfySceneClaim,undefined);
+    assert.equal(saved.comfySceneOrigin.executionPolicy,freshComfy?COMFY_FRESH_EXECUTION_POLICY:undefined);
+    assert.equal(Object.hasOwn(saved.comfySceneOrigin,'executionPolicy'),freshComfy);
     const job={...copy(saved),id:'retry',automatic:false};assert.equal(await e.manager.restore(job), 'linked');
     await assert.rejects(()=>e.manager.beforeSubmit(job),/尚未取得/);
     await e.manager.reserve(job);await e.manager.beforeSubmit(job);await e.manager.settle(job,'succeeded');
@@ -112,7 +136,8 @@ test('origin contract whitelists bounded metadata and keeps malformed-present da
   const dirty={...origin,ownerId:'secret-owner',receipt:{token:'permit'},workflow:'huge graph',scope:{...scope,token:'scope permit'}};
   assert.deepEqual(normalizeComfySceneOrigin(dirty),origin);
   assert.deepEqual(core.sanitizeStoryboardSnapshot({source:'comfy',comfySceneOrigin:dirty,comfySceneClaim:true}).comfySceneOrigin,origin);
-  for(const bad of [null,{}, {...origin,version:2},{...origin,sourceHash:''},{...origin,scope:{...scope,chatKey:'x'.repeat(513)}},{...origin,mode:'automatic'}]){
+  for(const bad of [null,{}, {...origin,version:2},{...origin,sourceHash:''},{...origin,scope:{...scope,chatKey:'x'.repeat(513)}},{...origin,mode:'automatic'},
+    ...[undefined,null,'legacy','future',true].map(executionPolicy=>({...origin,executionPolicy}))]){
     assert.deepEqual(retainComfySceneOrigin(bad),{invalid:true});assert.deepEqual(core.sanitizeStoryboardSnapshot({comfySceneOrigin:bad}).comfySceneOrigin,{invalid:true});
   }
   const e=await fixture();try{assert.equal(await e.manager.restore({source:'comfy'}),'legacy');assert.equal(e.store.calls.length,0);}finally{await e.close();}
