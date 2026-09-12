@@ -3,6 +3,8 @@
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
+import { normalizeComfyCloudStage } from './qianmu-comfy-cloud-stage-contract.js';
+import { comfyStillMime } from './qianmu-comfy-results.js';
 
 const MAX_IMAGE_BYTES = 48 * 1024 * 1024;
 const SCHEMA = 'qianmu.image-service-result.v1';
@@ -65,8 +67,9 @@ async function sync(directory) {
 export {checkedDirectory as checkPrivateResultDirectory,read as readPrivateResultFile,replace as replacePrivateResultFile,sync as syncPrivateResultDirectory};
 export function createImageServiceResults({ dataRoot, store, maxSlots = 128, maxBytes = 512 * 1024 * 1024, scope = 'novel' } = {}) {
   if (!store?.exclusive || typeof dataRoot !== 'string' || !path.isAbsolute(dataRoot) || dataRoot.includes('\0') || path.resolve(dataRoot) === path.parse(path.resolve(dataRoot)).root) throw fail('storage', '缺少可信的生图结果存储');
-  if (!['novel', 'comfy'].includes(scope)) throw fail('scope', '生图结果范围无效');
-  const resultDirectory = scope === 'comfy' ? 'comfy-results-v1' : 'image-results-v1';
+  if (!['novel', 'comfy', 'comfy-cloud'].includes(scope)) throw fail('scope', '生图结果范围无效');
+  const cloud = scope === 'comfy-cloud', schema = cloud ? 'qianmu.comfy-cloud-result.v1' : SCHEMA;
+  const resultDirectory = cloud ? 'comfy-cloud-results-v1' : scope === 'comfy' ? 'comfy-results-v1' : 'image-results-v1';
   const slotLimit = Math.max(1, Math.min(128, Math.trunc(Number(maxSlots) || 128)));
   const byteLimit = Math.max(MAX_IMAGE_BYTES, Math.min(512 * 1024 * 1024, Math.trunc(Number(maxBytes) || 512 * 1024 * 1024)));
   async function locate(create = false) {
@@ -81,7 +84,7 @@ export function createImageServiceResults({ dataRoot, store, maxSlots = 128, max
     await checkedDirectory(folder);
     const body = await read(path.join(folder, 'manifest.json'), 16 * 1024); let value;
     try { value = JSON.parse(body.toString()); } catch (_) { throw fail('corrupt', '生图结果清单损坏'); }
-    if (value?.schema !== SCHEMA || !['reserved', 'remote', 'ready'].includes(value.status) || JSON.stringify(identity(value.identity)) !== JSON.stringify(expected)
+    if (value?.schema !== schema || !['reserved', 'remote', 'ready'].includes(value.status) || JSON.stringify(identity(value.identity)) !== JSON.stringify(expected)
       || !Number.isSafeInteger(value.bytes) || value.bytes < 0 || value.bytes > MAX_IMAGE_BYTES || !Array.isArray(value.images) || value.images.length > 8) throw fail('corrupt', '生图结果清单不匹配');
     if (value.status === 'reserved' && (value.bytes || value.images.length)) throw fail('corrupt', '结果预留状态无效');
     if (value.status !== 'reserved') {
@@ -97,6 +100,21 @@ export function createImageServiceResults({ dataRoot, store, maxSlots = 128, max
         total += image.bytes;
       }
       if (total !== value.bytes || remote !== (value.status === 'remote')) throw fail('corrupt', '结果容量信息不一致');
+    }
+    if (cloud) {
+      if (Object.keys(value).some(key => !['schema', 'identity', 'status', 'bytes', 'images', 'createdAt', 'result', 'cloud'].includes(key))
+        || value.status === 'remote' || value.status === 'reserved' && (value.cloud !== undefined || value.result !== undefined)) throw fail('corrupt', '云端暂存清单含不支持的内容');
+      if (value.status === 'ready') {
+        value.cloud = normalizeComfyCloudStage(value.cloud, expected);
+        if (value.images.length !== value.cloud.images.length || Object.keys(value.result).some(key => !['provider', 'model', 'upstreamId', 'durationMs'].includes(key))
+          || value.result.provider !== value.cloud.receipt.task.provider || value.result.model !== value.cloud.receipt.stillOutput.model
+          || value.result.upstreamId !== value.cloud.receipt.task.taskId || !Number.isFinite(value.result.durationMs) || value.result.durationMs < 0 || value.result.durationMs > 3600000) throw fail('corrupt', '云端暂存与原任务不一致');
+        for (const [index, image] of value.images.entries()) {
+          const selected = value.cloud.selection[index], proof = value.cloud.images[index].integrity;
+          if (Object.keys(image).some(key => !['name', 'bytes', 'checksum', 'mime'].includes(key)) || image.bytes !== selected.sizeBytes
+            || image.mime !== selected.mime || image.checksum !== proof.sha256) throw fail('corrupt', '云端图片与摘要证据不一致');
+        }
+      }
     }
     return { value, receipt: hash(body) };
   }
@@ -165,7 +183,7 @@ export function createImageServiceResults({ dataRoot, store, maxSlots = 128, max
         if (used.count >= slotLimit || used.bytes + MAX_IMAGE_BYTES > byteLimit) throw fail('full', '生图结果暂存已满，请先领取或清理旧结果');
         await fs.mkdir(folder, { mode: 0o700 });
         try {
-          await replace(folder, 'manifest.json', JSON.stringify({ schema: SCHEMA, identity: captured, status: 'reserved', bytes: 0, images: [], createdAt: Date.now() }), 'manifest');
+          await replace(folder, 'manifest.json', JSON.stringify({ schema, identity: captured, status: 'reserved', bytes: 0, images: [], createdAt: Date.now() }), 'manifest');
           await sync(folder); await sync(root);
         } catch (cause) {
           // This brand-new, still unpaid slot was created under our exclusive
@@ -190,31 +208,49 @@ export function createImageServiceResults({ dataRoot, store, maxSlots = 128, max
         const previous = await manifest(folder, captured);
         if (!['reserved', 'remote'].includes(previous.value.status)) throw fail('exists', '原结果已保存，未覆盖');
         if (!result?.ok || !Array.isArray(result.images) || !result.images.length || result.images.length > 8) throw fail('image', '生图结果不完整');
+        let evidence, binaries, cloudResult;
+        if (cloud) {
+          evidence = normalizeComfyCloudStage(result.cloud, captured);
+          if (result.ok !== true || result.images.length !== evidence.images.length || result.provider !== evidence.receipt.task.provider
+            || result.model !== evidence.receipt.stillOutput.model || result.upstreamId !== evidence.receipt.task.taskId) throw fail('image', '云端原图与暂存约定不一致');
+          cloudResult = { provider: result.provider, model: result.model, upstreamId: result.upstreamId, durationMs: Math.max(0, Math.min(3600000, Number(result.durationMs) || 0)) };
+          binaries = result.images.map((image, index) => {
+            if (!image || Array.isArray(image) || Reflect.ownKeys(image).length !== 1 || !Object.hasOwn(image, 'bytes')) throw fail('image', '云端暂存只接收已核验的图片字节');
+            const descriptor = Object.getOwnPropertyDescriptor(image, 'bytes');
+            if (descriptor.get || descriptor.set || !(descriptor.value instanceof Uint8Array) || !(descriptor.value.buffer instanceof ArrayBuffer)
+              || descriptor.value.byteLength !== evidence.selection[index].sizeBytes) throw fail('image', '云端原图字节不完整');
+            const bytes = Buffer.from(descriptor.value);
+            if (hash(bytes) !== evidence.images[index].integrity.sha256 || comfyStillMime(bytes) !== evidence.selection[index].mime) throw fail('image', '云端原图摘要校验失败，未写入');
+            return bytes;
+          });
+        }
         let bytes = 0; const images = [];
-        for (let index = 0; index < result.images.length; index++) {
-          const image = result.images[index], encoded = image?.data;
-          if (!encoded && image?.url) {
+        for (let index = 0; index < (cloud ? binaries.length : result.images.length); index++) {
+          const image = cloud ? null : result.images[index], encoded = image?.data;
+          if (!cloud && !encoded && image?.url) {
             let url; try { url = new URL(image.url); } catch (_) { throw fail('image', '原图地址无效'); }
             if (url.protocol !== 'https:' || url.username || url.password || String(image.url).length > 4096) throw fail('image', '原图地址无效');
             images.push({ name: `image-${index}.bin`, bytes: 0, sourceUrl: url.toString(), mime: /^image\/(png|jpeg|webp|gif)$/.test(image.mime || '') ? image.mime : 'image/png' });
             continue;
           }
-          if (typeof encoded !== 'string' || encoded.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4 || !/^[a-z0-9+/]+={0,2}$/i.test(encoded)) throw fail('image', '图片数据尚未完整取回');
-          const buffer = Buffer.from(encoded, 'base64');
-          if (buffer.toString('base64').replace(/=+$/, '') !== encoded.replace(/=+$/, '')) throw fail('image', '图片编码不完整');
+          if (!cloud && (typeof encoded !== 'string' || encoded.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4 || !/^[a-z0-9+/]+={0,2}$/i.test(encoded))) throw fail('image', '图片数据尚未完整取回');
+          const buffer = cloud ? binaries[index] : Buffer.from(encoded, 'base64');
+          if (!cloud && buffer.toString('base64').replace(/=+$/, '') !== encoded.replace(/=+$/, '')) throw fail('image', '图片编码不完整');
           bytes += buffer.length; if (bytes > MAX_IMAGE_BYTES) throw fail('full', '本次生图结果超过暂存上限');
           const type = mime(buffer), name = `image-${index}.bin`;
           await replace(folder, name, buffer, 'image');
           images.push({ name, bytes: buffer.length, checksum: hash(buffer), mime: type,
-            ...(Number.isSafeInteger(image.width) && image.width > 0 && image.width <= 16384 ? { width: image.width } : {}),
-            ...(Number.isSafeInteger(image.height) && image.height > 0 && image.height <= 16384 ? { height: image.height } : {}),
+            ...(!cloud && Number.isSafeInteger(image.width) && image.width > 0 && image.width <= 16384 ? { width: image.width } : {}),
+            ...(!cloud && Number.isSafeInteger(image.height) && image.height > 0 && image.height <= 16384 ? { height: image.height } : {}),
           });
         }
-        const value = { ...previous.value, status: images.some(image => image.sourceUrl) ? 'remote' : 'ready', bytes, images, result: {
+        const value = { ...previous.value, status: images.some(image => image.sourceUrl) ? 'remote' : 'ready', bytes, images, result: cloud ? cloudResult : {
           provider: String(result.provider || '').slice(0,40), model: String(result.model || '').slice(0,240),
           upstreamId: String(result.upstreamId || '').slice(0,240), durationMs: Math.max(0, Math.min(3600000, Number(result.durationMs) || 0)),
         } };
+        if (cloud) value.cloud = evidence;
         const serialized = JSON.stringify(value);
+        if (cloud && Buffer.byteLength(serialized) > 16 * 1024) throw fail('full', '云端暂存清单超过上限，原记录保留');
         await replace(folder, 'manifest.json', serialized, 'manifest'); await sync(folder);
         return { receipt: hash(serialized), bytes, imageCount: images.length, ready: value.status === 'ready' };
       });
@@ -226,18 +262,18 @@ export function createImageServiceResults({ dataRoot, store, maxSlots = 128, max
         const folder = path.join(root, slotId(captured));
         try { await fs.lstat(folder); } catch (cause) { if (missing(cause)) return null; throw cause; }
         const current = await manifest(folder, captured);
-        if (metadataOnly) return { receipt: current.receipt, bytes: current.value.bytes, imageCount: current.value.images.length, ready: current.value.status === 'ready', remote: current.value.status === 'remote' };
+        if (metadataOnly) return { receipt: current.receipt, bytes: current.value.bytes, imageCount: current.value.images.length, ready: current.value.status === 'ready', remote: current.value.status === 'remote', ...(cloud && current.value.cloud ? { cloud: current.value.cloud } : {}) };
         if (current.value.status === 'reserved') return null;
         let total = 0; const images = [];
         for (const [index, image] of current.value.images.entries()) {
           if (image.sourceUrl) { images.push({ id: `image-${index+1}`, mime: image.mime, data: '', url: image.sourceUrl }); continue; }
           if (image.name !== `image-${index}.bin` || !/^[a-f0-9]{64}$/.test(image.checksum || '') || !Number.isSafeInteger(image.bytes) || image.bytes < 1 || image.bytes > MAX_IMAGE_BYTES) throw fail('corrupt', '生图文件清单无效');
           const buffer = await read(path.join(folder, image.name), MAX_IMAGE_BYTES); total += buffer.length;
-          if (total > MAX_IMAGE_BYTES || buffer.length !== image.bytes || hash(buffer) !== image.checksum || mime(buffer) !== image.mime) throw fail('corrupt', '原图片校验失败，未重新生成');
-          images.push({ id: `image-${index+1}`, mime: image.mime, data: buffer.toString('base64'), url: '', ...(image.width ? {width:image.width}:{}), ...(image.height ? {height:image.height}:{}) });
+          if (total > MAX_IMAGE_BYTES || buffer.length !== image.bytes || hash(buffer) !== image.checksum || (cloud ? comfyStillMime(buffer) : mime(buffer)) !== image.mime) throw fail('corrupt', '原图片校验失败，未重新生成');
+          images.push(cloud ? { id: `image-${index+1}`, mime: image.mime, bytes: buffer } : { id: `image-${index+1}`, mime: image.mime, data: buffer.toString('base64'), url: '', ...(image.width ? {width:image.width}:{}), ...(image.height ? {height:image.height}:{}) });
         }
         if (total !== current.value.bytes || !images.length) throw fail('corrupt', '原图片大小校验失败');
-        return { ...current.value.result, ok: true, text: '', images, receipt: current.receipt, ready: current.value.status === 'ready' };
+        return { ...current.value.result, ok: true, text: '', images, receipt: current.receipt, ready: current.value.status === 'ready', ...(cloud ? { cloud: current.value.cloud } : {}) };
       });
     },
     discard(rawIdentity, receipt, { valid = () => true } = {}) {

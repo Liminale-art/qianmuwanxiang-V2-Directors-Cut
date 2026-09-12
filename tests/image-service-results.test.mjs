@@ -8,16 +8,71 @@ import { Readable } from 'node:stream';
 import { createImageServiceStore } from '../qianmu-image-service-store.js';
 import { createImageServiceResults } from '../qianmu-image-service-results.js';
 import { pinnedImageResultFetch, validateGatewayBaseUrl } from '../qianmu-image-gateway.js';
+import { verifyComfyCloudImageDigest } from '../qianmu-comfy-cloud-digest.js';
+import { COMFY_CLOUD_STAGE_SCHEMA } from '../qianmu-comfy-cloud-stage-contract.js';
+import { COMFY_CLOUD_RECEIPT_SCHEMA } from '../qianmu-comfy-cloud-receipt.js';
+import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=';
 const identity = (attemptId = 'one', extra = {}) => ({ namespace: 'account', channelKey: 'a'.repeat(64), requestDigest: 'b'.repeat(64), fence: 'private-fence', attemptId, ...extra });
 const result = { ok: true, provider: 'novel', model: 'nai-diffusion-5-full', images: [{ data: PNG }] };
 async function fixture(t, options = {}) {
   const parent = await fs.realpath(os.tmpdir()), root = await fs.mkdtemp(path.join(parent, 'qianmu-result-test-'));
-  const store = createImageServiceStore({ dataRoot: root }), cache = createImageServiceResults({ dataRoot: root, store, ...options });
+  const store = createImageServiceStore({ dataRoot: root, ...(options.scope === 'comfy-cloud' ? { scope: 'comfy-cloud' } : {}) }), cache = createImageServiceResults({ dataRoot: root, store, ...options });
   t.after(async () => { await store.close(); const real = await fs.realpath(root); assert.equal(path.dirname(real), parent); assert.match(path.basename(real), /^qianmu-result-test-/); await fs.rm(real, { recursive: true }); });
   return { root, store, cache };
 }
+
+async function cloudResult(owner = identity()) {
+  const checked = await verifyComfyCloudImageDigest(Buffer.from(PNG, 'base64'), null);
+  const task = bindComfyCloudTask(bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2'), 'original', { self: '/api/v2/jobs/original', cancel: '/api/v2/jobs/original/cancel' });
+  const assetId = '00000000-0000-4000-8000-000000000001';
+  return { ok: true, provider: 'comfy-cloud', model: 'workflow', upstreamId: 'original', images: [{ bytes: checked.bytes }],
+    cloud: { schema: COMFY_CLOUD_STAGE_SCHEMA, identity: owner, receipt: { schema: COMFY_CLOUD_RECEIPT_SCHEMA, task, requestDigest: owner.requestDigest,
+      workflow: { templateHash: 'c'.repeat(64), executionHash: 'd'.repeat(64) }, stillOutput: { version: 1, model: 'workflow', previewNodeIds: [], execution: { version: 1, automatic: true, maxImages: 1, expectedImages: 1, outputNodeIds: ['save'] } } },
+    selection: [{ assetId, nodeId: 'save', mime: 'image/png', sizeBytes: checked.bytes.length, hash: null }],
+    images: [{ assetId, hash: null, integrity: checked.integrity }] } };
+}
+
+test('cloud staging reuses private storage but remains separate from native images and reads bytes without base64', async t => {
+  const { root, store, cache } = await fixture(t, { scope: 'comfy-cloud' }), packet = await cloudResult();
+  await cache.reserve(identity());
+  const saved = await cache.save(identity(), packet), loaded = await cache.load(identity());
+  assert.equal(saved.ready, true); assert.equal(loaded.receipt, saved.receipt); assert.equal(loaded.cloud.schema, COMFY_CLOUD_STAGE_SCHEMA);
+  assert.deepEqual(Buffer.from(loaded.images[0].bytes), Buffer.from(PNG, 'base64'));
+  assert.equal(loaded.images[0].data, undefined); assert.equal(loaded.images[0].url, undefined);
+  const inventory = await cache.inventory(identity().namespace);
+  assert.equal(inventory.totals.count, 1); assert.equal(inventory.totals.imageBytes, Buffer.from(PNG, 'base64').length);
+  assert.equal((await cache.inventory('other-account')).totals.count, 0);
+  assert.equal(await createImageServiceResults({ dataRoot: root, store, scope: 'comfy' }).load(identity()), null);
+  assert.equal(await createImageServiceResults({ dataRoot: root, store }).load(identity()), null);
+  await assert.rejects(cache.save(identity(), packet), { code: 'image_service_result_exists' });
+  await cache.discard(identity(), saved.receipt); assert.equal(await cache.load(identity()), null);
+});
+
+test('cloud staging rejects URLs, base64, stale proof and mismatched owner before saving any image file', async t => {
+  for (const kind of ['url', 'data', 'bytes', 'owner']) {
+    const { root, cache } = await fixture(t, { scope: 'comfy-cloud' }), packet = await cloudResult(); await cache.reserve(identity());
+    if (kind === 'url') packet.images = [{ url: 'https://private.test/?sig=private' }];
+    if (kind === 'data') packet.images = [{ data: PNG }];
+    if (kind === 'bytes') packet.images[0].bytes.fill(0);
+    if (kind === 'owner') packet.cloud.identity = { ...identity(), fence: 'other' };
+    await assert.rejects(cache.save(identity(), packet));
+    const folders = await fs.readdir(path.join(root, '.qianmu-service', 'comfy-cloud-results-v1'));
+    assert.deepEqual(await fs.readdir(path.join(root, '.qianmu-service', 'comfy-cloud-results-v1', folders[0])), ['manifest.json']);
+    assert.equal((await cache.load(identity(), { metadataOnly: true })).ready, false);
+  }
+});
+
+test('cloud staging rechecks the stored bytes and the proof-to-manifest relationship on recovery', async t => {
+  for (const kind of ['binary', 'proof']) {
+    const { root, cache } = await fixture(t, { scope: 'comfy-cloud' }); await cache.reserve(identity()); await cache.save(identity(), await cloudResult());
+    const base = path.join(root, '.qianmu-service', 'comfy-cloud-results-v1'), folders = await fs.readdir(base), folder = path.join(base, folders[0]);
+    if (kind === 'binary') { const file = path.join(folder, 'image-0.bin'), bytes = await fs.readFile(file); bytes[20] ^= 1; await fs.writeFile(file, bytes); }
+    else { const file = path.join(folder, 'manifest.json'), body = JSON.parse(await fs.readFile(file, 'utf8')); body.cloud.images[0].integrity.sha256 = '0'.repeat(64); await fs.writeFile(file, JSON.stringify(body)); }
+    await assert.rejects(cache.load(identity()), { code: 'image_service_result_corrupt' });
+  }
+});
 
 test('public media lookup is pinned to copied validated addresses and never forwards authentication', async () => {
   const url = 'https://image.example.test/p.png?sig=mock', addresses = [{ address: '8.8.8.8', family: 4 }]; let options;
