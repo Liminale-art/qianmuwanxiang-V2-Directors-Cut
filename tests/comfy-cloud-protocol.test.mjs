@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bindComfyCloudProtocol as bind, bindComfyCloudTask as task, planComfyCloudOperation as plan } from '../qianmu-comfy-cloud-protocol.js';
+import { bindComfyCloudProtocol as bind, bindComfyCloudTask, planComfyCloudOperation as plan } from '../qianmu-comfy-cloud-protocol.js';
 const cloud = bind('https://cloud.comfy.org', 'comfy-cloud-v2');
 const rh = bind('https://www.runninghub.cn', 'runninghub-workflow-v1');
 const id = '7f3d2c1b-9a8e-4d6f-b012-3c4d5e6f7a8b', rhId = '1904152026220003329';
+const task = (binding, id) => bindComfyCloudTask(binding, id, binding?.provider === 'comfy-cloud'
+  ? { self: `/api/v2/jobs/${id}`, cancel: `/api/v2/jobs/${id}/cancel` } : undefined);
 
 test('official roots normalize without inferring an execution protocol from a URL', () => {
   for (const root of ['', '/', '/api/v2', '/api/v2/']) assert.deepEqual(bind(`https://cloud.comfy.org${root}`, cloud.protocol), cloud);

@@ -48,12 +48,39 @@ function checkedBinding(value) {
   return canonical;
 }
 
-export function bindComfyCloudTask(binding, taskId) {
+function checkedJobLinks(binding, taskId, links) {
+  if (!object(links)) fail('links', '云端未返回原任务查询地址，请核查原任务');
+  const paths = {};
+  for (const name of ['self', 'cancel']) {
+    const raw = links[name];
+    if (typeof raw !== 'string' || raw.length > 2048 || /[\u0000-\u0020\u007f\\%?#]/.test(raw)
+      || !(raw.startsWith('/') && !raw.startsWith('//') || raw.startsWith('https://'))) fail('links', '云端原任务地址无效');
+    let url; try { url = new URL(raw, binding.origin); } catch (_) { fail('links', '云端原任务地址无效'); }
+    const path = raw.startsWith('/') ? raw : raw.replace(/^https:\/\/[^/]+/, '');
+    if (url.origin !== binding.origin || url.username || url.password || url.pathname !== path) fail('links', '云端原任务地址已改变');
+    const suffix = `/api/v2/jobs/${taskId}${name === 'cancel' ? '/cancel' : ''}`;
+    if (!path.endsWith(suffix)) fail('links', '云端地址与原任务编号不一致');
+    const prefix = path.slice(0, -suffix.length);
+    if (prefix && !/^\/deployment\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(prefix)) fail('links', '云端任务地址前缀暂不支持');
+    paths[name] = `${binding.origin}${path}`;
+  }
+  if (paths.cancel !== `${paths.self}/cancel`) fail('links', '云端查询和取消地址不属于同一任务');
+  return Object.freeze(paths);
+}
+
+export function requireComfyCloudTaskId(binding, taskId) {
   const current = checkedBinding(binding);
   const pattern = current.provider === 'runninghub' ? /^[0-9]{1,64}$/ : /^[a-zA-Z0-9_-]{1,240}$/;
   // Task ids are strings, especially RH's integers beyond Number's safe precision.
   if (typeof taskId !== 'string' || !pattern.test(taskId)) fail('task', '云端原任务编号无效');
-  return Object.freeze({ ...current, taskId });
+  return taskId;
+}
+
+export function bindComfyCloudTask(binding, taskId, links) {
+  const current = checkedBinding(binding);
+  requireComfyCloudTaskId(current, taskId);
+  const urls = current.provider === 'comfy-cloud' ? checkedJobLinks(current, taskId, links) : undefined;
+  return Object.freeze({ ...current, taskId, ...(urls ? { links: urls } : {}) });
 }
 
 export function planComfyCloudOperation(binding, operation, task) {
@@ -62,12 +89,13 @@ export function planComfyCloudOperation(binding, operation, task) {
   const [method, route, effect] = allowed[operation];
   let path = route, body, taskId;
   if (operation !== 'submit') {
-    const original = bindComfyCloudTask(task, task?.taskId);
+    const original = bindComfyCloudTask(task, task?.taskId, task?.links);
     if (original.origin !== current.origin || original.protocol !== current.protocol || original.provider !== current.provider) {
       fail('task_binding', '请回原云端连接核查该任务，未切换平台');
     }
     taskId = original.taskId;
-    if (current.provider === 'comfy-cloud') path += `${taskId}${operation === 'cancel' ? '/cancel' : ''}`;
+    // Follow verified response links, including serverless mount prefixes.
+    if (current.provider === 'comfy-cloud') path = original.links[operation === 'cancel' ? 'cancel' : 'self'].slice(current.origin.length);
     else body = Object.freeze({ taskId });
   } else if (task !== undefined) fail('task_replay', '已有任务不能作为新的提交，请先核查原任务');
   return Object.freeze({ ...current, operation, effect, method, url: `${current.origin}${path}`,
