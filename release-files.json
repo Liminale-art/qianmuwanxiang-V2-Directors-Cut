@@ -3,6 +3,7 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-comfy-new-execution.js",
     "qianmu-config-connections.js",
     "qianmu-config-export.js",
     "qianmu-library-backup.js",

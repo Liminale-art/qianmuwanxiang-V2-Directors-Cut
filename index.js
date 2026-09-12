@@ -13,6 +13,7 @@ import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCl
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
 import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
+import { projectNewComfyExecution } from './qianmu-comfy-new-execution.js';
 import { inspectFocusLock, createFocusLockGuard } from './qianmu-focus-lock.js';
 import { focusVoiceCharacterKey, cleanFocusVoice, focusVoiceProfile, saveFocusVoiceProfile, focusVoiceOptions } from './qianmu-focus-voice.js';
 import { focusClockFormat, focusClockDateKey, focusClockWeekStart } from './qianmu-focus-time.js';
@@ -17397,13 +17398,13 @@ function storyboardShotSpecForSelection(shot, selection) {
   return spec;
 }
 
-function storyboardGenerationPayload(state, profile, { sourceId = state.source, prompt = state.prompt, negative = state.negative, shot = null, artistAssignment = null, connection = state.connections?.[sourceId]?.draft || {} } = {}) {
+function storyboardGenerationPayload(state, profile, { sourceId = state.source, prompt = state.prompt, negative = state.negative, shot = null, artistAssignment = null, connection = state.connections?.[sourceId]?.draft || {}, comfyPromptLayer = null } = {}) {
   const modelBinding = resolveStoryboardModelBinding(sourceId, { ...resolveStoryboardConnectionBinding(sourceId, connection), model: profile.model, capabilityModelId: profile.capabilityModelId });
   const capabilities = getStoryboardCapabilities(sourceId, modelBinding.capabilityModelId, sourceId === 'comfy' ? (profile.comfyWorkflow || '') : undefined, connection);
   const artist = capabilities.supportsArtistSyntax ? artistAssignment?.artist || storyboardSelectedArtistPreset(state) : null;
   const routeLayer = sourceId === 'comfy' && profile.comfyRouteBinding != null ? profile.comfyRoutePromptLayer : null;
   if (sourceId === 'comfy' && profile.comfyRouteBinding != null && (!routeLayer || routeLayer.invalid || profile.comfyRouteBinding.invalid)) throw new Error('固定工作流提示补充无效，请重新核对原版本');
-  const defaults = routeLayer || storyboardProviderPromptDefaults(sourceId, modelBinding.remoteModelId, state, modelBinding.capabilityModelId);
+  const defaults = routeLayer || (sourceId === 'comfy' && comfyPromptLayer) || storyboardProviderPromptDefaults(sourceId, modelBinding.remoteModelId, state, modelBinding.capabilityModelId);
   const artistString = capabilities.supportsArtistSyntax ? String(artist?.value || state.promptDraft?.artistString || '').trim() : '';
   const shotSpec = normalizeStoryboardShotSpec(shot?.shotSpec || {
     ...shot,
@@ -17417,6 +17418,7 @@ function storyboardGenerationPayload(state, profile, { sourceId = state.source, 
   const compiled = manuallyLocked
     ? (() => {
       const exact = routeLayer ? { prompt: storyboardJoinPrompt([routeLayer.positive, prompt], sourceId), negative: storyboardJoinPrompt([routeLayer.negative, negative], sourceId) }
+        : sourceId === 'comfy' && comfyPromptLayer ? { prompt, negative }
         : storyboardPromptsForArtist(state, artist, sourceId, modelBinding.remoteModelId, { prompt, negative, honorBaked: true, capabilityModelId: modelBinding.capabilityModelId });
       return { prompt: exact.prompt, negative: exact.negative, providerOptions: {}, characterBlocks: [], validation: { valid: true, shot: shotSpec, errors: [], warnings: [] }, modelBinding, degradation: { mode: 'manual_flat', reason: 'user_locked_prompt' } };
     })()
@@ -17506,7 +17508,7 @@ function storyboardResolveRoutingProfile(state, route, baseProfile = null, prepa
   return storyboardProviderProfile(state, sourceId, { ...profile, model: binding.remoteModelId, capabilityModelId: binding.capabilityModelId });
 }
 
-function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceId = state.source, profileSourceId = state.source, modelId = '', capabilityModelId, connectionPresetId = '', planId = '', planShotId = '', recentArtistIds = [], requestIndex = 1, requestTotal = 1, inlineOrder = null, routeTarget = null, preparedRoutes = null } = {}) {
+function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceId = state.source, profileSourceId = state.source, modelId = '', capabilityModelId, connectionPresetId = '', planId = '', planShotId = '', recentArtistIds = [], requestIndex = 1, requestTotal = 1, inlineOrder = null, routeTarget = null, preparedRoutes = null, freshComfy = false } = {}) {
   const deliveryPolicy = storyboardProductionDeliveryPolicy(shot || {}, {
     target: state.target,
     inlineByDefault: state.inlineByDefault,
@@ -17521,7 +17523,7 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
   const routedConnection = connectionState.group?.presets?.find((item) => item.id === connectionPresetId) || null;
   const connection = routedConnection || connectionState.draft || connectionState.active;
   const baseProviderProfile = sourceId === profileSourceId ? profile : storyboardProviderProfile(state, sourceId);
-  const providerProfile = storyboardResolveRoutingProfile(state, {
+  let providerProfile = storyboardResolveRoutingProfile(state, {
     ...routeTarget,
     // The supplied profile already has its style applied and its per-shot count bounded.
     parameterPresetId: '',
@@ -17529,6 +17531,8 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
     capabilityModelId: capabilityModelId ?? (!modelId || modelId === baseProviderProfile.model ? baseProviderProfile.capabilityModelId : ''),
   }, baseProviderProfile, preparedRoutes);
   if (sourceId === 'comfy' && routeTarget?.comfyWorkflowBinding != null) providerProfile.count = baseProviderProfile.count;
+  const execution = sourceId === 'comfy' && freshComfy === true ? projectNewComfyExecution(providerProfile) : null;
+  if (execution) providerProfile = execution.profile;
   const shotSpec = normalizeStoryboardShotSpec(shot?.shotSpec || {
     ...shot,
     promptAtoms: { global: [prompt], negative: [negative] },
@@ -17551,7 +17555,7 @@ function storyboardCreateJob(state, profile, { attempt = 1, shot = null, sourceI
     seed: `${getChatKey() || 'gallery'}:${floor ?? 'gallery'}:${planShotId || shot?.id || prompt}:${attempt}:${requestIndex}`,
     recentArtistIds,
   }) : { artist: null, artistId: '', poolId: '', source: 'default' };
-  const payload = storyboardGenerationPayload(state, providerProfile, { sourceId, prompt, negative, artistAssignment, connection, shot: { ...shot, shotSpec: { ...shotSpec, composition: { ...shotSpec.composition, ratioId: compositionDecision.ratioId } } } });
+  const payload = storyboardGenerationPayload(state, providerProfile, { sourceId, prompt, negative, artistAssignment, connection, comfyPromptLayer: execution?.promptLayer, shot: { ...shot, shotSpec: { ...shotSpec, composition: { ...shotSpec.composition, ratioId: compositionDecision.ratioId } } } });
   const credentialId = connection?.credentialId || storyboardCredentialId(sourceId, connection?.id || 'draft');
   const preferredParagraph = state.paragraphMode === 'manual' && Number.isInteger(state.manualParagraphIndex)
     ? state.manualParagraphIndex
