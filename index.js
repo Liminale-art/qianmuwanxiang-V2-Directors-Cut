@@ -18862,7 +18862,7 @@ async function storyboardCompilerWorldText(state) {
   return { text: resolved.join('\n\n').slice(0, 18000), rows: selected, fallback: false };
 }
 
-function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = true, upstreamGuard = null, requireCompiler = false } = {}) {
+function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = true, upstreamGuard = null, requireCompiler = false, freshComfy = false } = {}) {
   const chatKey = String(getChatKey() || '');
   const copy = (value) => Array.isArray(value) ? value.map(copy)
     : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, copy(item)])) : value;
@@ -18918,6 +18918,7 @@ function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = t
   const isCurrent = () => !invalidated && baseline !== null && (!upstreamGuard || upstreamGuard.isCurrent()) && state === storyboardState()
     && chatKey === String(getChatKey() || '') && plan?.status !== 'cancelled' && ctx().chat?.[floor] === message && equal(baseline, read());
   return {
+    get freshComfy() { return freshComfy === true; },
     isCurrent,
     ownsCurrentContext: () => state === storyboardState() && chatKey === String(getChatKey() || ''),
     assertCurrent() {
@@ -18988,7 +18989,7 @@ async function storyboardCompilerContext(state, inputGuard) {
   inputGuard?.assertCurrent();
   const includeReferences = state.profiles?.novel?.characterReferenceEnabled === true
     && (state.source === 'novel' || state.routing?.enabled && state.routing.rules.some(rule => rule.enabled !== false && rule.target?.providerId === 'novel'));
-  const includeComfy = storyboardUsesComfyCharacters(state, inputGuard?.comfyRoutes);
+  const includeComfy = storyboardUsesComfyCharacters(state, inputGuard?.comfyRoutes, inputGuard?.freshComfy);
   const casting = await storyboardCompilerCharacterCasting(paragraphs.join('\n'), inputGuard, includeReferences, includeComfy);
   return {
     floor, messages, currentCharacter, persona, world: worldResult.text,
@@ -19243,7 +19244,7 @@ async function storyboardPrepareComfyRoutes(state, inputGuard, requestedRoutes =
   try {
     if(autoRequested){
       const auto=await featureRuntime.load('comfyAuto');await guard();
-      inputGuard.comfyAuto=await auto.prepareComfyAutoSession({binding:state.comfyPoolSelection,namespace,guard});await guard();
+      inputGuard.comfyAuto=await auto.prepareComfyAutoSession({binding:state.comfyPoolSelection,namespace,guard,freshComfy:inputGuard.freshComfy===true});await guard();
     }
     recipes = await runtime.prepareComfyRouteRecipes({ routes, namespace, guard }); await guard();
     const checked=new Map();
@@ -19269,7 +19270,8 @@ async function storyboardPrepareComfyRoutes(state, inputGuard, requestedRoutes =
   return inputGuard.comfyRoutes;
 }
 
-function storyboardUsesComfyCharacters(state, preparedRoutes = null) {
+function storyboardUsesComfyCharacters(state, preparedRoutes = null, freshComfy = false) {
+  if(freshComfy===true)return false;
   if(preparedRoutes?.candidates?.some(row=>row.target.comfyCharacterEnabled))return true;
   if (state.source !== 'comfy' && (!state.routing?.enabled || !state.routing.rules.some(rule=>rule.enabled!==false && rule.target?.providerId==='comfy'))) return false;
   const profile=state.profiles[state.source],fallback={providerId:state.source,modelId:profile.model,capabilityModelId:profile.capabilityModelId,connectionPresetId:'',parameterPresetId:''};
@@ -19293,7 +19295,8 @@ async function storyboardPreflightComfyForCompiler(state, profile, plan, inputGu
     const connections = state.connections.comfy;
     const connection = route.connectionPresetId ? connections.presets.find(item => item.id === route.connectionPresetId) : connections.draft;
     const transport = requireStoryboardComfyTransport(connection);
-    const selected = storyboardResolveRoutingProfile(state, route, state.source === 'comfy' ? profile : null, inputGuard.comfyRoutes);
+    let selected = storyboardResolveRoutingProfile(state, route, state.source === 'comfy' ? profile : null, inputGuard.comfyRoutes);
+    if(inputGuard.freshComfy===true)selected=projectNewComfyExecution(selected).profile;
     const raw = sanitizeStoryboardWorkflow(selected.comfyWorkflow);
     if (!raw.ok || raw.removedFields.length || selected.comfyWorkflowNotice) throw new Error(selected.comfyWorkflowNotice || storyboardWorkflowIssue(raw));
     const parameters = Object.fromEntries(['width','height','count','steps','cfg','seed','sampler','scheduler'].map(key => [key, selected[key]]));
@@ -19341,7 +19344,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
   let resultAccepted = false;
   try {
     await storyboardPrepareComfyRoutes(state, inputGuard);
-    const comfyRoles=storyboardUsesComfyCharacters(state, inputGuard.comfyRoutes);
+    const comfyRoles=storyboardUsesComfyCharacters(state, inputGuard.comfyRoutes, inputGuard.freshComfy);
     let context=comfyRoles?await storyboardCompilerContext(state,inputGuard):null;
     if (state.source === 'comfy' || state.routing.enabled && state.routing.rules.some(rule => rule.enabled !== false && rule.target?.providerId === 'comfy')) {
       await storyboardPreflightComfyForCompiler(state, profile, plan, inputGuard, automatic, context);
