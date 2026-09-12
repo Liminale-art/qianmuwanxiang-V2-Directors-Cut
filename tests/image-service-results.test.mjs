@@ -7,7 +7,7 @@ import { EventEmitter } from 'node:events';
 import { Readable } from 'node:stream';
 import { createImageServiceStore } from '../qianmu-image-service-store.js';
 import { createImageServiceResults } from '../qianmu-image-service-results.js';
-import { pinnedImageResultFetch } from '../qianmu-image-gateway.js';
+import { pinnedImageResultFetch, validateGatewayBaseUrl } from '../qianmu-image-gateway.js';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=';
 const identity = (attemptId = 'one', extra = {}) => ({ namespace: 'account', channelKey: 'a'.repeat(64), requestDigest: 'b'.repeat(64), fence: 'private-fence', attemptId, ...extra });
@@ -65,6 +65,29 @@ test('private addresses, changed methods and redirects cannot turn media retriev
   });
   await assert.rejects(fetcher(url, { method: 'POST' }), { code: 'unsafe_image_host' });
   await assert.rejects(fetcher(url, { method: 'GET' }), { code: 'image_redirect_blocked' });
+});
+
+test('expanded IPv6 and translated targets obey the same public-only rule for API and media DNS', async () => {
+  const unsafe = [
+    '::', '0:0:0:0:0:0:0:0', '::1', '0000:0000:0000:0000:0000:0000:0000:0001',
+    '::ffff:127.0.0.1', '0:0:0:0:0:ffff:7f00:1', '::127.0.0.1', '::ffff:8.8.8.8',
+    'fe80::1', 'fc00::1', 'ff02::1', '0064:ff9b:0000:0000:0000:0000:7f00:0001',
+    '2002:7f00:1::', '2001:0db8::1', '2001:0002::1', '2001:0000:0000:0000:0000:0000:0000:0001',
+  ];
+  for (const address of unsafe) {
+    const records = [{ address, family: 6 }];
+    assert.throws(() => pinnedImageResultFetch('https://image.example.test/p.png', records), { code: 'unsafe_image_host' }, address);
+    await assert.rejects(validateGatewayBaseUrl('https://api.example.test', { resolveHost: async () => records }), { code: 'private_network_blocked' }, address);
+  }
+});
+
+test('public IPv6 spellings remain usable and explicit local Comfy access keeps its existing authorization path', async () => {
+  for (const address of ['2606:4700:4700::1111', '2606:4700:4700:0000:0000:0000:0000:1111']) {
+    const records = [{ address, family: 6 }];
+    assert.equal(typeof pinnedImageResultFetch('https://image.example.test/p.png', records), 'function');
+    assert.equal((await validateGatewayBaseUrl('https://api.example.test', { resolveHost: async () => records })).origin, 'https://api.example.test');
+  }
+  assert.equal((await validateGatewayBaseUrl('http://[::1]:8188', { allowPrivateNetwork: true })).origin, 'http://[::1]:8188');
 });
 
 test('result reservation counts worst-case bytes and does not create an over-capacity slot', async t => {

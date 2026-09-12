@@ -717,7 +717,7 @@ test('invalid protocol, root path, graph and DNS answers never open a socket', a
 });
 
 test('private opt-in never permits link-local, unspecified, multicast or IPv6 translation targets', async () => {
-  for (const address of ['0.0.0.0', '169.254.169.254', '224.0.0.1', '::', '0:0:0:0:0:0:0:0', 'fe80::1', 'ff02::1', '::ffff:127.0.0.1', '::127.0.0.1', '64:ff9b::7f00:1', '2002:7f00:1::']) {
+  for (const address of ['0.0.0.0', '169.254.169.254', '224.0.0.1', '::', '0:0:0:0:0:0:0:0', 'fe80::1', 'ff02::1', '::ffff:127.0.0.1', '::127.0.0.1', '64:ff9b::7f00:1', '2002:7f00:1::', '2001::1', '2001:0000:0000:0000:0000:0000:0000:0001']) {
     await assert.rejects(createComfyServerTransport(account(true), input({ allowPrivateNetwork: true }), { resolveHost: async () => [{ address }] }), { code: 'comfy_transport_unsafe_target' });
   }
   for (const address of ['127.0.0.1', '192.168.1.3', 'fd00::1', '0:0:0:0:0:0:0:1']) {

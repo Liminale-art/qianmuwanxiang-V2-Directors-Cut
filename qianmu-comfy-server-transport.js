@@ -45,7 +45,7 @@ function addressList(addresses) {
     // Also exclude transition/translated ranges, even under private opt-in.
     if ((family === 4 && (/^(?:0\.|169\.254\.)/.test(ip) || Number(ip.split('.')[0]) >= 224))
       || (family === 6 && ((ip !== '::1' && !/^(?:[23][0-9a-f]{3}:|f[cd][0-9a-f]{2}:)/.test(ip))
-        || /^2002:|^2001:(?:0:|2:|db8:)/.test(ip)))) throw fail('unsafe_target', '此地址不属于允许访问的 Comfy 主机');
+        || /^2002:|^2001:(?::|0:|2:|db8:)/.test(ip)))) throw fail('unsafe_target', '此地址不属于允许访问的 Comfy 主机');
     return Object.freeze({ address, family });
   });
 }

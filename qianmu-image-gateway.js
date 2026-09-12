@@ -269,14 +269,16 @@ export function sanitizeImageRequest(input) {
 }
 
 function isPrivateAddress(address) {
-  const value = String(address || '').toLowerCase().replace(/^\[|\]$/g, '').split('%')[0];
+  let value = String(address || '').toLowerCase().replace(/^\[|\]$/g, '').split('%')[0];
   if (!value) return true;
-  if (value === '::1' || value === '0.0.0.0' || value === '::') return true;
-  if (value.startsWith('::ffff:')) return isPrivateAddress(value.slice(7));
-  if (isIP(value) === 6) return value.startsWith('fc') || value.startsWith('fd') || value.startsWith('fe8') || value.startsWith('fe9')
-    || value.startsWith('fea') || value.startsWith('feb') || value.startsWith('ff') || value.startsWith('2001:db8')
-    || value.startsWith('2001:0:') || value.startsWith('2001:10') || value.startsWith('2001:2:')
-    || value.startsWith('2002:') || value.startsWith('64:ff9b:');
+  if (isIP(value) === 6) {
+    // Match the Comfy transport's canonical-address boundary; translated IPv4
+    // and special IPv6 ranges must not become public merely by changing spelling.
+    value = new URL(`http://[${value}]`).hostname.slice(1, -1);
+    return !/^[23][0-9a-f]{3}:/.test(value) || value.startsWith('2001:db8')
+      || value.startsWith('2001::') || value.startsWith('2001:0:') || value.startsWith('2001:10') || value.startsWith('2001:2:')
+      || value.startsWith('2002:');
+  }
   const parts = value.split('.').map(Number);
   if (parts.length !== 4 || parts.some((item) => !Number.isInteger(item) || item < 0 || item > 255)) return true;
   return parts[0] === 10 || parts[0] === 127 || parts[0] === 0 || (parts[0] === 169 && parts[1] === 254)
