@@ -6,7 +6,7 @@ import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { ImageGatewayError, validateGatewayBaseUrl } from './qianmu-image-gateway.js';
+import { ImageGatewayError, validateGatewayBaseUrl, pinnedImageResultFetch } from './qianmu-image-gateway.js';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
 import { planComfyCloudOperation, bindComfyCloudTask } from './qianmu-comfy-cloud-protocol.js';
 import { planComfyCloudAssetMetadata } from './qianmu-comfy-cloud-asset.js';
@@ -205,6 +205,64 @@ export async function createComfyCloudAssetTransport(req, { task: rawTask, asset
     const error = cause instanceof ImageGatewayError ? cause : fail('asset_unavailable', '原图片信息暂不可读，请核查原任务', 502);
     error.submissionState = 'accepted'; error.upstreamId = task.taskId; throw error;
   }
+}
+
+// Server-internal file boundary: source comes from checked job/asset metadata.
+// The original grant must span metadata and download; never grant on a client URL.
+// Call verify again after bounded byte reading, before returning/storing any file.
+export async function createComfyCloudFileTransport(req, { task: rawTask, assetId, source }, options = {}) {
+  const task = bindComfyCloudTask(rawTask, rawTask?.taskId, rawTask?.links), plan = planComfyCloudAssetMetadata(task, assetId);
+  const annotate = cause => Object.assign(cause instanceof ImageGatewayError ? cause : fail('file_unavailable', '原图暂不可读，请核查原任务', 502), {
+    submissionState: 'accepted', upstreamId: task.taskId, retryable: false,
+  });
+  try {
+    let account; try { account = imageServiceAccount(req); } catch (_) { throw fail('authentication_required', '请先登录原ST账户读取图片', 401); }
+    const url = source?.url, expiresAt = source?.expiresAt, now = options.now || Date.now;
+    // Keep within the shared media reader's URL envelope; never silently truncate a signature.
+    if (typeof url !== 'string' || url.length > 4096 || !/^https:\/\//i.test(url) || /[\u0000-\u0020\u007f\\]/.test(url)
+      || typeof now !== 'function' || !Number.isSafeInteger(expiresAt)) throw fail('file_source', '原图片下载信息无效');
+    let parsed; try { parsed = new URL(url); } catch (_) { throw fail('file_source', '原图片下载地址无效'); }
+    if (parsed.username || parsed.password || parsed.port || parsed.hash || parsed.href !== url) throw fail('file_source', '原图片下载地址含不允许的字段');
+    if (typeof options.authorizeAsset !== 'function' || typeof options.authorizeTarget !== 'function') throw fail('asset_authorization', '原图片尚未获得下载授权', 403);
+    const check = () => {
+      options.signal?.throwIfAborted();
+      if (!imageServiceAccountStillMatches(req, account)) throw fail('account_changed', 'ST账户已变化，未交付原图片', 401);
+      const time = now();
+      if (!Number.isSafeInteger(time) || time < 0 || time >= expiresAt) throw fail('file_expired', '图片链接已失效，请刷新原任务，不必重新生图');
+    };
+    check(); const resource = Object.freeze({ task, assetId: plan.assetId, source: Object.freeze({ url, expiresAt }) });
+    const verifyAsset = await options.authorizeAsset(req, resource, account); check();
+    if (typeof verifyAsset !== 'function') throw fail('asset_authorization', '原图片缺少持续归属校验', 403);
+    const verifyOriginal = async () => { check(); await verifyAsset(); check(); };
+    let addresses;
+    const transport = await createComfyServerTransport(req, { baseUrl: parsed.origin }, {
+      signal: options.signal, dnsTimeoutMs: options.dnsTimeoutMs,
+      resolveHost: async (...args) => {
+        check(); const result = await (options.resolveHost || lookup)(...args); check();
+        addresses = addressList(Array.isArray(result) ? result : [result]); return addresses;
+      },
+      authorizeTarget: async (...args) => {
+        await verifyOriginal(); const verifyTarget = await options.authorizeTarget(...args); await verifyOriginal();
+        if (typeof verifyTarget !== 'function') throw fail('cloud_authorization', '原图下载目标缺少持续授权校验');
+        return async () => { await verifyOriginal(); await verifyTarget(); await verifyOriginal(); };
+      },
+    });
+    const verify = async () => { try { await transport.verify(); } catch (error) { throw annotate(error); } };
+    const fetchFile = pinnedImageResultFetch(url, addresses, options.requestImpl);
+    return { verify, fetchImpl: async (requestedUrl, init = {}) => {
+      let response;
+      try {
+        if (requestedUrl !== url || init.method !== 'GET' || init.body != null || init.redirect && init.redirect !== 'error') throw fail('file_target', '原图下载目标或动作已变化');
+        const signals = [options.signal, init.signal].filter(Boolean), signal = signals.length ? AbortSignal.any(signals) : undefined;
+        signal?.throwIfAborted(); await verify(); signal?.throwIfAborted(); check();
+        response = await fetchFile(url, { method: 'GET', signal });
+        await verify(); signal?.throwIfAborted(); check(); return response;
+      } catch (error) {
+        try { Promise.resolve(response?.body?.cancel?.()).catch(() => {}); } catch (_) { /* best-effort release */ }
+        throw annotate(error);
+      }
+    } };
+  } catch (error) { throw annotate(error); }
 }
 
 async function createCloudPlannedTransport(req, plan, options) {

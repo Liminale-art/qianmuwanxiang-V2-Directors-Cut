@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Writable, PassThrough } from 'node:stream';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createComfyServerTransport, createComfyCloudServerTransport, createComfyCloudAssetTransport, pinnedComfyFetch } from '../qianmu-comfy-server-transport.js';
+import { createComfyServerTransport, createComfyCloudServerTransport, createComfyCloudAssetTransport, createComfyCloudFileTransport, pinnedComfyFetch } from '../qianmu-comfy-server-transport.js';
 import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
 import { queryComfyCloudTask } from '../qianmu-comfy-cloud-query.js';
 import { createComfyCloudLedger } from '../qianmu-comfy-cloud-ledger.js';
@@ -542,6 +542,79 @@ test('task ownership or ST account revocation during a returned response blocks 
       requestImpl: mockNodeRequest([], () => { if (changeAccount) req.user.profile.handle = 'bob'; else permitted = false;
         return { body: { taskId: task.taskId, status: 'SUCCESS', errorCode: '' } }; }),
     }), error => error.submissionState === 'accepted' && error.upstreamId === task.taskId && !error.message.includes('test-only-secret'));
+  }
+});
+
+const fileInput = () => ({ task: bindComfyCloudTask(cloudBinding, 'original', { self: '/api/v2/jobs/original', cancel: '/api/v2/jobs/original/cancel' }),
+  assetId: '00000000-0000-4000-8000-000000000001', source: { url: 'https://cdn.example.test/original.png?sig=private-test-signature', expiresAt: 2000 } });
+const fileOptions = calls => ({ now: () => 1000, authorizeAsset: cloudGrant, authorizeTarget: cloudGrant, resolveHost: publicDns,
+  requestImpl: mockNodeRequest(calls, () => ({ body: png, headers: { 'content-type': 'image/png' } })) });
+
+test('cloud file download pins the exact signed source and never forwards keys or cookies', async () => {
+  const calls = [], req = account(), input = fileInput(); let grants = 0;
+  const transport = await createComfyCloudFileTransport(req, input, { ...fileOptions(calls), authorizeAsset: async (_req, resource, owner) => {
+    assert.deepEqual(resource, input); assert.equal(owner.namespace, imageServiceAccount(req).namespace);
+    assert.ok(Object.isFrozen(resource.source)); return async () => { grants++; };
+  } });
+  const response = await transport.fetchImpl(input.source.url, { method: 'GET', headers: { Authorization: 'private-api-key', Cookie: 'private-cookie' }, credentials: 'include' });
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), png); await transport.verify();
+  assert.equal(calls.length, 1); assert.equal(calls[0].url.href, input.source.url);
+  assert.deepEqual(calls[0].options.headers, { Accept: 'image/*' }); assert.equal(calls[0].body.length, 0); assert.equal(calls[0].options.agent, false);
+  assert.ok(grants >= 4);
+  for (const init of [{ method: 'POST' }, { method: 'GET', body: 'x' }, { method: 'GET', redirect: 'follow' }]) await assert.rejects(transport.fetchImpl(input.source.url, init), { code: 'comfy_transport_file_target', submissionState: 'accepted', upstreamId: 'original', retryable: false });
+  await assert.rejects(transport.fetchImpl('https://cdn.example.test/other.png', { method: 'GET' }), { code: 'comfy_transport_file_target' });
+  assert.equal(calls.length, 1);
+});
+
+test('file authority, expiry and safe address rules run before any image request', async () => {
+  const calls = []; let dns = 0;
+  const options = { ...fileOptions(calls), resolveHost: async () => { dns++; return publicDns(); } };
+  await assert.rejects(createComfyCloudFileTransport({}, fileInput(), options), { status: 401 });
+  for (const override of [{ authorizeAsset: undefined }, { authorizeAsset: async () => null }, { authorizeTarget: undefined }, { now: () => 2000 }]) await assert.rejects(createComfyCloudFileTransport(account(), fileInput(), { ...options, ...override }));
+  assert.equal(dns, 0);
+  for (const address of ['127.0.0.1', '0:0:0:0:0:0:0:1']) await assert.rejects(createComfyCloudFileTransport(account(true), fileInput(), { ...options, resolveHost: async () => [{ address }] }));
+  const input = fileInput(); input.source.url += 'x'.repeat(4096);
+  await assert.rejects(createComfyCloudFileTransport(account(), input, options), { code: 'comfy_transport_file_source' });
+  assert.equal(calls.length, 0);
+});
+
+test('file transport snapshots its source and refuses expiry or revoked original ownership on reuse', async () => {
+  const calls = [], input = fileInput(); let time = 1000, revoked = false;
+  const transport = await createComfyCloudFileTransport(account(), input, { ...fileOptions(calls), now: () => time,
+    authorizeAsset: async () => async () => { if (revoked) throw new Error('private-test-signature'); } });
+  input.source.expiresAt = 9999; time = 2000;
+  await assert.rejects(transport.fetchImpl(input.source.url, { method: 'GET' }), { code: 'comfy_transport_file_expired' });
+  time = 1000; revoked = true;
+  await assert.rejects(transport.fetchImpl(input.source.url, { method: 'GET' }), error => error.submissionState === 'accepted' && error.upstreamId === 'original' && !error.message.includes('private-test-signature'));
+  assert.equal(calls.length, 0);
+});
+
+test('file expiry during DNS and cancellation before dispatch stop the download, and final byte delivery must recheck the grant', async () => {
+  const calls = [], input = fileInput(); let time = 1000;
+  await assert.rejects(createComfyCloudFileTransport(account(), input, { ...fileOptions(calls), now: () => time,
+    resolveHost: async () => { time = 2000; return publicDns(); } }), { code: 'comfy_transport_file_expired' });
+  const controller = new AbortController();
+  const cancelled = await createComfyCloudFileTransport(account(), input, { ...fileOptions(calls), signal: controller.signal });
+  controller.abort();
+  await assert.rejects(cancelled.fetchImpl(input.source.url, { method: 'GET' }), { submissionState: 'accepted', upstreamId: 'original' });
+  assert.equal(calls.length, 0);
+  const req = account(), transport = await createComfyCloudFileTransport(req, input, fileOptions(calls));
+  const response = await transport.fetchImpl(input.source.url, { method: 'GET' });
+  await response.arrayBuffer(); req.user.profile.handle = 'bob';
+  await assert.rejects(transport.verify(), { code: 'comfy_transport_account_changed', upstreamId: 'original' });
+  assert.equal(calls.length, 1, 'byte receipt is not permission to store under another account');
+});
+
+test('account changes, expired delivery and redirects cannot deliver an original cloud file', async () => {
+  for (const kind of ['account', 'expiry', 'redirect']) {
+    const calls = [], req = account(), input = fileInput(); let time = 1000;
+    const transport = await createComfyCloudFileTransport(req, input, { ...fileOptions(calls), now: () => time, requestImpl: mockNodeRequest(calls, () => {
+      if (kind === 'account') req.user.profile.handle = 'bob';
+      if (kind === 'expiry') time = 2000;
+      return { status: kind === 'redirect' ? 302 : 200, body: png, headers: { 'content-type': 'image/png', location: 'https://other.test/image.png' } };
+    }) });
+    await assert.rejects(transport.fetchImpl(input.source.url, { method: 'GET' }), error => error.submissionState === 'accepted' && error.upstreamId === 'original' && !error.message.includes('private-test-signature'));
+    assert.equal(calls.length, 1);
   }
 });
 
