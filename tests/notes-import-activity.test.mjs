@@ -9,7 +9,7 @@ function fixture(){
   const saved=[],notices=[];
   const view={isConnected:true,open:true,classList:{contains:()=>view.open}};
   const c=vm.createContext({document:{getElementById:()=>view},MODAL_ID:'fixture',settings:{},storyboardAdmissionEpoch:1,normalizeQianmuNote,importQianmuNotesBackup,
-    listQianmuNotes:async()=>[{id:'same'}],saveQianmuNote:async note=>saved.push(note),uid:()=> 'copy',
+    confirmDialog:async()=>true,listQianmuNotes:async()=>[{id:'same'}],saveQianmuNote:async note=>saved.push(note),uid:()=> 'copy',
     notesRuntime:['original'],notesLoaded:false,notesPanelOpen:false,renderFloatingNotes(){},refreshStorageInventory:async()=>{},toast:text=>notices.push(text)});
   vm.runInContext(source('createStorageBackupCheck')+'\n'+source('importPinnedNotesBackup'),c);
   c.createCoreadImportViewGuard=()=>({check(){if(c.pageChanged)throw Error('页面变化，已写入内容保留');},release(){c.released=(c.released||0)+1;}});
@@ -68,6 +68,24 @@ test('invalid input releases import activity for the next attempt',async()=>{
   const e=fixture();e.input.files[0].text=async()=>'{';await e.run();
   assert.equal(e.c.importPinnedNotesBackup.busy,false);assert.equal(e.input.value,'');assert.equal(e.saved.length,0);
   e.input.files[0].text=async()=>payload;await e.run();assert.equal(e.saved.length,2);
+});
+
+test('cancelling notes confirmation never reads or writes the library and permits a new attempt',async()=>{
+  const e=fixture();e.c.confirmDialog=async()=>false;let reads=0;e.c.listQianmuNotes=async()=>{reads++;return [];};
+  await e.run();assert.equal(reads,0);assert.deepEqual(e.saved,[]);assert.deepEqual(e.notices,[]);assert.equal(e.c.notesLoaded,false);
+  assert.equal(e.c.importPinnedNotesBackup.busy,false);assert.equal(e.input.value,'');
+  e.c.confirmDialog=async()=>true;await e.run();assert.equal(e.saved.length,2);
+});
+
+test('pending notes confirmation keeps its exclusion lock and rejects changes before the first destination read',async()=>{
+  for(const change of ['owner','epoch','closed','page','activity']){
+    const e=fixture();let accept,reads=0;e.c.confirmDialog=()=>new Promise(r=>accept=r);
+    e.c.listQianmuNotes=async()=>{reads++;return [];};const pending=e.run();await new Promise(r=>setImmediate(r));
+    assert.equal(e.c.importPinnedNotesBackup.busy,true);assert.equal(e.c.storageCleanupSession.begin({isConnected:true}),null);
+    if(change==='owner')e.c.settings={};if(change==='epoch')e.c.storyboardAdmissionEpoch++;if(change==='closed')e.view.open=false;
+    if(change==='page')e.c.pageChanged=true;if(change==='activity')e.c.otherActivity=true;
+    accept(true);await pending;assert.equal(reads,0);assert.deepEqual(e.saved,[]);assert.equal(e.c.importPinnedNotesBackup.busy,false);
+  }
 });
 
 test('too many notes are rejected before library reads or writes, never silently clipped',async()=>{

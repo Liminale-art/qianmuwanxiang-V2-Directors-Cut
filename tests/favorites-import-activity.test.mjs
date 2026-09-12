@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
 import {createStorageCleanupSession} from '../qianmu-storage-cleanup-session.js';
-import {FAVORITES_BACKUP_LIMITS,FAVORITE_TEXT_LIMITS,readLibraryBackupFile} from '../qianmu-library-backup.js';
+import {FAVORITES_BACKUP_LIMITS,FAVORITE_TEXT_LIMITS,readLibraryBackupFile,confirmLibraryRestore} from '../qianmu-library-backup.js';
 const payload=JSON.stringify({type:'qianmu-tts-favorites',version:1,entries:[{id:'one',data:'AA=='},{id:'two',data:'AA=='}]});
 function fixture(){
   const saved=[],notices=[],view={isConnected:true,open:true,classList:{contains:()=>view.open}};
-  const c=vm.createContext({FAVORITES_BACKUP_LIMITS,FAVORITE_TEXT_LIMITS,readLibraryBackupFile,settings:{},storyboardAdmissionEpoch:1,document:{getElementById:()=>view},MODAL_ID:'fixture',activeTab:'api',
+  const c=vm.createContext({FAVORITES_BACKUP_LIMITS,FAVORITE_TEXT_LIMITS,readLibraryBackupFile,confirmLibraryRestore,confirmDialog:async()=>true,settings:{},storyboardAdmissionEpoch:1,document:{getElementById:()=>view},MODAL_ID:'fixture',activeTab:'api',
     toast:m=>notices.push(m),uid:()=> 'copy',base64ToBlob:()=>({size:1}),storageSafeFavoriteMeta:x=>x,refreshStorageInventory:async()=>{},
     blobStore:{hasFavorite:async()=>false,addFavorite:async id=>saved.push(id)}});
   vm.runInContext(source('createStorageBackupCheck')+'\n'+source('importTtsFavoritesBackup'),c);
@@ -73,6 +73,24 @@ test('oversized lists are rejected before lookup, and invalid input releases the
 test('final inventory errors report completed work without calling the whole import a success',async()=>{
   const e=fixture();e.c.refreshStorageInventory=async()=>{throw Error('synthetic inventory failure');};await e.run();
   assert.deepEqual(e.saved,['one','two']);assert.match(e.notices.at(-1),/未完成：已导入 2 条/);assert.equal(e.c.importTtsFavoritesBackup.busy,false);
+});
+
+test('cancelling favorite confirmation does not inspect destination or show success; retry remains available',async()=>{
+  const e=fixture();let reads=0;e.c.blobStore.hasFavorite=async()=>{reads++;return false;};e.c.confirmDialog=async()=>false;
+  await e.run();assert.equal(reads,0);assert.deepEqual(e.saved,[]);assert.deepEqual(e.notices,[]);
+  assert.equal(e.c.importTtsFavoritesBackup.busy,false);assert.equal(e.input.value,'');
+  e.c.confirmDialog=async()=>true;await e.run();assert.equal(e.saved.length,2);
+});
+
+test('favorite confirmation cannot outlive the owner, view or task scope or let cleanup overlap',async()=>{
+  for(const change of ['owner','epoch','closed','page','activity']){
+    const e=fixture();let accept,reads=0;e.c.confirmDialog=()=>new Promise(r=>accept=r);
+    e.c.blobStore.hasFavorite=async()=>{reads++;return false;};const pending=e.run();await new Promise(r=>setImmediate(r));
+    assert.equal(e.c.importTtsFavoritesBackup.busy,true);assert.equal(e.c.storageCleanupSession.begin({isConnected:true}),null);
+    if(change==='owner')e.c.settings={};if(change==='epoch')e.c.storyboardAdmissionEpoch++;if(change==='closed')e.view.open=false;
+    if(change==='page')e.c.pageChanged=true;if(change==='activity')e.c.otherActivity=true;
+    accept(true);await pending;assert.equal(reads,0);assert.deepEqual(e.saved,[]);assert.equal(e.c.importTtsFavoritesBackup.busy,false);
+  }
 });
 
 test('the real favorite entry rejects a bad later row before any destination access',async()=>{

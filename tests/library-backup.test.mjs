@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {NOTES_BACKUP_LIMITS,FAVORITES_BACKUP_LIMITS,NOTE_TEXT_LIMITS,FAVORITE_TEXT_LIMITS,prepareLibraryBackup,exportLibraryBackup,validateLibraryBackupRows,readLibraryBackupFile} from '../qianmu-library-backup.js';
+import {NOTES_BACKUP_LIMITS,FAVORITES_BACKUP_LIMITS,NOTE_TEXT_LIMITS,FAVORITE_TEXT_LIMITS,prepareLibraryBackup,exportLibraryBackup,validateLibraryBackupRows,readLibraryBackupFile,confirmLibraryRestore} from '../qianmu-library-backup.js';
 import {assertJsonInputBounds} from '../qianmu-json-input.js';
 import {importQianmuNotesBackup} from '../qianmu-notes.js';
 const note=()=>({id:'original',body:'月光与原文',pinned:true});
@@ -10,7 +10,7 @@ const pack=(favorites=false,count=1)=>favorites?{type:'qianmu-tts-favorites',ver
 test('ordinary note exports remain compatible with the actual importer, without changing originals',async()=>{
   const payload=pack(),before=structuredClone(payload),prepared=prepareLibraryBackup(payload),saved=[];
   assert.equal(prepared.preservationOnly,false);
-  const result=await importQianmuNotesBackup(prepared.blob,{check(){},read:async()=>[],write:async n=>saved.push(n),uid:()=> 'unexpected'});
+  const result=await importQianmuNotesBackup(prepared.blob,{check(){},confirm:async()=>true,read:async()=>[],write:async n=>saved.push(n),uid:()=> 'unexpected'});
   assert.equal(result.imported,1);assert.equal(saved[0].body,payload.notes[0].body);assert.deepEqual(payload,before);
   assert.deepEqual(NOTES_BACKUP_LIMITS,{bytes:12582912,entries:1000});
   assert.deepEqual(FAVORITES_BACKUP_LIMITS,{bytes:268435456,entries:2000,encodedBytes:67108864,audioBytes:50331648});
@@ -82,10 +82,31 @@ test('canonical audio validation avoids decoded copies and rejects incomplete fi
 
 test('ordinary Unicode and missing legacy optional fields still roundtrip; unknown unsafe structures are preservation only',async()=>{
   const payload=pack();payload.notes[0]={id:'😀'.repeat(60),title:'😀'.repeat(120),body:'😀'.repeat(20000)};
-  const saved=[];await importQianmuNotesBackup(prepareLibraryBackup(payload).blob,{check(){},read:async()=>[],write:async row=>saved.push(row),uid:()=> 'copy'});
+  const saved=[];await importQianmuNotesBackup(prepareLibraryBackup(payload).blob,{check(){},confirm:async()=>true,read:async()=>[],write:async row=>saved.push(row),uid:()=> 'copy'});
   for(const key of ['id','title','body'])assert.equal(saved[0][key],payload.notes[0][key]);
   const unsafe=JSON.parse('{"type":"qianmu-notes","version":1,"notes":[],"constructor":{}}');
   assert.equal(prepareLibraryBackup(unsafe).preservationOnly,true);
+});
+
+test('restore scope is counted and credential-neutral, never renders names or arbitrary backup text',async()=>{
+  for(const favorites of [false,true]){
+    const payload=pack(favorites),row=favorites?payload.entries[0]:payload.notes[0];row.id='<img src=x onerror=alert(1)>';
+    row.body='<unsafe>';row.label='<unsafe>';let asked=0;
+    const accepted=await confirmLibraryRestore(payload,{check(){},confirm:async(title,message)=>{
+      asked++;assert.match(message,/1 条/);assert.match(message,/副本保留，不覆盖/);assert.match(message,/API 连接沿用本机/);assert.doesNotMatch(title+message,/<|unsafe/);
+      assert.match(message,favorites?/不恢复音色设置、专注语音库/:/不自动浮贴/);return true;
+    }});assert.equal(asked,1);assert.equal(accepted,true);
+  }
+});
+
+test('empty backups cannot be reported as a successful restore or display an unnecessary confirmation',async()=>{
+  for(const favorites of [false,true])await assert.rejects(confirmLibraryRestore(pack(favorites,0),{check(){},confirm(){throw Error('must not prompt');}}),/没有条目/);
+});
+
+test('only explicit acceptance proceeds and confirmation must still belong to the same operation',async()=>{
+  for(const value of [false,undefined,null,'true',1])assert.equal(await confirmLibraryRestore(pack(),{check(){},confirm:async()=>value}),false);
+  let current=true;await assert.rejects(confirmLibraryRestore(pack(),{check(){if(!current)throw Error('stale');},confirm:async()=>{current=false;return true;}}),/stale/);
+  await assert.rejects(confirmLibraryRestore(pack(),{check(){},confirm:async()=>{throw Error('dialog unavailable');}}),/dialog unavailable/);
 });
 
 test('preservation requires consent and a still-current operation; cancellation and stale confirmation download nothing',async()=>{

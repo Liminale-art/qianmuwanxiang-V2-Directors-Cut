@@ -54,6 +54,17 @@ export async function readLibraryBackupFile(file,type,{check}){
   validateLibraryBackupRows(payload);check();return payload;
 }
 
+// Counts and fixed scope text only: never interpolate imported names or prose into HTML.
+export async function confirmLibraryRestore(payload,{confirm,check}){
+  check();
+  const notes=payload.type==='qianmu-notes',rows=notes?payload.notes:payload.entries;
+  const label=notes?'固定便笺':'语音收藏';
+  if(!rows.length)throw Error(`${label}备份没有条目；未写入内容。`);
+  const scope=notes?'导入后固定保存，不自动浮贴；不恢复临时便笺或其他模块。':'包含收藏音频和条目信息；不恢复音色设置、专注语音库或其他模块。';
+  const accepted=await confirm(`恢复${label}`,`将导入 ${rows.length} 条${label}。同编号条目作为副本保留，不覆盖已有内容。${scope}API 连接沿用本机设置。是否继续？`);
+  check();return accepted===true;
+}
+
 export function prepareLibraryBackup(payload){
   const notes=payload?.type==='qianmu-notes',favorites=payload?.type==='qianmu-tts-favorites';
   const rows=notes?payload.notes:payload?.entries,limits=notes?NOTES_BACKUP_LIMITS:FAVORITES_BACKUP_LIMITS;

@@ -3,7 +3,7 @@ import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readCo
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { readCoreadPackageFile, coreadPackageSafeKey, applyCoreadPackageData, collectCoreadPackageData, prepareCoreadPackageExport, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard } from './qianmu-reader-package.js';
 import { exportConfiguration } from './qianmu-config-export.js';
-import { exportLibraryBackup, readLibraryBackupFile, FAVORITES_BACKUP_LIMITS, FAVORITE_TEXT_LIMITS } from './qianmu-library-backup.js';
+import { exportLibraryBackup, readLibraryBackupFile, confirmLibraryRestore, FAVORITES_BACKUP_LIMITS, FAVORITE_TEXT_LIMITS } from './qianmu-library-backup.js';
 import { receiveComfyImage, resolveComfyRecoveryKey } from './qianmu-comfy-recovery-action.js';
 import { receiveServiceImage } from './qianmu-service-recovery-action.js';
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
@@ -8352,7 +8352,8 @@ async function importPinnedNotesBackup(event) {
   try {
     check=createStorageBackupCheck(input,importPinnedNotesBackup,'导入');
     check();
-    const {imported, failed} = await importQianmuNotesBackup(file, {check, read:()=>listQianmuNotes({strict:true}), write:note=>saveImportedQianmuNote(note,{check}), uid, progress});
+    const {imported, failed, cancelled} = await importQianmuNotesBackup(file, {check, confirm:confirmDialog, read:()=>listQianmuNotes({strict:true}), write:note=>saveImportedQianmuNote(note,{check}), uid, progress});
+    if(cancelled)return;
     const notes = await listQianmuNotes({strict:true}); check();
     notesRuntime = notes;
     notesLoaded = true;
@@ -8433,6 +8434,7 @@ async function importTtsFavoritesBackup(event) {
     check=createStorageBackupCheck(input,importTtsFavoritesBackup,'导入');
     check();
     const payload = await readLibraryBackupFile(file,'qianmu-tts-favorites',{check});
+    if(!await confirmLibraryRestore(payload,{confirm:confirmDialog,check}))return;
     const entries = payload.entries;
     const failed = [];
     for (let index = 0; index < entries.length; index++) {

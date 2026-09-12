@@ -2,7 +2,7 @@
 // 固定便笺写入 IndexedDB；未固定便笺只存在当前页面运行态，重开 ST 自动消失。
 
 import * as blobStore from './qianmu-blobstore.js';
-import {readLibraryBackupFile,NOTE_TEXT_LIMITS} from './qianmu-library-backup.js';
+import {readLibraryBackupFile,confirmLibraryRestore,NOTE_TEXT_LIMITS} from './qianmu-library-backup.js';
 
 const temporaryNotes = new Map();
 
@@ -78,8 +78,9 @@ export function clearTemporaryQianmuNotes() {
 }
 
 // Import data only. The caller owns activity admission, view updates and notices.
-export async function importQianmuNotesBackup(file, {check, read, write, uid, progress = {imported:0, failed:[]}}) {
+export async function importQianmuNotesBackup(file, {check, confirm, read, write, uid, progress = {imported:0, failed:[]}}) {
   const payload = await readLibraryBackupFile(file,'qianmu-notes',{check});
+  if(!await confirmLibraryRestore(payload,{confirm,check}))return {...progress,cancelled:true};
   const incoming = payload.notes;
   const occupiedIds = new Set((await read()).map((note) => note.id));
   check();

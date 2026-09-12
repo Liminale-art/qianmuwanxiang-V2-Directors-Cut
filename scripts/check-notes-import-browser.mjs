@@ -25,7 +25,7 @@ try{
     try{
       IDBObjectStore.prototype.add=function(value,key){const request=add.call(this,value,key);if(key==='abort')request.addEventListener('success',()=>this.transaction.abort(),{once:true});return request;};
       const file=new File([JSON.stringify({type:'qianmu-notes',version:1,notes:[{id:'abort',body:'rollback'},{id:'committed',body:'saved'}]})],'fixture.json');
-      result=await api.importQianmuNotesBackup(file,{check:guard,read,write,uid:()=> 'copy'});
+      result=await api.importQianmuNotesBackup(file,{check:guard,confirm:async()=>true,read,write,uid:()=> 'copy'});
     }finally{IDBObjectStore.prototype.add=add;}
     const notes=await read();
     check('aborted successful request is failed while another note commits',result.imported===1&&result.failed.length===1&&!notes.some(n=>n.id==='abort')&&notes.some(n=>n.id==='committed'));
@@ -255,6 +255,15 @@ try{
     try{backupCheck();}catch(error){importError=error.message;}check('library import cannot revive after reopening and preserves committed-write messaging',importError.includes('导入页面')&&importError.includes('已写入内容保留')&&!importError.includes('伴读'));backupCheck.release();f.done();
     f=mount(false);backupCheck=createStorageBackupCheck(f.input,()=>{},'导入');window.dispatchEvent(new Event('pagehide'));
     check('document departure cancels the shared library import guard',rejects({check:backupCheck}));backupCheck.release();f.done();
+    for(const mode of ['cancel','reopen']){
+      f=mount(false);backupCheck=createStorageBackupCheck(f.input,()=>{},'导入');let reads=0,confirmationError='',restored;
+      const file=new File(['{"type":"qianmu-notes","version":1,"notes":[{"id":"confirm-not-written","body":"keep original"}]}'],'confirm.json');
+      try{restored=await api.importQianmuNotesBackup(file,{check:backupCheck,confirm:async()=>{
+        if(mode==='reopen'){f.root.classList.remove('open');f.root.classList.add('open');return true;}return false;
+      },read:async()=>{reads++;return read();},write,uid:()=> 'copy'});}catch(error){confirmationError=error.message;}
+      check('native '+mode+' confirmation never touches destination or publishes success',reads===0&&!(await read()).some(n=>n.id==='confirm-not-written')&&(mode==='cancel'?restored?.cancelled:confirmationError.includes('导入页面')));
+      backupCheck.release();f.done();
+    }
     return checks;
   },storyboardFunctionSource('createStorageBackupCheck'));
   await page.evaluate(code=>{window.eval(code);window.downloadRevoked=0;const revoke=URL.revokeObjectURL.bind(URL);URL.revokeObjectURL=url=>{window.downloadRevoked++;revoke(url);};},storyboardFunctionSource('ttsDownloadBlob'));
@@ -264,5 +273,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,122);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,124);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}
