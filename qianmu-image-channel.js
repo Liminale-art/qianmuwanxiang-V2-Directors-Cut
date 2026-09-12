@@ -199,13 +199,17 @@ export function createBrowserImageChannel({ locks = globalThis.navigator?.locks,
         });
       });
     },
-    async manage(namespace, { remove = false } = {}) {
+    async manage(namespace, { remove = false, check = () => {} } = {}) {
       identity(namespace, 'ST 账户'); assertOpen();
+      const guard=()=>{assertOpen();try{check();}catch(_){throw problem('changed','清理状态已变化，NAI 连接记录未清理，请重新盘点。');}};
+      guard();
       const scan = () => transact(remove ? 'readwrite' : 'readonly', (store, output, abort) => {
+        guard();
         const totals = { bytes: 0, count: 0, pending: 0, uncertain: 0 };
         const cursor = store.openCursor();
         cursor.onsuccess = () => {
           try {
+            guard();
             const item = cursor.result;
             if (!item) { output(totals); return; }
             if (item.value?.namespace === namespace) {
@@ -221,6 +225,7 @@ export function createBrowserImageChannel({ locks = globalThis.navigator?.locks,
       checkLocks();
       return locks.request(MAINTENANCE, { mode: 'exclusive', ifAvailable: true }, lock => {
         if (!lock) throw problem('busy', '仍有等待或生成中的 NAI 画面，请结束后再清理连接记录');
+        guard();
         return scan();
       });
     },

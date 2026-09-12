@@ -8739,7 +8739,7 @@ function bindStorageManagementEvents(root) {
         await module.clearComfySceneStorage({resolveNamespace:()=>identity.resolveImageAccountNamespace(),expectedNamespace:inventory?.comfyStorage?.namespace,
           expectedGeneration:inventory?.comfyStorage?.scenes?.generation,valid:()=>cleanup.current()}); cleanup.check();
       }
-      if (selected.includes('__image_channels__')) await storyboardManageImageChannels({ remove: true });
+      if (selected.includes('__image_channels__')) await storyboardManageImageChannels({ remove: true, expectedNamespace:inventory?.imageChannels?.namespace, check:()=>cleanup.check() });
       cleanup.check();
       if (selected.includes('__image_service_receipts__')) { const service = await storyboardImageServiceRuntime(); cleanup.check(); await service.manage({ remove: true }); }
       cleanup.check();
@@ -19620,10 +19620,14 @@ async function storyboardImageChannelRuntime() {
 }
 
 async function storyboardManageImageChannels(options = {}) {
+  const check=options.check||(()=>{});check();
   const [identityModule, channelModule] = await Promise.all([featureRuntime.load('imageAdmission'), featureRuntime.load('imageChannel')]);
+  check();
   const namespace = await identityModule.resolveImageAccountNamespace();
+  check();
+  if(options.remove&&namespace!==options.expectedNamespace)throw new Error('储存账户已变化或尚未盘点，请重新选择清理项目。');
   const channels = channelModule.createBrowserImageChannel();
-  try { return await channels.manage(namespace, options); }
+  try { return {...await channels.manage(namespace, options),namespace}; }
   finally { channels.close(); }
 }
 

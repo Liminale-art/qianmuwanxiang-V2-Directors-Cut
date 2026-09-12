@@ -55,6 +55,17 @@ test('orphan cleanup receives the initiating session, not an unguarded backgroun
   await e.run();assert.equal(checked,true);assert.equal(e.calls.save,0);
 });
 
+test('NAI cleanup forwards the account from the chosen inventory and a live page guard to the manager',async()=>{
+  const e=fixture({cleared:[],failed:[],count:0,bytes:0},'module');let called=false;
+  e.c.storageInventoryState.data.imageChannels={namespace:'selected-account'};
+  e.c.openStorageCleanupDialog=async()=>['__image_channels__'];
+  e.c.storyboardManageImageChannels=async options=>{
+    assert.equal(options.remove,true);assert.equal(options.expectedNamespace,'selected-account');options.check();
+    e.root.isConnected=false;assert.throws(()=>options.check(),/后续操作已停止/);called=true;
+  };
+  await e.run();assert.equal(called,true);assert.equal(e.calls.clear,0);assert.equal(e.calls.save,0);assert.equal(e.c.storageCleanupSession.busy,false);
+});
+
 test('both real cleanup entry points pass their live scope check into the database loop',async()=>{
   for(const kind of ['chat','module']){
     const result={cleared:[],failed:[],count:0,bytes:0},e=fixture(result,kind);let checked=false;
