@@ -79,6 +79,72 @@ test('single cloud submit runner persists original acceptance with platform auth
   }
 });
 
+async function reopenCloudSubmission(t, f) {
+  await f.store.close();
+  const store = createImageServiceStore({ dataRoot: f.root, scope: 'comfy-cloud' }); t.after(() => store.close());
+  const ledger = createComfyCloudLedger({ store }), before = await store.inspectChannel(f.key), row = before.entries[0];
+  const locator = { channelKey: f.key, attemptId: row.attemptId, apiKey: f.input.apiKey };
+  return { store, ledger, before, row, options: { apiKey: f.input.apiKey, authorizeTarget: cloudGrant, resolveHost: publicDns,
+    authorizeTask: (req, original) => ledger.authorizeQuery(req, locator, original) } };
+}
+
+test('actual cloud submission survives service restart and remote success still does not release an uncollected image', async t => {
+  for (const binding of [cloudBinding, rhBinding]) {
+    const f = await cloudSubmissionFixture(t, binding), calls = [], cloud = binding.provider === 'comfy-cloud', id = cloud ? 'new-job' : '1904152026220003329';
+    const body = acceptedCloudBody(binding, id);
+    if (cloud) body.urls = { self: `/deployment/kept/api/v2/jobs/${id}`, cancel: `/deployment/kept/api/v2/jobs/${id}/cancel` };
+    const submitted = await submitComfyCloudTask(f.req, f.input, { ...f.options, requestImpl: mockNodeRequest(calls, () => ({ body })) });
+    const reopened = await reopenCloudSubmission(t, f), task = reopened.row.cloudReceipt.task;
+    assert.deepEqual(task, submitted.task, 'recovery must use the receipt actually produced by submission');
+    const queried = await queryComfyCloudTask(account(), task, { ...reopened.options, requestImpl: mockNodeRequest(calls, () => ({ body: cloud
+      ? { id, status: 'succeeded', urls: task.links, outputs: ['unverified'] }
+      : { taskId: id, status: 'SUCCESS', errorCode: '', results: ['unverified'] } })) });
+    assert.equal(queried.status, 'succeeded'); assert.equal(queried.images, undefined);
+    assert.equal(calls.length, 2);
+    if (cloud) { assert.equal(calls[1].url.href, task.links.self); assert.equal(calls[1].options.method, 'GET'); }
+    else { assert.equal(calls[1].url.pathname, '/openapi/v2/query'); assert.deepEqual(JSON.parse(calls[1].body), { taskId: id }); }
+    await assert.rejects(submitComfyCloudTask(account(), f.input, { ...f.options, ledger: reopened.ledger, requestImpl: mockNodeRequest(calls) }));
+    await assert.rejects(submitComfyCloudTask(account(), { ...f.input, attemptId: 'replacement-attempt' }, { ...f.options, ledger: reopened.ledger, requestImpl: mockNodeRequest(calls) }));
+    assert.equal(calls.length, 2, 'neither replay nor a new attempt may re-charge before the original result is verified');
+    assert.deepEqual(await reopened.store.inspectChannel(f.key), reopened.before);
+  }
+});
+
+test('cancelled or switched-account submissions recover only under the original account after restart', async t => {
+  for (const binding of [cloudBinding, rhBinding]) for (const changeAccount of [false, true]) {
+    const f = await cloudSubmissionFixture(t, binding), controller = new AbortController(), calls = [], id = binding.provider === 'comfy-cloud' ? 'new-job' : '1904152026220003329';
+    await assert.rejects(submitComfyCloudTask(f.req, f.input, { ...f.options, signal: controller.signal, requestImpl: mockNodeRequest(calls, () => {
+      if (changeAccount) f.req.user.profile.handle = 'bob'; else controller.abort();
+      return { body: acceptedCloudBody(binding, id) };
+    }) }), { submissionState: 'accepted' });
+    const reopened = await reopenCloudSubmission(t, f), task = reopened.row.cloudReceipt.task;
+    const bob = { user: { profile: { handle: 'bob', enabled: true, admin: false } } }; let deniedDns = 0;
+    await assert.rejects(queryComfyCloudTask(bob, task, { ...reopened.options, resolveHost: async () => { deniedDns++; return publicDns(); }, requestImpl: mockNodeRequest(calls) }), { code: 'comfy_cloud_query_authorization' });
+    assert.equal(deniedDns, 0); assert.equal(calls.length, 1);
+    const result = await queryComfyCloudTask(account(), task, { ...reopened.options, requestImpl: mockNodeRequest(calls, () => ({ body: binding.provider === 'comfy-cloud'
+      ? { id, status: 'running', urls: task.links } : { taskId: id, status: 'RUNNING', errorCode: '' } })) });
+    assert.equal(result.status, 'running'); assert.equal(calls.length, 2);
+    assert.equal(reopened.row.status, 'uncertain'); assert.equal(reopened.row.namespace, f.input.expectedAccount);
+    assert.deepEqual(await reopened.store.inspectChannel(f.key), reopened.before);
+  }
+});
+
+test('unknown acceptance after restart is neither guessed into a query route nor replayed as a new generation', async t => {
+  for (const malformed of [false, true]) {
+    const f = await cloudSubmissionFixture(t), calls = [];
+    await assert.rejects(submitComfyCloudTask(f.req, f.input, { ...f.options, requestImpl: mockNodeRequest(calls, () => malformed
+      ? { body: { id: 'new-job', urls: { self: 'https://else.test/job', cancel: 'https://else.test/job/cancel' } } }
+      : { status: 503, body: { error: 'unavailable' } }) }));
+    const reopened = await reopenCloudSubmission(t, f);
+    const guessed = bindComfyCloudTask(cloudBinding, 'new-job', { self: '/api/v2/jobs/new-job', cancel: '/api/v2/jobs/new-job/cancel' }); let queries = 0;
+    await assert.rejects(queryComfyCloudTask(account(), guessed, { ...reopened.options, resolveHost: async () => { queries++; return publicDns(); }, requestImpl: mockNodeRequest(calls) }), { code: 'comfy_cloud_query_authorization' });
+    await assert.rejects(submitComfyCloudTask(account(), { ...f.input, attemptId: 'not-a-retry' }, { ...f.options, ledger: reopened.ledger, requestImpl: mockNodeRequest(calls) }));
+    assert.equal(queries, 0); assert.equal(calls.length, 1);
+    assert.equal(reopened.row.upstreamId, malformed ? 'new-job' : undefined); assert.equal(reopened.row.cloudReceipt, undefined);
+    assert.equal(reopened.row.status, 'uncertain'); assert.deepEqual(await reopened.store.inspectChannel(f.key), reopened.before);
+  }
+});
+
 test('cloud submit cancellation before dispatch creates no reservation, DNS lookup or request', async t => {
   const f = await cloudSubmissionFixture(t), controller = new AbortController(); controller.abort(); let resolutions = 0; const calls = [];
   await assert.rejects(submitComfyCloudTask(f.req, f.input, { ...f.options, signal: controller.signal,
