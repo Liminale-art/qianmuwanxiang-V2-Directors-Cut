@@ -1,7 +1,7 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
-import { readCoreadPackageFile, coreadPackageSafeKey, coreadPackageRestoreMessage, applyCoreadPackageData, collectCoreadPackageData, prepareCoreadPackageExport, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard } from './qianmu-reader-package.js';
+import { readCoreadPackageFile, coreadPackageSafeKey, coreadPackageRestoreMessage, applyCoreadPackageData, collectCoreadPackageData, prepareCoreadPackageExport, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard, finishCoreadPackageImport } from './qianmu-reader-package.js';
 import { exportConfiguration } from './qianmu-config-export.js';
 import { exportLibraryBackup, readLibraryBackupFile, confirmLibraryRestore, FAVORITES_BACKUP_LIMITS, FAVORITE_TEXT_LIMITS } from './qianmu-library-backup.js';
 import { receiveComfyImage, resolveComfyRecoveryKey } from './qianmu-comfy-recovery-action.js';
@@ -34936,12 +34936,9 @@ async function coreadImportDataFile(file, origin) {
     check();
     await applyCoreadPackageData(data, {blobStore:blobStore.createReaderPackageWriter({check}), coread:()=>reader, isPlainObject, base64ToBlob, check, progress, warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error)});
     check();
-    // 偏好深合并：保留本机书目、启用态和全部凭据；v1–v5 数据均兼容。
-    if (isPlainObject(data.prefs) && !progress.failed && !progress.invalid) coreadMergePackageValue(coread(), omitConfigConnections({coread:data.prefs}).coread);
-    saveSettings();
-    toast(coreadImportProgressText(progress) + ((progress.failed || progress.invalid) && isPlainObject(data.prefs) ? ' 包内阅读偏好未应用，已保留本机偏好。' : ''), progress.failed || progress.invalid ? 'warning' : 'success');
-    renderModal();
-    rerenderMoreIfOpen();
+    finishCoreadPackageImport({reader, progress, hasPrefs:isPlainObject(data.prefs), check, save:saveSettings, notify:toast,
+      preparePrefs:()=>coreadMergePackageValue(clone(reader), omitConfigConnections({coread:data.prefs}).coread),
+      refresh:()=>{renderModal();rerenderMoreIfOpen();}});
     } catch (error) { toast(`伴读导入未完成：${coreadImportProgressText(progress)} ${error?.message || error}`, 'error'); }
     finally { viewGuard?.release(); coreadImportDataFile.busy = false; }
 }

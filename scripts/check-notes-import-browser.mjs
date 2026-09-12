@@ -212,7 +212,7 @@ try{
       const local=await api.listQianmuNotes();
       check('normal temporary notes still work but failed imports never become temporary',local.some(n=>n.id==='temporary')&&!local.some(n=>n.id==='no-storage'));
     }finally{if(descriptor)Object.defineProperty(window,'indexedDB',descriptor);else delete window.indexedDB;}
-    const {createCoreadImportViewGuard,prepareCoreadPackageExport,readCoreadPackageFile,applyCoreadPackageData}=await import('/qianmu-reader-package.js');
+    const {createCoreadImportViewGuard,prepareCoreadPackageExport,readCoreadPackageFile,applyCoreadPackageData,createCoreadImportProgress,finishCoreadPackageImport}=await import('/qianmu-reader-package.js');
     const atomicKey='reader-atomic',put=IDBObjectStore.prototype.put;
     const originalPair=async()=>{await writer.putBook(atomicKey,{fullText:'old prose'});await writer.putCover(atomicKey,new Blob(['old cover']));};
     for(const failure of ['reader_books','reader_covers','synchronous-cover']){
@@ -252,6 +252,15 @@ try{
     const legacyBookResult=await applyCoreadPackageData(legacyBook,{blobStore:writer,coread:()=>readerState,isPlainObject:v=>v&&typeof v==='object'&&!Array.isArray(v),base64ToBlob(){throw Error('no cover in legacy pack');},warn(){throw Error('unexpected write failure');}});
     check('legacy book-only import retains the indexed cover and actual original while restoring progress',legacyBookResult.ok===1&&legacyBookResult.coverOk===0&&readerState.books[0].hasCover===true&&readerState.books[0].progress===25&&await (await db.getCover(atomicKey)).text()==='old cover');
     check('cover metadata reconciliation leaves the imported source untouched',legacyBook.books[0].meta.hasCover===false&&legacyBook.books[0].meta!==readerState.books[0]);
+    const handoffReader={books:readerState.books,fontSize:16},handoffNotices=[];let handoffSaves=0;
+    const handoffOptions={reader:handoffReader,progress:{...createCoreadImportProgress(),ok:1},hasPrefs:true,check:guard,
+      preparePrefs:()=>({...handoffReader,fontSize:24,newPref:'incoming'}),save(){localStorage.setItem('synthetic-reader-settings',JSON.stringify(handoffReader));if(++handoffSaves===1)throw Error('synthetic save request failure');},refresh(){},notify:(text,level)=>handoffNotices.push({text,level})};
+    const handoffResult=finishCoreadPackageImport(handoffOptions),savedHandoff=JSON.parse(localStorage.getItem('synthetic-reader-settings'));
+    check('native settings compensation retains committed shelf while restoring only old preferences',handoffSaves===2&&savedHandoff.fontSize===16&&savedHandoff.books[0].id===atomicKey&&!('newPref' in savedHandoff)&&handoffReader.books===readerState.books);
+    check('native compensation still reports uncertain persistence rather than claiming durable host success',handoffResult.persistence==='uncertain'&&handoffNotices.length===1&&handoffNotices[0].level==='error'&&(await db.getBook(atomicKey)).fullText==='legacy prose');
+    handoffSaves=0;handoffNotices.length=0;
+    const viewResult=finishCoreadPackageImport({...handoffOptions,save(){handoffSaves++;},refresh(){throw Error('synthetic browser view failure');}});
+    check('native view failure does not undo preferences or request another import/save',viewResult.view==='incomplete'&&handoffReader.fontSize===24&&handoffSaves===1&&handoffNotices.length===1&&handoffNotices[0].text.includes('不必重复导入'));
     for(const books of [[{meta:{id:'reader-book'}}],[{meta:{id:'reader-book'},fullText:'first'},{meta:{id:'reader-book'},fullText:'second'}]]){
       const before=await db.getBook('reader-book');let rejected=false;
       try{const invalid=await readCoreadPackageFile(new File([JSON.stringify({type:'qianmu-coread',version:5,books})],'broken-reader.json'));for(const book of invalid.books)await writer.putBook(book.meta.id,book);}catch(error){rejected=error.message.includes('未写入内容');}
@@ -322,5 +331,5 @@ try{
   let content='';for await(const chunk of await download.createReadStream())content+=chunk.toString();assert.equal(content,'synthetic backup only');
   await page.waitForFunction(()=>window.downloadRevoked===1);assert.equal(await page.locator('a').count(),0);
   checks.push('the real browser receives complete synthetic bytes and filename before one delayed URL release');
-  assert.equal(checks.length,138);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,141);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

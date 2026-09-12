@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
 import {createStorageCleanupSession} from '../qianmu-storage-cleanup-session.js';
-import {createCoreadImportProgress,coreadImportProgressText,coreadPackageRestoreMessage} from '../qianmu-reader-package.js';
+import {createCoreadImportProgress,coreadImportProgressText,coreadPackageRestoreMessage,finishCoreadPackageImport} from '../qianmu-reader-package.js';
 function fixture(){
-  const notices=[],calls=[],levels=[];const c=vm.createContext({createCoreadImportProgress,coreadImportProgressText,coreadPackageRestoreMessage,settings:{coread:{}},storyboardAdmissionEpoch:1,toast:(m,level)=>{notices.push(m);levels.push(level);},
+  const notices=[],calls=[],levels=[];const c=vm.createContext({createCoreadImportProgress,coreadImportProgressText,coreadPackageRestoreMessage,finishCoreadPackageImport,settings:{coread:{}},storyboardAdmissionEpoch:1,toast:(m,level)=>{notices.push(m);levels.push(level);},
     readCoreadPackageFile:async()=>({books:[]}),confirmDialog:async()=>true,blobStore:{blobStoreAvailable:()=>true},isPlainObject:()=>false,
     base64ToBlob(){},MODULE_NAME:'fixture',saveSettings(){calls.push('save');},renderModal(){calls.push('render');},rerenderMoreIfOpen(){},
     applyCoreadPackageData:async()=>{calls.push('write');return {ok:0,chatOk:0,imageOk:0,vectorOk:0,audioOk:0,logOk:0};}});

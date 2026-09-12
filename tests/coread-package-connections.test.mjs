@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
 import {isPlainObject,clone} from '../qianmu-storyboard-utils.js';
-import {readCoreadPackageFile,coreadPackageSafeKey,coreadPackageRestoreMessage,applyCoreadPackageData,collectCoreadPackageData,prepareCoreadPackageExport,createCoreadImportProgress,coreadImportProgressText} from '../qianmu-reader-package.js';
+import {readCoreadPackageFile,coreadPackageSafeKey,coreadPackageRestoreMessage,applyCoreadPackageData,collectCoreadPackageData,prepareCoreadPackageExport,createCoreadImportProgress,coreadImportProgressText,finishCoreadPackageImport} from '../qianmu-reader-package.js';
 import {omitConfigConnections} from '../qianmu-config-connections.js';
 function fixture(local){
   let exported;const notices=[];
-  const c=vm.createContext({isPlainObject,clone,readCoreadPackageFile,coreadPackageSafeKey,coreadPackageRestoreMessage,applyCoreadPackageData,createCoreadImportProgress,coreadImportProgressText,omitConfigConnections,
+  const c=vm.createContext({isPlainObject,clone,readCoreadPackageFile,coreadPackageSafeKey,coreadPackageRestoreMessage,applyCoreadPackageData,createCoreadImportProgress,coreadImportProgressText,finishCoreadPackageImport,omitConfigConnections,
     settings:{},storyboardAdmissionEpoch:1,configRestoreActivity:()=>({}),coread:()=>local,readerDialog:{loaded:false},toast:m=>notices.push(m),confirmDialog:async()=>true,base64ToBlob:()=>{throw Error('unexpected media');},MODULE_NAME:'fixture',
     blobStore:{blobStoreAvailable:()=>true,listReaderChatKeys:async()=>[],listReaderImages:async()=>[],listReaderVectorKeys:async()=>[],listAudio:async()=>[],listRetLog:async()=>[]},
     saveSettings(){},renderModal(){},rerenderMoreIfOpen(){},fileStamp:()=> 'fixture',
@@ -78,6 +78,22 @@ test('partially restored originals retain local preferences instead of selecting
     assert.equal(local.books[0].id,'committed','do not compensate by throwing away successfully imported originals');
     assert.match(e.notices.at(-1),/包内阅读偏好未应用/);assert.equal(e.c.coreadImportDataFile.busy,false);
   }
+});
+
+test('actual entry keeps committed shelf records when host save throws and does not reapply incoming preferences',async()=>{
+  const local=settings(),e=fixture(local),before=structuredClone(local);let saves=0,writes=0;
+  e.c.applyCoreadPackageData=async(data,{progress})=>{writes++;progress.ok=1;local.books.push({id:'committed'});};
+  e.c.saveSettings=()=>{saves++;throw Error('synthetic save failure');};
+  await e.run({fontSize:28,currentBookId:'incoming'});
+  assert.equal(writes,1);assert.equal(saves,2);assert.equal(local.fontSize,before.fontSize);assert.equal(local.currentBookId,undefined);assert.equal(local.books[0].id,'committed');
+  assert.match(e.notices.at(-1),/设置保存结果未确认/);assert.equal(e.c.coreadImportDataFile.busy,false);
+});
+
+test('actual entry reports a repaint failure separately after applied preferences without rerunning storage',async()=>{
+  const local=settings(),e=fixture(local);let writes=0,saves=0;e.c.applyCoreadPackageData=async()=>{writes++;};
+  e.c.saveSettings=()=>{saves++;};e.c.renderModal=()=>{throw Error('synthetic view failure');};
+  await e.run({fontSize:28});assert.equal(local.fontSize,28);assert.equal(writes,1);assert.equal(saves,1);
+  assert.match(e.notices.at(-1),/不必重复导入/);assert.equal(e.notices.some(n=>n.startsWith('伴读导入未完成：')),false);
 });
 test('actual reader export strips complete connections from a detached copy and retains reading preferences',async()=>{
   const local=settings(),before=structuredClone(local),e=fixture(local);await e.c.coreadExportData();

@@ -250,3 +250,53 @@ export function createCoreadImportProgress() {
 export function coreadImportProgressText(p) {
   return `已导入 ${p.ok} 本书原件 · ${p.coverOk} 张封面 · ${p.chatOk} 段对话 · ${p.imageOk} 张插图 · ${p.vectorOk} 组向量 · ${p.audioOk} 条语音 · ${p.logOk} 条检索记录；失败 ${p.failed} 项，格式无效 ${p.invalid} 项，已存在音频跳过 ${p.skipped} 项。`;
 }
+
+// Originals are already committed. Compensate preferences only; never roll back book indexes or stores.
+// `save` requests the host's debounced persistence, not a durable-write acknowledgement.
+export function finishCoreadPackageImport({reader, progress, hasPrefs, preparePrefs, check, save, refresh, notify}) {
+  check();
+  const partial = !!(progress.failed || progress.invalid);
+  let previous, touched = false, prefsFailed = false, saveFailed = false, compensationFailed = false;
+  const mutable = key => key !== 'books' && key !== 'enabled' && coreadPackageSafeKey(key);
+  const restore = () => {
+    let complete = true;
+    for (const key of Object.keys(reader).filter(mutable)) {
+      try { if (!Object.hasOwn(previous, key)) delete reader[key]; } catch (_) { complete = false; }
+    }
+    for (const [key, value] of Object.entries(previous)) {
+      try { if (mutable(key)) reader[key] = value; } catch (_) { complete = false; }
+    }
+    return complete;
+  };
+  if (hasPrefs && !partial) {
+    previous = {...reader};
+    try {
+      const prepared = preparePrefs(); // Caller merges only into a detached copy, retaining connection policy.
+      check();
+      touched = true;
+      for (const [key, value] of Object.entries(prepared)) if (mutable(key)) reader[key] = value;
+    } catch (_) {
+      check(); prefsFailed = true;
+      if (touched) compensationFailed = !restore();
+    }
+  }
+  if (!compensationFailed) {
+    try { check(); save(); }
+    catch (_) {
+      check(); saveFailed = true;
+      if (touched) { prefsFailed = true; compensationFailed = !restore(); }
+      // A throwing save may have queued a write. Request the compensated state once, never loop.
+      if (!compensationFailed) { try { check(); save(); } catch (_) { check(); } }
+    }
+  }
+  check();
+  let viewFailed = false;
+  if (!compensationFailed) { try { refresh(); } catch (_) { viewFailed = true; } }
+  const notes = [coreadImportProgressText(progress)];
+  if (compensationFailed) notes.push('阅读偏好还原未完成，请保留当前页面并先导出备份，不要再次覆盖。');
+  else if (prefsFailed || hasPrefs && partial) notes.push('包内阅读偏好未应用，已保留本机偏好及已恢复书目。');
+  if (saveFailed) notes.push('设置保存结果未确认，请保留当前页面并先导出备份；已写入原件保留。');
+  if (viewFailed) notes.push('原件写入结果不变，但页面更新未完成，请重新打开千幕检查，不必重复导入。');
+  notify(notes.join(' '), compensationFailed || saveFailed ? 'error' : partial || prefsFailed || viewFailed ? 'warning' : 'success');
+  return {preferences:compensationFailed ? 'incomplete' : prefsFailed || partial ? 'retained' : hasPrefs ? 'applied' : 'unchanged', persistence:compensationFailed ? 'uncertain' : saveFailed ? 'uncertain' : 'requested', view:compensationFailed ? 'skipped' : viewFailed ? 'incomplete' : 'updated'};
+}
