@@ -37,29 +37,31 @@ test('one preparation reads each exact version once, never opens a global cache 
 });
 
 test('actual mixed pipeline freezes two independent Comfy graphs and one NAI job in narrative order, without multiplying count',async()=>{
-  const e=await routeEnvironment(),globalBefore=structuredClone(e.state.profiles.comfy);
+  const e=await routeEnvironment();e.state.profiles.comfy.comfyCharacterEnabled=true;e.routes.forEach(route=>route.comfyCharacterEnabled=true);
+  const globalBefore=structuredClone(e.state.profiles.comfy);
   assert.equal(await e.context.storyboardGenerate(null,{automatic:true}),true);assert.deepEqual(e.jobs.map(job=>job.source),['comfy','comfy','novel']);
   for(const [index,job] of e.jobs.entries()){
     assert.equal(job.inlineOrder.shotIndex,index);assert.equal(job.payload.parameters.count,1);
     assert.equal(job.profile.count,'1');assert.equal(job.automatic,true);
     if(index<2){assert.equal(job.profile.comfyRouteBinding.id,e.routes[index].comfyWorkflowBinding.id);
       assert.equal(job.profile.comfyWorkflow,e.recipes[index].document.workflow);assert.equal(job.payload.parameters.workflow,e.recipes[index].document.workflow);
-      assert.match(job.payload.prompt,new RegExp(e.recipes[index].document.positivePrompt));
-      assert.match(job.payload.negative,new RegExp(e.recipes[index].document.negativePrompt));assert.doesNotMatch(job.payload.prompt,/global quality/);
+      assert.doesNotMatch(job.payload.prompt,new RegExp(e.recipes[index].document.positivePrompt));
+      assert.doesNotMatch(job.payload.negative,new RegExp(e.recipes[index].document.negativePrompt));assert.doesNotMatch(job.payload.prompt,/global quality/);
+      assert.equal(job.profile.comfyCharacterEnabled,false);
     }
   }
   assert.deepEqual(e.state.profiles.comfy,globalBefore);assert.equal(e.context.storyboardGenerationPreparing.size,0);
   assert.equal(e.calls.includes('comfyCharacters'),false);
 });
 
-test('manual locked text retains the selected fixed workflow prompt layer and freezes it in normalized snapshots',async()=>{
+test('manual locked text keeps user text and fixed graph identity without retired extra prompt layers',async()=>{
   const e=await routeEnvironment();e.state.promptDraft.userEditedCompiled=true;
   e.state.promptDraft.shots=e.state.promptDraft.shots.slice(0,1);e.state.generationPolicy.maxImages=1;
   assert.equal(await e.context.storyboardGenerate(null,{automatic:false}),true);
   assert.equal(e.jobs.length,1);const job=e.jobs[0];assert.equal(job.profile.count,'4');assert.equal(job.requestTotal,1);
-  assert.equal(job.payload.prompt,'portrait quality\n\nwoman reading a letter');
+  assert.equal(job.payload.prompt,'woman reading a letter');
   const restored=core.normalizeStoryboardParameterProfile(job.profile,'comfy');
-  assert.deepEqual(restored.comfyRouteBinding,e.recipes[0].binding);assert.deepEqual(restored.comfyRoutePromptLayer,{positive:'portrait quality',negative:'portrait exclusions'});
+  assert.deepEqual(restored.comfyRouteBinding,e.recipes[0].binding);assert.deepEqual(restored.comfyRoutePromptLayer,{positive:'',negative:''});
   const clear=e.context.storyboardResolveRoutingProfile(e.state,{providerId:'comfy',modelId:'comfy-workflow'},restored);
   assert.equal(clear.comfyRouteBinding,undefined);assert.equal(clear.comfyRoutePromptLayer,undefined);
   assert.deepEqual(retainComfyRoutePromptLayer({positive:'',negative:'x'.repeat(12001)}),{invalid:true});

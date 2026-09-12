@@ -228,7 +228,9 @@ test('actual one-shot extraction negotiates candidates, then routes, freezes and
     assert.equal(e.llmCalls.length,1);assert.equal(e.jobs.length,3);assert.deepEqual(e.jobs.map(job=>job.inlineOrder.shotIndex),[0,1,2]);
     assert.deepEqual(e.jobs.map(job=>job.profile.comfyRouteBinding.id),['portrait','landscape','portrait']);
     assert.ok(e.jobs.every(job=>job.comfyAutoSelected&&job.comfySceneClaim&&job.comfyExecution.automatic&&job.profile.count==='1'));
-    assert.match(e.jobs[0].payload.prompt,/portrait quality, tag-scene-0/);assert.match(e.jobs[1].payload.prompt,/landscape quality\n\nNatural scene 1/);
+    assert.match(e.jobs[0].payload.prompt,/^tag-scene-0/);assert.match(e.jobs[1].payload.prompt,/^Natural scene 1/);
+    assert.ok(e.jobs.every(job=>!job.profile.comfyCharacterEnabled));
+    assert.ok(e.jobs.every(job=>job.profile.comfyRoutePromptLayer.positive===''));
     assert.equal(e.writes.filter(type=>type==='reserve').length,3);assert.equal(JSON.stringify(e.state.profiles),original);
     for(const job of e.jobs){await e.manager.beforeSubmit(job);await e.manager.settle(job,'succeeded');}
     assert.ok([...e.records.values()].every(row=>row.established&&!row.holders.length));assert.ok(e.network.every(request=>request.method==='GET'));
@@ -245,7 +247,7 @@ test('a current compiled draft consumes the explicitly linked previous-floor sty
     p.floor=1;e.context.storyboardTargetFloor=()=>1;e.context.hashText=hashText;
     e.context.ctx().chat.push({...e.context.ctx().chat[0]});e.state.target='floor';e.state.floor='1';
     p.revisionId=core.createStoryboardMessageReference({message:e.context.ctx().chat[1],chatKey:'chat-a',floor:1}).revisionId;
-    const autoModule=await e.context.featureRuntime.load('comfyAuto'),prepared=await autoModule.prepareComfyAutoSession({namespace,binding:e.state.comfyPoolSelection});
+    const autoModule=await e.context.featureRuntime.load('comfyAuto'),prepared=await autoModule.prepareComfyAutoSession({namespace,binding:e.state.comfyPoolSelection,freshComfy:true});
     const priorScope={namespace,chatKey:'chat-a',continuityId:'previous-completed-scene',narrativeLayer:'present'};
     const choice=await prepared.select({shotSpec:e.state.promptDraft.shots[0].shotSpec,scope:priorScope,probe:async()=>({automaticEligible:true})});
     const prior=changeComfySceneRecord(null,priorScope,{type:'reserve',expectedRevision:0,lock:choice.proposedLock,label:{planId:'old-plan',floor:0,workflowName:'Portrait'},attemptId:'old',ownerId:'old-page',token:'old'});

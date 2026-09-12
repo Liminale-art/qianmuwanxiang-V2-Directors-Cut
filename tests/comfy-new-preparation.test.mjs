@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {projectNewComfyExecution} from '../qianmu-comfy-new-execution.js';
 import {routeEnvironment} from './helpers/comfy-route-fixture.mjs';
+import {compilerEnvironment} from './helpers/comfy-compiler-fixture.mjs';
 
 for(const fixed of [false,true])test(`${fixed?'fixed recipe':'workbench'} fresh preparation omits retired roles but keeps original workflow preflight`,async()=>{
   const e=await routeEnvironment();e.context.projectNewComfyExecution=projectNewComfyExecution;
@@ -57,4 +58,25 @@ test('fresh preparation still rejects a malformed graph before any retired role 
     await assert.rejects(()=>e.context.storyboardPreflightComfyForCompiler(e.state,e.state.profiles.comfy,null,guard),/顶层必须是 JSON 对象/);
     assert.equal(e.calls.includes('comfyCharacters'),false);
   }finally{guard.dispose();}
+});
+
+test('actual fresh extraction and mixed generation use one policy even when saved role implementations are enabled',async()=>{
+  const e=await compilerEnvironment();e.state.profiles.comfy.comfyCharacterEnabled=true;
+  e.routes.forEach(route=>route.comfyCharacterEnabled=true);
+  const original=JSON.stringify([e.rows,e.state.profiles.comfy,e.state.routing.rules]),seen=[];
+  const create=e.context.storyboardCreatePreparationGuard;
+  e.context.storyboardCreatePreparationGuard=(state,options)=>{
+    const guard=create(state,options);seen.push(guard.freshComfy);return guard;
+  };
+  assert.equal(await e.context.storyboardCompilePrompt(null),true,JSON.stringify(e.errors));
+  assert.equal(await e.context.storyboardGenerate(null,{automatic:true}),true,JSON.stringify(e.notices));
+  assert.ok(seen.length>=2);assert.ok(seen.every(value=>value===true));
+  assert.equal(e.llmCalls.length,1);assert.equal(e.calls.includes('comfyCharacters'),false);
+  assert.deepEqual(e.jobs.map(job=>job.source),['comfy','comfy','novel']);
+  for(const job of e.jobs.filter(job=>job.source==='comfy')){
+    assert.equal(job.profile.comfyCharacterEnabled,false);
+    assert.deepEqual(JSON.parse(JSON.stringify(job.profile.comfyRoutePromptLayer)),{positive:'',negative:''});
+    assert.ok(job.shotSpec.characters.every(character=>!character.archiveSnapshot?.comfyImplementation));
+  }
+  assert.equal(JSON.stringify([e.rows,e.state.profiles.comfy,e.state.routing.rules]),original);
 });

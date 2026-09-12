@@ -3,6 +3,7 @@ import * as storyboard from '../../qianmu-storyboard.js';
 import * as runtime from '../../qianmu-comfy-route.js';
 import * as preflight from '../../qianmu-comfy-preflight.js';
 import {hashText} from '../../qianmu-storyboard-utils.js';
+import {projectNewComfyExecution} from '../../qianmu-comfy-new-execution.js';
 import { storyboardFunctionSource as section } from './storyboard-form-fixture.mjs';
 export const namespace = 'st-user:route-test';
 export const graph = label => ({
@@ -39,7 +40,7 @@ export async function routeEnvironment(options={}) {
     const scene=['woman reading a letter','wide river and mountains','broken cup on the wooden table'][index];
     return {id:`shot-${index}`,prompt:scene,shotType,shotSpec:{sourceParagraphIds:[`p${index}`],scene,location:scene,evidence:{quote:scene},visualDuty:scene,narrativePurpose:scene}};
   });
-  const context=vm.createContext({...storyboard,STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',group:'',environment:'',object:'',action:'',closeup:'',custom:''},clone:structuredClone,settings:{apiProfiles:[]},storyboardState:()=>state,
+  const context=vm.createContext({...storyboard,projectNewComfyExecution,STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',group:'',environment:'',object:'',action:'',closeup:'',custom:''},clone:structuredClone,settings:{apiProfiles:[]},storyboardState:()=>state,
     getChatKey:()=> 'chat-a',ctx:()=>({chat:[]}),getCharacterDescription:()=>'',getPersonaDescription:()=>'',
     storyboardTargetFloor:()=>-1,storyboardCredentialRevision:0,storyboardAdmissionEpoch:1,storyboardDraftApiKeys:new Map(),
     storyboardSelectedArtistPreset:()=>null,storyboardGalleryRecords:()=>[],STORYBOARD_NAI_QUALITY_DEFAULTS:{},STORYBOARD_NAI_NEGATIVE_DEFAULTS:{},STORYBOARD_GENERIC_PROMPT_DEFAULTS:{positive:'global quality',negative:'global negative'},

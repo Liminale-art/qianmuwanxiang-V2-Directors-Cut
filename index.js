@@ -14548,7 +14548,7 @@ async function storyboardShowComfySceneLinks(root) {
     const [runtime,auto,identity,manager]=await Promise.all([featureRuntime.load('comfyScene'),featureRuntime.load('comfyAuto'),featureRuntime.load('imageAdmission'),storyboardComfySceneRuntime()]);
     const namespace=await identity.resolveImageAccountNamespace();
     const guard=async()=>{if(!current()||namespace!==await identity.resolveImageAccountNamespace()||!current())throw new Error('正文、草稿或页面已变化，请重新打开续场选择');};await guard();
-    const pool=await auto.readComfyStylePool({namespace,binding:state.comfyPoolSelection,guard});await guard();
+    const pool=await auto.readComfyStylePool({namespace,binding:state.comfyPoolSelection,guard,freshComfy:true});await guard();
     if(!pool.styleLock)throw new Error('当前候选方案未启用连续场景风格锁');
     const {planned,coverage}=storyboardPrepareDraftGroup(state,plan);
     const scopes=await storyboardComfyPlanScopes(runtime,{namespace,chatKey,plan,planned,coverage,draftPlanId:state.promptDraft.planId,guard});await guard();
@@ -14580,7 +14580,7 @@ async function storyboardShowComfySceneLinks(root) {
             await guard();const source=eligible[Number(select.value)];if(!source||select.value==='')throw new Error('请先选择前层风格');
             if(!await confirmDialog('关联续场风格',`第 ${source.label.floor} 层 → 第 ${floor} 层 · ${layerName(scope.narrativeLayer)}\n仅沿用“${source.label.workflowName||'原工作流'}”，不复制人物动作或提示词，不触发生图。`))return;
             await guard();
-            const checkedPool=await auto.readComfyStylePool({namespace,binding:state.comfyPoolSelection,guard});await guard();
+            const checkedPool=await auto.readComfyStylePool({namespace,binding:state.comfyPoolSelection,guard,freshComfy:true});await guard();
             if(!checkedPool.styleLock||checkedPool.poolKey!==pool.poolKey)throw new Error('候选方案已变化，请重新选择续场');
             const linked=await manager.linkStyle(source.scope,scope,{expectedSourceRevision:source.revision,expectedRevision:view.revision,expectedGeneration:view.generation,label:{planId:plan.id,floor,sceneTitle:group.sceneFingerprint?.location||title}},{valid:current});await guard();
             status.textContent=`沿用第 ${linked.styleOrigin.sourceFloor} 层 · ${linked.label.workflowName||'原风格'}`;controls.replaceChildren();toast('续场风格已关联，未触发生图','success');
@@ -19335,7 +19335,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
   const floor = storyboardTargetFloor(state);
   if (floor < 0 || !ctx().chat?.[floor]) { toast('当前没有可用于自动取景的正文。', 'warning'); return false; }
   let inputGuard;
-  try { inputGuard = storyboardCreatePreparationGuard(state, { plan, requireCompiler: true }); }
+  try { inputGuard = storyboardCreatePreparationGuard(state, { plan, requireCompiler: true, freshComfy: true }); }
   catch (error) { toast(error.message, 'warning'); return false; }
   storyboardCompilerBusy = true;
   storyboardSetPlanStatus(plan, 'compiling');
@@ -19871,7 +19871,7 @@ async function storyboardProbeComfyCandidate(state, prepared, inputGuard, {candi
   // A technical probe has no prose anchor, plan, log, admission or delivery side effects.
   const previewState={...state,target:'gallery',inlineByDefault:false,promptDraft:{...state.promptDraft,userEditedCompiled:false,userEditedNegative:false}};
   const job=storyboardCreateJob(previewState,profile,{sourceId:'comfy',profileSourceId:'comfy',modelId:'comfy-workflow',capabilityModelId:'comfy-workflow',
-    connectionPresetId:route.connectionPresetId,routeTarget:route,preparedRoutes:prepared,shot:{shotSpec:clone(shot),prompt,sensitive:shot.sensitive}});
+    connectionPresetId:route.connectionPresetId,routeTarget:route,preparedRoutes:prepared,freshComfy:inputGuard.freshComfy,shot:{shotSpec:clone(shot),prompt,sensitive:shot.sensitive}});
   job.automatic=true;
   const inspector=await featureRuntime.load('comfyCharacterReadiness');await guard();inputGuard.assertCurrent();
   if(typeof inspector.createComfyReadinessSession==='function'){
@@ -20249,7 +20249,7 @@ async function storyboardGenerateProductionPacket(root, packetId) {
   try {
     productionGuard.assertCurrent();
     storyboardCaptureWorkbench(root);
-    preparationGuard = storyboardCreatePreparationGuard(state, {upstreamGuard:productionGuard});
+    preparationGuard = storyboardCreatePreparationGuard(state, {upstreamGuard:productionGuard,freshComfy:true});
     const assertCurrent = () => { preparationGuard.assertCurrent(); if (root?.isConnected === false) throw Object.assign(new Error('镜头台已关闭，请重新确认'), {code:'storyboard_input_changed'}); };
     const [decisionRuntime, workOrderRuntime, worldRuntime] = await Promise.all([
       featureRuntime.load('directorDecision'),
@@ -20291,7 +20291,7 @@ async function storyboardGenerateProductionPacket(root, packetId) {
     const usesAuto = storyboardRouteUsesComfyAuto(state,route);
     const promptFormats = sourceId === 'comfy' ? preparationGuard.comfyRoutes?.promptFormats || [] : [sourceId==='novel'?'tags':'natural_language'];
     const casting = await storyboardCompilerCharacterCasting('',{assertCurrent},useReference,
-      sourceId === 'comfy' && (usesAuto ? preparationGuard.comfyRoutes?.candidates.some(row=>row.target.comfyCharacterEnabled) : finalProfile.comfyCharacterEnabled === true),shotInput.characters);
+      !preparationGuard.freshComfy && sourceId === 'comfy' && (usesAuto ? preparationGuard.comfyRoutes?.candidates.some(row=>row.target.comfyCharacterEnabled) : finalProfile.comfyCharacterEnabled === true),shotInput.characters);
     assertCurrent();
     const identityRuntime = await featureRuntime.load('imageAdmission');
     assertCurrent();
@@ -20500,7 +20500,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
     if (productionDraft && storyboardProductionContext(productionDraft).decisionStatus !== 'approved') return toast('造物之眼缺少已确认的导演决策。', 'warning');
     let deliveryPolicy, targetFloor;
     // Extraction owns its draft writes; this outer guard keeps the surrounding configuration/context stable.
-    const preparationGuard = storyboardCreatePreparationGuard(state, { plan, includeDraft: false, upstreamGuard:productionGuard });
+    const preparationGuard = storyboardCreatePreparationGuard(state, { plan, includeDraft: false, upstreamGuard:productionGuard, freshComfy:true });
     try {
       if (productionDraft) {
         const currentChatKey = String(getChatKey() || '');
@@ -20559,7 +20559,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
       }));
       plan.updatedAt = Date.now();
     }
-    const inputGuard = storyboardCreatePreparationGuard(state, { plan, upstreamGuard:productionGuard });
+    const inputGuard = storyboardCreatePreparationGuard(state, { plan, upstreamGuard:productionGuard, freshComfy:true });
     let queued=0,queueFailures=0;
     try {
       let selectedRoutes = planned.map(shot => routingEnabled ? routeStoryboardShot(shot, state.routing) : state.routing.single);
@@ -20603,7 +20603,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
               planId: plan?.id || '', planShotId: planShot?.id || '', recentArtistIds: resolvedArtistIds,
               requestIndex: request.requestIndex, requestTotal: request.requestTotal,
               inlineOrder: { ...inlineBatch, shotIndex: index, requestIndex: request.requestIndex },
-              routeTarget: route, preparedRoutes: inputGuard.comfyRoutes,
+              routeTarget: route, preparedRoutes: inputGuard.comfyRoutes, freshComfy:inputGuard.freshComfy,
             });
           } catch (error) { return toast(`镜组配置：${error.message}`, 'warning'); }
           if (job.artistPresetId) resolvedArtistIds.push(job.artistPresetId);
@@ -20710,7 +20710,7 @@ async function storyboardReprepareComfyLog(log,{isCurrent=()=>true}={}) {
   const assert=()=>{if(!valid())throw Object.assign(new Error('原镜头、聊天或准备记录已变化，未继续生成'),{code:'storyboard_input_changed'});};
   storyboardPreparationRetries.add(log.id);
   try {
-    assert();inputGuard=storyboardCreatePreparationGuard(state,{upstreamGuard:{isCurrent:valid}});
+    assert();inputGuard=storyboardCreatePreparationGuard(state,{upstreamGuard:{isCurrent:valid},freshComfy:true});
     const identity=await featureRuntime.load('imageAdmission');inputGuard.assertCurrent();
     if(await identity.resolveImageAccountNamespace()!==original.pool.namespace)throw new Error('原准备草稿属于另一账户，不能继续生成');
     inputGuard.assertCurrent();
@@ -20732,7 +20732,7 @@ async function storyboardReprepareComfyLog(log,{isCurrent=()=>true}={}) {
     job=storyboardCreateJob(current,profile,{sourceId:'comfy',profileSourceId:'comfy',shot:{id:original.shotSpec.id,prompt:original.prompt,negative:original.negative,
       shotType:original.shotType,shotSpec:original.shotSpec,paragraphSelection:original.paragraphSelection,paragraphIndex:original.paragraphAnchor?.paragraphIndex},
       modelId:selected.modelId,capabilityModelId:profile.capabilityModelId,connectionPresetId:selected.connectionPresetId,
-      planId:original.planId,planShotId:original.planShotId,inlineOrder:original.inlineOrder,attempt:Number(log.attempt||1)+1,routeTarget:selected,preparedRoutes:inputGuard.comfyRoutes});
+      planId:original.planId,planShotId:original.planShotId,inlineOrder:original.inlineOrder,attempt:Number(log.attempt||1)+1,routeTarget:selected,preparedRoutes:inputGuard.comfyRoutes,freshComfy:inputGuard.freshComfy});
     job.paragraphAnchor=clone(original.paragraphAnchor);job.automatic=false;
     Object.defineProperty(job,'comfyAutoSelected',{value:true,enumerable:false});
     await batch.attach(job,choice);await guard();

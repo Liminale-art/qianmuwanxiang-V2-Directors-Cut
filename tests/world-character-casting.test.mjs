@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import * as casting from '../qianmu-character-casting.js';
 import * as world from '../qianmu-world-shot.js';
 import * as core from '../qianmu-storyboard.js';
+import {projectNewComfyExecution} from '../qianmu-comfy-new-execution.js';
 import * as decisions from '../qianmu-director-decision.js';
 import * as orders from '../qianmu-director-work-order.js';
 import * as comfyRoutes from '../qianmu-comfy-route.js';
@@ -103,7 +104,7 @@ function harness({confirm=async options=>options.promptFormats.length ? {...opti
   const ledger={entryId:'entry-a',source:{recordId:'packet-a'}},candidate={candidateId:'candidate-a',owner:{chatKey:'chat-a'},entryId:'entry-a',sourceKind:'simulation',recommendation:'manual_review',
     gates:{sourceValid:true,factConsistency:true,spoilerSafe:false,shotDistinct:true}};
   let account=e.namespace,chat='chat-a';const calls=[],notices=[],chatData=[{mes:'unrelated prose'}];
-  Object.assign(context,{storyboardAdmissionEpoch:0,storyboardCredentialRevision:0,storyboardGenerationPreparing:new Set(),directorNarrativeBridgeEpoch:1,
+  Object.assign(context,{projectNewComfyExecution,storyboardAdmissionEpoch:0,storyboardCredentialRevision:0,storyboardGenerationPreparing:new Set(),directorNarrativeBridgeEpoch:1,
     directorProductionPacketState:{chatKey:chat,packets:[packet]},directorCandidatePoolState:{chatKey:chat,ledger:{entries:[ledger]},pool:{candidates:[candidate]}},
     getChatKey:()=>chat,storyboardTargetFloor:()=>0,ctx:()=>({chat:chatData,Popup:class{},POPUP_TYPE:{CONFIRM:1}}),
     getCharacterDescription:()=>'',getPersonaDescription:()=>'',storyboardCharacterArchiveContext:async()=>({chatKey:chat,subjects:e.subjects}),
@@ -151,7 +152,7 @@ test('classified world confirmation prepares exact expressions and the real shar
   vm.runInContext(['storyboardPromptsForArtist','storyboardJoinPrompt','storyboardCompilerRoutes','storyboardGenerationPayload','storyboardCreateJob','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardGenerate'].map(section).join('\n'),e.context);
   assert.equal(await e.context.storyboardGenerate(null,e.context.lastProductionOptions),true,e.notices.join(';'));
   assert.equal(jobs.length,1);const job=jobs[0];assert.equal(job.target,'gallery');assert.equal(job.payload.promptRendering.format,'tags');
-  assert.match(job.payload.prompt,/portrait quality, kitchen, soft light/);assert.match(job.payload.prompt,/"Alice":/);
+  assert.match(job.payload.prompt,/^kitchen, soft light/);assert.match(job.payload.prompt,/"Alice":/);
   assert.doesNotMatch(job.payload.prompt,/厨房|silver hair/);assert.match(job.payload.prompt,/blue hair, no coat, stirs soup/);
   assert.equal(job.shotSpec.subject,'厨房');assert.equal(job.shotSpec.productionContext.truthMode,'speculative');
 });
@@ -185,7 +186,8 @@ test('invalid world rendering can be manually repaired after explicit retry; tra
 test('world auto candidates determine both prompt format union and casting, independently of the closed workbench and its inactive workflow',async()=>{
   const e=await classifiedWorld({confirm:async options=>{
     assert.deepEqual([...options.promptFormats],['tags','natural_language']);
-    assert.ok(options.shot.characters[0].archiveSnapshot.comfyImplementation);
+    assert.equal(options.shot.characters[0].archiveSnapshot.comfyImplementation,undefined);
+    assert.ok(options.shot.characters[0].identity.length,'general character appearance remains available');
     const renderings=await options.prepareRenderings(options.shot);
     return {...options.shot,promptRenderingPack:await formats.bindStoryboardPromptRenderings(options.shot,renderings,{formats:options.promptFormats})};
   }});
@@ -241,7 +243,8 @@ test('the final routed engine determines private casting fields, not the visible
   const e=harness();e.state.routing.enabled=true;e.state.profiles.comfy.comfyCharacterEnabled=true;
   e.context.routeStoryboardShot=()=>({providerId:'comfy',modelId:'comfy-workflow'});
   assert.equal(await e.run(),true);const snapshot=e.state.promptDraft.shots[0].shotSpec.characters[0].archiveSnapshot;
-  assert.ok(snapshot.comfyImplementation);assert.equal(snapshot.imageReference,undefined);
+  assert.equal(snapshot.comfyImplementation,undefined);assert.equal(snapshot.imageReference,undefined);
+  assert.equal(snapshot.archiveId,'alice');
 });
 test('upstream source revocation remains part of actual preparation guards through the normal queue handoff',()=>{
   const e=harness();let valid=true;const guard=e.context.storyboardCreatePreparationGuard(e.state,{upstreamGuard:{isCurrent:()=>valid}});

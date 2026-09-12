@@ -56,9 +56,9 @@ test('actual extraction -> settings reload -> mixed route jobs -> final workflow
   assert.equal(await e.context.storyboardGenerate(null,{plan,automatic:true}),true,JSON.stringify({notices:e.notices,errors:e.errors}));
   assert.equal(e.jobs.length,3);assert.deepEqual(e.jobs.map(job=>job.source),['comfy','comfy','novel']);assert.equal(e.llmCalls.length,1);
   const [tags,natural,nai]=e.jobs;
-  assert.match(tags.payload.prompt,/^portrait quality, tag-scene-0/);assert.match(tags.payload.prompt,/'Alice'|"Alice"/);assert.match(tags.payload.prompt,/coat removed/);
-  assert.match(natural.payload.prompt,/^landscape quality\n\nNatural scene 1/);assert.doesNotMatch(natural.payload.prompt,/tag-scene|portrait quality/);
-  assert.equal(tags.payload.negative,'portrait exclusions, extra people');assert.match(natural.payload.negative,/landscape exclusions\n\nNo extra people/);
+  assert.match(tags.payload.prompt,/^tag-scene-0/);assert.match(tags.payload.prompt,/'Alice'|"Alice"/);assert.match(tags.payload.prompt,/coat removed/);
+  assert.match(natural.payload.prompt,/^Natural scene 1/);assert.doesNotMatch(natural.payload.prompt,/tag-scene|portrait quality|landscape quality/);
+  assert.equal(tags.payload.negative,'extra people');assert.equal(natural.payload.negative,'No extra people.');
   assert.equal(nai.payload.promptRendering,undefined);assert.doesNotMatch(nai.payload.prompt,/landscape quality|Natural scene/);
   assert.deepEqual(e.jobs.map(job=>job.inlineOrder.shotIndex),[0,1,2]);
   for(const job of [tags,natural]) {
@@ -154,7 +154,7 @@ test('applying a classified library version retains only bounded workbench prove
   assert.equal(core.getStoryboardRememberedProfile(restored.modelProfiles,'comfy','comfy-workflow').comfyWorkbenchBinding.classification.promptFormat,'tags');
   assert.ok(JSON.stringify(profile.comfyWorkbenchBinding).length<1500);assert.doesNotMatch(JSON.stringify(profile.comfyWorkbenchBinding),/class_type|parameters|positivePrompt/);
 });
-test('ordinary workbench actual extraction and generation honor format plus current parameter and prompt edits',async()=>{
+test('ordinary workbench generation honors format and parameters without reviving saved retired prompt additions',async()=>{
   const e=await workbenchEnvironment(),profile=e.state.profiles.comfy;
   profile.steps='19';profile.cfg='6';profile.width='768';profile.height='1024';
   e.context.storyboardRememberPromptLayer(e.state,null,'comfy',profile.model,'positive','user edited prefix');
@@ -167,7 +167,8 @@ test('ordinary workbench actual extraction and generation honor format plus curr
   assert.equal(e.jobs.length,3);assert.ok(e.jobs.every(job=>job.source==='comfy'));
   for(const job of e.jobs){
     assert.equal(job.profile.steps,'19');assert.equal(job.profile.cfg,'6');assert.equal(job.profile.comfyRouteBinding,undefined);
-    assert.match(job.payload.prompt,/^user edited prefix, tag-scene-/);assert.equal(job.payload.negative,'user edited exclusion, extra people');
+    assert.match(job.payload.prompt,/^tag-scene-/);assert.equal(job.payload.negative,'extra people');
+    assert.deepEqual(plain(job.payload.comfyWorkbenchPromptLayer),{positive:'',negative:''});
     await e.context.storyboardPrepareGatewayAssets(job);
     assert.equal(prepareComfyWorkflow(job.payload.parameters.workflow,{prompt:job.payload.prompt,negativePrompt:job.payload.negative,parameters:job.payload.parameters}).bind().negative.inputs.text,job.payload.negative);
   }
@@ -258,7 +259,11 @@ test('library apply reads the verified version instead of trusting a changed cal
 
 for(const [name,factory,key] of [['fixed-route',environment,'comfyRoutePromptLayer'],['workbench',workbenchEnvironment,'comfyWorkbenchPromptLayer']]){
   test(`${name} historical prompt retirement cannot erase frozen additions or re-sign an altered replay`,async()=>{
-    const e=await factory();await e.context.storyboardCompilePrompt(null);await e.context.storyboardGenerate(null,{automatic:true});
+    const e=await factory();
+    // Build an actual old-format job, not a newly generated empty-layer job labelled as history.
+    const createJob=e.context.storyboardCreateJob;
+    e.context.storyboardCreateJob=(state,profile,options)=>createJob(state,profile,{...options,freshComfy:false});
+    await e.context.storyboardCompilePrompt(null);await e.context.storyboardGenerate(null,{automatic:true});
     const saved=core.sanitizeStoryboardSnapshot(e.jobs[0]),original=JSON.stringify(saved);
     const holder=job=>name==='workbench'?job.payload:job.profile;
     assert.ok(holder(saved)[key].positive);assert.ok(holder(saved)[key].negative);assert.ok(saved.payload.promptRendering);
