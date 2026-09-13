@@ -95,7 +95,8 @@ for(const engine of win?['powershell','shell']:['shell']) {
     const result=await run(f,engine);assert.notEqual(result.code,0);assert.equal(await fs.readFile(f.configFile,'utf8'),original);assert.equal(await fs.readFile(path.join(lock,'other-owner'),'utf8'),'busy');
   });
   test(`${engine}: old fixed-name backups survive and update hooks are not executed`,async t=>{
-    const f=await fixture(t),old=path.join(f.st,'config.yaml.qianmu-backup');await fs.writeFile(old,'older backup');assert.equal((await run(f,engine)).code,0);
+    const f=await fixture(t),old=path.join(f.st,'config.yaml.qianmu-backup');await fs.writeFile(old,'older backup');
+    const installed=await run(f,engine);assert.equal(installed.code,0,installed.output);
     await fs.writeFile(path.join(f.plugin,'.git','hooks','post-merge'),'#!/bin/sh\nprintf changed > local-hook-ran\n',{mode:0o700});
     await fs.writeFile(path.join(f.origin,'version-2'),'new');await f.git('add','.');await f.git('commit','-m','update fixture');
     const result=await run(f,engine);assert.equal(result.code,0,result.output);await assert.rejects(fs.stat(path.join(f.plugin,'local-hook-ran')),{code:'ENOENT'});
