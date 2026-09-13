@@ -5,7 +5,7 @@ import { normalizeComfyCloudReceipt, normalizeComfyCloudIntent, assertComfyCloud
 import { normalizeRunningHubUsage, normalizeRunningHubObservation } from './qianmu-runninghub-usage.js';
 
 export const COMFY_CLOUD_CHANNEL_SCHEMA = 'qianmu.comfy-cloud-channel.v1';
-const keys = ['namespace', 'attemptId', 'requestDigest', 'ownerId', 'fence', 'status', 'automatic', 'createdAt', 'updatedAt', 'upstreamId', 'cloudReceipt', 'cloudIntent', 'cloudDelivery', 'cloudObservation'];
+const keys = ['namespace', 'attemptId', 'requestDigest', 'ownerId', 'fence', 'status', 'automatic', 'createdAt', 'updatedAt', 'upstreamId', 'cloudReceipt', 'cloudIntent', 'cloudDelivery', 'cloudObservation', 'cloudTerminal'];
 const fail = () => { throw Object.assign(new Error('云任务记录不完整，请先核查原任务'), { code: 'image_service_cloud_state', status: 409, retryable: false }); };
 function fields(value, allowed) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) fail();
@@ -72,6 +72,13 @@ export function normalizeComfyCloudChannel(value, channelKey) {
         const observation=normalizeRunningHubObservation(raw.cloudObservation);
         if(row.cloudReceipt?.task.provider!=='runninghub'||observation.observedAt<row.createdAt||observation.observedAt>row.updatedAt)fail();
         row.cloudObservation=observation;
+      }
+      if(Object.hasOwn(raw,'cloudTerminal')){
+        const terminal=raw.cloudTerminal;fields(terminal,['status','observedAt']);
+        if(!['failed','canceled','expired'].includes(terminal.status)||!Number.isSafeInteger(terminal.observedAt)
+          ||terminal.observedAt<row.createdAt||terminal.observedAt>row.updatedAt||row.status!=='failed'||!row.cloudReceipt||row.cloudDelivery
+          ||row.cloudObservation&&row.cloudObservation.status!==terminal.status)fail();
+        row.cloudTerminal=Object.freeze({status:terminal.status,observedAt:terminal.observedAt});
       }
     });
     return { ...normalized, schema: COMFY_CLOUD_CHANNEL_SCHEMA };

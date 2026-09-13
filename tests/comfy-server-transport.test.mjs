@@ -365,6 +365,43 @@ test('persisted cloud and RH originals pass real ledger grants through the bound
   }
 });
 
+test('verified original terminal states persist and release only execution occupancy, not history or duplicate protection',async t=>{
+  for(const [binding,status,method] of [[cloudBinding,'canceled','cancel'],[cloudBinding,'expired','query'],[cloudBinding,'failed','result'],[rhBinding,'failed','query'],[rhBinding,'failed','result']]){
+    const f=await persistedCloudTask(t,binding),calls=[],before=(await f.store.inspectChannel(f.locator.channelKey)).entries[0];
+    const service=createComfyCloudService({dataRoot:f.root,store:f.store,transportOptions:{authorizeTarget:cloudGrant,resolveHost:publicDns,
+      requestImpl:mockNodeRequest(calls,()=>({body:binding.provider==='runninghub'?{taskId:f.task.taskId,status:'FAILED',errorCode:'1501'}:{id:f.task.taskId,status,urls:f.task.links}}))}});t.after(()=>service.close());
+    const input={version:1,expectedAccount:imageServiceAccount(f.req).namespace,...f.locator,task:f.task,confirmed:true};
+    assert.equal((await service[method](f.req,input)).status,status);
+    const saved=(await f.store.inspectChannel(f.locator.channelKey)).entries[0];
+    assert.equal(saved.status,'failed');assert.equal(saved.cloudTerminal.status,status);assert.equal(saved.cloudDelivery,undefined);
+    for(const field of ['cloudIntent','cloudReceipt','upstreamId','fence','requestDigest'])assert.deepEqual(saved[field],before[field]);
+    assert.equal((await service.catalog(f.req,{version:1,expectedAccount:input.expectedAccount})).tasks[0].reportedStatus,status);
+    await assert.rejects(f.ledger.reserve(f.req,{apiKey:f.locator.apiKey,expectedAccount:input.expectedAccount,attemptId:f.locator.attemptId,intent:before.cloudIntent}),{code:'image_service_cloud_duplicate'});
+    const next=await f.ledger.reserve(f.req,{apiKey:f.locator.apiKey,expectedAccount:input.expectedAccount,attemptId:'explicit-next',intent:before.cloudIntent});
+    assert.equal(next.status,'reserved');assert.equal(calls.length,1);
+    await service.close();const reopened=createImageServiceStore({dataRoot:f.root,scope:'comfy-cloud'});t.after(()=>reopened.close());
+    assert.deepEqual((await reopened.inspectChannel(f.locator.channelKey)).entries.find(row=>row.attemptId===f.locator.attemptId).cloudTerminal,saved.cloudTerminal);
+  }
+});
+
+test('cancellation acknowledgements and success never release occupancy, and contradictory terminal evidence cannot replace history',async t=>{
+  const f=await persistedCloudTask(t),grant=await f.ledger.authorizeStaging(f.req,f.locator,f.task),before=await f.store.inspectChannel(f.locator.channelKey);
+  for(const [status,terminal] of [['cancel_requested',false],['canceling',false],['succeeded',true],['failed',false]])await grant.recordTerminal({task:f.task,status,terminal});
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey),before);
+  await assert.rejects(grant.recordTerminal({task:{...f.task,taskId:'wrong'},status:'canceled',terminal:true}),{code:'image_service_cloud_terminal_identity'});
+  await grant.recordTerminal({task:f.task,status:'canceled',terminal:true});const saved=await f.store.inspectChannel(f.locator.channelKey);
+  await grant.recordTerminal({task:f.task,status:'canceled',terminal:true});assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey),saved);
+  await assert.rejects(grant.recordTerminal({task:f.task,status:'failed',terminal:true}),{code:'image_service_cloud_terminal_conflict'});
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey),saved);
+});
+
+test('a late canceled status cannot replace verified stored originals',async t=>{
+  const {f,cache,received}=await stagedBeforeSettlement(t);await received.grant.recordStored(cache);
+  const before=await f.store.inspectChannel(f.locator.channelKey);
+  await assert.rejects(received.grant.recordTerminal({task:f.task,status:'canceled',terminal:true}),{code:'image_service_cloud_terminal_conflict'});
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey),before);assert.equal((await cache.load(received.grant.identity)).receipt,received.result.receipt);
+});
+
 test('explicit cancellation targets only the original owned job and never erases history or implies an RH terminal state',async t=>{
   for(const binding of [cloudBinding,bindComfyCloudProtocol('https://sample.run.comfy.app','comfy-cloud-v2'),rhBinding]) {
     const f=await persistedCloudTask(t,binding),calls=[],before=await f.store.inspectChannel(f.locator.channelKey);
@@ -1061,7 +1098,7 @@ test('corrupt cache or another account cannot fall through into fresh cloud coll
   assert.equal(reads, 1);
 });
 
-test('waiting or expired cloud jobs retain the reserved quota and no receipt claims a completed archive', async t => {
+test('waiting tasks keep execution occupancy; expiry releases it without deleting temporary reservations or claiming archived images', async t => {
   for (const status of ['running', 'expired']) {
     const f = await persistedCloudTask(t), calls = [], before = await f.store.inspectChannel(f.locator.channelKey);
     const cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
@@ -1071,7 +1108,12 @@ test('waiting or expired cloud jobs retain the reserved quota and no receipt cla
     assert.deepEqual(result, { status, task: f.task, result: null }); assert.equal(calls.length, 1);
     const inventory = await cache.inventory(imageServiceAccount(f.req).namespace);
     assert.equal(inventory.totals.reservedBytes, 48 * 1024 * 1024); assert.equal(inventory.entries[0].ready, false);
-    assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+    const after=await f.store.inspectChannel(f.locator.channelKey);
+    if(status==='running')assert.deepEqual(after,before);
+    else {
+      assert.equal(after.entries[0].status,'failed');assert.equal(after.entries[0].cloudTerminal.status,'expired');
+      assert.equal(after.entries[0].cloudDelivery,undefined);assert.deepEqual(after.entries[0].cloudReceipt,before.entries[0].cloudReceipt);
+    }
   }
 });
 

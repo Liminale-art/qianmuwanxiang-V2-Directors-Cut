@@ -317,7 +317,7 @@ try{
     const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');
     const {imageChannelKey}=await import('/qianmu-image-channel.js');
     document.body.innerHTML='<div id="story-director-modal" style="display:block;position:static;width:100%"><div id="cancel-inbox"></div></div>';
-    window.cancelCalls=[];window.cancelConfirmations=0;window.cancelEnabled=true;
+    window.cancelCalls=[];window.cancelConfirmations=0;window.cancelEnabled=true;window.cancelTerminal=false;
     const totals={count:0,imageBytes:0,metadataBytes:0,temporaryBytes:0,reservedBytes:0,tasks:2};
     const expectedAccount=`st-user:${await imageChannelKey(ns.slice(8))}`;
     const original={attemptId:'original',createdAt:1,status:'acknowledged',task,taskLocator:accepted.taskLocator,
@@ -335,7 +335,7 @@ try{
       }
       if(body.apiKey||!url.endsWith('/catalog'))throw Error('No other keyed request permitted');
       return new Response(JSON.stringify({ok:true,version:1,catalogVersion:1,storageReadable:true,totals,tasks:[],originals:url.includes('/cloud/')
-        ?[original,{...original,attemptId:'collected',status:'succeeded',archiveState:'archived',imageCount:1}]:[]}));
+        ?[{...original,...(cancelTerminal?{status:'failed',reportedStatus:'canceled'}:{})},{...original,attemptId:'collected',status:'succeeded',archiveState:'archived',imageCount:1}]:[]}));
     }});
     mountComfyInbox(document.querySelector('#cancel-inbox'),{service:cancelClient,receive:async(row,_mode,action)=>{
       if(action!=='cancel')throw Error('Cancel must not collect or regenerate');
@@ -356,6 +356,9 @@ try{
   await cancelPage.evaluate(()=>{cancelEnabled=false;});await cancelPage.getByRole('button',{name:'刷新',exact:true}).click();await cancelPage.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
   ok('an old backend hides cancellation while retaining original task and receipt controls',await cancelPage.evaluate(()=>!document.querySelector('[data-cancel]')
     &&document.querySelectorAll('[data-receive]').length===2&&cancelCalls.length===1));
+  await cancelPage.evaluate(()=>{cancelEnabled=true;cancelTerminal=true;});await cancelPage.getByRole('button',{name:'刷新',exact:true}).click();await cancelPage.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
+  ok('confirmed cancellation stays visible after refresh without offering cancellation again or removing the record',await cancelPage.evaluate(()=>
+    !document.querySelector('[data-cancel]')&&document.querySelector('article').textContent.includes('已取消')&&document.querySelectorAll('article').length===2&&cancelCalls.length===1));
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({checks,external,errors},null,2));
 }finally{await context.close();await browser.close();}

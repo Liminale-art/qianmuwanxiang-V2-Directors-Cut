@@ -62,6 +62,7 @@ async function readAsset(req, { task: rawTask, assetId: rawId, channelKey, attem
     const result = await queryComfyCloudTask(req, task, { apiKey, authorizeTask: async () => verify, authorizeTarget,
       signal: controller.signal, timeoutMs: remaining(), resolveHost, requestImpl, maxBytes, includeStillOutputs: true });
     await verify();
+    await grant?.recordTerminal?.(result);await verify();
     if (result.status !== 'succeeded') return Object.freeze({ task, status: result.status, ...(all ? { result: null } : { asset: null }) });
     if (all) {
       const selection = result.stillOutputs.outputs, received = [];

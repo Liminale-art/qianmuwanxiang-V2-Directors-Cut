@@ -3,7 +3,7 @@ import { describeRunningHubUsage } from './qianmu-runninghub-usage.js';
 const escape = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const size = value => { if (!Number.isFinite(value) || value < 0) return '暂不可读取'; return value >= 1048576 ? `${(value / 1048576).toFixed(1)} MB` : `${(value / 1024).toFixed(1)} KB`; };
 const platform = row => ({'comfy-cloud':'Comfy Cloud',runninghub:'RunningHub'})[row.task?.provider || row.cloudConnection?.provider] || (row.engine === 'cloud' ? '云任务' : 'Comfy');
-const stateName = value => ({ prepared:'待核查', available:'待归档', archived:'已归档', confirmed:'已领取', succeeded:'已完成', failed:'失败', released:'未提交', rejected:'已拒绝', reserved:'等待', submitting:'执行中', uncertain:'待核查', acknowledged:'待核查', unverified:'待核查' })[value] || '待核查';
+const stateName = value => ({ prepared:'待核查', available:'待归档', archived:'已归档', confirmed:'已领取', succeeded:'已完成', failed:'失败', canceled:'已取消', expired:'已过期', released:'未提交', rejected:'已拒绝', reserved:'等待', submitting:'执行中', uncertain:'待核查', acknowledged:'待核查', unverified:'待核查' })[value] || '待核查';
 export function mountComfyInbox(host, { service, receive, isCurrent = () => host.isConnected } = {}) {
   let disposed = false, revision = 0, mode = 'server', page = 0, busy = false, local, server, localError = '', serverError = '', notice = '';
   const selected = new Set();

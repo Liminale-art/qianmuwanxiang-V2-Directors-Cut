@@ -74,8 +74,9 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
         const grant=await ledger.authorizeStaging(req,value,task);check();
         const delivery=await grant.readDelivery();check();
         if(delivery)return {ok:true,version:1,task,status:delivery.state,requestAccepted:false,terminal:true};
-        return {ok:true,version:1,...await cancelComfyCloudTask(req,task,{...transportOptions,apiKey:value.apiKey,
-          confirmed:true,signal,authorizeCancellation:async()=>grant.verify})};
+        const result=await cancelComfyCloudTask(req,task,{...transportOptions,apiKey:value.apiKey,
+          confirmed:true,signal,authorizeCancellation:async()=>grant.verify});
+        check();await grant.recordTerminal(result);check();return {ok:true,version:1,...result};
         } finally { cancelling.delete(key); }
       },true);
     },
@@ -91,7 +92,7 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
         const delivery = await grant.readDelivery(); check();
         if (delivery) return { ok: true, version: 1, status: delivery.state, task, delivery };
         const result = await queryComfyCloudTask(req, task, { ...transportOptions, apiKey: value.apiKey, signal, authorizeTask: async () => grant.verify });
-        check();await grant.recordUsage(result);check();
+        check();await grant.recordUsage(result);await grant.recordTerminal(result);check();
         return { ok: true, version: 1, ...result };
       });
     },
@@ -127,6 +128,7 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
           ...(row.cloudDelivery ? { cacheReceipt: row.cloudDelivery.cacheReceipt } : {}),
           ...(row.cloudDelivery?.usage||row.cloudObservation?.usage ? {usage:row.cloudDelivery?.usage||row.cloudObservation.usage} : {}),
           ...(row.cloudObservation ? {reportedStatus:row.cloudObservation.status,usageCheckedAt:row.cloudObservation.observedAt} : {}),
+          ...(row.cloudTerminal ? {reportedStatus:row.cloudTerminal.status} : {}),
           canRetryCleanup: row.cloudDelivery?.state === 'archived' && !live(row) && (!cachedKeys || cachedKeys.has(keyOf(row))) });
         const originals = (inventory?.entries || []).map(meta => {
           const row = matches.get(keyOf(meta)), matched = row && row.fence === meta.fence && row.requestDigest === meta.requestDigest;

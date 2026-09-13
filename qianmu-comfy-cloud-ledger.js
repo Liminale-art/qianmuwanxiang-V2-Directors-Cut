@@ -55,6 +55,22 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
       return snapshot;
     };
     const verify = async () => { await verifiedRead(); return receipt; };
+    async function recordTerminal(result) {
+      // Request acknowledgements and even successful execution cannot release
+      // occupancy: successful images must first pass the existing full readback.
+      if(!['failed','canceled','expired'].includes(result?.status)||result.terminal!==true)return;
+      current();await verify();
+      if(JSON.stringify(result.task)!==JSON.stringify(task))throw fail('terminal_identity','终态不属于原任务，未结算');
+      return store.transaction(channelKey,raw=>{
+        current();const state=normalizeComfyCloudChannel(raw,channelKey);
+        const row=state.entries.find(item=>item.namespace===identity.namespace&&item.attemptId===identity.attemptId);
+        if(!row||signature(row)!==original)throw fail('query_changed','原任务已变化，未结算');
+        if(row.cloudDelivery||row.cloudTerminal&&row.cloudTerminal.status!==result.status
+          ||row.cloudObservation&&row.cloudObservation.status!==result.status)throw fail('terminal_conflict','平台终态与原记录冲突，原图和记录均保留');
+        if(!row.cloudTerminal){const at=Math.max(now(),row.updatedAt);row.updatedAt=at;row.status='failed';row.cloudTerminal={status:result.status,observedAt:at};}
+        return {state:normalizeComfyCloudChannel(state,channelKey),result:row.cloudTerminal};
+      });
+    }
     async function recordUsage(result) {
       if(task.provider!=='runninghub'||!result?.usage||!['succeeded','failed'].includes(result.status))return;
       current();await verify();
@@ -137,7 +153,7 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
     // Server-internal evidence only. The identity and verifier originate in the
     // same read; do not acquire a fresh fence after downloading or expose this
     // object as an HTTP response. It does not grant target IO or submission.
-    return Object.freeze({ identity, receipt, verify, ...(archiveOnly ? {} : { recordStored, recordUsage }), recordArchived, readDelivery: async () => (await verifiedRead()).delivery });
+    return Object.freeze({ identity, receipt, verify, ...(archiveOnly ? {} : { recordStored, recordUsage, recordTerminal }), recordArchived, readDelivery: async () => (await verifiedRead()).delivery });
   }
   return Object.freeze({
     submission(reservation) {
