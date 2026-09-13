@@ -12,6 +12,8 @@ import { createComfyCloudUploadTransport } from '../qianmu-comfy-server-transpor
 import { planComfyCloudUpload, readComfyCloudUpload } from '../qianmu-comfy-cloud-upload-contract.js';
 import { createHash } from 'node:crypto';
 import { checkComfyCloudConnection } from '../qianmu-comfy-cloud-check.js';
+import { checkComfyCloudReadiness } from '../qianmu-comfy-cloud-readiness.js';
+import { createComfyCloudReadinessTransport } from '../qianmu-comfy-server-transport.js';
 import { createComfyCloudLedger } from '../qianmu-comfy-cloud-ledger.js';
 import { createImageServiceStore } from '../qianmu-image-service-store.js';
 import { createImageServiceResults } from '../qianmu-image-service-results.js';
@@ -62,6 +64,62 @@ const response = () => ({ statusCode: 200, headers: {}, set(k, v) { this.headers
 const cloudBinding = bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2');
 const rhBinding = bindComfyCloudProtocol('https://www.runninghub.cn', 'runninghub-workflow-v1');
 const cloudGrant = async () => async () => {};
+
+const catalogFixture=()=>({input:{connection:cloudBinding,workflow:{
+  model:{class_type:'CheckpointLoaderSimple',inputs:{ckpt_name:'fixed.safetensors'}},
+  text:{class_type:'CLIPTextEncode',inputs:{clip:['model',1],text:'fixed, %qianmu_prompt%'}},
+  image:{class_type:'LoadImage',inputs:{image:'saved.png'}},save:{class_type:'SaveImage',inputs:{images:['image',0],filename_prefix:'qianmu'}}}},
+  definitions:{CheckpointLoaderSimple:{input:{required:{ckpt_name:[['fixed.safetensors']]}},output:['MODEL','CLIP','VAE']},
+    CLIPTextEncode:{input:{required:{clip:['CLIP'],text:['STRING']}},output:['CONDITIONING']},
+    LoadImage:{input:{required:{image:[['saved.png']]}},output:['IMAGE','MASK']},
+    SaveImage:{input:{required:{images:['IMAGE'],filename_prefix:['STRING']}},output:[],output_node:true}}});
+
+test('Cloud catalog uses one documented read with X-API-Key and does not grant execution authority',async()=>{
+  const {input,definitions}=catalogFixture(),calls=[],before=structuredClone(input);
+  const result=await checkComfyCloudReadiness(account(),input,{apiKey:'synthetic-key',authorizeTarget:cloudGrant,resolveHost:publicDns,requestImpl:mockNodeRequest(calls,()=>({body:definitions}))});
+  assert.equal(calls.length,1);assert.equal(calls[0].url.href,'https://cloud.comfy.org/api/object_info');assert.equal(calls[0].options.method,'GET');
+  assert.equal(calls[0].options.headers['x-api-key'],'synthetic-key');assert.equal(calls[0].options.headers.authorization,undefined);assert.equal(calls[0].body.length,0);
+  assert.equal(result.ready,true);assert.equal(result.definitionsChecked,true);assert.equal(result.executionAuthorized,false);assert.equal(result.actualGenerationVerified,false);
+  assert.deepEqual(input,before);assert.doesNotMatch(JSON.stringify(result),/synthetic-key|fixed\.safetensors/);
+});
+
+test('cloud catalog reports missing models and remote options without following their URLs; pending uploads stay distinct',async()=>{
+  for(const mode of ['missing-model','remote-options','pending-reference']){
+    const {input,definitions}=catalogFixture(),calls=[];
+    if(mode==='missing-model')definitions.CheckpointLoaderSimple.input.required.ckpt_name=[['another.safetensors']];
+    if(mode==='remote-options')definitions.CheckpointLoaderSimple.input.required.ckpt_name=['STRING',{remote:{route:'https://private.invalid/?secret'}}];
+    if(mode==='pending-reference'){input.referenceCount=1;input.workflow.image.inputs.image='%qianmu_reference%';}
+    const result=await checkComfyCloudReadiness(account(),input,{apiKey:'synthetic-key',authorizeTarget:cloudGrant,resolveHost:publicDns,requestImpl:mockNodeRequest(calls,()=>({body:definitions}))});
+    assert.equal(calls.length,1);assert.equal(result.executionAuthorized,false);
+    if(mode==='missing-model')assert.equal(result.errors,1);
+    if(mode==='remote-options')assert.equal(result.unverifiedWarnings,1);
+    if(mode==='pending-reference'){assert.equal(result.pendingReferenceUploads,1);assert.equal(result.unverifiedWarnings,0);assert.equal(result.ready,false);}
+    assert.doesNotMatch(JSON.stringify(result),/private\.invalid|secret/);
+  }
+});
+
+test('unsupported cloud catalogs and wrong methods cannot fall back to native paths or create paid probes',async()=>{
+  const calls=[],options={apiKey:'synthetic-key',authorizeTarget:cloudGrant,resolveHost:publicDns,requestImpl:mockNodeRequest(calls)};
+  for(const connection of [rhBinding,bindComfyCloudProtocol('https://sample.run.comfy.app','comfy-cloud-v2')]){
+    await assert.rejects(checkComfyCloudReadiness(account(),{...catalogFixture().input,connection},options),{submissionState:'not_submitted'});
+    await assert.rejects(createComfyCloudReadinessTransport(account(),connection,options));
+  }
+  const transport=await createComfyCloudReadinessTransport(account(),cloudBinding,options);
+  for(const [url,method] of [['https://cloud.comfy.org/api/v2/jobs','POST'],['https://cloud.comfy.org/api/object_info/LoadImage','GET'],[transport.plan.url,'POST']])
+    await assert.rejects(transport.fetchImpl(url,{method,headers:{'X-API-Key':'synthetic-key'}}),{submissionState:'not_submitted'});
+  assert.equal(calls.length,0);
+});
+
+test('catalog timeouts, oversized replies, bad JSON and account changes are bounded and never reported as a submitted job',async()=>{
+  for(const mode of ['timeout','size','json','account']){
+    const {input,definitions}=catalogFixture(),req=account(),calls=[];
+    await assert.rejects(checkComfyCloudReadiness(req,input,{apiKey:'synthetic-key',timeoutMs:mode==='timeout'?20:1000,maxBytes:mode==='size'?16:undefined,
+      authorizeTarget:mode==='timeout'?async()=>new Promise(()=>{}):cloudGrant,resolveHost:publicDns,requestImpl:mockNodeRequest(calls,()=>{
+        if(mode==='account')req.user.profile.handle='bob';return {body:mode==='json'?Buffer.from('not json synthetic-key'):definitions};
+      })}),error=>error.submissionState==='not_submitted'&&!/synthetic-key|private\.invalid/.test(error.message));
+    assert.equal(calls.length,mode==='timeout'?0:1);
+  }
+});
 
 const uploadSource=()=>({url:'/user/images/Qianmu-References/source.png',name:'private character',mime:'image/png',bytes:png.length,sha256:createHash('sha256').update(png).digest('hex')});
 test('owned reference uploads verify original bytes and use platform multipart without exposing private names or URLs',async()=>{

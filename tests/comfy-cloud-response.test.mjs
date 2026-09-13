@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { bindComfyCloudProtocol as bind, planComfyCloudOperation as plan } from '../qianmu-comfy-cloud-protocol.js';
 import { readComfyCloudAcceptance as accept, readComfyCloudTaskStatus as status, readComfyCloudJsonResponse as read, readComfyCloudImageResponse as readImage, readRunningHubImageResponse as readRHImage } from '../qianmu-comfy-cloud-response.js';
+import { readComfyCloudDefinitionsResponse as readDefinitions } from '../qianmu-comfy-cloud-response.js';
 const cloud = bind('https://dep-one.run.comfy.app', 'comfy-cloud-v2'), rh = bind('https://www.runninghub.cn', 'runninghub-workflow-v1');
 const id = 'original-id', rhId = '1904152026220003329';
 const urls = { self: `/deployment/dep-one/api/v2/jobs/${id}`, cancel: `/deployment/dep-one/api/v2/jobs/${id}/cancel` };
@@ -9,6 +10,13 @@ const cloudBody = { id, status: 'queued', urls }, rhBody = { code: 0, data: { ta
 const cloudTask = accept(cloud, cloudBody), rhTask = accept(rh, rhBody);
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==', 'base64');
 const imageContract = { task: cloudTask, mime: 'image/png', sizeBytes: png.length };
+
+test('whole node catalogs have their own bound without widening task replies or accepting oversized catalogs',async()=>{
+  const body={UnusedDescription:'x'.repeat(2*1024*1024),LoadImage:{input:{required:{image:[['saved.png']]}},output:['IMAGE','MASK']}};
+  const catalog=await readDefinitions(Response.json(body));assert.deepEqual(catalog.LoadImage,body.LoadImage);
+  await assert.rejects(read(Response.json(body)),{code:'comfy_cloud_response_size'});
+  await assert.rejects(readDefinitions(new Response('{}',{headers:{'content-type':'application/json','content-length':String(16*1024*1024+1)}})),{code:'comfy_cloud_response_size'});
+});
 
 test('RH accepts missing CDN byte metadata but enforces the actual job budget, type and any advertised complete length', async () => {
   const contract = { task: rhTask, mime: 'image/png', maxBytes: png.length };

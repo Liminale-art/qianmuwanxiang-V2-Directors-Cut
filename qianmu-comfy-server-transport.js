@@ -8,7 +8,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { ImageGatewayError, validateGatewayBaseUrl, pinnedImageResultFetch } from './qianmu-image-gateway.js';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
-import { planComfyCloudOperation, bindComfyCloudTask, planComfyCloudConnectionCheck } from './qianmu-comfy-cloud-protocol.js';
+import { planComfyCloudOperation, bindComfyCloudTask, planComfyCloudConnectionCheck, planComfyCloudReadiness } from './qianmu-comfy-cloud-protocol.js';
 import { planComfyCloudAssetMetadata } from './qianmu-comfy-cloud-asset.js';
 import { planComfyCloudUpload } from './qianmu-comfy-cloud-upload-contract.js';
 
@@ -86,7 +86,7 @@ export function pinnedComfyFetch(base, addresses, { operation, requestImpl, asse
     await beforeRequest?.(); assertCurrent(); signal?.throwIfAborted();
     const headers = new Headers(init.headers);
     const headerNames = ['authorization', 'content-type', 'accept'];
-    if (cloudPlan?.provider === 'comfy-cloud' && cloudPlan.operation === 'check') headerNames.push('x-api-key');
+    if (cloudPlan?.provider === 'comfy-cloud' && ['check','readiness'].includes(cloudPlan.operation)) headerNames.push('x-api-key');
     if (cloudPlan?.protocol === 'comfy-cloud-v2' && cloudPlan.createsJob) headerNames.push('idempotency-key');
     if ([...headers.keys()].some(key => !headerNames.includes(key))) throw fail('headers', 'Comfy 请求包含不允许的转发头');
     if (headers.has('idempotency-key') && !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(headers.get('idempotency-key'))) throw fail('headers', '云端幂等编号无效');
@@ -308,12 +308,18 @@ export async function createComfyCloudCheckTransport(req, binding, options = {})
   return createCloudPlannedTransport(req,plan,options);
 }
 
+export async function createComfyCloudReadinessTransport(req, binding, options = {}) {
+  const plan = planComfyCloudReadiness(binding);
+  if (!plan) throw fail('readiness_scope', '当前平台没有已确认的节点清单接口，请手动确认工作流');
+  return createCloudPlannedTransport(req, plan, options);
+}
+
 async function createCloudPlannedTransport(req, plan, options) {
   const requestImpl = options.requestImpl || httpsRequest;
   let sent = false;
   const annotate = cause => {
     const error = cause instanceof ImageGatewayError ? cause : fail('cloud_unavailable', '云端请求暂不可用，请核查原任务', 502);
-    error.submissionState = plan.effect==='upload' ? 'not_submitted' : plan.taskId ? 'accepted' : sent ? 'unknown' : 'not_submitted';
+    error.submissionState = plan.effect==='upload'||plan.operation==='readiness' ? 'not_submitted' : plan.taskId ? 'accepted' : sent ? 'unknown' : 'not_submitted';
     if (plan.taskId) error.upstreamId = plan.taskId;
     return error;
   };

@@ -72,6 +72,15 @@ export function planComfyCloudConnectionCheck(binding) {
     method: runninghub ? 'POST' : 'GET', url: `${current.origin}${runninghub ? '/uc/openapi/accountStatus' : '/api/queue'}`, redirect: 'error' });
 }
 
+// Documented legacy catalog, not a v2 job or a per-class native fallback.
+// Deployments and RH do not have an equivalent verified catalog contract here.
+export function planComfyCloudReadiness(binding) {
+  const current = checkedBinding(binding);
+  if (current.provider !== 'comfy-cloud' || current.origin !== 'https://cloud.comfy.org') return null;
+  return Object.freeze({ ...current, operation: 'readiness', effect: 'read', createsJob: false,
+    method: 'GET', url: `${current.origin}/api/object_info`, redirect: 'error' });
+}
+
 // Public generation rollout boundary, shared by the page and HTTP entry point.
 // Recovery retains all previously accepted platform/deployment identities.
 export function requireComfyCloudImageSubmission(binding, { automatic = false } = {}) {

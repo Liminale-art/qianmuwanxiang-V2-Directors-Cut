@@ -73,14 +73,22 @@ async function readCloudResponse(response, { task, maxBytes, timeoutMs, signal }
 
 const responseMime = response => String(response.headers?.get?.('content-type') || '').split(';', 1)[0].trim().toLowerCase();
 export async function readComfyCloudJsonResponse(response, { task, maxBytes = 1024 * 1024, timeoutMs = 15000, signal } = {}) {
+  return readCloudJson(response, { task, maxBytes, timeoutMs, signal }, { hardLimit: 2 * 1024 * 1024, maxNodes: 100000 });
+}
+// A whole catalog is larger than a task reply. Keep a separate bounded reader;
+// do not relax the existing task/receipt response limits.
+export async function readComfyCloudDefinitionsResponse(response, { maxBytes = 16 * 1024 * 1024, timeoutMs = 15000, signal } = {}) {
+  return readCloudJson(response, { maxBytes, timeoutMs, signal }, { hardLimit: 16 * 1024 * 1024, maxNodes: 500000 });
+}
+async function readCloudJson(response, { task, maxBytes, timeoutMs, signal }, { hardLimit, maxNodes }) {
   return readCloudResponse(response, { task, maxBytes, timeoutMs, signal }, {
-    hardLimit: 2 * 1024 * 1024,
+    hardLimit,
     checkHeaders: (response, error) => {
       if (!/^application\/(?:json|[a-z0-9!#$&^_.+-]+\+json)$/.test(responseMime(response))) throw error('type', '云端未返回JSON数据，原任务状态尚未确认');
     },
     decode: (bytes, error) => {
       let body;
-      try { body = parseBoundedJson(new TextDecoder('utf-8', { fatal: true }).decode(bytes), { maxBytes, maxDepth: 32, maxNodes: 100000, label: '云端响应' }); }
+      try { body = parseBoundedJson(new TextDecoder('utf-8', { fatal: true }).decode(bytes), { maxBytes, maxDepth: 32, maxNodes, label: '云端响应' }); }
       catch (_) { throw error('json', '云端JSON数据无效或超限，请核查原任务'); }
       if (!object(body)) throw error('shape', '云端未返回有效任务数据');
       return body;
