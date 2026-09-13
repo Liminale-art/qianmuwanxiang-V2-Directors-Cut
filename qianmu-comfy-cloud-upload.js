@@ -20,7 +20,7 @@ export async function uploadComfyCloudReference(req, input, {apiKey,authorizeSou
     onAbort=()=>stop('已停止等待参考图上传，未提交生图');signal?.addEventListener('abort',onAbort,{once:true});if(signal?.aborted)onAbort();
   });
   const work=async()=>{
-    check();const grant=await authorizeSource(req,plan,account);check();
+    check();const grant=await authorizeSource(req,plan,account,{signal:controller.signal});check();
     if(typeof grant?.read!=='function'||typeof grant?.verify!=='function')throw fail('参考图缺少完整文件授权');
     const verify=async()=>{check();await grant.verify();check();};await verify();
     const source=await grant.read({signal:controller.signal});check();await verify();
