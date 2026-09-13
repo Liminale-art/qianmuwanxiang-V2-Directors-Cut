@@ -91,7 +91,7 @@ export function pinnedComfyFetch(base, addresses, { operation, requestImpl, asse
     if (headers.has('idempotency-key') && !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(headers.get('idempotency-key'))) throw fail('headers', '云端幂等编号无效');
     if (cloudPlan?.provider === 'runninghub' && cloudPlan.taskId) {
       let body; try { if (typeof init.body === 'string' && init.body.length <= 4096) body = JSON.parse(init.body); } catch (_) { /* Denied below. */ }
-      const keys = cloudPlan.operation === 'cancel' ? ['taskId', 'apiKey'] : ['taskId'];
+      const keys = ['cancel','outputs'].includes(cloudPlan.operation) ? ['taskId', 'apiKey'] : ['taskId'];
       if (!body || Array.isArray(body) || body.taskId !== cloudPlan.taskId || Object.keys(body).some(key => !keys.includes(key))
         || (Object.hasOwn(body, 'apiKey') && (typeof body.apiKey !== 'string' || body.apiKey.length > 2048))) throw fail('body', '云端请求与原任务编号不匹配');
     }

@@ -125,6 +125,14 @@ export function readComfyCloudAcceptance(binding, body) {
 const cloudStates = Object.freeze({ queued: 'queued', running: 'running', succeeded: 'succeeded',
   canceling: 'canceling', canceled: 'canceled', failed: 'failed', expired: 'expired' });
 const rhStates = Object.freeze({ QUEUED: 'queued', RUNNING: 'running', SUCCESS: 'succeeded', FAILED: 'failed' });
+function runningHubUsage(value) {
+  if (!object(value)) return null;
+  // Preserve platform decimal strings; missing/malformed never becomes zero,
+  // and task-level costs must not be multiplied by the number of output files.
+  const fields=['consumeCoins','consumeMoney','thirdPartyConsumeMoney','taskCostTime'];
+  const entries=fields.map(key=>[key,typeof value[key]==='string'&&/^(?:0|[1-9]\d{0,15})(?:\.\d{1,12})?$/.test(value[key])?value[key]:null]);
+  return entries.some(([,value])=>value!==null)?Object.freeze(Object.fromEntries(entries)):null;
+}
 export function readComfyCloudTaskStatus(task, body) {
   task = bindComfyCloudTask(task, task?.taskId, task?.links);
   planComfyCloudOperation(task, 'query', task);
@@ -143,5 +151,6 @@ export function readComfyCloudTaskStatus(task, body) {
   }
   const status = states[body.status];
   // Succeeded means platform execution ended, not that outputs were verified or archived.
-  return Object.freeze({ task, status, terminal: ['succeeded', 'canceled', 'failed', 'expired'].includes(status) });
+  const usage=cloud?null:runningHubUsage(body.usage);
+  return Object.freeze({ task, status, terminal: ['succeeded', 'canceled', 'failed', 'expired'].includes(status),...(usage?{usage}:{}) });
 }

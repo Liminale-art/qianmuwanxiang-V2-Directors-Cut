@@ -5,6 +5,7 @@ import { createComfyCloudServerTransport } from './qianmu-comfy-server-transport
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
 import { normalizeComfyCloudReceipt } from './qianmu-comfy-cloud-receipt.js';
 import { collectComfyCloudStillResults } from './qianmu-comfy-cloud-results.js';
+import { collectRunningHubStillResults } from './qianmu-runninghub-results.js';
 
 export async function queryComfyCloudTask(req, task, { apiKey, authorizeTask, authorizeTarget, timeoutMs = 15000,
   signal, resolveHost, requestImpl, maxBytes, includeStillOutputs = false } = {}) {
@@ -18,7 +19,6 @@ export async function queryComfyCloudTask(req, task, { apiKey, authorizeTask, au
   if (typeof apiKey !== 'string' || !/^[\x21-\x7e]{1,2048}$/.test(apiKey)) throw fail('key', '云端Key无效，请核对当前连接');
   if (typeof authorizeTask !== 'function' || typeof authorizeTarget !== 'function') throw fail('authorization', '云端原任务尚未获得查询授权');
   if (typeof includeStillOutputs !== 'boolean') throw fail('output_mode', '云端输出读取方式无效');
-  if (includeStillOutputs && original.provider !== 'comfy-cloud') throw fail('output_mode', '此平台的最终输出识别尚未就绪，仍可查询原任务状态');
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60000) throw fail('timeout_config', '云端查询等待时间无效');
   const controller = new AbortController(), deadline = performance.now() + timeoutMs;
   let timer, onAbort, interruption, response, stage = 'authorization';
@@ -48,14 +48,15 @@ export async function queryComfyCloudTask(req, task, { apiKey, authorizeTask, au
       if (JSON.stringify(receipt.task) !== JSON.stringify(original)) throw fail('authorization', '云端原任务收片证据不匹配');
     }
     stage = 'connection';
-    const transport = await createComfyCloudServerTransport(req, { binding: original, operation: 'query', task: original }, {
+    const transportOptions = {
       signal: controller.signal, resolveHost, requestImpl,
       authorizeTarget: async (...args) => {
         await verify(); const verifyTarget = await authorizeTarget(...args); check();
         if (typeof verifyTarget !== 'function') throw fail('authorization', '云端连接缺少持续授权校验');
         return async () => { await verify(); await verifyTarget(); check(); };
       },
-    });
+    };
+    const transport = await createComfyCloudServerTransport(req, { binding: original, operation: 'query', task: original }, transportOptions);
     check(); stage = 'request';
     response = await transport.fetchImpl(transport.plan.url, { method: transport.plan.method,
       headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json', ...(transport.plan.body ? { 'Content-Type': 'application/json' } : {}) },
@@ -67,7 +68,17 @@ export async function queryComfyCloudTask(req, task, { apiKey, authorizeTask, au
     check(); const result = readComfyCloudTaskStatus(original, body);
     let stillOutputs = null;
     if (includeStillOutputs && result.status === 'succeeded') {
-      stage = 'outputs'; stillOutputs = collectComfyCloudStillResults(receipt, body); check();
+      stage = 'outputs';
+      if(original.provider==='runninghub') {
+        // Explicit supplemental evidence, not a fallback when v2 fails. Same
+        // original grant and overall deadline cover both authenticated reads.
+        const nodes=await createComfyCloudServerTransport(req,{binding:original,operation:'outputs',task:original},transportOptions);check();
+        response=await nodes.fetchImpl(nodes.plan.url,{method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},
+          body:JSON.stringify({...nodes.plan.body,apiKey}),signal:controller.signal});check();
+        const evidence=await readComfyCloudJsonResponse(response,{task:original,maxBytes,signal:controller.signal,timeoutMs:Math.max(1,Math.ceil(deadline-performance.now()))});
+        await nodes.verify();check();stillOutputs=collectRunningHubStillResults(receipt,body,evidence);
+      }else stillOutputs = collectComfyCloudStillResults(receipt, body);
+      check();
     }
     stage = 'delivery'; await transport.verify(); check();
     return includeStillOutputs ? Object.freeze({ ...result, stillOutputs }) : result;

@@ -337,6 +337,24 @@ const cloudOutput = (id = '00000000-0000-4000-8000-000000000001', extra = {}) =>
   url: 'https://signed.test/result?secret=temporary', ...extra,
 });
 
+test('RH node evidence is fetched only after matching v2 success, under the same original ledger grant',async t=>{
+  const f=await persistedCloudTask(t,rhBinding),calls=[];
+  const result=await queryComfyCloudTask(f.req,f.task,{...f.options,includeStillOutputs:true,requestImpl:mockNodeRequest(calls,call=>{
+    assert.equal(JSON.parse(call.body).taskId,f.task.taskId);
+    if(call.url.pathname==='/openapi/v2/query')return{body:{taskId:f.task.taskId,status:'SUCCESS',errorCode:'',usage:{consumeCoins:'17',taskCostTime:'83'},results:[{url:'https://image.example/original.png',outputType:'png'}]}};
+    assert.equal(call.url.pathname,'/task/openapi/outputs');return{body:{code:0,data:[{fileUrl:'https://image.example/original.png',fileType:'png',nodeId:'save'}]}};
+  })});
+  assert.equal(calls.length,2);assert.equal(result.stillOutputs.outputs[0].nodeId,'save');assert.equal(result.usage.consumeCoins,'17');
+  assert.equal(result.status,'succeeded');assert.equal(result.archived,undefined);assert.equal(result.images,undefined);
+  for(const state of ['RUNNING','FAILED']){const reads=[];const result=await queryComfyCloudTask(f.req,f.task,{...f.options,includeStillOutputs:true,
+    requestImpl:mockNodeRequest(reads,()=>({body:{taskId:f.task.taskId,status:state,errorCode:state==='FAILED'?'failure':''}}))});assert.equal(result.stillOutputs,null);assert.equal(reads.length,1);}
+  const unavailable=[];await assert.rejects(queryComfyCloudTask(f.req,f.task,{...f.options,includeStillOutputs:true,
+    requestImpl:mockNodeRequest(unavailable,call=>call.url.pathname==='/openapi/v2/query'
+      ?{body:{taskId:f.task.taskId,status:'SUCCESS',errorCode:'',results:[{url:'https://image.example/original.png',outputType:'png'}]}}
+      :{status:404,body:{message:'private-upstream-text'}})}),{code:'comfy_cloud_query_outputs',submissionState:'accepted'});
+  assert.equal(unavailable.length,2,'missing supplemental evidence never triggers a new generation or another fallback');
+});
+
 test('bounded query collects still descriptors only from the original durable receipt and never archives remote success', async t => {
   const f = await persistedCloudTask(t), calls = [], before = await f.store.inspectChannel(f.locator.channelKey);
   const result = await queryComfyCloudTask(f.req, f.task, { ...f.options, includeStillOutputs: true,
@@ -350,11 +368,11 @@ test('bounded query collects still descriptors only from the original durable re
   assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
 });
 
-test('output collection cannot use an empty grant or unsupported provider and waiting snapshots contain no partial image', async t => {
+test('output collection cannot use an empty or other-provider grant and waiting snapshots contain no partial image', async t => {
   const f = await persistedCloudTask(t), calls = []; let resolutions = 0;
   const options = { ...f.options, includeStillOutputs: true, resolveHost: async () => { resolutions++; return publicDns(); }, requestImpl: mockNodeRequest(calls) };
   await assert.rejects(queryComfyCloudTask(f.req, f.task, { ...options, authorizeTask: cloudGrant }), { code: 'comfy_cloud_query_authorization' });
-  await assert.rejects(queryComfyCloudTask(f.req, bindComfyCloudTask(rhBinding, '123'), options), { code: 'comfy_cloud_query_output_mode' });
+  await assert.rejects(queryComfyCloudTask(f.req, bindComfyCloudTask(rhBinding, '123'), options), { code: 'comfy_cloud_query_authorization' });
   await assert.rejects(queryComfyCloudTask(f.req, f.task, { ...options, includeStillOutputs: 'true' }), { code: 'comfy_cloud_query_output_mode' });
   assert.equal(resolutions, 0); assert.equal(calls.length, 0);
   const result = await queryComfyCloudTask(f.req, f.task, { ...options, requestImpl: mockNodeRequest(calls, () => ({ body: {

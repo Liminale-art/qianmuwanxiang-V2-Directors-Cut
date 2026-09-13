@@ -20,6 +20,7 @@ const routes = {
   'runninghub-workflow-v1': {
     submit: ['POST', '/task/openapi/create', 'submit'],
     query: ['POST', '/openapi/v2/query', 'read'],
+    outputs: ['POST', '/task/openapi/outputs', 'read'],
     cancel: ['POST', '/task/openapi/cancel', 'cancel'],
   },
 };
