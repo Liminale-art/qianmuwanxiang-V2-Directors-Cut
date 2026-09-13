@@ -1,5 +1,5 @@
 // Read-only per-shot verification, using the same explicitly selected requester as generation.
-import {checkComfyReadiness,checkCloudComfyReadiness} from './qianmu-comfy-readiness.js';
+import {checkComfyReadiness,checkCloudComfyReadiness,isDeferredComfyReferenceIssue} from './qianmu-comfy-readiness.js';
 import {resolveStoryboardComfyCloud} from './qianmu-comfy-cloud-protocol.js';
 export async function checkComfyCharacterReadiness(request,{transport,headers,fetchImpl=globalThis.fetch,guard=async()=>{},timeoutMs=30000,signal}={}) {
   if(!['browser','gateway','legacy-auto'].includes(transport))throw Error('请确认 Comfy 请求方式');
@@ -27,8 +27,7 @@ export async function checkComfyCharacterReadiness(request,{transport,headers,fe
     if(!result?.ok||result.schemaVersion!==1||result.actualGenerationVerified!==false||!Number.isSafeInteger(result.errors)||result.errors!==0
       ||!Number.isSafeInteger(result.warnings)||result.warnings<0||result.ready!==(result.errors===0&&result.warnings===0))throw Error(String(result?.issues?.[0]?.message||result?.message||'Comfy 节点或模型未通过检查').replace(/[\r\n]/g,' ').slice(0,180));
     const graph=typeof request.workflow==='string'?JSON.parse(request.workflow):request.workflow;
-    const deferred=new Set((Array.isArray(result.issues)?result.issues:[]).filter(issue=>issue?.severity==='warning'&&issue.code==='reference_pending_upload'
-      &&issue.field==='image'&&graph?.[issue.nodeId]?.class_type==='LoadImage'&&/^%qianmu_reference(?:_([1-9]|1[0-6]))?%$/.test(graph[issue.nodeId].inputs?.image||''))
+    const deferred=new Set((Array.isArray(result.issues)?result.issues:[]).filter(issue=>isDeferredComfyReferenceIssue(graph,issue))
       .map(issue=>JSON.stringify([issue.nodeId,issue.field])));
     // File contents and uploaded names are checked in the existing asset/upload path. Keep ready=false;
     // exclude only this precise deferred check from unrelated unknown-node warnings, never all warnings.

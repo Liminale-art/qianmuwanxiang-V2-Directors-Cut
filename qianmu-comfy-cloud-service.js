@@ -59,6 +59,7 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
           // Never echo arbitrary transport, filesystem or stored-record errors.
           const error = fail('unconfirmed', cause?.code === 'comfy_cloud_submit_references'
             ? '参考图准备未完成，未提交生图；部分素材可能已上传，请核查后再试'
+            : cause?.code === 'comfy_cloud_submit_readiness' ? '节点或模型暂未通过自动检查，请手动确认；未提交生图'
             : '云任务处理未完成，请核查原记录；未重新生成');
           if (['not_submitted', 'unknown', 'accepted'].includes(cause?.submissionState)) error.submissionState = cause.submissionState;
           throw error;

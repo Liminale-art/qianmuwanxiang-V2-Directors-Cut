@@ -82,8 +82,10 @@ export function prepareComfyCloudSubmissionInput(raw) {
     const intent = normalizeComfyCloudIntent({ schema: COMFY_CLOUD_INTENT_SCHEMA, connection: source.connection, requestDigest, workflow: identity, stillOutput });
     return freeze({ body, bodyBytes, intent });
     }
-    compile(preview); // Validate all settings before IO; discard preview identity.
-    return freeze({ connection: source.connection, references, binding: source.binding, complete(uploads) {
+    const {automatic,outputNodeIds}=compile(preview).intent.stillOutput.execution; // Discard preview identity.
+    return freeze({ connection: source.connection, references, binding: source.binding, automatic,
+      readiness:{connection:source.connection,workflow,parameters:source.parameters||{},model:source.model,
+        referenceCount:references.length,outputNodeId:outputNodeIds[0]||''},complete(uploads) {
       try {
         if (!Array.isArray(uploads) || uploads.length !== references.length) fail();
         return compile(template ? template.bind(uploads) : preview);

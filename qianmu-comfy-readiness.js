@@ -7,6 +7,10 @@ export async function checkCloudComfyReadiness(request,options) {
   return runtime.checkCloudComfyReadiness(request,options);
 }
 
+export const isDeferredComfyReferenceIssue = (graph,issue) => issue?.severity==='warning'&&issue.code==='reference_pending_upload'
+  &&issue.field==='image'&&graph?.[issue.nodeId]?.class_type==='LoadImage'
+  &&/^%qianmu_reference(?:_([1-9]|1[0-6]))?%$/.test(graph[issue.nodeId].inputs?.image||'');
+
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const own = (value, key) => object(value) && Object.hasOwn(value, key);
 const fail = (code, message) => Object.assign(new Error(message), { code: `comfy_readiness_${code}`, submissionState: 'not_submitted' });

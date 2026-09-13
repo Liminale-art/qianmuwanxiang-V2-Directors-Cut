@@ -193,6 +193,59 @@ test('host catalog inspection shares the cloud service lifecycle without reservi
 const acceptedCloudBody = (binding = cloudBinding, id = 'new-job') => binding.provider === 'runninghub' ? { code: 0, data: { taskId: id } }
   : { id, urls: { self: `/api/v2/jobs/${id}`, cancel: `/api/v2/jobs/${id}/cancel` } };
 
+async function automaticCloudFixture(t,{reference=false,binding=cloudBinding}={}){
+  const f=await cloudSubmissionFixture(t,binding),{input,definitions}=catalogFixture();
+  f.input.request.workflow=input.workflow;f.input.request.execution={version:1,automatic:true,maxImages:1,outputNodeIds:['save'],allowUnverified:false};
+  if(reference){f.input.request.references=[uploadSource()];input.workflow.image.inputs.image='%qianmu_reference%';}
+  else {
+    input.workflow.image={class_type:'EmptyLatentImage',inputs:{width:512,height:512,batch_size:1}};
+    input.workflow.decode={class_type:'VAEDecode',inputs:{samples:['image',0],vae:['model',2]}};input.workflow.save.inputs.images=['decode',0];
+    definitions.EmptyLatentImage={input:{required:{width:['INT'],height:['INT'],batch_size:['INT']}},output:['LATENT']};
+    definitions.VAEDecode={input:{required:{samples:['LATENT'],vae:['VAE']}},output:['IMAGE']};
+  }
+  return {...f,definitions};
+}
+
+test('automatic host submission rechecks the frozen graph before dispatch and duplicate attempts do not re-read the catalog',async t=>{
+  const f=await automaticCloudFixture(t),calls=[];
+  const options={...f.options,requestImpl:mockNodeRequest(calls,call=>{
+    if(call.url.pathname==='/api/object_info'){f.input.request.workflow.model.inputs.ckpt_name='changed-after-freeze';return {body:f.definitions};}
+    return {body:acceptedCloudBody()};
+  })};
+  const result=await submitComfyCloudTask(f.req,f.input,options);assert.equal(result.status,'accepted');assert.equal(calls.length,2);
+  assert.equal(calls[0].options.method,'GET');assert.equal(calls[1].url.pathname,'/api/v2/jobs');
+  assert.equal(JSON.parse(calls[1].body).workflow.model.inputs.ckpt_name,'fixed.safetensors');
+  assert.equal((await f.store.inspectChannel(f.key)).entries[0].automatic,true);
+  await assert.rejects(submitComfyCloudTask(f.req,f.input,options));assert.equal(calls.length,2);
+});
+
+test('automatic references are checked before upload, and only standard image slots can defer file validation',async t=>{
+  for(const misplaced of [false,true]){
+    const f=await automaticCloudFixture(t,{reference:!misplaced}),calls=[];let reads=0;
+    if(misplaced){f.input.request.references=[uploadSource()];f.input.request.workflow.model.inputs.ckpt_name='%qianmu_reference%';}
+    const upload=planComfyCloudUpload(cloudBinding,uploadSource());
+    const work=submitComfyCloudTask(f.req,f.input,{...f.options,authorizeSource:async()=>({verify:async()=>{},read:async()=>{reads++;return png;}}),
+      requestImpl:mockNodeRequest(calls,call=>({body:call.url.pathname==='/api/object_info'?f.definitions:call.url.href===upload.url
+        ?{id:'00112233-4455-6677-8899-aabbccddeeff',hash:null,content_type:'image/png',size_bytes:png.length,file_path:upload.filename}:acceptedCloudBody()}))});
+    if(misplaced){await assert.rejects(work,{submissionState:'not_submitted'});assert.equal(calls.length,1);assert.equal(reads,0);}
+    else {assert.equal((await work).status,'accepted');assert.equal(reads,1);assert.equal(calls.length,3);assert.equal(calls[0].url.pathname,'/api/object_info');assert.equal(calls[1].url.href,upload.url);}
+  }
+});
+
+test('unknown models, remote options, changed accounts and unsupported catalogs stop automatic submission without GPU jobs',async t=>{
+  for(const mode of ['model','remote','account','rh','deployment']){
+    const binding=mode==='rh'?rhBinding:mode==='deployment'?bindComfyCloudProtocol('https://sample.run.comfy.app','comfy-cloud-v2'):cloudBinding;
+    const f=await automaticCloudFixture(t,{binding}),calls=[];
+    if(mode==='model')f.definitions.CheckpointLoaderSimple.input.required.ckpt_name=[['another.safetensors']];
+    if(mode==='remote')f.definitions.CheckpointLoaderSimple.input.required.ckpt_name=['STRING',{remote:true}];
+    await assert.rejects(submitComfyCloudTask(f.req,f.input,{...f.options,requestImpl:mockNodeRequest(calls,()=>{
+      if(mode==='account')f.req.user.profile.handle='bob';return {body:f.definitions};
+    })}),{submissionState:'not_submitted'});
+    assert.equal(calls.length,['rh','deployment'].includes(mode)?0:1);assert.ok(calls.every(call=>call.options.method==='GET'));
+    assert.equal((await f.store.inspectChannel(f.key))?.entries?.length||0,0);
+  }
+});
+
 test('host reference submission reads only account-owned ST files and reserves the actual uploaded execution graph', async t => {
   for (const binding of [cloudBinding,bindComfyCloudProtocol('https://sample.run.comfy.app','comfy-cloud-v2'),rhBinding]) {
     const f=await cloudSubmissionFixture(t,binding),calls=[],source=uploadSource(),plan=planComfyCloudUpload(binding,source);

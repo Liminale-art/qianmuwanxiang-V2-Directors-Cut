@@ -1,6 +1,7 @@
 // One submission, not a generation scheduler or completion/result delivery API.
 import { prepareComfyCloudSubmissionInput } from './qianmu-comfy-cloud-prepare.js';
 import { uploadComfyCloudReference } from './qianmu-comfy-cloud-upload.js';
+import { checkComfyCloudReadiness } from './qianmu-comfy-cloud-readiness.js';
 import { comfyCloudResourceKey } from './qianmu-comfy-cloud-ledger.js';
 import { createComfyCloudServerTransport } from './qianmu-comfy-server-transport.js';
 import { readComfyCloudJsonResponse, readComfyCloudAcceptance } from './qianmu-comfy-cloud-response.js';
@@ -11,7 +12,7 @@ export async function submitComfyCloudTask(req, { request, apiKey, expectedAccou
   ledger, authorizeTarget, authorizeSource, timeoutMs, signal, resolveHost, requestImpl, maxBytes,
 } = {}) {
   const startedAt = performance.now(), account = imageServiceAccount(req), input = prepareComfyCloudSubmissionInput(request);
-  timeoutMs ??= input.references.length ? 40000 : 15000; // Remain below the client default 45s wait, including uploads.
+  timeoutMs ??= input.references.length || input.automatic ? 40000 : 15000; // Below the client 45s wait, including checks/uploads.
   comfyCloudResourceKey(input.connection, apiKey);
   let knownId = '', attempted = false, dispatched = false, cancelled = signal?.aborted === true, interruption, response, ticket, stage = 'authorization';
   const ownErrors = new WeakSet();
@@ -25,6 +26,7 @@ export async function submitComfyCloudTask(req, { request, apiKey, expectedAccou
   if (input.binding && input.binding.namespace !== account.namespace) throw fail('identity', '工作流方案不属于当前ST账户');
   if (typeof ledger?.reserve !== 'function' || typeof ledger?.submission !== 'function' || typeof authorizeTarget !== 'function') throw fail('authorization', '云任务缺少持久记录或连接授权');
   if (input.references.length && (typeof ledger?.assertAvailable !== 'function' || typeof authorizeSource !== 'function')) throw fail('references', '参考图缺少文件授权，未上传或生图');
+  if (input.automatic && typeof ledger?.assertAvailable !== 'function') throw fail('readiness', '自动任务缺少原任务预查，未提交生图');
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60000) throw fail('timeout_config', '云任务提交等待时间无效');
   const controller = new AbortController(), deadline = startedAt + timeoutMs;
   const check = () => {
@@ -58,9 +60,19 @@ export async function submitComfyCloudTask(req, { request, apiKey, expectedAccou
         },
       });
       const uploads = [];
+      if (input.references.length || input.automatic) {
+        check(); stage = 'preflight';
+        await ledger.assertAvailable(req, { apiKey, expectedAccount, attemptId, connection: input.connection }); check();
+      }
+      if (input.automatic) {
+        stage = 'readiness';
+        const report=await checkComfyCloudReadiness(req,input.readiness,{apiKey,authorizeTarget,signal:controller.signal,resolveHost,requestImpl,
+          timeoutMs:Math.max(1,Math.min(30000,Math.ceil(deadline-performance.now())))});check();
+        if(report.definitionsChecked!==true||report.actualGenerationVerified!==false||report.errors!==0||report.unverifiedWarnings!==0)
+          throw fail('readiness','节点或模型暂未通过自动检查，请手动确认；未提交生图');
+      }
       if (input.references.length) {
         check(); stage = 'references';
-        await ledger.assertAvailable(req, { apiKey, expectedAccount, attemptId, connection: input.connection }); check();
         for (const source of input.references) {
           uploads.push(await uploadComfyCloudReference(req, { connection: input.connection, source }, {
             apiKey, authorizeSource, authorizeTarget, signal: controller.signal, resolveHost, requestImpl,
