@@ -7,6 +7,10 @@ import { createComfyServerTransport, createComfyCloudServerTransport, createComf
 import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
 import { queryComfyCloudTask } from '../qianmu-comfy-cloud-query.js';
 import { cancelComfyCloudTask, readComfyCloudCancellation } from '../qianmu-comfy-cloud-cancel.js';
+import { uploadComfyCloudReference } from '../qianmu-comfy-cloud-upload.js';
+import { createComfyCloudUploadTransport } from '../qianmu-comfy-server-transport.js';
+import { planComfyCloudUpload } from '../qianmu-comfy-cloud-upload-contract.js';
+import { createHash } from 'node:crypto';
 import { checkComfyCloudConnection } from '../qianmu-comfy-cloud-check.js';
 import { createComfyCloudLedger } from '../qianmu-comfy-cloud-ledger.js';
 import { createImageServiceStore } from '../qianmu-image-service-store.js';
@@ -58,6 +62,54 @@ const response = () => ({ statusCode: 200, headers: {}, set(k, v) { this.headers
 const cloudBinding = bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2');
 const rhBinding = bindComfyCloudProtocol('https://www.runninghub.cn', 'runninghub-workflow-v1');
 const cloudGrant = async () => async () => {};
+
+const uploadSource=()=>({url:'/user/images/Qianmu-References/source.png',name:'private character',mime:'image/png',bytes:png.length,sha256:createHash('sha256').update(png).digest('hex')});
+test('owned reference uploads verify original bytes and use platform multipart without exposing private names or URLs',async()=>{
+  for(const connection of [cloudBinding,bindComfyCloudProtocol('https://sample.run.comfy.app','comfy-cloud-v2'),rhBinding]){
+    const source=uploadSource(),plan=planComfyCloudUpload(connection,source),calls=[],original=Buffer.from(png);let reads=0;
+    const value=await uploadComfyCloudReference(account(),{connection,source},{apiKey:'synthetic-key',resolveHost:publicDns,
+      authorizeSource:async(_req,selected)=>{assert.deepEqual(selected.source,source);return {verify:async()=>{},read:async()=>{reads++;return original;}};},
+      authorizeTarget:async()=>{original.fill(0);return async()=>{};},requestImpl:mockNodeRequest(calls,()=>({body:connection.provider==='comfy-cloud'
+        ?{id:'00112233-4455-6677-8899-aabbccddeeff',hash:null,content_type:'image/png',size_bytes:png.length,file_path:plan.filename,url:'https://private.invalid/?secret'}
+        :{code:0,data:{type:'image',size:String(png.length),fileName:'openapi/image.png',download_url:'https://private.invalid/?secret'}}}))});
+    assert.equal(calls.length,1);assert.equal(reads,1);assert.equal(calls[0].url.href,plan.url);
+    const form=await new Response(calls[0].body,{headers:calls[0].options.headers}).formData(),file=form.get('file');
+    assert.deepEqual(Buffer.from(await file.arrayBuffer()),png);assert.equal(file.name,plan.filename);assert.equal(file.type,'image/png');
+    assert.deepEqual([...form.keys()].sort(),['file',...Object.keys(plan.fields)].sort());
+    assert.doesNotMatch(calls[0].body.toString(),/private character|synthetic-key/);assert.doesNotMatch(JSON.stringify(value),/synthetic-key|private\.invalid|secret/);
+  }
+});
+
+test('changed source, revoked ownership and stalled reads fail before upload or generation and never echo credentials',async()=>{
+  for(const mode of ['bytes','owner','revoked','stalled','deadline']){
+    const req=account(),calls=[];let current=true;
+    const work=uploadComfyCloudReference(req,{connection:cloudBinding,source:uploadSource()},{apiKey:'synthetic-key',timeoutMs:['stalled','deadline'].includes(mode)?10:1000,
+      authorizeSource:async()=>({verify:async()=>{if(mode==='deadline'){const until=performance.now()+15;while(performance.now()<until){/* Synchronous work must respect the same deadline. */}}if(!current)throw Error('synthetic-key');},read:async()=>{
+        if(mode==='stalled')return new Promise(()=>{});if(mode==='owner')req.user.profile.handle='bob';if(mode==='revoked')current=false;
+        return mode==='bytes'?new Uint8Array(png.length):png;
+      }}),authorizeTarget:()=>assert.fail('bad source must not obtain network authority'),resolveHost:publicDns,requestImpl:mockNodeRequest(calls)});
+    await assert.rejects(work,error=>error.submissionState==='not_submitted'&&!error.message.includes('synthetic-key'));assert.equal(calls.length,0);
+  }
+});
+
+test('cloud upload transport requires independent source authority and sends at most once even under concurrent calls',async()=>{
+  const input={connection:cloudBinding,source:uploadSource()},calls=[],options={resolveHost:publicDns,authorizeTarget:cloudGrant,requestImpl:mockNodeRequest(calls)};
+  await assert.rejects(createComfyCloudUploadTransport(account(),input,options),{code:'comfy_transport_source_authorization'});assert.equal(calls.length,0);
+  const transport=await createComfyCloudUploadTransport(account(),input,{...options,authorizeSource:cloudGrant});
+  await assert.rejects(transport.fetchImpl('https://cloud.comfy.org/api/v2/jobs',{method:'POST',body:'{}'}));assert.equal(calls.length,0);
+  const results=await Promise.allSettled([transport.fetchImpl(transport.plan.url,{method:'POST',body:'body'}),transport.fetchImpl(transport.plan.url,{method:'POST',body:'body'})]);
+  assert.equal(results.filter(item=>item.status==='fulfilled').length,1);assert.equal(calls.length,1);
+  for(const item of results)if(item.status==='fulfilled')await item.value.body.cancel();else assert.equal(item.reason.submissionState,'not_submitted');
+});
+
+test('failed or mismatched upload responses never retry and never expose upstream secrets',async()=>{
+  for(const body of [{error:'synthetic-key'},{id:'bad',url:'https://private.invalid/?signature'}]){
+    const calls=[];await assert.rejects(uploadComfyCloudReference(account(),{connection:cloudBinding,source:uploadSource()},{apiKey:'synthetic-key',
+      authorizeSource:async()=>({verify:async()=>{},read:async()=>png}),authorizeTarget:cloudGrant,resolveHost:publicDns,
+      requestImpl:mockNodeRequest(calls,()=>({status:body.error?500:200,body}))}),error=>error.submissionState==='not_submitted'&&!/synthetic-key|private\.invalid|signature/.test(error.message));
+    assert.equal(calls.length,1);
+  }
+});
 
 async function cloudSubmissionFixture(t, binding = cloudBinding) {
   const root = await fs.mkdtemp(path.join(tmpdir(), 'qianmu-comfy-routes-')); roots.push(root);

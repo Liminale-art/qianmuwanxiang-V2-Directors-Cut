@@ -10,6 +10,7 @@ import { ImageGatewayError, validateGatewayBaseUrl, pinnedImageResultFetch } fro
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
 import { planComfyCloudOperation, bindComfyCloudTask, planComfyCloudConnectionCheck } from './qianmu-comfy-cloud-protocol.js';
 import { planComfyCloudAssetMetadata } from './qianmu-comfy-cloud-asset.js';
+import { planComfyCloudUpload } from './qianmu-comfy-cloud-upload-contract.js';
 
 // Only the explicit cloud factory can add this capability; native callers stay native.
 const CLOUD_PLAN = Symbol('verified cloud operation');
@@ -185,6 +186,22 @@ export async function createComfyCloudServerTransport(req, { binding, operation,
   return createCloudPlannedTransport(req, plan, options);
 }
 
+// A selected input is not an output-asset grant. Keep its authority separate.
+export async function createComfyCloudUploadTransport(req, { connection, source }, options = {}) {
+  const upload=planComfyCloudUpload(connection,source),account=imageServiceAccount(req);
+  const check=()=>{options.signal?.throwIfAborted();if(!imageServiceAccountStillMatches(req,account))throw fail('account_changed','ST账户已变化，未继续上传',401);};
+  if(typeof options.authorizeSource!=='function'||typeof options.authorizeTarget!=='function')throw fail('source_authorization','参考图或云连接缺少上传授权',403);
+  check();const sourceGuard=await options.authorizeSource(req,upload,account);check();
+  if(typeof sourceGuard!=='function')throw fail('source_authorization','参考图缺少持续上传授权',403);
+  const verify=async()=>{check();await sourceGuard();check();};await verify();
+  const plan=Object.freeze({...upload,...upload.connection,operation:'upload'});
+  return createCloudPlannedTransport(req,plan,{...options,authorizeTarget:async(...args)=>{
+    await verify();const target=await options.authorizeTarget(...args);await verify();
+    if(typeof target!=='function')throw fail('cloud_authorization','云连接缺少持续授权校验');
+    return async()=>{await verify();await target();await verify();};
+  }});
+}
+
 // Exact metadata GET only. The coordinator supplies an asset grant backed by the
 // original job output; neither a browser asset id nor a plan is that permission.
 export async function createComfyCloudAssetTransport(req, { task: rawTask, assetId }, options = {}) {
@@ -296,7 +313,7 @@ async function createCloudPlannedTransport(req, plan, options) {
   let sent = false;
   const annotate = cause => {
     const error = cause instanceof ImageGatewayError ? cause : fail('cloud_unavailable', '云端请求暂不可用，请核查原任务', 502);
-    error.submissionState = plan.taskId ? 'accepted' : sent ? 'unknown' : 'not_submitted';
+    error.submissionState = plan.effect==='upload' ? 'not_submitted' : plan.taskId ? 'accepted' : sent ? 'unknown' : 'not_submitted';
     if (plan.taskId) error.upstreamId = plan.taskId;
     return error;
   };
@@ -305,13 +322,13 @@ async function createCloudPlannedTransport(req, plan, options) {
       requestImpl: (...args) => {
         // Recheck at dispatch too: concurrent calls may both pass the outer check
         // before their awaited authorization checks finish.
-        if (plan.createsJob && sent) throw fail('cloud_replay', '此云端提交已发出，请核查原任务，未重复提交');
+        if ((plan.createsJob || plan.effect==='upload') && sent) throw fail('cloud_replay', '此云端请求已发出，请核查结果，未重复发送');
         sent = true; return requestImpl(...args);
       },
     });
     const fetchImpl = async (url, init) => {
       try {
-        if (plan.createsJob && sent) throw fail('cloud_replay', '此云端提交已发出，请核查原任务，未重复提交');
+        if ((plan.createsJob || plan.effect==='upload') && sent) throw fail('cloud_replay', '此云端请求已发出，请核查结果，未重复发送');
         return await transport.fetchImpl(url, init);
       } catch (error) { throw annotate(error); }
     };
