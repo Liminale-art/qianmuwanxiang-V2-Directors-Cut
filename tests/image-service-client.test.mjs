@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import { runningHubUsageFields } from '../qianmu-runninghub-usage.js';
 import { createImageServiceClient, createImageServiceClientStore } from '../qianmu-image-service-client.js';
 import { receiveServiceImage } from '../qianmu-service-recovery-action.js';
 import { normalizeStoryboardState, sanitizeStoryboardSnapshot } from '../qianmu-storyboard.js';
@@ -268,7 +269,7 @@ const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 function section(name) { const found = new RegExp(`^(?:async )?function ${name}\\(`, 'm').exec(source); assert.ok(found, name); const tail = source.slice(found.index), next = tail.slice(1).search(/^(?:async )?function /m); return next < 0 ? tail : tail.slice(0,next+1); }
 function deliverySetup({ foreign = false, failSave = false } = {}) {
   const gallery = [], rows = [], log = {}, notices = []; let writes = 0, saved = 0;
-  const context = vm.createContext({ clone: structuredClone, sanitizeStoryboardSnapshot, storyboardPlanForJob: () => null, storyboardValidatedAnchor: () => ({ valid: !foreign, floor: foreign ? null : 2, linkState: foreign ? 'foreign' : 'active' }),
+  const context = vm.createContext({ runningHubUsageFields, clone: structuredClone, sanitizeStoryboardSnapshot, storyboardPlanForJob: () => null, storyboardValidatedAnchor: () => ({ valid: !foreign, floor: foreign ? null : 2, linkState: foreign ? 'foreign' : 'active' }),
     storyboardSetPlanStatus() {}, storyboardPipelineStage() {}, storyboardFinishLog: (_log, status) => { log.status = status; },
     storyboardPersistGatewayImage: async () => { writes++; return '/user/images/a.png'; }, storyboardCreateRecord: (job, _log, url, index) => ({ id: 'new', taskId: job.id, imageIndex: index, url }),
     getChatKey: () => foreign ? 'other' : 'chat-a', ctx: () => ({ saveMetadata() {} }), storyboardGalleryRecords: () => gallery,

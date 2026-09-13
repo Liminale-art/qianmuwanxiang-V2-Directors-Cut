@@ -10677,3 +10677,4 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 
 #story-director-modal .sd-focus-actions .sd-focus-lock { width:36px;min-height:36px;border-radius:var(--sd-radius-control,8px); }
 #story-director-modal .sd-focus-actions .sd-focus-lock.active { color:var(--sd-accent);background:color-mix(in srgb,var(--sd-accent) 16%,transparent); }
+.sd-storyboard-task-usage { min-width:0;max-width:100%;overflow-wrap:anywhere;text-align:left;font-size:var(--sd-font-small,12px);color:var(--sd-text-muted); }

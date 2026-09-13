@@ -4,6 +4,7 @@ import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
 export { resolveStoryboardComfyCloud } from './qianmu-comfy-cloud-protocol.js';
 import { RUNNINGHUB_INSTANCE_TYPES } from './qianmu-comfy-cloud-protocol.js';
 import { normalizeRunningHubConsoleUrl } from './qianmu-comfy-console.js';
+import { readRunningHubTaskUsage } from './qianmu-runninghub-usage.js';
 import { retainComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
 import { normalizeComfyCharacterActivation } from './qianmu-comfy-character-contract.js';
 import { retainComfyRouteBinding, retainComfyRoutePromptLayer, retainComfySceneOrigin } from './qianmu-comfy-route-contract.js';
@@ -2375,6 +2376,7 @@ function legacyLogs(value) {
   const originals=new Map((Array.isArray(value)?value:[]).filter(obj).map(log=>[cleanId(log.id),log]));
   for(const log of normalized){
     const raw=originals.get(log.id);
+    const cloudUsage=readRunningHubTaskUsage(raw?.cloudUsage);if(cloudUsage)log.cloudUsage=cloudUsage;
     if(raw?.kind==='comfy_preparation'){log.kind='comfy_preparation';log.preparation=normalizeStoryboardComfyPreparation(raw.preparation);log.snapshot=null;}
   }
   return normalized.map((log, index) => ({ log, index, activityAt: log.finishedAt || log.startedAt || log.queuedAt })).sort((a, b) => b.activityAt - a.activityAt || a.index - b.index).slice(0, STORYBOARD_PIPELINE_LOG_LIMIT).map(({ log }) => log);

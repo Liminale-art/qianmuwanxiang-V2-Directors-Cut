@@ -6,6 +6,7 @@ import { exportConfiguration } from './qianmu-config-export.js';
 import { exportLibraryBackup, readLibraryBackupFile, confirmLibraryRestore, FAVORITES_BACKUP_LIMITS, FAVORITE_TEXT_LIMITS } from './qianmu-library-backup.js';
 import { receiveComfyImage, resolveComfyRecoveryKey, resolveComfyCloudRecoveryKey } from './qianmu-comfy-recovery-action.js';
 import { receiveServiceImage } from './qianmu-service-recovery-action.js';
+import { runningHubUsageFields, renderRunningHubTaskUsage } from './qianmu-runninghub-usage.js';
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
 import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, releasePlanReferencesForChats } from './qianmu-plan-archive-write.js';
@@ -17695,6 +17696,7 @@ function storyboardFinishLog(log, status, details = {}) {
   if (details.error) log.error = String(details.error).slice(0, 1600);
   if (['not_submitted', 'rejected', 'unknown', 'accepted'].includes(details.submissionState)) log.submissionState = details.submissionState;
   if (details.recordId) log.recordId = String(details.recordId);
+  if (details.cloudUsage) log.cloudUsage = details.cloudUsage;
   if (Array.isArray(details.recordIds)) log.recordIds = details.recordIds.map(String).slice(0, 8);
   if (Object.hasOwn(details, 'floor')) log.floor = Number.isInteger(details.floor) ? details.floor : null;
   const pipeline = storyboardPipelineForLog(log);
@@ -17975,7 +17977,7 @@ function renderStoryboardLogs(state) {
       <summary><span class="sd-storyboard-log-status">${statusLabel}</span><span class="sd-storyboard-log-kind">${presentation.kind}</span><time>${htmlEscape(formatDateTime(log.startedAt || log.queuedAt))}</time></summary>
       <div class="sd-storyboard-log-body">
         <div class="sd-storyboard-log-meta"><span>耗时 ${log.durationMs ? `${(log.durationMs / 1000).toFixed(1)}s` : '—'}</span><span>${presentation.tokens}</span><span>${htmlEscape(source)}${log.model ? ` · ${htmlEscape(log.model)}` : ''}</span><span>${Number.isInteger(log.floor) ? `第 ${log.floor} 层` : '仅成片'}</span><span>${htmlEscape([log.params?.width, log.params?.height].filter(Boolean).join(' × ') || '沿用尺寸')}</span>${log.params?.consistency === 'reference' ? '<span>参考图一致性</span>' : ''}${log.attempt > 1 ? `<span>第 ${log.attempt} 次</span>` : ''}</div>
-        ${presentation.reason?`<p class="sd-storyboard-log-reason">${htmlEscape(presentation.reason)}</p>`:''}
+        ${renderRunningHubTaskUsage(log)}${presentation.reason?`<p class="sd-storyboard-log-reason">${htmlEscape(presentation.reason)}</p>`:''}
         <section class="sd-storyboard-log-exchange" data-log-exchange="input"><header>↑ 发送</header><pre></pre></section>
         <section class="sd-storyboard-log-exchange" data-log-exchange="output"><header>↓ 返回</header><pre></pre></section>
         ${log.params?.sceneStyle ? `<div class="sd-storyboard-log-meta"><span>风格来源 · ${htmlEscape(log.params.sceneStyle)}</span><span>${htmlEscape(log.params.comfyRouteBinding?.name || '')}</span></div>` : ''}
@@ -21039,6 +21041,7 @@ async function storyboardDeliverGatewayResult(job, log, data, { service = false,
         sourceLabel: '原图找回 · 原配置未保留', floor: null, tags: [], createdAt: Date.now() }
         : storyboardCreateRecord(job, log || (service ? { snapshot: job } : null), url, index, anchor, data);
       if (service) record.id = `service-${job.id}-${index}`;
+      Object.assign(record, runningHubUsageFields(data));
       records.push(record);
       // One frozen job is enough for all variants. Save each completed file's
       // checkpoint without duplicating that full recipe for every image.
@@ -21074,6 +21077,7 @@ async function storyboardDeliverGatewayResult(job, log, data, { service = false,
     fallback: !anchorState.valid && job.target !== 'gallery', deliveryState, deferredToOriginalChat: !currentOwnsResult });
   if (log) { log.error = ''; log.submissionState = 'accepted'; }
   storyboardFinishLog(log, 'success', { recordId: records[0].id, recordIds: records.map(item => item.id), floor: anchorState.floor,
+    ...runningHubUsageFields(data),
     ...(job.recoveringOriginal ? { durationMs: Math.max(0, Number(data.durationMs) || 0) } : {}) });
   storyboardSetPlanStatus(plan, 'completed', { resultIds: records.map(item => item.id), job, floor: currentOwnsResult ? anchorState.floor : null,
     stage: currentOwnsResult ? 'complete' : 'delivery_pending', progress: currentOwnsResult ? 1 : 0.96,
@@ -21798,6 +21802,7 @@ async function storyboardOpenLightbox(input, initialId = '') {
     applyQianmuIcons(layer);
     const footer = layer.querySelector('.sd-storyboard-lightbox-detail footer');
     const sourceHeading = layer.querySelector('.sd-storyboard-lightbox-detail dt');
+    footer?.insertAdjacentHTML('beforebegin',renderRunningHubTaskUsage(record));
     if (sourceHeading) sourceHeading.textContent='来源';
     if (!record.recipeUnavailable) {
       footer?.insertAdjacentHTML('afterbegin',`<button type="button" class="sd-btn sd-storyboard-lightbox-edit">改提示词</button><button type="button" class="sd-btn sd-storyboard-lightbox-redraw">重绘</button>${record.source==='novel'?'<button type="button" class="sd-btn sd-storyboard-lightbox-artist">换画师重绘</button>':''}`);

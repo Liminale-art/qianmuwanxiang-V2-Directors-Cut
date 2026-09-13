@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import { runningHubUsageFields } from '../qianmu-runninghub-usage.js';
 import { readFile } from 'node:fs/promises';
 import { generateDirectImage, isDirectImageTransportError } from '../qianmu-image-direct.js';
 import { createImageAdmission, createImageAdmissionIdentity, createImageHistorySeeds, resolveImageAccountNamespace } from '../qianmu-image-admission.js';
@@ -239,7 +240,7 @@ function section(name) {
 function liveHarness({ failure = '', confirm = async () => true } = {}) {
   const { store, runtime } = setup({ confirm }), state = { enabled: true, logs: [], automation: { autoCapture: true, autoGenerate: true } };
   const gallery = [], waiting = [], notices = [], writes = [];
-  const context = vm.createContext({
+  const context = vm.createContext({ runningHubUsageFields,
     clone: structuredClone, storyboardAdmission: runtime, storyboardImageAdmissionRuntime: async () => runtime, storyboardState: () => state,
     getChatKey: () => 'chat-a', storyboardValidatedAnchor: () => ({ valid: true, floor: 0 }),
     STORYBOARD_QUEUE_LIMIT: 8, storyboardQueue: waiting, storyboardActiveJobs: new Map(),

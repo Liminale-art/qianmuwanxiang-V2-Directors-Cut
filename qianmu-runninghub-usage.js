@@ -31,3 +31,22 @@ export function normalizeRunningHubObservation(value) {
   if(!['succeeded','failed'].includes(value.status)||!Number.isSafeInteger(value.observedAt)||value.observedAt<1)fail();
   return Object.freeze({status:value.status,usage:normalizeRunningHubUsage(value.usage),observedAt:value.observedAt});
 }
+
+// Small immutable task receipt shared by variants, never an image price.
+export function readRunningHubTaskUsage(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const own = key => { const p=Object.getOwnPropertyDescriptor(value,key); return p && !p.get && !p.set ? p.value : undefined; };
+  const taskId=own('taskId'), usage=readRunningHubUsage(own('usage'));
+  if (own('provider')!=='runninghub' || typeof taskId!=='string' || !/^\d{1,64}$/.test(taskId) || !usage) return null;
+  return Object.freeze({provider:'runninghub',taskId,usage});
+}
+export function runningHubUsageFields(data) {
+  const cloudUsage=readRunningHubTaskUsage({provider:data?.provider,taskId:data?.upstreamId,usage:data?.delivery?.usage});
+  return cloudUsage ? {cloudUsage} : {};
+}
+export function renderRunningHubTaskUsage(owner) {
+  const value=readRunningHubTaskUsage(owner?.cloudUsage);
+  if (!value) return '';
+  // All dynamic values are validated numeric strings; no URLs, credentials or HTML.
+  return `<p class="sd-storyboard-task-usage">整次任务用量（非单张）<br>原任务 ${value.taskId}<br>${describeRunningHubUsage(value.usage)}</p>`;
+}

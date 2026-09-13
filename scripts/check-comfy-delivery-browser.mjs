@@ -301,6 +301,16 @@ try{
         &&failed.textContent.includes('失败')&&failed.querySelector('.sd-comfy-inbox-usage').textContent.includes('RH币 1.2500');
     }));
   }
+  await usagePage.evaluate(async()=>{
+    const {renderRunningHubTaskUsage,runningHubUsageFields}=await import('/qianmu-runninghub-usage.js');
+    const fields=runningHubUsageFields({provider:'runninghub',upstreamId:'9'.repeat(64),delivery:{usage:{consumeCoins:'1234567890123456.123456789012',consumeMoney:'0'}}});
+    document.body.innerHTML=`<div style="width:100%;box-sizing:border-box;padding:16px"><section class="sd-storyboard-log-body">${renderRunningHubTaskUsage(fields)}</section><aside class="sd-storyboard-lightbox-detail">${renderRunningHubTaskUsage(fields)}</aside></div>`;
+  });
+  for(const width of [320,393,1100]){
+    await usagePage.setViewportSize({width,height:900});
+    ok(`task usage stays legible and bounded in log and image detail at ${width}`,await usagePage.locator('.sd-storyboard-task-usage').evaluateAll(nodes=>nodes.length===2&&nodes.every(node=>
+      node.scrollWidth<=node.clientWidth+1&&node.getBoundingClientRect().width>0&&node.textContent.includes('整次任务用量（非单张）')&&node.textContent.includes('平台金额 0')&&node.textContent.includes('第三方金额 未提供'))));
+  }
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({checks,external,errors},null,2));
 }finally{await context.close();await browser.close();}
