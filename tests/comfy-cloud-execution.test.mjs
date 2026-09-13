@@ -56,3 +56,9 @@ test('unsupported providers and invalid waiting options cannot leave prepared re
   await assert.rejects(f.run(),{submissionState:'not_submitted'});assert.deepEqual(f.events,[]);
   await assert.rejects(f.run({maxWaitMs:Infinity}),{submissionState:'not_submitted'});assert.equal(f.stats().submits,0);
 });
+
+test('automatic cloud probes and unsupported reference semantics cannot silently use a native or text-only workflow',async()=>{
+  for(const extra of [{automatic:true},{comfyAutoSelected:true},{profile:{comfyReferences:{enabled:true}}},{profile:{comfyCharacterEnabled:true}},{payload:{comfyCharacterPlan:{}}}]){
+    const f=setup();Object.assign(f.source,extra);await assert.rejects(f.run(),{submissionState:'not_submitted'});assert.equal(f.events.length,0);assert.equal(f.stats().submits,0);
+  }
+});

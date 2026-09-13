@@ -1,5 +1,5 @@
 // Manual receipt of an existing image. Never submit a new generation request.
-import { bindComfyCloudProtocol } from './qianmu-comfy-cloud-protocol.js';
+import { bindComfyCloudProtocol, resolveStoryboardComfyCloud } from './qianmu-comfy-cloud-protocol.js';
 
 export async function resolveComfyCloudRecoveryKey(item, { connections, resolve, guard = () => {} }) {
   const row = item?.cloudRecord || item, task = row?.cloudTask, channelKey = row?.taskLocator?.channelKey;
@@ -38,7 +38,7 @@ export async function resolveComfyRecoveryKey(connection, {connections,resolve})
   return matches() ? apiKey : '';
 }
 
-export async function receiveComfyImage(log, { refresh = true, taskLocator } = {}, deps) {
+export async function receiveComfyImage(log, { refresh = true, taskLocator, cloudRecord } = {}, deps) {
   const initial = deps.scope();
   const current = () => {
     const next = deps.scope();
@@ -52,15 +52,23 @@ export async function receiveComfyImage(log, { refresh = true, taskLocator } = {
       ...(taskLocator ? { comfyTaskLocator: taskLocator } : {}) };
     if (job.chatKey && job.chatKey !== initial.chat) throw new Error('请返回原聊天后领取 Comfy 原图');
     const service = await deps.recovery(); current();
-    const apiKey = await deps.resolveKey(job.connection); current();
-    const result = await service.retrieve(job, { apiKey,
-      deliver: (data, archiveFiles, checkpoint, guard) => {
-        current();
-        return deps.deliver(job, log, data, { service: true, archiveFiles, checkpoint,
-          guard: async () => { await guard(); current(); },
-        });
-      },
-    });
+    const deliver = (original,data,archiveFiles,checkpoint,guard) => {
+      current();return deps.deliver(original,log,data,{service:true,archiveFiles, checkpoint,guard:async()=>{await guard();current();}});
+    };
+    let result;
+    if(resolveStoryboardComfyCloud(job.connection)) {
+      const selected=await service.cloudRecordFor(job);current();
+      if(selected?.version!==3||!selected.cloudTask)throw new Error('原云任务受理尚未确认，请从收片管理核查原任务，勿重新生成');
+      if(selected.attemptId!==job.id||selected.namespace!==job.imageAdmission.namespace)throw new Error('原日志与云任务不匹配');
+      const supplied=cloudRecord?.cloudRecord||cloudRecord;
+      if(supplied&&(supplied.attemptId!==selected.attemptId||supplied.namespace!==selected.namespace
+        ||JSON.stringify(supplied.taskLocator)!==JSON.stringify(selected.taskLocator)||JSON.stringify(supplied.cloudTask)!==JSON.stringify(selected.cloudTask)))throw new Error('所选云任务与原日志不匹配');
+      const apiKey=await deps.resolveCloudKey(selected,current);current();
+      result=await service.retrieveCloudJob(job,selected,{apiKey,deliver});
+    }else{
+      const apiKey = await deps.resolveKey(job.connection); current();
+      result = await service.retrieve(job,{apiKey,deliver:(...args)=>deliver(job,...args)});
+    }
     current();
     if (result.archived) {
       log.error = ''; log.submissionState = 'accepted';

@@ -6,6 +6,7 @@ import { imageChannelKey } from './qianmu-image-channel.js';
 import { createComfyDeliveryStore, normalizeComfyDelivery, assertComfyDeliveryUpdate } from './qianmu-comfy-delivery-store.js';
 import { bindComfyCloudTask, bindComfyCloudProtocol } from './qianmu-comfy-cloud-protocol.js';
 import { buildComfyCloudRequest } from './qianmu-comfy-cloud-request.js';
+import { executeComfyCloudJob } from './qianmu-comfy-cloud-execution.js';
 
 const fail = (code, message) => Object.assign(new Error(message), { code: `comfy_delivery_${code}`, submissionState: 'accepted', retryable: false });
 const BASE = '/api/plugins/qianmu-tts/image/comfy/tasks';
@@ -204,6 +205,15 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     });
   }
   const client = {
+    runCloudJob(job,gateway,connection,options) { return executeComfyCloudJob(this,job,gateway,connection,options); },
+    async cloudRecordFor(job) {
+      job=identity(job);await prepareComfySubmission(job,{account});await guard(job);
+      const raw=await store.get(job.imageAdmission.namespace,job.id);await guard(job);
+      if(!raw)return null;
+      const row=normalizeComfyDelivery(raw,origin);
+      if(row.version!==3)throw fail('engine','此原记录不属于云任务，未切换请求渠道');
+      return row;
+    },
     async prepareCloudSubmission(job, gateway, connection) {
       // Freeze the graph and declared values before the first storage/account await.
       const request = buildComfyCloudRequest(job,gateway,connection);

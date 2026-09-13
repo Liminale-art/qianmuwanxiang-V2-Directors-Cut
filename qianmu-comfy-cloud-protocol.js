@@ -1,5 +1,5 @@
 // Cloud request plans only. No IO, credentials, workflow edits or automatic protocol fallback.
-// Not yet wired into the native Comfy gateway. Plans are not account/target authorization.
+// Separate from the native Comfy gateway. Plans are not account/target authorization.
 // Contracts: Comfy-Org/docs openapi-v2.yaml; RunningHub API 425749013/425767306/425749015.
 export const COMFY_CLOUD_PROTOCOL_VERSION = 1;
 export const comfyCloudAssetId = value => typeof value === 'string' && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value) ? value.toLowerCase() : '';
@@ -40,6 +40,17 @@ export function bindComfyCloudProtocol(raw, protocol) {
     : ['', '/', '/task/openapi', '/task/openapi/', '/openapi/v2', '/openapi/v2/'];
   if (!roots.includes(path)) fail('path', '请填写云端 API 根地址，不使用任务或控制台链接');
   return Object.freeze({ version: COMFY_CLOUD_PROTOCOL_VERSION, provider, protocol, origin: url.origin });
+}
+
+// Recognize only documented platform hosts; user-owned native endpoints keep
+// their existing transport. A malformed known-cloud root must not fall back.
+export function resolveStoryboardComfyCloud(connection) {
+  const raw=connection?.baseUrl;if(typeof raw!=='string'||!raw)return null;
+  let host;try{host=new URL(raw).hostname;}catch(_){return null;}
+  const protocol=host==='cloud.comfy.org'||/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.run\.comfy\.app$/.test(host)
+    ?'comfy-cloud-v2':['www.runninghub.cn','www.runninghub.ai'].includes(host)?'runninghub-workflow-v1':null;
+  if(!protocol)return null;
+  return bindComfyCloudProtocol(raw,protocol);
 }
 
 function checkedBinding(value) {

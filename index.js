@@ -209,6 +209,7 @@ import {
   resolveStoryboardConnectionBinding,
   getStoryboardComfyTransport,
   requireStoryboardComfyTransport,
+  resolveStoryboardComfyCloud,
   projectStoryboardProtocolParameters,
   getStoryboardGenerationPolicy,
   normalizeStoryboardGenerationPolicy,
@@ -19614,8 +19615,10 @@ async function storyboardComfyRecoveryRuntime() {
 
 function storyboardCanReceiveComfyLog(log) {
   const snapshot = log?.snapshot;
+  let cloud = false;
+  try { cloud = snapshot?.source === 'comfy' && Boolean(resolveStoryboardComfyCloud(snapshot.connection)); } catch (_) { /* Invalid historical roots must not break log rendering. */ }
   return snapshot?.source === 'comfy' && snapshot.imageAdmission?.version === 1 && Boolean(snapshot.imageAdmission.attemptId)
-    && (snapshot.comfyServiceTask?.version === 1 || getStoryboardComfyTransport(snapshot.connection) === 'gateway');
+    && (snapshot.comfyServiceTask?.version === 1 || getStoryboardComfyTransport(snapshot.connection) === 'gateway' || cloud);
 }
 
 async function storyboardResolveComfyRecoveryKey(connection) {
@@ -19623,13 +19626,14 @@ async function storyboardResolveComfyRecoveryKey(connection) {
     resolve:credentialId=>storyboardResolveApiKey('comfy',credentialId,{exact:true})});
 }
 
-async function storyboardReceiveComfyImage(log, { refresh = true, taskLocator } = {}) {
+async function storyboardReceiveComfyImage(log, { refresh = true, taskLocator, cloudRecord } = {}) {
   storyboardReceiveComfyImage.pending = (storyboardReceiveComfyImage.pending || 0) + 1;
   try {
-    return await receiveComfyImage(log, { refresh, taskLocator }, {
+    return await receiveComfyImage(log, { refresh, taskLocator, cloudRecord }, {
       scope:()=>({owner:settings,epoch:storyboardAdmissionEpoch,chat:String(getChatKey()||'')}),
       canReceive:storyboardCanReceiveComfyLog,sanitize:sanitizeStoryboardSnapshot,recovery:storyboardComfyRecoveryRuntime,
       resolveKey:storyboardResolveComfyRecoveryKey,deliver:storyboardDeliverGatewayResult,finish:storyboardFinishLog,
+      resolveCloudKey:(row,guard)=>resolveComfyCloudRecoveryKey(row,{connections:()=>storyboardState().connections.comfy,resolve:id=>storyboardResolveApiKey('comfy',id,{exact:true}),guard}),
       admission:storyboardImageAdmissionRuntime,notify:toast,render:renderModal,
     });
   } finally { storyboardReceiveComfyImage.pending--; }
@@ -19648,7 +19652,8 @@ async function storyboardOpenComfyInbox(root) {
     const dispose = view.mountComfyInbox(host, { service, isCurrent: valid, receive: async row => {
       if (!valid()) throw new Error('收片页面已变化，请重新打开后领取原图');
       const log = storyboardState().logs.find(item => (!row.logId || item.id === row.logId) && item.snapshot?.source === 'comfy' && item.snapshot?.imageAdmission?.attemptId === row.attemptId && item.snapshot?.imageAdmission?.namespace === row.namespace);
-      if (row.engine !== 'cloud' && row.version !== 3 && log && storyboardCanReceiveComfyLog(log) && !row.originalOnly) return storyboardReceiveComfyImage(log, { refresh: false, taskLocator: row.taskLocator });
+      if (log && storyboardCanReceiveComfyLog(log) && !row.originalOnly) return storyboardReceiveComfyImage(log, { refresh: false, taskLocator: row.taskLocator,
+        ...((row.engine==='cloud'||row.version===3)&&row.cloudRecord?{cloudRecord:row.cloudRecord}:{}) });
       const chatKey = String(getChatKey() || '');
       const apiKey = row.engine === 'cloud' || row.version === 3 ? await resolveComfyCloudRecoveryKey(row, {
         connections:()=>storyboardState().connections.comfy, resolve:id=>storyboardResolveApiKey('comfy',id,{exact:true}),
@@ -19837,6 +19842,7 @@ async function storyboardProbeComfyCandidate(state, prepared, inputGuard, {candi
   const job=storyboardCreateJob(previewState,profile,{sourceId:'comfy',profileSourceId:'comfy',modelId:'comfy-workflow',capabilityModelId:'comfy-workflow',
     connectionPresetId:route.connectionPresetId,routeTarget:route,preparedRoutes:prepared,freshComfy:inputGuard.freshComfy,shot:{shotSpec:clone(shot),prompt,sensitive:shot.sensitive}});
   job.automatic=true;
+  if(resolveStoryboardComfyCloud(job.connection))throw new Error('云工作流自动节点检查尚未开放，请先手动确认工作流');
   const inspector=await featureRuntime.load('comfyCharacterReadiness');await guard();inputGuard.assertCurrent();
   if(typeof inspector.createComfyReadinessSession==='function'){
     inputGuard.comfyReadiness ||= inspector.createComfyReadinessSession();
@@ -19853,6 +19859,9 @@ async function storyboardProbeComfyCandidate(state, prepared, inputGuard, {candi
 
 async function storyboardConfirmComfyExecution(job, valid) {
   const strictAutomatic=Boolean(job.automatic || job.comfyAutoSelected);
+  const cloud=resolveStoryboardComfyCloud(job.connection);
+  if(cloud&&strictAutomatic)throw new Error('云工作流自动节点检查尚未开放，请先手动确认工作流');
+  if(cloud&&(job.profile?.comfyReferences?.enabled||job.profile?.comfyCharacterEnabled||job.payload?.comfyCharacterPlan))throw new Error('云参考素材上传尚未开放，未忽略参考图');
   if (job.profile?.comfyRouteBinding != null || Object.hasOwn(job.profile || {},'comfyWorkbenchBinding')) await storyboardVerifyComfyRouteJob(job, valid);
   if (Object.hasOwn(job.profile || {},'comfyRoutePromptFormat') || Object.hasOwn(job.profile || {},'comfyWorkbenchBinding')) await storyboardPrepareComfyPromptJob(job,{prepare:true,valid});
   const rolePlan = job.profile?.comfyCharacterEnabled===true||job.payload?.comfyCharacterPlan ? await storyboardPrepareComfyCharacterJob(job,{prepare:true,readiness:true,valid}) : null;
@@ -21128,6 +21137,30 @@ async function storyboardRunJob(job, log) {
     const apiKey = await storyboardResolveApiKey(job.source, job.connection?.credentialId);
     if (job.source !== 'comfy' && !apiKey) throw new Error('当前连接没有可用的 API Key');
     const generateTransport = async () => {
+      const cloud = job.source === 'comfy' ? resolveStoryboardComfyCloud(job.connection) : null;
+      if (cloud) {
+        const epoch = storyboardAdmissionEpoch, service = await storyboardComfyRecoveryRuntime();
+        const request = storyboardGatewayRequest(job, apiKey, { references: [], vibes: [] });
+        storyboardPipelineStage(log, 'provider_request', 'running', { request });
+        const result = await service.runCloudJob(job, request, cloud, { apiKey, beforeSubmit,
+          valid: () => epoch === storyboardAdmissionEpoch && !job.discardRequested && storyboardState().enabled,
+          onPrepared: row => { if (log?.snapshot) { log.snapshot.comfyServiceTask = { version: 3, attemptId: row.attemptId }; saveSettings(); } },
+          onAccepted: async row => {
+            job.submissionState = admissionOutcome = 'accepted'; await storyboardSettleImageAdmission(job, 'accepted');
+            if (log) { log.submissionState = 'accepted'; saveSettings(); }
+            storyboardPipelineStage(log, 'provider_request', 'running', {}, { transport: cloud.provider, upstreamId: row.cloudTask.taskId });
+          },
+          onStatus: status => storyboardSetPlanStatus(plan, 'generating', { job, stage: 'provider', progress: 0.4, error: status === 'queued' ? '云任务排队中' : '' }),
+          deliver: (original, data, archiveFiles, checkpoint, guard) => {
+            storyboardPipelineStage(log, 'provider_request', 'success', {}, { transport: cloud.provider, response: data });
+            return storyboardDeliverGatewayResult(original, log, data, { service: true, archiveFiles, checkpoint, guard });
+          },
+        });
+        if (result.archived) admissionOutcome = 'succeeded';
+        if (result.pending) { if (log) log.error = result.warning; saveSettings(); }
+        if (result.warning) toast(result.warning, 'warning');
+        return { serviceDelivered: true };
+      }
       const comfyTransport = job.source === 'comfy' ? requireStoryboardComfyTransport(job.connection) : 'legacy-auto';
       // Do not expand reference images while another tab owns this NAI channel.
       const assets = await storyboardPrepareGatewayAssets(job, { apiKey, log });

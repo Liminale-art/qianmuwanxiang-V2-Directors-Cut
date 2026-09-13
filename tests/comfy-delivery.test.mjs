@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { createComfyRecoveryClient } from '../qianmu-comfy-recovery-client.js';
 import { receiveComfyImage, resolveComfyRecoveryKey } from '../qianmu-comfy-recovery-action.js';
 import { normalizeComfyDelivery, assertComfyDeliveryUpdate, createComfyDeliveryStore } from '../qianmu-comfy-delivery-store.js';
-import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
+import { bindComfyCloudProtocol, bindComfyCloudTask, resolveStoryboardComfyCloud } from '../qianmu-comfy-cloud-protocol.js';
 import { comfyArchiveFilename } from '../qianmu-comfy-submission.js';
 import { sanitizeStoryboardSnapshot, getStoryboardComfyTransport } from '../qianmu-storyboard.js';
 import { storyboardFunctionSource } from './helpers/storyboard-form-fixture.mjs';
@@ -256,6 +256,26 @@ test('cloud pending status is returned for bounded scheduling without declaring 
   assert.equal(result.status,'running');assert.equal(result.archived,false);assert.equal(s.read().status,'prepared');assert.equal(s.calls.length,1);
 });
 
+test('manual cloud log receipt uses original local recipe, not native retrieval or metadata-only catalog recipe',async()=>{
+  for(const mode of ['success','wrong-task','chat-switch']){
+    const s=cloudSetup(),row={...s.row,originalOnly:false,logId:'cloud-log'};s.rows.set(`${row.namespace}/${row.attemptId}`,row);
+    const original=recipeForCloud(row);original.payload.parameters.workflow={source:{class_type:'FixtureImage',inputs:{text:'%qianmu_prompt%'}},save:{class_type:'SaveImage',inputs:{images:['source',0]}}};
+    const log={id:row.logId,snapshot:original,error:'previous',durationMs:15},owner={},notifications=[];let chat=row.chatKey,confirmed=0,delivered;
+    s.client.retrieve=()=>assert.fail('cloud logs cannot call native retrieval');
+    const catalog={...row,originalOnly:true,...(mode==='wrong-task'?{taskLocator:{version:1,channelKey:'d'.repeat(64)}}:{})};
+    const result=await receiveComfyImage(log,{refresh:false,cloudRecord:catalog},{scope:()=>({owner,epoch:0,chat}),canReceive:()=>true,sanitize:sanitizeStoryboardSnapshot,
+      recovery:async()=>s.client,resolveKey:()=>assert.fail('cloud logs cannot use native key selection'),resolveCloudKey:async(selected,guard)=>{
+        assert.equal(selected.originalOnly,false);guard();if(mode==='chat-switch')chat='another-chat';return 'synthetic-key';
+      },deliver:async(job,_log,data,options)=>{delivered=job;await options.guard();return callback(data,options.archiveFiles,options.checkpoint,options.guard);},
+      finish:(_log,status,details)=>{assert.equal(status,'success');assert.equal(details.durationMs,15);},
+      admission:async()=>({confirmResult:async()=>{confirmed++;}}),notify:message=>notifications.push(message),render:()=>assert.fail('refresh disabled')});
+    if(mode==='success'){
+      assert.ok(result,notifications.join(';'));
+      assert.equal(result.archived,true);assert.equal(delivered.payload.prompt,'original narrative');assert.equal(delivered.originalOnly,undefined);assert.equal(confirmed,1);assert.equal(s.read().status,'confirmed');
+    }else{assert.equal(result,undefined);assert.equal(s.calls.length,0);assert.equal(confirmed,0);assert.match(notifications[0],mode==='wrong-task'?/不匹配/:/聊天已切换/);}
+  }
+});
+
 test('partial cloud archives survive failed save and cleanup pending does not count as confirmed', async () => {
   let cleanup = 'pending';
   const s = cloudSetup({ respond: (action, _body, { packet, ack }) => json(action === 'result' ? packet : { ...ack, cleanup }) });
@@ -320,11 +340,13 @@ test('archive filenames are stable per original account and attempt, independent
   assert.notEqual(await comfyArchiveFilename(job({ imageAdmission: { ...job().imageAdmission, namespace: 'st-user:bob' } }), 0), first);
 });
 test('production log gate distinguishes gateway, legacy gateway evidence, browser-only and unrelated providers', () => {
-  const context = vm.createContext({ getStoryboardComfyTransport }); vm.runInContext(storyboardFunctionSource('storyboardCanReceiveComfyLog'), context);
+  const context = vm.createContext({ getStoryboardComfyTransport,resolveStoryboardComfyCloud }); vm.runInContext(storyboardFunctionSource('storyboardCanReceiveComfyLog'), context);
   assert.equal(context.storyboardCanReceiveComfyLog({ snapshot: job() }), true);
   assert.equal(context.storyboardCanReceiveComfyLog({ snapshot: job({ connection: { options: { comfyTransport: 'browser' } } }) }), false);
   assert.equal(context.storyboardCanReceiveComfyLog({ snapshot: job({ connection: {}, comfyServiceTask: { version: 1 } }) }), true);
   assert.equal(context.storyboardCanReceiveComfyLog({ snapshot: job({ source: 'novel' }) }), false);
+  assert.equal(context.storyboardCanReceiveComfyLog({snapshot:job({connection:{baseUrl:'https://cloud.comfy.org',options:{comfyTransport:'browser'}}})}),true);
+  assert.equal(context.storyboardCanReceiveComfyLog({snapshot:job({connection:{baseUrl:'https://cloud.comfy.org?secret=invalid',options:{comfyTransport:'browser'}}})}),false);
   assert.equal(sanitizeStoryboardSnapshot({ ...job(), comfyServiceTask: { version: 1, attemptId: job().id } }).comfyServiceTask.attemptId, job().id);
 });
 test('production normal and manual UI are wired to the same client and preserve original credentials', async () => {

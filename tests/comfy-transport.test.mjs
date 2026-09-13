@@ -52,8 +52,42 @@ function transport(mode, { error, provider = 'comfy', currentMode = 'gateway' } 
       return new Response(JSON.stringify({ ok: true })); },
   });
   vm.runInContext(`async function runTransport() {${block}\nreturn generateTransport();}`, context);
-  return { calls, job, run: () => context.runTransport() };
+  return { calls, job, context, run: () => context.runTransport() };
 }
+
+test('known cloud platforms bind exact official roots; invalid cloud URLs never become native fallbacks',()=>{
+  for(const url of ['https://cloud.comfy.org/api/v2','https://my-worker.run.comfy.app'])assert.equal(core.resolveStoryboardComfyCloud({baseUrl:url}).provider,'comfy-cloud');
+  for(const url of ['https://www.runninghub.cn','https://www.runninghub.ai/openapi/v2'])assert.equal(core.resolveStoryboardComfyCloud({baseUrl:url}).provider,'runninghub');
+  for(const url of ['http://localhost:8188','https://private-comfy.test/api','https://cloud.comfy.org.attacker.test'])assert.equal(core.resolveStoryboardComfyCloud({baseUrl:url}),null);
+  for(const url of ['http://cloud.comfy.org','https://cloud.comfy.org/api/v2/jobs/id','https://www.runninghub.cn?key=secret','https://secret@cloud.comfy.org'])assert.throws(()=>core.resolveStoryboardComfyCloud({baseUrl:url}));
+});
+
+test('actual cloud generation bypasses native asset expansion and transport, retaining accepted identity and archive outcome',async()=>{
+  for(const pending of [false,true]){
+    const h=transport('browser');h.job.connection.baseUrl='https://cloud.comfy.org';h.job.id='original';h.context.log.snapshot={};
+    const row={attemptId:'original',cloudTask:{taskId:'platform-original'}};
+    Object.assign(h.context,{storyboardAdmissionEpoch:0,admissionOutcome:'not_submitted',plan:{},saveSettings(){},toast:message=>h.calls.push(message),
+      storyboardSetPlanStatus(){},storyboardSettleImageAdmission:async()=>h.calls.push('accepted'),
+      storyboardDeliverGatewayResult:async(original,_log,_data,options)=>{assert.equal(original.id,'original');assert.equal(options.service,true);h.calls.push('archive');return true;},
+      storyboardComfyRecoveryRuntime:async()=>({runCloudJob:async(job,request,binding,options)=>{
+        assert.equal(job,h.job);assert.equal(binding.provider,'comfy-cloud');assert.equal(options.valid(),true);
+        await options.onPrepared(row);await options.beforeSubmit();await options.onAccepted(row);await options.onStatus('running');
+        if(!pending)await options.deliver(job,{images:['synthetic']},[],async()=>{},async()=>{});
+        return {archived:!pending,pending,warning:pending?'原云任务仍保留':''};
+      }}),
+    });
+    assert.equal((await h.run()).serviceDelivered,true);assert.equal(h.context.admissionOutcome,pending?'accepted':'succeeded');
+    assert.equal(h.context.log.snapshot.comfyServiceTask.version,3);assert.equal(h.context.log.submissionState,'accepted');
+    assert.ok(!h.calls.some(call=>['assets','browser','gatewayBinding','/api/plugins/qianmu-tts/image/generate'].includes(call)));
+    assert.equal(h.calls.includes('archive'),!pending);if(pending)assert.equal(h.context.log.error,'原云任务仍保留');
+  }
+});
+
+test('actual cloud execution failure cannot fall back to native Comfy or browser generation',async()=>{
+  const h=transport('legacy-auto');h.job.connection.baseUrl='https://www.runninghub.cn';
+  Object.assign(h.context,{storyboardAdmissionEpoch:0,storyboardComfyRecoveryRuntime:async()=>({runCloudJob:async()=>{throw Object.assign(new Error('cloud unavailable'),{submissionState:'unknown'});}})});
+  await assert.rejects(h.run(),{submissionState:'unknown'});assert.deepEqual(h.calls,[]);
+});
 
 test('actual explicit ST generation uses only the frozen gateway route, including when today workbench says browser', async () => {
   const h = transport('gateway', { currentMode: 'browser' }); const result = await h.run();

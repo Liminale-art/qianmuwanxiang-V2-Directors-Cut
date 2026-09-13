@@ -12,6 +12,9 @@ export async function executeComfyCloudJob(client, source, gateway, connection, 
   if (!Number.isFinite(maxWaitMs)||maxWaitMs<0||maxWaitMs>900000||!Number.isFinite(intervalMs)||intervalMs<250||intervalMs>10000
     ||typeof deliver!=='function') throw fail('options','云任务等待或收片设置无效');
   const job=structuredClone(source),requestSource=structuredClone(gateway),binding=structuredClone(connection);let state='not_submitted',record;
+  if(job.automatic||job.comfyAutoSelected)throw fail('automatic','云工作流自动节点检查尚未开放，请先手动确认工作流');
+  if(job.profile?.comfyReferences?.enabled||job.profile?.comfyCharacterEnabled||job.payload?.comfyCharacterPlan)
+    throw fail('references','此云渠道的参考素材上传尚未开放，未忽略参考图或转至其他渠道');
   const check=()=>{if(!valid())throw fail('stopped','已停止本页等待；已受理的云任务仍保留',state);};
   try {
     check();

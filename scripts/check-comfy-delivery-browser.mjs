@@ -209,7 +209,9 @@ try{
     const job={id:row.attemptId,source:'comfy',chatKey:row.chatKey,logId:row.logId,automatic:row.automatic,
       imageAdmission:{version:1,namespace:ns,attemptId:row.attemptId},connection:{baseUrl:row.baseUrl,credentialId:row.credentialId},
       profile:{model:'original'},payload:{prompt:'original scene',parameters:{workflow:{original:true}}},paragraphAnchor:{paragraphIndex:3}};
-    const result=await client.retrieveCloudJob(job,row,{apiKey:'synthetic-key',deliver:async(original,_data,_files,checkpoint,guard)=>{
+    const originalRecord=await client.cloudRecordFor(job);
+    if(originalRecord.attemptId!==row.attemptId||originalRecord.cloudTask.taskId!==task.taskId)throw Error('Wrong original journal lookup');
+    const result=await client.retrieveCloudJob(job,originalRecord,{apiKey:'synthetic-key',deliver:async(original,_data,_files,checkpoint,guard)=>{
       await guard();shot=original;await checkpoint([{url:'/user/images/recipe.png'}]);return true;
     }});
     const saved=await store.get(ns,row.attemptId);client.close();
