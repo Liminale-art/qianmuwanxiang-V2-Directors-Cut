@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {buildComfyCloudRequest} from '../qianmu-comfy-cloud-request.js';
 import {prepareComfyCloudSubmission} from '../qianmu-comfy-cloud-prepare.js';
+import {comfyWorkflowReferenceHash} from '../qianmu-comfy-references.js';
 import {createComfyRecoveryClient} from '../qianmu-comfy-recovery-client.js';
 import {bindComfyCloudProtocol} from '../qianmu-comfy-cloud-protocol.js';
 import {bindComfyCloudTask} from '../qianmu-comfy-cloud-protocol.js';
@@ -99,6 +100,52 @@ async function submissionFixture({capabilities={},reply,resultReply,prepare=true
     }});
   return {...f,client,rows,calls,prepared:prepare?await client.prepareCloudSubmission(f.job,f.gateway,connection):null,setAccount:value=>{namespace=value;}};
 }
+
+async function addReference(f) {
+  const graph=f.gateway.parameters.workflow;
+  graph.reference={class_type:'LoadImage',inputs:{image:'%qianmu_reference%'}};
+  graph.save.inputs.images=['reference',0];
+  f.job.payload.parameters.workflow=structuredClone(graph);
+  f.job.profile.comfyReferences={version:1,enabled:true,namespace:f.job.imageAdmission.namespace,
+    workflowHash:await comfyWorkflowReferenceHash(graph),items:[{url:'/user/images/source.png',name:'selected reference',mime:'image/png',bytes:123,sha256:'a'.repeat(64)}]};
+}
+
+test('cloud references travel as frozen ST metadata, not downloaded bytes or browser-supplied cloud assets',async()=>{
+  const f=await submissionFixture({prepare:false,capabilities:{referenceUpload:true}});await addReference(f);
+  const prepared=await f.client.prepareCloudSubmission(f.job,f.gateway,connection);
+  f.job.profile.comfyReferences.items[0].url='/user/images/changed-after-confirmation.png';
+  await f.client.submitCloudPrepared(prepared,'synthetic-key');
+  const posts=f.calls.filter(call=>call.method==='POST');assert.equal(posts.length,1);
+  assert.deepEqual(posts[0].body.request.references,[{url:'/user/images/source.png',name:'selected reference',mime:'image/png',bytes:123,sha256:'a'.repeat(64)}]);
+  assert.ok(f.calls.every(call=>!call.url.includes('/user/images/')),'browser must not fetch/base64-expand reference bytes');
+  assert.doesNotMatch(JSON.stringify(posts[0].body.request),/core\/ASSET|qianmu-preview|base64/);f.client.close();
+});
+
+test('old cloud backends explicitly block selected references instead of silently generating without them',async()=>{
+  const f=await submissionFixture({prepare:false});await addReference(f);
+  const prepared=await f.client.prepareCloudSubmission(f.job,f.gateway,connection);
+  await assert.rejects(f.client.submitCloudPrepared(prepared,'synthetic-key'),{code:'comfy_delivery_capabilities',submissionState:'not_submitted'});
+  assert.equal(f.calls.filter(call=>call.method==='POST').length,0);f.client.close();
+});
+
+test('changing a selection during asynchronous hash checking cannot bind a preparation to a different current job',async()=>{
+  const f=await submissionFixture({prepare:false});await addReference(f);
+  const work=f.client.prepareCloudSubmission(f.job,f.gateway,connection);
+  f.job.profile.comfyReferences.items[0].url='/user/images/changed-during-check.png';
+  await assert.rejects(work,{code:'comfy_delivery_identity',submissionState:'not_submitted'});
+  assert.equal(f.rows.size,0);assert.equal(f.calls.length,0);f.client.close();
+});
+
+test('changed workflow, foreign selection and retired character implementations cannot create a cloud preparation record',async()=>{
+  for(const mode of ['workflow','account','retired']){
+    const f=await submissionFixture({prepare:false});await addReference(f);
+    if(mode==='workflow')f.job.profile.comfyReferences.workflowHash='b'.repeat(64);
+    if(mode==='account')f.job.profile.comfyReferences.namespace='st-user:bob';
+    if(mode==='retired')f.job.profile.comfyCharacterEnabled=true;
+    await assert.rejects(f.client.prepareCloudSubmission(f.job,f.gateway,connection));
+    assert.equal(f.rows.size,0);assert.equal(f.calls.length,0);f.client.close();
+  }
+});
 
 test('switching from private native Comfy to an official cloud discards only the obsolete private-network flag',async()=>{
   const f=await submissionFixture({prepare:false});

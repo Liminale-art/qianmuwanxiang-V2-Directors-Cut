@@ -8,9 +8,10 @@ import { COMFY_CLOUD_RECEIPT_SCHEMA } from './qianmu-comfy-cloud-receipt.js';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
 
 export async function submitComfyCloudTask(req, { request, apiKey, expectedAccount, attemptId } = {}, {
-  ledger, authorizeTarget, authorizeSource, timeoutMs = 15000, signal, resolveHost, requestImpl, maxBytes,
+  ledger, authorizeTarget, authorizeSource, timeoutMs, signal, resolveHost, requestImpl, maxBytes,
 } = {}) {
   const startedAt = performance.now(), account = imageServiceAccount(req), input = prepareComfyCloudSubmissionInput(request);
+  timeoutMs ??= input.references.length ? 40000 : 15000; // Remain below the client default 45s wait, including uploads.
   comfyCloudResourceKey(input.connection, apiKey);
   let knownId = '', attempted = false, dispatched = false, cancelled = signal?.aborted === true, interruption, response, ticket, stage = 'authorization';
   const ownErrors = new WeakSet();

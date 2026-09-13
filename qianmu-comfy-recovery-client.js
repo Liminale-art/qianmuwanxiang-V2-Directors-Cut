@@ -1,4 +1,5 @@
-// Comfy delivery and single cloud acceptance; no scheduler or reference upload.
+// Comfy delivery and single cloud acceptance. Selected file metadata only;
+// the host owns reference bytes and upload authority. No browser upload/scheduler.
 import { trackClientActivity } from './qianmu-client-activity.js';
 import { prepareComfySubmission, assertComfyAccount, acknowledgeComfyImage } from './qianmu-comfy-submission.js';
 import { requireComfyCloudImageSubmission, canSubmitComfyCloudImages } from './qianmu-comfy-cloud-protocol.js';
@@ -9,6 +10,8 @@ import { bindComfyCloudTask, bindComfyCloudProtocol } from './qianmu-comfy-cloud
 import { buildComfyCloudRequest } from './qianmu-comfy-cloud-request.js';
 import { executeComfyCloudJob } from './qianmu-comfy-cloud-execution.js';
 import { runningHubUsageFields } from './qianmu-runninghub-usage.js';
+import { normalizeComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
+import { checkComfyReferenceSelection } from './qianmu-comfy-references.js';
 
 const fail = (code, message) => Object.assign(new Error(message), { code: `comfy_delivery_${code}`, submissionState: 'accepted', retryable: false });
 const BASE = '/api/plugins/qianmu-tts/image/comfy/tasks';
@@ -224,6 +227,13 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     async prepareCloudSubmission(job, gateway, connection) {
       // Freeze the graph and declared values before the first storage/account await.
       const request = buildComfyCloudRequest(job,gateway,connection);
+      if (request.references?.length) {
+        const selection = normalizeComfyReferenceSelection(job.profile?.comfyReferences);
+        const fingerprint = () => JSON.stringify([job.id,job.imageAdmission,job.profile,job.payload,job.connection]);
+        const before = fingerprint();
+        await checkComfyReferenceSelection({workflow:request.workflow,selection,namespace:job.imageAdmission.namespace});
+        if (before !== fingerprint()) throw Object.assign(fail('identity','工作流或参考图已变化，请重新确认'),{submissionState:'not_submitted'});
+      }
       const prepared = await this.prepareCloud(job,request.connection);
       const result = { ...prepared, request };
       if (prepared.created) submissionTickets.set(result,{ record: normalizeComfyDelivery(prepared.record,origin), request, binding: { ...prepared.binding } });
@@ -243,6 +253,8 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
         const capabilities = await this.cloudCapabilities({namespace:record.namespace});
         if (!canSubmitComfyCloudImages(capabilities,record.cloudConnection.provider,record.cloudConnection) || !capabilities.resultRetrieval || !capabilities.resultProviders.includes(record.cloudConnection.provider))
           throw fail('capabilities','当前后端尚未开放此平台完整生图，请同步更新后再使用');
+        if (frozenRequest.references?.length && capabilities.referenceUpload !== true)
+          throw fail('capabilities','当前后端尚未支持云参考图，请同步更新后再使用；未忽略参考图');
         await locked(job,async () => {
           const raw = await store.get(record.namespace,record.attemptId); await guard(job);
           if (!raw || JSON.stringify(normalizeComfyDelivery(raw,origin)) !== JSON.stringify(record))

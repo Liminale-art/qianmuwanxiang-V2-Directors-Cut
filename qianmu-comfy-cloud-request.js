@@ -6,6 +6,8 @@ import {prepareComfyWorkflow} from './qianmu-comfy-workflow.js';
 import {normalizeComfyRouteBinding} from './qianmu-comfy-route-contract.js';
 import {normalizeComfyWorkbenchBinding} from './qianmu-comfy-workbench-binding.js';
 import {parseBoundedJson} from './qianmu-json-input.js';
+import {normalizeComfyReferenceSelection} from './qianmu-comfy-reference-contract.js';
+import {prepareComfyCloudWorkflow} from './qianmu-comfy-cloud-workflow.js';
 const fail=message=>{throw Object.assign(new Error(message),{code:'comfy_cloud_request',submissionState:'not_submitted',retryable:false});};
 const freeze=value=>{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};
 export function buildComfyCloudRequest(job,gateway,connection){
@@ -16,6 +18,10 @@ export function buildComfyCloudRequest(job,gateway,connection){
     ||bindComfyCloudProtocol(job.connection?.baseUrl,binding.protocol).origin!==binding.origin
     ||bindComfyCloudProtocol(gateway.baseUrl,binding.protocol).origin!==binding.origin)fail('云工作流与原连接不一致');
   for(const field of ['referenceImages','references','vibes'])if(gateway[field]!=null&&(!Array.isArray(gateway[field])||gateway[field].length))fail('此云通道的参考素材上传尚未接通，未丢弃素材或提交生成');
+  if(job.profile?.comfyCharacterEnabled||job.payload?.comfyCharacterPlan)fail('角色工作流实现已停用，请在当前工作流选择参考图');
+  const selection=normalizeComfyReferenceSelection(job.profile?.comfyReferences);
+  if(selection?.enabled&&selection.namespace!==job.imageAdmission.namespace)fail('参考图属于另一ST账户，请重新选择');
+  const references=selection?.enabled?selection.items:[];
   const execution=normalizeComfyExecution(gateway.comfyExecution);
   if(execution.automatic!==Boolean(job.automatic||job.comfyAutoSelected))fail('工作流的自动取景保护已变化，请重新确认');
   const route=job.profile?.comfyRouteBinding,workbench=job.profile?.comfyWorkbenchBinding;
@@ -29,11 +35,12 @@ export function buildComfyCloudRequest(job,gateway,connection){
   const runninghub=binding.provider==='runninghub'&&tier!==undefined&&tier!==''?{instanceType:tier}:undefined;
   if(runninghub&&!RUNNINGHUB_INSTANCE_TYPES.includes(tier))fail('RunningHub运行配置无效，请重新选择；未自动换档');
   const request=parseBoundedJson(JSON.stringify({connection:binding,workflow:gateway.parameters?.workflow,prompt:gateway.prompt,
-    negativePrompt:gateway.negativePrompt||'',model:gateway.model||'',parameters,execution,...(runninghub?{runninghub}:{}),...(workflowBinding?{binding:workflowBinding}:{})}),
+    negativePrompt:gateway.negativePrompt||'',model:gateway.model||'',parameters,execution,...(references.length?{references}:{}),...(runninghub?{runninghub}:{}),...(workflowBinding?{binding:workflowBinding}:{})}),
   {maxBytes:2*1024*1024,maxDepth:40,maxNodes:50000,label:'云工作流'});
   if(typeof request.prompt!=='string'||!request.prompt.trim()||request.prompt.length>24000||typeof request.negativePrompt!=='string'||request.negativePrompt.length>24000)fail('云工作流画面提示词无效');
-  const template=prepareComfyWorkflow(request.workflow,{...request,referenceCount:0});
-  const checked=requireComfyExecution(auditComfyWorkflow(template.bind([]),request.execution),request.execution);
+  const preview=references.length?prepareComfyCloudWorkflow(JSON.stringify(request.workflow),request).preview
+    :{workflow:prepareComfyWorkflow(request.workflow,{...request,referenceCount:0}).bind([]),referenceLoadNodeIds:[]};
+  const checked=requireComfyExecution(auditComfyWorkflow(preview.workflow,request.execution,{referenceLoadNodeIds:preview.referenceLoadNodeIds}),request.execution);
   if(checked.expectedImages!==gateway.comfyExecution.expectedImages)fail('工作流出图数量已变化，请重新确认');
   return freeze(request);
 }

@@ -19871,7 +19871,7 @@ async function storyboardConfirmComfyExecution(job, valid) {
   const strictAutomatic=Boolean(job.automatic || job.comfyAutoSelected);
   const cloud=resolveStoryboardComfyCloud(job.connection);
   if(cloud&&strictAutomatic)throw new Error('云工作流自动节点检查尚未开放，请先手动确认工作流');
-  if(cloud&&(job.profile?.comfyReferences?.enabled||job.profile?.comfyCharacterEnabled||job.payload?.comfyCharacterPlan))throw new Error('云参考素材上传尚未开放，未忽略参考图');
+  if(cloud&&(job.profile?.comfyCharacterEnabled||job.payload?.comfyCharacterPlan))throw new Error('角色工作流实现已停用，请在当前工作流选择参考图');
   if (job.profile?.comfyRouteBinding != null || Object.hasOwn(job.profile || {},'comfyWorkbenchBinding')) await storyboardVerifyComfyRouteJob(job, valid);
   if (Object.hasOwn(job.profile || {},'comfyRoutePromptFormat') || Object.hasOwn(job.profile || {},'comfyWorkbenchBinding')) await storyboardPrepareComfyPromptJob(job,{prepare:true,valid});
   const rolePlan = job.profile?.comfyCharacterEnabled===true||job.payload?.comfyCharacterPlan ? await storyboardPrepareComfyCharacterJob(job,{prepare:true,readiness:true,valid}) : null;

@@ -32,6 +32,39 @@ async function openPage(){
 }
 try{
   const page=await openPage();
+  ok('real browser reference preparation uses metadata only and respects old backend capability gates',await page.evaluate(async()=>{
+    const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');
+    const {createComfyDeliveryStore}=await import('/qianmu-comfy-delivery-store.js');
+    const {comfyWorkflowReferenceHash}=await import('/qianmu-comfy-references.js');
+    const {bindComfyCloudProtocol,bindComfyCloudTask}=await import('/qianmu-comfy-cloud-protocol.js');
+    const {imageChannelKey}=await import('/qianmu-image-channel.js');
+    for(const provider of ['comfy-cloud','runninghub'])for(const enabled of [false,true]){
+      const binding=bindComfyCloudProtocol(provider==='comfy-cloud'?'https://cloud.comfy.org':'https://www.runninghub.cn',provider==='comfy-cloud'?'comfy-cloud-v2':'runninghub-workflow-v1');
+      const id=`browser-reference-${provider}-${enabled}`,graph={text:{class_type:'CLIPTextEncode',inputs:{text:'fixed, %qianmu_prompt%'}},
+        image:{class_type:'LoadImage',inputs:{image:'%qianmu_reference%'}},save:{class_type:'SaveImage',inputs:{images:['image',0]}}};
+      const source={url:'/user/images/browser-reference.png',name:'selected image',mime:'image/png',bytes:123,sha256:'a'.repeat(64)};
+      const job={id,source:'comfy',automatic:false,chatKey:'original-chat',imageAdmission:{version:1,attemptId:id,namespace:ns},
+        connection:{baseUrl:binding.origin,credentialId:'fixture',options:{comfyTransport:'gateway'}},profile:{comfyReferences:{version:1,enabled:true,namespace:ns,workflowHash:await comfyWorkflowReferenceHash(graph),items:[source]}}};
+      const gateway={provider:'comfy',baseUrl:binding.origin,prompt:'garden',parameters:{workflow:graph},referenceImages:[],vibes:[],
+        comfyExecution:{version:1,automatic:false,maxImages:1,outputNodeIds:['save'],allowUnverified:false,expectedImages:1}};
+      let posts=0;const referenceStore=createComfyDeliveryStore({dbName:id});const client=createComfyRecoveryClient({store:referenceStore,account:async()=>ns,fetchImpl:async(url,init)=>{
+        if(url.endsWith('/capabilities'))return Response.json({ok:true,version:1,accountBindingVersion:1,catalogVersion:1,expectedAccount:`st-user:${await imageChannelKey('synthetic')}`,
+          submission:true,referenceUpload:enabled,resultRetrieval:true,archiveConfirmation:true,cancellation:false,automaticReplay:false,
+          submissionProviders:['comfy-cloud','runninghub'],queryProviders:['comfy-cloud','runninghub'],resultProviders:['comfy-cloud','runninghub']});
+        if(!url.endsWith('/cloud/tasks/submit'))throw Error('reference bytes must not be downloaded in browser');
+        posts++;const body=JSON.parse(init.body);
+        if(JSON.stringify(body.request.references)!==JSON.stringify([source]))throw Error('reference metadata changed');
+        const task=provider==='comfy-cloud'?bindComfyCloudTask(binding,'browser-reference',{self:'/api/v2/jobs/browser-reference',cancel:'/api/v2/jobs/browser-reference/cancel'})
+          :bindComfyCloudTask(binding,'1904152026220003331');
+        return Response.json({ok:true,version:1,status:'accepted',task,locator:{version:1,channelKey:await imageChannelKey(provider),attemptId:id}});
+      }});
+      const prepared=await client.prepareCloudSubmission(job,gateway,binding);let result,code;
+      try{result=await client.submitCloudPrepared(prepared,'synthetic-key');}catch(error){code=error.code;}
+      if(enabled?!result||posts!==1:code!=='comfy_delivery_capabilities'||posts!==0)throw Error(`reference fixture ${provider}/${enabled}: ${code}, posts ${posts}`);
+      client.close();
+    }
+    return true;
+  }));
   ok('native v1/v2 and cloud v3 share one journal without storing secrets',await page.evaluate(async()=>{
     await store.put(native);
     await store.put({...native,version:2,attemptId:'legacy',originalOnly:true,taskLocator:{version:1,channelKey:'c'.repeat(64)}});
