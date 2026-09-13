@@ -196,6 +196,26 @@ try{
     const row=await store.get(ns,'ticket-cloud');store.close();
     return row.cloudTask.taskId===task.taskId&&!/synthetic-key|workflow|ticketToken/.test(JSON.stringify(row));
   }));
+  const recipePage=await openPage();
+  ok('full cloud recipe delivery preserves its paragraph anchor while sharing real image checkpoints and ACK',await recipePage.evaluate(async()=>{
+    const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');
+    const row=await store.get(ns,'ticket-cloud'),receipt='e'.repeat(64);let shot;
+    const client=createComfyRecoveryClient({store,account:async()=>ns,fetchImpl:async(url,init)=>{
+      const body=JSON.parse(init.body),ack=url.endsWith('/acknowledge');if(ack&&body.apiKey)throw Error('ACK cannot use Key');
+      return Response.json({ok:true,version:1,status:ack?'archived':'ready',task,provider:'comfy-cloud',upstreamId:task.taskId,
+        receipt,images:[{mime:'image/png',data:'synthetic-image'}],locator:{...row.taskLocator,attemptId:row.attemptId},
+        delivery:{state:ack?'archived':'stored',cacheReceipt:receipt,imageCount:1},...(ack?{cleanup:'complete'}:{})});
+    }});
+    const job={id:row.attemptId,source:'comfy',chatKey:row.chatKey,logId:row.logId,automatic:row.automatic,
+      imageAdmission:{version:1,namespace:ns,attemptId:row.attemptId},connection:{baseUrl:row.baseUrl,credentialId:row.credentialId},
+      profile:{model:'original'},payload:{prompt:'original scene',parameters:{workflow:{original:true}}},paragraphAnchor:{paragraphIndex:3}};
+    const result=await client.retrieveCloudJob(job,row,{apiKey:'synthetic-key',deliver:async(original,_data,_files,checkpoint,guard)=>{
+      await guard();shot=original;await checkpoint([{url:'/user/images/recipe.png'}]);return true;
+    }});
+    const saved=await store.get(ns,row.attemptId);client.close();
+    return result.archived&&saved.status==='confirmed'&&shot.payload.prompt==='original scene'&&shot.paragraphAnchor.paragraphIndex===3
+      &&!shot.originalOnly&&!JSON.stringify(saved).includes('original scene');
+  }));
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({checks,external,errors},null,2));
 }finally{await context.close();await browser.close();}

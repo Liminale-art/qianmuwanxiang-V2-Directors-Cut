@@ -222,6 +222,40 @@ test('cloud original images share archive checkpoints and keyless ACK, with no n
   assert.equal((await s.retrieve({ apiKey: '' })).alreadyArchived, true); assert.equal(s.calls.length, 2);
 });
 
+const recipeForCloud = row => ({ id:row.attemptId,source:'comfy',chatKey:row.chatKey,logId:row.logId,automatic:row.automatic,
+  imageAdmission:{version:1,namespace:row.namespace,attemptId:row.attemptId},connection:{baseUrl:row.baseUrl,credentialId:row.credentialId},
+  payload:{prompt:'original narrative',parameters:{workflow:{fixed:'original graph'}}},prompt:'original narrative',negative:'original negative',
+  messageRef:{messageKey:'original-message'},paragraphAnchor:{index:3},inlineOrder:{shot:2},profile:{model:'original-model'},inlineByDefault:true });
+
+test('normal cloud delivery preserves an isolated full shot recipe and original prose anchor, without writing it into the small journal',async()=>{
+  const s=cloudSetup(),row={...s.row,originalOnly:false};s.rows.set(`${row.namespace}/${row.attemptId}`,row);
+  const recipe=recipeForCloud(row),original=structuredClone(recipe);let delivered;
+  const work=s.client.retrieveCloudJob(recipe,row,{apiKey:'synthetic-key',deliver:async(job,...args)=>{delivered=job;return callback(...args);}});
+  recipe.payload.prompt='new selected settings';recipe.paragraphAnchor.index=99;
+  assert.equal((await work).archived,true);assert.deepEqual(delivered,original);assert.equal(delivered.originalOnly,undefined);
+  assert.equal(s.read().status,'confirmed');assert.doesNotMatch(JSON.stringify(s.read()),/original narrative|original graph|original-message|synthetic-key/);
+});
+
+test('an absent or mismatched recipe cannot be silently attached to cloud originals or recreate missing preparation',async()=>{
+  for(const mode of ['empty','recipe','id','chat','namespace','key','platform','log','original-only','missing']){
+    const s=cloudSetup(),row={...s.row,originalOnly:mode==='original-only'};s.rows.set(`${row.namespace}/${row.attemptId}`,row);
+    let recipe=recipeForCloud(row);
+    if(mode==='recipe')delete recipe.payload;
+    if(mode==='empty')recipe=null;if(mode==='id')recipe.id='other';if(mode==='chat')recipe.chatKey='other';
+    if(mode==='namespace')recipe.imageAdmission.namespace='st-user:bob';if(mode==='key')recipe.connection.credentialId='other';
+    if(mode==='platform')recipe.connection.baseUrl='https://www.runninghub.cn';if(mode==='log')recipe.logId='other';if(mode==='missing')s.rows.clear();
+    await assert.rejects(s.client.retrieveCloudJob(recipe,row,{apiKey:'synthetic-key',deliver:()=>assert.fail('no foreign recipe may be delivered')}));
+    assert.equal(s.calls.length,0);if(mode==='missing')assert.equal(s.rows.size,0);
+  }
+});
+
+test('cloud pending status is returned for bounded scheduling without declaring completion or fetching new work',async()=>{
+  const s=cloudSetup({respond:(action,_body,{packet})=>{assert.equal(action,'result');return json({...packet,status:'running',images:undefined});}});
+  const row={...s.row,originalOnly:false};s.rows.set(`${row.namespace}/${row.attemptId}`,row);
+  const result=await s.client.retrieveCloudJob(recipeForCloud(row),row,{apiKey:'synthetic-key',deliver:()=>assert.fail('not a completed image')});
+  assert.equal(result.status,'running');assert.equal(result.archived,false);assert.equal(s.read().status,'prepared');assert.equal(s.calls.length,1);
+});
+
 test('partial cloud archives survive failed save and cleanup pending does not count as confirmed', async () => {
   let cleanup = 'pending';
   const s = cloudSetup({ respond: (action, _body, { packet, ack }) => json(action === 'result' ? packet : { ...ack, cleanup }) });

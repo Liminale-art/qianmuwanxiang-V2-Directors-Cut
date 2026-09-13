@@ -156,6 +156,53 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     row = await save(job, { ...row, status: 'archived' });
     return acknowledge(job, row);
   }
+  async function receiveCloud(item, { chatKey = '', apiKey = '', deliver } = {}, recipe) {
+    // Recovery without a recipe and delivery with the original shot share IO,
+    // but only the latter may attach a complete configuration or prose anchor.
+    if (item?.version !== 3) throw fail('engine', '请选择原云任务记录');
+    const selected = normalizeComfyDelivery(item, origin);
+    if (!selected.cloudTask || selected.cloudConnection.provider !== 'comfy-cloud') throw fail('engine', '此任务的云原图领取尚未就绪');
+    const checkRecipe = row => {
+      if (!recipe) return;
+      const expected = identity(recipe);
+      if (row.originalOnly || expected.originalOnly || expected.source !== 'comfy' || expected.id !== row.attemptId
+        || !recipe.payload?.parameters?.workflow || typeof recipe.payload?.prompt !== 'string' || !recipe.payload.prompt.trim()
+        || !recipe.profile || typeof recipe.profile !== 'object'
+        || expected.imageAdmission?.version !== 1 || expected.imageAdmission.attemptId !== row.attemptId || expected.imageAdmission.namespace !== row.namespace
+        || (expected.chatKey || '') !== row.chatKey || (expected.logId || '') !== row.logId || Boolean(expected.automatic) !== row.automatic
+        || (expected.connection.credentialId || '') !== row.credentialId
+        || bindComfyCloudProtocol(expected.connection.baseUrl,row.cloudConnection.protocol).origin !== row.baseUrl)
+        throw fail('identity','画面配置不完整或不属于原云任务，未替换原图的配置或插入位置');
+    };
+    checkRecipe(selected);
+    const current = await scope(selected.namespace), originalJob = jobForRow(selected);
+    return locked(originalJob, async () => {
+      let row = await store.get(current.namespace, selected.attemptId); await guard(originalJob);
+      if (row) {
+        row = normalizeComfyDelivery(row, origin);
+        if (row.version !== 3 || ['cloudTask','taskLocator','cloudConnection'].some(key => JSON.stringify(row[key]) !== JSON.stringify(selected[key]))) throw fail('identity', '本机与原云任务不匹配');
+      } else {
+        if (recipe) throw fail('identity','原云任务准备记录已缺失，请从收片管理找回原图');
+        if (!await confirm('仅领取此云任务的原图到当前阅片室，不补造配方，也不会重新生成。继续领取？')) return { cancelled: true };
+        await guard(originalJob);
+        row = await save(originalJob, { ...selected, originalOnly: true, chatKey, status: 'prepared', receipt: '', imageCount: 0, files: [] });
+      }
+      checkRecipe(row);
+      const job = recipe || { ...jobForRow(row), originalOnly: true };
+      if (['archived','confirmed'].includes(row.status)) return acknowledge(job, row);
+      if (!recipe && row.chatKey && row.chatKey !== chatKey) throw fail('chat', '请回原聊天继续保存图片，不覆盖已有归档位置');
+      if (typeof apiKey !== 'string' || !apiKey.trim() || apiKey.length > 2048) throw fail('credential', '请核对原云连接的 Key；不会重新生成');
+      const data = await request(job, 'result', { ...current.body, attemptId: row.attemptId, channelKey: row.taskLocator.channelKey,
+        task: row.cloudTask, apiKey }, 68 * 1024 * 1024, CLOUD_BASE);
+      assertCloudPacket(row, data);
+      if (data.status !== 'ready') return { archived: false, status: data.status, warning: ({ queued: '原任务仍在排队', running: '原任务仍在生成', collecting: '原图正在保存，请稍后领取',
+        archived: '服务器已有归档记录，请先核查阅片室；未重复领取', failed: '原任务生成失败，未重新生成', canceled: '原任务已取消', expired: '原任务已过期，请核查平台记录' })[data.status] || '原图暂不可领取，未重新生成' };
+      if (data.locator?.version !== 1 || data.locator.attemptId !== row.attemptId || data.locator.channelKey !== row.taskLocator.channelKey
+        || data.delivery?.state !== 'stored' || data.delivery.cacheReceipt !== data.receipt || data.delivery.imageCount !== data.images?.length
+        || data.provider !== row.cloudTask.provider || data.upstreamId !== row.cloudTask.taskId) throw fail('identity', '云原图与保存凭证不一致，未清理暂存');
+      return archive(job, row, data, (...args) => deliver(job, ...args));
+    });
+  }
   const client = {
     async prepareCloudSubmission(job, gateway, connection) {
       // Freeze the graph and declared values before the first storage/account await.
@@ -165,7 +212,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
       if (prepared.created) submissionTickets.set(result,{ record: normalizeComfyDelivery(prepared.record,origin), request, binding: { ...prepared.binding } });
       return result;
     },
-    async submitCloudPrepared(prepared, apiKey) {
+    async submitCloudPrepared(prepared, apiKey, { beforeSubmit = async () => {}, valid = () => true } = {}) {
       // Consume before the first await. Reopening an existing journal row, copying
       // the object or overlapping clicks cannot mint a second submission ticket.
       const ticket = submissionTickets.get(prepared);
@@ -184,6 +231,9 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
             throw fail('identity','原云任务准备记录已变化，未提交新任务');
         });
         const current = await scope(record.namespace);
+        if (!valid()) throw fail('cancelled','画面任务已停止，未提交云任务');
+        await beforeSubmit();
+        if (!valid()) throw fail('cancelled','画面任务已停止，未提交云任务');
         submissionState = 'unknown';
         const packet = await request(job,'submit',{...current.body,attemptId:record.attemptId,apiKey,request:frozenRequest},16384,CLOUD_BASE);
         const accepted = await this.bindCloudAcceptance(record,packet);
@@ -318,38 +368,10 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
         return { archived: true, warning: data.cleanup === 'pending' ? '原图已归档；临时文件尚未清理完，可稍后继续' : '' };
       });
     },
-    async retrieveCloudOriginal(item, { chatKey = '', apiKey = '', deliver } = {}) {
-      // Explicit version, never route an old native task using today's selected host.
-      if (item?.version !== 3) throw fail('engine', '请选择原云任务记录');
-      const selected = normalizeComfyDelivery(item, origin);
-      if (!selected.cloudTask || selected.cloudConnection.provider !== 'comfy-cloud') throw fail('engine', '此任务的云原图领取尚未就绪');
-      const current = await scope(selected.namespace), originalJob = jobForRow(selected);
-      return locked(originalJob, async () => {
-        let row = await store.get(current.namespace, selected.attemptId); await guard(originalJob);
-        if (row) {
-          row = normalizeComfyDelivery(row, origin);
-          if (row.version !== 3 || ['cloudTask','taskLocator','cloudConnection'].some(key => JSON.stringify(row[key]) !== JSON.stringify(selected[key]))) throw fail('identity', '本机与原云任务不匹配');
-        } else {
-          // A missing local journal cannot prove archival. Start from the bound
-          // original receipt, not stale files supplied by another page.
-          if (!await confirm('仅领取此云任务的原图到当前阅片室，不补造配方，也不会重新生成。继续领取？')) return { cancelled: true };
-          await guard(originalJob);
-          row = await save(originalJob, { ...selected, originalOnly: true, chatKey, status: 'prepared', receipt: '', imageCount: 0, files: [] });
-        }
-        const job = { ...jobForRow(row), originalOnly: true };
-        if (['archived','confirmed'].includes(row.status)) return acknowledge(job, row);
-        if (row.chatKey && row.chatKey !== chatKey) throw fail('chat', '请回原聊天继续保存图片，不覆盖已有归档位置');
-        if (typeof apiKey !== 'string' || !apiKey.trim() || apiKey.length > 2048) throw fail('credential', '请核对原云连接的 Key；不会重新生成');
-        const data = await request(job, 'result', { ...current.body, attemptId: row.attemptId, channelKey: row.taskLocator.channelKey,
-          task: row.cloudTask, apiKey }, 68 * 1024 * 1024, CLOUD_BASE);
-        assertCloudPacket(row, data);
-        if (data.status !== 'ready') return { archived: false, warning: ({ queued: '原任务仍在排队', running: '原任务仍在生成', collecting: '原图正在保存，请稍后领取',
-          archived: '服务器已有归档记录，请先核查阅片室；未重复领取', failed: '原任务生成失败，未重新生成', canceled: '原任务已取消', expired: '原任务已过期，请核查平台记录' })[data.status] || '原图暂不可领取，未重新生成' };
-        if (data.locator?.version !== 1 || data.locator.attemptId !== row.attemptId || data.locator.channelKey !== row.taskLocator.channelKey
-          || data.delivery?.state !== 'stored' || data.delivery.cacheReceipt !== data.receipt || data.delivery.imageCount !== data.images?.length
-          || data.provider !== row.cloudTask.provider || data.upstreamId !== row.cloudTask.taskId) throw fail('identity', '云原图与保存凭证不一致，未清理暂存');
-        return archive(job, row, data, (...args) => deliver(job, ...args));
-      });
+    retrieveCloudOriginal(item, options) { return receiveCloud(item,options); },
+    retrieveCloudJob(job, item, options) {
+      if (!job || typeof job !== 'object') throw fail('identity','缺少原画面配置，请使用收片管理找回原图');
+      return receiveCloud(item,options,structuredClone(job));
     },
     async usage() {
       const current = await scope(), usage = await store.usage(current.namespace); await guard(current.job);

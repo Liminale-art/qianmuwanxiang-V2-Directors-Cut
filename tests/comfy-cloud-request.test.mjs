@@ -7,6 +7,7 @@ import {createComfyRecoveryClient} from '../qianmu-comfy-recovery-client.js';
 import {bindComfyCloudProtocol} from '../qianmu-comfy-cloud-protocol.js';
 import {bindComfyCloudTask} from '../qianmu-comfy-cloud-protocol.js';
 import {imageChannelKey} from '../qianmu-image-channel.js';
+import {executeComfyCloudJob} from '../qianmu-comfy-cloud-execution.js';
 import {auditComfyWorkflow,requireComfyExecution} from '../qianmu-comfy-audit.js';
 import {prepareComfyWorkflow} from '../qianmu-comfy-workflow.js';
 import {resolveStoryboardJobModelIdentity,resolveStoryboardConnectionBinding} from '../qianmu-storyboard.js';
@@ -67,7 +68,7 @@ test('request freezes before asynchronous preparation and never persists its wor
   client.close();
 });
 
-async function submissionFixture({capabilities={},reply}={}){
+async function submissionFixture({capabilities={},reply,resultReply,prepare=true}={}){
   const f=fixture(),rows=new Map(),calls=[];let namespace='st-user:alice',writeFails=false;
   const expectedAccount=`st-user:${await imageChannelKey('alice')}`;
   const packet={ok:true,version:1,status:'accepted',task:bindComfyCloudTask(connection,'accepted',{self:'/api/v2/jobs/accepted',cancel:'/api/v2/jobs/accepted/cancel'}),
@@ -79,10 +80,11 @@ async function submissionFixture({capabilities={},reply}={}){
       if(url.endsWith('/capabilities'))return Response.json({ok:true,version:1,expectedAccount,accountBindingVersion:1,catalogVersion:1,
         submission:true,resultRetrieval:true,archiveConfirmation:true,cancellation:false,referenceUpload:false,automaticReplay:false,
         queryProviders:['comfy-cloud','runninghub'],resultProviders:['comfy-cloud'],...capabilities});
+      if(resultReply&&(/\/(?:result|acknowledge)$/.test(url)))return resultReply(url,JSON.parse(init.body),packet);
       assert.ok(url.endsWith('/cloud/tasks/submit'));
       return reply?reply(packet,()=>{writeFails=true;}):Response.json(packet);
     }});
-  return {...f,client,rows,calls,prepared:await client.prepareCloudSubmission(f.job,f.gateway,connection),setAccount:value=>{namespace=value;}};
+  return {...f,client,rows,calls,prepared:prepare?await client.prepareCloudSubmission(f.job,f.gateway,connection):null,setAccount:value=>{namespace=value;}};
 }
 
 test('an issued ticket submits once despite overlapping clicks and caller mutation, then binds the original record',async()=>{
@@ -126,4 +128,25 @@ test('explicit server submission state is retained and local storage failure aft
   const f=await submissionFixture({reply:(packet,failWrite)=>{failWrite();return Response.json(packet);}});
   await assert.rejects(f.client.submitCloudPrepared(f.prepared,'synthetic-key'),{submissionState:'accepted'});
   assert.equal(f.calls.filter(c=>c.method==='POST').length,1);assert.equal(f.rows.get('row').cloudTask,null);f.client.close();
+});
+
+test('last-moment admission cancellation cannot reach the cloud POST',async()=>{
+  const f=await submissionFixture();let active=true;
+  await assert.rejects(f.client.submitCloudPrepared(f.prepared,'synthetic-key',{valid:()=>active,beforeSubmit:async()=>{active=false;}}),{submissionState:'not_submitted'});
+  assert.equal(f.calls.filter(c=>c.method==='POST').length,0);f.client.close();
+});
+
+test('execution controller composes with the real client from original preparation through pending receipt and recipe-preserving archive',async()=>{
+  let reads=0,time=0,delivered;
+  const receipt='b'.repeat(64),delivery={state:'stored',cacheReceipt:receipt,imageCount:1};
+  const f=await submissionFixture({prepare:false,resultReply:(url,body,packet)=>{
+    assert.equal(body.attemptId,'original');
+    if(url.endsWith('/acknowledge')){assert.equal(body.apiKey,undefined);return Response.json({ok:true,version:1,status:'archived',task:packet.task,delivery:{...delivery,state:'archived'},cleanup:'complete'});}
+    reads++;return Response.json(reads===1?{ok:true,version:1,status:'running',task:packet.task}:
+      {...packet,status:'ready',provider:'comfy-cloud',upstreamId:packet.task.taskId,receipt,delivery,images:[{data:'synthetic-image',mime:'image/png'}]});
+  }});
+  const result=await executeComfyCloudJob(f.client,f.job,f.gateway,connection,{apiKey:'synthetic-key',now:()=>time,wait:async ms=>{time+=ms;},
+    deliver:async(job,_data,files,checkpoint,guard)=>{await guard();assert.equal(files.length,0);delivered=job;await checkpoint([{url:'/user/images/original.png'}]);return true;}});
+  assert.equal(result.archived,true);assert.equal(delivered.payload.prompt,'a quiet garden');assert.equal(delivered.chatKey,'original-chat');
+  assert.equal(f.rows.get('row').status,'confirmed');assert.equal(f.calls.filter(c=>c.url.endsWith('/submit')).length,1);assert.equal(reads,2);f.client.close();
 });

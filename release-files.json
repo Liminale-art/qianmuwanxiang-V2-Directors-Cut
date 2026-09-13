@@ -16,6 +16,7 @@
     "qianmu-comfy-cloud-submit.js",
     "qianmu-comfy-cloud-prepare.js",
     "qianmu-comfy-cloud-request.js",
+    "qianmu-comfy-cloud-execution.js",
     "qianmu-comfy-cloud-ledger.js",
     "qianmu-comfy-cloud-receive.js",
     "qianmu-comfy-cloud-query.js",
