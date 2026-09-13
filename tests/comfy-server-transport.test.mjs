@@ -6,6 +6,7 @@ import { once } from 'node:events';
 import { createComfyServerTransport, createComfyCloudServerTransport, createComfyCloudAssetTransport, createComfyCloudFileTransport, pinnedComfyFetch } from '../qianmu-comfy-server-transport.js';
 import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
 import { queryComfyCloudTask } from '../qianmu-comfy-cloud-query.js';
+import { checkComfyCloudConnection } from '../qianmu-comfy-cloud-check.js';
 import { createComfyCloudLedger } from '../qianmu-comfy-cloud-ledger.js';
 import { createImageServiceStore } from '../qianmu-image-service-store.js';
 import { createImageServiceResults } from '../qianmu-image-service-results.js';
@@ -1555,6 +1556,40 @@ test('pinned transport limits each operation to exact native paths and excludes 
   await assert.rejects(fetcher('https://other.test/api/system_stats'), { code: 'comfy_transport_target_changed' });
   await assert.rejects(fetcher(`${base}/system_stats`, { headers: { Cookie: 'session=secret' } }), { code: 'comfy_transport_headers' });
   await assert.rejects(fetcher(`${base}/system_stats`, { body: 'not read-only' }), { code: 'comfy_transport_body' });
+});
+
+test('installed cloud connection checks use official read-only endpoints, not native stats or job submission',async()=>{
+  for(const [baseUrl,reply] of [['https://cloud.comfy.org',{queue_running:[],queue_pending:[]}],
+    ['https://www.runninghub.cn',{code:0,data:{remainCoins:'12.50',currentTaskCounts:'0',privateDetail:'must stay upstream'}}]]){
+    const handlers=new Map(),calls=[];
+    await init({get:(key,fn)=>handlers.set(`GET ${key}`,fn),post:(key,fn)=>handlers.set(`POST ${key}`,fn)},
+      {comfyTargetStore:{read:()=>assert.fail('cloud checks never enroll native targets')},comfyTransportOptions:{resolveHost:publicDns,requestImpl:mockNodeRequest(calls,()=>({body:reply}))}});
+    const res=response();await handlers.get('POST /image/check')({...account(),body:input({baseUrl,allowPrivateNetwork:true})},res);
+    assert.equal(res.body.ok,true);assert.equal(res.body.verified,false);assert.equal(res.body.message,'地址可达，请以生图验证');
+    assert.equal(calls.length,1);assert.doesNotMatch(JSON.stringify(res.body),/test-only-secret|privateDetail|remainCoins|queue_running/);
+    if(baseUrl.includes('runninghub')){
+      assert.equal(calls[0].url.pathname,'/uc/openapi/accountStatus');assert.equal(calls[0].options.method,'POST');
+      assert.deepEqual(JSON.parse(calls[0].body),{apikey:'test-only-secret'});assert.equal(calls[0].options.headers.authorization,'Bearer test-only-secret');
+    }else{assert.equal(calls[0].url.pathname,'/api/queue');assert.equal(calls[0].options.method,'GET');assert.equal(calls[0].options.headers['x-api-key'],'test-only-secret');assert.equal(calls[0].options.headers.authorization,undefined);}
+  }
+});
+
+test('cloud connection failures are bounded, concise and cannot fall back to paid generation or leak upstream text',async()=>{
+  const connection=input({baseUrl:'https://cloud.comfy.org'});
+  for(const reply of [{status:401,body:{error:'test-only-secret'}},{status:429,body:{}},{status:302,headers:{location:'https://other.test'}},
+    {body:{arbitrary:'test-only-secret'}},{body:{queue_running:[],queue_pending:[],huge:'x'.repeat(1048576)}}]){
+    const calls=[];await assert.rejects(checkComfyCloudConnection(account(),connection,{transportOptions:{resolveHost:publicDns,requestImpl:mockNodeRequest(calls,()=>reply)}}),error=>{
+      assert.equal(error.submissionState,'not_submitted');assert.doesNotMatch(error.message,/test-only-secret|arbitrary/);return true;
+    });assert.equal(calls.length,1);
+  }
+  await assert.rejects(checkComfyCloudConnection(account(),connection,{timeoutMs:20,transportOptions:{resolveHost:()=>new Promise(()=>{}),requestImpl:()=>assert.fail('DNS must not reach socket')}}),{code:'comfy_cloud_check_timeout'});
+  await assert.rejects(checkComfyCloudConnection({},connection),/登录/);
+  await assert.rejects(checkComfyCloudConnection(account(),{...connection,apiKey:''}),/Key/);
+  await assert.rejects(checkComfyCloudConnection(account(),connection,{transportOptions:{resolveHost:async()=>[{address:'127.0.0.1'}],requestImpl:()=>assert.fail('private egress')}}));
+  const state=account();await assert.rejects(checkComfyCloudConnection(state,connection,{transportOptions:{resolveHost:async()=>{state.user.profile.handle='other';return publicDns();},requestImpl:()=>assert.fail('changed account')}}));
+  const deployment=await checkComfyCloudConnection(account(),{...connection,baseUrl:'https://sample.run.comfy.app'},{transportOptions:{resolveHost:()=>assert.fail('no invented probe')}});
+  assert.equal(deployment.transport,'configured');assert.match(deployment.message,/未执行连接探测/);
+  await assert.rejects(checkComfyCloudConnection(account(),input({baseUrl:'https://www.runninghub.ai'}),{transportOptions:{resolveHost:publicDns,requestImpl:mockNodeRequest([],()=>({body:{code:401,msg:'test-only-secret'}}))}}),{code:'comfy_cloud_check_platform'});
 });
 
 test('check and model routes use pinned Node transport with auth, never the generic browser fetch', async () => {

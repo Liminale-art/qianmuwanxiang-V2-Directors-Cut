@@ -16,6 +16,8 @@ import { createComfyTargets } from './qianmu-comfy-targets.js';
 import { createComfyService } from './qianmu-comfy-service.js';
 import { createComfyCloudService } from './qianmu-comfy-cloud-service.js';
 import { authorizeComfyCloudTarget } from './qianmu-comfy-cloud-access.js';
+import { checkComfyCloudConnection } from './qianmu-comfy-cloud-check.js';
+import { resolveStoryboardComfyCloud } from './qianmu-comfy-cloud-protocol.js';
 import {
   checkImageConnection,
   ImageGatewayError,
@@ -385,13 +387,16 @@ export async function init(router, options = {}) {
 
   router.post('/image/check', async (req, res) => {
     prepareImageResponse(res);
+    const controller=new AbortController(),onClose=()=>{if(!res.writableEnded)controller.abort();};res.once?.('close',onClose);
     try {
+      if(req.body?.provider==='comfy' && resolveStoryboardComfyCloud(req.body)) return res.json(await checkComfyCloudConnection(req,req.body,
+        {policy:options.authorizeCloudTarget,transportOptions:options.comfyTransportOptions,signal:controller.signal}));
       return res.json(await checkImageConnection(req.body, { prepareComfyTransport: (input, operation) => createComfyServerTransport(req, input, { ...comfyTransportOptions(), operation }) }));
     } catch (error) {
       const result = imageGatewayErrorPayload(error);
       console.warn('[千幕分镜网关] 连接检查失败', result.body.code);
       return res.status(result.status).json(result.body);
-    }
+    } finally {res.off?.('close',onClose);}
   });
 
   router.post('/image/models', async (req, res) => {

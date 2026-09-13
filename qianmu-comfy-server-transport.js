@@ -8,7 +8,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { ImageGatewayError, validateGatewayBaseUrl, pinnedImageResultFetch } from './qianmu-image-gateway.js';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
-import { planComfyCloudOperation, bindComfyCloudTask } from './qianmu-comfy-cloud-protocol.js';
+import { planComfyCloudOperation, bindComfyCloudTask, planComfyCloudConnectionCheck } from './qianmu-comfy-cloud-protocol.js';
 import { planComfyCloudAssetMetadata } from './qianmu-comfy-cloud-asset.js';
 
 // Only the explicit cloud factory can add this capability; native callers stay native.
@@ -85,6 +85,7 @@ export function pinnedComfyFetch(base, addresses, { operation, requestImpl, asse
     await beforeRequest?.(); assertCurrent(); signal?.throwIfAborted();
     const headers = new Headers(init.headers);
     const headerNames = ['authorization', 'content-type', 'accept'];
+    if (cloudPlan?.provider === 'comfy-cloud' && cloudPlan.operation === 'check') headerNames.push('x-api-key');
     if (cloudPlan?.protocol === 'comfy-cloud-v2' && cloudPlan.createsJob) headerNames.push('idempotency-key');
     if ([...headers.keys()].some(key => !headerNames.includes(key))) throw fail('headers', 'Comfy 请求包含不允许的转发头');
     if (headers.has('idempotency-key') && !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(headers.get('idempotency-key'))) throw fail('headers', '云端幂等编号无效');
@@ -95,6 +96,10 @@ export function pinnedComfyFetch(base, addresses, { operation, requestImpl, asse
         || (Object.hasOwn(body, 'apiKey') && (typeof body.apiKey !== 'string' || body.apiKey.length > 2048))) throw fail('body', '云端请求与原任务编号不匹配');
     }
     if (cloudPlan?.provider === 'comfy-cloud' && cloudPlan.operation === 'cancel' && init.body != null) throw fail('body', '云端取消操作不接受额外参数');
+    if (cloudPlan?.provider === 'runninghub' && cloudPlan.operation === 'check') {
+      let body;try { body=JSON.parse(init.body); } catch (_) { throw fail('body','云连接检查参数无效'); }
+      if (!body || Array.isArray(body) || Object.keys(body).length!==1 || typeof body.apikey!=='string' || !body.apikey || body.apikey.length>2048) throw fail('body','云连接检查仅接受当前 Key');
+    }
     if (method === 'GET' && init.body != null) throw fail('body', 'Comfy 只读请求不能携带正文');
     // Web Request supplies the correct multipart boundary without buffering the image.
     const combined = signal && init.signal ? AbortSignal.any([signal, init.signal]) : signal || init.signal;
@@ -263,6 +268,12 @@ export async function createComfyCloudFileTransport(req, { task: rawTask, assetI
       }
     } };
   } catch (error) { throw annotate(error); }
+}
+
+export async function createComfyCloudCheckTransport(req, binding, options = {}) {
+  const plan = planComfyCloudConnectionCheck(binding);
+  if (!plan) throw fail('check_unsupported','此部署地址尚不支持独立连接检查');
+  return createCloudPlannedTransport(req,plan,options);
 }
 
 async function createCloudPlannedTransport(req, plan, options) {

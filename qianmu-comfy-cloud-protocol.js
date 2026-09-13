@@ -60,6 +60,16 @@ function checkedBinding(value) {
   return canonical;
 }
 
+// Read-only account probes, separate from v2 job execution. Serverless has no
+// documented standalone probe in the shared contract; never invent a job id.
+export function planComfyCloudConnectionCheck(binding) {
+  const current = checkedBinding(binding);
+  if (current.provider === 'comfy-cloud' && current.origin !== 'https://cloud.comfy.org') return null;
+  const runninghub = current.provider === 'runninghub';
+  return Object.freeze({ ...current, operation: 'check', effect: 'read', createsJob: false,
+    method: runninghub ? 'POST' : 'GET', url: `${current.origin}${runninghub ? '/uc/openapi/accountStatus' : '/api/queue'}`, redirect: 'error' });
+}
+
 function checkedJobLinks(binding, taskId, links) {
   if (!object(links)) fail('links', '云端未返回原任务查询地址，请核查原任务');
   const paths = {};

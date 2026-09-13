@@ -18420,7 +18420,8 @@ async function storyboardCheckConnection(root) {
       } : {}),
     };
     let data = null;
-    const comfyTransport = sourceId === 'comfy' ? requireStoryboardComfyTransport(connection) : 'legacy-auto';
+    const cloud = sourceId === 'comfy' && resolveStoryboardComfyCloud(connection);
+    const comfyTransport = cloud ? 'gateway' : sourceId === 'comfy' ? requireStoryboardComfyTransport(connection) : 'legacy-auto';
     if (comfyTransport !== 'gateway') {
       const directImage = await directImageRuntime();
       if (!isCurrent()) return;
@@ -18440,11 +18441,11 @@ async function storyboardCheckConnection(root) {
       data = await response.json().catch(() => ({}));
       if (response.status === 404) throw new Error(comfyTransport === 'gateway' ? '未检测到千幕增强服务，请安装或同步更新后重启 ST' : `${STORYBOARD_PROVIDER_REGISTRY[sourceId]?.label || sourceId} 浏览器直连被当前网络拦截，且未检测到可选的千幕网关`);
       if (!response.ok || !data.ok) throw new Error(data.message || `连接失败（${response.status}）`);
-      data.transport = 'gateway';
+      if(data.transport!=='configured')data.transport = 'gateway';
     }
     if (!isCurrent()) return;
     const verified = sourceId !== 'comfy' && data.verified !== false;
-    const message = sourceId === 'comfy' ? `${data.transport === 'gateway' ? 'ST 主机' : '当前浏览器'} · 地址可达，请以生图验证` : String(verified ? data.message || `连接通过 · ${profile.model || STORYBOARD_PROVIDER_REGISTRY[sourceId].label}`
+    const message = sourceId === 'comfy' ? cloud ? data.message : `${data.transport === 'gateway' ? 'ST 主机' : '当前浏览器'} · 地址可达，请以生图验证` : String(verified ? data.message || `连接通过 · ${profile.model || STORYBOARD_PROVIDER_REGISTRY[sourceId].label}`
       : data.transport === 'configured' ? '未执行连接探测，请以生图验证' : '地址可达，请以生图验证');
     storyboardConnectionStatus.set(sourceId, { ok: true, verified, message });
     toast(message, verified ? 'success' : 'warning');

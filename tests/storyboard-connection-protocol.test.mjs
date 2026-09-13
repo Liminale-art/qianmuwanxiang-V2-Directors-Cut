@@ -100,6 +100,19 @@ test('Comfy actual connection check honors explicit requester and does not confu
   }
 });
 
+test('cloud connection checks ignore stale native requester settings, retain Key and preserve an untested deployment warning',async()=>{
+  for(const baseUrl of ['https://cloud.comfy.org','https://sample.run.comfy.app','https://www.runninghub.ai']){
+    const state=comfyState('browser');state.connections.comfy.draft.baseUrl=baseUrl;
+    const message=baseUrl.includes('run.comfy.app')?'此部署地址未执行连接探测，请以生图验证':'地址可达，请以生图验证';
+    const calls=[],e=harness(state,{storyboardSaveConnection:async()=>{},storyboardResolveApiKey:async()=>'retained-key',
+      directImageRuntime:()=>assert.fail('known cloud must not enter browser native check'),
+      fetch:async(url,init)=>{calls.push(url);assert.equal(JSON.parse(init.body).baseUrl,baseUrl);return Response.json({ok:true,verified:false,message,transport:baseUrl.includes('run.comfy.app')?'configured':undefined});}});
+    const key={value:'retained-key'};
+    await e.context.storyboardCheckConnection({isConnected:true,querySelector:()=>key,querySelectorAll:()=>[key]});
+    assert.deepEqual(calls,['/api/plugins/qianmu-tts/image/check']);assert.equal(e.notices.at(-1),message);assert.equal(key.value,'retained-key');
+  }
+});
+
 test('NAI reachable-only probe retains its concise warning after introducing explicit Comfy requesters', async () => {
   const state = stateFor('novel'); state.connections.novel.draft = { baseUrl: 'https://nai.example' };
   const e = harness(state, { storyboardSaveConnection: async () => {}, storyboardResolveApiKey: async () => 'key',
