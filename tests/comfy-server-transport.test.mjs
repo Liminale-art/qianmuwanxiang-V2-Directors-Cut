@@ -6,6 +6,7 @@ import { once } from 'node:events';
 import { createComfyServerTransport, createComfyCloudServerTransport, createComfyCloudAssetTransport, createComfyCloudFileTransport, pinnedComfyFetch } from '../qianmu-comfy-server-transport.js';
 import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
 import { queryComfyCloudTask } from '../qianmu-comfy-cloud-query.js';
+import { cancelComfyCloudTask, readComfyCloudCancellation } from '../qianmu-comfy-cloud-cancel.js';
 import { checkComfyCloudConnection } from '../qianmu-comfy-cloud-check.js';
 import { createComfyCloudLedger } from '../qianmu-comfy-cloud-ledger.js';
 import { createImageServiceStore } from '../qianmu-image-service-store.js';
@@ -362,6 +363,55 @@ test('persisted cloud and RH originals pass real ledger grants through the bound
     else { assert.equal(calls[0].url.href, f.task.links.self); assert.equal(calls[0].options.method, 'GET'); assert.equal(calls[0].body.length, 0); }
     assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before, 'query must not mark a generating job complete or release its fence');
   }
+});
+
+test('explicit cancellation targets only the original owned job and never erases history or implies an RH terminal state',async t=>{
+  for(const binding of [cloudBinding,bindComfyCloudProtocol('https://sample.run.comfy.app','comfy-cloud-v2'),rhBinding]) {
+    const f=await persistedCloudTask(t,binding),calls=[],before=await f.store.inspectChannel(f.locator.channelKey);
+    const service=createComfyCloudService({store:f.store,dataRoot:f.root,transportOptions:{authorizeTarget:cloudGrant,resolveHost:publicDns,
+      requestImpl:mockNodeRequest(calls,()=>({body:binding.provider==='runninghub'?{code:0,data:null,msg:'success'}:{id:f.task.taskId,status:'canceling',urls:f.task.links}}))}});
+    t.after(()=>service.close());const input={version:1,expectedAccount:imageServiceAccount(f.req).namespace,...f.locator,task:f.task,confirmed:true};
+    for(const change of [{confirmed:false},{confirmed:'true'},{apiKey:'different-key'},{task:{...f.task,taskId:'999'}}])await assert.rejects(service.cancel(f.req,{...input,...change}));
+    assert.equal(calls.length,0);
+    const result=await service.cancel(f.req,input);assert.equal(result.requestAccepted,true);assert.equal(result.terminal,false);
+    assert.equal(result.status,binding.provider==='runninghub'?'cancel_requested':'canceling');assert.equal(calls.length,1);
+    assert.equal(calls[0].url.origin,binding.origin);assert.equal(calls[0].options.method,'POST');assert.match(calls[0].url.pathname,/\/cancel$/);
+    if(binding.provider==='runninghub')assert.deepEqual(JSON.parse(calls[0].body),{taskId:f.task.taskId,apiKey:f.locator.apiKey});
+    else assert.equal(calls[0].body.length,0);
+    assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey),before,'cancel acknowledgment cannot settle or delete paid task evidence');
+    assert.doesNotMatch(JSON.stringify(result),/test-only-secret|refund|退款/);
+  }
+});
+
+test('bounded cancellation stops stalled grants and rejects forged status without echoing remote errors',async t=>{
+  const f=await persistedCloudTask(t),calls=[];
+  await assert.rejects(cancelComfyCloudTask(f.req,f.task,{confirmed:true,apiKey:f.locator.apiKey,timeoutMs:10,
+    authorizeTarget:cloudGrant,authorizeCancellation:()=>new Promise(()=>{}),requestImpl:mockNodeRequest(calls)}),{code:'comfy_cloud_cancel_timeout'});
+  assert.equal(calls.length,0);
+  assert.throws(()=>readComfyCloudCancellation(f.task,{id:'wrong',status:'canceled',urls:f.task.links}));
+  assert.equal(readComfyCloudCancellation(f.task,{id:f.task.taskId,status:'succeeded',urls:f.task.links}).status,'succeeded','already finished is not rewritten as canceled');
+  for(const body of [{code:'0',data:null},{code:1,data:null},{code:0,data:{taskId:'999'}}])assert.throws(()=>readComfyCloudCancellation(bindComfyCloudTask(rhBinding,'123'),body));
+});
+
+test('already collected originals bypass remote cancellation and keep their files',async t=>{
+  const {f,cache,received}=await stagedBeforeSettlement(t);await received.grant.recordStored(cache);
+  const service=createComfyCloudService({store:f.store,cache,transportOptions:{requestImpl:()=>assert.fail('collected image must not be canceled remotely')}});t.after(()=>service.close());
+  const result=await service.cancel(f.req,{version:1,expectedAccount:imageServiceAccount(f.req).namespace,...f.locator,task:f.task,confirmed:true});
+  assert.equal(result.status,'stored');assert.equal(result.requestAccepted,false);
+  assert.equal((await cache.load(received.grant.identity)).receipt,received.result.receipt);
+});
+
+test('overlapping cancel clicks share a task guard and cannot send duplicate requests',async t=>{
+  const f=await persistedCloudTask(t),calls=[];let enter,release;
+  const entered=new Promise(resolve=>enter=resolve),waiting=new Promise(resolve=>release=resolve);
+  const service=createComfyCloudService({store:f.store,dataRoot:f.root,transportOptions:{resolveHost:publicDns,
+    authorizeTarget:async()=>{enter();await waiting;return async()=>{};},
+    requestImpl:mockNodeRequest(calls,()=>({body:{id:f.task.taskId,status:'canceling',urls:f.task.links}}))}});
+  t.after(()=>service.close());const input={version:1,expectedAccount:imageServiceAccount(f.req).namespace,...f.locator,task:f.task,confirmed:true};
+  const first=service.cancel(f.req,input);await entered;
+  try {await assert.rejects(service.cancel(f.req,input),{status:409});assert.equal(calls.length,0);}
+  finally{release();}
+  assert.equal((await first).status,'canceling');assert.equal(calls.length,1);
 });
 
 const cloudOutput = (id = '00000000-0000-4000-8000-000000000001', extra = {}) => ({

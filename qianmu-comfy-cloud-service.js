@@ -7,6 +7,7 @@ import { createComfyCloudLedger, comfyCloudResourceKey } from './qianmu-comfy-cl
 import { submitComfyCloudTask } from './qianmu-comfy-cloud-submit.js';
 import { createComfyCloudReceiver } from './qianmu-comfy-cloud-receive.js';
 import { queryComfyCloudTask } from './qianmu-comfy-cloud-query.js';
+import { cancelComfyCloudTask } from './qianmu-comfy-cloud-cancel.js';
 import { bindComfyCloudTask } from './qianmu-comfy-cloud-protocol.js';
 import { imageServiceAccount, imageServiceAccountStillMatches, imageServiceTaskView } from './qianmu-image-service-access.js';
 import { describeImageServiceRequest } from './qianmu-image-service-queue.js';
@@ -20,7 +21,7 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
   store ||= createImageServiceStore({ dataRoot, scope: 'comfy-cloud' });
   cache ||= createImageServiceResults({ dataRoot, store, scope: 'comfy-cloud' });
   const ledger = createComfyCloudLedger({ store }), receiver = createComfyCloudReceiver({ ledger, cache });
-  const active = new Set(); let closed = false, closing;
+  const active = new Set(), cancelling = new Set(); let closed = false, closing;
   const live = row => [...active].some(item => item.key === keyOf(row) && item.namespace === row.namespace);
   function run(req, raw, options, operation, tracksTask = false) {
     const submission = typeof tracksTask === 'function';
@@ -62,6 +63,22 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
     }
   }
   return Object.freeze({
+    cancel(req,input,options) {
+      return run(req,input,options,async(value,_account,signal,check)=>{
+        if(value.confirmed!==true)throw fail('consent','请确认取消原任务，未发送请求');
+        const key=JSON.stringify([_account.namespace,value.channelKey,value.attemptId]);
+        if(cancelling.has(key))throw fail('busy','原任务的取消请求正在处理，请稍后核查',409);
+        cancelling.add(key);
+        try {
+        const task=bindComfyCloudTask(value.task,value.task?.taskId,value.task?.links);
+        const grant=await ledger.authorizeStaging(req,value,task);check();
+        const delivery=await grant.readDelivery();check();
+        if(delivery)return {ok:true,version:1,task,status:delivery.state,requestAccepted:false,terminal:true};
+        return {ok:true,version:1,...await cancelComfyCloudTask(req,task,{...transportOptions,apiKey:value.apiKey,
+          confirmed:true,signal,authorizeCancellation:async()=>grant.verify})};
+        } finally { cancelling.delete(key); }
+      },true);
+    },
     submit(req, input, options) {
       return run(req, input, options, async (value, _account, signal) => ({ version: 1,
         ...(await submitComfyCloudTask(req, value, { ...transportOptions, ledger, signal })) }),
