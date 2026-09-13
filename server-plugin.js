@@ -14,6 +14,7 @@ import { createComfyServerTransport } from './qianmu-comfy-server-transport.js';
 import { createComfyTargetStore } from './qianmu-comfy-target-store.js';
 import { createComfyTargets } from './qianmu-comfy-targets.js';
 import { createComfyService } from './qianmu-comfy-service.js';
+import { createComfyCloudService } from './qianmu-comfy-cloud-service.js';
 import {
   checkImageConnection,
   ImageGatewayError,
@@ -264,6 +265,37 @@ export async function init(router, options = {}) {
     }
     return comfyTasks;
   };
+  let comfyCloudTasks;
+  const comfyCloudTasksFor = req => {
+    try { imageServiceAccount(req); } catch (_) { throw new ImageGatewayError(401, 'comfy_cloud_authentication', '请先登录原ST账户'); }
+    if (!comfyCloudTasks) {
+      comfyCloudTasks = createComfyCloudService({ dataRoot: hostDataRoot(), ...(options.comfyCloudTaskOptions || {}), transportOptions: comfyTransportOptions() });
+      imageTaskServices.add(comfyCloudTasks);
+    }
+    return comfyCloudTasks;
+  };
+  router.get('/image/comfy/cloud/capabilities', (req, res) => {
+    prepareImageResponse(res);
+    try {
+      comfyCloudTasksFor(req); const account = imageServiceAccount(req);
+      return res.json({ ok: true, version: 1, expectedAccount: account.namespace, accountBindingVersion: 1,
+        scope: 'original-task-recovery', queryProviders: ['comfy-cloud', 'runninghub'], resultProviders: ['comfy-cloud'],
+        submission: false, cancellation: false, referenceUpload: false, catalogVersion: 1,
+        resultRetrieval: true, archiveConfirmation: true, automaticReplay: false });
+    } catch (error) { const result = imageGatewayErrorPayload(error); return res.status(result.status).json(result.body); }
+  });
+  for (const action of ['query', 'result', 'acknowledge', 'catalog']) router.post(`/image/comfy/cloud/tasks/${action}`, async (req, res) => {
+    prepareImageResponse(res);
+    const controller = new AbortController(), onClose = () => { if (!res.writableEnded) controller.abort(); };
+    res.once?.('close', onClose);
+    try {
+      const result = await comfyCloudTasksFor(req)[action](req, req.body, { signal: controller.signal });
+      if (!res.destroyed && !res.writableEnded) return res.json(result);
+    } catch (error) {
+      const result = imageGatewayErrorPayload(error);
+      if (!res.destroyed && !res.writableEnded) return res.status(result.status).json(result.body);
+    } finally { res.off?.('close', onClose); }
+  });
   router.post('/image/comfy/tasks/query', async (req, res) => {
     prepareImageResponse(res);
     try { return res.json(await comfyTasksFor(req).query(req, req.body)); }

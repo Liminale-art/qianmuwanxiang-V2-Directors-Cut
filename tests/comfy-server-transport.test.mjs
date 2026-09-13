@@ -14,6 +14,7 @@ import { readComfyCloudJsonResponse, readComfyCloudAcceptance } from '../qianmu-
 import { submitComfyCloudTask } from '../qianmu-comfy-cloud-submit.js';
 import { readComfyCloudAsset, downloadComfyCloudAsset, downloadComfyCloudJob } from '../qianmu-comfy-cloud-asset-read.js';
 import { createComfyCloudReceiver } from '../qianmu-comfy-cloud-receive.js';
+import { createComfyCloudService } from '../qianmu-comfy-cloud-service.js';
 import { comfyCloudResourceKey } from '../qianmu-comfy-cloud-ledger.js';
 import { init, exit } from '../server-plugin.js';
 import * as fs from 'node:fs/promises';
@@ -639,6 +640,73 @@ test('cloud receipt and archive confirmation share the original-task in-flight g
   assert.equal((await first).cleanup, 'complete');
 });
 
+test('cloud host service returns ordinary image packets and scoped metadata, never internal grants, source URLs or original queue internals', async t => {
+  const { f, cache, received } = await stagedBeforeSettlement(t);
+  const service = createComfyCloudService({ store: f.store, cache }); t.after(() => service.close());
+  const input = { version: 1, expectedAccount: received.grant.identity.namespace, task: f.task, ...f.locator };
+  const packet = await service.result(f.req, input);
+  assert.equal(packet.status, 'ready'); assert.equal(packet.images[0].mime, 'image/png');
+  assert.deepEqual(Buffer.from(packet.images[0].data, 'base64'), png); assert.equal(packet.receipt, received.result.receipt);
+  assert.doesNotMatch(JSON.stringify(packet), /namespace|requestDigest|fence|cloudIntent|grant|files\.test|temporary|test-only-secret/);
+  const page = await service.catalog(f.req, input);
+  assert.equal(page.storageReadable, true); assert.equal(page.totals.tasks, 1); assert.equal(page.totals.imageBytes, png.length);
+  assert.equal(page.originals[0].resultAvailable, true); assert.equal(page.tasks[0].archiveState, 'stored');
+  assert.doesNotMatch(JSON.stringify(page), /namespace|requestDigest|fence|cloudIntent|files\.test|test-only-secret/);
+  const other = { user: { profile: { handle: 'bob', enabled: true } } };
+  const empty = await service.catalog(other, { version: 1, expectedAccount: imageServiceAccount(other).namespace });
+  assert.equal(empty.totals.tasks, 0); assert.equal(empty.totals.count, 0); assert.deepEqual(empty.originals, []);
+  await assert.rejects(service.result(other, input), { status: 401 });
+  await service.acknowledge(f.req, { ...input, archived: true, receipt: packet.receipt });
+  const after = await service.catalog(f.req, input);
+  assert.equal(after.totals.imageBytes, 0); assert.equal(after.tasks[0].archiveState, 'archived');
+  assert.equal((await service.query(f.req, input)).status, 'archived', 'no expired remote URL or network permission is needed to read durable confirmation');
+  assert.equal((await service.result(f.req, input)).status, 'archived');
+});
+
+test('cloud host catalog preserves ledger history and unknown occupancy when partial cleanup prevents inventory', async t => {
+  const { f, cache, received } = await stagedBeforeSettlement(t); await received.grant.recordStored(cache);
+  const input = { version: 1, expectedAccount: received.grant.identity.namespace, task: f.task, ...f.locator, archived: true, receipt: received.result.receipt };
+  await received.grant.recordArchived(cache, input);
+  const service = createComfyCloudService({ store: f.store, cache: { ...cache, inventory: async () => { throw new Error('unreadable private files'); } } });
+  t.after(() => service.close());
+  const page = await service.catalog(f.req, input);
+  assert.equal(page.storageReadable, false); assert.equal(page.totals.tasks, 1); assert.equal(page.totals.imageBytes, null);
+  assert.equal(page.tasks[0].canRetryCleanup, true); assert.doesNotMatch(JSON.stringify(page), /unreadable private files/);
+  assert.equal((await service.acknowledge(f.req, input)).cleanup, 'complete');
+});
+
+test('cloud service shutdown cancels active archive work, drains it before closing storage, and admits no later operations', async t => {
+  const { f, cache, received } = await stagedBeforeSettlement(t); await received.grant.recordStored(cache);
+  let enter, release, storeClosed = false;
+  const entering = new Promise(resolve => { enter = resolve; }), held = new Promise(resolve => { release = resolve; });
+  const service = createComfyCloudService({ store: { ...f.store, close: () => { storeClosed = true; return f.store.close(); } },
+    cache: { ...cache, load: async (...args) => { enter(); await held; return cache.load(...args); } } });
+  const input = { version: 1, expectedAccount: received.grant.identity.namespace, task: f.task, ...f.locator, archived: true, receipt: received.result.receipt };
+  const pending = assert.rejects(service.acknowledge(f.req, input)); await entering;
+  const closed = service.close(); assert.equal(service.close(), closed);
+  assert.equal(storeClosed, false, 'do not close the queue while its original work can still record evidence');
+  await assert.rejects(service.catalog(f.req, input), { status: 503 });
+  release(); await pending; await closed; assert.equal(storeClosed, true);
+  const reopened = createImageServiceStore({ dataRoot: f.root, scope: 'comfy-cloud' }); t.after(() => reopened.close());
+  assert.equal((await reopened.inspectChannel(f.locator.channelKey)).entries[0].cloudDelivery.state, 'stored');
+  const originals = createImageServiceResults({ dataRoot: f.root, store: reopened, scope: 'comfy-cloud' });
+  assert.equal((await originals.load(received.grant.identity)).receipt, input.receipt);
+});
+
+test('cloud service snapshots caller inputs and bounds concurrent metadata work before touching storage', async t => {
+  const { f, cache, received } = await stagedBeforeSettlement(t);
+  let release, entered; const gate = new Promise(resolve => { release = resolve; }), entering = new Promise(resolve => { entered = resolve; });
+  const service = createComfyCloudService({ store: f.store, cache: { ...cache, inventory: async (...args) => { entered(); await gate; return cache.inventory(...args); } } });
+  t.after(() => service.close());
+  const input = { version: 1, expectedAccount: received.grant.identity.namespace };
+  const first = service.catalog(f.req, input); input.expectedAccount = 'changed-by-caller'; await entering;
+  const second = service.catalog(f.req, { ...input, expectedAccount: received.grant.identity.namespace });
+  try { await assert.rejects(service.catalog(f.req, input), { status: 503 }); }
+  finally { release(); }
+  assert.equal((await first).totals.tasks, 1); assert.equal((await second).totals.tasks, 1);
+  await assert.rejects(service.catalog(f.req, { get version() { assert.fail('never invoke caller getters'); } }));
+});
+
 test('an archive confirmed during readback cannot be downgraded into another image delivery', async t => {
   const { f, cache } = await stagedBeforeSettlement(t);
   const ledger = { authorizeStaging: async (...args) => {
@@ -1254,6 +1322,62 @@ async function routes(options = {}) {
   await init({ get: (path, handler) => handlers.set(`GET ${path}`, handler), post: (path, handler) => handlers.set(`POST ${path}`, handler) }, { dataRoot, comfyTransportOptions: options, comfyTargetStore });
   return handlers;
 }
+
+test('installed cloud recovery endpoints advertise only implemented operations and require account identity before storage or DNS', async () => {
+  const handlers = await routes({ resolveHost: () => assert.fail('recovery capabilities do not use DNS'), requestImpl: () => assert.fail('no paid work') });
+  for (const route of ['GET /image/comfy/cloud/capabilities', ...['query', 'result', 'acknowledge', 'catalog'].map(action => `POST /image/comfy/cloud/tasks/${action}`)]) {
+    const res = response(); await handlers.get(route)({ body: {} }, res);
+    assert.equal(res.statusCode, 401); assert.equal(res.headers['cache-control'], 'no-store');
+  }
+  const res = response(); await handlers.get('GET /image/comfy/cloud/capabilities')(account(), res);
+  assert.equal(res.body.submission, false); assert.equal(res.body.cancellation, false); assert.equal(res.body.referenceUpload, false);
+  assert.deepEqual(res.body.resultProviders, ['comfy-cloud']); assert.equal(res.body.archiveConfirmation, true);
+  assert.equal(handlers.has('POST /image/comfy/cloud/tasks/submit'), false);
+});
+
+test('installed cloud routes deliver saved originals and complete ACK without leaking internal grants or downloading twice', async t => {
+  const { f, cache, received } = await stagedBeforeSettlement(t), handlers = new Map();
+  await init({ get: (key, handler) => handlers.set(`GET ${key}`, handler), post: (key, handler) => handlers.set(`POST ${key}`, handler) }, {
+    dataRoot: f.root, comfyCloudTaskOptions: { store: f.store, cache },
+    comfyTransportOptions: { requestImpl: () => assert.fail('cached recovery cannot contact a provider') },
+  });
+  const input = { version: 1, expectedAccount: received.grant.identity.namespace, task: f.task, ...f.locator };
+  const loaded = response(); await handlers.get('POST /image/comfy/cloud/tasks/result')({ ...f.req, body: input }, loaded);
+  assert.equal(loaded.statusCode, 200); assert.equal(loaded.body.status, 'ready');
+  assert.deepEqual(Buffer.from(loaded.body.images[0].data, 'base64'), png);
+  assert.doesNotMatch(JSON.stringify(loaded.body), /grant|fence|requestDigest|test-only-secret|files\.test/);
+  const done = response(); await handlers.get('POST /image/comfy/cloud/tasks/acknowledge')({ ...f.req,
+    body: { ...input, archived: true, receipt: loaded.body.receipt } }, done);
+  assert.equal(done.body.cleanup, 'complete'); assert.equal(await cache.load(received.grant.identity), null);
+  const again = response(); await handlers.get('POST /image/comfy/cloud/tasks/result')({ ...f.req, body: input }, again);
+  assert.equal(again.body.status, 'archived'); assert.equal(again.body.result, null);
+  const catalog = response(); await handlers.get('POST /image/comfy/cloud/tasks/catalog')({ ...f.req, body: input }, catalog);
+  assert.equal(catalog.body.totals.imageBytes, 0); assert.equal(catalog.body.tasks[0].archiveState, 'archived');
+});
+
+test('installed cloud recovery uses the approved original platform for complete CDN collection and rejects revoked target authority', async t => {
+  const f = await persistedCloudTask(t), handlers = new Map(), calls = []; let approved = false;
+  const targets = [{ id: comfyTargetId(f.task.origin, false), baseUrl: f.task.origin, allowPrivateNetwork: false,
+    shared: true, name: 'Cloud fixture', grantId: '00000000-0000-4000-8000-000000000000', updatedAt: 0 }];
+  await init({ get: (key, handler) => handlers.set(`GET ${key}`, handler), post: (key, handler) => handlers.set(`POST ${key}`, handler) }, {
+    dataRoot: f.root, comfyCloudTaskOptions: { store: f.store },
+    comfyTargetStore: { read: async () => ({ schemaVersion: 1, revision: 1, targets: approved ? targets : [] }) },
+    comfyTransportOptions: { resolveHost: publicDns, requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) },
+  });
+  const input = { version: 1, expectedAccount: imageServiceAccount(f.req).namespace, task: f.task, ...f.locator };
+  const denied = response(); await handlers.get('POST /image/comfy/cloud/tasks/result')({ ...f.req, body: input }, denied);
+  assert.equal(denied.body.ok, false); assert.equal(calls.length, 0, 'original platform permission is still required');
+  approved = true;
+  const result = response(); await handlers.get('POST /image/comfy/cloud/tasks/result')({ ...f.req, body: input }, result);
+  assert.equal(result.body.status, 'ready'); assert.equal(result.body.images.length, 1); assert.equal(calls.length, 3);
+  assert.ok(calls.every(call => call.options.method === 'GET'));
+  const file = calls.find(call => call.url.hostname === 'files.test'); assert.ok(file);
+  assert.doesNotMatch(JSON.stringify(file.options.headers), /Bearer|test-only-secret|Cookie/i);
+  assert.equal((await f.store.inspectChannel(f.locator.channelKey)).entries[0].cloudDelivery.state, 'stored');
+  approved = false;
+  const cached = response(); await handlers.get('POST /image/comfy/cloud/tasks/result')({ ...f.req, body: input }, cached);
+  assert.equal(cached.body.status, 'ready'); assert.equal(calls.length, 3, 'original owned files remain readable after remote permission revocation');
+});
 
 test('every installed Comfy gateway operation requires ST identity and private administrator opt-in before DNS', async () => {
   const handlers = await routes({ resolveHost: () => assert.fail('unauthorized DNS'), requestImpl: () => assert.fail('unauthorized request') });
