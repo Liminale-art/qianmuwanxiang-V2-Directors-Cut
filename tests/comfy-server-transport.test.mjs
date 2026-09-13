@@ -14,6 +14,7 @@ import { COMFY_CLOUD_INTENT_SCHEMA, COMFY_CLOUD_RECEIPT_SCHEMA } from '../qianmu
 import { readComfyCloudJsonResponse, readComfyCloudAcceptance } from '../qianmu-comfy-cloud-response.js';
 import { submitComfyCloudTask } from '../qianmu-comfy-cloud-submit.js';
 import { readComfyCloudAsset, downloadComfyCloudAsset, downloadComfyCloudJob } from '../qianmu-comfy-cloud-asset-read.js';
+import { downloadRunningHubJob } from '../qianmu-runninghub-download.js';
 import { createComfyCloudReceiver } from '../qianmu-comfy-cloud-receive.js';
 import { createComfyCloudService } from '../qianmu-comfy-cloud-service.js';
 import { createComfyRecoveryClient } from '../qianmu-comfy-recovery-client.js';
@@ -335,6 +336,75 @@ test('persisted cloud and RH originals pass real ledger grants through the bound
 const cloudOutput = (id = '00000000-0000-4000-8000-000000000001', extra = {}) => ({
   id, node_id: 'save', type: 'image', content_type: 'image/png', size_bytes: png.length, hash: null,
   url: 'https://signed.test/result?secret=temporary', ...extra,
+});
+
+const rhFileUrl = index => `https://files.test/${index}.png?signature=temporary`;
+function rhDownloadReply(f, call, count = 2) {
+  if (call.url.hostname === 'files.test') return { body: png, headers: { 'content-type': 'image/png' } };
+  assert.equal(JSON.parse(call.body).taskId, f.task.taskId);
+  if (call.url.pathname === '/openapi/v2/query') return { body: { taskId: f.task.taskId, status: 'SUCCESS', errorCode: '',
+    results: Array.from({ length: count }, (_, index) => ({ url: rhFileUrl(index), outputType: 'png' })) } };
+  assert.equal(call.url.pathname, '/task/openapi/outputs');
+  return { body: { code: 0, data: Array.from({ length: count }, (_, index) => ({ fileUrl: rhFileUrl(index), fileType: 'png', nodeId: 'save' })).reverse() } };
+}
+
+test('RH sequential download preserves original ordering and stages local proofs without URLs or invented upstream hashes', async t => {
+  const f = await persistedCloudTask(t, rhBinding, 2), calls = [], before = await f.store.inspectChannel(f.locator.channelKey);
+  const got = await downloadRunningHubJob(f.req, { task: f.task, ...f.locator }, { ...assetReadOptions(f),
+    requestImpl: mockNodeRequest(calls, call => rhDownloadReply(f, call)) });
+  assert.equal(got.status, 'integrity_checked'); assert.equal(got.result.provider, 'runninghub');
+  assert.deepEqual(got.result.cloud.selection.map(row => row.outputIndex), [0, 1]);
+  assert.equal(got.result.cloud.selection[0].outputKey, `rh:${f.task.taskId}:0:save`);
+  for (const image of got.result.images) assert.deepEqual(Buffer.from(image.bytes), png);
+  for (const proof of got.result.cloud.images) { assert.equal(proof.integrity.platformVerified, null); assert.equal(proof.hash, null); }
+  assert.equal(JSON.stringify(got.result.cloud).includes('signature'), false); assert.equal(JSON.stringify(got.result.cloud).includes('assetId'), false);
+  assert.deepEqual(calls.map(call => call.url.pathname), ['/openapi/v2/query', '/task/openapi/outputs', '/0.png', '/1.png']);
+  for (const call of calls.slice(2)) { assert.deepEqual(call.options.headers, { Accept: 'image/*' }); assert.equal(call.options.method, 'GET'); assert.equal(call.body.length, 0); }
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before, 'download is not an archive or re-submission');
+  const cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
+  await cache.reserve(got.grant.identity); await cache.save(got.grant.identity, got.result);
+  const stored = await got.grant.recordStored(cache); assert.equal(stored.delivery.imageCount, 2);
+  assert.deepEqual(stored.result.cloud.selection, got.result.cloud.selection);
+  assert.deepEqual(Buffer.from(stored.result.images[1].bytes), png);
+});
+
+test('RH cannot partially deliver on a bad second image, redirect, private CDN, cancelled read or changed account', async t => {
+  for (const mode of ['bad-image', 'redirect', 'private-dns', 'cancel', 'account']) {
+    const f = await persistedCloudTask(t, rhBinding, 2), calls = [], controller = new AbortController();
+    const before = await f.store.inspectChannel(f.locator.channelKey);
+    await assert.rejects(downloadRunningHubJob(f.req, { task: f.task, ...f.locator }, { ...assetReadOptions(f), signal: controller.signal,
+      resolveHost: async host => host === 'files.test' && mode === 'private-dns' ? [{ address: '127.0.0.1', family: 4 }] : publicDns(),
+      requestImpl: mockNodeRequest(calls, call => {
+        if (call.url.pathname === '/1.png') {
+          if (mode === 'bad-image') return { body: Buffer.from('<html>not an image</html>'), headers: { 'content-type': 'image/png' } };
+          if (mode === 'redirect') return { status: 302, headers: { location: 'https://other.test/private' } };
+          if (mode === 'cancel') controller.abort();
+          if (mode === 'account') f.req.user.profile.handle = 'bob';
+        }
+        return rhDownloadReply(f, call);
+      }) }), error => error.submissionState === 'accepted' && error.upstreamId === f.task.taskId && !error.message.includes('signature'));
+    assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+    assert.equal(calls.some(call => call.url.pathname.includes('/create')), false);
+    assert.ok(calls.length <= 4);
+  }
+});
+
+test('RH shares persistent receive/readback/ack: repeated retrieval has no cloud calls and cleanup needs the exact receipt', async t => {
+  const f = await persistedCloudTask(t, rhBinding, 2), calls = [];
+  const service = createComfyCloudService({ dataRoot: f.root, store: f.store, transportOptions: {
+    authorizeTarget: cloudGrant, resolveHost: publicDns, requestImpl: mockNodeRequest(calls, call => rhDownloadReply(f, call)),
+  } }); t.after(() => service.close());
+  const input = { version: 1, expectedAccount: imageServiceAccount(f.req).namespace, task: f.task, ...f.locator };
+  const first = await service.result(f.req, input); assert.equal(first.status, 'ready'); assert.equal(first.images.length, 2);
+  assert.equal(first.images[0].id, `rh:${f.task.taskId}:0:save`); assert.deepEqual(Buffer.from(first.images[1].data, 'base64'), png);
+  assert.equal(JSON.stringify(first).includes('signature'), false); assert.equal(JSON.stringify(first).includes(f.locator.apiKey), false);
+  const second = await service.result(f.req, input); assert.equal(second.receipt, first.receipt); assert.equal(calls.length, 4);
+  const ack = { ...input, archived: true, receipt: first.receipt }; delete ack.apiKey;
+  await assert.rejects(service.acknowledge(f.req, { ...ack, receipt: 'f'.repeat(64) }));
+  await assert.rejects(service.acknowledge({ user: { profile: { handle: 'bob', enabled: true } } }, ack));
+  assert.equal((await service.acknowledge(f.req, ack)).cleanup, 'complete');
+  assert.equal((await service.acknowledge(f.req, ack)).cleanup, 'complete');
+  assert.equal((await service.result(f.req, input)).status, 'archived'); assert.equal(calls.length, 4);
 });
 
 test('RH node evidence is fetched only after matching v2 success, under the same original ledger grant',async t=>{

@@ -217,6 +217,21 @@ export async function createComfyCloudAssetTransport(req, { task: rawTask, asset
 // Call verify again after bounded byte reading, before returning/storing any file.
 export async function createComfyCloudFileTransport(req, { task: rawTask, assetId, source }, options = {}) {
   const task = bindComfyCloudTask(rawTask, rawTask?.taskId, rawTask?.links), plan = planComfyCloudAssetMetadata(task, assetId);
+  return createCloudFileTransport(req, { task, assetId: plan.assetId }, source, options, true);
+}
+
+// RH output identity comes from the same authenticated original-task query, not
+// a fabricated Comfy UUID. RH does not report URL expiry; the operation deadline
+// and original authorization still span DNS, headers, bytes and final delivery.
+export async function createRunningHubFileTransport(req, { task: rawTask, output }, options = {}) {
+  const task = bindComfyCloudTask(rawTask, rawTask?.taskId, rawTask?.links);
+  if (task.provider !== 'runninghub' || typeof output?.nodeId !== 'string' || !/^[a-zA-Z0-9_:-]{1,120}$/.test(output.nodeId)
+    || !Number.isSafeInteger(output.outputIndex) || output.outputIndex < 0 || output.outputIndex > 63) throw fail('file_source', '原图片输出身份无效');
+  return createCloudFileTransport(req, { task, nodeId: output.nodeId, outputIndex: output.outputIndex }, { url: output.sourceUrl, expiresAt: null }, options, false);
+}
+
+async function createCloudFileTransport(req, resourceIdentity, source, options, requiresExpiry) {
+  const { task } = resourceIdentity;
   const annotate = cause => Object.assign(cause instanceof ImageGatewayError ? cause : fail('file_unavailable', '原图暂不可读，请核查原任务', 502), {
     submissionState: 'accepted', upstreamId: task.taskId, retryable: false,
   });
@@ -225,7 +240,7 @@ export async function createComfyCloudFileTransport(req, { task: rawTask, assetI
     const url = source?.url, expiresAt = source?.expiresAt, now = options.now || Date.now;
     // Keep within the shared media reader's URL envelope; never silently truncate a signature.
     if (typeof url !== 'string' || url.length > 4096 || !/^https:\/\//i.test(url) || /[\u0000-\u0020\u007f\\]/.test(url)
-      || typeof now !== 'function' || !Number.isSafeInteger(expiresAt)) throw fail('file_source', '原图片下载信息无效');
+      || typeof now !== 'function' || (requiresExpiry ? !Number.isSafeInteger(expiresAt) : expiresAt !== null)) throw fail('file_source', '原图片下载信息无效');
     let parsed; try { parsed = new URL(url); } catch (_) { throw fail('file_source', '原图片下载地址无效'); }
     if (parsed.username || parsed.password || parsed.port || parsed.hash || parsed.href !== url) throw fail('file_source', '原图片下载地址含不允许的字段');
     if (typeof options.authorizeAsset !== 'function' || typeof options.authorizeTarget !== 'function') throw fail('asset_authorization', '原图片尚未获得下载授权', 403);
@@ -233,9 +248,9 @@ export async function createComfyCloudFileTransport(req, { task: rawTask, assetI
       options.signal?.throwIfAborted();
       if (!imageServiceAccountStillMatches(req, account)) throw fail('account_changed', 'ST账户已变化，未交付原图片', 401);
       const time = now();
-      if (!Number.isSafeInteger(time) || time < 0 || time >= expiresAt) throw fail('file_expired', '图片链接已失效，请刷新原任务，不必重新生图');
+      if (!Number.isSafeInteger(time) || time < 0 || requiresExpiry && time >= expiresAt) throw fail('file_expired', '图片链接已失效，请刷新原任务，不必重新生图');
     };
-    check(); const resource = Object.freeze({ task, assetId: plan.assetId, source: Object.freeze({ url, expiresAt }) });
+    check(); const resource = Object.freeze({ ...resourceIdentity, source: Object.freeze({ url, expiresAt }) });
     const verifyAsset = await options.authorizeAsset(req, resource, account); check();
     if (typeof verifyAsset !== 'function') throw fail('asset_authorization', '原图片缺少持续归属校验', 403);
     const verifyOriginal = async () => { check(); await verifyAsset(); check(); };

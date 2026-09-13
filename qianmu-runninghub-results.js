@@ -46,6 +46,6 @@ export function collectRunningHubStillResults(rawReceipt,body,nodeEvidence) {
   if(!outputs.length||outputs.length>execution.maxImages||execution.expectedImages!=null&&outputs.length!==execution.expectedImages
     ||execution.automatic&&finalImages!==1)fail('count','原任务静帧数量与约定不一致');
   // Ephemeral descriptors only. URLs are NOT UUID asset identities or cache
-  // proofs; a future bounded downloader must verify ownership, DNS and bytes.
+  // proofs; the bounded downloader must verify ownership, DNS and bytes.
   return Object.freeze({version:1,provider:'runninghub',task,requestDigest:receipt.requestDigest,outputs:Object.freeze(outputs)});
 }

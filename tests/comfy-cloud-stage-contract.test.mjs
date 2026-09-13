@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeComfyCloudStage as normalize, COMFY_CLOUD_STAGE_SCHEMA as schema } from '../qianmu-comfy-cloud-stage-contract.js';
+import { normalizeComfyCloudStage as normalize, COMFY_CLOUD_STAGE_SCHEMA as schema, RUNNINGHUB_STAGE_SCHEMA } from '../qianmu-comfy-cloud-stage-contract.js';
 import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
 import { COMFY_CLOUD_RECEIPT_SCHEMA } from '../qianmu-comfy-cloud-receipt.js';
 
@@ -16,6 +16,40 @@ function fixture() {
       sha256: 'e'.repeat(64), blake3: 'f'.repeat(64), platformHash: null, platformVerified: null } })) };
 }
 const rejected = run => assert.throws(run, { code: 'comfy_cloud_stage_invalid', retryable: false });
+
+function rhFixture() {
+  const value = fixture(); value.schema = RUNNINGHUB_STAGE_SCHEMA;
+  value.receipt.task = bindComfyCloudTask(bindComfyCloudProtocol('https://www.runninghub.cn', 'runninghub-workflow-v1'), '18446744073709551616');
+  value.selection.forEach((row, index) => {
+    delete row.assetId; delete value.images[index].assetId;
+    row.outputIndex = index + 1;
+    row.outputKey = value.images[index].outputKey = `rh:${value.receipt.task.taskId}:${row.outputIndex}:${row.nodeId}`;
+  });
+  return value;
+}
+
+test('RH stages use exact original task/node/order keys and explicitly unknown upstream integrity', () => {
+  const value = rhFixture(), result = normalize(value, owner);
+  assert.equal(result.schema, RUNNINGHUB_STAGE_SCHEMA);
+  assert.deepEqual(result.selection.map(row => row.outputIndex), [1, 2]);
+  assert.equal(result.selection[0].outputKey, 'rh:18446744073709551616:1:save');
+  assert.equal(result.images[0].integrity.platformVerified, null);
+  assert.equal(Object.hasOwn(result.images[0], 'assetId'), false);
+  value.selection[0].outputKey = 'changed'; assert.ok(Object.isFrozen(result.selection[0]));
+  assert.equal(result.selection[0].outputKey, 'rh:18446744073709551616:1:save');
+});
+
+test('RH cannot impersonate Comfy assets, prove an absent platform hash, reorder outputs or store signed URLs', () => {
+  for (const mutate of [s => { s.schema = schema; }, s => { s.receipt.task = task; },
+    s => { s.selection[0].outputKey = 'rh:99:1:save'; }, s => { s.images[0].outputKey = s.images[1].outputKey; },
+    s => { s.selection.reverse(); s.images.reverse(); }, s => { s.selection[0].outputIndex = 64; },
+    s => { s.images[0].integrity.platformVerified = true; }, s => { s.selection[0].sourceUrl = 'https://private/?key=x'; },
+    s => { s.selection[0].assetId = id(1); }, s => { s.images[0].hash = `blake3:${'f'.repeat(64)}`; },
+    s => { s.selection[0].outputIndex = -1; }]) {
+    const value = rhFixture(); mutate(value); rejected(() => normalize(value, owner));
+  }
+  rejected(() => normalize(rhFixture(), { ...owner, namespace: 'st-user:bob' }));
+});
 
 test('cloud stage metadata freezes the original owner, receipt and query order without binary or signed URLs', () => {
   const source = fixture(), result = normalize(source, owner);

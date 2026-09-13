@@ -82,7 +82,7 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
         const packet = await receiver.receive(req, value, { ...transportOptions, signal }); check();
         if (packet.status !== 'staged') return { ok: true, version: 1, status: packet.status, task: packet.task, result: null };
         const result = packet.result;
-        const images = result.images.map((image, index) => ({ id: result.cloud.selection[index].assetId,
+        const images = result.images.map((image, index) => ({ id: result.cloud.selection[index].outputKey ?? result.cloud.selection[index].assetId,
           mime: result.cloud.selection[index].mime, data: Buffer.from(image.bytes.buffer, image.bytes.byteOffset, image.bytes.byteLength).toString('base64') }));
         await packet.grant.verify(); check();
         const delivery = await packet.grant.readDelivery(); check();

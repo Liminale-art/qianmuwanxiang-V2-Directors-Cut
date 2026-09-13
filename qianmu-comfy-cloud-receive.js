@@ -4,10 +4,13 @@
 // No submission, cloud deletion or store ownership.
 import { bindComfyCloudTask } from './qianmu-comfy-cloud-protocol.js';
 import { downloadComfyCloudJob } from './qianmu-comfy-cloud-asset-read.js';
+import { downloadRunningHubJob } from './qianmu-runninghub-download.js';
 import { normalizeComfyCloudStage } from './qianmu-comfy-cloud-stage-contract.js';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
 
-export function createComfyCloudReceiver({ ledger, cache, download = downloadComfyCloudJob } = {}) {
+const downloadCloudJob = (req, input, options) => input.task.provider === 'runninghub'
+  ? downloadRunningHubJob(req, input, options) : downloadComfyCloudJob(req, input, options);
+export function createComfyCloudReceiver({ ledger, cache, download = downloadCloudJob } = {}) {
   if (typeof ledger?.authorizeStaging !== 'function' || typeof download !== 'function'
     || ['load', 'reserve', 'save'].some(name => typeof cache?.[name] !== 'function')) throw new Error('云端领取服务缺少原任务或暂存接口');
   const active = new Set(); let admitted = 0;
@@ -21,7 +24,7 @@ export function createComfyCloudReceiver({ ledger, cache, download = downloadCom
         if (!imageServiceAccountStillMatches(req, account)) throw fail('account', 'ST账户已变化，未交付归档状态');
       };
       const { receipt, archived } = input;
-      if (task.provider !== 'comfy-cloud' || archived !== true || typeof receipt !== 'string' || !/^[a-f0-9]{64}$/.test(receipt)) throw fail('confirmation', '请保存原图后使用原任务凭证确认归档');
+      if (!['comfy-cloud', 'runninghub'].includes(task.provider) || archived !== true || typeof receipt !== 'string' || !/^[a-f0-9]{64}$/.test(receipt)) throw fail('confirmation', '请保存原图后使用原任务凭证确认归档');
       if (typeof cache.discard !== 'function') throw fail('storage', '原图暂存清理尚未就绪');
       if (admitted >= 2) throw fail('busy', '原任务正在处理，请稍后核查');
       admitted++;
@@ -62,7 +65,7 @@ export function createComfyCloudReceiver({ ledger, cache, download = downloadCom
     async receive(req, input = {}, options = {}) {
       const task = bindComfyCloudTask(input.task, input.task?.taskId, input.task?.links), signal = options.signal;
       const fail = (code, message) => Object.assign(new Error(message), { code: `comfy_cloud_receive_${code}`, submissionState: 'accepted', upstreamId: task.taskId, retryable: false });
-      if (task.provider !== 'comfy-cloud') throw fail('provider', '此平台的原图领取尚未就绪');
+      if (!['comfy-cloud', 'runninghub'].includes(task.provider)) throw fail('provider', '此平台的原图领取尚未就绪');
       if (admitted >= 2) throw fail('busy', '原图正在领取，请稍后核查');
       admitted++;
       let key, owned = false, stage = 'authorization';
@@ -139,7 +142,7 @@ export function createComfyCloudReceiver({ ledger, cache, download = downloadCom
       } catch (cause) {
         if (signal?.aborted) throw fail('cancelled', '已停止领取，原任务和暂存仍保留');
         if (String(cause?.code).startsWith('comfy_cloud_receive_')) throw cause;
-        throw fail(stage, stage === 'download' && String(cause?.code).startsWith('comfy_cloud_asset_read_') ? cause.message
+        throw fail(stage, stage === 'download' && ['comfy_cloud_asset_read_', 'runninghub_download_'].some(prefix => String(cause?.code).startsWith(prefix)) ? cause.message
           : '原图领取尚未确认，请核查原任务；未重新生成或清理暂存');
       } finally {
         if (owned) active.delete(key);

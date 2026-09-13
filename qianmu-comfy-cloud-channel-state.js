@@ -22,7 +22,7 @@ function delivery(value, row) {
     || !Number.isSafeInteger(value.bytes) || value.bytes < 1 || value.bytes > 48 * 1024 * 1024
     || !Number.isSafeInteger(value.imageCount) || value.imageCount < 1 || value.imageCount > 8 || value.bytes < value.imageCount
     || !Number.isSafeInteger(value.storedAt) || value.storedAt < row.createdAt || value.storedAt > row.updatedAt
-    || row.status !== 'succeeded' || !row.cloudIntent || row.cloudReceipt?.task.provider !== 'comfy-cloud') fail();
+    || row.status !== 'succeeded' || !row.cloudIntent || !['comfy-cloud', 'runninghub'].includes(row.cloudReceipt?.task.provider)) fail();
   const { execution } = row.cloudReceipt.stillOutput;
   if (value.imageCount > execution.maxImages || execution.expectedImages != null && value.imageCount !== execution.expectedImages
     || execution.automatic && value.imageCount !== 1) fail();

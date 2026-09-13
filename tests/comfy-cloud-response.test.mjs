@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { bindComfyCloudProtocol as bind, planComfyCloudOperation as plan } from '../qianmu-comfy-cloud-protocol.js';
-import { readComfyCloudAcceptance as accept, readComfyCloudTaskStatus as status, readComfyCloudJsonResponse as read, readComfyCloudImageResponse as readImage } from '../qianmu-comfy-cloud-response.js';
+import { readComfyCloudAcceptance as accept, readComfyCloudTaskStatus as status, readComfyCloudJsonResponse as read, readComfyCloudImageResponse as readImage, readRunningHubImageResponse as readRHImage } from '../qianmu-comfy-cloud-response.js';
 const cloud = bind('https://dep-one.run.comfy.app', 'comfy-cloud-v2'), rh = bind('https://www.runninghub.cn', 'runninghub-workflow-v1');
 const id = 'original-id', rhId = '1904152026220003329';
 const urls = { self: `/deployment/dep-one/api/v2/jobs/${id}`, cancel: `/deployment/dep-one/api/v2/jobs/${id}/cancel` };
@@ -9,6 +9,24 @@ const cloudBody = { id, status: 'queued', urls }, rhBody = { code: 0, data: { ta
 const cloudTask = accept(cloud, cloudBody), rhTask = accept(rh, rhBody);
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==', 'base64');
 const imageContract = { task: cloudTask, mime: 'image/png', sizeBytes: png.length };
+
+test('RH accepts missing CDN byte metadata but enforces the actual job budget, type and any advertised complete length', async () => {
+  const contract = { task: rhTask, mime: 'image/png', maxBytes: png.length };
+  const response = (bytes = png, headers = {}) => new Response(bytes, { headers: { 'content-type': 'image/png', ...headers } });
+  for (const headers of [{}, { 'content-length': String(png.length) }]) {
+    const result = await readRHImage(response(png, headers), contract); assert.deepEqual(Buffer.from(result.bytes), png);
+  }
+  for (const [bytes, headers, extra] of [
+    [png, {}, { maxBytes: png.length - 1 }], [png, { 'content-length': String(png.length - 1) }, {}],
+    [png, { 'content-length': String(png.length + 1) }, { maxBytes: png.length + 2 }],
+    [png, { 'content-encoding': 'gzip' }, {}], [png, { 'content-type': 'text/html' }, {}],
+    [png.subarray(0, 35), {}, {}], [Buffer.alloc(0), {}, {}], [png, {}, { task: cloudTask }],
+  ]) await assert.rejects(readRHImage(response(bytes, headers), { ...contract, ...extra }));
+  const controller = new AbortController(); controller.abort();
+  await assert.rejects(readRHImage(response(), { ...contract, signal: controller.signal }), { code: 'comfy_cloud_response_cancelled' });
+  const stalled = new Response(new ReadableStream({ pull() { return new Promise(() => {}); } }), { headers: { 'content-type': 'image/png' } });
+  await assert.rejects(readRHImage(stalled, { ...contract, timeoutMs: 10 }), { code: 'comfy_cloud_response_timeout' });
+});
 
 test('cloud still reading requires the original byte count and container, including a binary CDN response', async () => {
   for (const mime of ['image/png', 'application/octet-stream']) {

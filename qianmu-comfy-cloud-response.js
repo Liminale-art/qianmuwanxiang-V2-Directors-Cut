@@ -110,6 +110,28 @@ export async function readComfyCloudImageResponse(response, { task, mime, sizeBy
   });
 }
 
+// RH gives a type and URL, not a trusted byte count. Bound actual bytes by the
+// remaining whole-job budget, and honor Content-Length when the CDN supplies it.
+export async function readRunningHubImageResponse(response, { task, mime, maxBytes, timeoutMs = 60000, signal } = {}) {
+  return readCloudResponse(response, { task, maxBytes, timeoutMs, signal }, {
+    hardLimit: 48 * 1024 * 1024,
+    checkHeaders: (response, error) => {
+      const encoding = response.headers?.get?.('content-encoding');
+      if (task?.provider !== 'runninghub' || !['image/png', 'image/jpeg', 'image/webp'].includes(mime)
+        || response.status !== 200 || ![mime, 'application/octet-stream'].includes(responseMime(response))
+        || encoding && encoding.toLowerCase() !== 'identity') throw error('type', '平台未返回约定的完整原图');
+    },
+    decode: (bytes, error) => {
+      const declared = response.headers?.get?.('content-length');
+      if (!bytes.byteLength || declared != null && Number(declared) !== bytes.byteLength) throw error('image_size', '原图未完整接收，未入库');
+      let actual; try { actual = comfyStillMime(bytes); }
+      catch (_) { throw error('image_invalid', '原图格式无效、容器不完整或返回了动画，未加入静帧'); }
+      if (actual !== mime) throw error('image_type', '图片实际格式与原任务记录不一致，未入库');
+      return { bytes, mime: actual };
+    },
+  });
+}
+
 export function readComfyCloudAcceptance(binding, body) {
   planComfyCloudOperation(binding, 'submit'); // Reject unrecognized local bindings before interpreting a remote body.
   if (!object(body)) fail('shape', '云端提交结果无法确认，请勿重复生成');
