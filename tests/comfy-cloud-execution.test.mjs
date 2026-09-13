@@ -34,13 +34,24 @@ test('existing accepted tasks only collect originals, while uncertain preparatio
   const unknown=setup({created:false});await assert.rejects(unknown.run(),{submissionState:'unknown'});assert.deepEqual(unknown.stats(),{submits:0,reads:0,time:0});
 });
 
-test('unopened cloud providers and pinned deployments stop before preparation rather than losing prompt edits',async()=>{
-  for(const [url,protocol] of [['https://www.runninghub.cn','runninghub-workflow-v1'],['https://sample.run.comfy.app','comfy-cloud-v2']]){
+test('pinned deployments stop before preparation rather than losing prompt edits',async()=>{
+  for(const [url,protocol] of [['https://sample.run.comfy.app','comfy-cloud-v2']]){
     const f=setup();Object.assign(f.connection,bindComfyCloudProtocol(url,protocol));
     f.client.cloudCapabilities=()=>assert.fail('scope must be checked before any preparation or request');
     await assert.rejects(f.run(),{code:'comfy_cloud_submission_scope',submissionState:'not_submitted'});
     assert.equal(f.stats().submits,0);assert.equal(f.stats().reads,0);
   }
+});
+
+test('RH retrieval on an old host is not permission to submit; explicit new-host support is required',async()=>{
+  const f=setup();Object.assign(f.connection,bindComfyCloudProtocol('https://www.runninghub.cn','runninghub-workflow-v1'));
+  const capabilities={submission:true,resultRetrieval:true,resultProviders:['comfy-cloud','runninghub']};
+  f.client.cloudCapabilities=async()=>capabilities;
+  await assert.rejects(f.run(),{code:'comfy_cloud_execution_capabilities',submissionState:'not_submitted'});
+  assert.deepEqual(f.stats(),{submits:0,reads:0,time:0});
+  capabilities.submissionProviders=['comfy-cloud','runninghub'];
+  f.client.prepareCloudSubmission=async()=>({created:true,record:{attemptId:'original'}});
+  assert.equal((await f.run()).archived,true);assert.equal(f.stats().submits,1);
 });
 
 test('pending tasks stop at a time bound and remain collectible instead of triggering generation again',async()=>{

@@ -248,6 +248,37 @@ try{
     const row=await store.get(ns,'rh-original');return row.status==='confirmed'&&row.cloudTask.taskId==='1904152026220003329'
       &&row.cloudTask.provider==='runninghub'&&row.files[0].url==='/user/images/rh-0.png'&&row.files[1].url==='/user/images/rh-1.png';
   }));
+  const rhSubmit=await openPage();
+  ok('RH explicit-tier generation uses one actual client ticket, freezes the original and survives page reopen',await rhSubmit.evaluate(async()=>{
+    const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');
+    const {bindComfyCloudProtocol,bindComfyCloudTask}=await import('/qianmu-comfy-cloud-protocol.js');
+    const {prepareComfyWorkflow}=await import('/qianmu-comfy-workflow.js');
+    const {auditComfyWorkflow,requireComfyExecution}=await import('/qianmu-comfy-audit.js');
+    const {imageChannelKey}=await import('/qianmu-image-channel.js');
+    const connection=bindComfyCloudProtocol('https://www.runninghub.cn','runninghub-workflow-v1'),task=bindComfyCloudTask(connection,'1904152026220003330');
+    let posts=0;const client=createComfyRecoveryClient({store,account:async()=>ns,fetchImpl:async(url,init)=>{
+      if(url.endsWith('/capabilities'))return Response.json({ok:true,version:1,accountBindingVersion:1,catalogVersion:1,
+        expectedAccount:`st-user:${await imageChannelKey(ns.slice(8))}`,submission:true,submissionProviders:['comfy-cloud','runninghub'],
+        resultRetrieval:true,archiveConfirmation:true,cancellation:false,referenceUpload:false,automaticReplay:false,
+        queryProviders:['comfy-cloud','runninghub'],resultProviders:['comfy-cloud','runninghub']});
+      if(!url.endsWith('/submit'))throw Error('Unexpected request');posts++;
+      const body=JSON.parse(init.body);if(body.request.runninghub.instanceType!=='plus'||body.request.prompt!=='original')throw Error('Changed frozen RH input');
+      return Response.json({ok:true,version:1,status:'accepted',task,locator:{version:1,channelKey:'d'.repeat(64),attemptId:body.attemptId}});
+    }});
+    const job={id:'rh-new',source:'comfy',automatic:false,profile:{comfyInstanceType:'plus'},connection:{baseUrl:connection.origin},imageAdmission:{version:1,namespace:ns,attemptId:'rh-new'}};
+    const workflow={source:{class_type:'FixtureImage',inputs:{text:'%qianmu_prompt%'}},save:{class_type:'SaveImage',inputs:{images:['source',0]}}};
+    const policy={version:1,automatic:false,maxImages:1,outputNodeIds:['save'],allowUnverified:true};
+    const gateway={provider:'comfy',baseUrl:connection.origin,model:'workflow',prompt:'original',parameters:{workflow},
+      comfyExecution:requireComfyExecution(auditComfyWorkflow(prepareComfyWorkflow(workflow,{prompt:'original'}).bind([]),policy),policy)};
+    const prepared=await client.prepareCloudSubmission(job,gateway,connection);job.profile.comfyInstanceType='ultra';gateway.prompt='changed';
+    const results=await Promise.allSettled([client.submitCloudPrepared(prepared,'synthetic-key'),client.submitCloudPrepared(prepared,'synthetic-key')]);
+    const row=await store.get(ns,'rh-new');client.close();
+    return posts===1&&results[0].status==='fulfilled'&&results[1].status==='rejected'&&row.cloudTask.taskId===task.taskId;
+  }));
+  await rhSubmit.close();const rhNewReopened=await openPage();
+  ok('RH new task reopens with exact original identity and no reusable payload or credential',await rhNewReopened.evaluate(async()=>{
+    const row=await store.get(ns,'rh-new');return row.cloudTask.taskId==='1904152026220003330'&&!/synthetic-key|"instanceType":|"workflow":/.test(JSON.stringify(row));
+  }));
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({checks,external,errors},null,2));
 }finally{await context.close();await browser.close();}

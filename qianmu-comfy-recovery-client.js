@@ -1,7 +1,7 @@
 // Comfy delivery and single cloud acceptance; no scheduler or reference upload.
 import { trackClientActivity } from './qianmu-client-activity.js';
 import { prepareComfySubmission, assertComfyAccount, acknowledgeComfyImage } from './qianmu-comfy-submission.js';
-import { requireComfyCloudImageSubmission } from './qianmu-comfy-cloud-protocol.js';
+import { requireComfyCloudImageSubmission, canSubmitComfyCloudImages } from './qianmu-comfy-cloud-protocol.js';
 import { resolveImageAccountNamespace } from './qianmu-image-admission.js';
 import { imageChannelKey } from './qianmu-image-channel.js';
 import { createComfyDeliveryStore, normalizeComfyDelivery, assertComfyDeliveryUpdate } from './qianmu-comfy-delivery-store.js';
@@ -236,7 +236,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
         const { record, request: frozenRequest } = ticket, job = jobForRow(record);
         requireComfyCloudImageSubmission(record.cloudConnection,{automatic:record.automatic||ticket.request.execution?.automatic});
         const capabilities = await this.cloudCapabilities({namespace:record.namespace});
-        if (!capabilities.submission || !capabilities.resultRetrieval || !capabilities.resultProviders.includes(record.cloudConnection.provider))
+        if (!canSubmitComfyCloudImages(capabilities,record.cloudConnection.provider) || !capabilities.resultRetrieval || !capabilities.resultProviders.includes(record.cloudConnection.provider))
           throw fail('capabilities','当前后端尚未开放此平台完整生图，请同步更新后再使用');
         await locked(job,async () => {
           const raw = await store.get(record.namespace,record.attemptId); await guard(job);
@@ -309,9 +309,11 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
       const flags = ['submission','cancellation','referenceUpload','resultRetrieval','archiveConfirmation','automaticReplay'];
       const providers = value => Array.isArray(value) && value.length <= 2 && new Set(value).size === value.length && value.every(item => ['comfy-cloud','runninghub'].includes(item));
       if (data.version !== 1 || data.accountBindingVersion !== 1 || data.catalogVersion !== 1 || flags.some(key => typeof data[key] !== 'boolean')
-        || !providers(data.queryProviders) || !providers(data.resultProviders)) throw fail('capabilities', '后端版本与当前千幕不匹配，请同步更新并重启 ST');
+        || !providers(data.queryProviders) || !providers(data.resultProviders)
+        || (Object.hasOwn(data,'submissionProviders') && !providers(data.submissionProviders))) throw fail('capabilities', '后端版本与当前千幕不匹配，请同步更新并重启 ST');
       return { version: 1, namespace: current.namespace, ...Object.fromEntries(flags.map(key => [key,data[key]])),
-        queryProviders: [...data.queryProviders], resultProviders: [...data.resultProviders] };
+        queryProviders: [...data.queryProviders], resultProviders: [...data.resultProviders],
+        submissionProviders: [...(data.submissionProviders ?? (data.submission ? ['comfy-cloud'] : []))] };
     },
     async cloudCatalog({ cursor = null, namespace } = {}) {
       const current = await scope(namespace);

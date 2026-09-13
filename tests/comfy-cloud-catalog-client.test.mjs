@@ -124,12 +124,20 @@ test('capability read is small, account bound, keyless and does not imply paid s
   const f=fixture(),data=await f.client.cloudCapabilities();
   assert.equal(data.submission,false);assert.deepEqual(data.resultProviders,['comfy-cloud']);
   assert.deepEqual(f.calls.map(call=>[call.method,call.body]),[['GET',{}]]);
-  for(const change of [{version:2},{archiveConfirmation:'true'},{resultProviders:['unknown']},{resultProviders:['comfy-cloud','comfy-cloud']}]){
+  for(const change of [{version:2},{archiveConfirmation:'true'},{resultProviders:['unknown']},{resultProviders:['comfy-cloud','comfy-cloud']},{submissionProviders:null},{submissionProviders:['other']}]){
     const bad=fixture({capabilities:()=>json({...capability,...change})});
     await assert.rejects(bad.client.cloudCapabilities(),{code:'comfy_delivery_capabilities'});
   }
   const foreign=fixture({capabilities:()=>json({...capability,expectedAccount:'st-user:someone-else'})});
   await assert.rejects(foreign.client.cloudCapabilities(),{code:'comfy_delivery_account'});
+});
+
+test('submission providers are explicit on new hosts and conservatively inferred only for legacy Comfy Cloud',async()=>{
+  for(const [extra,expected] of [[{submission:true},['comfy-cloud']],[{submission:false},[]],
+    [{submission:true,submissionProviders:['comfy-cloud','runninghub']},['comfy-cloud','runninghub']]]){
+    const f=fixture({capabilities:()=>json({...capability,...extra})});
+    assert.deepEqual((await f.client.cloudCapabilities()).submissionProviders,expected);f.client.close();
+  }
 });
 test('old backend yields a precise update notice while native records remain accessible',async()=>{
   const f=fixture({capabilities:()=>new Response('',{status:404})}),data=await f.client.catalogAll();
