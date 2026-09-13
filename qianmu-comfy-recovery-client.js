@@ -14,6 +14,8 @@ import { normalizeComfyReferenceSelection } from './qianmu-comfy-reference-contr
 import { checkComfyReferenceSelection } from './qianmu-comfy-references.js';
 import { resolveStoryboardComfyCloud, planComfyCloudReadiness } from './qianmu-comfy-cloud-protocol.js';
 import { parseBoundedJson } from './qianmu-json-input.js';
+import { attachComfySceneArchiveProof } from './qianmu-comfy-scene-result.js';
+import { retainComfySceneOrigin } from './qianmu-comfy-route-contract.js';
 
 const fail = (code, message) => Object.assign(new Error(message), { code: `comfy_delivery_${code}`, submissionState: 'accepted', retryable: false });
 const BASE = '/api/plugins/qianmu-tts/image/comfy/tasks';
@@ -24,6 +26,7 @@ function assertCloudPacket(row, data) {
   if (data?.version !== 1 || !task || JSON.stringify(task) !== JSON.stringify(row.cloudTask)) throw fail('identity', '云结果不属于原任务，未归档或清理');
 }
 const identity = job => ({ id: job?.id, source: job?.source, logId: job?.logId, chatKey: job?.chatKey, automatic: job?.automatic,
+  ...(job?.comfySceneOrigin?{comfySceneOrigin:retainComfySceneOrigin(job.comfySceneOrigin)}:{}),
   originalOnly: job?.originalOnly === true, comfyTaskLocator: job?.comfyTaskLocator ? { version: job.comfyTaskLocator.version, channelKey: job.comfyTaskLocator.channelKey } : undefined,
   imageAdmission: { version: job?.imageAdmission?.version, namespace: job?.imageAdmission?.namespace, attemptId: job?.imageAdmission?.attemptId },
   connection: { baseUrl: job?.connection?.baseUrl, credentialId: job?.connection?.credentialId, allowPrivateNetwork: job?.connection?.allowPrivateNetwork } });
@@ -109,6 +112,12 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     } finally { clearTimeout(timer); controllers.delete(controller); }
   }
   async function acknowledge(job, row) {
+    const result=await acknowledgeStored(job,row);
+    return attachComfySceneArchiveProof(result,job,row,async()=>{
+      await guard(job);const saved=await store.get(row.namespace,row.attemptId);await guard(job);return saved;
+    },{origin});
+  }
+  async function acknowledgeStored(job, row) {
     if (row.status === 'confirmed') return { archived: true, alreadyArchived: true, warning: '' };
     await guard(job);
     if (!row.receipt) return { archived: true, warning: '原图已归档；服务器暂存状态尚待核查' };

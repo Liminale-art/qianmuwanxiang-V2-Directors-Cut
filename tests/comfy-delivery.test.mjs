@@ -9,8 +9,11 @@ import { bindComfyCloudProtocol, bindComfyCloudTask, resolveStoryboardComfyCloud
 import { comfyArchiveFilename } from '../qianmu-comfy-submission.js';
 import { sanitizeStoryboardSnapshot, getStoryboardComfyTransport } from '../qianmu-storyboard.js';
 import { storyboardFunctionSource } from './helpers/storyboard-form-fixture.mjs';
+import {readComfySceneArchiveProof} from '../qianmu-comfy-scene-result.js';
 
 const origin = 'https://st.test', receipt = 'a'.repeat(64);
+const sceneOrigin=job=>({version:1,mode:'scene',scope:{namespace:job.imageAdmission.namespace,chatKey:job.chatKey,continuityId:'scene',narrativeLayer:'present'},
+  poolKey:'a'.repeat(64),candidateId:'candidate',executionKey:'b'.repeat(64),sourceHash:'c'.repeat(64),connectionPresetId:''});
 const job = (extra = {}) => ({ id: 'attempt-a', source: 'comfy', logId: 'log-a', chatKey: 'chat-a', automatic: true, profile: { model: 'workflow' },
   connection: { baseUrl: 'https://comfy.test/api', credentialId: 'original-key', allowPrivateNetwork: false, options: { comfyTransport: 'gateway' } },
   imageAdmission: { version: 1, namespace: 'st-user:alice', attemptId: 'attempt-a' }, ...extra });
@@ -28,6 +31,21 @@ function setup(options = {}) {
   return { rows, calls, configuration, client: createComfyRecoveryClient(configuration), switchAccount: value => { namespace = value; } };
 }
 const callback = async (data, files, checkpoint, guard) => { await guard(); await checkpoint(data.images.map((_, index) => ({ url: files[index]?.url || `/user/images/${index}.png`, prompt: 'must not persist' }))); return true; };
+
+test('native original-image recovery confirms scene only with its complete persisted archive, preserving the image if scene confirmation cannot finish',async()=>{
+  for(const mode of ['success','partial','removed']){
+    const s=setup(),original=job();original.comfySceneOrigin=sceneOrigin(original);await s.client.prepare(original);
+    const log={id:original.logId,snapshot:original,durationMs:0},owner={};let scenes=0;
+    const output=await receiveComfyImage(log,{refresh:false},{scope:()=>({owner,epoch:1,chat:original.chatKey}),canReceive:()=>true,sanitize:structuredClone,
+      recovery:async()=>s.client,resolveKey:async()=>'',deliver:async(_job,_log,data,options)=>mode==='partial'?false:callback(data,options.archiveFiles,options.checkpoint,options.guard),
+      finish:()=>{},admission:async()=>({confirmResult:async()=>{}}),notify:()=>{},render:()=>{},scene:async()=>{
+        if(mode==='removed')s.rows.clear();return {confirmArchived:async(proof,recovered,{valid})=>{valid();await readComfySceneArchiveProof(proof,recovered);scenes++;}};
+      }});
+    assert.equal(output.archived,mode!=='partial');assert.equal(scenes,mode==='success'?1:0);
+    if(mode==='removed')assert.match(output.warning,/原图已归档.*续场/);
+    assert.doesNotMatch(JSON.stringify(output),/sceneArchiveProof/);s.client.close();
+  }
+});
 
 test('recovery activity covers delivery and acknowledgement after the image request has finished', async () => {
   const entered = deferred(), release = deferred(), ackEntered = deferred(), ackRelease = deferred();
@@ -277,7 +295,8 @@ test('manual cloud log receipt uses original local recipe, not native retrieval 
   for(const mode of ['success','wrong-task','chat-switch']){
     const s=cloudSetup(),row={...s.row,originalOnly:false,logId:'cloud-log'};s.rows.set(`${row.namespace}/${row.attemptId}`,row);
     const original=recipeForCloud(row);original.payload.parameters.workflow={source:{class_type:'FixtureImage',inputs:{text:'%qianmu_prompt%'}},save:{class_type:'SaveImage',inputs:{images:['source',0]}}};
-    const log={id:row.logId,snapshot:original,error:'previous',durationMs:15},owner={},notifications=[];let chat=row.chatKey,confirmed=0,delivered;
+    original.comfySceneOrigin=sceneOrigin(original);
+    const log={id:row.logId,snapshot:original,error:'previous',durationMs:15},owner={},notifications=[];let chat=row.chatKey,confirmed=0,sceneConfirmed=0,delivered;
     s.client.retrieve=()=>assert.fail('cloud logs cannot call native retrieval');
     const catalog={...row,originalOnly:true,...(mode==='wrong-task'?{taskLocator:{version:1,channelKey:'d'.repeat(64)}}:{})};
     const result=await receiveComfyImage(log,{refresh:false,cloudRecord:catalog},{scope:()=>({owner,epoch:0,chat}),canReceive:()=>true,sanitize:sanitizeStoryboardSnapshot,
@@ -285,10 +304,13 @@ test('manual cloud log receipt uses original local recipe, not native retrieval 
         assert.equal(selected.originalOnly,false);guard();if(mode==='chat-switch')chat='another-chat';return 'synthetic-key';
       },deliver:async(job,_log,data,options)=>{delivered=job;await options.guard();return callback(data,options.archiveFiles,options.checkpoint,options.guard);},
       finish:(_log,status,details)=>{assert.equal(status,'success');assert.equal(details.durationMs,15);},
-      admission:async()=>({confirmResult:async()=>{confirmed++;}}),notify:message=>notifications.push(message),render:()=>assert.fail('refresh disabled')});
+      admission:async()=>({confirmResult:async()=>{confirmed++;}}),scene:async()=>({confirmArchived:async(proof,recovered,{valid})=>{
+        valid();const evidence=await readComfySceneArchiveProof(proof,recovered);assert.equal(evidence.attemptId,row.attemptId);sceneConfirmed++;
+      }}),notify:message=>notifications.push(message),render:()=>assert.fail('refresh disabled')});
     if(mode==='success'){
       assert.ok(result,notifications.join(';'));
       assert.equal(result.archived,true);assert.equal(delivered.payload.prompt,'original narrative');assert.equal(delivered.originalOnly,undefined);assert.equal(confirmed,1);assert.equal(s.read().status,'confirmed');
+      assert.equal(sceneConfirmed,1);assert.ok(result.sceneArchiveProof);assert.doesNotMatch(JSON.stringify(result),/sceneArchiveProof/);
     }else{assert.equal(result,undefined);assert.equal(s.calls.length,0);assert.equal(confirmed,0);assert.match(notifications[0],mode==='wrong-task'?/不匹配/:/聊天已切换/);}
   }
 });
@@ -420,7 +442,7 @@ test('actual manual receive controller preserves original log, guards chat switc
       storyboardDeliverGatewayResult: async (_job, original, _data, options) => {
         assert.equal(original, log); assert.equal(options.service, true); assert.equal(options.archiveFiles.length, 1); await options.guard(); calls.push('archive'); return true;
       }, storyboardFinishLog: (original, status, details) => { assert.equal(original, log); assert.equal(status, 'success'); assert.equal(details.durationMs, 250); calls.push('finish'); },
-      storyboardImageAdmissionRuntime: async () => ({ confirmResult: async admission => { assert.equal(admission.attemptId, 'attempt-a'); calls.push('admission'); } }),
+      storyboardImageAdmissionRuntime: async () => ({ confirmResult: async admission => { assert.equal(admission.attemptId, 'attempt-a'); calls.push('admission'); } }),storyboardComfySceneRuntime:async()=>({}),
       toast: message => notices.push(message), renderModal() {},
     });
     vm.runInContext(['storyboardCanReceiveComfyLog','storyboardReceiveComfyImage'].map(storyboardFunctionSource).join('\n'), context);

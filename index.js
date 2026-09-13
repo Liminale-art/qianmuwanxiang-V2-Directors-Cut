@@ -19645,7 +19645,7 @@ async function storyboardReceiveComfyImage(log, { refresh = true, taskLocator, c
       canReceive:storyboardCanReceiveComfyLog,sanitize:sanitizeStoryboardSnapshot,recovery:storyboardComfyRecoveryRuntime,
       resolveKey:storyboardResolveComfyRecoveryKey,deliver:storyboardDeliverGatewayResult,finish:storyboardFinishLog,
       resolveCloudKey:(row,guard)=>resolveComfyCloudRecoveryKey(row,{connections:()=>storyboardState().connections.comfy,resolve:id=>storyboardResolveApiKey('comfy',id,{exact:true}),guard}),
-      admission:storyboardImageAdmissionRuntime,notify:toast,render:renderModal,
+      admission:storyboardImageAdmissionRuntime,scene:storyboardComfySceneRuntime,notify:toast,render:renderModal,
     });
   } finally { storyboardReceiveComfyImage.pending--; }
 }

@@ -37,3 +37,9 @@ export async function readComfySceneArchiveProof(proof,job) {
   return {namespace,attemptId,scope:{...source.scope},lock:{schema:COMFY_SELECTION_SCHEMA,scope:{...source.scope},
     poolKey:source.poolKey,candidateId:source.candidateId,executionKey:source.executionKey}};
 }
+
+export function attachComfySceneArchiveProof(result,job,row,verify,options) {
+  if(result?.archived!==true||job?.originalOnly||!job?.comfySceneOrigin||job.comfySceneOrigin.mode==='independent')return result;
+  try{return Object.defineProperty({...result},'sceneArchiveProof',{value:issueComfySceneArchiveProof(job,row,verify,options)});}
+  catch(_){return {...result,warning:result.warning||'原图已归档；续场来源尚待核查'};}
+}

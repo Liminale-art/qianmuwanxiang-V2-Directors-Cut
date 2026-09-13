@@ -78,6 +78,13 @@ export async function receiveComfyImage(log, { refresh = true, taskLocator, clou
       deps.finish(log, 'success', { durationMs: Number(log.durationMs) || 0 });
       try { const admission = await deps.admission(); current(); await admission.confirmResult(job.imageAdmission); }
       catch (_) { result.warning ||= '原图已归档；本地任务状态尚待核查'; }
+      if(job.comfySceneOrigin?.mode==='scene'){
+        try {
+          if(!result.sceneArchiveProof||typeof deps.scene!=='function')throw Error();
+          const manager=await deps.scene();current();
+          await manager.confirmArchived(result.sceneArchiveProof,job,{valid:()=>{current();return true;}});
+        } catch (_) {if(!result.warning?.includes('续场'))result.warning=`${result.warning||'原图已归档'}；续场状态尚待核查`;}
+      }
     }
     current();
     deps.notify(result.warning || '原图已领取并归档', result.warning ? 'warning' : 'success');

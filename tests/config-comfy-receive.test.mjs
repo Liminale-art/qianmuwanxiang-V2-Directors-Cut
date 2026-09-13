@@ -11,7 +11,7 @@ function fixture() {
     storyboardCanReceiveComfyLog:()=>true,sanitizeStoryboardSnapshot:structuredClone,
     storyboardComfyRecoveryRuntime:async()=>({retrieve:async()=>{calls.push('retrieve');return {archived:true};}}),
     storyboardResolveComfyRecoveryKey:async()=>'',storyboardDeliverGatewayResult:async()=>true,
-    storyboardFinishLog:()=>calls.push('finish'),storyboardImageAdmissionRuntime:async()=>({confirmResult:async()=>calls.push('admission')}),
+    storyboardFinishLog:()=>calls.push('finish'),storyboardImageAdmissionRuntime:async()=>({confirmResult:async()=>calls.push('admission')}),storyboardComfySceneRuntime:async()=>({}),
     toast:(...args)=>notices.push(args),renderModal:()=>calls.push('render')});
   vm.runInContext(storyboardFunctionSource('storyboardReceiveComfyImage'),c);
   return {c,calls,notices,log};

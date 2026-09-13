@@ -35,7 +35,9 @@ try{
   ok('a recovered archive settles the matching durable scene after reopening IndexedDB, without reviving cleared locks',await page.evaluate(async()=>{
     const {createComfySceneLockStore}=await import('/qianmu-comfy-lock-store.js');
     const {createComfySceneCoordinator}=await import('/qianmu-comfy-lock-runtime.js');
-    const {issueComfySceneArchiveProof}=await import('/qianmu-comfy-scene-result.js');
+    const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');
+    const {createComfyDeliveryStore}=await import('/qianmu-comfy-delivery-store.js');
+    const {receiveComfyImage}=await import('/qianmu-comfy-recovery-action.js');
     const scope={namespace:ns,chatKey:'chat',continuityId:'late-scene',narrativeLayer:'present'};
     const lock={schema:'qianmu.comfy.selection.v1',scope,poolKey:'a'.repeat(64),candidateId:'fixed',executionKey:'b'.repeat(64)};
     const options={dbName:'scene-archive-browser-synthetic'},first=createComfySceneLockStore(options);
@@ -46,17 +48,24 @@ try{
       comfySceneOrigin:{...lock,version:1,mode:'scene',sourceHash:'c'.repeat(64),connectionPresetId:''}};
     const row={version:1,namespace:ns,attemptId:'late',baseUrl:'https://comfy.test',chatKey:'chat',createdAt:1,status:'archived',
       receipt:'d'.repeat(64),imageCount:1,files:[{imageIndex:0,url:'/user/images/late.png'}]};
-    const proof=issueComfySceneArchiveProof(job,row,async()=>row);
+    const archiveStore=createComfyDeliveryStore({dbName:'scene-archive-proof-browser-synthetic'});await archiveStore.put(row);
+    const calls=[],client=createComfyRecoveryClient({store:archiveStore,account:async()=>ns,fetchImpl:async(url)=>{
+      calls.push(url);if(!url.endsWith('/acknowledge'))throw Error('already archived work must not generate or retrieve again');return Response.json({ok:true});
+    }});
     try{
       let rejected=false;try{await manager.confirmArchived({version:1},job);}catch(_){rejected=true;}
       if(!rejected||(await store.inspect(scope)).uncertain!==1)return false;
-      const done=await manager.confirmArchived(proof,job);if(done.uncertain||done.pending||done.lock.candidateId!=='fixed')return false;
+      const owner={},notices=[],output=await receiveComfyImage({id:'late-log',snapshot:job},{refresh:false},{scope:()=>({owner,epoch:1,chat:'chat'}),canReceive:()=>true,
+        sanitize:value=>structuredClone(value),recovery:async()=>client,resolveKey:async()=>'',deliver:async()=>{throw Error('existing image must not be duplicated');},
+        finish:()=>{},admission:async()=>({confirmResult:async()=>{}}),scene:async()=>manager,notify:message=>notices.push(message),render:()=>{}});
+      if(!output?.archived||output.warning||!output.sceneArchiveProof||calls.length!==1)throw Error(JSON.stringify({archived:output?.archived,warning:output?.warning,proof:!!output?.sceneArchiveProof,calls,notices}));
+      const proof=output.sceneArchiveProof,done=await store.inspect(scope);if(done.uncertain||done.pending||done.lock.candidateId!=='fixed')return false;
       const stale={attemptId:'late',lock,expectedRevision:done.revision,expectedGeneration:done.generation};
       await store.clearChat(ns,'chat',{expectedGeneration:done.generation});
       rejected=false;try{await store.confirmResult(scope,stale);}catch(_){rejected=true;}if(!rejected)return false;
       const before=await store.usage(ns);await manager.confirmArchived(proof,job);const after=await store.usage(ns);
       return before.count===0&&after.count===0&&before.generation===after.generation&&(await store.inspect(scope)).lock===null;
-    }finally{await manager.close();}
+    }finally{client.close();await manager.close();}
   }));
   ok('Comfy ordering loads locally and groups alternate roots without blocking independent instances or NAI',await page.evaluate(async()=>{
     const {canRunStoryboardComfyJob}=await import('/qianmu-comfy-queue.js');
