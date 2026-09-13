@@ -22,7 +22,7 @@ function setup(options = {}) {
   const store = { get: async (ns, id) => structuredClone(rows.get(`${ns}/${id}`) || null), put: async row => { rows.set(`${row.namespace}/${row.attemptId}`, structuredClone(row)); }, close() {} };
   const locks = { request: async (_key, _opts, work) => { if (held) return work(null); held = true; try { return await work({}); } finally { held = false; } } };
   const configuration = { origin, store, locks, account: async () => namespace, headers: () => ({ 'Content-Type': 'application/json' }),
-    fetchImpl: async (url, init) => { const action = url.split('/').at(-1), body = JSON.parse(init.body); calls.push({ action, body, init });
+    fetchImpl: async (url, init) => { const action = url.split('/').at(-1), body = JSON.parse(init.body); calls.push({ action, body, init, url });
       assert.ok(['query','result','acknowledge'].includes(action));
       return options.respond ? options.respond(action, body) : json(action === 'query' ? { ok: true, task: { resultStored: true, live: false } } : action === 'result' ? result() : { ok: true }); }, ...options.configuration };
   return { rows, calls, configuration, client: createComfyRecoveryClient(configuration), switchAccount: value => { namespace = value; } };
@@ -187,6 +187,96 @@ test('cloud journal rejects incomplete acceptance, cross-platform tasks, private
     { cloudTask: bindComfyCloudTask(bindComfyCloudProtocol('https://www.runninghub.cn', 'runninghub-workflow-v1'), '123'), taskLocator: { version: 1, channelKey: 'b'.repeat(64) } }]) {
     assert.throws(() => normalizeComfyDelivery({ ...row, ...change }, origin));
   }
+});
+
+function cloudSetup(options = {}) {
+  const connection = bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2');
+  const task = bindComfyCloudTask(connection, 'original', { self: '/api/v2/jobs/original', cancel: '/api/v2/jobs/original/cancel' });
+  const row = normalizeComfyDelivery({ version: 3, namespace: 'st-user:alice', attemptId: 'cloud-a', baseUrl: connection.origin,
+    cloudConnection: connection, cloudTask: task, taskLocator: { version: 1, channelKey: 'b'.repeat(64) },
+    chatKey: 'chat-a', createdAt: 1, originalOnly: true, status: 'prepared', imageCount: 0, files: [] }, origin);
+  const delivery = { schema: 'qianmu.comfy-cloud-delivery.v1', state: 'stored', cacheReceipt: receipt, bytes: 10, imageCount: 2, storedAt: 1 };
+  const packet = { ok: true, version: 1, status: 'ready', task, provider: 'comfy-cloud', upstreamId: task.taskId, model: 'workflow',
+    images: result().images, receipt, delivery, locator: { version: 1, channelKey: row.taskLocator.channelKey, attemptId: row.attemptId } };
+  const ack = { ok: true, version: 1, status: 'archived', task, delivery: { ...delivery, state: 'archived', archivedAt: 2 }, cleanup: 'complete' };
+  const s = setup({ configuration: { confirm: async () => true, ...options.configuration }, respond: (action, body) => {
+    assert.ok(['result','acknowledge'].includes(action), 'original cloud recovery never submits, cancels or queries native tasks');
+    return options.respond ? options.respond(action, body, { packet, ack }) : json(action === 'result' ? packet : ack);
+  } });
+  s.rows.set(`${row.namespace}/${row.attemptId}`, row);
+  return { ...s, row, packet, ack, read: () => s.rows.get(`${row.namespace}/${row.attemptId}`),
+    retrieve: (overrides = {}) => s.client.retrieveCloudOriginal(row, { chatKey: 'chat-a', apiKey: 'synthetic-key', deliver: (_job, ...args) => callback(...args), ...overrides }) };
+}
+
+test('cloud original images share archive checkpoints and keyless ACK, with no native or paid route', async () => {
+  const s = cloudSetup();
+  assert.equal((await s.retrieve()).archived, true); assert.equal(s.read().status, 'confirmed');
+  assert.deepEqual(s.calls.map(call => call.action), ['result','acknowledge']);
+  for (const call of s.calls) {
+    assert.ok(call.url.startsWith('/api/plugins/qianmu-tts/image/comfy/cloud/tasks/'));
+    assert.equal(call.body.attemptId, s.row.attemptId); assert.deepEqual(call.body.task, s.row.cloudTask);
+    assert.equal(call.body.channelKey, s.row.taskLocator.channelKey); assert.equal(call.init.credentials, 'same-origin');
+  }
+  assert.equal(s.calls[0].body.apiKey, 'synthetic-key'); assert.equal(s.calls[1].body.apiKey, undefined);
+  assert.doesNotMatch(JSON.stringify(s.read()), /synthetic-key|aW1hZ2U|prompt/);
+  assert.equal((await s.retrieve({ apiKey: '' })).alreadyArchived, true); assert.equal(s.calls.length, 2);
+});
+
+test('partial cloud archives survive failed save and cleanup pending does not count as confirmed', async () => {
+  let cleanup = 'pending';
+  const s = cloudSetup({ respond: (action, _body, { packet, ack }) => json(action === 'result' ? packet : { ...ack, cleanup }) });
+  await assert.rejects(s.retrieve({ deliver: async (_job, _data, _files, checkpoint) => {
+    await checkpoint([{ url: '/user/images/0.png' }]); throw Error('simulated storage interruption');
+  } }), /storage interruption/);
+  assert.equal(s.read().files.length, 1); assert.equal(s.read().status, 'available'); assert.equal(s.calls.length, 1);
+  const resumed = await s.retrieve({ deliver: async (_job, ...args) => { assert.equal(args[1].length, 1); return callback(...args); } });
+  assert.equal(resumed.archived, true); assert.match(resumed.warning, /尚未清理完/); assert.equal(s.read().status, 'archived');
+  cleanup = 'complete'; await s.retrieve({ apiKey: '', deliver: () => assert.fail('must not save images again') });
+  assert.equal(s.read().status, 'confirmed'); assert.deepEqual(s.calls.map(call => call.action), ['result','result','acknowledge','acknowledge']);
+});
+
+test('cloud result and ACK identity mismatches never clear local recovery evidence', async () => {
+  for (const change of [data => ({ ...data, task: { ...data.task, taskId: 'other' } }), data => ({ ...data, upstreamId: 'other' }),
+    data => ({ ...data, locator: { ...data.locator, channelKey: 'c'.repeat(64) } }), data => ({ ...data, delivery: { ...data.delivery, imageCount: 1 } })]) {
+    const s = cloudSetup({ respond: (_action, _body, { packet }) => json(change(packet)) });
+    await assert.rejects(s.retrieve({ deliver: () => assert.fail('mismatched images must not archive') }), { code: 'comfy_delivery_identity' });
+    assert.equal(s.read().status, 'prepared'); assert.equal(s.calls.length, 1);
+  }
+  for (const change of [ack => ({ ...ack, cleanup: undefined }), ack => ({ ...ack, delivery: { ...ack.delivery, cacheReceipt: 'c'.repeat(64) } })]) {
+    const s = cloudSetup({ respond: (action, _body, { packet, ack }) => json(action === 'result' ? packet : change(ack)) });
+    assert.match((await s.retrieve()).warning, /确认尚未完成/); assert.equal(s.read().status, 'archived');
+  }
+});
+
+test('cloud route checks account, chat, explicit engine and original locator before delivering', async () => {
+  const s = cloudSetup();
+  await assert.rejects(s.retrieve({ chatKey: 'other-chat' }), { code: 'comfy_delivery_chat' });
+  await assert.rejects(s.client.retrieveCloudOriginal({ ...s.row, version: 1 }), { code: 'comfy_delivery_engine' });
+  await assert.rejects(s.client.retrieveCloudOriginal({ ...s.row, taskLocator: { version: 1, channelKey: 'c'.repeat(64) } }), { code: 'comfy_delivery_identity' });
+  s.switchAccount('st-user:bob'); await assert.rejects(s.retrieve(), { code: 'comfy_delivery_account' }); assert.equal(s.calls.length, 0);
+});
+
+test('account change during cloud ACK preserves archived checkpoint and rejects stale completion', async () => {
+  const s = cloudSetup({ respond: (action, _body, { packet, ack }) => {
+    if (action === 'acknowledge') s.switchAccount('st-user:bob');
+    return json(action === 'result' ? packet : ack);
+  } });
+  await assert.rejects(s.retrieve(), { code: 'comfy_delivery_account' }); assert.equal(s.read().status, 'archived');
+  s.switchAccount('st-user:alice');
+  const resumed = createComfyRecoveryClient({ ...s.configuration, fetchImpl: async (url, init) => {
+    assert.ok(url.endsWith('/cloud/tasks/acknowledge')); assert.equal(JSON.parse(init.body).apiKey, undefined); return json(s.ack);
+  } });
+  assert.equal((await resumed.retrieveCloudOriginal(s.row, { chatKey: 'chat-a' })).warning, ''); assert.equal(s.read().status, 'confirmed');
+});
+
+test('missing cloud journal requires consent and cannot inherit unverified archival files', async () => {
+  const s = cloudSetup({ configuration: { confirm: async () => false } }); s.rows.clear();
+  assert.equal((await s.retrieve()).cancelled, true); assert.equal(s.calls.length, 0); assert.equal(s.rows.size, 0);
+  const approved = createComfyRecoveryClient({ ...s.configuration, confirm: async () => true });
+  await approved.retrieveCloudOriginal({ ...s.row, status: 'confirmed', imageCount: 2, receipt,
+    files: [{ imageIndex: 0, url: '/user/images/stale1.png' }, { imageIndex: 1, url: '/user/images/stale2.png' }] },
+  { chatKey: 'chat-a', apiKey: 'synthetic-key', deliver: async (_job, ...args) => { assert.deepEqual(args[1], []); return callback(...args); } });
+  assert.equal(s.read().status, 'confirmed'); assert.equal(s.read().files[0].url, '/user/images/0.png');
 });
 
 test('archive filenames are stable per original account and attempt, independent of current character and time', async () => {
