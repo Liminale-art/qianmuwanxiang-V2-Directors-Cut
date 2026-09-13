@@ -1,5 +1,6 @@
 // One submission, not a generation scheduler or completion/result delivery API.
-import { prepareComfyCloudSubmission } from './qianmu-comfy-cloud-prepare.js';
+import { prepareComfyCloudSubmissionInput } from './qianmu-comfy-cloud-prepare.js';
+import { uploadComfyCloudReference } from './qianmu-comfy-cloud-upload.js';
 import { comfyCloudResourceKey } from './qianmu-comfy-cloud-ledger.js';
 import { createComfyCloudServerTransport } from './qianmu-comfy-server-transport.js';
 import { readComfyCloudJsonResponse, readComfyCloudAcceptance } from './qianmu-comfy-cloud-response.js';
@@ -7,10 +8,10 @@ import { COMFY_CLOUD_RECEIPT_SCHEMA } from './qianmu-comfy-cloud-receipt.js';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
 
 export async function submitComfyCloudTask(req, { request, apiKey, expectedAccount, attemptId } = {}, {
-  ledger, authorizeTarget, timeoutMs = 15000, signal, resolveHost, requestImpl, maxBytes,
+  ledger, authorizeTarget, authorizeSource, timeoutMs = 15000, signal, resolveHost, requestImpl, maxBytes,
 } = {}) {
-  const account = imageServiceAccount(req), prepared = prepareComfyCloudSubmission(request);
-  comfyCloudResourceKey(prepared.intent.connection, apiKey);
+  const startedAt = performance.now(), account = imageServiceAccount(req), input = prepareComfyCloudSubmissionInput(request);
+  comfyCloudResourceKey(input.connection, apiKey);
   let knownId = '', attempted = false, dispatched = false, cancelled = signal?.aborted === true, interruption, response, ticket, stage = 'authorization';
   const ownErrors = new WeakSet();
   const fail = (reason, message) => {
@@ -20,9 +21,11 @@ export async function submitComfyCloudTask(req, { request, apiKey, expectedAccou
     ownErrors.add(error); return error;
   };
   if (expectedAccount !== account.namespace || typeof attemptId !== 'string' || !/^[a-zA-Z0-9_-]{1,240}$/.test(attemptId)) throw fail('identity', '云任务账户或请求编号未确认');
+  if (input.binding && input.binding.namespace !== account.namespace) throw fail('identity', '工作流方案不属于当前ST账户');
   if (typeof ledger?.reserve !== 'function' || typeof ledger?.submission !== 'function' || typeof authorizeTarget !== 'function') throw fail('authorization', '云任务缺少持久记录或连接授权');
+  if (input.references.length && (typeof ledger?.assertAvailable !== 'function' || typeof authorizeSource !== 'function')) throw fail('references', '参考图缺少文件授权，未上传或生图');
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60000) throw fail('timeout_config', '云任务提交等待时间无效');
-  const controller = new AbortController(), deadline = performance.now() + timeoutMs;
+  const controller = new AbortController(), deadline = startedAt + timeoutMs;
   const check = () => {
     if (interruption) throw interruption;
     if (performance.now() >= deadline) throw fail('timeout', '提交等待超时，请核查原任务，未重新提交');
@@ -34,7 +37,7 @@ export async function submitComfyCloudTask(req, { request, apiKey, expectedAccou
     timer = setTimeout(() => {
       interruption = fail('timeout', '提交等待超时，请核查原任务，未重新提交');
       controller.abort(); reject(interruption);
-    }, timeoutMs);
+    }, Math.max(1, Math.ceil(deadline - performance.now())));
     // After dispatch this is a UI cancellation, not permission to forget a
     // potentially paid task. The independent deadline still bounds the drain.
     onAbort = () => { cancelled = true; if (!dispatched) {
@@ -45,7 +48,7 @@ export async function submitComfyCloudTask(req, { request, apiKey, expectedAccou
   const work = async () => {
     try {
       check();
-      const transport = await createComfyCloudServerTransport(req, { binding: prepared.intent.connection, operation: 'submit' }, {
+      const transport = await createComfyCloudServerTransport(req, { binding: input.connection, operation: 'submit' }, {
         signal: controller.signal, resolveHost, requestImpl,
         authorizeTarget: async (...args) => {
           check(); const verify = await authorizeTarget(...args); check();
@@ -53,6 +56,19 @@ export async function submitComfyCloudTask(req, { request, apiKey, expectedAccou
           return async () => { check(); await verify(); check(); };
         },
       });
+      const uploads = [];
+      if (input.references.length) {
+        check(); stage = 'references';
+        await ledger.assertAvailable(req, { apiKey, expectedAccount, attemptId, connection: input.connection }); check();
+        for (const source of input.references) {
+          uploads.push(await uploadComfyCloudReference(req, { connection: input.connection, source }, {
+            apiKey, authorizeSource, authorizeTarget, signal: controller.signal, resolveHost, requestImpl,
+            timeoutMs: Math.max(1, Math.ceil(deadline - performance.now())),
+          }));
+          check();
+        }
+      }
+      const prepared = input.complete(uploads);
       check(); stage = 'reservation';
       const reservation = await ledger.reserve(req, { apiKey, expectedAccount, attemptId, intent: prepared.intent });
       ticket = ledger.submission(reservation); check();
@@ -92,7 +108,9 @@ export async function submitComfyCloudTask(req, { request, apiKey, expectedAccou
         try { if (attempted) await ticket.markUncertain(); else await ticket.releaseUnsent(); }
         catch (_) { cleanupFailed = true; }
       }
-      const error = ownErrors.has(cause) ? cause : fail(stage, '云任务提交状态暂无法确认，请核查原连接与任务记录');
+      const error = ownErrors.has(cause) ? cause : fail(stage, stage === 'references'
+        ? '参考图准备未完成，未提交生图；部分素材可能已上传，请核查后再试'
+        : '云任务提交状态暂无法确认，请核查原连接与任务记录');
       if (cleanupFailed) { error.recordCleanupFailed = true; error.needsReview = true; }
       if (response && !response.ok && Number.isInteger(response.status)) error.httpStatus = response.status;
       throw error;

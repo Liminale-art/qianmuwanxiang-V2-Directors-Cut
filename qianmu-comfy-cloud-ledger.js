@@ -23,6 +23,12 @@ export function comfyCloudResourceKey(connection, apiKey) {
 export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Date.now } = {}) {
   if (typeof store?.transaction !== 'function' || !id(ownerId) || typeof now !== 'function') throw fail('storage', '云任务缺少持久记录服务');
   const issued = new WeakMap();
+  const available = (state, namespace, attemptId, requestDigest) => {
+    const previous = state.entries.find(row => row.namespace === namespace && row.attemptId === attemptId);
+    if (previous) throw fail(requestDigest && previous.requestDigest !== requestDigest ? 'conflict' : 'duplicate', '此云请求已存在，请核查原任务，未重复提交');
+    if (state.entries.some(row => ['reserved', 'submitting', 'uncertain'].includes(row.status))) throw fail('occupied', '此云连接仍有未完成或待核查任务，请先核查原任务');
+    if (state.entries.length >= 4096) throw fail('full', '云任务记录已满，请先导出或整理');
+  };
   const transactOwned = (reservation, change) => store.transaction(reservation.channelKey, value => {
     const state = normalizeComfyCloudChannel(value, reservation.channelKey);
     const row = state.entries.find(item => item.namespace === reservation.namespace && item.attemptId === reservation.attemptId);
@@ -228,6 +234,16 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
     // Local archive authority is account scoped, not dependent on retaining a
     // provider Key. This cannot create a submission ticket or settle new files.
     authorizeArchive: (req, locator, task) => authorizeOriginal(req, locator, task, true),
+    // Read-only preflight avoids uploading for an already blocked task. It is
+    // NOT a reservation: reserve must still atomically recheck before generation.
+    async assertAvailable(req, { apiKey, expectedAccount, attemptId, connection } = {}) {
+      const account = imageServiceAccount(req);
+      if (expectedAccount !== account.namespace || !id(attemptId)) throw fail('identity', '云任务账户或请求编号未确认');
+      const channelKey = comfyCloudResourceKey(connection, apiKey);
+      const state = normalizeComfyCloudChannel(await store.inspectChannel(channelKey), channelKey);
+      if (!imageServiceAccountStillMatches(req, account)) throw fail('account_changed', 'ST账户已变化，未继续上传参考图');
+      available(state, account.namespace, attemptId);
+    },
     async reserve(req, { apiKey, expectedAccount, attemptId, intent: rawIntent } = {}) {
       const account = imageServiceAccount(req);
       if (expectedAccount !== account.namespace || !id(attemptId)) throw fail('identity', '云任务账户或请求编号未确认');
@@ -238,10 +254,7 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
       const result = await store.transaction(channelKey, value => {
         current();
         const state = normalizeComfyCloudChannel(value, channelKey);
-        const previous = state.entries.find(row => row.namespace === account.namespace && row.attemptId === attemptId);
-        if (previous) throw fail(previous.requestDigest === intent.requestDigest ? 'duplicate' : 'conflict', '此云请求已存在，请核查原任务，未重复提交');
-        if (state.entries.some(row => ['reserved', 'submitting', 'uncertain'].includes(row.status))) throw fail('occupied', '此云连接仍有未完成或待核查任务，请先核查原任务');
-        if (state.entries.length >= 4096) throw fail('full', '云任务记录已满，请先导出或整理');
+        available(state, account.namespace, attemptId, intent.requestDigest);
         const at = now();
         const row = { namespace: account.namespace, attemptId, requestDigest: intent.requestDigest, ownerId, fence: randomUUID(),
           status: 'reserved', automatic: intent.stillOutput.execution.automatic, createdAt: at, updatedAt: at, cloudIntent: intent };

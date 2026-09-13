@@ -1,4 +1,5 @@
-// Pure, text-input preparation. No credential injection, uploads or submission.
+// Pure preparation. Reference preview is admission-only; actual upload receipts
+// must be supplied by the host before a task intent can be produced.
 import { createHash } from 'node:crypto';
 import { prepareComfyWorkflow } from './qianmu-comfy-workflow.js';
 import { auditComfyWorkflow, requireComfyExecution } from './qianmu-comfy-audit.js';
@@ -7,6 +8,9 @@ import { describeImageServiceRequest } from './qianmu-image-service-queue.js';
 import { parseBoundedJson } from './qianmu-json-input.js';
 import { planComfyCloudOperation, RUNNINGHUB_INSTANCE_TYPES } from './qianmu-comfy-cloud-protocol.js';
 import { COMFY_CLOUD_INTENT_SCHEMA, normalizeComfyCloudIntent } from './qianmu-comfy-cloud-receipt.js';
+import { prepareComfyCloudWorkflow } from './qianmu-comfy-cloud-workflow.js';
+import { planComfyCloudUpload } from './qianmu-comfy-cloud-upload-contract.js';
+import { COMFY_REFERENCE_LIMIT, COMFY_REFERENCE_TOTAL } from './qianmu-comfy-reference-contract.js';
 
 const LIMIT = 2 * 1024 * 1024;
 const hash = graph => createHash('sha256').update(JSON.stringify(graph)).digest('hex');
@@ -17,12 +21,18 @@ const fields = (value, names) => {
 const freeze = value => { if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); } return value; };
 
 export function prepareComfyCloudSubmission(raw) {
+  const preparation = prepareComfyCloudSubmissionInput(raw);
+  if (Object.hasOwn(raw, 'references')) fail(); // Text-only callers cannot invent upload authority.
+  return preparation.complete([]);
+}
+
+export function prepareComfyCloudSubmissionInput(raw) {
   try {
     // Shared descriptor walk rejects getters/cycles before JSON serialization.
     // Wrapping prevents the digest helper's top-level credential exclusions.
     if (describeImageServiceRequest({ input: raw }).requestBytes > LIMIT) fail();
     const source = parseBoundedJson(JSON.stringify(raw), { maxBytes: LIMIT, maxDepth: 40, maxNodes: 50000, label: '云工作流' });
-    fields(source, ['connection', 'workflow', 'prompt', 'negativePrompt', 'model', 'parameters', 'execution', 'binding', 'runninghub']);
+    fields(source, ['connection', 'workflow', 'prompt', 'negativePrompt', 'model', 'parameters', 'execution', 'binding', 'runninghub', 'references']);
     fields(source.connection, ['version', 'provider', 'protocol', 'origin']);
     fields(source.parameters ?? {}, ['width', 'height', 'steps', 'count', 'seed', 'scale', 'cfg', 'sampler', 'scheduler']);
     fields(source.execution, ['version', 'automatic', 'maxImages', 'outputNodeIds', 'allowUnverified']);
@@ -32,8 +42,18 @@ export function prepareComfyCloudSubmission(raw) {
     const plan = planComfyCloudOperation(source.connection, 'submit');
     const workflow = typeof source.workflow === 'string'
       ? parseBoundedJson(source.workflow, { maxBytes: LIMIT, maxDepth: 40, maxNodes: 50000, label: '工作流' }) : source.workflow;
-    const template = prepareComfyWorkflow(workflow, { ...source, referenceCount: 0 });
-    const graph = template.bind([]), execution = requireComfyExecution(auditComfyWorkflow(graph, source.execution), source.execution);
+    if (source.references !== undefined && (!Array.isArray(source.references) || source.references.length > COMFY_REFERENCE_LIMIT)) fail();
+    const references = (source.references || []).map(item => {
+      fields(item, ['url','name','mime','bytes','sha256']);
+      return planComfyCloudUpload(source.connection, item).source;
+    });
+    if (references.reduce((sum, item) => sum + item.bytes, 0) > COMFY_REFERENCE_TOTAL) fail();
+    source.references = references;
+    freeze(source);
+    const template = references.length ? prepareComfyCloudWorkflow(JSON.stringify(workflow), source) : null;
+    const preview = template?.preview || { workflow: prepareComfyWorkflow(workflow, { ...source, referenceCount: 0 }).bind([]), referenceLoadNodeIds: [] };
+    function compile({workflow:graph,referenceLoadNodeIds}) {
+    const execution = requireComfyExecution(auditComfyWorkflow(graph, source.execution, { referenceLoadNodeIds }), source.execution);
     const identity = { templateHash: hash(workflow), executionHash: hash(graph), ...(source.binding ? { binding: normalizeComfyRouteBinding(source.binding) } : {}) };
     // Keep the shared output receipt small; admission flags are hashed below,
     // not misrepresented as provider output evidence.
@@ -61,5 +81,13 @@ export function prepareComfyCloudSubmission(raw) {
     const { requestDigest } = describeImageServiceRequest({ connection: source.connection, body, workflow: identity, execution });
     const intent = normalizeComfyCloudIntent({ schema: COMFY_CLOUD_INTENT_SCHEMA, connection: source.connection, requestDigest, workflow: identity, stillOutput });
     return freeze({ body, bodyBytes, intent });
+    }
+    compile(preview); // Validate all settings before IO; discard preview identity.
+    return freeze({ connection: source.connection, references, binding: source.binding, complete(uploads) {
+      try {
+        if (!Array.isArray(uploads) || uploads.length !== references.length) fail();
+        return compile(template ? template.bind(uploads) : preview);
+      } catch (_) { fail(); }
+    } });
   } catch (_) { fail(); }
 }

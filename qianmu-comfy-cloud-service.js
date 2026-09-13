@@ -13,6 +13,7 @@ import { imageServiceAccount, imageServiceAccountStillMatches, imageServiceTaskV
 import { describeImageServiceRequest } from './qianmu-image-service-queue.js';
 import { parseBoundedJson } from './qianmu-json-input.js';
 import { ImageGatewayError } from './qianmu-image-gateway.js';
+import { createComfyReferenceSource } from './qianmu-comfy-reference-source.js';
 
 const fail = (code, message, status = 409) => Object.assign(new ImageGatewayError(status, `comfy_cloud_service_${code}`, message), { retryable: false });
 const keyOf = row => JSON.stringify([row.channelKey, row.attemptId]);
@@ -22,6 +23,8 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
   cache ||= createImageServiceResults({ dataRoot, store, scope: 'comfy-cloud' });
   const ledger = createComfyCloudLedger({ store }), receiver = createComfyCloudReceiver({ ledger, cache });
   const active = new Set(), cancelling = new Set(); let closed = false, closing;
+  let referenceSource;
+  const authorizeSource = (...args) => (referenceSource ||= createComfyReferenceSource({ dataRoot })).authorize(...args);
   const live = row => [...active].some(item => item.key === keyOf(row) && item.namespace === row.namespace);
   function run(req, raw, options, operation, tracksTask = false) {
     const submission = typeof tracksTask === 'function';
@@ -33,6 +36,8 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
       const input = parseBoundedJson(JSON.stringify(raw), { maxBytes: 2 * 1024 * 1024, maxDepth: 40, maxNodes: 50000, label: '云任务' });
       if (input?.version !== 1 || input.expectedAccount !== account.namespace) throw fail('account', 'ST账户已变化，请回原账户核查', 401);
       const taskKey = submission ? tracksTask(input) : tracksTask ? keyOf(input) : null;
+      const resourceKey = submission ? comfyCloudResourceKey(input.request?.connection, input.apiKey) : null;
+      if (resourceKey && [...active].some(item => item.resourceKey === resourceKey)) throw fail('busy', '此连接正在准备或提交，请稍后核查原任务');
       const controller = new AbortController(), signal = controller.signal, external = options?.signal;
       const onAbort = () => controller.abort(); external?.addEventListener('abort', onAbort, { once: true });
       if (external?.aborted) onAbort();
@@ -40,7 +45,7 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
         if (!imageServiceAccountStillMatches(req, account)) throw fail('account', 'ST账户已变化，未交付云任务结果', 401);
         if (closed || signal.aborted) throw fail('stopped', '已停止等待，原任务和暂存仍保留');
       };
-      const item = { key: taskKey, namespace: account.namespace, controller }; let started = false;
+      const item = { key: taskKey, resourceKey, namespace: account.namespace, controller }; let started = false;
       active.add(item);
       item.work = Promise.resolve().then(async () => {
         check(); started = true; const value = await operation(input, account, signal, check);
@@ -51,7 +56,9 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
           if (submission && !started) cause.submissionState = 'not_submitted';
           if (cause instanceof ImageGatewayError && String(cause.code).startsWith('comfy_cloud_service_')) throw cause;
           // Never echo arbitrary transport, filesystem or stored-record errors.
-          const error = fail('unconfirmed', '云任务处理未完成，请核查原记录；未重新生成');
+          const error = fail('unconfirmed', cause?.code === 'comfy_cloud_submit_references'
+            ? '参考图准备未完成，未提交生图；部分素材可能已上传，请核查后再试'
+            : '云任务处理未完成，请核查原记录；未重新生成');
           if (['not_submitted', 'unknown', 'accepted'].includes(cause?.submissionState)) error.submissionState = cause.submissionState;
           throw error;
         }).finally(() => { external?.removeEventListener('abort', onAbort); active.delete(item); });
@@ -82,7 +89,7 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
     },
     submit(req, input, options) {
       return run(req, input, options, async (value, _account, signal) => ({ version: 1,
-        ...(await submitComfyCloudTask(req, value, { ...transportOptions, ledger, signal })) }),
+        ...(await submitComfyCloudTask(req, value, { ...transportOptions, ledger, signal, authorizeSource })) }),
       value => keyOf({ attemptId: value.attemptId, channelKey: comfyCloudResourceKey(value.request?.connection, value.apiKey) }));
     },
     query(req, input, options) {
@@ -146,7 +153,7 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
     close() {
       if (closing) return closing;
       closed = true; for (const item of active) item.controller.abort();
-      closing = Promise.allSettled([...active].map(item => item.work)).then(() => store.close());
+      closing = Promise.allSettled([...active].map(item => item.work)).then(async () => { await referenceSource?.close(); await store.close(); });
       return closing;
     },
   });

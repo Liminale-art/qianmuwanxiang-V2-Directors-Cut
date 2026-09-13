@@ -9,7 +9,7 @@ import { queryComfyCloudTask } from '../qianmu-comfy-cloud-query.js';
 import { cancelComfyCloudTask, readComfyCloudCancellation } from '../qianmu-comfy-cloud-cancel.js';
 import { uploadComfyCloudReference } from '../qianmu-comfy-cloud-upload.js';
 import { createComfyCloudUploadTransport } from '../qianmu-comfy-server-transport.js';
-import { planComfyCloudUpload } from '../qianmu-comfy-cloud-upload-contract.js';
+import { planComfyCloudUpload, readComfyCloudUpload } from '../qianmu-comfy-cloud-upload-contract.js';
 import { createHash } from 'node:crypto';
 import { checkComfyCloudConnection } from '../qianmu-comfy-cloud-check.js';
 import { createComfyCloudLedger } from '../qianmu-comfy-cloud-ledger.js';
@@ -125,6 +125,66 @@ async function cloudSubmissionFixture(t, binding = cloudBinding) {
 }
 const acceptedCloudBody = (binding = cloudBinding, id = 'new-job') => binding.provider === 'runninghub' ? { code: 0, data: { taskId: id } }
   : { id, urls: { self: `/api/v2/jobs/${id}`, cancel: `/api/v2/jobs/${id}/cancel` } };
+
+test('host reference submission reads only account-owned ST files and reserves the actual uploaded execution graph', async t => {
+  for (const binding of [cloudBinding,bindComfyCloudProtocol('https://sample.run.comfy.app','comfy-cloud-v2'),rhBinding]) {
+    const f=await cloudSubmissionFixture(t,binding),calls=[],source=uploadSource(),plan=planComfyCloudUpload(binding,source);
+    const root=path.join(f.root,'alice'),userImages=path.join(root,'user','images');
+    await fs.mkdir(path.join(userImages,'Qianmu-References'),{recursive:true});
+    await fs.writeFile(path.join(userImages,'Qianmu-References','source.png'),png);
+    f.req.user.directories={root,userImages};
+    f.input.request.workflow=workflow(true);f.input.request.references=[source];
+    const id=binding.provider==='runninghub'?'1904152026220003329':'reference-original';
+    const uploadBody=binding.provider==='runninghub'?{code:0,data:{type:'image',size:String(png.length),fileName:'openapi/owned.png'}}
+      :{id:'00112233-4455-6677-8899-aabbccddeeff',hash:null,content_type:'image/png',size_bytes:png.length,file_path:plan.filename};
+    const service=createComfyCloudService({store:f.store,dataRoot:f.root,transportOptions:{...f.options,requestImpl:mockNodeRequest(calls,call=>({body:call.url.href===plan.url?uploadBody:acceptedCloudBody(binding,id)}))}});
+    t.after(()=>service.close());
+    const result=await service.submit(f.req,{...f.input,version:1});assert.equal(result.task.taskId,id);assert.equal(calls.length,2);
+    assert.equal(calls[0].url.href,plan.url);const body=JSON.parse(calls[1].body),actual=typeof body.workflow==='string'?JSON.parse(body.workflow):body.workflow;
+    const ref=readComfyCloudUpload(plan,uploadBody).reference;
+    assert.deepEqual(actual['1'].inputs.refs,[ref]);assert.equal(actual['1'].inputs.text,'quiet rain');
+    const row=(await f.store.inspectChannel(f.key)).entries[0];
+    assert.equal(row.cloudReceipt.workflow.executionHash,createHash('sha256').update(JSON.stringify(actual)).digest('hex'));
+    assert.doesNotMatch(JSON.stringify(row),/test-only-secret|qianmu-preview|private character/);
+    await assert.rejects(service.submit(f.req,{...f.input,version:1}));
+    await assert.rejects(service.submit(f.req,{...f.input,version:1,attemptId:'occupied-new-id'}));
+    assert.equal(calls.length,2,'known or occupied tasks must not re-upload or regenerate');
+  }
+});
+
+test('partial uploads and late account changes never submit a job or automatically re-upload', async t => {
+  for(const mode of ['second-upload-fails','account-changes']){
+    const f=await cloudSubmissionFixture(t),calls=[];let reads=0;
+    f.input.request.workflow=workflow(true);f.input.request.references=[uploadSource(),{...uploadSource(),url:'/user/images/second.png'}];
+    const plan=planComfyCloudUpload(cloudBinding,uploadSource());
+    await assert.rejects(submitComfyCloudTask(f.req,f.input,{...f.options,
+      authorizeSource:async()=>({verify:async()=>{},read:async()=>{reads++;return png;}}),requestImpl:mockNodeRequest(calls,()=>{
+        if(mode==='account-changes')f.req.user.profile.handle='bob';
+        return calls.length===2?{status:500,body:{error:'test-only-secret'}}:{body:{id:'00112233-4455-6677-8899-aabbccddeeff',hash:null,content_type:'image/png',size_bytes:png.length,file_path:plan.filename}};
+      })}),error=>error.submissionState==='not_submitted'&&!error.message.includes('test-only-secret'));
+    assert.equal(calls.length,mode==='second-upload-fails'?2:1);assert.equal(reads,calls.length);
+    assert.ok(calls.every(call=>call.url.href===plan.url));assert.equal((await f.store.inspectChannel(f.key))?.entries?.length||0,0);
+  }
+});
+
+test('upload preparation is covered by the submission deadline and current account before any job reservation',async t=>{
+  const f=await cloudSubmissionFixture(t),calls=[];let entered;const ready=new Promise(resolve=>entered=resolve);
+  f.input.request.workflow=workflow(true);f.input.request.references=[uploadSource()];
+  const running=submitComfyCloudTask(f.req,f.input,{...f.options,timeoutMs:50,
+    authorizeSource:async()=>{entered();return new Promise(()=>{});},requestImpl:mockNodeRequest(calls)});
+  const rejected=assert.rejects(running,error=>error.submissionState==='not_submitted');await ready;await rejected;
+  assert.equal(calls.length,0);assert.equal((await f.store.inspectChannel(f.key))?.entries?.length||0,0);
+});
+
+test('one service resource cannot start another submission while reference preparation is waiting',async t=>{
+  const f=await cloudSubmissionFixture(t),calls=[];let enter,release;
+  const ready=new Promise(resolve=>enter=resolve),gate=new Promise(resolve=>release=resolve);
+  const service=createComfyCloudService({store:f.store,dataRoot:f.root,transportOptions:{...f.options,
+    authorizeTarget:async()=>{enter();await gate;return async()=>{};},requestImpl:mockNodeRequest(calls,()=>({body:acceptedCloudBody()}))}});t.after(()=>service.close());
+  const running=service.submit(f.req,{...f.input,version:1});await ready;
+  await assert.rejects(service.submit(f.req,{...f.input,version:1,attemptId:'other-id'}),{code:'comfy_cloud_service_busy',submissionState:'not_submitted'});
+  assert.equal(calls.length,0);release();assert.equal((await running).status,'accepted');assert.equal(calls.length,1);
+});
 
 test('host owns the single cloud submission ledger and repeated submission cannot create another paid job', async t => {
   for (const binding of [cloudBinding,rhBinding]) {

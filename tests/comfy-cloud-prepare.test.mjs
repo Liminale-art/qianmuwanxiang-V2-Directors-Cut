@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { prepareComfyCloudSubmission as prepare } from '../qianmu-comfy-cloud-prepare.js';
+import { prepareComfyCloudSubmission as prepare, prepareComfyCloudSubmissionInput } from '../qianmu-comfy-cloud-prepare.js';
+import { planComfyCloudUpload, readComfyCloudUpload } from '../qianmu-comfy-cloud-upload-contract.js';
 import { bindComfyCloudProtocol } from '../qianmu-comfy-cloud-protocol.js';
 import { comfyWorkflowReferenceHash } from '../qianmu-comfy-references.js';
 const node = (class_type, inputs = {}) => ({ class_type, inputs });
@@ -17,6 +18,42 @@ const rh = bindComfyCloudProtocol('https://www.runninghub.cn', 'runninghub-workf
 const source = (connection = cloud) => ({ connection, workflow: graph(), prompt: 'rain, %qianmu_negative%', negativePrompt: 'dynamic negative', model: 'workflow',
   parameters: { seed: 12, width: 768 }, execution: { version: 1, automatic: true, maxImages: 1, outputNodeIds: ['save'], allowUnverified: false } });
 const invalid = { code: 'comfy_cloud_prepare_invalid', submissionState: 'not_submitted', retryable: false };
+
+test('reference admission freezes selection before IO and only hashes the graph with actual host uploads', async () => {
+  for (const connection of [cloud, rh]) {
+    const input=source(connection), original=graph();
+    input.references=[{url:'/user/images/reference.png',name:'private name',mime:'image/png',bytes:123,sha256:'a'.repeat(64)}];
+    input.workflow.reference=node('LoadImage',{image:'%qianmu_reference%'});
+    input.workflow.save.inputs.images=['reference',0];
+    const admission=prepareComfyCloudSubmissionInput(input), plan=planComfyCloudUpload(connection,input.references[0]);
+    const upload=readComfyCloudUpload(plan,connection.provider==='comfy-cloud'
+      ? {id:'00112233-4455-6677-8899-aabbccddeeff',hash:null,size_bytes:123,content_type:'image/png',file_path:plan.filename}
+      : {code:0,data:{type:'image',size:'123',fileName:'openapi/reference.png'}});
+    input.references[0].sha256='b'.repeat(64); input.workflow.negative.inputs.text='changed after admission';
+    assert.equal(Object.hasOwn(admission,'intent'),false,'placeholder hashes must never become a reserved task');
+    assert.throws(()=>admission.complete([]),invalid);
+    const compiled=admission.complete([upload]), actual=typeof compiled.body.workflow==='string'?JSON.parse(compiled.body.workflow):compiled.body.workflow;
+    assert.deepEqual(actual.reference.inputs.image,upload.reference);
+    assert.deepEqual(actual.negative,original.negative);
+    assert.equal(compiled.intent.workflow.executionHash,await comfyWorkflowReferenceHash(actual));
+    assert.equal(compiled.intent.stillOutput.execution.expectedImages,1);
+    assert.equal(Object.isFrozen(admission.references[0]),true);
+    assert.throws(()=>admission.complete([{...upload,source:{...upload.source,sha256:'c'.repeat(64)}}]),invalid);
+  }
+});
+
+test('bad reference slots, source counts and admission settings fail before upload authority is requested', () => {
+  const input=source(); input.references=[{url:'/user/images/reference.png',name:'ref',mime:'image/png',bytes:123,sha256:'a'.repeat(64)}];
+  assert.throws(()=>prepareComfyCloudSubmissionInput(input),invalid,'unused source must not upload');
+  input.workflow.reference=node('LoadImage',{image:'prefix/%qianmu_reference%'});
+  assert.throws(()=>prepareComfyCloudSubmissionInput(input),invalid,'embedded typed assets cannot form filenames');
+  input.workflow.reference.inputs.image='%qianmu_reference%';input.workflow.save.inputs.images=['reference',0];
+  assert.throws(()=>prepare(input),invalid,'legacy preparation cannot accept user-supplied uploads');
+  assert.throws(()=>prepareComfyCloudSubmissionInput({...input,uploads:[]}),invalid);
+  assert.throws(()=>prepareComfyCloudSubmissionInput({...input,execution:{...input.execution,maxImages:0}}),invalid);
+  assert.throws(()=>prepareComfyCloudSubmissionInput({...input,references:Array(17).fill(input.references[0])}),invalid);
+  assert.throws(()=>prepareComfyCloudSubmissionInput({...input,references:Array(4).fill({...input.references[0],bytes:16*1024*1024})}),invalid);
+});
 
 test('cloud preparation preserves topology and fixed words, performs one typed slot pass, and owns its snapshot', async () => {
   const input = source(), before = structuredClone(input), prepared = prepare(input), actual = prepared.body.workflow;
