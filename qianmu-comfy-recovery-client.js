@@ -217,7 +217,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     });
   }
   const client = {
-    async inspectCloudWorkflow(input) {
+    async inspectCloudWorkflow(input, { automatic = false } = {}) {
       try {
       const connection=resolveStoryboardComfyCloud({baseUrl:input?.baseUrl});
       if(!connection||!planComfyCloudReadiness(connection))throw Object.assign(fail('readiness','当前平台暂无节点清单检查，请手动确认工作流'),{submissionState:'not_submitted'});
@@ -226,6 +226,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
         .filter(key=>input[key]!==undefined).map(key=>[key,input[key]]))}),{maxBytes:2*1024*1024,maxDepth:40,maxNodes:50000,label:'节点检查'});
       const current=await scope(),capabilities=await this.cloudCapabilities({namespace:current.namespace});
       if(!capabilities.readinessProviders.includes(connection.provider))throw Object.assign(fail('capabilities','请同步更新增强服务后使用云工作流检查'),{submissionState:'not_submitted'});
+      if(automatic&&!canSubmitComfyCloudImages(capabilities,connection.provider,connection,{automatic:true}))throw fail('capabilities','请同步更新增强服务后使用自动选流');
       const report=await request(current.job,'readiness',{...current.body,apiKey,request:frozen},256*1024,CLOUD_BASE);
       if(report.schemaVersion!==1||report.definitionsChecked!==true||report.executionAuthorized!==false||report.actualGenerationVerified!==false
         ||!Number.isSafeInteger(report.errors)||report.errors<0||!Number.isSafeInteger(report.warnings)||report.warnings<0

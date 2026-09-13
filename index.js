@@ -19825,8 +19825,8 @@ async function storyboardCheckComfyJobReadiness(job, references, valid) {
     if(!current() || job.imageAdmission?.namespace && job.imageAdmission.namespace!==namespace)throw changed();
     if(namespace!==await identity.resolveImageAccountNamespace() || !current())throw changed();
   };
-  await guard();const transport=requireStoryboardComfyTransport(job.connection);
-  if(transport==='gateway'){
+  await guard();const cloud=resolveStoryboardComfyCloud(job.connection),transport=cloud?'gateway':requireStoryboardComfyTransport(job.connection);
+  if(!cloud&&transport==='gateway'){
     const targets=await featureRuntime.load('comfyTargets');await guard();
     await targets.requireTrustedComfyConnection({...job.connection,options:{allowPrivateNetwork:job.connection.allowPrivateNetwork===true}},
       {headers:storyboardRequestHeaders,assertCurrent:()=>{if(!current())throw changed();}});await guard();
@@ -19837,7 +19837,7 @@ async function storyboardCheckComfyJobReadiness(job, references, valid) {
     parameters:Object.fromEntries(['width','height','count','steps','scale','cfg','seed','sampler','scheduler'].map(key=>[key,job.payload.parameters[key]])),
     outputNodeId:job.profile.comfyOutputNodeId,referenceCount:references.length,allowPrivateNetwork:job.connection.allowPrivateNetwork===true};
   let checked;
-  try { checked=await (job.comfyProbeReadiness || inspector).checkComfyCharacterReadiness(request,{transport,headers:storyboardRequestHeaders(),guard}); }
+  try { checked=await (job.comfyProbeReadiness || inspector).checkComfyCharacterReadiness(request,{transport,headers:storyboardRequestHeaders(),guard,automatic:true}); }
   finally { await guard(); } // Transport errors must not conceal a departed account/input scope.
   if((checked.unverifiedWarnings ?? checked.warnings)!==0)throw new Error('Comfy 节点或模型含未验证项，请先手动核对工作流');
   return {version:1,definitionsChecked:true,actualGenerationVerified:false,pendingReferenceUploads:checked.pendingReferenceUploads || 0};
@@ -19853,13 +19853,12 @@ async function storyboardProbeComfyCandidate(state, prepared, inputGuard, {candi
   const job=storyboardCreateJob(previewState,profile,{sourceId:'comfy',profileSourceId:'comfy',modelId:'comfy-workflow',capabilityModelId:'comfy-workflow',
     connectionPresetId:route.connectionPresetId,routeTarget:route,preparedRoutes:prepared,freshComfy:inputGuard.freshComfy,shot:{shotSpec:clone(shot),prompt,sensitive:shot.sensitive}});
   job.automatic=true;
-  if(resolveStoryboardComfyCloud(job.connection))throw new Error('云工作流自动节点检查尚未开放，请先手动确认工作流');
   const inspector=await featureRuntime.load('comfyCharacterReadiness');await guard();inputGuard.assertCurrent();
   if(typeof inspector.createComfyReadinessSession==='function'){
     inputGuard.comfyReadiness ||= inspector.createComfyReadinessSession();
     Object.defineProperty(job,'comfyProbeReadiness',{value:inputGuard.comfyReadiness,enumerable:false});
   }
-  if(requireStoryboardComfyTransport(job.connection)==='gateway'){
+  if(!resolveStoryboardComfyCloud(job.connection)&&requireStoryboardComfyTransport(job.connection)==='gateway'){
     const targets=await featureRuntime.load('comfyTargets');await guard();inputGuard.assertCurrent();
     await targets.requireTrustedComfyConnection({...job.connection,options:{allowPrivateNetwork:job.connection.allowPrivateNetwork===true}},
       {headers:storyboardRequestHeaders,assertCurrent:()=>inputGuard.assertCurrent()});await guard();
@@ -19871,7 +19870,6 @@ async function storyboardProbeComfyCandidate(state, prepared, inputGuard, {candi
 async function storyboardConfirmComfyExecution(job, valid) {
   const strictAutomatic=Boolean(job.automatic || job.comfyAutoSelected);
   const cloud=resolveStoryboardComfyCloud(job.connection);
-  if(cloud&&strictAutomatic)throw new Error('云工作流自动节点检查尚未开放，请先手动确认工作流');
   if(cloud&&(job.profile?.comfyCharacterEnabled||job.payload?.comfyCharacterPlan))throw new Error('角色工作流实现已停用，请在当前工作流选择参考图');
   if (job.profile?.comfyRouteBinding != null || Object.hasOwn(job.profile || {},'comfyWorkbenchBinding')) await storyboardVerifyComfyRouteJob(job, valid);
   if (Object.hasOwn(job.profile || {},'comfyRoutePromptFormat') || Object.hasOwn(job.profile || {},'comfyWorkbenchBinding')) await storyboardPrepareComfyPromptJob(job,{prepare:true,valid});

@@ -13,6 +13,13 @@ test('identical candidate requests share only static reports; results are isolat
   await assert.rejects(()=>session.checkComfyCharacterReadiness(input,opt),/已结束/);
 });
 
+test('manual candidate evidence cannot bypass automatic backend capability negotiation through the memo',async()=>{
+  let calls=0;const session=createComfyReadinessSession({check:async()=>{calls++;return result();}});
+  try{await session.checkComfyCharacterReadiness(request(),options());
+    await session.checkComfyCharacterReadiness(request(),{...options(),automatic:true});assert.equal(calls,2);
+  }finally{session.close();}
+});
+
 test('credentials, route, transport, headers, geometry, role/reference inputs and graph all separate entries',async()=>{
   let calls=0;const session=createComfyReadinessSession({check:async()=>{calls++;return result();}});
   try{

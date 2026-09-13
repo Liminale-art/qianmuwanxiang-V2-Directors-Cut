@@ -131,6 +131,17 @@ async function addReference(f) {
     workflowHash:await comfyWorkflowReferenceHash(graph),items:[{url:'/user/images/source.png',name:'selected reference',mime:'image/png',bytes:123,sha256:'a'.repeat(64)}]};
 }
 
+test('automatic candidate checks cannot use a manual-only backend even when readonly inspection exists',async()=>{
+  for(const supported of [false,true]){
+    const f=await submissionFixture({prepare:false,capabilities:{readinessProviders:['comfy-cloud'],...(supported?{automaticProviders:['comfy-cloud']}:{})},
+      readinessReply:()=>Response.json(readinessReport())});
+    const task=f.client.inspectCloudWorkflow({baseUrl:connection.origin,apiKey:'synthetic-key',workflow:workflow()},{automatic:true});
+    if(supported){assert.equal((await task).ready,true);assert.equal(f.calls.filter(c=>c.method==='POST').length,1);}
+    else {await assert.rejects(task,{code:'comfy_delivery_capabilities',submissionState:'not_submitted'});assert.equal(f.calls.filter(c=>c.method==='POST').length,0);}
+    assert.equal(f.rows.size,0);f.client.close();
+  }
+});
+
 test('automatic submission consumes new host capability, never an old cached or missing capability',async()=>{
   for(const supported of [false,true]){
     const f=await submissionFixture({prepare:false,capabilities:supported?{automaticProviders:['comfy-cloud']}:{}});

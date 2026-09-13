@@ -18,7 +18,7 @@ const definitions={
   SaveImage:{input:{required:{images:['IMAGE']}},output:[],output_node:true},
   CheckpointLoaderSimple:{input:{required:{ckpt_name:[['installed.safetensors']]}},output:['MODEL','CLIP','VAE']},
 };
-async function environment(){
+async function environment({cloud=false}={}){
   const e=await routeEnvironment({formats:['tags','natural_language']}),network=[],keys=[],jobs=[],trust=[];
   let missing='',warning=false,trustError='',afterRequest=async()=>{};
   e.rows.forEach((row,index)=>Object.assign(row.document.classification,{visualKinds:[index?'environment':'character']}));
@@ -28,13 +28,19 @@ async function environment(){
   const row={namespace,id:pool.id,revision:pool.revision,version:1,name:'QA pool',archived:false,pool};
   const createStore=()=>({list:async()=>[copy(row)],versions:async()=>[copy(row)],load:async()=>copy(row),close(){}});
   e.state.comfyPoolSelection=(await auto.pinComfyAutoPool({namespace,selection:row,createStore})).binding;
-  e.state.connections.comfy.draft.baseUrl='https://comfy.test/api';
-  e.state.connections.comfy.draft.options.comfyTransport='browser';
+  e.state.connections.comfy.draft.baseUrl=cloud?'https://cloud.comfy.org':'https://comfy.test/api';
+  e.state.connections.comfy.draft.options.comfyTransport=cloud?'gateway':'browser';
   const load=e.context.featureRuntime.load;
   Object.assign(e.context,{directImageRuntime:async()=>direct,storyboardResolveApiKey:async(...args)=>{keys.push(args);return 'SECRET';},storyboardRequestHeaders:()=>({'x-csrf-token':'CSRF'}),
     featureRuntime:{load:async key=>{
       if(key==='comfyPrompt')return prompts;
       if(key==='comfyTargets')return {requireTrustedComfyConnection:async(connection,options)=>{trust.push(copy(connection));options.assertCurrent();if(trustError)throw Error(trustError);}};
+      if(key==='comfyCharacterReadiness'&&cloud)return {checkComfyCharacterReadiness:async(request,options)=>{
+        assert.equal(request.baseUrl,'https://cloud.comfy.org');assert.equal(options.transport,'gateway');assert.equal(options.automatic,true);
+        await options.guard();network.push({url:request.baseUrl,method:'readonly-cloud'});await afterRequest();await options.guard();
+        if(missing)throw Error('云模型清单不匹配');
+        return {ok:true,schemaVersion:1,errors:0,warnings:warning?1:0,unverifiedWarnings:warning?1:0,ready:!warning,actualGenerationVerified:false};
+      }};
       if(key==='comfyCharacterReadiness')return {checkComfyCharacterReadiness:(request,options)=>checkComfyCharacterReadiness(request,{...options,fetchImpl:async(url,init)=>{
         network.push({url,method:init.method});await afterRequest();
         if(init.method==='POST')return new Response(JSON.stringify({ok:true,schemaVersion:1,errors:0,warnings:warning?1:0,ready:!warning,actualGenerationVerified:false,issues:[]}));
@@ -57,6 +63,19 @@ async function environment(){
     setTrustError:value=>trustError=value,
     close:()=>{session.close();inputGuard.dispose();}};
 }
+
+test('cloud candidates use their own inspection path without native enrollment; final confirmation rechecks instead of inheriting probe authority',async()=>{
+  const e=await environment({cloud:true});try{
+    e.setTrustError('native target must never be requested');const before=JSON.stringify(e.state);
+    const selected=await e.session.select({shotSpec:e.shot,probe:e.probe});
+    assert.equal(selected.status,'selected',JSON.stringify(selected.diagnostics));assert.equal(selected.executionAuthorized,false);
+    assert.equal(e.trust.length,0);assert.equal(e.jobs.length,2);assert.equal(e.context.storyboardQueue.length,0);
+    assert.equal(e.jobs[0].imageAdmission,undefined);assert.equal(JSON.stringify(e.state),before);
+    const count=e.network.length;assert.equal(await e.context.storyboardConfirmComfyExecution(e.jobs[0],()=>true),true);
+    assert.equal(e.network.length,count+1);
+    e.setMissing('model');await assert.rejects(e.context.storyboardConfirmComfyExecution(e.jobs[0],()=>true),/模型清单/);
+  }finally{e.close();}
+});
 
 test('candidate evaluation uses actual job construction, fixed prompt compilation and remote definitions without admission or state changes',async()=>{
   const e=await environment(),before=JSON.stringify(e.state),graphs=e.recipes.map(recipe=>recipe.document.workflow);

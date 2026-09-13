@@ -1,13 +1,13 @@
 // Read-only per-shot verification, using the same explicitly selected requester as generation.
 import {checkComfyReadiness,checkCloudComfyReadiness,isDeferredComfyReferenceIssue} from './qianmu-comfy-readiness.js';
 import {resolveStoryboardComfyCloud} from './qianmu-comfy-cloud-protocol.js';
-export async function checkComfyCharacterReadiness(request,{transport,headers,fetchImpl=globalThis.fetch,guard=async()=>{},timeoutMs=30000,signal}={}) {
+export async function checkComfyCharacterReadiness(request,{transport,headers,fetchImpl=globalThis.fetch,guard=async()=>{},timeoutMs=30000,signal,automatic=false}={}) {
   if(!['browser','gateway','legacy-auto'].includes(transport))throw Error('请确认 Comfy 请求方式');
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),Math.min(30000,Math.max(1000,timeoutMs)));
   const abort=()=>controller.abort();if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
   try {
     let result;await guard();controller.signal.throwIfAborted();
-    if(resolveStoryboardComfyCloud(request))result=await checkCloudComfyReadiness(request,{headers,fetchImpl,guard,signal:controller.signal});
+    if(resolveStoryboardComfyCloud(request))result=await checkCloudComfyReadiness(request,{headers,fetchImpl,guard,signal:controller.signal,automatic});
     if(!result&&transport!=='gateway'){
       try{result=await checkComfyReadiness(request,{signal:controller.signal,fetchImpl:async(url,options)=>{await guard();return fetchImpl(url,options);}});}
       catch(error){if(transport==='browser'||error.code!=='comfy_readiness_transport'||controller.signal.aborted)throw error;}
@@ -43,11 +43,11 @@ export function createComfyReadinessSession({check=checkComfyCharacterReadiness,
   const fail=message=>Object.assign(new Error(message),{code:'comfy_readiness_session',submissionState:'not_submitted'});
   return {
     async checkComfyCharacterReadiness(request,options={}){
-      const source=JSON.stringify([request,options.transport,options.headers]);
+      const source=JSON.stringify([request,options.transport,options.headers,options.automatic]);
       const current=async()=>{
         options.signal?.throwIfAborted();
         if(closed)throw fail('本批次节点检查已结束');await options.guard?.();
-        if(closed||source!==JSON.stringify([request,options.transport,options.headers]))throw fail('节点检查输入已变化，未复用旧结果');
+        if(closed||source!==JSON.stringify([request,options.transport,options.headers,options.automatic]))throw fail('节点检查输入已变化，未复用旧结果');
       };
       await current();
       if(!globalThis.crypto?.subtle)throw fail('当前环境不能安全区分节点检查身份');
