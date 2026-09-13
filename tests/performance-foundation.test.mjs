@@ -12,11 +12,11 @@ assert.match(source, /数据只保留在本次页面，不写入日志或用户�
 assert.match(focusRuntime, /if \(state.status !== 'running'\) return;[\s\S]*setInterval\(tick, 500\)/, 'the focus clock must not poll while idle or paused');
 assert.match(source, /\['专注时钟', focusClockRuntime\?\.active\]/, 'health diagnostics must read the runtime owner rather than a duplicate timer');
 assert.doesNotMatch(source, /^import[^\n]*qianmu-image-direct/m, 'image provider transports must stay outside the startup module graph');
-assert.match(source, /createFeatureRuntime\(\{[\s\S]*imageDirect:[\s\S]*import\('\.\/qianmu-image-direct\.js\?v=1\.59\.151'\)[\s\S]*featureRuntime\.load\('imageDirect'\)/, 'the direct image runtime must enter the shared on-demand feature boundary');
-assert.match(source, /optionalService:[\s\S]*import\('\.\/qianmu-service-capabilities\.js\?v=1\.59\.151'\)/, 'optional backend capability checks must stay outside the startup graph');
+assert.match(source, /createFeatureRuntime\(\{[\s\S]*imageDirect:[\s\S]*import\('\.\/qianmu-image-direct\.js\?v=1\.59\.152'\)[\s\S]*featureRuntime\.load\('imageDirect'\)/, 'the direct image runtime must enter the shared on-demand feature boundary');
+assert.match(source, /optionalService:[\s\S]*import\('\.\/qianmu-service-capabilities\.js\?v=1\.59\.152'\)/, 'optional backend capability checks must stay outside the startup graph');
 assert.doesNotMatch(source, /^import .*\.\/builtin-theaters\.js/m, 'large built-in theater catalogs must stay outside the startup graph');
 assert.doesNotMatch(source, /^import .*\.\/qianmu-theaters\.js/m, 'large Qianmu theater catalogs must stay outside the startup graph');
-assert.match(source, /theaterCatalog:[\s\S]*Promise\.all\([\s\S]*loadLocalChunk\('\.\/builtin-theaters\.js\?v=1\.59\.151'\)[\s\S]*loadLocalChunk\('\.\/qianmu-theaters\.js\?v=1\.59\.151'\)/, 'both managed theater catalogs must share one recoverable on-demand feature boundary');
+assert.match(source, /theaterCatalog:[\s\S]*Promise\.all\([\s\S]*loadLocalChunk\('\.\/builtin-theaters\.js\?v=1\.59\.152'\)[\s\S]*loadLocalChunk\('\.\/qianmu-theaters\.js\?v=1\.59\.152'\)/, 'both managed theater catalogs must share one recoverable on-demand feature boundary');
 assert.match(source, /function renderTheaterTab\(\)[\s\S]*ensureTheaterCatalog\(\)[\s\S]*sd-theater-catalog-retry/, 'the theater page must load its catalog on first entry and expose retry after a failed chunk');
 const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
 assert.doesNotMatch(initSource, /seedBuiltinTheaters\(\)/, 'startup must not parse or seed theater catalogs before the feature is opened');
