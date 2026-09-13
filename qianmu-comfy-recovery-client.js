@@ -8,6 +8,7 @@ import { createComfyDeliveryStore, normalizeComfyDelivery, assertComfyDeliveryUp
 import { bindComfyCloudTask, bindComfyCloudProtocol } from './qianmu-comfy-cloud-protocol.js';
 import { buildComfyCloudRequest } from './qianmu-comfy-cloud-request.js';
 import { executeComfyCloudJob } from './qianmu-comfy-cloud-execution.js';
+import { runningHubUsageFields } from './qianmu-runninghub-usage.js';
 
 const fail = (code, message) => Object.assign(new Error(message), { code: `comfy_delivery_${code}`, submissionState: 'accepted', retryable: false });
 const BASE = '/api/plugins/qianmu-tts/image/comfy/tasks';
@@ -198,7 +199,9 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
       const data = await request(job, 'result', { ...current.body, attemptId: row.attemptId, channelKey: row.taskLocator.channelKey,
         task: row.cloudTask, apiKey }, 68 * 1024 * 1024, CLOUD_BASE);
       assertCloudPacket(row, data);
-      if (data.status !== 'ready') return { archived: false, status: data.status, warning: ({ queued: '原任务仍在排队', running: '原任务仍在生成', collecting: '原图正在保存，请稍后领取',
+      if (data.status !== 'ready') return { archived: false, status: data.status,
+        ...(data.status==='failed'?runningHubUsageFields({provider:row.cloudTask.provider,upstreamId:row.cloudTask.taskId,delivery:{usage:data.usage}}):{}),
+        warning: ({ queued: '原任务仍在排队', running: '原任务仍在生成', collecting: '原图正在保存，请稍后领取',
         archived: '服务器已有归档记录，请先核查阅片室；未重复领取', failed: '原任务生成失败，未重新生成', canceled: '原任务已取消', expired: '原任务已过期，请核查平台记录' })[data.status] || '原图暂不可领取，未重新生成' };
       if (data.locator?.version !== 1 || data.locator.attemptId !== row.attemptId || data.locator.channelKey !== row.taskLocator.channelKey
         || data.delivery?.state !== 'stored' || data.delivery.cacheReceipt !== data.receipt || data.delivery.imageCount !== data.images?.length

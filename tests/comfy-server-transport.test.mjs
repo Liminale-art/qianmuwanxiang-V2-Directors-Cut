@@ -416,7 +416,8 @@ test('failed RH tasks persist reported usage through query and collection withou
     const service=createComfyCloudService({dataRoot:f.root,store:f.store,transportOptions:{authorizeTarget:cloudGrant,resolveHost:publicDns,
       requestImpl:mockNodeRequest(calls,()=>({body:{taskId:f.task.taskId,status:'FAILED',errorCode:'1501',usage}}))}});t.after(()=>service.close());
     const input={version:1,expectedAccount:imageServiceAccount(f.req).namespace,task:f.task,...f.locator};
-    assert.equal((await service[method](f.req,input)).status,'failed');assert.equal(calls.length,1);
+    const report=await service[method](f.req,input);
+    assert.equal(report.status,'failed');assert.deepEqual(report.usage,usage);assert.equal(calls.length,1);
     const catalog=await service.catalog(f.req,{version:1,expectedAccount:input.expectedAccount});
     assert.equal(catalog.tasks[0].reportedStatus,'failed');assert.deepEqual(catalog.tasks[0].usage,usage);
     const saved=(await f.store.inspectChannel(f.locator.channelKey)).entries[0];

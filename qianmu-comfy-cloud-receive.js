@@ -6,6 +6,7 @@ import { bindComfyCloudTask } from './qianmu-comfy-cloud-protocol.js';
 import { downloadComfyCloudJob } from './qianmu-comfy-cloud-asset-read.js';
 import { downloadRunningHubJob } from './qianmu-runninghub-download.js';
 import { normalizeComfyCloudStage } from './qianmu-comfy-cloud-stage-contract.js';
+import { readRunningHubUsage } from './qianmu-runninghub-usage.js';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
 
 const downloadCloudJob = (req, input, options) => input.task.provider === 'runninghub'
@@ -119,7 +120,8 @@ export function createComfyCloudReceiver({ ledger, cache, download = downloadClo
             await networkGrant.verify();
             if (downloaded.status !== 'integrity_checked') {
               if (!['queued', 'running', 'canceling', 'canceled', 'failed', 'expired'].includes(downloaded.status) || downloaded.result !== null) throw fail('download', '原任务收图状态不完整，未交付');
-              return Object.freeze({ status: downloaded.status, task, result: null });
+              const usage=task.provider==='runninghub'&&downloaded.status==='failed'?readRunningHubUsage(downloaded.usage):null;
+              return Object.freeze({ status: downloaded.status, task, result: null, ...(usage?{usage}:{}) });
             }
             if (downloaded.grant !== networkGrant || JSON.stringify(downloaded.task) !== JSON.stringify(task)) throw fail('download', '原图未沿用原任务授权，未暂存');
             const cloud = normalizeComfyCloudStage(downloaded.result?.cloud, grant.identity);

@@ -190,8 +190,8 @@ test('cloud journal rejects incomplete acceptance, cross-platform tasks, private
 });
 
 function cloudSetup(options = {}) {
-  const connection = bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2');
-  const task = bindComfyCloudTask(connection, 'original', { self: '/api/v2/jobs/original', cancel: '/api/v2/jobs/original/cancel' });
+  const connection = options.connection || bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2');
+  const task = options.task || bindComfyCloudTask(connection, 'original', { self: '/api/v2/jobs/original', cancel: '/api/v2/jobs/original/cancel' });
   const row = normalizeComfyDelivery({ version: 3, namespace: 'st-user:alice', attemptId: 'cloud-a', baseUrl: connection.origin,
     cloudConnection: connection, cloudTask: task, taskLocator: { version: 1, channelKey: 'b'.repeat(64) },
     chatKey: 'chat-a', createdAt: 1, originalOnly: true, status: 'prepared', imageCount: 0, files: [] }, origin);
@@ -254,6 +254,23 @@ test('cloud pending status is returned for bounded scheduling without declaring 
   const row={...s.row,originalOnly:false};s.rows.set(`${row.namespace}/${row.attemptId}`,row);
   const result=await s.client.retrieveCloudJob(recipeForCloud(row),row,{apiKey:'synthetic-key',deliver:()=>assert.fail('not a completed image')});
   assert.equal(result.status,'running');assert.equal(result.archived,false);assert.equal(s.read().status,'prepared');assert.equal(s.calls.length,1);
+});
+
+test('RH failed original reports reach the log without archive confirmation or another generation request',async()=>{
+  const connection=bindComfyCloudProtocol('https://www.runninghub.cn','runninghub-workflow-v1');
+  const task=bindComfyCloudTask(connection,'1904152026220003330');
+  const usage={consumeCoins:'0.7500',consumeMoney:null,thirdPartyConsumeMoney:null,taskCostTime:'12.25'};
+  for(const status of ['failed','running']) {
+    const s=cloudSetup({connection,task,respond:(_action,_body,{packet})=>json({...packet,status,usage,images:undefined})});
+    const row={...s.row,originalOnly:false,logId:'cloud-log'};s.rows.set(`${row.namespace}/${row.attemptId}`,row);
+    const log={id:row.logId,snapshot:recipeForCloud(row),durationMs:150,error:'old'},owner={},finished=[];
+    const result=await receiveComfyImage(log,{refresh:false},{scope:()=>({owner,epoch:0,chat:row.chatKey}),canReceive:()=>true,sanitize:sanitizeStoryboardSnapshot,
+      recovery:async()=>s.client,resolveCloudKey:async()=> 'synthetic-key',deliver:()=>assert.fail('failed images cannot be archived'),
+      finish:(_log,status,details)=>finished.push({status,details}),admission:()=>assert.fail('expense is not success'),notify:()=>{},render:()=>{}});
+    assert.equal(result.status,status);assert.equal(result.archived,false);assert.equal(s.calls.length,1);assert.equal(s.read().status,'prepared');
+    if(status==='failed') {assert.equal(finished.length,1);assert.equal(finished[0].status,'failed');assert.deepEqual(finished[0].details.cloudUsage,{provider:'runninghub',taskId:task.taskId,usage});}
+    else {assert.equal(result.cloudUsage,undefined);assert.equal(finished.length,0);}
+  }
 });
 
 test('manual cloud log receipt uses original local recipe, not native retrieval or metadata-only catalog recipe',async()=>{

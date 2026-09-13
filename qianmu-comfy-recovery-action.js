@@ -70,6 +70,9 @@ export async function receiveComfyImage(log, { refresh = true, taskLocator, clou
       result = await service.retrieve(job,{apiKey,deliver:(...args)=>deliver(job,...args)});
     }
     current();
+    if (result.status==='failed' && result.cloudUsage) deps.finish(log,'failed',{
+      error:result.warning,submissionState:'accepted',cloudUsage:result.cloudUsage,durationMs:Number(log.durationMs)||0,
+    });
     if (result.archived) {
       log.error = ''; log.submissionState = 'accepted';
       deps.finish(log, 'success', { durationMs: Number(log.durationMs) || 0 });

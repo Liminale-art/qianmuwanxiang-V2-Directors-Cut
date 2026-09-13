@@ -21302,7 +21302,7 @@ async function storyboardRunJob(job, log) {
       if (runningStage) storyboardPipelineStage(log, runningStage.type, 'failed', {}, {}, error?.message || error);
       const upstreamNote = job.source === 'comfy' && /^[a-zA-Z0-9_-]{1,240}$/.test(error?.upstreamId || '') ? `；ComfyUI 原任务：${error.upstreamId}` : '';
       const message = `${error?.message || error}${upstreamNote}${submissionState === 'unknown' && !String(error?.message).includes('结果未确认') ? '；结果未确认，请核对渠道记录，勿重复生成' : ''}`;
-      storyboardFinishLog(log, 'failed', { error: message, submissionState });
+      storyboardFinishLog(log, 'failed', { error: message, submissionState, cloudUsage: error?.cloudUsage });
       storyboardSetPlanStatus(plan, 'failed', { error: message, job });
       toast(`分镜生成失败：${message}`, 'error');
     }

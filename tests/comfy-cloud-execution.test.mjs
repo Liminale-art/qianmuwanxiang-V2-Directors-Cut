@@ -67,6 +67,23 @@ test('failed tasks, lost result replies and post-acceptance callback failure ret
   }
 });
 
+test('execution errors carry only the matching failed RH task report and never invent an archive result',async()=>{
+  for(const foreign of [false,true]) {
+    const f=setup({created:false,bound:true});
+    Object.assign(f.connection,bindComfyCloudProtocol('https://www.runninghub.cn','runninghub-workflow-v1'));
+    const task={provider:'runninghub',taskId:'1904152026220003330'};
+    const usage={consumeCoins:'0.5',consumeMoney:null,thirdPartyConsumeMoney:null,taskCostTime:null};
+    f.client.cloudCapabilities=async()=>({submission:true,submissionProviders:['runninghub'],resultRetrieval:true,resultProviders:['runninghub']});
+    f.client.prepareCloudSubmission=async()=>({created:false,record:{attemptId:'original',cloudTask:task}});
+    f.client.retrieveCloudJob=async()=>({archived:false,status:'failed',cloudUsage:{provider:task.provider,taskId:foreign?'999':task.taskId,usage}});
+    await assert.rejects(f.run(),error=>{
+      assert.equal(error.submissionState,'accepted');assert.equal(error.upstreamId,task.taskId);
+      if(foreign)assert.equal(error.cloudUsage,undefined);else assert.deepEqual(error.cloudUsage,{...task,usage});return true;
+    });
+    assert.equal(f.stats().submits,0);
+  }
+});
+
 test('stopping before submission and during polling has distinct paid-task state',async()=>{
   const before=setup();before.stop();await assert.rejects(before.run(),{submissionState:'not_submitted'});assert.equal(before.stats().submits,0);
   const after=setup();await assert.rejects(after.run({wait:async()=>after.stop()}),{submissionState:'accepted'});assert.deepEqual(after.stats(),{submits:1,reads:1,time:0});

@@ -1,6 +1,7 @@
 // One original shot through the existing cloud client. No topology mutation,
 // automatic resubmission, cross-provider fallback or background polling.
 import { requireComfyCloudImageSubmission, canSubmitComfyCloudImages } from './qianmu-comfy-cloud-protocol.js';
+import { readRunningHubTaskUsage } from './qianmu-runninghub-usage.js';
 const fail = (code,message,state='not_submitted') => Object.assign(new Error(message),{
   code:`comfy_cloud_execution_${code}`,submissionState:state,retryable:false,
 });
@@ -42,8 +43,12 @@ export async function executeComfyCloudJob(client, source, gateway, connection, 
       }});
       check();
       if(result.archived)return {...result,record};
-      if(!['queued','running','collecting','canceling'].includes(result.status))
-        throw fail('result',result.warning||'原图暂不可领取，请核查原任务','accepted');
+      if(!['queued','running','collecting','canceling'].includes(result.status)) {
+        const error=fail('result',result.warning||'原图暂不可领取，请核查原任务','accepted');
+        const usage=result.status==='failed'?readRunningHubTaskUsage(result.cloudUsage):null;
+        if(usage&&usage.taskId===record.cloudTask.taskId&&usage.provider===record.cloudTask.provider)error.cloudUsage=usage;
+        throw error;
+      }
       await onStatus(result.status);check();
       if(now()>=deadline||reads===359)return {archived:false,pending:true,status:result.status,record,
         warning:'已结束本页等待，原云任务仍保留，可稍后从收片管理领取'};
