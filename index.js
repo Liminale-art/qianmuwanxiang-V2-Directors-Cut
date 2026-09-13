@@ -14251,6 +14251,7 @@ function storyboardCurrentComfyRecipe(state = storyboardState()) {
   return { name: state.comfyLibrarySelection?.name || '', document: {
     workflow: profile.comfyWorkflow || '', outputNodeId: profile.comfyOutputNodeId || '',
     ...(profile.comfyInstanceType ? {runninghubInstanceType:profile.comfyInstanceType} : {}),
+    ...(profile.comfyConsoleUrl ? {consoleUrl:profile.comfyConsoleUrl} : {}),
     parameters: Object.fromEntries(['width','height','count','steps','cfg','seed','sampler','scheduler'].map(key => [key, String(profile[key] ?? '')])),
     positivePrompt: '', negativePrompt: '',
     ...(profile.comfyWorkbenchBinding?.classification ? {classification:clone(profile.comfyWorkbenchBinding.classification)} : {}),
@@ -14326,6 +14327,7 @@ async function storyboardApplyComfyLibraryRecipe(root, state, recipe) {
     comfyWorkflow: document.workflow, comfyOutputNodeId: document.outputNodeId, comfyWorkflowNotice: '', loaded: true };
   for (const key of ['comfyRouteBinding','comfyRoutePromptLayer','comfyRoutePromptFormat','comfyWorkbenchBinding']) delete next[key];
   delete next.comfyInstanceType;if(document.runninghubInstanceType!==undefined)next.comfyInstanceType=document.runninghubInstanceType;
+  delete next.comfyConsoleUrl;if(document.consoleUrl!==undefined)next.comfyConsoleUrl=document.consoleUrl;
   if (document.classification) next.comfyWorkbenchBinding={schemaVersion:1,binding:clone(verified.binding),classification:clone(document.classification)};
   for (const key of ['width','height','count','steps','cfg','seed','sampler','scheduler']) next[key] = String(document.parameters[key] ?? '');
   state.profiles.comfy = next;

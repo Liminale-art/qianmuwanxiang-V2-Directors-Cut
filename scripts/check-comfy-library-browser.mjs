@@ -70,12 +70,14 @@ try{
   await page.locator('[data-comfy-action="apply-version"]').click();await page.waitForFunction(()=>applied.length===1);
   ok('saved-version application carries current account',await page.evaluate(()=>applied[0].namespace===scope));
   await page.locator('[data-comfy-runtime]').selectOption('plus');
+  await page.locator('[data-comfy-console]').fill('https://www.runninghub.cn/workflow/1980237776367083521?source=workspace');
   await page.locator('[data-comfy-draft="name"]').fill('新版本');await page.locator('[data-comfy-action="save"]').click();await page.waitForSelector('.sd-comfy-library-row');
   ok('saving does not apply or overwrite historical additions',await page.evaluate(async()=>{
     const rows=await store.list(scope),versions=await store.versions(scope,rows[0].id);
     const latest=await store.load(scope,rows[0].id,rows[0].revision),old=await store.load(scope,rows[0].id,versions.find(row=>row.version===1).revision);
     return applied.length===1&&versions.length===2&&latest.positivePrompt===''&&latest.negativePrompt===''&&latest.workflow===graph&&old.positivePrompt==='legacy extra'
-      &&latest.runninghubInstanceType==='plus'&&!Object.hasOwn(old,'runninghubInstanceType');
+      &&latest.runninghubInstanceType==='plus'&&!Object.hasOwn(old,'runninghubInstanceType')
+      &&latest.consoleUrl==='https://www.runninghub.cn/workflow/1980237776367083521'&&!Object.hasOwn(old,'consoleUrl');
   }));
   await page.locator('[data-comfy-action="apply"]').click();await page.waitForFunction(()=>applied.length===2);
   ok('list application targets the new revision, account and saved RH tier',await page.evaluate(()=>applied[1].namespace===scope&&applied[1].version===2&&applied[1].document.positivePrompt===''&&applied[1].document.runninghubInstanceType==='plus'));

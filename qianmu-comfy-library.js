@@ -3,6 +3,7 @@ import { sanitizeStoryboardWorkflow } from './qianmu-storyboard.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
 import { normalizeComfyClassification } from './qianmu-comfy-selection.js';
 import { RUNNINGHUB_INSTANCE_TYPES } from './qianmu-comfy-cloud-protocol.js';
+import { normalizeRunningHubConsoleUrl } from './qianmu-comfy-console.js';
 export const COMFY_LIBRARY_SCHEMA = 'qianmu.comfy.workflow.v1';
 export const COMFY_LIBRARY_PARAMETERS = Object.freeze(['width','height','count','steps','cfg','seed','sampler','scheduler']);
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -27,6 +28,7 @@ export function normalizeComfyLibraryDocument(value) {
     if(!RUNNINGHUB_INSTANCE_TYPES.includes(value.runninghubInstanceType))throw comfyLibraryError('runtime','RunningHub运行配置无效，请重新选择');
     document.runninghubInstanceType=value.runninghubInstanceType;
   }
+  if(Object.hasOwn(value,'consoleUrl'))document.consoleUrl=normalizeRunningHubConsoleUrl(value.consoleUrl);
   // Keep legacy documents byte-for-byte canonical: adding defaults would break their pinned recipe hash.
   if(Object.hasOwn(value,'classification')){
     try{document.classification=normalizeComfyClassification(value.classification);}

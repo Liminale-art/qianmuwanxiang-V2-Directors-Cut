@@ -81,6 +81,7 @@ export function applyComfyRouteRecipe(base, route, recipe) {
   delete profile.comfyCharacterActivation;
   delete profile.comfyInstanceType;
   if (document.runninghubInstanceType !== undefined) profile.comfyInstanceType = document.runninghubInstanceType;
+  delete profile.comfyConsoleUrl;if(document.consoleUrl!==undefined)profile.comfyConsoleUrl=document.consoleUrl;
   delete profile.comfyWorkbenchBinding;
   delete profile.comfyRoutePromptFormat;
   if (document.classification?.promptFormat) [profile.comfyRoutePromptFormat] = normalizeStoryboardPromptFormats([document.classification.promptFormat]);

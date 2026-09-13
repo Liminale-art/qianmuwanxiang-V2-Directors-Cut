@@ -56,6 +56,7 @@ export function renderComfyLibrary(view) {
       </div></section>
       ${classificationEditor(draft.document)}
       <label><span>RunningHub 运行配置</span><select class="text_pole" data-comfy-runtime aria-label="RunningHub 运行配置">${renderRunningHubInstanceOptions(draft.document.runninghubInstanceType)}</select></label>
+      <label><span>RunningHub 工作流链接</span><input class="text_pole" data-comfy-console type="url" maxlength="2048" aria-label="RunningHub 工作流链接" value="${escape(draft.document.consoleUrl||'')}"></label>
       <details class="sd-card"><summary><b>参数默认值</b></summary><div class="sd-storyboard-card-body sd-storyboard-grid sd-storyboard-grid-two">${COMFY_LIBRARY_PARAMETERS.map(key=>`<label><span>${titles[key]}</span><input class="text_pole" data-comfy-parameter="${key}" maxlength="120" value="${escape(draft.document.parameters[key]||'')}" ${['sampler','scheduler'].includes(key)?'':'inputmode="decimal"'}></label>`).join('')}</div></details>
       <p class="sd-comfy-library-note">仅已接入工作流的参数生效。保存不切换当前配方；返回列表后可明确应用。</p>
     </fieldset><input type="file" data-comfy-file accept=".json,application/json" hidden></div>`;
@@ -165,6 +166,10 @@ export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,
     host.querySelector('[data-comfy-runtime]')?.addEventListener('change',event=>{
       if(!visible()||view.busy||!view.draft||host!==mounted||entry!==mountedEntry)return;
       view.draft.dirty=true;if(event.target.value)view.draft.document.runninghubInstanceType=event.target.value;else delete view.draft.document.runninghubInstanceType;
+    });
+    host.querySelector('[data-comfy-console]')?.addEventListener('input',event=>{
+      if(!visible()||view.busy||!view.draft||host!==mounted||entry!==mountedEntry)return;
+      view.draft.dirty=true;if(event.target.value.trim())view.draft.document.consoleUrl=event.target.value;else delete view.draft.document.consoleUrl;
     });
     host.querySelectorAll('[data-comfy-class-choice]').forEach(button=>button.addEventListener('click',()=>{
       if(!visible()||view.busy||!view.draft)return;

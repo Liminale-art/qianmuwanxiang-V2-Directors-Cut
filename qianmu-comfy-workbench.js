@@ -2,6 +2,7 @@
 import { normalizeComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
 import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
 import { resolveStoryboardComfyCloud, RUNNINGHUB_INSTANCE_TYPES } from './qianmu-comfy-cloud-protocol.js';
+import { comfyWorkbenchConsoleLink } from './qianmu-comfy-console.js';
 const escape = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const fields = [
   ['width','Width','number','min="64" max="8192" step="64"'],
@@ -33,6 +34,7 @@ export function renderComfyReferenceControls(profile, capabilities, collapsed = 
     </div></details>`;
 }
 export function renderComfyWorkbench({profile, capabilities, connection=null, collapsed={}, workflowNotice='', workflowNodes=0, librarySelection=null,autoEnabled=false,poolSelection=null}, shared={}) {
+  const consoleLink=comfyWorkbenchConsoleLink(profile,connection);
   let runninghub = false; try { runninghub = resolveStoryboardComfyCloud(connection)?.provider === 'runninghub'; } catch (_) { /* Existing connection card shows the invalid URL. */ }
   const runtime = runninghub ? `<label><span>运行配置</span><select class="text_pole sd-storyboard-field" data-storyboard-field="comfyInstanceType" aria-label="RunningHub 运行配置">${renderRunningHubInstanceOptions(profile.comfyInstanceType)}</select></label>` : '';
   const controls=fields.filter(([key])=>capabilities[key]).map(([key,label,type,attrs])=>
@@ -46,6 +48,7 @@ export function renderComfyWorkbench({profile, capabilities, connection=null, co
       <div class="sd-storyboard-card-body">
         <button type="button" class="sd-btn sd-comfy-open-library">${librarySelection?.name?`基于 ${escape(librarySelection.name)} · v${Number(librarySelection.version)||1}`:workflow?'当前自定义工作流':'选择或导入工作流'}</button>
         <button type="button" class="sd-btn sd-comfy-check-workflow" ${workflow?'':'disabled'}>检查节点与模型</button>
+        ${consoleLink?`<a class="sd-btn sd-comfy-console-link" href="${escape(consoleLink.url)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" title="打开线上编辑页；修改后重新导出并导入，本地保存版本不会自动改变">${escape(consoleLink.label)}</a>`:''}
         <div class="sd-comfy-readiness-result" role="status" hidden></div>
         <div class="sd-storyboard-workflow-warning sd-storyboard-connection-result failed" ${workflowNotice?'':'hidden'} role="status"><span>${escape(workflowNotice)}</span></div>
       </div>
