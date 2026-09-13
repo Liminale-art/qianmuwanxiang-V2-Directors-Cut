@@ -370,6 +370,28 @@ test('whole cloud job preserves the final query order with one grant and feeds t
   assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
 });
 
+test('verified cloud asset CDN links use the original cloud permission, without separate CDN registration or credential forwarding', async t => {
+  const f = await persistedCloudTask(t), calls = [], targets = [];
+  const result = await downloadComfyCloudJob(f.req, { task: f.task, ...f.locator }, { ...assetReadOptions(f),
+    authorizeTarget: async (_req, target) => {
+      targets.push(target.baseUrl);
+      assert.equal(target.baseUrl, `${f.task.origin}/`); assert.equal(target.allowPrivateNetwork, false);
+      return async () => {};
+    }, requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) });
+  assert.equal(result.status, 'integrity_checked'); assert.equal(targets.length, 3);
+  const file = calls.find(call => call.url.hostname === 'files.test');
+  assert.ok(file); assert.equal(file.options.method, 'GET');
+  assert.doesNotMatch(JSON.stringify(file.options.headers), /test-only-secret|Bearer|Cookie/i);
+});
+
+test('revoking the original cloud connection before CDN download prevents file IO', async t => {
+  const f = await persistedCloudTask(t), calls = []; let grants = 0;
+  await assert.rejects(downloadComfyCloudJob(f.req, { task: f.task, ...f.locator }, { ...assetReadOptions(f),
+    authorizeTarget: async () => { if (++grants === 3) throw new Error('revoked'); return async () => {}; },
+    requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) }), { code: 'comfy_cloud_asset_read_file' });
+  assert.equal(calls.length, 2); assert.equal(calls.filter(call => call.url.hostname === 'files.test').length, 0);
+});
+
 test('cloud receiver confirms full storage but never client ACK, then serves the original without further cloud IO', async t => {
   const f = await persistedCloudTask(t, cloudBinding, 2), calls = [], before = await f.store.inspectChannel(f.locator.channelKey); let grants = 0;
   const cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
@@ -784,11 +806,11 @@ test('changing the original persisted fence during file arrival cannot be bypass
   await revoked; assert.equal(grants, 1); assert.equal(calls.length, 3);
 });
 
-test('cancelled file target approval cannot start a late CDN request after the caller has returned', async t => {
-  const f = await persistedCloudTask(t), calls = [], controller = new AbortController(); let entered, release;
+test('cancelled file target approval cannot start a late CDN request after the caller has returned', { timeout: 5000 }, async t => {
+  const f = await persistedCloudTask(t), calls = [], controller = new AbortController(); let entered, release, approvals = 0;
   const entering = new Promise(resolve => { entered = resolve; }), held = new Promise(resolve => { release = resolve; });
   const pending = downloadComfyCloudAsset(f.req, assetReadInput(f), { ...assetReadOptions(f), signal: controller.signal,
-    authorizeTarget: async (_req, target) => { if (new URL(target.baseUrl).hostname === 'files.test') { entered(); await held; } return async () => {}; },
+    authorizeTarget: async (_req, target) => { assert.equal(target.baseUrl, `${f.task.origin}/`); if (++approvals === 3) { entered(); await held; } return async () => {}; },
     requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) });
   await entering; controller.abort();
   await assert.rejects(pending, { code: 'comfy_cloud_asset_read_cancelled', submissionState: 'accepted', upstreamId: f.task.taskId });

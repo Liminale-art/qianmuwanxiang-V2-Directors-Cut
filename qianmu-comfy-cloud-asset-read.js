@@ -99,7 +99,15 @@ async function readAsset(req, { task: rawTask, assetId: rawId, channelKey, attem
       if (!download) return Object.freeze({ status: 'metadata_ready', ...matched });
       stage = 'file';
       const file = await createComfyCloudFileTransport(req, { task, assetId, source: matched.source }, {
-        authorizeTarget, signal: controller.signal, resolveHost, requestImpl, now,
+        // The original authenticated asset metadata grants this exact temporary
+        // content URL. Recheck the cloud connection's permission, not a separate
+        // user registration for each changing CDN host. File transport still
+        // pins public DNS, forbids redirects and never forwards the API Key.
+        authorizeTarget: async (request, target) => {
+          if (target.baseUrl !== `${new URL(matched.source.url).origin}/` || target.allowPrivateNetwork) throw fail('asset', '原图片下载地址已变化');
+          await verify();
+          return authorizeTarget(request, { baseUrl: `${task.origin}/`, allowPrivateNetwork: false });
+        }, signal: controller.signal, resolveHost, requestImpl, now,
         authorizeAsset: async (_req, resource, owner) => {
           await verify();
           if (owner.namespace !== account.namespace || resource.assetId !== assetId || JSON.stringify(resource.task) !== JSON.stringify(task)
