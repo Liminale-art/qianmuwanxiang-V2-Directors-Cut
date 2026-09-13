@@ -10406,6 +10406,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-comfy-inbox-rows { max-height: min(65vh, 600px); overflow: auto; overscroll-behavior: contain; }
 #story-director-modal .sd-comfy-inbox-rows article { display: grid; grid-template-columns: 20px minmax(0,1fr) auto; gap: 8px; align-items: center; padding-block: 10px; border-bottom: 1px solid var(--sd-border, #8885); }
 #story-director-modal .sd-comfy-inbox-rows article > div { min-width: 0; }
+#story-director-modal .sd-comfy-inbox-actions { display: grid; gap: 6px; }
 #story-director-modal .sd-comfy-inbox-rows b { font-size: var(--sd-font-body,14px); overflow-wrap: anywhere; }
 #story-director-modal .sd-comfy-inbox input[type=checkbox] { width: 18px; height: 18px; margin: 0; accent-color: var(--sd-accent); }
 #story-director-modal .sd-comfy-inbox-tools label { display: flex; align-items: center; gap: 6px; }

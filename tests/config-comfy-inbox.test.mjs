@@ -25,6 +25,17 @@ function fixture() {
 }
 const row={attemptId:'original',originalOnly:true,baseUrl:'https://comfy.test',credentialId:'original-credential'};
 
+test('cancel from the inbox uses the original cloud credential and cannot fall through to receipt or archive',async()=>{
+  const e=fixture();let cancellation=0;
+  e.c.resolveComfyCloudRecoveryKey=async(_selected,ports)=>{await ports.guard();return 'original-key';};
+  e.service.cancelCloudOriginal=async(selected,options)=>{
+    assert.equal(selected.engine,'cloud');assert.equal(options.apiKey,'original-key');assert.equal(options.valid(),true);
+    e.change('chat');assert.equal(options.valid(),false);cancellation++;return {warning:'已请求取消'};
+  };
+  await e.c.storyboardOpenComfyInbox(e.root);
+  await e.mounted.receive({...row,engine:'cloud'},'server','cancel');assert.equal(cancellation,1);assert.deepEqual(e.calls,[]);
+});
+
 test('original-only inbox rejects late credential results after page, owner, epoch or chat changes',async()=>{
   for(const kind of ['owner','epoch','chat','dispose']) {
     const e=fixture(),entered=deferred(),release=deferred();await e.c.storyboardOpenComfyInbox(e.root);

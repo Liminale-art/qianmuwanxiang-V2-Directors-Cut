@@ -28,6 +28,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
   let closed = false;
   const controllers = new Set();
   const submissionTickets = new WeakMap();
+  const cancelling = new Set();
   async function guard(job) {
     if (closed) throw fail('closed', 'Comfy 领取会话已结束，请在原账户重新领取');
     await assertComfyAccount(job, { account });
@@ -67,13 +68,14 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     await store.put(expected); await guard(job); return expected;
   }
   async function save(job, row) { await guard(job); const clean = normalizeComfyDelivery(row, origin); await store.put(clean); await guard(job); return clean; }
-  async function request(job, action, body, maxBytes, base = BASE) {
+  async function request(job, action, body, maxBytes, base = BASE, isCurrent = () => true) {
     const submitting = action === 'submit' && base === CLOUD_BASE;
     let dispatched = false, reportedState;
     const controller = new AbortController(); controllers.add(controller);
     const timer = setTimeout(() => controller.abort(), Math.min(60000, Math.max(1000, Number(timeoutMs) || 45000)));
     try {
       await guard(job);
+      if (!isCurrent()) throw fail('page', '收片页面已变化，未发送请求');
       const init = { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', redirect: 'error',
         headers: { ...headers(), 'Content-Type': 'application/json' }, signal: controller.signal, body: JSON.stringify(body) };
       dispatched = true;
@@ -437,6 +439,36 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
         } catch (error) { errors.push(error.message); } }
         await guard(current.job); return { removed, bytes, errors };
       });
+    },
+    async cancelCloudOriginal(item, { apiKey = '', valid = () => true } = {}) {
+      const current = await scope(item?.namespace);
+      const row = normalizeComfyDelivery(item?.cloudRecord || item, origin);
+      if (row.version !== 3 || !row.cloudTask || row.namespace !== current.namespace || item?.attemptId !== row.attemptId)
+        throw fail('identity', '请选择原云任务，未发送取消请求');
+      const key = JSON.stringify([row.namespace,row.taskLocator.channelKey,row.attemptId]);
+      if (cancelling.has(key)) throw fail('busy', '原任务正在处理取消，请稍后核查');
+      const check = async () => { await guard(current.job); if (!valid()) throw fail('page', '收片页面已变化，请重新打开'); };
+      cancelling.add(key);
+      try {
+        await check();
+        if (['archived','confirmed'].includes(row.status)) return { warning: '原图已归档并保留，无需取消' };
+        if (!await confirm('取消此原任务？已产生的消耗以平台账单为准，已生成的图片保留；不会重新生成。')) return { cancelled: true };
+        await check();
+        const capability = await this.cloudCapabilities({ namespace: row.namespace }); await check();
+        if (!capability.cancellation) throw fail('capabilities', '后端尚未支持取消，请同步更新并重启 ST');
+        if (typeof apiKey !== 'string' || !/^[\x21-\x7e]{1,2048}$/.test(apiKey)) throw fail('key', '请核对原连接的 Key');
+        const data = await request(current.job, 'cancel', { ...current.body, attemptId: row.attemptId,
+          channelKey: row.taskLocator.channelKey, task: row.cloudTask, apiKey, confirmed: true }, 65536, CLOUD_BASE, valid);
+        await check(); assertCloudPacket(row, data);
+        const terminal = ['succeeded','failed','canceled','expired','stored','archived'].includes(data.status);
+        const pending = ['queued','running','canceling','cancel_requested'].includes(data.status);
+        if ((!terminal && !pending) || data.terminal !== terminal || typeof data.requestAccepted !== 'boolean'
+          || (['stored','archived'].includes(data.status) ? data.requestAccepted : !data.requestAccepted)
+          || (data.status === 'cancel_requested' && row.cloudTask.provider !== 'runninghub')) throw fail('response', '取消状态尚未确认，请核查原任务');
+        return { status: data.status, terminal, requestAccepted: data.requestAccepted, warning:
+          ['succeeded','stored','archived'].includes(data.status) ? '任务已完成，原图保留，可继续领取' : data.status === 'canceled' ? '原任务已取消，已有图片和记录保留'
+            : terminal ? '原任务已结束，已有图片和记录保留' : '已请求取消，是否停止请核查原任务；未重新生成' };
+      } finally { cancelling.delete(key); }
     },
     async retrieveOriginal(item, { chatKey = '', apiKey = '', deliver } = {}) {
       if (item?.version === 3 || item?.engine === 'cloud') return this.retrieveCloudOriginal(item.cloudRecord || item, { chatKey, apiKey, deliver });

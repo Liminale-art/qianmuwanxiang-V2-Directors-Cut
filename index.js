@@ -19658,10 +19658,10 @@ async function storyboardOpenComfyInbox(root) {
   try {
     const [view, service] = await Promise.all([featureRuntime.load('comfyInbox'), storyboardComfyRecoveryRuntime()]);
     if (!valid()) return;
-    const dispose = view.mountComfyInbox(host, { service, isCurrent: valid, receive: async row => {
+    const dispose = view.mountComfyInbox(host, { service, isCurrent: valid, receive: async (row, mode, action) => {
       if (!valid()) throw new Error('收片页面已变化，请重新打开后领取原图');
       const log = storyboardState().logs.find(item => (!row.logId || item.id === row.logId) && item.snapshot?.source === 'comfy' && item.snapshot?.imageAdmission?.attemptId === row.attemptId && item.snapshot?.imageAdmission?.namespace === row.namespace);
-      if (log && storyboardCanReceiveComfyLog(log) && !row.originalOnly) return storyboardReceiveComfyImage(log, { refresh: false, taskLocator: row.taskLocator,
+      if (!action && log && storyboardCanReceiveComfyLog(log) && !row.originalOnly) return storyboardReceiveComfyImage(log, { refresh: false, taskLocator: row.taskLocator,
         ...((row.engine==='cloud'||row.version===3)&&row.cloudRecord?{cloudRecord:row.cloudRecord}:{}) });
       const chatKey = String(getChatKey() || '');
       const apiKey = row.engine === 'cloud' || row.version === 3 ? await resolveComfyCloudRecoveryKey(row, {
@@ -19669,6 +19669,7 @@ async function storyboardOpenComfyInbox(root) {
         guard:()=>{if(!valid())throw new Error('收片页面已变化，请重新打开');},
       }) : row.baseUrl ? await storyboardResolveComfyRecoveryKey({ baseUrl: row.baseUrl, credentialId: row.credentialId }) : '';
       if (!valid()) throw new Error('收片页面已变化，请重新打开后领取原图');
+      if(action==='cancel')return service.cancelCloudOriginal(row,{apiKey,valid});
       return service.retrieveOriginal(row, { chatKey, apiKey, deliver: (job, data, archiveFiles, checkpoint, guard) =>
         storyboardDeliverGatewayResult(job, null, data, { service: true, archiveFiles, checkpoint, guard: async () => {
           await guard(); if (!valid() || String(getChatKey() || '') !== chatKey) throw new Error('收片页面已变化，请返回原页面领取');

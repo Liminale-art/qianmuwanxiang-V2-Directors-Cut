@@ -1632,12 +1632,12 @@ async function routes(options = {}) {
 
 test('installed cloud recovery endpoints advertise only implemented operations and require account identity before storage or DNS', async () => {
   const handlers = await routes({ resolveHost: () => assert.fail('recovery capabilities do not use DNS'), requestImpl: () => assert.fail('no paid work') });
-  for (const route of ['GET /image/comfy/cloud/capabilities', ...['submit', 'query', 'result', 'acknowledge', 'catalog'].map(action => `POST /image/comfy/cloud/tasks/${action}`)]) {
+  for (const route of ['GET /image/comfy/cloud/capabilities', ...['submit', 'query', 'result', 'acknowledge', 'catalog', 'cancel'].map(action => `POST /image/comfy/cloud/tasks/${action}`)]) {
     const res = response(); await handlers.get(route)({ body: {} }, res);
     assert.equal(res.statusCode, 401); assert.equal(res.headers['cache-control'], 'no-store');
   }
   const res = response(); await handlers.get('GET /image/comfy/cloud/capabilities')(account(), res);
-  assert.equal(res.body.submission, true); assert.equal(res.body.scope,'cloud-manual-text'); assert.deepEqual(res.body.submissionProviders,['comfy-cloud','runninghub']); assert.equal(res.body.cancellation, false); assert.equal(res.body.referenceUpload, false);
+  assert.equal(res.body.submission, true); assert.equal(res.body.scope,'cloud-manual-text'); assert.deepEqual(res.body.submissionProviders,['comfy-cloud','runninghub']); assert.equal(res.body.cancellation, true); assert.equal(res.body.referenceUpload, false);
   assert.equal(res.body.deploymentSubmission,true);
   assert.deepEqual(res.body.resultProviders, ['comfy-cloud', 'runninghub']); assert.equal(res.body.archiveConfirmation, true);
   assert.equal(handlers.has('POST /image/comfy/cloud/tasks/submit'), true, 'manual text generation has one guarded route; unsupported providers remain closed');

@@ -311,6 +311,51 @@ try{
     ok(`task usage stays legible and bounded in log and image detail at ${width}`,await usagePage.locator('.sd-storyboard-task-usage').evaluateAll(nodes=>nodes.length===2&&nodes.every(node=>
       node.scrollWidth<=node.clientWidth+1&&node.getBoundingClientRect().width>0&&node.textContent.includes('整次任务用量（非单张）')&&node.textContent.includes('平台金额 0')&&node.textContent.includes('第三方金额 未提供'))));
   }
+  const cancelPage=await openPage();await cancelPage.addStyleTag({content:await readFile(new URL('../style.css',import.meta.url),'utf8')});
+  await cancelPage.evaluate(async()=>{
+    const {mountComfyInbox}=await import('/qianmu-comfy-inbox-view.js');
+    const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');
+    const {imageChannelKey}=await import('/qianmu-image-channel.js');
+    document.body.innerHTML='<div id="story-director-modal" style="display:block;position:static;width:100%"><div id="cancel-inbox"></div></div>';
+    window.cancelCalls=[];window.cancelConfirmations=0;window.cancelEnabled=true;
+    const totals={count:0,imageBytes:0,metadataBytes:0,temporaryBytes:0,reservedBytes:0,tasks:2};
+    const expectedAccount=`st-user:${await imageChannelKey(ns.slice(8))}`;
+    const original={attemptId:'original',createdAt:1,status:'acknowledged',task,taskLocator:accepted.taskLocator,
+      resultAvailable:false,imageCount:0,cacheBytes:0,archiveState:null};
+    window.cancelClient=createComfyRecoveryClient({store,account:async()=>ns,confirm:async message=>{
+      if(!message.includes('消耗')||!message.includes('图片保留'))throw Error('Cancellation must explain retained originals');cancelConfirmations++;return true;
+    },fetchImpl:async(url,init)=>{
+      const body=init.body?JSON.parse(init.body):{};
+      if(url.endsWith('/capabilities'))return new Response(JSON.stringify({ok:true,version:1,accountBindingVersion:1,catalogVersion:1,expectedAccount,
+        submission:false,cancellation:cancelEnabled,referenceUpload:false,resultRetrieval:true,archiveConfirmation:true,automaticReplay:false,
+        queryProviders:['comfy-cloud','runninghub'],resultProviders:['comfy-cloud','runninghub']}));
+      if(url.endsWith('/cancel')){
+        if(body.apiKey!=='synthetic-cancel-key'||body.confirmed!==true||body.task.taskId!==task.taskId||body.channelKey!==accepted.taskLocator.channelKey)throw Error('Original cancellation mismatch');
+        cancelCalls.push({path:url,attemptId:body.attemptId});return new Response(JSON.stringify({ok:true,version:1,task,requestAccepted:true,status:'canceling',terminal:false}));
+      }
+      if(body.apiKey||!url.endsWith('/catalog'))throw Error('No other keyed request permitted');
+      return new Response(JSON.stringify({ok:true,version:1,catalogVersion:1,storageReadable:true,totals,tasks:[],originals:url.includes('/cloud/')
+        ?[original,{...original,attemptId:'collected',status:'succeeded',archiveState:'archived',imageCount:1}]:[]}));
+    }});
+    mountComfyInbox(document.querySelector('#cancel-inbox'),{service:cancelClient,receive:async(row,_mode,action)=>{
+      if(action!=='cancel')throw Error('Cancel must not collect or regenerate');
+      return cancelClient.cancelCloudOriginal(row,{apiKey:'synthetic-cancel-key'});
+    }});
+  });
+  await cancelPage.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
+  ok('cancel appears only for a known unfinished cloud original and performs no action on opening',await cancelPage.evaluate(()=>
+    document.querySelectorAll('[data-cancel]').length===1&&cancelCalls.length===0&&cancelConfirmations===0));
+  for(const width of [320,393,1100]){
+    await cancelPage.setViewportSize({width,height:900});
+    ok(`cancel and receive actions preserve the three-column inbox at ${width}`,await cancelPage.locator('.sd-comfy-inbox-rows article').evaluateAll(nodes=>
+      nodes.every(node=>node.children.length===3&&node.scrollWidth<=node.clientWidth+1&&[...node.querySelectorAll('button')].every(button=>button.getBoundingClientRect().height>=40))));
+  }
+  await cancelPage.getByRole('button',{name:'取消任务',exact:true}).click();await cancelPage.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
+  ok('one explicit click confirms and cancels only the original without declaring it stopped',await cancelPage.evaluate(()=>cancelCalls.length===1&&cancelConfirmations===1
+    &&document.querySelector('[role="status"]').textContent.includes('是否停止请核查原任务')&&document.querySelectorAll('article').length===2));
+  await cancelPage.evaluate(()=>{cancelEnabled=false;});await cancelPage.getByRole('button',{name:'刷新',exact:true}).click();await cancelPage.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
+  ok('an old backend hides cancellation while retaining original task and receipt controls',await cancelPage.evaluate(()=>!document.querySelector('[data-cancel]')
+    &&document.querySelectorAll('[data-receive]').length===2&&cancelCalls.length===1));
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({checks,external,errors},null,2));
 }finally{await context.close();await browser.close();}

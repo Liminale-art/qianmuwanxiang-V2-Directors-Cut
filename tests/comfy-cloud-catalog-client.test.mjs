@@ -18,9 +18,9 @@ const json=value=>new Response(JSON.stringify(value));
 const capability={ok:true,version:1,accountBindingVersion:1,catalogVersion:1,expectedAccount:imageServiceAccount({user:{profile:{handle:'alice',enabled:true}}}).namespace,
   submission:false,cancellation:false,referenceUpload:false,resultRetrieval:true,archiveConfirmation:true,automaticReplay:false,
   queryProviders:['comfy-cloud','runninghub'],resultProviders:['comfy-cloud']};
-function fixture({respond,capabilities}={}){
+function fixture({respond,capabilities,confirm}={}){
   let account='st-user:alice';const calls=[];
-  const client=createComfyRecoveryClient({origin:'https://st.test',account:async()=>account,
+  const client=createComfyRecoveryClient({origin:'https://st.test',account:async()=>account,confirm,
     store:{close(){},get:async()=>null,put:async()=>assert.fail('catalog and cleanup do not invent local image checkpoints')},
     locks:{request:async(_name,_options,work)=>work({})},
     fetchImpl:async(url,init)=>{const body=init.body?JSON.parse(init.body):{};calls.push({url,body,method:init.method});
@@ -28,6 +28,49 @@ function fixture({respond,capabilities}={}){
       return respond?respond(url,body):json(url.includes('/cloud/')?cloud:native);}});
   return {client,calls,switchAccount:()=>{account='st-user:bob';}};
 }
+
+test('cancel uses exact original identity and confirms once without creating or erasing delivery records',async()=>{
+  for(const provider of ['comfy-cloud','runninghub']) {
+    const original=provider==='comfy-cloud'?task:bindComfyCloudTask(bindComfyCloudProtocol('https://www.runninghub.cn','runninghub-workflow-v1'),'1234567890123456789');
+    let confirmations=0;const f=fixture({confirm:async message=>{confirmations++;assert.match(message,/消耗.*图片保留/);return true;},
+      capabilities:()=>json({...capability,cancellation:true}),respond:(url,body)=>{
+        assert.ok(url.endsWith('/cloud/tasks/cancel'));assert.deepEqual(body.task,original);assert.equal(body.apiKey,key);
+        assert.equal(body.attemptId,'original');assert.equal(body.channelKey,channelKey);assert.equal(body.confirmed,true);
+        return json({ok:true,version:1,task:original,requestAccepted:true,terminal:false,status:provider==='runninghub'?'cancel_requested':'canceling'});
+      }});
+    const selected={version:3,namespace:'st-user:alice',attemptId:'original',createdAt:1,status:'prepared',imageCount:0,files:[],
+      cloudConnection:bindComfyCloudProtocol(original.origin,original.protocol),cloudTask:original,taskLocator:{version:1,channelKey}};
+    const before=JSON.stringify(selected),result=await f.client.cancelCloudOriginal(selected,{apiKey:key});
+    assert.equal(result.terminal,false);assert.match(result.warning,/已请求取消.*核查原任务/);assert.equal(confirmations,1);
+    assert.equal(JSON.stringify(selected),before);assert.equal(f.calls.length,2);assert.ok(!JSON.stringify(result).includes(key));f.client.close();
+  }
+});
+
+test('cancel rejects stale page/account, old backend and rejected confirmation before dispatch',async()=>{
+  for(const mode of ['reject','page','account','old','duplicate']) {
+    let current=true,f,selected;let enter,release;const started=new Promise(r=>enter=r),hold=new Promise(r=>release=r);
+    f=fixture({confirm:async()=>{if(mode==='page')current=false;if(mode==='account')f.switchAccount();
+      if(mode==='duplicate'){enter();await hold;}return mode!=='reject';},capabilities:()=>json({...capability,cancellation:mode!=='old'})});
+    selected=(await f.client.cloudCatalog()).originals[0];f.calls.length=0;
+    const work=f.client.cancelCloudOriginal(selected,{apiKey:key,valid:()=>current});
+    if(mode==='reject')assert.equal((await work).cancelled,true);
+    else if(mode==='duplicate'){
+      await started;await assert.rejects(f.client.cancelCloudOriginal(selected,{apiKey:key}),/正在处理取消/);
+      current=false;release();await assert.rejects(work,/页面已变化/);
+    }else await assert.rejects(work,/页面已变化|账户已变化|尚未支持取消/);
+    assert.ok(!f.calls.some(call=>call.url.endsWith('/cancel')));f.client.close();
+  }
+});
+
+test('cancel never claims completion from mismatched or contradictory receipts and never automatically retries',async()=>{
+  for(const patch of [{task:{...task,taskId:'wrong'}},{status:'cancel_requested',terminal:false},{terminal:false},{requestAccepted:false}]) {
+    const f=fixture({confirm:async()=>true,capabilities:()=>json({...capability,cancellation:true}),respond:url=>url.endsWith('/catalog')?json(cloud)
+      :json({ok:true,version:1,task,status:'canceled',terminal:true,requestAccepted:true,...patch})});
+    const selected=(await f.client.cloudCatalog()).originals[0];f.calls.length=0;
+    await assert.rejects(f.client.cancelCloudOriginal(selected,{apiKey:key}),/原任务|取消状态/);
+    assert.equal(f.calls.filter(call=>call.url.endsWith('/cancel')).length,1);f.client.close();
+  }
+});
 test('one catalog merges local and cloud originals and carries explicit immutable cloud identity',async()=>{
   const f=fixture(),data=await f.client.catalogAll();
   assert.equal(data.storageReadable,true);assert.equal(data.originals.length,2);assert.equal(data.totals.imageBytes,20);
