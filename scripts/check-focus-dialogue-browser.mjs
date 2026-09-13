@@ -90,7 +90,11 @@ try{
   ok('list title is restored after editing',await page.locator('.sd-focus-library h3').innerText()==='自定义台词库');
   await page.evaluate(()=>library.close());await page.evaluate(()=>library.open({management:true}));
   ok('legacy original remains in data management',await page.locator('.sd-focus-library-item').count()===1);
-  await page.locator('[data-action=edit]').click();ok('legacy management is read-only playback without pre-generation',await page.locator('audio').count()===1&&await page.locator('[data-action=generate],[data-action=save]').count()===0);
+  await page.locator('[data-action=edit]').click();
+  // Editing reads the original Blob from IndexedDB before mounting playback.
+  // A click finishing is not evidence that the asynchronous editor is ready.
+  await page.locator('audio').waitFor({state:'attached'});
+  ok('legacy management is read-only playback without pre-generation',await page.locator('audio').count()===1&&await page.locator('[data-action=generate],[data-action=save]').count()===0);
   await page.evaluate(()=>library.close());
   await page.evaluate(async()=>{
     const {renderFocusClockView}=await import('/qianmu-focus-view.js');const {bindFocusClockPage}=await import('/qianmu-focus-events.js');window.currentChannel='MiniMax';window.selectedVoiceKey='v';window.render=mode=>{
