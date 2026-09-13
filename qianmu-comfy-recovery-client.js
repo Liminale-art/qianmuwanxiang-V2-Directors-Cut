@@ -3,7 +3,7 @@ import { trackClientActivity } from './qianmu-client-activity.js';
 import { prepareComfySubmission, assertComfyAccount, acknowledgeComfyImage } from './qianmu-comfy-submission.js';
 import { resolveImageAccountNamespace } from './qianmu-image-admission.js';
 import { imageChannelKey } from './qianmu-image-channel.js';
-import { createComfyDeliveryStore, normalizeComfyDelivery } from './qianmu-comfy-delivery-store.js';
+import { createComfyDeliveryStore, normalizeComfyDelivery, assertComfyDeliveryUpdate } from './qianmu-comfy-delivery-store.js';
 import { bindComfyCloudTask, bindComfyCloudProtocol } from './qianmu-comfy-cloud-protocol.js';
 
 const fail = (code, message) => Object.assign(new Error(message), { code: `comfy_delivery_${code}`, submissionState: 'accepted', retryable: false });
@@ -145,6 +145,51 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     return acknowledge(job, row);
   }
   const client = {
+    async prepareCloud(job, cloudConnection) {
+      job = identity(job);
+      try {
+        if (job.originalOnly) throw fail('identity', '领取原图不能转为新提交');
+        const expected = normalizeComfyDelivery({ ...fresh(job), version: 3, cloudConnection, originalOnly: false }, origin);
+        const binding = await prepareComfySubmission(job, { account });
+        return await locked(job, async () => {
+          const raw = await store.get(expected.namespace,expected.attemptId); await guard(job);
+          if (raw) {
+            const row = normalizeComfyDelivery(raw,origin);
+            if (row.version !== 3 || row.originalOnly || ['namespace','attemptId','baseUrl','credentialId','chatKey','automatic','logId'].some(key => row[key] !== expected[key])
+              || JSON.stringify(row.cloudConnection) !== JSON.stringify(expected.cloudConnection)) throw fail('identity', '原准备记录与当前云任务不匹配');
+            // An existing prepared row may already have been dispatched. It is
+            // not permission to POST again merely because its reply was lost.
+            return { binding, record: row, created: false };
+          }
+          const record = await save(job,expected); return { binding, record, created: true };
+        });
+      } catch (error) { error.submissionState = 'not_submitted'; throw error; }
+    },
+    async bindCloudAcceptance(prepared, packet) {
+      const captured = normalizeComfyDelivery(prepared,origin);
+      let task, target;
+      try {
+        if (captured.version !== 3 || captured.originalOnly || packet?.ok !== true || packet.version !== 1 || packet.status !== 'accepted'
+          || packet.locator?.attemptId !== captured.attemptId) throw Error('invalid acceptance');
+        task = bindComfyCloudTask(packet.task,packet.task?.taskId,packet.task?.links); target = locator(packet.locator);
+        normalizeComfyDelivery({ ...captured, cloudTask: task, taskLocator: target },origin);
+      } catch (_) { throw Object.assign(fail('acceptance','云任务受理记录尚未确认，请核查原任务，勿重复提交'),{submissionState:'unknown'}); }
+      const job = jobForRow(captured);
+      try { return await locked(job,async () => {
+        const raw = await store.get(captured.namespace,captured.attemptId); await guard(job);
+        if (!raw) throw fail('acceptance','本机准备记录已缺失，请从原任务目录核查；未重新提交');
+        const row = normalizeComfyDelivery(raw,origin);
+        if (row.version !== 3 || ['namespace','attemptId','baseUrl','credentialId','chatKey','automatic','logId','createdAt'].some(key => row[key] !== captured[key])
+          || JSON.stringify(row.cloudConnection) !== JSON.stringify(captured.cloudConnection)) throw fail('identity','云任务准备身份已变化，未改写原记录');
+        const next = normalizeComfyDelivery({ ...row, cloudTask: task, taskLocator: target },origin);
+        assertComfyDeliveryUpdate(row,next);
+        if (row.cloudTask) return row;
+        return save(job,next);
+      },{wait:true}); } catch (cause) {
+        const error = /^(?:comfy_|image_)/.test(cause?.code || '') ? cause : fail('acceptance','平台已受理，本机记录未保存；请从原任务目录核查，勿重复提交');
+        error.submissionState = 'accepted'; throw error;
+      }
+    },
     async cloudCapabilities({ namespace } = {}) {
       const current = await scope(namespace);
       const data = await request(current.job, 'capabilities', undefined, 16384, CLOUD_BASE.replace(/\/tasks$/, ''));

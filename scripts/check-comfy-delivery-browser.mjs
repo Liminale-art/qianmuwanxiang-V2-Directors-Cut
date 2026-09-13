@@ -157,6 +157,15 @@ try{
   await ui.evaluate(()=>{capabilityMode='old';});await ui.getByRole('button',{name:'刷新',exact:true}).click();await ui.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
   ok('old backend shows an update action message without disabling native receipt',await ui.locator('#inbox').evaluate(node=>node.querySelector('[role="alert"]').textContent.includes('同步更新后端并重启 ST')
     &&node.querySelectorAll('article').length===1&&!node.querySelector('article button').disabled));
+  ok('real IndexedDB preparation and duplicate acceptance preserve one original identity',await ui.evaluate(async()=>{
+    const job={id:'new-cloud',source:'comfy',chatKey:'chat',logId:'log',connection:{baseUrl:connection.origin,credentialId:'synthetic'},
+      imageAdmission:{version:1,namespace:ns,attemptId:'new-cloud'}};
+    const first=await uiClient.prepareCloud(job,connection),repeat=await uiClient.prepareCloud(job,connection);
+    if(!first.created||repeat.created||first.record.cloudTask!==null)return false;
+    const packet={ok:true,version:1,status:'accepted',task,locator:{...accepted.taskLocator,attemptId:'new-cloud'}};
+    const bound=await uiClient.bindCloudAcceptance(first.record,packet),again=await uiClient.bindCloudAcceptance(first.record,packet);
+    return bound.cloudTask.taskId===task.taskId&&JSON.stringify(bound)===JSON.stringify(again)&&(await store.get(ns,'new-cloud')).taskLocator.channelKey===accepted.taskLocator.channelKey;
+  }));
   await ui.evaluate(()=>{disposeInbox();uiClient.close();});
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({checks,external,errors},null,2));
