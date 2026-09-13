@@ -77,10 +77,11 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
         if (!row || signature(row) !== original || !['submitting', 'uncertain', 'acknowledged', 'succeeded'].includes(row.status)) throw fail('query_changed', '原云任务已变化，未确认暂存');
         if (row.cloudDelivery) {
           if (Object.keys(summary).some(key => row.cloudDelivery[key] !== summary[key])) throw fail('delivery_conflict', '原任务已关联其他暂存凭证，未覆盖');
+          if (JSON.stringify(row.cloudDelivery.usage) !== JSON.stringify(cloud.usage)) throw fail('delivery_conflict','原任务用量已变化，未覆盖');
         } else {
           const at = Math.max(now(), row.updatedAt);
           row.status = 'succeeded'; row.updatedAt = at;
-          row.cloudDelivery = { schema: 'qianmu.comfy-cloud-delivery.v1', state: 'stored', ...summary, storedAt: at };
+          row.cloudDelivery = { schema: 'qianmu.comfy-cloud-delivery.v1', state: 'stored', ...summary, storedAt: at, ...(cloud.usage ? {usage:cloud.usage} : {}) };
         }
         const normalized = normalizeComfyCloudChannel(state, channelKey);
         return { state: normalized, result: normalized.entries.find(item => item.namespace === identity.namespace && item.attemptId === identity.attemptId).cloudDelivery };

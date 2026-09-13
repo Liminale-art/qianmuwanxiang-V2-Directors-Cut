@@ -28,6 +28,14 @@ function rhFixture() {
   return value;
 }
 
+test('RH usage is optional, task-level and cannot contaminate old Comfy staging',()=>{
+  const usage={consumeCoins:'1.25',consumeMoney:null,thirdPartyConsumeMoney:null,taskCostTime:'35'};
+  const legacy=rhFixture();assert.equal(Object.hasOwn(normalize(legacy,owner),'usage'),false);
+  assert.deepEqual(normalize({...legacy,usage},owner).usage,usage);
+  rejected(()=>normalize({...fixture(),usage},owner));
+  for(const invalid of [null,{...usage,apiKey:'secret'},{...usage,consumeCoins:'invalid'}])rejected(()=>normalize({...legacy,usage:invalid},owner));
+});
+
 test('RH stages use exact original task/node/order keys and explicitly unknown upstream integrity', () => {
   const value = rhFixture(), result = normalize(value, owner);
   assert.equal(result.schema, RUNNINGHUB_STAGE_SCHEMA);

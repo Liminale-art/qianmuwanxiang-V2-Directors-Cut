@@ -357,7 +357,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
       const cloudKeys = new Set((cloud?.originals || []).map(row => JSON.stringify([row.taskLocator.channelKey,row.attemptId])));
       for (const row of cloud?.tasks || []) {
         const key = JSON.stringify([row.taskLocator.channelKey,row.attemptId]);
-        if (!cloudKeys.has(key) && (row.canReceiveOriginal || cloud.storageReadable === false && row.canRetryCleanup)) { originals.push(row); cloudKeys.add(key); }
+        if (!cloudKeys.has(key) && (row.canReceiveOriginal || row.usage || cloud.storageReadable === false && row.canRetryCleanup)) { originals.push(row); cloudKeys.add(key); }
       }
       const storageReadable = Boolean(native && cloud && cloud.storageReadable);
       const total = name => storageReadable && [native,cloud].every(item => Number.isSafeInteger(item.totals?.[name]) && item.totals[name] >= 0)

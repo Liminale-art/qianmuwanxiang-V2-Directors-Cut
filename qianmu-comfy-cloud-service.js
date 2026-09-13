@@ -102,10 +102,11 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
         check();
         const listed = await store.inspectAccount(account.namespace, { cursor: value.cursor ?? null, limit: value.limit ?? 40, select: inventory?.entries || [] }); check();
         const matches = new Map(listed.selected.map(row => [keyOf(row), row]));
+        const cachedKeys = inventory ? new Set(inventory.entries.map(keyOf)) : null;
         const view = row => ({ ...imageServiceTaskView(row), taskLocator: { version: 1, channelKey: row.channelKey },
           task: row.cloudReceipt?.task || null, archiveState: row.cloudDelivery?.state || null, live: live(row),
-          ...(row.cloudDelivery ? { cacheReceipt: row.cloudDelivery.cacheReceipt } : {}),
-          canRetryCleanup: row.cloudDelivery?.state === 'archived' && !live(row) });
+          ...(row.cloudDelivery ? { cacheReceipt: row.cloudDelivery.cacheReceipt, ...(row.cloudDelivery.usage ? {usage:row.cloudDelivery.usage} : {}) } : {}),
+          canRetryCleanup: row.cloudDelivery?.state === 'archived' && !live(row) && (!cachedKeys || cachedKeys.has(keyOf(row))) });
         const originals = (inventory?.entries || []).map(meta => {
           const row = matches.get(keyOf(meta)), matched = row && row.fence === meta.fence && row.requestDigest === meta.requestDigest;
           return { ...(matched ? view(row) : { attemptId: meta.attemptId, status: 'unverified', taskLocator: { version: 1, channelKey: meta.channelKey } }),

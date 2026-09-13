@@ -67,7 +67,8 @@ export async function downloadRunningHubJob(req, { task: rawTask, channelKey, at
       proofs.push({ outputKey, hash: null, integrity: verified.integrity }); images.push(Object.freeze({ bytes: verified.bytes }));
     }
     stage = 'contract'; await verify();
-    const cloud = normalizeComfyCloudStage({ schema: RUNNINGHUB_STAGE_SCHEMA, identity: grant.identity, receipt: grant.receipt, selection, images: proofs }, grant.identity);
+    const cloud = normalizeComfyCloudStage({ schema: RUNNINGHUB_STAGE_SCHEMA, identity: grant.identity, receipt: grant.receipt, selection, images: proofs,
+      ...(query.usage ? {usage:query.usage} : {}) }, grant.identity);
     check(); return Object.freeze({ status: 'integrity_checked', task, grant, result: Object.freeze({ ok: true, provider: task.provider,
       model: cloud.receipt.stillOutput.model, upstreamId: task.taskId, cloud, images: Object.freeze(images) }) });
   };

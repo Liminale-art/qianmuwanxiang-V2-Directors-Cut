@@ -344,6 +344,7 @@ function rhDownloadReply(f, call, count = 2) {
   if (call.url.hostname === 'files.test') return { body: png, headers: { 'content-type': 'image/png' } };
   assert.equal(JSON.parse(call.body).taskId, f.task.taskId);
   if (call.url.pathname === '/openapi/v2/query') return { body: { taskId: f.task.taskId, status: 'SUCCESS', errorCode: '',
+    ...(f.usage?{usage:f.usage}:{}),
     results: Array.from({ length: count }, (_, index) => ({ url: rhFileUrl(index), outputType: 'png' })) } };
   assert.equal(call.url.pathname, '/task/openapi/outputs');
   return { body: { code: 0, data: Array.from({ length: count }, (_, index) => ({ fileUrl: rhFileUrl(index), fileType: 'png', nodeId: 'save' })).reverse() } };
@@ -1578,10 +1579,11 @@ test('installed cloud routes deliver saved originals and complete ACK without le
 
 test('installed RH route submits a fixed graph once with its explicit tier and collects the same original before keyless ACK',async t=>{
   const f=await cloudSubmissionFixture(t,rhBinding),handlers=new Map(),calls=[],task=bindComfyCloudTask(rhBinding,'1904152026220003329');
+  const usage={consumeCoins:'1.25000',consumeMoney:'0',thirdPartyConsumeMoney:null,taskCostTime:'35'};
   await init({get:(key,handler)=>handlers.set(`GET ${key}`,handler),post:(key,handler)=>handlers.set(`POST ${key}`,handler)},{
     dataRoot:f.root,comfyCloudTaskOptions:{store:f.store},
     comfyTransportOptions:{resolveHost:publicDns,requestImpl:mockNodeRequest(calls,call=>call.url.pathname==='/task/openapi/create'
-      ? {body:acceptedCloudBody(rhBinding,task.taskId)}:rhDownloadReply({task},call,1))},
+      ? {body:acceptedCloudBody(rhBinding,task.taskId)}:rhDownloadReply({task,usage},call,1))},
   });
   const body={...f.input,version:1,request:{...f.input.request,runninghub:{instanceType:'plus'}}};
   const accepted=response();await handlers.get('POST /image/comfy/cloud/tasks/submit')({...f.req,body},accepted);
@@ -1594,9 +1596,15 @@ test('installed RH route submits a fixed graph once with its explicit tier and c
   const result=response();await handlers.get('POST /image/comfy/cloud/tasks/result')({...f.req,body:original},result);
   assert.equal(result.body.status,'ready');assert.deepEqual(Buffer.from(result.body.images[0].data,'base64'),png);
   assert.equal(result.body.images[0].id,`rh:${task.taskId}:0:save`);
+  assert.deepEqual(result.body.delivery.usage,usage);
+  const cached=response();await handlers.get('POST /image/comfy/cloud/tasks/result')({...f.req,body:original},cached);
+  assert.deepEqual(cached.body.delivery.usage,usage);
   const ack=response();await handlers.get('POST /image/comfy/cloud/tasks/acknowledge')({...f.req,
     body:{...original,apiKey:undefined,archived:true,receipt:result.body.receipt}},ack);
   assert.equal(ack.body.cleanup,'complete');
+  const catalog=response();await handlers.get('POST /image/comfy/cloud/tasks/catalog')({...f.req,body:{version:1,expectedAccount:body.expectedAccount}},catalog);
+  assert.deepEqual(catalog.body.tasks[0].usage,usage,'reported task usage survives cache deletion without a second billed read');
+  assert.equal(catalog.body.tasks[0].canRetryCleanup,false,'retained usage is not another temporary file to clean');
   assert.deepEqual(calls.map(call=>call.url.pathname),['/task/openapi/create','/openapi/v2/query','/task/openapi/outputs','/0.png']);
   assert.doesNotMatch(JSON.stringify(calls.at(-1).options.headers),/Bearer|test-only-secret|Cookie/i);
   assert.doesNotMatch(JSON.stringify(await f.store.inspectChannel(f.key)),/test-only-secret|signature/);

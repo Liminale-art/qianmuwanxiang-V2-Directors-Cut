@@ -2,6 +2,7 @@
 // from the original ledger/query, never a browser claim. This grants no IO.
 import { normalizeComfyCloudReceipt } from './qianmu-comfy-cloud-receipt.js';
 import { comfyCloudAssetId } from './qianmu-comfy-cloud-protocol.js';
+import { normalizeRunningHubUsage } from './qianmu-runninghub-usage.js';
 
 export const COMFY_CLOUD_STAGE_SCHEMA = 'qianmu.comfy-cloud-stage.v1';
 export const RUNNINGHUB_STAGE_SCHEMA = 'qianmu.runninghub-stage.v1';
@@ -39,9 +40,10 @@ function array(value) {
 
 export function normalizeComfyCloudStage(value, expectedIdentity) {
   try {
-    fields(value, ['schema', 'identity', 'receipt', 'selection', 'images']);
+    fields(value, ['schema', 'identity', 'receipt', 'selection', 'images', ...(Object.hasOwn(value ?? {},'usage') ? ['usage'] : [])]);
     const rh = value.schema === RUNNINGHUB_STAGE_SCHEMA;
     if (!rh && value.schema !== COMFY_CLOUD_STAGE_SCHEMA) invalid();
+    const usage = Object.hasOwn(value,'usage') ? (rh ? normalizeRunningHubUsage(value.usage) : invalid()) : undefined;
     const owner = identity(value.identity), expected = identity(expectedIdentity), receipt = normalizeComfyCloudReceipt(value.receipt);
     if (JSON.stringify(owner) !== JSON.stringify(expected) || receipt.requestDigest !== owner.requestDigest || receipt.task.provider !== (rh ? 'runninghub' : 'comfy-cloud')) invalid();
     const { execution, previewNodeIds } = receipt.stillOutput;
@@ -75,7 +77,7 @@ export function normalizeComfyCloudStage(value, expectedIdentity) {
       images.push(Object.freeze({ [key]: outputId, hash: image.hash, integrity: Object.freeze({ version: 1, sizeBytes: proof.sizeBytes,
         sha256: proof.sha256, blake3: proof.blake3, platformHash: proof.platformHash, platformVerified: proof.platformVerified }) }));
     }
-    const result = { schema: value.schema, identity: owner, receipt, selection: Object.freeze(selection), images: Object.freeze(images) };
+    const result = { schema: value.schema, identity: owner, receipt, selection: Object.freeze(selection), images: Object.freeze(images), ...(usage ? {usage} : {}) };
     if (new TextEncoder().encode(JSON.stringify(result)).byteLength > 16 * 1024) invalid();
     return Object.freeze(result);
   } catch (_) { invalid(); }

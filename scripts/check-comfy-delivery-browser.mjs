@@ -279,6 +279,27 @@ try{
   ok('RH new task reopens with exact original identity and no reusable payload or credential',await rhNewReopened.evaluate(async()=>{
     const row=await store.get(ns,'rh-new');return row.cloudTask.taskId==='1904152026220003330'&&!/synthetic-key|"instanceType":|"workflow":/.test(JSON.stringify(row));
   }));
+  const usagePage=await openPage();await usagePage.addStyleTag({content:await readFile(new URL('../style.css',import.meta.url),'utf8')});
+  await usagePage.evaluate(async()=>{
+    const {mountComfyInbox}=await import('/qianmu-comfy-inbox-view.js');
+    const {bindComfyCloudProtocol,bindComfyCloudTask}=await import('/qianmu-comfy-cloud-protocol.js');
+    document.body.innerHTML='<div id="story-director-modal" style="position:static;width:100%;display:block"><div id="usage-host"></div></div>';
+    const task=bindComfyCloudTask(bindComfyCloudProtocol('https://www.runninghub.cn','runninghub-workflow-v1'),'1904152026220003330');
+    const row={attemptId:'rh-usage',task,engine:'cloud',archiveState:'archived',createdAt:1,canRetryCleanup:false,
+      usage:{consumeCoins:'1.2500',consumeMoney:'0',thirdPartyConsumeMoney:null,taskCostTime:'35'}};
+    mountComfyInbox(document.querySelector('#usage-host'),{service:{list:async()=>({namespace:ns,rows:[],bytes:0}),
+      catalogAll:async()=>({namespace:ns,originals:[row,{...row,attemptId:'rh-unknown',usage:null}],totals:{imageBytes:0,metadataBytes:0,temporaryBytes:0,reservedBytes:0}})}});
+  });
+  await usagePage.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
+  for(const width of [320,393,1100]){
+    await usagePage.setViewportSize({width,height:900});
+    ok(`reported RH decimals and missing values fit the original inbox grid at ${width}`,await usagePage.locator('.sd-comfy-inbox-rows').evaluate(node=>{
+      const [first,second]=node.querySelectorAll('article'),usage=first.querySelector('.sd-comfy-inbox-usage');
+      return first.children.length===3&&usage.parentElement.tagName==='DIV'&&usage.textContent.includes('RH币 1.2500')
+        &&usage.textContent.includes('第三方金额 未提供')&&second.textContent.includes('平台用量未提供')
+        &&first.scrollWidth<=first.clientWidth+1&&!/[￥$]/.test(usage.textContent);
+    }));
+  }
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({checks,external,errors},null,2));
 }finally{await context.close();await browser.close();}

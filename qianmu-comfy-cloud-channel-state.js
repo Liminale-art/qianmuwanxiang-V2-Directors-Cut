@@ -2,6 +2,7 @@
 // Reuse local row identity/time checks, not the native queue's completion semantics.
 import { normalizeImageServiceChannel } from './qianmu-image-service-queue.js';
 import { normalizeComfyCloudReceipt, normalizeComfyCloudIntent, assertComfyCloudReceiptForIntent } from './qianmu-comfy-cloud-receipt.js';
+import { normalizeRunningHubUsage } from './qianmu-runninghub-usage.js';
 
 export const COMFY_CLOUD_CHANNEL_SCHEMA = 'qianmu.comfy-cloud-channel.v1';
 const keys = ['namespace', 'attemptId', 'requestDigest', 'ownerId', 'fence', 'status', 'automatic', 'createdAt', 'updatedAt', 'upstreamId', 'cloudReceipt', 'cloudIntent', 'cloudDelivery'];
@@ -15,7 +16,7 @@ function fields(value, allowed) {
 }
 function delivery(value, row) {
   const required = ['schema', 'state', 'cacheReceipt', 'bytes', 'imageCount', 'storedAt'];
-  fields(value, [...required, 'archivedAt']);
+  fields(value, [...required, 'archivedAt', 'usage']);
   if (required.some(name => !Object.hasOwn(value, name))) fail();
   if (value.schema !== 'qianmu.comfy-cloud-delivery.v1' || !['stored', 'archived'].includes(value.state)
     || typeof value.cacheReceipt !== 'string' || !/^[a-f0-9]{64}$/.test(value.cacheReceipt)
@@ -29,8 +30,9 @@ function delivery(value, row) {
   if (value.state === 'archived') {
     if (!Object.hasOwn(value, 'archivedAt') || !Number.isSafeInteger(value.archivedAt) || value.archivedAt < value.storedAt || value.archivedAt > row.updatedAt) fail();
   } else if (Object.hasOwn(value, 'archivedAt')) fail();
+  const usage = Object.hasOwn(value,'usage') ? (row.cloudReceipt.task.provider === 'runninghub' ? normalizeRunningHubUsage(value.usage) : fail()) : undefined;
   return Object.freeze({ schema: value.schema, state: value.state, cacheReceipt: value.cacheReceipt, bytes: value.bytes,
-    imageCount: value.imageCount, storedAt: value.storedAt, ...(value.state === 'archived' ? { archivedAt: value.archivedAt } : {}) });
+    imageCount: value.imageCount, storedAt: value.storedAt, ...(value.state === 'archived' ? { archivedAt: value.archivedAt } : {}), ...(usage ? {usage} : {}) });
 }
 export function normalizeComfyCloudChannel(value, channelKey) {
   try {

@@ -28,6 +28,7 @@
     "qianmu-comfy-cloud-results.js",
     "qianmu-runninghub-results.js",
     "qianmu-runninghub-download.js",
+    "qianmu-runninghub-usage.js",
     "qianmu-comfy-cloud-stage-contract.js",
     "qianmu-comfy-cloud-asset.js",
     "qianmu-comfy-cloud-receipt.js",

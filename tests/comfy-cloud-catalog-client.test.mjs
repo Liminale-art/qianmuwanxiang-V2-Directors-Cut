@@ -50,6 +50,15 @@ test('RH original actions follow advertised backend retrieval support without op
     assert.ok(f.calls.every(call => /\/(catalog|capabilities)$/.test(call.url))); f.client.close();
   }
 });
+test('reported RH usage remains visible after cache cleanup without querying the platform or implying images still occupy space',async()=>{
+  const task=bindComfyCloudTask(bindComfyCloudProtocol('https://www.runninghub.cn','runninghub-workflow-v1'),'1904152026220003329');
+  const usage={consumeCoins:'1.2500',consumeMoney:null,thirdPartyConsumeMoney:null,taskCostTime:'35'};
+  const f=fixture({respond:url=>json(url.includes('/cloud/')?{...cloud,originals:[],tasks:[{...row,task,usage,archiveState:'archived',resultAvailable:false,canRetryCleanup:false}]}:native)});
+  const data=await f.client.catalogAll(),item=data.originals.find(row=>row.engine==='cloud');
+  assert.deepEqual(item.usage,usage);assert.equal(item.canReceiveOriginal,false);assert.equal(item.resultAvailable,false);
+  assert.ok(f.calls.every(call=>/\/(?:capabilities|catalog)$/.test(call.url)));f.client.close();
+});
+
 test('partial catalog and unreadable cache retain known originals without inventing zero usage',async()=>{
   for(const mode of ['missing-cloud','missing-native','unreadable']){
     const f=fixture({respond:(url)=>{
