@@ -11,6 +11,23 @@ const request=(overrides={})=>({type:'reserve',expectedRevision:0,lock,attemptId
 const reserve=()=>change(null,scope,request(),100);
 const next=(row,type,receipt,extra={})=>change(row,scope,{type,receipt,...extra},101).row;
 
+test('confirmed original removes only its submitting holder and retains both style and unrelated pending shots',()=>{
+  const a=reserve(),b=change(a.row,scope,request({expectedRevision:1,attemptId:'other',token:'other'}),101);
+  const row=next(b.row,'begin',a.receipt),done=change(row,scope,{type:'confirm_result',attemptId:a.receipt.attemptId,lock,expectedRevision:row.revision},102);
+  assert.deepEqual(done.row.holders.map(h=>h.attemptId),['other']);assert.deepEqual(done.row.lock,lock);assert.equal(done.row.established,true);
+  const again=change(done.row,scope,{type:'confirm_result',attemptId:a.receipt.attemptId,lock,expectedRevision:done.row.revision},103);
+  assert.equal(again.unchanged,true);assert.deepEqual(again.row,done.row);
+});
+test('confirmation cannot complete reserved work, a different route or a stale revision, or recreate a cleared scene',()=>{
+  const a=reserve(),action={type:'confirm_result',attemptId:a.receipt.attemptId,lock,expectedRevision:a.row.revision};
+  assert.throws(()=>change(a.row,scope,action),/不匹配/);
+  const row=next(a.row,'settle',a.receipt,{outcome:'unknown'});
+  assert.throws(()=>change(row,scope,action),/变化/);
+  assert.throws(()=>change(row,scope,{...action,expectedRevision:row.revision,lock:{...lock,candidateId:'different'}}),/不匹配/);
+  const done=change(row,scope,{...action,expectedRevision:row.revision});assert.equal(done.row.holders.length,0);assert.equal(done.row.established,true);
+  const empty=change(null,scope,{...action,expectedRevision:0});assert.equal(empty.unchanged,true);assert.equal(empty.row.lock,null);assert.equal(empty.row.revision,0);
+});
+
 test('first reservation pins the exact pool/route with metadata only and leaves original inputs unchanged',()=>{
   const input=request(),before=JSON.stringify(input),result=change(null,scope,input,100);
   assert.equal(result.row.revision,1);assert.equal(result.row.established,false);assert.deepEqual(result.row.lock,lock);

@@ -101,6 +101,11 @@ export function normalizeComfySceneReceipt(value){
 }
 export function captureComfySceneAction(action,scope){
   scope=comfySceneScope(scope);
+  if(action?.type==='confirm_result'){
+    if(!integer(action.expectedRevision))fail('revision','续场版本无效');
+    const lock=normalizeComfySceneLock(action.lock,scope.namespace);if(!same(lock.scope,scope))fail('scope','归档风格不属于本场景');
+    return {type:'confirm_result',lock,expectedRevision:action.expectedRevision,attemptId:text(action.attemptId,'原任务')};
+  }
   if(action?.type==='reserve'){
     if(!integer(action.expectedRevision))fail('revision','续场版本无效');
     const lock=normalizeComfySceneLock(action.lock,scope.namespace);if(!same(lock.scope,scope))fail('scope','所选工作流不属于本场景');
@@ -131,6 +136,13 @@ export function inspectComfySceneRecord(value,scope,at=Date.now()){
 export function changeComfySceneRecord(value,scope,action,at=Date.now()){
   const row=normalizeComfySceneRecord(value,scope);action=captureComfySceneAction(action,scope);time(at);
   const changed=()=>{if(row.revision===Number.MAX_SAFE_INTEGER)fail('revision','续场版本已满，请整理记录');row.revision++;row.updatedAt=at;return {row};};
+  if(action.type==='confirm_result'){
+    if(row.revision!==action.expectedRevision)fail('conflict','归档确认期间续场已变化，请重新核对');
+    const holder=row.holders.find(item=>item.attemptId===action.attemptId);
+    if(!holder)return {row,unchanged:true}; // Already settled/cleared: never recreate an old lock.
+    if(!same(row.lock,action.lock)||holder.status==='reserved')fail('receipt','原图与在途续场记录不匹配');
+    row.holders=row.holders.filter(item=>item!==holder);row.established=true;return changed();
+  }
   if(action.type==='reserve'){
     const lock=normalizeComfySceneLock(action.lock,row.scope.namespace);
     if(!same(lock.scope,row.scope))fail('scope','所选工作流不属于本场景');

@@ -47,7 +47,7 @@ export function createComfySceneLockStore({indexedDB=globalThis.indexedDB,keyRan
       try{work(tx,value=>{output=value;},abort);}catch(cause){abort(cause);}
     });
   }
-  async function operate(rawScope,action=null,includeOwners=false){
+  async function operate(rawScope,action=null,includeOwners=false,valid=()=>true){
     const scope=comfySceneScope(rawScope),key=comfySceneScopeKey(scope),captured=action?captureComfySceneAction(action,scope):null;
     const expectedGeneration=action?.expectedGeneration??0;
     if(!Number.isSafeInteger(expectedGeneration)||expectedGeneration<0)throw problem();
@@ -63,11 +63,13 @@ export function createComfySceneLockStore({indexedDB=globalThis.indexedDB,keyRan
           const readMeta=meta.get(scope.namespace);
           readMeta.onsuccess=()=>{
             try{
+              if(!valid())throw closedError();
               const before=usage(readMeta.result);
               if(!captured){output({...inspectComfySceneRecord(previous,scope,now()),generation:before.generation,
                 ...(includeOwners?{owners:[...new Set(normalizeComfySceneRecord(previous,scope).holders.filter(holder=>holder.status!=='uncertain').map(holder=>holder.ownerId))]}:{})});return;}
-              if(['reserve','unlock','orphan'].includes(captured.type)&&expectedGeneration!==before.generation)throw comfySceneLockError('conflict','续场记录已被清理，请重新准备');
+              if(['reserve','unlock','orphan','confirm_result'].includes(captured.type)&&expectedGeneration!==before.generation)throw comfySceneLockError('conflict','续场记录已被清理，请重新准备');
               const result=changeComfySceneRecord(previous,scope,captured,now()),size=bytes(result.row);
+              if(result.unchanged){output({view:{...inspectComfySceneRecord(previous,scope,now()),generation:before.generation}});return;}
               if(size>quota.rowBytes)throw comfySceneLockError('capacity','本场景续场记录过大，请整理任务');
               const next={count:before.count+(value?0:1),bytes:before.bytes-(value?.bytes||0)+size,generation:before.generation};
               if(value&&(!before.count||before.bytes<value.bytes))throw problem();
@@ -78,7 +80,7 @@ export function createComfySceneLockStore({indexedDB=globalThis.indexedDB,keyRan
           };
         }catch(cause){abort(cause);}
       };
-    });
+    },valid);
   }
   async function clearScope(namespace,chatKey,{expectedGeneration=0,valid=()=>true}={}){
     namespace=assertComfyRouteNamespace(namespace);
@@ -116,6 +118,7 @@ export function createComfySceneLockStore({indexedDB=globalThis.indexedDB,keyRan
     reserve(scope,request){return operate(scope,{...copy(request),type:'reserve'});},
     begin(receipt){const captured=normalizeComfySceneReceipt(receipt);return operate(captured.scope,{type:'begin',receipt:captured});},
     settle(receipt,outcome){const captured=normalizeComfySceneReceipt(receipt);return operate(captured.scope,{type:'settle',receipt:captured,outcome});},
+    confirmResult:(scope,request,{valid=()=>true}={})=>operate(scope,{...copy(request),type:'confirm_result'},false,valid),
     unlock(scope,request){return operate(scope,{...copy(request),type:'unlock'});},
     async linkStyle(sourceScope,targetScope,request){
       const captured=captureComfySceneStyleLink(sourceScope,targetScope,request),namespace=captured.targetScope.namespace;

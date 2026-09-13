@@ -5,6 +5,7 @@ import {comfyCandidateExecutionKey,COMFY_SELECTION_SCHEMA} from './qianmu-comfy-
 import {resolveStoryboardPromptRendering} from './qianmu-prompt-formats.js';
 import {assertComfyRouteNamespace,normalizeComfySceneOrigin} from './qianmu-comfy-route-contract.js';
 import {hasFreshComfyExecution,COMFY_FRESH_EXECUTION_POLICY} from './qianmu-comfy-new-execution.js';
+import {readComfySceneArchiveProof} from './qianmu-comfy-scene-result.js';
 export {createComfyBatchSceneScopes,createComfyDraftSceneScopes} from './qianmu-comfy-scene-lock.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
@@ -51,7 +52,7 @@ export function createComfySceneCoordinator({resolveNamespace,store=createComfyS
     if(closed||!valid())fail('closed','续场准备已结束');
     if(namespace!==await resolveNamespace()||closed||!valid())fail('account','账户或本镜配置已变化，未继续提交');
   };
-  const claimFor=job=>{const claim=claims.get(job);if(!claim)fail('receipt','本镜续场预留已失效');return claim;};
+  const claimFor=job=>{const claim=claims.get(job);if(!claim||claim.archiveConfirmed)fail('receipt','本镜续场预留已失效');return claim;};
   return {
     createBatch({prepared,probe,guard:inputGuard=async()=>{}}){
       const freshComfy=hasFreshComfyExecution(prepared);
@@ -144,12 +145,27 @@ export function createComfySceneCoordinator({resolveNamespace,store=createComfyS
     },
     async settle(job,outcome){
       const claim=claims.get(job);if(!claim)return;
+      if(claim.archiveConfirmed){claims.delete(job);return;}
       // These are this runtime's own non-transferable claims, not a new account operation.
       // Finishing local bookkeeping must also work after an account switch (as close() does).
       if(closed)return;
       if(claim.receipt){const result=await store.settle(claim.receipt,outcome);claim.observed.lockRevision=result.view.lockRevision;claim.observed.generation=result.view.generation;}
       if(outcome!=='accepted')live.delete(claim);
       if(!['accepted','unknown'].includes(outcome))claims.delete(job);
+    },
+    async confirmArchived(proof,job,{valid=()=>true}={}){
+      const identity=()=>JSON.stringify([job.id,job.source,job.originalOnly,job.imageAdmission,job.connection,job.comfySceneOrigin]),captured=identity();
+      const current=()=>valid()&&captured===identity()&&!closed;
+      const evidence=await readComfySceneArchiveProof(proof,job);await guard(evidence.namespace,current);
+      const before=await store.inspect(evidence.scope);await guard(evidence.namespace,current);
+      await readComfySceneArchiveProof(proof,job);await guard(evidence.namespace,current);
+      const result=await store.confirmResult(evidence.scope,{attemptId:evidence.attemptId,lock:evidence.lock,
+        expectedRevision:before.revision,expectedGeneration:before.generation},{valid:current});
+      // The same page may still hold an accepted original while its recovery UI archives it.
+      // Do not let that old waiter later restore an uncertain holder or submit again.
+      for(const claim of live)if(claim.namespace===evidence.namespace&&claim.receipt?.attemptId===evidence.attemptId
+        &&same(claim.proposed,evidence.lock)){claim.archiveConfirmed=true;live.delete(claim);}
+      await guard(evidence.namespace,current);return result.view;
     },
     async inspect(scope){scope=comfySceneScope(scope);await guard(scope.namespace);const view=await store.inspect(scope);await guard(scope.namespace);return view;},
     async linkStyle(sourceScope,targetScope,request,{valid=()=>true}={}){

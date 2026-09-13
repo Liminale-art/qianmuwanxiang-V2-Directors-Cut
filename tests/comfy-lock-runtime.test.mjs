@@ -6,6 +6,7 @@ import * as auto from '../qianmu-comfy-auto-runtime.js';
 import {createComfySceneCoordinator} from '../qianmu-comfy-lock-runtime.js';
 import {executeComfyCloudJob} from '../qianmu-comfy-cloud-execution.js';
 import {bindComfyCloudProtocol} from '../qianmu-comfy-cloud-protocol.js';
+import {issueComfySceneArchiveProof} from '../qianmu-comfy-scene-result.js';
 import {normalizeComfyAutoPool,COMFY_SELECTION_SCHEMA} from '../qianmu-comfy-selection.js';
 import {comfySceneScopeKey,changeComfySceneRecord,inspectComfySceneRecord} from '../qianmu-comfy-scene-lock.js';
 import {pinComfyRouteWorkflow,readPinnedComfyRouteWorkflow} from '../qianmu-comfy-route.js';
@@ -46,7 +47,7 @@ function memoryStore(){
   return {records,calls,inspect,setAfterWrite:value=>afterWrite=value,
     linkStyle:async(sourceScope,targetScope,request)=>{const result=copyComfySceneStyleRecord(records.get(comfySceneScopeKey(sourceScope)),records.get(comfySceneScopeKey(targetScope)),captureComfySceneStyleLink(sourceScope,targetScope,request),100);records.set(comfySceneScopeKey(targetScope),result.row);return {view:await inspect(targetScope)};},
     reserve:(scope,request)=>write(scope,{...request,type:'reserve'}),begin:receipt=>write(receipt.scope,{type:'begin',receipt}),
-    settle:(receipt,outcome)=>write(receipt.scope,{type:'settle',receipt,outcome}),unlock:(scope,request)=>write(scope,{...request,type:'unlock'}),close:()=>calls.push('close')};
+    settle:(receipt,outcome)=>write(receipt.scope,{type:'settle',receipt,outcome}),confirmResult:(scope,request)=>write(scope,{...request,type:'confirm_result'}),unlock:(scope,request)=>write(scope,{...request,type:'unlock'}),close:()=>calls.push('close')};
 }
 async function fixture({freshComfy=false}={}){
   const f=await recipesFixture({formats:['tags','natural_language']});f.rows.forEach((row,index)=>Object.assign(row.document.classification,{visualKinds:[index?'environment':'character']}));
@@ -84,6 +85,22 @@ test('Cloud pre-submit refusal releases a new scene claim, while an ambiguous re
       else {assert.equal(view.lock.candidateId,choice.candidateId);assert.equal(view.uncertain,1);}
     }finally{batch.close();await e.close();}
   }
+});
+
+test('an archived recovery object settles the original accepted scene and the old waiter cannot restore uncertainty',async()=>{
+  const e=await fixture(),batch=e.manager.createBatch({prepared:e.prepared,probe:e.probe});try{
+    const shot=await e.makeShot(),choice=await batch.choose(shot,scope),original=e.makeJob(choice,shot,'late-result');
+    original.imageAdmission={version:1,namespace,attemptId:original.id};await batch.attach(original,choice);await e.manager.reserve(original);
+    await e.manager.beforeSubmit(original);await e.manager.settle(original,'accepted');
+    const recovered=copy(original),row={version:1,namespace,attemptId:original.id,baseUrl:original.connection.baseUrl,chatKey:'chat',createdAt:1,
+      status:'archived',receipt:'d'.repeat(64),imageCount:1,files:[{imageIndex:0,url:'/user/images/late.png'}]};
+    const proof=issueComfySceneArchiveProof(recovered,row,async()=>row,{origin:'https://st.test'});
+    await assert.rejects(e.manager.confirmArchived({version:1},recovered));assert.equal((await e.manager.inspect(scope)).uncertain,1);
+    e.setAccount('st-user:other');await assert.rejects(e.manager.confirmArchived(proof,recovered),/账户/);e.setAccount(namespace);
+    const view=await e.manager.confirmArchived(proof,recovered);assert.equal(view.uncertain,0);assert.equal(view.pending,0);assert.equal(view.lock.candidateId,choice.candidateId);
+    await e.manager.settle(original,'unknown');assert.equal((await e.manager.inspect(scope)).uncertain,0);
+    await assert.rejects(e.manager.beforeSubmit(original),/失效/);await e.manager.confirmArchived(proof,recovered);
+  }finally{batch.close();await e.close();}
 });
 
 test('one batch proposes one style, attaches checked original facts, then reserves only immediately before admission',async()=>{
