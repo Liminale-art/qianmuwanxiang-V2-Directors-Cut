@@ -284,7 +284,7 @@ export async function init(router, options = {}) {
     try {
       comfyCloudTasksFor(req); const account = imageServiceAccount(req);
       return res.json({ ok: true, version: 1, expectedAccount: account.namespace, accountBindingVersion: 1,
-        scope: 'comfy-cloud-manual-text', queryProviders: ['comfy-cloud', 'runninghub'], resultProviders: ['comfy-cloud'],
+        scope: 'comfy-cloud-manual-text', queryProviders: ['comfy-cloud', 'runninghub'], resultProviders: ['comfy-cloud', 'runninghub'],
         submission: true, cancellation: false, referenceUpload: false, catalogVersion: 1,
         resultRetrieval: true, archiveConfirmation: true, automaticReplay: false });
     } catch (error) { const result = imageGatewayErrorPayload(error); return res.status(result.status).json(result.body); }

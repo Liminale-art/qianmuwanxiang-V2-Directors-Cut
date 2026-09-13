@@ -37,6 +37,19 @@ test('one catalog merges local and cloud originals and carries explicit immutabl
   assert.deepEqual(selected.cloudRecord.files,[]);assert.equal(selected.cloudRecord.receipt,'');
   assert.ok(f.calls.every(call=>/\/(catalog|capabilities)$/.test(call.url)&&!call.body.apiKey));
 });
+
+test('RH original actions follow advertised backend retrieval support without opening RH paid submission', async () => {
+  const rh = bindComfyCloudTask(bindComfyCloudProtocol('https://www.runninghub.cn', 'runninghub-workflow-v1'), '1904152026220003329');
+  for (const supported of [true, false]) {
+    const f = fixture({ capabilities: () => json({ ...capability, resultProviders: supported ? ['comfy-cloud', 'runninghub'] : ['comfy-cloud'] }),
+      respond: url => json(url.includes('/cloud/') ? { ...cloud, originals: [{ ...row, task: rh }], tasks: [] } : native) });
+    const data = await f.client.catalogAll(), selected = data.originals.find(item => item.engine === 'cloud');
+    assert.equal(selected.resultAvailable, supported); assert.equal(selected.canReceiveOriginal, supported);
+    assert.equal(selected.canDiscard, false); assert.equal(selected.cloudRecord.cloudTask.taskId, rh.taskId);
+    assert.equal(data.cloudCapabilities.submission, false);
+    assert.ok(f.calls.every(call => /\/(catalog|capabilities)$/.test(call.url))); f.client.close();
+  }
+});
 test('partial catalog and unreadable cache retain known originals without inventing zero usage',async()=>{
   for(const mode of ['missing-cloud','missing-native','unreadable']){
     const f=fixture({respond:(url)=>{

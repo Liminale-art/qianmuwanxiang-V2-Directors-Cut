@@ -218,6 +218,36 @@ try{
     return result.archived&&saved.status==='confirmed'&&shot.payload.prompt==='original scene'&&shot.paragraphAnchor.paragraphIndex===3
       &&!shot.originalOnly&&!JSON.stringify(saved).includes('original scene');
   }));
+  const rhPage=await openPage();
+  ok('RH originals share real IndexedDB image checkpoints, preserve task/order and retry archive without Key or redownload',await rhPage.evaluate(async()=>{
+    const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');
+    const {bindComfyCloudProtocol,bindComfyCloudTask}=await import('/qianmu-comfy-cloud-protocol.js');
+    const connection=bindComfyCloudProtocol('https://www.runninghub.cn','runninghub-workflow-v1'),task=bindComfyCloudTask(connection,'1904152026220003329');
+    const row={...accepted,attemptId:'rh-original',cloudConnection:connection,cloudTask:task,baseUrl:connection.origin};
+    await store.put(row);window.rhRow=row;
+    const receipt='f'.repeat(64),calls=[];let cleanup='pending',delivered=0;
+    const client=createComfyRecoveryClient({store,account:async()=>ns,fetchImpl:async(url,init)=>{
+      const action=url.split('/').at(-1),body=JSON.parse(init.body);calls.push(action);
+      if(body.task.taskId!==task.taskId)throw Error('Wrong RH task');
+      if(action==='acknowledge'&&body.apiKey)throw Error('Key in ACK');
+      return Response.json({ok:true,version:1,status:action==='result'?'ready':'archived',task,provider:'runninghub',upstreamId:task.taskId,
+        receipt,images:[0,1].map(index=>({id:`rh:${task.taskId}:${index}:save`,mime:'image/png',data:'synthetic'})),
+        locator:{...row.taskLocator,attemptId:row.attemptId},delivery:{state:action==='result'?'stored':'archived',cacheReceipt:receipt,imageCount:2},cleanup});
+    }});
+    const first=await client.retrieveCloudOriginal(row,{apiKey:'synthetic-key',deliver:async(job,data,_files,checkpoint)=>{
+      if(!job.originalOnly||data.images[1].id!==`rh:${task.taskId}:1:save`)throw Error('Wrong original output order');
+      delivered++;await checkpoint([{imageIndex:0,url:'/user/images/rh-0.png'},{imageIndex:1,url:'/user/images/rh-1.png'}]);return true;
+    }});
+    if(!first.archived||!first.warning||(await store.get(ns,row.attemptId)).status!=='archived')return false;
+    cleanup='complete';const next=await client.retrieveCloudOriginal(row),saved=await store.get(ns,row.attemptId);client.close();
+    return next.archived&&saved.status==='confirmed'&&saved.files.length===2&&delivered===1&&calls.join(',')==='result,acknowledge,acknowledge'
+      &&!JSON.stringify(saved).includes('synthetic-key');
+  }));
+  await rhPage.close();const rhReopened=await openPage();
+  ok('RH completed originals survive a fresh page with the exact platform ID and two local files',await rhReopened.evaluate(async()=>{
+    const row=await store.get(ns,'rh-original');return row.status==='confirmed'&&row.cloudTask.taskId==='1904152026220003329'
+      &&row.cloudTask.provider==='runninghub'&&row.files[0].url==='/user/images/rh-0.png'&&row.files[1].url==='/user/images/rh-1.png';
+  }));
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({checks,external,errors},null,2));
 }finally{await context.close();await browser.close();}

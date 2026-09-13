@@ -75,7 +75,7 @@ export function planComfyCloudConnectionCheck(binding) {
 // Recovery retains all previously accepted platform/deployment identities.
 export function requireComfyCloudImageSubmission(binding, { automatic = false } = {}) {
   const current = checkedBinding(binding);
-  if (current.provider !== 'comfy-cloud') fail('submission_scope', '此平台的新任务收片尚未接通，未提交生成');
+  if (current.provider !== 'comfy-cloud') fail('submission_scope', '此平台的新任务提交尚未开放，未提交生成');
   if (current.origin !== 'https://cloud.comfy.org') fail('submission_scope', '部署专属工作流的输入绑定尚未接通，请先使用 Comfy Cloud 主站');
   if (automatic) fail('submission_scope', '云工作流暂仅支持手动确认生成，自动选流尚未开放');
   return current;

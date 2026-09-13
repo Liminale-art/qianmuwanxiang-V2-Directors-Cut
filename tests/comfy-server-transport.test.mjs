@@ -1524,7 +1524,7 @@ test('installed cloud recovery endpoints advertise only implemented operations a
   }
   const res = response(); await handlers.get('GET /image/comfy/cloud/capabilities')(account(), res);
   assert.equal(res.body.submission, true); assert.equal(res.body.scope,'comfy-cloud-manual-text'); assert.equal(res.body.cancellation, false); assert.equal(res.body.referenceUpload, false);
-  assert.deepEqual(res.body.resultProviders, ['comfy-cloud']); assert.equal(res.body.archiveConfirmation, true);
+  assert.deepEqual(res.body.resultProviders, ['comfy-cloud', 'runninghub']); assert.equal(res.body.archiveConfirmation, true);
   assert.equal(handlers.has('POST /image/comfy/cloud/tasks/submit'), true, 'manual text generation has one guarded route; unsupported providers remain closed');
 });
 

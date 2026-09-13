@@ -12,6 +12,7 @@ import { executeComfyCloudJob } from './qianmu-comfy-cloud-execution.js';
 const fail = (code, message) => Object.assign(new Error(message), { code: `comfy_delivery_${code}`, submissionState: 'accepted', retryable: false });
 const BASE = '/api/plugins/qianmu-tts/image/comfy/tasks';
 const CLOUD_BASE = '/api/plugins/qianmu-tts/image/comfy/cloud/tasks';
+const supportedCloudOriginal = task => ['comfy-cloud', 'runninghub'].includes(task?.provider);
 function assertCloudPacket(row, data) {
   let task; try { task = bindComfyCloudTask(data?.task, data?.task?.taskId, data?.task?.links); } catch (_) { /* Report only the original-task mismatch. */ }
   if (data?.version !== 1 || !task || JSON.stringify(task) !== JSON.stringify(row.cloudTask)) throw fail('identity', '云结果不属于原任务，未归档或清理');
@@ -163,7 +164,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     // but only the latter may attach a complete configuration or prose anchor.
     if (item?.version !== 3) throw fail('engine', '请选择原云任务记录');
     const selected = normalizeComfyDelivery(item, origin);
-    if (!selected.cloudTask || selected.cloudConnection.provider !== 'comfy-cloud') throw fail('engine', '此任务的云原图领取尚未就绪');
+    if (!supportedCloudOriginal(selected.cloudTask)) throw fail('engine', '此任务的云原图领取尚未就绪');
     const checkRecipe = row => {
       if (!recipe) return;
       const expected = identity(recipe);
@@ -325,9 +326,9 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
           createdAt: row.createdAt, status: 'prepared', imageCount: 0, files: [] }, origin) : null;
         return { ...row, namespace: current.namespace, engine: 'cloud', taskLocator: locator(row.taskLocator), task,
           cloudRecord,
-          resultAvailable: row.resultAvailable === true && task?.provider === 'comfy-cloud',
-          canReceiveOriginal: task?.provider === 'comfy-cloud' && !row.live && row.archiveState !== 'archived',
-          canRetryCleanup: row.canRetryCleanup === true && row.archiveState === 'archived' && task?.provider === 'comfy-cloud', canDiscard: false };
+          resultAvailable: row.resultAvailable === true && supportedCloudOriginal(task),
+          canReceiveOriginal: supportedCloudOriginal(task) && !row.live && row.archiveState !== 'archived',
+          canRetryCleanup: row.canRetryCleanup === true && row.archiveState === 'archived' && supportedCloudOriginal(task), canDiscard: false };
       };
       return { ...data, namespace: current.namespace, originals: data.originals.map(clean), tasks: data.tasks.map(clean) };
     },
@@ -369,7 +370,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
         || !/^[a-f0-9]{64}$/.test(item.cacheReceipt || '') || !/^[a-zA-Z0-9_-]{1,240}$/.test(item.attemptId || '')) throw fail('confirmation', '请刷新已归档任务后再清理');
       const selected = { attemptId: item.attemptId, task: bindComfyCloudTask(item.task, item.task?.taskId, item.task?.links),
         channelKey: locator(item.taskLocator).channelKey, receipt: item.cacheReceipt, namespace: item.namespace };
-      if (selected.task.provider !== 'comfy-cloud') throw fail('engine', '此云平台的临时文件清理尚未就绪');
+      if (!supportedCloudOriginal(selected.task)) throw fail('engine', '此云平台的临时文件清理尚未就绪');
       const current = await scope(selected.namespace);
       return locked(current.job, async () => {
         const { namespace: _namespace, ...body } = selected;
