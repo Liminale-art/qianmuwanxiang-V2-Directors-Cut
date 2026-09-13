@@ -1,6 +1,7 @@
 // Loaded only when opening the workflow library. Drafts never live in global ST settings.
 import {createComfyWorkflowStore,normalizeComfyLibraryDocument,inspectComfyLibraryDocument,importComfyLibraryDocument,exportComfyLibraryDocument,COMFY_LIBRARY_PARAMETERS} from './qianmu-comfy-library.js';
 import {COMFY_CLASSIFICATION_VALUES,normalizeComfyClassification} from './qianmu-comfy-selection.js';
+import {renderRunningHubInstanceOptions} from './qianmu-comfy-workbench.js';
 const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const icon=(action,label,glyph,extra='')=>`<button type="button" class="sd-icon-btn" data-comfy-action="${action}" aria-label="${escape(label)}" title="${escape(label)}" ${extra}><i class="fa-solid fa-${glyph}"></i></button>`;
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -54,6 +55,7 @@ export function renderComfyLibrary(view) {
         <div class="sd-comfy-library-note">${escape(inspection.issue||`${inspection.slots.length} 个输入槽位；本地接线检查不代表远端执行验证`)}</div>
       </div></section>
       ${classificationEditor(draft.document)}
+      <label><span>RunningHub 运行配置</span><select class="text_pole" data-comfy-runtime aria-label="RunningHub 运行配置">${renderRunningHubInstanceOptions(draft.document.runninghubInstanceType)}</select></label>
       <details class="sd-card"><summary><b>参数默认值</b></summary><div class="sd-storyboard-card-body sd-storyboard-grid sd-storyboard-grid-two">${COMFY_LIBRARY_PARAMETERS.map(key=>`<label><span>${titles[key]}</span><input class="text_pole" data-comfy-parameter="${key}" maxlength="120" value="${escape(draft.document.parameters[key]||'')}" ${['sampler','scheduler'].includes(key)?'':'inputmode="decimal"'}></label>`).join('')}</div></details>
       <p class="sd-comfy-library-note">仅已接入工作流的参数生效。保存不切换当前配方；返回列表后可明确应用。</p>
     </fieldset><input type="file" data-comfy-file accept=".json,application/json" hidden></div>`;
@@ -160,6 +162,10 @@ export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,
     host.querySelector('[data-comfy-search]')?.addEventListener('input',event=>{view.search=event.target.value;host.querySelectorAll('[data-comfy-name]').forEach(row=>{row.hidden=!row.dataset.comfyName.includes(view.search.toLocaleLowerCase());});});
     host.querySelectorAll('[data-comfy-draft]').forEach(field=>field.addEventListener('input',()=>{const key=field.dataset.comfyDraft;if(!view.draft||!['name','workflow','outputNodeId'].includes(key))return;view.draft.dirty=true;if(key==='name')view.draft.name=field.value;else view.draft.document[key]=field.value;}));
     host.querySelectorAll('[data-comfy-parameter]').forEach(field=>field.addEventListener('input',()=>{view.draft.dirty=true;view.draft.document.parameters[field.dataset.comfyParameter]=field.value;}));
+    host.querySelector('[data-comfy-runtime]')?.addEventListener('change',event=>{
+      if(!visible()||view.busy||!view.draft||host!==mounted||entry!==mountedEntry)return;
+      view.draft.dirty=true;if(event.target.value)view.draft.document.runninghubInstanceType=event.target.value;else delete view.draft.document.runninghubInstanceType;
+    });
     host.querySelectorAll('[data-comfy-class-choice]').forEach(button=>button.addEventListener('click',()=>{
       if(!visible()||view.busy||!view.draft)return;
       const value=classificationOf(view.draft.document),key=button.dataset.comfyClassGroup,choice=button.dataset.comfyClassChoice;

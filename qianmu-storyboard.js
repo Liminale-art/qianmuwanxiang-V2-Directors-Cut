@@ -2,6 +2,7 @@ import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } f
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
 export { resolveStoryboardComfyCloud } from './qianmu-comfy-cloud-protocol.js';
+import { RUNNINGHUB_INSTANCE_TYPES } from './qianmu-comfy-cloud-protocol.js';
 import { retainComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
 import { normalizeComfyCharacterActivation } from './qianmu-comfy-character-contract.js';
 import { retainComfyRouteBinding, retainComfyRoutePromptLayer, retainComfySceneOrigin } from './qianmu-comfy-route-contract.js';
@@ -2239,6 +2240,7 @@ export function normalizeStoryboardParameterProfile(value, providerId) {
     base.capabilityModelId = validId(capability) && Object.hasOwn(p, 'model') && validId(p.model) ? capability.trim() : '[invalid-capability]';
   }
   if (providerId === 'comfy') {
+    if (Object.hasOwn(p, 'comfyInstanceType')) base.comfyInstanceType = p.comfyInstanceType === '' || RUNNINGHUB_INSTANCE_TYPES.includes(p.comfyInstanceType) ? p.comfyInstanceType : '[invalid]';
     if (Object.hasOwn(p, 'comfyWorkbenchBinding')) base.comfyWorkbenchBinding = retainComfyWorkbenchBinding(p.comfyWorkbenchBinding);
     if (Object.hasOwn(p, 'comfyRouteBinding')) base.comfyRouteBinding = retainComfyRouteBinding(p.comfyRouteBinding);
     if (Object.hasOwn(p, 'comfyRoutePromptLayer')) base.comfyRoutePromptLayer = retainComfyRoutePromptLayer(p.comfyRoutePromptLayer);

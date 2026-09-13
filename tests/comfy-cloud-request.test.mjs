@@ -29,6 +29,19 @@ function fixture(){
   vm.runInContext(storyboardFunctionSource('storyboardGatewayRequest'),context);
   return {job,gateway:context.storyboardGatewayRequest(job,'synthetic-key',{references:[],vibes:[]})};
 }
+
+test('the actual gateway and frozen RH profile reach the prepared provider body without affecting another cloud family',()=>{
+  const rh=bindComfyCloudProtocol('https://www.runninghub.cn','runninghub-workflow-v1');
+  for(const tier of ['default','plus','ultra']){
+    const {job,gateway}=fixture();job.connection.baseUrl=gateway.baseUrl=rh.origin;job.profile.comfyInstanceType=tier;
+    const request=buildComfyCloudRequest(job,gateway,rh);job.profile.comfyInstanceType='changed';
+    assert.equal(prepareComfyCloudSubmission(request).body.instanceType,tier);
+    assert.ok(Object.isFrozen(request.runninghub));
+  }
+  const {job,gateway}=fixture();job.profile.comfyInstanceType='ultra';assert.equal(buildComfyCloudRequest(job,gateway,connection).runninghub,undefined);
+  job.connection.baseUrl=gateway.baseUrl=rh.origin;job.profile.comfyInstanceType='[invalid]';
+  assert.throws(()=>buildComfyCloudRequest(job,gateway,rh),{code:'comfy_cloud_request',submissionState:'not_submitted'});
+});
 test('actual storyboard gateway projection is accepted by the server without rewriting fixed workflow content',()=>{
   const {job,gateway}=fixture(),original=structuredClone(gateway.parameters.workflow);
   assert.equal(gateway.comfyExecution.expectedImages,1);

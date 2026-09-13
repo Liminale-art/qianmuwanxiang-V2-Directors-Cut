@@ -2,6 +2,7 @@
 import { sanitizeStoryboardWorkflow } from './qianmu-storyboard.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
 import { normalizeComfyClassification } from './qianmu-comfy-selection.js';
+import { RUNNINGHUB_INSTANCE_TYPES } from './qianmu-comfy-cloud-protocol.js';
 export const COMFY_LIBRARY_SCHEMA = 'qianmu.comfy.workflow.v1';
 export const COMFY_LIBRARY_PARAMETERS = Object.freeze(['width','height','count','steps','cfg','seed','sampler','scheduler']);
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -22,6 +23,10 @@ export function normalizeComfyLibraryDocument(value) {
   const bounded=(value,max)=>{if(value!=null&&typeof value!=='string'&&typeof value!=='number')throw comfyLibraryError('document','参数与提示补充须为文字或数字');const result=String(value??'').trim();if(result.length>max)throw comfyLibraryError('document','参数或提示补充超出长度上限，请缩短后再保存');return result;};
   const parameters=Object.fromEntries(COMFY_LIBRARY_PARAMETERS.map(key=>[key,bounded(value.parameters?.[key],120)]));
   const document={workflow:result.serialized,outputNodeId,parameters,positivePrompt:bounded(value.positivePrompt,12000),negativePrompt:bounded(value.negativePrompt,12000)};
+  if(Object.hasOwn(value,'runninghubInstanceType')) {
+    if(!RUNNINGHUB_INSTANCE_TYPES.includes(value.runninghubInstanceType))throw comfyLibraryError('runtime','RunningHub运行配置无效，请重新选择');
+    document.runninghubInstanceType=value.runninghubInstanceType;
+  }
   // Keep legacy documents byte-for-byte canonical: adding defaults would break their pinned recipe hash.
   if(Object.hasOwn(value,'classification')){
     try{document.classification=normalizeComfyClassification(value.classification);}

@@ -1,6 +1,7 @@
 // Presentation-only, loaded on entry to the Comfy workbench. No network, storage or node execution.
 import { normalizeComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
 import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
+import { resolveStoryboardComfyCloud, RUNNINGHUB_INSTANCE_TYPES } from './qianmu-comfy-cloud-protocol.js';
 const escape = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const fields = [
   ['width','Width','number','min="64" max="8192" step="64"'],
@@ -9,6 +10,10 @@ const fields = [
   ['cfg','CFG','number','min="0" max="100" step="0.1"'],
   ['seed','Seed','number','min="-1"'],['sampler','Sampler','text',''],['scheduler','Scheduler','text',''],
 ];
+export function renderRunningHubInstanceOptions(value = '') {
+  return `${value && !RUNNINGHUB_INSTANCE_TYPES.includes(value) ? '<option value="[invalid]" selected>运行配置待核对</option>' : ''}<option value="" ${!value ? 'selected' : ''}>平台默认</option>`
+    + RUNNINGHUB_INSTANCE_TYPES.map(tier => `<option value="${tier}" ${value === tier ? 'selected' : ''}>${{default:'标准',plus:'增强',ultra:'高显存'}[tier]}</option>`).join('');
+}
 export function renderComfyReferenceControls(profile, capabilities, collapsed = {}) {
   if (!capabilities.reference && !profile.comfyReferences) return '';
   let selection, error = '';
@@ -27,7 +32,9 @@ export function renderComfyReferenceControls(profile, capabilities, collapsed = 
       <div class="sd-comfy-reference-status" role="status"></div>
     </div></details>`;
 }
-export function renderComfyWorkbench({profile, capabilities, collapsed={}, workflowNotice='', workflowNodes=0, librarySelection=null,autoEnabled=false,poolSelection=null}, shared={}) {
+export function renderComfyWorkbench({profile, capabilities, connection=null, collapsed={}, workflowNotice='', workflowNodes=0, librarySelection=null,autoEnabled=false,poolSelection=null}, shared={}) {
+  let runninghub = false; try { runninghub = resolveStoryboardComfyCloud(connection)?.provider === 'runninghub'; } catch (_) { /* Existing connection card shows the invalid URL. */ }
+  const runtime = runninghub ? `<label><span>运行配置</span><select class="text_pole sd-storyboard-field" data-storyboard-field="comfyInstanceType" aria-label="RunningHub 运行配置">${renderRunningHubInstanceOptions(profile.comfyInstanceType)}</select></label>` : '';
   const controls=fields.filter(([key])=>capabilities[key]).map(([key,label,type,attrs])=>
     `<label><span>${label}</span><input class="text_pole sd-storyboard-field${['width','height'].includes(key)?` sd-storyboard-${key}`:''}" data-storyboard-field="${key}" type="${type}" ${attrs} value="${escape(profile[key])}"></label>`).join('');
   const workflow=typeof profile.comfyWorkflow==='string'&&profile.comfyWorkflow.trim().startsWith('{')?profile.comfyWorkflow:'';
@@ -44,7 +51,7 @@ export function renderComfyWorkbench({profile, capabilities, collapsed={}, workf
       </div>
     </details>
     <details class="sd-card sd-storyboard-params" data-storyboard-card="comfy-params" ${(collapsed['comfy-params'] ?? collapsed.params)?'':'open'}><summary><b>工作流设置</b></summary>
-      <div class="sd-storyboard-card-body">${shared.parameterPresets||''}${controls?`<div class="sd-storyboard-grid sd-storyboard-grid-two">${controls}</div>`:''}${shared.variants||''}</div>
+      <div class="sd-storyboard-card-body">${shared.parameterPresets||''}${controls||runtime?`<div class="sd-storyboard-grid sd-storyboard-grid-two">${runtime}${controls}</div>`:''}${shared.variants||''}</div>
     </details>
     ${renderComfyReferenceControls(profile, capabilities, collapsed)}`;
   const automatic=`<details class="sd-card" data-storyboard-card="comfy-auto" ${collapsed['comfy-auto']?'':'open'}><summary><b>候选工作流</b></summary><div class="sd-storyboard-card-body">

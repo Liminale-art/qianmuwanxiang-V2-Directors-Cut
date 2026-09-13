@@ -79,6 +79,8 @@ export function applyComfyRouteRecipe(base, route, recipe) {
     comfyWorkflowNotice: '', comfyReferences: references, comfyCharacterEnabled: route.comfyCharacterEnabled === true,
     comfyRouteBinding: binding, comfyRoutePromptLayer: { positive: document.positivePrompt, negative: document.negativePrompt } };
   delete profile.comfyCharacterActivation;
+  delete profile.comfyInstanceType;
+  if (document.runninghubInstanceType !== undefined) profile.comfyInstanceType = document.runninghubInstanceType;
   delete profile.comfyWorkbenchBinding;
   delete profile.comfyRoutePromptFormat;
   if (document.classification?.promptFormat) [profile.comfyRoutePromptFormat] = normalizeStoryboardPromptFormats([document.classification.promptFormat]);

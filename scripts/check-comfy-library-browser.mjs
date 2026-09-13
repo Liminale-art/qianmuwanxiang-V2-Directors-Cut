@@ -28,7 +28,7 @@ try{
     window.graph=JSON.stringify({text:{class_type:'CLIPTextEncode',inputs:{text:'fixed quality, %qianmu_prompt%'}},save:{class_type:'SaveImage',inputs:{images:['text',0]}}});
     window.original={workflow:graph,outputNodeId:'save',parameters:{width:'768',height:'1024',steps:'20'},positivePrompt:'legacy extra',negativePrompt:'legacy exclusion'};
     window.profile={comfyWorkflow:graph,comfyCharacterEnabled:true,comfyCharacterActivation:{legacy:true},width:768,height:1024,steps:20,cfg:6,seed:-1,sampler:'euler',scheduler:'normal'};
-    window.draw=automatic=>{host.innerHTML=renderComfyWorkbench({profile,autoEnabled:automatic,capabilities:{width:true,height:true,steps:true,cfg:true,seed:true,sampler:true,scheduler:true,reference:true}});applyQianmuIcons(host);};
+    window.draw=(automatic,connection=null)=>{host.innerHTML=renderComfyWorkbench({profile,connection,autoEnabled:automatic,capabilities:{width:true,height:true,steps:true,cfg:true,seed:true,sampler:true,scheduler:true,reference:true}});applyQianmuIcons(host);};
     window.store=createComfyWorkflowStore({dbName:'qianmu-comfy-browser-synthetic'});
     await store.save(scope,{name:'旧方案',document:original});
     window.openLibrary=()=>{
@@ -49,6 +49,13 @@ try{
     ok(`native reference fold works at ${width}`,!await page.locator('[data-storyboard-card="comfy-references"]').evaluate(node=>node.open));
     await page.evaluate(()=>draw(true));ok(`auto mode replaces fixed controls at ${width}`,await page.locator('.sd-comfy-open-pools').count()===1&&await page.locator('[data-storyboard-field]').count()===0);
   }
+  for(const width of [320,393,1100]){
+    await page.setViewportSize({width,height:898});await page.evaluate(()=>draw(false,{baseUrl:'https://www.runninghub.cn'}));
+    const metrics=await page.locator('.sd-comfy-workbench').evaluate(node=>({overflow:node.scrollWidth-node.clientWidth,heights:[...node.querySelectorAll('[data-storyboard-field]')].map(field=>field.getBoundingClientRect().height)}));
+    ok(`RH runtime selector matches field heights without overflow at ${width}`,metrics.overflow<=1&&metrics.heights.length===8&&Math.max(...metrics.heights)-Math.min(...metrics.heights)<=1);
+    await page.locator('[data-storyboard-field="comfyInstanceType"]').selectOption('plus');
+    ok(`RH tier selection remains native keyboard/touch compatible at ${width}`,await page.locator('[data-storyboard-field="comfyInstanceType"]').inputValue()==='plus');
+  }
   await page.evaluate(()=>openLibrary());await page.waitForSelector('.sd-comfy-library-row');
   await page.locator('[data-comfy-action="edit"]').first().click();await page.waitForSelector('[data-comfy-draft="name"]');
   for(const width of [320,393,1100]){
@@ -62,14 +69,16 @@ try{
   ok('export retains legacy original',await page.evaluate(()=>downloads[0].document.positivePrompt==='legacy extra'));
   await page.locator('[data-comfy-action="apply-version"]').click();await page.waitForFunction(()=>applied.length===1);
   ok('saved-version application carries current account',await page.evaluate(()=>applied[0].namespace===scope));
+  await page.locator('[data-comfy-runtime]').selectOption('plus');
   await page.locator('[data-comfy-draft="name"]').fill('新版本');await page.locator('[data-comfy-action="save"]').click();await page.waitForSelector('.sd-comfy-library-row');
   ok('saving does not apply or overwrite historical additions',await page.evaluate(async()=>{
     const rows=await store.list(scope),versions=await store.versions(scope,rows[0].id);
     const latest=await store.load(scope,rows[0].id,rows[0].revision),old=await store.load(scope,rows[0].id,versions.find(row=>row.version===1).revision);
-    return applied.length===1&&versions.length===2&&latest.positivePrompt===''&&latest.negativePrompt===''&&latest.workflow===graph&&old.positivePrompt==='legacy extra';
+    return applied.length===1&&versions.length===2&&latest.positivePrompt===''&&latest.negativePrompt===''&&latest.workflow===graph&&old.positivePrompt==='legacy extra'
+      &&latest.runninghubInstanceType==='plus'&&!Object.hasOwn(old,'runninghubInstanceType');
   }));
   await page.locator('[data-comfy-action="apply"]').click();await page.waitForFunction(()=>applied.length===2);
-  ok('list application targets the new revision and account',await page.evaluate(()=>applied[1].namespace===scope&&applied[1].version===2&&applied[1].document.positivePrompt===''));
+  ok('list application targets the new revision, account and saved RH tier',await page.evaluate(()=>applied[1].namespace===scope&&applied[1].version===2&&applied[1].document.positivePrompt===''&&applied[1].document.runninghubInstanceType==='plus'));
   await page.evaluate(async()=>{
     controller.dispose();
     const {createComfyWorkflowStore}=await import('/qianmu-comfy-library.js');

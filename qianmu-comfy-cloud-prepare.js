@@ -5,7 +5,7 @@ import { auditComfyWorkflow, requireComfyExecution } from './qianmu-comfy-audit.
 import { normalizeComfyRouteBinding } from './qianmu-comfy-route-contract.js';
 import { describeImageServiceRequest } from './qianmu-image-service-queue.js';
 import { parseBoundedJson } from './qianmu-json-input.js';
-import { planComfyCloudOperation } from './qianmu-comfy-cloud-protocol.js';
+import { planComfyCloudOperation, RUNNINGHUB_INSTANCE_TYPES } from './qianmu-comfy-cloud-protocol.js';
 import { COMFY_CLOUD_INTENT_SCHEMA, normalizeComfyCloudIntent } from './qianmu-comfy-cloud-receipt.js';
 
 const LIMIT = 2 * 1024 * 1024;
@@ -51,7 +51,7 @@ export function prepareComfyCloudSubmission(raw) {
         body.workflowId = workflowId;
       }
       if (instanceType !== undefined) {
-        if (!['default', 'plus', 'ultra'].includes(instanceType)) fail();
+        if (!RUNNINGHUB_INSTANCE_TYPES.includes(instanceType)) fail();
         body.instanceType = instanceType;
       }
       // Full frozen workflow takes precedence over workflowId per RH's API.

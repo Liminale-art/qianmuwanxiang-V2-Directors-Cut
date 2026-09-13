@@ -1,6 +1,6 @@
 // Browser-safe projection of an already prepared storyboard gateway request.
 // No credentials, routing guesses, network or workflow topology edits.
-import {bindComfyCloudProtocol} from './qianmu-comfy-cloud-protocol.js';
+import {bindComfyCloudProtocol,RUNNINGHUB_INSTANCE_TYPES} from './qianmu-comfy-cloud-protocol.js';
 import {normalizeComfyExecution,auditComfyWorkflow,requireComfyExecution} from './qianmu-comfy-audit.js';
 import {prepareComfyWorkflow} from './qianmu-comfy-workflow.js';
 import {normalizeComfyRouteBinding} from './qianmu-comfy-route-contract.js';
@@ -25,8 +25,11 @@ export function buildComfyCloudRequest(job,gateway,connection){
   if(workflowBinding&&workflowBinding.namespace!==job.imageAdmission.namespace)fail('原工作流属于另一账户');
   const parameters=Object.fromEntries(['width','height','steps','count','seed','scale','cfg','sampler','scheduler']
     .filter(key=>gateway.parameters?.[key]!==undefined).map(key=>[key,gateway.parameters[key]]));
+  const tier=job.profile?.comfyInstanceType;
+  const runninghub=binding.provider==='runninghub'&&tier!==undefined&&tier!==''?{instanceType:tier}:undefined;
+  if(runninghub&&!RUNNINGHUB_INSTANCE_TYPES.includes(tier))fail('RunningHub运行配置无效，请重新选择；未自动换档');
   const request=parseBoundedJson(JSON.stringify({connection:binding,workflow:gateway.parameters?.workflow,prompt:gateway.prompt,
-    negativePrompt:gateway.negativePrompt||'',model:gateway.model||'',parameters,execution,...(workflowBinding?{binding:workflowBinding}:{})}),
+    negativePrompt:gateway.negativePrompt||'',model:gateway.model||'',parameters,execution,...(runninghub?{runninghub}:{}),...(workflowBinding?{binding:workflowBinding}:{})}),
   {maxBytes:2*1024*1024,maxDepth:40,maxNodes:50000,label:'云工作流'});
   if(typeof request.prompt!=='string'||!request.prompt.trim()||request.prompt.length>24000||typeof request.negativePrompt!=='string'||request.negativePrompt.length>24000)fail('云工作流画面提示词无效');
   const template=prepareComfyWorkflow(request.workflow,{...request,referenceCount:0});

@@ -14228,7 +14228,7 @@ function renderStoryboardComfyCreate(state) {
   const capabilities = getStoryboardCapabilities('comfy', profile.capabilityModelId, profile.comfyWorkflow || '', connection);
   let workflowNodes = 0;
   try { workflowNodes = Object.keys(storyboardParseWorkflow(profile.comfyWorkflow)).length; } catch (_) { /* Show the stored validation issue. */ }
-  return storyboardComfyViewRuntime.renderComfyWorkbench({ profile, capabilities, collapsed: state.collapsedCards, workflowNodes, librarySelection: state.comfyLibrarySelection,
+  return storyboardComfyViewRuntime.renderComfyWorkbench({ profile, capabilities, connection, collapsed: state.collapsedCards, workflowNodes, librarySelection: state.comfyLibrarySelection,
     autoEnabled:state.comfyAutoEnabled,poolSelection:state.comfyPoolSelection,
     workflowNotice: profile.comfyWorkflowNotice || capabilities.workflowIssue || '' }, {
     connection: renderStoryboardModelCard(state), parameterPresets: renderStoryboardParameterPresets(state),
@@ -14250,6 +14250,7 @@ function storyboardCurrentComfyRecipe(state = storyboardState()) {
   const profile = state.profiles.comfy;
   return { name: state.comfyLibrarySelection?.name || '', document: {
     workflow: profile.comfyWorkflow || '', outputNodeId: profile.comfyOutputNodeId || '',
+    ...(profile.comfyInstanceType ? {runninghubInstanceType:profile.comfyInstanceType} : {}),
     parameters: Object.fromEntries(['width','height','count','steps','cfg','seed','sampler','scheduler'].map(key => [key, String(profile[key] ?? '')])),
     positivePrompt: '', negativePrompt: '',
     ...(profile.comfyWorkbenchBinding?.classification ? {classification:clone(profile.comfyWorkbenchBinding.classification)} : {}),
@@ -14324,6 +14325,7 @@ async function storyboardApplyComfyLibraryRecipe(root, state, recipe) {
   const next = { ...projectNewComfyExecution(profile).profile, model:modelBinding.remoteModelId, capabilityModelId:modelBinding.capabilityModelId,
     comfyWorkflow: document.workflow, comfyOutputNodeId: document.outputNodeId, comfyWorkflowNotice: '', loaded: true };
   for (const key of ['comfyRouteBinding','comfyRoutePromptLayer','comfyRoutePromptFormat','comfyWorkbenchBinding']) delete next[key];
+  delete next.comfyInstanceType;if(document.runninghubInstanceType!==undefined)next.comfyInstanceType=document.runninghubInstanceType;
   if (document.classification) next.comfyWorkbenchBinding={schemaVersion:1,binding:clone(verified.binding),classification:clone(document.classification)};
   for (const key of ['width','height','count','steps','cfg','seed','sampler','scheduler']) next[key] = String(document.parameters[key] ?? '');
   state.profiles.comfy = next;
