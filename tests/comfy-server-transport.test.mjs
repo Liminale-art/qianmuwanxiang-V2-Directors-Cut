@@ -484,6 +484,64 @@ test('receiver does not announce stored success when the ledger write failed and
   assert.equal(result.status, 'staged'); assert.equal(result.delivery.state, 'stored'); assert.equal(fullReads, 1);
 });
 
+test('archive confirmation requires stored evidence and exact explicit consent before touching original files', async t => {
+  const { f, cache, received } = await stagedBeforeSettlement(t), grant = received.grant;
+  const input = { archived: true, receipt: received.result.receipt };
+  let reads = 0;
+  const counted = { ...cache, load: (...args) => { reads++; return cache.load(...args); } };
+  await assert.rejects(grant.recordArchived(counted, input), { code: 'image_service_cloud_archive_receipt' });
+  await grant.recordStored(cache);
+  for (const invalid of [{ ...input, archived: false }, { ...input, receipt: '0'.repeat(64) }, {}]) {
+    await assert.rejects(grant.recordArchived(counted, invalid));
+  }
+  assert.equal(reads, 0, 'invalid consent never reads or cleans originals');
+  const archived = await grant.recordArchived(counted, input);
+  assert.equal(reads, 1); assert.equal(archived.state, 'archived');
+  assert.equal(archived.cacheReceipt, input.receipt); assert.ok(archived.archivedAt >= archived.storedAt);
+  assert.equal((await cache.load(grant.identity)).receipt, input.receipt, 'recording client consent alone cannot delete files');
+  const before = await f.store.inspectChannel(f.locator.channelKey);
+  const next = await createComfyCloudLedger({ store: f.store }).authorizeStaging(f.req, f.locator, f.task);
+  assert.deepEqual(await next.recordArchived({ load: () => assert.fail('repeated confirmed ACK must tolerate partially cleaned files') }, input), archived);
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before, 'retries preserve original task, identity and confirmation time');
+});
+
+test('unconfirmed or corrupt originals cannot become archived and cancelled or changed accounts cannot confirm', async t => {
+  const { f, cache, received } = await stagedBeforeSettlement(t), grant = received.grant;
+  await grant.recordStored(cache);
+  const before = await f.store.inspectChannel(f.locator.channelKey), input = { archived: true, receipt: received.result.receipt };
+  await assert.rejects(grant.recordArchived({ ...cache, load: () => cache.load(grant.identity, { metadataOnly: true }) }, input));
+  await assert.rejects(grant.recordArchived(cache, { ...input, signal: AbortSignal.abort() }), { code: 'image_service_cloud_delivery_cancelled' });
+  await assert.rejects(grant.recordArchived({ ...cache, load: async (...args) => {
+    const value = await cache.load(...args); f.req.user.profile.handle = 'bob'; return value;
+  } }, input), { code: 'image_service_cloud_account_changed' });
+  f.req.user.profile.handle = 'alice';
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+  assert.equal((await cache.load(grant.identity)).receipt, input.receipt);
+});
+
+test('archive commit failure preserves stored originals and a lost confirmation reply can retry the durable ACK', async t => {
+  const { f, cache, received } = await stagedBeforeSettlement(t);
+  await received.grant.recordStored(cache);
+  const input = { archived: true, receipt: received.result.receipt };
+  for (const committed of [false, true]) {
+    const ledger = createComfyCloudLedger({ store: { ...f.store, transaction: async (key, update) => {
+      let archiveWrite = false;
+      const value = await f.store.transaction(key, raw => {
+        const result = update(raw); archiveWrite = result.result?.state === 'archived';
+        if (archiveWrite && !committed) throw new Error('simulated archive write failure');
+        return result;
+      });
+      if (archiveWrite) throw new Error('simulated lost archive reply');
+      return value;
+    } } });
+    const grant = await ledger.authorizeStaging(f.req, f.locator, f.task);
+    await assert.rejects(grant.recordArchived(cache, input));
+    assert.equal((await received.grant.readDelivery()).state, committed ? 'archived' : 'stored');
+    assert.equal((await cache.load(received.grant.identity)).receipt, input.receipt);
+  }
+  assert.equal((await received.grant.recordArchived({ load: () => assert.fail('already committed') }, input)).state, 'archived');
+});
+
 test('an archive confirmed during readback cannot be downgraded into another image delivery', async t => {
   const { f, cache } = await stagedBeforeSettlement(t);
   const ledger = { authorizeStaging: async (...args) => {

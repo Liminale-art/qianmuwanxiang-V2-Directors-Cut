@@ -87,10 +87,38 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
       check(); await verify();
       return Object.freeze({ result, delivery: saved });
     }
+    async function recordArchived(cache, { receipt: cacheReceipt, archived, signal } = {}) {
+      const check = () => { current(); if (signal?.aborted) throw fail('delivery_cancelled', '已停止归档确认，原记录和暂存仍保留'); };
+      check();
+      if (archived !== true || typeof cacheReceipt !== 'string' || !/^[a-f0-9]{64}$/.test(cacheReceipt)) throw fail('archive_confirmation', '请先保存原图，再确认归档');
+      const before = (await verifiedRead()).delivery; check();
+      if (!before || before.cacheReceipt !== cacheReceipt) throw fail('archive_receipt', '归档凭证与原暂存不符，未确认或清理');
+      // A previous durable ACK may have already removed some/all image files.
+      // Only that exact recorded receipt permits cleanup retry without rereading
+      // missing bytes. First-time ACK always revalidates the complete original.
+      if (before.state === 'archived') return before;
+      await recordStored(cache, { signal }); check();
+      const saved = await store.transaction(channelKey, raw => {
+        check();
+        const state = normalizeComfyCloudChannel(raw, channelKey);
+        const row = state.entries.find(item => item.namespace === identity.namespace && item.attemptId === identity.attemptId);
+        const delivery = row?.cloudDelivery;
+        if (!row || signature(row) !== original || row.status !== 'succeeded' || !delivery
+          || ['cacheReceipt', 'bytes', 'imageCount', 'storedAt'].some(key => delivery[key] !== before[key])) throw fail('archive_changed', '原暂存记录已变化，未确认归档');
+        if (delivery.state !== 'archived') {
+          const at = Math.max(now(), row.updatedAt);
+          row.updatedAt = at; row.cloudDelivery = { ...delivery, state: 'archived', archivedAt: at };
+        }
+        const normalized = normalizeComfyCloudChannel(state, channelKey);
+        return { state: normalized, result: normalized.entries.find(item => item.namespace === identity.namespace && item.attemptId === identity.attemptId).cloudDelivery };
+      });
+      check(); await verify();
+      return saved;
+    }
     // Server-internal evidence only. The identity and verifier originate in the
     // same read; do not acquire a fresh fence after downloading or expose this
     // object as an HTTP response. It does not grant target IO or submission.
-    return Object.freeze({ identity, receipt, verify, recordStored, readDelivery: async () => (await verifiedRead()).delivery });
+    return Object.freeze({ identity, receipt, verify, recordStored, recordArchived, readDelivery: async () => (await verifiedRead()).delivery });
   }
   return Object.freeze({
     submission(reservation) {
