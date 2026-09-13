@@ -22,7 +22,7 @@ export async function executeComfyCloudJob(client, source, gateway, connection, 
     requireComfyCloudImageSubmission(binding,{automatic:job.automatic||job.comfyAutoSelected});
     check();
     const capabilities=await client.cloudCapabilities({namespace:job.imageAdmission?.namespace});check();
-    if(!canSubmitComfyCloudImages(capabilities,binding.provider)||!capabilities.resultRetrieval||!capabilities.resultProviders.includes(binding.provider))
+    if(!canSubmitComfyCloudImages(capabilities,binding.provider,binding)||!capabilities.resultRetrieval||!capabilities.resultProviders.includes(binding.provider))
       throw fail('capabilities','当前后端尚未开放此平台完整生图，请同步更新后再使用');
     const prepared=await client.prepareCloudSubmission(job,requestSource,binding);record=prepared.record;
     // Record the original identity even if an earlier page lost the acceptance.

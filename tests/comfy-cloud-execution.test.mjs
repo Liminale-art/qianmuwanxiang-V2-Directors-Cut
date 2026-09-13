@@ -34,13 +34,24 @@ test('existing accepted tasks only collect originals, while uncertain preparatio
   const unknown=setup({created:false});await assert.rejects(unknown.run(),{submissionState:'unknown'});assert.deepEqual(unknown.stats(),{submits:0,reads:0,time:0});
 });
 
-test('pinned deployments stop before preparation rather than losing prompt edits',async()=>{
+test('deployments require explicit new-host support before preparation, not just main-site capability',async()=>{
   for(const [url,protocol] of [['https://sample.run.comfy.app','comfy-cloud-v2']]){
     const f=setup();Object.assign(f.connection,bindComfyCloudProtocol(url,protocol));
-    f.client.cloudCapabilities=()=>assert.fail('scope must be checked before any preparation or request');
-    await assert.rejects(f.run(),{code:'comfy_cloud_submission_scope',submissionState:'not_submitted'});
+    f.client.prepareCloudSubmission=()=>assert.fail('old host cannot prepare a deployment task');
+    await assert.rejects(f.run(),{code:'comfy_cloud_execution_capabilities',submissionState:'not_submitted'});
     assert.equal(f.stats().submits,0);assert.equal(f.stats().reads,0);
   }
+});
+
+test('production deployment uses the normal frozen shot path only with its explicit host capability',async()=>{
+  const f=setup({created:false,bound:true,states:['ready']});
+  const connection=bindComfyCloudProtocol('https://sample.run.comfy.app','comfy-cloud-v2');Object.assign(f.connection,connection);
+  f.client.cloudCapabilities=async()=>({submission:true,deploymentSubmission:true,resultRetrieval:true,resultProviders:['comfy-cloud']});
+  f.client.prepareCloudSubmission=async(job,gateway,binding)=>{
+    assert.equal(job.payload.prompt,'original');assert.equal(gateway.prompt,'original');assert.deepEqual(binding,connection);
+    return {created:false,record:{cloudTask:{taskId:'original-upstream'}}};
+  };
+  assert.equal((await f.run()).archived,true);assert.equal(f.stats().submits,0);
 });
 
 test('RH retrieval on an old host is not permission to submit; explicit new-host support is required',async()=>{

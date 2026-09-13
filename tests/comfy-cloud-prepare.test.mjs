@@ -41,6 +41,18 @@ test('RH wraps the compiled graph as a string without a second node override or 
   assert.notEqual(prepared.intent.requestDigest, prepare(source()).intent.requestDigest);
 });
 
+test('production deployments receive only the frozen API graph, without invented editor version or inputs fields',()=>{
+  const binding=bindComfyCloudProtocol('https://sample.run.comfy.app','comfy-cloud-v2');
+  const input=source(binding);input.execution.automatic=false;
+  const prepared=prepare(input);
+  assert.deepEqual(Object.keys(prepared.body),['workflow']);
+  assert.equal(prepared.body.workflow.positive.inputs.text,'fixed style, rain, %qianmu_negative%');
+  assert.equal(prepared.body.workflow.negative.inputs.text,'fixed negative');
+  assert.deepEqual(prepared.body.workflow.save,input.workflow.save);
+  assert.equal(prepared.intent.connection.origin,binding.origin);
+  for(const field of ['inputs','webhook_url','workflow_id','workflow_version','extra_data'])assert.throws(()=>prepare({...input,[field]:{}}),invalid);
+});
+
 test('RH runtime tier is a frozen, hashed user choice independent of the compiled workflow, never an automatic upgrade', () => {
   const digests = new Set(), base = prepare(source(rh));
   assert.equal(Object.hasOwn(base.body, 'instanceType'), false, 'historical unspecified mode stays unspecified');

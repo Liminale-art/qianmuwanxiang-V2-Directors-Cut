@@ -76,14 +76,16 @@ export function planComfyCloudConnectionCheck(binding) {
 // Recovery retains all previously accepted platform/deployment identities.
 export function requireComfyCloudImageSubmission(binding, { automatic = false } = {}) {
   const current = checkedBinding(binding);
-  if (current.provider === 'comfy-cloud' && current.origin !== 'https://cloud.comfy.org') fail('submission_scope', '部署专属工作流的输入绑定尚未接通，请先使用 Comfy Cloud 主站');
+  // The official v2 contract accepts the same API graph on production deployments.
+  // It does not accept an invented inputs map or cloud-editor version binding.
   if (automatic) fail('submission_scope', '云工作流暂仅支持手动确认生成，自动选流尚未开放');
   return current;
 }
 
 // Older hosts advertised RH retrieval before RH submission existed.
-export function canSubmitComfyCloudImages(capabilities, provider) {
-  return capabilities?.submission === true && (capabilities.submissionProviders ?? ['comfy-cloud']).includes(provider);
+export function canSubmitComfyCloudImages(capabilities, provider, connection) {
+  return capabilities?.submission === true && (capabilities.submissionProviders ?? ['comfy-cloud']).includes(provider)
+    && !(provider==='comfy-cloud' && connection && connection.origin!=='https://cloud.comfy.org' && capabilities.deploymentSubmission!==true);
 }
 
 function checkedJobLinks(binding, taskId, links) {

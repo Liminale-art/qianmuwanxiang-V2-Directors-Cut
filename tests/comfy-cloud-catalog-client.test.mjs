@@ -148,6 +148,15 @@ test('submission providers are explicit on new hosts and conservatively inferred
     assert.deepEqual((await f.client.cloudCapabilities()).submissionProviders,expected);f.client.close();
   }
 });
+
+test('deployment capability is opt-in and cannot be inferred from platform names or truthy strings',async()=>{
+  for(const advertised of [undefined,false,true,'true']) {
+    const f=fixture({capabilities:()=>json({...capability,...(advertised===undefined?{}:{deploymentSubmission:advertised})})});
+    if(advertised==='true')await assert.rejects(f.client.cloudCapabilities(),{code:'comfy_delivery_capabilities'});
+    else assert.equal((await f.client.cloudCapabilities()).deploymentSubmission,advertised===true);
+    f.client.close();
+  }
+});
 test('old backend yields a precise update notice while native records remain accessible',async()=>{
   const f=fixture({capabilities:()=>new Response('',{status:404})}),data=await f.client.catalogAll();
   assert.match(data.warning,/后端尚未支持云任务/);assert.equal(data.cloudCapabilities,null);assert.equal(data.originals.length,1);

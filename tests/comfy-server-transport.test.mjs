@@ -594,8 +594,8 @@ test('one receiver suppresses duplicate in-flight collection without sharing the
   assert.equal((await first).status, 'staged'); assert.equal(calls.length, 3);
 });
 
-async function stagedBeforeSettlement(t) {
-  const f = await persistedCloudTask(t), calls = [], cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
+async function stagedBeforeSettlement(t,binding=cloudBinding) {
+  const f = await persistedCloudTask(t,binding), calls = [], cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
   const downloaded = await downloadComfyCloudJob(f.req, { task: f.task, ...f.locator },
     { ...assetReadOptions(f), requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) });
   await cache.reserve(downloaded.grant.identity); await cache.save(downloaded.grant.identity, downloaded.result);
@@ -827,7 +827,8 @@ test('cloud receipt and archive confirmation share the original-task in-flight g
 });
 
 test('cloud host service returns ordinary image packets and scoped metadata, never internal grants, source URLs or original queue internals', async t => {
-  const { f, cache, received } = await stagedBeforeSettlement(t);
+  for(const binding of [cloudBinding,bindComfyCloudProtocol('https://sample.run.comfy.app','comfy-cloud-v2')]) {
+  const { f, cache, received } = await stagedBeforeSettlement(t,binding);
   const service = createComfyCloudService({ store: f.store, cache }); t.after(() => service.close());
   const input = { version: 1, expectedAccount: received.grant.identity.namespace, task: f.task, ...f.locator };
   const packet = await service.result(f.req, input);
@@ -847,6 +848,8 @@ test('cloud host service returns ordinary image packets and scoped metadata, nev
   assert.equal(after.totals.imageBytes, 0); assert.equal(after.tasks[0].archiveState, 'archived');
   assert.equal((await service.query(f.req, input)).status, 'archived', 'no expired remote URL or network permission is needed to read durable confirmation');
   assert.equal((await service.result(f.req, input)).status, 'archived');
+  assert.equal(packet.task.origin,binding.origin);
+  }
 });
 
 test('cloud host catalog preserves ledger history and unknown occupancy when partial cleanup prevents inventory', async t => {
@@ -1555,22 +1558,23 @@ test('installed cloud recovery endpoints advertise only implemented operations a
   }
   const res = response(); await handlers.get('GET /image/comfy/cloud/capabilities')(account(), res);
   assert.equal(res.body.submission, true); assert.equal(res.body.scope,'cloud-manual-text'); assert.deepEqual(res.body.submissionProviders,['comfy-cloud','runninghub']); assert.equal(res.body.cancellation, false); assert.equal(res.body.referenceUpload, false);
+  assert.equal(res.body.deploymentSubmission,true);
   assert.deepEqual(res.body.resultProviders, ['comfy-cloud', 'runninghub']); assert.equal(res.body.archiveConfirmation, true);
   assert.equal(handlers.has('POST /image/comfy/cloud/tasks/submit'), true, 'manual text generation has one guarded route; unsupported providers remain closed');
 });
 
 test('installed single-submit route preserves original receipts, refuses duplicate POST execution and binds account before dispatch', async t => {
-  const f = await cloudSubmissionFixture(t), handlers = new Map(), calls = [];
+  for(const binding of [cloudBinding,bindComfyCloudProtocol('https://sample.run.comfy.app','comfy-cloud-v2')]) {
+  const f = await cloudSubmissionFixture(t,binding), handlers = new Map(), calls = [];
   await init({ get: (key, handler) => handlers.set(`GET ${key}`, handler), post: (key, handler) => handlers.set(`POST ${key}`, handler) }, {
     dataRoot: f.root, comfyCloudTaskOptions: { store: f.store },
     comfyTargetStore: { read: async () => assert.fail('official cloud must not require native administrator enrollment') },
-    comfyTransportOptions: { resolveHost: publicDns, requestImpl: mockNodeRequest(calls, () => ({body:acceptedCloudBody(cloudBinding,'route-original')})) },
+    comfyTransportOptions: { resolveHost: publicDns, requestImpl: mockNodeRequest(calls, () => ({body:acceptedCloudBody(binding,'route-original')})) },
   });
   const submit = handlers.get('POST /image/comfy/cloud/tasks/submit'), body = {...f.input, version:1};
   for(const changed of [
     {...body,automatic:true},
     {...body,request:{...body.request,execution:{...body.request.execution,automatic:true}}},
-    {...body,request:{...body.request,connection:bindComfyCloudProtocol('https://sample.run.comfy.app','comfy-cloud-v2')}},
   ]){
     const denied=response();await submit({...f.req,body:changed},denied);
     assert.equal(denied.statusCode,400);assert.equal(denied.body.submissionState,'not_submitted');assert.equal(denied.body.code,'comfy_cloud_submission_scope');
@@ -1584,6 +1588,8 @@ test('installed single-submit route preserves original receipts, refuses duplica
   assert.doesNotMatch(JSON.stringify(accepted.body),/test-only-secret|quiet rain|requestDigest/);
   const duplicate = response();await submit({...f.req,body},duplicate);assert.equal(duplicate.body.ok,false);assert.equal(calls.length,1);
   assert.equal((await f.store.inspectChannel(f.key)).entries[0].cloudReceipt.task.taskId,'route-original');
+  assert.equal(accepted.body.task.origin,binding.origin);
+  }
 });
 
 test('installed cloud routes deliver saved originals and complete ACK without leaking internal grants or downloading twice', async t => {
