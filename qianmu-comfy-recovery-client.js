@@ -1,6 +1,7 @@
 // Comfy delivery and single cloud acceptance; no scheduler or reference upload.
 import { trackClientActivity } from './qianmu-client-activity.js';
 import { prepareComfySubmission, assertComfyAccount, acknowledgeComfyImage } from './qianmu-comfy-submission.js';
+import { requireComfyCloudImageSubmission } from './qianmu-comfy-cloud-protocol.js';
 import { resolveImageAccountNamespace } from './qianmu-image-admission.js';
 import { imageChannelKey } from './qianmu-image-channel.js';
 import { createComfyDeliveryStore, normalizeComfyDelivery, assertComfyDeliveryUpdate } from './qianmu-comfy-delivery-store.js';
@@ -232,6 +233,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
         if (!ticket) throw fail('ticket','此准备凭证已使用或无效，请核查原任务，未重新提交');
         if (typeof apiKey !== 'string' || !apiKey.trim() || apiKey.length > 4096) throw fail('key','请填写原连接的 API Key');
         const { record, request: frozenRequest } = ticket, job = jobForRow(record);
+        requireComfyCloudImageSubmission(record.cloudConnection,{automatic:record.automatic||ticket.request.execution?.automatic});
         const capabilities = await this.cloudCapabilities({namespace:record.namespace});
         if (!capabilities.submission || !capabilities.resultRetrieval || !capabilities.resultProviders.includes(record.cloudConnection.provider))
           throw fail('capabilities','当前后端尚未开放此平台完整生图，请同步更新后再使用');

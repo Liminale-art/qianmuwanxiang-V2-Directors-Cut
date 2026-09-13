@@ -1,5 +1,6 @@
 // One original shot through the existing cloud client. No topology mutation,
 // automatic resubmission, cross-provider fallback or background polling.
+import { requireComfyCloudImageSubmission } from './qianmu-comfy-cloud-protocol.js';
 const fail = (code,message,state='not_submitted') => Object.assign(new Error(message),{
   code:`comfy_cloud_execution_${code}`,submissionState:state,retryable:false,
 });
@@ -17,6 +18,7 @@ export async function executeComfyCloudJob(client, source, gateway, connection, 
     throw fail('references','此云渠道的参考素材上传尚未开放，未忽略参考图或转至其他渠道');
   const check=()=>{if(!valid())throw fail('stopped','已停止本页等待；已受理的云任务仍保留',state);};
   try {
+    requireComfyCloudImageSubmission(binding,{automatic:job.automatic||job.comfyAutoSelected});
     check();
     const capabilities=await client.cloudCapabilities({namespace:job.imageAdmission?.namespace});check();
     if(!capabilities.submission||!capabilities.resultRetrieval||!capabilities.resultProviders.includes(binding.provider))

@@ -70,6 +70,16 @@ export function planComfyCloudConnectionCheck(binding) {
     method: runninghub ? 'POST' : 'GET', url: `${current.origin}${runninghub ? '/uc/openapi/accountStatus' : '/api/queue'}`, redirect: 'error' });
 }
 
+// Public generation rollout boundary, shared by the page and HTTP entry point.
+// Recovery retains all previously accepted platform/deployment identities.
+export function requireComfyCloudImageSubmission(binding, { automatic = false } = {}) {
+  const current = checkedBinding(binding);
+  if (current.provider !== 'comfy-cloud') fail('submission_scope', '此平台的新任务收片尚未接通，未提交生成');
+  if (current.origin !== 'https://cloud.comfy.org') fail('submission_scope', '部署专属工作流的输入绑定尚未接通，请先使用 Comfy Cloud 主站');
+  if (automatic) fail('submission_scope', '云工作流暂仅支持手动确认生成，自动选流尚未开放');
+  return current;
+}
+
 function checkedJobLinks(binding, taskId, links) {
   if (!object(links)) fail('links', '云端未返回原任务查询地址，请核查原任务');
   const paths = {};

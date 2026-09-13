@@ -17,7 +17,7 @@ import { createComfyService } from './qianmu-comfy-service.js';
 import { createComfyCloudService } from './qianmu-comfy-cloud-service.js';
 import { authorizeComfyCloudTarget } from './qianmu-comfy-cloud-access.js';
 import { checkComfyCloudConnection } from './qianmu-comfy-cloud-check.js';
-import { resolveStoryboardComfyCloud } from './qianmu-comfy-cloud-protocol.js';
+import { resolveStoryboardComfyCloud, requireComfyCloudImageSubmission } from './qianmu-comfy-cloud-protocol.js';
 import {
   checkImageConnection,
   ImageGatewayError,
@@ -284,8 +284,8 @@ export async function init(router, options = {}) {
     try {
       comfyCloudTasksFor(req); const account = imageServiceAccount(req);
       return res.json({ ok: true, version: 1, expectedAccount: account.namespace, accountBindingVersion: 1,
-        scope: 'original-task-recovery', queryProviders: ['comfy-cloud', 'runninghub'], resultProviders: ['comfy-cloud'],
-        submission: false, cancellation: false, referenceUpload: false, catalogVersion: 1,
+        scope: 'comfy-cloud-manual-text', queryProviders: ['comfy-cloud', 'runninghub'], resultProviders: ['comfy-cloud'],
+        submission: true, cancellation: false, referenceUpload: false, catalogVersion: 1,
         resultRetrieval: true, archiveConfirmation: true, automaticReplay: false });
     } catch (error) { const result = imageGatewayErrorPayload(error); return res.status(result.status).json(result.body); }
   });
@@ -294,7 +294,12 @@ export async function init(router, options = {}) {
     const controller = new AbortController(), onClose = () => { if (!res.writableEnded) controller.abort(); };
     res.once?.('close', onClose);
     try {
-      const result = await comfyCloudTasksFor(req)[action](req, req.body, { signal: controller.signal });
+      const service=comfyCloudTasksFor(req);
+      if(action==='submit') {
+        try { requireComfyCloudImageSubmission(req.body?.request?.connection,{automatic:req.body?.automatic===true||req.body?.request?.execution?.automatic!==false}); }
+        catch(error) { throw Object.assign(new ImageGatewayError(400,'comfy_cloud_submission_scope',error.message),{submissionState:'not_submitted',retryable:false}); }
+      }
+      const result = await service[action](req, req.body, { signal: controller.signal });
       if (!res.destroyed && !res.writableEnded) return res.json(result);
     } catch (error) {
       const result = imageGatewayErrorPayload(error);

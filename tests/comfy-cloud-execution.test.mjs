@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {executeComfyCloudJob} from '../qianmu-comfy-cloud-execution.js';
+import {bindComfyCloudProtocol} from '../qianmu-comfy-cloud-protocol.js';
 
 function setup({created=true,bound=false,states=['running','queued','ready']}={}){
   let submits=0,reads=0,time=0,active=true;const events=[];
   const task={taskId:'original-upstream'},record={attemptId:'original',cloudTask:bound?task:null};
   const source={id:'original',source:'comfy',chatKey:'original-chat',imageAdmission:{namespace:'st-user:alice'},payload:{prompt:'original'}};
-  const gateway={prompt:'original',parameters:{workflow:{node:'fixed'}}},connection={provider:'comfy-cloud'};
+  const gateway={prompt:'original',parameters:{workflow:{node:'fixed'}}},connection={...bindComfyCloudProtocol('https://cloud.comfy.org','comfy-cloud-v2')};
   const client={cloudCapabilities:async()=>({submission:true,resultRetrieval:true,resultProviders:['comfy-cloud']}),
     prepareCloudSubmission:async(job,request,binding)=>{assert.equal(job.payload.prompt,'original');assert.equal(request.prompt,'original');assert.equal(binding.provider,'comfy-cloud');return {created,record};},
     submitCloudPrepared:async(_prepared,_key,{beforeSubmit,valid})=>{await beforeSubmit();assert.equal(valid(),true);submits++;return {record:{...record,cloudTask:task}};},
@@ -31,6 +32,15 @@ test('one frozen shot submits once, waits only for its own task and archives wit
 test('existing accepted tasks only collect originals, while uncertain preparation never POSTs again',async()=>{
   const f=setup({created:false,bound:true,states:['ready']});assert.equal((await f.run()).archived,true);assert.equal(f.stats().submits,0);
   const unknown=setup({created:false});await assert.rejects(unknown.run(),{submissionState:'unknown'});assert.deepEqual(unknown.stats(),{submits:0,reads:0,time:0});
+});
+
+test('unopened cloud providers and pinned deployments stop before preparation rather than losing prompt edits',async()=>{
+  for(const [url,protocol] of [['https://www.runninghub.cn','runninghub-workflow-v1'],['https://sample.run.comfy.app','comfy-cloud-v2']]){
+    const f=setup();Object.assign(f.connection,bindComfyCloudProtocol(url,protocol));
+    f.client.cloudCapabilities=()=>assert.fail('scope must be checked before any preparation or request');
+    await assert.rejects(f.run(),{code:'comfy_cloud_submission_scope',submissionState:'not_submitted'});
+    assert.equal(f.stats().submits,0);assert.equal(f.stats().reads,0);
+  }
 });
 
 test('pending tasks stop at a time bound and remain collectible instead of triggering generation again',async()=>{

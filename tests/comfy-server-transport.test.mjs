@@ -1435,9 +1435,9 @@ test('installed cloud recovery endpoints advertise only implemented operations a
     assert.equal(res.statusCode, 401); assert.equal(res.headers['cache-control'], 'no-store');
   }
   const res = response(); await handlers.get('GET /image/comfy/cloud/capabilities')(account(), res);
-  assert.equal(res.body.submission, false); assert.equal(res.body.cancellation, false); assert.equal(res.body.referenceUpload, false);
+  assert.equal(res.body.submission, true); assert.equal(res.body.scope,'comfy-cloud-manual-text'); assert.equal(res.body.cancellation, false); assert.equal(res.body.referenceUpload, false);
   assert.deepEqual(res.body.resultProviders, ['comfy-cloud']); assert.equal(res.body.archiveConfirmation, true);
-  assert.equal(handlers.has('POST /image/comfy/cloud/tasks/submit'), true, 'single-submit route exists, but user generation remains closed until complete wiring');
+  assert.equal(handlers.has('POST /image/comfy/cloud/tasks/submit'), true, 'manual text generation has one guarded route; unsupported providers remain closed');
 });
 
 test('installed single-submit route preserves original receipts, refuses duplicate POST execution and binds account before dispatch', async t => {
@@ -1448,6 +1448,16 @@ test('installed single-submit route preserves original receipts, refuses duplica
     comfyTransportOptions: { resolveHost: publicDns, requestImpl: mockNodeRequest(calls, () => ({body:acceptedCloudBody(cloudBinding,'route-original')})) },
   });
   const submit = handlers.get('POST /image/comfy/cloud/tasks/submit'), body = {...f.input, version:1};
+  for(const changed of [
+    {...body,automatic:true},
+    {...body,request:{...body.request,execution:{...body.request.execution,automatic:true}}},
+    {...body,request:{...body.request,connection:bindComfyCloudProtocol('https://sample.run.comfy.app','comfy-cloud-v2')}},
+    {...body,request:{...body.request,connection:bindComfyCloudProtocol('https://www.runninghub.cn','runninghub-workflow-v1')}},
+  ]){
+    const denied=response();await submit({...f.req,body:changed},denied);
+    assert.equal(denied.statusCode,400);assert.equal(denied.body.submissionState,'not_submitted');assert.equal(denied.body.code,'comfy_cloud_submission_scope');
+    assert.equal(calls.length,0,'out-of-scope generation must stop before any provider request or ledger admission');
+  }
   const wrong = response();await submit({...f.req,body:{...body,expectedAccount:'st-user:wrong'}},wrong);
   assert.equal(wrong.statusCode,401);assert.equal(wrong.body.submissionState,'not_submitted');assert.equal(calls.length,0);
   const accepted = response();await submit({...f.req,body},accepted);
