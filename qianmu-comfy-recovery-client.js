@@ -170,11 +170,12 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     async retrieveOriginal(item, { chatKey = '', apiKey = '', deliver } = {}) {
       const current = await scope(item?.namespace), attemptId = item?.attemptId;
       if (!/^[a-zA-Z0-9_-]{1,240}$/.test(attemptId || '')) throw fail('identity', '请选择原 Comfy 任务');
+      let row = await store.get(current.namespace, attemptId); await guard(current.job);
+      if (item?.version === 3 || row?.version === 3) throw fail('engine', '请使用原云任务领取入口，未切换至原生 Comfy');
       const body = { ...current.body, attemptId, ...(item.taskLocator ? { taskLocator: locator(item.taskLocator) } : {}), ...(item.baseUrl ? { baseUrl: item.baseUrl } : {}) };
       const query = await request(current.job, 'query', body, 65536);
       if (!query.task || query.task.live) return { archived: false, warning: query.task ? '原 Comfy 任务仍在执行，请稍后领取' : '未找到原 Comfy 任务，未重新生成' };
       const target = locator(query.task.taskLocator);
-      let row = await store.get(current.namespace, attemptId); await guard(current.job);
       if (row) {
         row = normalizeComfyDelivery(row, origin);
         if (row.chatKey && row.chatKey !== chatKey) throw fail('chat', '本机记录属于另一聊天，请回原聊天领取；不要覆盖已有归档位置');

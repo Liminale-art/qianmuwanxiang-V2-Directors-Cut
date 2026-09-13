@@ -4,7 +4,8 @@ import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { createComfyRecoveryClient } from '../qianmu-comfy-recovery-client.js';
 import { receiveComfyImage, resolveComfyRecoveryKey } from '../qianmu-comfy-recovery-action.js';
-import { normalizeComfyDelivery, createComfyDeliveryStore } from '../qianmu-comfy-delivery-store.js';
+import { normalizeComfyDelivery, assertComfyDeliveryUpdate, createComfyDeliveryStore } from '../qianmu-comfy-delivery-store.js';
+import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
 import { comfyArchiveFilename } from '../qianmu-comfy-submission.js';
 import { sanitizeStoryboardSnapshot, getStoryboardComfyTransport } from '../qianmu-storyboard.js';
 import { storyboardFunctionSource } from './helpers/storyboard-form-fixture.mjs';
@@ -148,6 +149,46 @@ test('journal validates bounded metadata and requires actual browser persistence
   for (const change of [{ version: 2 }, { baseUrl: 'https://user:secret@test/' }, { imageCount: 9 }, { status: 'confirmed' }, { chatKey: 'a'.repeat(4097) }]) assert.throws(() => normalizeComfyDelivery({ ...row, ...change }, origin));
   const missing = createComfyDeliveryStore({ indexedDB: undefined, origin }); await assert.rejects(missing.put(row), /无法保存/); missing.close(); await assert.rejects(missing.get(row.namespace, row.attemptId), /会话已结束/);
 });
+test('cloud journal checkpoints use a separate version and preserve original platform identity without storing payloads or keys', async () => {
+  const s = setup(); await s.client.prepare(job()); const native = [...s.rows.values()][0];
+  const connection = bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2');
+  const prepared = normalizeComfyDelivery({ ...native, version: 3, baseUrl: connection.origin, cloudConnection: connection, apiKey: 'never-store', workflow: {} }, origin);
+  assert.equal(normalizeComfyDelivery({ ...prepared, baseUrl: `${connection.origin}/api/v2` }, origin).baseUrl, connection.origin);
+  assert.equal(prepared.cloudTask, null); assert.equal(prepared.taskLocator, null); assert.equal(prepared.apiKey, undefined); assert.equal(prepared.workflow, undefined);
+  const task = bindComfyCloudTask(connection, 'original', { self: '/api/v2/jobs/original', cancel: '/api/v2/jobs/original/cancel' });
+  const accepted = normalizeComfyDelivery({ ...prepared, cloudTask: task, taskLocator: { version: 1, channelKey: 'b'.repeat(64) } }, origin);
+  assert.doesNotThrow(() => assertComfyDeliveryUpdate(prepared, accepted));
+  const available = normalizeComfyDelivery({ ...accepted, status: 'available', receipt, imageCount: 2 }, origin);
+  const partial = normalizeComfyDelivery({ ...available, files: [{ imageIndex: 0, url: '/user/images/first.png' }] }, origin);
+  const archived = normalizeComfyDelivery({ ...partial, status: 'archived', files: [...partial.files, { imageIndex: 1, url: '/user/images/second.png' }] }, origin);
+  for (const [before, after] of [[accepted, available], [available, partial], [partial, archived]]) assert.doesNotThrow(() => assertComfyDeliveryUpdate(before, after));
+  for (const invalid of [{ cloudTask: null, taskLocator: null }, { taskLocator: { version: 1, channelKey: 'c'.repeat(64) } },
+    { cloudTask: bindComfyCloudTask(connection, 'other', { self: '/api/v2/jobs/other', cancel: '/api/v2/jobs/other/cancel' }) }]) {
+    const next = normalizeComfyDelivery({ ...accepted, ...invalid }, origin);
+    assert.throws(() => assertComfyDeliveryUpdate(accepted, next));
+  }
+  assert.throws(() => assertComfyDeliveryUpdate(native, prepared));
+  assert.throws(() => assertComfyDeliveryUpdate(prepared, native));
+  assert.throws(() => assertComfyDeliveryUpdate(archived, partial));
+  assert.deepEqual(normalizeComfyDelivery(native, origin), native, 'legacy native metadata keeps its original representation');
+  s.rows.set(`${accepted.namespace}/${accepted.attemptId}`, accepted);
+  await assert.rejects(s.client.retrieveOriginal(accepted, { chatKey: accepted.chatKey, deliver: callback }), { code: 'comfy_delivery_engine' });
+  assert.equal(s.calls.length, 0, 'a cloud record cannot query the native endpoint before cloud routing is connected');
+});
+
+test('cloud journal rejects incomplete acceptance, cross-platform tasks, private permission and premature archive evidence', async () => {
+  const s = setup(); await s.client.prepare(job()); const native = [...s.rows.values()][0];
+  const connection = bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2');
+  const row = { ...native, version: 3, baseUrl: connection.origin, cloudConnection: connection };
+  const task = bindComfyCloudTask(connection, 'original', { self: '/api/v2/jobs/original', cancel: '/api/v2/jobs/original/cancel' });
+  for (const change of [{ cloudTask: task }, { taskLocator: { version: 1, channelKey: 'b'.repeat(64) } }, { allowPrivateNetwork: true },
+    { baseUrl: 'https://untrusted.test' }, { originalOnly: true }, { status: 'available', imageCount: 1, receipt }, { receipt },
+    { cloudConnection: { ...connection, apiKey: 'secret' } },
+    { cloudTask: bindComfyCloudTask(bindComfyCloudProtocol('https://www.runninghub.cn', 'runninghub-workflow-v1'), '123'), taskLocator: { version: 1, channelKey: 'b'.repeat(64) } }]) {
+    assert.throws(() => normalizeComfyDelivery({ ...row, ...change }, origin));
+  }
+});
+
 test('archive filenames are stable per original account and attempt, independent of current character and time', async () => {
   const first = await comfyArchiveFilename(job(), 0);
   assert.equal(await comfyArchiveFilename(job(), 0), first); assert.match(first, /^qianmu_comfy_[a-f0-9]{64}_1$/);

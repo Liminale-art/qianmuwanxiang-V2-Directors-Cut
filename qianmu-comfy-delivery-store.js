@@ -1,14 +1,31 @@
 // Lazy, bounded delivery journal. Never stores a workflow, prompt, image or Key.
+import { bindComfyCloudProtocol, bindComfyCloudTask } from './qianmu-comfy-cloud-protocol.js';
 const fail = message => Object.assign(new Error(message), { code: 'comfy_delivery_storage', submissionState: 'unknown' });
 const text = (value, max) => typeof value === 'string' && value.length <= max && !/[\u0000-\u001f\u007f]/.test(value);
 const bytes = value => new TextEncoder().encode(JSON.stringify(value)).length;
 const states = ['prepared', 'available', 'archived', 'confirmed'];
 export function normalizeComfyDelivery(value, origin = globalThis.location?.origin) {
-  if (![1, 2].includes(value?.version) || (value.version === 2 && (value.originalOnly !== true || value.taskLocator?.version !== 1 || !/^[a-f0-9]{64}$/.test(value.taskLocator.channelKey || '')))
+  if (![1, 2, 3].includes(value?.version) || (value.version === 2 && (value.originalOnly !== true || value.taskLocator?.version !== 1 || !/^[a-f0-9]{64}$/.test(value.taskLocator.channelKey || '')))
     || (value.version === 1 && value.originalOnly === true) || !text(value.namespace, 512) || !/^st-user:.+/.test(value.namespace)
     || !/^[a-zA-Z0-9_-]{1,240}$/.test(value.attemptId || '') || !states.includes(value.status)) throw fail('Comfy 领取记录不完整，请核查原任务');
-  let root;
-  if (value.version === 1 || value.baseUrl) {
+  let root, cloud;
+  if (value.version === 3) {
+    const connection = bindComfyCloudProtocol(value.cloudConnection?.origin, value.cloudConnection?.protocol);
+    if (value.cloudConnection.version !== connection.version || value.cloudConnection.provider !== connection.provider
+      || value.cloudConnection.origin !== connection.origin || Object.keys(value.cloudConnection).some(key => !['version','provider','protocol','origin'].includes(key))
+      || value.allowPrivateNetwork === true) throw fail('云领取记录的平台不一致');
+    const task = value.cloudTask == null ? null : bindComfyCloudTask(value.cloudTask, value.cloudTask.taskId, value.cloudTask.links);
+    if (task && ['provider','protocol','origin'].some(key => task[key] !== connection[key])) throw fail('云原任务不属于原连接');
+    const locator = value.taskLocator == null ? null : value.taskLocator;
+    if (Boolean(task) !== Boolean(locator) || locator && (locator.version !== 1 || !/^[a-f0-9]{64}$/.test(locator.channelKey || ''))
+      || value.originalOnly === true && !task
+      || value.status === 'prepared' && (value.imageCount !== 0 || value.receipt || value.files?.length)
+      || value.status !== 'prepared' && (!task || !value.imageCount || !/^[a-f0-9]{64}$/.test(value.receipt || ''))) throw fail('云任务受理或归档检查点不完整');
+    if (value.baseUrl && bindComfyCloudProtocol(value.baseUrl, connection.protocol).origin !== connection.origin) throw fail('云原连接已变化');
+    cloud = { cloudConnection: connection, cloudTask: task, taskLocator: locator ? { version: 1, channelKey: locator.channelKey } : null, originalOnly: value.originalOnly === true };
+    root = new URL(connection.origin);
+  }
+  if (value.version !== 3 && (value.version === 1 || value.baseUrl)) {
     try { root = new URL(value.baseUrl); } catch (_) { throw fail('Comfy 原连接地址无效'); }
     if (!['http:', 'https:'].includes(root.protocol) || root.username || root.password || root.search || root.hash || !text(root.href, 2048)) throw fail('Comfy 原连接地址无效');
   }
@@ -23,12 +40,27 @@ export function normalizeComfyDelivery(value, origin = globalThis.location?.orig
     return { imageIndex: index, url: file.url };
   });
   if (['archived', 'confirmed'].includes(value.status) && (!value.imageCount || files.length !== value.imageCount)) throw fail('Comfy 归档检查点未完成');
-  const row = { version: value.version, ...(value.version === 2 ? { originalOnly: true, taskLocator: { version: 1, channelKey: value.taskLocator.channelKey } } : {}),
+  const row = { version: value.version, ...(value.version === 2 ? { originalOnly: true, taskLocator: { version: 1, channelKey: value.taskLocator.channelKey } } : {}), ...cloud,
     namespace: value.namespace, attemptId: value.attemptId, baseUrl: root ? root.href.replace(/\/+$/, '') : '',
     allowPrivateNetwork: value.allowPrivateNetwork === true, credentialId: value.credentialId || '', logId: value.logId || '', chatKey: value.chatKey || '',
     automatic: value.automatic === true, createdAt: value.createdAt, status: value.status, receipt: value.receipt || '', imageCount: value.imageCount, files };
   if (bytes(row) > 40 * 1024) throw fail('Comfy 领取记录过大');
   return row;
+}
+
+export function assertComfyDeliveryUpdate(previous, captured) {
+  if (!previous) return;
+  const cloudChanged = (previous.version === 3 || captured.version === 3) && (previous.version !== captured.version
+    || JSON.stringify(previous.cloudConnection) !== JSON.stringify(captured.cloudConnection)
+    || previous.originalOnly !== captured.originalOnly
+    || previous.cloudTask && JSON.stringify(previous.cloudTask) !== JSON.stringify(captured.cloudTask)
+    || previous.taskLocator && JSON.stringify(previous.taskLocator) !== JSON.stringify(captured.taskLocator));
+  if (cloudChanged || (previous.version === 2 && (captured.version !== 2 || previous.taskLocator.channelKey !== captured.taskLocator.channelKey))
+    || ['baseUrl','credentialId','allowPrivateNetwork','chatKey','automatic'].some(name => previous[name] !== captured[name])
+    || states.indexOf(captured.status) < states.indexOf(previous.status)
+    || previous.files.some((file, index) => captured.files[index]?.url !== file.url)
+    || (previous.imageCount && previous.imageCount !== captured.imageCount)
+    || (previous.receipt && previous.receipt !== captured.receipt)) throw fail('Comfy 原领取记录不可改写');
 }
 
 export function createComfyDeliveryStore({ indexedDB = globalThis.indexedDB, origin = globalThis.location?.origin,
@@ -107,12 +139,7 @@ export function createComfyDeliveryStore({ indexedDB = globalThis.indexedDB, ori
           if (!captured) { output = previous; return; }
           if (remove && !previous) { output = false; return; }
           if (remove && JSON.stringify(previous) !== JSON.stringify(captured)) throw fail('Comfy 领取记录已变化，请重新选择清理');
-          if (previous && ((previous.version === 2 && (captured.version !== 2 || previous.taskLocator.channelKey !== captured.taskLocator.channelKey))
-            || ['baseUrl','credentialId','allowPrivateNetwork','chatKey','automatic'].some(name => previous[name] !== captured[name])
-            || states.indexOf(captured.status) < states.indexOf(previous.status)
-            || previous.files.some((file, index) => captured.files[index]?.url !== file.url)
-            || (previous.imageCount && previous.imageCount !== captured.imageCount)
-            || (previous.receipt && previous.receipt !== captured.receipt))) throw fail('Comfy 原领取记录不可改写');
+          assertComfyDeliveryUpdate(previous, captured);
           const usageStore = tx.objectStore('usage'), usageRequest = usageStore.get(namespace);
           usageRequest.onsuccess = () => { try {
             const write = usage => {
