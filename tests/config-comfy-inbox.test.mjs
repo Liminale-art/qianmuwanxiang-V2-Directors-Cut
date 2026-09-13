@@ -57,3 +57,11 @@ test('original-only delivery rechecks the page after the asynchronous account gu
   const e=fixture();await e.c.storyboardOpenComfyInbox(e.root);await e.mounted.receive(row);
   assert.deepEqual(e.calls,['retrieve','archive']);
 });
+
+test('cloud inbox resolves only the original cloud key and keeps the shared archive guard',async()=>{
+  const e=fixture();let resolutions=0;
+  e.c.resolveComfyCloudRecoveryKey=async(selected,ports)=>{assert.equal(selected.engine,'cloud');await ports.guard();resolutions++;return 'original-key';};
+  e.c.storyboardResolveComfyRecoveryKey=()=>assert.fail('cloud must not resolve a native host credential');
+  await e.c.storyboardOpenComfyInbox(e.root);await e.mounted.receive({...row,engine:'cloud'});
+  assert.equal(resolutions,1);assert.deepEqual(e.calls,['retrieve','archive']);
+});

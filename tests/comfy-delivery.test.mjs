@@ -172,8 +172,8 @@ test('cloud journal checkpoints use a separate version and preserve original pla
   assert.throws(() => assertComfyDeliveryUpdate(archived, partial));
   assert.deepEqual(normalizeComfyDelivery(native, origin), native, 'legacy native metadata keeps its original representation');
   s.rows.set(`${accepted.namespace}/${accepted.attemptId}`, accepted);
-  await assert.rejects(s.client.retrieveOriginal(accepted, { chatKey: accepted.chatKey, deliver: callback }), { code: 'comfy_delivery_engine' });
-  assert.equal(s.calls.length, 0, 'a cloud record cannot query the native endpoint before cloud routing is connected');
+  await assert.rejects(s.client.retrieveOriginal({ namespace: accepted.namespace, attemptId: accepted.attemptId }, { chatKey: accepted.chatKey, deliver: callback }), { code: 'comfy_delivery_engine' });
+  assert.equal(s.calls.length, 0, 'an entry without explicit cloud identity cannot query the native endpoint for a cloud record');
 });
 
 test('cloud journal rejects incomplete acceptance, cross-platform tasks, private permission and premature archive evidence', async () => {

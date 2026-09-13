@@ -4,7 +4,7 @@ import { prepareComfySubmission, assertComfyAccount, acknowledgeComfyImage } fro
 import { resolveImageAccountNamespace } from './qianmu-image-admission.js';
 import { imageChannelKey } from './qianmu-image-channel.js';
 import { createComfyDeliveryStore, normalizeComfyDelivery } from './qianmu-comfy-delivery-store.js';
-import { bindComfyCloudTask } from './qianmu-comfy-cloud-protocol.js';
+import { bindComfyCloudTask, bindComfyCloudProtocol } from './qianmu-comfy-cloud-protocol.js';
 
 const fail = (code, message) => Object.assign(new Error(message), { code: `comfy_delivery_${code}`, submissionState: 'accepted', retryable: false });
 const BASE = '/api/plugins/qianmu-tts/image/comfy/tasks';
@@ -144,6 +144,63 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     return acknowledge(job, row);
   }
   const client = {
+    async cloudCatalog({ cursor = null, namespace } = {}) {
+      const current = await scope(namespace);
+      const data = await request(current.job, 'catalog', { ...current.body, cursor, limit: 40 }, 1024 * 1024, CLOUD_BASE);
+      if (data.catalogVersion !== 1 || typeof data.storageReadable !== 'boolean' || !Array.isArray(data.originals) || data.originals.length > 128
+        || !Array.isArray(data.tasks) || data.tasks.length > 50) throw fail('catalog', '云任务目录尚未就绪，请核对后端版本');
+      const clean = row => {
+        if (!/^[a-zA-Z0-9_-]{1,240}$/.test(row?.attemptId || '')) throw fail('catalog', '云任务目录编号无效');
+        const task = row.task ? bindComfyCloudTask(row.task, row.task.taskId, row.task.links) : null;
+        const cloudRecord = task ? normalizeComfyDelivery({ version: 3, namespace: current.namespace, attemptId: row.attemptId, originalOnly: true,
+          cloudConnection: bindComfyCloudProtocol(task.origin, task.protocol), cloudTask: task, taskLocator: locator(row.taskLocator),
+          createdAt: row.createdAt, status: 'prepared', imageCount: 0, files: [] }, origin) : null;
+        return { ...row, namespace: current.namespace, engine: 'cloud', taskLocator: locator(row.taskLocator), task,
+          cloudRecord,
+          resultAvailable: row.resultAvailable === true && task?.provider === 'comfy-cloud',
+          canReceiveOriginal: task?.provider === 'comfy-cloud' && !row.live && row.archiveState !== 'archived',
+          canRetryCleanup: row.canRetryCleanup === true && row.archiveState === 'archived' && task?.provider === 'comfy-cloud', canDiscard: false };
+      };
+      return { ...data, namespace: current.namespace, originals: data.originals.map(clean), tasks: data.tasks.map(clean) };
+    },
+    async catalogAll() {
+      const current = await scope();
+      const results = await Promise.allSettled([this.catalog({ namespace: current.namespace }), this.cloudCatalog({ namespace: current.namespace })]);
+      await guard(current.job);
+      if (results.every(item => item.status === 'rejected')) throw fail('catalog', '暂存目录暂不可读取，请核对后端连接');
+      const native = results[0].status === 'fulfilled' ? results[0].value : null, cloud = results[1].status === 'fulfilled' ? results[1].value : null;
+      const warnings = results.map((item,index) => item.status === 'rejected' ? `${index ? '云端' : '本地 Comfy'}暂存目录暂不可读取` : item.value.warning || '').filter(Boolean);
+      const originals = [...(native?.originals || []), ...(cloud?.originals || [])];
+      // Accepted originals must be discoverable before the first result is
+      // cached. This exposes a read/collect action, not another paid submission.
+      // Unreadable storage can still offer archive-only cleanup from ledger proof.
+      const cloudKeys = new Set((cloud?.originals || []).map(row => JSON.stringify([row.taskLocator.channelKey,row.attemptId])));
+      for (const row of cloud?.tasks || []) {
+        const key = JSON.stringify([row.taskLocator.channelKey,row.attemptId]);
+        if (!cloudKeys.has(key) && (row.canReceiveOriginal || cloud.storageReadable === false && row.canRetryCleanup)) { originals.push(row); cloudKeys.add(key); }
+      }
+      const storageReadable = Boolean(native && cloud && cloud.storageReadable);
+      const total = name => storageReadable && [native,cloud].every(item => Number.isSafeInteger(item.totals?.[name]) && item.totals[name] >= 0)
+        ? native.totals[name] + cloud.totals[name] : null;
+      return { catalogVersion: 1, namespace: current.namespace, storageReadable, originals, tasks: [...(native?.tasks || []), ...(cloud?.tasks || [])],
+        totals: Object.fromEntries(['count','imageBytes','metadataBytes','temporaryBytes','reservedBytes','tasks'].map(name => [name,total(name)])), warning: warnings.join('；') };
+    },
+    async retryCloudCleanup(item) {
+      if (item?.engine !== 'cloud' || item.canRetryCleanup !== true || item.archiveState !== 'archived'
+        || !/^[a-f0-9]{64}$/.test(item.cacheReceipt || '') || !/^[a-zA-Z0-9_-]{1,240}$/.test(item.attemptId || '')) throw fail('confirmation', '请刷新已归档任务后再清理');
+      const selected = { attemptId: item.attemptId, task: bindComfyCloudTask(item.task, item.task?.taskId, item.task?.links),
+        channelKey: locator(item.taskLocator).channelKey, receipt: item.cacheReceipt, namespace: item.namespace };
+      if (selected.task.provider !== 'comfy-cloud') throw fail('engine', '此云平台的临时文件清理尚未就绪');
+      const current = await scope(selected.namespace);
+      return locked(current.job, async () => {
+        const { namespace: _namespace, ...body } = selected;
+        const data = await request(current.job, 'acknowledge', { ...current.body, ...body, archived: true }, 16384, CLOUD_BASE);
+        assertCloudPacket({ cloudTask: selected.task }, data);
+        if (data.status !== 'archived' || data.delivery?.state !== 'archived' || data.delivery.cacheReceipt !== selected.receipt
+          || !['complete','pending'].includes(data.cleanup)) throw fail('confirmation', '服务器归档凭证尚未确认，未清理本机记录');
+        return { archived: true, warning: data.cleanup === 'pending' ? '原图已归档；临时文件尚未清理完，可稍后继续' : '' };
+      });
+    },
     async retrieveCloudOriginal(item, { chatKey = '', apiKey = '', deliver } = {}) {
       // Explicit version, never route an old native task using today's selected host.
       if (item?.version !== 3) throw fail('engine', '请选择原云任务记录');
@@ -162,9 +219,9 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
           await guard(originalJob);
           row = await save(originalJob, { ...selected, originalOnly: true, chatKey, status: 'prepared', receipt: '', imageCount: 0, files: [] });
         }
-        const job = jobForRow(row);
-        if (row.chatKey && row.chatKey !== chatKey) throw fail('chat', '请回原聊天继续保存图片，不覆盖已有归档位置');
+        const job = { ...jobForRow(row), originalOnly: true };
         if (['archived','confirmed'].includes(row.status)) return acknowledge(job, row);
+        if (row.chatKey && row.chatKey !== chatKey) throw fail('chat', '请回原聊天继续保存图片，不覆盖已有归档位置');
         if (typeof apiKey !== 'string' || !apiKey.trim() || apiKey.length > 2048) throw fail('credential', '请核对原云连接的 Key；不会重新生成');
         const data = await request(job, 'result', { ...current.body, attemptId: row.attemptId, channelKey: row.taskLocator.channelKey,
           task: row.cloudTask, apiKey }, 68 * 1024 * 1024, CLOUD_BASE);
@@ -224,6 +281,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
       });
     },
     async retrieveOriginal(item, { chatKey = '', apiKey = '', deliver } = {}) {
+      if (item?.version === 3 || item?.engine === 'cloud') return this.retrieveCloudOriginal(item.cloudRecord || item, { chatKey, apiKey, deliver });
       const current = await scope(item?.namespace), attemptId = item?.attemptId;
       if (!/^[a-zA-Z0-9_-]{1,240}$/.test(attemptId || '')) throw fail('identity', '请选择原 Comfy 任务');
       let row = await store.get(current.namespace, attemptId); await guard(current.job);

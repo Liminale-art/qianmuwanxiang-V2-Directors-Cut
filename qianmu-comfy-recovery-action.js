@@ -1,4 +1,28 @@
 // Manual receipt of an existing image. Never submit a new generation request.
+import { bindComfyCloudProtocol } from './qianmu-comfy-cloud-protocol.js';
+
+export async function resolveComfyCloudRecoveryKey(item, { connections, resolve, guard = () => {} }) {
+  const row = item?.cloudRecord || item, task = row?.cloudTask, channelKey = row?.taskLocator?.channelKey;
+  if (row?.version !== 3 || !task || !/^[a-f0-9]{64}$/.test(channelKey || '') || ['archived','confirmed'].includes(row.status)) return '';
+  const connection = bindComfyCloudProtocol(task.origin, task.protocol);
+  const entries = () => { const group = connections(); return [group?.draft,group?.active,...(group?.presets || [])].filter(Boolean); };
+  const sameOrigin = entry => { try { return bindComfyCloudProtocol(entry.baseUrl, connection.protocol).origin === connection.origin; } catch (_) { return false; } };
+  const ids = [...new Set(entries().filter(sameOrigin).map(entry => entry.credentialId).filter(Boolean))];
+  if (ids.length > 64) return '';
+  for (const id of ids) {
+    const matches = () => { const owned = entries().filter(entry => entry.credentialId === id); return owned.length && owned.every(sameOrigin); };
+    await guard(); if (!matches()) continue;
+    const apiKey = await resolve(id); await guard();
+    if (!matches() || typeof apiKey !== 'string' || !/^[\x21-\x7e]{1,2048}$/.test(apiKey)) continue;
+    // Match the server's exact original resource fingerprint, not a same-host
+    // guess. Keys never leave memory or go to a mismatching historical account.
+    const bytes = new TextEncoder().encode(JSON.stringify(['qianmu.cloud-resource.v1',connection.provider,connection.origin,apiKey]));
+    const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(value => value.toString(16).padStart(2,'0')).join('');
+    await guard(); if (matches() && digest === channelKey) return apiKey;
+  }
+  return '';
+}
+
 export async function resolveComfyRecoveryKey(connection, {connections,resolve}) {
   if (!connection?.credentialId) return '';
   const root = value => { try { const url = new URL(value); return !url.username && !url.password && !url.search && !url.hash ? url.href.replace(/\/+$/, '') : ''; } catch (_) { return ''; } };

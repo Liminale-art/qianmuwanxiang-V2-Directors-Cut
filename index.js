@@ -4,7 +4,7 @@ import { finishConfigRestore } from './qianmu-config-apply.js';
 import { readCoreadPackageFile, coreadPackageSafeKey, coreadPackageRestoreMessage, applyCoreadPackageData, collectCoreadPackageData, prepareCoreadPackageExport, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard, finishCoreadPackageImport } from './qianmu-reader-package.js';
 import { exportConfiguration } from './qianmu-config-export.js';
 import { exportLibraryBackup, readLibraryBackupFile, confirmLibraryRestore, FAVORITES_BACKUP_LIMITS, FAVORITE_TEXT_LIMITS } from './qianmu-library-backup.js';
-import { receiveComfyImage, resolveComfyRecoveryKey } from './qianmu-comfy-recovery-action.js';
+import { receiveComfyImage, resolveComfyRecoveryKey, resolveComfyCloudRecoveryKey } from './qianmu-comfy-recovery-action.js';
 import { receiveServiceImage } from './qianmu-service-recovery-action.js';
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
 import { createConfigUndoAction } from './qianmu-config-undo-action.js';
@@ -19648,9 +19648,12 @@ async function storyboardOpenComfyInbox(root) {
     const dispose = view.mountComfyInbox(host, { service, isCurrent: valid, receive: async row => {
       if (!valid()) throw new Error('收片页面已变化，请重新打开后领取原图');
       const log = storyboardState().logs.find(item => (!row.logId || item.id === row.logId) && item.snapshot?.source === 'comfy' && item.snapshot?.imageAdmission?.attemptId === row.attemptId && item.snapshot?.imageAdmission?.namespace === row.namespace);
-      if (log && storyboardCanReceiveComfyLog(log) && !row.originalOnly) return storyboardReceiveComfyImage(log, { refresh: false, taskLocator: row.taskLocator });
+      if (row.engine !== 'cloud' && row.version !== 3 && log && storyboardCanReceiveComfyLog(log) && !row.originalOnly) return storyboardReceiveComfyImage(log, { refresh: false, taskLocator: row.taskLocator });
       const chatKey = String(getChatKey() || '');
-      const apiKey = row.baseUrl ? await storyboardResolveComfyRecoveryKey({ baseUrl: row.baseUrl, credentialId: row.credentialId }) : '';
+      const apiKey = row.engine === 'cloud' || row.version === 3 ? await resolveComfyCloudRecoveryKey(row, {
+        connections:()=>storyboardState().connections.comfy, resolve:id=>storyboardResolveApiKey('comfy',id,{exact:true}),
+        guard:()=>{if(!valid())throw new Error('收片页面已变化，请重新打开');},
+      }) : row.baseUrl ? await storyboardResolveComfyRecoveryKey({ baseUrl: row.baseUrl, credentialId: row.credentialId }) : '';
       if (!valid()) throw new Error('收片页面已变化，请重新打开后领取原图');
       return service.retrieveOriginal(row, { chatKey, apiKey, deliver: (job, data, archiveFiles, checkpoint, guard) =>
         storyboardDeliverGatewayResult(job, null, data, { service: true, archiveFiles, checkpoint, guard: async () => {

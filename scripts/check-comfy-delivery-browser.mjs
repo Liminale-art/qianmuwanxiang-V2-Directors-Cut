@@ -103,6 +103,37 @@ try{
     return final.status==='confirmed'&&calls.join(',')==='result,acknowledge,acknowledge';
   }));
   await other.evaluate(()=>store.close());
+  const ui=await openPage();
+  await ui.evaluate(async()=>{
+    const {mountComfyInbox}=await import('/qianmu-comfy-inbox-view.js');
+    const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');
+    document.body.innerHTML='<main id="inbox"></main>';window.cloudReadable=true;window.cleanupCalls=0;window.received=[];
+    const item={attemptId:'cloud-original',createdAt:1,status:'succeeded',task,taskLocator:accepted.taskLocator,archiveState:'archived',
+      cacheReceipt:available.receipt,canRetryCleanup:true,resultAvailable:false,imageCount:2,cacheBytes:8};
+    const totals={count:1,imageBytes:8,metadataBytes:2,temporaryBytes:0,reservedBytes:0,tasks:1};
+    window.uiClient=createComfyRecoveryClient({store,account:async()=>ns,fetchImpl:async(url,init)=>{
+      const body=JSON.parse(init.body);if(body.apiKey)throw Error('Catalog and cleanup must not use Key');
+      if(url.endsWith('/acknowledge')){
+        cleanupCalls++;return new Response(JSON.stringify({ok:true,version:1,status:'archived',task,delivery:{state:'archived',cacheReceipt:available.receipt},cleanup:'pending'}));
+      }
+      if(!url.endsWith('/catalog'))throw Error('Unexpected media request');
+      return new Response(JSON.stringify(url.includes('/cloud/')?{ok:true,version:1,catalogVersion:1,storageReadable:cloudReadable,
+        originals:cloudReadable?[item]:[],tasks:[item],totals:cloudReadable?totals:{...totals,imageBytes:null},warning:cloudReadable?'':'暂存占用暂不可读取'}:
+        {ok:true,catalogVersion:1,originals:[{attemptId:'native-original',createdAt:1,status:'succeeded',taskLocator:{version:1,channelKey:'c'.repeat(64)},resultAvailable:true,canDiscard:true,cacheBytes:8,imageCount:1}],tasks:[],totals}));
+    }});
+    window.disposeInbox=mountComfyInbox(document.querySelector('#inbox'),{service:uiClient,receive:async row=>{received.push(row);return {archived:true};}});
+  });
+  await ui.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
+  ok('unified inbox shows both platforms and keeps cloud originals out of bulk discard',await ui.locator('#inbox').evaluate(node=>{
+    const articles=[...node.querySelectorAll('article')];return articles.length===2&&articles[1].textContent.includes('Comfy Cloud')
+      &&articles[1].querySelector('input').disabled&&!articles[0].querySelector('input').disabled;
+  }));
+  await ui.getByRole('button',{name:'继续清理',exact:true}).click();await ui.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
+  ok('cleanup button uses archive-only continuation, not image delivery',await ui.evaluate(()=>cleanupCalls===1&&received.length===0&&document.querySelector('[role="status"]').textContent.includes('尚未清理完')));
+  await ui.evaluate(()=>{cloudReadable=false;});await ui.getByRole('button',{name:'刷新',exact:true}).click();await ui.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
+  ok('unreadable space is explicit and archived ledger cleanup remains reachable',await ui.locator('#inbox').evaluate(node=>node.querySelector('.sd-comfy-inbox-meter').textContent.includes('暂不可读取')
+    &&node.querySelector('[role="alert"]').textContent.includes('暂不可读取')&&[...node.querySelectorAll('button')].some(button=>button.textContent==='继续清理'&&!button.disabled)));
+  await ui.evaluate(()=>{disposeInbox();uiClient.close();});
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({checks,external,errors},null,2));
 }finally{await context.close();await browser.close();}
