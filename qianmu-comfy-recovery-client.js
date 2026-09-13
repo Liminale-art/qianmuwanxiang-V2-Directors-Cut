@@ -5,6 +5,7 @@ import { resolveImageAccountNamespace } from './qianmu-image-admission.js';
 import { imageChannelKey } from './qianmu-image-channel.js';
 import { createComfyDeliveryStore, normalizeComfyDelivery, assertComfyDeliveryUpdate } from './qianmu-comfy-delivery-store.js';
 import { bindComfyCloudTask, bindComfyCloudProtocol } from './qianmu-comfy-cloud-protocol.js';
+import { buildComfyCloudRequest } from './qianmu-comfy-cloud-request.js';
 
 const fail = (code, message) => Object.assign(new Error(message), { code: `comfy_delivery_${code}`, submissionState: 'accepted', retryable: false });
 const BASE = '/api/plugins/qianmu-tts/image/comfy/tasks';
@@ -145,6 +146,12 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     return acknowledge(job, row);
   }
   const client = {
+    async prepareCloudSubmission(job, gateway, connection) {
+      // Freeze the graph and declared values before the first storage/account await.
+      const request = buildComfyCloudRequest(job,gateway,connection);
+      const prepared = await this.prepareCloud(job,request.connection);
+      return { ...prepared, request };
+    },
     async prepareCloud(job, cloudConnection) {
       job = identity(job);
       try {
