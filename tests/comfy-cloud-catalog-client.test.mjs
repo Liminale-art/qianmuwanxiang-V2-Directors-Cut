@@ -54,6 +54,21 @@ test('accepted but not yet cached cloud jobs remain discoverable without fabrica
   assert.equal(selected.canReceiveOriginal,true);assert.equal(selected.resultAvailable,false);assert.equal(selected.cloudRecord.status,'prepared');
   assert.ok(f.calls.every(call=>call.url.endsWith('/catalog')),'discovery must not fetch media or submit anything');
 });
+test('older cloud ledger pages use an explicit account-bound cursor and keep retry position after a failed read',async()=>{
+  const cursor={channelKey,attemptId:'original'};let failed=false;
+  const f=fixture({respond:(url,body)=>{
+    if(!url.includes('/cloud/'))return json(native);
+    if(failed)return new Response('{}',{status:503});
+    return json({...cloud,originals:[],tasks:[{...row,attemptId:body.cursor?'older':'original'}],nextCursor:body.cursor?null:cursor});
+  }});
+  const first=await f.client.catalogAll();assert.deepEqual(first.cloudNextCursor,cursor);
+  const next=await f.client.catalogAll({cloudCursor:first.cloudNextCursor,namespace:first.namespace});
+  assert.equal(next.cloudNextCursor,null);assert.ok(next.originals.some(item=>item.attemptId==='older'));
+  failed=true;const retry=await f.client.catalogAll({cloudCursor:cursor,namespace:first.namespace});
+  assert.deepEqual(retry.cloudNextCursor,cursor);assert.equal(retry.storageReadable,false);assert.match(retry.warning,/暂不可读取/);
+  assert.ok(f.calls.every(call=>call.url.endsWith('/catalog')));
+  f.switchAccount();await assert.rejects(f.client.catalogAll({cloudCursor:cursor,namespace:first.namespace}),{code:'comfy_delivery_account'});
+});
 test('original cleanup needs archived proof, uses no Key and never manufactures missing local files',async()=>{
   let cleanup='pending';
   const f=fixture({respond:(url)=>json(url.endsWith('/catalog')?{...cloud,originals:[{...row,archiveState:'archived',canRetryCleanup:true}]}:

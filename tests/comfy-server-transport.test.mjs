@@ -15,6 +15,8 @@ import { submitComfyCloudTask } from '../qianmu-comfy-cloud-submit.js';
 import { readComfyCloudAsset, downloadComfyCloudAsset, downloadComfyCloudJob } from '../qianmu-comfy-cloud-asset-read.js';
 import { createComfyCloudReceiver } from '../qianmu-comfy-cloud-receive.js';
 import { createComfyCloudService } from '../qianmu-comfy-cloud-service.js';
+import { createComfyRecoveryClient } from '../qianmu-comfy-recovery-client.js';
+import { normalizeComfyDelivery, assertComfyDeliveryUpdate } from '../qianmu-comfy-delivery-store.js';
 import { comfyCloudResourceKey } from '../qianmu-comfy-cloud-ledger.js';
 import { init, exit } from '../server-plugin.js';
 import * as fs from 'node:fs/promises';
@@ -689,6 +691,44 @@ test('cloud host catalog preserves ledger history and unknown occupancy when par
   assert.equal(page.storageReadable, false); assert.equal(page.totals.tasks, 1); assert.equal(page.totals.imageBytes, null);
   assert.equal(page.tasks[0].canRetryCleanup, true); assert.doesNotMatch(JSON.stringify(page), /unreadable private files/);
   assert.equal((await service.acknowledge(f.req, input)).cleanup, 'complete');
+});
+
+test('cloud browser recovery composes with the actual host, binary cache and archive-only cleanup after reopening', async t => {
+  const { f, cache, received, calls: providerCalls } = await stagedBeforeSettlement(t);
+  let interruptCleanup = true;
+  const service = createComfyCloudService({ store: f.store, cache: { ...cache, discard: async (...args) => {
+    if (interruptCleanup) throw Error('simulated cleanup interruption'); return cache.discard(...args);
+  } } }); t.after(() => service.close());
+  const rows = new Map(), calls = [], archivePath = path.join(f.root, 'synthetic-user-archive.png');
+  const localStore = { get: async (ns,id) => structuredClone(rows.get(`${ns}/${id}`) || null), put: async value => {
+    const row = normalizeComfyDelivery(value, 'https://st.test'), key = `${row.namespace}/${row.attemptId}`;
+    assertComfyDeliveryUpdate(rows.get(key),row); rows.set(key,row);
+  }, close() {} };
+  const makeClient = () => createComfyRecoveryClient({ origin: 'https://st.test', account: async () => 'st-user:alice', store: localStore, confirm: async () => true,
+    locks: { request: async (_name,_options,work) => work({}) }, fetchImpl: async (url,init) => {
+      assert.ok(url.startsWith('/api/plugins/qianmu-tts/image/comfy/cloud/tasks/'));
+      const action = url.split('/').at(-1), body = JSON.parse(init.body); calls.push(action);
+      assert.ok(['catalog','result','acknowledge'].includes(action));
+      if (action !== 'result') assert.equal(body.apiKey,undefined);
+      return new Response(JSON.stringify(await service[action](f.req,body)));
+    } });
+  const first = makeClient(), item = (await first.cloudCatalog()).originals[0];
+  const archived = await first.retrieveOriginal(item, { chatKey: 'synthetic-chat', apiKey: f.locator.apiKey,
+    deliver: async (job,data,files,checkpoint,guard) => {
+      await guard(); assert.equal(job.originalOnly,true); assert.equal(job.target,'gallery'); assert.deepEqual(files,[]);
+      const bytes = Buffer.from(data.images[0].data,'base64'); assert.deepEqual(bytes,png);
+      await fs.writeFile(archivePath,bytes); await checkpoint([{ url: '/user/images/synthetic-user-archive.png' }]); return true;
+    } });
+  assert.equal(archived.archived,true); assert.match(archived.warning,/尚未清理完/);
+  assert.equal([...rows.values()][0].status,'archived'); assert.equal((await received.grant.readDelivery()).state,'archived');
+  assert.equal((await cache.load(received.grant.identity)).receipt,received.result.receipt);
+  first.close(); interruptCleanup = false;
+  const resumed = makeClient(); t.after(() => resumed.close());
+  assert.equal((await resumed.retrieveOriginal(item, { chatKey: 'different-chat' })).warning,'');
+  assert.equal([...rows.values()][0].status,'confirmed'); assert.equal(await cache.load(received.grant.identity),null);
+  assert.deepEqual(await fs.readFile(archivePath),png,'cleanup preserves the separately archived original');
+  assert.deepEqual(calls,['catalog','result','acknowledge','acknowledge']); assert.equal(providerCalls.length,3,'no remote redownload after the staged fixture');
+  assert.doesNotMatch(JSON.stringify([...rows.values()]),/test-only-secret|apiKey|workflow|base64/);
 });
 
 test('cloud service shutdown cancels active archive work, drains it before closing storage, and admits no later operations', async t => {

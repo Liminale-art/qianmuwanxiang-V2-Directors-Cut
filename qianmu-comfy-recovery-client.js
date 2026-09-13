@@ -163,9 +163,9 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
       };
       return { ...data, namespace: current.namespace, originals: data.originals.map(clean), tasks: data.tasks.map(clean) };
     },
-    async catalogAll() {
-      const current = await scope();
-      const results = await Promise.allSettled([this.catalog({ namespace: current.namespace }), this.cloudCatalog({ namespace: current.namespace })]);
+    async catalogAll({ cloudCursor = null, namespace } = {}) {
+      const current = await scope(namespace);
+      const results = await Promise.allSettled([this.catalog({ namespace: current.namespace }), this.cloudCatalog({ cursor: cloudCursor, namespace: current.namespace })]);
       await guard(current.job);
       if (results.every(item => item.status === 'rejected')) throw fail('catalog', '暂存目录暂不可读取，请核对后端连接');
       const native = results[0].status === 'fulfilled' ? results[0].value : null, cloud = results[1].status === 'fulfilled' ? results[1].value : null;
@@ -183,6 +183,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
       const total = name => storageReadable && [native,cloud].every(item => Number.isSafeInteger(item.totals?.[name]) && item.totals[name] >= 0)
         ? native.totals[name] + cloud.totals[name] : null;
       return { catalogVersion: 1, namespace: current.namespace, storageReadable, originals, tasks: [...(native?.tasks || []), ...(cloud?.tasks || [])],
+        cloudNextCursor: cloud ? cloud.nextCursor || null : cloudCursor,
         totals: Object.fromEntries(['count','imageBytes','metadataBytes','temporaryBytes','reservedBytes','tasks'].map(name => [name,total(name)])), warning: warnings.join('；') };
     },
     async retryCloudCleanup(item) {

@@ -30,6 +30,7 @@ export function mountComfyInbox(host, { service, receive, isCurrent = () => host
         <button type="button" class="sd-btn" data-receive="${index}" ${busy || (mode === 'server' && row.resultAvailable !== true && !row.canRetryCleanup && !row.canReceiveOriginal) ? 'disabled' : ''}>${row.canRetryCleanup ? '继续清理' : row.canReceiveOriginal && !row.resultAvailable ? '查看结果' : '领取'}</button>
       </article>`).join('')}</div>
       ${pages > 1 ? `<footer><button type="button" class="sd-btn" data-action="previous" ${!page || busy ? 'disabled' : ''}>上一页</button><span>${page + 1} / ${pages}</span><button type="button" class="sd-btn" data-action="next" ${page + 1 >= pages || busy ? 'disabled' : ''}>下一页</button></footer>` : ''}
+      ${mode === 'server' && server?.cloudNextCursor ? `<button type="button" class="sd-btn" data-action="earlier-cloud" ${busy ? 'disabled' : ''}>加载较早云任务</button>` : ''}
     </section>`;
   }
   async function refresh() {
@@ -51,6 +52,18 @@ export function mountComfyInbox(host, { service, receive, isCurrent = () => host
     if (action === 'server' || action === 'local') { mode = action; page = 0; selected.clear(); notice = ''; paint(); return; }
     if (action === 'previous' || action === 'next') { page += action === 'next' ? 1 : -1; selected.clear(); paint(); return; }
     if (action === 'refresh') { notice = ''; return refresh(); }
+    if (action === 'earlier-cloud' && server?.cloudNextCursor) {
+      const ticket = ++revision; busy = true; selected.clear(); paint();
+      try {
+        const next = await service.catalogAll({ cloudCursor: server.cloudNextCursor, namespace: server.namespace });
+        if (!current() || ticket !== revision) return;
+        if (next.namespace !== server.namespace) throw Error('ST 账户已变化，请重新读取');
+        const merged = new Map([...server.originals,...next.originals].map(row => [key(row),row]));
+        server = { ...next, originals: [...merged.values()] }; serverError = next.warning || '';
+      } catch (error) { if (current() && ticket === revision) notice = error.message || '较早任务暂不可读取，请稍后重试'; }
+      finally { if (current() && ticket === revision) { busy = false; paint(); } }
+      return;
+    }
     const chosen = rows().filter(row => selected.has(key(row))), row = rows()[page * 40 + Number(button.dataset.receive)];
     busy = true; paint();
     try {

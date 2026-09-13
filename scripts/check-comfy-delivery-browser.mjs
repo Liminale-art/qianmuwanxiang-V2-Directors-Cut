@@ -118,7 +118,9 @@ try{
       }
       if(!url.endsWith('/catalog'))throw Error('Unexpected media request');
       return new Response(JSON.stringify(url.includes('/cloud/')?{ok:true,version:1,catalogVersion:1,storageReadable:cloudReadable,
-        originals:cloudReadable?[item]:[],tasks:[item],totals:cloudReadable?totals:{...totals,imageBytes:null},warning:cloudReadable?'':'暂存占用暂不可读取'}:
+        originals:cloudReadable?[item]:[],tasks:body.cursor?[{...item,attemptId:'older-cloud',status:'uncertain',archiveState:null,canRetryCleanup:false}]:[item],
+        nextCursor:body.cursor?null:{channelKey:item.taskLocator.channelKey,attemptId:item.attemptId},
+        totals:cloudReadable?totals:{...totals,imageBytes:null},warning:cloudReadable?'':'暂存占用暂不可读取'}:
         {ok:true,catalogVersion:1,originals:[{attemptId:'native-original',createdAt:1,status:'succeeded',taskLocator:{version:1,channelKey:'c'.repeat(64)},resultAvailable:true,canDiscard:true,cacheBytes:8,imageCount:1}],tasks:[],totals}));
     }});
     window.disposeInbox=mountComfyInbox(document.querySelector('#inbox'),{service:uiClient,receive:async row=>{received.push(row);return {archived:true};}});
@@ -133,6 +135,11 @@ try{
   await ui.evaluate(()=>{cloudReadable=false;});await ui.getByRole('button',{name:'刷新',exact:true}).click();await ui.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
   ok('unreadable space is explicit and archived ledger cleanup remains reachable',await ui.locator('#inbox').evaluate(node=>node.querySelector('.sd-comfy-inbox-meter').textContent.includes('暂不可读取')
     &&node.querySelector('[role="alert"]').textContent.includes('暂不可读取')&&[...node.querySelectorAll('button')].some(button=>button.textContent==='继续清理'&&!button.disabled)));
+  await ui.getByRole('button',{name:'加载较早云任务',exact:true}).click();await ui.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
+  ok('older task paging preserves known originals, deduplicates repeats and stops at the last page',await ui.locator('#inbox').evaluate(node=>{
+    const ids=[...node.querySelectorAll('.sd-comfy-inbox-id')].map(item=>item.textContent);
+    return ids.length===3&&new Set(ids).size===3&&ids.includes('older-cloud')&&!node.querySelector('[data-action="earlier-cloud"]');
+  }));
   await ui.evaluate(()=>{disposeInbox();uiClient.close();});
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({checks,external,errors},null,2));
