@@ -32,6 +32,25 @@ async function openPage(){
 }
 try{
   const page=await openPage();
+  ok('lazy Cloud readiness uses the scoped client and leaves no generation journal in real IndexedDB',await page.evaluate(async()=>{
+    const {checkCloudComfyReadiness}=await import('/qianmu-comfy-readiness.js');
+    const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');
+    const {createComfyDeliveryStore}=await import('/qianmu-comfy-delivery-store.js');
+    const {imageChannelKey}=await import('/qianmu-image-channel.js');
+    const calls=[],dbName='cloud-readiness-browser-synthetic';
+    const input={baseUrl:connection.origin,apiKey:'synthetic-key',workflow:{text:{class_type:'CLIPTextEncode',inputs:{text:'%qianmu_prompt%'}}}};
+    const result=await checkCloudComfyReadiness(input,{headers:{'x-csrf-token':'synthetic-csrf'},createClient:options=>createComfyRecoveryClient({...options,account:async()=>ns,store:createComfyDeliveryStore({dbName})}),
+      fetchImpl:async(url,init)=>{
+        calls.push(url);
+        if(url.endsWith('/capabilities'))return Response.json({ok:true,version:1,accountBindingVersion:1,catalogVersion:1,expectedAccount:`st-user:${await imageChannelKey('synthetic')}`,
+          submission:true,cancellation:true,referenceUpload:true,resultRetrieval:true,archiveConfirmation:true,automaticReplay:false,
+          readinessProviders:['comfy-cloud'],submissionProviders:['comfy-cloud','runninghub'],queryProviders:['comfy-cloud'],resultProviders:['comfy-cloud']});
+        if(!url.endsWith('/cloud/tasks/readiness')||init.headers['x-csrf-token']!=='synthetic-csrf')throw Error('incorrect scoped inspection');
+        return Response.json({ok:true,version:1,schemaVersion:1,ready:true,definitionsChecked:true,executionAuthorized:false,actualGenerationVerified:false,errors:0,warnings:0,issues:[],nodeCount:1,message:'checked'});
+      }});
+    const checkStore=createComfyDeliveryStore({dbName});const rows=await checkStore.list(ns);checkStore.close();
+    return result.ready&&result.executionAuthorized===false&&rows.length===0&&calls.length===2&&input.apiKey==='synthetic-key';
+  }));
   ok('real browser reference preparation uses metadata only and respects old backend capability gates',await page.evaluate(async()=>{
     const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');
     const {createComfyDeliveryStore}=await import('/qianmu-comfy-delivery-store.js');

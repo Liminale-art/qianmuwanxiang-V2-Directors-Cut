@@ -82,7 +82,7 @@ test('request freezes before asynchronous preparation and never persists its wor
   client.close();
 });
 
-async function submissionFixture({capabilities={},reply,resultReply,prepare=true}={}){
+async function submissionFixture({capabilities={},reply,resultReply,readinessReply,prepare=true}={}){
   const f=fixture(),rows=new Map(),calls=[];let namespace='st-user:alice',writeFails=false;
   const expectedAccount=`st-user:${await imageChannelKey('alice')}`;
   const packet={ok:true,version:1,status:'accepted',task:bindComfyCloudTask(connection,'accepted',{self:'/api/v2/jobs/accepted',cancel:'/api/v2/jobs/accepted/cancel'}),
@@ -95,11 +95,32 @@ async function submissionFixture({capabilities={},reply,resultReply,prepare=true
         submission:true,resultRetrieval:true,archiveConfirmation:true,cancellation:false,referenceUpload:false,automaticReplay:false,
         queryProviders:['comfy-cloud','runninghub'],resultProviders:['comfy-cloud'],...capabilities});
       if(resultReply&&(/\/(?:result|acknowledge)$/.test(url)))return resultReply(url,JSON.parse(init.body),packet);
+      if(readinessReply&&url.endsWith('/readiness'))return readinessReply(JSON.parse(init.body));
       assert.ok(url.endsWith('/cloud/tasks/submit'));
       return reply?reply(packet,()=>{writeFails=true;}):Response.json(packet);
     }});
   return {...f,client,rows,calls,prepared:prepare?await client.prepareCloudSubmission(f.job,f.gateway,connection):null,setAccount:value=>{namespace=value;}};
 }
+
+const readinessReport=()=>({ok:true,version:1,schemaVersion:1,definitionsChecked:true,executionAuthorized:false,actualGenerationVerified:false,
+  errors:0,warnings:0,ready:true,nodeCount:7,issues:[],message:'节点与模型清单相符'});
+test('cloud inspection reuses account-bound requests, freezes inputs, and creates no task journal or submission ticket',async()=>{
+  const f=await submissionFixture({prepare:false,capabilities:{readinessProviders:['comfy-cloud']},readinessReply:()=>Response.json(readinessReport())});
+  const input={baseUrl:connection.origin,apiKey:'synthetic-key',workflow:f.gateway.parameters.workflow};
+  const work=f.client.inspectCloudWorkflow(input);input.workflow.model.inputs.ckpt_name='changed-after-start';
+  const result=await work;assert.equal(result.executionAuthorized,false);assert.equal(f.rows.size,0);
+  const posts=f.calls.filter(call=>call.method==='POST');assert.equal(posts.length,1);assert.ok(posts[0].url.endsWith('/cloud/tasks/readiness'));
+  assert.equal(posts[0].body.request.workflow.model.inputs.ckpt_name,'fixed.safetensors');assert.equal(posts[0].body.attemptId,undefined);
+  assert.doesNotMatch(JSON.stringify(result),/synthetic-key|safetensors/);f.client.close();
+});
+test('old backend, unsupported provider, changed account and executable-looking inspection replies cannot bypass the check boundary',async()=>{
+  for(const mode of ['old','rh','account','bad-report']){
+    const f=await submissionFixture({prepare:false,capabilities:mode==='old'?{}:{readinessProviders:['comfy-cloud']},
+      readinessReply:()=>{if(mode==='account')f.setAccount('st-user:bob');return Response.json({...readinessReport(),executionAuthorized:mode==='bad-report'});}});
+    await assert.rejects(f.client.inspectCloudWorkflow({baseUrl:mode==='rh'?'https://www.runninghub.cn':connection.origin,apiKey:'synthetic-key',workflow:f.gateway.parameters.workflow}),{submissionState:'not_submitted'});
+    assert.equal(f.calls.filter(call=>call.method==='POST').length,['account','bad-report'].includes(mode)?1:0);assert.equal(f.rows.size,0);f.client.close();
+  }
+});
 
 async function addReference(f) {
   const graph=f.gateway.parameters.workflow;

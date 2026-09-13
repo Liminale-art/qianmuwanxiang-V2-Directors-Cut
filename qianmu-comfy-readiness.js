@@ -2,6 +2,11 @@
 import { prepareComfyWorkflow } from './qianmu-comfy-workflow.js';
 import { checkComfyConfiguration } from './qianmu-comfy-preflight.js';
 
+export async function checkCloudComfyReadiness(request,options) {
+  const runtime=await import('./qianmu-comfy-cloud-readiness-client.js');
+  return runtime.checkCloudComfyReadiness(request,options);
+}
+
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const own = (value, key) => object(value) && Object.hasOwn(value, key);
 const fail = (code, message) => Object.assign(new Error(message), { code: `comfy_readiness_${code}`, submissionState: 'not_submitted' });

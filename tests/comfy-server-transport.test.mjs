@@ -181,6 +181,15 @@ async function cloudSubmissionFixture(t, binding = cloudBinding) {
     ledger: createComfyCloudLedger({ store }), authorizeTarget: cloudGrant, resolveHost: publicDns,
   } };
 }
+
+test('host catalog inspection shares the cloud service lifecycle without reserving a generation task',async t=>{
+  const f=await cloudSubmissionFixture(t),catalog=catalogFixture(),calls=[];
+  const service=createComfyCloudService({store:f.store,dataRoot:f.root,transportOptions:{...f.options,requestImpl:mockNodeRequest(calls,()=>({body:catalog.definitions}))}});t.after(()=>service.close());
+  const result=await service.readiness(f.req,{version:1,expectedAccount:f.input.expectedAccount,apiKey:f.input.apiKey,request:catalog.input});
+  assert.equal(result.ready,true);assert.equal(result.executionAuthorized,false);assert.equal(calls.length,1);
+  assert.equal((await f.store.inspectChannel(f.key))?.entries?.length||0,0);await service.close();
+  await assert.rejects(service.readiness(f.req,{version:1,expectedAccount:f.input.expectedAccount,apiKey:f.input.apiKey,request:catalog.input}));assert.equal(calls.length,1);
+});
 const acceptedCloudBody = (binding = cloudBinding, id = 'new-job') => binding.provider === 'runninghub' ? { code: 0, data: { taskId: id } }
   : { id, urls: { self: `/api/v2/jobs/${id}`, cancel: `/api/v2/jobs/${id}/cancel` } };
 

@@ -14,6 +14,7 @@ import { describeImageServiceRequest } from './qianmu-image-service-queue.js';
 import { parseBoundedJson } from './qianmu-json-input.js';
 import { ImageGatewayError } from './qianmu-image-gateway.js';
 import { createComfyReferenceSource } from './qianmu-comfy-reference-source.js';
+import { checkComfyCloudReadiness } from './qianmu-comfy-cloud-readiness.js';
 
 const fail = (code, message, status = 409) => Object.assign(new ImageGatewayError(status, `comfy_cloud_service_${code}`, message), { retryable: false });
 const keyOf = row => JSON.stringify([row.channelKey, row.attemptId]);
@@ -70,6 +71,16 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
     }
   }
   return Object.freeze({
+    readiness(req,input,options) {
+      return run(req,input,options,async(value,_account,signal,check)=>{
+        try {
+          const report=await checkComfyCloudReadiness(req,value.request,{...transportOptions,apiKey:value.apiKey,signal});check();
+          return {version:1,...report};
+        } catch(cause) {
+          throw fail('readiness',cause?.code==='comfy_cloud_readiness'?cause.message:'节点检查未完成，请手动确认；未提交生图');
+        }
+      });
+    },
     cancel(req,input,options) {
       return run(req,input,options,async(value,_account,signal,check)=>{
         if(value.confirmed!==true)throw fail('consent','请确认取消原任务，未发送请求');

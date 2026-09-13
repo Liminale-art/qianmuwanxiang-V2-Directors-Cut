@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as storyboard from '../qianmu-storyboard.js';
 import {projectNewComfyExecution} from '../qianmu-comfy-new-execution.js';
+import {resolveStoryboardComfyCloud} from '../qianmu-comfy-cloud-protocol.js';
 import {job as roleJob} from './helpers/comfy-character-fixture.mjs';
 import { storyboardFunctionSource, createStoryboardFormFixture } from './helpers/storyboard-form-fixture.mjs';
 
@@ -18,7 +19,7 @@ function fixture(options = {}) {
     querySelectorAll: () => [key, field], addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) };
   const calls = [];
   const runtime = { prepareComfyReadiness() {}, async checkComfyReadiness(request) { calls.push(request); return structuredClone(report); }, ...options.runtime };
-  const context = vm.createContext({ ...storyboard, projectNewComfyExecution, AbortController, setTimeout, clearTimeout, document: { createElement: element },
+  const context = vm.createContext({ ...storyboard, projectNewComfyExecution, resolveStoryboardComfyCloud, AbortController, setTimeout, clearTimeout, document: { createElement: element },
     storyboardState: () => state, clone: structuredClone, storyboardCaptureWorkbench() {}, storyboardProviderProfile: () => state.profiles.comfy,
     storyboardConnectionState: () => ({ draft: { baseUrl: 'https://comfy.example', options: options.mode ? { comfyTransport: options.mode } : {} } }), getChatKey: () => 'chat-a',
     storyboardKeyInputRevision: 0, storyboardConnectionLoadRevision: 0, featureRuntime: { load: async () => runtime },
@@ -42,6 +43,23 @@ test('actual handler uses captured recipe, keeps the typed Key and reports brows
   assert.match(fx.output.children[0].textContent, /当前浏览器/); assert.match(fx.output.children[1].textContent, /未运行工作流/);
   assert.deepEqual(fx.state, before); assert.equal(fx.button.disabled, false);
   fx.listeners.get('input')(); assert.equal(fx.output.hidden, true); assert.equal(fx.listeners.size, 0);
+});
+
+test('the actual Cloud workbench button uses the guarded same-origin checker rather than native per-class requests',async()=>{
+  const cloudCalls=[];
+  const fx=fixture({runtime:{checkComfyReadiness:()=>assert.fail('cloud must not use the native route'),checkCloudComfyReadiness:async(request,options)=>{
+    await options.guard();cloudCalls.push(request);return structuredClone(report);
+  }},globals:{storyboardConnectionState:()=>({draft:{baseUrl:'https://cloud.comfy.org',options:{}}})}});
+  await fx.run();assert.equal(cloudCalls.length,1);assert.equal(cloudCalls[0].apiKey,'typed-key');
+  assert.match(fx.output.children[0].textContent,/Comfy Cloud/);assert.match(fx.output.children[1].textContent,/未运行工作流/);
+  assert.equal(fx.key.value,'typed-key');assert.equal(fx.button.disabled,false);
+});
+
+test('a late Cloud inspection cannot repaint a changed workbench',async()=>{
+  let finish;const fx=fixture({runtime:{checkCloudComfyReadiness:()=>new Promise(resolve=>finish=resolve)},
+    globals:{storyboardConnectionState:()=>({draft:{baseUrl:'https://cloud.comfy.org',options:{}}})}});
+  const running=fx.run();await new Promise(resolve=>setTimeout(resolve,0));fx.key.value='changed';finish(report);await running;
+  assert.equal(fx.output.children.length,0);assert.equal(fx.button.disabled,false);
 });
 
 test('workbench node inspection ignores retired role settings without changing saved profiles or reading archives',async()=>{
@@ -76,7 +94,7 @@ test('transport-only failure may inspect from ST, labels the requester and uses 
     globals: { fetch: async (url, options) => { requests.push({ url, options }); return new Response(JSON.stringify(report)); } } });
   await fx.run(); assert.equal(requests.length, 1); assert.equal(requests[0].url, '/api/plugins/qianmu-tts/image/comfy/readiness');
   assert.equal(requests[0].options.credentials, 'same-origin'); assert.match(fx.output.children[0].textContent, /ST 主机/);
-  assert.match(fx.output.children[1].textContent, /不提供内网穿透/); assert.equal(fx.key.value, 'typed-key');
+  assert.match(fx.output.children[1].textContent, /未运行工作流/); assert.doesNotMatch(fx.output.children[1].textContent,/内网穿透|浏览器设备/); assert.equal(fx.key.value, 'typed-key');
 });
 
 test('HTTP/definition errors never switch hosts and old backend missing endpoint is explicit', async () => {

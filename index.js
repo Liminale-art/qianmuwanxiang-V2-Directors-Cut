@@ -18511,7 +18511,8 @@ async function storyboardCheckComfyReadiness(root) {
     if (!isCurrent()) return;
     let result, requester = '当前浏览器';
     const comfyTransport = requireStoryboardComfyTransport(connection);
-    if (comfyTransport !== 'gateway') {
+    if(resolveStoryboardComfyCloud(connection)){requester='Comfy Cloud';result=await runtime.checkCloudComfyReadiness(request,{headers:storyboardRequestHeaders(),guard:assertCurrent,signal:controller.signal});}
+    if (!result && comfyTransport !== 'gateway') {
       try {
         result = await runtime.checkComfyReadiness(request, { signal: controller.signal, fetchImpl: (url, options) => {
           if (!isCurrent()) { controller.abort(); throw new Error('检查页面已变化'); }
@@ -18537,7 +18538,7 @@ async function storyboardCheckComfyReadiness(root) {
     const headline = document.createElement('div');
     headline.textContent = `${requester} · ${result.message}`; output.replaceChildren(headline);
     const boundary = document.createElement('small');
-    boundary.textContent = `已检查 ${result.nodeCount} 个节点；未运行工作流。自定义运行校验、资源兼容与实际出图仍需验证。${requester === 'ST 主机' ? '本机地址指 ST 所在主机，不是浏览器设备；转发不提供内网穿透。' : '本机地址指当前浏览器设备。'}`;
+    boundary.textContent = `已检查 ${result.nodeCount} 个节点；未运行工作流，实际出图仍需验证。`;
     output.append(boundary);
     if (Array.isArray(result.issues) && result.issues.length) {
       const list = document.createElement('ul');

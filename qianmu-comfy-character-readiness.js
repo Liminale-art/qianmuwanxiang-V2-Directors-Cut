@@ -1,12 +1,14 @@
 // Read-only per-shot verification, using the same explicitly selected requester as generation.
-import {checkComfyReadiness} from './qianmu-comfy-readiness.js';
+import {checkComfyReadiness,checkCloudComfyReadiness} from './qianmu-comfy-readiness.js';
+import {resolveStoryboardComfyCloud} from './qianmu-comfy-cloud-protocol.js';
 export async function checkComfyCharacterReadiness(request,{transport,headers,fetchImpl=globalThis.fetch,guard=async()=>{},timeoutMs=30000,signal}={}) {
   if(!['browser','gateway','legacy-auto'].includes(transport))throw Error('请确认 Comfy 请求方式');
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),Math.min(30000,Math.max(1000,timeoutMs)));
   const abort=()=>controller.abort();if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
   try {
     let result;await guard();controller.signal.throwIfAborted();
-    if(transport!=='gateway'){
+    if(resolveStoryboardComfyCloud(request))result=await checkCloudComfyReadiness(request,{headers,fetchImpl,guard,signal:controller.signal});
+    if(!result&&transport!=='gateway'){
       try{result=await checkComfyReadiness(request,{signal:controller.signal,fetchImpl:async(url,options)=>{await guard();return fetchImpl(url,options);}});}
       catch(error){if(transport==='browser'||error.code!=='comfy_readiness_transport'||controller.signal.aborted)throw error;}
     }

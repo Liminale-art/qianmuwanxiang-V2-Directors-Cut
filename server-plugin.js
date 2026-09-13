@@ -284,12 +284,12 @@ export async function init(router, options = {}) {
     try {
       comfyCloudTasksFor(req); const account = imageServiceAccount(req);
       return res.json({ ok: true, version: 1, expectedAccount: account.namespace, accountBindingVersion: 1,
-        scope: 'cloud-manual-still', submissionProviders: ['comfy-cloud', 'runninghub'], queryProviders: ['comfy-cloud', 'runninghub'], resultProviders: ['comfy-cloud', 'runninghub'],
+        scope: 'cloud-manual-still', readinessProviders: ['comfy-cloud'], submissionProviders: ['comfy-cloud', 'runninghub'], queryProviders: ['comfy-cloud', 'runninghub'], resultProviders: ['comfy-cloud', 'runninghub'],
         submission: true, deploymentSubmission: true, cancellation: true, referenceUpload: true, catalogVersion: 1,
         resultRetrieval: true, archiveConfirmation: true, automaticReplay: false });
     } catch (error) { const result = imageGatewayErrorPayload(error); return res.status(result.status).json(result.body); }
   });
-  for (const action of ['submit', 'query', 'result', 'acknowledge', 'catalog', 'cancel']) router.post(`/image/comfy/cloud/tasks/${action}`, async (req, res) => {
+  for (const action of ['submit', 'query', 'result', 'acknowledge', 'catalog', 'cancel', 'readiness']) router.post(`/image/comfy/cloud/tasks/${action}`, async (req, res) => {
     prepareImageResponse(res);
     const controller = new AbortController(), onClose = () => { if (!res.writableEnded) controller.abort(); };
     res.once?.('close', onClose);

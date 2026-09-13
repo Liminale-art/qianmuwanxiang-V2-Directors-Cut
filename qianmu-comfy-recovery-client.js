@@ -12,6 +12,8 @@ import { executeComfyCloudJob } from './qianmu-comfy-cloud-execution.js';
 import { runningHubUsageFields } from './qianmu-runninghub-usage.js';
 import { normalizeComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
 import { checkComfyReferenceSelection } from './qianmu-comfy-references.js';
+import { resolveStoryboardComfyCloud, planComfyCloudReadiness } from './qianmu-comfy-cloud-protocol.js';
+import { parseBoundedJson } from './qianmu-json-input.js';
 
 const fail = (code, message) => Object.assign(new Error(message), { code: `comfy_delivery_${code}`, submissionState: 'accepted', retryable: false });
 const BASE = '/api/plugins/qianmu-tts/image/comfy/tasks';
@@ -215,6 +217,25 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     });
   }
   const client = {
+    async inspectCloudWorkflow(input) {
+      try {
+      const connection=resolveStoryboardComfyCloud({baseUrl:input?.baseUrl});
+      if(!connection||!planComfyCloudReadiness(connection))throw Object.assign(fail('readiness','当前平台暂无节点清单检查，请手动确认工作流'),{submissionState:'not_submitted'});
+      const apiKey=input.apiKey;
+      const frozen=parseBoundedJson(JSON.stringify({connection,...Object.fromEntries(['workflow','parameters','model','referenceCount','outputNodeId']
+        .filter(key=>input[key]!==undefined).map(key=>[key,input[key]]))}),{maxBytes:2*1024*1024,maxDepth:40,maxNodes:50000,label:'节点检查'});
+      const current=await scope(),capabilities=await this.cloudCapabilities({namespace:current.namespace});
+      if(!capabilities.readinessProviders.includes(connection.provider))throw Object.assign(fail('capabilities','请同步更新增强服务后使用云工作流检查'),{submissionState:'not_submitted'});
+      const report=await request(current.job,'readiness',{...current.body,apiKey,request:frozen},256*1024,CLOUD_BASE);
+      if(report.schemaVersion!==1||report.definitionsChecked!==true||report.executionAuthorized!==false||report.actualGenerationVerified!==false
+        ||!Number.isSafeInteger(report.errors)||report.errors<0||!Number.isSafeInteger(report.warnings)||report.warnings<0
+        ||report.ready!==(report.errors===0&&report.warnings===0))throw fail('readiness','节点检查返回不完整，请手动确认');
+      return report;
+      } catch(cause) {
+        const error=/^(?:comfy_|image_)/.test(cause?.code||'')?cause:fail('readiness','节点检查未完成，请核对当前工作流');
+        error.submissionState='not_submitted';throw error;
+      }
+    },
     runCloudJob(job,gateway,connection,options) { return executeComfyCloudJob(this,job,gateway,connection,options); },
     async cloudRecordFor(job) {
       job=identity(job);await prepareComfySubmission(job,{account});await guard(job);
@@ -328,10 +349,11 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
       if (data.version !== 1 || data.accountBindingVersion !== 1 || data.catalogVersion !== 1 || flags.some(key => typeof data[key] !== 'boolean')
         || (Object.hasOwn(data,'deploymentSubmission') && typeof data.deploymentSubmission!=='boolean')
         || !providers(data.queryProviders) || !providers(data.resultProviders)
+        || (Object.hasOwn(data,'readinessProviders') && !providers(data.readinessProviders))
         || (Object.hasOwn(data,'submissionProviders') && !providers(data.submissionProviders))) throw fail('capabilities', '后端版本与当前千幕不匹配，请同步更新并重启 ST');
       return { version: 1, namespace: current.namespace, deploymentSubmission:data.deploymentSubmission===true, ...Object.fromEntries(flags.map(key => [key,data[key]])),
         queryProviders: [...data.queryProviders], resultProviders: [...data.resultProviders],
-        submissionProviders: [...(data.submissionProviders ?? (data.submission ? ['comfy-cloud'] : []))] };
+        readinessProviders:[...(data.readinessProviders ?? [])],submissionProviders: [...(data.submissionProviders ?? (data.submission ? ['comfy-cloud'] : []))] };
     },
     async cloudCatalog({ cursor = null, namespace } = {}) {
       const current = await scope(namespace);

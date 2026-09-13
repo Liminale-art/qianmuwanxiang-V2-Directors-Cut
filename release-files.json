@@ -37,6 +37,7 @@
       "qianmu-comfy-cloud-upload.js",
       "qianmu-comfy-cloud-workflow.js",
       "qianmu-comfy-cloud-readiness.js",
+      "qianmu-comfy-cloud-readiness-client.js",
       "qianmu-comfy-reference-source.js",
     "qianmu-comfy-cloud-receipt.js",
     "qianmu-comfy-cloud-channel-state.js",
