@@ -89,6 +89,36 @@ test('host owns the single cloud submission ledger and repeated submission canno
   }
 });
 
+test('Cloud API-node credentials exist only in authorized dispatch, never in the workflow or original receipts',async t=>{
+  for(const binding of [cloudBinding,bindComfyCloudProtocol('https://sample.run.comfy.app','comfy-cloud-v2'),rhBinding]) {
+    const f=await cloudSubmissionFixture(t,binding),before=structuredClone(f.input.request),calls=[];
+    const service=createComfyCloudService({store:f.store,dataRoot:f.root,transportOptions:{...f.options,
+      requestImpl:mockNodeRequest(calls,()=>({body:acceptedCloudBody(binding,binding.provider==='runninghub'?'1904152026220003329':'partner-original')}))}});
+    t.after(()=>service.close());
+    const result=await service.submit(f.req,{...f.input,version:1});
+    const body=JSON.parse(calls[0].body);
+    if(binding.provider==='comfy-cloud')assert.deepEqual(body.extra_data,{api_key_comfy_org:f.input.apiKey});
+    else {assert.equal(body.extra_data,undefined);assert.equal(body.apiKey,f.input.apiKey);}
+    assert.equal(calls[0].options.headers.authorization,`Bearer ${f.input.apiKey}`);
+    assert.doesNotMatch(JSON.stringify(body.workflow),/test-only-secret|api_key_comfy_org|auth_token_comfy_org/);
+    assert.deepEqual(f.input.request,before);
+    assert.doesNotMatch(JSON.stringify(result),/test-only-secret|extra_data/);
+    assert.doesNotMatch(JSON.stringify(await f.store.inspectChannel(f.key)),/test-only-secret|extra_data/);
+    await assert.rejects(service.submit(f.req,{...f.input,version:1}));assert.equal(calls.length,1);
+  }
+});
+
+test('an upstream credential echo on failure is not exposed in a cloud submission error or durable history',async t=>{
+  const f=await cloudSubmissionFixture(t),calls=[];
+  const service=createComfyCloudService({store:f.store,dataRoot:f.root,transportOptions:{...f.options,
+    requestImpl:mockNodeRequest(calls,()=>({status:500,body:{error:{message:f.input.apiKey,extra_data:{api_key_comfy_org:f.input.apiKey}}}}))}});
+  t.after(()=>service.close());
+  await assert.rejects(service.submit(f.req,{...f.input,version:1}),error=>{
+    assert.equal(error.submissionState,'unknown');assert.doesNotMatch(error.message+JSON.stringify(error),/test-only-secret|api_key_comfy_org/);return true;
+  });
+  assert.equal(calls.length,1);assert.doesNotMatch(JSON.stringify(await f.store.inspectChannel(f.key)),/test-only-secret|api_key_comfy_org/);
+});
+
 test('invalid account and cancellation before host submission make no network or ledger mutation', async t => {
   const f = await cloudSubmissionFixture(t), calls = [];
   const service = createComfyCloudService({ store: f.store, dataRoot: f.root,

@@ -57,7 +57,10 @@ export async function submitComfyCloudTask(req, { request, apiKey, expectedAccou
       const reservation = await ledger.reserve(req, { apiKey, expectedAccount, attemptId, intent: prepared.intent });
       ticket = ledger.submission(reservation); check();
       const cloud = prepared.intent.connection.provider === 'comfy-cloud';
-      const body = JSON.stringify(cloud ? prepared.body : { ...prepared.body, apiKey });
+      // v2 partner nodes read this dispatch credential, not the graph or receipt.
+      // Only the already-authorized connection key is forwarded; never a supplied
+      // extra_data object or browser session token. Keep the prepared intent keyless.
+      const body = JSON.stringify(cloud ? { ...prepared.body, extra_data: { api_key_comfy_org: apiKey } } : { ...prepared.body, apiKey });
       stage = 'submission'; attempted = true; await ticket.beforeSubmit(); check();
       dispatched = true;
       response = await transport.fetchImpl(transport.plan.url, { method: 'POST', headers: {
