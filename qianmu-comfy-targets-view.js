@@ -37,7 +37,7 @@ export async function requireTrustedComfyConnection(connection, options = {}) {
   const baseUrl = normalize(connection.baseUrl), privateNetwork = connection.options?.allowPrivateNetwork === true;
   const data = await requestComfyTargets(options);
   options.assertCurrent?.();
-  if (!data.targets.some(row => row.baseUrl === baseUrl && row.allowPrivateNetwork === privateNetwork)) throw new Error('请先在 Comfy 连接设置的“ST 可信连接”中由管理员登记此地址');
+  if (!data.targets.some(row => row.baseUrl === baseUrl && row.allowPrivateNetwork === privateNetwork)) throw new Error('请在“连接管理 → 授权与撤销”中由 ST 管理员登记此地址');
   return data;
 }
 

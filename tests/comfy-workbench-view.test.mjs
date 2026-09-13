@@ -90,8 +90,9 @@ test('manual variants belong to the bound engine, never the common per-floor bud
 
 test('VPS with local Comfy explains actual host and does not imply built-in tunnelling',()=>{
   const fixture=createStoryboardFormFixture({family:'comfy',workflow:graph});
-  assert.match(fixture.content,/VPS ST＋本机 Comfy/);assert.match(fixture.content,/VPS 的 127\.0\.0\.1 不指你的电脑/);
-  assert.match(fixture.content,/ST 转发不提供内网穿透/);
+  assert.match(fixture.content,/本机地址指运行 ST 的设备，不是打开页面的手机或电脑/);
+  assert.match(fixture.content,/跨设备仍需已有安全连接/);
+  assert.doesNotMatch(fixture.content,/连接方式说明|自动开通|已配对/);
 });
 
 test('engine changes save the old form and restore independent scroll without touching queued snapshots',()=>{

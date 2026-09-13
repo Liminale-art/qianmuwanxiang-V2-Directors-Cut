@@ -46,7 +46,7 @@ export function createComfyTargets({ store }) {
     async acquire(req, input) {
       const current = capture(req), id = comfyTargetId(input.baseUrl, input.allowPrivateNetwork);
       const state = await store.read(), row = state.targets.find(item => item.id === id);
-      if (!allowed(row, current())) throw fail('untrusted', '此地址尚未获准，请在 Comfy 连接设置的“ST 可信连接”中由管理员登记', 403);
+      if (!allowed(row, current())) throw fail('untrusted', '此地址尚未获准，请在“连接管理 → 授权与撤销”中由 ST 管理员登记', 403);
       const grantId = row.grantId;
       return async () => {
         const latest = await store.read(), live = latest.targets.find(item => item.id === id);

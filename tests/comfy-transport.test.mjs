@@ -22,14 +22,21 @@ test('connection presets preserve explicit routes; invalid future/conflicting va
   }
 });
 
-test('daily Comfy connection selector covers deployment guidance but never offers invisible auto-switch on fresh connections', () => {
+test('native connection management is collapsed without erasing old routes or silently granting local access', () => {
   const fresh = createStoryboardFormFixture({ family: 'comfy' }).content;
   assert.match(fresh, /sd-comfy-transport/); assert.match(fresh, /value="gateway" selected/); assert.doesNotMatch(fresh, /value="legacy-auto"/);
-  for (const phrase of ['本地 ST＋本地 Comfy', '本地 ST＋云 Comfy', 'VPS ST＋云 Comfy', '不提供内网穿透']) assert.ok(fresh.includes(phrase));
+  assert.match(fresh, /<details class="sd-comfy-connection-options"><summary>连接管理/);
+  assert.doesNotMatch(fresh, /sd-comfy-deployment-guide|连接方式说明|ST 可信连接/);
+  assert.match(fresh, /本机地址指运行 ST 的设备/);
+  assert.doesNotMatch(fresh, /sd-storyboard-private-network"[^>]*checked/);
+  const permitted = createStoryboardFormFixture({family:'comfy',connection:{options:{comfyTransport:'gateway',allowPrivateNetwork:true}}}).content;
+  assert.match(permitted, /sd-storyboard-private-network"[^>]*checked/);
   const old = createStoryboardFormFixture({ family: 'comfy', connection: { options: {} } }).content;
   assert.match(old, /value="legacy-auto" selected/);
   const browser = createStoryboardFormFixture({ family: 'comfy', connection: { options: { comfyTransport: 'browser' } } }).content;
   assert.match(browser, /sd-storyboard-private-network"[^>]*disabled/);
+  assert.match(browser, /本机地址指当前浏览器所在设备/);
+  assert.doesNotMatch(browser, /sd-comfy-targets/);
   assert.doesNotMatch(createStoryboardFormFixture({ family: 'novel' }).content, /sd-comfy-transport|sd-comfy-deployment-guide/);
 });
 

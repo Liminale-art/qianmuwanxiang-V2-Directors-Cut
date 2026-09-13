@@ -4,6 +4,7 @@ import {readFile,mkdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
 import {implementation as historicalImplementation} from '../tests/helpers/comfy-character-fixture.mjs';
+import {createStoryboardFormFixture,storyboardFunctionSource} from '../tests/helpers/storyboard-form-fixture.mjs';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
 const context=await browser.newContext({hasTouch:true}),errors=[],checks=[];let external=0,referenceImage;
@@ -209,5 +210,50 @@ try{
     const row=(await charStore.list(scope)).find(row=>row.name==='新路人'),saved=await charStore.load(scope,row.id);
     return saved.document.category==='other'&&!Object.hasOwn(saved.document,'comfy')&&saved.document.imagegen.reference===null;
   }));
+  for(const width of [393,1100]){
+    await page.setViewportSize({width,height:898});
+    for(const connection of [{options:{comfyTransport:'gateway',allowPrivateNetwork:true}},{options:{comfyTransport:'browser'}}]){
+      const form=createStoryboardFormFixture({family:'comfy',connection}).content;
+      await page.evaluate(html=>{host.innerHTML=html;},form);
+      ok(`native controls stay out of daily view and preserve the saved permission at ${width}/${connection.options.comfyTransport}`,await page.evaluate(options=>{
+        const details=document.querySelector('.sd-comfy-connection-options'),field=document.querySelector('.sd-storyboard-private-network');
+        if(details.open||field.checkVisibility()||field.checked!==Boolean(options.allowPrivateNetwork))throw Error(JSON.stringify({open:details.open,visible:field.checkVisibility(),checked:field.checked,expected:options.allowPrivateNetwork}));
+        return true;
+      },connection.options));
+      await page.locator('.sd-comfy-connection-options > summary').click();
+      ok(`native connection management opens within the panel at ${width}/${connection.options.comfyTransport}`,await page.evaluate(()=>{
+        const details=document.querySelector('.sd-comfy-connection-options'),select=details.querySelector('select'),box=details.getBoundingClientRect(),control=select.getBoundingClientRect();
+        return details.open&&control.width>0&&control.left>=box.left&&control.right<=box.right+1&&box.right<=innerWidth&&details.scrollWidth<=details.clientWidth+1;
+      }));
+    }
+    for(const baseUrl of ['https://cloud.comfy.org','https://www.runninghub.cn']){
+      await page.evaluate(html=>{host.innerHTML=html;},createStoryboardFormFixture({family:'comfy',connection:{baseUrl}}).content);
+      ok(`cloud ${baseUrl} has only its platform label, not native authorization at ${width}`,await page.evaluate(()=>{
+        return !!document.querySelector('.sd-comfy-platform .sd-badge')&&!document.querySelector('.sd-comfy-connection-options,.sd-comfy-targets,.sd-storyboard-private-network');
+      }));
+    }
+  }
+  await page.evaluate(html=>{host.innerHTML=html;},createStoryboardFormFixture({family:'comfy'}).content);
+  await page.addScriptTag({content:storyboardFunctionSource('bindStoryboardComfyTargets')});
+  await page.evaluate(async()=>{
+    const core=await import('/qianmu-storyboard.js');window.connectionState=core.createStoryboardDefaults();connectionState.source='comfy';
+    window.clone=value=>structuredClone(value);window.storyboardState=()=>connectionState;window.storyboardConnectionState=state=>state.connections.comfy;
+    window.getStoryboardComfyTransport=core.getStoryboardComfyTransport;window.storyboardCaptureWorkbench=()=>{};window.storyboardRequestHeaders=()=>({});window.confirmDialog=async()=>false;window.toast=()=>{};
+    window.targetMounts=0;window.targetDisposes=0;window.targetRuntime={mountComfyTargets:()=>{targetMounts++;return()=>targetDisposes++;}};
+    window.featureRuntime={load:name=>name==='comfyTargets'?new Promise(resolve=>window.finishTargetLoad=()=>resolve(targetRuntime)):Promise.resolve({resolveImageAccountNamespace:async()=>scope})};
+    bindStoryboardComfyTargets(host);
+  });
+  await page.locator('.sd-comfy-connection-options > summary').click();await page.locator('.sd-comfy-targets > summary').click();
+  await page.waitForFunction(()=>!!window.finishTargetLoad);
+  await page.locator('.sd-comfy-connection-options > summary').click();
+  await page.waitForFunction(()=>!document.querySelector('.sd-comfy-targets').open);
+  await page.evaluate(()=>finishTargetLoad());await page.waitForTimeout(30);
+  ok('closing connection management ignores a late authorization module load',await page.evaluate(()=>targetMounts===0&&!document.querySelector('.sd-comfy-targets-body').textContent));
+  await page.evaluate(()=>{featureRuntime.load=name=>Promise.resolve(name==='comfyTargets'?targetRuntime:{resolveImageAccountNamespace:async()=>scope});});
+  await page.locator('.sd-comfy-connection-options > summary').click();await page.locator('.sd-comfy-targets > summary').click();
+  await page.waitForFunction(()=>targetMounts===1);
+  await page.locator('.sd-comfy-connection-options > summary').click();await page.waitForFunction(()=>targetDisposes===1);
+  ok('closing management disposes its active authorization view without changing the saved connection',await page.evaluate(()=>!document.querySelector('.sd-comfy-targets').open&&connectionState.connections.comfy.draft.options.comfyTransport==='gateway'));
+  await page.evaluate(()=>host._sdComfyTargetsCleanup());
   assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

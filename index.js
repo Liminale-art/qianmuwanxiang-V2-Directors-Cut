@@ -13103,20 +13103,17 @@ function renderStoryboardComfyTransport(connection) {
   try { const cloud=resolveStoryboardComfyCloud(connection); if(cloud)return `<div class="sd-comfy-platform"><span class="sd-badge">${cloud.provider==='comfy-cloud'?'Comfy Cloud':'RunningHub'}</span></div>`; }
   catch (_) { return '<small class="sd-comfy-platform">请填写有效的云平台 API 根地址</small>'; }
   const mode = getStoryboardComfyTransport(connection);
-  return `<label><span>请求发出方</span><select class="text_pole sd-comfy-transport" aria-label="Comfy 请求发出方">
-    <option value="gateway" ${mode === 'gateway' ? 'selected' : ''}>ST 主机 · 增强服务转发</option>
-    <option value="browser" ${mode === 'browser' ? 'selected' : ''}>当前设备 · 浏览器直连</option>
-    ${mode === 'legacy-auto' ? '<option value="legacy-auto" selected>旧连接 · 浏览器优先自动尝试</option>' : ''}
-    ${mode === 'invalid' ? '<option value="invalid" selected disabled>请求方式待确认</option>' : ''}
+  return `<div class="sd-comfy-platform"><span class="sd-badge">自有 Comfy</span></div>
+  <details class="sd-comfy-connection-options"><summary>连接管理</summary><div class="sd-comfy-connection-options-body">
+  <label><span>连接位置</span><select class="text_pole sd-comfy-transport" aria-label="Comfy 连接位置">
+    <option value="gateway" ${mode === 'gateway' ? 'selected' : ''}>从 ST 所在设备连接</option>
+    <option value="browser" ${mode === 'browser' ? 'selected' : ''}>从当前浏览器连接</option>
+    ${mode === 'legacy-auto' ? '<option value="legacy-auto" selected>沿用旧连接方式</option>' : ''}
+    ${mode === 'invalid' ? '<option value="invalid" selected disabled>请选择连接位置</option>' : ''}
   </select></label>
-  <label class="sd-switch-row sd-comfy-private-network"><span>允许 ST 访问本地网络</span><input type="checkbox" class="sd-storyboard-private-network" ${connection?.options?.allowPrivateNetwork ? 'checked' : ''} ${mode === 'browser' ? 'disabled' : ''}></label>
-  ${mode !== 'browser' ? '<details class="sd-comfy-targets"><summary>ST 可信连接</summary><div class="sd-comfy-targets-body"></div></details>' : ''}
-  <details class="sd-comfy-deployment-guide"><summary>连接方式说明</summary><div>
-    <p>本地 ST＋本地 Comfy：同机时可选 ST 转发，本机地址指 ST 电脑；手机打开 ST 时也不指手机。ST 私网连接须管理员登录并明确允许。</p>
-    <p>本地 ST＋云 Comfy：填写云平台提供的 Comfy API 根地址和令牌；网页控制台地址不等于 API。浏览器直连还需服务允许浏览器访问。</p>
-    <p>VPS ST＋云 Comfy：建议由 ST 主机转发，VPS 必须能够访问云端。容器内的本机地址不代表宿主机。</p>
-    <p>VPS ST＋本机 Comfy：VPS 的 127.0.0.1 不指你的电脑。ST 转发需先建立明确授权的私网连接；同机浏览器直连还需通过来源及本地网络权限检查，手机的本机地址则指手机。不要将 Comfy 端口直接公开。</p>
-    <p>测试、节点清单和生成沿用同一请求方式。${mode === 'legacy-auto' ? '旧连接仍会在浏览器传输失败时尝试 ST，建议明确选择发出方。' : '明确选择后失败不会改由另一台机器请求。'}ST 转发不提供内网穿透；只有私网地址时需平台安全入口或管理员配置互联，千幕不会自动开端口、关闭鉴权或安装隧道。</p>
+  <label class="sd-switch-row sd-comfy-private-network"><span>允许连接此地址的本地服务</span><input type="checkbox" class="sd-storyboard-private-network" ${connection?.options?.allowPrivateNetwork ? 'checked' : ''} ${mode === 'browser' ? 'disabled' : ''}></label>
+  <p class="sd-comfy-connection-location">${mode === 'browser' ? '本机地址指当前浏览器所在设备。' : '本机地址指运行 ST 的设备，不是打开页面的手机或电脑。'}跨设备仍需已有安全连接。</p>
+  ${mode !== 'browser' ? '<details class="sd-comfy-targets"><summary>授权与撤销</summary><div class="sd-comfy-targets-body"></div></details>' : ''}
   </div></details>`;
 }
 
@@ -18572,8 +18569,10 @@ function bindStoryboardComfyTargets(root) {
   root._sdComfyTargetsCleanup?.();
   const details = root.querySelector('.sd-comfy-targets'), output = details?.querySelector('.sd-comfy-targets-body');
   if (!output) return;
+  const panel = details.closest('.sd-comfy-connection-options');
   let revision = 0, dispose;
   const clear = () => { revision++; dispose?.(); dispose = null; };
+  const closePanel = () => { if (!panel.open) { clear(); details.open = false; output.replaceChildren(); } };
   const outsideChange = event => { if (!details.contains(event.target)) { clear(); details.open = false; output.replaceChildren(); } };
   const toggle = async () => {
     clear(); if (!details.open) return;
@@ -18581,8 +18580,8 @@ function bindStoryboardComfyTargets(root) {
     const state = storyboardState(), connection = clone(storyboardConnectionState(state).draft), currentRevision = revision;
     const signature = () => { const draft = storyboardConnectionState(state).draft; return [draft.baseUrl, Boolean(draft.options?.allowPrivateNetwork), getStoryboardComfyTransport(draft)].join('\n'); };
     const saved = signature();
-    const isCurrent = () => revision === currentRevision && root.isConnected && details.isConnected && details.open && state === storyboardState() && state.source === 'comfy' && saved === signature();
-    output.textContent = '正在读取可信连接…';
+    const isCurrent = () => revision === currentRevision && root.isConnected && details.isConnected && details.open && (!panel || panel.open) && state === storyboardState() && state.source === 'comfy' && saved === signature();
+    output.textContent = '正在读取连接授权…';
     try {
       const [runtime, identity] = await Promise.all([featureRuntime.load('comfyTargets'), featureRuntime.load('imageAdmission')]);
       if (!isCurrent()) return;
@@ -18590,9 +18589,11 @@ function bindStoryboardComfyTargets(root) {
     } catch (error) { if (isCurrent()) output.textContent = error.message; }
   };
   details.addEventListener('toggle', toggle);
+  panel?.addEventListener('toggle', closePanel);
   root.addEventListener('input', outsideChange, true); root.addEventListener('change', outsideChange, true);
   root._sdComfyTargetsCleanup = () => {
     clear(); details.removeEventListener('toggle', toggle); root.removeEventListener('input', outsideChange, true); root.removeEventListener('change', outsideChange, true);
+    panel?.removeEventListener('toggle', closePanel);
     root._sdComfyTargetsCleanup = null;
   };
 }
