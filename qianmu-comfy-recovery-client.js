@@ -66,8 +66,9 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     const timer = setTimeout(() => controller.abort(), Math.min(60000, Math.max(1000, Number(timeoutMs) || 45000)));
     try {
       await guard(job);
-      const response = await fetchImpl(`${base}/${action}`, { method: 'POST', credentials: 'same-origin', cache: 'no-store', redirect: 'error',
+      const response = await fetchImpl(`${base}/${action}`, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', redirect: 'error',
         headers: { ...headers(), 'Content-Type': 'application/json' }, signal: controller.signal, body: JSON.stringify(body) });
+      if (response.status === 404 && action === 'capabilities') { await response.body?.cancel().catch(() => {}); throw fail('capabilities', '后端尚未支持云任务，请同步更新后端并重启 ST'); }
       if (response.status === 404 && action === 'catalog') { await response.body?.cancel().catch(() => {}); throw fail('catalog', 'Comfy 目录尚未就绪，请同步更新后端并重启 ST'); }
       const reader = response.body?.getReader(); if (!reader) throw fail('response', 'Comfy 服务未返回领取结果');
       const chunks = []; let size = 0;
@@ -144,6 +145,17 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     return acknowledge(job, row);
   }
   const client = {
+    async cloudCapabilities({ namespace } = {}) {
+      const current = await scope(namespace);
+      const data = await request(current.job, 'capabilities', undefined, 16384, CLOUD_BASE.replace(/\/tasks$/, ''));
+      if (data.expectedAccount !== current.body.expectedAccount) throw fail('account', '后端账户与当前 ST 不一致，请重新连接');
+      const flags = ['submission','cancellation','referenceUpload','resultRetrieval','archiveConfirmation','automaticReplay'];
+      const providers = value => Array.isArray(value) && value.length <= 2 && new Set(value).size === value.length && value.every(item => ['comfy-cloud','runninghub'].includes(item));
+      if (data.version !== 1 || data.accountBindingVersion !== 1 || data.catalogVersion !== 1 || flags.some(key => typeof data[key] !== 'boolean')
+        || !providers(data.queryProviders) || !providers(data.resultProviders)) throw fail('capabilities', '后端版本与当前千幕不匹配，请同步更新并重启 ST');
+      return { version: 1, namespace: current.namespace, ...Object.fromEntries(flags.map(key => [key,data[key]])),
+        queryProviders: [...data.queryProviders], resultProviders: [...data.resultProviders] };
+    },
     async cloudCatalog({ cursor = null, namespace } = {}) {
       const current = await scope(namespace);
       const data = await request(current.job, 'catalog', { ...current.body, cursor, limit: 40 }, 1024 * 1024, CLOUD_BASE);
@@ -165,11 +177,20 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     },
     async catalogAll({ cloudCursor = null, namespace } = {}) {
       const current = await scope(namespace);
-      const results = await Promise.allSettled([this.catalog({ namespace: current.namespace }), this.cloudCatalog({ cursor: cloudCursor, namespace: current.namespace })]);
+      const readCloud = async () => {
+        const capabilities = await this.cloudCapabilities({ namespace: current.namespace });
+        const data = await this.cloudCatalog({ cursor: cloudCursor, namespace: current.namespace });
+        const available = row => capabilities.resultRetrieval && capabilities.resultProviders.includes(row.task?.provider);
+        const adapt = row => ({ ...row, resultAvailable: row.resultAvailable && available(row), canReceiveOriginal: row.canReceiveOriginal && available(row),
+          canRetryCleanup: row.canRetryCleanup && capabilities.archiveConfirmation });
+        return { ...data, originals: data.originals.map(adapt), tasks: data.tasks.map(adapt), capabilities };
+      };
+      const results = await Promise.allSettled([this.catalog({ namespace: current.namespace }), readCloud()]);
       await guard(current.job);
       if (results.every(item => item.status === 'rejected')) throw fail('catalog', '暂存目录暂不可读取，请核对后端连接');
       const native = results[0].status === 'fulfilled' ? results[0].value : null, cloud = results[1].status === 'fulfilled' ? results[1].value : null;
-      const warnings = results.map((item,index) => item.status === 'rejected' ? `${index ? '云端' : '本地 Comfy'}暂存目录暂不可读取` : item.value.warning || '').filter(Boolean);
+      const warnings = results.map((item,index) => item.status === 'rejected' ? item.reason?.code === 'comfy_delivery_capabilities' ? item.reason.message
+        : `${index ? '云端' : '本地 Comfy'}暂存目录暂不可读取` : item.value.warning || '').filter(Boolean);
       const originals = [...(native?.originals || []), ...(cloud?.originals || [])];
       // Accepted originals must be discoverable before the first result is
       // cached. This exposes a read/collect action, not another paid submission.
@@ -184,6 +205,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
         ? native.totals[name] + cloud.totals[name] : null;
       return { catalogVersion: 1, namespace: current.namespace, storageReadable, originals, tasks: [...(native?.tasks || []), ...(cloud?.tasks || [])],
         cloudNextCursor: cloud ? cloud.nextCursor || null : cloudCursor,
+        cloudCapabilities: cloud?.capabilities || null,
         totals: Object.fromEntries(['count','imageBytes','metadataBytes','temporaryBytes','reservedBytes','tasks'].map(name => [name,total(name)])), warning: warnings.join('；') };
     },
     async retryCloudCleanup(item) {

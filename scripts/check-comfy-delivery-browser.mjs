@@ -107,12 +107,19 @@ try{
   await ui.evaluate(async()=>{
     const {mountComfyInbox}=await import('/qianmu-comfy-inbox-view.js');
     const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');
-    document.body.innerHTML='<main id="inbox"></main>';window.cloudReadable=true;window.cleanupCalls=0;window.received=[];
+    document.body.innerHTML='<main id="inbox"></main>';window.cloudReadable=true;window.cleanupCalls=0;window.received=[];window.capabilityMode='ready';
     const item={attemptId:'cloud-original',createdAt:1,status:'succeeded',task,taskLocator:accepted.taskLocator,archiveState:'archived',
       cacheReceipt:available.receipt,canRetryCleanup:true,resultAvailable:false,imageCount:2,cacheBytes:8};
     const totals={count:1,imageBytes:8,metadataBytes:2,temporaryBytes:0,reservedBytes:0,tasks:1};
     window.uiClient=createComfyRecoveryClient({store,account:async()=>ns,fetchImpl:async(url,init)=>{
-      const body=JSON.parse(init.body);if(body.apiKey)throw Error('Catalog and cleanup must not use Key');
+      const body=init.body?JSON.parse(init.body):{};if(body.apiKey)throw Error('Catalog and cleanup must not use Key');
+      if(url.endsWith('/capabilities')){
+        if(capabilityMode==='old')return new Response('',{status:404});
+        const {imageChannelKey}=await import('/qianmu-image-channel.js');
+        return new Response(JSON.stringify({ok:true,version:1,accountBindingVersion:1,catalogVersion:1,expectedAccount:`st-user:${await imageChannelKey(ns.slice(8))}`,
+          submission:false,cancellation:false,referenceUpload:false,resultRetrieval:capabilityMode==='ready',archiveConfirmation:capabilityMode==='ready',automaticReplay:false,
+          queryProviders:['comfy-cloud','runninghub'],resultProviders:capabilityMode==='ready'?['comfy-cloud']:[]}));
+      }
       if(url.endsWith('/acknowledge')){
         cleanupCalls++;return new Response(JSON.stringify({ok:true,version:1,status:'archived',task,delivery:{state:'archived',cacheReceipt:available.receipt},cleanup:'pending'}));
       }
@@ -140,6 +147,16 @@ try{
     const ids=[...node.querySelectorAll('.sd-comfy-inbox-id')].map(item=>item.textContent);
     return ids.length===3&&new Set(ids).size===3&&ids.includes('older-cloud')&&!node.querySelector('[data-action="earlier-cloud"]');
   }));
+  ok('platform capability summary distinguishes available receipt from unavailable new generation',await ui.locator('.sd-comfy-inbox-capabilities').evaluate(node=>node.textContent.includes('Comfy Cloud · 可领取原图')
+    &&node.textContent.includes('RunningHub · 暂未开放收图')&&node.textContent.includes('云端新任务暂未开放')));
+  await ui.evaluate(()=>{capabilityMode='off';cloudReadable=true;});await ui.getByRole('button',{name:'刷新',exact:true}).click();await ui.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
+  ok('unsupported cloud action is disabled while its original metadata remains visible',await ui.locator('#inbox').evaluate(node=>{
+    const article=[...node.querySelectorAll('article')].find(item=>item.textContent.includes('Comfy Cloud'));
+    return !!article&&article.querySelector('button').disabled;
+  }));
+  await ui.evaluate(()=>{capabilityMode='old';});await ui.getByRole('button',{name:'刷新',exact:true}).click();await ui.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
+  ok('old backend shows an update action message without disabling native receipt',await ui.locator('#inbox').evaluate(node=>node.querySelector('[role="alert"]').textContent.includes('同步更新后端并重启 ST')
+    &&node.querySelectorAll('article').length===1&&!node.querySelector('article button').disabled));
   await ui.evaluate(()=>{disposeInbox();uiClient.close();});
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({checks,external,errors},null,2));

@@ -9,6 +9,13 @@ export function mountComfyInbox(host, { service, receive, isCurrent = () => host
   const current = () => !disposed && isCurrent();
   const rows = () => mode === 'server' ? (server?.originals || []) : (local?.rows || []);
   const enabled = row => mode === 'local' || row.canDiscard === true;
+  const canReceive = row => {
+    if (row.engine !== 'cloud' && row.version !== 3) return mode === 'local' || row.resultAvailable === true;
+    const capabilities = server?.cloudCapabilities;
+    if (row.canRetryCleanup || mode === 'local' && ['archived','confirmed'].includes(row.status)) return capabilities?.archiveConfirmation === true;
+    return capabilities?.resultRetrieval === true && capabilities.resultProviders.includes(row.task?.provider || row.cloudConnection?.provider)
+      && (mode === 'local' || row.resultAvailable || row.canReceiveOriginal);
+  };
   const key = row => `${row.engine || (row.version === 3 ? 'cloud' : 'native')}/${row.taskLocator?.channelKey || ''}/${row.attemptId}`;
   function paint() {
     if (!current()) return;
@@ -23,11 +30,12 @@ export function mountComfyInbox(host, { service, receive, isCurrent = () => host
       <p class="sd-comfy-inbox-meter">${mode === 'server' ? `当前账户 · 暂存 ${size(storedBytes)} · 预留 ${size(total.reservedBytes)}` : `当前账户 · ${local?.rows?.length ?? '暂不可读取'} / 2048 条 · ${size(local?.bytes)} / 16 MB`}</p>
       ${mode === 'server' ? '<small>仅千幕 Comfy 暂存，不是 VPS 总磁盘；清理不删除阅片室图片或任务防重复记录。</small>' : '<small>仅本浏览器的领取位置与进度；清理不删除图片，不取消正在执行的任务。</small>'}
       ${error ? `<p role="alert">${escape(error)}</p>` : ''}${notice ? `<p role="status">${escape(notice)}</p>` : ''}
+      ${server?.cloudCapabilities ? `<p class="sd-comfy-inbox-capabilities">${[['comfy-cloud','Comfy Cloud'],['runninghub','RunningHub']].map(([id,label]) => `${label} · ${server.cloudCapabilities.resultRetrieval && server.cloudCapabilities.resultProviders.includes(id) ? '可领取原图' : '暂未开放收图'}`).join('；')}${server.cloudCapabilities.submission ? '' : '。云端新任务暂未开放'}</p>` : ''}
       <div class="sd-comfy-inbox-tools"><label><input type="checkbox" data-action="select-page" ${busy ? 'disabled' : ''} ${shown.length && shown.filter(enabled).length && shown.filter(enabled).slice(0,20).every(row => selected.has(key(row))) ? 'checked' : ''}>本页前 20 项</label><button type="button" class="sd-btn" data-action="clear" ${!selected.size || busy ? 'disabled' : ''}>清理已选 ${selected.size || ''}</button></div>
       <div class="sd-comfy-inbox-rows">${shown.map((row, index) => `<article>
         <input type="checkbox" aria-label="选择任务 ${escape(row.attemptId)}" data-row="${index}" ${selected.has(key(row)) ? 'checked' : ''} ${busy || !enabled(row) ? 'disabled' : ''}>
         <div><b>${escape(row.model || (mode === 'local' ? '领取记录' : 'Comfy 原图'))}</b><small>${escape(platform(row))} · ${escape(stateName(row.archiveState || row.status))} · ${escape(new Date(row.createdAt || 0).toLocaleString())}</small><small>${mode === 'server' ? `${row.imageCount ?? '—'} 张 · ${size(row.cacheBytes)}${row.reservedBytes ? ` · 预留 ${size(row.reservedBytes)}` : ''}` : `已存 ${row.files?.length || 0} / ${row.imageCount || '—'} 张`}</small><small class="sd-comfy-inbox-id">${escape(row.attemptId)}</small>${mode === 'server' && !enabled(row) ? `<small>${row.canRetryCleanup ? '图片已归档，可继续清理临时文件' : '原图保留，领取归档后再清理'}</small>` : ''}</div>
-        <button type="button" class="sd-btn" data-receive="${index}" ${busy || (mode === 'server' && row.resultAvailable !== true && !row.canRetryCleanup && !row.canReceiveOriginal) ? 'disabled' : ''}>${row.canRetryCleanup ? '继续清理' : row.canReceiveOriginal && !row.resultAvailable ? '查看结果' : '领取'}</button>
+        <button type="button" class="sd-btn" data-receive="${index}" ${busy || !canReceive(row) ? 'disabled' : ''}>${row.canRetryCleanup ? '继续清理' : row.canReceiveOriginal && !row.resultAvailable ? '查看结果' : '领取'}</button>
       </article>`).join('')}</div>
       ${pages > 1 ? `<footer><button type="button" class="sd-btn" data-action="previous" ${!page || busy ? 'disabled' : ''}>上一页</button><span>${page + 1} / ${pages}</span><button type="button" class="sd-btn" data-action="next" ${page + 1 >= pages || busy ? 'disabled' : ''}>下一页</button></footer>` : ''}
       ${mode === 'server' && server?.cloudNextCursor ? `<button type="button" class="sd-btn" data-action="earlier-cloud" ${busy ? 'disabled' : ''}>加载较早云任务</button>` : ''}
