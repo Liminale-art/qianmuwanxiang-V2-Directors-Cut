@@ -2,6 +2,7 @@ import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } f
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
 export { resolveStoryboardComfyCloud } from './qianmu-comfy-cloud-protocol.js';
+export { canRunStoryboardComfyJob } from './qianmu-comfy-queue.js';
 import { RUNNINGHUB_INSTANCE_TYPES } from './qianmu-comfy-cloud-protocol.js';
 import { normalizeRunningHubConsoleUrl } from './qianmu-comfy-console.js';
 import { readRunningHubTaskUsage } from './qianmu-runninghub-usage.js';

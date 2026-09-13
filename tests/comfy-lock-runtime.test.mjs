@@ -4,6 +4,8 @@ import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
 import * as auto from '../qianmu-comfy-auto-runtime.js';
 import {createComfySceneCoordinator} from '../qianmu-comfy-lock-runtime.js';
+import {executeComfyCloudJob} from '../qianmu-comfy-cloud-execution.js';
+import {bindComfyCloudProtocol} from '../qianmu-comfy-cloud-protocol.js';
 import {normalizeComfyAutoPool,COMFY_SELECTION_SCHEMA} from '../qianmu-comfy-selection.js';
 import {comfySceneScopeKey,changeComfySceneRecord,inspectComfySceneRecord} from '../qianmu-comfy-scene-lock.js';
 import {pinComfyRouteWorkflow,readPinnedComfyRouteWorkflow} from '../qianmu-comfy-route.js';
@@ -65,6 +67,25 @@ async function fixture({freshComfy=false}={}){
     connection:{baseUrl:'https://comfy.test',id:'',comfyTransport:'browser'},shotSpec:copy(shot),payload:{prompt:'preview',shotSpec:copy(shot),parameters:{count:1}}});
   return {prepared,store,manager,probe,makeShot,makeJob,setAccount:value=>account=value,close:async()=>{prepared.close();await manager.close();}};
 }
+test('Cloud pre-submit refusal releases a new scene claim, while an ambiguous remote submission preserves the original style for review',async()=>{
+  for(const outcome of ['not_submitted','unknown']){
+    const e=await fixture(),batch=e.manager.createBatch({prepared:e.prepared,probe:e.probe});
+    try{
+      const shot=await e.makeShot(),choice=await batch.choose(shot,scope),job=e.makeJob(choice,shot,'cloud-scene');
+      job.connection={baseUrl:'https://cloud.comfy.org',comfyTransport:'gateway'};
+      await batch.attach(job,choice);await e.manager.reserve(job);
+      const client={cloudCapabilities:async()=>({submission:true,automaticProviders:['comfy-cloud'],resultRetrieval:true,resultProviders:['comfy-cloud']}),
+        prepareCloudSubmission:async()=>({created:true,record:{attemptId:job.id}}),
+        submitCloudPrepared:async(_prepared,_key,{beforeSubmit})=>{await beforeSubmit();throw Object.assign(Error('synthetic host outcome'),{code:'comfy_delivery_submission',submissionState:outcome});}};
+      await assert.rejects(executeComfyCloudJob(client,job,{},bindComfyCloudProtocol(job.connection.baseUrl,'comfy-cloud-v2'),{
+        apiKey:'synthetic',beforeSubmit:()=>e.manager.beforeSubmit(job),deliver:async()=>assert.fail('no confirmed result to archive')}),{submissionState:outcome});
+      await e.manager.settle(job,outcome);const view=await e.manager.inspect(scope);
+      if(outcome==='not_submitted'){assert.equal(view.lock,null);assert.equal(view.uncertain,0);}
+      else {assert.equal(view.lock.candidateId,choice.candidateId);assert.equal(view.uncertain,1);}
+    }finally{batch.close();await e.close();}
+  }
+});
+
 test('one batch proposes one style, attaches checked original facts, then reserves only immediately before admission',async()=>{
   const e=await fixture(),batch=e.manager.createBatch({prepared:e.prepared,probe:e.probe});
   try{

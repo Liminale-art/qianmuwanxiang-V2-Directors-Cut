@@ -12,6 +12,7 @@
     "vendor/noble-hashes-2.4.0/LICENSE",
     "vendor/noble-hashes-2.4.0/VENDOR.json",
     "qianmu-comfy-cloud-protocol.js",
+    "qianmu-comfy-queue.js",
     "qianmu-comfy-cloud-access.js",
     "qianmu-comfy-cloud-check.js",
     "qianmu-comfy-cloud-service.js",

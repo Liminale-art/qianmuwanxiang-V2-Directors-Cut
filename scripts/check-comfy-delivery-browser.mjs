@@ -32,6 +32,14 @@ async function openPage(){
 }
 try{
   const page=await openPage();
+  ok('Comfy ordering loads locally and groups alternate roots without blocking independent instances or NAI',await page.evaluate(async()=>{
+    const {canRunStoryboardComfyJob}=await import('/qianmu-comfy-queue.js');
+    const job=baseUrl=>({source:'comfy',connection:{baseUrl}}),active=[job('https://cloud.comfy.org')];
+    return !canRunStoryboardComfyJob(job('https://CLOUD.comfy.org:443/api/v2'),active)
+      &&canRunStoryboardComfyJob(job('http://127.0.0.1:8188'),active)
+      &&canRunStoryboardComfyJob({source:'novel'},active)
+      &&!canRunStoryboardComfyJob(job(''),active);
+  }));
   ok('lazy Cloud readiness uses the scoped client and leaves no generation journal in real IndexedDB',await page.evaluate(async()=>{
     const {checkCloudComfyReadiness}=await import('/qianmu-comfy-readiness.js');
     const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');

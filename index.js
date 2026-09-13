@@ -213,6 +213,7 @@ import {
   resolveStoryboardComfyCloud,
   projectStoryboardProtocolParameters,
   getStoryboardGenerationPolicy,
+  canRunStoryboardComfyJob,
   normalizeStoryboardGenerationPolicy,
   resolveStoryboardMessageReference,
   resolveStoryboardComposition,
@@ -21325,7 +21326,7 @@ function storyboardPumpQueue() {
   const concurrency = getStoryboardGenerationPolicy(storyboardState()).concurrency;
   while (storyboardQueue.length && storyboardActiveJobs.size < concurrency) {
     const novelBusy = [...storyboardActiveJobs.values()].some((item) => item.source === 'novel');
-    const nextIndex = storyboardQueue.findIndex((item) => item.source !== 'novel' || !novelBusy);
+    const nextIndex = storyboardQueue.findIndex((item) => (item.source !== 'novel' || !novelBusy) && canRunStoryboardComfyJob(item,storyboardActiveJobs.values()));
     if (nextIndex < 0) break;
     const [job] = storyboardQueue.splice(nextIndex, 1);
     storyboardActiveJobs.set(job.id, job);

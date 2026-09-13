@@ -84,6 +84,35 @@ test('actual queue reads only the unified concurrency and keeps NAI globally ser
   active.clear();context.storyboardPumpQueue();assert.equal(started.at(-1),'n2');
 });
 
+test('mixed storyboard queue waits for the same Comfy origin without blocking NAI, another instance or a closed-model shot',()=>{
+  const state=board.createStoryboardDefaults();state.generationPolicy.concurrency=4;
+  const comfy=(id,baseUrl,credentialId)=>({id,source:'comfy',connection:{baseUrl,credentialId},planShotId:id,profile:{workflow:'unchanged'},comfySceneOrigin:{candidateId:'fixed'}});
+  const queue=[comfy('c1','https://cloud.comfy.org','key-a'),comfy('c2','https://CLOUD.comfy.org:443/api/v2/','alias-key'),
+    {id:'n1',source:'novel'},{id:'n2',source:'novel'},comfy('l1','http://127.0.0.1:8188','local'),
+    comfy('l2','http://127.0.0.1:8188/api','local-alias'),{id:'b',source:'banana'}];
+  const originals=new Map(queue.map(job=>[job.id,JSON.stringify(job)])),active=new Map(),started=[];
+  const context=vm.createContext({...board,storyboardState:()=>state,storyboardQueue:queue,storyboardActiveJobs:active,storyboardBusy:false,renderModal:()=>{},
+    storyboardRunQueuedJob:job=>{assert.equal(JSON.stringify(job),originals.get(job.id),'scheduling does not rewrite shot order, route or scene lock');started.push(job.id);}});
+  vm.runInContext(fn('storyboardPumpQueue'),context);context.storyboardPumpQueue();
+  assert.deepEqual(started,['c1','n1','l1','b']);assert.deepEqual(queue.map(job=>job.id),['c2','n2','l2']);
+  active.delete('l1');context.storyboardPumpQueue();assert.equal(started.at(-1),'l2');
+  active.delete('c1');context.storyboardPumpQueue();assert.equal(started.at(-1),'c2');
+  active.delete('n1');context.storyboardPumpQueue();assert.equal(started.at(-1),'n2');assert.equal(queue.length,0);
+});
+
+test('Comfy origin ordering is credential-independent and cannot be bypassed by an unknown URL; it is not a network grant',()=>{
+  const job=url=>({source:'comfy',connection:{baseUrl:url}});
+  assert.equal(board.canRunStoryboardComfyJob(job('https://www.runninghub.cn/openapi/v2'),[job('https://www.runninghub.cn/task/openapi/')]),false);
+  assert.equal(board.canRunStoryboardComfyJob(job('http://127.0.0.1:8189'),[job('http://127.0.0.1:8188')]),true);
+  assert.equal(board.canRunStoryboardComfyJob(job('https://one.run.comfy.app'),[job('https://two.run.comfy.app')]),true);
+  for(const invalid of ['',undefined,'not a URL','file:///tmp','https://secret@cloud.comfy.org']){
+    assert.equal(board.canRunStoryboardComfyJob(job(invalid),[job('https://cloud.comfy.org')]),false);
+    assert.equal(board.canRunStoryboardComfyJob(job('https://cloud.comfy.org'),[job(invalid)]),false);
+    assert.equal(board.canRunStoryboardComfyJob(job(invalid),[]),true,'normal submission validation must report malformed connections, not stall the page forever');
+  }
+  assert.equal(board.canRunStoryboardComfyJob({source:'novel'},[job('https://cloud.comfy.org')]),true);
+});
+
 test('actual portable export/import preserves the policy and imports old packages with conservative counts',async()=>{
   const state=board.createStoryboardDefaults(),store={};state.generationPolicy={version:1,minImages:2,maxImages:4,concurrency:3};
   let exported=null;const noop=()=>{};
