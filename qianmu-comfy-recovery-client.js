@@ -1,4 +1,4 @@
-// Comfy delivery only: no generation route, reference upload or workflow copy.
+// Comfy delivery and single cloud acceptance; no scheduler or reference upload.
 import { trackClientActivity } from './qianmu-client-activity.js';
 import { prepareComfySubmission, assertComfyAccount, acknowledgeComfyImage } from './qianmu-comfy-submission.js';
 import { resolveImageAccountNamespace } from './qianmu-image-admission.js';
@@ -23,6 +23,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
   headers = () => ({}), confirm = async () => false, timeoutMs = 45000 } = {}) {
   let closed = false;
   const controllers = new Set();
+  const submissionTickets = new WeakMap();
   async function guard(job) {
     if (closed) throw fail('closed', 'Comfy 领取会话已结束，请在原账户重新领取');
     await assertComfyAccount(job, { account });
@@ -63,12 +64,16 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
   }
   async function save(job, row) { await guard(job); const clean = normalizeComfyDelivery(row, origin); await store.put(clean); await guard(job); return clean; }
   async function request(job, action, body, maxBytes, base = BASE) {
+    const submitting = action === 'submit' && base === CLOUD_BASE;
+    let dispatched = false, reportedState;
     const controller = new AbortController(); controllers.add(controller);
     const timer = setTimeout(() => controller.abort(), Math.min(60000, Math.max(1000, Number(timeoutMs) || 45000)));
     try {
       await guard(job);
-      const response = await fetchImpl(`${base}/${action}`, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', redirect: 'error',
-        headers: { ...headers(), 'Content-Type': 'application/json' }, signal: controller.signal, body: JSON.stringify(body) });
+      const init = { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', redirect: 'error',
+        headers: { ...headers(), 'Content-Type': 'application/json' }, signal: controller.signal, body: JSON.stringify(body) };
+      dispatched = true;
+      const response = await fetchImpl(`${base}/${action}`, init);
       if (response.status === 404 && action === 'capabilities') { await response.body?.cancel().catch(() => {}); throw fail('capabilities', '后端尚未支持云任务，请同步更新后端并重启 ST'); }
       if (response.status === 404 && action === 'catalog') { await response.body?.cancel().catch(() => {}); throw fail('catalog', 'Comfy 目录尚未就绪，请同步更新后端并重启 ST'); }
       const reader = response.body?.getReader(); if (!reader) throw fail('response', 'Comfy 服务未返回领取结果');
@@ -78,10 +83,16 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
       const buffer = new Uint8Array(size); let offset = 0; for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.length; }
       let result;
       try { result = JSON.parse(new TextDecoder().decode(buffer)); } catch (_) { throw fail('response', 'Comfy 服务返回格式异常，未重新生成'); }
+      if (submitting && result?.ok === false && ['not_submitted','unknown','accepted'].includes(result.submissionState)) reportedState = result.submissionState;
       await guard(job);
       if (!response.ok || result?.ok !== true) throw fail('response', typeof result?.message === 'string' ? result.message.slice(0, 300) : `Comfy 领取暂不可用（${response.status}）`);
       return result;
     } catch (error) {
+      if (submitting) {
+        const safe = /^(?:comfy_|image_)/.test(error?.code || '') ? error : fail('network', '云任务提交连接中断，请核查原任务，未重新提交');
+        safe.submissionState = reportedState || (dispatched ? 'unknown' : 'not_submitted');
+        throw safe;
+      }
       if (/^(?:comfy_|image_)/.test(error?.code || '')) throw error;
       throw fail('network', 'Comfy 领取连接中断，原任务未重投，请稍后再试');
     } finally { clearTimeout(timer); controllers.delete(controller); }
@@ -150,7 +161,38 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
       // Freeze the graph and declared values before the first storage/account await.
       const request = buildComfyCloudRequest(job,gateway,connection);
       const prepared = await this.prepareCloud(job,request.connection);
-      return { ...prepared, request };
+      const result = { ...prepared, request };
+      if (prepared.created) submissionTickets.set(result,{ record: normalizeComfyDelivery(prepared.record,origin), request, binding: { ...prepared.binding } });
+      return result;
+    },
+    async submitCloudPrepared(prepared, apiKey) {
+      // Consume before the first await. Reopening an existing journal row, copying
+      // the object or overlapping clicks cannot mint a second submission ticket.
+      const ticket = submissionTickets.get(prepared);
+      submissionTickets.delete(prepared);
+      let submissionState = 'not_submitted';
+      try {
+        if (!ticket) throw fail('ticket','此准备凭证已使用或无效，请核查原任务，未重新提交');
+        if (typeof apiKey !== 'string' || !apiKey.trim() || apiKey.length > 4096) throw fail('key','请填写原连接的 API Key');
+        const { record, request: frozenRequest } = ticket, job = jobForRow(record);
+        const capabilities = await this.cloudCapabilities({namespace:record.namespace});
+        if (!capabilities.submission || !capabilities.resultRetrieval || !capabilities.resultProviders.includes(record.cloudConnection.provider))
+          throw fail('capabilities','当前后端尚未开放此平台完整生图，请同步更新后再使用');
+        await locked(job,async () => {
+          const raw = await store.get(record.namespace,record.attemptId); await guard(job);
+          if (!raw || JSON.stringify(normalizeComfyDelivery(raw,origin)) !== JSON.stringify(record))
+            throw fail('identity','原云任务准备记录已变化，未提交新任务');
+        });
+        const current = await scope(record.namespace);
+        submissionState = 'unknown';
+        const packet = await request(job,'submit',{...current.body,attemptId:record.attemptId,apiKey,request:frozenRequest},16384,CLOUD_BASE);
+        const accepted = await this.bindCloudAcceptance(record,packet);
+        return { binding: ticket.binding, record: accepted, task: accepted.cloudTask, taskLocator: accepted.taskLocator, submissionState:'accepted' };
+      } catch (cause) {
+        const error = /^(?:comfy_|image_)/.test(cause?.code || '') ? cause : fail('submission','云任务准备未完成，请核查原任务记录');
+        error.submissionState = submissionState === 'not_submitted' ? submissionState : (cause?.submissionState || submissionState);
+        throw error;
+      }
     },
     async prepareCloud(job, cloudConnection) {
       job = identity(job);

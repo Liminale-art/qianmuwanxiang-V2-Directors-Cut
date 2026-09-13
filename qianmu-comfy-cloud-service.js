@@ -1,5 +1,5 @@
-// Host-owned cloud service. The internal single-submit method is not yet exposed
-// by public routes. No workflow topology mutation or remote deletion.
+// Host-owned cloud service. New-task UI stays gated until the complete client
+// path is available. No workflow topology mutation or remote deletion.
 import { Buffer } from 'node:buffer';
 import { createImageServiceStore } from './qianmu-image-service-store.js';
 import { createImageServiceResults } from './qianmu-image-service-results.js';

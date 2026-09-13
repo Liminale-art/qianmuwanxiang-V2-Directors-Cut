@@ -5,6 +5,8 @@ import {buildComfyCloudRequest} from '../qianmu-comfy-cloud-request.js';
 import {prepareComfyCloudSubmission} from '../qianmu-comfy-cloud-prepare.js';
 import {createComfyRecoveryClient} from '../qianmu-comfy-recovery-client.js';
 import {bindComfyCloudProtocol} from '../qianmu-comfy-cloud-protocol.js';
+import {bindComfyCloudTask} from '../qianmu-comfy-cloud-protocol.js';
+import {imageChannelKey} from '../qianmu-image-channel.js';
 import {auditComfyWorkflow,requireComfyExecution} from '../qianmu-comfy-audit.js';
 import {prepareComfyWorkflow} from '../qianmu-comfy-workflow.js';
 import {resolveStoryboardJobModelIdentity,resolveStoryboardConnectionBinding} from '../qianmu-storyboard.js';
@@ -63,4 +65,65 @@ test('request freezes before asynchronous preparation and never persists its wor
   const ready=await work;assert.equal(ready.created,true);assert.equal(ready.request.prompt,'a quiet garden');
   assert.equal(ready.request.workflow.model.inputs.ckpt_name,'fixed.safetensors');assert.doesNotMatch(JSON.stringify(rows.get('row')),/safetensors|synthetic-key|garden/);
   client.close();
+});
+
+async function submissionFixture({capabilities={},reply}={}){
+  const f=fixture(),rows=new Map(),calls=[];let namespace='st-user:alice',writeFails=false;
+  const expectedAccount=`st-user:${await imageChannelKey('alice')}`;
+  const packet={ok:true,version:1,status:'accepted',task:bindComfyCloudTask(connection,'accepted',{self:'/api/v2/jobs/accepted',cancel:'/api/v2/jobs/accepted/cancel'}),
+    locator:{version:1,attemptId:f.job.id,channelKey:'a'.repeat(64)}};
+  const client=createComfyRecoveryClient({origin:'https://st.test',account:async()=>namespace,
+    store:{get:async()=>structuredClone(rows.get('row')||null),put:async row=>{if(writeFails)throw Error('synthetic storage failure');rows.set('row',structuredClone(row));},close(){}},
+    locks:{request:async(_name,_options,work)=>work({})},fetchImpl:async(url,init)=>{
+      calls.push({url,...init,body:init.body?JSON.parse(init.body):undefined});
+      if(url.endsWith('/capabilities'))return Response.json({ok:true,version:1,expectedAccount,accountBindingVersion:1,catalogVersion:1,
+        submission:true,resultRetrieval:true,archiveConfirmation:true,cancellation:false,referenceUpload:false,automaticReplay:false,
+        queryProviders:['comfy-cloud','runninghub'],resultProviders:['comfy-cloud'],...capabilities});
+      assert.ok(url.endsWith('/cloud/tasks/submit'));
+      return reply?reply(packet,()=>{writeFails=true;}):Response.json(packet);
+    }});
+  return {...f,client,rows,calls,prepared:await client.prepareCloudSubmission(f.job,f.gateway,connection),setAccount:value=>{namespace=value;}};
+}
+
+test('an issued ticket submits once despite overlapping clicks and caller mutation, then binds the original record',async()=>{
+  const f=await submissionFixture();
+  const duplicate=await f.client.prepareCloudSubmission(f.job,f.gateway,connection);
+  assert.equal(duplicate.created,false);
+  for(const invalid of [duplicate,{...f.prepared},null])await assert.rejects(f.client.submitCloudPrepared(invalid,'synthetic-key'),{submissionState:'not_submitted'});
+  f.prepared.binding.attemptId='foreign';f.prepared.record.chatKey='foreign';f.prepared.request={prompt:'foreign'};
+  const first=f.client.submitCloudPrepared(f.prepared,'synthetic-key');
+  await assert.rejects(f.client.submitCloudPrepared(f.prepared,'synthetic-key'),{submissionState:'not_submitted'});
+  const accepted=await first;assert.equal(accepted.record.chatKey,'original-chat');assert.equal(accepted.binding.attemptId,'original');
+  assert.equal(accepted.record.cloudTask.taskId,'accepted');assert.equal(f.calls.filter(c=>c.method==='POST').length,1);
+  const body=f.calls.find(c=>c.method==='POST').body;assert.equal(body.request.prompt,'a quiet garden');assert.equal(body.attemptId,'original');
+  assert.doesNotMatch(JSON.stringify(f.rows.get('row')),/synthetic-key|safetensors|garden/);f.client.close();
+});
+
+test('unavailable collection, closed capability, changed account or changed preparation stops before any POST',async()=>{
+  for(const mode of ['capability','results','provider','account','record']){
+    const f=await submissionFixture({capabilities:mode==='capability'?{submission:false}:mode==='results'?{resultRetrieval:false}:mode==='provider'?{resultProviders:[]}: {}});
+    if(mode==='account')f.setAccount('st-user:bob');if(mode==='record')f.rows.clear();
+    await assert.rejects(f.client.submitCloudPrepared(f.prepared,'synthetic-key'),{submissionState:'not_submitted'});
+    assert.equal(f.calls.filter(c=>c.method==='POST').length,0);f.client.close();
+  }
+});
+
+test('lost, malformed or oversized submit replies remain unknown and cannot trigger automatic resubmission',async()=>{
+  for(const reply of [()=>{throw Error('network failure');},()=>new Response('not JSON'),()=>new Response('x'.repeat(17000)),
+    packet=>Response.json({...packet,task:null}),()=>Response.json({ok:false,message:'ambiguous'})]){
+    const f=await submissionFixture({reply});
+    await assert.rejects(f.client.submitCloudPrepared(f.prepared,'synthetic-key'),{submissionState:'unknown'});
+    await assert.rejects(f.client.submitCloudPrepared(f.prepared,'synthetic-key'),{submissionState:'not_submitted'});
+    assert.equal(f.calls.filter(c=>c.method==='POST').length,1);assert.equal(f.rows.get('row').cloudTask,null);f.client.close();
+  }
+});
+
+test('explicit server submission state is retained and local storage failure after acceptance never becomes unsent',async()=>{
+  for(const state of ['not_submitted','unknown','accepted']){
+    const f=await submissionFixture({reply:()=>Response.json({ok:false,message:'retained original state',submissionState:state},{status:409})});
+    await assert.rejects(f.client.submitCloudPrepared(f.prepared,'synthetic-key'),{submissionState:state});f.client.close();
+  }
+  const f=await submissionFixture({reply:(packet,failWrite)=>{failWrite();return Response.json(packet);}});
+  await assert.rejects(f.client.submitCloudPrepared(f.prepared,'synthetic-key'),{submissionState:'accepted'});
+  assert.equal(f.calls.filter(c=>c.method==='POST').length,1);assert.equal(f.rows.get('row').cloudTask,null);f.client.close();
 });

@@ -167,6 +167,35 @@ try{
     return bound.cloudTask.taskId===task.taskId&&JSON.stringify(bound)===JSON.stringify(again)&&(await store.get(ns,'new-cloud')).taskLocator.channelKey===accepted.taskLocator.channelKey;
   }));
   await ui.evaluate(()=>{disposeInbox();uiClient.close();});
+  const submitPage=await openPage();
+  ok('real IndexedDB single-submit consumes its ticket before competing clicks and survives a fresh page',await submitPage.evaluate(async()=>{
+    const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');
+    const {prepareComfyWorkflow}=await import('/qianmu-comfy-workflow.js');
+    const {auditComfyWorkflow,requireComfyExecution}=await import('/qianmu-comfy-audit.js');
+    const {imageChannelKey}=await import('/qianmu-image-channel.js');let posts=0;
+    const client=createComfyRecoveryClient({store,account:async()=>ns,fetchImpl:async(url,init)=>{
+      if(url.endsWith('/capabilities'))return Response.json({ok:true,version:1,accountBindingVersion:1,catalogVersion:1,
+        expectedAccount:`st-user:${await imageChannelKey(ns.slice(8))}`,submission:true,resultRetrieval:true,archiveConfirmation:true,
+        cancellation:false,referenceUpload:false,automaticReplay:false,queryProviders:['comfy-cloud'],resultProviders:['comfy-cloud']});
+      if(!url.endsWith('/submit'))throw Error('Unexpected request');posts++;
+      const body=JSON.parse(init.body);
+      return Response.json({ok:true,version:1,status:'accepted',task,locator:{...accepted.taskLocator,attemptId:body.attemptId}});
+    }});
+    const job={id:'ticket-cloud',source:'comfy',automatic:false,connection:{baseUrl:connection.origin},imageAdmission:{version:1,namespace:ns,attemptId:'ticket-cloud'}};
+    const workflow={source:{class_type:'FixtureImage',inputs:{text:'%qianmu_prompt%'}},save:{class_type:'SaveImage',inputs:{images:['source',0]}}};
+    const policy={version:1,automatic:false,maxImages:1,outputNodeIds:['save'],allowUnverified:true};
+    const gateway={provider:'comfy',baseUrl:connection.origin,model:'workflow',prompt:'synthetic',parameters:{workflow},
+      comfyExecution:requireComfyExecution(auditComfyWorkflow(prepareComfyWorkflow(workflow,{prompt:'synthetic'}).bind([]),policy),policy)};
+    const prepared=await client.prepareCloudSubmission(job,gateway,connection);
+    const results=await Promise.allSettled([client.submitCloudPrepared(prepared,'synthetic-key'),client.submitCloudPrepared(prepared,'synthetic-key')]);
+    const row=await store.get(ns,'ticket-cloud');client.close();
+    return posts===1&&results[0].status==='fulfilled'&&results[1].status==='rejected'&&row.cloudTask.taskId===task.taskId;
+  }));
+  await submitPage.close();const reopened=await openPage();
+  ok('fresh page reads accepted task without a request payload or reusable submission permission',await reopened.evaluate(async()=>{
+    const row=await store.get(ns,'ticket-cloud');store.close();
+    return row.cloudTask.taskId===task.taskId&&!/synthetic-key|workflow|ticketToken/.test(JSON.stringify(row));
+  }));
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({checks,external,errors},null,2));
 }finally{await context.close();await browser.close();}
