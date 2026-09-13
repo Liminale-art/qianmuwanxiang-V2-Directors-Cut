@@ -288,16 +288,17 @@ try{
     const row={attemptId:'rh-usage',task,engine:'cloud',archiveState:'archived',createdAt:1,canRetryCleanup:false,
       usage:{consumeCoins:'1.2500',consumeMoney:'0',thirdPartyConsumeMoney:null,taskCostTime:'35'}};
     mountComfyInbox(document.querySelector('#usage-host'),{service:{list:async()=>({namespace:ns,rows:[],bytes:0}),
-      catalogAll:async()=>({namespace:ns,originals:[row,{...row,attemptId:'rh-unknown',usage:null}],totals:{imageBytes:0,metadataBytes:0,temporaryBytes:0,reservedBytes:0}})}});
+      catalogAll:async()=>({namespace:ns,originals:[row,{...row,attemptId:'rh-unknown',usage:null},{...row,attemptId:'rh-failed',archiveState:null,reportedStatus:'failed'}],totals:{imageBytes:0,metadataBytes:0,temporaryBytes:0,reservedBytes:0}})}});
   });
   await usagePage.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
   for(const width of [320,393,1100]){
     await usagePage.setViewportSize({width,height:900});
     ok(`reported RH decimals and missing values fit the original inbox grid at ${width}`,await usagePage.locator('.sd-comfy-inbox-rows').evaluate(node=>{
-      const [first,second]=node.querySelectorAll('article'),usage=first.querySelector('.sd-comfy-inbox-usage');
+      const [first,second,failed]=node.querySelectorAll('article'),usage=first.querySelector('.sd-comfy-inbox-usage');
       return first.children.length===3&&usage.parentElement.tagName==='DIV'&&usage.textContent.includes('RH币 1.2500')
         &&usage.textContent.includes('第三方金额 未提供')&&second.textContent.includes('平台用量未提供')
-        &&first.scrollWidth<=first.clientWidth+1&&!/[￥$]/.test(usage.textContent);
+        &&first.scrollWidth<=first.clientWidth+1&&!/[￥$]/.test(usage.textContent)
+        &&failed.textContent.includes('失败')&&failed.querySelector('.sd-comfy-inbox-usage').textContent.includes('RH币 1.2500');
     }));
   }
   assert.equal(external,0);assert.deepEqual(errors,[]);

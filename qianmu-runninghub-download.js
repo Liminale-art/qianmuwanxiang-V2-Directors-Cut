@@ -40,7 +40,7 @@ export async function downloadRunningHubJob(req, { task: rawTask, channelKey, at
     await verify(); stage = 'query';
     const query = await queryComfyCloudTask(req, task, { apiKey, authorizeTask: async () => verify, authorizeTarget,
       signal: controller.signal, timeoutMs: remaining(), resolveHost, requestImpl, maxBytes, includeStillOutputs: true });
-    await verify();
+    await verify();await grant.recordUsage?.(query);await verify();
     if (query.status !== 'succeeded') return Object.freeze({ status: query.status, task, result: null });
     const selection = [], images = [], proofs = []; let bytesRemaining = 48 * 1024 * 1024;
     for (const output of query.stillOutputs.outputs) {

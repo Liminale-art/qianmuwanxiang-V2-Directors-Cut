@@ -23,3 +23,11 @@ export function describeRunningHubUsage(value) {
   return [['consumeCoins','RH币'],['consumeMoney','平台金额'],['thirdPartyConsumeMoney','第三方金额'],['taskCostTime','耗时原值']]
     .map(([key,label]) => `${label} ${usage[key] ?? '未提供'}`).join(' · ');
 }
+export function normalizeRunningHubObservation(value) {
+  const fail=()=>{throw Object.assign(new Error('原任务用量核查记录无效'),{code:'comfy_runninghub_observation',retryable:false});};
+  if(!value||typeof value!=='object'||![Object.prototype,null].includes(Object.getPrototypeOf(value)))fail();
+  const names=['status','usage','observedAt'];
+  if(Reflect.ownKeys(value).length!==names.length||names.some(key=>!Object.hasOwn(value,key)||Object.getOwnPropertyDescriptor(value,key).get||Object.getOwnPropertyDescriptor(value,key).set))fail();
+  if(!['succeeded','failed'].includes(value.status)||!Number.isSafeInteger(value.observedAt)||value.observedAt<1)fail();
+  return Object.freeze({status:value.status,usage:normalizeRunningHubUsage(value.usage),observedAt:value.observedAt});
+}

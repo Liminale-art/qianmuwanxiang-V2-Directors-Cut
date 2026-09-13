@@ -409,6 +409,34 @@ test('RH shares persistent receive/readback/ack: repeated retrieval has no cloud
   assert.equal((await service.result(f.req, input)).status, 'archived'); assert.equal(calls.length, 4);
 });
 
+test('failed RH tasks persist reported usage through query and collection without pretending files were stored or resubmitting',async t=>{
+  const usage={consumeCoins:'0.7500',consumeMoney:null,thirdPartyConsumeMoney:null,taskCostTime:'12.25'};
+  for(const method of ['query','result']){
+    const f=await persistedCloudTask(t,rhBinding),calls=[];
+    const service=createComfyCloudService({dataRoot:f.root,store:f.store,transportOptions:{authorizeTarget:cloudGrant,resolveHost:publicDns,
+      requestImpl:mockNodeRequest(calls,()=>({body:{taskId:f.task.taskId,status:'FAILED',errorCode:'1501',usage}}))}});t.after(()=>service.close());
+    const input={version:1,expectedAccount:imageServiceAccount(f.req).namespace,task:f.task,...f.locator};
+    assert.equal((await service[method](f.req,input)).status,'failed');assert.equal(calls.length,1);
+    const catalog=await service.catalog(f.req,{version:1,expectedAccount:input.expectedAccount});
+    assert.equal(catalog.tasks[0].reportedStatus,'failed');assert.deepEqual(catalog.tasks[0].usage,usage);
+    const saved=(await f.store.inspectChannel(f.locator.channelKey)).entries[0];
+    assert.equal(saved.cloudDelivery,undefined,'reported expense is not proof of stored media');assert.notEqual(saved.status,'succeeded');
+    await service.close();const reopened=createImageServiceStore({dataRoot:f.root,scope:'comfy-cloud'});t.after(()=>reopened.close());
+    assert.deepEqual((await reopened.inspectChannel(f.locator.channelKey)).entries[0].cloudObservation.usage,usage);
+    assert.doesNotMatch(JSON.stringify(saved),/test-only-secret|apiKey/);
+  }
+});
+
+test('RH observation rejects foreign task reports and conflicting terminal status without changing the original evidence',async t=>{
+  const f=await persistedCloudTask(t,rhBinding),ledger=createComfyCloudLedger({store:f.store}),grant=await ledger.authorizeStaging(f.req,f.locator,f.task);
+  const result={task:f.task,status:'failed',usage:{consumeCoins:'0',consumeMoney:null,thirdPartyConsumeMoney:null,taskCostTime:null}};
+  await assert.rejects(grant.recordUsage({...result,task:{...f.task,taskId:'999'}}),{code:'image_service_cloud_usage_identity'});
+  await grant.recordUsage(result);const before=await f.store.inspectChannel(f.locator.channelKey);
+  await assert.rejects(grant.recordUsage({...result,status:'succeeded'}),{code:'image_service_cloud_usage_conflict'});
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey),before);
+  await grant.recordUsage({...result,status:'running'});assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey),before);
+});
+
 test('RH node evidence is fetched only after matching v2 success, under the same original ledger grant',async t=>{
   const f=await persistedCloudTask(t,rhBinding),calls=[];
   const result=await queryComfyCloudTask(f.req,f.task,{...f.options,includeStillOutputs:true,requestImpl:mockNodeRequest(calls,call=>{

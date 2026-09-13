@@ -6,6 +6,7 @@ import { planComfyCloudOperation, requireComfyCloudTaskId, bindComfyCloudTask } 
 import { normalizeComfyCloudIntent, assertComfyCloudReceiptForIntent } from './qianmu-comfy-cloud-receipt.js';
 import { normalizeComfyCloudChannel } from './qianmu-comfy-cloud-channel-state.js';
 import { normalizeComfyCloudStage } from './qianmu-comfy-cloud-stage-contract.js';
+import { normalizeRunningHubObservation } from './qianmu-runninghub-usage.js';
 
 const fail = (reason, message) => Object.assign(new Error(message), { code: `image_service_cloud_${reason}`, status: 409, retryable: false });
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,240}$/.test(value);
@@ -54,6 +55,22 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
       return snapshot;
     };
     const verify = async () => { await verifiedRead(); return receipt; };
+    async function recordUsage(result) {
+      if(task.provider!=='runninghub'||!result?.usage||!['succeeded','failed'].includes(result.status))return;
+      current();await verify();
+      if(JSON.stringify(result.task)!==JSON.stringify(task))throw fail('usage_identity','用量不属于原任务，未保存');
+      return store.transaction(channelKey,raw=>{
+        current();const state=normalizeComfyCloudChannel(raw,channelKey);
+        const row=state.entries.find(item=>item.namespace===identity.namespace&&item.attemptId===identity.attemptId);
+        if(!row||signature(row)!==original)throw fail('query_changed','原任务已变化，未保存用量');
+        // Once original files are archived their frozen report remains authoritative.
+        if(row.cloudDelivery)return {state,result:null};
+        if(row.cloudObservation&&row.cloudObservation.status!==result.status)throw fail('usage_conflict','平台返回了冲突的终态，原记录未覆盖');
+        const at=Math.max(now(),row.updatedAt);row.updatedAt=at;
+        row.cloudObservation=normalizeRunningHubObservation({status:result.status,usage:result.usage,observedAt:at});
+        return {state:normalizeComfyCloudChannel(state,channelKey),result:row.cloudObservation};
+      });
+    }
     async function recordStored(cache, { signal } = {}) {
       const check = () => { current(); if (signal?.aborted) throw fail('delivery_cancelled', '已停止确认暂存，原图仍保留'); };
       check(); await verify();
@@ -120,7 +137,7 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
     // Server-internal evidence only. The identity and verifier originate in the
     // same read; do not acquire a fresh fence after downloading or expose this
     // object as an HTTP response. It does not grant target IO or submission.
-    return Object.freeze({ identity, receipt, verify, ...(archiveOnly ? {} : { recordStored }), recordArchived, readDelivery: async () => (await verifiedRead()).delivery });
+    return Object.freeze({ identity, receipt, verify, ...(archiveOnly ? {} : { recordStored, recordUsage }), recordArchived, readDelivery: async () => (await verifiedRead()).delivery });
   }
   return Object.freeze({
     submission(reservation) {

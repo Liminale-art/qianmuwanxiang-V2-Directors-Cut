@@ -74,6 +74,7 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
         const delivery = await grant.readDelivery(); check();
         if (delivery) return { ok: true, version: 1, status: delivery.state, task, delivery };
         const result = await queryComfyCloudTask(req, task, { ...transportOptions, apiKey: value.apiKey, signal, authorizeTask: async () => grant.verify });
+        check();await grant.recordUsage(result);check();
         return { ok: true, version: 1, ...result };
       });
     },
@@ -105,7 +106,9 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
         const cachedKeys = inventory ? new Set(inventory.entries.map(keyOf)) : null;
         const view = row => ({ ...imageServiceTaskView(row), taskLocator: { version: 1, channelKey: row.channelKey },
           task: row.cloudReceipt?.task || null, archiveState: row.cloudDelivery?.state || null, live: live(row),
-          ...(row.cloudDelivery ? { cacheReceipt: row.cloudDelivery.cacheReceipt, ...(row.cloudDelivery.usage ? {usage:row.cloudDelivery.usage} : {}) } : {}),
+          ...(row.cloudDelivery ? { cacheReceipt: row.cloudDelivery.cacheReceipt } : {}),
+          ...(row.cloudDelivery?.usage||row.cloudObservation?.usage ? {usage:row.cloudDelivery?.usage||row.cloudObservation.usage} : {}),
+          ...(row.cloudObservation ? {reportedStatus:row.cloudObservation.status,usageCheckedAt:row.cloudObservation.observedAt} : {}),
           canRetryCleanup: row.cloudDelivery?.state === 'archived' && !live(row) && (!cachedKeys || cachedKeys.has(keyOf(row))) });
         const originals = (inventory?.entries || []).map(meta => {
           const row = matches.get(keyOf(meta)), matched = row && row.fence === meta.fence && row.requestDigest === meta.requestDigest;

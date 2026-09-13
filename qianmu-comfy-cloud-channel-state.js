@@ -2,10 +2,10 @@
 // Reuse local row identity/time checks, not the native queue's completion semantics.
 import { normalizeImageServiceChannel } from './qianmu-image-service-queue.js';
 import { normalizeComfyCloudReceipt, normalizeComfyCloudIntent, assertComfyCloudReceiptForIntent } from './qianmu-comfy-cloud-receipt.js';
-import { normalizeRunningHubUsage } from './qianmu-runninghub-usage.js';
+import { normalizeRunningHubUsage, normalizeRunningHubObservation } from './qianmu-runninghub-usage.js';
 
 export const COMFY_CLOUD_CHANNEL_SCHEMA = 'qianmu.comfy-cloud-channel.v1';
-const keys = ['namespace', 'attemptId', 'requestDigest', 'ownerId', 'fence', 'status', 'automatic', 'createdAt', 'updatedAt', 'upstreamId', 'cloudReceipt', 'cloudIntent', 'cloudDelivery'];
+const keys = ['namespace', 'attemptId', 'requestDigest', 'ownerId', 'fence', 'status', 'automatic', 'createdAt', 'updatedAt', 'upstreamId', 'cloudReceipt', 'cloudIntent', 'cloudDelivery', 'cloudObservation'];
 const fail = () => { throw Object.assign(new Error('云任务记录不完整，请先核查原任务'), { code: 'image_service_cloud_state', status: 409, retryable: false }); };
 function fields(value, allowed) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) fail();
@@ -68,6 +68,11 @@ export function normalizeComfyCloudChannel(value, channelKey) {
       // the shared queue. Never reinterpret it as a browser archive receipt.
       // Legacy rows have no delivery proof; do not invent one during reads.
       if (Object.hasOwn(raw, 'cloudDelivery')) row.cloudDelivery = delivery(raw.cloudDelivery, row);
+      if(Object.hasOwn(raw,'cloudObservation')){
+        const observation=normalizeRunningHubObservation(raw.cloudObservation);
+        if(row.cloudReceipt?.task.provider!=='runninghub'||observation.observedAt<row.createdAt||observation.observedAt>row.updatedAt)fail();
+        row.cloudObservation=observation;
+      }
     });
     return { ...normalized, schema: COMFY_CLOUD_CHANNEL_SCHEMA };
   } catch (_) { fail(); }
