@@ -13098,6 +13098,8 @@ function renderStoryboardModelCard(state) {
 }
 
 function renderStoryboardComfyTransport(connection) {
+  try { const cloud=resolveStoryboardComfyCloud(connection); if(cloud)return `<div class="sd-comfy-platform"><span class="sd-badge">${cloud.provider==='comfy-cloud'?'Comfy Cloud':'RunningHub'}</span></div>`; }
+  catch (_) { return '<small class="sd-comfy-platform">请填写有效的云平台 API 根地址</small>'; }
   const mode = getStoryboardComfyTransport(connection);
   return `<label><span>请求发出方</span><select class="text_pole sd-comfy-transport" aria-label="Comfy 请求发出方">
     <option value="gateway" ${mode === 'gateway' ? 'selected' : ''}>ST 主机 · 增强服务转发</option>

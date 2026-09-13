@@ -258,7 +258,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
       job = identity(job);
       try {
         if (job.originalOnly) throw fail('identity', '领取原图不能转为新提交');
-        const expected = normalizeComfyDelivery({ ...fresh(job), version: 3, cloudConnection, originalOnly: false }, origin);
+        const expected = normalizeComfyDelivery({ ...fresh(job), version: 3, cloudConnection, originalOnly: false, allowPrivateNetwork: false }, origin);
         const binding = await prepareComfySubmission(job, { account });
         return await locked(job, async () => {
           const raw = await store.get(expected.namespace,expected.attemptId); await guard(job);

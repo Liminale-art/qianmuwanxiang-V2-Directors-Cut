@@ -1441,11 +1441,9 @@ test('installed cloud recovery endpoints advertise only implemented operations a
 
 test('installed single-submit route preserves original receipts, refuses duplicate POST execution and binds account before dispatch', async t => {
   const f = await cloudSubmissionFixture(t), handlers = new Map(), calls = [];
-  const targets = [{ id: comfyTargetId(cloudBinding.origin, false), baseUrl: cloudBinding.origin, allowPrivateNetwork: false,
-    shared: true, name: 'Cloud fixture', grantId: '00000000-0000-4000-8000-000000000000', updatedAt: 0 }];
   await init({ get: (key, handler) => handlers.set(`GET ${key}`, handler), post: (key, handler) => handlers.set(`POST ${key}`, handler) }, {
     dataRoot: f.root, comfyCloudTaskOptions: { store: f.store },
-    comfyTargetStore: { read: async () => ({ schemaVersion: 1, revision: 1, targets }) },
+    comfyTargetStore: { read: async () => assert.fail('official cloud must not require native administrator enrollment') },
     comfyTransportOptions: { resolveHost: publicDns, requestImpl: mockNodeRequest(calls, () => ({body:acceptedCloudBody(cloudBinding,'route-original')})) },
   });
   const submit = handlers.get('POST /image/comfy/cloud/tasks/submit'), body = {...f.input, version:1};
@@ -1479,13 +1477,12 @@ test('installed cloud routes deliver saved originals and complete ACK without le
   assert.equal(catalog.body.totals.imageBytes, 0); assert.equal(catalog.body.tasks[0].archiveState, 'archived');
 });
 
-test('installed cloud recovery uses the approved original platform for complete CDN collection and rejects revoked target authority', async t => {
+test('installed cloud recovery obeys original site policy for CDN collection without a separate native/CDN registration', async t => {
   const f = await persistedCloudTask(t), handlers = new Map(), calls = []; let approved = false;
-  const targets = [{ id: comfyTargetId(f.task.origin, false), baseUrl: f.task.origin, allowPrivateNetwork: false,
-    shared: true, name: 'Cloud fixture', grantId: '00000000-0000-4000-8000-000000000000', updatedAt: 0 }];
   await init({ get: (key, handler) => handlers.set(`GET ${key}`, handler), post: (key, handler) => handlers.set(`POST ${key}`, handler) }, {
     dataRoot: f.root, comfyCloudTaskOptions: { store: f.store },
-    comfyTargetStore: { read: async () => ({ schemaVersion: 1, revision: 1, targets: approved ? targets : [] }) },
+    comfyTargetStore: { read: async () => assert.fail('cloud originals do not use the native registry') },
+    authorizeCloudTarget: async (_req,binding) => { assert.equal(binding.origin,f.task.origin);return async()=>{if(!approved)throw Error('site revoked cloud');}; },
     comfyTransportOptions: { resolveHost: publicDns, requestImpl: mockNodeRequest(calls, call => assetDownloadReply(f, call)) },
   });
   const input = { version: 1, expectedAccount: imageServiceAccount(f.req).namespace, task: f.task, ...f.locator };

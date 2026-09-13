@@ -87,6 +87,16 @@ async function submissionFixture({capabilities={},reply,resultReply,prepare=true
   return {...f,client,rows,calls,prepared:prepare?await client.prepareCloudSubmission(f.job,f.gateway,connection):null,setAccount:value=>{namespace=value;}};
 }
 
+test('switching from private native Comfy to an official cloud discards only the obsolete private-network flag',async()=>{
+  const f=await submissionFixture({prepare:false});
+  f.job.connection.options.allowPrivateNetwork=true;
+  const prepared=await f.client.prepareCloudSubmission(f.job,f.gateway,connection);
+  assert.equal(prepared.record.allowPrivateNetwork,false);
+  assert.equal(prepared.record.cloudConnection.origin,connection.origin);
+  assert.equal(f.job.connection.options.allowPrivateNetwork,true);
+  assert.equal(f.calls.length,0);f.client.close();
+});
+
 test('an issued ticket submits once despite overlapping clicks and caller mutation, then binds the original record',async()=>{
   const f=await submissionFixture();
   const duplicate=await f.client.prepareCloudSubmission(f.job,f.gateway,connection);

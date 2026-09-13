@@ -1,4 +1,5 @@
 // Lazy current-connection management. Never sends model keys or contacts Comfy.
+import { resolveStoryboardComfyCloud } from './qianmu-comfy-cloud-protocol.js';
 const endpoint = '/api/plugins/qianmu-tts/image/comfy/targets';
 const escape = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 const normalize = value => new URL(String(value || '').trim()).toString().replace(/\/+$/, '');
@@ -31,6 +32,8 @@ export async function requestComfyTargets({ action, headers = () => ({}), fetchI
 }
 
 export async function requireTrustedComfyConnection(connection, options = {}) {
+  const cloud=resolveStoryboardComfyCloud(connection);
+  if(cloud){options.assertCurrent?.();return {ok:true,cloud};} // The cloud host still checks account, provider and public egress.
   const baseUrl = normalize(connection.baseUrl), privateNetwork = connection.options?.allowPrivateNetwork === true;
   const data = await requestComfyTargets(options);
   options.assertCurrent?.();

@@ -15,6 +15,7 @@ import { createComfyTargetStore } from './qianmu-comfy-target-store.js';
 import { createComfyTargets } from './qianmu-comfy-targets.js';
 import { createComfyService } from './qianmu-comfy-service.js';
 import { createComfyCloudService } from './qianmu-comfy-cloud-service.js';
+import { authorizeComfyCloudTarget } from './qianmu-comfy-cloud-access.js';
 import {
   checkImageConnection,
   ImageGatewayError,
@@ -269,7 +270,9 @@ export async function init(router, options = {}) {
   const comfyCloudTasksFor = req => {
     try { imageServiceAccount(req); } catch (_) { throw new ImageGatewayError(401, 'comfy_cloud_authentication', '请先登录原ST账户'); }
     if (!comfyCloudTasks) {
-      comfyCloudTasks = createComfyCloudService({ dataRoot: hostDataRoot(), ...(options.comfyCloudTaskOptions || {}), transportOptions: comfyTransportOptions() });
+      comfyCloudTasks = createComfyCloudService({ dataRoot: hostDataRoot(), ...(options.comfyCloudTaskOptions || {}), transportOptions: {
+        ...(options.comfyTransportOptions || {}), authorizeTarget: (request,input) => authorizeComfyCloudTarget(request,input,{policy:options.authorizeCloudTarget}),
+      } });
       imageTaskServices.add(comfyCloudTasks);
     }
     return comfyCloudTasks;
