@@ -35,6 +35,7 @@
       "qianmu-comfy-cloud-asset.js",
       "qianmu-comfy-cloud-upload-contract.js",
       "qianmu-comfy-cloud-upload.js",
+      "qianmu-comfy-cloud-workflow.js",
     "qianmu-comfy-cloud-receipt.js",
     "qianmu-comfy-cloud-channel-state.js",
     "qianmu-comfy-new-execution.js",

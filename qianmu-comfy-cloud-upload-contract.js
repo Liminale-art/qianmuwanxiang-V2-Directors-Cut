@@ -45,3 +45,19 @@ export function readComfyCloudUpload(rawPlan, rawBody) {
   }
   return Object.freeze({version:1,connection:plan.connection,source:plan.source,reference});
 }
+
+// Structural matching only. Only the host's upload grant may supply this receipt;
+// accepting its shape is not permission to use an arbitrary client asset UUID.
+export function matchComfyCloudUpload(raw, connection, source) {
+  const value=plain(raw),expected=planComfyCloudUpload(connection,source),actual=planComfyCloudUpload(value.connection,value.source);
+  if(value.version!==1||JSON.stringify(actual.connection)!==JSON.stringify(expected.connection)||JSON.stringify(actual.source)!==JSON.stringify(expected.source))fail();
+  const reference=value.reference;
+  if(expected.connection.provider==='comfy-cloud'){
+    plain(reference);plain(reference.info);
+    if(reference.__type!=='core/ASSET'||Object.keys(reference).length!==2||Object.keys(reference.info).length!==1||!comfyCloudAssetId(reference.info.id))fail();
+    return Object.freeze({__type:'core/ASSET',info:Object.freeze({id:comfyCloudAssetId(reference.info.id)})});
+  }
+  if(typeof reference!=='string'||!/^(?:api|openapi)\/[A-Za-z0-9_-]{1,192}\.(png|jpe?g|webp)$/i.test(reference)
+    ||(source.mime==='image/jpeg'?!/\.jpe?g$/i.test(reference):!reference.toLowerCase().endsWith(`.${extension(source.mime)}`)))fail();
+  return reference;
+}
