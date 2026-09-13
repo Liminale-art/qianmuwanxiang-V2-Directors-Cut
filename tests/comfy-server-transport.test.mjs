@@ -70,6 +70,54 @@ async function cloudSubmissionFixture(t, binding = cloudBinding) {
 const acceptedCloudBody = (binding = cloudBinding, id = 'new-job') => binding.provider === 'runninghub' ? { code: 0, data: { taskId: id } }
   : { id, urls: { self: `/api/v2/jobs/${id}`, cancel: `/api/v2/jobs/${id}/cancel` } };
 
+test('host owns the single cloud submission ledger and repeated submission cannot create another paid job', async t => {
+  for (const binding of [cloudBinding,rhBinding]) {
+    const f = await cloudSubmissionFixture(t,binding), calls = [], id = binding.provider === 'runninghub' ? '1904152026220003329' : 'host-original';
+    const service = createComfyCloudService({ store: f.store, dataRoot: f.root,
+      transportOptions: { ...f.options, requestImpl: mockNodeRequest(calls,() => ({ body: acceptedCloudBody(binding,id) })) } });
+    t.after(() => service.close());
+    const input = { ...f.input, version: 1 }, result = await service.submit(f.req,input);
+    assert.equal(result.status,'accepted'); assert.equal(result.version,1); assert.equal(result.task.taskId,id);
+    assert.equal(result.locator.channelKey,f.key);
+    const persisted = (await f.store.inspectChannel(f.key)).entries[0];
+    assert.equal(persisted.upstreamId,id); assert.equal(persisted.cloudReceipt.task.taskId,id);
+    assert.doesNotMatch(JSON.stringify(persisted),/test-only-secret|quiet rain/);
+    await assert.rejects(service.submit(f.req,input)); assert.equal(calls.length,1);
+  }
+});
+
+test('invalid account and cancellation before host submission make no network or ledger mutation', async t => {
+  const f = await cloudSubmissionFixture(t), calls = [];
+  const service = createComfyCloudService({ store: f.store, dataRoot: f.root,
+    transportOptions: { ...f.options, requestImpl: mockNodeRequest(calls) } }); t.after(() => service.close());
+  const input = { ...f.input, version: 1 };
+  await assert.rejects(service.submit({},input),{submissionState:'not_submitted'});
+  await assert.rejects(service.submit(f.req,{...input,version:2}),{submissionState:'not_submitted'});
+  const controller = new AbortController();controller.abort();
+  await assert.rejects(service.submit(f.req,input,{signal:controller.signal}),{submissionState:'not_submitted'});
+  assert.equal(calls.length,0);assert.deepEqual(await fs.readdir(f.root),[]);
+});
+
+test('host shutdown waits for dispatched acceptance and preserves its receipt instead of pretending it was not submitted', { timeout: 10000 }, async t => {
+  const f = await cloudSubmissionFixture(t), calls = [];let entered,release;
+  const arriving = new Promise(resolve => { entered = resolve; }), ready = new Promise(resolve => { release = resolve; });
+  const mock = mockNodeRequest(calls,() => ({ body: acceptedCloudBody(cloudBinding,'late-host-original') }));
+  const service = createComfyCloudService({ store: f.store, dataRoot: f.root, transportOptions: { ...f.options,
+    requestImpl: (url,options,callback) => mock(url,options,incoming => { entered();void ready.then(() => callback(incoming)); }) } });
+  t.after(() => service.close());
+  const work = service.submit(f.req,{...f.input,version:1});
+  const rejected = assert.rejects(work,{submissionState:'accepted'});
+  await arriving;
+  const catalog = await service.catalog(f.req,{version:1,expectedAccount:f.input.expectedAccount});
+  assert.equal(catalog.tasks[0].live,true,'active resource fingerprint must match its persisted task');
+  const closed = service.close(); release(); await rejected; await closed;
+  const reopened = createImageServiceStore({ dataRoot: f.root, scope: 'comfy-cloud' });t.after(() => reopened.close());
+  const row = (await reopened.inspectChannel(f.key)).entries[0];
+  assert.equal(row.upstreamId,'late-host-original');assert.equal(row.cloudReceipt.task.taskId,'late-host-original');
+  assert.equal(row.status,'uncertain');assert.equal(calls.length,1);
+  await assert.rejects(service.submit(f.req,{...f.input,version:1}),{submissionState:'not_submitted'});
+});
+
 test('single cloud submit runner persists original acceptance with platform authentication only at dispatch', async t => {
   for (const binding of [cloudBinding, rhBinding]) {
     const f = await cloudSubmissionFixture(t, binding), calls = [], id = binding.provider === 'runninghub' ? '1904152026220003329' : 'new-job';

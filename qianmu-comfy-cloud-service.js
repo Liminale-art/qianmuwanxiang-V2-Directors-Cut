@@ -1,9 +1,10 @@
-// Host-owned recovery service. No paid submission, workflow mutation or remote
-// deletion. One instance owns the cloud ledger/cache and waits for IO on close.
+// Host-owned cloud service. The internal single-submit method is not yet exposed
+// by public routes. No workflow topology mutation or remote deletion.
 import { Buffer } from 'node:buffer';
 import { createImageServiceStore } from './qianmu-image-service-store.js';
 import { createImageServiceResults } from './qianmu-image-service-results.js';
-import { createComfyCloudLedger } from './qianmu-comfy-cloud-ledger.js';
+import { createComfyCloudLedger, comfyCloudResourceKey } from './qianmu-comfy-cloud-ledger.js';
+import { submitComfyCloudTask } from './qianmu-comfy-cloud-submit.js';
 import { createComfyCloudReceiver } from './qianmu-comfy-cloud-receive.js';
 import { queryComfyCloudTask } from './qianmu-comfy-cloud-query.js';
 import { bindComfyCloudTask } from './qianmu-comfy-cloud-protocol.js';
@@ -22,6 +23,7 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
   const active = new Set(); let closed = false, closing;
   const live = row => [...active].some(item => item.key === keyOf(row) && item.namespace === row.namespace);
   function run(req, raw, options, operation, tracksTask = false) {
+    const submission = typeof tracksTask === 'function';
     try {
       const account = imageServiceAccount(req);
       if (closed || active.size >= 2) throw fail('busy', '云任务服务正在处理或停止，请稍后核查', 503);
@@ -29,6 +31,7 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
       if (describeImageServiceRequest({ input: raw }).requestBytes > 2 * 1024 * 1024) throw fail('input', '云任务请求过大');
       const input = parseBoundedJson(JSON.stringify(raw), { maxBytes: 2 * 1024 * 1024, maxDepth: 40, maxNodes: 50000, label: '云任务' });
       if (input?.version !== 1 || input.expectedAccount !== account.namespace) throw fail('account', 'ST账户已变化，请回原账户核查', 401);
+      const taskKey = submission ? tracksTask(input) : tracksTask ? keyOf(input) : null;
       const controller = new AbortController(), signal = controller.signal, external = options?.signal;
       const onAbort = () => controller.abort(); external?.addEventListener('abort', onAbort, { once: true });
       if (external?.aborted) onAbort();
@@ -36,10 +39,15 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
         if (!imageServiceAccountStillMatches(req, account)) throw fail('account', 'ST账户已变化，未交付云任务结果', 401);
         if (closed || signal.aborted) throw fail('stopped', '已停止等待，原任务和暂存仍保留');
       };
-      const item = { key: tracksTask ? keyOf(input) : null, namespace: account.namespace, controller };
+      const item = { key: taskKey, namespace: account.namespace, controller }; let started = false;
       active.add(item);
-      item.work = Promise.resolve().then(async () => { check(); const value = await operation(input, account, signal, check); check(); return value; })
+      item.work = Promise.resolve().then(async () => {
+        check(); started = true; const value = await operation(input, account, signal, check);
+        try { check(); } catch (cause) { if (submission && value?.status === 'accepted') cause.submissionState = 'accepted'; throw cause; }
+        return value;
+      })
         .catch(cause => {
+          if (submission && !started) cause.submissionState = 'not_submitted';
           if (cause instanceof ImageGatewayError && String(cause.code).startsWith('comfy_cloud_service_')) throw cause;
           // Never echo arbitrary transport, filesystem or stored-record errors.
           const error = fail('unconfirmed', '云任务处理未完成，请核查原记录；未重新生成');
@@ -48,10 +56,17 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
         }).finally(() => { external?.removeEventListener('abort', onAbort); active.delete(item); });
       return item.work;
     } catch (cause) {
-      return Promise.reject(cause instanceof ImageGatewayError ? cause : fail('input', '请登录原ST账户并核对云任务请求', cause?.status === 401 ? 401 : 400));
+      const error = cause instanceof ImageGatewayError ? cause : fail('input', '请登录原ST账户并核对云任务请求', cause?.status === 401 ? 401 : 400);
+      if (submission) error.submissionState = 'not_submitted';
+      return Promise.reject(error);
     }
   }
   return Object.freeze({
+    submit(req, input, options) {
+      return run(req, input, options, async (value, _account, signal) => ({ version: 1,
+        ...(await submitComfyCloudTask(req, value, { ...transportOptions, ledger, signal })) }),
+      value => keyOf({ attemptId: value.attemptId, channelKey: comfyCloudResourceKey(value.request?.connection, value.apiKey) }));
+    },
     query(req, input, options) {
       return run(req, input, options, async (value, _account, signal, check) => {
         const task = bindComfyCloudTask(value.task, value.task?.taskId, value.task?.links);
