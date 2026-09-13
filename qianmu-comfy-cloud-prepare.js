@@ -43,9 +43,19 @@ export function prepareComfyCloudSubmission(raw) {
     const body = plan.provider === 'comfy-cloud' ? { workflow: graph } : { workflow: JSON.stringify(graph) };
     if (source.runninghub !== undefined) {
       if (plan.provider !== 'runninghub') fail();
-      fields(source.runninghub, ['workflowId']);
-      if (typeof source.runninghub.workflowId !== 'string' || !/^[0-9]{1,64}$/.test(source.runninghub.workflowId)) fail();
-      body.workflowId = source.runninghub.workflowId;
+      fields(source.runninghub, ['workflowId', 'instanceType']);
+      const { workflowId, instanceType } = source.runninghub;
+      if (workflowId === undefined && instanceType === undefined) fail();
+      if (workflowId !== undefined) {
+        if (typeof workflowId !== 'string' || !/^[0-9]{1,64}$/.test(workflowId)) fail();
+        body.workflowId = workflowId;
+      }
+      if (instanceType !== undefined) {
+        if (!['default', 'plus', 'ultra'].includes(instanceType)) fail();
+        body.instanceType = instanceType;
+      }
+      // Full frozen workflow takes precedence over workflowId per RH's API.
+      // No second nodeInfoList override, silent tier escalation or paid retainSeconds.
     }
     const bodyBytes = Buffer.byteLength(JSON.stringify(body)); if (bodyBytes > LIMIT) fail();
     const { requestDigest } = describeImageServiceRequest({ connection: source.connection, body, workflow: identity, execution });

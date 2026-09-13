@@ -41,6 +41,24 @@ test('RH wraps the compiled graph as a string without a second node override or 
   assert.notEqual(prepared.intent.requestDigest, prepare(source()).intent.requestDigest);
 });
 
+test('RH runtime tier is a frozen, hashed user choice independent of the compiled workflow, never an automatic upgrade', () => {
+  const digests = new Set(), base = prepare(source(rh));
+  assert.equal(Object.hasOwn(base.body, 'instanceType'), false, 'historical unspecified mode stays unspecified');
+  for (const instanceType of ['default', 'plus', 'ultra']) {
+    const input = source(rh); input.runninghub = { instanceType };
+    const got = prepare(input); input.runninghub.instanceType = 'changed';
+    assert.equal(got.body.instanceType, instanceType); assert.ok(Object.isFrozen(got.body));
+    assert.equal(got.body.workflow, base.body.workflow); assert.deepEqual(got.intent.workflow, base.intent.workflow);
+    assert.notEqual(got.intent.requestDigest, base.intent.requestDigest); digests.add(got.intent.requestDigest);
+    assert.deepEqual(Object.keys(got.body).sort(), ['instanceType', 'workflow']);
+  }
+  assert.equal(digests.size, 3);
+  for (const runninghub of [{}, { instanceType: 'pro' }, { instanceType: 'PLUS' }, { instanceType: null },
+    { instanceType: 'lite' }, { instanceType: 'default', retainSeconds: 60 }, { instanceType: 'plus', nodeInfoList: [] },
+    { instanceType: 'plus', workflowId: 123 }]) assert.throws(() => prepare({ ...source(rh), runninghub }), invalid);
+  assert.throws(() => prepare({ ...source(), runninghub: { instanceType: 'plus' } }), invalid, 'RH settings cannot leak into Comfy Cloud');
+});
+
 test('saved recipe hash must match the original graph rather than the dynamic execution graph', async () => {
   const input = source(), hash = await comfyWorkflowReferenceHash(input.workflow);
   input.binding = { schemaVersion: 1, namespace: 'st-user:fixture', id: 'saved', revision: 'first', version: 1, name: 'Saved', workflowHash: hash, recipeHash: 'd'.repeat(64) };
