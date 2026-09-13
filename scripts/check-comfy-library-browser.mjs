@@ -55,6 +55,13 @@ try{
     ok(`RH runtime selector matches field heights without overflow at ${width}`,metrics.overflow<=1&&metrics.heights.length===8&&Math.max(...metrics.heights)-Math.min(...metrics.heights)<=1);
     await page.locator('[data-storyboard-field="comfyInstanceType"]').selectOption('plus');
     ok(`RH tier selection remains native keyboard/touch compatible at ${width}`,await page.locator('[data-storyboard-field="comfyInstanceType"]').inputValue()==='plus');
+    await page.evaluate(()=>{profile.comfyConsoleUrl='https://www.runninghub.cn/workflow/1980237776367083521';draw(false,{baseUrl:'https://www.runninghub.cn'});document.querySelector('[data-storyboard-card="comfy-workflow"]').open=true;});
+    ok(`explicit console link stays reachable and isolated from ST at ${width}`,await page.locator('.sd-comfy-console-link').evaluate(link=>{
+      const bounds=link.getBoundingClientRect(),parent=link.closest('.sd-comfy-workbench').getBoundingClientRect();
+      return bounds.height>=30&&bounds.left>=parent.left&&bounds.right<=parent.right+1
+        &&link.href==='https://www.runninghub.cn/workflow/1980237776367083521'&&link.target==='_blank'
+        &&link.rel.includes('noopener')&&link.rel.includes('noreferrer')&&link.referrerPolicy==='no-referrer';
+    }));
   }
   await page.evaluate(()=>openLibrary());await page.waitForSelector('.sd-comfy-library-row');
   await page.locator('[data-comfy-action="edit"]').first().click();await page.waitForSelector('[data-comfy-draft="name"]');
