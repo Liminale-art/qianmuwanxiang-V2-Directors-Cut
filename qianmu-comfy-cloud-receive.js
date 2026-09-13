@@ -1,15 +1,63 @@
 // Server-internal collection coordinator, not an HTTP route. The host supplies
 // one receiver per cloud service and its shutdown signal. Storage is confirmed
-// only after full readback. No submission, client ACK, deletion or store ownership.
+// only after full readback. Client ACK is durable before bounded cache cleanup.
+// No submission, cloud deletion or store ownership.
 import { bindComfyCloudTask } from './qianmu-comfy-cloud-protocol.js';
 import { downloadComfyCloudJob } from './qianmu-comfy-cloud-asset-read.js';
 import { normalizeComfyCloudStage } from './qianmu-comfy-cloud-stage-contract.js';
+import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
 
 export function createComfyCloudReceiver({ ledger, cache, download = downloadComfyCloudJob } = {}) {
   if (typeof ledger?.authorizeStaging !== 'function' || typeof download !== 'function'
     || ['load', 'reserve', 'save'].some(name => typeof cache?.[name] !== 'function')) throw new Error('云端领取服务缺少原任务或暂存接口');
   const active = new Set(); let admitted = 0;
   return Object.freeze({
+    async acknowledge(req, input = {}, options = {}) {
+      const task = bindComfyCloudTask(input.task, input.task?.taskId, input.task?.links), signal = options.signal;
+      const account = imageServiceAccount(req);
+      const fail = (code, message) => Object.assign(new Error(message), { code: `comfy_cloud_archive_${code}`, submissionState: 'accepted', upstreamId: task.taskId, retryable: false });
+      const check = () => {
+        if (signal?.aborted) throw fail('cancelled', '已停止归档处理，原记录仍保留');
+        if (!imageServiceAccountStillMatches(req, account)) throw fail('account', 'ST账户已变化，未交付归档状态');
+      };
+      const { receipt, archived } = input;
+      if (task.provider !== 'comfy-cloud' || archived !== true || typeof receipt !== 'string' || !/^[a-f0-9]{64}$/.test(receipt)) throw fail('confirmation', '请保存原图后使用原任务凭证确认归档');
+      if (typeof cache.discard !== 'function') throw fail('storage', '原图暂存清理尚未就绪');
+      if (admitted >= 2) throw fail('busy', '原任务正在处理，请稍后核查');
+      admitted++;
+      let key, owned = false;
+      try {
+        check();
+        const grant = await ledger.authorizeStaging(req, { channelKey: input.channelKey, attemptId: input.attemptId, apiKey: input.apiKey }, task);
+        if (typeof grant?.recordArchived !== 'function') throw fail('authorization', '原任务缺少持久归档确认能力');
+        const verify = async () => { check(); await grant.verify(); check(); };
+        await verify();
+        key = JSON.stringify([grant.identity.namespace, grant.identity.channelKey, grant.identity.attemptId]);
+        if (active.has(key)) throw fail('busy', '原任务正在领取或归档，请稍后确认');
+        active.add(key); owned = true;
+        const delivery = await grant.recordArchived(cache, { receipt, archived, signal });
+        await verify();
+        const latest = await grant.readDelivery(); check();
+        if (delivery?.state !== 'archived' || delivery.cacheReceipt !== receipt || latest?.state !== 'archived'
+          || latest.cacheReceipt !== receipt) throw fail('confirmation', '原任务归档尚未确认，未清理暂存');
+        let cleanup = 'complete';
+        try {
+          // No ledger IO inside cache.exclusive (it shares the host store queue).
+          // A missing directory counts as clean ONLY after the durable exact ACK.
+          await cache.discard(grant.identity, receipt, { valid: () => !signal?.aborted && imageServiceAccountStillMatches(req, account) });
+        } catch (_) { cleanup = 'pending'; }
+        await verify();
+        return Object.freeze({ status: 'archived', task, result: null, delivery, cleanup,
+          message: cleanup === 'complete' ? '已确认归档，暂存已清理' : '已确认归档，暂存清理待重试' });
+      } catch (cause) {
+        check();
+        if (String(cause?.code).startsWith('comfy_cloud_archive_')) throw cause;
+        throw fail('unconfirmed', '归档处理尚未确认，请核查原任务；未重新生成');
+      } finally {
+        if (owned) active.delete(key);
+        admitted--;
+      }
+    },
     async receive(req, input = {}, options = {}) {
       const task = bindComfyCloudTask(input.task, input.task?.taskId, input.task?.links), signal = options.signal;
       const fail = (code, message) => Object.assign(new Error(message), { code: `comfy_cloud_receive_${code}`, submissionState: 'accepted', upstreamId: task.taskId, retryable: false });

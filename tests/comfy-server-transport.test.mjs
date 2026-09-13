@@ -542,6 +542,81 @@ test('archive commit failure preserves stored originals and a lost confirmation 
   assert.equal((await received.grant.recordArchived({ load: () => assert.fail('already committed') }, input)).state, 'archived');
 });
 
+test('cloud ACK persists consent before bounded cleanup, rejects wrong receipts even after cleanup, and never redownloads', async t => {
+  const { f, cache, received, calls } = await stagedBeforeSettlement(t);
+  await received.grant.recordStored(cache);
+  let cleaned = 0;
+  const receiver = createComfyCloudReceiver({ ledger: f.ledger, download: () => assert.fail('ACK cannot generate or download'), cache: { ...cache,
+    discard: async (...args) => { assert.equal((await received.grant.readDelivery()).state, 'archived'); cleaned++; return cache.discard(...args); } } });
+  const input = { task: f.task, ...f.locator, archived: true, receipt: received.result.receipt };
+  const result = await receiver.acknowledge(f.req, input);
+  assert.equal(result.status, 'archived'); assert.equal(result.cleanup, 'complete'); assert.equal(cleaned, 1);
+  assert.equal(await cache.load(received.grant.identity), null);
+  assert.equal((await cache.inventory(received.grant.identity.namespace)).entries.length, 0);
+  const before = await f.store.inspectChannel(f.locator.channelKey);
+  assert.equal((await receiver.acknowledge(f.req, input)).cleanup, 'complete');
+  for (const invalid of [{ ...input, receipt: 'f'.repeat(64) }, { ...input, archived: false }]) await assert.rejects(receiver.acknowledge(f.req, invalid));
+  await assert.rejects(receiver.acknowledge({ user: { profile: { handle: 'bob', enabled: true } } }, input));
+  assert.equal(cleaned, 2, 'invalid or cross-account ACK never calls discard, even if directory is already absent');
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey), before);
+  assert.deepEqual(await receiver.receive(f.req, input), { status: 'archived', task: f.task, result: null });
+  assert.equal(calls.length, 3);
+});
+
+test('partial cloud cleanup reports pending and retries from the durable receipt without needing removed image bytes', async t => {
+  const { f, cache, received } = await stagedBeforeSettlement(t);
+  await received.grant.recordStored(cache);
+  const results = path.join(f.root, '.qianmu-service', 'comfy-cloud-results-v1');
+  const entries = await fs.readdir(results); assert.equal(entries.length, 1); assert.match(entries[0], /^[a-f0-9]{64}$/);
+  const slot = path.join(results, entries[0]);
+  const input = { task: f.task, ...f.locator, archived: true, receipt: received.result.receipt };
+  const interrupted = createComfyCloudReceiver({ ledger: f.ledger, cache: { ...cache, discard: async () => {
+    await fs.unlink(path.join(slot, 'image-0.bin')); throw new Error('private path must not escape');
+  } } });
+  const pending = await interrupted.acknowledge(f.req, input);
+  assert.equal(pending.cleanup, 'pending'); assert.equal(pending.delivery.state, 'archived');
+  assert.doesNotMatch(JSON.stringify(pending), /private path/);
+  await fs.access(path.join(slot, 'manifest.json'));
+  const resumed = createComfyCloudReceiver({ ledger: f.ledger, cache: { ...cache, load: () => assert.fail('partial cleanup is not a new image read') } });
+  assert.equal((await resumed.acknowledge(f.req, input)).cleanup, 'complete');
+  assert.equal(await cache.load(received.grant.identity), null);
+});
+
+test('cloud cleanup refuses unknown files and cancellation after durable consent leaves the original intact', async t => {
+  const { f, cache, received } = await stagedBeforeSettlement(t);
+  await received.grant.recordStored(cache);
+  const input = { task: f.task, ...f.locator, archived: true, receipt: received.result.receipt };
+  const controller = new AbortController();
+  const interrupted = createComfyCloudReceiver({ ledger: f.ledger, cache: { ...cache, discard: (...args) => {
+    controller.abort(); return cache.discard(...args);
+  } } });
+  await assert.rejects(interrupted.acknowledge(f.req, input, { signal: controller.signal }), { code: 'comfy_cloud_archive_cancelled' });
+  assert.equal((await received.grant.readDelivery()).state, 'archived');
+  assert.equal((await cache.load(received.grant.identity)).receipt, input.receipt);
+  const results = path.join(f.root, '.qianmu-service', 'comfy-cloud-results-v1'), entries = await fs.readdir(results);
+  assert.equal(entries.length, 1); assert.match(entries[0], /^[a-f0-9]{64}$/);
+  const unknown = path.join(results, entries[0], 'user-original.txt'); await fs.writeFile(unknown, 'keep');
+  const receiver = createComfyCloudReceiver({ ledger: f.ledger, cache });
+  assert.equal((await receiver.acknowledge(f.req, input)).cleanup, 'pending');
+  assert.equal(await fs.readFile(unknown, 'utf8'), 'keep');
+  assert.equal((await cache.load(received.grant.identity)).receipt, input.receipt);
+});
+
+test('cloud receipt and archive confirmation share the original-task in-flight gate', async t => {
+  const { f, cache, received } = await stagedBeforeSettlement(t);
+  await received.grant.recordStored(cache);
+  const input = { task: f.task, ...f.locator, archived: true, receipt: received.result.receipt };
+  let enter, release;
+  const entered = new Promise(resolve => { enter = resolve; }), wait = new Promise(resolve => { release = resolve; });
+  const receiver = createComfyCloudReceiver({ ledger: f.ledger, cache: { ...cache, load: async (...args) => { enter(); await wait; return cache.load(...args); } } });
+  const first = receiver.acknowledge(f.req, input); await entered;
+  try {
+    assert.deepEqual(await receiver.receive(f.req, input), { status: 'collecting', task: f.task, result: null });
+    await assert.rejects(receiver.acknowledge(f.req, input), { code: 'comfy_cloud_archive_busy' });
+  } finally { release(); }
+  assert.equal((await first).cleanup, 'complete');
+});
+
 test('an archive confirmed during readback cannot be downgraded into another image delivery', async t => {
   const { f, cache } = await stagedBeforeSettlement(t);
   const ledger = { authorizeStaging: async (...args) => {
