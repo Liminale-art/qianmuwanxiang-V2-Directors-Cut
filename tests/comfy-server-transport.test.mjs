@@ -565,6 +565,22 @@ test('archive commit failure preserves stored originals and a lost confirmation 
   assert.equal((await received.grant.recordArchived({ load: () => assert.fail('already committed') }, input)).state, 'archived');
 });
 
+test('local cloud archive authority needs only the original ST owner and receipt, never a retained provider Key or new network ticket', async t => {
+  const { f, cache, received } = await stagedBeforeSettlement(t); await received.grant.recordStored(cache);
+  const { apiKey: _key, ...locator } = f.locator;
+  const grant = await f.ledger.authorizeArchive(f.req, locator, f.task);
+  assert.equal(grant.recordStored, undefined); assert.throws(() => f.ledger.submission(grant));
+  await assert.rejects(f.ledger.authorizeStaging(f.req, locator, f.task));
+  await assert.rejects(f.ledger.authorizeQuery(f.req, locator, f.task));
+  await assert.rejects(f.ledger.authorizeArchive({ user: { profile: { handle: 'bob', enabled: true } } }, locator, f.task));
+  await assert.rejects(f.ledger.authorizeArchive(f.req, { ...locator, channelKey: 'f'.repeat(64) }, f.task));
+  const receiver = createComfyCloudReceiver({ ledger: f.ledger, cache, download: () => assert.fail('archive cannot call cloud IO') });
+  const input = { ...locator, task: f.task, archived: true, receipt: received.result.receipt };
+  assert.equal((await receiver.acknowledge(f.req, input)).cleanup, 'complete');
+  assert.equal((await receiver.acknowledge(f.req, input)).cleanup, 'complete');
+  assert.equal(await cache.load(grant.identity), null);
+});
+
 test('cloud ACK persists consent before bounded cleanup, rejects wrong receipts even after cleanup, and never redownloads', async t => {
   const { f, cache, received, calls } = await stagedBeforeSettlement(t);
   await received.grant.recordStored(cache);
@@ -1347,7 +1363,7 @@ test('installed cloud routes deliver saved originals and complete ACK without le
   assert.deepEqual(Buffer.from(loaded.body.images[0].data, 'base64'), png);
   assert.doesNotMatch(JSON.stringify(loaded.body), /grant|fence|requestDigest|test-only-secret|files\.test/);
   const done = response(); await handlers.get('POST /image/comfy/cloud/tasks/acknowledge')({ ...f.req,
-    body: { ...input, archived: true, receipt: loaded.body.receipt } }, done);
+    body: { ...input, apiKey: undefined, archived: true, receipt: loaded.body.receipt } }, done);
   assert.equal(done.body.cleanup, 'complete'); assert.equal(await cache.load(received.grant.identity), null);
   const again = response(); await handlers.get('POST /image/comfy/cloud/tasks/result')({ ...f.req, body: input }, again);
   assert.equal(again.body.status, 'archived'); assert.equal(again.body.result, null);

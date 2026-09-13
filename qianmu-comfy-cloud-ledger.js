@@ -30,9 +30,10 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
     change(row); row.updatedAt = Math.max(now(), row.updatedAt);
     return { state: normalizeComfyCloudChannel(state, reservation.channelKey) };
   });
-  async function authorizeOriginal(req, { channelKey, attemptId, apiKey } = {}, rawTask) {
+  async function authorizeOriginal(req, { channelKey, attemptId, apiKey } = {}, rawTask, archiveOnly = false) {
     const account = imageServiceAccount(req), task = bindComfyCloudTask(rawTask, rawTask?.taskId, rawTask?.links);
-    if (typeof store.inspectChannel !== 'function' || !id(attemptId) || channelKey !== comfyCloudResourceKey(task, apiKey)) {
+    if (typeof store.inspectChannel !== 'function' || !id(attemptId)
+      || (archiveOnly ? typeof channelKey !== 'string' || !/^[a-f0-9]{64}$/.test(channelKey) : channelKey !== comfyCloudResourceKey(task, apiKey))) {
       throw fail('query_identity', '请使用原云连接与原任务核查');
     }
     const current = () => { if (!imageServiceAccountStillMatches(req, account)) throw fail('account_changed', 'ST账户已变化，未交付云任务状态'); };
@@ -118,7 +119,7 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
     // Server-internal evidence only. The identity and verifier originate in the
     // same read; do not acquire a fresh fence after downloading or expose this
     // object as an HTTP response. It does not grant target IO or submission.
-    return Object.freeze({ identity, receipt, verify, recordStored, recordArchived, readDelivery: async () => (await verifiedRead()).delivery });
+    return Object.freeze({ identity, receipt, verify, ...(archiveOnly ? {} : { recordStored }), recordArchived, readDelivery: async () => (await verifiedRead()).delivery });
   }
   return Object.freeze({
     submission(reservation) {
@@ -189,7 +190,10 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
       // tickets. Target authorization remains a separate transport requirement.
       return (await authorizeOriginal(req, locator, rawTask)).verify;
     },
-    authorizeStaging: authorizeOriginal,
+    authorizeStaging: (req, locator, task) => authorizeOriginal(req, locator, task),
+    // Local archive authority is account scoped, not dependent on retaining a
+    // provider Key. This cannot create a submission ticket or settle new files.
+    authorizeArchive: (req, locator, task) => authorizeOriginal(req, locator, task, true),
     async reserve(req, { apiKey, expectedAccount, attemptId, intent: rawIntent } = {}) {
       const account = imageServiceAccount(req);
       if (expectedAccount !== account.namespace || !id(attemptId)) throw fail('identity', '云任务账户或请求编号未确认');

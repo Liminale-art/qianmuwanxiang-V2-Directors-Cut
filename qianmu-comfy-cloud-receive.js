@@ -28,7 +28,8 @@ export function createComfyCloudReceiver({ ledger, cache, download = downloadCom
       let key, owned = false;
       try {
         check();
-        const grant = await ledger.authorizeStaging(req, { channelKey: input.channelKey, attemptId: input.attemptId, apiKey: input.apiKey }, task);
+        if (typeof ledger.authorizeArchive !== 'function') throw fail('authorization', '原任务缺少本地归档授权能力');
+        const grant = await ledger.authorizeArchive(req, { channelKey: input.channelKey, attemptId: input.attemptId }, task);
         if (typeof grant?.recordArchived !== 'function') throw fail('authorization', '原任务缺少持久归档确认能力');
         const verify = async () => { check(); await grant.verify(); check(); };
         await verify();
