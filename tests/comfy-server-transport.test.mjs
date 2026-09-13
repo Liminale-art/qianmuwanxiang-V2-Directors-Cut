@@ -1911,10 +1911,25 @@ test('installed cloud recovery endpoints advertise only implemented operations a
     assert.equal(res.statusCode, 401); assert.equal(res.headers['cache-control'], 'no-store');
   }
   const res = response(); await handlers.get('GET /image/comfy/cloud/capabilities')(account(), res);
-  assert.equal(res.body.submission, true); assert.equal(res.body.scope,'cloud-manual-still'); assert.deepEqual(res.body.submissionProviders,['comfy-cloud','runninghub']); assert.equal(res.body.cancellation, true); assert.equal(res.body.referenceUpload, true);
+  assert.equal(res.body.submission, true); assert.equal(res.body.scope,'cloud-still'); assert.deepEqual(res.body.automaticProviders,['comfy-cloud']); assert.deepEqual(res.body.submissionProviders,['comfy-cloud','runninghub']); assert.equal(res.body.cancellation, true); assert.equal(res.body.referenceUpload, true);
   assert.equal(res.body.deploymentSubmission,true);
   assert.deepEqual(res.body.resultProviders, ['comfy-cloud', 'runninghub']); assert.equal(res.body.archiveConfirmation, true);
   assert.equal(handlers.has('POST /image/comfy/cloud/tasks/submit'), true, 'manual text generation has one guarded route; unsupported providers remain closed');
+});
+
+test('installed automatic route checks the catalog afresh before any generation, without native target enrollment',async t=>{
+  for(const valid of [false,true]){
+    const f=await automaticCloudFixture(t),handlers=new Map(),calls=[];
+    if(!valid)f.definitions.CheckpointLoaderSimple.input.required.ckpt_name=[['other.safetensors']];
+    await init({get:(key,handler)=>handlers.set(`GET ${key}`,handler),post:(key,handler)=>handlers.set(`POST ${key}`,handler)},{
+      dataRoot:f.root,comfyCloudTaskOptions:{store:f.store},
+      comfyTargetStore:{read:async()=>assert.fail('official cloud never enrolls a native target')},
+      comfyTransportOptions:{resolveHost:publicDns,requestImpl:mockNodeRequest(calls,call=>({body:call.url.pathname==='/api/object_info'?f.definitions:acceptedCloudBody()}))}});
+    const res=response();await handlers.get('POST /image/comfy/cloud/tasks/submit')({...f.req,body:{...f.input,version:1}},res);
+    assert.equal(calls[0].url.pathname,'/api/object_info');assert.equal(calls.length,valid?2:1);
+    if(valid){assert.equal(res.statusCode,200);assert.equal(res.body.status,'accepted');}
+    else {assert.notEqual(res.statusCode,200);assert.equal(res.body.submissionState,'not_submitted');assert.match(res.body.message,/节点或模型/);}
+  }
 });
 
 test('installed single-submit route preserves original receipts, refuses duplicate POST execution and binds account before dispatch', async t => {
@@ -1928,7 +1943,7 @@ test('installed single-submit route preserves original receipts, refuses duplica
   const submit = handlers.get('POST /image/comfy/cloud/tasks/submit'), body = {...f.input, version:1};
   for(const changed of [
     {...body,automatic:true},
-    {...body,request:{...body.request,execution:{...body.request.execution,automatic:true}}},
+    ...(binding.origin!=='https://cloud.comfy.org'?[{...body,request:{...body.request,execution:{...body.request.execution,automatic:true}}}]:[]),
   ]){
     const denied=response();await submit({...f.req,body:changed},denied);
     assert.equal(denied.statusCode,400);assert.equal(denied.body.submissionState,'not_submitted');assert.equal(denied.body.code,'comfy_cloud_submission_scope');

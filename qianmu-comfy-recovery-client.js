@@ -270,9 +270,10 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
         if (!ticket) throw fail('ticket','此准备凭证已使用或无效，请核查原任务，未重新提交');
         if (typeof apiKey !== 'string' || !apiKey.trim() || apiKey.length > 4096) throw fail('key','请填写原连接的 API Key');
         const { record, request: frozenRequest } = ticket, job = jobForRow(record);
-        requireComfyCloudImageSubmission(record.cloudConnection,{automatic:record.automatic||ticket.request.execution?.automatic});
+        const automatic=Boolean(record.automatic||frozenRequest.execution?.automatic);
+        requireComfyCloudImageSubmission(record.cloudConnection,{automatic});
         const capabilities = await this.cloudCapabilities({namespace:record.namespace});
-        if (!canSubmitComfyCloudImages(capabilities,record.cloudConnection.provider,record.cloudConnection) || !capabilities.resultRetrieval || !capabilities.resultProviders.includes(record.cloudConnection.provider))
+        if (!canSubmitComfyCloudImages(capabilities,record.cloudConnection.provider,record.cloudConnection,{automatic}) || !capabilities.resultRetrieval || !capabilities.resultProviders.includes(record.cloudConnection.provider))
           throw fail('capabilities','当前后端尚未开放此平台完整生图，请同步更新后再使用');
         if (frozenRequest.references?.length && capabilities.referenceUpload !== true)
           throw fail('capabilities','当前后端尚未支持云参考图，请同步更新后再使用；未忽略参考图');
@@ -350,9 +351,10 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
         || (Object.hasOwn(data,'deploymentSubmission') && typeof data.deploymentSubmission!=='boolean')
         || !providers(data.queryProviders) || !providers(data.resultProviders)
         || (Object.hasOwn(data,'readinessProviders') && !providers(data.readinessProviders))
+        || (Object.hasOwn(data,'automaticProviders') && !providers(data.automaticProviders))
         || (Object.hasOwn(data,'submissionProviders') && !providers(data.submissionProviders))) throw fail('capabilities', '后端版本与当前千幕不匹配，请同步更新并重启 ST');
       return { version: 1, namespace: current.namespace, deploymentSubmission:data.deploymentSubmission===true, ...Object.fromEntries(flags.map(key => [key,data[key]])),
-        queryProviders: [...data.queryProviders], resultProviders: [...data.resultProviders],
+        queryProviders: [...data.queryProviders], resultProviders: [...data.resultProviders], automaticProviders:[...(data.automaticProviders ?? [])],
         readinessProviders:[...(data.readinessProviders ?? [])],submissionProviders: [...(data.submissionProviders ?? (data.submission ? ['comfy-cloud'] : []))] };
     },
     async cloudCatalog({ cursor = null, namespace } = {}) {

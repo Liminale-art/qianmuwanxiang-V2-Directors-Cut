@@ -131,6 +131,18 @@ async function addReference(f) {
     workflowHash:await comfyWorkflowReferenceHash(graph),items:[{url:'/user/images/source.png',name:'selected reference',mime:'image/png',bytes:123,sha256:'a'.repeat(64)}]};
 }
 
+test('automatic submission consumes new host capability, never an old cached or missing capability',async()=>{
+  for(const supported of [false,true]){
+    const f=await submissionFixture({prepare:false,capabilities:supported?{automaticProviders:['comfy-cloud']}:{}});
+    f.job.automatic=true;Object.assign(f.gateway.comfyExecution,{automatic:true,maxImages:1});
+    const prepared=await f.client.prepareCloudSubmission(f.job,f.gateway,connection);
+    const task=f.client.submitCloudPrepared(prepared,'synthetic-key');
+    if(supported){await task;const sent=f.calls.filter(c=>c.method==='POST');assert.equal(sent.length,1);assert.equal(sent[0].body.request.execution.automatic,true);}
+    else {await assert.rejects(task,{code:'comfy_delivery_capabilities',submissionState:'not_submitted'});assert.equal(f.calls.filter(c=>c.method==='POST').length,0);}
+    f.client.close();
+  }
+});
+
 test('cloud references travel as frozen ST metadata, not downloaded bytes or browser-supplied cloud assets',async()=>{
   const f=await submissionFixture({prepare:false,capabilities:{referenceUpload:true}});await addReference(f);
   const prepared=await f.client.prepareCloudSubmission(f.job,f.gateway,connection);

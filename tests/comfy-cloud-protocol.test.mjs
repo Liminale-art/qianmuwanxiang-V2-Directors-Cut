@@ -1,8 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bindComfyCloudProtocol as bind, bindComfyCloudTask, planComfyCloudOperation as plan } from '../qianmu-comfy-cloud-protocol.js';
+import { bindComfyCloudProtocol as bind, bindComfyCloudTask, planComfyCloudOperation as plan, requireComfyCloudImageSubmission, canSubmitComfyCloudImages } from '../qianmu-comfy-cloud-protocol.js';
 const cloud = bind('https://cloud.comfy.org', 'comfy-cloud-v2');
 const rh = bind('https://www.runninghub.cn', 'runninghub-workflow-v1');
+
+test('automatic main-site rollout needs explicit new-host support; RH and deployments remain manual even with a claimed capability',()=>{
+  const caps={submission:true,submissionProviders:['comfy-cloud','runninghub'],deploymentSubmission:true,automaticProviders:['comfy-cloud','runninghub']};
+  assert.equal(requireComfyCloudImageSubmission(cloud,{automatic:true}).origin,cloud.origin);
+  assert.equal(canSubmitComfyCloudImages(caps,'comfy-cloud',cloud,{automatic:true}),true);
+  assert.equal(canSubmitComfyCloudImages({...caps,automaticProviders:undefined},'comfy-cloud',cloud,{automatic:true}),false);
+  for(const target of [rh,bind('https://sample.run.comfy.app',cloud.protocol)]){
+    assert.throws(()=>requireComfyCloudImageSubmission(target,{automatic:true}),{code:'comfy_cloud_submission_scope'});
+    assert.equal(canSubmitComfyCloudImages(caps,target.provider,target,{automatic:true}),false);
+    assert.equal(canSubmitComfyCloudImages(caps,target.provider,target),true);
+  }
+});
 const id = '7f3d2c1b-9a8e-4d6f-b012-3c4d5e6f7a8b', rhId = '1904152026220003329';
 const task = (binding, id) => bindComfyCloudTask(binding, id, binding?.provider === 'comfy-cloud'
   ? { self: `/api/v2/jobs/${id}`, cancel: `/api/v2/jobs/${id}/cancel` } : undefined);

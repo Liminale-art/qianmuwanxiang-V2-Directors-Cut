@@ -14,16 +14,18 @@ export async function executeComfyCloudJob(client, source, gateway, connection, 
   if (!Number.isFinite(maxWaitMs)||maxWaitMs<0||maxWaitMs>900000||!Number.isFinite(intervalMs)||intervalMs<250||intervalMs>10000
     ||typeof deliver!=='function') throw fail('options','云任务等待或收片设置无效');
   const job=structuredClone(source),requestSource=structuredClone(gateway),binding=structuredClone(connection);let state='not_submitted',record;
-  if(job.automatic||job.comfyAutoSelected)throw fail('automatic','云工作流自动节点检查尚未开放，请先手动确认工作流');
-  if(job.profile?.comfyReferences?.enabled||job.profile?.comfyCharacterEnabled||job.payload?.comfyCharacterPlan)
+  const automatic=Boolean(job.automatic||job.comfyAutoSelected);
+  if(job.profile?.comfyCharacterEnabled||job.payload?.comfyCharacterPlan)
     throw fail('references','此云渠道的参考素材上传尚未开放，未忽略参考图或转至其他渠道');
   const check=()=>{if(!valid())throw fail('stopped','已停止本页等待；已受理的云任务仍保留',state);};
   try {
-    requireComfyCloudImageSubmission(binding,{automatic:job.automatic||job.comfyAutoSelected});
+    requireComfyCloudImageSubmission(binding,{automatic});
     check();
     const capabilities=await client.cloudCapabilities({namespace:job.imageAdmission?.namespace});check();
-    if(!canSubmitComfyCloudImages(capabilities,binding.provider,binding)||!capabilities.resultRetrieval||!capabilities.resultProviders.includes(binding.provider))
+    if(!canSubmitComfyCloudImages(capabilities,binding.provider,binding,{automatic})||!capabilities.resultRetrieval||!capabilities.resultProviders.includes(binding.provider))
       throw fail('capabilities','当前后端尚未开放此平台完整生图，请同步更新后再使用');
+    if(job.profile?.comfyReferences?.enabled&&capabilities.referenceUpload!==true)
+      throw fail('capabilities','请同步更新增强服务后使用云参考图；未忽略参考图');
     const prepared=await client.prepareCloudSubmission(job,requestSource,binding);record=prepared.record;
     // Record the original identity even if an earlier page lost the acceptance.
     if(!prepared.created)state=record.cloudTask?'accepted':'unknown';

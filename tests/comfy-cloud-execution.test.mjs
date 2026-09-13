@@ -111,3 +111,15 @@ test('automatic cloud probes and unsupported reference semantics cannot silently
     const f=setup();Object.assign(f.source,extra);await assert.rejects(f.run(),{submissionState:'not_submitted'});assert.equal(f.events.length,0);assert.equal(f.stats().submits,0);
   }
 });
+
+test('automatic shots require explicit fresh-check support, while selected references reach the shared preparation path',async()=>{
+  for(const flag of ['automatic','comfyAutoSelected']){
+    const f=setup({states:['ready']});f.source[flag]=true;
+    const capabilities={submission:true,resultRetrieval:true,resultProviders:['comfy-cloud'],referenceUpload:true};
+    f.client.cloudCapabilities=async()=>capabilities;
+    await assert.rejects(f.run(),{code:'comfy_cloud_execution_capabilities',submissionState:'not_submitted'});
+    assert.equal(f.stats().submits,0);assert.equal(f.events.length,0);
+    capabilities.automaticProviders=['comfy-cloud'];f.source.profile={comfyReferences:{enabled:true}};
+    assert.equal((await f.run()).archived,true);assert.equal(f.stats().submits,1);
+  }
+});

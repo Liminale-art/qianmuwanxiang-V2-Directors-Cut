@@ -87,13 +87,14 @@ export function requireComfyCloudImageSubmission(binding, { automatic = false } 
   const current = checkedBinding(binding);
   // The official v2 contract accepts the same API graph on production deployments.
   // It does not accept an invented inputs map or cloud-editor version binding.
-  if (automatic) fail('submission_scope', '云工作流暂仅支持手动确认生成，自动选流尚未开放');
+  if (automatic && !planComfyCloudReadiness(current)) fail('submission_scope', '此平台暂不能核对自动工作流，请手动确认生成');
   return current;
 }
 
 // Older hosts advertised RH retrieval before RH submission existed.
-export function canSubmitComfyCloudImages(capabilities, provider, connection) {
+export function canSubmitComfyCloudImages(capabilities, provider, connection, { automatic = false } = {}) {
   return capabilities?.submission === true && (capabilities.submissionProviders ?? ['comfy-cloud']).includes(provider)
+    && (!automatic || provider==='comfy-cloud' && connection?.origin==='https://cloud.comfy.org' && capabilities.automaticProviders?.includes(provider)===true)
     && !(provider==='comfy-cloud' && connection && connection.origin!=='https://cloud.comfy.org' && capabilities.deploymentSubmission!==true);
 }
 
