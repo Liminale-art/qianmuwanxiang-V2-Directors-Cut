@@ -46,6 +46,51 @@ test('OTHER name matching respects Latin word boundaries and does not nominate s
   const e=environment();e.documents.set('other',doc('Al','other'));await e.prepare({text:'Alice'});assert.ok(!e.reads.includes('other'));
   e.reads.length=0;e.documents.set('other',doc('Q','other'));await e.prepare({text:'Q'});assert.ok(!e.reads.includes('other'));
 });
+
+test('new basic character snapshots carry their account without leaking it into the model catalogue',async()=>{
+  const prepared=await environment().prepare(),cast=casting.applyCharacterCasting(shot(),prepared).shot;
+  assert.equal(cast.characters[0].archiveSnapshot.namespace,'st-user:test');
+  const saved=storyboard.normalizeStoryboardShotSpec(JSON.parse(JSON.stringify(cast)));
+  assert.equal(saved.characters[0].archiveSnapshot.namespace,'st-user:test');
+  assert.doesNotMatch(JSON.stringify(casting.characterCastingInput(prepared)),/st-user:test|namespace|SENSITIVE/);
+  for(const value of [null,'','st-user:bad\naccount',123,'st-user:'+'x'.repeat(513)]){
+    const snapshot=casting.normalizeCharacterCastingSnapshot({...cast.characters[0].archiveSnapshot,namespace:value});
+    assert.equal(snapshot.invalid,true,String(value));
+  }
+  const legacy=structuredClone(cast.characters[0].archiveSnapshot);delete legacy.namespace;
+  assert.equal(casting.normalizeCharacterCastingSnapshot(legacy).invalid,undefined);
+});
+
+test('casting rejects an invalid account before opening metadata and a changed record identity before model input',async()=>{
+  const e=environment();let reads=0;
+  const store={list:async()=>{reads++;return [];},bindings:async()=>{reads++;return [];}};
+  await assert.rejects(casting.prepareCharacterCasting({store,namespace:'',subjects:[],visibleCharacters:[]}),{code:'character_archive_account'});
+  assert.equal(reads,0);
+  const original=e.store.load;
+  for(const mutate of [row=>{row.head.id='someone-else';},row=>{row.head.version++;},row=>{row.document.category='user';},row=>{row.document.name='Other name';},row=>{row.document.aliases=['Other'];}]){
+    e.store.load=async(...args)=>{const row=structuredClone(await original(...args));mutate(row);return row;};
+    await assert.rejects(e.prepare(),{code:'character_archive_conflict'});
+  }
+});
+test('casting provenance must agree with reference owners, while ownerless history stays usable',async()=>{
+  const prepared=await environment().prepare({includeReferences:true,includeComfy:true});
+  const saved=casting.applyCharacterCasting(shot(),prepared).shot.characters[0].archiveSnapshot;
+  assert.equal(casting.normalizeCharacterCastingSnapshot(saved).invalid,undefined);
+  for(const patch of [
+    {namespace:'st-user:other'},
+    {imageReference:{...saved.imageReference,namespace:'st-user:other'}},
+    {comfyImplementation:{...saved.comfyImplementation,namespace:'st-user:other'}},
+  ])assert.equal(casting.normalizeCharacterCastingSnapshot({...saved,...patch}).invalid,true);
+  const legacy=structuredClone(saved);delete legacy.namespace;
+  assert.equal(casting.normalizeCharacterCastingSnapshot(legacy).invalid,undefined);
+  legacy.comfyImplementation.namespace='st-user:other';
+  assert.equal(casting.normalizeCharacterCastingSnapshot(legacy).invalid,true);
+  for(const value of [null,'',123,'st-user:a\n']){
+    const bad={...prepared,namespace:value};
+    assert.throws(()=>casting.characterCastingInput(bad),{code:'character_archive_account'});
+    assert.throws(()=>casting.applyCharacterCasting(shot(),bad),{code:'character_archive_account'});
+  }
+});
 test('chat unbinding masks defaults and prevents borrowing OTHER with the same display name',async()=>{
   const e=environment();e.bindings.push({...e.bindings[0],scope:'chat',chatKey:'chat-a',archiveId:''});e.documents.set('other',doc('Alice','other'));
   const prepared=await e.prepare();assert.ok(!e.reads.includes('alice'));

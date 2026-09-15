@@ -90,6 +90,18 @@ test('latest archive refresh is explicit, updates one identity version and does 
   await assert.rejects(()=>readLatestCharacterForShot(row,{namespace,store,guard:async()=>{throw Error('changed');}}),/changed/);assert.equal(loads,1);
 });
 
+test('basic snapshots cannot look up another account’s same archive ID and explicit legacy adoption gains provenance',async()=>{
+  const row=snapshot().shotSpec.characters[0],document={...newCharacterArchive('char'),name:'Alice'};
+  document.imagegen.appearance='silver hair';let loads=0;
+  const store={load:async(account,id)=>{loads++;return {head:{id,version:2},document};}};
+  const owned={...row,archiveSnapshot:{...row.archiveSnapshot,namespace}};
+  await assert.rejects(readLatestCharacterForShot(owned,{namespace:'st-user:another',store}),/另一 ST 账户/);
+  assert.equal(loads,0);
+  const next=await readLatestCharacterForShot(row,{namespace,store});
+  assert.equal(next.archiveSnapshot.namespace,namespace);assert.equal(row.archiveSnapshot.namespace,undefined);
+  assert.equal(loads,1);assert.deepEqual(next.outfit,row.outfit);
+});
+
 test('Comfy edited identity keeps the private recipe isolated and refresh invalidation forces a new preparation receipt',async()=>{
   const old=comfyJob();const compiled=storyboard.compileStoryboardPrompt({providerId:'comfy',remoteModelId:'comfy-workflow',shot:old.shotSpec,workflow:old.profile.comfyWorkflow});old.payload.prompt=compiled.prompt;
   const characters=copy(old.shotSpec.characters);characters[0].action=['walks'];

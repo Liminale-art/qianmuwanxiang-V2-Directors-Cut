@@ -40,7 +40,8 @@ function appearanceParts(text){
 export async function readLatestCharacterForShot(character,{namespace,includeReference=false,includeComfy=false,store,guard=async()=>{}}={}) {
   const original=clone(character);assertCharacterCastingSnapshots({characters:[original]});const archived=original.archiveSnapshot;
   if(!archived)fail('本镜人物未绑定档案，不能猜测最新档案');
-  if(!/^st-user:.+/.test(namespace||''))fail('未确认当前 ST 账户');
+  if(typeof namespace!=='string'||!/^st-user:.+/.test(namespace)||namespace.length>512||/[\u0000-\u001f\u007f]/.test(namespace))fail('未确认当前 ST 账户');
+  if(Object.hasOwn(archived,'namespace')&&archived.namespace!==namespace)fail('此人物档案属于另一 ST 账户');
   for(const saved of [archived.imageReference,archived.comfyImplementation])if(saved&&saved.namespace!==namespace)fail('此人物档案属于另一 ST 账户');
   let owned=false;
   if(!store){await guard();const module=await import('./qianmu-character-archive-store.js');store=module.createCharacterArchiveStore();owned=true;}
@@ -48,7 +49,7 @@ export async function readLatestCharacterForShot(character,{namespace,includeRef
     await guard();const record=await store.load(namespace,archived.archiveId);await guard();
     if(!record||record.head.id!==archived.archiveId)fail('原角色档案已不存在；本镜旧快照仍可使用');
     const doc=normalizeCharacterArchive(record.document);if(doc.category!==archived.category)fail('原角色档案分类已变化，请先核对角色库');
-    const snapshot=normalizeCharacterCastingSnapshot({...archived,archiveVersion:record.head.version,name:doc.name,negative:doc.imagegen.negative,
+    const snapshot=normalizeCharacterCastingSnapshot({...archived,namespace,archiveVersion:record.head.version,name:doc.name,negative:doc.imagegen.negative,
       ...(includeReference||archived.imageReference?{imageReference:normalizeCharacterReferenceSnapshot({version:1,namespace,reference:doc.imagegen.reference,...doc.imagegen.novelReference})}:{}),
       ...(includeComfy||archived.comfyImplementation?{comfyImplementation:normalizeComfyCharacterSnapshot({version:1,namespace,implementations:doc.comfy?.implementations||[],reference:doc.comfy?.implementations?.some(row=>row.referenceSlot!==null)?doc.imagegen.reference:null})}:{}),
     });

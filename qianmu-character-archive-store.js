@@ -119,7 +119,14 @@ export function createCharacterArchiveStore({indexedDB=globalThis.indexedDB,keyR
     });},
     async load(namespace,id){const key=keyFor(namespace,id);return operation('readonly',(tx,read,set)=>{
       read(tx.objectStore('heads').get(key),head=>{if(!head){set(null);return;}validateHead(head,namespace);
-        read(tx.objectStore('documents').get(key),row=>{if(!row||row.revision!==head.revision||row.namespace!==namespace)fail('index','角色档案版本不一致');set({head,document:normalizeCharacterArchive(row.document)});});
+        read(tx.objectStore('documents').get(key),row=>{
+          if(!row||row.key!==key||row.revision!==head.revision||row.namespace!==namespace)fail('index','角色档案版本不一致');
+          const document=normalizeCharacterArchive(row.document);
+          // Verify stored bytes before normalization so optional legacy defaults do not invalidate old records.
+          if(head.category!==document.category||head.name!==document.name||JSON.stringify(head.aliases)!==JSON.stringify(document.aliases)
+            ||head.cover!==(document.imagegen.preview?.url||'')||head.bytes!==byteSize(row.document))fail('index','角色档案目录与内容不一致，不会覆盖原数据');
+          set({head,document});
+        });
       });
     });},
     async save(namespace,{id='',expectedRevision='',document}){

@@ -6,6 +6,7 @@ export const CHARACTER_CASTING_SCHEMA = 'qianmu.character.casting.v1';
 const fail = (code, message) => { throw characterArchiveError(code, message); };
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,152}$/.test(value);
+const account = value => typeof value === 'string' && /^st-user:.+/.test(value) && value.length <= 512 && !/[\u0000-\u001f\u007f]/.test(value);
 const nameKey = value => String(value || '').normalize('NFKC').trim().toLocaleLowerCase('en-US');
 const bytes = value => new TextEncoder().encode(JSON.stringify(value)).byteLength;
 const freeze = value => { if (object(value) || Array.isArray(value)) { for (const item of Object.values(value)) freeze(item); Object.freeze(value); } return value; };
@@ -25,6 +26,7 @@ export function normalizeCharacterCastingSnapshot(value) {
     || value.subjectId !== `archive:${value.archiveId}` || !['char','user','other'].includes(value.category)
     || !['id','alias'].includes(value.match) || typeof value.sourceCharacterId !== 'string' || value.sourceCharacterId.length > 200
     || typeof value.name !== 'string' || !value.name || value.name.length > 80
+    || Object.hasOwn(value,'namespace') && !account(value.namespace)
     || value.negativeScope !== 'model_interface'
     || typeof value.negative !== 'string' || value.negative.length > 6000) return {schema:CHARACTER_CASTING_SCHEMA,invalid:true};
   let imageReference, comfyImplementation;
@@ -33,7 +35,10 @@ export function normalizeCharacterCastingSnapshot(value) {
     if (Object.hasOwn(value,'comfyImplementation')) comfyImplementation = normalizeComfyCharacterSnapshot(value.comfyImplementation);
   }
   catch (_) { return {schema:CHARACTER_CASTING_SCHEMA,invalid:true}; }
+  const owners = [value.namespace,imageReference?.namespace,comfyImplementation?.namespace].filter(owner => owner !== undefined);
+  if (new Set(owners).size > 1) return {schema:CHARACTER_CASTING_SCHEMA,invalid:true};
   return {schema:CHARACTER_CASTING_SCHEMA,subjectId:value.subjectId,archiveId:value.archiveId,archiveVersion:value.archiveVersion,
+    ...(Object.hasOwn(value,'namespace') ? {namespace:value.namespace} : {}),
     category:value.category,name:value.name,sourceCharacterId:value.sourceCharacterId,match:value.match,negativeScope:'model_interface',negative:value.negative,
     ...(imageReference ? {imageReference} : {}),...(comfyImplementation ? {comfyImplementation} : {})};
 }
@@ -49,6 +54,7 @@ export function assertCharacterCastingSnapshots(shot) {
 export function characterCastingInput(prepared) {
   if (prepared == null) return [];
   if (prepared.schema !== CHARACTER_CASTING_SCHEMA || !Array.isArray(prepared.entries) || prepared.entries.length > 64) fail('casting','人物识别资料无效');
+  if (Object.hasOwn(prepared,'namespace') && !account(prepared.namespace)) fail('account','无法确认当前 ST 账户');
   const string = (value,max) => typeof value === 'string' && value.length <= max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
   const rows = prepared.entries.map(({identity}) => {
     if (!object(identity) || !id(identity.archiveId) || identity.subjectId !== `archive:${identity.archiveId}`
@@ -71,13 +77,14 @@ export async function readCharacterCasting(options) {
 }
 
 export async function prepareCharacterCasting({store,namespace,subjects=[],chatKey='',text='',visibleCharacters,includeReferences=false,includeComfy=false,guard=async()=>{}}) {
+  if (!account(namespace)) fail('account','无法确认当前 ST 账户');
   if (visibleCharacters !== undefined && (!Array.isArray(visibleCharacters) || visibleCharacters.length > 24
     || visibleCharacters.some(row => !object(row) || typeof row.id !== 'string' || typeof row.name !== 'string'))) fail('casting','出镜人物名单无效');
   const visible = visibleCharacters?.filter(row => row.visible !== false);
   const requested = (row, archiveId = '') => visible === undefined || visible.some(character =>
     archiveId && character.id === `archive:${archiveId}` || names(row).some(name => name === nameKey(character.name) || name === nameKey(character.id)));
   await guard();
-  if (visible?.length === 0) return freeze({schema:CHARACTER_CASTING_SCHEMA,entries:[],unboundNames:[],...(includeReferences ? {referenceMode:'novel-primary'} : {})});
+  if (visible?.length === 0) return freeze({schema:CHARACTER_CASTING_SCHEMA,namespace,entries:[],unboundNames:[],...(includeReferences ? {referenceMode:'novel-primary'} : {})});
   const [heads, bindings] = await Promise.all([store.list(namespace),store.bindings(namespace)]);
   await guard();
   const headById = new Map(heads.map(head => [head.id,head])), selected = new Set(), active = [];
@@ -99,8 +106,12 @@ export async function prepareCharacterCasting({store,namespace,subjects=[],chatK
   const entries = [];
   for (const archiveId of selected) {
     const record = await store.load(namespace,archiveId); await guard();
-    if (!record || record.head.revision !== headById.get(archiveId).revision) fail('conflict','角色档案读取期间已变化，请重新提取');
+    const expected = headById.get(archiveId);
+    if (!record?.head || record.head.id !== archiveId || record.head.revision !== expected.revision
+      || record.head.version !== expected.version) fail('conflict','角色档案读取期间已变化，请重新提取');
     const identity = characterIdentityProjection(archiveId,record.head.version,record.document);
+    if (identity.category !== expected.category || identity.name !== expected.name
+      || JSON.stringify(identity.aliases) !== JSON.stringify(expected.aliases)) fail('conflict','角色档案目录与内容不一致，请核对角色库后重试');
     identity.aliases = [...new Set([...identity.aliases,...active.filter(row => row.archiveId === archiveId).map(row => row.name).filter(Boolean)])];
     entries.push({identity,negative:record.document.imagegen.negative,...(includeReferences ? {imageReference:normalizeCharacterReferenceSnapshot({
       version:1,namespace,reference:record.document.imagegen.reference,...record.document.imagegen.novelReference})} : {}),
@@ -108,7 +119,7 @@ export async function prepareCharacterCasting({store,namespace,subjects=[],chatK
         implementations:record.document.comfy?.implementations || [],
         reference:record.document.comfy?.implementations?.some(item=>item.referenceSlot!==null) ? record.document.imagegen.reference : null})} : {})});
   }
-  const prepared = {schema:CHARACTER_CASTING_SCHEMA,entries,unboundNames:active.filter(row => !row.archiveId).map(row => nameKey(row.name)).filter(Boolean)};
+  const prepared = {schema:CHARACTER_CASTING_SCHEMA,namespace,entries,unboundNames:active.filter(row => !row.archiveId).map(row => nameKey(row.name)).filter(Boolean)};
   if (includeComfy && bytes(entries.map(entry=>entry.comfyImplementation)) > 512 * 1024) fail('casting_size','本次 Comfy 角色实现超过 512 KB，请精简相关档案后提取');
   if (includeReferences) prepared.referenceMode = 'novel-primary';
   characterCastingInput(prepared); // Validate the entire payload before any LLM request; no truncation.
@@ -118,6 +129,7 @@ export async function prepareCharacterCasting({store,namespace,subjects=[],chatK
 // Apply only to a newly extracted structured cast. Never iterate the catalogue to add an absent person.
 // Do not call this on edited prompts or archived shots: their explicit visual state already is the snapshot.
 export function applyCharacterCasting(shot, prepared) {
+  if (prepared && Object.hasOwn(prepared,'namespace') && !account(prepared.namespace)) fail('account','无法确认当前 ST 账户');
   const entries = prepared?.entries || [], byId = new Map(entries.map(entry => [entry.identity.subjectId,entry]));
   const aliases = new Map();
   for (const entry of entries) for (const name of names(entry.identity)) {
@@ -152,6 +164,7 @@ export function applyCharacterCasting(shot, prepared) {
     // The extractor has already reconciled base appearance with current text. Do not append a stale wardrobe
     // or override explicit hair/pose/state with an unstructured archive blob after the LLM returns.
     return {...visual,id:identity.subjectId,archiveSnapshot:{schema:CHARACTER_CASTING_SCHEMA,subjectId:identity.subjectId,
+      ...(prepared && Object.hasOwn(prepared,'namespace') ? {namespace:prepared.namespace} : {}),
       archiveId:identity.archiveId,archiveVersion:identity.archiveVersion,category:identity.category,name:identity.name,
       sourceCharacterId:character.id,match:match.match,negativeScope:'model_interface',negative:entry.negative,
       ...(entry.imageReference ? {imageReference:normalizeCharacterReferenceSnapshot(entry.imageReference)} : {}),
