@@ -7,6 +7,8 @@ import * as core from '../qianmu-storyboard.js';
 import {projectNewComfyExecution} from '../qianmu-comfy-new-execution.js';
 import * as decisions from '../qianmu-director-decision.js';
 import * as orders from '../qianmu-director-work-order.js';
+import { adaptProductionPacketToNarrativeLedgerEntry } from '../qianmu-narrative-ledger.js';
+import { scoreNarrativeDirectorCandidate } from '../qianmu-director-candidate.js';
 import * as comfyRoutes from '../qianmu-comfy-route.js';
 import * as formats from '../qianmu-prompt-formats.js';
 import {prepareComfyPromptJob} from '../qianmu-comfy-prompt.js';
@@ -101,8 +103,8 @@ function harness({confirm=async options=>options.promptFormats.length ? {...opti
   state.directorBridge.worldSideShotsEnabled=true;state.prompt='original';state.promptDraft.shots=[{id:'old-shot',prompt:'original'}];
   const packet=normalizeQianmuProductionPacket({packetId:'packet-a',eventId:'event-a',timelineAnchor:{chatKey:'chat-a'},
     characterState:[{id:'alice-source',name:'Alice',state:'blue hair, no coat'}],visualIntent:{subject:'厨房',description:'Alice stirs soup'}});
-  const ledger={entryId:'entry-a',source:{recordId:'packet-a'}},candidate={candidateId:'candidate-a',owner:{chatKey:'chat-a'},entryId:'entry-a',sourceKind:'simulation',recommendation:'manual_review',
-    gates:{sourceValid:true,factConsistency:true,spoilerSafe:false,shotDistinct:true}};
+  const ledger=adaptProductionPacketToNarrativeLedgerEntry(packet);
+  const candidate=scoreNarrativeDirectorCandidate(ledger,{chatKey:'chat-a',viewerId:'user'});
   let account=e.namespace,chat='chat-a';const calls=[],notices=[],chatData=[{mes:'unrelated prose'}];
   Object.assign(context,{projectNewComfyExecution,storyboardAdmissionEpoch:0,storyboardCredentialRevision:0,storyboardGenerationPreparing:new Set(),directorNarrativeBridgeEpoch:1,
     directorProductionPacketState:{chatKey:chat,packets:[packet]},directorCandidatePoolState:{chatKey:chat,ledger:{entries:[ledger]},pool:{candidates:[candidate]}},
@@ -124,6 +126,31 @@ function harness({confirm=async options=>options.promptFormats.length ? {...opti
 
 const renderingsFor=(shot,requested)=>Object.fromEntries(requested.map(format=>[format,{global:'kitchen, soft light',negative:'blurred details',
   characters:shot.characters.map(row=>({character_id:row.id,positive:'blue hair, no coat, stirs soup'}))}]));
+
+test('real world entry refuses a stale plan before preparing characters or contacting a model',async()=>{
+  const e=harness();
+  e.context.directorProductionPacketState.sourceSignature='old-plan';
+  e.context.directorWorldPlanSignature=()=> 'current-plan';
+  assert.equal(await e.run(),false);
+  assert.equal(e.calls.includes('confirm'),false);assert.equal(e.calls.includes('generate'),false);
+  assert.equal(e.reads.length,0);assert.equal(e.state.prompt,'original');
+});
+
+test('real world entry checks the actual ledger before accepting mismatched material in the same chat',async()=>{
+  for(const mutate of [
+    e=>{e.packet.visualIntent.description='Alice burns a letter';},
+    e=>{e.packet.timelineAnchor.revisionId='different-swipe';},
+    e=>{e.candidate.candidateId='unrelated-candidate';},
+    e=>{e.context.directorCandidatePoolState.ledger.entries[0].continuity={state:'invalidated',invalidatedBy:['source_deleted:packet-a']};},
+  ]){
+    const e=harness();mutate(e);
+    assert.equal(await e.run(),false,e.notices.join(';'));
+    assert.equal(e.calls.includes('confirm'),false);assert.equal(e.calls.includes('generate'),false);
+    assert.equal(e.calls.includes('llm'),false);assert.equal(e.reads.length,0);
+    assert.equal(e.state.prompt,'original');assert.equal(e.context.storyboardGenerationPreparing.size,0);
+  }
+});
+
 async function classifiedWorld({confirm,format='tags'}={}){
   const e=harness({confirm:confirm || (async options=>({...options.shot,promptRenderingPack:await formats.bindStoryboardPromptRenderings(options.shot,await options.prepareRenderings(options.shot),{formats:options.promptFormats,guard:options.guard})}))});
   const f=await recipesFixture({formats:[format]});f.rows.forEach(row=>row.namespace=e.namespace);

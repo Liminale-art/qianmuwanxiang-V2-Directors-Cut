@@ -20207,6 +20207,7 @@ async function storyboardGenerateProductionPacket(root, packetId) {
   if (!currentChatKey || directorProductionPacketState.chatKey !== currentChatKey || directorCandidatePoolState.chatKey !== currentChatKey) return toast('这条导演素材不属于当前聊天。', 'warning');
   const packet = (directorProductionPacketState.packets || []).find((item) => item.packetId === packetId);
   if (!packet) return toast('这条导演素材已失效，请重新推演后再试。', 'warning');
+  if (directorProductionPacketState.sourceSignature && directorProductionPacketState.sourceSignature !== directorWorldPlanSignature()) return toast('推演内容已变化，请重新打开造物之眼。', 'warning');
   const ledgerEntry = directorCandidatePoolState.ledger?.entries?.find((item) => item.source?.recordId === packet.packetId);
   const candidate = directorCandidatePoolState.pool?.candidates?.find((item) => item.entryId === ledgerEntry?.entryId);
   if (!candidate || candidate.recommendation === 'reject') return toast('这条导演素材未通过连续性与差异检查。', 'warning');
@@ -20249,7 +20250,7 @@ async function storyboardGenerateProductionPacket(root, packetId) {
       return toast('这条导演素材已失效，请重新推演后再试。', 'warning');
     }
     const result = decisionRuntime.createDirectorDecision(candidate, packet, {
-      chatKey: currentChatKey, ledgerEntryId: ledgerEntry.entryId, explicitApproval: true,
+      chatKey: currentChatKey, ledgerEntryId: ledgerEntry.entryId, ledgerEntry, explicitApproval: true,
       approvedAt: Date.now(), outputs: { storyboard: true },
     });
     if (!result.ok || !decisionRuntime.canConsumeDirectorDecision(result.decision, 'storyboard', currentChatKey)) return toast('这条导演素材尚未形成有效决策。', 'warning');

@@ -1,5 +1,7 @@
 // 千幕·导演决策单。把用户确认后的候选转成下游唯一可消费凭据；不读写存储、媒体或网络。
-import { QIANMU_DIRECTOR_CANDIDATE_SCHEMA, normalizeDirectorCandidate } from './qianmu-director-candidate.js';
+import { QIANMU_DIRECTOR_CANDIDATE_SCHEMA, normalizeDirectorCandidate, scoreNarrativeDirectorCandidate } from './qianmu-director-candidate.js';
+import { validateNarrativeLedgerEntry, adaptProductionPacketToNarrativeLedgerEntry } from './qianmu-narrative-ledger.js';
+import { QIANMU_PRODUCTION_PACKET_SCHEMA } from './qianmu-production-packet.js';
 import { normalizeWorldSource } from './qianmu-world-source.js';
 import { narrativeContextField, narrativeContextIssues, matchingNarrativeContexts, isMainlineNarrativeFact } from './qianmu-narrative-context.js';
 
@@ -109,6 +111,27 @@ export function validateDirectorDecision(value = {}) {
   return { ok: issues.length === 0, issues, decision };
 }
 
+function directorSourcePairIssues(candidate, packet, ledgerEntry, chatKey) {
+  const validation = validateNarrativeLedgerEntry(ledgerEntry, chatKey);
+  if (!validation.ok) return ['ledger_source_invalid', ...validation.issues.map(issue => `ledger:${issue}`)];
+  const entry = validation.entry, issues = [];
+  // This is the existing world-packet adapter, not a new authorization path for prose or autonomous facts.
+  if (entry.source.kind !== 'simulation' || entry.continuity.state !== 'active') issues.push('ledger_source_not_active');
+  if (packet.schema !== undefined && packet.schema !== QIANMU_PRODUCTION_PACKET_SCHEMA) issues.push('packet_schema_unsupported');
+  const expectedEntry = adaptProductionPacketToNarrativeLedgerEntry(packet);
+  if (!validateNarrativeLedgerEntry(expectedEntry, chatKey).ok) issues.push('packet_source_invalid');
+  const projection = source => JSON.stringify([source.owner, source.source, source.fact, source.temporalState, source.evidenceRefs, source.originRefs]);
+  if (projection(entry) !== projection(expectedEntry)) issues.push('ledger_packet_source_mismatch');
+  const expectedCandidate = scoreNarrativeDirectorCandidate(entry, {
+    chatKey, viewerId: 'user', directionByEntryId: { [entry.entryId]: candidate.direction },
+  });
+  const candidateProjection = source => JSON.stringify([source.candidateId, source.entryId, source.sourceKind,
+    source.temporalState, source.subjectIds, source.factDigest]);
+  if (candidateProjection(candidate) !== candidateProjection(expectedCandidate)
+    || !matchingNarrativeContexts(candidate, entry.source)) issues.push('candidate_ledger_source_mismatch');
+  return issues;
+}
+
 export function createDirectorDecision(candidateValue = {}, packetValue = {}, options = {}) {
   const candidate = normalizeDirectorCandidate(candidateValue);
   const packet = plain(packetValue) ? packetValue : {};
@@ -125,6 +148,8 @@ export function createDirectorDecision(candidateValue = {}, packetValue = {}, op
     || (candidate.recommendation === 'automatic' && (!candidate.gates.spoilerSafe || candidate.sourceKind !== 'prose'))) issues.push('candidate_gate_failed');
   if (input.explicitApproval !== true) issues.push('explicit_approval_required');
   if (candidate.entryId !== text(input.ledgerEntryId || input.ledger_entry_id, 200)) issues.push('ledger_entry_mismatch');
+  // Legacy receipts stay readable; current world creation supplies the actual source rather than just its ID.
+  if (Object.hasOwn(input, 'ledgerEntry')) issues.push(...directorSourcePairIssues(candidate, packet, input.ledgerEntry, chatKey));
   const visual = plain(packet.visualIntent) ? packet.visualIntent : {};
   const audio = plain(packet.audioIntent) ? packet.audioIntent : {};
   const scene = plain(packet.sceneState) ? packet.sceneState : {};
