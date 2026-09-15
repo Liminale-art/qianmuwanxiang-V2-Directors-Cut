@@ -6,7 +6,7 @@ import path from 'node:path';
 import http from 'node:http';
 import {createHash} from 'node:crypto';
 import {createChatCharacterReceiptService} from '../qianmu-chat-character-receipt-service.js';
-import {createChatCharacterReceiptClient} from '../qianmu-chat-character-receipt-client.js';
+import {createChatCharacterReceiptClient,createCurrentChatCharacterReceiptClient} from '../qianmu-chat-character-receipt-client.js';
 import {CHAT_CHARACTER_RECEIPT_LIMITS,chatCharacterReceiptTarget,chatCharacterReceiptRequest,
   chatCharacterCollectionReceiptText,chatCharacterReceiptResponse,chatCharacterReceiptErrorPayload} from '../qianmu-chat-character-receipt.js';
 import {emptyChatCharacterCollection,prepareChatCharacterBatch} from '../qianmu-character-chat-batch.js';
@@ -190,12 +190,13 @@ test('production HTTP route plus browser client verifies a synthetic chat withou
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await exit();});
   const origin=`http://127.0.0.1:${server.address().port}`,endpoint='/chat-characters/receipt';
   assert.equal((await fetch(origin+endpoint,{method:'POST'})).status,401);
-  const client=createChatCharacterReceiptClient({namespace:owner.namespace,target,fetchImpl:async(url,options)=>{
+  const hostContext={characterId:0,groupId:null,chatId:owner.chatKey,characters:[{avatar:target.avatar,chat:owner.chatKey}],chat:[],chatMetadata:{}};
+  const client=await createCurrentChatCharacterReceiptClient({getContext:()=>hostContext,epoch:()=>0,account:async()=>owner.namespace,fetchImpl:async(url,options)=>{
     const reply=await fetch(origin+url.replace('/api/plugins/qianmu-tts',''),{...options,headers:{...options.headers,'x-test-login':'alice'}});
     assert.equal(reply.headers.get('cache-control'),'no-store');assert.equal(reply.headers.get('x-content-type-options'),'nosniff');return reply;
   }});
   assert.equal((await client.verify(draft())).matches,true);
   const rejected=await fetch(origin+endpoint,{method:'POST',headers:{'x-test-login':'alice','content-type':'application/json'},body:JSON.stringify({...input(),root:f.root})});
   assert.equal(rejected.status,400);assert.doesNotMatch(await rejected.text(),/qianmu-chat-receipt-test|PRIVATE_/);
-  assert.deepEqual(await fs.readFile(f.file),before);assert.ok(seen.every(url=>url===endpoint));
+  assert.deepEqual(await fs.readFile(f.file),before);assert.ok(seen.every(url=>url===endpoint));client.close();
 });
