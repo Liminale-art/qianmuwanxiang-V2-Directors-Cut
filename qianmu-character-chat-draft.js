@@ -26,6 +26,8 @@ function origin(value,scope){
   }
   return result;
 }
+export const normalizeChatCharacterDraftOwner=value=>owner(value);
+export const normalizeChatCharacterDraftSource=(value,scope)=>origin(value,owner(scope));
 function subject(value){
   if(value===null)return null;
   if(!object(value)||!['char','user'].includes(value.category)||!clean(value.subjectKey,1024))fail('人物宿主身份无效');
@@ -33,6 +35,14 @@ function subject(value){
   const key=value.category==='user'?canonicalUserSubjectKey(value.subjectKey):value.subjectKey;
   if(!key)fail('不能用显示名猜测 USER 身份');
   return {category:value.category,subjectKey:key};
+}
+export function resolveChatCharacterDraftSubject(value,hostSubjects){
+  const target=subject(value);
+  // The list must come from the host, never from a model response. Match selected keys, not names.
+  if(target&&(!Array.isArray(hostSubjects)||hostSubjects.length>33||!hostSubjects.some(row=>{
+    try{const known=subject(row);return known?.category===target.category&&known.subjectKey===target.subjectKey;}catch(_){return false;}
+  })))fail('当前聊天未确认此 CHAR 或 USER 身份');
+  return target;
 }
 function visual(value){
   if(!object(value)||value.visible===false||!clean(value.id,160)||!clean(value.name,80)||!Array.isArray(value.identity)||value.identity.length>30
@@ -42,6 +52,7 @@ function visual(value){
   if(appearance.length>12000)fail('本次人物描述过长，不会截断保存');
   return {name:value.name,appearance};
 }
+export const projectChatCharacterDraftVisual=value=>visual(value);
 function bodyDocument(value){
   const document=normalizeCharacterArchive(value);
   if(Object.hasOwn(document,'comfy'))fail('临时人物不能携带角色专属工作流绑定');
@@ -60,12 +71,8 @@ export function normalizeChatCharacterDraft(value,expectedOwner){
     hostSubject:target,source:origin(value.source,scope),lastObserved:origin(value.lastObserved,scope),document,userEditedFields:[...value.userEditedFields].sort()};
 }
 export function createChatCharacterDraft({owner:scope,source,character,hostSubject=null,hostSubjects=[],id=globalThis.crypto?.randomUUID()}={}){
-  scope=owner(scope);source=origin(source,scope);const description=visual(character),target=subject(hostSubject);
+  scope=owner(scope);source=origin(source,scope);const description=visual(character),target=resolveChatCharacterDraftSubject(hostSubject,hostSubjects);
   if(source.characterId!==character.id)fail('本次人物编号与正文来源不一致');
-  // This list must come from the host, never from a model response. Matching is by a selected key, not a name.
-  if(target&&(!Array.isArray(hostSubjects)||hostSubjects.length>33||!hostSubjects.some(row=>{
-    try{const known=subject(row);return known?.category===target.category&&known.subjectKey===target.subjectKey;}catch(_){return false;}
-  })))fail('当前聊天未确认此 CHAR 或 USER 身份');
   const document=newCharacterArchive(target?.category||'other');document.name=description.name;document.imagegen.appearance=description.appearance;
   return freeze(normalizeChatCharacterDraft({schema:CHAT_CHARACTER_DRAFT_SCHEMA,id,subjectId:`chat-character:${id}`,owner:scope,revision:1,
     status:'detected',hostSubject:target,source,lastObserved:source,document,userEditedFields:[]},scope));
