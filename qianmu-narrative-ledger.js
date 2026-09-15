@@ -1,4 +1,5 @@
 // 千幕·共享叙事账本。纯数据合同：不读写 DOM、聊天、存储或网络。
+import { narrativeContextField, narrativeContextIssues, narrativeContextKey, canRevealNarrativeContext } from './qianmu-narrative-context.js';
 export const QIANMU_NARRATIVE_LEDGER_SCHEMA = 'qianmu.narrative-ledger.v1';
 export const QIANMU_NARRATIVE_ENTRY_SCHEMA = 'qianmu.narrative-entry.v1';
 export const QIANMU_NARRATIVE_SOURCE_KINDS = Object.freeze(['prose', 'simulation']);
@@ -46,6 +47,7 @@ function normalizeSource(value = {}) {
     revisionId: text(raw.revisionId || raw.revision_id, 200),
     field: text(raw.field, 80),
     itemId: text(raw.itemId || raw.item_id, 200),
+    ...narrativeContextField(raw),
   };
 }
 
@@ -93,7 +95,8 @@ export function normalizeNarrativeLedgerEntry(value = {}, ownerChatKey = '') {
   const summary = text(factRaw.summary || raw.summary, 2000);
   const predicate = text(factRaw.predicate, 240);
   const object = text(factRaw.object, 1000);
-  const seed = [chatKey, source.kind, source.recordId, source.field, source.itemId, summary, predicate, object].join('|');
+  const contextKey = narrativeContextKey(source);
+  const seed = [chatKey, source.kind, source.recordId, source.field, source.itemId, summary, predicate, object, ...(contextKey ? [contextKey] : [])].join('|');
   return {
     schema: QIANMU_NARRATIVE_ENTRY_SCHEMA,
     entryId: text(raw.entryId || raw.entry_id, 200) || `fact-${hash(seed)}`,
@@ -105,7 +108,7 @@ export function normalizeNarrativeLedgerEntry(value = {}, ownerChatKey = '') {
       object,
       summary,
     },
-    temporalState: choice(raw.temporalState || raw.temporal_state, QIANMU_NARRATIVE_TEMPORAL_STATES, 'unknown'),
+    temporalState: choice(source.narrativeContext?.time?.layer || raw.temporalState || raw.temporal_state, QIANMU_NARRATIVE_TEMPORAL_STATES, 'unknown'),
     confidence: normalizeConfidence(raw.confidence, source.kind),
     readerVisibility: normalizeVisibility(raw.readerVisibility || raw.reader_visibility, source.kind),
     continuity: normalizeContinuity(raw.continuity),
@@ -123,6 +126,7 @@ export function validateNarrativeLedgerEntry(value = {}, ownerChatKey = '') {
   if (!plain(value)) issues.push('entry_not_object');
   if (raw.schema !== undefined && raw.schema !== QIANMU_NARRATIVE_ENTRY_SCHEMA) issues.push('entry_schema_unsupported');
   if (!entry.owner.chatKey) issues.push('owner_chat_missing');
+  issues.push(...narrativeContextIssues(entry.source, entry.owner.chatKey));
   if (!QIANMU_NARRATIVE_SOURCE_KINDS.includes(raw.source?.kind)) issues.push('source_kind_invalid');
   if (!entry.source.recordId) issues.push('source_record_missing');
   if (!entry.fact.summary && !entry.fact.predicate) issues.push('fact_content_missing');
@@ -174,6 +178,7 @@ export function canExposeNarrativeLedgerEntryToMainline(value = {}, viewerId = '
   if (entry.source.kind !== 'prose' || entry.source.authority !== 'canon') return false;
   if (entry.continuity.state !== 'active' || ['possible', 'disputed'].includes(entry.confidence.state)) return false;
   const viewer = text(viewerId, 160);
+  if (Object.hasOwn(entry.source, 'narrativeContext') && !canRevealNarrativeContext(entry.source.narrativeContext, viewer)) return false;
   if (entry.readerVisibility.hiddenFrom.includes(viewer)) return false;
   if (entry.readerVisibility.scope === 'mainline') return true;
   return entry.readerVisibility.scope === 'limited' && Boolean(viewer && entry.readerVisibility.viewerIds.includes(viewer));
@@ -217,6 +222,10 @@ export function invalidateNarrativeLedgerEntries(value = {}, event = {}) {
   const chatKey = text(raw.chatKey || raw.chat_key, 512);
   if (!chatKey) return { ledger, invalidatedEntryIds: [], issue: 'owner_chat_missing' };
   if (chatKey !== ledger.owner.chatKey) return { ledger, invalidatedEntryIds: [], issue: 'owner_chat_mismatch' };
+  const branchId = Object.hasOwn(raw, 'branchId') ? raw.branchId : 'mainline';
+  if (typeof branchId !== 'string' || !branchId || branchId !== branchId.trim() || branchId.length > 200 || /[\u0000-\u001f\u007f]/.test(branchId)) {
+    return { ledger, invalidatedEntryIds: [], issue: 'branch_id_invalid' };
+  }
   const kind = choice(raw.kind, QIANMU_NARRATIVE_INVALIDATION_KINDS, 'manual');
   const refs = new Set(invalidationEventRefs(raw));
   const entryIds = new Set(list(raw.entryIds || raw.entry_ids, MAX_LEDGER_ENTRIES, 200));
@@ -226,7 +235,16 @@ export function invalidateNarrativeLedgerEntries(value = {}, event = {}) {
   const reason = `${kind}:${reasonRef}`;
   const entries = ledger.entries.map((entry) => {
     if (entry.owner.chatKey !== chatKey || entry.continuity.state !== 'active') return entry;
-    if (!entryMatchesInvalidation(entry, kind, refs, entryIds, floor)) return entry;
+    if (narrativeContextIssues(entry.source, chatKey).length) return entry;
+    const branch = entry.source.narrativeContext?.branch;
+    if ((branch?.id || 'mainline') === branchId) {
+      if (!entryMatchesInvalidation(entry, kind, refs, entryIds, floor)) return entry;
+    } else {
+      // Across branches, a floor number is not evidence. Only an exact fork anchor can expire a dependent.
+      const fork = branch?.fork;
+      if (!['source_deleted', 'message_revised', 'swipe_changed'].includes(kind) || fork?.branchId !== branchId
+        || ![fork.recordId, fork.revisionId].some(ref => refs.has(ref))) return entry;
+    }
     invalidatedEntryIds.push(entry.entryId);
     return {
       ...entry,
@@ -258,12 +276,14 @@ export function adaptProductionPacketToNarrativeLedgerEntry(value = {}) {
   const visual = plain(packet.visualIntent) ? packet.visualIntent : {};
   const characters = Array.isArray(packet.characterState) ? packet.characterState.slice(0, 24) : [];
   const recordId = text(packet.packetId || packet.eventId, 200);
+  const contextKey = narrativeContextKey(source);
   return normalizeNarrativeLedgerEntry({
-    entryId: recordId ? `simulation-${recordId}` : '',
+    entryId: recordId ? `simulation-${contextKey ? `${recordId.slice(0, 170)}-${hash(contextKey)}` : recordId}` : '',
     owner: { chatKey: anchor.chatKey },
     source: {
       kind: 'simulation', recordId, floor: anchor.floor, messageId: anchor.messageId,
       revisionId: anchor.revisionId, field: source.field, itemId: source.itemId,
+      ...narrativeContextField(source),
     },
     fact: {
       subjectIds: characters.map((item) => item?.id || item?.name),

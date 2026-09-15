@@ -284,6 +284,7 @@
     "qianmu-llm-output.js",
     "qianmu-model-picker.js",
     "qianmu-narrative-ledger.js",
+    "qianmu-narrative-context.js",
     "qianmu-notes.js",
     "qianmu-openai-image-compat.js",
     "qianmu-production-packet.js",

@@ -4,6 +4,7 @@ import {
   normalizeNarrativeLedgerEntry,
   validateNarrativeLedgerEntry,
 } from './qianmu-narrative-ledger.js';
+import { narrativeContextField, narrativeContextKey } from './qianmu-narrative-context.js';
 
 export const QIANMU_DIRECTOR_CANDIDATE_SCHEMA = 'qianmu.director-candidate.v1';
 export const QIANMU_DIRECTOR_CANDIDATE_POOL_SCHEMA = 'qianmu.director-candidate-pool.v1';
@@ -100,13 +101,15 @@ export function scoreNarrativeDirectorCandidate(value = {}, context = {}) {
     : sourceValid && factConsistency && shotDistinct
       ? 'manual_review'
       : 'reject';
+  const contextKey = narrativeContextKey(entry.source);
   return {
     schema: QIANMU_DIRECTOR_CANDIDATE_SCHEMA,
-    candidateId: `candidate-${hash(`${entry.owner.chatKey}|${entry.entryId}|${signature}`)}`,
+    candidateId: `candidate-${hash(`${entry.owner.chatKey}|${entry.entryId}|${signature}${contextKey ? `|${contextKey}` : ''}`)}`,
     owner: { chatKey: entry.owner.chatKey },
     entryId: entry.entryId,
     sourceKind: entry.source.kind,
     temporalState: entry.temporalState,
+    ...narrativeContextField(entry.source),
     subjectIds: [...entry.fact.subjectIds],
     factDigest: text(entry.fact.summary || [entry.fact.predicate, entry.fact.object].filter(Boolean).join(' '), 360),
     direction: {
@@ -152,6 +155,7 @@ export function normalizeDirectorCandidate(value = {}) {
     entryId: text(raw.entryId || raw.entry_id, 200),
     sourceKind: ['prose', 'simulation'].includes(raw.sourceKind || raw.source_kind) ? (raw.sourceKind || raw.source_kind) : 'simulation',
     temporalState: text(raw.temporalState || raw.temporal_state, 40),
+    ...narrativeContextField(raw),
     subjectIds: list(raw.subjectIds || raw.subject_ids, 40, 160),
     factDigest: text(raw.factDigest || raw.fact_digest, 360),
     direction: {

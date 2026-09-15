@@ -1,5 +1,6 @@
 // 千幕·共享片场制片包。纯数据适配器：不读写 DOM、设置、聊天元数据或媒体二进制。
 import { normalizeWorldSource } from './qianmu-world-source.js';
+import { narrativeContextField, narrativeContextKey } from './qianmu-narrative-context.js';
 export { buildWorldSourceIndex, worldSourceKey, indexWorldMedia } from './qianmu-world-source.js';
 export const QIANMU_PRODUCTION_PACKET_SCHEMA = 'qianmu.production.packet.v1';
 export const QIANMU_PRODUCTION_TRACKS = Object.freeze(['main_camera', 'second_camera']);
@@ -42,7 +43,8 @@ export function normalizeQianmuProductionPacket(value = {}) {
   const anchorRaw = plain(raw.timelineAnchor || raw.timeline_anchor) ? (raw.timelineAnchor || raw.timeline_anchor) : {};
   const eventId = text(raw.eventId || raw.event_id, 200);
   const sourceRaw = plain(raw.sourceRef || raw.source_ref) ? (raw.sourceRef || raw.source_ref) : {};
-  const packetSeed = [eventId, track, canonLevel, sourceRaw.field, sourceRaw.index, anchorRaw.chatKey, anchorRaw.floor].join('|');
+  const contextKey = narrativeContextKey(sourceRaw);
+  const packetSeed = [eventId, track, canonLevel, sourceRaw.field, sourceRaw.index, anchorRaw.chatKey, anchorRaw.floor, ...(contextKey ? [contextKey] : [])].join('|');
   const visibleTo = list(raw.knowledgeScope?.visibleTo || raw.knowledge_scope?.visible_to, 40);
   const hiddenFrom = list(raw.knowledgeScope?.hiddenFrom || raw.knowledge_scope?.hidden_from, 40);
   const directorOnly = raw.knowledgeScope?.directorOnly ?? raw.knowledge_scope?.director_only ?? (canonLevel !== 'canon');
@@ -63,6 +65,7 @@ export function normalizeQianmuProductionPacket(value = {}) {
       revisionId: text(anchorRaw.revisionId || anchorRaw.revision_id, 200),
     },
     sourceRef: { field: text(sourceRaw.field, 80), index: integer(sourceRaw.index), itemId: text(sourceRaw.itemId || sourceRaw.item_id, 200),
+      ...narrativeContextField(sourceRaw),
       ...(normalizeWorldSource(sourceRaw.worldSource) ? {worldSource:normalizeWorldSource(sourceRaw.worldSource)} : {}) },
     knowledgeScope: { directorOnly: Boolean(directorOnly), visibleTo, hiddenFrom },
     sceneState: {

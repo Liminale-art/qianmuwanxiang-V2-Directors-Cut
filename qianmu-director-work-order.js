@@ -1,5 +1,6 @@
 // 千幕·导演工作单。下游工种只接收已批准决策的有限投影，不再解释原始推演文本。
 import { normalizeWorldSource } from './qianmu-world-source.js';
+import { narrativeContextField, narrativeContextIssues, isMainlineNarrativeFact, narrativeContextLayer } from './qianmu-narrative-context.js';
 import {
   QIANMU_DIRECTOR_DECISION_CONSUMERS,
   canConsumeDirectorDecision,
@@ -95,6 +96,7 @@ export function normalizeDirectorWorkOrder(value = {}) {
       track: ['main_camera', 'second_camera'].includes(source.track) ? source.track : '',
       canonLevel: ['canon', 'director', 'draft'].includes(source.canonLevel || source.canon_level) ? (source.canonLevel || source.canon_level) : '',
       ...(normalizeWorldSource(source.worldSource) ? {worldSource:normalizeWorldSource(source.worldSource)} : {}),
+      ...narrativeContextField(source),
     },
     payload: normalizePayload(raw.payload, consumer),
     createdAt: timestamp(raw.createdAt || raw.created_at),
@@ -107,6 +109,9 @@ export function validateDirectorWorkOrder(value = {}, consumer = '', chatKey = '
   if (value?.schema !== undefined && value.schema !== QIANMU_DIRECTOR_WORK_ORDER_SCHEMA) issues.push('work_order_schema_unsupported');
   if (!workOrder.workOrderId) issues.push('work_order_id_missing');
   if (!workOrder.owner.chatKey) issues.push('owner_chat_missing');
+  issues.push(...narrativeContextIssues(workOrder.source, workOrder.owner.chatKey));
+  if (workOrder.truthMode === 'canon' && Object.hasOwn(workOrder.source, 'narrativeContext')
+    && !isMainlineNarrativeFact(workOrder.source.narrativeContext)) issues.push('narrative_context_truth_mismatch');
   if (chatKey && workOrder.owner.chatKey !== text(chatKey, 512)) issues.push('owner_chat_mismatch');
   if (!workOrder.consumer) issues.push('consumer_invalid');
   if (consumer && workOrder.consumer !== consumer) issues.push('consumer_mismatch');
@@ -138,6 +143,7 @@ export function createDirectorWorkOrder(decisionValue = {}, consumer = '', chatK
       packetId: decision.source.packetId, eventId: decision.source.eventId,
       track: decision.source.track, canonLevel: decision.source.canonLevel,
       worldSource: decision.source.worldSource,
+      ...narrativeContextField(decision.source),
     },
     payload: decision.lanes,
     createdAt,
@@ -165,7 +171,7 @@ export function directorWorkOrderToStoryboardShot(value = {}, chatKey = '') {
   return {
     id: order.workOrderId,
     sourceParagraphIds: visual.evidenceRefs,
-    narrativeLayer: order.truthMode === 'canon' ? 'present' : 'imagined',
+    narrativeLayer: order.truthMode === 'canon' ? (Object.hasOwn(order.source, 'narrativeContext') ? narrativeContextLayer(order.source.narrativeContext) : 'present') : 'imagined',
     narrativePurpose: visual.description || visual.subject,
     shotPattern: pattern, visualDuty: duty, shotRole: role, shotScale: scale,
     subject: visual.subject,
@@ -184,6 +190,7 @@ export function directorWorkOrderToStoryboardShot(value = {}, chatKey = '') {
       canonLevel: order.source.canonLevel, autoInsert: false, decisionId: order.source.decisionId,
       decisionStatus: 'approved', truthMode: order.truthMode,
       ...(order.source.worldSource ? {worldSource:order.source.worldSource} : {}),
+      ...narrativeContextField(order.source),
     },
     decisions: [`导演工作单：${order.workOrderId}`],
   };

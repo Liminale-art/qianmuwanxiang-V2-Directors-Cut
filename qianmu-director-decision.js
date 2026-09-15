@@ -1,6 +1,7 @@
 // 千幕·导演决策单。把用户确认后的候选转成下游唯一可消费凭据；不读写存储、媒体或网络。
 import { QIANMU_DIRECTOR_CANDIDATE_SCHEMA, normalizeDirectorCandidate } from './qianmu-director-candidate.js';
 import { normalizeWorldSource } from './qianmu-world-source.js';
+import { narrativeContextField, narrativeContextIssues, matchingNarrativeContexts, isMainlineNarrativeFact } from './qianmu-narrative-context.js';
 
 export const QIANMU_DIRECTOR_DECISION_SCHEMA = 'qianmu.director-decision.v1';
 export const QIANMU_DIRECTOR_DECISION_CONSUMERS = Object.freeze(['storyboard', 'voice', 'subtitle', 'film']);
@@ -66,6 +67,7 @@ export function normalizeDirectorDecision(value = {}) {
       track: ['main_camera', 'second_camera'].includes(source.track) ? source.track : '',
       canonLevel: ['canon', 'director', 'draft'].includes(source.canonLevel || source.canon_level) ? (source.canonLevel || source.canon_level) : '',
       ...(normalizeWorldSource(source.worldSource) ? {worldSource:normalizeWorldSource(source.worldSource)} : {}),
+      ...narrativeContextField(source),
     },
     approval: {
       mode: approval.mode === 'explicit' ? 'explicit' : 'none',
@@ -95,6 +97,9 @@ export function validateDirectorDecision(value = {}) {
   if (value?.schema !== undefined && value.schema !== QIANMU_DIRECTOR_DECISION_SCHEMA) issues.push('decision_schema_unsupported');
   if (!decision.decisionId) issues.push('decision_id_missing');
   if (!decision.owner.chatKey) issues.push('owner_chat_missing');
+  issues.push(...narrativeContextIssues(decision.source, decision.owner.chatKey));
+  if (decision.truthMode === 'canon' && Object.hasOwn(decision.source, 'narrativeContext')
+    && !isMainlineNarrativeFact(decision.source.narrativeContext)) issues.push('narrative_context_truth_mismatch');
   if (!decision.source.candidateId || !decision.source.ledgerEntryId || !decision.source.packetId) issues.push('source_chain_incomplete');
   if (decision.status === 'approved' && decision.approval.mode !== 'explicit') issues.push('explicit_approval_missing');
   if (decision.status === 'approved' && !decision.approval.approvedAt) issues.push('approval_time_missing');
@@ -113,6 +118,8 @@ export function createDirectorDecision(candidateValue = {}, packetValue = {}, op
   const issues = [];
   if (candidateValue?.schema !== undefined && candidateValue.schema !== QIANMU_DIRECTOR_CANDIDATE_SCHEMA) issues.push('candidate_schema_unsupported');
   if (!chatKey || candidate.owner.chatKey !== chatKey || packetChatKey !== chatKey) issues.push('owner_chat_mismatch');
+  issues.push(...narrativeContextIssues(candidate, chatKey), ...narrativeContextIssues(packet.sourceRef, chatKey));
+  if (!matchingNarrativeContexts(candidate, packet.sourceRef)) issues.push('narrative_context_source_mismatch');
   if (candidate.recommendation === 'reject') issues.push('candidate_rejected');
   if (!candidate.gates.sourceValid || !candidate.gates.factConsistency || !candidate.gates.shotDistinct
     || (candidate.recommendation === 'automatic' && (!candidate.gates.spoilerSafe || candidate.sourceKind !== 'prose'))) issues.push('candidate_gate_failed');
@@ -128,11 +135,12 @@ export function createDirectorDecision(candidateValue = {}, packetValue = {}, op
     decisionId: `decision-${hash(`${chatKey}|${candidate.candidateId}|${packet.packetId}|${approvedAt}`)}`,
     owner: { chatKey },
     status: 'approved',
-    truthMode: candidate.sourceKind === 'prose' ? 'canon' : 'speculative',
+    truthMode: candidate.sourceKind === 'prose' && (!Object.hasOwn(candidate, 'narrativeContext') || isMainlineNarrativeFact(candidate.narrativeContext)) ? 'canon' : 'speculative',
     source: {
       candidateId: candidate.candidateId, ledgerEntryId: candidate.entryId, packetId: packet.packetId,
       eventId: packet.eventId, track: packet.track, canonLevel: packet.canonLevel,
       worldSource: packet.sourceRef?.worldSource,
+      ...narrativeContextField(candidate),
     },
     approval: { mode: 'explicit', approvedAt, revision: 1 },
     outputs,

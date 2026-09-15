@@ -10,6 +10,7 @@ import { retainComfyReferenceSelection } from './qianmu-comfy-reference-contract
 import { normalizeComfyCharacterActivation } from './qianmu-comfy-character-contract.js';
 import { retainComfyRouteBinding, retainComfyRoutePromptLayer, retainComfySceneOrigin } from './qianmu-comfy-route-contract.js';
 import { normalizeWorldSource } from './qianmu-world-source.js';
+import { narrativeContextField, narrativeContextIssues, narrativeContextKey, matchingNarrativeContexts, isMainlineNarrativeFact, canRevealNarrativeContext, narrativeContextLayer } from './qianmu-narrative-context.js';
 import { normalizeCharacterCastingSnapshot, assertCharacterCastingSnapshots } from './qianmu-character-casting.js';
 import { STORYBOARD_PROMPT_FORMATS, retainStoryboardPromptRenderingPack, resolveStoryboardPromptRendering } from './qianmu-prompt-formats.js';
 import { retainComfyWorkbenchBinding } from './qianmu-comfy-workbench-binding.js';
@@ -990,10 +991,12 @@ export function normalizeStoryboardSceneFingerprint(value = {}, fallback = {}) {
   const fallbackCast = Array.isArray(base.characters) ? base.characters.map((item) => item?.id || item?.name) : [];
   const castIds = ids(raw.castIds || raw.cast_ids || base.castIds || base.cast_ids || fallbackCast, 24).sort();
   const anchors = ids(raw.anchors || raw.anchorIds || raw.anchor_ids || base.anchors, 40).sort();
-  const signature = [sceneId, sceneSignal(location), sceneSignal(time), sceneSignal(weather), narrativeLayer, castIds.join(','), anchors.join(','), sceneSignal(sceneText)].join('|');
+  const contextField = narrativeContextField(Object.hasOwn(base, 'narrativeContext') ? base : raw);
+  const contextKey = narrativeContextKey(contextField);
+  const signature = [sceneId, sceneSignal(location), sceneSignal(time), sceneSignal(weather), narrativeLayer, castIds.join(','), anchors.join(','), sceneSignal(sceneText), ...(contextKey ? [contextKey] : [])].join('|');
   return {
     schema: STORYBOARD_SCENE_FINGERPRINT_SCHEMA,
-    id: sceneId ? `scene:${sceneId}` : `scene-${hash(signature)}`,
+    id: sceneId ? `scene:${sceneId}${contextKey ? `:${hash(contextKey)}` : ''}` : `scene-${hash(signature)}`,
     sceneId,
     location,
     sceneText,
@@ -1003,6 +1006,7 @@ export function normalizeStoryboardSceneFingerprint(value = {}, fallback = {}) {
     castIds,
     anchors,
     explicit: Boolean(sceneId),
+    ...contextField,
   };
 }
 
@@ -1010,6 +1014,7 @@ export function compareStoryboardSceneFingerprints(left, right) {
   const a = normalizeStoryboardSceneFingerprint(left), b = normalizeStoryboardSceneFingerprint(right);
   const reasons = [];
   if (a.narrativeLayer !== b.narrativeLayer) return { sameScene: false, score: 0, reasons: ['narrative_layer_changed'], left: a, right: b };
+  if (!matchingNarrativeContexts(a, b)) return { sameScene: false, score: 0, reasons: ['narrative_context_changed'], left: a, right: b };
   if (a.explicit && b.explicit) {
     const sameScene = a.sceneId === b.sceneId;
     return { sameScene, score: sameScene ? 1 : 0, reasons: [sameScene ? 'explicit_scene_id' : 'scene_id_changed'], left: a, right: b };
@@ -1119,6 +1124,7 @@ export function normalizeStoryboardContinuityLedger(value) {
     facts: normalizeContinuityFacts(raw.facts || raw.continuityFacts || raw.continuity_facts),
     mainRatioId: STORYBOARD_RATIOS.some((ratio) => ratio.id === raw.mainRatioId) ? raw.mainRatioId : '',
     emphasisRatioId: STORYBOARD_RATIOS.some((ratio) => ratio.id === raw.emphasisRatioId) ? raw.emphasisRatioId : '',
+    ...narrativeContextField(raw),
   };
 }
 
@@ -1145,6 +1151,7 @@ function normalizeStoryboardDirectorDecisionSnapshot(value) {
       track: ['main_camera', 'second_camera'].includes(source.track) ? source.track : '',
       canonLevel: ['canon', 'director', 'draft'].includes(source.canonLevel || source.canon_level) ? (source.canonLevel || source.canon_level) : '',
       ...(normalizeWorldSource(source.worldSource) ? {worldSource:normalizeWorldSource(source.worldSource)} : {}),
+      ...narrativeContextField(source),
     },
     approval: {
       mode: approval.mode === 'explicit' ? 'explicit' : 'none',
@@ -1176,8 +1183,11 @@ function normalizeStoryboardDirectorDecisionSnapshot(value) {
 
 export function normalizeStoryboardShotSpec(value = {}) {
   const raw = obj(value) ? value : {}, composition = obj(raw.composition) ? raw.composition : {};
+  const productionRaw = obj(raw.productionContext || raw.production_context) ? (raw.productionContext || raw.production_context) : {};
   const characters = (Array.isArray(raw.characters) ? raw.characters : []).filter(obj).slice(0, 12).map(normalizeStoryboardCharacterVisualState).filter((item) => item.id);
-  const narrativeLayer = STORYBOARD_NARRATIVE_LAYERS.includes(raw.narrativeLayer || raw.narrative_layer) ? (raw.narrativeLayer || raw.narrative_layer) : 'present';
+  const narrativeLayer = Object.hasOwn(productionRaw, 'narrativeContext')
+    ? (productionRaw.truthMode === 'speculative' ? 'imagined' : narrativeContextLayer(productionRaw.narrativeContext))
+    : STORYBOARD_NARRATIVE_LAYERS.includes(raw.narrativeLayer || raw.narrative_layer) ? (raw.narrativeLayer || raw.narrative_layer) : 'present';
   const scene = str(raw.scene, 4000);
   const continuityUpdates = normalizeContinuity(raw.continuityUpdates || raw.continuity_updates);
   const sceneFingerprint = normalizeStoryboardSceneFingerprint(raw.sceneFingerprint || raw.scene_fingerprint, {
@@ -1189,6 +1199,7 @@ export function normalizeStoryboardShotSpec(value = {}) {
     time: continuityUpdates.time,
     weather: continuityUpdates.weather,
     anchors: raw.sourceParagraphIds || raw.source_paragraph_ids,
+    ...narrativeContextField(productionRaw),
   });
   const inferredPattern = raw.shotRole === 'detail' || raw.shot_role === 'detail' || raw.shotScale === 'insert' || raw.shot_scale === 'insert'
     ? 'insert'
@@ -1220,7 +1231,6 @@ export function normalizeStoryboardShotSpec(value = {}) {
   const evidenceType = STORYBOARD_EVIDENCE_TYPES.includes(evidenceRaw.type || evidenceRaw.claimType || evidenceRaw.claim_type)
     ? (evidenceRaw.type || evidenceRaw.claimType || evidenceRaw.claim_type)
     : 'explicit';
-  const productionRaw = obj(raw.productionContext || raw.production_context) ? (raw.productionContext || raw.production_context) : {};
   return {
     schema: STORYBOARD_PLAN_SCHEMA,
     id: cleanId(raw.id),
@@ -1267,6 +1277,7 @@ export function normalizeStoryboardShotSpec(value = {}) {
       decisionStatus: productionRaw.decisionStatus === 'approved' ? 'approved' : productionRaw.decisionStatus === 'revoked' ? 'revoked' : '',
       truthMode: productionRaw.truthMode === 'canon' ? 'canon' : productionRaw.truthMode === 'speculative' ? 'speculative' : '',
       ...(normalizeWorldSource(productionRaw.worldSource) ? {worldSource:normalizeWorldSource(productionRaw.worldSource)} : {}),
+      ...narrativeContextField(productionRaw),
     },
     directorDecision: normalizeStoryboardDirectorDecisionSnapshot(raw.directorDecision || raw.director_decision),
     continuityUpdates,
@@ -1306,7 +1317,7 @@ export function adaptProductionPacketToStoryboardShotSpec(value = {}, overrides 
     promptAtoms: { global: [visual.description, visual.subject].filter(Boolean), environment },
     continuityUpdates: { time: sceneState.time, weather: sceneState.weather, props: Object.fromEntries((Array.isArray(sceneState.props) ? sceneState.props : []).map((prop) => [String(prop), true])) },
     evidence: { type: 'inferred', paragraphIds: evidenceRefs, quote: visual.evidenceQuote || '', rationale: visual.rationale || '由制片包映射，需在镜头详情确认后提交。' },
-    productionContext: { packetId: packet.packetId, eventId: packet.eventId, track: packet.track, canonLevel: packet.canonLevel, autoInsert: false, decisionId: '', decisionStatus: '', truthMode: '', worldSource:packet.sourceRef?.worldSource },
+    productionContext: { packetId: packet.packetId, eventId: packet.eventId, track: packet.track, canonLevel: packet.canonLevel, autoInsert: false, decisionId: '', decisionStatus: '', truthMode: '', worldSource:packet.sourceRef?.worldSource, ...narrativeContextField(packet.sourceRef) },
     decisions: [`制片包来源：${packet.sourceRef?.field || 'unknown'}`],
     ...overrides,
   });
@@ -1326,6 +1337,10 @@ export function storyboardProductionContext(value = {}) {
     source.snapshot?.compiledPrompt?.productionContext,
   ];
   const raw = candidates.find(obj) || {};
+  // A lightweight wrapper may omit provenance; it must not mask a stricter saved shot.
+  const contexts = candidates.filter(candidate => obj(candidate) && Object.hasOwn(candidate, 'narrativeContext'));
+  const contextField = contexts.length && contexts.some(candidate => !matchingNarrativeContexts(contexts[0], candidate))
+    ? { narrativeContext: { invalid: true } } : narrativeContextField(contexts[0]);
   const track = ['main_camera', 'second_camera'].includes(raw.track) ? raw.track : 'main_camera';
   const canonLevel = ['canon', 'director', 'draft'].includes(raw.canonLevel || raw.canon_level)
     ? (raw.canonLevel || raw.canon_level)
@@ -1340,6 +1355,7 @@ export function storyboardProductionContext(value = {}) {
     decisionStatus: raw.decisionStatus === 'approved' ? 'approved' : raw.decisionStatus === 'revoked' ? 'revoked' : '',
     truthMode: raw.truthMode === 'canon' ? 'canon' : raw.truthMode === 'speculative' ? 'speculative' : '',
     ...(normalizeWorldSource(raw.worldSource) ? {worldSource:normalizeWorldSource(raw.worldSource)} : {}),
+    ...contextField,
   };
 }
 
@@ -1358,7 +1374,9 @@ export function storyboardDirectorDecisionSnapshot(value = {}) {
 export function storyboardProductionDeliveryPolicy(value = {}, requested = {}) {
   const productionContext = storyboardProductionContext(value);
   const fromProductionPacket = Boolean(productionContext.packetId || productionContext.eventId);
-  const requiresExplicitInsert = fromProductionPacket && productionContext.autoInsert !== true;
+  const restrictedContext = Object.hasOwn(productionContext, 'narrativeContext') && (!canRevealNarrativeContext(productionContext.narrativeContext, requested.viewerId || 'user')
+    || productionContext.truthMode !== 'canon' || narrativeContextIssues(productionContext, requested.chatKey).length > 0);
+  const requiresExplicitInsert = restrictedContext || (fromProductionPacket && productionContext.autoInsert !== true);
   const requestedTarget = ['latest', 'floor', 'gallery'].includes(requested.target) ? requested.target : 'latest';
   return {
     productionContext,
@@ -1567,8 +1585,23 @@ export function storyboardProviderRatioDimensions(providerId, ratioId, currentWi
 const promptPart = (value) => shotStringList(value, 80, 1000).join(', ');
 const characterPrompt = (character) => [character.name, ...character.identity, ...character.outfit, ...character.temporaryState, ...character.expression, ...character.pose, ...character.action, ...character.gaze, ...character.props, character.spatial.region, character.spatial.crop].filter(Boolean).join(', ');
 
+function storyboardNarrativeSourceIssues(shot, chatKey) {
+  const source = shot.productionContext, decision = shot.directorDecision;
+  const issues = narrativeContextIssues(source, chatKey || decision?.owner?.chatKey || undefined);
+  if (source.truthMode === 'canon' && Object.hasOwn(source, 'narrativeContext') && !isMainlineNarrativeFact(source.narrativeContext)) issues.push('narrative_context_truth_mismatch');
+  if (!matchingNarrativeContexts(source, shot.sceneFingerprint)) issues.push('narrative_context_scene_mismatch');
+  if (decision) {
+    issues.push(...narrativeContextIssues(decision.source, chatKey || decision.owner.chatKey));
+    if (!matchingNarrativeContexts(source, decision.source)) issues.push('narrative_context_decision_mismatch');
+    if (decision.truthMode === 'canon' && Object.hasOwn(decision.source, 'narrativeContext') && !isMainlineNarrativeFact(decision.source.narrativeContext)) issues.push('narrative_context_truth_mismatch');
+  }
+  return [...new Set(issues)];
+}
+
 export function validateStoryboardShotSpec(value = {}, options = {}) {
   const shot = normalizeStoryboardShotSpec(value), errors = [], warnings = [];
+  const sourceIssues = storyboardNarrativeSourceIssues(shot, options.chatKey);
+  if (sourceIssues.length) errors.push('镜头的叙事来源或分支不一致，请核对后重新确认');
   const centers = new Set(), traitOwners = new Map();
   for (const character of shot.characters) {
     const center = character.spatial.center.map((item) => item.toFixed(2)).join(':');
@@ -1609,6 +1642,7 @@ export function compileStoryboardPrompt(input = {}) {
   const validation = validateStoryboardShotSpec(shotInput, { providerId: input.providerId, modelId: modelBinding.capabilityModelId });
   const capability = getStoryboardCapabilities(input.providerId, modelBinding.capabilityModelId, input.workflow, input.connection);
   const shot = validation.shot;
+  if (storyboardNarrativeSourceIssues(shot, input.chatKey).length) throw Object.assign(new Error('镜头的叙事来源或分支不一致，请核对后重新确认'), { code: 'narrative_context_invalid' });
   const format = input.providerId === 'novel' ? 'tags' : input.providerId === 'comfy' ? '' : 'natural_language';
   let rendering;
   if(format && Object.hasOwn(shot,'promptRenderingPack')) {
@@ -1696,9 +1730,11 @@ export function prepareStoryboardShotGroup(value = {}) {
   const policy = normalizeStoryboardCompositionPolicy(value.policy), manual = Boolean(value.manual);
   const source = (Array.isArray(value.shots) ? value.shots : []).map(normalizeStoryboardShotSpec);
   const kept = [], skipped = [], seen = new Set(), limit = int(value.maxShots, 1, 12, 4);
-  const continuityLedgerLayer=source.some(shot=>shot.narrativeLayer==='present')?'present':source[0]?.narrativeLayer || 'present';
+  const eligibleSource = source.filter(shot => !storyboardNarrativeSourceIssues(shot, value.chatKey).length);
+  const continuityLedgerLayer=eligibleSource.some(shot=>shot.narrativeLayer==='present')?'present':eligibleSource[0]?.narrativeLayer || 'present';
   const priorLayer=value.continuityLedgerLayer || continuityLedgerLayer;
-  let continuityLedger = normalizeContinuity(priorLayer===continuityLedgerLayer?value.continuityLedger:null);
+  const primarySource = eligibleSource.find(shot => shot.narrativeLayer === continuityLedgerLayer)?.productionContext || {};
+  let continuityLedger = { ...normalizeContinuity(priorLayer === continuityLedgerLayer && matchingNarrativeContexts(value.continuityLedger, primarySource) ? value.continuityLedger : null), ...narrativeContextField(primarySource) };
   const alternateRatio = (shot) => {
     if (continuityLedger.emphasisRatioId && policy.allowedRatioIds.includes(continuityLedger.emphasisRatioId)) return continuityLedger.emphasisRatioId;
     const portraitPreferred = ['reaction', 'detail'].includes(shot.shotRole);
@@ -1716,6 +1752,8 @@ export function prepareStoryboardShotGroup(value = {}) {
     };
   };
   for (const shot of source) {
+    const sourceIssues = storyboardNarrativeSourceIssues(shot, value.chatKey);
+    if (sourceIssues.length) { skipped.push({ shot, reason: 'narrative_context_invalid', issues: sourceIssues, requiresReplan: true }); continue; }
     const grounding = validateStoryboardShotGrounding(shot, { strict: true });
     if (!manual && !grounding.valid) {
       skipped.push({ shot, reason: 'ungrounded_shot', issues: grounding.errors, requiresReplan: true });
@@ -1730,7 +1768,8 @@ export function prepareStoryboardShotGroup(value = {}) {
       skipped.push({ shot, reason: 'difference_budget', issues: difference.issues, requiresReplan: true });
       continue;
     }
-    if(shot.narrativeLayer===continuityLedgerLayer)continuityLedger.facts = expireMomentaryContinuityFacts(continuityLedger.facts);
+    const sameContinuity = shot.narrativeLayer === continuityLedgerLayer && matchingNarrativeContexts(shot.productionContext, primarySource);
+    if(sameContinuity)continuityLedger.facts = expireMomentaryContinuityFacts(continuityLedger.facts);
     const order = kept.length;
     if (!shot.composition.ratioId) {
       shot.composition.ratioId = policy.groupStrategy === 'main_secondary' && order > 0 ? alternateRatio(shot) : (continuityLedger.mainRatioId || policy.preferredRatioId);
@@ -1741,7 +1780,7 @@ export function prepareStoryboardShotGroup(value = {}) {
     seen.add(signature); kept.push(shot);
     // A mixed batch keeps the present world; a memory-only batch keeps its own continuity.
     // Other-layer facts stay on their shots and cannot overwrite or age the primary layer's state.
-    if(shot.narrativeLayer===continuityLedgerLayer)mergeContinuity(shot.continuityUpdates);
+    if(sameContinuity)mergeContinuity(shot.continuityUpdates);
   }
   const coverageMap = buildStoryboardSceneCoverageMap(kept);
   const sceneGroups = [];
