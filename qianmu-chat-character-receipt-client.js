@@ -90,6 +90,7 @@ export async function createCurrentChatCharacterReceiptClient({getContext,epoch,
     await guard();current();const selectedAccount=await account();current();
     if(selectedAccount!==namespace)throw fail('当前 ST 账户已变化，原聊天核验作废');await guard();current();
   };
-  return createChatCharacterReceiptClient({namespace,target:captured.target,guard:check,
+  const client=createChatCharacterReceiptClient({namespace,target:captured.target,guard:check,
     headers:headers||(()=>getContext().getRequestHeaders?.()||{}),fetchImpl,timeoutMs});
+  return Object.freeze({...client,owner:Object.freeze({namespace,chatKey:captured.target.chatId}),target:Object.freeze({...captured.target}),assertCurrent:current});
 }
