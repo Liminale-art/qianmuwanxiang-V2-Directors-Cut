@@ -7,6 +7,7 @@ const account = namespace => { if (typeof namespace !== 'string' || !/^st-user:.
 const keyFor = (namespace,id) => { account(namespace); if (!identifier(id)) fail('id','角色档案编号无效'); return JSON.stringify([namespace,id]); };
 const bindingKey = (namespace,target) => JSON.stringify([account(namespace),target.category,target.subjectKey,target.scope,target.chatKey]);
 const byteSize = value => new TextEncoder().encode(JSON.stringify(value)).byteLength;
+const canonicalDocument=value=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
 
 // Lazy, account-isolated indexed metadata + per-document reads. No settings, media or legacy-store migration.
 export function createCharacterArchiveStore({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-character-archive',timeoutMs=6000,now=Date.now}={}) {
@@ -144,6 +145,30 @@ export function createCharacterArchiveStore({indexedDB=globalThis.indexedDB,keyR
           tx.objectStore('heads').put(head);tx.objectStore('documents').put({key,namespace,revision,document:value});tx.objectStore('usage').put({...usage,count,bytes:total});set(head);
         });
       }));
+    },
+    // Explicit stable-ID creation only. Retry may acknowledge the unchanged first version, never update it or any binding.
+    async createOnce(namespace,{id,document},{isCurrent}={}){
+      if(typeof isCurrent!=='function')fail('changed','固定档案缺少当前身份保护');
+      const key=keyFor(namespace,id),value=normalizeCharacterArchive(document),bytes=byteSize(value),revision=freshId();
+      return operation('readwrite',(tx,read,set)=>read(tx.objectStore('heads').get(key),previous=>{
+        read(tx.objectStore('documents').get(key),row=>{
+          if(previous){
+            validateHead(previous,namespace);
+            if(!row||row.key!==key||row.namespace!==namespace||row.revision!==previous.revision||Object.keys(row).some(field=>!['key','namespace','revision','document'].includes(field)))fail('index','原固定档案的目录和原文不一致');
+            const stored=normalizeCharacterArchive(row.document);
+            if(previous.category!==stored.category||previous.name!==stored.name||JSON.stringify(previous.aliases)!==JSON.stringify(stored.aliases)
+              ||previous.cover!==(stored.imagegen.preview?.url||'')||previous.bytes!==byteSize(row.document))fail('index','原固定档案目录与内容不一致');
+            if(previous.version!==1||canonicalDocument(row.document)!==canonicalDocument(value))fail('conflict','此人物已有固定档案或已被编辑，不会覆盖，请打开原档案核对');
+          }else if(row)fail('index','此编号存在未关联原文，请先保全核对');
+          withUsage(tx,read,namespace,usage=>{
+            if(previous){if(usage.count<1||usage.bytes<previous.bytes)fail('index','原固定档案计值异常');set({head:previous,created:false});return;}
+            if(usage.count>=512||usage.bytes+bytes>16*1024*1024)fail('capacity','角色库达到 512 项或 16 MB 上限，请先导出整理');
+            const at=now(),head={key,namespace,id,revision,version:1,category:value.category,name:value.name,aliases:value.aliases,cover:value.imagegen.preview?.url||'',bytes,createdAt:at,updatedAt:at};
+            tx.objectStore('heads').add(head);tx.objectStore('documents').add({key,namespace,revision,document:value});tx.objectStore('usage').put({...usage,count:usage.count+1,bytes:usage.bytes+bytes});
+            set({head,created:true});
+          });
+        });
+      }),isCurrent);
     },
     async bindings(namespace){account(namespace);return operation('readonly',(tx,read,set)=>read(tx.objectStore('bindings').index('namespace').getAll(keyRange.only(namespace),2049),rows=>{
       if(rows.length>2048)fail('capacity','角色绑定超过上限');for(const row of rows)if(row.namespace!==namespace||row.key!==bindingKey(namespace,characterBindingTarget(row))||!identifier(row.revision)||(row.archiveId!==''&&!identifier(row.archiveId)))fail('index','角色绑定索引异常');set(rows);

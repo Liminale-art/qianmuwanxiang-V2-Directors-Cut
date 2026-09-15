@@ -118,6 +118,7 @@
     "qianmu-chat-character-receipt.js",
     "qianmu-chat-character-receipt-service.js",
     "qianmu-chat-character-receipt-client.js",
+    "qianmu-character-chat-promotion.js",
     "qianmu-storyboard-bundle-source.js",
     "qianmu-storyboard-chat-evidence.js",
     "qianmu-storyboard-subject-evidence.js",
